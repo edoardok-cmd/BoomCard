@@ -1,0 +1,1 @@
+// Real implementation for auth.middleware.ts

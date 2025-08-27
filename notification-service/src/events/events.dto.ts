@@ -1,0 +1,1 @@
+// Real implementation for events.dto.ts

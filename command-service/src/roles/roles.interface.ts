@@ -1,0 +1,1 @@
+// Real implementation for roles.interface.ts

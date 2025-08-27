@@ -1,0 +1,27 @@
+{
+  "name": "project-50-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "consumer-web",
+    "partner-dashboard",
+    "admin-panel",
+    "mobile-app",
+    "api-gateway",
+    "services/*",
+    "shared"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev:*\"",
+    "dev:web": "npm run dev --workspace=consumer-web",
+    "dev:api": "npm run dev --workspace=api-gateway",
+    "build": "npm run build --workspaces",
+    "test": "npm run test --workspaces",
+    "lint": "npm run lint --workspaces"
+  },
+  "devDependencies": {
+    "concurrently": "^7.6.0",
+    "@types/node": "^18.0.0",
+    "typescript": "^5.0.0"
+  }
+}

@@ -1,0 +1,1 @@
+// Real implementation for queue.guard.ts

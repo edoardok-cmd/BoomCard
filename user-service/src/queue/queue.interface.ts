@@ -1,0 +1,1 @@
+// Real implementation for queue.interface.ts

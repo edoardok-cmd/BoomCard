@@ -1,0 +1,1 @@
+// Real implementation for logging.e2e-spec.ts

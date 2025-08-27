@@ -1,0 +1,1 @@
+// Real implementation for config.filter.ts
