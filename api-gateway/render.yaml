@@ -2,7 +2,7 @@ services:
   - type: web
     name: api-gateway
     runtime: node
-    repo: https://github.com/YOUR_USERNAME/project-50
+    repo: https://github.com/edoardok-cmd/BoomCard
     rootDir: api-gateway
     buildCommand: npm install && npm run build
     startCommand: npm start
@@ -19,4 +19,4 @@ services:
       - key: JWT_SECRET
         generateValue: true
       - key: CORS_ORIGINS
-        value: https://project50-dashboard.netlify.app
+        value: https://boomcard-dashboard.netlify.app

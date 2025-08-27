@@ -2,7 +2,7 @@ services:
   - type: web
     name: auth-service
     runtime: node
-    repo: https://github.com/YOUR_USERNAME/project-50
+    repo: https://github.com/edoardok-cmd/BoomCard
     rootDir: auth-service
     buildCommand: npm install && npm run build
     startCommand: npm start
