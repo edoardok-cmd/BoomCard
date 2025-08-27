@@ -1,37 +1,50 @@
-import { GetServerSidePropsContext } from 'next';
-import { getSession } from 'next-auth/react';
+interface User {
+  id: string;
+  email: string;
+  role: string;
+}
 
-export const requireAuth = async (context: GetServerSidePropsContext) => {
-  const session = await getSession(context);
+interface Session {
+  user: User;
+  token: string;
+}
+
+export const getSession = (): Session | null => {
+  const token = localStorage.getItem('auth_token');
+  const user = localStorage.getItem('user');
   
-  if (!session) {
+  if (!token || !user) return null;
+  
+  try {
     return {
-      redirect: {
-        destination: '/login',
-        permanent: false,
-      },
+      token,
+      user: JSON.parse(user)
     };
+  } catch {
+    return null;
   }
-  
-  return { props: { session } };
 };
 
-export const requireRole = async (
-  context: GetServerSidePropsContext,
-  allowedRoles: string[]
-) => {
-  const session = await getSession(context);
+export const requireAuth = () => {
+  const session = getSession();
   
-  if (!session || !allowedRoles.includes(session.user.role)) {
-    return {
-      redirect: {
-        destination: '/unauthorized',
-        permanent: false,
-      },
-    };
+  if (!session) {
+    window.location.href = '/login';
+    return null;
   }
   
-  return { props: { session } };
+  return session;
+};
+
+export const requireRole = (allowedRoles: string[]) => {
+  const session = getSession();
+  
+  if (!session || !allowedRoles.includes(session.user.role)) {
+    window.location.href = '/unauthorized';
+    return null;
+  }
+  
+  return session;
 };
 
 export const isTokenExpired = (token: string): boolean => {
