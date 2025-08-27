@@ -1,0 +1,10 @@
+[build]
+  base = "partner-dashboard"
+  command = "npm install && npm run build"
+  publish = "build"
+
+[build.environment]
+  NODE_VERSION = "18"
+  REACT_APP_API_URL = "https://boomcard-api-gateway.onrender.com"
+  REACT_APP_GRAPHQL_URL = "https://boomcard-query-service.onrender.com/graphql"
+  REACT_APP_WS_URL = "wss://boomcard-query-service.onrender.com/graphql"
