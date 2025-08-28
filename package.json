@@ -3,13 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "workspaces": [
-    "consumer-web",
-    "partner-dashboard",
-    "admin-panel",
-    "mobile-app",
-    "api-gateway",
-    "services/*",
-    "shared"
+    "partner-dashboard"
   ],
   "scripts": {
     "dev": "concurrently \"npm run dev:*\"",
