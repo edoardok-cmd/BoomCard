@@ -34,6 +34,7 @@
     "vitest": "^1.0.0",
     "@testing-library/react": "^14.1.0",
     "@testing-library/jest-dom": "^6.1.5",
-    "eslint": "^8.55.0"
+    "eslint": "^8.55.0",
+    "@types/vitest": "^1.0.0"
   }
 }
