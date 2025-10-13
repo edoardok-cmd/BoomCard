@@ -11,7 +11,10 @@
     "dev:api": "npm run dev --workspace=api-gateway",
     "build": "npm run build --workspaces",
     "test": "npm run test --workspaces",
-    "lint": "npm run lint --workspaces"
+    "lint": "npm run lint --workspaces",
+    "optimize:images": "node scripts/optimize-images.js",
+    "generate:icons": "node scripts/generate-icons.js",
+    "setup:icons": "node scripts/generate-icons.js ./assets/logo.svg ./partner-dashboard/public"
   },
   "devDependencies": {
     "@types/node": "^18.0.0",

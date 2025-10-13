@@ -1,10 +1,721 @@
-import React from 'react';
+import React, { useState } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
+import styled from 'styled-components';
+import { motion } from 'framer-motion';
+import Button from '../components/common/Button/Button';
+import { useAuth } from '../contexts/AuthContext';
 
-export default function RegisterPage() {
-  return (
-    <div className="container mx-auto px-4 py-8">
-      <h1 className="text-3xl font-bold mb-4">Register</h1>
-      <p>Content for register page</p>
-    </div>
-  );
+const PageContainer = styled.div`
+  min-height: calc(100vh - 4rem);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem 1rem;
+  background: linear-gradient(135deg, #f9fafb 0%, #f3f4f6 100%);
+`;
+
+const RegisterCard = styled(motion.div)`
+  width: 100%;
+  max-width: 32rem;
+  background: white;
+  border-radius: 1rem;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+  padding: 2.5rem;
+
+  @media (max-width: 640px) {
+    padding: 2rem 1.5rem;
+  }
+`;
+
+const Logo = styled(Link)`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 2rem;
+  text-decoration: none;
+`;
+
+const LogoText = styled.span`
+  font-size: 2rem;
+  font-weight: 700;
+  color: #111827;
+`;
+
+const Title = styled.h1`
+  font-size: 1.875rem;
+  font-weight: 700;
+  color: #111827;
+  text-align: center;
+  margin-bottom: 0.5rem;
+`;
+
+const Subtitle = styled.p`
+  color: #6b7280;
+  text-align: center;
+  margin-bottom: 2rem;
+  font-size: 0.875rem;
+`;
+
+const Form = styled.form`
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+`;
+
+const FormRow = styled.div`
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+
+  @media (max-width: 640px) {
+    grid-template-columns: 1fr;
+  }
+`;
+
+const FormGroup = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+`;
+
+const Label = styled.label`
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #374151;
+`;
+
+const Input = styled.input<{ $hasError?: boolean }>`
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border: 1px solid ${props => props.$hasError ? '#ef4444' : '#e5e7eb'};
+  border-radius: 0.5rem;
+  font-size: 1rem;
+  transition: all 200ms;
+  background: ${props => props.$hasError ? '#fef2f2' : 'white'};
+
+  &:focus {
+    outline: none;
+    border-color: ${props => props.$hasError ? '#ef4444' : '#111827'};
+    box-shadow: 0 0 0 3px ${props => props.$hasError ? 'rgba(239, 68, 68, 0.1)' : 'rgba(17, 24, 39, 0.1)'};
+  }
+
+  &::placeholder {
+    color: #9ca3af;
+  }
+
+  &:disabled {
+    background: #f9fafb;
+    cursor: not-allowed;
+  }
+`;
+
+const ErrorMessage = styled(motion.span)`
+  font-size: 0.875rem;
+  color: #ef4444;
+  margin-top: 0.25rem;
+`;
+
+const CheckboxGroup = styled.div`
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+`;
+
+const Checkbox = styled.input`
+  width: 1rem;
+  height: 1rem;
+  margin-top: 0.125rem;
+  border: 1px solid #d1d5db;
+  border-radius: 0.25rem;
+  cursor: pointer;
+  flex-shrink: 0;
+
+  &:checked {
+    background-color: #111827;
+    border-color: #111827;
+  }
+`;
+
+const CheckboxLabel = styled.label<{ $hasError?: boolean }>`
+  font-size: 0.875rem;
+  color: ${props => props.$hasError ? '#ef4444' : '#374151'};
+  cursor: pointer;
+  user-select: none;
+  line-height: 1.4;
+
+  a {
+    color: #111827;
+    font-weight: 600;
+    text-decoration: none;
+    transition: color 200ms;
+
+    &:hover {
+      color: #6b7280;
+    }
+  }
+`;
+
+const PasswordStrength = styled.div`
+  margin-top: 0.5rem;
+`;
+
+const StrengthBar = styled.div`
+  height: 0.25rem;
+  background: #e5e7eb;
+  border-radius: 9999px;
+  overflow: hidden;
+`;
+
+const StrengthFill = styled(motion.div)<{ $strength: number }>`
+  height: 100%;
+  background: ${props => {
+    if (props.$strength <= 25) return '#ef4444';
+    if (props.$strength <= 50) return '#f59e0b';
+    if (props.$strength <= 75) return '#3b82f6';
+    return '#10b981';
+  }};
+  border-radius: 9999px;
+`;
+
+const StrengthText = styled.span<{ $strength: number }>`
+  display: block;
+  margin-top: 0.25rem;
+  font-size: 0.75rem;
+  color: ${props => {
+    if (props.$strength <= 25) return '#ef4444';
+    if (props.$strength <= 50) return '#f59e0b';
+    if (props.$strength <= 75) return '#3b82f6';
+    return '#10b981';
+  }};
+  font-weight: 500;
+`;
+
+const SubmitButton = styled(Button)`
+  margin-top: 0.5rem;
+`;
+
+const Divider = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin: 1.5rem 0;
+
+  &::before,
+  &::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: #e5e7eb;
+  }
+`;
+
+const DividerText = styled.span`
+  font-size: 0.875rem;
+  color: #6b7280;
+`;
+
+const SocialButtons = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+`;
+
+const SocialButton = styled.button`
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
+  background: white;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #374151;
+  cursor: pointer;
+  transition: all 200ms;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+
+  &:hover {
+    background: #f9fafb;
+    border-color: #d1d5db;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+`;
+
+const LoginPrompt = styled.p`
+  text-align: center;
+  margin-top: 2rem;
+  font-size: 0.875rem;
+  color: #6b7280;
+
+  a {
+    color: #111827;
+    font-weight: 600;
+    text-decoration: none;
+    transition: color 200ms;
+
+    &:hover {
+      color: #6b7280;
+    }
+  }
+`;
+
+interface FormErrors {
+  firstName?: string;
+  lastName?: string;
+  email?: string;
+  phone?: string;
+  password?: string;
+  confirmPassword?: string;
+  acceptTerms?: string;
 }
+
+interface RegisterPageProps {
+  language?: 'en' | 'bg';
+}
+
+const RegisterPage: React.FC<RegisterPageProps> = ({ language = 'en' }) => {
+  const navigate = useNavigate();
+  const { register, isLoading } = useAuth();
+
+  const [formData, setFormData] = useState({
+    firstName: '',
+    lastName: '',
+    email: '',
+    phone: '',
+    password: '',
+    confirmPassword: '',
+    acceptTerms: false,
+  });
+
+  const [errors, setErrors] = useState<FormErrors>({});
+  const [touched, setTouched] = useState<Record<string, boolean>>({});
+  const [passwordStrength, setPasswordStrength] = useState(0);
+
+  const calculatePasswordStrength = (password: string): number => {
+    let strength = 0;
+    if (password.length >= 6) strength += 25;
+    if (password.length >= 10) strength += 25;
+    if (/[a-z]/.test(password) && /[A-Z]/.test(password)) strength += 25;
+    if (/\d/.test(password)) strength += 12.5;
+    if (/[!@#$%^&*(),.?":{}|<>]/.test(password)) strength += 12.5;
+    return Math.min(strength, 100);
+  };
+
+  const getPasswordStrengthLabel = (strength: number): string => {
+    if (strength <= 25) return language === 'bg' ? 'Слаба' : 'Weak';
+    if (strength <= 50) return language === 'bg' ? 'Средна' : 'Fair';
+    if (strength <= 75) return language === 'bg' ? 'Добра' : 'Good';
+    return language === 'bg' ? 'Силна' : 'Strong';
+  };
+
+  const validateField = (field: string, value: any): string | undefined => {
+    switch (field) {
+      case 'firstName':
+        if (!value) return language === 'bg' ? 'Името е задължително' : 'First name is required';
+        if (value.length < 2) return language === 'bg' ? 'Името е твърде кратко' : 'Name is too short';
+        return undefined;
+
+      case 'lastName':
+        if (!value) return language === 'bg' ? 'Фамилията е задължителна' : 'Last name is required';
+        if (value.length < 2) return language === 'bg' ? 'Фамилията е твърде кратка' : 'Last name is too short';
+        return undefined;
+
+      case 'email':
+        if (!value) return language === 'bg' ? 'Имейлът е задължителен' : 'Email is required';
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(value)) return language === 'bg' ? 'Невалиден имейл адрес' : 'Invalid email address';
+        return undefined;
+
+      case 'phone':
+        if (value && !/^(\+359|0)[0-9\s-]{8,}$/.test(value)) {
+          return language === 'bg' ? 'Невалиден телефонен номер' : 'Invalid phone number';
+        }
+        return undefined;
+
+      case 'password':
+        if (!value) return language === 'bg' ? 'Паролата е задължителна' : 'Password is required';
+        if (value.length < 6) {
+          return language === 'bg'
+            ? 'Паролата трябва да е поне 6 символа'
+            : 'Password must be at least 6 characters';
+        }
+        return undefined;
+
+      case 'confirmPassword':
+        if (!value) return language === 'bg' ? 'Потвърдете паролата' : 'Please confirm password';
+        if (value !== formData.password) {
+          return language === 'bg' ? 'Паролите не съвпадат' : 'Passwords do not match';
+        }
+        return undefined;
+
+      case 'acceptTerms':
+        if (!value) {
+          return language === 'bg'
+            ? 'Трябва да приемете условията'
+            : 'You must accept the terms and conditions';
+        }
+        return undefined;
+
+      default:
+        return undefined;
+    }
+  };
+
+  const handleBlur = (field: string) => {
+    setTouched(prev => ({ ...prev, [field]: true }));
+    const value = formData[field as keyof typeof formData];
+    const error = validateField(field, value);
+    setErrors(prev => ({ ...prev, [field]: error }));
+  };
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value, type, checked } = e.target;
+    const newValue = type === 'checkbox' ? checked : value;
+
+    setFormData(prev => ({ ...prev, [name]: newValue }));
+
+    // Calculate password strength
+    if (name === 'password') {
+      setPasswordStrength(calculatePasswordStrength(value));
+    }
+
+    // Real-time validation for touched fields
+    if (touched[name]) {
+      const error = validateField(name, newValue);
+      setErrors(prev => ({ ...prev, [name]: error }));
+    }
+
+    // Also validate confirmPassword when password changes
+    if (name === 'password' && touched.confirmPassword) {
+      const confirmError = formData.confirmPassword !== value
+        ? (language === 'bg' ? 'Паролите не съвпадат' : 'Passwords do not match')
+        : undefined;
+      setErrors(prev => ({ ...prev, confirmPassword: confirmError }));
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    // Validate all fields
+    const newErrors: FormErrors = {};
+    Object.keys(formData).forEach(field => {
+      const error = validateField(field, formData[field as keyof typeof formData]);
+      if (error) newErrors[field as keyof FormErrors] = error;
+    });
+
+    setErrors(newErrors);
+    setTouched({
+      firstName: true,
+      lastName: true,
+      email: true,
+      phone: true,
+      password: true,
+      confirmPassword: true,
+      acceptTerms: true,
+    });
+
+    // If there are errors, don't submit
+    if (Object.keys(newErrors).length > 0) {
+      return;
+    }
+
+    try {
+      await register({
+        email: formData.email,
+        password: formData.password,
+        firstName: formData.firstName,
+        lastName: formData.lastName,
+        phone: formData.phone || undefined,
+        acceptTerms: formData.acceptTerms,
+      });
+
+      // Redirect to home page after successful registration
+      navigate('/', { replace: true });
+    } catch (error) {
+      // Error is handled by the AuthContext with toast
+      console.error('Registration error:', error);
+    }
+  };
+
+  return (
+    <PageContainer>
+      <RegisterCard
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4 }}
+      >
+        <Logo to="/">
+          <LogoText>BoomCard</LogoText>
+        </Logo>
+
+        <Title>{language === 'bg' ? 'Създайте профил' : 'Create an account'}</Title>
+        <Subtitle>
+          {language === 'bg'
+            ? 'Започнете да спестявате с BoomCard днес'
+            : 'Start saving with BoomCard today'}
+        </Subtitle>
+
+        <Form onSubmit={handleSubmit}>
+          <FormRow>
+            <FormGroup>
+              <Label htmlFor="firstName">
+                {language === 'bg' ? 'Име' : 'First name'} *
+              </Label>
+              <Input
+                id="firstName"
+                type="text"
+                name="firstName"
+                value={formData.firstName}
+                onChange={handleChange}
+                onBlur={() => handleBlur('firstName')}
+                placeholder={language === 'bg' ? 'Иван' : 'John'}
+                $hasError={touched.firstName && !!errors.firstName}
+                disabled={isLoading}
+                autoComplete="given-name"
+              />
+              {touched.firstName && errors.firstName && (
+                <ErrorMessage
+                  initial={{ opacity: 0, y: -5 }}
+                  animate={{ opacity: 1, y: 0 }}
+                >
+                  {errors.firstName}
+                </ErrorMessage>
+              )}
+            </FormGroup>
+
+            <FormGroup>
+              <Label htmlFor="lastName">
+                {language === 'bg' ? 'Фамилия' : 'Last name'} *
+              </Label>
+              <Input
+                id="lastName"
+                type="text"
+                name="lastName"
+                value={formData.lastName}
+                onChange={handleChange}
+                onBlur={() => handleBlur('lastName')}
+                placeholder={language === 'bg' ? 'Иванов' : 'Smith'}
+                $hasError={touched.lastName && !!errors.lastName}
+                disabled={isLoading}
+                autoComplete="family-name"
+              />
+              {touched.lastName && errors.lastName && (
+                <ErrorMessage
+                  initial={{ opacity: 0, y: -5 }}
+                  animate={{ opacity: 1, y: 0 }}
+                >
+                  {errors.lastName}
+                </ErrorMessage>
+              )}
+            </FormGroup>
+          </FormRow>
+
+          <FormGroup>
+            <Label htmlFor="email">
+              {language === 'bg' ? 'Имейл адрес' : 'Email address'} *
+            </Label>
+            <Input
+              id="email"
+              type="email"
+              name="email"
+              value={formData.email}
+              onChange={handleChange}
+              onBlur={() => handleBlur('email')}
+              placeholder={language === 'bg' ? 'ivan@example.com' : 'john@example.com'}
+              $hasError={touched.email && !!errors.email}
+              disabled={isLoading}
+              autoComplete="email"
+            />
+            {touched.email && errors.email && (
+              <ErrorMessage
+                initial={{ opacity: 0, y: -5 }}
+                animate={{ opacity: 1, y: 0 }}
+              >
+                {errors.email}
+              </ErrorMessage>
+            )}
+          </FormGroup>
+
+          <FormGroup>
+            <Label htmlFor="phone">
+              {language === 'bg' ? 'Телефон (по избор)' : 'Phone (optional)'}
+            </Label>
+            <Input
+              id="phone"
+              type="tel"
+              name="phone"
+              value={formData.phone}
+              onChange={handleChange}
+              onBlur={() => handleBlur('phone')}
+              placeholder="+359 88 123 4567"
+              $hasError={touched.phone && !!errors.phone}
+              disabled={isLoading}
+              autoComplete="tel"
+            />
+            {touched.phone && errors.phone && (
+              <ErrorMessage
+                initial={{ opacity: 0, y: -5 }}
+                animate={{ opacity: 1, y: 0 }}
+              >
+                {errors.phone}
+              </ErrorMessage>
+            )}
+          </FormGroup>
+
+          <FormGroup>
+            <Label htmlFor="password">
+              {language === 'bg' ? 'Парола' : 'Password'} *
+            </Label>
+            <Input
+              id="password"
+              type="password"
+              name="password"
+              value={formData.password}
+              onChange={handleChange}
+              onBlur={() => handleBlur('password')}
+              placeholder={language === 'bg' ? 'Поне 6 символа' : 'At least 6 characters'}
+              $hasError={touched.password && !!errors.password}
+              disabled={isLoading}
+              autoComplete="new-password"
+            />
+            {touched.password && errors.password && (
+              <ErrorMessage
+                initial={{ opacity: 0, y: -5 }}
+                animate={{ opacity: 1, y: 0 }}
+              >
+                {errors.password}
+              </ErrorMessage>
+            )}
+            {formData.password && (
+              <PasswordStrength>
+                <StrengthBar>
+                  <StrengthFill
+                    $strength={passwordStrength}
+                    initial={{ width: 0 }}
+                    animate={{ width: `${passwordStrength}%` }}
+                    transition={{ duration: 0.3 }}
+                  />
+                </StrengthBar>
+                <StrengthText $strength={passwordStrength}>
+                  {language === 'bg' ? 'Сила на паролата: ' : 'Password strength: '}
+                  {getPasswordStrengthLabel(passwordStrength)}
+                </StrengthText>
+              </PasswordStrength>
+            )}
+          </FormGroup>
+
+          <FormGroup>
+            <Label htmlFor="confirmPassword">
+              {language === 'bg' ? 'Потвърди парола' : 'Confirm password'} *
+            </Label>
+            <Input
+              id="confirmPassword"
+              type="password"
+              name="confirmPassword"
+              value={formData.confirmPassword}
+              onChange={handleChange}
+              onBlur={() => handleBlur('confirmPassword')}
+              placeholder={language === 'bg' ? 'Въведете паролата отново' : 'Enter password again'}
+              $hasError={touched.confirmPassword && !!errors.confirmPassword}
+              disabled={isLoading}
+              autoComplete="new-password"
+            />
+            {touched.confirmPassword && errors.confirmPassword && (
+              <ErrorMessage
+                initial={{ opacity: 0, y: -5 }}
+                animate={{ opacity: 1, y: 0 }}
+              >
+                {errors.confirmPassword}
+              </ErrorMessage>
+            )}
+          </FormGroup>
+
+          <CheckboxGroup>
+            <Checkbox
+              id="acceptTerms"
+              type="checkbox"
+              name="acceptTerms"
+              checked={formData.acceptTerms}
+              onChange={handleChange}
+              disabled={isLoading}
+            />
+            <CheckboxLabel
+              htmlFor="acceptTerms"
+              $hasError={touched.acceptTerms && !!errors.acceptTerms}
+            >
+              {language === 'bg' ? (
+                <>
+                  Приемам <Link to="/terms">условията за ползване</Link> и{' '}
+                  <Link to="/privacy">политиката за поверителност</Link>
+                </>
+              ) : (
+                <>
+                  I accept the <Link to="/terms">terms and conditions</Link> and{' '}
+                  <Link to="/privacy">privacy policy</Link>
+                </>
+              )}
+            </CheckboxLabel>
+          </CheckboxGroup>
+          {touched.acceptTerms && errors.acceptTerms && (
+            <ErrorMessage
+              initial={{ opacity: 0, y: -5 }}
+              animate={{ opacity: 1, y: 0 }}
+            >
+              {errors.acceptTerms}
+            </ErrorMessage>
+          )}
+
+          <SubmitButton
+            type="submit"
+            variant="primary"
+            size="large"
+            isLoading={isLoading}
+            disabled={isLoading}
+          >
+            {language === 'bg' ? 'Регистрация' : 'Create account'}
+          </SubmitButton>
+        </Form>
+
+        <Divider>
+          <DividerText>{language === 'bg' ? 'или' : 'or'}</DividerText>
+        </Divider>
+
+        <SocialButtons>
+          <SocialButton type="button" disabled={isLoading}>
+            <svg width="18" height="18" viewBox="0 0 18 18">
+              <path fill="#4285F4" d="M16.51 8H8.98v3h4.3c-.18 1-.74 1.48-1.6 2.04v2.01h2.6a7.8 7.8 0 0 0 2.38-5.88c0-.57-.05-.66-.15-1.18z"/>
+              <path fill="#34A853" d="M8.98 17c2.16 0 3.97-.72 5.3-1.94l-2.6-2a4.8 4.8 0 0 1-7.18-2.54H1.83v2.07A8 8 0 0 0 8.98 17z"/>
+              <path fill="#FBBC05" d="M4.5 10.52a4.8 4.8 0 0 1 0-3.04V5.41H1.83a8 8 0 0 0 0 7.18l2.67-2.07z"/>
+              <path fill="#EA4335" d="M8.98 4.18c1.17 0 2.23.4 3.06 1.2l2.3-2.3A8 8 0 0 0 1.83 5.4L4.5 7.49a4.77 4.77 0 0 1 4.48-3.3z"/>
+            </svg>
+            {language === 'bg' ? 'Регистрация с Google' : 'Sign up with Google'}
+          </SocialButton>
+
+          <SocialButton type="button" disabled={isLoading}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="#1877F2">
+              <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
+            </svg>
+            {language === 'bg' ? 'Регистрация с Facebook' : 'Sign up with Facebook'}
+          </SocialButton>
+        </SocialButtons>
+
+        <LoginPrompt>
+          {language === 'bg' ? 'Вече имате профил? ' : 'Already have an account? '}
+          <Link to="/login">
+            {language === 'bg' ? 'Влезте' : 'Sign in'}
+          </Link>
+        </LoginPrompt>
+      </RegisterCard>
+    </PageContainer>
+  );
+};
+
+export default RegisterPage;
