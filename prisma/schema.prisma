@@ -1,0 +1,499 @@
+// Prisma Schema for BoomCard Platform
+// PostgreSQL Database
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// User Management
+// ============================================
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  passwordHash  String?
+  firstName     String
+  lastName      String
+  phone         String?
+  avatar        String?
+  role          UserRole  @default(USER)
+  emailVerified Boolean   @default(false)
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Relations
+  sessions      Session[]
+  cards         Card[]
+  favorites     Favorite[]
+  reviews       Review[]
+  transactions  Transaction[]
+
+  @@map("users")
+}
+
+enum UserRole {
+  USER
+  PARTNER
+  ADMIN
+}
+
+model Session {
+  id            String   @id @default(cuid())
+  userId        String
+  accessToken   String   @unique
+  refreshToken  String   @unique
+  expiresAt     DateTime
+  ipAddress     String?
+  userAgent     String?
+  createdAt     DateTime @default(now())
+
+  // Relations
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+  @@index([userId])
+  @@index([accessToken])
+}
+
+// ============================================
+// Partner Management
+// ============================================
+
+model Partner {
+  id               String          @id @default(cuid())
+  businessName     String
+  businessNameBg   String?
+  email            String          @unique
+  phone            String
+  taxId            String?
+  registrationNum  String?
+  website          String?
+  logo             String?
+  description      String?
+  descriptionBg    String?
+  isVerified       Boolean         @default(false)
+  isActive         Boolean         @default(true)
+  subscriptionTier SubscriptionTier @default(BASIC)
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  // Relations
+  venues           Venue[]
+  subscriptions    Subscription[]
+  integrations     Integration[]
+  paymentMethods   PaymentMethod[]
+
+  @@map("partners")
+}
+
+enum SubscriptionTier {
+  BASIC
+  PREMIUM
+  ENTERPRISE
+}
+
+model Venue {
+  id            String   @id @default(cuid())
+  partnerId     String
+  name          String
+  nameBg        String?
+  category      VenueCategory
+  description   String?
+  descriptionBg String?
+  address       String
+  city          String
+  lat           Float
+  lng           Float
+  phone         String?
+  email         String?
+  website       String?
+  images        String[]
+  rating        Float    @default(0)
+  reviewCount   Int      @default(0)
+  isActive      Boolean  @default(true)
+  openingHours  Json?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relations
+  partner       Partner     @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  offers        Offer[]
+  reviews       Review[]
+  favorites     Favorite[]
+  transactions  Transaction[]
+
+  @@map("venues")
+  @@index([partnerId])
+  @@index([category])
+  @@index([city])
+}
+
+enum VenueCategory {
+  RESTAURANT
+  HOTEL
+  SPA
+  WINERY
+  ENTERTAINMENT
+  SPORTS
+  BEAUTY
+  SHOPPING
+  TRAVEL
+}
+
+// ============================================
+// Cards & Offers
+// ============================================
+
+model Card {
+  id               String      @id @default(cuid())
+  userId           String
+  cardNumber       String      @unique
+  type             CardType    @default(STANDARD)
+  status           CardStatus  @default(ACTIVE)
+  validFrom        DateTime    @default(now())
+  validUntil       DateTime
+  usageCount       Int         @default(0)
+  usageLimit       Int?
+  qrCode           String      @unique
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  // Relations
+  user             User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions     Transaction[]
+
+  @@map("cards")
+  @@index([userId])
+  @@index([cardNumber])
+  @@index([qrCode])
+}
+
+enum CardType {
+  STANDARD
+  PREMIUM
+  PLATINUM
+}
+
+enum CardStatus {
+  ACTIVE
+  EXPIRED
+  SUSPENDED
+  CANCELED
+}
+
+model Offer {
+  id               String     @id @default(cuid())
+  venueId          String
+  title            String
+  titleBg          String?
+  description      String
+  descriptionBg    String?
+  discount         Int
+  validFrom        DateTime   @default(now())
+  validUntil       DateTime
+  maxRedemptions   Int?
+  currentRedemptions Int      @default(0)
+  terms            String?
+  termsBg          String?
+  images           String[]
+  isActive         Boolean    @default(true)
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+
+  // Relations
+  venue            Venue        @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  transactions     Transaction[]
+
+  @@map("offers")
+  @@index([venueId])
+  @@index([validFrom, validUntil])
+}
+
+// ============================================
+// Transactions
+// ============================================
+
+model Transaction {
+  id               String            @id @default(cuid())
+  userId           String
+  venueId          String
+  offerId          String?
+  cardId           String
+  amount           Float
+  discount         Float
+  discountAmount   Float
+  finalAmount      Float
+  currency         String            @default("BGN")
+  status           TransactionStatus @default(PENDING)
+  paymentMethod    String?
+  posTransactionId String?
+  metadata         Json?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  // Relations
+  user             User      @relation(fields: [userId], references: [id])
+  venue            Venue     @relation(fields: [venueId], references: [id])
+  offer            Offer?    @relation(fields: [offerId], references: [id])
+  card             Card      @relation(fields: [cardId], references: [id])
+
+  @@map("transactions")
+  @@index([userId])
+  @@index([venueId])
+  @@index([cardId])
+  @@index([createdAt])
+}
+
+enum TransactionStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+  CANCELED
+}
+
+// ============================================
+// Subscriptions & Billing
+// ============================================
+
+model Subscription {
+  id               String             @id @default(cuid())
+  partnerId        String
+  planId           String
+  status           SubscriptionStatus @default(ACTIVE)
+  currentPeriodStart DateTime
+  currentPeriodEnd   DateTime
+  canceledAt       DateTime?
+  trialEnd         DateTime?
+  amount           Float
+  currency         String             @default("BGN")
+  interval         BillingInterval    @default(MONTHLY)
+  paymentProvider  String
+  providerSubId    String?
+  metadata         Json?
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+
+  // Relations
+  partner          Partner   @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  invoices         Invoice[]
+
+  @@map("subscriptions")
+  @@index([partnerId])
+  @@index([status])
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  UNPAID
+  TRIALING
+}
+
+enum BillingInterval {
+  MONTHLY
+  YEARLY
+}
+
+model Invoice {
+  id               String        @id @default(cuid())
+  subscriptionId   String?
+  partnerId        String
+  invoiceNumber    String        @unique
+  amount           Float
+  currency         String        @default("BGN")
+  status           InvoiceStatus @default(DRAFT)
+  dueDate          DateTime?
+  paidAt           DateTime?
+  items            Json
+  pdfUrl           String?
+  hostedUrl        String?
+  paymentProvider  String?
+  providerInvoiceId String?
+  metadata         Json?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  // Relations
+  subscription     Subscription? @relation(fields: [subscriptionId], references: [id])
+
+  @@map("invoices")
+  @@index([partnerId])
+  @@index([invoiceNumber])
+}
+
+enum InvoiceStatus {
+  DRAFT
+  OPEN
+  PAID
+  VOID
+  UNCOLLECTIBLE
+}
+
+model PaymentMethod {
+  id               String   @id @default(cuid())
+  partnerId        String
+  type             PaymentMethodType
+  provider         String
+  providerMethodId String
+  last4            String?
+  brand            String?
+  expiryMonth      Int?
+  expiryYear       Int?
+  isDefault        Boolean  @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  // Relations
+  partner          Partner  @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+
+  @@map("payment_methods")
+  @@index([partnerId])
+}
+
+enum PaymentMethodType {
+  CARD
+  BANK_ACCOUNT
+  WALLET
+}
+
+// ============================================
+// Integrations
+// ============================================
+
+model Integration {
+  id          String            @id @default(cuid())
+  partnerId   String
+  provider    IntegrationProvider
+  credentials Json
+  webhookUrl  String?
+  lastSync    DateTime?
+  status      IntegrationStatus @default(DISCONNECTED)
+  metadata    Json?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  // Relations
+  partner     Partner           @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+
+  @@map("integrations")
+  @@index([partnerId])
+  @@unique([partnerId, provider])
+}
+
+enum IntegrationProvider {
+  BARSY
+  POSTER
+  IIKO
+  RKEEPER
+  EPAY
+  BORICA
+  MYPOS
+  SUMUP
+  STRIPE_TERMINAL
+  BOOKING_API
+}
+
+enum IntegrationStatus {
+  CONNECTED
+  DISCONNECTED
+  ERROR
+  PENDING
+}
+
+// ============================================
+// Reviews & Favorites
+// ============================================
+
+model Review {
+  id          String   @id @default(cuid())
+  userId      String
+  venueId     String
+  rating      Int
+  comment     String?
+  images      String[]
+  isVerified  Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  venue       Venue    @relation(fields: [venueId], references: [id], onDelete: Cascade)
+
+  @@map("reviews")
+  @@index([userId])
+  @@index([venueId])
+  @@unique([userId, venueId])
+}
+
+model Favorite {
+  id        String   @id @default(cuid())
+  userId    String
+  venueId   String
+  createdAt DateTime @default(now())
+
+  // Relations
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  venue     Venue    @relation(fields: [venueId], references: [id], onDelete: Cascade)
+
+  @@map("favorites")
+  @@index([userId])
+  @@unique([userId, venueId])
+}
+
+// ============================================
+// Analytics
+// ============================================
+
+model AnalyticsEvent {
+  id         String   @id @default(cuid())
+  eventType  String
+  userId     String?
+  partnerId  String?
+  venueId    String?
+  offerId    String?
+  data       Json?
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
+  @@map("analytics_events")
+  @@index([eventType])
+  @@index([userId])
+  @@index([partnerId])
+  @@index([createdAt])
+}
+
+// ============================================
+// Notifications
+// ============================================
+
+model Notification {
+  id        String             @id @default(cuid())
+  userId    String
+  type      NotificationType
+  title     String
+  message   String
+  data      Json?
+  read      Boolean            @default(false)
+  createdAt DateTime           @default(now())
+
+  @@map("notifications")
+  @@index([userId])
+  @@index([read])
+}
+
+enum NotificationType {
+  TRANSACTION
+  OFFER
+  SYSTEM
+  MARKETING
+}

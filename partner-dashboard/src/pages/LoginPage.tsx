@@ -4,6 +4,7 @@ import styled from 'styled-components';
 import { motion } from 'framer-motion';
 import Button from '../components/common/Button/Button';
 import { useAuth } from '../contexts/AuthContext';
+import { useLanguage } from '../contexts/LanguageContext';
 
 const PageContainer = styled.div`
   min-height: calc(100vh - 4rem);
@@ -258,14 +259,11 @@ interface FormErrors {
   password?: string;
 }
 
-interface LoginPageProps {
-  language?: 'en' | 'bg';
-}
-
-const LoginPage: React.FC<LoginPageProps> = ({ language = 'en' }) => {
+const LoginPage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { login, isLoading } = useAuth();
+  const { t } = useLanguage();
 
   const [formData, setFormData] = useState({
     email: '',
@@ -281,23 +279,21 @@ const LoginPage: React.FC<LoginPageProps> = ({ language = 'en' }) => {
 
   const validateEmail = (email: string): string | undefined => {
     if (!email) {
-      return language === 'bg' ? 'Имейлът е задължителен' : 'Email is required';
+      return t('auth.emailRequired');
     }
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
-      return language === 'bg' ? 'Невалиден имейл адрес' : 'Invalid email address';
+      return t('auth.invalidEmail');
     }
     return undefined;
   };
 
   const validatePassword = (password: string): string | undefined => {
     if (!password) {
-      return language === 'bg' ? 'Паролата е задължителна' : 'Password is required';
+      return t('auth.passwordRequired');
     }
     if (password.length < 6) {
-      return language === 'bg'
-        ? 'Паролата трябва да е поне 6 символа'
-        : 'Password must be at least 6 characters';
+      return t('auth.passwordMinLength');
     }
     return undefined;
   };
@@ -393,17 +389,15 @@ const LoginPage: React.FC<LoginPageProps> = ({ language = 'en' }) => {
           <LogoText>BoomCard</LogoText>
         </Logo>
 
-        <Title>{language === 'bg' ? 'Добре дошли обратно' : 'Welcome back'}</Title>
+        <Title>{t('auth.welcomeBack')}</Title>
         <Subtitle>
-          {language === 'bg'
-            ? 'Влезте в профила си, за да продължите'
-            : 'Sign in to your account to continue'}
+          {t('auth.signInToContinue')}
         </Subtitle>
 
         <Form onSubmit={handleSubmit}>
           <FormGroup>
             <Label htmlFor="email">
-              {language === 'bg' ? 'Имейл адрес' : 'Email address'}
+              {t('auth.emailAddress')}
             </Label>
             <Input
               id="email"
@@ -412,7 +406,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ language = 'en' }) => {
               value={formData.email}
               onChange={handleChange}
               onBlur={() => handleBlur('email')}
-              placeholder={language === 'bg' ? 'your@email.com' : 'your@email.com'}
+              placeholder="your@email.com"
               $hasError={touched.email && !!errors.email}
               disabled={isLoading}
               autoComplete="email"
@@ -429,7 +423,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ language = 'en' }) => {
 
           <FormGroup>
             <Label htmlFor="password">
-              {language === 'bg' ? 'Парола' : 'Password'}
+              {t('auth.password')}
             </Label>
             <Input
               id="password"
@@ -438,7 +432,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ language = 'en' }) => {
               value={formData.password}
               onChange={handleChange}
               onBlur={() => handleBlur('password')}
-              placeholder={language === 'bg' ? '••••••••' : '••••••••'}
+              placeholder="••••••••"
               $hasError={touched.password && !!errors.password}
               disabled={isLoading}
               autoComplete="current-password"
@@ -464,11 +458,11 @@ const LoginPage: React.FC<LoginPageProps> = ({ language = 'en' }) => {
                 disabled={isLoading}
               />
               <CheckboxLabel htmlFor="rememberMe">
-                {language === 'bg' ? 'Запомни ме' : 'Remember me'}
+                {t('auth.rememberMe')}
               </CheckboxLabel>
             </CheckboxGroup>
             <ForgotPassword to="/forgot-password">
-              {language === 'bg' ? 'Забравена парола?' : 'Forgot password?'}
+              {t('auth.forgotPassword')}
             </ForgotPassword>
           </RememberForgotRow>
 
@@ -479,12 +473,12 @@ const LoginPage: React.FC<LoginPageProps> = ({ language = 'en' }) => {
             isLoading={isLoading}
             disabled={isLoading}
           >
-            {language === 'bg' ? 'Вход' : 'Sign in'}
+            {t('common.signIn')}
           </SubmitButton>
         </Form>
 
         <Divider>
-          <DividerText>{language === 'bg' ? 'или' : 'or'}</DividerText>
+          <DividerText>{t('auth.or')}</DividerText>
         </Divider>
 
         <SocialButtons>
@@ -495,21 +489,21 @@ const LoginPage: React.FC<LoginPageProps> = ({ language = 'en' }) => {
               <path fill="#FBBC05" d="M4.5 10.52a4.8 4.8 0 0 1 0-3.04V5.41H1.83a8 8 0 0 0 0 7.18l2.67-2.07z"/>
               <path fill="#EA4335" d="M8.98 4.18c1.17 0 2.23.4 3.06 1.2l2.3-2.3A8 8 0 0 0 1.83 5.4L4.5 7.49a4.77 4.77 0 0 1 4.48-3.3z"/>
             </svg>
-            {language === 'bg' ? 'Вход с Google' : 'Continue with Google'}
+            {t('auth.continueWithGoogle')}
           </SocialButton>
 
           <SocialButton type="button" disabled={isLoading}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="#1877F2">
               <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
             </svg>
-            {language === 'bg' ? 'Вход с Facebook' : 'Continue with Facebook'}
+            {t('auth.continueWithFacebook')}
           </SocialButton>
         </SocialButtons>
 
         <SignupPrompt>
-          {language === 'bg' ? 'Нямате профил? ' : "Don't have an account? "}
+          {t('auth.dontHaveAccount')} {' '}
           <Link to="/register">
-            {language === 'bg' ? 'Регистрирайте се' : 'Sign up'}
+            {t('common.signUp')}
           </Link>
         </SignupPrompt>
 
@@ -519,13 +513,13 @@ const LoginPage: React.FC<LoginPageProps> = ({ language = 'en' }) => {
           transition={{ delay: 0.3 }}
         >
           <DemoTitle>
-            {language === 'bg' ? '🎭 Демо достъп' : '🎭 Demo Access'}
+            {t('auth.demoAccess')}
           </DemoTitle>
           <DemoInfo>
-            {language === 'bg' ? 'Имейл: ' : 'Email: '}
+            {t('auth.email')}: {' '}
             <code>demo@boomcard.bg</code>
             <br />
-            {language === 'bg' ? 'Парола: ' : 'Password: '}
+            {t('auth.password')}: {' '}
             <code>demo123</code>
             <br />
             <button
@@ -543,7 +537,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ language = 'en' }) => {
                 cursor: 'pointer',
               }}
             >
-              {language === 'bg' ? 'Попълни автоматично' : 'Fill automatically'}
+              {t('auth.fillAutomatically')}
             </button>
           </DemoInfo>
         </DemoCredentials>

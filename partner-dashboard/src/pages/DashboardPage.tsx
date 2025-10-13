@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import styled from 'styled-components';
 import { useAuth } from '../contexts/AuthContext';
+import { useLanguage } from '../contexts/LanguageContext';
 import Button from '../components/common/Button/Button';
 import QRCode from '../components/common/QRCode/QRCode';
 
@@ -251,12 +252,9 @@ interface BoomCard {
   status: 'active' | 'expired' | 'suspended';
 }
 
-interface DashboardPageProps {
-  language?: 'en' | 'bg';
-}
-
-const DashboardPage: React.FC<DashboardPageProps> = ({ language = 'en' }) => {
+const DashboardPage: React.FC = () => {
   const { user } = useAuth();
+  const { language, t } = useLanguage();
   const [selectedCard, setSelectedCard] = useState<string | null>(null);
 
   // Mock data - in production this would come from an API
@@ -334,12 +332,10 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ language = 'en' }) => {
     <PageContainer>
       <PageHeader>
         <Title>
-          {language === 'bg' ? `Здравей, ${user?.firstName}! 👋` : `Hello, ${user?.firstName}! 👋`}
+          {t('dashboard.greeting')}, {user?.firstName}! 👋
         </Title>
         <Subtitle>
-          {language === 'bg'
-            ? 'Управлявайте вашите BoomCard карти и преглеждайте спестяванията си'
-            : 'Manage your BoomCards and view your savings'}
+          {t('dashboard.subtitle')}
         </Subtitle>
       </PageHeader>
 
@@ -350,10 +346,10 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ language = 'en' }) => {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3 }}
         >
-          <StatLabel>{language === 'bg' ? 'Активни карти' : 'Active Cards'}</StatLabel>
+          <StatLabel>{t('dashboard.activeCards')}</StatLabel>
           <StatValue>{activeCards.length}</StatValue>
           <StatChange $positive>
-            {language === 'bg' ? 'Готови за ползване' : 'Ready to use'}
+            {t('dashboard.readyToUse')}
           </StatChange>
         </StatCard>
 
@@ -362,10 +358,10 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ language = 'en' }) => {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3, delay: 0.1 }}
         >
-          <StatLabel>{language === 'bg' ? 'Общи спестявания' : 'Total Savings'}</StatLabel>
+          <StatLabel>{t('dashboard.totalSavings')}</StatLabel>
           <StatValue>{totalSavings} лв</StatValue>
           <StatChange $positive>
-            {language === 'bg' ? 'Този месец' : 'This month'}
+            {t('dashboard.thisMonth')}
           </StatChange>
         </StatCard>
 
@@ -374,10 +370,10 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ language = 'en' }) => {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3, delay: 0.2 }}
         >
-          <StatLabel>{language === 'bg' ? 'Използвания' : 'Total Uses'}</StatLabel>
+          <StatLabel>{t('dashboard.totalUses')}</StatLabel>
           <StatValue>{totalUsage}</StatValue>
           <StatChange>
-            {language === 'bg' ? 'От всички карти' : 'Across all cards'}
+            {t('dashboard.acrossAllCards')}
           </StatChange>
         </StatCard>
       </StatsGrid>
@@ -385,10 +381,10 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ language = 'en' }) => {
       {/* Cards Section */}
       <SectionHeader>
         <SectionTitle>
-          {language === 'bg' ? 'Моите карти' : 'My Cards'}
+          {t('dashboard.myCards')}
         </SectionTitle>
         <Button variant="primary" size="medium">
-          {language === 'bg' ? 'Добави карта' : 'Add Card'}
+          {t('dashboard.addCard')}
         </Button>
       </SectionHeader>
 
@@ -406,8 +402,8 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ language = 'en' }) => {
                   <CardLogo>BC</CardLogo>
                   <CardTypeBadge>
                     {card.type === 'premium'
-                      ? (language === 'bg' ? 'Премиум' : 'Premium')
-                      : (language === 'bg' ? 'Стандарт' : 'Standard')}
+                      ? t('dashboard.premium')
+                      : t('dashboard.standard')}
                   </CardTypeBadge>
                 </CardType>
                 <CardNumber>{card.cardNumber}</CardNumber>
@@ -424,13 +420,13 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ language = 'en' }) => {
                 <CardMeta>
                   <MetaRow>
                     <MetaLabel>
-                      {language === 'bg' ? 'Отстъпка' : 'Discount'}
+                      {t('dashboard.discount')}
                     </MetaLabel>
                     <MetaValue>{card.discount}%</MetaValue>
                   </MetaRow>
                   <MetaRow>
                     <MetaLabel>
-                      {language === 'bg' ? 'Използвания' : 'Uses'}
+                      {t('dashboard.uses')}
                     </MetaLabel>
                     <MetaValue>
                       {card.usageCount} / {card.usageLimit}
@@ -438,13 +434,13 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ language = 'en' }) => {
                   </MetaRow>
                   <MetaRow>
                     <MetaLabel>
-                      {language === 'bg' ? 'Валидна до' : 'Valid until'}
+                      {t('dashboard.validUntil')}
                     </MetaLabel>
                     <MetaValue>{formatDate(card.validUntil)}</MetaValue>
                   </MetaRow>
                   <MetaRow>
                     <MetaLabel>
-                      {language === 'bg' ? 'Остават дни' : 'Days left'}
+                      {t('dashboard.daysLeft')}
                     </MetaLabel>
                     <MetaValue
                       style={{
@@ -463,12 +459,12 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ language = 'en' }) => {
                       size="small"
                       onClick={() => setSelectedCard(card.id)}
                     >
-                      {language === 'bg' ? 'Покажи QR' : 'Show QR'}
+                      {t('dashboard.showQR')}
                     </Button>
                   </div>
                   <div style={{ flex: 1 }}>
                     <Button variant="ghost" size="small">
-                      {language === 'bg' ? 'Детайли' : 'Details'}
+                      {t('dashboard.details')}
                     </Button>
                   </div>
                 </CardActions>
@@ -489,15 +485,13 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ language = 'en' }) => {
             </svg>
           </EmptyIcon>
           <EmptyTitle>
-            {language === 'bg' ? 'Нямате активни карти' : 'No active cards yet'}
+            {t('dashboard.noActiveCards')}
           </EmptyTitle>
           <EmptyDescription>
-            {language === 'bg'
-              ? 'Започнете да спестявате като активирате вашата първа BoomCard'
-              : 'Start saving by activating your first BoomCard'}
+            {t('dashboard.noActiveCardsDescription')}
           </EmptyDescription>
           <Button variant="primary" size="large">
-            {language === 'bg' ? 'Разгледай оферти' : 'Browse Offers'}
+            {t('home.browseOffers')}
           </Button>
         </EmptyState>
       )}
@@ -549,8 +543,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ language = 'en' }) => {
                     <QRCode
                       data={`https://boomcard.bg/redeem/${card.cardNumber}`}
                       size={256}
-                      title={language === 'bg' ? 'Покажи на касата' : 'Show at checkout'}
-                      language={language}
+                      title={t('dashboard.showAtCheckout')}
                       downloadable
                     />
                     <div style={{ marginTop: '1rem', width: '100%' }}>
@@ -559,7 +552,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ language = 'en' }) => {
                         size="large"
                         onClick={() => setSelectedCard(null)}
                       >
-                        {language === 'bg' ? 'Затвори' : 'Close'}
+                        {t('common.close')}
                       </Button>
                     </div>
                   </>

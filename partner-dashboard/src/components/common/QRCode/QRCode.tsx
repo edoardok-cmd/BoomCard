@@ -1,14 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import styled from 'styled-components';
 import Button from '../Button/Button';
+import QRCodeLib from 'qrcode';
+import { useLanguage } from '../../../contexts/LanguageContext';
 
 interface QRCodeProps {
   data: string;
   size?: number;
   logo?: string;
   downloadable?: boolean;
-  language?: 'en' | 'bg';
   title?: string;
   description?: string;
 }
@@ -50,6 +51,13 @@ const QRImageWrapper = styled(motion.div)`
   border: 2px solid #e5e7eb;
   border-radius: 1rem;
   margin-bottom: 1.5rem;
+`;
+
+const QRCanvas = styled.canvas`
+  display: block;
+  width: 100%;
+  height: auto;
+  image-rendering: pixelated;
 `;
 
 const QRImage = styled.img`
@@ -122,46 +130,85 @@ export const QRCode: React.FC<QRCodeProps> = ({
   size = 256,
   logo,
   downloadable = true,
-  language = 'en',
   title,
   description
 }) => {
+  const { t } = useLanguage();
   const [qrUrl, setQrUrl] = useState<string>('');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string>('');
+  const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  useEffect(() => {
-    const generateQRCode = async () => {
-      try {
-        setIsLoading(true);
-        setError('');
+  const generateQRCode = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      setError('');
 
-        // Using QR Server API (free, no API key needed)
-        const qrApiUrl = `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&data=${encodeURIComponent(data)}&format=png`;
+      const canvas = canvasRef.current;
+      if (!canvas) return;
 
-        // Verify the QR code loads
-        const img = new Image();
-        img.crossOrigin = 'anonymous';
+      // Generate QR code on canvas
+      await QRCodeLib.toCanvas(canvas, data, {
+        width: size,
+        margin: 2,
+        color: {
+          dark: '#000000',
+          light: '#FFFFFF',
+        },
+        errorCorrectionLevel: 'H', // High error correction for logo overlay
+      });
 
-        img.onload = () => {
-          setQrUrl(qrApiUrl);
+      // If logo is provided, overlay it on the QR code
+      if (logo) {
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          const logoImg = new Image();
+          logoImg.crossOrigin = 'anonymous';
+
+          logoImg.onload = () => {
+            // Calculate logo size (20% of QR code size)
+            const logoSize = size * 0.2;
+            const logoX = (size - logoSize) / 2;
+            const logoY = (size - logoSize) / 2;
+
+            // Draw white background for logo
+            ctx.fillStyle = 'white';
+            ctx.fillRect(logoX - 4, logoY - 4, logoSize + 8, logoSize + 8);
+
+            // Draw logo
+            ctx.drawImage(logoImg, logoX, logoY, logoSize, logoSize);
+
+            // Convert canvas to data URL
+            setQrUrl(canvas.toDataURL('image/png'));
+            setIsLoading(false);
+          };
+
+          logoImg.onerror = () => {
+            // If logo fails to load, use QR code without logo
+            setQrUrl(canvas.toDataURL('image/png'));
+            setIsLoading(false);
+          };
+
+          logoImg.src = logo;
+        } else {
+          setQrUrl(canvas.toDataURL('image/png'));
           setIsLoading(false);
-        };
-
-        img.onerror = () => {
-          setError('Failed to generate QR code');
-          setIsLoading(false);
-        };
-
-        img.src = qrApiUrl;
-      } catch {
-        setError('Error generating QR code');
+        }
+      } else {
+        // No logo, just use the QR code
+        setQrUrl(canvas.toDataURL('image/png'));
         setIsLoading(false);
       }
-    };
+    } catch (err) {
+      console.error('QR generation error:', err);
+      setError('Error generating QR code');
+      setIsLoading(false);
+    }
+  }, [data, size, logo]);
 
+  useEffect(() => {
     generateQRCode();
-  }, [data, size]);
+  }, [generateQRCode]);
 
   const handleDownload = () => {
     const link = document.createElement('a');
@@ -229,21 +276,21 @@ export const QRCode: React.FC<QRCodeProps> = ({
           <Actions>
             {downloadable && (
               <Button variant="primary" size="medium" onClick={handleDownload}>
-                {language === 'bg' ? 'Изтегли' : 'Download'}
+                {t('qrCode.download')}
               </Button>
             )}
             {canShare && (
               <Button variant="secondary" size="medium" onClick={handleShare}>
-                {language === 'bg' ? 'Сподели' : 'Share'}
+                {t('common.share')}
               </Button>
             )}
             <Button variant="ghost" size="medium" onClick={handleCopyData}>
-              {language === 'bg' ? 'Копирай код' : 'Copy Code'}
+              {t('common.copy')}
             </Button>
           </Actions>
 
           <InfoBox>
-            <strong>{language === 'bg' ? 'Код за сканиране:' : 'Scan Code:'}</strong>
+            <strong>{t('qrCode.scanMe')}:</strong>
             <CodeText>{data}</CodeText>
           </InfoBox>
         </>

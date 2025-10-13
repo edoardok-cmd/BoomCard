@@ -386,18 +386,10 @@ const ResetPasswordPage: React.FC = () => {
       // await resetPassword(token, formData.password);
 
       setIsSuccess(true);
-      toast.success(
-        language === 'bg'
-          ? 'Паролата е нулирана успешно!'
-          : 'Password reset successfully!'
-      );
+      toast.success(t('auth.passwordResetSuccess'));
     } catch (error) {
       console.error('Reset password error:', error);
-      toast.error(
-        language === 'bg'
-          ? 'Възникна грешка. Моля, опитайте отново.'
-          : 'An error occurred. Please try again.'
-      );
+      toast.error(t('auth.errorOccurred'));
     } finally {
       setIsLoading(false);
     }

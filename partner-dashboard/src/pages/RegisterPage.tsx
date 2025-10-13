@@ -4,6 +4,7 @@ import styled from 'styled-components';
 import { motion } from 'framer-motion';
 import Button from '../components/common/Button/Button';
 import { useAuth } from '../contexts/AuthContext';
+import { useLanguage } from '../contexts/LanguageContext';
 
 const PageContainer = styled.div`
   min-height: calc(100vh - 4rem);
@@ -276,13 +277,10 @@ interface FormErrors {
   acceptTerms?: string;
 }
 
-interface RegisterPageProps {
-  language?: 'en' | 'bg';
-}
-
-const RegisterPage: React.FC<RegisterPageProps> = ({ language = 'en' }) => {
+const RegisterPage: React.FC = () => {
   const navigate = useNavigate();
   const { register, isLoading } = useAuth();
+  const { t } = useLanguage();
 
   const [formData, setFormData] = useState({
     firstName: '',
@@ -309,58 +307,54 @@ const RegisterPage: React.FC<RegisterPageProps> = ({ language = 'en' }) => {
   };
 
   const getPasswordStrengthLabel = (strength: number): string => {
-    if (strength <= 25) return language === 'bg' ? 'Слаба' : 'Weak';
-    if (strength <= 50) return language === 'bg' ? 'Средна' : 'Fair';
-    if (strength <= 75) return language === 'bg' ? 'Добра' : 'Good';
-    return language === 'bg' ? 'Силна' : 'Strong';
+    if (strength <= 25) return t('auth.passwordWeak');
+    if (strength <= 50) return t('auth.passwordFair');
+    if (strength <= 75) return t('auth.passwordGood');
+    return t('auth.passwordStrong');
   };
 
   const validateField = (field: string, value: any): string | undefined => {
     switch (field) {
       case 'firstName':
-        if (!value) return language === 'bg' ? 'Името е задължително' : 'First name is required';
-        if (value.length < 2) return language === 'bg' ? 'Името е твърде кратко' : 'Name is too short';
+        if (!value) return t('auth.firstNameRequired');
+        if (value.length < 2) return t('auth.firstNameTooShort');
         return undefined;
 
       case 'lastName':
-        if (!value) return language === 'bg' ? 'Фамилията е задължителна' : 'Last name is required';
-        if (value.length < 2) return language === 'bg' ? 'Фамилията е твърде кратка' : 'Last name is too short';
+        if (!value) return t('auth.lastNameRequired');
+        if (value.length < 2) return t('auth.lastNameTooShort');
         return undefined;
 
       case 'email': {
-        if (!value) return language === 'bg' ? 'Имейлът е задължителен' : 'Email is required';
+        if (!value) return t('auth.emailRequired');
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        if (!emailRegex.test(value)) return language === 'bg' ? 'Невалиден имейл адрес' : 'Invalid email address';
+        if (!emailRegex.test(value)) return t('auth.invalidEmail');
         return undefined;
       }
 
       case 'phone':
         if (value && !/^(\+359|0)[0-9\s-]{8,}$/.test(value)) {
-          return language === 'bg' ? 'Невалиден телефонен номер' : 'Invalid phone number';
+          return t('auth.invalidPhone');
         }
         return undefined;
 
       case 'password':
-        if (!value) return language === 'bg' ? 'Паролата е задължителна' : 'Password is required';
+        if (!value) return t('auth.passwordRequired');
         if (value.length < 6) {
-          return language === 'bg'
-            ? 'Паролата трябва да е поне 6 символа'
-            : 'Password must be at least 6 characters';
+          return t('auth.passwordMinLength');
         }
         return undefined;
 
       case 'confirmPassword':
-        if (!value) return language === 'bg' ? 'Потвърдете паролата' : 'Please confirm password';
+        if (!value) return t('auth.confirmPasswordRequired');
         if (value !== formData.password) {
-          return language === 'bg' ? 'Паролите не съвпадат' : 'Passwords do not match';
+          return t('auth.passwordsMustMatch');
         }
         return undefined;
 
       case 'acceptTerms':
         if (!value) {
-          return language === 'bg'
-            ? 'Трябва да приемете условията'
-            : 'You must accept the terms and conditions';
+          return t('auth.mustAgreeToTerms');
         }
         return undefined;
 
@@ -396,7 +390,7 @@ const RegisterPage: React.FC<RegisterPageProps> = ({ language = 'en' }) => {
     // Also validate confirmPassword when password changes
     if (name === 'password' && touched.confirmPassword) {
       const confirmError = formData.confirmPassword !== value
-        ? (language === 'bg' ? 'Паролите не съвпадат' : 'Passwords do not match')
+        ? t('auth.passwordsMustMatch')
         : undefined;
       setErrors(prev => ({ ...prev, confirmPassword: confirmError }));
     }
@@ -457,18 +451,16 @@ const RegisterPage: React.FC<RegisterPageProps> = ({ language = 'en' }) => {
           <LogoText>BoomCard</LogoText>
         </Logo>
 
-        <Title>{language === 'bg' ? 'Създайте профил' : 'Create an account'}</Title>
+        <Title>{t('auth.createAccount')}</Title>
         <Subtitle>
-          {language === 'bg'
-            ? 'Започнете да спестявате с BoomCard днес'
-            : 'Start saving with BoomCard today'}
+          {t('auth.getStartedToday')}
         </Subtitle>
 
         <Form onSubmit={handleSubmit}>
           <FormRow>
             <FormGroup>
               <Label htmlFor="firstName">
-                {language === 'bg' ? 'Име' : 'First name'} *
+                {t('auth.firstName')} *
               </Label>
               <Input
                 id="firstName"
@@ -477,7 +469,7 @@ const RegisterPage: React.FC<RegisterPageProps> = ({ language = 'en' }) => {
                 value={formData.firstName}
                 onChange={handleChange}
                 onBlur={() => handleBlur('firstName')}
-                placeholder={language === 'bg' ? 'Иван' : 'John'}
+                placeholder="John"
                 $hasError={touched.firstName && !!errors.firstName}
                 disabled={isLoading}
                 autoComplete="given-name"
@@ -494,7 +486,7 @@ const RegisterPage: React.FC<RegisterPageProps> = ({ language = 'en' }) => {
 
             <FormGroup>
               <Label htmlFor="lastName">
-                {language === 'bg' ? 'Фамилия' : 'Last name'} *
+                {t('auth.lastName')} *
               </Label>
               <Input
                 id="lastName"
@@ -503,7 +495,7 @@ const RegisterPage: React.FC<RegisterPageProps> = ({ language = 'en' }) => {
                 value={formData.lastName}
                 onChange={handleChange}
                 onBlur={() => handleBlur('lastName')}
-                placeholder={language === 'bg' ? 'Иванов' : 'Smith'}
+                placeholder="Smith"
                 $hasError={touched.lastName && !!errors.lastName}
                 disabled={isLoading}
                 autoComplete="family-name"
@@ -521,7 +513,7 @@ const RegisterPage: React.FC<RegisterPageProps> = ({ language = 'en' }) => {
 
           <FormGroup>
             <Label htmlFor="email">
-              {language === 'bg' ? 'Имейл адрес' : 'Email address'} *
+              {t('auth.emailAddress')} *
             </Label>
             <Input
               id="email"
@@ -530,7 +522,7 @@ const RegisterPage: React.FC<RegisterPageProps> = ({ language = 'en' }) => {
               value={formData.email}
               onChange={handleChange}
               onBlur={() => handleBlur('email')}
-              placeholder={language === 'bg' ? 'ivan@example.com' : 'john@example.com'}
+              placeholder="john@example.com"
               $hasError={touched.email && !!errors.email}
               disabled={isLoading}
               autoComplete="email"
@@ -547,7 +539,7 @@ const RegisterPage: React.FC<RegisterPageProps> = ({ language = 'en' }) => {
 
           <FormGroup>
             <Label htmlFor="phone">
-              {language === 'bg' ? 'Телефон (по избор)' : 'Phone (optional)'}
+              {t('auth.phoneOptional')}
             </Label>
             <Input
               id="phone"
@@ -573,7 +565,7 @@ const RegisterPage: React.FC<RegisterPageProps> = ({ language = 'en' }) => {
 
           <FormGroup>
             <Label htmlFor="password">
-              {language === 'bg' ? 'Парола' : 'Password'} *
+              {t('auth.password')} *
             </Label>
             <Input
               id="password"
@@ -582,7 +574,7 @@ const RegisterPage: React.FC<RegisterPageProps> = ({ language = 'en' }) => {
               value={formData.password}
               onChange={handleChange}
               onBlur={() => handleBlur('password')}
-              placeholder={language === 'bg' ? 'Поне 6 символа' : 'At least 6 characters'}
+              placeholder={t('auth.passwordMinLength')}
               $hasError={touched.password && !!errors.password}
               disabled={isLoading}
               autoComplete="new-password"
@@ -606,7 +598,7 @@ const RegisterPage: React.FC<RegisterPageProps> = ({ language = 'en' }) => {
                   />
                 </StrengthBar>
                 <StrengthText $strength={passwordStrength}>
-                  {language === 'bg' ? 'Сила на паролата: ' : 'Password strength: '}
+                  {t('auth.passwordStrength')}: 
                   {getPasswordStrengthLabel(passwordStrength)}
                 </StrengthText>
               </PasswordStrength>
@@ -615,7 +607,7 @@ const RegisterPage: React.FC<RegisterPageProps> = ({ language = 'en' }) => {
 
           <FormGroup>
             <Label htmlFor="confirmPassword">
-              {language === 'bg' ? 'Потвърди парола' : 'Confirm password'} *
+              {t('auth.confirmPassword')} *
             </Label>
             <Input
               id="confirmPassword"
@@ -624,7 +616,7 @@ const RegisterPage: React.FC<RegisterPageProps> = ({ language = 'en' }) => {
               value={formData.confirmPassword}
               onChange={handleChange}
               onBlur={() => handleBlur('confirmPassword')}
-              placeholder={language === 'bg' ? 'Въведете паролата отново' : 'Enter password again'}
+              placeholder={t('auth.confirmPassword')}
               $hasError={touched.confirmPassword && !!errors.confirmPassword}
               disabled={isLoading}
               autoComplete="new-password"
@@ -652,17 +644,7 @@ const RegisterPage: React.FC<RegisterPageProps> = ({ language = 'en' }) => {
               htmlFor="acceptTerms"
               $hasError={touched.acceptTerms && !!errors.acceptTerms}
             >
-              {language === 'bg' ? (
-                <>
-                  Приемам <Link to="/terms">условията за ползване</Link> и{' '}
-                  <Link to="/privacy">политиката за поверителност</Link>
-                </>
-              ) : (
-                <>
-                  I accept the <Link to="/terms">terms and conditions</Link> and{' '}
-                  <Link to="/privacy">privacy policy</Link>
-                </>
-              )}
+              {t('auth.agreeToTerms')}
             </CheckboxLabel>
           </CheckboxGroup>
           {touched.acceptTerms && errors.acceptTerms && (
@@ -681,12 +663,12 @@ const RegisterPage: React.FC<RegisterPageProps> = ({ language = 'en' }) => {
             isLoading={isLoading}
             disabled={isLoading}
           >
-            {language === 'bg' ? 'Регистрация' : 'Create account'}
+            {t('auth.createAccountButton')}
           </SubmitButton>
         </Form>
 
         <Divider>
-          <DividerText>{language === 'bg' ? 'или' : 'or'}</DividerText>
+          <DividerText>{t('auth.or')}</DividerText>
         </Divider>
 
         <SocialButtons>
@@ -697,21 +679,21 @@ const RegisterPage: React.FC<RegisterPageProps> = ({ language = 'en' }) => {
               <path fill="#FBBC05" d="M4.5 10.52a4.8 4.8 0 0 1 0-3.04V5.41H1.83a8 8 0 0 0 0 7.18l2.67-2.07z"/>
               <path fill="#EA4335" d="M8.98 4.18c1.17 0 2.23.4 3.06 1.2l2.3-2.3A8 8 0 0 0 1.83 5.4L4.5 7.49a4.77 4.77 0 0 1 4.48-3.3z"/>
             </svg>
-            {language === 'bg' ? 'Регистрация с Google' : 'Sign up with Google'}
+            {t('auth.signUpWithGoogle')}
           </SocialButton>
 
           <SocialButton type="button" disabled={isLoading}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="#1877F2">
               <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
             </svg>
-            {language === 'bg' ? 'Регистрация с Facebook' : 'Sign up with Facebook'}
+            {t('auth.signUpWithFacebook')}
           </SocialButton>
         </SocialButtons>
 
         <LoginPrompt>
-          {language === 'bg' ? 'Вече имате профил? ' : 'Already have an account? '}
+          {t('auth.alreadyHaveAccount')} 
           <Link to="/login">
-            {language === 'bg' ? 'Влезте' : 'Sign in'}
+            {t('common.signIn')}
           </Link>
         </LoginPrompt>
       </RegisterCard>

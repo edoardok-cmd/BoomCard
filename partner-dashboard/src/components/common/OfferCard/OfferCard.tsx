@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import styled from 'styled-components';
 import Badge from '../Badge/Badge';
 import FavoriteButton from '../FavoriteButton/FavoriteButton';
+import { useLanguage } from '../../../contexts/LanguageContext';
 
 export interface Offer {
   id: string;
@@ -26,7 +27,6 @@ export interface Offer {
 
 interface OfferCardProps {
   offer: Offer;
-  language?: 'en' | 'bg';
   className?: string;
 }
 
@@ -171,7 +171,8 @@ const Currency = styled.span`
   margin-left: 0.25rem;
 `;
 
-export const OfferCard: React.FC<OfferCardProps> = ({ offer, language = 'en', className }) => {
+export const OfferCard: React.FC<OfferCardProps> = ({ offer, className }) => {
+  const { language } = useLanguage();
   const title = language === 'bg' ? offer.titleBg : offer.title;
   const description = language === 'bg' ? offer.descriptionBg : offer.description;
   const category = language === 'bg' ? offer.categoryBg : offer.category;
@@ -201,7 +202,6 @@ export const OfferCard: React.FC<OfferCardProps> = ({ offer, language = 'en', cl
                 path: offer.path
               }}
               size="small"
-              language={language}
             />
           </FavoriteButtonWrapper>
           <DiscountBadge>-{offer.discount}%</DiscountBadge>

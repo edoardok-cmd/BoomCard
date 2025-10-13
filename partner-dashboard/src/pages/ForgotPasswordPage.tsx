@@ -300,18 +300,10 @@ const ForgotPasswordPage: React.FC = () => {
       // await forgotPassword(formData.email);
 
       setIsSuccess(true);
-      toast.success(
-        language === 'bg'
-          ? 'Имейлът е изпратен успешно!'
-          : 'Email sent successfully!'
-      );
+      toast.success(t('auth.emailSentSuccess'));
     } catch (error) {
       console.error('Forgot password error:', error);
-      toast.error(
-        language === 'bg'
-          ? 'Възникна грешка. Моля, опитайте отново.'
-          : 'An error occurred. Please try again.'
-      );
+      toast.error(t('auth.errorOccurred'));
     } finally {
       setIsLoading(false);
     }
