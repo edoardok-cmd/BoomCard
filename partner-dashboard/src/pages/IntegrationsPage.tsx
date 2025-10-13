@@ -225,9 +225,9 @@ const mockIntegrations: Integration[] = [
     id: '1',
     name: 'Barsi',
     category: 'POS Systems',
-    description: 'Integrate with Barsi POS to automatically track purchases and apply BoomCard discounts in real-time.',
+    description: 'If you use Barsi POS, BoomCard can automatically fetch payment data when customers pay with their BoomCard at your venue.',
     icon: '🖥️',
-    features: ['Real-time transaction tracking', 'Automatic discount application', 'Purchase history sync'],
+    features: ['Automatic transaction fetching', 'Real-time discount tracking', 'Zero manual input required'],
     connected: true,
     popular: true,
   },
@@ -235,9 +235,9 @@ const mockIntegrations: Integration[] = [
     id: '2',
     name: 'Poster POS',
     category: 'POS Systems',
-    description: 'Connect with Poster POS for seamless payment processing and automatic savings calculation.',
+    description: 'BoomCard seamlessly integrates with Poster POS to track customer purchases and calculate their savings automatically.',
     icon: '💻',
-    features: ['Payment integration', 'Savings tracking', 'Customer identification'],
+    features: ['Direct API integration', 'Instant payment recognition', 'Customer savings reports'],
     connected: true,
     popular: true,
   },
@@ -245,27 +245,27 @@ const mockIntegrations: Integration[] = [
     id: '3',
     name: 'iiko',
     category: 'POS Systems',
-    description: 'Integration with iiko restaurant management system for automatic discount tracking and reporting.',
+    description: 'Using iiko restaurant management? BoomCard can connect to track all BoomCard transactions at your restaurant.',
     icon: '🍽️',
-    features: ['Restaurant POS integration', 'Order tracking', 'Discount analytics'],
+    features: ['Full menu integration', 'Order-level tracking', 'Automated discount calculations'],
     connected: false,
   },
   {
     id: '4',
     name: 'R-Keeper',
     category: 'POS Systems',
-    description: 'Connect with R-Keeper to track all BoomCard transactions and calculate savings automatically.',
+    description: 'BoomCard works with R-Keeper to automatically record transactions and monitor customer savings across all your locations.',
     icon: '📊',
-    features: ['Transaction monitoring', 'Savings calculation', 'Multi-location support'],
+    features: ['Multi-location support', 'Transaction monitoring', 'Savings analytics dashboard'],
     connected: false,
   },
   {
     id: '5',
     name: 'ePay.bg',
     category: 'Payment Gateways',
-    description: 'Integration with ePay payment gateway for secure online transactions and automatic savings tracking.',
+    description: 'If you process online orders through ePay.bg, BoomCard can track digital transactions and apply discounts automatically.',
     icon: '💳',
-    features: ['Online payments', 'Transaction security', 'Instant savings reporting'],
+    features: ['Online payment tracking', 'Secure API connection', 'Digital receipt matching'],
     connected: true,
     popular: true,
   },
@@ -273,45 +273,45 @@ const mockIntegrations: Integration[] = [
     id: '6',
     name: 'Borica',
     category: 'Payment Gateways',
-    description: 'Connect with Borica payment system for card processing and automated discount application.',
+    description: 'BoomCard integrates with Borica payment gateway to identify BoomCard users and track their purchases in real-time.',
     icon: '🏦',
-    features: ['Card payment processing', 'Bank integration', 'Real-time validation'],
+    features: ['Bank-level security', 'Card recognition', 'Instant transaction sync'],
     connected: true,
   },
   {
     id: '7',
     name: 'myPOS',
     category: 'Payment Terminals',
-    description: 'Integrate with myPOS payment terminals to recognize BoomCard users and apply discounts at checkout.',
+    description: 'Using myPOS terminals? BoomCard can connect directly to recognize cardholders and fetch transaction data automatically.',
     icon: '📱',
-    features: ['Terminal integration', 'QR code scanning', 'Instant discount application'],
+    features: ['Terminal-level integration', 'QR & NFC support', 'No additional hardware needed'],
     connected: false,
   },
   {
     id: '8',
     name: 'SumUp',
     category: 'Payment Terminals',
-    description: 'Connect SumUp payment terminals for BoomCard recognition and automatic savings tracking.',
+    description: 'BoomCard works with SumUp card readers to automatically log transactions when BoomCard holders make purchases.',
     icon: '💰',
-    features: ['Mobile payments', 'Card reader integration', 'Transaction logging'],
+    features: ['Mobile terminal support', 'Automatic card detection', 'Cloud-based sync'],
     connected: false,
   },
   {
     id: '9',
     name: 'Stripe Terminal',
     category: 'Payment Terminals',
-    description: 'Integrate Stripe Terminal for advanced payment processing with BoomCard discount automation.',
+    description: 'If you use Stripe Terminal, BoomCard can integrate to track payments and calculate customer savings automatically.',
     icon: '⚡',
-    features: ['Smart card readers', 'API integration', 'Real-time discount processing'],
+    features: ['Advanced API capabilities', 'Smart reader compatibility', 'Developer-friendly setup'],
     connected: false,
   },
   {
     id: '10',
     name: 'Booking Systems API',
     category: 'Reservation Systems',
-    description: 'Connect with restaurant and venue booking systems to track reservations and apply loyalty discounts.',
+    description: 'BoomCard connects to reservation platforms to link table bookings with payments, tracking the full customer journey.',
     icon: '📅',
-    features: ['Reservation tracking', 'Loyalty point integration', 'Automated rewards'],
+    features: ['Reservation-to-payment linking', 'Customer identification', 'Visit frequency tracking'],
     connected: true,
   },
 ];
@@ -322,36 +322,36 @@ const IntegrationsPage: React.FC = () => {
 
   const t = {
     en: {
-      title: 'Payment System Integrations',
-      subtitle: 'Connect BoomCard with restaurant and venue payment systems to automatically track savings',
-      allIntegrations: 'All Integrations',
+      title: 'Supported Payment Systems',
+      subtitle: 'Check if your payment system is compatible with BoomCard. We automatically track transactions and calculate customer savings.',
+      allIntegrations: 'All Systems',
       posSystems: 'POS Systems',
       paymentGateways: 'Payment Gateways',
       paymentTerminals: 'Payment Terminals',
       reservationSystems: 'Reservation Systems',
-      connected: 'Connected',
-      notConnected: 'Not Connected',
-      connect: 'Connect',
-      disconnect: 'Disconnect',
-      configure: 'Configure',
-      popular: 'Popular',
+      supported: 'Supported',
+      comingSoon: 'Coming Soon',
+      getStarted: 'Get Started',
+      contactUs: 'Contact Us',
+      popular: 'Most Used',
       learnMore: 'Learn More',
+      integrationsCount: 'payment systems supported',
     },
     bg: {
-      title: 'Интеграции с Платежни Системи',
-      subtitle: 'Свържете BoomCard с платежните системи на ресторанти и заведения за автоматично проследяване на спестяванията',
-      allIntegrations: 'Всички Интеграции',
+      title: 'Поддържани Платежни Системи',
+      subtitle: 'Проверете дали вашата платежна система е съвместима с BoomCard. Ние автоматично проследяваме транзакциите и изчисляваме спестяванията на клиентите.',
+      allIntegrations: 'Всички Системи',
       posSystems: 'POS Системи',
       paymentGateways: 'Платежни Портали',
       paymentTerminals: 'Платежни Терминали',
       reservationSystems: 'Резервационни Системи',
-      connected: 'Свързано',
-      notConnected: 'Не е свързано',
-      connect: 'Свържи',
-      disconnect: 'Прекъсни',
-      configure: 'Настрой',
-      popular: 'Популярни',
+      supported: 'Поддържано',
+      comingSoon: 'Очаквайте Скоро',
+      getStarted: 'Започнете',
+      contactUs: 'Свържете се с нас',
+      popular: 'Най-Използвани',
       learnMore: 'Научи Повече',
+      integrationsCount: 'поддържани платежни системи',
     },
   };
 
@@ -404,7 +404,7 @@ const IntegrationsPage: React.FC = () => {
             {selectedCategory === 'all' ? content.allIntegrations : categories.find(c => c.id === selectedCategory)?.label}
           </SectionTitle>
           <SectionDescription>
-            {filteredIntegrations.length} integrations available
+            {filteredIntegrations.length} {content.integrationsCount}
           </SectionDescription>
 
           <IntegrationsGrid>
@@ -437,14 +437,14 @@ const IntegrationsPage: React.FC = () => {
                 <IntegrationFooter>
                   <IntegrationStatus $connected={integration.connected}>
                     <StatusDot $connected={integration.connected} />
-                    {integration.connected ? content.connected : content.notConnected}
+                    {integration.connected ? content.supported : content.comingSoon}
                   </IntegrationStatus>
 
                   <Button
-                    variant={integration.connected ? 'secondary' : 'primary'}
+                    variant={integration.connected ? 'primary' : 'secondary'}
                     size="small"
                   >
-                    {integration.connected ? content.configure : content.connect}
+                    {integration.connected ? content.getStarted : content.contactUs}
                   </Button>
                 </IntegrationFooter>
               </IntegrationCard>
