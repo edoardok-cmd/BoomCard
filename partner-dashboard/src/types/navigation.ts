@@ -289,25 +289,25 @@ export const navigationConfig: NavConfig = {
           path: '/locations/cities',
           children: [
             {
-              id: 'sofia',
+              id: 'sofia-location',
               label: 'Sofia (150)',
-              labelBg: 'София: Hotel Sense, Arte, Crystal Palace; Пловдив: Hebros, Tamara, Maslina; Варна: Graffit Gallery, Panorama, Villa List; Банско: Lucky Bansko, Perun, Guinness',
+              labelBg: 'София (150)',
               path: '/locations/sofia',
             },
             {
-              id: 'plovdiv',
+              id: 'plovdiv-location',
               label: 'Plovdiv (80)',
               labelBg: 'Пловдив (80)',
               path: '/locations/plovdiv',
             },
             {
-              id: 'varna',
+              id: 'varna-location',
               label: 'Varna (120)',
               labelBg: 'Варна (120)',
               path: '/locations/varna',
             },
             {
-              id: 'bansko',
+              id: 'bansko-location',
               label: 'Bansko (90)',
               labelBg: 'Банско (90)',
               path: '/locations/bansko',
@@ -371,7 +371,7 @@ export const navigationConfig: NavConfig = {
             {
               id: 'restaurant-partners',
               label: 'Restaurants',
-              labelBg: 'Ресторанти: Made in Home, Cosmos, Divaka; Хотели: Marinela Sofia, Park Hotel Moskva; СПА: Kempinski Zografski, Grand Hotel Primoretz; Дейности: Bulgaria Air, Vertical World, GoKart Sofia; Винарни: Катаржина, Стамболово, Villa Yustina',
+              labelBg: 'Ресторанти',
               path: '/partners/restaurants',
             },
           ],

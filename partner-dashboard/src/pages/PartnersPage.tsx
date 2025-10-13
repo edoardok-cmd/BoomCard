@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { useInView } from 'react-intersection-observer';
 import styled from 'styled-components';
+import { useLanguage } from '../contexts/LanguageContext';
 import Button from '../components/common/Button/Button';
 import Card from '../components/common/Card/Card';
 
@@ -114,28 +115,34 @@ const BenefitsGrid = styled.div`
 
 const BenefitCard = styled(motion.div)`
   text-align: center;
-  padding: 2rem;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+`;
 
-  @media (max-width: 768px) {
-    padding: 1.5rem;
+const BenefitImageContainer = styled.div<{ $imageUrl?: string }>`
+  width: 100%;
+  height: 200px;
+  background: ${props => props.$imageUrl ? `url(${props.$imageUrl})` : '#f3f4f6'};
+  background-size: cover;
+  background-position: center;
+  overflow: hidden;
+  transition: all 300ms;
+  border-radius: 0.75rem 0.75rem 0 0;
+
+  ${BenefitCard}:hover & {
+    transform: scale(1.05);
   }
 `;
 
-const BenefitIcon = styled.div`
-  width: 4rem;
-  height: 4rem;
-  background: #f3f4f6;
-  border-radius: 50%;
+const BenefitContent = styled.div`
+  padding: 2rem;
+  flex: 1;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  margin: 0 auto 1.5rem;
-  font-size: 2rem;
-  transition: all 300ms;
+  flex-direction: column;
 
-  ${BenefitCard}:hover & {
-    background: #000000;
-    transform: scale(1.1);
+  @media (max-width: 768px) {
+    padding: 1.5rem;
   }
 `;
 
@@ -374,48 +381,48 @@ const TextArea = styled.textarea`
 `;
 
 const PartnersPage: React.FC = () => {
-  const [language, setLanguage] = useState<'en' | 'bg'>('en');
+  const { language, t } = useLanguage();
   const [benefitsRef, benefitsInView] = useInView({ threshold: 0.2, triggerOnce: true });
   const [processRef, processInView] = useInView({ threshold: 0.2, triggerOnce: true });
 
   const benefits = [
     {
-      icon: '📈',
+      icon: 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=400&h=400&fit=crop',
       titleEn: 'Increase Revenue',
       titleBg: 'Увеличете приходите',
       textEn: 'Reach thousands of new customers actively looking for deals',
       textBg: 'Достигнете хиляди нови клиенти, търсещи оферти'
     },
     {
-      icon: '👥',
+      icon: 'https://images.unsplash.com/photo-1529156069898-49953e39b3ac?w=400&h=400&fit=crop',
       titleEn: 'Build Loyalty',
       titleBg: 'Изградете лоялност',
       textEn: 'Turn first-time visitors into regular customers',
       textBg: 'Превърнете първоначалните посетители в редовни клиенти'
     },
     {
-      icon: '📊',
+      icon: 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=400&h=400&fit=crop',
       titleEn: 'Track Performance',
       titleBg: 'Проследявайте резултати',
       textEn: 'Real-time analytics and insights on your offers',
       textBg: 'Анализи и статистики в реално време'
     },
     {
-      icon: '💳',
+      icon: 'https://images.unsplash.com/photo-1556742502-ec7c0e9f34b1?w=400&h=400&fit=crop',
       titleEn: 'Easy Management',
       titleBg: 'Лесно управление',
       textEn: 'Simple dashboard to manage all your offers',
       textBg: 'Прост интерфейс за управление на офертите'
     },
     {
-      icon: '🎯',
+      icon: 'https://images.unsplash.com/photo-1557804506-669a67965ba0?w=400&h=400&fit=crop',
       titleEn: 'Targeted Marketing',
       titleBg: 'Таргетиран маркетинг',
       textEn: 'Reach the right customers at the right time',
       textBg: 'Достигнете правилните клиенти в правилното време'
     },
     {
-      icon: '🔒',
+      icon: 'https://images.unsplash.com/photo-1633265486064-086b219458ec?w=400&h=400&fit=crop',
       titleEn: 'Secure & Reliable',
       titleBg: 'Сигурно и надеждно',
       textEn: 'Bank-level security for all transactions',
@@ -455,19 +462,17 @@ const PartnersPage: React.FC = () => {
               transition={{ duration: 0.8 }}
             >
               <Title>
-                {language === 'bg' ? 'Станете наш партньор' : 'Become Our Partner'}
+                {t('partners.title')}
               </Title>
               <Subtitle>
-                {language === 'bg'
-                  ? 'Присъединете се към водещата платформа за отстъпки в България и достигнете хиляди нови клиенти'
-                  : 'Join Bulgaria\'s leading discount platform and reach thousands of new customers'}
+                {t('partners.subtitle')}
               </Subtitle>
               <HeroButtons>
                 <Button variant="secondary" size="large">
-                  {language === 'bg' ? 'Кандидатствайте сега' : 'Apply Now'}
+                  {t('partners.applyNow')}
                 </Button>
                 <Button variant="ghost" size="large">
-                  {language === 'bg' ? 'Свържете се с нас' : 'Contact Us'}
+                  {t('partners.contactUs')}
                 </Button>
               </HeroButtons>
             </motion.div>
@@ -480,19 +485,19 @@ const PartnersPage: React.FC = () => {
           <StatsGrid>
             <StatCard>
               <StatNumber>500+</StatNumber>
-              <StatLabel>{language === 'bg' ? 'Партньори' : 'Partners'}</StatLabel>
+              <StatLabel>{t('partners.partnersCount')}</StatLabel>
             </StatCard>
             <StatCard>
               <StatNumber>50K+</StatNumber>
-              <StatLabel>{language === 'bg' ? 'Активни потребители' : 'Active Users'}</StatLabel>
+              <StatLabel>{t('partners.activeUsers')}</StatLabel>
             </StatCard>
             <StatCard>
               <StatNumber>1M+</StatNumber>
-              <StatLabel>{language === 'bg' ? 'Изкупени оферти' : 'Redeemed Offers'}</StatLabel>
+              <StatLabel>{t('partners.redeemedOffers')}</StatLabel>
             </StatCard>
             <StatCard>
               <StatNumber>95%</StatNumber>
-              <StatLabel>{language === 'bg' ? 'Удовлетвореност' : 'Satisfaction Rate'}</StatLabel>
+              <StatLabel>{t('partners.satisfactionRate')}</StatLabel>
             </StatCard>
           </StatsGrid>
         </Container>
@@ -501,12 +506,10 @@ const PartnersPage: React.FC = () => {
       <Section ref={benefitsRef}>
         <Container>
           <SectionTitle>
-            {language === 'bg' ? 'Защо BoomCard?' : 'Why BoomCard?'}
+            {t('partners.whyBoomCard')}
           </SectionTitle>
           <SectionSubtitle>
-            {language === 'bg'
-              ? 'Открийте предимствата на партньорството с нас'
-              : 'Discover the benefits of partnering with us'}
+            {t('partners.benefitsSubtitle')}
           </SectionSubtitle>
 
           <BenefitsGrid>
@@ -518,13 +521,15 @@ const PartnersPage: React.FC = () => {
                 transition={{ duration: 0.5, delay: index * 0.1 }}
               >
                 <Card>
-                  <BenefitIcon>{benefit.icon}</BenefitIcon>
-                  <BenefitTitle>
-                    {language === 'bg' ? benefit.titleBg : benefit.titleEn}
-                  </BenefitTitle>
-                  <BenefitText>
-                    {language === 'bg' ? benefit.textBg : benefit.textEn}
-                  </BenefitText>
+                  <BenefitImageContainer $imageUrl={benefit.icon} />
+                  <BenefitContent>
+                    <BenefitTitle>
+                      {language === 'bg' ? benefit.titleBg : benefit.titleEn}
+                    </BenefitTitle>
+                    <BenefitText>
+                      {language === 'bg' ? benefit.textBg : benefit.textEn}
+                    </BenefitText>
+                  </BenefitContent>
                 </Card>
               </BenefitCard>
             ))}
@@ -535,12 +540,10 @@ const PartnersPage: React.FC = () => {
       <ProcessSection ref={processRef}>
         <Container>
           <SectionTitle>
-            {language === 'bg' ? 'Как работи?' : 'How It Works?'}
+            {t('partners.howItWorks')}
           </SectionTitle>
           <SectionSubtitle>
-            {language === 'bg'
-              ? 'Лесни три стъпки до успех'
-              : 'Three easy steps to success'}
+            {t('partners.stepsSubtitle')}
           </SectionSubtitle>
 
           <ProcessSteps>
@@ -569,62 +572,58 @@ const PartnersPage: React.FC = () => {
       <CTASection>
         <Container>
           <CTATitle>
-            {language === 'bg' ? 'Готови да започнете?' : 'Ready to Get Started?'}
+            {t('partners.readyToStart')}
           </CTATitle>
           <CTAText>
-            {language === 'bg'
-              ? 'Попълнете формата по-долу и нашият екип ще се свърже с вас в рамките на 24 часа'
-              : 'Fill out the form below and our team will contact you within 24 hours'}
+            {t('partners.ctaText')}
           </CTAText>
 
           <FormSection>
             <FormTitle>
-              {language === 'bg' ? 'Формуляр за кандидатстване' : 'Partnership Application'}
+              {t('partners.partnershipApplication')}
             </FormTitle>
             <FormGrid>
               <FormGroup>
-                <Label>{language === 'bg' ? 'Име на заведението' : 'Business Name'}</Label>
-                <Input type="text" placeholder={language === 'bg' ? 'Име...' : 'Name...'} />
+                <Label>{t('partners.businessName')}</Label>
+                <Input type="text" placeholder={t('partners.businessNamePlaceholder')} />
               </FormGroup>
 
               <FormGroup>
-                <Label>{language === 'bg' ? 'Тип заведение' : 'Business Type'}</Label>
+                <Label>{t('partners.businessType')}</Label>
                 <Select>
-                  <option value="">{language === 'bg' ? 'Изберете...' : 'Select...'}</option>
-                  <option value="restaurant">{language === 'bg' ? 'Ресторант' : 'Restaurant'}</option>
-                  <option value="hotel">{language === 'bg' ? 'Хотел' : 'Hotel'}</option>
-                  <option value="spa">{language === 'bg' ? 'Спа' : 'Spa'}</option>
-                  <option value="winery">{language === 'bg' ? 'Винарна' : 'Winery'}</option>
-                  <option value="other">{language === 'bg' ? 'Друго' : 'Other'}</option>
+                  <option value="">{t('partners.selectOption')}</option>
+                  <option value="restaurant">{t('partners.restaurant')}</option>
+                  <option value="hotel">{t('partners.hotel')}</option>
+                  <option value="spa">{t('partners.spa')}</option>
+                  <option value="winery">{t('partners.winery')}</option>
+                  <option value="other">{t('partners.other')}</option>
                 </Select>
               </FormGroup>
 
               <FormGroup>
-                <Label>{language === 'bg' ? 'Имейл' : 'Email'}</Label>
+                <Label>{t('partners.email')}</Label>
                 <Input type="email" placeholder="email@example.com" />
               </FormGroup>
 
               <FormGroup>
-                <Label>{language === 'bg' ? 'Телефон' : 'Phone'}</Label>
+                <Label>{t('partners.phone')}</Label>
                 <Input type="tel" placeholder="+359 ..." />
               </FormGroup>
 
               <FormGroup>
-                <Label>{language === 'bg' ? 'Локация' : 'Location'}</Label>
-                <Input type="text" placeholder={language === 'bg' ? 'Град...' : 'City...'} />
+                <Label>{t('partners.location')}</Label>
+                <Input type="text" placeholder={t('partners.cityPlaceholder')} />
               </FormGroup>
 
               <FormGroup>
-                <Label>{language === 'bg' ? 'Съобщение (по избор)' : 'Message (optional)'}</Label>
+                <Label>{t('partners.messageOptional')}</Label>
                 <TextArea
-                  placeholder={language === 'bg'
-                    ? 'Разкажете ни повече за вашия бизнес...'
-                    : 'Tell us more about your business...'}
+                  placeholder={t('partners.messagePlaceholder')}
                 />
               </FormGroup>
 
               <Button variant="primary" size="large">
-                {language === 'bg' ? 'Изпратете заявка' : 'Submit Application'}
+                {t('partners.submitApplication')}
               </Button>
             </FormGrid>
           </FormSection>

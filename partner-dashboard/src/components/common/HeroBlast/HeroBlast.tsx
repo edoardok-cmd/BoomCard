@@ -83,14 +83,10 @@ const Photo = styled(motion.div)<{ $index: number; $side: 'left' | 'right' }>`
   border: 3px solid white;
   overflow: hidden;
 
-  /* Position photos around the card */
-  ${props => props.$side === 'left' ? `
-    left: -180px;
-    top: ${props.$index * 60}px;
-  ` : `
-    right: -180px;
-    top: ${props.$index * 60}px;
-  `}
+  /* Center as starting point - positions controlled by Framer Motion */
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
 
   img {
     width: 100%;
@@ -101,15 +97,10 @@ const Photo = styled(motion.div)<{ $index: number; $side: 'left' | 'right' }>`
   @media (max-width: 768px) {
     width: 100px;
     height: 133px;
-    ${props => props.$side === 'left' ? `
-      left: -120px;
-    ` : `
-      right: -120px;
-    `}
   }
 `;
 
-const BoomCard = styled(motion.div)`
+const BoomCard = styled(motion.div)<{ $showAnimation?: boolean }>`
   width: 400px;
   height: 250px;
   background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 50%, #1a1a1a 100%);
@@ -128,44 +119,56 @@ const BoomCard = styled(motion.div)`
   transform-style: preserve-3d;
   perspective: 1000px;
 
-  /* Card rotation animation: 3 complete cycles in 3s, then 5s rest */
-  animation: cardFlip 8s ease-in-out infinite;
+  /* Card rotation animation: 3 tilts + 5s rest = 8s cycle, repeats forever */
+  animation: ${props => props.$showAnimation ? 'cardFlip 16s ease-in-out infinite' : 'none'};
 
   @keyframes cardFlip {
-    /* Cycle 1 */
+    /* Phase 1: 3 tilts during photo dealing (0-3s) */
     0% {
       transform: rotateY(0deg);
     }
-    4.16% {
+    3.125% { /* 0.5s */
       transform: rotateY(15deg);
     }
-    8.33% {
+    6.25% { /* 1s */
       transform: rotateY(-15deg);
     }
-    12.5% {
-      transform: rotateY(0deg);
-    }
-    /* Cycle 2 */
-    16.66% {
+    9.375% { /* 1.5s */
       transform: rotateY(15deg);
     }
-    20.83% {
+    12.5% { /* 2s */
       transform: rotateY(-15deg);
     }
-    25% {
-      transform: rotateY(0deg);
-    }
-    /* Cycle 3 */
-    29.16% {
+    15.625% { /* 2.5s */
       transform: rotateY(15deg);
     }
-    33.33% {
-      transform: rotateY(-15deg);
-    }
-    37.5% {
+    18.75% { /* 3s */
       transform: rotateY(0deg);
     }
-    /* Rest for 5 seconds */
+    /* Rest for 5 seconds (3-8s) */
+    50% { /* 8s */
+      transform: rotateY(0deg);
+    }
+    /* Phase 2: 3 tilts during photo returning (8-11s) */
+    53.125% { /* 8.5s */
+      transform: rotateY(15deg);
+    }
+    56.25% { /* 9s */
+      transform: rotateY(-15deg);
+    }
+    59.375% { /* 9.5s */
+      transform: rotateY(15deg);
+    }
+    62.5% { /* 10s */
+      transform: rotateY(-15deg);
+    }
+    65.625% { /* 10.5s */
+      transform: rotateY(15deg);
+    }
+    68.75% { /* 11s */
+      transform: rotateY(0deg);
+    }
+    /* Rest for 5 seconds (11-16s) */
     100% {
       transform: rotateY(0deg);
     }
@@ -202,15 +205,6 @@ const BoomCard = styled(motion.div)`
     height: 190px;
     padding: 1.25rem;
   }
-`;
-
-const CardChip = styled.div`
-  width: 50px;
-  height: 40px;
-  background: linear-gradient(135deg, #d4af37 0%, #f4e5a1 50%, #d4af37 100%);
-  border-radius: 8px;
-  margin-bottom: 1rem;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 `;
 
 const CardLogo = styled.div`
@@ -252,6 +246,7 @@ const CardInfo = styled.div`
   display: flex;
   justify-content: space-between;
   align-items: flex-end;
+  gap: 1rem;
 `;
 
 const CardHolder = styled.div`
@@ -363,30 +358,85 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
   const [showCard, setShowCard] = useState(false);
   const [showCTA, setShowCTA] = useState(false);
   const [videoLoaded, setVideoLoaded] = useState(false);
-  const [showPhotos, setShowPhotos] = useState(false);
+  const [photoState, setPhotoState] = useState<'hidden' | 'dealing' | 'returning'>('hidden');
   const videoRef = useRef<HTMLVideoElement>(null);
 
-  // Photo placeholders - replace with actual image URLs
+  // Photo placeholders - 8 per side for fuller spread
   const photos = {
     left: [
-      'https://images.unsplash.com/photo-1537944434965-cf4679d1a598?w=300&h=400&fit=crop', // People having fun
-      'https://images.unsplash.com/photo-1554118811-1e0d58224f24?w=300&h=400&fit=crop', // Fine dining
-      'https://images.unsplash.com/photo-1492684223066-81342ee5ff30?w=300&h=400&fit=crop', // Extreme sports
-      'https://images.unsplash.com/photo-1566737236500-c8ac43014a67?w=300&h=400&fit=crop', // Club scene
+      'https://images.unsplash.com/photo-1600334129128-685c5582fd35?w=300&h=400&fit=crop', // Spa massage
+      'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=300&h=400&fit=crop', // Beach paradise
+      'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=300&h=400&fit=crop', // Luxury hotel
+      'https://images.unsplash.com/photo-1483985988355-763728e1935b?w=300&h=400&fit=crop', // Fashion shopping
+      'https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?w=300&h=400&fit=crop', // Coffee shop
+      'https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?w=300&h=400&fit=crop', // Makeup beauty
+      'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=300&h=400&fit=crop', // Movie theater
+      'https://images.unsplash.com/photo-1571019614242-c5c5dee9f50b?w=300&h=400&fit=crop', // Gym fitness
     ],
     right: [
-      'https://images.unsplash.com/photo-1511795409834-ef04bbd61622?w=300&h=400&fit=crop', // Friends celebrating
-      'https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=300&h=400&fit=crop', // Restaurant experience
-      'https://images.unsplash.com/photo-1551632811-561732d1e306?w=300&h=400&fit=crop', // Adventure
-      'https://images.unsplash.com/photo-1470229722913-7c0e2dbbafd3?w=300&h=400&fit=crop', // Party
+      'https://images.unsplash.com/photo-1488646953014-85cb44e25828?w=300&h=400&fit=crop', // Travel suitcase
+      'https://images.unsplash.com/photo-1509042239860-f550ce710b93?w=300&h=400&fit=crop', // Coffee art
+      'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=300&h=400&fit=crop', // Retail store
+      'https://images.unsplash.com/photo-1540189549336-e6e99c3679fe?w=300&h=400&fit=crop', // Food plate
+      'https://images.unsplash.com/photo-1464746133101-a2c3f88e0dd9?w=300&h=400&fit=crop', // Happy person
+      'https://images.unsplash.com/photo-1501594907352-04cda38ebc29?w=300&h=400&fit=crop', // Mountain hiking
+      'https://images.unsplash.com/photo-1445205170230-053b83016050?w=300&h=400&fit=crop', // Clothing fashion
+      'https://images.unsplash.com/photo-1563805042-7684c019e1cb?w=300&h=400&fit=crop', // Cake dessert
     ],
   };
 
-  // Random tilts for each photo
+  // Random tilts for each photo - 8 per side now
   const photoTilts = [
-    [-8, 5, -12, 7],  // Left side tilts
-    [6, -9, 11, -5],  // Right side tilts
+    [-8, 5, -12, 7, -6, 9, -10, 6],  // Left side tilts
+    [6, -9, 11, -5, 8, -10, 7, -8],  // Right side tilts
   ];
+
+  // Symmetrical positions for photos - further from center, closer to sides, lower in hero
+  // Photos should stay in the side margins, NOT over the center content
+  const photoPositions = {
+    left: [
+      { x: -750, y: -100 },   // Top left, far out
+      { x: -680, y: 0 },      // Upper-middle left
+      { x: -800, y: 80 },     // Middle left, very far
+      { x: -720, y: 160 },    // Lower-middle left
+      { x: -780, y: 240 },    // Lower left, far out
+      { x: -700, y: 320 },    // Bottom left
+      { x: -760, y: -50 },    // Upper left, far
+      { x: -690, y: 280 },    // Bottom-middle left
+    ],
+    right: [
+      { x: 590, y: -100 },    // Top right, far out
+      { x: 520, y: 0 },       // Upper-middle right
+      { x: 640, y: 80 },      // Middle right, very far
+      { x: 560, y: 160 },     // Lower-middle right
+      { x: 620, y: 240 },     // Lower right, far out
+      { x: 540, y: 320 },     // Bottom right
+      { x: 600, y: -50 },     // Upper right, far
+      { x: 530, y: 280 },     // Bottom-middle right
+    ],
+  };
+
+  // Photo cycling effect - synced with card tilt animation
+  useEffect(() => {
+    if (photoState === 'hidden') return;
+
+    // Animation cycle: 16 seconds total
+    // 0-3s: 3 tilts while dealing photos
+    // 3-8s: 5s rest (photos stay out)
+    // 8-11s: 3 tilts while returning photos
+    // 11-16s: 5s rest (photos stay hidden)
+    // Then repeat
+
+    const cycleInterval = setInterval(() => {
+      setPhotoState(current => {
+        if (current === 'dealing') return 'returning';
+        if (current === 'returning') return 'dealing';
+        return 'dealing';
+      });
+    }, 8000); // Switch state every 8 seconds (half the 16s cycle)
+
+    return () => clearInterval(cycleInterval);
+  }, [photoState]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -408,8 +458,8 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
       if (!videoEnded) {
         setVideoEnded(true);
         setShowCTA(true);
-        // Show photos when CTA appears (card has moved up)
-        setTimeout(() => setShowPhotos(true), 800);
+        // Start photo cycling after card moves up
+        setTimeout(() => setPhotoState('dealing'), 800);
         // Prevent video from replaying
         video.pause();
         video.currentTime = video.duration;
@@ -488,20 +538,21 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
                 },
               }}
             >
-              <BoomCard>
+              <BoomCard $showAnimation={showCTA}>
                 <div>
-                  <CardChip />
                   <CardLogo>BOOM</CardLogo>
                   <CardNumber>•••• •••• •••• 2024</CardNumber>
                 </div>
                 <CardInfo>
-                  <CardHolder>{t.cardHolder}</CardHolder>
-                  <CardExpiry>12/25</CardExpiry>
+                  <div>
+                    <CardHolder>{t.cardHolder}</CardHolder>
+                    <CardExpiry>12/25</CardExpiry>
+                  </div>
                 </CardInfo>
               </BoomCard>
 
-              {/* Ejected Photos */}
-              {showPhotos && (
+              {/* Ejected Photos - cycle between dealing and returning */}
+              {photoState !== 'hidden' && (
                 <PhotosContainer>
                   {/* Left side photos */}
                   {photos.left.map((photoUrl, index) => (
@@ -509,25 +560,29 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
                       key={`left-${index}`}
                       $index={index}
                       $side="left"
-                      initial={{
-                        x: 0,
-                        y: 0,
-                        opacity: 0,
-                        scale: 0,
-                        rotate: 0
-                      }}
-                      animate={{
-                        x: -50,
-                        y: index * 20,
-                        opacity: 1,
-                        scale: 1,
-                        rotate: photoTilts[0][index]
-                      }}
+                      animate={
+                        photoState === 'dealing'
+                          ? {
+                              x: photoPositions.left[index].x,
+                              y: photoPositions.left[index].y,
+                              opacity: 1,
+                              scale: 1,
+                              rotate: photoTilts[0][index],
+                            }
+                          : {
+                              x: 0,
+                              y: 0,
+                              opacity: 0,
+                              scale: 0,
+                              rotate: 0,
+                            }
+                      }
                       transition={{
                         delay: index * 0.15,
                         type: 'spring',
-                        stiffness: 150,
-                        damping: 15
+                        stiffness: 100,
+                        damping: 18,
+                        duration: 0.6,
                       }}
                     >
                       <img src={photoUrl} alt={`Experience ${index + 1}`} />
@@ -540,28 +595,32 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
                       key={`right-${index}`}
                       $index={index}
                       $side="right"
-                      initial={{
-                        x: 0,
-                        y: 0,
-                        opacity: 0,
-                        scale: 0,
-                        rotate: 0
-                      }}
-                      animate={{
-                        x: 50,
-                        y: index * 20,
-                        opacity: 1,
-                        scale: 1,
-                        rotate: photoTilts[1][index]
-                      }}
+                      animate={
+                        photoState === 'dealing'
+                          ? {
+                              x: photoPositions.right[index].x,
+                              y: photoPositions.right[index].y,
+                              opacity: 1,
+                              scale: 1,
+                              rotate: photoTilts[1][index],
+                            }
+                          : {
+                              x: 0,
+                              y: 0,
+                              opacity: 0,
+                              scale: 0,
+                              rotate: 0,
+                            }
+                      }
                       transition={{
                         delay: index * 0.15,
                         type: 'spring',
-                        stiffness: 150,
-                        damping: 15
+                        stiffness: 100,
+                        damping: 18,
+                        duration: 0.6,
                       }}
                     >
-                      <img src={photoUrl} alt={`Experience ${index + 5}`} />
+                      <img src={photoUrl} alt={`Experience ${index + 9}`} />
                     </Photo>
                   ))}
                 </PhotosContainer>

@@ -238,7 +238,6 @@ const SettingsPage: React.FC = () => {
   });
 
   const [selectedLanguage, setSelectedLanguage] = useState(language);
-  const [selectedCurrency, setSelectedCurrency] = useState('BGN');
   const [isSaving, setIsSaving] = useState(false);
 
   const content = {
@@ -281,8 +280,6 @@ const SettingsPage: React.FC = () => {
       preferencesDesc: 'Customize your experience',
       languageLabel: 'Language',
       languageDesc: 'Choose your preferred language',
-      currencyLabel: 'Currency',
-      currencyDesc: 'Select your currency',
       languages: {
         en: 'English',
         bg: 'Български',
@@ -343,8 +340,6 @@ const SettingsPage: React.FC = () => {
       preferencesDesc: 'Персонализирайте опита си',
       languageLabel: 'Език',
       languageDesc: 'Изберете предпочитан език',
-      currencyLabel: 'Валута',
-      currencyDesc: 'Изберете валута',
       languages: {
         en: 'English',
         bg: 'Български',
@@ -386,7 +381,7 @@ const SettingsPage: React.FC = () => {
       await new Promise(resolve => setTimeout(resolve, 1500));
 
       // In a real app, you would save settings via API:
-      // await updateSettings({ notifications, privacy, language: selectedLanguage, currency: selectedCurrency });
+      // await updateSettings({ notifications, privacy, language: selectedLanguage });
 
       toast.success(t.savedSuccess);
     } catch (error) {
@@ -604,21 +599,6 @@ const SettingsPage: React.FC = () => {
               >
                 <option value="en">{t.languages.en}</option>
                 <option value="bg">{t.languages.bg}</option>
-              </Select>
-            </SettingRow>
-
-            <SettingRow>
-              <SettingInfo>
-                <SettingLabel>{t.currencyLabel}</SettingLabel>
-                <SettingDesc>{t.currencyDesc}</SettingDesc>
-              </SettingInfo>
-              <Select
-                value={selectedCurrency}
-                onChange={(e) => setSelectedCurrency(e.target.value)}
-              >
-                <option value="BGN">BGN - Bulgarian Lev</option>
-                <option value="EUR">EUR - Euro</option>
-                <option value="USD">USD - US Dollar</option>
               </Select>
             </SettingRow>
           </SettingCard>

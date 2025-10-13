@@ -44,10 +44,10 @@ const content = {
       platinum: 'Platinum',
     },
     tierBenefits: {
-      bronze: 'Earn 1 point per BGN spent',
-      silver: 'Earn 1.5 points per BGN spent + 5% bonus',
-      gold: 'Earn 2 points per BGN spent + 10% bonus',
-      platinum: 'Earn 3 points per BGN spent + 20% bonus',
+      bronze: 'Earn 1 point per BGN/EUR spent',
+      silver: 'Earn 1.5 points per BGN/EUR spent + 5% bonus',
+      gold: 'Earn 2 points per BGN/EUR spent + 10% bonus',
+      platinum: 'Earn 3 points per BGN/EUR spent + 20% bonus',
     },
     currentTier: 'Current Tier',
     nextTier: 'Next Tier',
@@ -55,7 +55,7 @@ const content = {
     howToEarn: {
       title: 'How to Earn Points',
       purchase: 'Make a Purchase',
-      purchaseDesc: 'Earn 1 point for every BGN spent',
+      purchaseDesc: 'Earn 1 point for every BGN/EUR spent',
       review: 'Write a Review',
       reviewDesc: 'Get 50 bonus points',
       referral: 'Refer a Friend',
@@ -107,10 +107,10 @@ const content = {
       platinum: 'Платина',
     },
     tierBenefits: {
-      bronze: 'Спечелете 1 точка на BGN',
-      silver: 'Спечелете 1.5 точки на BGN + 5% бонус',
-      gold: 'Спечелете 2 точки на BGN + 10% бонус',
-      platinum: 'Спечелете 3 точки на BGN + 20% бонус',
+      bronze: 'Спечелете 1 точка на лв./EUR',
+      silver: 'Спечелете 1.5 точки на лв./EUR + 5% бонус',
+      gold: 'Спечелете 2 точки на лв./EUR + 10% бонус',
+      platinum: 'Спечелете 3 точки на лв./EUR + 20% бонус',
     },
     currentTier: 'Текущо Ниво',
     nextTier: 'Следващо Ниво',
@@ -118,7 +118,7 @@ const content = {
     howToEarn: {
       title: 'Как да Спечелите Точки',
       purchase: 'Направете Покупка',
-      purchaseDesc: 'Спечелете 1 точка за всеки BGN',
+      purchaseDesc: 'Спечелете 1 точка за всеки лв./EUR',
       review: 'Напишете Отзив',
       reviewDesc: 'Получете 50 бонус точки',
       referral: 'Поканете Приятел',
@@ -235,6 +235,7 @@ const RewardsPage: React.FC = () => {
       type: 'discount',
       pointsCost: 250,
       icon: '🎁',
+      image: 'https://images.unsplash.com/photo-1607083206869-4c7672e72a8a?w=800&auto=format&fit=crop',
       expiresIn: 30,
     },
     {
@@ -244,6 +245,7 @@ const RewardsPage: React.FC = () => {
       type: 'freeItem',
       pointsCost: 150,
       icon: '☕',
+      image: 'https://images.unsplash.com/photo-1511920170033-f8396924c348?w=800&auto=format&fit=crop',
       expiresIn: 15,
     },
     {
@@ -253,6 +255,7 @@ const RewardsPage: React.FC = () => {
       type: 'discount',
       pointsCost: 500,
       icon: '💎',
+      image: 'https://images.unsplash.com/photo-1556761175-5973dc0f32e7?w=800&auto=format&fit=crop',
       expiresIn: 30,
     },
     {
@@ -262,6 +265,7 @@ const RewardsPage: React.FC = () => {
       type: 'upgrade',
       pointsCost: 1000,
       icon: '👑',
+      image: 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=800&auto=format&fit=crop',
       expiresIn: 60,
     },
     {
@@ -271,6 +275,7 @@ const RewardsPage: React.FC = () => {
       type: 'freeItem',
       pointsCost: 300,
       icon: '🍰',
+      image: 'https://images.unsplash.com/photo-1565958011703-44f9829ba187?w=800&auto=format&fit=crop',
       expiresIn: 20,
     },
     {
@@ -280,6 +285,7 @@ const RewardsPage: React.FC = () => {
       type: 'exclusive',
       pointsCost: 2000,
       icon: '🎟️',
+      image: 'https://images.unsplash.com/photo-1492684223066-81342ee5ff30?w=800&auto=format&fit=crop',
       expiresIn: 90,
     },
   ]);
@@ -480,40 +486,44 @@ const RewardsPage: React.FC = () => {
                 animate={{ opacity: 1, scale: 1 }}
                 transition={{ delay: 0.05 * index }}
               >
-                <RewardIcon>{reward.icon}</RewardIcon>
+                <RewardImageContainer>
+                  <RewardImage src={reward.image} alt={reward.title} loading="lazy" />
+                  <RewardBadge>
+                    <Sparkles size={14} />
+                    {reward.pointsCost} {t.points}
+                  </RewardBadge>
+                </RewardImageContainer>
+
                 <RewardContent>
                   <RewardTitle>{reward.title}</RewardTitle>
                   <RewardDesc>{reward.description}</RewardDesc>
-                  <RewardFooter>
-                    <RewardCost>
-                      <Sparkles size={16} />
-                      {reward.pointsCost} {t.points}
-                    </RewardCost>
-                    {reward.expiresIn && (
-                      <RewardExpiry>
-                        <Clock size={14} />
-                        {t.expiresIn} {reward.expiresIn} {t.days}
-                      </RewardExpiry>
-                    )}
-                  </RewardFooter>
                 </RewardContent>
-                <RewardAction>
-                  <Button
-                    size="small"
-                    onClick={() => handleRedeemReward(reward)}
-                    disabled={reward.isRedeemed}
-                  >
-                    {reward.isRedeemed ? (
-                      <>
-                        <CheckCircle size={16} /> {t.redeemed}
-                      </>
-                    ) : (
-                      <>
-                        {t.redeem} <ArrowRight size={16} />
-                      </>
-                    )}
-                  </Button>
-                </RewardAction>
+
+                <RewardFooter>
+                  {reward.expiresIn && (
+                    <RewardExpiry>
+                      <Clock size={14} />
+                      {t.expiresIn} {reward.expiresIn} {t.days}
+                    </RewardExpiry>
+                  )}
+                  <RewardAction>
+                    <Button
+                      size="small"
+                      onClick={() => handleRedeemReward(reward)}
+                      disabled={reward.isRedeemed}
+                    >
+                      {reward.isRedeemed ? (
+                        <>
+                          <CheckCircle size={16} /> {t.redeemed}
+                        </>
+                      ) : (
+                        <>
+                          {t.redeem} <ArrowRight size={16} />
+                        </>
+                      )}
+                    </Button>
+                  </RewardAction>
+                </RewardFooter>
               </RewardCard>
             ))}
           </RewardsGrid>
@@ -533,20 +543,34 @@ const RewardsPage: React.FC = () => {
                 animate={{ opacity: 1, scale: 1 }}
                 transition={{ delay: 0.05 * index }}
               >
-                <LockedOverlay>
-                  <Lock size={32} />
-                </LockedOverlay>
-                <RewardIcon style={{ opacity: 0.5 }}>{reward.icon}</RewardIcon>
+                <RewardImageContainer>
+                  <RewardImage src={reward.image} alt={reward.title} loading="lazy" style={{ opacity: 0.5 }} />
+                  <LockedOverlay>
+                    <Lock size={24} />
+                  </LockedOverlay>
+                  <RewardBadge style={{ opacity: 0.7 }}>
+                    <Sparkles size={14} />
+                    {reward.pointsCost} {t.points}
+                  </RewardBadge>
+                </RewardImageContainer>
+
                 <RewardContent>
                   <RewardTitle>{reward.title}</RewardTitle>
                   <RewardDesc>{reward.description}</RewardDesc>
-                  <RewardFooter>
-                    <RewardCost>
-                      <Sparkles size={16} />
-                      {reward.pointsCost} {t.points}
-                    </RewardCost>
-                  </RewardFooter>
                 </RewardContent>
+
+                <RewardFooter style={{ opacity: 0.7 }}>
+                  {reward.expiresIn && (
+                    <RewardExpiry>
+                      <Clock size={14} />
+                      {t.expiresIn} {reward.expiresIn} {t.days}
+                    </RewardExpiry>
+                  )}
+                  <RewardCost>
+                    <Lock size={16} />
+                    {t.locked}
+                  </RewardCost>
+                </RewardFooter>
               </RewardCard>
             ))}
           </RewardsGrid>
@@ -793,24 +817,114 @@ const RewardsGrid = styled.div`
 
 const RewardCard = styled(motion.div)<{ locked?: boolean }>`
   background: white;
-  border-radius: 1rem;
-  padding: 1.5rem;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  border-radius: 1.25rem;
+  overflow: hidden;
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.05),
+    0 4px 12px rgba(0, 0, 0, 0.03),
+    0 0 0 1px rgba(0, 0, 0, 0.02);
   position: relative;
   opacity: ${props => (props.locked ? 0.6 : 1)};
-  transition: all 0.2s;
+  transition: all 400ms cubic-bezier(0.4, 0, 0.2, 1);
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    border-radius: 1.25rem;
+    padding: 2px;
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(168, 85, 247, 0.1) 100%);
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    opacity: 0;
+    transition: opacity 400ms cubic-bezier(0.4, 0, 0.2, 1);
+  }
 
   &:hover {
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
-    transform: translateY(-2px);
+    box-shadow:
+      0 8px 24px rgba(0, 0, 0, 0.08),
+      0 16px 48px rgba(0, 0, 0, 0.06),
+      0 0 0 1px rgba(99, 102, 241, 0.1);
+    transform: translateY(-8px) scale(1.02);
+
+    &::before {
+      opacity: 1;
+    }
+  }
+`;
+
+const RewardImageContainer = styled.div`
+  position: relative;
+  width: 100%;
+  padding-top: 66.67%; /* 3:2 aspect ratio */
+  overflow: hidden;
+  background: linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%);
+`;
+
+const RewardImage = styled.img`
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 400ms cubic-bezier(0.4, 0, 0.2, 1);
+
+  ${RewardCard}:hover & {
+    transform: scale(1.05);
+  }
+`;
+
+const RewardBadge = styled.div`
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 0.5rem 1rem;
+  border-radius: 9999px;
+  font-weight: 700;
+  font-size: 0.875rem;
+  box-shadow:
+    0 4px 16px rgba(102, 126, 234, 0.3),
+    0 8px 32px rgba(118, 75, 162, 0.2);
+  letter-spacing: -0.01em;
+  backdrop-filter: blur(10px);
+  border: 2px solid rgba(255, 255, 255, 0.1);
+  transition: all 300ms cubic-bezier(0.4, 0, 0.2, 1);
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+
+  ${RewardCard}:hover & {
+    transform: scale(1.05);
+    box-shadow:
+      0 6px 20px rgba(102, 126, 234, 0.4),
+      0 10px 40px rgba(118, 75, 162, 0.3);
   }
 `;
 
 const LockedOverlay = styled.div`
   position: absolute;
   top: 1rem;
-  right: 1rem;
-  color: var(--text-secondary);
+  left: 1rem;
+  width: 48px;
+  height: 48px;
+  background: rgba(0, 0, 0, 0.6);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  z-index: 10;
+  backdrop-filter: blur(10px);
 `;
 
 const RewardIcon = styled.div`
@@ -820,7 +934,10 @@ const RewardIcon = styled.div`
 
 const RewardContent = styled.div`
   flex: 1;
-  margin-bottom: 1rem;
+  padding: 1.75rem;
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(to bottom, #ffffff 0%, #fafbfc 100%);
 `;
 
 const RewardTitle = styled.h3`
@@ -839,18 +956,24 @@ const RewardDesc = styled.p`
 
 const RewardFooter = styled.div`
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 1rem;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1.25rem 1.75rem;
+  margin-top: auto;
+  margin-left: -1.75rem;
+  margin-right: -1.75rem;
+  margin-bottom: -1.75rem;
+  background: #000000;
+  border-top: 2px solid #000000;
 `;
 
 const RewardCost = styled.div`
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  font-size: 1rem;
+  font-size: 1.125rem;
   font-weight: 700;
-  color: #667eea;
+  color: #ffffff;
 `;
 
 const RewardExpiry = styled.div`
@@ -858,12 +981,23 @@ const RewardExpiry = styled.div`
   align-items: center;
   gap: 0.25rem;
   font-size: 0.75rem;
-  color: var(--text-secondary);
+  color: #ffffff;
+  opacity: 0.6;
 `;
 
 const RewardAction = styled.div`
   display: flex;
-  justify-content: flex-end;
+  justify-content: stretch;
+
+  button {
+    width: 100%;
+    background: #ffffff;
+    color: #000000;
+
+    &:hover {
+      background: #f3f4f6;
+    }
+  }
 `;
 
 const HistoryList = styled.div`

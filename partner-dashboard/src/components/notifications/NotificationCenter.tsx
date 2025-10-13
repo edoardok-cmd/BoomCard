@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useLanguage } from '../../contexts/LanguageContext';
 import styled from 'styled-components';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -299,6 +300,7 @@ interface NotificationCenterProps {
 }
 
 export const NotificationCenter: React.FC<NotificationCenterProps> = ({ language = 'en' }) => {
+  const { t } = useLanguage();
   const [isOpen, setIsOpen] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -362,7 +364,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ language
     const hours = Math.floor(minutes / 60);
     const days = Math.floor(hours / 24);
 
-    if (minutes < 1) return language === 'bg' ? 'Току-що' : 'Just now';
+    if (minutes < 1) return t('common.justNow');
     if (minutes < 60) return `${minutes}${language === 'bg' ? 'м' : 'm'}`;
     if (hours < 24) return `${hours}${language === 'bg' ? 'ч' : 'h'}`;
     if (days < 7) return `${days}${language === 'bg' ? 'д' : 'd'}`;
@@ -400,18 +402,18 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ language
               transition={{ duration: 0.2 }}
             >
               <Header>
-                <Title>{language === 'bg' ? 'Известия' : 'Notifications'}</Title>
+                <Title>{t('common.notifications')}</Title>
                 <HeaderActions>
                   {unreadCount > 0 && (
                     <SmallButton className="secondary" onClick={handleMarkAllAsRead}>
                       <Check />
-                      {language === 'bg' ? 'Прочети всички' : 'Mark all read'}
+                      {t('common.markAllRead')}
                     </SmallButton>
                   )}
                   {notifications.length > 0 && (
                     <SmallButton className="secondary" onClick={handleClearAll}>
                       <Trash2 />
-                      {language === 'bg' ? 'Изчисти' : 'Clear'}
+                      {t('common.clear')}
                     </SmallButton>
                   )}
                 </HeaderActions>
@@ -424,7 +426,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ language
                       <Bell />
                     </EmptyIcon>
                     <EmptyText>
-                      {language === 'bg' ? 'Няма известия' : 'No notifications'}
+                      {t('common.noNotifications')}
                     </EmptyText>
                   </EmptyState>
                 ) : (

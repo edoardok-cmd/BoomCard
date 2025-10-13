@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
+import { useLanguage } from '../../contexts/LanguageContext';
 import styled from 'styled-components';
 import { motion } from 'framer-motion';
 import { Check, Zap, Star, TrendingUp } from 'lucide-react';
 import Button from '../common/Button/Button';
+import { convertBGNToEUR } from '../../utils/helpers';
 
 const PlansContainer = styled.div`
   max-width: 1200px;
@@ -294,15 +296,14 @@ export const PricingPlans: React.FC<PricingPlansProps> = ({
   onSelectPlan,
   language = 'en',
 }) => {
+  const { t } = useLanguage();
   const [isAnnual, setIsAnnual] = useState(false);
 
   const plans: Plan[] = [
     {
       id: 'starter',
-      name: language === 'bg' ? 'Стартов' : 'Starter',
-      description: language === 'bg'
-        ? 'Перфектен за малки заведения'
-        : 'Perfect for small venues getting started',
+      name: t('pricing.starter'),
+      description: t('pricing.starterDesc'),
       icon: <Zap />,
       iconColor: '#6366f1',
       price: {
@@ -310,20 +311,18 @@ export const PricingPlans: React.FC<PricingPlansProps> = ({
         annual: 290,
       },
       features: [
-        language === 'bg' ? 'До 100 транзакции/месец' : 'Up to 100 transactions/month',
-        language === 'bg' ? '1 локация' : '1 venue location',
-        language === 'bg' ? 'Основна аналитика' : 'Basic analytics',
-        language === 'bg' ? 'Email поддръжка' : 'Email support',
-        language === 'bg' ? 'QR код генератор' : 'QR code generator',
+        t('pricing.transactions100'),
+        t('pricing.location1'),
+        t('pricing.basicAnalytics'),
+        t('pricing.emailSupport'),
+        t('pricing.qrGenerator'),
       ],
-      cta: language === 'bg' ? 'Започни сега' : 'Get Started',
+      cta: t('pricing.getStarted'),
     },
     {
       id: 'professional',
-      name: language === 'bg' ? 'Професионален' : 'Professional',
-      description: language === 'bg'
-        ? 'За растящи бизнеси'
-        : 'For growing businesses',
+      name: t('pricing.professional'),
+      description: t('pricing.professionalDesc'),
       icon: <Star />,
       iconColor: '#000000',
       price: {
@@ -331,23 +330,21 @@ export const PricingPlans: React.FC<PricingPlansProps> = ({
         annual: 790,
       },
       features: [
-        language === 'bg' ? 'До 1000 транзакции/месец' : 'Up to 1,000 transactions/month',
-        language === 'bg' ? 'До 5 локации' : 'Up to 5 venue locations',
-        language === 'bg' ? 'Разширена аналитика' : 'Advanced analytics',
-        language === 'bg' ? 'POS интеграция' : 'POS integration',
-        language === 'bg' ? 'Приоритетна поддръжка' : 'Priority support',
-        language === 'bg' ? 'Персонализирани оферти' : 'Custom offers',
-        language === 'bg' ? 'Експорт на данни' : 'Data export',
+        t('pricing.transactions1000'),
+        t('pricing.locations5'),
+        t('pricing.advancedAnalytics'),
+        t('pricing.posIntegration'),
+        t('pricing.prioritySupport'),
+        t('pricing.customOffers'),
+        t('pricing.dataExport'),
       ],
       featured: true,
-      cta: language === 'bg' ? 'Избери план' : 'Choose Plan',
+      cta: t('pricing.choosePlan'),
     },
     {
       id: 'enterprise',
-      name: language === 'bg' ? 'Корпоративен' : 'Enterprise',
-      description: language === 'bg'
-        ? 'За големи вериги'
-        : 'For large chains and franchises',
+      name: t('pricing.enterprise'),
+      description: t('pricing.enterpriseDesc'),
       icon: <TrendingUp />,
       iconColor: '#8b5cf6',
       price: {
@@ -355,16 +352,16 @@ export const PricingPlans: React.FC<PricingPlansProps> = ({
         annual: 1990,
       },
       features: [
-        language === 'bg' ? 'Неограничени транзакции' : 'Unlimited transactions',
-        language === 'bg' ? 'Неограничени локации' : 'Unlimited venue locations',
-        language === 'bg' ? 'Пълна аналитика и отчети' : 'Full analytics & reporting',
-        language === 'bg' ? 'Всички POS интеграции' : 'All POS integrations',
-        language === 'bg' ? '24/7 поддръжка' : '24/7 dedicated support',
-        language === 'bg' ? 'API достъп' : 'API access',
-        language === 'bg' ? 'White-label опция' : 'White-label option',
-        language === 'bg' ? 'Персонализирани решения' : 'Custom solutions',
+        t('pricing.unlimitedTransactions'),
+        t('pricing.unlimitedLocations'),
+        t('pricing.fullAnalytics'),
+        t('pricing.allPosIntegrations'),
+        t('pricing.support247'),
+        t('pricing.apiAccess'),
+        t('pricing.whiteLabel'),
+        t('pricing.customSolutions'),
       ],
-      cta: language === 'bg' ? 'Свържи се' : 'Contact Sales',
+      cta: t('pricing.contactSales'),
     },
   ];
 
@@ -383,17 +380,15 @@ export const PricingPlans: React.FC<PricingPlansProps> = ({
     <PlansContainer>
       <Header>
         <Title>
-          {language === 'bg' ? 'Изберете вашия план' : 'Choose Your Plan'}
+          {t('pricing.title')}
         </Title>
         <Subtitle>
-          {language === 'bg'
-            ? 'Започнете безплатно за 14 дни. Без кредитна карта.'
-            : 'Start with a 14-day free trial. No credit card required.'}
+          {t('pricing.trialSubtitle')}
         </Subtitle>
 
         <BillingToggle>
           <ToggleLabel $active={!isAnnual}>
-            {language === 'bg' ? 'Месечно' : 'Monthly'}
+            {t('pricing.monthly')}
           </ToggleLabel>
           <ToggleSwitch
             $isAnnual={isAnnual}
@@ -401,11 +396,11 @@ export const PricingPlans: React.FC<PricingPlansProps> = ({
             aria-label="Toggle billing period"
           />
           <ToggleLabel $active={isAnnual}>
-            {language === 'bg' ? 'Годишно' : 'Annual'}
+            {t('pricing.annually')}
           </ToggleLabel>
           {isAnnual && (
             <SaveBadge>
-              {language === 'bg' ? 'Спести 17%' : 'Save 17%'}
+              {t('pricing.save17')}
             </SaveBadge>
           )}
         </BillingToggle>
@@ -423,7 +418,7 @@ export const PricingPlans: React.FC<PricingPlansProps> = ({
             {plan.featured && (
               <FeaturedBadge>
                 <Star />
-                {language === 'bg' ? 'Най-популярен' : 'Most Popular'}
+                {t('pricing.popularPlan')}
               </FeaturedBadge>
             )}
 
@@ -436,19 +431,21 @@ export const PricingPlans: React.FC<PricingPlansProps> = ({
 
             <PlanPrice>
               <PriceAmount>
-                <Currency>$</Currency>
                 <Amount>
                   {isAnnual
                     ? Math.round(plan.price.annual / 12)
                     : plan.price.monthly}
                 </Amount>
+                <Currency>
+                  {language === 'bg' ? 'лв.' : 'BGN'} / €{convertBGNToEUR(isAnnual ? Math.round(plan.price.annual / 12) : plan.price.monthly)}
+                </Currency>
                 <Period>
-                  /{language === 'bg' ? 'месец' : 'month'}
+                  /{t('pricing.month')}
                 </Period>
               </PriceAmount>
               {isAnnual && (
                 <OldPrice>
-                  ${plan.price.monthly}/{language === 'bg' ? 'месец' : 'month'} {language === 'bg' ? 'месечно' : 'monthly'}
+                  {plan.price.monthly} {language === 'bg' ? 'лв.' : 'BGN'} / €{convertBGNToEUR(plan.price.monthly)}/{t('pricing.month')} {t('pricing.monthly_billing')}
                 </OldPrice>
               )}
             </PlanPrice>
@@ -478,52 +475,52 @@ export const PricingPlans: React.FC<PricingPlansProps> = ({
 
       <ComparisonTable>
         <TableTitle>
-          {language === 'bg' ? 'Сравнение на плановете' : 'Compare Plans'}
+          {t('pricing.comparePlans')}
         </TableTitle>
         <Table>
           <thead>
             <tr>
-              <TableHeader>{language === 'bg' ? 'Функция' : 'Feature'}</TableHeader>
-              <TableHeader>{language === 'bg' ? 'Стартов' : 'Starter'}</TableHeader>
-              <TableHeader>{language === 'bg' ? 'Професионален' : 'Professional'}</TableHeader>
-              <TableHeader>{language === 'bg' ? 'Корпоративен' : 'Enterprise'}</TableHeader>
+              <TableHeader>{t('pricing.feature')}</TableHeader>
+              <TableHeader>{t('pricing.starter')}</TableHeader>
+              <TableHeader>{t('pricing.professional')}</TableHeader>
+              <TableHeader>{t('pricing.enterprise')}</TableHeader>
             </tr>
           </thead>
           <tbody>
             <TableRow>
-              <TableCell>{language === 'bg' ? 'Транзакции/месец' : 'Transactions/month'}</TableCell>
+              <TableCell>{t('pricing.transactionsMonth')}</TableCell>
               <TableCell>100</TableCell>
               <TableCell>1,000</TableCell>
-              <TableCell>{language === 'bg' ? 'Неограничени' : 'Unlimited'}</TableCell>
+              <TableCell>{t('pricing.unlimited')}</TableCell>
             </TableRow>
             <TableRow>
-              <TableCell>{language === 'bg' ? 'Локации' : 'Venue Locations'}</TableCell>
+              <TableCell>{t('pricing.venueLocations')}</TableCell>
               <TableCell>1</TableCell>
               <TableCell>5</TableCell>
-              <TableCell>{language === 'bg' ? 'Неограничени' : 'Unlimited'}</TableCell>
+              <TableCell>{t('pricing.unlimited')}</TableCell>
             </TableRow>
             <TableRow>
-              <TableCell>{language === 'bg' ? 'Аналитика' : 'Analytics'}</TableCell>
-              <TableCell>{language === 'bg' ? 'Основна' : 'Basic'}</TableCell>
-              <TableCell>{language === 'bg' ? 'Разширена' : 'Advanced'}</TableCell>
-              <TableCell>{language === 'bg' ? 'Пълна' : 'Full'}</TableCell>
+              <TableCell>{t('pricing.analytics')}</TableCell>
+              <TableCell>{t('pricing.basic')}</TableCell>
+              <TableCell>{t('pricing.advanced')}</TableCell>
+              <TableCell>{t('pricing.full')}</TableCell>
             </TableRow>
             <TableRow>
-              <TableCell>{language === 'bg' ? 'POS Интеграция' : 'POS Integration'}</TableCell>
+              <TableCell>{t('pricing.posIntegrationLabel')}</TableCell>
               <TableCell>-</TableCell>
               <TableCell>✓</TableCell>
               <TableCell>✓</TableCell>
             </TableRow>
             <TableRow>
-              <TableCell>API {language === 'bg' ? 'Достъп' : 'Access'}</TableCell>
+              <TableCell>API {t('pricing.apiAccessLabel')}</TableCell>
               <TableCell>-</TableCell>
               <TableCell>-</TableCell>
               <TableCell>✓</TableCell>
             </TableRow>
             <TableRow>
-              <TableCell>{language === 'bg' ? 'Поддръжка' : 'Support'}</TableCell>
+              <TableCell>{t('pricing.support')}</TableCell>
               <TableCell>Email</TableCell>
-              <TableCell>{language === 'bg' ? 'Приоритетна' : 'Priority'}</TableCell>
+              <TableCell>{t('pricing.priority')}</TableCell>
               <TableCell>24/7</TableCell>
             </TableRow>
           </tbody>

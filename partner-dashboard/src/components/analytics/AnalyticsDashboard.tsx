@@ -1,4 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
+import { useLanguage } from '../../contexts/LanguageContext';
+import { useAuth } from '../../contexts/AuthContext';
+import { usePartnerAnalytics } from '../../hooks/useAnalytics';
+import { useOffers } from '../../hooks/useOffers';
 import styled from 'styled-components';
 import { motion } from 'framer-motion';
 import {
@@ -251,39 +255,100 @@ interface MetricData {
 export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
   language = 'en',
 }) => {
+  const { t } = useLanguage();
+  const { user } = useAuth();
   const [timeRange, setTimeRange] = useState<TimeRange>('month');
 
-  // Mock data - replace with real data
-  const metrics: Record<string, MetricData> = {
-    revenue: {
-      value: '$45,231',
-      change: 12.5,
-      isPositive: true,
-    },
-    transactions: {
-      value: '1,234',
-      change: 8.2,
-      isPositive: true,
-    },
-    customers: {
-      value: '892',
-      change: -3.1,
-      isPositive: false,
-    },
-    avgOrderValue: {
-      value: '$36.67',
-      change: 15.8,
-      isPositive: true,
-    },
-  };
+  // Calculate date range based on timeRange
+  const { startDate, endDate } = useMemo(() => {
+    const end = new Date();
+    const start = new Date();
 
-  const topOffers = [
-    { rank: 1, name: '20% Off Dinner', venue: 'Italian Restaurant', redemptions: 234, revenue: '$4,680' },
-    { rank: 2, name: 'Buy 1 Get 1 Free', venue: 'Burger Place', redemptions: 189, revenue: '$3,780' },
-    { rank: 3, name: '30% Off Spa', venue: 'Luxury Spa', redemptions: 156, revenue: '$6,240' },
-    { rank: 4, name: 'Wine Tasting', venue: 'Mountain Winery', redemptions: 142, revenue: '$5,680' },
-    { rank: 5, name: 'Hotel Weekend', venue: 'Beach Resort', redemptions: 98, revenue: '$7,840' },
-  ];
+    switch (timeRange) {
+      case 'today':
+        start.setHours(0, 0, 0, 0);
+        break;
+      case 'week':
+        start.setDate(start.getDate() - 7);
+        break;
+      case 'month':
+        start.setMonth(start.getMonth() - 1);
+        break;
+      case 'year':
+        start.setFullYear(start.getFullYear() - 1);
+        break;
+    }
+
+    return {
+      startDate: start.toISOString().split('T')[0],
+      endDate: end.toISOString().split('T')[0],
+    };
+  }, [timeRange]);
+
+  // Fetch real analytics data
+  const { data: analyticsData, isLoading: isLoadingAnalytics } = usePartnerAnalytics(
+    user?.id,
+    startDate,
+    endDate
+  );
+
+  // Fetch top offers for the partner
+  const { data: offersData, isLoading: isLoadingOffers } = useOffers({
+    partnerId: user?.id,
+    sortBy: 'redemptions',
+    sortOrder: 'desc',
+    limit: 5,
+  });
+
+  // Prepare metrics from real data or show defaults
+  const metrics: Record<string, MetricData> = useMemo(() => {
+    if (!analyticsData) {
+      return {
+        revenue: { value: '...', change: 0, isPositive: true },
+        transactions: { value: '...', change: 0, isPositive: true },
+        customers: { value: '...', change: 0, isPositive: true },
+        avgOrderValue: { value: '...', change: 0, isPositive: true },
+      };
+    }
+
+    return {
+      revenue: {
+        value: `${(analyticsData.totalRevenue || 0).toLocaleString()} лв`,
+        change: analyticsData.revenueGrowth || 0,
+        isPositive: (analyticsData.revenueGrowth || 0) >= 0,
+      },
+      transactions: {
+        value: (analyticsData.totalRedemptions || 0).toLocaleString(),
+        change: analyticsData.redemptionsGrowth || 0,
+        isPositive: (analyticsData.redemptionsGrowth || 0) >= 0,
+      },
+      customers: {
+        value: (analyticsData.uniqueCustomers || 0).toLocaleString(),
+        change: analyticsData.customersGrowth || 0,
+        isPositive: (analyticsData.customersGrowth || 0) >= 0,
+      },
+      avgOrderValue: {
+        value: `${(analyticsData.avgOrderValue || 0).toFixed(2)} лв`,
+        change: analyticsData.avgOrderValueGrowth || 0,
+        isPositive: (analyticsData.avgOrderValueGrowth || 0) >= 0,
+      },
+    };
+  }, [analyticsData]);
+
+  // Prepare top offers from real data
+  const topOffers = useMemo(() => {
+    if (!offersData?.data) {
+      return [];
+    }
+
+    return offersData.data.slice(0, 5).map((offer, index) => ({
+      rank: index + 1,
+      name: offer.title || offer.titleBg || 'Untitled Offer',
+      venue: offer.partnerName || 'Unknown Venue',
+      redemptions: offer.redemptionCount || 0,
+      revenue: `${((offer.redemptionCount || 0) * (offer.discountedPrice || 0)).toLocaleString()} лв`,
+    }));
+  }, [offersData]);
 
   const handleExport = () => {
     console.log('Export analytics report');
@@ -296,11 +361,9 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
   return (
     <Container>
       <Header>
-        <Title>{language === 'bg' ? 'Анализи' : 'Analytics'}</Title>
+        <Title>{t('analytics.title')}</Title>
         <Subtitle>
-          {language === 'bg'
-            ? 'Преглед на вашите показатели и статистики'
-            : 'View your performance metrics and insights'}
+          {t('analytics.subtitle')}
         </Subtitle>
       </Header>
 
@@ -310,36 +373,36 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
             $active={timeRange === 'today'}
             onClick={() => setTimeRange('today')}
           >
-            {language === 'bg' ? 'Днес' : 'Today'}
+            {t('analytics.today')}
           </TimeButton>
           <TimeButton
             $active={timeRange === 'week'}
             onClick={() => setTimeRange('week')}
           >
-            {language === 'bg' ? 'Седмица' : 'Week'}
+            {t('analytics.week')}
           </TimeButton>
           <TimeButton
             $active={timeRange === 'month'}
             onClick={() => setTimeRange('month')}
           >
-            {language === 'bg' ? 'Месец' : 'Month'}
+            {t('analytics.month')}
           </TimeButton>
           <TimeButton
             $active={timeRange === 'year'}
             onClick={() => setTimeRange('year')}
           >
-            {language === 'bg' ? 'Година' : 'Year'}
+            {t('analytics.year')}
           </TimeButton>
         </TimeRangeSelector>
 
         <Actions>
           <Button variant="outline" size="medium" onClick={handleFilter}>
             <Filter style={{ width: '1rem', height: '1rem' }} />
-            {language === 'bg' ? 'Филтри' : 'Filter'}
+            {t('analytics.filter')}
           </Button>
           <Button variant="outline" size="medium" onClick={handleExport}>
             <Download style={{ width: '1rem', height: '1rem' }} />
-            {language === 'bg' ? 'Експорт' : 'Export'}
+            {t('analytics.export')}
           </Button>
         </Actions>
       </Controls>
@@ -351,15 +414,17 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
           transition={{ duration: 0.3 }}
         >
           <MetricHeader>
-            <MetricLabel>{language === 'bg' ? 'Приходи' : 'Revenue'}</MetricLabel>
+            <MetricLabel>{t('analytics.revenue')}</MetricLabel>
             <MetricIcon $color="#10b981">
               <DollarSign />
             </MetricIcon>
           </MetricHeader>
-          <MetricValue>{metrics.revenue.value}</MetricValue>
+          <MetricValue>
+            {isLoadingAnalytics ? '...' : metrics.revenue.value}
+          </MetricValue>
           <MetricChange $positive={metrics.revenue.isPositive}>
             {metrics.revenue.isPositive ? <TrendingUp /> : <TrendingDown />}
-            {Math.abs(metrics.revenue.change)}% {language === 'bg' ? 'от миналия месец' : 'from last month'}
+            {Math.abs(metrics.revenue.change).toFixed(1)}% {t('analytics.fromLastMonth')}
           </MetricChange>
         </MetricCard>
 
@@ -369,15 +434,17 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
           transition={{ duration: 0.3, delay: 0.1 }}
         >
           <MetricHeader>
-            <MetricLabel>{language === 'bg' ? 'Транзакции' : 'Transactions'}</MetricLabel>
+            <MetricLabel>{t('analytics.transactions')}</MetricLabel>
             <MetricIcon $color="#6366f1">
               <ShoppingCart />
             </MetricIcon>
           </MetricHeader>
-          <MetricValue>{metrics.transactions.value}</MetricValue>
+          <MetricValue>
+            {isLoadingAnalytics ? '...' : metrics.transactions.value}
+          </MetricValue>
           <MetricChange $positive={metrics.transactions.isPositive}>
             {metrics.transactions.isPositive ? <TrendingUp /> : <TrendingDown />}
-            {Math.abs(metrics.transactions.change)}% {language === 'bg' ? 'от миналия месец' : 'from last month'}
+            {Math.abs(metrics.transactions.change).toFixed(1)}% {t('analytics.fromLastMonth')}
           </MetricChange>
         </MetricCard>
 
@@ -387,15 +454,17 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
           transition={{ duration: 0.3, delay: 0.2 }}
         >
           <MetricHeader>
-            <MetricLabel>{language === 'bg' ? 'Клиенти' : 'Customers'}</MetricLabel>
+            <MetricLabel>{t('analytics.customers')}</MetricLabel>
             <MetricIcon $color="#f59e0b">
               <Users />
             </MetricIcon>
           </MetricHeader>
-          <MetricValue>{metrics.customers.value}</MetricValue>
+          <MetricValue>
+            {isLoadingAnalytics ? '...' : metrics.customers.value}
+          </MetricValue>
           <MetricChange $positive={metrics.customers.isPositive}>
             {metrics.customers.isPositive ? <TrendingUp /> : <TrendingDown />}
-            {Math.abs(metrics.customers.change)}% {language === 'bg' ? 'от миналия месец' : 'from last month'}
+            {Math.abs(metrics.customers.change).toFixed(1)}% {t('analytics.fromLastMonth')}
           </MetricChange>
         </MetricCard>
 
@@ -405,15 +474,17 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
           transition={{ duration: 0.3, delay: 0.3 }}
         >
           <MetricHeader>
-            <MetricLabel>{language === 'bg' ? 'Средна стойност' : 'Avg Order Value'}</MetricLabel>
+            <MetricLabel>{t('analytics.avgOrderValue')}</MetricLabel>
             <MetricIcon $color="#8b5cf6">
               <Percent />
             </MetricIcon>
           </MetricHeader>
-          <MetricValue>{metrics.avgOrderValue.value}</MetricValue>
+          <MetricValue>
+            {isLoadingAnalytics ? '...' : metrics.avgOrderValue.value}
+          </MetricValue>
           <MetricChange $positive={metrics.avgOrderValue.isPositive}>
             {metrics.avgOrderValue.isPositive ? <TrendingUp /> : <TrendingDown />}
-            {Math.abs(metrics.avgOrderValue.change)}% {language === 'bg' ? 'от миналия месец' : 'from last month'}
+            {Math.abs(metrics.avgOrderValue.change).toFixed(1)}% {t('analytics.fromLastMonth')}
           </MetricChange>
         </MetricCard>
       </MetricsGrid>
@@ -421,30 +492,26 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
       <ChartsGrid>
         <ChartCard>
           <ChartHeader>
-            <ChartTitle>{language === 'bg' ? 'Приходи по време' : 'Revenue Over Time'}</ChartTitle>
+            <ChartTitle>{t('analytics.revenueOverTime')}</ChartTitle>
           </ChartHeader>
           <ChartContent>
-            {language === 'bg' ? 'Графиката ще бъде показана тук' : 'Chart visualization would go here'}
+            {t('analytics.chartPlaceholder')}
             <br />
             <small>
-              {language === 'bg'
-                ? 'Интегрирайте с Chart.js, Recharts или D3.js'
-                : 'Integrate with Chart.js, Recharts, or D3.js'}
+              {t('analytics.chartIntegration')}
             </small>
           </ChartContent>
         </ChartCard>
 
         <ChartCard>
           <ChartHeader>
-            <ChartTitle>{language === 'bg' ? 'Транзакции по категория' : 'Transactions by Category'}</ChartTitle>
+            <ChartTitle>{t('analytics.transactionsByCategory')}</ChartTitle>
           </ChartHeader>
           <ChartContent>
-            {language === 'bg' ? 'Графиката ще бъде показана тук' : 'Chart visualization would go here'}
+            {t('analytics.chartPlaceholder')}
             <br />
             <small>
-              {language === 'bg'
-                ? 'Интегрирайте с Chart.js, Recharts или D3.js'
-                : 'Integrate with Chart.js, Recharts, or D3.js'}
+              {t('analytics.chartIntegration')}
             </small>
           </ChartContent>
         </ChartCard>
@@ -452,19 +519,19 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
 
       <TableCard>
         <ChartHeader>
-          <ChartTitle>{language === 'bg' ? 'Топ оферти' : 'Top Performing Offers'}</ChartTitle>
+          <ChartTitle>{t('analytics.topOffers')}</ChartTitle>
         </ChartHeader>
         <Table>
           <thead>
             <tr>
               <TableHeader>#</TableHeader>
-              <TableHeader>{language === 'bg' ? 'Оферта' : 'Offer'}</TableHeader>
-              <TableHeader>{language === 'bg' ? 'Заведение' : 'Venue'}</TableHeader>
+              <TableHeader>{t('analytics.offer')}</TableHeader>
+              <TableHeader>{t('analytics.venue')}</TableHeader>
               <TableHeader style={{ textAlign: 'right' }}>
-                {language === 'bg' ? 'Използвания' : 'Redemptions'}
+                {t('analytics.redemptions')}
               </TableHeader>
               <TableHeader style={{ textAlign: 'right' }}>
-                {language === 'bg' ? 'Приходи' : 'Revenue'}
+                {t('analytics.revenue')}
               </TableHeader>
             </tr>
           </thead>

@@ -5,6 +5,7 @@ import styled from 'styled-components';
 import Badge from '../Badge/Badge';
 import FavoriteButton from '../FavoriteButton/FavoriteButton';
 import { useLanguage } from '../../../contexts/LanguageContext';
+import { convertBGNToEUR } from '../../../utils/helpers';
 
 export interface Offer {
   id: string;
@@ -32,17 +33,47 @@ interface OfferCardProps {
 
 const CardContainer = styled(motion.div)`
   background: white;
-  border-radius: 1rem;
+  border-radius: 1.5rem;
   overflow: hidden;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
-  transition: all 300ms cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow:
+    0 2px 8px rgba(0, 0, 0, 0.08),
+    0 8px 24px rgba(0, 0, 0, 0.06),
+    0 16px 48px rgba(0, 0, 0, 0.03);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  transition: all 400ms cubic-bezier(0.4, 0, 0.2, 1);
   height: 100%;
   display: flex;
   flex-direction: column;
+  position: relative;
+
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    border-radius: 1.5rem;
+    padding: 2px;
+    background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%);
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    opacity: 0;
+    transition: opacity 400ms cubic-bezier(0.4, 0, 0.2, 1);
+  }
 
   &:hover {
-    box-shadow: 0 10px 40px -10px rgba(0, 0, 0, 0.15);
-    transform: translateY(-4px);
+    box-shadow:
+      0 4px 16px rgba(0, 0, 0, 0.12),
+      0 12px 32px rgba(0, 0, 0, 0.1),
+      0 24px 64px rgba(0, 0, 0, 0.08);
+    transform: translateY(-12px) scale(1.02);
+    border-color: rgba(99, 102, 241, 0.2);
+
+    &::before {
+      opacity: 1;
+    }
   }
 `;
 
@@ -72,13 +103,26 @@ const DiscountBadge = styled.div`
   position: absolute;
   top: 1rem;
   right: 1rem;
-  background: #000000;
+  background: linear-gradient(135deg, #111827 0%, #1f2937 100%);
   color: white;
-  padding: 0.5rem 1rem;
+  padding: 0.625rem 1.125rem;
   border-radius: 9999px;
-  font-weight: 700;
+  font-weight: 800;
   font-size: 1.125rem;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  box-shadow:
+    0 4px 16px rgba(0, 0, 0, 0.2),
+    0 8px 32px rgba(0, 0, 0, 0.15);
+  letter-spacing: -0.02em;
+  backdrop-filter: blur(10px);
+  border: 2px solid rgba(255, 255, 255, 0.1);
+  transition: all 300ms cubic-bezier(0.4, 0, 0.2, 1);
+
+  ${CardContainer}:hover & {
+    transform: scale(1.05);
+    box-shadow:
+      0 6px 20px rgba(0, 0, 0, 0.25),
+      0 10px 40px rgba(0, 0, 0, 0.2);
+  }
 `;
 
 const FavoriteButtonWrapper = styled.div`
@@ -89,10 +133,11 @@ const FavoriteButtonWrapper = styled.div`
 `;
 
 const Content = styled.div`
-  padding: 1.5rem;
+  padding: 1.75rem;
   flex: 1;
   display: flex;
   flex-direction: column;
+  background: linear-gradient(to bottom, #ffffff 0%, #fafbfc 100%);
 `;
 
 const CategoryBadgeWrapper = styled.div`
@@ -100,27 +145,34 @@ const CategoryBadgeWrapper = styled.div`
 `;
 
 const Title = styled.h3`
-  font-size: 1.25rem;
-  font-weight: 600;
+  font-size: 1.375rem;
+  font-weight: 700;
   color: #111827;
-  margin-bottom: 0.5rem;
-  line-height: 1.4;
+  margin-bottom: 0.625rem;
+  line-height: 1.35;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+  letter-spacing: -0.02em;
+  transition: color 300ms cubic-bezier(0.4, 0, 0.2, 1);
+
+  ${CardContainer}:hover & {
+    color: #6366f1;
+  }
 `;
 
 const Description = styled.p`
   font-size: 0.9375rem;
   color: #6b7280;
-  line-height: 1.6;
-  margin-bottom: 1rem;
+  line-height: 1.65;
+  margin-bottom: 1.25rem;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
   flex: 1;
+  letter-spacing: -0.01em;
 `;
 
 const MetaInfo = styled.div`
@@ -148,27 +200,79 @@ const PriceSection = styled.div`
   display: flex;
   align-items: center;
   gap: 1rem;
-  padding-top: 1rem;
-  border-top: 1px solid #e5e7eb;
+  padding-top: 1.25rem;
+  margin-top: 0.5rem;
+  border-top: none;
+  background: linear-gradient(135deg, #111827 0%, #1f2937 100%);
+  margin-left: -1.75rem;
+  margin-right: -1.75rem;
+  margin-bottom: -1.75rem;
+  padding-left: 1.75rem;
+  padding-right: 1.75rem;
+  padding-bottom: 1.75rem;
+  position: relative;
+  overflow: hidden;
+
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, #6366f1 0%, #a855f7 50%, #6366f1 100%);
+    background-size: 200% 100%;
+    animation: shimmer 3s linear infinite;
+  }
+
+  @keyframes shimmer {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+  }
+
+  &::after {
+    content: '';
+    position: absolute;
+    top: -50%;
+    right: -20%;
+    width: 200px;
+    height: 200px;
+    background: radial-gradient(circle, rgba(99, 102, 241, 0.15) 0%, transparent 70%);
+    border-radius: 50%;
+    transition: transform 400ms cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  ${CardContainer}:hover &::after {
+    transform: scale(1.5) translate(-10%, 10%);
+  }
 `;
 
 const OriginalPrice = styled.span`
   font-size: 0.9375rem;
-  color: #9ca3af;
+  color: rgba(255, 255, 255, 0.5);
   text-decoration: line-through;
+  font-weight: 500;
+  position: relative;
+  z-index: 1;
 `;
 
 const DiscountedPrice = styled.span`
-  font-size: 1.5rem;
-  font-weight: 700;
-  color: #111827;
+  font-size: 1.875rem;
+  font-weight: 800;
+  color: #ffffff;
+  letter-spacing: -0.03em;
+  position: relative;
+  z-index: 1;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 `;
 
 const Currency = styled.span`
-  font-size: 1rem;
-  font-weight: 600;
-  color: #6b7280;
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.9);
   margin-left: 0.25rem;
+  position: relative;
+  z-index: 1;
 `;
 
 export const OfferCard: React.FC<OfferCardProps> = ({ offer, className }) => {
@@ -176,6 +280,13 @@ export const OfferCard: React.FC<OfferCardProps> = ({ offer, className }) => {
   const title = language === 'bg' ? offer.titleBg : offer.title;
   const description = language === 'bg' ? offer.descriptionBg : offer.description;
   const category = language === 'bg' ? offer.categoryBg : offer.category;
+
+  // Convert BGN prices to EUR
+  const originalPriceEUR = convertBGNToEUR(offer.originalPrice);
+  const discountedPriceEUR = convertBGNToEUR(offer.discountedPrice);
+
+  // Currency labels
+  const bgnLabel = language === 'bg' ? 'лв.' : 'BGN';
 
   return (
     <Link to={offer.path} style={{ textDecoration: 'none' }}>
@@ -236,10 +347,12 @@ export const OfferCard: React.FC<OfferCardProps> = ({ offer, className }) => {
           </MetaInfo>
 
           <PriceSection>
-            <OriginalPrice>{offer.originalPrice} BGN</OriginalPrice>
+            <OriginalPrice>
+              {offer.originalPrice} {bgnLabel} / €{originalPriceEUR}
+            </OriginalPrice>
             <div>
               <DiscountedPrice>{offer.discountedPrice}</DiscountedPrice>
-              <Currency>BGN</Currency>
+              <Currency>{bgnLabel} / €{discountedPriceEUR}</Currency>
             </div>
           </PriceSection>
         </Content>

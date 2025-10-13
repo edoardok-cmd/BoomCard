@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import styled from 'styled-components';
+import { useLanguage } from '../contexts/LanguageContext';
 import ImageGallery from '../components/common/ImageGallery/ImageGallery';
 import Button from '../components/common/Button/Button';
 import Badge from '../components/common/Badge/Badge';
@@ -9,6 +10,7 @@ import Card from '../components/common/Card/Card';
 import QRCode from '../components/common/QRCode/QRCode';
 import FavoriteButton from '../components/common/FavoriteButton/FavoriteButton';
 import ShareButton from '../components/common/ShareButton/ShareButton';
+import { convertBGNToEUR } from '../utils/helpers';
 
 const PageContainer = styled.div`
   min-height: 100vh;
@@ -319,7 +321,7 @@ const Map = styled.div`
 
 const VenueDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
-  const [language, setLanguage] = useState<'en' | 'bg'>('en');
+  const { language, t } = useLanguage();
 
   // Sample data - would come from API in real implementation
   const venue = {
@@ -364,9 +366,9 @@ const VenueDetailPage: React.FC = () => {
     <PageContainer>
       <Container>
         <Breadcrumb>
-          <Link to="/">{language === 'bg' ? 'Начало' : 'Home'}</Link>
+          <Link to="/">{t('venueDetail.home')}</Link>
           <span>/</span>
-          <Link to="/categories/spa">{language === 'bg' ? 'Спа и уелнес' : 'Spa & Wellness'}</Link>
+          <Link to="/categories/spa">{venue.category}</Link>
           <span>/</span>
           <span>{venue.title}</span>
         </Breadcrumb>
@@ -381,7 +383,7 @@ const VenueDetailPage: React.FC = () => {
               <BadgeRow>
                 <Badge variant="default">{venue.category}</Badge>
                 <Badge variant="success">
-                  {language === 'bg' ? 'Налична' : 'Available'}
+                  {t('venueDetail.available')}
                 </Badge>
               </BadgeRow>
 
@@ -411,11 +413,11 @@ const VenueDetailPage: React.FC = () => {
                     <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
                   </svg>
                   <strong>{venue.rating}</strong>
-                  <span>({venue.reviewCount} {language === 'bg' ? 'отзива' : 'reviews'})</span>
+                  <span>({venue.reviewCount} {t('venueDetail.reviews')})</span>
                 </Rating>
 
                 <PartnerName>
-                  <strong>{language === 'bg' ? 'Партньор:' : 'Partner:'}</strong> {venue.partnerName}
+                  <strong>{t('venueDetail.partner')}</strong> {venue.partnerName}
                 </PartnerName>
               </RatingRow>
 
@@ -423,7 +425,7 @@ const VenueDetailPage: React.FC = () => {
             </HeaderSection>
 
             <Section>
-              <SectionTitle>{language === 'bg' ? 'Включено в офертата' : 'What\'s Included'}</SectionTitle>
+              <SectionTitle>{t('venueDetail.whatsIncluded')}</SectionTitle>
               <FeaturesList>
                 {venue.features.map((feature, index) => (
                   <FeatureItem key={index}>
@@ -442,12 +444,12 @@ const VenueDetailPage: React.FC = () => {
             </Section>
 
             <Section>
-              <SectionTitle>{language === 'bg' ? 'Локация' : 'Location'}</SectionTitle>
+              <SectionTitle>{t('venueDetail.location')}</SectionTitle>
               <p style={{ color: '#6b7280', marginBottom: '1rem' }}>
                 {venue.address}
               </p>
               <Map>
-                {language === 'bg' ? 'Карта (Google Maps интеграция)' : 'Map (Google Maps integration)'}
+                {t('venueDetail.mapIntegration')}
               </Map>
             </Section>
           </MainContent>
@@ -457,23 +459,25 @@ const VenueDetailPage: React.FC = () => {
               <DiscountBadge>-{venue.discount}%</DiscountBadge>
 
               <PriceSection>
-                <OriginalPrice>{venue.originalPrice} BGN</OriginalPrice>
+                <OriginalPrice>
+                  {venue.originalPrice} {language === 'bg' ? 'лв.' : 'BGN'} / €{convertBGNToEUR(venue.originalPrice)}
+                </OriginalPrice>
                 <DiscountedPrice>
                   {venue.discountedPrice}
-                  <span>BGN</span>
+                  <span>{language === 'bg' ? 'лв.' : 'BGN'} / €{convertBGNToEUR(venue.discountedPrice)}</span>
                 </DiscountedPrice>
                 <Savings>
-                  {language === 'bg' ? 'Спестявате' : 'You save'} {venue.savings} BGN
+                  {t('venueDetail.youSave')} {venue.savings} {language === 'bg' ? 'лв.' : 'BGN'} / €{convertBGNToEUR(venue.savings)}
                 </Savings>
               </PriceSection>
 
               <ValidityInfo>
-                <strong>{language === 'bg' ? 'Валидна до:' : 'Valid until:'}</strong> {venue.validUntil}
+                <strong>{t('venueDetail.validUntil')}</strong> {venue.validUntil}
               </ValidityInfo>
 
               <ActionButtons>
                 <Button variant="primary" size="large">
-                  {language === 'bg' ? 'Вземи офертата' : 'Get This Offer'}
+                  {t('venueDetail.getThisOffer')}
                 </Button>
                 <div style={{ display: 'flex', gap: '1rem', width: '100%' }}>
                   <FavoriteButton
@@ -497,20 +501,20 @@ const VenueDetailPage: React.FC = () => {
                     url={window.location.href}
                     title={venue.title}
                     description={venue.description}
-                    buttonText={language === 'bg' ? 'Сподели' : 'Share'}
+                    buttonText={t('venueDetail.share')}
                   />
                 </div>
               </ActionButtons>
 
               <InfoList>
                 <InfoItem>
-                  <strong>{language === 'bg' ? 'Телефон:' : 'Phone:'}</strong> {venue.phone}
+                  <strong>{t('venueDetail.phone')}</strong> {venue.phone}
                 </InfoItem>
                 <InfoItem>
-                  <strong>{language === 'bg' ? 'Имейл:' : 'Email:'}</strong> {venue.email}
+                  <strong>{t('venueDetail.email')}</strong> {venue.email}
                 </InfoItem>
                 <InfoItem>
-                  <strong>{language === 'bg' ? 'Уебсайт:' : 'Website:'}</strong> {venue.website}
+                  <strong>{t('venueDetail.website')}</strong> {venue.website}
                 </InfoItem>
               </InfoList>
             </PriceCard>
@@ -519,10 +523,8 @@ const VenueDetailPage: React.FC = () => {
               <QRCode
                 data={`https://boomcard.bg/offers/${venue.id}?code=SAVE${venue.discount}`}
                 size={200}
-                title={language === 'bg' ? 'QR Код за офертата' : 'Offer QR Code'}
-                description={language === 'bg'
-                  ? 'Сканирайте този код, за да използвате офертата'
-                  : 'Scan this code to redeem the offer'}
+                title={t('venueDetail.offerQRCode')}
+                description={t('venueDetail.scanToRedeem')}
                 language={language}
               />
             </div>

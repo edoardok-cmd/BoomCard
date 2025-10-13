@@ -10,6 +10,7 @@ import { navigationConfig } from '../../../types/navigation';
 import { useFavorites } from '../../../contexts/FavoritesContext';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useLanguage } from '../../../contexts/LanguageContext';
+import { useTheme, ThemeMode } from '../../../contexts/ThemeContext';
 
 const FavoritesLink = styled(Link)`
   position: relative;
@@ -231,6 +232,75 @@ const UserMenuButton = styled.button`
   }
 `;
 
+const ThemeMenuContainer = styled.div`
+  position: relative;
+`;
+
+const ThemeButton = styled.button`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+  background: transparent;
+  border: none;
+  color: #374151;
+  cursor: pointer;
+  transition: all 200ms;
+
+  &:hover {
+    background: #f3f4f6;
+    color: #111827;
+  }
+
+  svg {
+    width: 1.25rem;
+    height: 1.25rem;
+  }
+`;
+
+const ThemeMenuDropdown = styled(motion.div)`
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  right: 0;
+  min-width: 12rem;
+  background: white;
+  border-radius: 0.75rem;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+  padding: 0.5rem;
+  z-index: 1000;
+  border: 1px solid #e5e7eb;
+`;
+
+const ThemeOption = styled.button<{ active: boolean }>`
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.75rem 1rem;
+  background: ${props => props.active ? '#f3f4f6' : 'transparent'};
+  border: none;
+  border-radius: 0.5rem;
+  color: ${props => props.active ? '#111827' : '#374151'};
+  font-size: 0.875rem;
+  font-weight: ${props => props.active ? '600' : '500'};
+  cursor: pointer;
+  transition: all 200ms;
+  text-align: left;
+
+  &:hover {
+    background: #f3f4f6;
+    color: #111827;
+  }
+
+  svg, span {
+    width: 1.125rem;
+    height: 1.125rem;
+    flex-shrink: 0;
+  }
+`;
+
 export interface HeaderProps {
   children?: React.ReactNode;
   className?: string;
@@ -244,10 +314,13 @@ export const Header: React.FC<HeaderProps> = ({
   const [scrolled, setScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [themeMenuOpen, setThemeMenuOpen] = useState(false);
   const { language, setLanguage, t } = useLanguage();
+  const { theme, setTheme } = useTheme();
   const { favoritesCount } = useFavorites();
   const { user, isAuthenticated, logout } = useAuth();
   const userMenuRef = useRef<HTMLDivElement>(null);
+  const themeMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -299,6 +372,23 @@ export const Header: React.FC<HeaderProps> = ({
     };
   }, [userMenuOpen]);
 
+  // Close theme menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (themeMenuRef.current && !themeMenuRef.current.contains(event.target as Node)) {
+        setThemeMenuOpen(false);
+      }
+    };
+
+    if (themeMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [themeMenuOpen]);
+
   const handleLogout = () => {
     logout();
     setUserMenuOpen(false);
@@ -310,22 +400,59 @@ export const Header: React.FC<HeaderProps> = ({
     return `${user.firstName[0]}${user.lastName[0]}`;
   };
 
+  const getThemeIcon = () => {
+    switch (theme) {
+      case 'light':
+        return (
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+          </svg>
+        );
+      case 'dark':
+        return (
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+          </svg>
+        );
+      case 'gold':
+      case 'red':
+      case 'yellow':
+      case 'blue':
+        return (
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
+          </svg>
+        );
+      default:
+        return null;
+    }
+  };
+
+  const themeOptions: { mode: ThemeMode; label: string; icon: string }[] = [
+    { mode: 'light', label: 'Light Mode', icon: '☀️' },
+    { mode: 'dark', label: 'Dark Mode', icon: '🌙' },
+    { mode: 'gold', label: 'Gold Mode', icon: '🟡' },
+    { mode: 'red', label: 'Red Mode', icon: '🔴' },
+    { mode: 'yellow', label: 'Yellow Mode', icon: '🟡' },
+    { mode: 'blue', label: 'Blue Mode', icon: '🔵' },
+  ];
+
   return (
     <StyledHeader className={`${className || ''} ${scrolled ? 'scrolled' : ''}`}>
       <div className="w-full px-6 sm:px-8 lg:px-12">
-        <div className="flex items-center justify-between h-16">
+        <div className="flex items-center h-16">
           {/* Logo - Far Left */}
-          <Link to="/" className="flex items-center z-50 flex-shrink-0 mr-8">
+          <Link to="/" className="flex items-center z-50 flex-shrink-0">
             <span className="text-2xl font-bold text-gray-900">BoomCard</span>
           </Link>
 
-          {/* Desktop Navigation - Hidden on smaller screens */}
-          <div className="hidden xl:flex items-center gap-6 flex-1 max-w-4xl">
+          {/* Desktop Navigation - Centered */}
+          <div className="hidden xl:flex items-center justify-center gap-6 flex-1 px-8">
             <MegaMenu items={navigationConfig.main} language={language} />
           </div>
 
           {/* Right Side Utilities - Always Visible */}
-          <div className="flex items-center gap-3 flex-shrink-0 ml-auto">
+          <div className="flex items-center gap-3 flex-shrink-0">
             {/* Nearby Offers */}
             <FavoritesLink to="/nearby" aria-label="Nearby Offers">
               <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -370,6 +497,41 @@ export const Header: React.FC<HeaderProps> = ({
 
             {/* Notification Center */}
             {isAuthenticated && <NotificationCenter />}
+
+            {/* Theme Switcher */}
+            <ThemeMenuContainer ref={themeMenuRef}>
+              <ThemeButton
+                onClick={() => setThemeMenuOpen(!themeMenuOpen)}
+                aria-label="Change theme"
+              >
+                {getThemeIcon()}
+              </ThemeButton>
+
+              <AnimatePresence>
+                {themeMenuOpen && (
+                  <ThemeMenuDropdown
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -10 }}
+                    transition={{ duration: 0.2 }}
+                  >
+                    {themeOptions.map((option) => (
+                      <ThemeOption
+                        key={option.mode}
+                        active={theme === option.mode}
+                        onClick={() => {
+                          setTheme(option.mode);
+                          setThemeMenuOpen(false);
+                        }}
+                      >
+                        <span>{option.icon}</span>
+                        {option.label}
+                      </ThemeOption>
+                    ))}
+                  </ThemeMenuDropdown>
+                )}
+              </AnimatePresence>
+            </ThemeMenuContainer>
 
             {/* Language Toggle */}
             <div className="flex items-center gap-1 bg-gray-100 rounded-full p-1">

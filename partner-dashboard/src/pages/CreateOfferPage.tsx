@@ -230,8 +230,10 @@ const CreateOfferPage: React.FC = () => {
     <StepIndicator>
       {[1, 2, 3].map(step => (
         <Step key={step} active={step === currentStep} completed={step < currentStep}>
-          <StepNumber>{step < currentStep ? <Check size={16} /> : step}</StepNumber>
-          <StepLabel>
+          <StepNumber active={step === currentStep} completed={step < currentStep}>
+            {step < currentStep ? <Check size={20} /> : step}
+          </StepNumber>
+          <StepLabel active={step === currentStep} completed={step < currentStep}>
             {step === 1 && t.step1}
             {step === 2 && t.step2}
             {step === 3 && t.step3}
@@ -473,40 +475,60 @@ const CreateOfferPage: React.FC = () => {
 };
 
 const Container = styled.div`
-  max-width: 900px;
+  max-width: 1000px;
   margin: 0 auto;
-  padding: 2rem;
+  padding: 3rem 2rem;
+  min-height: 100vh;
+  background: linear-gradient(to bottom, #f9fafb 0%, #ffffff 100%);
+
+  @media (max-width: 768px) {
+    padding: 2rem 1rem;
+  }
 `;
 
 const Header = styled.div`
   display: flex;
   align-items: center;
-  gap: 1rem;
-  margin-bottom: 2rem;
+  gap: 1.5rem;
+  margin-bottom: 3rem;
+  padding-bottom: 2rem;
+  border-bottom: 2px solid #e5e7eb;
 `;
 
 const BackButton = styled.button`
-  background: var(--gray-100);
-  border: none;
+  background: #ffffff;
+  border: 2px solid #e5e7eb;
   border-radius: 50%;
-  width: 40px;
-  height: 40px;
+  width: 48px;
+  height: 48px;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 
   &:hover {
-    background: var(--gray-200);
-    transform: translateX(-2px);
+    background: #111827;
+    border-color: #111827;
+    color: white;
+    transform: translateX(-4px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   }
 `;
 
 const Title = styled.h1`
-  font-size: 2rem;
-  font-weight: 700;
-  color: var(--text-primary);
+  font-size: 2.5rem;
+  font-weight: 800;
+  background: linear-gradient(135deg, #111827 0%, #374151 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  letter-spacing: -0.02em;
+
+  @media (max-width: 768px) {
+    font-size: 2rem;
+  }
 `;
 
 const StepIndicator = styled.div`
@@ -514,16 +536,22 @@ const StepIndicator = styled.div`
   justify-content: space-between;
   margin-bottom: 3rem;
   position: relative;
+  padding: 0 2rem;
 
   &::before {
     content: '';
     position: absolute;
-    top: 20px;
-    left: 40px;
-    right: 40px;
-    height: 2px;
-    background: var(--gray-200);
+    top: 24px;
+    left: calc(2rem + 24px);
+    right: calc(2rem + 24px);
+    height: 3px;
+    background: linear-gradient(to right, #e5e7eb 0%, #e5e7eb 100%);
     z-index: 0;
+    border-radius: 10px;
+  }
+
+  @media (max-width: 768px) {
+    padding: 0 1rem;
   }
 `;
 
@@ -531,105 +559,235 @@ const Step = styled.div<{ active: boolean; completed: boolean }>`
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.75rem;
   position: relative;
   z-index: 1;
+  flex: 1;
 `;
 
 const StepNumber = styled.div<{ active?: boolean; completed?: boolean }>`
-  width: 40px;
-  height: 40px;
+  width: 48px;
+  height: 48px;
   border-radius: 50%;
   background: ${props =>
-    props.completed ? 'var(--success)' : props.active ? 'var(--primary)' : 'var(--gray-200)'};
-  color: ${props => (props.completed || props.active ? 'white' : 'var(--text-secondary)')};
+    props.completed
+      ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)'
+      : props.active
+      ? 'linear-gradient(135deg, #111827 0%, #374151 100%)'
+      : '#f3f4f6'};
+  color: ${props => (props.completed || props.active ? 'white' : '#9ca3af')};
   display: flex;
   align-items: center;
   justify-content: center;
-  font-weight: 600;
-  transition: all 0.3s;
+  font-weight: 700;
+  font-size: 1.125rem;
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: ${props =>
+    props.completed || props.active ? '0 4px 12px rgba(0, 0, 0, 0.15)' : 'none'};
+  border: 3px solid ${props => (props.completed || props.active ? 'white' : '#e5e7eb')};
+
+  ${Step}:hover & {
+    transform: scale(1.05);
+  }
 `;
 
-const StepLabel = styled.span`
+const StepLabel = styled.span<{ active?: boolean; completed?: boolean }>`
   font-size: 0.875rem;
-  color: var(--text-secondary);
+  font-weight: ${props => (props.active || props.completed ? '600' : '500')};
+  color: ${props => (props.active || props.completed ? '#111827' : '#6b7280')};
   white-space: nowrap;
+  text-align: center;
+  transition: all 0.3s;
+
+  @media (max-width: 768px) {
+    font-size: 0.75rem;
+  }
 `;
 
 const FormContainer = styled.div`
   background: white;
-  border-radius: 1rem;
-  padding: 2rem;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-  min-height: 400px;
+  border-radius: 1.5rem;
+  padding: 3rem;
+  box-shadow:
+    0 20px 60px -15px rgba(0, 0, 0, 0.1),
+    0 0 0 1px rgba(0, 0, 0, 0.05);
+  min-height: 450px;
+  position: relative;
+  overflow: hidden;
+
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    background: linear-gradient(90deg, #111827 0%, #374151 50%, #111827 100%);
+    background-size: 200% 100%;
+    animation: shimmer 3s infinite;
+  }
+
+  @keyframes shimmer {
+    0% {
+      background-position: 200% 0;
+    }
+    100% {
+      background-position: -200% 0;
+    }
+  }
+
+  @media (max-width: 768px) {
+    padding: 2rem 1.5rem;
+  }
 `;
 
 const StepContent = styled(motion.div)``;
 
 const FormGroup = styled.div`
-  margin-bottom: 1.5rem;
+  margin-bottom: 2rem;
 `;
 
 const FormRow = styled.div`
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 1.5rem;
+  gap: 2rem;
 
   @media (max-width: 768px) {
     grid-template-columns: 1fr;
+    gap: 1.5rem;
   }
 `;
 
 const Label = styled.label`
   display: block;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin-bottom: 0.5rem;
+  font-weight: 700;
+  font-size: 0.9375rem;
+  color: #111827;
+  margin-bottom: 0.75rem;
+  letter-spacing: -0.01em;
 `;
 
 const Input = styled.input<{ error?: boolean }>`
   width: 100%;
-  padding: 0.75rem 1rem;
-  border: 2px solid ${props => (props.error ? 'var(--error)' : 'var(--gray-200)')};
-  border-radius: 0.5rem;
+  padding: 0.875rem 1.125rem;
+  border: 2px solid ${props => (props.error ? '#ef4444' : '#e5e7eb')};
+  border-radius: 0.75rem;
   font-size: 1rem;
-  transition: all 0.2s;
+  font-weight: 500;
+  transition: all 300ms cubic-bezier(0.4, 0, 0.2, 1);
+  background: ${props => (props.error ? '#fef2f2' : '#ffffff')};
+  color: #111827;
+  letter-spacing: -0.01em;
+
+  &::placeholder {
+    color: #9ca3af;
+    font-weight: 400;
+  }
+
+  &:hover {
+    border-color: ${props => (props.error ? '#ef4444' : '#d1d5db')};
+  }
 
   &:focus {
     outline: none;
-    border-color: ${props => (props.error ? 'var(--error)' : 'var(--primary)')};
+    border-color: ${props => (props.error ? '#ef4444' : '#6366f1')};
+    box-shadow: ${props =>
+      props.error
+        ? '0 0 0 4px rgba(239, 68, 68, 0.1)'
+        : '0 0 0 4px rgba(99, 102, 241, 0.1)'};
+    background: #ffffff;
+  }
+
+  &:disabled {
+    background: #f3f4f6;
+    cursor: not-allowed;
+    opacity: 0.6;
   }
 `;
 
 const Select = styled.select<{ error?: boolean }>`
   width: 100%;
-  padding: 0.75rem 1rem;
-  border: 2px solid ${props => (props.error ? 'var(--error)' : 'var(--gray-200)')};
-  border-radius: 0.5rem;
+  padding: 0.875rem 1.125rem;
+  border: 2px solid ${props => (props.error ? '#ef4444' : '#e5e7eb')};
+  border-radius: 0.75rem;
   font-size: 1rem;
-  background: white;
+  font-weight: 500;
+  background: ${props => (props.error ? '#fef2f2' : '#ffffff')};
+  color: #111827;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 300ms cubic-bezier(0.4, 0, 0.2, 1);
+  letter-spacing: -0.01em;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.875rem center;
+  padding-right: 2.75rem;
+
+  &:hover {
+    border-color: ${props => (props.error ? '#ef4444' : '#d1d5db')};
+  }
 
   &:focus {
     outline: none;
-    border-color: ${props => (props.error ? 'var(--error)' : 'var(--primary)')};
+    border-color: ${props => (props.error ? '#ef4444' : '#6366f1')};
+    box-shadow: ${props =>
+      props.error
+        ? '0 0 0 4px rgba(239, 68, 68, 0.1)'
+        : '0 0 0 4px rgba(99, 102, 241, 0.1)'};
+    background-color: #ffffff;
+  }
+
+  &:disabled {
+    background: #f3f4f6;
+    cursor: not-allowed;
+    opacity: 0.6;
+  }
+
+  option {
+    font-weight: 500;
+    padding: 0.5rem;
   }
 `;
 
 const TextArea = styled.textarea<{ error?: boolean }>`
   width: 100%;
-  padding: 0.75rem 1rem;
-  border: 2px solid ${props => (props.error ? 'var(--error)' : 'var(--gray-200)')};
-  border-radius: 0.5rem;
+  padding: 0.875rem 1.125rem;
+  border: 2px solid ${props => (props.error ? '#ef4444' : '#e5e7eb')};
+  border-radius: 0.75rem;
   font-size: 1rem;
+  font-weight: 500;
   font-family: inherit;
   resize: vertical;
-  transition: all 0.2s;
+  min-height: 120px;
+  transition: all 300ms cubic-bezier(0.4, 0, 0.2, 1);
+  background: ${props => (props.error ? '#fef2f2' : '#ffffff')};
+  color: #111827;
+  line-height: 1.6;
+  letter-spacing: -0.01em;
+
+  &::placeholder {
+    color: #9ca3af;
+    font-weight: 400;
+  }
+
+  &:hover {
+    border-color: ${props => (props.error ? '#ef4444' : '#d1d5db')};
+  }
 
   &:focus {
     outline: none;
-    border-color: ${props => (props.error ? 'var(--error)' : 'var(--primary)')};
+    border-color: ${props => (props.error ? '#ef4444' : '#6366f1')};
+    box-shadow: ${props =>
+      props.error
+        ? '0 0 0 4px rgba(239, 68, 68, 0.1)'
+        : '0 0 0 4px rgba(99, 102, 241, 0.1)'};
+    background: #ffffff;
+  }
+
+  &:disabled {
+    background: #f3f4f6;
+    cursor: not-allowed;
+    opacity: 0.6;
   }
 `;
 
@@ -647,39 +805,82 @@ const Suffix = styled.span`
 `;
 
 const ErrorText = styled.span`
-  display: block;
-  color: var(--error);
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  color: #ef4444;
   font-size: 0.875rem;
-  margin-top: 0.25rem;
+  font-weight: 500;
+  margin-top: 0.5rem;
+  animation: slideIn 200ms ease-out;
+
+  &::before {
+    content: '⚠';
+    font-size: 1rem;
+  }
+
+  @keyframes slideIn {
+    from {
+      opacity: 0;
+      transform: translateY(-4px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
 `;
 
 const UploadZone = styled.div<{ isDragging: boolean }>`
-  border: 2px dashed ${props => (props.isDragging ? 'var(--primary)' : 'var(--gray-300)')};
-  border-radius: 0.5rem;
-  padding: 2rem;
+  border: 3px dashed ${props => (props.isDragging ? '#6366f1' : '#d1d5db')};
+  border-radius: 1rem;
+  padding: 3rem 2rem;
   text-align: center;
-  background: ${props => (props.isDragging ? 'var(--gray-50)' : 'white')};
-  transition: all 0.2s;
+  background: ${props =>
+    props.isDragging
+      ? 'linear-gradient(135deg, rgba(99, 102, 241, 0.05) 0%, rgba(168, 85, 247, 0.05) 100%)'
+      : 'linear-gradient(to bottom, #ffffff 0%, #fafbfc 100%)'};
+  transition: all 300ms cubic-bezier(0.4, 0, 0.2, 1);
   cursor: pointer;
+  position: relative;
+  overflow: hidden;
+
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(circle at center, rgba(99, 102, 241, 0.1) 0%, transparent 70%);
+    opacity: ${props => (props.isDragging ? '1' : '0')};
+    transition: opacity 300ms;
+  }
 
   &:hover {
-    border-color: var(--primary);
-    background: var(--gray-50);
+    border-color: #6366f1;
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.03) 0%, rgba(168, 85, 247, 0.03) 100%);
+    transform: scale(1.01);
   }
 
   svg {
-    color: var(--text-secondary);
+    color: #6b7280;
+    transition: all 300ms;
+  }
+
+  &:hover svg {
+    color: #6366f1;
+    transform: translateY(-4px);
   }
 
   p {
-    margin: 0.5rem 0;
-    color: var(--text-primary);
-    font-weight: 500;
+    margin: 0.75rem 0;
+    color: #111827;
+    font-weight: 600;
+    font-size: 1rem;
   }
 
   small {
-    color: var(--text-secondary);
+    color: #6b7280;
     font-size: 0.875rem;
+    font-weight: 500;
   }
 `;
 

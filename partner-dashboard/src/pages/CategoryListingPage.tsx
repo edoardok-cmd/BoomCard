@@ -319,15 +319,83 @@ const CategoryListingPage: React.FC = () => {
   const categoryTitle = categoryTitles[currentCategory] || { en: 'All Offers', bg: 'Всички оферти' };
 
   const handleApplyFilters = (filters: Record<string, string[]>) => {
-    // In real implementation, this would make API call with filters
     console.log('Applied filters:', filters);
-    setFilteredOffers(allOffers);
+
+    let filtered = [...allOffers];
+
+    // Filter by location
+    if (filters.location && filters.location.length > 0) {
+      filtered = filtered.filter(offer =>
+        filters.location.some(loc =>
+          offer.location.toLowerCase().includes(loc.toLowerCase())
+        )
+      );
+    }
+
+    // Filter by category
+    if (filters.category && filters.category.length > 0) {
+      filtered = filtered.filter(offer =>
+        filters.category.some(cat => {
+          const offerCategory = offer.category.toLowerCase().replace(/\s+/g, '');
+          const filterCategory = cat.toLowerCase().replace(/\s+/g, '');
+          return offerCategory.includes(filterCategory) || filterCategory.includes(offerCategory);
+        })
+      );
+    }
+
+    // Filter by discount range
+    if (filters.discount && filters.discount.length > 0) {
+      const minDiscount = parseInt(filters.discount[0]);
+      filtered = filtered.filter(offer => offer.discount >= minDiscount);
+    }
+
+    // Filter by price range
+    if (filters.price && filters.price.length > 0) {
+      const maxPrice = parseInt(filters.price[0]);
+      filtered = filtered.filter(offer => offer.discountedPrice <= maxPrice);
+    }
+
+    // Filter by rating
+    if (filters.rating && filters.rating.length > 0) {
+      const minRating = Math.min(...filters.rating.map(r => parseFloat(r)));
+      filtered = filtered.filter(offer => offer.rating >= minRating);
+    }
+
+    setFilteredOffers(filtered);
     setShowMobileFilters(false);
   };
 
   const handleSortChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    setSortBy(e.target.value);
-    // Implement sorting logic here
+    const newSortBy = e.target.value;
+    setSortBy(newSortBy);
+
+    let sorted = [...filteredOffers];
+
+    switch(newSortBy) {
+      case 'discount-high':
+        sorted.sort((a, b) => b.discount - a.discount);
+        break;
+      case 'discount-low':
+        sorted.sort((a, b) => a.discount - b.discount);
+        break;
+      case 'price-high':
+        sorted.sort((a, b) => b.discountedPrice - a.discountedPrice);
+        break;
+      case 'price-low':
+        sorted.sort((a, b) => a.discountedPrice - b.discountedPrice);
+        break;
+      case 'rating':
+        sorted.sort((a, b) => b.rating - a.rating);
+        break;
+      case 'popular':
+        sorted.sort((a, b) => b.reviewCount - a.reviewCount);
+        break;
+      default: // 'relevance'
+        // Keep original order
+        break;
+    }
+
+    setFilteredOffers(sorted);
   };
 
   return (

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useLanguage } from '../../contexts/LanguageContext';
 import styled from 'styled-components';
 import { CreditCard, Lock, AlertCircle } from 'lucide-react';
 import Button from '../common/Button/Button';
@@ -242,6 +243,7 @@ export const PaymentMethodForm: React.FC<PaymentMethodFormProps> = ({
   loading = false,
   language = 'en',
 }) => {
+  const { t } = useLanguage();
   const [formData, setFormData] = useState<PaymentMethodData>({
     cardNumber: '',
     cardholderName: '',
@@ -299,46 +301,46 @@ export const PaymentMethodForm: React.FC<PaymentMethodFormProps> = ({
 
     // Card number validation
     if (!formData.cardNumber) {
-      newErrors.cardNumber = language === 'bg' ? 'Въведете номер на карта' : 'Card number is required';
+      newErrors.cardNumber = t('payment.cardNumberRequired');
     } else if (formData.cardNumber.length !== 16) {
-      newErrors.cardNumber = language === 'bg' ? 'Номерът трябва да е 16 цифри' : 'Card number must be 16 digits';
+      newErrors.cardNumber = t('payment.cardNumberLength');
     } else if (!luhnCheck(formData.cardNumber)) {
-      newErrors.cardNumber = language === 'bg' ? 'Невалиден номер на карта' : 'Invalid card number';
+      newErrors.cardNumber = t('payment.invalidCardNumber');
     }
 
     // Cardholder name validation
     if (!formData.cardholderName) {
-      newErrors.cardholderName = language === 'bg' ? 'Въведете име на картодържател' : 'Cardholder name is required';
+      newErrors.cardholderName = t('payment.cardholderNameRequired');
     } else if (formData.cardholderName.length < 3) {
-      newErrors.cardholderName = language === 'bg' ? 'Името е твърде кратко' : 'Name is too short';
+      newErrors.cardholderName = t('payment.nameTooShort');
     }
 
     // Expiry month validation
     if (!formData.expiryMonth) {
-      newErrors.expiryMonth = language === 'bg' ? 'Задължително' : 'Required';
+      newErrors.expiryMonth = t('payment.required');
     } else {
       const month = parseInt(formData.expiryMonth);
       if (month < 1 || month > 12) {
-        newErrors.expiryMonth = language === 'bg' ? 'Невалиден' : 'Invalid';
+        newErrors.expiryMonth = t('payment.invalid');
       }
     }
 
     // Expiry year validation
     if (!formData.expiryYear) {
-      newErrors.expiryYear = language === 'bg' ? 'Задължително' : 'Required';
+      newErrors.expiryYear = t('payment.required');
     } else {
       const currentYear = new Date().getFullYear() % 100;
       const year = parseInt(formData.expiryYear);
       if (year < currentYear) {
-        newErrors.expiryYear = language === 'bg' ? 'Изтекла' : 'Expired';
+        newErrors.expiryYear = t('payment.expired');
       }
     }
 
     // CVV validation
     if (!formData.cvv) {
-      newErrors.cvv = language === 'bg' ? 'Задължително' : 'Required';
+      newErrors.cvv = t('payment.required');
     } else if (formData.cvv.length < 3) {
-      newErrors.cvv = language === 'bg' ? 'Невалиден' : 'Invalid';
+      newErrors.cvv = t('payment.invalid');
     }
 
     setErrors(newErrors);
@@ -385,20 +387,16 @@ export const PaymentMethodForm: React.FC<PaymentMethodFormProps> = ({
     <FormContainer>
       <FormHeader>
         <Title>
-          {language === 'bg' ? 'Добави метод на плащане' : 'Add Payment Method'}
+          {t('payment.addPaymentMethod')}
         </Title>
         <Subtitle>
-          {language === 'bg'
-            ? 'Вашите данни са криптирани и защитени'
-            : 'Your payment information is encrypted and secure'}
+          {t('payment.secureInfo')}
         </Subtitle>
       </FormHeader>
 
       <SecurityBadge>
         <Lock />
-        {language === 'bg'
-          ? 'SSL криптирано и PCI съвместимо'
-          : 'SSL Encrypted & PCI Compliant'}
+        {t('payment.sslEncrypted')}
       </SecurityBadge>
 
       <CardPreview>
@@ -410,13 +408,13 @@ export const PaymentMethodForm: React.FC<PaymentMethodFormProps> = ({
         </CardNumber>
         <CardInfo>
           <CardHolder>
-            <CardLabel>{language === 'bg' ? 'Картодържател' : 'Card Holder'}</CardLabel>
+            <CardLabel>{t('payment.cardHolder')}</CardLabel>
             <CardValue>
-              {formData.cardholderName || (language === 'bg' ? 'ВАШ ИМЕ' : 'YOUR NAME')}
+              {formData.cardholderName || (t('payment.yourName'))}
             </CardValue>
           </CardHolder>
           <CardExpiry>
-            <CardLabel>{language === 'bg' ? 'Валидна до' : 'Valid Thru'}</CardLabel>
+            <CardLabel>{t('payment.validThru')}</CardLabel>
             <CardValue>
               {formData.expiryMonth.padStart(2, '0') || 'MM'}/
               {formData.expiryYear.padStart(2, '0') || 'YY'}
@@ -428,7 +426,7 @@ export const PaymentMethodForm: React.FC<PaymentMethodFormProps> = ({
       <Form onSubmit={handleSubmit}>
         <FormGroup>
           <Label htmlFor="cardNumber">
-            {language === 'bg' ? 'Номер на карта' : 'Card Number'}
+            {t('payment.cardNumber')}
           </Label>
           <InputWrapper $hasError={!!errors.cardNumber}>
             <Input
@@ -453,13 +451,13 @@ export const PaymentMethodForm: React.FC<PaymentMethodFormProps> = ({
 
         <FormGroup>
           <Label htmlFor="cardholderName">
-            {language === 'bg' ? 'Име на картодържател' : 'Cardholder Name'}
+            {t('payment.cardholderName')}
           </Label>
           <InputWrapper $hasError={!!errors.cardholderName}>
             <Input
               id="cardholderName"
               type="text"
-              placeholder={language === 'bg' ? 'Иван Иванов' : 'John Doe'}
+              placeholder={t('payment.cardholderPlaceholder')}
               value={formData.cardholderName}
               onChange={(e) => {
                 setFormData({ ...formData, cardholderName: e.target.value.toUpperCase() });
@@ -479,7 +477,7 @@ export const PaymentMethodForm: React.FC<PaymentMethodFormProps> = ({
         <Row>
           <FormGroup>
             <Label htmlFor="expiryMonth">
-              {language === 'bg' ? 'Месец' : 'Expiry Month'}
+              {t('payment.expiryMonth')}
             </Label>
             <InputWrapper $hasError={!!errors.expiryMonth}>
               <Input
@@ -501,7 +499,7 @@ export const PaymentMethodForm: React.FC<PaymentMethodFormProps> = ({
 
           <FormGroup>
             <Label htmlFor="expiryYear">
-              {language === 'bg' ? 'Година' : 'Expiry Year'}
+              {t('payment.expiryYear')}
             </Label>
             <InputWrapper $hasError={!!errors.expiryYear}>
               <Input
@@ -550,9 +548,7 @@ export const PaymentMethodForm: React.FC<PaymentMethodFormProps> = ({
             onChange={(e) => setFormData({ ...formData, saveCard: e.target.checked })}
             disabled={loading}
           />
-          {language === 'bg'
-            ? 'Запази картата за бъдещи плащания'
-            : 'Save card for future payments'}
+          {t('payment.saveForFuture')}
         </CheckboxWrapper>
 
         <Actions>
@@ -564,8 +560,8 @@ export const PaymentMethodForm: React.FC<PaymentMethodFormProps> = ({
             disabled={loading}
           >
             {loading
-              ? language === 'bg' ? 'Обработва се...' : 'Processing...'
-              : language === 'bg' ? 'Добави карта' : 'Add Card'}
+              ? t('payment.processing')
+              : t('payment.addCard')}
           </Button>
           {onCancel && (
             <Button
@@ -575,7 +571,7 @@ export const PaymentMethodForm: React.FC<PaymentMethodFormProps> = ({
               onClick={onCancel}
               disabled={loading}
             >
-              {language === 'bg' ? 'Отказ' : 'Cancel'}
+              {t('payment.cancel')}
             </Button>
           )}
         </Actions>

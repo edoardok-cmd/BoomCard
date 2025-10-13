@@ -1,11 +1,37 @@
+# Dependencies
 node_modules/
-.env
-.env.local
+*/node_modules/
+
+# Production builds
 dist/
 build/
-.DS_Store
-.netlify/
+backend-api/dist/
+
+# Environment variables  
+.env
+.env.local
+.env.*.local
+backend-api/.env
+partner-dashboard/.env.local
+
+# Database
+*.db
+*.db-journal
+backend-api/prisma/*.db
+
+# Logs
 *.log
-__pycache__/
-venv/
-.next/
+/tmp/*.log
+backend-api/logs/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Vercel
+.vercel

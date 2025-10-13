@@ -12,6 +12,7 @@
 
   * {
     @apply border-gray-200;
+    transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
   }
 
   html {
@@ -20,10 +21,11 @@
 
   body {
     @apply font-sans antialiased;
-    color: rgb(var(--foreground));
-    background: rgb(var(--background));
+    color: var(--color-text-primary);
+    background: var(--color-background);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    transition: background-color 0.3s ease, color 0.3s ease;
   }
 
   h1, h2, h3, h4, h5, h6 {
@@ -46,35 +48,61 @@
 @layer components {
   /* Buttons - Minimalist Whoop Style */
   .btn-primary {
-    @apply bg-black text-white px-6 py-3 rounded-full font-medium
-           hover:bg-gray-900 transition-all duration-300
+    background: var(--color-primary);
+    color: var(--color-secondary);
+    @apply px-6 py-3 rounded-full font-medium
+           transition-all duration-300
            hover:shadow-hover active:scale-95;
   }
 
+  .btn-primary:hover {
+    background: var(--color-primary-hover);
+  }
+
   .btn-secondary {
-    @apply bg-white text-black border border-gray-300 px-6 py-3 rounded-full font-medium
-           hover:border-gray-900 hover:bg-gray-50 transition-all duration-300
+    background: var(--color-secondary);
+    color: var(--color-primary);
+    border: 1px solid var(--color-border);
+    @apply px-6 py-3 rounded-full font-medium
+           transition-all duration-300
            active:scale-95;
   }
 
+  .btn-secondary:hover {
+    background: var(--color-secondary-hover);
+  }
+
   .btn-ghost {
-    @apply text-gray-700 px-6 py-3 rounded-full font-medium
-           hover:bg-gray-100 transition-all duration-300
+    color: var(--color-text-secondary);
+    @apply px-6 py-3 rounded-full font-medium
+           transition-all duration-300
            active:scale-95;
+  }
+
+  .btn-ghost:hover {
+    background: var(--color-background-tertiary);
   }
 
   /* Input Fields - Clean Design */
   .input-field {
-    @apply border border-gray-200 rounded-xl px-4 py-3
-           focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent
-           transition-all duration-300 bg-white;
+    background: var(--color-background);
+    color: var(--color-text-primary);
+    border: 1px solid var(--color-border);
+    @apply rounded-xl px-4 py-3
+           focus:outline-none focus:ring-2 focus:border-transparent
+           transition-all duration-300;
+  }
+
+  .input-field:focus {
+    border-color: var(--color-primary);
   }
 
   /* Cards - Flat & Minimal */
   .card {
-    @apply bg-white rounded-2xl shadow-soft p-8
-           hover:shadow-hover transition-all duration-400
-           border border-gray-100;
+    background: var(--color-background);
+    border: 1px solid var(--color-border);
+    @apply rounded-2xl shadow-soft p-8
+           hover:shadow-hover transition-all duration-400;
   }
 
   .card-image {

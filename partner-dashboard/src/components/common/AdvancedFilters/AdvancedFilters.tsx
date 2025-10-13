@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useLanguage } from '../../../contexts/LanguageContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import styled from 'styled-components';
 import { Filter, X, MapPin, DollarSign, Star, TrendingUp, Clock } from 'lucide-react';
@@ -286,6 +287,7 @@ export const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
   onChange,
   language = 'en',
 }) => {
+  const { t } = useLanguage();
   const [isExpanded, setIsExpanded] = useState(false);
 
   const categories = ['RESTAURANT', 'HOTEL', 'SPA', 'WINERY', 'ENTERTAINMENT', 'SPORTS'];
@@ -351,7 +353,7 @@ export const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
       <FilterHeader>
         <FilterTitle>
           <Filter />
-          {language === 'bg' ? 'Филтри' : 'Filters'}
+          {t('common.filters')}
           {activeCount > 0 && ` (${activeCount})`}
         </FilterTitle>
         <Button
@@ -360,8 +362,8 @@ export const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
           onClick={() => setIsExpanded(!isExpanded)}
         >
           {isExpanded
-            ? language === 'bg' ? 'Скрий' : 'Hide'
-            : language === 'bg' ? 'Покажи' : 'Show'}
+            ? t('common.hide')
+            : t('common.show')}
         </Button>
       </FilterHeader>
 
@@ -377,7 +379,7 @@ export const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
               {/* Category Filter */}
               <FilterGroup>
                 <Label>
-                  {language === 'bg' ? 'Категория' : 'Category'}
+                  {t('common.category')}
                 </Label>
                 <CheckboxGroup>
                   {categories.map(category => (
@@ -400,7 +402,7 @@ export const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
               <FilterGroup>
                 <Label>
                   <DollarSign />
-                  {language === 'bg' ? 'Ценова Категория' : 'Price Range'}
+                  {t('common.priceRange')}
                 </Label>
                 <RangeGroup>
                   <RangeInput
@@ -433,7 +435,7 @@ export const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
               <FilterGroup>
                 <Label>
                   <Star />
-                  {language === 'bg' ? 'Минимален Рейтинг' : 'Minimum Rating'}
+                  {t('common.minimumRating')}
                 </Label>
                 <SliderContainer>
                   <Slider
@@ -452,7 +454,7 @@ export const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
               <FilterGroup>
                 <Label>
                   <TrendingUp />
-                  {language === 'bg' ? 'Минимална Отстъпка' : 'Minimum Discount'}
+                  {t('common.minimumDiscount')}
                 </Label>
                 <SliderContainer>
                   <Slider
@@ -470,7 +472,7 @@ export const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
               {/* Cuisine */}
               <FilterGroup>
                 <Label>
-                  {language === 'bg' ? 'Кухня' : 'Cuisine'}
+                  {t('common.cuisine')}
                 </Label>
                 <CheckboxGroup>
                   {cuisines.map(cuisine => (
@@ -493,7 +495,7 @@ export const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
               <FilterGroup>
                 <Label>
                   <Clock />
-                  {language === 'bg' ? 'Отворено Сега' : 'Open Now'}
+                  {t('common.openNow')}
                 </Label>
                 <ToggleSwitch>
                   <input
@@ -508,10 +510,10 @@ export const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
 
             <FilterActions>
               <Button variant="primary" size="medium" onClick={() => setIsExpanded(false)}>
-                {language === 'bg' ? 'Приложи Филтри' : 'Apply Filters'}
+                {t('common.applyFilters')}
               </Button>
               <Button variant="ghost" size="medium" onClick={handleClearFilters}>
-                {language === 'bg' ? 'Изчисти Всички' : 'Clear All'}
+                {t('common.clearAll')}
               </Button>
             </FilterActions>
           </motion.div>

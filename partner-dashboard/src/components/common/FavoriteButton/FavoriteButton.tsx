@@ -2,6 +2,7 @@ import React from 'react';
 import { motion } from 'framer-motion';
 import styled from 'styled-components';
 import { useFavorites } from '../../../contexts/FavoritesContext';
+import { useLanguage } from '../../../contexts/LanguageContext';
 
 interface FavoriteButtonProps {
   offerId: string;
@@ -141,6 +142,7 @@ export const FavoriteButton: React.FC<FavoriteButtonProps> = ({
   language = 'en'
 }) => {
   const { addToFavorites, removeFromFavorites, isFavorite } = useFavorites();
+  const { t } = useLanguage();
   const favorite = isFavorite(offerId);
 
   const handleClick = (e: React.MouseEvent) => {
@@ -168,9 +170,7 @@ export const FavoriteButton: React.FC<FavoriteButtonProps> = ({
       >
         <HeartIcon favorite={favorite} />
         <span>
-          {favorite
-            ? (language === 'bg' ? 'В любими' : 'Saved')
-            : (language === 'bg' ? 'Запази' : 'Save')}
+          {favorite ? t('common.saved') : t('common.save')}
         </span>
       </TextButton>
     );

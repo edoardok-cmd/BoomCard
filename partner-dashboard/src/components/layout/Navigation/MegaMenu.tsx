@@ -61,13 +61,25 @@ const DropdownContainer = styled(motion.div)`
   top: 100%;
   left: 0;
   min-width: 280px;
-  background: white;
-  border-radius: 0.75rem;
-  box-shadow: 0 10px 40px -10px rgba(0, 0, 0, 0.1),
-              0 2px 8px -2px rgba(0, 0, 0, 0.05);
-  padding: 0.5rem;
-  z-index: 50;
-  margin-top: 0.5rem;
+  max-width: 400px;
+  background: #ffffff;
+  border-radius: 1rem;
+  box-shadow:
+    0 20px 60px -15px rgba(0, 0, 0, 0.3),
+    0 10px 25px -5px rgba(0, 0, 0, 0.2);
+  padding: 0.75rem;
+  z-index: 1000;
+  margin-top: 0.75rem;
+  overflow: hidden;
+  border: 2px solid #e5e7eb;
+
+  /* Subtle gradient background for depth */
+  background: linear-gradient(to bottom, #ffffff 0%, #f9fafb 100%);
+
+  /* Ensure dropdown stays within viewport */
+  @media (min-width: 1024px) {
+    max-width: min(400px, calc(100vw - 2rem));
+  }
 
   @media (max-width: 1024px) {
     position: static;
@@ -76,24 +88,39 @@ const DropdownContainer = styled(motion.div)`
     padding: 0;
     margin-top: 0;
     background: #f9fafb;
+    border: none;
   }
 `;
 
-const MegaDropdownContainer = styled(motion.div)`
+const MegaDropdownContainer = styled(motion.div)<{ $alignRight?: boolean }>`
   position: absolute;
   top: 100%;
-  left: 0;
-  width: 100vw;
-  max-width: 1200px;
-  background: white;
-  border-radius: 0.75rem;
-  box-shadow: 0 10px 40px -10px rgba(0, 0, 0, 0.1),
-              0 2px 8px -2px rgba(0, 0, 0, 0.05);
+  ${props => props.$alignRight ? 'right: 0;' : 'left: 0;'}
+  width: 750px;
+  max-width: calc(100vw - 4rem);
+  background: #ffffff;
+  border-radius: 1rem;
+  box-shadow:
+    0 25px 70px -15px rgba(0, 0, 0, 0.35),
+    0 15px 30px -5px rgba(0, 0, 0, 0.25);
   padding: 2rem;
-  z-index: 50;
-  margin-top: 0.5rem;
-  left: 50%;
-  transform: translateX(-50%);
+  z-index: 1000;
+  margin-top: 0.75rem;
+  overflow: hidden;
+  border: 2px solid #e5e7eb;
+
+  /* Strong gradient background for clear distinction */
+  background: linear-gradient(to bottom, #ffffff 0%, #f8f9fa 100%);
+
+  @media (max-width: 1400px) {
+    width: 650px;
+  }
+
+  @media (max-width: 1280px) {
+    width: 550px;
+    max-width: calc(100vw - 3rem);
+    padding: 1.5rem;
+  }
 
   @media (max-width: 1024px) {
     position: static;
@@ -103,14 +130,16 @@ const MegaDropdownContainer = styled(motion.div)`
     margin-top: 0;
     background: #f9fafb;
     width: 100%;
-    transform: none;
+    max-width: none;
+    border: none;
   }
 `;
 
 const MegaGrid = styled.div`
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 2rem;
+  max-width: 100%;
 
   @media (max-width: 1024px) {
     grid-template-columns: 1fr;
@@ -119,41 +148,97 @@ const MegaGrid = styled.div`
 `;
 
 const DropdownSection = styled.div`
-  padding: 0.5rem 0;
+  padding: 0.75rem 0;
+
+  /* Add subtle separation between sections */
+  & + & {
+    border-left: 1px solid #e5e7eb;
+    padding-left: 2rem;
+  }
 
   @media (max-width: 1024px) {
     padding: 0;
+
+    & + & {
+      border-left: none;
+      padding-left: 0;
+      border-top: 2px solid #e5e7eb;
+    }
   }
 `;
 
 const SectionTitle = styled.h3`
-  font-size: 0.875rem;
-  font-weight: 600;
-  color: #6b7280;
+  font-size: 0.8125rem;
+  font-weight: 800;
+  color: #111827;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
-  margin-bottom: 0.75rem;
+  letter-spacing: 0.1em;
+  margin-bottom: 1rem;
   padding: 0 0.75rem;
+  padding-bottom: 0.625rem;
+  border-bottom: 3px solid #111827;
+  position: relative;
+
+  /* Accent line under the border */
+  &::after {
+    content: '';
+    position: absolute;
+    bottom: -3px;
+    left: 0.75rem;
+    width: 50%;
+    height: 3px;
+    background: linear-gradient(90deg, #6366f1 0%, #a855f7 100%);
+  }
 
   @media (max-width: 1024px) {
-    padding: 0.75rem 1rem;
-    background: #f3f4f6;
+    padding: 0.875rem 1rem;
+    background: linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%);
     margin-bottom: 0;
+    border-bottom: 3px solid #111827;
+
+    &::after {
+      left: 1rem;
+    }
   }
 `;
 
 const DropdownLink = styled(Link)`
   display: block;
-  padding: 0.625rem 0.75rem;
+  padding: 0.75rem 0.875rem;
   font-size: 0.9375rem;
-  color: #4b5563;
+  font-weight: 400;
+  color: #6b7280;
   text-decoration: none;
   border-radius: 0.5rem;
-  transition: all 200ms;
+  transition: all 250ms cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  letter-spacing: -0.01em;
+  line-height: 1.5;
+
+  /* Subtle left border accent on hover */
+  &::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 3px;
+    height: 0;
+    background: linear-gradient(180deg, #6366f1 0%, #a855f7 100%);
+    border-radius: 0 2px 2px 0;
+    transition: height 250ms cubic-bezier(0.4, 0, 0.2, 1);
+  }
 
   &:hover {
-    background-color: #f3f4f6;
-    color: #000000;
+    background-color: #f9fafb;
+    color: #111827;
+    font-weight: 500;
+    transform: translateX(4px);
+    padding-left: 1rem;
+
+    &::before {
+      height: 60%;
+    }
   }
 
   @media (max-width: 1024px) {
@@ -186,13 +271,18 @@ const NavMenuItem: React.FC<{
   item: MenuItem;
   language: 'en' | 'bg';
   isMobile: boolean;
-}> = ({ item, language, isMobile }) => {
+  index: number;
+  totalItems: number;
+}> = ({ item, language, isMobile, index, totalItems }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [hoveredSubItem, setHoveredSubItem] = useState<string | null>(null);
 
   const label = language === 'bg' ? item.labelBg : item.label;
   const hasChildren = item.children && item.children.length > 0;
   const isMegaMenu = hasChildren && item.children && item.children.some(child => child.children && child.children.length > 0);
+
+  // Determine if item is on the right side of navigation (last 3 items)
+  const isRightSide = index >= totalItems - 3;
 
   const handleMouseEnter = () => {
     if (!isMobile) setIsOpen(true);
@@ -216,6 +306,7 @@ const NavMenuItem: React.FC<{
     if (isMegaMenu) {
       return (
         <MegaDropdownContainer
+          $alignRight={isRightSide}
           initial="hidden"
           animate="visible"
           exit="exit"
@@ -342,12 +433,14 @@ export const MegaMenu: React.FC<MegaMenuProps> = ({ items, language = 'en' }) =>
 
   return (
     <NavWrapper>
-      {items.map((item) => (
+      {items.map((item, index) => (
         <NavMenuItem
           key={item.id}
           item={item}
           language={language}
           isMobile={isMobile}
+          index={index}
+          totalItems={items.length}
         />
       ))}
     </NavWrapper>

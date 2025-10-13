@@ -5,6 +5,14 @@ import { useLanguage } from '../contexts/LanguageContext';
 import Button from '../components/common/Button/Button';
 import Badge from '../components/common/Badge/Badge';
 import { Check, X, Settings, ExternalLink, Loader } from 'lucide-react';
+import {
+  useIntegrationsOverview,
+  useConnectIntegration,
+  useDisconnectIntegration,
+  useTestIntegration,
+  useSyncIntegration,
+} from '../hooks/useIntegrations';
+import type { Integration as ApiIntegration, PartnerIntegration } from '../services/integrations.service';
 
 const PageContainer = styled.div`
   min-height: 100vh;
@@ -393,174 +401,104 @@ const WebhookUrl = styled.code`
   font-family: 'Monaco', 'Courier New', monospace;
 `;
 
-interface Integration {
-  id: string;
-  name: string;
-  category: string;
-  description: string;
-  icon: string;
-  features: string[];
-  connected: boolean;
-  popular?: boolean;
-  requiresConfig?: boolean;
-  configFields?: ConfigField[];
-  webhookUrl?: string;
-  lastSync?: Date;
-}
+// Map API integration to display format with icon
+const getIntegrationIcon = (name: string): string => {
+  const iconMap: Record<string, string> = {
+    'Barsy': '🖥️',
+    'Poster POS': '💻',
+    'iiko': '🍽️',
+    'R-Keeper': '📊',
+    'ePay.bg': '💳',
+    'Borica': '🏦',
+    'myPOS': '📱',
+    'SumUp': '💰',
+    'Stripe Terminal': '⚡',
+    'Booking Systems': '📅',
+  };
+  return iconMap[name] || '🔌';
+};
 
-interface ConfigField {
-  name: string;
-  label: string;
-  type: 'text' | 'password' | 'select';
-  required: boolean;
-  placeholder?: string;
-  options?: { value: string; label: string }[];
-}
-
-const mockIntegrations: Integration[] = [
-  {
-    id: '1',
-    name: 'Barsy',
-    category: 'POS Systems',
-    description: 'If you use Barsy system for your cafe, bar, club, or restaurant, BoomCard integrates via Barsy API to automatically sync transaction data and track customer savings.',
-    icon: '🖥️',
-    features: ['HTTP API integration (JSON/XML)', 'Automatic data synchronization', 'Works with cafes, bars, clubs & restaurants'],
-    connected: true,
-    popular: true,
-    requiresConfig: true,
-    configFields: [
-      { name: 'apiKey', label: 'API Key', type: 'password', required: true, placeholder: 'Enter your Barsy API key' },
-      { name: 'merchantId', label: 'Merchant ID', type: 'text', required: true, placeholder: 'Your merchant ID' },
-      { name: 'environment', label: 'Environment', type: 'select', required: true, options: [
-        { value: 'production', label: 'Production' },
-        { value: 'sandbox', label: 'Sandbox (Testing)' }
-      ]},
-    ],
-    webhookUrl: 'https://api.boomcard.bg/webhooks/barsy/YOUR_PARTNER_ID',
-  },
-  {
-    id: '2',
-    name: 'Poster POS',
-    category: 'POS Systems',
-    description: 'BoomCard seamlessly integrates with Poster POS to track customer purchases and calculate their savings automatically.',
-    icon: '💻',
-    features: ['Direct API integration', 'Instant payment recognition', 'Customer savings reports'],
-    connected: true,
-    popular: true,
-    requiresConfig: true,
-    configFields: [
-      { name: 'apiKey', label: 'API Token', type: 'password', required: true, placeholder: 'Your Poster API token' },
-      { name: 'accountName', label: 'Account Name', type: 'text', required: true, placeholder: 'yourname.joinposter.com' },
-    ],
-    webhookUrl: 'https://api.boomcard.bg/webhooks/poster/YOUR_PARTNER_ID',
-  },
-  {
-    id: '3',
-    name: 'iiko',
-    category: 'POS Systems',
-    description: 'Using iiko restaurant management? BoomCard can connect to track all BoomCard transactions at your restaurant.',
-    icon: '🍽️',
-    features: ['Full menu integration', 'Order-level tracking', 'Automated discount calculations'],
-    connected: false,
-  },
-  {
-    id: '4',
-    name: 'R-Keeper',
-    category: 'POS Systems',
-    description: 'BoomCard works with R-Keeper to automatically record transactions and monitor customer savings across all your locations.',
-    icon: '📊',
-    features: ['Multi-location support', 'Transaction monitoring', 'Savings analytics dashboard'],
-    connected: false,
-  },
-  {
-    id: '5',
-    name: 'ePay.bg',
-    category: 'Payment Gateways',
-    description: 'If you process online orders through ePay.bg, BoomCard can track digital transactions and apply discounts automatically.',
-    icon: '💳',
-    features: ['Online payment tracking', 'Secure API connection', 'Digital receipt matching'],
-    connected: true,
-    popular: true,
-  },
-  {
-    id: '6',
-    name: 'Borica',
-    category: 'Payment Gateways',
-    description: 'BoomCard integrates with Borica payment gateway to identify BoomCard users and track their purchases in real-time.',
-    icon: '🏦',
-    features: ['Bank-level security', 'Card recognition', 'Instant transaction sync'],
-    connected: true,
-  },
-  {
-    id: '7',
-    name: 'myPOS',
-    category: 'Payment Terminals',
-    description: 'Using myPOS terminals? BoomCard can connect directly to recognize cardholders and fetch transaction data automatically.',
-    icon: '📱',
-    features: ['Terminal-level integration', 'QR & NFC support', 'No additional hardware needed'],
-    connected: false,
-  },
-  {
-    id: '8',
-    name: 'SumUp',
-    category: 'Payment Terminals',
-    description: 'BoomCard works with SumUp card readers to automatically log transactions when BoomCard holders make purchases.',
-    icon: '💰',
-    features: ['Mobile terminal support', 'Automatic card detection', 'Cloud-based sync'],
-    connected: false,
-  },
-  {
-    id: '9',
-    name: 'Stripe Terminal',
-    category: 'Payment Terminals',
-    description: 'If you use Stripe Terminal, BoomCard can integrate to track payments and calculate customer savings automatically.',
-    icon: '⚡',
-    features: ['Advanced API capabilities', 'Smart reader compatibility', 'Developer-friendly setup'],
-    connected: false,
-  },
-  {
-    id: '10',
-    name: 'Booking Systems API',
-    category: 'Reservation Systems',
-    description: 'BoomCard connects to reservation platforms to link table bookings with payments, tracking the full customer journey.',
-    icon: '📅',
-    features: ['Reservation-to-payment linking', 'Customer identification', 'Visit frequency tracking'],
-    connected: true,
-  },
-];
+// Helper function to check if an integration is connected
+const isIntegrationConnected = (
+  integration: ApiIntegration,
+  connectedIntegrations: PartnerIntegration[]
+): boolean => {
+  return connectedIntegrations.some(
+    (pi) => pi.integrationId === integration.id && pi.status === 'active'
+  );
+};
 
 const IntegrationsPage: React.FC = () => {
   const { language } = useLanguage();
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
-  const [selectedIntegration, setSelectedIntegration] = useState<Integration | null>(null);
+  const [selectedIntegration, setSelectedIntegration] = useState<ApiIntegration | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected' | 'testing'>('disconnected');
-  const [isConnecting, setIsConnecting] = useState(false);
   const [formData, setFormData] = useState<Record<string, string>>({});
 
-  // Simulate connection testing
+  // Fetch integrations data from API
+  const { available, connected, isLoading } = useIntegrationsOverview(
+    selectedCategory === 'all' ? undefined : selectedCategory
+  );
+
+  // Mutations
+  const connectMutation = useConnectIntegration();
+  const disconnectMutation = useDisconnectIntegration();
+  const testMutation = useTestIntegration();
+
+  // Handle connection with real API
   const handleConnect = async () => {
     if (!selectedIntegration) return;
 
-    setIsConnecting(true);
     setConnectionStatus('testing');
 
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    try {
+      // Connect the integration
+      await connectMutation.mutateAsync({
+        integrationId: selectedIntegration.id,
+        credentials: formData,
+      });
 
-    setConnectionStatus('connected');
-    setIsConnecting(false);
+      setConnectionStatus('connected');
 
-    // Update integration status (in real app, this would save to backend)
-    setTimeout(() => {
-      setIsModalOpen(false);
-      setSelectedIntegration(null);
-    }, 1500);
+      // Close modal after success
+      setTimeout(() => {
+        setIsModalOpen(false);
+        setSelectedIntegration(null);
+      }, 1500);
+    } catch (error) {
+      setConnectionStatus('disconnected');
+    }
   };
 
-  const openIntegrationModal = (integration: Integration) => {
+  // Handle disconnect
+  const handleDisconnect = async (partnerIntegrationId: string) => {
+    if (!window.confirm('Are you sure you want to disconnect this integration?')) {
+      return;
+    }
+
+    try {
+      await disconnectMutation.mutateAsync(partnerIntegrationId);
+      setIsModalOpen(false);
+      setSelectedIntegration(null);
+    } catch (error) {
+      // Error is handled by the mutation
+    }
+  };
+
+  // Handle test connection
+  const handleTest = async (partnerIntegrationId: string) => {
+    try {
+      await testMutation.mutateAsync(partnerIntegrationId);
+    } catch (error) {
+      // Error is handled by the mutation
+    }
+  };
+
+  const openIntegrationModal = (integration: ApiIntegration) => {
     setSelectedIntegration(integration);
-    setConnectionStatus(integration.connected ? 'connected' : 'disconnected');
+    const isConnected = isIntegrationConnected(integration, connected);
+    setConnectionStatus(isConnected ? 'connected' : 'disconnected');
     setIsModalOpen(true);
     setFormData({});
   };
@@ -586,6 +524,23 @@ const IntegrationsPage: React.FC = () => {
       popular: 'Most Used',
       learnMore: 'Learn More',
       integrationsCount: 'payment systems supported',
+      testingConnection: 'Testing connection...',
+      successfullyConnected: 'Successfully connected!',
+      select: 'Select...',
+      webhookUrl: 'WEBHOOK URL',
+      apiKeyHelp: 'Find your API key in your system settings',
+      webhookHelp: 'Copy this URL to your system settings for automatic synchronization',
+      needHelp: 'Need help setting this up?',
+      needHelpDesc: 'Contact our team to activate this integration. We will help you with the setup.',
+      manageIntegration: 'Manage Integration',
+      configureConnection: 'Configure Connection',
+      testConnection: 'Test Connection',
+      cancel: 'Cancel',
+      connect: 'Connect',
+      connecting: 'Connecting...',
+      connected: 'Connected',
+      disconnect: 'Disconnect',
+      reconnect: 'Reconnect',
     },
     bg: {
       title: 'Поддържани Платежни Системи',
@@ -602,6 +557,23 @@ const IntegrationsPage: React.FC = () => {
       popular: 'Най-Използвани',
       learnMore: 'Научи Повече',
       integrationsCount: 'поддържани платежни системи',
+      testingConnection: 'Тестване на връзката...',
+      successfullyConnected: 'Успешно свързан!',
+      select: 'Изберете...',
+      webhookUrl: 'WEBHOOK URL',
+      apiKeyHelp: 'Намерете вашия API ключ в настройките на системата',
+      webhookHelp: 'Копирайте този URL в настройките на вашата система за автоматична синхронизация',
+      needHelp: 'Нуждаете се от помощ за настройка?',
+      needHelpDesc: 'Свържете се с нашия екип, за да активирате тази интеграция. Ще ви помогнем с настройката.',
+      manageIntegration: 'Управление на интеграцията',
+      configureConnection: 'Конфигуриране на връзката',
+      testConnection: 'Тествай връзката',
+      cancel: 'Отказ',
+      connect: 'Свържи',
+      connecting: 'Свързване...',
+      connected: 'Свързан',
+      disconnect: 'Прекъсни връзката',
+      reconnect: 'Свържи отново',
     },
   };
 
@@ -615,9 +587,8 @@ const IntegrationsPage: React.FC = () => {
     { id: 'Reservation Systems', label: content.reservationSystems },
   ];
 
-  const filteredIntegrations = selectedCategory === 'all'
-    ? mockIntegrations
-    : mockIntegrations.filter(int => int.category === selectedCategory);
+  // Filter integrations based on selected category
+  const filteredIntegrations = selectedCategory === 'all' ? available : available;
 
   return (
     <PageContainer>
@@ -657,50 +628,71 @@ const IntegrationsPage: React.FC = () => {
             {filteredIntegrations.length} {content.integrationsCount}
           </SectionDescription>
 
-          <IntegrationsGrid>
-            {filteredIntegrations.map((integration, index) => (
-              <IntegrationCard
-                key={integration.id}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.4, delay: index * 0.1 }}
-              >
-                <IntegrationHeader>
-                  <IntegrationLogo>{integration.icon}</IntegrationLogo>
-                  {integration.popular && (
-                    <Badge variant="warning">{content.popular}</Badge>
-                  )}
-                </IntegrationHeader>
+          {isLoading ? (
+            <div style={{ textAlign: 'center', padding: '4rem 0' }}>
+              <Loader size={48} className="animate-spin" style={{ margin: '0 auto', color: '#000' }} />
+              <p style={{ marginTop: '1rem', color: '#6b7280' }}>Loading integrations...</p>
+            </div>
+          ) : (
+            <IntegrationsGrid>
+              {filteredIntegrations.map((integration, index) => {
+                const isConnected = isIntegrationConnected(integration, connected);
+                const icon = getIntegrationIcon(integration.name);
 
-                <IntegrationTitle>{integration.name}</IntegrationTitle>
-                <IntegrationCategory>{integration.category}</IntegrationCategory>
-                <IntegrationDescription>
-                  {integration.description}
-                </IntegrationDescription>
-
-                <FeaturesList>
-                  {integration.features.map((feature, idx) => (
-                    <FeatureItem key={idx}>{feature}</FeatureItem>
-                  ))}
-                </FeaturesList>
-
-                <IntegrationFooter>
-                  <IntegrationStatus $connected={integration.connected}>
-                    <StatusDot $connected={integration.connected} />
-                    {integration.connected ? content.supported : content.comingSoon}
-                  </IntegrationStatus>
-
-                  <Button
-                    variant={integration.connected ? 'primary' : 'secondary'}
-                    size="small"
-                    onClick={() => openIntegrationModal(integration)}
+                return (
+                  <IntegrationCard
+                    key={integration.id}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.4, delay: index * 0.1 }}
                   >
-                    {integration.connected ? content.getStarted : content.contactUs}
-                  </Button>
-                </IntegrationFooter>
-              </IntegrationCard>
-            ))}
-          </IntegrationsGrid>
+                    <IntegrationHeader>
+                      <IntegrationLogo>{icon}</IntegrationLogo>
+                      {integration.isPopular && (
+                        <Badge variant="warning">{content.popular}</Badge>
+                      )}
+                    </IntegrationHeader>
+
+                    <IntegrationTitle>
+                      {language === 'bg' ? integration.nameBg : integration.nameEn}
+                    </IntegrationTitle>
+                    <IntegrationCategory>
+                      {language === 'bg' ? integration.categoryBg : integration.categoryEn}
+                    </IntegrationCategory>
+                    <IntegrationDescription>
+                      {language === 'bg' ? integration.descriptionBg : integration.descriptionEn}
+                    </IntegrationDescription>
+
+                    <FeaturesList>
+                      {(language === 'bg' ? integration.featuresBg : integration.featuresEn).slice(0, 3).map((feature, idx) => (
+                        <FeatureItem key={idx}>{feature}</FeatureItem>
+                      ))}
+                    </FeaturesList>
+
+                    <IntegrationFooter>
+                      <IntegrationStatus $connected={isConnected}>
+                        <StatusDot $connected={isConnected} />
+                        {integration.status === 'available'
+                          ? (isConnected ? content.connected : content.supported)
+                          : integration.status === 'beta'
+                          ? 'Beta'
+                          : content.comingSoon}
+                      </IntegrationStatus>
+
+                      <Button
+                        variant={integration.status === 'available' ? 'primary' : 'secondary'}
+                        size="small"
+                        onClick={() => openIntegrationModal(integration)}
+                        disabled={integration.status === 'coming_soon'}
+                      >
+                        {integration.status === 'available' ? content.getStarted : content.contactUs}
+                      </Button>
+                    </IntegrationFooter>
+                  </IntegrationCard>
+                );
+              })}
+            </IntegrationsGrid>
+          )}
         </Container>
       </ContentSection>
 
@@ -722,16 +714,13 @@ const IntegrationsPage: React.FC = () => {
               <ModalHeader>
                 <div>
                   <ModalTitle>
-                    {selectedIntegration.icon} {selectedIntegration.name}
+                    {getIntegrationIcon(selectedIntegration.name)}{' '}
+                    {language === 'bg' ? selectedIntegration.nameBg : selectedIntegration.nameEn}
                   </ModalTitle>
                   <ModalSubtitle>
-                    {selectedIntegration.connected
-                      ? language === 'bg'
-                        ? 'Управление на интеграцията'
-                        : 'Manage Integration'
-                      : language === 'bg'
-                      ? 'Конфигуриране на връзката'
-                      : 'Configure Connection'}
+                    {isIntegrationConnected(selectedIntegration, connected)
+                      ? content.manageIntegration
+                      : content.configureConnection}
                   </ModalSubtitle>
                 </div>
                 <CloseButton onClick={closeModal}>
@@ -745,60 +734,39 @@ const IntegrationsPage: React.FC = () => {
                     {connectionStatus === 'testing' && (
                       <>
                         <Loader className="animate-spin" />
-                        {language === 'bg' ? 'Тестване на връзката...' : 'Testing connection...'}
+                        {content.testingConnection}
                       </>
                     )}
                     {connectionStatus === 'connected' && (
                       <>
                         <Check />
-                        {language === 'bg' ? 'Успешно свързан!' : 'Successfully connected!'}
+                        {content.successfullyConnected}
                       </>
                     )}
                   </ConnectionStatus>
                 )}
 
-                {selectedIntegration.configFields && (
+                {selectedIntegration.requiresCredentials && selectedIntegration.credentialsFields && (
                   <form onSubmit={(e) => { e.preventDefault(); handleConnect(); }}>
-                    {selectedIntegration.configFields.map((field) => (
+                    {selectedIntegration.credentialsFields.map((field) => (
                       <FormGroup key={field.name}>
                         <Label htmlFor={field.name}>
-                          {field.label} {field.required && '*'}
+                          {language === 'bg' ? field.labelBg : field.labelEn}{' '}
+                          {field.required && '*'}
                         </Label>
-                        {field.type === 'select' ? (
-                          <Select
-                            id={field.name}
-                            value={formData[field.name] || ''}
-                            onChange={(e) =>
-                              setFormData({ ...formData, [field.name]: e.target.value })
-                            }
-                            required={field.required}
-                          >
-                            <option value="">
-                              {language === 'bg' ? 'Изберете...' : 'Select...'}
-                            </option>
-                            {field.options?.map((opt) => (
-                              <option key={opt.value} value={opt.value}>
-                                {opt.label}
-                              </option>
-                            ))}
-                          </Select>
-                        ) : (
-                          <Input
-                            id={field.name}
-                            type={field.type}
-                            placeholder={field.placeholder}
-                            value={formData[field.name] || ''}
-                            onChange={(e) =>
-                              setFormData({ ...formData, [field.name]: e.target.value })
-                            }
-                            required={field.required}
-                          />
-                        )}
+                        <Input
+                          id={field.name}
+                          type={field.type}
+                          placeholder={field.placeholder}
+                          value={formData[field.name] || ''}
+                          onChange={(e) =>
+                            setFormData({ ...formData, [field.name]: e.target.value })
+                          }
+                          required={field.required}
+                        />
                         {field.name === 'apiKey' && (
                           <HelpText>
-                            {language === 'bg'
-                              ? 'Намерете вашия API ключ в настройките на системата'
-                              : 'Find your API key in your system settings'}
+                            {content.apiKeyHelp}
                           </HelpText>
                         )}
                       </FormGroup>
@@ -806,26 +774,26 @@ const IntegrationsPage: React.FC = () => {
                   </form>
                 )}
 
-                {selectedIntegration.webhookUrl && (
+                {selectedIntegration.documentationUrl && (
                   <WebhookBox>
                     <WebhookLabel>
-                      {language === 'bg' ? 'WEBHOOK URL' : 'WEBHOOK URL'}
+                      Documentation
                     </WebhookLabel>
-                    <WebhookUrl>{selectedIntegration.webhookUrl}</WebhookUrl>
-                    <HelpText style={{ marginTop: '0.75rem' }}>
-                      {language === 'bg'
-                        ? 'Копирайте този URL в настройките на вашата система за автоматична синхронизация'
-                        : 'Copy this URL to your system settings for automatic synchronization'}
-                    </HelpText>
+                    <a
+                      href={selectedIntegration.documentationUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{ color: '#000', textDecoration: 'underline' }}
+                    >
+                      View integration documentation <ExternalLink size={14} style={{ display: 'inline' }} />
+                    </a>
                   </WebhookBox>
                 )}
 
-                {!selectedIntegration.configFields && (
+                {!selectedIntegration.requiresCredentials && (
                   <div style={{ textAlign: 'center', padding: '2rem 0' }}>
                     <p style={{ fontSize: '0.9375rem', color: '#6b7280', lineHeight: 1.6 }}>
-                      {language === 'bg'
-                        ? 'Свържете се с нашия екип за активиране на тази интеграция. Ще ви помогнем със настройката.'
-                        : 'Contact our team to activate this integration. We will help you with the setup.'}
+                      {content.needHelpDesc}
                     </p>
                     <div style={{ marginTop: '1.5rem' }}>
                       <Button
@@ -833,35 +801,29 @@ const IntegrationsPage: React.FC = () => {
                         size="large"
                         onClick={() => window.open('mailto:support@boomcard.bg', '_blank')}
                       >
-                        {language === 'bg' ? 'Свържете се с нас' : 'Contact Us'}
+                        {content.contactUs}
                       </Button>
                     </div>
                   </div>
                 )}
               </ModalBody>
 
-              {selectedIntegration.configFields && (
+              {selectedIntegration.requiresCredentials && (
                 <ModalFooter>
                   <Button variant="ghost" size="medium" onClick={closeModal}>
-                    {language === 'bg' ? 'Отказ' : 'Cancel'}
+                    {content.cancel}
                   </Button>
                   <Button
                     variant="primary"
                     size="medium"
                     onClick={handleConnect}
-                    disabled={isConnecting || connectionStatus === 'connected'}
+                    disabled={connectMutation.isPending || connectionStatus === 'connected'}
                   >
-                    {isConnecting
-                      ? language === 'bg'
-                        ? 'Свързване...'
-                        : 'Connecting...'
+                    {connectMutation.isPending
+                      ? content.connecting
                       : connectionStatus === 'connected'
-                      ? language === 'bg'
-                        ? 'Свързан'
-                        : 'Connected'
-                      : language === 'bg'
-                      ? 'Свържи'
-                      : 'Connect'}
+                      ? content.connected
+                      : content.connect}
                   </Button>
                 </ModalFooter>
               )}

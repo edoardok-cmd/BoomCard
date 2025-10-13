@@ -4,12 +4,13 @@ import { StyledButton } from './Button.styles';
 export interface ButtonProps {
   children?: React.ReactNode;
   className?: string;
-  variant?: 'primary' | 'secondary' | 'ghost' | 'danger';
+  variant?: 'primary' | 'secondary' | 'ghost' | 'danger' | 'outline';
   size?: 'small' | 'medium' | 'large';
   onClick?: () => void;
   disabled?: boolean;
   type?: 'button' | 'submit' | 'reset';
   isLoading?: boolean;
+  fullWidth?: boolean;
 }
 
 export const Button: React.FC<ButtonProps> = ({
@@ -21,6 +22,7 @@ export const Button: React.FC<ButtonProps> = ({
   disabled = false,
   type = 'button',
   isLoading = false,
+  fullWidth = false,
 }) => {
   return (
     <StyledButton
@@ -30,6 +32,7 @@ export const Button: React.FC<ButtonProps> = ({
       onClick={onClick}
       disabled={disabled || isLoading}
       type={type}
+      $fullWidth={fullWidth}
     >
       {isLoading ? (
         <>

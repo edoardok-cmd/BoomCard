@@ -5,7 +5,8 @@
   "private": true,
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build",
+    "build": "vite build",
+    "build:check": "tsc && vite build",
     "preview": "vite preview",
     "test": "vitest",
     "lint": "eslint src --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
@@ -14,6 +15,7 @@
   "dependencies": {
     "@clerk/clerk-react": "^4.30.0",
     "@heroicons/react": "^2.0.18",
+    "@react-oauth/google": "^0.12.2",
     "@sentry/react": "^10.19.0",
     "@sentry/vite-plugin": "^4.4.0",
     "@tanstack/react-query": "^5.0.0",

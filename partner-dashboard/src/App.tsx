@@ -5,6 +5,7 @@ import { Toaster } from 'react-hot-toast';
 import { AuthProvider } from './contexts/AuthContext';
 import { FavoritesProvider } from './contexts/FavoritesContext';
 import { LanguageProvider } from './contexts/LanguageContext';
+import { ThemeProvider } from './contexts/ThemeContext';
 import ProtectedRoute from './components/auth/ProtectedRoute';
 import Loading from './components/common/Loading/Loading';
 import InstallPrompt from './components/common/InstallPrompt/InstallPrompt';
@@ -16,6 +17,7 @@ import HomePage from './pages/HomePage';
 // Lazy load all other pages
 const LoginPage = lazy(() => import('./pages/LoginPage'));
 const RegisterPage = lazy(() => import('./pages/RegisterPage'));
+const RegisterPartnerPage = lazy(() => import('./pages/RegisterPartnerPage'));
 const ForgotPasswordPage = lazy(() => import('./pages/ForgotPasswordPage'));
 const ResetPasswordPage = lazy(() => import('./pages/ResetPasswordPage'));
 const VerifyEmailPage = lazy(() => import('./pages/VerifyEmailPage'));
@@ -40,15 +42,84 @@ const IntegrationsPage = lazy(() => import('./pages/IntegrationsPage'));
 const LocationsPage = lazy(() => import('./pages/LocationsPage'));
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage'));
 
+// Media pages
+const MediaPage = lazy(() => import('./pages/MediaPage'));
+const MediaGalleryPage = lazy(() => import('./pages/MediaGalleryPage'));
+const MediaPhotosPage = lazy(() => import('./pages/MediaPhotosPage'));
+const MediaVideosPage = lazy(() => import('./pages/MediaVideosPage'));
+
+// Promotions pages
+const PromotionsTypePage = lazy(() => import('./pages/PromotionsTypePage'));
+const PromotionsGastronomyPage = lazy(() => import('./pages/PromotionsGastronomyPage'));
+const PromotionsExtremePage = lazy(() => import('./pages/PromotionsExtremePage'));
+const PromotionsCulturalPage = lazy(() => import('./pages/PromotionsCulturalPage'));
+
+// Categories pages
+const CategoriesRestaurantTypesPage = lazy(() => import('./pages/CategoriesRestaurantTypesPage'));
+const CategoriesHotelTypesPage = lazy(() => import('./pages/CategoriesHotelTypesPage'));
+const CategoriesSpaPage = lazy(() => import('./pages/CategoriesSpaPage'));
+const CategoriesWineriesPage = lazy(() => import('./pages/CategoriesWineriesPage'));
+const CategoriesClubsPage = lazy(() => import('./pages/CategoriesClubsPage'));
+const CategoriesCafesPage = lazy(() => import('./pages/CategoriesCafesPage'));
+
+// Experiences pages
+const ExperiencesGastronomyPage = lazy(() => import('./pages/ExperiencesGastronomyPage'));
+const ExperiencesFoodToursPage = lazy(() => import('./pages/ExperiencesFoodToursPage'));
+const ExperiencesExtremePage = lazy(() => import('./pages/ExperiencesExtremePage'));
+const ExperiencesAdventurePage = lazy(() => import('./pages/ExperiencesAdventurePage'));
+const ExperiencesCulturalPage = lazy(() => import('./pages/ExperiencesCulturalPage'));
+const ExperiencesMuseumsPage = lazy(() => import('./pages/ExperiencesMuseumsPage'));
+const ExperiencesRomanticPage = lazy(() => import('./pages/ExperiencesRomanticPage'));
+const ExperiencesRomanticActivitiesPage = lazy(() => import('./pages/ExperiencesRomanticActivitiesPage'));
+const ExperiencesFamilyPage = lazy(() => import('./pages/ExperiencesFamilyPage'));
+const ExperiencesFamilyActivitiesPage = lazy(() => import('./pages/ExperiencesFamilyActivitiesPage'));
+const ExperiencesEducationalPage = lazy(() => import('./pages/ExperiencesEducationalPage'));
+const ExperiencesLearningPage = lazy(() => import('./pages/ExperiencesLearningPage'));
+
+// Locations pages
+const LocationsCitiesPage = lazy(() => import('./pages/LocationsCitiesPage'));
+const LocationsSofiaPage = lazy(() => import('./pages/LocationsSofiaPage'));
+const LocationsPlovdivPage = lazy(() => import('./pages/LocationsPlovdivPage'));
+const LocationsVarnaPage = lazy(() => import('./pages/LocationsVarnaPage'));
+const LocationsBanskoPage = lazy(() => import('./pages/LocationsBanskoPage'));
+const LocationsPricePage = lazy(() => import('./pages/LocationsPricePage'));
+const LocationsPriceBudgetPage = lazy(() => import('./pages/LocationsPriceBudgetPage'));
+const LocationsPricePremiumPage = lazy(() => import('./pages/LocationsPricePremiumPage'));
+const LocationsPriceLuxuryPage = lazy(() => import('./pages/LocationsPriceLuxuryPage'));
+const LocationsTypeAllPage = lazy(() => import('./pages/LocationsTypeAllPage'));
+
+// Partners pages
+const PartnersCategoriesPage = lazy(() => import('./pages/PartnersCategoriesPage'));
+const PartnersRestaurantsPage = lazy(() => import('./pages/PartnersRestaurantsPage'));
+const PartnersRegionsPage = lazy(() => import('./pages/PartnersRegionsPage'));
+const PartnersSofiaPage = lazy(() => import('./pages/PartnersSofiaPage'));
+const PartnersPlovdivPage = lazy(() => import('./pages/PartnersPlovdivPage'));
+const PartnersVarnaPage = lazy(() => import('./pages/PartnersVarnaPage'));
+const PartnersBanskoPage = lazy(() => import('./pages/PartnersBanskoPage'));
+const PartnersStatusPage = lazy(() => import('./pages/PartnersStatusPage'));
+const PartnersNewPage = lazy(() => import('./pages/PartnersNewPage'));
+const PartnersVIPPage = lazy(() => import('./pages/PartnersVIPPage'));
+const PartnersExclusivePage = lazy(() => import('./pages/PartnersExclusivePage'));
+
+// Footer pages
+const AboutPage = lazy(() => import('./pages/AboutPage'));
+const SubscriptionsPage = lazy(() => import('./pages/SubscriptionsPage'));
+const ContactsPage = lazy(() => import('./pages/ContactsPage'));
+const SupportPage = lazy(() => import('./pages/SupportPage'));
+const TermsPage = lazy(() => import('./pages/TermsPage'));
+const PrivacyPage = lazy(() => import('./pages/PrivacyPage'));
+const FAQPage = lazy(() => import('./pages/FAQPage'));
+
 const queryClient = new QueryClient();
 
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <LanguageProvider>
-        <AuthProvider>
-          <FavoritesProvider>
-            <Router>
+      <ThemeProvider>
+        <LanguageProvider>
+          <AuthProvider>
+            <FavoritesProvider>
+              <Router>
               <Suspense fallback={<Loading fullScreen />}>
                 <Routes>
                   <Route path="/" element={<Layout />}>
@@ -94,6 +165,9 @@ function App() {
                     <Route path="top-offers" element={<CategoryListingPage />} />
                     <Route path="offers/:id" element={<VenueDetailPage />} />
                     <Route path="partners" element={<PartnersPage />} />
+
+                    {/* ⚠️ ROUTE ORDER CRITICAL: Specific routes MUST come before dynamic params */}
+                    {/* Partner offer management routes - MUST come before :category route */}
                     <Route
                       path="partners/offers"
                       element={
@@ -118,11 +192,84 @@ function App() {
                         </ProtectedRoute>
                       }
                     />
-                    <Route path="favorites" element={<FavoritesPage />} />
+
+                    {/* Dynamic category route - MUST come after specific routes */}
+                    <Route path="partners/:category" element={<CategoryListingPage />} />
+
+                    {/* Media routes */}
+                    <Route path="media" element={<MediaPage />} />
+                    <Route path="media/gallery" element={<MediaGalleryPage />} />
+                    <Route path="media/photos" element={<MediaPhotosPage />} />
+                    <Route path="media/videos" element={<MediaVideosPage />} />
+
+                    {/* Promotions routes */}
                     <Route path="promotions" element={<PromotionsPage />} />
+                    <Route path="promotions/type" element={<PromotionsTypePage />} />
+                    <Route path="promotions/gastronomy" element={<PromotionsGastronomyPage />} />
+                    <Route path="promotions/extreme" element={<PromotionsExtremePage />} />
+                    <Route path="promotions/cultural" element={<PromotionsCulturalPage />} />
+
+                    {/* Categories routes */}
+                    <Route path="categories/restaurants/types" element={<CategoriesRestaurantTypesPage />} />
+                    <Route path="categories/hotels/types" element={<CategoriesHotelTypesPage />} />
+                    <Route path="categories/spa" element={<CategoriesSpaPage />} />
+                    <Route path="categories/wineries" element={<CategoriesWineriesPage />} />
+                    <Route path="categories/clubs" element={<CategoriesClubsPage />} />
+                    <Route path="categories/cafes" element={<CategoriesCafesPage />} />
+
+                    {/* Experiences routes */}
                     <Route path="experiences" element={<ExperiencesPage />} />
-                    <Route path="integrations" element={<IntegrationsPage />} />
+                    <Route path="experiences/gastronomy" element={<ExperiencesGastronomyPage />} />
+                    <Route path="experiences/gastronomy/food-tours" element={<ExperiencesFoodToursPage />} />
+                    <Route path="experiences/extreme" element={<ExperiencesExtremePage />} />
+                    <Route path="experiences/extreme/adventure" element={<ExperiencesAdventurePage />} />
+                    <Route path="experiences/cultural" element={<ExperiencesCulturalPage />} />
+                    <Route path="experiences/cultural/museums" element={<ExperiencesMuseumsPage />} />
+                    <Route path="experiences/romantic" element={<ExperiencesRomanticPage />} />
+                    <Route path="experiences/romantic/activities" element={<ExperiencesRomanticActivitiesPage />} />
+                    <Route path="experiences/family" element={<ExperiencesFamilyPage />} />
+                    <Route path="experiences/family/activities" element={<ExperiencesFamilyActivitiesPage />} />
+                    <Route path="experiences/educational" element={<ExperiencesEducationalPage />} />
+                    <Route path="experiences/educational/learning" element={<ExperiencesLearningPage />} />
+
+                    {/* Locations routes */}
                     <Route path="locations" element={<LocationsPage />} />
+                    <Route path="locations/cities" element={<LocationsCitiesPage />} />
+                    <Route path="locations/sofia" element={<LocationsSofiaPage />} />
+                    <Route path="locations/plovdiv" element={<LocationsPlovdivPage />} />
+                    <Route path="locations/varna" element={<LocationsVarnaPage />} />
+                    <Route path="locations/bansko" element={<LocationsBanskoPage />} />
+                    <Route path="locations/price" element={<LocationsPricePage />} />
+                    <Route path="locations/price/budget" element={<LocationsPriceBudgetPage />} />
+                    <Route path="locations/price/premium" element={<LocationsPricePremiumPage />} />
+                    <Route path="locations/price/luxury" element={<LocationsPriceLuxuryPage />} />
+                    <Route path="locations/type/all" element={<LocationsTypeAllPage />} />
+
+                    {/* Partners routes */}
+                    <Route path="partners/categories" element={<PartnersCategoriesPage />} />
+                    <Route path="partners/restaurants" element={<PartnersRestaurantsPage />} />
+                    <Route path="partners/regions" element={<PartnersRegionsPage />} />
+                    <Route path="partners/sofia" element={<PartnersSofiaPage />} />
+                    <Route path="partners/plovdiv" element={<PartnersPlovdivPage />} />
+                    <Route path="partners/varna" element={<PartnersVarnaPage />} />
+                    <Route path="partners/bansko" element={<PartnersBanskoPage />} />
+                    <Route path="partners/status" element={<PartnersStatusPage />} />
+                    <Route path="partners/new" element={<PartnersNewPage />} />
+                    <Route path="partners/vip" element={<PartnersVIPPage />} />
+                    <Route path="partners/exclusive" element={<PartnersExclusivePage />} />
+
+                    {/* Footer routes */}
+                    <Route path="about" element={<AboutPage />} />
+                    <Route path="subscriptions" element={<SubscriptionsPage />} />
+                    <Route path="contacts" element={<ContactsPage />} />
+                    <Route path="support" element={<SupportPage />} />
+                    <Route path="terms" element={<TermsPage />} />
+                    <Route path="privacy" element={<PrivacyPage />} />
+                    <Route path="faq" element={<FAQPage />} />
+
+                    {/* Other routes */}
+                    <Route path="favorites" element={<FavoritesPage />} />
+                    <Route path="integrations" element={<IntegrationsPage />} />
                     <Route path="*" element={<NotFoundPage />} />
                   </Route>
                   <Route
@@ -138,6 +285,14 @@ function App() {
                     element={
                       <ProtectedRoute requireAuth={false}>
                         <RegisterPage />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/register/partner"
+                    element={
+                      <ProtectedRoute requireAuth={false}>
+                        <RegisterPartnerPage />
                       </ProtectedRoute>
                     }
                   />
@@ -173,6 +328,7 @@ function App() {
           </FavoritesProvider>
         </AuthProvider>
       </LanguageProvider>
+    </ThemeProvider>
     </QueryClientProvider>
   );
 }

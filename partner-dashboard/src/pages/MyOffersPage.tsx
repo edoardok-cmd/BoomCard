@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import styled from 'styled-components';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
 import { useLanguage } from '../contexts/LanguageContext';
+import { useAuth } from '../contexts/AuthContext';
 import {
   Plus,
   Edit,
@@ -16,6 +17,7 @@ import {
   MoreVertical,
 } from 'lucide-react';
 import Button from '../components/common/Button/Button';
+import { useOffers, useDeleteOffer, useToggleOfferStatus } from '../hooks/useOffers';
 
 const content = {
   en: {
@@ -104,55 +106,52 @@ interface Offer {
 const MyOffersPage: React.FC = () => {
   const navigate = useNavigate();
   const { language } = useLanguage();
+  const { user } = useAuth();
   const t = content[language as keyof typeof content];
 
-  // Mock data - replace with real API call
-  const [offers, setOffers] = useState<Offer[]>([
-    {
-      id: '1',
-      title: '20% Off All Main Courses',
-      category: 'restaurants',
-      discount: 20,
-      description: 'Enjoy 20% discount on all main courses',
-      validFrom: '2025-10-01',
-      validUntil: '2025-12-31',
-      maxRedemptions: 100,
-      currentRedemptions: 45,
-      views: 1240,
-      isActive: true,
-      createdAt: '2025-09-15',
-    },
-    {
-      id: '2',
-      title: 'Free Dessert with Any Meal',
-      category: 'restaurants',
-      discount: 0,
-      description: 'Get a free dessert when you order any main course',
-      validFrom: '2025-10-01',
-      validUntil: '2025-11-15',
-      currentRedemptions: 23,
-      views: 856,
-      isActive: true,
-      createdAt: '2025-09-20',
-    },
-    {
-      id: '3',
-      title: 'Summer Special - 30% Off',
-      category: 'restaurants',
-      discount: 30,
-      description: 'Limited time summer special offer',
-      validFrom: '2025-06-01',
-      validUntil: '2025-08-31',
-      currentRedemptions: 189,
-      views: 2341,
-      isActive: false,
-      createdAt: '2025-05-25',
-    },
-  ]);
-
+  // State declarations
   const [filter, setFilter] = useState<'all' | 'active' | 'inactive' | 'expired'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
+
+  // Fetch real offers data
+  const { data: offersData, isLoading, refetch } = useOffers({
+    partnerId: user?.id,
+    limit: 100
+  });
+  const deleteMutation = useDeleteOffer();
+  const toggleMutation = useToggleOfferStatus();
+
+  // Transform API data to match component interface
+  const offers: Offer[] = (offersData?.data || []).map(offer => ({
+    id: offer.id,
+    title: offer.title,
+    category: offer.category,
+    discount: offer.discount,
+    description: offer.description,
+    validFrom: offer.validFrom || new Date().toISOString(),
+    validUntil: offer.validUntil || new Date().toISOString(),
+    maxRedemptions: offer.maxRedemptions,
+    currentRedemptions: offer.currentRedemptions || 0,
+    views: offer.views || 0,
+    isActive: offer.isActive,
+    createdAt: offer.createdAt || new Date().toISOString(),
+  }));
+
+  // Close menu when clicking outside
+  React.useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (!target.closest('[data-menu-container]')) {
+        setActiveMenu(null);
+      }
+    };
+
+    if (activeMenu) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [activeMenu]);
 
   const isExpired = (date: string) => {
     return new Date(date) < new Date();
@@ -168,23 +167,31 @@ const MyOffersPage: React.FC = () => {
     return matchesSearch;
   });
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (window.confirm(t.confirmDelete)) {
-      setOffers(prev => prev.filter(offer => offer.id !== id));
-      toast.success(t.deleted);
-      setActiveMenu(null);
+      try {
+        await deleteMutation.mutateAsync(id);
+        toast.success(t.deleted);
+        setActiveMenu(null);
+        refetch(); // Refresh the list
+      } catch (error) {
+        toast.error('Failed to delete offer');
+      }
     }
   };
 
-  const handleToggleActive = (id: string) => {
-    setOffers(prev =>
-      prev.map(offer =>
-        offer.id === id ? { ...offer, isActive: !offer.isActive } : offer
-      )
-    );
+  const handleToggleActive = async (id: string) => {
     const offer = offers.find(o => o.id === id);
-    toast.success(offer?.isActive ? t.deactivated : t.activated);
-    setActiveMenu(null);
+    if (!offer) return;
+
+    try {
+      await toggleMutation.mutateAsync({ id, isActive: !offer.isActive });
+      toast.success(offer.isActive ? t.deactivated : t.activated);
+      setActiveMenu(null);
+      refetch(); // Refresh the list
+    } catch (error) {
+      toast.error('Failed to update offer status');
+    }
   };
 
   const stats = {
@@ -301,33 +308,39 @@ const MyOffersPage: React.FC = () => {
                     ? t.active
                     : t.inactive}
                 </OfferStatus>
-                <MenuButton onClick={() => setActiveMenu(activeMenu === offer.id ? null : offer.id)}>
-                  <MoreVertical size={18} />
-                </MenuButton>
-                {activeMenu === offer.id && (
-                  <MenuDropdown
-                    initial={{ opacity: 0, scale: 0.9 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                  >
-                    <MenuItem onClick={() => navigate(`/partners/offers/${offer.id}/edit`)}>
-                      <Edit size={16} /> {t.edit}
-                    </MenuItem>
-                    <MenuItem onClick={() => handleToggleActive(offer.id)}>
-                      {offer.isActive ? (
-                        <>
-                          <EyeOff size={16} /> {t.deactivate}
-                        </>
-                      ) : (
-                        <>
-                          <Eye size={16} /> {t.activate}
-                        </>
-                      )}
-                    </MenuItem>
-                    <MenuItem danger onClick={() => handleDelete(offer.id)}>
-                      <Trash2 size={16} /> {t.delete}
-                    </MenuItem>
-                  </MenuDropdown>
-                )}
+                <div style={{ position: 'relative' }} data-menu-container>
+                  <MenuButton onClick={() => setActiveMenu(activeMenu === offer.id ? null : offer.id)}>
+                    <MoreVertical size={18} />
+                  </MenuButton>
+                  <AnimatePresence>
+                    {activeMenu === offer.id && (
+                      <MenuDropdown
+                        initial={{ opacity: 0, scale: 0.95, y: -8 }}
+                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.95, y: -8 }}
+                        transition={{ duration: 0.15 }}
+                      >
+                        <MenuItem onClick={() => navigate(`/partners/offers/${offer.id}/edit`)}>
+                          <Edit size={16} /> {t.edit}
+                        </MenuItem>
+                        <MenuItem onClick={() => handleToggleActive(offer.id)}>
+                          {offer.isActive ? (
+                            <>
+                              <EyeOff size={16} /> {t.deactivate}
+                            </>
+                          ) : (
+                            <>
+                              <Eye size={16} /> {t.activate}
+                            </>
+                          )}
+                        </MenuItem>
+                        <MenuItem danger onClick={() => handleDelete(offer.id)}>
+                          <Trash2 size={16} /> {t.delete}
+                        </MenuItem>
+                      </MenuDropdown>
+                    )}
+                  </AnimatePresence>
+                </div>
               </OfferHeader>
 
               <OfferTitle>{offer.title}</OfferTitle>
@@ -381,6 +394,8 @@ const Container = styled.div`
   max-width: 1400px;
   margin: 0 auto;
   padding: 2rem;
+  min-height: 100vh;
+  background: linear-gradient(to bottom, #fafbfc 0%, #ffffff 50%, #fafbfc 100%);
 `;
 
 const Header = styled.div`
@@ -400,10 +415,15 @@ const HeaderContent = styled.div`
 `;
 
 const Title = styled.h1`
-  font-size: 2rem;
-  font-weight: 700;
-  color: var(--text-primary);
+  font-size: 2.5rem;
+  font-weight: 800;
+  background: linear-gradient(135deg, #111827 0%, #4f46e5 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
   margin: 0;
+  letter-spacing: -0.03em;
+  line-height: 1.2;
 `;
 
 const StatsGrid = styled.div`
@@ -414,22 +434,60 @@ const StatsGrid = styled.div`
 `;
 
 const StatCard = styled(motion.div)`
-  background: white;
-  border-radius: 1rem;
-  padding: 1.5rem;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  background: linear-gradient(to bottom right, #ffffff 0%, #fafbfc 100%);
+  border-radius: 1.5rem;
+  padding: 2rem;
+  box-shadow:
+    0 2px 8px rgba(0, 0, 0, 0.08),
+    0 8px 24px rgba(0, 0, 0, 0.06),
+    0 16px 48px rgba(0, 0, 0, 0.03);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  transition: all 400ms cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, #6366f1 0%, #a855f7 100%);
+    transform: scaleX(0);
+    transform-origin: left;
+    transition: transform 400ms cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  &:hover {
+    box-shadow:
+      0 4px 16px rgba(0, 0, 0, 0.12),
+      0 12px 32px rgba(0, 0, 0, 0.1),
+      0 24px 64px rgba(0, 0, 0, 0.08);
+    transform: translateY(-4px);
+    border-color: rgba(99, 102, 241, 0.2);
+
+    &::before {
+      transform: scaleX(1);
+    }
+  }
 `;
 
 const StatLabel = styled.div`
-  font-size: 0.875rem;
-  color: var(--text-secondary);
-  margin-bottom: 0.5rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 0.75rem;
 `;
 
 const StatValue = styled.div<{ color?: string }>`
-  font-size: 2rem;
-  font-weight: 700;
-  color: ${props => props.color || 'var(--text-primary)'};
+  font-size: 2.5rem;
+  font-weight: 800;
+  color: ${props => props.color || '#111827'};
+  letter-spacing: -0.03em;
+  line-height: 1.2;
 `;
 
 const Filters = styled.div`
@@ -444,15 +502,30 @@ const Filters = styled.div`
 
 const SearchInput = styled.input`
   flex: 1;
-  padding: 0.75rem 1rem;
-  border: 2px solid var(--gray-200);
-  border-radius: 0.5rem;
+  padding: 0.875rem 1.125rem;
+  border: 2px solid #e5e7eb;
+  border-radius: 0.75rem;
   font-size: 1rem;
-  transition: all 0.2s;
+  font-weight: 500;
+  transition: all 300ms cubic-bezier(0.4, 0, 0.2, 1);
+  background: white;
+  color: #111827;
+  letter-spacing: -0.01em;
+
+  &::placeholder {
+    color: #9ca3af;
+    font-weight: 400;
+  }
+
+  &:hover {
+    border-color: #d1d5db;
+  }
 
   &:focus {
     outline: none;
-    border-color: var(--primary);
+    border-color: #6366f1;
+    box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.1);
+    background: #ffffff;
   }
 `;
 
@@ -460,23 +533,39 @@ const FilterButtons = styled.div`
   display: flex;
   gap: 0.5rem;
   background: white;
-  padding: 0.25rem;
-  border-radius: 0.5rem;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  padding: 0.375rem;
+  border-radius: 0.75rem;
+  box-shadow:
+    0 2px 8px rgba(0, 0, 0, 0.08),
+    0 4px 12px rgba(0, 0, 0, 0.04);
+  border: 1px solid rgba(0, 0, 0, 0.06);
 `;
 
 const FilterButton = styled.button<{ active: boolean }>`
-  padding: 0.5rem 1rem;
+  padding: 0.625rem 1.25rem;
   border: none;
-  border-radius: 0.375rem;
-  background: ${props => (props.active ? 'var(--primary)' : 'transparent')};
-  color: ${props => (props.active ? 'white' : 'var(--text-secondary)')};
-  font-weight: 500;
+  border-radius: 0.5rem;
+  background: ${props =>
+    props.active
+      ? 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)'
+      : 'transparent'};
+  color: ${props => (props.active ? 'white' : '#6b7280')};
+  font-weight: 600;
+  font-size: 0.9375rem;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 300ms cubic-bezier(0.4, 0, 0.2, 1);
+  letter-spacing: -0.01em;
 
   &:hover {
-    background: ${props => (props.active ? 'var(--primary)' : 'var(--gray-100)')};
+    background: ${props =>
+      props.active
+        ? 'linear-gradient(135deg, #4f46e5 0%, #4338ca 100%)'
+        : '#f3f4f6'};
+    transform: ${props => (props.active ? 'scale(1.02)' : 'none')};
+  }
+
+  &:active {
+    transform: scale(0.98);
   }
 `;
 
@@ -488,15 +577,45 @@ const OffersGrid = styled.div`
 
 const OfferCard = styled(motion.div)`
   background: white;
-  border-radius: 1rem;
-  padding: 1.5rem;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  border-radius: 1.5rem;
+  padding: 2rem;
+  box-shadow:
+    0 2px 8px rgba(0, 0, 0, 0.08),
+    0 8px 24px rgba(0, 0, 0, 0.06),
+    0 16px 48px rgba(0, 0, 0, 0.03);
+  border: 1px solid rgba(0, 0, 0, 0.06);
   position: relative;
-  transition: all 0.2s;
+  transition: all 400ms cubic-bezier(0.4, 0, 0.2, 1);
+  overflow: hidden;
+
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    border-radius: 1.5rem;
+    padding: 2px;
+    background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%);
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    opacity: 0;
+    transition: opacity 400ms cubic-bezier(0.4, 0, 0.2, 1);
+  }
 
   &:hover {
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-    transform: translateY(-2px);
+    box-shadow:
+      0 4px 16px rgba(0, 0, 0, 0.12),
+      0 12px 32px rgba(0, 0, 0, 0.1),
+      0 24px 64px rgba(0, 0, 0, 0.08);
+    transform: translateY(-6px);
+    border-color: rgba(99, 102, 241, 0.2);
+
+    &::before {
+      opacity: 1;
+    }
   }
 `;
 
@@ -530,47 +649,86 @@ const OfferStatus = styled.div<{ isActive: boolean; expired: boolean }>`
 
 const MenuButton = styled.button`
   background: transparent;
-  border: none;
+  border: 2px solid transparent;
   cursor: pointer;
-  padding: 0.25rem;
-  border-radius: 0.25rem;
-  color: var(--text-secondary);
-  transition: all 0.2s;
+  padding: 0.5rem;
+  border-radius: 0.5rem;
+  color: #6b7280;
+  transition: all 250ms cubic-bezier(0.4, 0, 0.2, 1);
 
   &:hover {
-    background: var(--gray-100);
-    color: var(--text-primary);
+    background: #f3f4f6;
+    color: #111827;
+    border-color: #e5e7eb;
+  }
+
+  &:active {
+    transform: scale(0.95);
   }
 `;
 
 const MenuDropdown = styled(motion.div)`
   position: absolute;
-  top: 3rem;
-  right: 1.5rem;
+  top: calc(100% + 0.5rem);
+  right: 0;
   background: white;
-  border-radius: 0.5rem;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  border-radius: 0.75rem;
+  box-shadow:
+    0 4px 16px rgba(0, 0, 0, 0.12),
+    0 8px 32px rgba(0, 0, 0, 0.08),
+    0 0 0 1px rgba(0, 0, 0, 0.06);
   overflow: hidden;
-  z-index: 10;
-  min-width: 150px;
+  z-index: 100;
+  min-width: 180px;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+
+  /* Arrow pointer */
+  &::before {
+    content: '';
+    position: absolute;
+    top: -6px;
+    right: 1rem;
+    width: 12px;
+    height: 12px;
+    background: white;
+    border-left: 1px solid rgba(0, 0, 0, 0.06);
+    border-top: 1px solid rgba(0, 0, 0, 0.06);
+    transform: rotate(45deg);
+  }
 `;
 
 const MenuItem = styled.button<{ danger?: boolean }>`
   width: 100%;
-  padding: 0.75rem 1rem;
+  padding: 0.875rem 1.125rem;
   border: none;
   background: transparent;
-  color: ${props => (props.danger ? 'var(--error)' : 'var(--text-primary)')};
+  color: ${props => (props.danger ? '#ef4444' : '#111827')};
   text-align: left;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 200ms cubic-bezier(0.4, 0, 0.2, 1);
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  font-size: 0.875rem;
+  gap: 0.625rem;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  position: relative;
 
   &:hover {
-    background: ${props => (props.danger ? 'var(--error-light)' : 'var(--gray-100)')};
+    background: ${props => (props.danger ? '#fef2f2' : '#f9fafb')};
+    color: ${props => (props.danger ? '#dc2626' : '#111827')};
+    padding-left: 1.25rem;
+  }
+
+  &:active {
+    transform: scale(0.98);
+  }
+
+  & + & {
+    border-top: 1px solid #f3f4f6;
+  }
+
+  svg {
+    flex-shrink: 0;
   }
 `;
 

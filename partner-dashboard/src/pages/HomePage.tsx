@@ -2,130 +2,58 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { motion, useScroll, useTransform } from 'framer-motion';
 import { useInView } from 'react-intersection-observer';
+import styled from 'styled-components';
 import Card from '../components/common/Card/Card';
 import Button from '../components/common/Button/Button';
 import Carousel from '../components/common/Carousel/Carousel';
 import OfferCard, { Offer } from '../components/common/OfferCard/OfferCard';
 import HeroBlast from '../components/common/HeroBlast/HeroBlast';
 import { useLanguage } from '../contexts/LanguageContext';
+import { useTopOffers } from '../hooks/useOffers';
 
-// Sample offers data - would normally come from API
-const topOffers: Offer[] = [
-  {
-    id: '1',
-    title: 'Spa Weekend in Bansko',
-    titleBg: 'Спа уикенд в Банско',
-    description: 'Luxury spa retreat with mountain views and premium treatments',
-    descriptionBg: 'Луксозен спа център с планинска гледка и премиум третирания',
-    category: 'Spa & Wellness',
-    categoryBg: 'Спа и уелнес',
-    location: 'Bansko',
-    discount: 70,
-    originalPrice: 800,
-    discountedPrice: 240,
-    imageUrl: 'https://images.unsplash.com/photo-1540555700478-4be289fbecef?w=800',
-    partnerName: 'Kempinski Hotel Grand Arena',
-    rating: 4.8,
-    reviewCount: 124,
-    path: '/offers/spa-bansko-70'
-  },
-  {
-    id: '2',
-    title: 'Fine Dining Experience Sofia',
-    titleBg: 'Изискана вечеря София',
-    description: 'Michelin-recommended restaurant with seasonal menu',
-    descriptionBg: 'Препоръчан от Michelin ресторант със сезонно меню',
-    category: 'Fine Dining',
-    categoryBg: 'Висока кухня',
-    location: 'Sofia',
-    discount: 50,
-    originalPrice: 200,
-    discountedPrice: 100,
-    imageUrl: 'https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=800',
-    partnerName: 'Made in Home',
-    rating: 4.9,
-    reviewCount: 267,
-    path: '/offers/fine-dining-sofia-50'
-  },
-  {
-    id: '3',
-    title: 'Wine Tasting in Melnik',
-    titleBg: 'Дегустация на вина в Мелник',
-    description: 'Exclusive wine tasting with local varietals and appetizers',
-    descriptionBg: 'Ексклузивна дегустация с местни сортове и мезета',
-    category: 'Wineries',
-    categoryBg: 'Винарни',
-    location: 'Melnik',
-    discount: 40,
-    originalPrice: 150,
-    discountedPrice: 90,
-    imageUrl: 'https://images.unsplash.com/photo-1510812431401-41d2bd2722f3?w=800',
-    partnerName: 'Villa Melnik',
-    rating: 4.7,
-    reviewCount: 89,
-    path: '/offers/wine-tasting-melnik-40'
-  },
-  {
-    id: '4',
-    title: 'Beach Resort Varna All-Inclusive',
-    titleBg: 'Плажен курорт Варна - All Inclusive',
-    description: 'Premium beachfront resort with unlimited food and drinks',
-    descriptionBg: 'Премиум курорт на брега с неограничена храна и напитки',
-    category: 'Hotels',
-    categoryBg: 'Хотели',
-    location: 'Varna',
-    discount: 60,
-    originalPrice: 600,
-    discountedPrice: 240,
-    imageUrl: 'https://images.unsplash.com/photo-1571896349842-33c89424de2d?w=800',
-    partnerName: 'Graffit Gallery Hotel',
-    rating: 4.6,
-    reviewCount: 342,
-    path: '/offers/beach-resort-varna-60'
-  },
-  {
-    id: '5',
-    title: 'Extreme Paragliding Adventure',
-    titleBg: 'Екстремно парапланерно приключение',
-    description: 'Tandem paragliding flight over the mountains with instructor',
-    descriptionBg: 'Тандем парапланерен полет над планината с инструктор',
-    category: 'Extreme Sports',
-    categoryBg: 'Екстремни спортове',
-    location: 'Sopot',
-    discount: 35,
-    originalPrice: 280,
-    discountedPrice: 182,
-    imageUrl: 'https://images.unsplash.com/photo-1512227613242-e6b5e7e72c4e?w=800',
-    partnerName: 'SkyHigh Adventures',
-    rating: 4.9,
-    reviewCount: 156,
-    path: '/offers/paragliding-sopot-35'
-  },
-  {
-    id: '6',
-    title: 'Romantic Dinner Plovdiv',
-    titleBg: 'Романтична вечеря Пловдив',
-    description: 'Candlelit dinner for two in historic Old Town',
-    descriptionBg: 'Вечеря при свещи за двама в историческия Стар град',
-    category: 'Restaurants',
-    categoryBg: 'Ресторанти',
-    location: 'Plovdiv',
-    discount: 45,
-    originalPrice: 180,
-    discountedPrice: 99,
-    imageUrl: 'https://images.unsplash.com/photo-1550966871-3ed3cdb5ed0c?w=800',
-    partnerName: 'Pavaj Restaurant',
-    rating: 4.8,
-    reviewCount: 203,
-    path: '/offers/romantic-plovdiv-45'
+// Styled components for category cards
+const CategoryCard = styled(motion.div)`
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+`;
+
+const CategoryImageContainer = styled.div<{ $imageUrl?: string }>`
+  width: 100%;
+  height: 200px;
+  background: ${props => props.$imageUrl ? `url(${props.$imageUrl})` : '#f3f4f6'};
+  background-size: cover;
+  background-position: center;
+  overflow: hidden;
+  transition: all 300ms;
+  border-radius: 0.75rem 0.75rem 0 0;
+
+  ${CategoryCard}:hover & {
+    transform: scale(1.05);
   }
-];
+`;
+
+const CategoryContent = styled.div`
+  padding: 2rem;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  text-align: center;
+
+  @media (max-width: 768px) {
+    padding: 1.5rem;
+  }
+`;
 
 const HomePage: React.FC = () => {
   const { language, t } = useLanguage();
   const { scrollY } = useScroll();
   const heroOpacity = useTransform(scrollY, [0, 300], [1, 0]);
   const heroScale = useTransform(scrollY, [0, 300], [1, 0.95]);
+
+  // Fetch top offers from API
+  const { data: topOffersData, isLoading: isLoadingOffers } = useTopOffers(6);
+  const topOffers = topOffersData || [];
 
   const [offersRef, offersInView] = useInView({
     threshold: 0.1,
@@ -146,28 +74,28 @@ const HomePage: React.FC = () => {
     {
       title: t('home.restaurantsBars'),
       description: t('home.restaurantsBarsDesc'),
-      icon: '🍽️',
+      icon: 'https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=400&h=400&fit=crop',
       count: 150,
       path: '/categories/restaurants'
     },
     {
       title: t('home.hotelsSpa'),
       description: t('home.hotelsSpaDesc'),
-      icon: '🏨',
+      icon: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=400&h=400&fit=crop',
       count: 80,
       path: '/categories/hotels'
     },
     {
       title: t('home.wineries'),
       description: t('home.wineriesDesc'),
-      icon: '🍷',
+      icon: 'https://images.unsplash.com/photo-1506377247377-2a5b3b417ebb?w=400&h=400&fit=crop',
       count: 45,
       path: '/categories/wineries'
     },
     {
       title: t('home.experiences'),
       description: t('home.experiencesDesc'),
-      icon: '🎯',
+      icon: 'https://images.unsplash.com/photo-1533174072545-7a4b6ad7a6c3?w=400&h=400&fit=crop',
       count: 120,
       path: '/categories/experiences'
     }
@@ -209,15 +137,33 @@ const HomePage: React.FC = () => {
             animate={offersInView ? { opacity: 1, y: 0 } : {}}
             transition={{ duration: 0.6, delay: 0.2 }}
           >
-            <Carousel
-              autoPlay={true}
-              interval={6000}
-              itemsToShow={{ mobile: 1, tablet: 2, desktop: 3 }}
-            >
-              {topOffers.map((offer) => (
-                <OfferCard key={offer.id} offer={offer} language={language} />
-              ))}
-            </Carousel>
+            {isLoadingOffers ? (
+              <div className="text-center py-12">
+                <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900"></div>
+                <p className="mt-4 text-gray-600">Loading top offers...</p>
+              </div>
+            ) : topOffers.length === 0 ? (
+              <div className="text-center py-12 bg-gray-50 rounded-lg">
+                <p className="text-xl text-gray-600 mb-4">
+                  {language === 'bg' ? 'Няма налични оферти в момента' : 'No offers available at the moment'}
+                </p>
+                <p className="text-sm text-gray-500">
+                  {language === 'bg'
+                    ? 'Офертите ще се зареждат от API сървъра. Моля, уверете се, че има създадени оферти в базата данни.'
+                    : 'Offers will be loaded from the API server. Please make sure there are offers created in the database.'}
+                </p>
+              </div>
+            ) : (
+              <Carousel
+                autoPlay={true}
+                interval={6000}
+                itemsToShow={{ mobile: 1, tablet: 2, desktop: 3 }}
+              >
+                {topOffers.map((offer) => (
+                  <OfferCard key={offer.id} offer={offer} language={language} />
+                ))}
+              </Carousel>
+            )}
           </motion.div>
 
           <div className="mt-8 text-center md:hidden">
@@ -249,29 +195,29 @@ const HomePage: React.FC = () => {
 
           <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
             {categories.map((category, index) => (
-              <motion.div
+              <CategoryCard
                 key={index}
                 initial={{ opacity: 0, y: 30 }}
                 animate={categoriesInView ? { opacity: 1, y: 0 } : {}}
                 transition={{ duration: 0.6, delay: index * 0.1 }}
               >
-                <Link to={category.path} style={{ textDecoration: 'none' }}>
+                <Link to={category.path} style={{ textDecoration: 'none', height: '100%', display: 'flex' }}>
                   <Card>
-                    <div className="text-center">
-                      <div className="text-5xl mb-4">{category.icon}</div>
+                    <CategoryImageContainer $imageUrl={category.icon} />
+                    <CategoryContent>
                       <h3 className="text-xl font-semibold mb-2 text-gray-900">
                         {category.title}
                       </h3>
                       <p className="text-gray-600 mb-4 text-sm leading-relaxed">
                         {category.description}
                       </p>
-                      <div className="text-sm font-medium text-gray-500">
+                      <div className="text-sm font-medium text-gray-500 mt-auto">
                         {category.count} {t('home.places')}
                       </div>
-                    </div>
+                    </CategoryContent>
                   </Card>
                 </Link>
-              </motion.div>
+              </CategoryCard>
             ))}
           </div>
         </div>

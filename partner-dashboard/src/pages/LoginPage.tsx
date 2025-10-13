@@ -2,9 +2,12 @@ import React, { useState } from 'react';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 import styled from 'styled-components';
 import { motion } from 'framer-motion';
+import { CredentialResponse } from '@react-oauth/google';
 import Button from '../components/common/Button/Button';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth, OAuthData } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
+import GoogleLoginButton from '../components/auth/GoogleLoginButton';
+import FacebookLoginButton from '../components/auth/FacebookLoginButton';
 
 const PageContainer = styled.div`
   min-height: calc(100vh - 4rem);
@@ -262,7 +265,7 @@ interface FormErrors {
 const LoginPage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { login, isLoading } = useAuth();
+  const { login, loginWithOAuth, isLoading } = useAuth();
   const { t } = useLanguage();
 
   const [formData, setFormData] = useState({
@@ -378,6 +381,70 @@ const LoginPage: React.FC = () => {
     setTouched({ email: true, password: true });
   };
 
+  const handleGoogleSuccess = async (credentialResponse: CredentialResponse) => {
+    try {
+      if (!credentialResponse.credential) {
+        throw new Error('No credential received from Google');
+      }
+
+      // Decode JWT to get user info (in production, verify on backend)
+      const credential = credentialResponse.credential;
+      const base64Url = credential.split('.')[1];
+      const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+      const jsonPayload = decodeURIComponent(
+        atob(base64)
+          .split('')
+          .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+          .join('')
+      );
+      const userData = JSON.parse(jsonPayload);
+
+      const oauthData: OAuthData = {
+        provider: 'google',
+        token: credential,
+        email: userData.email,
+        name: userData.name,
+        picture: userData.picture,
+        id: userData.sub,
+      };
+
+      await loginWithOAuth(oauthData);
+
+      const from = (location.state as any)?.from?.pathname || '/dashboard';
+      navigate(from, { replace: true });
+    } catch (error) {
+      console.error('Google login error:', error);
+    }
+  };
+
+  const handleGoogleError = () => {
+    console.error('Google login failed');
+  };
+
+  const handleFacebookSuccess = async (response: any) => {
+    try {
+      const oauthData: OAuthData = {
+        provider: 'facebook',
+        token: response.accessToken,
+        email: response.userInfo?.email,
+        name: response.userInfo?.name,
+        picture: response.userInfo?.picture?.data?.url,
+        id: response.userInfo?.id,
+      };
+
+      await loginWithOAuth(oauthData);
+
+      const from = (location.state as any)?.from?.pathname || '/dashboard';
+      navigate(from, { replace: true });
+    } catch (error) {
+      console.error('Facebook login error:', error);
+    }
+  };
+
+  const handleFacebookError = (error: any) => {
+    console.error('Facebook login failed:', error);
+  };
+
   return (
     <PageContainer>
       <LoginCard
@@ -482,22 +549,16 @@ const LoginPage: React.FC = () => {
         </Divider>
 
         <SocialButtons>
-          <SocialButton type="button" disabled={isLoading}>
-            <svg width="18" height="18" viewBox="0 0 18 18">
-              <path fill="#4285F4" d="M16.51 8H8.98v3h4.3c-.18 1-.74 1.48-1.6 2.04v2.01h2.6a7.8 7.8 0 0 0 2.38-5.88c0-.57-.05-.66-.15-1.18z"/>
-              <path fill="#34A853" d="M8.98 17c2.16 0 3.97-.72 5.3-1.94l-2.6-2a4.8 4.8 0 0 1-7.18-2.54H1.83v2.07A8 8 0 0 0 8.98 17z"/>
-              <path fill="#FBBC05" d="M4.5 10.52a4.8 4.8 0 0 1 0-3.04V5.41H1.83a8 8 0 0 0 0 7.18l2.67-2.07z"/>
-              <path fill="#EA4335" d="M8.98 4.18c1.17 0 2.23.4 3.06 1.2l2.3-2.3A8 8 0 0 0 1.83 5.4L4.5 7.49a4.77 4.77 0 0 1 4.48-3.3z"/>
-            </svg>
-            {t('auth.continueWithGoogle')}
-          </SocialButton>
-
-          <SocialButton type="button" disabled={isLoading}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="#1877F2">
-              <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
-            </svg>
-            {t('auth.continueWithFacebook')}
-          </SocialButton>
+          <GoogleLoginButton
+            onSuccess={handleGoogleSuccess}
+            onError={handleGoogleError}
+            text={t('auth.continueWithGoogle')}
+          />
+          <FacebookLoginButton
+            onSuccess={handleFacebookSuccess}
+            onError={handleFacebookError}
+            text={t('auth.continueWithFacebook')}
+          />
         </SocialButtons>
 
         <SignupPrompt>

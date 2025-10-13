@@ -329,7 +329,7 @@ interface ReviewSystemProps {
 }
 
 export const ReviewSystem: React.FC<ReviewSystemProps> = ({ className }) => {
-  const { language } = useLanguage();
+  const { language, t: translateFn } = useLanguage();
   const { user, isAuthenticated } = useAuth();
   const [showForm, setShowForm] = useState(false);
   const [rating, setRating] = useState(0);
@@ -417,12 +417,12 @@ export const ReviewSystem: React.FC<ReviewSystemProps> = ({ className }) => {
     e.preventDefault();
 
     if (rating === 0) {
-      toast.error(language === 'bg' ? 'Моля, изберете оценка' : 'Please select a rating');
+      toast.error(translateFn('common.pleaseSelectRating'));
       return;
     }
 
     if (comment.trim().length < 10) {
-      toast.error(language === 'bg' ? 'Отзивът трябва да е поне 10 символа' : 'Review must be at least 10 characters');
+      toast.error(translateFn('common.reviewMinLength'));
       return;
     }
 
@@ -446,9 +446,9 @@ export const ReviewSystem: React.FC<ReviewSystemProps> = ({ className }) => {
       setRating(0);
       setComment('');
       setShowForm(false);
-      toast.success(language === 'bg' ? 'Отзивът е изпратен успешно!' : 'Review submitted successfully!');
+      toast.success(translateFn('common.reviewSubmittedSuccess'));
     } catch {
-      toast.error(language === 'bg' ? 'Грешка при изпращане' : 'Error submitting review');
+      toast.error(translateFn('common.errorSubmittingReview'));
     } finally {
       setIsSubmitting(false);
     }

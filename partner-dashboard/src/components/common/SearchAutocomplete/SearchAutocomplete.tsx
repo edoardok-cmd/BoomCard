@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import styled from 'styled-components';
+import { useLanguage } from '../../../contexts/LanguageContext';
 
 interface SearchResult {
   id: string;
@@ -265,6 +266,7 @@ export const SearchAutocomplete: React.FC<SearchAutocompleteProps> = ({
   placeholder,
   onSearch
 }) => {
+  const { t } = useLanguage();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
   const [isOpen, setIsOpen] = useState(false);
@@ -272,9 +274,7 @@ export const SearchAutocomplete: React.FC<SearchAutocompleteProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
 
-  const defaultPlaceholder = language === 'bg'
-    ? 'Търсене на оферти, заведения, категории...'
-    : 'Search offers, venues, categories...';
+  const defaultPlaceholder = t('common.searchPlaceholder');
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -377,12 +377,12 @@ export const SearchAutocomplete: React.FC<SearchAutocompleteProps> = ({
           >
             {isLoading ? (
               <EmptyState>
-                <EmptyText>{language === 'bg' ? 'Търсене...' : 'Searching...'}</EmptyText>
+                <EmptyText>{t('common.searching')}</EmptyText>
               </EmptyState>
             ) : results.length > 0 ? (
               <>
                 <ResultsHeader>
-                  {results.length} {language === 'bg' ? 'резултата' : 'results'}
+                  {results.length} {t('common.results')}
                 </ResultsHeader>
                 {results.map((result) => (
                   <ResultItem key={result.id} onClick={() => handleResultClick(result)}>
@@ -408,9 +408,7 @@ export const SearchAutocomplete: React.FC<SearchAutocompleteProps> = ({
               <EmptyState>
                 <EmptyIcon>🔍</EmptyIcon>
                 <EmptyText>
-                  {language === 'bg'
-                    ? 'Няма намерени резултати'
-                    : 'No results found'}
+                  {t('common.noResultsFound')}
                 </EmptyText>
               </EmptyState>
             )}

@@ -241,7 +241,7 @@ const NearbyOffersPage: React.FC = () => {
             exit={{ opacity: 0, height: 0 }}
           >
             <FilterGroup>
-              <FilterLabel>Category</FilterLabel>
+              <FilterLabel>CATEGORY</FilterLabel>
               <CategoryFilters>
                 <CategoryButton
                   active={selectedCategory === 'all'}
@@ -253,7 +253,7 @@ const NearbyOffersPage: React.FC = () => {
                   <CategoryButton
                     key={category}
                     active={selectedCategory === category}
-                    onClick={() => setSelectedCategory(category)}
+                    onClick={() => setSelectedCategory(selectedCategory === category ? 'all' : category)}
                   >
                     {t.filters[category as keyof typeof t.filters]}
                   </CategoryButton>
@@ -262,17 +262,26 @@ const NearbyOffersPage: React.FC = () => {
             </FilterGroup>
 
             <FilterGroup>
-              <FilterLabel>Sort By</FilterLabel>
+              <FilterLabel>SORT BY</FilterLabel>
               <SortButtons>
-                {(['distance', 'discount', 'rating', 'name'] as const).map((sort) => (
-                  <SortButton
-                    key={sort}
-                    active={sortBy === sort}
-                    onClick={() => setSortBy(sort)}
-                  >
-                    {t.sort[sort]}
-                  </SortButton>
-                ))}
+                <SortButton
+                  active={sortBy === 'distance'}
+                  onClick={() => setSortBy('distance')}
+                >
+                  {t.sort.distance}
+                </SortButton>
+                <SortButton
+                  active={sortBy === 'rating'}
+                  onClick={() => setSortBy('rating')}
+                >
+                  {t.sort.rating}
+                </SortButton>
+                <SortButton
+                  active={sortBy === 'name'}
+                  onClick={() => setSortBy('name')}
+                >
+                  {t.sort.name}
+                </SortButton>
               </SortButtons>
             </FilterGroup>
           </FiltersContent>
@@ -417,38 +426,43 @@ const ToggleButton = styled.button<{ active: boolean }>`
 const FiltersSection = styled.div`
   background: white;
   border-radius: 1rem;
-  padding: 1rem;
+  padding: 1.5rem;
   margin-bottom: 2rem;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 `;
 
 const FiltersToggle = styled.button`
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 0.5rem;
   background: none;
-  border: none;
+  border: 2px solid var(--primary);
   font-size: 1rem;
   font-weight: 600;
-  color: var(--text-primary);
+  color: var(--primary);
   cursor: pointer;
-  padding: 0.5rem;
+  padding: 0.625rem 1.25rem;
   border-radius: 0.5rem;
   transition: all 0.2s;
 
   &:hover {
-    background: var(--gray-100);
+    background: var(--primary);
+    color: white;
+  }
+
+  svg {
+    flex-shrink: 0;
   }
 `;
 
 const FiltersContent = styled(motion.div)`
-  padding-top: 1rem;
-  margin-top: 1rem;
+  padding-top: 1.5rem;
+  margin-top: 1.5rem;
   border-top: 1px solid var(--gray-200);
 `;
 
 const FilterGroup = styled.div`
-  margin-bottom: 1.5rem;
+  margin-bottom: 2rem;
 
   &:last-child {
     margin-bottom: 0;
@@ -456,57 +470,62 @@ const FilterGroup = styled.div`
 `;
 
 const FilterLabel = styled.div`
-  font-size: 0.875rem;
-  font-weight: 600;
-  color: var(--text-secondary);
-  margin-bottom: 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 1rem;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 1px;
+  padding-left: 0.25rem;
 `;
 
 const CategoryFilters = styled.div`
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
+  gap: 0.75rem;
+  align-items: center;
+  margin-left: 0;
 `;
 
 const CategoryButton = styled.button<{ active: boolean }>`
-  padding: 0.5rem 1rem;
-  border: 2px solid ${props => (props.active ? 'var(--primary)' : 'var(--gray-200)')};
-  border-radius: 2rem;
-  background: ${props => (props.active ? 'var(--primary)' : 'white')};
-  color: ${props => (props.active ? 'white' : 'var(--text-primary)')};
-  font-size: 0.875rem;
-  font-weight: 500;
+  padding: 0.5rem 1.125rem;
+  border: none;
+  border-radius: 0.375rem;
+  background: ${props => (props.active ? '#1a1a1a' : '#f5f5f5')};
+  color: ${props => (props.active ? '#ffffff' : '#1a1a1a')};
+  font-size: 0.9375rem;
+  font-weight: 400;
   cursor: pointer;
   transition: all 0.2s;
+  white-space: nowrap;
 
   &:hover {
-    border-color: var(--primary);
-    background: ${props => (props.active ? 'var(--primary)' : 'var(--gray-50)')};
+    background: ${props => (props.active ? '#1a1a1a' : '#e5e5e5')};
   }
 `;
 
 const SortButtons = styled.div`
   display: flex;
-  gap: 0.5rem;
+  gap: 0.75rem;
   flex-wrap: wrap;
+  align-items: center;
+  margin-left: 0;
 `;
 
 const SortButton = styled.button<{ active: boolean }>`
-  padding: 0.5rem 1rem;
-  border: 1px solid ${props => (props.active ? 'var(--primary)' : 'var(--gray-200)')};
-  border-radius: 0.5rem;
-  background: ${props => (props.active ? 'var(--primary)' : 'white')};
-  color: ${props => (props.active ? 'white' : 'var(--text-primary)')};
-  font-size: 0.875rem;
-  font-weight: 500;
+  padding: 0.5rem 1.125rem;
+  border: none;
+  border-radius: 0.375rem;
+  background: ${props => (props.active ? '#1a1a1a' : '#f5f5f5')};
+  color: ${props => (props.active ? '#ffffff' : '#1a1a1a')};
+  font-size: 0.9375rem;
+  font-weight: 400;
   cursor: pointer;
   transition: all 0.2s;
+  white-space: nowrap;
 
   &:hover {
-    border-color: var(--primary);
-    background: ${props => (props.active ? 'var(--primary)' : 'var(--gray-50)')};
+    background: ${props => (props.active ? '#1a1a1a' : '#e5e5e5')};
   }
 `;
 

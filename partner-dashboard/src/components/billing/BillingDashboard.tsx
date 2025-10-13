@@ -1,4 +1,13 @@
 import React, { useState } from 'react';
+import { useLanguage } from '../../contexts/LanguageContext';
+import {
+  useCurrentSubscription,
+  usePaymentMethods,
+  useInvoices,
+  useDeletePaymentMethod,
+  useSetDefaultPaymentMethod,
+  useDownloadInvoice,
+} from '../../hooks/useBilling';
 import styled from 'styled-components';
 import { motion } from 'framer-motion';
 import {
@@ -14,6 +23,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import Button from '../common/Button/Button';
+import { convertBGNToEUR } from '../../utils/helpers';
 
 const DashboardContainer = styled.div`
   max-width: 1200px;
@@ -98,7 +108,7 @@ const CardSubtext = styled.div`
   gap: 0.5rem;
 `;
 
-const StatusBadge = styled.span<{ $status: 'active' | 'past_due' | 'canceled' }>`
+const StatusBadge = styled.span<{ $status: 'active' | 'past_due' | 'canceled' | 'trialing' }>`
   display: inline-flex;
   align-items: center;
   gap: 0.375rem;
@@ -109,6 +119,7 @@ const StatusBadge = styled.span<{ $status: 'active' | 'past_due' | 'canceled' }>
   background: ${props => {
     switch (props.$status) {
       case 'active': return '#d1fae5';
+      case 'trialing': return '#dbeafe';
       case 'past_due': return '#fef3c7';
       case 'canceled': return '#fee2e2';
     }
@@ -116,6 +127,7 @@ const StatusBadge = styled.span<{ $status: 'active' | 'past_due' | 'canceled' }>
   color: ${props => {
     switch (props.$status) {
       case 'active': return '#065f46';
+      case 'trialing': return '#1e40af';
       case 'past_due': return '#92400e';
       case 'canceled': return '#991b1b';
     }
@@ -342,28 +354,30 @@ interface Invoice {
 }
 
 interface BillingDashboardProps {
-  subscription: Subscription;
-  paymentMethods: PaymentMethod[];
-  invoices: Invoice[];
   onUpdatePlan?: () => void;
   onAddPaymentMethod?: () => void;
   onEditPaymentMethod?: (id: string) => void;
-  onDeletePaymentMethod?: (id: string) => void;
-  onDownloadInvoice?: (id: string) => void;
   language?: 'en' | 'bg';
 }
 
 export const BillingDashboard: React.FC<BillingDashboardProps> = ({
-  subscription,
-  paymentMethods,
-  invoices,
   onUpdatePlan,
   onAddPaymentMethod,
   onEditPaymentMethod,
-  onDeletePaymentMethod,
-  onDownloadInvoice,
   language = 'en',
 }) => {
+  const { t } = useLanguage();
+
+  // Fetch data from API
+  const { data: subscription, isLoading: isLoadingSubscription } = useCurrentSubscription();
+  const { data: paymentMethods = [], isLoading: isLoadingPayments } = usePaymentMethods();
+  const { data: invoices = [], isLoading: isLoadingInvoices } = useInvoices(10);
+
+  // Mutations
+  const deletePaymentMutation = useDeletePaymentMethod();
+  const setDefaultPaymentMutation = useSetDefaultPaymentMethod();
+  const downloadInvoiceMutation = useDownloadInvoice();
+
   const formatDate = (date: Date) => {
     return date.toLocaleDateString(language === 'bg' ? 'bg-BG' : 'en-US', {
       year: 'numeric',
@@ -373,20 +387,24 @@ export const BillingDashboard: React.FC<BillingDashboardProps> = ({
   };
 
   const formatCurrency = (amount: number, currency: string) => {
-    return new Intl.NumberFormat(language === 'bg' ? 'bg-BG' : 'en-US', {
-      style: 'currency',
-      currency: currency,
-    }).format(amount / 100);
+    // Amount is in cents, convert to main currency unit
+    const amountBGN = amount / 100;
+    const amountEUR = convertBGNToEUR(amountBGN);
+    const bgnLabel = language === 'bg' ? 'лв.' : 'BGN';
+
+    return `${amountBGN} ${bgnLabel} / €${amountEUR}`;
   };
 
   const getStatusIcon = (status: Subscription['status']) => {
     switch (status) {
       case 'active':
         return <CheckCircle />;
+      case 'trialing':
+        return <Clock />;
       case 'past_due':
         return <AlertCircle />;
       case 'canceled':
-        return <Clock />;
+        return <AlertCircle />;
     }
   };
 
@@ -394,6 +412,7 @@ export const BillingDashboard: React.FC<BillingDashboardProps> = ({
     if (language === 'bg') {
       switch (status) {
         case 'active': return 'Активен';
+        case 'trialing': return 'Пробен';
         case 'past_due': return 'Просрочен';
         case 'canceled': return 'Отменен';
       }
@@ -401,18 +420,68 @@ export const BillingDashboard: React.FC<BillingDashboardProps> = ({
     return status.charAt(0).toUpperCase() + status.slice(1).replace('_', ' ');
   };
 
+  const handleDeletePaymentMethod = async (id: string) => {
+    if (window.confirm(t('billing.confirmDeletePayment') || 'Delete this payment method?')) {
+      try {
+        await deletePaymentMutation.mutateAsync(id);
+      } catch (error) {
+        console.error('Failed to delete payment method:', error);
+      }
+    }
+  };
+
+  const handleSetDefaultPaymentMethod = async (id: string) => {
+    try {
+      await setDefaultPaymentMutation.mutateAsync(id);
+    } catch (error) {
+      console.error('Failed to set default payment method:', error);
+    }
+  };
+
+  const handleDownloadInvoice = async (id: string) => {
+    try {
+      await downloadInvoiceMutation.mutateAsync(id);
+    } catch (error) {
+      console.error('Failed to download invoice:', error);
+    }
+  };
+
   const totalSpent = invoices
     .filter(inv => inv.status === 'paid')
     .reduce((sum, inv) => sum + inv.amount, 0);
 
+  const isLoading = isLoadingSubscription || isLoadingPayments || isLoadingInvoices;
+
+  // Show loading state
+  if (isLoading) {
+    return (
+      <DashboardContainer>
+        <Header>
+          <Title>{t('billing.title')}</Title>
+          <Subtitle>Loading...</Subtitle>
+        </Header>
+      </DashboardContainer>
+    );
+  }
+
+  // Show empty state if no subscription
+  if (!subscription) {
+    return (
+      <DashboardContainer>
+        <Header>
+          <Title>{t('billing.title')}</Title>
+          <Subtitle>{t('billing.noSubscription') || 'No active subscription'}</Subtitle>
+        </Header>
+      </DashboardContainer>
+    );
+  }
+
   return (
     <DashboardContainer>
       <Header>
-        <Title>{language === 'bg' ? 'Фактуриране' : 'Billing'}</Title>
+        <Title>{t('billing.title')}</Title>
         <Subtitle>
-          {language === 'bg'
-            ? 'Управлявайте вашия абонамент и плащания'
-            : 'Manage your subscription and payment methods'}
+          {t('billing.subtitle')}
         </Subtitle>
       </Header>
 
@@ -423,7 +492,7 @@ export const BillingDashboard: React.FC<BillingDashboardProps> = ({
           transition={{ duration: 0.3 }}
         >
           <CardHeader>
-            <CardTitle>{language === 'bg' ? 'Текущ план' : 'Current Plan'}</CardTitle>
+            <CardTitle>{t('billing.currentPlan')}</CardTitle>
             <CardIcon $color="#6366f1">
               <TrendingUp />
             </CardIcon>
@@ -443,7 +512,7 @@ export const BillingDashboard: React.FC<BillingDashboardProps> = ({
           transition={{ duration: 0.3, delay: 0.1 }}
         >
           <CardHeader>
-            <CardTitle>{language === 'bg' ? 'Следващо плащане' : 'Next Payment'}</CardTitle>
+            <CardTitle>{t('billing.nextPayment')}</CardTitle>
             <CardIcon $color="#10b981">
               <Calendar />
             </CardIcon>
@@ -452,7 +521,7 @@ export const BillingDashboard: React.FC<BillingDashboardProps> = ({
             {formatCurrency(subscription.amount, subscription.currency)}
           </CardValue>
           <CardSubtext>
-            {language === 'bg' ? 'Дължимо на' : 'Due on'} {formatDate(subscription.currentPeriodEnd)}
+            {t('billing.dueOn')} {formatDate(subscription.currentPeriodEnd)}
           </CardSubtext>
         </Card>
 
@@ -462,7 +531,7 @@ export const BillingDashboard: React.FC<BillingDashboardProps> = ({
           transition={{ duration: 0.3, delay: 0.2 }}
         >
           <CardHeader>
-            <CardTitle>{language === 'bg' ? 'Общо платени' : 'Total Spent'}</CardTitle>
+            <CardTitle>{t('billing.totalSpent')}</CardTitle>
             <CardIcon $color="#8b5cf6">
               <CreditCard />
             </CardIcon>
@@ -471,7 +540,7 @@ export const BillingDashboard: React.FC<BillingDashboardProps> = ({
             {formatCurrency(totalSpent, subscription.currency)}
           </CardValue>
           <CardSubtext>
-            {invoices.filter(inv => inv.status === 'paid').length} {language === 'bg' ? 'фактури' : 'invoices'}
+            {invoices.filter(inv => inv.status === 'paid').length} {t('billing.invoices')}
           </CardSubtext>
         </Card>
       </Grid>
@@ -479,17 +548,17 @@ export const BillingDashboard: React.FC<BillingDashboardProps> = ({
       <Section>
         <SectionHeader>
           <SectionTitle>
-            {language === 'bg' ? 'Детайли на абонамента' : 'Subscription Details'}
+            {t('billing.subscriptionDetails')}
           </SectionTitle>
           <Button variant="outline" size="medium" onClick={onUpdatePlan}>
-            {language === 'bg' ? 'Промени план' : 'Change Plan'}
+            {t('billing.changePlan')}
           </Button>
         </SectionHeader>
 
         <Grid style={{ gridTemplateColumns: '1fr 1fr' }}>
           <div>
             <CardSubtext style={{ marginBottom: '0.5rem' }}>
-              {language === 'bg' ? 'Текущ период' : 'Current Period'}
+              {t('billing.currentPeriod')}
             </CardSubtext>
             <CardValue style={{ fontSize: '1.125rem', marginBottom: '1rem' }}>
               {formatDate(new Date())} - {formatDate(subscription.currentPeriodEnd)}
@@ -497,12 +566,12 @@ export const BillingDashboard: React.FC<BillingDashboardProps> = ({
           </div>
           <div>
             <CardSubtext style={{ marginBottom: '0.5rem' }}>
-              {language === 'bg' ? 'Цикъл на фактуриране' : 'Billing Cycle'}
+              {t('billing.billingCycle')}
             </CardSubtext>
             <CardValue style={{ fontSize: '1.125rem', marginBottom: '1rem' }}>
               {subscription.interval === 'month'
-                ? language === 'bg' ? 'Месечно' : 'Monthly'
-                : language === 'bg' ? 'Годишно' : 'Annual'}
+                ? t('billing.monthly')
+                : t('billing.annual')}
             </CardValue>
           </div>
         </Grid>
@@ -511,10 +580,10 @@ export const BillingDashboard: React.FC<BillingDashboardProps> = ({
       <Section>
         <SectionHeader>
           <SectionTitle>
-            {language === 'bg' ? 'Методи на плащане' : 'Payment Methods'}
+            {t('billing.paymentMethods')}
           </SectionTitle>
           <Button variant="primary" size="medium" onClick={onAddPaymentMethod}>
-            {language === 'bg' ? 'Добави метод' : 'Add Method'}
+            {t('billing.addMethod')}
           </Button>
         </SectionHeader>
 
@@ -529,12 +598,12 @@ export const BillingDashboard: React.FC<BillingDashboardProps> = ({
                   {method.brand.charAt(0).toUpperCase() + method.brand.slice(1)} •••• {method.last4}
                   {method.isDefault && (
                     <StatusBadge $status="active" style={{ marginLeft: '0.5rem', fontSize: '0.75rem' }}>
-                      {language === 'bg' ? 'По подразбиране' : 'Default'}
+                      {t('billing.default')}
                     </StatusBadge>
                   )}
                 </PaymentMethodName>
                 <PaymentMethodDetails>
-                  {language === 'bg' ? 'Изтича' : 'Expires'} {method.expiryMonth.toString().padStart(2, '0')}/{method.expiryYear}
+                  {t('billing.expires')} {method.expiryMonth.toString().padStart(2, '0')}/{method.expiryYear}
                 </PaymentMethodDetails>
               </PaymentMethodInfo>
               <PaymentMethodActions>
@@ -542,7 +611,7 @@ export const BillingDashboard: React.FC<BillingDashboardProps> = ({
                   <Edit />
                 </IconButton>
                 {!method.isDefault && (
-                  <IconButton onClick={() => onDeletePaymentMethod?.(method.id)}>
+                  <IconButton onClick={() => handleDeletePaymentMethod(method.id)}>
                     <Trash2 />
                   </IconButton>
                 )}
@@ -555,12 +624,10 @@ export const BillingDashboard: React.FC<BillingDashboardProps> = ({
               <CreditCard />
             </EmptyStateIcon>
             <EmptyStateText>
-              {language === 'bg'
-                ? 'Няма добавени методи на плащане'
-                : 'No payment methods added'}
+              {t('billing.noPaymentMethods')}
             </EmptyStateText>
             <Button variant="primary" size="medium" onClick={onAddPaymentMethod}>
-              {language === 'bg' ? 'Добави метод' : 'Add Payment Method'}
+              {t('billing.addPaymentMethod')}
             </Button>
           </EmptyState>
         )}
@@ -569,7 +636,7 @@ export const BillingDashboard: React.FC<BillingDashboardProps> = ({
       <Section>
         <SectionHeader>
           <SectionTitle>
-            {language === 'bg' ? 'История на фактурите' : 'Invoice History'}
+            {t('billing.invoiceHistory')}
           </SectionTitle>
         </SectionHeader>
 
@@ -577,10 +644,10 @@ export const BillingDashboard: React.FC<BillingDashboardProps> = ({
           <Table>
             <thead>
               <tr>
-                <TableHeader>{language === 'bg' ? 'Фактура' : 'Invoice'}</TableHeader>
-                <TableHeader>{language === 'bg' ? 'Дата' : 'Date'}</TableHeader>
-                <TableHeader>{language === 'bg' ? 'Сума' : 'Amount'}</TableHeader>
-                <TableHeader>{language === 'bg' ? 'Статус' : 'Status'}</TableHeader>
+                <TableHeader>{t('billing.invoice')}</TableHeader>
+                <TableHeader>{t('billing.date')}</TableHeader>
+                <TableHeader>{t('billing.amount')}</TableHeader>
+                <TableHeader>{t('billing.status')}</TableHeader>
                 <TableHeader></TableHeader>
               </tr>
             </thead>
@@ -596,13 +663,11 @@ export const BillingDashboard: React.FC<BillingDashboardProps> = ({
                   </TableCell>
                   <TableCell>
                     <InvoiceStatus $status={invoice.status}>
-                      {language === 'bg'
-                        ? invoice.status === 'paid' ? 'Платена' : invoice.status === 'pending' ? 'Изчакваща' : 'Неуспешна'
-                        : invoice.status.charAt(0).toUpperCase() + invoice.status.slice(1)}
+                      {t(`billing.${invoice.status}` as any)}
                     </InvoiceStatus>
                   </TableCell>
                   <TableCell>
-                    <IconButton onClick={() => onDownloadInvoice?.(invoice.id)}>
+                    <IconButton onClick={() => handleDownloadInvoice(invoice.id)}>
                       <Download />
                     </IconButton>
                   </TableCell>
@@ -616,9 +681,7 @@ export const BillingDashboard: React.FC<BillingDashboardProps> = ({
               <FileText />
             </EmptyStateIcon>
             <EmptyStateText>
-              {language === 'bg'
-                ? 'Няма фактури'
-                : 'No invoices yet'}
+              {t('billing.noInvoices')}
             </EmptyStateText>
           </EmptyState>
         )}

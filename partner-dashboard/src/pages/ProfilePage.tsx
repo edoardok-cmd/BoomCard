@@ -416,9 +416,7 @@ const ProfilePage: React.FC = () => {
       <PageHeader>
         <Title>{t('profile.title')}</Title>
         <Subtitle>
-          {language === 'bg'
-            ? 'Управлявайте информацията за вашия акаунт'
-            : 'Manage your account information and preferences'}
+          {t('profile.subtitle')}
         </Subtitle>
       </PageHeader>
 
@@ -520,12 +518,12 @@ const ProfilePage: React.FC = () => {
           </FormGroup>
 
           <FormGroup>
-            <Label>{language === 'bg' ? 'Имейл адрес' : 'Email Address'}</Label>
+            <Label>{t('profile.emailAddress')}</Label>
             <ReadOnlyValue>{user.email}</ReadOnlyValue>
           </FormGroup>
 
           <FormGroup>
-            <Label>{language === 'bg' ? 'Телефон' : 'Phone'}</Label>
+            <Label>{t('profile.phoneLabel')}</Label>
             {isEditing ? (
               <>
                 <Input
@@ -547,7 +545,7 @@ const ProfilePage: React.FC = () => {
                 )}
               </>
             ) : (
-              <ReadOnlyValue>{user.phone || (language === 'bg' ? 'Не е посочен' : 'Not provided')}</ReadOnlyValue>
+              <ReadOnlyValue>{user.phone || t('profile.notProvided')}</ReadOnlyValue>
             )}
           </FormGroup>
         </FormGrid>
@@ -556,16 +554,16 @@ const ProfilePage: React.FC = () => {
         {isEditing ? (
           <ActionButtons>
             <Button variant="ghost" onClick={handleCancel} disabled={isLoading}>
-              {language === 'bg' ? 'Отказ' : 'Cancel'}
+              {t('profile.cancel')}
             </Button>
             <Button variant="primary" onClick={handleSave} isLoading={isLoading}>
-              {language === 'bg' ? 'Запази промените' : 'Save Changes'}
+              {t('profile.saveChanges')}
             </Button>
           </ActionButtons>
         ) : (
           <ActionButtons>
             <Button variant="primary" onClick={() => setIsEditing(true)}>
-              {language === 'bg' ? 'Редактирай профил' : 'Edit Profile'}
+              {t('profile.editProfile')}
             </Button>
           </ActionButtons>
         )}
@@ -577,13 +575,11 @@ const ProfilePage: React.FC = () => {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3, delay: 0.1 }}
       >
-        <SectionTitle>{language === 'bg' ? 'Сигурност' : 'Security'}</SectionTitle>
+        <SectionTitle>{t('profile.security')}</SectionTitle>
 
         <InfoBox $variant="info">
           <InfoText $variant="info">
-            {language === 'bg'
-              ? 'Сменяйте паролата си редовно, за да поддържате акаунта си в безопасност.'
-              : 'Change your password regularly to keep your account secure.'}
+            {t('profile.securityInfo')}
           </InfoText>
         </InfoBox>
 
@@ -591,14 +587,14 @@ const ProfilePage: React.FC = () => {
           {!showPasswordForm ? (
             <div>
               <PasswordButton onClick={() => setShowPasswordForm(true)}>
-                {language === 'bg' ? 'Смяна на паролата' : 'Change Password'}
+                {t('profile.changePassword')}
               </PasswordButton>
             </div>
           ) : (
             <>
               <FormGrid>
                 <FormGroup>
-                  <Label>{language === 'bg' ? 'Текуща парола' : 'Current Password'}</Label>
+                  <Label>{t('profile.currentPassword')}</Label>
                   <Input
                     type="password"
                     name="currentPassword"
@@ -620,7 +616,7 @@ const ProfilePage: React.FC = () => {
                 <div />
 
                 <FormGroup>
-                  <Label>{language === 'bg' ? 'Нова парола' : 'New Password'}</Label>
+                  <Label>{t('profile.newPassword')}</Label>
                   <Input
                     type="password"
                     name="newPassword"
@@ -640,7 +636,7 @@ const ProfilePage: React.FC = () => {
                 </FormGroup>
 
                 <FormGroup>
-                  <Label>{language === 'bg' ? 'Потвърди нова парола' : 'Confirm New Password'}</Label>
+                  <Label>{t('profile.confirmNewPassword')}</Label>
                   <Input
                     type="password"
                     name="confirmPassword"
@@ -662,10 +658,10 @@ const ProfilePage: React.FC = () => {
 
               <ActionButtons>
                 <Button variant="ghost" onClick={handleCancelPassword} disabled={isLoading}>
-                  {language === 'bg' ? 'Отказ' : 'Cancel'}
+                  {t('profile.cancel')}
                 </Button>
                 <Button variant="primary" onClick={handleChangePassword} isLoading={isLoading}>
-                  {language === 'bg' ? 'Смени паролата' : 'Change Password'}
+                  {t('profile.changePassword')}
                 </Button>
               </ActionButtons>
             </>

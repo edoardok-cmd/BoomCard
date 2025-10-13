@@ -1,3 +1,4 @@
+import { useLanguage } from '../../../contexts/LanguageContext';
 import React, { useState } from 'react';
 import styled from 'styled-components';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -182,6 +183,7 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({
   onApplyFilters,
   className
 }) => {
+  const { t } = useLanguage();
   const [expandedGroups, setExpandedGroups] = useState<string[]>(
     filters.map(f => f.id)
   );
@@ -249,7 +251,7 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({
     <FilterContainer className={className}>
       <FilterHeader>
         <FilterTitle>
-          {language === 'bg' ? 'Филтри' : 'Filters'}
+          {t('common.filters')}
         </FilterTitle>
       </FilterHeader>
 
@@ -340,7 +342,7 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({
             size="medium"
             onClick={handleApply}
           >
-            {language === 'bg' ? 'Приложи' : 'Apply'}
+            {t('common.apply')}
           </Button>
         </div>
         {hasActiveFilters && (
@@ -349,7 +351,7 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({
             size="medium"
             onClick={handleClear}
           >
-            {language === 'bg' ? 'Изчисти' : 'Clear'}
+            {t('common.clear')}
           </Button>
         )}
       </FilterActions>
