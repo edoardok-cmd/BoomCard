@@ -427,7 +427,7 @@ const PricingPublicPage: React.FC = () => {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6 }}
         >
-          {language === 'bg' ? 'Чисти, прозрачни цени' : 'Simple, Transparent Pricing'}
+          {language === 'bg' ? 'Ясни, прозрачни цени' : 'Simple, Transparent Pricing'}
         </HeroTitle>
         <HeroSubtitle
           initial={{ opacity: 0, y: 20 }}
@@ -473,7 +473,7 @@ const PricingPublicPage: React.FC = () => {
               >
                 <div>
                   <CardLogo $color={plan.logoGradient}>BOOM</CardLogo>
-                  <CardNumber>•••• •••• •••• 2024</CardNumber>
+                  <CardNumber>•••• •••• •••• 2025</CardNumber>
                 </div>
                 <CardInfo>
                   <div>
