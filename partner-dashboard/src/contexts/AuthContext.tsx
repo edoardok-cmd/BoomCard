@@ -71,6 +71,17 @@ const mockUsers: Array<User & { password: string }> = [
     createdAt: Date.now() - 60 * 24 * 60 * 60 * 1000,
     emailVerified: true,
   },
+  {
+    id: '3',
+    email: 'admin@boomcard.bg',
+    password: 'admin123',
+    firstName: 'Admin',
+    lastName: 'Administrator',
+    phone: '+359 88 999 8888',
+    role: 'admin',
+    createdAt: Date.now() - 90 * 24 * 60 * 60 * 1000,
+    emailVerified: true,
+  },
 ];
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {

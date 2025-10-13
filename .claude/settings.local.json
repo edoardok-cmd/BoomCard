@@ -23,7 +23,8 @@
       "Bash(RegisterPage.tsx)",
       "Bash(for:*)",
       "Bash(done)",
-      "Read(///**)"
+      "Read(///**)",
+      "Bash(npm run type-check:*)"
     ],
     "deny": [],
     "ask": []

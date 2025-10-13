@@ -20,11 +20,15 @@ npm run preview
 
 The application will be available at `http://localhost:3002`
 
-### Demo Account
+### Demo Accounts
 
-Try the platform with our demo account:
-- **Email:** demo@boomcard.bg
-- **Password:** demo123
+Try the platform with our test accounts (see [LOGIN_GUIDE.md](LOGIN_GUIDE.md) for details):
+
+| Role | Email | Password | Access Level |
+|------|-------|----------|--------------|
+| 👤 **User** | demo@boomcard.bg | demo123 | Consumer features |
+| 🏢 **Partner** | partner@boomcard.bg | partner123 | Business management |
+| ⚡ **Admin** | admin@boomcard.bg | admin123 | Full system access |
 
 ## Project Overview
 

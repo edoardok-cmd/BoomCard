@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import styled from 'styled-components';
+import { useLanguage } from '../contexts/LanguageContext';
 import OfferCard, { Offer } from '../components/common/OfferCard/OfferCard';
 import FilterPanel, { FilterGroup } from '../components/common/FilterPanel/FilterPanel';
 import Button from '../components/common/Button/Button';
@@ -300,7 +301,7 @@ const filterGroups: FilterGroup[] = [
 
 const CategoryListingPage: React.FC = () => {
   const { category } = useParams<{ category: string }>();
-  const [language] = useState<'en' | 'bg'>('en');
+  const { language, t } = useLanguage();
   const [showMobileFilters, setShowMobileFilters] = useState(false);
   const [filteredOffers, setFilteredOffers] = useState<Offer[]>(allOffers);
   const [sortBy, setSortBy] = useState('relevance');
@@ -335,15 +336,15 @@ const CategoryListingPage: React.FC = () => {
         <Container>
           <HeroContent>
             <Breadcrumb>
-              <a href="/">{language === 'bg' ? 'Начало' : 'Home'}</a>
+              <a href="/">{t('categoryListing.home')}</a>
               <span>/</span>
               <span>{language === 'bg' ? categoryTitle.bg : categoryTitle.en}</span>
             </Breadcrumb>
             <Title>{language === 'bg' ? categoryTitle.bg : categoryTitle.en}</Title>
             <Subtitle>
               {language === 'bg'
-                ? `Открийте ${filteredOffers.length} ексклузивни оферти с отстъпки до 70%`
-                : `Discover ${filteredOffers.length} exclusive offers with up to 70% off`}
+                ? `${t('categoryListing.browseExclusiveOffers')} ${filteredOffers.length} ексклузивни оферти с отстъпки до 70%`
+                : `${t('categoryListing.browseExclusiveOffers')} ${filteredOffers.length} exclusive offers with up to 70% off`}
             </Subtitle>
           </HeroContent>
         </Container>
@@ -383,7 +384,7 @@ const CategoryListingPage: React.FC = () => {
                     d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"
                   />
                 </svg>
-                {language === 'bg' ? 'Филтри' : 'Filters'}
+                {t('categoryListing.filters')}
               </MobileFilterToggle>
 
               {/* Mobile Filters Panel */}
@@ -399,25 +400,23 @@ const CategoryListingPage: React.FC = () => {
 
               <ResultsHeader>
                 <ResultsCount>
-                  {language === 'bg'
-                    ? `${filteredOffers.length} ${filteredOffers.length === 1 ? 'оферта' : 'оферти'}`
-                    : `${filteredOffers.length} ${filteredOffers.length === 1 ? 'offer' : 'offers'}`}
+                  {filteredOffers.length} {filteredOffers.length === 1 ? t('categoryListing.offer') : t('categoryListing.offers')}
                 </ResultsCount>
                 <SortSelect value={sortBy} onChange={handleSortChange}>
                   <option value="relevance">
-                    {language === 'bg' ? 'Най-подходящи' : 'Most Relevant'}
+                    {t('categoryListing.mostRelevant')}
                   </option>
                   <option value="discount">
-                    {language === 'bg' ? 'Най-голяма отстъпка' : 'Highest Discount'}
+                    {t('categoryListing.highestDiscount')}
                   </option>
                   <option value="price-low">
-                    {language === 'bg' ? 'Цена: Ниска към висока' : 'Price: Low to High'}
+                    {t('categoryListing.priceLowToHigh')}
                   </option>
                   <option value="price-high">
-                    {language === 'bg' ? 'Цена: Висока към ниска' : 'Price: High to Low'}
+                    {t('categoryListing.priceHighToLow')}
                   </option>
                   <option value="rating">
-                    {language === 'bg' ? 'Най-висок рейтинг' : 'Highest Rating'}
+                    {t('categoryListing.highestRating')}
                   </option>
                 </SortSelect>
               </ResultsHeader>
@@ -441,12 +440,10 @@ const CategoryListingPage: React.FC = () => {
                 <EmptyState>
                   <EmptyStateIcon>🔍</EmptyStateIcon>
                   <EmptyStateTitle>
-                    {language === 'bg' ? 'Няма намерени оферти' : 'No offers found'}
+                    {t('categoryListing.noOffersFound')}
                   </EmptyStateTitle>
                   <EmptyStateText>
-                    {language === 'bg'
-                      ? 'Опитайте да промените филтрите си'
-                      : 'Try adjusting your filters'}
+                    {t('categoryListing.noOffersDescription')}
                   </EmptyStateText>
                 </EmptyState>
               )}

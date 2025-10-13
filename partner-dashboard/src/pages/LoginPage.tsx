@@ -513,14 +513,14 @@ const LoginPage: React.FC = () => {
           transition={{ delay: 0.3 }}
         >
           <DemoTitle>
-            {t('auth.demoAccess')}
+            {t('auth.demoAccess')} - Test Accounts
           </DemoTitle>
           <DemoInfo>
-            {t('auth.email')}: {' '}
-            <code>demo@boomcard.bg</code>
+            <strong>👤 User:</strong> <code>demo@boomcard.bg</code> / <code>demo123</code>
             <br />
-            {t('auth.password')}: {' '}
-            <code>demo123</code>
+            <strong>🏢 Partner:</strong> <code>partner@boomcard.bg</code> / <code>partner123</code>
+            <br />
+            <strong>⚡ Admin:</strong> <code>admin@boomcard.bg</code> / <code>admin123</code>
             <br />
             <button
               type="button"
@@ -537,7 +537,7 @@ const LoginPage: React.FC = () => {
                 cursor: 'pointer',
               }}
             >
-              {t('auth.fillAutomatically')}
+              Fill User Account
             </button>
           </DemoInfo>
         </DemoCredentials>

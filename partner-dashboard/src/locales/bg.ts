@@ -219,6 +219,23 @@ export const bg: TranslationKey = {
     clubs: 'Клубове и Нощни Заведения',
   },
 
+  // Category Listing
+  categoryListing: {
+    home: 'Начало',
+    browseExclusiveOffers: 'Разгледайте ексклузивни оферти в',
+    filters: 'Филтри',
+    sortBy: 'Сортирай по',
+    offer: 'оферта',
+    offers: 'оферти',
+    mostRelevant: 'Най-подходящи',
+    highestDiscount: 'Най-голяма отстъпка',
+    priceLowToHigh: 'Цена: Ниска към висока',
+    priceHighToLow: 'Цена: Висока към ниска',
+    highestRating: 'Най-висок рейтинг',
+    noOffersFound: 'Няма намерени оферти',
+    noOffersDescription: 'Опитайте да промените филтрите или проверете отново по-късно',
+  },
+
   // Settings
   settings: {
     title: 'Настройки',
@@ -247,14 +264,40 @@ export const bg: TranslationKey = {
 
   // Profile
   profile: {
-    title: 'Профил',
-    personalInfo: 'Лична Информация',
-    updateProfile: 'Актуализирай Профил',
-    phone: 'Телефонен Номер',
-    dateOfBirth: 'Дата на Раждане',
+    title: 'Настройки на профила',
+    subtitle: 'Управлявайте личната си информация и предпочитания',
+    personalInfo: 'Лична информация',
+    accountInfo: 'Информация за акаунта',
+    emailVerified: '✓ Потвърден имейл',
+    emailNotVerified: '⚠ Непотвърден имейл',
+    memberSince: 'Член от',
+    firstName: 'Име',
+    lastName: 'Фамилия',
+    phone: 'Телефонен номер',
+    dateOfBirth: 'Дата на раждане',
     address: 'Адрес',
     city: 'Град',
     country: 'Държава',
+    bio: 'Биография',
+    updateProfile: 'Актуализирай профил',
+    changePassword: 'Смяна на парола',
+    currentPassword: 'Текуща парола',
+    newPassword: 'Нова парола',
+    confirmNewPassword: 'Потвърди новата парола',
+    // Validation
+    firstNameRequired: 'Името е задължително',
+    firstNameTooShort: 'Името е твърде кратко',
+    lastNameRequired: 'Фамилията е задължителна',
+    lastNameTooShort: 'Фамилията е твърде кратка',
+    invalidPhone: 'Невалиден телефонен номер',
+    enterCurrentPassword: 'Въведете текущата парола',
+    enterNewPassword: 'Въведете нова парола',
+    passwordMinLength: 'Паролата трябва да е поне 6 символа',
+    confirmNewPasswordRequired: 'Потвърдете новата парола',
+    passwordsDoNotMatch: 'Паролите не съвпадат',
+    // Success messages
+    profileUpdatedSuccess: 'Профилът е актуализиран успешно!',
+    passwordChangedSuccess: 'Паролата е променена успешно!',
     savedSuccessfully: 'Профилът е актуализиран успешно',
   },
 

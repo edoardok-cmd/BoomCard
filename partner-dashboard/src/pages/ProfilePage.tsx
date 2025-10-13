@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import styled from 'styled-components';
 import Button from '../components/common/Button/Button';
 import { useAuth } from '../contexts/AuthContext';
+import { useLanguage } from '../contexts/LanguageContext';
 
 const PageContainer = styled.div`
   max-width: 56rem;
@@ -232,12 +233,9 @@ interface PasswordErrors {
   confirmPassword?: string;
 }
 
-interface ProfilePageProps {
-  language?: 'en' | 'bg';
-}
-
-const ProfilePage: React.FC<ProfilePageProps> = ({ language = 'en' }) => {
+const ProfilePage: React.FC = () => {
   const { user, updateProfile, changePassword, isLoading } = useAuth();
+  const { language, t } = useLanguage();
   const [isEditing, setIsEditing] = useState(false);
   const [showPasswordForm, setShowPasswordForm] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
@@ -260,18 +258,18 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ language = 'en' }) => {
   const validateField = (field: string, value: string): string | undefined => {
     switch (field) {
       case 'firstName':
-        if (!value) return language === 'bg' ? 'Името е задължително' : 'First name is required';
-        if (value.length < 2) return language === 'bg' ? 'Името е твърде кратко' : 'Name is too short';
+        if (!value) return t('profile.firstNameRequired');
+        if (value.length < 2) return t('profile.firstNameTooShort');
         return undefined;
 
       case 'lastName':
-        if (!value) return language === 'bg' ? 'Фамилията е задължителна' : 'Last name is required';
-        if (value.length < 2) return language === 'bg' ? 'Фамилията е твърде кратка' : 'Last name is too short';
+        if (!value) return t('profile.lastNameRequired');
+        if (value.length < 2) return t('profile.lastNameTooShort');
         return undefined;
 
       case 'phone':
         if (value && !/^(\+359|0)[0-9\s-]{8,}$/.test(value)) {
-          return language === 'bg' ? 'Невалиден телефонен номер' : 'Invalid phone number';
+          return t('profile.invalidPhone');
         }
         return undefined;
 
@@ -283,20 +281,20 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ language = 'en' }) => {
   const validatePasswordField = (field: string, value: string): string | undefined => {
     switch (field) {
       case 'currentPassword':
-        if (!value) return language === 'bg' ? 'Въведете текущата парола' : 'Enter current password';
+        if (!value) return t('profile.enterCurrentPassword');
         return undefined;
 
       case 'newPassword':
-        if (!value) return language === 'bg' ? 'Въведете нова парола' : 'Enter new password';
+        if (!value) return t('profile.enterNewPassword');
         if (value.length < 6) {
-          return language === 'bg' ? 'Паролата трябва да е поне 6 символа' : 'Password must be at least 6 characters';
+          return t('profile.passwordMinLength');
         }
         return undefined;
 
       case 'confirmPassword':
-        if (!value) return language === 'bg' ? 'Потвърдете новата парола' : 'Confirm new password';
+        if (!value) return t('profile.confirmNewPasswordRequired');
         if (value !== passwordData.newPassword) {
-          return language === 'bg' ? 'Паролите не съвпадат' : 'Passwords do not match';
+          return t('profile.passwordsDoNotMatch');
         }
         return undefined;
 
@@ -338,7 +336,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ language = 'en' }) => {
     try {
       await updateProfile(formData);
       setIsEditing(false);
-      setSuccessMessage(language === 'bg' ? 'Профилът е актуализиран успешно!' : 'Profile updated successfully!');
+      setSuccessMessage(t('profile.profileUpdatedSuccess'));
       setTimeout(() => setSuccessMessage(''), 5000);
     } catch (error) {
       console.error('Update profile error:', error);
@@ -368,7 +366,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ language = 'en' }) => {
         confirmPassword: '',
       });
       setPasswordErrors({});
-      setSuccessMessage(language === 'bg' ? 'Паролата е променена успешно!' : 'Password changed successfully!');
+      setSuccessMessage(t('profile.passwordChangedSuccess'));
       setTimeout(() => setSuccessMessage(''), 5000);
     } catch (error) {
       console.error('Change password error:', error);
@@ -416,7 +414,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ language = 'en' }) => {
   return (
     <PageContainer>
       <PageHeader>
-        <Title>{language === 'bg' ? 'Настройки на профила' : 'Profile Settings'}</Title>
+        <Title>{t('profile.title')}</Title>
         <Subtitle>
           {language === 'bg'
             ? 'Управлявайте информацията за вашия акаунт'

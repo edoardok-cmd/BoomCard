@@ -78,6 +78,28 @@ const BoomCard = styled(motion.div)`
   overflow: hidden;
   border: 2px solid rgba(255, 215, 0, 0.3);
   transform-style: preserve-3d;
+  perspective: 1000px;
+
+  /* Card rotation animation: 3 flips in 1s, then 5s rest */
+  animation: cardFlip 6s ease-in-out infinite;
+
+  @keyframes cardFlip {
+    0% {
+      transform: rotateY(0deg);
+    }
+    5.55% {
+      transform: rotateY(15deg);
+    }
+    11.1% {
+      transform: rotateY(-15deg);
+    }
+    16.65% {
+      transform: rotateY(0deg);
+    }
+    100% {
+      transform: rotateY(0deg);
+    }
+  }
 
   &::before {
     content: '';
@@ -195,43 +217,34 @@ const CTATitle = styled(motion.h1)`
   line-height: 1.2;
   letter-spacing: -0.02em;
 
-  /* Fire-like gradient text matching explosion */
+  /* Mellow fire gradient with yellow base and orange accent */
   background: linear-gradient(
-    180deg,
-    #ffff00 0%,
+    90deg,
+    #ffd700 0%,
     #ffd700 30%,
-    #ff8800 60%,
-    #ff4400 100%
+    #ffed4e 50%,
+    #ffd700 70%,
+    #ff8800 85%,
+    #ffd700 100%
   );
-  background-size: 100% 200%;
+  background-size: 300% 100%;
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
-  animation: fireFlicker 2s ease-in-out infinite;
+  animation: mellowFireFlow 8s ease-in-out infinite;
 
   /* Inner shadow for depth only */
   text-shadow: 0 4px 20px rgba(0, 0, 0, 0.8);
 
-  @keyframes fireFlicker {
+  @keyframes mellowFireFlow {
     0% {
-      background-position: 0% 0%;
-      filter: brightness(1);
-    }
-    25% {
-      background-position: 0% 30%;
-      filter: brightness(1.2);
+      background-position: 0% center;
     }
     50% {
-      background-position: 0% 50%;
-      filter: brightness(0.9);
-    }
-    75% {
-      background-position: 0% 70%;
-      filter: brightness(1.1);
+      background-position: 100% center;
     }
     100% {
-      background-position: 0% 100%;
-      filter: brightness(1);
+      background-position: 0% center;
     }
   }
 
@@ -298,8 +311,14 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
     };
 
     const handleEnded = () => {
-      setVideoEnded(true);
-      setShowCTA(true);
+      // Only trigger once
+      if (!videoEnded) {
+        setVideoEnded(true);
+        setShowCTA(true);
+        // Prevent video from replaying
+        video.pause();
+        video.currentTime = video.duration;
+      }
     };
 
     video.addEventListener('loadeddata', handleLoadedData);
@@ -311,7 +330,7 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
       video.removeEventListener('timeupdate', handleTimeUpdate);
       video.removeEventListener('ended', handleEnded);
     };
-  }, [showCard]);
+  }, [showCard, videoEnded, showCTA]);
 
   const content = {
     en: {
@@ -374,13 +393,7 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
                 },
               }}
             >
-              <BoomCard
-                whileHover={{
-                  rotateY: 5,
-                  scale: 1.05,
-                  transition: { duration: 0.3 }
-                }}
-              >
+              <BoomCard>
                 <div>
                   <CardChip />
                   <CardLogo>BOOM</CardLogo>
