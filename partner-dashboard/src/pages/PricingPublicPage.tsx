@@ -332,6 +332,7 @@ const PricingPublicPage: React.FC = () => {
       nameBg: 'Черна',
       cardGradient: 'linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 50%, #1a1a1a 100%)',
       logoGradient: 'linear-gradient(135deg, #ffd700 0%, #ffed4e 50%, #ffd700 100%)',
+      logoImage: '/boom-black.png',
       borderColor: 'rgba(255, 215, 0, 0.3)',
       descEn: 'Essential tier for businesses starting out',
       descBg: 'Основна категория за начинаещи бизнеси',
@@ -351,6 +352,7 @@ const PricingPublicPage: React.FC = () => {
       nameBg: 'Сребърна',
       cardGradient: 'linear-gradient(135deg, #71717a 0%, #a1a1aa 50%, #71717a 100%)',
       logoGradient: 'linear-gradient(135deg, #e5e7eb 0%, #f9fafb 50%, #e5e7eb 100%)',
+      logoImage: '/boom-silver.png',
       borderColor: 'rgba(229, 231, 235, 0.5)',
       descEn: 'Better promotions and enhanced features',
       descBg: 'По-добри промоции и подобрени функции',
@@ -373,6 +375,7 @@ const PricingPublicPage: React.FC = () => {
       nameBg: 'Златна',
       cardGradient: 'linear-gradient(135deg, #b45309 0%, #f59e0b 50%, #b45309 100%)',
       logoGradient: 'linear-gradient(135deg, #fbbf24 0%, #fde047 50%, #fbbf24 100%)',
+      logoImage: '/boom-gold.png',
       borderColor: 'rgba(251, 191, 36, 0.5)',
       descEn: 'Exclusive promotions and premium features',
       descBg: 'Ексклузивни промоции и премиум функции',
@@ -486,7 +489,6 @@ const PricingPublicPage: React.FC = () => {
               </CardImage>
             </CardImageContainer>
 
-            <PlanName>{language === 'bg' ? plan.nameBg : plan.nameEn}</PlanName>
             <PlanDescription>
               {language === 'bg' ? plan.descBg : plan.descEn}
             </PlanDescription>

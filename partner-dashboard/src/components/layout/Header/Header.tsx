@@ -474,7 +474,11 @@ export const Header: React.FC<HeaderProps> = ({
         <div className="flex items-center h-16">
           {/* Logo - Far Left */}
           <Link to="/" className="flex items-center z-50 flex-shrink-0">
-            <span className="text-xl sm:text-2xl font-bold text-gray-900">BoomCard</span>
+            <img
+              src="/zbooom.png"
+              alt="BoomCard"
+              className="h-8 sm:h-10 w-auto"
+            />
           </Link>
 
           {/* Desktop Navigation - Centered */}
