@@ -10,15 +10,20 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
   </React.StrictMode>
 );
 
-// Register service worker for PWA functionality
-serviceWorkerRegistration.register({
-  onSuccess: () => console.log('[PWA] Content cached for offline use'),
-  onUpdate: () => console.log('[PWA] New content available, please refresh'),
-  onOfflineReady: () => console.log('[PWA] App ready to work offline'),
-  onNeedRefresh: () => {
-    // You can show a toast/notification here to inform user about update
-    if (window.confirm('New version available! Click OK to refresh.')) {
-      window.location.reload();
+// Register service worker for PWA functionality in production only
+if (import.meta.env.PROD) {
+  serviceWorkerRegistration.register({
+    onSuccess: () => console.log('[PWA] Content cached for offline use'),
+    onUpdate: () => console.log('[PWA] New content available, please refresh'),
+    onOfflineReady: () => console.log('[PWA] App ready to work offline'),
+    onNeedRefresh: () => {
+      // You can show a toast/notification here to inform user about update
+      if (window.confirm('New version available! Click OK to refresh.')) {
+        window.location.reload();
+      }
     }
-  }
-});
+  });
+} else {
+  // Unregister service worker in development to avoid caching issues
+  serviceWorkerRegistration.unregister();
+}
