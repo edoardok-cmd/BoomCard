@@ -190,46 +190,48 @@ const CTAContainer = styled(motion.div)`
 
 const CTATitle = styled(motion.h1)`
   font-size: 4rem;
-  font-weight: 900;
+  font-weight: 700;
   margin-bottom: 1rem;
   line-height: 1.2;
   letter-spacing: -0.02em;
 
-  /* Animated gradient text */
+  /* Fire-like gradient text matching explosion */
   background: linear-gradient(
-    135deg,
-    #ffffff 0%,
-    #ffd700 20%,
-    #ffffff 40%,
-    #ffd700 60%,
-    #ffffff 80%,
-    #ffd700 100%
+    180deg,
+    #ffff00 0%,
+    #ffd700 30%,
+    #ff8800 60%,
+    #ff4400 100%
   );
-  background-size: 200% 200%;
+  background-size: 100% 200%;
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
-  animation: shimmer 3s ease-in-out infinite;
+  animation: fireFlicker 2s ease-in-out infinite;
 
-  /* Multiple text shadows for depth */
-  text-shadow:
-    0 0 10px rgba(255, 215, 0, 0.5),
-    0 0 20px rgba(255, 215, 0, 0.3),
-    0 0 30px rgba(255, 215, 0, 0.2),
-    0 4px 20px rgba(0, 0, 0, 0.8);
+  /* Inner shadow for depth only */
+  text-shadow: 0 4px 20px rgba(0, 0, 0, 0.8);
 
-  /* Add a subtle glow effect */
-  filter: drop-shadow(0 0 15px rgba(255, 215, 0, 0.4));
-
-  @keyframes shimmer {
+  @keyframes fireFlicker {
     0% {
-      background-position: 0% 50%;
+      background-position: 0% 0%;
+      filter: brightness(1);
+    }
+    25% {
+      background-position: 0% 30%;
+      filter: brightness(1.2);
     }
     50% {
-      background-position: 100% 50%;
+      background-position: 0% 50%;
+      filter: brightness(0.9);
+    }
+    75% {
+      background-position: 0% 70%;
+      filter: brightness(1.1);
     }
     100% {
-      background-position: 0% 50%;
+      background-position: 0% 100%;
+      filter: brightness(1);
     }
   }
 

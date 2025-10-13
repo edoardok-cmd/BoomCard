@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import styled from 'styled-components';
 import { useFavorites } from '../contexts/FavoritesContext';
+import { useLanguage } from '../contexts/LanguageContext';
 import OfferCard from '../components/common/OfferCard/OfferCard';
 import Button from '../components/common/Button/Button';
 
@@ -145,15 +146,15 @@ const SortButton = styled.button<{ $active: boolean }>`
 type SortType = 'recent' | 'discount' | 'price-low' | 'price-high';
 
 const FavoritesPage: React.FC = () => {
-  const [language] = useState<'en' | 'bg'>('en');
+  const { language, t } = useLanguage();
   const [sortBy, setSortBy] = useState<SortType>('recent');
   const { favorites, clearFavorites } = useFavorites();
 
-  const sortOptions: { value: SortType; labelEn: string; labelBg: string }[] = [
-    { value: 'recent', labelEn: 'Recently Added', labelBg: 'Най-нови' },
-    { value: 'discount', labelEn: 'Highest Discount', labelBg: 'Най-голяма отстъпка' },
-    { value: 'price-low', labelEn: 'Price: Low to High', labelBg: 'Цена: Ниска към висока' },
-    { value: 'price-high', labelEn: 'Price: High to Low', labelBg: 'Цена: Висока към ниска' }
+  const sortOptions: { value: SortType; label: string }[] = [
+    { value: 'recent', label: t('favorites.sortRecentlyAdded') },
+    { value: 'discount', label: t('favorites.sortHighestDiscount') },
+    { value: 'price-low', label: t('favorites.sortPriceLowToHigh') },
+    { value: 'price-high', label: t('favorites.sortPriceHighToLow') }
   ];
 
   const sortedFavorites = [...favorites].sort((a, b) => {
@@ -172,10 +173,7 @@ const FavoritesPage: React.FC = () => {
   });
 
   const handleClearAll = () => {
-    if (window.confirm(language === 'bg'
-      ? 'Сигурни ли сте, че искате да изтриете всички любими?'
-      : 'Are you sure you want to clear all favorites?'
-    )) {
+    if (window.confirm(t('favorites.clearAllConfirm'))) {
       clearFavorites();
     }
   };
@@ -191,12 +189,10 @@ const FavoritesPage: React.FC = () => {
               transition={{ duration: 0.8 }}
             >
               <Title>
-                {language === 'bg' ? 'Моите любими' : 'My Favorites'}
+                {t('favorites.title')}
               </Title>
               <Subtitle>
-                {language === 'bg'
-                  ? 'Всички ваши запазени оферти на едно място'
-                  : 'All your saved offers in one place'}
+                {t('favorites.subtitle')}
               </Subtitle>
             </motion.div>
           </HeroContent>
@@ -210,12 +206,10 @@ const FavoritesPage: React.FC = () => {
               <Header>
                 <HeaderLeft>
                   <SectionTitle>
-                    {language === 'bg' ? 'Запазени оферти' : 'Saved Offers'}
+                    {t('favorites.savedOffers')}
                   </SectionTitle>
                   <Count>
-                    {favorites.length} {language === 'bg'
-                      ? (favorites.length === 1 ? 'оферта' : 'оферти')
-                      : (favorites.length === 1 ? 'offer' : 'offers')}
+                    {favorites.length} {favorites.length === 1 ? t('favorites.offer') : t('favorites.offers')}
                   </Count>
                 </HeaderLeft>
 
@@ -227,7 +221,7 @@ const FavoritesPage: React.FC = () => {
                         $active={sortBy === option.value}
                         onClick={() => setSortBy(option.value)}
                       >
-                        {language === 'bg' ? option.labelBg : option.labelEn}
+                        {option.label}
                       </SortButton>
                     ))}
                   </SortOptions>
@@ -237,7 +231,7 @@ const FavoritesPage: React.FC = () => {
                     size="small"
                     onClick={handleClearAll}
                   >
-                    {language === 'bg' ? 'Изчисти всички' : 'Clear All'}
+                    {t('favorites.clearAll')}
                   </Button>
                 </div>
               </Header>
@@ -277,16 +271,14 @@ const FavoritesPage: React.FC = () => {
             <EmptyState>
               <EmptyIcon>❤️</EmptyIcon>
               <EmptyTitle>
-                {language === 'bg' ? 'Нямате запазени оферти' : 'No Favorites Yet'}
+                {t('favorites.noFavorites')}
               </EmptyTitle>
               <EmptyText>
-                {language === 'bg'
-                  ? 'Започнете да запазвате оферти, които ви харесват, за да ги намерите лесно тук по-късно'
-                  : 'Start saving offers you like to easily find them here later'}
+                {t('favorites.noFavoritesDescription')}
               </EmptyText>
               <Link to="/categories">
                 <Button variant="primary" size="large">
-                  {language === 'bg' ? 'Разгледайте оферти' : 'Browse Offers'}
+                  {t('favorites.browseOffers')}
                 </Button>
               </Link>
             </EmptyState>

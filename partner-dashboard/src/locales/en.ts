@@ -217,6 +217,21 @@ export const en = {
     clubs: 'Clubs & Night Venues',
   },
 
+  // Category Listing
+  categoryListing: {
+    home: 'Home',
+    browseExclusiveOffers: 'Browse exclusive offers in',
+    filters: 'Filters',
+    sortBy: 'Sort by',
+    mostRelevant: 'Most Relevant',
+    highestDiscount: 'Highest Discount',
+    priceLowToHigh: 'Price: Low to High',
+    priceHighToLow: 'Price: High to Low',
+    highestRating: 'Highest Rating',
+    noOffersFound: 'No offers found',
+    noOffersDescription: 'Try adjusting your filters or check back later',
+  },
+
   // Settings
   settings: {
     title: 'Settings',
@@ -258,20 +273,36 @@ export const en = {
 
   // Favorites
   favorites: {
-    title: 'Favorites',
-    subtitle: 'Your saved offers and venues',
-    noFavorites: 'No favorites yet',
-    noFavoritesDescription: 'Start adding your favorite offers to see them here',
+    title: 'My Favorites',
+    subtitle: 'All your saved offers in one place',
+    savedOffers: 'Saved Offers',
+    offer: 'offer',
+    offers: 'offers',
+    clearAll: 'Clear All',
+    clearAllConfirm: 'Are you sure you want to clear all favorites?',
+    noFavorites: 'No Favorites Yet',
+    noFavoritesDescription: 'Start saving offers you like to easily find them here later',
+    browseOffers: 'Browse Offers',
+    sortRecentlyAdded: 'Recently Added',
+    sortHighestDiscount: 'Highest Discount',
+    sortPriceLowToHigh: 'Price: Low to High',
+    sortPriceHighToLow: 'Price: High to Low',
     addedToFavorites: 'Added to favorites',
     removedFromFavorites: 'Removed from favorites',
   },
 
   // Search
   search: {
-    title: 'Search',
+    title: 'Find Your Perfect Deal',
+    subtitle: 'Search through thousands of exclusive offers for restaurants, hotels, and experiences',
     placeholder: 'Search for offers, venues, or experiences...',
-    noResults: 'No results found',
-    noResultsDescription: 'Try adjusting your search or filters',
+    popularSearches: 'Popular Searches',
+    searchResults: 'Search Results',
+    resultsFor: 'results for',
+    clearSearch: 'Clear Search',
+    noResults: 'No Results Found',
+    noResultsDescription: 'Try different keywords or browse popular searches',
+    backToSearch: 'Back to Search',
     searching: 'Searching...',
     results: 'results',
   },

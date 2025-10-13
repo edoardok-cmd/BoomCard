@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import styled from 'styled-components';
+import { useLanguage } from '../contexts/LanguageContext';
 import SearchAutocomplete from '../components/common/SearchAutocomplete/SearchAutocomplete';
 import OfferCard, { Offer } from '../components/common/OfferCard/OfferCard';
 import Button from '../components/common/Button/Button';
@@ -194,7 +195,7 @@ const sampleOffers: Offer[] = [
 ];
 
 const SearchPage: React.FC = () => {
-  const [language, setLanguage] = useState<'en' | 'bg'>('en');
+  const { language, t } = useLanguage();
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<Offer[]>([]);
   const [hasSearched, setHasSearched] = useState(false);
@@ -234,12 +235,10 @@ const SearchPage: React.FC = () => {
               transition={{ duration: 0.8 }}
             >
               <Title>
-                {language === 'bg' ? 'Открийте перфектната оферта' : 'Find Your Perfect Deal'}
+                {t('search.title')}
               </Title>
               <Subtitle>
-                {language === 'bg'
-                  ? 'Търсете измежду хиляди ексклузивни оферти за ресторанти, хотели и изживявания'
-                  : 'Search through thousands of exclusive offers for restaurants, hotels, and experiences'}
+                {t('search.subtitle')}
               </Subtitle>
               <SearchWrapper>
                 <SearchAutocomplete
@@ -257,7 +256,7 @@ const SearchPage: React.FC = () => {
           {!hasSearched ? (
             <PopularSearches>
               <SectionTitle>
-                {language === 'bg' ? 'Популярни търсения' : 'Popular Searches'}
+                {t('search.popularSearches')}
               </SectionTitle>
               <TagsContainer>
                 {popularSearches.map((search, index) => (
@@ -275,11 +274,11 @@ const SearchPage: React.FC = () => {
               <ResultsHeader>
                 <div>
                   <SectionTitle>
-                    {language === 'bg' ? 'Резултати от търсенето' : 'Search Results'}
+                    {t('search.searchResults')}
                   </SectionTitle>
                   {searchQuery && (
                     <ResultsCount>
-                      {searchResults.length} {language === 'bg' ? 'резултата за' : 'results for'} "{searchQuery}"
+                      {searchResults.length} {t('search.resultsFor')} "{searchQuery}"
                     </ResultsCount>
                   )}
                 </div>
@@ -292,7 +291,7 @@ const SearchPage: React.FC = () => {
                     setHasSearched(false);
                   }}
                 >
-                  {language === 'bg' ? 'Изчисти търсенето' : 'Clear Search'}
+                  {t('search.clearSearch')}
                 </Button>
               </ResultsHeader>
 
@@ -313,12 +312,10 @@ const SearchPage: React.FC = () => {
                 <EmptyState>
                   <EmptyIcon>🔍</EmptyIcon>
                   <EmptyTitle>
-                    {language === 'bg' ? 'Няма намерени резултати' : 'No Results Found'}
+                    {t('search.noResults')}
                   </EmptyTitle>
                   <EmptyText>
-                    {language === 'bg'
-                      ? 'Опитайте с различни ключови думи или разгледайте популярните търсения'
-                      : 'Try different keywords or browse popular searches'}
+                    {t('search.noResultsDescription')}
                   </EmptyText>
                   <Button
                     variant="secondary"
@@ -329,7 +326,7 @@ const SearchPage: React.FC = () => {
                       setHasSearched(false);
                     }}
                   >
-                    {language === 'bg' ? 'Назад към търсенето' : 'Back to Search'}
+                    {t('search.backToSearch')}
                   </Button>
                 </EmptyState>
               )}
