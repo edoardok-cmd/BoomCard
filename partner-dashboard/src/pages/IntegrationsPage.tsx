@@ -827,14 +827,15 @@ const IntegrationsPage: React.FC = () => {
                         ? 'Свържете се с нашия екип за активиране на тази интеграция. Ще ви помогнем със настройката.'
                         : 'Contact our team to activate this integration. We will help you with the setup.'}
                     </p>
-                    <Button
-                      variant="primary"
-                      size="large"
-                      style={{ marginTop: '1.5rem' }}
-                      onClick={() => window.open('mailto:support@boomcard.bg', '_blank')}
-                    >
-                      {language === 'bg' ? 'Свържете се с нас' : 'Contact Us'}
-                    </Button>
+                    <div style={{ marginTop: '1.5rem' }}>
+                      <Button
+                        variant="primary"
+                        size="large"
+                        onClick={() => window.open('mailto:support@boomcard.bg', '_blank')}
+                      >
+                        {language === 'bg' ? 'Свържете се с нас' : 'Contact Us'}
+                      </Button>
+                    </div>
                   </div>
                 )}
               </ModalBody>
