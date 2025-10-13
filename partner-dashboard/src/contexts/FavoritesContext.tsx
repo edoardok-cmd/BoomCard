@@ -38,15 +38,19 @@ export const FavoritesProvider: React.FC<FavoritesProviderProps> = ({ children }
 
   // Load favorites from localStorage on mount
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        setFavorites(parsed);
+    const loadFavorites = () => {
+      try {
+        const stored = localStorage.getItem(STORAGE_KEY);
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          setFavorites(parsed);
+        }
+      } catch (error) {
+        console.error('Error loading favorites:', error);
       }
-    } catch (error) {
-      console.error('Error loading favorites:', error);
-    }
+    };
+
+    loadFavorites();
   }, []);
 
   // Save favorites to localStorage whenever they change

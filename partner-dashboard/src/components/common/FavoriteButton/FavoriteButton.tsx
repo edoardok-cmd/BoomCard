@@ -113,6 +113,26 @@ const TextButton = styled(motion.button)<{ $isFavorite: boolean }>`
   }
 `;
 
+const heartVariants = {
+  inactive: { scale: 1 },
+  active: { scale: [1, 1.3, 1] }
+};
+
+const HeartIcon: React.FC<{ favorite: boolean }> = ({ favorite }) => (
+  <motion.svg
+    viewBox="0 0 24 24"
+    variants={heartVariants}
+    animate={favorite ? 'active' : 'inactive'}
+    transition={{ duration: 0.3 }}
+  >
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"
+    />
+  </motion.svg>
+);
+
 export const FavoriteButton: React.FC<FavoriteButtonProps> = ({
   offerId,
   offerData,
@@ -137,26 +157,6 @@ export const FavoriteButton: React.FC<FavoriteButtonProps> = ({
     }
   };
 
-  const heartVariants = {
-    inactive: { scale: 1 },
-    active: { scale: [1, 1.3, 1] }
-  };
-
-  const HeartIcon = () => (
-    <motion.svg
-      viewBox="0 0 24 24"
-      variants={heartVariants}
-      animate={favorite ? 'active' : 'inactive'}
-      transition={{ duration: 0.3 }}
-    >
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"
-      />
-    </motion.svg>
-  );
-
   if (variant === 'button') {
     return (
       <TextButton
@@ -166,7 +166,7 @@ export const FavoriteButton: React.FC<FavoriteButtonProps> = ({
         whileTap={{ scale: 0.95 }}
         aria-label={favorite ? 'Remove from favorites' : 'Add to favorites'}
       >
-        <HeartIcon />
+        <HeartIcon favorite={favorite} />
         <span>
           {favorite
             ? (language === 'bg' ? 'В любими' : 'Saved')
@@ -185,7 +185,7 @@ export const FavoriteButton: React.FC<FavoriteButtonProps> = ({
       whileTap={{ scale: 0.95 }}
       aria-label={favorite ? 'Remove from favorites' : 'Add to favorites'}
     >
-      <HeartIcon />
+      <HeartIcon favorite={favorite} />
     </IconButton>
   );
 };

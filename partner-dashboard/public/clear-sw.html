@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Clear Service Worker - BoomCard</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 2rem;
+      background: #f9fafb;
+    }
+    .container {
+      background: white;
+      padding: 2rem;
+      border-radius: 1rem;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+    h1 {
+      color: #111827;
+      margin-bottom: 1rem;
+    }
+    .status {
+      padding: 1rem;
+      border-radius: 0.5rem;
+      margin: 1rem 0;
+    }
+    .status.success {
+      background: #d1fae5;
+      color: #065f46;
+    }
+    .status.error {
+      background: #fee2e2;
+      color: #991b1b;
+    }
+    .status.info {
+      background: #dbeafe;
+      color: #1e40af;
+    }
+    button {
+      background: #000;
+      color: white;
+      border: none;
+      padding: 0.75rem 1.5rem;
+      border-radius: 0.5rem;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      margin: 0.5rem 0.5rem 0.5rem 0;
+    }
+    button:hover {
+      background: #1f2937;
+    }
+    button:disabled {
+      background: #9ca3af;
+      cursor: not-allowed;
+    }
+    pre {
+      background: #f3f4f6;
+      padding: 1rem;
+      border-radius: 0.5rem;
+      overflow-x: auto;
+    }
+    .instructions {
+      background: #fef3c7;
+      padding: 1rem;
+      border-radius: 0.5rem;
+      margin: 1rem 0;
+      border-left: 4px solid #f59e0b;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🔧 Clear Service Worker</h1>
+
+    <div class="instructions">
+      <strong>⚠️ If pages are still showing "You're Offline":</strong>
+      <ol>
+        <li>Click "Unregister Service Worker" below</li>
+        <li>Click "Clear All Caches"</li>
+        <li>Close all BoomCard tabs</li>
+        <li>Reopen the application</li>
+      </ol>
+    </div>
+
+    <div id="status"></div>
+
+    <div style="margin: 2rem 0;">
+      <button onclick="unregisterSW()">Unregister Service Worker</button>
+      <button onclick="clearCaches()">Clear All Caches</button>
+      <button onclick="reloadPage()">Reload Page</button>
+    </div>
+
+    <div id="sw-info"></div>
+  </div>
+
+  <script>
+    const statusDiv = document.getElementById('status');
+    const swInfoDiv = document.getElementById('sw-info');
+
+    function showStatus(message, type = 'info') {
+      const div = document.createElement('div');
+      div.className = `status ${type}`;
+      div.textContent = message;
+      statusDiv.appendChild(div);
+    }
+
+    async function unregisterSW() {
+      showStatus('Unregistering Service Worker...', 'info');
+
+      if (!('serviceWorker' in navigator)) {
+        showStatus('Service Workers not supported in this browser', 'error');
+        return;
+      }
+
+      try {
+        const registrations = await navigator.serviceWorker.getRegistrations();
+
+        if (registrations.length === 0) {
+          showStatus('No Service Workers found to unregister', 'info');
+          return;
+        }
+
+        for (let registration of registrations) {
+          await registration.unregister();
+          showStatus(`✓ Unregistered Service Worker: ${registration.scope}`, 'success');
+        }
+
+        showStatus(`✓ Successfully unregistered ${registrations.length} Service Worker(s)`, 'success');
+      } catch (error) {
+        showStatus(`✗ Error: ${error.message}`, 'error');
+      }
+
+      checkSWStatus();
+    }
+
+    async function clearCaches() {
+      showStatus('Clearing all caches...', 'info');
+
+      if (!('caches' in window)) {
+        showStatus('Cache API not supported', 'error');
+        return;
+      }
+
+      try {
+        const cacheNames = await caches.keys();
+
+        if (cacheNames.length === 0) {
+          showStatus('No caches found', 'info');
+          return;
+        }
+
+        for (let name of cacheNames) {
+          await caches.delete(name);
+          showStatus(`✓ Deleted cache: ${name}`, 'success');
+        }
+
+        showStatus(`✓ Successfully cleared ${cacheNames.length} cache(s)`, 'success');
+      } catch (error) {
+        showStatus(`✗ Error: ${error.message}`, 'error');
+      }
+    }
+
+    function reloadPage() {
+      showStatus('Reloading page...', 'info');
+      setTimeout(() => {
+        window.location.href = '/';
+      }, 500);
+    }
+
+    async function checkSWStatus() {
+      if (!('serviceWorker' in navigator)) {
+        swInfoDiv.innerHTML = '<div class="status error">Service Workers not supported</div>';
+        return;
+      }
+
+      const registrations = await navigator.serviceWorker.getRegistrations();
+      const cacheNames = await caches.keys();
+
+      swInfoDiv.innerHTML = `
+        <h3>Current Status</h3>
+        <pre>Service Workers: ${registrations.length}
+Caches: ${cacheNames.length}
+
+${registrations.length > 0 ? 'Active Service Workers:\n' + registrations.map(r => `  - ${r.scope}`).join('\n') : 'No Service Workers registered'}
+
+${cacheNames.length > 0 ? 'Active Caches:\n' + cacheNames.map(c => `  - ${c}`).join('\n') : 'No caches'}</pre>
+      `;
+    }
+
+    // Check status on load
+    checkSWStatus();
+  </script>
+</body>
+</html>

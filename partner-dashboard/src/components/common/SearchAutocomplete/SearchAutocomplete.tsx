@@ -303,9 +303,13 @@ export const SearchAutocomplete: React.FC<SearchAutocompleteProps> = ({
           : `${result.title} ${result.category} ${result.location}`.toLowerCase();
         return searchIn.includes(query.toLowerCase());
       });
-      setResults(filtered);
-      setIsOpen(true);
-      setIsLoading(false);
+
+      // Use a callback to avoid setting state synchronously in effect
+      requestAnimationFrame(() => {
+        setResults(filtered);
+        setIsOpen(true);
+        setIsLoading(false);
+      });
     }, 300);
 
     return () => clearTimeout(timeoutId);

@@ -37,6 +37,7 @@ const RewardsPage = lazy(() => import('./pages/RewardsPage'));
 const PromotionsPage = lazy(() => import('./pages/PromotionsPage'));
 const ExperiencesPage = lazy(() => import('./pages/ExperiencesPage'));
 const IntegrationsPage = lazy(() => import('./pages/IntegrationsPage'));
+const LocationsPage = lazy(() => import('./pages/LocationsPage'));
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage'));
 
 const queryClient = new QueryClient();
@@ -121,6 +122,7 @@ function App() {
                     <Route path="promotions" element={<PromotionsPage />} />
                     <Route path="experiences" element={<ExperiencesPage />} />
                     <Route path="integrations" element={<IntegrationsPage />} />
+                    <Route path="locations" element={<LocationsPage />} />
                     <Route path="*" element={<NotFoundPage />} />
                   </Route>
                   <Route
