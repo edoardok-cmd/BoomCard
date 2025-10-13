@@ -10,7 +10,9 @@
       "Bash(xargs kill:*)",
       "Bash(curl:*)",
       "Bash(awk:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(find:*)"
     ],
     "deny": [],
     "ask": []

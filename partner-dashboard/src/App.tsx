@@ -34,6 +34,9 @@ const CreateOfferPage = lazy(() => import('./pages/CreateOfferPage'));
 const EditOfferPage = lazy(() => import('./pages/EditOfferPage'));
 const NearbyOffersPage = lazy(() => import('./pages/NearbyOffersPage'));
 const RewardsPage = lazy(() => import('./pages/RewardsPage'));
+const PromotionsPage = lazy(() => import('./pages/PromotionsPage'));
+const ExperiencesPage = lazy(() => import('./pages/ExperiencesPage'));
+const IntegrationsPage = lazy(() => import('./pages/IntegrationsPage'));
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage'));
 
 const queryClient = new QueryClient();
@@ -49,114 +52,117 @@ function App() {
                 <Routes>
                   <Route path="/" element={<Layout />}>
                     <Route index element={<HomePage />} />
-              <Route
-                path="dashboard"
-                element={
-                  <ProtectedRoute>
-                    <DashboardPage />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="profile"
-                element={
-                  <ProtectedRoute>
-                    <ProfilePage />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="settings"
-                element={
-                  <ProtectedRoute>
-                    <SettingsPage />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="analytics"
-                element={
-                  <ProtectedRoute>
-                    <AnalyticsPage />
-                  </ProtectedRoute>
-                }
-              />
-              <Route path="search" element={<SearchPage />} />
-              <Route path="nearby" element={<NearbyOffersPage />} />
-              <Route path="rewards" element={<RewardsPage />} />
-              <Route path="components" element={<ComponentsPage />} />
-              <Route path="categories" element={<CategoryListingPage />} />
-              <Route path="categories/:category" element={<CategoryListingPage />} />
-              <Route path="top-offers" element={<CategoryListingPage />} />
-              <Route path="offers/:id" element={<VenueDetailPage />} />
-              <Route path="partners" element={<PartnersPage />} />
-              <Route
-                path="partners/offers"
-                element={
-                  <ProtectedRoute>
-                    <MyOffersPage />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="partners/offers/new"
-                element={
-                  <ProtectedRoute>
-                    <CreateOfferPage />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="partners/offers/:id/edit"
-                element={
-                  <ProtectedRoute>
-                    <EditOfferPage />
-                  </ProtectedRoute>
-                }
-              />
-              <Route path="favorites" element={<FavoritesPage />} />
-              <Route path="*" element={<NotFoundPage />} />
-            </Route>
-            <Route
-              path="/login"
-              element={
-                <ProtectedRoute requireAuth={false}>
-                  <LoginPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/register"
-              element={
-                <ProtectedRoute requireAuth={false}>
-                  <RegisterPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/forgot-password"
-              element={
-                <ProtectedRoute requireAuth={false}>
-                  <ForgotPasswordPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/reset-password"
-              element={
-                <ProtectedRoute requireAuth={false}>
-                  <ResetPasswordPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/verify-email"
-              element={
-                <ProtectedRoute requireAuth={false}>
-                  <VerifyEmailPage />
-                </ProtectedRoute>
-              }
-            />
+                    <Route
+                      path="dashboard"
+                      element={
+                        <ProtectedRoute>
+                          <DashboardPage />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="profile"
+                      element={
+                        <ProtectedRoute>
+                          <ProfilePage />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="settings"
+                      element={
+                        <ProtectedRoute>
+                          <SettingsPage />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="analytics"
+                      element={
+                        <ProtectedRoute>
+                          <AnalyticsPage />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route path="search" element={<SearchPage />} />
+                    <Route path="nearby" element={<NearbyOffersPage />} />
+                    <Route path="rewards" element={<RewardsPage />} />
+                    <Route path="components" element={<ComponentsPage />} />
+                    <Route path="categories" element={<CategoryListingPage />} />
+                    <Route path="categories/:category" element={<CategoryListingPage />} />
+                    <Route path="top-offers" element={<CategoryListingPage />} />
+                    <Route path="offers/:id" element={<VenueDetailPage />} />
+                    <Route path="partners" element={<PartnersPage />} />
+                    <Route
+                      path="partners/offers"
+                      element={
+                        <ProtectedRoute>
+                          <MyOffersPage />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="partners/offers/new"
+                      element={
+                        <ProtectedRoute>
+                          <CreateOfferPage />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="partners/offers/:id/edit"
+                      element={
+                        <ProtectedRoute>
+                          <EditOfferPage />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route path="favorites" element={<FavoritesPage />} />
+                    <Route path="promotions" element={<PromotionsPage />} />
+                    <Route path="experiences" element={<ExperiencesPage />} />
+                    <Route path="integrations" element={<IntegrationsPage />} />
+                    <Route path="*" element={<NotFoundPage />} />
+                  </Route>
+                  <Route
+                    path="/login"
+                    element={
+                      <ProtectedRoute requireAuth={false}>
+                        <LoginPage />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/register"
+                    element={
+                      <ProtectedRoute requireAuth={false}>
+                        <RegisterPage />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/forgot-password"
+                    element={
+                      <ProtectedRoute requireAuth={false}>
+                        <ForgotPasswordPage />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/reset-password"
+                    element={
+                      <ProtectedRoute requireAuth={false}>
+                        <ResetPasswordPage />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/verify-email"
+                    element={
+                      <ProtectedRoute requireAuth={false}>
+                        <VerifyEmailPage />
+                      </ProtectedRoute>
+                    }
+                  />
                 </Routes>
               </Suspense>
             </Router>
