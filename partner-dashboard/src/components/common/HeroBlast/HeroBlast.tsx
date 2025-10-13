@@ -189,22 +189,56 @@ const CTAContainer = styled(motion.div)`
 `;
 
 const CTATitle = styled(motion.h1)`
-  font-size: 3.5rem;
+  font-size: 4rem;
   font-weight: 900;
   margin-bottom: 1rem;
-  text-shadow: 0 4px 20px rgba(0, 0, 0, 0.8);
   line-height: 1.2;
-  background: linear-gradient(135deg, #fff 0%, #f0f0f0 100%);
+  letter-spacing: -0.02em;
+
+  /* Animated gradient text */
+  background: linear-gradient(
+    135deg,
+    #ffffff 0%,
+    #ffd700 20%,
+    #ffffff 40%,
+    #ffd700 60%,
+    #ffffff 80%,
+    #ffd700 100%
+  );
+  background-size: 200% 200%;
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
+  animation: shimmer 3s ease-in-out infinite;
+
+  /* Multiple text shadows for depth */
+  text-shadow:
+    0 0 10px rgba(255, 215, 0, 0.5),
+    0 0 20px rgba(255, 215, 0, 0.3),
+    0 0 30px rgba(255, 215, 0, 0.2),
+    0 4px 20px rgba(0, 0, 0, 0.8);
+
+  /* Add a subtle glow effect */
+  filter: drop-shadow(0 0 15px rgba(255, 215, 0, 0.4));
+
+  @keyframes shimmer {
+    0% {
+      background-position: 0% 50%;
+    }
+    50% {
+      background-position: 100% 50%;
+    }
+    100% {
+      background-position: 0% 50%;
+    }
+  }
 
   @media (max-width: 768px) {
-    font-size: 2.5rem;
+    font-size: 2.75rem;
   }
 
   @media (max-width: 480px) {
-    font-size: 1.75rem;
+    font-size: 2rem;
   }
 `;
 
