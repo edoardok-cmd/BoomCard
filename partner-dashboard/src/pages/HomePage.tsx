@@ -120,7 +120,7 @@ const topOffers: Offer[] = [
 ];
 
 const HomePage: React.FC = () => {
-  const [language, setLanguage] = useState<'en' | 'bg'>('en');
+  const [language] = useState<'en' | 'bg'>('en');
   const { scrollY } = useScroll();
   const heroOpacity = useTransform(scrollY, [0, 300], [1, 0]);
   const heroScale = useTransform(scrollY, [0, 300], [1, 0.95]);

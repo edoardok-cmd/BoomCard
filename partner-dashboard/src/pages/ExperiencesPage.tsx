@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import styled from 'styled-components';
 import { useLanguage } from '../contexts/LanguageContext';
-import Card from '../components/common/Card/Card';
 import Button from '../components/common/Button/Button';
 import Badge from '../components/common/Badge/Badge';
 

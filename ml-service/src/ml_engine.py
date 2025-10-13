@@ -48,16 +48,17 @@ class MLEngine:
             if model_id in self.loaded_models:
                 logger.info(f"Model {model_id} already loaded")
                 return
-            
+
             # Get model metadata from Redis
             metadata_str = await self.redis.get(f"model:metadata:{model_id}")
+            metadata = {}
             if metadata_str:
                 metadata = json.loads(metadata_str)
                 self.model_metadata[model_id] = metadata
-            
+
             # Download model from MinIO
             model_data = self._download_model(model_path)
-            
+
             # Load based on framework
             framework = metadata.get('framework', 'sklearn')
             
@@ -106,6 +107,11 @@ class MLEngine:
         
         start_time = datetime.utcnow()
         
+        probabilities = None
+        predicted_class = None
+        confidence = None
+        prediction_value = None
+
         if framework == 'tensorflow':
             prediction = model.predict(feature_vector)
             if metadata.get('task') == 'classification':
@@ -113,9 +119,6 @@ class MLEngine:
                 predicted_class = int(np.argmax(prediction[0]))
                 confidence = float(np.max(prediction[0]))
             else:
-                probabilities = None
-                predicted_class = None
-                confidence = None
                 prediction_value = float(prediction[0][0])
                 
         elif framework == 'pytorch':
@@ -225,13 +228,13 @@ class MLEngine:
                 {f"{timestamp}:{confidence}": datetime.utcnow().timestamp()}
             )
         
-        # Increment prediction counter
-        await self.redis.hincrby(f"model:stats:{model_id}", "predictions", 1)
-        
-        # Update last prediction time
-        await self.redis.hset(
-            f"model:stats:{model_id}", 
-            "last_prediction", 
+        # Increment prediction counter (redis.hincrby returns int, not awaitable)
+        self.redis.hincrby(f"model:stats:{model_id}", "predictions", 1)  # type: ignore
+
+        # Update last prediction time (redis.hset returns int, not awaitable)
+        self.redis.hset(  # type: ignore
+            f"model:stats:{model_id}",
+            "last_prediction",
             timestamp
         )
     
@@ -250,7 +253,7 @@ class MLEngine:
     
     async def get_model_stats(self, model_id: str) -> Dict[str, Any]:
         """Get model statistics"""
-        stats = await self.redis.hgetall(f"model:stats:{model_id}")
+        stats = await self.redis.hgetall(f"model:stats:{model_id}")  # type: ignore
         
         # Get recent latencies
         recent_latencies = await self.redis.zrevrange(

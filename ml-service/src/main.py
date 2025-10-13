@@ -3,8 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import asyncpg
 import redis.asyncio as redis
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
 from fastapi.responses import Response
 from opentelemetry import trace
@@ -52,7 +51,7 @@ engine = create_async_engine(
     pool_pre_ping=True,
 )
 
-AsyncSessionLocal = sessionmaker(
+AsyncSessionLocal = async_sessionmaker(
     engine,
     class_=AsyncSession,
     expire_on_commit=False
@@ -76,13 +75,16 @@ async def lifespan(app: FastAPI):
     
     # Initialize ML components
     ml_engine = MLEngine(redis_client, MINIO_URL, MINIO_ACCESS_KEY, MINIO_SECRET_KEY)
-    await ml_engine.initialize()
-    
+    if ml_engine:
+        await ml_engine.initialize()
+
     feature_store = FeatureStore(redis_client, engine)
-    await feature_store.initialize()
-    
+    if feature_store:
+        await feature_store.initialize()
+
     model_registry = ModelRegistry(engine, ml_engine)
-    await model_registry.initialize()
+    if model_registry:
+        await model_registry.initialize()
     
     logger.info("ML Service initialized successfully")
     
@@ -113,7 +115,7 @@ app.add_middleware(
 FastAPIInstrumentor.instrument_app(app)
 
 # Real dependency for database sessions
-async def get_db() -> AsyncSession:
+async def get_db():  # type: ignore
     async with AsyncSessionLocal() as session:
         try:
             yield session
@@ -138,7 +140,8 @@ async def health_check():
     # Check database
     try:
         async with engine.connect() as conn:
-            await conn.execute("SELECT 1")
+            from sqlalchemy import text
+            await conn.execute(text("SELECT 1"))
         health_status["services"]["database"] = "connected"
     except Exception as e:
         health_status["services"]["database"] = f"error: {str(e)}"
@@ -146,16 +149,18 @@ async def health_check():
     
     # Check Redis
     try:
-        await redis_client.ping()
-        health_status["services"]["redis"] = "connected"
+        if redis_client:
+            await redis_client.ping()
+            health_status["services"]["redis"] = "connected"
     except Exception as e:
         health_status["services"]["redis"] = f"error: {str(e)}"
         health_status["status"] = "degraded"
-    
+
     # Check ML Engine
     try:
-        models_loaded = await ml_engine.get_loaded_models()
-        health_status["services"]["ml_engine"] = f"loaded_models: {len(models_loaded)}"
+        if ml_engine:
+            models_loaded = await ml_engine.get_loaded_models()
+            health_status["services"]["ml_engine"] = f"loaded_models: {len(models_loaded)}"
     except Exception as e:
         health_status["services"]["ml_engine"] = f"error: {str(e)}"
         health_status["status"] = "degraded"
@@ -179,7 +184,8 @@ async def create_model(
         model = await service.create_model(request)
         
         # Trigger async model loading
-        background_tasks.add_task(ml_engine.load_model, model.id, model.artifacts_path)
+        if ml_engine:
+            background_tasks.add_task(ml_engine.load_model, model.id, model.artifacts_path)
         
         request_count.labels(method="POST", endpoint="/models", status="success").inc()
         return model
@@ -217,7 +223,8 @@ async def activate_model(
 ):
     """Activate a model for serving"""
     model = await service.activate_model(model_id)
-    background_tasks.add_task(ml_engine.load_model, model.id, model.artifacts_path)
+    if ml_engine:
+        background_tasks.add_task(ml_engine.load_model, model.id, model.artifacts_path)
     return {"status": "activated", "model_id": model_id}
 
 # Prediction endpoints
@@ -231,10 +238,12 @@ async def predict(
     
     try:
         # Get features from feature store
-        features = await feature_store.get_features(
-            request.feature_ids,
-            request.entity_id
-        )
+        features = {}
+        if feature_store:
+            features = await feature_store.get_features(
+                request.feature_ids,
+                request.entity_id
+            )
         
         # Combine with request features
         all_features = {**features, **request.features}
@@ -343,11 +352,12 @@ async def compute_features(
     background_tasks: BackgroundTasks
 ):
     """Compute and store features for an entity"""
-    background_tasks.add_task(
-        feature_store.compute_features,
-        entity_id,
-        feature_names
-    )
+    if feature_store:
+        background_tasks.add_task(
+            feature_store.compute_features,
+            entity_id,
+            feature_names
+        )
     
     return {
         "status": "computing",
@@ -361,7 +371,9 @@ async def get_features(
     feature_names: Optional[List[str]] = None
 ):
     """Get stored features for an entity"""
-    features = await feature_store.get_features(feature_names, entity_id)
+    features = {}
+    if feature_store:
+        features = await feature_store.get_features(feature_names, entity_id)
     return {
         "entity_id": entity_id,
         "features": features,

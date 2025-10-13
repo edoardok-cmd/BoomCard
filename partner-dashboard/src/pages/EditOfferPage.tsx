@@ -1,10 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import styled from 'styled-components';
-import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
 import { useLanguage } from '../contexts/LanguageContext';
-import { Upload, X, Check, ArrowLeft, Save } from 'lucide-react';
+import { Upload, X, ArrowLeft, Save } from 'lucide-react';
 import Button from '../components/common/Button/Button';
 
 const content = {
@@ -161,7 +160,7 @@ const EditOfferPage: React.FC = () => {
         });
 
         setIsLoading(false);
-      } catch (error) {
+      } catch {
         toast.error(t.notFound);
         navigate('/partners/offers');
       }
@@ -256,7 +255,7 @@ const EditOfferPage: React.FC = () => {
 
       toast.success(t.success);
       navigate('/partners/offers');
-    } catch (error) {
+    } catch {
       toast.error(t.error);
     }
   };

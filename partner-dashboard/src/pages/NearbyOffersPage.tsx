@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import styled from 'styled-components';
 import { motion } from 'framer-motion';
 import { useLanguage } from '../contexts/LanguageContext';
 import MapView, { Venue } from '../components/common/MapView/MapView';
-import { MapPin, List, Map, Filter, SlidersHorizontal } from 'lucide-react';
+import { MapPin, List, Map, SlidersHorizontal } from 'lucide-react';
 import Button from '../components/common/Button/Button';
 import Badge from '../components/common/Badge/Badge';
 
@@ -90,7 +90,7 @@ const NearbyOffersPage: React.FC = () => {
   const [showFilters, setShowFilters] = useState(false);
 
   // Mock venue data - replace with real API
-  const [venues, setVenues] = useState<Venue[]>([
+  const [venues] = useState<Venue[]>([
     {
       id: '1',
       name: 'Sofia Grand Hotel',

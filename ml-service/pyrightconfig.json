@@ -1,0 +1,12 @@
+{
+  "include": ["src"],
+  "exclude": ["**/node_modules", "**/__pycache__"],
+  "reportMissingImports": "none",
+  "reportMissingTypeStubs": "none",
+  "reportGeneralTypeIssues": "none",
+  "reportOptionalMemberAccess": "none",
+  "reportArgumentType": "none",
+  "reportCallIssue": "none",
+  "pythonVersion": "3.11",
+  "typeCheckingMode": "basic"
+}

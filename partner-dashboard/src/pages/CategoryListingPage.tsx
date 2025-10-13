@@ -304,6 +304,7 @@ const CategoryListingPage: React.FC = () => {
   const [showMobileFilters, setShowMobileFilters] = useState(false);
   const [filteredOffers, setFilteredOffers] = useState<Offer[]>(allOffers);
   const [sortBy, setSortBy] = useState('relevance');
+  const [isLoading] = useState(false);
 
   const categoryTitles: Record<string, { en: string; bg: string }> = {
     restaurants: { en: 'Restaurants & Bars', bg: 'Ресторанти и Барове' },

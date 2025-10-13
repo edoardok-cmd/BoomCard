@@ -363,6 +363,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ language = 'en' }) => {
       });
 
       // Redirect to the page they were trying to access, or home
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const from = (location.state as any)?.from?.pathname || '/';
       navigate(from, { replace: true });
     } catch (error) {

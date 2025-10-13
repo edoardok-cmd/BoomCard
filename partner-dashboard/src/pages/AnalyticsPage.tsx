@@ -3,7 +3,6 @@ import styled from 'styled-components';
 import { motion } from 'framer-motion';
 import { TrendingUp, TrendingDown, DollarSign, CreditCard, Users, ArrowUp, ArrowDown } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
-import { useAuth } from '../contexts/AuthContext';
 
 const PageContainer = styled.div`
   min-height: calc(100vh - 4rem);

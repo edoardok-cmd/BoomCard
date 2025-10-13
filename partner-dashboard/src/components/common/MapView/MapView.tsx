@@ -86,6 +86,8 @@ const MapView: React.FC<MapViewProps> = ({
   const [selectedVenue, setSelectedVenue] = useState<Venue | null>(null);
   const [locationPermission, setLocationPermission] = useState<'granted' | 'denied' | 'prompt'>('prompt');
   const [isLoading, setIsLoading] = useState(false);
+  const [mapCenter, setMapCenter] = useState<{ lat: number; lng: number }>(initialCenter);
+  const [zoom, setZoom] = useState<number>(initialZoom);
 
   useEffect(() => {
     // Check if geolocation is supported

@@ -145,7 +145,7 @@ const SortButton = styled.button<{ $active: boolean }>`
 type SortType = 'recent' | 'discount' | 'price-low' | 'price-high';
 
 const FavoritesPage: React.FC = () => {
-  const [language, setLanguage] = useState<'en' | 'bg'>('en');
+  const [language] = useState<'en' | 'bg'>('en');
   const [sortBy, setSortBy] = useState<SortType>('recent');
   const { favorites, clearFavorites } = useFavorites();
 

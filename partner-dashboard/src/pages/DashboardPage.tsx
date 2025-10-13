@@ -261,7 +261,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ language = 'en' }) => {
 
   // Mock data - in production this would come from an API
   const boomCards: BoomCard[] = useMemo(() => {
-    const now = Date.now();
+    const now = new Date().getTime();
     return [
       {
         id: '1',
