@@ -351,12 +351,12 @@ export class AuthService {
 
     // Generate access token
     const accessToken = jwt.sign(payload, JWT_SECRET, {
-      expiresIn: JWT_EXPIRES_IN,
+      expiresIn: JWT_EXPIRES_IN as string | number,
     });
 
     // Generate refresh token
     const refreshTokenString = jwt.sign(payload, JWT_REFRESH_SECRET, {
-      expiresIn: JWT_REFRESH_EXPIRES_IN,
+      expiresIn: JWT_REFRESH_EXPIRES_IN as string | number,
     });
 
     // Calculate expiration date for refresh token
