@@ -1,9 +1,20 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import styled from 'styled-components';
 import { motion, AnimatePresence } from 'framer-motion';
+import { MapContainer, TileLayer, Marker, Popup, useMap, Circle } from 'react-leaflet';
+import L from 'leaflet';
 import { MapPin, Navigation, X, Star, Clock, Phone, ExternalLink } from 'lucide-react';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import Button from '../Button/Button';
+import 'leaflet/dist/leaflet.css';
+
+// Fix Leaflet default marker icon issue with bundlers
+delete (L.Icon.Default.prototype as any)._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
+  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
+  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+});
 
 const content = {
   en: {
@@ -23,8 +34,6 @@ const content = {
     zoomIn: 'Zoom In',
     zoomOut: 'Zoom Out',
     resetView: 'Reset View',
-    showList: 'Show List',
-    showMap: 'Show Map',
   },
   bg: {
     enableLocation: 'Разреши Местоположение',
@@ -43,8 +52,6 @@ const content = {
     zoomIn: 'Увеличи',
     zoomOut: 'Намали',
     resetView: 'Нулирай',
-    showList: 'Покажи Списък',
-    showMap: 'Покажи Карта',
   },
 };
 
@@ -71,11 +78,54 @@ interface MapViewProps {
   height?: string;
 }
 
+// Custom marker icons
+const createCustomIcon = (color: string, isSelected: boolean) => {
+  const size = isSelected ? 35 : 25;
+  const svg = `
+    <svg width="${size}" height="${size * 1.2}" viewBox="0 0 24 29" xmlns="http://www.w3.org/2000/svg">
+      <path d="M12 0C5.4 0 0 5.4 0 12c0 7.2 12 17 12 17s12-9.8 12-17c0-6.6-5.4-12-12-12z"
+            fill="${color}"
+            stroke="white"
+            stroke-width="2"/>
+      <circle cx="12" cy="11" r="4" fill="white"/>
+    </svg>
+  `;
+  return L.divIcon({
+    html: svg,
+    className: 'custom-marker',
+    iconSize: [size, size * 1.2],
+    iconAnchor: [size / 2, size * 1.2],
+    popupAnchor: [0, -size * 1.2],
+  });
+};
+
+const userLocationIcon = L.divIcon({
+  html: `
+    <svg width="30" height="30" viewBox="0 0 30 30" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="15" cy="15" r="14" fill="rgba(59, 130, 246, 0.2)" stroke="none"/>
+      <circle cx="15" cy="15" r="10" fill="rgba(59, 130, 246, 0.4)" stroke="none"/>
+      <circle cx="15" cy="15" r="6" fill="#3b82f6" stroke="white" stroke-width="3"/>
+    </svg>
+  `,
+  className: 'user-location-marker',
+  iconSize: [30, 30],
+  iconAnchor: [15, 15],
+});
+
+// Component to handle map updates
+const MapUpdater: React.FC<{ center: { lat: number; lng: number }; zoom: number }> = ({ center, zoom }) => {
+  const map = useMap();
+  useEffect(() => {
+    map.setView([center.lat, center.lng], zoom);
+  }, [center, zoom, map]);
+  return null;
+};
+
 const MapView: React.FC<MapViewProps> = ({
   venues,
   onVenueClick,
   initialCenter = { lat: 42.6977, lng: 23.3219 }, // Sofia, Bulgaria
-  initialZoom = 12,
+  initialZoom = 13,
   showControls = true,
   height = '500px',
 }) => {
@@ -153,11 +203,10 @@ const MapView: React.FC<MapViewProps> = ({
   const handleVenueClick = (venue: Venue) => {
     setSelectedVenue(venue);
     setMapCenter({ lat: venue.lat, lng: venue.lng });
+    setZoom(16);
     onVenueClick?.(venue);
   };
 
-  const handleZoomIn = () => setZoom((prev) => Math.min(prev + 1, 18));
-  const handleZoomOut = () => setZoom((prev) => Math.max(prev - 1, 1));
   const handleResetView = () => {
     setMapCenter(userLocation || initialCenter);
     setZoom(initialZoom);
@@ -182,171 +231,79 @@ const MapView: React.FC<MapViewProps> = ({
 
   return (
     <Container>
-      <MapContainer height={height}>
-        {/* SVG Map Representation */}
-        <svg width="100%" height="100%" viewBox={`0 0 800 600`}>
-          {/* Background */}
-          <rect width="800" height="600" fill="#f0f4f8" />
+      <StyledMapContainer height={height}>
+        <MapContainer
+          center={[mapCenter.lat, mapCenter.lng]}
+          zoom={zoom}
+          style={{ height: '100%', width: '100%', borderRadius: '1rem' }}
+          zoomControl={false}
+        >
+          <MapUpdater center={mapCenter} zoom={zoom} />
 
-          {/* Grid lines for map feel */}
-          {Array.from({ length: 20 }).map((_, i) => (
-            <React.Fragment key={i}>
-              <line
-                x1={i * 40}
-                y1="0"
-                x2={i * 40}
-                y2="600"
-                stroke="#e2e8f0"
-                strokeWidth="1"
-              />
-              <line
-                x1="0"
-                y1={i * 30}
-                x2="800"
-                y2={i * 30}
-                stroke="#e2e8f0"
-                strokeWidth="1"
-              />
-            </React.Fragment>
-          ))}
+          {/* OpenStreetMap tiles */}
+          <TileLayer
+            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          />
 
           {/* User location marker */}
           {userLocation && (
-            <g transform={`translate(400, 300)`}>
-              <circle r="30" fill="rgba(59, 130, 246, 0.2)" />
-              <circle r="20" fill="rgba(59, 130, 246, 0.4)" />
-              <circle r="10" fill="#3b82f6" stroke="white" strokeWidth="3" />
-              <text
-                x="0"
-                y="50"
-                textAnchor="middle"
-                fill="#3b82f6"
-                fontSize="12"
-                fontWeight="600"
+            <>
+              <Circle
+                center={[userLocation.lat, userLocation.lng]}
+                radius={500}
+                pathOptions={{
+                  fillColor: 'rgba(59, 130, 246, 0.1)',
+                  fillOpacity: 0.4,
+                  color: '#3b82f6',
+                  weight: 2,
+                }}
+              />
+              <Marker
+                position={[userLocation.lat, userLocation.lng]}
+                icon={userLocationIcon}
               >
-                {t.myLocation}
-              </text>
-            </g>
+                <Popup>{t.myLocation}</Popup>
+              </Marker>
+            </>
           )}
 
           {/* Venue markers */}
-          {sortedVenues.map((venue, index) => {
-            const angle = (index * (360 / venues.length) * Math.PI) / 180;
-            const radius = 150 + (index % 3) * 50;
-            const x = 400 + Math.cos(angle) * radius;
-            const y = 300 + Math.sin(angle) * radius;
-
-            return (
-              <g
-                key={venue.id}
-                transform={`translate(${x}, ${y})`}
-                onClick={() => handleVenueClick(venue)}
-                style={{ cursor: 'pointer' }}
-              >
-                {/* Marker shadow */}
-                <ellipse
-                  cx="0"
-                  cy="35"
-                  rx="15"
-                  ry="5"
-                  fill="rgba(0,0,0,0.2)"
-                />
-
-                {/* Marker pin */}
-                <path
-                  d="M 0 -25 Q -15 -25 -15 -10 Q -15 5 0 25 Q 15 5 15 -10 Q 15 -25 0 -25 Z"
-                  fill={selectedVenue?.id === venue.id ? '#ef4444' : '#111827'}
-                  stroke="white"
-                  strokeWidth="2"
-                />
-
-                {/* Inner circle */}
-                <circle
-                  r="8"
-                  cy="-10"
-                  fill="white"
-                />
-
-                {/* Pulse animation for selected */}
-                {selectedVenue?.id === venue.id && (
-                  <circle
-                    r="20"
-                    cy="-10"
-                    fill="none"
-                    stroke="#ef4444"
-                    strokeWidth="2"
-                    opacity="0.6"
-                  >
-                    <animate
-                      attributeName="r"
-                      from="15"
-                      to="35"
-                      dur="1.5s"
-                      repeatCount="indefinite"
-                    />
-                    <animate
-                      attributeName="opacity"
-                      from="0.6"
-                      to="0"
-                      dur="1.5s"
-                      repeatCount="indefinite"
-                    />
-                  </circle>
-                )}
-
-                {/* Venue name label */}
-                <text
-                  y="40"
-                  textAnchor="middle"
-                  fill="#111827"
-                  fontSize="11"
-                  fontWeight="600"
-                  style={{ pointerEvents: 'none' }}
-                >
-                  {venue.name.length > 15 ? venue.name.substring(0, 15) + '...' : venue.name}
-                </text>
-
-                {/* Distance badge */}
-                {userLocation && (
-                  <g transform="translate(0, 55)">
-                    <rect
-                      x="-25"
-                      y="-8"
-                      width="50"
-                      height="16"
-                      rx="8"
-                      fill="#10b981"
-                    />
-                    <text
-                      textAnchor="middle"
-                      y="4"
-                      fill="white"
-                      fontSize="9"
-                      fontWeight="600"
-                    >
-                      {calculateDistance(userLocation.lat, userLocation.lng, venue.lat, venue.lng)} km
-                    </text>
-                  </g>
-                )}
-              </g>
-            );
-          })}
-        </svg>
-
-        {/* Map controls */}
-        {showControls && (
-          <Controls>
-            <ControlButton onClick={handleZoomIn} title={t.zoomIn}>
-              +
-            </ControlButton>
-            <ControlButton onClick={handleZoomOut} title={t.zoomOut}>
-              −
-            </ControlButton>
-            <ControlButton onClick={handleResetView} title={t.resetView}>
-              ⟲
-            </ControlButton>
-          </Controls>
-        )}
+          {sortedVenues.map((venue) => (
+            <Marker
+              key={venue.id}
+              position={[venue.lat, venue.lng]}
+              icon={createCustomIcon(
+                selectedVenue?.id === venue.id ? '#ef4444' : '#111827',
+                selectedVenue?.id === venue.id
+              )}
+              eventHandlers={{
+                click: () => handleVenueClick(venue),
+              }}
+            >
+              <Popup>
+                <PopupContent>
+                  <PopupTitle>{venue.name}</PopupTitle>
+                  {venue.discount && (
+                    <PopupDiscount>{venue.discount}% OFF</PopupDiscount>
+                  )}
+                  <PopupAddress>{venue.address}</PopupAddress>
+                  {userLocation && (
+                    <PopupDistance>
+                      {calculateDistance(
+                        userLocation.lat,
+                        userLocation.lng,
+                        venue.lat,
+                        venue.lng
+                      )}{' '}
+                      km {t.distance}
+                    </PopupDistance>
+                  )}
+                </PopupContent>
+              </Popup>
+            </Marker>
+          ))}
+        </MapContainer>
 
         {/* Location permission button */}
         {!userLocation && locationPermission !== 'denied' && (
@@ -356,6 +313,14 @@ const MapView: React.FC<MapViewProps> = ({
               {isLoading ? t.loading : t.enableLocation}
             </Button>
           </LocationButton>
+        )}
+
+        {/* Reset view button */}
+        {showControls && (userLocation || selectedVenue) && (
+          <ResetButton onClick={handleResetView}>
+            <span>⟲</span>
+            <span>{t.resetView}</span>
+          </ResetButton>
         )}
 
         {/* Selected venue info card */}
@@ -443,7 +408,7 @@ const MapView: React.FC<MapViewProps> = ({
             </VenueCard>
           )}
         </AnimatePresence>
-      </MapContainer>
+      </StyledMapContainer>
 
       {/* Nearby venues list */}
       {userLocation && sortedVenues.length > 0 && (
@@ -485,39 +450,77 @@ const Container = styled.div`
   gap: 1.5rem;
 `;
 
-const MapContainer = styled.div<{ height: string }>`
+const StyledMapContainer = styled.div<{ height: string }>`
   width: 100%;
   height: ${props => props.height};
-  background: #f0f4f8;
-  border-radius: 1rem;
-  overflow: hidden;
   position: relative;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  border-radius: 1rem;
+  overflow: hidden;
+
+  .leaflet-container {
+    font-family: inherit;
+  }
+
+  .leaflet-popup-content-wrapper {
+    border-radius: 0.75rem;
+    padding: 0;
+  }
+
+  .leaflet-popup-content {
+    margin: 0;
+  }
+
+  .custom-marker {
+    border: none !important;
+    background: none !important;
+  }
+
+  .user-location-marker {
+    border: none !important;
+    background: none !important;
+    animation: pulse 2s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.7;
+    }
+  }
 `;
 
-const Controls = styled.div`
+const LocationButton = styled.div`
+  position: absolute;
+  top: 1rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1000;
+`;
+
+const ResetButton = styled.button`
   position: absolute;
   top: 1rem;
   right: 1rem;
   display: flex;
-  flex-direction: column;
+  align-items: center;
   gap: 0.5rem;
-`;
-
-const ControlButton = styled.button`
-  width: 40px;
-  height: 40px;
+  padding: 0.5rem 1rem;
   background: white;
   border: 2px solid var(--gray-200);
   border-radius: 0.5rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 1.25rem;
+  font-size: 0.875rem;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  z-index: 1000;
+
+  span:first-child {
+    font-size: 1.25rem;
+  }
 
   &:hover {
     background: var(--gray-50);
@@ -530,11 +533,39 @@ const ControlButton = styled.button`
   }
 `;
 
-const LocationButton = styled.div`
-  position: absolute;
-  top: 1rem;
-  left: 50%;
-  transform: translateX(-50%);
+const PopupContent = styled.div`
+  padding: 0.75rem;
+  min-width: 200px;
+`;
+
+const PopupTitle = styled.div`
+  font-weight: 700;
+  font-size: 1rem;
+  color: var(--text-primary);
+  margin-bottom: 0.5rem;
+`;
+
+const PopupDiscount = styled.div`
+  display: inline-block;
+  background: var(--success);
+  color: white;
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.25rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+`;
+
+const PopupAddress = styled.div`
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  margin-bottom: 0.25rem;
+`;
+
+const PopupDistance = styled.div`
+  font-size: 0.75rem;
+  color: var(--success);
+  font-weight: 600;
 `;
 
 const VenueCard = styled(motion.div)`
@@ -547,7 +578,7 @@ const VenueCard = styled(motion.div)`
   border-radius: 1rem;
   overflow: hidden;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
-  z-index: 10;
+  z-index: 1000;
 
   @media (max-width: 768px) {
     left: 1rem;
