@@ -241,6 +241,8 @@ export const bg: TranslationKey = {
     deleteAccount: 'Изтрий Акаунт',
     deleteAccountDescription: 'Перманентно изтриване на акаунта и всички данни',
     dangerZone: 'Опасна Зона',
+    errorSavingSettings: 'Грешка при запазване на настройките',
+    featureComingSoon: 'Функцията ще бъде налична скоро',
   },
 
   // Profile
@@ -548,5 +550,18 @@ export const bg: TranslationKey = {
     resultsFound: 'намерени резултата',
     noResults: 'Няма намерени резултати',
     tryAdjustingFilters: 'Опитайте да промените филтрите',
+  },
+
+  // Not Found (404 Page)
+  notFound: {
+    pageNotFound: 'Страницата не е намерена',
+    pageNotFoundDescription: 'Съжаляваме, но страницата, която търсите, не съществува или е била преместена. Моля, проверете URL адреса или се върнете към началната страница.',
+    goToHomepage: 'Към началната страница',
+    goBack: 'Назад',
+    youMightBeLookingFor: 'Може да търсите',
+    browseCategories: 'Разгледай категории',
+    topOffers: 'ТОП оферти',
+    search: 'Търсене',
+    becomePartner: 'Станете партньор',
   },
 };

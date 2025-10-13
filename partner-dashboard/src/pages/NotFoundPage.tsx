@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import styled from 'styled-components';
 import { motion } from 'framer-motion';
 import Button from '../components/common/Button/Button';
+import { useLanguage } from '../contexts/LanguageContext';
 
 const PageContainer = styled.div`
   min-height: calc(100vh - 4rem);
@@ -121,12 +122,9 @@ const SuggestedLink = styled(Link)`
   }
 `;
 
-interface NotFoundPageProps {
-  language?: 'en' | 'bg';
-}
-
-const NotFoundPage: React.FC<NotFoundPageProps> = ({ language = 'en' }) => {
+const NotFoundPage: React.FC = () => {
   const navigate = useNavigate();
+  const { t } = useLanguage();
 
   const containerVariants = {
     hidden: { opacity: 0 },
@@ -220,27 +218,25 @@ const NotFoundPage: React.FC<NotFoundPageProps> = ({ language = 'en' }) => {
         <ErrorCode variants={itemVariants}>404</ErrorCode>
 
         <Title variants={itemVariants}>
-          {language === 'bg' ? 'Страницата не е намерена' : 'Page Not Found'}
+          {t('notFound.pageNotFound')}
         </Title>
 
         <Description variants={itemVariants}>
-          {language === 'bg'
-            ? 'Съжаляваме, но страницата, която търсите, не съществува или е била преместена. Моля, проверете URL адреса или се върнете към началната страница.'
-            : "Sorry, the page you're looking for doesn't exist or has been moved. Please check the URL or return to the homepage."}
+          {t('notFound.pageNotFoundDescription')}
         </Description>
 
         <ButtonGroup variants={itemVariants}>
           <Button variant="primary" size="large" onClick={() => navigate('/')}>
-            {language === 'bg' ? 'Към началната страница' : 'Go to Homepage'}
+            {t('notFound.goToHomepage')}
           </Button>
           <Button variant="ghost" size="large" onClick={() => navigate(-1)}>
-            {language === 'bg' ? 'Назад' : 'Go Back'}
+            {t('notFound.goBack')}
           </Button>
         </ButtonGroup>
 
         <SuggestedLinks variants={itemVariants}>
           <SuggestedTitle>
-            {language === 'bg' ? 'Може да търсите' : 'You might be looking for'}
+            {t('notFound.youMightBeLookingFor')}
           </SuggestedTitle>
           <LinksList>
             <SuggestedLink to="/categories">
@@ -252,7 +248,7 @@ const NotFoundPage: React.FC<NotFoundPageProps> = ({ language = 'en' }) => {
                   d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"
                 />
               </svg>
-              {language === 'bg' ? 'Разгледай категории' : 'Browse Categories'}
+              {t('notFound.browseCategories')}
             </SuggestedLink>
             <SuggestedLink to="/top-offers">
               <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -263,7 +259,7 @@ const NotFoundPage: React.FC<NotFoundPageProps> = ({ language = 'en' }) => {
                   d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"
                 />
               </svg>
-              {language === 'bg' ? 'ТОП оферти' : 'Top Offers'}
+              {t('notFound.topOffers')}
             </SuggestedLink>
             <SuggestedLink to="/search">
               <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -274,7 +270,7 @@ const NotFoundPage: React.FC<NotFoundPageProps> = ({ language = 'en' }) => {
                   d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
                 />
               </svg>
-              {language === 'bg' ? 'Търсене' : 'Search'}
+              {t('notFound.search')}
             </SuggestedLink>
             <SuggestedLink to="/partners">
               <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -285,7 +281,7 @@ const NotFoundPage: React.FC<NotFoundPageProps> = ({ language = 'en' }) => {
                   d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
                 />
               </svg>
-              {language === 'bg' ? 'Станете партньор' : 'Become a Partner'}
+              {t('notFound.becomePartner')}
             </SuggestedLink>
           </LinksList>
         </SuggestedLinks>

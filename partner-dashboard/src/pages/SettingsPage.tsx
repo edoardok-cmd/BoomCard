@@ -391,11 +391,7 @@ const SettingsPage: React.FC = () => {
       toast.success(t.savedSuccess);
     } catch (error) {
       console.error('Save settings error:', error);
-      toast.error(
-        language === 'bg'
-          ? 'Грешка при запазване на настройките'
-          : 'Error saving settings'
-      );
+      toast.error(t.errorSavingSettings);
     } finally {
       setIsSaving(false);
     }
@@ -404,11 +400,7 @@ const SettingsPage: React.FC = () => {
   const handleDeleteAccount = () => {
     const confirmed = window.confirm(t.deleteConfirm);
     if (confirmed) {
-      toast.error(
-        language === 'bg'
-          ? 'Функцията ще бъде налична скоро'
-          : 'Feature coming soon'
-      );
+      toast.error(t.featureComingSoon);
     }
   };
 

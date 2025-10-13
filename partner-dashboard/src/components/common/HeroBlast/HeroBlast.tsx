@@ -57,7 +57,8 @@ const ContentContainer = styled.div`
 
 const CardContainer = styled(motion.div)`
   perspective: 1000px;
-  margin-bottom: 3rem;
+  margin-bottom: 2rem;
+  transition: transform 0.8s cubic-bezier(0.34, 1.56, 0.64, 1);
 `;
 
 const BoomCard = styled(motion.div)`
@@ -242,11 +243,16 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
   const [videoEnded, setVideoEnded] = useState(false);
   const [showCard, setShowCard] = useState(false);
   const [showCTA, setShowCTA] = useState(false);
+  const [videoLoaded, setVideoLoaded] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
+
+    const handleLoadedData = () => {
+      setVideoLoaded(true);
+    };
 
     const handleTimeUpdate = () => {
       // Show card at 60% of video duration (during the peak of the blast)
@@ -260,10 +266,12 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
       setShowCTA(true);
     };
 
+    video.addEventListener('loadeddata', handleLoadedData);
     video.addEventListener('timeupdate', handleTimeUpdate);
     video.addEventListener('ended', handleEnded);
 
     return () => {
+      video.removeEventListener('loadeddata', handleLoadedData);
       video.removeEventListener('timeupdate', handleTimeUpdate);
       video.removeEventListener('ended', handleEnded);
     };
@@ -296,8 +304,12 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
         muted
         playsInline
         preload="auto"
+        poster="/boom-blast-poster.jpg"
+        webkit-playsinline="true"
+        x5-playsinline="true"
       >
         <source src="/boom-blast.mp4" type="video/mp4" />
+        Your browser does not support the video tag.
       </VideoBackground>
 
       <VideoOverlay $fadeOut={videoEnded} />
@@ -312,12 +324,18 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
                 opacity: 1,
                 rotateX: 0,
                 z: 0,
+                y: showCTA ? -100 : 0, // Smoothly move card up when CTA appears
               }}
               transition={{
                 type: 'spring',
-                stiffness: 200,
-                damping: 20,
+                stiffness: showCTA ? 150 : 200, // Softer spring when moving up
+                damping: showCTA ? 25 : 20, // More damping for smoother movement
                 duration: 1.2,
+                y: {
+                  type: 'spring',
+                  stiffness: 120,
+                  damping: 28,
+                },
               }}
             >
               <BoomCard

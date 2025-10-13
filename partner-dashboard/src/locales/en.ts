@@ -239,6 +239,8 @@ export const en = {
     deleteAccount: 'Delete Account',
     deleteAccountDescription: 'Permanently delete your account and all data',
     dangerZone: 'Danger Zone',
+    errorSavingSettings: 'Error saving settings',
+    featureComingSoon: 'Feature coming soon',
   },
 
   // Profile
@@ -546,6 +548,19 @@ export const en = {
     resultsFound: 'results found',
     noResults: 'No results found',
     tryAdjustingFilters: 'Try adjusting your filters',
+  },
+
+  // Not Found (404 Page)
+  notFound: {
+    pageNotFound: 'Page Not Found',
+    pageNotFoundDescription: "Sorry, the page you're looking for doesn't exist or has been moved. Please check the URL or return to the homepage.",
+    goToHomepage: 'Go to Homepage',
+    goBack: 'Go Back',
+    youMightBeLookingFor: 'You might be looking for',
+    browseCategories: 'Browse Categories',
+    topOffers: 'Top Offers',
+    search: 'Search',
+    becomePartner: 'Become a Partner',
   },
 };
 

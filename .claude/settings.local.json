@@ -20,7 +20,10 @@
       "Bash(npm run lint:*)",
       "Bash(./node_modules/.bin/tsc:*)",
       "Bash(__NEW_LINE__ sed -i '' )",
-      "Bash(RegisterPage.tsx)"
+      "Bash(RegisterPage.tsx)",
+      "Bash(for:*)",
+      "Bash(done)",
+      "Read(///**)"
     ],
     "deny": [],
     "ask": []
