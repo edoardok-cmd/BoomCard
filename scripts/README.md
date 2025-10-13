@@ -363,6 +363,56 @@ node scripts/optimize-images.js ...
 
 ---
 
+### 3. Playwright Screenshot Scripts
+
+Automated screenshot capture for visual testing and documentation.
+
+**Features:**
+- ✅ High-quality PNG screenshots
+- ✅ Compressed JPEG screenshots
+- ✅ Automated workflow for all pages
+- ✅ Authentication support
+- ✅ Configurable viewports
+- ✅ Batch processing
+
+**Scripts:**
+- `take-screenshot.js` - Single high-quality screenshots
+- `take-compressed-screenshot.js` - Compressed screenshots
+- `screenshot-workflow.js` - Automated batch capture
+- `view-screenshot.sh` - View captured screenshots
+
+**Usage:**
+```bash
+# Single screenshot
+npm run screenshot http://localhost:3001
+
+# Compressed screenshot
+npm run screenshot:compressed http://localhost:3001 -- --quality 70
+
+# All pages workflow
+npm run screenshot:workflow
+
+# View screenshots
+bash scripts/view-screenshot.sh
+
+# Help
+npm run screenshot:help
+```
+
+**Authentication for Protected Pages:**
+```bash
+export BOOMCARD_TEST_EMAIL="test@example.com"
+export BOOMCARD_TEST_PASSWORD="your-password"
+npm run screenshot:workflow
+```
+
+**Full Documentation:**
+- [PLAYWRIGHT_SETUP.md](../PLAYWRIGHT_SETUP.md) - Complete guide
+- [SCREENSHOT_QUICK_REFERENCE.md](../SCREENSHOT_QUICK_REFERENCE.md) - Quick reference
+- [PLAYWRIGHT_IMPLEMENTATION_COMPLETE.md](../PLAYWRIGHT_IMPLEMENTATION_COMPLETE.md) - Implementation details
+
+---
+
 ## 📚 Related Documentation
 
 - [Image Optimization Guide](../IMAGE_OPTIMIZATION_GUIDE.md)
