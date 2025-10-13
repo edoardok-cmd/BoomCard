@@ -451,11 +451,11 @@ const ProfilePage: React.FC = () => {
             <UserMeta>
               <Badge $variant={user.emailVerified ? 'success' : 'warning'}>
                 {user.emailVerified
-                  ? (language === 'bg' ? '✓ Потвърден имейл' : '✓ Email Verified')
-                  : (language === 'bg' ? '⚠ Непотвърден имейл' : '⚠ Email Not Verified')}
+                  ? (t('profile.emailVerified'))
+                  : (t('profile.emailNotVerified'))}
               </Badge>
               <span>
-                {language === 'bg' ? 'Член от' : 'Member since'} {formatDate(user.createdAt)}
+                {t('profile.memberSince')} {formatDate(user.createdAt)}
               </span>
             </UserMeta>
           </ProfileInfo>
@@ -463,12 +463,12 @@ const ProfilePage: React.FC = () => {
 
         {/* Personal Information */}
         <SectionTitle>
-          {language === 'bg' ? 'Лична информация' : 'Personal Information'}
+          {t('profile.personalInfo')}
         </SectionTitle>
 
         <FormGrid>
           <FormGroup>
-            <Label>{language === 'bg' ? 'Име' : 'First Name'}</Label>
+            <Label>{t('profile.firstName')}</Label>
             {isEditing ? (
               <>
                 <Input
@@ -494,7 +494,7 @@ const ProfilePage: React.FC = () => {
           </FormGroup>
 
           <FormGroup>
-            <Label>{language === 'bg' ? 'Фамилия' : 'Last Name'}</Label>
+            <Label>{t('profile.lastName')}</Label>
             {isEditing ? (
               <>
                 <Input

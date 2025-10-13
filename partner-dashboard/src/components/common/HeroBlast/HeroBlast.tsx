@@ -59,6 +59,54 @@ const CardContainer = styled(motion.div)`
   perspective: 1000px;
   margin-bottom: 2rem;
   transition: transform 0.8s cubic-bezier(0.34, 1.56, 0.64, 1);
+  position: relative;
+`;
+
+const PhotosContainer = styled(motion.div)`
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: -1;
+`;
+
+const Photo = styled(motion.div)<{ $index: number; $side: 'left' | 'right' }>`
+  position: absolute;
+  width: 150px;
+  height: 200px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 8px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+  border: 3px solid white;
+  overflow: hidden;
+
+  /* Position photos around the card */
+  ${props => props.$side === 'left' ? `
+    left: -180px;
+    top: ${props.$index * 60}px;
+  ` : `
+    right: -180px;
+    top: ${props.$index * 60}px;
+  `}
+
+  img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  @media (max-width: 768px) {
+    width: 100px;
+    height: 133px;
+    ${props => props.$side === 'left' ? `
+      left: -120px;
+    ` : `
+      right: -120px;
+    `}
+  }
 `;
 
 const BoomCard = styled(motion.div)`
@@ -80,22 +128,44 @@ const BoomCard = styled(motion.div)`
   transform-style: preserve-3d;
   perspective: 1000px;
 
-  /* Card rotation animation: 3 flips in 1s, then 5s rest */
-  animation: cardFlip 6s ease-in-out infinite;
+  /* Card rotation animation: 3 complete cycles in 3s, then 5s rest */
+  animation: cardFlip 8s ease-in-out infinite;
 
   @keyframes cardFlip {
+    /* Cycle 1 */
     0% {
       transform: rotateY(0deg);
     }
-    5.55% {
+    4.16% {
       transform: rotateY(15deg);
     }
-    11.1% {
+    8.33% {
       transform: rotateY(-15deg);
     }
-    16.65% {
+    12.5% {
       transform: rotateY(0deg);
     }
+    /* Cycle 2 */
+    16.66% {
+      transform: rotateY(15deg);
+    }
+    20.83% {
+      transform: rotateY(-15deg);
+    }
+    25% {
+      transform: rotateY(0deg);
+    }
+    /* Cycle 3 */
+    29.16% {
+      transform: rotateY(15deg);
+    }
+    33.33% {
+      transform: rotateY(-15deg);
+    }
+    37.5% {
+      transform: rotateY(0deg);
+    }
+    /* Rest for 5 seconds */
     100% {
       transform: rotateY(0deg);
     }
@@ -293,7 +363,30 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
   const [showCard, setShowCard] = useState(false);
   const [showCTA, setShowCTA] = useState(false);
   const [videoLoaded, setVideoLoaded] = useState(false);
+  const [showPhotos, setShowPhotos] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
+
+  // Photo placeholders - replace with actual image URLs
+  const photos = {
+    left: [
+      'https://images.unsplash.com/photo-1537944434965-cf4679d1a598?w=300&h=400&fit=crop', // People having fun
+      'https://images.unsplash.com/photo-1554118811-1e0d58224f24?w=300&h=400&fit=crop', // Fine dining
+      'https://images.unsplash.com/photo-1492684223066-81342ee5ff30?w=300&h=400&fit=crop', // Extreme sports
+      'https://images.unsplash.com/photo-1566737236500-c8ac43014a67?w=300&h=400&fit=crop', // Club scene
+    ],
+    right: [
+      'https://images.unsplash.com/photo-1511795409834-ef04bbd61622?w=300&h=400&fit=crop', // Friends celebrating
+      'https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=300&h=400&fit=crop', // Restaurant experience
+      'https://images.unsplash.com/photo-1551632811-561732d1e306?w=300&h=400&fit=crop', // Adventure
+      'https://images.unsplash.com/photo-1470229722913-7c0e2dbbafd3?w=300&h=400&fit=crop', // Party
+    ],
+  };
+
+  // Random tilts for each photo
+  const photoTilts = [
+    [-8, 5, -12, 7],  // Left side tilts
+    [6, -9, 11, -5],  // Right side tilts
+  ];
 
   useEffect(() => {
     const video = videoRef.current;
@@ -315,6 +408,8 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
       if (!videoEnded) {
         setVideoEnded(true);
         setShowCTA(true);
+        // Show photos when CTA appears (card has moved up)
+        setTimeout(() => setShowPhotos(true), 800);
         // Prevent video from replaying
         video.pause();
         video.currentTime = video.duration;
@@ -404,6 +499,73 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
                   <CardExpiry>12/25</CardExpiry>
                 </CardInfo>
               </BoomCard>
+
+              {/* Ejected Photos */}
+              {showPhotos && (
+                <PhotosContainer>
+                  {/* Left side photos */}
+                  {photos.left.map((photoUrl, index) => (
+                    <Photo
+                      key={`left-${index}`}
+                      $index={index}
+                      $side="left"
+                      initial={{
+                        x: 0,
+                        y: 0,
+                        opacity: 0,
+                        scale: 0,
+                        rotate: 0
+                      }}
+                      animate={{
+                        x: -50,
+                        y: index * 20,
+                        opacity: 1,
+                        scale: 1,
+                        rotate: photoTilts[0][index]
+                      }}
+                      transition={{
+                        delay: index * 0.15,
+                        type: 'spring',
+                        stiffness: 150,
+                        damping: 15
+                      }}
+                    >
+                      <img src={photoUrl} alt={`Experience ${index + 1}`} />
+                    </Photo>
+                  ))}
+
+                  {/* Right side photos */}
+                  {photos.right.map((photoUrl, index) => (
+                    <Photo
+                      key={`right-${index}`}
+                      $index={index}
+                      $side="right"
+                      initial={{
+                        x: 0,
+                        y: 0,
+                        opacity: 0,
+                        scale: 0,
+                        rotate: 0
+                      }}
+                      animate={{
+                        x: 50,
+                        y: index * 20,
+                        opacity: 1,
+                        scale: 1,
+                        rotate: photoTilts[1][index]
+                      }}
+                      transition={{
+                        delay: index * 0.15,
+                        type: 'spring',
+                        stiffness: 150,
+                        damping: 15
+                      }}
+                    >
+                      <img src={photoUrl} alt={`Experience ${index + 5}`} />
+                    </Photo>
+                  ))}
+                </PhotosContainer>
+              )}
             </CardContainer>
           )}
         </AnimatePresence>
