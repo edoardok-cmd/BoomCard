@@ -312,18 +312,18 @@ export const Header: React.FC<HeaderProps> = ({
   return (
     <StyledHeader className={`${className || ''} ${scrolled ? 'scrolled' : ''}`}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16">
-          <Link to="/" className="flex items-center z-50">
+        <div className="flex items-center justify-between h-16 gap-8">
+          <Link to="/" className="flex items-center z-50 flex-shrink-0">
             <span className="text-2xl font-bold text-gray-900">BoomCard</span>
           </Link>
 
           {/* Desktop Navigation */}
-          <div className="hidden lg:flex items-center flex-1 justify-center">
+          <div className="hidden lg:flex items-center flex-1 justify-start overflow-x-auto">
             <MegaMenu items={navigationConfig.main} language={language} />
           </div>
 
           {/* Desktop Buttons & Language Toggle */}
-          <div className="hidden lg:flex items-center gap-4">
+          <div className="hidden lg:flex items-center gap-4 flex-shrink-0">
             {/* Nearby Offers */}
             <FavoritesLink to="/nearby" aria-label="Nearby Offers">
               <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
