@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
-import { motion } from 'framer-motion';
+import React, { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import styled from 'styled-components';
 import { useLanguage } from '../contexts/LanguageContext';
 import Button from '../components/common/Button/Button';
 import Badge from '../components/common/Badge/Badge';
+import { Check, X, Settings, ExternalLink, Loader } from 'lucide-react';
 
 const PageContainer = styled.div`
   min-height: 100vh;
@@ -209,6 +210,189 @@ const FilterButton = styled.button<{ $active: boolean }>`
   }
 `;
 
+const ModalOverlay = styled(motion.div)`
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+`;
+
+const Modal = styled(motion.div)`
+  background: white;
+  border-radius: 1.5rem;
+  max-width: 600px;
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 25px 50px rgba(0, 0, 0, 0.25);
+`;
+
+const ModalHeader = styled.div`
+  padding: 2rem;
+  border-bottom: 1px solid #e5e7eb;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+`;
+
+const ModalTitle = styled.h2`
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #111827;
+  margin-bottom: 0.5rem;
+`;
+
+const ModalSubtitle = styled.p`
+  font-size: 0.875rem;
+  color: #6b7280;
+`;
+
+const CloseButton = styled.button`
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 0.5rem;
+  border: none;
+  background: #f3f4f6;
+  color: #6b7280;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+
+  &:hover {
+    background: #e5e7eb;
+    color: #111827;
+  }
+`;
+
+const ModalBody = styled.div`
+  padding: 2rem;
+`;
+
+const FormGroup = styled.div`
+  margin-bottom: 1.5rem;
+`;
+
+const Label = styled.label`
+  display: block;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #374151;
+  margin-bottom: 0.5rem;
+`;
+
+const Input = styled.input`
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border: 2px solid #e5e7eb;
+  border-radius: 0.5rem;
+  font-size: 0.9375rem;
+  transition: all 0.2s;
+
+  &:focus {
+    outline: none;
+    border-color: #000000;
+  }
+
+  &::placeholder {
+    color: #9ca3af;
+  }
+`;
+
+const Select = styled.select`
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border: 2px solid #e5e7eb;
+  border-radius: 0.5rem;
+  font-size: 0.9375rem;
+  background: white;
+  cursor: pointer;
+  transition: all 0.2s;
+
+  &:focus {
+    outline: none;
+    border-color: #000000;
+  }
+`;
+
+const HelpText = styled.p`
+  font-size: 0.8125rem;
+  color: #6b7280;
+  margin-top: 0.5rem;
+`;
+
+const ModalFooter = styled.div`
+  padding: 1.5rem 2rem;
+  border-top: 1px solid #e5e7eb;
+  display: flex;
+  gap: 1rem;
+  justify-content: flex-end;
+`;
+
+const ConnectionStatus = styled.div<{ $status: 'connected' | 'disconnected' | 'testing' }>`
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  background: ${props => {
+    if (props.$status === 'connected') return '#ecfdf5';
+    if (props.$status === 'testing') return '#fef3c7';
+    return '#fef2f2';
+  }};
+  color: ${props => {
+    if (props.$status === 'connected') return '#047857';
+    if (props.$status === 'testing') return '#b45309';
+    return '#b91c1c';
+  }};
+  margin-bottom: 1.5rem;
+
+  svg {
+    width: 18px;
+    height: 18px;
+  }
+`;
+
+const WebhookBox = styled.div`
+  padding: 1rem;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
+  margin-top: 1.5rem;
+`;
+
+const WebhookLabel = styled.div`
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.5rem;
+`;
+
+const WebhookUrl = styled.code`
+  display: block;
+  padding: 0.75rem;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.375rem;
+  font-size: 0.8125rem;
+  color: #111827;
+  word-break: break-all;
+  font-family: 'Monaco', 'Courier New', monospace;
+`;
+
 interface Integration {
   id: string;
   name: string;
@@ -218,18 +402,41 @@ interface Integration {
   features: string[];
   connected: boolean;
   popular?: boolean;
+  requiresConfig?: boolean;
+  configFields?: ConfigField[];
+  webhookUrl?: string;
+  lastSync?: Date;
+}
+
+interface ConfigField {
+  name: string;
+  label: string;
+  type: 'text' | 'password' | 'select';
+  required: boolean;
+  placeholder?: string;
+  options?: { value: string; label: string }[];
 }
 
 const mockIntegrations: Integration[] = [
   {
     id: '1',
-    name: 'Barsi',
+    name: 'Barsy',
     category: 'POS Systems',
-    description: 'If you use Barsi POS, BoomCard can automatically fetch payment data when customers pay with their BoomCard at your venue.',
+    description: 'If you use Barsy system for your cafe, bar, club, or restaurant, BoomCard integrates via Barsy API to automatically sync transaction data and track customer savings.',
     icon: '🖥️',
-    features: ['Automatic transaction fetching', 'Real-time discount tracking', 'Zero manual input required'],
+    features: ['HTTP API integration (JSON/XML)', 'Automatic data synchronization', 'Works with cafes, bars, clubs & restaurants'],
     connected: true,
     popular: true,
+    requiresConfig: true,
+    configFields: [
+      { name: 'apiKey', label: 'API Key', type: 'password', required: true, placeholder: 'Enter your Barsy API key' },
+      { name: 'merchantId', label: 'Merchant ID', type: 'text', required: true, placeholder: 'Your merchant ID' },
+      { name: 'environment', label: 'Environment', type: 'select', required: true, options: [
+        { value: 'production', label: 'Production' },
+        { value: 'sandbox', label: 'Sandbox (Testing)' }
+      ]},
+    ],
+    webhookUrl: 'https://api.boomcard.bg/webhooks/barsy/YOUR_PARTNER_ID',
   },
   {
     id: '2',
@@ -240,6 +447,12 @@ const mockIntegrations: Integration[] = [
     features: ['Direct API integration', 'Instant payment recognition', 'Customer savings reports'],
     connected: true,
     popular: true,
+    requiresConfig: true,
+    configFields: [
+      { name: 'apiKey', label: 'API Token', type: 'password', required: true, placeholder: 'Your Poster API token' },
+      { name: 'accountName', label: 'Account Name', type: 'text', required: true, placeholder: 'yourname.joinposter.com' },
+    ],
+    webhookUrl: 'https://api.boomcard.bg/webhooks/poster/YOUR_PARTNER_ID',
   },
   {
     id: '3',
@@ -319,6 +532,43 @@ const mockIntegrations: Integration[] = [
 const IntegrationsPage: React.FC = () => {
   const { language } = useLanguage();
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [selectedIntegration, setSelectedIntegration] = useState<Integration | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected' | 'testing'>('disconnected');
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [formData, setFormData] = useState<Record<string, string>>({});
+
+  // Simulate connection testing
+  const handleConnect = async () => {
+    if (!selectedIntegration) return;
+
+    setIsConnecting(true);
+    setConnectionStatus('testing');
+
+    // Simulate API call
+    await new Promise(resolve => setTimeout(resolve, 2000));
+
+    setConnectionStatus('connected');
+    setIsConnecting(false);
+
+    // Update integration status (in real app, this would save to backend)
+    setTimeout(() => {
+      setIsModalOpen(false);
+      setSelectedIntegration(null);
+    }, 1500);
+  };
+
+  const openIntegrationModal = (integration: Integration) => {
+    setSelectedIntegration(integration);
+    setConnectionStatus(integration.connected ? 'connected' : 'disconnected');
+    setIsModalOpen(true);
+    setFormData({});
+  };
+
+  const closeModal = () => {
+    setIsModalOpen(false);
+    setTimeout(() => setSelectedIntegration(null), 300);
+  };
 
   const t = {
     en: {
@@ -443,6 +693,7 @@ const IntegrationsPage: React.FC = () => {
                   <Button
                     variant={integration.connected ? 'primary' : 'secondary'}
                     size="small"
+                    onClick={() => openIntegrationModal(integration)}
                   >
                     {integration.connected ? content.getStarted : content.contactUs}
                   </Button>
@@ -452,6 +703,171 @@ const IntegrationsPage: React.FC = () => {
           </IntegrationsGrid>
         </Container>
       </ContentSection>
+
+      {/* Integration Configuration Modal */}
+      <AnimatePresence>
+        {isModalOpen && selectedIntegration && (
+          <ModalOverlay
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={closeModal}
+          >
+            <Modal
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <ModalHeader>
+                <div>
+                  <ModalTitle>
+                    {selectedIntegration.icon} {selectedIntegration.name}
+                  </ModalTitle>
+                  <ModalSubtitle>
+                    {selectedIntegration.connected
+                      ? language === 'bg'
+                        ? 'Управление на интеграцията'
+                        : 'Manage Integration'
+                      : language === 'bg'
+                      ? 'Конфигуриране на връзката'
+                      : 'Configure Connection'}
+                  </ModalSubtitle>
+                </div>
+                <CloseButton onClick={closeModal}>
+                  <X size={20} />
+                </CloseButton>
+              </ModalHeader>
+
+              <ModalBody>
+                {connectionStatus !== 'disconnected' && (
+                  <ConnectionStatus $status={connectionStatus}>
+                    {connectionStatus === 'testing' && (
+                      <>
+                        <Loader className="animate-spin" />
+                        {language === 'bg' ? 'Тестване на връзката...' : 'Testing connection...'}
+                      </>
+                    )}
+                    {connectionStatus === 'connected' && (
+                      <>
+                        <Check />
+                        {language === 'bg' ? 'Успешно свързан!' : 'Successfully connected!'}
+                      </>
+                    )}
+                  </ConnectionStatus>
+                )}
+
+                {selectedIntegration.configFields && (
+                  <form onSubmit={(e) => { e.preventDefault(); handleConnect(); }}>
+                    {selectedIntegration.configFields.map((field) => (
+                      <FormGroup key={field.name}>
+                        <Label htmlFor={field.name}>
+                          {field.label} {field.required && '*'}
+                        </Label>
+                        {field.type === 'select' ? (
+                          <Select
+                            id={field.name}
+                            value={formData[field.name] || ''}
+                            onChange={(e) =>
+                              setFormData({ ...formData, [field.name]: e.target.value })
+                            }
+                            required={field.required}
+                          >
+                            <option value="">
+                              {language === 'bg' ? 'Изберете...' : 'Select...'}
+                            </option>
+                            {field.options?.map((opt) => (
+                              <option key={opt.value} value={opt.value}>
+                                {opt.label}
+                              </option>
+                            ))}
+                          </Select>
+                        ) : (
+                          <Input
+                            id={field.name}
+                            type={field.type}
+                            placeholder={field.placeholder}
+                            value={formData[field.name] || ''}
+                            onChange={(e) =>
+                              setFormData({ ...formData, [field.name]: e.target.value })
+                            }
+                            required={field.required}
+                          />
+                        )}
+                        {field.name === 'apiKey' && (
+                          <HelpText>
+                            {language === 'bg'
+                              ? 'Намерете вашия API ключ в настройките на системата'
+                              : 'Find your API key in your system settings'}
+                          </HelpText>
+                        )}
+                      </FormGroup>
+                    ))}
+                  </form>
+                )}
+
+                {selectedIntegration.webhookUrl && (
+                  <WebhookBox>
+                    <WebhookLabel>
+                      {language === 'bg' ? 'WEBHOOK URL' : 'WEBHOOK URL'}
+                    </WebhookLabel>
+                    <WebhookUrl>{selectedIntegration.webhookUrl}</WebhookUrl>
+                    <HelpText style={{ marginTop: '0.75rem' }}>
+                      {language === 'bg'
+                        ? 'Копирайте този URL в настройките на вашата система за автоматична синхронизация'
+                        : 'Copy this URL to your system settings for automatic synchronization'}
+                    </HelpText>
+                  </WebhookBox>
+                )}
+
+                {!selectedIntegration.configFields && (
+                  <div style={{ textAlign: 'center', padding: '2rem 0' }}>
+                    <p style={{ fontSize: '0.9375rem', color: '#6b7280', lineHeight: 1.6 }}>
+                      {language === 'bg'
+                        ? 'Свържете се с нашия екип за активиране на тази интеграция. Ще ви помогнем със настройката.'
+                        : 'Contact our team to activate this integration. We will help you with the setup.'}
+                    </p>
+                    <Button
+                      variant="primary"
+                      size="large"
+                      style={{ marginTop: '1.5rem' }}
+                      onClick={() => window.open('mailto:support@boomcard.bg', '_blank')}
+                    >
+                      {language === 'bg' ? 'Свържете се с нас' : 'Contact Us'}
+                    </Button>
+                  </div>
+                )}
+              </ModalBody>
+
+              {selectedIntegration.configFields && (
+                <ModalFooter>
+                  <Button variant="ghost" size="medium" onClick={closeModal}>
+                    {language === 'bg' ? 'Отказ' : 'Cancel'}
+                  </Button>
+                  <Button
+                    variant="primary"
+                    size="medium"
+                    onClick={handleConnect}
+                    disabled={isConnecting || connectionStatus === 'connected'}
+                  >
+                    {isConnecting
+                      ? language === 'bg'
+                        ? 'Свързване...'
+                        : 'Connecting...'
+                      : connectionStatus === 'connected'
+                      ? language === 'bg'
+                        ? 'Свързан'
+                        : 'Connected'
+                      : language === 'bg'
+                      ? 'Свържи'
+                      : 'Connect'}
+                  </Button>
+                </ModalFooter>
+              )}
+            </Modal>
+          </ModalOverlay>
+        )}
+      </AnimatePresence>
     </PageContainer>
   );
 };
