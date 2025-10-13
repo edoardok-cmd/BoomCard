@@ -311,19 +311,20 @@ export const Header: React.FC<HeaderProps> = ({
 
   return (
     <StyledHeader className={`${className || ''} ${scrolled ? 'scrolled' : ''}`}>
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16 gap-8">
-          <Link to="/" className="flex items-center z-50 flex-shrink-0">
+      <div className="w-full px-6 sm:px-8 lg:px-12">
+        <div className="flex items-center justify-between h-16">
+          {/* Logo - Far Left */}
+          <Link to="/" className="flex items-center z-50 flex-shrink-0 mr-8">
             <span className="text-2xl font-bold text-gray-900">BoomCard</span>
           </Link>
 
-          {/* Desktop Navigation */}
-          <div className="hidden lg:flex items-center flex-1 justify-start overflow-x-auto">
+          {/* Desktop Navigation - Hidden on smaller screens */}
+          <div className="hidden xl:flex items-center gap-6 flex-1 max-w-4xl">
             <MegaMenu items={navigationConfig.main} language={language} />
           </div>
 
-          {/* Desktop Buttons & Language Toggle */}
-          <div className="hidden lg:flex items-center gap-4 flex-shrink-0">
+          {/* Right Side Utilities - Always Visible */}
+          <div className="flex items-center gap-3 flex-shrink-0 ml-auto">
             {/* Nearby Offers */}
             <FavoritesLink to="/nearby" aria-label="Nearby Offers">
               <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -577,10 +578,10 @@ export const Header: React.FC<HeaderProps> = ({
             )}
           </div>
 
-          {/* Mobile Menu Button */}
+          {/* Mobile Menu Button - Show when menu is hidden */}
           <button
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="lg:hidden z-50 p-2 text-gray-700 hover:text-gray-900 transition-colors"
+            className="xl:hidden z-50 p-2 text-gray-700 hover:text-gray-900 transition-colors ml-2"
             aria-label="Toggle menu"
           >
             <svg
