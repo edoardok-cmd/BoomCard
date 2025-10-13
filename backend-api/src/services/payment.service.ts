@@ -6,7 +6,7 @@ import { logger } from '../utils/logger';
 // Initialize Stripe
 const stripeKey = process.env.STRIPE_SECRET_KEY || '';
 const stripe = new Stripe(stripeKey, {
-  apiVersion: '2024-12-18.acacia',
+  apiVersion: '2023-10-16',
 });
 
 export interface CreatePaymentIntentInput {
