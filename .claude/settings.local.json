@@ -37,7 +37,10 @@
       "Bash(npx prisma migrate dev:*)",
       "Bash(TOKEN=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImMxOTM5ZGYwLTQ3NDctNDlmYS05YzYzLTNjNjk4OGU1MWEwYiIsImVtYWlsIjoidGVzdEBib29tY2FyZC5iZyIsInJvbGUiOiJVU0VSIiwiaWF0IjoxNzYwMzQxOTkyLCJleHAiOjE3NjAzNDU1OTJ9.QFL_WqwciN2lXI0eUzPpPnlKKb5c1VMv9z244q83sxs\")",
       "Bash(bash:*)",
-      "Bash(sqlite3:*)"
+      "Bash(sqlite3:*)",
+      "Bash(git push:*)",
+      "Bash(pip3 install:*)",
+      "Read(//Users/administrator/.npm/_logs/**)"
     ],
     "deny": [],
     "ask": []

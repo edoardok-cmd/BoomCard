@@ -77,16 +77,31 @@ const sizeStyles = {
     padding: 8px 16px;
     font-size: 14px;
     font-weight: 500;
+
+    @media (max-width: 640px) {
+      padding: 6px 12px;
+      font-size: 13px;
+    }
   `,
   medium: css`
     padding: 12px 24px;
     font-size: 16px;
     font-weight: 500;
+
+    @media (max-width: 640px) {
+      padding: 10px 18px;
+      font-size: 15px;
+    }
   `,
   large: css`
     padding: 16px 32px;
     font-size: 18px;
     font-weight: 600;
+
+    @media (max-width: 640px) {
+      padding: 14px 24px;
+      font-size: 16px;
+    }
   `
 };
 

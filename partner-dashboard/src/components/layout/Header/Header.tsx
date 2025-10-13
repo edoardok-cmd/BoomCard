@@ -32,6 +32,16 @@ const FavoritesLink = styled(Link)`
     width: 1.25rem;
     height: 1.25rem;
   }
+
+  @media (max-width: 640px) {
+    width: 2.25rem;
+    height: 2.25rem;
+
+    svg {
+      width: 1.125rem;
+      height: 1.125rem;
+    }
+  }
 `;
 
 const MobileFavoritesLink = styled(Link)`
@@ -109,6 +119,11 @@ const UserButton = styled.button`
     background: #f9fafb;
     border-color: #d1d5db;
   }
+
+  @media (max-width: 640px) {
+    padding: 0.25rem 0.5rem;
+    gap: 0.375rem;
+  }
 `;
 
 const UserAvatar = styled.div`
@@ -123,6 +138,12 @@ const UserAvatar = styled.div`
   font-size: 0.875rem;
   font-weight: 600;
   text-transform: uppercase;
+
+  @media (max-width: 640px) {
+    width: 1.75rem;
+    height: 1.75rem;
+    font-size: 0.75rem;
+  }
 `;
 
 const UserName = styled.span`
@@ -257,6 +278,16 @@ const ThemeButton = styled.button`
   svg {
     width: 1.25rem;
     height: 1.25rem;
+  }
+
+  @media (max-width: 640px) {
+    width: 2.25rem;
+    height: 2.25rem;
+
+    svg {
+      width: 1.125rem;
+      height: 1.125rem;
+    }
   }
 `;
 
@@ -439,11 +470,11 @@ export const Header: React.FC<HeaderProps> = ({
 
   return (
     <StyledHeader className={`${className || ''} ${scrolled ? 'scrolled' : ''}`}>
-      <div className="w-full px-6 sm:px-8 lg:px-12">
+      <div className="w-full px-3 sm:px-6 lg:px-12">
         <div className="flex items-center h-16">
           {/* Logo - Far Left */}
           <Link to="/" className="flex items-center z-50 flex-shrink-0">
-            <span className="text-2xl font-bold text-gray-900">BoomCard</span>
+            <span className="text-xl sm:text-2xl font-bold text-gray-900">BoomCard</span>
           </Link>
 
           {/* Desktop Navigation - Centered */}
@@ -452,9 +483,9 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
 
           {/* Right Side Utilities - Always Visible */}
-          <div className="flex items-center gap-3 flex-shrink-0">
-            {/* Nearby Offers */}
-            <FavoritesLink to="/nearby" aria-label="Nearby Offers">
+          <div className="flex items-center gap-1.5 sm:gap-2 md:gap-3 flex-shrink-0 ml-auto">
+            {/* Nearby Offers - Hidden on small screens */}
+            <FavoritesLink to="/nearby" aria-label="Nearby Offers" className="hidden sm:flex">
               <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path
                   strokeLinecap="round"
@@ -471,8 +502,8 @@ export const Header: React.FC<HeaderProps> = ({
               </svg>
             </FavoritesLink>
 
-            {/* Favorites */}
-            <FavoritesLink to="/favorites" aria-label="Favorites">
+            {/* Favorites - Hidden on extra small screens */}
+            <FavoritesLink to="/favorites" aria-label="Favorites" className="hidden xs:flex">
               <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path
                   strokeLinecap="round"
@@ -495,11 +526,11 @@ export const Header: React.FC<HeaderProps> = ({
               </AnimatePresence>
             </FavoritesLink>
 
-            {/* Notification Center */}
-            {isAuthenticated && <NotificationCenter />}
+            {/* Notification Center - Hidden on small screens */}
+            {isAuthenticated && <div className="hidden sm:flex"><NotificationCenter /></div>}
 
-            {/* Theme Switcher */}
-            <ThemeMenuContainer ref={themeMenuRef}>
+            {/* Theme Switcher - Hidden on mobile */}
+            <ThemeMenuContainer ref={themeMenuRef} className="hidden md:block">
               <ThemeButton
                 onClick={() => setThemeMenuOpen(!themeMenuOpen)}
                 aria-label="Change theme"
@@ -534,7 +565,7 @@ export const Header: React.FC<HeaderProps> = ({
             </ThemeMenuContainer>
 
             {/* Language Toggle */}
-            <div className="flex items-center gap-1 bg-gray-100 rounded-full p-1">
+            <div className="hidden md:flex items-center gap-1 bg-gray-100 rounded-full p-1">
               <button
                 onClick={() => setLanguage('en')}
                 className={`px-3 py-1.5 rounded-full text-sm font-medium transition-all ${
@@ -727,7 +758,7 @@ export const Header: React.FC<HeaderProps> = ({
               </UserMenuContainer>
             ) : (
               <>
-                <Link to="/login">
+                <Link to="/login" className="hidden sm:block">
                   <Button variant="ghost" size="small">
                     {t('common.signIn')}
                   </Button>
@@ -744,11 +775,11 @@ export const Header: React.FC<HeaderProps> = ({
           {/* Mobile Menu Button - Show when menu is hidden */}
           <button
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="xl:hidden z-50 p-2 text-gray-700 hover:text-gray-900 transition-colors ml-2"
+            className="xl:hidden z-50 p-1.5 sm:p-2 text-gray-700 hover:text-gray-900 transition-colors ml-1.5 sm:ml-2 flex-shrink-0"
             aria-label="Toggle menu"
           >
             <svg
-              className="h-6 w-6"
+              className="h-5 w-5 sm:h-6 sm:w-6"
               fill="none"
               strokeLinecap="round"
               strokeLinejoin="round"

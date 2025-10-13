@@ -110,6 +110,14 @@ const TermsPage = lazy(() => import('./pages/TermsPage'));
 const PrivacyPage = lazy(() => import('./pages/PrivacyPage'));
 const FAQPage = lazy(() => import('./pages/FAQPage'));
 
+// New public pages
+const ProductPage = lazy(() => import('./pages/ProductPage'));
+const FeaturesPage = lazy(() => import('./pages/FeaturesPage'));
+const PricingPublicPage = lazy(() => import('./pages/PricingPublicPage'));
+const ContactPublicPage = lazy(() => import('./pages/ContactPublicPage'));
+const CareersPage = lazy(() => import('./pages/CareersPage'));
+const SecurityPage = lazy(() => import('./pages/SecurityPage'));
+
 const queryClient = new QueryClient();
 
 function App() {
@@ -266,6 +274,14 @@ function App() {
                     <Route path="terms" element={<TermsPage />} />
                     <Route path="privacy" element={<PrivacyPage />} />
                     <Route path="faq" element={<FAQPage />} />
+
+                    {/* New public pages */}
+                    <Route path="product" element={<ProductPage />} />
+                    <Route path="features" element={<FeaturesPage />} />
+                    <Route path="pricing" element={<PricingPublicPage />} />
+                    <Route path="contact" element={<ContactPublicPage />} />
+                    <Route path="careers" element={<CareersPage />} />
+                    <Route path="security" element={<SecurityPage />} />
 
                     {/* Other routes */}
                     <Route path="favorites" element={<FavoritesPage />} />
