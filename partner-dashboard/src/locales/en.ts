@@ -110,6 +110,11 @@ export const en = {
     createAccountButton: 'Create account',
     emailSentSuccess: 'Email sent successfully!',
     passwordResetSuccess: 'Password reset successfully!',
+    emailVerifiedSuccess: 'Email verified successfully!',
+    errorVerifyingEmail: 'Error verifying email',
+    noEmailFound: 'No email address found',
+    verificationEmailSentAgain: 'Verification email sent again!',
+    errorSendingEmail: 'Error sending email',
     errorOccurred: 'An error occurred. Please try again.',
   },
 

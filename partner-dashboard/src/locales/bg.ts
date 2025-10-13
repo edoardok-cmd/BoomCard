@@ -112,6 +112,11 @@ export const bg: TranslationKey = {
     createAccountButton: 'Създай профил',
     emailSentSuccess: 'Имейлът е изпратен успешно!',
     passwordResetSuccess: 'Паролата е нулирана успешно!',
+    emailVerifiedSuccess: 'Имейлът е потвърден успешно!',
+    errorVerifyingEmail: 'Грешка при потвърждение на имейла',
+    noEmailFound: 'Не е намерен имейл адрес',
+    verificationEmailSentAgain: 'Имейлът за потвърждение е изпратен отново!',
+    errorSendingEmail: 'Грешка при изпращане на имейл',
     errorOccurred: 'Възникна грешка. Моля, опитайте отново.',
   },
 

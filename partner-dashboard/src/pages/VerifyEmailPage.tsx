@@ -236,22 +236,14 @@ const VerifyEmailPage: React.FC = () => {
 
         if (isSuccess) {
           setStatus('success');
-          toast.success(
-            language === 'bg'
-              ? 'Имейлът е потвърден успешно!'
-              : 'Email verified successfully!'
-          );
+          toast.success(t('auth.emailVerifiedSuccess'));
         } else {
           setStatus('expired');
         }
       } catch (error) {
         console.error('Email verification error:', error);
         setStatus('error');
-        toast.error(
-          language === 'bg'
-            ? 'Грешка при потвърждение на имейла'
-            : 'Error verifying email'
-        );
+        toast.error(t('auth.errorVerifyingEmail'));
       }
     };
 
@@ -260,11 +252,7 @@ const VerifyEmailPage: React.FC = () => {
 
   const handleResendEmail = async () => {
     if (!email) {
-      toast.error(
-        language === 'bg'
-          ? 'Не е намерен имейл адрес'
-          : 'No email address found'
-      );
+      toast.error(t('auth.noEmailFound'));
       return;
     }
 
@@ -277,11 +265,7 @@ const VerifyEmailPage: React.FC = () => {
       // In a real app, you would call the API here:
       // await resendVerificationEmail(email);
 
-      toast.success(
-        language === 'bg'
-          ? 'Имейлът за потвърждение е изпратен отново!'
-          : 'Verification email sent again!'
-      );
+      toast.success(t('auth.verificationEmailSentAgain'));
 
       // Reset to loading state
       setStatus('loading');
@@ -292,11 +276,7 @@ const VerifyEmailPage: React.FC = () => {
       }, 2000);
     } catch (error) {
       console.error('Resend email error:', error);
-      toast.error(
-        language === 'bg'
-          ? 'Грешка при изпращане на имейл'
-          : 'Error sending email'
-      );
+      toast.error(t('auth.errorSendingEmail'));
     } finally {
       setIsResending(false);
     }
