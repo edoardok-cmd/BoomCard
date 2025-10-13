@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import styled from 'styled-components';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Star, ThumbsUp, User, Check } from 'lucide-react';
+import { Star, ThumbsUp, Check } from 'lucide-react';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { useAuth } from '../../../contexts/AuthContext';
 import { Button } from '../Button/Button';
@@ -328,7 +328,7 @@ interface ReviewSystemProps {
   className?: string;
 }
 
-export const ReviewSystem: React.FC<ReviewSystemProps> = ({ offerId, className }) => {
+export const ReviewSystem: React.FC<ReviewSystemProps> = ({ className }) => {
   const { language } = useLanguage();
   const { user, isAuthenticated } = useAuth();
   const [showForm, setShowForm] = useState(false);
@@ -447,7 +447,7 @@ export const ReviewSystem: React.FC<ReviewSystemProps> = ({ offerId, className }
       setComment('');
       setShowForm(false);
       toast.success(language === 'bg' ? 'Отзивът е изпратен успешно!' : 'Review submitted successfully!');
-    } catch (error) {
+    } catch {
       toast.error(language === 'bg' ? 'Грешка при изпращане' : 'Error submitting review');
     } finally {
       setIsSubmitting(false);

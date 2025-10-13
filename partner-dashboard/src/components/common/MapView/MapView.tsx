@@ -84,8 +84,6 @@ const MapView: React.FC<MapViewProps> = ({
 
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [selectedVenue, setSelectedVenue] = useState<Venue | null>(null);
-  const [mapCenter, setMapCenter] = useState(initialCenter);
-  const [zoom, setZoom] = useState(initialZoom);
   const [locationPermission, setLocationPermission] = useState<'granted' | 'denied' | 'prompt'>('prompt');
   const [isLoading, setIsLoading] = useState(false);
 

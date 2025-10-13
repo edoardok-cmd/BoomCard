@@ -5,7 +5,7 @@ import Card from '../components/common/Card/Card';
 import Badge from '../components/common/Badge/Badge';
 import Alert from '../components/common/Alert/Alert';
 import Loading from '../components/common/Loading/Loading';
-import { Skeleton, SkeletonText, SkeletonCard, SkeletonAvatar } from '../components/common/Skeleton/Skeleton';
+import { Skeleton, SkeletonText, SkeletonAvatar } from '../components/common/Skeleton/Skeleton';
 
 export default function ComponentsPage() {
   const [showAlert, setShowAlert] = useState(true);

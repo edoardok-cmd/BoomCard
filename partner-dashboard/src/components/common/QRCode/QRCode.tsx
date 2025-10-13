@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import styled from 'styled-components';
 import Button from '../Button/Button';
@@ -129,40 +129,39 @@ export const QRCode: React.FC<QRCodeProps> = ({
   const [qrUrl, setQrUrl] = useState<string>('');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string>('');
-  const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
+    const generateQRCode = async () => {
+      try {
+        setIsLoading(true);
+        setError('');
+
+        // Using QR Server API (free, no API key needed)
+        const qrApiUrl = `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&data=${encodeURIComponent(data)}&format=png`;
+
+        // Verify the QR code loads
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+
+        img.onload = () => {
+          setQrUrl(qrApiUrl);
+          setIsLoading(false);
+        };
+
+        img.onerror = () => {
+          setError('Failed to generate QR code');
+          setIsLoading(false);
+        };
+
+        img.src = qrApiUrl;
+      } catch {
+        setError('Error generating QR code');
+        setIsLoading(false);
+      }
+    };
+
     generateQRCode();
   }, [data, size]);
-
-  const generateQRCode = async () => {
-    try {
-      setIsLoading(true);
-      setError('');
-
-      // Using QR Server API (free, no API key needed)
-      const qrApiUrl = `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&data=${encodeURIComponent(data)}&format=png`;
-
-      // Verify the QR code loads
-      const img = new Image();
-      img.crossOrigin = 'anonymous';
-
-      img.onload = () => {
-        setQrUrl(qrApiUrl);
-        setIsLoading(false);
-      };
-
-      img.onerror = () => {
-        setError('Failed to generate QR code');
-        setIsLoading(false);
-      };
-
-      img.src = qrApiUrl;
-    } catch (err) {
-      setError('Error generating QR code');
-      setIsLoading(false);
-    }
-  };
 
   const handleDownload = () => {
     const link = document.createElement('a');

@@ -126,7 +126,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       // Remove password from user object
-      const { password, ...userWithoutPassword } = foundUser;
+      const { password: _password, ...userWithoutPassword } = foundUser;
 
       // Generate mock token
       const token = btoa(JSON.stringify({ userId: foundUser.id, timestamp: Date.now() }));

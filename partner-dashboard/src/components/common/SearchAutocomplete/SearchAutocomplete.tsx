@@ -288,15 +288,16 @@ export const SearchAutocomplete: React.FC<SearchAutocompleteProps> = ({
   }, []);
 
   useEffect(() => {
-    if (query.length < 2) {
-      setResults([]);
-      setIsOpen(false);
-      return;
-    }
-
     // Simulate API call with debounce
-    setIsLoading(true);
     const timeoutId = setTimeout(() => {
+      if (query.length < 2) {
+        setResults([]);
+        setIsOpen(false);
+        setIsLoading(false);
+        return;
+      }
+
+      setIsLoading(true);
       const filtered = sampleResults.filter(result => {
         const searchIn = language === 'bg'
           ? `${result.titleBg} ${result.categoryBg} ${result.location}`.toLowerCase()
@@ -304,12 +305,9 @@ export const SearchAutocomplete: React.FC<SearchAutocompleteProps> = ({
         return searchIn.includes(query.toLowerCase());
       });
 
-      // Use a callback to avoid setting state synchronously in effect
-      requestAnimationFrame(() => {
-        setResults(filtered);
-        setIsOpen(true);
-        setIsLoading(false);
-      });
+      setResults(filtered);
+      setIsOpen(true);
+      setIsLoading(false);
     }, 300);
 
     return () => clearTimeout(timeoutId);

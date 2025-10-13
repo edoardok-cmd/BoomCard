@@ -221,7 +221,7 @@ const CreateOfferPage: React.FC = () => {
 
       toast.success(t.success);
       navigate('/partners/offers');
-    } catch (error) {
+    } catch {
       toast.error(t.error);
     }
   };

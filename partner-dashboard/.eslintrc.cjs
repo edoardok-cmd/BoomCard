@@ -16,5 +16,11 @@ module.exports = {
     ],
     '@typescript-eslint/no-explicit-any': 'warn',
     '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
+    'react-hooks/exhaustive-deps': 'warn',
+    'react-hooks/rules-of-hooks': 'error',
+    // Disable experimental purity rules that can have false positives
+    'react-hooks/purity': 'off',
+    'react-hooks/set-state-in-effect': 'off',
+    'react-hooks/static-components': 'off',
   },
 }

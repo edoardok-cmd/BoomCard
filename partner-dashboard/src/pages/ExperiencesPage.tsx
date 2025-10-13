@@ -279,7 +279,7 @@ const ExperiencesPage: React.FC = () => {
     en: {
       title: 'Unforgettable Experiences',
       subtitle: 'Discover unique experiences and activities from our partner venues',
-      browse: 'Browse Experiences',
+      browse: 'Get Your BoomCard',
       featured: 'Featured',
       all: 'All',
       dining: 'Dining',
@@ -293,7 +293,7 @@ const ExperiencesPage: React.FC = () => {
     bg: {
       title: 'Незабравими Преживявания',
       subtitle: 'Открийте уникални преживявания и дейности от нашите партньори',
-      browse: 'Разгледай Преживявания',
+      browse: 'Вземете Вашата BoomCard',
       featured: 'Препоръчани',
       all: 'Всички',
       dining: 'Хранене',
@@ -333,7 +333,7 @@ const ExperiencesPage: React.FC = () => {
             >
               <Title>{content.title}</Title>
               <Subtitle>{content.subtitle}</Subtitle>
-              <Link to="/search">
+              <Link to="/register">
                 <Button variant="primary" size="large">
                   {content.browse}
                 </Button>

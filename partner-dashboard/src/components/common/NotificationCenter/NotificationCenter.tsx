@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import styled from 'styled-components';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Bell, X, Check, Info, AlertCircle, Gift, CreditCard, TrendingUp } from 'lucide-react';
+import { Bell, X, Check, Info, AlertCircle, Gift } from 'lucide-react';
 import { useLanguage } from '../../../contexts/LanguageContext';
 
 const NotificationButton = styled.button`

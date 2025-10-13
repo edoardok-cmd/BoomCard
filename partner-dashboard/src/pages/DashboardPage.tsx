@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import styled from 'styled-components';
 import { useAuth } from '../contexts/AuthContext';
@@ -260,50 +260,53 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ language = 'en' }) => {
   const [selectedCard, setSelectedCard] = useState<string | null>(null);
 
   // Mock data - in production this would come from an API
-  const boomCards: BoomCard[] = [
-    {
-      id: '1',
-      cardNumber: 'BC-2024-001234',
-      type: 'premium',
-      venueName: 'Sense Hotel Sofia',
-      venueNameBg: 'Хотел Sense София',
-      category: 'Hotels & Accommodation',
-      categoryBg: 'Хотели и настаняване',
-      discount: 50,
-      validUntil: Date.now() + 180 * 24 * 60 * 60 * 1000, // 180 days
-      usageCount: 3,
-      usageLimit: 10,
-      status: 'active',
-    },
-    {
-      id: '2',
-      cardNumber: 'BC-2024-001235',
-      type: 'standard',
-      venueName: 'Made in Blue',
-      venueNameBg: 'Made in Blue',
-      category: 'Restaurants',
-      categoryBg: 'Ресторанти',
-      discount: 30,
-      validUntil: Date.now() + 90 * 24 * 60 * 60 * 1000, // 90 days
-      usageCount: 5,
-      usageLimit: 15,
-      status: 'active',
-    },
-    {
-      id: '3',
-      cardNumber: 'BC-2024-001236',
-      type: 'premium',
-      venueName: 'Spa & Wellness Center',
-      venueNameBg: 'Спа и уелнес център',
-      category: 'Spa & Wellness',
-      categoryBg: 'Спа и уелнес',
-      discount: 40,
-      validUntil: Date.now() + 365 * 24 * 60 * 60 * 1000, // 365 days
-      usageCount: 1,
-      usageLimit: 20,
-      status: 'active',
-    },
-  ];
+  const boomCards: BoomCard[] = useMemo(() => {
+    const now = Date.now();
+    return [
+      {
+        id: '1',
+        cardNumber: 'BC-2024-001234',
+        type: 'premium',
+        venueName: 'Sense Hotel Sofia',
+        venueNameBg: 'Хотел Sense София',
+        category: 'Hotels & Accommodation',
+        categoryBg: 'Хотели и настаняване',
+        discount: 50,
+        validUntil: now + 180 * 24 * 60 * 60 * 1000, // 180 days
+        usageCount: 3,
+        usageLimit: 10,
+        status: 'active',
+      },
+      {
+        id: '2',
+        cardNumber: 'BC-2024-001235',
+        type: 'standard',
+        venueName: 'Made in Blue',
+        venueNameBg: 'Made in Blue',
+        category: 'Restaurants',
+        categoryBg: 'Ресторанти',
+        discount: 30,
+        validUntil: now + 90 * 24 * 60 * 60 * 1000, // 90 days
+        usageCount: 5,
+        usageLimit: 15,
+        status: 'active',
+      },
+      {
+        id: '3',
+        cardNumber: 'BC-2024-001236',
+        type: 'premium',
+        venueName: 'Spa & Wellness Center',
+        venueNameBg: 'Спа и уелнес център',
+        category: 'Spa & Wellness',
+        categoryBg: 'Спа и уелнес',
+        discount: 40,
+        validUntil: now + 365 * 24 * 60 * 60 * 1000, // 365 days
+        usageCount: 1,
+        usageLimit: 20,
+        status: 'active',
+      },
+    ];
+  }, []);
 
   const activeCards = boomCards.filter(card => card.status === 'active');
   const totalSavings = activeCards.reduce((sum, card) => sum + (card.discount * 10), 0); // Mock calculation
@@ -318,12 +321,14 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ language = 'en' }) => {
     });
   };
 
-  const getDaysRemaining = (timestamp: number) => {
-    const now = Date.now();
-    const diff = timestamp - now;
-    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-    return days;
-  };
+  const getDaysRemaining = useMemo(() => {
+    return (timestamp: number) => {
+      const now = Date.now();
+      const diff = timestamp - now;
+      const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+      return days;
+    };
+  }, []);
 
   return (
     <PageContainer>

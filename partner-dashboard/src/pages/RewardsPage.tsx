@@ -304,17 +304,18 @@ const RewardsPage: React.FC = () => {
     }
 
     if (window.confirm(t.confirmRedeem)) {
+      const timestamp = Date.now();
       setPointsBalance(prev => prev - reward.pointsCost);
       setRewards(prev =>
         prev.map(r => (r.id === reward.id ? { ...r, isRedeemed: true } : r))
       );
 
       const newActivity: PointsActivity = {
-        id: Date.now().toString(),
+        id: timestamp.toString(),
         type: 'redeemed',
         amount: -reward.pointsCost,
         description: reward.title,
-        date: new Date().toISOString().split('T')[0],
+        date: new Date(timestamp).toISOString().split('T')[0],
         relatedTo: reward.id,
       };
 

@@ -327,11 +327,12 @@ const RegisterPage: React.FC<RegisterPageProps> = ({ language = 'en' }) => {
         if (value.length < 2) return language === 'bg' ? 'Фамилията е твърде кратка' : 'Last name is too short';
         return undefined;
 
-      case 'email':
+      case 'email': {
         if (!value) return language === 'bg' ? 'Имейлът е задължителен' : 'Email is required';
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
         if (!emailRegex.test(value)) return language === 'bg' ? 'Невалиден имейл адрес' : 'Invalid email address';
         return undefined;
+      }
 
       case 'phone':
         if (value && !/^(\+359|0)[0-9\s-]{8,}$/.test(value)) {

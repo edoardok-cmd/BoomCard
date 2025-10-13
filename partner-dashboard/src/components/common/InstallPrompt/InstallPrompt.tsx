@@ -3,6 +3,11 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Download, X } from 'lucide-react';
 import styled from 'styled-components';
 
+interface BeforeInstallPromptEvent extends Event {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
+}
+
 const PromptContainer = styled(motion.div)`
   position: fixed;
   bottom: 1rem;
@@ -148,7 +153,7 @@ interface InstallPromptProps {
 }
 
 const InstallPrompt: React.FC<InstallPromptProps> = ({ onInstall, onDismiss }) => {
-  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [showPrompt, setShowPrompt] = useState(false);
 
   useEffect(() => {

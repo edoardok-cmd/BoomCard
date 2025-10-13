@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import styled from 'styled-components';
 import { motion } from 'framer-motion';
-import { TrendingUp, TrendingDown, DollarSign, CreditCard, Users, Calendar, ArrowUp, ArrowDown } from 'lucide-react';
+import { TrendingUp, TrendingDown, DollarSign, CreditCard, Users, ArrowUp, ArrowDown } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -269,7 +269,6 @@ const CategoryValue = styled.div`
 
 const AnalyticsPage: React.FC = () => {
   const { language } = useLanguage();
-  const { user } = useAuth();
   const [selectedPeriod, setSelectedPeriod] = useState<'7d' | '30d' | '90d' | '1y'>('30d');
 
   const content = {

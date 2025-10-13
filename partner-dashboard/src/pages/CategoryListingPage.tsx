@@ -300,8 +300,7 @@ const filterGroups: FilterGroup[] = [
 
 const CategoryListingPage: React.FC = () => {
   const { category } = useParams<{ category: string }>();
-  const [language, setLanguage] = useState<'en' | 'bg'>('en');
-  const [isLoading, setIsLoading] = useState(false);
+  const [language] = useState<'en' | 'bg'>('en');
   const [showMobileFilters, setShowMobileFilters] = useState(false);
   const [filteredOffers, setFilteredOffers] = useState<Offer[]>(allOffers);
   const [sortBy, setSortBy] = useState('relevance');
