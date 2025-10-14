@@ -3,12 +3,13 @@
   "version": "1.0.0",
   "private": true,
   "workspaces": [
-    "partner-dashboard"
+    "partner-dashboard",
+    "backend-api"
   ],
   "scripts": {
     "dev": "concurrently \"npm run dev:*\"",
-    "dev:web": "npm run dev --workspace=consumer-web",
-    "dev:api": "npm run dev --workspace=api-gateway",
+    "dev:web": "npm run dev --workspace=partner-dashboard",
+    "dev:api": "npm run dev --workspace=backend-api",
     "build": "npm run build --workspaces",
     "test": "npm run test --workspaces",
     "lint": "npm run lint --workspaces",

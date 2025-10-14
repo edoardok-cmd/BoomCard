@@ -28,7 +28,7 @@ export const phase5TranslationsEN = {
     confirmPayment: 'Confirm Payment',
     cancelPayment: 'Cancel Payment',
     payNow: 'Pay Now',
-    processing: 'Processing...',
+    processingAction: 'Processing...',
 
     // Payment Methods
     paymentMethods: 'Payment Methods',
@@ -450,7 +450,7 @@ export const phase5TranslationsBG = {
     confirmPayment: 'Потвърди плащане',
     cancelPayment: 'Отмени плащане',
     payNow: 'Плати сега',
-    processing: 'Обработка...',
+    processingAction: 'Обработка...',
 
     // Методи за плащане
     paymentMethods: 'Методи за плащане',

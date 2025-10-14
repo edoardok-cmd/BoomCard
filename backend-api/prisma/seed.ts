@@ -39,11 +39,14 @@ async function main() {
   // Create sample users for partners
   console.log('📝 Creating sample partner users...');
 
+  // Generate proper bcrypt hash for password "partner123" (same for all demo partners)
+  const partnerPasswordHash = await bcrypt.hash('partner123', 10);
+
   const users = await Promise.all([
     prisma.user.create({
       data: {
         email: 'grandhotel@boomcard.bg',
-        passwordHash: '$2b$10$dummyhashfordevonlynotforproduction',
+        passwordHash: partnerPasswordHash,
         firstName: 'Grand',
         lastName: 'Hotel',
         role: 'PARTNER',
@@ -54,7 +57,7 @@ async function main() {
     prisma.user.create({
       data: {
         email: 'winedine@boomcard.bg',
-        passwordHash: '$2b$10$dummyhashfordevonlynotforproduction',
+        passwordHash: partnerPasswordHash,
         firstName: 'Wine',
         lastName: 'Dine',
         role: 'PARTNER',
@@ -65,7 +68,7 @@ async function main() {
     prisma.user.create({
       data: {
         email: 'sparetreat@boomcard.bg',
-        passwordHash: '$2b$10$dummyhashfordevonlynotforproduction',
+        passwordHash: partnerPasswordHash,
         firstName: 'Spa',
         lastName: 'Retreat',
         role: 'PARTNER',
@@ -76,7 +79,7 @@ async function main() {
     prisma.user.create({
       data: {
         email: 'skyadventures@boomcard.bg',
-        passwordHash: '$2b$10$dummyhashfordevonlynotforproduction',
+        passwordHash: partnerPasswordHash,
         firstName: 'Sky',
         lastName: 'Adventures',
         role: 'PARTNER',
@@ -87,7 +90,7 @@ async function main() {
     prisma.user.create({
       data: {
         email: 'beachfront@boomcard.bg',
-        passwordHash: '$2b$10$dummyhashfordevonlynotforproduction',
+        passwordHash: partnerPasswordHash,
         firstName: 'Beachfront',
         lastName: 'Hotel',
         role: 'PARTNER',
@@ -98,7 +101,7 @@ async function main() {
     prisma.user.create({
       data: {
         email: 'villamelnik@boomcard.bg',
-        passwordHash: '$2b$10$dummyhashfordevonlynotforproduction',
+        passwordHash: partnerPasswordHash,
         firstName: 'Villa',
         lastName: 'Melnik',
         role: 'PARTNER',
@@ -108,7 +111,8 @@ async function main() {
     }),
   ]);
 
-  console.log(`✅ Created ${users.length} users\n`);
+  console.log(`✅ Created ${users.length} partner users`);
+  console.log(`   All partner passwords: partner123 ⚠️  CHANGE THIS IN PRODUCTION!\n`);
 
   // Create sample partners
   console.log('🏢 Creating sample partners...');
@@ -238,8 +242,11 @@ async function main() {
         descriptionBg: 'Изживейте лукс на най-високо ниво с нашия премиум апартамент с включена закуска за двама, достъп до спа и зашеметяваща градска гледка.',
         type: 'DISCOUNT',
         discountPercent: 50,
+        minPurchase: 400,
         image: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=800',
         status: 'ACTIVE',
+        isFeatured: true,
+        featuredOrder: 1,
         startDate: now,
         endDate: futureDate,
         usageLimit: 100,
@@ -256,8 +263,11 @@ async function main() {
         descriptionBg: 'Релаксирайте и се подмладете с нашия премиум спа пакет включващ масаж, сауна, термални басейни и ароматерапия.',
         type: 'DISCOUNT',
         discountPercent: 45,
+        minPurchase: 180,
         image: 'https://images.unsplash.com/photo-1540555700478-4be289fbecef?w=800',
         status: 'ACTIVE',
+        isFeatured: true,
+        featuredOrder: 2,
         startDate: now,
         endDate: futureDate,
         usageLimit: 50,
@@ -274,8 +284,11 @@ async function main() {
         descriptionBg: 'Опитайте нашите най-добри български вина съчетани с местни сирена и деликатеси в нашата историческа винарска изба.',
         type: 'DISCOUNT',
         discountPercent: 40,
+        minPurchase: 120,
         image: 'https://images.unsplash.com/photo-1510812431401-41d2bd2722f3?w=800',
         status: 'ACTIVE',
+        isFeatured: true,
+        featuredOrder: 3,
         startDate: now,
         endDate: futureDate,
         usageLimit: 80,
@@ -292,8 +305,11 @@ async function main() {
         descriptionBg: '5-курсово дегустационно меню майсторски съчетано с премиум вина подбрани от нашия сомелиер.',
         type: 'DISCOUNT',
         discountPercent: 35,
+        minPurchase: 250,
         image: 'https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=800',
         status: 'ACTIVE',
+        isFeatured: true,
+        featuredOrder: 4,
         startDate: now,
         endDate: futureDate,
         usageLimit: 60,
@@ -310,8 +326,11 @@ async function main() {
         descriptionBg: 'Излетете в небето над зашеметяващите Рилски планини с нашите опитни инструктори. Включва снимки и видео.',
         type: 'DISCOUNT',
         discountPercent: 30,
+        minPurchase: 150,
         image: 'https://images.unsplash.com/photo-1534787238916-9ba6764efd4f?w=800',
         status: 'ACTIVE',
+        isFeatured: true,
+        featuredOrder: 5,
         startDate: now,
         endDate: futureDate,
         usageLimit: 40,
@@ -328,8 +347,11 @@ async function main() {
         descriptionBg: 'Събудете се с впечатляваща гледка към океана в нашия ексклузивен апартамент на плажа с частен балкон и закуска с шампанско.',
         type: 'DISCOUNT',
         discountPercent: 35,
+        minPurchase: 300,
         image: 'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?w=800',
         status: 'ACTIVE',
+        isFeatured: true,
+        featuredOrder: 6,
         startDate: now,
         endDate: futureDate,
         usageLimit: 30,
@@ -346,6 +368,7 @@ async function main() {
         descriptionBg: '2 нощувки с включена закуска и достъп до спа',
         type: 'BUNDLE',
         discountPercent: 25,
+        minPurchase: 500,
         image: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=800',
         status: 'ACTIVE',
         startDate: now,
@@ -362,6 +385,7 @@ async function main() {
         descriptionBg: '3-курсово обедно меню с кафе',
         type: 'DISCOUNT',
         discountPercent: 20,
+        minPurchase: 50,
         image: 'https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=800',
         status: 'ACTIVE',
         startDate: now,

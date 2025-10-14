@@ -118,6 +118,10 @@ const ContactPublicPage = lazy(() => import('./pages/ContactPublicPage'));
 const CareersPage = lazy(() => import('./pages/CareersPage'));
 const SecurityPage = lazy(() => import('./pages/SecurityPage'));
 
+// Admin pages
+const AdminDashboardPage = lazy(() => import('./pages/AdminDashboardPage'));
+const AdminOffersPage = lazy(() => import('./pages/AdminOffersPage'));
+
 const queryClient = new QueryClient();
 
 function App() {
@@ -282,6 +286,24 @@ function App() {
                     <Route path="contact" element={<ContactPublicPage />} />
                     <Route path="careers" element={<CareersPage />} />
                     <Route path="security" element={<SecurityPage />} />
+
+                    {/* Admin routes - Role-protected */}
+                    <Route
+                      path="admin"
+                      element={
+                        <ProtectedRoute requiredRole="admin">
+                          <AdminDashboardPage />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="admin/offers"
+                      element={
+                        <ProtectedRoute requiredRole="admin">
+                          <AdminOffersPage />
+                        </ProtectedRoute>
+                      }
+                    />
 
                     {/* Other routes */}
                     <Route path="favorites" element={<FavoritesPage />} />

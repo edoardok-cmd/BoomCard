@@ -4,7 +4,7 @@
  * React hooks for integrating analytics tracking into components
  */
 
-import { useEffect, useCallback, useRef } from 'react';
+import { useEffect, useCallback, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useLocation } from 'react-router-dom';
 import analyticsService, {
@@ -317,29 +317,29 @@ export function useVenueAnalytics(venueId: string | undefined, startDate: string
  */
 export function useABTest(testName: string, variants: string[]) {
   const trackEvent = useTrackEvent();
-  const assignedVariant = useRef<string | null>(null);
+  const [assignedVariant, setAssignedVariant] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!assignedVariant.current) {
+    if (!assignedVariant) {
       // Simple random assignment (in production, use proper A/B testing service)
       const variant = variants[Math.floor(Math.random() * variants.length)];
-      assignedVariant.current = variant;
+      setAssignedVariant(variant);
 
       // Track variant assignment
       trackEvent('view', `ab_test_${testName}`, undefined, {
         variant,
       });
     }
-  }, [testName, variants, trackEvent]);
+  }, [testName, variants, trackEvent, assignedVariant]);
 
   const trackConversion = useCallback(() => {
     trackEvent('submit', `ab_conversion_${testName}`, undefined, {
-      variant: assignedVariant.current,
+      variant: assignedVariant,
     });
-  }, [testName, trackEvent]);
+  }, [testName, trackEvent, assignedVariant]);
 
   return {
-    variant: assignedVariant.current,
+    variant: assignedVariant,
     trackConversion,
   };
 }

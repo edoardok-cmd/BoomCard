@@ -13,12 +13,52 @@ export interface POSCredentials {
   [key: string]: string | undefined;
 }
 
+export interface POSConfig {
+  apiKey?: string;
+  apiSecret?: string;
+  apiUrl?: string;
+  webhookSecret?: string;
+  environment?: 'production' | 'sandbox';
+  [key: string]: any;
+}
+
+export interface POSMenuItem {
+  id: string;
+  name: string;
+  description?: string;
+  price: number;
+  category?: string;
+  imageUrl?: string;
+  isActive?: boolean;
+}
+
+export interface POSOrder {
+  id: string;
+  amount: number;
+  currency?: string;
+  items: Array<{
+    menuItemId: string;
+    name: string;
+    quantity: number;
+    price: number;
+  }>;
+  customer?: {
+    name?: string;
+    phone?: string;
+    email?: string;
+  };
+  status: 'pending' | 'confirmed' | 'completed' | 'cancelled';
+  createdAt: Date;
+  metadata?: Record<string, any>;
+}
+
 export interface POSTransaction {
   id: string;
   amount: number;
-  currency: string;
+  currency?: string;
   discount: number;
   discountAmount: number;
+  finalAmount?: number;
   boomCardNumber?: string;
   timestamp: Date;
   status: 'pending' | 'completed' | 'failed' | 'refunded';

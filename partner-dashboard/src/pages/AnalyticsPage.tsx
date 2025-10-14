@@ -8,6 +8,10 @@ const PageContainer = styled.div`
   min-height: calc(100vh - 4rem);
   background: #f9fafb;
   padding: 2rem 1rem;
+
+  [data-theme="dark"] & {
+    background: #111827;
+  }
 `;
 
 const Container = styled.div`
@@ -24,11 +28,19 @@ const Title = styled.h1`
   font-weight: 700;
   color: #111827;
   margin-bottom: 0.5rem;
+
+  [data-theme="dark"] & {
+    color: #f9fafb;
+  }
 `;
 
 const Subtitle = styled.p`
   color: #6b7280;
   font-size: 1rem;
+
+  [data-theme="dark"] & {
+    color: #9ca3af;
+  }
 `;
 
 const DateFilter = styled.div`
@@ -49,9 +61,19 @@ const FilterButton = styled.button<{ $active: boolean }>`
   cursor: pointer;
   transition: all 0.2s;
 
+  [data-theme="dark"] & {
+    border-color: ${props => props.$active ? '#667eea' : '#374151'};
+    background: ${props => props.$active ? '#667eea' : '#1f2937'};
+    color: ${props => props.$active ? 'white' : '#d1d5db'};
+  }
+
   &:hover {
     border-color: #667eea;
     background: ${props => props.$active ? '#5568d3' : '#f9fafb'};
+
+    [data-theme="dark"] & {
+      background: ${props => props.$active ? '#5568d3' : '#374151'};
+    }
   }
 `;
 
@@ -64,6 +86,10 @@ const StatsGrid = styled.div`
 
 const StatCard = styled(motion.div)`
   background: white;
+
+  [data-theme="dark"] & {
+    background: #1f2937;
+  }
   border-radius: 1rem;
   padding: 1.5rem;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
@@ -98,12 +124,20 @@ const StatLabel = styled.div`
   font-size: 0.875rem;
   color: #6b7280;
   font-weight: 500;
+
+  [data-theme="dark"] & {
+    color: #9ca3af;
+  }
 `;
 
 const StatValue = styled.div`
   font-size: 2rem;
   font-weight: 700;
   color: #111827;
+
+  [data-theme="dark"] & {
+    color: #f9fafb;
+  }
 `;
 
 const StatChange = styled.div<{ $positive: boolean }>`
@@ -133,6 +167,10 @@ const ChartsGrid = styled.div`
 
 const ChartCard = styled(motion.div)`
   background: white;
+
+  [data-theme="dark"] & {
+    background: #1f2937;
+  }
   border-radius: 1rem;
   padding: 1.5rem;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
@@ -149,6 +187,10 @@ const ChartTitle = styled.h3`
   font-size: 1.125rem;
   font-weight: 600;
   color: #111827;
+
+  [data-theme="dark"] & {
+    color: #f9fafb;
+  }
 `;
 
 const ChartLegend = styled.div`
@@ -161,6 +203,11 @@ const LegendItem = styled.div<{ $color: string }>`
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  color: #374151;
+
+  [data-theme="dark"] & {
+    color: #d1d5db;
+  }
 
   &::before {
     content: '';
@@ -205,6 +252,10 @@ const BarLabel = styled.div`
   font-size: 0.75rem;
   color: #6b7280;
   white-space: nowrap;
+
+  [data-theme="dark"] & {
+    color: #9ca3af;
+  }
 `;
 
 const BarValue = styled.div`
@@ -258,12 +309,20 @@ const CategoryName = styled.div`
   font-size: 0.875rem;
   color: #374151;
   font-weight: 500;
+
+  [data-theme="dark"] & {
+    color: #d1d5db;
+  }
 `;
 
 const CategoryValue = styled.div`
   font-size: 0.875rem;
   font-weight: 600;
   color: #111827;
+
+  [data-theme="dark"] & {
+    color: #f9fafb;
+  }
 `;
 
 const AnalyticsPage: React.FC = () => {

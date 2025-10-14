@@ -7,19 +7,20 @@ import { useLanguage } from '../contexts/LanguageContext';
 
 const PageContainer = styled.div`
   min-height: 100vh;
-  background: linear-gradient(135deg, #f9fafb 0%, #f3f4f6 100%);
+  background: var(--color-background);
 `;
 
 const HeroSection = styled.section`
   padding: 6rem 2rem 4rem;
   text-align: center;
+  background: var(--color-background-secondary);
 `;
 
 const HeroTitle = styled(motion.h1)`
   font-size: 3.5rem;
   font-weight: 800;
   margin-bottom: 1.5rem;
-  color: #1a1a1a;
+  color: var(--color-text-primary);
 
   @media (max-width: 768px) {
     font-size: 2.5rem;
@@ -28,7 +29,7 @@ const HeroTitle = styled(motion.h1)`
 
 const HeroSubtitle = styled(motion.p)`
   font-size: 1.5rem;
-  color: #6b7280;
+  color: var(--color-text-secondary);
   margin-bottom: 3rem;
   max-width: 800px;
   margin-left: auto;
@@ -47,21 +48,21 @@ const ToggleButton = styled.button<{ $active: boolean }>`
   padding: 0.75rem 2rem;
   border-radius: 9999px;
   border: none;
-  background: ${props => props.$active ? '#1a1a1a' : 'transparent'};
-  color: ${props => props.$active ? 'white' : '#6b7280'};
+  background: ${props => props.$active ? 'var(--color-primary)' : 'transparent'};
+  color: ${props => props.$active ? 'var(--color-secondary)' : 'var(--color-text-secondary)'};
   font-size: 1rem;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.3s;
 
   &:hover {
-    background: ${props => props.$active ? '#1a1a1a' : '#f3f4f6'};
+    background: ${props => props.$active ? 'var(--color-primary-hover)' : 'var(--color-background-secondary)'};
   }
 `;
 
 const SaveBadge = styled.span`
-  background: #10b981;
-  color: white;
+  background: var(--color-accent);
+  color: var(--color-secondary);
   padding: 0.25rem 0.75rem;
   border-radius: 9999px;
   font-size: 0.875rem;
@@ -78,11 +79,11 @@ const PlansGrid = styled.div`
 `;
 
 const PlanCard = styled(motion.div)<{ $featured?: boolean }>`
-  background: white;
+  background: var(--color-background);
   border-radius: 1rem;
   padding: 2.5rem;
-  box-shadow: ${props => props.$featured ? '0 20px 40px rgba(0, 0, 0, 0.15)' : '0 4px 12px rgba(0, 0, 0, 0.05)'};
-  border: ${props => props.$featured ? '2px solid #1a1a1a' : '1px solid #e5e7eb'};
+  box-shadow: ${props => props.$featured ? 'var(--shadow-hover)' : 'var(--shadow-soft)'};
+  border: ${props => props.$featured ? '2px solid var(--color-primary)' : '1px solid var(--color-border)'};
   position: relative;
   transform: ${props => props.$featured ? 'scale(1.05)' : 'scale(1)'};
 
@@ -96,8 +97,8 @@ const FeaturedBadge = styled.div`
   top: -12px;
   left: 50%;
   transform: translateX(-50%);
-  background: #1a1a1a;
-  color: white;
+  background: var(--color-primary);
+  color: var(--color-secondary);
   padding: 0.5rem 1.5rem;
   border-radius: 9999px;
   font-size: 0.875rem;
@@ -210,12 +211,12 @@ const PlanName = styled.h3`
   font-size: 1.5rem;
   font-weight: 700;
   margin-bottom: 0.5rem;
-  color: #1a1a1a;
+  color: var(--color-text-primary);
 `;
 
 const PlanDescription = styled.p`
   font-size: 1rem;
-  color: #6b7280;
+  color: var(--color-text-secondary);
   margin-bottom: 2rem;
 `;
 
@@ -226,7 +227,7 @@ const PriceContainer = styled.div`
 const Price = styled.div`
   font-size: 3rem;
   font-weight: 800;
-  color: #1a1a1a;
+  color: var(--color-text-primary);
   line-height: 1;
   margin-bottom: 0.5rem;
 `;
@@ -234,12 +235,12 @@ const Price = styled.div`
 const PricePeriod = styled.span`
   font-size: 1rem;
   font-weight: 400;
-  color: #6b7280;
+  color: var(--color-text-secondary);
 `;
 
 const DualCurrency = styled.div`
   font-size: 0.875rem;
-  color: #6b7280;
+  color: var(--color-text-secondary);
   margin-top: 0.25rem;
 `;
 
@@ -253,13 +254,13 @@ const PlanButton = styled(Link)<{ $variant?: 'primary' | 'secondary' }>`
   font-weight: 600;
   text-decoration: none;
   transition: all 0.3s;
-  background: ${props => props.$variant === 'primary' ? '#1a1a1a' : 'white'};
-  color: ${props => props.$variant === 'primary' ? 'white' : '#1a1a1a'};
-  border: ${props => props.$variant === 'primary' ? 'none' : '2px solid #1a1a1a'};
+  background: ${props => props.$variant === 'primary' ? 'var(--color-primary)' : 'var(--color-background)'};
+  color: ${props => props.$variant === 'primary' ? 'var(--color-secondary)' : 'var(--color-primary)'};
+  border: ${props => props.$variant === 'primary' ? 'none' : '2px solid var(--color-primary)'};
 
   &:hover {
     transform: translateY(-2px);
-    box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
+    box-shadow: var(--shadow-hover);
   }
 `;
 
@@ -274,13 +275,13 @@ const FeatureItem = styled.li`
   align-items: flex-start;
   gap: 0.75rem;
   margin-bottom: 1rem;
-  color: #4b5563;
+  color: var(--color-text-secondary);
   font-size: 0.9375rem;
 
   svg {
     flex-shrink: 0;
     margin-top: 0.125rem;
-    color: #10b981;
+    color: var(--color-accent);
   }
 `;
 
@@ -295,27 +296,28 @@ const FAQTitle = styled.h2`
   font-weight: 700;
   text-align: center;
   margin-bottom: 3rem;
-  color: #1a1a1a;
+  color: var(--color-text-primary);
 `;
 
 const FAQItem = styled.div`
-  background: white;
+  background: var(--color-background);
   border-radius: 0.75rem;
   padding: 1.5rem;
   margin-bottom: 1rem;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  box-shadow: var(--shadow-soft);
+  border: 1px solid var(--color-border);
 `;
 
 const FAQQuestion = styled.h3`
   font-size: 1.125rem;
   font-weight: 600;
-  color: #1a1a1a;
+  color: var(--color-text-primary);
   margin-bottom: 0.5rem;
 `;
 
 const FAQAnswer = styled.p`
   font-size: 1rem;
-  color: #6b7280;
+  color: var(--color-text-secondary);
   line-height: 1.6;
 `;
 
@@ -502,7 +504,7 @@ const PricingPublicPage: React.FC = () => {
                 {Math.floor((isAnnual ? Math.floor(plan.annualPriceEur / 12) : plan.monthlyPriceEur) * eurToBgn)} BGN / {language === 'bg' ? 'месец' : 'month'}
               </DualCurrency>
               {isAnnual && (
-                <p style={{ fontSize: '0.875rem', color: '#6b7280', marginTop: '0.5rem' }}>
+                <p style={{ fontSize: '0.875rem', color: 'var(--color-text-secondary)', marginTop: '0.5rem' }}>
                   {language === 'bg' ? 'Плащане годишно' : 'Billed annually'}: €{plan.annualPriceEur} ({Math.floor(plan.annualPriceEur * eurToBgn)} BGN)
                 </p>
               )}

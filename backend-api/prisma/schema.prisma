@@ -6,7 +6,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
@@ -203,6 +203,8 @@ model Offer {
   termsConditionsBg String?
   image             String?
   status            OfferStatus   @default(DRAFT)
+  isFeatured        Boolean       @default(false)
+  featuredOrder     Int?
   startDate         DateTime
   endDate           DateTime
   usageLimit        Int?
@@ -215,6 +217,7 @@ model Offer {
 
   @@index([partnerId])
   @@index([status])
+  @@index([isFeatured])
   @@index([startDate])
   @@index([endDate])
 }

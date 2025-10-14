@@ -7,6 +7,7 @@ import { MenuItem } from '../../../types/navigation';
 interface MegaMenuProps {
   items: MenuItem[];
   language?: 'en' | 'bg';
+  autoExpandOnMobile?: boolean;
 }
 
 const NavWrapper = styled.nav`
@@ -32,20 +33,20 @@ const NavLink = styled(Link)<{ $hasChildren?: boolean }>`
   padding: 0.75rem 1rem;
   font-size: 0.9375rem;
   font-weight: 500;
-  color: #1f2937;
+  color: var(--color-text-primary);
   text-decoration: none;
   border-radius: 0.5rem;
   transition: all 200ms cubic-bezier(0.4, 0, 0.2, 1);
 
   &:hover {
-    background-color: #f3f4f6;
-    color: #000000;
+    background-color: var(--color-background-secondary);
+    color: var(--color-primary);
   }
 
   @media (max-width: 1024px) {
     padding: 1rem;
     border-radius: 0;
-    border-bottom: 1px solid #e5e7eb;
+    border-bottom: 1px solid var(--color-border);
   }
 `;
 
@@ -73,8 +74,29 @@ const DropdownContainer = styled(motion.div)`
   overflow: hidden;
   border: 2px solid #e5e7eb;
 
-  /* Subtle gradient background for depth */
+  /* Light mode with gradient */
   background: linear-gradient(to bottom, #ffffff 0%, #f9fafb 100%);
+
+  /* Dark mode */
+  [data-theme="dark"] & {
+    background: linear-gradient(to bottom, #1e293b 0%, #0f172a 100%);
+    border-color: #334155;
+    box-shadow:
+      0 20px 60px -15px rgba(0, 0, 0, 0.6),
+      0 10px 25px -5px rgba(0, 0, 0, 0.4);
+  }
+
+  /* Color mode - vibrant explosive gradient */
+  [data-theme="color"] & {
+    background: linear-gradient(135deg, #fff5e1 0%, #ffe4f1 50%, #e8f4ff 100%);
+    border: 3px solid transparent;
+    border-image: linear-gradient(135deg, #ff4500, #ff006e, #00d4ff) 1;
+    border-radius: 1rem;
+    box-shadow:
+      0 20px 60px -15px rgba(255, 69, 0, 0.4),
+      0 15px 40px -5px rgba(255, 0, 110, 0.3),
+      0 10px 30px -5px rgba(0, 212, 255, 0.2);
+  }
 
   /* Ensure dropdown stays within viewport */
   @media (min-width: 1024px) {
@@ -89,6 +111,14 @@ const DropdownContainer = styled(motion.div)`
     margin-top: 0;
     background: #f9fafb;
     border: none;
+
+    [data-theme="dark"] & {
+      background: #1e293b;
+    }
+
+    [data-theme="color"] & {
+      background: linear-gradient(135deg, #fff5e1 0%, #ffe4f1 100%);
+    }
   }
 `;
 
@@ -109,8 +139,29 @@ const MegaDropdownContainer = styled(motion.div)<{ $alignRight?: boolean }>`
   overflow: hidden;
   border: 2px solid #e5e7eb;
 
-  /* Strong gradient background for clear distinction */
+  /* Light mode with gradient */
   background: linear-gradient(to bottom, #ffffff 0%, #f8f9fa 100%);
+
+  /* Dark mode */
+  [data-theme="dark"] & {
+    background: linear-gradient(to bottom, #1e293b 0%, #0f172a 100%);
+    border-color: #334155;
+    box-shadow:
+      0 25px 70px -15px rgba(0, 0, 0, 0.7),
+      0 15px 30px -5px rgba(0, 0, 0, 0.5);
+  }
+
+  /* Color mode - vibrant mega menu */
+  [data-theme="color"] & {
+    background: linear-gradient(135deg, #fff5e1 0%, #ffe4f1 30%, #e8f4ff 70%, #fff5e1 100%);
+    border: 3px solid transparent;
+    border-image: linear-gradient(135deg, #ff4500 0%, #ff006e 30%, #00d4ff 70%, #b24bf3 100%) 1;
+    border-radius: 1rem;
+    box-shadow:
+      0 25px 70px -15px rgba(255, 69, 0, 0.5),
+      0 20px 50px -10px rgba(255, 0, 110, 0.4),
+      0 15px 40px -5px rgba(0, 212, 255, 0.3);
+  }
 
   @media (max-width: 1400px) {
     width: 650px;
@@ -132,6 +183,14 @@ const MegaDropdownContainer = styled(motion.div)<{ $alignRight?: boolean }>`
     width: 100%;
     max-width: none;
     border: none;
+
+    [data-theme="dark"] & {
+      background: #1e293b;
+    }
+
+    [data-theme="color"] & {
+      background: linear-gradient(135deg, #fff5e1 0%, #ffe4f1 100%);
+    }
   }
 `;
 
@@ -152,7 +211,7 @@ const DropdownSection = styled.div`
 
   /* Add subtle separation between sections */
   & + & {
-    border-left: 1px solid #e5e7eb;
+    border-left: 1px solid var(--color-border);
     padding-left: 2rem;
   }
 
@@ -162,7 +221,7 @@ const DropdownSection = styled.div`
     & + & {
       border-left: none;
       padding-left: 0;
-      border-top: 2px solid #e5e7eb;
+      border-top: 2px solid var(--color-border);
     }
   }
 `;
@@ -170,13 +229,13 @@ const DropdownSection = styled.div`
 const SectionTitle = styled.h3`
   font-size: 0.8125rem;
   font-weight: 800;
-  color: #111827;
+  color: var(--color-text-primary);
   text-transform: uppercase;
   letter-spacing: 0.1em;
   margin-bottom: 1rem;
   padding: 0 0.75rem;
   padding-bottom: 0.625rem;
-  border-bottom: 3px solid #111827;
+  border-bottom: 3px solid var(--color-primary);
   position: relative;
 
   /* Accent line under the border */
@@ -187,14 +246,14 @@ const SectionTitle = styled.h3`
     left: 0.75rem;
     width: 50%;
     height: 3px;
-    background: linear-gradient(90deg, #6366f1 0%, #a855f7 100%);
+    background: var(--color-accent);
   }
 
   @media (max-width: 1024px) {
     padding: 0.875rem 1rem;
-    background: linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%);
+    background: var(--color-background-secondary);
     margin-bottom: 0;
-    border-bottom: 3px solid #111827;
+    border-bottom: 3px solid var(--color-primary);
 
     &::after {
       left: 1rem;
@@ -207,7 +266,7 @@ const DropdownLink = styled(Link)`
   padding: 0.75rem 0.875rem;
   font-size: 0.9375rem;
   font-weight: 400;
-  color: #6b7280;
+  color: var(--color-text-secondary);
   text-decoration: none;
   border-radius: 0.5rem;
   transition: all 250ms cubic-bezier(0.4, 0, 0.2, 1);
@@ -224,14 +283,24 @@ const DropdownLink = styled(Link)`
     transform: translateY(-50%);
     width: 3px;
     height: 0;
-    background: linear-gradient(180deg, #6366f1 0%, #a855f7 100%);
+    background: var(--color-accent);
     border-radius: 0 2px 2px 0;
     transition: height 250ms cubic-bezier(0.4, 0, 0.2, 1);
   }
 
+  /* Vibrant mode styling */
+  [data-theme="color"] & {
+    color: #6a0572;
+    font-weight: 500;
+
+    &::before {
+      background: linear-gradient(180deg, #ff4500 0%, #ff006e 50%, #00d4ff 100%);
+    }
+  }
+
   &:hover {
-    background-color: #f9fafb;
-    color: #111827;
+    background-color: var(--color-background-secondary);
+    color: var(--color-primary);
     font-weight: 500;
     transform: translateX(4px);
     padding-left: 1rem;
@@ -239,18 +308,24 @@ const DropdownLink = styled(Link)`
     &::before {
       height: 60%;
     }
+
+    [data-theme="color"] & {
+      background: linear-gradient(90deg, rgba(255, 69, 0, 0.1) 0%, rgba(255, 0, 110, 0.1) 100%);
+      color: #ff006e;
+    }
   }
 
   @media (max-width: 1024px) {
     border-radius: 0;
     padding: 0.875rem 1.5rem;
-    border-bottom: 1px solid #e5e7eb;
+    border-bottom: 1px solid var(--color-border);
   }
 `;
 
 const SubItemDescription = styled.div`
   font-size: 0.8125rem;
-  color: #9ca3af;
+  color: var(--color-text-secondary);
+  opacity: 0.7;
   margin-top: 0.125rem;
   line-height: 1.4;
 `;
@@ -273,8 +348,9 @@ const NavMenuItem: React.FC<{
   isMobile: boolean;
   index: number;
   totalItems: number;
-}> = ({ item, language, isMobile, index, totalItems }) => {
-  const [isOpen, setIsOpen] = useState(false);
+  autoExpandOnMobile?: boolean;
+}> = ({ item, language, isMobile, index, totalItems, autoExpandOnMobile }) => {
+  const [isOpen, setIsOpen] = useState(isMobile && autoExpandOnMobile);
   const [hoveredSubItem, setHoveredSubItem] = useState<string | null>(null);
 
   const label = language === 'bg' ? item.labelBg : item.label;
@@ -420,7 +496,7 @@ const NavMenuItem: React.FC<{
   );
 };
 
-export const MegaMenu: React.FC<MegaMenuProps> = ({ items, language = 'en' }) => {
+export const MegaMenu: React.FC<MegaMenuProps> = ({ items, language = 'en', autoExpandOnMobile = false }) => {
   const [isMobile, setIsMobile] = useState(window.innerWidth < 1024);
 
   React.useEffect(() => {
@@ -441,6 +517,7 @@ export const MegaMenu: React.FC<MegaMenuProps> = ({ items, language = 'en' }) =>
           isMobile={isMobile}
           index={index}
           totalItems={items.length}
+          autoExpandOnMobile={autoExpandOnMobile}
         />
       ))}
     </NavWrapper>

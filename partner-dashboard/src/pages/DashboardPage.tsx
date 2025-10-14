@@ -30,6 +30,13 @@ const Title = styled.h1`
   letter-spacing: -0.03em;
   line-height: 1.2;
 
+  [data-theme="dark"] & {
+    background: linear-gradient(135deg, #f9fafb 0%, #a78bfa 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
   @media (max-width: 640px) {
     font-size: 2rem;
   }
@@ -41,6 +48,10 @@ const Subtitle = styled.p`
   font-weight: 500;
   letter-spacing: -0.01em;
   line-height: 1.6;
+
+  [data-theme="dark"] & {
+    color: #d1d5db;
+  }
 `;
 
 const StatsGrid = styled.div`
@@ -63,6 +74,15 @@ const StatCard = styled(motion.div)`
   position: relative;
   overflow: hidden;
 
+  [data-theme="dark"] & {
+    background: linear-gradient(to bottom right, #1f2937 0%, #111827 100%);
+    border-color: rgba(255, 255, 255, 0.1);
+    box-shadow:
+      0 2px 8px rgba(0, 0, 0, 0.3),
+      0 8px 24px rgba(0, 0, 0, 0.2),
+      0 16px 48px rgba(0, 0, 0, 0.1);
+  }
+
   &::before {
     content: '';
     position: absolute;
@@ -84,6 +104,14 @@ const StatCard = styled(motion.div)`
     transform: translateY(-6px);
     border-color: rgba(99, 102, 241, 0.2);
 
+    [data-theme="dark"] & {
+      box-shadow:
+        0 4px 16px rgba(0, 0, 0, 0.4),
+        0 12px 32px rgba(0, 0, 0, 0.3),
+        0 24px 64px rgba(0, 0, 0, 0.2);
+      border-color: rgba(99, 102, 241, 0.4);
+    }
+
     &::before {
       transform: scaleX(1);
     }
@@ -97,6 +125,10 @@ const StatLabel = styled.p`
   text-transform: uppercase;
   letter-spacing: 0.08em;
   margin-bottom: 0.625rem;
+
+  [data-theme="dark"] & {
+    color: #9ca3af;
+  }
 `;
 
 const StatValue = styled.p`
@@ -109,12 +141,23 @@ const StatValue = styled.p`
   margin-bottom: 0.375rem;
   letter-spacing: -0.03em;
   line-height: 1.2;
+
+  [data-theme="dark"] & {
+    background: linear-gradient(135deg, #f9fafb 0%, #a78bfa 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
 `;
 
 const StatChange = styled.p<{ $positive?: boolean }>`
   font-size: 0.875rem;
   font-weight: 500;
   color: ${props => props.$positive ? '#10b981' : '#6b7280'};
+
+  [data-theme="dark"] & {
+    color: ${props => props.$positive ? '#34d399' : '#9ca3af'};
+  }
 `;
 
 const SectionHeader = styled.div`
@@ -130,6 +173,10 @@ const SectionTitle = styled.h2`
   color: #111827;
   letter-spacing: -0.02em;
   line-height: 1.3;
+
+  [data-theme="dark"] & {
+    color: #f9fafb;
+  }
 `;
 
 const CardsGrid = styled.div`
@@ -155,6 +202,15 @@ const BoomCardItem = styled(motion.div)`
   transition: all 400ms cubic-bezier(0.4, 0, 0.2, 1);
   position: relative;
 
+  [data-theme="dark"] & {
+    background: #1f2937;
+    border-color: rgba(255, 255, 255, 0.1);
+    box-shadow:
+      0 2px 8px rgba(0, 0, 0, 0.3),
+      0 8px 24px rgba(0, 0, 0, 0.2),
+      0 16px 48px rgba(0, 0, 0, 0.1);
+  }
+
   &::after {
     content: '';
     position: absolute;
@@ -176,6 +232,14 @@ const BoomCardItem = styled(motion.div)`
       0 24px 64px rgba(0, 0, 0, 0.08);
     transform: translateY(-8px);
     border-color: rgba(99, 102, 241, 0.2);
+
+    [data-theme="dark"] & {
+      box-shadow:
+        0 4px 16px rgba(0, 0, 0, 0.4),
+        0 12px 32px rgba(0, 0, 0, 0.3),
+        0 24px 64px rgba(0, 0, 0, 0.2);
+      border-color: rgba(99, 102, 241, 0.4);
+    }
 
     &::after {
       opacity: 1;
@@ -203,6 +267,11 @@ const CardLogo = styled.div`
   justify-content: center;
   font-weight: 700;
   color: #111827;
+
+  [data-theme="dark"] & {
+    background: #f9fafb;
+    color: #111827;
+  }
 `;
 
 const CardType = styled.div`
@@ -241,12 +310,20 @@ const VenueName = styled.h3`
   margin-bottom: 0.5rem;
   letter-spacing: -0.015em;
   line-height: 1.3;
+
+  [data-theme="dark"] & {
+    color: #f9fafb;
+  }
 `;
 
 const VenueCategory = styled.p`
   font-size: 0.875rem;
   color: #6b7280;
   margin-bottom: 1rem;
+
+  [data-theme="dark"] & {
+    color: #9ca3af;
+  }
 `;
 
 const CardMeta = styled.div`
@@ -255,6 +332,10 @@ const CardMeta = styled.div`
   gap: 0.75rem;
   padding-top: 1rem;
   border-top: 1px solid #e5e7eb;
+
+  [data-theme="dark"] & {
+    border-top-color: #374151;
+  }
 `;
 
 const MetaRow = styled.div`
@@ -266,17 +347,48 @@ const MetaRow = styled.div`
 
 const MetaLabel = styled.span`
   color: #6b7280;
+
+  [data-theme="dark"] & {
+    color: #9ca3af;
+  }
 `;
 
 const MetaValue = styled.span`
   font-weight: 600;
   color: #111827;
+
+  [data-theme="dark"] & {
+    color: #f9fafb;
+  }
 `;
 
 const CardActions = styled.div`
   display: flex;
   gap: 0.75rem;
   margin-top: 1rem;
+`;
+
+const ActionCardImage = styled.div<{ $imageUrl?: string }>`
+  width: 100%;
+  height: 200px;
+  background: ${props => props.$imageUrl ? `url(${props.$imageUrl})` : 'var(--color-background-secondary)'};
+  background-size: cover;
+  background-position: center;
+  overflow: hidden;
+  transition: all 400ms cubic-bezier(0.4, 0, 0.2, 1);
+  border-radius: 0.75rem 0.75rem 0 0;
+  position: relative;
+
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.3) 100%);
+  }
+
+  [data-theme="dark"] &::after {
+    background: linear-gradient(180deg, rgba(0,0,0,0.2) 0%, rgba(0,0,0,0.5) 100%);
+  }
 `;
 
 const EmptyState = styled.div`
@@ -315,6 +427,58 @@ const EmptyDescription = styled.p`
   font-size: 0.9375rem;
   color: #6b7280;
   margin-bottom: 1.5rem;
+`;
+
+const ActivityContainer = styled.div`
+  background: white;
+  border-radius: 1rem;
+  padding: 1.5rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+
+  [data-theme="dark"] & {
+    background: #1f2937;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  }
+`;
+
+const ActivityList = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+`;
+
+const ActivityItem = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem;
+  background: #f9fafb;
+  border-radius: 0.5rem;
+
+  [data-theme="dark"] & {
+    background: #111827;
+  }
+`;
+
+const ActivityContent = styled.div``;
+
+const ActivityTitle = styled.div`
+  font-weight: 600;
+  color: #111827;
+  margin-bottom: 0.25rem;
+
+  [data-theme="dark"] & {
+    color: #f9fafb;
+  }
+`;
+
+const ActivityMeta = styled.div`
+  font-size: 0.875rem;
+  color: #6b7280;
+
+  [data-theme="dark"] & {
+    color: #9ca3af;
+  }
 `;
 
 interface BoomCard {
@@ -474,9 +638,9 @@ const DashboardPage: React.FC = () => {
               onClick={() => window.location.href = '/partners/offers'}
               style={{ cursor: 'pointer' }}
             >
+              <ActionCardImage $imageUrl="https://images.unsplash.com/photo-1607082348824-0a96f2a4b9da?w=400&h=400&fit=crop" />
               <CardBody>
                 <div style={{ textAlign: 'center', padding: '2rem 0' }}>
-                  <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>📋</div>
                   <VenueName>Manage Offers</VenueName>
                   <VenueCategory>View, edit, and create new offers</VenueCategory>
                   <div style={{ marginTop: '1rem' }}>
@@ -495,9 +659,9 @@ const DashboardPage: React.FC = () => {
               onClick={() => window.location.href = '/analytics'}
               style={{ cursor: 'pointer' }}
             >
+              <ActionCardImage $imageUrl="https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=400&h=400&fit=crop" />
               <CardBody>
                 <div style={{ textAlign: 'center', padding: '2rem 0' }}>
-                  <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>📊</div>
                   <VenueName>View Analytics</VenueName>
                   <VenueCategory>Track performance and insights</VenueCategory>
                   <div style={{ marginTop: '1rem' }}>
@@ -516,9 +680,9 @@ const DashboardPage: React.FC = () => {
               onClick={() => window.location.href = '/profile'}
               style={{ cursor: 'pointer' }}
             >
+              <ActionCardImage $imageUrl="https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=400&h=400&fit=crop" />
               <CardBody>
                 <div style={{ textAlign: 'center', padding: '2rem 0' }}>
-                  <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🏢</div>
                   <VenueName>Business Profile</VenueName>
                   <VenueCategory>Update your business information</VenueCategory>
                   <div style={{ marginTop: '1rem' }}>
@@ -538,25 +702,25 @@ const DashboardPage: React.FC = () => {
             </SectionTitle>
           </SectionHeader>
 
-          <div style={{ background: 'white', borderRadius: '1rem', padding: '1.5rem', boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <ActivityContainer>
+            <ActivityList>
               {[
                 { offer: '20% Off All Main Courses', redemptions: 45, time: '2 hours ago' },
                 { offer: 'Free Dessert with Any Meal', redemptions: 23, time: '5 hours ago' },
                 { offer: 'Summer Special - 30% Off', redemptions: 67, time: 'Yesterday' },
               ].map((activity, index) => (
-                <div key={index} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1rem', background: '#f9fafb', borderRadius: '0.5rem' }}>
-                  <div>
-                    <div style={{ fontWeight: 600, color: '#111827', marginBottom: '0.25rem' }}>{activity.offer}</div>
-                    <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>{activity.redemptions} redemptions • {activity.time}</div>
-                  </div>
+                <ActivityItem key={index}>
+                  <ActivityContent>
+                    <ActivityTitle>{activity.offer}</ActivityTitle>
+                    <ActivityMeta>{activity.redemptions} redemptions • {activity.time}</ActivityMeta>
+                  </ActivityContent>
                   <Button variant="ghost" size="small">
                     View Details
                   </Button>
-                </div>
+                </ActivityItem>
               ))}
-            </div>
-          </div>
+            </ActivityList>
+          </ActivityContainer>
         </>
       ) : (
         <>

@@ -134,7 +134,7 @@ const MyOffersPage: React.FC = () => {
     maxRedemptions: offer.maxRedemptions,
     currentRedemptions: offer.currentRedemptions || 0,
     views: offer.views || 0,
-    isActive: offer.isActive,
+    isActive: offer.isActive ?? false,
     createdAt: offer.createdAt || new Date().toISOString(),
   }));
 
@@ -396,6 +396,10 @@ const Container = styled.div`
   padding: 2rem;
   min-height: 100vh;
   background: linear-gradient(to bottom, #fafbfc 0%, #ffffff 50%, #fafbfc 100%);
+
+  [data-theme="dark"] & {
+    background: linear-gradient(to bottom, #111827 0%, #0a0a0a 50%, #111827 100%);
+  }
 `;
 
 const Header = styled.div`
@@ -446,6 +450,15 @@ const StatCard = styled(motion.div)`
   position: relative;
   overflow: hidden;
 
+  [data-theme="dark"] & {
+    background: linear-gradient(to bottom right, #1f2937 0%, #374151 100%);
+    border-color: rgba(255, 255, 255, 0.1);
+    box-shadow:
+      0 2px 8px rgba(0, 0, 0, 0.3),
+      0 8px 24px rgba(0, 0, 0, 0.2),
+      0 16px 48px rgba(0, 0, 0, 0.15);
+  }
+
   &::before {
     content: '';
     position: absolute;
@@ -467,6 +480,14 @@ const StatCard = styled(motion.div)`
     transform: translateY(-4px);
     border-color: rgba(99, 102, 241, 0.2);
 
+    [data-theme="dark"] & {
+      box-shadow:
+        0 4px 16px rgba(0, 0, 0, 0.4),
+        0 12px 32px rgba(0, 0, 0, 0.3),
+        0 24px 64px rgba(0, 0, 0, 0.2);
+      border-color: rgba(99, 102, 241, 0.4);
+    }
+
     &::before {
       transform: scaleX(1);
     }
@@ -480,6 +501,10 @@ const StatLabel = styled.div`
   text-transform: uppercase;
   letter-spacing: 0.08em;
   margin-bottom: 0.75rem;
+
+  [data-theme="dark"] & {
+    color: #9ca3af;
+  }
 `;
 
 const StatValue = styled.div<{ color?: string }>`
@@ -488,6 +513,10 @@ const StatValue = styled.div<{ color?: string }>`
   color: ${props => props.color || '#111827'};
   letter-spacing: -0.03em;
   line-height: 1.2;
+
+  [data-theme="dark"] & {
+    color: ${props => props.color || '#f9fafb'};
+  }
 `;
 
 const Filters = styled.div`
@@ -509,6 +538,12 @@ const SearchInput = styled.input`
   font-weight: 500;
   transition: all 300ms cubic-bezier(0.4, 0, 0.2, 1);
   background: white;
+
+  [data-theme="dark"] & {
+    background: #1f2937;
+    border-color: #374151;
+    color: #f9fafb;
+  }
   color: #111827;
   letter-spacing: -0.01em;
 
@@ -519,6 +554,10 @@ const SearchInput = styled.input`
 
   &:hover {
     border-color: #d1d5db;
+
+    [data-theme="dark"] & {
+      border-color: #4b5563;
+    }
   }
 
   &:focus {
@@ -526,6 +565,10 @@ const SearchInput = styled.input`
     border-color: #6366f1;
     box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.1);
     background: #ffffff;
+
+    [data-theme="dark"] & {
+      background: #1f2937;
+    }
   }
 `;
 
@@ -533,6 +576,14 @@ const FilterButtons = styled.div`
   display: flex;
   gap: 0.5rem;
   background: white;
+
+  [data-theme="dark"] & {
+    background: #1f2937;
+    border-color: rgba(255, 255, 255, 0.1);
+    box-shadow:
+      0 2px 8px rgba(0, 0, 0, 0.3),
+      0 4px 12px rgba(0, 0, 0, 0.2);
+  }
   padding: 0.375rem;
   border-radius: 0.75rem;
   box-shadow:
@@ -556,12 +607,23 @@ const FilterButton = styled.button<{ active: boolean }>`
   transition: all 300ms cubic-bezier(0.4, 0, 0.2, 1);
   letter-spacing: -0.01em;
 
+  [data-theme="dark"] & {
+    color: ${props => (props.active ? 'white' : '#9ca3af')};
+  }
+
   &:hover {
     background: ${props =>
       props.active
         ? 'linear-gradient(135deg, #4f46e5 0%, #4338ca 100%)'
         : '#f3f4f6'};
     transform: ${props => (props.active ? 'scale(1.02)' : 'none')};
+
+    [data-theme="dark"] & {
+      background: ${props =>
+        props.active
+          ? 'linear-gradient(135deg, #4f46e5 0%, #4338ca 100%)'
+          : '#374151'};
+    }
   }
 
   &:active {
@@ -577,6 +639,10 @@ const OffersGrid = styled.div`
 
 const OfferCard = styled(motion.div)`
   background: white;
+
+  [data-theme="dark"] & {
+    background: #1f2937;
+  }
   border-radius: 1.5rem;
   padding: 2rem;
   box-shadow:
@@ -658,6 +724,10 @@ const MenuButton = styled.button`
 
   &:hover {
     background: #f3f4f6;
+
+    [data-theme="dark"] & {
+      background: #111827;
+    }
     color: #111827;
     border-color: #e5e7eb;
   }
@@ -672,6 +742,10 @@ const MenuDropdown = styled(motion.div)`
   top: calc(100% + 0.5rem);
   right: 0;
   background: white;
+
+  [data-theme="dark"] & {
+    background: #1f2937;
+  }
   border-radius: 0.75rem;
   box-shadow:
     0 4px 16px rgba(0, 0, 0, 0.12),
@@ -691,6 +765,10 @@ const MenuDropdown = styled(motion.div)`
     width: 12px;
     height: 12px;
     background: white;
+
+  [data-theme="dark"] & {
+    background: #1f2937;
+  }
     border-left: 1px solid rgba(0, 0, 0, 0.06);
     border-top: 1px solid rgba(0, 0, 0, 0.06);
     transform: rotate(45deg);
@@ -808,6 +886,10 @@ const EmptyState = styled.div`
   text-align: center;
   padding: 4rem 2rem;
   background: white;
+
+  [data-theme="dark"] & {
+    background: #1f2937;
+  }
   border-radius: 1rem;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 `;

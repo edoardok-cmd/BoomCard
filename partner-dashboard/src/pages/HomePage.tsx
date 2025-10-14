@@ -16,20 +16,84 @@ const CategoryCard = styled(motion.div)`
   height: 100%;
   display: flex;
   flex-direction: column;
+  width: 100%;
+  max-width: 100%;
+  margin: 0 auto;
+
+  /* Enhanced category cards in vibrant mode */
+  [data-theme="color"] & {
+    position: relative;
+
+    /* Add vibrant glow effect on hover */
+    &:hover {
+      filter: drop-shadow(0 15px 40px rgba(255, 69, 0, 0.4))
+              drop-shadow(0 10px 35px rgba(255, 0, 110, 0.3))
+              drop-shadow(0 8px 30px rgba(0, 212, 255, 0.2));
+    }
+
+    /* Make the card wrapper vibrant */
+    > a > div {
+      background: linear-gradient(135deg, #fff5e1 0%, #ffe4f1 50%, #e8f4ff 100%) !important;
+      border: 3px solid transparent;
+      position: relative;
+      overflow: visible;
+
+      &::before {
+        content: '';
+        position: absolute;
+        inset: -3px;
+        border-radius: 2rem;
+        padding: 3px;
+        background: linear-gradient(135deg, #ff4500 0%, #ff006e 50%, #00d4ff 100%);
+        -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+        -webkit-mask-composite: xor;
+        mask-composite: exclude;
+        pointer-events: none;
+        z-index: -1;
+      }
+    }
+  }
+
+  @media (max-width: 768px) {
+    max-width: 400px;
+  }
 `;
 
 const CategoryImageContainer = styled.div<{ $imageUrl?: string }>`
   width: 100%;
   height: 200px;
-  background: ${props => props.$imageUrl ? `url(${props.$imageUrl})` : '#f3f4f6'};
+  background: ${props => props.$imageUrl ? `url(${props.$imageUrl})` : 'var(--color-background-secondary)'};
   background-size: cover;
   background-position: center;
   overflow: hidden;
-  transition: all 300ms;
+  transition: all 400ms cubic-bezier(0.4, 0, 0.2, 1);
   border-radius: 0.75rem 0.75rem 0 0;
+  position: relative;
+
+  /* Vibrant mode overlay */
+  [data-theme="color"] & {
+    &::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(
+        135deg,
+        rgba(255, 69, 0, 0.15) 0%,
+        rgba(255, 0, 110, 0.15) 50%,
+        rgba(0, 212, 255, 0.15) 100%
+      );
+      opacity: 0;
+      transition: opacity 400ms cubic-bezier(0.4, 0, 0.2, 1);
+      pointer-events: none;
+    }
+  }
 
   ${CategoryCard}:hover & {
-    transform: scale(1.05);
+    transform: scale(1.08);
+
+    [data-theme="color"] &::after {
+      opacity: 1;
+    }
   }
 `;
 
@@ -39,9 +103,90 @@ const CategoryContent = styled.div`
   display: flex;
   flex-direction: column;
   text-align: center;
+  position: relative;
+  z-index: 1;
+
+  /* Enhanced text in vibrant mode */
+  [data-theme="color"] & {
+    h3 {
+      color: #1a0a2e !important;
+      font-weight: 700 !important;
+    }
+
+    p {
+      color: #6a0572 !important;
+    }
+
+    /* "XX places" count styling */
+    div {
+      color: #8b2fb8 !important;
+      font-weight: 600 !important;
+      opacity: 1 !important;
+    }
+  }
 
   @media (max-width: 768px) {
     padding: 1.5rem;
+  }
+`;
+
+const StepCircle = styled.div`
+  width: 4rem;
+  height: 4rem;
+  border-radius: 9999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin: 0 auto 1.5rem;
+  background: var(--color-primary);
+  color: var(--color-secondary);
+
+  /* Vibrant mode - gradient circle */
+  [data-theme="color"] & {
+    background: linear-gradient(135deg, #ff4500 0%, #ff006e 50%, #b24bf3 100%);
+    color: #ffffff;
+    box-shadow:
+      0 8px 30px -5px rgba(255, 69, 0, 0.5),
+      0 6px 25px -5px rgba(255, 0, 110, 0.4);
+  }
+`;
+
+const CTABox = styled(motion.div)`
+  max-width: 64rem;
+  margin: 0 auto;
+  text-align: center;
+  border-radius: 1.5rem;
+  padding: 3rem 4rem;
+  background: var(--color-primary);
+  color: var(--color-secondary);
+
+  /* Vibrant mode - explosive gradient CTA */
+  [data-theme="color"] & {
+    background: linear-gradient(135deg, #1a0a2e 0%, #6a0572 25%, #ab2567 50%, #ff006e 75%, #ff4500 100%);
+    background-size: 200% 200%;
+    animation: ctaGradientShift 8s ease infinite;
+    color: #ffffff;
+    border: 3px solid transparent;
+    border-image: linear-gradient(90deg, #ff4500, #ff006e, #00d4ff, #b24bf3) 1;
+    box-shadow:
+      0 25px 70px -15px rgba(255, 69, 0, 0.6),
+      0 20px 60px -10px rgba(255, 0, 110, 0.5),
+      0 15px 50px -5px rgba(139, 47, 184, 0.4);
+  }
+
+  @keyframes ctaGradientShift {
+    0%, 100% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+  }
+
+  @media (max-width: 768px) {
+    padding: 2.5rem 2rem;
+  }
+
+  @media (max-width: 640px) {
+    padding: 2rem 1.5rem;
   }
 `;
 
@@ -54,6 +199,9 @@ const HomePage: React.FC = () => {
   // Fetch top offers from API
   const { data: topOffersData, isLoading: isLoadingOffers } = useTopOffers(6);
   const topOffers = topOffersData || [];
+  console.log('HomePage: topOffersData =', topOffersData);
+  console.log('HomePage: topOffers =', topOffers);
+  console.log('HomePage: topOffers.length =', topOffers.length);
 
   const [offersRef, offersInView] = useInView({
     threshold: 0.1,
@@ -102,25 +250,24 @@ const HomePage: React.FC = () => {
   ];
 
   return (
-    <div className="bg-white">
+    <div>
       {/* Hero Section with Blast Video */}
       <HeroBlast language={language} />
 
       {/* Top Offers Carousel */}
-      <section ref={offersRef} className="section bg-white">
+      <section ref={offersRef} className="section">
         <div className="container-custom">
           <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            animate={offersInView ? { opacity: 1, y: 0 } : {}}
+            initial={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6 }}
             className="mb-12"
           >
             <div className="flex items-center justify-between mb-4">
               <div>
-                <h2 className="text-4xl md:text-5xl font-bold text-gray-900 mb-2">
+                <h2 className="text-4xl md:text-5xl font-bold mb-2" style={{ color: 'var(--color-text-primary)' }}>
                   {t('home.topOffers')}
                 </h2>
-                <p className="text-xl text-gray-600">
+                <p className="text-xl" style={{ color: 'var(--color-text-secondary)' }}>
                   {t('home.topOffersSubtitle')}
                 </p>
               </div>
@@ -133,21 +280,20 @@ const HomePage: React.FC = () => {
           </motion.div>
 
           <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            animate={offersInView ? { opacity: 1, y: 0 } : {}}
-            transition={{ duration: 0.6, delay: 0.2 }}
+            initial={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6 }}
           >
             {isLoadingOffers ? (
               <div className="text-center py-12">
-                <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900"></div>
-                <p className="mt-4 text-gray-600">Loading top offers...</p>
+                <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2" style={{ borderColor: 'var(--color-primary)' }}></div>
+                <p className="mt-4" style={{ color: 'var(--color-text-secondary)' }}>Loading top offers...</p>
               </div>
             ) : topOffers.length === 0 ? (
-              <div className="text-center py-12 bg-gray-50 rounded-lg">
-                <p className="text-xl text-gray-600 mb-4">
+              <div className="text-center py-12 rounded-lg" style={{ background: 'var(--color-background-secondary)' }}>
+                <p className="text-xl mb-4" style={{ color: 'var(--color-text-secondary)' }}>
                   {language === 'bg' ? 'Няма налични оферти в момента' : 'No offers available at the moment'}
                 </p>
-                <p className="text-sm text-gray-500">
+                <p className="text-sm" style={{ color: 'var(--color-text-secondary)', opacity: 0.7 }}>
                   {language === 'bg'
                     ? 'Офертите ще се зареждат от API сървъра. Моля, уверете се, че има създадени оферти в базата данни.'
                     : 'Offers will be loaded from the API server. Please make sure there are offers created in the database.'}
@@ -160,7 +306,7 @@ const HomePage: React.FC = () => {
                 itemsToShow={{ mobile: 1, tablet: 2, desktop: 3 }}
               >
                 {topOffers.map((offer) => (
-                  <OfferCard key={offer.id} offer={offer} language={language} />
+                  <OfferCard key={offer.id} offer={offer} />
                 ))}
               </Carousel>
             )}
@@ -177,7 +323,7 @@ const HomePage: React.FC = () => {
       </section>
 
       {/* Categories Section */}
-      <section ref={categoriesRef} className="section bg-gradient-to-b from-white to-gray-50">
+      <section ref={categoriesRef} className="section" style={{ background: 'var(--color-background-secondary)' }}>
         <div className="container-custom">
           <motion.div
             initial={{ opacity: 0, y: 30 }}
@@ -185,10 +331,10 @@ const HomePage: React.FC = () => {
             transition={{ duration: 0.6 }}
             className="text-center mb-16"
           >
-            <h2 className="text-4xl md:text-5xl font-bold text-gray-900 mb-4">
+            <h2 className="text-4xl md:text-5xl font-bold mb-4" style={{ color: 'var(--color-text-primary)' }}>
               {t('home.categories')}
             </h2>
-            <p className="text-xl text-gray-600 max-w-2xl mx-auto">
+            <p className="text-xl max-w-2xl mx-auto" style={{ color: 'var(--color-text-secondary)' }}>
               {t('home.categoriesSubtitle')}
             </p>
           </motion.div>
@@ -201,17 +347,17 @@ const HomePage: React.FC = () => {
                 animate={categoriesInView ? { opacity: 1, y: 0 } : {}}
                 transition={{ duration: 0.6, delay: index * 0.1 }}
               >
-                <Link to={category.path} style={{ textDecoration: 'none', height: '100%', display: 'flex' }}>
-                  <Card>
+                <Link to={category.path} style={{ textDecoration: 'none', height: '100%', display: 'flex', flexDirection: 'column' }}>
+                  <Card style={{ height: '100%', display: 'flex', flexDirection: 'column', padding: 0, overflow: 'hidden' }}>
                     <CategoryImageContainer $imageUrl={category.icon} />
                     <CategoryContent>
-                      <h3 className="text-xl font-semibold mb-2 text-gray-900">
+                      <h3 className="text-xl font-semibold mb-2" style={{ color: 'var(--color-text-primary)' }}>
                         {category.title}
                       </h3>
-                      <p className="text-gray-600 mb-4 text-sm leading-relaxed">
+                      <p className="mb-4 text-sm leading-relaxed" style={{ color: 'var(--color-text-secondary)' }}>
                         {category.description}
                       </p>
-                      <div className="text-sm font-medium text-gray-500 mt-auto">
+                      <div className="text-sm font-medium mt-auto" style={{ color: 'var(--color-text-secondary)', opacity: 0.7 }}>
                         {category.count} {t('home.places')}
                       </div>
                     </CategoryContent>
@@ -224,13 +370,13 @@ const HomePage: React.FC = () => {
       </section>
 
       {/* How It Works Section */}
-      <section className="section bg-white">
+      <section className="section">
         <div className="container-custom">
           <div className="text-center mb-16">
-            <h2 className="text-4xl md:text-5xl font-bold text-gray-900 mb-4">
+            <h2 className="text-4xl md:text-5xl font-bold mb-4" style={{ color: 'var(--color-text-primary)' }}>
               {t('home.howItWorks')}
             </h2>
-            <p className="text-xl text-gray-600 max-w-2xl mx-auto">
+            <p className="text-xl max-w-2xl mx-auto" style={{ color: 'var(--color-text-secondary)' }}>
               {t('home.howItWorksSubtitle')}
             </p>
           </div>
@@ -254,13 +400,13 @@ const HomePage: React.FC = () => {
               }
             ].map((item, index) => (
               <div key={index} className="text-center">
-                <div className="w-16 h-16 bg-black text-white rounded-full flex items-center justify-center text-2xl font-bold mx-auto mb-6">
+                <StepCircle>
                   {item.step}
-                </div>
-                <h3 className="text-xl font-semibold mb-3 text-gray-900">
+                </StepCircle>
+                <h3 className="text-xl font-semibold mb-3" style={{ color: 'var(--color-text-primary)' }}>
                   {t(`home.${item.title}`)}
                 </h3>
-                <p className="text-gray-600 leading-relaxed">
+                <p className="leading-relaxed" style={{ color: 'var(--color-text-secondary)' }}>
                   {t(`home.${item.desc}`)}
                 </p>
               </div>
@@ -270,13 +416,12 @@ const HomePage: React.FC = () => {
       </section>
 
       {/* CTA Section */}
-      <section ref={benefitsRef} className="section bg-gradient-to-b from-white to-gray-50">
+      <section ref={benefitsRef} className="section" style={{ background: 'var(--color-background-secondary)' }}>
         <div className="container-custom">
-          <motion.div
+          <CTABox
             initial={{ opacity: 0, y: 30 }}
             animate={benefitsInView ? { opacity: 1, y: 0 } : {}}
             transition={{ duration: 0.6 }}
-            className="max-w-4xl mx-auto text-center bg-black text-white rounded-3xl p-12 md:p-16"
           >
             <h2 className="text-4xl md:text-5xl font-bold mb-6">
               {t('home.readyToSave')}
@@ -296,7 +441,7 @@ const HomePage: React.FC = () => {
                 </Button>
               </Link>
             </div>
-          </motion.div>
+          </CTABox>
         </div>
       </section>
     </div>

@@ -1,0 +1,28 @@
+## Header Dark Mode Icon Fix
+
+Replace hardcoded colors with CSS variables or add [data-theme="dark"] overrides:
+
+### FavoritesLink (line 22, 31)
+- Line 22: `color: #374151;` → `color: var(--color-text-secondary);`
+- Line 31: `color: #111827;` → `color: var(--color-text-primary);`
+- Line 30: `background: #f3f4f6;` → `background: var(--color-background-secondary);`
+
+### MobileFavoritesLink (line 58)
+- Line 58: `color: #111827;` → `color: var(--color-text-primary);`
+- Line 57: `background: #f9fafb;` → `background: var(--color-background-secondary);`
+- Line 63: `background: #f3f4f6;` → `background: var(--color-border);`
+
+### UserName (line 165) - ALREADY FIXED BY USER
+
+### UserMenuItem (line 242, 250)
+- Line 242: `color: #374151;` → `color: var(--color-text-secondary);`
+- Line 250: `color: #111827;` → `color: var(--color-text-primary);`
+- Line 249: `background: #f9fafb;` → `background: var(--color-background-secondary);`
+
+### ThemeButton (line 305, 311)
+- Line 305: `color: #374151;` → `color: var(--color-text-secondary);`
+- Line 311: `color: #111827;` → `color: var(--color-text-primary);`
+- Line 310: `background: #f3f4f6;` → `background: var(--color-background-secondary);`
+
+### ThemeOption (line 361)
+- Update to use CSS variables for both states

@@ -12,6 +12,10 @@ const PageContainer = styled.div`
   justify-content: center;
   padding: 2rem 1rem;
   background: linear-gradient(135deg, #f9fafb 0%, #f3f4f6 100%);
+
+  [data-theme="dark"] & {
+    background: linear-gradient(135deg, #0a0a0a 0%, #111827 100%);
+  }
 `;
 
 const Content = styled(motion.div)`
@@ -41,6 +45,10 @@ const Title = styled(motion.h2)`
   color: #111827;
   margin-bottom: 1rem;
 
+  [data-theme="dark"] & {
+    color: #f9fafb;
+  }
+
   @media (max-width: 640px) {
     font-size: 1.5rem;
   }
@@ -51,6 +59,10 @@ const Description = styled(motion.p)`
   color: #6b7280;
   margin-bottom: 2.5rem;
   line-height: 1.6;
+
+  [data-theme="dark"] & {
+    color: #9ca3af;
+  }
 
   @media (max-width: 640px) {
     font-size: 1rem;
@@ -84,6 +96,10 @@ const SuggestedLinks = styled(motion.div)`
   margin-top: 3rem;
   padding-top: 2rem;
   border-top: 1px solid #e5e7eb;
+
+  [data-theme="dark"] & {
+    border-top-color: #374151;
+  }
 `;
 
 const SuggestedTitle = styled.p`
@@ -93,6 +109,10 @@ const SuggestedTitle = styled.p`
   text-transform: uppercase;
   letter-spacing: 0.05em;
   margin-bottom: 1rem;
+
+  [data-theme="dark"] & {
+    color: #9ca3af;
+  }
 `;
 
 const LinksList = styled.div`
@@ -112,8 +132,16 @@ const SuggestedLink = styled(Link)`
   align-items: center;
   gap: 0.5rem;
 
+  [data-theme="dark"] & {
+    color: #d1d5db;
+  }
+
   &:hover {
     color: #6b7280;
+
+    [data-theme="dark"] & {
+      color: #60a5fa;
+    }
   }
 
   svg {

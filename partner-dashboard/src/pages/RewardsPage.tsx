@@ -697,6 +697,11 @@ const TierCard = styled(motion.div)`
   border-radius: 1.5rem;
   padding: 2rem;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+
+  [data-theme="dark"] & {
+    background: #1f2937;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
+  }
 `;
 
 const TierHeader = styled.div`
@@ -778,9 +783,18 @@ const EarnCard = styled(motion.div)`
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
   transition: all 0.2s;
 
+  [data-theme="dark"] & {
+    background: #1f2937;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  }
+
   &:hover {
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
     transform: translateY(-2px);
+
+    [data-theme="dark"] & {
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+    }
   }
 `;
 
@@ -830,6 +844,14 @@ const RewardCard = styled(motion.div)<{ locked?: boolean }>`
   flex-direction: column;
   height: 100%;
 
+  [data-theme="dark"] & {
+    background: #1f2937;
+    box-shadow:
+      0 1px 3px rgba(0, 0, 0, 0.3),
+      0 4px 12px rgba(0, 0, 0, 0.2),
+      0 0 0 1px rgba(0, 0, 0, 0.1);
+  }
+
   &::before {
     content: '';
     position: absolute;
@@ -853,6 +875,13 @@ const RewardCard = styled(motion.div)<{ locked?: boolean }>`
       0 16px 48px rgba(0, 0, 0, 0.06),
       0 0 0 1px rgba(99, 102, 241, 0.1);
     transform: translateY(-8px) scale(1.02);
+
+    [data-theme="dark"] & {
+      box-shadow:
+        0 8px 24px rgba(0, 0, 0, 0.4),
+        0 16px 48px rgba(0, 0, 0, 0.3),
+        0 0 0 1px rgba(99, 102, 241, 0.2);
+    }
 
     &::before {
       opacity: 1;
@@ -1005,6 +1034,11 @@ const HistoryList = styled.div`
   border-radius: 1rem;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
   overflow: hidden;
+
+  [data-theme="dark"] & {
+    background: #1f2937;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  }
 `;
 
 const HistoryItem = styled(motion.div)`
@@ -1078,6 +1112,11 @@ const EmptyState = styled.div`
   background: white;
   border-radius: 1rem;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+
+  [data-theme="dark"] & {
+    background: #1f2937;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  }
 `;
 
 const EmptyIcon = styled.div`

@@ -41,12 +41,14 @@ export function useIntegration(integrationId: string) {
 
 /**
  * Get partner's connected integrations
+ * @param enabled - Whether to enable the query (default: true). Set to false if user is not authenticated.
  */
-export function usePartnerIntegrations() {
+export function usePartnerIntegrations(enabled = true) {
   return useQuery({
     queryKey: ['integrations', 'connected'],
     queryFn: () => integrationsService.getPartnerIntegrations(),
     staleTime: 2 * 60 * 1000, // 2 minutes
+    enabled,
   });
 }
 
@@ -168,12 +170,14 @@ export function useSyncIntegration() {
 
 /**
  * Get integration statistics
+ * @param enabled - Whether to enable the query (default: true). Set to false if user is not authenticated.
  */
-export function useIntegrationStats() {
+export function useIntegrationStats(enabled = true) {
   return useQuery({
     queryKey: ['integrations', 'stats'],
     queryFn: () => integrationsService.getIntegrationStats(),
     staleTime: 5 * 60 * 1000, // 5 minutes
+    enabled,
   });
 }
 
@@ -203,17 +207,19 @@ export function useSearchIntegrations(query: string) {
 /**
  * Combined hook for integrations page
  * Returns both available and connected integrations with loading states
+ * @param category - Optional category filter
+ * @param isAuthenticated - Whether the user is authenticated (determines if connected integrations should be fetched)
  */
-export function useIntegrationsOverview(category?: string) {
+export function useIntegrationsOverview(category?: string, isAuthenticated = false) {
   const availableQuery = useAvailableIntegrations(category);
-  const connectedQuery = usePartnerIntegrations();
-  const statsQuery = useIntegrationStats();
+  const connectedQuery = usePartnerIntegrations(isAuthenticated);
+  const statsQuery = useIntegrationStats(isAuthenticated);
 
   return {
     available: availableQuery.data || [],
     connected: connectedQuery.data || [],
     stats: statsQuery.data,
-    isLoading: availableQuery.isLoading || connectedQuery.isLoading || statsQuery.isLoading,
-    isError: availableQuery.isError || connectedQuery.isError || statsQuery.isError,
+    isLoading: availableQuery.isLoading || (isAuthenticated && (connectedQuery.isLoading || statsQuery.isLoading)),
+    isError: availableQuery.isError || (isAuthenticated && (connectedQuery.isError || statsQuery.isError)),
   };
 }

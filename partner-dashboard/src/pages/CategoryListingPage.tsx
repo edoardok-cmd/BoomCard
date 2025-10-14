@@ -9,12 +9,31 @@ import Button from '../components/common/Button/Button';
 import Loading from '../components/common/Loading/Loading';
 
 const PageContainer = styled.div`
+
+  [data-theme="dark"] & {
+    background: #0a0a0a;
+  }
   min-height: 100vh;
   background: #f9fafb;
 `;
 
 const Hero = styled.div`
   background: linear-gradient(135deg, #000000 0%, #1f2937 100%);
+
+  /* Vibrant mode - explosive gradient hero */
+  [data-theme="color"] & {
+    background: linear-gradient(135deg, #1a0a2e 0%, #6a0572 25%, #ab2567 50%, #ff006e 75%, #ff4500 100%);
+    background-size: 200% 200%;
+    animation: heroGradientFlow 10s ease infinite;
+    box-shadow:
+      inset 0 -8px 40px -10px rgba(255, 69, 0, 0.3),
+      inset 0 -4px 30px -10px rgba(255, 0, 110, 0.2);
+  }
+
+  @keyframes heroGradientFlow {
+    0%, 100% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+  }
   color: white;
   padding: 4rem 0 3rem;
 
@@ -358,7 +377,7 @@ const CategoryListingPage: React.FC = () => {
     // Filter by rating
     if (filters.rating && filters.rating.length > 0) {
       const minRating = Math.min(...filters.rating.map(r => parseFloat(r)));
-      filtered = filtered.filter(offer => offer.rating >= minRating);
+      filtered = filtered.filter(offer => (offer.rating || 0) >= minRating);
     }
 
     setFilteredOffers(filtered);
@@ -369,7 +388,7 @@ const CategoryListingPage: React.FC = () => {
     const newSortBy = e.target.value;
     setSortBy(newSortBy);
 
-    let sorted = [...filteredOffers];
+    const sorted = [...filteredOffers];
 
     switch(newSortBy) {
       case 'discount-high':
@@ -385,10 +404,10 @@ const CategoryListingPage: React.FC = () => {
         sorted.sort((a, b) => a.discountedPrice - b.discountedPrice);
         break;
       case 'rating':
-        sorted.sort((a, b) => b.rating - a.rating);
+        sorted.sort((a, b) => (b.rating || 0) - (a.rating || 0));
         break;
       case 'popular':
-        sorted.sort((a, b) => b.reviewCount - a.reviewCount);
+        sorted.sort((a, b) => (b.reviewCount || 0) - (a.reviewCount || 0));
         break;
       default: // 'relevance'
         // Keep original order
@@ -500,7 +519,7 @@ const CategoryListingPage: React.FC = () => {
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ duration: 0.4, delay: index * 0.05 }}
                     >
-                      <OfferCard offer={offer} language={language} />
+                      <OfferCard offer={offer} />
                     </motion.div>
                   ))}
                 </OffersGrid>

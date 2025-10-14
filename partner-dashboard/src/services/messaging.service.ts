@@ -209,9 +209,9 @@ class MessagingService {
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 5;
   private reconnectDelay = 1000;
-  private messageListeners: Map<string, Function[]> = new Map();
-  private typingListeners: Function[] = [];
-  private statusListeners: Function[] = [];
+  private messageListeners: Map<string, ((message: Message) => void)[]> = new Map();
+  private typingListeners: ((data: { conversationId: string; userId: string; isTyping: boolean }) => void)[] = [];
+  private statusListeners: ((status: 'connected' | 'disconnected') => void)[] = [];
 
   /**
    * Connect to WebSocket for real-time messaging

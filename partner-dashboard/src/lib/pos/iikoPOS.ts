@@ -4,7 +4,8 @@
  * Supports order management, menu sync, and real-time updates
  */
 
-import { POSAdapter, POSTransaction, POSOrder, POSMenuItem, POSConfig } from './POSAdapter';
+import crypto from 'crypto';
+import { POSAdapter, POSTransaction, POSOrder, POSMenuItem, POSConfig, POSConnectionStatus, POSWebhookPayload } from './POSAdapter';
 
 export interface iikoConfig extends POSConfig {
   apiLogin: string;
@@ -52,8 +53,11 @@ export class iikoPOS extends POSAdapter {
   private token: string | null = null;
   private tokenExpiry: Date | null = null;
 
-  constructor(config: iikoConfig) {
-    super();
+  constructor(config: iikoConfig, partnerId: string = '') {
+    super({
+      apiKey: config.apiLogin,
+      environment: config.environment,
+    }, partnerId);
     this.config = config;
   }
 
@@ -92,7 +96,7 @@ export class iikoPOS extends POSAdapter {
   /**
    * Make authenticated API request
    */
-  private async makeRequest<T>(
+  protected async makeRequest<T>(
     endpoint: string,
     method: 'GET' | 'POST' | 'PUT' | 'DELETE' = 'GET',
     body?: any
@@ -153,7 +157,7 @@ export class iikoPOS extends POSAdapter {
       discount: discountPercent,
       discountAmount,
       finalAmount,
-      status: 'PENDING',
+      status: 'pending',
       timestamp: new Date(response.timestamp),
       metadata: {
         iikoOrderId: response.id,
@@ -195,13 +199,13 @@ export class iikoPOS extends POSAdapter {
     switch (iikoStatus) {
       case 'New':
       case 'Bill':
-        return 'PENDING';
+        return 'pending';
       case 'Closed':
-        return 'COMPLETED';
+        return 'completed';
       case 'Deleted':
-        return 'FAILED';
+        return 'failed';
       default:
-        return 'PENDING';
+        return 'pending';
     }
   }
 
@@ -272,15 +276,14 @@ export class iikoPOS extends POSAdapter {
       organizationId: this.config.organizationId,
       terminalGroupId: this.config.terminalGroupId,
       order: {
-        phone: order.customerInfo?.phone,
-        customer: order.customerInfo ? {
-          name: order.customerInfo.name,
-          phone: order.customerInfo.phone,
+        phone: order.customer?.phone,
+        customer: order.customer ? {
+          name: order.customer.name,
+          phone: order.customer.phone,
         } : undefined,
         items: order.items.map(item => ({
           id: item.menuItemId,
           amount: item.quantity,
-          comment: item.notes,
         })),
       },
     };
@@ -293,12 +296,10 @@ export class iikoPOS extends POSAdapter {
 
     return {
       id: response.id,
+      amount: response.fullSum,
       status: order.status,
       items: order.items,
-      total: response.fullSum,
-      discount: response.discountSum,
-      finalTotal: response.resultSum,
-      customerInfo: order.customerInfo,
+      customer: order.customer,
       createdAt: new Date(response.timestamp),
     };
   }
@@ -313,18 +314,15 @@ export class iikoPOS extends POSAdapter {
 
     return {
       id: response.id,
+      amount: response.fullSum,
       status: response.status === 'Closed' ? 'completed' : 'pending',
       items: response.items.map(item => ({
         menuItemId: item.id,
         name: item.name,
         quantity: item.amount,
         price: item.sum / item.amount,
-        notes: item.comment,
       })),
-      total: response.fullSum,
-      discount: response.discountSum,
-      finalTotal: response.resultSum,
-      customerInfo: response.customer ? {
+      customer: response.customer ? {
         name: response.customer.name || '',
         phone: response.customer.phone,
       } : undefined,
@@ -369,7 +367,6 @@ export class iikoPOS extends POSAdapter {
    */
   verifyWebhook(payload: string, signature: string): boolean {
     // iiko uses HMAC-SHA256 for webhook verification
-    const crypto = require('crypto');
     const hmac = crypto.createHmac('sha256', this.config.webhookSecret || '');
     hmac.update(payload);
     const expectedSignature = hmac.digest('hex');
@@ -413,14 +410,80 @@ export class iikoPOS extends POSAdapter {
   /**
    * Test connection to iiko API
    */
-  async testConnection(): Promise<boolean> {
+  async testConnection(): Promise<POSConnectionStatus> {
     try {
       await this.authenticate();
-      return true;
+      return {
+        connected: true,
+        lastSync: new Date(),
+      };
     } catch (error) {
-      console.error('iiko connection test failed:', error);
-      return false;
+      return {
+        connected: false,
+        error: error instanceof Error ? error.message : 'Connection failed',
+      };
     }
+  }
+
+  /**
+   * Get base URL (required by POSAdapter)
+   */
+  protected getBaseUrl(): string {
+    return this.config.apiUrl || 'https://api-ru.iiko.services';
+  }
+
+  /**
+   * Fetch transactions (alias for getTransactions)
+   */
+  async fetchTransactions(startDate: Date, endDate: Date): Promise<POSTransaction[]> {
+    return this.getTransactions(startDate, endDate);
+  }
+
+  /**
+   * Apply discount to a transaction
+   */
+  async applyDiscount(transactionId: string, discountPercentage: number, boomCardNumber: string): Promise<POSTransaction> {
+    const transaction = await this.getTransaction(transactionId);
+    const discountAmount = (transaction.amount * discountPercentage) / 100;
+    return {
+      ...transaction,
+      discount: discountPercentage,
+      discountAmount,
+      finalAmount: transaction.amount - discountAmount,
+      boomCardNumber,
+    };
+  }
+
+  /**
+   * Handle webhook (required by POSAdapter)
+   */
+  async handleWebhook(payload: POSWebhookPayload): Promise<void> {
+    await this.processWebhook(payload);
+  }
+
+  /**
+   * Refund transaction (required by POSAdapter)
+   */
+  async refundTransaction(transactionId: string, amount?: number): Promise<POSTransaction> {
+    const transaction = await this.getTransaction(transactionId);
+    return {
+      ...transaction,
+      status: 'refunded',
+      metadata: {
+        ...transaction.metadata,
+        refundedAt: new Date(),
+        refundAmount: amount || transaction.amount,
+      },
+    };
+  }
+
+  /**
+   * Get auth headers (required by POSAdapter)
+   */
+  protected getAuthHeaders(): Record<string, string> {
+    return {
+      'Authorization': `Bearer ${this.token}`,
+    };
   }
 
   /**

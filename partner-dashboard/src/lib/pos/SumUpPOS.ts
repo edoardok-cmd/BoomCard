@@ -4,7 +4,8 @@
  * Popular mobile POS solution in Europe
  */
 
-import { POSAdapter, POSTransaction, POSOrder, POSMenuItem, POSConfig } from './POSAdapter';
+import crypto from 'crypto';
+import { POSAdapter, POSTransaction, POSOrder, POSMenuItem, POSConfig, POSConnectionStatus, POSWebhookPayload } from './POSAdapter';
 
 export interface SumUpConfig extends POSConfig {
   clientId: string;
@@ -54,8 +55,12 @@ export class SumUpPOS extends POSAdapter {
   private baseURL: string;
   private tokenExpiry: Date | null = null;
 
-  constructor(config: SumUpConfig) {
-    super();
+  constructor(config: SumUpConfig, partnerId: string = '') {
+    super({
+      apiKey: config.clientId,
+      apiSecret: config.clientSecret,
+      environment: config.environment,
+    }, partnerId);
     this.config = config;
     this.baseURL = config.environment === 'production'
       ? 'https://api.sumup.com/v0.1'
@@ -113,7 +118,7 @@ export class SumUpPOS extends POSAdapter {
   /**
    * Make authenticated API request
    */
-  private async makeRequest<T>(
+  protected async makeRequest<T>(
     endpoint: string,
     method: 'GET' | 'POST' | 'PUT' | 'DELETE' = 'GET',
     body?: any
@@ -210,14 +215,14 @@ export class SumUpPOS extends POSAdapter {
   private mapSumUpStatus(sumUpStatus: SumUpCheckout['status']): POSTransaction['status'] {
     switch (sumUpStatus) {
       case 'PENDING':
-        return 'PENDING';
+        return 'pending';
       case 'PAID':
-        return 'COMPLETED';
+        return 'completed';
       case 'FAILED':
       case 'CANCELLED':
-        return 'FAILED';
+        return 'failed';
       default:
-        return 'PENDING';
+        return 'pending';
     }
   }
 
@@ -231,7 +236,7 @@ export class SumUpPOS extends POSAdapter {
   /**
    * Refund a transaction
    */
-  async refundTransaction(transactionId: string, amount?: number): Promise<void> {
+  async refundTransaction(transactionId: string, amount?: number): Promise<POSTransaction> {
     const refundData = amount ? { amount: amount / 100 } : {};
 
     await this.makeRequest(
@@ -239,6 +244,12 @@ export class SumUpPOS extends POSAdapter {
       'POST',
       refundData
     );
+
+    const transaction = await this.getTransaction(transactionId);
+    return {
+      ...transaction,
+      status: 'refunded',
+    };
   }
 
   /**
@@ -267,7 +278,7 @@ export class SumUpPOS extends POSAdapter {
       discount: 0,
       discountAmount: 0,
       finalAmount: tx.amount * 100,
-      status: tx.status === 'SUCCESSFUL' ? 'COMPLETED' : 'FAILED',
+      status: tx.status === 'SUCCESSFUL' ? 'completed' : 'failed',
       timestamp: new Date(tx.timestamp),
       metadata: {
         transactionCode: tx.transaction_code,
@@ -313,7 +324,6 @@ export class SumUpPOS extends POSAdapter {
    */
   verifyWebhook(payload: string, signature: string): boolean {
     // SumUp uses HMAC-SHA256 for webhook verification
-    const crypto = require('crypto');
     const hmac = crypto.createHmac('sha256', this.config.webhookSecret || '');
     hmac.update(payload);
     const expectedSignature = hmac.digest('hex');
@@ -365,16 +375,66 @@ export class SumUpPOS extends POSAdapter {
   /**
    * Test connection to SumUp
    */
-  async testConnection(): Promise<boolean> {
+  async testConnection(): Promise<POSConnectionStatus> {
     try {
       await this.authenticate();
       // Test by getting merchant profile
       await this.makeRequest('/me');
-      return true;
+      return {
+        connected: true,
+        lastSync: new Date(),
+      };
     } catch (error) {
-      console.error('SumUp connection test failed:', error);
-      return false;
+      return {
+        connected: false,
+        error: error instanceof Error ? error.message : 'Connection failed',
+      };
     }
+  }
+
+  /**
+   * Get base URL (required by POSAdapter)
+   */
+  protected getBaseUrl(): string {
+    return this.baseURL;
+  }
+
+  /**
+   * Fetch transactions (alias for getTransactions)
+   */
+  async fetchTransactions(startDate: Date, endDate: Date): Promise<POSTransaction[]> {
+    return this.getTransactions(startDate, endDate);
+  }
+
+  /**
+   * Apply discount to a transaction
+   */
+  async applyDiscount(transactionId: string, discountPercentage: number, boomCardNumber: string): Promise<POSTransaction> {
+    const transaction = await this.getTransaction(transactionId);
+    const discountAmount = (transaction.amount * discountPercentage) / 100;
+    return {
+      ...transaction,
+      discount: discountPercentage,
+      discountAmount,
+      finalAmount: transaction.amount - discountAmount,
+      boomCardNumber,
+    };
+  }
+
+  /**
+   * Handle webhook (required by POSAdapter)
+   */
+  async handleWebhook(payload: POSWebhookPayload): Promise<void> {
+    console.log('SumUp webhook received:', payload);
+  }
+
+  /**
+   * Get auth headers (required by POSAdapter)
+   */
+  protected getAuthHeaders(): Record<string, string> {
+    return {
+      'Authorization': `Bearer ${this.config.accessToken}`,
+    };
   }
 
   /**

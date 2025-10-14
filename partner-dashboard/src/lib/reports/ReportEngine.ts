@@ -112,10 +112,11 @@ export class ReportEngine {
         startDate = new Date(now.getFullYear(), now.getMonth(), 1);
         break;
 
-      case 'quarter':
+      case 'quarter': {
         const quarter = Math.floor(now.getMonth() / 3);
         startDate = new Date(now.getFullYear(), quarter * 3, 1);
         break;
+      }
 
       case 'year':
         startDate = new Date(now.getFullYear(), 0, 1);
@@ -175,16 +176,18 @@ export class ReportEngine {
           key = new Date(item.date || item.createdAt).toISOString().split('T')[0];
           break;
 
-        case 'week':
+        case 'week': {
           const date = new Date(item.date || item.createdAt);
           const weekStart = new Date(date.getFullYear(), date.getMonth(), date.getDate() - date.getDay());
           key = weekStart.toISOString().split('T')[0];
           break;
+        }
 
-        case 'month':
+        case 'month': {
           const monthDate = new Date(item.date || item.createdAt);
           key = `${monthDate.getFullYear()}-${String(monthDate.getMonth() + 1).padStart(2, '0')}`;
           break;
+        }
 
         case 'venue':
           key = item.venueId || item.venueName || 'Unknown';
@@ -247,9 +250,10 @@ export class ReportEngine {
     const filename = this.getFilename(type, options.format, options.period);
 
     if (type === 'transactions') {
+      const { startDate, endDate } = this.getDateRange(options.period, options.startDate, options.endDate);
       const reportData: TransactionReportData = {
         title: 'Transaction Report',
-        dateRange: this.getDateRange(options.period, options.startDate, options.endDate),
+        dateRange: { from: startDate, to: endDate },
         transactions: data.map(t => ({
           id: t.id,
           date: new Date(t.date),
@@ -337,7 +341,7 @@ export class ReportEngine {
   ): ReportResult {
     // For Excel, use a library like xlsx
     // For now, generate CSV with .xlsx extension
-    const filename = this.getFilename(type, 'xlsx', options.period);
+    const filename = this.getFilename(type, 'excel', options.period);
 
     CSVExporter.download(data, {
       filename,

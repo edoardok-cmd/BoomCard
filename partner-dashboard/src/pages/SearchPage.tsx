@@ -14,6 +14,21 @@ const PageContainer = styled.div`
 
 const Hero = styled.div`
   background: linear-gradient(135deg, #000000 0%, #1f2937 100%);
+
+  /* Vibrant mode - explosive gradient hero */
+  [data-theme="color"] & {
+    background: linear-gradient(135deg, #1a0a2e 0%, #6a0572 25%, #ab2567 50%, #ff006e 75%, #ff4500 100%);
+    background-size: 200% 200%;
+    animation: heroGradientFlow 10s ease infinite;
+    box-shadow:
+      inset 0 -8px 40px -10px rgba(255, 69, 0, 0.3),
+      inset 0 -4px 30px -10px rgba(255, 0, 110, 0.2);
+  }
+
+  @keyframes heroGradientFlow {
+    0%, 100% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+  }
   color: white;
   padding: 4rem 0 3rem;
 
@@ -304,7 +319,7 @@ const SearchPage: React.FC = () => {
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ duration: 0.4, delay: index * 0.05 }}
                     >
-                      <OfferCard offer={offer} language={language} />
+                      <OfferCard offer={offer} />
                     </motion.div>
                   ))}
                 </OffersGrid>

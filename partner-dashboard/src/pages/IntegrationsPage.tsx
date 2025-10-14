@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import styled from 'styled-components';
 import { useLanguage } from '../contexts/LanguageContext';
+import { useAuth } from '../contexts/AuthContext';
 import Button from '../components/common/Button/Button';
 import Badge from '../components/common/Badge/Badge';
 import { Check, X, Settings, ExternalLink, Loader } from 'lucide-react';
@@ -21,6 +22,21 @@ const PageContainer = styled.div`
 
 const Hero = styled.div`
   background: linear-gradient(135deg, #000000 0%, #1f2937 100%);
+
+  /* Vibrant mode - explosive gradient hero */
+  [data-theme="color"] & {
+    background: linear-gradient(135deg, #1a0a2e 0%, #6a0572 25%, #ab2567 50%, #ff006e 75%, #ff4500 100%);
+    background-size: 200% 200%;
+    animation: heroGradientFlow 10s ease infinite;
+    box-shadow:
+      inset 0 -8px 40px -10px rgba(255, 69, 0, 0.3),
+      inset 0 -4px 30px -10px rgba(255, 0, 110, 0.2);
+  }
+
+  @keyframes heroGradientFlow {
+    0%, 100% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+  }
   color: white;
   padding: 5rem 0 4rem;
   position: relative;
@@ -430,6 +446,7 @@ const isIntegrationConnected = (
 
 const IntegrationsPage: React.FC = () => {
   const { language } = useLanguage();
+  const { isAuthenticated } = useAuth();
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [selectedIntegration, setSelectedIntegration] = useState<ApiIntegration | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -438,7 +455,8 @@ const IntegrationsPage: React.FC = () => {
 
   // Fetch integrations data from API
   const { available, connected, isLoading } = useIntegrationsOverview(
-    selectedCategory === 'all' ? undefined : selectedCategory
+    selectedCategory === 'all' ? undefined : selectedCategory,
+    isAuthenticated
   );
 
   // Mutations

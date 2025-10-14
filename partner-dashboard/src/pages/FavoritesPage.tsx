@@ -10,10 +10,29 @@ import Button from '../components/common/Button/Button';
 const PageContainer = styled.div`
   min-height: 100vh;
   background: #f9fafb;
+
+  [data-theme="dark"] & {
+    background: #0a0a0a;
+  }
 `;
 
 const Hero = styled.div`
   background: linear-gradient(135deg, #000000 0%, #1f2937 100%);
+
+  /* Vibrant mode - explosive gradient hero */
+  [data-theme="color"] & {
+    background: linear-gradient(135deg, #1a0a2e 0%, #6a0572 25%, #ab2567 50%, #ff006e 75%, #ff4500 100%);
+    background-size: 200% 200%;
+    animation: heroGradientFlow 10s ease infinite;
+    box-shadow:
+      inset 0 -8px 40px -10px rgba(255, 69, 0, 0.3),
+      inset 0 -4px 30px -10px rgba(255, 0, 110, 0.2);
+  }
+
+  @keyframes heroGradientFlow {
+    0%, 100% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+  }
   color: white;
   padding: 4rem 0 3rem;
 
@@ -77,11 +96,19 @@ const SectionTitle = styled.h2`
   font-weight: 600;
   color: #111827;
   margin-bottom: 0.25rem;
+
+  [data-theme="dark"] & {
+    color: #f9fafb;
+  }
 `;
 
 const Count = styled.p`
   font-size: 1rem;
   color: #6b7280;
+
+  [data-theme="dark"] & {
+    color: #9ca3af;
+  }
 `;
 
 const OffersGrid = styled.div`
@@ -99,6 +126,10 @@ const EmptyState = styled.div`
   padding: 4rem 2rem;
   background: white;
   border-radius: 1rem;
+
+  [data-theme="dark"] & {
+    background: #1f2937;
+  }
 `;
 
 const EmptyIcon = styled.div`
@@ -111,6 +142,10 @@ const EmptyTitle = styled.h3`
   font-weight: 600;
   color: #111827;
   margin-bottom: 0.5rem;
+
+  [data-theme="dark"] & {
+    color: #f9fafb;
+  }
 `;
 
 const EmptyText = styled.p`
@@ -118,6 +153,10 @@ const EmptyText = styled.p`
   color: #6b7280;
   margin-bottom: 2rem;
   line-height: 1.6;
+
+  [data-theme="dark"] & {
+    color: #d1d5db;
+  }
 `;
 
 const SortOptions = styled.div`
@@ -137,9 +176,20 @@ const SortButton = styled.button<{ $active: boolean }>`
   cursor: pointer;
   transition: all 200ms;
 
+  [data-theme="dark"] & {
+    background: ${props => props.$active ? '#60a5fa' : '#374151'};
+    color: ${props => props.$active ? '#000000' : '#d1d5db'};
+    border-color: ${props => props.$active ? '#60a5fa' : '#4b5563'};
+  }
+
   &:hover {
     background: ${props => props.$active ? '#1f2937' : '#f9fafb'};
     border-color: ${props => props.$active ? '#1f2937' : '#d1d5db'};
+
+    [data-theme="dark"] & {
+      background: ${props => props.$active ? '#3b82f6' : '#4b5563'};
+      border-color: ${props => props.$active ? '#3b82f6' : '#6b7280'};
+    }
   }
 `;
 
@@ -261,7 +311,6 @@ const FavoritesPage: React.FC = () => {
                         partnerName: '',
                         path: favorite.path
                       }}
-                      language={language}
                     />
                   </motion.div>
                 ))}

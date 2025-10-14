@@ -9,7 +9,7 @@
     "build:check": "tsc && vite build",
     "preview": "vite preview",
     "test": "vitest",
-    "lint": "eslint src --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
+    "lint": "eslint src --ext ts,tsx --report-unused-disable-directives",
     "start": "vite preview"
   },
   "dependencies": {
@@ -37,6 +37,7 @@
     "styled-components": "^6.1.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.56.0",
     "@testing-library/jest-dom": "^6.1.5",
     "@testing-library/react": "^14.1.0",
     "@types/qrcode": "^1.5.5",

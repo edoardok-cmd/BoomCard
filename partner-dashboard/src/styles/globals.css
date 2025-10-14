@@ -1,8 +1,15 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+@import './variables.css';
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Force body background colors after Tailwind reset */
+body {
+  background-color: var(--color-background) !important;
+  color: var(--color-text-primary) !important;
+}
 
 @layer base {
   :root {
@@ -12,20 +19,31 @@
 
   * {
     @apply border-gray-200;
-    transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+    transition:
+      background-color 0.4s cubic-bezier(0.4, 0, 0.2, 1),
+      color 0.4s cubic-bezier(0.4, 0, 0.2, 1),
+      border-color 0.4s cubic-bezier(0.4, 0, 0.2, 1),
+      box-shadow 0.4s cubic-bezier(0.4, 0, 0.2, 1),
+      transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   }
 
   html {
     scroll-behavior: smooth;
+    overflow-x: hidden !important;
+    width: 100%;
   }
 
   body {
-    @apply font-sans antialiased;
-    color: var(--color-text-primary);
-    background: var(--color-background);
+    font-family: var(--font-sans);
+    color: var(--color-text-primary) !important;
+    background-color: var(--color-background) !important;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    transition: background-color 0.3s ease, color 0.3s ease;
+    transition:
+      background-color 0.5s cubic-bezier(0.4, 0, 0.2, 1),
+      color 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+    overflow-x: hidden !important;
+    width: 100%;
   }
 
   h1, h2, h3, h4, h5, h6 {

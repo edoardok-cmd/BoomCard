@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 
-export type ThemeMode = 'light' | 'dark' | 'gold' | 'red' | 'yellow' | 'blue';
+export type ThemeMode = 'light' | 'dark' | 'color';
 
 interface ThemeContextType {
   theme: ThemeMode;
@@ -22,7 +22,7 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
   const [theme, setThemeState] = useState<ThemeMode>(() => {
     // Load from localStorage or default to 'light'
     const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored && ['light', 'dark', 'gold', 'red', 'yellow', 'blue'].includes(stored)) {
+    if (stored && ['light', 'dark', 'color'].includes(stored)) {
       return stored as ThemeMode;
     }
     return 'light';
@@ -53,7 +53,7 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
   };
 
   const isDark = theme === 'dark';
-  const isColorMode = ['gold', 'red', 'yellow', 'blue'].includes(theme);
+  const isColorMode = theme === 'color';
 
   return (
     <ThemeContext.Provider value={{ theme, setTheme, toggleDarkMode, isDark, isColorMode }}>

@@ -23,6 +23,7 @@ const LoadingSpinner = styled(motion.div)`
 interface ProtectedRouteProps {
   children: React.ReactNode;
   requireAuth?: boolean;
+  requiredRole?: 'user' | 'partner' | 'admin';
   redirectTo?: string;
 }
 
@@ -31,14 +32,16 @@ interface ProtectedRouteProps {
  *
  * @param children - The component to render if authorized
  * @param requireAuth - Whether authentication is required (default: true)
+ * @param requiredRole - The required role to access this route
  * @param redirectTo - Where to redirect if not authorized (default: /login)
  */
 export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   children,
   requireAuth = true,
+  requiredRole,
   redirectTo = '/login',
 }) => {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { user, isAuthenticated, isLoading } = useAuth();
   const location = useLocation();
 
   // Show loading spinner while checking auth state
@@ -65,6 +68,19 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   // If route requires NO auth (e.g., login page) and user IS authenticated, redirect to home
   if (!requireAuth && isAuthenticated) {
     return <Navigate to="/" replace />;
+  }
+
+  // Role-based access control
+  if (requiredRole && user) {
+    // Admin can access everything
+    if (user.role === 'admin') {
+      return <>{children}</>;
+    }
+
+    // Check if user has the required role
+    if (user.role !== requiredRole) {
+      return <Navigate to="/dashboard" replace />;
+    }
   }
 
   // User is authorized, render the protected component

@@ -4,14 +4,16 @@ import { StyledCard } from './Card.styles';
 export interface CardProps {
   children?: React.ReactNode;
   className?: string;
+  style?: React.CSSProperties;
 }
 
 export const Card: React.FC<CardProps> = ({
   children,
-  className
+  className,
+  style
 }) => {
   return (
-    <StyledCard className={className}>
+    <StyledCard className={className} style={style}>
       {children}
     </StyledCard>
   );

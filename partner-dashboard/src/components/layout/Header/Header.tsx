@@ -14,7 +14,6 @@ import { useTheme, ThemeMode } from '../../../contexts/ThemeContext';
 
 const FavoritesLink = styled(Link)`
   position: relative;
-  display: flex;
   align-items: center;
   justify-content: center;
   width: 2.5rem;
@@ -23,9 +22,22 @@ const FavoritesLink = styled(Link)`
   color: #374151;
   transition: all 200ms;
 
+  [data-theme="dark"] & {
+    color: #d1d5db;
+  }
+
+  &:not(.hidden) {
+    display: flex;
+  }
+
   &:hover {
     background: #f3f4f6;
     color: #111827;
+
+    [data-theme="dark"] & {
+      background: #374151;
+      color: #f9fafb;
+    }
   }
 
   svg {
@@ -56,8 +68,17 @@ const MobileFavoritesLink = styled(Link)`
   font-weight: 500;
   transition: all 200ms;
 
+  [data-theme="dark"] & {
+    background: #374151;
+    color: #f9fafb;
+  }
+
   &:hover {
     background: #f3f4f6;
+
+    [data-theme="dark"] & {
+      background: #4b5563;
+    }
   }
 
   svg {
@@ -115,9 +136,19 @@ const UserButton = styled.button`
   cursor: pointer;
   transition: all 200ms;
 
+  [data-theme="dark"] & {
+    background: #374151;
+    border-color: #4b5563;
+  }
+
   &:hover {
     background: #f9fafb;
     border-color: #d1d5db;
+
+    [data-theme="dark"] & {
+      background: #4b5563;
+      border-color: #6b7280;
+    }
   }
 
   @media (max-width: 640px) {
@@ -155,6 +186,10 @@ const UserName = styled.span`
   text-overflow: ellipsis;
   white-space: nowrap;
 
+  [data-theme="dark"] & {
+    color: #d1d5db;
+  }
+
   @media (max-width: 1024px) {
     display: none;
   }
@@ -171,12 +206,23 @@ const UserMenuDropdown = styled(motion.div)`
   box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
   overflow: hidden;
   z-index: 50;
+
+  [data-theme="dark"] & {
+    background: #1f2937;
+    border-color: #374151;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+  }
 `;
 
 const UserMenuHeader = styled.div`
   padding: 1rem;
   border-bottom: 1px solid #e5e7eb;
   background: #f9fafb;
+
+  [data-theme="dark"] & {
+    background: #111827;
+    border-bottom-color: #374151;
+  }
 `;
 
 const UserMenuEmail = styled.div`
@@ -186,12 +232,20 @@ const UserMenuEmail = styled.div`
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+
+  [data-theme="dark"] & {
+    color: #9ca3af;
+  }
 `;
 
 const UserMenuName = styled.div`
   font-size: 0.9375rem;
   font-weight: 600;
   color: #111827;
+
+  [data-theme="dark"] & {
+    color: #f9fafb;
+  }
 `;
 
 const UserMenuItems = styled.nav`
@@ -209,15 +263,28 @@ const UserMenuItem = styled(Link)`
   font-weight: 500;
   transition: all 200ms;
 
+  [data-theme="dark"] & {
+    color: #d1d5db;
+  }
+
   &:hover {
     background: #f9fafb;
     color: #111827;
+
+    [data-theme="dark"] & {
+      background: #374151;
+      color: #f9fafb;
+    }
   }
 
   svg {
     width: 1.125rem;
     height: 1.125rem;
     color: #6b7280;
+
+    [data-theme="dark"] & {
+      color: #9ca3af;
+    }
   }
 `;
 
@@ -225,6 +292,10 @@ const UserMenuDivider = styled.div`
   height: 1px;
   background: #e5e7eb;
   margin: 0.5rem 0;
+
+  [data-theme="dark"] & {
+    background: #374151;
+  }
 `;
 
 const UserMenuButton = styled.button`
@@ -245,6 +316,10 @@ const UserMenuButton = styled.button`
 
   &:hover {
     background: #fef2f2;
+
+    [data-theme="dark"] & {
+      background: rgba(239, 68, 68, 0.1);
+    }
   }
 
   svg {
@@ -270,9 +345,18 @@ const ThemeButton = styled.button`
   cursor: pointer;
   transition: all 200ms;
 
+  [data-theme="dark"] & {
+    color: #d1d5db;
+  }
+
   &:hover {
     background: #f3f4f6;
     color: #111827;
+
+    [data-theme="dark"] & {
+      background: #374151;
+      color: #f9fafb;
+    }
   }
 
   svg {
@@ -302,6 +386,12 @@ const ThemeMenuDropdown = styled(motion.div)`
   padding: 0.5rem;
   z-index: 1000;
   border: 1px solid #e5e7eb;
+
+  [data-theme="dark"] & {
+    background: #1f2937;
+    border-color: #374151;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+  }
 `;
 
 const ThemeOption = styled.button<{ active: boolean }>`
@@ -320,9 +410,19 @@ const ThemeOption = styled.button<{ active: boolean }>`
   transition: all 200ms;
   text-align: left;
 
+  [data-theme="dark"] & {
+    background: ${props => props.active ? '#374151' : 'transparent'};
+    color: ${props => props.active ? '#f9fafb' : '#d1d5db'};
+  }
+
   &:hover {
     background: #f3f4f6;
     color: #111827;
+
+    [data-theme="dark"] & {
+      background: #374151;
+      color: #f9fafb;
+    }
   }
 
   svg, span {
@@ -332,11 +432,63 @@ const ThemeOption = styled.button<{ active: boolean }>`
   }
 `;
 
+const LanguageToggleContainer = styled.div`
+  align-items: center;
+  gap: 0.25rem;
+  background: var(--color-background-secondary);
+  border-radius: 9999px;
+  padding: 0.25rem;
+  transition: background-color 0.3s ease;
+`;
+
+const LanguageButton = styled.button<{ $active: boolean }>`
+  padding: 0.375rem 0.75rem;
+  border-radius: 9999px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  transition: all 0.2s;
+  background: ${props => props.$active ? 'var(--color-background)' : 'transparent'};
+  color: ${props => props.$active ? 'var(--color-text-primary)' : 'var(--color-text-secondary)'};
+  box-shadow: ${props => props.$active ? '0 1px 2px rgba(0, 0, 0, 0.1)' : 'none'};
+
+  &:hover {
+    color: var(--color-text-primary);
+  }
+
+  [data-theme="dark"] & {
+    box-shadow: ${props => props.$active ? '0 1px 3px rgba(0, 0, 0, 0.3)' : 'none'};
+  }
+`;
+
+const MobileMenuPanel = styled(motion.div)`
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  height: 100vh;
+  width: 100%;
+  max-width: 32rem;
+  background: var(--color-background, #ffffff);
+  box-shadow: 0 20px 60px -15px rgba(0, 0, 0, 0.3);
+  z-index: 9999;
+  overflow-y: auto;
+  transition: background-color 0.3s ease;
+
+  [data-theme="dark"] & {
+    background: var(--color-background, #0f172a);
+  }
+
+  @media (min-width: 1024px) {
+    display: none;
+  }
+`;
+
 export interface HeaderProps {
   children?: React.ReactNode;
   className?: string;
 }
 
+// Header component with theme support
 export const Header: React.FC<HeaderProps> = ({
   children,
   className
@@ -445,10 +597,7 @@ export const Header: React.FC<HeaderProps> = ({
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
           </svg>
         );
-      case 'gold':
-      case 'red':
-      case 'yellow':
-      case 'blue':
+      case 'color':
         return (
           <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
@@ -459,13 +608,10 @@ export const Header: React.FC<HeaderProps> = ({
     }
   };
 
-  const themeOptions: { mode: ThemeMode; label: string; icon: string }[] = [
-    { mode: 'light', label: 'Light Mode', icon: '☀️' },
-    { mode: 'dark', label: 'Dark Mode', icon: '🌙' },
-    { mode: 'gold', label: 'Gold Mode', icon: '🟡' },
-    { mode: 'red', label: 'Red Mode', icon: '🔴' },
-    { mode: 'yellow', label: 'Yellow Mode', icon: '🟡' },
-    { mode: 'blue', label: 'Blue Mode', icon: '🔵' },
+  const themeOptions: { mode: ThemeMode; label: string; labelBg: string; icon: string; color: string }[] = [
+    { mode: 'light', label: 'Light', labelBg: 'Светъл', icon: '☀️', color: '#000000' },
+    { mode: 'dark', label: 'Dark', labelBg: 'Тъмен', icon: '🌙', color: '#06b6d4' },
+    { mode: 'color', label: 'Vibrant', labelBg: 'Цветен', icon: '🎨', color: '#8b5cf6' },
   ];
 
   return (
@@ -475,9 +621,10 @@ export const Header: React.FC<HeaderProps> = ({
           {/* Logo - Far Left */}
           <Link to="/" className="flex items-center z-50 flex-shrink-0">
             <img
-              src="/zbooom.png"
+              src={theme === 'dark' ? '/zLogo_light.png' : '/zbooom.png'}
               alt="BoomCard"
               className="h-8 sm:h-10 w-auto"
+              style={{ transition: 'opacity 0.3s ease' }}
             />
           </Link>
 
@@ -488,8 +635,8 @@ export const Header: React.FC<HeaderProps> = ({
 
           {/* Right Side Utilities - Always Visible */}
           <div className="flex items-center gap-1.5 sm:gap-2 md:gap-3 flex-shrink-0 ml-auto">
-            {/* Nearby Offers - Hidden on small screens */}
-            <FavoritesLink to="/nearby" aria-label="Nearby Offers" className="hidden sm:flex">
+            {/* Nearby Offers - Desktop only */}
+            <FavoritesLink to="/nearby" aria-label="Nearby Offers" className="hidden lg:flex">
               <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path
                   strokeLinecap="round"
@@ -506,8 +653,8 @@ export const Header: React.FC<HeaderProps> = ({
               </svg>
             </FavoritesLink>
 
-            {/* Favorites - Hidden on extra small screens */}
-            <FavoritesLink to="/favorites" aria-label="Favorites" className="hidden xs:flex">
+            {/* Favorites - Desktop only */}
+            <FavoritesLink to="/favorites" aria-label="Favorites" className="hidden lg:flex">
               <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path
                   strokeLinecap="round"
@@ -533,11 +680,12 @@ export const Header: React.FC<HeaderProps> = ({
             {/* Notification Center - Hidden on small screens */}
             {isAuthenticated && <div className="hidden sm:flex"><NotificationCenter /></div>}
 
-            {/* Theme Switcher - Hidden on mobile */}
-            <ThemeMenuContainer ref={themeMenuRef} className="hidden md:block">
+            {/* Theme Switcher - Desktop only */}
+            <ThemeMenuContainer ref={themeMenuRef} className="hidden lg:flex">
               <ThemeButton
                 onClick={() => setThemeMenuOpen(!themeMenuOpen)}
                 aria-label="Change theme"
+                data-testid="theme-picker"
               >
                 {getThemeIcon()}
               </ThemeButton>
@@ -545,10 +693,10 @@ export const Header: React.FC<HeaderProps> = ({
               <AnimatePresence>
                 {themeMenuOpen && (
                   <ThemeMenuDropdown
-                    initial={{ opacity: 0, y: -10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -10 }}
-                    transition={{ duration: 0.2 }}
+                    initial={{ opacity: 0, y: -10, scale: 0.95 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: -10, scale: 0.95 }}
+                    transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
                   >
                     {themeOptions.map((option) => (
                       <ThemeOption
@@ -559,8 +707,25 @@ export const Header: React.FC<HeaderProps> = ({
                           setThemeMenuOpen(false);
                         }}
                       >
-                        <span>{option.icon}</span>
-                        {option.label}
+                        <span style={{ fontSize: '1.25rem' }}>{option.icon}</span>
+                        <span style={{ flex: 1 }}>{language === 'bg' ? option.labelBg : option.label}</span>
+                        {theme === option.mode && (
+                          <svg
+                            width="16"
+                            height="16"
+                            viewBox="0 0 16 16"
+                            fill="none"
+                            style={{ flexShrink: 0 }}
+                          >
+                            <path
+                              d="M13.3334 4L6.00002 11.3333L2.66669 8"
+                              stroke={option.color}
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            />
+                          </svg>
+                        )}
                       </ThemeOption>
                     ))}
                   </ThemeMenuDropdown>
@@ -568,29 +733,21 @@ export const Header: React.FC<HeaderProps> = ({
               </AnimatePresence>
             </ThemeMenuContainer>
 
-            {/* Language Toggle */}
-            <div className="hidden md:flex items-center gap-1 bg-gray-100 rounded-full p-1">
-              <button
+            {/* Language Toggle - Desktop only */}
+            <LanguageToggleContainer className="hidden lg:flex">
+              <LanguageButton
                 onClick={() => setLanguage('en')}
-                className={`px-3 py-1.5 rounded-full text-sm font-medium transition-all ${
-                  language === 'en'
-                    ? 'bg-white text-gray-900 shadow-sm'
-                    : 'text-gray-600 hover:text-gray-900'
-                }`}
+                $active={language === 'en'}
               >
                 EN
-              </button>
-              <button
+              </LanguageButton>
+              <LanguageButton
                 onClick={() => setLanguage('bg')}
-                className={`px-3 py-1.5 rounded-full text-sm font-medium transition-all ${
-                  language === 'bg'
-                    ? 'bg-white text-gray-900 shadow-sm'
-                    : 'text-gray-600 hover:text-gray-900'
-                }`}
+                $active={language === 'bg'}
               >
                 BG
-              </button>
-            </div>
+              </LanguageButton>
+            </LanguageToggleContainer>
 
             {isAuthenticated && user ? (
               <UserMenuContainer ref={userMenuRef}>
@@ -762,12 +919,12 @@ export const Header: React.FC<HeaderProps> = ({
               </UserMenuContainer>
             ) : (
               <>
-                <Link to="/login" className="hidden sm:block">
+                <Link to="/login" className="hidden lg:block">
                   <Button variant="ghost" size="small">
                     {t('common.signIn')}
                   </Button>
                 </Link>
-                <Link to="/register">
+                <Link to="/register" className="hidden lg:block">
                   <Button variant="primary" size="small">
                     {t('common.getStarted')}
                   </Button>
@@ -779,7 +936,7 @@ export const Header: React.FC<HeaderProps> = ({
           {/* Mobile Menu Button - Show when menu is hidden */}
           <button
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="xl:hidden z-50 p-1.5 sm:p-2 text-gray-700 hover:text-gray-900 transition-colors ml-1.5 sm:ml-2 flex-shrink-0"
+            className="xl:hidden z-[10000] p-1.5 sm:p-2 text-gray-700 hover:text-gray-900 transition-colors ml-1.5 sm:ml-2 flex-shrink-0"
             aria-label="Toggle menu"
           >
             <svg
@@ -811,41 +968,81 @@ export const Header: React.FC<HeaderProps> = ({
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setMobileMenuOpen(false)}
-              className="fixed inset-0 bg-black/20 backdrop-blur-sm z-40 md:hidden"
+              className="fixed inset-0 bg-black/20 backdrop-blur-sm z-[9998] md:hidden"
+              style={{ height: '100vh', width: '100vw' }}
             />
 
-            {/* Menu Panel */}
-            <motion.div
+              {/* Menu Panel */}
+              <MobileMenuPanel
+              data-testid="mobile-menu-panel"
               initial={{ x: '100%' }}
               animate={{ x: 0 }}
               exit={{ x: '100%' }}
               transition={{ type: 'tween', duration: 0.3 }}
-              className="fixed top-0 right-0 bottom-0 w-full max-w-sm bg-white shadow-2xl z-40 lg:hidden overflow-y-auto"
             >
               <div className="p-6 pt-20">
                 {/* Language Toggle Mobile */}
-                <div className="flex items-center gap-1 bg-gray-100 rounded-full p-1 mb-6">
-                  <button
+                <LanguageToggleContainer className="mb-4 flex">
+                  <LanguageButton
                     onClick={() => setLanguage('en')}
-                    className={`flex-1 px-4 py-2 rounded-full text-sm font-medium transition-all ${
-                      language === 'en'
-                        ? 'bg-white text-gray-900 shadow-sm'
-                        : 'text-gray-600 hover:text-gray-900'
-                    }`}
+                    $active={language === 'en'}
+                    style={{ flex: 1, padding: '0.5rem 1rem' }}
                   >
                     EN
-                  </button>
-                  <button
+                  </LanguageButton>
+                  <LanguageButton
                     onClick={() => setLanguage('bg')}
-                    className={`flex-1 px-4 py-2 rounded-full text-sm font-medium transition-all ${
-                      language === 'bg'
-                        ? 'bg-white text-gray-900 shadow-sm'
-                        : 'text-gray-600 hover:text-gray-900'
-                    }`}
+                    $active={language === 'bg'}
+                    style={{ flex: 1, padding: '0.5rem 1rem' }}
                   >
                     BG
-                  </button>
+                  </LanguageButton>
+                </LanguageToggleContainer>
+
+                {/* Theme Switcher Mobile */}
+                <div className="mb-6 flex gap-2">
+                  {themeOptions.map((option) => (
+                    <button
+                      key={option.mode}
+                      onClick={() => setTheme(option.mode)}
+                      className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-lg transition-all ${
+                        theme === option.mode
+                          ? 'bg-blue-500 text-white'
+                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                      }`}
+                      style={{
+                        backgroundColor: theme === option.mode ? 'var(--color-primary)' : 'var(--color-background-secondary)',
+                        color: theme === option.mode ? 'var(--color-secondary)' : 'var(--color-text-primary)'
+                      }}
+                    >
+                      <span>{option.icon}</span>
+                      <span className="text-sm font-medium">{option.label}</span>
+                    </button>
+                  ))}
                 </div>
+
+                {/* Nearby Link Mobile */}
+                <MobileFavoritesLink
+                  to="/nearby"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="mb-4"
+                >
+                  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"
+                    />
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"
+                    />
+                  </svg>
+                  <span>{t('header.nearby') || 'Nearby'}</span>
+                </MobileFavoritesLink>
 
                 {/* Favorites Link Mobile */}
                 <MobileFavoritesLink
@@ -871,7 +1068,7 @@ export const Header: React.FC<HeaderProps> = ({
 
                 {/* Mobile Navigation */}
                 <nav className="mb-8">
-                  <MegaMenu items={navigationConfig.main} language={language} />
+                  <MegaMenu items={navigationConfig.main} language={language} autoExpandOnMobile={false} />
                 </nav>
 
                 <div className="flex flex-col gap-3 pt-6 border-t border-gray-200">
@@ -887,7 +1084,7 @@ export const Header: React.FC<HeaderProps> = ({
                   </Link>
                 </div>
               </div>
-            </motion.div>
+            </MobileMenuPanel>
           </>
         )}
       </AnimatePresence>

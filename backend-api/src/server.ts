@@ -14,6 +14,8 @@ import messagingRouter from './routes/messaging.routes';
 import bookingsRouter from './routes/bookings.routes';
 import venuesRouter from './routes/venues.routes';
 import sidebarRouter from './routes/sidebar.routes';
+import offersRouter from './routes/offers.routes';
+import integrationsRouter from './routes/integrations.routes';
 
 // Import WebSocket handler
 import { initializeWebSocket } from './websocket/server';
@@ -27,9 +29,15 @@ dotenv.config();
 
 const app: Application = express();
 const httpServer = createServer(app);
+
+// Parse CORS_ORIGIN to support multiple origins
+const corsOrigins = process.env.CORS_ORIGIN
+  ? process.env.CORS_ORIGIN.split(',').map(origin => origin.trim())
+  : ['http://localhost:5173'];
+
 const io = new SocketServer(httpServer, {
   cors: {
-    origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+    origin: corsOrigins,
     methods: ['GET', 'POST'],
     credentials: true,
   },
@@ -42,7 +50,7 @@ const WS_PORT = process.env.WS_PORT || 4000;
 // Security middleware
 app.use(helmet());
 app.use(cors({
-  origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+  origin: corsOrigins,
   credentials: true,
 }));
 
@@ -82,6 +90,8 @@ app.use('/api/messaging', messagingRouter);
 app.use('/api/bookings', bookingsRouter);
 app.use('/api/venues', venuesRouter);
 app.use('/api/sidebar', sidebarRouter);
+app.use('/api/offers', offersRouter);
+app.use('/api/integrations', integrationsRouter);
 
 // 404 handler
 app.use('*', (req, res) => {

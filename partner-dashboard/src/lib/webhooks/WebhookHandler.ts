@@ -3,6 +3,7 @@
  * Centralized webhook processing for all POS and payment systems
  */
 
+import crypto from 'crypto';
 import { POSManager } from '../pos/POSManager';
 import { PaymentManager } from '../payments/PaymentManager';
 
@@ -138,7 +139,6 @@ export class WebhookHandler {
    */
   private verifyStripeSignature(payload: any, signature: string): boolean {
     // Stripe uses HMAC-SHA256
-    const crypto = require('crypto');
     const secret = process.env.STRIPE_WEBHOOK_SECRET || '';
 
     const hmac = crypto.createHmac('sha256', secret);
@@ -153,7 +153,6 @@ export class WebhookHandler {
    */
   private verifyEPaySignature(payload: any, signature: string): boolean {
     // ePay uses MD5 checksum
-    const crypto = require('crypto');
     const secret = process.env.EPAY_SECRET_KEY || '';
 
     const sortedKeys = Object.keys(payload).sort();
@@ -328,7 +327,7 @@ export class WebhookHandler {
       return;
     }
 
-    await adapter.processWebhook(event.payload);
+    await adapter.handleWebhook(event.payload);
   }
 
   /**

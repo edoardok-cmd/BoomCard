@@ -15,7 +15,7 @@ import {
   Check,
   Trash2,
 } from 'lucide-react';
-import { getNotificationManager, Notification, NotificationType } from '@/lib/notifications/NotificationManager';
+import { getNotificationManager, Notification, NotificationType } from '../../lib/notifications/NotificationManager';
 
 const Container = styled.div`
   position: relative;
@@ -37,6 +37,10 @@ const IconButton = styled.button`
 
   &:hover {
     background: #f3f4f6;
+
+    [data-theme="dark"] & {
+      background: #374151;
+    }
     color: #111827;
   }
 
@@ -71,6 +75,12 @@ const Dropdown = styled(motion.div)`
   width: 420px;
   max-height: 600px;
   background: white;
+
+  [data-theme="dark"] & {
+    background: #1f2937;
+    border-color: #374151;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+  }
   border-radius: 1rem;
   box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
   border: 1px solid #e5e7eb;
@@ -89,12 +99,20 @@ const Header = styled.div`
   display: flex;
   justify-content: space-between;
   align-items: center;
+
+  [data-theme="dark"] & {
+    border-bottom-color: #374151;
+  }
 `;
 
 const Title = styled.h3`
   font-size: 1rem;
   font-weight: 700;
   color: #111827;
+
+  [data-theme="dark"] & {
+    color: #f9fafb;
+  }
 `;
 
 const HeaderActions = styled.div`
@@ -124,6 +142,10 @@ const SmallButton = styled.button`
 
   &.secondary {
     background: #f3f4f6;
+
+    [data-theme="dark"] & {
+      background: #374151;
+    }
     color: #6b7280;
     &:hover {
       background: #e5e7eb;
@@ -147,6 +169,10 @@ const NotificationList = styled.div`
 
   &::-webkit-scrollbar-track {
     background: #f9fafb;
+
+    [data-theme="dark"] & {
+      background: #111827;
+    }
   }
 
   &::-webkit-scrollbar-thumb {
@@ -162,8 +188,16 @@ const NotificationItem = styled(motion.div)<{ $read: boolean }>`
   transition: background 0.2s;
   opacity: ${props => props.$read ? 0.6 : 1};
 
+  [data-theme="dark"] & {
+    border-bottom-color: #374151;
+  }
+
   &:hover {
     background: #f9fafb;
+
+    [data-theme="dark"] & {
+      background: #111827;
+    }
   }
 
   &:last-child {
@@ -224,18 +258,30 @@ const NotificationTitle = styled.div`
   font-weight: 600;
   color: #111827;
   margin-bottom: 0.25rem;
+
+  [data-theme="dark"] & {
+    color: #f9fafb;
+  }
 `;
 
 const NotificationMessage = styled.div`
   font-size: 0.8125rem;
   color: #6b7280;
   line-height: 1.4;
+
+  [data-theme="dark"] & {
+    color: #d1d5db;
+  }
 `;
 
 const NotificationTime = styled.div`
   font-size: 0.75rem;
   color: #9ca3af;
   margin-top: 0.375rem;
+
+  [data-theme="dark"] & {
+    color: #6b7280;
+  }
 `;
 
 const NotificationActions = styled.div`
@@ -259,6 +305,10 @@ const ActionButton = styled.button`
 
   &:hover {
     background: #f3f4f6;
+
+    [data-theme="dark"] & {
+      background: #374151;
+    }
     color: #111827;
   }
 
@@ -282,6 +332,10 @@ const EmptyIcon = styled.div`
   align-items: center;
   justify-content: center;
   background: #f3f4f6;
+
+  [data-theme="dark"] & {
+    background: #111827;
+  }
   border-radius: 50%;
 
   svg {
@@ -307,22 +361,23 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ language
 
   const manager = getNotificationManager();
 
+  const updateNotifications = () => {
+    setNotifications(manager.getAll());
+    setUnreadCount(manager.getUnreadCount());
+  };
+
   useEffect(() => {
     // Load initial notifications
     updateNotifications();
 
     // Subscribe to new notifications
-    const unsubscribe = manager.subscribe((notification) => {
+    const unsubscribe = manager.subscribe((notification: Notification) => {
       updateNotifications();
     });
 
     return unsubscribe;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  const updateNotifications = () => {
-    setNotifications(manager.getAll());
-    setUnreadCount(manager.getUnreadCount());
-  };
 
   const handleMarkAsRead = (id: string) => {
     manager.markAsRead(id);

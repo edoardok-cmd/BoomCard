@@ -525,7 +525,6 @@ const VenueDetailPage: React.FC = () => {
                 size={200}
                 title={t('venueDetail.offerQRCode')}
                 description={t('venueDetail.scanToRedeem')}
-                language={language}
               />
             </div>
           </Sidebar>

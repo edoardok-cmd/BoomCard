@@ -407,6 +407,11 @@ const StatusCard = styled.div<{ permission: NotificationPermissionState }>`
         ? 'var(--error)'
         : 'var(--warning)'};
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+
+  [data-theme="dark"] & {
+    background: #374151;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  }
 `;
 
 const StatusHeader = styled.div`
@@ -477,6 +482,11 @@ const PreferencesSection = styled(motion.div)`
   border-radius: 1rem;
   padding: 1.5rem;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+
+  [data-theme="dark"] & {
+    background: #374151;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  }
 `;
 
 const PreferencesTitle = styled.h3`

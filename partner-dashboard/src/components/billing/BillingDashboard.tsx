@@ -326,7 +326,7 @@ const EmptyStateText = styled.p`
 
 interface Subscription {
   planName: string;
-  status: 'active' | 'past_due' | 'canceled';
+  status: 'active' | 'past_due' | 'canceled' | 'trialing';
   currentPeriodEnd: Date;
   amount: number;
   currency: string;

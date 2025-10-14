@@ -15,16 +15,17 @@ const PageContainer = styled.div`
   align-items: center;
   justify-content: center;
   padding: 2rem 1rem;
-  background: linear-gradient(135deg, #f9fafb 0%, #f3f4f6 100%);
+  background: var(--color-background-secondary);
 `;
 
 const LoginCard = styled(motion.div)`
   width: 100%;
   max-width: 28rem;
-  background: white;
+  background: var(--color-background);
   border-radius: 1rem;
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--shadow-hover);
   padding: 2.5rem;
+  border: 1px solid var(--color-border);
 
   @media (max-width: 640px) {
     padding: 2rem 1.5rem;
@@ -42,19 +43,19 @@ const Logo = styled(Link)`
 const LogoText = styled.span`
   font-size: 2rem;
   font-weight: 700;
-  color: #111827;
+  color: var(--color-text-primary);
 `;
 
 const Title = styled.h1`
   font-size: 1.875rem;
   font-weight: 700;
-  color: #111827;
+  color: var(--color-text-primary);
   text-align: center;
   margin-bottom: 0.5rem;
 `;
 
 const Subtitle = styled.p`
-  color: #6b7280;
+  color: var(--color-text-secondary);
   text-align: center;
   margin-bottom: 2rem;
   font-size: 0.875rem;
@@ -75,30 +76,32 @@ const FormGroup = styled.div`
 const Label = styled.label`
   font-size: 0.875rem;
   font-weight: 500;
-  color: #374151;
+  color: var(--color-text-primary);
 `;
 
 const Input = styled.input<{ $hasError?: boolean }>`
   width: 100%;
   padding: 0.75rem 1rem;
-  border: 1px solid ${props => props.$hasError ? '#ef4444' : '#e5e7eb'};
+  border: 1px solid ${props => props.$hasError ? '#ef4444' : 'var(--color-border)'};
   border-radius: 0.5rem;
   font-size: 1rem;
   transition: all 200ms;
-  background: ${props => props.$hasError ? '#fef2f2' : 'white'};
+  background: ${props => props.$hasError ? '#fef2f2' : 'var(--color-background)'};
+  color: var(--color-text-primary);
 
   &:focus {
     outline: none;
-    border-color: ${props => props.$hasError ? '#ef4444' : '#111827'};
-    box-shadow: 0 0 0 3px ${props => props.$hasError ? 'rgba(239, 68, 68, 0.1)' : 'rgba(17, 24, 39, 0.1)'};
+    border-color: ${props => props.$hasError ? '#ef4444' : 'var(--color-primary)'};
+    box-shadow: 0 0 0 3px ${props => props.$hasError ? 'rgba(239, 68, 68, 0.1)' : 'rgba(0, 0, 0, 0.1)'};
   }
 
   &::placeholder {
-    color: #9ca3af;
+    color: var(--color-text-secondary);
+    opacity: 0.6;
   }
 
   &:disabled {
-    background: #f9fafb;
+    background: var(--color-background-secondary);
     cursor: not-allowed;
   }
 `;
@@ -118,32 +121,32 @@ const CheckboxGroup = styled.div`
 const Checkbox = styled.input`
   width: 1rem;
   height: 1rem;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--color-border);
   border-radius: 0.25rem;
   cursor: pointer;
 
   &:checked {
-    background-color: #111827;
-    border-color: #111827;
+    background-color: var(--color-primary);
+    border-color: var(--color-primary);
   }
 `;
 
 const CheckboxLabel = styled.label`
   font-size: 0.875rem;
-  color: #374151;
+  color: var(--color-text-primary);
   cursor: pointer;
   user-select: none;
 `;
 
 const ForgotPassword = styled(Link)`
   font-size: 0.875rem;
-  color: #111827;
+  color: var(--color-primary);
   text-decoration: none;
   font-weight: 500;
   transition: color 200ms;
 
   &:hover {
-    color: #6b7280;
+    color: var(--color-primary-hover);
   }
 `;
 
@@ -169,13 +172,13 @@ const Divider = styled.div`
     content: '';
     flex: 1;
     height: 1px;
-    background: #e5e7eb;
+    background: var(--color-border);
   }
 `;
 
 const DividerText = styled.span`
   font-size: 0.875rem;
-  color: #6b7280;
+  color: var(--color-text-secondary);
 `;
 
 const SocialButtons = styled.div`
@@ -187,12 +190,12 @@ const SocialButtons = styled.div`
 const SocialButton = styled.button`
   width: 100%;
   padding: 0.75rem 1rem;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--color-border);
   border-radius: 0.5rem;
-  background: white;
+  background: var(--color-background);
   font-size: 0.875rem;
   font-weight: 500;
-  color: #374151;
+  color: var(--color-text-primary);
   cursor: pointer;
   transition: all 200ms;
   display: flex;
@@ -201,8 +204,8 @@ const SocialButton = styled.button`
   gap: 0.5rem;
 
   &:hover {
-    background: #f9fafb;
-    border-color: #d1d5db;
+    background: var(--color-background-secondary);
+    border-color: var(--color-primary);
   }
 
   &:disabled {
@@ -215,16 +218,16 @@ const SignupPrompt = styled.p`
   text-align: center;
   margin-top: 2rem;
   font-size: 0.875rem;
-  color: #6b7280;
+  color: var(--color-text-secondary);
 
   a {
-    color: #111827;
+    color: var(--color-primary);
     font-weight: 600;
     text-decoration: none;
     transition: color 200ms;
 
     &:hover {
-      color: #6b7280;
+      color: var(--color-primary-hover);
     }
   }
 `;
@@ -588,8 +591,8 @@ const LoginPage: React.FC = () => {
               onClick={handleDemoLogin}
               style={{
                 marginTop: '0.5rem',
-                background: '#0284c7',
-                color: 'white',
+                background: 'var(--color-primary)',
+                color: 'var(--color-secondary)',
                 border: 'none',
                 padding: '0.375rem 0.75rem',
                 borderRadius: '0.25rem',

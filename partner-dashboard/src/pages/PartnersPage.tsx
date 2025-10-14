@@ -9,10 +9,29 @@ import Card from '../components/common/Card/Card';
 const PageContainer = styled.div`
   min-height: 100vh;
   background: white;
+
+  [data-theme="dark"] & {
+    background: #0a0a0a;
+  }
 `;
 
 const Hero = styled.div`
   background: linear-gradient(135deg, #000000 0%, #1f2937 100%);
+
+  /* Vibrant mode - explosive gradient hero */
+  [data-theme="color"] & {
+    background: linear-gradient(135deg, #1a0a2e 0%, #6a0572 25%, #ab2567 50%, #ff006e 75%, #ff4500 100%);
+    background-size: 200% 200%;
+    animation: heroGradientFlow 10s ease infinite;
+    box-shadow:
+      inset 0 -8px 40px -10px rgba(255, 69, 0, 0.3),
+      inset 0 -4px 30px -10px rgba(255, 0, 110, 0.2);
+  }
+
+  @keyframes heroGradientFlow {
+    0%, 100% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+  }
   color: white;
   padding: 6rem 0 4rem;
   position: relative;
@@ -71,6 +90,19 @@ const HeroButtons = styled.div`
   display: flex;
   gap: 1rem;
   flex-wrap: wrap;
+
+  /* Make outline buttons visible on dark background */
+  > button {
+    &:last-child {
+      color: white !important;
+      border-color: rgba(255, 255, 255, 0.5) !important;
+
+      &:hover {
+        border-color: white !important;
+        background: rgba(255, 255, 255, 0.1) !important;
+      }
+    }
+  }
 `;
 
 const Section = styled.section`
@@ -88,6 +120,10 @@ const SectionTitle = styled.h2`
   margin-bottom: 1rem;
   text-align: center;
 
+  [data-theme="dark"] & {
+    color: #f9fafb;
+  }
+
   @media (max-width: 768px) {
     font-size: 2rem;
   }
@@ -100,6 +136,10 @@ const SectionSubtitle = styled.p`
   max-width: 800px;
   margin: 0 auto 4rem;
   line-height: 1.7;
+
+  [data-theme="dark"] & {
+    color: #9ca3af;
+  }
 
   @media (max-width: 768px) {
     font-size: 1rem;
@@ -115,9 +155,14 @@ const BenefitsGrid = styled.div`
 
 const BenefitCard = styled(motion.div)`
   text-align: center;
-  height: 100%;
   display: flex;
   flex-direction: column;
+
+  > div {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+  }
 `;
 
 const BenefitImageContainer = styled.div<{ $imageUrl?: string }>`
@@ -151,6 +196,10 @@ const BenefitTitle = styled.h3`
   font-weight: 600;
   color: #111827;
   margin-bottom: 0.75rem;
+  min-height: 3rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 `;
 
 const BenefitText = styled.p`
@@ -163,6 +212,10 @@ const StatsSection = styled.div`
   background: #f9fafb;
   padding: 4rem 0;
   text-align: center;
+
+  [data-theme="dark"] & {
+    background: #111827;
+  }
 `;
 
 const StatsGrid = styled.div`
@@ -182,6 +235,10 @@ const StatNumber = styled.div`
   margin-bottom: 0.5rem;
   line-height: 1;
 
+  [data-theme="dark"] & {
+    color: #f9fafb;
+  }
+
   @media (max-width: 768px) {
     font-size: 2.5rem;
   }
@@ -190,10 +247,18 @@ const StatNumber = styled.div`
 const StatLabel = styled.div`
   font-size: 1rem;
   color: #6b7280;
+
+  [data-theme="dark"] & {
+    color: #9ca3af;
+  }
 `;
 
 const ProcessSection = styled(Section)`
   background: white;
+
+  [data-theme="dark"] & {
+    background: #0a0a0a;
+  }
 `;
 
 const ProcessSteps = styled.div`
@@ -230,6 +295,11 @@ const StepNumber = styled.div`
   justify-content: center;
   font-size: 1.5rem;
   font-weight: 700;
+
+  [data-theme="dark"] & {
+    background: #f9fafb;
+    color: #000000;
+  }
 `;
 
 const StepContent = styled.div`
@@ -241,16 +311,39 @@ const StepTitle = styled.h3`
   font-weight: 600;
   color: #111827;
   margin-bottom: 0.5rem;
+
+  [data-theme="dark"] & {
+    color: #f9fafb;
+  }
 `;
 
 const StepText = styled.p`
   font-size: 1rem;
   color: #6b7280;
   line-height: 1.7;
+
+  [data-theme="dark"] & {
+    color: #9ca3af;
+  }
 `;
 
 const CTASection = styled.div`
   background: linear-gradient(135deg, #000000 0%, #1f2937 100%);
+
+  /* Vibrant mode - explosive gradient hero */
+  [data-theme="color"] & {
+    background: linear-gradient(135deg, #1a0a2e 0%, #6a0572 25%, #ab2567 50%, #ff006e 75%, #ff4500 100%);
+    background-size: 200% 200%;
+    animation: heroGradientFlow 10s ease infinite;
+    box-shadow:
+      inset 0 -8px 40px -10px rgba(255, 69, 0, 0.3),
+      inset 0 -4px 30px -10px rgba(255, 0, 110, 0.2);
+  }
+
+  @keyframes heroGradientFlow {
+    0%, 100% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+  }
   color: white;
   padding: 5rem 0;
   text-align: center;
@@ -291,6 +384,10 @@ const FormSection = styled.div`
   padding: 3rem;
   border-radius: 1rem;
 
+  [data-theme="dark"] & {
+    background: #1f2937;
+  }
+
   @media (max-width: 768px) {
     padding: 2rem;
   }
@@ -302,6 +399,10 @@ const FormTitle = styled.h3`
   color: #111827;
   margin-bottom: 1.5rem;
   text-align: center;
+
+  [data-theme="dark"] & {
+    color: #f9fafb;
+  }
 `;
 
 const FormGrid = styled.div`
@@ -317,6 +418,10 @@ const Label = styled.label`
   font-weight: 500;
   color: #374151;
   margin-bottom: 0.5rem;
+
+  [data-theme="dark"] & {
+    color: #d1d5db;
+  }
 `;
 
 const Input = styled.input`
@@ -328,14 +433,29 @@ const Input = styled.input`
   color: #111827;
   transition: all 200ms;
 
+  [data-theme="dark"] & {
+    background: #374151;
+    border-color: #4b5563;
+    color: #f9fafb;
+  }
+
   &:focus {
     outline: none;
     border-color: #000000;
     box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.1);
+
+    [data-theme="dark"] & {
+      border-color: #60a5fa;
+      box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.2);
+    }
   }
 
   &::placeholder {
     color: #9ca3af;
+
+    [data-theme="dark"] & {
+      color: #6b7280;
+    }
   }
 `;
 
@@ -350,10 +470,21 @@ const Select = styled.select`
   cursor: pointer;
   transition: all 200ms;
 
+  [data-theme="dark"] & {
+    background: #374151;
+    border-color: #4b5563;
+    color: #f9fafb;
+  }
+
   &:focus {
     outline: none;
     border-color: #000000;
     box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.1);
+
+    [data-theme="dark"] & {
+      border-color: #60a5fa;
+      box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.2);
+    }
   }
 `;
 
@@ -369,14 +500,29 @@ const TextArea = styled.textarea`
   transition: all 200ms;
   font-family: inherit;
 
+  [data-theme="dark"] & {
+    background: #374151;
+    border-color: #4b5563;
+    color: #f9fafb;
+  }
+
   &:focus {
     outline: none;
     border-color: #000000;
     box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.1);
+
+    [data-theme="dark"] & {
+      border-color: #60a5fa;
+      box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.2);
+    }
   }
 
   &::placeholder {
     color: #9ca3af;
+
+    [data-theme="dark"] & {
+      color: #6b7280;
+    }
   }
 `;
 
@@ -471,7 +617,7 @@ const PartnersPage: React.FC = () => {
                 <Button variant="secondary" size="large">
                   {t('partners.applyNow')}
                 </Button>
-                <Button variant="ghost" size="large">
+                <Button variant="outline" size="large">
                   {t('partners.contactUs')}
                 </Button>
               </HeroButtons>

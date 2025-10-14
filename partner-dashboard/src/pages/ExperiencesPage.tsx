@@ -7,12 +7,31 @@ import Button from '../components/common/Button/Button';
 import Badge from '../components/common/Badge/Badge';
 
 const PageContainer = styled.div`
+
+  [data-theme="dark"] & {
+    background: #0a0a0a;
+  }
   min-height: 100vh;
   background: #f9fafb;
 `;
 
 const Hero = styled.div`
   background: linear-gradient(135deg, #000000 0%, #1f2937 100%);
+
+  /* Vibrant mode - explosive gradient hero */
+  [data-theme="color"] & {
+    background: linear-gradient(135deg, #1a0a2e 0%, #6a0572 25%, #ab2567 50%, #ff006e 75%, #ff4500 100%);
+    background-size: 200% 200%;
+    animation: heroGradientFlow 10s ease infinite;
+    box-shadow:
+      inset 0 -8px 40px -10px rgba(255, 69, 0, 0.3),
+      inset 0 -4px 30px -10px rgba(255, 0, 110, 0.2);
+  }
+
+  @keyframes heroGradientFlow {
+    0%, 100% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+  }
   color: white;
   padding: 5rem 0 4rem;
   position: relative;
@@ -80,6 +99,10 @@ const SectionTitle = styled.h2`
   margin-bottom: 1rem;
   text-align: center;
 
+  [data-theme="dark"] & {
+    color: #f9fafb;
+  }
+
   @media (max-width: 768px) {
     font-size: 2rem;
   }
@@ -93,6 +116,10 @@ const SectionSubtitle = styled.p`
   max-width: 700px;
   margin-left: auto;
   margin-right: auto;
+
+  [data-theme="dark"] & {
+    color: #9ca3af;
+  }
 `;
 
 const ExperiencesGrid = styled.div`
@@ -114,9 +141,18 @@ const ExperienceCard = styled(motion.div)`
   transition: transform 0.3s, box-shadow 0.3s;
   cursor: pointer;
 
+  [data-theme="dark"] & {
+    background: #1f2937;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+  }
+
   &:hover {
     transform: translateY(-4px);
     box-shadow: 0 12px 24px rgba(0, 0, 0, 0.15);
+
+    [data-theme="dark"] & {
+      box-shadow: 0 12px 24px rgba(0, 0, 0, 0.5);
+    }
   }
 `;
 
@@ -143,6 +179,10 @@ const ExperienceTitle = styled.h3`
   font-weight: 700;
   color: #111827;
   margin-bottom: 0.75rem;
+
+  [data-theme="dark"] & {
+    color: #f9fafb;
+  }
 `;
 
 const ExperienceDescription = styled.p`
@@ -150,6 +190,10 @@ const ExperienceDescription = styled.p`
   color: #6b7280;
   line-height: 1.6;
   margin-bottom: 1.5rem;
+
+  [data-theme="dark"] & {
+    color: #9ca3af;
+  }
 `;
 
 const ExperienceFooter = styled.div`
@@ -158,12 +202,20 @@ const ExperienceFooter = styled.div`
   align-items: center;
   padding-top: 1rem;
   border-top: 1px solid #e5e7eb;
+
+  [data-theme="dark"] & {
+    border-top-color: #374151;
+  }
 `;
 
 const ExperiencePrice = styled.div`
   font-size: 1.25rem;
   font-weight: 700;
   color: #111827;
+
+  [data-theme="dark"] & {
+    color: #f9fafb;
+  }
 `;
 
 const ExperienceLocation = styled.div`
@@ -172,6 +224,10 @@ const ExperienceLocation = styled.div`
   display: flex;
   align-items: center;
   gap: 0.5rem;
+
+  [data-theme="dark"] & {
+    color: #9ca3af;
+  }
 `;
 
 const CategoriesSection = styled.div`
@@ -193,9 +249,20 @@ const CategoryChip = styled.button<{ $active: boolean }>`
   cursor: pointer;
   transition: all 0.2s;
 
+  [data-theme="dark"] & {
+    border-color: ${props => props.$active ? '#ffffff' : '#374151'};
+    background: ${props => props.$active ? '#ffffff' : '#1f2937'};
+    color: ${props => props.$active ? '#000000' : '#9ca3af'};
+  }
+
   &:hover {
     border-color: #000000;
     background: ${props => props.$active ? '#000000' : '#f9fafb'};
+
+    [data-theme="dark"] & {
+      border-color: #ffffff;
+      background: ${props => props.$active ? '#ffffff' : '#374151'};
+    }
   }
 `;
 

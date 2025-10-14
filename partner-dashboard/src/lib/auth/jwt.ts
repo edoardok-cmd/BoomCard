@@ -61,18 +61,18 @@ function createSignature(data: string, secret: string): string {
  * Generate JWT token
  */
 export function generateToken(
-  payload: Omit<JWTPayload, 'iat' | 'exp'>,
+  payload: Omit<JWTPayload, 'iat' | 'exp' | 'jti'>,
   expiresIn: number = ACCESS_TOKEN_EXPIRY,
   secret: string = JWT_SECRET
 ): string {
   const now = Math.floor(Date.now() / 1000);
 
-  const fullPayload: JWTPayload = {
+  const fullPayload = {
     ...payload,
     iat: now,
     exp: now + expiresIn,
     jti: crypto.randomBytes(16).toString('hex'),
-  };
+  } as JWTPayload;
 
   const header = {
     alg: 'HS256',
@@ -129,7 +129,7 @@ export function verifyToken(token: string, secret: string = JWT_SECRET): JWTPayl
 /**
  * Generate access and refresh token pair
  */
-export function generateTokenPair(payload: Omit<JWTPayload, 'iat' | 'exp'>): TokenPair {
+export function generateTokenPair(payload: Omit<JWTPayload, 'iat' | 'exp' | 'jti'>): TokenPair {
   const accessToken = generateToken(payload, ACCESS_TOKEN_EXPIRY, JWT_SECRET);
   const refreshToken = generateToken(
     { ...payload, type: 'refresh' },

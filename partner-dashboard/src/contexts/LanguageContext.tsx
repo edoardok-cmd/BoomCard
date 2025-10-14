@@ -18,9 +18,9 @@ interface LanguageProviderProps {
 
 export const LanguageProvider: React.FC<LanguageProviderProps> = ({ children }) => {
   const [language, setLanguageState] = useState<Language>(() => {
-    // Load from localStorage or default to 'en'
+    // Load from localStorage or default to 'bg' (Bulgarian)
     const stored = localStorage.getItem(STORAGE_KEY);
-    return (stored === 'bg' || stored === 'en') ? stored : 'en';
+    return (stored === 'bg' || stored === 'en') ? stored : 'bg';
   });
 
   // Persist to localStorage whenever language changes

@@ -18,7 +18,11 @@ export const Loading: React.FC<LoadingProps> = ({
 }) => {
   const spinner = (
     <motion.div
-      className={`${sizeClasses[size]} border-4 border-gray-200 border-t-black rounded-full`}
+      className={`${sizeClasses[size]} rounded-full`}
+      style={{
+        border: '4px solid var(--color-border)',
+        borderTopColor: 'var(--color-text-primary)'
+      }}
       animate={{ rotate: 360 }}
       transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
     />
@@ -26,10 +30,13 @@ export const Loading: React.FC<LoadingProps> = ({
 
   if (fullScreen) {
     return (
-      <div className="fixed inset-0 flex items-center justify-center bg-white z-50">
+      <div
+        className="fixed inset-0 flex items-center justify-center z-50"
+        style={{ backgroundColor: 'var(--color-background)' }}
+      >
         <div className="text-center">
           {spinner}
-          <p className="mt-4 text-gray-600">Loading...</p>
+          <p className="mt-4" style={{ color: 'var(--color-text-secondary)' }}>Loading...</p>
         </div>
       </div>
     );

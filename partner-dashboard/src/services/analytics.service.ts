@@ -33,7 +33,9 @@ export type EventAction =
   | 'upload'
   | 'download'
   | 'expand'
-  | 'collapse';
+  | 'collapse'
+  | 'scroll'
+  | 'engagement';
 
 export interface AnalyticsEvent {
   category: EventCategory;
@@ -97,6 +99,14 @@ export interface PartnerAnalytics {
   favoriteCount: number;
   clickThroughRate: number;
   timeRange: { start: string; end: string };
+  totalRevenue?: number;
+  revenueGrowth?: number;
+  totalRedemptions?: number;
+  redemptionsGrowth?: number;
+  uniqueCustomers?: number;
+  customersGrowth?: number;
+  avgOrderValue?: number;
+  avgOrderValueGrowth?: number;
 }
 
 export interface OfferAnalytics {
@@ -287,10 +297,9 @@ class AnalyticsService {
     // Track in GA4
     if ((window as any).gtag) {
       (window as any).gtag('event', 'conversion', {
-        transaction_id: `${conversion.type}-${Date.now()}`,
-        value: conversion.value,
-        currency: conversion.currency || 'BGN',
         ...conversion,
+        transaction_id: `${conversion.type}-${Date.now()}`,
+        currency: conversion.currency || 'BGN',
       });
     }
 

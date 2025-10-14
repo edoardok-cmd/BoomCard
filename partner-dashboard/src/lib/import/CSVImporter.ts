@@ -314,12 +314,13 @@ export class CSVImporter {
         }
         break;
 
-      case 'number':
+      case 'number': {
         const num = Number(value);
         if (isNaN(num)) {
           return `${field} must be a number`;
         }
         break;
+      }
 
       case 'boolean':
         if (typeof value !== 'boolean' &&
@@ -328,19 +329,21 @@ export class CSVImporter {
         }
         break;
 
-      case 'date':
+      case 'date': {
         const date = new Date(value);
         if (isNaN(date.getTime())) {
           return `${field} must be a valid date`;
         }
         break;
+      }
 
-      case 'email':
+      case 'email': {
         const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
         if (!emailPattern.test(String(value))) {
           return `${field} must be a valid email`;
         }
         break;
+      }
 
       case 'url':
         try {

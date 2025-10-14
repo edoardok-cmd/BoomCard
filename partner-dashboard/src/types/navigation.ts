@@ -127,7 +127,7 @@ export const navigationConfig: NavConfig = {
     {
       id: 'categories',
       label: 'Categories',
-      labelBg: 'Категории заведения',
+      labelBg: 'Заведения',
       path: '/categories',
       children: [
         {
@@ -279,7 +279,7 @@ export const navigationConfig: NavConfig = {
     {
       id: 'locations',
       label: 'Locations',
-      labelBg: 'Места за настаняване',
+      labelBg: 'Настаняване',
       path: '/locations',
       children: [
         {

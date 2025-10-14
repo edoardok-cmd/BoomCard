@@ -97,7 +97,7 @@ export class SearchEngine {
     if (!openingHours) return false;
 
     const now = new Date();
-    const day = now.toLocaleLowerCase().substring(0, 3); // mon, tue, etc.
+    const day = now.toLocaleDateString('en-US', { weekday: 'short' }).toLowerCase(); // mon, tue, etc.
     const currentTime = now.getHours() * 60 + now.getMinutes();
 
     const todayHours = openingHours[day];

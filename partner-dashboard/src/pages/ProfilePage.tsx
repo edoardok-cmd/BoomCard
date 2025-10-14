@@ -19,21 +19,23 @@ const PageHeader = styled.div`
 const Title = styled.h1`
   font-size: 2.25rem;
   font-weight: 700;
-  color: #111827;
+  color: var(--color-text-primary);
   margin-bottom: 0.5rem;
 `;
 
 const Subtitle = styled.p`
   font-size: 1rem;
-  color: #6b7280;
+  color: var(--color-text-secondary);
 `;
 
 const ProfileCard = styled(motion.div)`
-  background: white;
+  background: var(--color-background);
   border-radius: 1rem;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--shadow-soft);
   padding: 2rem;
   margin-bottom: 1.5rem;
+  border: 1px solid var(--color-border);
+  transition: background-color 0.3s ease, border-color 0.3s ease;
 `;
 
 const ProfileHeader = styled.div`
@@ -41,7 +43,7 @@ const ProfileHeader = styled.div`
   align-items: center;
   gap: 1.5rem;
   padding-bottom: 2rem;
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid var(--color-border);
   margin-bottom: 2rem;
 
   @media (max-width: 640px) {
@@ -54,8 +56,8 @@ const Avatar = styled.div`
   width: 6rem;
   height: 6rem;
   border-radius: 50%;
-  background: linear-gradient(135deg, #111827 0%, #374151 100%);
-  color: white;
+  background: linear-gradient(135deg, var(--color-text-primary) 0%, var(--color-text-secondary) 100%);
+  color: var(--color-background);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -72,13 +74,13 @@ const ProfileInfo = styled.div`
 const UserName = styled.h2`
   font-size: 1.875rem;
   font-weight: 700;
-  color: #111827;
+  color: var(--color-text-primary);
   margin-bottom: 0.25rem;
 `;
 
 const UserEmail = styled.p`
   font-size: 1rem;
-  color: #6b7280;
+  color: var(--color-text-secondary);
 `;
 
 const UserMeta = styled.div`
@@ -87,7 +89,7 @@ const UserMeta = styled.div`
   gap: 1rem;
   margin-top: 0.75rem;
   font-size: 0.875rem;
-  color: #6b7280;
+  color: var(--color-text-secondary);
 
   @media (max-width: 640px) {
     justify-content: center;
@@ -109,7 +111,7 @@ const Badge = styled.span<{ $variant?: 'success' | 'warning' }>`
 const SectionTitle = styled.h3`
   font-size: 1.125rem;
   font-weight: 600;
-  color: #111827;
+  color: var(--color-text-primary);
   margin-bottom: 1.5rem;
 `;
 
@@ -132,42 +134,47 @@ const FormGroup = styled.div`
 const Label = styled.label`
   font-size: 0.875rem;
   font-weight: 500;
-  color: #374151;
+  color: var(--color-text-secondary);
 `;
 
 const Input = styled.input<{ $hasError?: boolean; $disabled?: boolean }>`
   width: 100%;
   padding: 0.75rem 1rem;
-  border: 1px solid ${props => props.$hasError ? '#ef4444' : '#d1d5db'};
+  border: 1px solid ${props => props.$hasError ? 'var(--color-error)' : 'var(--color-border)'};
   border-radius: 0.5rem;
   font-size: 0.9375rem;
   transition: all 200ms;
-  background: ${props => props.$disabled ? '#f9fafb' : 'white'};
+  background: ${props => props.$disabled ? 'var(--color-background-secondary)' : 'var(--color-background)'};
+  color: var(--color-text-primary);
 
   &:focus {
     outline: none;
-    border-color: ${props => props.$hasError ? '#ef4444' : '#111827'};
-    box-shadow: 0 0 0 3px ${props => props.$hasError ? 'rgba(239, 68, 68, 0.1)' : 'rgba(17, 24, 39, 0.1)'};
+    border-color: ${props => props.$hasError ? 'var(--color-error)' : 'var(--color-text-primary)'};
+    box-shadow: 0 0 0 3px ${props => props.$hasError ? 'rgba(239, 68, 68, 0.1)' : 'rgba(0, 0, 0, 0.05)'};
   }
 
   &:disabled {
     cursor: not-allowed;
-    color: #9ca3af;
+    color: var(--color-text-tertiary);
+  }
+
+  [data-theme="dark"] &:focus {
+    box-shadow: 0 0 0 3px ${props => props.$hasError ? 'rgba(239, 68, 68, 0.2)' : 'rgba(255, 255, 255, 0.1)'};
   }
 `;
 
 const ReadOnlyValue = styled.p`
   padding: 0.75rem 1rem;
-  background: #f9fafb;
-  border: 1px solid #e5e7eb;
+  background: var(--color-background-secondary);
+  border: 1px solid var(--color-border);
   border-radius: 0.5rem;
   font-size: 0.9375rem;
-  color: #374151;
+  color: var(--color-text-primary);
 `;
 
 const ErrorMessage = styled(motion.span)`
   font-size: 0.875rem;
-  color: #ef4444;
+  color: var(--color-error);
 `;
 
 const ActionButtons = styled.div`
@@ -175,7 +182,7 @@ const ActionButtons = styled.div`
   justify-content: flex-end;
   gap: 0.75rem;
   padding-top: 1.5rem;
-  border-top: 1px solid #e5e7eb;
+  border-top: 1px solid var(--color-border);
   margin-top: 1.5rem;
 `;
 
@@ -196,13 +203,13 @@ const InfoText = styled.p<{ $variant?: 'info' | 'success' }>`
 const PasswordSection = styled.div`
   margin-top: 1.5rem;
   padding-top: 1.5rem;
-  border-top: 1px solid #e5e7eb;
+  border-top: 1px solid var(--color-border);
 `;
 
 const PasswordButton = styled.button`
   font-size: 0.875rem;
   font-weight: 500;
-  color: #111827;
+  color: var(--color-text-primary);
   background: none;
   border: none;
   cursor: pointer;
@@ -211,7 +218,7 @@ const PasswordButton = styled.button`
   transition: color 200ms;
 
   &:hover {
-    color: #6b7280;
+    color: var(--color-text-secondary);
   }
 `;
 

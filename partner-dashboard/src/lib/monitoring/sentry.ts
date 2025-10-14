@@ -21,14 +21,13 @@ export function initSentry(): void {
     replaysSessionSampleRate: 0.1,
     replaysOnErrorSampleRate: 1.0,
     integrations: [
-      new Sentry.BrowserTracing({
-        tracePropagationTargets: ['localhost', /^\//, /^https:\/\/api\.boomcard\.bg/],
-      }),
-      new Sentry.Replay({
+      Sentry.browserTracingIntegration(),
+      Sentry.replayIntegration({
         maskAllText: true,
         blockAllMedia: true,
       }),
     ],
+    tracePropagationTargets: ['localhost', /^\//, /^https:\/\/api\.boomcard\.bg/],
     beforeSend(event, hint) {
       const error = hint.originalException as Error;
       const ignorePatterns = [

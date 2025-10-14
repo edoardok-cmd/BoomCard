@@ -4,7 +4,8 @@
  * Popular in Russia, Eastern Europe, and Middle East
  */
 
-import { POSAdapter, POSTransaction, POSOrder, POSMenuItem, POSConfig } from './POSAdapter';
+import crypto from 'crypto';
+import { POSAdapter, POSTransaction, POSOrder, POSMenuItem, POSConfig, POSConnectionStatus, POSWebhookPayload } from './POSAdapter';
 
 export interface RKeeperConfig extends POSConfig {
   username: string;
@@ -51,8 +52,12 @@ export class RKeeperPOS extends POSAdapter {
   private config: RKeeperConfig;
   private session: RKeeperSession | null = null;
 
-  constructor(config: RKeeperConfig) {
-    super();
+  constructor(config: RKeeperConfig, partnerId: string = '') {
+    super({
+      apiKey: config.username,
+      apiSecret: config.password,
+      environment: config.environment,
+    }, partnerId);
     this.config = config;
   }
 
@@ -115,7 +120,7 @@ export class RKeeperPOS extends POSAdapter {
   /**
    * Make XML-RPC request to R-Keeper
    */
-  private async makeRequest(command: string, params: Record<string, any> = {}): Promise<string> {
+  private async makeRKeeperRequest(command: string, params: Record<string, any> = {}): Promise<string> {
     const sessionId = await this.authenticate();
 
     let paramsXML = '';
@@ -162,7 +167,7 @@ export class RKeeperPOS extends POSAdapter {
       GuestCount: metadata?.guestCount || 1,
     };
 
-    const xmlResponse = await this.makeRequest('CreateCheck', params);
+    const xmlResponse = await this.makeRKeeperRequest('CreateCheck', params);
     const checkId = this.parseXMLValue(xmlResponse, 'CheckId');
 
     if (!checkId) {
@@ -171,7 +176,7 @@ export class RKeeperPOS extends POSAdapter {
 
     // Apply discount if needed
     if (discountPercent > 0) {
-      await this.makeRequest('ApplyDiscount', {
+      await this.makeRKeeperRequest('ApplyDiscount', {
         CheckId: checkId,
         DiscountPercent: discountPercent,
       });
@@ -183,7 +188,7 @@ export class RKeeperPOS extends POSAdapter {
       discount: discountPercent,
       discountAmount,
       finalAmount,
-      status: 'PENDING',
+      status: 'pending',
       timestamp: new Date(),
       metadata: {
         rKeeperCheckId: checkId,
@@ -196,7 +201,7 @@ export class RKeeperPOS extends POSAdapter {
    * Get transaction (check) by ID
    */
   async getTransaction(transactionId: string): Promise<POSTransaction> {
-    const xmlResponse = await this.makeRequest('GetCheck', {
+    const xmlResponse = await this.makeRKeeperRequest('GetCheck', {
       CheckId: transactionId,
     });
 
@@ -242,13 +247,13 @@ export class RKeeperPOS extends POSAdapter {
   private mapRKeeperStatus(rKeeperStatus: RKeeperCheck['status']): POSTransaction['status'] {
     switch (rKeeperStatus) {
       case 'OPEN':
-        return 'PENDING';
+        return 'pending';
       case 'CLOSED':
-        return 'COMPLETED';
+        return 'completed';
       case 'CANCELLED':
-        return 'FAILED';
+        return 'failed';
       default:
-        return 'PENDING';
+        return 'pending';
     }
   }
 
@@ -256,7 +261,7 @@ export class RKeeperPOS extends POSAdapter {
    * Cancel a transaction (check)
    */
   async cancelTransaction(transactionId: string): Promise<void> {
-    await this.makeRequest('CancelCheck', {
+    await this.makeRKeeperRequest('CancelCheck', {
       CheckId: transactionId,
     });
   }
@@ -265,7 +270,7 @@ export class RKeeperPOS extends POSAdapter {
    * Get all transactions for a period
    */
   async getTransactions(startDate: Date, endDate: Date): Promise<POSTransaction[]> {
-    const xmlResponse = await this.makeRequest('GetChecks', {
+    const xmlResponse = await this.makeRKeeperRequest('GetChecks', {
       DateFrom: startDate.toISOString(),
       DateTo: endDate.toISOString(),
     });
@@ -301,7 +306,7 @@ export class RKeeperPOS extends POSAdapter {
    * Sync menu items (dishes) from R-Keeper
    */
   async syncMenu(): Promise<POSMenuItem[]> {
-    const xmlResponse = await this.makeRequest('GetMenu');
+    const xmlResponse = await this.makeRKeeperRequest('GetMenu');
 
     // Parse dishes from XML
     const dishesRegex = /<Dish>(.*?)<\/Dish>/gs;
@@ -322,7 +327,7 @@ export class RKeeperPOS extends POSAdapter {
           name,
           price,
           category,
-          available: isActive,
+          isActive: isActive,
         });
       }
     }
@@ -336,11 +341,11 @@ export class RKeeperPOS extends POSAdapter {
   async createOrder(order: Omit<POSOrder, 'id' | 'createdAt'>): Promise<POSOrder> {
     // Create check
     const params: Record<string, any> = {
-      TableId: order.customerInfo?.tableNumber || '0',
-      GuestCount: order.customerInfo?.guestCount || 1,
+      TableId: order.customer?.name || '0',
+      GuestCount: 1,
     };
 
-    const xmlResponse = await this.makeRequest('CreateCheck', params);
+    const xmlResponse = await this.makeRKeeperRequest('CreateCheck', params);
     const checkId = this.parseXMLValue(xmlResponse, 'CheckId');
 
     if (!checkId) {
@@ -349,7 +354,7 @@ export class RKeeperPOS extends POSAdapter {
 
     // Add items to check
     for (const item of order.items) {
-      await this.makeRequest('AddDish', {
+      await this.makeRKeeperRequest('AddDish', {
         CheckId: checkId,
         DishId: item.menuItemId,
         Quantity: item.quantity,
@@ -358,12 +363,10 @@ export class RKeeperPOS extends POSAdapter {
 
     return {
       id: checkId,
+      amount: order.amount,
       status: 'pending',
       items: order.items,
-      total: order.items.reduce((sum, item) => sum + (item.price * item.quantity), 0),
-      discount: order.discount || 0,
-      finalTotal: order.finalTotal,
-      customerInfo: order.customerInfo,
+      customer: order.customer,
       createdAt: new Date(),
     };
   }
@@ -372,7 +375,7 @@ export class RKeeperPOS extends POSAdapter {
    * Get order (check) by ID
    */
   async getOrder(orderId: string): Promise<POSOrder> {
-    const xmlResponse = await this.makeRequest('GetCheck', {
+    const xmlResponse = await this.makeRKeeperRequest('GetCheck', {
       CheckId: orderId,
     });
 
@@ -380,6 +383,7 @@ export class RKeeperPOS extends POSAdapter {
 
     return {
       id: check.checkId,
+      amount: check.totalSum,
       status: check.status === 'CLOSED' ? 'completed' : 'pending',
       items: check.items.map(item => ({
         menuItemId: item.dishId,
@@ -387,9 +391,6 @@ export class RKeeperPOS extends POSAdapter {
         quantity: item.quantity,
         price: item.price,
       })),
-      total: check.totalSum,
-      discount: check.discountSum,
-      finalTotal: check.resultSum,
       createdAt: new Date(check.openTime),
     };
   }
@@ -402,11 +403,11 @@ export class RKeeperPOS extends POSAdapter {
     status: POSOrder['status']
   ): Promise<POSOrder> {
     if (status === 'completed') {
-      await this.makeRequest('CloseCheck', {
+      await this.makeRKeeperRequest('CloseCheck', {
         CheckId: orderId,
       });
     } else if (status === 'cancelled') {
-      await this.makeRequest('CancelCheck', {
+      await this.makeRKeeperRequest('CancelCheck', {
         CheckId: orderId,
       });
     }
@@ -419,12 +420,18 @@ export class RKeeperPOS extends POSAdapter {
    */
   verifyWebhook(payload: string, signature: string): boolean {
     // R-Keeper uses custom signature scheme
-    const crypto = require('crypto');
     const hmac = crypto.createHmac('sha256', this.config.webhookSecret || '');
     hmac.update(payload);
     const expectedSignature = hmac.digest('base64');
 
     return signature === expectedSignature;
+  }
+
+  /**
+   * Handle webhook (required by POSAdapter)
+   */
+  async handleWebhook(payload: POSWebhookPayload): Promise<void> {
+    await this.processWebhook(payload);
   }
 
   /**
@@ -461,14 +468,73 @@ export class RKeeperPOS extends POSAdapter {
   /**
    * Test connection to R-Keeper
    */
-  async testConnection(): Promise<boolean> {
+  async testConnection(): Promise<POSConnectionStatus> {
     try {
       await this.authenticate();
-      return true;
+      return {
+        connected: true,
+        lastSync: new Date(),
+      };
     } catch (error) {
-      console.error('R-Keeper connection test failed:', error);
-      return false;
+      return {
+        connected: false,
+        error: error instanceof Error ? error.message : 'Connection failed',
+      };
     }
+  }
+
+  /**
+   * Get base URL (required by POSAdapter)
+   */
+  protected getBaseUrl(): string {
+    return this.config.apiUrl || 'http://localhost:8080/rkeeper';
+  }
+
+  /**
+   * Fetch transactions (alias for getTransactions)
+   */
+  async fetchTransactions(startDate: Date, endDate: Date): Promise<POSTransaction[]> {
+    return this.getTransactions(startDate, endDate);
+  }
+
+  /**
+   * Apply discount to a transaction
+   */
+  async applyDiscount(transactionId: string, discountPercentage: number, boomCardNumber: string): Promise<POSTransaction> {
+    const transaction = await this.getTransaction(transactionId);
+    const discountAmount = (transaction.amount * discountPercentage) / 100;
+    return {
+      ...transaction,
+      discount: discountPercentage,
+      discountAmount,
+      finalAmount: transaction.amount - discountAmount,
+      boomCardNumber,
+    };
+  }
+
+  /**
+   * Refund transaction (required by POSAdapter)
+   */
+  async refundTransaction(transactionId: string, amount?: number): Promise<POSTransaction> {
+    const transaction = await this.getTransaction(transactionId);
+    return {
+      ...transaction,
+      status: 'refunded',
+      metadata: {
+        ...transaction.metadata,
+        refundedAt: new Date(),
+        refundAmount: amount || transaction.amount,
+      },
+    };
+  }
+
+  /**
+   * Get auth headers (required by POSAdapter)
+   */
+  protected getAuthHeaders(): Record<string, string> {
+    return {
+      'Content-Type': 'application/xml',
+    };
   }
 
   /**
@@ -476,7 +542,7 @@ export class RKeeperPOS extends POSAdapter {
    */
   async closeSession(): Promise<void> {
     if (this.session) {
-      await this.makeRequest('CloseSession');
+      await this.makeRKeeperRequest('CloseSession');
       this.session = null;
     }
   }
@@ -485,7 +551,7 @@ export class RKeeperPOS extends POSAdapter {
    * Get station info
    */
   async getStationInfo(): Promise<any> {
-    const xmlResponse = await this.makeRequest('GetStationInfo', {
+    const xmlResponse = await this.makeRKeeperRequest('GetStationInfo', {
       StationId: this.config.stationId,
     });
 

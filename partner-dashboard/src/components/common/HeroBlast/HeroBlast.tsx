@@ -14,11 +14,15 @@ const HeroContainer = styled.div`
   height: 100vh;
   min-height: 600px;
   max-height: 900px;
-  background: #000;
+  background: var(--color-primary);
   overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
+
+  @media (max-width: 768px) {
+    overflow: visible;
+  }
 `;
 
 const VideoBackground = styled.video`
@@ -37,7 +41,7 @@ const VideoBackground = styled.video`
 const VideoOverlay = styled.div<{ $fadeOut: boolean }>`
   position: absolute;
   inset: 0;
-  background: radial-gradient(circle at center, transparent 0%, rgba(0, 0, 0, 0.4) 100%);
+  background: radial-gradient(circle at center, transparent 0%, rgba(0, 0, 0, 0.15) 100%);
   z-index: 2;
   opacity: ${props => props.$fadeOut ? 0 : 1};
   transition: opacity 1s ease-out;
@@ -53,6 +57,12 @@ const ContentContainer = styled.div`
   padding: 2rem;
   max-width: 1200px;
   margin: 0 auto;
+  width: 100%;
+
+  @media (max-width: 768px) {
+    padding: 1rem;
+    overflow: visible;
+  }
 `;
 
 const CardContainer = styled(motion.div)`
@@ -64,6 +74,17 @@ const CardContainer = styled(motion.div)`
   align-items: flex-start;
   justify-content: center;
   gap: 15rem;
+
+  @media (max-width: 768px) {
+    gap: 0;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    max-width: 90vw;
+    margin: 0 auto 2rem;
+  }
+
 `;
 
 const SideCardsContainer = styled.div`
@@ -74,9 +95,13 @@ const SideCardsContainer = styled.div`
   position: relative;
 `;
 
-const SideCardWrapper = styled(motion.div)`
+const SideCardWrapper = styled(motion.div)<{ $position?: 'left' | 'right' }>`
   position: relative;
   perspective: 1000px;
+
+  @media (max-width: 768px) {
+    display: none;
+  }
 `;
 
 const PhotosContainer = styled(motion.div)`
@@ -88,6 +113,10 @@ const PhotosContainer = styled(motion.div)`
   height: 100%;
   pointer-events: none;
   z-index: -1;
+
+  @media (max-width: 768px) {
+    display: none;
+  }
 `;
 
 const Photo = styled(motion.div)<{ $index: number; $side: 'left' | 'right' }>`
@@ -126,6 +155,10 @@ const SideCardPhotosContainer = styled(motion.div)`
   height: 350px;
   pointer-events: none;
   margin-top: 2rem;
+
+  @media (max-width: 768px) {
+    display: none;
+  }
 `;
 
 const SidePhoto = styled(motion.div)`
@@ -243,15 +276,22 @@ const BoomCard = styled(motion.div)<{ $showAnimation?: boolean; $stopAnimation?:
   }
 
   @media (max-width: 768px) {
-    width: 340px;
+    width: min(340px, 90vw);
     height: 210px;
     padding: 1.5rem;
   }
 
   @media (max-width: 480px) {
-    width: 300px;
+    width: min(300px, 85vw);
     height: 190px;
     padding: 1.25rem;
+  }
+
+  @media (max-width: 375px) {
+    width: 90vw;
+    height: auto;
+    min-height: 160px;
+    padding: 1rem;
   }
 `;
 
@@ -299,15 +339,22 @@ const SilverCard = styled(motion.div)<{ $showAnimation?: boolean; $stopAnimation
   }
 
   @media (max-width: 768px) {
-    width: 340px;
+    width: min(340px, 90vw);
     height: 210px;
     padding: 1.5rem;
   }
 
   @media (max-width: 480px) {
-    width: 300px;
+    width: min(300px, 85vw);
     height: 190px;
     padding: 1.25rem;
+  }
+
+  @media (max-width: 375px) {
+    width: 90vw;
+    height: auto;
+    min-height: 160px;
+    padding: 1rem;
   }
 `;
 
@@ -355,15 +402,22 @@ const GoldCard = styled(motion.div)<{ $showAnimation?: boolean; $stopAnimation?:
   }
 
   @media (max-width: 768px) {
-    width: 340px;
+    width: min(340px, 90vw);
     height: 210px;
     padding: 1.5rem;
   }
 
   @media (max-width: 480px) {
-    width: 300px;
+    width: min(300px, 85vw);
     height: 190px;
     padding: 1.25rem;
+  }
+
+  @media (max-width: 375px) {
+    width: 90vw;
+    height: auto;
+    min-height: 160px;
+    padding: 1rem;
   }
 `;
 
@@ -464,7 +518,7 @@ const CardExpiry = styled.div`
 
 const CTAContainer = styled(motion.div)`
   text-align: center;
-  color: white;
+  color: var(--color-secondary);
 `;
 
 const CTATitle = styled(motion.h1)`
@@ -512,16 +566,26 @@ const CTATitle = styled(motion.h1)`
   @media (max-width: 480px) {
     font-size: 2rem;
   }
+
+  @media (max-width: 375px) {
+    font-size: 1.75rem;
+  }
+
+  @media (max-width: 320px) {
+    font-size: 1.5rem;
+  }
 `;
 
 const CTASubtitle = styled(motion.p)`
   font-size: 1.5rem;
   margin-bottom: 2rem;
-  color: rgba(255, 255, 255, 0.95);
+  color: #ffffff;
+  opacity: 0.95;
   text-shadow: 0 2px 10px rgba(0, 0, 0, 0.8);
   max-width: 600px;
   margin-left: auto;
   margin-right: auto;
+  padding: 0 1rem;
 
   @media (max-width: 768px) {
     font-size: 1.25rem;
@@ -532,6 +596,14 @@ const CTASubtitle = styled(motion.p)`
     font-size: 1rem;
     margin-bottom: 1rem;
   }
+
+  @media (max-width: 375px) {
+    font-size: 0.95rem;
+  }
+
+  @media (max-width: 320px) {
+    font-size: 0.875rem;
+  }
 `;
 
 const ButtonContainer = styled(motion.div)`
@@ -539,9 +611,83 @@ const ButtonContainer = styled(motion.div)`
   gap: 1rem;
   justify-content: center;
   flex-wrap: wrap;
+  padding: 0 1rem;
 
   a {
     text-decoration: none;
+  }
+
+  /* Enhanced button contrast for vibrant color mode */
+  [data-theme="color"] & {
+    button {
+      font-size: 1.125rem;
+      font-weight: 700;
+      padding: 16px 40px;
+      min-width: 200px;
+      box-shadow:
+        0 8px 35px -5px rgba(0, 0, 0, 0.5),
+        0 10px 40px -5px rgba(255, 69, 0, 0.6);
+    }
+
+    /* Primary button - ultra bold gradient */
+    button:first-child {
+      background: linear-gradient(135deg, #ff0066 0%, #ff4500 50%, #ff8800 100%) !important;
+      color: #ffffff !important;
+      border: 3px solid rgba(255, 255, 255, 0.3);
+      text-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+      animation: heroPrimaryPulse 2s ease-in-out infinite;
+
+      &:hover {
+        box-shadow:
+          0 12px 50px -5px rgba(0, 0, 0, 0.6),
+          0 14px 55px -5px rgba(255, 69, 0, 0.8),
+          0 8px 40px -5px rgba(255, 0, 102, 0.7) !important;
+        transform: translateY(-3px) scale(1.05) !important;
+      }
+    }
+
+    /* Secondary button - strong outline */
+    a:nth-child(2) button {
+      background: rgba(255, 255, 255, 0.95) !important;
+      color: #1a0a2e !important;
+      border: 3px solid #ff006e !important;
+      text-shadow: none !important;
+      box-shadow:
+        0 8px 35px -5px rgba(255, 0, 110, 0.5),
+        0 10px 40px -5px rgba(0, 0, 0, 0.3);
+
+      &:hover {
+        background: linear-gradient(135deg, #ffe4f1 0%, #fff5e1 100%) !important;
+        border-color: #ff4500 !important;
+        box-shadow:
+          0 12px 50px -5px rgba(255, 0, 110, 0.7),
+          0 14px 55px -5px rgba(255, 69, 0, 0.5),
+          0 8px 40px -5px rgba(0, 0, 0, 0.4) !important;
+        transform: translateY(-3px) scale(1.05) !important;
+      }
+    }
+  }
+
+  @keyframes heroPrimaryPulse {
+    0%, 100% {
+      box-shadow:
+        0 8px 35px -5px rgba(0, 0, 0, 0.5),
+        0 10px 40px -5px rgba(255, 69, 0, 0.6);
+    }
+    50% {
+      box-shadow:
+        0 8px 35px -5px rgba(0, 0, 0, 0.5),
+        0 12px 45px -5px rgba(255, 69, 0, 0.8),
+        0 8px 35px -5px rgba(255, 0, 102, 0.6);
+    }
+  }
+
+  @media (max-width: 480px) {
+    flex-direction: column;
+    align-items: stretch;
+    max-width: 300px;
+    margin: 0 auto;
+    gap: 0.75rem;
   }
 `;
 
@@ -690,6 +836,16 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
     };
   }, [photoState]);
 
+  // Show card immediately on mobile (skip video wait)
+  useEffect(() => {
+    const isMobile = window.innerWidth <= 768;
+    if (isMobile && !showCard) {
+      setShowCard(true);
+      // Also show CTA immediately on mobile
+      setTimeout(() => setShowCTA(true), 500);
+    }
+  }, []);
+
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
@@ -794,6 +950,7 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
               <AnimatePresence>
                 {showSideCards && (
                   <SideCardWrapper
+                    $position="left"
                     initial={{ opacity: 0, x: -200, scale: 0.8 }}
                     animate={{ opacity: 1, x: 0, scale: 1 }}
                     exit={{ opacity: 0, x: -200, scale: 0.8 }}
@@ -854,7 +1011,7 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
               </AnimatePresence>
 
               {/* Black Card - center */}
-              <div style={{ position: 'relative' }}>
+              <div style={{ position: 'relative', zIndex: 1 }}>
                 <BoomCard $showAnimation={showCTA && !showSideCards} $stopAnimation={showSideCards}>
                   <div>
                     <CardLogo>BOOM</CardLogo>
@@ -948,6 +1105,7 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
               <AnimatePresence>
                 {showSideCards && (
                   <SideCardWrapper
+                    $position="right"
                     initial={{ opacity: 0, x: 200, scale: 0.8 }}
                     animate={{ opacity: 1, x: 0, scale: 1 }}
                     exit={{ opacity: 0, x: 200, scale: 0.8 }}

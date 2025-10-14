@@ -4,7 +4,8 @@
  * Supports card payments, QR payments, and mobile POS
  */
 
-import { POSAdapter, POSTransaction, POSOrder, POSMenuItem, POSConfig } from './POSAdapter';
+import crypto from 'crypto';
+import { POSAdapter, POSTransaction, POSOrder, POSMenuItem, POSConfig, POSConnectionStatus, POSWebhookPayload } from './POSAdapter';
 
 export interface myPOSConfig extends POSConfig {
   sid: string; // Store ID
@@ -12,7 +13,7 @@ export interface myPOSConfig extends POSConfig {
   privateKey: string;
   publicKey: string;
   keyIndex: number;
-  environment: 'production' | 'development';
+  environment: 'production' | 'sandbox';
 }
 
 interface myPOSPaymentRequest {
@@ -48,8 +49,11 @@ export class myPOS extends POSAdapter {
   private config: myPOSConfig;
   private baseURL: string;
 
-  constructor(config: myPOSConfig) {
-    super();
+  constructor(config: myPOSConfig, partnerId: string = '') {
+    super({
+      apiKey: config.sid,
+      environment: config.environment,
+    }, partnerId);
     this.config = config;
     this.baseURL = config.environment === 'production'
       ? 'https://www.mypos.com/vmp/checkout'
@@ -72,7 +76,6 @@ export class myPOS extends POSAdapter {
     });
 
     // Sign with private key
-    const crypto = require('crypto');
     const sign = crypto.createSign('SHA256');
     sign.update(concatenated);
     sign.end();
@@ -100,7 +103,6 @@ export class myPOS extends POSAdapter {
     });
 
     // Verify with public key
-    const crypto = require('crypto');
     const verify = crypto.createVerify('SHA256');
     verify.update(concatenated);
     verify.end();
@@ -167,7 +169,7 @@ export class myPOS extends POSAdapter {
       discount: discountPercent,
       discountAmount,
       finalAmount,
-      status: 'PENDING',
+      status: 'pending',
       timestamp: new Date(),
       metadata: {
         myPOSTransactionId: data.IPCTransactionID,
@@ -238,14 +240,14 @@ export class myPOS extends POSAdapter {
   private mapmyPOSStatus(myPOSStatus: myPOSPaymentResponse['Status']): POSTransaction['status'] {
     switch (myPOSStatus) {
       case '1':
-        return 'COMPLETED';
+        return 'completed';
       case '0':
       case '2':
-        return 'FAILED';
+        return 'failed';
       case '3':
-        return 'REFUNDED';
+        return 'refunded';
       default:
-        return 'PENDING';
+        return 'pending';
     }
   }
 
@@ -369,9 +371,9 @@ export class myPOS extends POSAdapter {
   /**
    * Test connection to myPOS
    */
-  async testConnection(): Promise<boolean> {
+  async testConnection(): Promise<POSConnectionStatus> {
     try {
-      // Test by checking a dummy transaction
+      // Test by checking payment methods
       const params = {
         IPCmethod: 'IPCGetPaymentMethods',
         IPCversion: '1.4',
@@ -393,11 +395,73 @@ export class myPOS extends POSAdapter {
         }),
       });
 
-      return response.ok;
+      return {
+        connected: response.ok,
+        lastSync: new Date(),
+      };
     } catch (error) {
-      console.error('myPOS connection test failed:', error);
-      return false;
+      return {
+        connected: false,
+        error: error instanceof Error ? error.message : 'Connection failed',
+      };
     }
+  }
+
+  /**
+   * Get base URL (required by POSAdapter)
+   */
+  protected getBaseUrl(): string {
+    return this.baseURL;
+  }
+
+  /**
+   * Fetch transactions (alias for getTransactions)
+   */
+  async fetchTransactions(startDate: Date, endDate: Date): Promise<POSTransaction[]> {
+    // myPOS doesn't support transaction history queries via API
+    // This would need to be implemented via webhook storage
+    return [];
+  }
+
+  /**
+   * Apply discount to a transaction
+   */
+  async applyDiscount(transactionId: string, discountPercentage: number, boomCardNumber: string): Promise<POSTransaction> {
+    const transaction = await this.getTransaction(transactionId);
+    const discountAmount = (transaction.amount * discountPercentage) / 100;
+    return {
+      ...transaction,
+      discount: discountPercentage,
+      discountAmount,
+      finalAmount: transaction.amount - discountAmount,
+      boomCardNumber,
+    };
+  }
+
+  /**
+   * Handle webhook (required by POSAdapter)
+   */
+  async handleWebhook(payload: POSWebhookPayload): Promise<void> {
+    // Process webhook event
+    console.log('myPOS webhook received:', payload);
+  }
+
+  /**
+   * Refund transaction (required by POSAdapter)
+   */
+  async refundTransaction(transactionId: string, amount?: number): Promise<POSTransaction> {
+    await this.cancelTransaction(transactionId);
+    const transaction = await this.getTransaction(transactionId);
+    return transaction;
+  }
+
+  /**
+   * Get auth headers (required by POSAdapter)
+   */
+  protected getAuthHeaders(): Record<string, string> {
+    return {
+      'Content-Type': 'application/x-www-form-urlencoded',
+    };
   }
 
   /**
