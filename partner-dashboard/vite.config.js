@@ -10,6 +10,7 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    strictPort: false, // Allow fallback to 5174 if 5173 is taken
     proxy: {
       '/api': {
         target: 'http://localhost:3001',

@@ -17,7 +17,7 @@ import type { Integration as ApiIntegration, PartnerIntegration } from '../servi
 
 const PageContainer = styled.div`
   min-height: 100vh;
-  background: #f9fafb;
+  background: var(--color-background);
 `;
 
 const Hero = styled.div`
@@ -87,7 +87,7 @@ const ContentSection = styled.div`
 const SectionTitle = styled.h2`
   font-size: 2rem;
   font-weight: 700;
-  color: #111827;
+  color: var(--color-text-primary);
   margin-bottom: 1rem;
 
   @media (max-width: 768px) {
@@ -97,7 +97,7 @@ const SectionTitle = styled.h2`
 
 const SectionDescription = styled.p`
   font-size: 1.125rem;
-  color: #6b7280;
+  color: var(--color-text-secondary);
   margin-bottom: 3rem;
   max-width: 800px;
 `;
@@ -114,53 +114,84 @@ const IntegrationsGrid = styled.div`
 `;
 
 const IntegrationCard = styled(motion.div)`
-  background: white;
+  background: var(--color-background);
   border-radius: 1rem;
-  padding: 2rem;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-  transition: transform 0.3s, box-shadow 0.3s;
+  box-shadow: var(--shadow-soft);
+  border: 1px solid var(--color-border);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   cursor: pointer;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
 
   &:hover {
-    transform: translateY(-4px);
-    box-shadow: 0 12px 24px rgba(0, 0, 0, 0.15);
+    transform: translateY(-8px);
+    box-shadow: var(--shadow-hover);
   }
 `;
 
-const IntegrationHeader = styled.div`
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 1.5rem;
-`;
-
-const IntegrationLogo = styled.div`
-  width: 64px;
-  height: 64px;
-  border-radius: 12px;
-  background: #f3f4f6;
+const IntegrationImageContainer = styled.div<{ $imageUrl?: string }>`
+  width: 100%;
+  height: 180px;
+  background: ${props => props.$imageUrl
+    ? `url(${props.$imageUrl})`
+    : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'};
+  background-size: cover;
+  background-position: center;
+  transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 2rem;
+
+  /* Subtle overlay for better text readability */
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(to bottom, transparent 0%, rgba(0,0,0,0.1) 100%);
+  }
+
+  ${IntegrationCard}:hover & {
+    transform: scale(1.05);
+  }
+`;
+
+const IntegrationBadgeContainer = styled.div`
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  z-index: 2;
+`;
+
+const IntegrationContent = styled.div`
+  padding: 1.5rem;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+`;
+
+const IntegrationHeader = styled.div`
+  margin-bottom: 1rem;
 `;
 
 const IntegrationTitle = styled.h3`
   font-size: 1.5rem;
   font-weight: 700;
-  color: #111827;
+  color: var(--color-text-primary);
   margin-bottom: 0.5rem;
 `;
 
 const IntegrationCategory = styled.div`
   font-size: 0.875rem;
-  color: #6b7280;
+  color: var(--color-text-secondary);
   margin-bottom: 1rem;
 `;
 
 const IntegrationDescription = styled.p`
   font-size: 1rem;
-  color: #6b7280;
+  color: var(--color-text-secondary);
   line-height: 1.6;
   margin-bottom: 1.5rem;
 `;
@@ -170,7 +201,14 @@ const IntegrationFooter = styled.div`
   align-items: center;
   justify-content: space-between;
   padding-top: 1.5rem;
-  border-top: 1px solid #e5e7eb;
+  margin-top: auto;
+  border-top: 1px solid var(--color-border);
+  gap: 1rem;
+
+  /* Ensure button takes appropriate space */
+  button {
+    white-space: nowrap;
+  }
 `;
 
 const IntegrationStatus = styled.div<{ $connected: boolean }>`
@@ -179,14 +217,14 @@ const IntegrationStatus = styled.div<{ $connected: boolean }>`
   gap: 0.5rem;
   font-size: 0.875rem;
   font-weight: 600;
-  color: ${props => props.$connected ? '#10b981' : '#6b7280'};
+  color: ${props => props.$connected ? 'var(--color-accent)' : 'var(--color-text-secondary)'};
 `;
 
 const StatusDot = styled.div<{ $connected: boolean }>`
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: ${props => props.$connected ? '#10b981' : '#d1d5db'};
+  background: ${props => props.$connected ? 'var(--color-accent)' : 'var(--color-border)'};
 `;
 
 const FeaturesList = styled.ul`
@@ -200,12 +238,12 @@ const FeatureItem = styled.li`
   align-items: center;
   gap: 0.75rem;
   font-size: 0.875rem;
-  color: #6b7280;
+  color: var(--color-text-secondary);
   margin-bottom: 0.75rem;
 
   &::before {
     content: '✓';
-    color: #10b981;
+    color: var(--color-accent);
     font-weight: 700;
   }
 `;
@@ -220,9 +258,9 @@ const CategoryFilter = styled.div`
 
 const FilterButton = styled.button<{ $active: boolean }>`
   padding: 0.75rem 1.5rem;
-  border: 2px solid ${props => props.$active ? '#000000' : '#e5e7eb'};
-  background: ${props => props.$active ? '#000000' : 'white'};
-  color: ${props => props.$active ? 'white' : '#6b7280'};
+  border: 2px solid ${props => props.$active ? 'var(--color-text-primary)' : 'var(--color-border)'};
+  background: ${props => props.$active ? 'var(--color-text-primary)' : 'var(--color-background)'};
+  color: ${props => props.$active ? 'var(--color-background)' : 'var(--color-text-secondary)'};
   border-radius: 2rem;
   font-weight: 600;
   font-size: 0.875rem;
@@ -230,7 +268,7 @@ const FilterButton = styled.button<{ $active: boolean }>`
   transition: all 0.2s;
 
   &:hover {
-    border-color: #000000;
+    border-color: var(--color-text-primary);
   }
 `;
 
@@ -250,18 +288,18 @@ const ModalOverlay = styled(motion.div)`
 `;
 
 const Modal = styled(motion.div)`
-  background: white;
+  background: var(--color-background);
   border-radius: 1.5rem;
   max-width: 600px;
   width: 100%;
   max-height: 90vh;
   overflow-y: auto;
-  box-shadow: 0 25px 50px rgba(0, 0, 0, 0.25);
+  box-shadow: var(--shadow-hover);
 `;
 
 const ModalHeader = styled.div`
   padding: 2rem;
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid var(--color-border);
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
@@ -270,13 +308,13 @@ const ModalHeader = styled.div`
 const ModalTitle = styled.h2`
   font-size: 1.5rem;
   font-weight: 700;
-  color: #111827;
+  color: var(--color-text-primary);
   margin-bottom: 0.5rem;
 `;
 
 const ModalSubtitle = styled.p`
   font-size: 0.875rem;
-  color: #6b7280;
+  color: var(--color-text-secondary);
 `;
 
 const CloseButton = styled.button`
@@ -284,8 +322,8 @@ const CloseButton = styled.button`
   height: 2.5rem;
   border-radius: 0.5rem;
   border: none;
-  background: #f3f4f6;
-  color: #6b7280;
+  background: var(--color-background-secondary);
+  color: var(--color-text-secondary);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -293,8 +331,8 @@ const CloseButton = styled.button`
   transition: all 0.2s;
 
   &:hover {
-    background: #e5e7eb;
-    color: #111827;
+    background: var(--color-border);
+    color: var(--color-text-primary);
   }
 `;
 
@@ -310,53 +348,57 @@ const Label = styled.label`
   display: block;
   font-size: 0.875rem;
   font-weight: 600;
-  color: #374151;
+  color: var(--color-text-primary);
   margin-bottom: 0.5rem;
 `;
 
 const Input = styled.input`
   width: 100%;
   padding: 0.75rem 1rem;
-  border: 2px solid #e5e7eb;
+  border: 2px solid var(--color-border);
   border-radius: 0.5rem;
   font-size: 0.9375rem;
+  background: var(--color-background);
+  color: var(--color-text-primary);
   transition: all 0.2s;
 
   &:focus {
     outline: none;
-    border-color: #000000;
+    border-color: var(--color-primary);
   }
 
   &::placeholder {
-    color: #9ca3af;
+    color: var(--color-text-secondary);
+    opacity: 0.6;
   }
 `;
 
 const Select = styled.select`
   width: 100%;
   padding: 0.75rem 1rem;
-  border: 2px solid #e5e7eb;
+  border: 2px solid var(--color-border);
   border-radius: 0.5rem;
   font-size: 0.9375rem;
-  background: white;
+  background: var(--color-background);
+  color: var(--color-text-primary);
   cursor: pointer;
   transition: all 0.2s;
 
   &:focus {
     outline: none;
-    border-color: #000000;
+    border-color: var(--color-primary);
   }
 `;
 
 const HelpText = styled.p`
   font-size: 0.8125rem;
-  color: #6b7280;
+  color: var(--color-text-secondary);
   margin-top: 0.5rem;
 `;
 
 const ModalFooter = styled.div`
   padding: 1.5rem 2rem;
-  border-top: 1px solid #e5e7eb;
+  border-top: 1px solid var(--color-border);
   display: flex;
   gap: 1rem;
   justify-content: flex-end;
@@ -390,8 +432,8 @@ const ConnectionStatus = styled.div<{ $status: 'connected' | 'disconnected' | 't
 
 const WebhookBox = styled.div`
   padding: 1rem;
-  background: #f9fafb;
-  border: 1px solid #e5e7eb;
+  background: var(--color-background-secondary);
+  border: 1px solid var(--color-border);
   border-radius: 0.5rem;
   margin-top: 1.5rem;
 `;
@@ -399,7 +441,7 @@ const WebhookBox = styled.div`
 const WebhookLabel = styled.div`
   font-size: 0.8125rem;
   font-weight: 600;
-  color: #6b7280;
+  color: var(--color-text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   margin-bottom: 0.5rem;
@@ -408,11 +450,11 @@ const WebhookLabel = styled.div`
 const WebhookUrl = styled.code`
   display: block;
   padding: 0.75rem;
-  background: white;
-  border: 1px solid #e5e7eb;
+  background: var(--color-background);
+  border: 1px solid var(--color-border);
   border-radius: 0.375rem;
   font-size: 0.8125rem;
-  color: #111827;
+  color: var(--color-text-primary);
   word-break: break-all;
   font-family: 'Monaco', 'Courier New', monospace;
 `;
@@ -559,6 +601,9 @@ const IntegrationsPage: React.FC = () => {
       connected: 'Connected',
       disconnect: 'Disconnect',
       reconnect: 'Reconnect',
+      loginRequired: 'Login Required',
+      loginRequiredDesc: 'You need to be logged in to connect integrations to your account. Please login or create a free account to get started.',
+      loginButton: 'Login to Connect',
     },
     bg: {
       title: 'Поддържани Платежни Системи',
@@ -592,6 +637,9 @@ const IntegrationsPage: React.FC = () => {
       connected: 'Свързан',
       disconnect: 'Прекъсни връзката',
       reconnect: 'Свържи отново',
+      loginRequired: 'Изисква се вход',
+      loginRequiredDesc: 'Трябва да влезете в профила си, за да свържете интеграции към вашия акаунт. Моля, влезте или създайте безплатен акаунт, за да започнете.',
+      loginButton: 'Влез за да свържеш',
     },
   };
 
@@ -664,48 +712,56 @@ const IntegrationsPage: React.FC = () => {
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.4, delay: index * 0.1 }}
                   >
-                    <IntegrationHeader>
-                      <IntegrationLogo>{icon}</IntegrationLogo>
+                    <IntegrationImageContainer $imageUrl={integration.logoUrl}>
                       {integration.isPopular && (
-                        <Badge variant="warning">{content.popular}</Badge>
+                        <IntegrationBadgeContainer>
+                          <Badge variant="warning">{content.popular}</Badge>
+                        </IntegrationBadgeContainer>
                       )}
-                    </IntegrationHeader>
+                    </IntegrationImageContainer>
 
-                    <IntegrationTitle>
-                      {language === 'bg' ? integration.nameBg : integration.nameEn}
-                    </IntegrationTitle>
-                    <IntegrationCategory>
-                      {language === 'bg' ? integration.categoryBg : integration.categoryEn}
-                    </IntegrationCategory>
-                    <IntegrationDescription>
-                      {language === 'bg' ? integration.descriptionBg : integration.descriptionEn}
-                    </IntegrationDescription>
+                    <IntegrationContent>
+                      <IntegrationHeader>
+                        <IntegrationTitle>
+                          {language === 'bg' ? integration.nameBg : integration.nameEn}
+                        </IntegrationTitle>
+                        <IntegrationCategory>
+                          {language === 'bg' ? integration.categoryBg : integration.categoryEn}
+                        </IntegrationCategory>
+                      </IntegrationHeader>
 
-                    <FeaturesList>
-                      {(language === 'bg' ? integration.featuresBg : integration.featuresEn).slice(0, 3).map((feature, idx) => (
-                        <FeatureItem key={idx}>{feature}</FeatureItem>
-                      ))}
-                    </FeaturesList>
+                      <IntegrationDescription>
+                        {language === 'bg' ? integration.descriptionBg : integration.descriptionEn}
+                      </IntegrationDescription>
 
-                    <IntegrationFooter>
-                      <IntegrationStatus $connected={isConnected}>
-                        <StatusDot $connected={isConnected} />
-                        {integration.status === 'available'
-                          ? (isConnected ? content.connected : content.supported)
-                          : integration.status === 'beta'
-                          ? 'Beta'
-                          : content.comingSoon}
-                      </IntegrationStatus>
+                      <FeaturesList>
+                        {(language === 'bg' ? integration.featuresBg : integration.featuresEn).slice(0, 3).map((feature, idx) => (
+                          <FeatureItem key={idx}>{feature}</FeatureItem>
+                        ))}
+                      </FeaturesList>
 
-                      <Button
-                        variant={integration.status === 'available' ? 'primary' : 'secondary'}
-                        size="small"
-                        onClick={() => openIntegrationModal(integration)}
-                        disabled={integration.status === 'coming_soon'}
-                      >
-                        {integration.status === 'available' ? content.getStarted : content.contactUs}
-                      </Button>
-                    </IntegrationFooter>
+                      <IntegrationFooter>
+                        <IntegrationStatus $connected={isConnected}>
+                          <StatusDot $connected={isConnected} />
+                          {integration.status === 'available'
+                            ? (isConnected ? content.connected : content.supported)
+                            : integration.status === 'beta'
+                            ? 'Beta'
+                            : content.comingSoon}
+                        </IntegrationStatus>
+
+                        <Button
+                          variant={integration.status === 'available' ? 'primary' : 'secondary'}
+                          size="small"
+                          onClick={() => openIntegrationModal(integration)}
+                          disabled={integration.status === 'coming_soon'}
+                        >
+                          {integration.status === 'available'
+                            ? (isAuthenticated ? content.getStarted : content.learnMore)
+                            : content.contactUs}
+                        </Button>
+                      </IntegrationFooter>
+                    </IntegrationContent>
                   </IntegrationCard>
                 );
               })}
@@ -764,7 +820,41 @@ const IntegrationsPage: React.FC = () => {
                   </ConnectionStatus>
                 )}
 
-                {selectedIntegration.requiresCredentials && selectedIntegration.credentialsFields && (
+                {!isAuthenticated && (
+                  <div style={{
+                    textAlign: 'center',
+                    padding: '2rem',
+                    background: 'var(--color-background-secondary)',
+                    borderRadius: '0.5rem',
+                    marginBottom: '1.5rem'
+                  }}>
+                    <h3 style={{
+                      fontSize: '1.125rem',
+                      fontWeight: 600,
+                      color: 'var(--color-text-primary)',
+                      marginBottom: '0.75rem'
+                    }}>
+                      {content.loginRequired}
+                    </h3>
+                    <p style={{
+                      fontSize: '0.9375rem',
+                      color: 'var(--color-text-secondary)',
+                      lineHeight: 1.6,
+                      marginBottom: '1.5rem'
+                    }}>
+                      {content.loginRequiredDesc}
+                    </p>
+                    <Button
+                      variant="primary"
+                      size="medium"
+                      onClick={() => window.location.href = '/login'}
+                    >
+                      {content.loginButton}
+                    </Button>
+                  </div>
+                )}
+
+                {isAuthenticated && selectedIntegration.requiresCredentials && selectedIntegration.credentialsFields && (
                   <form onSubmit={(e) => { e.preventDefault(); handleConnect(); }}>
                     {selectedIntegration.credentialsFields.map((field) => (
                       <FormGroup key={field.name}>
@@ -808,7 +898,7 @@ const IntegrationsPage: React.FC = () => {
                   </WebhookBox>
                 )}
 
-                {!selectedIntegration.requiresCredentials && (
+                {isAuthenticated && !selectedIntegration.requiresCredentials && (
                   <div style={{ textAlign: 'center', padding: '2rem 0' }}>
                     <p style={{ fontSize: '0.9375rem', color: '#6b7280', lineHeight: 1.6 }}>
                       {content.needHelpDesc}
@@ -826,7 +916,7 @@ const IntegrationsPage: React.FC = () => {
                 )}
               </ModalBody>
 
-              {selectedIntegration.requiresCredentials && (
+              {isAuthenticated && selectedIntegration.requiresCredentials && (
                 <ModalFooter>
                   <Button variant="ghost" size="medium" onClick={closeModal}>
                     {content.cancel}
