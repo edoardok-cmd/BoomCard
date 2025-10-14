@@ -9,6 +9,10 @@ import toast from 'react-hot-toast';
 import NotificationPreferences from '../components/common/NotificationPreferences/NotificationPreferences';
 
 const PageContainer = styled.div`
+
+  [data-theme="dark"] & {
+    background: #0a0a0a;
+  }
   min-height: calc(100vh - 4rem);
   background: #f9fafb;
   padding: 2rem 1rem;
@@ -28,11 +32,18 @@ const Title = styled.h1`
   font-weight: 700;
   color: #111827;
   margin-bottom: 0.5rem;
+  [data-theme="dark"] & {
+    color: #f9fafb;
+  }
 `;
 
 const Subtitle = styled.p`
   color: #6b7280;
   font-size: 1rem;
+
+  [data-theme="dark"] & {
+    color: #9ca3af;
+  }
 `;
 
 const SettingsGrid = styled.div`
@@ -43,6 +54,10 @@ const SettingsGrid = styled.div`
 
 const SettingCard = styled(motion.div)`
   background: white;
+
+  [data-theme="dark"] & {
+    background: #1f2937;
+  }
   border-radius: 1rem;
   padding: 2rem;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
@@ -59,6 +74,10 @@ const CardHeader = styled.div`
   margin-bottom: 1.5rem;
   padding-bottom: 1rem;
   border-bottom: 1px solid #e5e7eb;
+
+  [data-theme="dark"] & {
+    border-bottom-color: #374151;
+  }
 `;
 
 const IconWrapper = styled.div`
@@ -82,12 +101,20 @@ const CardTitle = styled.h2`
   font-weight: 600;
   color: #111827;
   margin: 0;
+
+  [data-theme="dark"] & {
+    color: #f9fafb;
+  }
 `;
 
 const CardDescription = styled.p`
   color: #6b7280;
   font-size: 0.875rem;
   margin: 0;
+
+  [data-theme="dark"] & {
+    color: #9ca3af;
+  }
 `;
 
 const SettingRow = styled.div`
@@ -96,6 +123,10 @@ const SettingRow = styled.div`
   align-items: center;
   padding: 1rem 0;
   border-bottom: 1px solid #f3f4f6;
+
+  [data-theme="dark"] & {
+    border-bottom-color: #374151;
+  }
 
   &:last-child {
     border-bottom: none;
@@ -121,11 +152,19 @@ const SettingLabel = styled.div`
   font-weight: 600;
   color: #111827;
   margin-bottom: 0.25rem;
+
+  [data-theme="dark"] & {
+    color: #f9fafb;
+  }
 `;
 
 const SettingDesc = styled.div`
   font-size: 0.875rem;
   color: #6b7280;
+
+  [data-theme="dark"] & {
+    color: #9ca3af;
+  }
 `;
 
 const Toggle = styled.button<{ $active: boolean }>`
@@ -151,6 +190,10 @@ const Toggle = styled.button<{ $active: boolean }>`
     height: 24px;
     border-radius: 50%;
     background: white;
+
+  [data-theme="dark"] & {
+    background: #1f2937;
+  }
     transition: left 0.2s;
   }
 `;
@@ -162,11 +205,21 @@ const Select = styled.select`
   font-size: 0.875rem;
   color: #111827;
   background: white;
+
+  [data-theme="dark"] & {
+    background: #1f2937;
+    border-color: #374151;
+    color: #f9fafb;
+  }
   cursor: pointer;
   transition: all 0.2s;
 
   &:hover {
     border-color: #d1d5db;
+
+    [data-theme="dark"] & {
+      border-color: #4b5563;
+    }
   }
 
   &:focus {
@@ -179,6 +232,11 @@ const Select = styled.select`
 const DangerZone = styled(SettingCard)`
   border: 2px solid #fee2e2;
   background: #fef2f2;
+
+  [data-theme="dark"] & {
+    border-color: #7f1d1d;
+    background: #3f1f1f;
+  }
 `;
 
 const DangerButton = styled(Button)`
@@ -386,7 +444,7 @@ const SettingsPage: React.FC = () => {
       toast.success(t.savedSuccess);
     } catch (error) {
       console.error('Save settings error:', error);
-      toast.error(t.errorSavingSettings);
+      toast.error(language === 'bg' ? 'Грешка при запазване на настройките' : 'Error saving settings');
     } finally {
       setIsSaving(false);
     }
@@ -395,7 +453,7 @@ const SettingsPage: React.FC = () => {
   const handleDeleteAccount = () => {
     const confirmed = window.confirm(t.deleteConfirm);
     if (confirmed) {
-      toast.error(t.featureComingSoon);
+      toast.error(language === 'bg' ? 'Функцията скоро ще бъде налична' : 'Feature coming soon');
     }
   };
 
