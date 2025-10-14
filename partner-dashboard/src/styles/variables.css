@@ -1,18 +1,23 @@
 :root {
-  /* Light Mode Colors (Default) */
+  /* Light Mode Colors (Default) - Clean & Professional */
   --color-primary: #000000;
-  --color-primary-hover: #1f2937;
+  --color-primary-hover: #1a1a1a;
   --color-secondary: #ffffff;
-  --color-secondary-hover: #f9fafb;
-  --color-accent: #374151;
+  --color-secondary-hover: #f8f9fa;
+  --color-accent: #10b981;
   --color-muted: #6b7280;
   --color-border: #e5e7eb;
   --color-background: #ffffff;
-  --color-background-secondary: #f9fafb;
+  --color-background-secondary: #fafbfc;
   --color-background-tertiary: #f3f4f6;
-  --color-text-primary: #111827;
-  --color-text-secondary: #6b7280;
-  --color-text-tertiary: #9ca3af;
+  --color-text-primary: #0f172a;
+  --color-text-secondary: #64748b;
+  --color-text-tertiary: #94a3b8;
+
+  /* Footer specific */
+  --color-footer-bg: #0f172a;
+  --color-footer-text: #f1f5f9;
+  --color-footer-border: #334155;
 
   /* Functional Colors */
   --color-success: #10b981;
@@ -65,92 +70,99 @@
   --z-tooltip: 1070;
 }
 
-/* Dark Mode */
+/* Dark Mode - Deep Elegant Black */
 [data-theme="dark"] {
-  --color-primary: #f9fafb;
-  --color-primary-hover: #e5e7eb;
-  --color-secondary: #1f2937;
-  --color-secondary-hover: #374151;
-  --color-accent: #9ca3af;
-  --color-muted: #9ca3af;
-  --color-border: #374151;
-  --color-background: #0f172a;
-  --color-background-secondary: #1e293b;
-  --color-background-tertiary: #334155;
-  --color-text-primary: #f1f5f9;
-  --color-text-secondary: #cbd5e1;
-  --color-text-tertiary: #94a3b8;
-
-  /* Adjusted shadows for dark mode */
-  --shadow-soft: 0 2px 15px -3px rgba(0, 0, 0, 0.3), 0 10px 20px -2px rgba(0, 0, 0, 0.2);
-  --shadow-hover: 0 10px 40px -10px rgba(0, 0, 0, 0.5);
-  --shadow-lg: 0 20px 50px -15px rgba(0, 0, 0, 0.6);
-}
-
-/* Gold/Orange Mode */
-[data-theme="gold"] {
-  --color-primary: #f59e0b;
-  --color-primary-hover: #d97706;
-  --color-secondary: #ffffff;
-  --color-secondary-hover: #fef3c7;
-  --color-accent: #f97316;
-  --color-muted: #78350f;
-  --color-border: #fde68a;
-  --color-background: #fffbeb;
-  --color-background-secondary: #fef3c7;
-  --color-background-tertiary: #fde68a;
-  --color-text-primary: #78350f;
-  --color-text-secondary: #92400e;
-  --color-text-tertiary: #b45309;
-}
-
-/* Red Mode */
-[data-theme="red"] {
-  --color-primary: #ef4444;
-  --color-primary-hover: #dc2626;
-  --color-secondary: #ffffff;
-  --color-secondary-hover: #fee2e2;
-  --color-accent: #f87171;
-  --color-muted: #7f1d1d;
-  --color-border: #fecaca;
-  --color-background: #fef2f2;
-  --color-background-secondary: #fee2e2;
-  --color-background-tertiary: #fecaca;
-  --color-text-primary: #7f1d1d;
-  --color-text-secondary: #991b1b;
-  --color-text-tertiary: #b91c1c;
-}
-
-/* Yellow Mode */
-[data-theme="yellow"] {
-  --color-primary: #eab308;
-  --color-primary-hover: #ca8a04;
-  --color-secondary: #ffffff;
-  --color-secondary-hover: #fef9c3;
-  --color-accent: #facc15;
-  --color-muted: #713f12;
-  --color-border: #fef08a;
-  --color-background: #fefce8;
-  --color-background-secondary: #fef9c3;
-  --color-background-tertiary: #fef08a;
-  --color-text-primary: #713f12;
-  --color-text-secondary: #854d0e;
-  --color-text-tertiary: #a16207;
-}
-
-/* Blue Mode */
-[data-theme="blue"] {
   --color-primary: #3b82f6;
   --color-primary-hover: #2563eb;
   --color-secondary: #ffffff;
-  --color-secondary-hover: #dbeafe;
-  --color-accent: #60a5fa;
-  --color-muted: #1e3a8a;
-  --color-border: #bfdbfe;
-  --color-background: #eff6ff;
-  --color-background-secondary: #dbeafe;
-  --color-background-tertiary: #bfdbfe;
-  --color-text-primary: #1e3a8a;
-  --color-text-secondary: #1e40af;
-  --color-text-tertiary: #2563eb;
+  --color-secondary-hover: #f1f5f9;
+  --color-accent: #06b6d4;
+  --color-muted: #94a3b8;
+  --color-border: #374151;
+  --color-background: #1f2937;
+  --color-background-secondary: #111827;
+  --color-background-tertiary: #374151;
+  --color-text-primary: #f8fafc;
+  --color-text-secondary: #cbd5e1;
+  --color-text-tertiary: #94a3b8;
+
+  /* Footer specific - deeper dark */
+  --color-footer-bg: #020617;
+  --color-footer-text: #f8fafc;
+  --color-footer-border: #1e293b;
+
+  /* Adjusted shadows for dark mode */
+  --shadow-soft: 0 2px 15px -3px rgba(0, 0, 0, 0.5), 0 10px 20px -2px rgba(0, 0, 0, 0.3);
+  --shadow-hover: 0 10px 40px -10px rgba(59, 130, 246, 0.4);
+  --shadow-lg: 0 20px 50px -15px rgba(0, 0, 0, 0.7);
+}
+
+/* Color Mode - Explosive Vibrant Color Burst */
+[data-theme="color"] {
+  /* Primary - Bold Electric Orange (buttons) */
+  --color-primary: #ff4500;
+  --color-primary-hover: #ff6b35;
+
+  /* Secondary - White for text on primary buttons */
+  --color-secondary: #ffffff;
+  --color-secondary-hover: #f8f9fa;
+
+  /* Accent - Vibrant Cyan Blue */
+  --color-accent: #00d4ff;
+
+  /* Muted - Bright Purple */
+  --color-muted: #b24bf3;
+
+  /* Border - Bright multicolor feel */
+  --color-border: #ff94d6;
+
+  /* Backgrounds - Vibrant gradient backgrounds */
+  --color-background: linear-gradient(135deg, #fff5e1 0%, #ffe4f1 50%, #e8f4ff 100%);
+  --color-background-secondary: linear-gradient(135deg, #ffd6a5 0%, #ffb5d5 50%, #c9e4ff 100%);
+  --color-background-tertiary: linear-gradient(135deg, #ffba5a 0%, #ff85c0 50%, #85d8ff 100%);
+
+  /* Text - High contrast */
+  --color-text-primary: #1a0a2e;
+  --color-text-secondary: #8b2fb8;
+  --color-text-tertiary: #ff006e;
+
+  /* Footer specific - Bold gradient */
+  --color-footer-bg: linear-gradient(135deg, #1a0a2e 0%, #6a0572 50%, #ab2567 100%);
+  --color-footer-text: #ffffff;
+  --color-footer-border: #ff006e;
+
+  /* Functional Colors - Ultra vibrant */
+  --color-success: #00ff9f;
+  --color-warning: #ffbb00;
+  --color-error: #ff0066;
+  --color-info: #00d4ff;
+
+  /* Color mode shadows with explosive multi-color glow */
+  --shadow-soft:
+    0 4px 20px -3px rgba(255, 69, 0, 0.4),
+    0 8px 25px -2px rgba(255, 0, 110, 0.3),
+    0 4px 20px -5px rgba(0, 212, 255, 0.25),
+    0 2px 15px -3px rgba(178, 75, 243, 0.2);
+  --shadow-hover:
+    0 12px 50px -10px rgba(255, 69, 0, 0.7),
+    0 16px 55px -10px rgba(255, 0, 110, 0.5),
+    0 12px 45px -10px rgba(0, 212, 255, 0.4),
+    0 8px 40px -8px rgba(178, 75, 243, 0.35);
+  --shadow-lg:
+    0 25px 70px -15px rgba(255, 69, 0, 0.6),
+    0 30px 75px -15px rgba(255, 0, 110, 0.5),
+    0 20px 60px -15px rgba(0, 212, 255, 0.4),
+    0 15px 55px -12px rgba(178, 75, 243, 0.4);
+}
+
+/* Specific color mode enhancements */
+[data-theme="color"] body {
+  background: linear-gradient(135deg, #fff9f0 0%, #fff0f8 25%, #f0f8ff 50%, #fff0f8 75%, #fff9f0 100%);
+  background-size: 400% 400%;
+  animation: gradientShift 15s ease infinite;
+}
+
+@keyframes gradientShift {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
 }
