@@ -952,7 +952,7 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
                   <SideCardWrapper
                     $position="left"
                     initial={{ opacity: 0, x: -200, scale: 0.8 }}
-                    animate={{ opacity: 1, x: 0, scale: 1 }}
+                    animate={{ opacity: 1, x: 50, scale: 1 }}
                     exit={{ opacity: 0, x: -200, scale: 0.8 }}
                     transition={{ duration: 0.6, type: 'spring', stiffness: 100 }}
                   >
@@ -1107,7 +1107,7 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
                   <SideCardWrapper
                     $position="right"
                     initial={{ opacity: 0, x: 200, scale: 0.8 }}
-                    animate={{ opacity: 1, x: 0, scale: 1 }}
+                    animate={{ opacity: 1, x: -50, scale: 1 }}
                     exit={{ opacity: 0, x: 200, scale: 0.8 }}
                     transition={{ duration: 0.6, type: 'spring', stiffness: 100 }}
                   >
