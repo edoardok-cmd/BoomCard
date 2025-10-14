@@ -34,6 +34,11 @@ const FilterContainer = styled.div`
   padding: 1.5rem;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
 
+  [data-theme="dark"] & {
+    background: #1f2937;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  }
+
   @media (max-width: 768px) {
     border-radius: 0;
     padding: 1rem;
@@ -47,12 +52,20 @@ const FilterHeader = styled.div`
   margin-bottom: 1.5rem;
   padding-bottom: 1rem;
   border-bottom: 1px solid #e5e7eb;
+
+  [data-theme="dark"] & {
+    border-bottom-color: #374151;
+  }
 `;
 
 const FilterTitle = styled.h3`
   font-size: 1.25rem;
   font-weight: 600;
   color: #111827;
+
+  [data-theme="dark"] & {
+    color: #f9fafb;
+  }
 `;
 
 const FilterGroupContainer = styled.div`
@@ -77,8 +90,16 @@ const FilterGroupTitle = styled.button`
   cursor: pointer;
   transition: color 200ms;
 
+  [data-theme="dark"] & {
+    color: #d1d5db;
+  }
+
   &:hover {
     color: #111827;
+
+    [data-theme="dark"] & {
+      color: #f9fafb;
+    }
   }
 `;
 
@@ -106,10 +127,18 @@ const FilterOption = styled.label`
     font-size: 0.9375rem;
     color: #6b7280;
     transition: color 200ms;
+
+    [data-theme="dark"] & {
+      color: #9ca3af;
+    }
   }
 
   &:hover span {
     color: #111827;
+
+    [data-theme="dark"] & {
+      color: #f9fafb;
+    }
   }
 `;
 
@@ -160,6 +189,10 @@ const RangeLabels = styled.div`
   margin-top: 0.5rem;
   font-size: 0.875rem;
   color: #6b7280;
+
+  [data-theme="dark"] & {
+    color: #9ca3af;
+  }
 `;
 
 const FilterActions = styled.div`
@@ -168,6 +201,10 @@ const FilterActions = styled.div`
   margin-top: 1.5rem;
   padding-top: 1.5rem;
   border-top: 1px solid #e5e7eb;
+
+  [data-theme="dark"] & {
+    border-top-color: #374151;
+  }
 `;
 
 const ChevronIcon = styled.svg<{ $isOpen: boolean }>`

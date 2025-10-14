@@ -12,6 +12,11 @@ const FilterContainer = styled(motion.div)`
   padding: 1.5rem;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
   margin-bottom: 2rem;
+
+  [data-theme="dark"] & {
+    background: #1f2937;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  }
 `;
 
 const FilterHeader = styled.div`
@@ -28,6 +33,10 @@ const FilterTitle = styled.h3`
   display: flex;
   align-items: center;
   gap: 0.5rem;
+
+  [data-theme="dark"] & {
+    color: #f9fafb;
+  }
 
   svg {
     width: 1.25rem;
@@ -59,10 +68,18 @@ const Label = styled.label`
   align-items: center;
   gap: 0.5rem;
 
+  [data-theme="dark"] & {
+    color: #d1d5db;
+  }
+
   svg {
     width: 1rem;
     height: 1rem;
     color: #6b7280;
+
+    [data-theme="dark"] & {
+      color: #9ca3af;
+    }
   }
 `;
 
@@ -76,13 +93,27 @@ const Select = styled.select`
   cursor: pointer;
   transition: all 0.2s;
 
+  [data-theme="dark"] & {
+    background: #374151;
+    border-color: #4b5563;
+    color: #f9fafb;
+  }
+
   &:focus {
     outline: none;
     border-color: #000000;
+
+    [data-theme="dark"] & {
+      border-color: #9ca3af;
+    }
   }
 
   &:hover {
     border-color: #d1d5db;
+
+    [data-theme="dark"] & {
+      border-color: #6b7280;
+    }
   }
 `;
 
@@ -94,13 +125,27 @@ const Input = styled.input`
   color: #111827;
   transition: all 0.2s;
 
+  [data-theme="dark"] & {
+    background: #374151;
+    border-color: #4b5563;
+    color: #f9fafb;
+  }
+
   &:focus {
     outline: none;
     border-color: #000000;
+
+    [data-theme="dark"] & {
+      border-color: #9ca3af;
+    }
   }
 
   &::placeholder {
     color: #9ca3af;
+
+    [data-theme="dark"] & {
+      color: #6b7280;
+    }
   }
 `;
 
@@ -117,6 +162,10 @@ const RangeInput = styled(Input)`
 const RangeSeparator = styled.span`
   color: #6b7280;
   font-weight: 500;
+
+  [data-theme="dark"] & {
+    color: #9ca3af;
+  }
 `;
 
 const CheckboxGroup = styled.div`
@@ -140,9 +189,20 @@ const CheckboxLabel = styled.label<{ $checked: boolean }>`
   transition: all 0.2s;
   user-select: none;
 
+  [data-theme="dark"] & {
+    border-color: ${props => props.$checked ? '#f9fafb' : '#4b5563'};
+    background: ${props => props.$checked ? '#f9fafb' : '#374151'};
+    color: ${props => props.$checked ? '#111827' : '#d1d5db'};
+  }
+
   &:hover {
     border-color: #000000;
     background: ${props => props.$checked ? '#1f2937' : '#f9fafb'};
+
+    [data-theme="dark"] & {
+      border-color: #f9fafb;
+      background: ${props => props.$checked ? '#e5e7eb' : '#4b5563'};
+    }
   }
 
   input {
@@ -192,6 +252,10 @@ const SliderValue = styled.div`
   font-weight: 600;
   color: #111827;
   margin-top: 0.5rem;
+
+  [data-theme="dark"] & {
+    color: #f9fafb;
+  }
 `;
 
 const ToggleSwitch = styled.label`
@@ -237,6 +301,10 @@ const FilterActions = styled.div`
   margin-top: 1.5rem;
   padding-top: 1.5rem;
   border-top: 1px solid #e5e7eb;
+
+  [data-theme="dark"] & {
+    border-top-color: #374151;
+  }
 `;
 
 const ActiveFilters = styled.div`
@@ -256,6 +324,11 @@ const FilterTag = styled.div`
   font-size: 0.8125rem;
   color: #374151;
 
+  [data-theme="dark"] & {
+    background: #374151;
+    color: #d1d5db;
+  }
+
   button {
     display: flex;
     align-items: center;
@@ -265,6 +338,10 @@ const FilterTag = styled.div`
     cursor: pointer;
     padding: 0;
 
+    [data-theme="dark"] & {
+      color: #9ca3af;
+    }
+
     svg {
       width: 0.875rem;
       height: 0.875rem;
@@ -272,6 +349,10 @@ const FilterTag = styled.div`
 
     &:hover {
       color: #111827;
+
+      [data-theme="dark"] & {
+        color: #f9fafb;
+      }
     }
   }
 `;

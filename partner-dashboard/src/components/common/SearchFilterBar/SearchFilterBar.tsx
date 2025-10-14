@@ -31,6 +31,11 @@ const FilterBarContainer = styled.div`
   padding: 1.5rem;
   border-radius: 1rem;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+
+  [data-theme="dark"] & {
+    background: #1f2937;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  }
 `;
 
 const SearchRow = styled.div`
@@ -49,13 +54,27 @@ const SearchInput = styled.input`
   font-size: 0.875rem;
   transition: border-color 0.2s;
 
+  [data-theme="dark"] & {
+    background: #374151;
+    border-color: #4b5563;
+    color: #f9fafb;
+  }
+
   &:focus {
     outline: none;
     border-color: #000000;
+
+    [data-theme="dark"] & {
+      border-color: #9ca3af;
+    }
   }
 
   &::placeholder {
     color: #9ca3af;
+
+    [data-theme="dark"] & {
+      color: #6b7280;
+    }
   }
 `;
 
@@ -75,14 +94,28 @@ const FilterSelect = styled.select`
   min-width: 150px;
   transition: border-color 0.2s;
 
+  [data-theme="dark"] & {
+    background: #374151;
+    border-color: #4b5563;
+    color: #f9fafb;
+  }
+
   &:focus {
     outline: none;
     border-color: #000000;
+
+    [data-theme="dark"] & {
+      border-color: #9ca3af;
+    }
   }
 
   &:disabled {
     background: #f3f4f6;
     cursor: not-allowed;
+
+    [data-theme="dark"] & {
+      background: #4b5563;
+    }
   }
 `;
 
@@ -94,13 +127,27 @@ const FilterInput = styled.input`
   width: 120px;
   transition: border-color 0.2s;
 
+  [data-theme="dark"] & {
+    background: #374151;
+    border-color: #4b5563;
+    color: #f9fafb;
+  }
+
   &:focus {
     outline: none;
     border-color: #000000;
+
+    [data-theme="dark"] & {
+      border-color: #9ca3af;
+    }
   }
 
   &::placeholder {
     font-size: 0.8125rem;
+
+    [data-theme="dark"] & {
+      color: #6b7280;
+    }
   }
 `;
 
@@ -115,8 +162,17 @@ const ClearButton = styled.button`
   cursor: pointer;
   transition: all 0.2s;
 
+  [data-theme="dark"] & {
+    background: #374151;
+    color: #d1d5db;
+  }
+
   &:hover {
     background: #e5e7eb;
+
+    [data-theme="dark"] & {
+      background: #4b5563;
+    }
   }
 
   &:active {
