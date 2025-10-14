@@ -5,12 +5,12 @@ import styled from 'styled-components';
 
 const TextContent = styled.div`
   line-height: 1.8;
-  color: #374151;
+  color: var(--color-text-secondary);
 
   h2 {
     font-size: 1.5rem;
     font-weight: 700;
-    color: #111827;
+    color: var(--color-text-primary);
     margin-bottom: 1rem;
     margin-top: 2rem;
 

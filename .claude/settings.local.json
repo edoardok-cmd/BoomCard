@@ -65,7 +65,9 @@
       "Bash(/usr/local/bin/npx tsc --noEmit)",
       "Bash(timeout 30 npx playwright test tests/e2e/verify-app.spec.ts --reporter=line)",
       "Bash(git log:*)",
-      "Bash(timeout 60 npx playwright test:*)"
+      "Bash(timeout 60 npx playwright test:*)",
+      "Bash(xargs ps:*)",
+      "Bash(open http://localhost:5173/integrations)"
     ],
     "deny": [],
     "ask": []

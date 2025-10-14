@@ -403,6 +403,11 @@ const ViewToggle = styled.div`
   padding: 0.25rem;
   border-radius: 0.5rem;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+
+  [data-theme="dark"] & {
+    background: #1f2937;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  }
 `;
 
 const ToggleButton = styled.button<{ active: boolean }>`
@@ -420,6 +425,10 @@ const ToggleButton = styled.button<{ active: boolean }>`
 
   &:hover {
     background: ${props => (props.active ? 'var(--primary)' : 'var(--gray-100)')};
+
+    [data-theme="dark"] & {
+      background: ${props => (props.active ? 'var(--primary)' : '#374151')};
+    }
   }
 `;
 
@@ -429,6 +438,11 @@ const FiltersSection = styled.div`
   padding: 1.5rem;
   margin-bottom: 2rem;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+
+  [data-theme="dark"] & {
+    background: #1f2937;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  }
 `;
 
 const FiltersToggle = styled.button`
@@ -499,8 +513,17 @@ const CategoryButton = styled.button<{ active: boolean }>`
   transition: all 0.2s;
   white-space: nowrap;
 
+  [data-theme="dark"] & {
+    background: ${props => (props.active ? '#ffffff' : '#374151')};
+    color: ${props => (props.active ? '#1a1a1a' : '#f9fafb')};
+  }
+
   &:hover {
     background: ${props => (props.active ? '#1a1a1a' : '#e5e5e5')};
+
+    [data-theme="dark"] & {
+      background: ${props => (props.active ? '#ffffff' : '#4b5563')};
+    }
   }
 `;
 
@@ -524,8 +547,17 @@ const SortButton = styled.button<{ active: boolean }>`
   transition: all 0.2s;
   white-space: nowrap;
 
+  [data-theme="dark"] & {
+    background: ${props => (props.active ? '#ffffff' : '#374151')};
+    color: ${props => (props.active ? '#1a1a1a' : '#f9fafb')};
+  }
+
   &:hover {
     background: ${props => (props.active ? '#1a1a1a' : '#e5e5e5')};
+
+    [data-theme="dark"] & {
+      background: ${props => (props.active ? '#ffffff' : '#4b5563')};
+    }
   }
 `;
 
@@ -547,9 +579,18 @@ const VenueCard = styled(motion.div)`
   cursor: pointer;
   transition: all 0.3s;
 
+  [data-theme="dark"] & {
+    background: #1f2937;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  }
+
   &:hover {
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
     transform: translateY(-4px);
+
+    [data-theme="dark"] & {
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+    }
   }
 `;
 

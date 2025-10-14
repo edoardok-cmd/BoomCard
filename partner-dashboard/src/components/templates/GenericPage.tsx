@@ -8,7 +8,7 @@ import OfferCard, { Offer } from '../common/OfferCard/OfferCard';
 
 const PageContainer = styled.div`
   min-height: 100vh;
-  background: #f9fafb;
+  background: var(--color-background);
 `;
 
 const Hero = styled.div`
@@ -100,19 +100,21 @@ const EmptyTitle = styled.h3`
   font-size: 1.5rem;
   font-weight: 600;
   margin-bottom: 0.5rem;
-  color: #111827;
+  color: var(--color-text-primary);
 `;
 
 const EmptyText = styled.p`
   font-size: 1rem;
   margin-bottom: 2rem;
+  color: var(--color-text-secondary);
 `;
 
 const ContentBlock = styled.div`
-  background: white;
+  background: var(--color-background);
   border-radius: 1rem;
   padding: 2rem;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--shadow-soft);
+  border: 1px solid var(--color-border);
   margin-bottom: 2rem;
 `;
 

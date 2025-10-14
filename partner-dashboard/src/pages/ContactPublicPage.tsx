@@ -7,7 +7,7 @@ import toast from 'react-hot-toast';
 
 const PageContainer = styled.div`
   min-height: 100vh;
-  background: linear-gradient(135deg, #f9fafb 0%, #f3f4f6 100%);
+  background: var(--color-background);
   padding: 6rem 2rem 4rem;
 `;
 
@@ -21,13 +21,13 @@ const Title = styled(motion.h1)`
   font-weight: 800;
   text-align: center;
   margin-bottom: 1rem;
-  color: #1a1a1a;
+  color: var(--color-text-primary);
 `;
 
 const Subtitle = styled(motion.p)`
   font-size: 1.25rem;
   text-align: center;
-  color: #6b7280;
+  color: var(--color-text-secondary);
   margin-bottom: 4rem;
   max-width: 600px;
   margin-left: auto;
@@ -45,10 +45,11 @@ const Grid = styled.div`
 `;
 
 const ContactInfo = styled.div`
-  background: white;
+  background: var(--color-background);
   border-radius: 1rem;
   padding: 2.5rem;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  box-shadow: var(--shadow-soft);
+  border: 1px solid var(--color-border);
 `;
 
 const InfoItem = styled.div`
@@ -62,11 +63,11 @@ const IconWrapper = styled.div`
   width: 48px;
   height: 48px;
   border-radius: 0.75rem;
-  background: #f3f4f6;
+  background: var(--color-background-secondary);
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #1a1a1a;
+  color: var(--color-text-primary);
   flex-shrink: 0;
 `;
 
@@ -78,19 +79,20 @@ const InfoTitle = styled.h3`
   font-size: 1.125rem;
   font-weight: 600;
   margin-bottom: 0.25rem;
-  color: #1a1a1a;
+  color: var(--color-text-primary);
 `;
 
 const InfoText = styled.p`
   font-size: 1rem;
-  color: #6b7280;
+  color: var(--color-text-secondary);
 `;
 
 const Form = styled.form`
-  background: white;
+  background: var(--color-background);
   border-radius: 1rem;
   padding: 2.5rem;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  box-shadow: var(--shadow-soft);
+  border: 1px solid var(--color-border);
 `;
 
 const FormGroup = styled.div`
@@ -101,47 +103,51 @@ const Label = styled.label`
   display: block;
   font-size: 0.875rem;
   font-weight: 600;
-  color: #374151;
+  color: var(--color-text-primary);
   margin-bottom: 0.5rem;
 `;
 
 const Input = styled.input`
   width: 100%;
   padding: 0.75rem 1rem;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--color-border);
   border-radius: 0.5rem;
   font-size: 1rem;
+  background: var(--color-background);
+  color: var(--color-text-primary);
   transition: all 0.2s;
 
   &:focus {
     outline: none;
-    border-color: #1a1a1a;
-    box-shadow: 0 0 0 3px rgba(26, 26, 26, 0.1);
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
   }
 `;
 
 const Textarea = styled.textarea`
   width: 100%;
   padding: 0.75rem 1rem;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--color-border);
   border-radius: 0.5rem;
   font-size: 1rem;
+  background: var(--color-background);
+  color: var(--color-text-primary);
   min-height: 150px;
   resize: vertical;
   transition: all 0.2s;
 
   &:focus {
     outline: none;
-    border-color: #1a1a1a;
-    box-shadow: 0 0 0 3px rgba(26, 26, 26, 0.1);
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
   }
 `;
 
 const SubmitButton = styled.button`
   width: 100%;
   padding: 1rem;
-  background: #1a1a1a;
-  color: white;
+  background: var(--color-primary);
+  color: var(--color-secondary);
   border: none;
   border-radius: 0.5rem;
   font-size: 1rem;
@@ -154,9 +160,9 @@ const SubmitButton = styled.button`
   transition: all 0.3s;
 
   &:hover {
-    background: #2d2d2d;
+    background: var(--color-primary-hover);
     transform: translateY(-2px);
-    box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
+    box-shadow: var(--shadow-hover);
   }
 
   &:disabled {

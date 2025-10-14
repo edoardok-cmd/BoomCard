@@ -432,31 +432,49 @@ const ThemeOption = styled.button<{ active: boolean }>`
   }
 `;
 
-const LanguageToggleContainer = styled.div`
+const LanguageButton = styled.button`
+  display: flex;
   align-items: center;
-  gap: 0.25rem;
-  background: var(--color-background-secondary);
-  border-radius: 9999px;
-  padding: 0.25rem;
-  transition: background-color 0.3s ease;
-`;
-
-const LanguageButton = styled.button<{ $active: boolean }>`
-  padding: 0.375rem 0.75rem;
-  border-radius: 9999px;
-  font-size: 0.875rem;
-  font-weight: 500;
-  transition: all 0.2s;
-  background: ${props => props.$active ? 'var(--color-background)' : 'transparent'};
-  color: ${props => props.$active ? 'var(--color-text-primary)' : 'var(--color-text-secondary)'};
-  box-shadow: ${props => props.$active ? '0 1px 2px rgba(0, 0, 0, 0.1)' : 'none'};
-
-  &:hover {
-    color: var(--color-text-primary);
-  }
+  justify-content: center;
+  gap: 0.375rem;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+  color: #374151;
+  transition: all 200ms;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 0.75rem;
+  font-weight: 600;
 
   [data-theme="dark"] & {
-    box-shadow: ${props => props.$active ? '0 1px 3px rgba(0, 0, 0, 0.3)' : 'none'};
+    color: #d1d5db;
+  }
+
+  &:hover {
+    background: #f3f4f6;
+    color: #111827;
+
+    [data-theme="dark"] & {
+      background: #374151;
+      color: #f9fafb;
+    }
+  }
+
+  svg {
+    width: 1.125rem;
+    height: 1.125rem;
+  }
+
+  @media (max-width: 640px) {
+    width: 2.25rem;
+    height: 2.25rem;
+
+    svg {
+      width: 1rem;
+      height: 1rem;
+    }
   }
 `;
 
@@ -734,20 +752,21 @@ export const Header: React.FC<HeaderProps> = ({
             </ThemeMenuContainer>
 
             {/* Language Toggle - Desktop only */}
-            <LanguageToggleContainer className="hidden lg:flex">
-              <LanguageButton
-                onClick={() => setLanguage('en')}
-                $active={language === 'en'}
-              >
-                EN
-              </LanguageButton>
-              <LanguageButton
-                onClick={() => setLanguage('bg')}
-                $active={language === 'bg'}
-              >
-                BG
-              </LanguageButton>
-            </LanguageToggleContainer>
+            <LanguageButton
+              className="hidden lg:flex"
+              onClick={() => setLanguage(language === 'en' ? 'bg' : 'en')}
+              aria-label="Toggle language"
+              title={language === 'en' ? 'Switch to Bulgarian' : 'Switch to English'}
+            >
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9"
+                />
+              </svg>
+            </LanguageButton>
 
             {isAuthenticated && user ? (
               <UserMenuContainer ref={userMenuRef}>
@@ -982,22 +1001,21 @@ export const Header: React.FC<HeaderProps> = ({
             >
               <div className="p-6 pt-20">
                 {/* Language Toggle Mobile */}
-                <LanguageToggleContainer className="mb-4 flex">
-                  <LanguageButton
-                    onClick={() => setLanguage('en')}
-                    $active={language === 'en'}
-                    style={{ flex: 1, padding: '0.5rem 1rem' }}
-                  >
-                    EN
-                  </LanguageButton>
-                  <LanguageButton
-                    onClick={() => setLanguage('bg')}
-                    $active={language === 'bg'}
-                    style={{ flex: 1, padding: '0.5rem 1rem' }}
-                  >
-                    BG
-                  </LanguageButton>
-                </LanguageToggleContainer>
+                <button
+                  onClick={() => setLanguage(language === 'en' ? 'bg' : 'en')}
+                  className="mb-4 flex items-center justify-center gap-3 px-4 py-3 rounded-lg transition-all bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700"
+                  style={{ width: '100%' }}
+                >
+                  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '1.25rem', height: '1.25rem' }}>
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9"
+                    />
+                  </svg>
+                  <span className="font-semibold">{language === 'en' ? 'Switch to Bulgarian' : 'Превключи на английски'}</span>
+                </button>
 
                 {/* Theme Switcher Mobile */}
                 <div className="mb-6 flex gap-2">

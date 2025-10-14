@@ -47,12 +47,16 @@ export const Footer: React.FC<FooterProps> = ({
   return (
     <StyledFooter className={className}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-0 md:gap-8 mb-8">
-          <div className="mb-8 md:mb-0">
-            <h3 className="font-bold text-white text-xl mb-4">BoomCard</h3>
-            <p className="text-gray-300 text-base leading-relaxed">
-              {t('footer.description')}
-            </p>
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-0 md:gap-12 lg:gap-16 mb-8">
+          <div className="mb-8 md:mb-0 border-b border-gray-700 md:border-none">
+            <div className="py-4">
+              <h4 className="font-semibold text-white text-left mb-4">BoomCard</h4>
+            </div>
+            <div className="pb-4 md:block">
+              <p className="text-gray-300 text-base leading-relaxed">
+                {t('footer.description')}
+              </p>
+            </div>
           </div>
 
           <FooterSection title={t('footer.product')}>

@@ -25,7 +25,7 @@ import { useLanguage } from '../contexts/LanguageContext';
 
 const PageContainer = styled.div`
   min-height: 100vh;
-  background: #ffffff;
+  background: var(--color-background);
 `;
 
 const HeroSection = styled.section`
@@ -68,7 +68,7 @@ const CategoryTitle = styled.h2`
   font-size: 2.5rem;
   font-weight: 700;
   margin-bottom: 1rem;
-  color: #1a1a1a;
+  color: var(--color-text-primary);
   text-align: center;
 
   @media (max-width: 768px) {
@@ -78,7 +78,7 @@ const CategoryTitle = styled.h2`
 
 const CategorySubtitle = styled.p`
   font-size: 1.25rem;
-  color: #6b7280;
+  color: var(--color-text-secondary);
   text-align: center;
   margin-bottom: 4rem;
   max-width: 700px;
@@ -94,17 +94,17 @@ const FeaturesGrid = styled.div`
 `;
 
 const FeatureCard = styled(motion.div)`
-  background: white;
+  background: var(--color-background);
   border-radius: 1rem;
   padding: 2.5rem;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
-  border: 1px solid #e5e7eb;
+  box-shadow: var(--shadow-soft);
+  border: 1px solid var(--color-border);
   transition: all 0.3s;
 
   &:hover {
     transform: translateY(-4px);
-    box-shadow: 0 12px 24px rgba(0, 0, 0, 0.1);
-    border-color: #1a1a1a;
+    box-shadow: var(--shadow-hover);
+    border-color: var(--color-text-primary);
   }
 `;
 
@@ -130,12 +130,12 @@ const FeatureIcon = styled.div<{ $color: string }>`
 const FeatureTitle = styled.h3`
   font-size: 1.5rem;
   font-weight: 700;
-  color: #1a1a1a;
+  color: var(--color-text-primary);
 `;
 
 const FeatureDescription = styled.p`
   font-size: 1rem;
-  color: #6b7280;
+  color: var(--color-text-secondary);
   line-height: 1.6;
   margin-bottom: 1.5rem;
 `;
@@ -151,13 +151,13 @@ const FeatureListItem = styled.li`
   align-items: flex-start;
   gap: 0.75rem;
   margin-bottom: 0.75rem;
-  color: #4b5563;
+  color: var(--color-text-secondary);
   font-size: 0.9375rem;
 
   svg {
     flex-shrink: 0;
     margin-top: 0.125rem;
-    color: #10b981;
+    color: var(--color-accent);
   }
 `;
 

@@ -6,7 +6,7 @@ import { useLanguage } from '../contexts/LanguageContext';
 
 const PageContainer = styled.div`
   min-height: 100vh;
-  background: #ffffff;
+  background: var(--color-background);
 `;
 
 const HeroSection = styled.section`
@@ -44,13 +44,13 @@ const SectionTitle = styled.h2`
   font-weight: 700;
   text-align: center;
   margin-bottom: 1rem;
-  color: #1a1a1a;
+  color: var(--color-text-primary);
 `;
 
 const SectionSubtitle = styled.p`
   font-size: 1.25rem;
   text-align: center;
-  color: #6b7280;
+  color: var(--color-text-secondary);
   margin-bottom: 4rem;
   max-width: 700px;
   margin-left: auto;
@@ -65,16 +65,16 @@ const Grid = styled.div`
 `;
 
 const Card = styled(motion.div)`
-  background: white;
-  border: 1px solid #e5e7eb;
+  background: var(--color-background);
+  border: 1px solid var(--color-border);
   border-radius: 1rem;
   padding: 2rem;
   transition: all 0.3s;
 
   &:hover {
     transform: translateY(-4px);
-    box-shadow: 0 12px 24px rgba(0, 0, 0, 0.1);
-    border-color: #1a1a1a;
+    box-shadow: var(--shadow-hover);
+    border-color: var(--color-text-primary);
   }
 `;
 
@@ -94,12 +94,12 @@ const CardTitle = styled.h3`
   font-size: 1.5rem;
   font-weight: 700;
   margin-bottom: 1rem;
-  color: #1a1a1a;
+  color: var(--color-text-primary);
 `;
 
 const CardDescription = styled.p`
   font-size: 1rem;
-  color: #6b7280;
+  color: var(--color-text-secondary);
   line-height: 1.6;
 `;
 
@@ -114,14 +114,21 @@ const FeatureItem = styled.li`
   align-items: flex-start;
   gap: 0.75rem;
   margin-bottom: 1rem;
-  color: #4b5563;
+  color: var(--color-text-secondary);
   font-size: 1rem;
 
   svg {
     flex-shrink: 0;
     margin-top: 0.125rem;
-    color: #10b981;
+    color: var(--color-accent);
   }
+`;
+
+const CertificationsSection = styled(Section)`
+  background: var(--color-background-secondary);
+  margin-left: -2rem;
+  margin-right: -2rem;
+  padding: 5rem 2rem;
 `;
 
 const SecurityPage: React.FC = () => {
@@ -239,7 +246,7 @@ const SecurityPage: React.FC = () => {
         </Grid>
       </Section>
 
-      <Section style={{ background: '#f9fafb', marginLeft: '-2rem', marginRight: '-2rem', padding: '5rem 2rem' }}>
+      <CertificationsSection>
         <SectionTitle>
           {language === 'bg' ? 'Сертификации и съответствие' : 'Certifications & Compliance'}
         </SectionTitle>
@@ -251,7 +258,7 @@ const SecurityPage: React.FC = () => {
             </FeatureItem>
           ))}
         </FeatureList>
-      </Section>
+      </CertificationsSection>
     </PageContainer>
   );
 };

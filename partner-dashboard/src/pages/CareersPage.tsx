@@ -7,7 +7,7 @@ import { useLanguage } from '../contexts/LanguageContext';
 
 const PageContainer = styled.div`
   min-height: 100vh;
-  background: #ffffff;
+  background: var(--color-background);
 `;
 
 const HeroSection = styled.section`
@@ -47,7 +47,7 @@ const SectionTitle = styled.h2`
   font-weight: 700;
   text-align: center;
   margin-bottom: 4rem;
-  color: #1a1a1a;
+  color: var(--color-text-primary);
 `;
 
 const JobsGrid = styled.div`
@@ -56,16 +56,16 @@ const JobsGrid = styled.div`
 `;
 
 const JobCard = styled(motion.div)`
-  background: white;
-  border: 1px solid #e5e7eb;
+  background: var(--color-background);
+  border: 1px solid var(--color-border);
   border-radius: 1rem;
   padding: 2rem;
   transition: all 0.3s;
 
   &:hover {
     transform: translateY(-4px);
-    box-shadow: 0 12px 24px rgba(0, 0, 0, 0.1);
-    border-color: #1a1a1a;
+    box-shadow: var(--shadow-hover);
+    border-color: var(--color-text-primary);
   }
 `;
 
@@ -81,7 +81,7 @@ const JobHeader = styled.div`
 const JobTitle = styled.h3`
   font-size: 1.5rem;
   font-weight: 700;
-  color: #1a1a1a;
+  color: var(--color-text-primary);
 `;
 
 const JobMeta = styled.div`
@@ -95,7 +95,7 @@ const MetaItem = styled.div`
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  color: #6b7280;
+  color: var(--color-text-secondary);
   font-size: 0.9375rem;
 
   svg {
@@ -105,7 +105,7 @@ const MetaItem = styled.div`
 
 const JobDescription = styled.p`
   font-size: 1rem;
-  color: #6b7280;
+  color: var(--color-text-secondary);
   line-height: 1.6;
   margin-bottom: 1.5rem;
 `;
@@ -115,15 +115,15 @@ const ApplyButton = styled(Link)`
   align-items: center;
   gap: 0.5rem;
   padding: 0.75rem 1.5rem;
-  background: #1a1a1a;
-  color: white;
+  background: var(--color-primary);
+  color: var(--color-secondary);
   text-decoration: none;
   border-radius: 0.5rem;
   font-weight: 600;
   transition: all 0.3s;
 
   &:hover {
-    background: #2d2d2d;
+    background: var(--color-primary-hover);
     transform: translateX(4px);
   }
 `;
