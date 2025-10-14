@@ -93,9 +93,13 @@ class ApiService {
             // Retry original request
             return this.api(originalRequest);
           } catch (refreshError) {
-            // Refresh failed - log out user
+            // Refresh failed - log out user ONLY if they were authenticated
             this.processQueue(refreshError, null);
-            this.logout();
+            // Check if user was actually logged in before redirecting
+            const hadToken = !!localStorage.getItem('token');
+            if (hadToken) {
+              this.logout();
+            }
             return Promise.reject(refreshError);
           } finally {
             this.isRefreshing = false;
@@ -138,6 +142,7 @@ class ApiService {
     localStorage.removeItem('token');
     localStorage.removeItem('refreshToken');
     localStorage.removeItem('user');
+    localStorage.removeItem('boomcard_auth');
     window.location.href = '/login';
   }
 
