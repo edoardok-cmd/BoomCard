@@ -165,18 +165,25 @@ const CreditCard = styled.div<{ $variant: 'gold' | 'silver' | 'platinum' }>`
   }
 `;
 
-const CardHeader = styled.div`
+const CardTop = styled.div`
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
   position: relative;
   z-index: 1;
+  margin-bottom: auto;
+`;
+
+const CardLeft = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
 `;
 
 const BoomLogo = styled.div`
-  font-size: 2.5rem;
+  font-size: 3rem;
   font-weight: 900;
-  letter-spacing: -1px;
+  letter-spacing: -2px;
   text-transform: uppercase;
 
   ${CreditCard}[data-variant="gold"] & {
@@ -195,70 +202,106 @@ const BoomLogo = styled.div`
   }
 
   @media (max-width: 768px) {
-    font-size: 2rem;
+    font-size: 2.25rem;
+  }
+`;
+
+const CardNumberRow = styled.div`
+  font-size: 1.5rem;
+  font-weight: 400;
+  letter-spacing: 8px;
+  color: white;
+  font-family: 'Courier New', monospace;
+  display: flex;
+  gap: 1.5rem;
+
+  @media (max-width: 768px) {
+    font-size: 1.125rem;
+    letter-spacing: 4px;
+    gap: 1rem;
+  }
+`;
+
+const CardYear = styled.div`
+  font-size: 2.5rem;
+  font-weight: 300;
+  letter-spacing: 8px;
+  color: white;
+  font-family: 'Courier New', monospace;
+
+  @media (max-width: 768px) {
+    font-size: 1.75rem;
+    letter-spacing: 6px;
   }
 `;
 
 const QRCode = styled.div`
-  width: 100px;
-  height: 100px;
+  width: 120px;
+  height: 120px;
   background: white;
   border-radius: 0.75rem;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-direction: column;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-  padding: 0.5rem;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  padding: 0.625rem;
+  flex-shrink: 0;
 
   @media (max-width: 768px) {
-    width: 80px;
-    height: 80px;
+    width: 90px;
+    height: 90px;
   }
 `;
 
 const QRPlaceholder = styled.div`
-  width: 60px;
-  height: 60px;
+  width: 75px;
+  height: 75px;
   background: #000;
-  border-radius: 0.25rem;
+  border-radius: 0.375rem;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.5rem;
+  font-size: 0.625rem;
   color: white;
+  position: relative;
+
+  &::before, &::after {
+    content: '';
+    position: absolute;
+    background: white;
+  }
+
+  &::before {
+    width: 8px;
+    height: 8px;
+    top: 6px;
+    left: 6px;
+  }
+
+  &::after {
+    width: 8px;
+    height: 8px;
+    bottom: 6px;
+    right: 6px;
+  }
 
   @media (max-width: 768px) {
-    width: 48px;
-    height: 48px;
+    width: 55px;
+    height: 55px;
   }
 `;
 
 const ScanText = styled.div`
-  font-size: 0.625rem;
-  font-weight: 700;
+  font-size: 0.75rem;
+  font-weight: 800;
   color: #000;
-  margin-top: 0.25rem;
+  margin-top: 0.375rem;
   text-transform: uppercase;
+  letter-spacing: 0.5px;
 `;
 
-const CardNumber = styled.div`
-  font-size: 1.75rem;
-  font-weight: 500;
-  letter-spacing: 3px;
-  color: white;
-  font-family: 'Courier New', monospace;
-  position: relative;
-  z-index: 1;
-  margin: 1.5rem 0;
-
-  @media (max-width: 768px) {
-    font-size: 1.25rem;
-    letter-spacing: 2px;
-  }
-`;
-
-const CardFooter = styled.div`
+const CardBottom = styled.div`
   display: flex;
   justify-content: space-between;
   align-items: flex-end;
@@ -269,31 +312,34 @@ const CardFooter = styled.div`
 const CardInfo = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.375rem;
 `;
 
 const CardLabel = styled.div`
-  font-size: 0.75rem;
-  color: rgba(255, 255, 255, 0.7);
+  font-size: 0.625rem;
+  color: rgba(255, 255, 255, 0.6);
   text-transform: uppercase;
-  letter-spacing: 1px;
+  letter-spacing: 1.5px;
+  font-weight: 500;
 `;
 
-const CardValue = styled.div`
-  font-size: 1rem;
+const CardholderName = styled.div`
+  font-size: 1.125rem;
   color: white;
-  font-weight: 600;
+  font-weight: 500;
   text-transform: uppercase;
+  letter-spacing: 1px;
 
   @media (max-width: 768px) {
-    font-size: 0.875rem;
+    font-size: 1rem;
   }
 `;
 
 const CardExpiry = styled.div`
-  font-size: 0.875rem;
-  color: rgba(255, 255, 255, 0.9);
+  font-size: 1rem;
+  color: rgba(255, 255, 255, 0.8);
   font-family: 'Courier New', monospace;
+  font-weight: 300;
 `;
 
 // Features section below cards
@@ -420,29 +466,33 @@ const SubscriptionsPage: React.FC = () => {
         {cards.map((card, index) => (
           <div key={index}>
             <CreditCard $variant={card.variant} data-variant={card.variant}>
-              <CardHeader>
-                <BoomLogo>BOOM</BoomLogo>
+              <CardTop>
+                <CardLeft>
+                  <BoomLogo>BOOM</BoomLogo>
+                  <CardNumberRow>
+                    <span>••••</span>
+                    <span>••••</span>
+                    <span>••••</span>
+                  </CardNumberRow>
+                  <CardYear>2025</CardYear>
+                </CardLeft>
                 <QRCode>
-                  <QRPlaceholder>QR</QRPlaceholder>
+                  <QRPlaceholder />
                   <ScanText>SCAN ME</ScanText>
                 </QRCode>
-              </CardHeader>
+              </CardTop>
 
-              <CardNumber>
-                •••• •••• •••• 2025
-              </CardNumber>
-
-              <CardFooter>
+              <CardBottom>
                 <CardInfo>
                   <CardLabel>
                     {language === 'bg' ? 'ПРИТЕЖАТЕЛ' : 'CARDHOLDER'}
                   </CardLabel>
-                  <CardValue>
+                  <CardholderName>
                     {card.name}
-                  </CardValue>
+                  </CardholderName>
                 </CardInfo>
                 <CardExpiry>12/25</CardExpiry>
-              </CardFooter>
+              </CardBottom>
             </CreditCard>
 
             <FeaturesSection>
