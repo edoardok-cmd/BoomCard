@@ -469,38 +469,6 @@ const HomePage: React.FC = () => {
         </div>
       </section>
 
-      {/* Partner CTA Section */}
-      <section className="section">
-        <div className="container-custom">
-          <CTABox
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6 }}
-          >
-            <h2 className="text-4xl md:text-5xl font-bold mb-6">
-              {language === 'bg' ? 'Станете партньор на BoomCard' : 'Become a BoomCard Partner'}
-            </h2>
-            <p className="text-xl mb-10 opacity-90 leading-relaxed">
-              {language === 'bg'
-                ? 'Присъединете се към нашата мрежа от партньори и достигнете до хиляди нови клиенти'
-                : 'Join our partner network and reach thousands of new customers'}
-            </p>
-            <div className="flex flex-col sm:flex-row justify-center gap-4">
-              <Link to="/partners">
-                <Button variant="secondary" size="large">
-                  {language === 'bg' ? 'Научете повече' : 'Learn More'}
-                </Button>
-              </Link>
-              <Link to="/contact">
-                <Button variant="secondary" size="large">
-                  {language === 'bg' ? 'Свържете се с нас' : 'Contact Us'}
-                </Button>
-              </Link>
-            </div>
-          </CTABox>
-        </div>
-      </section>
-
       {/* User Reviews Section */}
       <section className="section" style={{ background: 'var(--color-background-secondary)' }}>
         <div className="container-custom">

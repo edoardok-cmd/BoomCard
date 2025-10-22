@@ -68,15 +68,13 @@ const CTAButtons = styled.div`
   flex-wrap: wrap;
 
   /* Make outline buttons visible on dark background */
-  > a > button {
-    &:last-child {
-      color: white !important;
-      border-color: rgba(255, 255, 255, 0.5) !important;
+  > a > button[class*="outline"] {
+    color: white !important;
+    border-color: rgba(255, 255, 255, 0.5) !important;
 
-      &:hover {
-        border-color: white !important;
-        background: rgba(255, 255, 255, 0.1) !important;
-      }
+    &:hover {
+      border-color: white !important;
+      background: rgba(255, 255, 255, 0.1) !important;
     }
   }
 `;
@@ -94,12 +92,14 @@ export const ClientCTA: React.FC<ClientCTAProps> = ({ className }) => {
       text: 'Join thousands of users enjoying exclusive deals and offers at the best venues across Bulgaria',
       primaryButton: 'Get Started',
       secondaryButton: 'Browse Offers',
+      partnerButton: 'Become a Partner',
     },
     bg: {
       title: 'Започнете да спестявате с BoomCard днес',
       text: 'Присъединете се към хиляди потребители, които се радват на ексклузивни оферти и промоции в най-добрите места в България',
       primaryButton: 'Започнете сега',
       secondaryButton: 'Разгледайте офертите',
+      partnerButton: 'Станете партньор',
     },
   };
 
@@ -119,6 +119,11 @@ export const ClientCTA: React.FC<ClientCTAProps> = ({ className }) => {
           <Link to="/search">
             <Button variant="outline" size="large">
               {t.secondaryButton}
+            </Button>
+          </Link>
+          <Link to="/partners">
+            <Button variant="outline" size="large">
+              {t.partnerButton}
             </Button>
           </Link>
         </CTAButtons>
