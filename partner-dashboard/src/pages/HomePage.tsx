@@ -196,6 +196,139 @@ const CTABox = styled(motion.div)`
   }
 `;
 
+// Subscription card styled components matching hero card design
+const SubscriptionCardsContainer = styled.div`
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 3rem;
+  max-width: 900px;
+  margin: 0 auto;
+
+  @media (max-width: 968px) {
+    flex-direction: column;
+    gap: 2rem;
+  }
+`;
+
+const SubscriptionCard = styled(motion.div)<{ $featured?: boolean }>`
+  width: 360px;
+  height: 450px;
+  border-radius: 1rem;
+  background: ${props => props.$featured
+    ? 'linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%)'
+    : 'linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%)'};
+  border: ${props => props.$featured ? '3px solid #ffd700' : '2px solid #dee2e6'};
+  box-shadow: ${props => props.$featured
+    ? '0 20px 60px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(255, 215, 0, 0.2)'
+    : '0 10px 30px rgba(0, 0, 0, 0.1)'};
+  padding: 2.5rem 2rem;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  color: ${props => props.$featured ? '#ffffff' : '#212529'};
+
+  [data-theme="dark"] & {
+    background: ${props => props.$featured
+      ? 'linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%)'
+      : 'linear-gradient(135deg, #2d3748 0%, #374151 100%)'};
+    color: ${props => props.$featured ? '#ffffff' : '#f9fafb'};
+    border-color: ${props => props.$featured ? '#ffd700' : '#4b5563'};
+  }
+
+  &:hover {
+    transform: translateY(-8px);
+    box-shadow: ${props => props.$featured
+      ? '0 25px 70px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 215, 0, 0.3)'
+      : '0 15px 40px rgba(0, 0, 0, 0.15)'};
+  }
+
+  @media (max-width: 480px) {
+    width: min(340px, 90vw);
+    height: auto;
+    min-height: 420px;
+  }
+`;
+
+const PopularBadge = styled.div`
+  position: absolute;
+  top: -12px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: linear-gradient(135deg, #ffd700 0%, #ffed4e 100%);
+  color: #000;
+  padding: 0.5rem 1.5rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  box-shadow: 0 4px 12px rgba(255, 215, 0, 0.4);
+`;
+
+const PlanName = styled.h3<{ $featured?: boolean }>`
+  font-size: 1.75rem;
+  font-weight: 700;
+  margin-bottom: 1rem;
+  text-align: center;
+  color: ${props => props.$featured ? '#ffd700' : 'inherit'};
+`;
+
+const PriceContainer = styled.div`
+  text-align: center;
+  margin-bottom: 2rem;
+  padding-bottom: 2rem;
+  border-bottom: 1px solid ${props => props.theme === 'dark' ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)'};
+`;
+
+const Price = styled.div`
+  font-size: 3.5rem;
+  font-weight: 700;
+  line-height: 1;
+  margin-bottom: 0.5rem;
+`;
+
+const PricePeriod = styled.span`
+  font-size: 1rem;
+  opacity: 0.7;
+  font-weight: 400;
+`;
+
+const FeaturesList = styled.ul`
+  list-style: none;
+  padding: 0;
+  margin: 0 0 2rem 0;
+  flex: 1;
+`;
+
+const FeatureItem = styled.li`
+  padding: 0.75rem 0;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.9375rem;
+
+  &::before {
+    content: '✓';
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: rgba(34, 197, 94, 0.2);
+    color: #22c55e;
+    font-weight: 700;
+    font-size: 0.75rem;
+    flex-shrink: 0;
+  }
+`;
+
+const PlanButtonContainer = styled.div`
+  margin-top: auto;
+`;
+
 const HomePage: React.FC = () => {
   const { language, t } = useLanguage();
   const { user } = useAuth();
@@ -410,62 +543,56 @@ const HomePage: React.FC = () => {
             </p>
           </div>
 
-          <div className="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">
+          <SubscriptionCardsContainer>
             {subscriptionPlans.map((plan, index) => (
-              <Card key={index} style={{
-                padding: '2rem',
-                textAlign: 'center',
-                border: plan.featured ? '3px solid var(--color-primary)' : '2px solid var(--color-border)',
-                position: 'relative',
-                transform: plan.featured ? 'scale(1.05)' : 'scale(1)',
-                boxShadow: plan.featured ? 'var(--shadow-large)' : 'var(--shadow-soft)'
-              }}>
+              <SubscriptionCard
+                key={index}
+                $featured={plan.featured}
+                initial={{ opacity: 0, y: 30 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5, delay: index * 0.2 }}
+              >
                 {plan.featured && (
-                  <div style={{
-                    position: 'absolute',
-                    top: '-12px',
-                    left: '50%',
-                    transform: 'translateX(-50%)',
-                    background: 'var(--color-primary)',
-                    color: 'var(--color-secondary)',
-                    padding: '0.25rem 1rem',
-                    borderRadius: '9999px',
-                    fontSize: '0.875rem',
-                    fontWeight: '600'
-                  }}>
+                  <PopularBadge>
                     {language === 'bg' ? 'Най-популярен' : 'Most Popular'}
-                  </div>
+                  </PopularBadge>
                 )}
-                <h3 className="text-2xl font-bold mb-4" style={{ color: 'var(--color-text-primary)' }}>
+
+                <PlanName $featured={plan.featured}>
                   {plan.name}
-                </h3>
-                <div className="mb-6">
-                  <span className="text-5xl font-bold" style={{ color: 'var(--color-text-primary)' }}>
+                </PlanName>
+
+                <PriceContainer>
+                  <Price>
                     {plan.price}
-                  </span>
-                  <span className="text-xl ml-2" style={{ color: 'var(--color-text-secondary)' }}>
-                    {language === 'bg' ? 'лв/мес' : 'BGN/mo'}
-                  </span>
-                </div>
-                <ul style={{ textAlign: 'left', marginBottom: '2rem' }}>
+                    <PricePeriod>
+                      {language === 'bg' ? ' лв/мес' : ' BGN/mo'}
+                    </PricePeriod>
+                  </Price>
+                </PriceContainer>
+
+                <FeaturesList>
                   {plan.features.map((feature, i) => (
-                    <li key={i} style={{
-                      padding: '0.75rem 0',
-                      borderBottom: '1px solid var(--color-border)',
-                      color: 'var(--color-text-secondary)'
-                    }}>
-                      ✓ {feature}
-                    </li>
+                    <FeatureItem key={i}>
+                      {feature}
+                    </FeatureItem>
                   ))}
-                </ul>
-                <Link to="/subscriptions">
-                  <Button variant={plan.featured ? 'primary' : 'secondary'} size="large" style={{ width: '100%' }}>
-                    {language === 'bg' ? 'Избери План' : 'Choose Plan'}
-                  </Button>
-                </Link>
-              </Card>
+                </FeaturesList>
+
+                <PlanButtonContainer>
+                  <Link to="/subscriptions">
+                    <Button
+                      variant={plan.featured ? 'primary' : 'secondary'}
+                      size="large"
+                      style={{ width: '100%' }}
+                    >
+                      {language === 'bg' ? 'Избери План' : 'Choose Plan'}
+                    </Button>
+                  </Link>
+                </PlanButtonContainer>
+              </SubscriptionCard>
             ))}
-          </div>
+          </SubscriptionCardsContainer>
         </div>
       </section>
 
