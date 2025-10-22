@@ -16,6 +16,7 @@ import venuesRouter from './routes/venues.routes';
 import sidebarRouter from './routes/sidebar.routes';
 import offersRouter from './routes/offers.routes';
 import integrationsRouter from './routes/integrations.routes';
+import reviewsRouter from './routes/reviews.routes';
 
 // Import WebSocket handler
 import { initializeWebSocket } from './websocket/server';
@@ -92,6 +93,7 @@ app.use('/api/venues', venuesRouter);
 app.use('/api/sidebar', sidebarRouter);
 app.use('/api/offers', offersRouter);
 app.use('/api/integrations', integrationsRouter);
+app.use('/api/reviews', reviewsRouter);
 
 // 404 handler
 app.use('*', (req, res) => {

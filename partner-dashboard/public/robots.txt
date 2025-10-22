@@ -1,0 +1,63 @@
+# BoomCard Partner Dashboard - Robots.txt
+# Optimized for Bulgarian market SEO
+
+User-agent: *
+Allow: /
+Allow: /promotions
+Allow: /experiences
+Allow: /partners
+Allow: /categories
+Allow: /locations
+Allow: /media
+Allow: /nearby
+Allow: /about
+Allow: /subscriptions
+Allow: /contact
+Allow: /faq
+Allow: /product
+Allow: /features
+Allow: /pricing
+
+# Disallow admin and user-specific pages
+Disallow: /admin
+Disallow: /dashboard
+Disallow: /profile
+Disallow: /settings
+Disallow: /analytics
+Disallow: /login
+Disallow: /register
+Disallow: /forgot-password
+Disallow: /reset-password
+Disallow: /verify-email
+Disallow: /partners/offers/
+
+# Allow crawling of static assets
+Allow: /assets/
+Allow: /*.css
+Allow: /*.js
+Allow: /*.png
+Allow: /*.jpg
+Allow: /*.jpeg
+Allow: /*.svg
+Allow: /*.webp
+
+# Sitemap locations
+Sitemap: https://boomcard.bg/sitemap.xml
+Sitemap: https://boomcard.bg/sitemap-images.xml
+Sitemap: https://boomcard.bg/sitemap-news.xml
+
+# Crawl-delay (optional, adjust if needed)
+Crawl-delay: 1
+
+# Specific bot rules
+User-agent: Googlebot
+Allow: /
+
+User-agent: Googlebot-Image
+Allow: /
+
+User-agent: Bingbot
+Allow: /
+
+User-agent: Yandex
+Allow: /

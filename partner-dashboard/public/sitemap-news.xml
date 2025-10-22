@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:news="http://www.google.com/schemas/sitemap-news/0.9">
+
+  <!-- Latest Promotions (News-worthy content) -->
+  <url>
+    <loc>https://boomcard.bg/promotions</loc>
+    <news:news>
+      <news:publication>
+        <news:name>BoomCard Bulgaria</news:name>
+        <news:language>bg</news:language>
+      </news:publication>
+      <news:publication_date>2025-10-22</news:publication_date>
+      <news:title>Нови Ексклузивни Промоции и Оферти</news:title>
+      <news:keywords>промоции, оферти, отстъпки, ресторанти, хотели</news:keywords>
+    </news:news>
+  </url>
+
+  <!-- Featured Experiences -->
+  <url>
+    <loc>https://boomcard.bg/experiences</loc>
+    <news:news>
+      <news:publication>
+        <news:name>BoomCard Bulgaria</news:name>
+        <news:language>bg</news:language>
+      </news:publication>
+      <news:publication_date>2025-10-22</news:publication_date>
+      <news:title>Топ Изживявания и Специални Събития</news:title>
+      <news:keywords>изживявания, събития, активности, България</news:keywords>
+    </news:news>
+  </url>
+
+  <!-- New Partners -->
+  <url>
+    <loc>https://boomcard.bg/partners/new</loc>
+    <news:news>
+      <news:publication>
+        <news:name>BoomCard Bulgaria</news:name>
+        <news:language>bg</news:language>
+      </news:publication>
+      <news:publication_date>2025-10-22</news:publication_date>
+      <news:title>Нови Партньори в Мрежата BoomCard</news:title>
+      <news:keywords>партньори, нови оферти, бизнес</news:keywords>
+    </news:news>
+  </url>
+
+  <!-- VIP Exclusive Offers -->
+  <url>
+    <loc>https://boomcard.bg/partners/exclusive</loc>
+    <news:news>
+      <news:publication>
+        <news:name>BoomCard Bulgaria</news:name>
+        <news:language>bg</news:language>
+      </news:publication>
+      <news:publication_date>2025-10-22</news:publication_date>
+      <news:title>Ексклузивни VIP Оферти</news:title>
+      <news:keywords>VIP, ексклузивни, премиум оферти</news:keywords>
+    </news:news>
+  </url>
+
+</urlset>

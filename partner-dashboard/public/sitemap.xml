@@ -1,0 +1,303 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:xhtml="http://www.w3.org/1999/xhtml"
+        xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
+
+  <!-- Homepage -->
+  <url>
+    <loc>https://boomcard.bg/</loc>
+    <xhtml:link rel="alternate" hreflang="bg" href="https://boomcard.bg/" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://boomcard.bg/en" />
+    <lastmod>2025-10-22</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>1.0</priority>
+  </url>
+
+  <!-- Main Category Pages -->
+  <url>
+    <loc>https://boomcard.bg/promotions</loc>
+    <xhtml:link rel="alternate" hreflang="bg" href="https://boomcard.bg/promotions" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://boomcard.bg/en/promotions" />
+    <lastmod>2025-10-22</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.9</priority>
+  </url>
+
+  <url>
+    <loc>https://boomcard.bg/experiences</loc>
+    <xhtml:link rel="alternate" hreflang="bg" href="https://boomcard.bg/experiences" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://boomcard.bg/en/experiences" />
+    <lastmod>2025-10-22</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.9</priority>
+  </url>
+
+  <url>
+    <loc>https://boomcard.bg/partners</loc>
+    <xhtml:link rel="alternate" hreflang="bg" href="https://boomcard.bg/partners" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://boomcard.bg/en/partners" />
+    <lastmod>2025-10-22</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.9</priority>
+  </url>
+
+  <!-- Promotions Subcategories -->
+  <url>
+    <loc>https://boomcard.bg/promotions/gastronomy</loc>
+    <lastmod>2025-10-22</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+
+  <url>
+    <loc>https://boomcard.bg/promotions/extreme</loc>
+    <lastmod>2025-10-22</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+
+  <url>
+    <loc>https://boomcard.bg/promotions/cultural</loc>
+    <lastmod>2025-10-22</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+
+  <!-- Experiences Subcategories -->
+  <url>
+    <loc>https://boomcard.bg/experiences/gastronomy</loc>
+    <lastmod>2025-10-22</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+
+  <url>
+    <loc>https://boomcard.bg/experiences/extreme</loc>
+    <lastmod>2025-10-22</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+
+  <url>
+    <loc>https://boomcard.bg/experiences/cultural</loc>
+    <lastmod>2025-10-22</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+
+  <url>
+    <loc>https://boomcard.bg/experiences/romantic</loc>
+    <lastmod>2025-10-22</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+
+  <url>
+    <loc>https://boomcard.bg/experiences/family</loc>
+    <lastmod>2025-10-22</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+
+  <url>
+    <loc>https://boomcard.bg/experiences/educational</loc>
+    <lastmod>2025-10-22</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+
+  <!-- Categories -->
+  <url>
+    <loc>https://boomcard.bg/categories</loc>
+    <lastmod>2025-10-22</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+
+  <url>
+    <loc>https://boomcard.bg/categories/restaurants</loc>
+    <lastmod>2025-10-22</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+
+  <url>
+    <loc>https://boomcard.bg/categories/hotels</loc>
+    <lastmod>2025-10-22</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+
+  <url>
+    <loc>https://boomcard.bg/categories/wineries</loc>
+    <lastmod>2025-10-22</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+
+  <url>
+    <loc>https://boomcard.bg/categories/spa</loc>
+    <lastmod>2025-10-22</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+
+  <!-- Locations -->
+  <url>
+    <loc>https://boomcard.bg/locations</loc>
+    <lastmod>2025-10-22</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+
+  <url>
+    <loc>https://boomcard.bg/locations/sofia</loc>
+    <lastmod>2025-10-22</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+
+  <url>
+    <loc>https://boomcard.bg/locations/plovdiv</loc>
+    <lastmod>2025-10-22</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+
+  <url>
+    <loc>https://boomcard.bg/locations/varna</loc>
+    <lastmod>2025-10-22</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+
+  <url>
+    <loc>https://boomcard.bg/locations/bansko</loc>
+    <lastmod>2025-10-22</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+
+  <!-- Partners -->
+  <url>
+    <loc>https://boomcard.bg/partners/restaurants</loc>
+    <lastmod>2025-10-22</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+
+  <url>
+    <loc>https://boomcard.bg/partners/sofia</loc>
+    <lastmod>2025-10-22</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+
+  <url>
+    <loc>https://boomcard.bg/partners/plovdiv</loc>
+    <lastmod>2025-10-22</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+
+  <url>
+    <loc>https://boomcard.bg/partners/varna</loc>
+    <lastmod>2025-10-22</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+
+  <!-- Features & Info Pages -->
+  <url>
+    <loc>https://boomcard.bg/nearby</loc>
+    <lastmod>2025-10-22</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.8</priority>
+  </url>
+
+  <url>
+    <loc>https://boomcard.bg/media</loc>
+    <lastmod>2025-10-22</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+
+  <!-- Public Pages -->
+  <url>
+    <loc>https://boomcard.bg/about</loc>
+    <lastmod>2025-10-22</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+
+  <url>
+    <loc>https://boomcard.bg/subscriptions</loc>
+    <lastmod>2025-10-22</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+
+  <url>
+    <loc>https://boomcard.bg/contact</loc>
+    <lastmod>2025-10-22</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
+
+  <url>
+    <loc>https://boomcard.bg/faq</loc>
+    <lastmod>2025-10-22</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
+
+  <url>
+    <loc>https://boomcard.bg/product</loc>
+    <lastmod>2025-10-22</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+
+  <url>
+    <loc>https://boomcard.bg/features</loc>
+    <lastmod>2025-10-22</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+
+  <url>
+    <loc>https://boomcard.bg/pricing</loc>
+    <lastmod>2025-10-22</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+
+  <url>
+    <loc>https://boomcard.bg/support</loc>
+    <lastmod>2025-10-22</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.5</priority>
+  </url>
+
+  <url>
+    <loc>https://boomcard.bg/terms</loc>
+    <lastmod>2025-10-22</lastmod>
+    <changefreq>yearly</changefreq>
+    <priority>0.3</priority>
+  </url>
+
+  <url>
+    <loc>https://boomcard.bg/privacy</loc>
+    <lastmod>2025-10-22</lastmod>
+    <changefreq>yearly</changefreq>
+    <priority>0.3</priority>
+  </url>
+
+  <url>
+    <loc>https://boomcard.bg/integrations</loc>
+    <lastmod>2025-10-22</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.5</priority>
+  </url>
+
+</urlset>

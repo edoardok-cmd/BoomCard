@@ -67,7 +67,12 @@
       "Bash(git log:*)",
       "Bash(timeout 60 npx playwright test:*)",
       "Bash(xargs ps:*)",
-      "Bash(open http://localhost:5173/integrations)"
+      "Bash(open http://localhost:5173/integrations)",
+      "Read(//Users/administrator/Downloads/Boom Rado/**)",
+      "Bash(npm run)",
+      "Bash(timeout 30 npx playwright test tests/e2e/verify-homepage-reviews.spec.ts --reporter=line --workers=1)",
+      "Bash(timeout 120 npx playwright test tests/e2e/hero-card-positions.spec.ts --reporter=line --workers=1)",
+      "Bash(open http://localhost:5178/)"
     ],
     "deny": [],
     "ask": []

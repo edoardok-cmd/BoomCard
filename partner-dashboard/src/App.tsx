@@ -222,7 +222,9 @@ function App() {
                     <Route path="promotions/cultural" element={<PromotionsCulturalPage />} />
 
                     {/* Categories routes */}
+                    <Route path="categories/restaurants" element={<CategoriesRestaurantTypesPage />} />
                     <Route path="categories/restaurants/types" element={<CategoriesRestaurantTypesPage />} />
+                    <Route path="categories/hotels" element={<CategoriesHotelTypesPage />} />
                     <Route path="categories/hotels/types" element={<CategoriesHotelTypesPage />} />
                     <Route path="categories/spa" element={<CategoriesSpaPage />} />
                     <Route path="categories/wineries" element={<CategoriesWineriesPage />} />

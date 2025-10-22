@@ -11,6 +11,14 @@ export const StyledHeader = styled.header`
   border-bottom: 1px solid var(--color-border);
   transition: all 300ms cubic-bezier(0.4, 0, 0.2, 1);
 
+  /* Ensure header stays in viewport on mobile */
+  @media (max-width: 768px) {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+  }
+
   /* Light mode */
   [data-theme="light"] & {
     background-color: rgba(255, 255, 255, 0.8);

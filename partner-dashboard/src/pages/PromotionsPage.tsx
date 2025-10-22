@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import styled from 'styled-components';
@@ -6,6 +6,7 @@ import { useLanguage } from '../contexts/LanguageContext';
 import OfferCard, { Offer } from '../components/common/OfferCard/OfferCard';
 import Button from '../components/common/Button/Button';
 import Badge from '../components/common/Badge/Badge';
+import { updateSEO, generateOfferSchema } from '../utils/seo';
 
 const PageContainer = styled.div`
 
@@ -303,9 +304,42 @@ const mockPromotions: Offer[] = [
 
 const PromotionsPage: React.FC = () => {
   const { language } = useLanguage();
-  const [activeTab, setActiveTab] = useState<'all' | 'active' | 'upcoming' | 'expired'>('all');
-  const [showFilters, setShowFilters] = useState(false);
-  const [filteredOffers, setFilteredOffers] = useState<Offer[]>(mockPromotions);
+
+  // Sort promotions by discount size and limit to 6
+  const topPromotions = [...mockPromotions]
+    .sort((a, b) => b.discount - a.discount)
+    .slice(0, 6);
+
+  // SEO optimization for promotions page
+  useEffect(() => {
+    updateSEO({
+      title: language === 'bg'
+        ? 'Промоции и Специални Оферти | BoomCard'
+        : 'Promotions and Special Offers | BoomCard',
+      description: language === 'bg'
+        ? 'Разгледайте най-добрите промоции и ексклузивни оферти с вашата BoomCard карта за намаления. Топ изживявания на специални цени!'
+        : 'Browse the best promotions and exclusive offers with your BoomCard discount card. Top experiences at special prices!',
+      keywords: language === 'bg'
+        ? ['промоции', 'специални оферти', 'отстъпки', 'ексклузивни промоции', 'промоции ресторанти', 'промоции хотели', 'карта за намаления']
+        : ['promotions', 'special offers', 'discounts', 'exclusive promotions', 'restaurant promotions', 'hotel promotions', 'discount card'],
+      language: language,
+      url: window.location.href,
+    });
+
+    // Add offer schema for the top promotion
+    if (topPromotions.length > 0) {
+      const topOffer = topPromotions[0];
+      generateOfferSchema({
+        name: language === 'bg' ? topOffer.titleBg : topOffer.title,
+        description: language === 'bg' ? topOffer.descriptionBg : topOffer.description,
+        discount: topOffer.discount,
+        originalPrice: topOffer.originalPrice,
+        discountedPrice: topOffer.discountedPrice,
+        category: language === 'bg' ? topOffer.categoryBg : topOffer.category,
+        image: topOffer.imageUrl,
+      });
+    }
+  }, [language, topPromotions]);
 
   const t = {
     en: {
@@ -341,23 +375,6 @@ const PromotionsPage: React.FC = () => {
   };
 
   const content = language === 'bg' ? t.bg : t.en;
-
-  const handleFilterChange = (filters: any) => {
-    // Apply filters logic here
-    let filtered = [...mockPromotions];
-
-    if (filters.category && filters.category.length > 0) {
-      filtered = filtered.filter(offer =>
-        filters.category.includes(offer.category)
-      );
-    }
-
-    setFilteredOffers(filtered);
-  };
-
-  // For demo purposes, show all offers regardless of tab
-  // In production, offers would have validUntil field to filter by
-  const displayOffers = filteredOffers;
 
   return (
     <PageContainer>
@@ -395,85 +412,30 @@ const PromotionsPage: React.FC = () => {
         <Container>
           <SectionHeader>
             <SectionTitle>
-              {content.activePromotions}{' '}
-              <Badge variant="success">
-                {displayOffers.length}
-              </Badge>
+              {language === 'bg' ? 'Топ Промоции по Размер на Отстъпката' : 'Top Promotions by Discount Size'}
             </SectionTitle>
-
-            <FilterBar>
-              <FilterTabs>
-                <TabButton
-                  $active={activeTab === 'all'}
-                  onClick={() => setActiveTab('all')}
-                >
-                  {content.all}
-                </TabButton>
-                <TabButton
-                  $active={activeTab === 'active'}
-                  onClick={() => setActiveTab('active')}
-                >
-                  {content.active}
-                </TabButton>
-                <TabButton
-                  $active={activeTab === 'upcoming'}
-                  onClick={() => setActiveTab('upcoming')}
-                >
-                  {content.upcoming}
-                </TabButton>
-                <TabButton
-                  $active={activeTab === 'expired'}
-                  onClick={() => setActiveTab('expired')}
-                >
-                  {content.expired}
-                </TabButton>
-              </FilterTabs>
-
-              <Button
-                variant="secondary"
-                onClick={() => setShowFilters(!showFilters)}
-              >
-                {content.filters}
-              </Button>
-            </FilterBar>
           </SectionHeader>
 
-          {showFilters && (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              exit={{ opacity: 0, height: 0 }}
-              style={{ padding: '1rem', background: 'white', borderRadius: '0.5rem', marginBottom: '2rem' }}
-            >
-              <p style={{ color: '#6b7280' }}>Filter options will be displayed here</p>
-            </motion.div>
-          )}
+          <OffersGrid>
+            {topPromotions.map((offer, index) => (
+              <motion.div
+                key={offer.id}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.4, delay: index * 0.1 }}
+              >
+                <OfferCard offer={offer} />
+              </motion.div>
+            ))}
+          </OffersGrid>
 
-          {displayOffers.length > 0 ? (
-            <OffersGrid>
-              {displayOffers.map((offer, index) => (
-                <motion.div
-                  key={offer.id}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.4, delay: index * 0.1 }}
-                >
-                  <OfferCard offer={offer} />
-                </motion.div>
-              ))}
-            </OffersGrid>
-          ) : (
-            <EmptyState>
-              <EmptyIcon>🎁</EmptyIcon>
-              <EmptyTitle>{content.emptyTitle}</EmptyTitle>
-              <EmptyText>{content.emptyText}</EmptyText>
-              <Link to="/search">
-                <Button variant="primary">
-                  {content.browseOffers}
-                </Button>
-              </Link>
-            </EmptyState>
-          )}
+          <div style={{ textAlign: 'center', marginTop: '3rem' }}>
+            <Link to="/partners">
+              <Button variant="primary" size="large">
+                {language === 'bg' ? 'Виж Всички Партньори' : 'View All Partners'}
+              </Button>
+            </Link>
+          </div>
         </Container>
       </ContentSection>
     </PageContainer>

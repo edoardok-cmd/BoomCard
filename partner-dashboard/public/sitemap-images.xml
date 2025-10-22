@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
+
+  <!-- Homepage with Logo and Hero Images -->
+  <url>
+    <loc>https://boomcard.bg/</loc>
+    <image:image>
+      <image:loc>https://boomcard.bg/og-image.png</image:loc>
+      <image:title>BoomCard - Карта за Намаления</image:title>
+      <image:caption>BoomCard карта за ексклузивни промоции и изживявания в България</image:caption>
+    </image:image>
+    <image:image>
+      <image:loc>https://boomcard.bg/logo.png</image:loc>
+      <image:title>BoomCard Logo</image:title>
+    </image:image>
+    <image:image>
+      <image:loc>https://boomcard.bg/hero-silver-card.png</image:loc>
+      <image:title>BoomCard Silver Карта</image:title>
+    </image:image>
+    <image:image>
+      <image:loc>https://boomcard.bg/hero-gold-card.png</image:loc>
+      <image:title>BoomCard Gold Карта</image:title>
+    </image:image>
+  </url>
+
+  <!-- Promotions Page -->
+  <url>
+    <loc>https://boomcard.bg/promotions</loc>
+    <image:image>
+      <image:loc>https://images.unsplash.com/photo-1555939594-58d7cb561ad1?w=800</image:loc>
+      <image:title>Промоции Ресторанти</image:title>
+      <image:caption>Ексклузивни промоции за ресторанти</image:caption>
+    </image:image>
+    <image:image>
+      <image:loc>https://images.unsplash.com/photo-1514933651103-005eec06c04b?w=800</image:loc>
+      <image:title>Happy Hour Промоции</image:title>
+    </image:image>
+  </url>
+
+  <!-- Experiences Page -->
+  <url>
+    <loc>https://boomcard.bg/experiences</loc>
+    <image:image>
+      <image:loc>https://images.unsplash.com/photo-1533174072545-7a4b6ad7a6c3?w=800</image:loc>
+      <image:title>Топ Изживявания България</image:title>
+      <image:caption>Незабравими изживявания с BoomCard</image:caption>
+    </image:image>
+  </url>
+
+  <!-- Categories - Restaurants -->
+  <url>
+    <loc>https://boomcard.bg/categories/restaurants</loc>
+    <image:image>
+      <image:loc>https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=400&h=400&fit=crop</image:loc>
+      <image:title>Ресторанти и Барове</image:title>
+      <image:caption>150+ партньорски ресторанта и барове</image:caption>
+    </image:image>
+  </url>
+
+  <!-- Categories - Hotels & Spa -->
+  <url>
+    <loc>https://boomcard.bg/categories/hotels</loc>
+    <image:image>
+      <image:loc>https://images.unsplash.com/photo-1566073771259-6a8506099945?w=400&h=400&fit=crop</image:loc>
+      <image:title>Хотели и СПА</image:title>
+      <image:caption>80+ партньорски хотели и спа центрове</image:caption>
+    </image:image>
+  </url>
+
+  <!-- Categories - Wineries -->
+  <url>
+    <loc>https://boomcard.bg/categories/wineries</loc>
+    <image:image>
+      <image:loc>https://images.unsplash.com/photo-1506377247377-2a5b3b417ebb?w=400&h=400&fit=crop</image:loc>
+      <image:title>Винарни</image:title>
+      <image:caption>45+ партньорски винарни</image:caption>
+    </image:image>
+  </url>
+
+  <!-- Partners Page -->
+  <url>
+    <loc>https://boomcard.bg/partners</loc>
+    <image:image>
+      <image:loc>https://boomcard.bg/partners-hero.png</image:loc>
+      <image:title>BoomCard Партньори</image:title>
+      <image:caption>Присъединете се към мрежата от 500+ партньори</image:caption>
+    </image:image>
+  </url>
+
+  <!-- Locations - Sofia -->
+  <url>
+    <loc>https://boomcard.bg/locations/sofia</loc>
+    <image:image>
+      <image:loc>https://boomcard.bg/locations/sofia-map.png</image:loc>
+      <image:title>BoomCard София</image:title>
+      <image:caption>Оферти и промоции в София</image:caption>
+    </image:image>
+  </url>
+
+  <!-- Locations - Plovdiv -->
+  <url>
+    <loc>https://boomcard.bg/locations/plovdiv</loc>
+    <image:image>
+      <image:loc>https://boomcard.bg/locations/plovdiv-map.png</image:loc>
+      <image:title>BoomCard Пловдив</image:title>
+      <image:caption>Оферти и промоции в Пловдив</image:caption>
+    </image:image>
+  </url>
+
+  <!-- Locations - Varna -->
+  <url>
+    <loc>https://boomcard.bg/locations/varna</loc>
+    <image:image>
+      <image:loc>https://boomcard.bg/locations/varna-map.png</image:loc>
+      <image:title>BoomCard Варна</image:title>
+      <image:caption>Оферти и промоции във Варна</image:caption>
+    </image:image>
+  </url>
+
+  <!-- Locations - Bansko -->
+  <url>
+    <loc>https://boomcard.bg/locations/bansko</loc>
+    <image:image>
+      <image:loc>https://boomcard.bg/locations/bansko-map.png</image:loc>
+      <image:title>BoomCard Банско</image:title>
+      <image:caption>Оферти и промоции в Банско</image:caption>
+    </image:image>
+  </url>
+
+  <!-- Subscriptions Page -->
+  <url>
+    <loc>https://boomcard.bg/subscriptions</loc>
+    <image:image>
+      <image:loc>https://boomcard.bg/subscription-plans.png</image:loc>
+      <image:title>BoomCard Абонаменти</image:title>
+      <image:caption>Изберете перфектния план: Basic, Premium, или VIP</image:caption>
+    </image:image>
+  </url>
+
+</urlset>

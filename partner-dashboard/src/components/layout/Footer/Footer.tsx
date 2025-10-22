@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { StyledFooter } from './Footer.styles';
 import { Link } from 'react-router-dom';
 import { useLanguage } from '../../../contexts/LanguageContext';
+import SocialShareButton from '../../common/ShareButton/ShareButton';
 
 export interface FooterProps {
   children?: React.ReactNode;
@@ -42,7 +43,7 @@ export const Footer: React.FC<FooterProps> = ({
   children,
   className
 }) => {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
 
   return (
     <StyledFooter className={className}>
@@ -129,6 +130,14 @@ export const Footer: React.FC<FooterProps> = ({
                 </svg>
                 Twitter
               </a>
+              <div className="hidden md:block mt-4">
+                <SocialShareButton
+                  url={typeof window !== 'undefined' ? window.location.origin : 'https://boomcard.bg'}
+                  title="BoomCard - Live More, Pay Less"
+                  description={language === 'bg' ? 'Открийте невероятни оферти и преживявания с BoomCard' : 'Discover amazing offers and experiences with BoomCard'}
+                  buttonText={language === 'bg' ? 'Сподели' : 'Share'}
+                />
+              </div>
             </div>
           </FooterSection>
         </div>

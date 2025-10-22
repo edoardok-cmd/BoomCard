@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useInView } from 'react-intersection-observer';
 import styled from 'styled-components';
@@ -526,10 +527,253 @@ const TextArea = styled.textarea`
   }
 `;
 
+const LocationsSection = styled.div`
+  padding: 4rem 0;
+  background: #f9fafb;
+
+  [data-theme="dark"] & {
+    background: #0a0a0a;
+  }
+`;
+
+const CityFilter = styled.div`
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 3rem;
+  justify-content: center;
+`;
+
+const CityChip = styled.button<{ $active: boolean }>`
+  padding: 0.75rem 1.5rem;
+  border: 2px solid ${props => props.$active ? '#000000' : '#e5e7eb'};
+  background: ${props => props.$active ? '#000000' : 'white'};
+  color: ${props => props.$active ? 'white' : '#6b7280'};
+  border-radius: 2rem;
+  font-weight: 600;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: all 0.2s;
+
+  [data-theme="dark"] & {
+    border-color: ${props => props.$active ? '#60a5fa' : '#4b5563'};
+    background: ${props => props.$active ? '#60a5fa' : '#374151'};
+    color: ${props => props.$active ? '#000000' : '#d1d5db'};
+  }
+
+  &:hover {
+    border-color: #000000;
+
+    [data-theme="dark"] & {
+      border-color: #60a5fa;
+    }
+  }
+`;
+
+const LocationsGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+  gap: 2rem;
+  margin-bottom: 3rem;
+
+  @media (max-width: 768px) {
+    grid-template-columns: 1fr;
+  }
+`;
+
+const LocationCard = styled(motion.div)`
+  background: white;
+  border-radius: 1rem;
+  overflow: hidden;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  transition: transform 0.3s, box-shadow 0.3s;
+  cursor: pointer;
+
+  [data-theme="dark"] & {
+    background: #1f2937;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+  }
+
+  &:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 12px 24px rgba(0, 0, 0, 0.15);
+
+    [data-theme="dark"] & {
+      box-shadow: 0 12px 24px rgba(0, 0, 0, 0.5);
+    }
+  }
+`;
+
+const LocationImage = styled.div<{ $bgImage: string }>`
+  height: 200px;
+  background-image: url(${props => props.$bgImage});
+  background-size: cover;
+  background-position: center;
+  position: relative;
+`;
+
+const LocationBadge = styled.span`
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  background: #10b981;
+  color: white;
+  padding: 0.25rem 0.75rem;
+  border-radius: 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+`;
+
+const LocationContent = styled.div`
+  padding: 1.5rem;
+`;
+
+const LocationName = styled.h3`
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #111827;
+  margin-bottom: 0.5rem;
+
+  [data-theme="dark"] & {
+    color: #f9fafb;
+  }
+`;
+
+const LocationAddress = styled.p`
+  font-size: 0.875rem;
+  color: #6b7280;
+  margin-bottom: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+
+  [data-theme="dark"] & {
+    color: #9ca3af;
+  }
+`;
+
+const LocationDescription = styled.p`
+  font-size: 1rem;
+  color: #4b5563;
+  line-height: 1.6;
+  margin-bottom: 1.5rem;
+
+  [data-theme="dark"] & {
+    color: #d1d5db;
+  }
+`;
+
+const LocationFooter = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 1rem;
+  border-top: 1px solid #e5e7eb;
+
+  [data-theme="dark"] & {
+    border-top-color: #374151;
+  }
+`;
+
+const LocationStats = styled.div`
+  display: flex;
+  gap: 1rem;
+`;
+
+const Stat = styled.div`
+  font-size: 0.875rem;
+  color: #6b7280;
+
+  [data-theme="dark"] & {
+    color: #9ca3af;
+  }
+`;
+
+interface Location {
+  id: string;
+  name: string;
+  city: string;
+  address: string;
+  description: string;
+  imageUrl: string;
+  offers: number;
+  rating: number;
+  openNow?: boolean;
+}
+
+const mockLocations: Location[] = [
+  {
+    id: '1',
+    name: 'Downtown Restaurant & Bar',
+    city: 'Sofia',
+    address: 'Vitosha Blvd 123, Sofia 1000',
+    description: 'Premium dining experience with rooftop terrace and city views. Specializing in Mediterranean cuisine.',
+    imageUrl: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=800',
+    offers: 8,
+    rating: 4.8,
+    openNow: true,
+  },
+  {
+    id: '2',
+    name: 'Wellness Spa & Fitness Center',
+    city: 'Sofia',
+    address: 'Bulgaria Blvd 88, Sofia 1404',
+    description: 'Full-service spa with modern fitness facilities, yoga studios, and relaxation areas.',
+    imageUrl: 'https://images.unsplash.com/photo-1540555700478-4be289fbecef?w=800',
+    offers: 5,
+    rating: 4.9,
+    openNow: true,
+  },
+  {
+    id: '3',
+    name: 'Seaside Beach Club',
+    city: 'Varna',
+    address: 'Sea Garden, Varna 9000',
+    description: 'Exclusive beach club with water sports, pool bar, and sunset lounge area.',
+    imageUrl: 'https://images.unsplash.com/photo-1559827260-dc66d52bef19?w=800',
+    offers: 12,
+    rating: 4.7,
+    openNow: false,
+  },
+  {
+    id: '4',
+    name: 'Mountain Resort & Ski Lodge',
+    city: 'Bansko',
+    address: 'Pirin Mountain, Bansko 2770',
+    description: 'Alpine resort with ski slopes, cozy lodge, and après-ski entertainment.',
+    imageUrl: 'https://images.unsplash.com/photo-1605870445919-838d190e8e1b?w=800',
+    offers: 15,
+    rating: 4.6,
+  },
+  {
+    id: '5',
+    name: 'Art Gallery & Café',
+    city: 'Plovdiv',
+    address: 'Old Town, Plovdiv 4000',
+    description: 'Contemporary art space with specialty coffee and local artisan exhibitions.',
+    imageUrl: 'https://images.unsplash.com/photo-1554907984-15263bfd63bd?w=800',
+    offers: 6,
+    rating: 4.8,
+    openNow: true,
+  },
+  {
+    id: '6',
+    name: 'Shopping Mall & Entertainment',
+    city: 'Sofia',
+    address: 'Tsarigradsko Shose 115, Sofia 1784',
+    description: 'Modern shopping center with cinema, bowling, and diverse dining options.',
+    imageUrl: 'https://images.unsplash.com/photo-1519567241046-7f570eee3ce6?w=800',
+    offers: 25,
+    rating: 4.5,
+    openNow: true,
+  },
+];
+
 const PartnersPage: React.FC = () => {
   const { language, t } = useLanguage();
   const [benefitsRef, benefitsInView] = useInView({ threshold: 0.2, triggerOnce: true });
   const [processRef, processInView] = useInView({ threshold: 0.2, triggerOnce: true });
+  const [selectedCity, setSelectedCity] = useState<string>('all');
 
   const benefits = [
     {
@@ -596,6 +840,18 @@ const PartnersPage: React.FC = () => {
       textBg: 'Започнете да приемате клиенти с QR кодове и гледайте бизнеса си да расте!'
     }
   ];
+
+  const cities = [
+    { id: 'all', labelEn: 'All Cities', labelBg: 'Всички Градове' },
+    { id: 'Sofia', labelEn: 'Sofia', labelBg: 'София' },
+    { id: 'Varna', labelEn: 'Varna', labelBg: 'Варна' },
+    { id: 'Plovdiv', labelEn: 'Plovdiv', labelBg: 'Пловдив' },
+    { id: 'Bansko', labelEn: 'Bansko', labelBg: 'Банско' },
+  ];
+
+  const filteredLocations = selectedCity === 'all'
+    ? mockLocations
+    : mockLocations.filter(loc => loc.city === selectedCity);
 
   return (
     <PageContainer>
@@ -714,6 +970,72 @@ const PartnersPage: React.FC = () => {
           </ProcessSteps>
         </Container>
       </ProcessSection>
+
+      <LocationsSection>
+        <Container>
+          <SectionTitle>
+            {language === 'bg' ? 'Партньорски Локации' : 'Partner Locations'}
+          </SectionTitle>
+          <SectionSubtitle>
+            {language === 'bg'
+              ? 'Открийте партньорски места на BoomCard в България'
+              : 'Discover BoomCard partner venues across Bulgaria'}
+          </SectionSubtitle>
+
+          <CityFilter>
+            {cities.map((city) => (
+              <CityChip
+                key={city.id}
+                $active={selectedCity === city.id}
+                onClick={() => setSelectedCity(city.id)}
+              >
+                {language === 'bg' ? city.labelBg : city.labelEn}
+              </CityChip>
+            ))}
+          </CityFilter>
+
+          <LocationsGrid>
+            {filteredLocations.map((location, index) => (
+              <LocationCard
+                key={location.id}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.4, delay: index * 0.1 }}
+              >
+                <LocationImage $bgImage={location.imageUrl}>
+                  {location.openNow && (
+                    <LocationBadge>
+                      {language === 'bg' ? 'Отворено Сега' : 'Open Now'}
+                    </LocationBadge>
+                  )}
+                </LocationImage>
+
+                <LocationContent>
+                  <LocationName>{location.name}</LocationName>
+                  <LocationAddress>
+                    📍 {location.address}
+                  </LocationAddress>
+                  <LocationDescription>
+                    {location.description}
+                  </LocationDescription>
+
+                  <LocationFooter>
+                    <LocationStats>
+                      <Stat>⭐ {location.rating}</Stat>
+                      <Stat>🎁 {location.offers} {language === 'bg' ? 'оферти' : 'offers'}</Stat>
+                    </LocationStats>
+                    <Link to={`/offers/${location.id}`}>
+                      <Button variant="primary" size="small">
+                        {language === 'bg' ? 'Виж Оферти' : 'View Offers'}
+                      </Button>
+                    </Link>
+                  </LocationFooter>
+                </LocationContent>
+              </LocationCard>
+            ))}
+          </LocationsGrid>
+        </Container>
+      </LocationsSection>
 
       <CTASection>
         <Container>

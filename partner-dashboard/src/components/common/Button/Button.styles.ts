@@ -17,16 +17,30 @@ const gradientFlow = keyframes`
 const variantStyles = {
   primary: css`
     background: var(--color-primary);
-    color: var(--color-secondary);
+    color: #ffffff; /* Always white text for maximum contrast */
     border: none;
     font-weight: 600;
     box-shadow: var(--shadow-soft);
+
+    /* Light mode: white background with dark text */
+    [data-theme="light"] & {
+      background: #ffffff;
+      color: #1f2937;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+    }
+
+    /* Dark mode: keep orange */
+    [data-theme="dark"] & {
+      background: var(--color-primary);
+      color: #ffffff;
+    }
 
     /* Color mode: vibrant gradient overlay */
     [data-theme="color"] & {
       background: linear-gradient(135deg, #ff4500 0%, #ff006e 50%, #8b2fb8 100%);
       background-size: 200% 200%;
       animation: ${gradientFlow} 3s ease infinite;
+      color: #ffffff;
       box-shadow:
         0 6px 30px -5px rgba(255, 69, 0, 0.6),
         0 8px 35px -5px rgba(255, 0, 110, 0.4),
@@ -37,6 +51,16 @@ const variantStyles = {
       background-color: var(--color-primary-hover);
       box-shadow: var(--shadow-hover);
       transform: translateY(-2px);
+
+      [data-theme="light"] & {
+        background: #3b82f6;
+        color: #ffffff;
+        box-shadow: 0 8px 25px rgba(59, 130, 246, 0.3);
+      }
+
+      [data-theme="dark"] & {
+        background-color: var(--color-primary-hover);
+      }
 
       [data-theme="color"] & {
         animation-duration: 1.5s;

@@ -8,21 +8,31 @@ export default defineConfig({
   workers: process.env.CI ? 1 : undefined,
   reporter: 'html',
   use: {
-    baseURL: 'http://localhost:3005',
+    baseURL: 'http://localhost:5177',
     trace: 'on-first-retry',
-    screenshot: 'only-on-failure',
+    screenshot: {
+      mode: 'only-on-failure',
+      fullPage: true,  // Capture entire scrollable page, not just viewport
+    },
   },
 
   projects: [
     {
       name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
+      use: {
+        ...devices['Desktop Chrome'],
+        screenshot: {
+          mode: 'only-on-failure',
+          fullPage: true,  // Ensure fullPage for all chromium tests
+        },
+      },
     },
   ],
 
   webServer: {
     command: 'npm run dev',
-    url: 'http://localhost:3005',
-    reuseExistingServer: !process.env.CI,
+    url: 'http://localhost:5177',
+    reuseExistingServer: true,
+    timeout: 120000,
   },
 });

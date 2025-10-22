@@ -1,7 +1,7 @@
 {
-  "name": "BoomCard Partner Dashboard",
+  "name": "BoomCard - Промоции, Изживявания, Карта за Намаления",
   "short_name": "BoomCard",
-  "description": "Digital business cards and offers platform for partners and customers",
+  "description": "Открийте ексклузивни оферти и топ изживявания с вашата BoomCard карта за намаления. Подарете си незабравими преживявания! Discover exclusive offers and top experiences with your BoomCard discount card.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",

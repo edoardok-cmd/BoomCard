@@ -20,8 +20,69 @@ const HeroContainer = styled.div`
   align-items: center;
   justify-content: center;
 
+  @media (max-width: 1380px) {
+    min-height: 800px;
+    max-height: none;
+    overflow: visible;
+  }
+
   @media (max-width: 768px) {
     overflow: visible;
+    min-height: 900px;
+    padding-top: 80px; /* Account for fixed header on mobile */
+    justify-content: flex-start;
+  }
+
+  /* Side card positioning */
+  .side-card {
+    position: fixed;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 5;
+  }
+
+  .side-card-left {
+    left: 2%;
+  }
+
+  .side-card-right {
+    right: 2%;
+  }
+
+  /* Move cards below CTA on smaller screens */
+  @media (max-width: 1380px) {
+    .cards-wrapper {
+      position: relative !important;
+      display: flex !important;
+      justify-content: center !important;
+      align-items: center !important;
+      gap: 0 !important;
+      flex-wrap: nowrap !important;
+      margin-top: 2rem;
+    }
+
+    .side-card {
+      position: relative;
+      top: auto;
+      left: auto;
+      right: auto;
+      transform: none;
+      margin: 0;
+      display: inline-block;
+    }
+
+    .side-card-left {
+      left: auto;
+      right: auto;
+      z-index: 1;
+    }
+
+    .side-card-right {
+      left: auto;
+      right: auto;
+      z-index: 2;
+      margin-left: -150px; /* Overlap the black card more on mobile */
+    }
   }
 `;
 
@@ -61,6 +122,7 @@ const ContentContainer = styled.div`
 
   @media (max-width: 768px) {
     padding: 1rem;
+    padding-top: 2rem;
     overflow: visible;
   }
 `;
@@ -114,7 +176,7 @@ const PhotosContainer = styled(motion.div)`
   pointer-events: none;
   z-index: -1;
 
-  @media (max-width: 768px) {
+  @media (max-width: 1024px) {
     display: none;
   }
 `;
@@ -181,9 +243,56 @@ const SidePhoto = styled(motion.div)`
   }
 `;
 
+const QRCodeContainer = styled.div`
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  background: white;
+  padding: 0.5rem;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+
+  @media (max-width: 768px) {
+    top: 0.7rem;
+    right: 0.7rem;
+    padding: 0.35rem;
+    border-radius: 6px;
+  }
+
+  img {
+    width: 80px;
+    height: 80px;
+    display: block;
+
+    @media (max-width: 768px) {
+      width: 58px;
+      height: 58px;
+    }
+  }
+
+  span {
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: #000;
+    background: #000;
+    color: #fff;
+    padding: 0.25rem 0.75rem;
+    border-radius: 4px;
+
+    @media (max-width: 768px) {
+      font-size: 0.6rem;
+      padding: 0.2rem 0.5rem;
+    }
+  }
+`;
+
 const BoomCard = styled(motion.div)<{ $showAnimation?: boolean; $stopAnimation?: boolean }>`
-  width: 400px;
-  height: 250px;
+  width: 360px;
+  height: 225px;
   background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 50%, #1a1a1a 100%);
   border-radius: 20px;
   box-shadow:
@@ -193,9 +302,9 @@ const BoomCard = styled(motion.div)<{ $showAnimation?: boolean; $stopAnimation?:
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  padding: 2rem;
+  padding: 1.8rem;
   position: relative;
-  overflow: hidden;
+  overflow: visible;
   border: 2px solid rgba(255, 215, 0, 0.3);
   transform-style: preserve-3d;
   perspective: 1000px;
@@ -276,28 +385,28 @@ const BoomCard = styled(motion.div)<{ $showAnimation?: boolean; $stopAnimation?:
   }
 
   @media (max-width: 768px) {
-    width: min(340px, 90vw);
-    height: 210px;
-    padding: 1.5rem;
+    width: min(289px, 90vw);
+    height: 179px;
+    padding: 1.3rem;
   }
 
   @media (max-width: 480px) {
-    width: min(300px, 85vw);
-    height: 190px;
-    padding: 1.25rem;
+    width: min(255px, 85vw);
+    height: 162px;
+    padding: 1.1rem;
   }
 
   @media (max-width: 375px) {
-    width: 90vw;
+    width: 85vw;
     height: auto;
-    min-height: 160px;
-    padding: 1rem;
+    min-height: 136px;
+    padding: 0.9rem;
   }
 `;
 
 const SilverCard = styled(motion.div)<{ $showAnimation?: boolean; $stopAnimation?: boolean }>`
-  width: 400px;
-  height: 250px;
+  width: 360px;
+  height: 225px;
   background: linear-gradient(135deg, #71717a 0%, #a1a1aa 50%, #71717a 100%);
   border-radius: 20px;
   box-shadow:
@@ -307,9 +416,9 @@ const SilverCard = styled(motion.div)<{ $showAnimation?: boolean; $stopAnimation
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  padding: 2rem;
+  padding: 1.8rem;
   position: relative;
-  overflow: hidden;
+  overflow: visible;
   border: 2px solid rgba(229, 231, 235, 0.5);
   transform-style: preserve-3d;
   perspective: 1000px;
@@ -339,85 +448,102 @@ const SilverCard = styled(motion.div)<{ $showAnimation?: boolean; $stopAnimation
   }
 
   @media (max-width: 768px) {
-    width: min(340px, 90vw);
-    height: 210px;
-    padding: 1.5rem;
+    width: min(289px, 90vw);
+    height: 179px;
+    padding: 1.3rem;
   }
 
   @media (max-width: 480px) {
-    width: min(300px, 85vw);
-    height: 190px;
-    padding: 1.25rem;
+    width: min(255px, 85vw);
+    height: 162px;
+    padding: 1.1rem;
   }
 
   @media (max-width: 375px) {
-    width: 90vw;
+    width: 85vw;
     height: auto;
-    min-height: 160px;
-    padding: 1rem;
+    min-height: 136px;
+    padding: 0.9rem;
   }
 `;
 
-const GoldCard = styled(motion.div)<{ $showAnimation?: boolean; $stopAnimation?: boolean }>`
-  width: 400px;
-  height: 250px;
-  background: linear-gradient(135deg, #b45309 0%, #f59e0b 50%, #b45309 100%);
-  border-radius: 20px;
-  box-shadow:
-    0 25px 50px -12px rgba(0, 0, 0, 0.8),
-    0 0 40px rgba(251, 191, 36, 0.5),
-    inset 0 2px 4px rgba(255, 255, 255, 0.1);
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  padding: 2rem;
-  position: relative;
-  overflow: hidden;
-  border: 2px solid rgba(251, 191, 36, 0.5);
+const LogoExplode = styled(motion.img)<{ $showAnimation?: boolean; $stopAnimation?: boolean }>`
+  width: 518px;
+  height: auto;
+  max-height: 324px;
+  object-fit: contain;
+  filter: drop-shadow(0 25px 50px rgba(0, 0, 0, 0.8));
   transform-style: preserve-3d;
   perspective: 1000px;
 
-  /* Tilting animation for gold card */
-  animation: ${props => props.$stopAnimation ? 'none' : props.$showAnimation ? 'goldCardTilt 4s ease-in-out infinite' : 'none'};
+  /* Tilting animation for logo - same as black card */
+  animation: ${props => props.$stopAnimation ? 'none' : props.$showAnimation ? 'logoTilt 16s ease-in-out infinite' : 'none'};
 
-  @keyframes goldCardTilt {
-    0%, 100% {
+  @keyframes logoTilt {
+    /* Phase 1: 3 tilts during photo dealing (0-3s) */
+    0% {
       transform: rotateY(0deg);
     }
-    16.67% {
-      transform: rotateY(-25deg);
+    3.125% {
+      transform: rotateY(15deg);
     }
-    33.33% {
-      transform: rotateY(25deg);
+    6.25% {
+      transform: rotateY(-15deg);
     }
+    9.375% {
+      transform: rotateY(15deg);
+    }
+    12.5% {
+      transform: rotateY(-15deg);
+    }
+    15.625% {
+      transform: rotateY(15deg);
+    }
+    18.75% {
+      transform: rotateY(0deg);
+    }
+    /* Rest for 5 seconds (3-8s) */
     50% {
-      transform: rotateY(-25deg);
+      transform: rotateY(0deg);
     }
-    66.67% {
-      transform: rotateY(25deg);
+    /* Phase 2: 3 tilts during photo returning (8-11s) */
+    53.125% {
+      transform: rotateY(15deg);
     }
-    83.33% {
-      transform: rotateY(-25deg);
+    56.25% {
+      transform: rotateY(-15deg);
+    }
+    59.375% {
+      transform: rotateY(15deg);
+    }
+    62.5% {
+      transform: rotateY(-15deg);
+    }
+    65.625% {
+      transform: rotateY(15deg);
+    }
+    68.75% {
+      transform: rotateY(0deg);
+    }
+    /* Rest for 5 seconds (11-16s) */
+    100% {
+      transform: rotateY(0deg);
     }
   }
 
   @media (max-width: 768px) {
-    width: min(340px, 90vw);
-    height: 210px;
-    padding: 1.5rem;
+    width: min(490px, 90vw);
+    max-height: 302px;
   }
 
   @media (max-width: 480px) {
-    width: min(300px, 85vw);
-    height: 190px;
-    padding: 1.25rem;
+    width: min(432px, 85vw);
+    max-height: 274px;
   }
 
   @media (max-width: 375px) {
     width: 90vw;
-    height: auto;
-    min-height: 160px;
-    padding: 1rem;
+    max-height: 230px;
   }
 `;
 
@@ -433,25 +559,11 @@ const SilverCardLogo = styled.div`
   margin-bottom: 1rem;
 
   @media (max-width: 768px) {
-    font-size: 2rem;
+    font-size: 1.7rem;
+    margin-bottom: 0.7rem;
   }
 `;
 
-const GoldCardLogo = styled.div`
-  font-size: 2.5rem;
-  font-weight: 900;
-  background: linear-gradient(135deg, #fbbf24 0%, #fde047 50%, #fbbf24 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  letter-spacing: -1px;
-  text-shadow: 0 2px 10px rgba(251, 191, 36, 0.5);
-  margin-bottom: 1rem;
-
-  @media (max-width: 768px) {
-    font-size: 2rem;
-  }
-`;
 
 const CardLogo = styled.div`
   font-size: 2.5rem;
@@ -465,7 +577,8 @@ const CardLogo = styled.div`
   margin-bottom: 1rem;
 
   @media (max-width: 768px) {
-    font-size: 2rem;
+    font-size: 1.7rem;
+    margin-bottom: 0.7rem;
   }
 `;
 
@@ -478,12 +591,12 @@ const CardNumber = styled.div`
   text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
 
   @media (max-width: 768px) {
-    font-size: 1.25rem;
-    letter-spacing: 3px;
+    font-size: 1.06rem;
+    letter-spacing: 2.5px;
   }
 
   @media (max-width: 480px) {
-    font-size: 1.1rem;
+    font-size: 0.95rem;
     letter-spacing: 2px;
   }
 `;
@@ -501,8 +614,12 @@ const CardHolder = styled.div`
   text-transform: uppercase;
   letter-spacing: 1px;
 
+  @media (max-width: 768px) {
+    font-size: 0.76rem;
+  }
+
   @media (max-width: 480px) {
-    font-size: 0.75rem;
+    font-size: 0.65rem;
   }
 `;
 
@@ -511,8 +628,12 @@ const CardExpiry = styled.div`
   font-size: 0.85rem;
   font-family: 'Courier New', monospace;
 
+  @media (max-width: 768px) {
+    font-size: 0.72rem;
+  }
+
   @media (max-width: 480px) {
-    font-size: 0.7rem;
+    font-size: 0.6rem;
   }
 `;
 
@@ -527,6 +648,7 @@ const CTATitle = styled(motion.h1)`
   margin-bottom: 1rem;
   line-height: 1.2;
   letter-spacing: -0.02em;
+  white-space: pre-line;
 
   /* Mellow fire gradient with yellow base and orange accent */
   background: linear-gradient(
@@ -547,6 +669,11 @@ const CTATitle = styled(motion.h1)`
   /* Inner shadow for depth only */
   text-shadow: 0 4px 20px rgba(0, 0, 0, 0.8);
 
+  /* Smaller font for Bulgarian text with line breaks */
+  [lang="bg"] & {
+    font-size: 3.2rem;
+  }
+
   @keyframes mellowFireFlow {
     0% {
       background-position: 0% center;
@@ -561,18 +688,34 @@ const CTATitle = styled(motion.h1)`
 
   @media (max-width: 768px) {
     font-size: 2.75rem;
+
+    [lang="bg"] & {
+      font-size: 2.2rem;
+    }
   }
 
   @media (max-width: 480px) {
     font-size: 2rem;
+
+    [lang="bg"] & {
+      font-size: 1.6rem;
+    }
   }
 
   @media (max-width: 375px) {
     font-size: 1.75rem;
+
+    [lang="bg"] & {
+      font-size: 1.4rem;
+    }
   }
 
   @media (max-width: 320px) {
     font-size: 1.5rem;
+
+    [lang="bg"] & {
+      font-size: 1.2rem;
+    }
   }
 `;
 
@@ -693,14 +836,17 @@ const ButtonContainer = styled(motion.div)`
 
 const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
   const [videoEnded, setVideoEnded] = useState(false);
-  const [showCard, setShowCard] = useState(false);
+  const [showLogo, setShowLogo] = useState(false);
+  const [showBlackCard, setShowBlackCard] = useState(false);
+  const [showSilverCard, setShowSilverCard] = useState(false);
   const [showCTA, setShowCTA] = useState(false);
   const [videoLoaded, setVideoLoaded] = useState(false);
-  const [photoState, setPhotoState] = useState<'hidden' | 'dealing' | 'returning' | 'sideCards' | 'collecting' | 'finished'>('hidden');
+  const [photoState, setPhotoState] = useState<'hidden' | 'dealing' | 'returning' | 'finished'>('hidden');
   const [showSideCards, setShowSideCards] = useState(false);
-  const [sidePhotosState, setSidePhotosState] = useState<'hidden' | 'falling' | 'returning'>('hidden');
   const [animationsFinished, setAnimationsFinished] = useState(false);
+  const [hideCardsOnScroll, setHideCardsOnScroll] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const heroRef = useRef<HTMLDivElement>(null);
 
   // Photo placeholders - 8 per side for fuller spread
   const photos = {
@@ -726,43 +872,6 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
     ],
   };
 
-  // Side card photos - 15 per side
-  const sideCardPhotos = {
-    silver: [
-      'https://images.unsplash.com/photo-1551218808-94e220e084d2?w=300&h=400&fit=crop', // Restaurant
-      'https://images.unsplash.com/photo-1555939594-58d7cb561ad1?w=300&h=400&fit=crop', // Food dish
-      'https://images.unsplash.com/photo-1517487881594-2787fef5ebf7?w=300&h=400&fit=crop', // Spa
-      'https://images.unsplash.com/photo-1511690656952-34342bb7c2f2?w=300&h=400&fit=crop', // Bar drinks
-      'https://images.unsplash.com/photo-1514933651103-005eec06c04b?w=300&h=400&fit=crop', // Restaurant dining
-      'https://images.unsplash.com/photo-1559329007-40df8a9345d8?w=300&h=400&fit=crop', // Cocktail
-      'https://images.unsplash.com/photo-1484723091739-30a097e8f929?w=300&h=400&fit=crop', // Healthy food
-      'https://images.unsplash.com/photo-1499638673689-79a0b5115d87?w=300&h=400&fit=crop', // Cafe
-      'https://images.unsplash.com/photo-1550966871-3ed3cdb5ed0c?w=300&h=400&fit=crop', // Burger
-      'https://images.unsplash.com/photo-1533777857889-4be7c70b33f7?w=300&h=400&fit=crop', // Sushi
-      'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=300&h=400&fit=crop', // Salad
-      'https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=300&h=400&fit=crop', // Food platter
-      'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=300&h=400&fit=crop', // Restaurant interior
-      'https://images.unsplash.com/photo-1470337458703-46ad1756a187?w=300&h=400&fit=crop', // Wine
-      'https://images.unsplash.com/photo-1523475496153-3d6cc0f0bf19?w=300&h=400&fit=crop', // Dessert
-    ],
-    gold: [
-      'https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?w=300&h=400&fit=crop', // Travel
-      'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=300&h=400&fit=crop', // Mountains
-      'https://images.unsplash.com/photo-1520250497591-112f2f40a3f4?w=300&h=400&fit=crop', // Beach resort
-      'https://images.unsplash.com/photo-1602024242516-fbc9d4fda4b6?w=300&h=400&fit=crop', // Yacht
-      'https://images.unsplash.com/photo-1582719508461-905c673771fd?w=300&h=400&fit=crop', // Luxury hotel
-      'https://images.unsplash.com/photo-1590523741831-ab7e8b8f9c7f?w=300&h=400&fit=crop', // Pool
-      'https://images.unsplash.com/photo-1573052092959-fbac5b732110?w=300&h=400&fit=crop', // Spa luxury
-      'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=300&h=400&fit=crop', // Hotel room
-      'https://images.unsplash.com/photo-1571896349842-33c89424de2d?w=300&h=400&fit=crop', // Hotel lobby
-      'https://images.unsplash.com/photo-1540541338287-41700207dee6?w=300&h=400&fit=crop', // Architecture
-      'https://images.unsplash.com/photo-1568084680786-a84f91d1153c?w=300&h=400&fit=crop', // Golf
-      'https://images.unsplash.com/photo-1551882547-ff40c63fe5fa?w=300&h=400&fit=crop', // Champagne
-      'https://images.unsplash.com/photo-1544148103-0773bf10d330?w=300&h=400&fit=crop', // Luxury car
-      'https://images.unsplash.com/photo-1549298916-b41d501d3772?w=300&h=400&fit=crop', // Watch
-      'https://images.unsplash.com/photo-1606760227091-3dd870d97f1d?w=300&h=400&fit=crop', // Villa
-    ],
-  };
 
   // Random tilts for each photo - 8 per side now
   const photoTilts = [
@@ -795,56 +904,42 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
     ],
   };
 
-  // Photo cycling effect - synced with card tilt animation
+  // Photo cycling effect - simplified to one cycle only
   useEffect(() => {
     if (photoState === 'hidden' || photoState === 'finished') return;
 
     // Animation cycle:
     // Cycle 1: 0-3s dealing, 3-8s rest (8s total)
     // Cycle 2: 8-11s returning, 11-16s rest (8s total)
-    // Cycle 3: 16-21s side cards appear + photos fall, 21-24s rest (8s total)
-    // Cycle 4: 24-29s photos collect back, 29-32s rest (8s total)
-    // Then stop all animations
+    // Then show side cards and stop
 
     let timeout: NodeJS.Timeout;
+    let blackCardTimeout: NodeJS.Timeout;
+    let silverCardTimeout: NodeJS.Timeout;
 
     if (photoState === 'dealing') {
-      timeout = setTimeout(() => setPhotoState('returning'), 8000);
+      const isMobile = window.innerWidth <= 768;
+      timeout = setTimeout(() => setPhotoState('returning'), isMobile ? 2000 : 8000);
     } else if (photoState === 'returning') {
+      // Show both cards immediately when returning starts
+      setShowBlackCard(true);
+      setShowSilverCard(true);
+      setShowSideCards(true);
+
       timeout = setTimeout(() => {
-        setShowSideCards(true);
-        setTimeout(() => setSidePhotosState('falling'), 500);
-        setPhotoState('sideCards');
-      }, 8000);
-    } else if (photoState === 'sideCards') {
-      // Wait 8 seconds (5s rest + 3s for collection animation)
-      timeout = setTimeout(() => {
-        setSidePhotosState('returning');
-        setPhotoState('collecting');
-      }, 8000);
-    } else if (photoState === 'collecting') {
-      // After photos return, finish all animations
-      timeout = setTimeout(() => {
-        setSidePhotosState('hidden');
         setPhotoState('finished');
         setAnimationsFinished(true);
-      }, 3000); // Time for photos to return
+      }, 8000);
     }
 
     return () => {
       if (timeout) clearTimeout(timeout);
+      if (blackCardTimeout) clearTimeout(blackCardTimeout);
+      if (silverCardTimeout) clearTimeout(silverCardTimeout);
     };
   }, [photoState]);
 
-  // Show card immediately on mobile (skip video wait)
-  useEffect(() => {
-    const isMobile = window.innerWidth <= 768;
-    if (isMobile && !showCard) {
-      setShowCard(true);
-      // Also show CTA immediately on mobile
-      setTimeout(() => setShowCTA(true), 500);
-    }
-  }, []);
+  // Mobile now follows same timing as desktop - removed immediate show logic
 
   useEffect(() => {
     const video = videoRef.current;
@@ -855,9 +950,9 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
     };
 
     const handleTimeUpdate = () => {
-      // Show card at 60% of video duration (during the peak of the blast)
-      if (video.currentTime >= video.duration * 0.6 && !showCard) {
-        setShowCard(true);
+      // Show logo at 60% of video duration (during the peak of the blast)
+      if (video.currentTime >= video.duration * 0.6 && !showLogo) {
+        setShowLogo(true);
       }
     };
 
@@ -866,7 +961,7 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
       if (!videoEnded) {
         setVideoEnded(true);
         setShowCTA(true);
-        // Start photo cycling after card moves up
+        // Start photo cycling from the logo after video ends
         setTimeout(() => setPhotoState('dealing'), 800);
         // Prevent video from replaying
         video.pause();
@@ -883,21 +978,41 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
       video.removeEventListener('timeupdate', handleTimeUpdate);
       video.removeEventListener('ended', handleEnded);
     };
-  }, [showCard, videoEnded, showCTA]);
+  }, [showLogo, videoEnded, showCTA]);
+
+  // Hide side cards when scrolling below hero section (desktop only)
+  useEffect(() => {
+    const handleScroll = () => {
+      const isMobile = window.innerWidth <= 1380;
+      if (isMobile) {
+        setHideCardsOnScroll(false);
+        return;
+      }
+
+      const heroElement = heroRef.current;
+      if (!heroElement) return;
+
+      const heroBottom = heroElement.getBoundingClientRect().bottom;
+      const shouldHideCards = heroBottom <= -200;
+
+      setHideCardsOnScroll(shouldHideCards);
+    };
+
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
 
   const content = {
     en: {
-      title: 'Let the Fun Begin!',
+      title: 'Live More - Pay Less',
       subtitle: 'Unlock exclusive discounts at Bulgaria\'s finest venues',
-      getStarted: 'Get Your BoomCard',
-      learnMore: 'Learn More',
+      ctaButton: 'Learn More and Get your Card',
       cardHolder: 'CARD HOLDER',
     },
     bg: {
-      title: 'Нека забавлението започне!',
+      title: 'Живейте повече\nПлащайте по-малко',
       subtitle: 'Отключете ексклузивни отстъпки в най-добрите заведения в България',
-      getStarted: 'Вземете BoomCard',
-      learnMore: 'Научете повече',
+      ctaButton: 'Научете повече и вземете картата си',
       cardHolder: 'ПРИТЕЖАТЕЛ',
     },
   };
@@ -905,7 +1020,7 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
   const t = content[language];
 
   return (
-    <HeroContainer>
+    <HeroContainer ref={heroRef}>
       <VideoBackground
         ref={videoRef}
         autoPlay
@@ -923,21 +1038,22 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
       <VideoOverlay $fadeOut={videoEnded} />
 
       <ContentContainer>
+        {/* Logo - centered at top */}
         <AnimatePresence>
-          {showCard && (
-            <CardContainer
+          {showLogo && (
+            <motion.div
               initial={{ scale: 0, opacity: 0, rotateX: 90, z: -1000 }}
               animate={{
                 scale: 1,
                 opacity: 1,
                 rotateX: 0,
                 z: 0,
-                y: showCTA ? -100 : 0, // Smoothly move card up when CTA appears
+                y: showCTA && window.innerWidth > 768 ? -100 : 0,
               }}
               transition={{
                 type: 'spring',
-                stiffness: showCTA ? 150 : 200, // Softer spring when moving up
-                damping: showCTA ? 25 : 20, // More damping for smoother movement
+                stiffness: showCTA ? 150 : 200,
+                damping: showCTA ? 25 : 20,
                 duration: 1.2,
                 y: {
                   type: 'spring',
@@ -945,271 +1061,200 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
                   damping: 28,
                 },
               }}
+              style={{ position: 'relative', marginBottom: '2rem' }}
             >
-              {/* Silver Card - appears on left during third cycle */}
-              <AnimatePresence>
-                {showSideCards && (
-                  <SideCardWrapper
-                    $position="left"
-                    initial={{ opacity: 0, x: -200, scale: 0.8 }}
-                    animate={{ opacity: 1, x: 50, scale: 1 }}
-                    exit={{ opacity: 0, x: -200, scale: 0.8 }}
-                    transition={{ duration: 0.6, type: 'spring', stiffness: 100 }}
-                  >
-                    <SilverCard
-                      $showAnimation={sidePhotosState === 'falling' || sidePhotosState === 'returning'}
-                      $stopAnimation={animationsFinished}
-                    >
-                      <div>
-                        <SilverCardLogo>BOOM</SilverCardLogo>
-                        <CardNumber>•••• •••• •••• 2025</CardNumber>
-                      </div>
-                      <CardInfo>
-                        <div>
-                          <CardHolder>{t.cardHolder}</CardHolder>
-                          <CardExpiry>12/25</CardExpiry>
-                        </div>
-                      </CardInfo>
-                    </SilverCard>
+              <LogoExplode
+                src="/logo-explode.png"
+                alt="Boom Logo Explode"
+                $showAnimation={showCTA && !showSideCards}
+                $stopAnimation={showSideCards}
+              />
 
-                    {/* Photos falling from silver card */}
-                    {(sidePhotosState === 'falling' || sidePhotosState === 'returning') && (
-                      <SideCardPhotosContainer>
-                        {sideCardPhotos.silver.map((photoUrl, index) => (
-                          <SidePhoto
-                            key={`silver-${index}`}
-                            initial={{ y: -250, x: '-50%', opacity: 0, rotate: 0 }}
-                            animate={
-                              sidePhotosState === 'returning'
-                                ? {
-                                    y: -250,
-                                    x: '-50%',
-                                    opacity: 0,
-                                    rotate: 0,
-                                  }
-                                : {
-                                    y: Math.floor(index / 3) * 55 + 20,
-                                    x: `calc(-50% + ${(index % 3) * 70 - 70}px)`,
-                                    opacity: 1,
-                                    rotate: (index % 3 - 1) * 10,
-                                  }
+              {/* Ejected Photos - cycle between dealing and returning from the logo */}
+              {photoState !== 'hidden' && photoState !== 'finished' && (
+                <PhotosContainer>
+                  {/* Left side photos */}
+                  {photos.left.map((photoUrl, index) => (
+                    <Photo
+                      key={`left-${index}`}
+                      $index={index}
+                      $side="left"
+                      animate={
+                        photoState === 'dealing'
+                          ? {
+                              x: photoPositions.left[index].x,
+                              y: photoPositions.left[index].y,
+                              opacity: 1,
+                              scale: 1,
+                              rotate: photoTilts[0][index],
                             }
-                            transition={{
-                              delay: sidePhotosState === 'returning' ? (14 - index) * 0.04 : index * 0.08,
-                              type: 'spring',
-                              stiffness: 80,
-                              damping: 15,
-                            }}
-                          >
-                            <img src={photoUrl} alt={`Silver experience ${index + 1}`} />
-                          </SidePhoto>
-                        ))}
-                      </SideCardPhotosContainer>
-                    )}
-                  </SideCardWrapper>
-                )}
-              </AnimatePresence>
+                          : {
+                              x: 0,
+                              y: 0,
+                              opacity: 0,
+                              scale: 0,
+                              rotate: 0,
+                            }
+                      }
+                      transition={{
+                        delay: index * 0.15,
+                        type: 'spring',
+                        stiffness: 100,
+                        damping: 18,
+                        duration: 0.6,
+                      }}
+                    >
+                      <img src={photoUrl} alt={`Experience ${index + 1}`} />
+                    </Photo>
+                  ))}
 
-              {/* Black Card - center */}
-              <div style={{ position: 'relative', zIndex: 1 }}>
-                <BoomCard $showAnimation={showCTA && !showSideCards} $stopAnimation={showSideCards}>
-                  <div>
-                    <CardLogo>BOOM</CardLogo>
-                    <CardNumber>•••• •••• •••• 2025</CardNumber>
-                  </div>
-                  <CardInfo>
+                  {/* Right side photos */}
+                  {photos.right.map((photoUrl, index) => (
+                    <Photo
+                      key={`right-${index}`}
+                      $index={index}
+                      $side="right"
+                      animate={
+                        photoState === 'dealing'
+                          ? {
+                              x: photoPositions.right[index].x,
+                              y: photoPositions.right[index].y,
+                              opacity: 1,
+                              scale: 1,
+                              rotate: photoTilts[1][index],
+                            }
+                          : {
+                              x: 0,
+                              y: 0,
+                              opacity: 0,
+                              scale: 0,
+                              rotate: 0,
+                            }
+                      }
+                      transition={{
+                        delay: index * 0.15,
+                        type: 'spring',
+                        stiffness: 100,
+                        damping: 18,
+                        duration: 0.6,
+                      }}
+                    >
+                      <img src={photoUrl} alt={`Experience ${index + 9}`} />
+                    </Photo>
+                  ))}
+                </PhotosContainer>
+              )}
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Container for CTA and Side Cards */}
+        <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2rem' }} className="cta-cards-container">
+          <AnimatePresence>
+            {showCTA && (
+              <CTAContainer
+                initial={{ opacity: 0, y: 30 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.5, duration: 0.8 }}
+                lang={language}
+              >
+                <CTATitle
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.7, duration: 0.6 }}
+                >
+                  {t.title}
+                </CTATitle>
+
+                <CTASubtitle
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.9, duration: 0.6 }}
+                >
+                  {t.subtitle}
+                </CTASubtitle>
+
+                <ButtonContainer
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 1.1, duration: 0.6 }}
+                >
+                  <Link to="/subscriptions">
+                    <Button variant="primary" size="large">
+                      {t.ctaButton}
+                    </Button>
+                  </Link>
+                </ButtonContainer>
+              </CTAContainer>
+            )}
+          </AnimatePresence>
+
+          {/* Cards container for responsive layout */}
+          <div style={{ display: 'flex', gap: '2rem', justifyContent: 'center', flexWrap: 'wrap' }} className="cards-wrapper">
+            {/* Black Card - slides in from left, positioned on far left side */}
+            <AnimatePresence>
+              {showBlackCard && !hideCardsOnScroll && (
+                <motion.div
+                  initial={{ opacity: 0, x: -500 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -500 }}
+                  transition={{ duration: 1, type: 'spring', stiffness: 80, damping: 20 }}
+                  className="side-card side-card-left"
+                >
+                  <BoomCard $showAnimation={false} $stopAnimation={animationsFinished}>
+                    <QRCodeContainer>
+                      <img src="/qr-code.svg" alt="Scan QR Code" />
+                      <span>SCAN ME</span>
+                    </QRCodeContainer>
                     <div>
-                      <CardHolder>{t.cardHolder}</CardHolder>
-                      <CardExpiry>12/25</CardExpiry>
+                      <CardLogo>BOOM</CardLogo>
+                      <CardNumber>•••• •••• •••• 2025</CardNumber>
                     </div>
-                  </CardInfo>
-                </BoomCard>
-
-                {/* Ejected Photos - cycle between dealing and returning */}
-                {photoState !== 'hidden' && photoState !== 'sideCards' && (
-                  <PhotosContainer>
-                    {/* Left side photos */}
-                    {photos.left.map((photoUrl, index) => (
-                      <Photo
-                        key={`left-${index}`}
-                        $index={index}
-                        $side="left"
-                        animate={
-                          photoState === 'dealing'
-                            ? {
-                                x: photoPositions.left[index].x,
-                                y: photoPositions.left[index].y,
-                                opacity: 1,
-                                scale: 1,
-                                rotate: photoTilts[0][index],
-                              }
-                            : {
-                                x: 0,
-                                y: 0,
-                                opacity: 0,
-                                scale: 0,
-                                rotate: 0,
-                              }
-                        }
-                        transition={{
-                          delay: index * 0.15,
-                          type: 'spring',
-                          stiffness: 100,
-                          damping: 18,
-                          duration: 0.6,
-                        }}
-                      >
-                        <img src={photoUrl} alt={`Experience ${index + 1}`} />
-                      </Photo>
-                    ))}
-
-                    {/* Right side photos */}
-                    {photos.right.map((photoUrl, index) => (
-                      <Photo
-                        key={`right-${index}`}
-                        $index={index}
-                        $side="right"
-                        animate={
-                          photoState === 'dealing'
-                            ? {
-                                x: photoPositions.right[index].x,
-                                y: photoPositions.right[index].y,
-                                opacity: 1,
-                                scale: 1,
-                                rotate: photoTilts[1][index],
-                              }
-                            : {
-                                x: 0,
-                                y: 0,
-                                opacity: 0,
-                                scale: 0,
-                                rotate: 0,
-                              }
-                        }
-                        transition={{
-                          delay: index * 0.15,
-                          type: 'spring',
-                          stiffness: 100,
-                          damping: 18,
-                          duration: 0.6,
-                        }}
-                      >
-                        <img src={photoUrl} alt={`Experience ${index + 9}`} />
-                      </Photo>
-                    ))}
-                  </PhotosContainer>
-                )}
-              </div>
-
-              {/* Gold Card - appears on right during third cycle */}
-              <AnimatePresence>
-                {showSideCards && (
-                  <SideCardWrapper
-                    $position="right"
-                    initial={{ opacity: 0, x: 200, scale: 0.8 }}
-                    animate={{ opacity: 1, x: -50, scale: 1 }}
-                    exit={{ opacity: 0, x: 200, scale: 0.8 }}
-                    transition={{ duration: 0.6, type: 'spring', stiffness: 100 }}
-                  >
-                    <GoldCard
-                      $showAnimation={sidePhotosState === 'falling' || sidePhotosState === 'returning'}
-                      $stopAnimation={animationsFinished}
-                    >
+                    <CardInfo>
                       <div>
-                        <GoldCardLogo>BOOM</GoldCardLogo>
-                        <CardNumber>•••• •••• •••• 2025</CardNumber>
+                        <CardHolder>{t.cardHolder}</CardHolder>
+                        <CardExpiry>12/25</CardExpiry>
                       </div>
-                      <CardInfo>
-                        <div>
-                          <CardHolder>{t.cardHolder}</CardHolder>
-                          <CardExpiry>12/25</CardExpiry>
-                        </div>
-                      </CardInfo>
-                    </GoldCard>
+                    </CardInfo>
+                  </BoomCard>
+                </motion.div>
+              )}
+            </AnimatePresence>
 
-                    {/* Photos falling from gold card */}
-                    {(sidePhotosState === 'falling' || sidePhotosState === 'returning') && (
-                      <SideCardPhotosContainer>
-                        {sideCardPhotos.gold.map((photoUrl, index) => (
-                          <SidePhoto
-                            key={`gold-${index}`}
-                            initial={{ y: -250, x: '-50%', opacity: 0, rotate: 0 }}
-                            animate={
-                              sidePhotosState === 'returning'
-                                ? {
-                                    y: -250,
-                                    x: '-50%',
-                                    opacity: 0,
-                                    rotate: 0,
-                                  }
-                                : {
-                                    y: Math.floor(index / 3) * 55 + 20,
-                                    x: `calc(-50% + ${(index % 3) * 70 - 70}px)`,
-                                    opacity: 1,
-                                    rotate: (index % 3 - 1) * 10,
-                                  }
-                            }
-                            transition={{
-                              delay: sidePhotosState === 'returning' ? (14 - index) * 0.04 : index * 0.08,
-                              type: 'spring',
-                              stiffness: 80,
-                              damping: 15,
-                            }}
-                          >
-                            <img src={photoUrl} alt={`Gold experience ${index + 1}`} />
-                          </SidePhoto>
-                        ))}
-                      </SideCardPhotosContainer>
-                    )}
-                  </SideCardWrapper>
-                )}
-              </AnimatePresence>
-            </CardContainer>
-          )}
-        </AnimatePresence>
-
-        <AnimatePresence>
-          {showCTA && (
-            <CTAContainer
-              initial={{ opacity: 0, y: 30 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.5, duration: 0.8 }}
-            >
-              <CTATitle
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.7, duration: 0.6 }}
-              >
-                {t.title}
-              </CTATitle>
-
-              <CTASubtitle
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.9, duration: 0.6 }}
-              >
-                {t.subtitle}
-              </CTASubtitle>
-
-              <ButtonContainer
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 1.1, duration: 0.6 }}
-              >
-                <Link to="/register">
-                  <Button variant="primary" size="large">
-                    {t.getStarted}
-                  </Button>
-                </Link>
-                <Link to="/categories">
-                  <Button variant="secondary" size="large">
-                    {t.learnMore}
-                  </Button>
-                </Link>
-              </ButtonContainer>
-            </CTAContainer>
-          )}
-        </AnimatePresence>
+            {/* Silver Card - slides in from right, positioned on far right side */}
+            <AnimatePresence>
+              {showSilverCard && !hideCardsOnScroll && (
+                <motion.div
+                  initial={{ opacity: 0, x: 500 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: 500 }}
+                  transition={{ duration: 1, type: 'spring', stiffness: 80, damping: 20 }}
+                  className="side-card side-card-right"
+                >
+                  <SilverCard
+                    $showAnimation={false}
+                    $stopAnimation={animationsFinished}
+                  >
+                    <QRCodeContainer>
+                      <img src="/qr-code.svg" alt="Scan QR Code" />
+                      <span>SCAN ME</span>
+                    </QRCodeContainer>
+                    <div>
+                      <SilverCardLogo>BOOM</SilverCardLogo>
+                      <CardNumber>•••• •••• •••• 2025</CardNumber>
+                    </div>
+                    <CardInfo>
+                      <div>
+                        <CardHolder>{t.cardHolder}</CardHolder>
+                        <CardExpiry>12/25</CardExpiry>
+                      </div>
+                    </CardInfo>
+                  </SilverCard>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        </div>
       </ContentContainer>
     </HeroContainer>
   );

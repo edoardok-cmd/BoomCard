@@ -29,100 +29,12 @@ export const navigationConfig: NavConfig = {
       label: 'Home',
       labelBg: 'Начало',
       path: '/',
-      children: [
-        {
-          id: 'top-offers',
-          label: 'Top Offers with Biggest Discounts',
-          labelBg: 'ТОП оферти с най-големи отстъпки',
-          path: '/top-offers',
-          children: [
-            {
-              id: 'spa-bansko',
-              label: 'Spa Weekend in Bansko – 70%',
-              labelBg: 'Спа уикенд в Банско – 70% (2 нощувки, СПА, масаж, вечеря)',
-              path: '/offers/spa-bansko-70',
-            },
-            {
-              id: 'wine-melnik',
-              label: 'Wine Tasting in Melnik – 50%',
-              labelBg: 'Дегустация вина в Мелник – 50% (5 вида вина, мезета, тур, сертификат)',
-              path: '/offers/wine-melnik-50',
-            },
-            {
-              id: 'romantic-dinner',
-              label: 'Romantic Dinner for Two – 60%',
-              labelBg: 'Романтична вечеря за двама – 60%',
-              path: '/offers/romantic-dinner-60',
-            },
-            {
-              id: 'adventure-rila',
-              label: 'Adventure Tour in Rila – 45%',
-              labelBg: 'Приключенски тур в Рила – 45%',
-              path: '/offers/adventure-rila-45',
-            },
-          ],
-        },
-        {
-          id: 'photos-videos',
-          label: 'Photos/Videos',
-          labelBg: 'Картинки/видео',
-          path: '/media',
-          children: [
-            {
-              id: 'gallery',
-              label: 'Photo Gallery, 360° Tours, Video Reviews, Promo Videos, Drone Footage',
-              labelBg: 'Галерия със снимки, 360° обиколки, видео ревюта, промо видеа, дрон кадри',
-              path: '/media/gallery',
-            },
-            {
-              id: 'photos-type',
-              label: 'Photos by Type',
-              labelBg: 'Снимки: Exterior/Interior, Food, Activity, Before/After',
-              path: '/media/photos',
-            },
-            {
-              id: 'videos-type',
-              label: 'Videos by Type',
-              labelBg: 'Видеа: Time-lapse, Testimonials, Behind-the-scenes, Live streaming',
-              path: '/media/videos',
-            },
-          ],
-        },
-      ],
     },
     {
       id: 'promotions',
-      label: 'Promotions',
-      labelBg: 'Промоции',
+      label: 'Offers',
+      labelBg: 'Оферти',
       path: '/promotions',
-      children: [
-        {
-          id: 'by-type',
-          label: 'By Type',
-          labelBg: 'По вид',
-          path: '/promotions/type',
-          children: [
-            {
-              id: 'gastronomy',
-              label: 'Gastronomy',
-              labelBg: 'Гастрономични: Street food, Wine & dine, Cooking, Farm-to-table',
-              path: '/promotions/gastronomy',
-            },
-            {
-              id: 'extreme',
-              label: 'Extreme',
-              labelBg: 'Екстремни: Въздушни, Водни, Планински, Зимни',
-              path: '/promotions/extreme',
-            },
-            {
-              id: 'cultural',
-              label: 'Cultural',
-              labelBg: 'Културни, Романтични, Семейни, Учебни',
-              path: '/promotions/cultural',
-            },
-          ],
-        },
-      ],
     },
     {
       id: 'categories',
@@ -271,86 +183,6 @@ export const navigationConfig: NavConfig = {
               label: 'Learning Experiences',
               labelBg: 'Готвене, Танци, Рисуване',
               path: '/experiences/educational/learning',
-            },
-          ],
-        },
-      ],
-    },
-    {
-      id: 'locations',
-      label: 'Locations',
-      labelBg: 'Настаняване',
-      path: '/locations',
-      children: [
-        {
-          id: 'by-city',
-          label: 'By City',
-          labelBg: 'По градове',
-          path: '/locations/cities',
-          children: [
-            {
-              id: 'sofia-location',
-              label: 'Sofia (150)',
-              labelBg: 'София (150)',
-              path: '/locations/sofia',
-            },
-            {
-              id: 'plovdiv-location',
-              label: 'Plovdiv (80)',
-              labelBg: 'Пловдив (80)',
-              path: '/locations/plovdiv',
-            },
-            {
-              id: 'varna-location',
-              label: 'Varna (120)',
-              labelBg: 'Варна (120)',
-              path: '/locations/varna',
-            },
-            {
-              id: 'bansko-location',
-              label: 'Bansko (90)',
-              labelBg: 'Банско (90)',
-              path: '/locations/bansko',
-            },
-          ],
-        },
-        {
-          id: 'by-price',
-          label: 'By Price',
-          labelBg: 'По цена',
-          path: '/locations/price',
-          children: [
-            {
-              id: 'budget',
-              label: '150-250 BGN (mid-range)',
-              labelBg: '150-250 лв (среден клас)',
-              path: '/locations/price/budget',
-            },
-            {
-              id: 'premium',
-              label: '250-400 BGN (high-end)',
-              labelBg: '250-400 лв (висок клас)',
-              path: '/locations/price/premium',
-            },
-            {
-              id: 'luxury',
-              label: '400+ BGN (luxury)',
-              labelBg: '400+ лв (лукс)',
-              path: '/locations/price/luxury',
-            },
-          ],
-        },
-        {
-          id: 'by-type-location',
-          label: 'By Type',
-          labelBg: 'По тип',
-          path: '/locations/type',
-          children: [
-            {
-              id: 'location-types',
-              label: 'Location Types',
-              labelBg: 'Бизнес, Бутик, СПА, Семейни',
-              path: '/locations/type/all',
             },
           ],
         },

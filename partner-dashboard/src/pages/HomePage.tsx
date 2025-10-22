@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { motion, useScroll, useTransform } from 'framer-motion';
+import { motion, useScroll, useTransform, AnimatePresence } from 'framer-motion';
 import { useInView } from 'react-intersection-observer';
 import styled from 'styled-components';
 import Card from '../components/common/Card/Card';
@@ -8,8 +8,13 @@ import Button from '../components/common/Button/Button';
 import Carousel from '../components/common/Carousel/Carousel';
 import OfferCard, { Offer } from '../components/common/OfferCard/OfferCard';
 import HeroBlast from '../components/common/HeroBlast/HeroBlast';
+import ReviewCard from '../components/reviews/ReviewCard';
+import ReviewSubmissionForm from '../components/reviews/ReviewSubmissionForm';
 import { useLanguage } from '../contexts/LanguageContext';
+import { useAuth } from '../contexts/AuthContext';
 import { useTopOffers } from '../hooks/useOffers';
+import { usePartnerReviews } from '../hooks/usePartnerReviews';
+import { updateSEO, addOrganizationSchema, addWebSiteSchema, generateHowToSchema, generateFAQSchema } from '../utils/seo';
 
 // Styled components for category cards
 const CategoryCard = styled(motion.div)`
@@ -192,6 +197,7 @@ const CTABox = styled(motion.div)`
 
 const HomePage: React.FC = () => {
   const { language, t } = useLanguage();
+  const { user } = useAuth();
   const { scrollY } = useScroll();
   const heroOpacity = useTransform(scrollY, [0, 300], [1, 0]);
   const heroScale = useTransform(scrollY, [0, 300], [1, 0.95]);
@@ -199,24 +205,95 @@ const HomePage: React.FC = () => {
   // Fetch top offers from API
   const { data: topOffersData, isLoading: isLoadingOffers } = useTopOffers(6);
   const topOffers = topOffersData || [];
+
+  // Fetch reviews from API
+  const { reviews: reviewsData, loading: loadingReviews, createReview, markHelpful } = usePartnerReviews({
+    filters: { status: 'APPROVED', limit: 3, sortBy: 'createdAt', sortOrder: 'desc' }
+  });
+  const [showReviewForm, setShowReviewForm] = useState(false);
+
   console.log('HomePage: topOffersData =', topOffersData);
   console.log('HomePage: topOffers =', topOffers);
   console.log('HomePage: topOffers.length =', topOffers.length);
+  console.log('HomePage: reviews =', reviewsData);
 
-  const [offersRef, offersInView] = useInView({
-    threshold: 0.1,
-    triggerOnce: true,
-  });
+  // SEO optimization with bilingual support
+  useEffect(() => {
+    updateSEO({
+      title: language === 'bg'
+        ? 'BoomCard - Промоции, Изживявания, Карта за Намаления'
+        : 'BoomCard - Promotions, Experiences, Discount Card',
+      description: language === 'bg'
+        ? 'Открийте ексклузивни оферти и топ изживявания с вашата BoomCard карта за намаления. Подарете си незабравими преживявания!'
+        : 'Discover exclusive offers and top experiences with your BoomCard discount card. Gift yourself unforgettable experiences!',
+      keywords: language === 'bg'
+        ? ['промоции', 'изживявания', 'карта за намаления', 'ексклузивни оферти', 'подарък', 'топ изживявания', 'отстъпки', 'България', 'София', 'Пловдив', 'Варна']
+        : ['promotions', 'experiences', 'discount card', 'exclusive offers', 'gift', 'top experiences', 'discounts', 'Bulgaria', 'Sofia', 'Plovdiv', 'Varna'],
+      language: language,
+      url: window.location.href,
+    });
 
-  const [categoriesRef, categoriesInView] = useInView({
-    threshold: 0.2,
-    triggerOnce: true,
-  });
+    // Add structured data for organization and website
+    addOrganizationSchema();
+    addWebSiteSchema();
 
-  const [benefitsRef, benefitsInView] = useInView({
-    threshold: 0.2,
-    triggerOnce: true,
-  });
+    // Add HowTo schema for "How It Works" section
+    generateHowToSchema({
+      name: language === 'bg' ? 'Как работи BoomCard' : 'How BoomCard Works',
+      description: language === 'bg'
+        ? 'Научете как да използвате вашата BoomCard карта за достъп до ексклузивни промоции и изживявания'
+        : 'Learn how to use your BoomCard to access exclusive promotions and experiences',
+      totalTime: 'PT3M',
+      steps: [
+        {
+          name: language === 'bg' ? 'Регистрирайте се' : 'Sign Up',
+          text: language === 'bg'
+            ? 'Създайте вашия безплатен BoomCard акаунт за достъп до хиляди оферти'
+            : 'Create your free BoomCard account to access thousands of offers',
+        },
+        {
+          name: language === 'bg' ? 'Разгледайте Офертите' : 'Browse Offers',
+          text: language === 'bg'
+            ? 'Открийте ексклузивни промоции от ресторанти, хотели и други партньори'
+            : 'Discover exclusive promotions from restaurants, hotels, and other partners',
+        },
+        {
+          name: language === 'bg' ? 'Използвайте Картата' : 'Use Your Card',
+          text: language === 'bg'
+            ? 'Покажете вашата дигитална карта за получаване на отстъпки и специални оферти'
+            : 'Show your digital card to receive discounts and special offers',
+        },
+      ],
+    });
+
+    // Add FAQ schema
+    generateFAQSchema([
+      {
+        question: language === 'bg' ? 'Какво е BoomCard?' : 'What is BoomCard?',
+        answer: language === 'bg'
+          ? 'BoomCard е карта за намаления, която ви дава достъп до ексклузивни промоции и топ изживявания в цяла България.'
+          : 'BoomCard is a discount card that gives you access to exclusive promotions and top experiences across Bulgaria.',
+      },
+      {
+        question: language === 'bg' ? 'Колко струва BoomCard?' : 'How much does BoomCard cost?',
+        answer: language === 'bg'
+          ? 'BoomCard предлага различни планове: Безплатен основен план, Премиум план за 29 лв/месец, и VIP план за 59 лв/месец.'
+          : 'BoomCard offers different plans: Free basic plan, Premium plan for 29 BGN/month, and VIP plan for 59 BGN/month.',
+      },
+      {
+        question: language === 'bg' ? 'Къде мога да използвам BoomCard?' : 'Where can I use BoomCard?',
+        answer: language === 'bg'
+          ? 'BoomCard може да се използва в над 500 партньорски локации в София, Пловдив, Варна, Банско и други градове в България.'
+          : 'BoomCard can be used at over 500 partner locations in Sofia, Plovdiv, Varna, Bansko, and other cities in Bulgaria.',
+      },
+      {
+        question: language === 'bg' ? 'Каква е средната отстъпка?' : 'What is the average discount?',
+        answer: language === 'bg'
+          ? 'Средната отстъпка варира между 10% и 50%, в зависимост от вашия план и партньора.'
+          : 'The average discount ranges from 10% to 50%, depending on your plan and the partner.',
+      },
+    ]);
+  }, [language]);
 
   const categories = [
     {
@@ -249,127 +326,44 @@ const HomePage: React.FC = () => {
     }
   ];
 
+  const subscriptionPlans = [
+    {
+      name: language === 'bg' ? 'Основен' : 'Basic',
+      price: '0',
+      features: [
+        language === 'bg' ? 'Достъп до основни оферти' : 'Access to basic offers',
+        language === 'bg' ? '10% средна отстъпка' : '10% average discount'
+      ]
+    },
+    {
+      name: language === 'bg' ? 'Премиум' : 'Premium',
+      price: '29',
+      featured: true,
+      features: [
+        language === 'bg' ? '30% средна отстъпка' : '30% average discount',
+        language === 'bg' ? 'Приоритетна поддръжка' : 'Priority support',
+        language === 'bg' ? 'Ексклузивни оферти' : 'Exclusive offers'
+      ]
+    },
+    {
+      name: 'VIP',
+      price: '59',
+      features: [
+        language === 'bg' ? '50% средна отстъпка' : '50% average discount',
+        language === 'bg' ? 'VIP събития' : 'VIP events',
+        language === 'bg' ? 'Консиерж услуги' : 'Concierge service'
+      ]
+    }
+  ];
+
+  // Reviews are now fetched from API via usePartnerReviews hook above
+
   return (
     <div>
       {/* Hero Section with Blast Video */}
       <HeroBlast language={language} />
 
-      {/* Top Offers Carousel */}
-      <section ref={offersRef} className="section">
-        <div className="container-custom">
-          <motion.div
-            initial={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6 }}
-            className="mb-12"
-          >
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h2 className="text-4xl md:text-5xl font-bold mb-2" style={{ color: 'var(--color-text-primary)' }}>
-                  {t('home.topOffers')}
-                </h2>
-                <p className="text-xl" style={{ color: 'var(--color-text-secondary)' }}>
-                  {t('home.topOffersSubtitle')}
-                </p>
-              </div>
-              <Link to="/top-offers" className="hidden md:block">
-                <Button variant="ghost">
-                  {t('common.viewAll')}
-                </Button>
-              </Link>
-            </div>
-          </motion.div>
-
-          <motion.div
-            initial={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6 }}
-          >
-            {isLoadingOffers ? (
-              <div className="text-center py-12">
-                <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2" style={{ borderColor: 'var(--color-primary)' }}></div>
-                <p className="mt-4" style={{ color: 'var(--color-text-secondary)' }}>Loading top offers...</p>
-              </div>
-            ) : topOffers.length === 0 ? (
-              <div className="text-center py-12 rounded-lg" style={{ background: 'var(--color-background-secondary)' }}>
-                <p className="text-xl mb-4" style={{ color: 'var(--color-text-secondary)' }}>
-                  {language === 'bg' ? 'Няма налични оферти в момента' : 'No offers available at the moment'}
-                </p>
-                <p className="text-sm" style={{ color: 'var(--color-text-secondary)', opacity: 0.7 }}>
-                  {language === 'bg'
-                    ? 'Офертите ще се зареждат от API сървъра. Моля, уверете се, че има създадени оферти в базата данни.'
-                    : 'Offers will be loaded from the API server. Please make sure there are offers created in the database.'}
-                </p>
-              </div>
-            ) : (
-              <Carousel
-                autoPlay={true}
-                interval={6000}
-                itemsToShow={{ mobile: 1, tablet: 2, desktop: 3 }}
-              >
-                {topOffers.map((offer) => (
-                  <OfferCard key={offer.id} offer={offer} />
-                ))}
-              </Carousel>
-            )}
-          </motion.div>
-
-          <div className="mt-8 text-center md:hidden">
-            <Link to="/top-offers">
-              <Button variant="ghost" size="large">
-                {t('common.viewAll')}
-              </Button>
-            </Link>
-          </div>
-        </div>
-      </section>
-
-      {/* Categories Section */}
-      <section ref={categoriesRef} className="section" style={{ background: 'var(--color-background-secondary)' }}>
-        <div className="container-custom">
-          <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            animate={categoriesInView ? { opacity: 1, y: 0 } : {}}
-            transition={{ duration: 0.6 }}
-            className="text-center mb-16"
-          >
-            <h2 className="text-4xl md:text-5xl font-bold mb-4" style={{ color: 'var(--color-text-primary)' }}>
-              {t('home.categories')}
-            </h2>
-            <p className="text-xl max-w-2xl mx-auto" style={{ color: 'var(--color-text-secondary)' }}>
-              {t('home.categoriesSubtitle')}
-            </p>
-          </motion.div>
-
-          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {categories.map((category, index) => (
-              <CategoryCard
-                key={index}
-                initial={{ opacity: 0, y: 30 }}
-                animate={categoriesInView ? { opacity: 1, y: 0 } : {}}
-                transition={{ duration: 0.6, delay: index * 0.1 }}
-              >
-                <Link to={category.path} style={{ textDecoration: 'none', height: '100%', display: 'flex', flexDirection: 'column' }}>
-                  <Card style={{ height: '100%', display: 'flex', flexDirection: 'column', padding: 0, overflow: 'hidden' }}>
-                    <CategoryImageContainer $imageUrl={category.icon} />
-                    <CategoryContent>
-                      <h3 className="text-xl font-semibold mb-2" style={{ color: 'var(--color-text-primary)' }}>
-                        {category.title}
-                      </h3>
-                      <p className="mb-4 text-sm leading-relaxed" style={{ color: 'var(--color-text-secondary)' }}>
-                        {category.description}
-                      </p>
-                      <div className="text-sm font-medium mt-auto" style={{ color: 'var(--color-text-secondary)', opacity: 0.7 }}>
-                        {category.count} {t('home.places')}
-                      </div>
-                    </CategoryContent>
-                  </Card>
-                </Link>
-              </CategoryCard>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* How It Works Section */}
+      {/* Product Details - How It Works Section */}
       <section className="section">
         <div className="container-custom">
           <div className="text-center mb-16">
@@ -415,35 +409,198 @@ const HomePage: React.FC = () => {
         </div>
       </section>
 
-      {/* CTA Section */}
-      <section ref={benefitsRef} className="section" style={{ background: 'var(--color-background-secondary)' }}>
+      {/* Subscription Plans Section */}
+      <section className="section" style={{ background: 'var(--color-background-secondary)' }}>
+        <div className="container-custom">
+          <div className="text-center mb-16">
+            <h2 className="text-4xl md:text-5xl font-bold mb-4" style={{ color: 'var(--color-text-primary)' }}>
+              {language === 'bg' ? 'Абонаментни Планове' : 'Subscription Plans'}
+            </h2>
+            <p className="text-xl max-w-2xl mx-auto" style={{ color: 'var(--color-text-secondary)' }}>
+              {language === 'bg'
+                ? 'Изберете перфектния план за вашия начин на живот'
+                : 'Choose the perfect plan for your lifestyle'}
+            </p>
+          </div>
+
+          <div className="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto">
+            {subscriptionPlans.map((plan, index) => (
+              <Card key={index} style={{
+                padding: '2rem',
+                textAlign: 'center',
+                border: plan.featured ? '3px solid var(--color-primary)' : '2px solid var(--color-border)',
+                position: 'relative',
+                transform: plan.featured ? 'scale(1.05)' : 'scale(1)',
+                boxShadow: plan.featured ? 'var(--shadow-large)' : 'var(--shadow-soft)'
+              }}>
+                {plan.featured && (
+                  <div style={{
+                    position: 'absolute',
+                    top: '-12px',
+                    left: '50%',
+                    transform: 'translateX(-50%)',
+                    background: 'var(--color-primary)',
+                    color: 'var(--color-secondary)',
+                    padding: '0.25rem 1rem',
+                    borderRadius: '9999px',
+                    fontSize: '0.875rem',
+                    fontWeight: '600'
+                  }}>
+                    {language === 'bg' ? 'Най-популярен' : 'Most Popular'}
+                  </div>
+                )}
+                <h3 className="text-2xl font-bold mb-4" style={{ color: 'var(--color-text-primary)' }}>
+                  {plan.name}
+                </h3>
+                <div className="mb-6">
+                  <span className="text-5xl font-bold" style={{ color: 'var(--color-text-primary)' }}>
+                    {plan.price}
+                  </span>
+                  <span className="text-xl ml-2" style={{ color: 'var(--color-text-secondary)' }}>
+                    {language === 'bg' ? 'лв/мес' : 'BGN/mo'}
+                  </span>
+                </div>
+                <ul style={{ textAlign: 'left', marginBottom: '2rem' }}>
+                  {plan.features.map((feature, i) => (
+                    <li key={i} style={{
+                      padding: '0.75rem 0',
+                      borderBottom: '1px solid var(--color-border)',
+                      color: 'var(--color-text-secondary)'
+                    }}>
+                      ✓ {feature}
+                    </li>
+                  ))}
+                </ul>
+                <Link to="/subscriptions">
+                  <Button variant={plan.featured ? 'primary' : 'secondary'} size="large" style={{ width: '100%' }}>
+                    {language === 'bg' ? 'Избери План' : 'Choose Plan'}
+                  </Button>
+                </Link>
+              </Card>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Partner CTA Section */}
+      <section className="section">
         <div className="container-custom">
           <CTABox
             initial={{ opacity: 0, y: 30 }}
-            animate={benefitsInView ? { opacity: 1, y: 0 } : {}}
+            animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6 }}
           >
             <h2 className="text-4xl md:text-5xl font-bold mb-6">
-              {t('home.readyToSave')}
+              {language === 'bg' ? 'Станете партньор на BoomCard' : 'Become a BoomCard Partner'}
             </h2>
             <p className="text-xl mb-10 opacity-90 leading-relaxed">
-              {t('home.readyToSaveDescription')}
+              {language === 'bg'
+                ? 'Присъединете се към нашата мрежа от партньори и достигнете до хиляди нови клиенти'
+                : 'Join our partner network and reach thousands of new customers'}
             </p>
             <div className="flex flex-col sm:flex-row justify-center gap-4">
-              <Link to="/register">
-                <Button variant="secondary" size="large">
-                  {t('home.signUpFree')}
-                </Button>
-              </Link>
               <Link to="/partners">
                 <Button variant="secondary" size="large">
-                  {t('home.forPartners')}
+                  {language === 'bg' ? 'Научете повече' : 'Learn More'}
+                </Button>
+              </Link>
+              <Link to="/contact">
+                <Button variant="secondary" size="large">
+                  {language === 'bg' ? 'Свържете се с нас' : 'Contact Us'}
                 </Button>
               </Link>
             </div>
           </CTABox>
         </div>
       </section>
+
+      {/* User Reviews Section */}
+      <section className="section" style={{ background: 'var(--color-background-secondary)' }}>
+        <div className="container-custom">
+          <div className="text-center mb-16">
+            <h2 className="text-4xl md:text-5xl font-bold mb-4" style={{ color: 'var(--color-text-primary)' }}>
+              {language === 'bg' ? 'Какво казват нашите клиенти' : 'What Our Customers Say'}
+            </h2>
+            <p className="text-xl max-w-2xl mx-auto mb-8" style={{ color: 'var(--color-text-secondary)' }}>
+              {language === 'bg'
+                ? 'Хиляди доволни клиенти спестяват с BoomCard всеки ден'
+                : 'Thousands of happy customers saving with BoomCard every day'}
+            </p>
+            <Button
+              variant="primary"
+              size="large"
+              onClick={() => setShowReviewForm(true)}
+            >
+              {language === 'bg' ? 'Напишете отзив' : 'Write a Review'}
+            </Button>
+          </div>
+
+          {loadingReviews ? (
+            <div className="text-center py-12">
+              <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2" style={{ borderColor: 'var(--color-primary)' }}></div>
+              <p className="mt-4" style={{ color: 'var(--color-text-secondary)' }}>
+                {language === 'bg' ? 'Зареждане на отзиви...' : 'Loading reviews...'}
+              </p>
+            </div>
+          ) : reviewsData && reviewsData.length > 0 ? (
+            <div className="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto">
+              {reviewsData.map((review) => (
+                <ReviewCard
+                  key={review.id}
+                  review={review}
+                  onMarkHelpful={markHelpful}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-12" style={{ background: 'var(--color-background)', borderRadius: '1rem' }}>
+              <p className="text-xl mb-4" style={{ color: 'var(--color-text-secondary)' }}>
+                {language === 'bg' ? 'Все още няма отзиви' : 'No reviews yet'}
+              </p>
+              <p className="text-sm mb-6" style={{ color: 'var(--color-text-secondary)', opacity: 0.7 }}>
+                {language === 'bg'
+                  ? 'Бъдете първите, които споделят мнение'
+                  : 'Be the first to share your opinion'}
+              </p>
+              <Button
+                variant="primary"
+                onClick={() => setShowReviewForm(true)}
+              >
+                {language === 'bg' ? 'Напишете първия отзив' : 'Write the First Review'}
+              </Button>
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* Review Submission Modal */}
+      <AnimatePresence>
+        {showReviewForm && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            style={{
+              position: 'fixed',
+              inset: 0,
+              background: 'rgba(0, 0, 0, 0.5)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 9999,
+              padding: '1rem'
+            }}
+            onClick={() => setShowReviewForm(false)}
+          >
+            <div onClick={(e) => e.stopPropagation()}>
+              <ReviewSubmissionForm
+                onSubmit={createReview}
+                onClose={() => setShowReviewForm(false)}
+              />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

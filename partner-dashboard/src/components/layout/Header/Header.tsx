@@ -6,6 +6,7 @@ import styled from 'styled-components';
 import Button from '../../common/Button/Button';
 import MegaMenu from '../Navigation/MegaMenu';
 import NotificationCenter from '../../common/NotificationCenter/NotificationCenter';
+import SocialShareButton from '../../common/ShareButton/ShareButton';
 import { navigationConfig } from '../../../types/navigation';
 import { useFavorites } from '../../../contexts/FavoritesContext';
 import { useAuth } from '../../../contexts/AuthContext';
@@ -639,9 +640,9 @@ export const Header: React.FC<HeaderProps> = ({
           {/* Logo - Far Left */}
           <Link to="/" className="flex items-center z-50 flex-shrink-0">
             <img
-              src={theme === 'dark' ? '/zLogo_light.png' : '/zbooom.png'}
+              src="/iconic.svg"
               alt="BoomCard"
-              className="h-8 sm:h-10 w-auto"
+              className="h-10 sm:h-12 w-auto"
               style={{ transition: 'opacity 0.3s ease' }}
             />
           </Link>
@@ -943,11 +944,6 @@ export const Header: React.FC<HeaderProps> = ({
                     {t('common.signIn')}
                   </Button>
                 </Link>
-                <Link to="/register" className="hidden lg:block">
-                  <Button variant="primary" size="small">
-                    {t('common.getStarted')}
-                  </Button>
-                </Link>
               </>
             )}
           </div>
@@ -1066,7 +1062,7 @@ export const Header: React.FC<HeaderProps> = ({
                 <MobileFavoritesLink
                   to="/favorites"
                   onClick={() => setMobileMenuOpen(false)}
-                  className="mb-6"
+                  className="mb-4"
                 >
                   <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path
@@ -1084,6 +1080,17 @@ export const Header: React.FC<HeaderProps> = ({
                   )}
                 </MobileFavoritesLink>
 
+                {/* Share Button Mobile */}
+                <div className="mb-6">
+                  <SocialShareButton
+                    url={window.location.href}
+                    title="BoomCard - Live More, Pay Less"
+                    description={language === 'bg' ? 'Открийте невероятни оферти и преживявания с BoomCard' : 'Discover amazing offers and experiences with BoomCard'}
+                    buttonText={language === 'bg' ? 'Сподели' : 'Share'}
+                    className="w-full"
+                  />
+                </div>
+
                 {/* Mobile Navigation */}
                 <nav className="mb-8">
                   <MegaMenu items={navigationConfig.main} language={language} autoExpandOnMobile={false} />
@@ -1093,11 +1100,6 @@ export const Header: React.FC<HeaderProps> = ({
                   <Link to="/login" onClick={() => setMobileMenuOpen(false)}>
                     <Button variant="ghost" size="large" className="w-full">
                       {t('common.signIn')}
-                    </Button>
-                  </Link>
-                  <Link to="/register" onClick={() => setMobileMenuOpen(false)}>
-                    <Button variant="primary" size="large" className="w-full">
-                      {t('common.getStarted')}
                     </Button>
                   </Link>
                 </div>

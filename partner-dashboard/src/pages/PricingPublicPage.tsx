@@ -372,29 +372,6 @@ const PricingPublicPage: React.FC = () => {
         { en: 'POS integration', bg: 'POS интеграция' },
       ],
     },
-    {
-      nameEn: 'Gold',
-      nameBg: 'Златна',
-      cardGradient: 'linear-gradient(135deg, #b45309 0%, #f59e0b 50%, #b45309 100%)',
-      logoGradient: 'linear-gradient(135deg, #fbbf24 0%, #fde047 50%, #fbbf24 100%)',
-      logoImage: '/boom-gold.png',
-      borderColor: 'rgba(251, 191, 36, 0.5)',
-      descEn: 'Exclusive promotions and premium features',
-      descBg: 'Ексклузивни промоции и премиум функции',
-      monthlyPriceEur: 149,
-      annualPriceEur: 1490,
-      features: [
-        { en: 'Exclusive promotions with top visibility', bg: 'Ексклузивни промоции с топ видимост' },
-        { en: 'Featured placement in app', bg: 'Представяне в приложението' },
-        { en: 'Everything in Silver', bg: 'Всичко от Сребърна' },
-        { en: 'Dedicated account manager', bg: 'Специален акаунт мениджър' },
-        { en: 'White-label solution', bg: 'Решение с бяла етикетка' },
-        { en: 'Custom integrations', bg: 'Персонализирани интеграции' },
-        { en: 'SLA guarantee', bg: 'SLA гаранция' },
-        { en: '24/7 phone support', bg: '24/7 телефонна поддръжка' },
-        { en: 'Training & onboarding', bg: 'Обучение и адаптиране' },
-      ],
-    },
   ];
 
   const faqs = [

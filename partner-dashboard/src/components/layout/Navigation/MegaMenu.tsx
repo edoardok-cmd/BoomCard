@@ -211,7 +211,7 @@ const DropdownSection = styled.div`
 
   /* Add subtle separation between sections */
   & + & {
-    border-left: 1px solid var(--color-border);
+    border-left: 2px solid var(--color-border);
     padding-left: 2rem;
   }
 
@@ -235,29 +235,14 @@ const SectionTitle = styled.h3`
   margin-bottom: 1rem;
   padding: 0 0.75rem;
   padding-bottom: 0.625rem;
-  border-bottom: 3px solid var(--color-primary);
+  border-bottom: 2px solid var(--color-primary);
   position: relative;
-
-  /* Accent line under the border */
-  &::after {
-    content: '';
-    position: absolute;
-    bottom: -3px;
-    left: 0.75rem;
-    width: 50%;
-    height: 3px;
-    background: var(--color-accent);
-  }
 
   @media (max-width: 1024px) {
     padding: 0.875rem 1rem;
     background: var(--color-background-secondary);
     margin-bottom: 0;
-    border-bottom: 3px solid var(--color-primary);
-
-    &::after {
-      left: 1rem;
-    }
+    border-bottom: 2px solid var(--color-primary);
   }
 `;
 
