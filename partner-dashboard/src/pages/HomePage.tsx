@@ -697,18 +697,11 @@ const HomePage: React.FC = () => {
             <h2 className="text-4xl md:text-5xl font-bold mb-4" style={{ color: 'var(--color-text-primary)' }}>
               {language === 'bg' ? 'Какво казват нашите клиенти' : 'What Our Customers Say'}
             </h2>
-            <p className="text-xl max-w-2xl mx-auto mb-8" style={{ color: 'var(--color-text-secondary)' }}>
+            <p className="text-xl max-w-2xl mx-auto" style={{ color: 'var(--color-text-secondary)' }}>
               {language === 'bg'
                 ? 'Хиляди доволни клиенти спестяват с BoomCard всеки ден'
                 : 'Thousands of happy customers saving with BoomCard every day'}
             </p>
-            <Button
-              variant="primary"
-              size="large"
-              onClick={() => setShowReviewForm(true)}
-            >
-              {language === 'bg' ? 'Напишете отзив' : 'Write a Review'}
-            </Button>
           </div>
 
           {loadingReviews ? (
