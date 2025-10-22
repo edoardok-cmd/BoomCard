@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import styled from 'styled-components';
 import { motion } from 'framer-motion';
 import { Star, X, Image as ImageIcon } from 'lucide-react';
@@ -180,6 +181,7 @@ export const ReviewSubmissionForm: React.FC<ReviewSubmissionFormProps> = ({
 }) => {
   const { language } = useLanguage();
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [rating, setRating] = useState(0);
   const [hoverRating, setHoverRating] = useState(0);
   const [title, setTitle] = useState('');
@@ -250,7 +252,8 @@ export const ReviewSubmissionForm: React.FC<ReviewSubmissionFormProps> = ({
       cancel: 'Cancel',
       submit: 'Submit Review',
       submitting: 'Submitting...',
-      loginRequired: 'Please log in to leave a review'
+      loginRequired: 'Please log in to leave a review',
+      signIn: 'Sign In'
     },
     bg: {
       title: 'Напишете отзив',
@@ -262,7 +265,8 @@ export const ReviewSubmissionForm: React.FC<ReviewSubmissionFormProps> = ({
       cancel: 'Отказ',
       submit: 'Изпрати отзив',
       submitting: 'Изпращане...',
-      loginRequired: 'Моля, влезте в профила си, за да оставите отзив'
+      loginRequired: 'Моля, влезте в профила си, за да оставите отзив',
+      signIn: 'Влезте'
     }
   };
 
@@ -285,9 +289,17 @@ export const ReviewSubmissionForm: React.FC<ReviewSubmissionFormProps> = ({
           <p style={{ color: 'var(--color-text-secondary)', marginBottom: '1.5rem' }}>
             {t.loginRequired}
           </p>
-          <Button variant="primary" onClick={onClose}>
-            {t.cancel}
-          </Button>
+          <ButtonGroup>
+            <Button variant="secondary" onClick={onClose}>
+              {t.cancel}
+            </Button>
+            <Button variant="primary" onClick={() => {
+              onClose();
+              navigate('/login');
+            }}>
+              {t.signIn}
+            </Button>
+          </ButtonGroup>
         </div>
       </FormContainer>
     );
