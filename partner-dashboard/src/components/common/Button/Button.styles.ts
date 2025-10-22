@@ -80,6 +80,21 @@ const variantStyles = {
     border: 2px solid var(--color-border);
     font-weight: 600;
 
+    /* Light mode: solid border and dark text for better visibility */
+    [data-theme="light"] & {
+      background: #ffffff;
+      color: #1f2937;
+      border: 2px solid #374151;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    }
+
+    /* Dark mode: keep current styling */
+    [data-theme="dark"] & {
+      background: #374151;
+      color: #f9fafb;
+      border: 2px solid #4b5563;
+    }
+
     [data-theme="color"] & {
       background: linear-gradient(135deg, #fff5e1 0%, #ffe4f1 100%);
       border: 2px solid #ff94d6;
@@ -94,6 +109,12 @@ const variantStyles = {
       background: var(--color-background-secondary);
       box-shadow: var(--shadow-soft);
       transform: translateY(-2px);
+
+      [data-theme="light"] & {
+        background: #f3f4f6;
+        border-color: #1f2937;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+      }
 
       [data-theme="color"] & {
         background: linear-gradient(135deg, #ffd6a5 0%, #ffb5d5 100%);
@@ -110,6 +131,20 @@ const variantStyles = {
     border: 2px solid var(--color-border);
     font-weight: 500;
 
+    /* Light mode: darker border for better visibility */
+    [data-theme="light"] & {
+      background-color: transparent;
+      color: #1f2937;
+      border: 2px solid #374151;
+    }
+
+    /* Dark mode: lighter border for visibility */
+    [data-theme="dark"] & {
+      background-color: transparent;
+      color: #f9fafb;
+      border: 2px solid #9ca3af;
+    }
+
     [data-theme="color"] & {
       border: 2px solid #ff4500;
       color: #8b2fb8;
@@ -119,6 +154,16 @@ const variantStyles = {
       background: var(--color-background-secondary);
       border-color: var(--color-primary);
       transform: translateY(-2px);
+
+      [data-theme="light"] & {
+        background: #f3f4f6;
+        border-color: #1f2937;
+      }
+
+      [data-theme="dark"] & {
+        background: #374151;
+        border-color: #60a5fa;
+      }
 
       [data-theme="color"] & {
         background: linear-gradient(135deg, rgba(255, 69, 0, 0.1) 0%, rgba(255, 0, 110, 0.1) 100%);

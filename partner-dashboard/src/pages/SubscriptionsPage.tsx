@@ -405,8 +405,7 @@ const SubscriptionsPage: React.FC = () => {
       price: 0,
       features: [
         language === 'bg' ? 'Достъп до основни оферти' : 'Access to basic offers',
-        language === 'bg' ? '10% средна отстъпка' : '10% average discount',
-        language === 'bg' ? 'Месечен бюлетин' : 'Monthly newsletter'
+        language === 'bg' ? '10% средна отстъпка' : '10% average discount'
       ]
     },
     {
@@ -418,17 +417,6 @@ const SubscriptionsPage: React.FC = () => {
         language === 'bg' ? '30% средна отстъпка' : '30% average discount',
         language === 'bg' ? 'Приоритетна поддръжка' : 'Priority support',
         language === 'bg' ? 'Ексклузивни оферти' : 'Exclusive offers'
-      ]
-    },
-    {
-      variant: 'platinum' as const,
-      name: 'VIP',
-      price: billingPeriod === 'monthly' ? 59 : 590,
-      features: [
-        language === 'bg' ? 'Всички Премиум характеристики' : 'All Premium features',
-        language === 'bg' ? '50% средна отстъпка' : '50% average discount',
-        language === 'bg' ? 'VIP събития' : 'VIP events',
-        language === 'bg' ? 'Персонален консиерж' : 'Personal concierge'
       ]
     }
   ];
