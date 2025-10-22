@@ -1037,7 +1037,7 @@ const PartnersPage: React.FC = () => {
         </Container>
       </LocationsSection>
 
-      <CTASection>
+      <CTASection id="application">
         <Container>
           <CTATitle>
             {t('partners.readyToStart')}

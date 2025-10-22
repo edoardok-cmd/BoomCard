@@ -121,7 +121,7 @@ export const ClientCTA: React.FC<ClientCTAProps> = ({ className }) => {
               {t.secondaryButton}
             </Button>
           </Link>
-          <Link to="/partners">
+          <Link to="/partners#application">
             <Button variant="outline" size="large">
               {t.partnerButton}
             </Button>
