@@ -201,12 +201,20 @@ const BenefitTitle = styled.h3`
   display: flex;
   align-items: center;
   justify-content: center;
+
+  [data-theme="dark"] & {
+    color: #f9fafb;
+  }
 `;
 
 const BenefitText = styled.p`
   font-size: 1rem;
   color: #6b7280;
   line-height: 1.6;
+
+  [data-theme="dark"] & {
+    color: #d1d5db;
+  }
 `;
 
 const StatsSection = styled.div`
