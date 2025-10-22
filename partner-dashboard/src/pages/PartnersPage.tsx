@@ -93,15 +93,14 @@ const HeroButtons = styled.div`
   flex-wrap: wrap;
 
   /* Make outline buttons visible on dark background */
-  > button {
-    &:last-child {
-      color: white !important;
-      border-color: rgba(255, 255, 255, 0.5) !important;
+  a:last-child button,
+  > *:last-child button {
+    color: white !important;
+    border-color: rgba(255, 255, 255, 0.5) !important;
 
-      &:hover {
-        border-color: white !important;
-        background: rgba(255, 255, 255, 0.1) !important;
-      }
+    &:hover {
+      border-color: white !important;
+      background: rgba(255, 255, 255, 0.1) !important;
     }
   }
 `;
