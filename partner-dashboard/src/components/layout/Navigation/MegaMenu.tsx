@@ -126,7 +126,7 @@ const MegaDropdownContainer = styled(motion.div)<{ $alignRight?: boolean }>`
   position: absolute;
   top: 100%;
   ${props => props.$alignRight ? 'right: 0;' : 'left: 0;'}
-  width: 750px;
+  width: 850px;
   max-width: calc(100vw - 4rem);
   background: #ffffff;
   border-radius: 1rem;
@@ -209,18 +209,10 @@ const MegaGrid = styled.div`
 const DropdownSection = styled.div`
   padding: 0.75rem 0;
 
-  /* Add subtle separation between sections */
-  & + & {
-    border-left: 2px solid var(--color-border);
-    padding-left: 2rem;
-  }
-
   @media (max-width: 1024px) {
     padding: 0;
 
     & + & {
-      border-left: none;
-      padding-left: 0;
       border-top: 2px solid var(--color-border);
     }
   }
@@ -235,14 +227,28 @@ const SectionTitle = styled.h3`
   margin-bottom: 1rem;
   padding: 0 0.75rem;
   padding-bottom: 0.625rem;
-  border-bottom: 2px solid var(--color-primary);
   position: relative;
+
+  /* Consistent underline for all titles */
+  &::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0.75rem;
+    right: 0.75rem;
+    height: 2px;
+    background: var(--color-primary);
+  }
 
   @media (max-width: 1024px) {
     padding: 0.875rem 1rem;
     background: var(--color-background-secondary);
     margin-bottom: 0;
-    border-bottom: 2px solid var(--color-primary);
+
+    &::after {
+      left: 1rem;
+      right: 1rem;
+    }
   }
 `;
 

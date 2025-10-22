@@ -14,7 +14,7 @@ export interface SEOHealthReport {
   score: number;
   issues: SEOIssue[];
   recommendations: string[];
-  structured Data: number;
+  structuredData: number;
   metaTags: number;
   sitemaps: number;
 }

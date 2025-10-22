@@ -913,9 +913,7 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
     // Cycle 2: 8-11s returning, 11-16s rest (8s total)
     // Then show side cards and stop
 
-    let timeout: NodeJS.Timeout;
-    let blackCardTimeout: NodeJS.Timeout;
-    let silverCardTimeout: NodeJS.Timeout;
+    let timeout: NodeJS.Timeout | undefined;
 
     if (photoState === 'dealing') {
       const isMobile = window.innerWidth <= 768;
@@ -934,8 +932,6 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
 
     return () => {
       if (timeout) clearTimeout(timeout);
-      if (blackCardTimeout) clearTimeout(blackCardTimeout);
-      if (silverCardTimeout) clearTimeout(silverCardTimeout);
     };
   }, [photoState]);
 
@@ -993,7 +989,9 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
       if (!heroElement) return;
 
       const heroBottom = heroElement.getBoundingClientRect().bottom;
-      const shouldHideCards = heroBottom <= -200;
+      const viewportHeight = window.innerHeight;
+      // Hide cards when hero bottom is in the top 70% of viewport (when scrolling down into "How it works")
+      const shouldHideCards = heroBottom < viewportHeight * 0.7;
 
       setHideCardsOnScroll(shouldHideCards);
     };
@@ -1208,7 +1206,7 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
                     </QRCodeContainer>
                     <div>
                       <CardLogo>BOOM</CardLogo>
-                      <CardNumber>•••• •••• •••• 2025</CardNumber>
+                      <CardNumber>2025</CardNumber>
                     </div>
                     <CardInfo>
                       <div>
@@ -1241,7 +1239,7 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
                     </QRCodeContainer>
                     <div>
                       <SilverCardLogo>BOOM</SilverCardLogo>
-                      <CardNumber>•••• •••• •••• 2025</CardNumber>
+                      <CardNumber>2025</CardNumber>
                     </div>
                     <CardInfo>
                       <div>
