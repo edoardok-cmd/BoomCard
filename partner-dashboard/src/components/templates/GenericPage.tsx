@@ -5,6 +5,7 @@ import styled from 'styled-components';
 import { useLanguage } from '../../contexts/LanguageContext';
 import Button from '../common/Button/Button';
 import OfferCard, { Offer } from '../common/OfferCard/OfferCard';
+import ClientCTA from '../common/ClientCTA/ClientCTA';
 
 const PageContainer = styled.div`
   min-height: 100vh;
@@ -118,64 +119,6 @@ const ContentBlock = styled.div`
   margin-bottom: 2rem;
 `;
 
-const PartnersCTA = styled.div`
-  max-width: 64rem;
-  margin: 4rem auto 0;
-  text-align: center;
-  border-radius: 1.5rem;
-  padding: 3rem 4rem;
-  background: var(--color-primary);
-  color: var(--color-secondary);
-
-  /* Vibrant mode - explosive gradient CTA */
-  [data-theme="color"] & {
-    background: linear-gradient(135deg, #1a0a2e 0%, #6a0572 25%, #ab2567 50%, #ff006e 75%, #ff4500 100%);
-    background-size: 200% 200%;
-    animation: ctaGradientShift 8s ease infinite;
-    color: #ffffff;
-    border: 3px solid transparent;
-    border-image: linear-gradient(90deg, #ff4500, #ff006e, #00d4ff, #b24bf3) 1;
-    box-shadow:
-      0 25px 70px -15px rgba(255, 69, 0, 0.6),
-      0 20px 60px -10px rgba(255, 0, 110, 0.5),
-      0 15px 50px -5px rgba(139, 47, 184, 0.4);
-  }
-
-  @keyframes ctaGradientShift {
-    0%, 100% { background-position: 0% 50%; }
-    50% { background-position: 100% 50%; }
-  }
-
-  @media (max-width: 768px) {
-    padding: 2.5rem 2rem;
-  }
-
-  @media (max-width: 640px) {
-    padding: 2rem 1.5rem;
-  }
-
-  h2 {
-    font-size: 2.5rem;
-    font-weight: 700;
-    margin-bottom: 1rem;
-
-    @media (max-width: 768px) {
-      font-size: 2rem;
-    }
-  }
-
-  p {
-    font-size: 1.25rem;
-    margin-bottom: 2rem;
-    opacity: 0.9;
-    line-height: 1.6;
-
-    @media (max-width: 768px) {
-      font-size: 1.125rem;
-    }
-  }
-`;
-
 interface GenericPageProps {
   titleEn: string;
   titleBg: string;
@@ -262,24 +205,11 @@ export const GenericPage: React.FC<GenericPageProps> = ({
             </EmptyState>
           )}
 
-          {/* Partners CTA */}
-          <PartnersCTA>
-            <h2>
-              {language === 'bg' ? 'Станете партньор на BoomCard' : 'Become a BoomCard Partner'}
-            </h2>
-            <p>
-              {language === 'bg'
-                ? 'Присъединете се към нашата мрежа от партньори и достигнете до хиляди нови клиенти'
-                : 'Join our partner network and reach thousands of new customers'}
-            </p>
-            <Link to="/partners">
-              <Button variant="secondary" size="large">
-                {language === 'bg' ? 'Научете повече' : 'Learn More'}
-              </Button>
-            </Link>
-          </PartnersCTA>
         </Container>
       </ContentSection>
+
+      {/* Client CTA */}
+      <ClientCTA />
     </PageContainer>
   );
 };

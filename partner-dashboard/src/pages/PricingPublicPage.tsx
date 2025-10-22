@@ -4,6 +4,7 @@ import styled from 'styled-components';
 import { motion } from 'framer-motion';
 import { Check, ArrowRight, CreditCard } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
+import ClientCTA from '../components/common/ClientCTA/ClientCTA';
 
 const PageContainer = styled.div`
   min-height: 100vh;
@@ -515,6 +516,9 @@ const PricingPublicPage: React.FC = () => {
           </FAQItem>
         ))}
       </FAQSection>
+
+      {/* Client CTA */}
+      <ClientCTA />
     </PageContainer>
   );
 };

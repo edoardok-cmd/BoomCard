@@ -6,6 +6,7 @@ import { useLanguage } from '../contexts/LanguageContext';
 import OfferCard, { Offer } from '../components/common/OfferCard/OfferCard';
 import Button from '../components/common/Button/Button';
 import Badge from '../components/common/Badge/Badge';
+import ClientCTA from '../components/common/ClientCTA/ClientCTA';
 import { updateSEO, generateOfferSchema } from '../utils/seo';
 
 const PageContainer = styled.div`
@@ -438,6 +439,9 @@ const PromotionsPage: React.FC = () => {
           </div>
         </Container>
       </ContentSection>
+
+      {/* Client CTA */}
+      <ClientCTA />
     </PageContainer>
   );
 };

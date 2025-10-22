@@ -10,6 +10,7 @@ import OfferCard, { Offer } from '../components/common/OfferCard/OfferCard';
 import HeroBlast from '../components/common/HeroBlast/HeroBlast';
 import ReviewCard from '../components/reviews/ReviewCard';
 import ReviewSubmissionForm from '../components/reviews/ReviewSubmissionForm';
+import ClientCTA from '../components/common/ClientCTA/ClientCTA';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useTopOffers } from '../hooks/useOffers';
@@ -558,6 +559,9 @@ const HomePage: React.FC = () => {
           )}
         </div>
       </section>
+
+      {/* Client CTA */}
+      <ClientCTA />
 
       {/* Review Submission Modal */}
       <AnimatePresence>
