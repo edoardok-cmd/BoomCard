@@ -196,58 +196,82 @@ const CTABox = styled(motion.div)`
   }
 `;
 
-// Subscription card styled components matching hero card design
+// Subscription cards - Credit card design matching hero exactly
 const SubscriptionCardsContainer = styled.div`
   display: flex;
   justify-content: center;
-  align-items: center;
-  gap: 3rem;
-  max-width: 900px;
+  align-items: flex-start;
+  gap: 4rem;
+  max-width: 1200px;
   margin: 0 auto;
 
   @media (max-width: 968px) {
     flex-direction: column;
-    gap: 2rem;
+    align-items: center;
+    gap: 3rem;
   }
 `;
 
-const SubscriptionCard = styled(motion.div)<{ $featured?: boolean }>`
-  width: 360px;
-  height: 450px;
-  border-radius: 1rem;
-  background: ${props => props.$featured
-    ? 'linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%)'
-    : 'linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%)'};
-  border: ${props => props.$featured ? '3px solid #ffd700' : '2px solid #dee2e6'};
-  box-shadow: ${props => props.$featured
-    ? '0 20px 60px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(255, 215, 0, 0.2)'
-    : '0 10px 30px rgba(0, 0, 0, 0.1)'};
-  padding: 2.5rem 2rem;
+const PlanCardWrapper = styled.div`
   display: flex;
   flex-direction: column;
+  align-items: center;
   position: relative;
-  transition: transform 0.3s ease, box-shadow 0.3s ease;
-  color: ${props => props.$featured ? '#ffffff' : '#212529'};
+`;
 
-  [data-theme="dark"] & {
-    background: ${props => props.$featured
-      ? 'linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%)'
-      : 'linear-gradient(135deg, #2d3748 0%, #374151 100%)'};
-    color: ${props => props.$featured ? '#ffffff' : '#f9fafb'};
-    border-color: ${props => props.$featured ? '#ffd700' : '#4b5563'};
-  }
+const CreditCardPlan = styled(motion.div)<{ $type: 'basic' | 'premium' }>`
+  width: 360px;
+  height: 225px;
+  border-radius: 1.25rem;
+  padding: 1.75rem 2rem;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+  cursor: pointer;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+
+  /* Basic Card - Silver/Gray gradient like hero silver card */
+  ${props => props.$type === 'basic' && `
+    background: linear-gradient(135deg, #c0c0c0 0%, #939393 100%);
+    border: 2px solid rgba(255, 255, 255, 0.3);
+
+    &::before {
+      content: '';
+      position: absolute;
+      top: -50%;
+      right: -10%;
+      width: 200px;
+      height: 200px;
+      background: radial-gradient(circle, rgba(255, 255, 255, 0.15) 0%, transparent 70%);
+      border-radius: 50%;
+    }
+  `}
+
+  /* Premium Card - Black/Gold gradient like hero black card */
+  ${props => props.$type === 'premium' && `
+    background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
+    border: 3px solid #ffd700;
+
+    &::before {
+      content: '';
+      position: absolute;
+      top: -50%;
+      right: -10%;
+      width: 200px;
+      height: 200px;
+      background: radial-gradient(circle, rgba(255, 215, 0, 0.1) 0%, transparent 70%);
+      border-radius: 50%;
+    }
+  `}
 
   &:hover {
-    transform: translateY(-8px);
-    box-shadow: ${props => props.$featured
-      ? '0 25px 70px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 215, 0, 0.3)'
-      : '0 15px 40px rgba(0, 0, 0, 0.15)'};
+    transform: translateY(-10px) scale(1.02);
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
   }
 
   @media (max-width: 480px) {
     width: min(340px, 90vw);
-    height: auto;
-    min-height: 420px;
+    height: 212px;
   }
 `;
 
@@ -258,75 +282,130 @@ const PopularBadge = styled.div`
   transform: translateX(-50%);
   background: linear-gradient(135deg, #ffd700 0%, #ffed4e 100%);
   color: #000;
-  padding: 0.5rem 1.5rem;
+  padding: 0.4rem 1.25rem;
   border-radius: 9999px;
-  font-size: 0.75rem;
+  font-size: 0.6875rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  box-shadow: 0 4px 12px rgba(255, 215, 0, 0.4);
+  box-shadow: 0 4px 12px rgba(255, 215, 0, 0.5);
+  z-index: 10;
 `;
 
-const PlanName = styled.h3<{ $featured?: boolean }>`
+const CardLogoText = styled.div<{ $type: 'basic' | 'premium' }>`
+  font-size: 1.75rem;
+  font-weight: 900;
+  font-family: 'Arial Black', sans-serif;
+  letter-spacing: 2px;
+  margin-bottom: 1.5rem;
+  color: ${props => props.$type === 'premium' ? '#ffd700' : '#ffffff'};
+  text-shadow: ${props => props.$type === 'premium'
+    ? '0 2px 10px rgba(255, 215, 0, 0.3)'
+    : '0 2px 8px rgba(0, 0, 0, 0.3)'};
+`;
+
+const CardNumber = styled.div`
+  display: flex;
+  gap: 0.75rem;
+  margin-bottom: 2rem;
+  font-size: 1.25rem;
+  color: rgba(255, 255, 255, 0.9);
+  letter-spacing: 0.25rem;
+  font-family: 'Courier New', monospace;
+`;
+
+const CardBottomRow = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+`;
+
+const CardHolderName = styled.div`
+  color: rgba(255, 255, 255, 0.95);
+  font-size: 0.8125rem;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  font-weight: 600;
+`;
+
+const CardPriceDisplay = styled.div<{ $type: 'basic' | 'premium' }>`
+  text-align: right;
+  color: ${props => props.$type === 'premium' ? '#ffd700' : 'rgba(255, 255, 255, 0.95)'};
   font-size: 1.75rem;
   font-weight: 700;
-  margin-bottom: 1rem;
-  text-align: center;
-  color: ${props => props.$featured ? '#ffd700' : 'inherit'};
-`;
-
-const PriceContainer = styled.div`
-  text-align: center;
-  margin-bottom: 2rem;
-  padding-bottom: 2rem;
-  border-bottom: 1px solid ${props => props.theme === 'dark' ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)'};
-`;
-
-const Price = styled.div`
-  font-size: 3.5rem;
-  font-weight: 700;
   line-height: 1;
-  margin-bottom: 0.5rem;
+
+  span {
+    font-size: 0.875rem;
+    font-weight: 400;
+    opacity: 0.9;
+  }
 `;
 
-const PricePeriod = styled.span`
-  font-size: 1rem;
-  opacity: 0.7;
-  font-weight: 400;
+const PlanDetails = styled.div`
+  margin-top: 2rem;
+  width: 360px;
+
+  @media (max-width: 480px) {
+    width: min(340px, 90vw);
+  }
 `;
 
 const FeaturesList = styled.ul`
   list-style: none;
-  padding: 0;
-  margin: 0 0 2rem 0;
-  flex: 1;
+  padding: 1.5rem 0;
+  margin: 0;
+  background: var(--color-background);
+  border-radius: 0.75rem;
+  border: 1px solid var(--color-border);
+
+  [data-theme="dark"] & {
+    background: #1f2937;
+    border-color: #374151;
+  }
 `;
 
 const FeatureItem = styled.li`
-  padding: 0.75rem 0;
+  padding: 0.875rem 1.5rem;
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: 0.875rem;
   font-size: 0.9375rem;
+  color: var(--color-text-secondary);
+  border-bottom: 1px solid var(--color-border);
+
+  &:last-child {
+    border-bottom: none;
+  }
 
   &::before {
     content: '✓';
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 20px;
-    height: 20px;
+    width: 22px;
+    height: 22px;
     border-radius: 50%;
-    background: rgba(34, 197, 94, 0.2);
+    background: rgba(34, 197, 94, 0.15);
     color: #22c55e;
     font-weight: 700;
     font-size: 0.75rem;
     flex-shrink: 0;
   }
+
+  [data-theme="dark"] & {
+    color: #d1d5db;
+    border-bottom-color: #374151;
+  }
 `;
 
 const PlanButtonContainer = styled.div`
-  margin-top: auto;
+  margin-top: 1.5rem;
+
+  a {
+    display: block;
+    width: 100%;
+  }
 `;
 
 const HomePage: React.FC = () => {
@@ -545,52 +624,67 @@ const HomePage: React.FC = () => {
 
           <SubscriptionCardsContainer>
             {subscriptionPlans.map((plan, index) => (
-              <SubscriptionCard
+              <PlanCardWrapper
                 key={index}
-                $featured={plan.featured}
                 initial={{ opacity: 0, y: 30 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.5, delay: index * 0.2 }}
               >
-                {plan.featured && (
-                  <PopularBadge>
-                    {language === 'bg' ? 'Най-популярен' : 'Most Popular'}
-                  </PopularBadge>
-                )}
+                {/* Credit Card matching hero design */}
+                <CreditCardPlan $type={plan.featured ? 'premium' : 'basic'}>
+                  {plan.featured && (
+                    <PopularBadge>
+                      {language === 'bg' ? 'Най-популярен' : 'Most Popular'}
+                    </PopularBadge>
+                  )}
 
-                <PlanName $featured={plan.featured}>
-                  {plan.name}
-                </PlanName>
+                  <CardLogoText $type={plan.featured ? 'premium' : 'basic'}>
+                    BOOM
+                  </CardLogoText>
 
-                <PriceContainer>
-                  <Price>
-                    {plan.price}
-                    <PricePeriod>
-                      {language === 'bg' ? ' лв/мес' : ' BGN/mo'}
-                    </PricePeriod>
-                  </Price>
-                </PriceContainer>
+                  <CardNumber>
+                    <span>••••</span>
+                    <span>••••</span>
+                    <span>••••</span>
+                    <span>••••</span>
+                  </CardNumber>
 
-                <FeaturesList>
-                  {plan.features.map((feature, i) => (
-                    <FeatureItem key={i}>
-                      {feature}
-                    </FeatureItem>
-                  ))}
-                </FeaturesList>
+                  <CardBottomRow>
+                    <CardHolderName>
+                      {plan.name.toUpperCase()}
+                    </CardHolderName>
+                    <CardPriceDisplay $type={plan.featured ? 'premium' : 'basic'}>
+                      {plan.price}
+                      <span style={{ fontSize: '0.75rem', opacity: 0.8 }}>
+                        {language === 'bg' ? ' лв/мес' : ' BGN/mo'}
+                      </span>
+                    </CardPriceDisplay>
+                  </CardBottomRow>
+                </CreditCardPlan>
 
-                <PlanButtonContainer>
-                  <Link to="/subscriptions">
-                    <Button
-                      variant={plan.featured ? 'primary' : 'secondary'}
-                      size="large"
-                      style={{ width: '100%' }}
-                    >
-                      {language === 'bg' ? 'Избери План' : 'Choose Plan'}
-                    </Button>
-                  </Link>
-                </PlanButtonContainer>
-              </SubscriptionCard>
+                {/* Plan Details Below Card */}
+                <PlanDetails>
+                  <FeaturesList>
+                    {plan.features.map((feature, i) => (
+                      <FeatureItem key={i}>
+                        {feature}
+                      </FeatureItem>
+                    ))}
+                  </FeaturesList>
+
+                  <PlanButtonContainer>
+                    <Link to="/subscriptions">
+                      <Button
+                        variant={plan.featured ? 'primary' : 'secondary'}
+                        size="large"
+                        style={{ width: '100%' }}
+                      >
+                        {language === 'bg' ? 'Избери План' : 'Choose Plan'}
+                      </Button>
+                    </Link>
+                  </PlanButtonContainer>
+                </PlanDetails>
+              </PlanCardWrapper>
             ))}
           </SubscriptionCardsContainer>
         </div>
