@@ -878,12 +878,16 @@ const PartnersPage: React.FC = () => {
                 {t('partners.subtitle')}
               </Subtitle>
               <HeroButtons>
-                <Button variant="secondary" size="large">
-                  {t('partners.applyNow')}
-                </Button>
-                <Button variant="outline" size="large">
-                  {t('partners.contactUs')}
-                </Button>
+                <a href="#application" style={{ textDecoration: 'none' }}>
+                  <Button variant="secondary" size="large">
+                    {t('partners.applyNow')}
+                  </Button>
+                </a>
+                <Link to="/contact" style={{ textDecoration: 'none' }}>
+                  <Button variant="outline" size="large">
+                    {t('partners.contactUs')}
+                  </Button>
+                </Link>
               </HeroButtons>
             </motion.div>
           </HeroContent>
