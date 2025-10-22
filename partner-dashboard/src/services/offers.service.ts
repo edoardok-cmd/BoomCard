@@ -160,10 +160,7 @@ class OffersService {
    * Get top offers (highest discounts)
    */
   async getTopOffers(limit: number = 10): Promise<OfferDetails[]> {
-    console.log('[offersService] Calling API: /offers/top with limit:', limit);
     const response = await apiService.get<{ success: boolean; data: any[] }>(`${this.baseUrl}/top`, { limit });
-    console.log('[offersService] Raw response:', response);
-    console.log('[offersService] response.data:', response.data);
     return this.mapOffers(response.data);
   }
 

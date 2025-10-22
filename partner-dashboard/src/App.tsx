@@ -122,7 +122,26 @@ const SecurityPage = lazy(() => import('./pages/SecurityPage'));
 const AdminDashboardPage = lazy(() => import('./pages/AdminDashboardPage'));
 const AdminOffersPage = lazy(() => import('./pages/AdminOffersPage'));
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 5 * 60 * 1000, // 5 minutes
+      gcTime: 10 * 60 * 1000, // 10 minutes (formerly cacheTime)
+      retry: (failureCount, error: any) => {
+        // Don't retry on 4xx errors (client errors) except 429 (rate limit)
+        if (error?.response?.status >= 400 && error?.response?.status < 500 && error?.response?.status !== 429) {
+          return false;
+        }
+        // Retry up to 2 times for network errors and 5xx errors
+        return failureCount < 2;
+      },
+      retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000), // Exponential backoff: 1s, 2s, 4s, etc. up to 30s
+      refetchOnWindowFocus: false, // Prevent refetch on window focus
+      refetchOnReconnect: true,
+      refetchOnMount: false, // Prevent automatic refetch on component mount
+    },
+  },
+});
 
 function App() {
   return (

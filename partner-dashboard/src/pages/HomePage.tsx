@@ -212,11 +212,6 @@ const HomePage: React.FC = () => {
   });
   const [showReviewForm, setShowReviewForm] = useState(false);
 
-  console.log('HomePage: topOffersData =', topOffersData);
-  console.log('HomePage: topOffers =', topOffers);
-  console.log('HomePage: topOffers.length =', topOffers.length);
-  console.log('HomePage: reviews =', reviewsData);
-
   // SEO optimization with bilingual support
   useEffect(() => {
     updateSEO({
@@ -277,8 +272,8 @@ const HomePage: React.FC = () => {
       {
         question: language === 'bg' ? 'Колко струва BoomCard?' : 'How much does BoomCard cost?',
         answer: language === 'bg'
-          ? 'BoomCard предлага различни планове: Безплатен основен план, Премиум план за 29 лв/месец, и VIP план за 59 лв/месец.'
-          : 'BoomCard offers different plans: Free basic plan, Premium plan for 29 BGN/month, and VIP plan for 59 BGN/month.',
+          ? 'BoomCard предлага два плана: Безплатен основен план и Премиум план за 29 лв/месец.'
+          : 'BoomCard offers two plans: Free basic plan and Premium plan for 29 BGN/month.',
       },
       {
         question: language === 'bg' ? 'Къде мога да използвам BoomCard?' : 'Where can I use BoomCard?',
@@ -343,15 +338,6 @@ const HomePage: React.FC = () => {
         language === 'bg' ? '30% средна отстъпка' : '30% average discount',
         language === 'bg' ? 'Приоритетна поддръжка' : 'Priority support',
         language === 'bg' ? 'Ексклузивни оферти' : 'Exclusive offers'
-      ]
-    },
-    {
-      name: 'VIP',
-      price: '59',
-      features: [
-        language === 'bg' ? '50% средна отстъпка' : '50% average discount',
-        language === 'bg' ? 'VIP събития' : 'VIP events',
-        language === 'bg' ? 'Консиерж услуги' : 'Concierge service'
       ]
     }
   ];
@@ -423,7 +409,7 @@ const HomePage: React.FC = () => {
             </p>
           </div>
 
-          <div className="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto">
+          <div className="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">
             {subscriptionPlans.map((plan, index) => (
               <Card key={index} style={{
                 padding: '2rem',
