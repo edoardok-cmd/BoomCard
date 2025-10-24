@@ -97,6 +97,12 @@ const VideoBackground = styled.video`
   transform: translate(-50%, -50%);
   object-fit: cover;
   z-index: 1;
+  will-change: transform;
+
+  /* Optimize video decoding for better performance */
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
 `;
 
 const VideoOverlay = styled.div<{ $fadeOut: boolean }>`
@@ -119,6 +125,12 @@ const ContentContainer = styled.div`
   max-width: 1200px;
   margin: 0 auto;
   width: 100%;
+
+  /* 4K support - larger container */
+  @media (min-width: 2560px) {
+    max-width: 1800px;
+    padding: 3rem;
+  }
 
   @media (max-width: 768px) {
     padding: 1rem;
@@ -190,6 +202,7 @@ const Photo = styled(motion.div)<{ $index: number; $side: 'left' | 'right' }>`
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
   border: 3px solid white;
   overflow: hidden;
+  will-change: transform, opacity;
 
   /* Center as starting point - positions controlled by Framer Motion */
   left: 50%;
@@ -205,6 +218,11 @@ const Photo = styled(motion.div)<{ $index: number; $side: 'left' | 'right' }>`
   @media (max-width: 768px) {
     width: 100px;
     height: 133px;
+  }
+
+  /* Disable animations for reduced motion preference */
+  @media (prefers-reduced-motion: reduce) {
+    will-change: auto;
   }
 `;
 
@@ -308,9 +326,16 @@ const BoomCard = styled(motion.div)<{ $showAnimation?: boolean; $stopAnimation?:
   border: 2px solid rgba(255, 215, 0, 0.3);
   transform-style: preserve-3d;
   perspective: 1000px;
+  will-change: transform;
 
   /* Card rotation animation: 3 tilts + 5s rest = 8s cycle, repeats forever */
   animation: ${props => props.$stopAnimation ? 'none' : props.$showAnimation ? 'cardFlip 16s ease-in-out infinite' : 'none'};
+
+  /* Disable animations for reduced motion preference */
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+    will-change: auto;
+  }
 
   @keyframes cardFlip {
     /* Phase 1: 3 tilts during photo dealing (0-3s) */
@@ -422,9 +447,16 @@ const SilverCard = styled(motion.div)<{ $showAnimation?: boolean; $stopAnimation
   border: 2px solid rgba(229, 231, 235, 0.5);
   transform-style: preserve-3d;
   perspective: 1000px;
+  will-change: transform;
 
   /* Tilting animation for silver card */
   animation: ${props => props.$stopAnimation ? 'none' : props.$showAnimation ? 'silverCardTilt 4s ease-in-out infinite' : 'none'};
+
+  /* Disable animations for reduced motion preference */
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+    will-change: auto;
+  }
 
   @keyframes silverCardTilt {
     0%, 100% {
@@ -475,9 +507,16 @@ const LogoExplode = styled(motion.img)<{ $showAnimation?: boolean; $stopAnimatio
   filter: drop-shadow(0 25px 50px rgba(0, 0, 0, 0.8));
   transform-style: preserve-3d;
   perspective: 1000px;
+  will-change: transform;
 
   /* Tilting animation for logo - same as black card */
   animation: ${props => props.$stopAnimation ? 'none' : props.$showAnimation ? 'logoTilt 16s ease-in-out infinite' : 'none'};
+
+  /* Disable animations for reduced motion preference */
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+    will-change: auto;
+  }
 
   @keyframes logoTilt {
     /* Phase 1: 3 tilts during photo dealing (0-3s) */
@@ -529,6 +568,12 @@ const LogoExplode = styled(motion.img)<{ $showAnimation?: boolean; $stopAnimatio
     100% {
       transform: rotateY(0deg);
     }
+  }
+
+  /* 4K resolution - prevent logo from going too high */
+  @media (min-width: 2560px) {
+    width: 620px;
+    max-height: 388px;
   }
 
   @media (max-width: 768px) {
@@ -755,9 +800,18 @@ const ButtonContainer = styled(motion.div)`
   justify-content: center;
   flex-wrap: wrap;
   padding: 0 1rem;
+  max-width: 100%;
+  width: 100%;
 
   a {
     text-decoration: none;
+    max-width: 100%;
+  }
+
+  button {
+    max-width: 100%;
+    white-space: normal;
+    word-wrap: break-word;
   }
 
   /* Enhanced button contrast for vibrant color mode */
@@ -828,9 +882,15 @@ const ButtonContainer = styled(motion.div)`
   @media (max-width: 480px) {
     flex-direction: column;
     align-items: stretch;
-    max-width: 300px;
+    max-width: min(300px, 90vw);
     margin: 0 auto;
     gap: 0.75rem;
+    padding: 0 0.5rem;
+  }
+
+  @media (max-width: 375px) {
+    max-width: 85vw;
+    padding: 0 0.25rem;
   }
 `;
 
@@ -1046,7 +1106,7 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
                 opacity: 1,
                 rotateX: 0,
                 z: 0,
-                y: showCTA && window.innerWidth > 768 ? -100 : 0,
+                y: showCTA && window.innerWidth > 768 ? (window.innerWidth >= 2560 ? -50 : -100) : 0,
               }}
               transition={{
                 type: 'spring',
@@ -1153,13 +1213,13 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
               <CTAContainer
                 initial={{ opacity: 0, y: 30 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.5, duration: 0.8 }}
+                transition={{ delay: 2.5, duration: 0.8 }}
                 lang={language}
               >
                 <CTATitle
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.7, duration: 0.6 }}
+                  transition={{ delay: 2.7, duration: 0.6 }}
                 >
                   {t.title}
                 </CTATitle>
@@ -1167,7 +1227,7 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
                 <CTASubtitle
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.9, duration: 0.6 }}
+                  transition={{ delay: 2.9, duration: 0.6 }}
                 >
                   {t.subtitle}
                 </CTASubtitle>
@@ -1175,7 +1235,7 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
                 <ButtonContainer
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 1.1, duration: 0.6 }}
+                  transition={{ delay: 3.1, duration: 0.6 }}
                 >
                   <Link to="/subscriptions">
                     <Button variant="primary" size="large">

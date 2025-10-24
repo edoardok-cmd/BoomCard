@@ -11,6 +11,18 @@ export const StyledHeader = styled.header`
   border-bottom: 1px solid var(--color-border);
   transition: all 300ms cubic-bezier(0.4, 0, 0.2, 1);
 
+  /* Constrain content width on ultra-wide displays */
+  > div {
+    max-width: 100%;
+  }
+
+  @media (min-width: 2560px) {
+    > div {
+      max-width: 2400px;
+      margin: 0 auto;
+    }
+  }
+
   /* Ensure header stays in viewport on mobile */
   @media (max-width: 768px) {
     position: fixed;

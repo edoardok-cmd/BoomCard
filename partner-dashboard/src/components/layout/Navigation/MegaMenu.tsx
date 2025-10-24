@@ -15,6 +15,13 @@ const NavWrapper = styled.nav`
   align-items: center;
   gap: 0.5rem;
 
+  /* 4K and ultra-wide support */
+  @media (min-width: 2560px) {
+    gap: 1.5rem;
+    max-width: 1800px;
+    margin: 0 auto;
+  }
+
   @media (max-width: 1024px) {
     flex-direction: column;
     align-items: stretch;
@@ -138,6 +145,12 @@ const MegaDropdownContainer = styled(motion.div)<{ $alignRight?: boolean }>`
   margin-top: 0.75rem;
   overflow: hidden;
   border: 2px solid #e5e7eb;
+
+  /* 4K and ultra-wide support */
+  @media (min-width: 2560px) {
+    width: 1100px;
+    padding: 3rem;
+  }
 
   /* Light mode with gradient */
   background: linear-gradient(to bottom, #ffffff 0%, #f8f9fa 100%);
