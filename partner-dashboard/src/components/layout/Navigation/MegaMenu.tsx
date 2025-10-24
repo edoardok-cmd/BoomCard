@@ -22,7 +22,8 @@ const NavWrapper = styled.nav`
     margin: 0 auto;
   }
 
-  @media (max-width: 1024px) {
+  /* Mobile menu - below lg breakpoint (1024px) */
+  @media (max-width: 1023px) {
     flex-direction: column;
     align-items: stretch;
     gap: 0;
@@ -50,7 +51,7 @@ const NavLink = styled(Link)<{ $hasChildren?: boolean }>`
     color: var(--color-primary);
   }
 
-  @media (max-width: 1024px) {
+  @media (max-width: 1023px) {
     padding: 1rem;
     border-radius: 0;
     border-bottom: 1px solid var(--color-border);
@@ -110,7 +111,7 @@ const DropdownContainer = styled(motion.div)`
     max-width: min(400px, calc(100vw - 2rem));
   }
 
-  @media (max-width: 1024px) {
+  @media (max-width: 1023px) {
     position: static;
     box-shadow: none;
     border-radius: 0;
@@ -186,7 +187,7 @@ const MegaDropdownContainer = styled(motion.div)<{ $alignRight?: boolean }>`
     padding: 1.5rem;
   }
 
-  @media (max-width: 1024px) {
+  @media (max-width: 1023px) {
     position: static;
     box-shadow: none;
     border-radius: 0;
@@ -213,7 +214,7 @@ const MegaGrid = styled.div`
   gap: 2rem;
   max-width: 100%;
 
-  @media (max-width: 1024px) {
+  @media (max-width: 1023px) {
     grid-template-columns: 1fr;
     gap: 0;
   }
@@ -222,7 +223,7 @@ const MegaGrid = styled.div`
 const DropdownSection = styled.div`
   padding: 0.75rem 0;
 
-  @media (max-width: 1024px) {
+  @media (max-width: 1023px) {
     padding: 0;
 
     & + & {
@@ -253,7 +254,7 @@ const SectionTitle = styled.h3`
     background: var(--color-primary);
   }
 
-  @media (max-width: 1024px) {
+  @media (max-width: 1023px) {
     padding: 0.875rem 1rem;
     background: var(--color-background-secondary);
     margin-bottom: 0;
@@ -319,7 +320,7 @@ const DropdownLink = styled(Link)`
     }
   }
 
-  @media (max-width: 1024px) {
+  @media (max-width: 1023px) {
     border-radius: 0;
     padding: 0.875rem 1.5rem;
     border-bottom: 1px solid var(--color-border);

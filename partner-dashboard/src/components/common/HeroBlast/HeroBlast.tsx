@@ -1106,14 +1106,14 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
                 opacity: 1,
                 rotateX: 0,
                 z: 0,
-                // Keep logo centered on mobile (no upward movement), reduce movement on 4K
-                y: showCTA && window.innerWidth > 768 ? (window.innerWidth >= 2560 ? -50 : -100) : 0,
+                // Don't move logo up at all - keep it centered at all resolutions
+                y: 0,
               }}
               transition={{
-                // Smoother animation with easing
+                // Ultra-smooth animation with easing
                 type: 'tween',
-                ease: [0.4, 0, 0.2, 1], // Cubic bezier for smooth easing
-                duration: 1.2,
+                ease: [0.25, 0.1, 0.25, 1], // Ease-in-out for ultra-smooth motion
+                duration: 1.5, // Slower for smoother appearance
               }}
               style={{ position: 'relative', marginBottom: '2rem' }}
             >
@@ -1211,8 +1211,8 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{
                   delay: 2.5,
-                  duration: 0.8,
-                  ease: [0.4, 0, 0.2, 1] // Smooth cubic bezier easing
+                  duration: 1.2, // Longer duration for ultra-smooth motion
+                  ease: [0.25, 0.1, 0.25, 1] // Ease-in-out for smoothness
                 }}
                 lang={language}
               >
@@ -1221,8 +1221,8 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
                   animate={{ opacity: 1, y: 0 }}
                   transition={{
                     delay: 2.7,
-                    duration: 0.8, // Slightly longer duration for smoothness
-                    ease: [0.4, 0, 0.2, 1]
+                    duration: 1.2, // Longer, smoother
+                    ease: [0.25, 0.1, 0.25, 1]
                   }}
                 >
                   {t.title}
@@ -1233,8 +1233,8 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
                   animate={{ opacity: 1, y: 0 }}
                   transition={{
                     delay: 2.9,
-                    duration: 0.8,
-                    ease: [0.4, 0, 0.2, 1]
+                    duration: 1.2,
+                    ease: [0.25, 0.1, 0.25, 1]
                   }}
                 >
                   {t.subtitle}
@@ -1245,8 +1245,8 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
                   animate={{ opacity: 1, y: 0 }}
                   transition={{
                     delay: 3.1,
-                    duration: 0.8,
-                    ease: [0.4, 0, 0.2, 1]
+                    duration: 1.2,
+                    ease: [0.25, 0.1, 0.25, 1]
                   }}
                 >
                   <Link to="/subscriptions">
