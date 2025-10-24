@@ -1106,18 +1106,14 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
                 opacity: 1,
                 rotateX: 0,
                 z: 0,
+                // Keep logo centered on mobile (no upward movement), reduce movement on 4K
                 y: showCTA && window.innerWidth > 768 ? (window.innerWidth >= 2560 ? -50 : -100) : 0,
               }}
               transition={{
-                type: 'spring',
-                stiffness: showCTA ? 150 : 200,
-                damping: showCTA ? 25 : 20,
+                // Smoother animation with easing
+                type: 'tween',
+                ease: [0.4, 0, 0.2, 1], // Cubic bezier for smooth easing
                 duration: 1.2,
-                y: {
-                  type: 'spring',
-                  stiffness: 120,
-                  damping: 28,
-                },
               }}
               style={{ position: 'relative', marginBottom: '2rem' }}
             >
@@ -1213,13 +1209,21 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
               <CTAContainer
                 initial={{ opacity: 0, y: 30 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 2.5, duration: 0.8 }}
+                transition={{
+                  delay: 2.5,
+                  duration: 0.8,
+                  ease: [0.4, 0, 0.2, 1] // Smooth cubic bezier easing
+                }}
                 lang={language}
               >
                 <CTATitle
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 2.7, duration: 0.6 }}
+                  transition={{
+                    delay: 2.7,
+                    duration: 0.8, // Slightly longer duration for smoothness
+                    ease: [0.4, 0, 0.2, 1]
+                  }}
                 >
                   {t.title}
                 </CTATitle>
@@ -1227,7 +1231,11 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
                 <CTASubtitle
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 2.9, duration: 0.6 }}
+                  transition={{
+                    delay: 2.9,
+                    duration: 0.8,
+                    ease: [0.4, 0, 0.2, 1]
+                  }}
                 >
                   {t.subtitle}
                 </CTASubtitle>
@@ -1235,7 +1243,11 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
                 <ButtonContainer
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 3.1, duration: 0.6 }}
+                  transition={{
+                    delay: 3.1,
+                    duration: 0.8,
+                    ease: [0.4, 0, 0.2, 1]
+                  }}
                 >
                   <Link to="/subscriptions">
                     <Button variant="primary" size="large">
