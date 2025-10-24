@@ -648,7 +648,7 @@ export const Header: React.FC<HeaderProps> = ({
           </Link>
 
           {/* Desktop Navigation - Centered */}
-          <div className="hidden xl:flex items-center justify-center gap-6 flex-1 px-8">
+          <div className="hidden lg:flex items-center justify-center gap-6 flex-1 px-8">
             <MegaMenu items={navigationConfig.main} language={language} />
           </div>
 
@@ -951,7 +951,7 @@ export const Header: React.FC<HeaderProps> = ({
           {/* Mobile Menu Button - Show when menu is hidden */}
           <button
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="xl:hidden z-[10000] p-1.5 sm:p-2 text-gray-700 hover:text-gray-900 transition-colors ml-1.5 sm:ml-2 flex-shrink-0"
+            className="lg:hidden z-[10000] p-1.5 sm:p-2 text-gray-700 hover:text-gray-900 transition-colors ml-1.5 sm:ml-2 flex-shrink-0"
             aria-label="Toggle menu"
           >
             <svg
