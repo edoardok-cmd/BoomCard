@@ -1106,14 +1106,38 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
                 opacity: 1,
                 rotateX: 0,
                 z: 0,
-                // Don't move logo up at all - keep it centered at all resolutions
-                y: 0,
+                // Smoothly move logo upward when CTA appears, but keep centered on mobile
+                y: showCTA && window.innerWidth > 768 ? (window.innerWidth >= 2560 ? -50 : -100) : 0,
               }}
               transition={{
-                // Ultra-smooth animation with easing
-                type: 'tween',
-                ease: [0.25, 0.1, 0.25, 1], // Ease-in-out for ultra-smooth motion
-                duration: 2.5, // Much slower for smoother appearance
+                // Different transitions for initial appearance vs position change
+                scale: {
+                  type: 'tween',
+                  ease: [0.25, 0.1, 0.25, 1],
+                  duration: 2.5, // Slow appearance
+                },
+                opacity: {
+                  type: 'tween',
+                  ease: [0.25, 0.1, 0.25, 1],
+                  duration: 2.5,
+                },
+                rotateX: {
+                  type: 'tween',
+                  ease: [0.25, 0.1, 0.25, 1],
+                  duration: 2.5,
+                },
+                z: {
+                  type: 'tween',
+                  ease: [0.25, 0.1, 0.25, 1],
+                  duration: 2.5,
+                },
+                // Smooth upward movement after appearance
+                y: {
+                  type: 'tween',
+                  ease: [0.25, 0.1, 0.25, 1],
+                  duration: 1.5, // Smooth travel to new position
+                  delay: 0.3, // Small delay to separate from initial appearance
+                },
               }}
               style={{ position: 'relative', marginBottom: '2rem' }}
             >
