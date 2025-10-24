@@ -1113,7 +1113,7 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
                 // Ultra-smooth animation with easing
                 type: 'tween',
                 ease: [0.25, 0.1, 0.25, 1], // Ease-in-out for ultra-smooth motion
-                duration: 1.5, // Slower for smoother appearance
+                duration: 2.5, // Much slower for smoother appearance
               }}
               style={{ position: 'relative', marginBottom: '2rem' }}
             >
@@ -1211,8 +1211,8 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{
                   delay: 2.5,
-                  duration: 1.2, // Longer duration for ultra-smooth motion
-                  ease: [0.25, 0.1, 0.25, 1] // Ease-in-out for smoothness
+                  duration: 1.2,
+                  ease: [0.25, 0.1, 0.25, 1]
                 }}
                 lang={language}
               >
@@ -1220,8 +1220,8 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{
-                    delay: 2.7,
-                    duration: 1.2, // Longer, smoother
+                    delay: 2.5, // Same delay as container for synchronized start
+                    duration: 1.2,
                     ease: [0.25, 0.1, 0.25, 1]
                   }}
                 >
@@ -1232,7 +1232,7 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{
-                    delay: 2.9,
+                    delay: 2.5, // Same delay for synchronized start
                     duration: 1.2,
                     ease: [0.25, 0.1, 0.25, 1]
                   }}
@@ -1244,7 +1244,7 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{
-                    delay: 3.1,
+                    delay: 2.5, // Same delay for synchronized start
                     duration: 1.2,
                     ease: [0.25, 0.1, 0.25, 1]
                   }}
