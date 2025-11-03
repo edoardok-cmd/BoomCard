@@ -15,25 +15,26 @@ datasource db {
 // ============================================
 
 model User {
-  id            String    @id @default(cuid())
-  email         String    @unique
+  id            String   @id @default(cuid())
+  email         String   @unique
   passwordHash  String?
   firstName     String
   lastName      String
   phone         String?
   avatar        String?
-  role          UserRole  @default(USER)
-  emailVerified Boolean   @default(false)
-  isActive      Boolean   @default(true)
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  role          UserRole @default(USER)
+  emailVerified Boolean  @default(false)
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   // Relations
-  sessions      Session[]
-  cards         Card[]
-  favorites     Favorite[]
-  reviews       Review[]
-  transactions  Transaction[]
+  sessions     Session[]
+  cards        Card[]
+  favorites    Favorite[]
+  reviews      Review[]
+  transactions Transaction[]
+  stickerScans StickerScan[]
 
   @@map("users")
 }
@@ -45,21 +46,21 @@ enum UserRole {
 }
 
 model Session {
-  id            String   @id @default(cuid())
-  userId        String
-  accessToken   String   @unique
-  refreshToken  String   @unique
-  expiresAt     DateTime
-  ipAddress     String?
-  userAgent     String?
-  createdAt     DateTime @default(now())
+  id           String   @id @default(cuid())
+  userId       String
+  accessToken  String   @unique
+  refreshToken String   @unique
+  expiresAt    DateTime
+  ipAddress    String?
+  userAgent    String?
+  createdAt    DateTime @default(now())
 
   // Relations
-  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@map("sessions")
   @@index([userId])
   @@index([accessToken])
+  @@map("sessions")
 }
 
 // ============================================
@@ -67,10 +68,10 @@ model Session {
 // ============================================
 
 model Partner {
-  id               String          @id @default(cuid())
+  id               String           @id @default(cuid())
   businessName     String
   businessNameBg   String?
-  email            String          @unique
+  email            String           @unique
   phone            String
   taxId            String?
   registrationNum  String?
@@ -78,17 +79,17 @@ model Partner {
   logo             String?
   description      String?
   descriptionBg    String?
-  isVerified       Boolean         @default(false)
-  isActive         Boolean         @default(true)
+  isVerified       Boolean          @default(false)
+  isActive         Boolean          @default(true)
   subscriptionTier SubscriptionTier @default(BASIC)
-  createdAt        DateTime        @default(now())
-  updatedAt        DateTime        @updatedAt
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
 
   // Relations
-  venues           Venue[]
-  subscriptions    Subscription[]
-  integrations     Integration[]
-  paymentMethods   PaymentMethod[]
+  venues         Venue[]
+  subscriptions  Subscription[]
+  integrations   Integration[]
+  paymentMethods PaymentMethod[]
 
   @@map("partners")
 }
@@ -100,7 +101,7 @@ enum SubscriptionTier {
 }
 
 model Venue {
-  id            String   @id @default(cuid())
+  id            String        @id @default(cuid())
   partnerId     String
   name          String
   nameBg        String?
@@ -115,24 +116,28 @@ model Venue {
   email         String?
   website       String?
   images        String[]
-  rating        Float    @default(0)
-  reviewCount   Int      @default(0)
-  isActive      Boolean  @default(true)
+  rating        Float         @default(0)
+  reviewCount   Int           @default(0)
+  isActive      Boolean       @default(true)
   openingHours  Json?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
 
   // Relations
-  partner       Partner     @relation(fields: [partnerId], references: [id], onDelete: Cascade)
-  offers        Offer[]
-  reviews       Review[]
-  favorites     Favorite[]
-  transactions  Transaction[]
+  partner          Partner             @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  offers           Offer[]
+  reviews          Review[]
+  favorites        Favorite[]
+  transactions     Transaction[]
+  stickers         Sticker[]
+  stickerLocations StickerLocation[]
+  stickerScans     StickerScan[]
+  stickerConfig    VenueStickerConfig?
 
-  @@map("venues")
   @@index([partnerId])
   @@index([category])
   @@index([city])
+  @@map("venues")
 }
 
 enum VenueCategory {
@@ -152,27 +157,28 @@ enum VenueCategory {
 // ============================================
 
 model Card {
-  id               String      @id @default(cuid())
-  userId           String
-  cardNumber       String      @unique
-  type             CardType    @default(STANDARD)
-  status           CardStatus  @default(ACTIVE)
-  validFrom        DateTime    @default(now())
-  validUntil       DateTime
-  usageCount       Int         @default(0)
-  usageLimit       Int?
-  qrCode           String      @unique
-  createdAt        DateTime    @default(now())
-  updatedAt        DateTime    @updatedAt
+  id         String     @id @default(cuid())
+  userId     String
+  cardNumber String     @unique
+  type       CardType   @default(STANDARD)
+  status     CardStatus @default(ACTIVE)
+  validFrom  DateTime   @default(now())
+  validUntil DateTime
+  usageCount Int        @default(0)
+  usageLimit Int?
+  qrCode     String     @unique
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
 
   // Relations
-  user             User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  transactions     Transaction[]
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+  stickerScans StickerScan[]
 
-  @@map("cards")
   @@index([userId])
   @@index([cardNumber])
   @@index([qrCode])
+  @@map("cards")
 }
 
 enum CardType {
@@ -189,31 +195,31 @@ enum CardStatus {
 }
 
 model Offer {
-  id               String     @id @default(cuid())
-  venueId          String
-  title            String
-  titleBg          String?
-  description      String
-  descriptionBg    String?
-  discount         Int
-  validFrom        DateTime   @default(now())
-  validUntil       DateTime
-  maxRedemptions   Int?
+  id                 String   @id @default(cuid())
+  venueId            String
+  title              String
+  titleBg            String?
+  description        String
+  descriptionBg      String?
+  discount           Int
+  validFrom          DateTime @default(now())
+  validUntil         DateTime
+  maxRedemptions     Int?
   currentRedemptions Int      @default(0)
-  terms            String?
-  termsBg          String?
-  images           String[]
-  isActive         Boolean    @default(true)
-  createdAt        DateTime   @default(now())
-  updatedAt        DateTime   @updatedAt
+  terms              String?
+  termsBg            String?
+  images             String[]
+  isActive           Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 
   // Relations
-  venue            Venue        @relation(fields: [venueId], references: [id], onDelete: Cascade)
-  transactions     Transaction[]
+  venue        Venue         @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
 
-  @@map("offers")
   @@index([venueId])
   @@index([validFrom, validUntil])
+  @@map("offers")
 }
 
 // ============================================
@@ -239,16 +245,17 @@ model Transaction {
   updatedAt        DateTime          @updatedAt
 
   // Relations
-  user             User      @relation(fields: [userId], references: [id])
-  venue            Venue     @relation(fields: [venueId], references: [id])
-  offer            Offer?    @relation(fields: [offerId], references: [id])
-  card             Card      @relation(fields: [cardId], references: [id])
+  user        User         @relation(fields: [userId], references: [id])
+  venue       Venue        @relation(fields: [venueId], references: [id])
+  offer       Offer?       @relation(fields: [offerId], references: [id])
+  card        Card         @relation(fields: [cardId], references: [id])
+  stickerScan StickerScan?
 
-  @@map("transactions")
   @@index([userId])
   @@index([venueId])
   @@index([cardId])
   @@index([createdAt])
+  @@map("transactions")
 }
 
 enum TransactionStatus {
@@ -264,30 +271,30 @@ enum TransactionStatus {
 // ============================================
 
 model Subscription {
-  id               String             @id @default(cuid())
-  partnerId        String
-  planId           String
-  status           SubscriptionStatus @default(ACTIVE)
+  id                 String             @id @default(cuid())
+  partnerId          String
+  planId             String
+  status             SubscriptionStatus @default(ACTIVE)
   currentPeriodStart DateTime
   currentPeriodEnd   DateTime
-  canceledAt       DateTime?
-  trialEnd         DateTime?
-  amount           Float
-  currency         String             @default("BGN")
-  interval         BillingInterval    @default(MONTHLY)
-  paymentProvider  String
-  providerSubId    String?
-  metadata         Json?
-  createdAt        DateTime           @default(now())
-  updatedAt        DateTime           @updatedAt
+  canceledAt         DateTime?
+  trialEnd           DateTime?
+  amount             Float
+  currency           String             @default("BGN")
+  interval           BillingInterval    @default(MONTHLY)
+  paymentProvider    String
+  providerSubId      String?
+  metadata           Json?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
 
   // Relations
-  partner          Partner   @relation(fields: [partnerId], references: [id], onDelete: Cascade)
-  invoices         Invoice[]
+  partner  Partner   @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  invoices Invoice[]
 
-  @@map("subscriptions")
   @@index([partnerId])
   @@index([status])
+  @@map("subscriptions")
 }
 
 enum SubscriptionStatus {
@@ -304,30 +311,30 @@ enum BillingInterval {
 }
 
 model Invoice {
-  id               String        @id @default(cuid())
-  subscriptionId   String?
-  partnerId        String
-  invoiceNumber    String        @unique
-  amount           Float
-  currency         String        @default("BGN")
-  status           InvoiceStatus @default(DRAFT)
-  dueDate          DateTime?
-  paidAt           DateTime?
-  items            Json
-  pdfUrl           String?
-  hostedUrl        String?
-  paymentProvider  String?
+  id                String        @id @default(cuid())
+  subscriptionId    String?
+  partnerId         String
+  invoiceNumber     String        @unique
+  amount            Float
+  currency          String        @default("BGN")
+  status            InvoiceStatus @default(DRAFT)
+  dueDate           DateTime?
+  paidAt            DateTime?
+  items             Json
+  pdfUrl            String?
+  hostedUrl         String?
+  paymentProvider   String?
   providerInvoiceId String?
-  metadata         Json?
-  createdAt        DateTime      @default(now())
-  updatedAt        DateTime      @updatedAt
+  metadata          Json?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
 
   // Relations
-  subscription     Subscription? @relation(fields: [subscriptionId], references: [id])
+  subscription Subscription? @relation(fields: [subscriptionId], references: [id])
 
-  @@map("invoices")
   @@index([partnerId])
   @@index([invoiceNumber])
+  @@map("invoices")
 }
 
 enum InvoiceStatus {
@@ -339,7 +346,7 @@ enum InvoiceStatus {
 }
 
 model PaymentMethod {
-  id               String   @id @default(cuid())
+  id               String            @id @default(cuid())
   partnerId        String
   type             PaymentMethodType
   provider         String
@@ -348,15 +355,15 @@ model PaymentMethod {
   brand            String?
   expiryMonth      Int?
   expiryYear       Int?
-  isDefault        Boolean  @default(false)
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  isDefault        Boolean           @default(false)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
 
   // Relations
-  partner          Partner  @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  partner Partner @relation(fields: [partnerId], references: [id], onDelete: Cascade)
 
-  @@map("payment_methods")
   @@index([partnerId])
+  @@map("payment_methods")
 }
 
 enum PaymentMethodType {
@@ -370,23 +377,23 @@ enum PaymentMethodType {
 // ============================================
 
 model Integration {
-  id          String            @id @default(cuid())
+  id          String              @id @default(cuid())
   partnerId   String
   provider    IntegrationProvider
   credentials Json
   webhookUrl  String?
   lastSync    DateTime?
-  status      IntegrationStatus @default(DISCONNECTED)
+  status      IntegrationStatus   @default(DISCONNECTED)
   metadata    Json?
-  createdAt   DateTime          @default(now())
-  updatedAt   DateTime          @updatedAt
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
 
   // Relations
-  partner     Partner           @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  partner Partner @relation(fields: [partnerId], references: [id], onDelete: Cascade)
 
-  @@map("integrations")
-  @@index([partnerId])
   @@unique([partnerId, provider])
+  @@index([partnerId])
+  @@map("integrations")
 }
 
 enum IntegrationProvider {
@@ -414,24 +421,24 @@ enum IntegrationStatus {
 // ============================================
 
 model Review {
-  id          String   @id @default(cuid())
-  userId      String
-  venueId     String
-  rating      Int
-  comment     String?
-  images      String[]
-  isVerified  Boolean  @default(false)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id         String   @id @default(cuid())
+  userId     String
+  venueId    String
+  rating     Int
+  comment    String?
+  images     String[]
+  isVerified Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   // Relations
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  venue       Venue    @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  venue Venue @relation(fields: [venueId], references: [id], onDelete: Cascade)
 
-  @@map("reviews")
+  @@unique([userId, venueId])
   @@index([userId])
   @@index([venueId])
-  @@unique([userId, venueId])
+  @@map("reviews")
 }
 
 model Favorite {
@@ -441,12 +448,12 @@ model Favorite {
   createdAt DateTime @default(now())
 
   // Relations
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  venue     Venue    @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  venue Venue @relation(fields: [venueId], references: [id], onDelete: Cascade)
 
-  @@map("favorites")
-  @@index([userId])
   @@unique([userId, venueId])
+  @@index([userId])
+  @@map("favorites")
 }
 
 // ============================================
@@ -454,22 +461,22 @@ model Favorite {
 // ============================================
 
 model AnalyticsEvent {
-  id         String   @id @default(cuid())
-  eventType  String
-  userId     String?
-  partnerId  String?
-  venueId    String?
-  offerId    String?
-  data       Json?
-  ipAddress  String?
-  userAgent  String?
-  createdAt  DateTime @default(now())
+  id        String   @id @default(cuid())
+  eventType String
+  userId    String?
+  partnerId String?
+  venueId   String?
+  offerId   String?
+  data      Json?
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
 
-  @@map("analytics_events")
   @@index([eventType])
   @@index([userId])
   @@index([partnerId])
   @@index([createdAt])
+  @@map("analytics_events")
 }
 
 // ============================================
@@ -477,18 +484,18 @@ model AnalyticsEvent {
 // ============================================
 
 model Notification {
-  id        String             @id @default(cuid())
+  id        String           @id @default(cuid())
   userId    String
   type      NotificationType
   title     String
   message   String
   data      Json?
-  read      Boolean            @default(false)
-  createdAt DateTime           @default(now())
+  read      Boolean          @default(false)
+  createdAt DateTime         @default(now())
 
-  @@map("notifications")
   @@index([userId])
   @@index([read])
+  @@map("notifications")
 }
 
 enum NotificationType {
@@ -496,4 +503,155 @@ enum NotificationType {
   OFFER
   SYSTEM
   MARKETING
+  STICKER_SCAN
+}
+
+// ============================================
+// BOOM-Sticker Scan System
+// ============================================
+
+model Sticker {
+  id            String        @id @default(cuid())
+  venueId       String
+  locationId    String
+  stickerId     String        @unique // Format: "BAR32-MASA04"
+  qrCode        String        @unique // Full QR code data (JSON)
+  locationType  LocationType  @default(TABLE)
+  status        StickerStatus @default(ACTIVE)
+  printedAt     DateTime?
+  activatedAt   DateTime?
+  deactivatedAt DateTime?
+  totalScans    Int           @default(0)
+  lastScannedAt DateTime?
+  metadata      Json? // Additional data like position, floor, etc.
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  // Relations
+  venue    Venue           @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  location StickerLocation @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  scans    StickerScan[]
+
+  @@index([venueId])
+  @@index([locationId])
+  @@index([stickerId])
+  @@index([status])
+  @@map("stickers")
+}
+
+model StickerLocation {
+  id             String       @id @default(cuid())
+  venueId        String
+  name           String // "Table 04", "Counter 1", "Bar Station 2"
+  nameBg         String?
+  locationType   LocationType @default(TABLE)
+  locationNumber String // "04", "01", "02"
+  isActive       Boolean      @default(true)
+  capacity       Int? // Number of people (for tables)
+  floor          String? // "Ground", "First", "Terrace"
+  section        String? // "Smoking", "Non-smoking", "VIP"
+  metadata       Json?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  // Relations
+  venue    Venue     @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  stickers Sticker[]
+
+  @@unique([venueId, locationNumber, locationType])
+  @@index([venueId])
+  @@map("sticker_locations")
+}
+
+model StickerScan {
+  id              String     @id @default(cuid())
+  userId          String
+  stickerId       String
+  venueId         String
+  cardId          String
+  billAmount      Float // Amount entered by user
+  verifiedAmount  Float? // Amount from OCR (if different)
+  cashbackPercent Float // Cashback % applied
+  cashbackAmount  Float // Calculated cashback
+  status          ScanStatus @default(PENDING)
+  latitude        Float? // GPS verification
+  longitude       Float? // GPS verification
+  distance        Float? // Distance from venue (meters)
+  receiptImageUrl String? // Uploaded receipt image
+  ocrData         Json? // OCR extracted data
+  fraudScore      Float      @default(0) // 0-100, higher = more suspicious
+  fraudReasons    String[] // ["GPS_MISMATCH", "DUPLICATE_SCAN", etc.]
+  ipAddress       String?
+  userAgent       String?
+  transactionId   String?    @unique // Link to Transaction if approved
+  rejectionReason String?
+  processedAt     DateTime?
+  metadata        Json?
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  // Relations
+  user        User         @relation(fields: [userId], references: [id])
+  sticker     Sticker      @relation(fields: [stickerId], references: [id])
+  venue       Venue        @relation(fields: [venueId], references: [id])
+  card        Card         @relation(fields: [cardId], references: [id])
+  transaction Transaction? @relation(fields: [transactionId], references: [id])
+
+  @@index([userId])
+  @@index([stickerId])
+  @@index([venueId])
+  @@index([cardId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("sticker_scans")
+}
+
+model VenueStickerConfig {
+  id                     String   @id @default(cuid())
+  venueId                String   @unique
+  cashbackPercent        Float    @default(5.0) // Base cashback %
+  premiumBonus           Float    @default(2.0) // Premium card bonus %
+  platinumBonus          Float    @default(5.0) // Platinum card bonus %
+  minBillAmount          Float    @default(10.0) // Minimum bill in BGN
+  maxCashbackPerScan     Float? // Max cashback per transaction
+  maxScansPerDay         Int      @default(3) // Anti-fraud: max scans per user/day
+  maxScansPerMonth       Int      @default(30) // Anti-fraud: max scans per user/month
+  gpsVerificationEnabled Boolean  @default(true)
+  gpsRadiusMeters        Int      @default(100) // Allowed GPS radius
+  ocrVerificationEnabled Boolean  @default(true)
+  autoApproveThreshold   Float    @default(10) // Fraud score threshold for auto-approval
+  isActive               Boolean  @default(true)
+  metadata               Json?
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  // Relations
+  venue Venue @relation(fields: [venueId], references: [id], onDelete: Cascade)
+
+  @@map("venue_sticker_configs")
+}
+
+enum LocationType {
+  TABLE
+  COUNTER
+  BAR
+  ENTRANCE
+  RECEPTION
+  OTHER
+}
+
+enum StickerStatus {
+  PENDING // Created but not printed
+  ACTIVE // Printed and active
+  INACTIVE // Temporarily disabled
+  DAMAGED // Needs replacement
+  RETIRED // Permanently removed
+}
+
+enum ScanStatus {
+  PENDING // Scan initiated, waiting for receipt
+  VALIDATING // OCR processing
+  APPROVED // Approved, cashback credited
+  REJECTED // Rejected (fraud, invalid, etc.)
+  MANUAL_REVIEW // Flagged for manual review
 }
