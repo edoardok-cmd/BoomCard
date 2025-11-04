@@ -132,6 +132,10 @@ const ReceiptDetailPage = lazy(() => import('./pages/ReceiptDetailPage'));
 const ReceiptAnalyticsPage = lazy(() => import('./pages/ReceiptAnalyticsPage'));
 const AdminReceiptsPage = lazy(() => import('./pages/AdminReceiptsPage'));
 
+// Payment pages
+const PaymentSuccessPage = lazy(() => import('./pages/PaymentSuccessPage'));
+const PaymentCancelPage = lazy(() => import('./pages/PaymentCancelPage'));
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
@@ -376,6 +380,10 @@ function App() {
                         </ProtectedRoute>
                       }
                     />
+
+                    {/* Payment routes */}
+                    <Route path="payments/success" element={<PaymentSuccessPage />} />
+                    <Route path="payments/cancel" element={<PaymentCancelPage />} />
 
                     {/* Other routes */}
                     <Route path="favorites" element={<FavoritesPage />} />
