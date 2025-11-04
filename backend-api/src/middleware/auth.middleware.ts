@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { AppError } from './error.middleware';
+import type { File } from 'multer';
 
 export interface AuthRequest extends Request {
   user?: {
@@ -8,7 +9,7 @@ export interface AuthRequest extends Request {
     email: string;
     role: string;
   };
-  file?: Express.Multer.File;
+  file?: File;
 }
 
 export const authenticate = (req: AuthRequest, res: Response, next: NextFunction) => {

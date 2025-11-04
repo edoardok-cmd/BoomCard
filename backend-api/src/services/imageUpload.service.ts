@@ -1,175 +1,179 @@
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
-import { v4 as uuidv4 } from 'uuid';
+import { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import sharp from 'sharp';
 import crypto from 'crypto';
+import type { File } from 'multer';
+import { logger } from '../utils/logger';
 
-/**
- * Image Upload Service
- *
- * Handles receipt image uploads to AWS S3 or CloudFlare R2
- * - Generates SHA-256 hash for duplicate detection
- * - Optimizes images with Sharp (85% JPEG quality)
- * - Stores images in organized folder structure: receipts/{userId}/{uuid}.jpg
- */
-class ImageUploadService {
-  private s3Client: S3Client;
-  private bucket: string;
-  private region: string;
+const s3Client = new S3Client({
+  region: process.env.AWS_REGION || 'eu-west-1',
+  credentials: {
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
+  },
+});
 
-  constructor() {
-    this.region = process.env.AWS_REGION || 'eu-west-1';
-    this.bucket = process.env.AWS_S3_BUCKET || 'boom-receipts';
+const BUCKET_NAME = process.env.AWS_S3_BUCKET || 'boomcard-receipts-prod';
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/jpg', 'image/webp'];
 
-    this.s3Client = new S3Client({
-      region: this.region,
-      credentials: {
-        accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
-        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
+export class ImageUploadService {
+  /**
+   * Upload image to S3
+   */
+  async uploadImage(params: {
+    file: Buffer;
+    fileName: string;
+    mimeType: string;
+    folder?: string;
+    userId?: string;
+  }): Promise<{ url: string; key: string; size: number }> {
+    const { file, fileName, mimeType, folder = 'receipts', userId } = params;
+
+    // Validate
+    if (!ALLOWED_MIME_TYPES.includes(mimeType)) {
+      throw new Error(`Invalid file type. Allowed: ${ALLOWED_MIME_TYPES.join(', ')}`);
+    }
+
+    if (file.length > MAX_FILE_SIZE) {
+      throw new Error(`File too large. Max size: ${MAX_FILE_SIZE / 1024 / 1024}MB`);
+    }
+
+    // Process image
+    const processedImage = await this.processImage(file);
+
+    // Generate unique key
+    const fileExtension = fileName.split('.').pop();
+    const uniqueName = `${crypto.randomUUID()}.${fileExtension}`;
+    const key = userId
+      ? `${folder}/${userId}/${uniqueName}`
+      : `${folder}/${uniqueName}`;
+
+    // Upload to S3
+    const command = new PutObjectCommand({
+      Bucket: BUCKET_NAME,
+      Key: key,
+      Body: processedImage,
+      ContentType: mimeType,
+      Metadata: {
+        originalName: fileName,
+        uploadedAt: new Date().toISOString(),
+        ...(userId && { userId }),
       },
     });
+
+    await s3Client.send(command);
+
+    const url = `https://${BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${key}`;
+
+    logger.info(`Uploaded image to S3: ${key}`);
+
+    return {
+      url,
+      key,
+      size: processedImage.length,
+    };
   }
 
   /**
-   * Upload receipt image to S3/R2
-   *
-   * @param file - Multer file object
-   * @param userId - ID of user uploading the receipt
-   * @returns Object containing URL, S3 key, and image hash
+   * Process image (resize, optimize, strip metadata)
+   */
+  private async processImage(buffer: Buffer): Promise<Buffer> {
+    return sharp(buffer)
+      .resize(2000, 2000, {
+        fit: 'inside',
+        withoutEnlargement: true,
+      })
+      .jpeg({
+        quality: 85,
+        progressive: true,
+      })
+      .toBuffer();
+  }
+
+  /**
+   * Delete image from S3
+   */
+  async deleteImage(key: string): Promise<void> {
+    const command = new DeleteObjectCommand({
+      Bucket: BUCKET_NAME,
+      Key: key,
+    });
+
+    await s3Client.send(command);
+    logger.info(`Deleted image from S3: ${key}`);
+  }
+
+  /**
+   * Get presigned URL for temporary access
+   */
+  async getPresignedUrl(key: string, expiresIn = 3600): Promise<string> {
+    const command = new GetObjectCommand({
+      Bucket: BUCKET_NAME,
+      Key: key,
+    });
+
+    const url = await getSignedUrl(s3Client, command, { expiresIn });
+    return url;
+  }
+
+  /**
+   * Upload multiple images
+   */
+  async uploadMultiple(files: Array<{
+    file: Buffer;
+    fileName: string;
+    mimeType: string;
+  }>, folder?: string, userId?: string): Promise<Array<{ url: string; key: string }>> {
+    const uploads = files.map(file =>
+      this.uploadImage({ ...file, folder, userId })
+    );
+
+    return Promise.all(uploads);
+  }
+
+  /**
+   * Get image info
+   */
+  async getImageInfo(buffer: Buffer) {
+    const metadata = await sharp(buffer).metadata();
+
+    return {
+      width: metadata.width,
+      height: metadata.height,
+      format: metadata.format,
+      size: metadata.size,
+      hasAlpha: metadata.hasAlpha,
+    };
+  }
+
+  /**
+   * Legacy method for backward compatibility
+   * Upload receipt image (Multer file)
    */
   async uploadReceipt(
-    file: Express.Multer.File,
+    file: File,
     userId: string
   ): Promise<{ url: string; key: string; hash: string }> {
-    try {
-      // Step 1: Generate SHA-256 hash for duplicate detection
-      const hash = crypto.createHash('sha256').update(file.buffer).digest('hex');
+    // Generate SHA-256 hash for duplicate detection
+    const hash = crypto.createHash('sha256').update(file.buffer).digest('hex');
 
-      // Step 2: Optimize image with Sharp
-      // - Convert to JPEG with 85% quality
-      // - Reduces file size by ~50-70% without visible quality loss
-      const optimized = await sharp(file.buffer)
-        .jpeg({ quality: 85 })
-        .toBuffer();
+    const result = await this.uploadImage({
+      file: file.buffer,
+      fileName: file.originalname,
+      mimeType: file.mimetype,
+      folder: 'receipts',
+      userId,
+    });
 
-      // Step 3: Generate unique S3 key
-      // Format: receipts/{userId}/{uuid}.jpg
-      const key = `receipts/${userId}/${uuidv4()}.jpg`;
-
-      // Step 4: Upload to S3
-      await this.s3Client.send(
-        new PutObjectCommand({
-          Bucket: this.bucket,
-          Key: key,
-          Body: optimized,
-          ContentType: 'image/jpeg',
-          ACL: 'private', // Receipts are sensitive - keep private
-          Metadata: {
-            userId,
-            uploadedAt: new Date().toISOString(),
-            originalName: file.originalname,
-          },
-        })
-      );
-
-      // Step 5: Generate public URL
-      const url = `https://${this.bucket}.s3.${this.region}.amazonaws.com/${key}`;
-
-      console.log(`✅ Receipt uploaded: ${key} (${(optimized.length / 1024).toFixed(1)}KB)`);
-
-      return { url, key, hash };
-    } catch (error) {
-      console.error('❌ Error uploading receipt:', error);
-      throw new Error('Failed to upload receipt image');
-    }
+    return { ...result, hash };
   }
 
   /**
-   * Upload receipt with CloudFlare R2 (alternative to S3)
-   * R2 is S3-compatible but without egress fees
-   */
-  async uploadReceiptR2(
-    file: Express.Multer.File,
-    userId: string
-  ): Promise<{ url: string; key: string; hash: string }> {
-    try {
-      const hash = crypto.createHash('sha256').update(file.buffer).digest('hex');
-      const optimized = await sharp(file.buffer).jpeg({ quality: 85 }).toBuffer();
-      const key = `receipts/${userId}/${uuidv4()}.jpg`;
-
-      // R2 uses S3-compatible API
-      const r2Client = new S3Client({
-        region: 'auto',
-        endpoint: `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
-        credentials: {
-          accessKeyId: process.env.R2_ACCESS_KEY_ID!,
-          secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
-        },
-      });
-
-      await r2Client.send(
-        new PutObjectCommand({
-          Bucket: process.env.R2_BUCKET_NAME || 'boom-receipts',
-          Key: key,
-          Body: optimized,
-          ContentType: 'image/jpeg',
-        })
-      );
-
-      // R2 public URL format
-      const url = `https://${process.env.R2_BUCKET_NAME}.${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com/${key}`;
-
-      console.log(`✅ Receipt uploaded to R2: ${key}`);
-
-      return { url, key, hash };
-    } catch (error) {
-      console.error('❌ Error uploading to R2:', error);
-      throw new Error('Failed to upload receipt to R2');
-    }
-  }
-
-  /**
-   * Delete receipt image from storage
-   * Used when user deletes receipt or admin rejects fraudulent submission
+   * Delete receipt image (legacy)
    */
   async deleteReceipt(key: string): Promise<void> {
-    try {
-      const { DeleteObjectCommand } = await import('@aws-sdk/client-s3');
-
-      await this.s3Client.send(
-        new DeleteObjectCommand({
-          Bucket: this.bucket,
-          Key: key,
-        })
-      );
-
-      console.log(`🗑️  Receipt deleted: ${key}`);
-    } catch (error) {
-      console.error('❌ Error deleting receipt:', error);
-      throw new Error('Failed to delete receipt image');
-    }
-  }
-
-  /**
-   * Generate presigned URL for secure image access
-   * Used when frontend needs to display receipt without making it publicly accessible
-   */
-  async getPresignedUrl(key: string, expiresIn: number = 3600): Promise<string> {
-    try {
-      const { getSignedUrl } = await import('@aws-sdk/s3-request-presigner');
-      const { GetObjectCommand } = await import('@aws-sdk/client-s3');
-
-      const command = new GetObjectCommand({
-        Bucket: this.bucket,
-        Key: key,
-      });
-
-      const url = await getSignedUrl(this.s3Client, command, { expiresIn });
-
-      return url;
-    } catch (error) {
-      console.error('❌ Error generating presigned URL:', error);
-      throw new Error('Failed to generate presigned URL');
-    }
+    return this.deleteImage(key);
   }
 }
 
