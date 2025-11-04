@@ -7,6 +7,7 @@ import { Server as SocketServer } from 'socket.io';
 import rateLimit from 'express-rate-limit';
 
 // Import routers
+import healthRouter from './routes/health.routes';
 import authRouter from './routes/auth.routes';
 import paymentsRouter from './routes/payments.routes';
 import payseraRouter from './routes/payments.paysera.routes';
@@ -128,6 +129,7 @@ app.get('/ready', async (req, res) => {
 setupSwagger(app);
 
 // API Routes
+app.use('/api/health', healthRouter); // Health checks (monitoring)
 app.use('/api/webhooks', webhooksRouter); // Webhooks (must be first for raw body)
 app.use('/api/auth', authRouter);
 app.use('/api/payments', payseraRouter); // Paysera payment gateway
