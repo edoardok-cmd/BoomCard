@@ -1,3 +1,4 @@
+/* eslint-env serviceworker */
 // Service Worker for BoomCard PWA
 // Version 1.0.0
 

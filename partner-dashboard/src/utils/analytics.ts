@@ -24,8 +24,8 @@ export function initGA4(measurementId: string) {
 
   // Initialize dataLayer
   window.dataLayer = window.dataLayer || [];
-  window.gtag = function gtag() {
-    window.dataLayer!.push(arguments);
+  window.gtag = function gtag(...args: any[]) {
+    window.dataLayer!.push(args);
   };
 
   window.gtag('js', new Date());
@@ -151,7 +151,7 @@ export function trackScrollDepth(depth: number) {
 export function initScrollTracking() {
   if (typeof window === 'undefined') return;
 
-  let tracked = { 25: false, 50: false, 75: false, 100: false };
+  const tracked = { 25: false, 50: false, 75: false, 100: false };
 
   window.addEventListener('scroll', () => {
     const scrollPercent =

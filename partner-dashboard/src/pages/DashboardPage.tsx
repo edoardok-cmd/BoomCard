@@ -7,6 +7,7 @@ import Button from '../components/common/Button/Button';
 import QRCode from '../components/common/QRCode/QRCode';
 import { useCurrentPartner, usePartnerStats } from '../hooks/usePartners';
 import { useOffers } from '../hooks/useOffers';
+import { ReceiptAnalyticsWidget } from '../components/widgets';
 
 const PageContainer = styled.div`
   max-width: 72rem;
@@ -762,6 +763,11 @@ const DashboardPage: React.FC = () => {
           </StatChange>
         </StatCard>
       </StatsGrid>
+
+      {/* Receipt Analytics Widget */}
+      <div style={{ marginBottom: '2.5rem' }}>
+        <ReceiptAnalyticsWidget />
+      </div>
 
       {/* Cards Section */}
       <SectionHeader>

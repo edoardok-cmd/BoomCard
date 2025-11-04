@@ -1,0 +1,67 @@
+{
+  "expo": {
+    "name": "BoomCard",
+    "slug": "boomcard-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#3B82F6"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "bg.boomcard.mobile",
+      "infoPlist": {
+        "NSCameraUsageDescription": "BoomCard needs camera access to scan receipts and QR codes",
+        "NSPhotoLibraryUsageDescription": "BoomCard needs photo library access to upload receipt images",
+        "NSLocationWhenInUseUsageDescription": "BoomCard needs your location to verify you are within 60 meters of the venue when submitting receipts",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "BoomCard needs your location to verify you are within 60 meters of the venue",
+        "NSMicrophoneUsageDescription": "This app does not require microphone access"
+      }
+    },
+    "android": {
+      "package": "bg.boomcard.mobile",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#3B82F6"
+      },
+      "permissions": [
+        "CAMERA",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE"
+      ],
+      "edgeToEdgeEnabled": true,
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-barcode-scanner",
+      "expo-secure-store",
+      "expo-camera",
+      "expo-location",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "BoomCard needs access to your photos to upload receipt images",
+          "cameraPermission": "BoomCard needs camera access to scan receipts"
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "boomcard-mobile"
+      }
+    }
+  }
+}

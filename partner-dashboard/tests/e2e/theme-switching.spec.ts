@@ -127,7 +127,7 @@ test.describe('Theme Switching', () => {
 
   test('should switch between all three themes sequentially', async ({ page }) => {
     // Start in light mode (default)
-    let htmlElement = await page.locator('html');
+    const htmlElement = await page.locator('html');
     await expect(htmlElement).toHaveAttribute('data-theme', 'light');
 
     // Switch to dark mode

@@ -121,6 +121,16 @@ const SecurityPage = lazy(() => import('./pages/SecurityPage'));
 // Admin pages
 const AdminDashboardPage = lazy(() => import('./pages/AdminDashboardPage'));
 const AdminOffersPage = lazy(() => import('./pages/AdminOffersPage'));
+const AdminScanReviewPage = lazy(() => import('./pages/AdminScanReviewPage'));
+
+// Demo pages
+const ReceiptScannerDemoPage = lazy(() => import('./pages/ReceiptScannerDemoPage'));
+
+// Receipt pages
+const ReceiptsPage = lazy(() => import('./pages/ReceiptsPage'));
+const ReceiptDetailPage = lazy(() => import('./pages/ReceiptDetailPage'));
+const ReceiptAnalyticsPage = lazy(() => import('./pages/ReceiptAnalyticsPage'));
+const AdminReceiptsPage = lazy(() => import('./pages/AdminReceiptsPage'));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -191,6 +201,31 @@ function App() {
                     <Route path="nearby" element={<NearbyOffersPage />} />
                     <Route path="rewards" element={<RewardsPage />} />
                     <Route path="components" element={<ComponentsPage />} />
+                    <Route path="receipt-scanner" element={<ReceiptScannerDemoPage />} />
+                    <Route
+                      path="receipts"
+                      element={
+                        <ProtectedRoute>
+                          <ReceiptsPage />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="receipts/analytics"
+                      element={
+                        <ProtectedRoute>
+                          <ReceiptAnalyticsPage />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="receipts/:id"
+                      element={
+                        <ProtectedRoute>
+                          <ReceiptDetailPage />
+                        </ProtectedRoute>
+                      }
+                    />
                     <Route path="categories" element={<CategoryListingPage />} />
                     <Route path="categories/:category" element={<CategoryListingPage />} />
                     <Route path="top-offers" element={<CategoryListingPage />} />
@@ -322,6 +357,22 @@ function App() {
                       element={
                         <ProtectedRoute requiredRole="admin">
                           <AdminOffersPage />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="admin/receipts"
+                      element={
+                        <ProtectedRoute requiredRole="admin">
+                          <AdminReceiptsPage />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="admin/scan-review"
+                      element={
+                        <ProtectedRoute requiredRole="admin">
+                          <AdminScanReviewPage />
                         </ProtectedRoute>
                       }
                     />

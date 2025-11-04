@@ -2,7 +2,6 @@ import { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand } fro
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import sharp from 'sharp';
 import crypto from 'crypto';
-import type { File } from 'multer';
 import { logger } from '../utils/logger';
 
 const s3Client = new S3Client({
@@ -152,7 +151,7 @@ export class ImageUploadService {
    * Upload receipt image (Multer file)
    */
   async uploadReceipt(
-    file: File,
+    file: Express.Multer.File,
     userId: string
   ): Promise<{ url: string; key: string; hash: string }> {
     // Generate SHA-256 hash for duplicate detection

@@ -5,6 +5,8 @@ import * as crypto from 'crypto';
 import { fraudDetectionService } from './fraudDetection.service';
 import { receiptAnalyticsService } from './receiptAnalytics.service';
 import { notificationService } from './notification.service';
+import { walletService } from './wallet.service';
+import { cardService } from './card.service';
 import { prisma } from '../lib/prisma';
 
 /**
@@ -628,8 +630,17 @@ class ReceiptService {
         throw new AppError('User not found', 404);
       }
 
-      // TODO: Get cardTier from user's card or default to STANDARD
-      const cardTier = 'STANDARD';
+      // Get user's card tier
+      const userCard = await prisma.card.findFirst({
+        where: { userId: request.userId },
+      });
+
+      const cardTier = userCard?.type || 'STANDARD';
+
+      // Auto-create card if user doesn't have one
+      if (!userCard) {
+        await cardService.createCard({ userId: request.userId, cardType: 'STANDARD' });
+      }
 
       // Get venue location if provided
       let venueLat: number | undefined;
@@ -681,11 +692,16 @@ class ReceiptService {
         status = 'REJECTED' as any;
       }
 
+      // Get card ID (refresh to get newly created card if needed)
+      const card = await prisma.card.findFirst({
+        where: { userId: request.userId },
+      });
+
       // Create receipt record
       const receipt = await prisma.receipt.create({
         data: {
           userId: request.userId,
-          cardId: 'temp-card-id', // TODO: Get actual cardId from user
+          cardId: card?.id,
           imageUrl: request.imageUrl,
           imageHash: request.imageHash,
           ocrRawText: request.ocrData?.rawText || '',
@@ -889,7 +905,14 @@ class ReceiptService {
       let cashbackAmount = 0;
       if (params.action === 'APPROVE') {
         const amount = params.verifiedAmount || receipt.totalAmount || 0;
-        const cardTier = 'STANDARD'; // TODO: Get from user's card
+
+        // Get user's card tier
+        const userCard = await prisma.card.findFirst({
+          where: { userId: receipt.userId },
+        });
+
+        const cardTier = userCard?.type || 'STANDARD';
+
         const cashbackCalc = await fraudDetectionService.calculateCashback({
           venueId: undefined,
           amount,
@@ -918,6 +941,29 @@ class ReceiptService {
         newStatus: newStatus as string,
         cashbackAmount,
       });
+
+      // Credit cashback to wallet if approved
+      if (newStatus === 'APPROVED' && cashbackAmount > 0) {
+        try {
+          await walletService.credit({
+            userId: receipt.userId,
+            amount: cashbackAmount,
+            type: 'CASHBACK_CREDIT',
+            description: `Cashback from receipt at ${receipt.merchantName || 'merchant'}`,
+            receiptId: receipt.id,
+            metadata: {
+              merchantName: receipt.merchantName,
+              totalAmount: updated.totalAmount,
+              receiptDate: receipt.receiptDate,
+            },
+          });
+
+          logger.info(`Approved receipt ${params.receiptId} and credited ${cashbackAmount} BGN`);
+        } catch (error) {
+          logger.error(`Failed to credit cashback for receipt ${params.receiptId}:`, error);
+          // Continue even if wallet credit fails
+        }
+      }
 
       // Send notification
       if (newStatus === 'APPROVED') {

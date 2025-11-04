@@ -1,0 +1,129 @@
+# Page snapshot
+
+```yaml
+- generic [active] [ref=e1]:
+  - link "Skip to main content" [ref=e2] [cursor=pointer]:
+    - /url: "#main-content"
+  - generic [ref=e4]:
+    - banner [ref=e5]:
+      - generic [ref=e7]:
+        - link "BoomCard" [ref=e8] [cursor=pointer]:
+          - /url: /
+          - img "BoomCard" [ref=e9]
+        - navigation [ref=e11]:
+          - link "Home" [ref=e13] [cursor=pointer]:
+            - /url: /
+          - link "Offers" [ref=e15] [cursor=pointer]:
+            - /url: /promotions
+          - link "Categories" [ref=e17] [cursor=pointer]:
+            - /url: /categories
+            - text: Categories
+            - img [ref=e18]
+          - link "Experiences" [ref=e21] [cursor=pointer]:
+            - /url: /experiences
+            - text: Experiences
+            - img [ref=e22]
+          - link "Partners" [ref=e25] [cursor=pointer]:
+            - /url: /partners
+            - text: Partners
+            - img [ref=e26]
+          - link "Integrations" [ref=e29] [cursor=pointer]:
+            - /url: /integrations
+        - generic [ref=e30]:
+          - link "Nearby Offers" [ref=e31] [cursor=pointer]:
+            - /url: /nearby
+            - img [ref=e32]
+          - link "Favorites" [ref=e35] [cursor=pointer]:
+            - /url: /favorites
+            - img [ref=e36]
+          - button "Change theme" [ref=e39] [cursor=pointer]:
+            - img [ref=e40]
+          - button "Toggle language" [ref=e42] [cursor=pointer]:
+            - img [ref=e43]
+          - link "Sign In" [ref=e45] [cursor=pointer]:
+            - /url: /login
+            - button "Sign In" [ref=e46]
+    - main [ref=e47]:
+      - generic [ref=e48]:
+        - generic [ref=e52]:
+          - heading "Supported Payment Systems" [level=1] [ref=e53]
+          - paragraph [ref=e54]: Check if your payment system is compatible with BoomCard. We automatically track transactions and calculate customer savings.
+        - generic [ref=e56]:
+          - generic [ref=e57]:
+            - button "All Systems" [ref=e58] [cursor=pointer]
+            - button "POS Systems" [ref=e59] [cursor=pointer]
+            - button "Payment Gateways" [ref=e60] [cursor=pointer]
+            - button "Payment Terminals" [ref=e61] [cursor=pointer]
+            - button "Reservation Systems" [ref=e62] [cursor=pointer]
+          - heading "All Systems" [level=2] [ref=e63]
+          - paragraph [ref=e64]: 0 payment systems supported
+    - contentinfo [ref=e65]:
+      - generic [ref=e66]:
+        - generic [ref=e67]:
+          - generic [ref=e68]:
+            - heading "BoomCard" [level=4] [ref=e70]
+            - paragraph [ref=e72]: Exclusive discounts for restaurants, hotels, spas, and experiences across Bulgaria.
+          - generic [ref=e73]:
+            - button "Product" [ref=e74]:
+              - heading "Product" [level=4] [ref=e75]
+            - list [ref=e77]:
+              - listitem [ref=e78]:
+                - link "Features" [ref=e79] [cursor=pointer]:
+                  - /url: /features
+              - listitem [ref=e80]:
+                - link "Pricing" [ref=e81] [cursor=pointer]:
+                  - /url: /pricing
+              - listitem [ref=e82]:
+                - link "Integrations" [ref=e83] [cursor=pointer]:
+                  - /url: /integrations
+          - generic [ref=e84]:
+            - button "Company" [ref=e85]:
+              - heading "Company" [level=4] [ref=e86]
+            - list [ref=e88]:
+              - listitem [ref=e89]:
+                - link "About" [ref=e90] [cursor=pointer]:
+                  - /url: /about
+              - listitem [ref=e91]:
+                - link "Contact" [ref=e92] [cursor=pointer]:
+                  - /url: /contact
+              - listitem [ref=e93]:
+                - link "Careers" [ref=e94] [cursor=pointer]:
+                  - /url: /careers
+          - generic [ref=e95]:
+            - button "Legal" [ref=e96]:
+              - heading "Legal" [level=4] [ref=e97]
+            - list [ref=e99]:
+              - listitem [ref=e100]:
+                - link "Privacy" [ref=e101] [cursor=pointer]:
+                  - /url: /privacy
+              - listitem [ref=e102]:
+                - link "Terms" [ref=e103] [cursor=pointer]:
+                  - /url: /terms
+              - listitem [ref=e104]:
+                - link "Security" [ref=e105] [cursor=pointer]:
+                  - /url: /security
+          - generic [ref=e106]:
+            - button "Follow Us" [ref=e107]:
+              - heading "Follow Us" [level=4] [ref=e108]
+            - generic [ref=e110]:
+              - link "Facebook" [ref=e111] [cursor=pointer]:
+                - /url: https://facebook.com/boomcard
+                - img [ref=e112]
+                - text: Facebook
+              - link "Instagram" [ref=e114] [cursor=pointer]:
+                - /url: https://instagram.com/boomcard
+                - img [ref=e115]
+                - text: Instagram
+              - link "LinkedIn" [ref=e117] [cursor=pointer]:
+                - /url: https://linkedin.com/company/boomcard
+                - img [ref=e118]
+                - text: LinkedIn
+              - link "Twitter" [ref=e120] [cursor=pointer]:
+                - /url: https://twitter.com/boomcard
+                - img [ref=e121]
+                - text: Twitter
+              - button "Share" [ref=e125] [cursor=pointer]:
+                - img [ref=e126]
+                - text: Share
+        - paragraph [ref=e133]: © 2025 BoomCard. All rights reserved.
+```

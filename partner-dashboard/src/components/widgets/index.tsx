@@ -1,0 +1,1 @@
+export { ReceiptAnalyticsWidget } from './ReceiptAnalyticsWidget';

@@ -6,14 +6,14 @@
 // Core Web Vitals thresholds (Google's standards)
 const WEB_VITALS_THRESHOLDS = {
   LCP: { good: 2500, needsImprovement: 4000 }, // Largest Contentful Paint
-  FID: { good: 100, needsImprovement: 300 },   // First Input Delay
+  INP: { good: 200, needsImprovement: 500 },   // Interaction to Next Paint (replaces FID)
   CLS: { good: 0.1, needsImprovement: 0.25 },  // Cumulative Layout Shift
   FCP: { good: 1800, needsImprovement: 3000 }, // First Contentful Paint
   TTFB: { good: 800, needsImprovement: 1800 }, // Time to First Byte
 };
 
 export interface WebVitalMetric {
-  name: 'LCP' | 'FID' | 'CLS' | 'FCP' | 'TTFB' | 'INP';
+  name: 'LCP' | 'INP' | 'CLS' | 'FCP' | 'TTFB';
   value: number;
   rating: 'good' | 'needs-improvement' | 'poor';
   delta: number;
@@ -80,26 +80,18 @@ export async function initWebVitals() {
 
   try {
     // Dynamically import web-vitals library
-    const { onCLS, onFID, onLCP, onFCP, onTTFB, onINP } = await import('web-vitals');
+    const { onCLS, onLCP, onFCP, onTTFB, onINP } = await import('web-vitals');
 
     // Monitor Cumulative Layout Shift
-    onCLS((metric) => {
+    onCLS((metric: any) => {
       reportWebVital({
         ...metric,
         rating: getRating('CLS', metric.value),
       });
     });
 
-    // Monitor First Input Delay
-    onFID((metric) => {
-      reportWebVital({
-        ...metric,
-        rating: getRating('FID', metric.value),
-      });
-    });
-
     // Monitor Largest Contentful Paint
-    onLCP((metric) => {
+    onLCP((metric: any) => {
       reportWebVital({
         ...metric,
         rating: getRating('LCP', metric.value),
@@ -107,7 +99,7 @@ export async function initWebVitals() {
     });
 
     // Monitor First Contentful Paint
-    onFCP((metric) => {
+    onFCP((metric: any) => {
       reportWebVital({
         ...metric,
         rating: getRating('FCP', metric.value),
@@ -115,18 +107,18 @@ export async function initWebVitals() {
     });
 
     // Monitor Time to First Byte
-    onTTFB((metric) => {
+    onTTFB((metric: any) => {
       reportWebVital({
         ...metric,
         rating: getRating('TTFB', metric.value),
       });
     });
 
-    // Monitor Interaction to Next Paint (new metric)
-    onINP((metric) => {
+    // Monitor Interaction to Next Paint (replaces FID in web-vitals v3+)
+    onINP((metric: any) => {
       reportWebVital({
         ...metric,
-        rating: metric.value <= 200 ? 'good' : metric.value <= 500 ? 'needs-improvement' : 'poor',
+        rating: getRating('INP', metric.value),
       });
     });
 
@@ -142,7 +134,7 @@ export async function initWebVitals() {
 export function getWebVitalsSummary(): string {
   const vitals = [
     { name: 'LCP', desc: 'Largest Contentful Paint', threshold: '< 2.5s' },
-    { name: 'FID', desc: 'First Input Delay', threshold: '< 100ms' },
+    { name: 'INP', desc: 'Interaction to Next Paint', threshold: '< 200ms' },
     { name: 'CLS', desc: 'Cumulative Layout Shift', threshold: '< 0.1' },
     { name: 'FCP', desc: 'First Contentful Paint', threshold: '< 1.8s' },
     { name: 'TTFB', desc: 'Time to First Byte', threshold: '< 800ms' },

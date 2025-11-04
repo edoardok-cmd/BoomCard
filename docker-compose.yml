@@ -1,33 +1,112 @@
-{
-  version: 3.8,
-  services: {
-    postgres: {
-      image: postgres:14-alpine,
-      environment: {
-        POSTGRES_DB: discount_platform,
-        POSTGRES_USER: postgres,
-        POSTGRES_PASSWORD: postgres
-      },
-      ports: [
-        5432:5432
-      ],
-      volumes: [
-        postgres_data:/var/lib/postgresql/data
-      ]
-    },
-    redis: {
-      image: redis:6-alpine,
-      ports: [
-        6379:6379
-      ],
-      command: redis-server --appendonly yes,
-      volumes: [
-        redis_data:/data
-      ]
-    }
-  },
-  volumes: {
-    postgres_data: {},
-    redis_data: {}
-  }
-}
+# Docker Compose for BoomCard Development Environment
+# Complete stack: Backend API, Frontend, PostgreSQL, Redis
+
+version: '3.8'
+
+services:
+  # ============================================
+  # PostgreSQL Database
+  # ============================================
+  postgres:
+    image: postgres:14-alpine
+    container_name: boomcard-postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: boomcard
+      POSTGRES_PASSWORD: boomcard_dev_password
+      POSTGRES_DB: boomcard_dev
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U boomcard"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - boomcard-network
+
+  # ============================================
+  # Redis Cache & Session Store
+  # ============================================
+  redis:
+    image: redis:7-alpine
+    container_name: boomcard-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - boomcard-network
+
+  # ============================================
+  # Backend API
+  # ============================================
+  backend:
+    build:
+      context: ./backend-api
+      dockerfile: Dockerfile
+      target: production
+    container_name: boomcard-backend
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      NODE_ENV: development
+      PORT: 3001
+      DATABASE_URL: postgresql://boomcard:boomcard_dev_password@postgres:5432/boomcard_dev
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: dev_jwt_secret_do_not_use_in_production
+      REFRESH_TOKEN_SECRET: dev_refresh_secret_do_not_use_in_production
+      CORS_ORIGIN: http://localhost:5175,http://localhost:3000
+      LOG_LEVEL: debug
+    volumes:
+      - ./backend-api:/app
+      - /app/node_modules
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - boomcard-network
+    command: sh -c "npx prisma migrate deploy && npm run dev"
+
+  # ============================================
+  # Frontend (React + Vite)
+  # ============================================
+  frontend:
+    image: node:18-alpine
+    container_name: boomcard-frontend
+    restart: unless-stopped
+    ports:
+      - "5175:5175"
+    environment:
+      NODE_ENV: development
+      VITE_API_URL: http://localhost:3001
+    working_dir: /app
+    volumes:
+      - ./partner-dashboard:/app
+      - /app/node_modules
+    command: sh -c "npm install && npm run dev -- --host"
+    networks:
+      - boomcard-network
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  boomcard-network:
+    driver: bridge

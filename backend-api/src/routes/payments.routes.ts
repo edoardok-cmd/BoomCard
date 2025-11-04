@@ -1,305 +1,468 @@
-import { Router } from 'express';
-import { authenticate } from '../middleware/auth.middleware';
+import { Router, Response } from 'express';
+import { authenticate, AuthRequest } from '../middleware/auth.middleware';
 import { asyncHandler } from '../middleware/error.middleware';
-import { v4 as uuid } from 'uuid';
+import { stripeService } from '../services/stripe.service';
+import { PrismaClient } from '@prisma/client';
+import { logger } from '../utils/logger';
 
 const router = Router();
+const prisma = new PrismaClient();
 
 // All routes require authentication
 router.use(authenticate);
 
 /**
- * GET /api/payments/transactions
- * Get user's transactions
- */
-router.get('/transactions', asyncHandler(async (req, res) => {
-  const { page = 1, limit = 20, status, type } = req.query;
-
-  // Mock data - replace with real database query
-  const mockTransactions = {
-    data: [
-      {
-        id: uuid(),
-        type: 'booking',
-        status: 'completed',
-        amount: 150.00,
-        currency: 'BGN',
-        fee: 7.50,
-        tax: 30.00,
-        netAmount: 112.50,
-        description: 'Booking payment for Restaurant ABC',
-        descriptionBg: 'Плащане за резервация в Ресторант ABC',
-        createdAt: new Date().toISOString(),
-      },
-      {
-        id: uuid(),
-        type: 'subscription',
-        status: 'completed',
-        amount: 49.99,
-        currency: 'BGN',
-        fee: 2.50,
-        tax: 10.00,
-        netAmount: 37.49,
-        description: 'Monthly subscription',
-        descriptionBg: 'Месечен абонамент',
-        createdAt: new Date(Date.now() - 86400000).toISOString(),
-      },
-    ],
-    total: 2,
-    page: parseInt(page as string),
-    limit: parseInt(limit as string),
-    totalPages: 1,
-  };
-
-  res.json(mockTransactions);
-}));
-
-/**
- * GET /api/payments/transactions/:id
- * Get transaction by ID
- */
-router.get('/transactions/:id', asyncHandler(async (req, res) => {
-  const { id } = req.params;
-
-  const mockTransaction = {
-    id,
-    type: 'booking',
-    status: 'completed',
-    amount: 150.00,
-    currency: 'BGN',
-    fee: 7.50,
-    tax: 30.00,
-    netAmount: 112.50,
-    description: 'Booking payment',
-    descriptionBg: 'Плащане за резервация',
-    paymentMethod: 'card',
-    cardLast4: '4242',
-    bookingId: uuid(),
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  };
-
-  res.json(mockTransaction);
-}));
-
-/**
  * POST /api/payments/intents
- * Create payment intent
+ * Create payment intent for booking or purchase
  */
-router.post('/intents', asyncHandler(async (req, res) => {
-  const { amount, currency, paymentMethod, description, descriptionBg, bookingId } = req.body;
+router.post('/intents', asyncHandler(async (req: AuthRequest, res: Response) => {
+  const { amount, currency, description, metadata, bookingId } = req.body;
+  const user = req.user!;
 
-  // TODO: Integrate with Stripe
-  const mockIntent = {
-    id: `pi_${uuid()}`,
-    clientSecret: `pi_${uuid()}_secret_${uuid()}`,
-    amount,
-    currency: currency || 'BGN',
-    status: 'requires_payment_method',
-    paymentMethod,
-    description,
-    descriptionBg,
-    bookingId,
-    createdAt: new Date().toISOString(),
-  };
+  if (!amount || amount <= 0) {
+    return res.status(400).json({
+      success: false,
+      message: 'Invalid amount'
+    });
+  }
 
-  res.status(201).json(mockIntent);
+  try {
+    // Get user details for Stripe customer
+    const userDetails = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: { email: true, firstName: true, lastName: true },
+    });
+
+    if (!userDetails) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    // Create payment intent
+    const paymentIntent = await stripeService.createPaymentIntent({
+      amount,
+      currency: currency || 'bgn',
+      userId: user.id,
+      email: userDetails.email,
+      description,
+      metadata: {
+        bookingId,
+        ...metadata,
+      },
+    });
+
+    logger.info(`Payment intent created: ${paymentIntent.paymentIntentId} for user ${user.id}`);
+
+    res.status(201).json({
+      success: true,
+      data: paymentIntent,
+    });
+  } catch (error) {
+    logger.error('Error creating payment intent:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to create payment intent',
+    });
+  }
 }));
 
 /**
  * POST /api/payments/intents/:id/confirm
- * Confirm payment intent
+ * Confirm payment intent (server-side)
  */
-router.post('/intents/:id/confirm', asyncHandler(async (req, res) => {
+router.post('/intents/:id/confirm', asyncHandler(async (req: AuthRequest, res: Response) => {
   const { id } = req.params;
   const { paymentMethodId } = req.body;
 
-  // TODO: Confirm with Stripe
-  const mockConfirmation = {
-    id: uuid(),
-    paymentIntentId: id,
-    status: 'completed',
-    amount: 150.00,
-    currency: 'BGN',
-    paymentMethod: 'card',
-    cardLast4: '4242',
-    createdAt: new Date().toISOString(),
-  };
+  try {
+    const paymentIntent = await stripeService.confirmPaymentIntent(id, paymentMethodId);
 
-  res.json(mockConfirmation);
+    res.json({
+      success: true,
+      data: {
+        id: paymentIntent.id,
+        status: paymentIntent.status,
+        amount: paymentIntent.amount / 100,
+        currency: paymentIntent.currency,
+      },
+    });
+  } catch (error) {
+    logger.error('Error confirming payment:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to confirm payment',
+    });
+  }
 }));
 
 /**
  * POST /api/payments/intents/:id/cancel
  * Cancel payment intent
  */
-router.post('/intents/:id/cancel', asyncHandler(async (req, res) => {
+router.post('/intents/:id/cancel', asyncHandler(async (req: AuthRequest, res: Response) => {
   const { id } = req.params;
 
-  res.json({
-    id,
-    status: 'cancelled',
-    cancelledAt: new Date().toISOString(),
-  });
+  try {
+    await stripeService.cancelPaymentIntent(id);
+
+    res.json({
+      success: true,
+      message: 'Payment cancelled successfully',
+    });
+  } catch (error) {
+    logger.error('Error cancelling payment:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to cancel payment',
+    });
+  }
 }));
 
 /**
  * GET /api/payments/cards
- * Get user's saved payment cards
+ * Get user's saved payment methods
  */
-router.get('/cards', asyncHandler(async (req, res) => {
-  const mockCards = [
-    {
-      id: uuid(),
-      brand: 'visa',
-      last4: '4242',
-      expMonth: 12,
-      expYear: 2025,
-      isDefault: true,
-      createdAt: new Date().toISOString(),
-    },
-    {
-      id: uuid(),
-      brand: 'mastercard',
-      last4: '5555',
-      expMonth: 6,
-      expYear: 2026,
-      isDefault: false,
-      createdAt: new Date(Date.now() - 2592000000).toISOString(),
-    },
-  ];
+router.get('/cards', asyncHandler(async (req: AuthRequest, res: Response) => {
+  const user = req.user!;
 
-  res.json(mockCards);
+  try {
+    // Get user's Stripe customer ID
+    const userDetails = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: { stripeCustomerId: true, email: true, firstName: true, lastName: true },
+    });
+
+    if (!userDetails) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    // If no Stripe customer yet, return empty list
+    if (!userDetails.stripeCustomerId) {
+      return res.json({
+        success: true,
+        data: [],
+      });
+    }
+
+    // Get payment methods from Stripe
+    const paymentMethods = await stripeService.listPaymentMethods(userDetails.stripeCustomerId);
+
+    // Format response
+    const cards = paymentMethods.map((pm) => ({
+      id: pm.id,
+      brand: pm.card?.brand,
+      last4: pm.card?.last4,
+      expMonth: pm.card?.exp_month,
+      expYear: pm.card?.exp_year,
+      isDefault: false, // TODO: Check default payment method
+      createdAt: new Date(pm.created * 1000).toISOString(),
+    }));
+
+    res.json({
+      success: true,
+      data: cards,
+    });
+  } catch (error) {
+    logger.error('Error fetching cards:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to retrieve payment methods',
+    });
+  }
 }));
 
 /**
  * POST /api/payments/cards
- * Add payment card
+ * Add payment method
  */
-router.post('/cards', asyncHandler(async (req, res) => {
-  const { cardToken, setAsDefault } = req.body;
+router.post('/cards', asyncHandler(async (req: AuthRequest, res: Response) => {
+  const { paymentMethodId, setAsDefault } = req.body;
+  const user = req.user!;
 
-  // TODO: Add card via Stripe
-  const mockCard = {
-    id: uuid(),
-    brand: 'visa',
-    last4: '4242',
-    expMonth: 12,
-    expYear: 2025,
-    isDefault: setAsDefault || false,
-    createdAt: new Date().toISOString(),
-  };
+  if (!paymentMethodId) {
+    return res.status(400).json({
+      success: false,
+      message: 'Payment method ID is required',
+    });
+  }
 
-  res.status(201).json(mockCard);
+  try {
+    // Get or create Stripe customer
+    const userDetails = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: { email: true, firstName: true, lastName: true, stripeCustomerId: true },
+    });
+
+    if (!userDetails) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    const customerId = await stripeService.getOrCreateCustomer(
+      user.id,
+      userDetails.email,
+      `${userDetails.firstName} ${userDetails.lastName}`
+    );
+
+    // Attach payment method to customer
+    const paymentMethod = await stripeService.attachPaymentMethod(customerId, paymentMethodId);
+
+    // Set as default if requested
+    if (setAsDefault) {
+      await stripeService.setDefaultPaymentMethod(customerId, paymentMethodId);
+    }
+
+    res.status(201).json({
+      success: true,
+      data: {
+        id: paymentMethod.id,
+        brand: paymentMethod.card?.brand,
+        last4: paymentMethod.card?.last4,
+        expMonth: paymentMethod.card?.exp_month,
+        expYear: paymentMethod.card?.exp_year,
+        isDefault: setAsDefault || false,
+      },
+    });
+  } catch (error) {
+    logger.error('Error adding payment method:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to add payment method',
+    });
+  }
 }));
 
 /**
  * DELETE /api/payments/cards/:id
- * Remove payment card
+ * Remove payment method
  */
-router.delete('/cards/:id', asyncHandler(async (req, res) => {
+router.delete('/cards/:id', asyncHandler(async (req: AuthRequest, res: Response) => {
   const { id } = req.params;
 
-  res.json({
-    success: true,
-    message: 'Card removed successfully',
-  });
+  try {
+    await stripeService.detachPaymentMethod(id);
+
+    res.json({
+      success: true,
+      message: 'Payment method removed successfully',
+    });
+  } catch (error) {
+    logger.error('Error removing payment method:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to remove payment method',
+    });
+  }
 }));
 
 /**
  * POST /api/payments/cards/:id/default
- * Set default card
+ * Set default payment method
  */
-router.post('/cards/:id/default', asyncHandler(async (req, res) => {
+router.post('/cards/:id/default', asyncHandler(async (req: AuthRequest, res: Response) => {
   const { id } = req.params;
+  const user = req.user!;
 
-  res.json({
-    success: true,
-    message: 'Default card updated',
-  });
+  try {
+    const userDetails = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: { stripeCustomerId: true },
+    });
+
+    if (!userDetails?.stripeCustomerId) {
+      return res.status(404).json({
+        success: false,
+        message: 'No Stripe customer found',
+      });
+    }
+
+    await stripeService.setDefaultPaymentMethod(userDetails.stripeCustomerId, id);
+
+    res.json({
+      success: true,
+      message: 'Default payment method updated',
+    });
+  } catch (error) {
+    logger.error('Error setting default payment method:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to set default payment method',
+    });
+  }
 }));
 
 /**
  * POST /api/payments/refunds
  * Request refund
  */
-router.post('/refunds', asyncHandler(async (req, res) => {
-  const { transactionId, amount, reason, reasonBg } = req.body;
+router.post('/refunds', asyncHandler(async (req: AuthRequest, res: Response) => {
+  const { paymentIntentId, amount, reason } = req.body;
 
-  const mockRefund = {
-    id: uuid(),
-    transactionId,
-    amount,
-    status: 'pending',
-    reason,
-    reasonBg,
-    createdAt: new Date().toISOString(),
-  };
+  if (!paymentIntentId) {
+    return res.status(400).json({
+      success: false,
+      message: 'Payment intent ID is required',
+    });
+  }
 
-  res.status(201).json(mockRefund);
+  try {
+    const refund = await stripeService.createRefund({
+      paymentIntentId,
+      amount,
+      reason,
+    });
+
+    res.status(201).json({
+      success: true,
+      data: {
+        id: refund.id,
+        amount: refund.amount / 100,
+        status: refund.status,
+        reason: refund.reason,
+      },
+    });
+  } catch (error) {
+    logger.error('Error creating refund:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to process refund',
+    });
+  }
 }));
 
 /**
- * GET /api/payments/wallet/balance
- * Get wallet balance
+ * GET /api/payments/transactions
+ * Get user's transactions from database
  */
-router.get('/wallet/balance', asyncHandler(async (req, res) => {
-  const mockBalance = {
-    balance: 450.50,
-    availableBalance: 450.50,
-    pendingBalance: 0,
-    currency: 'BGN',
-    lastUpdated: new Date().toISOString(),
-  };
+router.get('/transactions', asyncHandler(async (req: AuthRequest, res: Response) => {
+  const { page = 1, limit = 20, status, type } = req.query;
+  const user = req.user!;
 
-  res.json(mockBalance);
+  try {
+    const skip = (Number(page) - 1) * Number(limit);
+
+    const [transactions, total] = await Promise.all([
+      prisma.transaction.findMany({
+        where: {
+          userId: user.id,
+          ...(status && { status: status as any }),
+        },
+        take: Number(limit),
+        skip,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          venue: true,
+        },
+      }),
+      prisma.transaction.count({
+        where: {
+          userId: user.id,
+          ...(status && { status: status as any }),
+        },
+      }),
+    ]);
+
+    res.json({
+      success: true,
+      data: transactions,
+      pagination: {
+        page: Number(page),
+        limit: Number(limit),
+        total,
+        totalPages: Math.ceil(total / Number(limit)),
+      },
+    });
+  } catch (error) {
+    logger.error('Error fetching transactions:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to retrieve transactions',
+    });
+  }
 }));
 
 /**
- * POST /api/payments/wallet/add-funds
- * Add funds to wallet
+ * GET /api/payments/transactions/:id
+ * Get transaction by ID
  */
-router.post('/wallet/add-funds', asyncHandler(async (req, res) => {
-  const { amount, paymentMethodId } = req.body;
+router.get('/transactions/:id', asyncHandler(async (req: AuthRequest, res: Response) => {
+  const { id } = req.params;
+  const user = req.user!;
 
-  const mockTransaction = {
-    id: uuid(),
-    type: 'wallet_deposit',
-    amount,
-    status: 'completed',
-    createdAt: new Date().toISOString(),
-  };
+  try {
+    const transaction = await prisma.transaction.findFirst({
+      where: {
+        id,
+        userId: user.id,
+      },
+      include: {
+        venue: true,
+        offer: true,
+      },
+    });
 
-  res.status(201).json(mockTransaction);
+    if (!transaction) {
+      return res.status(404).json({
+        success: false,
+        message: 'Transaction not found',
+      });
+    }
+
+    res.json({
+      success: true,
+      data: transaction,
+    });
+  } catch (error) {
+    logger.error('Error fetching transaction:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to retrieve transaction',
+    });
+  }
 }));
 
 /**
  * GET /api/payments/statistics
- * Get payment statistics
+ * Get payment statistics for user
  */
-router.get('/statistics', asyncHandler(async (req, res) => {
-  const { startDate, endDate } = req.query;
+router.get('/statistics', asyncHandler(async (req: AuthRequest, res: Response) => {
+  const user = req.user!;
 
-  const mockStats = {
-    totalRevenue: 15420.00,
-    totalTransactions: 127,
-    successRate: 98.4,
-    averageTransaction: 121.42,
-    totalRefunds: 3,
-    refundAmount: 450.00,
-    byPaymentMethod: {
-      card: 89,
-      paypal: 23,
-      wallet: 15,
-    },
-    revenueByMonth: [
-      { month: '2025-01', revenue: 4850 },
-      { month: '2025-02', revenue: 5320 },
-      { month: '2025-03', revenue: 5250 },
-    ],
-  };
+  try {
+    const stats = await prisma.transaction.groupBy({
+      by: ['status'],
+      where: {
+        userId: user.id,
+      },
+      _sum: {
+        finalAmount: true,
+      },
+      _count: true,
+    });
 
-  res.json(mockStats);
+    const totalTransactions = stats.reduce((acc, s) => acc + s._count, 0);
+    const totalRevenue = stats.reduce((acc, s) => acc + (s._sum.finalAmount || 0), 0);
+    const completedCount = stats.find((s) => s.status === 'COMPLETED')?._count || 0;
+
+    res.json({
+      success: true,
+      data: {
+        totalRevenue,
+        totalTransactions,
+        successRate: totalTransactions > 0 ? (completedCount / totalTransactions) * 100 : 0,
+        averageTransaction: totalTransactions > 0 ? totalRevenue / totalTransactions : 0,
+        byStatus: stats.map((s) => ({
+          status: s.status,
+          count: s._count,
+          total: s._sum.finalAmount || 0,
+        })),
+      },
+    });
+  } catch (error) {
+    logger.error('Error fetching payment statistics:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to retrieve statistics',
+    });
+  }
 }));
 
 export default router;

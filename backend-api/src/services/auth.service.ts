@@ -4,6 +4,8 @@ import { v4 as uuid } from 'uuid';
 import { prisma } from '../lib/prisma';
 import { AppError } from '../middleware/error.middleware';
 import { logger } from '../utils/logger';
+import { cardService } from './card.service';
+import { walletService } from './wallet.service';
 import { UserStatus } from '@prisma/client';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'fallback-secret-for-dev';
@@ -78,17 +80,21 @@ export class AuthService {
       },
     });
 
-    // Create loyalty account for new user
-    await prisma.loyaltyAccount.create({
-      data: {
-        userId: user.id,
-        tier: 'BRONZE',
-        points: 0,
-        lifetimePoints: 0,
-      },
-    });
+    // Create loyalty account, card, and wallet for new user
+    await Promise.all([
+      prisma.loyaltyAccount.create({
+        data: {
+          userId: user.id,
+          tier: 'BRONZE',
+          points: 0,
+          lifetimePoints: 0,
+        },
+      }),
+      cardService.createCard({ userId: user.id, cardType: 'STANDARD' }),
+      walletService.getOrCreateWallet(user.id),
+    ]);
 
-    logger.info(`New user registered: ${user.email}`);
+    logger.info(`Created user ${user.email} with card and wallet`);
 
     // Generate tokens
     const tokens = await this.generateTokens(user);

@@ -2,6 +2,8 @@ import { Router, Request, Response } from 'express';
 import { receiptService } from '../services/receipt.service';
 import { authenticate, authorize, AuthRequest } from '../middleware/auth.middleware';
 import { asyncHandler } from '../middleware/error.middleware';
+import { uploadSingle } from '../middleware/upload.middleware';
+import { imageUploadService } from '../services/imageUpload.service';
 
 const router = Router();
 
@@ -11,13 +13,42 @@ const router = Router();
 
 /**
  * POST /api/receipts
- * Create a new receipt from OCR results
+ * Create a new receipt from OCR results with optional image upload
  */
 router.post(
   '/',
   authenticate,
+  uploadSingle,
   asyncHandler(async (req: AuthRequest, res: Response) => {
-    const result = await receiptService.createReceipt(req.user!.id, req.body);
+    const userId = req.user!.id;
+
+    // Get form data
+    const data = req.body.data ? JSON.parse(req.body.data) : req.body;
+
+    let imageUrl: string | undefined;
+    let imageKey: string | undefined;
+
+    // Upload image to S3 if provided
+    if (req.file) {
+      const upload = await imageUploadService.uploadImage({
+        file: req.file.buffer,
+        fileName: req.file.originalname,
+        mimeType: req.file.mimetype,
+        folder: 'receipts',
+        userId,
+      });
+
+      imageUrl = upload.url;
+      imageKey = upload.key;
+    }
+
+    // Create receipt with image data
+    const result = await receiptService.createReceipt(userId, {
+      ...data,
+      receiptImageUrl: imageUrl,
+      imageKey,
+    });
+
     res.status(201).json(result);
   })
 );

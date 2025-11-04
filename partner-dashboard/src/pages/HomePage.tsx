@@ -212,7 +212,7 @@ const SubscriptionCardsContainer = styled.div`
   }
 `;
 
-const PlanCardWrapper = styled.div`
+const PlanCardWrapper = styled(motion.div)`
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -420,10 +420,19 @@ const HomePage: React.FC = () => {
   const topOffers = topOffersData || [];
 
   // Fetch reviews from API
-  const { reviews: reviewsData, loading: loadingReviews, createReview, markHelpful } = usePartnerReviews({
+  const { reviews: reviewsData, loading: loadingReviews, createReview: createReviewMutation, markHelpful: markHelpfulMutation } = usePartnerReviews({
     filters: { status: 'APPROVED', limit: 3, sortBy: 'createdAt', sortOrder: 'desc' }
   });
   const [showReviewForm, setShowReviewForm] = useState(false);
+
+  // Wrap mutations to match expected signatures
+  const createReview = async (data: any): Promise<void> => {
+    await createReviewMutation(data);
+  };
+
+  const markHelpful = async (id: string, helpful: boolean): Promise<void> => {
+    await markHelpfulMutation(id, helpful);
+  };
 
   // SEO optimization with bilingual support
   useEffect(() => {
@@ -673,11 +682,10 @@ const HomePage: React.FC = () => {
                   </FeaturesList>
 
                   <PlanButtonContainer>
-                    <Link to="/subscriptions">
+                    <Link to="/subscriptions" style={{ width: '100%' }}>
                       <Button
                         variant={plan.featured ? 'primary' : 'secondary'}
                         size="large"
-                        style={{ width: '100%' }}
                       >
                         {language === 'bg' ? 'Избери План' : 'Choose Plan'}
                       </Button>

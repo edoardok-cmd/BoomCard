@@ -1,9 +1,12 @@
 import { Router, Request, Response } from 'express';
 import { stickerService } from '../services/sticker.service';
 import { authenticate } from '../middleware/auth.middleware';
-import { LocationType } from '@prisma/client';
+import { uploadSingle } from '../middleware/upload.middleware';
+import { imageUploadService } from '../services/imageUpload.service';
+import { LocationType, PrismaClient } from '@prisma/client';
 
 const router = Router();
+const prisma = new PrismaClient();
 
 // ============================================
 // PUBLIC ENDPOINTS (User-facing)
@@ -64,21 +67,36 @@ router.post('/scan', authenticate, async (req: Request, res: Response) => {
  * Upload receipt image and OCR data for a scan
  * Requires authentication
  */
-router.post('/scan/:scanId/receipt', authenticate, async (req: Request, res: Response) => {
+router.post('/scan/:scanId/receipt', authenticate, uploadSingle, async (req: Request, res: Response) => {
   try {
     const { scanId } = req.params;
-    const { receiptImageUrl, ocrData } = req.body;
+    const userId = (req as any).user.id;
 
-    if (!receiptImageUrl) {
+    if (!req.file) {
       return res.status(400).json({
         success: false,
-        error: 'Receipt image URL is required',
+        error: 'Receipt image is required',
       });
     }
 
+    // Upload to S3
+    const upload = await imageUploadService.uploadImage({
+      file: req.file.buffer,
+      fileName: req.file.originalname,
+      mimeType: req.file.mimetype,
+      folder: 'sticker-receipts',
+      userId,
+    });
+
+    // Parse OCR data if provided
+    const ocrData = req.body.ocrData ? JSON.parse(req.body.ocrData) : undefined;
+
+    // Update sticker scan with receipt
     const scan = await stickerService.uploadReceipt({
       scanId,
-      receiptImageUrl,
+      userId,
+      receiptImageUrl: upload.url,
+      imageKey: upload.key,
       ocrData,
     });
 
@@ -440,23 +458,100 @@ router.put('/venue/:venueId/config', authenticate, async (req: Request, res: Res
 /**
  * GET /api/stickers/admin/pending-review
  * Get scans pending manual review
+ * Query params: status, riskLevel, limit
  * Requires authentication (Admin role)
  */
 router.get('/admin/pending-review', authenticate, async (req: Request, res: Response) => {
   try {
     const limit = parseInt(req.query.limit as string) || 50;
+    const status = req.query.status as string;
+    const riskLevel = req.query.riskLevel as string;
 
-    const scans = await stickerService.getPendingReviewScans(limit);
+    // Build filter
+    const where: any = {};
 
-    res.json({
-      success: true,
-      data: scans,
-      count: scans.length,
+    if (status && status !== 'all') {
+      where.status = status;
+    } else {
+      // Default to manual review if no status specified
+      where.status = 'MANUAL_REVIEW';
+    }
+
+    if (riskLevel && riskLevel !== 'all') {
+      where.riskLevel = riskLevel;
+    }
+
+    const scans = await prisma.stickerScan.findMany({
+      where,
+      include: {
+        user: {
+          select: {
+            id: true,
+            email: true,
+            firstName: true,
+            lastName: true,
+          },
+        },
+        sticker: {
+          include: {
+            venue: {
+              select: {
+                id: true,
+                name: true,
+                nameBg: true,
+              },
+            },
+            location: {
+              select: {
+                name: true,
+                nameBg: true,
+                locationType: true,
+              },
+            },
+          },
+        },
+        card: {
+          select: {
+            id: true,
+            type: true,
+            cardNumber: true,
+          },
+        },
+      },
+      orderBy: [
+        { fraudScore: 'desc' },
+        { createdAt: 'asc' },
+      ],
+      take: limit,
     });
+
+    res.json(scans);
   } catch (error: any) {
     res.status(500).json({
       success: false,
       error: 'Failed to fetch pending scans',
+      message: error.message,
+    });
+  }
+});
+
+/**
+ * GET /api/stickers/admin/stats
+ * Get admin review statistics
+ * Requires authentication (Admin role)
+ */
+router.get('/admin/stats', authenticate, async (req: Request, res: Response) => {
+  try {
+    const stats = await stickerService.getAdminStats();
+
+    res.json({
+      success: true,
+      data: stats,
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch admin stats',
       message: error.message,
     });
   }
@@ -489,19 +584,15 @@ router.post('/admin/approve/:scanId', authenticate, async (req: Request, res: Re
 /**
  * POST /api/stickers/admin/reject/:scanId
  * Reject a scan
+ * Body: { notes?: string } - Optional admin notes
  * Requires authentication (Admin role)
  */
 router.post('/admin/reject/:scanId', authenticate, async (req: Request, res: Response) => {
   try {
     const { scanId } = req.params;
-    const { reason } = req.body;
+    const { notes } = req.body;
 
-    if (!reason) {
-      return res.status(400).json({
-        success: false,
-        error: 'Rejection reason is required',
-      });
-    }
+    const reason = notes || 'Rejected by admin';
 
     const scan = await stickerService.rejectScan(scanId, reason);
 

@@ -1,2 +1,2 @@
 export { StickerScanner, type StickerQRData } from './StickerScanner';
-export default StickerScanner;
+export { default } from './StickerScanner';

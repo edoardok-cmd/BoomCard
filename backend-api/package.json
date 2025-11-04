@@ -62,11 +62,12 @@
     "stripe": "^14.25.0",
     "typescript": "^5.3.3",
     "uuid": "^9.0.1",
-    "winston": "^3.11.0"
+    "winston": "^3.11.0",
+    "zod": "^4.1.12"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
-    "@types/jest": "^29.5.11",
+    "@types/jest": "^29.5.14",
     "@types/multer": "^2.0.0",
     "@types/qrcode": "^1.5.5",
     "@types/supertest": "^6.0.2",
@@ -78,6 +79,7 @@
     "prettier": "^3.1.1",
     "prisma": "^6.17.1",
     "supertest": "^6.3.3",
+    "ts-jest": "^29.4.5",
     "ts-node-dev": "^2.0.0"
   }
 }

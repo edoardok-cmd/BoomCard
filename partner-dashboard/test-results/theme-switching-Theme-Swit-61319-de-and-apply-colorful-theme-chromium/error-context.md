@@ -1,0 +1,211 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e1]:
+  - link "Skip to main content" [ref=e2] [cursor=pointer]:
+    - /url: "#main-content"
+  - generic [ref=e4]:
+    - banner [ref=e5]:
+      - generic [ref=e7]:
+        - link "BoomCard" [ref=e8] [cursor=pointer]:
+          - /url: /
+          - img "BoomCard" [ref=e9]
+        - navigation [ref=e11]:
+          - link "Home" [ref=e13] [cursor=pointer]:
+            - /url: /
+          - link "Offers" [ref=e15] [cursor=pointer]:
+            - /url: /promotions
+          - link "Categories" [ref=e17] [cursor=pointer]:
+            - /url: /categories
+            - text: Categories
+            - img [ref=e18]
+          - link "Experiences" [ref=e21] [cursor=pointer]:
+            - /url: /experiences
+            - text: Experiences
+            - img [ref=e22]
+          - link "Partners" [ref=e25] [cursor=pointer]:
+            - /url: /partners
+            - text: Partners
+            - img [ref=e26]
+          - link "Integrations" [ref=e29] [cursor=pointer]:
+            - /url: /integrations
+        - generic [ref=e30]:
+          - link "Nearby Offers" [ref=e31] [cursor=pointer]:
+            - /url: /nearby
+            - img [ref=e32]
+          - link "Favorites" [ref=e35] [cursor=pointer]:
+            - /url: /favorites
+            - img [ref=e36]
+          - generic [ref=e38]:
+            - button "Change theme" [active] [ref=e39] [cursor=pointer]:
+              - img [ref=e40]
+            - generic [ref=e42]:
+              - button "☀️ Light" [ref=e43] [cursor=pointer]:
+                - generic [ref=e44]: ☀️
+                - generic [ref=e45]: Light
+                - img [ref=e46]
+              - button "🌙 Dark" [ref=e48] [cursor=pointer]:
+                - generic [ref=e49]: 🌙
+                - generic [ref=e50]: Dark
+              - button "🎨 Vibrant" [ref=e51] [cursor=pointer]:
+                - generic [ref=e52]: 🎨
+                - generic [ref=e53]: Vibrant
+          - button "Toggle language" [ref=e54] [cursor=pointer]:
+            - img [ref=e55]
+          - link "Sign In" [ref=e57] [cursor=pointer]:
+            - /url: /login
+            - button "Sign In" [ref=e58]
+    - main [ref=e59]:
+      - generic [ref=e60]:
+        - generic [ref=e62]: Your browser does not support the video tag.
+        - generic [ref=e66]:
+          - generic [ref=e67]:
+            - heading "How it works" [level=2] [ref=e68]
+            - paragraph [ref=e69]: Simple and fast way to save money
+          - generic [ref=e70]:
+            - generic [ref=e71]:
+              - generic [ref=e72]: "1"
+              - heading "Choose your offer" [level=3] [ref=e73]
+              - paragraph [ref=e74]: Browse through hundreds of exclusive offers
+            - generic [ref=e75]:
+              - generic [ref=e76]: "2"
+              - heading "Get your QR code" [level=3] [ref=e77]
+              - paragraph [ref=e78]: Receive your unique discount QR code instantly
+            - generic [ref=e79]:
+              - generic [ref=e80]: "3"
+              - heading "Enjoy & Save" [level=3] [ref=e81]
+              - paragraph [ref=e82]: Show your code at the venue and enjoy your discount
+        - generic [ref=e84]:
+          - generic [ref=e85]:
+            - heading "Subscription Plans" [level=2] [ref=e86]
+            - paragraph [ref=e87]: Choose the perfect plan for your lifestyle
+          - generic [ref=e88]:
+            - generic [ref=e89]:
+              - generic [ref=e90] [cursor=pointer]:
+                - generic [ref=e91]: BOOM
+                - generic [ref=e92]:
+                  - generic [ref=e93]: ••••
+                  - generic [ref=e94]: ••••
+                  - generic [ref=e95]: ••••
+                  - generic [ref=e96]: ••••
+                - generic [ref=e97]:
+                  - generic [ref=e98]: BASIC
+                  - generic [ref=e99]: 0 BGN/mo
+              - generic [ref=e100]:
+                - list [ref=e101]:
+                  - listitem [ref=e102]: ✓ Access to basic offers
+                  - listitem [ref=e103]: ✓ 10% average discount
+                - link "Choose Plan" [ref=e105] [cursor=pointer]:
+                  - /url: /subscriptions
+                  - button "Choose Plan" [ref=e106]
+            - generic [ref=e107]:
+              - generic [ref=e108] [cursor=pointer]:
+                - generic [ref=e109]: Most Popular
+                - generic [ref=e110]: BOOM
+                - generic [ref=e111]:
+                  - generic [ref=e112]: ••••
+                  - generic [ref=e113]: ••••
+                  - generic [ref=e114]: ••••
+                  - generic [ref=e115]: ••••
+                - generic [ref=e116]:
+                  - generic [ref=e117]: PREMIUM
+                  - generic [ref=e118]: 29 BGN/mo
+              - generic [ref=e119]:
+                - list [ref=e120]:
+                  - listitem [ref=e121]: ✓ 30% average discount
+                  - listitem [ref=e122]: ✓ Priority support
+                  - listitem [ref=e123]: ✓ Exclusive offers
+                - link "Choose Plan" [ref=e125] [cursor=pointer]:
+                  - /url: /subscriptions
+                  - button "Choose Plan" [ref=e126]
+        - generic [ref=e128]:
+          - generic [ref=e129]:
+            - heading "What Our Customers Say" [level=2] [ref=e130]
+            - paragraph [ref=e131]: Thousands of happy customers saving with BoomCard every day
+          - generic [ref=e132]:
+            - paragraph [ref=e133]: No reviews yet
+            - paragraph [ref=e134]: Be the first to share your opinion
+            - button "Write the First Review" [ref=e135] [cursor=pointer]
+        - generic [ref=e137]:
+          - heading "Start Saving with BoomCard Today" [level=2] [ref=e138]
+          - paragraph [ref=e139]: Join thousands of users enjoying exclusive deals and offers at the best venues across Bulgaria
+          - generic [ref=e140]:
+            - link "Get Started" [ref=e141] [cursor=pointer]:
+              - /url: /register
+              - button "Get Started" [ref=e142]
+            - link "Browse Offers" [ref=e143] [cursor=pointer]:
+              - /url: /search
+              - button "Browse Offers" [ref=e144]
+            - link "Become a Partner" [ref=e145] [cursor=pointer]:
+              - /url: /partners#application
+              - button "Become a Partner" [ref=e146]
+    - contentinfo [ref=e147]:
+      - generic [ref=e148]:
+        - generic [ref=e149]:
+          - generic [ref=e150]:
+            - heading "BoomCard" [level=4] [ref=e152]
+            - paragraph [ref=e154]: Exclusive discounts for restaurants, hotels, spas, and experiences across Bulgaria.
+          - generic [ref=e155]:
+            - button "Product" [ref=e156]:
+              - heading "Product" [level=4] [ref=e157]
+            - list [ref=e159]:
+              - listitem [ref=e160]:
+                - link "Features" [ref=e161] [cursor=pointer]:
+                  - /url: /features
+              - listitem [ref=e162]:
+                - link "Pricing" [ref=e163] [cursor=pointer]:
+                  - /url: /pricing
+              - listitem [ref=e164]:
+                - link "Integrations" [ref=e165] [cursor=pointer]:
+                  - /url: /integrations
+          - generic [ref=e166]:
+            - button "Company" [ref=e167]:
+              - heading "Company" [level=4] [ref=e168]
+            - list [ref=e170]:
+              - listitem [ref=e171]:
+                - link "About" [ref=e172] [cursor=pointer]:
+                  - /url: /about
+              - listitem [ref=e173]:
+                - link "Contact" [ref=e174] [cursor=pointer]:
+                  - /url: /contact
+              - listitem [ref=e175]:
+                - link "Careers" [ref=e176] [cursor=pointer]:
+                  - /url: /careers
+          - generic [ref=e177]:
+            - button "Legal" [ref=e178]:
+              - heading "Legal" [level=4] [ref=e179]
+            - list [ref=e181]:
+              - listitem [ref=e182]:
+                - link "Privacy" [ref=e183] [cursor=pointer]:
+                  - /url: /privacy
+              - listitem [ref=e184]:
+                - link "Terms" [ref=e185] [cursor=pointer]:
+                  - /url: /terms
+              - listitem [ref=e186]:
+                - link "Security" [ref=e187] [cursor=pointer]:
+                  - /url: /security
+          - generic [ref=e188]:
+            - button "Follow Us" [ref=e189]:
+              - heading "Follow Us" [level=4] [ref=e190]
+            - generic [ref=e192]:
+              - link "Facebook" [ref=e193] [cursor=pointer]:
+                - /url: https://facebook.com/boomcard
+                - img [ref=e194]
+                - text: Facebook
+              - link "Instagram" [ref=e196] [cursor=pointer]:
+                - /url: https://instagram.com/boomcard
+                - img [ref=e197]
+                - text: Instagram
+              - link "LinkedIn" [ref=e199] [cursor=pointer]:
+                - /url: https://linkedin.com/company/boomcard
+                - img [ref=e200]
+                - text: LinkedIn
+              - link "Twitter" [ref=e202] [cursor=pointer]:
+                - /url: https://twitter.com/boomcard
+                - img [ref=e203]
+                - text: Twitter
+              - button "Share" [ref=e207] [cursor=pointer]:
+                - img [ref=e208]
+                - text: Share
+        - paragraph [ref=e215]: © 2025 BoomCard. All rights reserved.
+```

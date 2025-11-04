@@ -1,6 +1,8 @@
 import { Sticker, StickerScan, StickerLocation, VenueStickerConfig, CardType, ScanStatus, StickerStatus, LocationType, TransactionStatus, TransactionType, PaymentMethod } from '@prisma/client';
 import QRCode from 'qrcode';
 import { prisma } from '../lib/prisma';
+import { walletService } from './wallet.service';
+import { logger } from '../utils/logger';
 
 // ============================================
 // Interfaces
@@ -40,7 +42,9 @@ export interface ScanStickerData {
 
 export interface UploadReceiptData {
   scanId: string;
+  userId?: string;
   receiptImageUrl: string;
+  imageKey?: string;
   ocrData?: {
     amount?: number;
     date?: string;
@@ -457,8 +461,29 @@ class StickerService {
       },
     });
 
-    // TODO: Credit cashback to user's account (implement when wallet system is ready)
-    // TODO: Send notification to user
+    // Credit cashback to wallet
+    try {
+      await walletService.credit({
+        userId: scan.userId,
+        amount: scan.cashbackAmount,
+        type: 'CASHBACK_CREDIT',
+        description: `Cashback from sticker scan at ${updated.sticker.location.name}`,
+        stickerScanId: scan.id,
+        metadata: {
+          venueId: scan.venueId,
+          locationName: updated.sticker.location.name,
+          billAmount: scan.billAmount,
+          cardTier: scan.card?.type || 'STANDARD',
+        },
+      });
+
+      logger.info(`Credited ${scan.cashbackAmount} BGN cashback for scan ${scanId}`);
+    } catch (error) {
+      logger.error(`Failed to credit cashback for scan ${scanId}:`, error);
+      // Continue even if wallet credit fails - scan is still approved
+    }
+
+    // TODO: Send notification to user (implement in next phase)
 
     return updated;
   }
@@ -792,6 +817,56 @@ class StickerService {
         average: avgCashback,
         percentage: totalRevenue > 0 ? (totalCashback / totalRevenue) * 100 : 0,
       },
+    };
+  }
+
+  /**
+   * Get admin review statistics
+   */
+  async getAdminStats() {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    // Get counts for different statuses
+    const pending = await prisma.stickerScan.count({
+      where: {
+        status: ScanStatus.MANUAL_REVIEW,
+      },
+    });
+
+    const approvedToday = await prisma.stickerScan.count({
+      where: {
+        status: ScanStatus.APPROVED,
+        updatedAt: { gte: today },
+      },
+    });
+
+    const rejectedToday = await prisma.stickerScan.count({
+      where: {
+        status: ScanStatus.REJECTED,
+        updatedAt: { gte: today },
+      },
+    });
+
+    // Calculate average fraud score for pending scans
+    const pendingScans = await prisma.stickerScan.findMany({
+      where: {
+        status: ScanStatus.MANUAL_REVIEW,
+      },
+      select: {
+        fraudScore: true,
+      },
+    });
+
+    const avgFraudScore = pendingScans.length > 0
+      ? pendingScans.reduce((sum, scan) => sum + scan.fraudScore, 0) / pendingScans.length
+      : 0;
+
+    return {
+      pending,
+      approved: approvedToday,
+      rejected: rejectedToday,
+      avgFraudScore,
     };
   }
 }

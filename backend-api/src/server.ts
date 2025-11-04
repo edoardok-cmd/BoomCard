@@ -9,6 +9,8 @@ import rateLimit from 'express-rate-limit';
 // Import routers
 import authRouter from './routes/auth.routes';
 import paymentsRouter from './routes/payments.routes';
+import walletRouter from './routes/wallet.routes';
+import subscriptionsRouter from './routes/subscriptions.routes';
 import loyaltyRouter from './routes/loyalty.routes';
 import messagingRouter from './routes/messaging.routes';
 import bookingsRouter from './routes/bookings.routes';
@@ -21,6 +23,7 @@ import stickersRouter from './routes/stickers.routes';
 import receiptsRouter from './routes/receipts.routes';
 import receiptsEnhancedRouter from './routes/receipts.enhanced.routes';
 import webhooksRouter from './routes/webhooks.routes';
+import cardsRouter from './routes/cards.routes';
 
 // Import WebSocket handler
 import { initializeWebSocket } from './websocket/server';
@@ -117,6 +120,8 @@ app.get('/ready', async (req, res) => {
 app.use('/api/webhooks', webhooksRouter); // Webhooks (must be first for raw body)
 app.use('/api/auth', authRouter);
 app.use('/api/payments', paymentsRouter);
+app.use('/api/wallet', walletRouter);
+app.use('/api/subscriptions', subscriptionsRouter);
 app.use('/api/loyalty', loyaltyRouter);
 app.use('/api/messaging', messagingRouter);
 app.use('/api/bookings', bookingsRouter);
@@ -126,6 +131,7 @@ app.use('/api/offers', offersRouter);
 app.use('/api/integrations', integrationsRouter);
 app.use('/api/reviews', reviewsRouter);
 app.use('/api/stickers', stickersRouter);
+app.use('/api/cards', cardsRouter);
 // Enhanced receipts routes with fraud detection (mounted BEFORE base receipts to avoid conflicts)
 app.use('/api/receipts/v2', receiptsEnhancedRouter);
 app.use('/api/receipts', receiptsRouter);

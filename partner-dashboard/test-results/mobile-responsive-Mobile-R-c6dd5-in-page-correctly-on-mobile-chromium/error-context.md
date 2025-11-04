@@ -1,0 +1,60 @@
+# Page snapshot
+
+```yaml
+- generic [active] [ref=e1]:
+  - link "Skip to main content" [ref=e2] [cursor=pointer]:
+    - /url: "#main-content"
+  - generic [ref=e5]:
+    - link "BoomCard" [ref=e6] [cursor=pointer]:
+      - /url: /
+      - generic [ref=e7]: BoomCard
+    - heading "Welcome back" [level=1] [ref=e8]
+    - paragraph [ref=e9]: Sign in to your account to continue
+    - generic [ref=e10]:
+      - generic [ref=e11]:
+        - generic [ref=e12]: Email address
+        - textbox "Email address" [ref=e13]:
+          - /placeholder: your@email.com
+      - generic [ref=e14]:
+        - generic [ref=e15]: Password
+        - textbox "Password" [ref=e16]:
+          - /placeholder: ••••••••
+      - generic [ref=e17]:
+        - generic [ref=e18]:
+          - checkbox "Remember me" [ref=e19] [cursor=pointer]
+          - generic [ref=e20] [cursor=pointer]: Remember me
+        - link "Forgot password?" [ref=e21] [cursor=pointer]:
+          - /url: /forgot-password
+      - button "Sign In" [ref=e22] [cursor=pointer]
+    - generic [ref=e24]: or
+    - generic [ref=e25]:
+      - generic [ref=e28]:
+        - button "Продължаване с Google. Отваря се в нов раздел" [ref=e30] [cursor=pointer]:
+          - generic [ref=e32]:
+            - img [ref=e34]
+            - generic [ref=e41]: Продължаване с Google
+        - iframe
+      - button "Continue with Facebook" [ref=e42] [cursor=pointer]:
+        - img [ref=e43]
+        - text: Continue with Facebook
+    - paragraph [ref=e45]:
+      - text: Don't have an account?
+      - link "Sign up" [ref=e46] [cursor=pointer]:
+        - /url: /register
+    - generic [ref=e47]:
+      - paragraph [ref=e48]: Demo Access - Test Accounts
+      - paragraph [ref=e49]:
+        - strong [ref=e50]: "👤 User:"
+        - code [ref=e51]: demo@boomcard.bg
+        - text: /
+        - code [ref=e52]: demo123
+        - strong [ref=e53]: "🏢 Partner:"
+        - code [ref=e54]: partner@boomcard.bg
+        - text: /
+        - code [ref=e55]: partner123
+        - strong [ref=e56]: "⚡ Admin:"
+        - code [ref=e57]: admin@boomcard.bg
+        - text: /
+        - code [ref=e58]: admin123
+        - button "Fill User Account" [ref=e59] [cursor=pointer]
+```

@@ -2,13 +2,14 @@ import Stripe from 'stripe';
 import { AppError } from '../middleware/error.middleware';
 import { logger } from '../utils/logger';
 import { prisma } from '../lib/prisma';
+import { walletService } from './wallet.service';
 
 /**
  * Stripe Service for Payment Processing
  * Handles all Stripe operations: Payment Intents, Customers, Cards, Webhooks
  */
 class StripeService {
-  private stripe: Stripe;
+  public stripe: Stripe;
 
   constructor() {
     const apiKey = process.env.STRIPE_SECRET_KEY;
@@ -378,16 +379,139 @@ class StripeService {
    * Handle successful payment
    */
   private async handlePaymentSucceeded(paymentIntent: Stripe.PaymentIntent): Promise<void> {
-    // TODO: Update transaction status in database
-    logger.info(`Payment succeeded: ${paymentIntent.id} - ${paymentIntent.amount / 100} ${paymentIntent.currency}`);
+    logger.info(`Payment succeeded: ${paymentIntent.id}`);
+
+    const { userId, type } = paymentIntent.metadata;
+
+    if (!userId) {
+      logger.error('No userId in payment intent metadata');
+      return;
+    }
+
+    try {
+      // Create or update transaction
+      const existing = await prisma.transaction.findFirst({
+        where: { paymentIntentId: paymentIntent.id },
+      });
+
+      if (existing) {
+        await prisma.transaction.update({
+          where: { id: existing.id },
+          data: {
+            status: 'COMPLETED',
+          },
+        });
+      } else {
+        await prisma.transaction.create({
+          data: {
+            userId,
+            type: (type || 'PURCHASE') as any,
+            status: 'COMPLETED',
+            amount: paymentIntent.amount / 100,
+            finalAmount: paymentIntent.amount / 100,
+            currency: paymentIntent.currency.toUpperCase(),
+            paymentMethod: 'CARD',
+            stripePaymentId: paymentIntent.id,
+            paymentIntentId: paymentIntent.id,
+            metadata: JSON.stringify(paymentIntent.metadata),
+            completedAt: new Date(),
+          },
+        });
+      }
+
+      // If this is a wallet top-up, credit the wallet
+      if (type === 'TOP_UP') {
+        const amount = paymentIntent.amount / 100;
+
+        await walletService.credit({
+          userId,
+          amount,
+          type: 'TOP_UP',
+          description: 'Wallet top-up via card payment',
+          stripePaymentIntentId: paymentIntent.id,
+          metadata: { paymentIntent: paymentIntent.id },
+        });
+
+        // Update wallet transaction status
+        await prisma.walletTransaction.updateMany({
+          where: {
+            stripePaymentIntentId: paymentIntent.id,
+            status: 'PENDING',
+          },
+          data: {
+            status: 'COMPLETED',
+          },
+        });
+
+        logger.info(`Credited ${amount} BGN to wallet for user ${userId}`);
+      }
+
+      logger.info(`Transaction created/updated for payment ${paymentIntent.id}`);
+    } catch (error) {
+      logger.error(`Error handling payment success: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw error;
+    }
   }
 
   /**
    * Handle failed payment
    */
   private async handlePaymentFailed(paymentIntent: Stripe.PaymentIntent): Promise<void> {
-    // TODO: Update transaction status, notify user
     logger.warn(`Payment failed: ${paymentIntent.id}`);
+
+    const { userId, type } = paymentIntent.metadata;
+
+    if (!userId) return;
+
+    try {
+      // Update or create transaction with failed status
+      const existing = await prisma.transaction.findFirst({
+        where: { paymentIntentId: paymentIntent.id },
+      });
+
+      if (existing) {
+        await prisma.transaction.update({
+          where: { id: existing.id },
+          data: {
+            status: 'FAILED',
+          },
+        });
+      } else {
+        await prisma.transaction.create({
+          data: {
+            userId,
+            type: (type || 'PURCHASE') as any,
+            status: 'FAILED',
+            amount: paymentIntent.amount / 100,
+            finalAmount: paymentIntent.amount / 100,
+            currency: paymentIntent.currency.toUpperCase(),
+            paymentMethod: 'CARD',
+            stripePaymentId: paymentIntent.id,
+            paymentIntentId: paymentIntent.id,
+            metadata: JSON.stringify(paymentIntent.metadata),
+          },
+        });
+      }
+
+      // If wallet top-up, mark transaction as failed
+      if (type === 'TOP_UP') {
+        await prisma.walletTransaction.updateMany({
+          where: {
+            stripePaymentIntentId: paymentIntent.id,
+            status: 'PENDING',
+          },
+          data: {
+            status: 'FAILED',
+          },
+        });
+      }
+
+      // TODO: Send notification to user about failed payment
+
+      logger.info(`Transaction marked as failed for payment ${paymentIntent.id}`);
+    } catch (error) {
+      logger.error(`Error handling payment failure: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
   }
 
   /**
@@ -402,16 +526,122 @@ class StripeService {
    * Handle refund
    */
   private async handleRefund(charge: Stripe.Charge): Promise<void> {
-    // TODO: Update transaction status, credit wallet
     logger.info(`Refund processed: ${charge.id}`);
+
+    try {
+      // Find original transaction
+      const transaction = await prisma.transaction.findFirst({
+        where: { stripePaymentId: charge.payment_intent as string },
+      });
+
+      if (!transaction) {
+        logger.error(`No transaction found for charge ${charge.id}`);
+        return;
+      }
+
+      const refundAmount = charge.amount_refunded / 100;
+
+      // Create refund transaction
+      await prisma.transaction.create({
+        data: {
+          userId: transaction.userId,
+          type: 'REFUND',
+          status: 'COMPLETED',
+          amount: refundAmount,
+          finalAmount: refundAmount,
+          currency: charge.currency.toUpperCase(),
+          paymentMethod: 'CARD',
+          stripePaymentId: charge.id,
+          metadata: JSON.stringify({
+            originalTransaction: transaction.id,
+            chargeId: charge.id,
+          }),
+          completedAt: new Date(),
+        },
+      });
+
+      // Credit wallet if this was a wallet top-up
+      if (transaction.type === 'WALLET_TOPUP') {
+        await walletService.credit({
+          userId: transaction.userId,
+          amount: refundAmount,
+          type: 'REFUND',
+          description: `Refund for payment ${charge.payment_intent}`,
+          metadata: { chargeId: charge.id },
+        });
+      }
+
+      logger.info(`Refund transaction created for ${refundAmount} BGN`);
+    } catch (error) {
+      logger.error(`Error handling refund: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
   }
 
   /**
    * Handle subscription update
    */
   private async handleSubscriptionUpdated(subscription: Stripe.Subscription): Promise<void> {
-    // TODO: Update subscription in database
-    logger.info(`Subscription updated: ${subscription.id} - ${subscription.status}`);
+    logger.info(`Subscription updated: ${subscription.id}`);
+
+    const userId = subscription.metadata.userId;
+    if (!userId) {
+      logger.error('No userId in subscription metadata');
+      return;
+    }
+
+    try {
+      // Map Stripe status to our status
+      const statusMap: Record<string, any> = {
+        'active': 'ACTIVE',
+        'past_due': 'PAST_DUE',
+        'canceled': 'CANCELLED',
+        'incomplete': 'INCOMPLETE',
+        'incomplete_expired': 'INCOMPLETE_EXPIRED',
+        'trialing': 'TRIALING',
+        'unpaid': 'UNPAID',
+        'paused': 'PAUSED',
+      };
+
+      // Determine plan from price ID
+      const priceId = subscription.items.data[0]?.price.id;
+      let plan: 'STANDARD' | 'PREMIUM' | 'PLATINUM' = 'STANDARD';
+
+      // TODO: Map price IDs to plans based on your Stripe configuration
+      // For now, use metadata
+      if (subscription.metadata.plan) {
+        plan = subscription.metadata.plan as any;
+      }
+
+      // Update or create subscription
+      await prisma.subscription.upsert({
+        where: { stripeSubscriptionId: subscription.id },
+        create: {
+          userId,
+          plan,
+          status: statusMap[subscription.status] || 'ACTIVE',
+          stripeSubscriptionId: subscription.id,
+          stripePriceId: priceId,
+          stripeCustomerId: subscription.customer as string,
+          currentPeriodStart: new Date(subscription.current_period_start * 1000),
+          currentPeriodEnd: new Date(subscription.current_period_end * 1000),
+          cancelAtPeriodEnd: subscription.cancel_at_period_end,
+          cancelAt: subscription.cancel_at ? new Date(subscription.cancel_at * 1000) : null,
+          trialStart: subscription.trial_start ? new Date(subscription.trial_start * 1000) : null,
+          trialEnd: subscription.trial_end ? new Date(subscription.trial_end * 1000) : null,
+        },
+        update: {
+          status: statusMap[subscription.status] || 'ACTIVE',
+          currentPeriodStart: new Date(subscription.current_period_start * 1000),
+          currentPeriodEnd: new Date(subscription.current_period_end * 1000),
+          cancelAtPeriodEnd: subscription.cancel_at_period_end,
+          cancelAt: subscription.cancel_at ? new Date(subscription.cancel_at * 1000) : null,
+        },
+      });
+
+      logger.info(`Subscription updated in database for user ${userId}`);
+    } catch (error) {
+      logger.error(`Error handling subscription update: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
   }
 
   /**
