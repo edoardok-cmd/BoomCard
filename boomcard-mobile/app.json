@@ -18,6 +18,10 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "bg.boomcard.mobile",
+      "associatedDomains": [
+        "applinks:app.boomcard.bg",
+        "webcredentials:app.boomcard.bg"
+      ],
       "infoPlist": {
         "NSCameraUsageDescription": "BoomCard needs camera access to scan receipts and QR codes",
         "NSPhotoLibraryUsageDescription": "BoomCard needs photo library access to upload receipt images",
@@ -39,12 +43,34 @@
         "READ_EXTERNAL_STORAGE",
         "WRITE_EXTERNAL_STORAGE"
       ],
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "https",
+              "host": "app.boomcard.bg",
+              "pathPrefix": "/payment-result"
+            },
+            {
+              "scheme": "boomcard",
+              "host": "payment-result"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        }
+      ],
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
+    "scheme": "boomcard",
     "plugins": [
       "expo-barcode-scanner",
       "expo-secure-store",
