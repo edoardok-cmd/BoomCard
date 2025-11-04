@@ -3,6 +3,7 @@ import styled from 'styled-components';
 import { useNavigate } from 'react-router-dom';
 import { StickerScanner, StickerQRData } from '../components/feature/StickerScanner';
 import Webcam from 'react-webcam';
+import { ocrService, ReceiptData } from '../services/ocr.service';
 
 // ============================================
 // Types
@@ -374,6 +375,9 @@ export const StickerScanFlowPage: React.FC = () => {
   });
   const [amountInput, setAmountInput] = useState('');
   const [photoDataUrl, setPhotoDataUrl] = useState<string | null>(null);
+  const [ocrData, setOcrData] = useState<ReceiptData | null>(null);
+  const [ocrProgress, setOcrProgress] = useState<string>('');
+  const [isProcessingOCR, setIsProcessingOCR] = useState(false);
   const webcamRef = React.useRef<Webcam>(null);
 
   // Get GPS location on mount
@@ -439,9 +443,36 @@ export const StickerScanFlowPage: React.FC = () => {
     if (!photoDataUrl) return;
 
     setCurrentStep('processing');
+    setIsProcessingOCR(true);
 
     try {
-      // Step 1: Initiate scan
+      // Step 1: Process receipt with OCR
+      setOcrProgress('Initializing OCR...');
+      await ocrService.initialize('bul+eng');
+
+      setOcrProgress('Analyzing receipt...');
+
+      // Convert data URL to blob for OCR
+      const response = await fetch(photoDataUrl);
+      const blob = await response.blob();
+
+      const ocrResult = await ocrService.recognizeText(blob);
+      setOcrData(ocrResult);
+      setOcrProgress('OCR complete!');
+
+      console.log('OCR Result:', ocrResult);
+
+      // Validate OCR amount against user input
+      let amountToUse = scanData.billAmount || 0;
+      if (ocrResult.totalAmount && scanData.billAmount) {
+        const difference = Math.abs(ocrResult.totalAmount - scanData.billAmount);
+        if (difference > 5) {
+          console.warn(`OCR amount (${ocrResult.totalAmount}) differs from user input (${scanData.billAmount}) by ${difference} BGN`);
+        }
+      }
+
+      // Step 2: Initiate scan
+      setOcrProgress('Submitting scan...');
       const scanResponse = await fetch('/api/stickers/scan', {
         method: 'POST',
         headers: {
@@ -451,7 +482,7 @@ export const StickerScanFlowPage: React.FC = () => {
         body: JSON.stringify({
           stickerId: scanData.qrData?.stickerId,
           cardId: 'user-card-id', // TODO: Get from user context
-          billAmount: scanData.billAmount,
+          billAmount: amountToUse,
           latitude: scanData.latitude,
           longitude: scanData.longitude,
         }),
@@ -463,7 +494,8 @@ export const StickerScanFlowPage: React.FC = () => {
         throw new Error(scanResult.error || 'Failed to scan sticker');
       }
 
-      // Step 2: Upload receipt photo
+      // Step 3: Upload receipt photo with OCR data
+      setOcrProgress('Uploading receipt...');
       // TODO: Upload to cloud storage first, then send URL
       const receiptImageUrl = photoDataUrl; // For now, using data URL
 
@@ -476,8 +508,11 @@ export const StickerScanFlowPage: React.FC = () => {
         body: JSON.stringify({
           receiptImageUrl,
           ocrData: {
-            amount: scanData.billAmount,
-            confidence: 1.0, // Will be replaced by actual OCR
+            amount: ocrResult.totalAmount,
+            date: ocrResult.date,
+            merchantName: ocrResult.merchantName,
+            confidence: ocrResult.confidence,
+            rawText: ocrResult.rawText,
           },
         }),
       });
@@ -497,12 +532,17 @@ export const StickerScanFlowPage: React.FC = () => {
         receiptImageUrl,
       }));
 
+      setOcrProgress('Complete!');
       setCurrentStep('complete');
 
     } catch (error: any) {
       console.error('Scan error:', error);
       alert(error.message || 'Failed to process scan');
+      setOcrProgress('');
+      setIsProcessingOCR(false);
       setCurrentStep('take-photo');
+    } finally {
+      setIsProcessingOCR(false);
     }
   };
 
@@ -670,9 +710,16 @@ export const StickerScanFlowPage: React.FC = () => {
             <Spinner />
             <StepTitle>Processing Your Scan</StepTitle>
             <StepDescription>
-              We're validating your receipt and calculating your cashback.<br />
-              This usually takes a few seconds...
+              {ocrProgress ? ocrProgress : 'Processing receipt...'}
+              <br />
+              {isProcessingOCR && 'Reading receipt text...'}
             </StepDescription>
+            {ocrData && (
+              <StatusMessage $type="info">
+                OCR Confidence: {(ocrData.confidence * 100).toFixed(1)}%
+                {ocrData.totalAmount && ` | Detected Amount: ${ocrData.totalAmount.toFixed(2)} BGN`}
+              </StatusMessage>
+            )}
           </ProcessingContainer>
         )}
 
