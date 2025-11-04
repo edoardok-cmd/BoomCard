@@ -33,15 +33,16 @@ import { errorHandler } from './middleware/error.middleware';
 import { logger } from './utils/logger';
 import { prisma } from './lib/prisma';
 import SentryConfig from './config/sentry.config';
+import { setupSwagger } from './config/swagger.config';
 
 // Load environment variables
 dotenv.config();
 
-const app: Application = express();
+const app = express();
 const httpServer = createServer(app);
 
 // Initialize Sentry for error tracking (must be first)
-SentryConfig.init(app);
+SentryConfig.init(app as any);
 
 // Parse CORS_ORIGIN to support multiple origins
 const corsOrigins = process.env.CORS_ORIGIN
@@ -125,6 +126,9 @@ app.get('/ready', async (req, res) => {
     });
   }
 });
+
+// API Documentation (Swagger)
+setupSwagger(app);
 
 // API Routes
 app.use('/api/webhooks', webhooksRouter); // Webhooks (must be first for raw body)

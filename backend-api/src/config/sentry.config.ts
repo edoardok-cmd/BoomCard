@@ -100,7 +100,7 @@ export function initSentry(app: Express): void {
         }
 
         // Remove sensitive query params
-        if (event.request.query_string) {
+        if (event.request.query_string && typeof event.request.query_string === 'string') {
           event.request.query_string = event.request.query_string
             .replace(/token=[^&]*/g, 'token=[REDACTED]')
             .replace(/password=[^&]*/g, 'password=[REDACTED]');
@@ -146,7 +146,7 @@ export function getSentryTracingHandler() {
  * Get Sentry error handler middleware
  * Must be used after all other middleware and routes
  */
-export function getSentryErrorHandler() {
+export function getSentryErrorHandler(): any {
   return Sentry.Handlers.errorHandler({
     shouldHandleError(error) {
       // Only send server errors (5xx)
