@@ -1,0 +1,170 @@
+# Render Blueprint for BoomCard Backend API
+# Documentation: https://render.com/docs/blueprint-spec
+
+services:
+  # Main Backend API Service
+  - type: web
+    name: boomcard-api
+    runtime: node
+    plan: starter # Change to 'standard' or 'pro' for production
+    region: frankfurt # EU region for GDPR compliance
+    buildCommand: npm ci && npx prisma generate && npm run build
+    startCommand: npx prisma migrate deploy && npm start
+    healthCheckPath: /health
+
+    # Environment Variables
+    envVars:
+      - key: NODE_ENV
+        value: production
+
+      - key: PORT
+        value: 3000
+
+      - key: DATABASE_URL
+        fromDatabase:
+          name: boomcard-postgres
+          property: connectionString
+
+      - key: REDIS_URL
+        fromService:
+          name: boomcard-redis
+          type: redis
+          property: connectionString
+
+      # Secrets (set these in Render Dashboard)
+      - key: JWT_SECRET
+        generateValue: true
+
+      - key: REFRESH_TOKEN_SECRET
+        generateValue: true
+
+      - key: STRIPE_SECRET_KEY
+        sync: false # Must be set manually in dashboard
+
+      - key: STRIPE_PUBLISHABLE_KEY
+        sync: false
+
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+
+      - key: AWS_ACCESS_KEY_ID
+        sync: false
+
+      - key: AWS_SECRET_ACCESS_KEY
+        sync: false
+
+      - key: AWS_REGION
+        value: eu-west-1
+
+      - key: AWS_S3_BUCKET
+        value: boomcard-receipts-prod
+
+      - key: CORS_ORIGIN
+        value: https://boomcard.vercel.app
+
+      - key: SENDGRID_API_KEY
+        sync: false
+
+      - key: SENDGRID_FROM_EMAIL
+        value: noreply@boomcard.bg
+
+      - key: SENTRY_DSN
+        sync: false
+
+      - key: LOG_LEVEL
+        value: info
+
+    # Scaling Configuration
+    autoDeploy: true
+
+    # Disk for temporary file uploads
+    disk:
+      name: temp-uploads
+      mountPath: /tmp/uploads
+      sizeGB: 1
+
+    # Health Check Configuration
+    healthCheckPath: /health
+    healthCheckInterval: 30 # seconds
+    healthCheckTimeout: 10 # seconds
+    healthCheckUnhealthyThreshold: 3
+    healthCheckHealthyThreshold: 2
+
+  # Redis Cache Service
+  - type: redis
+    name: boomcard-redis
+    plan: starter # 25MB, suitable for caching
+    maxmemoryPolicy: allkeys-lru # Evict least recently used keys
+    region: frankfurt
+
+databases:
+  # PostgreSQL Database
+  - name: boomcard-postgres
+    databaseName: boomcard
+    user: boomcard_user
+    plan: starter # 256MB RAM, 1GB Storage
+    region: frankfurt
+
+    # Automatic backups
+    ipAllowList: [] # Empty = allow all. Restrict in production.
+
+    # Database version
+    postgresMajorVersion: 15
+
+# Cron Jobs (Optional - requires separate service)
+# Uncomment if you need scheduled tasks
+# - type: cron
+#   name: boomcard-cron-jobs
+#   runtime: node
+#   schedule: "0 0 * * *" # Daily at midnight
+#   buildCommand: npm ci && npm run build
+#   startCommand: npm run cron:daily
+
+# Background Worker (Optional)
+# Uncomment if you need background job processing
+# - type: worker
+#   name: boomcard-worker
+#   runtime: node
+#   buildCommand: npm ci && npm run build
+#   startCommand: npm run worker:start
+#   envVars:
+#     - key: DATABASE_URL
+#       fromDatabase:
+#         name: boomcard-postgres
+#         property: connectionString
+
+# Notes:
+# 1. After deployment, manually set sensitive environment variables in Render Dashboard:
+#    - STRIPE_SECRET_KEY
+#    - STRIPE_PUBLISHABLE_KEY
+#    - STRIPE_WEBHOOK_SECRET
+#    - AWS_ACCESS_KEY_ID
+#    - AWS_SECRET_ACCESS_KEY
+#    - SENDGRID_API_KEY
+#    - SENTRY_DSN
+#
+# 2. Database migrations run automatically on each deployment via:
+#    npx prisma migrate deploy
+#
+# 3. Scale up to 'standard' or 'pro' plan for production workloads
+#
+# 4. For production, restrict database ipAllowList to Render IPs only
+#
+# 5. Consider adding a CDN (Cloudflare) in front of the API for:
+#    - DDoS protection
+#    - Rate limiting
+#    - Geographic load balancing
+#
+# 6. Monitor costs:
+#    - Starter plan: ~$7/month for web service
+#    - Starter database: ~$7/month
+#    - Redis: ~$10/month
+#    - Total: ~$24/month minimum
+#
+# 7. Webhooks setup:
+#    - Stripe webhook URL: https://boomcard-api.onrender.com/api/webhooks/stripe
+#    - Remember to add this URL in Stripe Dashboard
+#
+# 8. For zero-downtime deployments:
+#    - Use 'standard' plan or higher
+#    - Enable "zero-downtime deploys" in Render Dashboard

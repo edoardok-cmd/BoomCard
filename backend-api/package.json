@@ -38,6 +38,8 @@
     "@aws-sdk/client-s3": "^3.922.0",
     "@aws-sdk/s3-request-presigner": "^3.922.0",
     "@prisma/client": "^6.18.0",
+    "@sentry/node": "^7.109.0",
+    "@sentry/profiling-node": "^7.109.0",
     "@stripe/stripe-js": "^8.3.0",
     "@types/bcrypt": "^6.0.0",
     "@types/cors": "^2.8.17",

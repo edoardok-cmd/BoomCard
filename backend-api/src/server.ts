@@ -32,12 +32,16 @@ import { initializeWebSocket } from './websocket/server';
 import { errorHandler } from './middleware/error.middleware';
 import { logger } from './utils/logger';
 import { prisma } from './lib/prisma';
+import SentryConfig from './config/sentry.config';
 
 // Load environment variables
 dotenv.config();
 
 const app: Application = express();
 const httpServer = createServer(app);
+
+// Initialize Sentry for error tracking (must be first)
+SentryConfig.init(app);
 
 // Parse CORS_ORIGIN to support multiple origins
 const corsOrigins = process.env.CORS_ORIGIN
@@ -70,6 +74,12 @@ app.use('/api/webhooks/stripe', express.raw({ type: 'application/json' }));
 // Body parsing middleware
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// Sentry request tracking (must be after body parsing)
+if (process.env.NODE_ENV === 'production' && process.env.SENTRY_DSN) {
+  app.use(SentryConfig.requestHandler());
+  app.use(SentryConfig.tracingHandler());
+}
 
 // Rate limiting - more lenient for development
 const limiter = rateLimit({
@@ -144,6 +154,11 @@ app.use('*', (req, res) => {
   });
 });
 
+// Sentry error handler (must be before general error handler)
+if (process.env.NODE_ENV === 'production' && process.env.SENTRY_DSN) {
+  app.use(SentryConfig.errorHandler());
+}
+
 // Error handling middleware (must be last)
 app.use(errorHandler);
 
@@ -175,16 +190,28 @@ async function startServer() {
 startServer();
 
 // Graceful shutdown
-process.on('SIGTERM', () => {
+process.on('SIGTERM', async () => {
   logger.info('SIGTERM signal received: closing HTTP server');
+
+  // Flush Sentry events before shutdown
+  if (process.env.NODE_ENV === 'production' && process.env.SENTRY_DSN) {
+    await SentryConfig.flush(2000);
+  }
+
   httpServer.close(() => {
     logger.info('HTTP server closed');
     process.exit(0);
   });
 });
 
-process.on('SIGINT', () => {
+process.on('SIGINT', async () => {
   logger.info('SIGINT signal received: closing HTTP server');
+
+  // Flush Sentry events before shutdown
+  if (process.env.NODE_ENV === 'production' && process.env.SENTRY_DSN) {
+    await SentryConfig.flush(2000);
+  }
+
   httpServer.close(() => {
     logger.info('HTTP server closed');
     process.exit(0);
