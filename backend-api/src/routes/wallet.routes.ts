@@ -1,7 +1,6 @@
 import { Router, Response } from 'express';
 import { authenticate, AuthRequest } from '../middleware/auth.middleware';
 import { walletService } from '../services/wallet.service';
-import { stripeService } from '../services/stripe.service';
 import { asyncHandler } from '../utils/asyncHandler';
 import { z } from 'zod';
 import { PrismaClient } from '@prisma/client';
@@ -43,54 +42,20 @@ router.get('/transactions', asyncHandler(async (req: AuthRequest, res: Response)
 
 /**
  * POST /api/wallet/topup
- * Top up wallet with card payment
+ * Top up wallet with Paysera payment
+ * NOTE: This endpoint redirects to Paysera payment gateway
+ * Use /api/payments/create for direct payment creation
  */
-const topUpSchema = z.object({
-  amount: z.number().positive().max(10000),
-  paymentMethodId: z.string().optional(),
-});
-
 router.post('/topup', asyncHandler(async (req: AuthRequest, res: Response) => {
   const userId = req.user!.id;
-  const userEmail = req.user!.email;
-  const { amount } = topUpSchema.parse(req.body);
 
-  // Create Stripe payment intent
-  const paymentIntent = await stripeService.createPaymentIntent({
-    userId,
-    email: userEmail,
-    amount,
-    currency: 'bgn',
-    description: 'Wallet top-up',
-    metadata: {
-      type: 'TOP_UP',
-      userId,
-    },
-  });
-
-  // Create pending transaction
-  const wallet = await walletService.getOrCreateWallet(userId);
-  const transaction = await prisma.walletTransaction.create({
-    data: {
-      walletId: wallet.id,
-      type: 'TOP_UP',
-      amount,
-      balanceBefore: wallet.balance,
-      balanceAfter: wallet.balance, // Will update on webhook
-      status: 'PENDING',
-      description: 'Wallet top-up',
-      stripePaymentIntentId: paymentIntent.paymentIntentId,
-    },
-  });
-
-  res.json({
-    paymentIntent: {
-      id: paymentIntent.paymentIntentId,
-      clientSecret: paymentIntent.clientSecret,
-      amount: paymentIntent.amount,
-      currency: paymentIntent.currency,
-    },
-    transaction,
+  // Wallet top-ups are now handled by Paysera payment gateway
+  // Redirect to /api/payments/create endpoint
+  res.status(308).json({
+    success: false,
+    message: 'Wallet top-ups are now handled by /api/payments/create endpoint',
+    redirectTo: '/api/payments/create',
+    instructions: 'Please use the Paysera payment endpoint to top up your wallet',
   });
 }));
 

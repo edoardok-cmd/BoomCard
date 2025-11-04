@@ -26,7 +26,6 @@ const ProfilePage = lazy(() => import('./pages/ProfilePage'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 const AnalyticsPage = lazy(() => import('./pages/AnalyticsPage'));
 const SearchPage = lazy(() => import('./pages/SearchPage'));
-const ComponentsPage = lazy(() => import('./pages/ComponentsPage'));
 const CategoryListingPage = lazy(() => import('./pages/CategoryListingPage'));
 const VenueDetailPage = lazy(() => import('./pages/VenueDetailPage'));
 const PartnersPage = lazy(() => import('./pages/PartnersPage'));
@@ -123,9 +122,6 @@ const AdminDashboardPage = lazy(() => import('./pages/AdminDashboardPage'));
 const AdminOffersPage = lazy(() => import('./pages/AdminOffersPage'));
 const AdminScanReviewPage = lazy(() => import('./pages/AdminScanReviewPage'));
 
-// Demo pages
-const ReceiptScannerDemoPage = lazy(() => import('./pages/ReceiptScannerDemoPage'));
-
 // Receipt pages
 const ReceiptsPage = lazy(() => import('./pages/ReceiptsPage'));
 const ReceiptDetailPage = lazy(() => import('./pages/ReceiptDetailPage'));
@@ -204,8 +200,6 @@ function App() {
                     <Route path="search" element={<SearchPage />} />
                     <Route path="nearby" element={<NearbyOffersPage />} />
                     <Route path="rewards" element={<RewardsPage />} />
-                    <Route path="components" element={<ComponentsPage />} />
-                    <Route path="receipt-scanner" element={<ReceiptScannerDemoPage />} />
                     <Route
                       path="receipts"
                       element={
