@@ -1,41 +1,32 @@
 services:
-  # BoomCard Backend API
   - type: web
-    name: boomcard-api
+    name: boomcard-backend
     env: node
-    region: oregon
-    plan: free
-    buildCommand: npm install && npm run build
-    startCommand: npm run deploy
+    region: frankfurt
+    plan: starter
+    rootDirectory: ./backend-api
+    buildCommand: npm ci && npx prisma generate && npm run build
+    startCommand: npx prisma migrate deploy && npm start
+    healthCheckPath: /health
     envVars:
       - key: NODE_ENV
         value: production
-      - key: PORT
-        value: 10000
       - key: DATABASE_URL
         fromDatabase:
-          name: boomcard-db
+          name: boomcard-postgres
           property: connectionString
       - key: JWT_SECRET
         generateValue: true
-      - key: JWT_REFRESH_SECRET
+      - key: REFRESH_TOKEN_SECRET
         generateValue: true
-      - key: JWT_EXPIRES_IN
-        value: 1h
-      - key: JWT_REFRESH_EXPIRES_IN
-        value: 7d
-      - key: CORS_ORIGIN
-        sync: false
-      - key: STRIPE_SECRET_KEY
-        sync: false
-      - key: STRIPE_PUBLISHABLE_KEY
-        sync: false
-      - key: STRIPE_WEBHOOK_SECRET
-        sync: false
-    healthCheckPath: /health
+      - key: SESSION_SECRET
+        generateValue: true
+    autoDeploy: true
 
 databases:
-  - name: boomcard-db
+  - name: boomcard-postgres
     databaseName: boomcard_production
-    plan: free
-    region: oregon
+    user: boomcard
+    plan: starter
+    region: frankfurt
+    postgresMajorVersion: 14
