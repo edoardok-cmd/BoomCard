@@ -7,8 +7,35 @@ import { logger } from '../utils/logger';
 const router = Router();
 
 /**
- * POST /api/auth/register
- * Register a new user
+ * @swagger
+ * /api/auth/register:
+ *   post:
+ *     summary: Register a new user
+ *     tags: [Authentication]
+ *     description: Create a new user account with email and password
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/RegisterRequest'
+ *           example:
+ *             email: newuser@boomcard.bg
+ *             password: SecurePass123!
+ *             firstName: John
+ *             lastName: Doe
+ *             phone: "+359888123456"
+ *     responses:
+ *       201:
+ *         description: User registered successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/AuthResponse'
+ *       400:
+ *         $ref: '#/components/responses/ValidationError'
+ *       500:
+ *         $ref: '#/components/responses/ServerError'
  */
 router.post(
   '/register',
@@ -48,8 +75,34 @@ router.post(
 );
 
 /**
- * POST /api/auth/login
- * Login user
+ * @swagger
+ * /api/auth/login:
+ *   post:
+ *     summary: Login user
+ *     tags: [Authentication]
+ *     description: Authenticate user and receive JWT tokens
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/LoginRequest'
+ *           example:
+ *             email: user@boomcard.bg
+ *             password: SecurePass123!
+ *     responses:
+ *       200:
+ *         description: Login successful
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/AuthResponse'
+ *       400:
+ *         $ref: '#/components/responses/ValidationError'
+ *       401:
+ *         $ref: '#/components/responses/UnauthorizedError'
+ *       500:
+ *         $ref: '#/components/responses/ServerError'
  */
 router.post(
   '/login',
