@@ -1,7 +1,6 @@
-import { PrismaClient, Sticker, StickerScan, StickerLocation, VenueStickerConfig, CardType, ScanStatus, StickerStatus, LocationType } from '@prisma/client';
+import { Sticker, StickerScan, StickerLocation, VenueStickerConfig, CardType, ScanStatus, StickerStatus, LocationType, TransactionStatus, TransactionType, PaymentMethod } from '@prisma/client';
 import QRCode from 'qrcode';
-
-const prisma = new PrismaClient();
+import { prisma } from '../lib/prisma';
 
 // ============================================
 // Interfaces
@@ -153,7 +152,7 @@ class StickerService {
         qrCode: qrCodeImage,
         locationType: location.locationType,
         status: StickerStatus.PENDING,
-        metadata: { qrData },
+        metadata: JSON.stringify({ qrData }),
       },
       include: {
         venue: true,
@@ -286,8 +285,8 @@ class StickerService {
       distance = this.calculateDistance(
         latitude,
         longitude,
-        sticker.venue.lat,
-        sticker.venue.lng
+        sticker.venue.latitude,
+        sticker.venue.longitude
       );
     }
 
@@ -314,7 +313,7 @@ class StickerService {
         longitude,
         distance,
         fraudScore: fraudCheck.fraudScore,
-        fraudReasons: fraudCheck.fraudReasons,
+        fraudReasons: JSON.stringify(fraudCheck.fraudReasons),
         status: ScanStatus.PENDING,
         ipAddress,
         userAgent,
@@ -422,17 +421,19 @@ class StickerService {
         userId: scan.userId,
         venueId: scan.venueId,
         cardId: scan.cardId,
+        type: TransactionType.PURCHASE,
+        paymentMethod: PaymentMethod.CARD,
         amount: scan.billAmount,
         discount: scan.cashbackPercent,
         discountAmount: scan.cashbackAmount,
         finalAmount: scan.billAmount - scan.cashbackAmount,
         currency: 'BGN',
-        status: 'COMPLETED',
-        metadata: {
+        status: TransactionStatus.COMPLETED,
+        metadata: JSON.stringify({
           scanId: scan.id,
           stickerId: scan.stickerId,
           source: 'STICKER_SCAN',
-        },
+        }),
       },
     });
 

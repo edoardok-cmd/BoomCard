@@ -4,6 +4,7 @@ import { v4 as uuid } from 'uuid';
 import { prisma } from '../lib/prisma';
 import { AppError } from '../middleware/error.middleware';
 import { logger } from '../utils/logger';
+import { UserStatus } from '@prisma/client';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'fallback-secret-for-dev';
 const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'fallback-refresh-secret';
@@ -63,7 +64,7 @@ export class AuthService {
         lastName,
         phone,
         role: 'USER',
-        status: 'PENDING_VERIFICATION',
+        status: UserStatus.PENDING_VERIFICATION,
       },
       select: {
         id: true,

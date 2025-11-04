@@ -1,9 +1,8 @@
-import { PrismaClient, Review, ReviewStatus, Prisma } from '@prisma/client';
+import { Review, ReviewStatus, Prisma } from '@prisma/client';
 import { AppError } from '../middleware/error.middleware';
 import { isReviewCommentAppropriate } from '../utils/profanity-filter';
 import { logger } from '../utils/logger';
-
-const prisma = new PrismaClient();
+import { prisma } from '../lib/prisma';
 
 export interface CreateReviewDTO {
   partnerId: string;

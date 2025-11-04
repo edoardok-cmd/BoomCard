@@ -18,6 +18,9 @@ import offersRouter from './routes/offers.routes';
 import integrationsRouter from './routes/integrations.routes';
 import reviewsRouter from './routes/reviews.routes';
 import stickersRouter from './routes/stickers.routes';
+import receiptsRouter from './routes/receipts.routes';
+import receiptsEnhancedRouter from './routes/receipts.enhanced.routes';
+import webhooksRouter from './routes/webhooks.routes';
 
 // Import WebSocket handler
 import { initializeWebSocket } from './websocket/server';
@@ -25,6 +28,7 @@ import { initializeWebSocket } from './websocket/server';
 // Import middleware
 import { errorHandler } from './middleware/error.middleware';
 import { logger } from './utils/logger';
+import { prisma } from './lib/prisma';
 
 // Load environment variables
 dotenv.config();
@@ -56,6 +60,10 @@ app.use(cors({
   credentials: true,
 }));
 
+// Stripe webhooks need raw body for signature verification
+// IMPORTANT: This must come BEFORE express.json()
+app.use('/api/webhooks/stripe', express.raw({ type: 'application/json' }));
+
 // Body parsing middleware
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
@@ -85,7 +93,28 @@ app.get('/health', (req, res) => {
   });
 });
 
+// Readiness check (includes database connectivity)
+app.get('/ready', async (req, res) => {
+  try {
+    // Check database connection
+    await prisma.$queryRaw`SELECT 1`;
+
+    res.json({
+      status: 'ready',
+      database: 'connected',
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    res.status(503).json({
+      status: 'not ready',
+      database: 'disconnected',
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
 // API Routes
+app.use('/api/webhooks', webhooksRouter); // Webhooks (must be first for raw body)
 app.use('/api/auth', authRouter);
 app.use('/api/payments', paymentsRouter);
 app.use('/api/loyalty', loyaltyRouter);
@@ -97,6 +126,9 @@ app.use('/api/offers', offersRouter);
 app.use('/api/integrations', integrationsRouter);
 app.use('/api/reviews', reviewsRouter);
 app.use('/api/stickers', stickersRouter);
+// Enhanced receipts routes with fraud detection (mounted BEFORE base receipts to avoid conflicts)
+app.use('/api/receipts/v2', receiptsEnhancedRouter);
+app.use('/api/receipts', receiptsRouter);
 
 // 404 handler
 app.use('*', (req, res) => {
@@ -112,13 +144,29 @@ app.use(errorHandler);
 // Initialize WebSocket server
 initializeWebSocket(io);
 
-// Start HTTP server
-httpServer.listen(PORT, () => {
-  logger.info(`🚀 BoomCard API Server started on port ${PORT}`);
-  logger.info(`📡 WebSocket server ready on port ${PORT}`);
-  logger.info(`🌍 Environment: ${process.env.NODE_ENV}`);
-  logger.info(`🔗 CORS enabled for: ${process.env.CORS_ORIGIN}`);
-});
+// Start HTTP server with database connectivity check
+async function startServer() {
+  try {
+    // Test database connectivity before starting server
+    logger.info('🔍 Testing database connection...');
+    await prisma.$queryRaw`SELECT 1`;
+    logger.info('✅ Database connected successfully');
+
+    // Bind to 0.0.0.0 to accept external connections (required for Render deployment)
+    httpServer.listen(Number(PORT), '0.0.0.0', () => {
+      logger.info(`🚀 BoomCard API Server started on port ${PORT}`);
+      logger.info(`📡 WebSocket server ready on port ${PORT}`);
+      logger.info(`🌍 Environment: ${process.env.NODE_ENV}`);
+      logger.info(`🔗 CORS enabled for: ${process.env.CORS_ORIGIN}`);
+    });
+  } catch (error) {
+    logger.error('❌ Failed to connect to database:', error);
+    logger.error('⚠️  Server startup aborted');
+    process.exit(1);
+  }
+}
+
+startServer();
 
 // Graceful shutdown
 process.on('SIGTERM', () => {

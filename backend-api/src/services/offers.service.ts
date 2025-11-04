@@ -1,6 +1,5 @@
-import { PrismaClient, Offer, OfferStatus, Prisma } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import { Offer, OfferStatus, Prisma } from '@prisma/client';
+import { prisma } from '../lib/prisma';
 
 export interface OfferFilters {
   category?: string;
