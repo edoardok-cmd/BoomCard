@@ -129,15 +129,16 @@ router.post(
       const transaction = await prisma.transaction.create({
         data: {
           userId: user.id,
-          type: TransactionType.PAYMENT,
+          type: TransactionType.WALLET_TOPUP,
           amount: amount,
           currency: currency,
           status: TransactionStatus.PENDING,
+          paymentMethod: 'BANK_TRANSFER',
           description: description || 'Payment',
-          metadata: {
+          metadata: JSON.stringify({
             orderId,
             ...metadata,
-          },
+          }),
         },
       });
 
@@ -163,14 +164,15 @@ router.post(
       });
 
       // Update transaction with payment details
+      const existingMetadata = transaction.metadata ? JSON.parse(transaction.metadata as string) : {};
       await prisma.transaction.update({
         where: { id: transaction.id },
         data: {
-          metadata: {
-            ...transaction.metadata,
+          metadata: JSON.stringify({
+            ...existingMetadata,
             paymentUrl: payment.paymentUrl,
             payseraProjectId: payment.projectId,
-          },
+          }),
         },
       });
 
@@ -227,8 +229,7 @@ router.post(
       const transaction = await prisma.transaction.findFirst({
         where: {
           metadata: {
-            path: ['orderId'],
-            equals: result.orderId,
+            contains: `"orderId":"${result.orderId}"`,
           },
         },
         include: {
@@ -249,35 +250,36 @@ router.post(
       // Update transaction based on payment status
       if (result.status === 'success') {
         // Payment successful
+        const existingMetadata = transaction.metadata ? JSON.parse(transaction.metadata as string) : {};
         await prisma.transaction.update({
           where: { id: transaction.id },
           data: {
             status: TransactionStatus.COMPLETED,
-            metadata: {
-              ...transaction.metadata,
+            metadata: JSON.stringify({
+              ...existingMetadata,
               paymentMethod: result.paymentMethod,
               transactionId: result.transactionId,
               paidAmount: result.amount,
               paidCurrency: result.currency,
               completedAt: new Date().toISOString(),
-            },
+            }),
           },
         });
 
         // Update wallet balance
-        await prisma.wallet.upsert({
+        const wallet = await prisma.wallet.upsert({
           where: { userId: transaction.userId },
           create: {
             userId: transaction.userId,
             balance: transaction.amount,
+            availableBalance: transaction.amount,
             currency: transaction.currency,
-            totalEarned: transaction.amount,
           },
           update: {
             balance: {
               increment: transaction.amount,
             },
-            totalEarned: {
+            availableBalance: {
               increment: transaction.amount,
             },
           },
@@ -286,10 +288,12 @@ router.post(
         // Create wallet transaction
         await prisma.walletTransaction.create({
           data: {
-            userId: transaction.userId,
+            walletId: wallet.id,
             transactionId: transaction.id,
             amount: transaction.amount,
-            type: 'CREDIT',
+            balanceBefore: wallet.balance - transaction.amount,
+            balanceAfter: wallet.balance,
+            type: 'TOP_UP',
             description: `Payment successful: ${result.orderId}`,
           },
         });
@@ -297,9 +301,7 @@ router.post(
         logger.info(`✅ Payment successful: ${result.orderId} - ${result.amount / 100} ${result.currency}`);
 
         // Send payment confirmation email
-        const wallet = await prisma.wallet.findUnique({ where: { userId: transaction.userId } });
-
-        if (transaction.user?.email && wallet) {
+        if (transaction.user?.email) {
           emailService.sendPaymentConfirmation(transaction.user.email, {
             customerName: transaction.user.email.split('@')[0], // Fallback to email prefix
             orderId: result.orderId,
@@ -324,16 +326,17 @@ router.post(
         }
       } else if (result.status === 'failed' || result.status === 'cancelled') {
         // Payment failed or cancelled
+        const existingMetadata = transaction.metadata ? JSON.parse(transaction.metadata as string) : {};
         await prisma.transaction.update({
           where: { id: transaction.id },
           data: {
             status: result.status === 'failed' ? TransactionStatus.FAILED : TransactionStatus.CANCELLED,
-            metadata: {
-              ...transaction.metadata,
+            metadata: JSON.stringify({
+              ...existingMetadata,
               transactionId: result.transactionId,
               failureReason: result.status,
               completedAt: new Date().toISOString(),
-            },
+            }),
           },
         });
 
@@ -371,8 +374,7 @@ router.get(
         where: {
           userId: user.id,
           metadata: {
-            path: ['orderId'],
-            equals: orderId,
+            contains: `"orderId":"${orderId}"`,
           },
         },
       });
@@ -425,7 +427,7 @@ router.get(
       const transactions = await prisma.transaction.findMany({
         where: {
           userId: user.id,
-          type: TransactionType.PAYMENT,
+          type: TransactionType.WALLET_TOPUP,
         },
         orderBy: {
           createdAt: 'desc',
@@ -437,7 +439,7 @@ router.get(
       const total = await prisma.transaction.count({
         where: {
           userId: user.id,
-          type: TransactionType.PAYMENT,
+          type: TransactionType.WALLET_TOPUP,
         },
       });
 
