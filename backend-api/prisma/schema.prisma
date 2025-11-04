@@ -30,15 +30,15 @@ enum UserStatus {
 }
 
 model User {
-  id              String     @id @default(uuid())
-  email           String     @unique
-  passwordHash    String
-  firstName       String?
-  lastName        String?
-  phone           String?
-  avatar          String?
-  role            UserRole   @default(USER)
-  status          UserStatus @default(PENDING_VERIFICATION)
+  id               String     @id @default(uuid())
+  email            String     @unique
+  passwordHash     String
+  firstName        String?
+  lastName         String?
+  phone            String?
+  avatar           String?
+  role             UserRole   @default(USER)
+  status           UserStatus @default(PENDING_VERIFICATION)
   emailVerified    Boolean    @default(false)
   emailVerifiedAt  DateTime?
   lastLoginAt      DateTime?
@@ -47,19 +47,22 @@ model User {
   updatedAt        DateTime   @updatedAt
 
   // Relations
-  refreshTokens  RefreshToken[]
-  partner        Partner?
-  transactions   Transaction[]
-  receipts       Receipt[]
-  loyaltyAccount LoyaltyAccount?
-  conversations  ConversationParticipant[]
-  messages       Message[]
-  notifications  Notification[]
-  bookings       Booking[]
-  reviews        Review[]
-  favorites      Favorite[]
-  cards          Card[]
-  stickerScans   StickerScan[]
+  refreshTokens       RefreshToken[]
+  partner             Partner?
+  transactions        Transaction[]
+  receipts            Receipt[]
+  loyaltyAccount      LoyaltyAccount?
+  conversations       ConversationParticipant[]
+  messages            Message[]
+  notifications       Notification[]
+  bookings            Booking[]
+  reviews             Review[]
+  favorites           Favorite[]
+  cards               Card[]
+  stickerScans        StickerScan[]
+  wallet              Wallet?
+  subscriptions       Subscription[]
+  savedPaymentMethods SavedPaymentMethod[]
 
   @@index([email])
   @@index([role])
@@ -163,7 +166,7 @@ model Venue {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  partner          Partner              @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  partner          Partner             @relation(fields: [partnerId], references: [id], onDelete: Cascade)
   bookings         Booking[]
   transactions     Transaction[]
   stickers         Sticker[]
@@ -261,6 +264,41 @@ enum PaymentMethod {
   CASH
 }
 
+enum WalletTransactionType {
+  TOP_UP
+  WITHDRAWAL
+  CASHBACK_CREDIT
+  PURCHASE
+  REFUND
+  TRANSFER
+  ADJUSTMENT
+}
+
+enum WalletTransactionStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum SubscriptionPlan {
+  STANDARD // 5% cashback, free
+  PREMIUM // 7% cashback, 9.99 BGN/month
+  PLATINUM // 10% cashback, 19.99 BGN/month
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  PAST_DUE
+  CANCELLED
+  INCOMPLETE
+  INCOMPLETE_EXPIRED
+  TRIALING
+  UNPAID
+  PAUSED
+}
+
 model Transaction {
   id              String            @id @default(uuid())
   userId          String
@@ -278,7 +316,7 @@ model Transaction {
   currency        String            @default("BGN")
   paymentMethod   PaymentMethod
   paymentIntentId String?
-  stripePaymentId String?
+  stripePaymentId String?           @unique
   description     String?
   descriptionBg   String?
   metadata        String? // JSON string
@@ -292,13 +330,14 @@ model Transaction {
   createdAt       DateTime          @default(now())
   updatedAt       DateTime          @updatedAt
 
-  user        User         @relation(fields: [userId], references: [id])
-  partner     Partner?     @relation(fields: [partnerId], references: [id])
-  venue       Venue?       @relation(fields: [venueId], references: [id])
-  offer       Offer?       @relation(fields: [offerId], references: [id])
-  booking     Booking?     @relation(fields: [bookingId], references: [id])
-  receipt     Receipt?
-  stickerScan StickerScan?
+  user              User               @relation(fields: [userId], references: [id])
+  partner           Partner?           @relation(fields: [partnerId], references: [id])
+  venue             Venue?             @relation(fields: [venueId], references: [id])
+  offer             Offer?             @relation(fields: [offerId], references: [id])
+  booking           Booking?           @relation(fields: [bookingId], references: [id])
+  receipt           Receipt?
+  stickerScan       StickerScan?
+  walletTransaction WalletTransaction?
 
   @@index([userId])
   @@index([partnerId])
@@ -307,6 +346,137 @@ model Transaction {
   @@index([status])
   @@index([type])
   @@index([createdAt])
+}
+
+// ============================================
+// Wallet System
+// ============================================
+
+model Wallet {
+  id     String @id @default(uuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  balance          Float  @default(0.0)
+  availableBalance Float  @default(0.0) // balance - pending withdrawals
+  pendingBalance   Float  @default(0.0) // pending cashback credits
+  currency         String @default("BGN")
+
+  isLocked     Boolean   @default(false)
+  lockedReason String?
+  lockedAt     DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  transactions WalletTransaction[]
+
+  @@map("wallets")
+}
+
+model WalletTransaction {
+  id       String @id @default(uuid())
+  walletId String
+  wallet   Wallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
+
+  type          WalletTransactionType
+  amount        Float
+  balanceBefore Float
+  balanceAfter  Float
+  currency      String                @default("BGN")
+
+  status      WalletTransactionStatus @default(PENDING)
+  description String?
+  metadata    String? // JSON
+
+  // Link to related records
+  transactionId         String?      @unique
+  transaction           Transaction? @relation(fields: [transactionId], references: [id])
+  stripePaymentIntentId String?
+  receiptId             String?
+  receipt               Receipt?     @relation(fields: [receiptId], references: [id])
+  stickerScanId         String?
+  stickerScan           StickerScan? @relation(fields: [stickerScanId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([walletId])
+  @@index([type])
+  @@index([status])
+  @@index([createdAt])
+  @@map("wallet_transactions")
+}
+
+// ============================================
+// Subscription System
+// ============================================
+
+model Subscription {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  plan   SubscriptionPlan
+  status SubscriptionStatus
+
+  stripeSubscriptionId String? @unique
+  stripePriceId        String?
+  stripeCustomerId     String?
+
+  currentPeriodStart DateTime
+  currentPeriodEnd   DateTime
+
+  cancelAtPeriodEnd Boolean   @default(false)
+  cancelAt          DateTime?
+  canceledAt        DateTime?
+  trialStart        DateTime?
+  trialEnd          DateTime?
+
+  metadata String? // JSON
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([status])
+  @@index([plan])
+  @@map("subscriptions")
+}
+
+// ============================================
+// Saved Payment Methods
+// ============================================
+
+model SavedPaymentMethod {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  stripePaymentMethodId String @unique
+  type                  String // "card", "bank_account"
+
+  // Card details (if type = card)
+  last4       String?
+  brand       String? // "visa", "mastercard", etc.
+  expiryMonth Int?
+  expiryYear  Int?
+  funding     String? // "credit", "debit", "prepaid"
+
+  // Bank account details (if type = bank_account)
+  bankName     String?
+  accountLast4 String?
+
+  isDefault Boolean @default(false)
+
+  billingDetails String? // JSON
+  metadata       String? // JSON
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([isDefault])
+  @@map("payment_methods")
 }
 
 // ============================================
@@ -376,8 +546,9 @@ model Receipt {
   updatedAt DateTime @updatedAt
 
   // Relations
-  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  transaction Transaction? @relation(fields: [transactionId], references: [id])
+  user               User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transaction        Transaction?        @relation(fields: [transactionId], references: [id])
+  walletTransactions WalletTransaction[]
 
   @@index([userId])
   @@index([venueId])
@@ -966,11 +1137,12 @@ model StickerScan {
   createdAt       DateTime   @default(now())
   updatedAt       DateTime   @updatedAt
 
-  user        User         @relation(fields: [userId], references: [id])
-  sticker     Sticker      @relation(fields: [stickerId], references: [id])
-  venue       Venue        @relation(fields: [venueId], references: [id])
-  card        Card         @relation(fields: [cardId], references: [id])
-  transaction Transaction? @relation(fields: [transactionId], references: [id])
+  user               User                @relation(fields: [userId], references: [id])
+  sticker            Sticker             @relation(fields: [stickerId], references: [id])
+  venue              Venue               @relation(fields: [venueId], references: [id])
+  card               Card                @relation(fields: [cardId], references: [id])
+  transaction        Transaction?        @relation(fields: [transactionId], references: [id])
+  walletTransactions WalletTransaction[]
 
   @@index([userId])
   @@index([stickerId])
