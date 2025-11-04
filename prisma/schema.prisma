@@ -1,0 +1,1177 @@
+// BoomCard Partner Dashboard - Prisma Schema
+// Database: SQLite (development) / PostgreSQL (production)
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "./node_modules/.prisma/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// User & Authentication Models
+// ============================================
+
+enum UserRole {
+  USER
+  PARTNER
+  ADMIN
+  SUPER_ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+  PENDING_VERIFICATION
+}
+
+model User {
+  id               String     @id @default(uuid())
+  email            String     @unique
+  passwordHash     String
+  firstName        String?
+  lastName         String?
+  phone            String?
+  avatar           String?
+  role             UserRole   @default(USER)
+  status           UserStatus @default(PENDING_VERIFICATION)
+  emailVerified    Boolean    @default(false)
+  emailVerifiedAt  DateTime?
+  lastLoginAt      DateTime?
+  stripeCustomerId String?    @unique // Stripe customer ID for payments
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+
+  // Relations
+  refreshTokens       RefreshToken[]
+  partner             Partner?
+  transactions        Transaction[]
+  receipts            Receipt[]
+  loyaltyAccount      LoyaltyAccount?
+  conversations       ConversationParticipant[]
+  messages            Message[]
+  notifications       Notification[]
+  bookings            Booking[]
+  reviews             Review[]
+  favorites           Favorite[]
+  cards               Card[]
+  stickerScans        StickerScan[]
+  wallet              Wallet?
+  subscriptions       Subscription[]
+  savedPaymentMethods SavedPaymentMethod[]
+
+  @@index([email])
+  @@index([role])
+  @@index([status])
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([token])
+  @@index([userId])
+}
+
+// ============================================
+// Partner Models
+// ============================================
+
+enum PartnerTier {
+  BASIC
+  STANDARD
+  PREMIUM
+  VIP
+  EXCLUSIVE
+}
+
+enum PartnerStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+  INACTIVE
+}
+
+model Partner {
+  id             String        @id @default(uuid())
+  userId         String        @unique
+  businessName   String
+  businessNameBg String?
+  category       String
+  description    String?
+  descriptionBg  String?
+  logo           String?
+  coverImage     String?
+  tier           PartnerTier   @default(BASIC)
+  status         PartnerStatus @default(PENDING)
+  rating         Float         @default(0)
+  reviewCount    Int           @default(0)
+  website        String?
+  phone          String?
+  email          String?
+  address        String?
+  city           String?
+  region         String?
+  latitude       Float?
+  longitude      Float?
+  openingHours   String? // JSON string
+  features       String? // JSON string
+  amenities      String? // JSON string
+  joinedAt       DateTime      @default(now())
+  verifiedAt     DateTime?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  // Relations
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  venues       Venue[]
+  offers       Offer[]
+  reviews      Review[]
+  bookings     Booking[]
+  transactions Transaction[]
+
+  @@index([category])
+  @@index([tier])
+  @@index([status])
+  @@index([city])
+}
+
+model Venue {
+  id            String   @id @default(uuid())
+  partnerId     String
+  name          String
+  nameBg        String?
+  address       String
+  city          String
+  region        String?
+  latitude      Float
+  longitude     Float
+  phone         String?
+  email         String?
+  description   String?
+  descriptionBg String?
+  images        String? // JSON array
+  openingHours  String? // JSON string
+  capacity      Int?
+  features      String? // JSON array
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  partner          Partner             @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  bookings         Booking[]
+  transactions     Transaction[]
+  stickers         Sticker[]
+  stickerLocations StickerLocation[]
+  stickerScans     StickerScan[]
+  stickerConfig    VenueStickerConfig?
+
+  @@index([partnerId])
+  @@index([city])
+}
+
+// ============================================
+// Offers & Promotions
+// ============================================
+
+enum OfferStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  EXPIRED
+  CANCELLED
+}
+
+enum OfferType {
+  DISCOUNT
+  CASHBACK
+  POINTS
+  BUNDLE
+  SEASONAL
+}
+
+model Offer {
+  id                String      @id @default(uuid())
+  partnerId         String
+  title             String
+  titleBg           String?
+  description       String
+  descriptionBg     String?
+  type              OfferType
+  discountPercent   Float?
+  discountAmount    Float?
+  cashbackPercent   Float?
+  pointsMultiplier  Float?
+  minPurchase       Float?
+  maxDiscount       Float?
+  termsConditions   String?
+  termsConditionsBg String?
+  image             String?
+  status            OfferStatus @default(DRAFT)
+  isFeatured        Boolean     @default(false)
+  featuredOrder     Int?
+  startDate         DateTime
+  endDate           DateTime
+  usageLimit        Int?
+  usageCount        Int         @default(0)
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  partner      Partner       @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+
+  @@index([partnerId])
+  @@index([status])
+  @@index([isFeatured])
+  @@index([startDate])
+  @@index([endDate])
+}
+
+// ============================================
+// Transactions & Payments
+// ============================================
+
+enum TransactionType {
+  BOOKING
+  PURCHASE
+  WALLET_TOPUP
+  REFUND
+  LOYALTY_REDEMPTION
+  SUBSCRIPTION
+}
+
+enum TransactionStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  CANCELLED
+  REFUNDED
+}
+
+enum PaymentMethod {
+  CARD
+  WALLET
+  BANK_TRANSFER
+  CASH
+}
+
+enum WalletTransactionType {
+  TOP_UP
+  WITHDRAWAL
+  CASHBACK_CREDIT
+  PURCHASE
+  REFUND
+  TRANSFER
+  ADJUSTMENT
+}
+
+enum WalletTransactionStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum SubscriptionPlan {
+  STANDARD // 5% cashback, free
+  PREMIUM // 7% cashback, 9.99 BGN/month
+  PLATINUM // 10% cashback, 19.99 BGN/month
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  PAST_DUE
+  CANCELLED
+  INCOMPLETE
+  INCOMPLETE_EXPIRED
+  TRIALING
+  UNPAID
+  PAUSED
+}
+
+model Transaction {
+  id              String            @id @default(uuid())
+  userId          String
+  partnerId       String?
+  venueId         String?
+  offerId         String?
+  bookingId       String?
+  cardId          String?
+  type            TransactionType
+  status          TransactionStatus
+  amount          Float
+  discount        Float?
+  discountAmount  Float?
+  finalAmount     Float?
+  currency        String            @default("BGN")
+  paymentMethod   PaymentMethod
+  paymentIntentId String?
+  stripePaymentId String?           @unique
+  description     String?
+  descriptionBg   String?
+  metadata        String? // JSON string
+  loyaltyPoints   Int?
+  cashbackAmount  Float?
+  processingFee   Float?
+  netAmount       Float?
+  refundedAmount  Float?
+  refundedAt      DateTime?
+  completedAt     DateTime?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  user              User               @relation(fields: [userId], references: [id])
+  partner           Partner?           @relation(fields: [partnerId], references: [id])
+  venue             Venue?             @relation(fields: [venueId], references: [id])
+  offer             Offer?             @relation(fields: [offerId], references: [id])
+  booking           Booking?           @relation(fields: [bookingId], references: [id])
+  receipt           Receipt?
+  stickerScan       StickerScan?
+  walletTransaction WalletTransaction?
+
+  @@index([userId])
+  @@index([partnerId])
+  @@index([venueId])
+  @@index([cardId])
+  @@index([status])
+  @@index([type])
+  @@index([createdAt])
+}
+
+// ============================================
+// Wallet System
+// ============================================
+
+model Wallet {
+  id     String @id @default(uuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  balance          Float  @default(0.0)
+  availableBalance Float  @default(0.0) // balance - pending withdrawals
+  pendingBalance   Float  @default(0.0) // pending cashback credits
+  currency         String @default("BGN")
+
+  isLocked     Boolean   @default(false)
+  lockedReason String?
+  lockedAt     DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  transactions WalletTransaction[]
+
+  @@map("wallets")
+}
+
+model WalletTransaction {
+  id       String @id @default(uuid())
+  walletId String
+  wallet   Wallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
+
+  type          WalletTransactionType
+  amount        Float
+  balanceBefore Float
+  balanceAfter  Float
+  currency      String                @default("BGN")
+
+  status      WalletTransactionStatus @default(PENDING)
+  description String?
+  metadata    String? // JSON
+
+  // Link to related records
+  transactionId         String?      @unique
+  transaction           Transaction? @relation(fields: [transactionId], references: [id])
+  stripePaymentIntentId String?
+  receiptId             String?
+  receipt               Receipt?     @relation(fields: [receiptId], references: [id])
+  stickerScanId         String?
+  stickerScan           StickerScan? @relation(fields: [stickerScanId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([walletId])
+  @@index([type])
+  @@index([status])
+  @@index([createdAt])
+  @@map("wallet_transactions")
+}
+
+// ============================================
+// Subscription System
+// ============================================
+
+model Subscription {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  plan   SubscriptionPlan
+  status SubscriptionStatus
+
+  stripeSubscriptionId String? @unique
+  stripePriceId        String?
+  stripeCustomerId     String?
+
+  currentPeriodStart DateTime
+  currentPeriodEnd   DateTime
+
+  cancelAtPeriodEnd Boolean   @default(false)
+  cancelAt          DateTime?
+  canceledAt        DateTime?
+  trialStart        DateTime?
+  trialEnd          DateTime?
+
+  metadata String? // JSON
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([status])
+  @@index([plan])
+  @@map("subscriptions")
+}
+
+// ============================================
+// Saved Payment Methods
+// ============================================
+
+model SavedPaymentMethod {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  stripePaymentMethodId String @unique
+  type                  String // "card", "bank_account"
+
+  // Card details (if type = card)
+  last4       String?
+  brand       String? // "visa", "mastercard", etc.
+  expiryMonth Int?
+  expiryYear  Int?
+  funding     String? // "credit", "debit", "prepaid"
+
+  // Bank account details (if type = bank_account)
+  bankName     String?
+  accountLast4 String?
+
+  isDefault Boolean @default(false)
+
+  billingDetails String? // JSON
+  metadata       String? // JSON
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([isDefault])
+  @@map("payment_methods")
+}
+
+// ============================================
+// Receipt Scanning & OCR with Fraud Detection
+// ============================================
+
+enum ReceiptStatus {
+  PENDING // Awaiting OCR processing
+  PROCESSING // OCR in progress
+  VALIDATING // Fraud checks running
+  APPROVED // Approved, cashback credited
+  REJECTED // Rejected
+  MANUAL_REVIEW // Flagged for admin review
+  EXPIRED // Too old to process
+}
+
+model Receipt {
+  id            String  @id @default(uuid())
+  userId        String
+  transactionId String? @unique
+  venueId       String? // Link to venue if applicable
+  offerId       String? // Link to offer if applicable
+  cardId        String? // Link to user's card
+
+  // Receipt Image
+  imageUrl  String? // Optional for test receipts
+  imageKey  String? // Storage key (S3/CloudFlare R2)
+  imageHash String? // SHA-256 for duplicate detection
+
+  // OCR Extracted Data
+  ocrRawText     String? // Full OCR text output
+  ocrData        String? // JSON: parsed OCR data
+  merchantName   String?
+  totalAmount    Float?
+  verifiedAmount Float? // Admin-verified amount
+  receiptDate    DateTime?
+  items          String? // JSON array of ReceiptItem[]
+
+  // Cashback Calculation
+  cashbackPercent Float @default(0)
+  cashbackAmount  Float @default(0)
+
+  // OCR & Fraud Scores
+  ocrConfidence Float   @default(0) // 0-100
+  fraudScore    Float   @default(0) // 0-100
+  fraudReasons  String? // JSON array of reason codes
+
+  // GPS Verification
+  latitude  Float?
+  longitude Float?
+
+  // Request Metadata
+  ipAddress       String?
+  userAgent       String?
+  submissionCount Int     @default(1)
+
+  // Validation & Admin Review
+  status          ReceiptStatus @default(PENDING)
+  reviewedBy      String? // Admin user ID
+  reviewedAt      DateTime?
+  reviewNotes     String?
+  rejectionReason String?
+
+  // Metadata
+  metadata  String? // JSON string for additional data
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  user               User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transaction        Transaction?        @relation(fields: [transactionId], references: [id])
+  walletTransactions WalletTransaction[]
+
+  @@index([userId])
+  @@index([venueId])
+  @@index([status])
+  @@index([imageHash])
+  @@index([createdAt])
+  @@index([merchantName])
+  @@index([fraudScore])
+}
+
+// ============================================
+// Receipt Analytics
+// ============================================
+
+model ReceiptAnalytics {
+  id     String @id @default(uuid())
+  userId String @unique
+
+  // Receipt Counts
+  totalReceipts    Int @default(0)
+  approvedReceipts Int @default(0)
+  rejectedReceipts Int @default(0)
+  pendingReceipts  Int @default(0)
+
+  // Financial Totals
+  totalCashback        Float @default(0)
+  totalSpent           Float @default(0)
+  averageReceiptAmount Float @default(0)
+
+  // Insights
+  topMerchant     String?
+  lastReceiptDate DateTime?
+  successRate     Float     @default(0) // Percentage
+
+  // Metadata
+  metadata  String? // JSON: monthly trends, merchant breakdown, etc.
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+}
+
+// ============================================
+// Merchant Whitelist/Blacklist
+// ============================================
+
+enum WhitelistStatus {
+  APPROVED
+  BLOCKED
+  PENDING
+}
+
+model MerchantWhitelist {
+  id           String          @id @default(uuid())
+  merchantName String          @unique
+  nameBg       String?
+  taxId        String?
+  status       WhitelistStatus @default(APPROVED)
+
+  // Admin Management
+  addedBy String? // Admin user ID
+  reason  String?
+
+  // Metadata
+  metadata  String? // JSON: additional merchant info
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([merchantName])
+}
+
+// ============================================
+// Venue Fraud Detection Configuration
+// ============================================
+
+model VenueFraudConfig {
+  id        String  @id @default(uuid())
+  venueId   String? @unique
+  partnerId String? // Can be global or per-partner
+
+  // Cashback Settings
+  cashbackPercent    Float  @default(5.0)
+  premiumBonus       Float  @default(2.0)
+  platinumBonus      Float  @default(5.0)
+  minBillAmount      Float  @default(10.0)
+  maxCashbackPerScan Float?
+
+  // Rate Limiting
+  maxScansPerDay   Int @default(3)
+  maxScansPerMonth Int @default(30)
+
+  // Fraud Detection Settings
+  gpsVerificationEnabled Boolean @default(true)
+  gpsRadiusMeters        Int     @default(100)
+  ocrVerificationEnabled Boolean @default(true)
+  autoApproveThreshold   Float   @default(30) // Fraud score threshold
+  autoRejectThreshold    Float   @default(60)
+
+  // Metadata
+  isActive  Boolean  @default(true)
+  metadata  String? // JSON
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([venueId])
+  @@index([partnerId])
+}
+
+// ============================================
+// Loyalty & Rewards
+// ============================================
+
+enum LoyaltyTier {
+  BRONZE
+  SILVER
+  GOLD
+  PLATINUM
+  DIAMOND
+}
+
+model LoyaltyAccount {
+  id              String      @id @default(uuid())
+  userId          String      @unique
+  tier            LoyaltyTier @default(BRONZE)
+  points          Int         @default(0)
+  lifetimePoints  Int         @default(0)
+  tierProgress    Float       @default(0)
+  cashbackBalance Float       @default(0)
+  nextTierPoints  Int?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  user         User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions LoyaltyTransaction[]
+  rewards      RewardRedemption[]
+  badges       UserBadge[]
+
+  @@index([userId])
+  @@index([tier])
+}
+
+enum LoyaltyTransactionType {
+  EARNED
+  REDEEMED
+  EXPIRED
+  ADJUSTED
+  BONUS
+}
+
+model LoyaltyTransaction {
+  id            String                 @id @default(uuid())
+  accountId     String
+  type          LoyaltyTransactionType
+  points        Int
+  description   String?
+  descriptionBg String?
+  metadata      String? // JSON string
+  expiresAt     DateTime?
+  createdAt     DateTime               @default(now())
+
+  account LoyaltyAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([accountId])
+  @@index([createdAt])
+}
+
+model Reward {
+  id            String    @id @default(uuid())
+  title         String
+  titleBg       String?
+  description   String
+  descriptionBg String?
+  pointsCost    Int
+  cashValue     Float?
+  category      String
+  image         String?
+  isActive      Boolean   @default(true)
+  stockQuantity Int?
+  redeemedCount Int       @default(0)
+  validFrom     DateTime  @default(now())
+  validUntil    DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  redemptions RewardRedemption[]
+
+  @@index([category])
+  @@index([isActive])
+}
+
+enum RedemptionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  USED
+  EXPIRED
+}
+
+model RewardRedemption {
+  id          String           @id @default(uuid())
+  accountId   String
+  rewardId    String
+  status      RedemptionStatus @default(PENDING)
+  pointsSpent Int
+  code        String?
+  expiresAt   DateTime?
+  usedAt      DateTime?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  account LoyaltyAccount @relation(fields: [accountId], references: [id])
+  reward  Reward         @relation(fields: [rewardId], references: [id])
+
+  @@index([accountId])
+  @@index([rewardId])
+  @@index([status])
+}
+
+model Badge {
+  id            String   @id @default(uuid())
+  name          String   @unique
+  nameBg        String?
+  description   String
+  descriptionBg String?
+  icon          String?
+  category      String
+  requirement   String // JSON string defining unlock conditions
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+
+  userBadges UserBadge[]
+
+  @@index([category])
+}
+
+model UserBadge {
+  id         String   @id @default(uuid())
+  accountId  String
+  badgeId    String
+  unlockedAt DateTime @default(now())
+
+  account LoyaltyAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  badge   Badge          @relation(fields: [badgeId], references: [id])
+
+  @@unique([accountId, badgeId])
+  @@index([accountId])
+}
+
+// ============================================
+// Bookings
+// ============================================
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  COMPLETED
+  NO_SHOW
+}
+
+model Booking {
+  id                 String        @id @default(uuid())
+  userId             String
+  partnerId          String
+  venueId            String?
+  bookingDate        DateTime
+  bookingTime        String
+  guestCount         Int
+  specialRequests    String?
+  specialRequestsBg  String?
+  status             BookingStatus @default(PENDING)
+  confirmationCode   String?       @unique
+  notes              String?
+  notesInternal      String?
+  cancelledAt        DateTime?
+  cancellationReason String?
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  user         User          @relation(fields: [userId], references: [id])
+  partner      Partner       @relation(fields: [partnerId], references: [id])
+  venue        Venue?        @relation(fields: [venueId], references: [id])
+  transactions Transaction[]
+
+  @@index([userId])
+  @@index([partnerId])
+  @@index([status])
+  @@index([bookingDate])
+}
+
+// ============================================
+// Reviews & Ratings
+// ============================================
+
+enum ReviewStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  FLAGGED
+}
+
+model Review {
+  id               String       @id @default(uuid())
+  userId           String
+  partnerId        String
+  rating           Int
+  title            String?
+  comment          String?
+  images           String? // JSON array
+  status           ReviewStatus @default(PENDING)
+  isVerified       Boolean      @default(false)
+  helpful          Int          @default(0)
+  notHelpful       Int          @default(0)
+  adminResponse    String?
+  adminRespondedAt DateTime?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  user    User    @relation(fields: [userId], references: [id])
+  partner Partner @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([partnerId])
+  @@index([status])
+  @@index([rating])
+}
+
+// ============================================
+// Messaging
+// ============================================
+
+enum ConversationType {
+  DIRECT
+  GROUP
+  SUPPORT
+}
+
+model Conversation {
+  id            String           @id @default(uuid())
+  type          ConversationType @default(DIRECT)
+  title         String?
+  lastMessageAt DateTime?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  participants ConversationParticipant[]
+  messages     Message[]
+
+  @@index([lastMessageAt])
+}
+
+model ConversationParticipant {
+  id             String    @id @default(uuid())
+  conversationId String
+  userId         String
+  joinedAt       DateTime  @default(now())
+  lastReadAt     DateTime?
+  isActive       Boolean   @default(true)
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, userId])
+  @@index([userId])
+}
+
+enum MessageType {
+  TEXT
+  IMAGE
+  FILE
+  SYSTEM
+}
+
+model Message {
+  id             String      @id @default(uuid())
+  conversationId String
+  userId         String
+  type           MessageType @default(TEXT)
+  content        String
+  attachments    String? // JSON array
+  isEdited       Boolean     @default(false)
+  editedAt       DateTime?
+  deletedAt      DateTime?
+  createdAt      DateTime    @default(now())
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id])
+
+  @@index([conversationId])
+  @@index([userId])
+  @@index([createdAt])
+}
+
+// ============================================
+// Notifications
+// ============================================
+
+enum NotificationType {
+  BOOKING_CONFIRMED
+  BOOKING_CANCELLED
+  PAYMENT_SUCCESS
+  PAYMENT_FAILED
+  LOYALTY_POINTS
+  REWARD_AVAILABLE
+  NEW_MESSAGE
+  REVIEW_RECEIVED
+  OFFER_EXPIRING
+  RECEIPT_APPROVED
+  RECEIPT_REJECTED
+  RECEIPT_MANUAL_REVIEW
+  CASHBACK_CREDITED
+  SYSTEM
+}
+
+model Notification {
+  id        String           @id @default(uuid())
+  userId    String
+  type      NotificationType
+  title     String
+  titleBg   String?
+  message   String
+  messageBg String?
+  data      String? // JSON string
+  isRead    Boolean          @default(false)
+  readAt    DateTime?
+  createdAt DateTime         @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([isRead])
+  @@index([createdAt])
+}
+
+// ============================================
+// Favorites
+// ============================================
+
+model Favorite {
+  id        String   @id @default(uuid())
+  userId    String
+  partnerId String?
+  offerId   String?
+  venueId   String?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, partnerId])
+  @@index([userId])
+}
+
+// ============================================
+// BOOM-Sticker Scan System
+// ============================================
+
+enum LocationType {
+  TABLE
+  COUNTER
+  BAR
+  ENTRANCE
+  RECEPTION
+  OTHER
+}
+
+enum StickerStatus {
+  PENDING // Created but not printed
+  ACTIVE // Printed and active
+  INACTIVE // Temporarily disabled
+  DAMAGED // Needs replacement
+  RETIRED // Permanently removed
+}
+
+enum ScanStatus {
+  PENDING // Scan initiated, waiting for receipt
+  VALIDATING // OCR processing
+  APPROVED // Approved, cashback credited
+  REJECTED // Rejected (fraud, invalid, etc.)
+  MANUAL_REVIEW // Flagged for manual review
+}
+
+enum CardType {
+  STANDARD
+  PREMIUM
+  PLATINUM
+}
+
+enum CardStatus {
+  ACTIVE
+  EXPIRED
+  SUSPENDED
+  CANCELED
+}
+
+model Card {
+  id         String     @id @default(uuid())
+  userId     String
+  cardNumber String     @unique
+  type       CardType   @default(STANDARD)
+  status     CardStatus @default(ACTIVE)
+  qrCode     String     @unique
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  stickerScans StickerScan[]
+
+  @@index([userId])
+  @@index([cardNumber])
+}
+
+model Sticker {
+  id            String        @id @default(uuid())
+  venueId       String
+  locationId    String
+  stickerId     String        @unique
+  qrCode        String        @unique
+  locationType  LocationType  @default(TABLE)
+  status        StickerStatus @default(ACTIVE)
+  printedAt     DateTime?
+  activatedAt   DateTime?
+  deactivatedAt DateTime?
+  totalScans    Int           @default(0)
+  lastScannedAt DateTime?
+  metadata      String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  venue    Venue           @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  location StickerLocation @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  scans    StickerScan[]
+
+  @@index([venueId])
+  @@index([locationId])
+  @@index([stickerId])
+  @@index([status])
+}
+
+model StickerLocation {
+  id             String       @id @default(uuid())
+  venueId        String
+  name           String
+  nameBg         String?
+  locationType   LocationType @default(TABLE)
+  locationNumber String
+  isActive       Boolean      @default(true)
+  capacity       Int?
+  floor          String?
+  section        String?
+  metadata       String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  venue    Venue     @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  stickers Sticker[]
+
+  @@unique([venueId, locationNumber, locationType])
+  @@index([venueId])
+}
+
+model StickerScan {
+  id              String     @id @default(uuid())
+  userId          String
+  stickerId       String
+  venueId         String
+  cardId          String
+  billAmount      Float
+  verifiedAmount  Float?
+  cashbackPercent Float
+  cashbackAmount  Float
+  status          ScanStatus @default(PENDING)
+  latitude        Float?
+  longitude       Float?
+  distance        Float?
+  receiptImageUrl String?
+  ocrData         String?
+  fraudScore      Float      @default(0)
+  fraudReasons    String?
+  ipAddress       String?
+  userAgent       String?
+  transactionId   String?    @unique
+  rejectionReason String?
+  processedAt     DateTime?
+  metadata        String?
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  user               User                @relation(fields: [userId], references: [id])
+  sticker            Sticker             @relation(fields: [stickerId], references: [id])
+  venue              Venue               @relation(fields: [venueId], references: [id])
+  card               Card                @relation(fields: [cardId], references: [id])
+  transaction        Transaction?        @relation(fields: [transactionId], references: [id])
+  walletTransactions WalletTransaction[]
+
+  @@index([userId])
+  @@index([stickerId])
+  @@index([venueId])
+  @@index([cardId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model VenueStickerConfig {
+  id                     String   @id @default(uuid())
+  venueId                String   @unique
+  cashbackPercent        Float    @default(5.0)
+  premiumBonus           Float    @default(2.0)
+  platinumBonus          Float    @default(5.0)
+  minBillAmount          Float    @default(10.0)
+  maxCashbackPerScan     Float?
+  maxScansPerDay         Int      @default(3)
+  maxScansPerMonth       Int      @default(30)
+  gpsVerificationEnabled Boolean  @default(true)
+  gpsRadiusMeters        Int      @default(100)
+  ocrVerificationEnabled Boolean  @default(true)
+  autoApproveThreshold   Float    @default(10)
+  isActive               Boolean  @default(true)
+  metadata               String?
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  venue Venue @relation(fields: [venueId], references: [id], onDelete: Cascade)
+
+  @@index([venueId])
+}
