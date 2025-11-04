@@ -19,7 +19,7 @@ export const validate = (validations: ValidationChain[]) => {
 
     // Format errors
     const extractedErrors: any[] = [];
-    errors.array().map(err => extractedErrors.push({ [err.type === 'field' ? (err as any).path : 'error']: (err as any).msg }));
+    errors.array().forEach(err => extractedErrors.push({ [err.type === 'field' ? (err as any).path : 'error']: (err as any).msg }));
 
     throw new AppError('Validation failed', 400, extractedErrors);
   };
