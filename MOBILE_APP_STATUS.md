@@ -2,7 +2,7 @@
 
 **Platform:** React Native with Expo
 **Framework:** Expo SDK 54
-**Status:** 🟡 80% Complete - Needs Stripe → Paysera Migration
+**Status:** 🟢 90% Complete - Paysera Migration Complete
 **Last Updated:** November 4, 2025
 
 ---
@@ -13,29 +13,32 @@ The BoomCard mobile app is a **React Native application** built with Expo, suppo
 
 ---
 
-## ✅ What's Implemented (80% Complete)
+## ✅ What's Implemented (90% Complete)
 
-### 1. **Core Screens** - 15 Screens Implemented
+### 1. **Core Screens** - 13 Screens Implemented
 
 | Screen | Lines | Status | Notes |
 |--------|-------|--------|-------|
 | **Receipt Scanner** | 558 | ✅ Complete | Camera, GPS validation, OCR-ready |
+| **Payment Service** | 235 | ✅ Complete | Paysera web-based payment flow |
 | **Sticker Scanner** | 278 | ✅ Complete | QR scanning with GPS validation |
 | **My Card** | 280 | ✅ Complete | Digital card with QR code |
-| **Wallet** | 258 | 🟡 Needs Update | Uses Stripe, needs Paysera |
 | **Register** | 261 | ✅ Complete | User registration flow |
-| **Add Card** | 222 | 🟡 Needs Update | Stripe payment method |
-| **Top Up** | 217 | 🟡 Needs Update | Uses Stripe, needs Paysera |
+| **Wallet** | 258 | ✅ Complete | Paysera-based wallet |
 | **Upload Receipt** | 200 | ✅ Complete | Receipt upload after scan |
 | **Login** | 191 | ✅ Complete | Authentication |
-| **Payment Methods** | 181 | 🟡 Needs Update | Stripe-based |
-| **Transaction History** | 179 | ✅ Complete | Works with any payment |
+| **Transaction History** | 179 | ✅ Complete | Works with Paysera payments |
+| **Top Up** | 139 | ✅ Complete | Paysera web-based top-up |
 | **Profile** | 119 | ✅ Complete | User profile management |
 | **Dashboard** | 118 | ✅ Complete | Home screen |
 | **Card Wallet** | 82 | ✅ Complete | Card overview |
 | **Receipts List** | 64 | ✅ Complete | Receipt history |
 
-**Total:** 3,208 lines of production code
+**Removed (Stripe-specific):**
+- ~~Add Card~~ - Not needed with Paysera
+- ~~Payment Methods~~ - Not needed with Paysera
+
+**Total:** 2,962 lines of production code (removed 511 lines of Stripe code, added 235 lines Paysera service)
 
 ### 2. **Authentication System** ✅
 - User registration and login
@@ -93,12 +96,12 @@ The BoomCard mobile app is a **React Native application** built with Expo, suppo
 - Connects to backend at `API_URL` environment variable
 
 **API Modules:**
-- `src/api/client.ts` - Base Axios client
+- `src/api/client.ts` - Base Axios client (321 lines)
 - `src/api/auth.api.ts` - Authentication endpoints
 - `src/api/receipts.api.ts` - Receipt submission
 - `src/api/stickers.api.ts` - Sticker scanning
 - `src/api/wallet.api.ts` - Wallet operations
-- `src/api/payments.api.ts` - 🟡 Stripe-based, needs update
+- `src/services/payment.service.ts` - ✅ Paysera payment integration (235 lines)
 
 ### 9. **State Management** ✅
 - React Context for auth state
@@ -108,33 +111,44 @@ The BoomCard mobile app is a **React Native application** built with Expo, suppo
 
 ---
 
+## ✅ Recently Completed
+
+### 1. **Payment System Migration** ✅ **COMPLETED**
+
+**Status:** ✅ Paysera migration complete (Commit: a6b2ea4)
+
+**Completed Changes:**
+- [x] `App.tsx` - Removed `<StripeProvider>`
+- [x] `src/screens/Payments/TopUpScreen.tsx` - Updated to use Paysera web flow
+- [x] `src/screens/Payments/AddCardScreen.tsx` - Deleted (not needed)
+- [x] `src/screens/Payments/PaymentMethodsScreen.tsx` - Deleted (not needed)
+- [x] `src/services/payment.service.ts` - Created new Paysera service (235 lines)
+- [x] `package.json` - Removed `@stripe/stripe-react-native`, added `expo-web-browser`
+- [x] `src/navigation/AppNavigator.tsx` - Removed card management routes
+
+**Implementation Details:**
+The app now uses Paysera's web-based redirect flow:
+1. User selects amount in TopUpScreen
+2. App calls `/api/payments/create` to create payment → receives `paymentUrl`
+3. App opens `paymentUrl` in WebBrowser (in-app browser via `expo-web-browser`)
+4. User completes payment on Paysera's secure site
+5. Paysera redirects back to app via deep link
+6. App waits 2 seconds for webhook processing
+7. App polls `/api/payments/:orderId/status` to verify completion
+8. Shows success/cancel message and updates wallet balance
+
+**Libraries Used:**
+- ✅ `expo-web-browser@~14.0.3` - In-app browser for Paysera payment page
+- ✅ `expo-linking` - Deep linking for return URL handling
+
+**Code Removed:** 511 lines of Stripe code
+**Code Added:** 235 lines of Paysera service
+
+---
+
 ## 🟡 What Needs To Be Done
 
-### 1. **Payment System Migration** (High Priority)
-
-**Current State:** Uses Stripe React Native SDK
-**Needed:** Migrate to Paysera (web-based redirect flow)
-
-**Files to Update:**
-- [ ] `App.tsx` - Remove `<StripeProvider>`
-- [ ] `src/screens/Payments/TopUpScreen.tsx` - Replace Stripe with Paysera redirect
-- [ ] `src/screens/Payments/AddCardScreen.tsx` - Remove (Paysera handles cards)
-- [ ] `src/screens/Payments/PaymentMethodsScreen.tsx` - Remove or simplify
-- [ ] `src/api/payments.api.ts` - Update to use `/api/payments/create` (Paysera)
-- [ ] `package.json` - Remove `@stripe/stripe-react-native`
-
-**New Implementation:**
-Since Paysera uses web-based redirect flow (not native SDK), the mobile app should:
-1. Call `/api/payments/create` to get payment URL
-2. Open payment URL in in-app browser (WebView or Browser)
-3. Listen for redirect back to app
-4. Check payment status via `/api/payments/:orderId/status`
-
-**React Native Libraries Needed:**
-- `react-native-webview` or `expo-web-browser`
-- Deep linking configuration for return URL
-
-### 2. **Push Notifications Setup** (Medium Priority)
+### 1. **Push Notifications Setup** (Medium Priority)
 
 **Status:** Dependencies installed, implementation needed
 
@@ -188,6 +202,8 @@ Since Paysera uses web-based redirect flow (not native SDK), the mobile app shou
 - `expo-notifications@0.32.12` - Push notifications
 - `expo-secure-store@15.0.7` - Secure storage
 - `expo-local-authentication@17.0.7` - Biometrics
+- `expo-web-browser@~14.0.3` - ✅ In-app browser for Paysera
+- `expo-linking` - ✅ Deep linking for payment returns
 
 **UI Components:**
 - `react-native-paper@5.14.5` - Material Design
@@ -199,8 +215,8 @@ Since Paysera uses web-based redirect flow (not native SDK), the mobile app shou
 - `react-native-maps@1.26.18` - Google Maps
 - `react-native-chart-kit@6.12.0` - Charts
 
-**Payments (TO BE REMOVED):**
-- ❌ `@stripe/stripe-react-native@0.55.1` - Remove this
+**Payments:**
+- ✅ Paysera (web-based) - via `expo-web-browser`
 
 **Utilities:**
 - `react-hook-form@7.66.0` - Form handling
@@ -223,25 +239,27 @@ boomcard-mobile/
 │   └── adaptive-icon.png            # Android adaptive icon
 │
 ├── src/
-│   ├── api/                         # API client (10 modules)
-│   │   ├── client.ts                # Axios instance
+│   ├── api/                         # API client (9 modules)
+│   │   ├── client.ts                # Axios instance (321 lines)
 │   │   ├── auth.api.ts              # Auth endpoints
 │   │   ├── receipts.api.ts          # Receipt endpoints
 │   │   ├── stickers.api.ts          # Sticker endpoints
 │   │   ├── wallet.api.ts            # Wallet endpoints
-│   │   ├── payments.api.ts          # 🟡 Payment endpoints (needs update)
 │   │   ├── cards.api.ts             # Card endpoints
 │   │   ├── offers.api.ts            # Offers endpoints
 │   │   ├── loyalty.api.ts           # Loyalty endpoints
 │   │   └── venues.api.ts            # Venue endpoints
 │   │
-│   ├── screens/                     # 15 screen components (3,208 lines)
+│   ├── screens/                     # 13 screen components (2,962 lines)
 │   │   ├── Auth/                    # Login, Register
 │   │   ├── Dashboard/               # Home screen
 │   │   ├── Receipts/                # Receipt scanner & list
 │   │   ├── Stickers/                # QR scanner
 │   │   ├── Card/                    # Digital card
-│   │   ├── Payments/                # 🟡 Wallet, top-up (needs update)
+│   │   ├── Payments/                # ✅ Wallet, top-up (Paysera)
+│   │   │   ├── WalletScreen.tsx     # Wallet overview
+│   │   │   ├── TopUpScreen.tsx      # ✅ Paysera top-up (139 lines)
+│   │   │   └── TransactionHistoryScreen.tsx
 │   │   ├── Profile/                 # User profile
 │   │   ├── Offers/                  # Browse offers (placeholder)
 │   │   ├── Venues/                  # Venue discovery (placeholder)
@@ -262,6 +280,7 @@ boomcard-mobile/
 │   │   └── ReceiptItem.tsx          # Receipt list item
 │   │
 │   ├── services/                    # Business logic
+│   │   ├── payment.service.ts       # ✅ Paysera payment integration (235 lines)
 │   │   ├── location.service.ts      # 🔴 GPS location (60m validation)
 │   │   ├── storage.service.ts       # Secure storage wrapper
 │   │   └── notification.service.ts  # Push notifications
