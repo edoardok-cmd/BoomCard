@@ -46,8 +46,14 @@ export const API_CONFIG = {
       INTENTS: '/api/payments/intents',
       CARDS: '/api/payments/cards',
       TRANSACTIONS: '/api/payments/transactions',
-      WALLET_BALANCE: '/api/payments/wallet/balance',
       STATISTICS: '/api/payments/statistics',
+    },
+    // Wallet
+    WALLET: {
+      BALANCE: '/api/wallet/balance',
+      TRANSACTIONS: '/api/wallet/transactions',
+      TOP_UP: '/api/wallet/topup',
+      WITHDRAW: '/api/wallet/withdraw',
     },
     // Offers
     OFFERS: {

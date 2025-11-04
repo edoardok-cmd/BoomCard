@@ -11,7 +11,7 @@ export const walletApi = {
    * Get wallet balance
    */
   async getBalance() {
-    const response = await apiClient.get('/api/payments/wallet/balance');
+    const response = await apiClient.get('/api/wallet/balance');
     if (!response.success) {
       throw new Error(response.error || 'Failed to get wallet balance');
     }
@@ -31,7 +31,7 @@ export const walletApi = {
     if (params?.limit) queryParams.append('limit', params.limit.toString());
     if (params?.offset) queryParams.append('offset', params.offset.toString());
 
-    const url = `/api/payments/wallet/transactions${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
+    const url = `/api/wallet/transactions${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
     const response = await apiClient.get(url);
     if (!response.success) {
       throw new Error(response.error || 'Failed to get transactions');
@@ -43,7 +43,7 @@ export const walletApi = {
    * Get wallet statistics
    */
   async getStatistics() {
-    const response = await apiClient.get('/api/payments/wallet/statistics');
+    const response = await apiClient.get('/api/wallet/statistics');
     if (!response.success) {
       throw new Error(response.error || 'Failed to get statistics');
     }
@@ -54,7 +54,7 @@ export const walletApi = {
    * Create top-up payment intent
    */
   async createTopUp(amount: number, paymentMethodId?: string) {
-    const response = await apiClient.post('/api/payments/wallet/topup', {
+    const response = await apiClient.post('/api/wallet/topup', {
       amount,
       paymentMethodId,
     });

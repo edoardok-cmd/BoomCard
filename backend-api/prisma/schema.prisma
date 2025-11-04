@@ -1050,7 +1050,7 @@ model Card {
   cardNumber String     @unique
   type       CardType   @default(STANDARD)
   status     CardStatus @default(ACTIVE)
-  qrCode     String     @unique
+  qrCode     String     // Base64 data URL - too large for unique index
   createdAt  DateTime   @default(now())
   updatedAt  DateTime   @updatedAt
 

@@ -52,7 +52,16 @@
       "Bash(node scripts/test-stripe-prices.js:*)",
       "Bash(npm run dev:*)",
       "Bash(git checkout:*)",
-      "Bash(/Users/administrator/Documents/BoomCard/node_modules/.bin/tsc --noEmit)"
+      "Bash(/Users/administrator/Documents/BoomCard/node_modules/.bin/tsc --noEmit)",
+      "Bash(git reset:*)",
+      "Bash(git restore:*)",
+      "Bash(PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION=\"ok, go on\" npx prisma migrate reset:*)",
+      "Bash(npm run type-check:*)",
+      "Bash(/Users/administrator/Documents/BoomCard/node_modules/.bin/tsc:*)",
+      "Bash(TOKEN=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjJlNDc4ZGRlLTk0YWUtNGU0MS1iMWU0LTAxNDU1MGUzNDAxYyIsImVtYWlsIjoibW9iaWxlLXRlc3RAYm9vbWNhcmQuY29tIiwicm9sZSI6IlVTRVIiLCJpYXQiOjE3NjIyNjk4NDYsImV4cCI6MTc2MjM1NjI0Nn0.7skzv0rlLlDrZK5ln_2QhWFk19YBvCBLkmjz8a5jVUA\")",
+      "Bash(echo \"Testing Wallet Balance with Authentication...\" curl -s -X GET http://localhost:3001/api/wallet/balance -H \"Authorization: Bearer $TOKEN\")",
+      "Bash(echo -e \"\\n\\nTesting Receipts Endpoint...\" curl -s -X GET http://localhost:3001/api/receipts -H \"Authorization: Bearer $TOKEN\")",
+      "Bash(echo -e \"\\n\\nTesting Offers Endpoint...\" curl -s -X GET http://localhost:3001/api/offers -H \"Authorization: Bearer $TOKEN\")"
     ],
     "deny": [],
     "ask": []

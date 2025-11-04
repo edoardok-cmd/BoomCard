@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
-import { API_BASE_URL } from '../config/api';
+import { API_CONFIG } from '../config/api.config';
 
 // ============================================
 // Types
@@ -564,7 +564,7 @@ export const AdminScanReviewPage: React.FC = () => {
       }
 
       const response = await fetch(
-        `${API_BASE_URL}/api/stickers/admin/pending-review?${params}`,
+        `${API_CONFIG.baseURL}/api/stickers/admin/pending-review?${params}`,
         {
           headers: {
             'Authorization': `Bearer ${token}`,
@@ -588,7 +588,7 @@ export const AdminScanReviewPage: React.FC = () => {
     try {
       const token = localStorage.getItem('token');
       const response = await fetch(
-        `${API_BASE_URL}/api/stickers/admin/stats`,
+        `${API_CONFIG.baseURL}/api/stickers/admin/stats`,
         {
           headers: {
             'Authorization': `Bearer ${token}`,
@@ -631,7 +631,7 @@ export const AdminScanReviewPage: React.FC = () => {
       const endpoint = modalMode === 'approve' ? 'approve' : 'reject';
 
       const response = await fetch(
-        `${API_BASE_URL}/api/stickers/admin/${endpoint}/${currentScanId}`,
+        `${API_CONFIG.baseURL}/api/stickers/admin/${endpoint}/${currentScanId}`,
         {
           method: 'POST',
           headers: {
@@ -671,7 +671,7 @@ export const AdminScanReviewPage: React.FC = () => {
 
       await Promise.all(
         Array.from(selectedScans).map(scanId =>
-          fetch(`${API_BASE_URL}/api/stickers/admin/approve/${scanId}`, {
+          fetch(`${API_CONFIG.baseURL}/api/stickers/admin/approve/${scanId}`, {
             method: 'POST',
             headers: {
               'Authorization': `Bearer ${token}`,
@@ -705,7 +705,7 @@ export const AdminScanReviewPage: React.FC = () => {
 
       await Promise.all(
         Array.from(selectedScans).map(scanId =>
-          fetch(`${API_BASE_URL}/api/stickers/admin/reject/${scanId}`, {
+          fetch(`${API_CONFIG.baseURL}/api/stickers/admin/reject/${scanId}`, {
             method: 'POST',
             headers: {
               'Authorization': `Bearer ${token}`,
