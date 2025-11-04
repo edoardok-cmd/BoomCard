@@ -4,6 +4,16 @@ import sharp from 'sharp';
 import crypto from 'crypto';
 import { logger } from '../utils/logger';
 
+// Multer file type
+interface MulterFile {
+  fieldname: string;
+  originalname: string;
+  encoding: string;
+  mimetype: string;
+  size: number;
+  buffer: Buffer;
+}
+
 const s3Client = new S3Client({
   region: process.env.AWS_REGION || 'eu-west-1',
   credentials: {
@@ -151,7 +161,7 @@ export class ImageUploadService {
    * Upload receipt image (Multer file)
    */
   async uploadReceipt(
-    file: Express.Multer.File,
+    file: MulterFile,
     userId: string
   ): Promise<{ url: string; key: string; hash: string }> {
     // Generate SHA-256 hash for duplicate detection

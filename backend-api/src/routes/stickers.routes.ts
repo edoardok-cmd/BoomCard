@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { stickerService } from '../services/sticker.service';
-import { authenticate } from '../middleware/auth.middleware';
+import { authenticate, AuthRequest } from '../middleware/auth.middleware';
 import { uploadSingle } from '../middleware/upload.middleware';
 import { imageUploadService } from '../services/imageUpload.service';
 import { LocationType, PrismaClient } from '@prisma/client';
@@ -67,10 +67,10 @@ router.post('/scan', authenticate, async (req: Request, res: Response) => {
  * Upload receipt image and OCR data for a scan
  * Requires authentication
  */
-router.post('/scan/:scanId/receipt', authenticate, uploadSingle, async (req: Request, res: Response) => {
+router.post('/scan/:scanId/receipt', authenticate, uploadSingle, async (req: AuthRequest, res: Response) => {
   try {
     const { scanId } = req.params;
-    const userId = (req as any).user.id;
+    const userId = req.user!.id;
 
     if (!req.file) {
       return res.status(400).json({
