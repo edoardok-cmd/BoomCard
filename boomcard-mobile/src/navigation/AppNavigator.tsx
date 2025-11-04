@@ -28,9 +28,7 @@ import ProfileScreen from '../screens/Profile/ProfileScreen';
 // Payment Screens
 import WalletScreen from '../screens/Payments/WalletScreen';
 import TopUpScreen from '../screens/Payments/TopUpScreen';
-import PaymentMethodsScreen from '../screens/Payments/PaymentMethodsScreen';
 import TransactionHistoryScreen from '../screens/Payments/TransactionHistoryScreen';
-import AddCardScreen from '../screens/Payments/AddCardScreen';
 
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -129,22 +127,6 @@ const MainNavigator = () => {
         options={{
           headerShown: true,
           title: 'Top Up Wallet'
-        }}
-      />
-      <Stack.Screen
-        name="PaymentMethods"
-        component={PaymentMethodsScreen}
-        options={{
-          headerShown: true,
-          title: 'Payment Methods'
-        }}
-      />
-      <Stack.Screen
-        name="AddCard"
-        component={AddCardScreen}
-        options={{
-          headerShown: true,
-          title: 'Add Card'
         }}
       />
       <Stack.Screen

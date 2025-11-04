@@ -1,25 +1,22 @@
 /**
  * Top Up Screen
  *
- * Allow users to top up their wallet with Stripe card payment
+ * Allow users to top up their wallet with Paysera payment gateway
  */
 
 import React, { useState } from 'react';
-import { View, StyleSheet, ScrollView, Alert, Platform } from 'react-native';
+import { View, StyleSheet, ScrollView, Alert } from 'react-native';
 import { Text, Card, Button, TextInput, HelperText } from 'react-native-paper';
-import { CardField, useConfirmPayment } from '@stripe/stripe-react-native';
-import { walletApi } from '../../api/wallet.api';
+import { paymentService } from '../../services/payment.service';
 import { useNavigation } from '@react-navigation/native';
 
 const PRESET_AMOUNTS = [10, 20, 50, 100, 200];
 
 export default function TopUpScreen() {
   const navigation = useNavigation();
-  const { confirmPayment } = useConfirmPayment();
 
   const [amount, setAmount] = useState('');
   const [loading, setLoading] = useState(false);
-  const [cardComplete, setCardComplete] = useState(false);
 
   const handlePresetAmount = (value: number) => {
     setAmount(value.toString());
@@ -38,31 +35,21 @@ export default function TopUpScreen() {
       return;
     }
 
-    if (!cardComplete) {
-      Alert.alert('Error', 'Please enter valid card details');
-      return;
-    }
-
     setLoading(true);
 
     try {
-      // Create payment intent
-      const { paymentIntent, transaction } = await walletApi.createTopUp(amountValue);
+      // Process payment with Paysera (opens browser, handles payment, verifies)
+      const result = await paymentService.processPayment({
+        amount: amountValue,
+        currency: 'BGN',
+        description: 'Wallet top-up',
+        metadata: {
+          source: 'mobile_app',
+          screen: 'TopUpScreen',
+        },
+      });
 
-      // Confirm payment with Stripe
-      const { error, paymentIntent: confirmedPayment } = await confirmPayment(
-        paymentIntent.clientSecret,
-        {
-          paymentMethodType: 'Card',
-        }
-      );
-
-      if (error) {
-        Alert.alert('Payment Failed', error.message);
-        return;
-      }
-
-      if (confirmedPayment?.status === 'Succeeded') {
+      if (result.success && result.status?.status === 'completed') {
         Alert.alert(
           'Success',
           `Your wallet has been topped up with ${amountValue} BGN`,
@@ -70,6 +57,16 @@ export default function TopUpScreen() {
             {
               text: 'OK',
               onPress: () => navigation.goBack(),
+            },
+          ]
+        );
+      } else {
+        Alert.alert(
+          'Payment Cancelled',
+          'Your payment was cancelled. No charges were made.',
+          [
+            {
+              text: 'OK',
             },
           ]
         );
@@ -116,54 +113,27 @@ export default function TopUpScreen() {
             Minimum: 5 BGN • Maximum: 10,000 BGN
           </HelperText>
 
-          {/* Card Details */}
-          <Text variant="labelLarge" style={styles.label}>
-            Card Details
+          {/* Payment Info */}
+          <Text variant="bodyMedium" style={styles.paymentInfo}>
+            You will be redirected to Paysera payment gateway to complete your payment securely.
           </Text>
-          <View style={styles.cardFieldContainer}>
-            <CardField
-              postalCodeEnabled={false}
-              placeholders={{
-                number: '4242 4242 4242 4242',
-              }}
-              cardStyle={styles.cardField}
-              style={styles.cardFieldWrapper}
-              onCardChange={(cardDetails) => {
-                setCardComplete(cardDetails.complete);
-              }}
-            />
-          </View>
 
           {/* Payment Button */}
           <Button
             mode="contained"
             onPress={handleTopUp}
             loading={loading}
-            disabled={loading || !amount || !cardComplete}
+            disabled={loading || !amount}
             style={styles.payButton}
           >
-            {loading ? 'Processing...' : `Pay ${amount || '0'} BGN`}
+            {loading ? 'Processing...' : `Top Up ${amount || '0'} BGN`}
           </Button>
 
           <HelperText type="info" style={styles.secureNote}>
-            Your payment is secure and encrypted
+            Secure payment powered by Paysera
           </HelperText>
         </Card.Content>
       </Card>
-
-      {/* Test Cards Info (only in development) */}
-      {__DEV__ && (
-        <Card style={styles.card}>
-          <Card.Title title="Test Cards (Development)" />
-          <Card.Content>
-            <Text variant="bodySmall">
-              • Success: 4242 4242 4242 4242{'\n'}
-              • Declined: 4000 0000 0000 0002{'\n'}
-              • 3D Secure: 4000 0025 0000 3155
-            </Text>
-          </Card.Content>
-        </Card>
-      )}
     </ScrollView>
   );
 }
@@ -193,21 +163,14 @@ const styles = StyleSheet.create({
   input: {
     marginTop: 8,
   },
-  cardFieldContainer: {
-    marginTop: 8,
-    marginBottom: 16,
-  },
-  cardFieldWrapper: {
-    height: 50,
-  },
-  cardField: {
-    backgroundColor: '#ffffff',
-    borderWidth: 1,
-    borderColor: '#e0e0e0',
-    borderRadius: 4,
+  paymentInfo: {
+    marginTop: 24,
+    marginBottom: 8,
+    textAlign: 'center',
+    color: '#666',
   },
   payButton: {
-    marginTop: 24,
+    marginTop: 16,
     paddingVertical: 8,
   },
   secureNote: {
