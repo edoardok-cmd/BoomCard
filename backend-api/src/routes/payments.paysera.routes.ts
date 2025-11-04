@@ -7,6 +7,7 @@ import { Router, Response, Request } from 'express';
 import { authenticate, AuthRequest } from '../middleware/auth.middleware';
 import { asyncHandler } from '../middleware/error.middleware';
 import { payseraService, PayseraService } from '../services/paysera.service';
+import { emailService } from '../services/email.service';
 import { PrismaClient, TransactionType, TransactionStatus } from '@prisma/client';
 import { logger } from '../utils/logger';
 import crypto from 'crypto';
@@ -294,6 +295,33 @@ router.post(
         });
 
         logger.info(`✅ Payment successful: ${result.orderId} - ${result.amount / 100} ${result.currency}`);
+
+        // Send payment confirmation email
+        const wallet = await prisma.wallet.findUnique({ where: { userId: transaction.userId } });
+
+        if (transaction.user?.email && wallet) {
+          emailService.sendPaymentConfirmation(transaction.user.email, {
+            customerName: transaction.user.email.split('@')[0], // Fallback to email prefix
+            orderId: result.orderId,
+            amount: transaction.amount,
+            currency: transaction.currency,
+            date: new Date(),
+          }).catch((error) => {
+            logger.error('❌ Failed to send payment confirmation email:', error);
+          });
+
+          // Send wallet update notification
+          emailService.sendWalletUpdate(transaction.user.email, {
+            customerName: transaction.user.email.split('@')[0],
+            newBalance: wallet.balance,
+            changeAmount: transaction.amount,
+            transactionType: 'credit',
+            description: `Your wallet has been topped up with ${transaction.amount.toFixed(2)} ${transaction.currency}`,
+            date: new Date(),
+          }).catch((error) => {
+            logger.error('❌ Failed to send wallet update email:', error);
+          });
+        }
       } else if (result.status === 'failed' || result.status === 'cancelled') {
         // Payment failed or cancelled
         await prisma.transaction.update({
