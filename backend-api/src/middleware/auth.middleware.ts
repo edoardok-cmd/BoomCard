@@ -8,6 +8,7 @@ export interface AuthRequest extends Request {
     email: string;
     role: string;
   };
+  file?: any; // Multer file upload
 }
 
 export const authenticate = (req: AuthRequest, res: Response, next: NextFunction) => {
