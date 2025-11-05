@@ -40,9 +40,9 @@ router.get('/detailed', async (req: Request, res: Response) => {
     environment: process.env.NODE_ENV || 'development',
     version: process.env.npm_package_version || '1.0.0',
     checks: {
-      database: { status: 'unknown', responseTime: 0 },
-      redis: { status: 'unknown', responseTime: 0 },
-      s3: { status: 'unknown' },
+      database: { status: 'unknown', responseTime: 0 } as { status: string; responseTime: number; error?: string },
+      redis: { status: 'unknown', responseTime: 0 } as { status: string; responseTime: number; error?: string },
+      s3: { status: 'unknown' } as { status: string; error?: string },
       paysera: { status: 'unknown' },
       email: { status: 'unknown' },
     },

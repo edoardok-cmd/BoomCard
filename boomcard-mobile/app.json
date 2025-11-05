@@ -27,7 +27,8 @@
         "NSPhotoLibraryUsageDescription": "BoomCard needs photo library access to upload receipt images",
         "NSLocationWhenInUseUsageDescription": "BoomCard needs your location to verify you are within 60 meters of the venue when submitting receipts",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "BoomCard needs your location to verify you are within 60 meters of the venue",
-        "NSMicrophoneUsageDescription": "This app does not require microphone access"
+        "NSMicrophoneUsageDescription": "This app does not require microphone access",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
@@ -37,11 +38,12 @@
         "backgroundColor": "#3B82F6"
       },
       "permissions": [
-        "CAMERA",
-        "ACCESS_FINE_LOCATION",
-        "ACCESS_COARSE_LOCATION",
-        "READ_EXTERNAL_STORAGE",
-        "WRITE_EXTERNAL_STORAGE"
+        "android.permission.CAMERA",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.RECORD_AUDIO"
       ],
       "intentFilters": [
         {
@@ -82,12 +84,14 @@
           "photosPermission": "BoomCard needs access to your photos to upload receipt images",
           "cameraPermission": "BoomCard needs camera access to scan receipts"
         }
-      ]
+      ],
+      "expo-web-browser"
     ],
     "extra": {
       "eas": {
-        "projectId": "boomcard-mobile"
+        "projectId": "a7947dfa-d58c-49c8-9975-9607a551f60b"
       }
-    }
+    },
+    "owner": "edoardok"
   }
 }

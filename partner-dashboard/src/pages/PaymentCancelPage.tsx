@@ -68,3 +68,5 @@ export function PaymentCancelPage() {
     </div>
   );
 }
+
+export default PaymentCancelPage;

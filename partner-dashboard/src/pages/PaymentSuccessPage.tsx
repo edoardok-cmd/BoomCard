@@ -178,3 +178,5 @@ export function PaymentSuccessPage() {
     </div>
   );
 }
+
+export default PaymentSuccessPage;

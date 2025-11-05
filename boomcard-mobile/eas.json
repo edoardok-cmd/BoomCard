@@ -19,16 +19,18 @@
       },
       "android": {
         "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "http://172.20.10.2:3001"
       }
     },
     "production": {
       "ios": {
         "resourceClass": "m-medium",
-        "bundleIdentifier": "bg.boomcard.mobile",
         "buildConfiguration": "Release"
       },
       "android": {
-        "buildType": "aab",
+        "buildType": "app-bundle",
         "resourceClass": "medium"
       },
       "env": {
