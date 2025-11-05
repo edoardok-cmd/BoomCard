@@ -8,6 +8,7 @@ import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../store/AuthContext';
 import { ActivityIndicator, View } from 'react-native';
 
@@ -24,6 +25,9 @@ import UploadReceiptScreen from '../screens/Stickers/UploadReceiptScreen';
 import CardWalletScreen from '../screens/Card/CardWalletScreen';
 import MyCardScreen from '../screens/Card/MyCardScreen';
 import ProfileScreen from '../screens/Profile/ProfileScreen';
+import EditProfileScreen from '../screens/Profile/EditProfileScreen';
+import ChangePasswordScreen from '../screens/Profile/ChangePasswordScreen';
+import SettingsScreen from '../screens/Profile/SettingsScreen';
 
 // Payment Screens
 import WalletScreen from '../screens/Payments/WalletScreen';
@@ -63,6 +67,9 @@ const TabNavigator = () => {
         options={{
           title: 'BoomCard',
           tabBarLabel: 'Home',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="home" size={size} color={color} />
+          ),
         }}
       />
       <Tab.Screen
@@ -71,6 +78,9 @@ const TabNavigator = () => {
         options={{
           title: 'Receipts',
           tabBarLabel: 'Receipts',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="document-text" size={size} color={color} />
+          ),
         }}
       />
       <Tab.Screen
@@ -79,14 +89,20 @@ const TabNavigator = () => {
         options={{
           title: 'Scan QR',
           tabBarLabel: 'Scan',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="qr-code" size={size} color={color} />
+          ),
         }}
       />
       <Tab.Screen
         name="Card"
-        component={CardWalletScreen}
+        component={MyCardScreen}
         options={{
           title: 'My Card',
           tabBarLabel: 'Card',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="card" size={size} color={color} />
+          ),
         }}
       />
       <Tab.Screen
@@ -95,6 +111,9 @@ const TabNavigator = () => {
         options={{
           title: 'Profile',
           tabBarLabel: 'Profile',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="person" size={size} color={color} />
+          ),
         }}
       />
     </Tab.Navigator>
@@ -145,6 +164,43 @@ const MainNavigator = () => {
         options={{
           headerShown: true,
           title: 'My Card'
+        }}
+      />
+
+      {/* Receipt Screens */}
+      <Stack.Screen
+        name="ReceiptScanner"
+        component={ReceiptScannerScreen}
+        options={{
+          headerShown: true,
+          title: 'Scan Receipt',
+          presentation: 'modal'
+        }}
+      />
+
+      {/* Profile Screens */}
+      <Stack.Screen
+        name="EditProfile"
+        component={EditProfileScreen}
+        options={{
+          headerShown: true,
+          title: 'Edit Profile'
+        }}
+      />
+      <Stack.Screen
+        name="ChangePassword"
+        component={ChangePasswordScreen}
+        options={{
+          headerShown: true,
+          title: 'Change Password'
+        }}
+      />
+      <Stack.Screen
+        name="Settings"
+        component={SettingsScreen}
+        options={{
+          headerShown: true,
+          title: 'Settings'
         }}
       />
 

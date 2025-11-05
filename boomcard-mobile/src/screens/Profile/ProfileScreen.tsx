@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
 import { useAuth } from '../../store/AuthContext';
 
-const ProfileScreen = () => {
+const ProfileScreen = ({ navigation }: any) => {
   const { user, logout } = useAuth();
 
   const handleLogout = () => {
@@ -37,15 +37,24 @@ const ProfileScreen = () => {
       </View>
 
       <View style={styles.menu}>
-        <TouchableOpacity style={styles.menuItem}>
+        <TouchableOpacity
+          style={styles.menuItem}
+          onPress={() => navigation.navigate('EditProfile')}
+        >
           <Text style={styles.menuItemText}>Edit Profile</Text>
           <Text style={styles.menuItemIcon}>›</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.menuItem}>
+        <TouchableOpacity
+          style={styles.menuItem}
+          onPress={() => navigation.navigate('ChangePassword')}
+        >
           <Text style={styles.menuItemText}>Change Password</Text>
           <Text style={styles.menuItemIcon}>›</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.menuItem}>
+        <TouchableOpacity
+          style={styles.menuItem}
+          onPress={() => navigation.navigate('Settings')}
+        >
           <Text style={styles.menuItemText}>Settings</Text>
           <Text style={styles.menuItemIcon}>›</Text>
         </TouchableOpacity>
