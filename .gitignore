@@ -45,3 +45,5 @@ screenshots/
 !partner-dashboard/public/**/*.jpg
 !assets/**/*.png
 !assets/**/*.jpg
+!boomcard-mobile/assets/**/*.png
+!boomcard-mobile/assets/**/*.jpg
