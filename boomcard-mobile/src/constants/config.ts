@@ -6,7 +6,7 @@
 export const API_CONFIG = {
   // Base URL for backend API
   BASE_URL: __DEV__
-    ? 'http://localhost:3001' // Development - local backend
+    ? 'http://172.20.10.2:3001' // Development - laptop IP on network
     : 'https://api.boomcard.bg', // Production
 
   // API endpoints
