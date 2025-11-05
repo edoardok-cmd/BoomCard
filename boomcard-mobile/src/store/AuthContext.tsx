@@ -112,6 +112,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const login = async (credentials: LoginRequest) => {
+    // HARDCODED TEST ACCOUNT - Bypasses network completely
+    if (credentials.email === 'test@boomcard.com' && credentials.password === 'Test123!') {
+      const testUser: User = {
+        id: '68c81c5c-4aeb-4746-b097-1f71be92a68a',
+        email: 'test@boomcard.com',
+        role: 'USER',
+        status: 'ACTIVE',
+        emailVerified: true,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+
+      // Store mock tokens
+      await StorageService.setAccessToken('mock-access-token-test-user');
+      await StorageService.setRefreshToken('mock-refresh-token-test-user');
+      await StorageService.setUserData(testUser);
+
+      // Set user state
+      setUser(testUser);
+      return;
+    }
+
+    // Normal login flow for other users
     await loginMutation.mutateAsync(credentials);
   };
 
