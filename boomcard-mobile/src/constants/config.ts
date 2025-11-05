@@ -32,6 +32,7 @@ export const API_CONFIG = {
     },
     // Stickers
     STICKERS: {
+      BASE: '/api/stickers',
       SCAN: '/api/stickers/scan',
       MY_SCANS: '/api/stickers/my-scans',
       VALIDATE: '/api/stickers/validate',

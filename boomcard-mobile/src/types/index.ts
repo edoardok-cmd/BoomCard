@@ -543,6 +543,7 @@ export interface ApiResponse<T = any> {
 }
 
 export interface PaginatedResponse<T> {
+  data: T[];
   items: T[];
   total: number;
   page: number;

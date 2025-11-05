@@ -30,6 +30,8 @@ Notifications.setNotificationHandler({
     shouldShowAlert: true,
     shouldPlaySound: true,
     shouldSetBadge: true,
+    shouldShowBanner: true,
+    shouldShowList: true,
   }),
 });
 
@@ -134,7 +136,6 @@ export class NotificationService {
           allowAlert: true,
           allowBadge: true,
           allowSound: true,
-          allowAnnouncements: true,
         },
       });
 
@@ -226,7 +227,7 @@ export class NotificationService {
           priority: Notifications.AndroidNotificationPriority.HIGH,
         },
         trigger: triggerSeconds
-          ? { seconds: triggerSeconds }
+          ? { type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL, seconds: triggerSeconds }
           : null, // null means show immediately
       });
 

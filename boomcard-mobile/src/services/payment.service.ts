@@ -7,7 +7,7 @@
 
 import * as WebBrowser from 'expo-web-browser';
 import * as Linking from 'expo-linking';
-import { apiClient } from '../api/client';
+import apiClient from '../api/client';
 
 // Configure WebBrowser for authentication flows
 WebBrowser.maybeCompleteAuthSession();
@@ -54,11 +54,11 @@ class PaymentService {
         }
       );
 
-      if (!response.data.success) {
+      if (!response.data?.success) {
         throw new Error('Failed to create payment');
       }
 
-      return response.data.data;
+      return response.data?.data;
     } catch (error: any) {
       console.error('Payment initiation error:', error);
       throw new Error(error.response?.data?.message || 'Failed to initiate payment');
@@ -159,11 +159,11 @@ class PaymentService {
         `/payments/${orderId}/status`
       );
 
-      if (!response.data.success) {
+      if (!response.data?.success) {
         throw new Error('Failed to get payment status');
       }
 
-      return response.data.data;
+      return response.data?.data;
     } catch (error: any) {
       console.error('Payment status check error:', error);
       throw new Error(error.response?.data?.message || 'Failed to check payment status');

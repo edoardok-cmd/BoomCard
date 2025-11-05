@@ -145,11 +145,6 @@ export class BiometricService {
             success: false,
             error: 'Too many failed attempts. Please try again later.',
           };
-        } else if (result.error === 'lockout_permanent') {
-          return {
-            success: false,
-            error: 'Biometric authentication is locked. Please use your device password.',
-          };
         } else if (result.error === 'not_enrolled') {
           return {
             success: false,

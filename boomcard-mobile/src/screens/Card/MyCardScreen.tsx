@@ -15,7 +15,7 @@ import { cardApi } from '../../api/card.api';
 const { width } = Dimensions.get('window');
 const CARD_WIDTH = width - 32;
 
-const CARD_GRADIENTS: Record<string, string[]> = {
+const CARD_GRADIENTS: Record<string, [string, string]> = {
   STANDARD: ['#757575', '#424242'],
   PREMIUM: ['#ffd700', '#ffed4e'],
   PLATINUM: ['#e5e5e5', '#ffffff'],

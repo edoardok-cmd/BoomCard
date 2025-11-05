@@ -62,8 +62,8 @@ export default function StickerScannerScreen() {
       const response = await StickersApi.scanSticker({
         stickerId,
         billAmount: amount,
-        gpsLatitude: location.coords.latitude,
-        gpsLongitude: location.coords.longitude,
+        latitude: location.coords.latitude,
+        longitude: location.coords.longitude,
       });
 
       if (!response.success || !response.data) {
