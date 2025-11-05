@@ -17,7 +17,7 @@ import {
   ScrollView,
   TextInput,
 } from 'react-native';
-import { Camera, CameraType } from 'expo-camera';
+import { CameraView, Camera } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
 import LocationService from '../../services/location.service';
 import OCRService from '../../services/ocr.service';
@@ -27,7 +27,7 @@ import { formatDistance } from '../../utils/distance';
 import type { ReceiptSubmitRequest, GPSValidationResult } from '../../types';
 
 const ReceiptScannerScreen = ({ navigation, route }: any) => {
-  const cameraRef = useRef<Camera>(null);
+  const cameraRef = useRef<CameraView>(null);
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -381,10 +381,10 @@ const ReceiptScannerScreen = ({ navigation, route }: any) => {
 
   return (
     <View style={styles.container}>
-      <Camera
+      <CameraView
         ref={cameraRef}
         style={styles.camera}
-        type={CameraType.back}
+        facing="back"
       >
         <View style={styles.cameraOverlay}>
           <View style={styles.scanFrame} />
@@ -392,7 +392,7 @@ const ReceiptScannerScreen = ({ navigation, route }: any) => {
             Position receipt within frame
           </Text>
         </View>
-      </Camera>
+      </CameraView>
 
       <View style={styles.controls}>
         <TouchableOpacity

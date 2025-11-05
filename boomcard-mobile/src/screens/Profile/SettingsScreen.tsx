@@ -4,7 +4,7 @@
  * App settings and preferences
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -15,9 +15,10 @@ import {
   Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import StorageService from '../../services/storage.service';
 
 const SettingsScreen = ({ navigation }: any) => {
-  // Settings state (these would typically be stored in AsyncStorage or Context)
+  // Settings state - loaded from storage on mount
   const [settings, setSettings] = useState({
     pushNotifications: true,
     emailNotifications: false,
@@ -25,12 +26,80 @@ const SettingsScreen = ({ navigation }: any) => {
     biometricAuth: false,
     darkMode: false,
   });
+  const [isLoading, setIsLoading] = useState(true);
 
-  const handleToggle = (setting: keyof typeof settings) => {
+  // Load settings from storage on mount
+  useEffect(() => {
+    loadSettings();
+  }, []);
+
+  const loadSettings = async () => {
+    try {
+      const [
+        pushNotifications,
+        emailNotifications,
+        locationServices,
+        biometricAuth,
+        theme,
+      ] = await Promise.all([
+        StorageService.getPushNotifications(),
+        StorageService.getEmailNotifications(),
+        StorageService.getLocationServices(),
+        StorageService.getBiometricEnabled(),
+        StorageService.getTheme(),
+      ]);
+
+      setSettings({
+        pushNotifications,
+        emailNotifications,
+        locationServices,
+        biometricAuth,
+        darkMode: theme === 'dark',
+      });
+    } catch (error) {
+      console.error('Failed to load settings:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleToggle = async (setting: keyof typeof settings) => {
+    const newValue = !settings[setting];
+
+    // Update local state
     setSettings({
       ...settings,
-      [setting]: !settings[setting],
+      [setting]: newValue,
     });
+
+    // Persist to storage
+    try {
+      switch (setting) {
+        case 'pushNotifications':
+          await StorageService.setPushNotifications(newValue);
+          break;
+        case 'emailNotifications':
+          await StorageService.setEmailNotifications(newValue);
+          break;
+        case 'locationServices':
+          await StorageService.setLocationServices(newValue);
+          break;
+        case 'biometricAuth':
+          await StorageService.setBiometricEnabled(newValue);
+          break;
+        case 'darkMode':
+          await StorageService.setTheme(newValue ? 'dark' : 'light');
+          break;
+      }
+    } catch (error) {
+      console.error(`Failed to save ${setting}:`, error);
+      // Revert on error
+      setSettings({
+        ...settings,
+        [setting]: !newValue,
+      });
+      Alert.alert('Error', 'Failed to save setting');
+    }
   };
 
   const handleClearCache = () => {

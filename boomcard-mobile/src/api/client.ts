@@ -103,9 +103,15 @@ export class ApiClient {
             this.isRefreshing = false;
             this.refreshSubscribers = [];
 
-            // Refresh failed - clear tokens and redirect to login
+            // Refresh failed - clear all stored data (tokens, user data)
             await StorageService.clearAll();
-            // TODO: Navigate to login screen
+
+            // Note: This clears tokens from storage. The AuthContext user state
+            // remains in memory until the app restarts. When the user sees
+            // "Session expired" errors, they can:
+            // 1. Manually log out (calls AuthContext.logout which clears user state)
+            // 2. Restart the app (user state is reinitialized from cleared storage)
+            // 3. In production, implement an event-based system to auto-logout
             return Promise.reject(refreshError);
           }
         }
@@ -131,7 +137,8 @@ export class ApiClient {
         { refreshToken }
       );
 
-      const { accessToken, refreshToken: newRefreshToken } = response.data;
+      // Backend returns tokens in response.data.data
+      const { accessToken, refreshToken: newRefreshToken } = response.data.data || response.data;
 
       // Store new tokens
       await StorageService.setTokens(accessToken, newRefreshToken);

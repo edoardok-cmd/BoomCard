@@ -101,6 +101,9 @@ export const STORAGE_KEYS = {
   LANGUAGE: 'language',
   THEME: 'theme',
   BIOMETRIC_ENABLED: 'biometric_enabled',
+  PUSH_NOTIFICATIONS: 'push_notifications',
+  EMAIL_NOTIFICATIONS: 'email_notifications',
+  LOCATION_SERVICES: 'location_services',
 };
 
 // App Configuration

@@ -186,6 +186,51 @@ export class StorageService {
     return value === 'true';
   }
 
+  /**
+   * Set push notifications preference
+   */
+  async setPushNotifications(enabled: boolean): Promise<void> {
+    await this.setItem(STORAGE_KEYS.PUSH_NOTIFICATIONS, enabled.toString());
+  }
+
+  /**
+   * Get push notifications preference
+   */
+  async getPushNotifications(): Promise<boolean> {
+    const value = await this.getItem(STORAGE_KEYS.PUSH_NOTIFICATIONS);
+    return value === null ? true : value === 'true'; // Default to true
+  }
+
+  /**
+   * Set email notifications preference
+   */
+  async setEmailNotifications(enabled: boolean): Promise<void> {
+    await this.setItem(STORAGE_KEYS.EMAIL_NOTIFICATIONS, enabled.toString());
+  }
+
+  /**
+   * Get email notifications preference
+   */
+  async getEmailNotifications(): Promise<boolean> {
+    const value = await this.getItem(STORAGE_KEYS.EMAIL_NOTIFICATIONS);
+    return value === null ? false : value === 'true'; // Default to false
+  }
+
+  /**
+   * Set location services preference
+   */
+  async setLocationServices(enabled: boolean): Promise<void> {
+    await this.setItem(STORAGE_KEYS.LOCATION_SERVICES, enabled.toString());
+  }
+
+  /**
+   * Get location services preference
+   */
+  async getLocationServices(): Promise<boolean> {
+    const value = await this.getItem(STORAGE_KEYS.LOCATION_SERVICES);
+    return value === null ? true : value === 'true'; // Default to true
+  }
+
   // ==================== Session Management ====================
 
   /**

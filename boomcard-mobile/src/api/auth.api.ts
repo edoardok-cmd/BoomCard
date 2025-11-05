@@ -100,13 +100,13 @@ export class AuthApi {
    * Change password
    */
   static async changePassword(
-    oldPassword: string,
+    currentPassword: string,
     newPassword: string
   ): Promise<ApiResponse<void>> {
     return await apiClient.post<void>(
       API_CONFIG.ENDPOINTS.AUTH.CHANGE_PASSWORD,
       {
-        oldPassword,
+        currentPassword,
         newPassword,
       }
     );

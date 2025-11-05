@@ -59,10 +59,10 @@ const ChangePasswordScreen = ({ navigation }: any) => {
 
     setIsLoading(true);
     try {
-      const response = await AuthApi.changePassword({
-        currentPassword: formData.currentPassword,
-        newPassword: formData.newPassword,
-      });
+      const response = await AuthApi.changePassword(
+        formData.currentPassword,
+        formData.newPassword
+      );
 
       if (response.success) {
         Alert.alert('Success', 'Password changed successfully', [
