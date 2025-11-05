@@ -16,15 +16,18 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import StorageService from '../../services/storage.service';
+import { useTheme } from '../../contexts/ThemeContext';
 
 const SettingsScreen = ({ navigation }: any) => {
-  // Settings state - loaded from storage on mount
+  // Get theme state and toggle function from ThemeContext
+  const { isDarkMode, toggleTheme } = useTheme();
+
+  // Settings state - loaded from storage on mount (dark mode managed by ThemeContext)
   const [settings, setSettings] = useState({
     pushNotifications: true,
     emailNotifications: false,
     locationServices: true,
     biometricAuth: false,
-    darkMode: false,
   });
   const [isLoading, setIsLoading] = useState(true);
 
@@ -40,13 +43,11 @@ const SettingsScreen = ({ navigation }: any) => {
         emailNotifications,
         locationServices,
         biometricAuth,
-        theme,
       ] = await Promise.all([
         StorageService.getPushNotifications(),
         StorageService.getEmailNotifications(),
         StorageService.getLocationServices(),
         StorageService.getBiometricEnabled(),
-        StorageService.getTheme(),
       ]);
 
       setSettings({
@@ -54,7 +55,6 @@ const SettingsScreen = ({ navigation }: any) => {
         emailNotifications,
         locationServices,
         biometricAuth,
-        darkMode: theme === 'dark',
       });
     } catch (error) {
       console.error('Failed to load settings:', error);
@@ -63,7 +63,13 @@ const SettingsScreen = ({ navigation }: any) => {
     }
   };
 
-  const handleToggle = async (setting: keyof typeof settings) => {
+  const handleToggle = async (setting: keyof typeof settings | 'darkMode') => {
+    // Handle dark mode separately using ThemeContext
+    if (setting === 'darkMode') {
+      await toggleTheme();
+      return;
+    }
+
     const newValue = !settings[setting];
 
     // Update local state
@@ -86,9 +92,6 @@ const SettingsScreen = ({ navigation }: any) => {
           break;
         case 'biometricAuth':
           await StorageService.setBiometricEnabled(newValue);
-          break;
-        case 'darkMode':
-          await StorageService.setTheme(newValue ? 'dark' : 'light');
           break;
       }
     } catch (error) {
@@ -234,10 +237,10 @@ const SettingsScreen = ({ navigation }: any) => {
               </View>
             </View>
             <Switch
-              value={settings.darkMode}
+              value={isDarkMode}
               onValueChange={() => handleToggle('darkMode')}
               trackColor={{ false: '#D1D5DB', true: '#93C5FD' }}
-              thumbColor={settings.darkMode ? '#3B82F6' : '#F3F4F6'}
+              thumbColor={isDarkMode ? '#3B82F6' : '#F3F4F6'}
             />
           </View>
         </View>
