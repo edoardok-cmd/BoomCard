@@ -16,9 +16,11 @@ import {
   Alert,
 } from 'react-native';
 import { useAuth } from '../../store/AuthContext';
+import { useTheme } from '../../contexts/ThemeContext';
 
 const EditProfileScreen = ({ navigation }: any) => {
   const { user, updateProfile } = useAuth();
+  const { theme } = useTheme();
   const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState({
     firstName: user?.firstName || '',
@@ -40,6 +42,8 @@ const EditProfileScreen = ({ navigation }: any) => {
     }
   };
 
+  const styles = getStyles(theme);
+
   return (
     <ScrollView style={styles.container}>
       <View style={styles.content}>
@@ -50,7 +54,7 @@ const EditProfileScreen = ({ navigation }: any) => {
           <TextInput
             style={styles.input}
             placeholder="Enter first name"
-            placeholderTextColor="#9CA3AF"
+            placeholderTextColor={theme.colors.onSurfaceVariant}
             value={formData.firstName}
             onChangeText={(text) =>
               setFormData({ ...formData, firstName: text })
@@ -62,7 +66,7 @@ const EditProfileScreen = ({ navigation }: any) => {
           <TextInput
             style={styles.input}
             placeholder="Enter last name"
-            placeholderTextColor="#9CA3AF"
+            placeholderTextColor={theme.colors.onSurfaceVariant}
             value={formData.lastName}
             onChangeText={(text) =>
               setFormData({ ...formData, lastName: text })
@@ -74,7 +78,7 @@ const EditProfileScreen = ({ navigation }: any) => {
           <TextInput
             style={styles.input}
             placeholder="Enter phone number"
-            placeholderTextColor="#9CA3AF"
+            placeholderTextColor={theme.colors.onSurfaceVariant}
             value={formData.phone}
             onChangeText={(text) =>
               setFormData({ ...formData, phone: text })
@@ -116,10 +120,10 @@ const EditProfileScreen = ({ navigation }: any) => {
   );
 };
 
-const styles = StyleSheet.create({
+const getStyles = (theme: any) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: theme.colors.background,
   },
   content: {
     padding: 24,
@@ -127,7 +131,7 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: '#1F2937',
+    color: theme.colors.onSurface,
     marginBottom: 24,
   },
   form: {
@@ -136,35 +140,35 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#374151',
+    color: theme.colors.onSurface,
     marginBottom: 8,
     marginTop: 16,
   },
   input: {
-    backgroundColor: '#F3F4F6',
+    backgroundColor: theme.colors.surface,
     borderRadius: 12,
     padding: 16,
     fontSize: 16,
-    color: '#1F2937',
+    color: theme.colors.onSurface,
   },
   inputDisabled: {
-    backgroundColor: '#E5E7EB',
-    color: '#6B7280',
+    backgroundColor: theme.colors.surfaceVariant,
+    color: theme.colors.onSurfaceVariant,
   },
   helperText: {
     fontSize: 12,
-    color: '#6B7280',
+    color: theme.colors.onSurfaceVariant,
     marginTop: 4,
   },
   button: {
-    backgroundColor: '#3B82F6',
+    backgroundColor: theme.colors.primary,
     borderRadius: 12,
     padding: 16,
     alignItems: 'center',
     marginTop: 8,
   },
   buttonDisabled: {
-    backgroundColor: '#93C5FD',
+    backgroundColor: theme.colors.surfaceVariant,
   },
   buttonText: {
     color: '#FFFFFF',
@@ -178,7 +182,7 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   buttonSecondaryText: {
-    color: '#3B82F6',
+    color: theme.colors.primary,
     fontSize: 16,
     fontWeight: '600',
   },

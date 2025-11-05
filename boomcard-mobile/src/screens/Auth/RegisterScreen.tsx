@@ -18,10 +18,12 @@ import {
   ScrollView,
 } from 'react-native';
 import { useAuth } from '../../store/AuthContext';
+import { useTheme } from '../../contexts/ThemeContext';
 import type { RegisterRequest } from '../../types';
 
 const RegisterScreen = ({ navigation }: any) => {
   const { register } = useAuth();
+  const { theme } = useTheme();
   const [formData, setFormData] = useState<RegisterRequest>({
     email: '',
     password: '',
@@ -65,6 +67,8 @@ const RegisterScreen = ({ navigation }: any) => {
     }
   };
 
+  const styles = getStyles(theme);
+
   return (
     <KeyboardAvoidingView
       style={styles.container}
@@ -87,7 +91,7 @@ const RegisterScreen = ({ navigation }: any) => {
           <TextInput
             style={styles.input}
             placeholder="First Name *"
-            placeholderTextColor="#9CA3AF"
+            placeholderTextColor={theme.colors.onSurfaceVariant}
             value={formData.firstName}
             onChangeText={(text) =>
               setFormData({ ...formData, firstName: text })
@@ -99,7 +103,7 @@ const RegisterScreen = ({ navigation }: any) => {
           <TextInput
             style={styles.input}
             placeholder="Last Name *"
-            placeholderTextColor="#9CA3AF"
+            placeholderTextColor={theme.colors.onSurfaceVariant}
             value={formData.lastName}
             onChangeText={(text) =>
               setFormData({ ...formData, lastName: text })
@@ -111,7 +115,7 @@ const RegisterScreen = ({ navigation }: any) => {
           <TextInput
             style={styles.input}
             placeholder="Email *"
-            placeholderTextColor="#9CA3AF"
+            placeholderTextColor={theme.colors.onSurfaceVariant}
             value={formData.email}
             onChangeText={(text) =>
               setFormData({ ...formData, email: text.toLowerCase() })
@@ -125,7 +129,7 @@ const RegisterScreen = ({ navigation }: any) => {
           <TextInput
             style={styles.input}
             placeholder="Phone (optional)"
-            placeholderTextColor="#9CA3AF"
+            placeholderTextColor={theme.colors.onSurfaceVariant}
             value={formData.phone}
             onChangeText={(text) =>
               setFormData({ ...formData, phone: text })
@@ -137,7 +141,7 @@ const RegisterScreen = ({ navigation }: any) => {
           <TextInput
             style={styles.input}
             placeholder="Password *"
-            placeholderTextColor="#9CA3AF"
+            placeholderTextColor={theme.colors.onSurfaceVariant}
             value={formData.password}
             onChangeText={(text) =>
               setFormData({ ...formData, password: text })
@@ -151,7 +155,7 @@ const RegisterScreen = ({ navigation }: any) => {
           <TextInput
             style={styles.input}
             placeholder="Confirm Password *"
-            placeholderTextColor="#9CA3AF"
+            placeholderTextColor={theme.colors.onSurfaceVariant}
             value={confirmPassword}
             onChangeText={setConfirmPassword}
             secureTextEntry
@@ -185,10 +189,10 @@ const RegisterScreen = ({ navigation }: any) => {
   );
 };
 
-const styles = StyleSheet.create({
+const getStyles = (theme: any) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: theme.colors.background,
   },
   scrollView: {
     flex: 1,
@@ -208,33 +212,33 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 28,
     fontWeight: 'bold',
-    color: '#1F2937',
+    color: theme.colors.onSurface,
     marginBottom: 8,
   },
   subtitle: {
     fontSize: 16,
-    color: '#6B7280',
+    color: theme.colors.onSurfaceVariant,
   },
   form: {
     marginBottom: 24,
   },
   input: {
-    backgroundColor: '#F3F4F6',
+    backgroundColor: theme.colors.surface,
     borderRadius: 12,
     padding: 16,
     fontSize: 16,
     marginBottom: 12,
-    color: '#1F2937',
+    color: theme.colors.onSurface,
   },
   button: {
-    backgroundColor: '#3B82F6',
+    backgroundColor: theme.colors.primary,
     borderRadius: 12,
     padding: 16,
     alignItems: 'center',
     marginTop: 8,
   },
   buttonDisabled: {
-    backgroundColor: '#93C5FD',
+    backgroundColor: theme.colors.surfaceVariant,
   },
   buttonText: {
     color: '#FFFFFF',
@@ -249,11 +253,11 @@ const styles = StyleSheet.create({
   },
   footerText: {
     fontSize: 14,
-    color: '#6B7280',
+    color: theme.colors.onSurfaceVariant,
   },
   link: {
     fontSize: 14,
-    color: '#3B82F6',
+    color: theme.colors.primary,
     fontWeight: '600',
   },
 });

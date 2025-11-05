@@ -25,6 +25,7 @@ import receiptsRouter from './routes/receipts.routes';
 import receiptsEnhancedRouter from './routes/receipts.enhanced.routes';
 import webhooksRouter from './routes/webhooks.routes';
 import cardsRouter from './routes/cards.routes';
+import notificationsRouter from './routes/notifications.routes';
 
 // Import WebSocket handler
 import { initializeWebSocket } from './websocket/server';
@@ -143,6 +144,7 @@ app.use('/api/integrations', integrationsRouter);
 app.use('/api/reviews', reviewsRouter);
 app.use('/api/stickers', stickersRouter);
 app.use('/api/cards', cardsRouter);
+app.use('/api/notifications', notificationsRouter);
 // Enhanced receipts routes with fraud detection (mounted BEFORE base receipts to avoid conflicts)
 app.use('/api/receipts/v2', receiptsEnhancedRouter);
 app.use('/api/receipts', receiptsRouter);

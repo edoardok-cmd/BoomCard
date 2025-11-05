@@ -63,6 +63,7 @@ model User {
   wallet              Wallet?
   subscriptions       Subscription[]
   savedPaymentMethods SavedPaymentMethod[]
+  pushTokens          PushToken[]
 
   @@index([email])
   @@index([role])
@@ -1174,4 +1175,22 @@ model VenueStickerConfig {
   venue Venue @relation(fields: [venueId], references: [id], onDelete: Cascade)
 
   @@index([venueId])
+}
+
+model PushToken {
+  id         String   @id @default(uuid())
+  userId     String
+  token      String   @unique
+  platform   String   // ios, android, web
+  deviceId   String?
+  isActive   Boolean  @default(true)
+  lastUsedAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+  @@index([isActive])
 }

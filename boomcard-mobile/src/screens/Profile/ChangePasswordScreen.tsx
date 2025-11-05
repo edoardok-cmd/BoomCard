@@ -16,8 +16,10 @@ import {
   Alert,
 } from 'react-native';
 import AuthApi from '../../api/auth.api';
+import { useTheme } from '../../contexts/ThemeContext';
 
 const ChangePasswordScreen = ({ navigation }: any) => {
+  const { theme } = useTheme();
   const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState({
     currentPassword: '',
@@ -78,6 +80,8 @@ const ChangePasswordScreen = ({ navigation }: any) => {
     }
   };
 
+  const styles = getStyles(theme);
+
   return (
     <ScrollView style={styles.container}>
       <View style={styles.content}>
@@ -91,7 +95,7 @@ const ChangePasswordScreen = ({ navigation }: any) => {
           <TextInput
             style={styles.input}
             placeholder="Enter current password"
-            placeholderTextColor="#9CA3AF"
+            placeholderTextColor={theme.colors.onSurfaceVariant}
             value={formData.currentPassword}
             onChangeText={(text) =>
               setFormData({ ...formData, currentPassword: text })
@@ -106,7 +110,7 @@ const ChangePasswordScreen = ({ navigation }: any) => {
           <TextInput
             style={styles.input}
             placeholder="Enter new password (min 8 characters)"
-            placeholderTextColor="#9CA3AF"
+            placeholderTextColor={theme.colors.onSurfaceVariant}
             value={formData.newPassword}
             onChangeText={(text) =>
               setFormData({ ...formData, newPassword: text })
@@ -121,7 +125,7 @@ const ChangePasswordScreen = ({ navigation }: any) => {
           <TextInput
             style={styles.input}
             placeholder="Re-enter new password"
-            placeholderTextColor="#9CA3AF"
+            placeholderTextColor={theme.colors.onSurfaceVariant}
             value={formData.confirmPassword}
             onChangeText={(text) =>
               setFormData({ ...formData, confirmPassword: text })
@@ -163,10 +167,10 @@ const ChangePasswordScreen = ({ navigation }: any) => {
   );
 };
 
-const styles = StyleSheet.create({
+const getStyles = (theme: any) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: theme.colors.background,
   },
   content: {
     padding: 24,
@@ -174,12 +178,12 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: '#1F2937',
+    color: theme.colors.onSurface,
     marginBottom: 8,
   },
   description: {
     fontSize: 14,
-    color: '#6B7280',
+    color: theme.colors.onSurfaceVariant,
     marginBottom: 24,
   },
   form: {
@@ -188,19 +192,19 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#374151',
+    color: theme.colors.onSurface,
     marginBottom: 8,
     marginTop: 16,
   },
   input: {
-    backgroundColor: '#F3F4F6',
+    backgroundColor: theme.colors.surface,
     borderRadius: 12,
     padding: 16,
     fontSize: 16,
-    color: '#1F2937',
+    color: theme.colors.onSurface,
   },
   requirements: {
-    backgroundColor: '#F3F4F6',
+    backgroundColor: theme.colors.surface,
     borderRadius: 12,
     padding: 16,
     marginBottom: 24,
@@ -208,23 +212,23 @@ const styles = StyleSheet.create({
   requirementsTitle: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#374151',
+    color: theme.colors.onSurface,
     marginBottom: 8,
   },
   requirementItem: {
     fontSize: 14,
-    color: '#6B7280',
+    color: theme.colors.onSurfaceVariant,
     marginTop: 4,
   },
   button: {
-    backgroundColor: '#3B82F6',
+    backgroundColor: theme.colors.primary,
     borderRadius: 12,
     padding: 16,
     alignItems: 'center',
     marginTop: 8,
   },
   buttonDisabled: {
-    backgroundColor: '#93C5FD',
+    backgroundColor: theme.colors.surfaceVariant,
   },
   buttonText: {
     color: '#FFFFFF',
@@ -238,7 +242,7 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   buttonSecondaryText: {
-    color: '#3B82F6',
+    color: theme.colors.primary,
     fontSize: 16,
     fontWeight: '600',
   },

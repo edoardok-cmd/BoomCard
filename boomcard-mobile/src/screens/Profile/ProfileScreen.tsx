@@ -1,9 +1,11 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
 import { useAuth } from '../../store/AuthContext';
+import { useTheme } from '../../contexts/ThemeContext';
 
 const ProfileScreen = ({ navigation }: any) => {
   const { user, logout } = useAuth();
+  const { theme } = useTheme();
 
   const handleLogout = () => {
     Alert.alert(
@@ -21,6 +23,8 @@ const ProfileScreen = ({ navigation }: any) => {
       ]
     );
   };
+
+  const styles = getStyles(theme);
 
   return (
     <View style={styles.container}>
@@ -66,13 +70,13 @@ const ProfileScreen = ({ navigation }: any) => {
   );
 };
 
-const styles = StyleSheet.create({
+const getStyles = (theme: any) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F9FAFB',
+    backgroundColor: theme.colors.background,
   },
   header: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: theme.colors.surface,
     padding: 32,
     alignItems: 'center',
   },
@@ -80,7 +84,7 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: '#3B82F6',
+    backgroundColor: theme.colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 16,
@@ -93,16 +97,16 @@ const styles = StyleSheet.create({
   name: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: '#1F2937',
+    color: theme.colors.onSurface,
     marginBottom: 4,
   },
   email: {
     fontSize: 14,
-    color: '#6B7280',
+    color: theme.colors.onSurfaceVariant,
   },
   menu: {
     marginTop: 24,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: theme.colors.surface,
   },
   menuItem: {
     flexDirection: 'row',
@@ -110,18 +114,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
+    borderBottomColor: theme.colors.surfaceVariant,
   },
   menuItemText: {
     fontSize: 16,
-    color: '#1F2937',
+    color: theme.colors.onSurface,
   },
   menuItemIcon: {
     fontSize: 24,
-    color: '#9CA3AF',
+    color: theme.colors.onSurfaceVariant,
   },
   logoutText: {
-    color: '#EF4444',
+    color: theme.colors.error,
   },
 });
 

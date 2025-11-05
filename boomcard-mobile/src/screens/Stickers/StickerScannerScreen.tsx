@@ -107,9 +107,12 @@ export default function StickerScannerScreen() {
     return (
       <View style={styles.centered}>
         <Text style={styles.errorText}>
-          Camera and location permissions are required
+          Camera and location permissions are required to scan BOOM-Stickers
         </Text>
-        <Button mode="contained" onPress={requestPermissions}>
+        <HelperText type="info" style={styles.helperText}>
+          BoomCard needs camera access to scan QR codes and location to verify you're at the venue.
+        </HelperText>
+        <Button mode="contained" onPress={requestPermissions} style={styles.permissionButton}>
           Grant Permissions
         </Button>
       </View>
@@ -120,6 +123,7 @@ export default function StickerScannerScreen() {
     <View style={styles.container}>
       <CameraView
         style={styles.camera}
+        facing="back"
         onBarcodeScanned={scanned ? undefined : handleBarCodeScanned}
         barcodeScannerSettings={{
           barcodeTypes: ['qr'],
@@ -202,6 +206,15 @@ const styles = StyleSheet.create({
   errorText: {
     textAlign: 'center',
     marginBottom: 16,
+    fontSize: 16,
+  },
+  helperText: {
+    textAlign: 'center',
+    marginBottom: 24,
+    paddingHorizontal: 16,
+  },
+  permissionButton: {
+    marginTop: 8,
   },
   camera: {
     flex: 1,

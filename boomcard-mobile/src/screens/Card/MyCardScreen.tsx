@@ -9,6 +9,7 @@ import { View, StyleSheet, ScrollView, Dimensions } from 'react-native';
 import { Text, Card, Button, Chip } from 'react-native-paper';
 import QRCode from 'react-native-qrcode-svg';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useTheme } from '../../contexts/ThemeContext';
 import { cardApi } from '../../api/card.api';
 
 const { width } = Dimensions.get('window');
@@ -21,6 +22,7 @@ const CARD_GRADIENTS: Record<string, string[]> = {
 };
 
 export default function MyCardScreen() {
+  const { theme } = useTheme();
   const [loading, setLoading] = useState(true);
   const [card, setCard] = useState<any>(null);
   const [statistics, setStatistics] = useState<any>(null);
@@ -44,6 +46,8 @@ export default function MyCardScreen() {
   useEffect(() => {
     loadCard();
   }, []);
+
+  const styles = getStyles(theme);
 
   if (loading || !card) {
     return (
@@ -82,7 +86,7 @@ export default function MyCardScreen() {
               <View style={styles.qrWrapper}>
                 <QRCode
                   value={qrData}
-                  size={140}
+                  size={110}
                   backgroundColor="white"
                   color="black"
                 />
@@ -166,10 +170,10 @@ export default function MyCardScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (theme: any) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: theme.colors.background,
   },
   centered: {
     flex: 1,
@@ -186,7 +190,7 @@ const styles = StyleSheet.create({
   },
   cardContent: {
     padding: 24,
-    height: CARD_WIDTH * 0.63, // Standard credit card ratio
+    height: CARD_WIDTH * 0.68, // Adjusted for better QR code spacing
   },
   cardHeader: {
     flexDirection: 'row',
@@ -206,9 +210,10 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   qrContainer: {
-    flex: 1,
+    height: 140,
     justifyContent: 'center',
     alignItems: 'center',
+    marginVertical: 12,
   },
   qrWrapper: {
     backgroundColor: 'white',
@@ -252,7 +257,7 @@ const styles = StyleSheet.create({
   },
   statValue: {
     fontWeight: 'bold',
-    color: '#2196f3',
+    color: theme.colors.primary,
   },
   statLabel: {
     opacity: 0.6,
@@ -261,11 +266,11 @@ const styles = StyleSheet.create({
   cashbackContainer: {
     alignItems: 'center',
     padding: 16,
-    backgroundColor: '#f0f9ff',
+    backgroundColor: theme.dark ? '#1E3A5F' : '#f0f9ff',
     borderRadius: 8,
   },
   cashbackAmount: {
-    color: '#ff9800',
+    color: theme.dark ? '#FFA726' : '#ff9800',
     fontWeight: 'bold',
   },
   cashbackLabel: {
