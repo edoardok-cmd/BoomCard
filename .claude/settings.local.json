@@ -82,7 +82,8 @@
       "Bash(while read pid)",
       "Bash(do echo \"Killing PID: $pid\")",
       "Bash(done)",
-      "Bash(sudo killall:*)"
+      "Bash(sudo killall:*)",
+      "Bash(git rev-parse:*)"
     ],
     "deny": [],
     "ask": []

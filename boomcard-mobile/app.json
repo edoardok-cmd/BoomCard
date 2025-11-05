@@ -74,7 +74,6 @@
     },
     "scheme": "boomcard",
     "plugins": [
-      "expo-barcode-scanner",
       "expo-secure-store",
       "expo-camera",
       "expo-location",
