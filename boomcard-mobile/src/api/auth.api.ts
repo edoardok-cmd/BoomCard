@@ -35,6 +35,12 @@ export class AuthApi {
         authData.refreshToken
       );
       await StorageService.setUserData(authData.user);
+
+      // Return unwrapped auth data for AuthContext
+      return {
+        success: true,
+        data: authData,
+      };
     }
 
     return response;
@@ -59,6 +65,12 @@ export class AuthApi {
         authData.refreshToken
       );
       await StorageService.setUserData(authData.user);
+
+      // Return unwrapped auth data for AuthContext
+      return {
+        success: true,
+        data: authData,
+      };
     }
 
     return response;
