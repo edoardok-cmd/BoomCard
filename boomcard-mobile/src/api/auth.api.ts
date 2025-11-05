@@ -26,12 +26,15 @@ export class AuthApi {
     );
 
     if (response.success && response.data) {
+      // Backend returns tokens in response.data.data (nested structure)
+      const authData = (response.data as any).data || response.data;
+
       // Store tokens and user data
       await StorageService.setTokens(
-        response.data.accessToken,
-        response.data.refreshToken
+        authData.accessToken,
+        authData.refreshToken
       );
-      await StorageService.setUserData(response.data.user);
+      await StorageService.setUserData(authData.user);
     }
 
     return response;
@@ -47,12 +50,15 @@ export class AuthApi {
     );
 
     if (response.success && response.data) {
+      // Backend returns tokens in response.data.data (nested structure)
+      const authData = (response.data as any).data || response.data;
+
       // Store tokens and user data
       await StorageService.setTokens(
-        response.data.accessToken,
-        response.data.refreshToken
+        authData.accessToken,
+        authData.refreshToken
       );
-      await StorageService.setUserData(response.data.user);
+      await StorageService.setUserData(authData.user);
     }
 
     return response;
