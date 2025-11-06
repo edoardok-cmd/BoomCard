@@ -80,6 +80,42 @@ router.get(
 );
 
 /**
+ * POST /api/receipts/ocr
+ * Process receipt image with OCR
+ */
+router.post(
+  '/ocr',
+  authenticate,
+  uploadSingle,
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: 'No image file provided'
+      });
+    }
+
+    // For now, return mock OCR results
+    // In production, this would call an OCR service like Google Vision API, AWS Textract, etc.
+    const mockOCRResult = {
+      success: true,
+      data: {
+        merchantName: 'Sample Merchant',
+        date: new Date().toISOString(),
+        totalAmount: 0,
+        currency: 'BGN',
+        items: [],
+        confidence: 0,
+        rawText: 'OCR processing not yet implemented. Please enter receipt details manually.'
+      },
+      message: 'OCR processing not yet implemented. Please enter details manually.'
+    };
+
+    res.json(mockOCRResult);
+  })
+);
+
+/**
  * GET /api/receipts/stats
  * Get user's receipt statistics
  */
