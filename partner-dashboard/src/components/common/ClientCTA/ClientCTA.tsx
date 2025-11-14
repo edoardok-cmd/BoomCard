@@ -7,14 +7,14 @@ import Button from '../Button/Button';
 const CTASection = styled.div`
   background: linear-gradient(135deg, #000000 0%, #1f2937 100%);
 
-  /* Vibrant mode - explosive gradient CTA */
+  /* Vibrant mode - explosive blue gradient CTA */
   [data-theme="color"] & {
-    background: linear-gradient(135deg, #1a0a2e 0%, #6a0572 25%, #ab2567 50%, #ff006e 75%, #ff4500 100%);
+    background: linear-gradient(135deg, #0a1e3e 0%, #1e3a8a 25%, #1d4ed8 50%, #3b82f6 75%, #06b6d4 100%);
     background-size: 200% 200%;
     animation: heroGradientFlow 10s ease infinite;
     box-shadow:
-      inset 0 -8px 40px -10px rgba(255, 69, 0, 0.3),
-      inset 0 -4px 30px -10px rgba(255, 0, 110, 0.2);
+      inset 0 -8px 40px -10px rgba(59, 130, 246, 0.4),
+      inset 0 -4px 30px -10px rgba(6, 182, 212, 0.3);
   }
 
   @keyframes heroGradientFlow {
@@ -38,8 +38,9 @@ const Container = styled.div`
 `;
 
 const CTATitle = styled.h2`
+  font-family: 'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   font-size: 3rem;
-  font-weight: 700;
+  font-weight: 800;
   margin-bottom: 1.5rem;
 
   @media (max-width: 768px) {
@@ -48,7 +49,9 @@ const CTATitle = styled.h2`
 `;
 
 const CTAText = styled.p`
+  font-family: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   font-size: 1.25rem;
+  font-weight: 400;
   opacity: 0.9;
   margin-bottom: 2.5rem;
   max-width: 600px;
@@ -75,6 +78,18 @@ const CTAButtons = styled.div`
     &:hover {
       border-color: white !important;
       background: rgba(255, 255, 255, 0.1) !important;
+    }
+  }
+
+  /* Ensure white text in vibrant mode */
+  [data-theme="color"] & > a > button[class*="outline"] {
+    color: white !important;
+    border-color: rgba(255, 255, 255, 0.7) !important;
+
+    &:hover {
+      color: white !important;
+      border-color: white !important;
+      background: rgba(255, 255, 255, 0.15) !important;
     }
   }
 `;

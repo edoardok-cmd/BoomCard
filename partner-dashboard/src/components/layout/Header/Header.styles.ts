@@ -1,8 +1,10 @@
 import styled from 'styled-components';
 
 export const StyledHeader = styled.header`
-  position: sticky;
+  position: fixed;
   top: 0;
+  left: 0;
+  right: 0;
   z-index: 1020;
   width: 100%;
   backdrop-filter: blur(12px);
@@ -23,30 +25,22 @@ export const StyledHeader = styled.header`
     }
   }
 
-  /* Ensure header stays in viewport on mobile */
-  @media (max-width: 768px) {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-  }
-
   /* Light mode */
   [data-theme="light"] & {
-    background-color: rgba(255, 255, 255, 0.8);
+    background-color: rgba(255, 255, 255, 0.7);
   }
 
   /* Dark mode */
   [data-theme="dark"] & {
-    background-color: rgba(15, 23, 42, 0.8);
+    background-color: rgba(15, 23, 42, 0.7);
   }
 
   /* Color mode - vibrant gradient with glow */
   [data-theme="color"] & {
     background: linear-gradient(180deg,
-      rgba(255, 249, 240, 0.95) 0%,
-      rgba(255, 240, 248, 0.9) 50%,
-      rgba(240, 248, 255, 0.85) 100%
+      rgba(255, 249, 240, 0.7) 0%,
+      rgba(255, 240, 248, 0.7) 50%,
+      rgba(240, 248, 255, 0.7) 100%
     );
     border-bottom: 2px solid transparent;
     border-image: linear-gradient(90deg, #ff4500, #ff006e, #00d4ff) 1;
@@ -60,18 +54,18 @@ export const StyledHeader = styled.header`
     box-shadow: var(--shadow-soft);
 
     [data-theme="light"] & {
-      background-color: rgba(255, 255, 255, 0.95);
+      background-color: rgba(255, 255, 255, 0.7);
     }
 
     [data-theme="dark"] & {
-      background-color: rgba(15, 23, 42, 0.95);
+      background-color: rgba(15, 23, 42, 0.7);
     }
 
     [data-theme="color"] & {
       background: linear-gradient(180deg,
-        rgba(255, 249, 240, 0.98) 0%,
-        rgba(255, 240, 248, 0.96) 50%,
-        rgba(240, 248, 255, 0.94) 100%
+        rgba(255, 249, 240, 0.7) 0%,
+        rgba(255, 240, 248, 0.7) 50%,
+        rgba(240, 248, 255, 0.7) 100%
       );
       box-shadow:
         0 8px 40px -5px rgba(255, 69, 0, 0.35),

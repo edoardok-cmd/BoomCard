@@ -17,6 +17,22 @@ import { useTopOffers } from '../hooks/useOffers';
 import { usePartnerReviews } from '../hooks/usePartnerReviews';
 import { updateSEO, addOrganizationSchema, addWebSiteSchema, generateHowToSchema, generateFAQSchema } from '../utils/seo';
 
+// Global styled components for typography
+const SectionTitle = styled.h2`
+  font-family: 'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
+  font-weight: 800 !important;
+`;
+
+const SubsectionTitle = styled.h3`
+  font-family: 'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
+  font-weight: 800 !important;
+`;
+
+const BodyText = styled.p`
+  font-family: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
+  font-weight: 400 !important;
+`;
+
 // Styled components for category cards
 const CategoryCard = styled(motion.div)`
   height: 100%;
@@ -196,6 +212,25 @@ const CTABox = styled(motion.div)`
   }
 `;
 
+const ReviewsSection = styled.section`
+  background: var(--color-background-secondary);
+
+  /* Vibrant mode - light bluish gradient background */
+  [data-theme="color"] & {
+    background: linear-gradient(135deg, #e0f2fe 0%, #bfdbfe 25%, #93c5fd 50%, #60a5fa 75%, #3b82f6 100%);
+    background-size: 200% 200%;
+    animation: reviewsGradientFlow 10s ease infinite;
+    box-shadow:
+      inset 0 -8px 40px -10px rgba(96, 165, 250, 0.3),
+      inset 0 -4px 30px -10px rgba(59, 130, 246, 0.2);
+  }
+
+  @keyframes reviewsGradientFlow {
+    0%, 100% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+  }
+`;
+
 // Subscription cards - Credit card design matching hero exactly
 const SubscriptionCardsContainer = styled.div`
   display: flex;
@@ -284,6 +319,7 @@ const PopularBadge = styled.div`
   color: #000;
   padding: 0.4rem 1.25rem;
   border-radius: 9999px;
+  font-family: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   font-size: 0.6875rem;
   font-weight: 700;
   text-transform: uppercase;
@@ -321,18 +357,20 @@ const CardBottomRow = styled.div`
 `;
 
 const CardHolderName = styled.div`
+  font-family: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   color: rgba(255, 255, 255, 0.95);
   font-size: 0.8125rem;
   text-transform: uppercase;
   letter-spacing: 1.5px;
-  font-weight: 600;
+  font-weight: 400;
 `;
 
 const CardPriceDisplay = styled.div<{ $type: 'basic' | 'premium' }>`
+  font-family: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   text-align: right;
   color: ${props => props.$type === 'premium' ? '#ffd700' : 'rgba(255, 255, 255, 0.95)'};
   font-size: 1.75rem;
-  font-weight: 700;
+  font-weight: 400;
   line-height: 1;
 
   span {
@@ -366,11 +404,13 @@ const FeaturesList = styled.ul`
 `;
 
 const FeatureItem = styled.li`
+  font-family: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   padding: 0.875rem 1.5rem;
   display: flex;
   align-items: center;
   gap: 0.875rem;
   font-size: 0.9375rem;
+  font-weight: 400;
   color: var(--color-text-secondary);
   border-bottom: 1px solid var(--color-border);
 
@@ -575,12 +615,12 @@ const HomePage: React.FC = () => {
       <section className="section">
         <div className="container-custom">
           <div className="text-center mb-16">
-            <h2 className="text-4xl md:text-5xl font-bold mb-4" style={{ color: 'var(--color-text-primary)' }}>
+            <SectionTitle className="text-4xl md:text-5xl font-bold mb-4" style={{ color: 'var(--color-text-primary)' }}>
               {t('home.howItWorks')}
-            </h2>
-            <p className="text-xl max-w-2xl mx-auto" style={{ color: 'var(--color-text-secondary)' }}>
+            </SectionTitle>
+            <BodyText className="text-xl max-w-2xl mx-auto" style={{ color: 'var(--color-text-secondary)' }}>
               {t('home.howItWorksSubtitle')}
-            </p>
+            </BodyText>
           </div>
 
           <div className="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto">
@@ -605,12 +645,12 @@ const HomePage: React.FC = () => {
                 <StepCircle>
                   {item.step}
                 </StepCircle>
-                <h3 className="text-xl font-semibold mb-3" style={{ color: 'var(--color-text-primary)' }}>
+                <SubsectionTitle className="text-xl font-semibold mb-3" style={{ color: 'var(--color-text-primary)' }}>
                   {t(`home.${item.title}`)}
-                </h3>
-                <p className="leading-relaxed" style={{ color: 'var(--color-text-secondary)' }}>
+                </SubsectionTitle>
+                <BodyText className="leading-relaxed" style={{ color: 'var(--color-text-secondary)' }}>
                   {t(`home.${item.desc}`)}
-                </p>
+                </BodyText>
               </div>
             ))}
           </div>
@@ -621,14 +661,14 @@ const HomePage: React.FC = () => {
       <section className="section" style={{ background: 'var(--color-background-secondary)' }}>
         <div className="container-custom">
           <div className="text-center mb-16">
-            <h2 className="text-4xl md:text-5xl font-bold mb-4" style={{ color: 'var(--color-text-primary)' }}>
+            <SectionTitle className="text-4xl md:text-5xl font-bold mb-4" style={{ color: 'var(--color-text-primary)' }}>
               {language === 'bg' ? 'Абонаментни Планове' : 'Subscription Plans'}
-            </h2>
-            <p className="text-xl max-w-2xl mx-auto" style={{ color: 'var(--color-text-secondary)' }}>
+            </SectionTitle>
+            <BodyText className="text-xl max-w-2xl mx-auto" style={{ color: 'var(--color-text-secondary)' }}>
               {language === 'bg'
                 ? 'Изберете перфектния план за вашия начин на живот'
                 : 'Choose the perfect plan for your lifestyle'}
-            </p>
+            </BodyText>
           </div>
 
           <SubscriptionCardsContainer>
@@ -699,25 +739,25 @@ const HomePage: React.FC = () => {
       </section>
 
       {/* User Reviews Section */}
-      <section className="section" style={{ background: 'var(--color-background-secondary)' }}>
+      <ReviewsSection className="section">
         <div className="container-custom">
           <div className="text-center mb-16">
-            <h2 className="text-4xl md:text-5xl font-bold mb-4" style={{ color: 'var(--color-text-primary)' }}>
+            <SectionTitle className="text-4xl md:text-5xl font-bold mb-4" style={{ color: 'var(--color-text-primary)' }}>
               {language === 'bg' ? 'Какво казват нашите клиенти' : 'What Our Customers Say'}
-            </h2>
-            <p className="text-xl max-w-2xl mx-auto" style={{ color: 'var(--color-text-secondary)' }}>
+            </SectionTitle>
+            <BodyText className="text-xl max-w-2xl mx-auto" style={{ color: 'var(--color-text-secondary)' }}>
               {language === 'bg'
                 ? 'Хиляди доволни клиенти спестяват с BoomCard всеки ден'
                 : 'Thousands of happy customers saving with BoomCard every day'}
-            </p>
+            </BodyText>
           </div>
 
           {loadingReviews ? (
             <div className="text-center py-12">
               <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2" style={{ borderColor: 'var(--color-primary)' }}></div>
-              <p className="mt-4" style={{ color: 'var(--color-text-secondary)' }}>
+              <BodyText className="mt-4" style={{ color: 'var(--color-text-secondary)' }}>
                 {language === 'bg' ? 'Зареждане на отзиви...' : 'Loading reviews...'}
-              </p>
+              </BodyText>
             </div>
           ) : reviewsData && reviewsData.length > 0 ? (
             <div className="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto">
@@ -731,14 +771,14 @@ const HomePage: React.FC = () => {
             </div>
           ) : (
             <div className="text-center py-12" style={{ background: 'var(--color-background)', borderRadius: '1rem' }}>
-              <p className="text-xl mb-4" style={{ color: 'var(--color-text-secondary)' }}>
+              <BodyText className="text-xl mb-4" style={{ color: 'var(--color-text-secondary)' }}>
                 {language === 'bg' ? 'Все още няма отзиви' : 'No reviews yet'}
-              </p>
-              <p className="text-sm mb-6" style={{ color: 'var(--color-text-secondary)', opacity: 0.7 }}>
+              </BodyText>
+              <BodyText className="text-sm mb-6" style={{ color: 'var(--color-text-secondary)', opacity: 0.7 }}>
                 {language === 'bg'
                   ? 'Бъдете първите, които споделят мнение'
                   : 'Be the first to share your opinion'}
-              </p>
+              </BodyText>
               <Button
                 variant="primary"
                 onClick={() => setShowReviewForm(true)}
@@ -748,7 +788,7 @@ const HomePage: React.FC = () => {
             </div>
           )}
         </div>
-      </section>
+      </ReviewsSection>
 
       {/* Client CTA */}
       <ClientCTA />

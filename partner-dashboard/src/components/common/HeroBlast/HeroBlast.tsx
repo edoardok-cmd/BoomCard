@@ -504,13 +504,11 @@ const LogoExplode = styled(motion.img)<{ $showAnimation?: boolean; $stopAnimatio
   height: auto;
   max-height: 324px;
   object-fit: contain;
+  background-color: #000000;
   filter: drop-shadow(0 25px 50px rgba(0, 0, 0, 0.8));
   transform-style: preserve-3d;
   perspective: 1000px;
   will-change: transform;
-
-  /* Tilting animation for logo - same as black card */
-  animation: ${props => props.$stopAnimation ? 'none' : props.$showAnimation ? 'logoTilt 16s ease-in-out infinite' : 'none'};
 
   /* Disable animations for reduced motion preference */
   @media (prefers-reduced-motion: reduce) {
@@ -688,9 +686,10 @@ const CTAContainer = styled(motion.div)`
 `;
 
 const CTATitle = styled(motion.h1)`
+  font-family: 'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   font-size: 4rem;
-  font-weight: 700;
-  margin-bottom: 1rem;
+  font-weight: 800;
+  margin-bottom: calc(1rem + 40px);
   line-height: 1.2;
   letter-spacing: -0.02em;
   white-space: pre-line;
@@ -765,7 +764,9 @@ const CTATitle = styled(motion.h1)`
 `;
 
 const CTASubtitle = styled(motion.p)`
+  font-family: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   font-size: 1.5rem;
+  font-weight: 400;
   margin-bottom: 2rem;
   color: #ffffff;
   opacity: 0.95;
@@ -802,6 +803,7 @@ const ButtonContainer = styled(motion.div)`
   padding: 0 1rem;
   max-width: 100%;
   width: 100%;
+  margin-top: 40px;
 
   a {
     text-decoration: none;
@@ -822,43 +824,43 @@ const ButtonContainer = styled(motion.div)`
       padding: 16px 40px;
       min-width: 200px;
       box-shadow:
-        0 8px 35px -5px rgba(0, 0, 0, 0.5),
-        0 10px 40px -5px rgba(255, 69, 0, 0.6);
+        0 8px 23px -5px rgba(0, 0, 0, 0.5),
+        0 10px 27px -5px rgba(59, 130, 246, 0.6);
     }
 
-    /* Primary button - ultra bold gradient */
+    /* Primary button - ultra bold blue gradient */
     button:first-child {
-      background: linear-gradient(135deg, #ff0066 0%, #ff4500 50%, #ff8800 100%) !important;
+      background: linear-gradient(135deg, #1d4ed8 0%, #3b82f6 50%, #06b6d4 100%) !important;
       color: #ffffff !important;
       border: 3px solid rgba(255, 255, 255, 0.3);
       text-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
-      animation: heroPrimaryPulse 2s ease-in-out infinite;
+      animation: heroPrimaryPulse 2.6s ease-in-out infinite;
 
       &:hover {
         box-shadow:
-          0 12px 50px -5px rgba(0, 0, 0, 0.6),
-          0 14px 55px -5px rgba(255, 69, 0, 0.8),
-          0 8px 40px -5px rgba(255, 0, 102, 0.7) !important;
+          0 12px 34px -5px rgba(0, 0, 0, 0.6),
+          0 14px 37px -5px rgba(59, 130, 246, 0.8),
+          0 8px 27px -5px rgba(6, 182, 212, 0.7) !important;
         transform: translateY(-3px) scale(1.05) !important;
       }
     }
 
-    /* Secondary button - strong outline */
+    /* Secondary button - strong blue outline */
     a:nth-child(2) button {
       background: rgba(255, 255, 255, 0.95) !important;
-      color: #1a0a2e !important;
-      border: 3px solid #ff006e !important;
+      color: #0a1e3e !important;
+      border: 3px solid #3b82f6 !important;
       text-shadow: none !important;
       box-shadow:
-        0 8px 35px -5px rgba(255, 0, 110, 0.5),
+        0 8px 35px -5px rgba(59, 130, 246, 0.5),
         0 10px 40px -5px rgba(0, 0, 0, 0.3);
 
       &:hover {
-        background: linear-gradient(135deg, #ffe4f1 0%, #fff5e1 100%) !important;
-        border-color: #ff4500 !important;
+        background: linear-gradient(135deg, #dbeafe 0%, #e0f2fe 100%) !important;
+        border-color: #06b6d4 !important;
         box-shadow:
-          0 12px 50px -5px rgba(255, 0, 110, 0.7),
-          0 14px 55px -5px rgba(255, 69, 0, 0.5),
+          0 12px 50px -5px rgba(59, 130, 246, 0.7),
+          0 14px 55px -5px rgba(6, 182, 212, 0.5),
           0 8px 40px -5px rgba(0, 0, 0, 0.4) !important;
         transform: translateY(-3px) scale(1.05) !important;
       }
@@ -868,14 +870,14 @@ const ButtonContainer = styled(motion.div)`
   @keyframes heroPrimaryPulse {
     0%, 100% {
       box-shadow:
-        0 8px 35px -5px rgba(0, 0, 0, 0.5),
-        0 10px 40px -5px rgba(255, 69, 0, 0.6);
+        0 8px 23px -5px rgba(0, 0, 0, 0.5),
+        0 10px 27px -5px rgba(59, 130, 246, 0.6);
     }
     50% {
       box-shadow:
-        0 8px 35px -5px rgba(0, 0, 0, 0.5),
-        0 12px 45px -5px rgba(255, 69, 0, 0.8),
-        0 8px 35px -5px rgba(255, 0, 102, 0.6);
+        0 8px 23px -5px rgba(0, 0, 0, 0.5),
+        0 12px 31px -5px rgba(59, 130, 246, 0.8),
+        0 8px 23px -5px rgba(6, 182, 212, 0.6);
     }
   }
 
@@ -1006,16 +1008,15 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
     };
 
     const handleTimeUpdate = () => {
-      // Show logo at 60% of video duration (during the peak of the blast)
-      if (video.currentTime >= video.duration * 0.6 && !showLogo) {
-        setShowLogo(true);
-      }
+      // Don't show logo during video - wait for video to end
     };
 
     const handleEnded = () => {
       // Only trigger once
       if (!videoEnded) {
         setVideoEnded(true);
+        // Show both logo and CTA immediately (CTA will be invisible initially)
+        setShowLogo(true);
         setShowCTA(true);
         // Start photo cycling from the logo after video ends
         setTimeout(() => setPhotoState('dealing'), 800);
@@ -1062,15 +1063,15 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
 
   const content = {
     en: {
-      title: 'Live More - Pay Less',
-      subtitle: 'Unlock exclusive discounts at Bulgaria\'s finest venues',
-      ctaButton: 'Learn More and Get your Card',
+      title: 'Live More.\nPay Less.',
+      subtitle: 'The card that turns every day into an adventure - start NOW!',
+      ctaButton: 'Activate your Premium - FREE!',
       cardHolder: 'CARD HOLDER',
     },
     bg: {
-      title: 'Живейте повече\nПлащайте по-малко',
-      subtitle: 'Отключете ексклузивни отстъпки в най-добрите заведения в България',
-      ctaButton: 'Научете повече и вземете картата си',
+      title: 'Живей повече.\nПлащай по-малко.',
+      subtitle: 'Картата, която превръща всеки ден в приключение - започни СЕГА!',
+      ctaButton: 'Активирай своя Premium - БЕЗПЛАТНО!',
       cardHolder: 'ПРИТЕЖАТЕЛ',
     },
   };
@@ -1096,135 +1097,92 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
       <VideoOverlay $fadeOut={videoEnded} />
 
       <ContentContainer>
-        {/* Logo - centered at top */}
-        <AnimatePresence>
-          {showLogo && (
-            <motion.div
-              initial={{ scale: 0, opacity: 0, rotateX: 90, z: -1000 }}
-              animate={{
-                scale: 1,
-                opacity: 1,
-                rotateX: 0,
-                z: 0,
-                // Smoothly move logo upward when CTA appears, but keep centered on mobile
-                y: showCTA && window.innerWidth > 768 ? (window.innerWidth >= 2560 ? -50 : -100) : 0,
-              }}
-              transition={{
-                // Different transitions for initial appearance vs position change
-                scale: {
-                  type: 'tween',
-                  ease: [0.25, 0.1, 0.25, 1],
-                  duration: 2.5, // Slow appearance
-                },
-                opacity: {
-                  type: 'tween',
-                  ease: [0.25, 0.1, 0.25, 1],
-                  duration: 2.5,
-                },
-                rotateX: {
-                  type: 'tween',
-                  ease: [0.25, 0.1, 0.25, 1],
-                  duration: 2.5,
-                },
-                z: {
-                  type: 'tween',
-                  ease: [0.25, 0.1, 0.25, 1],
-                  duration: 2.5,
-                },
-                // Smooth upward movement after appearance
-                y: {
-                  type: 'tween',
-                  ease: [0.25, 0.1, 0.25, 1],
-                  duration: 1.5, // Smooth travel to new position
-                  delay: 0.3, // Small delay to separate from initial appearance
-                },
-              }}
-              style={{ position: 'relative', marginBottom: '2rem' }}
-            >
-              <LogoExplode
-                src="/logo-explode.png"
-                alt="Boom Logo Explode"
-                $showAnimation={showCTA && !showSideCards}
-                $stopAnimation={showSideCards}
-              />
+        {/* Logo - appears in final position immediately */}
+        {showLogo && (
+          <div style={{ position: 'relative', marginBottom: '50px' }}>
+            <LogoExplode
+              src="/zCard.png"
+              alt="Boom Card"
+              $showAnimation={showCTA && !showSideCards}
+              $stopAnimation={showSideCards}
+            />
 
-              {/* Ejected Photos - cycle between dealing and returning from the logo */}
-              {photoState !== 'hidden' && photoState !== 'finished' && (
-                <PhotosContainer>
-                  {/* Left side photos */}
-                  {photos.left.map((photoUrl, index) => (
-                    <Photo
-                      key={`left-${index}`}
-                      $index={index}
-                      $side="left"
-                      animate={
-                        photoState === 'dealing'
-                          ? {
-                              x: photoPositions.left[index].x,
-                              y: photoPositions.left[index].y,
-                              opacity: 1,
-                              scale: 1,
-                              rotate: photoTilts[0][index],
-                            }
-                          : {
-                              x: 0,
-                              y: 0,
-                              opacity: 0,
-                              scale: 0,
-                              rotate: 0,
-                            }
-                      }
-                      transition={{
-                        delay: index * 0.15,
-                        type: 'spring',
-                        stiffness: 100,
-                        damping: 18,
-                        duration: 0.6,
-                      }}
-                    >
-                      <img src={photoUrl} alt={`Experience ${index + 1}`} />
-                    </Photo>
-                  ))}
+            {/* Ejected Photos - cycle between dealing and returning from the logo */}
+            {false && photoState !== 'hidden' && photoState !== 'finished' && (
+              <PhotosContainer>
+                {/* Left side photos */}
+                {photos.left.map((photoUrl, index) => (
+                  <Photo
+                    key={`left-${index}`}
+                    $index={index}
+                    $side="left"
+                    animate={
+                      photoState === 'dealing'
+                        ? {
+                            x: photoPositions.left[index].x,
+                            y: photoPositions.left[index].y,
+                            opacity: 1,
+                            scale: 1,
+                            rotate: photoTilts[0][index],
+                          }
+                        : {
+                            x: 0,
+                            y: 0,
+                            opacity: 0,
+                            scale: 0,
+                            rotate: 0,
+                          }
+                    }
+                    transition={{
+                      delay: index * 0.15,
+                      type: 'spring',
+                      stiffness: 100,
+                      damping: 18,
+                      duration: 0.6,
+                    }}
+                  >
+                    <img src={photoUrl} alt={`Experience ${index + 1}`} />
+                  </Photo>
+                ))}
 
-                  {/* Right side photos */}
-                  {photos.right.map((photoUrl, index) => (
-                    <Photo
-                      key={`right-${index}`}
-                      $index={index}
-                      $side="right"
-                      animate={
-                        photoState === 'dealing'
-                          ? {
-                              x: photoPositions.right[index].x,
-                              y: photoPositions.right[index].y,
-                              opacity: 1,
-                              scale: 1,
-                              rotate: photoTilts[1][index],
-                            }
-                          : {
-                              x: 0,
-                              y: 0,
-                              opacity: 0,
-                              scale: 0,
-                              rotate: 0,
-                            }
-                      }
-                      transition={{
-                        delay: index * 0.15,
-                        type: 'spring',
-                        stiffness: 100,
-                        damping: 18,
-                        duration: 0.6,
-                      }}
-                    >
-                      <img src={photoUrl} alt={`Experience ${index + 9}`} />
-                    </Photo>
-                  ))}
-                </PhotosContainer>
-              )}
-            </motion.div>
-          )}
-        </AnimatePresence>
+                {/* Right side photos */}
+                {photos.right.map((photoUrl, index) => (
+                  <Photo
+                    key={`right-${index}`}
+                    $index={index}
+                    $side="right"
+                    animate={
+                      photoState === 'dealing'
+                        ? {
+                            x: photoPositions.right[index].x,
+                            y: photoPositions.right[index].y,
+                            opacity: 1,
+                            scale: 1,
+                            rotate: photoTilts[1][index],
+                          }
+                        : {
+                            x: 0,
+                            y: 0,
+                            opacity: 0,
+                            scale: 0,
+                            rotate: 0,
+                          }
+                    }
+                    transition={{
+                      delay: index * 0.15,
+                      type: 'spring',
+                      stiffness: 100,
+                      damping: 18,
+                      duration: 0.6,
+                    }}
+                  >
+                    <img src={photoUrl} alt={`Experience ${index + 9}`} />
+                  </Photo>
+                ))}
+              </PhotosContainer>
+            )}
+          </div>
+        )}
 
         {/* Container for CTA and Side Cards */}
         <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2rem' }} className="cta-cards-container">
@@ -1234,8 +1192,8 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
                 initial={{ opacity: 0, y: 30 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{
-                  delay: 2.5,
-                  duration: 1.2,
+                  delay: 1,
+                  duration: 1.5,
                   ease: [0.25, 0.1, 0.25, 1]
                 }}
                 lang={language}
@@ -1244,8 +1202,8 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{
-                    delay: 2.5, // Same delay as container for synchronized start
-                    duration: 1.2,
+                    delay: 1,
+                    duration: 1.5,
                     ease: [0.25, 0.1, 0.25, 1]
                   }}
                 >
@@ -1256,8 +1214,8 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{
-                    delay: 2.5, // Same delay for synchronized start
-                    duration: 1.2,
+                    delay: 1.2,
+                    duration: 1.5,
                     ease: [0.25, 0.1, 0.25, 1]
                   }}
                 >
@@ -1268,8 +1226,8 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{
-                    delay: 2.5, // Same delay for synchronized start
-                    duration: 1.2,
+                    delay: 1.4,
+                    duration: 1.5,
                     ease: [0.25, 0.1, 0.25, 1]
                   }}
                 >
@@ -1287,7 +1245,7 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
           <div style={{ display: 'flex', gap: '2rem', justifyContent: 'center', flexWrap: 'wrap' }} className="cards-wrapper">
             {/* Black Card - slides in from left, positioned on far left side */}
             <AnimatePresence>
-              {showBlackCard && !hideCardsOnScroll && (
+              {false && showBlackCard && !hideCardsOnScroll && (
                 <motion.div
                   initial={{ opacity: 0, x: -500 }}
                   animate={{ opacity: 1, x: 0 }}
@@ -1317,7 +1275,7 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
 
             {/* Silver Card - slides in from right, positioned on far right side */}
             <AnimatePresence>
-              {showSilverCard && !hideCardsOnScroll && (
+              {false && showSilverCard && !hideCardsOnScroll && (
                 <motion.div
                   initial={{ opacity: 0, x: 500 }}
                   animate={{ opacity: 1, x: 0 }}

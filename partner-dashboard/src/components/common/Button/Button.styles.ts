@@ -147,7 +147,7 @@ const variantStyles = {
 
     [data-theme="color"] & {
       border: 2px solid #ff4500;
-      color: #8b2fb8;
+      color: #ffffff;
     }
 
     &:hover:not(:disabled) {
@@ -168,6 +168,7 @@ const variantStyles = {
       [data-theme="color"] & {
         background: linear-gradient(135deg, rgba(255, 69, 0, 0.1) 0%, rgba(255, 0, 110, 0.1) 100%);
         border-color: #ff006e;
+        color: #ffffff;
       }
     }
     &:active:not(:disabled) {
@@ -263,7 +264,8 @@ export const StyledButton = styled.button<{ variant?: VariantType; size?: SizeTy
   border-radius: 9999px;
   cursor: pointer;
   transition: all 300ms cubic-bezier(0.4, 0, 0.2, 1);
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-weight: 400;
   display: inline-flex;
   align-items: center;
   justify-content: center;
