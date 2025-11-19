@@ -1099,7 +1099,12 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
       <ContentContainer>
         {/* Logo - appears in final position immediately */}
         {showLogo && (
-          <div style={{ position: 'relative', marginTop: '50px', marginBottom: '50px' }}>
+          <motion.div
+            style={{ position: 'relative', marginTop: '50px', marginBottom: '50px' }}
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.8, ease: [0.25, 0.1, 0.25, 1] }}
+          >
             <LogoExplode
               src="/zCard.png"
               alt="Boom Card"
@@ -1181,7 +1186,7 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
                 ))}
               </PhotosContainer>
             )}
-          </div>
+          </motion.div>
         )}
 
         {/* Container for CTA and Side Cards */}
