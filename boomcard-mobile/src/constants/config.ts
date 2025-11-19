@@ -5,9 +5,10 @@
 // API Configuration
 export const API_CONFIG = {
   // Base URL for backend API
-  BASE_URL: __DEV__
+  // Use EXPO_PUBLIC_API_URL from environment if available, otherwise fallback
+  BASE_URL: process.env.EXPO_PUBLIC_API_URL || (__DEV__
     ? 'http://172.20.10.2:3001' // Development - laptop IP on network
-    : 'https://api.boomcard.bg', // Production
+    : 'https://boomcard-api.fly.dev'), // Production - Fly.io
 
   // API endpoints
   ENDPOINTS: {
@@ -71,7 +72,8 @@ export const API_CONFIG = {
   },
 
   // Request timeout in milliseconds
-  TIMEOUT: 30000,
+  // Increased to 90 seconds to handle Render cold starts (free tier sleeps after inactivity)
+  TIMEOUT: 90000,
 };
 
 // GPS Configuration
@@ -100,6 +102,7 @@ export const STORAGE_KEYS = {
   REFRESH_TOKEN: 'refresh_token',
   USER_DATA: 'user_data',
   LANGUAGE: 'language',
+  LANGUAGE_SELECTED: 'language_selected',
   THEME: 'theme',
   BIOMETRIC_ENABLED: 'biometric_enabled',
   PUSH_NOTIFICATIONS: 'push_notifications',
@@ -123,6 +126,7 @@ export const APP_CONFIG = {
   // Currency
   CURRENCY: 'BGN',
   CURRENCY_SYMBOL: 'лв',
+  EUR_EXCHANGE_RATE: 1.95583, // Fixed rate: 1 EUR = 1.95583 BGN
 
   // OCR Configuration
   OCR: {

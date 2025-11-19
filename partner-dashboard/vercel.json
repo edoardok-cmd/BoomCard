@@ -44,11 +44,11 @@
     }
   ],
   "env": {
-    "VITE_API_URL": "https://boomcard.onrender.com"
+    "VITE_API_URL": "https://boomcard-api.fly.dev"
   },
   "build": {
     "env": {
-      "VITE_API_URL": "https://boomcard.onrender.com"
+      "VITE_API_URL": "https://boomcard-api.fly.dev"
     }
   }
 }

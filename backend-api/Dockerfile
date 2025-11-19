@@ -8,15 +8,15 @@ FROM node:18-alpine AS dependencies
 
 WORKDIR /app
 
-# Install dependencies for Prisma (OpenSSL)
-RUN apk add --no-cache openssl
+# Install dependencies for Prisma (OpenSSL) and native modules (Python, make, g++)
+RUN apk add --no-cache openssl python3 make g++
 
 # Copy package files
 COPY package*.json ./
 COPY prisma ./prisma/
 
 # Install dependencies (production only)
-RUN npm ci --only=production
+RUN npm install --omit=dev
 
 # Generate Prisma Client
 RUN npx prisma generate
@@ -28,8 +28,8 @@ FROM node:18-alpine AS builder
 
 WORKDIR /app
 
-# Install dependencies for build
-RUN apk add --no-cache openssl
+# Install dependencies for build (including Python for native modules)
+RUN apk add --no-cache openssl python3 make g++
 
 # Copy package files
 COPY package*.json ./
@@ -37,7 +37,7 @@ COPY tsconfig.json ./
 COPY prisma ./prisma/
 
 # Install all dependencies (including dev)
-RUN npm ci
+RUN npm install
 
 # Generate Prisma Client
 RUN npx prisma generate
