@@ -2,7 +2,7 @@
 // Service Worker for BoomCard PWA
 // Version 1.0.0
 
-const CACHE_VERSION = 'boomcard-v1';
+const CACHE_VERSION = 'boomcard-v2';
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const DYNAMIC_CACHE = `${CACHE_VERSION}-dynamic`;
 const IMAGE_CACHE = `${CACHE_VERSION}-images`;
@@ -73,6 +73,13 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  // Skip video/audio files - they use range requests (206) which can't be cached
+  if (request.destination === 'video' || request.destination === 'audio' ||
+      url.pathname.endsWith('.mp4') || url.pathname.endsWith('.webm') ||
+      url.pathname.endsWith('.mp3') || url.pathname.endsWith('.wav')) {
+    return;
+  }
+
   // API requests - Network First strategy
   if (url.pathname.startsWith('/api/')) {
     event.respondWith(networkFirst(request, DYNAMIC_CACHE));
@@ -134,7 +141,8 @@ async function networkFirst(request, cacheName) {
   try {
     const response = await fetch(request);
 
-    if (response.ok) {
+    // Only cache successful responses (200), not partial (206) or redirects
+    if (response.ok && response.status === 200) {
       const cache = await caches.open(cacheName);
       await limitCacheSize(cacheName, MAX_DYNAMIC_CACHE_SIZE);
       await cache.put(request, response.clone());
