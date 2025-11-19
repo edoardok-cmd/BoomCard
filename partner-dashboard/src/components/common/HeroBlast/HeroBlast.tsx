@@ -1099,7 +1099,7 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
       <ContentContainer>
         {/* Logo - appears in final position immediately */}
         {showLogo && (
-          <div style={{ position: 'relative', marginBottom: '50px' }}>
+          <div style={{ position: 'relative', marginTop: '50px', marginBottom: '50px' }}>
             <LogoExplode
               src="/zCard.png"
               alt="Boom Card"
