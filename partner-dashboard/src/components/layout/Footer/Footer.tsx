@@ -35,10 +35,10 @@ const FooterSection: React.FC<{
         </svg>
       </button>
       <div
-        className={`overflow-hidden transition-all duration-300 ease-in-out md:!block ${
+        className={`overflow-hidden transition-all duration-300 ease-in-out md:!block md:!max-h-none md:!opacity-100 ${
           isOpen ? 'max-h-96 opacity-100 pb-4' : 'max-h-0 opacity-0'
         }`}
-        style={{ maxHeight: isOpen ? '400px' : '0' }}
+        style={{ maxHeight: isOpen ? '400px' : '' }}
       >
         <div className="md:pb-0">
           {children}
