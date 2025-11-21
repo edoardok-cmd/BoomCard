@@ -6,6 +6,15 @@ import Button from '../Button/Button';
 
 const CTASection = styled.div`
   background: linear-gradient(135deg, #000000 0%, #1f2937 100%);
+  color: white;
+  padding: 5rem 0;
+  text-align: center;
+
+  /* Dark theme - lighter background for contrast */
+  [data-theme="dark"] & {
+    background: linear-gradient(135deg, #374151 0%, #1f2937 100%);
+    border-top: 1px solid #4b5563;
+  }
 
   /* Vibrant mode - explosive blue gradient CTA */
   [data-theme="color"] & {
@@ -21,10 +30,6 @@ const CTASection = styled.div`
     0%, 100% { background-position: 0% 50%; }
     50% { background-position: 100% 50%; }
   }
-
-  color: white;
-  padding: 5rem 0;
-  text-align: center;
 
   @media (max-width: 768px) {
     padding: 3rem 0;
@@ -70,26 +75,40 @@ const CTAButtons = styled.div`
   justify-content: center;
   flex-wrap: wrap;
 
-  /* Make outline buttons visible on dark background */
+  /* Outline buttons on dark CTA - ensure high contrast */
   > a > button[class*="outline"] {
-    color: white !important;
-    border-color: rgba(255, 255, 255, 0.5) !important;
+    color: white;
+    border-color: rgba(255, 255, 255, 0.6);
+    font-weight: 600;
 
     &:hover {
-      border-color: white !important;
-      background: rgba(255, 255, 255, 0.1) !important;
+      border-color: white;
+      background: rgba(255, 255, 255, 0.15);
+      color: white;
     }
   }
 
-  /* Ensure white text in vibrant mode */
-  [data-theme="color"] & > a > button[class*="outline"] {
-    color: white !important;
-    border-color: rgba(255, 255, 255, 0.7) !important;
+  /* Dark theme - brighter buttons for visibility */
+  [data-theme="dark"] & > a > button[class*="outline"] {
+    color: #ffffff;
+    border-color: #9ca3af;
 
     &:hover {
-      color: white !important;
-      border-color: white !important;
-      background: rgba(255, 255, 255, 0.15) !important;
+      border-color: #60a5fa;
+      background: rgba(59, 130, 246, 0.2);
+      color: #ffffff;
+    }
+  }
+
+  /* Color theme - maintain white on blue gradient */
+  [data-theme="color"] & > a > button[class*="outline"] {
+    color: white;
+    border-color: rgba(255, 255, 255, 0.8);
+
+    &:hover {
+      color: white;
+      border-color: white;
+      background: rgba(255, 255, 255, 0.2);
     }
   }
 `;

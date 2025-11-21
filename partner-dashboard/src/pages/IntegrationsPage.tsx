@@ -267,8 +267,59 @@ const FilterButton = styled.button<{ $active: boolean }>`
   cursor: pointer;
   transition: all 0.2s;
 
+  /* Light theme - ensure dark text on light buttons */
+  [data-theme="light"] & {
+    ${props => !props.$active && `
+      color: #1f2937;
+      border-color: #d1d5db;
+    `}
+  }
+
+  /* Dark theme - ensure light text on dark buttons */
+  [data-theme="dark"] & {
+    ${props => props.$active ? `
+      background: #3b82f6;
+      color: #ffffff;
+      border-color: #3b82f6;
+    ` : `
+      background: #374151;
+      color: #d1d5db;
+      border-color: #4b5563;
+    `}
+  }
+
+  /* Color theme - high contrast buttons */
+  [data-theme="color"] & {
+    ${props => props.$active ? `
+      background: #1a0a2e;
+      color: #ffffff;
+      border-color: #1a0a2e;
+      box-shadow: 0 4px 15px rgba(26, 10, 46, 0.4);
+    ` : `
+      background: #ffffff;
+      color: #1a0a2e;
+      border-color: #ff94d6;
+      font-weight: 700;
+    `}
+  }
+
   &:hover {
     border-color: var(--color-text-primary);
+    transform: translateY(-2px);
+
+    [data-theme="dark"] & {
+      border-color: #60a5fa;
+      ${props => !props.$active && `
+        background: #4b5563;
+      `}
+    }
+
+    [data-theme="color"] & {
+      ${props => !props.$active && `
+        background: #fef1f8;
+        border-color: #ff006e;
+      `}
+    }
   }
 `;
 
