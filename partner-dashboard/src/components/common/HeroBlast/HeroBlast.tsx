@@ -28,9 +28,19 @@ const HeroContainer = styled.div`
 
   @media (max-width: 768px) {
     overflow: visible;
-    min-height: 900px;
+    min-height: auto;
+    height: auto;
+    max-height: none;
     padding-top: 80px; /* Account for fixed header on mobile */
+    padding-bottom: 2rem;
     justify-content: flex-start;
+  }
+
+  @media (max-width: 480px) {
+    min-height: auto;
+    height: auto;
+    padding-top: 80px;
+    padding-bottom: 1.5rem;
   }
 
   /* Side card positioning */
@@ -133,9 +143,14 @@ const ContentContainer = styled.div`
   }
 
   @media (max-width: 768px) {
-    padding: 1rem;
-    padding-top: 2rem;
+    padding: 0.5rem;
+    padding-top: 0;
     overflow: visible;
+  }
+
+  @media (max-width: 480px) {
+    padding: 0.5rem;
+    padding-top: 0;
   }
 `;
 
@@ -156,7 +171,11 @@ const CardContainer = styled(motion.div)`
     justify-content: center;
     width: 100%;
     max-width: 90vw;
-    margin: 0 auto 2rem;
+    margin: 0 auto 1rem;
+  }
+
+  @media (max-width: 480px) {
+    margin: 0 auto 0.5rem;
   }
 
 `;
@@ -687,13 +706,13 @@ const LogoContainer = styled(motion.div)`
   margin-bottom: 40px;
 
   @media (max-width: 768px) {
-    margin-top: 10px;
-    margin-bottom: 20px;
+    margin-top: 0;
+    margin-bottom: 15px;
   }
 
   @media (max-width: 480px) {
-    margin-top: 5px;
-    margin-bottom: 15px;
+    margin-top: 0;
+    margin-bottom: 10px;
   }
 `;
 
@@ -826,11 +845,17 @@ const ButtonContainer = styled(motion.div)`
   width: 100%;
   margin-top: clamp(20px, 3vw, 40px);
 
+  @media (max-width: 768px) {
+    margin-top: 10px;
+    margin-bottom: 10px;
+  }
+
   @media (max-width: 480px) {
     flex-direction: column;
     align-items: stretch;
     max-width: min(400px, 90vw);
-    margin: 20px auto 0;
+    margin: 10px auto 0;
+    gap: 0.75rem;
   }
 
   a {
@@ -1025,7 +1050,26 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
     };
   }, [photoState]);
 
-  // Mobile now follows same timing as desktop - removed immediate show logic
+  // Mobile fallback - show content immediately if video doesn't autoplay
+  useEffect(() => {
+    const isMobile = window.innerWidth <= 768;
+    if (!isMobile) return;
+
+    // On mobile, show content after a short delay regardless of video state
+    // This ensures content is always visible even if video doesn't autoplay
+    const mobileTimeout = setTimeout(() => {
+      if (!showLogo) {
+        console.log('[Mobile] Showing hero content (fallback)');
+        setShowLogo(true);
+        setShowCTA(true);
+        setShowBlackCard(true);
+        setShowSilverCard(true);
+        setAnimationsFinished(true);
+      }
+    }, 3000); // Show after 3 seconds on mobile
+
+    return () => clearTimeout(mobileTimeout);
+  }, [showLogo]);
 
   useEffect(() => {
     const video = videoRef.current;
