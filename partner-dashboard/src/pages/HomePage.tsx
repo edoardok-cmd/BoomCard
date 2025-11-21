@@ -658,18 +658,20 @@ const HomePage: React.FC = () => {
   const subscriptionPlans = [
     {
       name: language === 'bg' ? 'Основен' : 'Basic',
-      price: '0',
+      price: '14.99',
       features: [
         language === 'bg' ? 'Достъп до основни оферти' : 'Access to basic offers',
-        language === 'bg' ? '10% средна отстъпка' : '10% average discount'
+        language === 'bg' ? '5% средна отстъпка' : '5% average discount',
+        language === 'bg' ? 'Кешбек в приложението' : 'In-app cashback'
       ]
     },
     {
       name: language === 'bg' ? 'Премиум' : 'Premium',
-      price: '29',
+      price: '24.99',
       featured: true,
       features: [
-        language === 'bg' ? '30% средна отстъпка' : '30% average discount',
+        language === 'bg' ? 'До 10% средна отстъпка' : 'Up to 10% average discount',
+        language === 'bg' ? 'В зависимост от заведението' : 'Depending on the venue',
         language === 'bg' ? 'Приоритетна поддръжка' : 'Priority support',
         language === 'bg' ? 'Ексклузивни оферти' : 'Exclusive offers'
       ]

@@ -28,18 +28,18 @@ const HeroContainer = styled.div`
 
   @media (max-width: 768px) {
     overflow: visible;
-    min-height: 100vh;
+    min-height: calc(100vh - 70px); /* Subtract header height from viewport */
     height: auto;
     max-height: none;
-    padding-top: 70px; /* Account for fixed header on mobile */
+    padding-top: 0; /* Main layout provides header offset */
     padding-bottom: 80px; /* Account for bottom navigation */
     justify-content: center; /* Center content vertically */
   }
 
   @media (max-width: 480px) {
-    min-height: 100vh;
+    min-height: calc(100vh - 70px); /* Subtract header height from viewport */
     height: auto;
-    padding-top: 70px;
+    padding-top: 0; /* Main layout provides header offset */
     padding-bottom: 80px; /* Account for bottom navigation */
     justify-content: center;
   }

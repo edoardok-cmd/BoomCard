@@ -3,10 +3,15 @@ import styled from 'styled-components';
 export const StyledFooter = styled.footer`
   border-top: 1px solid var(--color-footer-border);
   padding: 3rem 0;
-  margin-top: 4rem;
+  margin-top: 2rem;
   background: var(--color-footer-bg);
   color: var(--color-footer-text);
   transition: background-color 0.3s ease, color 0.3s ease;
+
+  @media (max-width: 768px) {
+    margin-top: 1rem;
+    padding: 2rem 0;
+  }
 
   /* Color mode - vibrant gradient footer */
   [data-theme="color"] & {
