@@ -9,7 +9,7 @@ export default defineConfig({
     }
   },
   server: {
-    port: 5175,
+    port: 3015,
     strictPort: false, // Allow fallback to next available port
     proxy: {
       '/api': {
