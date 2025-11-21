@@ -4,8 +4,16 @@
  */
 
 import * as Sentry from '@sentry/node';
-import { ProfilingIntegration } from '@sentry/profiling-node';
 import { Express } from 'express';
+
+// Optionally import ProfilingIntegration - it may not be available on all platforms
+let ProfilingIntegration: any = null;
+try {
+  const profilingModule = require('@sentry/profiling-node');
+  ProfilingIntegration = profilingModule.ProfilingIntegration;
+} catch (error) {
+  console.log('[Sentry] Profiling integration not available on this platform');
+}
 
 export interface SentryConfig {
   dsn: string;
@@ -49,8 +57,8 @@ export function initSentry(app: Express): void {
       new Sentry.Integrations.Http({ tracing: true }),
       new Sentry.Integrations.Express({ app }),
 
-      // Profiling for performance insights
-      new ProfilingIntegration(),
+      // Profiling for performance insights (only if available)
+      ...(ProfilingIntegration ? [new ProfilingIntegration()] : []),
 
       // Prisma integration for database query tracking
       new Sentry.Integrations.Prisma({ client: undefined }), // Will be set later
