@@ -951,7 +951,10 @@ export const Header: React.FC<HeaderProps> = ({
           {/* Mobile Menu Button - Show when menu is hidden */}
           <button
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="lg:hidden z-[10000] p-1.5 sm:p-2 text-gray-700 hover:text-gray-900 transition-colors ml-1.5 sm:ml-2 flex-shrink-0"
+            className="lg:hidden z-[10000] p-1.5 sm:p-2 transition-colors ml-1.5 sm:ml-2 flex-shrink-0"
+            style={{
+              color: 'var(--color-text-primary)'
+            }}
             aria-label="Toggle menu"
           >
             <svg
@@ -999,8 +1002,12 @@ export const Header: React.FC<HeaderProps> = ({
                 {/* Language Toggle Mobile */}
                 <button
                   onClick={() => setLanguage(language === 'en' ? 'bg' : 'en')}
-                  className="mb-4 flex items-center justify-center gap-3 px-4 py-3 rounded-lg transition-all bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700"
-                  style={{ width: '100%' }}
+                  className="mb-4 flex items-center justify-center gap-3 px-4 py-3 rounded-lg transition-all"
+                  style={{
+                    width: '100%',
+                    background: 'var(--color-background-secondary)',
+                    color: 'var(--color-text-primary)'
+                  }}
                 >
                   <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '1.25rem', height: '1.25rem' }}>
                     <path
@@ -1096,7 +1103,7 @@ export const Header: React.FC<HeaderProps> = ({
                   <MegaMenu items={navigationConfig.main} language={language} autoExpandOnMobile={false} />
                 </nav>
 
-                <div className="flex flex-col gap-3 pt-6 border-t border-gray-200">
+                <div className="flex flex-col gap-3 pt-6" style={{ borderTop: '1px solid var(--color-border)' }}>
                   <Link to="/login" onClick={() => setMobileMenuOpen(false)}>
                     <Button variant="ghost" size="large" className="w-full">
                       {t('common.signIn')}
