@@ -391,18 +391,18 @@ const CardLogoText = styled.div<{ $type: 'basic' | 'premium' }>`
   font-family: 'Arial Black', sans-serif;
   letter-spacing: 2px;
   margin-bottom: 1.5rem;
-  color: ${props => props.$type === 'premium' ? '#ffd700' : '#ffffff'};
+  color: ${props => props.$type === 'premium' ? '#ffd700' : '#1a1a1a'};
   text-shadow: ${props => props.$type === 'premium'
     ? '0 2px 10px rgba(255, 215, 0, 0.3)'
-    : '0 2px 8px rgba(0, 0, 0, 0.3)'};
+    : '0 1px 2px rgba(255, 255, 255, 0.5)'};
 `;
 
-const CardNumber = styled.div`
+const CardNumber = styled.div<{ $type?: 'basic' | 'premium' }>`
   display: flex;
   gap: 0.75rem;
   margin-bottom: 2rem;
   font-size: 1.25rem;
-  color: rgba(255, 255, 255, 0.9);
+  color: ${props => props.$type === 'basic' ? 'rgba(26, 26, 26, 0.9)' : 'rgba(255, 255, 255, 0.9)'};
   letter-spacing: 0.25rem;
   font-family: 'Courier New', monospace;
 `;
@@ -413,9 +413,9 @@ const CardBottomRow = styled.div`
   align-items: flex-end;
 `;
 
-const CardHolderName = styled.div`
+const CardHolderName = styled.div<{ $type?: 'basic' | 'premium' }>`
   font-family: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  color: rgba(255, 255, 255, 0.95);
+  color: ${props => props.$type === 'basic' ? 'rgba(26, 26, 26, 0.95)' : 'rgba(255, 255, 255, 0.95)'};
   font-size: 0.8125rem;
   text-transform: uppercase;
   letter-spacing: 1.5px;
@@ -425,7 +425,7 @@ const CardHolderName = styled.div`
 const CardPriceDisplay = styled.div<{ $type: 'basic' | 'premium' }>`
   font-family: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   text-align: right;
-  color: ${props => props.$type === 'premium' ? '#ffd700' : 'rgba(255, 255, 255, 0.95)'};
+  color: ${props => props.$type === 'premium' ? '#ffd700' : 'rgba(26, 26, 26, 0.95)'};
   font-size: 1.75rem;
   font-weight: 400;
   line-height: 1;
@@ -765,7 +765,7 @@ const HomePage: React.FC = () => {
                     BOOM
                   </CardLogoText>
 
-                  <CardNumber>
+                  <CardNumber $type={plan.featured ? 'premium' : 'basic'}>
                     <span>••••</span>
                     <span>••••</span>
                     <span>••••</span>
@@ -773,7 +773,7 @@ const HomePage: React.FC = () => {
                   </CardNumber>
 
                   <CardBottomRow>
-                    <CardHolderName>
+                    <CardHolderName $type={plan.featured ? 'premium' : 'basic'}>
                       {plan.name.toUpperCase()}
                     </CardHolderName>
                     <CardPriceDisplay $type={plan.featured ? 'premium' : 'basic'}>
