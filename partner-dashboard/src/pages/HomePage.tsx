@@ -361,6 +361,39 @@ const CreditCardPlan = styled(motion.div)<{ $type: 'basic' | 'premium' }>`
     box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
   }
 
+  /* Dark Theme - Sophisticated dark gradients */
+  [data-theme="dark"] & {
+    ${props => props.$type === 'basic' && `
+      background: linear-gradient(135deg, #374151 0%, #4b5563 100%);
+      border: 3px solid #3b82f6;
+      box-shadow:
+        0 10px 40px rgba(59, 130, 246, 0.3),
+        0 8px 30px rgba(6, 182, 212, 0.2);
+
+      &::before {
+        background: radial-gradient(circle, rgba(59, 130, 246, 0.15) 0%, transparent 70%);
+      }
+    `}
+
+    ${props => props.$type === 'premium' && `
+      background: linear-gradient(135deg, #111827 0%, #1f2937 50%, #0f172a 100%);
+      border: 3px solid #06b6d4;
+      box-shadow:
+        0 10px 40px rgba(6, 182, 212, 0.5),
+        0 8px 35px rgba(59, 130, 246, 0.4);
+
+      &::before {
+        background: radial-gradient(circle, rgba(6, 182, 212, 0.2) 0%, transparent 70%);
+      }
+    `}
+
+    &:hover {
+      box-shadow:
+        0 20px 60px rgba(59, 130, 246, 0.4),
+        0 15px 50px rgba(6, 182, 212, 0.35);
+    }
+  }
+
   /* Color Theme - Vibrant gradients */
   [data-theme="color"] & {
     ${props => props.$type === 'basic' && `
@@ -431,6 +464,13 @@ const CardLogoText = styled.div<{ $type: 'basic' | 'premium' }>`
     ? '0 2px 10px rgba(255, 215, 0, 0.3)'
     : '0 1px 2px rgba(255, 255, 255, 0.5)'};
 
+  [data-theme="dark"] & {
+    color: ${props => props.$type === 'premium' ? '#06b6d4' : '#f8fafc'};
+    text-shadow: ${props => props.$type === 'premium'
+      ? '0 2px 15px rgba(6, 182, 212, 0.6), 0 0 30px rgba(59, 130, 246, 0.4)'
+      : '0 2px 8px rgba(59, 130, 246, 0.3)'};
+  }
+
   [data-theme="color"] & {
     color: ${props => props.$type === 'premium' ? '#ff4500' : '#1a0a2e'};
     text-shadow: ${props => props.$type === 'premium'
@@ -447,6 +487,10 @@ const CardNumber = styled.div<{ $type?: 'basic' | 'premium' }>`
   color: ${props => props.$type === 'basic' ? 'rgba(26, 26, 26, 0.9)' : 'rgba(255, 255, 255, 0.9)'};
   letter-spacing: 0.25rem;
   font-family: 'Courier New', monospace;
+
+  [data-theme="dark"] & {
+    color: rgba(248, 250, 252, 0.9);
+  }
 
   [data-theme="color"] & {
     color: ${props => props.$type === 'basic' ? 'rgba(26, 10, 46, 0.8)' : 'rgba(255, 255, 255, 0.95)'};
@@ -467,6 +511,10 @@ const CardHolderName = styled.div<{ $type?: 'basic' | 'premium' }>`
   letter-spacing: 1.5px;
   font-weight: 400;
 
+  [data-theme="dark"] & {
+    color: rgba(248, 250, 252, 0.95);
+  }
+
   [data-theme="color"] & {
     color: ${props => props.$type === 'basic' ? 'rgba(26, 10, 46, 0.9)' : 'rgba(255, 255, 255, 0.95)'};
   }
@@ -484,6 +532,13 @@ const CardPriceDisplay = styled.div<{ $type: 'basic' | 'premium' }>`
     font-size: 0.875rem;
     font-weight: 400;
     opacity: 0.9;
+  }
+
+  [data-theme="dark"] & {
+    color: ${props => props.$type === 'premium' ? '#06b6d4' : '#f8fafc'};
+    text-shadow: ${props => props.$type === 'premium'
+      ? '0 2px 10px rgba(6, 182, 212, 0.4)'
+      : '0 1px 4px rgba(59, 130, 246, 0.2)'};
   }
 
   [data-theme="color"] & {
