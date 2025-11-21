@@ -316,6 +316,7 @@ const CreditCardPlan = styled(motion.div)<{ $type: 'basic' | 'premium' }>`
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
   cursor: pointer;
   transition: transform 0.3s ease, box-shadow 0.3s ease;
+  margin-top: ${props => props.$type === 'premium' ? '1.5rem' : '0'};
 
   @media (max-width: 768px) {
     width: min(360px, 92vw);
@@ -438,7 +439,7 @@ const CreditCardPlan = styled(motion.div)<{ $type: 'basic' | 'premium' }>`
 
 const PopularBadge = styled.div`
   position: absolute;
-  top: -12px;
+  top: 0;
   left: 50%;
   transform: translateX(-50%);
   background: linear-gradient(135deg, #ffd700 0%, #ffed4e 100%);
@@ -866,14 +867,15 @@ const HomePage: React.FC = () => {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.5, delay: index * 0.2 }}
               >
+                {/* Most Popular Badge - positioned relative to wrapper */}
+                {plan.featured && (
+                  <PopularBadge>
+                    {language === 'bg' ? 'Най-популярен' : 'Most Popular'}
+                  </PopularBadge>
+                )}
+
                 {/* Credit Card matching hero design */}
                 <CreditCardPlan $type={plan.featured ? 'premium' : 'basic'}>
-                  {plan.featured && (
-                    <PopularBadge>
-                      {language === 'bg' ? 'Най-популярен' : 'Most Popular'}
-                    </PopularBadge>
-                  )}
-
                   <CardLogoText $type={plan.featured ? 'premium' : 'basic'}>
                     BOOM
                   </CardLogoText>
