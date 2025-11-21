@@ -35,13 +35,6 @@ const SettingsScreen = ({ navigation }: any) => {
   const queryClient = useQueryClient();
   const [currentLanguage, setCurrentLanguage] = useState(getCurrentLanguage());
 
-  // Set translated navigation title
-  useEffect(() => {
-    navigation.setOptions({
-      title: t('profile.settings'),
-    });
-  }, [navigation, t]);
-
   // Settings state - loaded from storage on mount (dark mode managed by ThemeContext)
   const [settings, setSettings] = useState({
     pushNotifications: true,
@@ -360,7 +353,7 @@ const SettingsScreen = ({ navigation }: any) => {
 
   const handleClearCache = () => {
     Alert.alert(
-      t('settings.clearCache'),
+      'Clear Cache',
       'Are you sure you want to clear all cached data? This will not remove your login credentials.',
       [
         { text: 'Cancel', style: 'cancel' },
@@ -409,15 +402,15 @@ const SettingsScreen = ({ navigation }: any) => {
 
   const handleReportProblem = () => {
     Alert.alert(
-      t('settings.reportProblem'),
-      t('settings.reportProblemMessage'),
+      'Report a Problem',
+      'Would you like to send an email to our support team?',
       [
-        { text: t('common.cancel'), style: 'cancel' },
+        { text: 'Cancel', style: 'cancel' },
         {
-          text: t('settings.sendEmail'),
+          text: 'Send Email',
           onPress: () => {
             // Open email client
-            Alert.alert(t('settings.info'), 'Opening email client...');
+            Alert.alert('Info', 'Opening email client...');
           },
         },
       ]
@@ -430,21 +423,21 @@ const SettingsScreen = ({ navigation }: any) => {
     <ScrollView style={styles.container}>
       <View style={styles.content}>
         {/* Notifications */}
-        <Text style={styles.sectionTitle}>{t('settings.notifications')}</Text>
+        <Text style={styles.sectionTitle}>Notifications</Text>
         <View style={styles.section}>
           <View style={styles.settingRow}>
             <View style={styles.settingInfo}>
               <Ionicons name="notifications" size={24} color={theme.colors.primary} />
               <View style={styles.settingText}>
-                <Text style={styles.settingLabel}>{t('profile.pushNotifications')}</Text>
+                <Text style={styles.settingLabel}>Push Notifications</Text>
                 <Text style={styles.settingDescription}>
-                  {t('settings.pushNotificationsDesc')}
+                  Receive notifications about offers and receipts
                 </Text>
                 {settings.pushNotifications && !hasNotificationPermission && (
                   <View style={styles.warningContainer}>
                     <Ionicons name="warning" size={14} color="#F59E0B" />
                     <Text style={styles.warningText}>
-                      {t('settings.permissionNotGranted')}
+                      Permission not granted
                     </Text>
                   </View>
                 )}
@@ -462,9 +455,9 @@ const SettingsScreen = ({ navigation }: any) => {
             <View style={styles.settingInfo}>
               <Ionicons name="mail" size={24} color={theme.colors.primary} />
               <View style={styles.settingText}>
-                <Text style={styles.settingLabel}>{t('profile.emailNotifications')}</Text>
+                <Text style={styles.settingLabel}>Email Notifications</Text>
                 <Text style={styles.settingDescription}>
-                  {t('settings.emailNotificationsDesc')}
+                  Receive updates via email
                 </Text>
               </View>
             </View>
@@ -478,21 +471,21 @@ const SettingsScreen = ({ navigation }: any) => {
         </View>
 
         {/* Privacy & Security */}
-        <Text style={styles.sectionTitle}>{t('settings.privacySecurity')}</Text>
+        <Text style={styles.sectionTitle}>Privacy & Security</Text>
         <View style={styles.section}>
           <View style={styles.settingRow}>
             <View style={styles.settingInfo}>
               <Ionicons name="location" size={24} color={theme.colors.primary} />
               <View style={styles.settingText}>
-                <Text style={styles.settingLabel}>{t('settings.locationServices')}</Text>
+                <Text style={styles.settingLabel}>Location Services</Text>
                 <Text style={styles.settingDescription}>
-                  {t('settings.locationServicesDesc')}
+                  Required for receipt verification
                 </Text>
                 {settings.locationServices && !isDeviceLocationEnabled && (
                   <View style={styles.warningContainer}>
                     <Ionicons name="warning" size={14} color="#F59E0B" />
                     <Text style={styles.warningText}>
-                      {t('settings.deviceLocationDisabled')}
+                      Device location is disabled
                     </Text>
                   </View>
                 )}
@@ -500,7 +493,7 @@ const SettingsScreen = ({ navigation }: any) => {
                   <View style={styles.warningContainer}>
                     <Ionicons name="warning" size={14} color="#F59E0B" />
                     <Text style={styles.warningText}>
-                      {t('settings.permissionNotGranted')}
+                      Permission not granted
                     </Text>
                   </View>
                 )}
@@ -516,7 +509,7 @@ const SettingsScreen = ({ navigation }: any) => {
           {settings.locationServices && !isDeviceLocationEnabled && (
             <TouchableOpacity style={styles.openSettingsButton} onPress={openDeviceSettings}>
               <Ionicons name="settings" size={20} color={theme.colors.primary} />
-              <Text style={styles.openSettingsText}>{t('settings.openDeviceSettings')}</Text>
+              <Text style={styles.openSettingsText}>Open Device Settings</Text>
             </TouchableOpacity>
           )}
 
@@ -525,16 +518,16 @@ const SettingsScreen = ({ navigation }: any) => {
               <Ionicons name="finger-print" size={24} color={theme.colors.primary} />
               <View style={styles.settingText}>
                 <Text style={styles.settingLabel}>
-                  {biometricType} {t('settings.authentication')}
+                  {biometricType} Authentication
                 </Text>
                 <Text style={styles.settingDescription}>
-                  {t('settings.use')} {biometricType.toLowerCase()} {t('settings.toLoginQuickly')}
+                  Use {biometricType.toLowerCase()} to login quickly
                 </Text>
                 {!isBiometricAvailable && (
                   <View style={styles.warningContainer}>
                     <Ionicons name="warning" size={14} color="#F59E0B" />
                     <Text style={styles.warningText}>
-                      {t('settings.notAvailable')}
+                      Not available on this device
                     </Text>
                   </View>
                 )}
@@ -542,7 +535,7 @@ const SettingsScreen = ({ navigation }: any) => {
                   <View style={styles.warningContainer}>
                     <Ionicons name="warning" size={14} color="#F59E0B" />
                     <Text style={styles.warningText}>
-                      {t('settings.noEnrolled')} {biometricType.toLowerCase()}
+                      No {biometricType.toLowerCase()} enrolled
                     </Text>
                   </View>
                 )}
@@ -621,17 +614,17 @@ const SettingsScreen = ({ navigation }: any) => {
         </View>
 
         {/* Data & Storage */}
-        <Text style={styles.sectionTitle}>{t('settings.dataStorage')}</Text>
+        <Text style={styles.sectionTitle}>Data & Storage</Text>
         <View style={styles.section}>
           <TouchableOpacity style={styles.actionRow} onPress={handleClearCache}>
             <View style={styles.settingInfo}>
               <Ionicons name="trash" size={24} color={theme.colors.error} />
               <View style={styles.settingText}>
                 <Text style={[styles.settingLabel, { color: theme.colors.error }]}>
-                  {t('settings.clearCache')}
+                  Clear Cache
                 </Text>
                 <Text style={styles.settingDescription}>
-                  {t('settings.freeUpSpace')}
+                  Free up storage space
                 </Text>
               </View>
             </View>
@@ -640,15 +633,15 @@ const SettingsScreen = ({ navigation }: any) => {
         </View>
 
         {/* Support */}
-        <Text style={styles.sectionTitle}>{t('settings.support')}</Text>
+        <Text style={styles.sectionTitle}>Support</Text>
         <View style={styles.section}>
           <TouchableOpacity style={styles.actionRow} onPress={handleReportProblem}>
             <View style={styles.settingInfo}>
               <Ionicons name="help-circle" size={24} color={theme.colors.primary} />
               <View style={styles.settingText}>
-                <Text style={styles.settingLabel}>{t('settings.reportProblem')}</Text>
+                <Text style={styles.settingLabel}>Report a Problem</Text>
                 <Text style={styles.settingDescription}>
-                  {t('settings.contactSupport')}
+                  Contact support
                 </Text>
               </View>
             </View>

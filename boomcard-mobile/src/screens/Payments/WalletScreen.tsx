@@ -8,10 +8,12 @@ import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, ScrollView, RefreshControl } from 'react-native';
 import { Text, Card, Button, FAB, List, Chip } from 'react-native-paper';
 import { useNavigation } from '@react-navigation/native';
+import { useTranslation } from 'react-i18next';
 import { walletApi } from '../../api/wallet.api';
-import { formatCurrency } from '../../utils/format';
+import { formatDualCurrency } from '../../utils/format';
 
 export default function WalletScreen() {
+  const { t } = useTranslation();
   const navigation = useNavigation();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -85,7 +87,7 @@ export default function WalletScreen() {
   if (loading) {
     return (
       <View style={styles.centered}>
-        <Text>Loading wallet...</Text>
+        <Text>{t('wallet.loadingWallet')}</Text>
       </View>
     );
   }
@@ -101,16 +103,16 @@ export default function WalletScreen() {
         <Card style={styles.balanceCard}>
           <Card.Content>
             <Text variant="titleMedium" style={styles.balanceLabel}>
-              Available Balance
+              {t('wallet.availableBalance')}
             </Text>
             <Text variant="displayMedium" style={styles.balanceAmount}>
-              {formatCurrency(balance.availableBalance, balance.currency)}
+              {formatDualCurrency(balance.availableBalance)}
             </Text>
 
             {balance.pendingBalance > 0 && (
               <View style={styles.pendingContainer}>
                 <Chip icon="clock" mode="outlined">
-                  {formatCurrency(balance.pendingBalance, balance.currency)} pending
+                  {formatDualCurrency(balance.pendingBalance)} {t('wallet.pending')}
                 </Chip>
               </View>
             )}
@@ -118,19 +120,19 @@ export default function WalletScreen() {
             <View style={styles.statsRow}>
               <View style={styles.statItem}>
                 <Text variant="bodySmall" style={styles.statLabel}>
-                  Total Cashback
+                  {t('wallet.totalCashback')}
                 </Text>
                 <Text variant="titleMedium" style={styles.statValue}>
-                  {formatCurrency(statistics.totalCashback, balance.currency)}
+                  {formatDualCurrency(statistics.totalCashback)}
                 </Text>
               </View>
 
               <View style={styles.statItem}>
                 <Text variant="bodySmall" style={styles.statLabel}>
-                  Total Spent
+                  {t('wallet.totalSpent')}
                 </Text>
                 <Text variant="titleMedium" style={styles.statValue}>
-                  {formatCurrency(statistics.totalSpent, balance.currency)}
+                  {formatDualCurrency(statistics.totalSpent)}
                 </Text>
               </View>
             </View>
@@ -139,16 +141,16 @@ export default function WalletScreen() {
 
         {/* Recent Transactions */}
         <Card style={styles.transactionsCard}>
-          <Card.Title title="Recent Transactions" />
+          <Card.Title title={t('wallet.recentTransactions')} />
           <Card.Content>
             {transactions.length === 0 ? (
-              <Text style={styles.emptyText}>No transactions yet</Text>
+              <Text style={styles.emptyText}>{t('wallet.noTransactions')}</Text>
             ) : (
               transactions.map((tx: any) => (
                 <List.Item
                   key={tx.id}
                   title={tx.description || tx.type}
-                  description={new Date(tx.createdAt).toLocaleDateString()}
+                  description={new Date(tx.createdAt).toLocaleDateString('bg-BG')}
                   left={(props) => (
                     <List.Icon
                       {...props}
@@ -164,7 +166,7 @@ export default function WalletScreen() {
                       ]}
                     >
                       {tx.amount >= 0 ? '+' : ''}
-                      {formatCurrency(tx.amount, balance.currency)}
+                      {formatDualCurrency(Math.abs(tx.amount))}
                     </Text>
                   )}
                 />
@@ -176,7 +178,7 @@ export default function WalletScreen() {
                 mode="text"
                 onPress={() => (navigation as any).navigate('TransactionHistory')}
               >
-                View All Transactions
+                {t('wallet.viewAllTransactions')}
               </Button>
             )}
           </Card.Content>
@@ -187,7 +189,7 @@ export default function WalletScreen() {
       <FAB
         style={styles.fab}
         icon="plus"
-        label="Top Up"
+        label={t('wallet.topUp')}
         onPress={handleTopUp}
       />
     </View>

@@ -88,9 +88,16 @@
     ],
     "extra": {
       "eas": {
-        "projectId": "a7947dfa-d58c-49c8-9975-9607a551f60b"
-      }
+        "projectId": "77543a0c-e238-4616-9fc4-22dcc565080b"
+      },
+      "EXPO_PUBLIC_API_URL": "https://boomcard.onrender.com"
     },
-    "owner": "edoardok"
+    "owner": "edoardok1",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/77543a0c-e238-4616-9fc4-22dcc565080b"
+    }
   }
 }

@@ -17,17 +17,14 @@ import {
   Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../store/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import BiometricService from '../../services/biometric.service';
 import StorageService from '../../services/storage.service';
 import type { LoginRequest } from '../../types';
-import { getErrorMessage } from '../../utils/error';
 
 const LoginScreen = ({ navigation }: any) => {
   const { login, refetchUser } = useAuth();
-  const { t } = useTranslation();
   const { theme } = useTheme();
   const [credentials, setCredentials] = useState<LoginRequest>({
     email: '',
@@ -72,12 +69,12 @@ const LoginScreen = ({ navigation }: any) => {
   const handleLogin = async () => {
     // Validation
     if (!credentials.email || !credentials.password) {
-      Alert.alert(t('common.error'), t('auth.enterEmailPassword'));
+      Alert.alert('Error', 'Please enter email and password');
       return;
     }
 
     if (!credentials.email.includes('@')) {
-      Alert.alert(t('common.error'), t('auth.invalidEmail'));
+      Alert.alert('Error', 'Please enter a valid email address');
       return;
     }
 
@@ -86,15 +83,7 @@ const LoginScreen = ({ navigation }: any) => {
       await login(credentials);
       // Navigation will be handled automatically by AppNavigator
     } catch (error: any) {
-      console.error('Login error:', error);
-      let errorMessage = getErrorMessage(error);
-
-      // Final safety check: never show "[object Object]"
-      if (!errorMessage || errorMessage.includes('[object Object]') || errorMessage.includes('[object') || errorMessage === '{}') {
-        errorMessage = t('auth.loginFailedMessage');
-      }
-
-      Alert.alert(t('auth.loginError'), errorMessage);
+      Alert.alert('Login Failed', error.message || 'Invalid email or password');
     } finally {
       setIsLoading(false);
     }
@@ -105,13 +94,13 @@ const LoginScreen = ({ navigation }: any) => {
     try {
       // Authenticate with biometrics
       const result = await BiometricService.authenticate(
-        t('auth.biometricPrompt', { type: biometricType }),
-        t('common.cancel')
+        `Use ${biometricType} to login`,
+        'Cancel'
       );
 
       if (!result.success) {
         if (result.error && !result.error.includes('cancel')) {
-          Alert.alert(t('auth.authenticationFailed'), result.error);
+          Alert.alert('Authentication Failed', result.error);
         }
         return;
       }
@@ -120,11 +109,11 @@ const LoginScreen = ({ navigation }: any) => {
       const hasToken = await StorageService.getAccessToken();
       if (!hasToken) {
         Alert.alert(
-          t('auth.sessionExpired'),
-          t('auth.sessionExpiredMessage'),
+          'Session Expired',
+          'Please login with your email and password first.',
           [
             {
-              text: t('common.ok'),
+              text: 'OK',
               onPress: () => setIsBiometricAvailable(false),
             },
           ]
@@ -138,8 +127,8 @@ const LoginScreen = ({ navigation }: any) => {
     } catch (error: any) {
       console.error('Biometric login error:', error);
       Alert.alert(
-        t('auth.biometricLoginFailed'),
-        t('auth.biometricLoginFailedMessage')
+        'Login Failed',
+        'Unable to login with biometric authentication. Please login with your email and password.'
       );
     } finally {
       setIsLoading(false);
@@ -158,14 +147,14 @@ const LoginScreen = ({ navigation }: any) => {
         <View style={styles.logoContainer}>
           <Text style={styles.logo}>💥</Text>
           <Text style={styles.title}>BoomCard</Text>
-          <Text style={styles.subtitle}>{t('auth.welcomeBack')}</Text>
+          <Text style={styles.subtitle}>Welcome back!</Text>
         </View>
 
         {/* Login Form */}
         <View style={styles.form}>
           <TextInput
             style={styles.input}
-            placeholder={t('auth.emailPlaceholder')}
+            placeholder="Email"
             placeholderTextColor={theme.colors.onSurfaceVariant}
             value={credentials.email}
             onChangeText={(text) =>
@@ -179,7 +168,7 @@ const LoginScreen = ({ navigation }: any) => {
 
           <TextInput
             style={styles.input}
-            placeholder={t('auth.passwordPlaceholder')}
+            placeholder="Password"
             placeholderTextColor={theme.colors.onSurfaceVariant}
             value={credentials.password}
             onChangeText={(text) =>
@@ -199,7 +188,7 @@ const LoginScreen = ({ navigation }: any) => {
             {isLoading ? (
               <ActivityIndicator color="#FFFFFF" />
             ) : (
-              <Text style={styles.buttonText}>{t('auth.loginButton')}</Text>
+              <Text style={styles.buttonText}>Login</Text>
             )}
           </TouchableOpacity>
         </View>
@@ -209,7 +198,7 @@ const LoginScreen = ({ navigation }: any) => {
           <>
             <View style={styles.divider}>
               <View style={styles.dividerLine} />
-              <Text style={styles.dividerText}>{t('auth.or')}</Text>
+              <Text style={styles.dividerText}>OR</Text>
               <View style={styles.dividerLine} />
             </View>
 
@@ -220,7 +209,7 @@ const LoginScreen = ({ navigation }: any) => {
             >
               <Ionicons name="finger-print" size={24} color={theme.colors.primary} />
               <Text style={styles.biometricButtonText}>
-                {t('auth.loginWith', { type: biometricType })}
+                Login with {biometricType}
               </Text>
             </TouchableOpacity>
           </>
@@ -228,9 +217,9 @@ const LoginScreen = ({ navigation }: any) => {
 
         {/* Register Link */}
         <View style={styles.footer}>
-          <Text style={styles.footerText}>{t('auth.dontHaveAccount')} </Text>
+          <Text style={styles.footerText}>Don't have an account? </Text>
           <TouchableOpacity onPress={() => navigation.navigate('Register')}>
-            <Text style={styles.link}>{t('auth.signUp')}</Text>
+            <Text style={styles.link}>Sign Up</Text>
           </TouchableOpacity>
         </View>
       </View>

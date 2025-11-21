@@ -18,6 +18,7 @@ import {
   TextInput,
 } from 'react-native';
 import { CameraView, Camera } from 'expo-camera';
+import { useTranslation } from 'react-i18next';
 import * as ImagePicker from 'expo-image-picker';
 import LocationService from '../../services/location.service';
 import OCRService from '../../services/ocr.service';
@@ -27,6 +28,13 @@ import { formatDistance } from '../../utils/distance';
 import type { ReceiptSubmitRequest, GPSValidationResult } from '../../types';
 
 const ReceiptScannerScreen = ({ navigation, route }: any) => {
+  const { t } = useTranslation();
+
+  useEffect(() => {
+    navigation.setOptions({
+      title: t('receipts.scanReceipt'),
+    });
+  }, [navigation, t]);
   const cameraRef = useRef<CameraView>(null);
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
@@ -56,15 +64,15 @@ const ReceiptScannerScreen = ({ navigation, route }: any) => {
 
     if (!cameraPermission.granted) {
       Alert.alert(
-        'Camera Permission Required',
-        'Please enable camera access to scan receipts'
+        t('receipts.scanner.cameraPermissionTitle'),
+        t('receipts.scanner.cameraPermissionMessage')
       );
     }
 
     if (!locationPermission.granted) {
       Alert.alert(
-        'Location Permission Required',
-        'GPS location is required to verify you are at the venue (within 60 meters)'
+        t('receipts.scanner.locationPermissionTitle'),
+        t('receipts.scanner.locationPermissionMessage')
       );
     }
   };
@@ -89,7 +97,7 @@ const ReceiptScannerScreen = ({ navigation, route }: any) => {
       setIsProcessing(false);
     } catch (error) {
       console.error('Error taking picture:', error);
-      Alert.alert('Error', 'Failed to capture photo');
+      Alert.alert(t('common.error'), t('receipts.scanner.captureError'));
       setIsProcessing(false);
     }
   };
@@ -111,7 +119,7 @@ const ReceiptScannerScreen = ({ navigation, route }: any) => {
       }
     } catch (error) {
       console.error('Error picking image:', error);
-      Alert.alert('Error', 'Failed to select image');
+      Alert.alert(t('common.error'), t('receipts.scanner.selectImageError'));
     }
   };
 
@@ -134,7 +142,7 @@ const ReceiptScannerScreen = ({ navigation, route }: any) => {
 
       if (!validation.isValid) {
         Alert.alert(
-          'OCR Quality Warning',
+          t('receipts.scanner.ocrQualityWarning'),
           `Some data could not be automatically extracted:\n${validation.errors.join('\n')}\n\nPlease verify and enter missing information manually.`
         );
       }
@@ -148,15 +156,15 @@ const ReceiptScannerScreen = ({ navigation, route }: any) => {
       // Show success message with confidence
       if (ocrResult.confidence >= 80) {
         Alert.alert(
-          'OCR Success',
+          t('receipts.scanner.ocrSuccess'),
           `Receipt processed with ${OCRService.formatConfidence(ocrResult.confidence)} confidence. Please verify the extracted data.`
         );
       }
     } catch (error: any) {
       console.error('OCR processing error:', error);
       Alert.alert(
-        'OCR Processing Failed',
-        'Unable to automatically extract receipt data. Please enter information manually.'
+        t('receipts.scanner.ocrFailed'),
+        t('receipts.scanner.ocrFailedMessage')
       );
 
       // Set empty OCR data for manual entry
@@ -178,8 +186,8 @@ const ReceiptScannerScreen = ({ navigation, route }: any) => {
   const validateLocation = async (): Promise<boolean> => {
     if (!venueLatitude || !venueLongitude) {
       Alert.alert(
-        'Venue Required',
-        'Please select a venue before submitting the receipt'
+        t('receipts.scanner.venueRequired'),
+        t('receipts.scanner.venueRequiredMessage')
       );
       return false;
     }
@@ -196,7 +204,7 @@ const ReceiptScannerScreen = ({ navigation, route }: any) => {
 
       if (!validation.isValid) {
         Alert.alert(
-          'Location Verification Failed',
+          t('receipts.scanner.locationVerificationFailed'),
           `${validation.message}\n\nYou are ${formatDistance(validation.distance)} from the venue. You must be within ${formatDistance(GPS_CONFIG.MAX_RADIUS_METERS)} to submit this receipt.`,
           [{ text: 'OK' }]
         );
@@ -206,7 +214,7 @@ const ReceiptScannerScreen = ({ navigation, route }: any) => {
       return true;
     } catch (error: any) {
       Alert.alert(
-        'Location Error',
+        t('receipts.scanner.locationError'),
         error.message || 'Unable to verify your location. Please ensure GPS is enabled.'
       );
       return false;
@@ -216,18 +224,18 @@ const ReceiptScannerScreen = ({ navigation, route }: any) => {
   const submitReceipt = async () => {
     // Validation
     if (!capturedImage) {
-      Alert.alert('Error', 'Please capture a receipt photo first');
+      Alert.alert(t('common.error'), t('receipts.scanner.capturePhotoFirst'));
       return;
     }
 
     if (!merchantName || !totalAmount) {
-      Alert.alert('Error', 'Please enter merchant name and total amount');
+      Alert.alert(t('common.error'), t('receipts.scanner.enterMerchantAndAmount'));
       return;
     }
 
     const amount = parseFloat(totalAmount);
     if (isNaN(amount) || amount <= 0) {
-      Alert.alert('Error', 'Please enter a valid amount');
+      Alert.alert(t('common.error'), t('receipts.scanner.enterValidAmount'));
       return;
     }
 
@@ -271,8 +279,8 @@ const ReceiptScannerScreen = ({ navigation, route }: any) => {
       }
 
       Alert.alert(
-        'Success!',
-        'Receipt submitted successfully! Cashback will be processed within 24 hours.',
+        t('receipts.scanner.submitSuccess'),
+        t('receipts.scanner.submitSuccessMessage'),
         [
           {
             text: 'OK',
@@ -281,7 +289,7 @@ const ReceiptScannerScreen = ({ navigation, route }: any) => {
         ]
       );
     } catch (error: any) {
-      Alert.alert('Submission Failed', error.message);
+      Alert.alert(t('receipts.scanner.submissionFailed'), error.message);
     } finally {
       setIsProcessing(false);
     }
@@ -389,7 +397,7 @@ const ReceiptScannerScreen = ({ navigation, route }: any) => {
         <View style={styles.cameraOverlay}>
           <View style={styles.scanFrame} />
           <Text style={styles.instruction}>
-            Position receipt within frame
+            {t('receipts.scanner.positionReceipt')}
           </Text>
         </View>
       </CameraView>
@@ -399,7 +407,7 @@ const ReceiptScannerScreen = ({ navigation, route }: any) => {
           style={styles.galleryButton}
           onPress={pickImageFromGallery}
         >
-          <Text style={styles.buttonText}>Gallery</Text>
+          <Text style={styles.buttonText}>{t('receipts.scanner.gallery')}</Text>
         </TouchableOpacity>
 
         <TouchableOpacity

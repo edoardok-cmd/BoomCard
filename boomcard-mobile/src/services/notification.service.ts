@@ -3,16 +3,49 @@
  *
  * Handles push notifications using Expo Notifications
  * Manages permissions, tokens, and notification delivery
+ *
+ * NOTE: Push notifications are NOT available in Expo Go SDK 53+
+ * Use a development build for full notification functionality
  */
 
-import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
+import Constants from 'expo-constants';
+
+// Conditional import - notifications are not available in Expo Go
+let Notifications: any = null;
+let isNotificationsAvailable = false;
+
+try {
+  // Only import if not in Expo Go
+  // Check if we're running in Expo Go by checking the executionEnvironment
+  const executionEnvironment = Constants.executionEnvironment;
+
+  // In Expo Go, executionEnvironment is 'storeClient' or 'standalone' for production builds
+  if (executionEnvironment !== 'storeClient') {
+    Notifications = require('expo-notifications');
+    isNotificationsAvailable = true;
+
+    // Configure how notifications should be handled when app is in foreground
+    Notifications.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldShowAlert: true,
+        shouldPlaySound: true,
+        shouldSetBadge: true,
+        shouldShowBanner: true,
+        shouldShowList: true,
+      }),
+    });
+  }
+} catch (error) {
+  console.log('Notifications not available (Expo Go detected)');
+  isNotificationsAvailable = false;
+}
 
 export interface NotificationPermissionStatus {
   granted: boolean;
   canAskAgain: boolean;
   ios?: {
-    status: Notifications.IosAuthorizationStatus;
+    status: any;
     allowsAlert: boolean;
     allowsBadge: boolean;
     allowsSound: boolean;
@@ -24,22 +57,11 @@ export interface PushToken {
   type: 'expo' | 'fcm' | 'apns';
 }
 
-// Configure how notifications should be handled when app is in foreground
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: true,
-    shouldShowBanner: true,
-    shouldShowList: true,
-  }),
-});
-
 export class NotificationService {
   private static instance: NotificationService;
   private pushToken: string | null = null;
-  private notificationListener: Notifications.Subscription | null = null;
-  private responseListener: Notifications.Subscription | null = null;
+  private notificationListener: any = null;
+  private responseListener: any = null;
 
   private constructor() {}
 
@@ -54,10 +76,22 @@ export class NotificationService {
   }
 
   /**
+   * Check if notifications are available (not in Expo Go)
+   */
+  public isAvailable(): boolean {
+    return isNotificationsAvailable;
+  }
+
+  /**
    * Initialize notification service
    * Call this on app startup to set up listeners
    */
   async initialize(): Promise<void> {
+    if (!isNotificationsAvailable) {
+      console.log('Notifications not available in Expo Go - use development build for notifications');
+      return;
+    }
+
     try {
       // Set up notification listeners
       this.setupNotificationListeners();
@@ -76,9 +110,11 @@ export class NotificationService {
    * Set up listeners for incoming notifications and user responses
    */
   private setupNotificationListeners(): void {
+    if (!isNotificationsAvailable || !Notifications) return;
+
     // Listener for notifications received while app is in foreground
     this.notificationListener = Notifications.addNotificationReceivedListener(
-      (notification) => {
+      (notification: any) => {
         console.log('Notification received:', notification);
         // You can add custom handling here
       }
@@ -86,11 +122,11 @@ export class NotificationService {
 
     // Listener for user tapping on notifications
     this.responseListener = Notifications.addNotificationResponseReceivedListener(
-      (response) => {
+      (response: any) => {
         console.log('Notification response:', response);
         // Handle navigation based on notification data
-        const data = response.notification.request.content.data;
         // You can emit events or call navigation handlers here
+        // const data = response.notification.request.content.data;
       }
     );
   }
@@ -99,6 +135,13 @@ export class NotificationService {
    * Check current notification permission status
    */
   async checkPermissions(): Promise<NotificationPermissionStatus> {
+    if (!isNotificationsAvailable || !Notifications) {
+      return {
+        granted: false,
+        canAskAgain: false,
+      };
+    }
+
     try {
       const settings = await Notifications.getPermissionsAsync();
 
@@ -130,6 +173,14 @@ export class NotificationService {
    * Request notification permissions from user
    */
   async requestPermissions(): Promise<NotificationPermissionStatus> {
+    if (!isNotificationsAvailable || !Notifications) {
+      console.log('Notifications not available in Expo Go');
+      return {
+        granted: false,
+        canAskAgain: false,
+      };
+    }
+
     try {
       const settings = await Notifications.requestPermissionsAsync({
         ios: {
@@ -168,6 +219,11 @@ export class NotificationService {
    * This should be called after permissions are granted
    */
   async registerForPushNotifications(): Promise<PushToken | null> {
+    if (!isNotificationsAvailable || !Notifications) {
+      console.log('Notifications not available in Expo Go - use development build');
+      return null;
+    }
+
     try {
       // Check permissions
       const permissions = await this.checkPermissions();
@@ -183,6 +239,10 @@ export class NotificationService {
       this.pushToken = tokenData.data;
 
       console.log('Push token obtained:', this.pushToken);
+
+      if (!this.pushToken) {
+        return null;
+      }
 
       return {
         token: this.pushToken,
@@ -212,6 +272,11 @@ export class NotificationService {
     data?: Record<string, any>,
     triggerSeconds?: number
   ): Promise<string | null> {
+    if (!isNotificationsAvailable || !Notifications) {
+      console.log('Notifications not available in Expo Go');
+      return null;
+    }
+
     try {
       const permissions = await this.checkPermissions();
       if (!permissions.granted) {
@@ -242,6 +307,8 @@ export class NotificationService {
    * Cancel a scheduled notification
    */
   async cancelNotification(notificationId: string): Promise<void> {
+    if (!isNotificationsAvailable || !Notifications) return;
+
     try {
       await Notifications.cancelScheduledNotificationAsync(notificationId);
     } catch (error) {
@@ -253,6 +320,8 @@ export class NotificationService {
    * Cancel all scheduled notifications
    */
   async cancelAllNotifications(): Promise<void> {
+    if (!isNotificationsAvailable || !Notifications) return;
+
     try {
       await Notifications.cancelAllScheduledNotificationsAsync();
     } catch (error) {
@@ -264,6 +333,8 @@ export class NotificationService {
    * Get badge count (iOS)
    */
   async getBadgeCount(): Promise<number> {
+    if (!isNotificationsAvailable || !Notifications) return 0;
+
     try {
       return await Notifications.getBadgeCountAsync();
     } catch (error) {
@@ -276,6 +347,8 @@ export class NotificationService {
    * Set badge count (iOS)
    */
   async setBadgeCount(count: number): Promise<void> {
+    if (!isNotificationsAvailable || !Notifications) return;
+
     try {
       await Notifications.setBadgeCountAsync(count);
     } catch (error) {
@@ -287,6 +360,8 @@ export class NotificationService {
    * Clear badge count (iOS)
    */
   async clearBadgeCount(): Promise<void> {
+    if (!isNotificationsAvailable || !Notifications) return;
+
     try {
       await Notifications.setBadgeCountAsync(0);
     } catch (error) {
@@ -298,6 +373,8 @@ export class NotificationService {
    * Dismiss a notification
    */
   async dismissNotification(notificationId: string): Promise<void> {
+    if (!isNotificationsAvailable || !Notifications) return;
+
     try {
       await Notifications.dismissNotificationAsync(notificationId);
     } catch (error) {
@@ -309,6 +386,8 @@ export class NotificationService {
    * Dismiss all notifications
    */
   async dismissAllNotifications(): Promise<void> {
+    if (!isNotificationsAvailable || !Notifications) return;
+
     try {
       await Notifications.dismissAllNotificationsAsync();
     } catch (error) {
@@ -319,7 +398,9 @@ export class NotificationService {
   /**
    * Get all present notifications
    */
-  async getPresentedNotifications(): Promise<Notifications.Notification[]> {
+  async getPresentedNotifications(): Promise<any[]> {
+    if (!isNotificationsAvailable || !Notifications) return [];
+
     try {
       return await Notifications.getPresentedNotificationsAsync();
     } catch (error) {

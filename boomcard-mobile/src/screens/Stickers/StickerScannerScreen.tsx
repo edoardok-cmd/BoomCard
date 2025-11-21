@@ -10,28 +10,42 @@ import { Text, Button, Portal, Modal, TextInput, HelperText } from 'react-native
 import { CameraView, Camera } from 'expo-camera';
 import * as Location from 'expo-location';
 import { useNavigation } from '@react-navigation/native';
+import { useTranslation } from 'react-i18next';
 import StickersApi from '../../api/stickers.api';
 
 export default function StickerScannerScreen() {
   const navigation = useNavigation();
+  const { t } = useTranslation();
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const [scanned, setScanned] = useState(false);
   const [showAmountModal, setShowAmountModal] = useState(false);
   const [stickerId, setStickerId] = useState('');
   const [billAmount, setBillAmount] = useState('');
   const [processing, setProcessing] = useState(false);
+  const [cameraReady, setCameraReady] = useState(false);
 
   useEffect(() => {
+    console.log('StickerScannerScreen: Requesting permissions...');
     requestPermissions();
   }, []);
 
   const requestPermissions = async () => {
-    const cameraStatus = await Camera.requestCameraPermissionsAsync();
-    const locationStatus = await Location.requestForegroundPermissionsAsync();
+    try {
+      console.log('Requesting camera permissions...');
+      const cameraStatus = await Camera.requestCameraPermissionsAsync();
+      console.log('Camera permission:', cameraStatus.status);
 
-    setHasPermission(
-      cameraStatus.status === 'granted' && locationStatus.status === 'granted'
-    );
+      console.log('Requesting location permissions...');
+      const locationStatus = await Location.requestForegroundPermissionsAsync();
+      console.log('Location permission:', locationStatus.status);
+
+      const granted = cameraStatus.status === 'granted' && locationStatus.status === 'granted';
+      console.log('Permissions granted:', granted);
+      setHasPermission(granted);
+    } catch (error) {
+      console.error('Error requesting permissions:', error);
+      setHasPermission(false);
+    }
   };
 
   const handleBarCodeScanned = async ({ data }: { data: string }) => {
@@ -46,7 +60,7 @@ export default function StickerScannerScreen() {
     const amount = parseFloat(billAmount);
 
     if (!amount || amount <= 0) {
-      Alert.alert('Error', 'Please enter a valid bill amount');
+      Alert.alert(t('common.error'), t('stickers.enterValidAmount'));
       return;
     }
 
@@ -67,7 +81,7 @@ export default function StickerScannerScreen() {
       });
 
       if (!response.success || !response.data) {
-        throw new Error(response.error || 'Failed to scan sticker');
+        throw new Error(response.error || t('stickers.scanFailed'));
       }
 
       const scan = response.data;
@@ -82,7 +96,7 @@ export default function StickerScannerScreen() {
         cashbackPercent: scan.cashbackPercent,
       });
     } catch (error: any) {
-      Alert.alert('Error', error.message || 'Failed to process scan');
+      Alert.alert(t('common.error'), error.message || t('stickers.processFailed'));
       setScanned(false);
     } finally {
       setProcessing(false);
@@ -98,7 +112,7 @@ export default function StickerScannerScreen() {
   if (hasPermission === null) {
     return (
       <View style={styles.centered}>
-        <Text>Requesting permissions...</Text>
+        <Text>{t('stickers.requestingPermissions')}</Text>
       </View>
     );
   }
@@ -107,13 +121,13 @@ export default function StickerScannerScreen() {
     return (
       <View style={styles.centered}>
         <Text style={styles.errorText}>
-          Camera and location permissions are required to scan BOOM-Stickers
+          {t('stickers.permissionsRequired')}
         </Text>
         <HelperText type="info" style={styles.helperText}>
-          BoomCard needs camera access to scan QR codes and location to verify you're at the venue.
+          {t('stickers.permissionsHelp')}
         </HelperText>
         <Button mode="contained" onPress={requestPermissions} style={styles.permissionButton}>
-          Grant Permissions
+          {t('stickers.grantPermissions')}
         </Button>
       </View>
     );
@@ -128,8 +142,22 @@ export default function StickerScannerScreen() {
         barcodeScannerSettings={{
           barcodeTypes: ['qr'],
         }}
+        onCameraReady={() => {
+          console.log('Camera is ready!');
+          setCameraReady(true);
+        }}
+        onMountError={(error) => {
+          console.error('Camera mount error:', error);
+          Alert.alert(t('common.error'), 'Camera failed to start: ' + error.message);
+        }}
       >
         <View style={styles.overlay}>
+          {!cameraReady && (
+            <View style={styles.loadingContainer}>
+              <Text style={styles.loadingText}>Starting camera...</Text>
+            </View>
+          )}
+
           <View style={styles.scanArea}>
             <View style={[styles.corner, styles.topLeft]} />
             <View style={[styles.corner, styles.topRight]} />
@@ -138,7 +166,7 @@ export default function StickerScannerScreen() {
           </View>
 
           <Text style={styles.instructions}>
-            Scan the QR code on the BOOM-Sticker
+            {t('stickers.scanInstructions')}
           </Text>
         </View>
       </CameraView>
@@ -151,11 +179,11 @@ export default function StickerScannerScreen() {
           contentContainerStyle={styles.modal}
         >
           <Text variant="headlineSmall" style={styles.modalTitle}>
-            Enter Bill Amount
+            {t('stickers.enterBillAmount')}
           </Text>
 
           <TextInput
-            label="Bill Amount (BGN)"
+            label={t('stickers.billAmount')}
             value={billAmount}
             onChangeText={setBillAmount}
             keyboardType="decimal-pad"
@@ -165,7 +193,7 @@ export default function StickerScannerScreen() {
           />
 
           <HelperText type="info">
-            You will earn 5-10% cashback on this amount
+            {t('stickers.cashbackInfo')}
           </HelperText>
 
           <View style={styles.modalButtons}>
@@ -175,7 +203,7 @@ export default function StickerScannerScreen() {
               style={styles.button}
               disabled={processing}
             >
-              Cancel
+              {t('common.cancel')}
             </Button>
             <Button
               mode="contained"
@@ -184,7 +212,7 @@ export default function StickerScannerScreen() {
               loading={processing}
               disabled={processing}
             >
-              Continue
+              {t('common.continue')}
             </Button>
           </View>
         </Modal>
@@ -265,6 +293,20 @@ const styles = StyleSheet.create({
     marginTop: 32,
     textAlign: 'center',
     fontSize: 16,
+  },
+  loadingContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+  },
+  loadingText: {
+    color: 'white',
+    fontSize: 18,
   },
   modal: {
     backgroundColor: 'white',

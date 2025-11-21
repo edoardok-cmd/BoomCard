@@ -4,7 +4,7 @@
  * Allows users to change their account password
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -15,10 +15,18 @@ import {
   ActivityIndicator,
   Alert,
 } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import AuthApi from '../../api/auth.api';
 import { useTheme } from '../../contexts/ThemeContext';
 
 const ChangePasswordScreen = ({ navigation }: any) => {
+  const { t } = useTranslation();
+
+  useEffect(() => {
+    navigation.setOptions({
+      title: t('profile.changePassword'),
+    });
+  }, [navigation, t]);
   const { theme } = useTheme();
   const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState({
@@ -29,27 +37,27 @@ const ChangePasswordScreen = ({ navigation }: any) => {
 
   const validateForm = () => {
     if (!formData.currentPassword) {
-      Alert.alert('Error', 'Please enter your current password');
+      Alert.alert(t('common.error'), t('profile.enterCurrentPassword'));
       return false;
     }
 
     if (!formData.newPassword) {
-      Alert.alert('Error', 'Please enter a new password');
+      Alert.alert(t('common.error'), t('profile.enterNewPassword'));
       return false;
     }
 
     if (formData.newPassword.length < 8) {
-      Alert.alert('Error', 'New password must be at least 8 characters');
+      Alert.alert(t('common.error'), t('profile.passwordMinLength'));
       return false;
     }
 
     if (formData.newPassword !== formData.confirmPassword) {
-      Alert.alert('Error', 'New passwords do not match');
+      Alert.alert(t('common.error'), t('profile.passwordMismatch'));
       return false;
     }
 
     if (formData.currentPassword === formData.newPassword) {
-      Alert.alert('Error', 'New password must be different from current password');
+      Alert.alert(t('common.error'), t('profile.passwordMustBeDifferent'));
       return false;
     }
 
@@ -67,14 +75,14 @@ const ChangePasswordScreen = ({ navigation }: any) => {
       );
 
       if (response.success) {
-        Alert.alert('Success', 'Password changed successfully', [
-          { text: 'OK', onPress: () => navigation.goBack() }
+        Alert.alert(t('common.success'), t('profile.passwordChangeSuccess'), [
+          { text: t('common.ok'), onPress: () => navigation.goBack() }
         ]);
       } else {
-        Alert.alert('Error', response.error || 'Failed to change password');
+        Alert.alert(t('common.error'), response.error || t('profile.passwordChangeError'));
       }
     } catch (error: any) {
-      Alert.alert('Error', error.message || 'Failed to change password');
+      Alert.alert(t('common.error'), error.message || t('profile.passwordChangeError'));
     } finally {
       setIsLoading(false);
     }
@@ -85,16 +93,16 @@ const ChangePasswordScreen = ({ navigation }: any) => {
   return (
     <ScrollView style={styles.container}>
       <View style={styles.content}>
-        <Text style={styles.sectionTitle}>Change Password</Text>
+        <Text style={styles.sectionTitle}>{t('profile.changePassword')}</Text>
         <Text style={styles.description}>
-          Please enter your current password and choose a new password
+          {t('profile.passwordChangeDescription')}
         </Text>
 
         <View style={styles.form}>
-          <Text style={styles.label}>Current Password</Text>
+          <Text style={styles.label}>{t('profile.currentPassword')}</Text>
           <TextInput
             style={styles.input}
-            placeholder="Enter current password"
+            placeholder={t('profile.enterCurrentPassword')}
             placeholderTextColor={theme.colors.onSurfaceVariant}
             value={formData.currentPassword}
             onChangeText={(text) =>
@@ -106,10 +114,10 @@ const ChangePasswordScreen = ({ navigation }: any) => {
             editable={!isLoading}
           />
 
-          <Text style={styles.label}>New Password</Text>
+          <Text style={styles.label}>{t('profile.newPassword')}</Text>
           <TextInput
             style={styles.input}
-            placeholder="Enter new password (min 8 characters)"
+            placeholder={t('profile.enterNewPasswordPlaceholder')}
             placeholderTextColor={theme.colors.onSurfaceVariant}
             value={formData.newPassword}
             onChangeText={(text) =>
@@ -121,10 +129,10 @@ const ChangePasswordScreen = ({ navigation }: any) => {
             editable={!isLoading}
           />
 
-          <Text style={styles.label}>Confirm New Password</Text>
+          <Text style={styles.label}>{t('profile.confirmNewPassword')}</Text>
           <TextInput
             style={styles.input}
-            placeholder="Re-enter new password"
+            placeholder={t('profile.reenterNewPassword')}
             placeholderTextColor={theme.colors.onSurfaceVariant}
             value={formData.confirmPassword}
             onChangeText={(text) =>
@@ -138,9 +146,9 @@ const ChangePasswordScreen = ({ navigation }: any) => {
         </View>
 
         <View style={styles.requirements}>
-          <Text style={styles.requirementsTitle}>Password Requirements:</Text>
-          <Text style={styles.requirementItem}>• At least 8 characters long</Text>
-          <Text style={styles.requirementItem}>• Different from current password</Text>
+          <Text style={styles.requirementsTitle}>{t('profile.passwordRequirements')}:</Text>
+          <Text style={styles.requirementItem}>• {t('profile.requirement8Chars')}</Text>
+          <Text style={styles.requirementItem}>• {t('profile.requirementDifferent')}</Text>
         </View>
 
         <TouchableOpacity
@@ -151,7 +159,7 @@ const ChangePasswordScreen = ({ navigation }: any) => {
           {isLoading ? (
             <ActivityIndicator color="#FFFFFF" />
           ) : (
-            <Text style={styles.buttonText}>Change Password</Text>
+            <Text style={styles.buttonText}>{t('profile.changePassword')}</Text>
           )}
         </TouchableOpacity>
 
@@ -160,7 +168,7 @@ const ChangePasswordScreen = ({ navigation }: any) => {
           onPress={() => navigation.goBack()}
           disabled={isLoading}
         >
-          <Text style={styles.buttonSecondaryText}>Cancel</Text>
+          <Text style={styles.buttonSecondaryText}>{t('common.cancel')}</Text>
         </TouchableOpacity>
       </View>
     </ScrollView>

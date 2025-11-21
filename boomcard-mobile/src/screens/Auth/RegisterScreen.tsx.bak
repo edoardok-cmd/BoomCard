@@ -18,14 +18,11 @@ import {
   ScrollView,
 } from 'react-native';
 import { useAuth } from '../../store/AuthContext';
-import { useTranslation } from 'react-i18next';
 import { useTheme } from '../../contexts/ThemeContext';
 import type { RegisterRequest } from '../../types';
-import { getErrorMessage } from '../../utils/error';
 
 const RegisterScreen = ({ navigation }: any) => {
   const { register } = useAuth();
-  const { t } = useTranslation();
   const { theme } = useTheme();
   const [formData, setFormData] = useState<RegisterRequest>({
     email: '',
@@ -40,48 +37,31 @@ const RegisterScreen = ({ navigation }: any) => {
   const handleRegister = async () => {
     // Validation
     if (!formData.email || !formData.password || !formData.firstName || !formData.lastName) {
-      Alert.alert(t('common.error'), t('auth.fillRequiredFields'));
+      Alert.alert('Error', 'Please fill in all required fields');
       return;
     }
 
     if (!formData.email.includes('@')) {
-      Alert.alert(t('common.error'), t('auth.invalidEmail'));
+      Alert.alert('Error', 'Please enter a valid email address');
       return;
     }
 
-    if (formData.password.length < 8) {
-      Alert.alert(t('common.error'), t('auth.invalidPassword'));
+    if (formData.password.length < 6) {
+      Alert.alert('Error', 'Password must be at least 6 characters');
       return;
     }
 
     if (formData.password !== confirmPassword) {
-      Alert.alert(t('common.error'), t('auth.passwordMismatch'));
+      Alert.alert('Error', 'Passwords do not match');
       return;
     }
 
     setIsLoading(true);
     try {
-      console.log('Starting registration with data:', { ...formData, password: '***' });
       await register(formData);
-      console.log('Registration successful!');
       // Navigation will be handled automatically by AppNavigator
     } catch (error: any) {
-      console.error('Registration error:', error);
-      console.error('Error type:', typeof error);
-      console.error('Error keys:', error ? Object.keys(error) : 'null');
-
-      let errorMessage = getErrorMessage(error);
-      console.log('Formatted error message:', errorMessage);
-
-      // Final safety check: never show "[object Object]"
-      if (!errorMessage || errorMessage.includes('[object Object]') || errorMessage.includes('[object') || errorMessage === '{}') {
-        errorMessage = t('auth.registrationFailedMessage');
-      }
-
-      Alert.alert(
-        t('auth.registerError'),
-        errorMessage
-      );
+      Alert.alert('Registration Failed', error.message || 'Unable to create account');
     } finally {
       setIsLoading(false);
     }
@@ -102,15 +82,15 @@ const RegisterScreen = ({ navigation }: any) => {
         {/* Logo */}
         <View style={styles.logoContainer}>
           <Text style={styles.logo}>💥</Text>
-          <Text style={styles.title}>{t('auth.createAccount')}</Text>
-          <Text style={styles.subtitle}>{t('auth.joinBoomCard')}</Text>
+          <Text style={styles.title}>Create Account</Text>
+          <Text style={styles.subtitle}>Join BoomCard today!</Text>
         </View>
 
         {/* Registration Form */}
         <View style={styles.form}>
           <TextInput
             style={styles.input}
-            placeholder={t('auth.firstNamePlaceholder')}
+            placeholder="First Name *"
             placeholderTextColor={theme.colors.onSurfaceVariant}
             value={formData.firstName}
             onChangeText={(text) =>
@@ -122,7 +102,7 @@ const RegisterScreen = ({ navigation }: any) => {
 
           <TextInput
             style={styles.input}
-            placeholder={t('auth.lastNamePlaceholder')}
+            placeholder="Last Name *"
             placeholderTextColor={theme.colors.onSurfaceVariant}
             value={formData.lastName}
             onChangeText={(text) =>
@@ -134,7 +114,7 @@ const RegisterScreen = ({ navigation }: any) => {
 
           <TextInput
             style={styles.input}
-            placeholder={t('auth.emailPlaceholder')}
+            placeholder="Email *"
             placeholderTextColor={theme.colors.onSurfaceVariant}
             value={formData.email}
             onChangeText={(text) =>
@@ -148,7 +128,7 @@ const RegisterScreen = ({ navigation }: any) => {
 
           <TextInput
             style={styles.input}
-            placeholder={t('auth.phonePlaceholder')}
+            placeholder="Phone (optional)"
             placeholderTextColor={theme.colors.onSurfaceVariant}
             value={formData.phone}
             onChangeText={(text) =>
@@ -160,7 +140,7 @@ const RegisterScreen = ({ navigation }: any) => {
 
           <TextInput
             style={styles.input}
-            placeholder={t('auth.passwordPlaceholder')}
+            placeholder="Password *"
             placeholderTextColor={theme.colors.onSurfaceVariant}
             value={formData.password}
             onChangeText={(text) =>
@@ -172,13 +152,9 @@ const RegisterScreen = ({ navigation }: any) => {
             editable={!isLoading}
           />
 
-          <Text style={styles.passwordRequirement}>
-            {t('profile.requirement8Chars')}
-          </Text>
-
           <TextInput
             style={styles.input}
-            placeholder={t('auth.confirmPasswordPlaceholder')}
+            placeholder="Confirm Password *"
             placeholderTextColor={theme.colors.onSurfaceVariant}
             value={confirmPassword}
             onChangeText={setConfirmPassword}
@@ -196,16 +172,16 @@ const RegisterScreen = ({ navigation }: any) => {
             {isLoading ? (
               <ActivityIndicator color="#FFFFFF" />
             ) : (
-              <Text style={styles.buttonText}>{t('auth.createAccount')}</Text>
+              <Text style={styles.buttonText}>Create Account</Text>
             )}
           </TouchableOpacity>
         </View>
 
         {/* Login Link */}
         <View style={styles.footer}>
-          <Text style={styles.footerText}>{t('auth.alreadyHaveAccount')} </Text>
+          <Text style={styles.footerText}>Already have an account? </Text>
           <TouchableOpacity onPress={() => navigation.navigate('Login')}>
-            <Text style={styles.link}>{t('auth.login')}</Text>
+            <Text style={styles.link}>Login</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -253,13 +229,6 @@ const getStyles = (theme: any) => StyleSheet.create({
     fontSize: 16,
     marginBottom: 12,
     color: theme.colors.onSurface,
-  },
-  passwordRequirement: {
-    fontSize: 12,
-    color: theme.colors.onSurfaceVariant,
-    marginTop: -8,
-    marginBottom: 12,
-    marginLeft: 4,
   },
   button: {
     backgroundColor: theme.colors.primary,

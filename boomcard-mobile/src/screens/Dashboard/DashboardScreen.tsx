@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   RefreshControl,
 } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../store/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { ReceiptsApi } from '../../api/receipts.api';
@@ -24,6 +25,7 @@ interface VenueVisit {
 }
 
 const DashboardScreen = ({ navigation }: any) => {
+  const { t } = useTranslation();
   const { user } = useAuth();
   const { theme } = useTheme();
   const [loading, setLoading] = useState(true);
@@ -101,13 +103,17 @@ const DashboardScreen = ({ navigation }: any) => {
   };
 
   const formatAmount = (amount: number | undefined) => {
-    if (!amount) return '0.00';
-    return amount.toFixed(2);
+    if (!amount) return '0.00 лв / €0.00';
+    // Convert to dual currency format
+    const bgnFormatted = `${amount.toFixed(2)} лв`;
+    const eurAmount = amount / 1.95583; // BGN to EUR conversion
+    const eurFormatted = `€${eurAmount.toFixed(2)}`;
+    return `${bgnFormatted} / ${eurFormatted}`;
   };
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', {
+    return date.toLocaleDateString('bg-BG', {
       month: 'short',
       day: 'numeric',
     });
@@ -119,7 +125,7 @@ const DashboardScreen = ({ navigation }: any) => {
     return (
       <View style={styles.centered}>
         <ActivityIndicator size="large" color={theme.colors.primary} />
-        <Text style={styles.loadingText}>Loading dashboard...</Text>
+        <Text style={styles.loadingText}>{t('common.loading')}</Text>
       </View>
     );
   }
@@ -130,7 +136,7 @@ const DashboardScreen = ({ navigation }: any) => {
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
     >
       <View style={styles.header}>
-        <Text style={styles.greeting}>Welcome back,</Text>
+        <Text style={styles.greeting}>{t('dashboard.welcome')},</Text>
         <Text style={styles.name}>{user?.firstName || user?.email}!</Text>
       </View>
 
@@ -140,8 +146,8 @@ const DashboardScreen = ({ navigation }: any) => {
           onPress={() => navigation.navigate('ReceiptScanner')}
         >
           <Text style={styles.actionIcon}>📸</Text>
-          <Text style={styles.actionTitle}>Scan Receipt</Text>
-          <Text style={styles.actionSubtitle}>Upload & earn cashback</Text>
+          <Text style={styles.actionTitle}>{t('dashboard.scanReceipt')}</Text>
+          <Text style={styles.actionSubtitle}>{t('dashboard.uploadEarnCashback')}</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -149,34 +155,34 @@ const DashboardScreen = ({ navigation }: any) => {
           onPress={() => navigation.navigate('Scan')}
         >
           <Text style={styles.actionIcon}>💥</Text>
-          <Text style={styles.actionTitle}>Scan Sticker</Text>
-          <Text style={styles.actionSubtitle}>QR code at venue</Text>
+          <Text style={styles.actionTitle}>{t('dashboard.scanSticker')}</Text>
+          <Text style={styles.actionSubtitle}>{t('dashboard.qrCodeAtVenue')}</Text>
         </TouchableOpacity>
       </View>
 
       <View style={styles.stats}>
         <View style={styles.statCard}>
           <Text style={styles.statValue}>
-            {formatAmount(stats?.totalCashback || cardStats?.totalCashbackEarned || 0)} BGN
+            {formatAmount(stats?.totalCashback || cardStats?.totalCashbackEarned || 0)}
           </Text>
-          <Text style={styles.statLabel}>Total Cashback</Text>
+          <Text style={styles.statLabel}>{t('dashboard.totalCashback')}</Text>
         </View>
         <View style={styles.statCard}>
           <Text style={styles.statValue}>{stats?.totalReceipts || 0}</Text>
-          <Text style={styles.statLabel}>Receipts</Text>
+          <Text style={styles.statLabel}>{t('dashboard.receipts')}</Text>
         </View>
         <View style={styles.statCard}>
           <Text style={styles.statValue}>{recentVisits.length}</Text>
-          <Text style={styles.statLabel}>Venues</Text>
+          <Text style={styles.statLabel}>{t('dashboard.venues')}</Text>
         </View>
       </View>
 
       {recentVisits.length > 0 && (
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Recent Venues</Text>
+            <Text style={styles.sectionTitle}>{t('dashboard.recentVenues')}</Text>
             <TouchableOpacity onPress={() => navigation.navigate('Receipts')}>
-              <Text style={styles.seeAll}>See All</Text>
+              <Text style={styles.seeAll}>{t('dashboard.seeAll')}</Text>
             </TouchableOpacity>
           </View>
 
@@ -190,14 +196,14 @@ const DashboardScreen = ({ navigation }: any) => {
                   {visit.merchantName}
                 </Text>
                 <Text style={styles.venueDetails}>
-                  {visit.visitCount} visit{visit.visitCount > 1 ? 's' : ''} • Last:{' '}
+                  {visit.visitCount} {visit.visitCount > 1 ? t('dashboard.visits') : t('dashboard.visit')} • {t('dashboard.lastVisit')}:{' '}
                   {formatDate(visit.lastVisit)}
                 </Text>
               </View>
               <View style={styles.venueStats}>
-                <Text style={styles.venueAmount}>{formatAmount(visit.totalSpent)} BGN</Text>
+                <Text style={styles.venueAmount}>{formatAmount(visit.totalSpent)}</Text>
                 <Text style={styles.venueCashback}>
-                  +{formatAmount(visit.totalCashback)} cashback
+                  +{formatAmount(visit.totalCashback)} {t('dashboard.cashback')}
                 </Text>
               </View>
             </View>
@@ -210,10 +216,10 @@ const DashboardScreen = ({ navigation }: any) => {
           <Text style={styles.pendingIcon}>⏳</Text>
           <View style={styles.pendingContent}>
             <Text style={styles.pendingTitle}>
-              {stats.pendingReceipts} Pending Receipt{stats.pendingReceipts > 1 ? 's' : ''}
+              {stats.pendingReceipts} {t('dashboard.pendingReceipts')}
             </Text>
             <Text style={styles.pendingText}>
-              Your receipts are being reviewed
+              {t('dashboard.receiptsBeingReviewed')}
             </Text>
           </View>
         </View>
@@ -292,6 +298,8 @@ const getStyles = (theme: any) => StyleSheet.create({
     padding: 16,
     borderRadius: 12,
     alignItems: 'center',
+    justifyContent: 'space-between',
+    minHeight: 80,
   },
   statValue: {
     fontSize: 20,

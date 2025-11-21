@@ -4,7 +4,7 @@
  * Allows users to update their profile information
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -15,10 +15,18 @@ import {
   ActivityIndicator,
   Alert,
 } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../store/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
 
 const EditProfileScreen = ({ navigation }: any) => {
+  const { t } = useTranslation();
+
+  useEffect(() => {
+    navigation.setOptions({
+      title: t('navigation.editProfile'),
+    });
+  }, [navigation, t]);
   const { user, updateProfile } = useAuth();
   const { theme } = useTheme();
   const [isLoading, setIsLoading] = useState(false);
@@ -32,11 +40,11 @@ const EditProfileScreen = ({ navigation }: any) => {
     setIsLoading(true);
     try {
       await updateProfile(formData);
-      Alert.alert('Success', 'Profile updated successfully', [
-        { text: 'OK', onPress: () => navigation.goBack() }
+      Alert.alert(t('common.success'), t('profile.updateSuccess'), [
+        { text: t('common.ok'), onPress: () => navigation.goBack() }
       ]);
     } catch (error: any) {
-      Alert.alert('Error', error.message || 'Failed to update profile');
+      Alert.alert(t('common.error'), error.message || t('profile.updateError'));
     } finally {
       setIsLoading(false);
     }
@@ -47,13 +55,13 @@ const EditProfileScreen = ({ navigation }: any) => {
   return (
     <ScrollView style={styles.container}>
       <View style={styles.content}>
-        <Text style={styles.sectionTitle}>Personal Information</Text>
+        <Text style={styles.sectionTitle}>{t('profile.personalInfo')}</Text>
 
         <View style={styles.form}>
-          <Text style={styles.label}>First Name</Text>
+          <Text style={styles.label}>{t('auth.firstName')}</Text>
           <TextInput
             style={styles.input}
-            placeholder="Enter first name"
+            placeholder={t('profile.enterFirstName')}
             placeholderTextColor={theme.colors.onSurfaceVariant}
             value={formData.firstName}
             onChangeText={(text) =>
@@ -62,10 +70,10 @@ const EditProfileScreen = ({ navigation }: any) => {
             editable={!isLoading}
           />
 
-          <Text style={styles.label}>Last Name</Text>
+          <Text style={styles.label}>{t('auth.lastName')}</Text>
           <TextInput
             style={styles.input}
-            placeholder="Enter last name"
+            placeholder={t('profile.enterLastName')}
             placeholderTextColor={theme.colors.onSurfaceVariant}
             value={formData.lastName}
             onChangeText={(text) =>
@@ -74,10 +82,10 @@ const EditProfileScreen = ({ navigation }: any) => {
             editable={!isLoading}
           />
 
-          <Text style={styles.label}>Phone Number</Text>
+          <Text style={styles.label}>{t('auth.phone')}</Text>
           <TextInput
             style={styles.input}
-            placeholder="Enter phone number"
+            placeholder={t('profile.enterPhone')}
             placeholderTextColor={theme.colors.onSurfaceVariant}
             value={formData.phone}
             onChangeText={(text) =>
@@ -87,13 +95,13 @@ const EditProfileScreen = ({ navigation }: any) => {
             editable={!isLoading}
           />
 
-          <Text style={styles.label}>Email</Text>
+          <Text style={styles.label}>{t('profile.email')}</Text>
           <TextInput
             style={[styles.input, styles.inputDisabled]}
             value={user?.email || ''}
             editable={false}
           />
-          <Text style={styles.helperText}>Email cannot be changed</Text>
+          <Text style={styles.helperText}>{t('profile.emailNotEditable')}</Text>
         </View>
 
         <TouchableOpacity
@@ -104,7 +112,7 @@ const EditProfileScreen = ({ navigation }: any) => {
           {isLoading ? (
             <ActivityIndicator color="#FFFFFF" />
           ) : (
-            <Text style={styles.buttonText}>Save Changes</Text>
+            <Text style={styles.buttonText}>{t('profile.saveChanges')}</Text>
           )}
         </TouchableOpacity>
 
@@ -113,7 +121,7 @@ const EditProfileScreen = ({ navigation }: any) => {
           onPress={() => navigation.goBack()}
           disabled={isLoading}
         >
-          <Text style={styles.buttonSecondaryText}>Cancel</Text>
+          <Text style={styles.buttonSecondaryText}>{t('common.cancel')}</Text>
         </TouchableOpacity>
       </View>
     </ScrollView>

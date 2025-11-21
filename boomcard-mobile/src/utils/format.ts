@@ -16,7 +16,28 @@ export function formatCurrency(amount: number, currency: string = APP_CONFIG.CUR
     return `${formattedAmount} лв`;
   }
 
+  if (currency === 'EUR') {
+    return `€${formattedAmount}`;
+  }
+
   return `${formattedAmount} ${currency}`;
+}
+
+/**
+ * Convert BGN to EUR
+ */
+export function convertBGNtoEUR(amountBGN: number): number {
+  return amountBGN / APP_CONFIG.EUR_EXCHANGE_RATE;
+}
+
+/**
+ * Format amount with both BGN and EUR
+ */
+export function formatDualCurrency(amountBGN: number): string {
+  const bgnFormatted = formatCurrency(amountBGN, 'BGN');
+  const eurAmount = convertBGNtoEUR(amountBGN);
+  const eurFormatted = formatCurrency(eurAmount, 'EUR');
+  return `${bgnFormatted} / ${eurFormatted}`;
 }
 
 /**

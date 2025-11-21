@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   Image,
 } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import { ReceiptsApi } from '../../api/receipts.api';
 import { useTheme } from '../../contexts/ThemeContext';
 import type { Receipt, ReceiptStats, ReceiptStatus } from '../../types';
@@ -23,17 +24,8 @@ const STATUS_COLORS: Record<string, string> = {
   EXPIRED: '#6B7280',
 };
 
-const STATUS_LABELS: Record<string, string> = {
-  APPROVED: 'Approved',
-  PENDING: 'Pending',
-  PROCESSING: 'Processing',
-  VALIDATING: 'Validating',
-  REJECTED: 'Rejected',
-  MANUAL_REVIEW: 'Review',
-  EXPIRED: 'Expired',
-};
-
 const ReceiptsScreen = ({ navigation }: any) => {
+  const { t } = useTranslation();
   const { theme } = useTheme();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -75,9 +67,9 @@ const ReceiptsScreen = ({ navigation }: any) => {
   };
 
   const formatDate = (dateString: string | undefined) => {
-    if (!dateString) return 'N/A';
+    if (!dateString) return 'Няма данни';
     const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', {
+    return date.toLocaleDateString('bg-BG', {
       month: 'short',
       day: 'numeric',
       year: 'numeric',
@@ -85,8 +77,12 @@ const ReceiptsScreen = ({ navigation }: any) => {
   };
 
   const formatAmount = (amount: number | undefined) => {
-    if (!amount) return '0.00';
-    return amount.toFixed(2);
+    if (!amount) return '0.00 лв / €0.00';
+    // Convert to dual currency format
+    const bgnFormatted = `${amount.toFixed(2)} лв`;
+    const eurAmount = amount / 1.95583; // BGN to EUR conversion
+    const eurFormatted = `€${eurAmount.toFixed(2)}`;
+    return `${bgnFormatted} / ${eurFormatted}`;
   };
 
   const renderReceiptItem = ({ item }: { item: Receipt }) => (
@@ -100,7 +96,7 @@ const ReceiptsScreen = ({ navigation }: any) => {
       <View style={styles.receiptContent}>
         <View style={styles.receiptHeader}>
           <Text style={styles.merchantName} numberOfLines={1}>
-            {item.merchantName || 'Unknown Merchant'}
+            {item.merchantName || t('receipts.unknownMerchant')}
           </Text>
           <View
             style={[
@@ -109,31 +105,31 @@ const ReceiptsScreen = ({ navigation }: any) => {
             ]}
           >
             <Text style={styles.statusText}>
-              {STATUS_LABELS[item.status] || item.status}
+              {t(`receipts.status.${item.status}`) || item.status}
             </Text>
           </View>
         </View>
 
         <View style={styles.receiptDetails}>
           <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Amount:</Text>
+            <Text style={styles.detailLabel}>{t('receipts.amount')}:</Text>
             <Text style={styles.detailValue}>
-              {formatAmount(item.totalAmount)} BGN
+              {formatAmount(item.totalAmount)}
             </Text>
           </View>
 
           {item.cashbackAmount && item.cashbackAmount > 0 && (
             <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>Cashback:</Text>
+              <Text style={styles.detailLabel}>{t('receipts.cashback')}:</Text>
               <Text style={[styles.detailValue, styles.cashbackValue]}>
-                +{formatAmount(item.cashbackAmount)} BGN
+                +{formatAmount(item.cashbackAmount)}
                 {item.cashbackPercent && ` (${item.cashbackPercent}%)`}
               </Text>
             </View>
           )}
 
           <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Date:</Text>
+            <Text style={styles.detailLabel}>{t('receipts.date')}:</Text>
             <Text style={styles.detailValue}>{formatDate(item.receiptDate)}</Text>
           </View>
         </View>
@@ -148,17 +144,17 @@ const ReceiptsScreen = ({ navigation }: any) => {
       <View style={styles.statsContainer}>
         <View style={styles.statCard}>
           <Text style={styles.statValue}>{stats.totalReceipts}</Text>
-          <Text style={styles.statLabel}>Total Receipts</Text>
+          <Text style={styles.statLabel}>{t('receipts.totalReceipts')}</Text>
         </View>
         <View style={styles.statCard}>
           <Text style={[styles.statValue, styles.cashbackStat]}>
-            {formatAmount(stats.totalCashback)} BGN
+            {formatAmount(stats.totalCashback)}
           </Text>
-          <Text style={styles.statLabel}>Total Cashback</Text>
+          <Text style={styles.statLabel}>{t('receipts.totalCashback')}</Text>
         </View>
         <View style={styles.statCard}>
           <Text style={styles.statValue}>{stats.pendingReceipts}</Text>
-          <Text style={styles.statLabel}>Pending</Text>
+          <Text style={styles.statLabel}>{t('receipts.pendingReceipts')}</Text>
         </View>
       </View>
     );
@@ -167,15 +163,15 @@ const ReceiptsScreen = ({ navigation }: any) => {
   const renderEmpty = () => (
     <View style={styles.empty}>
       <Text style={styles.emptyIcon}>📄</Text>
-      <Text style={styles.emptyTitle}>No Receipts Yet</Text>
+      <Text style={styles.emptyTitle}>{t('receipts.noReceipts')}</Text>
       <Text style={styles.emptyText}>
-        Start scanning receipts to earn cashback
+        {t('receipts.startScanning')}
       </Text>
       <TouchableOpacity
         style={styles.button}
         onPress={() => navigation.navigate('ReceiptScanner')}
       >
-        <Text style={styles.buttonText}>Scan Receipt</Text>
+        <Text style={styles.buttonText}>{t('receipts.scanReceipt')}</Text>
       </TouchableOpacity>
     </View>
   );
@@ -186,7 +182,7 @@ const ReceiptsScreen = ({ navigation }: any) => {
     return (
       <View style={styles.centered}>
         <ActivityIndicator size="large" color={theme.colors.primary} />
-        <Text style={styles.loadingText}>Loading receipts...</Text>
+        <Text style={styles.loadingText}>{t('receipts.loadingReceipts')}</Text>
       </View>
     );
   }
@@ -195,7 +191,7 @@ const ReceiptsScreen = ({ navigation }: any) => {
     return (
       <View style={styles.centered}>
         <Text style={styles.errorText}>{error}</Text>
-        <Text style={styles.errorSubtext}>Pull down to refresh</Text>
+        <Text style={styles.errorSubtext}>{t('receipts.pullDownToRefresh')}</Text>
       </View>
     );
   }
@@ -255,6 +251,7 @@ const getStyles = (theme: any) => StyleSheet.create({
   statsContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    marginTop: 16,
     marginBottom: 16,
   },
   statCard: {

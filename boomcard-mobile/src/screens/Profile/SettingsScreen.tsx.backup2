@@ -35,13 +35,6 @@ const SettingsScreen = ({ navigation }: any) => {
   const queryClient = useQueryClient();
   const [currentLanguage, setCurrentLanguage] = useState(getCurrentLanguage());
 
-  // Set translated navigation title
-  useEffect(() => {
-    navigation.setOptions({
-      title: t('profile.settings'),
-    });
-  }, [navigation, t]);
-
   // Settings state - loaded from storage on mount (dark mode managed by ThemeContext)
   const [settings, setSettings] = useState({
     pushNotifications: true,
@@ -410,14 +403,14 @@ const SettingsScreen = ({ navigation }: any) => {
   const handleReportProblem = () => {
     Alert.alert(
       t('settings.reportProblem'),
-      t('settings.reportProblemMessage'),
+      'Would you like to send an email to our support team?',
       [
-        { text: t('common.cancel'), style: 'cancel' },
+        { text: 'Cancel', style: 'cancel' },
         {
-          text: t('settings.sendEmail'),
+          text: 'Send Email',
           onPress: () => {
             // Open email client
-            Alert.alert(t('settings.info'), 'Opening email client...');
+            Alert.alert('Info', 'Opening email client...');
           },
         },
       ]

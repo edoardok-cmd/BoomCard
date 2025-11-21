@@ -7,10 +7,12 @@
 import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, FlatList, RefreshControl } from 'react-native';
 import { Text, Card, List, Chip, SegmentedButtons } from 'react-native-paper';
+import { useTranslation } from 'react-i18next';
 import { walletApi } from '../../api/wallet.api';
-import { formatCurrency, formatDateTime } from '../../utils/format';
+import { formatDualCurrency, formatDateTime } from '../../utils/format';
 
 export default function TransactionHistoryScreen() {
+  const { t } = useTranslation();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [transactions, setTransactions] = useState<any[]>([]);
@@ -81,7 +83,7 @@ export default function TransactionHistoryScreen() {
               ]}
             >
               {item.amount >= 0 ? '+' : ''}
-              {formatCurrency(item.amount, 'BGN')}
+              {formatDualCurrency(Math.abs(item.amount))}
             </Text>
             <Chip
               mode="outlined"
@@ -99,7 +101,7 @@ export default function TransactionHistoryScreen() {
   if (loading) {
     return (
       <View style={styles.centered}>
-        <Text>Loading transactions...</Text>
+        <Text>{t('common.loading')}</Text>
       </View>
     );
   }
@@ -110,10 +112,10 @@ export default function TransactionHistoryScreen() {
         value={filter}
         onValueChange={setFilter}
         buttons={[
-          { value: 'all', label: 'All' },
-          { value: 'TOP_UP', label: 'Top Ups' },
-          { value: 'CASHBACK_CREDIT', label: 'Cashback' },
-          { value: 'PURCHASE', label: 'Purchases' },
+          { value: 'all', label: t('transactions.all') },
+          { value: 'TOP_UP', label: t('transactions.topUps') },
+          { value: 'CASHBACK_CREDIT', label: t('transactions.cashback') },
+          { value: 'PURCHASE', label: t('transactions.purchases') },
         ]}
         style={styles.filterButtons}
       />
@@ -127,7 +129,7 @@ export default function TransactionHistoryScreen() {
         }
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>No transactions found</Text>
+            <Text style={styles.emptyText}>{t('transactions.noTransactions')}</Text>
           </View>
         }
       />

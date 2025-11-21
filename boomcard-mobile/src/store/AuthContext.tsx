@@ -52,7 +52,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     mutationFn: async (credentials: LoginRequest) => {
       const response = await AuthApi.login(credentials);
       if (!response.success || !response.data) {
-        throw new Error(response.error || 'Login failed');
+        // Ensure error is a string, not an object
+        const errorMessage = typeof response.error === 'string'
+          ? response.error
+          : (response.error ? JSON.stringify(response.error) : 'Login failed');
+        throw new Error(errorMessage);
       }
       return response.data;
     },
@@ -67,7 +71,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     mutationFn: async (data: RegisterRequest) => {
       const response = await AuthApi.register(data);
       if (!response.success || !response.data) {
-        throw new Error(response.error || 'Registration failed');
+        // Ensure error is a string, not an object
+        const errorMessage = typeof response.error === 'string'
+          ? response.error
+          : (response.error ? JSON.stringify(response.error) : 'Registration failed');
+        throw new Error(errorMessage);
       }
       return response.data;
     },

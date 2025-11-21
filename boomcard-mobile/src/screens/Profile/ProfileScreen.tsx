@@ -1,20 +1,22 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../store/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
 
 const ProfileScreen = ({ navigation }: any) => {
+  const { t } = useTranslation();
   const { user, logout } = useAuth();
   const { theme } = useTheme();
 
   const handleLogout = () => {
     Alert.alert(
-      'Logout',
-      'Are you sure you want to logout?',
+      t('auth.logout'),
+      t('profile.confirmLogout'),
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: t('common.cancel'), style: 'cancel' },
         {
-          text: 'Logout',
+          text: t('auth.logout'),
           style: 'destructive',
           onPress: async () => {
             await logout();
@@ -45,25 +47,25 @@ const ProfileScreen = ({ navigation }: any) => {
           style={styles.menuItem}
           onPress={() => navigation.navigate('EditProfile')}
         >
-          <Text style={styles.menuItemText}>Edit Profile</Text>
+          <Text style={styles.menuItemText}>{t('common.edit')} {t('profile.title')}</Text>
           <Text style={styles.menuItemIcon}>›</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={styles.menuItem}
           onPress={() => navigation.navigate('ChangePassword')}
         >
-          <Text style={styles.menuItemText}>Change Password</Text>
+          <Text style={styles.menuItemText}>{t('profile.changePassword')}</Text>
           <Text style={styles.menuItemIcon}>›</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={styles.menuItem}
           onPress={() => navigation.navigate('Settings')}
         >
-          <Text style={styles.menuItemText}>Settings</Text>
+          <Text style={styles.menuItemText}>{t('profile.settings')}</Text>
           <Text style={styles.menuItemIcon}>›</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.menuItem} onPress={handleLogout}>
-          <Text style={[styles.menuItemText, styles.logoutText]}>Logout</Text>
+          <Text style={[styles.menuItemText, styles.logoutText]}>{t('auth.logout')}</Text>
         </TouchableOpacity>
       </View>
     </View>

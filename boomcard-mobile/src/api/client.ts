@@ -20,8 +20,16 @@ export class ApiClient {
   private axiosInstance: AxiosInstance;
   private isRefreshing: boolean = false;
   private refreshSubscribers: Array<(token: string) => void> = [];
+  private readonly MAX_RETRIES = 2;
+  private readonly RETRY_DELAY = 2000; // 2 seconds
 
   private constructor() {
+    console.log('🔧 API Client Configuration:');
+    console.log('  BASE_URL:', API_CONFIG.BASE_URL);
+    console.log('  TIMEOUT:', API_CONFIG.TIMEOUT);
+    console.log('  EXPO_PUBLIC_API_URL:', process.env.EXPO_PUBLIC_API_URL);
+    console.log('  __DEV__:', __DEV__);
+
     this.axiosInstance = axios.create({
       baseURL: API_CONFIG.BASE_URL,
       timeout: API_CONFIG.TIMEOUT,
@@ -163,10 +171,13 @@ export class ApiClient {
         details: data?.details,
       };
     } else if (error.request) {
-      // No response received
+      // No response received - could be network error or server sleeping
+      const isTimeout = error.code === 'ECONNABORTED' || error.message?.includes('timeout');
       return {
-        message: 'Network error. Please check your connection.',
-        code: 'NETWORK_ERROR',
+        message: isTimeout
+          ? 'Request timed out. The server may be waking up, please try again.'
+          : 'Network error. Please check your connection and try again.',
+        code: isTimeout ? 'TIMEOUT_ERROR' : 'NETWORK_ERROR',
       };
     } else {
       // Request setup error
@@ -174,6 +185,30 @@ export class ApiClient {
         message: error.message || 'An unexpected error occurred',
         code: 'REQUEST_ERROR',
       };
+    }
+  }
+
+  /**
+   * Retry a request with exponential backoff
+   */
+  private async retryRequest<T>(
+    requestFn: () => Promise<AxiosResponse<T>>,
+    retries: number = 0
+  ): Promise<AxiosResponse<T>> {
+    try {
+      return await requestFn();
+    } catch (error) {
+      const axiosError = error as AxiosError;
+      const isNetworkError = !axiosError.response;
+      const shouldRetry = isNetworkError && retries < this.MAX_RETRIES;
+
+      if (shouldRetry) {
+        console.log(`Retrying request (attempt ${retries + 1}/${this.MAX_RETRIES})...`);
+        await new Promise(resolve => setTimeout(resolve, this.RETRY_DELAY * (retries + 1)));
+        return this.retryRequest(requestFn, retries + 1);
+      }
+
+      throw error;
     }
   }
 
@@ -187,9 +222,8 @@ export class ApiClient {
     config?: AxiosRequestConfig
   ): Promise<ApiResponse<T>> {
     try {
-      const response: AxiosResponse<T> = await this.axiosInstance.get(
-        url,
-        config
+      const response: AxiosResponse<T> = await this.retryRequest(() =>
+        this.axiosInstance.get(url, config)
       );
       return {
         success: true,
@@ -213,10 +247,8 @@ export class ApiClient {
     config?: AxiosRequestConfig
   ): Promise<ApiResponse<T>> {
     try {
-      const response: AxiosResponse<T> = await this.axiosInstance.post(
-        url,
-        data,
-        config
+      const response: AxiosResponse<T> = await this.retryRequest(() =>
+        this.axiosInstance.post(url, data, config)
       );
       return {
         success: true,

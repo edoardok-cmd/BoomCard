@@ -55,30 +55,20 @@ const AuthNavigator = () => {
 
 // Tab Navigator
 const TabNavigator = () => {
-  const { t } = useTranslation();
-  const { theme } = useTheme();
   return (
     <Tab.Navigator
       screenOptions={{
         headerShown: true,
-        headerStyle: {
-          backgroundColor: theme.colors.surface,
-        },
-        headerTintColor: theme.colors.onSurface,
-        tabBarActiveTintColor: theme.colors.primary,
-        tabBarInactiveTintColor: theme.colors.onSurfaceVariant,
-        tabBarStyle: {
-          backgroundColor: theme.colors.surface,
-          borderTopColor: theme.colors.outline,
-        },
+        tabBarActiveTintColor: '#3B82F6',
+        tabBarInactiveTintColor: '#6B7280',
       }}
     >
       <Tab.Screen
         name="Dashboard"
         component={DashboardScreen}
         options={{
-          title: t('dashboard.title'),
-          tabBarLabel: t('navigation.home'),
+          title: 'BoomCard',
+          tabBarLabel: 'Home',
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="home" size={size} color={color} />
           ),
@@ -88,8 +78,8 @@ const TabNavigator = () => {
         name="Receipts"
         component={ReceiptsScreen}
         options={{
-          title: t('receipts.title'),
-          tabBarLabel: t('navigation.receipts'),
+          title: 'Receipts',
+          tabBarLabel: 'Receipts',
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="document-text" size={size} color={color} />
           ),
@@ -99,8 +89,8 @@ const TabNavigator = () => {
         name="Scan"
         component={StickerScannerScreen}
         options={{
-          title: t('navigation.scan'),
-          tabBarLabel: t('navigation.scan'),
+          title: 'Scan QR',
+          tabBarLabel: 'Scan',
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="qr-code" size={size} color={color} />
           ),
@@ -110,8 +100,8 @@ const TabNavigator = () => {
         name="Card"
         component={MyCardScreen}
         options={{
-          title: t('card.title'),
-          tabBarLabel: t('navigation.card'),
+          title: 'My Card',
+          tabBarLabel: 'Card',
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="card" size={size} color={color} />
           ),
@@ -121,8 +111,8 @@ const TabNavigator = () => {
         name="Profile"
         component={ProfileScreen}
         options={{
-          title: t('profile.title'),
-          tabBarLabel: t('navigation.profile'),
+          title: 'Profile',
+          tabBarLabel: 'Profile',
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="person" size={size} color={color} />
           ),
@@ -134,8 +124,6 @@ const TabNavigator = () => {
 
 // Main App Stack Navigator with nested tabs
 const MainNavigator = () => {
-  const { t } = useTranslation();
-
   return (
     <Stack.Navigator
       screenOptions={{
@@ -143,13 +131,7 @@ const MainNavigator = () => {
       }}
     >
       {/* Main Tabs */}
-      <Stack.Screen
-        name="MainTabs"
-        component={TabNavigator}
-        options={{
-          title: t('navigation.home'),
-        }}
-      />
+      <Stack.Screen name="MainTabs" component={TabNavigator} />
 
       {/* Payment Screens */}
       <Stack.Screen
@@ -157,7 +139,7 @@ const MainNavigator = () => {
         component={WalletScreen}
         options={{
           headerShown: true,
-          title: 'Wallet'
+          title: 'My Wallet'
         }}
       />
       <Stack.Screen
@@ -165,7 +147,7 @@ const MainNavigator = () => {
         component={TopUpScreen}
         options={{
           headerShown: true,
-          title: 'Top Up'
+          title: 'Top Up Wallet'
         }}
       />
       <Stack.Screen
@@ -173,7 +155,7 @@ const MainNavigator = () => {
         component={TransactionHistoryScreen}
         options={{
           headerShown: true,
-          title: 'Transactions'
+          title: 'Transaction History'
         }}
       />
 
@@ -240,31 +222,17 @@ const MainNavigator = () => {
 // Root Navigator with Auth Check
 export const AppNavigator = () => {
   const { isAuthenticated, isLoading } = useAuth();
-  const { isDarkMode, theme } = useTheme();
 
   if (isLoading) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: theme.colors.background }}>
-        <ActivityIndicator size="large" color={theme.colors.primary} />
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator size="large" color="#3B82F6" />
       </View>
     );
   }
 
-  // Create custom navigation theme based on dark mode
-  const navigationTheme = {
-    ...(isDarkMode ? DarkTheme : DefaultTheme),
-    colors: {
-      ...(isDarkMode ? DarkTheme.colors : DefaultTheme.colors),
-      primary: theme.colors.primary,
-      background: theme.colors.background,
-      card: theme.colors.surface,
-      text: theme.colors.onSurface,
-      border: theme.colors.outline,
-    },
-  };
-
   return (
-    <NavigationContainer theme={navigationTheme}>
+    <NavigationContainer>
       {isAuthenticated ? <MainNavigator /> : <AuthNavigator />}
     </NavigationContainer>
   );
