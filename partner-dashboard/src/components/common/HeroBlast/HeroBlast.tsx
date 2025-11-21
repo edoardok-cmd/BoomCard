@@ -684,16 +684,16 @@ const CardExpiry = styled.div`
 const LogoContainer = styled(motion.div)`
   position: relative;
   margin-top: 50px;
-  margin-bottom: 50px;
+  margin-bottom: 40px;
 
   @media (max-width: 768px) {
-    margin-top: 20px;
-    margin-bottom: 30px;
+    margin-top: 10px;
+    margin-bottom: 20px;
   }
 
   @media (max-width: 480px) {
-    margin-top: 10px;
-    margin-bottom: 20px;
+    margin-top: 5px;
+    margin-bottom: 15px;
   }
 `;
 
@@ -704,9 +704,9 @@ const CTAContainer = styled(motion.div)`
 
 const CTATitle = styled(motion.h1)`
   font-family: 'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  font-size: 4rem;
+  font-size: clamp(1.5rem, 5vw, 4rem);
   font-weight: 800;
-  margin-bottom: calc(1rem + 40px);
+  margin-bottom: clamp(1rem, 3vw, 2.5rem);
   line-height: 1.2;
   letter-spacing: -0.02em;
   white-space: pre-line;
@@ -785,9 +785,9 @@ const CTATitle = styled(motion.h1)`
 
 const CTASubtitle = styled(motion.p)`
   font-family: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  font-size: 1.5rem;
+  font-size: clamp(0.95rem, 3vw, 1.5rem);
   font-weight: 400;
-  margin-bottom: 2rem;
+  margin-bottom: clamp(1rem, 2vw, 2rem);
   color: #ffffff;
   opacity: 0.95;
   text-shadow: 0 2px 10px rgba(0, 0, 0, 0.8);
@@ -795,6 +795,7 @@ const CTASubtitle = styled(motion.p)`
   margin-left: auto;
   margin-right: auto;
   padding: 0 1rem;
+  line-height: 1.5;
 
   @media (max-width: 768px) {
     font-size: 1.25rem;
@@ -823,7 +824,14 @@ const ButtonContainer = styled(motion.div)`
   padding: 0 1rem;
   max-width: 100%;
   width: 100%;
-  margin-top: 40px;
+  margin-top: clamp(20px, 3vw, 40px);
+
+  @media (max-width: 480px) {
+    flex-direction: column;
+    align-items: stretch;
+    max-width: min(400px, 90vw);
+    margin: 20px auto 0;
+  }
 
   a {
     text-decoration: none;

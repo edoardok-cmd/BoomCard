@@ -249,10 +249,20 @@ const sizeStyles = {
     padding: 16px 32px;
     font-size: 18px;
     font-weight: 600;
+    min-height: 56px;
 
     @media (max-width: 640px) {
       padding: 14px 24px;
       font-size: 16px;
+      min-height: 48px;
+      width: 100%;
+    }
+
+    @media (max-width: 480px) {
+      padding: 12px 20px;
+      font-size: 15px;
+      min-height: 44px;
+      width: 100%;
     }
   `
 };
