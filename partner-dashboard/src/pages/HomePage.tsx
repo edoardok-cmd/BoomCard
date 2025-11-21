@@ -152,6 +152,46 @@ const CategoryContent = styled.div`
   }
 `;
 
+const HowItWorksContainer = styled.div`
+  @media (max-width: 768px) {
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+    display: flex;
+    gap: 1rem;
+    padding: 1rem 0;
+    margin: 0 -1rem;
+    padding-left: 1rem;
+    padding-right: 1rem;
+
+    &::-webkit-scrollbar {
+      height: 6px;
+    }
+
+    &::-webkit-scrollbar-track {
+      background: var(--color-background-secondary);
+      border-radius: 10px;
+    }
+
+    &::-webkit-scrollbar-thumb {
+      background: var(--color-primary);
+      border-radius: 10px;
+    }
+  }
+`;
+
+const HowItWorksStep = styled.div`
+  @media (max-width: 768px) {
+    flex: 0 0 min(280px, 80vw);
+    scroll-snap-align: center;
+    background: var(--color-background);
+    padding: 1.5rem;
+    border-radius: 1rem;
+    border: 1px solid var(--color-border);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  }
+`;
+
 const StepCircle = styled.div`
   width: 4rem;
   height: 4rem;
@@ -164,6 +204,13 @@ const StepCircle = styled.div`
   margin: 0 auto 1.5rem;
   background: var(--color-primary);
   color: var(--color-secondary);
+
+  @media (max-width: 768px) {
+    width: 3rem;
+    height: 3rem;
+    font-size: 1.25rem;
+    margin-bottom: 1rem;
+  }
 
   /* Vibrant mode - gradient circle */
   [data-theme="color"] & {
@@ -623,7 +670,7 @@ const HomePage: React.FC = () => {
             </BodyText>
           </div>
 
-          <div className="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto">
+          <HowItWorksContainer className="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto">
             {[
               {
                 step: '1',
@@ -641,19 +688,19 @@ const HomePage: React.FC = () => {
                 desc: 'step3Description'
               }
             ].map((item, index) => (
-              <div key={index} className="text-center">
+              <HowItWorksStep key={index} className="text-center">
                 <StepCircle>
                   {item.step}
                 </StepCircle>
-                <SubsectionTitle className="text-xl font-semibold mb-3" style={{ color: 'var(--color-text-primary)' }}>
+                <SubsectionTitle className="text-xl font-semibold mb-3" style={{ color: 'var(--color-text-primary)', fontSize: 'clamp(1rem, 4vw, 1.25rem)' }}>
                   {t(`home.${item.title}`)}
                 </SubsectionTitle>
-                <BodyText className="leading-relaxed" style={{ color: 'var(--color-text-secondary)' }}>
+                <BodyText className="leading-relaxed" style={{ color: 'var(--color-text-secondary)', fontSize: 'clamp(0.875rem, 3vw, 1rem)' }}>
                   {t(`home.${item.desc}`)}
                 </BodyText>
-              </div>
+              </HowItWorksStep>
             ))}
-          </div>
+          </HowItWorksContainer>
         </div>
       </section>
 
