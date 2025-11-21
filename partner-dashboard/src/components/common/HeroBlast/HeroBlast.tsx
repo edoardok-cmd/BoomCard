@@ -31,16 +31,17 @@ const HeroContainer = styled.div`
     min-height: 100vh;
     height: auto;
     max-height: none;
-    padding-top: 80px; /* Account for fixed header on mobile */
-    padding-bottom: 2rem;
-    justify-content: flex-start;
+    padding-top: 70px; /* Account for fixed header on mobile */
+    padding-bottom: 80px; /* Account for bottom navigation */
+    justify-content: center; /* Center content vertically */
   }
 
   @media (max-width: 480px) {
     min-height: 100vh;
     height: auto;
-    padding-top: 80px;
-    padding-bottom: 1.5rem;
+    padding-top: 70px;
+    padding-bottom: 80px; /* Account for bottom navigation */
+    justify-content: center;
   }
 
   /* Side card positioning */
@@ -1048,26 +1049,34 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
     };
   }, [photoState]);
 
-  // Mobile fallback - show content immediately if video doesn't autoplay
+  // Mobile fallback - show content if video doesn't autoplay
   useEffect(() => {
     const isMobile = window.innerWidth <= 768;
     if (!isMobile) return;
 
-    // On mobile, show content after a short delay regardless of video state
-    // This ensures content is always visible even if video doesn't autoplay
+    const video = videoRef.current;
+    if (!video) return;
+
+    // Wait longer on mobile to let video attempt to play
+    // If video hasn't triggered content display by then, show it anyway
     const mobileTimeout = setTimeout(() => {
-      if (!showLogo) {
-        console.log('[Mobile] Showing hero content (fallback)');
-        setShowLogo(true);
-        setShowCTA(true);
-        setShowBlackCard(true);
-        setShowSilverCard(true);
-        setAnimationsFinished(true);
+      if (!showLogo && !videoEnded) {
+        // Only trigger if video hasn't already handled it
+        const isVideoPlaying = !!(video.currentTime > 0 && !video.paused && !video.ended && video.readyState > 2);
+
+        if (!isVideoPlaying) {
+          console.log('[Mobile] Video not playing - showing hero content (fallback)');
+          setShowLogo(true);
+          setShowCTA(true);
+          setShowBlackCard(true);
+          setShowSilverCard(true);
+          setAnimationsFinished(true);
+        }
       }
-    }, 3000); // Show after 3 seconds on mobile
+    }, 10000); // Wait 10 seconds on mobile before fallback
 
     return () => clearTimeout(mobileTimeout);
-  }, [showLogo]);
+  }, [showLogo, videoEnded]);
 
   useEffect(() => {
     const video = videoRef.current;
