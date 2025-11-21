@@ -505,6 +505,7 @@ const LogoExplode = styled(motion.img)<{ $showAnimation?: boolean; $stopAnimatio
   max-height: 324px;
   object-fit: contain;
   background-color: #000000;
+  border-radius: 20px;
   filter: drop-shadow(0 25px 50px rgba(0, 0, 0, 0.8));
   transform-style: preserve-3d;
   perspective: 1000px;
@@ -680,6 +681,22 @@ const CardExpiry = styled.div`
   }
 `;
 
+const LogoContainer = styled(motion.div)`
+  position: relative;
+  margin-top: 50px;
+  margin-bottom: 50px;
+
+  @media (max-width: 768px) {
+    margin-top: 20px;
+    margin-bottom: 30px;
+  }
+
+  @media (max-width: 480px) {
+    margin-top: 10px;
+    margin-bottom: 20px;
+  }
+`;
+
 const CTAContainer = styled(motion.div)`
   text-align: center;
   color: var(--color-secondary);
@@ -693,6 +710,7 @@ const CTATitle = styled(motion.h1)`
   line-height: 1.2;
   letter-spacing: -0.02em;
   white-space: pre-line;
+  padding: 0 1rem;
 
   /* Mellow fire gradient with yellow base and orange accent */
   background: linear-gradient(
@@ -731,34 +749,36 @@ const CTATitle = styled(motion.h1)`
   }
 
   @media (max-width: 768px) {
-    font-size: 2.75rem;
+    font-size: 2.2rem;
+    margin-bottom: 1.5rem;
 
     [lang="bg"] & {
-      font-size: 2.2rem;
+      font-size: 1.8rem;
     }
   }
 
   @media (max-width: 480px) {
-    font-size: 2rem;
-
-    [lang="bg"] & {
-      font-size: 1.6rem;
-    }
-  }
-
-  @media (max-width: 375px) {
     font-size: 1.75rem;
+    margin-bottom: 1rem;
 
     [lang="bg"] & {
       font-size: 1.4rem;
     }
   }
 
-  @media (max-width: 320px) {
+  @media (max-width: 375px) {
     font-size: 1.5rem;
 
     [lang="bg"] & {
       font-size: 1.2rem;
+    }
+  }
+
+  @media (max-width: 320px) {
+    font-size: 1.3rem;
+
+    [lang="bg"] & {
+      font-size: 1.1rem;
     }
   }
 `;
@@ -1099,8 +1119,7 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
       <ContentContainer>
         {/* Logo - appears in final position immediately */}
         {showLogo && (
-          <motion.div
-            style={{ position: 'relative', marginTop: '50px', marginBottom: '50px' }}
+          <LogoContainer
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.8, ease: [0.25, 0.1, 0.25, 1] }}
@@ -1186,7 +1205,7 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
                 ))}
               </PhotosContainer>
             )}
-          </motion.div>
+          </LogoContainer>
         )}
 
         {/* Container for CTA and Side Cards */}
