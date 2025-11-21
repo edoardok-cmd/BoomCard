@@ -28,7 +28,7 @@ const HeroContainer = styled.div`
 
   @media (max-width: 768px) {
     overflow: visible;
-    min-height: auto;
+    min-height: 100vh;
     height: auto;
     max-height: none;
     padding-top: 80px; /* Account for fixed header on mobile */
@@ -37,7 +37,7 @@ const HeroContainer = styled.div`
   }
 
   @media (max-width: 480px) {
-    min-height: auto;
+    min-height: 100vh;
     height: auto;
     padding-top: 80px;
     padding-bottom: 1.5rem;
