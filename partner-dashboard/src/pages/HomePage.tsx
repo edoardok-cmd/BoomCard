@@ -316,7 +316,7 @@ const CreditCardPlan = styled(motion.div)<{ $type: 'basic' | 'premium' }>`
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
   cursor: pointer;
   transition: transform 0.3s ease, box-shadow 0.3s ease;
-  margin-top: ${props => props.$type === 'premium' ? '1.5rem' : '0'};
+  margin-top: 1.5rem; /* Equal spacing for both cards to align them */
 
   @media (max-width: 768px) {
     width: min(360px, 92vw);
