@@ -290,7 +290,11 @@ const SubscriptionCardsContainer = styled.div`
   @media (max-width: 968px) {
     flex-direction: column;
     align-items: center;
-    gap: 3rem;
+    gap: 2rem;
+  }
+
+  @media (max-width: 480px) {
+    gap: 1.5rem;
   }
 `;
 
@@ -311,6 +315,12 @@ const CreditCardPlan = styled(motion.div)<{ $type: 'basic' | 'premium' }>`
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
   cursor: pointer;
   transition: transform 0.3s ease, box-shadow 0.3s ease;
+
+  @media (max-width: 768px) {
+    width: min(360px, 92vw);
+    height: 210px;
+    padding: 1.5rem 1.75rem;
+  }
 
   /* Basic Card - Silver/Gray gradient like hero silver card */
   ${props => props.$type === 'basic' && `
@@ -431,7 +441,13 @@ const PlanDetails = styled.div`
   margin-top: 2rem;
   width: 360px;
 
+  @media (max-width: 768px) {
+    margin-top: 1.5rem;
+    width: min(360px, 92vw);
+  }
+
   @media (max-width: 480px) {
+    margin-top: 1rem;
     width: min(340px, 90vw);
   }
 `;
@@ -443,6 +459,10 @@ const FeaturesList = styled.ul`
   background: var(--color-background);
   border-radius: 0.75rem;
   border: 1px solid var(--color-border);
+
+  @media (max-width: 768px) {
+    padding: 1rem 0;
+  }
 
   [data-theme="dark"] & {
     background: #1f2937;
@@ -456,8 +476,13 @@ const FeatureItem = styled.li`
   display: flex;
   align-items: center;
   gap: 0.875rem;
-  font-size: 0.9375rem;
+  font-size: clamp(0.875rem, 2.5vw, 0.9375rem);
   font-weight: 400;
+
+  @media (max-width: 768px) {
+    padding: 0.75rem 1rem;
+    gap: 0.75rem;
+  }
   color: var(--color-text-secondary);
   border-bottom: 1px solid var(--color-border);
 
