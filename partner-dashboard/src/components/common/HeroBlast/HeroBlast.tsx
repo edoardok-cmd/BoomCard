@@ -28,7 +28,7 @@ const HeroContainer = styled.div`
 
   @media (max-width: 768px) {
     overflow: visible;
-    min-height: calc(100vh - 70px); /* Subtract header height from viewport */
+    min-height: calc(100vh - 65px); /* Subtract header height from viewport */
     height: auto;
     max-height: none;
     padding-top: 0; /* Main layout provides header offset */
@@ -37,7 +37,7 @@ const HeroContainer = styled.div`
   }
 
   @media (max-width: 480px) {
-    min-height: calc(100vh - 70px); /* Subtract header height from viewport */
+    min-height: calc(100vh - 65px); /* Subtract header height from viewport */
     height: auto;
     padding-top: 0; /* Main layout provides header offset */
     padding-bottom: 80px; /* Account for bottom navigation */

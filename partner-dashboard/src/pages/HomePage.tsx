@@ -794,7 +794,7 @@ const HomePage: React.FC = () => {
   // Reviews are now fetched from API via usePartnerReviews hook above
 
   return (
-    <div style={{ marginTop: '-70px' }}>
+    <div style={{ marginTop: '-65px' }}>
       {/* Hero Section with Blast Video */}
       <HeroBlast language={language} />
 
