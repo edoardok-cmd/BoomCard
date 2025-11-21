@@ -842,22 +842,102 @@ const HomePage: React.FC = () => {
               ))}
             </div>
           ) : (
-            <div className="text-center py-12" style={{ background: 'var(--color-background)', borderRadius: '1rem' }}>
-              <BodyText className="text-xl mb-4" style={{ color: 'var(--color-text-secondary)' }}>
-                {language === 'bg' ? 'Все още няма отзиви' : 'No reviews yet'}
-              </BodyText>
-              <BodyText className="text-sm mb-6" style={{ color: 'var(--color-text-secondary)', opacity: 0.7 }}>
-                {language === 'bg'
-                  ? 'Бъдете първите, които споделят мнение'
-                  : 'Be the first to share your opinion'}
-              </BodyText>
-              <Button
-                variant="primary"
-                onClick={() => setShowReviewForm(true)}
-              >
-                {language === 'bg' ? 'Напишете първия отзив' : 'Write the First Review'}
-              </Button>
-            </div>
+            <>
+              {/* Placeholder testimonials */}
+              <div className="grid md:grid-cols-3 gap-6 max-w-6xl mx-auto mb-8">
+                {[
+                  {
+                    author: language === 'bg' ? 'Мария С.' : 'Maria S.',
+                    rating: 5,
+                    comment: language === 'bg'
+                      ? 'Страхотна карта! Спестих над 500 лв само за първия месец.'
+                      : 'Amazing card! I saved over BGN 500 in just the first month.'
+                  },
+                  {
+                    author: language === 'bg' ? 'Иван П.' : 'Ivan P.',
+                    rating: 5,
+                    comment: language === 'bg'
+                      ? 'Много изживявания на страхотни цени. Препоръчвам!'
+                      : 'So many experiences at great prices. Highly recommend!'
+                  },
+                  {
+                    author: language === 'bg' ? 'Елена Д.' : 'Elena D.',
+                    rating: 5,
+                    comment: language === 'bg'
+                      ? 'Най-добрата инвестиция в моя начин на живот.'
+                      : 'The best investment in my lifestyle.'
+                  }
+                ].map((testimonial, index) => (
+                  <div
+                    key={index}
+                    style={{
+                      background: 'var(--color-background)',
+                      borderRadius: '1rem',
+                      padding: 'clamp(1rem, 3vw, 1.5rem)',
+                      border: '1px solid var(--color-border)',
+                      opacity: 0.95
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', marginBottom: '1rem', gap: '0.75rem' }}>
+                      <div style={{
+                        width: '3rem',
+                        height: '3rem',
+                        borderRadius: '50%',
+                        background: 'linear-gradient(135deg, var(--color-primary) 0%, #ff006e 100%)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: 'white',
+                        fontWeight: 700,
+                        fontSize: '1.25rem',
+                        flexShrink: 0
+                      }}>
+                        {testimonial.author[0]}
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{
+                          fontWeight: 600,
+                          color: 'var(--color-text-primary)',
+                          marginBottom: '0.25rem',
+                          fontSize: 'clamp(0.9375rem, 2.5vw, 1rem)'
+                        }}>
+                          {testimonial.author}
+                        </div>
+                        <div style={{ display: 'flex', gap: '0.25rem' }}>
+                          {[...Array(5)].map((_, i) => (
+                            <svg
+                              key={i}
+                              width="16"
+                              height="16"
+                              viewBox="0 0 20 20"
+                              fill={i < testimonial.rating ? '#fbbf24' : '#d1d5db'}
+                            >
+                              <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                            </svg>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                    <BodyText style={{
+                      color: 'var(--color-text-secondary)',
+                      lineHeight: '1.6',
+                      fontSize: 'clamp(0.875rem, 2.5vw, 0.9375rem)'
+                    }}>
+                      "{testimonial.comment}"
+                    </BodyText>
+                  </div>
+                ))}
+              </div>
+              <div className="text-center">
+                <Button
+                  variant="primary"
+                  size="large"
+                  onClick={() => setShowReviewForm(true)}
+                >
+                  {language === 'bg' ? 'Споделете вашето мнение' : 'Share Your Review'}
+                </Button>
+              </div>
+            </>
           )}
         </div>
       </ReviewsSection>
