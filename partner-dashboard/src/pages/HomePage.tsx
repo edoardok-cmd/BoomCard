@@ -303,6 +303,7 @@ const PlanCardWrapper = styled(motion.div)`
   flex-direction: column;
   align-items: center;
   position: relative;
+  padding-top: 1rem; /* Space for "Most Popular" badge */
 `;
 
 const CreditCardPlan = styled(motion.div)<{ $type: 'basic' | 'premium' }>`
