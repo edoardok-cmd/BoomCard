@@ -42,12 +42,9 @@ jobs:
       matrix:
         service: [
           'api-gateway',
-          'auth-service',
-          'user-service',
           'analytics-service',
-          'partner-dashboard',
-          'customer-portal',
-          'admin-panel'
+          'backend-api',
+          'partner-dashboard'
         ]
     
     steps:
