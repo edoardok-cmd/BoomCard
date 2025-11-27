@@ -7,8 +7,6 @@ export const StyledHeader = styled.header`
   right: 0;
   z-index: 1020;
   width: 100%;
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
   background-color: rgba(var(--foreground), 0.02);
   border-bottom: 1px solid var(--color-border);
   transition: all 300ms cubic-bezier(0.4, 0, 0.2, 1);
@@ -25,23 +23,25 @@ export const StyledHeader = styled.header`
     }
   }
 
-  /* Light mode */
+  /* Light mode - solid white background when not scrolled */
   [data-theme="light"] & {
-    background-color: rgba(255, 255, 255, 0.7);
+    background-color: #ffffff;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
   }
 
-  /* Dark mode */
+  /* Dark mode - keeps backdrop blur at all times */
   [data-theme="dark"] & {
     background-color: rgba(15, 23, 42, 0.7);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
   }
 
-  /* Color mode - vibrant gradient with glow */
+  /* Color mode - solid white background when not scrolled */
   [data-theme="color"] & {
-    background: linear-gradient(180deg,
-      rgba(255, 249, 240, 0.7) 0%,
-      rgba(255, 240, 248, 0.7) 50%,
-      rgba(240, 248, 255, 0.7) 100%
-    );
+    background: #ffffff;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
     border-bottom: 2px solid transparent;
     border-image: linear-gradient(90deg, #ff4500, #ff006e, #00d4ff) 1;
     box-shadow:
@@ -52,6 +52,8 @@ export const StyledHeader = styled.header`
 
   &.scrolled {
     box-shadow: var(--shadow-soft);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
 
     [data-theme="light"] & {
       background-color: rgba(255, 255, 255, 0.7);
