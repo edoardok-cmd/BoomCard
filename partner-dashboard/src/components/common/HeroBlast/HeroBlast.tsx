@@ -1217,26 +1217,60 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
   return (
     <HeroContainer ref={heroRef}>
       {shouldPlayVideo ? (
-        <VideoBackground
-          ref={videoRef}
-          autoPlay
-          muted
-          playsInline
-          preload="auto"
-          poster="/boom-blast-poster.jpg"
-          webkit-playsinline="true"
-          x5-playsinline="true"
-        >
-          <source src="/boom-blast.mp4" type="video/mp4" />
-          Your browser does not support the video tag.
-        </VideoBackground>
+        <>
+          <VideoBackground
+            ref={videoRef}
+            autoPlay
+            muted
+            playsInline
+            preload="auto"
+            poster="/boom-blast-poster.jpg"
+            webkit-playsinline="true"
+            x5-playsinline="true"
+          >
+            <source src="/boom-blast.mp4" type="video/mp4" />
+            Your browser does not support the video tag.
+          </VideoBackground>
+          <VideoOverlay $fadeOut={videoEnded} />
+        </>
       ) : (
-        <StaticBackground />
+        <>
+          <StaticBackground />
+          {/* Static poster content - no animations */}
+          <ContentContainer style={{ opacity: 1 }}>
+            <LogoContainer style={{ opacity: 1 }}>
+              <LogoExplode
+                src="/zCard.png"
+                alt="Boom Card"
+                $showAnimation={false}
+                $stopAnimation={true}
+                style={{ animation: 'none' }}
+              />
+            </LogoContainer>
+
+            <CTAContainer lang={language} style={{ opacity: 1 }}>
+              <CTATitle style={{ opacity: 1 }}>
+                {t.title}
+              </CTATitle>
+
+              <CTASubtitle style={{ opacity: 1 }}>
+                {t.subtitle}
+              </CTASubtitle>
+
+              <ButtonContainer style={{ opacity: 1 }}>
+                <Link to="/subscriptions">
+                  <Button variant="primary" size="large">
+                    {t.ctaButton}
+                  </Button>
+                </Link>
+              </ButtonContainer>
+            </CTAContainer>
+          </ContentContainer>
+        </>
       )}
 
-      <VideoOverlay $fadeOut={videoEnded || !shouldPlayVideo} />
-
-      <ContentContainer>
+      {shouldPlayVideo && (
+        <ContentContainer>
         {/* Logo - appears in final position immediately */}
         {showLogo && (
           <LogoContainer
@@ -1452,6 +1486,7 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
           </div>
         </div>
       </ContentContainer>
+      )}
     </HeroContainer>
   );
 };
