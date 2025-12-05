@@ -154,7 +154,19 @@
       "Bash(fi)",
       "Bash([ -f \"/Users/administrator/Documents/BoomCard/backend-api/package.json\" ])",
       "Bash([ -d \"/Users/administrator/Documents/BoomCard/ml-service\" ])",
-      "Bash([ -f \"/Users/administrator/Documents/BoomCard/ml-service/requirements.txt\" ])"
+      "Bash([ -f \"/Users/administrator/Documents/BoomCard/ml-service/requirements.txt\" ])",
+      "Bash(DATABASE_URL=\"postgresql://boomcard:k82IGrupPqzlIiYb3WKFC2OqmnRNGW4i@dpg-d3mh1uruibrs73dvoub0-a.oregon-postgres.render.com/boomcard?connection_limit=1&pool_timeout=30\" /usr/local/bin/npx ts-node:*)",
+      "Bash(PATH=\"/usr/local/bin:$PATH\" DATABASE_URL=\"postgresql://boomcard:k82IGrupPqzlIiYb3WKFC2OqmnRNGW4i@dpg-d3mh1uruibrs73dvoub0-a.oregon-postgres.render.com/boomcard?connection_limit=1&pool_timeout=30\" /usr/local/bin/npx ts-node:*)",
+      "Bash(PATH=\"/usr/local/bin:$PATH\" /usr/local/bin/npx:*)",
+      "Bash(DATABASE_URL=\"postgresql://neondb_owner:npg_3f1FtdpRDOTH@ep-old-salad-agie89z3-pooler.c-2.eu-central-1.aws.neon.tech/boomcard?sslmode=require\" PATH=\"/usr/local/bin:$PATH\" /usr/local/bin/npx prisma db push:*)",
+      "Bash(DATABASE_URL=\"postgresql://neondb_owner:npg_3f1FtdpRDOTH@ep-old-salad-agie89z3-pooler.c-2.eu-central-1.aws.neon.tech/boomcard?sslmode=require\" PATH=\"/usr/local/bin:$PATH\" /usr/local/bin/npx prisma db seed:*)",
+      "Bash(DATABASE_URL=\"postgresql://neondb_owner:npg_3f1FtdpRDOTH@ep-old-salad-agie89z3-pooler.c-2.eu-central-1.aws.neon.tech/boomcard?sslmode=require\" PATH=\"/usr/local/bin:$PATH\" /usr/local/bin/npx ts-node:*)",
+      "Bash(PATH=\"/usr/local/bin:$PATH\" /usr/local/bin/npx ts-node:*)",
+      "Bash(/usr/local/bin/node:*)",
+      "Bash(PATH=\"/usr/local/bin:$PATH\" /usr/local/bin/npx prisma generate:*)",
+      "Read(//Users/administrator/Desktop/**)",
+      "Bash(PATH=\"/usr/local/bin:$PATH\" PLAYWRIGHT_CHROMIUM_CHANNEL=chrome /usr/local/bin/npx playwright test:*)",
+      "Bash(PORT=3007 PATH=\"/usr/local/bin:$PATH\" /usr/local/bin/npm run:*)"
     ],
     "deny": [],
     "ask": []

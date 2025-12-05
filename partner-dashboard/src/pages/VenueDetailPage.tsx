@@ -15,6 +15,10 @@ import { convertBGNToEUR } from '../utils/helpers';
 const PageContainer = styled.div`
   min-height: 100vh;
   background: #f9fafb;
+
+  [data-theme="dark"] & {
+    background: #0a0a0a;
+  }
 `;
 
 const Container = styled.div`
@@ -34,18 +38,34 @@ const Breadcrumb = styled.div`
   margin-bottom: 2rem;
   color: #6b7280;
 
+  [data-theme="dark"] & {
+    color: #9ca3af;
+  }
+
   a {
     color: #6b7280;
     text-decoration: none;
     transition: color 200ms;
 
+    [data-theme="dark"] & {
+      color: #9ca3af;
+    }
+
     &:hover {
       color: #111827;
+
+      [data-theme="dark"] & {
+        color: #f9fafb;
+      }
     }
   }
 
   span {
     color: #9ca3af;
+
+    [data-theme="dark"] & {
+      color: #6b7280;
+    }
   }
 `;
 
@@ -82,6 +102,11 @@ const HeaderSection = styled.div`
   margin-bottom: 2rem;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
 
+  [data-theme="dark"] & {
+    background: #1f2937;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  }
+
   @media (max-width: 768px) {
     padding: 1.5rem;
   }
@@ -101,6 +126,10 @@ const Title = styled.h1`
   margin-bottom: 1rem;
   line-height: 1.2;
 
+  [data-theme="dark"] & {
+    color: #f9fafb;
+  }
+
   @media (max-width: 768px) {
     font-size: 2rem;
   }
@@ -113,6 +142,10 @@ const Location = styled.div`
   font-size: 1rem;
   color: #6b7280;
   margin-bottom: 1rem;
+
+  [data-theme="dark"] & {
+    color: #9ca3af;
+  }
 
   svg {
     width: 1.25rem;
@@ -127,6 +160,10 @@ const RatingRow = styled.div`
   margin-bottom: 1.5rem;
   padding-bottom: 1.5rem;
   border-bottom: 1px solid #e5e7eb;
+
+  [data-theme="dark"] & {
+    border-bottom-color: #374151;
+  }
 `;
 
 const Rating = styled.div`
@@ -144,10 +181,18 @@ const Rating = styled.div`
   strong {
     font-weight: 600;
     color: #111827;
+
+    [data-theme="dark"] & {
+      color: #f9fafb;
+    }
   }
 
   span {
     color: #6b7280;
+
+    [data-theme="dark"] & {
+      color: #9ca3af;
+    }
   }
 `;
 
@@ -155,9 +200,17 @@ const PartnerName = styled.div`
   font-size: 1rem;
   color: #6b7280;
 
+  [data-theme="dark"] & {
+    color: #9ca3af;
+  }
+
   strong {
     color: #111827;
     font-weight: 600;
+
+    [data-theme="dark"] & {
+      color: #f9fafb;
+    }
   }
 `;
 
@@ -166,6 +219,10 @@ const Description = styled.div`
   line-height: 1.7;
   color: #4b5563;
   margin-bottom: 1.5rem;
+
+  [data-theme="dark"] & {
+    color: #d1d5db;
+  }
 `;
 
 const Section = styled.div`
@@ -174,6 +231,11 @@ const Section = styled.div`
   border-radius: 1rem;
   margin-bottom: 2rem;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+
+  [data-theme="dark"] & {
+    background: #1f2937;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  }
 
   @media (max-width: 768px) {
     padding: 1.5rem;
@@ -185,6 +247,10 @@ const SectionTitle = styled.h2`
   font-weight: 600;
   color: #111827;
   margin-bottom: 1.5rem;
+
+  [data-theme="dark"] & {
+    color: #f9fafb;
+  }
 `;
 
 const FeaturesList = styled.ul`
@@ -202,6 +268,10 @@ const FeatureItem = styled.li`
   gap: 0.75rem;
   font-size: 0.9375rem;
   color: #4b5563;
+
+  [data-theme="dark"] & {
+    color: #d1d5db;
+  }
 
   svg {
     width: 1.25rem;
@@ -241,6 +311,10 @@ const OriginalPrice = styled.div`
   color: #9ca3af;
   text-decoration: line-through;
   margin-bottom: 0.5rem;
+
+  [data-theme="dark"] & {
+    color: #6b7280;
+  }
 `;
 
 const DiscountedPrice = styled.div`
@@ -249,11 +323,19 @@ const DiscountedPrice = styled.div`
   color: #111827;
   line-height: 1;
 
+  [data-theme="dark"] & {
+    color: #f9fafb;
+  }
+
   span {
     font-size: 1.5rem;
     font-weight: 600;
     color: #6b7280;
     margin-left: 0.5rem;
+
+    [data-theme="dark"] & {
+      color: #9ca3af;
+    }
   }
 `;
 
@@ -272,9 +354,18 @@ const ValidityInfo = styled.div`
   color: #6b7280;
   margin-bottom: 1.5rem;
 
+  [data-theme="dark"] & {
+    background: #374151;
+    color: #9ca3af;
+  }
+
   strong {
     color: #111827;
     font-weight: 600;
+
+    [data-theme="dark"] & {
+      color: #f9fafb;
+    }
   }
 `;
 
@@ -296,6 +387,11 @@ const InfoItem = styled.li`
   font-size: 0.9375rem;
   color: #4b5563;
 
+  [data-theme="dark"] & {
+    border-bottom-color: #374151;
+    color: #d1d5db;
+  }
+
   &:last-child {
     border-bottom: none;
   }
@@ -303,6 +399,10 @@ const InfoItem = styled.li`
   strong {
     color: #111827;
     font-weight: 600;
+
+    [data-theme="dark"] & {
+      color: #f9fafb;
+    }
   }
 `;
 
@@ -317,6 +417,20 @@ const Map = styled.div`
   color: #6b7280;
   font-size: 0.875rem;
   margin-top: 1.5rem;
+
+  [data-theme="dark"] & {
+    background: #374151;
+    color: #9ca3af;
+  }
+`;
+
+const AddressText = styled.p`
+  color: #6b7280;
+  margin-bottom: 1rem;
+
+  [data-theme="dark"] & {
+    color: #9ca3af;
+  }
 `;
 
 const VenueDetailPage: React.FC = () => {
@@ -366,7 +480,7 @@ const VenueDetailPage: React.FC = () => {
     <PageContainer>
       <Container>
         <Breadcrumb>
-          <Link to="/">{t('venueDetail.home')}</Link>
+          <Link to="/top-offers">{t('venueDetail.home')}</Link>
           <span>/</span>
           <Link to="/categories/spa">{venue.category}</Link>
           <span>/</span>
@@ -445,9 +559,9 @@ const VenueDetailPage: React.FC = () => {
 
             <Section>
               <SectionTitle>{t('venueDetail.location')}</SectionTitle>
-              <p style={{ color: '#6b7280', marginBottom: '1rem' }}>
+              <AddressText>
                 {venue.address}
-              </p>
+              </AddressText>
               <Map>
                 {t('venueDetail.mapIntegration')}
               </Map>

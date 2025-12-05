@@ -5,14 +5,23 @@ import { motion } from 'framer-motion';
 import Button from '../components/common/Button/Button';
 import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
+import Header from '../components/layout/Header/Header';
+
+const PageWrapper = styled.div`
+  min-height: 100vh;
+  background: linear-gradient(135deg, #f9fafb 0%, #f3f4f6 100%);
+`;
 
 const PageContainer = styled.div`
   min-height: calc(100vh - 4rem);
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 2rem 1rem;
-  background: linear-gradient(135deg, #f9fafb 0%, #f3f4f6 100%);
+  padding: 6rem 1rem 2rem;
+
+  @media (max-width: 768px) {
+    padding: 5rem 1rem 2rem;
+  }
 `;
 
 const RegisterCard = styled(motion.div)`
@@ -273,23 +282,23 @@ interface FormErrors {
   confirmBusiness?: string;
 }
 
-const categories = [
-  { value: '', label: 'Select a category...' },
-  { value: 'RESTAURANT', label: 'Restaurant' },
-  { value: 'HOTEL', label: 'Hotel' },
-  { value: 'SPA', label: 'Spa & Wellness' },
-  { value: 'WINERY', label: 'Winery' },
-  { value: 'ENTERTAINMENT', label: 'Entertainment' },
-  { value: 'SPORTS', label: 'Sports & Fitness' },
-  { value: 'BEAUTY', label: 'Beauty & Salon' },
-  { value: 'SHOPPING', label: 'Shopping & Retail' },
-  { value: 'TRAVEL', label: 'Travel & Tourism' },
-];
-
 const RegisterPartnerPage: React.FC = () => {
   const navigate = useNavigate();
   const { register, isLoading } = useAuth();
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
+
+  const categories = [
+    { value: '', label: t('partnerRegistration.selectCategory') },
+    { value: 'RESTAURANT', label: t('partnerRegistration.restaurant') },
+    { value: 'HOTEL', label: t('partnerRegistration.hotel') },
+    { value: 'SPA', label: t('partnerRegistration.spa') },
+    { value: 'WINERY', label: t('partnerRegistration.winery') },
+    { value: 'ENTERTAINMENT', label: t('partnerRegistration.entertainment') },
+    { value: 'SPORTS', label: t('partnerRegistration.sports') },
+    { value: 'BEAUTY', label: t('partnerRegistration.beauty') },
+    { value: 'SHOPPING', label: t('partnerRegistration.shopping') },
+    { value: 'TRAVEL', label: t('partnerRegistration.travel') },
+  ];
 
   const [formData, setFormData] = useState({
     firstName: '',
@@ -313,54 +322,54 @@ const RegisterPartnerPage: React.FC = () => {
   const validateField = (field: string, value: any): string | undefined => {
     switch (field) {
       case 'firstName':
-        if (!value) return 'First name is required';
-        if (value.length < 2) return 'First name must be at least 2 characters';
+        if (!value) return t('partnerRegistration.firstNameRequired');
+        if (value.length < 2) return t('partnerRegistration.firstNameMinLength');
         return undefined;
 
       case 'lastName':
-        if (!value) return 'Last name is required';
-        if (value.length < 2) return 'Last name must be at least 2 characters';
+        if (!value) return t('partnerRegistration.lastNameRequired');
+        if (value.length < 2) return t('partnerRegistration.lastNameMinLength');
         return undefined;
 
       case 'email': {
-        if (!value) return 'Email is required';
+        if (!value) return t('partnerRegistration.emailRequired');
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        if (!emailRegex.test(value)) return 'Invalid email address';
+        if (!emailRegex.test(value)) return t('partnerRegistration.emailInvalid');
         return undefined;
       }
 
       case 'phone':
-        if (!value) return 'Phone number is required for business accounts';
+        if (!value) return t('partnerRegistration.phoneRequired');
         if (!/^(\+359|0)[0-9\s-]{8,}$/.test(value)) {
-          return 'Invalid phone number (Bulgarian format)';
+          return t('partnerRegistration.phoneInvalid');
         }
         return undefined;
 
       case 'password':
-        if (!value) return 'Password is required';
-        if (value.length < 6) return 'Password must be at least 6 characters';
+        if (!value) return t('partnerRegistration.passwordRequired');
+        if (value.length < 6) return t('partnerRegistration.passwordMinLength');
         return undefined;
 
       case 'confirmPassword':
-        if (!value) return 'Please confirm your password';
-        if (value !== formData.password) return 'Passwords do not match';
+        if (!value) return t('partnerRegistration.confirmPasswordRequired');
+        if (value !== formData.password) return t('partnerRegistration.passwordsMismatch');
         return undefined;
 
       case 'businessName':
-        if (!value) return 'Business name is required';
-        if (value.length < 3) return 'Business name must be at least 3 characters';
+        if (!value) return t('partnerRegistration.businessNameRequired');
+        if (value.length < 3) return t('partnerRegistration.businessNameMinLength');
         return undefined;
 
       case 'businessCategory':
-        if (!value) return 'Please select a business category';
+        if (!value) return t('partnerRegistration.businessCategoryRequired');
         return undefined;
 
       case 'acceptTerms':
-        if (!value) return 'You must accept the terms and conditions';
+        if (!value) return t('partnerRegistration.acceptTermsRequired');
         return undefined;
 
       case 'confirmBusiness':
-        if (!value) return 'You must confirm this is a legitimate business';
+        if (!value) return t('partnerRegistration.confirmBusinessRequired');
         return undefined;
 
       default:
@@ -391,7 +400,7 @@ const RegisterPartnerPage: React.FC = () => {
     // Also validate confirmPassword when password changes
     if (name === 'password' && touched.confirmPassword) {
       const confirmError = formData.confirmPassword !== value
-        ? 'Passwords do not match'
+        ? t('partnerRegistration.passwordsMismatch')
         : undefined;
       setErrors(prev => ({ ...prev, confirmPassword: confirmError }));
     }
@@ -453,36 +462,42 @@ const RegisterPartnerPage: React.FC = () => {
   };
 
   return (
-    <PageContainer>
-      <RegisterCard
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4 }}
-      >
-        <Logo to="/">
-          <LogoText>BoomCard</LogoText>
-        </Logo>
+    <PageWrapper>
+      <Header />
+      <PageContainer>
+        <RegisterCard
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4 }}
+        >
+          <Logo to="/">
+            <img
+              src="/iconic.svg"
+              alt="BoomCard"
+              style={{ height: '3rem', width: 'auto' }}
+            />
+          </Logo>
 
-        <Badge>
-          🏢 Business Account
-        </Badge>
+          <Badge>
+            🏢 {t('partnerRegistration.businessAccount')}
+          </Badge>
 
-        <Title>Create Your Partner Account</Title>
-        <Subtitle>
-          Join BoomCard as a partner and start offering exclusive discounts to customers
-        </Subtitle>
+          <Title>{t('partnerRegistration.title')}</Title>
+          <Subtitle>
+            {t('partnerRegistration.subtitle')}
+          </Subtitle>
 
         <Form onSubmit={handleSubmit}>
           {/* Personal Information */}
           <Section>
             <SectionTitle>
-              👤 Personal Information
+              👤 {t('partnerRegistration.personalInfo')}
             </SectionTitle>
 
             <FormRow>
               <FormGroup>
                 <Label htmlFor="firstName">
-                  First Name *
+                  {t('partnerRegistration.firstName')} *
                 </Label>
                 <Input
                   id="firstName"
@@ -491,7 +506,7 @@ const RegisterPartnerPage: React.FC = () => {
                   value={formData.firstName}
                   onChange={handleChange}
                   onBlur={() => handleBlur('firstName')}
-                  placeholder="John"
+                  placeholder={t('partnerRegistration.firstNamePlaceholder')}
                   $hasError={touched.firstName && !!errors.firstName}
                   disabled={isLoading}
                   autoComplete="given-name"
@@ -508,7 +523,7 @@ const RegisterPartnerPage: React.FC = () => {
 
               <FormGroup>
                 <Label htmlFor="lastName">
-                  Last Name *
+                  {t('partnerRegistration.lastName')} *
                 </Label>
                 <Input
                   id="lastName"
@@ -517,7 +532,7 @@ const RegisterPartnerPage: React.FC = () => {
                   value={formData.lastName}
                   onChange={handleChange}
                   onBlur={() => handleBlur('lastName')}
-                  placeholder="Smith"
+                  placeholder={t('partnerRegistration.lastNamePlaceholder')}
                   $hasError={touched.lastName && !!errors.lastName}
                   disabled={isLoading}
                   autoComplete="family-name"
@@ -536,7 +551,7 @@ const RegisterPartnerPage: React.FC = () => {
             <FormRow>
               <FormGroup>
                 <Label htmlFor="email">
-                  Email Address *
+                  {t('partnerRegistration.email')} *
                 </Label>
                 <Input
                   id="email"
@@ -545,7 +560,7 @@ const RegisterPartnerPage: React.FC = () => {
                   value={formData.email}
                   onChange={handleChange}
                   onBlur={() => handleBlur('email')}
-                  placeholder="john@business.com"
+                  placeholder={t('partnerRegistration.emailPlaceholder')}
                   $hasError={touched.email && !!errors.email}
                   disabled={isLoading}
                   autoComplete="email"
@@ -562,7 +577,7 @@ const RegisterPartnerPage: React.FC = () => {
 
               <FormGroup>
                 <Label htmlFor="phone">
-                  Phone Number *
+                  {t('partnerRegistration.phone')} *
                 </Label>
                 <Input
                   id="phone"
@@ -571,7 +586,7 @@ const RegisterPartnerPage: React.FC = () => {
                   value={formData.phone}
                   onChange={handleChange}
                   onBlur={() => handleBlur('phone')}
-                  placeholder="+359 88 123 4567"
+                  placeholder={t('partnerRegistration.phonePlaceholder')}
                   $hasError={touched.phone && !!errors.phone}
                   disabled={isLoading}
                   autoComplete="tel"
@@ -591,13 +606,13 @@ const RegisterPartnerPage: React.FC = () => {
           {/* Business Information */}
           <Section>
             <SectionTitle>
-              🏢 Business Information
+              🏢 {t('partnerRegistration.businessInfo')}
             </SectionTitle>
 
             <FormRow>
               <FormGroup>
                 <Label htmlFor="businessName">
-                  Business Name *
+                  {t('partnerRegistration.businessName')} *
                 </Label>
                 <Input
                   id="businessName"
@@ -606,7 +621,7 @@ const RegisterPartnerPage: React.FC = () => {
                   value={formData.businessName}
                   onChange={handleChange}
                   onBlur={() => handleBlur('businessName')}
-                  placeholder="Smith Restaurant"
+                  placeholder={t('partnerRegistration.businessNamePlaceholder')}
                   $hasError={touched.businessName && !!errors.businessName}
                   disabled={isLoading}
                 />
@@ -622,7 +637,7 @@ const RegisterPartnerPage: React.FC = () => {
 
               <FormGroup>
                 <Label htmlFor="businessNameBg">
-                  Business Name (Bulgarian)
+                  {t('partnerRegistration.businessNameBg')}
                 </Label>
                 <Input
                   id="businessNameBg"
@@ -630,7 +645,7 @@ const RegisterPartnerPage: React.FC = () => {
                   name="businessNameBg"
                   value={formData.businessNameBg}
                   onChange={handleChange}
-                  placeholder="Ресторант Смит"
+                  placeholder={t('partnerRegistration.businessNameBgPlaceholder')}
                   disabled={isLoading}
                 />
               </FormGroup>
@@ -639,7 +654,7 @@ const RegisterPartnerPage: React.FC = () => {
             <FormRow>
               <FormGroup>
                 <Label htmlFor="businessCategory">
-                  Business Category *
+                  {t('partnerRegistration.businessCategory')} *
                 </Label>
                 <Select
                   id="businessCategory"
@@ -668,7 +683,7 @@ const RegisterPartnerPage: React.FC = () => {
 
               <FormGroup>
                 <Label htmlFor="taxId">
-                  Tax ID / VAT Number
+                  {t('partnerRegistration.taxId')}
                 </Label>
                 <Input
                   id="taxId"
@@ -676,7 +691,7 @@ const RegisterPartnerPage: React.FC = () => {
                   name="taxId"
                   value={formData.taxId}
                   onChange={handleChange}
-                  placeholder="BG123456789"
+                  placeholder={t('partnerRegistration.taxIdPlaceholder')}
                   disabled={isLoading}
                 />
               </FormGroup>
@@ -684,7 +699,7 @@ const RegisterPartnerPage: React.FC = () => {
 
             <FormGroup>
               <Label htmlFor="website">
-                Website (Optional)
+                {t('partnerRegistration.website')}
               </Label>
               <Input
                 id="website"
@@ -692,7 +707,7 @@ const RegisterPartnerPage: React.FC = () => {
                 name="website"
                 value={formData.website}
                 onChange={handleChange}
-                placeholder="https://www.yourbusiness.com"
+                placeholder={t('partnerRegistration.websitePlaceholder')}
                 disabled={isLoading}
               />
             </FormGroup>
@@ -701,13 +716,13 @@ const RegisterPartnerPage: React.FC = () => {
           {/* Security */}
           <Section>
             <SectionTitle>
-              🔒 Security
+              🔒 {t('partnerRegistration.security')}
             </SectionTitle>
 
             <FormRow>
               <FormGroup>
                 <Label htmlFor="password">
-                  Password *
+                  {t('partnerRegistration.password')} *
                 </Label>
                 <Input
                   id="password"
@@ -716,7 +731,7 @@ const RegisterPartnerPage: React.FC = () => {
                   value={formData.password}
                   onChange={handleChange}
                   onBlur={() => handleBlur('password')}
-                  placeholder="At least 6 characters"
+                  placeholder={t('partnerRegistration.passwordPlaceholder')}
                   $hasError={touched.password && !!errors.password}
                   disabled={isLoading}
                   autoComplete="new-password"
@@ -733,7 +748,7 @@ const RegisterPartnerPage: React.FC = () => {
 
               <FormGroup>
                 <Label htmlFor="confirmPassword">
-                  Confirm Password *
+                  {t('partnerRegistration.confirmPassword')} *
                 </Label>
                 <Input
                   id="confirmPassword"
@@ -742,7 +757,7 @@ const RegisterPartnerPage: React.FC = () => {
                   value={formData.confirmPassword}
                   onChange={handleChange}
                   onBlur={() => handleBlur('confirmPassword')}
-                  placeholder="Confirm your password"
+                  placeholder={t('partnerRegistration.confirmPasswordPlaceholder')}
                   $hasError={touched.confirmPassword && !!errors.confirmPassword}
                   disabled={isLoading}
                   autoComplete="new-password"
@@ -773,7 +788,7 @@ const RegisterPartnerPage: React.FC = () => {
                 htmlFor="acceptTerms"
                 $hasError={touched.acceptTerms && !!errors.acceptTerms}
               >
-                I agree to the <Link to="/terms">Terms and Conditions</Link> and <Link to="/privacy">Privacy Policy</Link>
+                {t('partnerRegistration.acceptTerms')} <Link to="/terms">{t('partnerRegistration.termsAndConditions')}</Link> {t('partnerRegistration.and')} <Link to="/privacy">{t('partnerRegistration.privacyPolicy')}</Link>
               </CheckboxLabel>
             </CheckboxGroup>
             {touched.acceptTerms && errors.acceptTerms && (
@@ -800,7 +815,7 @@ const RegisterPartnerPage: React.FC = () => {
                 htmlFor="confirmBusiness"
                 $hasError={touched.confirmBusiness && !!errors.confirmBusiness}
               >
-                I confirm that this is a legitimate business and I have the authority to create this account
+                {t('partnerRegistration.confirmBusiness')}
               </CheckboxLabel>
             </CheckboxGroup>
             {touched.confirmBusiness && errors.confirmBusiness && (
@@ -814,8 +829,7 @@ const RegisterPartnerPage: React.FC = () => {
           </div>
 
           <InfoBox>
-            <strong>📋 Note:</strong> Your partner account will be reviewed by our team before activation.
-            This usually takes 24-48 hours. You'll receive an email notification once your account is approved.
+            <strong>📋 {t('partnerRegistration.note')}</strong> {t('partnerRegistration.noteText')}
           </InfoBox>
 
           <SubmitButton
@@ -825,19 +839,20 @@ const RegisterPartnerPage: React.FC = () => {
             isLoading={isLoading}
             disabled={isLoading}
           >
-            Create Partner Account
+            {t('partnerRegistration.createPartnerAccount')}
           </SubmitButton>
         </Form>
 
         <SwitchAccountType>
-          Looking for a personal account? <Link to="/register">Sign up as a customer</Link>
+          {t('partnerRegistration.switchToCustomer')} <Link to="/register">{t('partnerRegistration.signUpAsCustomer')}</Link>
         </SwitchAccountType>
 
         <LoginPrompt>
-          Already have an account? <Link to="/login">Sign In</Link>
+          {t('partnerRegistration.alreadyHaveAccount')} <Link to="/login">{t('partnerRegistration.signIn')}</Link>
         </LoginPrompt>
       </RegisterCard>
     </PageContainer>
+    </PageWrapper>
   );
 };
 

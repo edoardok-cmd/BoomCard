@@ -11,6 +11,7 @@ import HeroBlast from '../components/common/HeroBlast/HeroBlast';
 import ReviewCard from '../components/reviews/ReviewCard';
 import ReviewSubmissionForm from '../components/reviews/ReviewSubmissionForm';
 import ClientCTA from '../components/common/ClientCTA/ClientCTA';
+import Tooltip from '../components/common/Tooltip/Tooltip';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useTopOffers } from '../hooks/useOffers';
@@ -296,7 +297,7 @@ const ReviewsSection = styled.section`
 const SubscriptionCardsContainer = styled.div`
   display: flex;
   justify-content: center;
-  align-items: flex-start;
+  align-items: stretch; /* Make all cards same height */
   gap: 4rem;
   max-width: 1200px;
   margin: 0 auto;
@@ -318,6 +319,7 @@ const PlanCardWrapper = styled(motion.div)`
   align-items: center;
   position: relative;
   padding-top: 1rem; /* Space for "Most Popular" badge */
+  height: 100%; /* Ensure full height */
 `;
 
 const CreditCardPlan = styled(motion.div)<{ $type: 'starter' | 'basic' | 'premium' }>`
@@ -617,6 +619,9 @@ const CardPriceDisplay = styled.div<{ $type: 'starter' | 'basic' | 'premium' }>`
 const PlanDetails = styled.div`
   margin-top: 2rem;
   width: 360px;
+  display: flex;
+  flex-direction: column;
+  flex: 1; /* Take remaining space */
 
   @media (max-width: 768px) {
     margin-top: 1.5rem;
@@ -689,11 +694,91 @@ const FeatureItem = styled.li`
 `;
 
 const PlanButtonContainer = styled.div`
-  margin-top: 1.5rem;
+  margin-top: auto; /* Push to bottom */
+  padding-top: 1.5rem; /* Add spacing above */
 
   a {
     display: block;
     width: 100%;
+  }
+`;
+
+// Billing toggle components
+const BillingToggleContainer = styled.div`
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 1.5rem;
+  margin-bottom: 3rem;
+  flex-wrap: wrap;
+`;
+
+const BillingToggle = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: var(--color-background);
+  padding: 0.5rem;
+  border-radius: 3rem;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  border: 1px solid var(--color-border);
+`;
+
+const ToggleOption = styled.button<{ $active: boolean }>`
+  padding: 0.875rem 2rem;
+  border-radius: 3rem;
+  border: none;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  background: ${props => props.$active ? 'var(--color-primary)' : 'transparent'};
+  color: ${props => props.$active ? 'var(--color-secondary)' : 'var(--color-text-secondary)'};
+  font-family: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+
+  &:hover {
+    color: ${props => props.$active ? 'var(--color-secondary)' : 'var(--color-text-primary)'};
+  }
+
+  @media (max-width: 480px) {
+    padding: 0.75rem 1.5rem;
+    font-size: 0.9375rem;
+  }
+`;
+
+const SaveBadge = styled.div`
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  color: white;
+  padding: 0.75rem 1.5rem;
+  border-radius: 3rem;
+  font-size: 0.9375rem;
+  font-weight: 700;
+  box-shadow: 0 4px 15px rgba(16, 185, 129, 0.3);
+  font-family: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+
+  [data-theme="color"] & {
+    background: linear-gradient(135deg, #10b981 0%, #00d4ff 100%);
+  }
+
+  @media (max-width: 480px) {
+    font-size: 0.875rem;
+    padding: 0.625rem 1.25rem;
+  }
+`;
+
+const SectionDivider = styled.div`
+  width: 100%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent 0%, rgba(0, 0, 0, 0.6) 50%, transparent 100%);
+
+  /* Dark theme - grey gradient */
+  [data-theme="dark"] & {
+    background: linear-gradient(90deg, transparent 0%, rgba(156, 163, 175, 0.5) 50%, transparent 100%);
+  }
+
+  /* Vibrant color theme - use light theme gradient */
+  [data-theme="color"] & {
+    background: linear-gradient(90deg, transparent 0%, rgba(0, 0, 0, 0.6) 50%, transparent 100%);
   }
 `;
 
@@ -703,6 +788,7 @@ const HomePage: React.FC = () => {
   const { scrollY } = useScroll();
   const heroOpacity = useTransform(scrollY, [0, 300], [1, 0]);
   const heroScale = useTransform(scrollY, [0, 300], [1, 0.95]);
+  const [billingPeriod, setBillingPeriod] = useState<'monthly' | 'yearly'>('yearly');
 
   // Fetch top offers from API
   const { data: topOffersData, isLoading: isLoadingOffers } = useTopOffers(6);
@@ -727,11 +813,11 @@ const HomePage: React.FC = () => {
   useEffect(() => {
     updateSEO({
       title: language === 'bg'
-        ? 'BoomCard - Промоции, Изживявания, Карта за Намаления'
-        : 'BoomCard - Promotions, Experiences, Discount Card',
+        ? 'BOOM Card - Промоции, Изживявания, Карта за Намаления'
+        : 'BOOM Card - Promotions, Experiences, Discount Card',
       description: language === 'bg'
-        ? 'Открийте ексклузивни оферти и топ изживявания с вашата BoomCard карта за намаления. Подарете си незабравими преживявания!'
-        : 'Discover exclusive offers and top experiences with your BoomCard discount card. Gift yourself unforgettable experiences!',
+        ? 'Открийте ексклузивни оферти и топ изживявания с вашата BOOM Card карта за намаления. Подарете си незабравими преживявания!'
+        : 'Discover exclusive offers and top experiences with your BOOM Card discount card. Gift yourself unforgettable experiences!',
       keywords: language === 'bg'
         ? ['промоции', 'изживявания', 'карта за намаления', 'ексклузивни оферти', 'подарък', 'топ изживявания', 'отстъпки', 'България', 'София', 'Пловдив', 'Варна']
         : ['promotions', 'experiences', 'discount card', 'exclusive offers', 'gift', 'top experiences', 'discounts', 'Bulgaria', 'Sofia', 'Plovdiv', 'Varna'],
@@ -745,17 +831,17 @@ const HomePage: React.FC = () => {
 
     // Add HowTo schema for "How It Works" section
     generateHowToSchema({
-      name: language === 'bg' ? 'Как работи BoomCard' : 'How BoomCard Works',
+      name: language === 'bg' ? 'Как работи BOOM Card' : 'How BOOM Card Works',
       description: language === 'bg'
-        ? 'Научете как да използвате вашата BoomCard карта за достъп до ексклузивни промоции и изживявания'
-        : 'Learn how to use your BoomCard to access exclusive promotions and experiences',
+        ? 'Научете как да използвате вашата BOOM Card карта за достъп до ексклузивни промоции и изживявания'
+        : 'Learn how to use your BOOM Card to access exclusive promotions and experiences',
       totalTime: 'PT3M',
       steps: [
         {
           name: language === 'bg' ? 'Регистрирайте се' : 'Sign Up',
           text: language === 'bg'
-            ? 'Създайте вашия безплатен BoomCard акаунт за достъп до хиляди оферти'
-            : 'Create your free BoomCard account to access thousands of offers',
+            ? 'Създайте вашия безплатен BOOM Card акаунт за достъп до хиляди оферти'
+            : 'Create your free BOOM Card account to access thousands of offers',
         },
         {
           name: language === 'bg' ? 'Разгледайте Офертите' : 'Browse Offers',
@@ -775,22 +861,22 @@ const HomePage: React.FC = () => {
     // Add FAQ schema
     generateFAQSchema([
       {
-        question: language === 'bg' ? 'Какво е BoomCard?' : 'What is BoomCard?',
+        question: language === 'bg' ? 'Какво е BOOM Card?' : 'What is BOOM Card?',
         answer: language === 'bg'
-          ? 'BoomCard е карта за намаления, която ви дава достъп до ексклузивни промоции и топ изживявания в цяла България.'
-          : 'BoomCard is a discount card that gives you access to exclusive promotions and top experiences across Bulgaria.',
+          ? 'BOOM Card е карта за намаления, която ви дава достъп до ексклузивни промоции и топ изживявания в цяла България.'
+          : 'BOOM Card is a discount card that gives you access to exclusive promotions and top experiences across Bulgaria.',
       },
       {
-        question: language === 'bg' ? 'Колко струва BoomCard?' : 'How much does BoomCard cost?',
+        question: language === 'bg' ? 'Колко струва BOOM Card?' : 'How much does BOOM Card cost?',
         answer: language === 'bg'
-          ? 'BoomCard предлага два плана: Безплатен основен план и Премиум план за 29 лв/месец.'
-          : 'BoomCard offers two plans: Free basic plan and Premium plan for 29 BGN/month.',
+          ? 'BOOM Card предлага два плана: Безплатен основен план и Премиум план за 29 лв/месец.'
+          : 'BOOM Card offers two plans: Free basic plan and Premium plan for 29 BGN/month.',
       },
       {
-        question: language === 'bg' ? 'Къде мога да използвам BoomCard?' : 'Where can I use BoomCard?',
+        question: language === 'bg' ? 'Къде мога да използвам BOOM Card?' : 'Where can I use BOOM Card?',
         answer: language === 'bg'
-          ? 'BoomCard може да се използва в над 500 партньорски локации в София, Пловдив, Варна, Банско и други градове в България.'
-          : 'BoomCard can be used at over 500 partner locations in Sofia, Plovdiv, Varna, Bansko, and other cities in Bulgaria.',
+          ? 'BOOM Card може да се използва в над 500 партньорски локации в София, Пловдив, Варна, Банско и други градове в България.'
+          : 'BOOM Card can be used at over 500 partner locations in Sofia, Plovdiv, Varna, Bansko, and other cities in Bulgaria.',
       },
       {
         question: language === 'bg' ? 'Каква е средната отстъпка?' : 'What is the average discount?',
@@ -835,32 +921,58 @@ const HomePage: React.FC = () => {
   const subscriptionPlans = [
     {
       name: language === 'bg' ? 'Лек План' : 'Light Plan',
-      price: language === 'bg' ? 'Безплатно' : 'Free',
+      monthlyPrice: 4.99,
+      yearlyPrice: 52,
+      duration: language === 'bg' ? ' €/седмица' : ' €/week',
       type: 'starter' as const,
       features: [
-        language === 'bg' ? 'Важи 24 часа' : 'Valid for 24 hours',
-        language === 'bg' ? 'Достъп до основни оферти' : 'Access to basic offers',
-        language === 'bg' ? 'Пробен период' : 'Trial period'
+        language === 'bg' ? '24 часа премиум услуга' : '24 hours premium service',
+        language === 'bg' ? 'Важи една седмица' : 'Valid for one week',
+        language === 'bg' ? 'Достъп до основни оферти' : 'Access to basic offers'
+      ],
+      tooltips: [
+        language === 'bg' ? 'Пробвайте всички премиум функции за 24 часа' : 'Try all premium features for 24 hours',
+        language === 'bg' ? 'Достъп за 7 дни след активиране' : 'Access for 7 days after activation',
+        language === 'bg' ? 'Над 500 партньори в цялата страна' : 'Over 500 partners across the country'
       ]
     },
     {
       name: language === 'bg' ? 'Основен' : 'Basic',
-      price: '14.99',
+      monthlyPrice: 7.99,
+      yearlyPrice: 84,
+      duration: language === 'bg' ? ' €/седмица' : ' €/week',
       features: [
+        language === 'bg' ? '24 часа премиум услуга' : '24 hours premium service',
         language === 'bg' ? 'Достъп до основни оферти' : 'Access to basic offers',
-        language === 'bg' ? 'До 5% отстъпка' : 'Up to 5% discount',
+        language === 'bg' ? 'До 10% отстъпка' : 'Up to 10% discount',
         language === 'bg' ? 'Кешбек в приложението' : 'In-app cashback'
+      ],
+      tooltips: [
+        language === 'bg' ? 'Пробвайте всички премиум функции за 24 часа' : 'Try all premium features for 24 hours',
+        language === 'bg' ? 'Над 500 партньори в цялата страна' : 'Over 500 partners across the country',
+        language === 'bg' ? 'Ексклузивни отстъпки в избрани заведения' : 'Exclusive discounts at selected venues',
+        language === 'bg' ? 'Връщане на пари при всяка покупка' : 'Cashback on every purchase'
       ]
     },
     {
       name: language === 'bg' ? 'Премиум' : 'Premium',
-      price: '24.99',
+      monthlyPrice: 12.99,
+      yearlyPrice: 136,
+      duration: language === 'bg' ? ' €/седмица' : ' €/week',
       featured: true,
       features: [
-        language === 'bg' ? 'До 10% отстъпка' : 'Up to 10% discount',
+        language === 'bg' ? '24 часа премиум услуга' : '24 hours premium service',
+        language === 'bg' ? 'До 20% отстъпка' : 'Up to 20% discount',
         language === 'bg' ? 'В зависимост от заведението' : 'Depending on the venue',
         language === 'bg' ? 'Приоритетна поддръжка' : 'Priority support',
         language === 'bg' ? 'Ексклузивни оферти' : 'Exclusive offers'
+      ],
+      tooltips: [
+        language === 'bg' ? 'Пробвайте всички премиум функции за 24 часа' : 'Try all premium features for 24 hours',
+        language === 'bg' ? 'Най-високи отстъпки във всички партньори' : 'Highest discounts at all partners',
+        language === 'bg' ? 'Отстъпките варират според партньора' : 'Discounts vary by partner',
+        language === 'bg' ? 'Получете помощ в рамките на 1 час' : 'Get help within 1 hour',
+        language === 'bg' ? 'Достъп до лимитирани VIP промоции' : 'Access to limited VIP promotions'
       ]
     }
   ];
@@ -889,23 +1001,28 @@ const HomePage: React.FC = () => {
               {
                 step: '1',
                 title: 'step1Title',
-                desc: 'step1Description'
+                desc: 'step1Description',
+                tooltip: language === 'bg' ? 'Бърза регистрация за 30 секунди' : 'Quick 30-second registration'
               },
               {
                 step: '2',
                 title: 'step2Title',
-                desc: 'step2Description'
+                desc: 'step2Description',
+                tooltip: language === 'bg' ? 'Разгледайте над 500 ексклузивни оферти' : 'Browse over 500 exclusive offers'
               },
               {
                 step: '3',
                 title: 'step3Title',
-                desc: 'step3Description'
+                desc: 'step3Description',
+                tooltip: language === 'bg' ? 'Моментално активиране и спестяване' : 'Instant activation and savings'
               }
             ].map((item, index) => (
               <HowItWorksStep key={index} className="text-center">
-                <StepCircle>
-                  {item.step}
-                </StepCircle>
+                <Tooltip content={item.tooltip} position="top">
+                  <StepCircle>
+                    {item.step}
+                  </StepCircle>
+                </Tooltip>
                 <SubsectionTitle className="text-xl font-semibold mb-3" style={{ color: 'var(--color-text-primary)', fontSize: 'clamp(1rem, 4vw, 1.25rem)' }}>
                   {t(`home.${item.title}`)}
                 </SubsectionTitle>
@@ -930,11 +1047,64 @@ const HomePage: React.FC = () => {
                 ? 'Изберете перфектния план за вашия начин на живот'
                 : 'Choose the perfect plan for your lifestyle'}
             </BodyText>
+            <BodyText className="text-lg max-w-2xl mx-auto mt-3" style={{ color: 'var(--color-accent)', fontWeight: 600 }}>
+              {language === 'bg'
+                ? '24 часа безплатен Премиум пробен период за всички планове'
+                : '24h free Premium Trial for all Plans'}
+            </BodyText>
           </div>
+
+          {/* Billing Period Toggle */}
+          <BillingToggleContainer>
+            <BillingToggle>
+              <Tooltip
+                content={language === 'bg'
+                  ? 'Плащай годишно и спести 20% от общата цена'
+                  : 'Pay yearly and save 20% on total price'}
+                position="top"
+              >
+                <ToggleOption
+                  $active={billingPeriod === 'yearly'}
+                  onClick={() => setBillingPeriod('yearly')}
+                >
+                  {language === 'bg' ? 'Годишен абонамент' : 'Yearly'}
+                </ToggleOption>
+              </Tooltip>
+              <Tooltip
+                content={language === 'bg'
+                  ? 'Плащай всеки месец за по-голяма гъвкавост'
+                  : 'Pay monthly for more flexibility'}
+                position="top"
+              >
+                <ToggleOption
+                  $active={billingPeriod === 'monthly'}
+                  onClick={() => setBillingPeriod('monthly')}
+                >
+                  {language === 'bg' ? 'Месечен абонамент' : 'Monthly'}
+                </ToggleOption>
+              </Tooltip>
+            </BillingToggle>
+            {billingPeriod === 'yearly' && (
+              <Tooltip
+                content={language === 'bg'
+                  ? 'Спестявате 2 месеца при годишен абонамент'
+                  : 'You save 2 months with yearly subscription'}
+                position="bottom"
+              >
+                <SaveBadge>
+                  {language === 'bg' ? 'Спести 20%' : 'Save 20%'}
+                </SaveBadge>
+              </Tooltip>
+            )}
+          </BillingToggleContainer>
 
           <SubscriptionCardsContainer>
             {subscriptionPlans.map((plan, index) => {
               const planType = (plan as any).type || (plan.featured ? 'premium' : 'basic');
+              const displayPrice = billingPeriod === 'yearly' ? plan.yearlyPrice : plan.monthlyPrice;
+              const priceLabel = billingPeriod === 'yearly'
+                ? (language === 'bg' ? ' лв/година' : ' BGN/year')
+                : ((plan as any).duration || (language === 'bg' ? ' лв/мес' : ' BGN/mo'));
               return (
               <PlanCardWrapper
                 key={index}
@@ -944,15 +1114,22 @@ const HomePage: React.FC = () => {
               >
                 {/* Most Popular Badge - positioned relative to wrapper */}
                 {plan.featured && (
-                  <PopularBadge>
-                    {language === 'bg' ? 'Най-популярен' : 'Most Popular'}
-                  </PopularBadge>
+                  <Tooltip
+                    content={language === 'bg'
+                      ? 'Избран от 70% от нашите клиенти'
+                      : 'Chosen by 70% of our customers'}
+                    position="top"
+                  >
+                    <PopularBadge>
+                      {language === 'bg' ? 'Най-популярен' : 'Most Popular'}
+                    </PopularBadge>
+                  </Tooltip>
                 )}
 
                 {/* Credit Card matching hero design */}
                 <CreditCardPlan $type={planType}>
                   <CardLogoText $type={planType}>
-                    BOOM CARD
+                    BOOM Card
                   </CardLogoText>
 
                   <CardNumber $type={planType}>
@@ -967,9 +1144,9 @@ const HomePage: React.FC = () => {
                       {plan.name.toUpperCase()}
                     </CardHolderName>
                     <CardPriceDisplay $type={planType}>
-                      {plan.price}
+                      {displayPrice}
                       <span style={{ fontSize: '0.75rem', opacity: 0.8 }}>
-                        {language === 'bg' ? ' лв/мес' : ' BGN/mo'}
+                        {priceLabel}
                       </span>
                     </CardPriceDisplay>
                   </CardBottomRow>
@@ -979,21 +1156,34 @@ const HomePage: React.FC = () => {
                 <PlanDetails>
                   <FeaturesList>
                     {plan.features.map((feature, i) => (
-                      <FeatureItem key={i}>
-                        {feature}
-                      </FeatureItem>
+                      <Tooltip
+                        key={i}
+                        content={(plan as any).tooltips?.[i] || ''}
+                        position="right"
+                      >
+                        <FeatureItem>
+                          {feature}
+                        </FeatureItem>
+                      </Tooltip>
                     ))}
                   </FeaturesList>
 
                   <PlanButtonContainer>
-                    <Link to="/subscriptions" style={{ width: '100%' }}>
-                      <Button
-                        variant={plan.featured ? 'primary' : 'secondary'}
-                        size="large"
-                      >
-                        {language === 'bg' ? 'Избери План' : 'Choose Plan'}
-                      </Button>
-                    </Link>
+                    <Tooltip
+                      content={language === 'bg'
+                        ? 'Преминете към плащане и активирайте плана си'
+                        : 'Proceed to payment and activate your plan'}
+                      position="bottom"
+                    >
+                      <Link to="/subscriptions" style={{ width: '100%' }}>
+                        <Button
+                          variant={plan.featured ? 'primary' : 'secondary'}
+                          size="large"
+                        >
+                          {language === 'bg' ? 'Избери План' : 'Choose Plan'}
+                        </Button>
+                      </Link>
+                    </Tooltip>
                   </PlanButtonContainer>
                 </PlanDetails>
               </PlanCardWrapper>
@@ -1002,6 +1192,9 @@ const HomePage: React.FC = () => {
           </SubscriptionCardsContainer>
         </div>
       </section>
+
+      {/* Divider between Subscription Plans and Reviews */}
+      <SectionDivider />
 
       {/* User Reviews Section */}
       <ReviewsSection className="section">
@@ -1012,8 +1205,8 @@ const HomePage: React.FC = () => {
             </SectionTitle>
             <BodyText className="text-xl max-w-2xl mx-auto" style={{ color: 'var(--color-text-secondary)' }}>
               {language === 'bg'
-                ? 'Хиляди доволни клиенти спестяват с BoomCard всеки ден'
-                : 'Thousands of happy customers saving with BoomCard every day'}
+                ? 'Хиляди доволни клиенти спестяват с BOOM Card всеки ден'
+                : 'Thousands of happy customers saving with BOOM Card every day'}
             </BodyText>
           </div>
 
@@ -1036,8 +1229,12 @@ const HomePage: React.FC = () => {
             </div>
           ) : (
             <>
-              {/* Placeholder testimonials */}
-              <div className="grid md:grid-cols-3 gap-6 max-w-6xl mx-auto mb-8">
+              {/* Placeholder testimonials carousel */}
+              <Carousel
+                autoPlay={true}
+                interval={5000}
+                itemsToShow={{ mobile: 1, tablet: 2, desktop: 3 }}
+              >
                 {[
                   {
                     author: language === 'bg' ? 'Мария С.' : 'Maria S.',
@@ -1059,6 +1256,55 @@ const HomePage: React.FC = () => {
                     comment: language === 'bg'
                       ? 'Най-добрата инвестиция в моя начин на живот.'
                       : 'The best investment in my lifestyle.'
+                  },
+                  {
+                    author: language === 'bg' ? 'Георги М.' : 'Georgi M.',
+                    rating: 5,
+                    comment: language === 'bg'
+                      ? 'Използвам BOOM Card от 6 месеца и съм много доволен. Отстъпките са реални!'
+                      : 'Using BOOM Card for 6 months and very satisfied. The discounts are real!'
+                  },
+                  {
+                    author: language === 'bg' ? 'Петя К.' : 'Petya K.',
+                    rating: 5,
+                    comment: language === 'bg'
+                      ? 'Страхотно приложение! Намерих много добри оферти за ресторанти в София.'
+                      : 'Great app! Found many good restaurant offers in Sofia.'
+                  },
+                  {
+                    author: language === 'bg' ? 'Николай Т.' : 'Nikolay T.',
+                    rating: 4,
+                    comment: language === 'bg'
+                      ? 'Много полезна карта за ежедневни покупки. Препоръчвам Premium плана.'
+                      : 'Very useful card for daily shopping. I recommend the Premium plan.'
+                  },
+                  {
+                    author: language === 'bg' ? 'Силвия В.' : 'Silvia V.',
+                    rating: 5,
+                    comment: language === 'bg'
+                      ? 'Открих много нови места благодарение на офертите. Отлична идея!'
+                      : 'Discovered many new places thanks to the offers. Excellent idea!'
+                  },
+                  {
+                    author: language === 'bg' ? 'Димитър А.' : 'Dimitar A.',
+                    rating: 5,
+                    comment: language === 'bg'
+                      ? 'Като собственик на бизнес имам и личен профил. Спестяванията са значителни.'
+                      : 'As a business owner, I also have a personal profile. The savings are significant.'
+                  },
+                  {
+                    author: language === 'bg' ? 'Веселина Р.' : 'Veselina R.',
+                    rating: 5,
+                    comment: language === 'bg'
+                      ? 'Перфектно за уикенд излети! Винаги намирам добри оферти за хотели и СПА.'
+                      : 'Perfect for weekend trips! Always find good hotel and SPA offers.'
+                  },
+                  {
+                    author: language === 'bg' ? 'Стоян Ж.' : 'Stoyan Zh.',
+                    rating: 4,
+                    comment: language === 'bg'
+                      ? 'Добро съотношение цена-качество. Годишният абонамент определено си заслужава.'
+                      : 'Good value for money. The yearly subscription is definitely worth it.'
                   }
                 ].map((testimonial, index) => (
                   <div
@@ -1068,7 +1314,10 @@ const HomePage: React.FC = () => {
                       borderRadius: '1rem',
                       padding: 'clamp(1rem, 3vw, 1.5rem)',
                       border: '1px solid var(--color-border)',
-                      opacity: 0.95
+                      opacity: 0.95,
+                      height: '100%',
+                      display: 'flex',
+                      flexDirection: 'column'
                     }}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', marginBottom: '1rem', gap: '0.75rem' }}>
@@ -1114,14 +1363,15 @@ const HomePage: React.FC = () => {
                     <BodyText style={{
                       color: 'var(--color-text-secondary)',
                       lineHeight: '1.6',
-                      fontSize: 'clamp(0.875rem, 2.5vw, 0.9375rem)'
+                      fontSize: 'clamp(0.875rem, 2.5vw, 0.9375rem)',
+                      flex: 1
                     }}>
                       "{testimonial.comment}"
                     </BodyText>
                   </div>
                 ))}
-              </div>
-              <div className="text-center">
+              </Carousel>
+              <div className="text-center" style={{ marginTop: '3rem' }}>
                 <Button
                   variant="primary"
                   size="large"

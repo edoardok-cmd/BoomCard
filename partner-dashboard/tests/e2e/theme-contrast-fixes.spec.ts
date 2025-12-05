@@ -84,7 +84,7 @@ test.describe('Theme Contrast and Visibility Fixes', () => {
     }
   });
 
-  test('no gap between header and hero section', async ({ page }) => {
+  test('hero starts at top edge with header overlaying it', async ({ page }) => {
     // Get header bottom position
     const header = page.locator('header');
     const headerBox = await header.boundingBox();
@@ -97,8 +97,12 @@ test.describe('Theme Contrast and Visibility Fixes', () => {
       const gap = heroBox.y - (headerBox.y + headerBox.height);
       console.log('Gap between header and hero:', gap);
 
-      // Gap should be minimal (accounting for any borders/shadows)
-      expect(Math.abs(gap)).toBeLessThanOrEqual(5);
+      // For fixed header design, hero should start at top (0px) and header overlays it
+      // Expected gap: heroTop (0px) - headerBottom (65px) = -65px
+      // This negative value means hero is behind the fixed header (correct!)
+      expect(heroBox.y).toBeLessThanOrEqual(5); // Hero starts at top
+      expect(headerBox.height).toBeGreaterThanOrEqual(60); // Header has reasonable height
+      expect(gap).toBeLessThanOrEqual(-60); // Negative gap confirms overlap
     }
   });
 

@@ -1,420 +1,525 @@
 import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
+import { motion } from 'framer-motion';
 import GenericPage from '../components/templates/GenericPage';
+import Button from '../components/common/Button/Button';
 import { useLanguage } from '../contexts/LanguageContext';
 import styled from 'styled-components';
 
-// Billing toggle section
-const BillingToggleSection = styled.div`
+// Subscription cards - Credit card design matching HomePage
+const SubscriptionCardsContainer = styled.div`
+  display: flex;
+  justify-content: center;
+  align-items: stretch;
+  gap: 4rem;
+  max-width: 1200px;
+  margin: 0 auto;
+
+  @media (max-width: 968px) {
+    flex-direction: column;
+    align-items: center;
+    gap: 2rem;
+  }
+
+  @media (max-width: 480px) {
+    gap: 1.5rem;
+  }
+`;
+
+const PlanCardWrapper = styled(motion.div)`
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 2rem;
-  margin-bottom: 4rem;
+  position: relative;
+  padding-top: 1rem;
+  height: 100%;
+`;
+
+const CreditCardPlan = styled(motion.div)<{ $type: 'starter' | 'basic' | 'premium' }>`
+  width: 360px;
+  height: 225px;
+  border-radius: 1.25rem;
+  padding: 1.75rem 2rem;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+  cursor: pointer;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  margin-top: 1.5rem;
+
+  @media (max-width: 768px) {
+    width: min(360px, 92vw);
+    height: 210px;
+    padding: 1.5rem 1.75rem;
+  }
+
+  /* Starter Card - White/Light gradient */
+  ${props => props.$type === 'starter' && `
+    background: linear-gradient(135deg, #ffffff 0%, #f5f5f5 100%);
+    border: 2px solid rgba(200, 200, 200, 0.5);
+
+    &::before {
+      content: '';
+      position: absolute;
+      top: -50%;
+      right: -10%;
+      width: 200px;
+      height: 200px;
+      background: radial-gradient(circle, rgba(0, 0, 0, 0.05) 0%, transparent 70%);
+      border-radius: 50%;
+    }
+  `}
+
+  /* Basic Card - Silver/Gray gradient */
+  ${props => props.$type === 'basic' && `
+    background: linear-gradient(135deg, #c0c0c0 0%, #939393 100%);
+    border: 2px solid rgba(255, 255, 255, 0.3);
+
+    &::before {
+      content: '';
+      position: absolute;
+      top: -50%;
+      right: -10%;
+      width: 200px;
+      height: 200px;
+      background: radial-gradient(circle, rgba(255, 255, 255, 0.15) 0%, transparent 70%);
+      border-radius: 50%;
+    }
+  `}
+
+  /* Premium Card - Black/Gold gradient */
+  ${props => props.$type === 'premium' && `
+    background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
+    border: 3px solid #ffd700;
+
+    &::before {
+      content: '';
+      position: absolute;
+      top: -50%;
+      right: -10%;
+      width: 200px;
+      height: 200px;
+      background: radial-gradient(circle, rgba(255, 215, 0, 0.1) 0%, transparent 70%);
+      border-radius: 50%;
+    }
+  `}
+
+  &:hover {
+    transform: translateY(-10px) scale(1.02);
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+  }
+
+  /* Dark Theme - Sophisticated dark gradients */
+  [data-theme="dark"] & {
+    ${props => props.$type === 'starter' && `
+      background: linear-gradient(135deg, #f9fafb 0%, #e5e7eb 100%);
+      border: 2px solid rgba(156, 163, 175, 0.5);
+      box-shadow:
+        0 10px 40px rgba(0, 0, 0, 0.2);
+
+      &::before {
+        background: radial-gradient(circle, rgba(0, 0, 0, 0.05) 0%, transparent 70%);
+      }
+    `}
+
+    ${props => props.$type === 'basic' && `
+      background: linear-gradient(135deg, #374151 0%, #4b5563 100%);
+      border: 3px solid #3b82f6;
+      box-shadow:
+        0 10px 40px rgba(59, 130, 246, 0.3),
+        0 8px 30px rgba(6, 182, 212, 0.2);
+
+      &::before {
+        background: radial-gradient(circle, rgba(59, 130, 246, 0.15) 0%, transparent 70%);
+      }
+    `}
+
+    ${props => props.$type === 'premium' && `
+      background: linear-gradient(135deg, #111827 0%, #1f2937 50%, #0f172a 100%);
+      border: 3px solid #06b6d4;
+      box-shadow:
+        0 10px 40px rgba(6, 182, 212, 0.5),
+        0 8px 35px rgba(59, 130, 246, 0.4);
+
+      &::before {
+        background: radial-gradient(circle, rgba(6, 182, 212, 0.2) 0%, transparent 70%);
+      }
+    `}
+
+    &:hover {
+      box-shadow:
+        0 20px 60px rgba(59, 130, 246, 0.4),
+        0 15px 50px rgba(6, 182, 212, 0.35);
+    }
+  }
+
+  /* Color Theme - Vibrant gradients */
+  [data-theme="color"] & {
+    ${props => props.$type === 'starter' && `
+      background: linear-gradient(135deg, #ffffff 0%, #fff5f0 100%);
+      border: 2px solid rgba(255, 148, 214, 0.3);
+      box-shadow:
+        0 10px 40px rgba(0, 0, 0, 0.15);
+
+      &::before {
+        background: radial-gradient(circle, rgba(255, 105, 180, 0.08) 0%, transparent 70%);
+      }
+    `}
+
+    ${props => props.$type === 'basic' && `
+      background: linear-gradient(135deg, #ffd6a5 0%, #ffb5d5 50%, #c9e4ff 100%);
+      border: 3px solid #ff94d6;
+      box-shadow:
+        0 10px 40px rgba(255, 148, 214, 0.4),
+        0 8px 30px rgba(178, 75, 243, 0.3);
+
+      &::before {
+        background: radial-gradient(circle, rgba(255, 105, 180, 0.2) 0%, transparent 70%);
+      }
+    `}
+
+    ${props => props.$type === 'premium' && `
+      background: linear-gradient(135deg, #1a0a2e 0%, #6a0572 50%, #ab2567 100%);
+      border: 3px solid #ff4500;
+      box-shadow:
+        0 10px 40px rgba(255, 69, 0, 0.6),
+        0 8px 35px rgba(255, 0, 110, 0.5),
+        0 6px 30px rgba(139, 47, 184, 0.4);
+
+      &::before {
+        background: radial-gradient(circle, rgba(255, 69, 0, 0.15) 0%, transparent 70%);
+      }
+    `}
+
+    &:hover {
+      box-shadow:
+        0 20px 60px rgba(255, 69, 0, 0.5),
+        0 15px 50px rgba(255, 0, 110, 0.4),
+        0 10px 40px rgba(139, 47, 184, 0.3);
+    }
+  }
+
+  @media (max-width: 480px) {
+    width: min(340px, 90vw);
+    height: 212px;
+  }
+`;
+
+const PopularBadge = styled.div`
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  background: linear-gradient(135deg, #ffd700 0%, #ffed4e 100%);
+  color: #000;
+  padding: 0.4rem 1.25rem;
+  border-radius: 9999px;
+  font-family: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  box-shadow: 0 4px 12px rgba(255, 215, 0, 0.5);
+  z-index: 10;
+`;
+
+const CardLogoText = styled.div<{ $type: 'starter' | 'basic' | 'premium' }>`
+  font-size: 1.75rem;
+  font-weight: 900;
+  font-family: 'Arial Black', sans-serif;
+  letter-spacing: 2px;
+  margin-bottom: 1.5rem;
+  color: ${props => props.$type === 'premium' ? '#ffd700' : props.$type === 'starter' ? '#4a4a4a' : '#1a1a1a'};
+  text-shadow: ${props => props.$type === 'premium'
+    ? '0 2px 10px rgba(255, 215, 0, 0.3)'
+    : props.$type === 'starter'
+    ? '0 1px 2px rgba(0, 0, 0, 0.1)'
+    : '0 1px 2px rgba(255, 255, 255, 0.5)'};
+
+  [data-theme="dark"] & {
+    color: ${props => props.$type === 'premium' ? '#06b6d4' : props.$type === 'starter' ? '#1a1a1a' : '#f8fafc'};
+    text-shadow: ${props => props.$type === 'premium'
+      ? '0 2px 15px rgba(6, 182, 212, 0.6), 0 0 30px rgba(59, 130, 246, 0.4)'
+      : props.$type === 'starter'
+      ? '0 1px 2px rgba(0, 0, 0, 0.1)'
+      : '0 2px 8px rgba(59, 130, 246, 0.3)'};
+  }
+
+  [data-theme="color"] & {
+    color: ${props => props.$type === 'premium' ? '#ff4500' : props.$type === 'starter' ? '#1a0a2e' : '#1a0a2e'};
+    text-shadow: ${props => props.$type === 'premium'
+      ? '0 2px 15px rgba(255, 69, 0, 0.6), 0 0 30px rgba(255, 0, 110, 0.4)'
+      : props.$type === 'starter'
+      ? '0 1px 2px rgba(0, 0, 0, 0.08)'
+      : '0 2px 8px rgba(139, 47, 184, 0.3)'};
+  }
+`;
+
+const CardNumber = styled.div<{ $type?: 'starter' | 'basic' | 'premium' }>`
+  display: flex;
+  gap: 0.75rem;
+  margin-bottom: 2rem;
+  font-size: 1.25rem;
+  color: ${props => props.$type === 'starter' ? 'rgba(100, 100, 100, 0.8)' : props.$type === 'basic' ? 'rgba(26, 26, 26, 0.9)' : 'rgba(255, 255, 255, 0.9)'};
+  letter-spacing: 0.25rem;
+  font-family: 'Courier New', monospace;
+
+  [data-theme="dark"] & {
+    color: ${props => props.$type === 'starter' ? 'rgba(26, 26, 26, 0.8)' : 'rgba(248, 250, 252, 0.9)'};
+  }
+
+  [data-theme="color"] & {
+    color: ${props => props.$type === 'starter' ? 'rgba(26, 10, 46, 0.7)' : props.$type === 'basic' ? 'rgba(26, 10, 46, 0.8)' : 'rgba(255, 255, 255, 0.95)'};
+  }
+`;
+
+const CardBottomRow = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+`;
+
+const CardHolderName = styled.div<{ $type?: 'starter' | 'basic' | 'premium' }>`
+  font-family: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  color: ${props => props.$type === 'starter' ? 'rgba(74, 74, 74, 0.95)' : props.$type === 'basic' ? 'rgba(26, 26, 26, 0.95)' : 'rgba(255, 255, 255, 0.95)'};
+  font-size: 0.8125rem;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  font-weight: 400;
+
+  [data-theme="dark"] & {
+    color: ${props => props.$type === 'starter' ? 'rgba(26, 26, 26, 0.95)' : 'rgba(248, 250, 252, 0.95)'};
+  }
+
+  [data-theme="color"] & {
+    color: ${props => props.$type === 'starter' ? 'rgba(26, 10, 46, 0.85)' : props.$type === 'basic' ? 'rgba(26, 10, 46, 0.9)' : 'rgba(255, 255, 255, 0.95)'};
+  }
+`;
+
+const CardPriceDisplay = styled.div<{ $type: 'starter' | 'basic' | 'premium' }>`
+  font-family: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  text-align: right;
+  color: ${props => props.$type === 'premium' ? '#ffd700' : props.$type === 'starter' ? 'rgba(74, 74, 74, 0.95)' : 'rgba(26, 26, 26, 0.95)'};
+  font-size: 1.75rem;
+  font-weight: 400;
+  line-height: 1;
+
+  span {
+    font-size: 0.875rem;
+    font-weight: 400;
+    opacity: 0.9;
+  }
+
+  [data-theme="dark"] & {
+    color: ${props => props.$type === 'premium' ? '#06b6d4' : props.$type === 'starter' ? '#1a1a1a' : '#f8fafc'};
+    text-shadow: ${props => props.$type === 'premium'
+      ? '0 2px 10px rgba(6, 182, 212, 0.4)'
+      : props.$type === 'starter'
+      ? 'none'
+      : '0 1px 4px rgba(59, 130, 246, 0.2)'};
+  }
+
+  [data-theme="color"] & {
+    color: ${props => props.$type === 'premium' ? '#ff4500' : props.$type === 'starter' ? '#1a0a2e' : '#1a0a2e'};
+    text-shadow: ${props => props.$type === 'premium'
+      ? '0 2px 10px rgba(255, 69, 0, 0.4)'
+      : props.$type === 'starter'
+      ? 'none'
+      : '0 1px 4px rgba(139, 47, 184, 0.2)'};
+  }
+`;
+
+const PlanDetails = styled.div`
+  margin-top: 2rem;
+  width: 360px;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+
+  @media (max-width: 768px) {
+    margin-top: 1.5rem;
+    width: min(360px, 92vw);
+  }
+
+  @media (max-width: 480px) {
+    margin-top: 1rem;
+    width: min(340px, 90vw);
+  }
+`;
+
+const FeaturesList = styled.ul`
+  list-style: none;
+  padding: 1.5rem 0;
+  margin: 0;
+  background: var(--color-background);
+  border-radius: 0.75rem;
+  border: 1px solid var(--color-border);
+
+  @media (max-width: 768px) {
+    padding: 1rem 0;
+  }
+
+  [data-theme="dark"] & {
+    background: #1f2937;
+    border-color: #374151;
+  }
+`;
+
+const FeatureItem = styled.li`
+  font-family: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  padding: 0.875rem 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.875rem;
+  font-size: clamp(0.875rem, 2.5vw, 0.9375rem);
+  font-weight: 400;
+
+  @media (max-width: 768px) {
+    padding: 0.75rem 1rem;
+    gap: 0.75rem;
+  }
+  color: var(--color-text-secondary);
+  border-bottom: 1px solid var(--color-border);
+
+  &:last-child {
+    border-bottom: none;
+  }
+
+  &::before {
+    content: '✓';
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: rgba(34, 197, 94, 0.15);
+    color: #22c55e;
+    font-weight: 700;
+    font-size: 0.75rem;
+    flex-shrink: 0;
+  }
+
+  [data-theme="dark"] & {
+    color: #d1d5db;
+    border-bottom-color: #374151;
+  }
+`;
+
+const PlanButtonContainer = styled.div`
+  margin-top: auto;
+  padding-top: 1.5rem;
+
+  a {
+    display: block;
+    width: 100%;
+  }
+`;
+
+// Billing toggle components
+const BillingToggleContainer = styled.div`
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 1.5rem;
+  margin-bottom: 3rem;
+  flex-wrap: wrap;
 `;
 
 const BillingToggle = styled.div`
   display: flex;
   align-items: center;
-  gap: 1.5rem;
-  background: white;
+  gap: 0.5rem;
+  background: var(--color-background);
   padding: 0.5rem;
   border-radius: 3rem;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-
-  [data-theme="dark"] & {
-    background: #1f2937;
-  }
+  border: 1px solid var(--color-border);
 `;
 
 const ToggleOption = styled.button<{ $active: boolean }>`
-  padding: 1rem 2.5rem;
+  padding: 0.875rem 2rem;
   border-radius: 3rem;
   border: none;
   font-size: 1rem;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.3s ease;
-  background: ${props => props.$active ? '#000000' : 'transparent'};
-  color: ${props => props.$active ? 'white' : '#6b7280'};
-
-  [data-theme="dark"] & {
-    background: ${props => props.$active ? '#60a5fa' : 'transparent'};
-    color: ${props => props.$active ? '#000000' : '#9ca3af'};
-  }
+  background: ${props => props.$active ? 'var(--color-primary)' : 'transparent'};
+  color: ${props => props.$active ? 'var(--color-secondary)' : 'var(--color-text-secondary)'};
+  font-family: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 
   &:hover {
-    color: ${props => props.$active ? 'white' : '#374151'};
+    color: ${props => props.$active ? 'var(--color-secondary)' : 'var(--color-text-primary)'};
+  }
+
+  @media (max-width: 480px) {
+    padding: 0.75rem 1.5rem;
+    font-size: 0.9375rem;
   }
 `;
 
 const SaveBadge = styled.div`
   background: linear-gradient(135deg, #10b981 0%, #059669 100%);
   color: white;
-  padding: 0.75rem 2rem;
+  padding: 0.75rem 1.5rem;
   border-radius: 3rem;
-  font-size: 1rem;
+  font-size: 0.9375rem;
   font-weight: 700;
   box-shadow: 0 4px 15px rgba(16, 185, 129, 0.3);
+  font-family: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 
   [data-theme="color"] & {
     background: linear-gradient(135deg, #10b981 0%, #00d4ff 100%);
   }
-`;
 
-// Card grid
-const CardsContainer = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: 2.5rem;
-  max-width: 800px;
-  margin: 0 auto;
-  padding: 0 1rem;
-
-  @media (max-width: 768px) {
-    padding: 0 0.5rem;
-  }
-`;
-
-// Credit card styled component
-const CreditCard = styled.div<{ $variant: 'gold' | 'silver' | 'platinum' }>`
-  position: relative;
-  width: 100%;
-  aspect-ratio: 1.586;
-  max-width: 680px;
-  margin: 0 auto;
-  border-radius: 1.5rem;
-  padding: 2.5rem;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
-  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-  cursor: pointer;
-  overflow: hidden;
-
-  ${props => props.$variant === 'gold' && `
-    background: linear-gradient(135deg, #2a2a2a 0%, #1a1a1a 100%);
-    border: 3px solid #d4af37;
-
-    [data-theme="dark"] & {
-      background: linear-gradient(135deg, #1f2937 0%, #111827 100%);
-      border-color: #fbbf24;
-    }
-
-    [data-theme="color"] & {
-      background: linear-gradient(135deg, #1a0a2e 0%, #6a0572 50%, #ab2567 100%);
-      border-color: #ffd700;
-      box-shadow:
-        0 20px 60px rgba(255, 215, 0, 0.3),
-        0 10px 40px rgba(171, 37, 103, 0.3);
-    }
-  `}
-
-  ${props => props.$variant === 'silver' && `
-    background: linear-gradient(135deg, #8b8b8b 0%, #6b6b6b 100%);
-    border: 3px solid #c0c0c0;
-
-    [data-theme="dark"] & {
-      background: linear-gradient(135deg, #4b5563 0%, #374151 100%);
-      border-color: #9ca3af;
-    }
-
-    [data-theme="color"] & {
-      background: linear-gradient(135deg, #6b7280 0%, #4b5563 50%, #374151 100%);
-      border-color: #e5e7eb;
-    }
-  `}
-
-  ${props => props.$variant === 'platinum' && `
-    background: linear-gradient(135deg, #3a3a3a 0%, #2a2a2a 100%);
-    border: 3px solid #e5e4e2;
-
-    [data-theme="dark"] & {
-      background: linear-gradient(135deg, #374151 0%, #1f2937 100%);
-      border-color: #d1d5db;
-    }
-
-    [data-theme="color"] & {
-      background: linear-gradient(135deg, #2a2a2a 0%, #1a1a1a 50%, #0a0a0a 100%);
-      border-color: #f3f4f6;
-      box-shadow:
-        0 20px 60px rgba(243, 244, 246, 0.2),
-        0 10px 40px rgba(0, 0, 0, 0.4);
-    }
-  `}
-
-  &:hover {
-    transform: translateY(-12px) scale(1.02);
-    box-shadow: 0 30px 80px rgba(0, 0, 0, 0.3);
-  }
-
-  &::before {
-    content: '';
-    position: absolute;
-    top: -50%;
-    right: -20%;
-    width: 400px;
-    height: 400px;
-    background: radial-gradient(circle, rgba(255, 255, 255, 0.1) 0%, transparent 70%);
-    pointer-events: none;
-  }
-
-  @media (max-width: 768px) {
-    padding: 1.5rem;
-    aspect-ratio: 1.4;
-  }
-`;
-
-const CardTop = styled.div`
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  position: relative;
-  z-index: 1;
-  margin-bottom: auto;
-`;
-
-const CardLeft = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-`;
-
-const BoomLogo = styled.div`
-  font-size: 3rem;
-  font-weight: 900;
-  letter-spacing: -2px;
-  text-transform: uppercase;
-
-  ${CreditCard}[data-variant="gold"] & {
-    color: #ffd700;
-    text-shadow: 0 2px 10px rgba(255, 215, 0, 0.5);
-  }
-
-  ${CreditCard}[data-variant="silver"] & {
-    color: #ffffff;
-    text-shadow: 0 2px 10px rgba(255, 255, 255, 0.3);
-  }
-
-  ${CreditCard}[data-variant="platinum"] & {
-    color: #e5e4e2;
-    text-shadow: 0 2px 10px rgba(229, 228, 226, 0.4);
-  }
-
-  @media (max-width: 768px) {
-    font-size: 2.25rem;
-  }
-`;
-
-const CardNumberRow = styled.div`
-  font-size: 1.5rem;
-  font-weight: 400;
-  letter-spacing: 8px;
-  color: white;
-  font-family: 'Courier New', monospace;
-  display: flex;
-  gap: 1.5rem;
-
-  @media (max-width: 768px) {
-    font-size: 1.125rem;
-    letter-spacing: 4px;
-    gap: 1rem;
-  }
-`;
-
-const CardYear = styled.div`
-  font-size: 2.5rem;
-  font-weight: 300;
-  letter-spacing: 8px;
-  color: white;
-  font-family: 'Courier New', monospace;
-
-  @media (max-width: 768px) {
-    font-size: 1.75rem;
-    letter-spacing: 6px;
-  }
-`;
-
-const QRCode = styled.div`
-  width: 120px;
-  height: 120px;
-  background: white;
-  border-radius: 0.75rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-direction: column;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-  padding: 0.625rem;
-  flex-shrink: 0;
-
-  @media (max-width: 768px) {
-    width: 90px;
-    height: 90px;
-  }
-`;
-
-const QRPlaceholder = styled.div`
-  width: 75px;
-  height: 75px;
-  background: #000;
-  border-radius: 0.375rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 0.625rem;
-  color: white;
-  position: relative;
-
-  &::before, &::after {
-    content: '';
-    position: absolute;
-    background: white;
-  }
-
-  &::before {
-    width: 8px;
-    height: 8px;
-    top: 6px;
-    left: 6px;
-  }
-
-  &::after {
-    width: 8px;
-    height: 8px;
-    bottom: 6px;
-    right: 6px;
-  }
-
-  @media (max-width: 768px) {
-    width: 55px;
-    height: 55px;
-  }
-`;
-
-const ScanText = styled.div`
-  font-size: 0.75rem;
-  font-weight: 800;
-  color: #000;
-  margin-top: 0.375rem;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-`;
-
-const CardBottom = styled.div`
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-end;
-  position: relative;
-  z-index: 1;
-`;
-
-const CardInfo = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: 0.375rem;
-`;
-
-const CardLabel = styled.div`
-  font-size: 0.625rem;
-  color: rgba(255, 255, 255, 0.6);
-  text-transform: uppercase;
-  letter-spacing: 1.5px;
-  font-weight: 500;
-`;
-
-const CardholderName = styled.div`
-  font-size: 1.125rem;
-  color: white;
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-
-  @media (max-width: 768px) {
-    font-size: 1rem;
-  }
-`;
-
-const CardExpiry = styled.div`
-  font-size: 1rem;
-  color: rgba(255, 255, 255, 0.8);
-  font-family: 'Courier New', monospace;
-  font-weight: 300;
-`;
-
-// Features section below cards
-const FeaturesSection = styled.div`
-  margin-top: 3rem;
-  max-width: 800px;
-  margin-left: auto;
-  margin-right: auto;
-`;
-
-const FeatureGrid = styled.div`
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-  gap: 1.5rem;
-  margin-bottom: 2rem;
-`;
-
-const FeatureItem = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 1rem;
-  background: white;
-  border-radius: 0.75rem;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
-
-  [data-theme="dark"] & {
-    background: #1f2937;
-  }
-`;
-
-const FeatureIcon = styled.div`
-  width: 2.5rem;
-  height: 2.5rem;
-  border-radius: 50%;
-  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  color: white;
-  font-weight: 700;
-`;
-
-const FeatureText = styled.div`
-  font-size: 0.9375rem;
-  color: #374151;
-  font-weight: 500;
-
-  [data-theme="dark"] & {
-    color: #d1d5db;
+  @media (max-width: 480px) {
+    font-size: 0.875rem;
+    padding: 0.625rem 1.25rem;
   }
 `;
 
 const SubscriptionsPage: React.FC = () => {
   const { language } = useLanguage();
-  const [billingPeriod, setBillingPeriod] = useState<'monthly' | 'yearly'>('monthly');
+  const [billingPeriod, setBillingPeriod] = useState<'monthly' | 'yearly'>('yearly');
 
-  const cards = [
+  const subscriptionPlans = [
     {
-      variant: 'silver' as const,
-      name: language === 'bg' ? 'Основен' : 'Basic',
-      price: 0,
+      name: language === 'bg' ? 'Лек План' : 'Light Plan',
+      monthlyPrice: 4.99,
+      yearlyPrice: 52,
+      duration: language === 'bg' ? ' €/седмица' : ' €/week',
+      type: 'starter' as const,
       features: [
-        language === 'bg' ? 'Достъп до основни оферти' : 'Access to basic offers',
-        language === 'bg' ? '10% средна отстъпка' : '10% average discount'
+        language === 'bg' ? '24 часа премиум услуга' : '24 hours premium service',
+        language === 'bg' ? 'Важи една седмица' : 'Valid for one week',
+        language === 'bg' ? 'Достъп до основни оферти' : 'Access to basic offers'
       ]
     },
     {
-      variant: 'gold' as const,
-      name: language === 'bg' ? 'Премиум' : 'Premium',
-      price: billingPeriod === 'monthly' ? 29 : 290,
+      name: language === 'bg' ? 'Основен' : 'Basic',
+      monthlyPrice: 7.99,
+      yearlyPrice: 84,
+      duration: language === 'bg' ? ' €/седмица' : ' €/week',
+      type: 'basic' as const,
       features: [
-        language === 'bg' ? 'Всички основни характеристики' : 'All Basic features',
-        language === 'bg' ? '30% средна отстъпка' : '30% average discount',
+        language === 'bg' ? '24 часа премиум услуга' : '24 hours premium service',
+        language === 'bg' ? 'Достъп до основни оферти' : 'Access to basic offers',
+        language === 'bg' ? 'До 10% отстъпка' : 'Up to 10% discount',
+        language === 'bg' ? 'Кешбек в приложението' : 'In-app cashback'
+      ]
+    },
+    {
+      name: language === 'bg' ? 'Премиум' : 'Premium',
+      monthlyPrice: 12.99,
+      yearlyPrice: 136,
+      duration: language === 'bg' ? ' €/седмица' : ' €/week',
+      featured: true,
+      type: 'premium' as const,
+      features: [
+        language === 'bg' ? '24 часа премиум услуга' : '24 hours premium service',
+        language === 'bg' ? 'До 20% отстъпка' : 'Up to 20% discount',
+        language === 'bg' ? 'В зависимост от заведението' : 'Depending on the venue',
         language === 'bg' ? 'Приоритетна поддръжка' : 'Priority support',
         language === 'bg' ? 'Ексклузивни оферти' : 'Exclusive offers'
       ]
@@ -423,24 +528,25 @@ const SubscriptionsPage: React.FC = () => {
 
   return (
     <GenericPage
-      titleEn="Clear, transparent pricing"
-      titleBg="Ясни, прозрачни цени"
+      titleEn="Subscription Plans"
+      titleBg="Абонаментни Планове"
       subtitleEn="Choose the perfect plan for your lifestyle"
       subtitleBg="Изберете перфектния план за вашия начин на живот"
     >
-      <BillingToggleSection>
+      {/* Billing Period Toggle */}
+      <BillingToggleContainer>
         <BillingToggle>
-          <ToggleOption
-            $active={billingPeriod === 'monthly'}
-            onClick={() => setBillingPeriod('monthly')}
-          >
-            {language === 'bg' ? 'Месечно' : 'Monthly'}
-          </ToggleOption>
           <ToggleOption
             $active={billingPeriod === 'yearly'}
             onClick={() => setBillingPeriod('yearly')}
           >
-            {language === 'bg' ? 'Годишно' : 'Yearly'}
+            {language === 'bg' ? 'Годишен абонамент' : 'Yearly'}
+          </ToggleOption>
+          <ToggleOption
+            $active={billingPeriod === 'monthly'}
+            onClick={() => setBillingPeriod('monthly')}
+          >
+            {language === 'bg' ? 'Месечен абонамент' : 'Monthly'}
           </ToggleOption>
         </BillingToggle>
         {billingPeriod === 'yearly' && (
@@ -448,54 +554,81 @@ const SubscriptionsPage: React.FC = () => {
             {language === 'bg' ? 'Спести 20%' : 'Save 20%'}
           </SaveBadge>
         )}
-      </BillingToggleSection>
+      </BillingToggleContainer>
 
-      <CardsContainer>
-        {cards.map((card, index) => (
-          <div key={index}>
-            <CreditCard $variant={card.variant} data-variant={card.variant}>
-              <CardTop>
-                <CardLeft>
-                  <BoomLogo>BOOM</BoomLogo>
-                  <CardNumberRow>
-                    <span>••••</span>
-                    <span>••••</span>
-                    <span>••••</span>
-                  </CardNumberRow>
-                  <CardYear>2025</CardYear>
-                </CardLeft>
-                <QRCode>
-                  <QRPlaceholder />
-                  <ScanText>SCAN ME</ScanText>
-                </QRCode>
-              </CardTop>
+      <SubscriptionCardsContainer>
+        {subscriptionPlans.map((plan, index) => {
+          const planType = plan.type;
+          const displayPrice = billingPeriod === 'yearly' ? plan.yearlyPrice : plan.monthlyPrice;
+          const priceLabel = billingPeriod === 'yearly'
+            ? (language === 'bg' ? ' €/година' : ' €/year')
+            : plan.duration;
 
-              <CardBottom>
-                <CardInfo>
-                  <CardLabel>
-                    {language === 'bg' ? 'ПРИТЕЖАТЕЛ' : 'CARDHOLDER'}
-                  </CardLabel>
-                  <CardholderName>
-                    {card.name}
-                  </CardholderName>
-                </CardInfo>
-                <CardExpiry>12/25</CardExpiry>
-              </CardBottom>
-            </CreditCard>
+          return (
+            <PlanCardWrapper
+              key={index}
+              initial={{ opacity: 0, y: 30 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: index * 0.2 }}
+            >
+              {/* Most Popular Badge */}
+              {plan.featured && (
+                <PopularBadge>
+                  {language === 'bg' ? 'Най-популярен' : 'Most Popular'}
+                </PopularBadge>
+              )}
 
-            <FeaturesSection>
-              <FeatureGrid>
-                {card.features.map((feature, idx) => (
-                  <FeatureItem key={idx}>
-                    <FeatureIcon>✓</FeatureIcon>
-                    <FeatureText>{feature}</FeatureText>
-                  </FeatureItem>
-                ))}
-              </FeatureGrid>
-            </FeaturesSection>
-          </div>
-        ))}
-      </CardsContainer>
+              {/* Credit Card matching HomePage design */}
+              <CreditCardPlan $type={planType}>
+                <CardLogoText $type={planType}>
+                  BOOM Card
+                </CardLogoText>
+
+                <CardNumber $type={planType}>
+                  <span>••••</span>
+                  <span>••••</span>
+                  <span>••••</span>
+                  <span>••••</span>
+                </CardNumber>
+
+                <CardBottomRow>
+                  <CardHolderName $type={planType}>
+                    {plan.name.toUpperCase()}
+                  </CardHolderName>
+                  <CardPriceDisplay $type={planType}>
+                    {displayPrice}
+                    <span style={{ fontSize: '0.75rem', opacity: 0.8 }}>
+                      {priceLabel}
+                    </span>
+                  </CardPriceDisplay>
+                </CardBottomRow>
+              </CreditCardPlan>
+
+              {/* Plan Details Below Card */}
+              <PlanDetails>
+                <FeaturesList>
+                  {plan.features.map((feature, i) => (
+                    <FeatureItem key={i}>
+                      {feature}
+                    </FeatureItem>
+                  ))}
+                </FeaturesList>
+
+                <PlanButtonContainer>
+                  <Link to="/register" style={{ width: '100%' }}>
+                    <Button
+                      variant={plan.featured ? 'primary' : 'secondary'}
+                      size="large"
+                    >
+                      {language === 'bg' ? 'Избери План' : 'Choose Plan'}
+                    </Button>
+                  </Link>
+                </PlanButtonContainer>
+              </PlanDetails>
+            </PlanCardWrapper>
+          );
+        })}
+      </SubscriptionCardsContainer>
     </GenericPage>
   );
 };

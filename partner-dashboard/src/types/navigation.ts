@@ -38,7 +38,7 @@ export const navigationConfig: NavConfig = {
     },
     {
       id: 'categories',
-      label: 'Categories',
+      label: 'Venues',
       labelBg: 'Заведения',
       path: '/categories',
       children: [

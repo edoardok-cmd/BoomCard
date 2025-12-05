@@ -8,14 +8,23 @@ import { useAuth, OAuthData } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import GoogleLoginButton from '../components/auth/GoogleLoginButton';
 import FacebookLoginButton from '../components/auth/FacebookLoginButton';
+import Header from '../components/layout/Header/Header';
+import Footer from '../components/layout/Footer/Footer';
+
+const PageWrapper = styled.div`
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+`;
 
 const PageContainer = styled.div`
-  min-height: calc(100vh - 4rem);
+  flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 2rem 1rem;
   background: var(--color-background-secondary);
+  margin-top: 65px;
 `;
 
 const LoginCard = styled(motion.div)`
@@ -449,14 +458,16 @@ const LoginPage: React.FC = () => {
   };
 
   return (
-    <PageContainer>
-      <LoginCard
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4 }}
-      >
+    <PageWrapper>
+      <Header />
+      <PageContainer>
+        <LoginCard
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4 }}
+        >
         <Logo to="/">
-          <LogoText>BoomCard</LogoText>
+          <LogoText>BOOM Card</LogoText>
         </Logo>
 
         <Title>{t('auth.welcomeBack')}</Title>
@@ -607,6 +618,8 @@ const LoginPage: React.FC = () => {
         </DemoCredentials>
       </LoginCard>
     </PageContainer>
+    <Footer />
+  </PageWrapper>
   );
 };
 

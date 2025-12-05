@@ -40,6 +40,8 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.922.0",
     "@aws-sdk/s3-request-presigner": "^3.922.0",
+    "@neondatabase/serverless": "^1.0.2",
+    "@prisma/adapter-neon": "^7.0.0",
     "@prisma/client": "^6.18.0",
     "@sentry/node": "^7.109.0",
     "@sentry/profiling-node": "^7.109.0",
@@ -72,6 +74,7 @@
     "typescript": "^5.3.3",
     "uuid": "^9.0.1",
     "winston": "^3.11.0",
+    "ws": "^8.18.3",
     "zod": "^4.1.12"
   },
   "devDependencies": {

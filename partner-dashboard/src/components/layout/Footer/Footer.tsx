@@ -58,7 +58,7 @@ export const Footer: React.FC<FooterProps> = ({
     <StyledFooter className={className}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="grid grid-cols-1 md:grid-cols-5 gap-0 md:gap-12 lg:gap-16 mb-8">
-          <FooterSection title="BoomCard" defaultOpen={true}>
+          <FooterSection title="BOOM Card" defaultOpen={true}>
             <p className="text-gray-300 text-sm md:text-base leading-relaxed">
               {t('footer.description')}
             </p>
@@ -137,8 +137,8 @@ export const Footer: React.FC<FooterProps> = ({
               <div className="hidden md:block mt-4">
                 <SocialShareButton
                   url={typeof window !== 'undefined' ? window.location.origin : 'https://boomcard.bg'}
-                  title="BoomCard - Live More, Pay Less"
-                  description={language === 'bg' ? 'Открийте невероятни оферти и преживявания с BoomCard' : 'Discover amazing offers and experiences with BoomCard'}
+                  title="BOOM Card - Live More, Pay Less"
+                  description={language === 'bg' ? 'Открийте невероятни оферти и преживявания с BOOM Card' : 'Discover amazing offers and experiences with BOOM Card'}
                   buttonText={language === 'bg' ? 'Сподели' : 'Share'}
                 />
               </div>
@@ -147,7 +147,7 @@ export const Footer: React.FC<FooterProps> = ({
         </div>
         <div className="border-t border-gray-700 pt-6 md:pt-8">
           <p className="text-center text-sm md:text-base text-gray-300">
-            © {new Date().getFullYear()} BoomCard. {t('footer.allRightsReserved')}
+            © {new Date().getFullYear()} BOOM Card. {t('footer.allRightsReserved')}
           </p>
         </div>
       </div>

@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useInView } from 'react-intersection-observer';
 import styled from 'styled-components';
 import { useLanguage } from '../contexts/LanguageContext';
+import { useAuth } from '../contexts/AuthContext';
 import Button from '../components/common/Button/Button';
 import Card from '../components/common/Card/Card';
 
@@ -386,7 +387,7 @@ const CTAText = styled.p`
 `;
 
 const FormSection = styled.div`
-  max-width: 600px;
+  max-width: 900px;
   margin: 0 auto;
   background: white;
   padding: 3rem;
@@ -432,29 +433,30 @@ const Label = styled.label`
   }
 `;
 
-const Input = styled.input`
+const Input = styled.input<{ $hasError?: boolean }>`
   width: 100%;
   padding: 0.875rem 1rem;
-  border: 1px solid #d1d5db;
+  border: 1px solid ${props => props.$hasError ? '#ef4444' : '#d1d5db'};
   border-radius: 0.5rem;
   font-size: 1rem;
   color: #111827;
   transition: all 200ms;
+  background: ${props => props.$hasError ? '#fef2f2' : 'white'};
 
   [data-theme="dark"] & {
-    background: #374151;
-    border-color: #4b5563;
+    background: ${props => props.$hasError ? '#7f1d1d' : '#374151'};
+    border-color: ${props => props.$hasError ? '#ef4444' : '#4b5563'};
     color: #f9fafb;
   }
 
   &:focus {
     outline: none;
-    border-color: #000000;
-    box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.1);
+    border-color: ${props => props.$hasError ? '#ef4444' : '#000000'};
+    box-shadow: 0 0 0 3px ${props => props.$hasError ? 'rgba(239, 68, 68, 0.1)' : 'rgba(0, 0, 0, 0.1)'};
 
     [data-theme="dark"] & {
-      border-color: #60a5fa;
-      box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.2);
+      border-color: ${props => props.$hasError ? '#ef4444' : '#60a5fa'};
+      box-shadow: 0 0 0 3px ${props => props.$hasError ? 'rgba(239, 68, 68, 0.2)' : 'rgba(96, 165, 250, 0.2)'};
     }
   }
 
@@ -465,33 +467,51 @@ const Input = styled.input`
       color: #6b7280;
     }
   }
+
+  &:disabled {
+    background: #f9fafb;
+    cursor: not-allowed;
+
+    [data-theme="dark"] & {
+      background: #1f2937;
+    }
+  }
 `;
 
-const Select = styled.select`
+const Select = styled.select<{ $hasError?: boolean }>`
   width: 100%;
   padding: 0.875rem 1rem;
-  border: 1px solid #d1d5db;
+  border: 1px solid ${props => props.$hasError ? '#ef4444' : '#d1d5db'};
   border-radius: 0.5rem;
   font-size: 1rem;
   color: #111827;
-  background: white;
+  background: ${props => props.$hasError ? '#fef2f2' : 'white'};
   cursor: pointer;
   transition: all 200ms;
 
   [data-theme="dark"] & {
-    background: #374151;
-    border-color: #4b5563;
+    background: ${props => props.$hasError ? '#7f1d1d' : '#374151'};
+    border-color: ${props => props.$hasError ? '#ef4444' : '#4b5563'};
     color: #f9fafb;
   }
 
   &:focus {
     outline: none;
-    border-color: #000000;
-    box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.1);
+    border-color: ${props => props.$hasError ? '#ef4444' : '#000000'};
+    box-shadow: 0 0 0 3px ${props => props.$hasError ? 'rgba(239, 68, 68, 0.1)' : 'rgba(0, 0, 0, 0.1)'};
 
     [data-theme="dark"] & {
-      border-color: #60a5fa;
-      box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.2);
+      border-color: ${props => props.$hasError ? '#ef4444' : '#60a5fa'};
+      box-shadow: 0 0 0 3px ${props => props.$hasError ? 'rgba(239, 68, 68, 0.2)' : 'rgba(96, 165, 250, 0.2)'};
+    }
+  }
+
+  &:disabled {
+    background: #f9fafb;
+    cursor: not-allowed;
+
+    [data-theme="dark"] & {
+      background: #1f2937;
     }
   }
 `;
@@ -531,6 +551,118 @@ const TextArea = styled.textarea`
     [data-theme="dark"] & {
       color: #6b7280;
     }
+  }
+`;
+
+const FormSubSection = styled.div`
+  padding: 1.5rem;
+  background: #f9fafb;
+  border-radius: 0.75rem;
+  border: 1px solid #e5e7eb;
+
+  [data-theme="dark"] & {
+    background: #111827;
+    border-color: #374151;
+  }
+`;
+
+const FormSubTitle = styled.h3`
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: #111827;
+  margin-bottom: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+
+  [data-theme="dark"] & {
+    color: #f9fafb;
+  }
+`;
+
+const FormRow = styled.div`
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+
+  @media (max-width: 640px) {
+    grid-template-columns: 1fr;
+  }
+`;
+
+const ErrorMessage = styled(motion.span)`
+  font-size: 0.875rem;
+  color: #ef4444;
+  margin-top: 0.25rem;
+  display: block;
+`;
+
+const CheckboxGroup = styled.div`
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+`;
+
+const Checkbox = styled.input`
+  width: 1rem;
+  height: 1rem;
+  margin-top: 0.125rem;
+  border: 1px solid #d1d5db;
+  border-radius: 0.25rem;
+  cursor: pointer;
+  flex-shrink: 0;
+
+  &:checked {
+    background-color: #111827;
+    border-color: #111827;
+  }
+`;
+
+const CheckboxLabel = styled.label<{ $hasError?: boolean }>`
+  font-size: 0.875rem;
+  color: ${props => props.$hasError ? '#ef4444' : '#374151'};
+  cursor: pointer;
+  user-select: none;
+  line-height: 1.4;
+
+  [data-theme="dark"] & {
+    color: ${props => props.$hasError ? '#ef4444' : '#d1d5db'};
+  }
+
+  a {
+    color: #111827;
+    font-weight: 600;
+    text-decoration: none;
+    transition: color 200ms;
+
+    [data-theme="dark"] & {
+      color: #60a5fa;
+    }
+
+    &:hover {
+      color: #6b7280;
+
+      [data-theme="dark"] & {
+        color: #93c5fd;
+      }
+    }
+  }
+`;
+
+const InfoBox = styled.div`
+  padding: 1rem;
+  background: #f0f9ff;
+  border: 1px solid #bae6fd;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  color: #0c4a6e;
+  line-height: 1.5;
+
+  [data-theme="dark"] & {
+    background: rgba(59, 130, 246, 0.1);
+    border-color: rgba(96, 165, 250, 0.3);
+    color: #93c5fd;
   }
 `;
 
@@ -776,11 +908,58 @@ const mockLocations: Location[] = [
   },
 ];
 
+interface FormErrors {
+  firstName?: string;
+  lastName?: string;
+  email?: string;
+  phone?: string;
+  password?: string;
+  confirmPassword?: string;
+  businessName?: string;
+  businessCategory?: string;
+  acceptTerms?: string;
+  confirmBusiness?: string;
+}
+
 const PartnersPage: React.FC = () => {
+  const navigate = useNavigate();
+  const { register, isLoading } = useAuth();
   const { language, t } = useLanguage();
   const [benefitsRef, benefitsInView] = useInView({ threshold: 0.2, triggerOnce: true });
   const [processRef, processInView] = useInView({ threshold: 0.2, triggerOnce: true });
   const [selectedCity, setSelectedCity] = useState<string>('all');
+
+  const categories = [
+    { value: '', label: t('partnerRegistration.selectCategory') },
+    { value: 'RESTAURANT', label: t('partnerRegistration.restaurant') },
+    { value: 'HOTEL', label: t('partnerRegistration.hotel') },
+    { value: 'SPA', label: t('partnerRegistration.spa') },
+    { value: 'WINERY', label: t('partnerRegistration.winery') },
+    { value: 'ENTERTAINMENT', label: t('partnerRegistration.entertainment') },
+    { value: 'SPORTS', label: t('partnerRegistration.sports') },
+    { value: 'BEAUTY', label: t('partnerRegistration.beauty') },
+    { value: 'SHOPPING', label: t('partnerRegistration.shopping') },
+    { value: 'TRAVEL', label: t('partnerRegistration.travel') },
+  ];
+
+  const [formData, setFormData] = useState({
+    firstName: '',
+    lastName: '',
+    email: '',
+    phone: '',
+    password: '',
+    confirmPassword: '',
+    businessName: '',
+    businessNameBg: '',
+    businessCategory: '',
+    taxId: '',
+    website: '',
+    acceptTerms: false,
+    confirmBusiness: false,
+  });
+
+  const [errors, setErrors] = useState<FormErrors>({});
+  const [touched, setTouched] = useState<Record<string, boolean>>({});
 
   const benefits = [
     {
@@ -859,6 +1038,148 @@ const PartnersPage: React.FC = () => {
   const filteredLocations = selectedCity === 'all'
     ? mockLocations
     : mockLocations.filter(loc => loc.city === selectedCity);
+
+  const validateField = (field: string, value: any): string | undefined => {
+    switch (field) {
+      case 'firstName':
+        if (!value) return t('partnerRegistration.firstNameRequired');
+        if (value.length < 2) return t('partnerRegistration.firstNameMinLength');
+        return undefined;
+
+      case 'lastName':
+        if (!value) return t('partnerRegistration.lastNameRequired');
+        if (value.length < 2) return t('partnerRegistration.lastNameMinLength');
+        return undefined;
+
+      case 'email': {
+        if (!value) return t('partnerRegistration.emailRequired');
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(value)) return t('partnerRegistration.emailInvalid');
+        return undefined;
+      }
+
+      case 'phone':
+        if (!value) return t('partnerRegistration.phoneRequired');
+        if (!/^(\+359|0)[0-9\s-]{8,}$/.test(value)) {
+          return t('partnerRegistration.phoneInvalid');
+        }
+        return undefined;
+
+      case 'password':
+        if (!value) return t('partnerRegistration.passwordRequired');
+        if (value.length < 6) return t('partnerRegistration.passwordMinLength');
+        return undefined;
+
+      case 'confirmPassword':
+        if (!value) return t('partnerRegistration.confirmPasswordRequired');
+        if (value !== formData.password) return t('partnerRegistration.passwordsMismatch');
+        return undefined;
+
+      case 'businessName':
+        if (!value) return t('partnerRegistration.businessNameRequired');
+        if (value.length < 3) return t('partnerRegistration.businessNameMinLength');
+        return undefined;
+
+      case 'businessCategory':
+        if (!value) return t('partnerRegistration.businessCategoryRequired');
+        return undefined;
+
+      case 'acceptTerms':
+        if (!value) return t('partnerRegistration.acceptTermsRequired');
+        return undefined;
+
+      case 'confirmBusiness':
+        if (!value) return t('partnerRegistration.confirmBusinessRequired');
+        return undefined;
+
+      default:
+        return undefined;
+    }
+  };
+
+  const handleBlur = (field: string) => {
+    setTouched(prev => ({ ...prev, [field]: true }));
+    const value = formData[field as keyof typeof formData];
+    const error = validateField(field, value);
+    setErrors(prev => ({ ...prev, [field]: error }));
+  };
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const { name, value, type } = e.target;
+    const checked = (e.target as HTMLInputElement).checked;
+    const newValue = type === 'checkbox' ? checked : value;
+
+    setFormData(prev => ({ ...prev, [name]: newValue }));
+
+    // Real-time validation for touched fields
+    if (touched[name]) {
+      const error = validateField(name, newValue);
+      setErrors(prev => ({ ...prev, [name]: error }));
+    }
+
+    // Also validate confirmPassword when password changes
+    if (name === 'password' && touched.confirmPassword) {
+      const confirmError = formData.confirmPassword !== value
+        ? t('partnerRegistration.passwordsMismatch')
+        : undefined;
+      setErrors(prev => ({ ...prev, confirmPassword: confirmError }));
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    // Validate all fields
+    const newErrors: FormErrors = {};
+    const requiredFields = [
+      'firstName', 'lastName', 'email', 'phone',
+      'password', 'confirmPassword', 'businessName',
+      'businessCategory', 'acceptTerms', 'confirmBusiness'
+    ];
+
+    requiredFields.forEach(field => {
+      const error = validateField(field, formData[field as keyof typeof formData]);
+      if (error) newErrors[field as keyof FormErrors] = error;
+    });
+
+    setErrors(newErrors);
+
+    const newTouched: Record<string, boolean> = {};
+    requiredFields.forEach(field => {
+      newTouched[field] = true;
+    });
+    setTouched(newTouched);
+
+    // If there are errors, don't submit
+    if (Object.keys(newErrors).length > 0) {
+      return;
+    }
+
+    try {
+      await register({
+        email: formData.email,
+        password: formData.password,
+        firstName: formData.firstName,
+        lastName: formData.lastName,
+        phone: formData.phone,
+        acceptTerms: formData.acceptTerms,
+        accountType: 'partner',
+        businessInfo: {
+          businessName: formData.businessName,
+          businessNameBg: formData.businessNameBg || undefined,
+          businessCategory: formData.businessCategory,
+          taxId: formData.taxId || undefined,
+          website: formData.website || undefined,
+        },
+      });
+
+      // Redirect to dashboard after successful registration
+      navigate('/dashboard', { replace: true });
+    } catch (error) {
+      // Error is handled by the AuthContext with toast
+      console.error('Registration error:', error);
+    }
+  };
 
   return (
     <PageContainer>
@@ -982,7 +1303,7 @@ const PartnersPage: React.FC = () => {
         </Container>
       </ProcessSection>
 
-      <LocationsSection>
+      <LocationsSection id="locations">
         <Container>
           <SectionTitle>
             {language === 'bg' ? 'Партньорски Локации' : 'Partner Locations'}
@@ -1057,52 +1378,363 @@ const PartnersPage: React.FC = () => {
             {t('partners.ctaText')}
           </CTAText>
 
-          <FormSection>
+          <FormSection as="form" onSubmit={handleSubmit}>
             <FormTitle>
               {t('partners.partnershipApplication')}
             </FormTitle>
             <FormGrid>
-              <FormGroup>
-                <Label>{t('partners.businessName')}</Label>
-                <Input type="text" placeholder={t('partners.businessNamePlaceholder')} />
-              </FormGroup>
+              {/* Personal Information */}
+              <FormSubSection>
+                <FormSubTitle>
+                  👤 {t('partnerRegistration.personalInfo')}
+                </FormSubTitle>
 
-              <FormGroup>
-                <Label>{t('partners.businessType')}</Label>
-                <Select>
-                  <option value="">{t('partners.selectOption')}</option>
-                  <option value="restaurant">{t('partners.restaurant')}</option>
-                  <option value="hotel">{t('partners.hotel')}</option>
-                  <option value="spa">{t('partners.spa')}</option>
-                  <option value="winery">{t('partners.winery')}</option>
-                  <option value="other">{t('partners.other')}</option>
-                </Select>
-              </FormGroup>
+                <FormRow>
+                  <FormGroup>
+                    <Label htmlFor="firstName">
+                      {t('partnerRegistration.firstName')} *
+                    </Label>
+                    <Input
+                      id="firstName"
+                      type="text"
+                      name="firstName"
+                      value={formData.firstName}
+                      onChange={handleChange}
+                      onBlur={() => handleBlur('firstName')}
+                      placeholder={t('partnerRegistration.firstNamePlaceholder')}
+                      $hasError={touched.firstName && !!errors.firstName}
+                      disabled={isLoading}
+                      autoComplete="given-name"
+                    />
+                    {touched.firstName && errors.firstName && (
+                      <ErrorMessage
+                        initial={{ opacity: 0, y: -5 }}
+                        animate={{ opacity: 1, y: 0 }}
+                      >
+                        {errors.firstName}
+                      </ErrorMessage>
+                    )}
+                  </FormGroup>
 
-              <FormGroup>
-                <Label>{t('partners.email')}</Label>
-                <Input type="email" placeholder="email@example.com" />
-              </FormGroup>
+                  <FormGroup>
+                    <Label htmlFor="lastName">
+                      {t('partnerRegistration.lastName')} *
+                    </Label>
+                    <Input
+                      id="lastName"
+                      type="text"
+                      name="lastName"
+                      value={formData.lastName}
+                      onChange={handleChange}
+                      onBlur={() => handleBlur('lastName')}
+                      placeholder={t('partnerRegistration.lastNamePlaceholder')}
+                      $hasError={touched.lastName && !!errors.lastName}
+                      disabled={isLoading}
+                      autoComplete="family-name"
+                    />
+                    {touched.lastName && errors.lastName && (
+                      <ErrorMessage
+                        initial={{ opacity: 0, y: -5 }}
+                        animate={{ opacity: 1, y: 0 }}
+                      >
+                        {errors.lastName}
+                      </ErrorMessage>
+                    )}
+                  </FormGroup>
+                </FormRow>
 
-              <FormGroup>
-                <Label>{t('partners.phone')}</Label>
-                <Input type="tel" placeholder="+359 ..." />
-              </FormGroup>
+                <FormRow>
+                  <FormGroup>
+                    <Label htmlFor="email">
+                      {t('partnerRegistration.email')} *
+                    </Label>
+                    <Input
+                      id="email"
+                      type="email"
+                      name="email"
+                      value={formData.email}
+                      onChange={handleChange}
+                      onBlur={() => handleBlur('email')}
+                      placeholder={t('partnerRegistration.emailPlaceholder')}
+                      $hasError={touched.email && !!errors.email}
+                      disabled={isLoading}
+                      autoComplete="email"
+                    />
+                    {touched.email && errors.email && (
+                      <ErrorMessage
+                        initial={{ opacity: 0, y: -5 }}
+                        animate={{ opacity: 1, y: 0 }}
+                      >
+                        {errors.email}
+                      </ErrorMessage>
+                    )}
+                  </FormGroup>
 
-              <FormGroup>
-                <Label>{t('partners.location')}</Label>
-                <Input type="text" placeholder={t('partners.cityPlaceholder')} />
-              </FormGroup>
+                  <FormGroup>
+                    <Label htmlFor="phone">
+                      {t('partnerRegistration.phone')} *
+                    </Label>
+                    <Input
+                      id="phone"
+                      type="tel"
+                      name="phone"
+                      value={formData.phone}
+                      onChange={handleChange}
+                      onBlur={() => handleBlur('phone')}
+                      placeholder={t('partnerRegistration.phonePlaceholder')}
+                      $hasError={touched.phone && !!errors.phone}
+                      disabled={isLoading}
+                      autoComplete="tel"
+                    />
+                    {touched.phone && errors.phone && (
+                      <ErrorMessage
+                        initial={{ opacity: 0, y: -5 }}
+                        animate={{ opacity: 1, y: 0 }}
+                      >
+                        {errors.phone}
+                      </ErrorMessage>
+                    )}
+                  </FormGroup>
+                </FormRow>
+              </FormSubSection>
 
-              <FormGroup>
-                <Label>{t('partners.messageOptional')}</Label>
-                <TextArea
-                  placeholder={t('partners.messagePlaceholder')}
-                />
-              </FormGroup>
+              {/* Business Information */}
+              <FormSubSection>
+                <FormSubTitle>
+                  🏢 {t('partnerRegistration.businessInfo')}
+                </FormSubTitle>
 
-              <Button variant="primary" size="large">
-                {t('partners.submitApplication')}
+                <FormRow>
+                  <FormGroup>
+                    <Label htmlFor="businessName">
+                      {t('partnerRegistration.businessName')} *
+                    </Label>
+                    <Input
+                      id="businessName"
+                      type="text"
+                      name="businessName"
+                      value={formData.businessName}
+                      onChange={handleChange}
+                      onBlur={() => handleBlur('businessName')}
+                      placeholder={t('partnerRegistration.businessNamePlaceholder')}
+                      $hasError={touched.businessName && !!errors.businessName}
+                      disabled={isLoading}
+                    />
+                    {touched.businessName && errors.businessName && (
+                      <ErrorMessage
+                        initial={{ opacity: 0, y: -5 }}
+                        animate={{ opacity: 1, y: 0 }}
+                      >
+                        {errors.businessName}
+                      </ErrorMessage>
+                    )}
+                  </FormGroup>
+
+                  <FormGroup>
+                    <Label htmlFor="businessNameBg">
+                      {t('partnerRegistration.businessNameBg')}
+                    </Label>
+                    <Input
+                      id="businessNameBg"
+                      type="text"
+                      name="businessNameBg"
+                      value={formData.businessNameBg}
+                      onChange={handleChange}
+                      placeholder={t('partnerRegistration.businessNameBgPlaceholder')}
+                      disabled={isLoading}
+                    />
+                  </FormGroup>
+                </FormRow>
+
+                <FormRow>
+                  <FormGroup>
+                    <Label htmlFor="businessCategory">
+                      {t('partnerRegistration.businessCategory')} *
+                    </Label>
+                    <Select
+                      id="businessCategory"
+                      name="businessCategory"
+                      value={formData.businessCategory}
+                      onChange={handleChange}
+                      onBlur={() => handleBlur('businessCategory')}
+                      $hasError={touched.businessCategory && !!errors.businessCategory}
+                      disabled={isLoading}
+                    >
+                      {categories.map(cat => (
+                        <option key={cat.value} value={cat.value}>
+                          {cat.label}
+                        </option>
+                      ))}
+                    </Select>
+                    {touched.businessCategory && errors.businessCategory && (
+                      <ErrorMessage
+                        initial={{ opacity: 0, y: -5 }}
+                        animate={{ opacity: 1, y: 0 }}
+                      >
+                        {errors.businessCategory}
+                      </ErrorMessage>
+                    )}
+                  </FormGroup>
+
+                  <FormGroup>
+                    <Label htmlFor="taxId">
+                      {t('partnerRegistration.taxId')}
+                    </Label>
+                    <Input
+                      id="taxId"
+                      type="text"
+                      name="taxId"
+                      value={formData.taxId}
+                      onChange={handleChange}
+                      placeholder={t('partnerRegistration.taxIdPlaceholder')}
+                      disabled={isLoading}
+                    />
+                  </FormGroup>
+                </FormRow>
+
+                <FormGroup>
+                  <Label htmlFor="website">
+                    {t('partnerRegistration.website')}
+                  </Label>
+                  <Input
+                    id="website"
+                    type="url"
+                    name="website"
+                    value={formData.website}
+                    onChange={handleChange}
+                    placeholder={t('partnerRegistration.websitePlaceholder')}
+                    disabled={isLoading}
+                  />
+                </FormGroup>
+              </FormSubSection>
+
+              {/* Security */}
+              <FormSubSection>
+                <FormSubTitle>
+                  🔒 {t('partnerRegistration.security')}
+                </FormSubTitle>
+
+                <FormRow>
+                  <FormGroup>
+                    <Label htmlFor="password">
+                      {t('partnerRegistration.password')} *
+                    </Label>
+                    <Input
+                      id="password"
+                      type="password"
+                      name="password"
+                      value={formData.password}
+                      onChange={handleChange}
+                      onBlur={() => handleBlur('password')}
+                      placeholder={t('partnerRegistration.passwordPlaceholder')}
+                      $hasError={touched.password && !!errors.password}
+                      disabled={isLoading}
+                      autoComplete="new-password"
+                    />
+                    {touched.password && errors.password && (
+                      <ErrorMessage
+                        initial={{ opacity: 0, y: -5 }}
+                        animate={{ opacity: 1, y: 0 }}
+                      >
+                        {errors.password}
+                      </ErrorMessage>
+                    )}
+                  </FormGroup>
+
+                  <FormGroup>
+                    <Label htmlFor="confirmPassword">
+                      {t('partnerRegistration.confirmPassword')} *
+                    </Label>
+                    <Input
+                      id="confirmPassword"
+                      type="password"
+                      name="confirmPassword"
+                      value={formData.confirmPassword}
+                      onChange={handleChange}
+                      onBlur={() => handleBlur('confirmPassword')}
+                      placeholder={t('partnerRegistration.confirmPasswordPlaceholder')}
+                      $hasError={touched.confirmPassword && !!errors.confirmPassword}
+                      disabled={isLoading}
+                      autoComplete="new-password"
+                    />
+                    {touched.confirmPassword && errors.confirmPassword && (
+                      <ErrorMessage
+                        initial={{ opacity: 0, y: -5 }}
+                        animate={{ opacity: 1, y: 0 }}
+                      >
+                        {errors.confirmPassword}
+                      </ErrorMessage>
+                    )}
+                  </FormGroup>
+                </FormRow>
+              </FormSubSection>
+
+              <div>
+                <CheckboxGroup>
+                  <Checkbox
+                    id="acceptTerms"
+                    type="checkbox"
+                    name="acceptTerms"
+                    checked={formData.acceptTerms}
+                    onChange={handleChange}
+                    disabled={isLoading}
+                  />
+                  <CheckboxLabel
+                    htmlFor="acceptTerms"
+                    $hasError={touched.acceptTerms && !!errors.acceptTerms}
+                  >
+                    {t('partnerRegistration.acceptTerms')} <Link to="/terms">{t('partnerRegistration.termsAndConditions')}</Link> {t('partnerRegistration.and')} <Link to="/privacy">{t('partnerRegistration.privacyPolicy')}</Link>
+                  </CheckboxLabel>
+                </CheckboxGroup>
+                {touched.acceptTerms && errors.acceptTerms && (
+                  <ErrorMessage
+                    initial={{ opacity: 0, y: -5 }}
+                    animate={{ opacity: 1, y: 0 }}
+                  >
+                    {errors.acceptTerms}
+                  </ErrorMessage>
+                )}
+              </div>
+
+              <div>
+                <CheckboxGroup>
+                  <Checkbox
+                    id="confirmBusiness"
+                    type="checkbox"
+                    name="confirmBusiness"
+                    checked={formData.confirmBusiness}
+                    onChange={handleChange}
+                    disabled={isLoading}
+                  />
+                  <CheckboxLabel
+                    htmlFor="confirmBusiness"
+                    $hasError={touched.confirmBusiness && !!errors.confirmBusiness}
+                  >
+                    {t('partnerRegistration.confirmBusiness')}
+                  </CheckboxLabel>
+                </CheckboxGroup>
+                {touched.confirmBusiness && errors.confirmBusiness && (
+                  <ErrorMessage
+                    initial={{ opacity: 0, y: -5 }}
+                    animate={{ opacity: 1, y: 0 }}
+                  >
+                    {errors.confirmBusiness}
+                  </ErrorMessage>
+                )}
+              </div>
+
+              <InfoBox>
+                <strong>📋 {t('partnerRegistration.note')}</strong> {t('partnerRegistration.noteText')}
+              </InfoBox>
+
+              <Button
+                type="submit"
+                variant="primary"
+                size="large"
+                isLoading={isLoading}
+                disabled={isLoading}
+              >
+                {t('partnerRegistration.createPartnerAccount')}
               </Button>
             </FormGrid>
           </FormSection>

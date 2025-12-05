@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import styled from 'styled-components';
 import { motion } from 'framer-motion';
-import { Mail, Phone, MapPin, Send } from 'lucide-react';
+import { Mail, MapPin, Send } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import toast from 'react-hot-toast';
 
@@ -178,7 +178,6 @@ const ContactPublicPage: React.FC = () => {
   const [formData, setFormData] = useState({
     name: '',
     email: '',
-    phone: '',
     message: '',
   });
 
@@ -188,10 +187,10 @@ const ContactPublicPage: React.FC = () => {
 
     try {
       await new Promise(resolve => setTimeout(resolve, 1000));
-      toast.success(language === 'bg' 
-        ? 'Съобщението е изпратено успешно!' 
+      toast.success(language === 'bg'
+        ? 'Съобщението е изпратено успешно!'
         : 'Message sent successfully!');
-      setFormData({ name: '', email: '', phone: '', message: '' });
+      setFormData({ name: '', email: '', message: '' });
     } catch (error) {
       toast.error(language === 'bg' 
         ? 'Грешка при изпращане' 
@@ -240,17 +239,6 @@ const ContactPublicPage: React.FC = () => {
 
             <InfoItem>
               <IconWrapper>
-                <Phone size={24} />
-              </IconWrapper>
-              <InfoContent>
-                <InfoTitle>{language === 'bg' ? 'Телефон' : 'Phone'}</InfoTitle>
-                <InfoText>+359 2 123 4567</InfoText>
-                <InfoText>{language === 'bg' ? 'Пон-Пет 9:00-18:00' : 'Mon-Fri 9:00-18:00'}</InfoText>
-              </InfoContent>
-            </InfoItem>
-
-            <InfoItem>
-              <IconWrapper>
                 <MapPin size={24} />
               </IconWrapper>
               <InfoContent>
@@ -288,25 +276,14 @@ const ContactPublicPage: React.FC = () => {
             </FormGroup>
 
             <FormGroup>
-              <Label>{language === 'bg' ? 'Телефон' : 'Phone'}</Label>
-              <Input
-                type="tel"
-                name="phone"
-                value={formData.phone}
-                onChange={handleChange}
-                placeholder={language === 'bg' ? '+359 ...' : '+359 ...'}
-              />
-            </FormGroup>
-
-            <FormGroup>
               <Label>{language === 'bg' ? 'Съобщение' : 'Message'} *</Label>
               <Textarea
                 name="message"
                 value={formData.message}
                 onChange={handleChange}
                 required
-                placeholder={language === 'bg' 
-                  ? 'Как можем да ви помогнем?' 
+                placeholder={language === 'bg'
+                  ? 'Как можем да ви помогнем?'
                   : 'How can we help you?'}
               />
             </FormGroup>

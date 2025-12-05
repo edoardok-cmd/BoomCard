@@ -54,15 +54,6 @@ const ContactsPage: React.FC = () => {
         </ContactCard>
 
         <ContactCard>
-          <Icon>📞</Icon>
-          <ContactTitle>{language === 'bg' ? 'Телефон' : 'Phone'}</ContactTitle>
-          <ContactInfo>
-            +359 2 123 4567<br />
-            {language === 'bg' ? 'Пон-Пет 9:00-18:00' : 'Mon-Fri 9:00-18:00'}
-          </ContactInfo>
-        </ContactCard>
-
-        <ContactCard>
           <Icon>📍</Icon>
           <ContactTitle>{language === 'bg' ? 'Адрес' : 'Address'}</ContactTitle>
           <ContactInfo>

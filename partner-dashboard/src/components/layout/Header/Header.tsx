@@ -502,6 +502,196 @@ const MobileMenuPanel = styled(motion.div)`
   }
 `;
 
+const SearchButton = styled.button`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+  background: transparent;
+  border: none;
+  color: #374151;
+  cursor: pointer;
+  transition: all 200ms;
+
+  [data-theme="dark"] & {
+    color: #d1d5db;
+  }
+
+  &:hover {
+    background: #f3f4f6;
+    color: #111827;
+
+    [data-theme="dark"] & {
+      background: #374151;
+      color: #f9fafb;
+    }
+  }
+
+  svg {
+    width: 1.25rem;
+    height: 1.25rem;
+  }
+
+  @media (max-width: 640px) {
+    width: 2.25rem;
+    height: 2.25rem;
+
+    svg {
+      width: 1.125rem;
+      height: 1.125rem;
+    }
+  }
+`;
+
+const SearchBarContainer = styled(motion.div)`
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: white;
+  border-bottom: 1px solid #e5e7eb;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  z-index: 40;
+
+  [data-theme="dark"] & {
+    background: #1f2937;
+    border-bottom-color: #374151;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5);
+  }
+`;
+
+const SearchBarInner = styled.div`
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 1.5rem 3rem;
+
+  @media (max-width: 1024px) {
+    padding: 1.25rem 1.5rem;
+  }
+
+  @media (max-width: 640px) {
+    padding: 1rem 0.75rem;
+  }
+`;
+
+const SearchInputWrapper = styled.div`
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+`;
+
+const SearchInput = styled.input`
+  flex: 1;
+  padding: 0.875rem 1rem 0.875rem 3rem;
+  background: #f9fafb;
+  border: 2px solid #e5e7eb;
+  border-radius: 0.75rem;
+  color: #111827;
+  font-size: 1rem;
+  transition: all 200ms;
+
+  [data-theme="dark"] & {
+    background: #374151;
+    border-color: #4b5563;
+    color: #f9fafb;
+  }
+
+  &:focus {
+    outline: none;
+    border-color: #3b82f6;
+    background: white;
+
+    [data-theme="dark"] & {
+      background: #1f2937;
+      border-color: #60a5fa;
+    }
+  }
+
+  &::placeholder {
+    color: #9ca3af;
+
+    [data-theme="dark"] & {
+      color: #6b7280;
+    }
+  }
+
+  @media (max-width: 640px) {
+    padding: 0.75rem 0.875rem 0.75rem 2.75rem;
+    font-size: 0.9375rem;
+  }
+`;
+
+const SearchIconWrapper = styled.div`
+  position: absolute;
+  left: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #9ca3af;
+
+  [data-theme="dark"] & {
+    color: #6b7280;
+  }
+
+  svg {
+    width: 1.25rem;
+    height: 1.25rem;
+  }
+
+  @media (max-width: 640px) {
+    left: 0.875rem;
+
+    svg {
+      width: 1.125rem;
+      height: 1.125rem;
+    }
+  }
+`;
+
+const SearchCloseButton = styled.button`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.75rem;
+  border-radius: 0.5rem;
+  background: transparent;
+  border: none;
+  color: #6b7280;
+  cursor: pointer;
+  transition: all 200ms;
+
+  [data-theme="dark"] & {
+    color: #9ca3af;
+  }
+
+  &:hover {
+    background: #f3f4f6;
+    color: #111827;
+
+    [data-theme="dark"] & {
+      background: #4b5563;
+      color: #f9fafb;
+    }
+  }
+
+  svg {
+    width: 1.25rem;
+    height: 1.25rem;
+  }
+
+  @media (max-width: 640px) {
+    padding: 0.625rem;
+
+    svg {
+      width: 1.125rem;
+      height: 1.125rem;
+    }
+  }
+`;
+
 export interface HeaderProps {
   children?: React.ReactNode;
   className?: string;
@@ -517,12 +707,16 @@ export const Header: React.FC<HeaderProps> = ({
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [themeMenuOpen, setThemeMenuOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const { language, setLanguage, t } = useLanguage();
   const { theme, setTheme } = useTheme();
   const { favoritesCount } = useFavorites();
   const { user, isAuthenticated, logout } = useAuth();
   const userMenuRef = useRef<HTMLDivElement>(null);
   const themeMenuRef = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -591,10 +785,67 @@ export const Header: React.FC<HeaderProps> = ({
     };
   }, [themeMenuOpen]);
 
+  // Close search when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
+        setSearchOpen(false);
+      }
+    };
+
+    if (searchOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [searchOpen]);
+
+  // Auto-focus search input when search opens
+  useEffect(() => {
+    if (searchOpen && searchInputRef.current) {
+      searchInputRef.current.focus();
+    }
+  }, [searchOpen]);
+
+  // Close search on escape key
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && searchOpen) {
+        setSearchOpen(false);
+        setSearchQuery('');
+      }
+    };
+
+    if (searchOpen) {
+      document.addEventListener('keydown', handleEscape);
+    }
+
+    return () => {
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [searchOpen]);
+
   const handleLogout = () => {
     logout();
     setUserMenuOpen(false);
     navigate('/');
+  };
+
+  const handleSearchSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (searchQuery.trim()) {
+      // Navigate to search results page or handle search
+      navigate(`/search?q=${encodeURIComponent(searchQuery.trim())}`);
+      setSearchOpen(false);
+      setSearchQuery('');
+    }
+  };
+
+  const handleSearchClose = () => {
+    setSearchOpen(false);
+    setSearchQuery('');
   };
 
   const getUserInitials = () => {
@@ -641,7 +892,7 @@ export const Header: React.FC<HeaderProps> = ({
           <Link to="/" className="flex items-center z-50 flex-shrink-0">
             <img
               src="/iconic.svg"
-              alt="BoomCard"
+              alt="BOOM Card"
               className="h-10 sm:h-12 w-auto"
               style={{ transition: 'opacity 0.3s ease' }}
             />
@@ -654,6 +905,22 @@ export const Header: React.FC<HeaderProps> = ({
 
           {/* Right Side Utilities - Always Visible */}
           <div className="flex items-center gap-1.5 sm:gap-2 md:gap-3 flex-shrink-0 ml-auto">
+            {/* Search Button */}
+            <SearchButton
+              onClick={() => setSearchOpen(!searchOpen)}
+              aria-label="Search"
+              title={language === 'bg' ? 'Търсене' : 'Search'}
+            >
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                />
+              </svg>
+            </SearchButton>
+
             {/* Nearby Offers - Desktop only */}
             <FavoritesLink to="/nearby" aria-label="Nearby Offers" className="hidden lg:flex">
               <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -976,6 +1243,57 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
       </div>
 
+      {/* Expandable Search Bar */}
+      <AnimatePresence>
+        {searchOpen && (
+          <SearchBarContainer
+            ref={searchRef}
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
+          >
+            <SearchBarInner>
+              <form onSubmit={handleSearchSubmit}>
+                <SearchInputWrapper>
+                  <SearchIconWrapper>
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                      />
+                    </svg>
+                  </SearchIconWrapper>
+                  <SearchInput
+                    ref={searchInputRef}
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder={language === 'bg' ? 'Търсете оферти, партньори, локации...' : 'Search offers, partners, locations...'}
+                  />
+                  <SearchCloseButton
+                    type="button"
+                    onClick={handleSearchClose}
+                    aria-label="Close search"
+                  >
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M6 18L18 6M6 6l12 12"
+                      />
+                    </svg>
+                  </SearchCloseButton>
+                </SearchInputWrapper>
+              </form>
+            </SearchBarInner>
+          </SearchBarContainer>
+        )}
+      </AnimatePresence>
+
       {/* Mobile Menu */}
       <AnimatePresence>
         {mobileMenuOpen && (
@@ -1091,8 +1409,8 @@ export const Header: React.FC<HeaderProps> = ({
                 <div className="mb-6">
                   <SocialShareButton
                     url={window.location.href}
-                    title="BoomCard - Live More, Pay Less"
-                    description={language === 'bg' ? 'Открийте невероятни оферти и преживявания с BoomCard' : 'Discover amazing offers and experiences with BoomCard'}
+                    title="BOOM Card - Live More, Pay Less"
+                    description={language === 'bg' ? 'Открийте невероятни оферти и преживявания с BOOM Card' : 'Discover amazing offers and experiences with BOOM Card'}
                     buttonText={language === 'bg' ? 'Сподели' : 'Share'}
                     className="w-full"
                   />

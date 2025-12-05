@@ -959,8 +959,49 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
   const [showSideCards, setShowSideCards] = useState(false);
   const [animationsFinished, setAnimationsFinished] = useState(false);
   const [hideCardsOnScroll, setHideCardsOnScroll] = useState(false);
+  const [shouldPlayVideo, setShouldPlayVideo] = useState(true);
   const videoRef = useRef<HTMLVideoElement>(null);
   const heroRef = useRef<HTMLDivElement>(null);
+
+  // Check if video should play based on last view time (once per hour)
+  useEffect(() => {
+    const HOUR_IN_MS = 60 * 60 * 1000; // 1 hour in milliseconds
+    const STORAGE_KEY = 'boomcard_video_last_played';
+
+    try {
+      const lastPlayedStr = localStorage.getItem(STORAGE_KEY);
+      const now = Date.now();
+
+      if (lastPlayedStr) {
+        const lastPlayed = parseInt(lastPlayedStr, 10);
+        const timeSinceLastPlay = now - lastPlayed;
+
+        if (timeSinceLastPlay < HOUR_IN_MS) {
+          // Less than an hour has passed - skip video
+          setShouldPlayVideo(false);
+          // Show static content immediately
+          setVideoEnded(true);
+          setShowLogo(true);
+          setShowCTA(true);
+          setShowBlackCard(true);
+          setShowSilverCard(true);
+          setAnimationsFinished(true);
+        } else {
+          // More than an hour has passed - play video and update timestamp
+          setShouldPlayVideo(true);
+          localStorage.setItem(STORAGE_KEY, now.toString());
+        }
+      } else {
+        // First visit - play video and set timestamp
+        setShouldPlayVideo(true);
+        localStorage.setItem(STORAGE_KEY, now.toString());
+      }
+    } catch (error) {
+      // If localStorage is not available, always play video
+      console.warn('localStorage not available, playing video by default');
+      setShouldPlayVideo(true);
+    }
+  }, []);
 
   // Photo placeholders - 8 per side for fuller spread
   const photos = {
@@ -1051,6 +1092,9 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
 
   // Mobile fallback - show content if video doesn't autoplay
   useEffect(() => {
+    // Only run mobile fallback if video should play
+    if (!shouldPlayVideo) return;
+
     const isMobile = window.innerWidth <= 768;
     if (!isMobile) return;
 
@@ -1076,9 +1120,12 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
     }, 10000); // Wait 10 seconds on mobile before fallback
 
     return () => clearTimeout(mobileTimeout);
-  }, [showLogo, videoEnded]);
+  }, [showLogo, videoEnded, shouldPlayVideo]);
 
   useEffect(() => {
+    // Only attach video event listeners if video should play
+    if (!shouldPlayVideo) return;
+
     const video = videoRef.current;
     if (!video) return;
 
@@ -1114,7 +1161,7 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
       video.removeEventListener('timeupdate', handleTimeUpdate);
       video.removeEventListener('ended', handleEnded);
     };
-  }, [showLogo, videoEnded, showCTA]);
+  }, [showLogo, videoEnded, showCTA, shouldPlayVideo]);
 
   // Hide side cards when scrolling below hero section (desktop only)
   useEffect(() => {
@@ -1159,21 +1206,23 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
 
   return (
     <HeroContainer ref={heroRef}>
-      <VideoBackground
-        ref={videoRef}
-        autoPlay
-        muted
-        playsInline
-        preload="auto"
-        poster="/boom-blast-poster.jpg"
-        webkit-playsinline="true"
-        x5-playsinline="true"
-      >
-        <source src="/boom-blast.mp4" type="video/mp4" />
-        Your browser does not support the video tag.
-      </VideoBackground>
+      {shouldPlayVideo && (
+        <VideoBackground
+          ref={videoRef}
+          autoPlay
+          muted
+          playsInline
+          preload="auto"
+          poster="/boom-blast-poster.jpg"
+          webkit-playsinline="true"
+          x5-playsinline="true"
+        >
+          <source src="/boom-blast.mp4" type="video/mp4" />
+          Your browser does not support the video tag.
+        </VideoBackground>
+      )}
 
-      <VideoOverlay $fadeOut={videoEnded} />
+      <VideoOverlay $fadeOut={videoEnded || !shouldPlayVideo} />
 
       <ContentContainer>
         {/* Logo - appears in final position immediately */}

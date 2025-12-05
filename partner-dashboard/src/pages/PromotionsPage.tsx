@@ -120,6 +120,14 @@ const SectionTitle = styled.h2`
   font-weight: 700;
   color: #111827;
 
+  [data-theme="dark"] & {
+    color: #f9fafb;
+  }
+
+  [data-theme="color"] & {
+    color: #111827;
+  }
+
   @media (max-width: 768px) {
     font-size: 1.5rem;
   }
@@ -139,6 +147,15 @@ const FilterTabs = styled.div`
   padding: 0.25rem;
   border-radius: 0.5rem;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+
+  [data-theme="dark"] & {
+    background: #1f2937;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  }
+
+  [data-theme="color"] & {
+    background: white;
+  }
 `;
 
 const TabButton = styled.button<{ $active: boolean }>`
@@ -154,6 +171,24 @@ const TabButton = styled.button<{ $active: boolean }>`
 
   &:hover {
     background: ${props => props.$active ? '#000000' : '#f3f4f6'};
+  }
+
+  [data-theme="dark"] & {
+    background: ${props => props.$active ? '#3b82f6' : 'transparent'};
+    color: ${props => props.$active ? 'white' : '#9ca3af'};
+
+    &:hover {
+      background: ${props => props.$active ? '#3b82f6' : '#374151'};
+    }
+  }
+
+  [data-theme="color"] & {
+    background: ${props => props.$active ? '#ff006e' : 'transparent'};
+    color: ${props => props.$active ? 'white' : '#6b7280'};
+
+    &:hover {
+      background: ${props => props.$active ? '#ff006e' : '#f3f4f6'};
+    }
   }
 `;
 
@@ -172,6 +207,10 @@ const EmptyState = styled.div`
   text-align: center;
   padding: 4rem 1rem;
   color: #6b7280;
+
+  [data-theme="dark"] & {
+    color: #9ca3af;
+  }
 `;
 
 const EmptyIcon = styled.div`
@@ -184,11 +223,23 @@ const EmptyTitle = styled.h3`
   font-weight: 600;
   margin-bottom: 0.5rem;
   color: #111827;
+
+  [data-theme="dark"] & {
+    color: #f9fafb;
+  }
+
+  [data-theme="color"] & {
+    color: #111827;
+  }
 `;
 
 const EmptyText = styled.p`
   font-size: 1rem;
   margin-bottom: 2rem;
+
+  [data-theme="dark"] & {
+    color: #9ca3af;
+  }
 `;
 
 // Mock promotions data
@@ -431,7 +482,7 @@ const PromotionsPage: React.FC = () => {
           </OffersGrid>
 
           <div style={{ textAlign: 'center', marginTop: '3rem' }}>
-            <Link to="/partners">
+            <Link to="/partners#locations">
               <Button variant="primary" size="large">
                 {language === 'bg' ? 'Виж Всички Партньори' : 'View All Partners'}
               </Button>

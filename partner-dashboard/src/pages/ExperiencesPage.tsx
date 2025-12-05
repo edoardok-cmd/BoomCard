@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import styled from 'styled-components';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -88,8 +88,161 @@ const Subtitle = styled.p`
   }
 `;
 
+const CTASection = styled.div`
+  background: white;
+  padding: 1.5rem 0;
+  border-bottom: 1px solid #e5e7eb;
+  position: sticky;
+  top: 65px;
+  z-index: 40;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+
+  [data-theme="dark"] & {
+    background: #1f2937;
+    border-bottom-color: #374151;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  }
+`;
+
+const CTAContainer = styled.div`
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 0 1.5rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1.5rem;
+
+  @media (max-width: 768px) {
+    flex-direction: column;
+  }
+`;
+
+const CTAText = styled.div`
+  flex: 1;
+
+  h3 {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: #111827;
+    margin-bottom: 0.25rem;
+
+    [data-theme="dark"] & {
+      color: #f9fafb;
+    }
+  }
+
+  p {
+    font-size: 0.9375rem;
+    color: #6b7280;
+
+    [data-theme="dark"] & {
+      color: #9ca3af;
+    }
+  }
+`;
+
+const HorizontalFilters = styled.div`
+  background: white;
+  padding: 1.5rem 0;
+  border-bottom: 1px solid #e5e7eb;
+
+  [data-theme="dark"] & {
+    background: #111827;
+    border-bottom-color: #374151;
+  }
+`;
+
+const FiltersRow = styled.div`
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  overflow-x: auto;
+  padding-bottom: 0.5rem;
+
+  /* Hide scrollbar but keep functionality */
+  scrollbar-width: thin;
+  scrollbar-color: #d1d5db transparent;
+
+  &::-webkit-scrollbar {
+    height: 4px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: #d1d5db;
+    border-radius: 4px;
+
+    [data-theme="dark"] & {
+      background: #4b5563;
+    }
+  }
+
+  @media (max-width: 768px) {
+    gap: 0.5rem;
+  }
+`;
+
+const FilterLabel = styled.span`
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #6b7280;
+  white-space: nowrap;
+  margin-right: 0.5rem;
+
+  [data-theme="dark"] & {
+    color: #9ca3af;
+  }
+`;
+
+const FilterChip = styled.button<{ $active: boolean }>`
+  padding: 0.5rem 1.25rem;
+  border-radius: 9999px;
+  border: 1px solid ${props => props.$active ? '#000000' : '#e5e7eb'};
+  background: ${props => props.$active ? '#000000' : 'white'};
+  color: ${props => props.$active ? 'white' : '#6b7280'};
+  font-size: 0.875rem;
+  font-weight: ${props => props.$active ? '600' : '500'};
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+  flex-shrink: 0;
+
+  [data-theme="dark"] & {
+    border-color: ${props => props.$active ? '#60a5fa' : '#374151'};
+    background: ${props => props.$active ? '#60a5fa' : '#1f2937'};
+    color: ${props => props.$active ? '#000000' : '#9ca3af'};
+  }
+
+  &:hover {
+    border-color: ${props => props.$active ? '#000000' : '#9ca3af'};
+    background: ${props => props.$active ? '#000000' : '#f9fafb'};
+    color: ${props => props.$active ? 'white' : '#111827'};
+
+    [data-theme="dark"] & {
+      border-color: ${props => props.$active ? '#60a5fa' : '#60a5fa'};
+      background: ${props => props.$active ? '#60a5fa' : '#374151'};
+      color: ${props => props.$active ? '#000000' : '#f9fafb'};
+    }
+  }
+
+  span {
+    margin-left: 0.5rem;
+    opacity: 0.7;
+    font-size: 0.8125rem;
+  }
+`;
+
 const ContentSection = styled.div`
   padding: 4rem 0;
+`;
+
+const ContentLayout = styled.div`
+  display: flex;
+  flex-direction: column;
 `;
 
 const SectionTitle = styled.h2`
@@ -230,42 +383,6 @@ const ExperienceLocation = styled.div`
   }
 `;
 
-const CategoriesSection = styled.div`
-  display: flex;
-  gap: 1rem;
-  justify-content: center;
-  flex-wrap: wrap;
-  margin-bottom: 3rem;
-`;
-
-const CategoryChip = styled.button<{ $active: boolean }>`
-  padding: 0.75rem 1.5rem;
-  border: 2px solid ${props => props.$active ? '#000000' : '#e5e7eb'};
-  background: ${props => props.$active ? '#000000' : 'white'};
-  color: ${props => props.$active ? 'white' : '#6b7280'};
-  border-radius: 2rem;
-  font-weight: 600;
-  font-size: 0.875rem;
-  cursor: pointer;
-  transition: all 0.2s;
-
-  [data-theme="dark"] & {
-    border-color: ${props => props.$active ? '#ffffff' : '#374151'};
-    background: ${props => props.$active ? '#ffffff' : '#1f2937'};
-    color: ${props => props.$active ? '#000000' : '#9ca3af'};
-  }
-
-  &:hover {
-    border-color: #000000;
-    background: ${props => props.$active ? '#000000' : '#f9fafb'};
-
-    [data-theme="dark"] & {
-      border-color: #ffffff;
-      background: ${props => props.$active ? '#ffffff' : '#374151'};
-    }
-  }
-`;
-
 interface Experience {
   id: string;
   title: string;
@@ -340,6 +457,8 @@ const mockExperiences: Experience[] = [
 const ExperiencesPage: React.FC = () => {
   const { language } = useLanguage();
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [selectedPriceRange, setSelectedPriceRange] = useState<string>('all');
+  const [sortBy, setSortBy] = useState<string>('featured');
 
   const t = {
     en: {
@@ -347,7 +466,7 @@ const ExperiencesPage: React.FC = () => {
       subtitle: 'Discover unique experiences and activities from our partner venues',
       browse: 'Get Your BoomCard',
       featured: 'Featured',
-      all: 'All',
+      all: 'All Categories',
       dining: 'Dining',
       wellness: 'Wellness',
       adventure: 'Adventure',
@@ -355,13 +474,32 @@ const ExperiencesPage: React.FC = () => {
       leisure: 'Leisure',
       bookNow: 'Book Now',
       learnMore: 'Learn More',
+      filters: {
+        categories: 'Categories',
+        priceRange: 'Price Range',
+        sortBy: 'Sort By',
+        clearFilters: 'Clear Filters',
+      },
+      priceRanges: {
+        all: 'All Prices',
+        under50: 'Under $50',
+        under100: '$50 - $100',
+        under150: '$100 - $150',
+        over150: 'Over $150',
+      },
+      sortOptions: {
+        featured: 'Featured',
+        priceLowToHigh: 'Price: Low to High',
+        priceHighToLow: 'Price: High to Low',
+        nameAZ: 'Name: A-Z',
+      },
     },
     bg: {
       title: 'Незабравими Преживявания',
       subtitle: 'Открийте уникални преживявания и дейности от нашите партньори',
       browse: 'Вземете Вашата BoomCard',
       featured: 'Препоръчани',
-      all: 'Всички',
+      all: 'Всички Категории',
       dining: 'Хранене',
       wellness: 'Уелнес',
       adventure: 'Приключения',
@@ -369,23 +507,104 @@ const ExperiencesPage: React.FC = () => {
       leisure: 'Отдих',
       bookNow: 'Резервирай',
       learnMore: 'Научи Повече',
+      filters: {
+        categories: 'Категории',
+        priceRange: 'Ценови Диапазон',
+        sortBy: 'Сортирай по',
+        clearFilters: 'Изчисти Филтри',
+      },
+      priceRanges: {
+        all: 'Всички Цени',
+        under50: 'До $50',
+        under100: '$50 - $100',
+        under150: '$100 - $150',
+        over150: 'Над $150',
+      },
+      sortOptions: {
+        featured: 'Препоръчани',
+        priceLowToHigh: 'Цена: Ниска към Висока',
+        priceHighToLow: 'Цена: Висока към Ниска',
+        nameAZ: 'Име: А-Я',
+      },
     },
   };
 
   const content = language === 'bg' ? t.bg : t.en;
 
   const categories = [
-    { id: 'all', label: content.all },
-    { id: 'Dining', label: content.dining },
-    { id: 'Wellness', label: content.wellness },
-    { id: 'Adventure', label: content.adventure },
-    { id: 'Culture', label: content.culture },
-    { id: 'Leisure', label: content.leisure },
+    { id: 'all', label: content.all, count: mockExperiences.length },
+    { id: 'Dining', label: content.dining, count: mockExperiences.filter(e => e.category === 'Dining').length },
+    { id: 'Wellness', label: content.wellness, count: mockExperiences.filter(e => e.category === 'Wellness').length },
+    { id: 'Adventure', label: content.adventure, count: mockExperiences.filter(e => e.category === 'Adventure').length },
+    { id: 'Culture', label: content.culture, count: mockExperiences.filter(e => e.category === 'Culture').length },
+    { id: 'Leisure', label: content.leisure, count: mockExperiences.filter(e => e.category === 'Leisure').length },
   ];
 
-  const filteredExperiences = selectedCategory === 'all'
-    ? mockExperiences
-    : mockExperiences.filter(exp => exp.category === selectedCategory);
+  const priceRanges = [
+    { id: 'all', label: content.priceRanges.all },
+    { id: 'under50', label: content.priceRanges.under50, min: 0, max: 50 },
+    { id: 'under100', label: content.priceRanges.under100, min: 50, max: 100 },
+    { id: 'under150', label: content.priceRanges.under150, min: 100, max: 150 },
+    { id: 'over150', label: content.priceRanges.over150, min: 150, max: Infinity },
+  ];
+
+  const sortOptions = [
+    { id: 'featured', label: content.sortOptions.featured },
+    { id: 'priceLowToHigh', label: content.sortOptions.priceLowToHigh },
+    { id: 'priceHighToLow', label: content.sortOptions.priceHighToLow },
+    { id: 'nameAZ', label: content.sortOptions.nameAZ },
+  ];
+
+  // Parse price from string (e.g., "From $89" -> 89)
+  const parsePrice = (priceStr: string): number => {
+    const match = priceStr.match(/\$?(\d+)/);
+    return match ? parseInt(match[1]) : 0;
+  };
+
+  // Filter experiences
+  let filteredExperiences = mockExperiences;
+
+  // Filter by category
+  if (selectedCategory !== 'all') {
+    filteredExperiences = filteredExperiences.filter(exp => exp.category === selectedCategory);
+  }
+
+  // Filter by price range
+  if (selectedPriceRange !== 'all') {
+    const range = priceRanges.find(r => r.id === selectedPriceRange);
+    if (range && range.min !== undefined && range.max !== undefined) {
+      filteredExperiences = filteredExperiences.filter(exp => {
+        const price = parsePrice(exp.price);
+        return price >= range.min && price <= range.max;
+      });
+    }
+  }
+
+  // Sort experiences
+  const sortedExperiences = [...filteredExperiences].sort((a, b) => {
+    switch (sortBy) {
+      case 'priceLowToHigh':
+        return parsePrice(a.price) - parsePrice(b.price);
+      case 'priceHighToLow':
+        return parsePrice(b.price) - parsePrice(a.price);
+      case 'nameAZ':
+        return a.title.localeCompare(b.title);
+      case 'featured':
+      default:
+        // Featured items first, then by price
+        if (a.featured && !b.featured) return -1;
+        if (!a.featured && b.featured) return 1;
+        return parsePrice(a.price) - parsePrice(b.price);
+    }
+  });
+
+  const clearFilters = () => {
+    setSelectedCategory('all');
+    setSelectedPriceRange('all');
+    setSortBy('featured');
+  };
+
+  const hasActiveFilters = selectedCategory !== 'all' || selectedPriceRange !== 'all' || sortBy !== 'featured';
 
   return (
     <PageContainer>
@@ -399,74 +618,140 @@ const ExperiencesPage: React.FC = () => {
             >
               <Title>{content.title}</Title>
               <Subtitle>{content.subtitle}</Subtitle>
-              <Link to="/register">
-                <Button variant="primary" size="large">
-                  {content.browse}
-                </Button>
-              </Link>
             </motion.div>
           </HeroContent>
         </Container>
       </Hero>
 
-      <ContentSection>
-        <Container>
-          <SectionTitle>
-            {selectedCategory === 'all' ? content.featured : categories.find(c => c.id === selectedCategory)?.label}
-          </SectionTitle>
-          <SectionSubtitle>
-            {filteredExperiences.length} experiences available
-          </SectionSubtitle>
+      {/* CTA Section - Sticky at top */}
+      <CTASection>
+        <CTAContainer>
+          <CTAText>
+            <h3>
+              {language === 'bg'
+                ? 'Готови за незабравими изживявания?'
+                : 'Ready for unforgettable experiences?'}
+            </h3>
+            <p>
+              {language === 'bg'
+                ? 'Създайте вашия акаунт и открийте ексклузивни оферти'
+                : 'Create your account and discover exclusive offers'}
+            </p>
+          </CTAText>
+          <Link to="/register">
+            <Button variant="primary" size="large">
+              {content.browse}
+            </Button>
+          </Link>
+        </CTAContainer>
+      </CTASection>
 
-          <CategoriesSection>
+      {/* Horizontal Filters */}
+      <HorizontalFilters>
+        <Container>
+          {/* Category Filters */}
+          <FiltersRow>
+            <FilterLabel>{content.filters.categories}:</FilterLabel>
             {categories.map((category) => (
-              <CategoryChip
+              <FilterChip
                 key={category.id}
                 $active={selectedCategory === category.id}
                 onClick={() => setSelectedCategory(category.id)}
               >
                 {category.label}
-              </CategoryChip>
+                <span>({category.count})</span>
+              </FilterChip>
             ))}
-          </CategoriesSection>
+          </FiltersRow>
 
-          <ExperiencesGrid>
-            {filteredExperiences.map((experience, index) => (
-              <ExperienceCard
-                key={experience.id}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.4, delay: index * 0.1 }}
+          {/* Price Range Filters */}
+          <FiltersRow style={{ marginTop: '1rem' }}>
+            <FilterLabel>{content.filters.priceRange}:</FilterLabel>
+            {priceRanges.map((range) => (
+              <FilterChip
+                key={range.id}
+                $active={selectedPriceRange === range.id}
+                onClick={() => setSelectedPriceRange(range.id)}
               >
-                <ExperienceImage $bgImage={experience.imageUrl}>
-                  {experience.featured && (
-                    <ExperienceBadge variant="warning">
-                      {content.featured}
-                    </ExperienceBadge>
-                  )}
-                </ExperienceImage>
-
-                <ExperienceContent>
-                  <ExperienceTitle>{experience.title}</ExperienceTitle>
-                  <ExperienceDescription>
-                    {experience.description}
-                  </ExperienceDescription>
-
-                  <ExperienceFooter>
-                    <div>
-                      <ExperiencePrice>{experience.price}</ExperiencePrice>
-                      <ExperienceLocation>
-                        📍 {experience.location}
-                      </ExperienceLocation>
-                    </div>
-                    <Button variant="primary" size="small">
-                      {content.bookNow}
-                    </Button>
-                  </ExperienceFooter>
-                </ExperienceContent>
-              </ExperienceCard>
+                {range.label}
+              </FilterChip>
             ))}
-          </ExperiencesGrid>
+          </FiltersRow>
+
+          {/* Sort Options */}
+          <FiltersRow style={{ marginTop: '1rem' }}>
+            <FilterLabel>{content.filters.sortBy}:</FilterLabel>
+            {sortOptions.map((option) => (
+              <FilterChip
+                key={option.id}
+                $active={sortBy === option.id}
+                onClick={() => setSortBy(option.id)}
+              >
+                {option.label}
+              </FilterChip>
+            ))}
+            {hasActiveFilters && (
+              <FilterChip $active={false} onClick={clearFilters}>
+                {content.filters.clearFilters}
+              </FilterChip>
+            )}
+          </FiltersRow>
+        </Container>
+      </HorizontalFilters>
+
+      <ContentSection>
+        <Container>
+          <ContentLayout>
+              <SectionTitle>
+                {selectedCategory === 'all' ? content.featured : categories.find(c => c.id === selectedCategory)?.label}
+              </SectionTitle>
+              <SectionSubtitle>
+                {sortedExperiences.length} {language === 'bg' ? 'преживявания' : 'experiences available'}
+              </SectionSubtitle>
+
+              <ExperiencesGrid>
+                {sortedExperiences.map((experience, index) => (
+              <Link
+                key={experience.id}
+                to={`/offers/${experience.id}`}
+                style={{ textDecoration: 'none', color: 'inherit' }}
+              >
+                <ExperienceCard
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.4, delay: index * 0.1 }}
+                >
+                  <ExperienceImage $bgImage={experience.imageUrl}>
+                    {experience.featured && (
+                      <ExperienceBadge variant="warning">
+                        {content.featured}
+                      </ExperienceBadge>
+                    )}
+                  </ExperienceImage>
+
+                  <ExperienceContent>
+                    <ExperienceTitle>{experience.title}</ExperienceTitle>
+                    <ExperienceDescription>
+                      {experience.description}
+                    </ExperienceDescription>
+
+                    <ExperienceFooter>
+                      <div>
+                        <ExperiencePrice>{experience.price}</ExperiencePrice>
+                        <ExperienceLocation>
+                          📍 {experience.location}
+                        </ExperienceLocation>
+                      </div>
+                      <Button variant="primary" size="small">
+                        {content.bookNow}
+                      </Button>
+                    </ExperienceFooter>
+                  </ExperienceContent>
+                </ExperienceCard>
+              </Link>
+                ))}
+              </ExperiencesGrid>
+          </ContentLayout>
         </Container>
       </ContentSection>
     </PageContainer>
