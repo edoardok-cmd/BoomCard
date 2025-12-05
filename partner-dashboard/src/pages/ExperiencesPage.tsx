@@ -88,187 +88,157 @@ const Subtitle = styled.p`
   }
 `;
 
-const CTASection = styled.div`
+const ContentSection = styled.div`
+  padding: 3rem 0;
+`;
+
+const ContentLayout = styled.div`
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: 2rem;
+  align-items: start;
+
+  @media (max-width: 968px) {
+    grid-template-columns: 1fr;
+  }
+`;
+
+const FilterSidebar = styled.div`
   background: white;
-  padding: 1.5rem 0;
-  border-bottom: 1px solid #e5e7eb;
+  border-radius: 1rem;
+  padding: 1.5rem;
   position: sticky;
-  top: 65px;
-  z-index: 40;
+  top: 100px;
+  max-height: calc(100vh - 120px);
+  overflow-y: auto;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
 
   [data-theme="dark"] & {
     background: #1f2937;
-    border-bottom-color: #374151;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  }
+
+  @media (max-width: 968px) {
+    position: relative;
+    top: 0;
+    max-height: none;
+    margin-bottom: 2rem;
   }
 `;
 
-const CTAContainer = styled.div`
-  max-width: 1400px;
-  margin: 0 auto;
-  padding: 0 1.5rem;
+const FilterSection = styled.div`
+  margin-bottom: 2rem;
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+`;
+
+const FilterTitle = styled.h3`
+  font-size: 1rem;
+  font-weight: 700;
+  color: #111827;
+  margin-bottom: 1rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid #e5e7eb;
+
+  [data-theme="dark"] & {
+    color: #f9fafb;
+    border-bottom-color: #374151;
+  }
+`;
+
+const FilterOption = styled.button<{ $active: boolean }>`
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border: none;
+  background: ${props => props.$active ? '#f3f4f6' : 'transparent'};
+  color: ${props => props.$active ? '#111827' : '#6b7280'};
+  font-size: 0.9375rem;
+  font-weight: ${props => props.$active ? '600' : '400'};
+  cursor: pointer;
+  transition: all 0.2s;
+  text-align: left;
+  border-radius: 0.5rem;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 1.5rem;
+  margin-bottom: 0.5rem;
 
-  @media (max-width: 768px) {
-    flex-direction: column;
+  [data-theme="dark"] & {
+    background: ${props => props.$active ? '#374151' : 'transparent'};
+    color: ${props => props.$active ? '#f9fafb' : '#9ca3af'};
   }
-`;
 
-const CTAText = styled.div`
-  flex: 1;
-
-  h3 {
-    font-size: 1.25rem;
-    font-weight: 700;
+  &:hover {
+    background: ${props => props.$active ? '#f3f4f6' : '#f9fafb'};
     color: #111827;
-    margin-bottom: 0.25rem;
 
     [data-theme="dark"] & {
+      background: ${props => props.$active ? '#374151' : '#374151'};
       color: #f9fafb;
     }
   }
 
-  p {
-    font-size: 0.9375rem;
-    color: #6b7280;
-
-    [data-theme="dark"] & {
-      color: #9ca3af;
-    }
+  span {
+    font-size: 0.875rem;
+    opacity: 0.7;
   }
 `;
 
-const HorizontalFilters = styled.div`
+const ClearFiltersButton = styled.button`
+  width: 100%;
+  padding: 0.875rem;
+  border: 2px solid #e5e7eb;
   background: white;
-  padding: 1.5rem 0;
-  border-bottom: 1px solid #e5e7eb;
-
-  [data-theme="dark"] & {
-    background: #111827;
-    border-bottom-color: #374151;
-  }
-`;
-
-const FiltersRow = styled.div`
-  display: flex;
-  gap: 1rem;
-  align-items: center;
-  overflow-x: auto;
-  padding-bottom: 0.5rem;
-
-  /* Hide scrollbar but keep functionality */
-  scrollbar-width: thin;
-  scrollbar-color: #d1d5db transparent;
-
-  &::-webkit-scrollbar {
-    height: 4px;
-  }
-
-  &::-webkit-scrollbar-track {
-    background: transparent;
-  }
-
-  &::-webkit-scrollbar-thumb {
-    background: #d1d5db;
-    border-radius: 4px;
-
-    [data-theme="dark"] & {
-      background: #4b5563;
-    }
-  }
-
-  @media (max-width: 768px) {
-    gap: 0.5rem;
-  }
-`;
-
-const FilterLabel = styled.span`
-  font-size: 0.875rem;
-  font-weight: 600;
   color: #6b7280;
-  white-space: nowrap;
-  margin-right: 0.5rem;
-
-  [data-theme="dark"] & {
-    color: #9ca3af;
-  }
-`;
-
-const FilterChip = styled.button<{ $active: boolean }>`
-  padding: 0.5rem 1.25rem;
-  border-radius: 9999px;
-  border: 1px solid ${props => props.$active ? '#000000' : '#e5e7eb'};
-  background: ${props => props.$active ? '#000000' : 'white'};
-  color: ${props => props.$active ? 'white' : '#6b7280'};
-  font-size: 0.875rem;
-  font-weight: ${props => props.$active ? '600' : '500'};
+  font-size: 0.9375rem;
+  font-weight: 600;
   cursor: pointer;
   transition: all 0.2s;
-  white-space: nowrap;
-  flex-shrink: 0;
+  border-radius: 0.5rem;
+  margin-top: 1.5rem;
 
   [data-theme="dark"] & {
-    border-color: ${props => props.$active ? '#60a5fa' : '#374151'};
-    background: ${props => props.$active ? '#60a5fa' : '#1f2937'};
-    color: ${props => props.$active ? '#000000' : '#9ca3af'};
+    border-color: #374151;
+    background: #1f2937;
+    color: #9ca3af;
   }
 
   &:hover {
-    border-color: ${props => props.$active ? '#000000' : '#9ca3af'};
-    background: ${props => props.$active ? '#000000' : '#f9fafb'};
-    color: ${props => props.$active ? 'white' : '#111827'};
+    border-color: #000000;
+    color: #111827;
 
     [data-theme="dark"] & {
-      border-color: ${props => props.$active ? '#60a5fa' : '#60a5fa'};
-      background: ${props => props.$active ? '#60a5fa' : '#374151'};
-      color: ${props => props.$active ? '#000000' : '#f9fafb'};
+      border-color: #60a5fa;
+      color: #f9fafb;
     }
   }
-
-  span {
-    margin-left: 0.5rem;
-    opacity: 0.7;
-    font-size: 0.8125rem;
-  }
 `;
 
-const ContentSection = styled.div`
-  padding: 4rem 0;
-`;
-
-const ContentLayout = styled.div`
-  display: flex;
-  flex-direction: column;
+const MainContent = styled.div`
+  flex: 1;
 `;
 
 const SectionTitle = styled.h2`
-  font-size: 2.5rem;
+  font-size: 2rem;
   font-weight: 700;
   color: #111827;
-  margin-bottom: 1rem;
-  text-align: center;
+  margin-bottom: 0.5rem;
 
   [data-theme="dark"] & {
     color: #f9fafb;
   }
 
   @media (max-width: 768px) {
-    font-size: 2rem;
+    font-size: 1.5rem;
   }
 `;
 
 const SectionSubtitle = styled.p`
-  font-size: 1.125rem;
+  font-size: 1rem;
   color: #6b7280;
-  text-align: center;
-  margin-bottom: 3rem;
-  max-width: 700px;
-  margin-left: auto;
-  margin-right: auto;
+  margin-bottom: 2rem;
 
   [data-theme="dark"] & {
     color: #9ca3af;
@@ -277,9 +247,8 @@ const SectionSubtitle = styled.p`
 
 const ExperiencesGrid = styled.div`
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
-  gap: 2rem;
-  margin-bottom: 3rem;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 1.5rem;
 
   @media (max-width: 768px) {
     grid-template-columns: 1fr;
@@ -630,134 +599,114 @@ const ExperiencesPage: React.FC = () => {
         </Container>
       </Hero>
 
-      {/* CTA Section - Sticky at top */}
-      <CTASection>
-        <CTAContainer>
-          <CTAText>
-            <h3>
-              {language === 'bg'
-                ? 'Готови за незабравими изживявания?'
-                : 'Ready for unforgettable experiences?'}
-            </h3>
-            <p>
-              {language === 'bg'
-                ? 'Създайте вашия акаунт и открийте ексклузивни оферти'
-                : 'Create your account and discover exclusive offers'}
-            </p>
-          </CTAText>
-          <Link to="/register">
-            <Button variant="primary" size="large">
-              {content.browse}
-            </Button>
-          </Link>
-        </CTAContainer>
-      </CTASection>
-
-      {/* Horizontal Filters */}
-      <HorizontalFilters>
-        <Container>
-          {/* Category Filters */}
-          <FiltersRow>
-            <FilterLabel>{content.filters.categories}:</FilterLabel>
-            {categories.map((category) => (
-              <FilterChip
-                key={category.id}
-                $active={selectedCategory === category.id}
-                onClick={() => setSelectedCategory(category.id)}
-              >
-                {category.label}
-                <span>({category.count})</span>
-              </FilterChip>
-            ))}
-          </FiltersRow>
-
-          {/* Price Range Filters */}
-          <FiltersRow style={{ marginTop: '1rem' }}>
-            <FilterLabel>{content.filters.priceRange}:</FilterLabel>
-            {priceRanges.map((range) => (
-              <FilterChip
-                key={range.id}
-                $active={selectedPriceRange === range.id}
-                onClick={() => setSelectedPriceRange(range.id)}
-              >
-                {range.label}
-              </FilterChip>
-            ))}
-          </FiltersRow>
-
-          {/* Sort Options */}
-          <FiltersRow style={{ marginTop: '1rem' }}>
-            <FilterLabel>{content.filters.sortBy}:</FilterLabel>
-            {sortOptions.map((option) => (
-              <FilterChip
-                key={option.id}
-                $active={sortBy === option.id}
-                onClick={() => setSortBy(option.id)}
-              >
-                {option.label}
-              </FilterChip>
-            ))}
-            {hasActiveFilters && (
-              <FilterChip $active={false} onClick={clearFilters}>
-                {content.filters.clearFilters}
-              </FilterChip>
-            )}
-          </FiltersRow>
-        </Container>
-      </HorizontalFilters>
-
       <ContentSection>
         <Container>
           <ContentLayout>
+            {/* Filter Sidebar */}
+            <FilterSidebar>
+              {/* Category Filters */}
+              <FilterSection>
+                <FilterTitle>{content.filters.categories}</FilterTitle>
+                {categories.map((category) => (
+                  <FilterOption
+                    key={category.id}
+                    $active={selectedCategory === category.id}
+                    onClick={() => setSelectedCategory(category.id)}
+                  >
+                    <span>{category.label}</span>
+                    <span>({category.count})</span>
+                  </FilterOption>
+                ))}
+              </FilterSection>
+
+              {/* Price Range Filters */}
+              <FilterSection>
+                <FilterTitle>{content.filters.priceRange}</FilterTitle>
+                {priceRanges.map((range) => (
+                  <FilterOption
+                    key={range.id}
+                    $active={selectedPriceRange === range.id}
+                    onClick={() => setSelectedPriceRange(range.id)}
+                  >
+                    {range.label}
+                  </FilterOption>
+                ))}
+              </FilterSection>
+
+              {/* Sort Options */}
+              <FilterSection>
+                <FilterTitle>{content.filters.sortBy}</FilterTitle>
+                {sortOptions.map((option) => (
+                  <FilterOption
+                    key={option.id}
+                    $active={sortBy === option.id}
+                    onClick={() => setSortBy(option.id)}
+                  >
+                    {option.label}
+                  </FilterOption>
+                ))}
+              </FilterSection>
+
+              {/* Clear Filters */}
+              {hasActiveFilters && (
+                <ClearFiltersButton onClick={clearFilters}>
+                  {content.filters.clearFilters}
+                </ClearFiltersButton>
+              )}
+            </FilterSidebar>
+
+            {/* Main Content */}
+            <MainContent>
               <SectionTitle>
                 {selectedCategory === 'all' ? content.featured : categories.find(c => c.id === selectedCategory)?.label}
               </SectionTitle>
               <SectionSubtitle>
-                {sortedExperiences.length} {language === 'bg' ? 'преживявания' : 'experiences available'}
+                {sortedExperiences.length} {language === 'bg' ? 'преживявания налични' : 'experiences available'}
               </SectionSubtitle>
 
               <ExperiencesGrid>
                 {sortedExperiences.map((experience, index) => (
-              <Link
-                key={experience.id}
-                to={`/offers/${experience.id}`}
-                style={{ textDecoration: 'none', color: 'inherit' }}
-              >
-                <ExperienceCard
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.4, delay: index * 0.1 }}
-                >
-                  <ExperienceImage $bgImage={experience.imageUrl}>
-                    {experience.featured && (
-                      <ExperienceBadge variant="warning">
-                        {content.featured}
-                      </ExperienceBadge>
-                    )}
-                  </ExperienceImage>
+                  <Link
+                    key={experience.id}
+                    to={`/offers/${experience.id}`}
+                    style={{ textDecoration: 'none', color: 'inherit' }}
+                  >
+                    <ExperienceCard
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.4, delay: index * 0.1 }}
+                    >
+                      <ExperienceImage $bgImage={experience.imageUrl}>
+                        {experience.featured && (
+                          <ExperienceBadge variant="warning">
+                            {content.featured}
+                          </ExperienceBadge>
+                        )}
+                      </ExperienceImage>
 
-                  <ExperienceContent>
-                    <ExperienceTitle>{experience.title}</ExperienceTitle>
-                    <ExperienceDescription>
-                      {experience.description}
-                    </ExperienceDescription>
+                      <ExperienceContent>
+                        <ExperienceTitle>{experience.title}</ExperienceTitle>
+                        <ExperienceDescription>
+                          {experience.description}
+                        </ExperienceDescription>
 
-                    <ExperienceFooter>
-                      <div>
-                        <ExperiencePrice>{experience.price}</ExperiencePrice>
-                        <ExperienceLocation>
-                          📍 {experience.location}
-                        </ExperienceLocation>
-                      </div>
-                      <Button variant="primary" size="small">
-                        {content.bookNow}
-                      </Button>
-                    </ExperienceFooter>
-                  </ExperienceContent>
-                </ExperienceCard>
-              </Link>
+                        <ExperienceFooter>
+                          <div>
+                            <ExperiencePrice>{experience.price}</ExperiencePrice>
+                            <ExperienceLocation>
+                              📍 {experience.location}
+                            </ExperienceLocation>
+                          </div>
+                          <Button variant="primary" size="small">
+                            {content.bookNow}
+                          </Button>
+                        </ExperienceFooter>
+                      </ExperienceContent>
+                    </ExperienceCard>
+                  </Link>
                 ))}
               </ExperiencesGrid>
+            </MainContent>
           </ContentLayout>
         </Container>
       </ContentSection>
