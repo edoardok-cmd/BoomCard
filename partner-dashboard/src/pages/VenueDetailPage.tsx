@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, Navigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import styled from 'styled-components';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -11,6 +11,7 @@ import QRCode from '../components/common/QRCode/QRCode';
 import FavoriteButton from '../components/common/FavoriteButton/FavoriteButton';
 import ShareButton from '../components/common/ShareButton/ShareButton';
 import { convertBGNToEUR } from '../utils/helpers';
+import { getOfferById } from '../data/mockOffers';
 
 const PageContainer = styled.div`
   min-height: 100vh;
@@ -437,43 +438,45 @@ const VenueDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const { language, t } = useLanguage();
 
-  // Sample data - would come from API in real implementation
+  // Get offer by ID from shared mock data
+  const offer = id ? getOfferById(id) : undefined;
+
+  // If offer not found, redirect to promotions page
+  if (!offer) {
+    return <Navigate to="/promotions" replace />;
+  }
+
+  // Map offer data to venue format for display
   const venue = {
-    id: '1',
-    title: language === 'bg' ? 'Спа уикенд в Банско' : 'Spa Weekend in Bansko',
-    category: language === 'bg' ? 'Спа и уелнес' : 'Spa & Wellness',
-    location: 'Bansko, Bulgaria',
-    locationBg: 'Банско, България',
-    rating: 4.8,
-    reviewCount: 124,
-    partnerName: 'Kempinski Hotel Grand Arena',
-    discount: 70,
-    originalPrice: 800,
-    discountedPrice: 240,
-    savings: 560,
-    description: language === 'bg'
-      ? 'Насладете се на незабравим спа уикенд в сърцето на планината Пирин. Луксозният Kempinski Hotel Grand Arena предлага пакет от премиум спа третирания, включващ масажи, сауна, парна баня и достъп до вътрешен басейн с минерална вода. Перфектно място за релаксация и възстановяване.'
-      : 'Enjoy an unforgettable spa weekend in the heart of Pirin Mountain. The luxurious Kempinski Hotel Grand Arena offers a premium spa package including massages, sauna, steam bath, and access to an indoor mineral water pool. Perfect place for relaxation and recovery.',
+    id: offer.id,
+    title: language === 'bg' ? offer.titleBg : offer.title,
+    category: language === 'bg' ? offer.categoryBg : offer.category,
+    location: offer.location,
+    locationBg: offer.location,
+    rating: offer.rating,
+    reviewCount: offer.reviewCount,
+    partnerName: offer.partnerName,
+    discount: offer.discount,
+    originalPrice: offer.originalPrice,
+    discountedPrice: offer.discountedPrice,
+    savings: offer.originalPrice - offer.discountedPrice,
+    description: language === 'bg' ? offer.descriptionBg : offer.description,
     features: [
-      { icon: '✓', text: language === 'bg' ? '2 нощувки' : '2 nights accommodation' },
-      { icon: '✓', text: language === 'bg' ? '3 спа третирания' : '3 spa treatments' },
-      { icon: '✓', text: language === 'bg' ? 'Неограничен достъп до басейн' : 'Unlimited pool access' },
-      { icon: '✓', text: language === 'bg' ? 'Закуска включена' : 'Breakfast included' },
-      { icon: '✓', text: language === 'bg' ? 'Безплатен Wi-Fi' : 'Free Wi-Fi' },
-      { icon: '✓', text: language === 'bg' ? 'Паркинг' : 'Parking' },
+      { icon: '✓', text: language === 'bg' ? `${offer.discount}% отстъпка` : `${offer.discount}% discount` },
+      { icon: '✓', text: language === 'bg' ? 'Валидно с BOOM Card' : 'Valid with BOOM Card' },
+      { icon: '✓', text: language === 'bg' ? 'Лесно активиране' : 'Easy activation' },
+      { icon: '✓', text: language === 'bg' ? 'Моментална валидация' : 'Instant validation' },
     ],
     images: [
-      'https://images.unsplash.com/photo-1540555700478-4be289fbecef?w=1200',
-      'https://images.unsplash.com/photo-1571902943202-507ec2618e8f?w=1200',
-      'https://images.unsplash.com/photo-1596178060810-4dd26d6c0d07?w=1200',
-      'https://images.unsplash.com/photo-1544161515-4ab6ce6db874?w=1200',
-      'https://images.unsplash.com/photo-1562790351-d273a961e0e9?w=1200',
+      offer.imageUrl,
+      offer.imageUrl,
+      offer.imageUrl,
     ],
-    validUntil: language === 'bg' ? '31 Март 2025' : 'March 31, 2025',
+    validUntil: language === 'bg' ? '31 Декември 2025' : 'December 31, 2025',
     phone: '+359 88 123 4567',
-    email: 'spa@kempinski-bansko.com',
-    website: 'www.kempinski-bansko.com',
-    address: language === 'bg' ? 'бул. Пирин 96, Банско 2770' : '96 Pirin Blvd, Bansko 2770',
+    email: 'contact@boomcard.com',
+    website: 'www.boomcard.com',
+    address: language === 'bg' ? offer.location : offer.location,
   };
 
   return (

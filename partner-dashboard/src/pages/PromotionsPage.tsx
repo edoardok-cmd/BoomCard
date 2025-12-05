@@ -3,11 +3,12 @@ import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import styled from 'styled-components';
 import { useLanguage } from '../contexts/LanguageContext';
-import OfferCard, { Offer } from '../components/common/OfferCard/OfferCard';
+import OfferCard from '../components/common/OfferCard/OfferCard';
 import Button from '../components/common/Button/Button';
 import Badge from '../components/common/Badge/Badge';
 import ClientCTA from '../components/common/ClientCTA/ClientCTA';
 import { updateSEO, generateOfferSchema } from '../utils/seo';
+import { mockOffers } from '../data/mockOffers';
 
 const PageContainer = styled.div`
 
@@ -242,123 +243,11 @@ const EmptyText = styled.p`
   }
 `;
 
-// Mock promotions data
-const mockPromotions: Offer[] = [
-  {
-    id: '1',
-    title: 'Flash Sale - 50% Off Everything',
-    titleBg: 'Флаш Разпродажба - 50% Отстъпка',
-    description: 'Limited time offer! Get 50% off all menu items. Valid for the next 4 hours only.',
-    descriptionBg: 'Ограничена оферта! Вземете 50% отстъпка на всички артикули.',
-    discount: 50,
-    originalPrice: 100,
-    discountedPrice: 50,
-    category: 'Flash Sale',
-    categoryBg: 'Флаш Оферта',
-    location: 'All Locations',
-    imageUrl: 'https://images.unsplash.com/photo-1555939594-58d7cb561ad1?w=800',
-    partnerName: 'BoomCard Partner',
-    path: '/offers/1',
-    rating: 4.8,
-    reviewCount: 124,
-  },
-  {
-    id: '2',
-    title: 'Happy Hour Special',
-    titleBg: 'Специална Happy Hour Оферта',
-    description: 'Buy one get one free on all drinks from 5 PM to 7 PM every weekday.',
-    descriptionBg: 'Купи едно, вземи едно безплатно на всички напитки от 17:00 до 19:00.',
-    discount: 50,
-    originalPrice: 40,
-    discountedPrice: 20,
-    category: 'Happy Hour',
-    categoryBg: 'Щастлив Час',
-    location: 'Downtown Location',
-    imageUrl: 'https://images.unsplash.com/photo-1514933651103-005eec06c04b?w=800',
-    partnerName: 'Downtown Bar',
-    path: '/offers/2',
-    rating: 4.6,
-    reviewCount: 89,
-  },
-  {
-    id: '3',
-    title: 'Birthday Special',
-    titleBg: 'Специална Рожденоденска Оферта',
-    description: 'Celebrate your birthday with us! Get a complimentary dessert when you dine with 3+ people.',
-    descriptionBg: 'Празнувайте рождения си ден с нас! Получете безплатен десерт.',
-    discount: 100,
-    originalPrice: 15,
-    discountedPrice: 0,
-    category: 'Birthday',
-    categoryBg: 'Рожден Ден',
-    location: 'All Locations',
-    imageUrl: 'https://images.unsplash.com/photo-1464349095431-e9a21285b5f3?w=800',
-    partnerName: 'Sweet Treats',
-    path: '/offers/3',
-    rating: 4.9,
-    reviewCount: 210,
-  },
-  {
-    id: '4',
-    title: 'Healthy Monday',
-    titleBg: 'Здравословен Понеделник',
-    description: 'All salads and healthy bowls 30% off every Monday. Start your week right!',
-    descriptionBg: 'Всички салати и здравословни купи 30% отстъпка всеки понеделник.',
-    discount: 30,
-    originalPrice: 20,
-    discountedPrice: 14,
-    category: 'Weekly Special',
-    categoryBg: 'Седмична Оферта',
-    location: 'All Locations',
-    imageUrl: 'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=800',
-    partnerName: 'Fresh & Healthy',
-    path: '/offers/4',
-    rating: 4.7,
-    reviewCount: 156,
-  },
-  {
-    id: '5',
-    title: 'Family Bundle Deal',
-    titleBg: 'Семейна Пакетна Оферта',
-    description: 'Feed the whole family! Get 2 large pizzas, garlic bread, and a 2L drink for just $39.99',
-    descriptionBg: 'Нахранете цялото семейство! 2 големи пици, чеснов хляб и 2L напитка за само $39.99',
-    discount: 25,
-    originalPrice: 52,
-    discountedPrice: 39.99,
-    category: 'Family Deal',
-    categoryBg: 'Семейна Оферта',
-    location: 'All Locations',
-    imageUrl: 'https://images.unsplash.com/photo-1513104890138-7c749659a591?w=800',
-    partnerName: 'Pizza Paradise',
-    path: '/offers/5',
-    rating: 4.5,
-    reviewCount: 342,
-  },
-  {
-    id: '6',
-    title: 'Student Discount',
-    titleBg: 'Студентска Отстъпка',
-    description: 'Show your student ID and get 20% off your entire order, any day of the week!',
-    descriptionBg: 'Покажете студентската си карта и получете 20% отстъпка на цялата поръчка!',
-    discount: 20,
-    originalPrice: 50,
-    discountedPrice: 40,
-    category: 'Student',
-    categoryBg: 'Студент',
-    location: 'All Locations',
-    imageUrl: 'https://images.unsplash.com/photo-1498837167922-ddd27525d352?w=800',
-    partnerName: 'Student Cafe',
-    path: '/offers/6',
-    rating: 4.8,
-    reviewCount: 267,
-  },
-];
-
 const PromotionsPage: React.FC = () => {
   const { language } = useLanguage();
 
   // Sort promotions by discount size and limit to 6
-  const topPromotions = [...mockPromotions]
+  const topPromotions = [...mockOffers]
     .sort((a, b) => b.discount - a.discount)
     .slice(0, 6);
 
@@ -443,11 +332,11 @@ const PromotionsPage: React.FC = () => {
 
               <StatsRow>
                 <StatItem>
-                  <StatValue>{mockPromotions.length}</StatValue>
+                  <StatValue>{mockOffers.length}</StatValue>
                   <StatLabel>{content.totalOffers}</StatLabel>
                 </StatItem>
                 <StatItem>
-                  <StatValue>{mockPromotions.length}</StatValue>
+                  <StatValue>{mockOffers.length}</StatValue>
                   <StatLabel>{content.activePromotions}</StatLabel>
                 </StatItem>
                 <StatItem>

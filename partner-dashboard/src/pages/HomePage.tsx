@@ -788,7 +788,7 @@ const HomePage: React.FC = () => {
   const { scrollY } = useScroll();
   const heroOpacity = useTransform(scrollY, [0, 300], [1, 0]);
   const heroScale = useTransform(scrollY, [0, 300], [1, 0.95]);
-  const [billingPeriod, setBillingPeriod] = useState<'monthly' | 'yearly'>('yearly');
+  const [billingPeriod, setBillingPeriod] = useState<'monthly' | 'yearly'>('monthly');
 
   // Fetch top offers from API
   const { data: topOffersData, isLoading: isLoadingOffers } = useTopOffers(6);
@@ -1067,7 +1067,7 @@ const HomePage: React.FC = () => {
                   $active={billingPeriod === 'yearly'}
                   onClick={() => setBillingPeriod('yearly')}
                 >
-                  {language === 'bg' ? 'Годишен абонамент' : 'Yearly'}
+                  {language === 'bg' ? 'Годишен абонамент (20% отстъпка)' : 'Yearly (20% off)'}
                 </ToggleOption>
               </Tooltip>
               <Tooltip
@@ -1305,6 +1305,41 @@ const HomePage: React.FC = () => {
                     comment: language === 'bg'
                       ? 'Добро съотношение цена-качество. Годишният абонамент определено си заслужава.'
                       : 'Good value for money. The yearly subscription is definitely worth it.'
+                  },
+                  {
+                    author: language === 'bg' ? 'Красимира Н.' : 'Krasimira N.',
+                    rating: 5,
+                    comment: language === 'bg'
+                      ? 'Невероятни отстъпки за фитнес и здраве. Спестих си абонамента още в първия месец!'
+                      : 'Incredible discounts for fitness and wellness. I saved my subscription cost in the first month!'
+                  },
+                  {
+                    author: language === 'bg' ? 'Борис С.' : 'Boris S.',
+                    rating: 5,
+                    comment: language === 'bg'
+                      ? 'Семейството ми обожава BOOM Card! Ходим на театър и кино с чудесни отстъпки.'
+                      : 'My family loves BOOM Card! We go to theater and cinema with wonderful discounts.'
+                  },
+                  {
+                    author: language === 'bg' ? 'Анна Й.' : 'Anna Y.',
+                    rating: 4,
+                    comment: language === 'bg'
+                      ? 'Чудесно разнообразие от партньори. Винаги откривам нещо ново за изпробване.'
+                      : 'Great variety of partners. I always discover something new to try.'
+                  },
+                  {
+                    author: language === 'bg' ? 'Пламен Г.' : 'Plamen G.',
+                    rating: 5,
+                    comment: language === 'bg'
+                      ? 'Като гурме любител, офертите за ресторанти са фантастични. Пробвах места, за които само бях чувал!'
+                      : 'As a foodie, the restaurant offers are fantastic. I tried places I had only heard about!'
+                  },
+                  {
+                    author: language === 'bg' ? 'Даниела М.' : 'Daniela M.',
+                    rating: 5,
+                    comment: language === 'bg'
+                      ? 'Използвам картата всеки ден. От кафе сутрин до вечеря вечер - навсякъде има отстъпки!'
+                      : 'I use the card every day. From morning coffee to evening dinner - discounts everywhere!'
                   }
                 ].map((testimonial, index) => (
                   <div

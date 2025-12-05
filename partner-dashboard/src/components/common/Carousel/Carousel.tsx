@@ -213,19 +213,6 @@ export const Carousel: React.FC<CarouselProps> = ({
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
         </svg>
       </NavigationButton>
-
-      {totalItems > itemsPerView && (
-        <DotsContainer>
-          {Array.from({ length: maxIndex + 1 }).map((_, index) => (
-            <Dot
-              key={index}
-              $active={index === currentIndex}
-              onClick={() => goToSlide(index)}
-              aria-label={`Go to slide ${index + 1}`}
-            />
-          ))}
-        </DotsContainer>
-      )}
     </CarouselContainer>
   );
 };

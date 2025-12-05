@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { StyledHeader } from './Header.styles';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import styled from 'styled-components';
 import Button from '../../common/Button/Button';
@@ -703,6 +703,7 @@ export const Header: React.FC<HeaderProps> = ({
   className
 }) => {
   const navigate = useNavigate();
+  const location = useLocation();
   const [scrolled, setScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
@@ -848,6 +849,14 @@ export const Header: React.FC<HeaderProps> = ({
     setSearchQuery('');
   };
 
+  const handleLogoClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
+    // If already on homepage, reload the page to scroll to top
+    if (location.pathname === '/') {
+      e.preventDefault();
+      window.location.reload();
+    }
+  };
+
   const getUserInitials = () => {
     if (!user) return '';
     return `${user.firstName[0]}${user.lastName[0]}`;
@@ -889,7 +898,7 @@ export const Header: React.FC<HeaderProps> = ({
       <div className="w-full px-3 sm:px-6 lg:px-12">
         <div className="flex items-center h-16">
           {/* Logo - Far Left */}
-          <Link to="/" className="flex items-center z-50 flex-shrink-0">
+          <Link to="/" className="flex items-center z-50 flex-shrink-0" onClick={handleLogoClick}>
             <img
               src="/iconic.svg"
               alt="BOOM Card"

@@ -122,14 +122,14 @@ export const ClientCTA: React.FC<ClientCTAProps> = ({ className }) => {
 
   const content = {
     en: {
-      title: 'Start Saving with BoomCard Today',
+      title: 'Start Saving with BOOM Card Today',
       text: 'Join thousands of users enjoying exclusive deals and offers at the best venues across Bulgaria',
       primaryButton: 'Get Started',
       secondaryButton: 'Browse Offers',
       partnerButton: 'Become a Partner',
     },
     bg: {
-      title: 'Започнете да спестявате с BoomCard днес',
+      title: 'Започнете да спестявате с BOOM Card днес',
       text: 'Присъединете се към хиляди потребители, които се радват на ексклузивни оферти и промоции в най-добрите места в България',
       primaryButton: 'Започнете сега',
       secondaryButton: 'Разгледайте офертите',

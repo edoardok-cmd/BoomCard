@@ -970,8 +970,38 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
   const [animationsFinished, setAnimationsFinished] = useState(false);
   const [hideCardsOnScroll, setHideCardsOnScroll] = useState(false);
   const [shouldPlayVideo, setShouldPlayVideo] = useState(true);
+  const [logoPreloaded, setLogoPreloaded] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const heroRef = useRef<HTMLDivElement>(null);
+
+  // Preload logo image immediately on component mount for instant display
+  useEffect(() => {
+    // Add preload link to document head for high priority loading
+    const preloadLink = document.createElement('link');
+    preloadLink.rel = 'preload';
+    preloadLink.as = 'image';
+    preloadLink.href = '/zCard.png';
+    preloadLink.fetchPriority = 'high';
+    document.head.appendChild(preloadLink);
+
+    const preloadImage = new Image();
+    preloadImage.src = '/zCard.png';
+    preloadImage.onload = () => {
+      setLogoPreloaded(true);
+    };
+    // Start preloading immediately, don't wait
+    preloadImage.onerror = () => {
+      // Even if it fails, mark as loaded to show the component
+      setLogoPreloaded(true);
+    };
+
+    return () => {
+      // Cleanup preload link on unmount
+      if (preloadLink.parentNode) {
+        document.head.removeChild(preloadLink);
+      }
+    };
+  }, []);
 
   // Check if video should play based on last view time (once per 6 hours)
   useEffect(() => {
@@ -1236,36 +1266,108 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
       ) : (
         <>
           <StaticBackground />
-          {/* Static poster content - no animations */}
-          <ContentContainer style={{ opacity: 1 }}>
-            <LogoContainer style={{ opacity: 1 }}>
-              <LogoExplode
+          {/* Static poster content - no animations, no styled-components overhead */}
+          <div style={{
+            position: 'relative',
+            zIndex: 10,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '2rem',
+            maxWidth: '1200px',
+            margin: '0 auto',
+            width: '100%',
+            opacity: 1
+          }}>
+            <div style={{
+              position: 'relative',
+              marginTop: '50px',
+              marginBottom: '40px',
+              opacity: 1
+            }}>
+              <img
                 src="/zCard.png"
                 alt="Boom Card"
-                $showAnimation={false}
-                $stopAnimation={true}
-                style={{ animation: 'none' }}
+                loading="eager"
+                fetchPriority="high"
+                decoding="sync"
+                style={{
+                  width: '518px',
+                  height: 'auto',
+                  maxHeight: '324px',
+                  objectFit: 'contain',
+                  backgroundColor: '#000000',
+                  borderRadius: '20px',
+                  filter: 'drop-shadow(0 25px 50px rgba(0, 0, 0, 0.8))',
+                  display: 'block',
+                  opacity: 1,
+                  imageRendering: 'crisp-edges'
+                }}
               />
-            </LogoContainer>
+            </div>
 
-            <CTAContainer lang={language} style={{ opacity: 1 }}>
-              <CTATitle style={{ opacity: 1 }}>
+            <div style={{
+              textAlign: 'center',
+              color: 'var(--color-secondary)',
+              opacity: 1
+            }}>
+              <h1 style={{
+                fontFamily: "'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+                fontSize: language === 'bg' ? '3.2rem' : 'clamp(1.5rem, 5vw, 4rem)',
+                fontWeight: 800,
+                marginBottom: 'clamp(1rem, 3vw, 2.5rem)',
+                lineHeight: 1.2,
+                letterSpacing: '-0.02em',
+                whiteSpace: 'pre-line',
+                padding: '0 1rem',
+                background: 'linear-gradient(90deg, #ffd700 0%, #ffd700 30%, #ffed4e 50%, #ffd700 70%, #ff8800 85%, #ffd700 100%)',
+                backgroundSize: '300% 100%',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+                backgroundClip: 'text',
+                textShadow: '0 4px 20px rgba(0, 0, 0, 0.8)',
+                opacity: 1
+              }}>
                 {t.title}
-              </CTATitle>
+              </h1>
 
-              <CTASubtitle style={{ opacity: 1 }}>
+              <p style={{
+                fontFamily: "'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+                fontSize: 'clamp(0.95rem, 3vw, 1.5rem)',
+                fontWeight: 400,
+                marginBottom: 'clamp(1rem, 2vw, 2rem)',
+                color: '#ffffff',
+                opacity: 0.95,
+                textShadow: '0 2px 10px rgba(0, 0, 0, 0.8)',
+                maxWidth: '600px',
+                marginLeft: 'auto',
+                marginRight: 'auto',
+                padding: '0 1rem',
+                lineHeight: 1.5
+              }}>
                 {t.subtitle}
-              </CTASubtitle>
+              </p>
 
-              <ButtonContainer style={{ opacity: 1 }}>
-                <Link to="/subscriptions">
+              <div style={{
+                display: 'flex',
+                gap: '1rem',
+                justifyContent: 'center',
+                flexWrap: 'wrap',
+                padding: '0 1rem',
+                maxWidth: '100%',
+                width: '100%',
+                marginTop: 'clamp(20px, 3vw, 40px)',
+                opacity: 1
+              }}>
+                <Link to="/subscriptions" style={{ textDecoration: 'none' }}>
                   <Button variant="primary" size="large">
                     {t.ctaButton}
                   </Button>
                 </Link>
-              </ButtonContainer>
-            </CTAContainer>
-          </ContentContainer>
+              </div>
+            </div>
+          </div>
         </>
       )}
 

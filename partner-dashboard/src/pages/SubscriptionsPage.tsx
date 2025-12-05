@@ -481,7 +481,7 @@ const SaveBadge = styled.div`
 
 const SubscriptionsPage: React.FC = () => {
   const { language } = useLanguage();
-  const [billingPeriod, setBillingPeriod] = useState<'monthly' | 'yearly'>('yearly');
+  const [billingPeriod, setBillingPeriod] = useState<'monthly' | 'yearly'>('monthly');
 
   const subscriptionPlans = [
     {
@@ -540,7 +540,7 @@ const SubscriptionsPage: React.FC = () => {
             $active={billingPeriod === 'yearly'}
             onClick={() => setBillingPeriod('yearly')}
           >
-            {language === 'bg' ? 'Годишен абонамент' : 'Yearly'}
+            {language === 'bg' ? 'Годишен абонамент (20% отстъпка)' : 'Yearly (20% off)'}
           </ToggleOption>
           <ToggleOption
             $active={billingPeriod === 'monthly'}
@@ -617,7 +617,7 @@ const SubscriptionsPage: React.FC = () => {
                 <PlanButtonContainer>
                   <Link to="/register" style={{ width: '100%' }}>
                     <Button
-                      variant={plan.featured ? 'primary' : 'secondary'}
+                      variant="primary"
                       size="large"
                     >
                       {language === 'bg' ? 'Избери План' : 'Choose Plan'}
