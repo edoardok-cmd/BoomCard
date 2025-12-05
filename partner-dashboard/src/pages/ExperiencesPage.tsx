@@ -618,6 +618,13 @@ const ExperiencesPage: React.FC = () => {
             >
               <Title>{content.title}</Title>
               <Subtitle>{content.subtitle}</Subtitle>
+              <div style={{ marginTop: '2rem', display: 'flex', justifyContent: 'center' }}>
+                <Link to="/register">
+                  <Button variant="primary" size="large">
+                    {content.browse}
+                  </Button>
+                </Link>
+              </div>
             </motion.div>
           </HeroContent>
         </Container>
