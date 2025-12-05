@@ -7,6 +7,7 @@ interface GoogleLoginButtonProps {
   onSuccess: (response: CredentialResponse) => void;
   onError: () => void;
   text?: string;
+  language?: 'en' | 'bg';
 }
 
 const ButtonContainer = styled.div`
@@ -70,6 +71,7 @@ const GoogleButtonContent: React.FC<GoogleLoginButtonProps> = ({
   onSuccess,
   onError,
   text = 'Continue with Google',
+  language = 'en',
 }) => {
   return (
     <ButtonContainer>
@@ -82,6 +84,7 @@ const GoogleButtonContent: React.FC<GoogleLoginButtonProps> = ({
         width="100%"
         theme="outline"
         logo_alignment="left"
+        locale={language}
       />
     </ButtonContainer>
   );

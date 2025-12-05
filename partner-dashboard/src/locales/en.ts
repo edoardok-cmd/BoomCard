@@ -139,6 +139,8 @@ export const en = {
     signUpWithGoogle: 'Sign up with Google',
     signUpWithFacebook: 'Sign up with Facebook',
     createAccountButton: 'Create account',
+    switchToPartner: 'Looking for a business account?',
+    signUpAsPartner: 'Sign up as a partner',
     emailSentSuccess: 'Email sent successfully!',
     passwordResetSuccess: 'Password reset successfully!',
     emailVerifiedSuccess: 'Email verified successfully!',

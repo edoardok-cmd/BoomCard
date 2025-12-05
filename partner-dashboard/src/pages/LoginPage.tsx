@@ -278,7 +278,7 @@ const LoginPage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { login, loginWithOAuth, isLoading } = useAuth();
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
 
   const [formData, setFormData] = useState({
     email: '',
@@ -567,6 +567,7 @@ const LoginPage: React.FC = () => {
             onSuccess={handleGoogleSuccess}
             onError={handleGoogleError}
             text={t('auth.continueWithGoogle')}
+            language={language}
           />
           <FacebookLoginButton
             onSuccess={handleFacebookSuccess}

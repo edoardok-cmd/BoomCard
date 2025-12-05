@@ -8,13 +8,21 @@ import { useAuth, OAuthData } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import GoogleLoginButton from '../components/auth/GoogleLoginButton';
 import FacebookLoginButton from '../components/auth/FacebookLoginButton';
+import Header from '../components/layout/Header/Header';
+import Footer from '../components/layout/Footer/Footer';
+
+const PageWrapper = styled.div`
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+`;
 
 const PageContainer = styled.div`
-  min-height: calc(100vh - 4rem);
+  flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 2rem 1rem;
+  padding: 6rem 1rem 2rem;
   background: var(--color-background-secondary);
 `;
 
@@ -305,7 +313,7 @@ const RegisterPage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { register, loginWithOAuth, isLoading } = useAuth();
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
 
   const [formData, setFormData] = useState({
     firstName: '',
@@ -530,14 +538,16 @@ const RegisterPage: React.FC = () => {
   };
 
   return (
-    <PageContainer>
-      <RegisterCard
+    <PageWrapper>
+      <Header />
+      <PageContainer>
+        <RegisterCard
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4 }}
       >
         <Logo to="/">
-          <LogoText>BoomCard</LogoText>
+          <LogoText>BOOM Card</LogoText>
         </Logo>
 
         <Title>{t('auth.createAccount')}</Title>
@@ -765,6 +775,7 @@ const RegisterPage: React.FC = () => {
             onSuccess={handleGoogleSuccess}
             onError={handleGoogleError}
             text={t('auth.signUpWithGoogle')}
+            language={language}
           />
           <FacebookLoginButton
             onSuccess={handleFacebookSuccess}
@@ -774,7 +785,7 @@ const RegisterPage: React.FC = () => {
         </SocialButtons>
 
         <SwitchAccountType>
-          Looking for a business account? <Link to="/register/partner">Sign up as a partner</Link>
+          {t('auth.switchToPartner')} <Link to="/register/partner">{t('auth.signUpAsPartner')}</Link>
         </SwitchAccountType>
 
         <LoginPrompt>
@@ -784,7 +795,9 @@ const RegisterPage: React.FC = () => {
           </Link>
         </LoginPrompt>
       </RegisterCard>
-    </PageContainer>
+      </PageContainer>
+      <Footer />
+    </PageWrapper>
   );
 };
 

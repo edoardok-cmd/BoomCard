@@ -141,6 +141,8 @@ export const bg: TranslationKey = {
     signUpWithGoogle: 'Регистрация с Google',
     signUpWithFacebook: 'Регистрация с Facebook',
     createAccountButton: 'Създай профил',
+    switchToPartner: 'Търсите бизнес акаунт?',
+    signUpAsPartner: 'Регистрирайте се като партньор',
     emailSentSuccess: 'Имейлът е изпратен успешно!',
     passwordResetSuccess: 'Паролата е нулирана успешно!',
     emailVerifiedSuccess: 'Имейлът е потвърден успешно!',
