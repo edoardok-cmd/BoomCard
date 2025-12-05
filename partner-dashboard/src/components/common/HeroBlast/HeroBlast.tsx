@@ -1240,15 +1240,15 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
         {/* Logo - appears in final position immediately */}
         {showLogo && (
           <LogoContainer
-            initial={{ opacity: 0, scale: 0.9 }}
+            initial={shouldPlayVideo ? { opacity: 0, scale: 0.9 } : { opacity: 1, scale: 1 }}
             animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.8, ease: [0.25, 0.1, 0.25, 1] }}
+            transition={shouldPlayVideo ? { duration: 0.8, ease: [0.25, 0.1, 0.25, 1] } : { duration: 0 }}
           >
             <LogoExplode
               src="/zCard.png"
               alt="Boom Card"
-              $showAnimation={showCTA && !showSideCards}
-              $stopAnimation={showSideCards}
+              $showAnimation={shouldPlayVideo && showCTA && !showSideCards}
+              $stopAnimation={showSideCards || !shouldPlayVideo}
             />
 
             {/* Ejected Photos - cycle between dealing and returning from the logo */}
@@ -1333,47 +1333,47 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
           <AnimatePresence>
             {showCTA && (
               <CTAContainer
-                initial={{ opacity: 0, y: 30 }}
+                initial={shouldPlayVideo ? { opacity: 0, y: 30 } : { opacity: 1, y: 0 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{
+                transition={shouldPlayVideo ? {
                   delay: 1,
                   duration: 1.5,
                   ease: [0.25, 0.1, 0.25, 1]
-                }}
+                } : { duration: 0 }}
                 lang={language}
               >
                 <CTATitle
-                  initial={{ opacity: 0, y: 20 }}
+                  initial={shouldPlayVideo ? { opacity: 0, y: 20 } : { opacity: 1, y: 0 }}
                   animate={{ opacity: 1, y: 0 }}
-                  transition={{
+                  transition={shouldPlayVideo ? {
                     delay: 1,
                     duration: 1.5,
                     ease: [0.25, 0.1, 0.25, 1]
-                  }}
+                  } : { duration: 0 }}
                 >
                   {t.title}
                 </CTATitle>
 
                 <CTASubtitle
-                  initial={{ opacity: 0, y: 20 }}
+                  initial={shouldPlayVideo ? { opacity: 0, y: 20 } : { opacity: 1, y: 0 }}
                   animate={{ opacity: 1, y: 0 }}
-                  transition={{
+                  transition={shouldPlayVideo ? {
                     delay: 1.2,
                     duration: 1.5,
                     ease: [0.25, 0.1, 0.25, 1]
-                  }}
+                  } : { duration: 0 }}
                 >
                   {t.subtitle}
                 </CTASubtitle>
 
                 <ButtonContainer
-                  initial={{ opacity: 0, y: 20 }}
+                  initial={shouldPlayVideo ? { opacity: 0, y: 20 } : { opacity: 1, y: 0 }}
                   animate={{ opacity: 1, y: 0 }}
-                  transition={{
+                  transition={shouldPlayVideo ? {
                     delay: 1.4,
                     duration: 1.5,
                     ease: [0.25, 0.1, 0.25, 1]
-                  }}
+                  } : { duration: 0 }}
                 >
                   <Link to="/subscriptions">
                     <Button variant="primary" size="large">
