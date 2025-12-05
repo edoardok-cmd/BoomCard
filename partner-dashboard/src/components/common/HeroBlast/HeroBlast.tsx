@@ -123,6 +123,16 @@ const VideoOverlay = styled.div<{ $fadeOut: boolean }>`
   transition: opacity 1s ease-out;
 `;
 
+const StaticBackground = styled.div`
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: #000000;
+  z-index: 1;
+`;
+
 const ContentContainer = styled.div`
   position: relative;
   z-index: 10;
@@ -963,9 +973,9 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const heroRef = useRef<HTMLDivElement>(null);
 
-  // Check if video should play based on last view time (once per hour)
+  // Check if video should play based on last view time (once per 6 hours)
   useEffect(() => {
-    const HOUR_IN_MS = 60 * 60 * 1000; // 1 hour in milliseconds
+    const SIX_HOURS_IN_MS = 6 * 60 * 60 * 1000; // 6 hours in milliseconds
     const STORAGE_KEY = 'boomcard_video_last_played';
 
     try {
@@ -976,8 +986,8 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
         const lastPlayed = parseInt(lastPlayedStr, 10);
         const timeSinceLastPlay = now - lastPlayed;
 
-        if (timeSinceLastPlay < HOUR_IN_MS) {
-          // Less than an hour has passed - skip video
+        if (timeSinceLastPlay < SIX_HOURS_IN_MS) {
+          // Less than 6 hours has passed - skip video
           setShouldPlayVideo(false);
           // Show static content immediately
           setVideoEnded(true);
@@ -987,7 +997,7 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
           setShowSilverCard(true);
           setAnimationsFinished(true);
         } else {
-          // More than an hour has passed - play video and update timestamp
+          // More than 6 hours has passed - play video and update timestamp
           setShouldPlayVideo(true);
           localStorage.setItem(STORAGE_KEY, now.toString());
         }
@@ -1206,7 +1216,7 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
 
   return (
     <HeroContainer ref={heroRef}>
-      {shouldPlayVideo && (
+      {shouldPlayVideo ? (
         <VideoBackground
           ref={videoRef}
           autoPlay
@@ -1220,6 +1230,8 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
           <source src="/boom-blast.mp4" type="video/mp4" />
           Your browser does not support the video tag.
         </VideoBackground>
+      ) : (
+        <StaticBackground />
       )}
 
       <VideoOverlay $fadeOut={videoEnded || !shouldPlayVideo} />
