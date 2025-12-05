@@ -8,6 +8,8 @@ import { LanguageProvider } from './contexts/LanguageContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 import ProtectedRoute from './components/auth/ProtectedRoute';
 import Loading from './components/common/Loading/Loading';
+import ScrollToTop from './components/common/ScrollToTop/ScrollToTop';
+import ScrollToTopButton from './components/common/ScrollToTopButton/ScrollToTopButton';
 
 // Eager load critical pages
 import Layout from './components/Layout';
@@ -160,6 +162,7 @@ function App() {
           <AuthProvider>
             <FavoritesProvider>
               <Router>
+                <ScrollToTop />
               <Suspense fallback={<Loading fullScreen />}>
                 <Routes>
                   <Route path="/" element={<Layout />}>
@@ -435,6 +438,7 @@ function App() {
               </Suspense>
             </Router>
             <Toaster position="top-right" />
+            <ScrollToTopButton />
           </FavoritesProvider>
         </AuthProvider>
       </LanguageProvider>
