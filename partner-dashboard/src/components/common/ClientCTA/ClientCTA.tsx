@@ -88,6 +88,19 @@ const CTAButtons = styled.div`
     }
   }
 
+  /* Light theme - force white text on dark CTA background */
+  [data-theme="light"] & > a > button[class*="outline"] {
+    color: white !important;
+    border-color: rgba(255, 255, 255, 0.7);
+    font-weight: 600;
+
+    &:hover {
+      border-color: white;
+      background: rgba(255, 255, 255, 0.15);
+      color: white !important;
+    }
+  }
+
   /* Dark theme - brighter buttons for visibility */
   [data-theme="dark"] & > a > button[class*="outline"] {
     color: #ffffff;

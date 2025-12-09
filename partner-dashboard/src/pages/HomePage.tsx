@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { motion, useScroll, useTransform, AnimatePresence } from 'framer-motion';
 import { useInView } from 'react-intersection-observer';
@@ -799,6 +799,15 @@ const HomePage: React.FC = () => {
     filters: { status: 'APPROVED', limit: 3, sortBy: 'createdAt', sortOrder: 'desc' }
   });
   const [showReviewForm, setShowReviewForm] = useState(false);
+  const partnerLocationsRef = useRef<HTMLDivElement>(null);
+
+  // Scroll to partner locations section
+  const scrollToPartnerLocations = () => {
+    partnerLocationsRef.current?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'start'
+    });
+  };
 
   // Wrap mutations to match expected signatures
   const createReview = async (data: any): Promise<void> => {
@@ -1422,6 +1431,177 @@ const HomePage: React.FC = () => {
 
       {/* Client CTA */}
       <ClientCTA />
+
+      {/* Partner Locations CTA Button */}
+      <section style={{ padding: '3rem 0', background: 'var(--color-background)', textAlign: 'center' }}>
+        <Button variant="primary" size="large" onClick={scrollToPartnerLocations}>
+          {language === 'bg' ? 'Виж Всички Партньори' : 'See All Partners'}
+        </Button>
+      </section>
+
+      {/* Partner Locations Section */}
+      <section ref={partnerLocationsRef} style={{ padding: '5rem 0', background: 'var(--color-background)', scrollMarginTop: '80px' }}>
+        <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '0 1.5rem' }}>
+          <SectionTitle style={{ fontSize: '2.5rem', textAlign: 'center', marginBottom: '1rem', color: 'var(--color-text-primary)' }}>
+            {language === 'bg' ? 'Партньорски Локации' : 'Partner Locations'}
+          </SectionTitle>
+          <BodyText style={{ fontSize: '1.125rem', textAlign: 'center', marginBottom: '3rem', color: 'var(--color-text-secondary)' }}>
+            {language === 'bg'
+              ? 'Открийте партньорски места на BoomCard в България'
+              : 'Discover BoomCard partner locations across Bulgaria'}
+          </BodyText>
+
+          {/* City Filters */}
+          <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap', marginBottom: '3rem' }}>
+            {[
+              { id: 'all', labelBg: 'Всички Градове', labelEn: 'All Cities' },
+              { id: 'sofia', labelBg: 'София', labelEn: 'Sofia' },
+              { id: 'varna', labelBg: 'Варна', labelEn: 'Varna' },
+              { id: 'plovdiv', labelBg: 'Пловдив', labelEn: 'Plovdiv' },
+              { id: 'bansko', labelBg: 'Банско', labelEn: 'Bansko' }
+            ].map((city, index) => (
+              <Button
+                key={city.id}
+                variant={index === 0 ? 'primary' : 'outline'}
+                size="medium"
+              >
+                {language === 'bg' ? city.labelBg : city.labelEn}
+              </Button>
+            ))}
+          </div>
+
+          {/* Partner Cards Grid */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))', gap: '2rem' }}>
+            {[
+              {
+                name: 'Downtown Restaurant & Bar',
+                location: 'Vitosha Blvd 123, Sofia 1000',
+                description: language === 'bg'
+                  ? 'Първокласно заведение с изглед към града. Специализирано в средиземноморска кухня.'
+                  : 'Premium dining experience with rooftop terrace and city views. Specializing in Mediterranean cuisine.',
+                image: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=400&h=300&fit=crop',
+                rating: 4.8,
+                offers: 8,
+                badge: language === 'bg' ? 'Отворено Сега' : 'Open Now'
+              },
+              {
+                name: 'Wellness Spa & Fitness Center',
+                location: 'Bulgaria Blvd 88, Sofia 1404',
+                description: language === 'bg'
+                  ? 'Пълноценен спа център с модерни фитнес съоръжения, йога студия и зони за релаксация.'
+                  : 'Full-service spa with modern fitness facilities, yoga studios, and relaxation areas.',
+                image: 'https://images.unsplash.com/photo-1540555700478-4be289fbecef?w=400&h=300&fit=crop',
+                rating: 4.9,
+                offers: 5,
+                badge: language === 'bg' ? 'Отворено Сега' : 'Open Now'
+              },
+              {
+                name: 'Seaside Beach Club',
+                location: 'Sea Garden, Varna 9000',
+                description: language === 'bg'
+                  ? 'Ексклузивен плажен клуб с водни спортове, бар на басейна и зона за залез.'
+                  : 'Exclusive beach club with water sports, pool bar, and sunset lounge area.',
+                image: 'https://images.unsplash.com/photo-1559827260-dc66d52bef19?w=400&h=300&fit=crop',
+                rating: 4.7,
+                offers: 12,
+                badge: language === 'bg' ? 'Отворено Сега' : 'Open Now'
+              }
+            ].map((partner, index) => (
+              <motion.div
+                key={index}
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.4, delay: index * 0.1 }}
+                viewport={{ once: true }}
+                style={{
+                  background: 'var(--color-background)',
+                  borderRadius: '1rem',
+                  overflow: 'hidden',
+                  border: '1px solid var(--color-border)',
+                  boxShadow: 'var(--shadow-soft)',
+                  position: 'relative'
+                }}
+              >
+                {/* Badge */}
+                <div style={{
+                  position: 'absolute',
+                  top: '1rem',
+                  right: '1rem',
+                  background: '#10b981',
+                  color: 'white',
+                  padding: '0.5rem 1rem',
+                  borderRadius: '9999px',
+                  fontSize: '0.875rem',
+                  fontWeight: 600,
+                  zIndex: 10
+                }}>
+                  {partner.badge}
+                </div>
+
+                {/* Image */}
+                <div style={{
+                  height: '200px',
+                  overflow: 'hidden',
+                  background: `url(${partner.image})`,
+                  backgroundSize: 'cover',
+                  backgroundPosition: 'center'
+                }} />
+
+                {/* Content */}
+                <div style={{ padding: '1.5rem' }}>
+                  <h3 style={{
+                    fontSize: '1.25rem',
+                    fontWeight: 700,
+                    marginBottom: '0.5rem',
+                    color: 'var(--color-text-primary)'
+                  }}>
+                    {partner.name}
+                  </h3>
+                  <p style={{
+                    fontSize: '0.875rem',
+                    color: 'var(--color-text-secondary)',
+                    marginBottom: '0.75rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem'
+                  }}>
+                    📍 {partner.location}
+                  </p>
+                  <p style={{
+                    fontSize: '0.9375rem',
+                    color: 'var(--color-text-secondary)',
+                    marginBottom: '1rem',
+                    lineHeight: 1.6
+                  }}>
+                    {partner.description}
+                  </p>
+
+                  {/* Footer */}
+                  <div style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    paddingTop: '1rem',
+                    borderTop: '1px solid var(--color-border)'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                        ⭐ {partner.rating}
+                      </span>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                        🎁 {partner.offers} {language === 'bg' ? 'оферти' : 'offers'}
+                      </span>
+                    </div>
+                    <Button variant="primary" size="small">
+                      {language === 'bg' ? 'Виж Оферти' : 'View Offers'}
+                    </Button>
+                  </div>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </section>
 
       {/* Review Submission Modal */}
       <AnimatePresence>
