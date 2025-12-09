@@ -166,7 +166,8 @@
       "Bash(PATH=\"/usr/local/bin:$PATH\" /usr/local/bin/npx prisma generate:*)",
       "Read(//Users/administrator/Desktop/**)",
       "Bash(PATH=\"/usr/local/bin:$PATH\" PLAYWRIGHT_CHROMIUM_CHANNEL=chrome /usr/local/bin/npx playwright test:*)",
-      "Bash(PORT=3007 PATH=\"/usr/local/bin:$PATH\" /usr/local/bin/npm run:*)"
+      "Bash(PORT=3007 PATH=\"/usr/local/bin:$PATH\" /usr/local/bin/npm run:*)",
+      "Bash(/usr/local/bin/npx tsc --noEmit)"
     ],
     "deny": [],
     "ask": []

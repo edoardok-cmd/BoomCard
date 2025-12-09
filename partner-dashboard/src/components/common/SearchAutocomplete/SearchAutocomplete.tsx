@@ -257,7 +257,7 @@ const sampleResults: SearchResult[] = [
     categoryBg: 'Категория',
     location: '150 places',
     type: 'category',
-    path: '/categories/restaurants'
+    path: '/venues/restaurants'
   }
 ];
 

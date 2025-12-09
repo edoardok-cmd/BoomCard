@@ -40,6 +40,7 @@ const Container = styled.div`
   max-width: 1400px;
   margin: 0 auto;
   padding: 0 1.5rem;
+  text-align: center;
 `;
 
 const CTATitle = styled.h2`
@@ -47,6 +48,7 @@ const CTATitle = styled.h2`
   font-size: 3rem;
   font-weight: 800;
   margin-bottom: 1.5rem;
+  text-align: center;
 
   @media (max-width: 768px) {
     font-size: 2rem;
@@ -63,6 +65,7 @@ const CTAText = styled.p`
   margin-left: auto;
   margin-right: auto;
   line-height: 1.7;
+  text-align: center;
 
   @media (max-width: 768px) {
     font-size: 1rem;

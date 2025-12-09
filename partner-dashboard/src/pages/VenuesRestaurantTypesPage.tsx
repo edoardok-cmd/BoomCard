@@ -2,7 +2,7 @@ import React from 'react';
 import GenericPage from '../components/templates/GenericPage';
 import { useOffersByCategory } from '../hooks/useOffers';
 
-const CategoriesRestaurantTypesPage: React.FC = () => {
+const VenuesRestaurantTypesPage: React.FC = () => {
   const { data, isLoading } = useOffersByCategory('restaurants');
   const offers = data?.data || [];
 
@@ -18,4 +18,4 @@ const CategoriesRestaurantTypesPage: React.FC = () => {
   );
 };
 
-export default CategoriesRestaurantTypesPage;
+export default VenuesRestaurantTypesPage;

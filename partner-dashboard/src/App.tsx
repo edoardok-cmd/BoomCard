@@ -54,13 +54,13 @@ const PromotionsGastronomyPage = lazy(() => import('./pages/PromotionsGastronomy
 const PromotionsExtremePage = lazy(() => import('./pages/PromotionsExtremePage'));
 const PromotionsCulturalPage = lazy(() => import('./pages/PromotionsCulturalPage'));
 
-// Categories pages
-const CategoriesRestaurantTypesPage = lazy(() => import('./pages/CategoriesRestaurantTypesPage'));
-const CategoriesHotelTypesPage = lazy(() => import('./pages/CategoriesHotelTypesPage'));
-const CategoriesSpaPage = lazy(() => import('./pages/CategoriesSpaPage'));
-const CategoriesWineriesPage = lazy(() => import('./pages/CategoriesWineriesPage'));
-const CategoriesClubsPage = lazy(() => import('./pages/CategoriesClubsPage'));
-const CategoriesCafesPage = lazy(() => import('./pages/CategoriesCafesPage'));
+// Venues pages
+const VenuesRestaurantTypesPage = lazy(() => import('./pages/VenuesRestaurantTypesPage'));
+const VenuesHotelTypesPage = lazy(() => import('./pages/VenuesHotelTypesPage'));
+const VenuesSpaPage = lazy(() => import('./pages/VenuesSpaPage'));
+const VenuesWineriesPage = lazy(() => import('./pages/VenuesWineriesPage'));
+const VenuesClubsPage = lazy(() => import('./pages/VenuesClubsPage'));
+const VenuesCafesPage = lazy(() => import('./pages/VenuesCafesPage'));
 
 // Experiences pages
 const ExperiencesGastronomyPage = lazy(() => import('./pages/ExperiencesGastronomyPage'));
@@ -275,15 +275,15 @@ function App() {
                     <Route path="promotions/extreme" element={<PromotionsExtremePage />} />
                     <Route path="promotions/cultural" element={<PromotionsCulturalPage />} />
 
-                    {/* Categories routes */}
-                    <Route path="categories/restaurants" element={<CategoriesRestaurantTypesPage />} />
-                    <Route path="categories/restaurants/types" element={<CategoriesRestaurantTypesPage />} />
-                    <Route path="categories/hotels" element={<CategoriesHotelTypesPage />} />
-                    <Route path="categories/hotels/types" element={<CategoriesHotelTypesPage />} />
-                    <Route path="categories/spa" element={<CategoriesSpaPage />} />
-                    <Route path="categories/wineries" element={<CategoriesWineriesPage />} />
-                    <Route path="categories/clubs" element={<CategoriesClubsPage />} />
-                    <Route path="categories/cafes" element={<CategoriesCafesPage />} />
+                    {/* Venues routes */}
+                    <Route path="venues/restaurants" element={<VenuesRestaurantTypesPage />} />
+                    <Route path="venues/restaurants/types" element={<VenuesRestaurantTypesPage />} />
+                    <Route path="venues/hotels" element={<VenuesHotelTypesPage />} />
+                    <Route path="venues/hotels/types" element={<VenuesHotelTypesPage />} />
+                    <Route path="venues/spa" element={<VenuesSpaPage />} />
+                    <Route path="venues/wineries" element={<VenuesWineriesPage />} />
+                    <Route path="venues/clubs" element={<VenuesClubsPage />} />
+                    <Route path="venues/cafes" element={<VenuesCafesPage />} />
 
                     {/* Experiences routes */}
                     <Route path="experiences" element={<ExperiencesPage />} />

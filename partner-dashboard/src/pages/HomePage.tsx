@@ -641,6 +641,7 @@ const FeaturesList = styled.ul`
   background: var(--color-background);
   border-radius: 0.75rem;
   border: 1px solid var(--color-border);
+  flex: 1; /* Expand to fill remaining space and align buttons */
 
   @media (max-width: 768px) {
     padding: 1rem 0;
@@ -800,6 +801,8 @@ const HomePage: React.FC = () => {
   });
   const [showReviewForm, setShowReviewForm] = useState(false);
   const partnerLocationsRef = useRef<HTMLDivElement>(null);
+  const [selectedCity, setSelectedCity] = useState<string>('all');
+  const [selectedPartnerType, setSelectedPartnerType] = useState<string>('all');
 
   // Scroll to partner locations section
   const scrollToPartnerLocations = () => {
@@ -902,30 +905,116 @@ const HomePage: React.FC = () => {
       description: t('home.restaurantsBarsDesc'),
       icon: 'https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=400&h=400&fit=crop',
       count: 150,
-      path: '/categories/restaurants'
+      path: '/venues/restaurants'
     },
     {
       title: t('home.hotelsSpa'),
       description: t('home.hotelsSpaDesc'),
       icon: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=400&h=400&fit=crop',
       count: 80,
-      path: '/categories/hotels'
+      path: '/venues/hotels'
     },
     {
       title: t('home.wineries'),
       description: t('home.wineriesDesc'),
       icon: 'https://images.unsplash.com/photo-1506377247377-2a5b3b417ebb?w=400&h=400&fit=crop',
       count: 45,
-      path: '/categories/wineries'
+      path: '/venues/wineries'
     },
     {
       title: t('home.experiences'),
       description: t('home.experiencesDesc'),
       icon: 'https://images.unsplash.com/photo-1533174072545-7a4b6ad7a6c3?w=400&h=400&fit=crop',
       count: 120,
-      path: '/categories/experiences'
+      path: '/venues/experiences'
     }
   ];
+
+  // Define partner locations data
+  const allPartners = [
+    {
+      name: 'Downtown Restaurant & Bar',
+      location: 'Vitosha Blvd 123, Sofia 1000',
+      city: 'sofia',
+      type: 'restaurant',
+      typeLabelBg: 'Ресторант',
+      typeLabelEn: 'Restaurant',
+      description: language === 'bg'
+        ? 'Първокласно заведение с изглед към града. Специализирано в средиземноморска кухня.'
+        : 'Premium dining experience with rooftop terrace and city views. Specializing in Mediterranean cuisine.',
+      image: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=400&h=300&fit=crop',
+      rating: 4.8,
+      offers: 8,
+      badge: language === 'bg' ? 'Отворено Сега' : 'Open Now'
+    },
+    {
+      name: 'Wellness Spa & Fitness Center',
+      location: 'Bulgaria Blvd 88, Sofia 1404',
+      city: 'sofia',
+      type: 'spa',
+      typeLabelBg: 'Спа',
+      typeLabelEn: 'Spa',
+      description: language === 'bg'
+        ? 'Пълноценен спа център с модерни фитнес съоръжения, йога студия и зони за релаксация.'
+        : 'Full-service spa with modern fitness facilities, yoga studios, and relaxation areas.',
+      image: 'https://images.unsplash.com/photo-1540555700478-4be289fbecef?w=400&h=300&fit=crop',
+      rating: 4.9,
+      offers: 5,
+      badge: language === 'bg' ? 'Отворено Сега' : 'Open Now'
+    },
+    {
+      name: 'Seaside Beach Club',
+      location: 'Sea Garden, Varna 9000',
+      city: 'varna',
+      type: 'club',
+      typeLabelBg: 'Клуб',
+      typeLabelEn: 'Club',
+      description: language === 'bg'
+        ? 'Ексклузивен плажен клуб с водни спортове, бар на басейна и зона за залез.'
+        : 'Exclusive beach club with water sports, pool bar, and sunset lounge area.',
+      image: 'https://images.unsplash.com/photo-1559827260-dc66d52bef19?w=400&h=300&fit=crop',
+      rating: 4.7,
+      offers: 12,
+      badge: language === 'bg' ? 'Отворено Сега' : 'Open Now'
+    },
+    {
+      name: 'Mountain Lodge Hotel',
+      location: 'Pirin Street 45, Bansko 2770',
+      city: 'bansko',
+      type: 'hotel',
+      typeLabelBg: 'Хотел',
+      typeLabelEn: 'Hotel',
+      description: language === 'bg'
+        ? 'Уютен планински хотел с панорамна гледка към Пирин и директен достъп до ски пистите.'
+        : 'Cozy mountain lodge with panoramic Pirin views and direct ski slope access.',
+      image: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=400&h=300&fit=crop',
+      rating: 4.6,
+      offers: 6,
+      badge: language === 'bg' ? 'Отворено Сега' : 'Open Now'
+    },
+    {
+      name: 'Wine Cellar Melnik',
+      location: 'Old Town, Plovdiv 4000',
+      city: 'plovdiv',
+      type: 'winery',
+      typeLabelBg: 'Винарна',
+      typeLabelEn: 'Winery',
+      description: language === 'bg'
+        ? 'Традиционна винарна с богата колекция местни вина и дегустационна зала.'
+        : 'Traditional winery with rich local wine collection and tasting room.',
+      image: 'https://images.unsplash.com/photo-1506377247377-2a5b3b417ebb?w=400&h=300&fit=crop',
+      rating: 4.8,
+      offers: 4,
+      badge: language === 'bg' ? 'Отворено Сега' : 'Open Now'
+    }
+  ];
+
+  // Filter partners based on selected city and type
+  const filteredPartners = allPartners.filter(partner => {
+    const cityMatch = selectedCity === 'all' || partner.city === selectedCity;
+    const typeMatch = selectedPartnerType === 'all' || partner.type === selectedPartnerType;
+    return cityMatch && typeMatch;
+  });
 
   const subscriptionPlans = [
     {
@@ -1433,7 +1522,7 @@ const HomePage: React.FC = () => {
       <ClientCTA />
 
       {/* Partner Locations CTA Button */}
-      <section style={{ padding: '3rem 0', background: 'var(--color-background)', textAlign: 'center' }}>
+      <section style={{ padding: '3rem 0', background: 'var(--color-background)', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
         <Button variant="primary" size="large" onClick={scrollToPartnerLocations}>
           {language === 'bg' ? 'Виж Всички Партньори' : 'See All Partners'}
         </Button>
@@ -1452,61 +1541,85 @@ const HomePage: React.FC = () => {
           </BodyText>
 
           {/* City Filters */}
-          <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap', marginBottom: '3rem' }}>
-            {[
-              { id: 'all', labelBg: 'Всички Градове', labelEn: 'All Cities' },
-              { id: 'sofia', labelBg: 'София', labelEn: 'Sofia' },
-              { id: 'varna', labelBg: 'Варна', labelEn: 'Varna' },
-              { id: 'plovdiv', labelBg: 'Пловдив', labelEn: 'Plovdiv' },
-              { id: 'bansko', labelBg: 'Банско', labelEn: 'Bansko' }
-            ].map((city, index) => (
-              <Button
-                key={city.id}
-                variant={index === 0 ? 'primary' : 'outline'}
-                size="medium"
-              >
-                {language === 'bg' ? city.labelBg : city.labelEn}
-              </Button>
-            ))}
+          <div style={{ marginBottom: '1rem' }}>
+            <BodyText style={{ fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.75rem', color: 'var(--color-text-primary)', textAlign: 'center' }}>
+              {language === 'bg' ? 'Град:' : 'City:'}
+            </BodyText>
+            <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap' }}>
+              {[
+                { id: 'all', labelBg: 'Всички Градове', labelEn: 'All Cities' },
+                { id: 'sofia', labelBg: 'София', labelEn: 'Sofia' },
+                { id: 'varna', labelBg: 'Варна', labelEn: 'Varna' },
+                { id: 'plovdiv', labelBg: 'Пловдив', labelEn: 'Plovdiv' },
+                { id: 'bansko', labelBg: 'Банско', labelEn: 'Bansko' }
+              ].map((city) => (
+                <Button
+                  key={city.id}
+                  variant={selectedCity === city.id ? 'primary' : 'outline'}
+                  size="medium"
+                  onClick={() => setSelectedCity(city.id)}
+                >
+                  {language === 'bg' ? city.labelBg : city.labelEn}
+                </Button>
+              ))}
+            </div>
           </div>
 
+          {/* Partner Type Filters */}
+          <div style={{ marginBottom: '3rem' }}>
+            <BodyText style={{ fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.75rem', color: 'var(--color-text-primary)', textAlign: 'center' }}>
+              {language === 'bg' ? 'Тип заведение:' : 'Venue Type:'}
+            </BodyText>
+            <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap' }}>
+              {[
+                { id: 'all', labelBg: 'Всички Типове', labelEn: 'All Types' },
+                { id: 'restaurant', labelBg: 'Ресторанти', labelEn: 'Restaurants' },
+                { id: 'hotel', labelBg: 'Хотели', labelEn: 'Hotels' },
+                { id: 'spa', labelBg: 'Спа', labelEn: 'Spa' },
+                { id: 'club', labelBg: 'Клубове', labelEn: 'Clubs' },
+                { id: 'winery', labelBg: 'Винарни', labelEn: 'Wineries' }
+              ].map((type) => (
+                <Button
+                  key={type.id}
+                  variant={selectedPartnerType === type.id ? 'primary' : 'outline'}
+                  size="medium"
+                  onClick={() => setSelectedPartnerType(type.id)}
+                >
+                  {language === 'bg' ? type.labelBg : type.labelEn}
+                </Button>
+              ))}
+            </div>
+          </div>
+
+          {/* Results Count */}
+          <BodyText style={{ fontSize: '1rem', textAlign: 'center', marginBottom: '2rem', color: 'var(--color-text-secondary)' }}>
+            {language === 'bg'
+              ? `Намерени ${filteredPartners.length} ${filteredPartners.length === 1 ? 'партньор' : 'партньора'}`
+              : `Found ${filteredPartners.length} ${filteredPartners.length === 1 ? 'partner' : 'partners'}`}
+          </BodyText>
+
           {/* Partner Cards Grid */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))', gap: '2rem' }}>
-            {[
-              {
-                name: 'Downtown Restaurant & Bar',
-                location: 'Vitosha Blvd 123, Sofia 1000',
-                description: language === 'bg'
-                  ? 'Първокласно заведение с изглед към града. Специализирано в средиземноморска кухня.'
-                  : 'Premium dining experience with rooftop terrace and city views. Specializing in Mediterranean cuisine.',
-                image: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=400&h=300&fit=crop',
-                rating: 4.8,
-                offers: 8,
-                badge: language === 'bg' ? 'Отворено Сега' : 'Open Now'
-              },
-              {
-                name: 'Wellness Spa & Fitness Center',
-                location: 'Bulgaria Blvd 88, Sofia 1404',
-                description: language === 'bg'
-                  ? 'Пълноценен спа център с модерни фитнес съоръжения, йога студия и зони за релаксация.'
-                  : 'Full-service spa with modern fitness facilities, yoga studios, and relaxation areas.',
-                image: 'https://images.unsplash.com/photo-1540555700478-4be289fbecef?w=400&h=300&fit=crop',
-                rating: 4.9,
-                offers: 5,
-                badge: language === 'bg' ? 'Отворено Сега' : 'Open Now'
-              },
-              {
-                name: 'Seaside Beach Club',
-                location: 'Sea Garden, Varna 9000',
-                description: language === 'bg'
-                  ? 'Ексклузивен плажен клуб с водни спортове, бар на басейна и зона за залез.'
-                  : 'Exclusive beach club with water sports, pool bar, and sunset lounge area.',
-                image: 'https://images.unsplash.com/photo-1559827260-dc66d52bef19?w=400&h=300&fit=crop',
-                rating: 4.7,
-                offers: 12,
-                badge: language === 'bg' ? 'Отворено Сега' : 'Open Now'
-              }
-            ].map((partner, index) => (
+          {filteredPartners.length === 0 ? (
+            <div style={{
+              textAlign: 'center',
+              padding: '4rem 2rem',
+              background: 'var(--color-background)',
+              borderRadius: '1rem',
+              border: '1px solid var(--color-border)'
+            }}>
+              <div style={{ fontSize: '4rem', marginBottom: '1rem' }}>🔍</div>
+              <SectionTitle style={{ fontSize: '1.5rem', marginBottom: '0.5rem', color: 'var(--color-text-primary)' }}>
+                {language === 'bg' ? 'Няма намерени партньори' : 'No Partners Found'}
+              </SectionTitle>
+              <BodyText style={{ color: 'var(--color-text-secondary)' }}>
+                {language === 'bg'
+                  ? 'Опитайте да промените филтрите за да видите повече резултати'
+                  : 'Try changing the filters to see more results'}
+              </BodyText>
+            </div>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))', gap: '2rem' }}>
+              {filteredPartners.map((partner, index) => (
               <motion.div
                 key={index}
                 initial={{ opacity: 0, y: 20 }}
@@ -1567,6 +1680,18 @@ const HomePage: React.FC = () => {
                   }}>
                     📍 {partner.location}
                   </p>
+                  <div style={{
+                    display: 'inline-block',
+                    padding: '0.25rem 0.75rem',
+                    borderRadius: '9999px',
+                    fontSize: '0.75rem',
+                    fontWeight: 600,
+                    marginBottom: '0.75rem',
+                    background: 'var(--color-primary)',
+                    color: 'var(--color-secondary)'
+                  }}>
+                    {language === 'bg' ? partner.typeLabelBg : partner.typeLabelEn}
+                  </div>
                   <p style={{
                     fontSize: '0.9375rem',
                     color: 'var(--color-text-secondary)',
@@ -1598,8 +1723,9 @@ const HomePage: React.FC = () => {
                   </div>
                 </div>
               </motion.div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
       </section>
 

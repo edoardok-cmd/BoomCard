@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import GenericPage from '../components/templates/GenericPage';
 import Button from '../components/common/Button/Button';
+import Tooltip from '../components/common/Tooltip/Tooltip';
 import { useLanguage } from '../contexts/LanguageContext';
 import styled from 'styled-components';
 
@@ -354,6 +355,7 @@ const FeaturesList = styled.ul`
   background: var(--color-background);
   border-radius: 0.75rem;
   border: 1px solid var(--color-border);
+  flex: 1; /* Expand to fill remaining space and align buttons */
 
   @media (max-width: 768px) {
     padding: 1rem 0;
@@ -494,6 +496,11 @@ const SubscriptionsPage: React.FC = () => {
         language === 'bg' ? '24 часа премиум услуга' : '24 hours premium service',
         language === 'bg' ? 'Важи една седмица' : 'Valid for one week',
         language === 'bg' ? 'Достъп до основни оферти' : 'Access to basic offers'
+      ],
+      tooltips: [
+        language === 'bg' ? 'Пробвайте всички премиум функции за 24 часа' : 'Try all premium features for 24 hours',
+        language === 'bg' ? 'Достъп за 7 дни след активиране' : 'Access for 7 days after activation',
+        language === 'bg' ? 'Над 500 партньори в цялата страна' : 'Over 500 partners across the country'
       ]
     },
     {
@@ -507,6 +514,12 @@ const SubscriptionsPage: React.FC = () => {
         language === 'bg' ? 'Достъп до основни оферти' : 'Access to basic offers',
         language === 'bg' ? 'До 10% отстъпка' : 'Up to 10% discount',
         language === 'bg' ? 'Кешбек в приложението' : 'In-app cashback'
+      ],
+      tooltips: [
+        language === 'bg' ? 'Пробвайте всички премиум функции за 24 часа' : 'Try all premium features for 24 hours',
+        language === 'bg' ? 'Над 500 партньори в цялата страна' : 'Over 500 partners across the country',
+        language === 'bg' ? 'Ексклузивни отстъпки в избрани заведения' : 'Exclusive discounts at selected venues',
+        language === 'bg' ? 'Връщане на пари при всяка покупка' : 'Cashback on every purchase'
       ]
     },
     {
@@ -522,6 +535,13 @@ const SubscriptionsPage: React.FC = () => {
         language === 'bg' ? 'В зависимост от заведението' : 'Depending on the venue',
         language === 'bg' ? 'Приоритетна поддръжка' : 'Priority support',
         language === 'bg' ? 'Ексклузивни оферти' : 'Exclusive offers'
+      ],
+      tooltips: [
+        language === 'bg' ? 'Пробвайте всички премиум функции за 24 часа' : 'Try all premium features for 24 hours',
+        language === 'bg' ? 'Най-високи отстъпки във всички партньори' : 'Highest discounts at all partners',
+        language === 'bg' ? 'Отстъпките варират според партньора' : 'Discounts vary by partner',
+        language === 'bg' ? 'Получете помощ в рамките на 1 час' : 'Get help within 1 hour',
+        language === 'bg' ? 'Достъп до лимитирани VIP промоции' : 'Access to limited VIP promotions'
       ]
     }
   ];
@@ -536,23 +556,44 @@ const SubscriptionsPage: React.FC = () => {
       {/* Billing Period Toggle */}
       <BillingToggleContainer>
         <BillingToggle>
-          <ToggleOption
-            $active={billingPeriod === 'yearly'}
-            onClick={() => setBillingPeriod('yearly')}
+          <Tooltip
+            content={language === 'bg'
+              ? 'Плащай годишно и спести 20% от общата цена'
+              : 'Pay yearly and save 20% on total price'}
+            position="top"
           >
-            {language === 'bg' ? 'Годишен абонамент (20% отстъпка)' : 'Yearly (20% off)'}
-          </ToggleOption>
-          <ToggleOption
-            $active={billingPeriod === 'monthly'}
-            onClick={() => setBillingPeriod('monthly')}
+            <ToggleOption
+              $active={billingPeriod === 'yearly'}
+              onClick={() => setBillingPeriod('yearly')}
+            >
+              {language === 'bg' ? 'Годишен абонамент (20% отстъпка)' : 'Yearly (20% off)'}
+            </ToggleOption>
+          </Tooltip>
+          <Tooltip
+            content={language === 'bg'
+              ? 'Плащай всеки месец за по-голяма гъвкавост'
+              : 'Pay monthly for more flexibility'}
+            position="top"
           >
-            {language === 'bg' ? 'Месечен абонамент' : 'Monthly'}
-          </ToggleOption>
+            <ToggleOption
+              $active={billingPeriod === 'monthly'}
+              onClick={() => setBillingPeriod('monthly')}
+            >
+              {language === 'bg' ? 'Месечен абонамент' : 'Monthly'}
+            </ToggleOption>
+          </Tooltip>
         </BillingToggle>
         {billingPeriod === 'yearly' && (
-          <SaveBadge>
-            {language === 'bg' ? 'Спести 20%' : 'Save 20%'}
-          </SaveBadge>
+          <Tooltip
+            content={language === 'bg'
+              ? 'Спестявате 2 месеца с годишен абонамент'
+              : 'You save 2 months with yearly subscription'}
+            position="bottom"
+          >
+            <SaveBadge>
+              {language === 'bg' ? 'Спести 20%' : 'Save 20%'}
+            </SaveBadge>
+          </Tooltip>
         )}
       </BillingToggleContainer>
 
@@ -573,9 +614,16 @@ const SubscriptionsPage: React.FC = () => {
             >
               {/* Most Popular Badge */}
               {plan.featured && (
-                <PopularBadge>
-                  {language === 'bg' ? 'Най-популярен' : 'Most Popular'}
-                </PopularBadge>
+                <Tooltip
+                  content={language === 'bg'
+                    ? 'Избран от 70% от нашите клиенти'
+                    : 'Chosen by 70% of our customers'}
+                  position="top"
+                >
+                  <PopularBadge>
+                    {language === 'bg' ? 'Най-популярен' : 'Most Popular'}
+                  </PopularBadge>
+                </Tooltip>
               )}
 
               {/* Credit Card matching HomePage design */}
@@ -608,21 +656,34 @@ const SubscriptionsPage: React.FC = () => {
               <PlanDetails>
                 <FeaturesList>
                   {plan.features.map((feature, i) => (
-                    <FeatureItem key={i}>
-                      {feature}
-                    </FeatureItem>
+                    <Tooltip
+                      key={i}
+                      content={(plan as any).tooltips?.[i] || ''}
+                      position="right"
+                    >
+                      <FeatureItem>
+                        {feature}
+                      </FeatureItem>
+                    </Tooltip>
                   ))}
                 </FeaturesList>
 
                 <PlanButtonContainer>
-                  <Link to="/register" style={{ width: '100%' }}>
-                    <Button
-                      variant="primary"
-                      size="large"
-                    >
-                      {language === 'bg' ? 'Избери План' : 'Choose Plan'}
-                    </Button>
-                  </Link>
+                  <Tooltip
+                    content={language === 'bg'
+                      ? 'Преминете към плащане и активирайте плана си'
+                      : 'Proceed to payment and activate your plan'}
+                    position="bottom"
+                  >
+                    <Link to="/register" style={{ width: '100%' }}>
+                      <Button
+                        variant={plan.featured ? 'primary' : 'secondary'}
+                        size="large"
+                      >
+                        {language === 'bg' ? 'Избери План' : 'Choose Plan'}
+                      </Button>
+                    </Link>
+                  </Tooltip>
                 </PlanButtonContainer>
               </PlanDetails>
             </PlanCardWrapper>

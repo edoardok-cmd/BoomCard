@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import styled from 'styled-components';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -36,6 +36,7 @@ const Hero = styled.div`
   }
   color: white;
   padding: 4rem 0 3rem;
+  text-align: center;
 
   @media (max-width: 768px) {
     padding: 3rem 0 2rem;
@@ -50,6 +51,8 @@ const Container = styled.div`
 
 const HeroContent = styled.div`
   max-width: 800px;
+  margin: 0 auto;
+  text-align: center;
 `;
 
 const Breadcrumb = styled.div`
@@ -58,6 +61,7 @@ const Breadcrumb = styled.div`
   font-size: 0.875rem;
   margin-bottom: 1rem;
   opacity: 0.8;
+  justify-content: center;
 
   a {
     color: white;
@@ -89,10 +93,19 @@ const Subtitle = styled.p`
   font-size: 1.25rem;
   opacity: 0.9;
   line-height: 1.6;
+  margin-bottom: 2rem;
 
   @media (max-width: 768px) {
     font-size: 1rem;
   }
+`;
+
+const CTAButtonWrapper = styled.div`
+  display: flex;
+  justify-content: center;
+  gap: 1rem;
+  margin-top: 2rem;
+  flex-wrap: wrap;
 `;
 
 const ContentWrapper = styled.div`
@@ -433,6 +446,18 @@ const CategoryListingPage: React.FC = () => {
                 ? `${t('categoryListing.browseExclusiveOffers')} ${filteredOffers.length} ексклузивни оферти с отстъпки до 70%`
                 : `${t('categoryListing.browseExclusiveOffers')} ${filteredOffers.length} exclusive offers with up to 70% off`}
             </Subtitle>
+            <CTAButtonWrapper>
+              <Link to="/register">
+                <Button variant="secondary" size="large">
+                  {language === 'bg' ? 'Започнете сега' : 'Get Started'}
+                </Button>
+              </Link>
+              <Link to="/subscriptions">
+                <Button variant="outline" size="large">
+                  {language === 'bg' ? 'Вижте Планове' : 'View Plans'}
+                </Button>
+              </Link>
+            </CTAButtonWrapper>
           </HeroContent>
         </Container>
       </Hero>
