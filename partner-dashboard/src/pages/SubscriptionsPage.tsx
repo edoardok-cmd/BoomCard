@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import GenericPage from '../components/templates/GenericPage';
 import Button from '../components/common/Button/Button';
-import Tooltip from '../components/common/Tooltip/Tooltip';
 import { useLanguage } from '../contexts/LanguageContext';
 import styled from 'styled-components';
 
@@ -580,44 +579,23 @@ const SubscriptionsPage: React.FC = () => {
       {/* Billing Period Toggle */}
       <BillingToggleContainer>
         <BillingToggle>
-          <Tooltip
-            content={language === 'bg'
-              ? 'Плащай годишно и спести 20% от общата цена'
-              : 'Pay yearly and save 20% on total price'}
-            position="top"
+          <ToggleOption
+            $active={billingPeriod === 'yearly'}
+            onClick={() => setBillingPeriod('yearly')}
           >
-            <ToggleOption
-              $active={billingPeriod === 'yearly'}
-              onClick={() => setBillingPeriod('yearly')}
-            >
-              {language === 'bg' ? 'Годишен абонамент (20% отстъпка)' : 'Yearly (20% off)'}
-            </ToggleOption>
-          </Tooltip>
-          <Tooltip
-            content={language === 'bg'
-              ? 'Плащай всеки месец за по-голяма гъвкавост'
-              : 'Pay monthly for more flexibility'}
-            position="top"
+            {language === 'bg' ? 'Годишен абонамент (20% отстъпка)' : 'Yearly (20% off)'}
+          </ToggleOption>
+          <ToggleOption
+            $active={billingPeriod === 'monthly'}
+            onClick={() => setBillingPeriod('monthly')}
           >
-            <ToggleOption
-              $active={billingPeriod === 'monthly'}
-              onClick={() => setBillingPeriod('monthly')}
-            >
-              {language === 'bg' ? 'Месечен абонамент' : 'Monthly'}
-            </ToggleOption>
-          </Tooltip>
+            {language === 'bg' ? 'Месечен абонамент' : 'Monthly'}
+          </ToggleOption>
         </BillingToggle>
         {billingPeriod === 'yearly' && (
-          <Tooltip
-            content={language === 'bg'
-              ? 'Спестявате 2 месеца с годишен абонамент'
-              : 'You save 2 months with yearly subscription'}
-            position="bottom"
-          >
-            <SaveBadge>
-              {language === 'bg' ? 'Спести 20%' : 'Save 20%'}
-            </SaveBadge>
-          </Tooltip>
+          <SaveBadge>
+            {language === 'bg' ? 'Спести 20%' : 'Save 20%'}
+          </SaveBadge>
         )}
       </BillingToggleContainer>
 
