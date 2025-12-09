@@ -195,6 +195,7 @@ export const ClientCTA: React.FC<ClientCTAProps> = ({ className }) => {
       text: 'Join thousands of users enjoying exclusive deals and offers at the best venues across Bulgaria',
       primaryButton: 'Get Started',
       secondaryButton: 'Browse Offers',
+      viewPartnersButton: 'View All Partners',
       partnerButton: 'Become a Partner',
     },
     bg: {
@@ -202,6 +203,7 @@ export const ClientCTA: React.FC<ClientCTAProps> = ({ className }) => {
       text: 'Присъединете се към хиляди потребители, които се радват на ексклузивни оферти и промоции в най-добрите места в България',
       primaryButton: 'Започнете сега',
       secondaryButton: 'Разгледайте офертите',
+      viewPartnersButton: 'Виж Всички Партньори',
       partnerButton: 'Станете партньор',
     },
   };
@@ -222,6 +224,11 @@ export const ClientCTA: React.FC<ClientCTAProps> = ({ className }) => {
           <Link to="/search">
             <Button variant="outline" size="large">
               {t.secondaryButton}
+            </Button>
+          </Link>
+          <Link to="/partners#locations">
+            <Button variant="outline" size="large">
+              {t.viewPartnersButton}
             </Button>
           </Link>
           <Link to="/partners#application">

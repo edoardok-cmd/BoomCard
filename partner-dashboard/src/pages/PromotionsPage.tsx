@@ -371,9 +371,9 @@ const PromotionsPage: React.FC = () => {
           </OffersGrid>
 
           <div style={{ textAlign: 'center', marginTop: '3rem' }}>
-            <Link to="/partners#locations">
+            <Link to="/search">
               <Button variant="primary" size="large">
-                {language === 'bg' ? 'Виж Всички Партньори' : 'View All Partners'}
+                {language === 'bg' ? 'Виж Всички Оферти' : 'View All Offers'}
               </Button>
             </Link>
           </div>
