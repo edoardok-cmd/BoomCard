@@ -878,6 +878,22 @@ const ButtonContainer = styled(motion.div)`
     word-wrap: break-word;
   }
 
+  /* Primary button - golden gradient for light and dark themes */
+  a:first-child button {
+    background: linear-gradient(135deg, #ffd700 0%, #ffed4e 100%) !important;
+    color: #000000 !important;
+    border: 2px solid #ffd700 !important;
+    font-weight: 600 !important;
+    box-shadow: 0 4px 15px rgba(255, 215, 0, 0.4) !important;
+
+    &:hover {
+      background: linear-gradient(135deg, #ffed4e 0%, #ffd700 100%) !important;
+      color: #000000 !important;
+      border-color: #ffed4e !important;
+      box-shadow: 0 6px 20px rgba(255, 215, 0, 0.5) !important;
+    }
+  }
+
   /* Enhanced button contrast for vibrant color mode */
   [data-theme="color"] & {
     button {
@@ -890,19 +906,21 @@ const ButtonContainer = styled(motion.div)`
         0 10px 27px -5px rgba(59, 130, 246, 0.6);
     }
 
-    /* Primary button - ultra bold blue gradient */
-    button:first-child {
-      background: linear-gradient(135deg, #1d4ed8 0%, #3b82f6 50%, #06b6d4 100%) !important;
-      color: #ffffff !important;
-      border: 3px solid rgba(255, 255, 255, 0.3);
-      text-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
-      animation: heroPrimaryPulse 2.6s ease-in-out infinite;
+    /* Primary button - golden gradient for color theme too */
+    button:first-child,
+    a:first-child button {
+      background: linear-gradient(135deg, #ffd700 0%, #ffed4e 100%) !important;
+      color: #000000 !important;
+      border: 2px solid #ffd700 !important;
+      box-shadow: 0 4px 15px rgba(255, 215, 0, 0.4) !important;
+      text-shadow: none;
+      animation: none;
 
       &:hover {
-        box-shadow:
-          0 12px 34px -5px rgba(0, 0, 0, 0.6),
-          0 14px 37px -5px rgba(59, 130, 246, 0.8),
-          0 8px 27px -5px rgba(6, 182, 212, 0.7) !important;
+        background: linear-gradient(135deg, #ffed4e 0%, #ffd700 100%) !important;
+        color: #000000 !important;
+        border-color: #ffed4e !important;
+        box-shadow: 0 6px 20px rgba(255, 215, 0, 0.5) !important;
         transform: translateY(-3px) scale(1.05) !important;
       }
     }

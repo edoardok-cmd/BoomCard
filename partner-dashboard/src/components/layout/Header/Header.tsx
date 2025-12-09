@@ -7,6 +7,7 @@ import Button from '../../common/Button/Button';
 import MegaMenu from '../Navigation/MegaMenu';
 import NotificationCenter from '../../common/NotificationCenter/NotificationCenter';
 import SocialShareButton from '../../common/ShareButton/ShareButton';
+import Tooltip from '../../common/Tooltip/Tooltip';
 import { navigationConfig } from '../../../types/navigation';
 import { useFavorites } from '../../../contexts/FavoritesContext';
 import { useAuth } from '../../../contexts/AuthContext';
@@ -915,75 +916,88 @@ export const Header: React.FC<HeaderProps> = ({
           {/* Right Side Utilities - Always Visible */}
           <div className="flex items-center gap-1.5 sm:gap-2 md:gap-3 flex-shrink-0 ml-auto">
             {/* Search Button */}
-            <SearchButton
-              onClick={() => setSearchOpen(!searchOpen)}
-              aria-label="Search"
-              title={language === 'bg' ? 'Търсене' : 'Search'}
-            >
-              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                />
-              </svg>
-            </SearchButton>
+            <Tooltip content={language === 'bg' ? 'Търсене' : 'Search'} position="bottom">
+              <SearchButton
+                onClick={() => setSearchOpen(!searchOpen)}
+                aria-label="Search"
+              >
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                  />
+                </svg>
+              </SearchButton>
+            </Tooltip>
 
             {/* Nearby Offers - Desktop only */}
-            <FavoritesLink to="/nearby" aria-label="Nearby Offers" className="hidden lg:flex">
-              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"
-                />
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"
-                />
-              </svg>
-            </FavoritesLink>
+            <Tooltip content={language === 'bg' ? 'Близки оферти' : 'Nearby Offers'} position="bottom">
+              <FavoritesLink to="/nearby" aria-label="Nearby Offers" className="hidden lg:flex">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"
+                  />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"
+                  />
+                </svg>
+              </FavoritesLink>
+            </Tooltip>
 
             {/* Favorites - Desktop only */}
-            <FavoritesLink to="/favorites" aria-label="Favorites" className="hidden lg:flex">
-              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"
-                />
-              </svg>
-              <AnimatePresence>
-                {favoritesCount > 0 && (
-                  <FavoritesBadge
-                    initial={{ scale: 0 }}
-                    animate={{ scale: 1 }}
-                    exit={{ scale: 0 }}
-                    transition={{ type: 'spring', stiffness: 500, damping: 30 }}
-                  >
-                    {favoritesCount > 99 ? '99+' : favoritesCount}
-                  </FavoritesBadge>
-                )}
-              </AnimatePresence>
-            </FavoritesLink>
+            <Tooltip content={language === 'bg' ? 'Любими' : 'Favorites'} position="bottom">
+              <FavoritesLink to="/favorites" aria-label="Favorites" className="hidden lg:flex">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"
+                  />
+                </svg>
+                <AnimatePresence>
+                  {favoritesCount > 0 && (
+                    <FavoritesBadge
+                      initial={{ scale: 0 }}
+                      animate={{ scale: 1 }}
+                      exit={{ scale: 0 }}
+                      transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+                    >
+                      {favoritesCount > 99 ? '99+' : favoritesCount}
+                    </FavoritesBadge>
+                  )}
+                </AnimatePresence>
+              </FavoritesLink>
+            </Tooltip>
 
             {/* Notification Center - Hidden on small screens */}
-            {isAuthenticated && <div className="hidden sm:flex"><NotificationCenter /></div>}
+            {isAuthenticated && (
+              <div className="hidden sm:flex">
+                <Tooltip content={language === 'bg' ? 'Известия' : 'Notifications'} position="bottom">
+                  <NotificationCenter />
+                </Tooltip>
+              </div>
+            )}
 
             {/* Theme Switcher - Desktop only */}
             <ThemeMenuContainer ref={themeMenuRef} className="hidden lg:flex">
-              <ThemeButton
-                onClick={() => setThemeMenuOpen(!themeMenuOpen)}
-                aria-label="Change theme"
-                data-testid="theme-picker"
-              >
-                {getThemeIcon()}
-              </ThemeButton>
+              <Tooltip content={language === 'bg' ? 'Промени тема' : 'Change Theme'} position="bottom">
+                <ThemeButton
+                  onClick={() => setThemeMenuOpen(!themeMenuOpen)}
+                  aria-label="Change theme"
+                  data-testid="theme-picker"
+                >
+                  {getThemeIcon()}
+                </ThemeButton>
+              </Tooltip>
 
               <AnimatePresence>
                 {themeMenuOpen && (
@@ -1029,21 +1043,22 @@ export const Header: React.FC<HeaderProps> = ({
             </ThemeMenuContainer>
 
             {/* Language Toggle - Desktop only */}
-            <LanguageButton
-              className="hidden lg:flex"
-              onClick={() => setLanguage(language === 'en' ? 'bg' : 'en')}
-              aria-label="Toggle language"
-              title={language === 'en' ? 'Switch to Bulgarian' : 'Switch to English'}
-            >
-              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9"
-                />
-              </svg>
-            </LanguageButton>
+            <Tooltip content={language === 'en' ? 'Switch to Bulgarian' : 'Превключи на английски'} position="bottom">
+              <LanguageButton
+                className="hidden lg:flex"
+                onClick={() => setLanguage(language === 'en' ? 'bg' : 'en')}
+                aria-label="Toggle language"
+              >
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9"
+                  />
+                </svg>
+              </LanguageButton>
+            </Tooltip>
 
             {isAuthenticated && user ? (
               <UserMenuContainer ref={userMenuRef}>

@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useInView } from 'react-intersection-observer';
 import styled from 'styled-components';
@@ -416,7 +416,7 @@ const FormTitle = styled.h3`
 
 const FormGrid = styled.div`
   display: grid;
-  gap: 1.25rem;
+  gap: 2rem;
 `;
 
 const FormGroup = styled.div``;
@@ -427,6 +427,7 @@ const Label = styled.label`
   font-weight: 500;
   color: #374151;
   margin-bottom: 0.5rem;
+  padding-top: 0.5rem;
 
   [data-theme="dark"] & {
     color: #d1d5db;
@@ -583,10 +584,11 @@ const FormSubTitle = styled.h3`
 const FormRow = styled.div`
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 1rem;
+  gap: 1.5rem;
 
   @media (max-width: 640px) {
     grid-template-columns: 1fr;
+    gap: 2rem;
   }
 `;
 
@@ -669,6 +671,7 @@ const InfoBox = styled.div`
 const LocationsSection = styled.div`
   padding: 4rem 0;
   background: #f9fafb;
+  scroll-margin-top: 80px;
 
   [data-theme="dark"] & {
     background: #0a0a0a;
@@ -923,11 +926,35 @@ interface FormErrors {
 
 const PartnersPage: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { register, isLoading } = useAuth();
   const { language, t } = useLanguage();
   const [benefitsRef, benefitsInView] = useInView({ threshold: 0.2, triggerOnce: true });
   const [processRef, processInView] = useInView({ threshold: 0.2, triggerOnce: true });
   const [selectedCity, setSelectedCity] = useState<string>('all');
+
+  // Handle scrolling to hash anchor on page load
+  useEffect(() => {
+    if (location.hash) {
+      // Remove the # from the hash
+      const id = location.hash.replace('#', '');
+      // Wait for the page to render, then scroll to the element
+      setTimeout(() => {
+        const element = document.getElementById(id);
+        if (element) {
+          // Scroll to the element with smooth behavior and offset for header
+          const headerOffset = 80; // Adjust this value based on your header height
+          const elementPosition = element.getBoundingClientRect().top;
+          const offsetPosition = elementPosition + window.pageYOffset - headerOffset;
+
+          window.scrollTo({
+            top: offsetPosition,
+            behavior: 'smooth'
+          });
+        }
+      }, 100); // Small delay to ensure DOM is fully rendered
+    }
+  }, [location]);
 
   const categories = [
     { value: '', label: t('partnerRegistration.selectCategory') },

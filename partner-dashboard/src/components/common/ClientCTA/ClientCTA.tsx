@@ -78,53 +78,106 @@ const CTAButtons = styled.div`
   justify-content: center;
   flex-wrap: wrap;
 
-  /* Outline buttons on dark CTA - ensure high contrast */
-  > a > button[class*="outline"] {
-    color: white;
-    border-color: rgba(255, 255, 255, 0.6);
-    font-weight: 600;
-
-    &:hover {
-      border-color: white;
-      background: rgba(255, 255, 255, 0.15);
-      color: white;
-    }
-  }
-
-  /* Light theme - force white text on dark CTA background */
-  [data-theme="light"] & > a > button[class*="outline"] {
+  /* All buttons in CTA section should work on dark background */
+  a button {
+    /* Override all button variants to work on dark background */
     color: white !important;
-    border-color: rgba(255, 255, 255, 0.7);
-    font-weight: 600;
+    border-color: rgba(255, 255, 255, 0.7) !important;
+    font-weight: 600 !important;
 
     &:hover {
-      border-color: white;
-      background: rgba(255, 255, 255, 0.15);
+      border-color: white !important;
+      background: rgba(255, 255, 255, 0.15) !important;
       color: white !important;
     }
   }
 
-  /* Dark theme - brighter buttons for visibility */
-  [data-theme="dark"] & > a > button[class*="outline"] {
-    color: #ffffff;
-    border-color: #9ca3af;
+  /* Primary/Secondary button - golden gradient background with dark text for contrast */
+  a:first-child button {
+    background: linear-gradient(135deg, #c9a237 0%, #d4af37 100%) !important;
+    color: #000000 !important;
+    border: 2px solid #c9a237 !important;
+    font-weight: 600 !important;
+    box-shadow: 0 4px 15px rgba(201, 162, 55, 0.4) !important;
 
     &:hover {
-      border-color: #60a5fa;
-      background: rgba(59, 130, 246, 0.2);
-      color: #ffffff;
+      background: linear-gradient(135deg, #d4af37 0%, #c9a237 100%) !important;
+      color: #000000 !important;
+      border-color: #d4af37 !important;
+      box-shadow: 0 6px 20px rgba(201, 162, 55, 0.5) !important;
+    }
+  }
+
+  /* Light theme - ensure all buttons are visible on dark CTA */
+  [data-theme="light"] & a button {
+    color: white !important;
+    border-color: rgba(255, 255, 255, 0.7) !important;
+
+    &:hover {
+      border-color: white !important;
+      background: rgba(255, 255, 255, 0.15) !important;
+      color: white !important;
+    }
+  }
+
+  [data-theme="light"] & a:first-child button {
+    background: linear-gradient(135deg, #c9a237 0%, #d4af37 100%) !important;
+    color: #000000 !important;
+    border: 2px solid #c9a237 !important;
+    box-shadow: 0 4px 15px rgba(201, 162, 55, 0.4) !important;
+
+    &:hover {
+      background: linear-gradient(135deg, #d4af37 0%, #c9a237 100%) !important;
+      color: #000000 !important;
+      box-shadow: 0 6px 20px rgba(201, 162, 55, 0.5) !important;
+    }
+  }
+
+  /* Dark theme - brighter buttons for visibility */
+  [data-theme="dark"] & a button {
+    color: #ffffff !important;
+    border-color: rgba(255, 255, 255, 0.7) !important;
+
+    &:hover {
+      border-color: #60a5fa !important;
+      background: rgba(59, 130, 246, 0.2) !important;
+    }
+  }
+
+  [data-theme="dark"] & a:first-child button {
+    background: linear-gradient(135deg, #c9a237 0%, #d4af37 100%) !important;
+    color: #000000 !important;
+    border: 2px solid #c9a237 !important;
+    box-shadow: 0 4px 15px rgba(201, 162, 55, 0.4) !important;
+
+    &:hover {
+      background: linear-gradient(135deg, #d4af37 0%, #c9a237 100%) !important;
+      color: #000000 !important;
+      box-shadow: 0 6px 20px rgba(201, 162, 55, 0.5) !important;
     }
   }
 
   /* Color theme - maintain white on blue gradient */
-  [data-theme="color"] & > a > button[class*="outline"] {
-    color: white;
-    border-color: rgba(255, 255, 255, 0.8);
+  [data-theme="color"] & a button {
+    color: white !important;
+    border-color: rgba(255, 255, 255, 0.8) !important;
 
     &:hover {
-      color: white;
-      border-color: white;
-      background: rgba(255, 255, 255, 0.2);
+      border-color: white !important;
+      background: rgba(255, 255, 255, 0.2) !important;
+    }
+  }
+
+  [data-theme="color"] & a:first-child button {
+    background: linear-gradient(135deg, #c9a237 0%, #d4af37 100%) !important;
+    color: #000000 !important;
+    border: 2px solid #c9a237 !important;
+    box-shadow: 0 4px 15px rgba(201, 162, 55, 0.4) !important;
+
+    &:hover {
+      background: linear-gradient(135deg, #d4af37 0%, #c9a237 100%) !important;
+      color: #000000 !important;
+      box-shadow: 0 6px 20px rgba(201, 162, 55, 0.5) !important;
     }
   }
 `;

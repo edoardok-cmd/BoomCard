@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { motion, useScroll, useTransform, AnimatePresence } from 'framer-motion';
 import { useInView } from 'react-intersection-observer';
@@ -494,7 +494,7 @@ const CreditCardPlan = styled(motion.div)<{ $type: 'starter' | 'basic' | 'premiu
 
 const PopularBadge = styled.div`
   position: absolute;
-  top: 0;
+  top: -2.5rem;
   left: 50%;
   transform: translateX(-50%);
   background: linear-gradient(135deg, #ffd700 0%, #ffed4e 100%);
@@ -508,6 +508,7 @@ const PopularBadge = styled.div`
   letter-spacing: 0.5px;
   box-shadow: 0 4px 12px rgba(255, 215, 0, 0.5);
   z-index: 10;
+  white-space: nowrap;
 `;
 
 const CardLogoText = styled.div<{ $type: 'starter' | 'basic' | 'premium' }>`
@@ -653,7 +654,7 @@ const FeaturesList = styled.ul`
   }
 `;
 
-const FeatureItem = styled.li`
+const FeatureItem = styled.li<{ $isEmpty?: boolean }>`
   font-family: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   padding: 0.875rem 1.5rem;
   display: flex;
@@ -661,13 +662,14 @@ const FeatureItem = styled.li`
   gap: 0.875rem;
   font-size: clamp(0.875rem, 2.5vw, 0.9375rem);
   font-weight: 400;
+  min-height: ${props => props.$isEmpty ? '3rem' : 'auto'};
 
   @media (max-width: 768px) {
     padding: 0.75rem 1rem;
     gap: 0.75rem;
   }
   color: var(--color-text-secondary);
-  border-bottom: 1px solid var(--color-border);
+  border-bottom: ${props => props.$isEmpty ? 'none' : '1px solid var(--color-border)'};
 
   &:last-child {
     border-bottom: none;
@@ -675,7 +677,7 @@ const FeatureItem = styled.li`
 
   &::before {
     content: '✓';
-    display: flex;
+    display: ${props => props.$isEmpty ? 'none' : 'flex'};
     align-items: center;
     justify-content: center;
     width: 22px;
@@ -701,6 +703,22 @@ const PlanButtonContainer = styled.div`
   a {
     display: block;
     width: 100%;
+  }
+
+  /* Golden gradient for all "Choose Plan" buttons */
+  button {
+    background: linear-gradient(135deg, #c9a237 0%, #d4af37 100%) !important;
+    color: #000000 !important;
+    border: 2px solid #c9a237 !important;
+    font-weight: 600 !important;
+    box-shadow: 0 4px 15px rgba(201, 162, 55, 0.4) !important;
+
+    &:hover {
+      background: linear-gradient(135deg, #d4af37 0%, #c9a237 100%) !important;
+      color: #000000 !important;
+      border-color: #d4af37 !important;
+      box-shadow: 0 6px 20px rgba(201, 162, 55, 0.5) !important;
+    }
   }
 `;
 
@@ -800,17 +818,6 @@ const HomePage: React.FC = () => {
     filters: { status: 'APPROVED', limit: 3, sortBy: 'createdAt', sortOrder: 'desc' }
   });
   const [showReviewForm, setShowReviewForm] = useState(false);
-  const partnerLocationsRef = useRef<HTMLDivElement>(null);
-  const [selectedCity, setSelectedCity] = useState<string>('all');
-  const [selectedPartnerType, setSelectedPartnerType] = useState<string>('all');
-
-  // Scroll to partner locations section
-  const scrollToPartnerLocations = () => {
-    partnerLocationsRef.current?.scrollIntoView({
-      behavior: 'smooth',
-      block: 'start'
-    });
-  };
 
   // Wrap mutations to match expected signatures
   const createReview = async (data: any): Promise<void> => {
@@ -930,92 +937,6 @@ const HomePage: React.FC = () => {
     }
   ];
 
-  // Define partner locations data
-  const allPartners = [
-    {
-      name: 'Downtown Restaurant & Bar',
-      location: 'Vitosha Blvd 123, Sofia 1000',
-      city: 'sofia',
-      type: 'restaurant',
-      typeLabelBg: 'Ресторант',
-      typeLabelEn: 'Restaurant',
-      description: language === 'bg'
-        ? 'Първокласно заведение с изглед към града. Специализирано в средиземноморска кухня.'
-        : 'Premium dining experience with rooftop terrace and city views. Specializing in Mediterranean cuisine.',
-      image: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=400&h=300&fit=crop',
-      rating: 4.8,
-      offers: 8,
-      badge: language === 'bg' ? 'Отворено Сега' : 'Open Now'
-    },
-    {
-      name: 'Wellness Spa & Fitness Center',
-      location: 'Bulgaria Blvd 88, Sofia 1404',
-      city: 'sofia',
-      type: 'spa',
-      typeLabelBg: 'Спа',
-      typeLabelEn: 'Spa',
-      description: language === 'bg'
-        ? 'Пълноценен спа център с модерни фитнес съоръжения, йога студия и зони за релаксация.'
-        : 'Full-service spa with modern fitness facilities, yoga studios, and relaxation areas.',
-      image: 'https://images.unsplash.com/photo-1540555700478-4be289fbecef?w=400&h=300&fit=crop',
-      rating: 4.9,
-      offers: 5,
-      badge: language === 'bg' ? 'Отворено Сега' : 'Open Now'
-    },
-    {
-      name: 'Seaside Beach Club',
-      location: 'Sea Garden, Varna 9000',
-      city: 'varna',
-      type: 'club',
-      typeLabelBg: 'Клуб',
-      typeLabelEn: 'Club',
-      description: language === 'bg'
-        ? 'Ексклузивен плажен клуб с водни спортове, бар на басейна и зона за залез.'
-        : 'Exclusive beach club with water sports, pool bar, and sunset lounge area.',
-      image: 'https://images.unsplash.com/photo-1559827260-dc66d52bef19?w=400&h=300&fit=crop',
-      rating: 4.7,
-      offers: 12,
-      badge: language === 'bg' ? 'Отворено Сега' : 'Open Now'
-    },
-    {
-      name: 'Mountain Lodge Hotel',
-      location: 'Pirin Street 45, Bansko 2770',
-      city: 'bansko',
-      type: 'hotel',
-      typeLabelBg: 'Хотел',
-      typeLabelEn: 'Hotel',
-      description: language === 'bg'
-        ? 'Уютен планински хотел с панорамна гледка към Пирин и директен достъп до ски пистите.'
-        : 'Cozy mountain lodge with panoramic Pirin views and direct ski slope access.',
-      image: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=400&h=300&fit=crop',
-      rating: 4.6,
-      offers: 6,
-      badge: language === 'bg' ? 'Отворено Сега' : 'Open Now'
-    },
-    {
-      name: 'Wine Cellar Melnik',
-      location: 'Old Town, Plovdiv 4000',
-      city: 'plovdiv',
-      type: 'winery',
-      typeLabelBg: 'Винарна',
-      typeLabelEn: 'Winery',
-      description: language === 'bg'
-        ? 'Традиционна винарна с богата колекция местни вина и дегустационна зала.'
-        : 'Traditional winery with rich local wine collection and tasting room.',
-      image: 'https://images.unsplash.com/photo-1506377247377-2a5b3b417ebb?w=400&h=300&fit=crop',
-      rating: 4.8,
-      offers: 4,
-      badge: language === 'bg' ? 'Отворено Сега' : 'Open Now'
-    }
-  ];
-
-  // Filter partners based on selected city and type
-  const filteredPartners = allPartners.filter(partner => {
-    const cityMatch = selectedCity === 'all' || partner.city === selectedCity;
-    const typeMatch = selectedPartnerType === 'all' || partner.type === selectedPartnerType;
-    return cityMatch && typeMatch;
-  });
-
   const subscriptionPlans = [
     {
       name: language === 'bg' ? 'Лек План' : 'Light Plan',
@@ -1026,12 +947,16 @@ const HomePage: React.FC = () => {
       features: [
         language === 'bg' ? '24 часа премиум услуга' : '24 hours premium service',
         language === 'bg' ? 'Важи една седмица' : 'Valid for one week',
-        language === 'bg' ? 'Достъп до основни оферти' : 'Access to basic offers'
+        language === 'bg' ? 'Достъп до основни оферти' : 'Access to basic offers',
+        '', // Empty line 4
+        ''  // Empty line 5
       ],
       tooltips: [
         language === 'bg' ? 'Пробвайте всички премиум функции за 24 часа' : 'Try all premium features for 24 hours',
         language === 'bg' ? 'Достъп за 7 дни след активиране' : 'Access for 7 days after activation',
-        language === 'bg' ? 'Над 500 партньори в цялата страна' : 'Over 500 partners across the country'
+        language === 'bg' ? 'Над 500 партньори в цялата страна' : 'Over 500 partners across the country',
+        '', // Empty tooltip
+        ''  // Empty tooltip
       ]
     },
     {
@@ -1043,13 +968,15 @@ const HomePage: React.FC = () => {
         language === 'bg' ? '24 часа премиум услуга' : '24 hours premium service',
         language === 'bg' ? 'Достъп до основни оферти' : 'Access to basic offers',
         language === 'bg' ? 'До 10% отстъпка' : 'Up to 10% discount',
-        language === 'bg' ? 'Кешбек в приложението' : 'In-app cashback'
+        language === 'bg' ? 'Кешбек в приложението' : 'In-app cashback',
+        '' // Empty line 5
       ],
       tooltips: [
         language === 'bg' ? 'Пробвайте всички премиум функции за 24 часа' : 'Try all premium features for 24 hours',
         language === 'bg' ? 'Над 500 партньори в цялата страна' : 'Over 500 partners across the country',
         language === 'bg' ? 'Ексклузивни отстъпки в избрани заведения' : 'Exclusive discounts at selected venues',
-        language === 'bg' ? 'Връщане на пари при всяка покупка' : 'Cashback on every purchase'
+        language === 'bg' ? 'Връщане на пари при всяка покупка' : 'Cashback on every purchase',
+        '' // Empty tooltip
       ]
     },
     {
@@ -1253,17 +1180,24 @@ const HomePage: React.FC = () => {
                 {/* Plan Details Below Card */}
                 <PlanDetails>
                   <FeaturesList>
-                    {plan.features.map((feature, i) => (
-                      <Tooltip
-                        key={i}
-                        content={(plan as any).tooltips?.[i] || ''}
-                        position="right"
-                      >
-                        <FeatureItem>
-                          {feature}
+                    {plan.features.map((feature, i) => {
+                      const isEmpty = !feature || feature.trim() === '';
+                      return isEmpty ? (
+                        <FeatureItem key={i} $isEmpty={true}>
+                          &nbsp;
                         </FeatureItem>
-                      </Tooltip>
-                    ))}
+                      ) : (
+                        <Tooltip
+                          key={i}
+                          content={(plan as any).tooltips?.[i] || ''}
+                          position="right"
+                        >
+                          <FeatureItem $isEmpty={false}>
+                            {feature}
+                          </FeatureItem>
+                        </Tooltip>
+                      );
+                    })}
                   </FeaturesList>
 
                   <PlanButtonContainer>
@@ -1520,214 +1454,6 @@ const HomePage: React.FC = () => {
 
       {/* Client CTA */}
       <ClientCTA />
-
-      {/* Partner Locations CTA Button */}
-      <section style={{ padding: '3rem 0', background: 'var(--color-background)', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-        <Button variant="primary" size="large" onClick={scrollToPartnerLocations}>
-          {language === 'bg' ? 'Виж Всички Партньори' : 'See All Partners'}
-        </Button>
-      </section>
-
-      {/* Partner Locations Section */}
-      <section ref={partnerLocationsRef} style={{ padding: '5rem 0', background: 'var(--color-background)', scrollMarginTop: '80px' }}>
-        <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '0 1.5rem' }}>
-          <SectionTitle style={{ fontSize: '2.5rem', textAlign: 'center', marginBottom: '1rem', color: 'var(--color-text-primary)' }}>
-            {language === 'bg' ? 'Партньорски Локации' : 'Partner Locations'}
-          </SectionTitle>
-          <BodyText style={{ fontSize: '1.125rem', textAlign: 'center', marginBottom: '3rem', color: 'var(--color-text-secondary)' }}>
-            {language === 'bg'
-              ? 'Открийте партньорски места на BoomCard в България'
-              : 'Discover BoomCard partner locations across Bulgaria'}
-          </BodyText>
-
-          {/* City Filters */}
-          <div style={{ marginBottom: '1rem' }}>
-            <BodyText style={{ fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.75rem', color: 'var(--color-text-primary)', textAlign: 'center' }}>
-              {language === 'bg' ? 'Град:' : 'City:'}
-            </BodyText>
-            <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap' }}>
-              {[
-                { id: 'all', labelBg: 'Всички Градове', labelEn: 'All Cities' },
-                { id: 'sofia', labelBg: 'София', labelEn: 'Sofia' },
-                { id: 'varna', labelBg: 'Варна', labelEn: 'Varna' },
-                { id: 'plovdiv', labelBg: 'Пловдив', labelEn: 'Plovdiv' },
-                { id: 'bansko', labelBg: 'Банско', labelEn: 'Bansko' }
-              ].map((city) => (
-                <Button
-                  key={city.id}
-                  variant={selectedCity === city.id ? 'primary' : 'outline'}
-                  size="medium"
-                  onClick={() => setSelectedCity(city.id)}
-                >
-                  {language === 'bg' ? city.labelBg : city.labelEn}
-                </Button>
-              ))}
-            </div>
-          </div>
-
-          {/* Partner Type Filters */}
-          <div style={{ marginBottom: '3rem' }}>
-            <BodyText style={{ fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.75rem', color: 'var(--color-text-primary)', textAlign: 'center' }}>
-              {language === 'bg' ? 'Тип заведение:' : 'Venue Type:'}
-            </BodyText>
-            <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap' }}>
-              {[
-                { id: 'all', labelBg: 'Всички Типове', labelEn: 'All Types' },
-                { id: 'restaurant', labelBg: 'Ресторанти', labelEn: 'Restaurants' },
-                { id: 'hotel', labelBg: 'Хотели', labelEn: 'Hotels' },
-                { id: 'spa', labelBg: 'Спа', labelEn: 'Spa' },
-                { id: 'club', labelBg: 'Клубове', labelEn: 'Clubs' },
-                { id: 'winery', labelBg: 'Винарни', labelEn: 'Wineries' }
-              ].map((type) => (
-                <Button
-                  key={type.id}
-                  variant={selectedPartnerType === type.id ? 'primary' : 'outline'}
-                  size="medium"
-                  onClick={() => setSelectedPartnerType(type.id)}
-                >
-                  {language === 'bg' ? type.labelBg : type.labelEn}
-                </Button>
-              ))}
-            </div>
-          </div>
-
-          {/* Results Count */}
-          <BodyText style={{ fontSize: '1rem', textAlign: 'center', marginBottom: '2rem', color: 'var(--color-text-secondary)' }}>
-            {language === 'bg'
-              ? `Намерени ${filteredPartners.length} ${filteredPartners.length === 1 ? 'партньор' : 'партньора'}`
-              : `Found ${filteredPartners.length} ${filteredPartners.length === 1 ? 'partner' : 'partners'}`}
-          </BodyText>
-
-          {/* Partner Cards Grid */}
-          {filteredPartners.length === 0 ? (
-            <div style={{
-              textAlign: 'center',
-              padding: '4rem 2rem',
-              background: 'var(--color-background)',
-              borderRadius: '1rem',
-              border: '1px solid var(--color-border)'
-            }}>
-              <div style={{ fontSize: '4rem', marginBottom: '1rem' }}>🔍</div>
-              <SectionTitle style={{ fontSize: '1.5rem', marginBottom: '0.5rem', color: 'var(--color-text-primary)' }}>
-                {language === 'bg' ? 'Няма намерени партньори' : 'No Partners Found'}
-              </SectionTitle>
-              <BodyText style={{ color: 'var(--color-text-secondary)' }}>
-                {language === 'bg'
-                  ? 'Опитайте да промените филтрите за да видите повече резултати'
-                  : 'Try changing the filters to see more results'}
-              </BodyText>
-            </div>
-          ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))', gap: '2rem' }}>
-              {filteredPartners.map((partner, index) => (
-              <motion.div
-                key={index}
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.4, delay: index * 0.1 }}
-                viewport={{ once: true }}
-                style={{
-                  background: 'var(--color-background)',
-                  borderRadius: '1rem',
-                  overflow: 'hidden',
-                  border: '1px solid var(--color-border)',
-                  boxShadow: 'var(--shadow-soft)',
-                  position: 'relative'
-                }}
-              >
-                {/* Badge */}
-                <div style={{
-                  position: 'absolute',
-                  top: '1rem',
-                  right: '1rem',
-                  background: '#10b981',
-                  color: 'white',
-                  padding: '0.5rem 1rem',
-                  borderRadius: '9999px',
-                  fontSize: '0.875rem',
-                  fontWeight: 600,
-                  zIndex: 10
-                }}>
-                  {partner.badge}
-                </div>
-
-                {/* Image */}
-                <div style={{
-                  height: '200px',
-                  overflow: 'hidden',
-                  background: `url(${partner.image})`,
-                  backgroundSize: 'cover',
-                  backgroundPosition: 'center'
-                }} />
-
-                {/* Content */}
-                <div style={{ padding: '1.5rem' }}>
-                  <h3 style={{
-                    fontSize: '1.25rem',
-                    fontWeight: 700,
-                    marginBottom: '0.5rem',
-                    color: 'var(--color-text-primary)'
-                  }}>
-                    {partner.name}
-                  </h3>
-                  <p style={{
-                    fontSize: '0.875rem',
-                    color: 'var(--color-text-secondary)',
-                    marginBottom: '0.75rem',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.5rem'
-                  }}>
-                    📍 {partner.location}
-                  </p>
-                  <div style={{
-                    display: 'inline-block',
-                    padding: '0.25rem 0.75rem',
-                    borderRadius: '9999px',
-                    fontSize: '0.75rem',
-                    fontWeight: 600,
-                    marginBottom: '0.75rem',
-                    background: 'var(--color-primary)',
-                    color: 'var(--color-secondary)'
-                  }}>
-                    {language === 'bg' ? partner.typeLabelBg : partner.typeLabelEn}
-                  </div>
-                  <p style={{
-                    fontSize: '0.9375rem',
-                    color: 'var(--color-text-secondary)',
-                    marginBottom: '1rem',
-                    lineHeight: 1.6
-                  }}>
-                    {partner.description}
-                  </p>
-
-                  {/* Footer */}
-                  <div style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    paddingTop: '1rem',
-                    borderTop: '1px solid var(--color-border)'
-                  }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                      <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                        ⭐ {partner.rating}
-                      </span>
-                      <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                        🎁 {partner.offers} {language === 'bg' ? 'оферти' : 'offers'}
-                      </span>
-                    </div>
-                    <Button variant="primary" size="small">
-                      {language === 'bg' ? 'Виж Оферти' : 'View Offers'}
-                    </Button>
-                  </div>
-                </div>
-              </motion.div>
-              ))}
-            </div>
-          )}
-        </div>
-      </section>
 
       {/* Review Submission Modal */}
       <AnimatePresence>

@@ -1,6 +1,6 @@
 import React from 'react';
 import styled from 'styled-components';
-import { GoogleOAuthProvider, GoogleLogin, CredentialResponse } from '@react-oauth/google';
+import { GoogleOAuthProvider, useGoogleLogin, CredentialResponse } from '@react-oauth/google';
 import { OAUTH_CONFIG } from '../../config/oauth';
 
 interface GoogleLoginButtonProps {
@@ -9,29 +9,6 @@ interface GoogleLoginButtonProps {
   text?: string;
   language?: 'en' | 'bg';
 }
-
-const ButtonContainer = styled.div`
-  width: 100%;
-
-  /* Override Google button styles to match our design */
-  & > div {
-    width: 100% !important;
-  }
-
-  & button {
-    width: 100% !important;
-    height: 48px !important;
-    border-radius: 0.5rem !important;
-    font-size: 1rem !important;
-    font-weight: 500 !important;
-    transition: all 200ms !important;
-
-    &:hover {
-      transform: translateY(-1px);
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
-    }
-  }
-`;
 
 const CustomGoogleButton = styled.button`
   display: flex;
@@ -73,38 +50,22 @@ const GoogleButtonContent: React.FC<GoogleLoginButtonProps> = ({
   text = 'Continue with Google',
   language = 'en',
 }) => {
-  return (
-    <ButtonContainer>
-      <GoogleLogin
-        onSuccess={onSuccess}
-        onError={onError}
-        text="continue_with"
-        shape="rectangular"
-        size="large"
-        width="100%"
-        theme="outline"
-        logo_alignment="left"
-        locale={language}
-      />
-    </ButtonContainer>
-  );
-};
+  // Use custom button with our translated text instead of Google's built-in text
+  // This ensures proper Bulgarian translation
+  const login = useGoogleLogin({
+    onSuccess: (tokenResponse) => {
+      // Convert tokenResponse to CredentialResponse format
+      // The parent expects CredentialResponse, so we need to handle this
+      onSuccess(tokenResponse as any);
+    },
+    onError: () => {
+      onError();
+    },
+    flow: 'implicit', // Use implicit flow for ID token
+  });
 
-export const GoogleLoginButton: React.FC<GoogleLoginButtonProps> = (props) => {
   return (
-    <GoogleOAuthProvider clientId={OAUTH_CONFIG.google.clientId}>
-      <GoogleButtonContent {...props} />
-    </GoogleOAuthProvider>
-  );
-};
-
-// Alternative custom-styled button (if you want full control over styling)
-export const CustomGoogleLoginButton: React.FC<{
-  onClick: () => void;
-  text?: string;
-}> = ({ onClick, text = 'Continue with Google' }) => {
-  return (
-    <CustomGoogleButton onClick={onClick} type="button">
+    <CustomGoogleButton onClick={() => login()} type="button">
       <svg viewBox="0 0 24 24">
         <path
           fill="#4285F4"
@@ -125,6 +86,14 @@ export const CustomGoogleLoginButton: React.FC<{
       </svg>
       {text}
     </CustomGoogleButton>
+  );
+};
+
+export const GoogleLoginButton: React.FC<GoogleLoginButtonProps> = (props) => {
+  return (
+    <GoogleOAuthProvider clientId={OAUTH_CONFIG.google.clientId}>
+      <GoogleButtonContent {...props} />
+    </GoogleOAuthProvider>
   );
 };
 

@@ -208,10 +208,10 @@ const CreditCardPlan = styled(motion.div)<{ $type: 'starter' | 'basic' | 'premiu
 
 const PopularBadge = styled.div`
   position: absolute;
-  top: 0;
+  top: -2.5rem;
   left: 50%;
   transform: translateX(-50%);
-  background: linear-gradient(135deg, #ffd700 0%, #ffed4e 100%);
+  background: linear-gradient(135deg, #c9a237 0%, #d4af37 100%);
   color: #000;
   padding: 0.4rem 1.25rem;
   border-radius: 9999px;
@@ -220,8 +220,9 @@ const PopularBadge = styled.div`
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  box-shadow: 0 4px 12px rgba(255, 215, 0, 0.5);
+  box-shadow: 0 4px 12px rgba(201, 162, 55, 0.5);
   z-index: 10;
+  white-space: nowrap;
 `;
 
 const CardLogoText = styled.div<{ $type: 'starter' | 'basic' | 'premium' }>`
@@ -367,7 +368,7 @@ const FeaturesList = styled.ul`
   }
 `;
 
-const FeatureItem = styled.li`
+const FeatureItem = styled.li<{ $isEmpty?: boolean }>`
   font-family: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   padding: 0.875rem 1.5rem;
   display: flex;
@@ -375,6 +376,7 @@ const FeatureItem = styled.li`
   gap: 0.875rem;
   font-size: clamp(0.875rem, 2.5vw, 0.9375rem);
   font-weight: 400;
+  min-height: ${props => props.$isEmpty ? '3rem' : 'auto'};
 
   @media (max-width: 768px) {
     padding: 0.75rem 1rem;
@@ -389,7 +391,7 @@ const FeatureItem = styled.li`
 
   &::before {
     content: '✓';
-    display: flex;
+    display: ${props => props.$isEmpty ? 'none' : 'flex'};
     align-items: center;
     justify-content: center;
     width: 22px;
@@ -415,6 +417,22 @@ const PlanButtonContainer = styled.div`
   a {
     display: block;
     width: 100%;
+  }
+
+  /* Golden gradient for all "Choose Plan" buttons */
+  button {
+    background: linear-gradient(135deg, #c9a237 0%, #d4af37 100%) !important;
+    color: #000000 !important;
+    border: 2px solid #c9a237 !important;
+    font-weight: 600 !important;
+    box-shadow: 0 4px 15px rgba(201, 162, 55, 0.4) !important;
+
+    &:hover {
+      background: linear-gradient(135deg, #d4af37 0%, #c9a237 100%) !important;
+      color: #000000 !important;
+      border-color: #d4af37 !important;
+      box-shadow: 0 6px 20px rgba(201, 162, 55, 0.5) !important;
+    }
   }
 `;
 
@@ -495,12 +513,16 @@ const SubscriptionsPage: React.FC = () => {
       features: [
         language === 'bg' ? '24 часа премиум услуга' : '24 hours premium service',
         language === 'bg' ? 'Важи една седмица' : 'Valid for one week',
-        language === 'bg' ? 'Достъп до основни оферти' : 'Access to basic offers'
+        language === 'bg' ? 'Достъп до основни оферти' : 'Access to basic offers',
+        '', // Empty line 4
+        ''  // Empty line 5
       ],
       tooltips: [
         language === 'bg' ? 'Пробвайте всички премиум функции за 24 часа' : 'Try all premium features for 24 hours',
         language === 'bg' ? 'Достъп за 7 дни след активиране' : 'Access for 7 days after activation',
-        language === 'bg' ? 'Над 500 партньори в цялата страна' : 'Over 500 partners across the country'
+        language === 'bg' ? 'Над 500 партньори в цялата страна' : 'Over 500 partners across the country',
+        '', // Empty tooltip
+        ''  // Empty tooltip
       ]
     },
     {
@@ -513,13 +535,15 @@ const SubscriptionsPage: React.FC = () => {
         language === 'bg' ? '24 часа премиум услуга' : '24 hours premium service',
         language === 'bg' ? 'Достъп до основни оферти' : 'Access to basic offers',
         language === 'bg' ? 'До 10% отстъпка' : 'Up to 10% discount',
-        language === 'bg' ? 'Кешбек в приложението' : 'In-app cashback'
+        language === 'bg' ? 'Кешбек в приложението' : 'In-app cashback',
+        '' // Empty line 5
       ],
       tooltips: [
         language === 'bg' ? 'Пробвайте всички премиум функции за 24 часа' : 'Try all premium features for 24 hours',
         language === 'bg' ? 'Над 500 партньори в цялата страна' : 'Over 500 partners across the country',
         language === 'bg' ? 'Ексклузивни отстъпки в избрани заведения' : 'Exclusive discounts at selected venues',
-        language === 'bg' ? 'Връщане на пари при всяка покупка' : 'Cashback on every purchase'
+        language === 'bg' ? 'Връщане на пари при всяка покупка' : 'Cashback on every purchase',
+        '' // Empty tooltip
       ]
     },
     {
@@ -655,17 +679,24 @@ const SubscriptionsPage: React.FC = () => {
               {/* Plan Details Below Card */}
               <PlanDetails>
                 <FeaturesList>
-                  {plan.features.map((feature, i) => (
-                    <Tooltip
-                      key={i}
-                      content={(plan as any).tooltips?.[i] || ''}
-                      position="right"
-                    >
-                      <FeatureItem>
-                        {feature}
+                  {plan.features.map((feature, i) => {
+                    const isEmpty = !feature || feature.trim() === '';
+                    return isEmpty ? (
+                      <FeatureItem key={i} $isEmpty={true}>
+                        &nbsp;
                       </FeatureItem>
-                    </Tooltip>
-                  ))}
+                    ) : (
+                      <Tooltip
+                        key={i}
+                        content={(plan as any).tooltips?.[i] || ''}
+                        position="right"
+                      >
+                        <FeatureItem $isEmpty={false}>
+                          {feature}
+                        </FeatureItem>
+                      </Tooltip>
+                    );
+                  })}
                 </FeaturesList>
 
                 <PlanButtonContainer>
