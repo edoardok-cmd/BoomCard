@@ -268,12 +268,13 @@ export const navigationConfig: NavConfig = {
         },
       ],
     },
-    {
-      id: 'integrations',
-      label: 'Integrations',
-      labelBg: 'Интеграции',
-      path: '/integrations',
-    },
+    // Hidden: Integrations menu item
+    // {
+    //   id: 'integrations',
+    //   label: 'Integrations',
+    //   labelBg: 'Интеграции',
+    //   path: '/integrations',
+    // },
   ],
   footer: {
     aboutUs: [
