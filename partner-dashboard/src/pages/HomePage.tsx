@@ -511,6 +511,25 @@ const PopularBadge = styled.div`
   white-space: nowrap;
 `;
 
+const BestValueBadge = styled.div`
+  position: absolute;
+  top: -2.5rem;
+  left: 50%;
+  transform: translateX(-50%);
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  color: #ffffff;
+  padding: 0.4rem 1.25rem;
+  border-radius: 9999px;
+  font-family: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.5);
+  z-index: 10;
+  white-space: nowrap;
+`;
+
 const CardLogoText = styled.div<{ $type: 'starter' | 'basic' | 'premium' }>`
   font-size: 1.75rem;
   font-weight: 900;
@@ -1137,18 +1156,18 @@ const HomePage: React.FC = () => {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.5, delay: index * 0.2 }}
               >
+                {/* Best Value Badge for Light Plan */}
+                {planType === 'starter' && (
+                  <BestValueBadge>
+                    {language === 'bg' ? 'Най-добра стойност' : 'Best Value'}
+                  </BestValueBadge>
+                )}
+
                 {/* Most Popular Badge - positioned relative to wrapper */}
                 {plan.featured && (
-                  <Tooltip
-                    content={language === 'bg'
-                      ? 'Избран от 70% от нашите клиенти'
-                      : 'Chosen by 70% of our customers'}
-                    position="top"
-                  >
-                    <PopularBadge>
-                      {language === 'bg' ? 'Най-популярен' : 'Most Popular'}
-                    </PopularBadge>
-                  </Tooltip>
+                  <PopularBadge>
+                    {language === 'bg' ? 'Най-популярен' : 'Most Popular'}
+                  </PopularBadge>
                 )}
 
                 {/* Credit Card matching hero design */}
@@ -1182,40 +1201,23 @@ const HomePage: React.FC = () => {
                   <FeaturesList>
                     {plan.features.map((feature, i) => {
                       const isEmpty = !feature || feature.trim() === '';
-                      return isEmpty ? (
-                        <FeatureItem key={i} $isEmpty={true}>
-                          &nbsp;
+                      return (
+                        <FeatureItem key={i} $isEmpty={isEmpty}>
+                          {isEmpty ? '\u00A0' : feature}
                         </FeatureItem>
-                      ) : (
-                        <Tooltip
-                          key={i}
-                          content={(plan as any).tooltips?.[i] || ''}
-                          position="right"
-                        >
-                          <FeatureItem $isEmpty={false}>
-                            {feature}
-                          </FeatureItem>
-                        </Tooltip>
                       );
                     })}
                   </FeaturesList>
 
                   <PlanButtonContainer>
-                    <Tooltip
-                      content={language === 'bg'
-                        ? 'Преминете към плащане и активирайте плана си'
-                        : 'Proceed to payment and activate your plan'}
-                      position="bottom"
-                    >
-                      <Link to="/subscriptions" style={{ width: '100%' }}>
-                        <Button
-                          variant={plan.featured ? 'primary' : 'secondary'}
-                          size="large"
-                        >
-                          {language === 'bg' ? 'Избери План' : 'Choose Plan'}
-                        </Button>
-                      </Link>
-                    </Tooltip>
+                    <Link to="/subscriptions" style={{ width: '100%' }}>
+                      <Button
+                        variant={plan.featured ? 'primary' : 'secondary'}
+                        size="large"
+                      >
+                        {language === 'bg' ? 'Избери План' : 'Choose Plan'}
+                      </Button>
+                    </Link>
                   </PlanButtonContainer>
                 </PlanDetails>
               </PlanCardWrapper>

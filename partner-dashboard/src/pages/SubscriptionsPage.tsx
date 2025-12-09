@@ -638,16 +638,9 @@ const SubscriptionsPage: React.FC = () => {
             >
               {/* Most Popular Badge */}
               {plan.featured && (
-                <Tooltip
-                  content={language === 'bg'
-                    ? 'Избран от 70% от нашите клиенти'
-                    : 'Chosen by 70% of our customers'}
-                  position="top"
-                >
-                  <PopularBadge>
-                    {language === 'bg' ? 'Най-популярен' : 'Most Popular'}
-                  </PopularBadge>
-                </Tooltip>
+                <PopularBadge>
+                  {language === 'bg' ? 'Най-популярен' : 'Most Popular'}
+                </PopularBadge>
               )}
 
               {/* Credit Card matching HomePage design */}
@@ -681,40 +674,23 @@ const SubscriptionsPage: React.FC = () => {
                 <FeaturesList>
                   {plan.features.map((feature, i) => {
                     const isEmpty = !feature || feature.trim() === '';
-                    return isEmpty ? (
-                      <FeatureItem key={i} $isEmpty={true}>
-                        &nbsp;
+                    return (
+                      <FeatureItem key={i} $isEmpty={isEmpty}>
+                        {isEmpty ? '\u00A0' : feature}
                       </FeatureItem>
-                    ) : (
-                      <Tooltip
-                        key={i}
-                        content={(plan as any).tooltips?.[i] || ''}
-                        position="right"
-                      >
-                        <FeatureItem $isEmpty={false}>
-                          {feature}
-                        </FeatureItem>
-                      </Tooltip>
                     );
                   })}
                 </FeaturesList>
 
                 <PlanButtonContainer>
-                  <Tooltip
-                    content={language === 'bg'
-                      ? 'Преминете към плащане и активирайте плана си'
-                      : 'Proceed to payment and activate your plan'}
-                    position="bottom"
-                  >
-                    <Link to="/register" style={{ width: '100%' }}>
-                      <Button
-                        variant={plan.featured ? 'primary' : 'secondary'}
-                        size="large"
-                      >
-                        {language === 'bg' ? 'Избери План' : 'Choose Plan'}
-                      </Button>
-                    </Link>
-                  </Tooltip>
+                  <Link to="/register" style={{ width: '100%' }}>
+                    <Button
+                      variant={plan.featured ? 'primary' : 'secondary'}
+                      size="large"
+                    >
+                      {language === 'bg' ? 'Избери План' : 'Choose Plan'}
+                    </Button>
+                  </Link>
                 </PlanButtonContainer>
               </PlanDetails>
             </PlanCardWrapper>
