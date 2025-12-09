@@ -483,7 +483,7 @@ const VenueDetailPage: React.FC = () => {
     <PageContainer>
       <Container>
         <Breadcrumb>
-          <Link to="/top-offers">{t('venueDetail.home')}</Link>
+          <Link to="/promotions">{t('venueDetail.home')}</Link>
           <span>/</span>
           <Link to="/venues/spa">{venue.category}</Link>
           <span>/</span>
