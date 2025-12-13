@@ -466,11 +466,27 @@ const PricingPublicPage: React.FC = () => {
 
   const plans = [
     {
-      nameEn: 'Black',
-      nameBg: 'Черна',
+      nameEn: 'Light',
+      nameBg: 'Лек',
       type: 'black' as const,
-      descEn: 'Essential tier for businesses starting out',
-      descBg: 'Основна категория за начинаещи бизнеси',
+      descEn: 'Perfect for new partners getting started',
+      descBg: 'Идеален за нови партньори',
+      monthlyPrice: 9.99,
+      yearlyPrice: 99,
+      features: [
+        { en: 'Basic promotions', bg: 'Основни промоции' },
+        { en: 'Up to 5 active offers', bg: 'До 5 активни оферти' },
+        { en: 'Basic analytics', bg: 'Основни анализи' },
+        { en: 'Email support', bg: 'Имейл поддръжка' },
+        { en: 'Monthly reporting', bg: 'Месечни отчети' },
+      ],
+    },
+    {
+      nameEn: 'Basic',
+      nameBg: 'Основен',
+      type: 'black' as const,
+      descEn: 'Essential tier for businesses growing',
+      descBg: 'Основна категория за растящи бизнеси',
       monthlyPrice: 29,
       yearlyPrice: 290,
       features: [
@@ -482,16 +498,16 @@ const PricingPublicPage: React.FC = () => {
       ],
     },
     {
-      nameEn: 'Silver',
-      nameBg: 'Сребърна',
+      nameEn: 'Premium',
+      nameBg: 'Премиум',
       type: 'silver' as const,
-      descEn: 'Better promotions and enhanced features',
-      descBg: 'По-добри промоции и подобрени функции',
+      descEn: 'Advanced promotions and enhanced features',
+      descBg: 'Разширени промоции и подобрени функции',
       monthlyPrice: 79,
       yearlyPrice: 790,
       featured: true,
       features: [
-        { en: 'Better promotions with priority placement', bg: 'По-добри промоции с приоритетно позициониране' },
+        { en: 'Premium promotions with priority placement', bg: 'Премиум промоции с приоритетно позициониране' },
         { en: 'Unlimited offers', bg: 'Неограничени оферти' },
         { en: 'Advanced analytics', bg: 'Усъвършенствани анализи' },
         { en: 'Priority support', bg: 'Приоритетна поддръжка' },
