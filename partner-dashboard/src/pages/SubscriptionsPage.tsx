@@ -629,11 +629,6 @@ const SubscriptionsPage: React.FC = () => {
             {language === 'bg' ? 'Месечен абонамент' : 'Monthly'}
           </ToggleOption>
         </BillingToggle>
-        {billingPeriod === 'yearly' && (
-          <SaveBadge>
-            {language === 'bg' ? 'Спести 20%' : 'Save 20%'}
-          </SaveBadge>
-        )}
       </BillingToggleContainer>
 
       <SubscriptionCardsContainer>

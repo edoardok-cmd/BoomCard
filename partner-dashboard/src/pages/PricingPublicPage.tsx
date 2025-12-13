@@ -556,11 +556,6 @@ const PricingPublicPage: React.FC = () => {
               {language === 'bg' ? 'Годишно' : 'Yearly'}
             </ToggleOption>
           </BillingToggle>
-          {isAnnual && (
-            <SaveBadge>
-              {language === 'bg' ? 'Спести 20%' : 'Save 20%'}
-            </SaveBadge>
-          )}
         </BillingToggleContainer>
       </HeroSection>
 
