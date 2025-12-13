@@ -271,7 +271,7 @@ export const ClientCTA: React.FC<ClientCTAProps> = ({ className }) => {
         <CTATitle>{t.title}</CTATitle>
         <CTAText>{t.text}</CTAText>
         <CTAButtons>
-          <Link to="/register">
+          <Link to="/subscriptions">
             <Button variant="secondary" size="large">
               {t.primaryButton}
             </Button>
