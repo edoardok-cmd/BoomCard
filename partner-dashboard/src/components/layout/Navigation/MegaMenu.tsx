@@ -8,6 +8,7 @@ interface MegaMenuProps {
   items: MenuItem[];
   language?: 'en' | 'bg';
   autoExpandOnMobile?: boolean;
+  onMenuItemClick?: () => void;
 }
 
 const NavWrapper = styled.nav`
@@ -355,7 +356,8 @@ const NavMenuItem: React.FC<{
   index: number;
   totalItems: number;
   autoExpandOnMobile?: boolean;
-}> = ({ item, language, isMobile, index, totalItems, autoExpandOnMobile }) => {
+  onMenuItemClick?: () => void;
+}> = ({ item, language, isMobile, index, totalItems, autoExpandOnMobile, onMenuItemClick }) => {
   const [isOpen, setIsOpen] = useState(isMobile && autoExpandOnMobile);
   const [hoveredSubItem, setHoveredSubItem] = useState<string | null>(null);
 
@@ -401,12 +403,19 @@ const NavMenuItem: React.FC<{
                 <SectionTitle>{language === 'bg' ? child.labelBg : child.label}</SectionTitle>
                 {child.children ? (
                   child.children.map((subChild) => (
-                    <DropdownLink key={subChild.id} to={subChild.path}>
+                    <DropdownLink
+                      key={subChild.id}
+                      to={subChild.path}
+                      onClick={onMenuItemClick}
+                    >
                       <div>{language === 'bg' ? subChild.labelBg : subChild.label}</div>
                     </DropdownLink>
                   ))
                 ) : (
-                  <DropdownLink to={child.path}>
+                  <DropdownLink
+                    to={child.path}
+                    onClick={onMenuItemClick}
+                  >
                     <div>{language === 'bg' ? child.labelBg : child.label}</div>
                   </DropdownLink>
                 )}
@@ -432,7 +441,10 @@ const NavMenuItem: React.FC<{
             onMouseLeave={() => !isMobile && setHoveredSubItem(null)}
             style={{ position: 'relative' }}
           >
-            <DropdownLink to={child.path}>
+            <DropdownLink
+              to={child.path}
+              onClick={onMenuItemClick}
+            >
               <div>{language === 'bg' ? child.labelBg : child.label}</div>
               {child.children && child.children.length > 0 && (
                 <SubItemDescription>
@@ -459,7 +471,11 @@ const NavMenuItem: React.FC<{
                   transition={{ duration: 0.2 }}
                 >
                   {child.children.map((subChild) => (
-                    <DropdownLink key={subChild.id} to={subChild.path}>
+                    <DropdownLink
+                      key={subChild.id}
+                      to={subChild.path}
+                      onClick={onMenuItemClick}
+                    >
                       {language === 'bg' ? subChild.labelBg : subChild.label}
                     </DropdownLink>
                   ))}
@@ -479,7 +495,13 @@ const NavMenuItem: React.FC<{
     >
       <NavLink
         to={item.path}
-        onClick={handleClick}
+        onClick={(e) => {
+          handleClick(e);
+          // Close mobile menu only if no children or on desktop
+          if (!hasChildren && isMobile) {
+            onMenuItemClick?.();
+          }
+        }}
         $hasChildren={hasChildren}
       >
         {label}
@@ -502,7 +524,7 @@ const NavMenuItem: React.FC<{
   );
 };
 
-export const MegaMenu: React.FC<MegaMenuProps> = ({ items, language = 'en', autoExpandOnMobile = false }) => {
+export const MegaMenu: React.FC<MegaMenuProps> = ({ items, language = 'en', autoExpandOnMobile = false, onMenuItemClick }) => {
   const [isMobile, setIsMobile] = useState(window.innerWidth < 1024);
 
   React.useEffect(() => {
@@ -524,6 +546,7 @@ export const MegaMenu: React.FC<MegaMenuProps> = ({ items, language = 'en', auto
           index={index}
           totalItems={items.length}
           autoExpandOnMobile={autoExpandOnMobile}
+          onMenuItemClick={onMenuItemClick}
         />
       ))}
     </NavWrapper>

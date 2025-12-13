@@ -910,7 +910,7 @@ export const Header: React.FC<HeaderProps> = ({
 
           {/* Desktop Navigation - Absolutely Centered on Page */}
           <div className="hidden lg:flex items-center justify-center absolute left-1/2 transform -translate-x-1/2 z-40">
-            <MegaMenu items={navigationConfig.main} language={language} />
+            <MegaMenu items={navigationConfig.main} language={language} onMenuItemClick={undefined} />
           </div>
 
           {/* Right Side Utilities - Always Visible */}
@@ -1442,7 +1442,12 @@ export const Header: React.FC<HeaderProps> = ({
 
                 {/* Mobile Navigation */}
                 <nav className="mb-8">
-                  <MegaMenu items={navigationConfig.main} language={language} autoExpandOnMobile={false} />
+                  <MegaMenu
+                    items={navigationConfig.main}
+                    language={language}
+                    autoExpandOnMobile={false}
+                    onMenuItemClick={() => setMobileMenuOpen(false)}
+                  />
                 </nav>
 
                 <div className="flex flex-col gap-3 pt-6" style={{ borderTop: '1px solid var(--color-border)' }}>
