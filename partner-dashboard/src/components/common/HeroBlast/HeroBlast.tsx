@@ -1202,23 +1202,23 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
   }, [showLogo, videoEnded, shouldPlayVideo]);
 
   useEffect(() => {
-    // Only attach video event listeners if video should play
-    if (!shouldPlayVideo) return;
-
     const video = videoRef.current;
     if (!video) return;
 
     const handleLoadedData = () => {
       setVideoLoaded(true);
-      // Try to play the video in case autoplay was blocked
-      const playPromise = video.play();
-      if (playPromise !== undefined) {
-        playPromise.catch((error) => {
-          console.log('[Video] Autoplay blocked:', error.name);
-          // Autoplay was blocked - show content immediately
-          setShowLogo(true);
-          setShowCTA(true);
-        });
+      // Only try to play if video should play according to cache
+      if (shouldPlayVideo) {
+        // Try to play the video in case autoplay was blocked
+        const playPromise = video.play();
+        if (playPromise !== undefined) {
+          playPromise.catch((error) => {
+            console.log('[Video] Autoplay blocked:', error.name);
+            // Autoplay was blocked - show content immediately
+            setShowLogo(true);
+            setShowCTA(true);
+          });
+        }
       }
     };
 
@@ -1304,24 +1304,24 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
 
   return (
     <HeroContainer ref={heroRef}>
-      {shouldPlayVideo ? (
-        <>
-          <VideoBackground
-            ref={videoRef}
-            autoPlay
-            muted
-            playsInline
-            preload="auto"
-            poster="/boom-blast-poster.jpg"
-            webkit-playsinline="true"
-            x5-playsinline="true"
-          >
-            <source src="/boom-blast.mp4" type="video/mp4" />
-            Your browser does not support the video tag.
-          </VideoBackground>
-          <VideoOverlay $fadeOut={videoEnded} />
-        </>
-      ) : (
+      {/* Always render video element so poster image displays, only autoplay if within 1-hour cache window */}
+      <>
+        <VideoBackground
+          ref={videoRef}
+          autoPlay={shouldPlayVideo}
+          muted
+          playsInline
+          preload="auto"
+          poster="/boom-blast-poster.jpg"
+          webkit-playsinline="true"
+          x5-playsinline="true"
+        >
+          <source src="/boom-blast.mp4" type="video/mp4" />
+          Your browser does not support the video tag.
+        </VideoBackground>
+        <VideoOverlay $fadeOut={videoEnded} />
+      </>
+      {!shouldPlayVideo && (
         <>
           <StaticBackground />
           {/* Static poster content - no animations, no styled-components overhead */}
