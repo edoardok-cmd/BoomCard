@@ -1180,7 +1180,7 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
     const video = videoRef.current;
     if (!video) return;
 
-    // Wait longer on mobile to let video attempt to play
+    // Wait on mobile to let video attempt to play
     // If video hasn't triggered content display by then, show it anyway
     const mobileTimeout = setTimeout(() => {
       if (!showLogo && !videoEnded) {
@@ -1188,7 +1188,7 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
         const isVideoPlaying = !!(video.currentTime > 0 && !video.paused && !video.ended && video.readyState > 2);
 
         if (!isVideoPlaying) {
-          console.log('[Mobile] Video not playing - showing hero content (fallback)');
+          console.log('[Mobile] Video not playing after timeout - showing hero content (fallback)');
           setShowLogo(true);
           setShowCTA(true);
           setShowBlackCard(true);
@@ -1196,7 +1196,7 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
           setAnimationsFinished(true);
         }
       }
-    }, 10000); // Wait 10 seconds on mobile before fallback
+    }, 5000); // Wait 5 seconds on mobile before fallback (reduced from 10)
 
     return () => clearTimeout(mobileTimeout);
   }, [showLogo, videoEnded, shouldPlayVideo]);
@@ -1210,6 +1210,16 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
 
     const handleLoadedData = () => {
       setVideoLoaded(true);
+      // Try to play the video in case autoplay was blocked
+      const playPromise = video.play();
+      if (playPromise !== undefined) {
+        playPromise.catch((error) => {
+          console.log('[Video] Autoplay blocked:', error.name);
+          // Autoplay was blocked - show content immediately
+          setShowLogo(true);
+          setShowCTA(true);
+        });
+      }
     };
 
     const handleTimeUpdate = () => {
@@ -1231,14 +1241,23 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
       }
     };
 
+    const handleError = () => {
+      console.log('[Video] Error loading or playing video');
+      // If video fails to load/play, show static content
+      setShowLogo(true);
+      setShowCTA(true);
+    };
+
     video.addEventListener('loadeddata', handleLoadedData);
     video.addEventListener('timeupdate', handleTimeUpdate);
     video.addEventListener('ended', handleEnded);
+    video.addEventListener('error', handleError);
 
     return () => {
       video.removeEventListener('loadeddata', handleLoadedData);
       video.removeEventListener('timeupdate', handleTimeUpdate);
       video.removeEventListener('ended', handleEnded);
+      video.removeEventListener('error', handleError);
     };
   }, [showLogo, videoEnded, showCTA, shouldPlayVideo]);
 
