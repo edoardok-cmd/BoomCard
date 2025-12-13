@@ -1042,9 +1042,9 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
     };
   }, []);
 
-  // Check if video should play based on last view time (once per 6 hours)
+  // Check if video should play based on last view time (once per 1 hour)
   useEffect(() => {
-    const SIX_HOURS_IN_MS = 6 * 60 * 60 * 1000; // 6 hours in milliseconds
+    const ONE_HOUR_IN_MS = 1 * 60 * 60 * 1000; // 1 hour in milliseconds
     const STORAGE_KEY = 'boomcard_video_last_played';
 
     try {
@@ -1055,8 +1055,8 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
         const lastPlayed = parseInt(lastPlayedStr, 10);
         const timeSinceLastPlay = now - lastPlayed;
 
-        if (timeSinceLastPlay < SIX_HOURS_IN_MS) {
-          // Less than 6 hours has passed - skip video
+        if (timeSinceLastPlay < ONE_HOUR_IN_MS) {
+          // Less than 1 hour has passed - skip video
           setShouldPlayVideo(false);
           // Show static content immediately
           setVideoEnded(true);
@@ -1066,7 +1066,7 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
           setShowSilverCard(true);
           setAnimationsFinished(true);
         } else {
-          // More than 6 hours has passed - play video and update timestamp
+          // More than 1 hour has passed - play video and update timestamp
           setShouldPlayVideo(true);
           localStorage.setItem(STORAGE_KEY, now.toString());
         }
