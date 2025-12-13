@@ -142,7 +142,7 @@ const Label = styled.label`
 const Input = styled.input<{ $hasError?: boolean }>`
   width: 100%;
   padding: 0.75rem 1rem;
-  border: 1px solid ${props => props.$hasError ? 'var(--color-error)' : 'var(--color-border)'};
+  border: 1px solid ${props => props.$hasError ? 'var(--color-error)' : '#cbd5e1'};
   border-radius: 0.5rem;
   font-size: 1rem;
   background: var(--color-background);
@@ -167,13 +167,14 @@ const Input = styled.input<{ $hasError?: boolean }>`
 
   [data-theme="dark"] & {
     background: var(--color-background-tertiary);
+    border-color: ${props => props.$hasError ? 'var(--color-error)' : '#64748b'};
   }
 `;
 
 const Select = styled.select<{ $hasError?: boolean }>`
   width: 100%;
   padding: 0.75rem 1rem;
-  border: 1px solid ${props => props.$hasError ? 'var(--color-error)' : 'var(--color-border)'};
+  border: 1px solid ${props => props.$hasError ? 'var(--color-error)' : '#cbd5e1'};
   border-radius: 0.5rem;
   font-size: 1rem;
   background: var(--color-background);
@@ -200,6 +201,7 @@ const Select = styled.select<{ $hasError?: boolean }>`
 
   [data-theme="dark"] & {
     background: var(--color-background-tertiary);
+    border-color: ${props => props.$hasError ? 'var(--color-error)' : '#64748b'};
   }
 `;
 
