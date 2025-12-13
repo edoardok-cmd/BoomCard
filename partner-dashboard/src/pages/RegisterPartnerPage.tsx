@@ -9,7 +9,8 @@ import Header from '../components/layout/Header/Header';
 
 const PageWrapper = styled.div`
   min-height: 100vh;
-  background: linear-gradient(135deg, #f9fafb 0%, #f3f4f6 100%);
+  background: var(--color-background);
+  transition: background-color var(--transition-normal);
 `;
 
 const PageContainer = styled.div`
@@ -27,10 +28,11 @@ const PageContainer = styled.div`
 const RegisterCard = styled(motion.div)`
   width: 100%;
   max-width: 42rem;
-  background: white;
+  background: var(--color-background-secondary);
   border-radius: 1rem;
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--shadow-soft);
   padding: 2.5rem;
+  transition: background-color var(--transition-normal), box-shadow var(--transition-normal);
 
   @media (max-width: 640px) {
     padding: 2rem 1.5rem;
@@ -48,22 +50,25 @@ const Logo = styled(Link)`
 const LogoText = styled.span`
   font-size: 2rem;
   font-weight: 700;
-  color: #111827;
+  color: var(--color-text-primary);
+  transition: color var(--transition-normal);
 `;
 
 const Title = styled.h1`
   font-size: 1.875rem;
   font-weight: 700;
-  color: #111827;
+  color: var(--color-text-primary);
   text-align: center;
   margin-bottom: 0.5rem;
+  transition: color var(--transition-normal);
 `;
 
 const Subtitle = styled.p`
-  color: #6b7280;
+  color: var(--color-text-secondary);
   text-align: center;
   margin-bottom: 2rem;
   font-size: 0.875rem;
+  transition: color var(--transition-normal);
 `;
 
 const Badge = styled.div`
@@ -71,13 +76,19 @@ const Badge = styled.div`
   align-items: center;
   gap: 0.5rem;
   padding: 0.5rem 1rem;
-  background: #f0f9ff;
-  border: 1px solid #bae6fd;
+  background: rgba(59, 130, 246, 0.1);
+  border: 1px solid rgba(59, 130, 246, 0.3);
   border-radius: 9999px;
-  color: #0369a1;
+  color: var(--color-info);
   font-size: 0.875rem;
   font-weight: 600;
   margin: 0 auto 1.5rem;
+  transition: all var(--transition-normal);
+
+  [data-theme="dark"] & {
+    background: rgba(59, 130, 246, 0.15);
+    border-color: rgba(59, 130, 246, 0.4);
+  }
 `;
 
 const Form = styled.form`
@@ -88,19 +99,21 @@ const Form = styled.form`
 
 const Section = styled.div`
   padding: 1.5rem;
-  background: #f9fafb;
+  background: var(--color-background-tertiary);
   border-radius: 0.75rem;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--color-border);
+  transition: background-color var(--transition-normal), border-color var(--transition-normal);
 `;
 
 const SectionTitle = styled.h3`
   font-size: 1.125rem;
   font-weight: 600;
-  color: #111827;
+  color: var(--color-text-primary);
   margin-bottom: 1rem;
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  transition: color var(--transition-normal);
 `;
 
 const FormRow = styled.div`
@@ -122,60 +135,79 @@ const FormGroup = styled.div`
 const Label = styled.label`
   font-size: 0.875rem;
   font-weight: 500;
-  color: #374151;
+  color: var(--color-text-secondary);
+  transition: color var(--transition-normal);
 `;
 
 const Input = styled.input<{ $hasError?: boolean }>`
   width: 100%;
   padding: 0.75rem 1rem;
-  border: 1px solid ${props => props.$hasError ? '#ef4444' : '#e5e7eb'};
+  border: 1px solid ${props => props.$hasError ? 'var(--color-error)' : 'var(--color-border)'};
   border-radius: 0.5rem;
   font-size: 1rem;
-  transition: all 200ms;
-  background: ${props => props.$hasError ? '#fef2f2' : 'white'};
+  background: var(--color-background);
+  color: var(--color-text-primary);
+  transition: all var(--transition-normal);
 
   &:focus {
     outline: none;
-    border-color: ${props => props.$hasError ? '#ef4444' : '#111827'};
-    box-shadow: 0 0 0 3px ${props => props.$hasError ? 'rgba(239, 68, 68, 0.1)' : 'rgba(17, 24, 39, 0.1)'};
+    border-color: ${props => props.$hasError ? 'var(--color-error)' : 'var(--color-primary)'};
+    box-shadow: 0 0 0 3px ${props => props.$hasError ? 'rgba(239, 68, 68, 0.1)' : 'rgba(59, 130, 246, 0.1)'};
   }
 
   &::placeholder {
-    color: #9ca3af;
+    color: var(--color-text-tertiary);
   }
 
   &:disabled {
-    background: #f9fafb;
+    background: var(--color-background-tertiary);
+    color: var(--color-text-tertiary);
     cursor: not-allowed;
+  }
+
+  [data-theme="dark"] & {
+    background: var(--color-background-tertiary);
   }
 `;
 
 const Select = styled.select<{ $hasError?: boolean }>`
   width: 100%;
   padding: 0.75rem 1rem;
-  border: 1px solid ${props => props.$hasError ? '#ef4444' : '#e5e7eb'};
+  border: 1px solid ${props => props.$hasError ? 'var(--color-error)' : 'var(--color-border)'};
   border-radius: 0.5rem;
   font-size: 1rem;
-  transition: all 200ms;
-  background: ${props => props.$hasError ? '#fef2f2' : 'white'};
+  background: var(--color-background);
+  color: var(--color-text-primary);
+  transition: all var(--transition-normal);
   cursor: pointer;
 
   &:focus {
     outline: none;
-    border-color: ${props => props.$hasError ? '#ef4444' : '#111827'};
-    box-shadow: 0 0 0 3px ${props => props.$hasError ? 'rgba(239, 68, 68, 0.1)' : 'rgba(17, 24, 39, 0.1)'};
+    border-color: ${props => props.$hasError ? 'var(--color-error)' : 'var(--color-primary)'};
+    box-shadow: 0 0 0 3px ${props => props.$hasError ? 'rgba(239, 68, 68, 0.1)' : 'rgba(59, 130, 246, 0.1)'};
   }
 
   &:disabled {
-    background: #f9fafb;
+    background: var(--color-background-tertiary);
+    color: var(--color-text-tertiary);
     cursor: not-allowed;
+  }
+
+  option {
+    background: var(--color-background);
+    color: var(--color-text-primary);
+  }
+
+  [data-theme="dark"] & {
+    background: var(--color-background-tertiary);
   }
 `;
 
 const ErrorMessage = styled(motion.span)`
   font-size: 0.875rem;
-  color: #ef4444;
+  color: var(--color-error);
   margin-top: 0.25rem;
+  transition: color var(--transition-normal);
 `;
 
 const CheckboxGroup = styled.div`
@@ -189,44 +221,53 @@ const Checkbox = styled.input`
   width: 1rem;
   height: 1rem;
   margin-top: 0.125rem;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--color-border);
   border-radius: 0.25rem;
   cursor: pointer;
   flex-shrink: 0;
+  background: var(--color-background);
+  transition: all var(--transition-normal);
 
   &:checked {
-    background-color: #111827;
-    border-color: #111827;
+    background-color: var(--color-primary);
+    border-color: var(--color-primary);
   }
 `;
 
 const CheckboxLabel = styled.label<{ $hasError?: boolean }>`
   font-size: 0.875rem;
-  color: ${props => props.$hasError ? '#ef4444' : '#374151'};
+  color: ${props => props.$hasError ? 'var(--color-error)' : 'var(--color-text-secondary)'};
   cursor: pointer;
   user-select: none;
   line-height: 1.4;
+  transition: color var(--transition-normal);
 
   a {
-    color: #111827;
+    color: var(--color-primary);
     font-weight: 600;
     text-decoration: none;
-    transition: color 200ms;
+    transition: color var(--transition-normal);
 
     &:hover {
-      color: #6b7280;
+      color: var(--color-primary-hover);
     }
   }
 `;
 
 const InfoBox = styled.div`
   padding: 1rem;
-  background: #f0f9ff;
-  border: 1px solid #bae6fd;
+  background: rgba(59, 130, 246, 0.1);
+  border: 1px solid rgba(59, 130, 246, 0.3);
   border-radius: 0.5rem;
   font-size: 0.875rem;
-  color: #0c4a6e;
+  color: var(--color-info);
   line-height: 1.5;
+  transition: all var(--transition-normal);
+
+  [data-theme="dark"] & {
+    background: rgba(59, 130, 246, 0.15);
+    border-color: rgba(59, 130, 246, 0.4);
+  }
 `;
 
 const SubmitButton = styled(Button)`
@@ -237,16 +278,17 @@ const LoginPrompt = styled.p`
   text-align: center;
   margin-top: 2rem;
   font-size: 0.875rem;
-  color: #6b7280;
+  color: var(--color-text-secondary);
+  transition: color var(--transition-normal);
 
   a {
-    color: #111827;
+    color: var(--color-primary);
     font-weight: 600;
     text-decoration: none;
-    transition: color 200ms;
+    transition: color var(--transition-normal);
 
     &:hover {
-      color: #6b7280;
+      color: var(--color-primary-hover);
     }
   }
 `;
@@ -255,16 +297,17 @@ const SwitchAccountType = styled.p`
   text-align: center;
   margin-top: 1rem;
   font-size: 0.875rem;
-  color: #6b7280;
+  color: var(--color-text-secondary);
+  transition: color var(--transition-normal);
 
   a {
-    color: #0369a1;
+    color: var(--color-info);
     font-weight: 600;
     text-decoration: none;
-    transition: color 200ms;
+    transition: color var(--transition-normal);
 
     &:hover {
-      color: #0284c7;
+      color: var(--color-primary);
     }
   }
 `;
