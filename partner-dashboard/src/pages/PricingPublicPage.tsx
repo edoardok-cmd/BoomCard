@@ -468,7 +468,7 @@ const PricingPublicPage: React.FC = () => {
     {
       nameEn: 'Light',
       nameBg: 'Лек',
-      type: 'silver' as const,
+      type: 'black' as const,
       descEn: 'Perfect for new partners getting started',
       descBg: 'Идеален за нови партньори',
       monthlyPrice: 9.99,
