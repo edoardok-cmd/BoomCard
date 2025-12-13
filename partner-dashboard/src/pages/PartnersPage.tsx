@@ -64,6 +64,8 @@ const Container = styled.div`
 
 const HeroContent = styled.div`
   max-width: 700px;
+  margin: 0 auto;
+  text-align: center;
 `;
 
 const Title = styled.h1`
@@ -92,6 +94,7 @@ const HeroButtons = styled.div`
   display: flex;
   gap: 1rem;
   flex-wrap: wrap;
+  justify-content: center;
 
   /* Make outline buttons visible on dark background */
   a:last-child button,
@@ -366,6 +369,7 @@ const CTATitle = styled.h2`
   font-size: 3rem;
   font-weight: 700;
   margin-bottom: 1.5rem;
+  text-align: center;
 
   @media (max-width: 768px) {
     font-size: 2rem;
@@ -380,6 +384,7 @@ const CTAText = styled.p`
   margin-left: auto;
   margin-right: auto;
   line-height: 1.7;
+  text-align: center;
 
   @media (max-width: 768px) {
     font-size: 1rem;

@@ -703,7 +703,7 @@ const PromotionsPage: React.FC = () => {
             </SidePanel>
 
             {/* Main Content */}
-            <MainContent>
+            <MainContent id="all-offers">
               <SectionHeader>
                 <SectionTitle>
                   {hasActiveFilters
@@ -731,7 +731,7 @@ const PromotionsPage: React.FC = () => {
                   </OffersGrid>
 
                   <div style={{ textAlign: 'center', marginTop: '3rem' }}>
-                    <Link to="/search">
+                    <Link to="#all-offers">
                       <Button variant="primary" size="large">
                         {language === 'bg' ? 'Виж Всички Оферти' : 'View All Offers'}
                       </Button>

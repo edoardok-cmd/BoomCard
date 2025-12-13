@@ -224,6 +224,41 @@ const PopularBadge = styled.div`
   white-space: nowrap;
 `;
 
+const MostBoughtBadge = styled.div`
+  position: absolute;
+  top: -2.5rem;
+  left: 50%;
+  transform: translateX(-50%);
+  -webkit-transform: translateX(-50%);
+  -moz-transform: translateX(-50%);
+  background: rgba(255, 255, 255, 0.1);
+  color: #c9a237;
+  border: 2px solid #c9a237;
+  padding: 0.4rem 1.25rem;
+  border-radius: 9999px;
+  font-family: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  box-shadow: 0 4px 12px rgba(201, 162, 55, 0.3);
+  z-index: 10;
+  white-space: nowrap;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  pointer-events: none;
+
+  /* Light mode */
+  [data-theme="light"] & {
+    background: rgba(255, 255, 255, 0.9);
+  }
+
+  /* Dark mode */
+  [data-theme="dark"] & {
+    background: rgba(201, 162, 55, 0.15);
+  }
+`;
+
 const CardLogoText = styled.div<{ $type: 'starter' | 'basic' | 'premium' }>`
   font-size: 1.75rem;
   font-weight: 900;
@@ -412,10 +447,12 @@ const FeatureItem = styled.li<{ $isEmpty?: boolean }>`
 const PlanButtonContainer = styled.div`
   margin-top: auto;
   padding-top: 1.5rem;
+  display: flex;
+  justify-content: center;
+  align-items: center;
 
   a {
     display: block;
-    width: 100%;
   }
 
   /* Golden gradient for all "Choose Plan" buttons */
@@ -614,6 +651,13 @@ const SubscriptionsPage: React.FC = () => {
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5, delay: index * 0.2 }}
             >
+              {/* Most Bought Badge for Light Plan */}
+              {planType === 'starter' && (
+                <MostBoughtBadge>
+                  {language === 'bg' ? 'Най-купуван' : 'Most Bought'}
+                </MostBoughtBadge>
+              )}
+
               {/* Most Popular Badge */}
               {plan.featured && (
                 <PopularBadge>
@@ -661,7 +705,7 @@ const SubscriptionsPage: React.FC = () => {
                 </FeaturesList>
 
                 <PlanButtonContainer>
-                  <Link to="/register" style={{ width: '100%' }}>
+                  <Link to={`/register?plan=${encodeURIComponent(plan.name)}&price=${displayPrice}&currency=EUR&billing=${billingPeriod}`}>
                     <Button
                       variant={plan.featured ? 'primary' : 'secondary'}
                       size="large"

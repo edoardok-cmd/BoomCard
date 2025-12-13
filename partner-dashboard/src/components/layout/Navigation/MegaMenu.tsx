@@ -13,11 +13,12 @@ interface MegaMenuProps {
 const NavWrapper = styled.nav`
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  justify-content: center;
+  gap: 1.5rem;
 
   /* 4K and ultra-wide support */
   @media (min-width: 2560px) {
-    gap: 1.5rem;
+    gap: 2rem;
     max-width: 1800px;
     margin: 0 auto;
   }

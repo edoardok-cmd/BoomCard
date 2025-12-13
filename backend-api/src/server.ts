@@ -10,6 +10,7 @@ import rateLimit from 'express-rate-limit';
 import healthRouter from './routes/health.routes';
 import authRouter from './routes/auth.routes';
 import paymentsRouter from './routes/payments.routes';
+import payseraPaymentsRouter from './routes/payments.paysera.routes';
 import walletRouter from './routes/wallet.routes';
 import subscriptionsRouter from './routes/subscriptions.routes';
 import loyaltyRouter from './routes/loyalty.routes';
@@ -132,6 +133,7 @@ setupSwagger(app);
 app.use('/api/health', healthRouter); // Health checks (monitoring)
 app.use('/api/webhooks', webhooksRouter); // Webhooks (must be first for raw body)
 app.use('/api/auth', authRouter);
+app.use('/api/payments', payseraPaymentsRouter); // Paysera payment routes
 app.use('/api/wallet', walletRouter);
 app.use('/api/subscriptions', subscriptionsRouter);
 app.use('/api/loyalty', loyaltyRouter);

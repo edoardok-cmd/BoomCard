@@ -68,6 +68,15 @@ export const en = {
     rewards: 'Rewards',
   },
 
+  // Mobile Bottom Navigation
+  nav: {
+    home: 'Home',
+    offers: 'Offers',
+    categories: 'Categories',
+    favorites: 'Favorites',
+    profile: 'Profile',
+  },
+
   // Footer
   footer: {
     description: 'Exclusive discounts for restaurants, hotels, spas, and experiences across Bulgaria.',

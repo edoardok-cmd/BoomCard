@@ -9,11 +9,11 @@ export default defineConfig({
     }
   },
   server: {
-    port: 3015,
+    port: 3021,
     strictPort: false, // Allow fallback to next available port
     proxy: {
       '/api': {
-        target: 'http://localhost:3001',
+        target: 'http://localhost:3025',
         changeOrigin: true
       }
     }

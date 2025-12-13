@@ -15,6 +15,7 @@ const PageWrapper = styled.div`
   min-height: 100vh;
   display: flex;
   flex-direction: column;
+  background: var(--color-background);
 `;
 
 const PageContainer = styled.div`
@@ -23,14 +24,14 @@ const PageContainer = styled.div`
   align-items: center;
   justify-content: center;
   padding: 2rem 1rem;
-  background: var(--color-background-secondary);
+  background: var(--color-background);
   margin-top: 65px;
 `;
 
 const LoginCard = styled(motion.div)`
   width: 100%;
   max-width: 28rem;
-  background: var(--color-background);
+  background: var(--color-background-secondary);
   border-radius: 1rem;
   box-shadow: var(--shadow-hover);
   padding: 2.5rem;
@@ -112,6 +113,22 @@ const Input = styled.input<{ $hasError?: boolean }>`
   &:disabled {
     background: var(--color-background-secondary);
     cursor: not-allowed;
+  }
+
+  [data-theme="dark"] & {
+    background: ${props => props.$hasError ? 'rgba(239, 68, 68, 0.15)' : 'var(--color-background)'};
+
+    &:focus {
+      box-shadow: 0 0 0 3px ${props => props.$hasError ? 'rgba(239, 68, 68, 0.2)' : 'rgba(59, 130, 246, 0.2)'};
+    }
+  }
+
+  [data-theme="color"] & {
+    background: ${props => props.$hasError ? 'rgba(239, 68, 68, 0.1)' : 'var(--color-background)'};
+
+    &:focus {
+      box-shadow: 0 0 0 3px ${props => props.$hasError ? 'rgba(239, 68, 68, 0.2)' : 'rgba(255, 148, 214, 0.2)'};
+    }
   }
 `;
 
@@ -247,6 +264,16 @@ const DemoCredentials = styled(motion.div)`
   background: #f0f9ff;
   border: 1px solid #bae6fd;
   border-radius: 0.5rem;
+
+  [data-theme="dark"] & {
+    background: #1e3a8a;
+    border-color: #3b82f6;
+  }
+
+  [data-theme="color"] & {
+    background: rgba(255, 148, 214, 0.1);
+    border-color: #ff94d6;
+  }
 `;
 
 const DemoTitle = styled.p`
@@ -254,6 +281,14 @@ const DemoTitle = styled.p`
   font-weight: 600;
   color: #0369a1;
   margin-bottom: 0.5rem;
+
+  [data-theme="dark"] & {
+    color: #93c5fd;
+  }
+
+  [data-theme="color"] & {
+    color: #6a0572;
+  }
 `;
 
 const DemoInfo = styled.p`
@@ -261,11 +296,27 @@ const DemoInfo = styled.p`
   color: #0c4a6e;
   line-height: 1.5;
 
+  [data-theme="dark"] & {
+    color: #93c5fd;
+  }
+
+  [data-theme="color"] & {
+    color: #6a0572;
+  }
+
   code {
     background: #e0f2fe;
     padding: 0.125rem 0.375rem;
     border-radius: 0.25rem;
     font-family: 'Monaco', 'Courier New', monospace;
+
+    [data-theme="dark"] & {
+      background: rgba(59, 130, 246, 0.2);
+    }
+
+    [data-theme="color"] & {
+      background: rgba(255, 148, 214, 0.15);
+    }
   }
 `;
 

@@ -108,6 +108,22 @@ const CTAButtons = styled.div`
     }
   }
 
+  /* Become a Partner button - golden gradient like Get Started */
+  a:last-child button {
+    background: linear-gradient(135deg, #c9a237 0%, #d4af37 100%) !important;
+    color: #000000 !important;
+    border: 2px solid #c9a237 !important;
+    font-weight: 600 !important;
+    box-shadow: 0 4px 15px rgba(201, 162, 55, 0.4) !important;
+
+    &:hover {
+      background: linear-gradient(135deg, #d4af37 0%, #c9a237 100%) !important;
+      color: #000000 !important;
+      border-color: #d4af37 !important;
+      box-shadow: 0 6px 20px rgba(201, 162, 55, 0.5) !important;
+    }
+  }
+
   /* Light theme - ensure all buttons are visible on dark CTA */
   [data-theme="light"] & a button {
     color: white !important;
@@ -121,6 +137,19 @@ const CTAButtons = styled.div`
   }
 
   [data-theme="light"] & a:first-child button {
+    background: linear-gradient(135deg, #c9a237 0%, #d4af37 100%) !important;
+    color: #000000 !important;
+    border: 2px solid #c9a237 !important;
+    box-shadow: 0 4px 15px rgba(201, 162, 55, 0.4) !important;
+
+    &:hover {
+      background: linear-gradient(135deg, #d4af37 0%, #c9a237 100%) !important;
+      color: #000000 !important;
+      box-shadow: 0 6px 20px rgba(201, 162, 55, 0.5) !important;
+    }
+  }
+
+  [data-theme="light"] & a:last-child button {
     background: linear-gradient(135deg, #c9a237 0%, #d4af37 100%) !important;
     color: #000000 !important;
     border: 2px solid #c9a237 !important;
@@ -157,6 +186,19 @@ const CTAButtons = styled.div`
     }
   }
 
+  [data-theme="dark"] & a:last-child button {
+    background: linear-gradient(135deg, #c9a237 0%, #d4af37 100%) !important;
+    color: #000000 !important;
+    border: 2px solid #c9a237 !important;
+    box-shadow: 0 4px 15px rgba(201, 162, 55, 0.4) !important;
+
+    &:hover {
+      background: linear-gradient(135deg, #d4af37 0%, #c9a237 100%) !important;
+      color: #000000 !important;
+      box-shadow: 0 6px 20px rgba(201, 162, 55, 0.5) !important;
+    }
+  }
+
   /* Color theme - maintain white on blue gradient */
   [data-theme="color"] & a button {
     color: white !important;
@@ -169,6 +211,19 @@ const CTAButtons = styled.div`
   }
 
   [data-theme="color"] & a:first-child button {
+    background: linear-gradient(135deg, #c9a237 0%, #d4af37 100%) !important;
+    color: #000000 !important;
+    border: 2px solid #c9a237 !important;
+    box-shadow: 0 4px 15px rgba(201, 162, 55, 0.4) !important;
+
+    &:hover {
+      background: linear-gradient(135deg, #d4af37 0%, #c9a237 100%) !important;
+      color: #000000 !important;
+      box-shadow: 0 6px 20px rgba(201, 162, 55, 0.5) !important;
+    }
+  }
+
+  [data-theme="color"] & a:last-child button {
     background: linear-gradient(135deg, #c9a237 0%, #d4af37 100%) !important;
     color: #000000 !important;
     border: 2px solid #c9a237 !important;

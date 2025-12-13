@@ -33,15 +33,21 @@ const SearchInputWrapper = styled.div`
   position: relative;
   display: flex;
   align-items: center;
-  background: white;
-  border: 1px solid #e5e7eb;
+  background: var(--color-background);
+  border: 1px solid var(--color-border);
   border-radius: 9999px;
   padding: 0.75rem 1.5rem;
   transition: all 200ms;
 
   &:focus-within {
-    border-color: #000000;
+    border-color: var(--color-primary);
     box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.1);
+  }
+
+  [data-theme="dark"] & {
+    &:focus-within {
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+    }
   }
 
   @media (max-width: 768px) {
@@ -52,7 +58,7 @@ const SearchInputWrapper = styled.div`
 const SearchIcon = styled.svg`
   width: 1.25rem;
   height: 1.25rem;
-  color: #6b7280;
+  color: var(--color-text-secondary);
   margin-right: 0.75rem;
   flex-shrink: 0;
 `;
@@ -62,11 +68,12 @@ const SearchInput = styled.input`
   border: none;
   outline: none;
   font-size: 1rem;
-  color: #111827;
+  color: var(--color-text-primary);
   background: transparent;
 
   &::placeholder {
-    color: #9ca3af;
+    color: var(--color-text-secondary);
+    opacity: 0.6;
   }
 
   @media (max-width: 768px) {
@@ -79,8 +86,8 @@ const ClearButton = styled.button`
   height: 1.5rem;
   border-radius: 50%;
   border: none;
-  background: #e5e7eb;
-  color: #6b7280;
+  background: var(--color-background-secondary);
+  color: var(--color-text-secondary);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -89,8 +96,8 @@ const ClearButton = styled.button`
   margin-left: 0.5rem;
 
   &:hover {
-    background: #d1d5db;
-    color: #111827;
+    background: var(--color-border);
+    color: var(--color-text-primary);
   }
 
   svg {
@@ -104,12 +111,17 @@ const ResultsDropdown = styled(motion.div)`
   top: calc(100% + 0.5rem);
   left: 0;
   right: 0;
-  background: white;
+  background: var(--color-background);
+  border: 1px solid var(--color-border);
   border-radius: 1rem;
   box-shadow: 0 10px 40px -10px rgba(0, 0, 0, 0.15);
   max-height: 400px;
   overflow-y: auto;
   z-index: 50;
+
+  [data-theme="dark"] & {
+    box-shadow: 0 10px 40px -10px rgba(0, 0, 0, 0.4);
+  }
 
   @media (max-width: 768px) {
     max-height: 300px;
@@ -118,10 +130,10 @@ const ResultsDropdown = styled(motion.div)`
 
 const ResultsHeader = styled.div`
   padding: 1rem 1.5rem 0.75rem;
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid var(--color-border);
   font-size: 0.875rem;
   font-weight: 600;
-  color: #6b7280;
+  color: var(--color-text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.05em;
 `;
@@ -133,10 +145,10 @@ const ResultItem = styled.div`
   padding: 0.875rem 1.5rem;
   cursor: pointer;
   transition: background 200ms;
-  border-bottom: 1px solid #f3f4f6;
+  border-bottom: 1px solid var(--color-border);
 
   &:hover {
-    background: #f9fafb;
+    background: var(--color-background-secondary);
   }
 
   &:last-child {
@@ -148,7 +160,7 @@ const ResultImage = styled.div<{ $url?: string }>`
   width: 3rem;
   height: 3rem;
   border-radius: 0.5rem;
-  background: ${props => props.$url ? `url(${props.$url})` : '#e5e7eb'};
+  background: ${props => props.$url ? `url(${props.$url})` : 'var(--color-background-secondary)'};
   background-size: cover;
   background-position: center;
   flex-shrink: 0;
@@ -162,7 +174,7 @@ const ResultContent = styled.div`
 const ResultTitle = styled.div`
   font-size: 0.9375rem;
   font-weight: 500;
-  color: #111827;
+  color: var(--color-text-primary);
   margin-bottom: 0.25rem;
   white-space: nowrap;
   overflow: hidden;
@@ -174,23 +186,23 @@ const ResultMeta = styled.div`
   align-items: center;
   gap: 0.75rem;
   font-size: 0.8125rem;
-  color: #6b7280;
+  color: var(--color-text-secondary);
 `;
 
 const ResultBadge = styled.span`
   display: inline-flex;
   padding: 0.125rem 0.5rem;
-  background: #f3f4f6;
+  background: var(--color-background-secondary);
   border-radius: 9999px;
   font-size: 0.75rem;
   font-weight: 500;
-  color: #6b7280;
+  color: var(--color-text-secondary);
 `;
 
 const DiscountBadge = styled.span`
   display: inline-flex;
   padding: 0.125rem 0.5rem;
-  background: #000000;
+  background: var(--color-primary);
   color: white;
   border-radius: 9999px;
   font-size: 0.75rem;
@@ -200,7 +212,7 @@ const DiscountBadge = styled.span`
 const EmptyState = styled.div`
   padding: 3rem 1.5rem;
   text-align: center;
-  color: #9ca3af;
+  color: var(--color-text-secondary);
 `;
 
 const EmptyIcon = styled.div`
@@ -210,6 +222,7 @@ const EmptyIcon = styled.div`
 
 const EmptyText = styled.div`
   font-size: 0.9375rem;
+  color: var(--color-text-secondary);
 `;
 
 // Sample data - would come from API in real implementation

@@ -844,6 +844,27 @@ const CTASubtitle = styled(motion.p)`
   }
 `;
 
+const GoldenButtonWrapper = styled.div`
+  a {
+    text-decoration: none;
+  }
+
+  button {
+    background: linear-gradient(135deg, #c9a237 0%, #d4af37 100%) !important;
+    color: #000000 !important;
+    border: 2px solid #c9a237 !important;
+    font-weight: 600 !important;
+    box-shadow: 0 4px 15px rgba(201, 162, 55, 0.4) !important;
+
+    &:hover {
+      background: linear-gradient(135deg, #d4af37 0%, #c9a237 100%) !important;
+      color: #000000 !important;
+      border-color: #d4af37 !important;
+      box-shadow: 0 6px 20px rgba(201, 162, 55, 0.5) !important;
+    }
+  }
+`;
+
 const ButtonContainer = styled(motion.div)`
   display: flex;
   gap: 1rem;
@@ -880,17 +901,17 @@ const ButtonContainer = styled(motion.div)`
 
   /* Primary button - golden gradient for light and dark themes */
   a:first-child button {
-    background: linear-gradient(135deg, #ffd700 0%, #ffed4e 100%) !important;
+    background: linear-gradient(135deg, #c9a237 0%, #d4af37 100%) !important;
     color: #000000 !important;
-    border: 2px solid #ffd700 !important;
+    border: 2px solid #c9a237 !important;
     font-weight: 600 !important;
-    box-shadow: 0 4px 15px rgba(255, 215, 0, 0.4) !important;
+    box-shadow: 0 4px 15px rgba(201, 162, 55, 0.4) !important;
 
     &:hover {
-      background: linear-gradient(135deg, #ffed4e 0%, #ffd700 100%) !important;
+      background: linear-gradient(135deg, #d4af37 0%, #c9a237 100%) !important;
       color: #000000 !important;
-      border-color: #ffed4e !important;
-      box-shadow: 0 6px 20px rgba(255, 215, 0, 0.5) !important;
+      border-color: #d4af37 !important;
+      box-shadow: 0 6px 20px rgba(201, 162, 55, 0.5) !important;
     }
   }
 
@@ -909,18 +930,18 @@ const ButtonContainer = styled(motion.div)`
     /* Primary button - golden gradient for color theme too */
     button:first-child,
     a:first-child button {
-      background: linear-gradient(135deg, #ffd700 0%, #ffed4e 100%) !important;
+      background: linear-gradient(135deg, #c9a237 0%, #d4af37 100%) !important;
       color: #000000 !important;
-      border: 2px solid #ffd700 !important;
-      box-shadow: 0 4px 15px rgba(255, 215, 0, 0.4) !important;
+      border: 2px solid #c9a237 !important;
+      box-shadow: 0 4px 15px rgba(201, 162, 55, 0.4) !important;
       text-shadow: none;
       animation: none;
 
       &:hover {
-        background: linear-gradient(135deg, #ffed4e 0%, #ffd700 100%) !important;
+        background: linear-gradient(135deg, #d4af37 0%, #c9a237 100%) !important;
         color: #000000 !important;
-        border-color: #ffed4e !important;
-        box-shadow: 0 6px 20px rgba(255, 215, 0, 0.5) !important;
+        border-color: #d4af37 !important;
+        box-shadow: 0 6px 20px rgba(201, 162, 55, 0.5) !important;
         transform: translateY(-3px) scale(1.05) !important;
       }
     }
@@ -1379,9 +1400,27 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
                 opacity: 1
               }}>
                 <Link to="/subscriptions" style={{ textDecoration: 'none' }}>
-                  <Button variant="primary" size="large">
+                  <button style={{
+                    background: 'linear-gradient(135deg, #c9a237 0%, #d4af37 100%)',
+                    color: '#000000',
+                    border: '2px solid #c9a237',
+                    fontWeight: 600,
+                    boxShadow: '0 4px 15px rgba(201, 162, 55, 0.4)',
+                    borderRadius: '9999px',
+                    cursor: 'pointer',
+                    transition: 'all 300ms cubic-bezier(0.4, 0, 0.2, 1)',
+                    fontFamily: "'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '8px',
+                    whiteSpace: 'nowrap',
+                    padding: '16px 32px',
+                    fontSize: '18px',
+                    minHeight: '56px'
+                  }}>
                     {t.ctaButton}
-                  </Button>
+                  </button>
                 </Link>
               </div>
             </div>

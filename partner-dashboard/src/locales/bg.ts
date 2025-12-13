@@ -70,6 +70,15 @@ export const bg: TranslationKey = {
     rewards: 'Награди',
   },
 
+  // Mobile Bottom Navigation
+  nav: {
+    home: 'Начало',
+    offers: 'Оферти',
+    categories: 'Категории',
+    favorites: 'Любими',
+    profile: 'Профил',
+  },
+
   // Footer
   footer: {
     description: 'Ексклузивни отстъпки за ресторанти, хотели, спа центрове и изживявания в цяла България.',

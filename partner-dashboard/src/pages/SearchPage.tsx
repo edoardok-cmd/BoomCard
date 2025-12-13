@@ -9,7 +9,7 @@ import Badge from '../components/common/Badge/Badge';
 
 const PageContainer = styled.div`
   min-height: 100vh;
-  background: #f9fafb;
+  background: var(--color-background);
 `;
 
 const Hero = styled.div`
@@ -91,7 +91,7 @@ const PopularSearches = styled.div`
 const SectionTitle = styled.h2`
   font-size: 1.5rem;
   font-weight: 600;
-  color: #111827;
+  color: var(--color-text-primary);
   margin-bottom: 1rem;
 `;
 
@@ -103,18 +103,18 @@ const TagsContainer = styled.div`
 
 const SearchTag = styled.button`
   padding: 0.5rem 1rem;
-  background: white;
-  border: 1px solid #e5e7eb;
+  background: var(--color-background);
+  border: 1px solid var(--color-border);
   border-radius: 9999px;
   font-size: 0.9375rem;
-  color: #374151;
+  color: var(--color-text-secondary);
   cursor: pointer;
   transition: all 200ms;
 
   &:hover {
-    border-color: #000000;
-    background: #f9fafb;
-    color: #111827;
+    border-color: var(--color-primary);
+    background: var(--color-background-secondary);
+    color: var(--color-text-primary);
   }
 `;
 
@@ -131,7 +131,7 @@ const ResultsHeader = styled.div`
 
 const ResultsCount = styled.p`
   font-size: 1rem;
-  color: #6b7280;
+  color: var(--color-text-secondary);
 `;
 
 const OffersGrid = styled.div`
@@ -147,8 +147,9 @@ const OffersGrid = styled.div`
 const EmptyState = styled.div`
   text-align: center;
   padding: 4rem 2rem;
-  background: white;
+  background: var(--color-background);
   border-radius: 1rem;
+  border: 1px solid var(--color-border);
 `;
 
 const EmptyIcon = styled.div`
@@ -159,13 +160,13 @@ const EmptyIcon = styled.div`
 const EmptyTitle = styled.h3`
   font-size: 1.5rem;
   font-weight: 600;
-  color: #111827;
+  color: var(--color-text-primary);
   margin-bottom: 0.5rem;
 `;
 
 const EmptyText = styled.p`
   font-size: 1rem;
-  color: #6b7280;
+  color: var(--color-text-secondary);
   margin-bottom: 2rem;
 `;
 

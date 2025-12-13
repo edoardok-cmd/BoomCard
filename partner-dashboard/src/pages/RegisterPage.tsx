@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 import styled from 'styled-components';
 import { motion } from 'framer-motion';
@@ -10,11 +10,13 @@ import GoogleLoginButton from '../components/auth/GoogleLoginButton';
 import FacebookLoginButton from '../components/auth/FacebookLoginButton';
 import Header from '../components/layout/Header/Header';
 import Footer from '../components/layout/Footer/Footer';
+import { payseraService } from '../services/paysera.service';
 
 const PageWrapper = styled.div`
   min-height: 100vh;
   display: flex;
   flex-direction: column;
+  background: var(--color-background);
 `;
 
 const PageContainer = styled.div`
@@ -23,13 +25,13 @@ const PageContainer = styled.div`
   align-items: center;
   justify-content: center;
   padding: 6rem 1rem 2rem;
-  background: var(--color-background-secondary);
+  background: var(--color-background);
 `;
 
 const RegisterCard = styled(motion.div)`
   width: 100%;
   max-width: 32rem;
-  background: var(--color-background);
+  background: var(--color-background-secondary);
   border-radius: 1rem;
   box-shadow: var(--shadow-hover);
   padding: 2.5rem;
@@ -122,6 +124,22 @@ const Input = styled.input<{ $hasError?: boolean }>`
     background: var(--color-background-secondary);
     cursor: not-allowed;
   }
+
+  [data-theme="dark"] & {
+    background: ${props => props.$hasError ? 'rgba(239, 68, 68, 0.15)' : 'var(--color-background)'};
+
+    &:focus {
+      box-shadow: 0 0 0 3px ${props => props.$hasError ? 'rgba(239, 68, 68, 0.2)' : 'rgba(59, 130, 246, 0.2)'};
+    }
+  }
+
+  [data-theme="color"] & {
+    background: ${props => props.$hasError ? 'rgba(239, 68, 68, 0.1)' : 'var(--color-background)'};
+
+    &:focus {
+      box-shadow: 0 0 0 3px ${props => props.$hasError ? 'rgba(239, 68, 68, 0.2)' : 'rgba(255, 148, 214, 0.2)'};
+    }
+  }
 `;
 
 const ErrorMessage = styled(motion.span)`
@@ -180,6 +198,10 @@ const StrengthBar = styled.div`
   background: var(--color-border);
   border-radius: 9999px;
   overflow: hidden;
+
+  [data-theme="dark"] & {
+    background: rgba(255, 255, 255, 0.1);
+  }
 `;
 
 const StrengthFill = styled(motion.div)<{ $strength: number }>`
@@ -191,6 +213,15 @@ const StrengthFill = styled(motion.div)<{ $strength: number }>`
     return '#10b981';
   }};
   border-radius: 9999px;
+
+  [data-theme="dark"] & {
+    background: ${props => {
+      if (props.$strength <= 25) return '#f87171';
+      if (props.$strength <= 50) return '#fbbf24';
+      if (props.$strength <= 75) return '#60a5fa';
+      return '#34d399';
+    }};
+  }
 `;
 
 const StrengthText = styled.span<{ $strength: number }>`
@@ -204,6 +235,15 @@ const StrengthText = styled.span<{ $strength: number }>`
     return '#10b981';
   }};
   font-weight: 500;
+
+  [data-theme="dark"] & {
+    color: ${props => {
+      if (props.$strength <= 25) return '#f87171';
+      if (props.$strength <= 50) return '#fbbf24';
+      if (props.$strength <= 75) return '#60a5fa';
+      return '#34d399';
+    }};
+  }
 `;
 
 const SubmitButton = styled(Button)`
@@ -299,6 +339,119 @@ const SwitchAccountType = styled.p`
   }
 `;
 
+const PlanSummary = styled(motion.div)`
+  background: linear-gradient(135deg, #f9fafb 0%, #f3f4f6 100%);
+  border: 2px solid #e5e7eb;
+  border-radius: 0.75rem;
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+
+  [data-theme="dark"] & {
+    background: linear-gradient(135deg, #1f2937 0%, #111827 100%);
+    border-color: #374151;
+  }
+
+  [data-theme="color"] & {
+    background: linear-gradient(135deg, #fff5f0 0%, #ffe4f1 100%);
+    border-color: rgba(255, 148, 214, 0.3);
+  }
+`;
+
+const PlanSummaryTitle = styled.h3`
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--color-text-primary);
+  margin-bottom: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+
+  &::before {
+    content: '✓';
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: #10b981;
+    color: white;
+    font-size: 0.875rem;
+    font-weight: 700;
+  }
+`;
+
+const PlanDetail = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid var(--color-border);
+
+  &:last-child {
+    border-bottom: none;
+  }
+`;
+
+const PlanLabel = styled.span`
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+  font-weight: 500;
+`;
+
+const PlanValue = styled.span`
+  font-size: 1rem;
+  color: var(--color-text-primary);
+  font-weight: 600;
+`;
+
+const PlanPrice = styled.div`
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 2px solid var(--color-border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+`;
+
+const PlanPriceLabel = styled.span`
+  font-size: 1rem;
+  color: var(--color-text-primary);
+  font-weight: 700;
+`;
+
+const PlanPriceValue = styled.span`
+  font-size: 1.5rem;
+  color: var(--color-primary);
+  font-weight: 700;
+`;
+
+const PaymentInfo = styled.div`
+  background: #eff6ff;
+  border: 1px solid #3b82f6;
+  border-radius: 0.5rem;
+  padding: 1rem;
+  margin-bottom: 1.5rem;
+  font-size: 0.875rem;
+  color: #1e40af;
+
+  [data-theme="dark"] & {
+    background: #1e3a8a;
+    border-color: #3b82f6;
+    color: #93c5fd;
+  }
+
+  [data-theme="color"] & {
+    background: rgba(255, 148, 214, 0.1);
+    border-color: #ff94d6;
+    color: #6a0572;
+  }
+
+  strong {
+    font-weight: 700;
+  }
+`;
+
 interface FormErrors {
   firstName?: string;
   lastName?: string;
@@ -312,8 +465,15 @@ interface FormErrors {
 const RegisterPage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { register, loginWithOAuth, isLoading } = useAuth();
+  const { register, loginWithOAuth, isLoading, token } = useAuth();
   const { t, language } = useLanguage();
+
+  // Extract plan details from URL params
+  const searchParams = new URLSearchParams(location.search);
+  const selectedPlan = searchParams.get('plan');
+  const planPrice = searchParams.get('price');
+  const planCurrency = searchParams.get('currency');
+  const billingPeriod = searchParams.get('billing');
 
   const [formData, setFormData] = useState({
     firstName: '',
@@ -328,6 +488,7 @@ const RegisterPage: React.FC = () => {
   const [errors, setErrors] = useState<FormErrors>({});
   const [touched, setTouched] = useState<Record<string, boolean>>({});
   const [passwordStrength, setPasswordStrength] = useState(0);
+  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
 
   const calculatePasswordStrength = (password: string): number => {
     let strength = 0;
@@ -465,8 +626,37 @@ const RegisterPage: React.FC = () => {
         acceptTerms: formData.acceptTerms,
       });
 
-      // Redirect to home page after successful registration
-      navigate('/', { replace: true });
+      // If a plan is selected, process payment
+      if (selectedPlan && planPrice && token) {
+        setIsProcessingPayment(true);
+        try {
+          const paymentDescription = language === 'bg'
+            ? `Абонамент: ${selectedPlan} (${billingPeriod === 'yearly' ? 'Годишен' : 'Месечен'})`
+            : `Subscription: ${selectedPlan} (${billingPeriod === 'yearly' ? 'Yearly' : 'Monthly'})`;
+
+          const paymentResult = await payseraService.createPayment(token, {
+            amount: parseFloat(planPrice),
+            currency: planCurrency || 'EUR',
+            description: paymentDescription,
+            metadata: {
+              plan: selectedPlan,
+              billing: billingPeriod || 'monthly',
+              subscriptionType: 'new',
+            },
+          });
+
+          // Redirect to Paysera payment page
+          window.location.href = paymentResult.data.paymentUrl;
+        } catch (paymentError) {
+          console.error('Payment creation error:', paymentError);
+          setIsProcessingPayment(false);
+          // Navigate to home even if payment fails, user can retry later
+          navigate('/', { replace: true });
+        }
+      } else {
+        // No plan selected, redirect to home page
+        navigate('/', { replace: true });
+      }
     } catch (error) {
       // Error is handled by the AuthContext with toast
       console.error('Registration error:', error);
@@ -554,6 +744,48 @@ const RegisterPage: React.FC = () => {
         <Subtitle>
           {t('auth.getStartedToday')}
         </Subtitle>
+
+        {/* Show selected plan summary */}
+        {selectedPlan && planPrice && (
+          <>
+            <PlanSummary
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.3 }}
+            >
+              <PlanSummaryTitle>
+                {language === 'bg' ? 'Избран План' : 'Selected Plan'}
+              </PlanSummaryTitle>
+              <PlanDetail>
+                <PlanLabel>{language === 'bg' ? 'План' : 'Plan'}</PlanLabel>
+                <PlanValue>{selectedPlan}</PlanValue>
+              </PlanDetail>
+              <PlanDetail>
+                <PlanLabel>{language === 'bg' ? 'Период' : 'Billing Period'}</PlanLabel>
+                <PlanValue>
+                  {billingPeriod === 'yearly'
+                    ? (language === 'bg' ? 'Годишен' : 'Yearly')
+                    : (language === 'bg' ? 'Месечен' : 'Monthly')}
+                </PlanValue>
+              </PlanDetail>
+              <PlanPrice>
+                <PlanPriceLabel>
+                  {language === 'bg' ? 'Сума' : 'Total'}
+                </PlanPriceLabel>
+                <PlanPriceValue>
+                  {planPrice} {planCurrency || 'EUR'}
+                </PlanPriceValue>
+              </PlanPrice>
+            </PlanSummary>
+
+            <PaymentInfo>
+              <strong>{language === 'bg' ? 'Плащане:' : 'Payment:'}</strong>{' '}
+              {language === 'bg'
+                ? 'След регистрация ще бъдете пренасочени към защитена страница на Paysera за завършване на плащането.'
+                : 'After registration, you will be redirected to Paysera secure payment page to complete your payment.'}
+            </PaymentInfo>
+          </>
+        )}
 
         <Form onSubmit={handleSubmit}>
           <FormRow>
@@ -759,10 +991,14 @@ const RegisterPage: React.FC = () => {
             type="submit"
             variant="primary"
             size="large"
-            isLoading={isLoading}
-            disabled={isLoading}
+            isLoading={isLoading || isProcessingPayment}
+            disabled={isLoading || isProcessingPayment}
           >
-            {t('auth.createAccountButton')}
+            {isProcessingPayment
+              ? (language === 'bg' ? 'Обработка на плащането...' : 'Processing Payment...')
+              : selectedPlan
+              ? (language === 'bg' ? 'Регистрирай и Плати' : 'Register & Pay')
+              : t('auth.createAccountButton')}
           </SubmitButton>
         </Form>
 

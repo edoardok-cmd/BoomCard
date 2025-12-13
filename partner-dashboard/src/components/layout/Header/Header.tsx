@@ -396,25 +396,25 @@ const ThemeMenuDropdown = styled(motion.div)`
   }
 `;
 
-const ThemeOption = styled.button<{ active: boolean }>`
+const ThemeOption = styled.button<{ $active: boolean }>`
   display: flex;
   align-items: center;
   gap: 0.75rem;
   width: 100%;
   padding: 0.75rem 1rem;
-  background: ${props => props.active ? '#f3f4f6' : 'transparent'};
+  background: ${props => props.$active ? '#f3f4f6' : 'transparent'};
   border: none;
   border-radius: 0.5rem;
-  color: ${props => props.active ? '#111827' : '#374151'};
+  color: ${props => props.$active ? '#111827' : '#374151'};
   font-size: 0.875rem;
-  font-weight: ${props => props.active ? '600' : '500'};
+  font-weight: ${props => props.$active ? '600' : '500'};
   cursor: pointer;
   transition: all 200ms;
   text-align: left;
 
   [data-theme="dark"] & {
-    background: ${props => props.active ? '#374151' : 'transparent'};
-    color: ${props => props.active ? '#f9fafb' : '#d1d5db'};
+    background: ${props => props.$active ? '#374151' : 'transparent'};
+    color: ${props => props.$active ? '#f9fafb' : '#d1d5db'};
   }
 
   &:hover {
@@ -897,7 +897,7 @@ export const Header: React.FC<HeaderProps> = ({
   return (
     <StyledHeader className={`${className || ''} ${scrolled ? 'scrolled' : ''}`}>
       <div className="w-full px-3 sm:px-6 lg:px-12">
-        <div className="flex items-center h-16">
+        <div className="flex items-center justify-between h-16 relative">
           {/* Logo - Far Left */}
           <Link to="/" className="flex items-center z-50 flex-shrink-0" onClick={handleLogoClick}>
             <img
@@ -908,13 +908,13 @@ export const Header: React.FC<HeaderProps> = ({
             />
           </Link>
 
-          {/* Desktop Navigation - Centered */}
-          <div className="hidden lg:flex items-center justify-center gap-6 flex-1 px-8">
+          {/* Desktop Navigation - Absolutely Centered on Page */}
+          <div className="hidden lg:flex items-center justify-center absolute left-1/2 transform -translate-x-1/2 z-40">
             <MegaMenu items={navigationConfig.main} language={language} />
           </div>
 
           {/* Right Side Utilities - Always Visible */}
-          <div className="flex items-center gap-1.5 sm:gap-2 md:gap-3 flex-shrink-0 ml-auto">
+          <div className="flex items-center gap-1.5 sm:gap-2 md:gap-3 flex-shrink-0 z-50">
             {/* Search Button */}
             <Tooltip content={language === 'bg' ? 'Търсене' : 'Search'} position="bottom">
               <SearchButton
@@ -1010,7 +1010,7 @@ export const Header: React.FC<HeaderProps> = ({
                     {themeOptions.map((option) => (
                       <ThemeOption
                         key={option.mode}
-                        active={theme === option.mode}
+                        $active={theme === option.mode}
                         onClick={() => {
                           setTheme(option.mode);
                           setThemeMenuOpen(false);

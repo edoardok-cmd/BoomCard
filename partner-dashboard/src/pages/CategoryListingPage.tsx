@@ -453,7 +453,7 @@ const CategoryListingPage: React.FC = () => {
                 </Button>
               </Link>
               <Link to="/subscriptions">
-                <Button variant="outline" size="large">
+                <Button variant="ghost" size="large">
                   {language === 'bg' ? 'Вижте Планове' : 'View Plans'}
                 </Button>
               </Link>

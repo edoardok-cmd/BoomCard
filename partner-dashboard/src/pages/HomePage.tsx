@@ -511,13 +511,16 @@ const PopularBadge = styled.div`
   white-space: nowrap;
 `;
 
-const BestValueBadge = styled.div`
+const MostBoughtBadge = styled.div`
   position: absolute;
   top: -2.5rem;
   left: 50%;
   transform: translateX(-50%);
-  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-  color: #ffffff;
+  -webkit-transform: translateX(-50%);
+  -moz-transform: translateX(-50%);
+  background: rgba(255, 255, 255, 0.1);
+  color: #c9a237;
+  border: 2px solid #c9a237;
   padding: 0.4rem 1.25rem;
   border-radius: 9999px;
   font-family: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
@@ -525,9 +528,22 @@ const BestValueBadge = styled.div`
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.5);
+  box-shadow: 0 4px 12px rgba(201, 162, 55, 0.3);
   z-index: 10;
   white-space: nowrap;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  pointer-events: none;
+
+  /* Light mode */
+  [data-theme="light"] & {
+    background: rgba(255, 255, 255, 0.9);
+  }
+
+  /* Dark mode */
+  [data-theme="dark"] & {
+    background: rgba(201, 162, 55, 0.15);
+  }
 `;
 
 const CardLogoText = styled.div<{ $type: 'starter' | 'basic' | 'premium' }>`
@@ -718,25 +734,100 @@ const FeatureItem = styled.li<{ $isEmpty?: boolean }>`
 const PlanButtonContainer = styled.div`
   margin-top: auto; /* Push to bottom */
   padding-top: 1.5rem; /* Add spacing above */
+  display: flex;
+  justify-content: center;
+  align-items: center;
 
   a {
     display: block;
-    width: 100%;
+    text-decoration: none;
   }
 
-  /* Golden gradient for all "Choose Plan" buttons */
+  /* Golden gradient for all "Choose Plan" buttons with lively animations */
   button {
-    background: linear-gradient(135deg, #c9a237 0%, #d4af37 100%) !important;
+    background: linear-gradient(135deg, #c9a237 0%, #d4af37 50%, #c9a237 100%) !important;
+    background-size: 200% 200% !important;
     color: #000000 !important;
     border: 2px solid #c9a237 !important;
     font-weight: 600 !important;
     box-shadow: 0 4px 15px rgba(201, 162, 55, 0.4) !important;
+    position: relative;
+    overflow: hidden;
+    animation: gentleGlow 3s ease-in-out infinite;
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1) !important;
+
+    /* Ensure button text is above effects */
+    & > * {
+      position: relative;
+      z-index: 2;
+    }
+
+    /* Shimmer effect */
+    &::before {
+      content: '';
+      position: absolute;
+      top: -50%;
+      left: -50%;
+      width: 200%;
+      height: 200%;
+      background: linear-gradient(
+        45deg,
+        transparent 30%,
+        rgba(255, 255, 255, 0.3) 50%,
+        transparent 70%
+      );
+      transform: rotate(45deg);
+      animation: shimmer 3s infinite;
+      z-index: 1;
+    }
 
     &:hover {
-      background: linear-gradient(135deg, #d4af37 0%, #c9a237 100%) !important;
+      background: linear-gradient(135deg, #d4af37 0%, #ffed4e 50%, #d4af37 100%) !important;
+      background-size: 200% 200% !important;
       color: #000000 !important;
       border-color: #d4af37 !important;
-      box-shadow: 0 6px 20px rgba(201, 162, 55, 0.5) !important;
+      box-shadow:
+        0 8px 30px rgba(201, 162, 55, 0.6) !important,
+        0 0 40px rgba(212, 175, 55, 0.4) !important;
+      transform: translateY(-4px) scale(1.03) !important;
+      animation: pulseGlow 0.6s ease-in-out infinite;
+    }
+
+    &:active {
+      transform: translateY(-2px) scale(1.01) !important;
+    }
+  }
+
+  @keyframes gentleGlow {
+    0%, 100% {
+      box-shadow: 0 4px 15px rgba(201, 162, 55, 0.4);
+      background-position: 0% 50%;
+    }
+    50% {
+      box-shadow: 0 4px 20px rgba(201, 162, 55, 0.5);
+      background-position: 100% 50%;
+    }
+  }
+
+  @keyframes pulseGlow {
+    0%, 100% {
+      box-shadow:
+        0 8px 30px rgba(201, 162, 55, 0.6),
+        0 0 40px rgba(212, 175, 55, 0.4);
+    }
+    50% {
+      box-shadow:
+        0 8px 35px rgba(201, 162, 55, 0.7),
+        0 0 50px rgba(212, 175, 55, 0.5);
+    }
+  }
+
+  @keyframes shimmer {
+    0% {
+      transform: translateX(-100%) translateY(-100%) rotate(45deg);
+    }
+    100% {
+      transform: translateX(100%) translateY(100%) rotate(45deg);
     }
   }
 `;
@@ -781,26 +872,6 @@ const ToggleOption = styled.button<{ $active: boolean }>`
   @media (max-width: 480px) {
     padding: 0.75rem 1.5rem;
     font-size: 0.9375rem;
-  }
-`;
-
-const SaveBadge = styled.div`
-  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-  color: white;
-  padding: 0.75rem 1.5rem;
-  border-radius: 3rem;
-  font-size: 0.9375rem;
-  font-weight: 700;
-  box-shadow: 0 4px 15px rgba(16, 185, 129, 0.3);
-  font-family: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-
-  [data-theme="color"] & {
-    background: linear-gradient(135deg, #10b981 0%, #00d4ff 100%);
-  }
-
-  @media (max-width: 480px) {
-    font-size: 0.875rem;
-    padding: 0.625rem 1.25rem;
   }
 `;
 
@@ -1114,11 +1185,6 @@ const HomePage: React.FC = () => {
                 {language === 'bg' ? 'Месечен абонамент' : 'Monthly'}
               </ToggleOption>
             </BillingToggle>
-            {billingPeriod === 'yearly' && (
-              <SaveBadge>
-                {language === 'bg' ? 'Спести 20%' : 'Save 20%'}
-              </SaveBadge>
-            )}
           </BillingToggleContainer>
 
           <SubscriptionCardsContainer>
@@ -1135,11 +1201,11 @@ const HomePage: React.FC = () => {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.5, delay: index * 0.2 }}
               >
-                {/* Best Value Badge for Light Plan */}
+                {/* Most Bought Badge for Light Plan */}
                 {planType === 'starter' && (
-                  <BestValueBadge>
-                    {language === 'bg' ? 'Най-добра стойност' : 'Best Value'}
-                  </BestValueBadge>
+                  <MostBoughtBadge>
+                    {language === 'bg' ? 'Най-купуван' : 'Most Bought'}
+                  </MostBoughtBadge>
                 )}
 
                 {/* Most Popular Badge - positioned relative to wrapper */}
@@ -1189,7 +1255,7 @@ const HomePage: React.FC = () => {
                   </FeaturesList>
 
                   <PlanButtonContainer>
-                    <Link to="/register" style={{ width: '100%' }}>
+                    <Link to="/register">
                       <Button
                         variant={plan.featured ? 'primary' : 'secondary'}
                         size="large"
