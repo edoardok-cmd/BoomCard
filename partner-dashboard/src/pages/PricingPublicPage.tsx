@@ -200,6 +200,23 @@ const CreditCardPlan = styled(motion.div)<{ $type: 'black' | 'silver' }>`
     }
   `}
 
+  /* Light Card */
+  ${props => props.$type === 'light' && `
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+    border: 2px solid #dee2e6;
+
+    &::before {
+      content: '';
+      position: absolute;
+      top: -50%;
+      right: -10%;
+      width: 200px;
+      height: 200px;
+      background: radial-gradient(circle, rgba(0, 0, 0, 0.05) 0%, transparent 70%);
+      border-radius: 50%;
+    }
+  `}
+
   &:hover {
     transform: translateY(-10px) scale(1.02);
     box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
@@ -230,6 +247,18 @@ const CreditCardPlan = styled(motion.div)<{ $type: 'black' | 'silver' }>`
       }
     `}
 
+    ${props => props.$type === 'light' && `
+      background: linear-gradient(135deg, #1f2937 0%, #111827 100%);
+      border: 2px solid #4b5563;
+      box-shadow:
+        0 10px 40px rgba(0, 0, 0, 0.3),
+        0 8px 30px rgba(75, 85, 99, 0.2);
+
+      &::before {
+        background: radial-gradient(circle, rgba(75, 85, 99, 0.1) 0%, transparent 70%);
+      }
+    `}
+
     &:hover {
       box-shadow:
         0 20px 60px rgba(59, 130, 246, 0.4),
@@ -243,36 +272,52 @@ const CreditCardPlan = styled(motion.div)<{ $type: 'black' | 'silver' }>`
   }
 `;
 
-const CardLogoText = styled.div<{ $type: 'black' | 'silver' }>`
+const CardLogoText = styled.div<{ $type: 'black' | 'silver' | 'light' }>`
   font-size: 1.75rem;
   font-weight: 900;
   font-family: 'Arial Black', sans-serif;
   letter-spacing: 2px;
   margin-bottom: 1.5rem;
-  color: ${props => props.$type === 'black' ? '#ffd700' : '#1a1a1a'};
-  text-shadow: ${props => props.$type === 'black'
-    ? '0 2px 10px rgba(255, 215, 0, 0.3)'
-    : '0 1px 2px rgba(255, 255, 255, 0.5)'};
+  color: ${props => {
+    if (props.$type === 'black') return '#ffd700';
+    if (props.$type === 'light') return '#6c757d';
+    return '#1a1a1a';
+  }};
+  text-shadow: ${props => {
+    if (props.$type === 'black') return '0 2px 10px rgba(255, 215, 0, 0.3)';
+    if (props.$type === 'light') return '0 1px 2px rgba(0, 0, 0, 0.1)';
+    return '0 1px 2px rgba(255, 255, 255, 0.5)';
+  }};
 
   [data-theme="dark"] & {
-    color: ${props => props.$type === 'black' ? '#06b6d4' : '#f8fafc'};
-    text-shadow: ${props => props.$type === 'black'
-      ? '0 2px 15px rgba(6, 182, 212, 0.6), 0 0 30px rgba(59, 130, 246, 0.4)'
-      : '0 2px 8px rgba(59, 130, 246, 0.3)'};
+    color: ${props => {
+      if (props.$type === 'black') return '#06b6d4';
+      if (props.$type === 'light') return '#adb5bd';
+      return '#f8fafc';
+    }};
+    text-shadow: ${props => {
+      if (props.$type === 'black') return '0 2px 15px rgba(6, 182, 212, 0.6), 0 0 30px rgba(59, 130, 246, 0.4)';
+      if (props.$type === 'light') return '0 2px 8px rgba(255, 255, 255, 0.1)';
+      return '0 2px 8px rgba(59, 130, 246, 0.3)';
+    }};
   }
 `;
 
-const CardNumber = styled.div<{ $type?: 'black' | 'silver' }>`
+const CardNumber = styled.div<{ $type?: 'black' | 'silver' | 'light' }>`
   display: flex;
   gap: 0.75rem;
   margin-bottom: 2rem;
   font-size: 1.25rem;
-  color: ${props => props.$type === 'black' ? 'rgba(255, 255, 255, 0.9)' : 'rgba(26, 26, 26, 0.9)'};
+  color: ${props => {
+    if (props.$type === 'black') return 'rgba(255, 255, 255, 0.9)';
+    if (props.$type === 'light') return 'rgba(26, 26, 26, 0.8)';
+    return 'rgba(26, 26, 26, 0.9)';
+  }};
   letter-spacing: 0.25rem;
   font-family: 'Courier New', monospace;
 
   [data-theme="dark"] & {
-    color: ${props => props.$type === 'black' ? 'rgba(248, 250, 252, 0.9)' : 'rgba(248, 250, 252, 0.9)'};
+    color: ${props => props.$type === 'light' ? 'rgba(173, 181, 189, 0.9)' : 'rgba(248, 250, 252, 0.9)'};
   }
 `;
 
@@ -282,23 +327,31 @@ const CardBottomRow = styled.div`
   align-items: flex-end;
 `;
 
-const CardHolderName = styled.div<{ $type?: 'black' | 'silver' }>`
+const CardHolderName = styled.div<{ $type?: 'black' | 'silver' | 'light' }>`
   font-family: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  color: ${props => props.$type === 'black' ? 'rgba(255, 255, 255, 0.95)' : 'rgba(26, 26, 26, 0.95)'};
+  color: ${props => {
+    if (props.$type === 'black') return 'rgba(255, 255, 255, 0.95)';
+    if (props.$type === 'light') return 'rgba(26, 26, 26, 0.9)';
+    return 'rgba(26, 26, 26, 0.95)';
+  }};
   font-size: 0.8125rem;
   text-transform: uppercase;
   letter-spacing: 1.5px;
   font-weight: 400;
 
   [data-theme="dark"] & {
-    color: rgba(248, 250, 252, 0.95);
+    color: ${props => props.$type === 'light' ? 'rgba(173, 181, 189, 0.95)' : 'rgba(248, 250, 252, 0.95)'};
   }
 `;
 
-const CardPriceDisplay = styled.div<{ $type: 'black' | 'silver' }>`
+const CardPriceDisplay = styled.div<{ $type: 'black' | 'silver' | 'light' }>`
   font-family: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   text-align: right;
-  color: ${props => props.$type === 'black' ? '#ffd700' : 'rgba(26, 26, 26, 0.95)'};
+  color: ${props => {
+    if (props.$type === 'black') return '#ffd700';
+    if (props.$type === 'light') return '#6c757d';
+    return 'rgba(26, 26, 26, 0.95)';
+  }};
   font-size: 1.75rem;
   font-weight: 400;
   line-height: 1;
@@ -310,10 +363,16 @@ const CardPriceDisplay = styled.div<{ $type: 'black' | 'silver' }>`
   }
 
   [data-theme="dark"] & {
-    color: ${props => props.$type === 'black' ? '#06b6d4' : '#f8fafc'};
-    text-shadow: ${props => props.$type === 'black'
-      ? '0 2px 10px rgba(6, 182, 212, 0.4)'
-      : '0 1px 4px rgba(59, 130, 246, 0.2)'};
+    color: ${props => {
+      if (props.$type === 'black') return '#06b6d4';
+      if (props.$type === 'light') return '#adb5bd';
+      return '#f8fafc';
+    }};
+    text-shadow: ${props => {
+      if (props.$type === 'black') return '0 2px 10px rgba(6, 182, 212, 0.4)';
+      if (props.$type === 'light') return '0 1px 4px rgba(173, 181, 189, 0.2)';
+      return '0 1px 4px rgba(59, 130, 246, 0.2)';
+    }};
   }
 `;
 
@@ -468,7 +527,7 @@ const PricingPublicPage: React.FC = () => {
     {
       nameEn: 'Light',
       nameBg: 'Лек',
-      type: 'black' as const,
+      type: 'light' as const,
       descEn: 'Perfect for new partners getting started',
       descBg: 'Идеален за нови партньори',
       monthlyPrice: 9.99,
