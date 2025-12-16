@@ -732,7 +732,7 @@ const CTAContainer = styled(motion.div)`
 
 const CTATitle = styled(motion.h1)`
   font-family: 'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  font-size: clamp(1.5rem, 5vw, 4rem);
+  font-size: clamp(1.5rem, 5vw, 3.75rem);
   font-weight: 800;
   margin-bottom: clamp(1rem, 3vw, 2.5rem);
   line-height: 1.2;
@@ -1042,10 +1042,10 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
     };
   }, []);
 
-  // Check if video should play based on last view time (once per 1 hour)
+  // Check if video should play based on last view time (once per 10 minutes)
   useEffect(() => {
-    const ONE_HOUR_IN_MS = 1 * 60 * 60 * 1000; // 1 hour in milliseconds
-    const STORAGE_KEY = 'boomcard_video_last_played';
+    const TEN_MINUTES_IN_MS = 10 * 60 * 1000; // 10 minutes in milliseconds
+    const STORAGE_KEY = 'boomcard_hero_video_cache';
 
     try {
       const lastPlayedStr = localStorage.getItem(STORAGE_KEY);
@@ -1055,8 +1055,8 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
         const lastPlayed = parseInt(lastPlayedStr, 10);
         const timeSinceLastPlay = now - lastPlayed;
 
-        if (timeSinceLastPlay < ONE_HOUR_IN_MS) {
-          // Less than 1 hour has passed - skip video
+        if (timeSinceLastPlay < TEN_MINUTES_IN_MS) {
+          // Less than 10 minutes has passed - skip video
           setShouldPlayVideo(false);
           // Show static content immediately
           setVideoEnded(true);
@@ -1066,7 +1066,7 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
           setShowSilverCard(true);
           setAnimationsFinished(true);
         } else {
-          // More than 1 hour has passed - play video and update timestamp
+          // More than 10 minutes has passed - play video and update timestamp
           setShouldPlayVideo(true);
           localStorage.setItem(STORAGE_KEY, now.toString());
         }
@@ -1205,30 +1205,32 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
     const video = videoRef.current;
     if (!video) return;
 
-    const handleLoadedData = () => {
+    const handleCanPlay = () => {
       setVideoLoaded(true);
       // Only try to play if video should play according to cache
       if (shouldPlayVideo) {
-        // Try to play the video in case autoplay was blocked
+        console.log('[Video] Video can play, attempting playback...');
+        // Try to play the video
         const playPromise = video.play();
         if (playPromise !== undefined) {
-          playPromise.catch((error) => {
-            console.log('[Video] Autoplay blocked:', error.name);
-            // Autoplay was blocked - show content immediately
-            setShowLogo(true);
-            setShowCTA(true);
-          });
+          playPromise
+            .then(() => {
+              console.log('[Video] Playback started successfully');
+            })
+            .catch((error) => {
+              console.log('[Video] Playback failed:', error.name, error.message);
+              // Autoplay was blocked - show content immediately
+              setShowLogo(true);
+              setShowCTA(true);
+            });
         }
       }
-    };
-
-    const handleTimeUpdate = () => {
-      // Don't show logo during video - wait for video to end
     };
 
     const handleEnded = () => {
       // Only trigger once
       if (!videoEnded) {
+        console.log('[Video] Video ended');
         setVideoEnded(true);
         // Show both logo and CTA immediately (CTA will be invisible initially)
         setShowLogo(true);
@@ -1241,25 +1243,38 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
       }
     };
 
-    const handleError = () => {
-      console.log('[Video] Error loading or playing video');
+    const handleError = (e: Event) => {
+      console.log('[Video] Error loading or playing video', {
+        error: video.error?.code,
+        message: video.error?.message
+      });
       // If video fails to load/play, show static content
       setShowLogo(true);
       setShowCTA(true);
     };
 
-    video.addEventListener('loadeddata', handleLoadedData);
-    video.addEventListener('timeupdate', handleTimeUpdate);
+    const handlePlay = () => {
+      console.log('[Video] Playback started');
+    };
+
+    const handleLoadStart = () => {
+      console.log('[Video] Loading started');
+    };
+
+    video.addEventListener('canplay', handleCanPlay);
+    video.addEventListener('play', handlePlay);
+    video.addEventListener('loadstart', handleLoadStart);
     video.addEventListener('ended', handleEnded);
     video.addEventListener('error', handleError);
 
     return () => {
-      video.removeEventListener('loadeddata', handleLoadedData);
-      video.removeEventListener('timeupdate', handleTimeUpdate);
+      video.removeEventListener('canplay', handleCanPlay);
+      video.removeEventListener('play', handlePlay);
+      video.removeEventListener('loadstart', handleLoadStart);
       video.removeEventListener('ended', handleEnded);
       video.removeEventListener('error', handleError);
     };
-  }, [showLogo, videoEnded, showCTA, shouldPlayVideo]);
+  }, [videoEnded, shouldPlayVideo]);
 
   // Hide side cards when scrolling below hero section (desktop only)
   useEffect(() => {
@@ -1304,14 +1319,14 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
 
   return (
     <HeroContainer ref={heroRef}>
-      {/* Always render video element so poster image displays, only autoplay if within 1-hour cache window */}
+      {/* Always render video element so poster image displays */}
       <>
         <VideoBackground
           ref={videoRef}
           autoPlay={shouldPlayVideo}
           muted
           playsInline
-          preload="auto"
+          preload="metadata"
           poster="/boom-blast-poster.jpg"
           webkit-playsinline="true"
           x5-playsinline="true"
@@ -1348,7 +1363,7 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
                 src="/zCard.png"
                 alt="Boom Card"
                 loading="eager"
-                fetchPriority="high"
+                fetchPriority={"high" as any}
                 decoding="sync"
                 style={{
                   width: '518px',
@@ -1372,7 +1387,7 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
             }}>
               <h1 style={{
                 fontFamily: "'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-                fontSize: language === 'bg' ? '3.2rem' : 'clamp(1.5rem, 5vw, 4rem)',
+                fontSize: language === 'bg' ? '3.2rem' : 'clamp(1.5rem, 5vw, 3.75rem)',
                 fontWeight: 800,
                 marginBottom: 'clamp(1rem, 3vw, 2.5rem)',
                 lineHeight: 1.2,

@@ -525,8 +525,8 @@ const PricingPublicPage: React.FC = () => {
 
   const plans = [
     {
-      nameEn: 'Light',
-      nameBg: 'Лек',
+      nameEn: 'Lite',
+      nameBg: 'Лайт',
       type: 'light' as const,
       descEn: 'Perfect for new partners getting started',
       descBg: 'Идеален за нови партньори',
@@ -639,7 +639,9 @@ const PricingPublicPage: React.FC = () => {
           const displayPrice = isAnnual ? Math.floor(plan.yearlyPrice / 12) : plan.monthlyPrice;
           const priceLabel = isAnnual
             ? (language === 'bg' ? ' €/година' : ' €/year')
-            : (language === 'bg' ? ' €/месец' : ' €/month');
+            : plan.type === 'light'
+              ? (language === 'bg' ? ' €/седмица' : ' €/week')
+              : (language === 'bg' ? ' €/месец' : ' €/month');
 
           return (
             <PlanCardWrapper

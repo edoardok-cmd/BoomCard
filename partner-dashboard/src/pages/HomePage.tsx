@@ -1029,7 +1029,7 @@ const HomePage: React.FC = () => {
 
   const subscriptionPlans = [
     {
-      name: language === 'bg' ? 'Лек План' : 'Light Plan',
+      name: language === 'bg' ? 'Лайт План' : 'Lite Plan',
       monthlyPrice: 4.99,
       yearlyPrice: 52,
       duration: language === 'bg' ? ' €/седмица' : ' €/week',
@@ -1053,7 +1053,7 @@ const HomePage: React.FC = () => {
       name: language === 'bg' ? 'Основен' : 'Basic',
       monthlyPrice: 7.99,
       yearlyPrice: 84,
-      duration: language === 'bg' ? ' €/седмица' : ' €/week',
+      duration: language === 'bg' ? ' €/месец' : ' €/month',
       features: [
         language === 'bg' ? '24 часа премиум услуга' : '24 hours premium service',
         language === 'bg' ? 'Достъп до основни оферти' : 'Access to basic offers',
@@ -1073,7 +1073,7 @@ const HomePage: React.FC = () => {
       name: language === 'bg' ? 'Премиум' : 'Premium',
       monthlyPrice: 12.99,
       yearlyPrice: 136,
-      duration: language === 'bg' ? ' €/седмица' : ' €/week',
+      duration: language === 'bg' ? ' €/месец' : ' €/month',
       featured: true,
       features: [
         language === 'bg' ? '24 часа премиум услуга' : '24 hours premium service',
