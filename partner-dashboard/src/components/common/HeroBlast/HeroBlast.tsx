@@ -12,7 +12,7 @@ const HeroContainer = styled.div`
   position: relative;
   width: 100%;
   height: 100vh;
-  min-height: 600px;
+  min-height: 800px;
   max-height: 900px;
   background: var(--color-primary);
   overflow: hidden;
@@ -107,11 +107,25 @@ const VideoBackground = styled.video`
   object-position: center;
   z-index: 1;
   will-change: transform;
+  background: #000;
 
   /* Optimize video decoding for better performance */
   @media (prefers-reduced-motion: reduce) {
     animation: none;
   }
+`;
+
+const VideoLoadingPlaceholder = styled.div<{ $visible: boolean }>`
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: #000;
+  z-index: 2;
+  opacity: ${props => props.$visible ? 1 : 0};
+  visibility: ${props => props.$visible ? 'visible' : 'hidden'};
+  transition: opacity 0.5s ease-out, visibility 0.5s ease-out;
 `;
 
 const VideoOverlay = styled.div<{ $fadeOut: boolean }>`
@@ -131,6 +145,21 @@ const StaticBackground = styled.div`
   height: 100%;
   background: #000000;
   z-index: 1;
+`;
+
+const StaticContentWrapper = styled.div<{ $ready: boolean }>`
+  position: relative;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  max-width: 1200px;
+  margin: 0 auto;
+  width: 100%;
+  opacity: ${props => props.$ready ? 1 : 0};
+  transition: opacity 0.4s ease-out;
 `;
 
 const ContentContainer = styled.div`
@@ -1319,7 +1348,7 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
 
   return (
     <HeroContainer ref={heroRef}>
-      {/* Always render video element so poster image displays */}
+      {/* Video background with black fallback */}
       <>
         <VideoBackground
           ref={videoRef}
@@ -1327,7 +1356,6 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
           muted
           playsInline
           preload="metadata"
-          poster="/boom-blast-poster.jpg"
           webkit-playsinline="true"
           x5-playsinline="true"
         >
@@ -1335,29 +1363,18 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
           Your browser does not support the video tag.
         </VideoBackground>
         <VideoOverlay $fadeOut={videoEnded} />
+        {/* Loading placeholder - black background before video plays */}
+        <VideoLoadingPlaceholder $visible={shouldPlayVideo && !videoLoaded} />
       </>
       {!shouldPlayVideo && (
         <>
           <StaticBackground />
-          {/* Static poster content - no animations, no styled-components overhead */}
-          <div style={{
-            position: 'relative',
-            zIndex: 10,
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: '2rem',
-            maxWidth: '1200px',
-            margin: '0 auto',
-            width: '100%',
-            opacity: 1
-          }}>
+          {/* Static poster content - preloaded and fades in when ready */}
+          <StaticContentWrapper $ready={logoPreloaded}>
             <div style={{
               position: 'relative',
               marginTop: '50px',
-              marginBottom: '40px',
-              opacity: 1
+              marginBottom: '40px'
             }}>
               <img
                 src="/zCard.png"
@@ -1374,7 +1391,6 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
                   borderRadius: '20px',
                   filter: 'drop-shadow(0 25px 50px rgba(0, 0, 0, 0.8))',
                   display: 'block',
-                  opacity: 1,
                   imageRendering: 'crisp-edges'
                 }}
               />
@@ -1382,8 +1398,7 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
 
             <div style={{
               textAlign: 'center',
-              color: 'var(--color-secondary)',
-              opacity: 1
+              color: 'var(--color-secondary)'
             }}>
               <h1 style={{
                 fontFamily: "'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
@@ -1399,8 +1414,7 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
                 WebkitBackgroundClip: 'text',
                 WebkitTextFillColor: 'transparent',
                 backgroundClip: 'text',
-                textShadow: '0 4px 20px rgba(0, 0, 0, 0.8)',
-                opacity: 1
+                textShadow: '0 4px 20px rgba(0, 0, 0, 0.8)'
               }}>
                 {t.title}
               </h1>
@@ -1430,8 +1444,7 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
                 padding: '0 1rem',
                 maxWidth: '100%',
                 width: '100%',
-                marginTop: 'clamp(20px, 3vw, 40px)',
-                opacity: 1
+                marginTop: 'clamp(20px, 3vw, 40px)'
               }}>
                 <Link to="/subscriptions" style={{ textDecoration: 'none' }}>
                   <button style={{
@@ -1458,7 +1471,7 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
                 </Link>
               </div>
             </div>
-          </div>
+          </StaticContentWrapper>
         </>
       )}
 
