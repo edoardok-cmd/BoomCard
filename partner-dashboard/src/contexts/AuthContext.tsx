@@ -53,6 +53,7 @@ export interface OAuthData {
 }
 
 export interface AuthContextType extends AuthState {
+  token: string | null;
   login: (credentials: LoginCredentials) => Promise<void>;
   loginWithOAuth: (oauthData: OAuthData) => Promise<void>;
   register: (data: RegisterData) => Promise<void>;
@@ -76,6 +77,7 @@ const REFRESH_TOKEN_KEY = 'refreshToken';
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
+  const [token, setToken] = useState<string | null>(() => localStorage.getItem(TOKEN_KEY));
   const [isLoading, setIsLoading] = useState(true);
 
   // Load user from localStorage and verify token on mount
@@ -141,6 +143,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         // Store tokens
         localStorage.setItem(TOKEN_KEY, token);
+        setToken(token);
         if (refreshToken) {
           localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
         }
@@ -214,6 +217,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         // Store mock token
         localStorage.setItem(TOKEN_KEY, mockToken);
+        setToken(mockToken);
 
         // Set user state
         setUser(mockUser.user);
@@ -251,6 +255,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       // Store tokens
       localStorage.setItem(TOKEN_KEY, token);
+      setToken(token);
       if (refreshToken) {
         localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
       }
@@ -279,6 +284,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const logout = () => {
     // Clear user state
     setUser(null);
+    setToken(null);
 
     // Clear storage
     localStorage.removeItem(STORAGE_KEY);
@@ -365,6 +371,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         // Store tokens
         localStorage.setItem(TOKEN_KEY, token);
+        setToken(token);
         if (refreshToken) {
           localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
         }
@@ -406,6 +413,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         // Store mock token
         localStorage.setItem(TOKEN_KEY, mockToken);
+        setToken(mockToken);
         localStorage.setItem(STORAGE_KEY, JSON.stringify(mockUser));
 
         // Set user state
@@ -424,6 +432,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const value: AuthContextType = {
     user,
+    token,
     isAuthenticated: !!user,
     isLoading,
     login,

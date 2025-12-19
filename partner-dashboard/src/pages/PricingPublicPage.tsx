@@ -148,7 +148,7 @@ const FeaturedBadge = styled.div`
   white-space: nowrap;
 `;
 
-const CreditCardPlan = styled(motion.div)<{ $type: 'black' | 'silver' }>`
+const CreditCardPlan = styled(motion.div)<{ $type: 'black' | 'silver' | 'light' }>`
   width: 360px;
   height: 225px;
   border-radius: 1.25rem;
