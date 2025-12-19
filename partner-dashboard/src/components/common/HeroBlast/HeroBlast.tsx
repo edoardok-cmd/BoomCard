@@ -1041,6 +1041,7 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
   const [logoPreloaded, setLogoPreloaded] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const heroRef = useRef<HTMLDivElement>(null);
+  const videoPlayedRef = useRef(false);
 
   // Preload logo image immediately on component mount for instant display
   useEffect(() => {
@@ -1236,23 +1237,15 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
 
     const handleCanPlay = () => {
       setVideoLoaded(true);
-      // Only try to play if video should play according to cache
-      if (shouldPlayVideo) {
-        console.log('[Video] Video can play, attempting playback...');
-        // Try to play the video
-        const playPromise = video.play();
-        if (playPromise !== undefined) {
-          playPromise
-            .then(() => {
-              console.log('[Video] Playback started successfully');
-            })
-            .catch((error) => {
-              console.log('[Video] Playback failed:', error.name, error.message);
-              // Autoplay was blocked - show content immediately
-              setShowLogo(true);
-              setShowCTA(true);
-            });
-        }
+      // Only play once, using ref to survive re-renders and StrictMode
+      if (shouldPlayVideo && !videoPlayedRef.current) {
+        videoPlayedRef.current = true;
+        console.log('[Video] Video can play, starting playback...');
+        video.play().catch((error) => {
+          console.log('[Video] Playback failed:', error.name, error.message);
+          setShowLogo(true);
+          setShowCTA(true);
+        });
       }
     };
 
@@ -1268,11 +1261,10 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
         setTimeout(() => setPhotoState('dealing'), 800);
         // Prevent video from replaying
         video.pause();
-        video.currentTime = video.duration;
       }
     };
 
-    const handleError = (e: Event) => {
+    const handleError = () => {
       console.log('[Video] Error loading or playing video', {
         error: video.error?.code,
         message: video.error?.message
@@ -1282,24 +1274,12 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
       setShowCTA(true);
     };
 
-    const handlePlay = () => {
-      console.log('[Video] Playback started');
-    };
-
-    const handleLoadStart = () => {
-      console.log('[Video] Loading started');
-    };
-
     video.addEventListener('canplay', handleCanPlay);
-    video.addEventListener('play', handlePlay);
-    video.addEventListener('loadstart', handleLoadStart);
     video.addEventListener('ended', handleEnded);
     video.addEventListener('error', handleError);
 
     return () => {
       video.removeEventListener('canplay', handleCanPlay);
-      video.removeEventListener('play', handlePlay);
-      video.removeEventListener('loadstart', handleLoadStart);
       video.removeEventListener('ended', handleEnded);
       video.removeEventListener('error', handleError);
     };
@@ -1352,10 +1332,9 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
       <>
         <VideoBackground
           ref={videoRef}
-          autoPlay={shouldPlayVideo}
           muted
           playsInline
-          preload="metadata"
+          preload="auto"
           webkit-playsinline="true"
           x5-playsinline="true"
         >
