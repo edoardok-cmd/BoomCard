@@ -160,6 +160,10 @@ const StaticContentWrapper = styled.div<{ $ready: boolean }>`
   width: 100%;
   opacity: ${props => props.$ready ? 1 : 0};
   transition: opacity 0.4s ease-out;
+
+  @media (max-width: 768px) {
+    padding: 1.5rem 1rem;
+  }
 `;
 
 const ContentContainer = styled.div`
@@ -1045,6 +1049,8 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
 
   // Preload logo image immediately on component mount for instant display
   useEffect(() => {
+    let timeoutId: NodeJS.Timeout;
+
     // Add preload link to document head for high priority loading
     const preloadLink = document.createElement('link');
     preloadLink.rel = 'preload';
@@ -1056,15 +1062,24 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
     const preloadImage = new Image();
     preloadImage.src = '/zCard.png';
     preloadImage.onload = () => {
+      clearTimeout(timeoutId);
       setLogoPreloaded(true);
     };
     // Start preloading immediately, don't wait
     preloadImage.onerror = () => {
+      clearTimeout(timeoutId);
       // Even if it fails, mark as loaded to show the component
       setLogoPreloaded(true);
     };
 
+    // Fallback: show content after 1.5 seconds even if image hasn't loaded
+    // This prevents mobile users from seeing a black screen forever
+    timeoutId = setTimeout(() => {
+      setLogoPreloaded(true);
+    }, 1500);
+
     return () => {
+      clearTimeout(timeoutId);
       // Cleanup preload link on unmount
       if (preloadLink.parentNode) {
         document.head.removeChild(preloadLink);
@@ -1352,8 +1367,11 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
           <StaticContentWrapper $ready={logoPreloaded}>
             <div style={{
               position: 'relative',
-              marginTop: '50px',
-              marginBottom: '40px'
+              marginTop: 'clamp(20px, 5vw, 50px)',
+              marginBottom: 'clamp(20px, 5vw, 40px)',
+              width: '100%',
+              display: 'flex',
+              justifyContent: 'center'
             }}>
               <img
                 src="/zCard.png"
@@ -1361,12 +1379,13 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
                 loading="eager"
                 decoding="sync"
                 style={{
-                  width: '518px',
+                  width: '100%',
+                  maxWidth: '518px',
                   height: 'auto',
                   maxHeight: '324px',
                   objectFit: 'contain',
                   backgroundColor: '#000000',
-                  borderRadius: '20px',
+                  borderRadius: 'clamp(12px, 3vw, 20px)',
                   filter: 'drop-shadow(0 25px 50px rgba(0, 0, 0, 0.8))',
                   display: 'block',
                   imageRendering: 'crisp-edges'
@@ -1380,26 +1399,28 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
             }}>
               <h1 style={{
                 fontFamily: "'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-                fontSize: language === 'bg' ? '3.2rem' : 'clamp(1.5rem, 5vw, 3.75rem)',
+                fontSize: 'clamp(1.8rem, 8vw, 3.75rem)',
                 fontWeight: 800,
                 marginBottom: 'clamp(1rem, 3vw, 2.5rem)',
                 lineHeight: 1.2,
                 letterSpacing: '-0.02em',
                 whiteSpace: 'pre-line',
-                padding: '0 1rem',
+                padding: '0 0.5rem',
                 background: 'linear-gradient(90deg, #ffd700 0%, #ffd700 30%, #ffed4e 50%, #ffd700 70%, #ff8800 85%, #ffd700 100%)',
                 backgroundSize: '300% 100%',
                 WebkitBackgroundClip: 'text',
                 WebkitTextFillColor: 'transparent',
                 backgroundClip: 'text',
-                textShadow: '0 4px 20px rgba(0, 0, 0, 0.8)'
+                textShadow: '0 4px 20px rgba(0, 0, 0, 0.8)',
+                textAlign: 'center',
+                width: '100%'
               }}>
                 {t.title}
               </h1>
 
               <p style={{
                 fontFamily: "'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-                fontSize: 'clamp(0.95rem, 3vw, 1.5rem)',
+                fontSize: 'clamp(0.9rem, 3.5vw, 1.5rem)',
                 fontWeight: 400,
                 marginBottom: 'clamp(1rem, 2vw, 2rem)',
                 color: '#ffffff',
@@ -1408,8 +1429,9 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
                 maxWidth: '600px',
                 marginLeft: 'auto',
                 marginRight: 'auto',
-                padding: '0 1rem',
-                lineHeight: 1.5
+                padding: '0 0.5rem',
+                lineHeight: 1.5,
+                textAlign: 'center'
               }}>
                 {t.subtitle}
               </p>
@@ -1419,12 +1441,12 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
                 gap: '1rem',
                 justifyContent: 'center',
                 flexWrap: 'wrap',
-                padding: '0 1rem',
+                padding: '0 0.5rem',
                 maxWidth: '100%',
                 width: '100%',
-                marginTop: 'clamp(20px, 3vw, 40px)'
+                marginTop: 'clamp(16px, 3vw, 40px)'
               }}>
-                <Link to="/subscriptions" style={{ textDecoration: 'none' }}>
+                <Link to="/subscriptions" style={{ textDecoration: 'none', width: '100%', maxWidth: '400px' }}>
                   <button style={{
                     background: 'linear-gradient(135deg, #c9a237 0%, #d4af37 100%)',
                     color: '#000000',
@@ -1439,10 +1461,11 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
                     alignItems: 'center',
                     justifyContent: 'center',
                     gap: '8px',
-                    whiteSpace: 'nowrap',
-                    padding: '16px 32px',
-                    fontSize: '18px',
-                    minHeight: '56px'
+                    whiteSpace: 'normal',
+                    padding: 'clamp(12px, 3vw, 16px) clamp(20px, 5vw, 32px)',
+                    fontSize: 'clamp(14px, 3.5vw, 18px)',
+                    minHeight: '48px',
+                    width: '100%'
                   }}>
                     {t.ctaButton}
                   </button>
