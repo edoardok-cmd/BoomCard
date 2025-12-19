@@ -1359,7 +1359,6 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
                 src="/zCard.png"
                 alt="Boom Card"
                 loading="eager"
-                fetchPriority={"high" as any}
                 decoding="sync"
                 style={{
                   width: '518px',
