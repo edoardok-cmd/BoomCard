@@ -78,6 +78,22 @@ const CTAButtons = styled.div`
   justify-content: center;
   flex-wrap: wrap;
 
+  @media (max-width: 768px) {
+    flex-direction: column;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0 1rem;
+
+    a {
+      width: 100%;
+      max-width: 300px;
+    }
+
+    a button {
+      width: 100%;
+    }
+  }
+
   /* All buttons in CTA section should work on dark background */
   a button {
     /* Override all button variants to work on dark background */
