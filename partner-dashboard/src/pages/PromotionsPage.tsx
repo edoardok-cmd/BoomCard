@@ -460,6 +460,133 @@ const MainContent = styled.div`
   min-width: 0;
 `;
 
+// Cashback Steps Section Styles
+const CashbackSection = styled.section`
+  background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
+  padding: 4rem 0;
+
+  [data-theme="dark"] & {
+    background: linear-gradient(135deg, #14532d 0%, #166534 100%);
+  }
+
+  [data-theme="color"] & {
+    background: linear-gradient(135deg, #fdf4ff 0%, #f5d0fe 100%);
+  }
+`;
+
+const CashbackContainer = styled.div`
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 1.5rem;
+`;
+
+const CashbackTitle = styled.h2`
+  font-size: 2rem;
+  font-weight: 700;
+  text-align: center;
+  margin-bottom: 3rem;
+  color: #166534;
+
+  [data-theme="dark"] & {
+    color: #86efac;
+  }
+
+  [data-theme="color"] & {
+    color: #86198f;
+  }
+
+  @media (max-width: 768px) {
+    font-size: 1.5rem;
+    margin-bottom: 2rem;
+  }
+`;
+
+const CashbackSteps = styled.div`
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 2rem;
+  margin-bottom: 2rem;
+
+  @media (max-width: 768px) {
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+  }
+`;
+
+const CashbackStep = styled(motion.div)`
+  background: white;
+  border-radius: 1rem;
+  padding: 2rem;
+  text-align: center;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  position: relative;
+
+  [data-theme="dark"] & {
+    background: #1f2937;
+  }
+
+  [data-theme="color"] & {
+    background: white;
+    border: 2px solid rgba(134, 25, 143, 0.2);
+  }
+`;
+
+const StepNumber = styled.div`
+  width: 3rem;
+  height: 3rem;
+  background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: white;
+  margin: 0 auto 1rem;
+
+  [data-theme="color"] & {
+    background: linear-gradient(135deg, #d946ef 0%, #a855f7 100%);
+  }
+`;
+
+const StepIcon = styled.div`
+  font-size: 2.5rem;
+  margin-bottom: 1rem;
+`;
+
+const StepText = styled.p`
+  font-size: 1rem;
+  color: #374151;
+  line-height: 1.5;
+
+  [data-theme="dark"] & {
+    color: #d1d5db;
+  }
+`;
+
+const CashbackNote = styled.p`
+  text-align: center;
+  font-size: 0.875rem;
+  color: #6b7280;
+  margin-top: 1.5rem;
+  font-style: italic;
+
+  [data-theme="dark"] & {
+    color: #9ca3af;
+  }
+`;
+
+const CashbackTrustText = styled.p`
+  text-align: center;
+  font-size: 0.75rem;
+  color: #9ca3af;
+  margin-top: 0.5rem;
+
+  [data-theme="dark"] & {
+    color: #6b7280;
+  }
+`;
+
 const PromotionsPage: React.FC = () => {
   const { language } = useLanguage();
 
@@ -561,34 +688,50 @@ const PromotionsPage: React.FC = () => {
 
   const t = {
     en: {
-      title: 'Special Promotions',
-      subtitle: 'Discover amazing deals and limited-time offers from your favorite venues',
-      activePromotions: 'Active Promotions',
-      totalOffers: 'Total Offers',
-      avgDiscount: 'Avg. Discount',
+      title: 'Deals with BOOM Card',
+      subtitle: 'Real discounts and exclusive offers from selected venues in Bulgaria',
+      activeOffers: 'active deals',
+      upToDiscount: 'Up to 35% discount',
+      newOffersRegularly: 'New offers regularly',
       all: 'All',
       active: 'Active',
       upcoming: 'Upcoming',
       expired: 'Expired',
       filters: 'Filters',
-      emptyTitle: 'No promotions found',
+      emptyTitle: 'No deals found',
       emptyText: 'Check back soon for new exciting deals!',
-      browseOffers: 'Browse All Offers',
+      browseOffers: 'Browse All Deals',
+      premiumOnlyNote: 'Some offers are available only with Premium.',
+      // Cashback Section
+      cashbackTitle: 'Cashback with BOOM Card in 3 steps',
+      cashbackStep1: 'Scan the sticker on the table in the app',
+      cashbackStep2: 'Take a photo of your receipt after payment',
+      cashbackStep3: 'Receive cashback to your bank account',
+      cashbackNote: 'Everything happens through the app. No explanations to staff.',
+      cashbackTrustText: 'Cashback is credited after receipt verification.',
     },
     bg: {
-      title: 'Специални Промоции',
-      subtitle: 'Открийте невероятни оферти и ограничени промоции от любимите си места',
-      activePromotions: 'Активни Промоции',
-      totalOffers: 'Общо Оферти',
-      avgDiscount: 'Средна Отстъпка',
+      title: 'Оферти с BOOM Card',
+      subtitle: 'Реални отстъпки и ексклузивни предложения от подбрани места в България',
+      activeOffers: 'активни оферти',
+      upToDiscount: 'До 35% отстъпка',
+      newOffersRegularly: 'Нови предложения редовно',
       all: 'Всички',
       active: 'Активни',
       upcoming: 'Предстоящи',
       expired: 'Изтекли',
       filters: 'Филтри',
-      emptyTitle: 'Няма намерени промоции',
+      emptyTitle: 'Няма намерени оферти',
       emptyText: 'Проверете отново скоро за нови вълнуващи оферти!',
       browseOffers: 'Разгледай Всички Оферти',
+      premiumOnlyNote: 'Някои оферти са достъпни само с Premium.',
+      // Cashback Section
+      cashbackTitle: 'Кешбек с BOOM Card в 3 стъпки',
+      cashbackStep1: 'Сканирай стикера на масата в приложението',
+      cashbackStep2: 'Снимай касовата бележка след плащане',
+      cashbackStep3: 'Получи кешбек по банковата си сметка',
+      cashbackNote: 'Всичко става през приложението. Без обяснения с персонала.',
+      cashbackTrustText: 'Кешбекът се начислява след проверка на касовата бележка.',
     },
   };
 
@@ -610,21 +753,59 @@ const PromotionsPage: React.FC = () => {
               <StatsRow>
                 <StatItem>
                   <StatValue>{mockOffers.length}</StatValue>
-                  <StatLabel>{content.totalOffers}</StatLabel>
-                </StatItem>
-                <StatItem>
-                  <StatValue>{mockOffers.length}</StatValue>
-                  <StatLabel>{content.activePromotions}</StatLabel>
+                  <StatLabel>{content.activeOffers}</StatLabel>
                 </StatItem>
                 <StatItem>
                   <StatValue>35%</StatValue>
-                  <StatLabel>{content.avgDiscount}</StatLabel>
+                  <StatLabel>{content.upToDiscount}</StatLabel>
+                </StatItem>
+                <StatItem>
+                  <StatValue>✨</StatValue>
+                  <StatLabel>{content.newOffersRegularly}</StatLabel>
                 </StatItem>
               </StatsRow>
             </motion.div>
           </HeroContent>
         </Container>
       </Hero>
+
+      {/* Cashback Steps Section */}
+      <CashbackSection>
+        <CashbackContainer>
+          <CashbackTitle>{content.cashbackTitle}</CashbackTitle>
+          <CashbackSteps>
+            <CashbackStep
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 0.1 }}
+            >
+              <StepNumber>1</StepNumber>
+              <StepIcon>📱</StepIcon>
+              <StepText>{content.cashbackStep1}</StepText>
+            </CashbackStep>
+            <CashbackStep
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 0.2 }}
+            >
+              <StepNumber>2</StepNumber>
+              <StepIcon>🧾</StepIcon>
+              <StepText>{content.cashbackStep2}</StepText>
+            </CashbackStep>
+            <CashbackStep
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 0.3 }}
+            >
+              <StepNumber>3</StepNumber>
+              <StepIcon>💰</StepIcon>
+              <StepText>{content.cashbackStep3}</StepText>
+            </CashbackStep>
+          </CashbackSteps>
+          <CashbackNote>{content.cashbackNote}</CashbackNote>
+          <CashbackTrustText>{content.cashbackTrustText}</CashbackTrustText>
+        </CashbackContainer>
+      </CashbackSection>
 
       <ContentSection>
         <Container>

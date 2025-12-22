@@ -11,37 +11,39 @@ interface HeroBlastProps {
 const HeroContainer = styled.div`
   position: relative;
   width: 100%;
-  height: 100vh;
-  min-height: 800px;
-  max-height: 900px;
+  min-height: calc(100vh - 66px); /* Full viewport minus header */
+  max-height: none;
   background: var(--color-primary);
   overflow: hidden;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
+  margin-top: 66px; /* Push below fixed header */
+  padding-top: 30px; /* Internal breathing room */
+  padding-bottom: 40px;
 
   @media (max-width: 1380px) {
-    min-height: 800px;
-    max-height: none;
-    overflow: visible;
+    min-height: auto;
+    margin-top: 62px;
+    padding-top: 25px;
+    padding-bottom: 35px;
   }
 
   @media (max-width: 768px) {
     overflow: visible;
-    min-height: calc(100vh - 65px); /* Subtract header height from viewport */
-    height: auto;
-    max-height: none;
-    padding-top: 0; /* Main layout provides header offset */
-    padding-bottom: 80px; /* Account for bottom navigation */
-    justify-content: center; /* Center content vertically */
+    min-height: auto;
+    margin-top: 58px; /* Mobile header height */
+    padding-top: 60px; /* More top space to center content */
+    padding-bottom: 1px;
+    justify-content: flex-start;
   }
 
   @media (max-width: 480px) {
-    min-height: calc(100vh - 65px); /* Subtract header height from viewport */
-    height: auto;
-    padding-top: 0; /* Main layout provides header offset */
-    padding-bottom: 80px; /* Account for bottom navigation */
-    justify-content: center;
+    min-height: auto;
+    margin-top: 54px;
+    padding-top: 50px; /* Push content down to center vertically */
+    padding-bottom: 70px; /* Taller hero section */
+    justify-content: flex-start;
   }
 
   /* Side card positioning */
@@ -153,8 +155,10 @@ const StaticContentWrapper = styled.div<{ $ready: boolean }>`
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  padding: 2rem;
+  justify-content: flex-start;
+  padding: clamp(0.5rem, 2vw, 1.5rem);
+  padding-top: 0;
+  padding-bottom: clamp(1rem, 3vw, 2rem);
   max-width: 1200px;
   margin: 0 auto;
   width: 100%;
@@ -162,7 +166,15 @@ const StaticContentWrapper = styled.div<{ $ready: boolean }>`
   transition: opacity 0.4s ease-out;
 
   @media (max-width: 768px) {
-    padding: 1.5rem 1rem;
+    padding: 0.5rem 1rem;
+    padding-top: 0;
+    padding-bottom: 1rem;
+  }
+
+  @media (max-width: 480px) {
+    padding: 0.5rem;
+    padding-top: 0;
+    padding-bottom: 0.75rem;
   }
 `;
 
@@ -172,8 +184,10 @@ const ContentContainer = styled.div`
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  padding: 2rem;
+  justify-content: flex-start;
+  padding: clamp(0.5rem, 2vw, 1.5rem);
+  padding-top: 0;
+  padding-bottom: clamp(1rem, 3vw, 2rem);
   max-width: 1200px;
   margin: 0 auto;
   width: 100%;
@@ -181,18 +195,22 @@ const ContentContainer = styled.div`
   /* 4K support - larger container */
   @media (min-width: 2560px) {
     max-width: 1800px;
-    padding: 3rem;
+    padding: 2rem;
+    padding-top: 0;
+    padding-bottom: 3rem;
   }
 
   @media (max-width: 768px) {
-    padding: 0.5rem;
+    padding: 0.5rem 1rem;
     padding-top: 0;
+    padding-bottom: 1rem;
     overflow: visible;
   }
 
   @media (max-width: 480px) {
     padding: 0.5rem;
     padding-top: 0;
+    padding-bottom: 0.75rem;
   }
 `;
 
@@ -561,13 +579,13 @@ const SilverCard = styled(motion.div)<{ $showAnimation?: boolean; $stopAnimation
 `;
 
 const LogoExplode = styled(motion.img)<{ $showAnimation?: boolean; $stopAnimation?: boolean }>`
-  width: 518px;
+  width: 460px;
   height: auto;
-  max-height: 324px;
+  max-height: 290px;
   object-fit: contain;
   background-color: #000000;
-  border-radius: 20px;
-  filter: drop-shadow(0 25px 50px rgba(0, 0, 0, 0.8));
+  border-radius: 18px;
+  filter: drop-shadow(0 20px 40px rgba(0, 0, 0, 0.8));
   transform-style: preserve-3d;
   perspective: 1000px;
   will-change: transform;
@@ -632,23 +650,23 @@ const LogoExplode = styled(motion.img)<{ $showAnimation?: boolean; $stopAnimatio
 
   /* 4K resolution - prevent logo from going too high */
   @media (min-width: 2560px) {
-    width: 620px;
-    max-height: 388px;
+    width: 550px;
+    max-height: 345px;
   }
 
   @media (max-width: 768px) {
-    width: min(490px, 90vw);
-    max-height: 302px;
+    width: min(420px, 88vw);
+    max-height: 265px;
   }
 
   @media (max-width: 480px) {
-    width: min(432px, 85vw);
-    max-height: 274px;
+    width: min(360px, 85vw);
+    max-height: 230px;
   }
 
   @media (max-width: 375px) {
-    width: 90vw;
-    max-height: 230px;
+    width: 85vw;
+    max-height: 200px;
   }
 `;
 
@@ -744,19 +762,82 @@ const CardExpiry = styled.div`
 
 const LogoContainer = styled(motion.div)`
   position: relative;
-  margin-top: 50px;
-  margin-bottom: 40px;
+  margin-top: 0;
+  margin-bottom: clamp(10px, 2vw, 20px);
 
   @media (max-width: 768px) {
     margin-top: 0;
-    margin-bottom: 15px;
+    margin-bottom: clamp(5px, 1.5vw, 10px);
   }
 
   @media (max-width: 480px) {
     margin-top: 0;
-    margin-bottom: 10px;
+    margin-bottom: clamp(3px, 1vw, 6px);
   }
 `;
+
+// Trust Badge Component - Gold icon with white text below
+const TrustBadge: React.FC<{ iconType: 'clock' | 'lock' | 'refresh'; topText: string; bottomText: string; size?: number }> = ({
+  iconType,
+  topText,
+  bottomText,
+  size = 50
+}) => {
+  const goldColor = '#A67C00'; // Darker gold/bronze color
+
+  // SVG icons for each type - now in gold
+  const renderIcon = () => {
+    switch (iconType) {
+      case 'clock':
+        return (
+          <g transform="translate(10, 10)">
+            <circle cx="15" cy="15" r="13" fill="none" stroke={goldColor} strokeWidth="2.5" />
+            <line x1="15" y1="15" x2="15" y2="8" stroke={goldColor} strokeWidth="2.5" strokeLinecap="round" />
+            <line x1="15" y1="15" x2="21" y2="15" stroke={goldColor} strokeWidth="2.5" strokeLinecap="round" />
+          </g>
+        );
+      case 'lock':
+        return (
+          <g transform="translate(10, 7)">
+            <rect x="5" y="15" width="20" height="16" rx="2" fill="none" stroke={goldColor} strokeWidth="2.5" />
+            <path d="M9 15V10a6 6 0 0 1 12 0v5" fill="none" stroke={goldColor} strokeWidth="2.5" strokeLinecap="round" />
+            <circle cx="15" cy="23" r="2.5" fill={goldColor} />
+          </g>
+        );
+      case 'refresh':
+        return (
+          <g transform="translate(10, 10)">
+            <path d="M4 15a11 11 0 0 1 19-7" fill="none" stroke={goldColor} strokeWidth="2.5" strokeLinecap="round" />
+            <path d="M26 15a11 11 0 0 1-19 7" fill="none" stroke={goldColor} strokeWidth="2.5" strokeLinecap="round" />
+            <polyline points="4 8 4 15 11 15" fill="none" stroke={goldColor} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+            <polyline points="26 22 26 15 19 15" fill="none" stroke={goldColor} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+          </g>
+        );
+    }
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' }}>
+      {/* Gold Icon */}
+      <svg width={size} height={size} viewBox="0 0 50 50" style={{ filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.3))' }}>
+        {renderIcon()}
+      </svg>
+      {/* White text below */}
+      <div style={{
+        textAlign: 'center',
+        color: '#ffffff',
+        fontFamily: "'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+        fontSize: '0.75rem',
+        fontWeight: 700,
+        lineHeight: 1.2,
+        textShadow: '0 2px 4px rgba(0,0,0,0.5)'
+      }}>
+        <div>{topText}</div>
+        <div>{bottomText}</div>
+      </div>
+    </div>
+  );
+};
 
 const CTAContainer = styled(motion.div)`
   text-align: center;
@@ -765,9 +846,9 @@ const CTAContainer = styled(motion.div)`
 
 const CTATitle = styled(motion.h1)`
   font-family: 'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  font-size: clamp(1.5rem, 5vw, 3.75rem);
+  font-size: clamp(1.5rem, 5vw, 3.5rem);
   font-weight: 800;
-  margin-bottom: clamp(1rem, 3vw, 2.5rem);
+  margin-bottom: clamp(0.5rem, 2vw, 1.5rem);
   line-height: 1.2;
   letter-spacing: -0.02em;
   white-space: pre-line;
@@ -810,70 +891,70 @@ const CTATitle = styled(motion.h1)`
   }
 
   @media (max-width: 768px) {
-    font-size: 2.2rem;
-    margin-bottom: 1.5rem;
+    font-size: 2.9rem;
+    margin-bottom: 0.75rem;
 
     [lang="bg"] & {
-      font-size: 1.8rem;
+      font-size: 2.7rem;
     }
   }
 
   @media (max-width: 480px) {
-    font-size: 1.75rem;
-    margin-bottom: 1rem;
+    font-size: 2.5rem;
+    margin-bottom: 0.5rem;
 
     [lang="bg"] & {
-      font-size: 1.4rem;
+      font-size: 2.3rem;
     }
   }
 
   @media (max-width: 375px) {
-    font-size: 1.5rem;
+    font-size: 2.2rem;
 
     [lang="bg"] & {
-      font-size: 1.2rem;
+      font-size: 2rem;
     }
   }
 
   @media (max-width: 320px) {
-    font-size: 1.3rem;
+    font-size: 2rem;
 
     [lang="bg"] & {
-      font-size: 1.1rem;
+      font-size: 1.75rem;
     }
   }
 `;
 
 const CTASubtitle = styled(motion.p)`
   font-family: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  font-size: clamp(0.95rem, 3vw, 1.5rem);
+  font-size: clamp(0.9rem, 2.5vw, 1.35rem);
   font-weight: 400;
-  margin-bottom: clamp(1rem, 2vw, 2rem);
+  margin-bottom: clamp(1.5rem, 4vw, 2rem);
   color: #ffffff;
   opacity: 0.95;
   text-shadow: 0 2px 10px rgba(0, 0, 0, 0.8);
-  max-width: 600px;
+  max-width: 550px;
   margin-left: auto;
   margin-right: auto;
   padding: 0 1rem;
-  line-height: 1.5;
+  line-height: 1.4;
 
   @media (max-width: 768px) {
-    font-size: 1.25rem;
-    margin-bottom: 1.5rem;
+    font-size: 1.1rem;
+    margin-bottom: 1.75rem;
   }
 
   @media (max-width: 480px) {
-    font-size: 1rem;
-    margin-bottom: 1rem;
+    font-size: 0.95rem;
+    margin-bottom: 1.5rem;
   }
 
   @media (max-width: 375px) {
-    font-size: 0.95rem;
+    font-size: 0.9rem;
   }
 
   @media (max-width: 320px) {
-    font-size: 0.875rem;
+    font-size: 0.85rem;
   }
 `;
 
@@ -900,25 +981,25 @@ const GoldenButtonWrapper = styled.div`
 
 const ButtonContainer = styled(motion.div)`
   display: flex;
-  gap: 1rem;
+  gap: 0.75rem;
   justify-content: center;
   flex-wrap: wrap;
   padding: 0 1rem;
   max-width: 100%;
   width: 100%;
-  margin-top: clamp(20px, 3vw, 40px);
+  margin-top: clamp(8px, 1.5vw, 20px);
 
   @media (max-width: 768px) {
-    margin-top: 10px;
-    margin-bottom: 10px;
+    margin-top: 8px;
+    margin-bottom: 8px;
   }
 
   @media (max-width: 480px) {
     flex-direction: column;
     align-items: stretch;
-    max-width: min(400px, 90vw);
-    margin: 10px auto 0;
-    gap: 0.75rem;
+    max-width: min(350px, 90vw);
+    margin: 8px auto 0;
+    gap: 0.5rem;
   }
 
   a {
@@ -928,8 +1009,30 @@ const ButtonContainer = styled(motion.div)`
 
   button {
     max-width: 100%;
-    white-space: normal;
-    word-wrap: break-word;
+    white-space: nowrap;
+    font-size: clamp(0.8rem, 3.5vw, 1rem);
+    padding: clamp(10px, 2vw, 14px) clamp(16px, 3vw, 28px);
+  }
+
+  @media (max-width: 480px) {
+    button {
+      font-size: 0.85rem;
+      padding: 10px 14px;
+    }
+  }
+
+  @media (max-width: 375px) {
+    button {
+      font-size: 0.78rem;
+      padding: 10px 12px;
+    }
+  }
+
+  @media (max-width: 320px) {
+    button {
+      font-size: 0.72rem;
+      padding: 9px 10px;
+    }
   }
 
   /* Primary button - golden gradient for light and dark themes */
@@ -1214,36 +1317,38 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
     };
   }, [photoState]);
 
-  // Mobile fallback - show content if video doesn't autoplay
+  // Fallback - show content if video doesn't load/play (both mobile and desktop)
   useEffect(() => {
-    // Only run mobile fallback if video should play
+    // Only run fallback if video should play
     if (!shouldPlayVideo) return;
-
-    const isMobile = window.innerWidth <= 768;
-    if (!isMobile) return;
 
     const video = videoRef.current;
     if (!video) return;
 
-    // Wait on mobile to let video attempt to play
+    const isMobile = window.innerWidth <= 768;
+    // Use shorter timeout on mobile (5s), longer on desktop (8s)
+    const timeoutDuration = isMobile ? 5000 : 8000;
+
+    // Wait for video to attempt to play
     // If video hasn't triggered content display by then, show it anyway
-    const mobileTimeout = setTimeout(() => {
+    const fallbackTimeout = setTimeout(() => {
       if (!showLogo && !videoEnded) {
         // Only trigger if video hasn't already handled it
         const isVideoPlaying = !!(video.currentTime > 0 && !video.paused && !video.ended && video.readyState > 2);
 
         if (!isVideoPlaying) {
-          console.log('[Mobile] Video not playing after timeout - showing hero content (fallback)');
+          console.log(`[Fallback] Video not playing after ${timeoutDuration}ms - showing hero content`);
           setShowLogo(true);
           setShowCTA(true);
           setShowBlackCard(true);
           setShowSilverCard(true);
           setAnimationsFinished(true);
+          setVideoEnded(true); // Mark as ended to show static content
         }
       }
-    }, 5000); // Wait 5 seconds on mobile before fallback (reduced from 10)
+    }, timeoutDuration);
 
-    return () => clearTimeout(mobileTimeout);
+    return () => clearTimeout(fallbackTimeout);
   }, [showLogo, videoEnded, shouldPlayVideo]);
 
   useEffect(() => {
@@ -1251,6 +1356,7 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
     if (!video) return;
 
     const handleCanPlay = () => {
+      console.log('[Video] canplay event fired');
       setVideoLoaded(true);
       // Only play once, using ref to survive re-renders and StrictMode
       if (shouldPlayVideo && !videoPlayedRef.current) {
@@ -1260,6 +1366,26 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
           console.log('[Video] Playback failed:', error.name, error.message);
           setShowLogo(true);
           setShowCTA(true);
+          setVideoEnded(true);
+        });
+      }
+    };
+
+    // Also listen for loadeddata as backup (fires earlier than canplay)
+    const handleLoadedData = () => {
+      console.log('[Video] loadeddata event fired, readyState:', video.readyState);
+      if (!videoLoaded) {
+        setVideoLoaded(true);
+      }
+      // Try to play if canplay hasn't triggered yet
+      if (shouldPlayVideo && !videoPlayedRef.current && video.readyState >= 2) {
+        videoPlayedRef.current = true;
+        console.log('[Video] Playing from loadeddata...');
+        video.play().catch((error) => {
+          console.log('[Video] Playback failed from loadeddata:', error.name, error.message);
+          setShowLogo(true);
+          setShowCTA(true);
+          setVideoEnded(true);
         });
       }
     };
@@ -1287,18 +1413,21 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
       // If video fails to load/play, show static content
       setShowLogo(true);
       setShowCTA(true);
+      setVideoEnded(true);
     };
 
     video.addEventListener('canplay', handleCanPlay);
+    video.addEventListener('loadeddata', handleLoadedData);
     video.addEventListener('ended', handleEnded);
     video.addEventListener('error', handleError);
 
     return () => {
       video.removeEventListener('canplay', handleCanPlay);
+      video.removeEventListener('loadeddata', handleLoadedData);
       video.removeEventListener('ended', handleEnded);
       video.removeEventListener('error', handleError);
     };
-  }, [videoEnded, shouldPlayVideo]);
+  }, [videoEnded, shouldPlayVideo, videoLoaded]);
 
   // Hide side cards when scrolling below hero section (desktop only)
   useEffect(() => {
@@ -1330,12 +1459,20 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
       subtitle: 'The card that turns every day into an adventure - start NOW!',
       ctaButton: 'Activate your Premium - FREE!',
       cardHolder: 'CARD HOLDER',
+      // Trust badges (gold seal style)
+      trustBadge1: '24h Free Trial',
+      trustBadge2: '100% Secure',
+      trustBadge3: 'Cancel Anytime',
     },
     bg: {
       title: 'Живей повече.\nПлащай по-малко.',
       subtitle: 'Картата, която превръща всеки ден в приключение - започни СЕГА!',
       ctaButton: 'Активирай своя Premium - БЕЗПЛАТНО!',
       cardHolder: 'ПРИТЕЖАТЕЛ',
+      // Trust badges (gold seal style)
+      trustBadge1: '24ч Безплатен тест',
+      trustBadge2: '100% Сигурно',
+      trustBadge3: 'Откажи по всяко време',
     },
   };
 
@@ -1367,8 +1504,8 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
           <StaticContentWrapper $ready={logoPreloaded}>
             <div style={{
               position: 'relative',
-              marginTop: 'clamp(20px, 5vw, 50px)',
-              marginBottom: 'clamp(20px, 5vw, 40px)',
+              marginTop: '0',
+              marginBottom: 'clamp(8px, 2vw, 16px)',
               width: '100%',
               display: 'flex',
               justifyContent: 'center'
@@ -1380,13 +1517,13 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
                 decoding="sync"
                 style={{
                   width: '100%',
-                  maxWidth: '518px',
+                  maxWidth: '460px',
                   height: 'auto',
-                  maxHeight: '324px',
+                  maxHeight: '290px',
                   objectFit: 'contain',
                   backgroundColor: '#000000',
-                  borderRadius: 'clamp(12px, 3vw, 20px)',
-                  filter: 'drop-shadow(0 25px 50px rgba(0, 0, 0, 0.8))',
+                  borderRadius: 'clamp(10px, 2.5vw, 18px)',
+                  filter: 'drop-shadow(0 20px 40px rgba(0, 0, 0, 0.8))',
                   display: 'block',
                   imageRendering: 'crisp-edges'
                 }}
@@ -1399,9 +1536,9 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
             }}>
               <h1 style={{
                 fontFamily: "'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-                fontSize: 'clamp(1.8rem, 8vw, 3.75rem)',
+                fontSize: 'clamp(2.2rem, 8vw, 3.25rem)',
                 fontWeight: 800,
-                marginBottom: 'clamp(1rem, 3vw, 2.5rem)',
+                marginBottom: 'clamp(0.5rem, 2vw, 1.25rem)',
                 lineHeight: 1.2,
                 letterSpacing: '-0.02em',
                 whiteSpace: 'pre-line',
@@ -1420,17 +1557,17 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
 
               <p style={{
                 fontFamily: "'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-                fontSize: 'clamp(0.9rem, 3.5vw, 1.5rem)',
+                fontSize: 'clamp(0.85rem, 2.5vw, 1.3rem)',
                 fontWeight: 400,
-                marginBottom: 'clamp(1rem, 2vw, 2rem)',
+                marginBottom: 'clamp(1.5rem, 4vw, 2rem)',
                 color: '#ffffff',
                 opacity: 0.95,
                 textShadow: '0 2px 10px rgba(0, 0, 0, 0.8)',
-                maxWidth: '600px',
+                maxWidth: '550px',
                 marginLeft: 'auto',
                 marginRight: 'auto',
                 padding: '0 0.5rem',
-                lineHeight: 1.5,
+                lineHeight: 1.4,
                 textAlign: 'center'
               }}>
                 {t.subtitle}
@@ -1438,15 +1575,15 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
 
               <div style={{
                 display: 'flex',
-                gap: '1rem',
+                gap: '0.75rem',
                 justifyContent: 'center',
                 flexWrap: 'wrap',
                 padding: '0 0.5rem',
                 maxWidth: '100%',
                 width: '100%',
-                marginTop: 'clamp(16px, 3vw, 40px)'
+                marginTop: 'clamp(8px, 1.5vw, 20px)'
               }}>
-                <Link to="/subscriptions" style={{ textDecoration: 'none', width: '100%', maxWidth: '400px' }}>
+                <Link to="/subscriptions" style={{ textDecoration: 'none', width: '100%', maxWidth: '350px' }}>
                   <button style={{
                     background: 'linear-gradient(135deg, #c9a237 0%, #d4af37 100%)',
                     color: '#000000',
@@ -1461,15 +1598,48 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
                     alignItems: 'center',
                     justifyContent: 'center',
                     gap: '8px',
-                    whiteSpace: 'normal',
-                    padding: 'clamp(12px, 3vw, 16px) clamp(20px, 5vw, 32px)',
-                    fontSize: 'clamp(14px, 3.5vw, 18px)',
-                    minHeight: '48px',
+                    whiteSpace: 'nowrap',
+                    padding: 'clamp(10px, 2vw, 14px) clamp(14px, 3vw, 28px)',
+                    fontSize: 'clamp(0.72rem, 3.5vw, 1rem)',
+                    minHeight: '44px',
                     width: '100%'
                   }}>
                     {t.ctaButton}
                   </button>
                 </Link>
+              </div>
+
+              {/* Trust Badges - Starburst Seal Style */}
+              <div style={{
+                display: 'flex',
+                justifyContent: 'center',
+                gap: 'clamp(0.5rem, 1.5vw, 1rem)',
+                flexWrap: 'wrap',
+                marginTop: 'clamp(1.5rem, 4vw, 2rem)',
+                marginBottom: 'clamp(0.5rem, 1.5vw, 1rem)',
+                padding: '0 0.5rem'
+              }}>
+                {/* Badge 1 - 24h Free Trial (Clock icon) */}
+                <TrustBadge
+                  iconType="clock"
+                  topText={language === 'bg' ? '24Ч БЕЗПЛАТЕН' : '24H FREE'}
+                  bottomText={language === 'bg' ? 'ТЕСТ' : 'TRIAL'}
+                  size={75}
+                />
+                {/* Badge 2 - 100% Secure (Lock icon) */}
+                <TrustBadge
+                  iconType="lock"
+                  topText={language === 'bg' ? '100% СИГУРНО' : '100% SECURE'}
+                  bottomText={language === 'bg' ? 'ПЛАЩАНЕ' : 'PAYMENT'}
+                  size={75}
+                />
+                {/* Badge 3 - Cancel Anytime (Refresh icon) */}
+                <TrustBadge
+                  iconType="refresh"
+                  topText={language === 'bg' ? 'ОТКАЖИ' : 'CANCEL'}
+                  bottomText={language === 'bg' ? 'ПО ВСЯКО ВРЕМЕ' : 'ANYTIME'}
+                  size={75}
+                />
               </div>
             </div>
           </StaticContentWrapper>
@@ -1622,6 +1792,47 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
                     </Button>
                   </Link>
                 </ButtonContainer>
+
+                {/* Trust Badges - Starburst Seal Style */}
+                <motion.div
+                  initial={shouldPlayVideo ? { opacity: 0, y: 20 } : { opacity: 1, y: 0 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={shouldPlayVideo ? {
+                    delay: 1.6,
+                    duration: 1.5,
+                    ease: [0.25, 0.1, 0.25, 1]
+                  } : { duration: 0 }}
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'center',
+                    gap: 'clamp(0.5rem, 1.5vw, 1rem)',
+                    flexWrap: 'wrap',
+                    marginTop: 'clamp(1.5rem, 4vw, 2rem)',
+                    marginBottom: 'clamp(0.5rem, 1.5vw, 1rem)'
+                  }}
+                >
+                  {/* Badge 1 - 24h Free Trial (Clock icon) */}
+                  <TrustBadge
+                    iconType="clock"
+                    topText={language === 'bg' ? '24Ч БЕЗПЛАТЕН' : '24H FREE'}
+                    bottomText={language === 'bg' ? 'ТЕСТ' : 'TRIAL'}
+                    size={75}
+                  />
+                  {/* Badge 2 - 100% Secure (Lock icon) */}
+                  <TrustBadge
+                    iconType="lock"
+                    topText={language === 'bg' ? '100% СИГУРНО' : '100% SECURE'}
+                    bottomText={language === 'bg' ? 'ПЛАЩАНЕ' : 'PAYMENT'}
+                    size={75}
+                  />
+                  {/* Badge 3 - Cancel Anytime (Refresh icon) */}
+                  <TrustBadge
+                    iconType="refresh"
+                    topText={language === 'bg' ? 'ОТКАЖИ' : 'CANCEL'}
+                    bottomText={language === 'bg' ? 'ПО ВСЯКО ВРЕМЕ' : 'ANYTIME'}
+                    size={75}
+                  />
+                </motion.div>
               </CTAContainer>
             )}
           </AnimatePresence>

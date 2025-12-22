@@ -18,21 +18,25 @@ const SubscriptionCardsContainer = styled.div`
   @media (max-width: 968px) {
     flex-direction: column;
     align-items: center;
-    gap: 2rem;
+    gap: 4rem; /* Increased gap to prevent badge overlap with button above */
   }
 
   @media (max-width: 480px) {
-    gap: 1.5rem;
+    gap: 3.5rem; /* Increased gap to prevent badge overlap with button above */
   }
 `;
 
-const PlanCardWrapper = styled(motion.div)`
+const PlanCardWrapper = styled(motion.div)<{ $disabled?: boolean }>`
   display: flex;
   flex-direction: column;
   align-items: center;
   position: relative;
   padding-top: 1rem;
   height: 100%;
+  opacity: ${props => props.$disabled ? 0.5 : 1};
+  filter: ${props => props.$disabled ? 'grayscale(70%)' : 'none'};
+  pointer-events: ${props => props.$disabled ? 'none' : 'auto'};
+  transition: opacity 0.3s ease, filter 0.3s ease;
 `;
 
 const CreditCardPlan = styled(motion.div)<{ $type: 'starter' | 'basic' | 'premium' }>`
@@ -207,7 +211,7 @@ const CreditCardPlan = styled(motion.div)<{ $type: 'starter' | 'basic' | 'premiu
 
 const PopularBadge = styled.div`
   position: absolute;
-  top: -2.5rem;
+  top: -1rem;
   left: 50%;
   transform: translateX(-50%);
   background: linear-gradient(135deg, #c9a237 0%, #d4af37 100%);
@@ -226,7 +230,7 @@ const PopularBadge = styled.div`
 
 const MostBoughtBadge = styled.div`
   position: absolute;
-  top: -2.5rem;
+  top: -1rem;
   left: 50%;
   transform: translateX(-50%);
   -webkit-transform: translateX(-50%);
@@ -626,7 +630,7 @@ const SubscriptionsPage: React.FC = () => {
             $active={billingPeriod === 'monthly'}
             onClick={() => setBillingPeriod('monthly')}
           >
-            {language === 'bg' ? 'Месечен абонамент' : 'Monthly'}
+            {language === 'bg' ? 'Месечен/Седмичен абонамент' : 'Monthly/Weekly'}
           </ToggleOption>
         </BillingToggle>
       </BillingToggleContainer>
@@ -634,16 +638,24 @@ const SubscriptionsPage: React.FC = () => {
       <SubscriptionCardsContainer>
         {subscriptionPlans.map((plan, index) => {
           const planType = plan.type;
-          const displayPrice = billingPeriod === 'yearly' ? plan.yearlyPrice : plan.monthlyPrice;
-          const priceLabel = billingPeriod === 'yearly'
-            ? (language === 'bg' ? ' €/година' : ' €/year')
-            : plan.duration;
+          const isLitePlan = planType === 'starter';
+          const isDisabled = isLitePlan && billingPeriod === 'yearly';
+          // Lite plan always shows weekly price, even when disabled
+          const displayPrice = isLitePlan
+            ? plan.monthlyPrice
+            : (billingPeriod === 'yearly' ? plan.yearlyPrice : plan.monthlyPrice);
+          const priceLabel = isLitePlan
+            ? plan.duration
+            : (billingPeriod === 'yearly'
+              ? (language === 'bg' ? ' €/година' : ' €/year')
+              : plan.duration);
 
           return (
             <PlanCardWrapper
               key={index}
+              $disabled={isDisabled}
               initial={{ opacity: 0, y: 30 }}
-              animate={{ opacity: 1, y: 0 }}
+              animate={{ opacity: isDisabled ? 0.5 : 1, y: 0 }}
               transition={{ duration: 0.5, delay: index * 0.2 }}
             >
               {/* Most Bought Badge for Light Plan */}
@@ -700,14 +712,26 @@ const SubscriptionsPage: React.FC = () => {
                 </FeaturesList>
 
                 <PlanButtonContainer>
-                  <Link to={`/register?plan=${encodeURIComponent(plan.name)}&price=${displayPrice}&currency=EUR&billing=${billingPeriod}`}>
-                    <Button
-                      variant={plan.featured ? 'primary' : 'secondary'}
-                      size="large"
-                    >
-                      {language === 'bg' ? 'Избери План' : 'Choose Plan'}
-                    </Button>
-                  </Link>
+                  {isDisabled ? (
+                    <div style={{ opacity: 0.6 }}>
+                      <Button
+                        variant="secondary"
+                        size="large"
+                        disabled
+                      >
+                        {language === 'bg' ? 'Само седмичен план' : 'Weekly only'}
+                      </Button>
+                    </div>
+                  ) : (
+                    <Link to={`/register?plan=${encodeURIComponent(plan.name)}&price=${displayPrice}&currency=EUR&billing=${billingPeriod}`}>
+                      <Button
+                        variant={plan.featured ? 'primary' : 'secondary'}
+                        size="large"
+                      >
+                        {language === 'bg' ? 'Избери План' : 'Choose Plan'}
+                      </Button>
+                    </Link>
+                  )}
                 </PlanButtonContainer>
               </PlanDetails>
             </PlanCardWrapper>

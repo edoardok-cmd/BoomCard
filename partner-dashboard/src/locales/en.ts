@@ -72,7 +72,7 @@ export const en = {
   // Mobile Bottom Navigation
   nav: {
     home: 'Home',
-    offers: 'Offers',
+    offers: 'Deals',
     categories: 'Categories',
     favorites: 'Favorites',
     profile: 'Profile',
@@ -80,21 +80,33 @@ export const en = {
 
   // Footer
   footer: {
-    description: 'Exclusive discounts for restaurants, hotels, spas, and experiences across Bulgaria.',
+    description: 'Exclusive discounts for restaurants, hotels, SPA centers, and experiences across Bulgaria.',
     product: 'Product',
+    howItWorks: 'How it works',
+    subscriptionPlans: 'Subscription plans',
+    offers: 'Deals',
+    partners: 'Partners',
     features: 'Features',
     pricing: 'Pricing',
     integrations: 'Integrations',
     company: 'Company',
+    aboutBoomCard: 'About BOOM Card',
     about: 'About',
     contact: 'Contact',
+    becomePartner: 'Become a partner',
     careers: 'Careers',
-    legal: 'Legal',
+    legal: 'Legal Information',
     privacy: 'Privacy',
-    terms: 'Terms',
-    security: 'Security',
+    terms: 'Terms of Service',
+    security: 'Security Policy',
     social: 'Follow Us',
+    facebook: 'Facebook',
+    instagram: 'Instagram',
+    linkedin: 'LinkedIn',
+    share: 'Share',
+    shareBoomCard: 'Share BOOM Card',
     allRightsReserved: 'All rights reserved.',
+    trustText: 'Secure payments. Real partners. Full control through the app.',
   },
 
   // Authentication
@@ -236,27 +248,37 @@ export const en = {
 
   // Home Page
   home: {
-    heroTitle: 'Discover Bulgaria',
-    heroTitleHighlight: 'BOOM Card',
+    // Hero Section
+    heroTitle: 'More experiences. Lower bills.',
+    heroTitleHighlight: 'Try it free.',
     heroSubtitle: 'Exclusive discounts for restaurants, hotels, spas, and experiences',
-    browseOffers: 'Browse Offers',
+    heroCta: 'Activate your Premium – FREE!',
+    browseOffers: 'Browse Deals',
     topOffers: 'Top Offers',
     topOffersSubtitle: 'Biggest discounts right now',
     categories: 'Categories',
     categoriesSubtitle: 'Browse our categories of venues and experiences',
     places: 'places',
-    howItWorks: 'How it works',
-    howItWorksSubtitle: 'Simple and fast way to save money',
-    step1Title: 'Choose your offer',
-    step1Description: 'Browse through hundreds of exclusive offers',
-    step2Title: 'Get your QR code',
-    step2Description: 'Receive your unique discount QR code instantly',
-    step3Title: 'Enjoy & Save',
-    step3Description: 'Show your code at the venue and enjoy your discount',
-    readyToSave: 'Ready to save?',
-    readyToSaveDescription: 'Join thousands of Bulgarians already saving with BOOM Card',
-    signUpFree: 'Sign up free',
-    forPartners: 'For partners',
+
+    // How It Works Section
+    howItWorks: 'How BOOM Card Works',
+    howItWorksSubtitle: 'Discounts activate directly from your table',
+    step1Title: 'Choose a place',
+    step1Description: 'Go to a partner venue and sit down',
+    step2Title: 'Scan the QR code on the table',
+    step2Description: 'Scan the BOOM QR code and activate your discount in the app',
+    step3Title: 'Pay less',
+    step3Description: 'The discount is applied automatically – no need to show anything to staff',
+
+    // Final CTA Section
+    readyToSave: 'Start saving with BOOM Card today',
+    readyToSaveDescription: 'Exclusive offers, real discounts, and 24 hours Premium – FREE. Nothing to lose. Only to gain.',
+    signUpFree: '🔥 Start with 24 hours Premium – FREE',
+    forPartners: 'Become a partner',
+    viewOffers: 'Browse Deals',
+    viewPartners: 'View all partners',
+    finalTagline: 'One card. Real discounts. Full control.',
+
     // Categories
     restaurantsBars: 'Restaurants & Bars',
     restaurantsBarsDesc: 'Discover 150+ venues with up to 70% off',
@@ -266,6 +288,51 @@ export const en = {
     wineriesDesc: 'Wine tastings and vineyard tours',
     experiences: 'Experiences',
     experiencesDesc: 'Unforgettable adventures and activities',
+
+    // Trust Badges (Gold & Black Theme)
+    premiumTrial: '24h Free Trial',
+    noPaymentNoGdpr: 'No Card Required',
+    securePayments: '100% Secure',
+    freeTrial: 'Free Trial',
+    cancelAnytime: 'Cancel Anytime',
+    paymentMethods: 'Visa / Mastercard / Apple Pay',
+    usedByUsers: 'Trusted by Users',
+    qrActivation: 'QR Activation',
+    instantDiscount: 'Instant Discount',
+    noStaffInteraction: 'No Staff Needed',
+  },
+
+  // Offers/Deals Page (Promotions)
+  offersPage: {
+    // Hero Section
+    title: 'Deals with BOOM Card',
+    subtitle: 'Real discounts and exclusive offers from selected venues in Bulgaria',
+
+    // Statistics
+    activeOffers: 'active deals',
+    upToDiscount: 'Up to 35% discount',
+    newOffersRegularly: 'New offers regularly',
+    premiumOnlyNote: 'Some offers are available only with Premium.',
+
+    // Cashback Steps Section
+    cashbackTitle: 'Cashback with BOOM Card in 3 steps',
+    cashbackStep1: 'Scan the sticker on the table in the app',
+    cashbackStep2: 'Take a photo of your receipt after payment',
+    cashbackStep3: 'Receive cashback to your bank account',
+    cashbackNote: 'Everything happens through the app. No explanations to staff.',
+    cashbackTrustText: 'Cashback is credited after receipt verification.',
+    cashbackImportant: 'Important: Cashback is valid only when scanning on-site with a valid receipt.',
+
+    // Filters
+    topOffers: 'Top Offers',
+    filters: 'Filters',
+    all: 'All',
+    active: 'Active',
+    upcoming: 'Upcoming',
+    expired: 'Expired',
+    emptyTitle: 'No deals found',
+    emptyText: 'Check back soon for new exciting deals!',
+    browseOffers: 'Browse All Deals',
   },
 
   // Dashboard
@@ -884,6 +951,100 @@ export const en = {
     save17: 'Save 17%',
     month: 'month',
     monthly_billing: 'monthly',
+  },
+
+  // ===== CUSTOMER SUBSCRIPTION PLANS =====
+  subscriptionPlans: {
+    // Section Header
+    title: 'Choose your BOOM plan',
+    subtitle: 'The more you go out, the more you save',
+    fomoText: 'Everyone starts with 24 hours Premium – activate it now – FREE',
+
+    // Plan Tabs
+    annualTab: 'Annual plan – Save 20%',
+    annualBadge: 'Best Value',
+    monthlyTab: 'Monthly plan / Weekly plan',
+    monthlyBadge: 'Flexible Choice',
+
+    // Weekly Premium Plan (Featured)
+    weeklyPlanBadge: 'Recommended for tourists and short stays',
+    weeklyPlanTitle: 'BOOM Card PREMIUM – 7 DAYS',
+    weeklyPlanPrice: '4.99',
+    weeklyPlanPeriod: '/ week',
+    weeklyPlanFeature1: 'Full Premium access',
+    weeklyPlanFeature2: 'Up to 20% discount (depending on venue)',
+    weeklyPlanFeature3: 'Activate discounts directly from your table',
+    weeklyPlanFeature4: 'Everything managed through the app',
+    weeklyPlanFeature5: 'No commitment after the period ends',
+    weeklyPlanCta: '🔥 Start with 24 hours Premium – FREE',
+    weeklyPlanFomo: 'Most chosen by tourists and weekend visitors',
+
+    // Monthly Premium Plan
+    monthlyPlanBadge: 'Most Popular Choice',
+    monthlyPlanTitle: 'BOOM Card PREMIUM – MONTHLY',
+    monthlyPlanPrice: '12.99',
+    monthlyPlanPeriod: '/ month',
+    monthlyPlanFeature1: 'All Premium venues',
+    monthlyPlanFeature2: 'Up to 20% discount',
+    monthlyPlanFeature3: 'Exclusive offers',
+    monthlyPlanFeature4: 'Priority support',
+    monthlyPlanFeature5: 'First access to new partners',
+    monthlyPlanCta: '🔥 Start with 24 hours Premium – FREE',
+    monthlyPlanNote: 'Billing starts after the trial period',
+
+    // Basic Plan
+    basicPlanTitle: 'BOOM Card BASIC – MONTHLY',
+    basicPlanPrice: '7.99',
+    basicPlanPeriod: '/ month',
+    basicPlanFeature1: 'Access to partner venues',
+    basicPlanFeature2: 'Basic offers',
+    basicPlanFeature3: 'Up to 10% discount',
+    basicPlanFeature4: 'Managed through the app',
+    basicPlanCta: '👉 Start with 24 hours Premium – FREE',
+    basicPlanNote: 'After the trial, you switch to Basic unless you choose Premium',
+
+    // Annual Plan
+    annualPlanBadge: 'Save 20%',
+    annualPlanTitle: 'BOOM Card PREMIUM – ANNUAL',
+    annualPlanPrice: '99.99',
+    annualPlanPeriod: '/ year',
+    annualPlanMonthly: '(only €8.33/month)',
+  },
+
+  // ===== TESTIMONIALS =====
+  testimonials: {
+    // Section Header
+    title: 'What people say about BOOM Card',
+    subtitle: 'Real savings. Real experiences.',
+
+    // Reviews
+    review1Name: 'Maria S., Sofia',
+    review1Text: '"I scanned the QR code directly from the table and the discount was activated immediately. Very convenient."',
+
+    review2Name: 'Ivan P., Plovdiv',
+    review2Text: '"I use the Premium plan mainly for restaurants. I actually pay less almost every time."',
+
+    review3Name: 'Elena D.',
+    review3Text: '"I tried the free 24 hours first and stayed. BOOM is worth it."',
+
+    review4Name: 'Georgi M.',
+    review4Text: '"I like that I don\'t have to explain anything to the staff. Everything happens through the app."',
+
+    review5Name: 'Veselina R.',
+    review5Text: '"Very useful for weekend trips. I found good offers for SPA and venues."',
+
+    review6Name: 'Nikolay T.',
+    review6Text: '"The Premium plan pays off quickly if you go out often. I use it regularly."',
+
+    review7Name: 'Plamen G.',
+    review7Text: '"I discovered several new places I hadn\'t heard of. That\'s my favorite part."',
+
+    // CTAs
+    startFreeCta: '🔥 Start with 24 hours Premium – FREE',
+    leaveReviewCta: '✍️ Leave your review',
+
+    // Footer text
+    footerNote: 'Every user can freely share their opinion.',
   },
 
   // ===== PAYMENTS (Phase 5) =====

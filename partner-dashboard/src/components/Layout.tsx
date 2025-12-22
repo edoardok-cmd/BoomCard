@@ -8,7 +8,7 @@ const Layout: React.FC = () => {
   return (
     <div className="min-h-screen flex flex-col">
       <Header />
-      <main className="flex-1" style={{ paddingTop: '65px', paddingBottom: '80px' }}>
+      <main className="flex-1" style={{ paddingTop: '65px', paddingBottom: '1px' }}>
         <Outlet />
       </main>
       <Footer />

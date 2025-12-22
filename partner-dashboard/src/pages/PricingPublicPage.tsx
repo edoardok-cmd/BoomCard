@@ -112,26 +112,30 @@ const SubscriptionCardsContainer = styled.div`
   @media (max-width: 968px) {
     flex-direction: column;
     align-items: center;
-    gap: 2rem;
+    gap: 4rem; /* Increased gap to prevent badge overlap with button above */
   }
 
   @media (max-width: 480px) {
-    gap: 1.5rem;
+    gap: 3.5rem; /* Increased gap to prevent badge overlap with button above */
   }
 `;
 
-const PlanCardWrapper = styled(motion.div)`
+const PlanCardWrapper = styled(motion.div)<{ $disabled?: boolean }>`
   display: flex;
   flex-direction: column;
   align-items: center;
   position: relative;
   padding-top: 1rem;
   height: 100%;
+  opacity: ${props => props.$disabled ? 0.5 : 1};
+  filter: ${props => props.$disabled ? 'grayscale(70%)' : 'none'};
+  pointer-events: ${props => props.$disabled ? 'none' : 'auto'};
+  transition: opacity 0.3s ease, filter 0.3s ease;
 `;
 
 const FeaturedBadge = styled.div`
   position: absolute;
-  top: -2.5rem;
+  top: -1rem;
   left: 50%;
   transform: translateX(-50%);
   background: linear-gradient(135deg, #c9a237 0%, #d4af37 100%);
@@ -146,6 +150,27 @@ const FeaturedBadge = styled.div`
   box-shadow: 0 4px 12px rgba(201, 162, 55, 0.5);
   z-index: 10;
   white-space: nowrap;
+`;
+
+const MostBoughtBadge = styled.div`
+  position: absolute;
+  top: -1rem;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(255, 255, 255, 0.1);
+  color: #c9a237;
+  border: 2px solid #c9a237;
+  padding: 0.4rem 1.25rem;
+  border-radius: 9999px;
+  font-family: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  box-shadow: 0 4px 12px rgba(201, 162, 55, 0.3);
+  z-index: 10;
+  white-space: nowrap;
+  backdrop-filter: blur(10px);
 `;
 
 const CreditCardPlan = styled(motion.div)<{ $type: 'black' | 'silver' | 'light' }>`
@@ -622,7 +647,7 @@ const PricingPublicPage: React.FC = () => {
               $active={!isAnnual}
               onClick={() => setIsAnnual(false)}
             >
-              {language === 'bg' ? 'Месячно' : 'Monthly'}
+              {language === 'bg' ? 'Месечен/Седмичен абонамент' : 'Monthly/Weekly'}
             </ToggleOption>
             <ToggleOption
               $active={isAnnual}
@@ -636,20 +661,34 @@ const PricingPublicPage: React.FC = () => {
 
       <SubscriptionCardsContainer>
         {plans.map((plan, index) => {
-          const displayPrice = isAnnual ? Math.floor(plan.yearlyPrice / 12) : plan.monthlyPrice;
-          const priceLabel = isAnnual
-            ? (language === 'bg' ? ' €/година' : ' €/year')
-            : plan.type === 'light'
-              ? (language === 'bg' ? ' €/седмица' : ' €/week')
-              : (language === 'bg' ? ' €/месец' : ' €/month');
+          const isLitePlan = plan.type === 'light';
+          const isDisabled = isLitePlan && isAnnual;
+          // Lite plan always shows weekly price, even when disabled
+          const displayPrice = isLitePlan
+            ? plan.monthlyPrice
+            : (isAnnual ? Math.floor(plan.yearlyPrice / 12) : plan.monthlyPrice);
+          const priceLabel = isLitePlan
+            ? (language === 'bg' ? ' €/седмица' : ' €/week')
+            : (isAnnual
+              ? (language === 'bg' ? ' €/година' : ' €/year')
+              : (language === 'bg' ? ' €/месец' : ' €/month'));
 
           return (
             <PlanCardWrapper
               key={index}
+              $disabled={isDisabled}
               initial={{ opacity: 0, y: 30 }}
-              animate={{ opacity: 1, y: 0 }}
+              animate={{ opacity: isDisabled ? 0.5 : 1, y: 0 }}
               transition={{ duration: 0.5, delay: index * 0.2 }}
             >
+              {/* Most Bought Badge for Lite Plan */}
+              {plan.type === 'light' && (
+                <MostBoughtBadge>
+                  {language === 'bg' ? 'Най-купуван' : 'Most Bought'}
+                </MostBoughtBadge>
+              )}
+
+              {/* Most Popular Badge */}
               {plan.featured && (
                 <FeaturedBadge>
                   {language === 'bg' ? 'Най-популярен' : 'Most Popular'}
@@ -691,14 +730,26 @@ const PricingPublicPage: React.FC = () => {
                 </FeaturesList>
 
                 <PlanButtonContainer>
-                  <Link to="/register/partner">
-                    <Button
-                      variant={plan.featured ? 'primary' : 'secondary'}
-                      size="large"
-                    >
-                      {language === 'bg' ? 'Започнете сега' : 'Get Started'}
-                    </Button>
-                  </Link>
+                  {isDisabled ? (
+                    <div style={{ opacity: 0.6 }}>
+                      <Button
+                        variant="secondary"
+                        size="large"
+                        disabled
+                      >
+                        {language === 'bg' ? 'Само седмичен план' : 'Weekly only'}
+                      </Button>
+                    </div>
+                  ) : (
+                    <Link to="/register/partner">
+                      <Button
+                        variant={plan.featured ? 'primary' : 'secondary'}
+                        size="large"
+                      >
+                        {language === 'bg' ? 'Започнете сега' : 'Get Started'}
+                      </Button>
+                    </Link>
+                  )}
                 </PlanButtonContainer>
               </PlanDetails>
             </PlanCardWrapper>
