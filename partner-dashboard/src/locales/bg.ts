@@ -59,6 +59,7 @@ export const bg: TranslationKey = {
 
   // Header & Navigation
   header: {
+    nearby: 'Наблизо',
     nearbyOffers: 'Оферти наблизо',
     favorites: 'Любими',
     profile: 'Профил',

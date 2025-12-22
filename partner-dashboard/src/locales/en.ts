@@ -57,6 +57,7 @@ export const en = {
 
   // Header & Navigation
   header: {
+    nearby: 'Nearby',
     nearbyOffers: 'Nearby Offers',
     favorites: 'Favorites',
     profile: 'Profile',
