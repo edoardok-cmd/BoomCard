@@ -82,6 +82,7 @@ const Subtitle = styled.p`
 const StatsRow = styled.div`
   display: flex;
   justify-content: center;
+  align-items: flex-start;
   gap: 3rem;
   flex-wrap: wrap;
   margin-top: 2rem;
@@ -89,6 +90,7 @@ const StatsRow = styled.div`
 
 const StatItem = styled.div`
   text-align: center;
+  min-width: 150px;
 `;
 
 const StatValue = styled.div`
