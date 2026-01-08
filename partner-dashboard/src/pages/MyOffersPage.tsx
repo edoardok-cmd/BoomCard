@@ -15,6 +15,7 @@ import {
   Calendar,
   Users,
   MoreVertical,
+  ClipboardList,
 } from 'lucide-react';
 import Button from '../components/common/Button/Button';
 import { useOffers, useDeleteOffer, useToggleOfferStatus } from '../hooks/useOffers';
@@ -284,7 +285,7 @@ const MyOffersPage: React.FC = () => {
 
       {filteredOffers.length === 0 ? (
         <EmptyState>
-          <EmptyIcon>📋</EmptyIcon>
+          <EmptyIcon><ClipboardList size={64} /></EmptyIcon>
           <EmptyTitle>{t.noOffers}</EmptyTitle>
           <EmptyText>{t.createFirst}</EmptyText>
           <Button onClick={() => navigate('/partners/offers/new')}>

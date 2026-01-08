@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import styled from 'styled-components';
+import { Sparkles, Search } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import OfferCard from '../components/common/OfferCard/OfferCard';
 import Button from '../components/common/Button/Button';
@@ -554,6 +555,77 @@ const StepIcon = styled.div`
   margin-bottom: 1rem;
 `;
 
+// 2-color SVG icons for cashback steps (gold outline, white/transparent fill)
+const CashbackIcon: React.FC<{ type: 'phone' | 'receipt' | 'money' }> = ({ type }) => {
+  const goldColor = '#c9a237';
+
+  const icons = {
+    phone: (
+      <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+        <rect x="12" y="4" width="24" height="40" rx="3" stroke={goldColor} strokeWidth="2.5" fill="none" />
+        <line x1="12" y1="10" x2="36" y2="10" stroke={goldColor} strokeWidth="2" />
+        <line x1="12" y1="36" x2="36" y2="36" stroke={goldColor} strokeWidth="2" />
+        <circle cx="24" cy="40" r="2" fill={goldColor} />
+        {/* QR code pattern */}
+        <rect x="17" y="16" width="4" height="4" fill={goldColor} />
+        <rect x="22" y="16" width="4" height="4" fill={goldColor} />
+        <rect x="27" y="16" width="4" height="4" fill={goldColor} />
+        <rect x="17" y="21" width="4" height="4" fill={goldColor} />
+        <rect x="27" y="21" width="4" height="4" fill={goldColor} />
+        <rect x="17" y="26" width="4" height="4" fill={goldColor} />
+        <rect x="22" y="26" width="4" height="4" fill={goldColor} />
+        <rect x="27" y="26" width="4" height="4" fill={goldColor} />
+      </svg>
+    ),
+    receipt: (
+      <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+        <path d="M10 6h28v36l-4-3-4 3-4-3-4 3-4-3-4 3-4-3V6z" stroke={goldColor} strokeWidth="2.5" fill="none" />
+        <line x1="16" y1="14" x2="32" y2="14" stroke={goldColor} strokeWidth="2" strokeLinecap="round" />
+        <line x1="16" y1="20" x2="28" y2="20" stroke={goldColor} strokeWidth="2" strokeLinecap="round" />
+        <line x1="16" y1="26" x2="30" y2="26" stroke={goldColor} strokeWidth="2" strokeLinecap="round" />
+        <line x1="16" y1="32" x2="24" y2="32" stroke={goldColor} strokeWidth="2" strokeLinecap="round" />
+      </svg>
+    ),
+    money: (
+      <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+        <circle cx="24" cy="24" r="18" stroke={goldColor} strokeWidth="2.5" fill="none" />
+        <path d="M24 12v24" stroke={goldColor} strokeWidth="2.5" strokeLinecap="round" />
+        <path d="M18 18c0-2 2-4 6-4s6 2 6 4-2 4-6 4-6 2-6 4 2 4 6 4 6-2 6-4" stroke={goldColor} strokeWidth="2.5" strokeLinecap="round" fill="none" />
+      </svg>
+    ),
+  };
+
+  return <div style={{ display: 'flex', justifyContent: 'center' }}>{icons[type]}</div>;
+};
+
+// 2-color SVG icons for filter sections
+const FilterIcon: React.FC<{ type: 'star' | 'folder' | 'percent' }> = ({ type }) => {
+  const goldColor = '#c9a237';
+
+  const icons = {
+    star: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style={{ marginRight: '6px', verticalAlign: 'middle' }}>
+        <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" stroke={goldColor} strokeWidth="2" fill="none" strokeLinejoin="round" />
+      </svg>
+    ),
+    folder: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style={{ marginRight: '6px', verticalAlign: 'middle' }}>
+        <path d="M3 6h6l2 2h10v12H3V6z" stroke={goldColor} strokeWidth="2" fill="none" strokeLinejoin="round" />
+        <line x1="3" y1="10" x2="21" y2="10" stroke={goldColor} strokeWidth="2" />
+      </svg>
+    ),
+    percent: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style={{ marginRight: '6px', verticalAlign: 'middle' }}>
+        <circle cx="7" cy="7" r="3" stroke={goldColor} strokeWidth="2" fill="none" />
+        <circle cx="17" cy="17" r="3" stroke={goldColor} strokeWidth="2" fill="none" />
+        <line x1="19" y1="5" x2="5" y2="19" stroke={goldColor} strokeWidth="2" strokeLinecap="round" />
+      </svg>
+    ),
+  };
+
+  return icons[type];
+};
+
 const StepText = styled.p`
   font-size: 1rem;
   color: #374151;
@@ -578,12 +650,13 @@ const CashbackNote = styled.p`
 
 const CashbackTrustText = styled.p`
   text-align: center;
-  font-size: 0.75rem;
-  color: #9ca3af;
-  margin-top: 0.5rem;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #374151;
+  margin-top: 0.75rem;
 
   [data-theme="dark"] & {
-    color: #6b7280;
+    color: #d1d5db;
   }
 `;
 
@@ -760,7 +833,7 @@ const PromotionsPage: React.FC = () => {
                   <StatLabel>{content.upToDiscount}</StatLabel>
                 </StatItem>
                 <StatItem>
-                  <StatValue>✨</StatValue>
+                  <StatValue><Sparkles size={40} /></StatValue>
                   <StatLabel>{content.newOffersRegularly}</StatLabel>
                 </StatItem>
               </StatsRow>
@@ -780,7 +853,7 @@ const PromotionsPage: React.FC = () => {
               transition={{ duration: 0.5, delay: 0.1 }}
             >
               <StepNumber>1</StepNumber>
-              <StepIcon>📱</StepIcon>
+              <StepIcon><CashbackIcon type="phone" /></StepIcon>
               <StepText>{content.cashbackStep1}</StepText>
             </CashbackStep>
             <CashbackStep
@@ -789,7 +862,7 @@ const PromotionsPage: React.FC = () => {
               transition={{ duration: 0.5, delay: 0.2 }}
             >
               <StepNumber>2</StepNumber>
-              <StepIcon>🧾</StepIcon>
+              <StepIcon><CashbackIcon type="receipt" /></StepIcon>
               <StepText>{content.cashbackStep2}</StepText>
             </CashbackStep>
             <CashbackStep
@@ -798,7 +871,7 @@ const PromotionsPage: React.FC = () => {
               transition={{ duration: 0.5, delay: 0.3 }}
             >
               <StepNumber>3</StepNumber>
-              <StepIcon>💰</StepIcon>
+              <StepIcon><CashbackIcon type="money" /></StepIcon>
               <StepText>{content.cashbackStep3}</StepText>
             </CashbackStep>
           </CashbackSteps>
@@ -815,7 +888,7 @@ const PromotionsPage: React.FC = () => {
               {/* Top Offers Section */}
               <FilterSection>
                 <FilterTitle>
-                  ⭐ {language === 'bg' ? 'Топ Оферти' : 'Top Offers'}
+                  <FilterIcon type="star" />{language === 'bg' ? 'Топ Оферти' : 'Top Offers'}
                 </FilterTitle>
                 {topPromotions.map((offer, index) => (
                   <TopOfferItem
@@ -837,7 +910,7 @@ const PromotionsPage: React.FC = () => {
               {/* Category Filter */}
               <FilterSection>
                 <FilterTitle>
-                  📂 {language === 'bg' ? 'Категории' : 'Categories'}
+                  <FilterIcon type="folder" />{language === 'bg' ? 'Категории' : 'Categories'}
                 </FilterTitle>
                 {categories.map(category => (
                   <FilterOption key={category}>
@@ -854,7 +927,7 @@ const PromotionsPage: React.FC = () => {
               {/* Discount Range Filter */}
               <FilterSection>
                 <FilterTitle>
-                  💰 {language === 'bg' ? 'Размер на Отстъпката' : 'Discount Range'}
+                  <FilterIcon type="percent" />{language === 'bg' ? 'Размер на Отстъпката' : 'Discount Range'}
                 </FilterTitle>
                 {[
                   { value: '50+', label: language === 'bg' ? '50%+' : '50%+' },
@@ -921,7 +994,7 @@ const PromotionsPage: React.FC = () => {
                 </>
               ) : (
                 <EmptyState>
-                  <EmptyIcon>🔍</EmptyIcon>
+                  <EmptyIcon><Search size={64} /></EmptyIcon>
                   <EmptyTitle>{content.emptyTitle}</EmptyTitle>
                   <EmptyText>{content.emptyText}</EmptyText>
                   <ClearFiltersButton onClick={clearFilters}>

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import styled from 'styled-components';
+import { Heart } from 'lucide-react';
 import { useFavorites } from '../contexts/FavoritesContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import OfferCard from '../components/common/OfferCard/OfferCard';
@@ -318,7 +319,7 @@ const FavoritesPage: React.FC = () => {
             </>
           ) : (
             <EmptyState>
-              <EmptyIcon>❤️</EmptyIcon>
+              <EmptyIcon><Heart size={64} /></EmptyIcon>
               <EmptyTitle>
                 {t('favorites.noFavorites')}
               </EmptyTitle>
