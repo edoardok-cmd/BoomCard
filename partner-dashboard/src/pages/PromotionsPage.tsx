@@ -91,6 +91,9 @@ const StatsRow = styled.div`
 const StatItem = styled.div`
   text-align: center;
   min-width: 150px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 `;
 
 const StatValue = styled.div`
@@ -100,7 +103,8 @@ const StatValue = styled.div`
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 3.5rem;
+  height: 3.5rem;
+  line-height: 1;
 `;
 
 const StatLabel = styled.div`
