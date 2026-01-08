@@ -95,6 +95,10 @@ const StatValue = styled.div`
   font-size: 2.5rem;
   font-weight: 700;
   margin-bottom: 0.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 3.5rem;
 `;
 
 const StatLabel = styled.div`
