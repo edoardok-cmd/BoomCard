@@ -212,17 +212,30 @@ const OffersGrid = styled.div`
   }
 `;
 
-// Cashback Steps Section Styles
+// Cashback Steps Section Styles - Premium dark theme matching hero
 const CashbackSection = styled.section`
-  background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
+  background: linear-gradient(135deg, #111827 0%, #1f2937 50%, #111827 100%);
   padding: 4rem 0;
+  position: relative;
+  overflow: hidden;
+
+  /* Subtle gold accent line at top */
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent 0%, #c9a237 50%, transparent 100%);
+  }
 
   [data-theme="dark"] & {
-    background: linear-gradient(135deg, #14532d 0%, #166534 100%);
+    background: linear-gradient(135deg, #0a0a0a 0%, #111827 50%, #0a0a0a 100%);
   }
 
   [data-theme="color"] & {
-    background: linear-gradient(135deg, #fdf4ff 0%, #f5d0fe 100%);
+    background: linear-gradient(135deg, #1a0a2e 0%, #2d1b4e 50%, #1a0a2e 100%);
   }
 `;
 
@@ -237,14 +250,14 @@ const CashbackTitle = styled.h2`
   font-weight: 700;
   text-align: center;
   margin-bottom: 3rem;
-  color: #166534;
+  color: #ffffff;
 
   [data-theme="dark"] & {
-    color: #86efac;
+    color: #f9fafb;
   }
 
   [data-theme="color"] & {
-    color: #86198f;
+    color: #f5d0fe;
   }
 
   @media (max-width: 768px) {
@@ -266,38 +279,50 @@ const CashbackSteps = styled.div`
 `;
 
 const CashbackStep = styled(motion.div)`
-  background: white;
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(201, 162, 55, 0.2);
   border-radius: 1rem;
   padding: 2rem;
   text-align: center;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
   position: relative;
+  transition: all 0.3s ease;
+
+  &:hover {
+    border-color: rgba(201, 162, 55, 0.4);
+    transform: translateY(-4px);
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
+  }
 
   [data-theme="dark"] & {
-    background: #1f2937;
+    background: rgba(255, 255, 255, 0.03);
+    border-color: rgba(201, 162, 55, 0.15);
   }
 
   [data-theme="color"] & {
-    background: white;
-    border: 2px solid rgba(134, 25, 143, 0.2);
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(168, 85, 247, 0.3);
   }
 `;
 
 const StepNumber = styled.div`
   width: 3rem;
   height: 3rem;
-  background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+  background: linear-gradient(135deg, #c9a237 0%, #a68529 100%);
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 1.25rem;
   font-weight: 700;
-  color: white;
+  color: #111827;
   margin: 0 auto 1rem;
+  box-shadow: 0 2px 10px rgba(201, 162, 55, 0.3);
 
   [data-theme="color"] & {
     background: linear-gradient(135deg, #d946ef 0%, #a855f7 100%);
+    color: white;
   }
 `;
 
@@ -351,23 +376,31 @@ const CashbackIcon: React.FC<{ type: 'phone' | 'receipt' | 'money' }> = ({ type 
 
 const StepText = styled.p`
   font-size: 1rem;
-  color: #374151;
+  color: #e5e7eb;
   line-height: 1.5;
 
   [data-theme="dark"] & {
     color: #d1d5db;
+  }
+
+  [data-theme="color"] & {
+    color: #e9d5ff;
   }
 `;
 
 const CashbackNote = styled.p`
   text-align: center;
   font-size: 0.875rem;
-  color: #6b7280;
+  color: #9ca3af;
   margin-top: 1.5rem;
   font-style: italic;
 
   [data-theme="dark"] & {
-    color: #9ca3af;
+    color: #6b7280;
+  }
+
+  [data-theme="color"] & {
+    color: #c4b5fd;
   }
 `;
 
@@ -375,11 +408,15 @@ const CashbackTrustText = styled.p`
   text-align: center;
   font-size: 1rem;
   font-weight: 600;
-  color: #374151;
+  color: #c9a237;
   margin-top: 0.75rem;
 
   [data-theme="dark"] & {
-    color: #d1d5db;
+    color: #c9a237;
+  }
+
+  [data-theme="color"] & {
+    color: #e9d5ff;
   }
 `;
 

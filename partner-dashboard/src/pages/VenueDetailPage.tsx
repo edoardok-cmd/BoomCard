@@ -441,9 +441,9 @@ const VenueDetailPage: React.FC = () => {
   // Get offer by ID from shared mock data
   const offer = id ? getOfferById(id) : undefined;
 
-  // If offer not found, redirect to promotions page
+  // If offer not found, redirect to offers page
   if (!offer) {
-    return <Navigate to="/promotions" replace />;
+    return <Navigate to="/offers" replace />;
   }
 
   // Map offer data to venue format for display
@@ -483,7 +483,7 @@ const VenueDetailPage: React.FC = () => {
     <PageContainer>
       <Container>
         <Breadcrumb>
-          <Link to="/promotions">{t('venueDetail.home')}</Link>
+          <Link to="/offers">{t('venueDetail.home')}</Link>
           <span>/</span>
           <Link to="/venues/spa">{venue.category}</Link>
           <span>/</span>

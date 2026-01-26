@@ -278,7 +278,7 @@ const NotFoundPage: React.FC = () => {
               </svg>
               {t('notFound.browseCategories')}
             </SuggestedLink>
-            <SuggestedLink to="/promotions">
+            <SuggestedLink to="/offers">
               <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path
                   strokeLinecap="round"

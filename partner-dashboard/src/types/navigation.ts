@@ -31,10 +31,10 @@ export const navigationConfig: NavConfig = {
       path: '/',
     },
     {
-      id: 'promotions',
+      id: 'offers',
       label: 'Offers',
       labelBg: 'Оферти',
-      path: '/promotions',
+      path: '/offers',
     },
     {
       id: 'venues',

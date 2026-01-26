@@ -274,12 +274,12 @@ function App() {
                     <Route path="media/photos" element={<MediaPhotosPage />} />
                     <Route path="media/videos" element={<MediaVideosPage />} />
 
-                    {/* Promotions routes */}
-                    <Route path="promotions" element={<PromotionsPage />} />
-                    <Route path="promotions/type" element={<PromotionsTypePage />} />
-                    <Route path="promotions/gastronomy" element={<PromotionsGastronomyPage />} />
-                    <Route path="promotions/extreme" element={<PromotionsExtremePage />} />
-                    <Route path="promotions/cultural" element={<PromotionsCulturalPage />} />
+                    {/* Offers routes (renamed from promotions) */}
+                    <Route path="offers" element={<PromotionsPage />} />
+                    <Route path="offers/type" element={<PromotionsTypePage />} />
+                    <Route path="offers/gastronomy" element={<PromotionsGastronomyPage />} />
+                    <Route path="offers/extreme" element={<PromotionsExtremePage />} />
+                    <Route path="offers/cultural" element={<PromotionsCulturalPage />} />
 
                     {/* Venues routes */}
                     <Route path="venues" element={<CategoryListingPage />} />
