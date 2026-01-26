@@ -228,8 +228,8 @@ export class StripePayment extends PaymentAdapter {
     for (const item of items) {
       await this.makeRequest('/invoiceitems', 'POST', {
         customer: customerId,
-        amount: this.formatAmount(item.amount, 'BGN'),
-        currency: 'bgn',
+        amount: this.formatAmount(item.amount, 'EUR'),
+        currency: 'eur',
         description: item.description,
       });
     }
@@ -276,7 +276,7 @@ export class StripePayment extends PaymentAdapter {
       };
 
       if (amount) {
-        refundData.amount = this.formatAmount(amount, 'BGN');
+        refundData.amount = this.formatAmount(amount, 'EUR');
       }
 
       if (reason) {
@@ -288,7 +288,7 @@ export class StripePayment extends PaymentAdapter {
       return {
         success: response.status === 'succeeded',
         refundId: response.id,
-        amount: this.parseAmount(response.amount, 'BGN'),
+        amount: this.parseAmount(response.amount, 'EUR'),
       };
     } catch (error) {
       return {
@@ -417,8 +417,8 @@ export class StripePayment extends PaymentAdapter {
       currentPeriodEnd: new Date(data.current_period_end * 1000),
       canceledAt: data.canceled_at ? new Date(data.canceled_at * 1000) : undefined,
       trialEnd: data.trial_end ? new Date(data.trial_end * 1000) : undefined,
-      amount: this.parseAmount(data.items.data[0]?.price?.unit_amount || 0, 'BGN'),
-      currency: 'BGN',
+      amount: this.parseAmount(data.items.data[0]?.price?.unit_amount || 0, 'EUR'),
+      currency: 'EUR',
       interval: data.items.data[0]?.price?.recurring?.interval || 'month',
       metadata: data.metadata,
     };

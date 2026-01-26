@@ -51,8 +51,9 @@ export const en = {
     errorSubmittingReview: 'Error submitting review',
     bgn: 'BGN',
     eur: 'EUR',
-    bgnLev: 'лв.',
-    perBGNEUR: 'per BGN/EUR',
+    bgnSymbol: 'лв.',
+    eurSymbol: '€',
+    dualCurrency: 'BGN / EUR',
   },
 
   // Header & Navigation

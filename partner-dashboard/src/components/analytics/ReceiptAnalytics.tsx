@@ -290,9 +290,9 @@ export const ReceiptAnalytics: React.FC = () => {
               <DollarSign size={20} />
             </StatIcon>
           </StatHeader>
-          <StatValue>{analytics.totalCashback.toFixed(2)} BGN</StatValue>
+          <StatValue>€{analytics.totalCashback.toFixed(2)}</StatValue>
           <StatSubtext>
-            {content.stats.totalSpent}: {analytics.totalSpent.toFixed(2)} BGN
+            {content.stats.totalSpent}: €{analytics.totalSpent.toFixed(2)}
           </StatSubtext>
         </StatCard>
 
@@ -303,7 +303,7 @@ export const ReceiptAnalytics: React.FC = () => {
               <TrendingUp size={20} />
             </StatIcon>
           </StatHeader>
-          <StatValue>{analytics.averageReceiptAmount.toFixed(2)} BGN</StatValue>
+          <StatValue>€{analytics.averageReceiptAmount.toFixed(2)}</StatValue>
           <StatSubtext>Per receipt</StatSubtext>
         </StatCard>
 
@@ -330,7 +330,7 @@ export const ReceiptAnalytics: React.FC = () => {
                 <TableRow key={idx}>
                   <TableCell>{merchant.name}</TableCell>
                   <TableCell>{merchant.count} {content.table.receipts}</TableCell>
-                  <TableCell>{merchant.totalSpent.toFixed(2)} BGN</TableCell>
+                  <TableCell>€{merchant.totalSpent.toFixed(2)}</TableCell>
                 </TableRow>
               ))}
             </tbody>

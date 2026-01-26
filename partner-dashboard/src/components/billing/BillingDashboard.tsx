@@ -386,13 +386,12 @@ export const BillingDashboard: React.FC<BillingDashboardProps> = ({
     });
   };
 
-  const formatCurrency = (amount: number, currency: string) => {
-    // Amount is in cents, convert to main currency unit
+  const formatCurrencyAmount = (amount: number, _currency: string) => {
+    // Amount is in stotinki (BGN cents), convert to main currency unit
     const amountBGN = amount / 100;
     const amountEUR = convertBGNToEUR(amountBGN);
     const bgnLabel = language === 'bg' ? 'лв.' : 'BGN';
-
-    return `${amountBGN} ${bgnLabel} / €${amountEUR}`;
+    return `${amountBGN.toFixed(2)} ${bgnLabel} / €${amountEUR.toFixed(2)}`;
   };
 
   const getStatusIcon = (status: Subscription['status']) => {
@@ -518,7 +517,7 @@ export const BillingDashboard: React.FC<BillingDashboardProps> = ({
             </CardIcon>
           </CardHeader>
           <CardValue>
-            {formatCurrency(subscription.amount, subscription.currency)}
+            {formatCurrencyAmount(subscription.amount, subscription.currency)}
           </CardValue>
           <CardSubtext>
             {t('billing.dueOn')} {formatDate(subscription.currentPeriodEnd)}
@@ -537,7 +536,7 @@ export const BillingDashboard: React.FC<BillingDashboardProps> = ({
             </CardIcon>
           </CardHeader>
           <CardValue>
-            {formatCurrency(totalSpent, subscription.currency)}
+            {formatCurrencyAmount(totalSpent, subscription.currency)}
           </CardValue>
           <CardSubtext>
             {invoices.filter(inv => inv.status === 'paid').length} {t('billing.invoices')}
@@ -659,7 +658,7 @@ export const BillingDashboard: React.FC<BillingDashboardProps> = ({
                   </TableCell>
                   <TableCell>{formatDate(invoice.date)}</TableCell>
                   <TableCell>
-                    {formatCurrency(invoice.amount, invoice.currency)}
+                    {formatCurrencyAmount(invoice.amount, invoice.currency)}
                   </TableCell>
                   <TableCell>
                     <InvoiceStatus $status={invoice.status}>

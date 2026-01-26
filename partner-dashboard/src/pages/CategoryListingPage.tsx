@@ -311,8 +311,8 @@ const filterGroups: FilterGroup[] = [
   },
   {
     id: 'price',
-    title: 'Price Range (BGN)',
-    titleBg: 'Ценови диапазон (лв.)',
+    title: 'Price Range (BGN / EUR)',
+    titleBg: 'Ценови диапазон (лв. / EUR)',
     type: 'range',
     min: 0,
     max: 1000,

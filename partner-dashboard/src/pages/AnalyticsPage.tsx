@@ -482,7 +482,7 @@ const AnalyticsPage: React.FC = () => {
                 <DollarSign />
               </StatIconWrapper>
             </StatHeader>
-            <StatValue>{stats.totalSavings.value} BGN</StatValue>
+            <StatValue>€{stats.totalSavings.value}</StatValue>
             <StatChange $positive={stats.totalSavings.positive}>
               {stats.totalSavings.positive ? <ArrowUp /> : <ArrowDown />}
               {Math.abs(stats.totalSavings.change)}%
@@ -608,7 +608,7 @@ const AnalyticsPage: React.FC = () => {
                     <CategoryDot $color={category.color} />
                     <CategoryName>{category.name}</CategoryName>
                   </CategoryInfo>
-                  <CategoryValue>{category.value} BGN ({category.percentage}%)</CategoryValue>
+                  <CategoryValue>€{category.value} ({category.percentage}%)</CategoryValue>
                 </CategoryItem>
               ))}
             </CategoryList>

@@ -1,4 +1,4 @@
-// Official Bulgarian Lev to Euro exchange rate (fixed)
+// Official Bulgarian Lev to Euro exchange rate (fixed rate for eurozone entry)
 export const BGN_TO_EUR_RATE = 1.95583;
 
 export const formatCurrency = (amount: number, currency: string = 'BGN'): string => {
@@ -10,7 +10,12 @@ export const formatCurrency = (amount: number, currency: string = 'BGN'): string
 
 // Convert BGN to EUR
 export const convertBGNToEUR = (amountBGN: number): number => {
-  return Math.round(amountBGN / BGN_TO_EUR_RATE);
+  return Math.round((amountBGN / BGN_TO_EUR_RATE) * 100) / 100;
+};
+
+// Convert EUR to BGN
+export const convertEURToBGN = (amountEUR: number): number => {
+  return Math.round(amountEUR * BGN_TO_EUR_RATE * 100) / 100;
 };
 
 // Format amount in dual currency (BGN / EUR)
@@ -25,38 +30,35 @@ export const formatDualCurrency = (
     if (compact) {
       return `${amountBGN} лв. / €${amountEUR}`;
     }
-    return `${amountBGN} лв. / €${amountEUR} EUR`;
+    return `${amountBGN} лв. / €${amountEUR}`;
   } else {
     if (compact) {
       return `${amountBGN} BGN / €${amountEUR}`;
     }
-    return `${amountBGN} BGN / €${amountEUR} EUR`;
+    return `${amountBGN} BGN / €${amountEUR}`;
   }
 };
 
-// Format dual currency with custom separators (for flexibility)
+// Format dual currency with custom options
 export const formatDualCurrencyCustom = (
   amountBGN: number,
   options: {
     language?: 'en' | 'bg';
     separator?: string;
-    showEURLabel?: boolean;
-    showBGNLabel?: boolean;
+    showLabels?: boolean;
   } = {}
 ): { bgn: string; eur: string; formatted: string } => {
   const {
     language = 'en',
     separator = ' / ',
-    showEURLabel = true,
-    showBGNLabel = true
+    showLabels = true
   } = options;
 
   const amountEUR = convertBGNToEUR(amountBGN);
   const bgnLabel = language === 'bg' ? 'лв.' : 'BGN';
-  const eurLabel = 'EUR';
 
-  const bgnText = showBGNLabel ? `${amountBGN} ${bgnLabel}` : `${amountBGN}`;
-  const eurText = showEURLabel ? `€${amountEUR} ${eurLabel}` : `€${amountEUR}`;
+  const bgnText = showLabels ? `${amountBGN} ${bgnLabel}` : `${amountBGN}`;
+  const eurText = `€${amountEUR}`;
 
   return {
     bgn: bgnText,

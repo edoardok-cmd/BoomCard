@@ -848,11 +848,11 @@ export const AdminScanReviewPage: React.FC = () => {
                 </DetailItem>
                 <DetailItem>
                   <DetailLabel>Bill Amount</DetailLabel>
-                  <DetailValue>{scan.billAmount.toFixed(2)} BGN</DetailValue>
+                  <DetailValue>€{scan.billAmount.toFixed(2)}</DetailValue>
                 </DetailItem>
                 <DetailItem>
                   <DetailLabel>Cashback</DetailLabel>
-                  <DetailValue>{scan.cashbackAmount.toFixed(2)} BGN</DetailValue>
+                  <DetailValue>€{scan.cashbackAmount.toFixed(2)}</DetailValue>
                 </DetailItem>
                 <DetailItem>
                   <DetailLabel>Card Type</DetailLabel>

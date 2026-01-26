@@ -329,11 +329,11 @@ export const OfferCard: React.FC<OfferCardProps> = ({ offer, className }) => {
   const description = language === 'bg' ? offer.descriptionBg : offer.description;
   const category = language === 'bg' ? offer.categoryBg : offer.category;
 
-  // Convert BGN prices to EUR
+  // Convert BGN prices to EUR for dual display
   const originalPriceEUR = convertBGNToEUR(offer.originalPrice);
   const discountedPriceEUR = convertBGNToEUR(offer.discountedPrice);
 
-  // Currency labels
+  // Currency labels based on language
   const bgnLabel = language === 'bg' ? 'лв.' : 'BGN';
 
   return (

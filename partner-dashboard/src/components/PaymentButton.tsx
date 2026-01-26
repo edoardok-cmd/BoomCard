@@ -6,6 +6,7 @@
 import { useState } from 'react';
 import { paymentService } from '../services/payment.service';
 import { CreditCard, Loader2 } from 'lucide-react';
+import { convertBGNToEUR } from '../utils/helpers';
 
 interface PaymentButtonProps {
   amount: number;
@@ -90,7 +91,7 @@ export function PaymentButton({
         ) : (
           <>
             <CreditCard className="w-5 h-5 mr-2" />
-            Pay {amount.toFixed(2)} {currency}
+            Pay {amount.toFixed(2)} {currency === 'BGN' ? `BGN / €${convertBGNToEUR(amount).toFixed(2)}` : currency}
           </>
         )}
       </button>

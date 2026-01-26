@@ -475,7 +475,7 @@ export class CSVImporter {
       { field: 'cardNumber', required: true, type: 'string', pattern: /^\d{16}$/ },
       { field: 'amount', required: true, type: 'number', min: 0 },
       { field: 'discount', required: true, type: 'number', min: 0, max: 100 },
-      { field: 'currency', required: false, type: 'string', enum: ['BGN', 'EUR', 'USD'] },
+      { field: 'currency', required: false, type: 'string', enum: ['EUR', 'USD'] },
       { field: 'status', required: false, type: 'string', enum: ['PENDING', 'COMPLETED', 'FAILED', 'REFUNDED'] },
       { field: 'date', required: true, type: 'date' },
     ];
@@ -496,7 +496,7 @@ export class CSVImporter {
           discount,
           discountAmount,
           finalAmount,
-          currency: tx.currency || 'BGN',
+          currency: tx.currency || 'EUR',
           status: tx.status || 'COMPLETED',
           createdAt: new Date(tx.date),
         };
@@ -528,7 +528,7 @@ export class CSVImporter {
 
       transactions: [
         'venueId,cardNumber,amount,discount,currency,status,date',
-        'venue_123,1234567890123456,100.00,20,BGN,COMPLETED,2024-01-15',
+        'venue_123,1234567890123456,100.00,20,EUR,COMPLETED,2024-01-15',
       ].join('\n'),
     };
 

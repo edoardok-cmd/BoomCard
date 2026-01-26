@@ -27,8 +27,8 @@ export function exportToCSV(receipts: Receipt[]): string {
   const headers = [
     'Date',
     'Merchant',
-    'Amount (BGN)',
-    'Cashback (BGN)',
+    'Amount (EUR)',
+    'Cashback (EUR)',
     'Status',
     'OCR Confidence',
     'Fraud Score',
@@ -210,11 +210,11 @@ export async function generateReceiptsPDF(receipts: Receipt[]): Promise<Blob> {
           </div>
           <div class="summary-item">
             <div class="summary-label">Total Cashback</div>
-            <div class="summary-value">${receipts.reduce((sum, r) => sum + r.cashbackAmount, 0).toFixed(2)} BGN</div>
+            <div class="summary-value">${receipts.reduce((sum, r) => sum + r.cashbackAmount, 0).toFixed(2)}</div>
           </div>
           <div class="summary-item">
             <div class="summary-label">Total Spent</div>
-            <div class="summary-value">${receipts.reduce((sum, r) => sum + (r.totalAmount || 0), 0).toFixed(2)} BGN</div>
+            <div class="summary-value">${receipts.reduce((sum, r) => sum + (r.totalAmount || 0), 0).toFixed(2)}</div>
           </div>
           <div class="summary-item">
             <div class="summary-label">Approved</div>
@@ -237,11 +237,11 @@ export async function generateReceiptsPDF(receipts: Receipt[]): Promise<Blob> {
             </div>
             <div class="info-item">
               <div class="info-label">Amount</div>
-              <div class="info-value">${receipt.totalAmount?.toFixed(2) || '0.00'} BGN</div>
+              <div class="info-value">€${receipt.totalAmount?.toFixed(2) || '0.00'}</div>
             </div>
             <div class="info-item">
               <div class="info-label">Cashback</div>
-              <div class="info-value">${receipt.cashbackAmount.toFixed(2)} BGN</div>
+              <div class="info-value">${receipt.cashbackAmount.toFixed(2)}</div>
             </div>
             <div class="info-item">
               <div class="info-label">OCR Confidence</div>
@@ -321,7 +321,7 @@ export async function emailReceipts(
  * Share receipt via social media or messaging
  */
 export function shareReceipt(receipt: Receipt, platform: 'whatsapp' | 'facebook' | 'twitter' | 'email'): void {
-  const text = `Check out my receipt from ${receipt.merchantName || 'Unknown Merchant'}! Amount: ${receipt.totalAmount?.toFixed(2) || '0.00'} BGN, Cashback: ${receipt.cashbackAmount.toFixed(2)} BGN`;
+  const text = `Check out my receipt from ${receipt.merchantName || 'Unknown Merchant'}! Amount: €${receipt.totalAmount?.toFixed(2) || '0.00'}, Cashback: €${receipt.cashbackAmount.toFixed(2)}`;
   const url = window.location.href;
 
   let shareUrl: string;
@@ -408,8 +408,8 @@ export function formatForAccountingSoftware(receipts: Receipt[]): AccountingSoft
     vendor: receipt.merchantName || 'Unknown Merchant',
     category: 'Business Expense', // Could be categorized based on merchant
     amount: receipt.totalAmount || 0,
-    currency: 'BGN',
-    description: `Receipt scanned via BOOM Card - Cashback: ${receipt.cashbackAmount.toFixed(2)} BGN`,
+    currency: 'EUR',
+    description: `Receipt scanned via BOOM Card - Cashback: €${receipt.cashbackAmount.toFixed(2)}`,
     receiptUrl: receipt.imageUrl,
   }));
 }
@@ -443,7 +443,7 @@ export function exportReceiptsToCSV(receipts: Receipt[], filename: string = 'rec
  * Share a single receipt via email
  */
 export function shareReceiptViaEmail(receipt: Receipt): void {
-  const text = `Check out my receipt from ${receipt.merchantName || 'Unknown Merchant'}! Amount: ${receipt.totalAmount?.toFixed(2) || '0.00'} BGN, Cashback: ${receipt.cashbackAmount.toFixed(2)} BGN`;
+  const text = `Check out my receipt from ${receipt.merchantName || 'Unknown Merchant'}! Amount: €${receipt.totalAmount?.toFixed(2) || '0.00'}, Cashback: €${receipt.cashbackAmount.toFixed(2)}`;
   const subject = `Receipt from ${receipt.merchantName || 'Unknown Merchant'}`;
   const body = `${text}\n\nReceipt ID: ${receipt.id}\nDate: ${receipt.receiptDate || receipt.createdAt}\n\nView receipt: ${window.location.href}`;
 

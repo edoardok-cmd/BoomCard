@@ -184,20 +184,19 @@ function generateClassicTemplate(receipt: Receipt, options: TemplateRenderOption
       ${items.map((item: any) => `
         <div class="item">
           <span>${item.quantity || 1}x ${item.name || 'Item'}</span>
-          <span>${(item.price || 0).toFixed(2)} BGN</span>
+          <span>${(item.price || 0).toFixed(2)}</span>
         </div>
       `).join('')}
     </div>
     ` : ''}
 
     <div class="total">
-      TOTAL: ${(receipt.totalAmount || 0).toFixed(2)} BGN
-    </div>
+      TOTAL: ${(receipt.totalAmount || 0).toFixed(2)}    </div>
 
     ${receipt.cashbackAmount > 0 ? `
     <div class="info-row" style="margin-top: 15px; font-weight: bold; color: #10b981;">
       <span>Cashback Earned:</span>
-      <span>${receipt.cashbackAmount.toFixed(2)} BGN</span>
+      <span>${receipt.cashbackAmount.toFixed(2)}</span>
     </div>
     ` : ''}
 
@@ -365,7 +364,7 @@ function generateModernTemplate(receipt: Receipt, options: TemplateRenderOptions
         </div>
         <div class="info-card">
           <div class="info-label">Cashback</div>
-          <div class="info-value">${receipt.cashbackAmount.toFixed(2)} BGN</div>
+          <div class="info-value">${receipt.cashbackAmount.toFixed(2)}</div>
         </div>
       </div>
 
@@ -375,7 +374,7 @@ function generateModernTemplate(receipt: Receipt, options: TemplateRenderOptions
         ${items.map((item: any) => `
           <div class="item">
             <span><strong>${item.quantity || 1}x</strong> ${item.name || 'Item'}</span>
-            <span style="font-weight: 600;">${(item.price || 0).toFixed(2)} BGN</span>
+            <span style="font-weight: 600;">${(item.price || 0).toFixed(2)}</span>
           </div>
         `).join('')}
       </div>
@@ -383,7 +382,7 @@ function generateModernTemplate(receipt: Receipt, options: TemplateRenderOptions
 
       <div class="total">
         <span>TOTAL</span>
-        <span>${(receipt.totalAmount || 0).toFixed(2)} BGN</span>
+        <span>${(receipt.totalAmount || 0).toFixed(2)}</span>
       </div>
     </div>
 
@@ -514,7 +513,7 @@ function generateMinimalTemplate(receipt: Receipt, options: TemplateRenderOption
     ${receipt.cashbackAmount > 0 ? `
     <div class="info-row" style="margin-top: 20px; color: #10b981;">
       <span>Cashback</span>
-      <span style="font-weight: 600;">+${receipt.cashbackAmount.toFixed(2)} BGN</span>
+      <span style="font-weight: 600;">+${receipt.cashbackAmount.toFixed(2)}</span>
     </div>
     ` : ''}
 
@@ -686,8 +685,8 @@ function generateProfessionalTemplate(receipt: Receipt, options: TemplateRenderO
           <tr>
             <td>${item.name || 'Item'}</td>
             <td>${item.quantity || 1}</td>
-            <td style="text-align: right;">${(item.price || 0).toFixed(2)} BGN</td>
-            <td style="text-align: right;"><strong>${((item.quantity || 1) * (item.price || 0)).toFixed(2)} BGN</strong></td>
+            <td style="text-align: right;">${(item.price || 0).toFixed(2)}</td>
+            <td style="text-align: right;"><strong>${((item.quantity || 1) * (item.price || 0)).toFixed(2)}</strong></td>
           </tr>
         `).join('')}
       </table>
@@ -696,17 +695,17 @@ function generateProfessionalTemplate(receipt: Receipt, options: TemplateRenderO
       <div class="total-section">
         <div class="total-row">
           <span>Subtotal</span>
-          <span>${(receipt.totalAmount || 0).toFixed(2)} BGN</span>
+          <span>${(receipt.totalAmount || 0).toFixed(2)}</span>
         </div>
         ${receipt.cashbackAmount > 0 ? `
         <div class="total-row" style="color: #28a745;">
           <span>Cashback Earned</span>
-          <span>+${receipt.cashbackAmount.toFixed(2)} BGN</span>
+          <span>+${receipt.cashbackAmount.toFixed(2)}</span>
         </div>
         ` : ''}
         <div class="total-row grand">
           <span>GRAND TOTAL</span>
-          <span>${(receipt.totalAmount || 0).toFixed(2)} BGN</span>
+          <span>${(receipt.totalAmount || 0).toFixed(2)}</span>
         </div>
       </div>
     </div>
@@ -868,8 +867,7 @@ function generateColorfulTemplate(receipt: Receipt, options: TemplateRenderOptio
         <div style="background: linear-gradient(135deg, #55efc4 0%, #00b894 100%); color: white; padding: 15px; border-radius: 12px; text-align: center;">
           <div style="font-size: 11px; opacity: 0.9;">Cashback</div>
           <div style="font-size: 14px; font-weight: 700; margin-top: 5px;">
-            ${receipt.cashbackAmount.toFixed(2)} BGN
-          </div>
+            ${receipt.cashbackAmount.toFixed(2)}          </div>
         </div>
       </div>
 
@@ -881,14 +879,14 @@ function generateColorfulTemplate(receipt: Receipt, options: TemplateRenderOptio
         ${items.map((item: any) => `
           <div class="item">
             <span><strong>${item.quantity || 1}x</strong> ${item.name || 'Item'}</span>
-            <span style="font-weight: 900; color: #d63031;">${(item.price || 0).toFixed(2)} BGN</span>
+            <span style="font-weight: 900; color: #d63031;">${(item.price || 0).toFixed(2)}</span>
           </div>
         `).join('')}
       </div>
       ` : ''}
 
       <div class="total">
-        💰 ${(receipt.totalAmount || 0).toFixed(2)} BGN 💰
+        💰 ${(receipt.totalAmount || 0).toFixed(2)} 💰
       </div>
     </div>
 

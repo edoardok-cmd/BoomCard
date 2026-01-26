@@ -6,8 +6,8 @@ const LocationsPricePage: React.FC = () => {
     <GenericPage
       titleEn="Browse by Price Range"
       titleBg="Разгледай по Ценова Категория"
-      subtitleEn="Find venues that match your budget: Mid-range (150-250 BGN), High-end (250-400 BGN), and Luxury (400+ BGN)"
-      subtitleBg="Намерете места, които отговарят на вашия бюджет: Среден клас (150-250 лв), Висок клас (250-400 лв) и Лукс (400+ лв)"
+      subtitleEn="Find venues that match your budget: Mid-range (293-489 BGN / €150-250), High-end (489-782 BGN / €250-400), and Luxury (782+ BGN / €400+)"
+      subtitleBg="Намерете места, които отговарят на вашия бюджет: Среден клас (293-489 лв. / €150-250), Висок клас (489-782 лв. / €250-400) и Лукс (782+ лв. / €400+)"
       showEmptyState
       emptyIcon="💰"
       emptyTitleEn="Filter by Price"

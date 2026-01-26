@@ -10,8 +10,8 @@ import Card from '../components/common/Card/Card';
 import QRCode from '../components/common/QRCode/QRCode';
 import FavoriteButton from '../components/common/FavoriteButton/FavoriteButton';
 import ShareButton from '../components/common/ShareButton/ShareButton';
-import { convertBGNToEUR } from '../utils/helpers';
 import { getOfferById } from '../data/mockOffers';
+import { convertBGNToEUR } from '../utils/helpers';
 
 const PageContainer = styled.div`
   min-height: 100vh;

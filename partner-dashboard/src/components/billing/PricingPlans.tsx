@@ -278,7 +278,7 @@ interface Plan {
   description: string;
   icon: React.ReactNode;
   iconColor: string;
-  price: {
+  priceBGN: {
     monthly: number;
     annual: number;
   };
@@ -306,9 +306,9 @@ export const PricingPlans: React.FC<PricingPlansProps> = ({
       description: t('pricing.starterDesc'),
       icon: <Zap />,
       iconColor: '#6366f1',
-      price: {
-        monthly: 29,
-        annual: 290,
+      priceBGN: {
+        monthly: 57,
+        annual: 570,
       },
       features: [
         t('pricing.transactions100'),
@@ -325,9 +325,9 @@ export const PricingPlans: React.FC<PricingPlansProps> = ({
       description: t('pricing.professionalDesc'),
       icon: <Star />,
       iconColor: '#000000',
-      price: {
-        monthly: 79,
-        annual: 790,
+      priceBGN: {
+        monthly: 155,
+        annual: 1550,
       },
       features: [
         t('pricing.transactions1000'),
@@ -347,9 +347,9 @@ export const PricingPlans: React.FC<PricingPlansProps> = ({
       description: t('pricing.enterpriseDesc'),
       icon: <TrendingUp />,
       iconColor: '#8b5cf6',
-      price: {
-        monthly: 199,
-        annual: 1990,
+      priceBGN: {
+        monthly: 389,
+        annual: 3890,
       },
       features: [
         t('pricing.unlimitedTransactions'),
@@ -433,19 +433,19 @@ export const PricingPlans: React.FC<PricingPlansProps> = ({
               <PriceAmount>
                 <Amount>
                   {isAnnual
-                    ? Math.round(plan.price.annual / 12)
-                    : plan.price.monthly}
+                    ? Math.round(plan.priceBGN.annual / 12)
+                    : plan.priceBGN.monthly}
                 </Amount>
-                <Currency>
-                  {language === 'bg' ? 'лв.' : 'BGN'} / €{convertBGNToEUR(isAnnual ? Math.round(plan.price.annual / 12) : plan.price.monthly)}
-                </Currency>
+                <Currency>{language === 'bg' ? 'лв.' : 'BGN'}</Currency>
                 <Period>
-                  /{t('pricing.month')}
+                  / €{isAnnual
+                    ? convertBGNToEUR(Math.round(plan.priceBGN.annual / 12))
+                    : convertBGNToEUR(plan.priceBGN.monthly)} /{t('pricing.month')}
                 </Period>
               </PriceAmount>
               {isAnnual && (
                 <OldPrice>
-                  {plan.price.monthly} {language === 'bg' ? 'лв.' : 'BGN'} / €{convertBGNToEUR(plan.price.monthly)}/{t('pricing.month')} {t('pricing.monthly_billing')}
+                  {plan.priceBGN.monthly} {language === 'bg' ? 'лв.' : 'BGN'} / €{convertBGNToEUR(plan.priceBGN.monthly)}/{t('pricing.month')} {t('pricing.monthly_billing')}
                 </OldPrice>
               )}
             </PlanPrice>

@@ -143,7 +143,7 @@ export class PosterPOS extends POSAdapter {
     return {
       id: data.transaction_id?.toString() || data.id?.toString(),
       amount,
-      currency: 'BGN',
+      currency: 'EUR',
       discount: discountPercentage,
       discountAmount,
       boomCardNumber: data.loyalty_code || data.client_card_number,

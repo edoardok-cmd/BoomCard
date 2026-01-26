@@ -152,7 +152,7 @@ export class ePayBG extends PaymentAdapter {
       currentPeriodStart: new Date(),
       currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
       amount: 0, // Would be set based on plan
-      currency: 'BGN',
+      currency: 'EUR',
       interval: 'month',
       metadata,
     };
@@ -199,7 +199,7 @@ export class ePayBG extends PaymentAdapter {
       id: `inv_${crypto.randomBytes(12).toString('hex')}`,
       customerId,
       amount: totalAmount,
-      currency: 'BGN',
+      currency: 'EUR',
       status: 'open',
       invoiceNumber,
       metadata,

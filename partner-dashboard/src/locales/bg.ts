@@ -53,8 +53,9 @@ export const bg: TranslationKey = {
     errorSubmittingReview: 'Грешка при изпращане',
     bgn: 'лв.',
     eur: 'EUR',
-    bgnLev: 'лв.',
-    perBGNEUR: 'на лв./EUR',
+    bgnSymbol: 'лв.',
+    eurSymbol: '€',
+    dualCurrency: 'лв. / EUR',
   },
 
   // Header & Navigation

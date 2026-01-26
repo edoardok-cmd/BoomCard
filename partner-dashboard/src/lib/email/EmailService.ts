@@ -172,7 +172,7 @@ class EmailService {
       to,
       subject: `BoomCard used at ${venue}`,
       html: this.getTransactionNotificationTemplate(amount, venue, discount),
-      text: `You saved ${discount}% at ${venue}! Amount: ${amount} BGN`,
+      text: `You saved ${discount}% at ${venue}! Amount: €${amount}`,
     });
   }
 
@@ -189,7 +189,7 @@ class EmailService {
       to,
       subject: `Invoice ${invoiceNumber} from BoomCard`,
       html: this.getInvoiceEmailTemplate(invoiceNumber, amount),
-      text: `Your invoice ${invoiceNumber} for ${amount} BGN is attached.`,
+      text: `Your invoice ${invoiceNumber} for €${amount} is attached.`,
     };
 
     if (pdfAttachment) {
@@ -280,8 +280,8 @@ class EmailService {
           <div style="max-width: 600px; margin: 0 auto; padding: 20px; font-family: Arial, sans-serif;">
             <h2>🎉 BoomCard Used!</h2>
             <p>You just saved <strong>${discount}%</strong> at <strong>${venue}</strong>!</p>
-            <p><strong>Amount:</strong> ${amount.toFixed(2)} BGN</p>
-            <p><strong>Savings:</strong> ${(amount * discount / 100).toFixed(2)} BGN</p>
+            <p><strong>Amount:</strong> €${amount.toFixed(2)}</p>
+            <p><strong>Savings:</strong> €${(amount * discount / 100).toFixed(2)}</p>
             <p>Keep using your BoomCard to unlock more savings!</p>
           </div>
         </body>
@@ -298,7 +298,7 @@ class EmailService {
             <h2>Your Invoice</h2>
             <p>Thank you for your payment!</p>
             <p><strong>Invoice Number:</strong> ${invoiceNumber}</p>
-            <p><strong>Amount:</strong> ${amount.toFixed(2)} BGN</p>
+            <p><strong>Amount:</strong> €${amount.toFixed(2)}</p>
             <p>Your invoice is attached to this email.</p>
             <p>Questions? Contact us at support@boomcard.bg</p>
           </div>

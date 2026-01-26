@@ -19,6 +19,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useTopOffers } from '../hooks/useOffers';
 import { usePartnerReviews } from '../hooks/usePartnerReviews';
 import { updateSEO, addOrganizationSchema, addWebSiteSchema, generateHowToSchema, generateFAQSchema } from '../utils/seo';
+import { convertEURToBGN } from '../utils/helpers';
 
 // Global styled components for typography
 const SectionTitle = styled.h2`
@@ -984,8 +985,8 @@ const HomePage: React.FC = () => {
       {
         question: language === 'bg' ? 'Колко струва BOOM Card?' : 'How much does BOOM Card cost?',
         answer: language === 'bg'
-          ? 'BOOM Card предлага два плана: Безплатен основен план и Премиум план за 29 лв/месец.'
-          : 'BOOM Card offers two plans: Free basic plan and Premium plan for 29 BGN/month.',
+          ? 'BOOM Card предлага два плана: Безплатен основен план и Премиум план за 57 лв./€29/месец.'
+          : 'BOOM Card offers two plans: Free basic plan and Premium plan for 57 BGN/€29/month.',
       },
       {
         question: language === 'bg' ? 'Къде мога да използвам BOOM Card?' : 'Where can I use BOOM Card?',
@@ -1037,8 +1038,9 @@ const HomePage: React.FC = () => {
     {
       name: language === 'bg' ? 'ЛАЙТ ПРЕМИУМ' : 'LITE PREMIUM',
       monthlyPrice: 4.99,
+      monthlyPriceBGN: 9.77,
       yearlyPrice: 52,
-      duration: language === 'bg' ? ' €/седмица' : ' €/week',
+      duration: language === 'bg' ? '/седмица' : '/week',
       type: 'starter' as const,
       features: [
         language === 'bg' ? 'Едноседмичен Premium достъп' : 'One week Premium access',
@@ -1058,8 +1060,9 @@ const HomePage: React.FC = () => {
     {
       name: language === 'bg' ? 'ОСНОВЕН' : 'BASIC',
       monthlyPrice: 7.99,
+      monthlyPriceBGN: 15.63,
       yearlyPrice: 84,
-      duration: language === 'bg' ? ' €/месец' : ' €/month',
+      duration: language === 'bg' ? '/месец' : '/month',
       features: [
         language === 'bg' ? 'Едномесечен достъп' : 'One month access',
         language === 'bg' ? 'До 10% отстъпка' : 'Up to 10% discount',
@@ -1078,8 +1081,9 @@ const HomePage: React.FC = () => {
     {
       name: language === 'bg' ? 'ПРЕМИУМ' : 'PREMIUM',
       monthlyPrice: 12.99,
+      monthlyPriceBGN: 25.41,
       yearlyPrice: 136,
-      duration: language === 'bg' ? ' €/месец' : ' €/month',
+      duration: language === 'bg' ? '/месец' : '/month',
       featured: true,
       features: [
         language === 'bg' ? 'Едномесечен Premium достъп' : 'One month Premium access',
@@ -1203,14 +1207,20 @@ const HomePage: React.FC = () => {
               const isLitePlan = planType === 'starter';
               const isDisabled = isLitePlan && billingPeriod === 'yearly';
               // Lite plan always shows weekly price, even when disabled
-              const displayPrice = isLitePlan
+              const eurPrice = isLitePlan
                 ? plan.monthlyPrice
                 : (billingPeriod === 'yearly' ? plan.yearlyPrice : plan.monthlyPrice);
+              const bgnPrice = isLitePlan
+                ? (plan as any).monthlyPriceBGN
+                : (billingPeriod === 'yearly' ? convertEURToBGN(plan.yearlyPrice) : (plan as any).monthlyPriceBGN);
+              const bgnLabel = language === 'bg' ? 'лв.' : 'BGN';
+              // Display dual currency: BGN / €EUR
+              const displayPrice = `${bgnPrice.toFixed(2)} ${bgnLabel} / €${eurPrice}`;
               const priceLabel = isLitePlan
                 ? (plan as any).duration
                 : (billingPeriod === 'yearly'
-                  ? (language === 'bg' ? ' €/година' : ' €/year')
-                  : ((plan as any).duration || (language === 'bg' ? ' €/месец' : ' €/month')));
+                  ? (language === 'bg' ? '/година' : '/year')
+                  : ((plan as any).duration || (language === 'bg' ? '/месец' : '/month')));
               return (
               <PlanCardWrapper
                 key={index}
@@ -1390,8 +1400,8 @@ const HomePage: React.FC = () => {
                     author: language === 'bg' ? 'Мария С.' : 'Maria S.',
                     rating: 5,
                     comment: language === 'bg'
-                      ? 'Спестих около 18 лв. при вечеря за двама. Качих бележката за под минута.'
-                      : 'Saved about 18 BGN on dinner for two. Uploaded the receipt in under a minute.'
+                      ? 'Спестих около 35 лв. / €18 при вечеря за двама. Качих бележката за под минута.'
+                      : 'Saved about 35 BGN / €18 on dinner for two. Uploaded the receipt in under a minute.'
                   },
                   {
                     author: language === 'bg' ? 'Иван П.' : 'Ivan P.',
@@ -1418,15 +1428,15 @@ const HomePage: React.FC = () => {
                     author: language === 'bg' ? 'Петя К.' : 'Petya K.',
                     rating: 5,
                     comment: language === 'bg'
-                      ? 'Спестих 12 лв. на първата си поръчка. Приложението е лесно за използване.'
-                      : 'Saved 12 BGN on my first order. The app is easy to use.'
+                      ? 'Спестих 23 лв. / €12 на първата си поръчка. Приложението е лесно за използване.'
+                      : 'Saved 23 BGN / €12 on my first order. The app is easy to use.'
                   },
                   {
                     author: language === 'bg' ? 'Николай Т.' : 'Nikolay T.',
                     rating: 5,
                     comment: language === 'bg'
-                      ? 'Добри отстъпки за СПА уикенд. Спестихме 35 лв. за масажи.'
-                      : 'Good discounts for a spa weekend. We saved 35 BGN on massages.'
+                      ? 'Добри отстъпки за СПА уикенд. Спестихме 68 лв. / €35 за масажи.'
+                      : 'Good discounts for a spa weekend. We saved 68 BGN / €35 on massages.'
                   },
                   {
                     author: language === 'bg' ? 'Силвия В.' : 'Silvia V.',

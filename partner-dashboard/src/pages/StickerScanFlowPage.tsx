@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { StickerScanner, StickerQRData } from '../components/feature/StickerScanner';
 import Webcam from 'react-webcam';
 import { ocrService, ReceiptData } from '../services/ocr.service';
+import { convertBGNToEUR } from '../utils/helpers';
 
 // ============================================
 // Types
@@ -467,7 +468,7 @@ export const StickerScanFlowPage: React.FC = () => {
       if (ocrResult.totalAmount && scanData.billAmount) {
         const difference = Math.abs(ocrResult.totalAmount - scanData.billAmount);
         if (difference > 5) {
-          console.warn(`OCR amount (${ocrResult.totalAmount}) differs from user input (${scanData.billAmount}) by ${difference} BGN`);
+          console.warn(`OCR amount (${ocrResult.totalAmount}) differs from user input (${scanData.billAmount}) by €${difference}`);
         }
       }
 
@@ -622,7 +623,7 @@ export const StickerScanFlowPage: React.FC = () => {
                 placeholder="0.00"
                 readOnly
               />
-              <CurrencyLabel>BGN</CurrencyLabel>
+              <CurrencyLabel>BGN / EUR</CurrencyLabel>
 
               <NumpadContainer>
                 {['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', '←'].map((key) => (
@@ -717,7 +718,7 @@ export const StickerScanFlowPage: React.FC = () => {
             {ocrData && (
               <StatusMessage $type="info">
                 OCR Confidence: {(ocrData.confidence * 100).toFixed(1)}%
-                {ocrData.totalAmount && ` | Detected Amount: ${ocrData.totalAmount.toFixed(2)} BGN`}
+                {ocrData.totalAmount && ` | Detected Amount: ${ocrData.totalAmount.toFixed(2)} BGN / €${convertBGNToEUR(ocrData.totalAmount).toFixed(2)}`}
               </StatusMessage>
             )}
           </ProcessingContainer>
@@ -737,7 +738,7 @@ export const StickerScanFlowPage: React.FC = () => {
             {scanData.status === 'approved' && (
               <CashbackPreview>
                 <CashbackLabel>You Earned</CashbackLabel>
-                <CashbackAmount>{scanData.cashbackAmount.toFixed(2)} BGN</CashbackAmount>
+                <CashbackAmount>{scanData.cashbackAmount.toFixed(2)} BGN / €{convertBGNToEUR(scanData.cashbackAmount).toFixed(2)}</CashbackAmount>
               </CashbackPreview>
             )}
 

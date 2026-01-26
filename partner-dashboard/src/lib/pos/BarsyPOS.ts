@@ -145,7 +145,7 @@ export class BarsyPOS extends POSAdapter {
     return {
       id: data.id || data.transaction_id,
       amount: parseFloat(data.amount),
-      currency: data.currency || 'BGN',
+      currency: data.currency || 'EUR',
       discount: parseFloat(data.discount_percentage || '0'),
       discountAmount: parseFloat(data.discount_amount || '0'),
       boomCardNumber: data.metadata?.boomCardNumber,
