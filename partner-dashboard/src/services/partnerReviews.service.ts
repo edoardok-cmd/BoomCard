@@ -52,6 +52,14 @@ class PartnerReviewsService {
   }
 
   /**
+   * Get overall review statistics (for homepage display)
+   */
+  async getOverallStats(): Promise<ReviewStatsResponse> {
+    const response = await apiService.get<ReviewStatsResponse>(`${this.baseUrl}/stats`);
+    return response;
+  }
+
+  /**
    * Create new review (requires authentication)
    */
   async createReview(data: CreateReviewDTO): Promise<Review> {

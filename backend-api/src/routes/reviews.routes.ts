@@ -21,6 +21,18 @@ const router = Router();
 // ============================================
 
 /**
+ * GET /api/reviews/stats
+ * Get overall review statistics (for homepage display)
+ */
+router.get(
+  '/stats',
+  asyncHandler(async (req: Request, res: Response) => {
+    const stats = await reviewsService.getOverallStats();
+    res.json({ success: true, data: stats });
+  })
+);
+
+/**
  * GET /api/reviews
  * Get all reviews with filters
  */

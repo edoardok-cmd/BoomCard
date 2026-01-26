@@ -253,6 +253,38 @@ const CTAButtons = styled.div`
   }
 `;
 
+const PrimaryButtonContainer = styled.div`
+  width: 100%;
+  text-align: center;
+  margin-bottom: 1.5rem;
+
+  button {
+    min-width: 280px;
+    font-size: 1.1rem;
+    padding: 1rem 2.5rem;
+  }
+
+  @media (max-width: 768px) {
+    button {
+      min-width: auto;
+      width: 100%;
+      max-width: 300px;
+    }
+  }
+`;
+
+const SecondaryButtonsRow = styled.div`
+  display: flex;
+  gap: 0.75rem;
+  justify-content: center;
+  flex-wrap: wrap;
+
+  @media (max-width: 768px) {
+    flex-direction: column;
+    align-items: center;
+  }
+`;
+
 interface ClientCTAProps {
   className?: string;
 }
@@ -263,15 +295,15 @@ export const ClientCTA: React.FC<ClientCTAProps> = ({ className }) => {
   const content = {
     en: {
       title: 'Start Saving with BOOM Card Today',
-      text: 'Join thousands of users enjoying exclusive deals and offers at the best venues across Bulgaria',
+      text: 'Join people discovering exclusive deals at the best venues across Bulgaria',
       primaryButton: 'Get Started',
       secondaryButton: 'Browse Offers',
       viewPartnersButton: 'View All Partners',
       partnerButton: 'Become a Partner',
     },
     bg: {
-      title: 'Започнете да спестявате с BOOM Card днес',
-      text: 'Присъединете се към хиляди потребители, които се радват на ексклузивни оферти и промоции в най-добрите места в България',
+      title: 'Започнете да спестявате с BOOM Card още днес',
+      text: 'Присъединете се към хора, които откриват ексклузивни оферти в най-добрите места в България',
       primaryButton: 'Започнете сега',
       secondaryButton: 'Разгледайте офертите',
       viewPartnersButton: 'Виж Всички Партньори',
@@ -287,26 +319,32 @@ export const ClientCTA: React.FC<ClientCTAProps> = ({ className }) => {
         <CTATitle>{t.title}</CTATitle>
         <CTAText>{t.text}</CTAText>
         <CTAButtons>
-          <Link to="/subscriptions">
-            <Button variant="secondary" size="large">
-              {t.primaryButton}
-            </Button>
-          </Link>
-          <Link to="/search">
-            <Button variant="outline" size="large">
-              {t.secondaryButton}
-            </Button>
-          </Link>
-          <Link to="/partners#locations">
-            <Button variant="outline" size="large">
-              {t.viewPartnersButton}
-            </Button>
-          </Link>
-          <Link to="/partners#application">
-            <Button variant="outline" size="large">
-              {t.partnerButton}
-            </Button>
-          </Link>
+          {/* Primary CTA - centered and prominent */}
+          <PrimaryButtonContainer>
+            <Link to="/subscriptions">
+              <Button variant="primary" size="large">
+                {t.primaryButton}
+              </Button>
+            </Link>
+          </PrimaryButtonContainer>
+          {/* Secondary CTAs - smaller, in a row */}
+          <SecondaryButtonsRow>
+            <Link to="/search">
+              <Button variant="outline" size="medium">
+                {t.secondaryButton}
+              </Button>
+            </Link>
+            <Link to="/partners#locations">
+              <Button variant="outline" size="medium">
+                {t.viewPartnersButton}
+              </Button>
+            </Link>
+            <Link to="/partners#application">
+              <Button variant="outline" size="medium">
+                {t.partnerButton}
+              </Button>
+            </Link>
+          </SecondaryButtonsRow>
         </CTAButtons>
       </Container>
     </CTASection>

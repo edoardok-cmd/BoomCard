@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { StyledFooter } from './Footer.styles';
 import { Link } from 'react-router-dom';
 import { useLanguage } from '../../../contexts/LanguageContext';
+import { useCookieConsent } from '../../../contexts/CookieConsentContext';
 import SocialShareButton from '../../common/ShareButton/ShareButton';
 
 export interface FooterProps {
@@ -53,6 +54,7 @@ export const Footer: React.FC<FooterProps> = ({
   className
 }) => {
   const { t, language } = useLanguage();
+  const { openSettings } = useCookieConsent();
 
   return (
     <StyledFooter className={className}>
@@ -85,6 +87,15 @@ export const Footer: React.FC<FooterProps> = ({
               <li><Link to="/privacy" className="text-gray-300 hover:text-white transition-colors">{t('footer.privacy')}</Link></li>
               <li><Link to="/terms" className="text-gray-300 hover:text-white transition-colors">{t('footer.terms')}</Link></li>
               <li><Link to="/security" className="text-gray-300 hover:text-white transition-colors">{t('footer.security')}</Link></li>
+              <li><Link to="/cookies" className="text-gray-300 hover:text-white transition-colors">{language === 'bg' ? 'Политика за бисквитки' : 'Cookie Policy'}</Link></li>
+              <li>
+                <button
+                  onClick={openSettings}
+                  className="text-gray-300 hover:text-white transition-colors text-left"
+                >
+                  {language === 'bg' ? 'Настройки на бисквитките' : 'Cookie Settings'}
+                </button>
+              </li>
             </ul>
           </FooterSection>
 

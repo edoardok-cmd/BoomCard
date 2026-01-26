@@ -207,6 +207,49 @@ class ReviewsService {
   }
 
   /**
+   * Get overall review statistics across all partners (for homepage display)
+   */
+  async getOverallStats(): Promise<ReviewStats> {
+    try {
+      const reviews = await prisma.review.findMany({
+        where: {
+          status: ReviewStatus.APPROVED
+        },
+        select: {
+          rating: true
+        }
+      });
+
+      const totalReviews = reviews.length;
+
+      if (totalReviews === 0) {
+        return {
+          averageRating: 0,
+          totalReviews: 0,
+          ratingDistribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 }
+        };
+      }
+
+      const sumRatings = reviews.reduce((sum, review) => sum + review.rating, 0);
+      const averageRating = sumRatings / totalReviews;
+
+      const ratingDistribution = reviews.reduce((dist, review) => {
+        dist[review.rating as keyof typeof dist]++;
+        return dist;
+      }, { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 });
+
+      return {
+        averageRating: Math.round(averageRating * 10) / 10,
+        totalReviews,
+        ratingDistribution
+      };
+    } catch (error) {
+      logger.error('Error fetching overall review stats:', error);
+      throw new AppError('Failed to fetch overall review statistics', 500);
+    }
+  }
+
+  /**
    * Create a new review
    */
   async createReview(userId: string, data: CreateReviewDTO) {

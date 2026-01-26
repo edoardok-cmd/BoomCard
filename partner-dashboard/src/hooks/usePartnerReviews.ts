@@ -18,6 +18,13 @@ export const usePartnerReviews = (options: UsePartnerReviewsOptions = {}) => {
     staleTime: 5 * 60 * 1000, // 5 minutes
   });
 
+  // Fetch overall stats for homepage display
+  const { data: statsData, isLoading: isLoadingStats } = useQuery({
+    queryKey: ['reviews', 'overall-stats'],
+    queryFn: () => partnerReviewsService.getOverallStats(),
+    staleTime: 5 * 60 * 1000, // 5 minutes
+  });
+
   // Create review mutation
   const createReviewMutation = useMutation({
     mutationFn: (reviewData: Parameters<typeof partnerReviewsService.createReview>[0]) =>
@@ -68,6 +75,8 @@ export const usePartnerReviews = (options: UsePartnerReviewsOptions = {}) => {
       total: 0,
       totalPages: 0
     },
+    stats: statsData?.data || null,
+    loadingStats: isLoadingStats,
     refetch,
     createReview: createReviewMutation.mutateAsync,
     deleteReview: deleteReviewMutation.mutateAsync,

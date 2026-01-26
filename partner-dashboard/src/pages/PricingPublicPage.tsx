@@ -32,10 +32,21 @@ const HeroTitle = styled(motion.h1)`
 const HeroSubtitle = styled(motion.p)`
   font-size: 1.5rem;
   color: var(--color-text-secondary);
-  margin-bottom: 3rem;
+  margin-bottom: 1.5rem;
   max-width: 800px;
   margin-left: auto;
   margin-right: auto;
+`;
+
+const TrialPeriodText = styled(motion.p)`
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: #059669;
+  margin-bottom: 2rem;
+
+  [data-theme="dark"] & {
+    color: #10b981;
+  }
 `;
 
 const BillingToggleContainer = styled.div`
@@ -118,6 +129,16 @@ const SubscriptionCardsContainer = styled.div`
   @media (max-width: 480px) {
     gap: 3.5rem; /* Increased gap to prevent badge overlap with button above */
   }
+`;
+
+const CashbackExplanation = styled.p`
+  text-align: center;
+  max-width: 800px;
+  margin: 0 auto 3rem;
+  padding: 0 1.5rem;
+  font-size: 0.9375rem;
+  color: var(--color-text-secondary);
+  line-height: 1.6;
 `;
 
 const PlanCardWrapper = styled(motion.div)<{ $disabled?: boolean }>`
@@ -550,52 +571,53 @@ const PricingPublicPage: React.FC = () => {
 
   const plans = [
     {
-      nameEn: 'Lite',
-      nameBg: 'Лайт',
+      nameEn: 'LITE PREMIUM',
+      nameBg: 'ЛАЙТ ПРЕМИУМ',
       type: 'light' as const,
-      descEn: 'Perfect for new partners getting started',
-      descBg: 'Идеален за нови партньори',
-      monthlyPrice: 9.99,
-      yearlyPrice: 99,
+      descEn: 'Perfect for trying out premium features',
+      descBg: 'Перфектен за изпробване на премиум функции',
+      monthlyPrice: 4.99,
+      yearlyPrice: 52,
+      isWeekly: true,
       features: [
-        { en: 'Basic promotions', bg: 'Основни промоции' },
-        { en: 'Up to 5 active offers', bg: 'До 5 активни оферти' },
-        { en: 'Basic analytics', bg: 'Основни анализи' },
-        { en: 'Email support', bg: 'Имейл поддръжка' },
-        { en: 'Monthly reporting', bg: 'Месечни отчети' },
+        { en: 'One week Premium access', bg: 'Едноседмичен Premium достъп' },
+        { en: 'Up to 20% discount', bg: 'До 20% отстъпка' },
+        { en: 'Exclusive Premium offers', bg: 'Ексклузивни Premium оферти' },
+        { en: 'VIP priority support', bg: 'VIP приоритетна поддръжка' },
+        { en: 'Cashback via the app', bg: 'Връщане на пари чрез приложението' },
       ],
     },
     {
-      nameEn: 'Basic',
-      nameBg: 'Основен',
-      type: 'black' as const,
-      descEn: 'Essential tier for businesses growing',
-      descBg: 'Основна категория за растящи бизнеси',
-      monthlyPrice: 29,
-      yearlyPrice: 290,
-      features: [
-        { en: 'Standard promotions', bg: 'Стандартни промоции' },
-        { en: 'Up to 10 active offers', bg: 'До 10 активни оферти' },
-        { en: 'Basic analytics', bg: 'Основни анализи' },
-        { en: 'Mobile app access', bg: 'Достъп до мобилно приложение' },
-        { en: 'Email support', bg: 'Имейл поддръжка' },
-      ],
-    },
-    {
-      nameEn: 'Premium',
-      nameBg: 'Премиум',
+      nameEn: 'BASIC',
+      nameBg: 'ОСНОВЕН',
       type: 'silver' as const,
-      descEn: 'Advanced promotions and enhanced features',
-      descBg: 'Разширени промоции и подобрени функции',
-      monthlyPrice: 79,
-      yearlyPrice: 790,
+      descEn: 'Essential access for everyday savings',
+      descBg: 'Основен достъп за ежедневни спестявания',
+      monthlyPrice: 7.99,
+      yearlyPrice: 84,
+      features: [
+        { en: 'One month access', bg: 'Едномесечен достъп' },
+        { en: 'Up to 10% discount', bg: 'До 10% отстъпка' },
+        { en: 'Cashback via the app', bg: 'Връщане на пари чрез приложението' },
+        { en: 'Access to partner offers', bg: 'Достъп до партньорски оферти' },
+        { en: 'Standard support', bg: 'Стандартна поддръжка' },
+      ],
+    },
+    {
+      nameEn: 'PREMIUM',
+      nameBg: 'ПРЕМИУМ',
+      type: 'black' as const,
+      descEn: 'Full premium experience with maximum benefits',
+      descBg: 'Пълно премиум изживяване с максимални ползи',
+      monthlyPrice: 12.99,
+      yearlyPrice: 136,
       featured: true,
       features: [
-        { en: 'Premium promotions with priority placement', bg: 'Премиум промоции с приоритетно позициониране' },
-        { en: 'Unlimited offers', bg: 'Неограничени оферти' },
-        { en: 'Advanced analytics', bg: 'Усъвършенствани анализи' },
-        { en: 'Priority support', bg: 'Приоритетна поддръжка' },
-        { en: 'Custom branding', bg: 'Персонализиран брандинг' },
+        { en: 'One month Premium access', bg: 'Едномесечен Premium достъп' },
+        { en: 'Up to 20% discount', bg: 'До 20% отстъпка' },
+        { en: 'Exclusive Premium offers', bg: 'Ексклузивни Premium оферти' },
+        { en: 'VIP priority support', bg: 'VIP приоритетна поддръжка' },
+        { en: 'Cashback via the app', bg: 'Връщане на пари чрез приложението' },
       ],
     },
   ];
@@ -637,23 +659,33 @@ const PricingPublicPage: React.FC = () => {
           transition={{ duration: 0.6, delay: 0.1 }}
         >
           {language === 'bg'
-            ? 'Изберете перфектния план за вашия бизнес'
-            : 'Choose the perfect plan for your business'}
+            ? 'Изберете перфектния план за вашия начин на живот'
+            : 'Choose the perfect plan for your lifestyle'}
         </HeroSubtitle>
+
+        <TrialPeriodText
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, delay: 0.15 }}
+        >
+          {language === 'bg'
+            ? '24 часа безплатен Premium пробен период за всички планове'
+            : '24h free Premium trial for all plans'}
+        </TrialPeriodText>
 
         <BillingToggleContainer>
           <BillingToggle>
+            <ToggleOption
+              $active={isAnnual}
+              onClick={() => setIsAnnual(true)}
+            >
+              {language === 'bg' ? 'Годишен абонамент (20% отстъпка)' : 'Yearly (20% off)'}
+            </ToggleOption>
             <ToggleOption
               $active={!isAnnual}
               onClick={() => setIsAnnual(false)}
             >
               {language === 'bg' ? 'Месечен/Седмичен абонамент' : 'Monthly/Weekly'}
-            </ToggleOption>
-            <ToggleOption
-              $active={isAnnual}
-              onClick={() => setIsAnnual(true)}
-            >
-              {language === 'bg' ? 'Годишно' : 'Yearly'}
             </ToggleOption>
           </BillingToggle>
         </BillingToggleContainer>
@@ -661,12 +693,12 @@ const PricingPublicPage: React.FC = () => {
 
       <SubscriptionCardsContainer>
         {plans.map((plan, index) => {
-          const isLitePlan = plan.type === 'light';
+          const isLitePlan = (plan as any).isWeekly === true;
           const isDisabled = isLitePlan && isAnnual;
           // Lite plan always shows weekly price, even when disabled
           const displayPrice = isLitePlan
             ? plan.monthlyPrice
-            : (isAnnual ? Math.floor(plan.yearlyPrice / 12) : plan.monthlyPrice);
+            : (isAnnual ? plan.yearlyPrice : plan.monthlyPrice);
           const priceLabel = isLitePlan
             ? (language === 'bg' ? ' €/седмица' : ' €/week')
             : (isAnnual
@@ -709,7 +741,7 @@ const PricingPublicPage: React.FC = () => {
 
                 <CardBottomRow>
                   <CardHolderName $type={plan.type}>
-                    {plan.nameEn.toUpperCase()}
+                    {language === 'bg' ? plan.nameBg : plan.nameEn}
                   </CardHolderName>
                   <CardPriceDisplay $type={plan.type}>
                     {displayPrice}
@@ -741,7 +773,7 @@ const PricingPublicPage: React.FC = () => {
                       </Button>
                     </div>
                   ) : (
-                    <Link to="/register/partner">
+                    <Link to="/register">
                       <Button
                         variant={plan.featured ? 'primary' : 'secondary'}
                         size="large"
@@ -756,6 +788,12 @@ const PricingPublicPage: React.FC = () => {
           );
         })}
       </SubscriptionCardsContainer>
+
+      <CashbackExplanation>
+        {language === 'bg'
+          ? 'Отстъпките се получават под формата на връщане на пари след качване на касова бележка в приложението. Процентът зависи от абонаментния план.'
+          : 'Discounts are received as cashback after uploading a receipt in the app. The percentage depends on the subscription plan.'}
+      </CashbackExplanation>
 
       <FAQSection>
         <FAQTitle>{language === 'bg' ? 'Често задавани въпроси' : 'Frequently Asked Questions'}</FAQTitle>

@@ -9,31 +9,30 @@ interface HeroBlastProps {
 }
 
 const HeroContainer = styled.div`
-  position: relative;
   width: 100%;
-  min-height: calc(100vh - 66px); /* Full viewport minus header */
+  min-height: auto; /* Changed from calc(100vh - 66px) to fit content */
   max-height: none;
-  background: var(--color-primary);
+  background: #000000; /* Match FOMO banner exactly */
   overflow: hidden;
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  margin-top: 66px; /* Push below fixed header */
-  padding-top: 30px; /* Internal breathing room */
-  padding-bottom: 40px;
+  margin-top: 66px; /* Push below fixed header only - banner overlays on top */
+  padding-top: 30px; /* Further reduced */
+  padding-bottom: 25px; /* Reduced from 40px */
 
   @media (max-width: 1380px) {
     min-height: auto;
     margin-top: 62px;
-    padding-top: 25px;
-    padding-bottom: 35px;
+    padding-top: 28px;
+    padding-bottom: 20px; /* Reduced from 35px */
   }
 
   @media (max-width: 768px) {
     overflow: visible;
     min-height: auto;
-    margin-top: 58px; /* Mobile header height */
-    padding-top: 60px; /* More top space to center content */
+    margin-top: 58px;
+    padding-top: 45px; /* Reduced for mobile */
     padding-bottom: 1px;
     justify-content: flex-start;
   }
@@ -41,8 +40,8 @@ const HeroContainer = styled.div`
   @media (max-width: 480px) {
     min-height: auto;
     margin-top: 54px;
-    padding-top: 50px; /* Push content down to center vertically */
-    padding-bottom: 70px; /* Taller hero section */
+    padding-top: 42px;
+    padding-bottom: 50px; /* Reduced from 70px */
     justify-content: flex-start;
   }
 
@@ -579,13 +578,13 @@ const SilverCard = styled(motion.div)<{ $showAnimation?: boolean; $stopAnimation
 `;
 
 const LogoExplode = styled(motion.img)<{ $showAnimation?: boolean; $stopAnimation?: boolean }>`
-  width: 460px;
+  width: 380px; /* Reduced from 460px */
   height: auto;
-  max-height: 290px;
+  max-height: 240px; /* Reduced from 290px */
   object-fit: contain;
   background-color: #000000;
-  border-radius: 18px;
-  filter: drop-shadow(0 20px 40px rgba(0, 0, 0, 0.8));
+  border-radius: 16px; /* Slightly reduced from 18px */
+  filter: drop-shadow(0 15px 35px rgba(0, 0, 0, 0.8)); /* Slightly reduced shadow */
   transform-style: preserve-3d;
   perspective: 1000px;
   will-change: transform;
@@ -650,23 +649,23 @@ const LogoExplode = styled(motion.img)<{ $showAnimation?: boolean; $stopAnimatio
 
   /* 4K resolution - prevent logo from going too high */
   @media (min-width: 2560px) {
-    width: 550px;
-    max-height: 345px;
+    width: 480px; /* Reduced from 550px */
+    max-height: 300px; /* Reduced from 345px */
   }
 
   @media (max-width: 768px) {
-    width: min(420px, 88vw);
-    max-height: 265px;
+    width: min(340px, 85vw); /* Reduced from 420px */
+    max-height: 215px; /* Reduced from 265px */
   }
 
   @media (max-width: 480px) {
-    width: min(360px, 85vw);
-    max-height: 230px;
+    width: min(300px, 82vw); /* Reduced from 360px */
+    max-height: 190px; /* Reduced from 230px */
   }
 
   @media (max-width: 375px) {
-    width: 85vw;
-    max-height: 200px;
+    width: 80vw;
+    max-height: 170px; /* Reduced from 200px */
   }
 `;
 
@@ -763,16 +762,16 @@ const CardExpiry = styled.div`
 const LogoContainer = styled(motion.div)`
   position: relative;
   margin-top: 0;
-  margin-bottom: clamp(10px, 2vw, 20px);
+  margin-bottom: clamp(8px, 1.5vw, 15px); /* Reduced from clamp(10px, 2vw, 20px) */
 
   @media (max-width: 768px) {
     margin-top: 0;
-    margin-bottom: clamp(5px, 1.5vw, 10px);
+    margin-bottom: clamp(4px, 1vw, 8px); /* Reduced from clamp(5px, 1.5vw, 10px) */
   }
 
   @media (max-width: 480px) {
     margin-top: 0;
-    margin-bottom: clamp(3px, 1vw, 6px);
+    margin-bottom: clamp(2px, 0.8vw, 5px); /* Reduced from clamp(3px, 1vw, 6px) */
   }
 `;
 
@@ -846,22 +845,21 @@ const CTAContainer = styled(motion.div)`
 
 const CTATitle = styled(motion.h1)`
   font-family: 'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  font-size: clamp(1.5rem, 5vw, 3.5rem);
+  font-size: clamp(1.3rem, 4vw, 2.8rem); /* Reduced from clamp(1.5rem, 5vw, 3.5rem) */
   font-weight: 800;
-  margin-bottom: clamp(0.5rem, 2vw, 1.5rem);
-  line-height: 1.2;
+  margin-bottom: clamp(0.4rem, 1.5vw, 1rem); /* Reduced from clamp(0.5rem, 2vw, 1.5rem) */
+  line-height: 1.15; /* Slightly tighter from 1.2 */
   letter-spacing: -0.02em;
   white-space: pre-line;
   padding: 0 1rem;
 
-  /* Mellow fire gradient with yellow base and orange accent */
+  /* Uniform gold gradient for consistent text color across lines */
   background: linear-gradient(
     90deg,
     #ffd700 0%,
-    #ffd700 30%,
+    #ffda00 25%,
     #ffed4e 50%,
-    #ffd700 70%,
-    #ff8800 85%,
+    #ffda00 75%,
     #ffd700 100%
   );
   background-size: 300% 100%;
@@ -891,45 +889,45 @@ const CTATitle = styled(motion.h1)`
   }
 
   @media (max-width: 768px) {
-    font-size: 2.9rem;
-    margin-bottom: 0.75rem;
+    font-size: 2.4rem; /* Reduced from 2.9rem */
+    margin-bottom: 0.5rem;
 
     [lang="bg"] & {
-      font-size: 2.7rem;
+      font-size: 2.2rem; /* Reduced from 2.7rem */
     }
   }
 
   @media (max-width: 480px) {
-    font-size: 2.5rem;
-    margin-bottom: 0.5rem;
+    font-size: 2rem; /* Reduced from 2.5rem */
+    margin-bottom: 0.4rem;
 
     [lang="bg"] & {
-      font-size: 2.3rem;
+      font-size: 1.9rem; /* Reduced from 2.3rem */
     }
   }
 
   @media (max-width: 375px) {
-    font-size: 2.2rem;
+    font-size: 1.8rem; /* Reduced from 2.2rem */
 
     [lang="bg"] & {
-      font-size: 2rem;
+      font-size: 1.7rem; /* Reduced from 2rem */
     }
   }
 
   @media (max-width: 320px) {
-    font-size: 2rem;
+    font-size: 1.6rem; /* Reduced from 2rem */
 
     [lang="bg"] & {
-      font-size: 1.75rem;
+      font-size: 1.5rem; /* Reduced from 1.75rem */
     }
   }
 `;
 
 const CTASubtitle = styled(motion.p)`
   font-family: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  font-size: clamp(0.9rem, 2.5vw, 1.35rem);
+  font-size: clamp(0.85rem, 2vw, 1.15rem); /* Reduced from clamp(0.9rem, 2.5vw, 1.35rem) */
   font-weight: 400;
-  margin-bottom: clamp(1.5rem, 4vw, 2rem);
+  margin-bottom: clamp(1rem, 3vw, 1.5rem); /* Reduced from clamp(1.5rem, 4vw, 2rem) */
   color: #ffffff;
   opacity: 0.95;
   text-shadow: 0 2px 10px rgba(0, 0, 0, 0.8);
@@ -940,21 +938,21 @@ const CTASubtitle = styled(motion.p)`
   line-height: 1.4;
 
   @media (max-width: 768px) {
-    font-size: 1.1rem;
-    margin-bottom: 1.75rem;
+    font-size: 1rem; /* Reduced from 1.1rem */
+    margin-bottom: 1.25rem; /* Reduced from 1.75rem */
   }
 
   @media (max-width: 480px) {
-    font-size: 0.95rem;
-    margin-bottom: 1.5rem;
+    font-size: 0.9rem; /* Reduced from 0.95rem */
+    margin-bottom: 1rem; /* Reduced from 1.5rem */
   }
 
   @media (max-width: 375px) {
-    font-size: 0.9rem;
+    font-size: 0.85rem; /* Reduced from 0.9rem */
   }
 
   @media (max-width: 320px) {
-    font-size: 0.85rem;
+    font-size: 0.8rem; /* Reduced from 0.85rem */
   }
 `;
 
@@ -1456,8 +1454,8 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
   const content = {
     en: {
       title: 'Live More.\nPay Less.',
-      subtitle: 'The card that turns every day into an adventure - start NOW!',
-      ctaButton: 'Activate your Premium - FREE!',
+      subtitle: 'Access discounts at selected venues and experiences across Bulgaria.',
+      ctaButton: 'Unlock access with BOOM Card',
       cardHolder: 'CARD HOLDER',
       // Trust badges (gold seal style)
       trustBadge1: '24h Free Trial',
@@ -1466,8 +1464,8 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
     },
     bg: {
       title: 'Живей повече.\nПлащай по-малко.',
-      subtitle: 'Картата, която превръща всеки ден в приключение - започни СЕГА!',
-      ctaButton: 'Активирай своя Premium - БЕЗПЛАТНО!',
+      subtitle: 'Достъп до отстъпки в подбрани заведения и изживявания из цяла България.',
+      ctaButton: 'Отключи достъпа с BOOM Card',
       cardHolder: 'ПРИТЕЖАТЕЛ',
       // Trust badges (gold seal style)
       trustBadge1: '24ч Безплатен тест',
@@ -1543,7 +1541,7 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
                 letterSpacing: '-0.02em',
                 whiteSpace: 'pre-line',
                 padding: '0 0.5rem',
-                background: 'linear-gradient(90deg, #ffd700 0%, #ffd700 30%, #ffed4e 50%, #ffd700 70%, #ff8800 85%, #ffd700 100%)',
+                background: 'linear-gradient(90deg, #ffd700 0%, #ffda00 25%, #ffed4e 50%, #ffda00 75%, #ffd700 100%)',
                 backgroundSize: '300% 100%',
                 WebkitBackgroundClip: 'text',
                 WebkitTextFillColor: 'transparent',
@@ -1622,22 +1620,22 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
                 {/* Badge 1 - 24h Free Trial (Clock icon) */}
                 <TrustBadge
                   iconType="clock"
-                  topText={language === 'bg' ? '24Ч БЕЗПЛАТЕН' : '24H FREE'}
-                  bottomText={language === 'bg' ? 'ТЕСТ' : 'TRIAL'}
+                  topText={language === 'bg' ? '24 часа' : '24 hours'}
+                  bottomText={language === 'bg' ? 'безплатен тест' : 'free trial'}
                   size={75}
                 />
                 {/* Badge 2 - 100% Secure (Lock icon) */}
                 <TrustBadge
                   iconType="lock"
-                  topText={language === 'bg' ? '100% СИГУРНО' : '100% SECURE'}
-                  bottomText={language === 'bg' ? 'ПЛАЩАНЕ' : 'PAYMENT'}
+                  topText={language === 'bg' ? '100% сигурно' : '100% secure'}
+                  bottomText={language === 'bg' ? 'плащане' : 'payment'}
                   size={75}
                 />
                 {/* Badge 3 - Cancel Anytime (Refresh icon) */}
                 <TrustBadge
                   iconType="refresh"
-                  topText={language === 'bg' ? 'ОТКАЖИ' : 'CANCEL'}
-                  bottomText={language === 'bg' ? 'ПО ВСЯКО ВРЕМЕ' : 'ANYTIME'}
+                  topText={language === 'bg' ? 'Отказ' : 'Cancel'}
+                  bottomText={language === 'bg' ? 'по всяко време' : 'anytime'}
                   size={75}
                 />
               </div>
@@ -1814,22 +1812,22 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
                   {/* Badge 1 - 24h Free Trial (Clock icon) */}
                   <TrustBadge
                     iconType="clock"
-                    topText={language === 'bg' ? '24Ч БЕЗПЛАТЕН' : '24H FREE'}
-                    bottomText={language === 'bg' ? 'ТЕСТ' : 'TRIAL'}
+                    topText={language === 'bg' ? '24 часа' : '24 hours'}
+                    bottomText={language === 'bg' ? 'безплатен тест' : 'free trial'}
                     size={75}
                   />
                   {/* Badge 2 - 100% Secure (Lock icon) */}
                   <TrustBadge
                     iconType="lock"
-                    topText={language === 'bg' ? '100% СИГУРНО' : '100% SECURE'}
-                    bottomText={language === 'bg' ? 'ПЛАЩАНЕ' : 'PAYMENT'}
+                    topText={language === 'bg' ? '100% сигурно' : '100% secure'}
+                    bottomText={language === 'bg' ? 'плащане' : 'payment'}
                     size={75}
                   />
                   {/* Badge 3 - Cancel Anytime (Refresh icon) */}
                   <TrustBadge
                     iconType="refresh"
-                    topText={language === 'bg' ? 'ОТКАЖИ' : 'CANCEL'}
-                    bottomText={language === 'bg' ? 'ПО ВСЯКО ВРЕМЕ' : 'ANYTIME'}
+                    topText={language === 'bg' ? 'Отказ' : 'Cancel'}
+                    bottomText={language === 'bg' ? 'по всяко време' : 'anytime'}
                     size={75}
                   />
                 </motion.div>

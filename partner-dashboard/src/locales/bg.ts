@@ -267,10 +267,10 @@ export const bg: TranslationKey = {
     howItWorksSubtitle: 'Отстъпките се активират директно от масата ти',
     step1Title: 'Избираш място',
     step1Description: 'Отиваш в партньорско заведение и сядаш спокойно',
-    step2Title: 'Сканираш QR кода на масата',
-    step2Description: 'Сканираш BOOM QR кода и активираш отстъпката през приложението',
-    step3Title: 'Плащаш по-малко',
-    step3Description: 'Отстъпката се прилага автоматично – без да показваш нищо на персонала',
+    step2Title: 'Сканираш QR кода',
+    step2Description: 'С BOOM приложението отбелязваш посещението си',
+    step3Title: 'Получаваш отстъпка',
+    step3Description: 'Плащаш сметката, качваш касовата бележка и получаваш връщане на пари',
 
     // Final CTA Section
     readyToSave: 'Започни да спестяваш с BOOM Card още днес',

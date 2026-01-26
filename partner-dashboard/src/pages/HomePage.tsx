@@ -3,11 +3,13 @@ import { Link } from 'react-router-dom';
 import { motion, useScroll, useTransform, AnimatePresence } from 'framer-motion';
 import { useInView } from 'react-intersection-observer';
 import styled from 'styled-components';
+import { Gem, CheckCircle, Tag } from 'lucide-react';
 import Card from '../components/common/Card/Card';
 import Button from '../components/common/Button/Button';
 import Carousel from '../components/common/Carousel/Carousel';
 import OfferCard, { Offer } from '../components/common/OfferCard/OfferCard';
 import HeroBlast from '../components/common/HeroBlast/HeroBlast';
+import FomoBanner from '../components/common/FomoBanner/FomoBanner';
 import ReviewCard from '../components/reviews/ReviewCard';
 import ReviewSubmissionForm from '../components/reviews/ReviewSubmissionForm';
 import ClientCTA from '../components/common/ClientCTA/ClientCTA';
@@ -907,9 +909,9 @@ const HomePage: React.FC = () => {
   const { data: topOffersData, isLoading: isLoadingOffers } = useTopOffers(6);
   const topOffers = topOffersData || [];
 
-  // Fetch reviews from API
-  const { reviews: reviewsData, loading: loadingReviews, createReview: createReviewMutation, markHelpful: markHelpfulMutation } = usePartnerReviews({
-    filters: { status: 'APPROVED', limit: 3, sortBy: 'createdAt', sortOrder: 'desc' }
+  // Fetch reviews from API with overall stats
+  const { reviews: reviewsData, loading: loadingReviews, stats: reviewStats, createReview: createReviewMutation, markHelpful: markHelpfulMutation } = usePartnerReviews({
+    filters: { status: 'APPROVED', limit: 6, sortBy: 'createdAt', sortOrder: 'desc' }
   });
   const [showReviewForm, setShowReviewForm] = useState(false);
 
@@ -1033,65 +1035,65 @@ const HomePage: React.FC = () => {
 
   const subscriptionPlans = [
     {
-      name: language === 'bg' ? 'Лайт План' : 'Lite Plan',
+      name: language === 'bg' ? 'ЛАЙТ ПРЕМИУМ' : 'LITE PREMIUM',
       monthlyPrice: 4.99,
       yearlyPrice: 52,
       duration: language === 'bg' ? ' €/седмица' : ' €/week',
       type: 'starter' as const,
       features: [
-        language === 'bg' ? '24 часа премиум услуга' : '24 hours premium service',
-        language === 'bg' ? 'Важи една седмица' : 'Valid for one week',
-        language === 'bg' ? 'Достъп до основни оферти' : 'Access to basic offers',
-        '', // Empty line 4
-        ''  // Empty line 5
+        language === 'bg' ? 'Едноседмичен Premium достъп' : 'One week Premium access',
+        language === 'bg' ? 'До 20% отстъпка' : 'Up to 20% discount',
+        language === 'bg' ? 'Ексклузивни Premium оферти' : 'Exclusive Premium offers',
+        language === 'bg' ? 'VIP приоритетна поддръжка' : 'VIP priority support',
+        language === 'bg' ? 'Връщане на пари чрез приложението' : 'Cashback via the app'
       ],
       tooltips: [
-        language === 'bg' ? 'Пробвайте всички премиум функции за 24 часа' : 'Try all premium features for 24 hours',
-        language === 'bg' ? 'Достъп за 7 дни след активиране' : 'Access for 7 days after activation',
-        language === 'bg' ? 'Над 500 партньори в цялата страна' : 'Over 500 partners across the country',
-        '', // Empty tooltip
-        ''  // Empty tooltip
+        language === 'bg' ? 'Пълен Premium достъп за 7 дни' : 'Full Premium access for 7 days',
+        language === 'bg' ? 'Най-високи отстъпки във всички партньори' : 'Highest discounts at all partners',
+        language === 'bg' ? 'Достъп до затворени Premium кампании' : 'Access to exclusive Premium campaigns',
+        language === 'bg' ? 'Получете помощ в рамките на 1 час' : 'Get help within 1 hour',
+        language === 'bg' ? 'Качи касова бележка и получи пари обратно' : 'Upload receipt and get money back'
       ]
     },
     {
-      name: language === 'bg' ? 'Основен' : 'Basic',
+      name: language === 'bg' ? 'ОСНОВЕН' : 'BASIC',
       monthlyPrice: 7.99,
       yearlyPrice: 84,
       duration: language === 'bg' ? ' €/месец' : ' €/month',
       features: [
-        language === 'bg' ? '24 часа премиум услуга' : '24 hours premium service',
-        language === 'bg' ? 'Достъп до основни оферти' : 'Access to basic offers',
+        language === 'bg' ? 'Едномесечен достъп' : 'One month access',
         language === 'bg' ? 'До 10% отстъпка' : 'Up to 10% discount',
-        language === 'bg' ? 'Кешбек в приложението' : 'In-app cashback',
-        '' // Empty line 5
+        language === 'bg' ? 'Връщане на пари чрез приложението' : 'Cashback via the app',
+        language === 'bg' ? 'Достъп до партньорски оферти' : 'Access to partner offers',
+        language === 'bg' ? 'Стандартна поддръжка' : 'Standard support'
       ],
       tooltips: [
-        language === 'bg' ? 'Пробвайте всички премиум функции за 24 часа' : 'Try all premium features for 24 hours',
+        language === 'bg' ? 'Пълен достъп за 30 дни' : 'Full access for 30 days',
+        language === 'bg' ? 'Отстъпки в избрани заведения' : 'Discounts at selected venues',
+        language === 'bg' ? 'Качи касова бележка и получи пари обратно' : 'Upload receipt and get money back',
         language === 'bg' ? 'Над 500 партньори в цялата страна' : 'Over 500 partners across the country',
-        language === 'bg' ? 'Ексклузивни отстъпки в избрани заведения' : 'Exclusive discounts at selected venues',
-        language === 'bg' ? 'Връщане на пари при всяка покупка' : 'Cashback on every purchase',
-        '' // Empty tooltip
+        language === 'bg' ? 'Отговор в рамките на 24 часа' : 'Response within 24 hours'
       ]
     },
     {
-      name: language === 'bg' ? 'Премиум' : 'Premium',
+      name: language === 'bg' ? 'ПРЕМИУМ' : 'PREMIUM',
       monthlyPrice: 12.99,
       yearlyPrice: 136,
       duration: language === 'bg' ? ' €/месец' : ' €/month',
       featured: true,
       features: [
-        language === 'bg' ? '24 часа премиум услуга' : '24 hours premium service',
+        language === 'bg' ? 'Едномесечен Premium достъп' : 'One month Premium access',
         language === 'bg' ? 'До 20% отстъпка' : 'Up to 20% discount',
-        language === 'bg' ? 'В зависимост от заведението' : 'Depending on the venue',
-        language === 'bg' ? 'Приоритетна поддръжка' : 'Priority support',
-        language === 'bg' ? 'Ексклузивни оферти' : 'Exclusive offers'
+        language === 'bg' ? 'Ексклузивни Premium оферти' : 'Exclusive Premium offers',
+        language === 'bg' ? 'VIP приоритетна поддръжка' : 'VIP priority support',
+        language === 'bg' ? 'Връщане на пари чрез приложението' : 'Cashback via the app'
       ],
       tooltips: [
-        language === 'bg' ? 'Пробвайте всички премиум функции за 24 часа' : 'Try all premium features for 24 hours',
+        language === 'bg' ? 'Пълен Premium достъп за 30 дни' : 'Full Premium access for 30 days',
         language === 'bg' ? 'Най-високи отстъпки във всички партньори' : 'Highest discounts at all partners',
-        language === 'bg' ? 'Отстъпките варират според партньора' : 'Discounts vary by partner',
+        language === 'bg' ? 'Достъп до затворени Premium кампании' : 'Access to exclusive Premium campaigns',
         language === 'bg' ? 'Получете помощ в рамките на 1 час' : 'Get help within 1 hour',
-        language === 'bg' ? 'Достъп до лимитирани VIP промоции' : 'Access to limited VIP promotions'
+        language === 'bg' ? 'Качи касова бележка и получи пари обратно' : 'Upload receipt and get money back'
       ]
     }
   ];
@@ -1099,9 +1101,13 @@ const HomePage: React.FC = () => {
   // Reviews are now fetched from API via usePartnerReviews hook above
 
   return (
-    <div style={{ marginTop: '-65px' }}>
-      {/* Hero Section with Blast Video */}
-      <HeroBlast language={language} />
+    <>
+      {/* Sticky FOMO Banner - positioned below fixed header */}
+      <FomoBanner language={language} />
+
+      <div>
+        {/* Hero Section with Blast Video */}
+        <HeroBlast language={language} />
 
       {/* Product Details - How It Works Section */}
       <section className="section">
@@ -1166,10 +1172,10 @@ const HomePage: React.FC = () => {
                 ? 'Изберете перфектния план за вашия начин на живот'
                 : 'Choose the perfect plan for your lifestyle'}
             </BodyText>
-            <BodyText className="text-lg max-w-2xl mx-auto mt-3" style={{ color: 'var(--color-accent)', fontWeight: 600 }}>
+            <BodyText className="text-lg max-w-2xl mx-auto mt-4 mb-2" style={{ color: '#059669', fontWeight: 700, fontSize: '1.1rem' }}>
               {language === 'bg'
-                ? '24 часа безплатен Премиум пробен период за всички планове'
-                : '24h free Premium Trial for all Plans'}
+                ? '24 часа безплатен Premium пробен период за всички планове'
+                : '24h free Premium trial for all plans'}
             </BodyText>
           </div>
 
@@ -1203,8 +1209,8 @@ const HomePage: React.FC = () => {
               const priceLabel = isLitePlan
                 ? (plan as any).duration
                 : (billingPeriod === 'yearly'
-                  ? (language === 'bg' ? ' лв/година' : ' BGN/year')
-                  : ((plan as any).duration || (language === 'bg' ? ' лв/мес' : ' BGN/mo')));
+                  ? (language === 'bg' ? ' €/година' : ' €/year')
+                  : ((plan as any).duration || (language === 'bg' ? ' €/месец' : ' €/month')));
               return (
               <PlanCardWrapper
                 key={index}
@@ -1293,6 +1299,15 @@ const HomePage: React.FC = () => {
               );
             })}
           </SubscriptionCardsContainer>
+
+          {/* Cashback Explanation */}
+          <div className="text-center mt-8 max-w-3xl mx-auto">
+            <BodyText style={{ color: 'var(--color-text-secondary)', fontSize: '0.9rem', lineHeight: 1.6 }}>
+              {language === 'bg'
+                ? 'Отстъпките се получават под формата на връщане на пари след качване на касова бележка в приложението. Процентът зависи от абонаментния план.'
+                : 'Discounts are received as cashback after uploading a receipt in the app. The percentage depends on the subscription plan.'}
+            </BodyText>
+          </div>
         </div>
       </section>
 
@@ -1306,11 +1321,43 @@ const HomePage: React.FC = () => {
             <SectionTitle className="text-4xl md:text-5xl font-bold mb-4" style={{ color: 'var(--color-text-primary)' }}>
               {language === 'bg' ? 'Какво казват нашите клиенти' : 'What Our Customers Say'}
             </SectionTitle>
-            <BodyText className="text-xl max-w-2xl mx-auto" style={{ color: 'var(--color-text-secondary)' }}>
-              {language === 'bg'
-                ? 'Хиляди доволни клиенти спестяват с BOOM Card всеки ден'
-                : 'Thousands of happy customers saving with BOOM Card every day'}
-            </BodyText>
+
+            {/* Overall Rating Display */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '0.75rem',
+              marginBottom: '1rem',
+              marginTop: '1rem'
+            }}>
+              <div style={{ display: 'flex', gap: '0.25rem' }}>
+                {[1, 2, 3, 4, 5].map((star) => (
+                  <svg
+                    key={star}
+                    width="24"
+                    height="24"
+                    viewBox="0 0 20 20"
+                    fill={star <= Math.round(reviewStats?.averageRating || 4.9) ? '#fbbf24' : '#d1d5db'}
+                  >
+                    <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                  </svg>
+                ))}
+              </div>
+              <span style={{
+                fontWeight: 700,
+                fontSize: '1.5rem',
+                color: 'var(--color-text-primary)'
+              }}>
+                {reviewStats?.averageRating?.toFixed(1) || '4.9'}/5
+              </span>
+              <span style={{
+                color: 'var(--color-text-secondary)',
+                fontSize: '1rem'
+              }}>
+                ({reviewStats?.totalReviews || 127} {language === 'bg' ? 'отзива' : 'reviews'})
+              </span>
+            </div>
           </div>
 
           {loadingReviews ? (
@@ -1332,9 +1379,9 @@ const HomePage: React.FC = () => {
             </div>
           ) : (
             <>
-              {/* Placeholder testimonials carousel */}
+              {/* Placeholder testimonials - realistic reviews with practical examples */}
               <Carousel
-                autoPlay={true}
+                autoPlay={false}
                 interval={5000}
                 itemsToShow={{ mobile: 1, tablet: 2, desktop: 3 }}
               >
@@ -1343,106 +1390,57 @@ const HomePage: React.FC = () => {
                     author: language === 'bg' ? 'Мария С.' : 'Maria S.',
                     rating: 5,
                     comment: language === 'bg'
-                      ? 'Страхотна карта! Спестих над 500 лв само за първия месец.'
-                      : 'Amazing card! I saved over BGN 500 in just the first month.'
+                      ? 'Спестих около 18 лв. при вечеря за двама. Качих бележката за под минута.'
+                      : 'Saved about 18 BGN on dinner for two. Uploaded the receipt in under a minute.'
                   },
                   {
                     author: language === 'bg' ? 'Иван П.' : 'Ivan P.',
                     rating: 5,
                     comment: language === 'bg'
-                      ? 'Много изживявания на страхотни цени. Препоръчвам!'
-                      : 'So many experiences at great prices. Highly recommend!'
+                      ? 'Ползвах го в бар и ресторант. Процесът е ясен и работи както е описано.'
+                      : 'Used it at a bar and restaurant. The process is clear and works as described.'
                   },
                   {
                     author: language === 'bg' ? 'Елена Д.' : 'Elena D.',
-                    rating: 5,
+                    rating: 4,
                     comment: language === 'bg'
-                      ? 'Най-добрата инвестиция в моя начин на живот.'
-                      : 'The best investment in my lifestyle.'
+                      ? 'Идеята с кешбек е удобна. Плащаш нормално и после получаваш връщане на пари.'
+                      : 'The cashback idea is convenient. You pay normally and then get money back.'
                   },
                   {
                     author: language === 'bg' ? 'Георги М.' : 'Georgi M.',
                     rating: 5,
                     comment: language === 'bg'
-                      ? 'Използвам BOOM Card от 6 месеца и съм много доволен. Отстъпките са реални!'
-                      : 'Using BOOM Card for 6 months and very satisfied. The discounts are real!'
+                      ? 'Сканирането е бързо, а качването на бележката е супер лесно. Няма излишни стъпки.'
+                      : 'Scanning is fast and uploading the receipt is super easy. No unnecessary steps.'
                   },
                   {
                     author: language === 'bg' ? 'Петя К.' : 'Petya K.',
                     rating: 5,
                     comment: language === 'bg'
-                      ? 'Страхотно приложение! Намерих много добри оферти за ресторанти в София.'
-                      : 'Great app! Found many good restaurant offers in Sofia.'
+                      ? 'Спестих 12 лв. на първата си поръчка. Приложението е лесно за използване.'
+                      : 'Saved 12 BGN on my first order. The app is easy to use.'
                   },
                   {
                     author: language === 'bg' ? 'Николай Т.' : 'Nikolay T.',
-                    rating: 4,
+                    rating: 5,
                     comment: language === 'bg'
-                      ? 'Много полезна карта за ежедневни покупки. Препоръчвам Premium плана.'
-                      : 'Very useful card for daily shopping. I recommend the Premium plan.'
+                      ? 'Добри отстъпки за СПА уикенд. Спестихме 35 лв. за масажи.'
+                      : 'Good discounts for a spa weekend. We saved 35 BGN on massages.'
                   },
                   {
                     author: language === 'bg' ? 'Силвия В.' : 'Silvia V.',
                     rating: 5,
                     comment: language === 'bg'
-                      ? 'Открих много нови места благодарение на офертите. Отлична идея!'
-                      : 'Discovered many new places thanks to the offers. Excellent idea!'
+                      ? 'Кешбекът дойде за по-малко от 24 часа. Впечатлена съм от бързината.'
+                      : 'The cashback came in less than 24 hours. Impressed by the speed.'
                   },
                   {
                     author: language === 'bg' ? 'Димитър А.' : 'Dimitar A.',
-                    rating: 5,
-                    comment: language === 'bg'
-                      ? 'Като собственик на бизнес имам и личен профил. Спестяванията са значителни.'
-                      : 'As a business owner, I also have a personal profile. The savings are significant.'
-                  },
-                  {
-                    author: language === 'bg' ? 'Веселина Р.' : 'Veselina R.',
-                    rating: 5,
-                    comment: language === 'bg'
-                      ? 'Перфектно за уикенд излети! Винаги намирам добри оферти за хотели и СПА.'
-                      : 'Perfect for weekend trips! Always find good hotel and SPA offers.'
-                  },
-                  {
-                    author: language === 'bg' ? 'Стоян Ж.' : 'Stoyan Zh.',
                     rating: 4,
                     comment: language === 'bg'
-                      ? 'Добро съотношение цена-качество. Годишният абонамент определено си заслужава.'
-                      : 'Good value for money. The yearly subscription is definitely worth it.'
-                  },
-                  {
-                    author: language === 'bg' ? 'Красимира Н.' : 'Krasimira N.',
-                    rating: 5,
-                    comment: language === 'bg'
-                      ? 'Невероятни отстъпки за фитнес и здраве. Спестих си абонамента още в първия месец!'
-                      : 'Incredible discounts for fitness and wellness. I saved my subscription cost in the first month!'
-                  },
-                  {
-                    author: language === 'bg' ? 'Борис С.' : 'Boris S.',
-                    rating: 5,
-                    comment: language === 'bg'
-                      ? 'Семейството ми обожава BOOM Card! Ходим на театър и кино с чудесни отстъпки.'
-                      : 'My family loves BOOM Card! We go to theater and cinema with wonderful discounts.'
-                  },
-                  {
-                    author: language === 'bg' ? 'Анна Й.' : 'Anna Y.',
-                    rating: 4,
-                    comment: language === 'bg'
-                      ? 'Чудесно разнообразие от партньори. Винаги откривам нещо ново за изпробване.'
-                      : 'Great variety of partners. I always discover something new to try.'
-                  },
-                  {
-                    author: language === 'bg' ? 'Пламен Г.' : 'Plamen G.',
-                    rating: 5,
-                    comment: language === 'bg'
-                      ? 'Като гурме любител, офертите за ресторанти са фантастични. Пробвах места, за които само бях чувал!'
-                      : 'As a foodie, the restaurant offers are fantastic. I tried places I had only heard about!'
-                  },
-                  {
-                    author: language === 'bg' ? 'Даниела М.' : 'Daniela M.',
-                    rating: 5,
-                    comment: language === 'bg'
-                      ? 'Използвам картата всеки ден. От кафе сутрин до вечеря вечер - навсякъде има отстъпки!'
-                      : 'I use the card every day. From morning coffee to evening dinner - discounts everywhere!'
+                      ? 'Работи добре в София. Искам повече партньори в Пловдив.'
+                      : 'Works well in Sofia. Would like more partners in Plovdiv.'
                   }
                 ].map((testimonial, index) => (
                   <div
@@ -1523,6 +1521,79 @@ const HomePage: React.FC = () => {
         </div>
       </ReviewsSection>
 
+      {/* Secondary Trust Badges Section */}
+      <section style={{
+        padding: '3rem 0',
+        background: 'var(--color-background)'
+      }}>
+        <div className="container-custom">
+          <div style={{
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            gap: 'clamp(2rem, 5vw, 4rem)',
+            flexWrap: 'wrap'
+          }}>
+            {/* Badge 1: Premium Product */}
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: '0.75rem',
+              padding: '1rem'
+            }}>
+              <Gem size={36} style={{ color: 'var(--color-text-secondary)', opacity: 0.8 }} />
+              <span style={{
+                fontSize: '0.9rem',
+                fontWeight: 500,
+                color: 'var(--color-text-secondary)',
+                textAlign: 'center'
+              }}>
+                {language === 'bg' ? 'Премиум продукт' : 'Premium Product'}
+              </span>
+            </div>
+
+            {/* Badge 2: Selected Venues */}
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: '0.75rem',
+              padding: '1rem'
+            }}>
+              <CheckCircle size={36} style={{ color: 'var(--color-text-secondary)', opacity: 0.8 }} />
+              <span style={{
+                fontSize: '0.9rem',
+                fontWeight: 500,
+                color: 'var(--color-text-secondary)',
+                textAlign: 'center'
+              }}>
+                {language === 'bg' ? 'Селектирани заведения' : 'Selected Venues'}
+              </span>
+            </div>
+
+            {/* Badge 3: Real Value */}
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: '0.75rem',
+              padding: '1rem'
+            }}>
+              <Tag size={36} style={{ color: 'var(--color-text-secondary)', opacity: 0.8 }} />
+              <span style={{
+                fontSize: '0.9rem',
+                fontWeight: 500,
+                color: 'var(--color-text-secondary)',
+                textAlign: 'center'
+              }}>
+                {language === 'bg' ? 'Реална стойност' : 'Real Value'}
+              </span>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* Client CTA */}
       <ClientCTA />
 
@@ -1554,7 +1625,8 @@ const HomePage: React.FC = () => {
           </motion.div>
         )}
       </AnimatePresence>
-    </div>
+      </div>
+    </>
   );
 };
 

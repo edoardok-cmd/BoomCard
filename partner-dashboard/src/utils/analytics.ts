@@ -1,7 +1,10 @@
 /**
  * Google Analytics 4 with SEO Event Tracking
  * Tracks user interactions that affect SEO performance
+ * Respects cookie consent (GDPR compliant)
  */
+
+import { hasAnalyticsConsent } from '../contexts/CookieConsentContext';
 
 declare global {
   interface Window {
@@ -12,9 +15,16 @@ declare global {
 
 /**
  * Initialize Google Analytics 4
+ * Only initializes if user has given analytics consent
  */
 export function initGA4(measurementId: string) {
   if (typeof window === 'undefined') return;
+
+  // Check for analytics consent before initializing
+  if (!hasAnalyticsConsent()) {
+    console.log('⏸️ Google Analytics 4 not initialized: awaiting user consent');
+    return;
+  }
 
   // Create gtag script
   const script = document.createElement('script');
@@ -41,7 +51,7 @@ export function initGA4(measurementId: string) {
  * Track page view (for SPA navigation)
  */
 export function trackPageView(path: string, title?: string) {
-  if (typeof window === 'undefined' || !window.gtag) return;
+  if (typeof window === 'undefined' || !window.gtag || !hasAnalyticsConsent()) return;
 
   window.gtag('event', 'page_view', {
     page_path: path,
@@ -54,7 +64,7 @@ export function trackPageView(path: string, title?: string) {
  * Track search queries (important for SEO)
  */
 export function trackSearch(searchTerm: string, results: number) {
-  if (typeof window === 'undefined' || !window.gtag) return;
+  if (typeof window === 'undefined' || !window.gtag || !hasAnalyticsConsent()) return;
 
   window.gtag('event', 'search', {
     search_term: searchTerm,
@@ -68,7 +78,7 @@ export function trackSearch(searchTerm: string, results: number) {
  * Track outbound links (backlink opportunities)
  */
 export function trackOutboundLink(url: string, label?: string) {
-  if (typeof window === 'undefined' || !window.gtag) return;
+  if (typeof window === 'undefined' || !window.gtag || !hasAnalyticsConsent()) return;
 
   window.gtag('event', 'click', {
     event_category: 'Outbound Link',
@@ -82,7 +92,7 @@ export function trackOutboundLink(url: string, label?: string) {
  * Track file downloads
  */
 export function trackDownload(fileName: string, fileType: string) {
-  if (typeof window === 'undefined' || !window.gtag) return;
+  if (typeof window === 'undefined' || !window.gtag || !hasAnalyticsConsent()) return;
 
   window.gtag('event', 'file_download', {
     file_name: fileName,
@@ -95,7 +105,7 @@ export function trackDownload(fileName: string, fileType: string) {
  * Track social shares (important for backlinks)
  */
 export function trackSocialShare(platform: string, url: string) {
-  if (typeof window === 'undefined' || !window.gtag) return;
+  if (typeof window === 'undefined' || !window.gtag || !hasAnalyticsConsent()) return;
 
   window.gtag('event', 'share', {
     method: platform,
@@ -110,7 +120,7 @@ export function trackSocialShare(platform: string, url: string) {
  * Track form submissions
  */
 export function trackFormSubmission(formName: string, success: boolean) {
-  if (typeof window === 'undefined' || !window.gtag) return;
+  if (typeof window === 'undefined' || !window.gtag || !hasAnalyticsConsent()) return;
 
   window.gtag('event', 'form_submit', {
     form_name: formName,
@@ -123,7 +133,7 @@ export function trackFormSubmission(formName: string, success: boolean) {
  * Track video engagement
  */
 export function trackVideoPlay(videoTitle: string, videoUrl: string) {
-  if (typeof window === 'undefined' || !window.gtag) return;
+  if (typeof window === 'undefined' || !window.gtag || !hasAnalyticsConsent()) return;
 
   window.gtag('event', 'video_start', {
     video_title: videoTitle,
@@ -136,7 +146,7 @@ export function trackVideoPlay(videoTitle: string, videoUrl: string) {
  * Track scroll depth (engagement metric)
  */
 export function trackScrollDepth(depth: number) {
-  if (typeof window === 'undefined' || !window.gtag) return;
+  if (typeof window === 'undefined' || !window.gtag || !hasAnalyticsConsent()) return;
 
   window.gtag('event', 'scroll', {
     percent_scrolled: depth,
@@ -149,7 +159,7 @@ export function trackScrollDepth(depth: number) {
  * Initialize scroll depth tracking
  */
 export function initScrollTracking() {
-  if (typeof window === 'undefined') return;
+  if (typeof window === 'undefined' || !hasAnalyticsConsent()) return;
 
   const tracked = { 25: false, 50: false, 75: false, 100: false };
 
@@ -171,7 +181,7 @@ export function initScrollTracking() {
  * Track 404 errors (important for SEO health)
  */
 export function track404(path: string) {
-  if (typeof window === 'undefined' || !window.gtag) return;
+  if (typeof window === 'undefined' || !window.gtag || !hasAnalyticsConsent()) return;
 
   window.gtag('event', 'page_404', {
     page_path: path,
@@ -185,7 +195,7 @@ export function track404(path: string) {
  * Track site speed (Core Web Vitals affect SEO)
  */
 export function trackSiteSpeed(metric: string, value: number) {
-  if (typeof window === 'undefined' || !window.gtag) return;
+  if (typeof window === 'undefined' || !window.gtag || !hasAnalyticsConsent()) return;
 
   window.gtag('event', 'timing_complete', {
     name: metric,
@@ -198,7 +208,7 @@ export function trackSiteSpeed(metric: string, value: number) {
  * Track conversion events
  */
 export function trackConversion(eventName: string, value?: number, currency?: string) {
-  if (typeof window === 'undefined' || !window.gtag) return;
+  if (typeof window === 'undefined' || !window.gtag || !hasAnalyticsConsent()) return;
 
   window.gtag('event', eventName, {
     value: value,

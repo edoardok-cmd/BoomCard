@@ -6,6 +6,8 @@ import { AuthProvider } from './contexts/AuthContext';
 import { FavoritesProvider } from './contexts/FavoritesContext';
 import { LanguageProvider } from './contexts/LanguageContext';
 import { ThemeProvider } from './contexts/ThemeContext';
+import { CookieConsentProvider } from './contexts/CookieConsentContext';
+import { CookieConsentBanner, CookiePreferencesModal } from './components/common/CookieConsent';
 import ProtectedRoute from './components/auth/ProtectedRoute';
 import Loading from './components/common/Loading/Loading';
 import ScrollToTop from './components/common/ScrollToTop/ScrollToTop';
@@ -117,6 +119,7 @@ const PricingPublicPage = lazy(() => import('./pages/PricingPublicPage'));
 const ContactPublicPage = lazy(() => import('./pages/ContactPublicPage'));
 const CareersPage = lazy(() => import('./pages/CareersPage'));
 const SecurityPage = lazy(() => import('./pages/SecurityPage'));
+const CookiePolicyPage = lazy(() => import('./pages/CookiePolicyPage'));
 
 // Admin pages
 const AdminDashboardPage = lazy(() => import('./pages/AdminDashboardPage'));
@@ -159,6 +162,7 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
         <LanguageProvider>
+          <CookieConsentProvider>
           <AuthProvider>
             <FavoritesProvider>
               <Router>
@@ -334,6 +338,7 @@ function App() {
                     <Route path="support" element={<SupportPage />} />
                     <Route path="terms" element={<TermsPage />} />
                     <Route path="privacy" element={<PrivacyPage />} />
+                    <Route path="cookies" element={<CookiePolicyPage />} />
                     <Route path="faq" element={<FAQPage />} />
 
                     {/* New public pages */}
@@ -440,8 +445,11 @@ function App() {
             </Router>
             <Toaster position="top-right" />
             <ScrollToTopButton />
+            <CookieConsentBanner />
+            <CookiePreferencesModal />
           </FavoritesProvider>
         </AuthProvider>
+          </CookieConsentProvider>
       </LanguageProvider>
     </ThemeProvider>
     </QueryClientProvider>
