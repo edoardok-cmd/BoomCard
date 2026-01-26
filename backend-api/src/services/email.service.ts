@@ -54,6 +54,18 @@ export interface WelcomeEmailData {
   dashboardUrl: string;
 }
 
+export interface PendingPaymentReminderData {
+  customerName: string;
+  planName: string;
+  planNameBg: string;
+  price: string;
+  billingPeriod: string;
+  billingPeriodBg: string;
+  reminderType: '1h' | '24h' | '7d';
+  paymentUrl: string;
+  language: 'en' | 'bg';
+}
+
 // ============================================
 // Email Service Class
 // ============================================
@@ -182,6 +194,39 @@ export class EmailService {
     return this.sendEmail({
       to: email,
       subject: 'Welcome to BoomCard! 🎉',
+      html,
+      text,
+    });
+  }
+
+  /**
+   * Send pending payment reminder email
+   */
+  async sendPendingPaymentReminder(
+    email: string,
+    data: PendingPaymentReminderData
+  ): Promise<{ success: boolean }> {
+    const html = this.generatePendingPaymentReminderEmail(data);
+    const text = this.generatePendingPaymentReminderText(data);
+
+    const subjects = {
+      '1h': {
+        en: 'Complete Your BoomCard Subscription',
+        bg: 'Завършете своя BoomCard абонамент',
+      },
+      '24h': {
+        en: 'Don\'t Miss Out on BoomCard Premium Benefits!',
+        bg: 'Не изпускайте BoomCard Premium предимствата!',
+      },
+      '7d': {
+        en: 'Last Chance: Activate Your BoomCard Premium',
+        bg: 'Последен шанс: Активирайте BoomCard Premium',
+      },
+    };
+
+    return this.sendEmail({
+      to: email,
+      subject: subjects[data.reminderType][data.language],
       html,
       text,
     });
@@ -559,6 +604,171 @@ export class EmailService {
     `.trim();
   }
 
+  private generatePendingPaymentReminderEmail(data: PendingPaymentReminderData): string {
+    const isBg = data.language === 'bg';
+    const planName = isBg ? data.planNameBg : data.planName;
+    const billingPeriod = isBg ? data.billingPeriodBg : data.billingPeriod;
+
+    const content = {
+      '1h': {
+        en: {
+          title: 'Complete Your Subscription',
+          subtitle: 'You\'re just one step away!',
+          message: 'You started signing up for BoomCard Premium but didn\'t complete your payment. Complete your subscription now to unlock exclusive discounts and cashback.',
+          cta: 'Complete Payment',
+        },
+        bg: {
+          title: 'Завършете абонамента си',
+          subtitle: 'Само една стъпка ви дели!',
+          message: 'Започнахте регистрация за BoomCard Premium, но не завършихте плащането. Завършете абонамента си сега, за да отключите ексклузивни отстъпки и кешбек.',
+          cta: 'Завърши плащането',
+        },
+      },
+      '24h': {
+        en: {
+          title: 'Don\'t Miss Your Benefits!',
+          subtitle: 'Your Premium subscription is waiting',
+          message: 'It\'s been a day since you started signing up for BoomCard Premium. Don\'t miss out on up to 20% discounts at hundreds of partner venues across Bulgaria!',
+          cta: 'Activate Now',
+        },
+        bg: {
+          title: 'Не изпускайте предимствата!',
+          subtitle: 'Вашият Premium абонамент ви очаква',
+          message: 'Измина ден, откакто започнахте регистрация за BoomCard Premium. Не изпускайте до 20% отстъпки в стотици партньорски обекти в България!',
+          cta: 'Активирай сега',
+        },
+      },
+      '7d': {
+        en: {
+          title: 'Last Chance!',
+          subtitle: 'Your pending subscription expires soon',
+          message: 'It\'s been a week since you signed up for BoomCard. This is your last reminder to complete your Premium subscription and start saving at restaurants, hotels, and more.',
+          cta: 'Complete Payment Now',
+        },
+        bg: {
+          title: 'Последен шанс!',
+          subtitle: 'Вашият чакащ абонамент изтича скоро',
+          message: 'Измина седмица, откакто се регистрирахте за BoomCard. Това е последното ви напомняне да завършите Premium абонамента си и да започнете да спестявате в ресторанти, хотели и други.',
+          cta: 'Завърши плащането сега',
+        },
+      },
+    };
+
+    const c = content[data.reminderType][data.language];
+    const urgencyColors = {
+      '1h': '#667eea',
+      '24h': '#f59e0b',
+      '7d': '#ef4444',
+    };
+    const urgencyColor = urgencyColors[data.reminderType];
+
+    return `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${c.title}</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; background-color: #f5f5f5;">
+  <table width="100%" cellpadding="0" cellspacing="0" border="0">
+    <tr>
+      <td align="center" style="padding: 40px 20px;">
+        <table width="600" cellpadding="0" cellspacing="0" border="0" style="background-color: #ffffff; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+          <!-- Header -->
+          <tr>
+            <td style="background: linear-gradient(135deg, ${urgencyColor} 0%, #764ba2 100%); padding: 40px; text-align: center; border-radius: 8px 8px 0 0;">
+              <h1 style="margin: 0 0 10px; color: #ffffff; font-size: 28px; font-weight: bold;">${c.title}</h1>
+              <p style="margin: 0; color: rgba(255,255,255,0.9); font-size: 16px;">${c.subtitle}</p>
+            </td>
+          </tr>
+
+          <!-- Content -->
+          <tr>
+            <td style="padding: 40px;">
+              <p style="margin: 0 0 20px; color: #333333; font-size: 16px;">
+                ${isBg ? 'Здравейте' : 'Hi'} ${data.customerName},
+              </p>
+
+              <p style="margin: 0 0 30px; color: #666666; font-size: 16px; line-height: 1.6;">
+                ${c.message}
+              </p>
+
+              <!-- Plan Details -->
+              <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: #f8f9fa; border-radius: 6px; padding: 20px; margin-bottom: 30px;">
+                <tr>
+                  <td style="padding: 10px 0;">
+                    <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                      <tr>
+                        <td style="color: #666666; font-size: 14px; padding: 8px 0;">
+                          ${isBg ? 'Избран план' : 'Selected Plan'}:
+                        </td>
+                        <td align="right" style="color: #333333; font-size: 16px; font-weight: bold; padding: 8px 0;">
+                          ${planName}
+                        </td>
+                      </tr>
+                      <tr>
+                        <td style="color: #666666; font-size: 14px; padding: 8px 0; border-top: 1px solid #dee2e6;">
+                          ${isBg ? 'Период' : 'Billing Period'}:
+                        </td>
+                        <td align="right" style="color: #333333; font-size: 14px; padding: 8px 0; border-top: 1px solid #dee2e6;">
+                          ${billingPeriod}
+                        </td>
+                      </tr>
+                      <tr>
+                        <td style="color: #666666; font-size: 14px; padding: 8px 0; border-top: 1px solid #dee2e6;">
+                          ${isBg ? 'Цена' : 'Price'}:
+                        </td>
+                        <td align="right" style="color: ${urgencyColor}; font-size: 20px; font-weight: bold; padding: 8px 0; border-top: 1px solid #dee2e6;">
+                          ${data.price}
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+
+              <!-- CTA Button -->
+              <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin: 30px 0;">
+                <tr>
+                  <td align="center">
+                    <a href="${data.paymentUrl}"
+                       style="display: inline-block; padding: 16px 40px; background: linear-gradient(135deg, ${urgencyColor} 0%, #764ba2 100%); color: #ffffff; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 18px;">
+                      ${c.cta}
+                    </a>
+                  </td>
+                </tr>
+              </table>
+
+              <p style="margin: 30px 0 0; color: #999999; font-size: 14px; line-height: 1.6; text-align: center;">
+                ${isBg ? 'Въпроси? Свържете се с нас на' : 'Questions? Contact us at'}
+                <a href="mailto:support@boomcard.bg" style="color: #667eea; text-decoration: none;">support@boomcard.bg</a>
+              </p>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="background-color: #f8f9fa; padding: 20px; text-align: center; border-radius: 0 0 8px 8px;">
+              <p style="margin: 0; color: #999999; font-size: 12px;">
+                © ${new Date().getFullYear()} BoomCard. ${isBg ? 'Всички права запазени.' : 'All rights reserved.'}
+              </p>
+              <p style="margin: 10px 0 0; color: #cccccc; font-size: 11px;">
+                ${isBg
+                  ? 'Получавате този имейл, защото се регистрирахте за BoomCard.'
+                  : 'You received this email because you signed up for BoomCard.'}
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+    `.trim();
+  }
+
   // ============================================
   // Plain Text Templates (fallback)
   // ============================================
@@ -635,6 +845,63 @@ FEATURES:
 Get started: ${data.dashboardUrl}
 
 Need help? We're here for you at support@boomcard.bg
+
+© ${new Date().getFullYear()} BoomCard. All rights reserved.
+    `.trim();
+  }
+
+  private generatePendingPaymentReminderText(data: PendingPaymentReminderData): string {
+    const isBg = data.language === 'bg';
+    const planName = isBg ? data.planNameBg : data.planName;
+    const billingPeriod = isBg ? data.billingPeriodBg : data.billingPeriod;
+
+    const content = {
+      '1h': {
+        en: 'You started signing up for BoomCard Premium but didn\'t complete your payment. Complete your subscription now to unlock exclusive discounts and cashback.',
+        bg: 'Започнахте регистрация за BoomCard Premium, но не завършихте плащането. Завършете абонамента си сега, за да отключите ексклузивни отстъпки и кешбек.',
+      },
+      '24h': {
+        en: 'It\'s been a day since you started signing up for BoomCard Premium. Don\'t miss out on up to 20% discounts at hundreds of partner venues across Bulgaria!',
+        bg: 'Измина ден, откакто започнахте регистрация за BoomCard Premium. Не изпускайте до 20% отстъпки в стотици партньорски обекти в България!',
+      },
+      '7d': {
+        en: 'It\'s been a week since you signed up for BoomCard. This is your last reminder to complete your Premium subscription and start saving.',
+        bg: 'Измина седмица, откакто се регистрирахте за BoomCard. Това е последното ви напомняне да завършите Premium абонамента си.',
+      },
+    };
+
+    if (isBg) {
+      return `
+Здравейте ${data.customerName},
+
+${content[data.reminderType].bg}
+
+ДЕТАЙЛИ ЗА АБОНАМЕНТА:
+- План: ${planName}
+- Период: ${billingPeriod}
+- Цена: ${data.price}
+
+Завършете плащането: ${data.paymentUrl}
+
+Въпроси? Свържете се с нас на support@boomcard.bg
+
+© ${new Date().getFullYear()} BoomCard. Всички права запазени.
+      `.trim();
+    }
+
+    return `
+Hi ${data.customerName},
+
+${content[data.reminderType].en}
+
+SUBSCRIPTION DETAILS:
+- Plan: ${planName}
+- Billing Period: ${billingPeriod}
+- Price: ${data.price}
+
+Complete your payment: ${data.paymentUrl}
+
+Questions? Contact us at support@boomcard.bg
 
 © ${new Date().getFullYear()} BoomCard. All rights reserved.
     `.trim();

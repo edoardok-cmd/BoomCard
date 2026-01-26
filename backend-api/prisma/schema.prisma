@@ -25,6 +25,7 @@ enum UserStatus {
   INACTIVE
   SUSPENDED
   PENDING_VERIFICATION
+  PENDING_PAYMENT // User registered but payment not yet confirmed
 }
 
 model User {
@@ -298,6 +299,57 @@ enum SubscriptionStatus {
   PAUSED
 }
 
+// ============================================
+// Plan Pricing (Source of Truth for Subscriptions)
+// ============================================
+
+model Plan {
+  id              String  @id @default(uuid())
+
+  // Plan identification
+  planCode        String  @unique // STANDARD, PREMIUM, PLATINUM
+  displayName     String           // "Lite Premium", "Basic", "Premium"
+  displayNameBg   String?          // Bulgarian translation
+
+  // Pricing (stored in cents to avoid floating point issues)
+  priceWeeklyEur  Int?             // Weekly price in EUR cents (null if not available)
+  priceMonthlyEur Int?             // Monthly price in EUR cents (null if not available)
+  priceYearlyEur  Int              // Yearly price in EUR cents
+
+  // Features & Benefits
+  cashbackRate    Float            // e.g., 0.20 for 20%
+  stickerBonus    Float  @default(0) // Additional bonus for sticker scans
+  features        String?          // JSON array of feature strings
+  featuresBg      String?          // JSON array in Bulgarian
+
+  // Display properties
+  cardType        String  @default("silver") // light, silver, black
+  isFeatured      Boolean @default(false)
+  badgeText       String?          // e.g., "Most Popular", "Best Value"
+  badgeTextBg     String?
+  displayOrder    Int     @default(0)
+
+  // Billing options
+  hasWeeklyOption   Boolean @default(false)
+  hasMonthlyOption  Boolean @default(true)
+  hasYearlyOption   Boolean @default(true)
+  yearlyDiscountPct Int     @default(20) // Discount percentage for yearly
+
+  // Status
+  isActive        Boolean @default(true)
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  subscriptions   Subscription[]
+
+  @@index([planCode])
+  @@index([isActive])
+  @@index([displayOrder])
+  @@map("plans")
+}
+
 model Transaction {
   id              String            @id @default(uuid())
   userId          String
@@ -418,9 +470,17 @@ model Subscription {
   plan   SubscriptionPlan
   status SubscriptionStatus
 
+  // Stripe integration
   stripeSubscriptionId String? @unique
   stripePriceId        String?
   stripeCustomerId     String?
+
+  // Paysera integration
+  payseraOrderId       String? @unique // Paysera payment order ID
+
+  // Link to Plan model (source of truth for pricing)
+  planId               String?
+  planDetails          Plan?   @relation(fields: [planId], references: [id])
 
   currentPeriodStart DateTime
   currentPeriodEnd   DateTime
@@ -439,6 +499,8 @@ model Subscription {
   @@index([userId])
   @@index([status])
   @@index([plan])
+  @@index([planId])
+  @@index([payseraOrderId])
   @@map("subscriptions")
 }
 

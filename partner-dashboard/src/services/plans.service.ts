@@ -1,0 +1,203 @@
+/**
+ * Plans Service
+ * Fetches plan data from the API (SERVER-SIDE PRICING - source of truth)
+ *
+ * SECURITY: Never trust client-side pricing. Always use this service
+ * to get pricing from the backend.
+ */
+
+import axios from 'axios';
+
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
+
+export interface PlanPricing {
+  weekly: number | null;
+  monthly: number | null;
+  yearly: number;
+  currency: string;
+  yearlyDiscountPct: number;
+}
+
+export interface PlanBillingOptions {
+  hasWeekly: boolean;
+  hasMonthly: boolean;
+  hasYearly: boolean;
+}
+
+export interface PlanBadge {
+  text: string;
+  textBg: string | null;
+}
+
+export interface Plan {
+  id: string;
+  planCode: string;
+  displayName: string;
+  displayNameBg: string | null;
+  pricing: PlanPricing;
+  billingOptions: PlanBillingOptions;
+  cashbackRate: number;
+  stickerBonus: number;
+  features: string[];
+  featuresBg: string[];
+  cardType: 'light' | 'silver' | 'black';
+  isFeatured: boolean;
+  badge: PlanBadge | null;
+}
+
+export interface SubscriptionStatus {
+  subscriptionId: string;
+  status: string;
+  plan: {
+    code: string;
+    name: string;
+    nameBg: string | null;
+  };
+  billingPeriod: string;
+  currentPeriodEnd: string;
+  isActive: boolean;
+}
+
+class PlansService {
+  private baseUrl: string;
+
+  constructor() {
+    this.baseUrl = API_BASE_URL;
+  }
+
+  /**
+   * Get all active plans with pricing (PUBLIC - no auth required)
+   */
+  async getPlans(): Promise<Plan[]> {
+    try {
+      const response = await axios.get(`${this.baseUrl}/plans`);
+      if (response.data.success) {
+        return response.data.data;
+      }
+      throw new Error('Failed to fetch plans');
+    } catch (error) {
+      console.error('Error fetching plans:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get a single plan by plan code (PUBLIC - no auth required)
+   */
+  async getPlanByCode(planCode: string): Promise<Plan> {
+    try {
+      const response = await axios.get(`${this.baseUrl}/plans/code/${planCode}`);
+      if (response.data.success) {
+        return response.data.data;
+      }
+      throw new Error('Plan not found');
+    } catch (error) {
+      console.error('Error fetching plan:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get a single plan by ID (PUBLIC - no auth required)
+   */
+  async getPlanById(planId: string): Promise<Plan> {
+    try {
+      const response = await axios.get(`${this.baseUrl}/plans/${planId}`);
+      if (response.data.success) {
+        return response.data.data;
+      }
+      throw new Error('Plan not found');
+    } catch (error) {
+      console.error('Error fetching plan:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Check subscription status by order ID (PUBLIC - no auth required)
+   * Used after payment redirect to poll for activation
+   */
+  async checkSubscriptionStatus(orderId: string): Promise<SubscriptionStatus> {
+    try {
+      const response = await axios.get(`${this.baseUrl}/subscriptions/status/${orderId}`);
+      if (response.data.success) {
+        return response.data.data;
+      }
+      throw new Error('Subscription not found');
+    } catch (error) {
+      console.error('Error checking subscription status:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Create subscription payment (AUTHENTICATED)
+   * Returns payment URL to redirect user to Paysera
+   */
+  async createSubscriptionPayment(
+    planId: string,
+    billingPeriod: 'weekly' | 'monthly' | 'yearly'
+  ): Promise<{
+    orderId: string;
+    subscriptionId: string;
+    paymentUrl: string;
+    plan: { code: string; name: string };
+    amount: number;
+    currency: string;
+    billingPeriod: string;
+  }> {
+    const token = localStorage.getItem('token');
+    if (!token) {
+      throw new Error('User not authenticated');
+    }
+
+    try {
+      const response = await axios.post(
+        `${this.baseUrl}/payments/subscription`,
+        { planId, billingPeriod },
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      if (response.data.success) {
+        return response.data.data;
+      }
+      throw new Error('Failed to create subscription payment');
+    } catch (error) {
+      console.error('Error creating subscription payment:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get display price based on billing period
+   */
+  getDisplayPrice(plan: Plan, billingPeriod: 'weekly' | 'monthly' | 'yearly'): number | null {
+    switch (billingPeriod) {
+      case 'weekly':
+        return plan.pricing.weekly;
+      case 'monthly':
+        return plan.pricing.monthly;
+      case 'yearly':
+        return plan.pricing.yearly;
+      default:
+        return null;
+    }
+  }
+
+  /**
+   * Format price for display
+   */
+  formatPrice(price: number | null, currency: string = 'EUR'): string {
+    if (price === null) return 'N/A';
+    return new Intl.NumberFormat('en-EU', {
+      style: 'currency',
+      currency,
+    }).format(price);
+  }
+}
+
+export const plansService = new PlansService();

@@ -27,6 +27,7 @@ import receiptsEnhancedRouter from './routes/receipts.enhanced.routes';
 import webhooksRouter from './routes/webhooks.routes';
 import cardsRouter from './routes/cards.routes';
 import notificationsRouter from './routes/notifications.routes';
+import plansRouter from './routes/plans.routes';
 
 // Import WebSocket handler
 import { initializeWebSocket } from './websocket/server';
@@ -132,6 +133,7 @@ setupSwagger(app);
 // API Routes
 app.use('/api/health', healthRouter); // Health checks (monitoring)
 app.use('/api/webhooks', webhooksRouter); // Webhooks (must be first for raw body)
+app.use('/api/plans', plansRouter); // Public plans API (no auth required)
 app.use('/api/auth', authRouter);
 app.use('/api/payments', payseraPaymentsRouter); // Paysera payment routes
 app.use('/api/wallet', walletRouter);

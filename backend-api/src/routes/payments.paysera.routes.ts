@@ -8,9 +8,10 @@ import { authenticate, AuthRequest } from '../middleware/auth.middleware';
 import { asyncHandler } from '../middleware/error.middleware';
 import { payseraService, PayseraService } from '../services/paysera.service';
 import { emailService } from '../services/email.service';
-import { PrismaClient, TransactionType, TransactionStatus } from '@prisma/client';
+import { PrismaClient, TransactionType, TransactionStatus, SubscriptionStatus, SubscriptionPlan, UserStatus } from '@prisma/client';
 import { logger } from '../utils/logger';
 import crypto from 'crypto';
+import { z } from 'zod';
 
 const router = Router();
 const prisma = new PrismaClient();
@@ -487,5 +488,312 @@ router.get('/methods', (req: Request, res: Response) => {
     },
   });
 });
+
+// ============================================
+// SECURE Subscription Payment (Authenticated)
+// CRITICAL: This endpoint uses SERVER-SIDE pricing only
+// ============================================
+
+/**
+ * Helper function to calculate subscription period end
+ */
+function calculatePeriodEnd(billingPeriod: 'weekly' | 'monthly' | 'yearly'): Date {
+  const now = new Date();
+  switch (billingPeriod) {
+    case 'weekly':
+      return new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+    case 'monthly':
+      return new Date(now.setMonth(now.getMonth() + 1));
+    case 'yearly':
+      return new Date(now.setFullYear(now.getFullYear() + 1));
+  }
+}
+
+/**
+ * POST /api/payments/subscription
+ * Create SECURE subscription payment
+ *
+ * SECURITY: Price is determined by planId lookup from database.
+ * Client ONLY sends planId and billingPeriod - NEVER the price.
+ */
+const subscriptionSchema = z.object({
+  planId: z.string().uuid(),
+  billingPeriod: z.enum(['weekly', 'monthly', 'yearly']),
+});
+
+router.post(
+  '/subscription',
+  authenticate,
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    const parseResult = subscriptionSchema.safeParse(req.body);
+    if (!parseResult.success) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid request body',
+        errors: parseResult.error.errors,
+      });
+    }
+
+    const { planId, billingPeriod } = parseResult.data;
+    const user = req.user!;
+
+    // Fetch plan from database (SOURCE OF TRUTH for pricing)
+    const plan = await prisma.plan.findUnique({
+      where: { id: planId },
+    });
+
+    if (!plan || !plan.isActive) {
+      return res.status(404).json({
+        success: false,
+        message: 'Plan not found or inactive',
+      });
+    }
+
+    // Validate billing period is available for this plan
+    if (billingPeriod === 'weekly' && !plan.hasWeeklyOption) {
+      return res.status(400).json({
+        success: false,
+        message: 'Weekly billing not available for this plan',
+      });
+    }
+    if (billingPeriod === 'monthly' && !plan.hasMonthlyOption) {
+      return res.status(400).json({
+        success: false,
+        message: 'Monthly billing not available for this plan',
+      });
+    }
+    if (billingPeriod === 'yearly' && !plan.hasYearlyOption) {
+      return res.status(400).json({
+        success: false,
+        message: 'Yearly billing not available for this plan',
+      });
+    }
+
+    // Get price based on billing period (from DATABASE, not from client!)
+    let priceInCents: number;
+    switch (billingPeriod) {
+      case 'weekly':
+        priceInCents = plan.priceWeeklyEur!;
+        break;
+      case 'monthly':
+        priceInCents = plan.priceMonthlyEur!;
+        break;
+      case 'yearly':
+        priceInCents = plan.priceYearlyEur;
+        break;
+    }
+
+    // Generate unique order ID
+    const orderId = `BOOM-SUB-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
+
+    // Get user details
+    const userDetails = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: { email: true, firstName: true, lastName: true },
+    });
+
+    if (!userDetails) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    // Map plan code to subscription enum
+    const subscriptionPlanMap: Record<string, SubscriptionPlan> = {
+      'STANDARD': SubscriptionPlan.STANDARD,
+      'PREMIUM': SubscriptionPlan.PREMIUM,
+      'PLATINUM': SubscriptionPlan.PLATINUM,
+    };
+
+    const subscriptionPlan = subscriptionPlanMap[plan.planCode];
+    if (!subscriptionPlan) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid plan code',
+      });
+    }
+
+    // Create pending subscription record
+    const subscription = await prisma.subscription.create({
+      data: {
+        userId: user.id,
+        plan: subscriptionPlan,
+        status: SubscriptionStatus.INCOMPLETE,
+        planId: plan.id,
+        payseraOrderId: orderId,
+        currentPeriodStart: new Date(),
+        currentPeriodEnd: calculatePeriodEnd(billingPeriod),
+        metadata: JSON.stringify({
+          billingPeriod,
+          priceInCents,
+          currency: 'EUR',
+          displayName: plan.displayName,
+        }),
+      },
+    });
+
+    // Update user status to PENDING_PAYMENT
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { status: UserStatus.PENDING_PAYMENT },
+    });
+
+    // Build callback URLs
+    const baseUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+    const acceptUrl = `${baseUrl}/subscription/success?orderId=${orderId}`;
+    const cancelUrl = `${baseUrl}/subscription/cancel?orderId=${orderId}`;
+    const callbackUrl = `${process.env.API_BASE_URL || 'http://localhost:3000'}/api/payments/subscription/callback`;
+
+    // Create Paysera payment
+    const payment = await payseraService.createPayment({
+      orderId,
+      amount: priceInCents,
+      currency: 'EUR',
+      description: `BoomCard ${plan.displayName} - ${billingPeriod}`,
+      acceptUrl,
+      cancelUrl,
+      callbackUrl,
+      customerEmail: userDetails.email,
+      customerName: `${userDetails.firstName || ''} ${userDetails.lastName || ''}`.trim() || userDetails.email,
+      lang: 'bg',
+    });
+
+    logger.info(`✅ Subscription payment created: ${orderId} for user ${user.id}, plan ${plan.planCode}, ${priceInCents / 100} EUR`);
+
+    res.status(201).json({
+      success: true,
+      data: {
+        orderId: payment.orderId,
+        subscriptionId: subscription.id,
+        paymentUrl: payment.paymentUrl,
+        plan: {
+          code: plan.planCode,
+          name: plan.displayName,
+        },
+        amount: priceInCents / 100,
+        currency: 'EUR',
+        billingPeriod,
+      },
+    });
+  })
+);
+
+// ============================================
+// Subscription Payment Callback (Webhook)
+// CRITICAL: This is the ONLY place where subscriptions become ACTIVE
+// ============================================
+
+/**
+ * POST /api/payments/subscription/callback
+ * Webhook endpoint for subscription payment notifications
+ * Called by Paysera servers (not from browser)
+ */
+router.post(
+  '/subscription/callback',
+  asyncHandler(async (req: Request, res: Response) => {
+    const { data, ss1, ss2 } = req.body;
+
+    logger.info('📨 Received Paysera subscription callback');
+
+    try {
+      // Handle callback and verify signature
+      const result = await payseraService.handleCallback({
+        data,
+        ss1,
+        ss2,
+      });
+
+      logger.info(`Subscription callback result: ${result.orderId} - ${result.status}`);
+
+      // Find subscription by Paysera order ID
+      const subscription = await prisma.subscription.findFirst({
+        where: { payseraOrderId: result.orderId },
+        include: {
+          user: {
+            select: {
+              id: true,
+              email: true,
+              firstName: true,
+            },
+          },
+          planDetails: true,
+        },
+      });
+
+      if (!subscription) {
+        logger.warn(`⚠️  Subscription not found for order: ${result.orderId}`);
+        return res.send(payseraService.generateCallbackResponse());
+      }
+
+      // Idempotency check - don't process if already active
+      if (subscription.status === SubscriptionStatus.ACTIVE) {
+        logger.info(`Subscription ${subscription.id} already active, skipping`);
+        return res.send(payseraService.generateCallbackResponse());
+      }
+
+      if (result.status === 'success') {
+        // ACTIVATE SUBSCRIPTION (webhook-first - this is the only place!)
+        const existingMetadata = subscription.metadata ? JSON.parse(subscription.metadata as string) : {};
+        await prisma.subscription.update({
+          where: { id: subscription.id },
+          data: {
+            status: SubscriptionStatus.ACTIVE,
+            metadata: JSON.stringify({
+              ...existingMetadata,
+              paymentConfirmedAt: new Date().toISOString(),
+              payseraTransactionId: result.transactionId,
+              paidAmount: result.amount,
+              paidCurrency: result.currency,
+            }),
+          },
+        });
+
+        // UPDATE USER STATUS TO ACTIVE
+        await prisma.user.update({
+          where: { id: subscription.userId },
+          data: { status: UserStatus.ACTIVE },
+        });
+
+        logger.info(`✅ Subscription activated: ${subscription.id} for user ${subscription.userId}`);
+
+        // Send confirmation email
+        if (subscription.user?.email) {
+          const metadata = JSON.parse(subscription.metadata as string || '{}');
+          emailService.sendSubscriptionConfirmation(subscription.user.email, {
+            customerName: subscription.user.firstName || 'Customer',
+            plan: subscription.planDetails?.displayName || subscription.plan,
+            amount: result.amount / 100,
+            currency: 'EUR',
+            billingPeriod: metadata.billingPeriod,
+            nextBillingDate: subscription.currentPeriodEnd,
+          }).catch((error) => {
+            logger.error('❌ Failed to send subscription confirmation email:', error);
+          });
+        }
+      } else if (result.status === 'failed' || result.status === 'cancelled') {
+        // Payment failed or cancelled
+        const existingMetadata = subscription.metadata ? JSON.parse(subscription.metadata as string) : {};
+        await prisma.subscription.update({
+          where: { id: subscription.id },
+          data: {
+            status: SubscriptionStatus.INCOMPLETE_EXPIRED,
+            metadata: JSON.stringify({
+              ...existingMetadata,
+              failedAt: new Date().toISOString(),
+              failureReason: result.status,
+            }),
+          },
+        });
+
+        logger.warn(`⚠️  Subscription payment ${result.status}: ${result.orderId}`);
+      }
+
+      // Send "OK" response to Paysera
+      res.send(payseraService.generateCallbackResponse());
+    } catch (error: any) {
+      logger.error('❌ Error processing subscription callback:', error);
+      // Still send OK to prevent retries
+      res.send(payseraService.generateCallbackResponse());
+    }
+  })
+);
 
 export default router;

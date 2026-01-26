@@ -20,6 +20,7 @@
     "migrate:export": "ts-node scripts/migrate-sqlite-to-postgres.ts",
     "migrate:import": "ts-node scripts/import-postgres-data.ts",
     "migrate:full": "npm run migrate:export && npm run migrate:import",
+    "job:reminders": "npx tsx src/jobs/pending-payment-reminders.ts",
     "postinstall": "prisma generate"
   },
   "keywords": [

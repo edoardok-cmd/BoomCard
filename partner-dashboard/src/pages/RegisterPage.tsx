@@ -3,6 +3,7 @@ import { useNavigate, Link, useLocation } from 'react-router-dom';
 import styled from 'styled-components';
 import { motion } from 'framer-motion';
 import { CredentialResponse } from '@react-oauth/google';
+import { Loader2 } from 'lucide-react';
 import Button from '../components/common/Button/Button';
 import { useAuth, OAuthData } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -10,7 +11,7 @@ import GoogleLoginButton from '../components/auth/GoogleLoginButton';
 import FacebookLoginButton from '../components/auth/FacebookLoginButton';
 import Header from '../components/layout/Header/Header';
 import Footer from '../components/layout/Footer/Footer';
-import { payseraService } from '../services/paysera.service';
+import { plansService, Plan } from '../services/plans.service';
 
 const PageWrapper = styled.div`
   min-height: 100vh;
@@ -465,15 +466,18 @@ interface FormErrors {
 const RegisterPage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { register, loginWithOAuth, isLoading, token } = useAuth();
+  const { register, loginWithOAuth, isLoading } = useAuth();
   const { t, language } = useLanguage();
 
-  // Extract plan details from URL params
+  // SECURITY: Extract ONLY planId and billing from URL - NO PRICE!
   const searchParams = new URLSearchParams(location.search);
-  const selectedPlan = searchParams.get('plan');
-  const planPrice = searchParams.get('price');
-  const planCurrency = searchParams.get('currency');
-  const billingPeriod = searchParams.get('billing');
+  const planId = searchParams.get('planId');
+  const billingPeriod = (searchParams.get('billing') || 'monthly') as 'weekly' | 'monthly' | 'yearly';
+
+  // Plan state - fetched from API (server-side pricing)
+  const [selectedPlan, setSelectedPlan] = useState<Plan | null>(null);
+  const [planLoading, setPlanLoading] = useState(false);
+  const [planError, setPlanError] = useState<string | null>(null);
 
   const [formData, setFormData] = useState({
     firstName: '',
@@ -489,6 +493,42 @@ const RegisterPage: React.FC = () => {
   const [touched, setTouched] = useState<Record<string, boolean>>({});
   const [passwordStrength, setPasswordStrength] = useState(0);
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+
+  // Fetch plan details from API when planId is present
+  // SECURITY: Get pricing from server, never from URL
+  useEffect(() => {
+    const fetchPlan = async () => {
+      if (!planId) {
+        setSelectedPlan(null);
+        return;
+      }
+
+      try {
+        setPlanLoading(true);
+        setPlanError(null);
+        const plan = await plansService.getPlanById(planId);
+        setSelectedPlan(plan);
+      } catch (err) {
+        console.error('Error fetching plan:', err);
+        setPlanError(language === 'bg'
+          ? 'Грешка при зареждане на плана. Продължете без избран план.'
+          : 'Error loading plan. Continue without selected plan.');
+        setSelectedPlan(null);
+      } finally {
+        setPlanLoading(false);
+      }
+    };
+
+    fetchPlan();
+  }, [planId, language]);
+
+  // Get display price from server-side plan data
+  const getDisplayPrice = (): number | null => {
+    if (!selectedPlan) return null;
+    return plansService.getDisplayPrice(selectedPlan, billingPeriod);
+  };
+
+  const displayPrice = getDisplayPrice();
 
   const calculatePasswordStrength = (password: string): number => {
     let strength = 0;
@@ -626,36 +666,30 @@ const RegisterPage: React.FC = () => {
         acceptTerms: formData.acceptTerms,
       });
 
-      // If a plan is selected, process payment
-      if (selectedPlan && planPrice && token) {
+      // If a plan is selected, process payment using SECURE endpoint
+      // SECURITY: Only pass planId and billingPeriod - price comes from server!
+      if (selectedPlan && planId) {
         setIsProcessingPayment(true);
         try {
-          const paymentDescription = language === 'bg'
-            ? `Абонамент: ${selectedPlan} (${billingPeriod === 'yearly' ? 'Годишен' : 'Месечен'})`
-            : `Subscription: ${selectedPlan} (${billingPeriod === 'yearly' ? 'Yearly' : 'Monthly'})`;
-
-          const paymentResult = await payseraService.createPayment(token, {
-            amount: parseFloat(planPrice),
-            currency: planCurrency || 'EUR',
-            description: paymentDescription,
-            metadata: {
-              plan: selectedPlan,
-              billing: billingPeriod || 'monthly',
-              subscriptionType: 'new',
-            },
-          });
+          // Call secure subscription payment endpoint
+          // Price is determined SERVER-SIDE from planId, not from client
+          const paymentResult = await plansService.createSubscriptionPayment(
+            planId,
+            billingPeriod
+          );
 
           // Redirect to Paysera payment page
-          window.location.href = paymentResult.data.paymentUrl;
+          window.location.href = paymentResult.paymentUrl;
         } catch (paymentError) {
           console.error('Payment creation error:', paymentError);
           setIsProcessingPayment(false);
-          // Navigate to home even if payment fails, user can retry later
-          navigate('/', { replace: true });
+          // Navigate to dashboard even if payment fails, user can retry later
+          // User status will be PENDING_PAYMENT
+          navigate('/dashboard', { replace: true });
         }
       } else {
-        // No plan selected, redirect to home page
-        navigate('/', { replace: true });
+        // No plan selected, redirect to dashboard
+        navigate('/dashboard', { replace: true });
       }
     } catch (error) {
       // Error is handled by the AuthContext with toast
@@ -745,8 +779,25 @@ const RegisterPage: React.FC = () => {
           {t('auth.getStartedToday')}
         </Subtitle>
 
-        {/* Show selected plan summary */}
-        {selectedPlan && planPrice && (
+        {/* Show selected plan summary - pricing from API (server-side) */}
+        {planLoading && (
+          <PlanSummary
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'center', padding: '1rem' }}>
+              <Loader2 style={{ animation: 'spin 1s linear infinite' }} />
+            </div>
+          </PlanSummary>
+        )}
+
+        {planError && (
+          <PaymentInfo style={{ background: '#fef2f2', borderColor: '#ef4444', color: '#991b1b' }}>
+            {planError}
+          </PaymentInfo>
+        )}
+
+        {selectedPlan && displayPrice !== null && (
           <>
             <PlanSummary
               initial={{ opacity: 0, scale: 0.95 }}
@@ -758,13 +809,17 @@ const RegisterPage: React.FC = () => {
               </PlanSummaryTitle>
               <PlanDetail>
                 <PlanLabel>{language === 'bg' ? 'План' : 'Plan'}</PlanLabel>
-                <PlanValue>{selectedPlan}</PlanValue>
+                <PlanValue>
+                  {language === 'bg' ? selectedPlan.displayNameBg : selectedPlan.displayName}
+                </PlanValue>
               </PlanDetail>
               <PlanDetail>
                 <PlanLabel>{language === 'bg' ? 'Период' : 'Billing Period'}</PlanLabel>
                 <PlanValue>
                   {billingPeriod === 'yearly'
                     ? (language === 'bg' ? 'Годишен' : 'Yearly')
+                    : billingPeriod === 'weekly'
+                    ? (language === 'bg' ? 'Седмичен' : 'Weekly')
                     : (language === 'bg' ? 'Месечен' : 'Monthly')}
                 </PlanValue>
               </PlanDetail>
@@ -773,7 +828,7 @@ const RegisterPage: React.FC = () => {
                   {language === 'bg' ? 'Сума' : 'Total'}
                 </PlanPriceLabel>
                 <PlanPriceValue>
-                  {planPrice} {planCurrency || 'EUR'}
+                  {plansService.formatPrice(displayPrice, selectedPlan.pricing.currency)}
                 </PlanPriceValue>
               </PlanPrice>
             </PlanSummary>
@@ -991,13 +1046,13 @@ const RegisterPage: React.FC = () => {
             type="submit"
             variant="primary"
             size="large"
-            isLoading={isLoading || isProcessingPayment}
-            disabled={isLoading || isProcessingPayment}
+            isLoading={isLoading || isProcessingPayment || planLoading}
+            disabled={isLoading || isProcessingPayment || planLoading}
           >
             {isProcessingPayment
               ? (language === 'bg' ? 'Обработка на плащането...' : 'Processing Payment...')
               : selectedPlan
-              ? (language === 'bg' ? 'Регистрирай и Плати' : 'Register & Pay')
+              ? (language === 'bg' ? 'Създай профил и продължи към плащане' : 'Create Account & Continue to Payment')
               : t('auth.createAccountButton')}
           </SubmitButton>
         </Form>
