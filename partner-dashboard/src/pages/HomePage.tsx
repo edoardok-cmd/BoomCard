@@ -1046,6 +1046,8 @@ const HomePage: React.FC = () => {
         language === 'bg' ? 'Едноседмичен Premium достъп' : 'One week Premium access',
         language === 'bg' ? 'До 20% отстъпка' : 'Up to 20% discount',
         language === 'bg' ? 'Ексклузивни Premium оферти' : 'Exclusive Premium offers',
+        language === 'bg' ? 'Специални предложения с ограничена наличност' : 'Limited availability special offers',
+        language === 'bg' ? 'Достъп до затворени Premium кампании' : 'Access to exclusive Premium campaigns',
         language === 'bg' ? 'VIP приоритетна поддръжка' : 'VIP priority support',
         language === 'bg' ? 'Връщане на пари чрез приложението' : 'Cashback via the app'
       ],
@@ -1053,6 +1055,8 @@ const HomePage: React.FC = () => {
         language === 'bg' ? 'Пълен Premium достъп за 7 дни' : 'Full Premium access for 7 days',
         language === 'bg' ? 'Най-високи отстъпки във всички партньори' : 'Highest discounts at all partners',
         language === 'bg' ? 'Достъп до затворени Premium кампании' : 'Access to exclusive Premium campaigns',
+        language === 'bg' ? 'Оферти с ограничен брой или време' : 'Offers with limited quantity or time',
+        language === 'bg' ? 'Ексклузивен достъп до VIP кампании' : 'Exclusive access to VIP campaigns',
         language === 'bg' ? 'Получете помощ в рамките на 1 час' : 'Get help within 1 hour',
         language === 'bg' ? 'Качи касова бележка и получи пари обратно' : 'Upload receipt and get money back'
       ]
@@ -1089,6 +1093,8 @@ const HomePage: React.FC = () => {
         language === 'bg' ? 'Едномесечен Premium достъп' : 'One month Premium access',
         language === 'bg' ? 'До 20% отстъпка' : 'Up to 20% discount',
         language === 'bg' ? 'Ексклузивни Premium оферти' : 'Exclusive Premium offers',
+        language === 'bg' ? 'Специални предложения с ограничена наличност' : 'Limited availability special offers',
+        language === 'bg' ? 'Достъп до затворени Premium кампании' : 'Access to exclusive Premium campaigns',
         language === 'bg' ? 'VIP приоритетна поддръжка' : 'VIP priority support',
         language === 'bg' ? 'Връщане на пари чрез приложението' : 'Cashback via the app'
       ],
@@ -1096,6 +1102,8 @@ const HomePage: React.FC = () => {
         language === 'bg' ? 'Пълен Premium достъп за 30 дни' : 'Full Premium access for 30 days',
         language === 'bg' ? 'Най-високи отстъпки във всички партньори' : 'Highest discounts at all partners',
         language === 'bg' ? 'Достъп до затворени Premium кампании' : 'Access to exclusive Premium campaigns',
+        language === 'bg' ? 'Оферти с ограничен брой или време' : 'Offers with limited quantity or time',
+        language === 'bg' ? 'Ексклузивен достъп до VIP кампании' : 'Exclusive access to VIP campaigns',
         language === 'bg' ? 'Получете помощ в рамките на 1 час' : 'Get help within 1 hour',
         language === 'bg' ? 'Качи касова бележка и получи пари обратно' : 'Upload receipt and get money back'
       ]
@@ -1176,7 +1184,7 @@ const HomePage: React.FC = () => {
                 ? 'Изберете перфектния план за вашия начин на живот'
                 : 'Choose the perfect plan for your lifestyle'}
             </BodyText>
-            <BodyText className="text-lg max-w-2xl mx-auto mt-4 mb-2" style={{ color: '#059669', fontWeight: 700, fontSize: '1.1rem' }}>
+            <BodyText className="text-lg max-w-2xl mx-auto mt-4 mb-2" style={{ color: '#059669', fontWeight: 800, fontSize: '1.4rem' }}>
               {language === 'bg'
                 ? '24 часа безплатен Premium пробен период за всички планове'
                 : '24h free Premium trial for all plans'}
@@ -1442,8 +1450,8 @@ const HomePage: React.FC = () => {
                     author: language === 'bg' ? 'Силвия В.' : 'Silvia V.',
                     rating: 5,
                     comment: language === 'bg'
-                      ? 'Кешбекът дойде за по-малко от 24 часа. Впечатлена съм от бързината.'
-                      : 'The cashback came in less than 24 hours. Impressed by the speed.'
+                      ? 'Много лесно за използване. Вече препоръчах на приятели.'
+                      : 'Very easy to use. Already recommended to friends.'
                   },
                   {
                     author: language === 'bg' ? 'Димитър А.' : 'Dimitar A.',
@@ -1451,6 +1459,118 @@ const HomePage: React.FC = () => {
                     comment: language === 'bg'
                       ? 'Работи добре в София. Искам повече партньори в Пловдив.'
                       : 'Works well in Sofia. Would like more partners in Plovdiv.'
+                  },
+                  {
+                    author: language === 'bg' ? 'Александра Н.' : 'Alexandra N.',
+                    rating: 5,
+                    comment: language === 'bg'
+                      ? 'Използвам картата всяка седмица. Спестих над 150 лв. / €77 за месец.'
+                      : 'I use the card every week. Saved over 150 BGN / €77 in a month.'
+                  },
+                  {
+                    author: language === 'bg' ? 'Стефан Б.' : 'Stefan B.',
+                    rating: 5,
+                    comment: language === 'bg'
+                      ? 'Перфектно за бизнес обеди. Кешбекът идва бързо и без проблеми.'
+                      : 'Perfect for business lunches. Cashback comes quickly and without issues.'
+                  },
+                  {
+                    author: language === 'bg' ? 'Ваня Р.' : 'Vanya R.',
+                    rating: 4,
+                    comment: language === 'bg'
+                      ? 'Добро приложение, лесен интерфейс. Би било страхотно с повече винарни.'
+                      : 'Good app, easy interface. Would be great with more wineries.'
+                  },
+                  {
+                    author: language === 'bg' ? 'Красимир Л.' : 'Krasimir L.',
+                    rating: 5,
+                    comment: language === 'bg'
+                      ? 'Спестих 42 лв. / €21 на рожден ден в ресторант. Препоръчвам!'
+                      : 'Saved 42 BGN / €21 on a birthday dinner at a restaurant. Recommend!'
+                  },
+                  {
+                    author: language === 'bg' ? 'Даниела К.' : 'Daniela K.',
+                    rating: 5,
+                    comment: language === 'bg'
+                      ? 'Супер за семейни излизания. Децата се радват, а ние спестяваме.'
+                      : 'Great for family outings. Kids are happy and we save money.'
+                  },
+                  {
+                    author: language === 'bg' ? 'Тодор В.' : 'Todor V.',
+                    rating: 5,
+                    comment: language === 'bg'
+                      ? 'Качих 5 бележки тази седмица. Всички кешбеци дойдоха навреме.'
+                      : 'Uploaded 5 receipts this week. All cashbacks came on time.'
+                  },
+                  {
+                    author: language === 'bg' ? 'Ирина Х.' : 'Irina H.',
+                    rating: 4,
+                    comment: language === 'bg'
+                      ? 'Харесва ми концепцията. Използвам го предимно в кафенета.'
+                      : 'I like the concept. I use it mainly in cafes.'
+                  },
+                  {
+                    author: language === 'bg' ? 'Борис Г.' : 'Boris G.',
+                    rating: 5,
+                    comment: language === 'bg'
+                      ? 'Отлична услуга! Спестих 89 лв. / €45 за уикенд в Банско.'
+                      : 'Excellent service! Saved 89 BGN / €45 for a weekend in Bansko.'
+                  },
+                  {
+                    author: language === 'bg' ? 'Надя П.' : 'Nadya P.',
+                    rating: 5,
+                    comment: language === 'bg'
+                      ? 'Приложението работи безупречно. VIP поддръжката отговаря веднага.'
+                      : 'The app works flawlessly. VIP support responds immediately.'
+                  },
+                  {
+                    author: language === 'bg' ? 'Мартин Й.' : 'Martin Y.',
+                    rating: 5,
+                    comment: language === 'bg'
+                      ? 'Най-добрата инвестиция тази година. Спестих колкото годишен абонамент за месец.'
+                      : 'Best investment this year. Saved as much as the annual subscription in a month.'
+                  },
+                  {
+                    author: language === 'bg' ? 'Росица Ф.' : 'Rositsa F.',
+                    rating: 4,
+                    comment: language === 'bg'
+                      ? 'Много партньори във Варна. Използвам го всеки уикенд на морето.'
+                      : 'Many partners in Varna. I use it every weekend at the seaside.'
+                  },
+                  {
+                    author: language === 'bg' ? 'Калоян С.' : 'Kaloyan S.',
+                    rating: 5,
+                    comment: language === 'bg'
+                      ? 'Спестих 56 лв. / €29 на вечеря за четирима. Определено си струва.'
+                      : 'Saved 56 BGN / €29 on dinner for four. Definitely worth it.'
+                  },
+                  {
+                    author: language === 'bg' ? 'Анна М.' : 'Anna M.',
+                    rating: 5,
+                    comment: language === 'bg'
+                      ? 'Премиум планът е страхотен. Получавам достъп до ексклузивни оферти.'
+                      : 'The Premium plan is great. I get access to exclusive offers.'
+                  },
+                  {
+                    author: language === 'bg' ? 'Христо Д.' : 'Hristo D.',
+                    rating: 5,
+                    comment: language === 'bg'
+                      ? 'Лесно и бързо. Сканираш, качваш, получаваш кешбек. Толкова просто.'
+                      : 'Easy and fast. Scan, upload, get cashback. That simple.'
+                  },
+                  {
+                    author: language === 'bg' ? 'Виктория Т.' : 'Victoria T.',
+                    rating: 4,
+                    comment: language === 'bg'
+                      ? 'Добро съотношение качество-цена. Бих искала повече хотели в мрежата.'
+                      : 'Good value for money. Would like more hotels in the network.'
+                  },
+                  {
+                    author: language === 'bg' ? 'Пламен К.' : 'Plamen K.',
+                    rating: 5,
+                    comment: language === 'bg'
+                      ? 'Използвам го от 3 месеца. Общо спестени над 280 лв. / €143.'
+                      : 'Been using it for 3 months. Total saved over 280 BGN / €143.'
                   }
                 ].map((testimonial, index) => (
                   <div
@@ -1552,7 +1672,7 @@ const HomePage: React.FC = () => {
               gap: '0.75rem',
               padding: '1rem'
             }}>
-              <Gem size={36} style={{ color: 'var(--color-text-secondary)', opacity: 0.8 }} />
+              <Gem size={36} style={{ color: '#D4AF37' }} />
               <span style={{
                 fontSize: '0.9rem',
                 fontWeight: 500,
@@ -1571,7 +1691,7 @@ const HomePage: React.FC = () => {
               gap: '0.75rem',
               padding: '1rem'
             }}>
-              <CheckCircle size={36} style={{ color: 'var(--color-text-secondary)', opacity: 0.8 }} />
+              <CheckCircle size={36} style={{ color: '#D4AF37' }} />
               <span style={{
                 fontSize: '0.9rem',
                 fontWeight: 500,
@@ -1590,7 +1710,7 @@ const HomePage: React.FC = () => {
               gap: '0.75rem',
               padding: '1rem'
             }}>
-              <Tag size={36} style={{ color: 'var(--color-text-secondary)', opacity: 0.8 }} />
+              <Tag size={36} style={{ color: '#D4AF37' }} />
               <span style={{
                 fontSize: '0.9rem',
                 fontWeight: 500,

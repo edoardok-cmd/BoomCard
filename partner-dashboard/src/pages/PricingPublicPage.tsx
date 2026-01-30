@@ -40,8 +40,8 @@ const HeroSubtitle = styled(motion.p)`
 `;
 
 const TrialPeriodText = styled(motion.p)`
-  font-size: 1.125rem;
-  font-weight: 600;
+  font-size: 1.4rem;
+  font-weight: 800;
   color: #059669;
   margin-bottom: 2rem;
 

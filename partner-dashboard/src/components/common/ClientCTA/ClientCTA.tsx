@@ -279,9 +279,34 @@ const SecondaryButtonsRow = styled.div`
   justify-content: center;
   flex-wrap: wrap;
 
+  /* Make all buttons uniform width */
+  a button {
+    min-width: 200px;
+  }
+
+  /* Browse Offers (first) and Become a Partner (last) - gold border, no background */
+  a:first-child button,
+  a:last-child button {
+    background: transparent !important;
+    border: 2px solid #D4AF37 !important;
+    color: #D4AF37 !important;
+    box-shadow: none !important;
+
+    &:hover {
+      background: rgba(212, 175, 55, 0.15) !important;
+      border-color: #D4AF37 !important;
+      color: #D4AF37 !important;
+    }
+  }
+
   @media (max-width: 768px) {
     flex-direction: column;
     align-items: center;
+
+    a button {
+      min-width: auto;
+      width: 100%;
+    }
   }
 `;
 
