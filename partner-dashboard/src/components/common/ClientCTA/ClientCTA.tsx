@@ -102,7 +102,7 @@ const PrimaryButtonContainer = styled.div`
 
   button {
     min-width: 280px;
-    font-size: 1.1rem;
+    font-size: 1.32rem;
     padding: 1rem 2.5rem;
     background: linear-gradient(135deg, #c9a237 0%, #d4af37 100%) !important;
     color: #000000 !important;
