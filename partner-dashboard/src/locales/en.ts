@@ -924,6 +924,8 @@ export const en = {
     prioritySupport: 'Priority support',
     customOffers: 'Custom offers',
     dataExport: 'Data export',
+    limitedOffers: 'Limited availability special offers',
+    premiumCampaigns: 'Access to exclusive Premium campaigns',
 
     // Enterprise features
     unlimitedTransactions: 'Unlimited transactions',

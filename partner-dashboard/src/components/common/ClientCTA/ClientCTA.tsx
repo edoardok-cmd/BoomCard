@@ -93,164 +93,6 @@ const CTAButtons = styled.div`
       width: 100%;
     }
   }
-
-  /* All buttons in CTA section should work on dark background */
-  a button {
-    /* Override all button variants to work on dark background */
-    color: white !important;
-    border-color: rgba(255, 255, 255, 0.7) !important;
-    font-weight: 600 !important;
-
-    &:hover {
-      border-color: white !important;
-      background: rgba(255, 255, 255, 0.15) !important;
-      color: white !important;
-    }
-  }
-
-  /* Primary/Secondary button - golden gradient background with dark text for contrast */
-  a:first-child button {
-    background: linear-gradient(135deg, #c9a237 0%, #d4af37 100%) !important;
-    color: #000000 !important;
-    border: 2px solid #c9a237 !important;
-    font-weight: 600 !important;
-    box-shadow: 0 4px 15px rgba(201, 162, 55, 0.4) !important;
-
-    &:hover {
-      background: linear-gradient(135deg, #d4af37 0%, #c9a237 100%) !important;
-      color: #000000 !important;
-      border-color: #d4af37 !important;
-      box-shadow: 0 6px 20px rgba(201, 162, 55, 0.5) !important;
-    }
-  }
-
-  /* Become a Partner button - golden gradient like Get Started */
-  a:last-child button {
-    background: linear-gradient(135deg, #c9a237 0%, #d4af37 100%) !important;
-    color: #000000 !important;
-    border: 2px solid #c9a237 !important;
-    font-weight: 600 !important;
-    box-shadow: 0 4px 15px rgba(201, 162, 55, 0.4) !important;
-
-    &:hover {
-      background: linear-gradient(135deg, #d4af37 0%, #c9a237 100%) !important;
-      color: #000000 !important;
-      border-color: #d4af37 !important;
-      box-shadow: 0 6px 20px rgba(201, 162, 55, 0.5) !important;
-    }
-  }
-
-  /* Light theme - ensure all buttons are visible on dark CTA */
-  [data-theme="light"] & a button {
-    color: white !important;
-    border-color: rgba(255, 255, 255, 0.7) !important;
-
-    &:hover {
-      border-color: white !important;
-      background: rgba(255, 255, 255, 0.15) !important;
-      color: white !important;
-    }
-  }
-
-  [data-theme="light"] & a:first-child button {
-    background: linear-gradient(135deg, #c9a237 0%, #d4af37 100%) !important;
-    color: #000000 !important;
-    border: 2px solid #c9a237 !important;
-    box-shadow: 0 4px 15px rgba(201, 162, 55, 0.4) !important;
-
-    &:hover {
-      background: linear-gradient(135deg, #d4af37 0%, #c9a237 100%) !important;
-      color: #000000 !important;
-      box-shadow: 0 6px 20px rgba(201, 162, 55, 0.5) !important;
-    }
-  }
-
-  [data-theme="light"] & a:last-child button {
-    background: linear-gradient(135deg, #c9a237 0%, #d4af37 100%) !important;
-    color: #000000 !important;
-    border: 2px solid #c9a237 !important;
-    box-shadow: 0 4px 15px rgba(201, 162, 55, 0.4) !important;
-
-    &:hover {
-      background: linear-gradient(135deg, #d4af37 0%, #c9a237 100%) !important;
-      color: #000000 !important;
-      box-shadow: 0 6px 20px rgba(201, 162, 55, 0.5) !important;
-    }
-  }
-
-  /* Dark theme - brighter buttons for visibility */
-  [data-theme="dark"] & a button {
-    color: #ffffff !important;
-    border-color: rgba(255, 255, 255, 0.7) !important;
-
-    &:hover {
-      border-color: #60a5fa !important;
-      background: rgba(59, 130, 246, 0.2) !important;
-    }
-  }
-
-  [data-theme="dark"] & a:first-child button {
-    background: linear-gradient(135deg, #c9a237 0%, #d4af37 100%) !important;
-    color: #000000 !important;
-    border: 2px solid #c9a237 !important;
-    box-shadow: 0 4px 15px rgba(201, 162, 55, 0.4) !important;
-
-    &:hover {
-      background: linear-gradient(135deg, #d4af37 0%, #c9a237 100%) !important;
-      color: #000000 !important;
-      box-shadow: 0 6px 20px rgba(201, 162, 55, 0.5) !important;
-    }
-  }
-
-  [data-theme="dark"] & a:last-child button {
-    background: linear-gradient(135deg, #c9a237 0%, #d4af37 100%) !important;
-    color: #000000 !important;
-    border: 2px solid #c9a237 !important;
-    box-shadow: 0 4px 15px rgba(201, 162, 55, 0.4) !important;
-
-    &:hover {
-      background: linear-gradient(135deg, #d4af37 0%, #c9a237 100%) !important;
-      color: #000000 !important;
-      box-shadow: 0 6px 20px rgba(201, 162, 55, 0.5) !important;
-    }
-  }
-
-  /* Color theme - maintain white on blue gradient */
-  [data-theme="color"] & a button {
-    color: white !important;
-    border-color: rgba(255, 255, 255, 0.8) !important;
-
-    &:hover {
-      border-color: white !important;
-      background: rgba(255, 255, 255, 0.2) !important;
-    }
-  }
-
-  [data-theme="color"] & a:first-child button {
-    background: linear-gradient(135deg, #c9a237 0%, #d4af37 100%) !important;
-    color: #000000 !important;
-    border: 2px solid #c9a237 !important;
-    box-shadow: 0 4px 15px rgba(201, 162, 55, 0.4) !important;
-
-    &:hover {
-      background: linear-gradient(135deg, #d4af37 0%, #c9a237 100%) !important;
-      color: #000000 !important;
-      box-shadow: 0 6px 20px rgba(201, 162, 55, 0.5) !important;
-    }
-  }
-
-  [data-theme="color"] & a:last-child button {
-    background: linear-gradient(135deg, #c9a237 0%, #d4af37 100%) !important;
-    color: #000000 !important;
-    border: 2px solid #c9a237 !important;
-    box-shadow: 0 4px 15px rgba(201, 162, 55, 0.4) !important;
-
-    &:hover {
-      background: linear-gradient(135deg, #d4af37 0%, #c9a237 100%) !important;
-      color: #000000 !important;
-      box-shadow: 0 6px 20px rgba(201, 162, 55, 0.5) !important;
-    }
-  }
 `;
 
 const PrimaryButtonContainer = styled.div`
@@ -262,6 +104,18 @@ const PrimaryButtonContainer = styled.div`
     min-width: 280px;
     font-size: 1.1rem;
     padding: 1rem 2.5rem;
+    background: linear-gradient(135deg, #c9a237 0%, #d4af37 100%) !important;
+    color: #000000 !important;
+    border: 2px solid #c9a237 !important;
+    font-weight: 600 !important;
+    box-shadow: 0 4px 15px rgba(201, 162, 55, 0.4) !important;
+
+    &:hover {
+      background: linear-gradient(135deg, #d4af37 0%, #c9a237 100%) !important;
+      color: #000000 !important;
+      border-color: #d4af37 !important;
+      box-shadow: 0 6px 20px rgba(201, 162, 55, 0.5) !important;
+    }
   }
 
   @media (max-width: 768px) {
@@ -279,14 +133,9 @@ const SecondaryButtonsRow = styled.div`
   justify-content: center;
   flex-wrap: wrap;
 
-  /* Make all buttons uniform width */
+  /* Make all buttons uniform - gold border, no background */
   a button {
     min-width: 200px;
-  }
-
-  /* Browse Offers (first) and Become a Partner (last) - gold border, no background */
-  a:first-child button,
-  a:last-child button {
     background: transparent !important;
     border: 2px solid #D4AF37 !important;
     color: #D4AF37 !important;

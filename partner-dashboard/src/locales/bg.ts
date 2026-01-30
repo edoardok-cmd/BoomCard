@@ -926,6 +926,8 @@ export const bg: TranslationKey = {
     prioritySupport: 'Приоритетна поддръжка',
     customOffers: 'Персонализирани оферти',
     dataExport: 'Експорт на данни',
+    limitedOffers: 'Специални предложения с ограничена наличност',
+    premiumCampaigns: 'Достъп до затворени Premium кампании',
 
     // Enterprise features
     unlimitedTransactions: 'Неограничени транзакции',

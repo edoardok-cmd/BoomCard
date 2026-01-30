@@ -208,6 +208,7 @@ const StepCircle = styled.div`
   margin: 0 auto 1.5rem;
   background: var(--color-primary);
   color: var(--color-secondary);
+  opacity: 0.55; /* 45% transparency */
 
   @media (max-width: 768px) {
     width: 3rem;
@@ -322,7 +323,8 @@ const PlanCardWrapper = styled(motion.div)<{ $disabled?: boolean }>`
   align-items: center;
   position: relative;
   padding-top: 1rem; /* Space for "Most Popular" badge */
-  height: 100%; /* Ensure full height */
+  flex: 1; /* Allow wrapper to grow */
+  align-self: stretch; /* Stretch to match siblings */
   opacity: ${props => props.$disabled ? 0.5 : 1};
   filter: ${props => props.$disabled ? 'grayscale(70%)' : 'none'};
   pointer-events: ${props => props.$disabled ? 'none' : 'auto'};
@@ -665,6 +667,7 @@ const PlanDetails = styled.div`
   display: flex;
   flex-direction: column;
   flex: 1; /* Take remaining space */
+  min-height: 0; /* Allow flex shrinking */
 
   @media (max-width: 768px) {
     margin-top: 1.5rem;
@@ -685,6 +688,8 @@ const FeaturesList = styled.ul`
   border-radius: 0.75rem;
   border: 1px solid var(--color-border);
   flex: 1; /* Expand to fill remaining space and align buttons */
+  display: flex;
+  flex-direction: column;
 
   @media (max-width: 768px) {
     padding: 1rem 0;
@@ -1419,13 +1424,6 @@ const HomePage: React.FC = () => {
                       : 'Used it at a bar and restaurant. The process is clear and works as described.'
                   },
                   {
-                    author: language === 'bg' ? 'Елена Д.' : 'Elena D.',
-                    rating: 4,
-                    comment: language === 'bg'
-                      ? 'Идеята с кешбек е удобна. Плащаш нормално и после получаваш връщане на пари.'
-                      : 'The cashback idea is convenient. You pay normally and then get money back.'
-                  },
-                  {
                     author: language === 'bg' ? 'Георги М.' : 'Georgi M.',
                     rating: 5,
                     comment: language === 'bg'
@@ -1466,13 +1464,6 @@ const HomePage: React.FC = () => {
                     comment: language === 'bg'
                       ? 'Използвам картата всяка седмица. Спестих над 150 лв. / €77 за месец.'
                       : 'I use the card every week. Saved over 150 BGN / €77 in a month.'
-                  },
-                  {
-                    author: language === 'bg' ? 'Стефан Б.' : 'Stefan B.',
-                    rating: 5,
-                    comment: language === 'bg'
-                      ? 'Перфектно за бизнес обеди. Кешбекът идва бързо и без проблеми.'
-                      : 'Perfect for business lunches. Cashback comes quickly and without issues.'
                   },
                   {
                     author: language === 'bg' ? 'Ваня Р.' : 'Vanya R.',
