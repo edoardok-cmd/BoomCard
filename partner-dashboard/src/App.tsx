@@ -137,6 +137,7 @@ const PaymentSuccessPage = lazy(() => import('./pages/PaymentSuccessPage'));
 const PaymentCancelPage = lazy(() => import('./pages/PaymentCancelPage'));
 const SubscriptionSuccessPage = lazy(() => import('./pages/SubscriptionSuccessPage'));
 const SubscriptionCancelPage = lazy(() => import('./pages/SubscriptionCancelPage'));
+const CheckoutPage = lazy(() => import('./pages/CheckoutPage'));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -417,6 +418,9 @@ function App() {
                         </ProtectedRoute>
                       }
                     />
+
+                    {/* Checkout route */}
+                    <Route path="checkout" element={<CheckoutPage />} />
 
                     {/* Payment routes */}
                     <Route path="payments/success" element={<PaymentSuccessPage />} />

@@ -505,14 +505,29 @@ const DashboardPage: React.FC = () => {
   // Check if user is a partner or admin
   const isPartner = user?.role === 'partner' || user?.role === 'admin';
 
-  // Fetch real partner data
-  const { data: partnerData, isLoading: isLoadingPartner } = useCurrentPartner();
-  const { data: stats, isLoading: isLoadingStats } = usePartnerStats(partnerData?.id);
-  const { data: offersResponse, isLoading: isLoadingOffers } = useOffers({
+  // Fetch real partner data with error handling
+  const { data: partnerData, isLoading: isLoadingPartner, isError: isPartnerError } = useCurrentPartner();
+  const { data: stats, isLoading: isLoadingStats, isError: isStatsError } = usePartnerStats(partnerData?.id);
+  const { data: offersResponse, isLoading: isLoadingOffers, isError: isOffersError } = useOffers({
     partnerId: partnerData?.id,
     limit: 10,
     active: true
   });
+
+  // Fallback stats when API fails
+  const fallbackStats = {
+    activeOffers: 0,
+    totalOffers: 0,
+    totalRedemptions: 0,
+    monthlyRedemptions: 0,
+    revenue: 0,
+    averageRating: 0,
+    totalReviews: 0,
+    totalVenues: 0,
+  };
+
+  // Use API data if available, otherwise fallback
+  const displayStats = stats || (isStatsError || isPartnerError ? fallbackStats : null);
 
   // Map API data to BoomCards format
   const boomCards: BoomCard[] = useMemo(() => {
@@ -536,10 +551,13 @@ const DashboardPage: React.FC = () => {
   }, [offersResponse]);
 
   const activeCards = boomCards.filter(card => card.status === 'active');
-  const totalSavings = stats?.revenue || 0;
-  const totalUsage = stats?.totalRedemptions || 0;
+  const totalSavings = displayStats?.revenue || 0;
+  const totalUsage = displayStats?.totalRedemptions || 0;
 
-  const isLoading = isLoadingPartner || isLoadingStats || isLoadingOffers;
+  // Stop loading if we have data or if there was an error (show fallback)
+  const isLoading = (isLoadingPartner && !isPartnerError) ||
+                    (isLoadingStats && !isStatsError && !!partnerData?.id) ||
+                    (isLoadingOffers && !isOffersError && !!partnerData?.id);
 
   const formatDate = (timestamp: number) => {
     const date = new Date(timestamp);
@@ -581,9 +599,9 @@ const DashboardPage: React.FC = () => {
               transition={{ duration: 0.3 }}
             >
               <StatLabel>Active Offers</StatLabel>
-              <StatValue>{isLoading ? '...' : stats?.activeOffers || 0}</StatValue>
+              <StatValue>{isLoading ? '...' : displayStats?.activeOffers || 0}</StatValue>
               <StatChange $positive>
-                {stats?.totalOffers || 0} total
+                {displayStats?.totalOffers || 0} total
               </StatChange>
             </StatCard>
 
@@ -593,9 +611,9 @@ const DashboardPage: React.FC = () => {
               transition={{ duration: 0.3, delay: 0.1 }}
             >
               <StatLabel>Total Redemptions</StatLabel>
-              <StatValue>{isLoading ? '...' : (stats?.totalRedemptions || 0).toLocaleString()}</StatValue>
+              <StatValue>{isLoading ? '...' : (displayStats?.totalRedemptions || 0).toLocaleString()}</StatValue>
               <StatChange $positive>
-                {stats?.monthlyRedemptions || 0} this month
+                {displayStats?.monthlyRedemptions || 0} this month
               </StatChange>
             </StatCard>
 
@@ -605,7 +623,7 @@ const DashboardPage: React.FC = () => {
               transition={{ duration: 0.3, delay: 0.2 }}
             >
               <StatLabel>Revenue Generated</StatLabel>
-              <StatValue>{isLoading ? '...' : `${(stats?.revenue || 0).toLocaleString()} лв`}</StatValue>
+              <StatValue>{isLoading ? '...' : `${(displayStats?.revenue || 0).toLocaleString()} лв`}</StatValue>
               <StatChange $positive>
                 From all offers
               </StatChange>
@@ -617,9 +635,9 @@ const DashboardPage: React.FC = () => {
               transition={{ duration: 0.3, delay: 0.3 }}
             >
               <StatLabel>Customer Rating</StatLabel>
-              <StatValue>{isLoading ? '...' : `${stats?.averageRating || 0} ⭐`}</StatValue>
+              <StatValue>{isLoading ? '...' : `${displayStats?.averageRating || 0} ⭐`}</StatValue>
               <StatChange>
-                Based on {stats?.totalReviews || 0} reviews
+                Based on {displayStats?.totalReviews || 0} reviews
               </StatChange>
             </StatCard>
           </StatsGrid>

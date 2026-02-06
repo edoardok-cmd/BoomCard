@@ -11,6 +11,8 @@ export function useOffers(filters?: OfferFilters) {
     queryKey: ['offers', filters],
     queryFn: () => offersService.getOffers(filters),
     staleTime: 5 * 60 * 1000, // 5 minutes
+    retry: 1,
+    retryDelay: 1000,
   });
 }
 

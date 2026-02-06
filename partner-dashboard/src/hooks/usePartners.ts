@@ -110,6 +110,8 @@ export function useCurrentPartner() {
     queryKey: ['partner', 'me'],
     queryFn: () => partnersService.getCurrentPartner(),
     staleTime: 10 * 60 * 1000,
+    retry: 1,
+    retryDelay: 1000,
   });
 }
 
@@ -122,6 +124,8 @@ export function usePartnerStats(partnerId: string | undefined) {
     queryFn: () => partnersService.getPartnerStats(partnerId!),
     enabled: !!partnerId,
     staleTime: 5 * 60 * 1000,
+    retry: 1,
+    retryDelay: 1000,
   });
 }
 

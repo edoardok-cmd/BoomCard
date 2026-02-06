@@ -1030,7 +1030,7 @@ const PricingPublicPage: React.FC = () => {
                       </div>
                     ) : (
                       /* SECURITY: Only pass planId and billing period - NO PRICE IN URL */
-                      <Link to={`/register?planId=${plan.id}&billing=${billingPeriod}`}>
+                      <Link to={`/checkout?planId=${plan.id}&billing=${billingPeriod}`}>
                         <Button
                           variant={plan.isFeatured ? 'primary' : 'secondary'}
                           size="large"

@@ -760,7 +760,8 @@ const SubscriptionsPage: React.FC = () => {
                       </Button>
                     </div>
                   ) : (
-                    <Link to={`/register?plan=${encodeURIComponent(plan.name)}&price=${displayPrice}&currency=EUR&billing=${billingPeriod}`}>
+                    /* SECURITY: Only pass planCode and billing period - NO PRICE IN URL */
+                    <Link to={`/checkout?planCode=${plan.type}&billing=${isLitePlan ? 'weekly' : billingPeriod}`}>
                       <Button
                         variant={plan.featured ? 'primary' : 'secondary'}
                         size="large"
