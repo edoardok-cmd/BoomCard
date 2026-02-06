@@ -148,7 +148,8 @@ const PlanCardWrapper = styled(motion.div)<{ $disabled?: boolean }>`
   align-items: center;
   position: relative;
   padding-top: 1rem;
-  height: 100%;
+  flex: 1;
+  align-self: stretch;
   opacity: ${props => props.$disabled ? 0.5 : 1};
   filter: ${props => props.$disabled ? 'grayscale(70%)' : 'none'};
   pointer-events: ${props => props.$disabled ? 'none' : 'auto'};
@@ -598,6 +599,129 @@ const ErrorMessage = styled.div`
   font-size: 1.125rem;
 `;
 
+// Fallback plans data when API is unavailable
+const getFallbackPlans = (lang: 'en' | 'bg'): Plan[] => [
+  {
+    id: 'lite-premium',
+    planCode: 'LITE_PREMIUM',
+    displayName: 'LITE PREMIUM',
+    displayNameBg: 'ЛАЙТ ПРЕМИУМ',
+    pricing: {
+      weekly: 4.99,
+      monthly: null,
+      yearly: 52,
+      currency: 'EUR',
+      yearlyDiscountPct: 20
+    },
+    billingOptions: {
+      hasWeekly: true,
+      hasMonthly: false,
+      hasYearly: false
+    },
+    cashbackRate: 20,
+    stickerBonus: 0,
+    features: [
+      'One week Premium access',
+      'Up to 20% discount',
+      'Exclusive Premium offers',
+      'Limited availability special offers',
+      'Access to exclusive Premium campaigns',
+      'VIP priority support',
+      'Cashback via the app'
+    ],
+    featuresBg: [
+      'Едноседмичен Premium достъп',
+      'До 20% отстъпка',
+      'Ексклузивни Premium оферти',
+      'Специални предложения с ограничена наличност',
+      'Достъп до затворени Premium кампании',
+      'VIP приоритетна поддръжка',
+      'Връщане на пари чрез приложението'
+    ],
+    cardType: 'light',
+    isFeatured: false,
+    badge: { text: 'Most Bought', textBg: 'Най-купуван' }
+  },
+  {
+    id: 'basic',
+    planCode: 'BASIC',
+    displayName: 'BASIC',
+    displayNameBg: 'ОСНОВЕН',
+    pricing: {
+      weekly: null,
+      monthly: 7.99,
+      yearly: 84,
+      currency: 'EUR',
+      yearlyDiscountPct: 20
+    },
+    billingOptions: {
+      hasWeekly: false,
+      hasMonthly: true,
+      hasYearly: true
+    },
+    cashbackRate: 10,
+    stickerBonus: 0,
+    features: [
+      'One month access',
+      'Up to 10% discount',
+      'Cashback via the app',
+      'Access to partner offers',
+      'Standard support'
+    ],
+    featuresBg: [
+      'Едномесечен достъп',
+      'До 10% отстъпка',
+      'Връщане на пари чрез приложението',
+      'Достъп до партньорски оферти',
+      'Стандартна поддръжка'
+    ],
+    cardType: 'silver',
+    isFeatured: false,
+    badge: null
+  },
+  {
+    id: 'premium',
+    planCode: 'PREMIUM',
+    displayName: 'PREMIUM',
+    displayNameBg: 'ПРЕМИУМ',
+    pricing: {
+      weekly: null,
+      monthly: 12.99,
+      yearly: 136,
+      currency: 'EUR',
+      yearlyDiscountPct: 20
+    },
+    billingOptions: {
+      hasWeekly: false,
+      hasMonthly: true,
+      hasYearly: true
+    },
+    cashbackRate: 20,
+    stickerBonus: 0,
+    features: [
+      'One month Premium access',
+      'Up to 20% discount',
+      'Exclusive Premium offers',
+      'Limited availability special offers',
+      'Access to exclusive Premium campaigns',
+      'VIP priority support',
+      'Cashback via the app'
+    ],
+    featuresBg: [
+      'Едномесечен Premium достъп',
+      'До 20% отстъпка',
+      'Ексклузивни Premium оферти',
+      'Специални предложения с ограничена наличност',
+      'Достъп до затворени Premium кампании',
+      'VIP приоритетна поддръжка',
+      'Връщане на пари чрез приложението'
+    ],
+    cardType: 'black',
+    isFeatured: true,
+    badge: { text: 'Most Popular', textBg: 'Най-популярен' }
+  }
+];
+
 const PricingPublicPage: React.FC = () => {
   const { language } = useLanguage();
   const [isAnnual, setIsAnnual] = useState(false);
@@ -605,19 +729,27 @@ const PricingPublicPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Fetch plans from API (SERVER-SIDE PRICING - source of truth)
+  // Fetch plans from API with fallback to static data
   useEffect(() => {
     const fetchPlans = async () => {
       try {
         setLoading(true);
         setError(null);
-        const apiPlans = await plansService.getPlans();
+
+        // Set a timeout for the API call
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          setTimeout(() => reject(new Error('API timeout')), 5000);
+        });
+
+        const apiPlans = await Promise.race([
+          plansService.getPlans(),
+          timeoutPromise
+        ]);
         setPlans(apiPlans);
       } catch (err) {
-        console.error('Error fetching plans:', err);
-        setError(language === 'bg'
-          ? 'Грешка при зареждане на плановете. Моля, опитайте отново.'
-          : 'Error loading plans. Please try again.');
+        console.warn('API unavailable, using fallback plans:', err);
+        // Use fallback plans instead of showing error
+        setPlans(getFallbackPlans(language as 'en' | 'bg'));
       } finally {
         setLoading(false);
       }

@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import GenericPage from '../components/templates/GenericPage';
 import Button from '../components/common/Button/Button';
 import { useLanguage } from '../contexts/LanguageContext';
+import { convertEURToBGN } from '../utils/helpers';
 import styled from 'styled-components';
 
 // Subscription cards - Credit card design matching HomePage
@@ -545,67 +546,78 @@ const SubscriptionsPage: React.FC = () => {
 
   const subscriptionPlans = [
     {
-      name: language === 'bg' ? 'Лайт План' : 'Lite Plan',
+      name: language === 'bg' ? 'ЛАЙТ ПРЕМИУМ' : 'LITE PREMIUM',
       monthlyPrice: 4.99,
+      monthlyPriceBGN: 9.77,
       yearlyPrice: 52,
-      duration: language === 'bg' ? ' €/седмица' : ' €/week',
+      duration: language === 'bg' ? '/седмица' : '/week',
       type: 'starter' as const,
       features: [
-        language === 'bg' ? '24 часа премиум услуга' : '24 hours premium service',
-        language === 'bg' ? 'Важи една седмица' : 'Valid for one week',
-        language === 'bg' ? 'Достъп до основни оферти' : 'Access to basic offers',
-        '', // Empty line 4
-        ''  // Empty line 5
+        language === 'bg' ? 'Едноседмичен Premium достъп' : 'One week Premium access',
+        language === 'bg' ? 'До 20% отстъпка' : 'Up to 20% discount',
+        language === 'bg' ? 'Ексклузивни Premium оферти' : 'Exclusive Premium offers',
+        language === 'bg' ? 'Специални предложения с ограничена наличност' : 'Limited availability special offers',
+        language === 'bg' ? 'Достъп до затворени Premium кампании' : 'Access to exclusive Premium campaigns',
+        language === 'bg' ? 'VIP приоритетна поддръжка' : 'VIP priority support',
+        language === 'bg' ? 'Връщане на пари чрез приложението' : 'Cashback via the app'
       ],
       tooltips: [
-        language === 'bg' ? 'Пробвайте всички премиум функции за 24 часа' : 'Try all premium features for 24 hours',
-        language === 'bg' ? 'Достъп за 7 дни след активиране' : 'Access for 7 days after activation',
-        language === 'bg' ? 'Над 500 партньори в цялата страна' : 'Over 500 partners across the country',
-        '', // Empty tooltip
-        ''  // Empty tooltip
+        language === 'bg' ? 'Пълен Premium достъп за 7 дни' : 'Full Premium access for 7 days',
+        language === 'bg' ? 'Най-високи отстъпки във всички партньори' : 'Highest discounts at all partners',
+        language === 'bg' ? 'Достъп до затворени Premium кампании' : 'Access to exclusive Premium campaigns',
+        language === 'bg' ? 'Оферти с ограничен брой или време' : 'Offers with limited quantity or time',
+        language === 'bg' ? 'Ексклузивен достъп до VIP кампании' : 'Exclusive access to VIP campaigns',
+        language === 'bg' ? 'Получете помощ в рамките на 1 час' : 'Get help within 1 hour',
+        language === 'bg' ? 'Качи касова бележка и получи пари обратно' : 'Upload receipt and get money back'
       ]
     },
     {
-      name: language === 'bg' ? 'Основен' : 'Basic',
+      name: language === 'bg' ? 'ОСНОВЕН' : 'BASIC',
       monthlyPrice: 7.99,
+      monthlyPriceBGN: 15.63,
       yearlyPrice: 84,
-      duration: language === 'bg' ? ' €/месец' : ' €/month',
+      duration: language === 'bg' ? '/месец' : '/month',
       type: 'basic' as const,
       features: [
-        language === 'bg' ? '24 часа премиум услуга' : '24 hours premium service',
-        language === 'bg' ? 'Достъп до основни оферти' : 'Access to basic offers',
+        language === 'bg' ? 'Едномесечен достъп' : 'One month access',
         language === 'bg' ? 'До 10% отстъпка' : 'Up to 10% discount',
-        language === 'bg' ? 'Кешбек в приложението' : 'In-app cashback',
-        '' // Empty line 5
+        language === 'bg' ? 'Връщане на пари чрез приложението' : 'Cashback via the app',
+        language === 'bg' ? 'Достъп до партньорски оферти' : 'Access to partner offers',
+        language === 'bg' ? 'Стандартна поддръжка' : 'Standard support'
       ],
       tooltips: [
-        language === 'bg' ? 'Пробвайте всички премиум функции за 24 часа' : 'Try all premium features for 24 hours',
+        language === 'bg' ? 'Пълен достъп за 30 дни' : 'Full access for 30 days',
+        language === 'bg' ? 'Отстъпки в избрани заведения' : 'Discounts at selected venues',
+        language === 'bg' ? 'Качи касова бележка и получи пари обратно' : 'Upload receipt and get money back',
         language === 'bg' ? 'Над 500 партньори в цялата страна' : 'Over 500 partners across the country',
-        language === 'bg' ? 'Ексклузивни отстъпки в избрани заведения' : 'Exclusive discounts at selected venues',
-        language === 'bg' ? 'Връщане на пари при всяка покупка' : 'Cashback on every purchase',
-        '' // Empty tooltip
+        language === 'bg' ? 'Отговор в рамките на 24 часа' : 'Response within 24 hours'
       ]
     },
     {
-      name: language === 'bg' ? 'Премиум' : 'Premium',
+      name: language === 'bg' ? 'ПРЕМИУМ' : 'PREMIUM',
       monthlyPrice: 12.99,
+      monthlyPriceBGN: 25.41,
       yearlyPrice: 136,
-      duration: language === 'bg' ? ' €/месец' : ' €/month',
+      duration: language === 'bg' ? '/месец' : '/month',
       featured: true,
       type: 'premium' as const,
       features: [
-        language === 'bg' ? '24 часа премиум услуга' : '24 hours premium service',
+        language === 'bg' ? 'Едномесечен Premium достъп' : 'One month Premium access',
         language === 'bg' ? 'До 20% отстъпка' : 'Up to 20% discount',
-        language === 'bg' ? 'В зависимост от заведението' : 'Depending on the venue',
-        language === 'bg' ? 'Приоритетна поддръжка' : 'Priority support',
-        language === 'bg' ? 'Ексклузивни оферти' : 'Exclusive offers'
+        language === 'bg' ? 'Ексклузивни Premium оферти' : 'Exclusive Premium offers',
+        language === 'bg' ? 'Специални предложения с ограничена наличност' : 'Limited availability special offers',
+        language === 'bg' ? 'Достъп до затворени Premium кампании' : 'Access to exclusive Premium campaigns',
+        language === 'bg' ? 'VIP приоритетна поддръжка' : 'VIP priority support',
+        language === 'bg' ? 'Връщане на пари чрез приложението' : 'Cashback via the app'
       ],
       tooltips: [
-        language === 'bg' ? 'Пробвайте всички премиум функции за 24 часа' : 'Try all premium features for 24 hours',
+        language === 'bg' ? 'Пълен Premium достъп за 30 дни' : 'Full Premium access for 30 days',
         language === 'bg' ? 'Най-високи отстъпки във всички партньори' : 'Highest discounts at all partners',
-        language === 'bg' ? 'Отстъпките варират според партньора' : 'Discounts vary by partner',
+        language === 'bg' ? 'Достъп до затворени Premium кампании' : 'Access to exclusive Premium campaigns',
+        language === 'bg' ? 'Оферти с ограничен брой или време' : 'Offers with limited quantity or time',
+        language === 'bg' ? 'Ексклузивен достъп до VIP кампании' : 'Exclusive access to VIP campaigns',
         language === 'bg' ? 'Получете помощ в рамките на 1 час' : 'Get help within 1 hour',
-        language === 'bg' ? 'Достъп до лимитирани VIP промоции' : 'Access to limited VIP promotions'
+        language === 'bg' ? 'Качи касова бележка и получи пари обратно' : 'Upload receipt and get money back'
       ]
     }
   ];
@@ -617,6 +629,24 @@ const SubscriptionsPage: React.FC = () => {
       subtitleEn="Choose the perfect plan for your lifestyle"
       subtitleBg="Изберете перфектния план за вашия начин на живот"
     >
+      {/* 24h Free Trial Text */}
+      <div style={{
+        textAlign: 'center',
+        marginBottom: '2rem',
+        fontFamily: "'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+      }}>
+        <p style={{
+          color: '#059669',
+          fontWeight: 800,
+          fontSize: '1.4rem',
+          margin: 0
+        }}>
+          {language === 'bg'
+            ? '24 часа безплатен Premium пробен период за всички планове'
+            : '24h free Premium trial for all plans'}
+        </p>
+      </div>
+
       {/* Billing Period Toggle */}
       <BillingToggleContainer>
         <BillingToggle>
@@ -640,14 +670,20 @@ const SubscriptionsPage: React.FC = () => {
           const planType = plan.type;
           const isLitePlan = planType === 'starter';
           const isDisabled = isLitePlan && billingPeriod === 'yearly';
-          // Lite plan always shows weekly price, even when disabled
-          const displayPrice = isLitePlan
+          // Calculate EUR and BGN prices
+          const eurPrice = isLitePlan
             ? plan.monthlyPrice
             : (billingPeriod === 'yearly' ? plan.yearlyPrice : plan.monthlyPrice);
+          const bgnPrice = isLitePlan
+            ? plan.monthlyPriceBGN
+            : (billingPeriod === 'yearly' ? convertEURToBGN(plan.yearlyPrice) : plan.monthlyPriceBGN);
+          const bgnLabel = language === 'bg' ? 'лв.' : 'BGN';
+          // Display dual currency: BGN / €EUR
+          const displayPrice = `${bgnPrice.toFixed(2)} ${bgnLabel} / €${eurPrice}`;
           const priceLabel = isLitePlan
             ? plan.duration
             : (billingPeriod === 'yearly'
-              ? (language === 'bg' ? ' €/година' : ' €/year')
+              ? (language === 'bg' ? '/година' : '/year')
               : plan.duration);
 
           return (
@@ -738,6 +774,27 @@ const SubscriptionsPage: React.FC = () => {
           );
         })}
       </SubscriptionCardsContainer>
+
+      {/* Cashback Explanation */}
+      <div style={{
+        textAlign: 'center',
+        marginTop: '2rem',
+        maxWidth: '48rem',
+        marginLeft: 'auto',
+        marginRight: 'auto',
+        fontFamily: "'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+      }}>
+        <p style={{
+          color: 'var(--color-text-secondary)',
+          fontSize: '0.9rem',
+          lineHeight: 1.6,
+          margin: 0
+        }}>
+          {language === 'bg'
+            ? 'Отстъпките се получават под формата на връщане на пари след качване на касова бележка в приложението. Процентът зависи от абонаментния план.'
+            : 'Discounts are received as cashback after uploading a receipt in the app. The percentage depends on the subscription plan.'}
+        </p>
+      </div>
     </GenericPage>
   );
 };

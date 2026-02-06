@@ -184,7 +184,9 @@
       "Bash(source .env)",
       "Bash(npm info:*)",
       "mcp__playwright__browser_evaluate",
-      "mcp__playwright__browser_run_code"
+      "mcp__playwright__browser_run_code",
+      "mcp__playwright__browser_hover",
+      "mcp__playwright__browser_resize"
     ],
     "deny": [],
     "ask": []
