@@ -498,7 +498,7 @@ const MobileMenuPanel = styled(motion.div)`
     background: var(--color-background, #0f172a);
   }
 
-  @media (min-width: 1024px) {
+  @media (min-width: 1280px) {
     display: none;
   }
 `;
@@ -909,7 +909,7 @@ export const Header: React.FC<HeaderProps> = ({
           </Link>
 
           {/* Desktop Navigation - Absolutely centered on page */}
-          <div className="hidden lg:flex items-center justify-center absolute left-1/2 transform -translate-x-1/2 pointer-events-auto" style={{ maxWidth: 'calc(100% - 500px)' }}>
+          <div className="hidden xl:flex items-center justify-center absolute left-1/2 transform -translate-x-1/2 pointer-events-auto" style={{ maxWidth: 'calc(100% - 500px)' }}>
             <MegaMenu items={navigationConfig.main} language={language} onMenuItemClick={undefined} />
           </div>
 
@@ -934,7 +934,7 @@ export const Header: React.FC<HeaderProps> = ({
 
             {/* Nearby Offers - Desktop only */}
             <Tooltip content={language === 'bg' ? 'Близки оферти' : 'Nearby Offers'} position="bottom">
-              <FavoritesLink to="/nearby" aria-label="Nearby Offers" className="hidden lg:flex">
+              <FavoritesLink to="/nearby" aria-label="Nearby Offers" className="hidden xl:flex">
                 <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path
                     strokeLinecap="round"
@@ -955,7 +955,7 @@ export const Header: React.FC<HeaderProps> = ({
             {/* Favorites - Desktop only, only for authenticated users */}
             {isAuthenticated ? (
               <Tooltip content={language === 'bg' ? 'Любими' : 'Favorites'} position="bottom">
-                <FavoritesLink to="/favorites" aria-label="Favorites" className="hidden lg:flex">
+                <FavoritesLink to="/favorites" aria-label="Favorites" className="hidden xl:flex">
                   <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path
                       strokeLinecap="round"
@@ -980,7 +980,7 @@ export const Header: React.FC<HeaderProps> = ({
               </Tooltip>
             ) : (
               <Tooltip content={language === 'bg' ? 'Влезте, за да запазите любими' : 'Sign in to save favorites'} position="bottom">
-                <FavoritesLink to="/login" aria-label="Sign in to save favorites" className="hidden lg:flex" style={{ opacity: 0.5 }}>
+                <FavoritesLink to="/login" aria-label="Sign in to save favorites" className="hidden xl:flex" style={{ opacity: 0.5 }}>
                   <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path
                       strokeLinecap="round"
@@ -1003,7 +1003,7 @@ export const Header: React.FC<HeaderProps> = ({
             )}
 
             {/* Theme Switcher - Desktop only */}
-            <ThemeMenuContainer ref={themeMenuRef} className="hidden lg:flex">
+            <ThemeMenuContainer ref={themeMenuRef} className="hidden xl:flex">
               <Tooltip content={language === 'bg' ? 'Промени тема' : 'Change Theme'} position="bottom">
                 <ThemeButton
                   onClick={() => setThemeMenuOpen(!themeMenuOpen)}
@@ -1060,7 +1060,7 @@ export const Header: React.FC<HeaderProps> = ({
             {/* Language Toggle - Desktop only */}
             <Tooltip content={language === 'en' ? 'Switch to Bulgarian' : 'Превключи на английски'} position="bottom">
               <LanguageButton
-                className="hidden lg:flex"
+                className="hidden xl:flex"
                 onClick={() => setLanguage(language === 'en' ? 'bg' : 'en')}
                 aria-label="Toggle language"
               >
@@ -1245,7 +1245,7 @@ export const Header: React.FC<HeaderProps> = ({
               </UserMenuContainer>
             ) : (
               <>
-                <Link to="/login" className="hidden lg:block">
+                <Link to="/login" className="hidden xl:block">
                   <Button variant="ghost" size="small">
                     {t('common.signIn')}
                   </Button>
@@ -1257,7 +1257,7 @@ export const Header: React.FC<HeaderProps> = ({
           {/* Mobile Menu Button - Show when menu is hidden */}
           <button
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="lg:hidden z-[10000] p-1.5 sm:p-2 transition-colors ml-1.5 sm:ml-2 flex-shrink-0"
+            className="xl:hidden z-[10000] p-1.5 sm:p-2 transition-colors ml-1.5 sm:ml-2 flex-shrink-0"
             style={{
               color: 'var(--color-text-primary)'
             }}
