@@ -33,7 +33,8 @@ const PlanCardWrapper = styled(motion.div)<{ $disabled?: boolean }>`
   align-items: center;
   position: relative;
   padding-top: 1rem;
-  height: 100%;
+  flex: 1;
+  align-self: stretch;
   opacity: ${props => props.$disabled ? 0.5 : 1};
   filter: ${props => props.$disabled ? 'grayscale(70%)' : 'none'};
   pointer-events: ${props => props.$disabled ? 'none' : 'auto'};
