@@ -9,6 +9,129 @@ import { plansService, Plan } from '../services/plans.service';
 import { convertEURToBGN } from '../utils/helpers';
 import Button from '../components/common/Button/Button';
 
+// Fallback plans when API is unavailable
+const getFallbackPlans = (): Plan[] => [
+  {
+    id: 'lite-premium',
+    planCode: 'lite-premium',
+    displayName: 'LITE PREMIUM',
+    displayNameBg: 'ЛАЙТ ПРЕМИУМ',
+    pricing: {
+      weekly: 4.99,
+      monthly: null,
+      yearly: 52,
+      currency: 'EUR',
+      yearlyDiscountPct: 0,
+    },
+    billingOptions: {
+      hasWeekly: true,
+      hasMonthly: false,
+      hasYearly: false,
+    },
+    cashbackRate: 20,
+    stickerBonus: 0,
+    features: [
+      'One week Premium access',
+      'Up to 20% discount',
+      'Exclusive Premium offers',
+      'Limited availability special offers',
+      'Access to exclusive Premium campaigns',
+      'VIP priority support',
+      'Cashback via the app',
+    ],
+    featuresBg: [
+      'Едноседмичен Premium достъп',
+      'До 20% отстъпка',
+      'Ексклузивни Premium оферти',
+      'Специални предложения с ограничена наличност',
+      'Достъп до затворени Premium кампании',
+      'VIP приоритетна поддръжка',
+      'Връщане на пари чрез приложението',
+    ],
+    cardType: 'light',
+    isFeatured: false,
+    badge: { text: 'Most Bought', textBg: 'Най-купуван' },
+  },
+  {
+    id: 'basic',
+    planCode: 'basic',
+    displayName: 'BASIC',
+    displayNameBg: 'ОСНОВЕН',
+    pricing: {
+      weekly: null,
+      monthly: 7.99,
+      yearly: 84,
+      currency: 'EUR',
+      yearlyDiscountPct: 12,
+    },
+    billingOptions: {
+      hasWeekly: false,
+      hasMonthly: true,
+      hasYearly: true,
+    },
+    cashbackRate: 10,
+    stickerBonus: 0,
+    features: [
+      'One month access',
+      'Up to 10% discount',
+      'Cashback via the app',
+      'Access to partner offers',
+      'Standard support',
+    ],
+    featuresBg: [
+      'Едномесечен достъп',
+      'До 10% отстъпка',
+      'Връщане на пари чрез приложението',
+      'Достъп до партньорски оферти',
+      'Стандартна поддръжка',
+    ],
+    cardType: 'silver',
+    isFeatured: false,
+    badge: null,
+  },
+  {
+    id: 'premium',
+    planCode: 'premium',
+    displayName: 'PREMIUM',
+    displayNameBg: 'ПРЕМИУМ',
+    pricing: {
+      weekly: null,
+      monthly: 12.99,
+      yearly: 136,
+      currency: 'EUR',
+      yearlyDiscountPct: 13,
+    },
+    billingOptions: {
+      hasWeekly: false,
+      hasMonthly: true,
+      hasYearly: true,
+    },
+    cashbackRate: 20,
+    stickerBonus: 0,
+    features: [
+      'One month Premium access',
+      'Up to 20% discount',
+      'Exclusive Premium offers',
+      'Limited availability special offers',
+      'Access to exclusive Premium campaigns',
+      'VIP priority support',
+      'Cashback via the app',
+    ],
+    featuresBg: [
+      'Едномесечен Premium достъп',
+      'До 20% отстъпка',
+      'Ексклузивни Premium оферти',
+      'Специални предложения с ограничена наличност',
+      'Достъп до затворени Premium кампании',
+      'VIP приоритетна поддръжка',
+      'Връщане на пари чрез приложението',
+    ],
+    cardType: 'black',
+    isFeatured: true,
+    badge: { text: 'Most Popular', textBg: 'Най-популярен' },
+  },
+];
+
 const PageContainer = styled.div`
   min-height: 100vh;
   background: var(--color-background);
@@ -330,7 +453,20 @@ const CheckoutPage: React.FC = () => {
         setPlan(fetchedPlan);
       } catch (err) {
         console.error('Error fetching plan:', err);
-        setError(language === 'bg' ? 'Грешка при зареждане на плана' : 'Error loading plan');
+        // Try to find plan in fallback data
+        const fallbackPlans = getFallbackPlans();
+        const identifier = planId || planCode;
+        const fallbackPlan = fallbackPlans.find(
+          p => p.id === identifier || p.planCode === identifier
+        );
+
+        if (fallbackPlan) {
+          console.warn('API unavailable, using fallback plan data');
+          setPlan(fallbackPlan);
+          setResolvedPlanId(fallbackPlan.id);
+        } else {
+          setError(language === 'bg' ? 'Грешка при зареждане на плана' : 'Error loading plan');
+        }
       } finally {
         setLoading(false);
       }
