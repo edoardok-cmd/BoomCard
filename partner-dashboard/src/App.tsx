@@ -294,9 +294,41 @@ function App() {
 
                     {/* Experiences routes */}
                     <Route path="experiences" element={<ExperiencesPage />} />
+                    {/* Gastronomic */}
+                    <Route path="experiences/gastronomic" element={<ExperiencesGastronomyPage />} />
+                    <Route path="experiences/gastronomic/degustations" element={<ExperiencesGastronomyPage />} />
+                    <Route path="experiences/gastronomic/food-traditions" element={<ExperiencesFoodToursPage />} />
+                    {/* Historical & Cultural */}
+                    <Route path="experiences/historical-cultural" element={<ExperiencesCulturalPage />} />
+                    <Route path="experiences/historical-cultural/walking-tours" element={<ExperiencesCulturalPage />} />
+                    <Route path="experiences/historical-cultural/historical-tours" element={<ExperiencesCulturalPage />} />
+                    <Route path="experiences/historical-cultural/museums-galleries" element={<ExperiencesMuseumsPage />} />
+                    {/* Active & Adventure */}
+                    <Route path="experiences/active-adventure" element={<ExperiencesAdventurePage />} />
+                    <Route path="experiences/active-adventure/nature-tours" element={<ExperiencesAdventurePage />} />
+                    <Route path="experiences/active-adventure/bike-tours" element={<ExperiencesAdventurePage />} />
+                    <Route path="experiences/active-adventure/offroad-atv" element={<ExperiencesAdventurePage />} />
+                    <Route path="experiences/active-adventure/water-activities" element={<ExperiencesAdventurePage />} />
+                    {/* Extreme */}
+                    <Route path="experiences/extreme" element={<ExperiencesExtremePage />} />
+                    <Route path="experiences/extreme/aerial" element={<ExperiencesExtremePage />} />
+                    <Route path="experiences/extreme/jumping" element={<ExperiencesExtremePage />} />
+                    <Route path="experiences/extreme/motorcycles" element={<ExperiencesExtremePage />} />
+                    <Route path="experiences/extreme/water" element={<ExperiencesExtremePage />} />
+                    {/* Educational & Creative */}
+                    <Route path="experiences/educational-creative" element={<ExperiencesEducationalPage />} />
+                    <Route path="experiences/educational-creative/cooking" element={<ExperiencesLearningPage />} />
+                    <Route path="experiences/educational-creative/workshops" element={<ExperiencesLearningPage />} />
+                    <Route path="experiences/educational-creative/arts" element={<ExperiencesLearningPage />} />
+                    {/* Relax & Wellness */}
+                    <Route path="experiences/relax-wellness" element={<ExperiencesRomanticPage />} />
+                    <Route path="experiences/relax-wellness/spa-thermal" element={<ExperiencesRomanticPage />} />
+                    <Route path="experiences/relax-wellness/massages-therapies" element={<ExperiencesRomanticPage />} />
+                    <Route path="experiences/relax-wellness/relax-experiences" element={<ExperiencesRomanticPage />} />
+                    <Route path="experiences/relax-wellness/yoga-meditation" element={<ExperiencesRomanticPage />} />
+                    {/* Legacy routes (keep for backwards compatibility) */}
                     <Route path="experiences/gastronomy" element={<ExperiencesGastronomyPage />} />
                     <Route path="experiences/gastronomy/food-tours" element={<ExperiencesFoodToursPage />} />
-                    <Route path="experiences/extreme" element={<ExperiencesExtremePage />} />
                     <Route path="experiences/extreme/adventure" element={<ExperiencesAdventurePage />} />
                     <Route path="experiences/cultural" element={<ExperiencesCulturalPage />} />
                     <Route path="experiences/cultural/museums" element={<ExperiencesMuseumsPage />} />
