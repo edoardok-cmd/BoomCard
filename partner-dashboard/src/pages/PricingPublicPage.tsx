@@ -7,6 +7,7 @@ import { useLanguage } from '../contexts/LanguageContext';
 import ClientCTA from '../components/common/ClientCTA/ClientCTA';
 import Button from '../components/common/Button/Button';
 import { plansService, Plan } from '../services/plans.service';
+import { convertEURToBGN } from '../utils/helpers';
 
 const PageContainer = styled.div`
   min-height: 100vh;
@@ -400,15 +401,12 @@ const CardPriceDisplay = styled.div<{ $type: 'black' | 'silver' | 'light' }>`
     if (props.$type === 'light') return '#6c757d';
     return 'rgba(26, 26, 26, 0.95)';
   }};
-  font-size: 1.75rem;
-  font-weight: 400;
-  line-height: 1;
-
-  span {
-    font-size: 0.875rem;
-    font-weight: 400;
-    opacity: 0.9;
-  }
+  font-size: 1.25rem;
+  font-weight: 500;
+  line-height: 1.3;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
 
   [data-theme="dark"] & {
     color: ${props => {
@@ -843,24 +841,28 @@ const PricingPublicPage: React.FC = () => {
             const isDisabled = isWeeklyOnlyPlan && isAnnual;
 
             // Determine display price based on plan's billing options
-            let displayPrice: number | null;
+            let displayPriceEUR: number | null;
             let billingPeriod: 'weekly' | 'monthly' | 'yearly';
-            let priceLabel: string;
+            let periodLabel: string;
 
             if (isWeeklyOnlyPlan) {
               // Weekly-only plan always shows weekly price
-              displayPrice = plan.pricing.weekly;
+              displayPriceEUR = plan.pricing.weekly;
               billingPeriod = 'weekly';
-              priceLabel = language === 'bg' ? ' €/седмица' : ' €/week';
+              periodLabel = language === 'bg' ? '/седмица' : '/week';
             } else if (isAnnual) {
-              displayPrice = plan.pricing.yearly;
+              displayPriceEUR = plan.pricing.yearly;
               billingPeriod = 'yearly';
-              priceLabel = language === 'bg' ? ' €/година' : ' €/year';
+              periodLabel = language === 'bg' ? '/година' : '/year';
             } else {
-              displayPrice = plan.pricing.monthly;
+              displayPriceEUR = plan.pricing.monthly;
               billingPeriod = 'monthly';
-              priceLabel = language === 'bg' ? ' €/месец' : ' €/month';
+              periodLabel = language === 'bg' ? '/месец' : '/month';
             }
+
+            // Calculate BGN price
+            const displayPriceBGN = displayPriceEUR ? convertEURToBGN(displayPriceEUR) : 0;
+            const bgnLabel = language === 'bg' ? 'лв.' : 'BGN';
 
             // Get features based on language
             const features = language === 'bg' ? plan.featuresBg : plan.features;
@@ -904,10 +906,12 @@ const PricingPublicPage: React.FC = () => {
                       {language === 'bg' ? plan.displayNameBg : plan.displayName}
                     </CardHolderName>
                     <CardPriceDisplay $type={plan.cardType}>
-                      {displayPrice}
-                      <span style={{ fontSize: '0.75rem', opacity: 0.8 }}>
-                        {priceLabel}
-                      </span>
+                      <div style={{ fontSize: '1rem', fontWeight: 500 }}>
+                        {displayPriceBGN.toFixed(2)} {bgnLabel}
+                      </div>
+                      <div style={{ fontSize: '0.875rem', opacity: 0.85 }}>
+                        €{displayPriceEUR}{periodLabel}
+                      </div>
                     </CardPriceDisplay>
                   </CardBottomRow>
                 </CreditCardPlan>
