@@ -291,6 +291,7 @@ function App() {
                     <Route path="venues/wineries" element={<VenuesWineriesPage />} />
                     <Route path="venues/clubs" element={<VenuesClubsPage />} />
                     <Route path="venues/cafes" element={<VenuesCafesPage />} />
+                    <Route path="venues/rooftop" element={<VenuesClubsPage />} />
 
                     {/* Experiences routes */}
                     <Route path="experiences" element={<ExperiencesPage />} />
