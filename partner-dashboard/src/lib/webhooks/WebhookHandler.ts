@@ -385,7 +385,7 @@ export class WebhookHandler {
    * Get webhook URL for a provider
    */
   static getWebhookUrl(provider: WebhookProvider): string {
-    const baseUrl = process.env.WEBHOOK_BASE_URL || 'https://api.boomcard.com';
+    const baseUrl = process.env.WEBHOOK_BASE_URL || 'https://api.boomcard.bg';
     return `${baseUrl}/webhooks/${provider}`;
   }
 

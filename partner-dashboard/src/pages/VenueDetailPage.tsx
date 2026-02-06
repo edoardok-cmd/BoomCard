@@ -474,8 +474,8 @@ const VenueDetailPage: React.FC = () => {
     ],
     validUntil: language === 'bg' ? '31 Декември 2025' : 'December 31, 2025',
     phone: '+359 88 123 4567',
-    email: 'contact@boomcard.com',
-    website: 'www.boomcard.com',
+    email: 'contact@boomcard.bg',
+    website: 'www.boomcard.bg',
     address: language === 'bg' ? offer.location : offer.location,
   };
 
