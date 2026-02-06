@@ -1000,7 +1000,7 @@ const PricingPublicPage: React.FC = () => {
                       {language === 'bg' ? plan.displayNameBg : plan.displayName}
                     </CardHolderName>
                     <CardPriceDisplay $type={plan.cardType}>
-                      {displayPriceBGN.toFixed(2)} {bgnLabel} / €{displayPriceEUR}
+                      <span style={{ fontSize: '0.9rem', opacity: 0.85 }}>{displayPriceBGN.toFixed(2)} {bgnLabel} /</span> €{displayPriceEUR}
                       <span style={{ fontSize: '0.75rem', opacity: 0.8 }}>
                         {periodLabel}
                       </span>

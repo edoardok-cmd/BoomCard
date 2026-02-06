@@ -727,7 +727,7 @@ const SubscriptionsPage: React.FC = () => {
                     {plan.name.toUpperCase()}
                   </CardHolderName>
                   <CardPriceDisplay $type={planType}>
-                    {displayPrice}
+                    <span style={{ fontSize: '0.9rem', opacity: 0.85 }}>{bgnPrice.toFixed(2)} {bgnLabel} /</span> €{eurPrice}
                     <span style={{ fontSize: '0.75rem', opacity: 0.8 }}>
                       {priceLabel}
                     </span>
