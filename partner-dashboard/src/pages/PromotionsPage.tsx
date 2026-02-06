@@ -461,11 +461,11 @@ const PromotionsPage: React.FC = () => {
 
   const t = {
     en: {
-      title: 'Deals with BOOM Card',
-      subtitle: 'Real discounts and exclusive offers from selected venues in Bulgaria',
-      activeOffers: 'active deals',
-      upToDiscount: 'Up to 35% discount',
-      newOffersRegularly: 'New offers regularly',
+      title: 'Top Discounts with BOOM Card',
+      subtitle: 'Real discounts and exclusive offers from selected top venues in Bulgaria',
+      stat1Label: 'New offers at top venues',
+      stat2Label: 'Up to 20% discount based on subscription plan',
+      stat3Label: 'Curated offers',
       all: 'All',
       active: 'Active',
       upcoming: 'Upcoming',
@@ -475,20 +475,21 @@ const PromotionsPage: React.FC = () => {
       emptyText: 'Check back soon for new exciting deals!',
       browseOffers: 'Browse All Deals',
       premiumOnlyNote: 'Some offers are available only with Premium.',
-      // Cashback Section
-      cashbackTitle: 'Cashback with BOOM Card in 3 steps',
+      selectedOffers: 'Curated Offers',
+      // Money Back Section
+      cashbackTitle: 'Money Back with BOOM Card in 3 steps',
       cashbackStep1: 'Scan the sticker on the table in the app',
       cashbackStep2: 'Take a photo of your receipt after payment',
-      cashbackStep3: 'Receive cashback to your bank account',
+      cashbackStep3: 'Receive the refund to the card used to activate your subscription',
       cashbackNote: 'Everything happens through the app. No explanations to staff.',
-      cashbackTrustText: 'Cashback is credited after receipt verification.',
+      cashbackTrustText: 'The amount is refunded after a quick receipt verification.',
     },
     bg: {
-      title: 'Оферти с BOOM Card',
-      subtitle: 'Реални отстъпки и ексклузивни предложения от подбрани места в България',
-      activeOffers: 'активни оферти',
-      upToDiscount: 'До 35% отстъпка',
-      newOffersRegularly: 'Нови предложения редовно',
+      title: 'Топ отстъпки с BOOM Card',
+      subtitle: 'Реални отстъпки и ексклузивни предложения от подбрани топ места в България',
+      stat1Label: 'Нови предложения на топ места',
+      stat2Label: 'До 20% отстъпка според абонаментния план',
+      stat3Label: 'Подбрани предложения',
       all: 'Всички',
       active: 'Активни',
       upcoming: 'Предстоящи',
@@ -498,13 +499,14 @@ const PromotionsPage: React.FC = () => {
       emptyText: 'Проверете отново скоро за нови вълнуващи оферти!',
       browseOffers: 'Разгледай Всички Оферти',
       premiumOnlyNote: 'Някои оферти са достъпни само с Premium.',
-      // Cashback Section
-      cashbackTitle: 'Кешбек с BOOM Card в 3 стъпки',
+      selectedOffers: 'Подбрани предложения',
+      // Възстановяване на сума Section
+      cashbackTitle: 'Възстановяване на сума с BOOM Card в 3 стъпки',
       cashbackStep1: 'Сканирай стикера на масата в приложението',
       cashbackStep2: 'Снимай касовата бележка след плащане',
-      cashbackStep3: 'Получи кешбек по банковата си сметка',
+      cashbackStep3: 'Получи възстановената сума по картата, с която е активиран абонаментът',
       cashbackNote: 'Всичко става през приложението. Без обяснения с персонала.',
-      cashbackTrustText: 'Кешбекът се начислява след проверка на касовата бележка.',
+      cashbackTrustText: 'Сумата се възстановява след кратка проверка на касовата бележка.',
     },
   };
 
@@ -525,16 +527,16 @@ const PromotionsPage: React.FC = () => {
 
               <StatsRow>
                 <StatItem>
-                  <StatValue>{mockOffers.length}</StatValue>
-                  <StatLabel>{content.activeOffers}</StatLabel>
+                  <StatValue><Sparkles size={40} /></StatValue>
+                  <StatLabel>{content.stat1Label}</StatLabel>
                 </StatItem>
                 <StatItem>
-                  <StatValue>35%</StatValue>
-                  <StatLabel>{content.upToDiscount}</StatLabel>
+                  <StatValue>20%</StatValue>
+                  <StatLabel>{content.stat2Label}</StatLabel>
                 </StatItem>
                 <StatItem>
                   <StatValue><Sparkles size={40} /></StatValue>
-                  <StatLabel>{content.newOffersRegularly}</StatLabel>
+                  <StatLabel>{content.stat3Label}</StatLabel>
                 </StatItem>
               </StatsRow>
             </motion.div>
@@ -542,7 +544,33 @@ const PromotionsPage: React.FC = () => {
         </Container>
       </Hero>
 
-      {/* Cashback Steps Section */}
+      <ContentSection>
+        <Container>
+          <SectionHeader>
+            <SectionTitle>
+              {content.selectedOffers}
+            </SectionTitle>
+            <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>
+              {mockOffers.length} {language === 'bg' ? 'оферти' : 'offers'}
+            </div>
+          </SectionHeader>
+
+          <OffersGrid>
+            {mockOffers.sort((a, b) => b.discount - a.discount).map((offer, index) => (
+              <motion.div
+                key={offer.id}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.4, delay: index * 0.1 }}
+              >
+                <OfferCard offer={offer} />
+              </motion.div>
+            ))}
+          </OffersGrid>
+        </Container>
+      </ContentSection>
+
+      {/* Money Back / Възстановяване на сума Steps Section */}
       <CashbackSection>
         <CashbackContainer>
           <CashbackTitle>{content.cashbackTitle}</CashbackTitle>
@@ -579,32 +607,6 @@ const PromotionsPage: React.FC = () => {
           <CashbackTrustText>{content.cashbackTrustText}</CashbackTrustText>
         </CashbackContainer>
       </CashbackSection>
-
-      <ContentSection>
-        <Container>
-          <SectionHeader>
-            <SectionTitle>
-              {language === 'bg' ? 'Всички Промоции' : 'All Promotions'}
-            </SectionTitle>
-            <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>
-              {mockOffers.length} {language === 'bg' ? 'оферти' : 'offers'}
-            </div>
-          </SectionHeader>
-
-          <OffersGrid>
-            {mockOffers.sort((a, b) => b.discount - a.discount).map((offer, index) => (
-              <motion.div
-                key={offer.id}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.4, delay: index * 0.1 }}
-              >
-                <OfferCard offer={offer} />
-              </motion.div>
-            ))}
-          </OffersGrid>
-        </Container>
-      </ContentSection>
 
       {/* Client CTA */}
       <ClientCTA />

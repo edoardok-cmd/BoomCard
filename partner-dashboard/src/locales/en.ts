@@ -81,12 +81,14 @@ export const en = {
 
   // Footer
   footer: {
-    description: 'Exclusive discounts for restaurants, hotels, SPA centers, and experiences across Bulgaria.',
+    description: 'Exclusive discounts and special offers at restaurants, hotels, SPA centers, and experiences across Bulgaria.',
     product: 'Product',
-    howItWorks: 'How it works',
+    howItWorks: 'How it works / FAQ',
+    mobileApp: 'Mobile App',
     subscriptionPlans: 'Subscription plans',
     offers: 'Deals',
     partners: 'Partners',
+    partnerNetwork: 'Partner Network',
     features: 'Features',
     pricing: 'Pricing',
     integrations: 'Integrations',
@@ -303,26 +305,39 @@ export const en = {
     noStaffInteraction: 'No Staff Needed',
   },
 
-  // Offers/Deals Page (Promotions)
+  // BOOM Places Page (formerly Offers/Deals/Promotions)
   offersPage: {
-    // Hero Section
-    title: 'Deals with BOOM Card',
-    subtitle: 'Real discounts and exclusive offers from selected venues in Bulgaria',
+    // Hero Section - 2.1
+    breadcrumb: 'BOOM Places',
+    title: 'All BOOM Offers in One Place',
+    subtitle: 'BOOM Card gives you access to exclusive offers with up to 20% discount, based on your chosen plan.',
+    heroCta: 'Unlock BOOM Card',
+    heroTrustLine: 'Free 24-hour trial period. No payment required.',
+
+    // Title Above Cards - 2.2
+    resultsTitle: 'Curated BOOM Places',
+
+    // Card Content - 2.3
+    discountLabel: 'up to 20%',
+    discountNote: 'based on subscription plan',
 
     // Statistics
-    activeOffers: 'active deals',
-    upToDiscount: 'Up to 35% discount',
-    newOffersRegularly: 'New offers regularly',
+    activeOffers: 'New offers at top venues',
+    upToDiscount: 'Up to 20% discount based on subscription plan',
+    newOffersRegularly: 'Curated offers',
     premiumOnlyNote: 'Some offers are available only with Premium.',
 
-    // Cashback Steps Section
-    cashbackTitle: 'Cashback with BOOM Card in 3 steps',
+    // Money Back Steps Section
+    cashbackTitle: 'Money Back with BOOM Card in 3 steps',
     cashbackStep1: 'Scan the sticker on the table in the app',
     cashbackStep2: 'Take a photo of your receipt after payment',
-    cashbackStep3: 'Receive cashback to your bank account',
+    cashbackStep3: 'Receive the refund to the card used to activate your subscription',
     cashbackNote: 'Everything happens through the app. No explanations to staff.',
-    cashbackTrustText: 'Cashback is credited after receipt verification.',
-    cashbackImportant: 'Important: Cashback is valid only when scanning on-site with a valid receipt.',
+    cashbackTrustText: 'The amount is refunded after a quick receipt verification.',
+    cashbackImportant: 'Important: Refunds are valid only when scanning on-site with a valid receipt.',
+
+    // Sections
+    selectedOffers: 'Curated Offers',
 
     // Filters
     topOffers: 'Top Offers',
@@ -331,9 +346,9 @@ export const en = {
     active: 'Active',
     upcoming: 'Upcoming',
     expired: 'Expired',
-    emptyTitle: 'No deals found',
-    emptyText: 'Check back soon for new exciting deals!',
-    browseOffers: 'Browse All Deals',
+    emptyTitle: 'No BOOM places found',
+    emptyText: 'Check back soon for new exciting places!',
+    browseOffers: 'Browse All BOOM Places',
   },
 
   // Dashboard
@@ -394,20 +409,57 @@ export const en = {
     deactivated: 'Offer deactivated successfully',
   },
 
-  // Categories
+  // Categories (MASTER Navigation List)
   categories: {
-    restaurants: 'Restaurants',
+    // Main Categories
+    restaurantsAndFood: 'Restaurants & Food',
+    accommodation: 'Accommodation',
+    spaAndWellness: 'SPA & Wellness',
+    panoramicPlaces: 'Panoramic Places',
+    clubsAndNightlife: 'Clubs & Nightlife',
+    cafesAndBakeries: 'Cafes, Pastry Shops & Bakeries',
+
+    // Subcategories - Restaurants & Food
+    curated: 'Curated',
+    fastFood: 'Fast Food',
+    traditionalCuisine: 'Traditional Cuisine',
+    vegetarianVegan: 'Vegetarian & Vegan',
+
+    // Subcategories - Accommodation
     hotels: 'Hotels',
+    guestHouses: 'Guest Houses',
+    apartments: 'Apartments',
+
+    // Subcategories - SPA & Wellness
+    spaCenters: 'SPA Centers',
+    pools: 'Pools',
+    mineralPools: 'Mineral Pools',
+    fitnessAndWellness: 'Fitness & Wellness',
+    sports: 'Sports',
+
+    // Subcategories - Panoramic Places
+    bars: 'Bars',
+    restaurants: 'Restaurants',
+
+    // Subcategories - Clubs & Nightlife
+    clubs: 'Clubs',
+    lounge: 'Lounge',
+    partiesAndEvents: 'Parties & Events',
+    liveMusic: 'Live Music',
+
+    // Subcategories - Cafes, Pastry Shops & Bakeries
+    cafes: 'Cafes',
+    pastryShops: 'Pastry Shops',
+    brunch: 'Brunch',
+    bakeries: 'Bakeries',
+
+    // Legacy (kept for backward compatibility)
     spas: 'Spas & Wellness',
     entertainment: 'Entertainment',
-    sports: 'Sports & Fitness',
     beauty: 'Beauty & Hair',
     shopping: 'Shopping',
     travel: 'Travel & Tourism',
     wineries: 'Wineries',
-    bars: 'Bars & Pubs',
-    cafes: 'Cafes',
-    clubs: 'Clubs & Night Venues',
   },
 
   // Category Listing
@@ -700,6 +752,7 @@ export const en = {
     rating: 'Rating',
     discount: 'Discount',
     location: 'Location',
+    nearMe: 'Near me',
     distance: 'Distance',
     openNow: 'Open Now',
     cuisine: 'Cuisine',
@@ -1467,6 +1520,386 @@ export const en = {
     failedToLoad: 'Failed to load messages',
     connectionLost: 'Connection lost. Reconnecting...',
     reconnected: 'Reconnected',
+  },
+
+  // ===== EXPERIENCES SECTION =====
+  experiences: {
+    // Section Header
+    sectionTitle: 'Experiences',
+    headline: 'Experiences Worth Having',
+    subtitle: 'Curated tours and experiences from verified partners, with special conditions for BOOM Card members.',
+
+    // CTA & Helper Text
+    cta: 'Book with BOOM Card',
+    ctaUnlock: 'Unlock BOOM Card',
+    helperText: '24-hour free trial. No commitment.',
+    trialNote: 'Start your free trial – no payment required',
+
+    // Browse title (Point 6)
+    browseTitle: 'Browse Experiences',
+
+    // Card CTAs (Point 6)
+    cardCtaSubscriber: 'Book',
+    cardCtaNonSubscriber: 'Get BOOM Card',
+
+    // Navigation Categories (6 main categories - Point 3)
+    navCategories: {
+      gastronomic: 'Gastronomic',
+      historicalCultural: 'Historical & Cultural',
+      activeAdventure: 'Active & Adventure',
+      extreme: 'Extreme',
+      educationalCreative: 'Educational & Creative',
+      relaxWellness: 'Relax & Wellness',
+    },
+
+    // Subcategories - Gastronomic
+    subGastronomic: {
+      degustations: 'Degustations',
+      foodTraditions: 'Food & Traditions',
+    },
+
+    // Subcategories - Historical & Cultural
+    subHistoricalCultural: {
+      walkingTours: 'Walking Tours',
+      historicalTours: 'Historical Tours',
+      museumsGalleries: 'Museums & Galleries',
+    },
+
+    // Subcategories - Active & Adventure
+    subActiveAdventure: {
+      natureTours: 'Nature Tours',
+      bikeTours: 'Bike Tours',
+      offroadAtv: 'Offroad & ATV',
+      waterActivities: 'Water Activities',
+    },
+
+    // Subcategories - Extreme
+    subExtreme: {
+      aerial: 'Aerial',
+      jumping: 'Jumping',
+      motorcycles: 'Motorcycles',
+      water: 'Water',
+    },
+
+    // Subcategories - Educational & Creative
+    subEducationalCreative: {
+      cooking: 'Cooking',
+      workshops: 'Workshops',
+      arts: 'Arts',
+    },
+
+    // Subcategories - Relax & Wellness
+    subRelaxWellness: {
+      spaThermal: 'SPA & Thermal',
+      massagesTherapies: 'Massages & Therapies',
+      relaxExperiences: 'Relax Experiences',
+      yogaMeditation: 'Yoga & Meditation',
+    },
+
+    // Filters (Point 4)
+    filters: {
+      title: 'Filter Experiences',
+      location: 'Location',
+      nearMe: 'Near me',
+      allLocations: 'All Locations',
+      category: 'Category',
+      allCategories: 'All Categories',
+      subcategory: 'Subcategory',
+      allSubcategories: 'All Subcategories',
+      potentialDiscount: 'Potential Discount',
+      rating: 'Rating',
+      ratingSource: '(Google Maps)',
+      anyRating: 'Any Rating',
+      starsAndUp: 'stars & up',
+      priceLevel: 'Price Level',
+      allPriceLevels: 'All Price Levels',
+      budget: '€ Budget',
+      midRange: '€€ Mid-range',
+      highEnd: '€€€ High-end',
+      // Duration (Point 4)
+      duration: 'Duration',
+      anyDuration: 'Any Duration',
+      upTo2Hours: 'Up to 2 hours',
+      halfDay: 'Half day',
+      fullDay: 'Full day',
+      twoPlusDays: '2+ days',
+      // Format (Point 4)
+      format: 'Format',
+      allFormats: 'All Formats',
+      walking: 'Walking',
+      byCar: 'By car',
+      byBike: 'By bike',
+      atvMotor: 'ATV/Motor',
+      byBoat: 'By boat',
+      combined: 'Combined',
+      // Season (Point 4)
+      season: 'Season',
+      allSeasons: 'All Seasons',
+      yearRound: 'Year-round',
+      summer: 'Summer',
+      winter: 'Winter',
+      // Participation Type (Point 4)
+      participation: 'Participation Type',
+      allParticipation: 'All Types',
+      group: 'Group',
+      individualPrivate: 'Individual/Private',
+      // Rating ranges (Point 4)
+      rating35to40: '3.5 - 4.0',
+      rating40to45: '4.0 - 4.5',
+      rating45to50: '4.5 - 5.0',
+      clearFilters: 'Clear Filters',
+      applyFilters: 'Apply Filters',
+      showResults: 'Show Results',
+    },
+
+    // Experience Cards
+    card: {
+      discountBadge: 'up to',
+      discountNote: 'discount with subscription',
+      duration: 'Duration',
+      rating: 'Rating',
+      reviews: 'reviews',
+      from: 'from',
+      perPerson: 'per person',
+      bookNow: 'Book Now',
+      viewDetails: 'View Details',
+      instantConfirmation: 'Instant confirmation',
+      freeCancellation: 'Free cancellation',
+      mobileTicket: 'Mobile ticket',
+      languages: 'Languages',
+      groupSize: 'Group size',
+      people: 'people',
+      maxParticipants: 'Max participants',
+      minParticipants: 'Min participants',
+      startTime: 'Start time',
+      meetingPoint: 'Meeting point',
+      included: 'Included',
+      notIncluded: 'Not included',
+      highlights: 'Highlights',
+      itinerary: 'Itinerary',
+      requirements: 'Requirements',
+      accessibility: 'Accessibility',
+      soldOut: 'Sold Out',
+      limitedAvailability: 'Limited availability',
+      lastSpots: 'Last spots!',
+      popularChoice: 'Popular choice',
+      bestSeller: 'Best seller',
+      newExperience: 'New',
+    },
+
+    // Detail Page
+    detail: {
+      overview: 'Overview',
+      whatToExpect: 'What to expect',
+      whatsIncluded: 'What\'s included',
+      whatsNotIncluded: 'What\'s not included',
+      importantInfo: 'Important information',
+      cancellationPolicy: 'Cancellation policy',
+      fullRefund: 'Full refund if cancelled',
+      hoursInAdvance: 'hours in advance',
+      noRefund: 'Non-refundable',
+      partialRefund: 'Partial refund available',
+      meetingAndPickup: 'Meeting and pickup',
+      endPoint: 'End point',
+      returnDetails: 'Return details',
+      additionalInfo: 'Additional information',
+      customerReviews: 'Customer reviews',
+      writeReview: 'Write a review',
+      verifiedBooking: 'Verified booking',
+      helpfulReview: 'Helpful',
+      reportReview: 'Report',
+      seeAllReviews: 'See all reviews',
+      similarExperiences: 'Similar experiences',
+      youMightAlsoLike: 'You might also like',
+      shareExperience: 'Share this experience',
+      saveToWishlist: 'Save to wishlist',
+      provider: 'Provider',
+      operatedBy: 'Operated by',
+      partnerSince: 'Partner since',
+      responseTime: 'Response time',
+      responseRate: 'Response rate',
+      contactProvider: 'Contact provider',
+    },
+
+    // Booking & Checkout
+    checkout: {
+      selectDate: 'Select date',
+      selectTime: 'Select time',
+      selectParticipants: 'Number of participants',
+      adults: 'Adults',
+      children: 'Children',
+      infants: 'Infants',
+      seniors: 'Seniors',
+      students: 'Students',
+      age: 'Age',
+      yearsOld: 'years old',
+      addOns: 'Add-ons',
+      optionalExtras: 'Optional extras',
+      specialRequests: 'Special requests',
+      dietaryRequirements: 'Dietary requirements',
+      accessibilityNeeds: 'Accessibility needs',
+      priceBreakdown: 'Price breakdown',
+      basePrice: 'Base price',
+      discount: 'BOOM Card discount',
+      serviceFee: 'Service fee',
+      total: 'Total',
+      youSave: 'You save',
+      proceedToPayment: 'Proceed to payment',
+      bookingConfirmed: 'Booking confirmed!',
+      confirmationNumber: 'Confirmation number',
+      bookingDetails: 'Booking details',
+      downloadTicket: 'Download ticket',
+      addToCalendar: 'Add to calendar',
+      viewBooking: 'View booking',
+      manageBooking: 'Manage booking',
+      cancelBooking: 'Cancel booking',
+      modifyBooking: 'Modify booking',
+      bookingCancelled: 'Booking cancelled',
+      refundProcessed: 'Refund will be processed within 5-7 business days',
+    },
+
+    // Edge Cases & States
+    states: {
+      loading: 'Loading experiences...',
+      noResults: 'No experiences found',
+      noResultsDescription: 'Try adjusting your filters or search criteria',
+      soldOut: 'Sold Out',
+      soldOutDescription: 'This experience is currently fully booked',
+      checkBackLater: 'Check back later for availability',
+      notifyMe: 'Notify me when available',
+      unavailable: 'Currently unavailable',
+      comingSoon: 'Coming soon',
+      seasonalClosed: 'Closed for the season',
+      reopensOn: 'Reopens on',
+      invalidSubscription: 'Subscription required',
+      subscriptionExpired: 'Your subscription has expired',
+      renewSubscription: 'Renew subscription',
+      trialRequired: 'Start your free trial to book',
+      startTrial: 'Start free trial',
+      upgradeRequired: 'Premium subscription required',
+      upgradeToPremium: 'Upgrade to Premium',
+      loginRequired: 'Login required',
+      loginToBook: 'Login to book this experience',
+      loginToContinue: 'Login to continue',
+      bookingFailed: 'Booking failed',
+      tryAgain: 'Please try again',
+      paymentFailed: 'Payment failed',
+      contactSupport: 'Contact support for assistance',
+    },
+
+    // Tour Integration (Bokun model)
+    integration: {
+      poweredBy: 'Experiences powered by our partner network',
+      agentDiscount: 'Exclusive BOOM Card member discount',
+      directBooking: 'Book directly through BOOM Card',
+      secureCheckout: 'Secure checkout',
+      instantAccess: 'Instant access to your tickets',
+      localSupport: 'Local customer support',
+      verifiedProviders: 'All providers verified',
+      qualityGuarantee: 'Quality guarantee',
+      bestPriceGuarantee: 'Best price guarantee',
+    },
+
+    // Subscription CTAs for non-subscribers
+    subscriptionCta: {
+      unlockDiscount: 'Unlock this discount',
+      getDiscount: 'Get up to 20% off',
+      joinBoomCard: 'Join BOOM Card',
+      memberBenefit: 'Member benefit',
+      exclusiveAccess: 'Exclusive member access',
+      subscribeToBook: 'Subscribe to book with discount',
+      freeTrialAvailable: 'Free trial available',
+      startFreeTrial: 'Start 24h free trial',
+      noCommitment: 'No commitment. Cancel anytime.',
+    },
+
+    // Empty States
+    empty: {
+      noExperiences: 'No experiences available',
+      noExperiencesInCategory: 'No experiences in this category yet',
+      noExperiencesInLocation: 'No experiences available in this location',
+      checkOtherCategories: 'Check other categories',
+      exploreDifferentLocation: 'Explore a different location',
+      newExperiencesComingSoon: 'New experiences coming soon!',
+    },
+
+    // Sorting
+    sorting: {
+      sortBy: 'Sort by',
+      recommended: 'Recommended',
+      priceLowToHigh: 'Price: Low to High',
+      priceHighToLow: 'Price: High to Low',
+      highestRated: 'Highest Rated',
+      mostReviewed: 'Most Reviewed',
+      duration: 'Duration',
+      newest: 'Newest',
+      popularity: 'Popularity',
+    },
+  },
+
+  // ===== BOOM PLACES FILTERS (Point 1) =====
+  boomPlacesFilters: {
+    // Filter section titles
+    location: 'Location',
+    nearMe: 'Near me',
+    category: 'Category',
+    subcategory: 'Subcategory',
+    discountRange: 'Discount (Potential)',
+    rating: 'Rating',
+    ratingSource: '(Google Maps)',
+    priceLevel: 'Price Level',
+    clearAll: 'Clear All',
+    applyFilters: 'Apply Filters',
+
+    // Locations
+    locations: {
+      sofia: 'Sofia',
+      plovdiv: 'Plovdiv',
+      varna: 'Varna',
+      burgas: 'Burgas',
+      bansko: 'Bansko',
+      melnik: 'Melnik',
+    },
+
+    // Categories (matching navigation)
+    categories: {
+      restaurantsFood: 'Restaurants & Food',
+      accommodation: 'Accommodation',
+      spaWellness: 'SPA & Wellness',
+      panoramicPlaces: 'Panoramic Places',
+      clubsNightlife: 'Clubs & Nightlife',
+      cafesBakeries: 'Cafes, Pastry Shops & Bakeries',
+    },
+
+    // Restaurant subcategories
+    restaurantsSub: {
+      curated: 'Curated',
+      fastFood: 'Fast Food',
+      traditional: 'Traditional Cuisine',
+      vegetarianVegan: 'Vegetarian & Vegan',
+    },
+
+    // Discount ranges (Point 1.2.4)
+    discountRanges: {
+      range0to5: '0-5%',
+      range5to10: '5-10%',
+      range10to15: '10-15%',
+      range15to20: '15-20%',
+    },
+
+    // Rating ranges (Point 1.2.5)
+    ratingRanges: {
+      range35to40: '3.5 - 4.0',
+      range40to45: '4.0 - 4.5',
+      range45to50: '4.5 - 5.0',
+    },
+
+    // Price levels (Point 1.2.6)
+    priceLevels: {
+      budget: '€ Budget',
+      midRange: '€€ Mid-range',
+      highEnd: '€€€ High-end',
+    },
   },
 };
 

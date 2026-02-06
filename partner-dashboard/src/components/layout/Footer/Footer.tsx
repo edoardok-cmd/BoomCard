@@ -68,9 +68,10 @@ export const Footer: React.FC<FooterProps> = ({
 
           <FooterSection title={t('footer.product')}>
             <ul className="space-y-2.5 md:space-y-3 text-sm md:text-base">
-              <li><Link to="/features" className="text-gray-300 hover:text-white transition-colors">{t('footer.features')}</Link></li>
+              <li><Link to="/how-it-works" className="text-gray-300 hover:text-white transition-colors">{t('footer.howItWorks')}</Link></li>
+              <li><Link to="/mobile-app" className="text-gray-300 hover:text-white transition-colors">{t('footer.mobileApp')}</Link></li>
               <li><Link to="/pricing" className="text-gray-300 hover:text-white transition-colors">{t('footer.pricing')}</Link></li>
-              <li><Link to="/integrations" className="text-gray-300 hover:text-white transition-colors">{t('footer.integrations')}</Link></li>
+              <li><Link to="/partners" className="text-gray-300 hover:text-white transition-colors">{t('footer.partnerNetwork')}</Link></li>
             </ul>
           </FooterSection>
 
@@ -78,6 +79,7 @@ export const Footer: React.FC<FooterProps> = ({
             <ul className="space-y-2.5 md:space-y-3 text-sm md:text-base">
               <li><Link to="/about" className="text-gray-300 hover:text-white transition-colors">{t('footer.about')}</Link></li>
               <li><Link to="/contact" className="text-gray-300 hover:text-white transition-colors">{t('footer.contact')}</Link></li>
+              <li><Link to="/become-partner" className="text-gray-300 hover:text-white transition-colors">{t('footer.becomePartner')}</Link></li>
               <li><Link to="/careers" className="text-gray-300 hover:text-white transition-colors">{t('footer.careers')}</Link></li>
             </ul>
           </FooterSection>

@@ -1,4 +1,5 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 import styled, { keyframes } from 'styled-components';
 
 interface FomoBannerProps {
@@ -14,6 +15,21 @@ const marquee = keyframes`
   }
 `;
 
+const BannerLink = styled(Link)`
+  display: block;
+  text-decoration: none;
+  cursor: pointer;
+  transition: opacity 0.2s ease;
+
+  &:hover {
+    opacity: 0.9;
+  }
+
+  &:active {
+    opacity: 0.8;
+  }
+`;
+
 const BannerContainer = styled.div`
   position: fixed;
   top: 66px; /* Directly below fixed header */
@@ -21,9 +37,11 @@ const BannerContainer = styled.div`
   right: 0;
   width: 100%;
   z-index: 45; /* Below header (z-index 50) */
-  background: #000000; /* Match hero background exactly */
-  padding: 8px 0 18px 0; /* Extra bottom padding to cover any gap */
+  background: rgba(0, 0, 0, 0.95); /* Slightly transparent for better integration */
+  padding: 10px 0 18px 0; /* Extra bottom padding to cover any gap */
   overflow: hidden;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
 
   @media (max-width: 1380px) {
     top: 62px;
@@ -31,17 +49,18 @@ const BannerContainer = styled.div`
 
   @media (max-width: 768px) {
     top: 58px;
-    padding: 6px 0 16px 0;
+    padding: 8px 0 16px 0;
   }
 
   @media (max-width: 480px) {
     top: 54px;
-    padding: 5px 0 14px 0;
+    padding: 7px 0 14px 0;
   }
 `;
 
 const MarqueeTrack = styled.div`
   display: flex;
+  justify-content: center;
   white-space: nowrap;
   animation: ${marquee} 28s linear infinite;
 
@@ -52,12 +71,13 @@ const MarqueeTrack = styled.div`
 
 const BannerText = styled.span`
   font-family: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  font-size: 0.8rem;
+  font-size: 0.875rem; /* Slightly larger for better readability */
   font-weight: 500;
   color: #ffffff;
   margin: 0;
   line-height: 1.4;
   display: inline-block;
+  text-align: center;
 
   /* Gold accent for key words */
   strong {
@@ -66,22 +86,33 @@ const BannerText = styled.span`
   }
 
   @media (max-width: 768px) {
-    font-size: 0.75rem;
+    font-size: 0.8125rem;
   }
 
   @media (max-width: 480px) {
-    font-size: 0.7rem;
+    font-size: 0.75rem;
   }
 `;
 
 const SparkleIcon = styled.span`
   color: #d4af37;
   margin-right: 8px;
-  font-size: 0.9rem;
+  font-size: 1rem;
 
   @media (max-width: 480px) {
     margin-right: 6px;
-    font-size: 0.8rem;
+    font-size: 0.875rem;
+  }
+`;
+
+const ClickHint = styled.span`
+  color: #d4af37;
+  margin-left: 12px;
+  font-size: 0.875rem;
+  opacity: 0.8;
+
+  @media (max-width: 768px) {
+    display: none;
   }
 `;
 
@@ -91,27 +122,32 @@ const FomoBanner: React.FC<FomoBannerProps> = ({ language = 'bg' }) => {
       text: 'Promotion active – ',
       highlight: '300 BOOM Card subscriptions',
       suffix: ' available at promotional price. Price will increase once sold out.',
+      clickHint: '→ View Plans',
     },
     bg: {
       text: 'В момента тече промоция – пуснати са ',
       highlight: '300 BOOM Card абонамента',
       suffix: ' на промоционална цена. След изчерпване цената ще бъде увеличена.',
+      clickHint: '→ Виж планове',
     },
   };
 
   const t = content[language];
 
   return (
-    <BannerContainer>
-      <MarqueeTrack>
-        <BannerText>
-          <SparkleIcon>✨</SparkleIcon>
-          {t.text}
-          <strong>{t.highlight}</strong>
-          {t.suffix}
-        </BannerText>
-      </MarqueeTrack>
-    </BannerContainer>
+    <BannerLink to="/pricing">
+      <BannerContainer>
+        <MarqueeTrack>
+          <BannerText>
+            <SparkleIcon>✨</SparkleIcon>
+            {t.text}
+            <strong>{t.highlight}</strong>
+            {t.suffix}
+            <ClickHint>{t.clickHint}</ClickHint>
+          </BannerText>
+        </MarqueeTrack>
+      </BannerContainer>
+    </BannerLink>
   );
 };
 

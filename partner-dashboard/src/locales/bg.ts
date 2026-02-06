@@ -83,12 +83,14 @@ export const bg: TranslationKey = {
 
   // Footer
   footer: {
-    description: 'Ексклузивни отстъпки за ресторанти, хотели, СПА центрове и изживявания в цяла България.',
+    description: 'Ексклузивни отстъпки и специални предложения в ресторанти, хотели, СПА центрове и изживявания в цяла България.',
     product: 'Продукт',
-    howItWorks: 'Как работи',
+    howItWorks: 'Как работи / FAQ',
+    mobileApp: 'Мобилно приложение',
     subscriptionPlans: 'Абонаментни планове',
     offers: 'Оферти',
     partners: 'Партньори',
+    partnerNetwork: 'Партньорска мрежа',
     features: 'Функции',
     pricing: 'Цени',
     integrations: 'Интеграции',
@@ -305,26 +307,39 @@ export const bg: TranslationKey = {
     noStaffInteraction: 'Без персонал',
   },
 
-  // Страница Оферти (Промоции)
+  // Страница BOOM места (бивша Оферти/Промоции)
   offersPage: {
-    // Заглавие на секцията
-    title: 'Оферти с BOOM Card',
-    subtitle: 'Реални отстъпки и ексклузивни предложения от подбрани места в България',
+    // Hero секция - 2.1
+    breadcrumb: 'BOOM места',
+    title: 'Всички BOOM оферти на едно място',
+    subtitle: 'BOOM Card ти дава достъп до ексклузивни оферти с до 20% отстъпка, според избрания от теб план.',
+    heroCta: 'Отключи BOOM Card',
+    heroTrustLine: 'Безплатен 24-часов пробен период. Без заплащане.',
+
+    // Заглавие над картите - 2.2
+    resultsTitle: 'Подбрани BOOM места',
+
+    // Карти - съдържание - 2.3
+    discountLabel: 'до 20%',
+    discountNote: 'според абонаментния план',
 
     // Статистика
-    activeOffers: 'активни оферти',
-    upToDiscount: 'До 35% отстъпка',
-    newOffersRegularly: 'Нови предложения редовно',
+    activeOffers: 'Нови предложения на топ места',
+    upToDiscount: 'До 20% отстъпка според абонаментния план',
+    newOffersRegularly: 'Подбрани предложения',
     premiumOnlyNote: 'Някои оферти са достъпни само с Premium.',
 
-    // Кешбек стъпки
-    cashbackTitle: 'Кешбек с BOOM Card в 3 стъпки',
+    // Възстановяване на сума стъпки
+    cashbackTitle: 'Възстановяване на сума с BOOM Card в 3 стъпки',
     cashbackStep1: 'Сканирай стикера на масата в приложението',
     cashbackStep2: 'Снимай касовата бележка след плащане',
-    cashbackStep3: 'Получи кешбек по банковата си сметка',
+    cashbackStep3: 'Получи възстановената сума по картата, с която е активиран абонаментът',
     cashbackNote: 'Всичко става през приложението. Без обяснения с персонала.',
-    cashbackTrustText: 'Кешбекът се начислява след проверка на касовата бележка.',
-    cashbackImportant: 'Важно: Кешбекът важи само при сканиране на място и валидна касова бележка.',
+    cashbackTrustText: 'Сумата се възстановява след кратка проверка на касовата бележка.',
+    cashbackImportant: 'Важно: Възстановяването важи само при сканиране на място и валидна касова бележка.',
+
+    // Секции
+    selectedOffers: 'Подбрани предложения',
 
     // Филтри
     topOffers: 'Топ Оферти',
@@ -333,9 +348,9 @@ export const bg: TranslationKey = {
     active: 'Активни',
     upcoming: 'Предстоящи',
     expired: 'Изтекли',
-    emptyTitle: 'Няма намерени оферти',
-    emptyText: 'Проверете отново скоро за нови вълнуващи оферти!',
-    browseOffers: 'Разгледай Всички Оферти',
+    emptyTitle: 'Няма намерени BOOM места',
+    emptyText: 'Проверете отново скоро за нови вълнуващи места!',
+    browseOffers: 'Разгледай Всички BOOM места',
   },
 
   // Dashboard
@@ -396,20 +411,57 @@ export const bg: TranslationKey = {
     deactivated: 'Офертата е деактивирана успешно',
   },
 
-  // Categories
+  // Categories (MASTER Navigation List)
   categories: {
-    restaurants: 'Ресторанти',
+    // Main Categories
+    restaurantsAndFood: 'Ресторанти и храна',
+    accommodation: 'Настаняване',
+    spaAndWellness: 'СПА и уелнес',
+    panoramicPlaces: 'Панорамни места',
+    clubsAndNightlife: 'Клубове и нощен живот',
+    cafesAndBakeries: 'Кафенета, сладкарници и пекарни',
+
+    // Subcategories - Restaurants & Food
+    curated: 'Подбрани',
+    fastFood: 'Бърза храна',
+    traditionalCuisine: 'Традиционна кухня',
+    vegetarianVegan: 'Вегетарианско и веган',
+
+    // Subcategories - Accommodation
     hotels: 'Хотели',
+    guestHouses: 'Къщи за гости',
+    apartments: 'Апартаменти',
+
+    // Subcategories - SPA & Wellness
+    spaCenters: 'СПА центрове',
+    pools: 'Басейни',
+    mineralPools: 'Минерални басейни',
+    fitnessAndWellness: 'Фитнес и уелнес',
+    sports: 'Спорт',
+
+    // Subcategories - Panoramic Places
+    bars: 'Барове',
+    restaurants: 'Ресторанти',
+
+    // Subcategories - Clubs & Nightlife
+    clubs: 'Клубове',
+    lounge: 'Лаундж',
+    partiesAndEvents: 'Партита и събития',
+    liveMusic: 'Жива музика',
+
+    // Subcategories - Cafes, Pastry Shops & Bakeries
+    cafes: 'Кафенета',
+    pastryShops: 'Сладкарници',
+    brunch: 'Брънч',
+    bakeries: 'Пекарни',
+
+    // Legacy (kept for backward compatibility)
     spas: 'СПА и Уелнес',
     entertainment: 'Забавления',
-    sports: 'Спорт и Фитнес',
     beauty: 'Красота и Коса',
     shopping: 'Пазаруване',
     travel: 'Пътувания и Туризъм',
     wineries: 'Винарни',
-    bars: 'Барове и Пъбове',
-    cafes: 'Кафенета',
-    clubs: 'Клубове и Нощни Заведения',
   },
 
   // Category Listing
@@ -702,6 +754,7 @@ export const bg: TranslationKey = {
     rating: 'Рейтинг',
     discount: 'Отстъпка',
     location: 'Локация',
+    nearMe: 'Близо до мен',
     distance: 'Разстояние',
     openNow: 'Отворени сега',
     cuisine: 'Кухня',
@@ -1469,5 +1522,385 @@ export const bg: TranslationKey = {
     failedToLoad: 'Неуспешно зареждане на съобщения',
     connectionLost: 'Връзката е прекъсната. Повторно свързване...',
     reconnected: 'Връзката е възстановена',
+  },
+
+  // ===== СЕКЦИЯ ИЗЖИВЯВАНИЯ =====
+  experiences: {
+    // Заглавие на секцията
+    sectionTitle: 'Изживявания',
+    headline: 'Изживявания, които си струват',
+    subtitle: 'Подбрани турове и преживявания от проверени партньори, със специални условия за членове на BOOM Card.',
+
+    // CTA и помощен текст
+    cta: 'Резервирай с BOOM Card',
+    ctaUnlock: 'Отключи BOOM Card',
+    helperText: '24 часа безплатен пробен период. Без ангажимент.',
+    trialNote: 'Започни безплатния си пробен период – без плащане',
+
+    // Browse title (Point 6)
+    browseTitle: 'Разгледай изживяванията',
+
+    // Card CTAs (Point 6)
+    cardCtaSubscriber: 'Запази',
+    cardCtaNonSubscriber: 'Вземи BOOM Card',
+
+    // Навигационни категории (6 основни категории - Point 3)
+    navCategories: {
+      gastronomic: 'Гастрономични',
+      historicalCultural: 'Исторически и културни',
+      activeAdventure: 'Активни и приключенски',
+      extreme: 'Екстремни',
+      educationalCreative: 'Образователни и творчески',
+      relaxWellness: 'Релакс и уелнес',
+    },
+
+    // Подкатегории - Гастрономични
+    subGastronomic: {
+      degustations: 'Дегустации',
+      foodTraditions: 'Храна и традиции',
+    },
+
+    // Подкатегории - Исторически и културни
+    subHistoricalCultural: {
+      walkingTours: 'Пешеходни турове',
+      historicalTours: 'Исторически обиколки',
+      museumsGalleries: 'Музеи и галерии',
+    },
+
+    // Подкатегории - Активни и приключенски
+    subActiveAdventure: {
+      natureTours: 'Природни турове',
+      bikeTours: 'Велотурове',
+      offroadAtv: 'Offroad и ATV',
+      waterActivities: 'Водни активности',
+    },
+
+    // Подкатегории - Екстремни
+    subExtreme: {
+      aerial: 'Въздушни',
+      jumping: 'Скокове',
+      motorcycles: 'Мотори',
+      water: 'Водни',
+    },
+
+    // Подкатегории - Образователни и творчески
+    subEducationalCreative: {
+      cooking: 'Готварство',
+      workshops: 'Работилници',
+      arts: 'Изкуства',
+    },
+
+    // Подкатегории - Релакс и уелнес
+    subRelaxWellness: {
+      spaThermal: 'SPA и термални',
+      massagesTherapies: 'Масажи и терапии',
+      relaxExperiences: 'Релакс преживявания',
+      yogaMeditation: 'Йога и медитация',
+    },
+
+    // Филтри (Point 4)
+    filters: {
+      title: 'Филтрирай изживявания',
+      location: 'Локация',
+      nearMe: 'Близо до мен',
+      allLocations: 'Всички локации',
+      category: 'Категория',
+      allCategories: 'Всички категории',
+      subcategory: 'Подкатегория',
+      allSubcategories: 'Всички подкатегории',
+      potentialDiscount: 'Потенциална отстъпка',
+      rating: 'Рейтинг',
+      ratingSource: '(Google Maps)',
+      anyRating: 'Всякакъв рейтинг',
+      starsAndUp: 'звезди и повече',
+      priceLevel: 'Ценово ниво',
+      allPriceLevels: 'Всички ценови нива',
+      budget: '€ Евтино',
+      midRange: '€€ Среден клас',
+      highEnd: '€€€ Висок клас',
+      // Продължителност (Point 4)
+      duration: 'Продължителност',
+      anyDuration: 'Всякаква продължителност',
+      upTo2Hours: 'До 2 часа',
+      halfDay: 'Половин ден',
+      fullDay: 'Цял ден',
+      twoPlusDays: '2+ дни',
+      // Формат (Point 4)
+      format: 'Формат',
+      allFormats: 'Всички формати',
+      walking: 'Пешеходен',
+      byCar: 'С автомобил',
+      byBike: 'С велосипед',
+      atvMotor: 'С ATV/мотор',
+      byBoat: 'С лодка',
+      combined: 'Комбиниран',
+      // Сезон (Point 4)
+      season: 'Сезон',
+      allSeasons: 'Всички сезони',
+      yearRound: 'Целогодишно',
+      summer: 'Лято',
+      winter: 'Зима',
+      // Тип участие (Point 4)
+      participation: 'Тип участие',
+      allParticipation: 'Всички типове',
+      group: 'Групов',
+      individualPrivate: 'Индивидуален/частен',
+      // Рейтинг диапазони (Point 4)
+      rating35to40: '3.5 – 4.0',
+      rating40to45: '4.0 – 4.5',
+      rating45to50: '4.5 – 5.0',
+      clearFilters: 'Изчисти филтрите',
+      applyFilters: 'Приложи филтри',
+      showResults: 'Покажи резултати',
+    },
+
+    // Карти за изживявания
+    card: {
+      discountBadge: 'до',
+      discountNote: 'отстъпка с абонамент',
+      duration: 'Продължителност',
+      rating: 'Рейтинг',
+      reviews: 'отзива',
+      from: 'от',
+      perPerson: 'на човек',
+      bookNow: 'Резервирай',
+      viewDetails: 'Виж детайли',
+      instantConfirmation: 'Моментално потвърждение',
+      freeCancellation: 'Безплатно анулиране',
+      mobileTicket: 'Мобилен билет',
+      languages: 'Езици',
+      groupSize: 'Размер на групата',
+      people: 'души',
+      maxParticipants: 'Макс. участници',
+      minParticipants: 'Мин. участници',
+      startTime: 'Начален час',
+      meetingPoint: 'Място на среща',
+      included: 'Включено',
+      notIncluded: 'Не е включено',
+      highlights: 'Акценти',
+      itinerary: 'Маршрут',
+      requirements: 'Изисквания',
+      accessibility: 'Достъпност',
+      soldOut: 'Изчерпано',
+      limitedAvailability: 'Ограничена наличност',
+      lastSpots: 'Последни места!',
+      popularChoice: 'Популярен избор',
+      bestSeller: 'Бестселър',
+      newExperience: 'Ново',
+    },
+
+    // Детайлна страница
+    detail: {
+      overview: 'Преглед',
+      whatToExpect: 'Какво да очаквате',
+      whatsIncluded: 'Какво е включено',
+      whatsNotIncluded: 'Какво не е включено',
+      importantInfo: 'Важна информация',
+      cancellationPolicy: 'Политика за анулиране',
+      fullRefund: 'Пълно възстановяване при анулиране',
+      hoursInAdvance: 'часа предварително',
+      noRefund: 'Без възстановяване',
+      partialRefund: 'Частично възстановяване',
+      meetingAndPickup: 'Среща и прибиране',
+      endPoint: 'Крайна точка',
+      returnDetails: 'Детайли за връщане',
+      additionalInfo: 'Допълнителна информация',
+      customerReviews: 'Отзиви от клиенти',
+      writeReview: 'Напиши отзив',
+      verifiedBooking: 'Потвърдена резервация',
+      helpfulReview: 'Полезно',
+      reportReview: 'Докладвай',
+      seeAllReviews: 'Виж всички отзиви',
+      similarExperiences: 'Подобни изживявания',
+      youMightAlsoLike: 'Може да ви хареса също',
+      shareExperience: 'Сподели изживяването',
+      saveToWishlist: 'Запази в любими',
+      provider: 'Доставчик',
+      operatedBy: 'Организирано от',
+      partnerSince: 'Партньор от',
+      responseTime: 'Време за отговор',
+      responseRate: 'Процент отговори',
+      contactProvider: 'Свържи се с доставчика',
+    },
+
+    // Резервация и плащане
+    checkout: {
+      selectDate: 'Избери дата',
+      selectTime: 'Избери час',
+      selectParticipants: 'Брой участници',
+      adults: 'Възрастни',
+      children: 'Деца',
+      infants: 'Бебета',
+      seniors: 'Пенсионери',
+      students: 'Студенти',
+      age: 'Възраст',
+      yearsOld: 'години',
+      addOns: 'Допълнения',
+      optionalExtras: 'Допълнителни опции',
+      specialRequests: 'Специални изисквания',
+      dietaryRequirements: 'Хранителни изисквания',
+      accessibilityNeeds: 'Нужди за достъпност',
+      priceBreakdown: 'Разбивка на цената',
+      basePrice: 'Базова цена',
+      discount: 'BOOM Card отстъпка',
+      serviceFee: 'Такса за услуга',
+      total: 'Общо',
+      youSave: 'Спестявате',
+      proceedToPayment: 'Продължи към плащане',
+      bookingConfirmed: 'Резервацията е потвърдена!',
+      confirmationNumber: 'Номер на потвърждение',
+      bookingDetails: 'Детайли на резервацията',
+      downloadTicket: 'Изтегли билет',
+      addToCalendar: 'Добави в календар',
+      viewBooking: 'Виж резервация',
+      manageBooking: 'Управлявай резервация',
+      cancelBooking: 'Анулирай резервация',
+      modifyBooking: 'Промени резервация',
+      bookingCancelled: 'Резервацията е анулирана',
+      refundProcessed: 'Възстановяването ще бъде обработено в рамките на 5-7 работни дни',
+    },
+
+    // Edge Cases и състояния
+    states: {
+      loading: 'Зареждане на изживявания...',
+      noResults: 'Няма намерени изживявания',
+      noResultsDescription: 'Опитайте да промените филтрите или критериите за търсене',
+      soldOut: 'Изчерпано',
+      soldOutDescription: 'Това изживяване в момента е напълно резервирано',
+      checkBackLater: 'Проверете по-късно за наличност',
+      notifyMe: 'Уведоми ме при наличност',
+      unavailable: 'В момента недостъпно',
+      comingSoon: 'Очаквайте скоро',
+      seasonalClosed: 'Затворено за сезона',
+      reopensOn: 'Отваря отново на',
+      invalidSubscription: 'Изисква се абонамент',
+      subscriptionExpired: 'Вашият абонамент е изтекъл',
+      renewSubscription: 'Поднови абонамент',
+      trialRequired: 'Започни безплатен пробен период за резервация',
+      startTrial: 'Започни безплатен тест',
+      upgradeRequired: 'Изисква се Premium абонамент',
+      upgradeToPremium: 'Надгради до Premium',
+      loginRequired: 'Изисква се вход',
+      loginToBook: 'Влезте, за да резервирате',
+      loginToContinue: 'Влезте, за да продължите',
+      bookingFailed: 'Резервацията е неуспешна',
+      tryAgain: 'Моля, опитайте отново',
+      paymentFailed: 'Плащането е неуспешно',
+      contactSupport: 'Свържете се с поддръжката за помощ',
+    },
+
+    // Интеграция на турове (Bokun модел)
+    integration: {
+      poweredBy: 'Изживявания, предоставени от нашата партньорска мрежа',
+      agentDiscount: 'Ексклузивна отстъпка за членове на BOOM Card',
+      directBooking: 'Резервирай директно през BOOM Card',
+      secureCheckout: 'Сигурно плащане',
+      instantAccess: 'Мигновен достъп до билетите',
+      localSupport: 'Локална поддръжка на клиенти',
+      verifiedProviders: 'Всички доставчици са проверени',
+      qualityGuarantee: 'Гаранция за качество',
+      bestPriceGuarantee: 'Гаранция за най-добра цена',
+    },
+
+    // CTA за абонамент за неабонати
+    subscriptionCta: {
+      unlockDiscount: 'Отключи тази отстъпка',
+      getDiscount: 'Вземи до 20% отстъпка',
+      joinBoomCard: 'Присъедини се към BOOM Card',
+      memberBenefit: 'Предимство за членове',
+      exclusiveAccess: 'Ексклузивен достъп за членове',
+      subscribeToBook: 'Абонирай се за резервация с отстъпка',
+      freeTrialAvailable: 'Безплатен пробен период',
+      startFreeTrial: 'Започни 24ч безплатен тест',
+      noCommitment: 'Без ангажимент. Откажи по всяко време.',
+    },
+
+    // Празни състояния
+    empty: {
+      noExperiences: 'Няма налични изживявания',
+      noExperiencesInCategory: 'Все още няма изживявания в тази категория',
+      noExperiencesInLocation: 'Няма налични изживявания на тази локация',
+      checkOtherCategories: 'Разгледай други категории',
+      exploreDifferentLocation: 'Разгледай друга локация',
+      newExperiencesComingSoon: 'Нови изживявания очаквайте скоро!',
+    },
+
+    // Сортиране
+    sorting: {
+      sortBy: 'Сортирай по',
+      recommended: 'Препоръчани',
+      priceLowToHigh: 'Цена: Ниска към висока',
+      priceHighToLow: 'Цена: Висока към ниска',
+      highestRated: 'Най-високо оценени',
+      mostReviewed: 'Най-много отзиви',
+      duration: 'Продължителност',
+      newest: 'Най-нови',
+      popularity: 'Популярност',
+    },
+  },
+
+  // ===== ФИЛТРИ ЗА BOOM МЕСТА (Point 1) =====
+  boomPlacesFilters: {
+    // Заглавия на филтри
+    location: 'Локация',
+    nearMe: 'Близо до мен',
+    category: 'Категория',
+    subcategory: 'Подкатегория',
+    discountRange: 'Отстъпка (потенциал)',
+    rating: 'Рейтинг',
+    ratingSource: '(Google Maps)',
+    priceLevel: 'Ценово ниво',
+    clearAll: 'Изчисти всички',
+    applyFilters: 'Приложи филтри',
+
+    // Локации
+    locations: {
+      sofia: 'София',
+      plovdiv: 'Пловдив',
+      varna: 'Варна',
+      burgas: 'Бургас',
+      bansko: 'Банско',
+      melnik: 'Мелник',
+    },
+
+    // Категории (съответстват на навигацията)
+    categories: {
+      restaurantsFood: 'Ресторанти и храна',
+      accommodation: 'Настаняване',
+      spaWellness: 'СПА и уелнес',
+      panoramicPlaces: 'Панорамни места',
+      clubsNightlife: 'Клубове и нощен живот',
+      cafesBakeries: 'Кафенета, сладкарници и пекарни',
+    },
+
+    // Подкатегории на ресторанти
+    restaurantsSub: {
+      curated: 'Подбрани',
+      fastFood: 'Бърза храна',
+      traditional: 'Традиционна кухня',
+      vegetarianVegan: 'Вегетарианско и веган',
+    },
+
+    // Диапазони на отстъпки (Point 1.2.4)
+    discountRanges: {
+      range0to5: '0–5%',
+      range5to10: '5–10%',
+      range10to15: '10–15%',
+      range15to20: '15–20%',
+    },
+
+    // Диапазони на рейтинг (Point 1.2.5)
+    ratingRanges: {
+      range35to40: '3.5 – 4.0',
+      range40to45: '4.0 – 4.5',
+      range45to50: '4.5 – 5.0',
+    },
+
+    // Ценови нива (Point 1.2.6)
+    priceLevels: {
+      budget: '€ Евтино',
+      midRange: '€€ Среден клас',
+      highEnd: '€€€ Висок клас',
+    },
   },
 };

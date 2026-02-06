@@ -5,7 +5,6 @@ import styled from 'styled-components';
 import Badge from '../Badge/Badge';
 import FavoriteButton from '../FavoriteButton/FavoriteButton';
 import { useLanguage } from '../../../contexts/LanguageContext';
-import { convertBGNToEUR } from '../../../utils/helpers';
 
 export interface Offer {
   id: string;
@@ -228,13 +227,13 @@ const Rating = styled.div`
   gap: 0.375rem;
 `;
 
-const PriceSection = styled.div`
+const DiscountSection = styled.div`
   display: flex;
-  align-items: center;
-  gap: 1rem;
-  height: 110px;
-  padding-top: 1.25rem;
-  padding-bottom: 1.25rem;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding-top: 1rem;
+  padding-bottom: 1rem;
   margin-top: 0.5rem;
   border-top: none;
   background: linear-gradient(135deg, #111827 0%, #1f2937 100%);
@@ -246,7 +245,7 @@ const PriceSection = styled.div`
   position: relative;
   overflow: hidden;
 
-  /* Color mode - explosive gradient price section */
+  /* Color mode - explosive gradient section */
   [data-theme="color"] & {
     background: linear-gradient(135deg, #1a0a2e 0%, #6a0572 50%, #ab2567 100%);
   }
@@ -295,30 +294,20 @@ const PriceSection = styled.div`
   }
 `;
 
-const OriginalPrice = styled.span`
-  font-size: 0.9375rem;
-  color: rgba(255, 255, 255, 0.5);
-  text-decoration: line-through;
-  font-weight: 500;
-  position: relative;
-  z-index: 1;
-`;
-
-const DiscountedPrice = styled.span`
-  font-size: 1.875rem;
+const DiscountText = styled.span`
+  font-size: 1.5rem;
   font-weight: 800;
   color: #ffffff;
-  letter-spacing: -0.03em;
+  letter-spacing: -0.02em;
   position: relative;
   z-index: 1;
   text-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 `;
 
-const Currency = styled.span`
-  font-size: 1.125rem;
-  font-weight: 700;
-  color: rgba(255, 255, 255, 0.9);
-  margin-left: 0.25rem;
+const SubscriptionNote = styled.span`
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.7);
   position: relative;
   z-index: 1;
 `;
@@ -329,12 +318,14 @@ export const OfferCard: React.FC<OfferCardProps> = ({ offer, className }) => {
   const description = language === 'bg' ? offer.descriptionBg : offer.description;
   const category = language === 'bg' ? offer.categoryBg : offer.category;
 
-  // Convert BGN prices to EUR for dual display
-  const originalPriceEUR = convertBGNToEUR(offer.originalPrice);
-  const discountedPriceEUR = convertBGNToEUR(offer.discountedPrice);
+  // Discount text and subscription note based on language
+  const discountLabel = language === 'bg'
+    ? `До ${Math.min(offer.discount, 20)}% отстъпка`
+    : `Up to ${Math.min(offer.discount, 20)}% discount`;
 
-  // Currency labels based on language
-  const bgnLabel = language === 'bg' ? 'лв.' : 'BGN';
+  const subscriptionNote = language === 'bg'
+    ? 'според абонаментния план'
+    : 'based on subscription plan';
 
   return (
     <Link to={offer.path} style={{ textDecoration: 'none' }}>
@@ -363,7 +354,7 @@ export const OfferCard: React.FC<OfferCardProps> = ({ offer, className }) => {
               size="small"
             />
           </FavoriteButtonWrapper>
-          <DiscountBadge>-{offer.discount}%</DiscountBadge>
+          <DiscountBadge>-{Math.min(offer.discount, 20)}%</DiscountBadge>
         </ImageContainer>
 
         <Content>
@@ -394,15 +385,10 @@ export const OfferCard: React.FC<OfferCardProps> = ({ offer, className }) => {
             )}
           </MetaInfo>
 
-          <PriceSection>
-            <OriginalPrice>
-              {offer.originalPrice} {bgnLabel} / €{originalPriceEUR}
-            </OriginalPrice>
-            <div>
-              <DiscountedPrice>{offer.discountedPrice}</DiscountedPrice>
-              <Currency>{bgnLabel} / €{discountedPriceEUR}</Currency>
-            </div>
-          </PriceSection>
+          <DiscountSection>
+            <DiscountText>{discountLabel}</DiscountText>
+            <SubscriptionNote>{subscriptionNote}</SubscriptionNote>
+          </DiscountSection>
         </Content>
       </CardContainer>
     </Link>

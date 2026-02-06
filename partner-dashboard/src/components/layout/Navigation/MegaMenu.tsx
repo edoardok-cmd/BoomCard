@@ -15,11 +15,12 @@ const NavWrapper = styled.nav`
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 1.5rem;
+  gap: 0.5rem;
+  height: 100%;
 
   /* 4K and ultra-wide support */
   @media (min-width: 2560px) {
-    gap: 2rem;
+    gap: 1rem;
     max-width: 1800px;
     margin: 0 auto;
   }
@@ -29,24 +30,31 @@ const NavWrapper = styled.nav`
     flex-direction: column;
     align-items: stretch;
     gap: 0;
+    height: auto;
   }
 `;
 
 const NavItem = styled.div`
   position: relative;
+  display: flex;
+  align-items: center;
+  height: 100%;
 `;
 
 const NavLink = styled(Link)<{ $hasChildren?: boolean }>`
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  justify-content: center;
+  gap: 0.375rem;
   padding: 0.75rem 1rem;
   font-size: 0.9375rem;
   font-weight: 500;
+  line-height: 1.25;
   color: var(--color-text-primary);
   text-decoration: none;
   border-radius: 0.5rem;
   transition: all 200ms cubic-bezier(0.4, 0, 0.2, 1);
+  white-space: nowrap;
 
   &:hover {
     background-color: var(--color-background-secondary);
@@ -61,10 +69,13 @@ const NavLink = styled(Link)<{ $hasChildren?: boolean }>`
 `;
 
 const ChevronIcon = styled.svg<{ $isOpen?: boolean }>`
-  width: 1rem;
-  height: 1rem;
+  width: 0.875rem;
+  height: 0.875rem;
+  flex-shrink: 0;
   transition: transform 200ms;
   transform: rotate(${props => props.$isOpen ? '180deg' : '0deg'});
+  display: flex;
+  align-items: center;
 `;
 
 const DropdownContainer = styled(motion.div)`

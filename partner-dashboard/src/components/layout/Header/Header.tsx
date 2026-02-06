@@ -908,8 +908,8 @@ export const Header: React.FC<HeaderProps> = ({
             />
           </Link>
 
-          {/* Desktop Navigation - Absolutely Centered on Page */}
-          <div className="hidden lg:flex items-center justify-center absolute left-1/2 transform -translate-x-1/2 z-40">
+          {/* Desktop Navigation - Absolutely centered on page */}
+          <div className="hidden lg:flex items-center justify-center absolute left-1/2 transform -translate-x-1/2 pointer-events-auto" style={{ maxWidth: 'calc(100% - 500px)' }}>
             <MegaMenu items={navigationConfig.main} language={language} onMenuItemClick={undefined} />
           </div>
 
@@ -952,31 +952,46 @@ export const Header: React.FC<HeaderProps> = ({
               </FavoritesLink>
             </Tooltip>
 
-            {/* Favorites - Desktop only */}
-            <Tooltip content={language === 'bg' ? 'Любими' : 'Favorites'} position="bottom">
-              <FavoritesLink to="/favorites" aria-label="Favorites" className="hidden lg:flex">
-                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"
-                  />
-                </svg>
-                <AnimatePresence>
-                  {favoritesCount > 0 && (
-                    <FavoritesBadge
-                      initial={{ scale: 0 }}
-                      animate={{ scale: 1 }}
-                      exit={{ scale: 0 }}
-                      transition={{ type: 'spring', stiffness: 500, damping: 30 }}
-                    >
-                      {favoritesCount > 99 ? '99+' : favoritesCount}
-                    </FavoritesBadge>
-                  )}
-                </AnimatePresence>
-              </FavoritesLink>
-            </Tooltip>
+            {/* Favorites - Desktop only, only for authenticated users */}
+            {isAuthenticated ? (
+              <Tooltip content={language === 'bg' ? 'Любими' : 'Favorites'} position="bottom">
+                <FavoritesLink to="/favorites" aria-label="Favorites" className="hidden lg:flex">
+                  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"
+                    />
+                  </svg>
+                  <AnimatePresence>
+                    {favoritesCount > 0 && (
+                      <FavoritesBadge
+                        initial={{ scale: 0 }}
+                        animate={{ scale: 1 }}
+                        exit={{ scale: 0 }}
+                        transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+                      >
+                        {favoritesCount > 99 ? '99+' : favoritesCount}
+                      </FavoritesBadge>
+                    )}
+                  </AnimatePresence>
+                </FavoritesLink>
+              </Tooltip>
+            ) : (
+              <Tooltip content={language === 'bg' ? 'Влезте, за да запазите любими' : 'Sign in to save favorites'} position="bottom">
+                <FavoritesLink to="/login" aria-label="Sign in to save favorites" className="hidden lg:flex" style={{ opacity: 0.5 }}>
+                  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"
+                    />
+                  </svg>
+                </FavoritesLink>
+              </Tooltip>
+            )}
 
             {/* Notification Center - Hidden on small screens */}
             {isAuthenticated && (
@@ -1407,27 +1422,46 @@ export const Header: React.FC<HeaderProps> = ({
                   <span>{t('header.nearby') || 'Nearby'}</span>
                 </MobileFavoritesLink>
 
-                {/* Favorites Link Mobile */}
-                <MobileFavoritesLink
-                  to="/favorites"
-                  onClick={() => setMobileMenuOpen(false)}
-                  className="mb-4"
-                >
-                  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"
-                    />
-                  </svg>
-                  <span>{t('header.favorites')}</span>
-                  {favoritesCount > 0 && (
-                    <MobileFavoritesBadge>
-                      {favoritesCount > 99 ? '99+' : favoritesCount}
-                    </MobileFavoritesBadge>
-                  )}
-                </MobileFavoritesLink>
+                {/* Favorites Link Mobile - only for authenticated users */}
+                {isAuthenticated ? (
+                  <MobileFavoritesLink
+                    to="/favorites"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="mb-4"
+                  >
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"
+                      />
+                    </svg>
+                    <span>{t('header.favorites')}</span>
+                    {favoritesCount > 0 && (
+                      <MobileFavoritesBadge>
+                        {favoritesCount > 99 ? '99+' : favoritesCount}
+                      </MobileFavoritesBadge>
+                    )}
+                  </MobileFavoritesLink>
+                ) : (
+                  <MobileFavoritesLink
+                    to="/login"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="mb-4"
+                    style={{ opacity: 0.7 }}
+                  >
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"
+                      />
+                    </svg>
+                    <span>{language === 'bg' ? 'Влезте за любими' : 'Sign in for favorites'}</span>
+                  </MobileFavoritesLink>
+                )}
 
                 {/* Share Button Mobile */}
                 <div className="mb-6">
