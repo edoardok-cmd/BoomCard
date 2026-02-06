@@ -251,8 +251,8 @@ const CreditCardPlan = styled(motion.div)<{ $type: 'black' | 'silver' | 'light' 
 
   /* Light Card */
   ${props => props.$type === 'light' && `
-    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-    border: 2px solid #dee2e6;
+    background: linear-gradient(135deg, #ffffff 0%, #f5f5f5 100%);
+    border: 2px solid rgba(200, 200, 200, 0.5);
 
     &::before {
       content: '';
@@ -271,6 +271,7 @@ const CreditCardPlan = styled(motion.div)<{ $type: 'black' | 'silver' | 'light' 
     box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
   }
 
+  /* Dark Theme */
   [data-theme="dark"] & {
     ${props => props.$type === 'black' && `
       background: linear-gradient(135deg, #111827 0%, #1f2937 50%, #0f172a 100%);
@@ -297,14 +298,13 @@ const CreditCardPlan = styled(motion.div)<{ $type: 'black' | 'silver' | 'light' 
     `}
 
     ${props => props.$type === 'light' && `
-      background: linear-gradient(135deg, #1f2937 0%, #111827 100%);
-      border: 2px solid #4b5563;
+      background: linear-gradient(135deg, #f9fafb 0%, #e5e7eb 100%);
+      border: 2px solid rgba(156, 163, 175, 0.5);
       box-shadow:
-        0 10px 40px rgba(0, 0, 0, 0.3),
-        0 8px 30px rgba(75, 85, 99, 0.2);
+        0 10px 40px rgba(0, 0, 0, 0.2);
 
       &::before {
-        background: radial-gradient(circle, rgba(75, 85, 99, 0.1) 0%, transparent 70%);
+        background: radial-gradient(circle, rgba(0, 0, 0, 0.05) 0%, transparent 70%);
       }
     `}
 
@@ -312,6 +312,52 @@ const CreditCardPlan = styled(motion.div)<{ $type: 'black' | 'silver' | 'light' 
       box-shadow:
         0 20px 60px rgba(59, 130, 246, 0.4),
         0 15px 50px rgba(6, 182, 212, 0.35);
+    }
+  }
+
+  /* Color Theme - Vibrant gradients */
+  [data-theme="color"] & {
+    ${props => props.$type === 'light' && `
+      background: linear-gradient(135deg, #ffffff 0%, #fff5f0 100%);
+      border: 2px solid rgba(255, 148, 214, 0.3);
+      box-shadow:
+        0 10px 40px rgba(0, 0, 0, 0.15);
+
+      &::before {
+        background: radial-gradient(circle, rgba(255, 105, 180, 0.08) 0%, transparent 70%);
+      }
+    `}
+
+    ${props => props.$type === 'silver' && `
+      background: linear-gradient(135deg, #ffd6a5 0%, #ffb5d5 50%, #c9e4ff 100%);
+      border: 3px solid #ff94d6;
+      box-shadow:
+        0 10px 40px rgba(255, 148, 214, 0.4),
+        0 8px 30px rgba(178, 75, 243, 0.3);
+
+      &::before {
+        background: radial-gradient(circle, rgba(255, 105, 180, 0.2) 0%, transparent 70%);
+      }
+    `}
+
+    ${props => props.$type === 'black' && `
+      background: linear-gradient(135deg, #1a0a2e 0%, #6a0572 50%, #ab2567 100%);
+      border: 3px solid #ff4500;
+      box-shadow:
+        0 10px 40px rgba(255, 69, 0, 0.6),
+        0 8px 35px rgba(255, 0, 110, 0.5),
+        0 6px 30px rgba(139, 47, 184, 0.4);
+
+      &::before {
+        background: radial-gradient(circle, rgba(255, 69, 0, 0.15) 0%, transparent 70%);
+      }
+    `}
+
+    &:hover {
+      box-shadow:
+        0 20px 60px rgba(255, 69, 0, 0.5),
+        0 15px 50px rgba(255, 0, 110, 0.4),
+        0 10px 40px rgba(139, 47, 184, 0.3);
     }
   }
 
@@ -329,7 +375,7 @@ const CardLogoText = styled.div<{ $type: 'black' | 'silver' | 'light' }>`
   margin-bottom: 1.5rem;
   color: ${props => {
     if (props.$type === 'black') return '#ffd700';
-    if (props.$type === 'light') return '#6c757d';
+    if (props.$type === 'light') return '#4a4a4a';
     return '#1a1a1a';
   }};
   text-shadow: ${props => {
@@ -341,13 +387,26 @@ const CardLogoText = styled.div<{ $type: 'black' | 'silver' | 'light' }>`
   [data-theme="dark"] & {
     color: ${props => {
       if (props.$type === 'black') return '#06b6d4';
-      if (props.$type === 'light') return '#adb5bd';
+      if (props.$type === 'light') return '#1a1a1a';
       return '#f8fafc';
     }};
     text-shadow: ${props => {
       if (props.$type === 'black') return '0 2px 15px rgba(6, 182, 212, 0.6), 0 0 30px rgba(59, 130, 246, 0.4)';
-      if (props.$type === 'light') return '0 2px 8px rgba(255, 255, 255, 0.1)';
+      if (props.$type === 'light') return '0 1px 2px rgba(0, 0, 0, 0.1)';
       return '0 2px 8px rgba(59, 130, 246, 0.3)';
+    }};
+  }
+
+  [data-theme="color"] & {
+    color: ${props => {
+      if (props.$type === 'black') return '#ff4500';
+      if (props.$type === 'light') return '#1a0a2e';
+      return '#1a0a2e';
+    }};
+    text-shadow: ${props => {
+      if (props.$type === 'black') return '0 2px 15px rgba(255, 69, 0, 0.6), 0 0 30px rgba(255, 0, 110, 0.4)';
+      if (props.$type === 'light') return '0 1px 2px rgba(0, 0, 0, 0.08)';
+      return '0 2px 8px rgba(139, 47, 184, 0.3)';
     }};
   }
 `;
@@ -359,14 +418,22 @@ const CardNumber = styled.div<{ $type?: 'black' | 'silver' | 'light' }>`
   font-size: 1.25rem;
   color: ${props => {
     if (props.$type === 'black') return 'rgba(255, 255, 255, 0.9)';
-    if (props.$type === 'light') return 'rgba(26, 26, 26, 0.8)';
+    if (props.$type === 'light') return 'rgba(100, 100, 100, 0.8)';
     return 'rgba(26, 26, 26, 0.9)';
   }};
   letter-spacing: 0.25rem;
   font-family: 'Courier New', monospace;
 
   [data-theme="dark"] & {
-    color: ${props => props.$type === 'light' ? 'rgba(173, 181, 189, 0.9)' : 'rgba(248, 250, 252, 0.9)'};
+    color: ${props => props.$type === 'light' ? 'rgba(26, 26, 26, 0.8)' : 'rgba(248, 250, 252, 0.9)'};
+  }
+
+  [data-theme="color"] & {
+    color: ${props => {
+      if (props.$type === 'light') return 'rgba(26, 10, 46, 0.7)';
+      if (props.$type === 'silver') return 'rgba(26, 10, 46, 0.8)';
+      return 'rgba(255, 255, 255, 0.95)';
+    }};
   }
 `;
 
@@ -380,7 +447,7 @@ const CardHolderName = styled.div<{ $type?: 'black' | 'silver' | 'light' }>`
   font-family: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   color: ${props => {
     if (props.$type === 'black') return 'rgba(255, 255, 255, 0.95)';
-    if (props.$type === 'light') return 'rgba(26, 26, 26, 0.9)';
+    if (props.$type === 'light') return 'rgba(74, 74, 74, 0.95)';
     return 'rgba(26, 26, 26, 0.95)';
   }};
   font-size: 0.8125rem;
@@ -389,7 +456,15 @@ const CardHolderName = styled.div<{ $type?: 'black' | 'silver' | 'light' }>`
   font-weight: 400;
 
   [data-theme="dark"] & {
-    color: ${props => props.$type === 'light' ? 'rgba(173, 181, 189, 0.95)' : 'rgba(248, 250, 252, 0.95)'};
+    color: ${props => props.$type === 'light' ? 'rgba(26, 26, 26, 0.95)' : 'rgba(248, 250, 252, 0.95)'};
+  }
+
+  [data-theme="color"] & {
+    color: ${props => {
+      if (props.$type === 'light') return 'rgba(26, 10, 46, 0.85)';
+      if (props.$type === 'silver') return 'rgba(26, 10, 46, 0.9)';
+      return 'rgba(255, 255, 255, 0.95)';
+    }};
   }
 `;
 
@@ -398,26 +473,45 @@ const CardPriceDisplay = styled.div<{ $type: 'black' | 'silver' | 'light' }>`
   text-align: right;
   color: ${props => {
     if (props.$type === 'black') return '#ffd700';
-    if (props.$type === 'light') return '#6c757d';
+    if (props.$type === 'light') return 'rgba(74, 74, 74, 0.95)';
     return 'rgba(26, 26, 26, 0.95)';
   }};
-  font-size: 1.25rem;
-  font-weight: 500;
-  line-height: 1.3;
+  font-size: 1.75rem;
+  font-weight: 400;
+  line-height: 1;
   display: flex;
   flex-direction: column;
   align-items: flex-end;
 
+  span {
+    font-size: 0.875rem;
+    font-weight: 400;
+    opacity: 0.9;
+  }
+
   [data-theme="dark"] & {
     color: ${props => {
       if (props.$type === 'black') return '#06b6d4';
-      if (props.$type === 'light') return '#adb5bd';
+      if (props.$type === 'light') return '#1a1a1a';
       return '#f8fafc';
     }};
     text-shadow: ${props => {
       if (props.$type === 'black') return '0 2px 10px rgba(6, 182, 212, 0.4)';
-      if (props.$type === 'light') return '0 1px 4px rgba(173, 181, 189, 0.2)';
+      if (props.$type === 'light') return 'none';
       return '0 1px 4px rgba(59, 130, 246, 0.2)';
+    }};
+  }
+
+  [data-theme="color"] & {
+    color: ${props => {
+      if (props.$type === 'black') return '#ff4500';
+      if (props.$type === 'light') return '#1a0a2e';
+      return '#1a0a2e';
+    }};
+    text-shadow: ${props => {
+      if (props.$type === 'black') return '0 2px 10px rgba(255, 69, 0, 0.4)';
+      if (props.$type === 'light') return 'none';
+      return '0 1px 4px rgba(139, 47, 184, 0.2)';
     }};
   }
 `;
@@ -906,12 +1000,10 @@ const PricingPublicPage: React.FC = () => {
                       {language === 'bg' ? plan.displayNameBg : plan.displayName}
                     </CardHolderName>
                     <CardPriceDisplay $type={plan.cardType}>
-                      <div style={{ fontSize: '1rem', fontWeight: 500 }}>
-                        {displayPriceBGN.toFixed(2)} {bgnLabel}
-                      </div>
-                      <div style={{ fontSize: '0.875rem', opacity: 0.85 }}>
-                        €{displayPriceEUR}{periodLabel}
-                      </div>
+                      {displayPriceBGN.toFixed(2)} {bgnLabel} / €{displayPriceEUR}
+                      <span style={{ fontSize: '0.75rem', opacity: 0.8 }}>
+                        {periodLabel}
+                      </span>
                     </CardPriceDisplay>
                   </CardBottomRow>
                 </CreditCardPlan>
