@@ -1,10 +1,20 @@
-import React from 'react';
+import React, { useState } from 'react';
 import GenericPage from '../components/templates/GenericPage';
 import { useOffersByCategory } from '../hooks/useOffers';
+import ExperiencesFilters, { ExperiencesFiltersState } from '../components/common/ExperiencesFilters';
 
 const ExperiencesFamilyActivitiesPage: React.FC = () => {
   const { data, isLoading } = useOffersByCategory('family-activities');
   const offers = data?.data || [];
+
+  const [filters, setFilters] = useState<ExperiencesFiltersState>({
+    durations: [],
+    formats: [],
+    seasons: [],
+    participations: [],
+    ratingRanges: [],
+    priceLevels: [],
+  });
 
   return (
     <GenericPage
@@ -14,6 +24,7 @@ const ExperiencesFamilyActivitiesPage: React.FC = () => {
       subtitleBg="Перфектни семейни излети: Зоопаркове, Тематични паркове и Интерактивни изживявания"
       offers={offers}
       isLoading={isLoading}
+      filters={<ExperiencesFilters filters={filters} onChange={setFilters} />}
     />
   );
 };

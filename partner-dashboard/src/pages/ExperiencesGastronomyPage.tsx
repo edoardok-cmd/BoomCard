@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import GenericPage from '../components/templates/GenericPage';
 import { Offer } from '../components/common/OfferCard/OfferCard';
+import ExperiencesFilters, { ExperiencesFiltersState } from '../components/common/ExperiencesFilters';
 
 const mockOffers: Offer[] = [
   {
@@ -24,6 +25,15 @@ const mockOffers: Offer[] = [
 ];
 
 const ExperiencesGastronomyPage: React.FC = () => {
+  const [filters, setFilters] = useState<ExperiencesFiltersState>({
+    durations: [],
+    formats: [],
+    seasons: [],
+    participations: [],
+    ratingRanges: [],
+    priceLevels: [],
+  });
+
   return (
     <GenericPage
       titleEn="Gastronomy Experiences"
@@ -31,6 +41,7 @@ const ExperiencesGastronomyPage: React.FC = () => {
       subtitleEn="Culinary adventures including street food tours, wine & dine experiences, cooking classes, and farm-to-table dining"
       subtitleBg="Кулинарни приключения включващи турове на улична храна, вино и храна, готварски класове и farm-to-table хранене"
       offers={mockOffers}
+      filters={<ExperiencesFilters filters={filters} onChange={setFilters} />}
     />
   );
 };

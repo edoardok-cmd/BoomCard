@@ -1,10 +1,19 @@
-import React from 'react';
+import React, { useState } from 'react';
 import GenericPage from '../components/templates/GenericPage';
 import { useOffersByCategory } from '../hooks/useOffers';
+import BoomPlacesFilters, { BoomPlacesFiltersState } from '../components/common/BoomPlacesFilters';
 
 const VenuesCafesPage: React.FC = () => {
   const { data, isLoading } = useOffersByCategory('cafes');
   const offers = data?.data || [];
+
+  const [filters, setFilters] = useState<BoomPlacesFiltersState>({
+    locations: [],
+    nearMe: false,
+    discountRanges: [],
+    ratingRanges: [],
+    priceLevels: [],
+  });
 
   return (
     <GenericPage
@@ -14,6 +23,7 @@ const VenuesCafesPage: React.FC = () => {
       subtitleBg="Насладете се на премиум кафе и вкусни сладкиши в най-добрите кафенета и сладкарници в България"
       offers={offers}
       isLoading={isLoading}
+      filters={<BoomPlacesFilters filters={filters} onChange={setFilters} />}
     />
   );
 };

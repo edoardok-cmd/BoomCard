@@ -1,10 +1,20 @@
-import React from 'react';
+import React, { useState } from 'react';
 import GenericPage from '../components/templates/GenericPage';
 import { useOffersByCategory } from '../hooks/useOffers';
+import ExperiencesFilters, { ExperiencesFiltersState } from '../components/common/ExperiencesFilters';
 
 const ExperiencesCulturalPage: React.FC = () => {
   const { data, isLoading } = useOffersByCategory('cultural');
   const offers = data?.data || [];
+
+  const [filters, setFilters] = useState<ExperiencesFiltersState>({
+    durations: [],
+    formats: [],
+    seasons: [],
+    participations: [],
+    ratingRanges: [],
+    priceLevels: [],
+  });
 
   return (
     <GenericPage
@@ -14,6 +24,7 @@ const ExperiencesCulturalPage: React.FC = () => {
       subtitleBg="Потопете се в българската култура чрез музеи, галерии и исторически места"
       offers={offers}
       isLoading={isLoading}
+      filters={<ExperiencesFilters filters={filters} onChange={setFilters} />}
     />
   );
 };

@@ -1,10 +1,20 @@
-import React from 'react';
+import React, { useState } from 'react';
 import GenericPage from '../components/templates/GenericPage';
 import { useOffersByCategory } from '../hooks/useOffers';
+import ExperiencesFilters, { ExperiencesFiltersState } from '../components/common/ExperiencesFilters';
 
 const ExperiencesRomanticPage: React.FC = () => {
   const { data, isLoading } = useOffersByCategory('romantic');
   const offers = data?.data || [];
+
+  const [filters, setFilters] = useState<ExperiencesFiltersState>({
+    durations: [],
+    formats: [],
+    seasons: [],
+    participations: [],
+    ratingRanges: [],
+    priceLevels: [],
+  });
 
   return (
     <GenericPage
@@ -14,6 +24,7 @@ const ExperiencesRomanticPage: React.FC = () => {
       subtitleBg="Създайте незабравими спомени: Романтични вечери, СПА за двойки и Фотосесии"
       offers={offers}
       isLoading={isLoading}
+      filters={<ExperiencesFilters filters={filters} onChange={setFilters} />}
     />
   );
 };

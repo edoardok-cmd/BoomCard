@@ -133,6 +133,7 @@ interface GenericPageProps {
   emptyTextBg?: string;
   showEmptyState?: boolean;
   isLoading?: boolean;
+  filters?: ReactNode;
 }
 
 export const GenericPage: React.FC<GenericPageProps> = ({
@@ -148,6 +149,7 @@ export const GenericPage: React.FC<GenericPageProps> = ({
   emptyTextEn = 'Check back soon for new items!',
   emptyTextBg = 'Проверете отново скоро!',
   showEmptyState = false,
+  filters,
 }) => {
   const { language } = useLanguage();
 
@@ -175,6 +177,7 @@ export const GenericPage: React.FC<GenericPageProps> = ({
 
       <ContentSection>
         <Container>
+          {filters}
           {children}
 
           {offers && offers.length > 0 && (
