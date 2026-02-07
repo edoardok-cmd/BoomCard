@@ -60,6 +60,7 @@ export interface SubscriptionStatus {
 
 class PlansService {
   private baseUrl: string;
+  private timeout: number = 5000; // 5 second timeout for API calls
 
   constructor() {
     this.baseUrl = API_BASE_URL;
@@ -70,7 +71,9 @@ class PlansService {
    */
   async getPlans(): Promise<Plan[]> {
     try {
-      const response = await axios.get(`${this.baseUrl}/plans`);
+      const response = await axios.get(`${this.baseUrl}/plans`, {
+        timeout: this.timeout,
+      });
       if (response.data.success) {
         return response.data.data;
       }
@@ -86,7 +89,9 @@ class PlansService {
    */
   async getPlanByCode(planCode: string): Promise<Plan> {
     try {
-      const response = await axios.get(`${this.baseUrl}/plans/code/${planCode}`);
+      const response = await axios.get(`${this.baseUrl}/plans/code/${planCode}`, {
+        timeout: this.timeout,
+      });
       if (response.data.success) {
         return response.data.data;
       }
@@ -102,7 +107,9 @@ class PlansService {
    */
   async getPlanById(planId: string): Promise<Plan> {
     try {
-      const response = await axios.get(`${this.baseUrl}/plans/${planId}`);
+      const response = await axios.get(`${this.baseUrl}/plans/${planId}`, {
+        timeout: this.timeout,
+      });
       if (response.data.success) {
         return response.data.data;
       }
