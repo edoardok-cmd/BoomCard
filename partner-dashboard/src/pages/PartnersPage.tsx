@@ -1038,16 +1038,51 @@ const PartnersPage: React.FC = () => {
 
   const categories = [
     { value: '', label: t('partnerRegistration.selectCategory') },
-    { value: 'RESTAURANT', label: t('partnerRegistration.restaurant') },
-    { value: 'HOTEL', label: t('partnerRegistration.hotel') },
-    { value: 'SPA', label: t('partnerRegistration.spa') },
-    { value: 'WINERY', label: t('partnerRegistration.winery') },
-    { value: 'ENTERTAINMENT', label: t('partnerRegistration.entertainment') },
-    { value: 'SPORTS', label: t('partnerRegistration.sports') },
-    { value: 'BEAUTY', label: t('partnerRegistration.beauty') },
-    { value: 'SHOPPING', label: t('partnerRegistration.shopping') },
-    { value: 'TRAVEL', label: t('partnerRegistration.travel') },
+    { value: 'RESTAURANTS_FOOD', label: t('categories.restaurantsAndFood') },
+    { value: 'ACCOMMODATION', label: t('categories.accommodation') },
+    { value: 'SPA_WELLNESS', label: t('categories.spaAndWellness') },
+    { value: 'PANORAMIC_PLACES', label: t('categories.panoramicPlaces') },
+    { value: 'CLUBS_NIGHTLIFE', label: t('categories.clubsAndNightlife') },
+    { value: 'CAFES_BAKERIES', label: t('categories.cafesAndBakeries') },
   ];
+
+  const subcategoriesMap: Record<string, { value: string; label: string }[]> = {
+    RESTAURANTS_FOOD: [
+      { value: 'CURATED', label: t('categories.curated') },
+      { value: 'FAST_FOOD', label: t('categories.fastFood') },
+      { value: 'TRADITIONAL', label: t('categories.traditionalCuisine') },
+      { value: 'VEGETARIAN_VEGAN', label: t('categories.vegetarianVegan') },
+    ],
+    ACCOMMODATION: [
+      { value: 'HOTELS', label: t('categories.hotels') },
+      { value: 'GUEST_HOUSES', label: t('categories.guestHouses') },
+      { value: 'APARTMENTS', label: t('categories.apartments') },
+    ],
+    SPA_WELLNESS: [
+      { value: 'SPA_CENTERS', label: t('categories.spaCenters') },
+      { value: 'POOLS', label: t('categories.pools') },
+      { value: 'MINERAL_POOLS', label: t('categories.mineralPools') },
+      { value: 'FITNESS_WELLNESS', label: t('categories.fitnessAndWellness') },
+      { value: 'SPORTS', label: t('categories.sports') },
+    ],
+    PANORAMIC_PLACES: [
+      { value: 'BARS', label: t('categories.bars') },
+      { value: 'RESTAURANTS', label: t('categories.restaurants') },
+    ],
+    CLUBS_NIGHTLIFE: [
+      { value: 'CLUBS', label: t('categories.clubs') },
+      { value: 'BARS', label: t('categories.bars') },
+      { value: 'LOUNGE', label: t('categories.lounge') },
+      { value: 'PARTIES_EVENTS', label: t('categories.partiesAndEvents') },
+      { value: 'LIVE_MUSIC', label: t('categories.liveMusic') },
+    ],
+    CAFES_BAKERIES: [
+      { value: 'CAFES', label: t('categories.cafes') },
+      { value: 'PASTRY_SHOPS', label: t('categories.pastryShops') },
+      { value: 'BRUNCH', label: t('categories.brunch') },
+      { value: 'BAKERIES', label: t('categories.bakeries') },
+    ],
+  };
 
   const [formData, setFormData] = useState({
     firstName: '',
@@ -1059,6 +1094,7 @@ const PartnersPage: React.FC = () => {
     businessName: '',
     businessNameBg: '',
     businessCategory: '',
+    businessSubcategory: '',
     taxId: '',
     website: '',
     acceptTerms: false,
@@ -1208,7 +1244,11 @@ const PartnersPage: React.FC = () => {
     const checked = (e.target as HTMLInputElement).checked;
     const newValue = type === 'checkbox' ? checked : value;
 
-    setFormData(prev => ({ ...prev, [name]: newValue }));
+    setFormData(prev => ({
+      ...prev,
+      [name]: newValue,
+      ...(name === 'businessCategory' ? { businessSubcategory: '' } : {}),
+    }));
 
     // Real-time validation for touched fields
     if (touched[name]) {
@@ -1645,6 +1685,28 @@ const PartnersPage: React.FC = () => {
                   </FormGroup>
 
                   <FormGroup>
+                    <Label htmlFor="businessSubcategory">
+                      {t('boomPlacesFilters.subcategory')}
+                    </Label>
+                    <Select
+                      id="businessSubcategory"
+                      name="businessSubcategory"
+                      value={formData.businessSubcategory}
+                      onChange={handleChange}
+                      disabled={isLoading || !formData.businessCategory}
+                    >
+                      <option value="">{language === 'bg' ? 'Изберете подкатегория...' : 'Select subcategory...'}</option>
+                      {(subcategoriesMap[formData.businessCategory] || []).map(sub => (
+                        <option key={sub.value} value={sub.value}>
+                          {sub.label}
+                        </option>
+                      ))}
+                    </Select>
+                  </FormGroup>
+                </FormRow>
+
+                <FormRow>
+                  <FormGroup>
                     <Label htmlFor="taxId">
                       {t('partnerRegistration.taxId')}
                     </Label>
@@ -1658,22 +1720,22 @@ const PartnersPage: React.FC = () => {
                       disabled={isLoading}
                     />
                   </FormGroup>
-                </FormRow>
 
-                <FormGroup>
-                  <Label htmlFor="website">
-                    {t('partnerRegistration.website')}
-                  </Label>
-                  <Input
-                    id="website"
-                    type="url"
-                    name="website"
-                    value={formData.website}
-                    onChange={handleChange}
-                    placeholder={t('partnerRegistration.websitePlaceholder')}
-                    disabled={isLoading}
-                  />
-                </FormGroup>
+                  <FormGroup>
+                    <Label htmlFor="website">
+                      {t('partnerRegistration.website')}
+                    </Label>
+                    <Input
+                      id="website"
+                      type="url"
+                      name="website"
+                      value={formData.website}
+                      onChange={handleChange}
+                      placeholder={t('partnerRegistration.websitePlaceholder')}
+                      disabled={isLoading}
+                    />
+                  </FormGroup>
+                </FormRow>
               </FormSubSection>
 
               {/* Security */}

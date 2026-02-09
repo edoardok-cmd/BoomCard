@@ -1,10 +1,9 @@
 import React, { useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import styled from 'styled-components';
 import { useLanguage } from '../contexts/LanguageContext';
 import OfferCard, { Offer } from '../components/common/OfferCard/OfferCard';
-import FilterPanel, { FilterGroup } from '../components/common/FilterPanel/FilterPanel';
 import Button from '../components/common/Button/Button';
 import Loading from '../components/common/Loading/Loading';
 
@@ -120,7 +119,7 @@ const ContentWrapper = styled.div`
 
 const LayoutGrid = styled.div`
   display: grid;
-  grid-template-columns: 280px 1fr;
+  grid-template-columns: 260px 1fr;
   gap: 2rem;
   align-items: start;
 
@@ -129,22 +128,112 @@ const LayoutGrid = styled.div`
   }
 `;
 
-const Sidebar = styled.aside`
+const FilterSidebar = styled.aside<{ $showMobile?: boolean }>`
+  background: var(--color-background, #ffffff);
+  border: 1px solid var(--color-border, #e5e7eb);
+  border-radius: 1rem;
+  padding: 1.25rem;
   position: sticky;
   top: 5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+
+  [data-theme="dark"] & {
+    background: #1f2937;
+    border-color: #374151;
+  }
 
   @media (max-width: 1024px) {
     position: static;
+    display: ${props => props.$showMobile ? 'flex' : 'none'};
   }
 `;
 
-const MobileFilterToggle = styled(Button)`
+const MobileFilterToggle = styled.button`
   display: none;
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--color-border, #e5e7eb);
+  border-radius: 0.75rem;
+  background: var(--color-background, #ffffff);
+  color: var(--color-text-primary, #374151);
+  font-size: 0.9375rem;
+  font-weight: 500;
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
   margin-bottom: 1rem;
+  font-family: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+
+  [data-theme="dark"] & {
+    background: #1f2937;
+    border-color: #374151;
+    color: #d1d5db;
+  }
 
   @media (max-width: 1024px) {
     display: flex;
-    width: 100%;
+  }
+`;
+
+const FilterGroup = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+`;
+
+const FilterLabel = styled.span`
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--color-text-secondary, #6b7280);
+
+  [data-theme="dark"] & {
+    color: #9ca3af;
+  }
+`;
+
+const FilterChipsWrapper = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+`;
+
+const FilterChip = styled.button<{ $active?: boolean }>`
+  padding: 0.3125rem 0.75rem;
+  border-radius: 9999px;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 200ms ease;
+  border: 1.5px solid ${props => props.$active ? 'var(--color-primary, #ff4500)' : 'var(--color-border, #e5e7eb)'};
+  background: ${props => props.$active ? 'var(--color-primary, #ff4500)' : 'transparent'};
+  color: ${props => props.$active ? '#ffffff' : 'var(--color-text-primary, #374151)'};
+  white-space: nowrap;
+  font-family: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+
+  [data-theme="dark"] & {
+    border-color: ${props => props.$active ? '#ff4500' : '#4b5563'};
+    background: ${props => props.$active ? '#ff4500' : 'transparent'};
+    color: ${props => props.$active ? '#ffffff' : '#d1d5db'};
+  }
+
+  &:hover {
+    border-color: var(--color-primary, #ff4500);
+    ${props => !props.$active && `
+      background: rgba(255, 69, 0, 0.08);
+    `}
+  }
+`;
+
+const FilterDivider = styled.hr`
+  border: none;
+  border-top: 1px solid var(--color-border, #e5e7eb);
+  margin: 0;
+
+  [data-theme="dark"] & {
+    border-color: #374151;
   }
 `;
 
@@ -279,128 +368,65 @@ const allOffers: Offer[] = [
   // Add more offers as needed
 ];
 
-const filterGroups: FilterGroup[] = [
-  {
-    id: 'location',
-    title: 'Location',
-    titleBg: 'Локация',
-    type: 'checkbox',
-    options: [
-      { id: 'sofia', label: 'Sofia', labelBg: 'София', value: 'sofia' },
-      { id: 'plovdiv', label: 'Plovdiv', labelBg: 'Пловдив', value: 'plovdiv' },
-      { id: 'varna', label: 'Varna', labelBg: 'Варна', value: 'varna' },
-      { id: 'bansko', label: 'Bansko', labelBg: 'Банско', value: 'bansko' },
-      { id: 'melnik', label: 'Melnik', labelBg: 'Мелник', value: 'melnik' },
-    ]
-  },
-  {
-    id: 'category',
-    title: 'Category',
-    titleBg: 'Категория',
-    type: 'checkbox',
-    options: [
-      { id: 'restaurants', label: 'Restaurants', labelBg: 'Ресторанти', value: 'restaurants' },
-      { id: 'hotels', label: 'Hotels', labelBg: 'Хотели', value: 'hotels' },
-      { id: 'spa', label: 'Spa & Wellness', labelBg: 'Спа и уелнес', value: 'spa' },
-      { id: 'wineries', label: 'Wineries', labelBg: 'Винарни', value: 'wineries' },
-      { id: 'experiences', label: 'Experiences', labelBg: 'Изживявания', value: 'experiences' },
-    ]
-  },
-  {
-    id: 'discount',
-    title: 'Discount',
-    titleBg: 'Отстъпка',
-    type: 'range',
-    min: 0,
-    max: 100,
-    options: []
-  },
-  {
-    id: 'price',
-    title: 'Price Range (BGN / EUR)',
-    titleBg: 'Ценови диапазон (лв. / EUR)',
-    type: 'range',
-    min: 0,
-    max: 1000,
-    options: []
-  },
-  {
-    id: 'rating',
-    title: 'Rating',
-    titleBg: 'Рейтинг',
-    type: 'checkbox',
-    options: [
-      { id: 'rating-5', label: '5 stars', labelBg: '5 звезди', value: '5' },
-      { id: 'rating-4', label: '4+ stars', labelBg: '4+ звезди', value: '4' },
-      { id: 'rating-3', label: '3+ stars', labelBg: '3+ звезди', value: '3' },
-    ]
-  }
-];
 
 const CategoryListingPage: React.FC = () => {
-  const { category } = useParams<{ category: string }>();
-  const { language, t } = useLanguage();
-  const [showMobileFilters, setShowMobileFilters] = useState(false);
+  const { t } = useLanguage();
   const [filteredOffers, setFilteredOffers] = useState<Offer[]>(allOffers);
   const [sortBy, setSortBy] = useState('relevance');
   const [isLoading] = useState(false);
+  const [showMobileFilters, setShowMobileFilters] = useState(false);
+  const [activeFilters, setActiveFilters] = useState<Record<string, string[]>>({
+    location: [],
+    discount: [],
+    rating: [],
+    priceLevel: [],
+  });
 
-  const categoryTitles: Record<string, { en: string; bg: string }> = {
-    restaurants: { en: 'Restaurants & Bars', bg: 'Ресторанти и Барове' },
-    hotels: { en: 'Hotels & Accommodation', bg: 'Хотели и Настаняване' },
-    spa: { en: 'Spa & Wellness', bg: 'Спа и Уелнес' },
-    wineries: { en: 'Wineries', bg: 'Винарни' },
-    experiences: { en: 'Experiences', bg: 'Изживявания' },
-  };
+  const toggleFilter = (group: string, value: string) => {
+    setActiveFilters(prev => {
+      const current = prev[group] || [];
+      const updated = current.includes(value)
+        ? current.filter(v => v !== value)
+        : [...current, value];
+      const newFilters = { ...prev, [group]: updated };
 
-  const currentCategory = category || 'all';
-  const categoryTitle = categoryTitles[currentCategory] || { en: 'All Discounts with BOOM Card', bg: 'Всички отстъпки с BOOM Card' };
+      // Apply filters
+      let filtered = [...allOffers];
 
-  const handleApplyFilters = (filters: Record<string, string[]>) => {
-    console.log('Applied filters:', filters);
+      if (newFilters.location.length > 0) {
+        filtered = filtered.filter(offer =>
+          newFilters.location.some(loc =>
+            offer.location.toLowerCase().includes(loc.toLowerCase())
+          )
+        );
+      }
 
-    let filtered = [...allOffers];
+      if (newFilters.discount.length > 0) {
+        filtered = filtered.filter(offer => {
+          return newFilters.discount.some(range => {
+            const [min, max] = range.split('-').map(Number);
+            return offer.discount >= min && offer.discount <= max;
+          });
+        });
+      }
 
-    // Filter by location
-    if (filters.location && filters.location.length > 0) {
-      filtered = filtered.filter(offer =>
-        filters.location.some(loc =>
-          offer.location.toLowerCase().includes(loc.toLowerCase())
-        )
-      );
-    }
+      if (newFilters.rating.length > 0) {
+        filtered = filtered.filter(offer => {
+          return newFilters.rating.some(range => {
+            const [min, max] = range.split('-').map(Number);
+            return (offer.rating || 0) >= min && (offer.rating || 0) <= max;
+          });
+        });
+      }
 
-    // Filter by category
-    if (filters.category && filters.category.length > 0) {
-      filtered = filtered.filter(offer =>
-        filters.category.some(cat => {
-          const offerCategory = offer.category.toLowerCase().replace(/\s+/g, '');
-          const filterCategory = cat.toLowerCase().replace(/\s+/g, '');
-          return offerCategory.includes(filterCategory) || filterCategory.includes(offerCategory);
-        })
-      );
-    }
+      if (newFilters.priceLevel.length > 0) {
+        // Price level filtering would match on offer data
+        // For now, keeps all results when price level is selected
+      }
 
-    // Filter by discount range
-    if (filters.discount && filters.discount.length > 0) {
-      const minDiscount = parseInt(filters.discount[0]);
-      filtered = filtered.filter(offer => offer.discount >= minDiscount);
-    }
-
-    // Filter by price range
-    if (filters.price && filters.price.length > 0) {
-      const maxPrice = parseInt(filters.price[0]);
-      filtered = filtered.filter(offer => offer.discountedPrice <= maxPrice);
-    }
-
-    // Filter by rating
-    if (filters.rating && filters.rating.length > 0) {
-      const minRating = Math.min(...filters.rating.map(r => parseFloat(r)));
-      filtered = filtered.filter(offer => (offer.rating || 0) >= minRating);
-    }
-
-    setFilteredOffers(filtered);
-    setShowMobileFilters(false);
+      setFilteredOffers(filtered);
+      return newFilters;
+    });
   };
 
   const handleSortChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -462,52 +488,115 @@ const CategoryListingPage: React.FC = () => {
 
       <Container>
         <ContentWrapper>
+          {/* Mobile Filter Toggle */}
+          <MobileFilterToggle onClick={() => setShowMobileFilters(!showMobileFilters)}>
+            <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+            </svg>
+            {t('categoryListing.filters')}
+          </MobileFilterToggle>
+
           <LayoutGrid>
-            {/* Desktop Filters */}
-            <Sidebar className="hidden lg:block">
-              <FilterPanel
-                filters={filterGroups}
-                language={language}
-                onApplyFilters={handleApplyFilters}
-              />
-            </Sidebar>
+            {/* Sidebar Filters */}
+            <FilterSidebar $showMobile={showMobileFilters}>
+              {/* Location */}
+              <FilterGroup>
+                <FilterLabel>{t('boomPlacesFilters.location')}</FilterLabel>
+                <FilterChipsWrapper>
+                  <FilterChip
+                    $active={activeFilters.location.includes('nearby')}
+                    onClick={() => toggleFilter('location', 'nearby')}
+                  >
+                    📍 {t('boomPlacesFilters.nearMe')}
+                  </FilterChip>
+                  {Object.entries({
+                    sofia: t('boomPlacesFilters.locations.sofia'),
+                    plovdiv: t('boomPlacesFilters.locations.plovdiv'),
+                    varna: t('boomPlacesFilters.locations.varna'),
+                    burgas: t('boomPlacesFilters.locations.burgas'),
+                    bansko: t('boomPlacesFilters.locations.bansko'),
+                    melnik: t('boomPlacesFilters.locations.melnik'),
+                  }).map(([key, label]) => (
+                    <FilterChip
+                      key={key}
+                      $active={activeFilters.location.includes(key)}
+                      onClick={() => toggleFilter('location', key)}
+                    >
+                      {label}
+                    </FilterChip>
+                  ))}
+                </FilterChipsWrapper>
+              </FilterGroup>
+
+              <FilterDivider />
+
+              {/* Discount Range */}
+              <FilterGroup>
+                <FilterLabel>{t('boomPlacesFilters.discountRange')}</FilterLabel>
+                <FilterChipsWrapper>
+                  {Object.entries({
+                    '0-5': t('boomPlacesFilters.discountRanges.range0to5'),
+                    '5-10': t('boomPlacesFilters.discountRanges.range5to10'),
+                    '10-15': t('boomPlacesFilters.discountRanges.range10to15'),
+                    '15-20': t('boomPlacesFilters.discountRanges.range15to20'),
+                  }).map(([key, label]) => (
+                    <FilterChip
+                      key={key}
+                      $active={activeFilters.discount.includes(key)}
+                      onClick={() => toggleFilter('discount', key)}
+                    >
+                      {label}
+                    </FilterChip>
+                  ))}
+                </FilterChipsWrapper>
+              </FilterGroup>
+
+              <FilterDivider />
+
+              {/* Rating */}
+              <FilterGroup>
+                <FilterLabel>{t('boomPlacesFilters.rating')} {t('boomPlacesFilters.ratingSource')}</FilterLabel>
+                <FilterChipsWrapper>
+                  {Object.entries({
+                    '3.5-4.0': t('boomPlacesFilters.ratingRanges.range35to40'),
+                    '4.0-4.5': t('boomPlacesFilters.ratingRanges.range40to45'),
+                    '4.5-5.0': t('boomPlacesFilters.ratingRanges.range45to50'),
+                  }).map(([key, label]) => (
+                    <FilterChip
+                      key={key}
+                      $active={activeFilters.rating.includes(key)}
+                      onClick={() => toggleFilter('rating', key)}
+                    >
+                      ⭐ {label}
+                    </FilterChip>
+                  ))}
+                </FilterChipsWrapper>
+              </FilterGroup>
+
+              <FilterDivider />
+
+              {/* Price Level */}
+              <FilterGroup>
+                <FilterLabel>{t('boomPlacesFilters.priceLevel')}</FilterLabel>
+                <FilterChipsWrapper>
+                  {Object.entries({
+                    budget: t('boomPlacesFilters.priceLevels.budget'),
+                    midRange: t('boomPlacesFilters.priceLevels.midRange'),
+                    highEnd: t('boomPlacesFilters.priceLevels.highEnd'),
+                  }).map(([key, label]) => (
+                    <FilterChip
+                      key={key}
+                      $active={activeFilters.priceLevel.includes(key)}
+                      onClick={() => toggleFilter('priceLevel', key)}
+                    >
+                      {label}
+                    </FilterChip>
+                  ))}
+                </FilterChipsWrapper>
+              </FilterGroup>
+            </FilterSidebar>
 
             <Main>
-              {/* Mobile Filter Toggle */}
-              <MobileFilterToggle
-                variant="secondary"
-                size="medium"
-                onClick={() => setShowMobileFilters(!showMobileFilters)}
-              >
-                <svg
-                  width="20"
-                  height="20"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                  style={{ marginRight: '0.5rem' }}
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"
-                  />
-                </svg>
-                {t('categoryListing.filters')}
-              </MobileFilterToggle>
-
-              {/* Mobile Filters Panel */}
-              {showMobileFilters && (
-                <div className="lg:hidden mb-4">
-                  <FilterPanel
-                    filters={filterGroups}
-                    language={language}
-                    onApplyFilters={handleApplyFilters}
-                  />
-                </div>
-              )}
-
               <ResultsHeader>
                 <ResultsCount>
                   {t('offersPage.resultsTitle')}

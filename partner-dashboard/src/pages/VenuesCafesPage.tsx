@@ -19,8 +19,8 @@ const VenuesCafesPage: React.FC = () => {
     <GenericPage
       titleEn="Cafes & Pastry Shops"
       titleBg="Кафенета и Сладкарници"
-      subtitleEn="Indulge in premium coffee and delicious pastries at Bulgaria's finest cafes and bakeries"
-      subtitleBg="Насладете се на премиум кафе и вкусни сладкиши в най-добрите кафенета и сладкарници в България"
+      subtitleEn="BOOM Card gives you access to exclusive offers with up to 20% discount, based on your chosen plan."
+      subtitleBg="BOOM Card ти дава достъп до ексклузивни оферти с до 20% отстъпка, според избрания от теб план."
       offers={offers}
       isLoading={isLoading}
       filters={<BoomPlacesFilters filters={filters} onChange={setFilters} />}

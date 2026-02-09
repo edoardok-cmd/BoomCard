@@ -19,8 +19,8 @@ const VenuesHotelTypesPage: React.FC = () => {
     <GenericPage
       titleEn="Accommodation Types"
       titleBg="Типове Настаняване"
-      subtitleEn="Find your perfect stay: Boutique hotels, Business accommodations, Resort properties, and Family-friendly venues"
-      subtitleBg="Намерете перфектното си място: Бутик хотели, Бизнес настаняване, Курортни имоти и Семейни места"
+      subtitleEn="BOOM Card gives you access to exclusive offers with up to 20% discount, based on your chosen plan."
+      subtitleBg="BOOM Card ти дава достъп до ексклузивни оферти с до 20% отстъпка, според избрания от теб план."
       offers={offers}
       isLoading={isLoading}
       filters={<BoomPlacesFilters filters={filters} onChange={setFilters} />}

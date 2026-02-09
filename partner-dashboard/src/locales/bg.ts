@@ -422,7 +422,7 @@ export const bg: TranslationKey = {
     cafesAndBakeries: 'Кафенета, сладкарници и пекарни',
 
     // Subcategories - Restaurants & Food
-    curated: 'Подбрани',
+    curated: 'BOOM Ресторанти',
     fastFood: 'Бърза храна',
     traditionalCuisine: 'Традиционна кухня',
     vegetarianVegan: 'Вегетарианско и веган',
@@ -1883,7 +1883,7 @@ export const bg: TranslationKey = {
 
     // Подкатегории на ресторанти
     restaurantsSub: {
-      curated: 'Подбрани',
+      curated: 'BOOM Ресторанти',
       fastFood: 'Бърза храна',
       traditional: 'Традиционна кухня',
       vegetarianVegan: 'Вегетарианско и веган',

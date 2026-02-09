@@ -19,8 +19,8 @@ const VenuesWineriesPage: React.FC = () => {
     <GenericPage
       titleEn="Wineries & Tasting Halls"
       titleBg="Винарни и Дегустационни Зали"
-      subtitleEn="Discover Bulgaria's rich wine culture at premier wineries and tasting halls"
-      subtitleBg="Открийте богатата винена култура на България в премиум винарни и дегустационни зали"
+      subtitleEn="BOOM Card gives you access to exclusive offers with up to 20% discount, based on your chosen plan."
+      subtitleBg="BOOM Card ти дава достъп до ексклузивни оферти с до 20% отстъпка, според избрания от теб план."
       offers={offers}
       isLoading={isLoading}
       filters={<BoomPlacesFilters filters={filters} onChange={setFilters} />}

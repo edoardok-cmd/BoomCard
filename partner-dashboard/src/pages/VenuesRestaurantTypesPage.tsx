@@ -17,10 +17,10 @@ const VenuesRestaurantTypesPage: React.FC = () => {
 
   return (
     <GenericPage
-      titleEn="Restaurant Types"
-      titleBg="Типове Ресторанти"
-      subtitleEn="Explore diverse dining options: Fine dining, Casual restaurants, Fast casual, and Ethnic cuisines"
-      subtitleBg="Разгледайте разнообразни опции за хранене: Fine dining, Casual ресторанти, Fast casual и Етнически кухни"
+      titleEn="BOOM Restaurants"
+      titleBg="BOOM Ресторанти"
+      subtitleEn="BOOM Card gives you access to exclusive offers with up to 20% discount, based on your chosen plan."
+      subtitleBg="BOOM Card ти дава достъп до ексклузивни оферти с до 20% отстъпка, според избрания от теб план."
       offers={offers}
       isLoading={isLoading}
       filters={<BoomPlacesFilters filters={filters} onChange={setFilters} />}

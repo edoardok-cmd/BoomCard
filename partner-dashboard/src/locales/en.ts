@@ -420,7 +420,7 @@ export const en = {
     cafesAndBakeries: 'Cafes, Pastry Shops & Bakeries',
 
     // Subcategories - Restaurants & Food
-    curated: 'Curated',
+    curated: 'BOOM Restaurants',
     fastFood: 'Fast Food',
     traditionalCuisine: 'Traditional Cuisine',
     vegetarianVegan: 'Vegetarian & Vegan',
@@ -1881,7 +1881,7 @@ export const en = {
 
     // Restaurant subcategories
     restaurantsSub: {
-      curated: 'Curated',
+      curated: 'BOOM Restaurants',
       fastFood: 'Fast Food',
       traditional: 'Traditional Cuisine',
       vegetarianVegan: 'Vegetarian & Vegan',

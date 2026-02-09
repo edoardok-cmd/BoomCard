@@ -71,6 +71,20 @@ const Subtitle = styled.p`
   }
 `;
 
+const CTAButtonWrapper = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 2rem;
+`;
+
+const TrustLine = styled.p`
+  font-size: 0.9rem;
+  opacity: 0.7;
+  margin: 0;
+`;
+
 const ContentSection = styled.div`
   padding: 3rem 0;
 `;
@@ -151,7 +165,7 @@ export const GenericPage: React.FC<GenericPageProps> = ({
   showEmptyState = false,
   filters,
 }) => {
-  const { language } = useLanguage();
+  const { language, t } = useLanguage();
 
   const title = language === 'bg' ? titleBg : titleEn;
   const subtitle = language === 'bg' ? subtitleBg : subtitleEn;
@@ -170,6 +184,14 @@ export const GenericPage: React.FC<GenericPageProps> = ({
             >
               <Title>{title}</Title>
               <Subtitle>{subtitle}</Subtitle>
+              <CTAButtonWrapper>
+                <Link to="/register" style={{ textDecoration: 'none' }}>
+                  <Button variant="golden" size="large">
+                    {t('offersPage.heroCta')}
+                  </Button>
+                </Link>
+                <TrustLine>{t('offersPage.heroTrustLine')}</TrustLine>
+              </CTAButtonWrapper>
             </motion.div>
           </HeroContent>
         </Container>

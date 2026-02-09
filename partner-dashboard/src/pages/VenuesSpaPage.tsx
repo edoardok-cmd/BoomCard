@@ -19,8 +19,8 @@ const VenuesSpaPage: React.FC = () => {
     <GenericPage
       titleEn="Spa & Wellness Centers"
       titleBg="Спа и Уелнес Центрове"
-      subtitleEn="Rejuvenate your body and mind at Bulgaria's finest spa and wellness centers"
-      subtitleBg="Освежете тялото и ума си в най-добрите спа и уелнес центрове в България"
+      subtitleEn="BOOM Card gives you access to exclusive offers with up to 20% discount, based on your chosen plan."
+      subtitleBg="BOOM Card ти дава достъп до ексклузивни оферти с до 20% отстъпка, според избрания от теб план."
       offers={offers}
       isLoading={isLoading}
       filters={<BoomPlacesFilters filters={filters} onChange={setFilters} />}

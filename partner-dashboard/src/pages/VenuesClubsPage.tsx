@@ -19,8 +19,8 @@ const VenuesClubsPage: React.FC = () => {
     <GenericPage
       titleEn="Clubs & Night Venues"
       titleBg="Клубове и Нощни Заведения"
-      subtitleEn="Experience the best nightlife with exclusive access to top clubs and entertainment venues"
-      subtitleBg="Изживейте най-добрия нощен живот с ексклузивен достъп до топ клубове и развлекателни места"
+      subtitleEn="BOOM Card gives you access to exclusive offers with up to 20% discount, based on your chosen plan."
+      subtitleBg="BOOM Card ти дава достъп до ексклузивни оферти с до 20% отстъпка, според избрания от теб план."
       offers={offers}
       isLoading={isLoading}
       filters={<BoomPlacesFilters filters={filters} onChange={setFilters} />}
