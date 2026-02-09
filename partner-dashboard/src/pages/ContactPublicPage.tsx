@@ -220,8 +220,8 @@ const ContactPublicPage: React.FC = () => {
           transition={{ duration: 0.6, delay: 0.1 }}
         >
           {language === 'bg'
-            ? 'Имате въпроси? Ние сме тук, за да помогнем.'
-            : 'Have questions? We\'re here to help.'}
+            ? 'Имате въпроси, предложения за подобрение или технически проблеми? Ние сме тук, за да помогнем.'
+            : 'Have questions, improvement suggestions or technical issues? We\'re here to help.'}
         </Subtitle>
 
         <Grid>

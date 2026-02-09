@@ -40,8 +40,8 @@ const ContactsPage: React.FC = () => {
     <GenericPage
       titleEn="Contact Us"
       titleBg="Свържете се с нас"
-      subtitleEn="We're here to help. Reach out through any of these channels"
-      subtitleBg="Ние сме тук, за да помогнем. Свържете се чрез някой от тези канали"
+      subtitleEn="Have questions, improvement suggestions or technical issues? We're here to help."
+      subtitleBg="Имате въпроси, предложения за подобрение или технически проблеми? Ние сме тук, за да помогнем."
     >
       <ContactGrid>
         <ContactCard>
