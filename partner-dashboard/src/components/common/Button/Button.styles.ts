@@ -221,6 +221,36 @@ const variantStyles = {
     &:active:not(:disabled) {
       transform: scale(0.97);
     }
+  `,
+  golden: css`
+    background: linear-gradient(135deg, #d4a843 0%, #c49b38 50%, #b8922f 100%);
+    color: #1a1a1a;
+    border: none;
+    font-weight: 700;
+    box-shadow: 0 4px 20px rgba(212, 168, 67, 0.4);
+
+    [data-theme="dark"] & {
+      background: linear-gradient(135deg, #d4a843 0%, #c49b38 50%, #b8922f 100%);
+      color: #1a1a1a;
+      box-shadow: 0 4px 25px rgba(212, 168, 67, 0.5);
+    }
+
+    [data-theme="color"] & {
+      background: linear-gradient(135deg, #e6b84d 0%, #d4a843 50%, #c49b38 100%);
+      color: #1a1a1a;
+      box-shadow:
+        0 6px 30px -5px rgba(212, 168, 67, 0.6),
+        0 8px 35px -5px rgba(196, 155, 56, 0.4);
+    }
+
+    &:hover:not(:disabled) {
+      background: linear-gradient(135deg, #e0b44d 0%, #d4a843 50%, #c49b38 100%);
+      box-shadow: 0 8px 30px rgba(212, 168, 67, 0.55);
+      transform: translateY(-2px);
+    }
+    &:active:not(:disabled) {
+      transform: scale(0.97);
+    }
   `
 };
 
@@ -267,7 +297,7 @@ const sizeStyles = {
   `
 };
 
-type VariantType = 'primary' | 'secondary' | 'ghost' | 'danger' | 'outline';
+type VariantType = 'primary' | 'secondary' | 'ghost' | 'danger' | 'outline' | 'golden';
 type SizeType = 'small' | 'medium' | 'large';
 
 export const StyledButton = styled.button<{ variant?: VariantType; size?: SizeType; $fullWidth?: boolean }>`

@@ -589,7 +589,7 @@ const ExperiencesPage: React.FC = () => {
               <Subtitle>{content.subtitle}</Subtitle>
               <div style={{ marginTop: '2rem', display: 'flex', justifyContent: 'center' }}>
                 <Link to="/register">
-                  <Button variant="primary" size="large">
+                  <Button variant="golden" size="large">
                     {content.browse}
                   </Button>
                 </Link>

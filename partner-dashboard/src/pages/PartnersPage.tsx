@@ -844,25 +844,26 @@ const GradientButton = styled.button`
   padding: 1.125rem 2rem;
   font-size: 1.125rem;
   font-weight: 700;
-  color: white;
+  color: #1a1a1a;
   border: none;
   border-radius: 0.75rem;
   cursor: pointer;
-  background: linear-gradient(135deg, #1f2937 0%, #111827 50%, #000000 100%);
+  background: linear-gradient(135deg, #d4a843 0%, #c49b38 50%, #b8922f 100%);
   transition: all 300ms;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+  box-shadow: 0 4px 20px rgba(212, 168, 67, 0.4);
 
   [data-theme="color"] & {
-    background: linear-gradient(135deg, #6a0572 0%, #ab2567 50%, #ff006e 100%);
-    box-shadow: 0 4px 20px rgba(255, 0, 110, 0.3);
+    background: linear-gradient(135deg, #e6b84d 0%, #d4a843 50%, #c49b38 100%);
+    box-shadow: 0 6px 30px rgba(212, 168, 67, 0.5);
   }
 
   &:hover:not(:disabled) {
     transform: translateY(-1px);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+    background: linear-gradient(135deg, #e0b44d 0%, #d4a843 50%, #c49b38 100%);
+    box-shadow: 0 8px 30px rgba(212, 168, 67, 0.55);
 
     [data-theme="color"] & {
-      box-shadow: 0 8px 30px rgba(255, 0, 110, 0.45);
+      box-shadow: 0 8px 35px rgba(212, 168, 67, 0.6);
     }
   }
 
@@ -1297,7 +1298,7 @@ const PartnersPage: React.FC = () => {
               </Subtitle>
               <HeroButtons>
                 <a href="#application" style={{ textDecoration: 'none' }}>
-                  <Button variant="secondary" size="large">
+                  <Button variant="golden" size="large">
                     {t('partners.applyNow')}
                   </Button>
                 </a>

@@ -450,7 +450,7 @@ const CategoryListingPage: React.FC = () => {
             <Subtitle>{t('offersPage.subtitle')}</Subtitle>
             <CTAButtonWrapper>
               <Link to="/register">
-                <Button variant="secondary" size="large">
+                <Button variant="golden" size="large">
                   {t('offersPage.heroCta')}
                 </Button>
               </Link>
@@ -510,7 +510,7 @@ const CategoryListingPage: React.FC = () => {
 
               <ResultsHeader>
                 <ResultsCount>
-                  {filteredOffers.length} {filteredOffers.length === 1 ? t('categoryListing.offer') : t('categoryListing.offers')}
+                  {t('offersPage.resultsTitle')}
                 </ResultsCount>
                 <SortSelect value={sortBy} onChange={handleSortChange}>
                   <option value="relevance">
