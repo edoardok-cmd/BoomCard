@@ -102,10 +102,16 @@ const Subtitle = styled.p`
 
 const CTAButtonWrapper = styled.div`
   display: flex;
-  justify-content: center;
-  gap: 1rem;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
   margin-top: 2rem;
-  flex-wrap: wrap;
+`;
+
+const TrustLine = styled.p`
+  font-size: 0.9rem;
+  opacity: 0.7;
+  margin: 0;
 `;
 
 const ContentWrapper = styled.div`
@@ -348,7 +354,7 @@ const CategoryListingPage: React.FC = () => {
   };
 
   const currentCategory = category || 'all';
-  const categoryTitle = categoryTitles[currentCategory] || { en: 'All Offers', bg: 'Всички оферти' };
+  const categoryTitle = categoryTitles[currentCategory] || { en: 'All Discounts with BOOM Card', bg: 'Всички отстъпки с BOOM Card' };
 
   const handleApplyFilters = (filters: Record<string, string[]>) => {
     console.log('Applied filters:', filters);
@@ -438,25 +444,17 @@ const CategoryListingPage: React.FC = () => {
             <Breadcrumb>
               <a href="/">{t('categoryListing.home')}</a>
               <span>/</span>
-              <span>{language === 'bg' ? categoryTitle.bg : categoryTitle.en}</span>
+              <span>{t('offersPage.breadcrumb')}</span>
             </Breadcrumb>
-            <Title>{language === 'bg' ? categoryTitle.bg : categoryTitle.en}</Title>
-            <Subtitle>
-              {language === 'bg'
-                ? `${t('categoryListing.browseExclusiveOffers')} ${filteredOffers.length} ексклузивни оферти с отстъпки до 70%`
-                : `${t('categoryListing.browseExclusiveOffers')} ${filteredOffers.length} exclusive offers with up to 70% off`}
-            </Subtitle>
+            <Title>{t('offersPage.title')}</Title>
+            <Subtitle>{t('offersPage.subtitle')}</Subtitle>
             <CTAButtonWrapper>
               <Link to="/register">
                 <Button variant="secondary" size="large">
-                  {language === 'bg' ? 'Започнете сега' : 'Get Started'}
+                  {t('offersPage.heroCta')}
                 </Button>
               </Link>
-              <Link to="/subscriptions">
-                <Button variant="ghost" size="large">
-                  {language === 'bg' ? 'Вижте Планове' : 'View Plans'}
-                </Button>
-              </Link>
+              <TrustLine>{t('offersPage.heroTrustLine')}</TrustLine>
             </CTAButtonWrapper>
           </HeroContent>
         </Container>

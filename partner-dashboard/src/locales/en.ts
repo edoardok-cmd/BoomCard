@@ -309,7 +309,7 @@ export const en = {
   offersPage: {
     // Hero Section - 2.1
     breadcrumb: 'BOOM Places',
-    title: 'All BOOM Offers in One Place',
+    title: 'All BOOM Discounts in One Place',
     subtitle: 'BOOM Card gives you access to exclusive offers with up to 20% discount, based on your chosen plan.',
     heroCta: 'Unlock BOOM Card',
     heroTrustLine: 'Free 24-hour trial period. No payment required.',
@@ -842,6 +842,7 @@ export const en = {
     locationsTitle: 'Part of the BOOM Card partner network',
     locationsSubtitle: 'Selected businesses already attracting customers with BOOM Card',
     viewAllPartners: 'View all partners',
+    viewBoomPlaces: 'View BOOM Places',
     contactQuestion: 'Have a question or a specific case?',
   },
 

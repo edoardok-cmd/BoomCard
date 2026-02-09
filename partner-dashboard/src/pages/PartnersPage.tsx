@@ -1427,9 +1427,9 @@ const PartnersPage: React.FC = () => {
           </LocationsGrid>
 
           <div style={{ textAlign: 'center', marginTop: '1rem' }}>
-            <Link to="/partners/all" style={{ textDecoration: 'none' }}>
+            <Link to="/venues" style={{ textDecoration: 'none' }}>
               <Button variant="outline" size="large">
-                {t('partners.viewAllPartners')}
+                {t('partners.viewBoomPlaces')}
               </Button>
             </Link>
           </div>

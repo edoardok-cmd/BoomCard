@@ -311,7 +311,7 @@ export const bg: TranslationKey = {
   offersPage: {
     // Hero секция - 2.1
     breadcrumb: 'BOOM места',
-    title: 'Всички BOOM оферти на едно място',
+    title: 'Всички BOOM отстъпки на едно място',
     subtitle: 'BOOM Card ти дава достъп до ексклузивни оферти с до 20% отстъпка, според избрания от теб план.',
     heroCta: 'Отключи BOOM Card',
     heroTrustLine: 'Безплатен 24-часов пробен период. Без заплащане.',
@@ -844,6 +844,7 @@ export const bg: TranslationKey = {
     locationsTitle: 'Част от партньорската мрежа на BOOM Card',
     locationsSubtitle: 'Избрани бизнеси, които вече привличат клиенти с BOOM Card',
     viewAllPartners: 'Виж всички партньори',
+    viewBoomPlaces: 'Виж BOOM Места',
     contactQuestion: 'Имате въпрос или специфичен казус?',
   },
 
