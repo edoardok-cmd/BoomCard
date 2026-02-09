@@ -92,21 +92,15 @@ const Subtitle = styled.p`
 
 const HeroButtons = styled.div`
   display: flex;
-  gap: 1rem;
-  flex-wrap: wrap;
-  justify-content: center;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+`;
 
-  /* Make outline buttons visible on dark background */
-  a:last-child button,
-  > *:last-child button {
-    color: white !important;
-    border-color: rgba(255, 255, 255, 0.5) !important;
-
-    &:hover {
-      border-color: white !important;
-      background: rgba(255, 255, 255, 0.1) !important;
-    }
-  }
+const MicroTrust = styled.p`
+  font-size: 0.9rem;
+  opacity: 0.7;
+  margin: 0;
 `;
 
 const Section = styled.section`
@@ -152,9 +146,13 @@ const SectionSubtitle = styled.p`
 
 const BenefitsGrid = styled.div`
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  grid-template-columns: repeat(2, 1fr);
   gap: 2rem;
   margin-bottom: 3rem;
+
+  @media (max-width: 768px) {
+    grid-template-columns: 1fr;
+  }
 `;
 
 const BenefitCard = styled(motion.div)`
@@ -841,6 +839,77 @@ const Stat = styled.div`
   }
 `;
 
+const GradientButton = styled.button`
+  width: 100%;
+  padding: 1.125rem 2rem;
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: white;
+  border: none;
+  border-radius: 0.75rem;
+  cursor: pointer;
+  background: linear-gradient(135deg, #1f2937 0%, #111827 50%, #000000 100%);
+  transition: all 300ms;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+
+  [data-theme="color"] & {
+    background: linear-gradient(135deg, #6a0572 0%, #ab2567 50%, #ff006e 100%);
+    box-shadow: 0 4px 20px rgba(255, 0, 110, 0.3);
+  }
+
+  &:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+
+    [data-theme="color"] & {
+      box-shadow: 0 8px 30px rgba(255, 0, 110, 0.45);
+    }
+  }
+
+  &:active:not(:disabled) {
+    transform: translateY(0);
+  }
+
+  &:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+  }
+`;
+
+const FormMicroTrust = styled.p`
+  font-size: 0.875rem;
+  color: #9ca3af;
+  text-align: center;
+  margin-top: -0.5rem;
+
+  [data-theme="dark"] & {
+    color: #6b7280;
+  }
+`;
+
+const ContactFallback = styled.div`
+  text-align: center;
+  margin-top: 3rem;
+  padding-top: 2rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.15);
+
+  button {
+    color: white !important;
+    border-color: rgba(255, 255, 255, 0.5) !important;
+
+    &:hover {
+      border-color: white !important;
+      background: rgba(255, 255, 255, 0.1) !important;
+    }
+  }
+`;
+
+const ContactQuestion = styled.p`
+  font-size: 1.1rem;
+  color: rgba(255, 255, 255, 0.8);
+  margin-bottom: 1rem;
+`;
+
 interface Location {
   id: string;
   name: string;
@@ -941,7 +1010,7 @@ const PartnersPage: React.FC = () => {
   const { language, t } = useLanguage();
   const [benefitsRef, benefitsInView] = useInView({ threshold: 0.2, triggerOnce: true });
   const [processRef, processInView] = useInView({ threshold: 0.2, triggerOnce: true });
-  const [selectedCity, setSelectedCity] = useState<string>('all');
+  // City filter removed - locations now shown as showcase
 
   // Handle scrolling to hash anchor on page load
   useEffect(() => {
@@ -1001,80 +1070,72 @@ const PartnersPage: React.FC = () => {
   const benefits = [
     {
       icon: 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=400&h=400&fit=crop',
-      titleEn: 'Increase Revenue',
-      titleBg: 'Увеличете приходите',
-      textEn: 'Reach thousands of new customers actively looking for deals',
-      textBg: 'Достигнете хиляди нови клиенти, търсещи оферти'
+      titleEn: 'More real customers',
+      titleBg: 'Повече реални клиенти',
+      textEn: 'BOOM Card users actively seek places with discounts. Your business appears in the app and attracts new visitors who are ready to spend.',
+      textBg: 'Потребителите на BOOM Card активно търсят места с отстъпки. Вашият бизнес се показва в приложението и привлича нови посетители, готови да харчат.'
     },
     {
       icon: 'https://images.unsplash.com/photo-1529156069898-49953e39b3ac?w=400&h=400&fit=crop',
-      titleEn: 'Build Loyalty',
-      titleBg: 'Изградете лоялност',
-      textEn: 'Turn first-time visitors into regular customers',
-      textBg: 'Превърнете първоначалните посетители в редовни клиенти'
-    },
-    {
-      icon: 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=400&h=400&fit=crop',
-      titleEn: 'Track Performance',
-      titleBg: 'Проследявайте резултати',
-      textEn: 'Real-time analytics and insights on your offers',
-      textBg: 'Анализи и статистики в реално време'
+      titleEn: 'Repeat visits and loyalty',
+      titleBg: 'Повтаряеми посещения и лоялност',
+      textEn: 'Discounts motivate customers to come back. Every visit builds a habit and turns a first-time guest into a regular.',
+      textBg: 'Отстъпките мотивират клиентите да се връщат. Всяко посещение изгражда навик и превръща случайния гост в редовен.'
     },
     {
       icon: 'https://images.unsplash.com/photo-1556742502-ec7c0e9f34b1?w=400&h=400&fit=crop',
-      titleEn: 'Easy Management',
-      titleBg: 'Лесно управление',
-      textEn: 'Simple dashboard to manage all your offers',
-      textBg: 'Прост интерфейс за управление на офертите'
-    },
-    {
-      icon: 'https://images.unsplash.com/photo-1557804506-669a67965ba0?w=400&h=400&fit=crop',
-      titleEn: 'Targeted Marketing',
-      titleBg: 'Таргетиран маркетинг',
-      textEn: 'Reach the right customers at the right time',
-      textBg: 'Достигнете правилните клиенти в правилното време'
+      titleEn: 'Easy discount management',
+      titleBg: 'Лесно управление на отстъпките',
+      textEn: 'You set the discount levels, the system handles the rest. No complex integrations or extra work for your staff.',
+      textBg: 'Вие задавате нивата на отстъпки, системата се грижи за останалото. Без сложни интеграции или допълнителна работа за персонала.'
     },
     {
       icon: 'https://images.unsplash.com/photo-1633265486064-086b219458ec?w=400&h=400&fit=crop',
-      titleEn: 'Secure & Reliable',
-      titleBg: 'Сигурно и надеждно',
-      textEn: 'Bank-level security for all transactions',
-      textBg: 'Сигурност на банково ниво за всички транзакции'
+      titleEn: 'Secure and controlled platform',
+      titleBg: 'Сигурна и контролирана платформа',
+      textEn: 'Every visit is verified through QR code. You have full visibility over redeemed discounts and real statistics.',
+      textBg: 'Всяко посещение се верифицира чрез QR код. Имате пълна видимост над използваните отстъпки и реални статистики.'
     }
   ];
 
   const steps = [
     {
-      titleEn: 'Apply Online',
-      titleBg: 'Кандидатствайте онлайн',
-      textEn: 'Fill out our simple partnership form. We\'ll review your application within 24 hours.',
-      textBg: 'Попълнете нашата проста форма. Ще прегледаме кандидатурата ви в рамките на 24 часа.'
+      titleEn: 'Apply online',
+      titleBg: 'Кандидатствате онлайн',
+      textEn: 'Fill out a short form and our team will contact you within 24 hours.',
+      textBg: 'Попълвате кратка форма, екипът се свързва с вас до 24 часа.'
     },
     {
-      titleEn: 'Setup Your Profile',
-      titleBg: 'Настройте профила си',
-      textEn: 'Our team will help you create attractive offers and set up your partner dashboard.',
-      textBg: 'Нашият екип ще ви помогне да създадете атрактивни оферти и да настроите вашия профил.'
+      titleEn: 'Set up your profile',
+      titleBg: 'Настройвате профила си',
+      textEn: 'Set clear discounts and prepare for launch. Our team helps with every step.',
+      textBg: 'Задавате ясни отстъпки и се подготвяте за старт. Нашият екип помага на всяка стъпка.'
     },
     {
-      titleEn: 'Go Live',
-      titleBg: 'Започнете',
-      textEn: 'Start accepting customers with QR codes and watch your business grow!',
-      textBg: 'Започнете да приемате клиенти с QR кодове и гледайте бизнеса си да расте!'
+      titleEn: 'Welcome customers',
+      titleBg: 'Приемате клиенти',
+      textEn: 'Customers scan a QR code and you get real visits. Simple and transparent.',
+      textBg: 'Клиентите сканират QR код и вие получавате реални посещения. Просто и прозрачно.'
     }
   ];
 
-  const cities = [
-    { id: 'all', labelEn: 'All Cities', labelBg: 'Всички Градове' },
-    { id: 'Sofia', labelEn: 'Sofia', labelBg: 'София' },
-    { id: 'Varna', labelEn: 'Varna', labelBg: 'Варна' },
-    { id: 'Plovdiv', labelEn: 'Plovdiv', labelBg: 'Пловдив' },
-    { id: 'Bansko', labelEn: 'Bansko', labelBg: 'Банско' },
-  ];
+  // Cities filter removed - locations now shown as showcase
 
-  const filteredLocations = selectedCity === 'all'
-    ? mockLocations
-    : mockLocations.filter(loc => loc.city === selectedCity);
+  const getCategoryBg = (loc: Location) => {
+    const map: Record<string, string> = {
+      '1': 'Ресторант', '2': 'СПА и фитнес', '3': 'Плажен клуб',
+      '4': 'Ски курорт', '5': 'Галерия и кафе', '6': 'Мол и развлечения',
+    };
+    return map[loc.id] || 'Бизнес';
+  };
+
+  const getCategoryEn = (loc: Location) => {
+    const map: Record<string, string> = {
+      '1': 'Restaurant', '2': 'Spa & Fitness', '3': 'Beach Club',
+      '4': 'Ski Resort', '5': 'Gallery & Cafe', '6': 'Mall & Entertainment',
+    };
+    return map[loc.id] || 'Business';
+  };
 
   const validateField = (field: string, value: any): string | undefined => {
     switch (field) {
@@ -1240,11 +1301,7 @@ const PartnersPage: React.FC = () => {
                     {t('partners.applyNow')}
                   </Button>
                 </a>
-                <Link to="/contact" style={{ textDecoration: 'none' }}>
-                  <Button variant="outline" size="large">
-                    {t('partners.contactUs')}
-                  </Button>
-                </Link>
+                <MicroTrust>{t('partners.microTrust')}</MicroTrust>
               </HeroButtons>
             </motion.div>
           </HeroContent>
@@ -1255,15 +1312,15 @@ const PartnersPage: React.FC = () => {
         <Container>
           <StatsGrid>
             <StatCard>
-              <StatNumber>500+</StatNumber>
+              <StatNumber>300+</StatNumber>
               <StatLabel>{t('partners.partnersCount')}</StatLabel>
             </StatCard>
             <StatCard>
-              <StatNumber>50K+</StatNumber>
+              <StatNumber>5 000+</StatNumber>
               <StatLabel>{t('partners.activeUsers')}</StatLabel>
             </StatCard>
             <StatCard>
-              <StatNumber>1M+</StatNumber>
+              <StatNumber>100 000+</StatNumber>
               <StatLabel>{t('partners.redeemedOffers')}</StatLabel>
             </StatCard>
             <StatCard>
@@ -1343,66 +1400,39 @@ const PartnersPage: React.FC = () => {
       <LocationsSection id="locations">
         <Container>
           <SectionTitle>
-            {language === 'bg' ? 'Партньорски Локации' : 'Partner Locations'}
+            {t('partners.locationsTitle')}
           </SectionTitle>
           <SectionSubtitle>
-            {language === 'bg'
-              ? 'Открийте партньорски места на BoomCard в България'
-              : 'Discover BoomCard partner venues across Bulgaria'}
+            {t('partners.locationsSubtitle')}
           </SectionSubtitle>
 
-          <CityFilter>
-            {cities.map((city) => (
-              <CityChip
-                key={city.id}
-                $active={selectedCity === city.id}
-                onClick={() => setSelectedCity(city.id)}
-              >
-                {language === 'bg' ? city.labelBg : city.labelEn}
-              </CityChip>
-            ))}
-          </CityFilter>
-
           <LocationsGrid>
-            {filteredLocations.map((location, index) => (
+            {mockLocations.map((loc, index) => (
               <LocationCard
-                key={location.id}
+                key={loc.id}
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.4, delay: index * 0.1 }}
               >
-                <LocationImage $bgImage={location.imageUrl}>
-                  {location.openNow && (
-                    <LocationBadge>
-                      {language === 'bg' ? 'Отворено Сега' : 'Open Now'}
-                    </LocationBadge>
-                  )}
-                </LocationImage>
+                <LocationImage $bgImage={loc.imageUrl} />
 
                 <LocationContent>
-                  <LocationName>{location.name}</LocationName>
+                  <LocationName>{loc.name}</LocationName>
                   <LocationAddress>
-                    📍 {location.address}
+                    {loc.city} &middot; {language === 'bg' ? getCategoryBg(loc) : getCategoryEn(loc)}
                   </LocationAddress>
-                  <LocationDescription>
-                    {location.description}
-                  </LocationDescription>
-
-                  <LocationFooter>
-                    <LocationStats>
-                      <Stat>⭐ {location.rating}</Stat>
-                      <Stat>🎁 {location.offers} {language === 'bg' ? 'оферти' : 'offers'}</Stat>
-                    </LocationStats>
-                    <Link to={`/offers/${location.id}`}>
-                      <Button variant="primary" size="small">
-                        {language === 'bg' ? 'Виж Оферти' : 'View Offers'}
-                      </Button>
-                    </Link>
-                  </LocationFooter>
                 </LocationContent>
               </LocationCard>
             ))}
           </LocationsGrid>
+
+          <div style={{ textAlign: 'center', marginTop: '1rem' }}>
+            <Link to="/partners/all" style={{ textDecoration: 'none' }}>
+              <Button variant="outline" size="large">
+                {t('partners.viewAllPartners')}
+              </Button>
+            </Link>
+          </div>
         </Container>
       </LocationsSection>
 
@@ -1764,17 +1794,28 @@ const PartnersPage: React.FC = () => {
                 <strong>📋 {t('partnerRegistration.note')}</strong> {t('partnerRegistration.noteText')}
               </InfoBox>
 
-              <Button
+              <GradientButton
                 type="submit"
-                variant="primary"
-                size="large"
-                isLoading={isLoading}
                 disabled={isLoading}
               >
-                {t('partnerRegistration.createPartnerAccount')}
-              </Button>
+                {isLoading
+                  ? (language === 'bg' ? 'Изпращане...' : 'Submitting...')
+                  : t('partnerRegistration.createPartnerAccount')}
+              </GradientButton>
+              <FormMicroTrust>
+                {t('partners.formMicroTrust')}
+              </FormMicroTrust>
             </FormGrid>
           </FormSection>
+
+          <ContactFallback>
+            <ContactQuestion>{t('partners.contactQuestion')}</ContactQuestion>
+            <Link to="/contact" style={{ textDecoration: 'none' }}>
+              <Button variant="outline" size="large">
+                {t('partners.contactUs')}
+              </Button>
+            </Link>
+          </ContactFallback>
         </Container>
       </CTASection>
     </PageContainer>
