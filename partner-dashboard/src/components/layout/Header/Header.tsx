@@ -891,7 +891,8 @@ export const Header: React.FC<HeaderProps> = ({
   const themeOptions: { mode: ThemeMode; label: string; labelBg: string; icon: string; color: string }[] = [
     { mode: 'light', label: 'Light', labelBg: 'Светъл', icon: '☀️', color: '#000000' },
     { mode: 'dark', label: 'Dark', labelBg: 'Тъмен', icon: '🌙', color: '#06b6d4' },
-    { mode: 'color', label: 'Vibrant', labelBg: 'Цветен', icon: '🎨', color: '#8b5cf6' },
+    // Hidden: Vibrant mode
+    // { mode: 'color', label: 'Vibrant', labelBg: 'Цветен', icon: '🎨', color: '#8b5cf6' },
   ];
 
   return (
