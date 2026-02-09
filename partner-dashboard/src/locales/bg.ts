@@ -440,6 +440,8 @@ export const bg: TranslationKey = {
     sports: 'Спорт',
 
     // Subcategories - Panoramic Places
+    rooftopBars: 'Rooftop Барове',
+    skyRestaurants: 'Sky Ресторанти',
     bars: 'Барове',
     restaurants: 'Ресторанти',
 

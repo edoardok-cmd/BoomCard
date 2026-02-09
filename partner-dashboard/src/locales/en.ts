@@ -438,6 +438,8 @@ export const en = {
     sports: 'Sports',
 
     // Subcategories - Panoramic Places
+    rooftopBars: 'Rooftop Bars',
+    skyRestaurants: 'Sky Restaurants',
     bars: 'Bars',
     restaurants: 'Restaurants',
 

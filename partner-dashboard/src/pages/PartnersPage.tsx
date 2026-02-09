@@ -1066,8 +1066,8 @@ const PartnersPage: React.FC = () => {
       { value: 'SPORTS', label: t('categories.sports') },
     ],
     PANORAMIC_PLACES: [
-      { value: 'BARS', label: t('categories.bars') },
-      { value: 'RESTAURANTS', label: t('categories.restaurants') },
+      { value: 'BARS', label: t('categories.rooftopBars') },
+      { value: 'RESTAURANTS', label: t('categories.skyRestaurants') },
     ],
     CLUBS_NIGHTLIFE: [
       { value: 'CLUBS', label: t('categories.clubs') },

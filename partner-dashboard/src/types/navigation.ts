@@ -50,8 +50,8 @@ export const navigationConfig: NavConfig = {
           children: [
             {
               id: 'curated',
-              label: 'Curated',
-              labelBg: 'Подбрани',
+              label: 'BOOM Restaurants',
+              labelBg: 'BOOM Ресторанти',
               path: '/venues/restaurants?type=curated',
             },
             {
@@ -146,14 +146,14 @@ export const navigationConfig: NavConfig = {
           children: [
             {
               id: 'panoramic-bars',
-              label: 'Bars',
-              labelBg: 'Барове',
+              label: 'Rooftop Bars',
+              labelBg: 'Rooftop Барове',
               path: '/venues/panoramic?type=bars',
             },
             {
               id: 'panoramic-restaurants',
-              label: 'Restaurants',
-              labelBg: 'Ресторанти',
+              label: 'Sky Restaurants',
+              labelBg: 'Sky Ресторанти',
               path: '/venues/panoramic?type=restaurants',
             },
           ],
