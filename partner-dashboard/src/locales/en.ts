@@ -74,8 +74,8 @@ export const en = {
   nav: {
     home: 'Home',
     offers: 'Deals',
-    categories: 'Categories',
-    favorites: 'Favorites',
+    venues: 'Places',
+    experiences: 'Experiences',
     profile: 'Profile',
   },
 

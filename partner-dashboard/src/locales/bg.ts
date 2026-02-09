@@ -75,9 +75,9 @@ export const bg: TranslationKey = {
   // Mobile Bottom Navigation
   nav: {
     home: 'Начало',
-    offers: 'Оферти',
-    categories: 'Категории',
-    favorites: 'Любими',
+    offers: 'Отстъпки',
+    venues: 'Места',
+    experiences: 'Изживявания',
     profile: 'Профил',
   },
 

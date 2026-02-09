@@ -288,11 +288,12 @@ function App() {
                     <Route path="venues/restaurants/types" element={<VenuesRestaurantTypesPage />} />
                     <Route path="venues/hotels" element={<VenuesHotelTypesPage />} />
                     <Route path="venues/hotels/types" element={<VenuesHotelTypesPage />} />
+                    <Route path="venues/accommodation" element={<VenuesHotelTypesPage />} />
                     <Route path="venues/spa" element={<VenuesSpaPage />} />
                     <Route path="venues/wineries" element={<VenuesWineriesPage />} />
                     <Route path="venues/clubs" element={<VenuesClubsPage />} />
                     <Route path="venues/cafes" element={<VenuesCafesPage />} />
-                    <Route path="venues/rooftop" element={<VenuesClubsPage />} />
+                    <Route path="venues/panoramic" element={<VenuesClubsPage />} />
 
                     {/* Experiences routes */}
                     <Route path="experiences" element={<ExperiencesPage />} />
