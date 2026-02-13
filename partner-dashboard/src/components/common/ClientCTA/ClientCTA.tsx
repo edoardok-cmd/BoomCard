@@ -1,5 +1,5 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import styled from 'styled-components';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import Button from '../Button/Button';
@@ -133,9 +133,15 @@ const SecondaryButtonsRow = styled.div`
   justify-content: center;
   flex-wrap: wrap;
 
+  a {
+    flex: 1 1 0;
+    min-width: 200px;
+    max-width: 280px;
+  }
+
   /* Make all buttons uniform - gold border, no background */
   a button {
-    min-width: 200px;
+    width: 100%;
     background: transparent !important;
     border: 2px solid #D4AF37 !important;
     color: #D4AF37 !important;
@@ -152,8 +158,14 @@ const SecondaryButtonsRow = styled.div`
     flex-direction: column;
     align-items: center;
 
-    a button {
+    a {
+      flex: unset;
       min-width: auto;
+      max-width: 300px;
+      width: 100%;
+    }
+
+    a button {
       width: 100%;
     }
   }
@@ -165,6 +177,17 @@ interface ClientCTAProps {
 
 export const ClientCTA: React.FC<ClientCTAProps> = ({ className }) => {
   const { language } = useLanguage();
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  const scrollToPlans = (e: React.MouseEvent) => {
+    e.preventDefault();
+    if (location.pathname === '/') {
+      document.getElementById('subscription-plans')?.scrollIntoView({ behavior: 'smooth' });
+    } else {
+      navigate('/#subscription-plans');
+    }
+  };
 
   const content = {
     en: {
@@ -195,11 +218,11 @@ export const ClientCTA: React.FC<ClientCTAProps> = ({ className }) => {
         <CTAButtons>
           {/* Primary CTA - centered and prominent */}
           <PrimaryButtonContainer>
-            <Link to="/subscriptions">
+            <a href="/#subscription-plans" onClick={scrollToPlans} style={{ textDecoration: 'none' }}>
               <Button variant="primary" size="large">
                 {t.primaryButton}
               </Button>
-            </Link>
+            </a>
           </PrimaryButtonContainer>
           {/* Secondary CTAs - smaller, in a row */}
           <SecondaryButtonsRow>

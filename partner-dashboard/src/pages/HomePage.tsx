@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { motion, useScroll, useTransform, AnimatePresence } from 'framer-motion';
 import { useInView } from 'react-intersection-observer';
 import styled from 'styled-components';
@@ -906,10 +906,21 @@ const SectionDivider = styled.div`
 const HomePage: React.FC = () => {
   const { language, t } = useLanguage();
   const { user } = useAuth();
+  const location = useLocation();
   const { scrollY } = useScroll();
   const heroOpacity = useTransform(scrollY, [0, 300], [1, 0]);
   const heroScale = useTransform(scrollY, [0, 300], [1, 0.95]);
   const [billingPeriod, setBillingPeriod] = useState<'monthly' | 'yearly'>('monthly');
+
+  // Scroll to section when navigating with hash (e.g. /#subscription-plans)
+  useEffect(() => {
+    if (location.hash) {
+      const id = location.hash.replace('#', '');
+      setTimeout(() => {
+        document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
+      }, 100);
+    }
+  }, [location.hash]);
 
   // Fetch top offers from API
   const { data: topOffersData, isLoading: isLoadingOffers } = useTopOffers(6);
@@ -1178,7 +1189,7 @@ const HomePage: React.FC = () => {
       </section>
 
       {/* Subscription Plans Section */}
-      <section className="section" style={{ background: 'var(--color-background-secondary)' }}>
+      <section id="subscription-plans" className="section" style={{ background: 'var(--color-background-secondary)' }}>
         <div className="container-custom">
           <div className="text-center mb-16">
             <SectionTitle className="text-4xl md:text-5xl font-bold mb-4" style={{ color: 'var(--color-text-primary)' }}>
@@ -1307,7 +1318,7 @@ const HomePage: React.FC = () => {
                         </Button>
                       </div>
                     ) : (
-                      <Link to="/register">
+                      <Link to={`/checkout?planCode=${planType}&billing=${isLitePlan ? 'weekly' : billingPeriod}`}>
                         <Button
                           variant={plan.featured ? 'primary' : 'secondary'}
                           size="large"

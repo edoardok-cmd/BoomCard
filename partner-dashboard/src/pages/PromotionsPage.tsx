@@ -1,8 +1,9 @@
 import React, { useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import styled from 'styled-components';
-import { Sparkles } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
+import Button from '../components/common/Button/Button';
 import OfferCard from '../components/common/OfferCard/OfferCard';
 import ClientCTA from '../components/common/ClientCTA/ClientCTA';
 import { updateSEO, generateOfferSchema } from '../utils/seo';
@@ -35,10 +36,22 @@ const Hero = styled.div`
     50% { background-position: 100% 50%; }
   }
   color: white;
-  padding: 4rem 0 3rem;
+  padding: 6rem 0 4rem;
+  position: relative;
+  overflow: hidden;
+
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 50%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.05) 100%);
+  }
 
   @media (max-width: 768px) {
-    padding: 3rem 0 2rem;
+    padding: 4rem 0 3rem;
   }
 `;
 
@@ -46,18 +59,20 @@ const Container = styled.div`
   max-width: 1400px;
   margin: 0 auto;
   padding: 0 1.5rem;
+  position: relative;
+  z-index: 1;
 `;
 
 const HeroContent = styled.div`
-  max-width: 800px;
+  max-width: 700px;
   margin: 0 auto;
   text-align: center;
 `;
 
 const Title = styled.h1`
-  font-size: 3.5rem;
+  font-size: 4rem;
   font-weight: 700;
-  margin-bottom: 1rem;
+  margin-bottom: 1.5rem;
   line-height: 1.1;
 
   @media (max-width: 768px) {
@@ -66,10 +81,10 @@ const Title = styled.h1`
 `;
 
 const Subtitle = styled.p`
-  font-size: 1.25rem;
+  font-size: 1.5rem;
   opacity: 0.9;
-  margin-bottom: 2.5rem;
   line-height: 1.6;
+  margin-bottom: 2.5rem;
 
   @media (max-width: 768px) {
     font-size: 1.125rem;
@@ -476,6 +491,7 @@ const PromotionsPage: React.FC = () => {
       browseOffers: 'Browse All Deals',
       premiumOnlyNote: 'Some offers are available only with Premium.',
       selectedOffers: 'Curated Offers',
+      heroCta: 'Get Your BoomCard',
       // Money Back Section
       cashbackTitle: 'Money Back with BOOM Card in 3 steps',
       cashbackStep1: 'Scan the sticker on the table in the app',
@@ -500,6 +516,7 @@ const PromotionsPage: React.FC = () => {
       browseOffers: 'Разгледай Всички Оферти',
       premiumOnlyNote: 'Някои оферти са достъпни само с Premium.',
       selectedOffers: 'Подбрани предложения',
+      heroCta: 'Вземете Вашата BoomCard',
       // Възстановяване на сума Section
       cashbackTitle: 'Възстановяване на сума с BOOM Card в 3 стъпки',
       cashbackStep1: 'Сканирай стикера на масата в приложението',
@@ -518,27 +535,30 @@ const PromotionsPage: React.FC = () => {
         <Container>
           <HeroContent>
             <motion.div
-              initial={{ opacity: 0, y: 20 }}
+              initial={{ opacity: 0, y: 30 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6 }}
+              transition={{ duration: 0.8 }}
             >
               <Title>{content.title}</Title>
               <Subtitle>{content.subtitle}</Subtitle>
 
               <StatsRow>
                 <StatItem>
-                  <StatValue><Sparkles size={40} /></StatValue>
                   <StatLabel>{content.stat1Label}</StatLabel>
+                  <StatLabel>{content.stat3Label}</StatLabel>
                 </StatItem>
                 <StatItem>
                   <StatValue>20%</StatValue>
                   <StatLabel>{content.stat2Label}</StatLabel>
                 </StatItem>
-                <StatItem>
-                  <StatValue><Sparkles size={40} /></StatValue>
-                  <StatLabel>{content.stat3Label}</StatLabel>
-                </StatItem>
               </StatsRow>
+              <div style={{ marginTop: '2rem', display: 'flex', justifyContent: 'center' }}>
+                <Link to="/register" style={{ textDecoration: 'none' }}>
+                  <Button variant="golden" size="large">
+                    {content.heroCta}
+                  </Button>
+                </Link>
+              </div>
             </motion.div>
           </HeroContent>
         </Container>

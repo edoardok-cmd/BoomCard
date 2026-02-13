@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import styled from 'styled-components';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Link } from 'react-router-dom';
 import Button from '../Button/Button';
 
 interface HeroBlastProps {
@@ -1581,7 +1580,14 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
                 width: '100%',
                 marginTop: 'clamp(8px, 1.5vw, 20px)'
               }}>
-                <Link to="/subscriptions" style={{ textDecoration: 'none', width: '100%', maxWidth: '350px' }}>
+                <a
+                  href="#subscription-plans"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    document.getElementById('subscription-plans')?.scrollIntoView({ behavior: 'smooth' });
+                  }}
+                  style={{ textDecoration: 'none', width: '100%', maxWidth: '350px' }}
+                >
                   <button style={{
                     background: 'linear-gradient(135deg, #c9a237 0%, #d4af37 100%)',
                     color: '#000000',
@@ -1604,7 +1610,7 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
                   }}>
                     {t.ctaButton}
                   </button>
-                </Link>
+                </a>
               </div>
 
               {/* Trust Badges - Starburst Seal Style */}
@@ -1784,11 +1790,18 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
                     ease: [0.25, 0.1, 0.25, 1]
                   } : { duration: 0 }}
                 >
-                  <Link to="/subscriptions">
+                  <a
+                    href="#subscription-plans"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      document.getElementById('subscription-plans')?.scrollIntoView({ behavior: 'smooth' });
+                    }}
+                    style={{ textDecoration: 'none' }}
+                  >
                     <Button variant="primary" size="large">
                       {t.ctaButton}
                     </Button>
-                  </Link>
+                  </a>
                 </ButtonContainer>
 
                 {/* Trust Badges - Starburst Seal Style */}

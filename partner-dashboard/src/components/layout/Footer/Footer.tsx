@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { StyledFooter } from './Footer.styles';
-import { Link } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { useCookieConsent } from '../../../contexts/CookieConsentContext';
 import SocialShareButton from '../../common/ShareButton/ShareButton';
@@ -55,6 +55,17 @@ export const Footer: React.FC<FooterProps> = ({
 }) => {
   const { t, language } = useLanguage();
   const { openSettings } = useCookieConsent();
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  const scrollToPlans = (e: React.MouseEvent) => {
+    e.preventDefault();
+    if (location.pathname === '/') {
+      document.getElementById('subscription-plans')?.scrollIntoView({ behavior: 'smooth' });
+    } else {
+      navigate('/#subscription-plans');
+    }
+  };
 
   return (
     <StyledFooter className={className}>
@@ -70,7 +81,7 @@ export const Footer: React.FC<FooterProps> = ({
             <ul className="space-y-2.5 md:space-y-3 text-sm md:text-base">
               <li><Link to="/how-it-works" className="text-gray-300 hover:text-white transition-colors">{t('footer.howItWorks')}</Link></li>
               <li><Link to="/mobile-app" className="text-gray-300 hover:text-white transition-colors">{t('footer.mobileApp')}</Link></li>
-              <li><Link to="/pricing" className="text-gray-300 hover:text-white transition-colors">{t('footer.pricing')}</Link></li>
+              <li><a href="/#subscription-plans" onClick={scrollToPlans} className="text-gray-300 hover:text-white transition-colors" style={{ cursor: 'pointer' }}>{t('footer.pricing')}</a></li>
               <li><Link to="/partners" className="text-gray-300 hover:text-white transition-colors">{t('footer.partnerNetwork')}</Link></li>
             </ul>
           </FooterSection>
