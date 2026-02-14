@@ -94,7 +94,7 @@ const Subtitle = styled.p`
 const StatsRow = styled.div`
   display: flex;
   justify-content: center;
-  align-items: flex-start;
+  align-items: center;
   gap: 3rem;
   flex-wrap: wrap;
   margin-top: 2rem;
@@ -106,6 +106,7 @@ const StatItem = styled.div`
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
 `;
 
 const StatValue = styled.div`
@@ -544,8 +545,12 @@ const PromotionsPage: React.FC = () => {
 
               <StatsRow>
                 <StatItem>
-                  <StatLabel>{content.stat1Label}</StatLabel>
-                  <StatLabel>{content.stat3Label}</StatLabel>
+                  <StatValue style={{ fontSize: '1.25rem', height: 'auto', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+                    {content.stat1Label}
+                  </StatValue>
+                  <StatValue style={{ fontSize: '1.25rem', height: 'auto', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+                    {content.stat3Label}
+                  </StatValue>
                 </StatItem>
                 <StatItem>
                   <StatValue>20%</StatValue>
