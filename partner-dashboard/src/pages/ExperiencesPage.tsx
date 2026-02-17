@@ -425,6 +425,7 @@ const mockExperiences: Experience[] = [
 
 const ExperiencesPage: React.FC = () => {
   const { language } = useLanguage();
+  const navigate = useNavigate();
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [selectedPriceRange, setSelectedPriceRange] = useState<string>('all');
   const [sortBy, setSortBy] = useState<string>('featured');
@@ -588,11 +589,11 @@ const ExperiencesPage: React.FC = () => {
               <Title>{content.title}</Title>
               <Subtitle>{content.subtitle}</Subtitle>
               <div style={{ marginTop: '2rem', display: 'flex', justifyContent: 'center' }}>
-                <Link to="/register">
+                <a href="/#subscription-plans" onClick={(e) => { e.preventDefault(); navigate('/#subscription-plans'); }} style={{ textDecoration: 'none' }}>
                   <Button variant="golden" size="large">
                     {content.browse}
                   </Button>
-                </Link>
+                </a>
               </div>
             </motion.div>
           </HeroContent>

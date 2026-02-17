@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import styled from 'styled-components';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -371,6 +371,7 @@ const allOffers: Offer[] = [
 
 const CategoryListingPage: React.FC = () => {
   const { t } = useLanguage();
+  const navigate = useNavigate();
   const [filteredOffers, setFilteredOffers] = useState<Offer[]>(allOffers);
   const [sortBy, setSortBy] = useState('relevance');
   const [isLoading] = useState(false);
@@ -475,11 +476,11 @@ const CategoryListingPage: React.FC = () => {
             <Title>{t('offersPage.title')}</Title>
             <Subtitle>{t('offersPage.subtitle')}</Subtitle>
             <CTAButtonWrapper>
-              <Link to="/register">
+              <a href="/#subscription-plans" onClick={(e) => { e.preventDefault(); navigate('/#subscription-plans'); }} style={{ textDecoration: 'none' }}>
                 <Button variant="golden" size="large">
                   {t('offersPage.heroCta')}
                 </Button>
-              </Link>
+              </a>
               <TrustLine>{t('offersPage.heroTrustLine')}</TrustLine>
             </CTAButtonWrapper>
           </HeroContent>

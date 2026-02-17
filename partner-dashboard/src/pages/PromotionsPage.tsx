@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import styled from 'styled-components';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -438,6 +438,7 @@ const CashbackTrustText = styled.p`
 
 const PromotionsPage: React.FC = () => {
   const { language } = useLanguage();
+  const navigate = useNavigate();
 
   // Sort promotions by discount size for SEO
   const topPromotions = [...mockOffers]
@@ -558,11 +559,11 @@ const PromotionsPage: React.FC = () => {
                 </StatItem>
               </StatsRow>
               <div style={{ marginTop: '2rem', display: 'flex', justifyContent: 'center' }}>
-                <Link to="/register" style={{ textDecoration: 'none' }}>
+                <a href="/#subscription-plans" onClick={(e) => { e.preventDefault(); navigate('/#subscription-plans'); }} style={{ textDecoration: 'none' }}>
                   <Button variant="golden" size="large">
                     {content.heroCta}
                   </Button>
-                </Link>
+                </a>
               </div>
             </motion.div>
           </HeroContent>

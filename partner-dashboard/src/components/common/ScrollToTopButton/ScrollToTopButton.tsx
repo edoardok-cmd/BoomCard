@@ -12,7 +12,7 @@ const Button = styled(motion.button)`
   border-radius: 50%;
   background: var(--color-primary);
   color: var(--color-secondary);
-  border: none;
+  border: 2px solid rgba(255, 255, 255, 0.8);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -42,14 +42,14 @@ const Button = styled(motion.button)`
   @media (max-width: 768px) {
     width: 2.75rem;
     height: 2.75rem;
-    bottom: 1.5rem;
+    bottom: 5.5rem;
     right: 1.5rem;
   }
 
   @media (max-width: 480px) {
     width: 2.5rem;
     height: 2.5rem;
-    bottom: 1rem;
+    bottom: 5rem;
     right: 1rem;
   }
 `;

@@ -13,7 +13,7 @@ import Button from '../components/common/Button/Button';
 const getFallbackPlans = (): Plan[] => [
   {
     id: 'lite-premium',
-    planCode: 'lite-premium',
+    planCode: 'starter',
     displayName: 'LITE PREMIUM',
     displayNameBg: 'ЛАЙТ ПРЕМИУМ',
     pricing: {
@@ -455,9 +455,10 @@ const CheckoutPage: React.FC = () => {
         console.error('Error fetching plan:', err);
         // Try to find plan in fallback data
         const fallbackPlans = getFallbackPlans();
-        const identifier = planId || planCode;
+        const identifier = (planId || planCode || '').toLowerCase();
         const fallbackPlan = fallbackPlans.find(
-          p => p.id === identifier || p.planCode === identifier
+          p => p.id.toLowerCase() === identifier
+            || p.planCode.toLowerCase() === identifier
         );
 
         if (fallbackPlan) {
