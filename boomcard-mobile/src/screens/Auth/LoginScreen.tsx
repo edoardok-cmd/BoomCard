@@ -15,6 +15,7 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
+  Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
@@ -156,8 +157,8 @@ const LoginScreen = ({ navigation }: any) => {
       <View style={styles.content}>
         {/* Logo */}
         <View style={styles.logoContainer}>
-          <Text style={styles.logo}>💥</Text>
-          <Text style={styles.title}>BoomCard</Text>
+          <Image source={require('../../../assets/icon.png')} style={styles.logo} />
+          <Text style={styles.title}>BOOM Card</Text>
           <Text style={styles.subtitle}>{t('auth.welcomeBack')}</Text>
         </View>
 
@@ -226,11 +227,10 @@ const LoginScreen = ({ navigation }: any) => {
           </>
         )}
 
-        {/* Register Link */}
+        {/* Choose Plan Link */}
         <View style={styles.footer}>
-          <Text style={styles.footerText}>{t('auth.dontHaveAccount')} </Text>
-          <TouchableOpacity onPress={() => navigation.navigate('Register')}>
-            <Text style={styles.link}>{t('auth.signUp')}</Text>
+          <TouchableOpacity onPress={() => navigation.navigate('PlanSelection')}>
+            <Text style={styles.link}>{t('auth.choosePlan')}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -253,7 +253,8 @@ const getStyles = (theme: any) => StyleSheet.create({
     marginBottom: 48,
   },
   logo: {
-    fontSize: 64,
+    width: 100,
+    height: 100,
     marginBottom: 16,
   },
   title: {

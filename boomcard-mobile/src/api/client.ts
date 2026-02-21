@@ -20,8 +20,8 @@ export class ApiClient {
   private axiosInstance: AxiosInstance;
   private isRefreshing: boolean = false;
   private refreshSubscribers: Array<(token: string) => void> = [];
-  private readonly MAX_RETRIES = 2;
-  private readonly RETRY_DELAY = 2000; // 2 seconds
+  private readonly MAX_RETRIES = 1;
+  private readonly RETRY_DELAY = 1000; // 1 second
 
   private constructor() {
     console.log('🔧 API Client Configuration:');

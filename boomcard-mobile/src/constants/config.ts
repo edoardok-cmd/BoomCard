@@ -72,8 +72,8 @@ export const API_CONFIG = {
   },
 
   // Request timeout in milliseconds
-  // Increased to 90 seconds to handle Render cold starts (free tier sleeps after inactivity)
-  TIMEOUT: 90000,
+  // 15 seconds - balances Render cold starts with user experience
+  TIMEOUT: 15000,
 };
 
 // GPS Configuration
@@ -108,6 +108,7 @@ export const STORAGE_KEYS = {
   PUSH_NOTIFICATIONS: 'push_notifications',
   EMAIL_NOTIFICATIONS: 'email_notifications',
   LOCATION_SERVICES: 'location_services',
+  PENDING_PAYMENT: 'pending_payment',
 };
 
 // App Configuration

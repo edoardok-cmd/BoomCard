@@ -5,10 +5,11 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, ScrollView, Dimensions, Alert } from 'react-native';
+import { View, StyleSheet, ScrollView, Dimensions, Alert, ActivityIndicator } from 'react-native';
 import { Text, Card, Button, Chip } from 'react-native-paper';
 import QRCode from 'react-native-qrcode-svg';
 import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { useTheme } from '../../contexts/ThemeContext';
 import { cardApi } from '../../api/card.api';
@@ -29,6 +30,7 @@ export default function MyCardScreen() {
   const [loading, setLoading] = useState(true);
   const [card, setCard] = useState<any>(null);
   const [statistics, setStatistics] = useState<any>(null);
+  const [error, setError] = useState<string | null>(null);
 
   // Translate card benefits
   const translateBenefit = (benefit: string): string => {
@@ -50,16 +52,26 @@ export default function MyCardScreen() {
   };
 
   const loadCard = async () => {
+    setError(null);
     try {
-      const [cardData, statsData] = await Promise.all([
+      // Use Promise.allSettled so a failing statistics call doesn't block
+      const [cardResult, statsResult] = await Promise.allSettled([
         cardApi.getMyCard(),
         cardApi.getStatistics(),
       ]);
 
-      setCard(cardData);
-      setStatistics(statsData);
-    } catch (error: any) {
-      console.error('Failed to load card:', error);
+      if (cardResult.status === 'fulfilled') {
+        setCard(cardResult.value);
+      } else {
+        setError(cardResult.reason?.message || 'Failed to load card');
+      }
+
+      if (statsResult.status === 'fulfilled') {
+        setStatistics(statsResult.value);
+      }
+    } catch (err: any) {
+      console.warn('Failed to load card:', err);
+      setError(err.message || 'Failed to load card');
     } finally {
       setLoading(false);
     }
@@ -71,10 +83,28 @@ export default function MyCardScreen() {
 
   const styles = getStyles(theme);
 
-  if (loading || !card) {
+  if (loading) {
     return (
       <View style={styles.centered}>
-        <Text>{t('common.loading')}</Text>
+        <ActivityIndicator size="large" color={theme.colors.primary} />
+        <Text style={{ marginTop: 12, color: theme.colors.onSurfaceVariant }}>{t('common.loading')}</Text>
+      </View>
+    );
+  }
+
+  if (!card) {
+    return (
+      <View style={styles.centered}>
+        <Ionicons name="card-outline" size={56} color={theme.colors.onSurfaceVariant} style={{ marginBottom: 16 }} />
+        <Text style={{ fontSize: 18, fontWeight: '600', color: theme.colors.onSurface, marginBottom: 8, textAlign: 'center' }}>
+          {t('card.noCard', 'No card found')}
+        </Text>
+        <Text style={{ fontSize: 14, color: theme.colors.onSurfaceVariant, textAlign: 'center', marginBottom: 24 }}>
+          {error || t('card.noCardDescription', 'Your card will appear here once your account is set up.')}
+        </Text>
+        <Button mode="contained" onPress={loadCard}>
+          {t('common.retry', 'Retry')}
+        </Button>
       </View>
     );
   }

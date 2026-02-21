@@ -36,10 +36,14 @@ const ReceiptsScreen = ({ navigation }: any) => {
   const loadData = async () => {
     try {
       setError(null);
-      const [receiptsResponse, statsResponse] = await Promise.all([
+      // Use Promise.allSettled so slow/failing APIs don't block the screen
+      const [receiptsResult, statsResult] = await Promise.allSettled([
         ReceiptsApi.getReceipts({ limit: 50, page: 1 }),
         ReceiptsApi.getStats(),
       ]);
+
+      const receiptsResponse = receiptsResult.status === 'fulfilled' ? receiptsResult.value : { success: false, data: null };
+      const statsResponse = statsResult.status === 'fulfilled' ? statsResult.value : { success: false, data: null };
 
       if (receiptsResponse.success && receiptsResponse.data) {
         setReceipts(receiptsResponse.data.data || []);
@@ -49,7 +53,7 @@ const ReceiptsScreen = ({ navigation }: any) => {
         setStats(statsResponse.data);
       }
     } catch (error: any) {
-      console.error('Failed to load receipts:', error);
+      console.warn('Failed to load receipts:', error);
       setError(error.message || 'Failed to load receipts');
     } finally {
       setLoading(false);

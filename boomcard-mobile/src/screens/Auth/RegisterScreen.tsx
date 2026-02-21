@@ -18,6 +18,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  Image,
 } from 'react-native';
 import { useAuth } from '../../store/AuthContext';
 import { useTranslation } from 'react-i18next';
@@ -25,7 +26,58 @@ import { useTheme } from '../../contexts/ThemeContext';
 import type { RegisterRequest } from '../../types';
 import { getErrorMessage } from '../../utils/error';
 import { plansService, Plan } from '../../services/plans.service';
-import { paymentService } from '../../services/payment.service';
+import apiClient from '../../api/client';
+import * as SecureStore from 'expo-secure-store';
+import { STORAGE_KEYS } from '../../constants/config';
+
+// Fallback plan data when API is unavailable
+const FALLBACK_PLANS: Record<string, Plan> = {
+  'lite-premium': {
+    id: 'lite-premium',
+    planCode: 'LITE_PREMIUM',
+    displayName: 'LITE PREMIUM',
+    displayNameBg: 'ЛАЙТ ПРЕМИУМ',
+    pricing: { weekly: 4.99, monthly: null, yearly: 207.48, currency: 'EUR', yearlyDiscountPct: 20 },
+    billingOptions: { hasWeekly: true, hasMonthly: false, hasYearly: true },
+    cashbackRate: 5,
+    stickerBonus: 0,
+    features: ['5% cashback on receipts', 'Standard QR code', 'Basic rewards'],
+    featuresBg: ['5% кешбек от касови бележки', 'Стандартен QR код', 'Базови награди'],
+    cardType: 'light',
+    isFeatured: false,
+    badge: null,
+  },
+  'basic': {
+    id: 'basic',
+    planCode: 'BASIC',
+    displayName: 'BASIC',
+    displayNameBg: 'БАЗОВ',
+    pricing: { weekly: null, monthly: 7.99, yearly: 76.70, currency: 'EUR', yearlyDiscountPct: 20 },
+    billingOptions: { hasWeekly: false, hasMonthly: true, hasYearly: true },
+    cashbackRate: 10,
+    stickerBonus: 5,
+    features: ['10% cashback on receipts', 'Priority support', 'Exclusive discounts'],
+    featuresBg: ['10% кешбек от касови бележки', 'Приоритетна поддръжка', 'Ексклузивни отстъпки'],
+    cardType: 'silver',
+    isFeatured: true,
+    badge: { text: 'Most Popular', textBg: 'Най-популярен' },
+  },
+  'premium': {
+    id: 'premium',
+    planCode: 'PREMIUM',
+    displayName: 'PREMIUM',
+    displayNameBg: 'ПРЕМИУМ',
+    pricing: { weekly: null, monthly: 12.99, yearly: 124.70, currency: 'EUR', yearlyDiscountPct: 20 },
+    billingOptions: { hasWeekly: false, hasMonthly: true, hasYearly: true },
+    cashbackRate: 15,
+    stickerBonus: 10,
+    features: ['15% cashback on receipts', '24/7 support', 'VIP events', 'Travel insurance'],
+    featuresBg: ['15% кешбек от касови бележки', '24/7 поддръжка', 'VIP събития', 'Застраховка за пътуване'],
+    cardType: 'black',
+    isFeatured: false,
+    badge: { text: 'Best Value', textBg: 'Най-купуван' },
+  },
+};
 
 interface RouteParams {
   planId?: string;
@@ -60,6 +112,7 @@ const RegisterScreen = ({ navigation, route }: any) => {
 
   // Fetch plan details from API when planId is present
   // SECURITY: Get pricing from server, never from route params
+  // Uses apiClient directly to avoid console.error in plansService triggering Expo error overlay
   useEffect(() => {
     const fetchPlan = async () => {
       if (!planId) {
@@ -70,12 +123,29 @@ const RegisterScreen = ({ navigation, route }: any) => {
       try {
         setPlanLoading(true);
         setPlanError(null);
-        const plan = await plansService.getPlanById(planId);
-        setSelectedPlan(plan);
+        const response = await apiClient.get<{ success: boolean; data: Plan }>(`/plans/${planId}`);
+        if (response.data?.success && response.data.data) {
+          setSelectedPlan(response.data.data);
+        } else {
+          // Fallback to static data
+          const fallback = FALLBACK_PLANS[planId];
+          if (fallback) {
+            setSelectedPlan(fallback);
+          } else {
+            setPlanError(t('subscription.planLoadError'));
+            setSelectedPlan(null);
+          }
+        }
       } catch (err) {
-        console.error('Error fetching plan:', err);
-        setPlanError(t('subscription.planLoadError'));
-        setSelectedPlan(null);
+        // Use console.warn instead of console.error to avoid Expo red error overlay
+        console.warn('Plan fetch failed, using fallback:', planId);
+        const fallback = FALLBACK_PLANS[planId];
+        if (fallback) {
+          setSelectedPlan(fallback);
+        } else {
+          setPlanError(t('subscription.planLoadError'));
+          setSelectedPlan(null);
+        }
       } finally {
         setPlanLoading(false);
       }
@@ -117,53 +187,34 @@ const RegisterScreen = ({ navigation, route }: any) => {
 
     setIsLoading(true);
     try {
+      // If a plan is selected, save payment intent to storage BEFORE registration.
+      // After registration, isAuthenticated becomes true and AppNavigator switches
+      // to MainNavigator (unmounting this screen). The MainNavigator will detect
+      // the pending payment and process it via ProcessPaymentScreen.
+      if (selectedPlan && planId) {
+        setIsProcessingPayment(true);
+        await SecureStore.setItemAsync(
+          STORAGE_KEYS.PENDING_PAYMENT,
+          JSON.stringify({ planId, billingPeriod })
+        );
+      }
+
       console.log('Starting registration with data:', { ...formData, password: '***' });
       await register(formData);
       console.log('Registration successful!');
 
-      // If a plan is selected, process subscription payment
-      // SECURITY: Only pass planId and billingPeriod - price comes from server!
-      if (selectedPlan && planId) {
-        setIsProcessingPayment(true);
-        try {
-          console.log('Processing subscription payment for plan:', planId);
-          const paymentResult = await paymentService.processSubscriptionPayment(
-            planId,
-            billingPeriod
-          );
-
-          if (paymentResult.success) {
-            Alert.alert(
-              t('subscription.success'),
-              t('subscription.activatedMessage'),
-              [{ text: 'OK' }]
-            );
-          } else {
-            // Payment cancelled or failed - user can retry later from dashboard
-            Alert.alert(
-              t('subscription.paymentCancelled'),
-              t('subscription.canRetryLater'),
-              [{ text: 'OK' }]
-            );
-          }
-        } catch (paymentError: any) {
-          console.error('Payment error:', paymentError);
-          // Show error but don't block - user status will be PENDING_PAYMENT
-          Alert.alert(
-            t('subscription.paymentError'),
-            t('subscription.canRetryLater'),
-            [{ text: 'OK' }]
-          );
-        } finally {
-          setIsProcessingPayment(false);
-        }
-      }
-
-      // Navigation will be handled automatically by AppNavigator
+      // After registration:
+      // - If plan selected: AppNavigator switches to MainNavigator → ProcessPaymentScreen
+      //   (reads pending payment from storage, opens Paysera, navigates to Success/Cancel)
+      // - If no plan: AppNavigator switches to MainNavigator → Dashboard
     } catch (error: any) {
-      console.error('Registration error:', error);
-      console.error('Error type:', typeof error);
-      console.error('Error keys:', error ? Object.keys(error) : 'null');
+      // Clean up pending payment if registration failed
+      await SecureStore.deleteItemAsync(STORAGE_KEYS.PENDING_PAYMENT).catch(() => {});
+      setIsProcessingPayment(false);
+
+      console.warn('Registration error:', error);
+      console.warn('Error type:', typeof error);
+      console.warn('Error keys:', error ? Object.keys(error) : 'null');
 
       let errorMessage = getErrorMessage(error);
       console.log('Formatted error message:', errorMessage);
@@ -196,7 +247,7 @@ const RegisterScreen = ({ navigation, route }: any) => {
       >
         {/* Logo */}
         <View style={styles.logoContainer}>
-          <Text style={styles.logo}>💥</Text>
+          <Image source={require('../../../assets/icon.png')} style={styles.logo} />
           <Text style={styles.title}>{t('auth.createAccount')}</Text>
           <Text style={styles.subtitle}>{t('auth.joinBoomCard')}</Text>
         </View>
@@ -243,6 +294,20 @@ const RegisterScreen = ({ navigation, route }: any) => {
                 {plansService.formatPrice(displayPrice, selectedPlan.pricing.currency)}
               </Text>
             </View>
+          </View>
+        )}
+
+        {/* Payment Info Note */}
+        {selectedPlan && displayPrice !== null && (
+          <View style={styles.paymentInfo}>
+            <Text style={styles.paymentInfoText}>
+              <Text style={styles.paymentInfoBold}>
+                {language === 'bg' ? 'Плащане: ' : 'Payment: '}
+              </Text>
+              {language === 'bg'
+                ? 'След регистрация ще бъдете пренасочени към защитена страница на Paysera за завършване на плащането.'
+                : 'After registration, you will be redirected to Paysera secure payment page to complete your payment.'}
+            </Text>
           </View>
         )}
 
@@ -338,14 +403,14 @@ const RegisterScreen = ({ navigation, route }: any) => {
                 <ActivityIndicator color="#FFFFFF" size="small" />
                 <Text style={styles.buttonText}>
                   {isProcessingPayment
-                    ? (language === 'bg' ? 'Обработка...' : 'Processing...')
+                    ? (language === 'bg' ? 'Обработка на плащането...' : 'Processing Payment...')
                     : (language === 'bg' ? 'Регистрация...' : 'Registering...')}
                 </Text>
               </View>
             ) : (
               <Text style={styles.buttonText}>
                 {selectedPlan
-                  ? (language === 'bg' ? 'Регистрирай и продължи' : 'Register & Continue')
+                  ? (language === 'bg' ? 'Създай профил и продължи към плащане' : 'Create Account & Continue to Payment')
                   : t('auth.createAccount')}
               </Text>
             )}
@@ -381,7 +446,8 @@ const getStyles = (theme: any) => StyleSheet.create({
     marginBottom: 32,
   },
   logo: {
-    fontSize: 48,
+    width: 80,
+    height: 80,
     marginBottom: 12,
   },
   title: {
@@ -451,6 +517,22 @@ const getStyles = (theme: any) => StyleSheet.create({
     fontSize: 20,
     fontWeight: '700',
     color: theme.colors.primary,
+  },
+  paymentInfo: {
+    backgroundColor: '#eff6ff',
+    borderWidth: 1,
+    borderColor: '#3b82f6',
+    borderRadius: 8,
+    padding: 14,
+    marginBottom: 24,
+  },
+  paymentInfoText: {
+    fontSize: 14,
+    color: '#1e40af',
+    lineHeight: 20,
+  },
+  paymentInfoBold: {
+    fontWeight: '700',
   },
   form: {
     marginBottom: 24,

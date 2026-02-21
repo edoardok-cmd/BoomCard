@@ -1,10 +1,11 @@
 /**
  * App Navigator
  *
- * Main navigation structure with authentication flow
+ * Main navigation structure with authentication flow.
+ * Handles pending payment detection after registration.
  */
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { NavigationContainer, DefaultTheme, DarkTheme } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -13,10 +14,14 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '../store/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { ActivityIndicator, View } from 'react-native';
+import * as SecureStore from 'expo-secure-store';
+import { STORAGE_KEYS } from '../constants/config';
 
 // Auth Screens
 import LoginScreen from '../screens/Auth/LoginScreen';
 import RegisterScreen from '../screens/Auth/RegisterScreen';
+import PlanSelectionScreen from '../screens/Auth/PlanSelectionScreen';
+import CheckoutScreen from '../screens/Auth/CheckoutScreen';
 
 // Main App Screens
 import DashboardScreen from '../screens/Dashboard/DashboardScreen';
@@ -36,6 +41,11 @@ import WalletScreen from '../screens/Payments/WalletScreen';
 import TopUpScreen from '../screens/Payments/TopUpScreen';
 import TransactionHistoryScreen from '../screens/Payments/TransactionHistoryScreen';
 
+// Subscription Screens
+import ProcessPaymentScreen from '../screens/Subscription/ProcessPaymentScreen';
+import SubscriptionSuccessScreen from '../screens/Subscription/SubscriptionSuccessScreen';
+import SubscriptionCancelScreen from '../screens/Subscription/SubscriptionCancelScreen';
+
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
 
@@ -48,6 +58,8 @@ const AuthNavigator = () => {
       }}
     >
       <Stack.Screen name="Login" component={LoginScreen} />
+      <Stack.Screen name="PlanSelection" component={PlanSelectionScreen} />
+      <Stack.Screen name="Checkout" component={CheckoutScreen} />
       <Stack.Screen name="Register" component={RegisterScreen} />
     </Stack.Navigator>
   );
@@ -133,11 +145,12 @@ const TabNavigator = () => {
 };
 
 // Main App Stack Navigator with nested tabs
-const MainNavigator = () => {
+const MainNavigator = ({ initialRouteName = 'MainTabs' }: { initialRouteName?: string }) => {
   const { t } = useTranslation();
 
   return (
     <Stack.Navigator
+      initialRouteName={initialRouteName}
       screenOptions={{
         headerShown: false,
       }}
@@ -233,6 +246,29 @@ const MainNavigator = () => {
           title: 'Upload Receipt'
         }}
       />
+
+      {/* Subscription Screens */}
+      <Stack.Screen
+        name="ProcessPayment"
+        component={ProcessPaymentScreen}
+        options={{
+          headerShown: false,
+        }}
+      />
+      <Stack.Screen
+        name="SubscriptionSuccess"
+        component={SubscriptionSuccessScreen}
+        options={{
+          headerShown: false,
+        }}
+      />
+      <Stack.Screen
+        name="SubscriptionCancel"
+        component={SubscriptionCancelScreen}
+        options={{
+          headerShown: false,
+        }}
+      />
     </Stack.Navigator>
   );
 };
@@ -241,8 +277,35 @@ const MainNavigator = () => {
 export const AppNavigator = () => {
   const { isAuthenticated, isLoading } = useAuth();
   const { isDarkMode, theme } = useTheme();
+  const [mainInitialRoute, setMainInitialRoute] = useState<string | null>(null);
+
+  // Check for pending payment when user becomes authenticated
+  useEffect(() => {
+    if (isAuthenticated && !mainInitialRoute) {
+      SecureStore.getItemAsync(STORAGE_KEYS.PENDING_PAYMENT)
+        .then(data => {
+          // If there's a pending payment, start with ProcessPayment screen
+          setMainInitialRoute(data ? 'ProcessPayment' : 'MainTabs');
+        })
+        .catch(() => {
+          setMainInitialRoute('MainTabs');
+        });
+    } else if (!isAuthenticated) {
+      // Reset when user logs out
+      setMainInitialRoute(null);
+    }
+  }, [isAuthenticated, mainInitialRoute]);
 
   if (isLoading) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: theme.colors.background }}>
+        <ActivityIndicator size="large" color={theme.colors.primary} />
+      </View>
+    );
+  }
+
+  // Wait for pending payment check before showing MainNavigator
+  if (isAuthenticated && !mainInitialRoute) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: theme.colors.background }}>
         <ActivityIndicator size="large" color={theme.colors.primary} />
@@ -265,7 +328,11 @@ export const AppNavigator = () => {
 
   return (
     <NavigationContainer theme={navigationTheme}>
-      {isAuthenticated ? <MainNavigator /> : <AuthNavigator />}
+      {isAuthenticated ? (
+        <MainNavigator initialRouteName={mainInitialRoute || 'MainTabs'} />
+      ) : (
+        <AuthNavigator />
+      )}
     </NavigationContainer>
   );
 };

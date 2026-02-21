@@ -16,7 +16,9 @@ import {
   Image,
   ScrollView,
   TextInput,
+  Platform,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CameraView, Camera } from 'expo-camera';
 import { useTranslation } from 'react-i18next';
 import * as ImagePicker from 'expo-image-picker';
@@ -29,6 +31,7 @@ import type { ReceiptSubmitRequest, GPSValidationResult } from '../../types';
 
 const ReceiptScannerScreen = ({ navigation, route }: any) => {
   const { t } = useTranslation();
+  const insets = useSafeAreaInsets();
 
   useEffect(() => {
     navigation.setOptions({
@@ -402,7 +405,7 @@ const ReceiptScannerScreen = ({ navigation, route }: any) => {
         </View>
       </CameraView>
 
-      <View style={styles.controls}>
+      <View style={[styles.controls, { paddingBottom: Math.max(insets.bottom, 24) + 8 }]}>
         <TouchableOpacity
           style={styles.galleryButton}
           onPress={pickImageFromGallery}

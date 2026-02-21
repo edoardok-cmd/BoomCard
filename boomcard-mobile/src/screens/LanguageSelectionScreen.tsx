@@ -1,7 +1,8 @@
 /**
  * Language Selection Screen
  *
- * Shown on first app launch to let users choose their preferred language
+ * Shown on first app launch to let users choose their preferred language.
+ * Also includes a dark/light mode toggle.
  */
 
 import React, { useState } from 'react';
@@ -9,8 +10,10 @@ import { View, StyleSheet, TouchableOpacity, Image } from 'react-native';
 import { Text } from 'react-native-paper';
 import { Ionicons } from '@expo/vector-icons';
 import * as SecureStore from 'expo-secure-store';
+
 import { changeLanguage } from '../i18n';
 import { STORAGE_KEYS } from '../constants/config';
+import { useTheme } from '../contexts/ThemeContext';
 
 interface LanguageSelectionScreenProps {
   onLanguageSelected: () => void;
@@ -18,6 +21,9 @@ interface LanguageSelectionScreenProps {
 
 export default function LanguageSelectionScreen({ onLanguageSelected }: LanguageSelectionScreenProps) {
   const [selectedLanguage, setSelectedLanguage] = useState<string | null>(null);
+  const { isDarkMode, toggleTheme, theme } = useTheme();
+
+  const styles = getStyles(theme, isDarkMode);
 
   const handleLanguageSelect = async (language: string) => {
     setSelectedLanguage(language);
@@ -37,13 +43,24 @@ export default function LanguageSelectionScreen({ onLanguageSelected }: Language
   return (
     <View style={styles.container}>
       <View style={styles.content}>
+        {/* Theme Toggle */}
+        <View style={styles.themeToggleContainer}>
+          <TouchableOpacity style={styles.themeToggle} onPress={toggleTheme}>
+            <Ionicons
+              name={isDarkMode ? 'sunny' : 'moon'}
+              size={22}
+              color={isDarkMode ? '#FCD34D' : '#6B7280'}
+            />
+          </TouchableOpacity>
+        </View>
+
         {/* Logo or App Icon */}
         <View style={styles.logoContainer}>
           <View style={styles.logoCircle}>
-            <Ionicons name="card" size={60} color="#4F46E5" />
+            <Image source={require('../../assets/icon.png')} style={styles.logoImage} />
           </View>
           <Text variant="headlineLarge" style={styles.appName}>
-            BoomCard
+            BOOM Card
           </Text>
         </View>
 
@@ -78,7 +95,7 @@ export default function LanguageSelectionScreen({ onLanguageSelected }: Language
               </View>
             </View>
             {selectedLanguage === 'bg' && (
-              <Ionicons name="checkmark-circle" size={28} color="#4F46E5" />
+              <Ionicons name="checkmark-circle" size={28} color={theme.colors.primary} />
             )}
           </TouchableOpacity>
 
@@ -101,7 +118,7 @@ export default function LanguageSelectionScreen({ onLanguageSelected }: Language
               </View>
             </View>
             {selectedLanguage === 'en' && (
-              <Ionicons name="checkmark-circle" size={28} color="#4F46E5" />
+              <Ionicons name="checkmark-circle" size={28} color={theme.colors.primary} />
             )}
           </TouchableOpacity>
         </View>
@@ -118,16 +135,35 @@ export default function LanguageSelectionScreen({ onLanguageSelected }: Language
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (theme: any, isDarkMode: boolean) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: theme.colors.background,
   },
   content: {
     flex: 1,
     padding: 24,
     justifyContent: 'center',
   },
+
+  // Theme Toggle
+  themeToggleContainer: {
+    position: 'absolute',
+    top: 60,
+    right: 24,
+    zIndex: 10,
+  },
+  themeToggle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: theme.colors.surface,
+    borderWidth: 1,
+    borderColor: theme.colors.surfaceVariant,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
   logoContainer: {
     alignItems: 'center',
     marginBottom: 48,
@@ -136,14 +172,19 @@ const styles = StyleSheet.create({
     width: 120,
     height: 120,
     borderRadius: 60,
-    backgroundColor: '#EEF2FF',
+    backgroundColor: isDarkMode ? 'rgba(59, 130, 246, 0.1)' : '#EEF2FF',
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 16,
+    overflow: 'hidden',
+  },
+  logoImage: {
+    width: 90,
+    height: 90,
   },
   appName: {
     fontWeight: 'bold',
-    color: '#1F2937',
+    color: theme.colors.onSurface,
   },
   titleContainer: {
     alignItems: 'center',
@@ -151,13 +192,13 @@ const styles = StyleSheet.create({
   },
   title: {
     fontWeight: '600',
-    color: '#1F2937',
+    color: theme.colors.onSurface,
     textAlign: 'center',
     marginBottom: 8,
   },
   titleBg: {
     fontWeight: '600',
-    color: '#6B7280',
+    color: theme.colors.onSurfaceVariant,
     textAlign: 'center',
   },
   languageContainer: {
@@ -169,14 +210,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     padding: 20,
-    backgroundColor: '#F9FAFB',
+    backgroundColor: theme.colors.surface,
     borderRadius: 16,
     borderWidth: 2,
-    borderColor: '#E5E7EB',
+    borderColor: theme.colors.surfaceVariant,
   },
   languageButtonSelected: {
-    borderColor: '#4F46E5',
-    backgroundColor: '#EEF2FF',
+    borderColor: theme.colors.primary,
+    backgroundColor: isDarkMode ? 'rgba(59, 130, 246, 0.1)' : '#EEF2FF',
   },
   languageContent: {
     flexDirection: 'row',
@@ -191,15 +232,15 @@ const styles = StyleSheet.create({
   },
   languageName: {
     fontWeight: '600',
-    color: '#1F2937',
+    color: theme.colors.onSurface,
   },
   languageSubtext: {
-    color: '#6B7280',
+    color: theme.colors.onSurfaceVariant,
     marginTop: 2,
   },
   footer: {
     textAlign: 'center',
-    color: '#9CA3AF',
+    color: theme.colors.onSurfaceVariant,
     marginTop: 8,
   },
 });
