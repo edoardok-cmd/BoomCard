@@ -3,10 +3,9 @@
  * Handles venue operations including search, filtering, and nearby venues
  */
 
-import { PrismaClient, Venue } from '@prisma/client';
+import { Venue } from '@prisma/client';
+import prisma from '../lib/prisma';
 import { logger } from '../utils/logger';
-
-const prisma = new PrismaClient();
 
 // Calculate distance between two coordinates (Haversine formula)
 function calculateDistance(

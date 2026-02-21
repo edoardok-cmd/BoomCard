@@ -2,11 +2,10 @@ import { Router, Response } from 'express';
 import { authenticate, AuthRequest } from '../middleware/auth.middleware';
 import { asyncHandler } from '../middleware/error.middleware';
 import { stripeService } from '../services/stripe.service';
-import { PrismaClient } from '@prisma/client';
+import prisma from '../lib/prisma';
 import { logger } from '../utils/logger';
 
 const router = Router();
-const prisma = new PrismaClient();
 
 // All routes require authentication
 router.use(authenticate);

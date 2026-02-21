@@ -16,6 +16,20 @@ interface LanguageProviderProps {
   children: ReactNode;
 }
 
+/**
+ * Detect the default language based on the current domain.
+ * - boomcard.bg → Bulgarian
+ * - boomcard.eu → English
+ */
+const getDefaultLanguageForDomain = (): Language => {
+  const hostname = window.location.hostname;
+  if (hostname.endsWith('boomcard.eu') || hostname === 'boomcard.eu') {
+    return 'en';
+  }
+  // boomcard.bg and all other domains default to Bulgarian
+  return 'bg';
+};
+
 export const LanguageProvider: React.FC<LanguageProviderProps> = ({ children }) => {
   const [language, setLanguageState] = useState<Language>(() => {
     // Check localStorage first
@@ -24,16 +38,8 @@ export const LanguageProvider: React.FC<LanguageProviderProps> = ({ children }) 
       return stored;
     }
 
-    // If no stored preference, detect from browser language
-    const browserLang = navigator.language.toLowerCase();
-    if (browserLang.startsWith('bg')) {
-      return 'bg';
-    } else if (browserLang.startsWith('en')) {
-      return 'en';
-    }
-
-    // Default to Bulgarian for Bulgaria-focused app
-    return 'bg';
+    // Detect from domain
+    return getDefaultLanguageForDomain();
   });
 
   // Persist to localStorage whenever language changes

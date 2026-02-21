@@ -12,7 +12,6 @@
 
 import { PrismaClient } from '@prisma/client';
 import { PrismaNeon } from '@prisma/adapter-neon';
-import { neon } from '@neondatabase/serverless';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -33,8 +32,7 @@ if (!databaseUrl) {
   process.exit(1);
 }
 
-const sql = neon(databaseUrl);
-const adapter = new PrismaNeon(sql);
+const adapter = new PrismaNeon({ connectionString: databaseUrl });
 const prisma = new PrismaClient({ adapter });
 
 // Reminder intervals in milliseconds

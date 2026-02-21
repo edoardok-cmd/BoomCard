@@ -3,10 +3,9 @@ import { authenticate, AuthRequest } from '../middleware/auth.middleware';
 import { walletService } from '../services/wallet.service';
 import { asyncHandler } from '../utils/asyncHandler';
 import { z } from 'zod';
-import { PrismaClient } from '@prisma/client';
+import prisma from '../lib/prisma';
 
 const router = Router();
-const prisma = new PrismaClient();
 
 // All routes require authentication
 router.use(authenticate);

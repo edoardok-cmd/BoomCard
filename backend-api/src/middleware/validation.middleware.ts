@@ -21,6 +21,6 @@ export const validate = (validations: ValidationChain[]) => {
     const extractedErrors: any[] = [];
     errors.array().forEach(err => extractedErrors.push({ [err.type === 'field' ? (err as any).path : 'error']: (err as any).msg }));
 
-    throw new AppError('Validation failed', 400, extractedErrors);
+    return next(new AppError('Validation failed', 400, extractedErrors));
   };
 };

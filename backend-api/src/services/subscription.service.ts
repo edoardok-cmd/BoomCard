@@ -1,8 +1,7 @@
-import { PrismaClient, SubscriptionPlan } from '@prisma/client';
+import { SubscriptionPlan } from '@prisma/client';
+import prisma from '../lib/prisma';
 import { stripeService } from './stripe.service';
 import { logger } from '../utils/logger';
-
-const prisma = new PrismaClient();
 
 // Stripe Price IDs (create these in Stripe Dashboard)
 const PRICE_IDS = {

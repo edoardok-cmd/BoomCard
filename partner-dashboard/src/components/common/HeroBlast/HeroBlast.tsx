@@ -161,7 +161,9 @@ const StaticContentWrapper = styled.div<{ $ready: boolean }>`
   margin: 0 auto;
   width: 100%;
   opacity: ${props => props.$ready ? 1 : 0};
-  transition: opacity 0.4s ease-out;
+  transform: ${props => props.$ready ? 'translateY(0)' : 'translateY(8px)'};
+  transition: opacity 0.3s ease-out, transform 0.3s ease-out;
+  will-change: opacity, transform;
 
   @media (max-width: 768px) {
     padding: 0.5rem 1rem;
@@ -1147,44 +1149,24 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
   const heroRef = useRef<HTMLDivElement>(null);
   const videoPlayedRef = useRef(false);
 
-  // Preload logo image immediately on component mount for instant display
+  // Ref for the hero card image element
+  const heroCardRef = useRef<HTMLImageElement>(null);
+
+  // Check if image is already cached on mount (instant display for return visits)
   useEffect(() => {
-    let timeoutId: NodeJS.Timeout;
-
-    // Add preload link to document head for high priority loading
-    const preloadLink = document.createElement('link');
-    preloadLink.rel = 'preload';
-    preloadLink.as = 'image';
-    preloadLink.href = '/zCard.png';
-    preloadLink.fetchPriority = 'high';
-    document.head.appendChild(preloadLink);
-
-    const preloadImage = new Image();
-    preloadImage.src = '/zCard.png';
-    preloadImage.onload = () => {
-      clearTimeout(timeoutId);
+    const img = heroCardRef.current;
+    // If image is already complete (cached), reveal immediately without waiting for onLoad
+    if (img && img.complete && img.naturalWidth > 0) {
       setLogoPreloaded(true);
-    };
-    // Start preloading immediately, don't wait
-    preloadImage.onerror = () => {
-      clearTimeout(timeoutId);
-      // Even if it fails, mark as loaded to show the component
-      setLogoPreloaded(true);
-    };
+      return;
+    }
 
     // Fallback: show content after 1.5 seconds even if image hasn't loaded
-    // This prevents mobile users from seeing a black screen forever
-    timeoutId = setTimeout(() => {
+    const timeoutId = setTimeout(() => {
       setLogoPreloaded(true);
     }, 1500);
 
-    return () => {
-      clearTimeout(timeoutId);
-      // Cleanup preload link on unmount
-      if (preloadLink.parentNode) {
-        document.head.removeChild(preloadLink);
-      }
-    };
+    return () => clearTimeout(timeoutId);
   }, []);
 
   // Check if video should play based on last view time (once per 10 minutes)
@@ -1507,24 +1489,30 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
               display: 'flex',
               justifyContent: 'center'
             }}>
-              <img
-                src="/zCard.png"
-                alt="Boom Card"
-                loading="eager"
-                decoding="sync"
-                style={{
-                  width: '100%',
-                  maxWidth: '460px',
-                  height: 'auto',
-                  maxHeight: '290px',
-                  objectFit: 'contain',
-                  backgroundColor: '#000000',
-                  borderRadius: 'clamp(10px, 2.5vw, 18px)',
-                  filter: 'drop-shadow(0 20px 40px rgba(0, 0, 0, 0.8))',
-                  display: 'block',
-                  imageRendering: 'crisp-edges'
-                }}
-              />
+              <picture>
+                <source srcSet="/zCard.webp" type="image/webp" />
+                <img
+                  ref={heroCardRef}
+                  src="/zCard-optimized.png"
+                  alt="Boom Card"
+                  loading="eager"
+                  decoding="async"
+                  width="460"
+                  height="278"
+                  onLoad={() => setLogoPreloaded(true)}
+                  style={{
+                    width: '100%',
+                    maxWidth: '460px',
+                    height: 'auto',
+                    maxHeight: '290px',
+                    objectFit: 'contain',
+                    backgroundColor: '#000000',
+                    borderRadius: 'clamp(10px, 2.5vw, 18px)',
+                    filter: 'drop-shadow(0 20px 40px rgba(0, 0, 0, 0.8))',
+                    display: 'block',
+                  }}
+                />
+              </picture>
             </div>
 
             <div style={{
@@ -1659,12 +1647,15 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
             animate={{ opacity: 1, scale: 1 }}
             transition={shouldPlayVideo ? { duration: 0.8, ease: [0.25, 0.1, 0.25, 1] } : { duration: 0 }}
           >
-            <LogoExplode
-              src="/zCard.png"
-              alt="Boom Card"
-              $showAnimation={shouldPlayVideo && showCTA && !showSideCards}
-              $stopAnimation={showSideCards || !shouldPlayVideo}
-            />
+            <picture>
+              <source srcSet="/zCard.webp" type="image/webp" />
+              <LogoExplode
+                src="/zCard-optimized.png"
+                alt="Boom Card"
+                $showAnimation={shouldPlayVideo && showCTA && !showSideCards}
+                $stopAnimation={showSideCards || !shouldPlayVideo}
+              />
+            </picture>
 
             {/* Ejected Photos - cycle between dealing and returning from the logo */}
             {false && photoState !== 'hidden' && photoState !== 'finished' && (

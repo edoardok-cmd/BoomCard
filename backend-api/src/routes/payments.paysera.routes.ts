@@ -8,13 +8,13 @@ import { authenticate, AuthRequest } from '../middleware/auth.middleware';
 import { asyncHandler } from '../middleware/error.middleware';
 import { payseraService, PayseraService } from '../services/paysera.service';
 import { emailService } from '../services/email.service';
-import { PrismaClient, TransactionType, TransactionStatus, SubscriptionStatus, SubscriptionPlan, UserStatus } from '@prisma/client';
+import { TransactionType, TransactionStatus, SubscriptionStatus, SubscriptionPlan, UserStatus } from '@prisma/client';
+import prisma from '../lib/prisma';
 import { logger } from '../utils/logger';
 import crypto from 'crypto';
 import { z } from 'zod';
 
 const router = Router();
-const prisma = new PrismaClient();
 
 // ============================================
 // Payment Creation (Authenticated)

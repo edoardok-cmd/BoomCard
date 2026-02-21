@@ -3,10 +3,10 @@ import { stickerService } from '../services/sticker.service';
 import { authenticate, AuthRequest } from '../middleware/auth.middleware';
 import { uploadSingle } from '../middleware/upload.middleware';
 import { imageUploadService } from '../services/imageUpload.service';
-import { LocationType, PrismaClient } from '@prisma/client';
+import { LocationType } from '@prisma/client';
+import prisma from '../lib/prisma';
 
 const router = Router();
-const prisma = new PrismaClient();
 
 // ============================================
 // PUBLIC ENDPOINTS (User-facing)

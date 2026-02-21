@@ -258,67 +258,6 @@ const SignupPrompt = styled.p`
   }
 `;
 
-const DemoCredentials = styled(motion.div)`
-  margin-top: 1.5rem;
-  padding: 1rem;
-  background: #f0f9ff;
-  border: 1px solid #bae6fd;
-  border-radius: 0.5rem;
-
-  [data-theme="dark"] & {
-    background: #1e3a8a;
-    border-color: #3b82f6;
-  }
-
-  [data-theme="color"] & {
-    background: rgba(255, 148, 214, 0.1);
-    border-color: #ff94d6;
-  }
-`;
-
-const DemoTitle = styled.p`
-  font-size: 0.875rem;
-  font-weight: 600;
-  color: #0369a1;
-  margin-bottom: 0.5rem;
-
-  [data-theme="dark"] & {
-    color: #93c5fd;
-  }
-
-  [data-theme="color"] & {
-    color: #6a0572;
-  }
-`;
-
-const DemoInfo = styled.p`
-  font-size: 0.75rem;
-  color: #0c4a6e;
-  line-height: 1.5;
-
-  [data-theme="dark"] & {
-    color: #93c5fd;
-  }
-
-  [data-theme="color"] & {
-    color: #6a0572;
-  }
-
-  code {
-    background: #e0f2fe;
-    padding: 0.125rem 0.375rem;
-    border-radius: 0.25rem;
-    font-family: 'Monaco', 'Courier New', monospace;
-
-    [data-theme="dark"] & {
-      background: rgba(59, 130, 246, 0.2);
-    }
-
-    [data-theme="color"] & {
-      background: rgba(255, 148, 214, 0.15);
-    }
-  }
-`;
 
 interface FormErrors {
   email?: string;
@@ -434,15 +373,6 @@ const LoginPage: React.FC = () => {
     }
   };
 
-  const handleDemoLogin = () => {
-    setFormData({
-      email: 'demo@boomcard.bg',
-      password: 'demo123',
-      rememberMe: false,
-    });
-    setErrors({});
-    setTouched({ email: true, password: true });
-  };
 
   const handleGoogleSuccess = async (credentialResponse: CredentialResponse) => {
     try {
@@ -634,40 +564,6 @@ const LoginPage: React.FC = () => {
           </Link>
         </SignupPrompt>
 
-        <DemoCredentials
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.3 }}
-        >
-          <DemoTitle>
-            {t('auth.demoAccess')} - Test Accounts
-          </DemoTitle>
-          <DemoInfo>
-            <strong>👤 User:</strong> <code>demo@boomcard.bg</code> / <code>demo123</code>
-            <br />
-            <strong>🏢 Partner:</strong> <code>partner@boomcard.bg</code> / <code>partner123</code>
-            <br />
-            <strong>⚡ Admin:</strong> <code>admin@boomcard.bg</code> / <code>admin123</code>
-            <br />
-            <button
-              type="button"
-              onClick={handleDemoLogin}
-              style={{
-                marginTop: '0.5rem',
-                background: 'var(--color-primary)',
-                color: 'var(--color-secondary)',
-                border: 'none',
-                padding: '0.375rem 0.75rem',
-                borderRadius: '0.25rem',
-                fontSize: '0.75rem',
-                fontWeight: 600,
-                cursor: 'pointer',
-              }}
-            >
-              Fill User Account
-            </button>
-          </DemoInfo>
-        </DemoCredentials>
       </LoginCard>
     </PageContainer>
     <Footer />

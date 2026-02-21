@@ -246,44 +246,139 @@ const OrderSummary = styled.div`
 const PlanCard = styled.div<{ $type: 'black' | 'silver' | 'light' }>`
   width: 100%;
   aspect-ratio: 1.6;
-  border-radius: 1rem;
-  padding: 1.5rem;
+  border-radius: 1.25rem;
+  padding: 1.75rem 2rem;
   margin-bottom: 1.5rem;
   position: relative;
   overflow: hidden;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
 
   ${props => props.$type === 'black' && `
-    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+    background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
+    border: 3px solid #ffd700;
     color: white;
+
+    &::before {
+      content: '';
+      position: absolute;
+      top: -50%;
+      right: -10%;
+      width: 200px;
+      height: 200px;
+      background: radial-gradient(circle, rgba(255, 215, 0, 0.1) 0%, transparent 70%);
+      border-radius: 50%;
+    }
   `}
 
   ${props => props.$type === 'silver' && `
-    background: linear-gradient(135deg, #c0c0c0 0%, #e8e8e8 50%, #a0a0a0 100%);
+    background: linear-gradient(135deg, #c0c0c0 0%, #939393 100%);
+    border: 2px solid rgba(255, 255, 255, 0.3);
     color: #1a1a1a;
+
+    &::before {
+      content: '';
+      position: absolute;
+      top: -50%;
+      right: -10%;
+      width: 200px;
+      height: 200px;
+      background: radial-gradient(circle, rgba(255, 255, 255, 0.15) 0%, transparent 70%);
+      border-radius: 50%;
+    }
   `}
 
   ${props => props.$type === 'light' && `
     background: linear-gradient(135deg, #ffffff 0%, #f5f5f5 100%);
     border: 2px solid rgba(200, 200, 200, 0.5);
     color: #4a4a4a;
+
+    &::before {
+      content: '';
+      position: absolute;
+      top: -50%;
+      right: -10%;
+      width: 200px;
+      height: 200px;
+      background: radial-gradient(circle, rgba(0, 0, 0, 0.05) 0%, transparent 70%);
+      border-radius: 50%;
+    }
   `}
 `;
 
-const PlanLogo = styled.div`
-  font-size: 1.25rem;
+const PlanLogo = styled.div<{ $type?: 'black' | 'silver' | 'light' }>`
+  font-size: 1.5rem;
   font-weight: 900;
+  font-family: 'Arial Black', sans-serif;
   letter-spacing: 2px;
+  margin-bottom: 0.75rem;
+  color: ${props => {
+    if (props.$type === 'black') return '#ffd700';
+    if (props.$type === 'light') return '#4a4a4a';
+    return '#1a1a1a';
+  }};
+  text-shadow: ${props => {
+    if (props.$type === 'black') return '0 2px 10px rgba(255, 215, 0, 0.3)';
+    if (props.$type === 'light') return '0 1px 2px rgba(0, 0, 0, 0.1)';
+    return '0 1px 2px rgba(255, 255, 255, 0.5)';
+  }};
 `;
 
-const PlanName = styled.div`
-  font-size: 0.875rem;
+const CardNumber = styled.div<{ $type?: 'black' | 'silver' | 'light' }>`
+  display: flex;
+  gap: 0.75rem;
+  margin-bottom: auto;
+  font-size: 1.1rem;
+  color: ${props => {
+    if (props.$type === 'black') return 'rgba(255, 255, 255, 0.9)';
+    if (props.$type === 'light') return 'rgba(100, 100, 100, 0.8)';
+    return 'rgba(26, 26, 26, 0.9)';
+  }};
+  letter-spacing: 0.25rem;
+  font-family: 'Courier New', monospace;
+`;
+
+const CardBottomRow = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+`;
+
+const PlanName = styled.div<{ $type?: 'black' | 'silver' | 'light' }>`
+  font-family: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  color: ${props => {
+    if (props.$type === 'black') return 'rgba(255, 255, 255, 0.95)';
+    if (props.$type === 'light') return 'rgba(74, 74, 74, 0.95)';
+    return 'rgba(26, 26, 26, 0.95)';
+  }};
+  font-size: 0.8125rem;
   text-transform: uppercase;
   letter-spacing: 1.5px;
-  opacity: 0.9;
+  font-weight: 400;
+`;
+
+const CardPriceDisplay = styled.div<{ $type: 'black' | 'silver' | 'light' }>`
+  font-family: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  text-align: right;
+  color: ${props => {
+    if (props.$type === 'black') return '#ffd700';
+    if (props.$type === 'light') return 'rgba(74, 74, 74, 0.95)';
+    return 'rgba(26, 26, 26, 0.95)';
+  }};
+  font-size: 1.5rem;
+  font-weight: 400;
+  line-height: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+
+  span {
+    font-size: 0.8rem;
+    font-weight: 400;
+    opacity: 0.9;
+  }
 `;
 
 const SummaryRow = styled.div`
@@ -683,10 +778,26 @@ const CheckoutPage: React.FC = () => {
             </SectionTitle>
 
             <PlanCard $type={plan.cardType}>
-              <PlanLogo>BOOM CARD</PlanLogo>
-              <PlanName>
-                {language === 'bg' ? plan.displayNameBg : plan.displayName}
-              </PlanName>
+              <PlanLogo $type={plan.cardType}>BOOM Card</PlanLogo>
+
+              <CardNumber $type={plan.cardType}>
+                <span>••••</span>
+                <span>••••</span>
+                <span>••••</span>
+                <span>••••</span>
+              </CardNumber>
+
+              <CardBottomRow>
+                <PlanName $type={plan.cardType}>
+                  {language === 'bg' ? plan.displayNameBg : plan.displayName}
+                </PlanName>
+                <CardPriceDisplay $type={plan.cardType}>
+                  <span style={{ fontSize: '0.8rem', opacity: 0.85 }}>{displayPriceBGN.toFixed(2)} {language === 'bg' ? 'лв.' : 'BGN'} /</span> €{displayPrice}
+                  <span style={{ fontSize: '0.7rem', opacity: 0.8 }}>
+                    {getPeriodLabel()}
+                  </span>
+                </CardPriceDisplay>
+              </CardBottomRow>
             </PlanCard>
 
             <SummaryRow>
@@ -720,7 +831,7 @@ const CheckoutPage: React.FC = () => {
             </TotalRow>
 
             <FeatureList>
-              {features.slice(0, 5).map((feature, index) => (
+              {features.map((feature, index) => (
                 <FeatureItem key={index}>
                   <Check size={16} />
                   {feature}

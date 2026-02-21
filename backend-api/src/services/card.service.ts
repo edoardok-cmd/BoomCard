@@ -1,9 +1,8 @@
-import { PrismaClient, CardType, CardStatus } from '@prisma/client';
+import { CardType, CardStatus } from '@prisma/client';
+import prisma from '../lib/prisma';
 import QRCode from 'qrcode';
 import { logger } from '../utils/logger';
 import { subscriptionService } from './subscription.service';
-
-const prisma = new PrismaClient();
 
 export class CardService {
   /**

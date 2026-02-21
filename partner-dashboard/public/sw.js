@@ -2,7 +2,7 @@
 // Service Worker for BoomCard PWA
 // Version 1.0.0
 
-const CACHE_VERSION = 'boomcard-v2';
+const CACHE_VERSION = 'boomcard-v3';
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const DYNAMIC_CACHE = `${CACHE_VERSION}-dynamic`;
 const IMAGE_CACHE = `${CACHE_VERSION}-images`;
