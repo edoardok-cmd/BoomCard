@@ -35,6 +35,7 @@ export const en = {
     getStarted: 'Get Started',
     signIn: 'Sign In',
     signUp: 'Sign up',
+    choosePlan: 'Choose a Plan',
     logout: 'Logout',
     language: 'Language',
     english: 'English',

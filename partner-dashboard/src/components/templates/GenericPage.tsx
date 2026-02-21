@@ -185,7 +185,7 @@ export const GenericPage: React.FC<GenericPageProps> = ({
               <Title>{title}</Title>
               <Subtitle>{subtitle}</Subtitle>
               <CTAButtonWrapper>
-                <Link to="/register" style={{ textDecoration: 'none' }}>
+                <Link to="/#subscription-plans" style={{ textDecoration: 'none' }}>
                   <Button variant="golden" size="large">
                     {t('offersPage.heroCta')}
                   </Button>

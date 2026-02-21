@@ -37,6 +37,7 @@ export const bg: TranslationKey = {
     getStarted: 'Започнете сега',
     signIn: 'Вход',
     signUp: 'Регистрирайте се',
+    choosePlan: 'Изберете план',
     logout: 'Изход',
     language: 'Език',
     english: 'Английски',

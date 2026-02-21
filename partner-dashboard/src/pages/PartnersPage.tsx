@@ -239,18 +239,23 @@ const StatsGrid = styled.div`
 const StatCard = styled.div``;
 
 const StatNumber = styled.div`
-  font-size: 3.5rem;
+  font-size: 2.75rem;
   font-weight: 700;
   color: #111827;
   margin-bottom: 0.5rem;
   line-height: 1;
+  white-space: nowrap;
 
   [data-theme="dark"] & {
     color: #f9fafb;
   }
 
   @media (max-width: 768px) {
-    font-size: 2.5rem;
+    font-size: 2rem;
+  }
+
+  @media (max-width: 480px) {
+    font-size: 1.75rem;
   }
 `;
 

@@ -214,7 +214,12 @@
       "Bash(/bin/cp:*)",
       "Bash(/usr/bin/diff:*)",
       "Bash(sips:*)",
-      "Bash(cwebp:*)"
+      "Bash(cwebp:*)",
+      "Bash(HISTFILE=~/.zsh_history:*)",
+      "Bash(fc:*)",
+      "mcp__playwright__browser_fill_form",
+      "Bash(rsync:*)",
+      "Bash(/Users/administrator/Documents/BoomCard/deploy-siteground.sh)"
     ],
     "deny": [],
     "ask": []

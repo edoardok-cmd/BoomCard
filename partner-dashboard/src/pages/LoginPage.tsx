@@ -559,8 +559,8 @@ const LoginPage: React.FC = () => {
 
         <SignupPrompt>
           {t('auth.dontHaveAccount')} {' '}
-          <Link to="/register">
-            {t('common.signUp')}
+          <Link to="/#subscription-plans">
+            {t('common.choosePlan')}
           </Link>
         </SignupPrompt>
 
