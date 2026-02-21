@@ -161,8 +161,10 @@ export const Footer: React.FC<FooterProps> = ({
               <div className="hidden md:block mt-4">
                 <SocialShareButton
                   url={typeof window !== 'undefined' ? window.location.origin : 'https://boomcard.bg'}
-                  title="BOOM Card - Live More, Pay Less"
-                  description={language === 'bg' ? 'Открийте невероятни оферти и преживявания с BOOM Card' : 'Discover amazing offers and experiences with BOOM Card'}
+                  title="BOOM Card"
+                  description={language === 'bg'
+                    ? 'BOOM Card — Живей повече. Плащай по-малко.\n\nЕксклузивни отстъпки в ресторанти, хотели, СПА центрове и изживявания из цяла България.'
+                    : 'BOOM Card — Live More. Pay Less.\n\nExclusive discounts at restaurants, hotels, spas and experiences across Bulgaria.'}
                   buttonText={language === 'bg' ? 'Сподели' : 'Share'}
                 />
               </div>

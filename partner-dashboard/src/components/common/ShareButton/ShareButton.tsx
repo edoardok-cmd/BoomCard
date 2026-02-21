@@ -110,6 +110,7 @@ interface ShareButtonProps {
   description?: string;
   className?: string;
   buttonText?: string;
+  imageUrl?: string;
 }
 
 export const SocialShareButton: React.FC<ShareButtonProps> = ({
@@ -118,6 +119,7 @@ export const SocialShareButton: React.FC<ShareButtonProps> = ({
   description = '',
   className,
   buttonText = 'Share',
+  imageUrl,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -173,11 +175,34 @@ export const SocialShareButton: React.FC<ShareButtonProps> = ({
   const handleNativeShare = async () => {
     if (navigator.share) {
       try {
-        await navigator.share({
-          title,
-          text: description,
-          url,
-        });
+        let fileToShare: File | null = null;
+
+        if (imageUrl) {
+          try {
+            const response = await fetch(imageUrl);
+            const blob = await response.blob();
+            const ext = imageUrl.split('.').pop() || 'png';
+            const file = new File([blob], `boom-card.${ext}`, { type: blob.type });
+            if (navigator.canShare?.({ files: [file] })) {
+              fileToShare = file;
+            }
+          } catch {
+            // Image fetch failed, share without image
+          }
+        }
+
+        if (fileToShare) {
+          // Share image + text with URL in the body so the image shows prominently
+          await navigator.share({
+            files: [fileToShare],
+            title,
+            text: description + '\n\n' + url,
+          });
+        } else {
+          // Fallback: share URL with link preview
+          await navigator.share({ title, text: description, url });
+        }
+
         setIsOpen(false);
       } catch (error) {
         // User cancelled or error occurred

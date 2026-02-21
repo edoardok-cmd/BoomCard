@@ -1,5 +1,5 @@
-import React from 'react';
-import { Link } from 'react-router-dom';
+import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import styled, { keyframes } from 'styled-components';
 
 interface FomoBannerProps {
@@ -15,22 +15,7 @@ const marquee = keyframes`
   }
 `;
 
-const BannerLink = styled(Link)`
-  display: block;
-  text-decoration: none;
-  cursor: pointer;
-  transition: opacity 0.2s ease;
-
-  &:hover {
-    opacity: 0.9;
-  }
-
-  &:active {
-    opacity: 0.8;
-  }
-`;
-
-const BannerContainer = styled.div`
+const BannerContainer = styled.div<{ $paused: boolean }>`
   position: fixed;
   top: 66px; /* Directly below fixed header */
   left: 0;
@@ -42,6 +27,7 @@ const BannerContainer = styled.div`
   overflow: hidden;
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
+  cursor: pointer;
 
   @media (max-width: 1380px) {
     top: 62px;
@@ -58,11 +44,12 @@ const BannerContainer = styled.div`
   }
 `;
 
-const MarqueeTrack = styled.div`
+const MarqueeTrack = styled.div<{ $paused: boolean }>`
   display: flex;
   justify-content: center;
   white-space: nowrap;
   animation: ${marquee} 28s linear infinite;
+  animation-play-state: ${({ $paused }) => ($paused ? 'paused' : 'running')};
 
   @media (max-width: 768px) {
     animation-duration: 21s;
@@ -117,6 +104,9 @@ const ClickHint = styled.span`
 `;
 
 const FomoBanner: React.FC<FomoBannerProps> = ({ language = 'bg' }) => {
+  const [paused, setPaused] = useState(false);
+  const navigate = useNavigate();
+
   const content = {
     en: {
       text: 'Promotion active – ',
@@ -128,26 +118,29 @@ const FomoBanner: React.FC<FomoBannerProps> = ({ language = 'bg' }) => {
       text: 'В момента тече промоция – пуснати са ',
       highlight: '300 BOOM Card абонамента',
       suffix: ' на промоционална цена. След изчерпване цената ще бъде увеличена.',
-      clickHint: '→ Виж планове',
+      clickHint: '→ Виж плановете',
     },
   };
 
   const t = content[language];
 
   return (
-    <BannerLink to="/pricing">
-      <BannerContainer>
-        <MarqueeTrack>
-          <BannerText>
-            <SparkleIcon>✨</SparkleIcon>
-            {t.text}
-            <strong>{t.highlight}</strong>
-            {t.suffix}
-            <ClickHint>{t.clickHint}</ClickHint>
-          </BannerText>
-        </MarqueeTrack>
-      </BannerContainer>
-    </BannerLink>
+    <BannerContainer
+      $paused={paused}
+      onMouseEnter={() => setPaused(true)}
+      onMouseLeave={() => setPaused(false)}
+      onClick={() => navigate('/pricing')}
+    >
+      <MarqueeTrack $paused={paused}>
+        <BannerText>
+          <SparkleIcon>✨</SparkleIcon>
+          {t.text}
+          <strong>{t.highlight}</strong>
+          {t.suffix}
+          <ClickHint>{t.clickHint}</ClickHint>
+        </BannerText>
+      </MarqueeTrack>
+    </BannerContainer>
   );
 };
 
