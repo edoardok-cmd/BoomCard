@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import styled, { keyframes } from 'styled-components';
 
 interface FomoBannerProps {
@@ -106,6 +106,7 @@ const ClickHint = styled.span`
 const FomoBanner: React.FC<FomoBannerProps> = ({ language = 'bg' }) => {
   const [paused, setPaused] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
 
   const content = {
     en: {
@@ -129,7 +130,16 @@ const FomoBanner: React.FC<FomoBannerProps> = ({ language = 'bg' }) => {
       $paused={paused}
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
-      onClick={() => navigate('/pricing')}
+      onClick={() => {
+        if (location.pathname === '/') {
+          document.getElementById('subscription-plans')?.scrollIntoView({ behavior: 'smooth' });
+        } else {
+          navigate('/');
+          setTimeout(() => {
+            document.getElementById('subscription-plans')?.scrollIntoView({ behavior: 'smooth' });
+          }, 100);
+        }
+      }}
     >
       <MarqueeTrack $paused={paused}>
         <BannerText>
