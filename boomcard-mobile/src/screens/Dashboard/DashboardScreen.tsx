@@ -16,6 +16,7 @@ import { useAuth } from '../../store/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { ReceiptsApi } from '../../api/receipts.api';
 import { cardApi } from '../../api/card.api';
+import apiClient from '../../api/client';
 import { formatDualCurrency } from '../../utils/format';
 import type { ReceiptStats, Receipt } from '../../types';
 
@@ -36,64 +37,80 @@ const DashboardScreen = ({ navigation }: any) => {
   const [refreshing, setRefreshing] = useState(false);
   const [stats, setStats] = useState<ReceiptStats | null>(null);
   const [cardStats, setCardStats] = useState<any>(null);
+  const [subscription, setSubscription] = useState<any>(null);
   const [recentVisits, setRecentVisits] = useState<VenueVisit[]>([]);
 
   const loadData = async () => {
+    // Show fallback subscription immediately so the UI isn't empty
+    if (!subscription) {
+      setSubscription({ plan: 'STANDARD', status: 'ACTIVE', benefits: { cashbackRate: 0.05 } });
+    }
+    // Don't block the whole screen — show UI after a short delay even if APIs are slow
+    const loadingTimeout = setTimeout(() => {
+      setLoading(false);
+    }, 2000);
+
     try {
-      const [receiptsStatsResult, cardStatsResult, receiptsResult] = await Promise.allSettled([
-        ReceiptsApi.getStats(),
-        cardApi.getStatistics(),
-        ReceiptsApi.getReceipts({ limit: 50 }),
-      ]);
+      // Fire all requests in parallel, each updates state independently
+      const subscriptionPromise = apiClient.get('/api/subscriptions/current').then((subResponse) => {
+        if (subResponse.success && subResponse.data) {
+          setSubscription(subResponse.data);
+        }
+      }).catch(() => {});
 
-      const receiptsStatsResponse = receiptsStatsResult.status === 'fulfilled' ? receiptsStatsResult.value : { success: false, data: null };
-      const cardStatsResponse = cardStatsResult.status === 'fulfilled' ? cardStatsResult.value : null;
-      const receiptsResponse = receiptsResult.status === 'fulfilled' ? receiptsResult.value : { success: false, data: null };
+      const receiptsStatsPromise = ReceiptsApi.getStats().then((response) => {
+        if (response.success && response.data) {
+          setStats(response.data);
+        }
+      }).catch(() => {});
 
-      if (receiptsStatsResponse.success && receiptsStatsResponse.data) {
-        setStats(receiptsStatsResponse.data);
-      }
+      const cardStatsPromise = cardApi.getStatistics().then((data) => {
+        if (data) {
+          setCardStats(data);
+        }
+      }).catch(() => {});
 
-      if (cardStatsResponse) {
-        setCardStats(cardStatsResponse);
-      }
+      const receiptsPromise = ReceiptsApi.getReceipts({ limit: 50 }).then((response) => {
+        if (response.success && response.data) {
+          const receipts = response.data.data || [];
+          const venueMap = new Map<string, VenueVisit>();
 
-      if (receiptsResponse.success && receiptsResponse.data) {
-        const receipts = receiptsResponse.data.data || [];
-        const venueMap = new Map<string, VenueVisit>();
+          receipts.forEach((receipt: Receipt) => {
+            const key = receipt.venueId || receipt.merchantName || 'unknown';
+            const existing = venueMap.get(key);
 
-        receipts.forEach((receipt: Receipt) => {
-          const key = receipt.venueId || receipt.merchantName || 'unknown';
-          const existing = venueMap.get(key);
-
-          if (existing) {
-            existing.visitCount++;
-            existing.totalSpent += receipt.totalAmount || 0;
-            existing.totalCashback += receipt.cashbackAmount || 0;
-            if (receipt.receiptDate && receipt.receiptDate > existing.lastVisit) {
-              existing.lastVisit = receipt.receiptDate;
+            if (existing) {
+              existing.visitCount++;
+              existing.totalSpent += receipt.totalAmount || 0;
+              existing.totalCashback += receipt.cashbackAmount || 0;
+              if (receipt.receiptDate && receipt.receiptDate > existing.lastVisit) {
+                existing.lastVisit = receipt.receiptDate;
+              }
+            } else {
+              venueMap.set(key, {
+                venueId: receipt.venueId || key,
+                merchantName: receipt.merchantName || 'Unknown Venue',
+                visitCount: 1,
+                totalSpent: receipt.totalAmount || 0,
+                totalCashback: receipt.cashbackAmount || 0,
+                lastVisit: receipt.receiptDate || new Date().toISOString(),
+              });
             }
-          } else {
-            venueMap.set(key, {
-              venueId: receipt.venueId || key,
-              merchantName: receipt.merchantName || 'Unknown Venue',
-              visitCount: 1,
-              totalSpent: receipt.totalAmount || 0,
-              totalCashback: receipt.cashbackAmount || 0,
-              lastVisit: receipt.receiptDate || new Date().toISOString(),
-            });
-          }
-        });
+          });
 
-        const visits = Array.from(venueMap.values())
-          .sort((a, b) => b.visitCount - a.visitCount)
-          .slice(0, 5);
+          const visits = Array.from(venueMap.values())
+            .sort((a, b) => b.visitCount - a.visitCount)
+            .slice(0, 5);
 
-        setRecentVisits(visits);
-      }
+          setRecentVisits(visits);
+        }
+      }).catch(() => {});
+
+      await Promise.allSettled([subscriptionPromise, receiptsStatsPromise, cardStatsPromise, receiptsPromise]);
     } catch (error) {
       console.warn('Failed to load dashboard data:', error);
     } finally {
+      clearTimeout(loadingTimeout);
       setLoading(false);
       setRefreshing(false);
     }
@@ -139,19 +156,121 @@ const DashboardScreen = ({ navigation }: any) => {
         end={{ x: 1, y: 1 }}
         style={s.hero}
       >
-        <View style={s.heroContent}>
-          <View style={s.heroTextContainer}>
-            <Text style={s.heroGreeting}>{t('dashboard.welcome')},</Text>
-            <Text style={s.heroName}>{user?.firstName || user?.email}!</Text>
+        <View style={s.heroBrandRow}>
+          <View style={s.brandContainer}>
+            <Text style={s.brandText}>BOOM</Text>
+            <Text style={s.brandCardText}>Card</Text>
           </View>
           <TouchableOpacity style={s.notificationBtn}>
             <Ionicons name="notifications-outline" size={24} color="rgba(255,255,255,0.9)" />
           </TouchableOpacity>
         </View>
+        <View style={s.heroContent}>
+          <View style={s.heroTextContainer}>
+            <Text style={s.heroGreeting}>{t('dashboard.welcome')},</Text>
+            <Text style={s.heroName}>{user?.firstName || user?.email}!</Text>
+          </View>
+        </View>
+
+        {/* Cashback Amount */}
+        <View style={s.heroCashback}>
+          <View style={s.heroCashbackLeft}>
+            <Text style={s.heroCashbackLabel}>{t('dashboard.totalCashback')}</Text>
+            <Text style={s.heroCashbackAmount}>
+              {formatDualCurrency(stats?.totalCashback || cardStats?.totalCashbackEarned || 0)}
+            </Text>
+          </View>
+          {subscription && (
+            <View style={s.heroCashbackRate}>
+              <Ionicons name="trending-up" size={16} color="rgba(255,255,255,0.9)" />
+              <Text style={s.heroCashbackRateText}>
+                {t('dashboard.cashbackRate', {
+                  rate: subscription.benefits?.cashbackRate
+                    ? Math.round(subscription.benefits.cashbackRate * 100)
+                    : subscription.plan === 'PLATINUM' ? 10
+                    : subscription.plan === 'PREMIUM' ? 7
+                    : 5
+                })}
+              </Text>
+            </View>
+          )}
+        </View>
       </LinearGradient>
 
-      {/* Quick Actions - overlapping hero */}
-      <View style={s.quickActions}>
+      {/* Card Plan Info */}
+      {subscription && (
+        <TouchableOpacity
+          style={s.planBanner}
+          activeOpacity={0.7}
+          onPress={() => navigation.navigate('Card')}
+        >
+          <LinearGradient
+            colors={
+              subscription.plan === 'PLATINUM'
+                ? ['#C0C0C0', '#E8E8E8']
+                : subscription.plan === 'PREMIUM'
+                ? ['#D4AF37', '#FFD700']
+                : ['#4A5568', '#2D3748']
+            }
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={s.planGradient}
+          >
+            <View style={s.planLeft}>
+              <Ionicons name="card" size={28} color="#FFFFFF" />
+              <View style={s.planTextGroup}>
+                <Text style={s.planLabel}>{t('dashboard.yourPlan')}</Text>
+                <Text style={s.planName}>
+                  {subscription.plan === 'PLATINUM'
+                    ? t('dashboard.planPlatinum')
+                    : subscription.plan === 'PREMIUM'
+                    ? t('dashboard.planPremium')
+                    : t('dashboard.planStandard')}
+                </Text>
+              </View>
+            </View>
+            <View style={s.planRight}>
+              <View style={[
+                s.statusBadge,
+                { backgroundColor: (subscription.status === 'ACTIVE' || subscription.status === 'TRIALING') ? 'rgba(16,185,129,0.25)' : 'rgba(239,68,68,0.25)' },
+              ]}>
+                <View style={[
+                  s.statusDot,
+                  { backgroundColor: (subscription.status === 'ACTIVE' || subscription.status === 'TRIALING') ? '#10B981' : '#EF4444' },
+                ]} />
+                <Text style={s.statusText}>
+                  {(subscription.status === 'ACTIVE' || subscription.status === 'TRIALING')
+                    ? t('dashboard.cardActive')
+                    : subscription.status === 'CANCELLED'
+                    ? t('dashboard.cardExpired')
+                    : t('dashboard.cardSuspended')}
+                </Text>
+              </View>
+              {subscription.currentPeriodEnd && (
+                <Text style={s.planValidity}>
+                  {t('dashboard.validUntil')}: {new Date(subscription.currentPeriodEnd).toLocaleDateString()}
+                </Text>
+              )}
+              {(subscription.status === 'ACTIVE' || subscription.status === 'TRIALING') && subscription.currentPeriodEnd && (() => {
+                const daysLeft = Math.ceil(
+                  (new Date(subscription.currentPeriodEnd).getTime() - Date.now()) / (1000 * 60 * 60 * 24)
+                );
+                if (daysLeft > 0 && daysLeft <= 90) {
+                  return (
+                    <Text style={s.daysRemaining}>
+                      {t('dashboard.daysRemaining', { days: daysLeft })}
+                    </Text>
+                  );
+                }
+                return null;
+              })()}
+            </View>
+          </LinearGradient>
+        </TouchableOpacity>
+      )}
+
+      {/* Quick Actions */}
+      <View style={[s.quickActions, !subscription && { marginTop: -28 }]}>
         <TouchableOpacity
           style={s.actionCard}
           activeOpacity={0.7}
@@ -290,6 +409,28 @@ const getStyles = (theme: any, isDarkMode: boolean) => StyleSheet.create({
     paddingBottom: 48,
     paddingHorizontal: 20,
   },
+  heroBrandRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  brandContainer: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+  },
+  brandText: {
+    fontSize: 22,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    letterSpacing: 1,
+  },
+  brandCardText: {
+    fontSize: 22,
+    fontWeight: '300',
+    color: 'rgba(255,255,255,0.85)',
+    marginLeft: 4,
+  },
   heroContent: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -317,12 +458,131 @@ const getStyles = (theme: any, isDarkMode: boolean) => StyleSheet.create({
     alignItems: 'center',
   },
 
+  // Hero Cashback
+  heroCashback: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+    marginTop: 16,
+    paddingTop: 14,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.15)',
+  },
+  heroCashbackLeft: {
+    flex: 1,
+  },
+  heroCashbackLabel: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.7)',
+    marginBottom: 4,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  heroCashbackAmount: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  heroCashbackRate: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 12,
+    gap: 4,
+  },
+  heroCashbackRateText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+
+  // Card Plan Banner
+  planBanner: {
+    marginHorizontal: 16,
+    marginTop: -28,
+    marginBottom: 12,
+    borderRadius: 16,
+    overflow: 'hidden',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: isDarkMode ? 0.3 : 0.15,
+        shadowRadius: 12,
+      },
+      android: {
+        elevation: 8,
+      },
+    }),
+  },
+  planGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+  },
+  planLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  planTextGroup: {
+    gap: 2,
+  },
+  planLabel: {
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.7)',
+    fontWeight: '500',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  planName: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    textShadowColor: 'rgba(0,0,0,0.2)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
+  },
+  planRight: {
+    alignItems: 'flex-end',
+    gap: 4,
+  },
+  statusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+    gap: 5,
+  },
+  statusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  statusText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  planValidity: {
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.8)',
+  },
+  daysRemaining: {
+    fontSize: 10,
+    color: 'rgba(255,255,255,0.65)',
+    fontStyle: 'italic',
+  },
+
   // Quick Actions
   quickActions: {
     flexDirection: 'row',
     paddingHorizontal: 16,
     gap: 12,
-    marginTop: -28,
     marginBottom: 16,
   },
   actionCard: {

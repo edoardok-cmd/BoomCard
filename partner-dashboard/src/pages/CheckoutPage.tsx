@@ -136,6 +136,12 @@ const PageContainer = styled.div`
   min-height: 100vh;
   background: var(--color-background);
   padding: 2rem;
+  padding-bottom: 4rem;
+
+  @media (max-width: 768px) {
+    padding: 1rem;
+    padding-bottom: 3rem;
+  }
 `;
 
 const CheckoutContainer = styled.div`
@@ -164,6 +170,11 @@ const PageTitle = styled.h1`
   color: var(--color-text-primary);
   margin-bottom: 2rem;
   font-family: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+
+  @media (max-width: 768px) {
+    font-size: 1.5rem;
+    margin-bottom: 1.25rem;
+  }
 `;
 
 const CheckoutGrid = styled.div`
@@ -181,6 +192,10 @@ const PaymentSection = styled.div`
   border-radius: 1rem;
   padding: 2rem;
   border: 1px solid var(--color-border);
+
+  @media (max-width: 768px) {
+    padding: 1.25rem;
+  }
 `;
 
 const SectionTitle = styled.h2`
@@ -241,6 +256,11 @@ const OrderSummary = styled.div`
   height: fit-content;
   position: sticky;
   top: 2rem;
+
+  @media (max-width: 768px) {
+    padding: 1.25rem;
+    position: static;
+  }
 `;
 
 const PlanCard = styled.div<{ $type: 'black' | 'silver' | 'light' }>`
@@ -249,6 +269,7 @@ const PlanCard = styled.div<{ $type: 'black' | 'silver' | 'light' }>`
   border-radius: 1.25rem;
   padding: 1.75rem 2rem;
   margin-bottom: 1.5rem;
+  max-height: 220px;
   position: relative;
   overflow: hidden;
   display: flex;

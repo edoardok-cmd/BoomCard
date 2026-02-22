@@ -82,7 +82,19 @@
     "lastVisit": "Последно",
     "cashback": "кешбек",
     "pendingReceipts": "Бележки в обработка",
-    "receiptsBeingReviewed": "Вашите касови бонове се преглеждат"
+    "receiptsBeingReviewed": "Вашите касови бонове се преглеждат",
+    "yourPlan": "Вашият план",
+    "planStandard": "Стандартен",
+    "planPremium": "Премиум",
+    "planPlatinum": "Платинен",
+    "validUntil": "Валидна до",
+    "validFrom": "Валидна от",
+    "cardActive": "Активна",
+    "cardExpired": "Изтекла",
+    "cardSuspended": "Спряна",
+    "viewCard": "Виж картата",
+    "daysRemaining": "{{days}} дни остават",
+    "cashbackRate": "{{rate}}% кешбек"
   },
   "wallet": {
     "title": "Портфейл",

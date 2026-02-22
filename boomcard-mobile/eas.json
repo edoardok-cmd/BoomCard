@@ -21,7 +21,7 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://boomcard.onrender.com"
+        "EXPO_PUBLIC_API_URL": "https://boomcard-api.fly.dev"
       }
     },
     "production": {

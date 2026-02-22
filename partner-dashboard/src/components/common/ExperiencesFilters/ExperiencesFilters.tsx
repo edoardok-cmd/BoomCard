@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import styled from 'styled-components';
-import { Filter, Clock, Compass, Sun, Users, ChevronDown, ChevronUp, Star, DollarSign } from 'lucide-react';
+import { Filter, Clock, Compass, Sun, Users, ChevronDown, ChevronUp, Star, DollarSign, LayoutGrid } from 'lucide-react';
 import Button from '../Button/Button';
 
 const FilterContainer = styled(motion.div)`
@@ -68,6 +68,10 @@ const FilterGroup = styled.div`
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
+`;
+
+const CategoryFilterGroup = styled(FilterGroup)`
+  grid-column: 1 / -1;
 `;
 
 const Label = styled.label`
@@ -141,6 +145,19 @@ const CheckboxLabel = styled.label<{ $checked: boolean }>`
   }
 `;
 
+const SubcategoryGroup = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  padding-left: 0.5rem;
+  margin-top: 0.25rem;
+`;
+
+const SubcategoryLabel = styled(CheckboxLabel)`
+  font-size: 0.75rem;
+  padding: 0.375rem 0.75rem;
+`;
+
 const FilterActions = styled.div`
   display: flex;
   gap: 0.75rem;
@@ -153,7 +170,80 @@ const FilterActions = styled.div`
   }
 `;
 
+interface CategoryDef {
+  id: string;
+  en: string;
+  bg: string;
+  subcategories: { id: string; en: string; bg: string }[];
+}
+
+const experiencesCategories: CategoryDef[] = [
+  {
+    id: 'gastronomic',
+    en: 'Gastronomic',
+    bg: 'Гастрономични',
+    subcategories: [
+      { id: 'gastronomic/degustations', en: 'Degustations', bg: 'Дегустации' },
+      { id: 'gastronomic/food-traditions', en: 'Food & Traditions', bg: 'Храна и традиции' },
+    ],
+  },
+  {
+    id: 'historical-cultural',
+    en: 'Historical & Cultural',
+    bg: 'Исторически и културни',
+    subcategories: [
+      { id: 'historical-cultural/walking-tours', en: 'Walking Tours', bg: 'Пешеходни турове' },
+      { id: 'historical-cultural/historical-tours', en: 'Historical Tours', bg: 'Исторически турове' },
+      { id: 'historical-cultural/museums-galleries', en: 'Museums & Galleries', bg: 'Музеи и галерии' },
+    ],
+  },
+  {
+    id: 'active-adventure',
+    en: 'Active & Adventure',
+    bg: 'Активни и приключенски',
+    subcategories: [
+      { id: 'active-adventure/nature-tours', en: 'Nature Tours', bg: 'Природни турове' },
+      { id: 'active-adventure/bike-tours', en: 'Bike Tours', bg: 'Вело турове' },
+      { id: 'active-adventure/offroad-atv', en: 'Offroad & ATV', bg: 'Офроуд и ATV' },
+      { id: 'active-adventure/water-activities', en: 'Water Activities', bg: 'Водни дейности' },
+    ],
+  },
+  {
+    id: 'extreme',
+    en: 'Extreme',
+    bg: 'Екстремни',
+    subcategories: [
+      { id: 'extreme/aerial', en: 'Aerial', bg: 'Въздушни' },
+      { id: 'extreme/jumping', en: 'Jumping', bg: 'Скачане' },
+      { id: 'extreme/motorcycles', en: 'Motorcycles', bg: 'Мотоциклети' },
+      { id: 'extreme/water', en: 'Water', bg: 'Водни' },
+    ],
+  },
+  {
+    id: 'educational-creative',
+    en: 'Educational & Creative',
+    bg: 'Образователни и творчески',
+    subcategories: [
+      { id: 'educational-creative/cooking', en: 'Cooking', bg: 'Готвене' },
+      { id: 'educational-creative/workshops', en: 'Workshops', bg: 'Уъркшопи' },
+      { id: 'educational-creative/arts', en: 'Arts', bg: 'Изкуство' },
+    ],
+  },
+  {
+    id: 'relax-wellness',
+    en: 'Relax & Wellness',
+    bg: 'Релакс и уелнес',
+    subcategories: [
+      { id: 'relax-wellness/spa-thermal', en: 'SPA & Thermal', bg: 'СПА и термални' },
+      { id: 'relax-wellness/massages-therapies', en: 'Massages & Therapies', bg: 'Масажи и терапии' },
+      { id: 'relax-wellness/relax-experiences', en: 'Relax Experiences', bg: 'Релакс изживявания' },
+      { id: 'relax-wellness/yoga-meditation', en: 'Yoga & Meditation', bg: 'Йога и медитация' },
+    ],
+  },
+];
+
 export interface ExperiencesFiltersState {
+  categories: string[];
   durations: string[];
   formats: string[];
   seasons: string[];
@@ -213,6 +303,38 @@ const ExperiencesFilters: React.FC<ExperiencesFiltersProps> = ({
     { id: 'high-end', en: '€€€ High-end', bg: '€€€ Висок клас' },
   ];
 
+  const handleCategoryToggle = (categoryId: string) => {
+    const category = experiencesCategories.find(c => c.id === categoryId);
+    if (!category) return;
+
+    const isSelected = filters.categories.includes(categoryId);
+    const subIds = category.subcategories.map(s => s.id);
+
+    if (isSelected) {
+      const updated = filters.categories.filter(
+        id => id !== categoryId && !subIds.includes(id)
+      );
+      onChange({ ...filters, categories: updated });
+    } else {
+      onChange({ ...filters, categories: [...filters.categories, categoryId] });
+    }
+  };
+
+  const handleSubcategoryToggle = (subcategoryId: string, parentId: string) => {
+    const isSelected = filters.categories.includes(subcategoryId);
+    let updated: string[];
+
+    if (isSelected) {
+      updated = filters.categories.filter(id => id !== subcategoryId);
+    } else {
+      updated = [...filters.categories, subcategoryId];
+      if (!updated.includes(parentId)) {
+        updated.push(parentId);
+      }
+    }
+    onChange({ ...filters, categories: updated });
+  };
+
   const handleToggle = (
     key: keyof ExperiencesFiltersState,
     value: string
@@ -226,6 +348,7 @@ const ExperiencesFilters: React.FC<ExperiencesFiltersProps> = ({
 
   const handleClearAll = () => {
     onChange({
+      categories: [],
       durations: [],
       formats: [],
       seasons: [],
@@ -237,6 +360,7 @@ const ExperiencesFilters: React.FC<ExperiencesFiltersProps> = ({
 
   const getActiveCount = () => {
     return (
+      filters.categories.length +
       filters.durations.length +
       filters.formats.length +
       filters.seasons.length +
@@ -274,6 +398,48 @@ const ExperiencesFilters: React.FC<ExperiencesFiltersProps> = ({
             transition={{ duration: 0.2 }}
           >
             <FilterGrid>
+              {/* Category */}
+              <CategoryFilterGroup>
+                <Label>
+                  <LayoutGrid />
+                  {language === 'bg' ? 'Категория' : 'Category'}
+                </Label>
+                <CheckboxGroup>
+                  {experiencesCategories.map(cat => (
+                    <CheckboxLabel
+                      key={cat.id}
+                      $checked={filters.categories.includes(cat.id)}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={filters.categories.includes(cat.id)}
+                        onChange={() => handleCategoryToggle(cat.id)}
+                      />
+                      {language === 'bg' ? cat.bg : cat.en}
+                    </CheckboxLabel>
+                  ))}
+                </CheckboxGroup>
+                {experiencesCategories
+                  .filter(cat => filters.categories.includes(cat.id))
+                  .map(cat => (
+                    <SubcategoryGroup key={`sub-${cat.id}`}>
+                      {cat.subcategories.map(sub => (
+                        <SubcategoryLabel
+                          key={sub.id}
+                          $checked={filters.categories.includes(sub.id)}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={filters.categories.includes(sub.id)}
+                            onChange={() => handleSubcategoryToggle(sub.id, cat.id)}
+                          />
+                          {language === 'bg' ? sub.bg : sub.en}
+                        </SubcategoryLabel>
+                      ))}
+                    </SubcategoryGroup>
+                  ))}
+              </CategoryFilterGroup>
+
               {/* Duration */}
               <FilterGroup>
                 <Label>

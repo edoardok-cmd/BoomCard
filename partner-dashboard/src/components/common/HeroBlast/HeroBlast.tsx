@@ -32,7 +32,7 @@ const HeroContainer = styled.div`
     min-height: auto;
     margin-top: 58px;
     padding-top: 45px; /* Reduced for mobile */
-    padding-bottom: 1px;
+    padding-bottom: 80px; /* Account for 64px fixed bottom nav */
     justify-content: flex-start;
   }
 
@@ -40,7 +40,7 @@ const HeroContainer = styled.div`
     min-height: auto;
     margin-top: 54px;
     padding-top: 42px;
-    padding-bottom: 50px; /* Reduced from 70px */
+    padding-bottom: 80px; /* Account for 64px fixed bottom nav */
     justify-content: flex-start;
   }
 

@@ -51,7 +51,7 @@ const Hero = styled.div`
   }
 
   @media (max-width: 768px) {
-    padding: 4rem 0 3rem;
+    padding: 4rem 0 5rem; /* Extra bottom padding for mobile bottom nav */
   }
 `;
 

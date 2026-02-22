@@ -8,6 +8,7 @@ const ExperiencesFamilyActivitiesPage: React.FC = () => {
   const offers = data?.data || [];
 
   const [filters, setFilters] = useState<ExperiencesFiltersState>({
+    categories: [],
     durations: [],
     formats: [],
     seasons: [],

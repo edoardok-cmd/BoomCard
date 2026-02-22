@@ -8,6 +8,7 @@ const VenuesCafesPage: React.FC = () => {
   const offers = data?.data || [];
 
   const [filters, setFilters] = useState<BoomPlacesFiltersState>({
+    categories: [],
     locations: [],
     nearMe: false,
     discountRanges: [],

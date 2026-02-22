@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import styled from 'styled-components';
-import { Filter, MapPin, Percent, Star, DollarSign, ChevronDown, ChevronUp, Navigation } from 'lucide-react';
+import { Filter, MapPin, Percent, Star, DollarSign, ChevronDown, ChevronUp, Navigation, LayoutGrid } from 'lucide-react';
 import Button from '../Button/Button';
 
 const FilterContainer = styled(motion.div)`
@@ -68,6 +68,10 @@ const FilterGroup = styled.div`
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
+`;
+
+const CategoryFilterGroup = styled(FilterGroup)`
+  grid-column: 1 / -1;
 `;
 
 const Label = styled.label`
@@ -141,6 +145,19 @@ const CheckboxLabel = styled.label<{ $checked: boolean }>`
   }
 `;
 
+const SubcategoryGroup = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  padding-left: 0.5rem;
+  margin-top: 0.25rem;
+`;
+
+const SubcategoryLabel = styled(CheckboxLabel)`
+  font-size: 0.75rem;
+  padding: 0.375rem 0.75rem;
+`;
+
 const NearMeButton = styled.button<{ $active: boolean }>`
   display: flex;
   align-items: center;
@@ -184,7 +201,83 @@ const FilterActions = styled.div`
   }
 `;
 
+interface CategoryDef {
+  id: string;
+  en: string;
+  bg: string;
+  subcategories: { id: string; en: string; bg: string }[];
+}
+
+const placesCategories: CategoryDef[] = [
+  {
+    id: 'restaurants',
+    en: 'Restaurants & Food',
+    bg: 'Ресторанти и храна',
+    subcategories: [
+      { id: 'restaurants/curated', en: 'BOOM Restaurants', bg: 'BOOM Ресторанти' },
+      { id: 'restaurants/fast-food', en: 'Fast Food', bg: 'Бързо хранене' },
+      { id: 'restaurants/traditional', en: 'Traditional Cuisine', bg: 'Традиционна кухня' },
+      { id: 'restaurants/vegetarian-vegan', en: 'Vegetarian & Vegan', bg: 'Вегетарианска и веган' },
+    ],
+  },
+  {
+    id: 'accommodation',
+    en: 'Accommodation',
+    bg: 'Настаняване',
+    subcategories: [
+      { id: 'accommodation/hotels', en: 'Hotels', bg: 'Хотели' },
+      { id: 'accommodation/guest-houses', en: 'Guest Houses', bg: 'Къщи за гости' },
+      { id: 'accommodation/apartments', en: 'Apartments', bg: 'Апартаменти' },
+    ],
+  },
+  {
+    id: 'spa',
+    en: 'SPA & Wellness',
+    bg: 'СПА и уелнес',
+    subcategories: [
+      { id: 'spa/spa-centers', en: 'SPA Centers', bg: 'СПА центрове' },
+      { id: 'spa/pools', en: 'Pools', bg: 'Басейни' },
+      { id: 'spa/mineral-pools', en: 'Mineral Pools', bg: 'Минерални басейни' },
+      { id: 'spa/fitness-wellness', en: 'Fitness & Wellness', bg: 'Фитнес и уелнес' },
+      { id: 'spa/sports', en: 'Sports', bg: 'Спорт' },
+    ],
+  },
+  {
+    id: 'panoramic',
+    en: 'Panoramic Places',
+    bg: 'Панорамни места',
+    subcategories: [
+      { id: 'panoramic/bars', en: 'Rooftop Bars', bg: 'Руфтоп барове' },
+      { id: 'panoramic/restaurants', en: 'Sky Restaurants', bg: 'Скай ресторанти' },
+    ],
+  },
+  {
+    id: 'clubs',
+    en: 'Clubs & Nightlife',
+    bg: 'Клубове и нощен живот',
+    subcategories: [
+      { id: 'clubs/clubs', en: 'Clubs', bg: 'Клубове' },
+      { id: 'clubs/bars', en: 'Bars', bg: 'Барове' },
+      { id: 'clubs/lounge', en: 'Lounge', bg: 'Лаундж' },
+      { id: 'clubs/parties-events', en: 'Parties & Events', bg: 'Партита и събития' },
+      { id: 'clubs/live-music', en: 'Live Music', bg: 'Жива музика' },
+    ],
+  },
+  {
+    id: 'cafes',
+    en: 'Cafes, Pastry Shops & Bakeries',
+    bg: 'Кафенета, сладкарници и пекарни',
+    subcategories: [
+      { id: 'cafes/cafes', en: 'Cafes', bg: 'Кафенета' },
+      { id: 'cafes/pastry-shops', en: 'Pastry Shops', bg: 'Сладкарници' },
+      { id: 'cafes/brunch', en: 'Brunch', bg: 'Бранч' },
+      { id: 'cafes/bakeries', en: 'Bakeries', bg: 'Пекарни' },
+    ],
+  },
+];
+
 export interface BoomPlacesFiltersState {
+  categories: string[];
   locations: string[];
   nearMe: boolean;
   discountRanges: string[];
@@ -236,6 +329,41 @@ const BoomPlacesFilters: React.FC<BoomPlacesFiltersProps> = ({
     { id: 'high-end', en: '€€€ High-end', bg: '€€€ Висок клас' },
   ];
 
+  const handleCategoryToggle = (categoryId: string) => {
+    const category = placesCategories.find(c => c.id === categoryId);
+    if (!category) return;
+
+    const isSelected = filters.categories.includes(categoryId);
+    const subIds = category.subcategories.map(s => s.id);
+
+    if (isSelected) {
+      // Deselect parent + all its subcategories
+      const updated = filters.categories.filter(
+        id => id !== categoryId && !subIds.includes(id)
+      );
+      onChange({ ...filters, categories: updated });
+    } else {
+      // Select parent only
+      onChange({ ...filters, categories: [...filters.categories, categoryId] });
+    }
+  };
+
+  const handleSubcategoryToggle = (subcategoryId: string, parentId: string) => {
+    const isSelected = filters.categories.includes(subcategoryId);
+    let updated: string[];
+
+    if (isSelected) {
+      updated = filters.categories.filter(id => id !== subcategoryId);
+    } else {
+      updated = [...filters.categories, subcategoryId];
+      // Auto-select parent if not already selected
+      if (!updated.includes(parentId)) {
+        updated.push(parentId);
+      }
+    }
+    onChange({ ...filters, categories: updated });
+  };
+
   const handleLocationToggle = (locationId: string) => {
     const updated = filters.locations.includes(locationId)
       ? filters.locations.filter(l => l !== locationId)
@@ -270,6 +398,7 @@ const BoomPlacesFilters: React.FC<BoomPlacesFiltersProps> = ({
 
   const handleClearAll = () => {
     onChange({
+      categories: [],
       locations: [],
       nearMe: false,
       discountRanges: [],
@@ -280,6 +409,7 @@ const BoomPlacesFilters: React.FC<BoomPlacesFiltersProps> = ({
 
   const getActiveCount = () => {
     let count = 0;
+    count += filters.categories.length;
     count += filters.locations.length;
     if (filters.nearMe) count++;
     count += filters.discountRanges.length;
@@ -316,6 +446,49 @@ const BoomPlacesFilters: React.FC<BoomPlacesFiltersProps> = ({
             transition={{ duration: 0.2 }}
           >
             <FilterGrid>
+              {/* Category */}
+              <CategoryFilterGroup>
+                <Label>
+                  <LayoutGrid />
+                  {language === 'bg' ? 'Категория' : 'Category'}
+                </Label>
+                <CheckboxGroup>
+                  {placesCategories.map(cat => (
+                    <CheckboxLabel
+                      key={cat.id}
+                      $checked={filters.categories.includes(cat.id)}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={filters.categories.includes(cat.id)}
+                        onChange={() => handleCategoryToggle(cat.id)}
+                      />
+                      {language === 'bg' ? cat.bg : cat.en}
+                    </CheckboxLabel>
+                  ))}
+                </CheckboxGroup>
+                {/* Subcategories for selected parents */}
+                {placesCategories
+                  .filter(cat => filters.categories.includes(cat.id))
+                  .map(cat => (
+                    <SubcategoryGroup key={`sub-${cat.id}`}>
+                      {cat.subcategories.map(sub => (
+                        <SubcategoryLabel
+                          key={sub.id}
+                          $checked={filters.categories.includes(sub.id)}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={filters.categories.includes(sub.id)}
+                            onChange={() => handleSubcategoryToggle(sub.id, cat.id)}
+                          />
+                          {language === 'bg' ? sub.bg : sub.en}
+                        </SubcategoryLabel>
+                      ))}
+                    </SubcategoryGroup>
+                  ))}
+              </CategoryFilterGroup>
+
               {/* Location */}
               <FilterGroup>
                 <Label>

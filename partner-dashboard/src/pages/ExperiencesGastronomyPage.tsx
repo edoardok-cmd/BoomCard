@@ -26,6 +26,7 @@ const mockOffers: Offer[] = [
 
 const ExperiencesGastronomyPage: React.FC = () => {
   const [filters, setFilters] = useState<ExperiencesFiltersState>({
+    categories: [],
     durations: [],
     formats: [],
     seasons: [],

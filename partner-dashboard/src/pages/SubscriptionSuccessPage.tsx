@@ -10,7 +10,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import styled from 'styled-components';
 import { motion } from 'framer-motion';
-import { CheckCircle, Clock, AlertCircle, Loader2, RefreshCw } from 'lucide-react';
+import { CheckCircle, Clock, AlertCircle, Loader2, RefreshCw, Smartphone, Download } from 'lucide-react';
 import Button from '../components/common/Button/Button';
 import { useLanguage } from '../contexts/LanguageContext';
 import { plansService, SubscriptionStatus } from '../services/plans.service';
@@ -199,6 +199,74 @@ const TimeoutWarning = styled.div`
   }
 `;
 
+const AppDownloadSection = styled.div`
+  width: 100%;
+  max-width: 32rem;
+  margin-top: 1.5rem;
+`;
+
+const AppDownloadCard = styled.a`
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+  background: var(--color-background);
+  border: 1px solid var(--color-border);
+  border-radius: 0.75rem;
+  text-decoration: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  cursor: pointer;
+
+  &:hover {
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  }
+`;
+
+const AppIconCircle = styled.div`
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  background: rgba(59, 130, 246, 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+
+  svg {
+    width: 24px;
+    height: 24px;
+    color: #3b82f6;
+  }
+`;
+
+const AppDownloadInfo = styled.div`
+  flex: 1;
+  text-align: left;
+`;
+
+const AppDownloadTitle = styled.div`
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin-bottom: 0.125rem;
+`;
+
+const AppDownloadSubtitle = styled.div`
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
+`;
+
+const AppDownloadArrow = styled.div`
+  flex-shrink: 0;
+  color: var(--color-text-tertiary);
+
+  svg {
+    width: 20px;
+    height: 20px;
+  }
+`;
+
 const POLLING_INTERVAL = 2000; // 2 seconds
 const MAX_POLLING_TIME = 30000; // 30 seconds before showing warning
 const MAX_TOTAL_TIME = 120000; // 2 minutes before giving up
@@ -358,7 +426,7 @@ const SubscriptionSuccessPage: React.FC = () => {
           <Title>{getTitle()}</Title>
           <Subtitle>{getSubtitle()}</Subtitle>
 
-          {showTimeoutWarning && status !== 'success' && (
+          {showTimeoutWarning && (
             <TimeoutWarning>
               {language === 'bg'
                 ? 'Обработката отнема повече време от очакваното. Вашето плащане може да бъде все още в процес на обработка.'
@@ -429,6 +497,38 @@ const SubscriptionSuccessPage: React.FC = () => {
             </PollingIndicator>
           )}
         </Card>
+
+        {status === 'success' && (
+          <AppDownloadSection
+            as={motion.div}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, delay: 0.2 }}
+          >
+            <AppDownloadCard
+              href="https://expo.dev/accounts/edoardok1/projects/boomcard-mobile/builds/4f27b61b-61a6-41d9-b494-7436cd05de4b"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <AppIconCircle>
+                <Smartphone />
+              </AppIconCircle>
+              <AppDownloadInfo>
+                <AppDownloadTitle>
+                  {language === 'bg' ? 'Изтеглете мобилното приложение' : 'Download the Mobile App'}
+                </AppDownloadTitle>
+                <AppDownloadSubtitle>
+                  {language === 'bg'
+                    ? 'Сканирайте касови бележки и печелете кешбек в движение'
+                    : 'Scan receipts and earn cashback on the go'}
+                </AppDownloadSubtitle>
+              </AppDownloadInfo>
+              <AppDownloadArrow>
+                <Download />
+              </AppDownloadArrow>
+            </AppDownloadCard>
+          </AppDownloadSection>
+        )}
       </PageContainer>
       <Footer />
     </PageWrapper>

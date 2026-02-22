@@ -219,7 +219,9 @@
       "Bash(fc:*)",
       "mcp__playwright__browser_fill_form",
       "Bash(rsync:*)",
-      "Bash(/Users/administrator/Documents/BoomCard/deploy-siteground.sh)"
+      "Bash(/Users/administrator/Documents/BoomCard/deploy-siteground.sh)",
+      "Bash(file:*)",
+      "Bash(rsvg-convert:*)"
     ],
     "deny": [],
     "ask": []

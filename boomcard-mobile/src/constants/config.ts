@@ -72,8 +72,8 @@ export const API_CONFIG = {
   },
 
   // Request timeout in milliseconds
-  // 15 seconds - balances Render cold starts with user experience
-  TIMEOUT: 15000,
+  // 10 seconds timeout
+  TIMEOUT: 10000,
 };
 
 // GPS Configuration

@@ -82,7 +82,19 @@
     "lastVisit": "Last",
     "cashback": "cashback",
     "pendingReceipts": "Pending Receipts",
-    "receiptsBeingReviewed": "Your receipts are being reviewed"
+    "receiptsBeingReviewed": "Your receipts are being reviewed",
+    "yourPlan": "Your Plan",
+    "planStandard": "Standard",
+    "planPremium": "Premium",
+    "planPlatinum": "Platinum",
+    "validUntil": "Valid until",
+    "validFrom": "Valid from",
+    "cardActive": "Active",
+    "cardExpired": "Expired",
+    "cardSuspended": "Suspended",
+    "viewCard": "View Card",
+    "daysRemaining": "{{days}} days left",
+    "cashbackRate": "{{rate}}% cashback"
   },
   "wallet": {
     "title": "Wallet",
