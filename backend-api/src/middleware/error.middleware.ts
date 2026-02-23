@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { logger } from '../utils/logger';
+import { trackError } from '../config/monitoring.config';
 
 export class AppError extends Error {
   statusCode: number;
@@ -40,6 +41,11 @@ export const errorHandler = (
     path: req.path,
     method: req.method,
   });
+
+  // Track server errors for alerting (5xx only)
+  if (statusCode >= 500) {
+    trackError(err, { path: req.path, method: req.method, statusCode });
+  }
 
   // Send response
   res.status(statusCode).json({

@@ -1,6 +1,45 @@
 module.exports = {
   apps: [
-    // TypeScript Services
+    // ============================================
+    // PRODUCTION Configuration
+    // Usage: pm2 start ecosystem.config.js --env production
+    // ============================================
+    {
+      name: 'boomcard-api',
+      cwd: './backend-api',
+      script: 'dist/server.js',
+      instances: process.env.PM2_INSTANCES || 'max',
+      exec_mode: 'cluster',
+      max_memory_restart: '512M',
+      exp_backoff_restart_delay: 100,
+      watch: false,
+      merge_logs: true,
+      log_date_format: 'YYYY-MM-DD HH:mm:ss',
+      error_file: './logs/pm2-error.log',
+      out_file: './logs/pm2-out.log',
+      max_size: '20M',          // Log rotation at 20MB
+      retain: 5,                // Keep 5 rotated files
+      env: {
+        PORT: 3001,
+        NODE_ENV: 'development'
+      },
+      env_production: {
+        PORT: 3001,
+        NODE_ENV: 'production'
+      },
+      // Graceful shutdown
+      kill_timeout: 5000,
+      listen_timeout: 10000,
+      shutdown_with_message: true,
+      // Health monitoring
+      min_uptime: '10s',
+      max_restarts: 10,
+    },
+
+    // ============================================
+    // DEVELOPMENT Configuration (microservices)
+    // Usage: pm2 start ecosystem.config.js
+    // ============================================
     {
       name: 'auth-service',
       cwd: './auth-service',
@@ -81,7 +120,7 @@ module.exports = {
         NODE_ENV: 'development'
       }
     },
-    
+
     // Frontend
     {
       name: 'partner-dashboard',
@@ -93,7 +132,7 @@ module.exports = {
         NODE_ENV: 'development'
       }
     },
-    
+
     // Python ML Service
     {
       name: 'ml-service',

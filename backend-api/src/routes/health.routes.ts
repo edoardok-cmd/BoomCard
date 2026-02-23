@@ -9,6 +9,36 @@ import prisma from '../lib/prisma';
 
 const router = Router();
 
+// In-memory request metrics (resets on restart, which is acceptable)
+const requestMetrics = {
+  totalRequests: 0,
+  totalErrors: 0,   // 5xx responses
+  startedAt: Date.now(),
+  latencies: [] as number[], // last 100 request durations
+};
+
+/**
+ * Middleware to track request metrics.
+ * Mount this at the app level: app.use(requestTracker)
+ */
+export function requestTracker(req: Request, res: Response, next: Function): void {
+  const start = Date.now();
+  requestMetrics.totalRequests++;
+
+  res.on('finish', () => {
+    const duration = Date.now() - start;
+    requestMetrics.latencies.push(duration);
+    if (requestMetrics.latencies.length > 100) {
+      requestMetrics.latencies.shift();
+    }
+    if (res.statusCode >= 500) {
+      requestMetrics.totalErrors++;
+    }
+  });
+
+  next();
+}
+
 /**
  * Basic health check
  * GET /api/health
@@ -64,13 +94,19 @@ router.get('/detailed', async (req: Request, res: Response) => {
 
   // Check Redis (if configured)
   if (process.env.REDIS_URL) {
+    const redisStart = Date.now();
     try {
-      // TODO: Add Redis health check when Redis is implemented
-      health.checks.redis = { status: 'not_configured', responseTime: 0 };
+      const { createClient } = require('redis');
+      const client = createClient({ url: process.env.REDIS_URL, socket: { connectTimeout: 3000 } });
+      await client.connect();
+      await client.ping();
+      const redisTime = Date.now() - redisStart;
+      health.checks.redis = { status: 'ok', responseTime: redisTime };
+      await client.disconnect();
     } catch (error) {
       health.checks.redis = {
         status: 'error',
-        responseTime: 0,
+        responseTime: Date.now() - redisStart,
         error: error instanceof Error ? error.message : 'Unknown error',
       };
     }
@@ -171,6 +207,13 @@ router.get('/metrics', async (req: Request, res: Response) => {
     // System stats
     const memoryUsage = process.memoryUsage();
 
+    // Compute latency percentiles
+    const sortedLatencies = [...requestMetrics.latencies].sort((a, b) => a - b);
+    const p50 = sortedLatencies[Math.floor(sortedLatencies.length * 0.5)] || 0;
+    const p95 = sortedLatencies[Math.floor(sortedLatencies.length * 0.95)] || 0;
+    const p99 = sortedLatencies[Math.floor(sortedLatencies.length * 0.99)] || 0;
+    const uptimeSec = (Date.now() - requestMetrics.startedAt) / 1000;
+
     res.status(200).json({
       timestamp: new Date().toISOString(),
       uptime: process.uptime(),
@@ -179,6 +222,22 @@ router.get('/metrics', async (req: Request, res: Response) => {
         heapTotal: memoryUsage.heapTotal,
         heapUsed: memoryUsage.heapUsed,
         external: memoryUsage.external,
+        rssMB: Math.round(memoryUsage.rss / 1024 / 1024),
+        heapUsedMB: Math.round(memoryUsage.heapUsed / 1024 / 1024),
+      },
+      requests: {
+        total: requestMetrics.totalRequests,
+        errors: requestMetrics.totalErrors,
+        errorRate: requestMetrics.totalRequests > 0
+          ? (requestMetrics.totalErrors / requestMetrics.totalRequests * 100).toFixed(2) + '%'
+          : '0%',
+        rps: uptimeSec > 0 ? (requestMetrics.totalRequests / uptimeSec).toFixed(2) : '0',
+        latency: {
+          p50,
+          p95,
+          p99,
+          samples: sortedLatencies.length,
+        },
       },
       database: {
         users: userCount,

@@ -7,7 +7,7 @@ import { Server as SocketServer } from 'socket.io';
 import rateLimit from 'express-rate-limit';
 
 // Import routers
-import healthRouter from './routes/health.routes';
+import healthRouter, { requestTracker } from './routes/health.routes';
 import authRouter from './routes/auth.routes';
 import paymentsRouter from './routes/payments.routes';
 import payseraPaymentsRouter from './routes/payments.paysera.routes';
@@ -38,6 +38,7 @@ import { logger } from './utils/logger';
 import { prisma } from './lib/prisma';
 import SentryConfig from './config/sentry.config';
 import { setupSwagger } from './config/swagger.config';
+import monitoring from './config/monitoring.config';
 
 // Load environment variables
 dotenv.config();
@@ -90,6 +91,9 @@ const limiter = rateLimit({
   skip: (req) => process.env.NODE_ENV === 'development', // Skip rate limiting in development
 });
 app.use('/api/', limiter);
+
+// Request metrics tracking (for /api/health/metrics)
+app.use(requestTracker);
 
 // Request logging
 app.use((req, res, next) => {
@@ -186,6 +190,9 @@ async function startServer() {
       logger.info(`📡 WebSocket server ready on port ${PORT}`);
       logger.info(`🌍 Environment: ${process.env.NODE_ENV}`);
       logger.info(`🔗 CORS enabled for: ${process.env.CORS_ORIGIN}`);
+
+      // Start production monitoring (memory checks, self health check, alerting)
+      monitoring.startMonitoring(Number(PORT));
     });
   } catch (error) {
     logger.error('❌ Failed to connect to database:', error);

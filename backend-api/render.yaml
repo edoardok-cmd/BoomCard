@@ -75,6 +75,16 @@ services:
       - key: LOG_LEVEL
         value: info
 
+      # Monitoring & Alerting (set webhook URL in Render Dashboard)
+      - key: ALERT_WEBHOOK_URL
+        sync: false # Slack/Discord webhook URL
+
+      - key: ALERT_ERROR_THRESHOLD
+        value: "50"
+
+      - key: ALERT_MEMORY_THRESHOLD_MB
+        value: "450"
+
     # Scaling Configuration
     autoDeploy: true
 
@@ -143,9 +153,14 @@ databases:
 #    - AWS_SECRET_ACCESS_KEY
 #    - SENDGRID_API_KEY
 #    - SENTRY_DSN
+#    - ALERT_WEBHOOK_URL (Slack/Discord webhook for critical alerts)
 #
 # 2. Database migrations run automatically on each deployment via:
 #    npx prisma migrate deploy
+#
+# 2a. FIRST DEPLOY with migrations: If DB already exists from db push, run:
+#     npx prisma migrate resolve --applied 0_init
+#     This marks the baseline migration as already applied.
 #
 # 3. Scale up to 'standard' or 'pro' plan for production workloads
 #

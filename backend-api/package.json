@@ -7,7 +7,7 @@
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
     "build": "prisma generate && (tsc || true)",
     "start": "node dist/server.js",
-    "deploy": "prisma db push --skip-generate --accept-data-loss && npm run start",
+    "deploy": "prisma migrate deploy && npm run start",
     "test": "jest --coverage",
     "test:watch": "jest --watch",
     "lint": "eslint src/**/*.ts",
@@ -21,7 +21,18 @@
     "migrate:import": "ts-node scripts/import-postgres-data.ts",
     "migrate:full": "npm run migrate:export && npm run migrate:import",
     "job:reminders": "npx tsx src/jobs/pending-payment-reminders.ts",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "db:migrate:deploy": "prisma migrate deploy",
+    "db:migrate:status": "prisma migrate status",
+    "db:migrate:baseline": "prisma migrate resolve --applied 0_init",
+    "load-test": "k6 run tests/load/k6-load-test.js",
+    "load-test:local": "k6 run -e BASE_URL=http://localhost:3001 tests/load/k6-load-test.js",
+    "health-check": "curl -sf http://localhost:3001/health | node -e \"process.stdin.on('data',d=>{const h=JSON.parse(d);console.log(h.status==='ok'?'OK':'FAIL',h);process.exit(h.status==='ok'?0:1)})\"",
+    "pm2:start": "pm2 start ecosystem.config.js --only boomcard-api --env production",
+    "pm2:stop": "pm2 stop boomcard-api",
+    "pm2:restart": "pm2 reload boomcard-api",
+    "pm2:logs": "pm2 logs boomcard-api",
+    "pm2:status": "pm2 status"
   },
   "keywords": [
     "boomcard",

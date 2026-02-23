@@ -20,14 +20,14 @@ export default defineConfig({
   earlyAccess: true,
   schema: path.join(__dirname, 'prisma', 'schema.prisma'),
 
-  // URL for db push and other db commands
-  url: databaseUrl,
+  // Datasource URL for db push and all db commands
+  datasource: {
+    url: databaseUrl!,
+  },
 
-  // URL for migrations
+  // URL for migrations (prisma migrate deploy/status/resolve)
   migrate: {
-    async url() {
-      return databaseUrl!;
-    },
+    url: databaseUrl!,
   },
 
   seed: {
