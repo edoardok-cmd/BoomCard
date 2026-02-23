@@ -226,7 +226,7 @@ export const ClientCTA: React.FC<ClientCTAProps> = ({ className }) => {
           </PrimaryButtonContainer>
           {/* Secondary CTAs - smaller, in a row */}
           <SecondaryButtonsRow>
-            <Link to="/search">
+            <Link to="/venues">
               <Button variant="outline" size="medium">
                 {t.secondaryButton}
               </Button>

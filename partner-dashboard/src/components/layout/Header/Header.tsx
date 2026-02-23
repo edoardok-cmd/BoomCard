@@ -1464,6 +1464,7 @@ export const Header: React.FC<HeaderProps> = ({
                   </MobileFavoritesLink>
                 )}
 
+
                 {/* Share Button Mobile */}
                 <div className="mb-6">
                   <SocialShareButton

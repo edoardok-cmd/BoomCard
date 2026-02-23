@@ -185,62 +185,74 @@ const AboutPage: React.FC = () => {
 
   const content = {
     bg: {
-      label: 'ПОВЕЧЕ ОТ КАРТА',
+      label: 'ЗА BOOM CARD',
       heroText:
-        'Създадохме BOOM Card, за да превърнем спестяването в достъп до повече ексклузивни места, реални отстъпки и качествени изживявания.',
-      heroSubline: 'Плащаш както обикновено. Получаваш повече стойност.',
-      heroCta: 'Отключи BOOM Card',
+        'Изграждаме екосистема, в която всяко излизане носи повече стойност — за хората и за бизнеса.',
+      heroSubline: 'Технология, партньорства и реални предимства на едно място.',
+      heroCta: 'Виж плановете',
       heroTrust: 'Безплатен 24-часов пробен период. Без ангажимент.',
       sections: [
         {
+          title: 'Кои сме ние',
+          text: `<p>BOOM Card е българска технологична компания, която свързва потребители с качествени заведения, хотели, СПА центрове и изживявания.</p>
+<p>Стартирахме с ясна цел: да създадем платформа, в която хората получават реална стойност при всяко посещение, а бизнесите привличат лоялни клиенти без скъпа реклама.</p>
+<p>Екипът ни обединява опит в технологиите, маркетинга и хотелиерството — затова познаваме и двете страни на масата.</p>`,
+        },
+        {
           title: 'Нашата мисия',
-          text: `<p>Вярваме, че хората трябва да получават повече стойност за парите си.</p>
-<p>Затова изграждаме мрежа от проверени и подбрани места, които дават реални отстъпки и достъп до повече възможности без скрити условия и без излишни усложнения.</p>`,
+          text: `<p>Вярваме, че качественото преживяване не трябва да бъде привилегия. Затова изграждаме мрежа от <strong>проверени партньори</strong>, които предлагат ексклузивни отстъпки и кешбек — без скрити условия, без дребен шрифт.</p>
+<p>Мисията ни е да направим спестяването лесно, приятно и достъпно за всеки, който цени времето и парите си.</p>`,
         },
         {
-          title: 'Какво предлагаме',
-          text: `<p>С BOOM Card получаваш достъп до подбрани ресторанти, хотели, СПА центрове и други локации с реални отстъпки и възможност за възстановяване на част от направените разходи.</p>
-<p>Всичко е организирано в една платформа, която обединява откриването на места и лесното активиране на предимствата ти.</p>
-<p><strong>Излизаш. Избираш. Спестяваш.</strong></p>`,
+          title: 'Какво ни отличава',
+          text: `<p><strong>Подбрана мрежа</strong> — работим само с обекти, които отговарят на стандартите ни за качество и обслужване.</p>
+<p><strong>Прозрачни условия</strong> — всяка отстъпка е ясно описана. Без изненади.</p>
+<p><strong>Технология, а не купони</strong> — QR сканиране, автоматичен кешбек и аналитика за партньорите в едно приложение.</p>
+<p><strong>Подкрепа за бизнеса</strong> — помагаме на партньорите да растат чрез данни, видимост и достъп до мотивирана аудитория.</p>`,
         },
         {
-          title: 'Защо BOOM Card',
-          text: `<p>Повечето хора плащат пълна цена, без да знаят, че могат да получат повече за същите пари.</p>
-<p>BOOM Card е за тези, които избират по-умно. За хората, които ценят качеството, контролират разходите си и искат реални предимства всеки път, когато излизат или планират ново изживяване.</p>
-<p>Работим с подбрани партньори и ясни условия, защото доверието е по-важно от шума.</p>`,
+          title: 'Визия за бъдещето',
+          text: `<p>Планираме да разширим мрежата към нови градове и категории, да добавим персонализирани препоръки и да станем водещата платформа за умно потребление в България.</p>
+<p>Целта ни е проста: всяко излизане да носи повече стойност — за теб и за бизнеса, който посещаваш.</p>`,
         },
       ],
-      transition: `Ако така или иначе излизаш, пътуваш или посещаваш любими места, изборът е прост.`,
-      transitionBold: 'Плащай както досега. Получавай повече.',
+      transition: `Ако вече излизаш, пътуваш и посещаваш любими места, няма причина да не получаваш повече за същите пари.`,
+      transitionBold: 'BOOM Card — живей повече, плащай по-малко.',
     },
     en: {
-      label: 'MORE THAN A CARD',
+      label: 'ABOUT BOOM CARD',
       heroText:
-        'We created BOOM Card to turn saving into access to more exclusive venues, real discounts, and quality experiences.',
-      heroSubline: 'Pay as you normally would. Get more value.',
-      heroCta: 'Unlock BOOM Card',
+        'We\'re building an ecosystem where every outing delivers more value — for people and for businesses.',
+      heroSubline: 'Technology, partnerships, and real benefits in one place.',
+      heroCta: 'View Plans',
       heroTrust: 'Free 24-hour trial. No commitment.',
       sections: [
         {
+          title: 'Who We Are',
+          text: `<p>BOOM Card is a Bulgarian technology company connecting consumers with quality restaurants, hotels, spas, and experiences.</p>
+<p>We started with a clear goal: to build a platform where people get real value with every visit, and businesses attract loyal customers without expensive advertising.</p>
+<p>Our team combines expertise in technology, marketing, and hospitality — so we understand both sides of the table.</p>`,
+        },
+        {
           title: 'Our Mission',
-          text: `<p>We believe people deserve more value for their money.</p>
-<p>That's why we're building a network of verified, hand-picked venues that offer real discounts and access to more opportunities — with no hidden conditions and no unnecessary complexity.</p>`,
+          text: `<p>We believe quality experiences shouldn't be a privilege. That's why we're building a network of <strong>verified partners</strong> offering exclusive discounts and cashback — with no hidden conditions and no fine print.</p>
+<p>Our mission is to make saving easy, enjoyable, and accessible to everyone who values their time and money.</p>`,
         },
         {
-          title: 'What We Offer',
-          text: `<p>With BOOM Card you get access to curated restaurants, hotels, spas, and other venues with real discounts and the option to recover part of your spending.</p>
-<p>Everything is organized on a single platform that combines discovering places and easily activating your benefits.</p>
-<p><strong>Go out. Choose. Save.</strong></p>`,
+          title: 'What Sets Us Apart',
+          text: `<p><strong>Curated Network</strong> — we only work with venues that meet our standards for quality and service.</p>
+<p><strong>Transparent Terms</strong> — every discount is clearly described. No surprises.</p>
+<p><strong>Technology, Not Coupons</strong> — QR scanning, automatic cashback, and partner analytics in one app.</p>
+<p><strong>Business Support</strong> — we help partners grow through data, visibility, and access to a motivated audience.</p>`,
         },
         {
-          title: 'Why BOOM Card',
-          text: `<p>Most people pay full price without knowing they could get more for the same money.</p>
-<p>BOOM Card is for those who choose smarter. For people who value quality, control their spending, and want real benefits every time they go out or plan a new experience.</p>
-<p>We work with hand-picked partners and clear terms, because trust matters more than noise.</p>`,
+          title: 'Our Vision',
+          text: `<p>We plan to expand our network to new cities and categories, add personalized recommendations, and become the leading platform for smart spending in Bulgaria.</p>
+<p>Our goal is simple: every outing should deliver more value — for you and for the business you visit.</p>`,
         },
       ],
-      transition: `If you're going out, traveling, or visiting your favorite places anyway — the choice is simple.`,
-      transitionBold: 'Pay as before. Get more.',
+      transition: `If you're already going out, traveling, and visiting your favorite places, there's no reason not to get more for the same money.`,
+      transitionBold: 'BOOM Card — live more, pay less.',
     },
   };
 

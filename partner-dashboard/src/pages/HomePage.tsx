@@ -156,6 +156,61 @@ const CategoryContent = styled.div`
   }
 `;
 
+const FAQAccordionItem: React.FC<{ question: string; answer: string }> = ({ question, answer }) => {
+  const [isOpen, setIsOpen] = React.useState(false);
+  return (
+    <div style={{ borderBottom: '1px solid var(--color-border, #e5e7eb)' }}>
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          width: '100%',
+          padding: '1.25rem 0',
+          background: 'none',
+          border: 'none',
+          cursor: 'pointer',
+          textAlign: 'left',
+          gap: '1rem',
+        }}
+      >
+        <span style={{ fontWeight: 600, fontSize: 'clamp(0.9375rem, 3vw, 1.0625rem)', color: 'var(--color-text-primary)', lineHeight: 1.4 }}>
+          {question}
+        </span>
+        <svg
+          width="20"
+          height="20"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="var(--color-text-secondary)"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          style={{ flexShrink: 0, transition: 'transform 300ms', transform: isOpen ? 'rotate(180deg)' : 'rotate(0)' }}
+        >
+          <path d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+      <div style={{
+        overflow: 'hidden',
+        maxHeight: isOpen ? '300px' : '0',
+        opacity: isOpen ? 1 : 0,
+        transition: 'max-height 300ms ease, opacity 300ms ease',
+      }}>
+        <p style={{
+          paddingBottom: '1.25rem',
+          color: 'var(--color-text-secondary)',
+          lineHeight: 1.7,
+          fontSize: 'clamp(0.875rem, 2.5vw, 1rem)',
+        }}>
+          {answer}
+        </p>
+      </div>
+    </div>
+  );
+};
+
 const HowItWorksContainer = styled.div`
   @media (max-width: 768px) {
     overflow-x: auto;
@@ -887,6 +942,25 @@ const ToggleOption = styled.button<{ $active: boolean }>`
   }
 `;
 
+const TopOffersGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 2rem;
+  max-width: 1200px;
+  margin: 0 auto;
+
+  @media (max-width: 1024px) {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1.5rem;
+  }
+
+  @media (max-width: 640px) {
+    grid-template-columns: 1fr;
+    gap: 1.25rem;
+    max-width: 400px;
+  }
+`;
+
 const SectionDivider = styled.div`
   width: 100%;
   height: 1px;
@@ -1050,6 +1124,130 @@ const HomePage: React.FC = () => {
     }
   ];
 
+  // Fallback exclusive offers when API data is unavailable
+  const fallbackExclusiveOffers: Offer[] = [
+    {
+      id: 'exc-1',
+      title: 'Shtastliveca Restaurant',
+      titleBg: 'Ресторант Щастливеца',
+      description: 'Traditional Bulgarian cuisine with a modern twist in the heart of Sofia. Famous for its cozy atmosphere.',
+      descriptionBg: 'Традиционна българска кухня с модерен привкус в сърцето на София. Известен с уютната си атмосфера.',
+      category: 'Restaurants',
+      categoryBg: 'Ресторанти',
+      location: language === 'bg' ? 'София, ул. Витоша 18' : 'Sofia, Vitosha Str. 18',
+      discount: 20,
+      originalPrice: 80,
+      discountedPrice: 64,
+      imageUrl: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=600&h=400&fit=crop',
+      partnerName: 'Shtastliveca',
+      rating: 4.7,
+      reviewCount: 1284,
+      workingHours: '10:00 - 23:00',
+      workingHoursBg: '10:00 - 23:00',
+      path: '/offers/exc-1'
+    },
+    {
+      id: 'exc-2',
+      title: 'Lucky Bansko SPA & Relax',
+      titleBg: 'Lucky Bansko SPA & Relax',
+      description: 'Luxury spa hotel with panoramic mountain views, indoor pools, and premium wellness treatments.',
+      descriptionBg: 'Луксозен спа хотел с панорамна гледка към планината, закрити басейни и премиум уелнес процедури.',
+      category: 'Hotels & SPA',
+      categoryBg: 'Хотели и СПА',
+      location: language === 'bg' ? 'Банско' : 'Bansko',
+      discount: 20,
+      originalPrice: 350,
+      discountedPrice: 280,
+      imageUrl: 'https://images.unsplash.com/photo-1571896349842-33c89424de2d?w=600&h=400&fit=crop',
+      partnerName: 'Lucky Bansko',
+      rating: 4.8,
+      reviewCount: 2156,
+      workingHours: '24/7',
+      workingHoursBg: '24/7',
+      path: '/offers/exc-2'
+    },
+    {
+      id: 'exc-3',
+      title: 'Wine & Dine - Todoroff Winery',
+      titleBg: 'Wine & Dine - Тодорови Изби',
+      description: 'Award-winning winery offering guided wine tastings, gourmet dining, and vineyard tours.',
+      descriptionBg: 'Награждавана изба с дегустации, гурме вечери и обиколки на лозята.',
+      category: 'Wineries',
+      categoryBg: 'Винарни',
+      location: language === 'bg' ? 'Брестовица, Пловдив' : 'Brestovitsa, Plovdiv',
+      discount: 15,
+      originalPrice: 120,
+      discountedPrice: 102,
+      imageUrl: 'https://images.unsplash.com/photo-1506377247377-2a5b3b417ebb?w=600&h=400&fit=crop',
+      partnerName: 'Todoroff',
+      rating: 4.6,
+      reviewCount: 876,
+      workingHours: '10:00 - 20:00',
+      workingHoursBg: '10:00 - 20:00',
+      path: '/offers/exc-3'
+    },
+    {
+      id: 'exc-4',
+      title: 'Escape Rooms Sofia',
+      titleBg: 'Ескейп Стаи София',
+      description: 'Top-rated escape rooms with immersive themes. Team building and birthday parties available.',
+      descriptionBg: 'Топ ескейп стаи с потапящи теми. Тийм билдинг и рождени дни.',
+      category: 'Experiences',
+      categoryBg: 'Изживявания',
+      location: language === 'bg' ? 'София, Младост 1А' : 'Sofia, Mladost 1A',
+      discount: 20,
+      originalPrice: 60,
+      discountedPrice: 48,
+      imageUrl: 'https://images.unsplash.com/photo-1533174072545-7a4b6ad7a6c3?w=600&h=400&fit=crop',
+      partnerName: 'Escape Rooms Sofia',
+      rating: 4.9,
+      reviewCount: 534,
+      workingHours: '12:00 - 22:00',
+      workingHoursBg: '12:00 - 22:00',
+      path: '/offers/exc-4'
+    },
+    {
+      id: 'exc-5',
+      title: 'Sense Hotel Sofia',
+      titleBg: 'Хотел Сенс София',
+      description: 'Boutique hotel in downtown Sofia with rooftop bar, city views, and exclusive member perks.',
+      descriptionBg: 'Бутиков хотел в центъра на София с руфтоп бар, градска гледка и ексклузивни предимства.',
+      category: 'Hotels & SPA',
+      categoryBg: 'Хотели и СПА',
+      location: language === 'bg' ? 'София, ул. Цар Освободител' : 'Sofia, Tsar Osvoboditel Str.',
+      discount: 18,
+      originalPrice: 280,
+      discountedPrice: 230,
+      imageUrl: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=600&h=400&fit=crop',
+      partnerName: 'Sense Hotel',
+      rating: 4.5,
+      reviewCount: 1023,
+      workingHours: '24/7',
+      workingHoursBg: '24/7',
+      path: '/offers/exc-5'
+    },
+    {
+      id: 'exc-6',
+      title: 'Happy Bar & Grill Varna',
+      titleBg: 'Happy Bar & Grill Варна',
+      description: 'Popular seaside restaurant chain with international menu, fresh seafood, and sea views.',
+      descriptionBg: 'Популярна верига крайморски ресторанти с международно меню, пресни морски дарове и морска гледка.',
+      category: 'Restaurants',
+      categoryBg: 'Ресторанти',
+      location: language === 'bg' ? 'Варна, Морска градина' : 'Varna, Sea Garden',
+      discount: 20,
+      originalPrice: 70,
+      discountedPrice: 56,
+      imageUrl: 'https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=600&h=400&fit=crop',
+      partnerName: 'Happy',
+      rating: 4.4,
+      reviewCount: 3412,
+      workingHours: '09:00 - 00:00',
+      workingHoursBg: '09:00 - 00:00',
+      path: '/offers/exc-6'
+    }
+  ];
+
   const subscriptionPlans = [
     {
       name: language === 'bg' ? 'ЛАЙТ ПРЕМИУМ' : 'LITE PREMIUM',
@@ -1138,7 +1336,7 @@ const HomePage: React.FC = () => {
         <HeroBlast language={language} />
 
       {/* Product Details - How It Works Section */}
-      <section className="section">
+      <section id="how-it-works" className="section">
         <div className="container-custom">
           <div className="text-center mb-16">
             <SectionTitle className="text-4xl md:text-5xl font-bold mb-4" style={{ color: 'var(--color-text-primary)' }}>
@@ -1185,8 +1383,97 @@ const HomePage: React.FC = () => {
               </HowItWorksStep>
             ))}
           </HowItWorksContainer>
+
+          {/* Download App CTA */}
+          <div className="text-center mt-12">
+            <a
+              href="https://apps.apple.com/app/boomcard/id6740091561"
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                padding: '0.875rem 2rem',
+                background: 'var(--color-primary, #111827)',
+                color: 'var(--color-secondary, #ffffff)',
+                borderRadius: '0.75rem',
+                fontSize: 'clamp(1rem, 3vw, 1.125rem)',
+                fontWeight: 700,
+                textDecoration: 'none',
+                transition: 'all 200ms',
+                boxShadow: '0 4px 14px rgba(0, 0, 0, 0.15)',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = 'translateY(-2px)';
+                e.currentTarget.style.boxShadow = '0 6px 20px rgba(0, 0, 0, 0.2)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'translateY(0)';
+                e.currentTarget.style.boxShadow = '0 4px 14px rgba(0, 0, 0, 0.15)';
+              }}
+            >
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '1.25rem', height: '1.25rem' }}>
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              </svg>
+              {t('home.downloadAppCta')}
+            </a>
+            <p style={{ color: 'var(--color-text-tertiary, #6b7280)', fontSize: '0.875rem', marginTop: '0.75rem' }}>
+              {t('home.availableForIosAndroid')}
+            </p>
+          </div>
         </div>
       </section>
+
+      {/* Top Discounts - Exclusive Offers Section */}
+      <section id="top-discounts" className="section" style={{ background: 'var(--color-background-secondary)' }}>
+        <div className="container-custom">
+          <div className="text-center mb-12">
+            <SectionTitle className="text-4xl md:text-5xl font-bold mb-4" style={{ color: 'var(--color-text-primary)' }}>
+              {language === 'bg' ? 'Топ Отстъпки' : 'Top Discounts'}
+            </SectionTitle>
+            <BodyText className="text-xl max-w-2xl mx-auto" style={{ color: 'var(--color-text-secondary)' }}>
+              {language === 'bg'
+                ? 'Ексклузивни оферти от нашите най-добри партньори'
+                : 'Exclusive offers from our best partners'}
+            </BodyText>
+          </div>
+
+          {isLoadingOffers ? (
+            <div className="text-center py-12">
+              <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2" style={{ borderColor: 'var(--color-primary)' }}></div>
+              <BodyText className="mt-4" style={{ color: 'var(--color-text-secondary)' }}>
+                {language === 'bg' ? 'Зареждане на оферти...' : 'Loading offers...'}
+              </BodyText>
+            </div>
+          ) : (
+            <TopOffersGrid>
+              {(topOffers.length > 0 ? topOffers : fallbackExclusiveOffers).slice(0, 6).map((offer: Offer, index: number) => (
+                <motion.div
+                  key={offer.id}
+                  initial={{ opacity: 0, y: 30 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ duration: 0.5, delay: index * 0.1 }}
+                >
+                  <OfferCard offer={offer} />
+                </motion.div>
+              ))}
+            </TopOffersGrid>
+          )}
+
+          <div className="text-center mt-10">
+            <Link to="/offers" style={{ textDecoration: 'none' }}>
+              <Button variant="secondary" size="large">
+                {language === 'bg' ? 'Виж всички оферти' : 'View all offers'}
+              </Button>
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      {/* Divider between Top Discounts and Subscription Plans */}
+      <SectionDivider />
 
       {/* Subscription Plans Section */}
       <section id="subscription-plans" className="section" style={{ background: 'var(--color-background-secondary)' }}>
@@ -1721,6 +2008,116 @@ const HomePage: React.FC = () => {
               }}>
                 {language === 'bg' ? 'Реална стойност' : 'Real Value'}
               </span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* FAQ Section */}
+      <section id="faq" style={{ padding: 'clamp(3rem, 6vw, 5rem) 0', background: 'var(--color-background)' }}>
+        <div className="container-custom" style={{ maxWidth: '800px', margin: '0 auto', padding: '0 1.5rem' }}>
+          <SectionTitle className="text-3xl md:text-4xl font-bold mb-4 text-center" style={{ color: 'var(--color-text-primary)' }}>
+            {language === 'bg' ? 'Често задавани въпроси' : 'Frequently Asked Questions'}
+          </SectionTitle>
+          <BodyText className="text-lg max-w-2xl mx-auto text-center mb-12" style={{ color: 'var(--color-text-secondary)' }}>
+            {language === 'bg' ? 'Всичко, което трябва да знаете за BOOM Card' : 'Everything you need to know about BOOM Card'}
+          </BodyText>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            {[
+              {
+                q: language === 'bg' ? 'Какво е BOOM Card?' : 'What is BOOM Card?',
+                a: language === 'bg'
+                  ? 'BOOM Card е карта за намаления, която ви дава достъп до ексклузивни промоции и топ изживявания в цяла България — ресторанти, хотели, СПА центрове и още.'
+                  : 'BOOM Card is a discount card that gives you access to exclusive promotions and top experiences across Bulgaria — restaurants, hotels, spas, and more.',
+              },
+              {
+                q: language === 'bg' ? 'Колко струва BOOM Card?' : 'How much does BOOM Card cost?',
+                a: language === 'bg'
+                  ? 'BOOM Card предлага два плана: Безплатен основен план и Премиум план за 57 лв./€29/месец. Започнете с 24 часа безплатен Premium!'
+                  : 'BOOM Card offers two plans: Free basic plan and Premium plan for 57 BGN/€29/month. Start with 24 hours of free Premium!',
+              },
+              {
+                q: language === 'bg' ? 'Къде мога да използвам BOOM Card?' : 'Where can I use BOOM Card?',
+                a: language === 'bg'
+                  ? 'BOOM Card може да се използва в над 500 партньорски локации в София, Пловдив, Варна, Банско и други градове в България.'
+                  : 'BOOM Card can be used at over 500 partner locations in Sofia, Plovdiv, Varna, Bansko, and other cities in Bulgaria.',
+              },
+              {
+                q: language === 'bg' ? 'Каква е средната отстъпка?' : 'What is the average discount?',
+                a: language === 'bg'
+                  ? 'Средната отстъпка варира между 10% и 50%, в зависимост от вашия план и партньора.'
+                  : 'The average discount ranges from 10% to 50%, depending on your plan and the partner.',
+              },
+              {
+                q: language === 'bg' ? 'Мога ли да откажа абонамента си?' : 'Can I cancel my subscription?',
+                a: language === 'bg'
+                  ? 'Да, можете да откажете абонамента си по всяко време от вашия профил. Без скрити такси или обвързване.'
+                  : 'Yes, you can cancel your subscription at any time from your profile settings. No hidden fees or commitments.',
+              },
+              {
+                q: language === 'bg' ? 'Как работи мобилното приложение?' : 'How does the mobile app work?',
+                a: language === 'bg'
+                  ? 'Изтеглете приложението от App Store или Google Play, влезте с вашия акаунт и покажете дигиталната си карта на място, за да получите отстъпка.'
+                  : 'Download the app from the App Store or Google Play, sign in with your account, and show your digital card at the venue to get your discount.',
+              },
+            ].map((faq, index) => (
+              <FAQAccordionItem key={index} question={faq.q} answer={faq.a} />
+            ))}
+          </div>
+
+          {/* Download App CTA below FAQ */}
+          <div style={{ textAlign: 'center', marginTop: 'clamp(2rem, 4vw, 3rem)', paddingTop: '2rem', borderTop: '1px solid var(--color-border, #e5e7eb)' }}>
+            <p style={{ color: 'var(--color-text-secondary)', fontSize: 'clamp(1rem, 3vw, 1.125rem)', marginBottom: '1.25rem', fontWeight: 500 }}>
+              {language === 'bg' ? 'Свали мобилно приложение' : 'Download the mobile app'}
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+              <a
+                href="https://apps.apple.com/app/boomcard/id6740091561"
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                  padding: '0.75rem 1.5rem',
+                  background: '#000',
+                  color: '#fff',
+                  borderRadius: '0.625rem',
+                  fontSize: '0.9375rem',
+                  fontWeight: 600,
+                  textDecoration: 'none',
+                  transition: 'opacity 200ms',
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.opacity = '0.85'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.opacity = '1'; }}
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>
+                App Store
+              </a>
+              <a
+                href="https://play.google.com/store/apps/details?id=com.boomcard.app"
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                  padding: '0.75rem 1.5rem',
+                  background: '#000',
+                  color: '#fff',
+                  borderRadius: '0.625rem',
+                  fontSize: '0.9375rem',
+                  fontWeight: 600,
+                  textDecoration: 'none',
+                  transition: 'opacity 200ms',
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.opacity = '0.85'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.opacity = '1'; }}
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M3.18 23.49c.28.17.6.24.92.2.33-.05.63-.2.86-.43L17.21 12 4.96.74c-.23-.23-.53-.38-.86-.43-.32-.04-.64.03-.92.2-.56.34-.91.95-.91 1.62v19.74c0 .67.35 1.28.91 1.62zM20.16 10.65L17.21 12l2.95 1.35L22.06 12l-1.9-1.35z"/></svg>
+                Google Play
+              </a>
             </div>
           </div>
         </div>

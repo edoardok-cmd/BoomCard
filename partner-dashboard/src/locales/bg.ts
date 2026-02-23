@@ -71,6 +71,7 @@ export const bg: TranslationKey = {
     settings: 'Настройки',
     dashboard: 'Табло',
     rewards: 'Награди',
+    downloadApp: 'Изтегли приложение',
   },
 
   // Mobile Bottom Navigation
@@ -102,9 +103,11 @@ export const bg: TranslationKey = {
     becomePartner: 'Стани партньор',
     careers: 'Кариери',
     legal: 'Правна информация',
-    privacy: 'Поверителност',
+    privacy: 'Политика за поверителност',
     terms: 'Общи условия',
     security: 'Политика за сигурност',
+    cookiePolicy: 'Политика за бисквитки',
+    cookieSettings: 'Настройки на бисквитките',
     social: 'Последвайте ни',
     facebook: 'Facebook',
     instagram: 'Instagram',
@@ -275,6 +278,8 @@ export const bg: TranslationKey = {
     step2Description: 'С BOOM приложението отбелязваш посещението си',
     step3Title: 'Получаваш отстъпка',
     step3Description: 'Плащаш сметката, качваш касовата бележка и получаваш връщане на пари',
+    downloadAppCta: 'Изтегли BOOM приложението',
+    availableForIosAndroid: 'Налично за iOS и Android',
 
     // Final CTA Section
     readyToSave: 'Започни да спестяваш с BOOM Card още днес',

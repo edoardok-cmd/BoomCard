@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import styled from 'styled-components';
 import { motion } from 'framer-motion';
-import { Mail, MapPin, Send } from 'lucide-react';
+import { Mail, MapPin, Phone, Send, CheckCircle } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import toast from 'react-hot-toast';
 
@@ -186,14 +186,27 @@ const ContactPublicPage: React.FC = () => {
     setIsSubmitting(true);
 
     try {
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      const subject = encodeURIComponent(
+        language === 'bg'
+          ? `[BOOM Card] Запитване от ${formData.name}`
+          : `[BOOM Card] Inquiry from ${formData.name}`
+      );
+      const body = encodeURIComponent(
+        `${language === 'bg' ? 'Име' : 'Name'}: ${formData.name}\n` +
+        `${language === 'bg' ? 'Имейл' : 'Email'}: ${formData.email}\n\n` +
+        `${formData.message}`
+      );
+
+      window.location.href = `mailto:support@boomcard.bg?subject=${subject}&body=${body}`;
+
+      await new Promise(resolve => setTimeout(resolve, 800));
       toast.success(language === 'bg'
-        ? 'Съобщението е изпратено успешно!'
-        : 'Message sent successfully!');
+        ? 'Имейл клиентът ви е отворен. Моля, изпратете съобщението.'
+        : 'Your email client is open. Please send the message.');
       setFormData({ name: '', email: '', message: '' });
-    } catch (error) {
-      toast.error(language === 'bg' 
-        ? 'Грешка при изпращане' 
+    } catch {
+      toast.error(language === 'bg'
+        ? 'Грешка при изпращане'
         : 'Error sending message');
     } finally {
       setIsSubmitting(false);
@@ -220,8 +233,8 @@ const ContactPublicPage: React.FC = () => {
           transition={{ duration: 0.6, delay: 0.1 }}
         >
           {language === 'bg'
-            ? 'Имате въпроси, предложения за подобрение или технически проблеми? Ние сме тук, за да помогнем.'
-            : 'Have questions, improvement suggestions or technical issues? We\'re here to help.'}
+            ? 'Имате въпроси за BOOM Card, нужда от помощ или предложения? Пишете ни и ще ви отговорим възможно най-бързо.'
+            : 'Have questions about BOOM Card, need help, or have suggestions? Write to us and we\'ll respond as soon as possible.'}
         </Subtitle>
 
         <Grid>
@@ -234,6 +247,16 @@ const ContactPublicPage: React.FC = () => {
                 <InfoTitle>{language === 'bg' ? 'Имейл' : 'Email'}</InfoTitle>
                 <InfoText>support@boomcard.bg</InfoText>
                 <InfoText>sales@boomcard.bg</InfoText>
+              </InfoContent>
+            </InfoItem>
+
+            <InfoItem>
+              <IconWrapper>
+                <Phone size={24} />
+              </IconWrapper>
+              <InfoContent>
+                <InfoTitle>{language === 'bg' ? 'Телефон' : 'Phone'}</InfoTitle>
+                <InfoText><a href="tel:+35929530000" style={{ color: 'inherit', textDecoration: 'none' }}>+359 2 953 0000</a></InfoText>
               </InfoContent>
             </InfoItem>
 

@@ -58,12 +58,12 @@ export const Footer: React.FC<FooterProps> = ({
   const location = useLocation();
   const navigate = useNavigate();
 
-  const scrollToPlans = (e: React.MouseEvent) => {
+  const scrollToSection = (e: React.MouseEvent, sectionId: string) => {
     e.preventDefault();
     if (location.pathname === '/') {
-      document.getElementById('subscription-plans')?.scrollIntoView({ behavior: 'smooth' });
+      document.getElementById(sectionId)?.scrollIntoView({ behavior: 'smooth' });
     } else {
-      navigate('/#subscription-plans');
+      navigate(`/#${sectionId}`);
     }
   };
 
@@ -79,9 +79,10 @@ export const Footer: React.FC<FooterProps> = ({
 
           <FooterSection title={t('footer.product')}>
             <ul className="space-y-2.5 md:space-y-3 text-sm md:text-base">
-              <li><Link to="/how-it-works" className="text-gray-300 hover:text-white transition-colors">{t('footer.howItWorks')}</Link></li>
-              <li><Link to="/mobile-app" className="text-gray-300 hover:text-white transition-colors">{t('footer.mobileApp')}</Link></li>
-              <li><a href="/#subscription-plans" onClick={scrollToPlans} className="text-gray-300 hover:text-white transition-colors" style={{ cursor: 'pointer' }}>{t('footer.pricing')}</a></li>
+              <li><a href="/#how-it-works" onClick={(e) => scrollToSection(e, 'how-it-works')} className="text-gray-300 hover:text-white transition-colors" style={{ cursor: 'pointer' }}>{t('footer.howItWorks')}</a></li>
+              <li><a href="/#faq" onClick={(e) => scrollToSection(e, 'faq')} className="text-gray-300 hover:text-white transition-colors" style={{ cursor: 'pointer' }}>FAQ</a></li>
+              <li><a href="https://apps.apple.com/app/boomcard/id6740091561" target="_blank" rel="noopener noreferrer" className="text-gray-300 hover:text-white transition-colors">{t('footer.mobileApp')}</a></li>
+              <li><a href="/#subscription-plans" onClick={(e) => scrollToSection(e, 'subscription-plans')} className="text-gray-300 hover:text-white transition-colors" style={{ cursor: 'pointer' }}>{t('footer.pricing')}</a></li>
               <li><Link to="/partners" className="text-gray-300 hover:text-white transition-colors">{t('footer.partnerNetwork')}</Link></li>
             </ul>
           </FooterSection>
@@ -91,7 +92,6 @@ export const Footer: React.FC<FooterProps> = ({
               <li><Link to="/about" className="text-gray-300 hover:text-white transition-colors">{t('footer.about')}</Link></li>
               <li><Link to="/contact" className="text-gray-300 hover:text-white transition-colors">{t('footer.contact')}</Link></li>
               <li><Link to="/become-partner" className="text-gray-300 hover:text-white transition-colors">{t('footer.becomePartner')}</Link></li>
-              <li><Link to="/careers" className="text-gray-300 hover:text-white transition-colors">{t('footer.careers')}</Link></li>
             </ul>
           </FooterSection>
 
@@ -100,13 +100,13 @@ export const Footer: React.FC<FooterProps> = ({
               <li><Link to="/privacy" className="text-gray-300 hover:text-white transition-colors">{t('footer.privacy')}</Link></li>
               <li><Link to="/terms" className="text-gray-300 hover:text-white transition-colors">{t('footer.terms')}</Link></li>
               <li><Link to="/security" className="text-gray-300 hover:text-white transition-colors">{t('footer.security')}</Link></li>
-              <li><Link to="/cookies" className="text-gray-300 hover:text-white transition-colors">{language === 'bg' ? 'Политика за бисквитки' : 'Cookie Policy'}</Link></li>
+              <li><Link to="/cookies" className="text-gray-300 hover:text-white transition-colors">{t('footer.cookiePolicy')}</Link></li>
               <li>
                 <button
                   onClick={openSettings}
                   className="text-gray-300 hover:text-white transition-colors text-left"
                 >
-                  {language === 'bg' ? 'Настройки на бисквитките' : 'Cookie Settings'}
+                  {t('footer.cookieSettings')}
                 </button>
               </li>
             </ul>

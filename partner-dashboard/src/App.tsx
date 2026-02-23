@@ -117,7 +117,8 @@ const ProductPage = lazy(() => import('./pages/ProductPage'));
 const FeaturesPage = lazy(() => import('./pages/FeaturesPage'));
 const PricingPublicPage = lazy(() => import('./pages/PricingPublicPage'));
 const ContactPublicPage = lazy(() => import('./pages/ContactPublicPage'));
-const CareersPage = lazy(() => import('./pages/CareersPage'));
+// CareersPage temporarily removed
+const BecomePartnerPage = lazy(() => import('./pages/BecomePartnerPage'));
 const SecurityPage = lazy(() => import('./pages/SecurityPage'));
 const CookiePolicyPage = lazy(() => import('./pages/CookiePolicyPage'));
 
@@ -383,7 +384,7 @@ function App() {
                     <Route path="features" element={<FeaturesPage />} />
                     <Route path="pricing" element={<PricingPublicPage />} />
                     <Route path="contact" element={<ContactPublicPage />} />
-                    <Route path="careers" element={<CareersPage />} />
+                    <Route path="become-partner" element={<BecomePartnerPage />} />
                     <Route path="security" element={<SecurityPage />} />
 
                     {/* Admin routes - Role-protected */}

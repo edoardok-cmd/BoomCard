@@ -69,6 +69,7 @@ export const en = {
     settings: 'Settings',
     dashboard: 'Dashboard',
     rewards: 'Rewards',
+    downloadApp: 'Download App',
   },
 
   // Mobile Bottom Navigation
@@ -100,9 +101,11 @@ export const en = {
     becomePartner: 'Become a partner',
     careers: 'Careers',
     legal: 'Legal Information',
-    privacy: 'Privacy',
+    privacy: 'Privacy Policy',
     terms: 'Terms of Service',
     security: 'Security Policy',
+    cookiePolicy: 'Cookie Policy',
+    cookieSettings: 'Cookie Settings',
     social: 'Follow Us',
     facebook: 'Facebook',
     instagram: 'Instagram',
@@ -273,6 +276,8 @@ export const en = {
     step2Description: 'Mark your visit with the BOOM app',
     step3Title: 'Get your discount',
     step3Description: 'Pay the bill, upload your receipt and receive cashback',
+    downloadAppCta: 'Download the BOOM App',
+    availableForIosAndroid: 'Available for iOS and Android',
 
     // Final CTA Section
     readyToSave: 'Start saving with BOOM Card today',
