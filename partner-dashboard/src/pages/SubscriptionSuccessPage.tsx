@@ -10,26 +10,18 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import styled from 'styled-components';
 import { motion } from 'framer-motion';
-import { CheckCircle, Clock, AlertCircle, Loader2, RefreshCw, Smartphone, Download } from 'lucide-react';
+import { CheckCircle, Clock, AlertCircle, Loader2, RefreshCw } from 'lucide-react';
 import Button from '../components/common/Button/Button';
 import { useLanguage } from '../contexts/LanguageContext';
 import { plansService, SubscriptionStatus } from '../services/plans.service';
-import Header from '../components/layout/Header/Header';
-import Footer from '../components/layout/Footer/Footer';
-
-const PageWrapper = styled.div`
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-  background: var(--color-background);
-`;
 
 const PageContainer = styled.div`
   flex: 1;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 6rem 1rem 2rem;
+  padding: 2rem 1rem;
 `;
 
 const Card = styled(motion.div)`
@@ -203,67 +195,36 @@ const AppDownloadSection = styled.div`
   width: 100%;
   max-width: 32rem;
   margin-top: 1.5rem;
-`;
-
-const AppDownloadCard = styled.a`
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  padding: 1rem 1.25rem;
-  background: var(--color-background);
-  border: 1px solid var(--color-border);
-  border-radius: 0.75rem;
-  text-decoration: none;
-  transition: border-color 0.2s, box-shadow 0.2s;
-  cursor: pointer;
-
-  &:hover {
-    border-color: var(--color-primary);
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-  }
-`;
-
-const AppIconCircle = styled.div`
-  width: 48px;
-  height: 48px;
-  border-radius: 12px;
-  background: rgba(59, 130, 246, 0.1);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-
-  svg {
-    width: 24px;
-    height: 24px;
-    color: #3b82f6;
-  }
-`;
-
-const AppDownloadInfo = styled.div`
-  flex: 1;
-  text-align: left;
+  text-align: center;
 `;
 
 const AppDownloadTitle = styled.div`
   font-size: 0.9375rem;
   font-weight: 600;
   color: var(--color-text-primary);
-  margin-bottom: 0.125rem;
+  margin-bottom: 0.75rem;
 `;
 
-const AppDownloadSubtitle = styled.div`
-  font-size: 0.8125rem;
-  color: var(--color-text-secondary);
+const StoreBadgesRow = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
 `;
 
-const AppDownloadArrow = styled.div`
-  flex-shrink: 0;
-  color: var(--color-text-tertiary);
+const StoreBadgeLink = styled.a`
+  display: inline-flex;
+  transition: opacity 0.2s, transform 0.2s;
+  border-radius: 8px;
 
-  svg {
-    width: 20px;
-    height: 20px;
+  &:hover {
+    opacity: 0.85;
+    transform: scale(1.03);
+  }
+
+  img {
+    height: 44px;
+    width: auto;
   }
 `;
 
@@ -276,14 +237,44 @@ const SubscriptionSuccessPage: React.FC = () => {
   const location = useLocation();
   const { language } = useLanguage();
 
-  // Extract orderId from URL
+  // Extract orderId and Paysera redirect data from URL
   const searchParams = new URLSearchParams(location.search);
   const orderId = searchParams.get('orderId');
+  const payseraData = searchParams.get('data');
+  const payseraSs1 = searchParams.get('ss1');
 
   const [status, setStatus] = useState<'loading' | 'success' | 'pending' | 'error'>('loading');
   const [subscription, setSubscription] = useState<SubscriptionStatus | null>(null);
   const [elapsedTime, setElapsedTime] = useState(0);
   const [isPolling, setIsPolling] = useState(true);
+  const [redirectVerified, setRedirectVerified] = useState(false);
+
+  const verifyRedirectData = useCallback(async () => {
+    if (!payseraData || !payseraSs1 || redirectVerified) return false;
+
+    try {
+      const result = await plansService.verifyPaymentRedirect(payseraData, payseraSs1);
+      setRedirectVerified(true);
+
+      if (result.isSuccess) {
+        setStatus('success');
+        setIsPolling(false);
+        // Create a minimal subscription-like object for display
+        setSubscription({
+          subscriptionId: '',
+          status: 'ACTIVE',
+          plan: { code: '', name: orderId || 'BoomCard', nameBg: null },
+          billingPeriod: '',
+          currentPeriodEnd: '',
+          isActive: true,
+        });
+        return true;
+      }
+    } catch (error) {
+      console.error('Error verifying redirect:', error);
+    }
+    return false;
+  }, [payseraData, payseraSs1, redirectVerified, orderId]);
 
   const checkStatus = useCallback(async () => {
     if (!orderId) {
@@ -303,13 +294,20 @@ const SubscriptionSuccessPage: React.FC = () => {
       }
     } catch (error) {
       console.error('Error checking subscription status:', error);
+
+      // If subscription not found, try verifying Paysera redirect data
+      if (!redirectVerified && payseraData && payseraSs1) {
+        const verified = await verifyRedirectData();
+        if (verified) return;
+      }
+
       // Don't immediately show error - might just be processing
       if (elapsedTime > MAX_TOTAL_TIME) {
         setStatus('error');
         setIsPolling(false);
       }
     }
-  }, [orderId, elapsedTime]);
+  }, [orderId, elapsedTime, redirectVerified, payseraData, payseraSs1, verifyRedirectData]);
 
   // Initial check and polling
   useEffect(() => {
@@ -411,9 +409,7 @@ const SubscriptionSuccessPage: React.FC = () => {
   };
 
   return (
-    <PageWrapper>
-      <Header />
-      <PageContainer>
+    <PageContainer>
         <Card
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -505,33 +501,34 @@ const SubscriptionSuccessPage: React.FC = () => {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4, delay: 0.2 }}
           >
-            <AppDownloadCard
-              href="https://expo.dev/accounts/edoardok1/projects/boomcard-mobile/builds/4f27b61b-61a6-41d9-b494-7436cd05de4b"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              <AppIconCircle>
-                <Smartphone />
-              </AppIconCircle>
-              <AppDownloadInfo>
-                <AppDownloadTitle>
-                  {language === 'bg' ? 'Изтеглете мобилното приложение' : 'Download the Mobile App'}
-                </AppDownloadTitle>
-                <AppDownloadSubtitle>
-                  {language === 'bg'
-                    ? 'Сканирайте касови бележки и печелете кешбек в движение'
-                    : 'Scan receipts and earn cashback on the go'}
-                </AppDownloadSubtitle>
-              </AppDownloadInfo>
-              <AppDownloadArrow>
-                <Download />
-              </AppDownloadArrow>
-            </AppDownloadCard>
+            <AppDownloadTitle>
+              {language === 'bg' ? 'Изтеглете мобилното приложение' : 'Download the Mobile App'}
+            </AppDownloadTitle>
+            <StoreBadgesRow>
+              <StoreBadgeLink
+                href="https://play.google.com/store/apps/details?id=com.boomcard.app"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <img
+                  src="/badge-google-play.svg"
+                  alt="Get it on Google Play"
+                />
+              </StoreBadgeLink>
+              <StoreBadgeLink
+                href="https://apps.apple.com/app/boomcard/id6740091561"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <img
+                  src="/badge-app-store.svg"
+                  alt="Download on the App Store"
+                />
+              </StoreBadgeLink>
+            </StoreBadgesRow>
           </AppDownloadSection>
         )}
-      </PageContainer>
-      <Footer />
-    </PageWrapper>
+    </PageContainer>
   );
 };
 

@@ -4,7 +4,7 @@
  */
 
 import { Router, Response, Request } from 'express';
-import { authenticate, AuthRequest } from '../middleware/auth.middleware';
+import { authenticate, optionalAuthenticate, AuthRequest } from '../middleware/auth.middleware';
 import { asyncHandler } from '../middleware/error.middleware';
 import { payseraService, PayseraService } from '../services/paysera.service';
 import { emailService } from '../services/email.service';
@@ -87,7 +87,7 @@ router.post(
   '/create',
   authenticate,
   asyncHandler(async (req: AuthRequest, res: Response) => {
-    const { amount, description, currency = 'BGN', paymentMethod, metadata } = req.body;
+    const { amount, description, currency = 'EUR', paymentMethod, metadata } = req.body;
     const user = req.user!;
 
     // Validation
@@ -101,7 +101,7 @@ router.post(
     if (!PayseraService.validateAmount(PayseraService.amountToCents(amount))) {
       return res.status(400).json({
         success: false,
-        message: 'Amount must be between 0.01 and 10,000 BGN',
+        message: 'Amount must be between 0.01 and 10,000 EUR',
       });
     }
 
@@ -161,7 +161,8 @@ router.post(
         customerEmail: userDetails.email,
         customerName: `${userDetails.firstName} ${userDetails.lastName}`,
         paymentMethod,
-        lang: 'bg',
+        lang: 'BUL',
+        country: 'BG',
       });
 
       // Update transaction with payment details
@@ -202,19 +203,25 @@ router.post(
 
 // ============================================
 // Payment Callback (Webhook from Paysera)
+// Paysera sends callbacks as GET with query params: data, ss1, ss2
+// We also support POST for flexibility
 // ============================================
 
 /**
- * POST /api/payments/callback
- * Webhook endpoint for Paysera payment notifications
- * This is called by Paysera servers (not from browser)
+ * Shared handler for payment callbacks (GET or POST)
  */
-router.post(
-  '/callback',
-  asyncHandler(async (req: Request, res: Response) => {
-    const { data, ss1, ss2 } = req.body;
+async function handlePaymentCallback(req: Request, res: Response) {
+    // Paysera sends data, ss1, ss2 as GET query params
+    const data = (req.query.data || req.body?.data) as string;
+    const ss1 = (req.query.ss1 || req.body?.ss1) as string;
+    const ss2 = (req.query.ss2 || req.body?.ss2) as string;
 
-    logger.info('📨 Received Paysera callback');
+    logger.info('Received Paysera callback');
+
+    if (!data || !ss1) {
+      logger.warn('Missing data or ss1 in callback');
+      return res.send(payseraService.generateCallbackResponse());
+    }
 
     try {
       // Handle callback
@@ -224,7 +231,7 @@ router.post(
         ss2,
       });
 
-      logger.info(`Callback result: ${result.orderId} - ${result.status}`);
+      logger.info(`Callback result: ${result.orderId} - status ${result.rawStatus} (${result.status})`);
 
       // Find transaction by order ID
       const transaction = await prisma.transaction.findFirst({
@@ -244,7 +251,7 @@ router.post(
       });
 
       if (!transaction) {
-        logger.warn(`⚠️  Transaction not found for order: ${result.orderId}`);
+        logger.warn(`Transaction not found for order: ${result.orderId}`);
         return res.send(payseraService.generateCallbackResponse());
       }
 
@@ -262,6 +269,9 @@ router.post(
               transactionId: result.transactionId,
               paidAmount: result.amount,
               paidCurrency: result.currency,
+              payAmount: result.payAmount,
+              payCurrency: result.payCurrency,
+              rawStatus: result.rawStatus,
               completedAt: new Date().toISOString(),
             }),
           },
@@ -299,18 +309,18 @@ router.post(
           },
         });
 
-        logger.info(`✅ Payment successful: ${result.orderId} - ${result.amount / 100} ${result.currency}`);
+        logger.info(`Payment successful: ${result.orderId} - ${transaction.amount} ${transaction.currency}`);
 
         // Send payment confirmation email
         if (transaction.user?.email) {
           emailService.sendPaymentConfirmation(transaction.user.email, {
-            customerName: transaction.user.email.split('@')[0], // Fallback to email prefix
+            customerName: transaction.user.email.split('@')[0],
             orderId: result.orderId,
             amount: transaction.amount,
             currency: transaction.currency,
             date: new Date(),
           }).catch((error) => {
-            logger.error('❌ Failed to send payment confirmation email:', error);
+            logger.error('Failed to send payment confirmation email:', error);
           });
 
           // Send wallet update notification
@@ -322,7 +332,7 @@ router.post(
             description: `Your wallet has been topped up with ${transaction.amount.toFixed(2)} ${transaction.currency}`,
             date: new Date(),
           }).catch((error) => {
-            logger.error('❌ Failed to send wallet update email:', error);
+            logger.error('Failed to send wallet update email:', error);
           });
         }
       } else if (result.status === 'failed' || result.status === 'cancelled') {
@@ -336,23 +346,29 @@ router.post(
               ...existingMetadata,
               transactionId: result.transactionId,
               failureReason: result.status,
+              rawStatus: result.rawStatus,
               completedAt: new Date().toISOString(),
             }),
           },
         });
 
-        logger.warn(`⚠️  Payment ${result.status}: ${result.orderId}`);
+        logger.warn(`Payment ${result.status}: ${result.orderId}`);
       }
+      // For 'pending' status (0, 2, 3), we don't update - wait for final callback
 
       // Send "OK" response to Paysera
       res.send(payseraService.generateCallbackResponse());
     } catch (error: any) {
-      logger.error('❌ Error processing callback:', error);
+      logger.error('Error processing callback:', error);
       // Still send OK to prevent retries
       res.send(payseraService.generateCallbackResponse());
     }
-  })
-);
+}
+
+// GET /api/payments/callback - Paysera sends callbacks as GET
+router.get('/callback', asyncHandler(handlePaymentCallback));
+// POST /api/payments/callback - Also support POST
+router.post('/callback', asyncHandler(handlePaymentCallback));
 
 // ============================================
 // Payment Status Check (Authenticated)
@@ -479,15 +495,38 @@ router.get(
  * GET /api/payments/methods
  * Get supported payment methods
  */
-router.get('/methods', (req: Request, res: Response) => {
-  res.json({
-    success: true,
-    data: {
-      methods: PayseraService.getSupportedPaymentMethods(),
-      currencies: PayseraService.getSupportedCurrencies(),
-    },
-  });
-});
+router.get('/methods', asyncHandler(async (req: Request, res: Response) => {
+  const country = (req.query.country as string) || 'bg';
+  const currency = (req.query.currency as string) || 'EUR';
+  const amount = parseInt(req.query.amount as string) || 1000;
+
+  try {
+    const methods = await payseraService.fetchPaymentMethods(country, currency, amount);
+
+    res.json({
+      success: true,
+      data: {
+        methods,
+        currencies: PayseraService.getSupportedCurrencies(),
+        country,
+        currency,
+      },
+    });
+  } catch (error: any) {
+    logger.error('Error fetching payment methods:', error);
+    // Fallback to static methods if XML API fails
+    res.json({
+      success: true,
+      data: {
+        methods: PayseraService.getSupportedPaymentMethods(),
+        currencies: PayseraService.getSupportedCurrencies(),
+        country,
+        currency,
+        fallback: true,
+      },
+    });
+  }
+}));
 
 // ============================================
 // SECURE Subscription Payment (Authenticated)
@@ -519,23 +558,27 @@ function calculatePeriodEnd(billingPeriod: 'weekly' | 'monthly' | 'yearly'): Dat
 const subscriptionSchema = z.object({
   planId: z.string().uuid(),
   billingPeriod: z.enum(['weekly', 'monthly', 'yearly']),
+  email: z.string().email().optional(),
+  name: z.string().min(1).max(100).optional(),
+  phone: z.string().min(1).max(30).optional(),
+  paymentMethod: z.string().min(1).max(50).optional(),
 });
 
 router.post(
   '/subscription',
-  authenticate,
+  optionalAuthenticate,
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const parseResult = subscriptionSchema.safeParse(req.body);
     if (!parseResult.success) {
       return res.status(400).json({
         success: false,
         message: 'Invalid request body',
-        errors: parseResult.error.errors,
+        errors: parseResult.error.issues,
       });
     }
 
-    const { planId, billingPeriod } = parseResult.data;
-    const user = req.user!;
+    const { planId, billingPeriod, email: guestEmail, name: guestName, phone: guestPhone, paymentMethod } = parseResult.data;
+    const user = req.user; // May be undefined for guest checkout
 
     // Fetch plan from database (SOURCE OF TRUTH for pricing)
     const plan = await prisma.plan.findUnique({
@@ -586,55 +629,67 @@ router.post(
     // Generate unique order ID
     const orderId = `BOOM-SUB-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
 
-    // Get user details
-    const userDetails = await prisma.user.findUnique({
-      where: { id: user.id },
-      select: { email: true, firstName: true, lastName: true },
-    });
+    let subscriptionId: string | null = null;
+    let customerEmail = guestEmail || '';
+    let customerName = guestName || '';
+    let customerPhone = guestPhone || '';
 
-    if (!userDetails) {
-      return res.status(404).json({ success: false, message: 'User not found' });
-    }
+    if (user) {
+      // Authenticated user flow
+      const userDetails = await prisma.user.findUnique({
+        where: { id: user.id },
+        select: { email: true, firstName: true, lastName: true },
+      });
 
-    // Map plan code to subscription enum
-    const subscriptionPlanMap: Record<string, SubscriptionPlan> = {
-      'STANDARD': SubscriptionPlan.STANDARD,
-      'PREMIUM': SubscriptionPlan.PREMIUM,
-      'PLATINUM': SubscriptionPlan.PLATINUM,
-    };
+      if (!userDetails) {
+        return res.status(404).json({ success: false, message: 'User not found' });
+      }
 
-    const subscriptionPlan = subscriptionPlanMap[plan.planCode];
-    if (!subscriptionPlan) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid plan code',
+      customerEmail = userDetails.email;
+      customerName = `${userDetails.firstName || ''} ${userDetails.lastName || ''}`.trim() || userDetails.email;
+
+      // Map plan code to subscription enum
+      const subscriptionPlanMap: Record<string, SubscriptionPlan> = {
+        'STANDARD': SubscriptionPlan.STANDARD,
+        'PREMIUM': SubscriptionPlan.PREMIUM,
+        'PLATINUM': SubscriptionPlan.PLATINUM,
+      };
+
+      const subscriptionPlan = subscriptionPlanMap[plan.planCode];
+      if (!subscriptionPlan) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid plan code',
+        });
+      }
+
+      // Create pending subscription record
+      const subscription = await prisma.subscription.create({
+        data: {
+          userId: user.id,
+          plan: subscriptionPlan,
+          status: SubscriptionStatus.INCOMPLETE,
+          planId: plan.id,
+          payseraOrderId: orderId,
+          currentPeriodStart: new Date(),
+          currentPeriodEnd: calculatePeriodEnd(billingPeriod),
+          metadata: JSON.stringify({
+            billingPeriod,
+            priceInCents,
+            currency: 'EUR',
+            displayName: plan.displayName,
+          }),
+        },
+      });
+
+      subscriptionId = subscription.id;
+
+      // Update user status to PENDING_PAYMENT
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { status: UserStatus.PENDING_PAYMENT },
       });
     }
-
-    // Create pending subscription record
-    const subscription = await prisma.subscription.create({
-      data: {
-        userId: user.id,
-        plan: subscriptionPlan,
-        status: SubscriptionStatus.INCOMPLETE,
-        planId: plan.id,
-        payseraOrderId: orderId,
-        currentPeriodStart: new Date(),
-        currentPeriodEnd: calculatePeriodEnd(billingPeriod),
-        metadata: JSON.stringify({
-          billingPeriod,
-          priceInCents,
-          currency: 'EUR',
-          displayName: plan.displayName,
-        }),
-      },
-    });
-
-    // Update user status to PENDING_PAYMENT
-    await prisma.user.update({
-      where: { id: user.id },
-      data: { status: UserStatus.PENDING_PAYMENT },
-    });
 
     // Build callback URLs
     const baseUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
@@ -651,18 +706,21 @@ router.post(
       acceptUrl,
       cancelUrl,
       callbackUrl,
-      customerEmail: userDetails.email,
-      customerName: `${userDetails.firstName || ''} ${userDetails.lastName || ''}`.trim() || userDetails.email,
-      lang: 'bg',
+      customerEmail: customerEmail || undefined,
+      customerName: customerName || undefined,
+      customerPhone: customerPhone || undefined,
+      paymentMethod,
+      lang: 'BUL',
+      country: 'BG',
     });
 
-    logger.info(`✅ Subscription payment created: ${orderId} for user ${user.id}, plan ${plan.planCode}, ${priceInCents / 100} EUR`);
+    logger.info(`✅ Subscription payment created: ${orderId} for ${user ? `user ${user.id}` : `guest ${customerEmail || 'anonymous'}`}, plan ${plan.planCode}, ${priceInCents / 100} EUR`);
 
     res.status(201).json({
       success: true,
       data: {
         orderId: payment.orderId,
-        subscriptionId: subscription.id,
+        subscriptionId,
         paymentUrl: payment.paymentUrl,
         plan: {
           code: plan.planCode,
@@ -679,19 +737,21 @@ router.post(
 // ============================================
 // Subscription Payment Callback (Webhook)
 // CRITICAL: This is the ONLY place where subscriptions become ACTIVE
+// Paysera sends callbacks as GET with query params: data, ss1, ss2
 // ============================================
 
-/**
- * POST /api/payments/subscription/callback
- * Webhook endpoint for subscription payment notifications
- * Called by Paysera servers (not from browser)
- */
-router.post(
-  '/subscription/callback',
-  asyncHandler(async (req: Request, res: Response) => {
-    const { data, ss1, ss2 } = req.body;
+async function handleSubscriptionCallback(req: Request, res: Response) {
+    // Paysera sends data, ss1, ss2 as GET query params
+    const data = (req.query.data || req.body?.data) as string;
+    const ss1 = (req.query.ss1 || req.body?.ss1) as string;
+    const ss2 = (req.query.ss2 || req.body?.ss2) as string;
 
-    logger.info('📨 Received Paysera subscription callback');
+    logger.info('Received Paysera subscription callback');
+
+    if (!data || !ss1) {
+      logger.warn('Missing data or ss1 in subscription callback');
+      return res.send(payseraService.generateCallbackResponse());
+    }
 
     try {
       // Handle callback and verify signature
@@ -701,7 +761,7 @@ router.post(
         ss2,
       });
 
-      logger.info(`Subscription callback result: ${result.orderId} - ${result.status}`);
+      logger.info(`Subscription callback result: ${result.orderId} - status ${result.rawStatus} (${result.status})`);
 
       // Find subscription by Paysera order ID
       const subscription = await prisma.subscription.findFirst({
@@ -719,7 +779,7 @@ router.post(
       });
 
       if (!subscription) {
-        logger.warn(`⚠️  Subscription not found for order: ${result.orderId}`);
+        logger.warn(`Subscription not found for order: ${result.orderId}`);
         return res.send(payseraService.generateCallbackResponse());
       }
 
@@ -742,6 +802,9 @@ router.post(
               payseraTransactionId: result.transactionId,
               paidAmount: result.amount,
               paidCurrency: result.currency,
+              payAmount: result.payAmount,
+              payCurrency: result.payCurrency,
+              rawStatus: result.rawStatus,
             }),
           },
         });
@@ -752,24 +815,23 @@ router.post(
           data: { status: UserStatus.ACTIVE },
         });
 
-        logger.info(`✅ Subscription activated: ${subscription.id} for user ${subscription.userId}`);
+        logger.info(`Subscription activated: ${subscription.id} for user ${subscription.userId}`);
 
         // Send confirmation email
         if (subscription.user?.email) {
           const metadata = JSON.parse(subscription.metadata as string || '{}');
-          emailService.sendSubscriptionConfirmation(subscription.user.email, {
+          emailService.sendPaymentConfirmation(subscription.user.email, {
             customerName: subscription.user.firstName || 'Customer',
-            plan: subscription.planDetails?.displayName || subscription.plan,
+            orderId: result.orderId,
             amount: result.amount / 100,
             currency: 'EUR',
-            billingPeriod: metadata.billingPeriod,
-            nextBillingDate: subscription.currentPeriodEnd,
+            date: new Date(),
           }).catch((error) => {
-            logger.error('❌ Failed to send subscription confirmation email:', error);
+            logger.error('Failed to send subscription confirmation email:', error);
           });
         }
       } else if (result.status === 'failed' || result.status === 'cancelled') {
-        // Payment failed or cancelled
+        // Payment failed or cancelled (status 5 = refunded)
         const existingMetadata = subscription.metadata ? JSON.parse(subscription.metadata as string) : {};
         await prisma.subscription.update({
           where: { id: subscription.id },
@@ -779,21 +841,65 @@ router.post(
               ...existingMetadata,
               failedAt: new Date().toISOString(),
               failureReason: result.status,
+              rawStatus: result.rawStatus,
             }),
           },
         });
 
-        logger.warn(`⚠️  Subscription payment ${result.status}: ${result.orderId}`);
+        logger.warn(`Subscription payment ${result.status}: ${result.orderId}`);
       }
+      // For 'pending' status (0, 2, 3), we don't update - wait for final callback
 
       // Send "OK" response to Paysera
       res.send(payseraService.generateCallbackResponse());
     } catch (error: any) {
-      logger.error('❌ Error processing subscription callback:', error);
+      logger.error('Error processing subscription callback:', error);
       // Still send OK to prevent retries
       res.send(payseraService.generateCallbackResponse());
     }
-  })
-);
+}
+
+// GET /api/payments/subscription/callback - Paysera sends callbacks as GET
+router.get('/subscription/callback', asyncHandler(handleSubscriptionCallback));
+// POST /api/payments/subscription/callback - Also support POST
+router.post('/subscription/callback', asyncHandler(handleSubscriptionCallback));
+
+// ============================================
+// Verify Paysera Redirect Data (Public)
+// Used by success page to verify payment when no subscription exists (guest checkout)
+// ============================================
+
+router.post('/verify-redirect', asyncHandler(async (req: Request, res: Response) => {
+  const { data, ss1 } = req.body;
+
+  if (!data || !ss1) {
+    return res.status(400).json({
+      success: false,
+      message: 'Missing data or ss1 parameter',
+    });
+  }
+
+  try {
+    const result = await payseraService.handleCallback({ data, ss1 });
+
+    res.json({
+      success: true,
+      data: {
+        orderId: result.orderId,
+        status: result.status,
+        amount: result.amount ? result.amount / 100 : null,
+        currency: result.currency,
+        paymentMethod: result.paymentMethod,
+        isSuccess: result.status === 'success',
+      },
+    });
+  } catch (error: any) {
+    logger.error('Error verifying redirect data:', error);
+    res.status(400).json({
+      success: false,
+      message: 'Invalid payment data or signature',
+    });
+  }
+}));
 
 export default router;

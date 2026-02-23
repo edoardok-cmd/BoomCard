@@ -45,6 +45,20 @@ export interface Plan {
   badge: PlanBadge | null;
 }
 
+export interface PayseraPaymentMethod {
+  key: string;
+  title: string;
+  titleBg: string;
+  titleEn: string;
+  logoUrl: string;
+  logoRoundUrl?: string;
+  minAmount?: number;
+  maxAmount?: number;
+  currency: string;
+  group: string;
+  groupTitle: string;
+}
+
 export interface SubscriptionStatus {
   subscriptionId: string;
   status: string;
@@ -138,35 +152,86 @@ class PlansService {
   }
 
   /**
-   * Create subscription payment (AUTHENTICATED)
+   * Verify Paysera redirect data (PUBLIC - no auth required)
+   * Used as fallback for guest checkout when no subscription record exists
+   */
+  async verifyPaymentRedirect(data: string, ss1: string): Promise<{
+    orderId: string;
+    status: string;
+    amount: number | null;
+    currency: string;
+    paymentMethod: string;
+    isSuccess: boolean;
+  }> {
+    try {
+      const response = await axios.post(`${this.baseUrl}/payments/verify-redirect`, { data, ss1 });
+      if (response.data.success) {
+        return response.data.data;
+      }
+      throw new Error('Verification failed');
+    } catch (error) {
+      console.error('Error verifying payment redirect:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get available payment methods from Paysera (PUBLIC - no auth required)
+   */
+  async getPaymentMethods(
+    country: string = 'bg',
+    currency: string = 'EUR',
+    amountInCents?: number
+  ): Promise<PayseraPaymentMethod[]> {
+    try {
+      const params = new URLSearchParams({ country, currency });
+      if (amountInCents) params.set('amount', amountInCents.toString());
+
+      const response = await axios.get(
+        `${this.baseUrl}/payments/methods?${params.toString()}`,
+        { timeout: this.timeout }
+      );
+      if (response.data.success) {
+        return response.data.data.methods;
+      }
+      throw new Error('Failed to fetch payment methods');
+    } catch (error) {
+      console.error('Error fetching payment methods:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Create subscription payment
    * Returns payment URL to redirect user to Paysera
    */
   async createSubscriptionPayment(
     planId: string,
-    billingPeriod: 'weekly' | 'monthly' | 'yearly'
+    billingPeriod: 'weekly' | 'monthly' | 'yearly',
+    email?: string,
+    name?: string,
+    phone?: string,
+    paymentMethod?: string
   ): Promise<{
     orderId: string;
-    subscriptionId: string;
+    subscriptionId: string | null;
     paymentUrl: string;
     plan: { code: string; name: string };
     amount: number;
     currency: string;
     billingPeriod: string;
   }> {
-    const token = localStorage.getItem('token');
-    if (!token) {
-      throw new Error('User not authenticated');
-    }
-
     try {
+      const token = localStorage.getItem('token');
+      const headers: Record<string, string> = {};
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
       const response = await axios.post(
         `${this.baseUrl}/payments/subscription`,
-        { planId, billingPeriod },
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
+        { planId, billingPeriod, email, name, phone, paymentMethod },
+        { headers }
       );
 
       if (response.data.success) {

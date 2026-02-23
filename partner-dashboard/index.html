@@ -108,6 +108,9 @@
     <!-- Pinterest Site Verification -->
     <meta name="p:domain_verify" content="REPLACE_WITH_YOUR_PINTEREST_VERIFICATION_CODE" />
 
+    <!-- Paysera Website Verification -->
+    <meta name="verify-paysera" content="26cf2801893d05df918f6e6fa5399f80" />
+
     <!-- Pinterest Rich Pins -->
     <meta property="og:site_name" content="BoomCard Bulgaria" />
     <meta property="og:see_also" content="https://boomcard.bg/promotions" />
@@ -293,6 +296,22 @@
         }
       ]
     }
+    </script>
+
+    <!-- Paysera Quality Sign -->
+    <script type="text/javascript" charset="utf-8">
+    (function() {
+        const script = document.createElement('script');
+        const dateToday = new Date();
+        const todayFullDate = dateToday.getDate() + '-' + (dateToday.getMonth() + 1) + '-' + dateToday.getFullYear();
+
+        script.src = 'https://bank.paysera.com/js/compiled/quality-sign.js?v=' + todayFullDate;
+        script.setAttribute('data-paysera-project-id', 255573);
+        script.setAttribute('data-lang', "bg");
+        script.async = true;
+
+        document.head.appendChild(script);
+    })();
     </script>
   </head>
   <body>

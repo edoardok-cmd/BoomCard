@@ -1,11 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { useSearchParams, useNavigate, Link } from 'react-router-dom';
+import { useSearchParams, Link } from 'react-router-dom';
 import styled from 'styled-components';
-import { motion } from 'framer-motion';
-import { ArrowLeft, CreditCard, Lock, Check, Loader2 } from 'lucide-react';
+import { ArrowLeft, Building2, Lock, Check, Loader2, Mail, User, Phone } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
-import { plansService, Plan } from '../services/plans.service';
+import { plansService, Plan, PayseraPaymentMethod } from '../services/plans.service';
 import { convertEURToBGN } from '../utils/helpers';
 import Button from '../components/common/Button/Button';
 
@@ -209,43 +208,101 @@ const SectionTitle = styled.h2`
   font-family: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 `;
 
-const FormGroup = styled.div`
-  margin-bottom: 1.25rem;
+const PaymentMethodsGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+
+  @media (max-width: 768px) {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.5rem;
+  }
 `;
 
-const Label = styled.label`
-  display: block;
-  font-size: 0.875rem;
+const PaymentMethodCard = styled.div<{ $isSelected: boolean }>`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 1rem 0.75rem;
+  border: 2px solid ${props => props.$isSelected ? 'var(--color-primary)' : 'var(--color-border)'};
+  border-radius: 0.75rem;
+  background: ${props => props.$isSelected ? 'rgba(0, 0, 0, 0.03)' : 'var(--color-background)'};
+  cursor: pointer;
+  transition: all 300ms cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  min-height: 90px;
+  justify-content: center;
+
+  &:hover {
+    border-color: ${props => props.$isSelected ? 'var(--color-primary)' : 'var(--color-text-tertiary)'};
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  }
+
+  @media (max-width: 768px) {
+    padding: 0.75rem 0.5rem;
+    min-height: 80px;
+  }
+`;
+
+const SelectedCheckmark = styled.div`
+  position: absolute;
+  top: 0.4rem;
+  right: 0.4rem;
+  width: 20px;
+  height: 20px;
+  background: var(--color-primary, #000);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+
+  svg {
+    width: 12px;
+    height: 12px;
+  }
+`;
+
+const MethodLogo = styled.img`
+  width: 48px;
+  height: 48px;
+  object-fit: contain;
+  border-radius: 0.5rem;
+
+  @media (max-width: 768px) {
+    width: 40px;
+    height: 40px;
+  }
+`;
+
+const MethodName = styled.span`
+  font-size: 0.75rem;
   font-weight: 500;
   color: var(--color-text-secondary);
-  margin-bottom: 0.5rem;
+  text-align: center;
+  line-height: 1.3;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
 `;
 
-const Input = styled.input`
-  width: 100%;
-  padding: 0.875rem 1rem;
-  font-size: 1rem;
-  border: 1px solid var(--color-border);
-  border-radius: 0.5rem;
-  background: var(--color-background);
-  color: var(--color-text-primary);
-  transition: border-color 0.2s, box-shadow 0.2s;
+const MethodSkeleton = styled.div`
+  height: 90px;
+  border-radius: 0.75rem;
+  background: linear-gradient(90deg, var(--color-background-tertiary, #f3f4f6) 0%, var(--color-border, #e5e7eb) 50%, var(--color-background-tertiary, #f3f4f6) 100%);
+  background-size: 1000px 100%;
+  animation: shimmer 2s infinite linear;
 
-  &:focus {
-    outline: none;
-    border-color: var(--color-primary);
-    box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.1);
+  @keyframes shimmer {
+    0% { background-position: -1000px 0; }
+    100% { background-position: 1000px 0; }
   }
-
-  &::placeholder {
-    color: var(--color-text-tertiary);
-  }
-`;
-
-const CardInputRow = styled.div`
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 1rem;
 `;
 
 const OrderSummary = styled.div`
@@ -522,9 +579,40 @@ const LoginPromptText = styled.p`
   margin-bottom: 1rem;
 `;
 
+const EmailSection = styled.div`
+  margin-bottom: 1.5rem;
+`;
+
+const FormFieldsGrid = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+`;
+
+const EmailInput = styled.input`
+  width: 100%;
+  padding: 0.875rem 1rem;
+  border: 2px solid var(--color-border);
+  border-radius: 0.75rem;
+  font-size: 1rem;
+  color: var(--color-text);
+  background: var(--color-surface);
+  transition: border-color 200ms ease;
+  box-sizing: border-box;
+
+  &:focus {
+    outline: none;
+    border-color: var(--color-primary);
+  }
+
+  &::placeholder {
+    color: var(--color-text-secondary);
+    opacity: 0.6;
+  }
+`;
+
 const CheckoutPage: React.FC = () => {
   const [searchParams] = useSearchParams();
-  const navigate = useNavigate();
   const { language, t } = useLanguage();
   const { user, isAuthenticated } = useAuth();
 
@@ -538,11 +626,16 @@ const CheckoutPage: React.FC = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [resolvedPlanId, setResolvedPlanId] = useState<string | null>(planId);
 
-  // Card form state (for display - actual payment handled by Paysera)
-  const [cardNumber, setCardNumber] = useState('');
-  const [cardName, setCardName] = useState('');
-  const [expiry, setExpiry] = useState('');
-  const [cvv, setCvv] = useState('');
+  // Guest checkout state
+  const [guestName, setGuestName] = useState('');
+  const [guestEmail, setGuestEmail] = useState('');
+  const [guestPhone, setGuestPhone] = useState('');
+
+  // Payment method selection state
+  const [paymentMethods, setPaymentMethods] = useState<PayseraPaymentMethod[]>([]);
+  const [selectedMethod, setSelectedMethod] = useState<string | null>(null);
+  const [methodsLoading, setMethodsLoading] = useState(true);
+  const [methodsError, setMethodsError] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchPlan = async () => {
@@ -592,6 +685,31 @@ const CheckoutPage: React.FC = () => {
     fetchPlan();
   }, [planId, planCode, language]);
 
+  useEffect(() => {
+    const fetchMethods = async () => {
+      try {
+        setMethodsLoading(true);
+        setMethodsError(null);
+        const amountInCents = displayPrice ? Math.round(displayPrice * 100) : 1000;
+        const methods = await plansService.getPaymentMethods('bg', 'EUR', amountInCents);
+        setPaymentMethods(methods);
+      } catch (err) {
+        console.error('Error fetching payment methods:', err);
+        setMethodsError(
+          language === 'bg'
+            ? 'Не могат да се заредят методите за плащане'
+            : 'Could not load payment methods'
+        );
+      } finally {
+        setMethodsLoading(false);
+      }
+    };
+
+    if (plan) {
+      fetchMethods();
+    }
+  }, [plan, language]);
+
   const getDisplayPrice = (): number | null => {
     if (!plan) return null;
     return plansService.getDisplayPrice(plan, billingPeriod);
@@ -623,38 +741,26 @@ const CheckoutPage: React.FC = () => {
   };
 
   const handlePayment = async () => {
-    if (!plan || !resolvedPlanId) return;
-
-    if (!isAuthenticated) {
-      // Redirect to register with plan info
-      navigate(`/register?planId=${resolvedPlanId}&billing=${billingPeriod}`);
-      return;
-    }
+    if (!plan || !resolvedPlanId || !selectedMethod) return;
+    if (!isAuthenticated && (!guestEmail || !guestName || !guestPhone)) return;
 
     setIsProcessing(true);
     try {
-      const paymentResult = await plansService.createSubscriptionPayment(resolvedPlanId, billingPeriod);
-      // Redirect to Paysera payment page
+      const paymentResult = await plansService.createSubscriptionPayment(
+        resolvedPlanId,
+        billingPeriod,
+        isAuthenticated ? undefined : guestEmail,
+        isAuthenticated ? undefined : guestName,
+        isAuthenticated ? undefined : guestPhone,
+        selectedMethod
+      );
+      // Redirect directly to the selected bank/payment provider
       window.location.href = paymentResult.paymentUrl;
     } catch (err) {
       console.error('Payment error:', err);
       setError(language === 'bg' ? 'Грешка при обработка на плащането' : 'Error processing payment');
       setIsProcessing(false);
     }
-  };
-
-  const formatCardNumber = (value: string) => {
-    const cleaned = value.replace(/\D/g, '');
-    const groups = cleaned.match(/.{1,4}/g);
-    return groups ? groups.join(' ').substr(0, 19) : '';
-  };
-
-  const formatExpiry = (value: string) => {
-    const cleaned = value.replace(/\D/g, '');
-    if (cleaned.length >= 2) {
-      return `${cleaned.slice(0, 2)}/${cleaned.slice(2, 4)}`;
-    }
-    return cleaned;
   };
 
   if (loading) {
@@ -703,80 +809,110 @@ const CheckoutPage: React.FC = () => {
         <CheckoutGrid>
           <PaymentSection>
             {!isAuthenticated && (
-              <LoginPrompt>
-                <LoginPromptText>
-                  {language === 'bg'
-                    ? 'Имате акаунт? Влезте за по-бърз checkout.'
-                    : 'Have an account? Log in for faster checkout.'}
-                </LoginPromptText>
-                <Link to={`/login?redirect=/checkout?planId=${planId}&billing=${billingPeriod}`}>
-                  <Button variant="outline" size="medium">
-                    {language === 'bg' ? 'Вход' : 'Log in'}
-                  </Button>
-                </Link>
-              </LoginPrompt>
+              <>
+                <LoginPrompt>
+                  <LoginPromptText>
+                    {language === 'bg'
+                      ? 'Имате акаунт? Влезте за по-бърз checkout.'
+                      : 'Have an account? Log in for faster checkout.'}
+                  </LoginPromptText>
+                  <Link to={`/login?redirect=/checkout?planId=${planId}&billing=${billingPeriod}`}>
+                    <Button variant="outline" size="medium">
+                      {language === 'bg' ? 'Вход' : 'Log in'}
+                    </Button>
+                  </Link>
+                </LoginPrompt>
+
+                <EmailSection>
+                  <SectionTitle>
+                    <User size={20} />
+                    {language === 'bg' ? 'Вашите данни' : 'Your details'}
+                  </SectionTitle>
+                  <FormFieldsGrid>
+                    <EmailInput
+                      type="text"
+                      placeholder={language === 'bg' ? 'Име и фамилия' : 'Full name'}
+                      value={guestName}
+                      onChange={(e) => setGuestName(e.target.value)}
+                      required
+                    />
+                    <EmailInput
+                      type="email"
+                      placeholder={language === 'bg' ? 'Имейл адрес' : 'Email address'}
+                      value={guestEmail}
+                      onChange={(e) => setGuestEmail(e.target.value)}
+                      required
+                    />
+                    <EmailInput
+                      type="tel"
+                      placeholder={language === 'bg' ? 'Телефонен номер' : 'Phone number'}
+                      value={guestPhone}
+                      onChange={(e) => setGuestPhone(e.target.value)}
+                      required
+                    />
+                  </FormFieldsGrid>
+                </EmailSection>
+              </>
             )}
 
             <SectionTitle>
-              <CreditCard size={20} />
-              {language === 'bg' ? 'Данни за плащане' : 'Payment Details'}
+              <Building2 size={20} />
+              {language === 'bg' ? 'Изберете метод за плащане' : 'Choose payment method'}
             </SectionTitle>
 
-            <FormGroup>
-              <Label>{language === 'bg' ? 'Име на картодържателя' : 'Cardholder Name'}</Label>
-              <Input
-                type="text"
-                placeholder={language === 'bg' ? 'Иван Иванов' : 'John Doe'}
-                value={cardName}
-                onChange={(e) => setCardName(e.target.value)}
-              />
-            </FormGroup>
-
-            <FormGroup>
-              <Label>{language === 'bg' ? 'Номер на картата' : 'Card Number'}</Label>
-              <Input
-                type="text"
-                placeholder="4242 4242 4242 4242"
-                value={cardNumber}
-                onChange={(e) => setCardNumber(formatCardNumber(e.target.value))}
-                maxLength={19}
-              />
-            </FormGroup>
-
-            <CardInputRow>
-              <FormGroup>
-                <Label>{language === 'bg' ? 'Валидност' : 'Expiry Date'}</Label>
-                <Input
-                  type="text"
-                  placeholder="MM/YY"
-                  value={expiry}
-                  onChange={(e) => setExpiry(formatExpiry(e.target.value))}
-                  maxLength={5}
-                />
-              </FormGroup>
-              <FormGroup>
-                <Label>CVV</Label>
-                <Input
-                  type="text"
-                  placeholder="123"
-                  value={cvv}
-                  onChange={(e) => setCvv(e.target.value.replace(/\D/g, '').substr(0, 4))}
-                  maxLength={4}
-                />
-              </FormGroup>
-            </CardInputRow>
+            {methodsLoading ? (
+              <PaymentMethodsGrid>
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <MethodSkeleton key={i} />
+                ))}
+              </PaymentMethodsGrid>
+            ) : methodsError ? (
+              <ErrorMessage style={{ marginBottom: '1.5rem', padding: '1.5rem' }}>
+                {methodsError}
+              </ErrorMessage>
+            ) : (
+              <PaymentMethodsGrid>
+                {paymentMethods.map((method) => (
+                  <PaymentMethodCard
+                    key={method.key}
+                    $isSelected={selectedMethod === method.key}
+                    onClick={() => setSelectedMethod(method.key)}
+                  >
+                    {selectedMethod === method.key && (
+                      <SelectedCheckmark>
+                        <Check size={12} />
+                      </SelectedCheckmark>
+                    )}
+                    <MethodLogo
+                      src={method.logoRoundUrl || method.logoUrl}
+                      alt={language === 'bg' ? method.titleBg : method.titleEn}
+                      loading="lazy"
+                      onError={(e) => {
+                        const target = e.target as HTMLImageElement;
+                        if (method.logoRoundUrl && target.src.includes(method.logoRoundUrl)) {
+                          target.src = method.logoUrl;
+                        }
+                      }}
+                    />
+                    <MethodName>
+                      {language === 'bg' ? method.titleBg : method.titleEn}
+                    </MethodName>
+                  </PaymentMethodCard>
+                ))}
+              </PaymentMethodsGrid>
+            )}
 
             <Button
               variant="primary"
               size="large"
               fullWidth
               onClick={handlePayment}
-              disabled={isProcessing}
+              disabled={isProcessing || methodsLoading || !selectedMethod || (!isAuthenticated && (!guestEmail || !guestName || !guestPhone))}
             >
               {isProcessing ? (
                 <>
                   <LoadingSpinner style={{ width: '1rem', height: '1rem', marginRight: '0.5rem' }} />
-                  {language === 'bg' ? 'Обработка...' : 'Processing...'}
+                  {language === 'bg' ? 'Пренасочване...' : 'Redirecting...'}
                 </>
               ) : (
                 language === 'bg'
@@ -788,8 +924,8 @@ const CheckoutPage: React.FC = () => {
             <SecureNote>
               <Lock size={14} />
               {language === 'bg'
-                ? 'Вашето плащане е защитено с 256-bit SSL криптиране'
-                : 'Your payment is secured with 256-bit SSL encryption'}
+                ? 'Ще бъдете пренасочени към избраната банка за сигурно плащане'
+                : 'You will be redirected to the selected bank for secure payment'}
             </SecureNote>
           </PaymentSection>
 
