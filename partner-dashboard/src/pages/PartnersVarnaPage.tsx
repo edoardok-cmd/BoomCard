@@ -1,18 +1,18 @@
 import React from 'react';
 import GenericPage from '../components/templates/GenericPage';
-import { useOffersByCity } from '../hooks/useOffers';
+import { useEntitiesByCity } from '../hooks/useOffers';
 
 const PartnersVarnaPage: React.FC = () => {
-  const { data, isLoading } = useOffersByCity('Varna');
-  const offers = data?.data || [];
+  const { data, isLoading } = useEntitiesByCity('Varna');
+  const entities = data?.data || [];
 
   return (
     <GenericPage
-      titleEn={`Varna Partners (${offers.length})`}
-      titleBg={`Варна Партньори (${offers.length})`}
+      titleEn={`Varna Partners (${entities.length})`}
+      titleBg={`Варна Партньори (${entities.length})`}
       subtitleEn="Explore partner venues along the Black Sea coast"
       subtitleBg="Разгледайте партньорски места по Черноморското крайбрежие"
-      offers={offers}
+      entities={entities}
       isLoading={isLoading}
     />
   );

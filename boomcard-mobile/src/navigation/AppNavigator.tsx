@@ -13,7 +13,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../store/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { ActivityIndicator, View } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
+import { ProgressRing } from '../components/loading';
 import * as SecureStore from 'expo-secure-store';
 import { STORAGE_KEYS } from '../constants/config';
 
@@ -296,19 +297,14 @@ export const AppNavigator = () => {
     }
   }, [isAuthenticated, mainInitialRoute]);
 
-  if (isLoading) {
+  if (isLoading || (isAuthenticated && !mainInitialRoute)) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: theme.colors.background }}>
-        <ActivityIndicator size="large" color={theme.colors.primary} />
-      </View>
-    );
-  }
-
-  // Wait for pending payment check before showing MainNavigator
-  if (isAuthenticated && !mainInitialRoute) {
-    return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: theme.colors.background }}>
-        <ActivityIndicator size="large" color={theme.colors.primary} />
+      <View style={brandLoadingStyles.container}>
+        <View style={brandLoadingStyles.brandRow}>
+          <Text style={[brandLoadingStyles.brandBoom, { color: theme.colors.onSurface }]}>BOOM</Text>
+          <Text style={[brandLoadingStyles.brandCard, { color: theme.colors.onSurfaceVariant }]}>Card</Text>
+        </View>
+        <ProgressRing size={48} strokeWidth={3} color={theme.colors.primary} trackColor={isDarkMode ? 'rgba(96,165,250,0.15)' : 'rgba(59,130,246,0.1)'} />
       </View>
     );
   }
@@ -336,5 +332,28 @@ export const AppNavigator = () => {
     </NavigationContainer>
   );
 };
+
+const brandLoadingStyles = StyleSheet.create({
+  container: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 20,
+  },
+  brandRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+  },
+  brandBoom: {
+    fontSize: 28,
+    fontWeight: '900',
+    letterSpacing: 1,
+  },
+  brandCard: {
+    fontSize: 28,
+    fontWeight: '300',
+    marginLeft: 5,
+  },
+});
 
 export default AppNavigator;

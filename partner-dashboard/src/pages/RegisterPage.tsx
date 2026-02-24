@@ -12,6 +12,7 @@ import FacebookLoginButton from '../components/auth/FacebookLoginButton';
 import Header from '../components/layout/Header/Header';
 import Footer from '../components/layout/Footer/Footer';
 import { plansService, Plan } from '../services/plans.service';
+import { apiService } from '../services/api.service';
 
 const PageWrapper = styled.div`
   min-height: 100vh;
@@ -726,6 +727,14 @@ const RegisterPage: React.FC = () => {
 
       await loginWithOAuth(oauthData);
 
+      // Record GDPR consent for OAuth registrations
+      try {
+        await apiService.post('/auth/consent', { type: 'terms', version: '2026-02-24' });
+        await apiService.post('/auth/consent', { type: 'privacy' });
+      } catch {
+        // Consent recording is best-effort; user is already logged in
+      }
+
       const from = (location.state as any)?.from?.pathname || '/dashboard';
       navigate(from, { replace: true });
     } catch (error) {
@@ -749,6 +758,14 @@ const RegisterPage: React.FC = () => {
       };
 
       await loginWithOAuth(oauthData);
+
+      // Record GDPR consent for OAuth registrations
+      try {
+        await apiService.post('/auth/consent', { type: 'terms', version: '2026-02-24' });
+        await apiService.post('/auth/consent', { type: 'privacy' });
+      } catch {
+        // Consent recording is best-effort; user is already logged in
+      }
 
       const from = (location.state as any)?.from?.pathname || '/dashboard';
       navigate(from, { replace: true });

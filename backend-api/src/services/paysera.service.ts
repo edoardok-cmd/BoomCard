@@ -538,7 +538,7 @@ export class PayseraService {
   }
 
   static getSupportedCurrencies(): string[] {
-    return ['EUR', 'USD', 'GBP', 'PLN', 'CZK', 'RON'];
+    return ['EUR', 'USD', 'GBP', 'PLN', 'CZK', 'RON', 'BGN'];
   }
 
   static getSupportedPaymentMethods(): Array<{

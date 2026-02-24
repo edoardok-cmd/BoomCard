@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { toast } from 'react-hot-toast';
+import type { Entity } from '../types/entity.types';
 
 interface FavoriteItem {
   id: string;
@@ -19,6 +20,8 @@ interface FavoriteItem {
 interface FavoritesContextType {
   favorites: FavoriteItem[];
   addToFavorites: (item: Omit<FavoriteItem, 'addedAt'>) => void;
+  /** Add an Entity to favorites (new unified format) */
+  addEntityToFavorites: (entity: Entity) => void;
   removeFromFavorites: (id: string) => void;
   isFavorite: (id: string) => boolean;
   clearFavorites: () => void;
@@ -79,6 +82,22 @@ export const FavoritesProvider: React.FC<FavoritesProviderProps> = ({ children }
     });
   };
 
+  const addEntityToFavorites = (entity: Entity) => {
+    addToFavorites({
+      id: entity.id,
+      title: entity.name.en,
+      titleBg: entity.name.bg,
+      category: entity.category.en,
+      categoryBg: entity.category.bg,
+      location: entity.location.display,
+      discount: entity.discount?.percent ?? 0,
+      originalPrice: entity.discount?.originalPrice ?? 0,
+      discountedPrice: entity.discount?.discountedPrice ?? 0,
+      imageUrl: entity.images.hero,
+      path: entity.path,
+    });
+  };
+
   const removeFromFavorites = (id: string) => {
     setFavorites(prev => {
       const filtered = prev.filter(fav => fav.id !== id);
@@ -101,6 +120,7 @@ export const FavoritesProvider: React.FC<FavoritesProviderProps> = ({ children }
   const value: FavoritesContextType = {
     favorites,
     addToFavorites,
+    addEntityToFavorites,
     removeFromFavorites,
     isFavorite,
     clearFavorites,

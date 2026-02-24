@@ -1,7 +1,11 @@
 import React, { useState } from 'react';
 import styled from 'styled-components';
 import { motion } from 'framer-motion';
-import { Building2, Mail, Phone, User, MapPin, Globe, Send, CheckCircle } from 'lucide-react';
+import {
+  Building2, Mail, Phone, User, MapPin, Globe, Send, CheckCircle,
+  FileText, Database, CreditCard, Tags, ShieldCheck, Rocket,
+  Image, Clock, MessageSquare, Link, Percent, Map
+} from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import toast from 'react-hot-toast';
 
@@ -59,6 +63,176 @@ const HeroSubtitle = styled(motion.p)`
     font-size: 1rem;
   }
 `;
+
+/* ── Onboarding Process Section ── */
+
+const ProcessSection = styled.section`
+  padding: 4rem 0 2rem;
+  background: var(--color-surface, var(--color-background));
+`;
+
+const SectionTitle = styled(motion.h2)`
+  font-size: 2rem;
+  font-weight: 800;
+  color: var(--color-text-primary);
+  text-align: center;
+  margin-bottom: 0.75rem;
+
+  @media (max-width: 768px) {
+    font-size: 1.5rem;
+  }
+`;
+
+const SectionSubtitle = styled(motion.p)`
+  font-size: 1.05rem;
+  color: var(--color-text-secondary);
+  text-align: center;
+  max-width: 650px;
+  margin: 0 auto 3rem;
+  line-height: 1.6;
+
+  @media (max-width: 768px) {
+    font-size: 0.95rem;
+    margin-bottom: 2rem;
+  }
+`;
+
+const StepsGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1.5rem;
+  position: relative;
+
+  @media (max-width: 968px) {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  @media (max-width: 600px) {
+    grid-template-columns: 1fr;
+  }
+`;
+
+const StepCard = styled(motion.div)`
+  background: var(--color-background);
+  border-radius: 1rem;
+  padding: 2rem;
+  box-shadow: var(--shadow-soft);
+  border: 1px solid var(--color-border);
+  position: relative;
+  text-align: center;
+  transition: transform 0.2s, box-shadow 0.2s;
+
+  &:hover {
+    transform: translateY(-4px);
+    box-shadow: var(--shadow-hover);
+  }
+`;
+
+const StepNumber = styled.div`
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  color: var(--color-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+  font-weight: 800;
+  margin: 0 auto 1rem;
+`;
+
+const StepIconWrap = styled.div`
+  width: 56px;
+  height: 56px;
+  border-radius: 1rem;
+  background: var(--color-primary);
+  color: var(--color-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 1rem;
+  opacity: 0.15;
+  position: absolute;
+  top: 1.25rem;
+  right: 1.25rem;
+`;
+
+const StepTitle = styled.h3`
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--color-text-primary);
+  margin-bottom: 0.5rem;
+`;
+
+const StepDescription = styled.p`
+  font-size: 0.9rem;
+  color: var(--color-text-secondary);
+  line-height: 1.55;
+`;
+
+/* ── Partner Package Section ── */
+
+const PackageSection = styled.section`
+  padding: 2rem 0 4rem;
+`;
+
+const PackageGrid = styled.div`
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+
+  @media (max-width: 768px) {
+    grid-template-columns: 1fr;
+  }
+`;
+
+const PackageCard = styled(motion.div)`
+  background: var(--color-background);
+  border-radius: 1rem;
+  padding: 2rem;
+  box-shadow: var(--shadow-soft);
+  border: 1px solid var(--color-border);
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  transition: transform 0.2s, box-shadow 0.2s;
+
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-hover);
+  }
+`;
+
+const PackageIcon = styled.div`
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  border-radius: 0.75rem;
+  background: var(--color-primary);
+  color: var(--color-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.9;
+`;
+
+const PackageItemContent = styled.div``;
+
+const PackageItemTitle = styled.h4`
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--color-text-primary);
+  margin-bottom: 0.25rem;
+`;
+
+const PackageItemDesc = styled.p`
+  font-size: 0.85rem;
+  color: var(--color-text-secondary);
+  line-height: 1.5;
+`;
+
+/* ── Existing sections ── */
 
 const ContentSection = styled.section`
   padding: 4rem 0;
@@ -318,7 +492,32 @@ const BecomePartnerPage: React.FC = () => {
 
   const t = language === 'bg' ? {
     heroTitle: 'Стани партньор на BOOM Card',
-    heroSubtitle: 'Присъедини бизнеса си към нарастващата мрежа от партньори на BOOM Card. Достигни до нови клиенти, увеличи посещаемостта и предложи реална стойност.',
+    heroSubtitle: 'Присъедини бизнеса си към нарастващата мрежа от партньори на BOOM Card. Ние поемаме целия онбординг процес, за да гарантираме качество и скорост.',
+    // Onboarding process
+    processTitle: 'Как протича онбордингът?',
+    processSubtitle: 'BOOM Card управлява целия процес. Ти предоставяш данните, ние правим всичко останало.',
+    steps: [
+      { title: 'Подписване на договор', desc: 'Съгласяваме се на условия и стартираме партньорството.' },
+      { title: 'Изискване на данни', desc: 'BOOM Card изисква стандартен набор от информация за вашия обект.' },
+      { title: 'Въвеждане в базата', desc: 'Нашият екип въвежда всички данни в системата.' },
+      { title: 'Създаване на картата', desc: 'Създаваме вашата карта със стандартна визуализация и hero снимка.' },
+      { title: 'QA проверка', desc: 'Проверяваме категории, тагове, описания и визия преди публикуване.' },
+      { title: 'Активиране', desc: 'Вашият обект става видим за всички потребители на BOOM Card.' },
+    ],
+    // Partner package
+    packageTitle: 'Партньорски пакет',
+    packageSubtitle: 'Какво изискваме от вас, за да създадем перфектен профил:',
+    packageItems: [
+      { title: 'Име в Google Maps', desc: 'Точното наименование на обекта, както е в Google Maps.' },
+      { title: 'Описания', desc: 'Кратко (1-2 изречения) и средно (3-5 изречения) описание на обекта.' },
+      { title: 'Снимки (6-12) + 1 Hero', desc: 'Качествени снимки на интериор, екстериор и предлагани продукти. Една основна (hero) снимка.' },
+      { title: 'Адрес + Google Maps линк', desc: 'Пълен адрес и директен линк към обекта в Google Maps.' },
+      { title: 'Работно време', desc: 'Детайлно работно време за всеки ден от седмицата.' },
+      { title: 'Контакти', desc: 'Телефон, имейл и/или профили в социалните мрежи.' },
+      { title: 'Линк към меню / резервации', desc: 'Ако имате онлайн меню, система за резервации или уебсайт.' },
+      { title: 'Условия на отстъпката', desc: 'Какъв % отстъпка предлагате и при какви условия (дни, часове, продукти).' },
+    ],
+    // Benefits
     benefitsTitle: 'Защо да станеш партньор?',
     benefits: [
       'Достъп до активна база от потребители, които търсят качествени места',
@@ -366,7 +565,32 @@ const BecomePartnerPage: React.FC = () => {
     successMessage: 'Благодарим за интереса! Нашият екип ще се свърже с вас в рамките на 2 работни дни, за да обсъдим детайлите на партньорството.',
   } : {
     heroTitle: 'Become a BOOM Card Partner',
-    heroSubtitle: 'Join your business to the growing BOOM Card partner network. Reach new customers, increase visits, and deliver real value.',
+    heroSubtitle: 'Join the growing BOOM Card partner network. We handle the entire onboarding process to guarantee quality and speed.',
+    // Onboarding process
+    processTitle: 'How does onboarding work?',
+    processSubtitle: 'BOOM Card manages the entire process. You provide the data, we handle everything else.',
+    steps: [
+      { title: 'Sign the agreement', desc: 'We agree on terms and officially start the partnership.' },
+      { title: 'Data request', desc: 'BOOM Card requests a standard set of information about your venue.' },
+      { title: 'Data entry', desc: 'Our team enters all data into the system.' },
+      { title: 'Card creation', desc: 'We create your card with standard visuals and a hero image.' },
+      { title: 'QA review', desc: 'We verify categories, tags, descriptions, and visuals before publishing.' },
+      { title: 'Activation', desc: 'Your venue becomes visible to all BOOM Card users.' },
+    ],
+    // Partner package
+    packageTitle: 'Partner Package',
+    packageSubtitle: 'What we need from you to create the perfect profile:',
+    packageItems: [
+      { title: 'Google Maps name', desc: 'The exact name of your venue as it appears on Google Maps.' },
+      { title: 'Descriptions', desc: 'Short (1-2 sentences) and medium (3-5 sentences) description of your venue.' },
+      { title: 'Photos (6-12) + 1 Hero', desc: 'Quality photos of the interior, exterior, and products. One main (hero) photo.' },
+      { title: 'Address + Google Maps link', desc: 'Full address and a direct link to your venue on Google Maps.' },
+      { title: 'Working hours', desc: 'Detailed working hours for each day of the week.' },
+      { title: 'Contact details', desc: 'Phone, email, and/or social media profiles.' },
+      { title: 'Menu / Reservations link', desc: 'If you have an online menu, booking system, or website.' },
+      { title: 'Discount conditions', desc: 'What % discount you offer and under what conditions (days, hours, products).' },
+    ],
+    // Benefits
     benefitsTitle: 'Why become a partner?',
     benefits: [
       'Access to an active user base looking for quality venues',
@@ -414,6 +638,9 @@ const BecomePartnerPage: React.FC = () => {
     successMessage: 'Thank you for your interest! Our team will contact you within 2 business days to discuss partnership details.',
   };
 
+  const stepIcons = [FileText, Database, Database, CreditCard, ShieldCheck, Rocket];
+  const packageIcons = [Map, FileText, Image, MapPin, Clock, MessageSquare, Link, Percent];
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
   };
@@ -453,6 +680,7 @@ const BecomePartnerPage: React.FC = () => {
 
   return (
     <PageContainer>
+      {/* Hero */}
       <HeroSection>
         <Container>
           <HeroTitle
@@ -472,6 +700,96 @@ const BecomePartnerPage: React.FC = () => {
         </Container>
       </HeroSection>
 
+      {/* Onboarding Process */}
+      <ProcessSection>
+        <Container>
+          <SectionTitle
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.5 }}
+          >
+            {t.processTitle}
+          </SectionTitle>
+          <SectionSubtitle
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.5, delay: 0.1 }}
+          >
+            {t.processSubtitle}
+          </SectionSubtitle>
+
+          <StepsGrid>
+            {t.steps.map((step, i) => {
+              const Icon = stepIcons[i];
+              return (
+                <StepCard
+                  key={i}
+                  initial={{ opacity: 0, y: 20 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ duration: 0.4, delay: i * 0.08 }}
+                >
+                  <StepIconWrap>
+                    <Icon size={26} />
+                  </StepIconWrap>
+                  <StepNumber>{i + 1}</StepNumber>
+                  <StepTitle>{step.title}</StepTitle>
+                  <StepDescription>{step.desc}</StepDescription>
+                </StepCard>
+              );
+            })}
+          </StepsGrid>
+        </Container>
+      </ProcessSection>
+
+      {/* Partner Package */}
+      <PackageSection>
+        <Container>
+          <SectionTitle
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.5 }}
+          >
+            {t.packageTitle}
+          </SectionTitle>
+          <SectionSubtitle
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.5, delay: 0.1 }}
+          >
+            {t.packageSubtitle}
+          </SectionSubtitle>
+
+          <PackageGrid>
+            {t.packageItems.map((item, i) => {
+              const Icon = packageIcons[i];
+              return (
+                <PackageCard
+                  key={i}
+                  initial={{ opacity: 0, y: 16 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ duration: 0.35, delay: i * 0.06 }}
+                >
+                  <PackageIcon>
+                    <Icon size={22} />
+                  </PackageIcon>
+                  <PackageItemContent>
+                    <PackageItemTitle>{item.title}</PackageItemTitle>
+                    <PackageItemDesc>{item.desc}</PackageItemDesc>
+                  </PackageItemContent>
+                </PackageCard>
+              );
+            })}
+          </PackageGrid>
+        </Container>
+      </PackageSection>
+
+      {/* Benefits + Form */}
       <ContentSection>
         <Container>
           <Grid>

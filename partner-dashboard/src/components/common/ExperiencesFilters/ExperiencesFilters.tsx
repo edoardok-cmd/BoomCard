@@ -1,9 +1,15 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import styled from 'styled-components';
-import { Filter, Clock, Compass, Sun, Users, ChevronDown, ChevronUp, Star, DollarSign, LayoutGrid } from 'lucide-react';
+import {
+  Filter, Clock, Compass, Sun, Users, ChevronDown, ChevronUp,
+  Star, DollarSign, LayoutGrid, MapPin, Calendar, Search, ArrowUpDown, Crown,
+} from 'lucide-react';
 import Button from '../Button/Button';
+import { experiencesCategories } from '../../../types/categories.types';
+
+// ── Styled components ──────────────────────────────────────
 
 const FilterContainer = styled(motion.div)`
   background: white;
@@ -50,6 +56,116 @@ const ExpandIcon = styled.div`
 
   [data-theme="dark"] & {
     color: #9ca3af;
+  }
+`;
+
+const SearchRow = styled.div`
+  margin-top: 1.25rem;
+  margin-bottom: 0.25rem;
+`;
+
+const SearchInput = styled.div`
+  position: relative;
+
+  svg {
+    position: absolute;
+    left: 0.875rem;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 1rem;
+    height: 1rem;
+    color: #9ca3af;
+  }
+
+  input {
+    width: 100%;
+    padding: 0.625rem 0.875rem 0.625rem 2.5rem;
+    border: 2px solid #e5e7eb;
+    border-radius: 0.75rem;
+    font-size: 0.875rem;
+    background: white;
+    color: #111827;
+    transition: all 0.2s;
+
+    [data-theme="dark"] & {
+      border-color: #4b5563;
+      background: #374151;
+      color: #f9fafb;
+    }
+
+    &::placeholder {
+      color: #9ca3af;
+    }
+
+    &:focus {
+      outline: none;
+      border-color: #000000;
+
+      [data-theme="dark"] & {
+        border-color: #f9fafb;
+      }
+    }
+  }
+`;
+
+const SortRow = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 1.25rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid #e5e7eb;
+  flex-wrap: wrap;
+
+  [data-theme="dark"] & {
+    border-top-color: #374151;
+  }
+`;
+
+const SortLabel = styled.span`
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #374151;
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  white-space: nowrap;
+
+  [data-theme="dark"] & {
+    color: #d1d5db;
+  }
+
+  svg {
+    width: 0.875rem;
+    height: 0.875rem;
+    color: #6b7280;
+  }
+`;
+
+const SortPill = styled.button<{ $active: boolean }>`
+  padding: 0.375rem 0.75rem;
+  border: 2px solid ${props => props.$active ? '#000000' : '#e5e7eb'};
+  background: ${props => props.$active ? '#000000' : 'white'};
+  color: ${props => props.$active ? 'white' : '#374151'};
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+
+  [data-theme="dark"] & {
+    border-color: ${props => props.$active ? '#f9fafb' : '#4b5563'};
+    background: ${props => props.$active ? '#f9fafb' : '#374151'};
+    color: ${props => props.$active ? '#111827' : '#d1d5db'};
+  }
+
+  &:hover {
+    border-color: #000000;
+
+    [data-theme="dark"] & {
+      border-color: #f9fafb;
+    }
   }
 `;
 
@@ -149,13 +265,66 @@ const SubcategoryGroup = styled.div`
   display: flex;
   flex-wrap: wrap;
   gap: 0.375rem;
-  padding-left: 0.5rem;
-  margin-top: 0.25rem;
+  padding: 0.625rem 0.75rem;
+  margin-top: 0.375rem;
+  background: #f9fafb;
+  border-radius: 0.75rem;
+  border-left: 3px solid #e5e7eb;
+
+  [data-theme="dark"] & {
+    background: #111827;
+    border-left-color: #374151;
+  }
 `;
 
-const SubcategoryLabel = styled(CheckboxLabel)`
+const SubcategoryParentLabel = styled.span`
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  width: 100%;
+  margin-bottom: 0.125rem;
+
+  [data-theme="dark"] & {
+    color: #9ca3af;
+  }
+`;
+
+const SubcategoryLabel = styled.label<{ $checked: boolean }>`
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.3125rem 0.6875rem;
+  border: 1.5px solid ${props => props.$checked ? '#6b7280' : '#d1d5db'};
+  background: ${props => props.$checked ? '#f3f4f6' : 'white'};
+  color: ${props => props.$checked ? '#111827' : '#6b7280'};
+  border-radius: 9999px;
   font-size: 0.75rem;
-  padding: 0.375rem 0.75rem;
+  font-weight: ${props => props.$checked ? 500 : 400};
+  cursor: pointer;
+  transition: all 0.2s;
+  user-select: none;
+
+  [data-theme="dark"] & {
+    border-color: ${props => props.$checked ? '#9ca3af' : '#4b5563'};
+    background: ${props => props.$checked ? '#374151' : '#1f2937'};
+    color: ${props => props.$checked ? '#f9fafb' : '#9ca3af'};
+  }
+
+  &:hover {
+    border-color: #6b7280;
+    background: ${props => props.$checked ? '#e5e7eb' : '#f9fafb'};
+
+    [data-theme="dark"] & {
+      border-color: #9ca3af;
+      background: ${props => props.$checked ? '#4b5563' : '#374151'};
+    }
+  }
+
+  input {
+    display: none;
+  }
 `;
 
 const FilterActions = styled.div`
@@ -170,77 +339,7 @@ const FilterActions = styled.div`
   }
 `;
 
-interface CategoryDef {
-  id: string;
-  en: string;
-  bg: string;
-  subcategories: { id: string; en: string; bg: string }[];
-}
-
-const experiencesCategories: CategoryDef[] = [
-  {
-    id: 'gastronomic',
-    en: 'Gastronomic',
-    bg: 'Гастрономични',
-    subcategories: [
-      { id: 'gastronomic/degustations', en: 'Degustations', bg: 'Дегустации' },
-      { id: 'gastronomic/food-traditions', en: 'Food & Traditions', bg: 'Храна и традиции' },
-    ],
-  },
-  {
-    id: 'historical-cultural',
-    en: 'Historical & Cultural',
-    bg: 'Исторически и културни',
-    subcategories: [
-      { id: 'historical-cultural/walking-tours', en: 'Walking Tours', bg: 'Пешеходни турове' },
-      { id: 'historical-cultural/historical-tours', en: 'Historical Tours', bg: 'Исторически турове' },
-      { id: 'historical-cultural/museums-galleries', en: 'Museums & Galleries', bg: 'Музеи и галерии' },
-    ],
-  },
-  {
-    id: 'active-adventure',
-    en: 'Active & Adventure',
-    bg: 'Активни и приключенски',
-    subcategories: [
-      { id: 'active-adventure/nature-tours', en: 'Nature Tours', bg: 'Природни турове' },
-      { id: 'active-adventure/bike-tours', en: 'Bike Tours', bg: 'Вело турове' },
-      { id: 'active-adventure/offroad-atv', en: 'Offroad & ATV', bg: 'Офроуд и ATV' },
-      { id: 'active-adventure/water-activities', en: 'Water Activities', bg: 'Водни дейности' },
-    ],
-  },
-  {
-    id: 'extreme',
-    en: 'Extreme',
-    bg: 'Екстремни',
-    subcategories: [
-      { id: 'extreme/aerial', en: 'Aerial', bg: 'Въздушни' },
-      { id: 'extreme/jumping', en: 'Jumping', bg: 'Скачане' },
-      { id: 'extreme/motorcycles', en: 'Motorcycles', bg: 'Мотоциклети' },
-      { id: 'extreme/water', en: 'Water', bg: 'Водни' },
-    ],
-  },
-  {
-    id: 'educational-creative',
-    en: 'Educational & Creative',
-    bg: 'Образователни и творчески',
-    subcategories: [
-      { id: 'educational-creative/cooking', en: 'Cooking', bg: 'Готвене' },
-      { id: 'educational-creative/workshops', en: 'Workshops', bg: 'Уъркшопи' },
-      { id: 'educational-creative/arts', en: 'Arts', bg: 'Изкуство' },
-    ],
-  },
-  {
-    id: 'relax-wellness',
-    en: 'Relax & Wellness',
-    bg: 'Релакс и уелнес',
-    subcategories: [
-      { id: 'relax-wellness/spa-thermal', en: 'SPA & Thermal', bg: 'СПА и термални' },
-      { id: 'relax-wellness/massages-therapies', en: 'Massages & Therapies', bg: 'Масажи и терапии' },
-      { id: 'relax-wellness/relax-experiences', en: 'Relax Experiences', bg: 'Релакс изживявания' },
-      { id: 'relax-wellness/yoga-meditation', en: 'Yoga & Meditation', bg: 'Йога и медитация' },
-    ],
-  },
-];
+// ── Types & Interface ──────────────────────────────────────
 
 export interface ExperiencesFiltersState {
   categories: string[];
@@ -250,12 +349,34 @@ export interface ExperiencesFiltersState {
   participations: string[];
   ratingRanges: string[];
   priceLevels: string[];
+  locations: string[];
+  types: string[];
+  availability: string[];
+  sortBy: string;
+  search: string;
 }
+
+export const defaultExperiencesFilters: ExperiencesFiltersState = {
+  categories: [],
+  durations: [],
+  formats: [],
+  seasons: [],
+  participations: [],
+  ratingRanges: [],
+  priceLevels: [],
+  locations: [],
+  types: [],
+  availability: [],
+  sortBy: 'featured',
+  search: '',
+};
 
 interface ExperiencesFiltersProps {
   filters: ExperiencesFiltersState;
   onChange: (filters: ExperiencesFiltersState) => void;
 }
+
+// ── Component ──────────────────────────────────────────────
 
 const ExperiencesFilters: React.FC<ExperiencesFiltersProps> = ({
   filters,
@@ -263,12 +384,15 @@ const ExperiencesFilters: React.FC<ExperiencesFiltersProps> = ({
 }) => {
   const { language } = useLanguage();
   const [isExpanded, setIsExpanded] = useState(true);
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Static filter option data
   const durations = [
     { id: 'up-to-2h', en: 'Up to 2 hours', bg: 'До 2 часа' },
+    { id: '2-4h', en: '2-4 hours', bg: '2-4 часа' },
     { id: 'half-day', en: 'Half day', bg: 'Половин ден' },
     { id: 'full-day', en: 'Full day', bg: 'Цял ден' },
-    { id: '2-plus-days', en: '2+ days', bg: '2+ дни' },
+    { id: 'multi-day', en: 'Multi-day', bg: 'Многодневно' },
   ];
 
   const formats = [
@@ -303,6 +427,35 @@ const ExperiencesFilters: React.FC<ExperiencesFiltersProps> = ({
     { id: 'high-end', en: '€€€ High-end', bg: '€€€ Висок клас' },
   ];
 
+  const locations = [
+    { id: 'sofia', en: 'Sofia', bg: 'София' },
+    { id: 'plovdiv', en: 'Plovdiv', bg: 'Пловдив' },
+    { id: 'varna', en: 'Varna', bg: 'Варна' },
+    { id: 'burgas', en: 'Burgas', bg: 'Бургас' },
+    { id: 'bansko', en: 'Bansko', bg: 'Банско' },
+    { id: 'veliko-tarnovo', en: 'Veliko Tarnovo', bg: 'Велико Търново' },
+  ];
+
+  const experienceTypes = [
+    { id: 'group', en: 'Group', bg: 'Групово' },
+    { id: 'private', en: 'Private', bg: 'Частно' },
+    { id: 'vip', en: 'VIP', bg: 'VIP' },
+  ];
+
+  const availabilityOptions = [
+    { id: 'today', en: 'Available Today', bg: 'Налично днес' },
+    { id: 'this-week', en: 'This Week', bg: 'Тази седмица' },
+  ];
+
+  const sortOptions = [
+    { id: 'featured', en: 'Featured', bg: 'Препоръчани' },
+    { id: 'price-asc', en: 'Price ↑', bg: 'Цена ↑' },
+    { id: 'price-desc', en: 'Price ↓', bg: 'Цена ↓' },
+    { id: 'rating', en: 'Rating', bg: 'Рейтинг' },
+    { id: 'duration', en: 'Duration', bg: 'Продължителност' },
+  ];
+
+  // Handlers
   const handleCategoryToggle = (categoryId: string) => {
     const category = experiencesCategories.find(c => c.id === categoryId);
     if (!category) return;
@@ -346,16 +499,24 @@ const ExperiencesFilters: React.FC<ExperiencesFiltersProps> = ({
     onChange({ ...filters, [key]: updated });
   };
 
+  const handleSearchChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    if (searchTimerRef.current) {
+      clearTimeout(searchTimerRef.current);
+    }
+    searchTimerRef.current = setTimeout(() => {
+      onChange({ ...filters, search: value });
+    }, 300);
+  }, [filters, onChange]);
+
+  useEffect(() => {
+    return () => {
+      if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    };
+  }, []);
+
   const handleClearAll = () => {
-    onChange({
-      categories: [],
-      durations: [],
-      formats: [],
-      seasons: [],
-      participations: [],
-      ratingRanges: [],
-      priceLevels: [],
-    });
+    onChange({ ...defaultExperiencesFilters });
   };
 
   const getActiveCount = () => {
@@ -366,7 +527,11 @@ const ExperiencesFilters: React.FC<ExperiencesFiltersProps> = ({
       filters.seasons.length +
       filters.participations.length +
       filters.ratingRanges.length +
-      filters.priceLevels.length
+      filters.priceLevels.length +
+      filters.locations.length +
+      filters.types.length +
+      filters.availability.length +
+      (filters.search ? 1 : 0)
     );
   };
 
@@ -397,6 +562,19 @@ const ExperiencesFilters: React.FC<ExperiencesFiltersProps> = ({
             exit={{ height: 0, opacity: 0 }}
             transition={{ duration: 0.2 }}
           >
+            {/* Search */}
+            <SearchRow>
+              <SearchInput>
+                <Search />
+                <input
+                  type="text"
+                  placeholder={language === 'bg' ? 'Търси изживяване...' : 'Search experiences...'}
+                  defaultValue={filters.search}
+                  onChange={handleSearchChange}
+                />
+              </SearchInput>
+            </SearchRow>
+
             <FilterGrid>
               {/* Category */}
               <CategoryFilterGroup>
@@ -415,7 +593,7 @@ const ExperiencesFilters: React.FC<ExperiencesFiltersProps> = ({
                         checked={filters.categories.includes(cat.id)}
                         onChange={() => handleCategoryToggle(cat.id)}
                       />
-                      {language === 'bg' ? cat.bg : cat.en}
+                      {language === 'bg' ? cat.name.bg : cat.name.en}
                     </CheckboxLabel>
                   ))}
                 </CheckboxGroup>
@@ -423,6 +601,9 @@ const ExperiencesFilters: React.FC<ExperiencesFiltersProps> = ({
                   .filter(cat => filters.categories.includes(cat.id))
                   .map(cat => (
                     <SubcategoryGroup key={`sub-${cat.id}`}>
+                      <SubcategoryParentLabel>
+                        {language === 'bg' ? cat.name.bg : cat.name.en}
+                      </SubcategoryParentLabel>
                       {cat.subcategories.map(sub => (
                         <SubcategoryLabel
                           key={sub.id}
@@ -433,12 +614,35 @@ const ExperiencesFilters: React.FC<ExperiencesFiltersProps> = ({
                             checked={filters.categories.includes(sub.id)}
                             onChange={() => handleSubcategoryToggle(sub.id, cat.id)}
                           />
-                          {language === 'bg' ? sub.bg : sub.en}
+                          {language === 'bg' ? sub.name.bg : sub.name.en}
                         </SubcategoryLabel>
                       ))}
                     </SubcategoryGroup>
                   ))}
               </CategoryFilterGroup>
+
+              {/* Location */}
+              <FilterGroup>
+                <Label>
+                  <MapPin />
+                  {language === 'bg' ? 'Локация' : 'Location'}
+                </Label>
+                <CheckboxGroup>
+                  {locations.map(item => (
+                    <CheckboxLabel
+                      key={item.id}
+                      $checked={filters.locations.includes(item.id)}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={filters.locations.includes(item.id)}
+                        onChange={() => handleToggle('locations', item.id)}
+                      />
+                      {language === 'bg' ? item.bg : item.en}
+                    </CheckboxLabel>
+                  ))}
+                </CheckboxGroup>
+              </FilterGroup>
 
               {/* Duration */}
               <FilterGroup>
@@ -456,6 +660,52 @@ const ExperiencesFilters: React.FC<ExperiencesFiltersProps> = ({
                         type="checkbox"
                         checked={filters.durations.includes(item.id)}
                         onChange={() => handleToggle('durations', item.id)}
+                      />
+                      {language === 'bg' ? item.bg : item.en}
+                    </CheckboxLabel>
+                  ))}
+                </CheckboxGroup>
+              </FilterGroup>
+
+              {/* Type (group/private/VIP) */}
+              <FilterGroup>
+                <Label>
+                  <Crown />
+                  {language === 'bg' ? 'Тип' : 'Type'}
+                </Label>
+                <CheckboxGroup>
+                  {experienceTypes.map(item => (
+                    <CheckboxLabel
+                      key={item.id}
+                      $checked={filters.types.includes(item.id)}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={filters.types.includes(item.id)}
+                        onChange={() => handleToggle('types', item.id)}
+                      />
+                      {language === 'bg' ? item.bg : item.en}
+                    </CheckboxLabel>
+                  ))}
+                </CheckboxGroup>
+              </FilterGroup>
+
+              {/* Availability */}
+              <FilterGroup>
+                <Label>
+                  <Calendar />
+                  {language === 'bg' ? 'Наличност' : 'Availability'}
+                </Label>
+                <CheckboxGroup>
+                  {availabilityOptions.map(item => (
+                    <CheckboxLabel
+                      key={item.id}
+                      $checked={filters.availability.includes(item.id)}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={filters.availability.includes(item.id)}
+                        onChange={() => handleToggle('availability', item.id)}
                       />
                       {language === 'bg' ? item.bg : item.en}
                     </CheckboxLabel>
@@ -513,7 +763,7 @@ const ExperiencesFilters: React.FC<ExperiencesFiltersProps> = ({
               <FilterGroup>
                 <Label>
                   <Users />
-                  {language === 'bg' ? 'Тип участие' : 'Participation Type'}
+                  {language === 'bg' ? 'Тип участие' : 'Participation'}
                 </Label>
                 <CheckboxGroup>
                   {participations.map(item => (
@@ -579,6 +829,23 @@ const ExperiencesFilters: React.FC<ExperiencesFiltersProps> = ({
                 </CheckboxGroup>
               </FilterGroup>
             </FilterGrid>
+
+            {/* Sort By */}
+            <SortRow>
+              <SortLabel>
+                <ArrowUpDown />
+                {language === 'bg' ? 'Сортирай:' : 'Sort:'}
+              </SortLabel>
+              {sortOptions.map(opt => (
+                <SortPill
+                  key={opt.id}
+                  $active={filters.sortBy === opt.id}
+                  onClick={() => onChange({ ...filters, sortBy: opt.id })}
+                >
+                  {language === 'bg' ? opt.bg : opt.en}
+                </SortPill>
+              ))}
+            </SortRow>
 
             {activeCount > 0 && (
               <FilterActions>

@@ -3,7 +3,8 @@ import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import styled from 'styled-components';
 import { useLanguage } from '../contexts/LanguageContext';
-import OfferCard, { Offer } from '../components/common/OfferCard/OfferCard';
+import OfferCard from '../components/common/OfferCard/OfferCard';
+import { offerToEntity, type Offer, type Entity } from '../types/entity.types';
 import Button from '../components/common/Button/Button';
 import Loading from '../components/common/Loading/Loading';
 
@@ -368,11 +369,12 @@ const allOffers: Offer[] = [
   // Add more offers as needed
 ];
 
+const allEntities = allOffers.map(offerToEntity);
 
 const CategoryListingPage: React.FC = () => {
   const { t } = useLanguage();
   const navigate = useNavigate();
-  const [filteredOffers, setFilteredOffers] = useState<Offer[]>(allOffers);
+  const [filteredOffers, setFilteredOffers] = useState<Entity[]>(allEntities);
   const [sortBy, setSortBy] = useState('relevance');
   const [isLoading] = useState(false);
   const [showMobileFilters, setShowMobileFilters] = useState(false);
@@ -392,30 +394,31 @@ const CategoryListingPage: React.FC = () => {
       const newFilters = { ...prev, [group]: updated };
 
       // Apply filters
-      let filtered = [...allOffers];
+      let filtered = [...allEntities];
 
       if (newFilters.location.length > 0) {
-        filtered = filtered.filter(offer =>
+        filtered = filtered.filter(entity =>
           newFilters.location.some(loc =>
-            offer.location.toLowerCase().includes(loc.toLowerCase())
+            entity.location.display.toLowerCase().includes(loc.toLowerCase())
           )
         );
       }
 
       if (newFilters.discount.length > 0) {
-        filtered = filtered.filter(offer => {
+        filtered = filtered.filter(entity => {
           return newFilters.discount.some(range => {
             const [min, max] = range.split('-').map(Number);
-            return offer.discount >= min && offer.discount <= max;
+            const percent = entity.discount?.percent ?? 0;
+            return percent >= min && percent <= max;
           });
         });
       }
 
       if (newFilters.rating.length > 0) {
-        filtered = filtered.filter(offer => {
+        filtered = filtered.filter(entity => {
           return newFilters.rating.some(range => {
             const [min, max] = range.split('-').map(Number);
-            return (offer.rating || 0) >= min && (offer.rating || 0) <= max;
+            return (entity.rating || 0) >= min && (entity.rating || 0) <= max;
           });
         });
       }
@@ -438,16 +441,16 @@ const CategoryListingPage: React.FC = () => {
 
     switch(newSortBy) {
       case 'discount-high':
-        sorted.sort((a, b) => b.discount - a.discount);
+        sorted.sort((a, b) => (b.discount?.percent ?? 0) - (a.discount?.percent ?? 0));
         break;
       case 'discount-low':
-        sorted.sort((a, b) => a.discount - b.discount);
+        sorted.sort((a, b) => (a.discount?.percent ?? 0) - (b.discount?.percent ?? 0));
         break;
       case 'price-high':
-        sorted.sort((a, b) => b.discountedPrice - a.discountedPrice);
+        sorted.sort((a, b) => (b.discount?.discountedPrice ?? 0) - (a.discount?.discountedPrice ?? 0));
         break;
       case 'price-low':
-        sorted.sort((a, b) => a.discountedPrice - b.discountedPrice);
+        sorted.sort((a, b) => (a.discount?.discountedPrice ?? 0) - (b.discount?.discountedPrice ?? 0));
         break;
       case 'rating':
         sorted.sort((a, b) => (b.rating || 0) - (a.rating || 0));
@@ -625,14 +628,14 @@ const CategoryListingPage: React.FC = () => {
                 <Loading size="large" fullScreen={false} />
               ) : filteredOffers.length > 0 ? (
                 <OffersGrid>
-                  {filteredOffers.map((offer, index) => (
+                  {filteredOffers.map((entity, index) => (
                     <motion.div
-                      key={offer.id}
+                      key={entity.id}
                       initial={{ opacity: 0, y: 20 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ duration: 0.4, delay: index * 0.05 }}
                     >
-                      <OfferCard offer={offer} />
+                      <OfferCard entity={entity} />
                     </motion.div>
                   ))}
                 </OffersGrid>

@@ -25,6 +25,10 @@ const healthLatency = new Trend('health_latency');
 const authLatency = new Trend('auth_latency');
 const venueLatency = new Trend('venue_latency');
 const planLatency = new Trend('plan_latency');
+const registerLatency = new Trend('register_latency');
+const subscriptionLatency = new Trend('subscription_latency');
+const walletLatency = new Trend('wallet_latency');
+const receiptLatency = new Trend('receipt_latency');
 
 // Configuration
 const BASE_URL = __ENV.BASE_URL || 'http://localhost:3001';
@@ -90,6 +94,10 @@ export const options = {
     health_latency: ['p(95)<200'],    // health check < 200ms
     plan_latency: ['p(95)<800'],      // plans listing < 800ms
     venue_latency: ['p(95)<1000'],    // venue listing < 1s
+    register_latency: ['p(95)<2000'], // registration < 2s (creates wallet, card, loyalty)
+    auth_latency: ['p(95)<300'],      // login < 300ms
+    subscription_latency: ['p(95)<1000'], // subscription ops < 1s
+    wallet_latency: ['p(95)<500'],    // wallet ops < 500ms
   },
 };
 
@@ -203,9 +211,160 @@ function test404Handler() {
   });
 }
 
+// ── Authenticated Flow Tests ────────────────────────────────
+
+function testRegistrationFlow() {
+  group('Registration Flow', () => {
+    const uniqueEmail = `loadtest-${__VU}-${__ITER}-${Date.now()}@test.boomcard.bg`;
+
+    const register = http.post(
+      `${BASE_URL}/api/auth/register`,
+      JSON.stringify({
+        email: uniqueEmail,
+        password: 'LoadTest123!',
+        firstName: 'Load',
+        lastName: 'Test',
+        acceptTerms: true,
+      }),
+      { headers: { 'Content-Type': 'application/json' } }
+    );
+    registerLatency.add(register.timings.duration);
+
+    const registered = check(register, {
+      'register: status 201': (r) => r.status === 201,
+      'register: returns tokens': (r) => {
+        try {
+          const body = JSON.parse(r.body);
+          return body.data && body.data.accessToken && body.data.refreshToken;
+        } catch { return false; }
+      },
+    });
+
+    if (!registered) {
+      errorRate.add(1);
+      return null;
+    }
+
+    const body = JSON.parse(register.body);
+    return {
+      accessToken: body.data.accessToken,
+      refreshToken: body.data.refreshToken,
+      userId: body.data.user.id,
+      email: uniqueEmail,
+    };
+  });
+}
+
+function testAuthenticatedSubscription(authData) {
+  if (!authData) return;
+
+  group('Subscription Flow', () => {
+    const headers = {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${authData.accessToken}`,
+    };
+
+    // Get current subscription (should be STANDARD/free)
+    const current = http.get(`${BASE_URL}/api/subscriptions/current`, { headers });
+    subscriptionLatency.add(current.timings.duration);
+    check(current, {
+      'sub/current: status 200': (r) => r.status === 200,
+      'sub/current: returns plan': (r) => {
+        try { return JSON.parse(r.body).plan !== undefined; } catch { return false; }
+      },
+    }) || errorRate.add(1);
+
+    // Get plans
+    const plans = http.get(`${BASE_URL}/api/subscriptions/plans`, { headers });
+    subscriptionLatency.add(plans.timings.duration);
+    check(plans, {
+      'sub/plans: status 200': (r) => r.status === 200,
+      'sub/plans: returns plans': (r) => {
+        try { return JSON.parse(r.body).plans.length === 3; } catch { return false; }
+      },
+    }) || errorRate.add(1);
+  });
+}
+
+function testAuthenticatedWallet(authData) {
+  if (!authData) return;
+
+  group('Wallet Operations', () => {
+    const headers = {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${authData.accessToken}`,
+    };
+
+    // Get wallet balance
+    const balance = http.get(`${BASE_URL}/api/wallet/balance`, { headers });
+    walletLatency.add(balance.timings.duration);
+    check(balance, {
+      'wallet/balance: status 200': (r) => r.status === 200,
+      'wallet/balance: returns balance': (r) => {
+        try { return JSON.parse(r.body).balance !== undefined; } catch { return false; }
+      },
+    }) || errorRate.add(1);
+
+    // Get wallet transactions
+    const transactions = http.get(`${BASE_URL}/api/wallet/transactions`, { headers });
+    walletLatency.add(transactions.timings.duration);
+    check(transactions, {
+      'wallet/tx: status 200': (r) => r.status === 200,
+    }) || errorRate.add(1);
+  });
+}
+
+function testAuthenticatedReceipts(authData) {
+  if (!authData) return;
+
+  group('Receipt Operations', () => {
+    const headers = {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${authData.accessToken}`,
+    };
+
+    // Get receipts
+    const receipts = http.get(`${BASE_URL}/api/receipts`, { headers });
+    receiptLatency.add(receipts.timings.duration);
+    check(receipts, {
+      'receipts: status 200': (r) => r.status === 200,
+    }) || errorRate.add(1);
+
+    // Get receipt stats
+    const stats = http.get(`${BASE_URL}/api/receipts/stats`, { headers });
+    receiptLatency.add(stats.timings.duration);
+    check(stats, {
+      'receipts/stats: status 200': (r) => r.status === 200,
+    }) || errorRate.add(1);
+  });
+}
+
+function testTokenRefresh(authData) {
+  if (!authData) return;
+
+  group('Token Refresh', () => {
+    const refresh = http.post(
+      `${BASE_URL}/api/auth/refresh`,
+      JSON.stringify({ refreshToken: authData.refreshToken }),
+      { headers: { 'Content-Type': 'application/json' } }
+    );
+    authLatency.add(refresh.timings.duration);
+    check(refresh, {
+      'refresh: status 200': (r) => r.status === 200,
+      'refresh: returns new tokens': (r) => {
+        try {
+          const body = JSON.parse(r.body);
+          return body.data && body.data.accessToken;
+        } catch { return false; }
+      },
+    }) || errorRate.add(1);
+  });
+}
+
 // ── Main Test Runner ────────────────────────────────────────
 
 export default function () {
+  // 1. Public endpoints (always run)
   testHealthEndpoints();
   sleep(0.5);
 
@@ -221,6 +380,23 @@ export default function () {
   // Only run rate limit test occasionally (10% of iterations)
   if (Math.random() < 0.1) {
     testRateLimiting();
+  }
+
+  // 2. Authenticated flows (run 30% of iterations to avoid overwhelming DB with registrations)
+  if (Math.random() < 0.3) {
+    const authData = testRegistrationFlow();
+    sleep(0.3);
+
+    testAuthenticatedSubscription(authData);
+    sleep(0.3);
+
+    testAuthenticatedWallet(authData);
+    sleep(0.3);
+
+    testAuthenticatedReceipts(authData);
+    sleep(0.3);
+
+    testTokenRefresh(authData);
   }
 
   sleep(1);

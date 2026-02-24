@@ -5,31 +5,88 @@ import styled from 'styled-components';
 import Badge from '../Badge/Badge';
 import FavoriteButton from '../FavoriteButton/FavoriteButton';
 import { useLanguage } from '../../../contexts/LanguageContext';
+import type { Entity, CardEntity } from '../../../types/entity.types';
 
-export interface Offer {
+interface OfferCardProps {
+  /** Unified entity data */
+  entity: Entity | CardEntity;
+  className?: string;
+  /** Callback when "Book" CTA is clicked (experience cards). Prevents navigation. */
+  onBookClick?: (entity: Entity | CardEntity) => void;
+}
+
+// Normalized card data shape (internal)
+interface CardData {
   id: string;
   title: string;
-  titleBg: string;
   description: string;
-  descriptionBg: string;
   category: string;
-  categoryBg: string;
   location: string;
+  imageUrl: string;
   discount: number;
   originalPrice: number;
   discountedPrice: number;
-  imageUrl: string;
-  partnerName: string;
   rating?: number;
   reviewCount?: number;
   workingHours?: string;
-  workingHoursBg?: string;
   path: string;
+  partnerName: string;
+  tags?: string[];
+  // Fields for FavoriteButton legacy shape
+  titleEn: string;
+  titleBg: string;
+  categoryEn: string;
+  categoryBg: string;
+  // Experience-specific fields
+  isExperience?: boolean;
+  durationDisplay?: string;
+  experienceType?: string;
+  price?: number;
+  savings?: number;
 }
 
-interface OfferCardProps {
-  offer: Offer;
-  className?: string;
+function normalizeEntity(entity: Entity | CardEntity, language: 'en' | 'bg'): CardData {
+  const exp = entity.experience;
+  const originalPrice = entity.discount?.originalPrice ?? exp?.price ?? 0;
+  const discountedPrice = entity.discount?.discountedPrice ?? 0;
+
+  return {
+    id: entity.id,
+    title: language === 'bg' ? entity.name.bg : entity.name.en,
+    description: language === 'bg' ? entity.description.bg : entity.description.en,
+    category: language === 'bg' ? entity.category.bg : entity.category.en,
+    location: entity.location.displayBg && language === 'bg'
+      ? entity.location.displayBg
+      : entity.location.display,
+    imageUrl: entity.images.hero,
+    discount: entity.discount?.percent ?? 0,
+    originalPrice,
+    discountedPrice,
+    rating: entity.rating,
+    reviewCount: entity.reviewCount,
+    workingHours: language === 'bg'
+      ? (entity.workingHours?.displayBg || entity.workingHours?.display)
+      : (entity.workingHours?.display || entity.workingHours?.displayBg),
+    path: entity.path,
+    partnerName: entity.partnerName
+      ? (language === 'bg' ? entity.partnerName.bg : entity.partnerName.en)
+      : '',
+    tags: entity.tags?.slice(0, 2).map(t => language === 'bg' ? t.bg : t.en),
+    titleEn: entity.name.en,
+    titleBg: entity.name.bg,
+    categoryEn: entity.category.en,
+    categoryBg: entity.category.bg,
+    // Experience-specific
+    isExperience: entity.kind === 'experience' || !!exp,
+    durationDisplay: exp
+      ? (language === 'bg' ? exp.durationDisplay.bg : exp.durationDisplay.en)
+      : undefined,
+    experienceType: exp?.type,
+    price: exp?.price,
+    savings: originalPrice > 0 && discountedPrice > 0
+      ? originalPrice - discountedPrice
+      : 0,
+  };
 }
 
 const CardContainer = styled(motion.div)`
@@ -176,6 +233,10 @@ const Content = styled.div`
 `;
 
 const CategoryBadgeWrapper = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  flex-wrap: wrap;
   margin-bottom: 0.5rem;
 `;
 
@@ -259,7 +320,7 @@ const RatingStars = styled.div`
   gap: 1px;
 `;
 
-const WorkingHours = styled.div`
+const WorkingHoursDisplay = styled.div`
   display: flex;
   align-items: center;
   gap: 0.3rem;
@@ -269,6 +330,69 @@ const WorkingHours = styled.div`
   svg {
     flex-shrink: 0;
   }
+`;
+
+const DurationBadge = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+
+  svg {
+    flex-shrink: 0;
+    color: var(--color-primary);
+  }
+`;
+
+const ExperienceTypeBadge = styled.span<{ $type?: string }>`
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2rem 0.5rem;
+  border-radius: 0.375rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  background: ${props =>
+    props.$type === 'vip' ? 'rgba(245, 158, 11, 0.12)' :
+    props.$type === 'private' ? 'rgba(139, 92, 246, 0.12)' :
+    'rgba(59, 130, 246, 0.12)'
+  };
+  color: ${props =>
+    props.$type === 'vip' ? '#b45309' :
+    props.$type === 'private' ? '#6d28d9' :
+    '#1d4ed8'
+  };
+  border: 1px solid ${props =>
+    props.$type === 'vip' ? 'rgba(245, 158, 11, 0.25)' :
+    props.$type === 'private' ? 'rgba(139, 92, 246, 0.25)' :
+    'rgba(59, 130, 246, 0.25)'
+  };
+`;
+
+const PriceDisplay = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+`;
+
+const OriginalPrice = styled.span`
+  text-decoration: line-through;
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.45);
+`;
+
+const FinalPrice = styled.span`
+  font-size: 1.0625rem;
+  font-weight: 800;
+  color: #ffffff;
+  letter-spacing: -0.02em;
+`;
+
+const SavingsText = styled.span`
+  font-size: 0.6875rem;
+  color: #34d399;
+  font-weight: 600;
 `;
 
 const DiscountSection = styled.div`
@@ -345,7 +469,7 @@ const CTAButton = styled.span`
   align-items: center;
   gap: 0.375rem;
   padding: 0.5rem 1rem;
-  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #a855f7 100%);
+  background: linear-gradient(135deg, #16a34a 0%, #22c55e 50%, #4ade80 100%);
   color: #ffffff;
   font-size: 0.75rem;
   font-weight: 700;
@@ -354,11 +478,11 @@ const CTAButton = styled.span`
   position: relative;
   z-index: 1;
   transition: all 300ms cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.35);
+  box-shadow: 0 2px 8px rgba(22, 163, 74, 0.35);
 
   ${CardContainer}:hover & {
-    background: linear-gradient(135deg, #818cf8 0%, #a78bfa 50%, #c084fc 100%);
-    box-shadow: 0 4px 16px rgba(139, 92, 246, 0.5);
+    background: linear-gradient(135deg, #22c55e 0%, #4ade80 50%, #86efac 100%);
+    box-shadow: 0 4px 16px rgba(34, 197, 94, 0.5);
     transform: scale(1.05);
   }
 
@@ -406,61 +530,82 @@ const renderStars = (rating: number) => {
   return stars;
 };
 
-export const OfferCard: React.FC<OfferCardProps> = ({ offer, className }) => {
-  const { language } = useLanguage();
-  const title = language === 'bg' ? offer.titleBg : offer.title;
-  const description = language === 'bg' ? offer.descriptionBg : offer.description;
-  const category = language === 'bg' ? offer.categoryBg : offer.category;
-  const workingHours = language === 'bg'
-    ? (offer.workingHoursBg || offer.workingHours)
-    : (offer.workingHours || offer.workingHoursBg);
+const localizeType = (type: string, lang: string) => {
+  const map: Record<string, { en: string; bg: string }> = {
+    group: { en: 'Group', bg: 'Групово' },
+    private: { en: 'Private', bg: 'Частно' },
+    vip: { en: 'VIP', bg: 'VIP' },
+  };
+  return lang === 'bg' ? (map[type]?.bg ?? type) : (map[type]?.en ?? type);
+};
 
-  const discountPct = Math.min(offer.discount, 20);
+const formatCurrency = (amount: number) => `€${amount.toFixed(0)}`;
+
+export const OfferCard: React.FC<OfferCardProps> = ({ entity, className, onBookClick }) => {
+  const { language } = useLanguage();
+
+  const data = normalizeEntity(entity, language as 'en' | 'bg');
+
+  const discountPct = Math.min(data.discount, 20);
   const subscriptionNote = language === 'bg'
     ? `до ${discountPct}% отстъпка според абонаментния план`
     : `up to ${discountPct}% discount based on subscription plan`;
 
   const ctaLabel = language === 'bg' ? 'Виж офертата' : 'View offer';
 
+  const handleCardClick = (e: React.MouseEvent) => {
+    if (onBookClick && entity && data.isExperience) {
+      e.preventDefault();
+      onBookClick(entity);
+    }
+  };
+
   return (
-    <Link to={offer.path} style={{ textDecoration: 'none' }}>
+    <Link to={data.path} style={{ textDecoration: 'none' }} onClick={handleCardClick}>
       <CardContainer
         className={className}
         whileHover={{ y: -4 }}
         transition={{ duration: 0.3 }}
       >
         <ImageContainer>
-          <Image src={offer.imageUrl} alt={title} loading="lazy" />
+          <Image src={data.imageUrl} alt={data.title} loading="lazy" />
           <FavoriteButtonWrapper onClick={(e) => e.preventDefault()}>
             <FavoriteButton
-              offerId={offer.id}
+              offerId={data.id}
               offerData={{
-                title: offer.title,
-                titleBg: offer.titleBg,
-                category: offer.category,
-                categoryBg: offer.categoryBg,
-                location: offer.location,
-                discount: offer.discount,
-                originalPrice: offer.originalPrice,
-                discountedPrice: offer.discountedPrice,
-                imageUrl: offer.imageUrl,
-                path: offer.path
+                title: data.titleEn,
+                titleBg: data.titleBg,
+                category: data.categoryEn,
+                categoryBg: data.categoryBg,
+                location: data.location,
+                discount: data.discount,
+                originalPrice: data.originalPrice,
+                discountedPrice: data.discountedPrice,
+                imageUrl: data.imageUrl,
+                path: data.path
               }}
               size="small"
             />
           </FavoriteButtonWrapper>
-          <DiscountBadge>
-            {Math.min(offer.discount, 20)}%
-          </DiscountBadge>
+          {data.discount > 0 && (
+            <DiscountBadge>
+              {data.isExperience
+                ? (language === 'bg' ? `До ${discountPct}% с BOOM` : `Up to ${discountPct}% BOOM`)
+                : `${discountPct}%`}
+            </DiscountBadge>
+          )}
         </ImageContainer>
 
         <Content>
           <CategoryBadgeWrapper>
-            <Badge variant="default">{category}</Badge>
+            <Badge variant="default">{data.category}</Badge>
+            {data.tags && data.tags.map((tag, i) => (
+              <Badge key={i} variant="info" size="small">{tag}</Badge>
+            ))}
           </CategoryBadgeWrapper>
 
-          <Title>{title}</Title>
-          <Description>{description}</Description>
+          <Title>{data.title}</Title>
+          <Description>{data.description}</Description>
 
           <MetaInfo>
             <MetaRow>
@@ -469,10 +614,26 @@ export const OfferCard: React.FC<OfferCardProps> = ({ offer, className }) => {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
                 </svg>
-                <span>{offer.location}</span>
+                <span>{data.location}</span>
               </Location>
 
-              {offer.rating && (
+              {data.durationDisplay && (
+                <DurationBadge>
+                  <svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <circle cx="12" cy="12" r="10" strokeWidth={2} />
+                    <path strokeLinecap="round" strokeWidth={2} d="M12 6v6l4 2" />
+                  </svg>
+                  <span>{data.durationDisplay}</span>
+                </DurationBadge>
+              )}
+
+              {data.experienceType && (
+                <ExperienceTypeBadge $type={data.experienceType}>
+                  {localizeType(data.experienceType, language)}
+                </ExperienceTypeBadge>
+              )}
+
+              {data.rating && (
                 <GoogleRating>
                   <GoogleIcon>
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
@@ -483,35 +644,55 @@ export const OfferCard: React.FC<OfferCardProps> = ({ offer, className }) => {
                     </svg>
                   </GoogleIcon>
                   <RatingStars>
-                    {renderStars(offer.rating)}
+                    {renderStars(data.rating)}
                   </RatingStars>
                   <span style={{ fontWeight: 700, fontSize: '0.75rem', color: 'var(--color-text-primary)' }}>
-                    {offer.rating.toFixed(1)}
+                    {data.rating.toFixed(1)}
                   </span>
-                  {offer.reviewCount && (
+                  {data.reviewCount && (
                     <span style={{ fontSize: '0.6875rem', color: 'var(--color-text-tertiary, #9ca3af)' }}>
-                      ({offer.reviewCount})
+                      ({data.reviewCount})
                     </span>
                   )}
                 </GoogleRating>
               )}
             </MetaRow>
 
-            {workingHours && (
-              <WorkingHours>
+            {data.workingHours && (
+              <WorkingHoursDisplay>
                 <svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <circle cx="12" cy="12" r="10" strokeWidth={2} />
                   <path strokeLinecap="round" strokeWidth={2} d="M12 6v6l4 2" />
                 </svg>
-                <span>{workingHours}</span>
-              </WorkingHours>
+                <span>{data.workingHours}</span>
+              </WorkingHoursDisplay>
             )}
           </MetaInfo>
 
           <DiscountSection>
-            <SubscriptionNote>{subscriptionNote}</SubscriptionNote>
+            {data.isExperience && data.originalPrice > 0 ? (
+              <PriceDisplay>
+                {data.discountedPrice > 0 && data.discountedPrice < data.originalPrice && (
+                  <OriginalPrice>{formatCurrency(data.originalPrice)}</OriginalPrice>
+                )}
+                <FinalPrice>
+                  {formatCurrency(data.discountedPrice > 0 ? data.discountedPrice : data.originalPrice)}
+                </FinalPrice>
+                {(data.savings ?? 0) > 0 && (
+                  <SavingsText>
+                    {language === 'bg'
+                      ? `Спестяваш ${formatCurrency(data.savings!)}`
+                      : `You save ${formatCurrency(data.savings!)}`}
+                  </SavingsText>
+                )}
+              </PriceDisplay>
+            ) : (
+              <SubscriptionNote>{subscriptionNote}</SubscriptionNote>
+            )}
             <CTAButton>
-              {ctaLabel}
+              {data.isExperience
+                ? (language === 'bg' ? 'Резервирай с BOOM Card' : 'Book with BOOM Card')
+                : ctaLabel}
               <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
               </svg>

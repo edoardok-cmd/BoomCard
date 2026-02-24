@@ -18,6 +18,9 @@
     "submit:ios": "./scripts/submit.sh ios",
     "submit:android": "./scripts/submit.sh android",
     "submit:all": "./scripts/submit.sh all",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
     "typecheck": "tsc --noEmit",
     "build-list": "eas build:list",
     "credentials:ios": "eas credentials -p ios",
@@ -65,7 +68,11 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
+    "@testing-library/jest-native": "^5.4.3",
+    "@testing-library/react-native": "^13.3.3",
+    "@types/jest": "^30.0.0",
     "@types/react": "~19.1.0",
+    "jest-expo": "^54.0.17",
     "typescript": "~5.9.2"
   },
   "private": true

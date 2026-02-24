@@ -1,5 +1,6 @@
 import { apiService } from './api.service';
-import { Offer } from '../components/common/OfferCard/OfferCard';
+import type { Offer } from '../types/entity.types';
+import { Entity, venueToEntity } from '../types/entity.types';
 
 // Types
 export interface Venue {
@@ -168,6 +169,43 @@ class VenuesService {
    */
   async deleteImage(venueId: string, imageUrl: string): Promise<void> {
     return apiService.delete<void>(`${this.baseUrl}/${venueId}/images`, { data: { imageUrl } });
+  }
+
+  // ============================================================
+  // Entity-based methods (unified model)
+  // ============================================================
+
+  /**
+   * Get venues as Entity[] (unified format)
+   */
+  async getVenueEntities(filters?: VenueFilters): Promise<PaginatedResponse<Entity>> {
+    const response = await this.getVenues(filters);
+    return {
+      ...response,
+      data: response.data.map(venue => venueToEntity(venue)),
+    };
+  }
+
+  /**
+   * Get venues by category as Entity[]
+   */
+  async getVenueEntitiesByCategory(category: string, filters?: VenueFilters): Promise<PaginatedResponse<Entity>> {
+    const response = await this.getVenuesByCategory(category, filters);
+    return {
+      ...response,
+      data: response.data.map(venue => venueToEntity(venue)),
+    };
+  }
+
+  /**
+   * Get venues by city as Entity[]
+   */
+  async getVenueEntitiesByCity(city: string, filters?: VenueFilters): Promise<PaginatedResponse<Entity>> {
+    const response = await this.getVenuesByCity(city, filters);
+    return {
+      ...response,
+      data: response.data.map(venue => venueToEntity(venue)),
+    };
   }
 }
 

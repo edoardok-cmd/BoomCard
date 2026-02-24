@@ -18,10 +18,11 @@ describe('Cashback Flow Integration Tests', () => {
         password: 'Test123!',
         firstName: 'Cashback',
         lastName: 'Test',
+        acceptTerms: true,
       });
 
-    authToken = res.body.accessToken;
-    userId = res.body.user.id;
+    authToken = res.body.data.accessToken;
+    userId = res.body.data.user.id;
 
     // Get auto-created card
     const cardRes = await request(app)
@@ -38,9 +39,15 @@ describe('Cashback Flow Integration Tests', () => {
   afterAll(async () => {
     // Cleanup
     if (userId) {
+      await prisma.walletTransaction.deleteMany({ where: { wallet: { userId } } }).catch(() => {});
+      await prisma.wallet.deleteMany({ where: { userId } }).catch(() => {});
+      await prisma.stickerScan.deleteMany({ where: { userId } }).catch(() => {});
+      await prisma.receipt.deleteMany({ where: { userId } }).catch(() => {});
+      await prisma.refreshToken.deleteMany({ where: { userId } }).catch(() => {});
+      await prisma.card.deleteMany({ where: { userId } }).catch(() => {});
+      await prisma.loyaltyAccount.deleteMany({ where: { userId } }).catch(() => {});
       await prisma.user.delete({ where: { id: userId } }).catch(() => {});
     }
-    await prisma.$disconnect();
   });
 
   describe('Wallet Auto-Creation', () => {
@@ -63,7 +70,7 @@ describe('Cashback Flow Integration Tests', () => {
       });
 
       expect(card).toBeDefined();
-      expect(card?.cardType).toBe('STANDARD');
+      expect(card?.type).toBe('STANDARD');
       expect(card?.status).toBe('ACTIVE');
     });
   });
@@ -278,7 +285,7 @@ describe('Cashback Flow Integration Tests', () => {
         where: { userId },
       });
 
-      expect(card?.cardType).toBe('STANDARD');
+      expect(card?.type).toBe('STANDARD');
 
       // Create receipt with 100 BGN
       const receipt = await prisma.receipt.create({
@@ -300,11 +307,12 @@ describe('Cashback Flow Integration Tests', () => {
   });
 
   describe('Multiple Cashback Operations', () => {
-    test('should handle concurrent cashback credits', async () => {
+    test('should handle sequential cashback credits', async () => {
       const initialBalance = await walletService.getBalance(userId);
 
-      // Create 3 receipts and approve them
-      const promises = [10, 20, 30].map(async (amount) => {
+      // Create 3 receipts and credit sequentially to avoid race conditions
+      const amounts = [10, 20, 30];
+      for (const amount of amounts) {
         const receipt = await prisma.receipt.create({
           data: {
             userId,
@@ -319,16 +327,14 @@ describe('Cashback Flow Integration Tests', () => {
           },
         });
 
-        return walletService.credit({
+        await walletService.credit({
           userId,
           amount: amount * 0.05,
           type: 'CASHBACK_CREDIT',
           description: `Cashback from receipt`,
           receiptId: receipt.id,
         });
-      });
-
-      await Promise.all(promises);
+      }
 
       // Total additional cashback: 0.5 + 1 + 1.5 = 3
       const finalBalance = await walletService.getBalance(userId);

@@ -8,6 +8,21 @@ node_modules/
 android/
 ios/
 .expo/
+dist/
+
+# Test files (not needed for build)
+__tests__/
+src/__tests__/
+jest.config.js
+jest.setup.js
+*.test.ts
+*.test.tsx
+*.spec.ts
+*.spec.tsx
+
+# Documentation (not needed for build)
+*.md
+!README.md
 
 # IDE and editor files
 .vscode/

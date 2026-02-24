@@ -8,15 +8,17 @@
 
 import React, { useState, useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { View, ActivityIndicator } from 'react-native';
+import { View } from 'react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import * as SecureStore from 'expo-secure-store';
 import { ThemeProvider } from './src/contexts/ThemeContext';
 import { AuthProvider } from './src/store/AuthContext';
 import AppNavigator from './src/navigation/AppNavigator';
 import LanguageSelectionScreen from './src/screens/LanguageSelectionScreen';
+import BrandSplash from './src/components/brand/BrandSplash';
 import Toast from 'react-native-toast-message';
 import { STORAGE_KEYS } from './src/constants/config';
+import StorageService from './src/services/storage.service';
 import './src/i18n'; // Initialize i18n
 import { warmupApi } from './src/utils/apiWarmup';
 
@@ -33,8 +35,16 @@ const queryClient = new QueryClient({
 
 export default function App() {
   const [languageSelected, setLanguageSelected] = useState<boolean | null>(null);
+  const [splashComplete, setSplashComplete] = useState(false);
+  const [appReady, setAppReady] = useState(false);
+  const [initialDarkMode, setInitialDarkMode] = useState(false);
 
   useEffect(() => {
+    // Read theme preference early for splash theming
+    StorageService.getTheme()
+      .then(t => setInitialDarkMode(t === 'dark'))
+      .catch(() => {});
+
     checkLanguageSelection();
     // Warm up the API server in the background (helps with Render cold starts)
     warmupApi().catch(err => console.log('API warmup failed:', err));
@@ -47,6 +57,8 @@ export default function App() {
     } catch (error) {
       console.error('Error checking language selection:', error);
       setLanguageSelected(false);
+    } finally {
+      setAppReady(true);
     }
   };
 
@@ -54,30 +66,37 @@ export default function App() {
     setLanguageSelected(true);
   };
 
-  // Show loading while checking language selection
-  if (languageSelected === null) {
-    return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#FFFFFF' }}>
-        <ActivityIndicator size="large" color="#4F46E5" />
-      </View>
-    );
-  }
-
-  // Show language selection screen if not selected yet
-  if (!languageSelected) {
-    return <LanguageSelectionScreen onLanguageSelected={handleLanguageSelected} />;
-  }
-
-  // Show main app
   return (
-    <QueryClientProvider client={queryClient}>
-      <ThemeProvider>
-        <AuthProvider>
-          <StatusBar style="auto" />
-          <AppNavigator />
-          <Toast />
-        </AuthProvider>
-      </ThemeProvider>
-    </QueryClientProvider>
+    <View style={{ flex: 1 }}>
+      {/* Render underlying content (loads behind splash overlay) */}
+      {languageSelected === false ? (
+        <ThemeProvider>
+          <LanguageSelectionScreen onLanguageSelected={handleLanguageSelected} />
+        </ThemeProvider>
+      ) : languageSelected === true ? (
+        <QueryClientProvider client={queryClient}>
+          <ThemeProvider>
+            <AuthProvider>
+              <StatusBar style="auto" />
+              <AppNavigator />
+              <Toast />
+            </AuthProvider>
+          </ThemeProvider>
+        </QueryClientProvider>
+      ) : (
+        // While language check is pending, render nothing (splash covers it)
+        <View style={{ flex: 1 }} />
+      )}
+
+      {/* Brand splash overlay - covers everything until animation completes */}
+      {!splashComplete && (
+        <BrandSplash
+          isAppReady={appReady}
+          isDarkMode={initialDarkMode}
+          showCardReveal={languageSelected !== false}
+          onComplete={() => setSplashComplete(true)}
+        />
+      )}
+    </View>
   );
 }

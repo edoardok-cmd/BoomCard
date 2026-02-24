@@ -142,7 +142,108 @@ const CookiePolicyPage: React.FC = () => {
                 </tbody>
               </table>
 
-              <h2>4. Как да управлявате бисквитките?</h2>
+              <h2>4. Пълен Списък на Бисквитките</h2>
+
+              <h3>Задължителни бисквитки</h3>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Име</th>
+                    <th>Доставчик</th>
+                    <th>Цел</th>
+                    <th>Тип</th>
+                    <th>Продълж.</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>boomcard_auth</td>
+                    <td>BoomCard</td>
+                    <td>JWT токен за автентикация</td>
+                    <td>localStorage</td>
+                    <td>15 мин</td>
+                  </tr>
+                  <tr>
+                    <td>boomcard_refresh</td>
+                    <td>BoomCard</td>
+                    <td>Refresh токен за подновяване на сесия</td>
+                    <td>localStorage</td>
+                    <td>7 дни</td>
+                  </tr>
+                  <tr>
+                    <td>boomcard_cookie_consent</td>
+                    <td>BoomCard</td>
+                    <td>Записва предпочитанията ви за бисквитки</td>
+                    <td>localStorage</td>
+                    <td>1 година</td>
+                  </tr>
+                  <tr>
+                    <td>boomcard_language</td>
+                    <td>BoomCard</td>
+                    <td>Запомня избрания език (en/bg)</td>
+                    <td>localStorage</td>
+                    <td>Постоянно</td>
+                  </tr>
+                  <tr>
+                    <td>boomcard_theme</td>
+                    <td>BoomCard</td>
+                    <td>Запомня избраната тема (светла/тъмна)</td>
+                    <td>localStorage</td>
+                    <td>Постоянно</td>
+                  </tr>
+                </tbody>
+              </table>
+
+              <h3>Бисквитки за анализ</h3>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Име</th>
+                    <th>Доставчик</th>
+                    <th>Цел</th>
+                    <th>Тип</th>
+                    <th>Продълж.</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>_ga</td>
+                    <td>Google Analytics</td>
+                    <td>Уникален идентификатор за разграничаване на потребители</td>
+                    <td>Бисквитка</td>
+                    <td>2 години</td>
+                  </tr>
+                  <tr>
+                    <td>_ga_*</td>
+                    <td>Google Analytics</td>
+                    <td>Поддържа състоянието на сесията</td>
+                    <td>Бисквитка</td>
+                    <td>2 години</td>
+                  </tr>
+                  <tr>
+                    <td>_gid</td>
+                    <td>Google Analytics</td>
+                    <td>Уникален идентификатор за сесия (24 часа)</td>
+                    <td>Бисквитка</td>
+                    <td>24 часа</td>
+                  </tr>
+                  <tr>
+                    <td>_gat</td>
+                    <td>Google Analytics</td>
+                    <td>Ограничаване на честотата на заявки</td>
+                    <td>Бисквитка</td>
+                    <td>1 мин</td>
+                  </tr>
+                </tbody>
+              </table>
+
+              <h3>Маркетинг бисквитки</h3>
+              <p>
+                Към момента BoomCard не използва маркетинг бисквитки. Ако бъдат добавени в бъдеще,
+                ще актуализираме тази политика и ще поискаме вашето съгласие.
+              </p>
+
+              <h2>5. Как да управлявате бисквитките?</h2>
               <p>
                 Можете да управлявате предпочитанията си за бисквитки по всяко време чрез бутона по-долу
                 или чрез настройките на вашия браузър.
@@ -151,7 +252,7 @@ const CookiePolicyPage: React.FC = () => {
                 <strong>Внимание:</strong> Блокирането на някои бисквитки може да повлияе на функционалността на сайта.
               </p>
 
-              <h2>5. Вашите права</h2>
+              <h2>6. Вашите права</h2>
               <p>
                 Съгласно GDPR, имате право да:
               </p>
@@ -159,10 +260,11 @@ const CookiePolicyPage: React.FC = () => {
                 <li>Получите информация за обработваните данни</li>
                 <li>Поискате изтриване на вашите данни</li>
                 <li>Оттеглите съгласието си по всяко време</li>
-                <li>Подадете жалба до надзорния орган</li>
+                <li>Подадете жалба до надзорния орган (КЗЛД)</li>
               </ul>
+              <p>За повече информация вижте нашата <a href="/privacy">Политика за Поверителност</a>.</p>
 
-              <h2>6. Контакти</h2>
+              <h2>7. Контакти</h2>
               <p>
                 Ако имате въпроси относно нашата политика за бисквитки, можете да се свържете с нас на:
                 <a href="mailto:privacy@boomcard.bg"> privacy@boomcard.bg</a>
@@ -230,7 +332,108 @@ const CookiePolicyPage: React.FC = () => {
                 </tbody>
               </table>
 
-              <h2>4. How to manage cookies?</h2>
+              <h2>4. Complete Cookie Inventory</h2>
+
+              <h3>Essential Cookies</h3>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Provider</th>
+                    <th>Purpose</th>
+                    <th>Type</th>
+                    <th>Duration</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>boomcard_auth</td>
+                    <td>BoomCard</td>
+                    <td>JWT authentication token</td>
+                    <td>localStorage</td>
+                    <td>15 min</td>
+                  </tr>
+                  <tr>
+                    <td>boomcard_refresh</td>
+                    <td>BoomCard</td>
+                    <td>Refresh token for session renewal</td>
+                    <td>localStorage</td>
+                    <td>7 days</td>
+                  </tr>
+                  <tr>
+                    <td>boomcard_cookie_consent</td>
+                    <td>BoomCard</td>
+                    <td>Stores your cookie preferences</td>
+                    <td>localStorage</td>
+                    <td>1 year</td>
+                  </tr>
+                  <tr>
+                    <td>boomcard_language</td>
+                    <td>BoomCard</td>
+                    <td>Remembers selected language (en/bg)</td>
+                    <td>localStorage</td>
+                    <td>Persistent</td>
+                  </tr>
+                  <tr>
+                    <td>boomcard_theme</td>
+                    <td>BoomCard</td>
+                    <td>Remembers selected theme (light/dark)</td>
+                    <td>localStorage</td>
+                    <td>Persistent</td>
+                  </tr>
+                </tbody>
+              </table>
+
+              <h3>Analytics Cookies</h3>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Provider</th>
+                    <th>Purpose</th>
+                    <th>Type</th>
+                    <th>Duration</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>_ga</td>
+                    <td>Google Analytics</td>
+                    <td>Unique identifier to distinguish users</td>
+                    <td>Cookie</td>
+                    <td>2 years</td>
+                  </tr>
+                  <tr>
+                    <td>_ga_*</td>
+                    <td>Google Analytics</td>
+                    <td>Maintains session state</td>
+                    <td>Cookie</td>
+                    <td>2 years</td>
+                  </tr>
+                  <tr>
+                    <td>_gid</td>
+                    <td>Google Analytics</td>
+                    <td>Unique session identifier (24 hours)</td>
+                    <td>Cookie</td>
+                    <td>24 hours</td>
+                  </tr>
+                  <tr>
+                    <td>_gat</td>
+                    <td>Google Analytics</td>
+                    <td>Request rate throttling</td>
+                    <td>Cookie</td>
+                    <td>1 min</td>
+                  </tr>
+                </tbody>
+              </table>
+
+              <h3>Marketing Cookies</h3>
+              <p>
+                Currently, BoomCard does not use marketing cookies. If they are added in the future,
+                we will update this policy and request your consent.
+              </p>
+
+              <h2>5. How to manage cookies?</h2>
               <p>
                 You can manage your cookie preferences at any time using the button below
                 or through your browser settings.
@@ -239,7 +442,7 @@ const CookiePolicyPage: React.FC = () => {
                 <strong>Note:</strong> Blocking some cookies may affect the functionality of the site.
               </p>
 
-              <h2>5. Your Rights</h2>
+              <h2>6. Your Rights</h2>
               <p>
                 Under GDPR, you have the right to:
               </p>
@@ -247,10 +450,11 @@ const CookiePolicyPage: React.FC = () => {
                 <li>Receive information about processed data</li>
                 <li>Request deletion of your data</li>
                 <li>Withdraw your consent at any time</li>
-                <li>File a complaint with the supervisory authority</li>
+                <li>File a complaint with the supervisory authority (CPDP)</li>
               </ul>
+              <p>For more information, see our <a href="/privacy">Privacy Policy</a>.</p>
 
-              <h2>6. Contact</h2>
+              <h2>7. Contact</h2>
               <p>
                 If you have questions about our cookie policy, you can contact us at:
                 <a href="mailto:privacy@boomcard.bg"> privacy@boomcard.bg</a>

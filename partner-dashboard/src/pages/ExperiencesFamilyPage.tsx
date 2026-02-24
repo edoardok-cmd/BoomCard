@@ -1,21 +1,13 @@
 import React, { useState } from 'react';
 import GenericPage from '../components/templates/GenericPage';
-import { useOffersByCategory } from '../hooks/useOffers';
-import ExperiencesFilters, { ExperiencesFiltersState } from '../components/common/ExperiencesFilters';
+import { useEntitiesByCategory } from '../hooks/useOffers';
+import ExperiencesFilters, { defaultExperiencesFilters, type ExperiencesFiltersState } from '../components/common/ExperiencesFilters';
 
 const ExperiencesFamilyPage: React.FC = () => {
-  const { data, isLoading } = useOffersByCategory('family-activities');
-  const offers = data?.data || [];
+  const { data, isLoading } = useEntitiesByCategory('family-activities');
+  const entities = data?.data || [];
 
-  const [filters, setFilters] = useState<ExperiencesFiltersState>({
-    categories: [],
-    durations: [],
-    formats: [],
-    seasons: [],
-    participations: [],
-    ratingRanges: [],
-    priceLevels: [],
-  });
+  const [filters, setFilters] = useState<ExperiencesFiltersState>(defaultExperiencesFilters);
 
   return (
     <GenericPage
@@ -23,7 +15,7 @@ const ExperiencesFamilyPage: React.FC = () => {
       titleBg="Семейни Изживявания"
       subtitleEn="Fun for the whole family: Zoos, Theme parks, and Family-friendly activities"
       subtitleBg="Забавление за цялото семейство: Зоопаркове, Тематични паркове и Семейни дейности"
-      offers={offers}
+      entities={entities}
       isLoading={isLoading}
       filters={<ExperiencesFilters filters={filters} onChange={setFilters} />}
     />

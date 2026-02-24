@@ -42,6 +42,14 @@ model User {
   emailVerifiedAt  DateTime?
   lastLoginAt      DateTime?
   stripeCustomerId String?    @unique // Stripe customer ID for payments
+
+  // GDPR Consent Tracking
+  termsAcceptedAt    DateTime?
+  privacyAcceptedAt  DateTime?
+  termsVersion       String?    // e.g. "2026-02-24"
+  marketingConsent   Boolean    @default(false)
+  marketingConsentAt DateTime?
+
   createdAt        DateTime   @default(now())
   updatedAt        DateTime   @updatedAt
 

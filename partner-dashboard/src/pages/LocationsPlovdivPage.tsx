@@ -1,18 +1,18 @@
 import React from 'react';
 import GenericPage from '../components/templates/GenericPage';
-import { useOffersByCity } from '../hooks/useOffers';
+import { useEntitiesByCity } from '../hooks/useOffers';
 
 const LocationsPlovdivPage: React.FC = () => {
-  const { data, isLoading } = useOffersByCity('Plovdiv');
-  const offers = data?.data || [];
+  const { data, isLoading } = useEntitiesByCity('Plovdiv');
+  const entities = data?.data || [];
 
   return (
     <GenericPage
-      titleEn={`Plovdiv (${offers.length} Offers)`}
-      titleBg={`Пловдив (${offers.length} Оферти)`}
+      titleEn={`Plovdiv (${entities.length} Offers)`}
+      titleBg={`Пловдив (${entities.length} Оферти)`}
       subtitleEn="Experience Bulgaria's cultural capital with exclusive venue offers"
       subtitleBg="Изживейте културната столица на България с ексклузивни оферти"
-      offers={offers}
+      entities={entities}
       isLoading={isLoading}
     />
   );

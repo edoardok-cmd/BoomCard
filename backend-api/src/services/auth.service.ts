@@ -7,6 +7,7 @@ import { logger } from '../utils/logger';
 import { cardService } from './card.service';
 import { walletService } from './wallet.service';
 import { UserStatus } from '@prisma/client';
+import { emailService } from './email.service';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'fallback-secret-for-dev';
 const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'fallback-refresh-secret';
@@ -19,6 +20,7 @@ export interface RegisterInput {
   firstName?: string;
   lastName?: string;
   phone?: string;
+  acceptTerms?: boolean;
 }
 
 export interface LoginInput {
@@ -43,7 +45,7 @@ export class AuthService {
    * Register a new user
    */
   static async register(input: RegisterInput) {
-    const { email, password, firstName, lastName, phone } = input;
+    const { email, password, firstName, lastName, phone, acceptTerms } = input;
 
     // Check if user already exists
     const existingUser = await prisma.user.findUnique({
@@ -57,6 +59,15 @@ export class AuthService {
     // Hash password
     const passwordHash = await bcrypt.hash(password, 12);
 
+    // Record consent timestamps when terms are accepted
+    const consentData = acceptTerms
+      ? {
+          termsAcceptedAt: new Date(),
+          privacyAcceptedAt: new Date(),
+          termsVersion: '2026-02-24',
+        }
+      : {};
+
     // Create user
     const user = await prisma.user.create({
       data: {
@@ -67,6 +78,7 @@ export class AuthService {
         phone,
         role: 'USER',
         status: UserStatus.PENDING_VERIFICATION,
+        ...consentData,
       },
       select: {
         id: true,
@@ -343,6 +355,210 @@ export class AuthService {
   }
 
   /**
+   * Delete user account (GDPR Art. 17 - Right to Erasure)
+   * Soft-delete: anonymize PII, set status INACTIVE, cancel subscriptions
+   */
+  static async deleteAccount(userId: string, password: string) {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        email: true,
+        passwordHash: true,
+        firstName: true,
+        subscriptions: {
+          where: { status: 'ACTIVE' },
+          select: { id: true, stripeSubscriptionId: true, payseraOrderId: true },
+        },
+        wallet: {
+          select: { balance: true },
+        },
+        loyaltyAccount: {
+          select: { cashbackBalance: true },
+        },
+      },
+    });
+
+    if (!user) {
+      throw new AppError('User not found', 404);
+    }
+
+    // Verify password
+    const isPasswordValid = await bcrypt.compare(password, user.passwordHash);
+    if (!isPasswordValid) {
+      throw new AppError('Password is incorrect', 401);
+    }
+
+    const anonymizedEmail = `deleted_${uuid()}@removed.local`;
+
+    // Anonymize PII and set INACTIVE (30-day grace period before hard delete)
+    await prisma.user.update({
+      where: { id: userId },
+      data: {
+        email: anonymizedEmail,
+        firstName: null,
+        lastName: null,
+        phone: null,
+        avatar: null,
+        status: 'INACTIVE',
+        passwordHash: await bcrypt.hash(uuid(), 12), // Invalidate password
+      },
+    });
+
+    // Cancel active subscriptions
+    for (const sub of user.subscriptions) {
+      await prisma.subscription.update({
+        where: { id: sub.id },
+        data: {
+          status: 'CANCELLED',
+          canceledAt: new Date(),
+          cancelAtPeriodEnd: true,
+        },
+      });
+    }
+
+    // Invalidate all refresh tokens
+    await prisma.refreshToken.deleteMany({
+      where: { userId },
+    });
+
+    // Check wallet balance for user notification
+    const walletBalance = user.wallet?.balance || 0;
+    const cashbackBalance = user.loyaltyAccount?.cashbackBalance || 0;
+    const hasWalletFunds = walletBalance > 0 || cashbackBalance > 0;
+
+    const walletNotice = hasWalletFunds
+      ? `<p><strong>Wallet funds:</strong> You have a remaining balance of ${(walletBalance / 100).toFixed(2)} EUR (top-up) and ${(cashbackBalance / 100).toFixed(2)} EUR (cashback). Top-up funds can be refunded within 30 days by contacting <a href="mailto:support@boomcard.bg">support@boomcard.bg</a>. Cashback balances are non-refundable per our Terms.</p>
+         <p><strong>Средства в портфейла:</strong> Имате остатъчен баланс от ${(walletBalance / 100).toFixed(2)} EUR (депозит) и ${(cashbackBalance / 100).toFixed(2)} EUR (кешбек). Депозитните средства могат да бъдат възстановени в рамките на 30 дни, като се свържете с <a href="mailto:support@boomcard.bg">support@boomcard.bg</a>. Кешбек балансите не подлежат на възстановяване съгласно Общите условия.</p>`
+      : '';
+
+    // Send confirmation email to original address
+    try {
+      await emailService.sendEmail({
+        to: user.email,
+        subject: 'BoomCard Account Deleted / Акаунтът ви в BoomCard е изтрит',
+        html: `
+          <p>Your BoomCard account has been successfully deleted. Your personal data will be fully removed within 30 days.</p>
+          <p>Вашият BoomCard акаунт беше успешно изтрит. Личните ви данни ще бъдат напълно премахнати в рамките на 30 дни.</p>
+          ${walletNotice}
+          <p>If you did not request this, contact us immediately at <a href="mailto:support@boomcard.bg">support@boomcard.bg</a></p>
+        `,
+      });
+    } catch {
+      logger.warn(`Could not send account deletion email to ${user.email}`);
+    }
+
+    logger.info(`Account deleted (anonymized) for user: ${user.email}`);
+
+    const response: Record<string, any> = {
+      message: 'Account deleted successfully. Data will be fully removed within 30 days.',
+    };
+
+    if (hasWalletFunds) {
+      response.walletNotice = `You have remaining wallet funds (${(walletBalance / 100).toFixed(2)} EUR top-up, ${(cashbackBalance / 100).toFixed(2)} EUR cashback). Contact support@boomcard.bg within 30 days to request a refund for top-up funds.`;
+    }
+
+    return response;
+  }
+
+  /**
+   * Export all user data (GDPR Art. 20 - Right to Data Portability)
+   */
+  static async exportUserData(userId: string) {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        loyaltyAccount: {
+          include: {
+            transactions: true,
+            rewards: true,
+            badges: { include: { badge: true } },
+          },
+        },
+        transactions: true,
+        receipts: true,
+        subscriptions: true,
+        wallet: { include: { transactions: true } },
+        cards: true,
+        stickerScans: true,
+        reviews: true,
+        bookings: true,
+        favorites: true,
+        notifications: true,
+        pushTokens: { select: { platform: true, createdAt: true } },
+      },
+    });
+
+    if (!user) {
+      throw new AppError('User not found', 404);
+    }
+
+    // Remove sensitive fields
+    const { passwordHash, ...userData } = user;
+
+    const exportData = {
+      exportDate: new Date().toISOString(),
+      exportVersion: '1.0',
+      dataController: {
+        name: 'BoomCard',
+        email: 'privacy@boomcard.bg',
+        address: 'Sofia, Bulgaria',
+      },
+      consentHistory: {
+        termsAcceptedAt: (user as any).termsAcceptedAt || null,
+        termsVersion: (user as any).termsVersion || null,
+        privacyAcceptedAt: (user as any).privacyAcceptedAt || null,
+        marketingConsent: (user as any).marketingConsent || false,
+        marketingConsentAt: (user as any).marketingConsentAt || null,
+      },
+      userData,
+    };
+
+    logger.info(`Data export generated for user: ${user.email}`);
+
+    return exportData;
+  }
+
+  /**
+   * Record user consent (GDPR audit trail)
+   */
+  static async recordConsent(
+    userId: string,
+    type: 'terms' | 'privacy' | 'marketing',
+    version?: string,
+    granted: boolean = true
+  ) {
+    const data: Record<string, any> = {};
+
+    if (type === 'terms') {
+      data.termsAcceptedAt = new Date();
+      if (version) data.termsVersion = version;
+    } else if (type === 'privacy') {
+      data.privacyAcceptedAt = new Date();
+    } else if (type === 'marketing') {
+      data.marketingConsent = granted;
+      data.marketingConsentAt = new Date();
+    }
+
+    const user = await prisma.user.update({
+      where: { id: userId },
+      data,
+      select: {
+        id: true,
+        termsAcceptedAt: true,
+        privacyAcceptedAt: true,
+        termsVersion: true,
+        marketingConsent: true,
+        marketingConsentAt: true,
+      },
+    });
+
+    logger.info(`Consent recorded: ${type} for user ${userId}`);
+
+    return user;
+  }
+
+  /**
    * Generate JWT access and refresh tokens
    */
   private static async generateTokens(user: {
@@ -356,13 +572,13 @@ export class AuthService {
       role: user.role,
     };
 
-    // Generate access token
-    const accessToken = jwt.sign(payload, JWT_SECRET, {
+    // Generate access token (jti ensures uniqueness even within same second)
+    const accessToken = jwt.sign({ ...payload, jti: uuid() }, JWT_SECRET, {
       expiresIn: JWT_EXPIRES_IN,
     } as any);
 
     // Generate refresh token
-    const refreshTokenString = jwt.sign(payload, JWT_REFRESH_SECRET, {
+    const refreshTokenString = jwt.sign({ ...payload, jti: uuid() }, JWT_REFRESH_SECRET, {
       expiresIn: JWT_REFRESH_EXPIRES_IN,
     } as any);
 

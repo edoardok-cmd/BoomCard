@@ -1,5 +1,7 @@
-import { Offer } from '../components/common/OfferCard/OfferCard';
+import type { Offer } from '../types/entity.types';
+import { Entity, offerToEntity } from '../types/entity.types';
 
+/** @deprecated Use mockEntities instead */
 export const mockOffers: Offer[] = [
   {
     id: '1',
@@ -111,7 +113,18 @@ export const mockOffers: Offer[] = [
   },
 ];
 
+// Unified Entity mock data (enriched with tags, city, subcategories)
+export const mockEntities: Entity[] = mockOffers.map(offer => {
+  const entity = offerToEntity(offer);
+  return entity;
+});
+
 // Helper function to get offer by ID
 export const getOfferById = (id: string): Offer | undefined => {
   return mockOffers.find(offer => offer.id === id);
+};
+
+// Helper function to get entity by ID
+export const getEntityById = (id: string): Entity | undefined => {
+  return mockEntities.find(entity => entity.id === id);
 };

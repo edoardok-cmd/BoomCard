@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import styled from 'styled-components';
 import { Filter, MapPin, Percent, Star, DollarSign, ChevronDown, ChevronUp, Navigation, LayoutGrid } from 'lucide-react';
 import Button from '../Button/Button';
+import { placesCategories } from '../../../types/categories.types';
 
 const FilterContainer = styled(motion.div)`
   background: white;
@@ -149,13 +150,83 @@ const SubcategoryGroup = styled.div`
   display: flex;
   flex-wrap: wrap;
   gap: 0.375rem;
-  padding-left: 0.5rem;
-  margin-top: 0.25rem;
+  padding: 0.625rem 0.75rem;
+  margin-top: 0.375rem;
+  background: #f9fafb;
+  border-radius: 0.75rem;
+  border-left: 3px solid #e5e7eb;
+
+  [data-theme="dark"] & {
+    background: #111827;
+    border-left-color: #374151;
+  }
 `;
 
-const SubcategoryLabel = styled(CheckboxLabel)`
+const NestedChildrenGroup = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  width: 100%;
+  padding: 0.5rem 0.625rem;
+  margin-top: 0.25rem;
+  background: #f3f4f6;
+  border-radius: 0.5rem;
+  border-left: 2px solid #d1d5db;
+
+  [data-theme="dark"] & {
+    background: #1a2332;
+    border-left-color: #4b5563;
+  }
+`;
+
+const SubcategoryParentLabel = styled.span`
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  width: 100%;
+  margin-bottom: 0.125rem;
+
+  [data-theme="dark"] & {
+    color: #9ca3af;
+  }
+`;
+
+const SubcategoryLabel = styled.label<{ $checked: boolean }>`
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.3125rem 0.6875rem;
+  border: 1.5px solid ${props => props.$checked ? '#6b7280' : '#d1d5db'};
+  background: ${props => props.$checked ? '#f3f4f6' : 'white'};
+  color: ${props => props.$checked ? '#111827' : '#6b7280'};
+  border-radius: 9999px;
   font-size: 0.75rem;
-  padding: 0.375rem 0.75rem;
+  font-weight: ${props => props.$checked ? 500 : 400};
+  cursor: pointer;
+  transition: all 0.2s;
+  user-select: none;
+
+  [data-theme="dark"] & {
+    border-color: ${props => props.$checked ? '#9ca3af' : '#4b5563'};
+    background: ${props => props.$checked ? '#374151' : '#1f2937'};
+    color: ${props => props.$checked ? '#f9fafb' : '#9ca3af'};
+  }
+
+  &:hover {
+    border-color: #6b7280;
+    background: ${props => props.$checked ? '#e5e7eb' : '#f9fafb'};
+
+    [data-theme="dark"] & {
+      border-color: #9ca3af;
+      background: ${props => props.$checked ? '#4b5563' : '#374151'};
+    }
+  }
+
+  input {
+    display: none;
+  }
 `;
 
 const NearMeButton = styled.button<{ $active: boolean }>`
@@ -200,81 +271,6 @@ const FilterActions = styled.div`
     border-top-color: #374151;
   }
 `;
-
-interface CategoryDef {
-  id: string;
-  en: string;
-  bg: string;
-  subcategories: { id: string; en: string; bg: string }[];
-}
-
-const placesCategories: CategoryDef[] = [
-  {
-    id: 'restaurants',
-    en: 'Restaurants & Food',
-    bg: 'Ресторанти и храна',
-    subcategories: [
-      { id: 'restaurants/curated', en: 'BOOM Restaurants', bg: 'BOOM Ресторанти' },
-      { id: 'restaurants/fast-food', en: 'Fast Food', bg: 'Бързо хранене' },
-      { id: 'restaurants/traditional', en: 'Traditional Cuisine', bg: 'Традиционна кухня' },
-      { id: 'restaurants/vegetarian-vegan', en: 'Vegetarian & Vegan', bg: 'Вегетарианска и веган' },
-    ],
-  },
-  {
-    id: 'accommodation',
-    en: 'Accommodation',
-    bg: 'Настаняване',
-    subcategories: [
-      { id: 'accommodation/hotels', en: 'Hotels', bg: 'Хотели' },
-      { id: 'accommodation/guest-houses', en: 'Guest Houses', bg: 'Къщи за гости' },
-      { id: 'accommodation/apartments', en: 'Apartments', bg: 'Апартаменти' },
-    ],
-  },
-  {
-    id: 'spa',
-    en: 'SPA & Wellness',
-    bg: 'СПА и уелнес',
-    subcategories: [
-      { id: 'spa/spa-centers', en: 'SPA Centers', bg: 'СПА центрове' },
-      { id: 'spa/pools', en: 'Pools', bg: 'Басейни' },
-      { id: 'spa/mineral-pools', en: 'Mineral Pools', bg: 'Минерални басейни' },
-      { id: 'spa/fitness-wellness', en: 'Fitness & Wellness', bg: 'Фитнес и уелнес' },
-      { id: 'spa/sports', en: 'Sports', bg: 'Спорт' },
-    ],
-  },
-  {
-    id: 'panoramic',
-    en: 'Panoramic Places',
-    bg: 'Панорамни места',
-    subcategories: [
-      { id: 'panoramic/bars', en: 'Rooftop Bars', bg: 'Руфтоп барове' },
-      { id: 'panoramic/restaurants', en: 'Sky Restaurants', bg: 'Скай ресторанти' },
-    ],
-  },
-  {
-    id: 'clubs',
-    en: 'Clubs & Nightlife',
-    bg: 'Клубове и нощен живот',
-    subcategories: [
-      { id: 'clubs/clubs', en: 'Clubs', bg: 'Клубове' },
-      { id: 'clubs/bars', en: 'Bars', bg: 'Барове' },
-      { id: 'clubs/lounge', en: 'Lounge', bg: 'Лаундж' },
-      { id: 'clubs/parties-events', en: 'Parties & Events', bg: 'Партита и събития' },
-      { id: 'clubs/live-music', en: 'Live Music', bg: 'Жива музика' },
-    ],
-  },
-  {
-    id: 'cafes',
-    en: 'Cafes, Pastry Shops & Bakeries',
-    bg: 'Кафенета, сладкарници и пекарни',
-    subcategories: [
-      { id: 'cafes/cafes', en: 'Cafes', bg: 'Кафенета' },
-      { id: 'cafes/pastry-shops', en: 'Pastry Shops', bg: 'Сладкарници' },
-      { id: 'cafes/brunch', en: 'Brunch', bg: 'Бранч' },
-      { id: 'cafes/bakeries', en: 'Bakeries', bg: 'Пекарни' },
-    ],
-  },
-];
 
 export interface BoomPlacesFiltersState {
   categories: string[];
@@ -334,12 +330,19 @@ const BoomPlacesFilters: React.FC<BoomPlacesFiltersProps> = ({
     if (!category) return;
 
     const isSelected = filters.categories.includes(categoryId);
-    const subIds = category.subcategories.map(s => s.id);
+    // Collect all subcategory IDs including nested children
+    const allSubIds: string[] = [];
+    category.subcategories.forEach(s => {
+      allSubIds.push(s.id);
+      if (s.children) {
+        s.children.forEach(c => allSubIds.push(c.id));
+      }
+    });
 
     if (isSelected) {
-      // Deselect parent + all its subcategories
+      // Deselect parent + all its subcategories + nested children
       const updated = filters.categories.filter(
-        id => id !== categoryId && !subIds.includes(id)
+        id => id !== categoryId && !allSubIds.includes(id)
       );
       onChange({ ...filters, categories: updated });
     } else {
@@ -353,12 +356,35 @@ const BoomPlacesFilters: React.FC<BoomPlacesFiltersProps> = ({
     let updated: string[];
 
     if (isSelected) {
-      updated = filters.categories.filter(id => id !== subcategoryId);
+      // Deselect subcategory + any nested children
+      const category = placesCategories.find(c => c.id === parentId);
+      const sub = category?.subcategories.find(s => s.id === subcategoryId);
+      const childIds = sub?.children?.map(c => c.id) || [];
+      updated = filters.categories.filter(id => id !== subcategoryId && !childIds.includes(id));
     } else {
       updated = [...filters.categories, subcategoryId];
       // Auto-select parent if not already selected
       if (!updated.includes(parentId)) {
         updated.push(parentId);
+      }
+    }
+    onChange({ ...filters, categories: updated });
+  };
+
+  const handleChildToggle = (childId: string, subParentId: string, categoryId: string) => {
+    const isSelected = filters.categories.includes(childId);
+    let updated: string[];
+
+    if (isSelected) {
+      updated = filters.categories.filter(id => id !== childId);
+    } else {
+      updated = [...filters.categories, childId];
+      // Auto-select parent subcategory and category if not already selected
+      if (!updated.includes(subParentId)) {
+        updated.push(subParentId);
+      }
+      if (!updated.includes(categoryId)) {
+        updated.push(categoryId);
       }
     }
     onChange({ ...filters, categories: updated });
@@ -463,7 +489,7 @@ const BoomPlacesFilters: React.FC<BoomPlacesFiltersProps> = ({
                         checked={filters.categories.includes(cat.id)}
                         onChange={() => handleCategoryToggle(cat.id)}
                       />
-                      {language === 'bg' ? cat.bg : cat.en}
+                      {language === 'bg' ? cat.name.bg : cat.name.en}
                     </CheckboxLabel>
                   ))}
                 </CheckboxGroup>
@@ -472,18 +498,40 @@ const BoomPlacesFilters: React.FC<BoomPlacesFiltersProps> = ({
                   .filter(cat => filters.categories.includes(cat.id))
                   .map(cat => (
                     <SubcategoryGroup key={`sub-${cat.id}`}>
+                      <SubcategoryParentLabel>
+                        {language === 'bg' ? cat.name.bg : cat.name.en}
+                      </SubcategoryParentLabel>
                       {cat.subcategories.map(sub => (
-                        <SubcategoryLabel
-                          key={sub.id}
-                          $checked={filters.categories.includes(sub.id)}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={filters.categories.includes(sub.id)}
-                            onChange={() => handleSubcategoryToggle(sub.id, cat.id)}
-                          />
-                          {language === 'bg' ? sub.bg : sub.en}
-                        </SubcategoryLabel>
+                        <React.Fragment key={sub.id}>
+                          <SubcategoryLabel
+                            $checked={filters.categories.includes(sub.id)}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={filters.categories.includes(sub.id)}
+                              onChange={() => handleSubcategoryToggle(sub.id, cat.id)}
+                            />
+                            {language === 'bg' ? sub.name.bg : sub.name.en}
+                          </SubcategoryLabel>
+                          {/* Nested children for subcategories like Foreign Cuisine */}
+                          {sub.children && filters.categories.includes(sub.id) && (
+                            <NestedChildrenGroup>
+                              {sub.children.map(child => (
+                                <SubcategoryLabel
+                                  key={child.id}
+                                  $checked={filters.categories.includes(child.id)}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={filters.categories.includes(child.id)}
+                                    onChange={() => handleChildToggle(child.id, sub.id, cat.id)}
+                                  />
+                                  {language === 'bg' ? child.name.bg : child.name.en}
+                                </SubcategoryLabel>
+                              ))}
+                            </NestedChildrenGroup>
+                          )}
+                        </React.Fragment>
                       ))}
                     </SubcategoryGroup>
                   ))}

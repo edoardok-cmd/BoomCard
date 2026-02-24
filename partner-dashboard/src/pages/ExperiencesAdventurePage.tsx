@@ -1,21 +1,13 @@
 import React, { useState } from 'react';
 import GenericPage from '../components/templates/GenericPage';
-import { useOffersByCategory } from '../hooks/useOffers';
-import ExperiencesFilters, { ExperiencesFiltersState } from '../components/common/ExperiencesFilters';
+import { useEntitiesByCategory } from '../hooks/useOffers';
+import ExperiencesFilters, { defaultExperiencesFilters, type ExperiencesFiltersState } from '../components/common/ExperiencesFilters';
 
 const ExperiencesAdventurePage: React.FC = () => {
-  const { data, isLoading } = useOffersByCategory('adventure');
-  const offers = data?.data || [];
+  const { data, isLoading } = useEntitiesByCategory('adventure');
+  const entities = data?.data || [];
 
-  const [filters, setFilters] = useState<ExperiencesFiltersState>({
-    categories: [],
-    durations: [],
-    formats: [],
-    seasons: [],
-    participations: [],
-    ratingRanges: [],
-    priceLevels: [],
-  });
+  const [filters, setFilters] = useState<ExperiencesFiltersState>(defaultExperiencesFilters);
 
   return (
     <GenericPage
@@ -23,7 +15,7 @@ const ExperiencesAdventurePage: React.FC = () => {
       titleBg="Приключенски Дейности"
       subtitleEn="Thrilling outdoor adventures: Air sports, Water activities, Mountain expeditions, and Winter sports"
       subtitleBg="Вълнуващи приключения на открито: Въздушни спортове, Водни дейности, Планински експедиции и Зимни спортове"
-      offers={offers}
+      entities={entities}
       isLoading={isLoading}
       filters={<ExperiencesFilters filters={filters} onChange={setFilters} />}
     />

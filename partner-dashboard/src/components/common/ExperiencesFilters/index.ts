@@ -1,1 +1,1 @@
-export { default, type ExperiencesFiltersState } from './ExperiencesFilters';
+export { default, defaultExperiencesFilters, type ExperiencesFiltersState } from './ExperiencesFilters';

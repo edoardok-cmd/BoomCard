@@ -10,6 +10,7 @@
  */
 
 import { apiService } from './api.service';
+import { hasAnalyticsConsent } from '../contexts/CookieConsentContext';
 
 // Analytics event types
 export type EventCategory =
@@ -142,18 +143,35 @@ class AnalyticsService {
   private flushInterval: NodeJS.Timeout | null = null;
   private pageStartTime: number = Date.now();
 
+  private ga4Initialized: boolean = false;
+
   constructor() {
     this.sessionId = this.generateSessionId();
-    this.initializeGA4();
     this.startQueueProcessor();
     this.setupPageViewTracking();
     this.setupPerformanceTracking();
+
+    // Only load GA4 if user has already granted analytics consent
+    if (hasAnalyticsConsent()) {
+      this.initializeGA4();
+    }
+
+    // Listen for consent changes to enable/disable GA4 dynamically
+    window.addEventListener('cookieConsentChanged', ((event: CustomEvent) => {
+      const prefs = event.detail;
+      if (prefs?.analytics) {
+        this.initializeGA4();
+      }
+      this.isEnabled = prefs?.analytics ?? false;
+    }) as EventListener);
   }
 
   /**
-   * Initialize Google Analytics 4
+   * Initialize Google Analytics 4 (only after cookie consent is granted)
    */
   private initializeGA4(): void {
+    if (this.ga4Initialized) return;
+
     const GA4_MEASUREMENT_ID = import.meta.env.VITE_GA4_MEASUREMENT_ID;
 
     if (!GA4_MEASUREMENT_ID) {
@@ -178,6 +196,16 @@ class AnalyticsService {
     gtag('config', GA4_MEASUREMENT_ID, {
       send_page_view: false, // We'll handle page views manually
     });
+
+    this.ga4Initialized = true;
+  }
+
+  /**
+   * Enable GA4 tracking after user grants analytics cookie consent.
+   * This must be called explicitly — GA4 is never loaded automatically.
+   */
+  enableGA4(): void {
+    this.initializeGA4();
   }
 
   /**
@@ -205,7 +233,12 @@ class AnalyticsService {
   setEnabled(enabled: boolean): void {
     this.isEnabled = enabled;
 
-    // Update GA4
+    if (enabled) {
+      // Load GA4 on first consent grant
+      this.initializeGA4();
+    }
+
+    // Update GA4 consent state
     if ((window as any).gtag) {
       (window as any).gtag('consent', 'update', {
         analytics_storage: enabled ? 'granted' : 'denied',

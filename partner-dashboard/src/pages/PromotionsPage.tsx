@@ -7,7 +7,7 @@ import Button from '../components/common/Button/Button';
 import OfferCard from '../components/common/OfferCard/OfferCard';
 import ClientCTA from '../components/common/ClientCTA/ClientCTA';
 import { updateSEO, generateOfferSchema } from '../utils/seo';
-import { mockOffers } from '../data/mockOffers';
+import { mockEntities } from '../data/mockOffers';
 
 const PageContainer = styled.div`
 
@@ -533,8 +533,8 @@ const PromotionsPage: React.FC = () => {
   const isDesktop = getDevicePlatform() === 'desktop';
 
   // Sort promotions by discount size for SEO
-  const topPromotions = [...mockOffers]
-    .sort((a, b) => b.discount - a.discount)
+  const topPromotions = [...mockEntities]
+    .sort((a, b) => (b.discount?.percent ?? 0) - (a.discount?.percent ?? 0))
     .slice(0, 4);
 
   // SEO optimization for promotions page
@@ -557,13 +557,13 @@ const PromotionsPage: React.FC = () => {
     if (topPromotions.length > 0) {
       const topOffer = topPromotions[0];
       generateOfferSchema({
-        name: language === 'bg' ? topOffer.titleBg : topOffer.title,
-        description: language === 'bg' ? topOffer.descriptionBg : topOffer.description,
-        discount: topOffer.discount,
-        originalPrice: topOffer.originalPrice,
-        discountedPrice: topOffer.discountedPrice,
-        category: language === 'bg' ? topOffer.categoryBg : topOffer.category,
-        image: topOffer.imageUrl,
+        name: language === 'bg' ? topOffer.name.bg : topOffer.name.en,
+        description: language === 'bg' ? topOffer.description.bg : topOffer.description.en,
+        discount: topOffer.discount?.percent,
+        originalPrice: topOffer.discount?.originalPrice,
+        discountedPrice: topOffer.discount?.discountedPrice,
+        category: language === 'bg' ? topOffer.category.bg : topOffer.category.en,
+        image: topOffer.images.hero,
       });
     }
   }, [language, topPromotions]);
@@ -678,19 +678,19 @@ const PromotionsPage: React.FC = () => {
               {content.selectedOffers}
             </SectionTitle>
             <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>
-              {mockOffers.length} {language === 'bg' ? 'оферти' : 'offers'}
+              {mockEntities.length} {language === 'bg' ? 'оферти' : 'offers'}
             </div>
           </SectionHeader>
 
           <OffersGrid>
-            {mockOffers.sort((a, b) => b.discount - a.discount).map((offer, index) => (
+            {[...mockEntities].sort((a, b) => (b.discount?.percent ?? 0) - (a.discount?.percent ?? 0)).map((entity, index) => (
               <motion.div
-                key={offer.id}
+                key={entity.id}
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.4, delay: index * 0.1 }}
               >
-                <OfferCard offer={offer} />
+                <OfferCard entity={entity} />
               </motion.div>
             ))}
           </OffersGrid>

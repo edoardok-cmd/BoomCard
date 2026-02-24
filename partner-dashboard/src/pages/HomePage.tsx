@@ -7,7 +7,7 @@ import { Gem, CheckCircle, Tag } from 'lucide-react';
 import Card from '../components/common/Card/Card';
 import Button from '../components/common/Button/Button';
 import Carousel from '../components/common/Carousel/Carousel';
-import OfferCard, { Offer } from '../components/common/OfferCard/OfferCard';
+import OfferCard from '../components/common/OfferCard/OfferCard';
 import HeroBlast from '../components/common/HeroBlast/HeroBlast';
 import FomoBanner from '../components/common/FomoBanner/FomoBanner';
 import ReviewCard from '../components/reviews/ReviewCard';
@@ -16,7 +16,8 @@ import ClientCTA from '../components/common/ClientCTA/ClientCTA';
 import Tooltip from '../components/common/Tooltip/Tooltip';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
-import { useTopOffers } from '../hooks/useOffers';
+import { useTopEntities } from '../hooks/useOffers';
+import { offerToEntity, type Offer, type Entity } from '../types/entity.types';
 import { usePartnerReviews } from '../hooks/usePartnerReviews';
 import { updateSEO, addOrganizationSchema, addWebSiteSchema, generateHowToSchema, generateFAQSchema } from '../utils/seo';
 import { convertEURToBGN } from '../utils/helpers';
@@ -997,8 +998,8 @@ const HomePage: React.FC = () => {
   }, [location.hash]);
 
   // Fetch top offers from API
-  const { data: topOffersData, isLoading: isLoadingOffers } = useTopOffers(6);
-  const topOffers = topOffersData || [];
+  const { data: topEntitiesData, isLoading: isLoadingOffers } = useTopEntities(6);
+  const topEntities = topEntitiesData || [];
 
   // Fetch reviews from API with overall stats
   const { reviews: reviewsData, loading: loadingReviews, stats: reviewStats, createReview: createReviewMutation, markHelpful: markHelpfulMutation } = usePartnerReviews({
@@ -1248,6 +1249,8 @@ const HomePage: React.FC = () => {
     }
   ];
 
+  const fallbackEntities = fallbackExclusiveOffers.map(offerToEntity);
+
   const subscriptionPlans = [
     {
       name: language === 'bg' ? 'ЛАЙТ ПРЕМИУМ' : 'LITE PREMIUM',
@@ -1448,15 +1451,15 @@ const HomePage: React.FC = () => {
             </div>
           ) : (
             <TopOffersGrid>
-              {(topOffers.length > 0 ? topOffers : fallbackExclusiveOffers).slice(0, 6).map((offer: Offer, index: number) => (
+              {(topEntities.length > 0 ? topEntities : fallbackEntities).slice(0, 6).map((entity: Entity, index: number) => (
                 <motion.div
-                  key={offer.id}
+                  key={entity.id}
                   initial={{ opacity: 0, y: 30 }}
                   whileInView={{ opacity: 1, y: 0 }}
                   viewport={{ once: true }}
                   transition={{ duration: 0.5, delay: index * 0.1 }}
                 >
-                  <OfferCard offer={offer} />
+                  <OfferCard entity={entity} />
                 </motion.div>
               ))}
             </TopOffersGrid>

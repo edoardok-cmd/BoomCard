@@ -24,6 +24,14 @@ const STATUS_COLORS: Record<string, string> = {
   EXPIRED: '#6B7280',
 };
 
+const withTimeout = <T,>(promise: Promise<T>, ms: number): Promise<T> =>
+  Promise.race([
+    promise,
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('Request timed out')), ms)
+    ),
+  ]);
+
 const ReceiptsScreen = ({ navigation }: any) => {
   const { t } = useTranslation();
   const { theme } = useTheme();
@@ -36,25 +44,36 @@ const ReceiptsScreen = ({ navigation }: any) => {
   const loadData = async () => {
     try {
       setError(null);
+      const TIMEOUT_MS = 15000;
       // Use Promise.allSettled so slow/failing APIs don't block the screen
       const [receiptsResult, statsResult] = await Promise.allSettled([
-        ReceiptsApi.getReceipts({ limit: 50, page: 1 }),
-        ReceiptsApi.getStats(),
+        withTimeout(ReceiptsApi.getReceipts({ limit: 50, page: 1 }), TIMEOUT_MS),
+        withTimeout(ReceiptsApi.getStats(), TIMEOUT_MS),
       ]);
 
       const receiptsResponse = receiptsResult.status === 'fulfilled' ? receiptsResult.value : { success: false, data: null };
       const statsResponse = statsResult.status === 'fulfilled' ? statsResult.value : { success: false, data: null };
 
+      let hasData = false;
+
       if (receiptsResponse.success && receiptsResponse.data) {
         setReceipts(receiptsResponse.data.data || []);
+        hasData = true;
       }
 
       if (statsResponse.success && statsResponse.data) {
         setStats(statsResponse.data);
+        hasData = true;
+      }
+
+      // If neither API returned data, show an error
+      if (!hasData) {
+        const timedOut = receiptsResult.status === 'rejected' || statsResult.status === 'rejected';
+        setError(timedOut ? t('common.connectionTimeout') : t('receipts.failedToLoad'));
       }
     } catch (error: any) {
       console.warn('Failed to load receipts:', error);
-      setError(error.message || 'Failed to load receipts');
+      setError(error.message || t('receipts.failedToLoad'));
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -196,6 +215,16 @@ const ReceiptsScreen = ({ navigation }: any) => {
       <View style={styles.centered}>
         <Text style={styles.errorText}>{error}</Text>
         <Text style={styles.errorSubtext}>{t('receipts.pullDownToRefresh')}</Text>
+        <TouchableOpacity
+          style={styles.retryButton}
+          onPress={() => {
+            setLoading(true);
+            setError(null);
+            loadData();
+          }}
+        >
+          <Text style={styles.retryButtonText}>{t('common.retry')}</Text>
+        </TouchableOpacity>
       </View>
     );
   }
@@ -245,6 +274,18 @@ const getStyles = (theme: any) => StyleSheet.create({
     fontSize: 14,
     color: theme.colors.onSurfaceVariant,
     textAlign: 'center',
+  },
+  retryButton: {
+    marginTop: 16,
+    backgroundColor: theme.colors.primary,
+    paddingHorizontal: 24,
+    paddingVertical: 10,
+    borderRadius: 20,
+  },
+  retryButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
   },
   listContent: {
     padding: 16,

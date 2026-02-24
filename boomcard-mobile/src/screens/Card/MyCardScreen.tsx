@@ -5,7 +5,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, ScrollView, Dimensions, Alert, ActivityIndicator } from 'react-native';
+import { View, StyleSheet, ScrollView, Dimensions, Alert } from 'react-native';
 import { Text, Card, Button, Chip } from 'react-native-paper';
 import QRCode from 'react-native-qrcode-svg';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -14,6 +14,7 @@ import { useTranslation } from 'react-i18next';
 import { useTheme } from '../../contexts/ThemeContext';
 import { cardApi } from '../../api/card.api';
 import { formatDualCurrency } from '../../utils/format';
+import { ShimmerPlaceholder, FadeInView } from '../../components/loading';
 
 const { width } = Dimensions.get('window');
 const CARD_WIDTH = width - 32;
@@ -86,8 +87,16 @@ export default function MyCardScreen() {
   if (loading) {
     return (
       <View style={styles.centered}>
-        <ActivityIndicator size="large" color={theme.colors.primary} />
-        <Text style={{ marginTop: 12, color: theme.colors.onSurfaceVariant }}>{t('common.loading')}</Text>
+        <ShimmerPlaceholder
+          width={CARD_WIDTH}
+          height={CARD_WIDTH * 0.6}
+          borderRadius={16}
+          isDarkMode={theme.colors.background === '#111827'}
+        />
+        <View style={{ marginTop: 20, gap: 12, width: CARD_WIDTH }}>
+          <ShimmerPlaceholder width={CARD_WIDTH} height={80} borderRadius={12} isDarkMode={theme.colors.background === '#111827'} />
+          <ShimmerPlaceholder width={CARD_WIDTH} height={80} borderRadius={12} isDarkMode={theme.colors.background === '#111827'} />
+        </View>
       </View>
     );
   }
@@ -118,6 +127,7 @@ export default function MyCardScreen() {
 
   return (
     <ScrollView style={styles.container}>
+      <FadeInView duration={500}>
       {/* Card Visual */}
       <View style={styles.cardContainer}>
         <LinearGradient
@@ -255,6 +265,7 @@ export default function MyCardScreen() {
           </Card.Content>
         </Card>
       )}
+      </FadeInView>
     </ScrollView>
   );
 }

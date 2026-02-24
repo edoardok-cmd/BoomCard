@@ -7,6 +7,7 @@ import { useFavorites } from '../contexts/FavoritesContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import OfferCard from '../components/common/OfferCard/OfferCard';
 import Button from '../components/common/Button/Button';
+import type { Entity } from '../types/entity.types';
 
 const PageContainer = styled.div`
   min-height: 100vh;
@@ -296,21 +297,21 @@ const FavoritesPage: React.FC = () => {
                     transition={{ duration: 0.4, delay: index * 0.05 }}
                   >
                     <OfferCard
-                      offer={{
+                      entity={{
                         id: favorite.id,
-                        title: favorite.title,
-                        titleBg: favorite.titleBg,
-                        description: '',
-                        descriptionBg: '',
-                        category: favorite.category,
-                        categoryBg: favorite.categoryBg,
-                        location: favorite.location,
-                        discount: favorite.discount,
-                        originalPrice: favorite.originalPrice,
-                        discountedPrice: favorite.discountedPrice,
-                        imageUrl: favorite.imageUrl,
-                        partnerName: '',
-                        path: favorite.path
+                        kind: 'offer',
+                        name: { en: favorite.title, bg: favorite.titleBg },
+                        description: { en: '', bg: '' },
+                        categoryId: favorite.category.toLowerCase().replace(/\s+/g, '-'),
+                        category: { en: favorite.category, bg: favorite.categoryBg },
+                        location: { display: favorite.location },
+                        images: { hero: favorite.imageUrl },
+                        discount: {
+                          percent: favorite.discount,
+                          originalPrice: favorite.originalPrice,
+                          discountedPrice: favorite.discountedPrice,
+                        },
+                        path: favorite.path,
                       }}
                     />
                   </motion.div>

@@ -40,7 +40,7 @@ const router = Router();
 router.post(
   '/register',
   asyncHandler(async (req: Request, res: Response) => {
-    const { email, password, firstName, lastName, phone } = req.body;
+    const { email, password, firstName, lastName, phone, acceptTerms } = req.body;
 
     // Validation
     if (!email || !password) {
@@ -64,6 +64,7 @@ router.post(
       firstName,
       lastName,
       phone,
+      acceptTerms,
     });
 
     res.status(201).json({
@@ -249,6 +250,84 @@ router.post(
     res.json({
       success: true,
       message: result.message,
+    });
+  })
+);
+
+/**
+ * DELETE /api/auth/account
+ * Delete user account (GDPR Art. 17 - Right to Erasure)
+ * Requires password confirmation
+ */
+router.delete(
+  '/account',
+  authenticate,
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    const userId = req.user!.id;
+    const { password } = req.body;
+
+    if (!password) {
+      return res.status(400).json({
+        error: 'Validation Error',
+        message: 'Password is required to confirm account deletion',
+      });
+    }
+
+    const result = await AuthService.deleteAccount(userId, password);
+
+    res.json({
+      success: true,
+      message: result.message,
+    });
+  })
+);
+
+/**
+ * GET /api/auth/data-export
+ * Export all user data (GDPR Art. 20 - Right to Data Portability)
+ */
+router.get(
+  '/data-export',
+  authenticate,
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    const userId = req.user!.id;
+
+    const exportData = await AuthService.exportUserData(userId);
+
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="boomcard-data-export-${new Date().toISOString().split('T')[0]}.json"`
+    );
+
+    res.json(exportData);
+  })
+);
+
+/**
+ * POST /api/auth/consent
+ * Record user consent (GDPR audit trail)
+ */
+router.post(
+  '/consent',
+  authenticate,
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    const userId = req.user!.id;
+    const { type, version, granted } = req.body;
+
+    if (!type || !['terms', 'privacy', 'marketing'].includes(type)) {
+      return res.status(400).json({
+        error: 'Validation Error',
+        message: 'Consent type must be one of: terms, privacy, marketing',
+      });
+    }
+
+    const result = await AuthService.recordConsent(userId, type, version, granted);
+
+    res.json({
+      success: true,
+      message: 'Consent recorded successfully',
+      data: result,
     });
   })
 );

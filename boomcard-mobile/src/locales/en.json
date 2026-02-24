@@ -14,7 +14,8 @@
     "ok": "OK",
     "close": "Close",
     "retry": "Retry",
-    "refresh": "Refresh"
+    "refresh": "Refresh",
+    "connectionTimeout": "Connection timed out. Please check your internet and try again."
   },
   "auth": {
     "login": "Login",

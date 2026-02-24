@@ -1,6 +1,7 @@
 import { apiService } from './api.service';
-import { Offer } from '../components/common/OfferCard/OfferCard';
+import type { Offer } from '../types/entity.types';
 import { PaginatedResponse } from './venues.service';
+import { Entity, offerToEntity } from '../types/entity.types';
 
 // Enhanced Offer type with backend fields
 export interface OfferDetails extends Offer {
@@ -272,6 +273,70 @@ class OffersService {
       isFeatured: true,
       featuredOrder,
     });
+  }
+
+  // ============================================================
+  // Entity-based methods (unified model)
+  // ============================================================
+
+  /**
+   * Get offers as Entity[] (unified format)
+   */
+  async getEntities(filters?: OfferFilters): Promise<PaginatedResponse<Entity>> {
+    const response = await this.getOffers(filters);
+    return {
+      ...response,
+      data: response.data.map(offer => offerToEntity(offer)),
+    };
+  }
+
+  /**
+   * Get offers by category as Entity[]
+   */
+  async getEntitiesByCategory(category: string, filters?: OfferFilters): Promise<PaginatedResponse<Entity>> {
+    const response = await this.getOffersByCategory(category, filters);
+    return {
+      ...response,
+      data: response.data.map(offer => offerToEntity(offer)),
+    };
+  }
+
+  /**
+   * Get top offers as Entity[]
+   */
+  async getTopEntities(limit: number = 10): Promise<Entity[]> {
+    const offers = await this.getTopOffers(limit);
+    return offers.map(offer => offerToEntity(offer));
+  }
+
+  /**
+   * Get featured offers as Entity[]
+   */
+  async getFeaturedEntities(limit: number = 10): Promise<Entity[]> {
+    const offers = await this.getFeaturedOffers(limit);
+    return offers.map(offer => offerToEntity(offer));
+  }
+
+  /**
+   * Get offers by city as Entity[]
+   */
+  async getEntitiesByCity(city: string, filters?: OfferFilters): Promise<PaginatedResponse<Entity>> {
+    const response = await this.getOffersByCity(city, filters);
+    return {
+      ...response,
+      data: response.data.map(offer => offerToEntity(offer)),
+    };
+  }
+
+  /**
+   * Search offers and return Entity[]
+   */
+  async searchEntities(query: string, filters?: OfferFilters): Promise<PaginatedResponse<Entity>> {
+    const response = await this.searchOffers(query, filters);
+    return {
+      ...response,
+      data: response.data.map(offer => offerToEntity(offer)),
+    };
   }
 }
 

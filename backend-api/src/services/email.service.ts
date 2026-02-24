@@ -66,6 +66,16 @@ export interface PendingPaymentReminderData {
   language: 'en' | 'bg';
 }
 
+export interface RenewalReminderData {
+  customerName: string;
+  planName: string;
+  planNameBg: string;
+  price: string;
+  renewalDate: string;
+  manageUrl: string;
+  language: 'en' | 'bg';
+}
+
 // ============================================
 // Email Service Class
 // ============================================
@@ -905,6 +915,79 @@ Questions? Contact us at support@boomcard.bg
 
 © ${new Date().getFullYear()} BoomCard. All rights reserved.
     `.trim();
+  }
+
+  /**
+   * Send subscription renewal reminder email (7 days before renewal)
+   */
+  async sendRenewalReminder(
+    email: string,
+    data: RenewalReminderData
+  ): Promise<{ success: boolean }> {
+    const isBg = data.language === 'bg';
+    const planName = isBg ? data.planNameBg : data.planName;
+
+    const subject = isBg
+      ? `Напомняне: Вашият BoomCard абонамент се подновява на ${data.renewalDate}`
+      : `Reminder: Your BoomCard subscription renews on ${data.renewalDate}`;
+
+    const html = `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+<body style="margin: 0; padding: 0; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; background-color: #f5f5f5;">
+  <table width="100%" cellpadding="0" cellspacing="0" border="0">
+    <tr>
+      <td align="center" style="padding: 40px 20px;">
+        <table width="600" cellpadding="0" cellspacing="0" border="0" style="background-color: #ffffff; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+          <tr>
+            <td style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; text-align: center; border-radius: 8px 8px 0 0;">
+              <h1 style="margin: 0; color: #ffffff; font-size: 24px;">${isBg ? 'Напомняне за подновяване' : 'Renewal Reminder'}</h1>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 30px;">
+              <p style="margin: 0 0 15px; color: #333; font-size: 16px;">${isBg ? 'Здравейте' : 'Hi'} ${data.customerName},</p>
+              <p style="margin: 0 0 20px; color: #666; font-size: 16px; line-height: 1.6;">
+                ${isBg
+                  ? `Вашият абонамент <strong>${planName}</strong> ще бъде автоматично подновен на <strong>${data.renewalDate}</strong> за <strong>${data.price}</strong>.`
+                  : `Your <strong>${planName}</strong> subscription will automatically renew on <strong>${data.renewalDate}</strong> for <strong>${data.price}</strong>.`}
+              </p>
+              <p style="margin: 0 0 20px; color: #666; font-size: 16px; line-height: 1.6;">
+                ${isBg
+                  ? 'Ако не желаете подновяване, можете да отмените абонамента си преди датата на подновяване.'
+                  : 'If you do not wish to renew, you can cancel your subscription before the renewal date.'}
+              </p>
+              <div style="text-align: center; margin: 30px 0;">
+                <a href="${data.manageUrl}" style="background: linear-gradient(135deg, #667eea, #764ba2); color: #fff; padding: 14px 32px; text-decoration: none; border-radius: 6px; font-size: 16px; font-weight: bold;">
+                  ${isBg ? 'Управление на абонамента' : 'Manage Subscription'}
+                </a>
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td style="background-color: #f8f9fa; padding: 20px; text-align: center; border-radius: 0 0 8px 8px;">
+              <p style="margin: 0; color: #999; font-size: 12px;">&copy; ${new Date().getFullYear()} BoomCard. All rights reserved.</p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`.trim();
+
+    const text = `${isBg ? 'Здравейте' : 'Hi'} ${data.customerName},
+
+${isBg
+  ? `Вашият абонамент ${planName} ще бъде автоматично подновен на ${data.renewalDate} за ${data.price}.`
+  : `Your ${planName} subscription will automatically renew on ${data.renewalDate} for ${data.price}.`}
+
+${isBg ? 'Управление на абонамента' : 'Manage your subscription'}: ${data.manageUrl}
+
+${isBg ? 'Въпроси? Свържете се с нас на' : 'Questions? Contact us at'} support@boomcard.bg`;
+
+    return this.sendEmail({ to: email, subject, html, text });
   }
 }
 

@@ -121,6 +121,7 @@ const ContactPublicPage = lazy(() => import('./pages/ContactPublicPage'));
 const BecomePartnerPage = lazy(() => import('./pages/BecomePartnerPage'));
 const SecurityPage = lazy(() => import('./pages/SecurityPage'));
 const CookiePolicyPage = lazy(() => import('./pages/CookiePolicyPage'));
+const RefundPolicyPage = lazy(() => import('./pages/RefundPolicyPage'));
 
 // Admin pages
 const AdminDashboardPage = lazy(() => import('./pages/AdminDashboardPage'));
@@ -377,6 +378,7 @@ function App() {
                     <Route path="terms" element={<TermsPage />} />
                     <Route path="privacy" element={<PrivacyPage />} />
                     <Route path="cookies" element={<CookiePolicyPage />} />
+                    <Route path="refund-policy" element={<RefundPolicyPage />} />
                     <Route path="faq" element={<FAQPage />} />
 
                     {/* New public pages */}

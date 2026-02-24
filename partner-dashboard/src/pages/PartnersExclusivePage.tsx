@@ -1,10 +1,10 @@
 import React from 'react';
 import GenericPage from '../components/templates/GenericPage';
-import { useOffers } from '../hooks/useOffers';
+import { useEntities } from '../hooks/useOffers';
 
 const PartnersExclusivePage: React.FC = () => {
-  const { data, isLoading } = useOffers({ minPrice: 300, featured: true, limit: 50 });
-  const offers = data?.data || [];
+  const { data, isLoading } = useEntities({ minPrice: 300, featured: true, limit: 50 });
+  const entities = data?.data || [];
 
   return (
     <GenericPage
@@ -12,7 +12,7 @@ const PartnersExclusivePage: React.FC = () => {
       titleBg="Ексклузивни Партньори"
       subtitleEn="Experience the finest venues available only through BoomCard"
       subtitleBg="Изживейте най-добрите места достъпни само чрез BoomCard"
-      offers={offers}
+      entities={entities}
       isLoading={isLoading}
     />
   );

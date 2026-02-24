@@ -151,23 +151,30 @@ export default function StickerScannerScreen() {
           Alert.alert(t('common.error'), 'Camera failed to start: ' + error.message);
         }}
       >
-        <View style={styles.overlay}>
-          {!cameraReady && (
-            <View style={styles.loadingContainer}>
-              <Text style={styles.loadingText}>Starting camera...</Text>
-            </View>
-          )}
-
-          <View style={styles.scanArea}>
-            <View style={[styles.corner, styles.topLeft]} />
-            <View style={[styles.corner, styles.topRight]} />
-            <View style={[styles.corner, styles.bottomLeft]} />
-            <View style={[styles.corner, styles.bottomRight]} />
+        {!cameraReady && (
+          <View style={styles.loadingContainer}>
+            <Text style={styles.loadingText}>Starting camera...</Text>
           </View>
+        )}
 
-          <Text style={styles.instructions}>
-            {t('stickers.scanInstructions')}
-          </Text>
+        {/* Dark borders around transparent scan area */}
+        <View style={styles.overlay}>
+          <View style={styles.darkTop} />
+          <View style={styles.middleRow}>
+            <View style={styles.darkSide} />
+            <View style={styles.scanArea}>
+              <View style={[styles.corner, styles.topLeft]} />
+              <View style={[styles.corner, styles.topRight]} />
+              <View style={[styles.corner, styles.bottomLeft]} />
+              <View style={[styles.corner, styles.bottomRight]} />
+            </View>
+            <View style={styles.darkSide} />
+          </View>
+          <View style={styles.darkBottom}>
+            <Text style={styles.instructions}>
+              {t('stickers.scanInstructions')}
+            </Text>
+          </View>
         </View>
       </CameraView>
 
@@ -248,15 +255,22 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   overlay: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  darkTop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
+  },
+  middleRow: {
+    flexDirection: 'row',
+  },
+  darkSide: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
   },
   scanArea: {
     width: 250,
     height: 250,
-    position: 'relative',
   },
   corner: {
     position: 'absolute',
@@ -288,21 +302,23 @@ const styles = StyleSheet.create({
     borderBottomWidth: 4,
     borderRightWidth: 4,
   },
+  darkBottom: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    alignItems: 'center',
+    paddingTop: 32,
+  },
   instructions: {
     color: 'white',
-    marginTop: 32,
     textAlign: 'center',
     fontSize: 16,
   },
   loadingContainer: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
+    ...StyleSheet.absoluteFillObject,
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    zIndex: 10,
   },
   loadingText: {
     color: 'white',

@@ -100,6 +100,7 @@ export const Footer: React.FC<FooterProps> = ({
               <li><Link to="/privacy" className="text-gray-300 hover:text-white transition-colors">{t('footer.privacy')}</Link></li>
               <li><Link to="/terms" className="text-gray-300 hover:text-white transition-colors">{t('footer.terms')}</Link></li>
               <li><Link to="/security" className="text-gray-300 hover:text-white transition-colors">{t('footer.security')}</Link></li>
+              <li><Link to="/refund-policy" className="text-gray-300 hover:text-white transition-colors">{t('footer.refundPolicy')}</Link></li>
               <li><Link to="/cookies" className="text-gray-300 hover:text-white transition-colors">{t('footer.cookiePolicy')}</Link></li>
               <li>
                 <button

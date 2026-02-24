@@ -1,10 +1,10 @@
 import React from 'react';
 import GenericPage from '../components/templates/GenericPage';
-import { useOffers } from '../hooks/useOffers';
+import { useEntities } from '../hooks/useOffers';
 
 const PromotionsTypePage: React.FC = () => {
-  const { data, isLoading } = useOffers({ featured: true, limit: 50 });
-  const offers = data?.data || [];
+  const { data, isLoading } = useEntities({ featured: true, limit: 50 });
+  const entities = data?.data || [];
 
   return (
     <GenericPage
@@ -12,7 +12,7 @@ const PromotionsTypePage: React.FC = () => {
       titleBg="Промоции по Тип"
       subtitleEn="Discover exciting promotions organized by category: Gastronomy, Extreme adventures, Cultural experiences"
       subtitleBg="Открийте вълнуващи промоции организирани по категория: Гастрономични, Екстремни приключения, Културни изживявания"
-      offers={offers}
+      entities={entities}
       isLoading={isLoading}
     />
   );

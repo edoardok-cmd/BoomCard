@@ -3,6 +3,8 @@
  * Supports filtering, sorting, geocoding, and full-text search
  */
 
+import { Entity, entityToSearchable } from '../../types/entity.types';
+
 export interface SearchFilters {
   query?: string;
   category?: string[];
@@ -459,5 +461,30 @@ export class SearchEngine {
 
     const key = `${lat.toFixed(4)},${lng.toFixed(4)}`;
     return mockAddresses[key] || 'Unknown location';
+  }
+
+  /**
+   * Search entities using the unified Entity model.
+   * Converts Entity[] to Searchable[], runs search, then maps results back to Entity[].
+   */
+  static searchEntities(
+    entities: Entity[],
+    filters: SearchFilters,
+    language: 'en' | 'bg' = 'en'
+  ): SearchResult<Entity> {
+    // Create searchable items with a back-reference to the original entity
+    const searchables = entities.map(entity => ({
+      ...entityToSearchable(entity),
+      _entity: entity,
+    }));
+
+    // Run the standard search
+    const result = this.search(searchables, filters, language);
+
+    // Map results back to Entity[]
+    return {
+      ...result,
+      items: result.items.map((item: any) => item._entity as Entity),
+    };
   }
 }

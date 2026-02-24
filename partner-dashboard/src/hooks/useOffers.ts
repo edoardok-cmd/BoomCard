@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { offersService, OfferDetails, OfferFilters } from '../services/offers.service';
 import toast from 'react-hot-toast';
+import type { Entity } from '../types/entity.types';
 
 /**
  * Hook to fetch offers with filters
@@ -171,6 +172,79 @@ export function useRedeemOffer() {
     onError: (error: any) => {
       toast.error(error.message || 'Failed to redeem offer');
     },
+  });
+}
+
+// ============================================================
+// Entity-returning hooks (unified model)
+// ============================================================
+
+/**
+ * Hook to fetch entities (offers as Entity[]) with filters
+ */
+export function useEntities(filters?: OfferFilters) {
+  return useQuery({
+    queryKey: ['entities', filters],
+    queryFn: () => offersService.getEntities(filters),
+    staleTime: 5 * 60 * 1000,
+    retry: 1,
+    retryDelay: 1000,
+  });
+}
+
+/**
+ * Hook to fetch entities by category
+ */
+export function useEntitiesByCategory(category: string, filters?: OfferFilters) {
+  return useQuery({
+    queryKey: ['entities', 'category', category, filters],
+    queryFn: () => offersService.getEntitiesByCategory(category, filters),
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+/**
+ * Hook to fetch entities by city
+ */
+export function useEntitiesByCity(city: string, filters?: OfferFilters) {
+  return useQuery({
+    queryKey: ['entities', 'city', city, filters],
+    queryFn: () => offersService.getEntitiesByCity(city, filters),
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+/**
+ * Hook to fetch top entities
+ */
+export function useTopEntities(limit: number = 10) {
+  return useQuery({
+    queryKey: ['entities', 'top', limit],
+    queryFn: () => offersService.getTopEntities(limit),
+    staleTime: 10 * 60 * 1000,
+  });
+}
+
+/**
+ * Hook to fetch featured entities
+ */
+export function useFeaturedEntities(limit: number = 10) {
+  return useQuery({
+    queryKey: ['entities', 'featured', limit],
+    queryFn: () => offersService.getFeaturedEntities(limit),
+    staleTime: 10 * 60 * 1000,
+  });
+}
+
+/**
+ * Hook to search entities
+ */
+export function useSearchEntities(query: string, filters?: OfferFilters) {
+  return useQuery({
+    queryKey: ['entities', 'search', query, filters],
+    queryFn: () => offersService.searchEntities(query, filters),
+    enabled: query.length >= 2,
+    staleTime: 1 * 60 * 1000,
   });
 }
 

@@ -15,7 +15,7 @@ export interface MockCallbackDataParams {
   orderId: string;
   amount: string; // In cents, as string
   currency: string;
-  status: '0' | '1' | '2' | '3'; // 0=pending, 1=success, 2=failed, 3=cancelled
+  status: '0' | '1' | '2' | '3' | '4' | '5'; // 0=pending, 1=success, 2=accepted, 3=info, 4=no-confirmation, 5=refunded
   requestId?: string;
   payment?: string;
   test?: '0' | '1';
@@ -45,7 +45,10 @@ export function createMockCallbackData(params: MockCallbackDataParams) {
  */
 export function createSignedCallback(params: MockCallbackDataParams) {
   const callbackData = createMockCallbackData(params);
-  const encodedData = Buffer.from(JSON.stringify(callbackData)).toString('base64');
+
+  // Paysera uses URL-encoded query string format, not JSON
+  const queryString = new URLSearchParams(callbackData as Record<string, string>).toString();
+  const encodedData = Buffer.from(queryString).toString('base64');
 
   const ss1 = crypto
     .createHash('md5')
@@ -76,7 +79,10 @@ export function decodePaymentUrl(paymentUrl: string) {
     throw new Error('No data found in payment URL');
   }
 
-  const decodedData = JSON.parse(Buffer.from(encodedData, 'base64').toString());
+  const queryString = Buffer.from(encodedData, 'base64').toString();
+  const params = new URLSearchParams(queryString);
+  const decodedData: Record<string, string> = {};
+  params.forEach((value, key) => { decodedData[key] = value; });
 
   return {
     data: decodedData,
@@ -105,15 +111,13 @@ export function verifyPaymentUrlSignature(paymentUrl: string, signPassword: stri
 export function createTestTransaction(userId: string, orderId: string) {
   return {
     userId,
-    type: 'PAYMENT' as const,
+    type: 'WALLET_TOPUP' as const,
+    paymentMethod: 'CARD' as const,
     amount: 50.0,
     currency: 'BGN',
     status: 'PENDING' as const,
     description: `Test payment ${orderId}`,
-    metadata: {
-      orderId,
-      source: 'test',
-    },
+    metadata: JSON.stringify({ orderId, source: 'test' }),
   };
 }
 

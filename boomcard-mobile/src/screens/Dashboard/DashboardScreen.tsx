@@ -5,7 +5,6 @@ import {
   StyleSheet,
   TouchableOpacity,
   ScrollView,
-  ActivityIndicator,
   RefreshControl,
   Platform,
 } from 'react-native';
@@ -18,6 +17,7 @@ import { ReceiptsApi } from '../../api/receipts.api';
 import { cardApi } from '../../api/card.api';
 import apiClient from '../../api/client';
 import { formatDualCurrency } from '../../utils/format';
+import { DashboardSkeleton, AnimatedCounter, FadeInView } from '../../components/loading';
 import type { ReceiptStats, Receipt } from '../../types';
 
 interface VenueVisit {
@@ -136,12 +136,7 @@ const DashboardScreen = ({ navigation }: any) => {
   const s = getStyles(theme, isDarkMode);
 
   if (loading) {
-    return (
-      <View style={s.centered}>
-        <ActivityIndicator size="large" color={theme.colors.primary} />
-        <Text style={s.loadingText}>{t('common.loading')}</Text>
-      </View>
-    );
+    return <DashboardSkeleton isDarkMode={isDarkMode} />;
   }
 
   return (
@@ -176,9 +171,11 @@ const DashboardScreen = ({ navigation }: any) => {
         <View style={s.heroCashback}>
           <View style={s.heroCashbackLeft}>
             <Text style={s.heroCashbackLabel}>{t('dashboard.totalCashback')}</Text>
-            <Text style={s.heroCashbackAmount}>
-              {formatDualCurrency(stats?.totalCashback || cardStats?.totalCashbackEarned || 0)}
-            </Text>
+            <AnimatedCounter
+              targetValue={stats?.totalCashback || cardStats?.totalCashbackEarned || 0}
+              formatFn={formatDualCurrency}
+              style={s.heroCashbackAmount}
+            />
           </View>
           {subscription && (
             <View style={s.heroCashbackRate}>
@@ -199,6 +196,7 @@ const DashboardScreen = ({ navigation }: any) => {
 
       {/* Card Plan Info */}
       {subscription && (
+        <FadeInView delay={0}>
         <TouchableOpacity
           style={s.planBanner}
           activeOpacity={0.7}
@@ -267,9 +265,11 @@ const DashboardScreen = ({ navigation }: any) => {
             </View>
           </LinearGradient>
         </TouchableOpacity>
+        </FadeInView>
       )}
 
       {/* Quick Actions */}
+      <FadeInView delay={100}>
       <View style={[s.quickActions, !subscription && { marginTop: -28 }]}>
         <TouchableOpacity
           style={s.actionCard}
@@ -295,16 +295,20 @@ const DashboardScreen = ({ navigation }: any) => {
           <Text style={s.actionSubtitle}>{t('dashboard.qrCodeAtVenue')}</Text>
         </TouchableOpacity>
       </View>
+      </FadeInView>
 
       {/* Stats Row */}
+      <FadeInView delay={200}>
       <View style={s.statsRow}>
         <View style={s.statCard}>
           <View style={[s.statIconCircle, { backgroundColor: isDarkMode ? 'rgba(52,211,153,0.15)' : 'rgba(16,185,129,0.1)' }]}>
             <Ionicons name="wallet-outline" size={20} color={isDarkMode ? '#34D399' : '#10B981'} />
           </View>
-          <Text style={s.statValue} numberOfLines={1} adjustsFontSizeToFit>
-            {formatDualCurrency(stats?.totalCashback || cardStats?.totalCashbackEarned || 0)}
-          </Text>
+          <AnimatedCounter
+            targetValue={stats?.totalCashback || cardStats?.totalCashbackEarned || 0}
+            formatFn={formatDualCurrency}
+            style={s.statValue}
+          />
           <Text style={s.statLabel}>{t('dashboard.totalCashback')}</Text>
         </View>
 
@@ -312,7 +316,10 @@ const DashboardScreen = ({ navigation }: any) => {
           <View style={[s.statIconCircle, { backgroundColor: isDarkMode ? 'rgba(96,165,250,0.15)' : 'rgba(59,130,246,0.1)' }]}>
             <Ionicons name="receipt-outline" size={20} color={theme.colors.primary} />
           </View>
-          <Text style={s.statValue}>{stats?.totalReceipts || 0}</Text>
+          <AnimatedCounter
+            targetValue={stats?.totalReceipts || 0}
+            style={s.statValue}
+          />
           <Text style={s.statLabel}>{t('dashboard.receipts')}</Text>
         </View>
 
@@ -320,13 +327,18 @@ const DashboardScreen = ({ navigation }: any) => {
           <View style={[s.statIconCircle, { backgroundColor: isDarkMode ? 'rgba(167,139,250,0.15)' : 'rgba(139,92,246,0.1)' }]}>
             <Ionicons name="storefront-outline" size={20} color={isDarkMode ? '#A78BFA' : '#8B5CF6'} />
           </View>
-          <Text style={s.statValue}>{recentVisits.length}</Text>
+          <AnimatedCounter
+            targetValue={recentVisits.length}
+            style={s.statValue}
+          />
           <Text style={s.statLabel}>{t('dashboard.venues')}</Text>
         </View>
       </View>
+      </FadeInView>
 
       {/* Recent Venues */}
       {recentVisits.length > 0 && (
+        <FadeInView delay={300}>
         <View style={s.section}>
           <View style={s.sectionHeader}>
             <Text style={s.sectionTitle}>{t('dashboard.recentVenues')}</Text>
@@ -361,6 +373,7 @@ const DashboardScreen = ({ navigation }: any) => {
             </View>
           ))}
         </View>
+        </FadeInView>
       )}
 
       {/* Pending Receipts Alert */}
@@ -396,11 +409,6 @@ const getStyles = (theme: any, isDarkMode: boolean) => StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
-  },
-  loadingText: {
-    marginTop: 16,
-    fontSize: 16,
-    color: theme.colors.onSurfaceVariant,
   },
 
   // Hero Header

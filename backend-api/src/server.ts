@@ -201,7 +201,10 @@ async function startServer() {
   }
 }
 
-startServer();
+// Don't auto-start in test environment (supertest handles binding)
+if (process.env.NODE_ENV !== 'test') {
+  startServer();
+}
 
 // Graceful shutdown
 process.on('SIGTERM', async () => {

@@ -19,6 +19,7 @@ import {
   Platform,
   ScrollView,
   Image,
+  Linking,
 } from 'react-native';
 import { useAuth } from '../../store/AuthContext';
 import { useTranslation } from 'react-i18next';
@@ -107,6 +108,7 @@ const RegisterScreen = ({ navigation, route }: any) => {
     phone: '',
   });
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [acceptTerms, setAcceptTerms] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
 
@@ -163,10 +165,23 @@ const RegisterScreen = ({ navigation, route }: any) => {
   const displayPrice = getDisplayPrice();
   const language = i18n.language === 'bg' ? 'bg' : 'en';
 
+  const openTerms = () => Linking.openURL('https://boomcard.bg/terms');
+  const openPrivacy = () => Linking.openURL('https://boomcard.bg/privacy');
+
   const handleRegister = async () => {
     // Validation
     if (!formData.email || !formData.password || !formData.firstName || !formData.lastName) {
       Alert.alert(t('common.error'), t('auth.fillRequiredFields'));
+      return;
+    }
+
+    if (!acceptTerms) {
+      Alert.alert(
+        t('common.error'),
+        language === 'bg'
+          ? 'Трябва да приемете Общите условия и Политиката за поверителност'
+          : 'You must accept the Terms & Conditions and Privacy Policy'
+      );
       return;
     }
 
@@ -393,10 +408,38 @@ const RegisterScreen = ({ navigation, route }: any) => {
             editable={!isLoading}
           />
 
+          {/* Terms & Privacy Acceptance */}
           <TouchableOpacity
-            style={[styles.button, (isLoading || isProcessingPayment || planLoading) && styles.buttonDisabled]}
+            style={styles.termsRow}
+            onPress={() => setAcceptTerms(!acceptTerms)}
+            activeOpacity={0.7}
+          >
+            <View style={[styles.checkbox, acceptTerms && styles.checkboxChecked]}>
+              {acceptTerms && <Text style={styles.checkmark}>✓</Text>}
+            </View>
+            <Text style={styles.termsText}>
+              {language === 'bg' ? (
+                <>
+                  {'Приемам '}
+                  <Text style={styles.termsLink} onPress={openTerms}>Общите условия</Text>
+                  {' и '}
+                  <Text style={styles.termsLink} onPress={openPrivacy}>Политиката за поверителност</Text>
+                </>
+              ) : (
+                <>
+                  {'I agree to the '}
+                  <Text style={styles.termsLink} onPress={openTerms}>Terms & Conditions</Text>
+                  {' and '}
+                  <Text style={styles.termsLink} onPress={openPrivacy}>Privacy Policy</Text>
+                </>
+              )}
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.button, (isLoading || isProcessingPayment || planLoading || !acceptTerms) && styles.buttonDisabled]}
             onPress={handleRegister}
-            disabled={isLoading || isProcessingPayment || planLoading}
+            disabled={isLoading || isProcessingPayment || planLoading || !acceptTerms}
           >
             {isLoading || isProcessingPayment ? (
               <View style={styles.buttonContent}>
@@ -551,6 +594,45 @@ const getStyles = (theme: any) => StyleSheet.create({
     marginTop: -8,
     marginBottom: 12,
     marginLeft: 4,
+  },
+  termsRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginTop: 8,
+    marginBottom: 16,
+    paddingHorizontal: 4,
+  },
+  checkbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 4,
+    borderWidth: 2,
+    borderColor: theme.colors.outline,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+    marginTop: 1,
+    backgroundColor: theme.colors.surface,
+  },
+  checkboxChecked: {
+    backgroundColor: theme.colors.primary,
+    borderColor: theme.colors.primary,
+  },
+  checkmark: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  termsText: {
+    flex: 1,
+    fontSize: 13,
+    color: theme.colors.onSurfaceVariant,
+    lineHeight: 20,
+  },
+  termsLink: {
+    color: theme.colors.primary,
+    fontWeight: '600',
+    textDecorationLine: 'underline' as const,
   },
   button: {
     backgroundColor: theme.colors.primary,

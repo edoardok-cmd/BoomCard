@@ -1,10 +1,10 @@
 import React from 'react';
 import GenericPage from '../components/templates/GenericPage';
-import { useOffers } from '../hooks/useOffers';
+import { useEntities } from '../hooks/useOffers';
 
 const PartnersVIPPage: React.FC = () => {
-  const { data, isLoading } = useOffers({ featured: true, limit: 50 });
-  const offers = data?.data || [];
+  const { data, isLoading } = useEntities({ featured: true, limit: 50 });
+  const entities = data?.data || [];
 
   return (
     <GenericPage
@@ -12,7 +12,7 @@ const PartnersVIPPage: React.FC = () => {
       titleBg="VIP Партньори"
       subtitleEn="Access exclusive deals from our most prestigious partner venues"
       subtitleBg="Достъп до ексклузивни сделки от нашите най-престижни партньорски места"
-      offers={offers}
+      entities={entities}
       isLoading={isLoading}
     />
   );

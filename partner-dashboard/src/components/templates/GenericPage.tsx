@@ -4,8 +4,9 @@ import { motion } from 'framer-motion';
 import styled from 'styled-components';
 import { useLanguage } from '../../contexts/LanguageContext';
 import Button from '../common/Button/Button';
-import OfferCard, { Offer } from '../common/OfferCard/OfferCard';
+import OfferCard from '../common/OfferCard/OfferCard';
 import ClientCTA from '../common/ClientCTA/ClientCTA';
+import type { Entity } from '../../types/entity.types';
 
 const PageContainer = styled.div`
   min-height: 100vh;
@@ -138,7 +139,8 @@ interface GenericPageProps {
   titleBg: string;
   subtitleEn: string;
   subtitleBg: string;
-  offers?: Offer[];
+  /** Unified entity array */
+  entities?: Entity[];
   children?: ReactNode;
   emptyIcon?: string;
   emptyTitleEn?: string;
@@ -155,7 +157,7 @@ export const GenericPage: React.FC<GenericPageProps> = ({
   titleBg,
   subtitleEn,
   subtitleBg,
-  offers,
+  entities,
   children,
   emptyIcon = '🔍',
   emptyTitleEn = 'No items found',
@@ -202,22 +204,22 @@ export const GenericPage: React.FC<GenericPageProps> = ({
           {filters}
           {children}
 
-          {offers && offers.length > 0 && (
+          {entities && entities.length > 0 && (
             <OffersGrid>
-              {offers.map((offer, index) => (
+              {entities.map((entity, index) => (
                 <motion.div
-                  key={offer.id}
+                  key={entity.id}
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.4, delay: index * 0.1 }}
                 >
-                  <OfferCard offer={offer} />
+                  <OfferCard entity={entity} />
                 </motion.div>
               ))}
             </OffersGrid>
           )}
 
-          {(showEmptyState || (offers && offers.length === 0)) && (
+          {(showEmptyState || (entities && entities.length === 0)) && (
             <EmptyState>
               <EmptyIcon>{emptyIcon}</EmptyIcon>
               <EmptyTitle>{emptyTitle}</EmptyTitle>

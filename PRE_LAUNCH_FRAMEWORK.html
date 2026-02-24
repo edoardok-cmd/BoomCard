@@ -1,0 +1,1769 @@
+<!DOCTYPE html>
+<html lang="bg">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BoomCard Pre-Launch Framework</title>
+<style>
+  /* ── Reset & Base ── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  @page {
+    size: A4;
+    margin: 20mm 18mm 25mm 18mm;
+    @bottom-center {
+      content: counter(page);
+      font-size: 9pt;
+      color: #94a3b8;
+      font-family: 'Helvetica Neue', Arial, sans-serif;
+    }
+  }
+
+  body {
+    font-family: 'Helvetica Neue', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+    font-size: 10pt;
+    line-height: 1.55;
+    color: #1e293b;
+    background: #fff;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* ── Cover Page ── */
+  .cover {
+    page-break-after: always;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    background: linear-gradient(160deg, #0f172a 0%, #1e293b 40%, #334155 100%);
+    color: #fff;
+    text-align: center;
+    padding: 60px 40px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .cover::before {
+    content: '';
+    position: absolute;
+    top: -100px;
+    right: -100px;
+    width: 500px;
+    height: 500px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(139,92,246,0.15) 0%, transparent 70%);
+  }
+
+  .cover::after {
+    content: '';
+    position: absolute;
+    bottom: -150px;
+    left: -100px;
+    width: 600px;
+    height: 600px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(236,72,153,0.1) 0%, transparent 70%);
+  }
+
+  .cover-logo {
+    font-size: 18pt;
+    font-weight: 800;
+    letter-spacing: 6px;
+    text-transform: uppercase;
+    color: #a78bfa;
+    margin-bottom: 10px;
+    position: relative;
+    z-index: 1;
+  }
+
+  .cover-logo span {
+    color: #f472b6;
+  }
+
+  .cover h1 {
+    font-size: 36pt;
+    font-weight: 800;
+    line-height: 1.15;
+    margin: 30px 0 20px;
+    position: relative;
+    z-index: 1;
+    max-width: 700px;
+  }
+
+  .cover-subtitle {
+    font-size: 14pt;
+    color: #94a3b8;
+    margin-bottom: 50px;
+    position: relative;
+    z-index: 1;
+    max-width: 600px;
+    line-height: 1.6;
+  }
+
+  .cover-meta {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    grid-template-columns: repeat(2, auto);
+    gap: 8px 30px;
+    font-size: 10pt;
+    color: #94a3b8;
+    text-align: left;
+    border-top: 1px solid rgba(148,163,184,0.2);
+    padding-top: 30px;
+    margin-top: 20px;
+  }
+
+  .cover-meta strong {
+    color: #e2e8f0;
+  }
+
+  .cover-badge {
+    position: relative;
+    z-index: 1;
+    display: inline-block;
+    background: linear-gradient(135deg, #8b5cf6, #ec4899);
+    color: #fff;
+    font-size: 9pt;
+    font-weight: 700;
+    padding: 6px 20px;
+    border-radius: 20px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin-bottom: 30px;
+  }
+
+  /* ── Table of Contents ── */
+  .toc {
+    page-break-after: always;
+    padding: 40px 0;
+  }
+
+  .toc h2 {
+    font-size: 20pt;
+    color: #0f172a;
+    margin-bottom: 30px;
+    padding-bottom: 10px;
+    border-bottom: 3px solid #8b5cf6;
+    display: inline-block;
+  }
+
+  .toc-list {
+    list-style: none;
+    counter-reset: toc-counter;
+  }
+
+  .toc-list li {
+    counter-increment: toc-counter;
+    padding: 12px 0;
+    border-bottom: 1px solid #f1f5f9;
+    display: flex;
+    align-items: baseline;
+    gap: 15px;
+  }
+
+  .toc-num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #8b5cf6, #a78bfa);
+    color: #fff;
+    font-size: 10pt;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+
+  .toc-title {
+    font-size: 12pt;
+    font-weight: 600;
+    color: #1e293b;
+  }
+
+  .toc-desc {
+    font-size: 9pt;
+    color: #64748b;
+    margin-top: 2px;
+  }
+
+  /* ── Content Sections ── */
+  .content {
+    padding: 0;
+  }
+
+  .section {
+    page-break-before: always;
+  }
+
+  .section:first-child {
+    page-break-before: auto;
+  }
+
+  .section-header {
+    background: linear-gradient(135deg, #0f172a, #1e293b);
+    color: #fff;
+    padding: 20px 25px;
+    border-radius: 8px;
+    margin-bottom: 25px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .section-header::after {
+    content: '';
+    position: absolute;
+    right: -20px;
+    top: -20px;
+    width: 100px;
+    height: 100px;
+    border-radius: 50%;
+    background: rgba(139,92,246,0.15);
+  }
+
+  .section-num {
+    display: inline-block;
+    background: linear-gradient(135deg, #8b5cf6, #ec4899);
+    color: #fff;
+    font-size: 9pt;
+    font-weight: 700;
+    padding: 3px 12px;
+    border-radius: 12px;
+    margin-bottom: 8px;
+  }
+
+  .section-header h2 {
+    font-size: 18pt;
+    font-weight: 800;
+    line-height: 1.3;
+  }
+
+  h3 {
+    font-size: 13pt;
+    font-weight: 700;
+    color: #0f172a;
+    margin: 22px 0 12px;
+    padding-bottom: 6px;
+    border-bottom: 2px solid #e2e8f0;
+  }
+
+  h4 {
+    font-size: 11pt;
+    font-weight: 700;
+    color: #334155;
+    margin: 16px 0 10px;
+  }
+
+  p {
+    margin-bottom: 8px;
+    color: #334155;
+  }
+
+  strong {
+    font-weight: 700;
+    color: #0f172a;
+  }
+
+  /* ── Tables ── */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 12px 0 18px;
+    font-size: 9pt;
+    page-break-inside: auto;
+  }
+
+  thead {
+    display: table-header-group;
+  }
+
+  tr {
+    page-break-inside: avoid;
+    page-break-after: auto;
+  }
+
+  th {
+    background: #0f172a;
+    color: #fff;
+    font-weight: 700;
+    text-align: left;
+    padding: 8px 10px;
+    font-size: 8.5pt;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    white-space: nowrap;
+  }
+
+  th:first-child { border-radius: 6px 0 0 0; }
+  th:last-child { border-radius: 0 6px 0 0; }
+
+  td {
+    padding: 7px 10px;
+    border-bottom: 1px solid #e2e8f0;
+    vertical-align: top;
+  }
+
+  tr:nth-child(even) td {
+    background: #f8fafc;
+  }
+
+  tr:hover td {
+    background: #f1f5f9;
+  }
+
+  /* Status column styling */
+  td:last-child {
+    text-align: center;
+  }
+
+  /* ── Code Blocks ── */
+  pre {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-left: 4px solid #8b5cf6;
+    border-radius: 6px;
+    padding: 14px 16px;
+    font-family: 'SF Mono', 'Fira Code', 'Consolas', 'Monaco', monospace;
+    font-size: 8.5pt;
+    line-height: 1.5;
+    overflow-x: auto;
+    margin: 10px 0 16px;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    page-break-inside: avoid;
+  }
+
+  code {
+    font-family: 'SF Mono', 'Fira Code', 'Consolas', 'Monaco', monospace;
+    font-size: 8.5pt;
+    background: #f1f5f9;
+    padding: 1px 5px;
+    border-radius: 3px;
+    color: #7c3aed;
+  }
+
+  pre code {
+    background: none;
+    padding: 0;
+    color: inherit;
+  }
+
+  /* ── Checklists ── */
+  .checklist {
+    list-style: none;
+    margin: 8px 0 16px;
+  }
+
+  .checklist li {
+    padding: 5px 0 5px 28px;
+    position: relative;
+    line-height: 1.5;
+  }
+
+  .checklist li::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 7px;
+    width: 16px;
+    height: 16px;
+    border: 2px solid #cbd5e1;
+    border-radius: 3px;
+    background: #fff;
+  }
+
+  .checklist li.sub {
+    padding-left: 48px;
+    font-size: 9pt;
+    color: #64748b;
+  }
+
+  .checklist li.sub::before {
+    left: 20px;
+    width: 14px;
+    height: 14px;
+  }
+
+  /* ── Blockquotes / Callouts ── */
+  .callout {
+    background: linear-gradient(135deg, #fef3c7, #fde68a);
+    border-left: 4px solid #f59e0b;
+    padding: 12px 16px;
+    border-radius: 0 6px 6px 0;
+    margin: 12px 0;
+    font-size: 9.5pt;
+  }
+
+  .callout strong {
+    color: #92400e;
+  }
+
+  .callout-info {
+    background: linear-gradient(135deg, #ede9fe, #ddd6fe);
+    border-left-color: #8b5cf6;
+  }
+
+  .callout-info strong {
+    color: #5b21b6;
+  }
+
+  /* ── Dividers ── */
+  hr {
+    border: none;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, #cbd5e1, transparent);
+    margin: 30px 0;
+  }
+
+  /* ── Lists ── */
+  ul, ol {
+    margin: 6px 0 12px 20px;
+  }
+
+  li {
+    margin-bottom: 3px;
+  }
+
+  /* ── Summary Matrix / Priority Tags ── */
+  .tag {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 7.5pt;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .tag-p0 { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; }
+  .tag-p1 { background: #fffbeb; color: #d97706; border: 1px solid #fde68a; }
+  .tag-p2 { background: #f0fdf4; color: #16a34a; border: 1px solid #bbf7d0; }
+  .tag-yes { background: #fef2f2; color: #dc2626; }
+  .tag-no { background: #f0fdf4; color: #16a34a; }
+  .tag-partial { background: #fffbeb; color: #d97706; }
+
+  .status-badge {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    border: 2px solid #cbd5e1;
+    border-radius: 3px;
+    vertical-align: middle;
+  }
+
+  /* ── Diagram Blocks ── */
+  .diagram {
+    background: #0f172a;
+    color: #a5f3fc;
+    border-radius: 8px;
+    padding: 18px 20px;
+    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+    font-size: 8pt;
+    line-height: 1.6;
+    margin: 12px 0 18px;
+    overflow-x: auto;
+    white-space: pre;
+    page-break-inside: avoid;
+  }
+
+  /* ── Tree Diagrams ── */
+  .tree {
+    background: #fafafa;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 16px 20px;
+    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+    font-size: 8.5pt;
+    line-height: 1.55;
+    margin: 10px 0 16px;
+    page-break-inside: avoid;
+    color: #334155;
+  }
+
+  /* ── Phase Timeline ── */
+  .phase {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 14px 18px;
+    margin: 8px 0;
+    page-break-inside: avoid;
+  }
+
+  .phase-title {
+    font-weight: 700;
+    color: #7c3aed;
+    font-size: 10pt;
+    margin-bottom: 6px;
+  }
+
+  .phase-items {
+    font-size: 9pt;
+    color: #475569;
+    padding-left: 18px;
+  }
+
+  .phase-items li {
+    margin-bottom: 2px;
+  }
+
+  /* ── Footer ── */
+  .page-footer {
+    text-align: center;
+    color: #94a3b8;
+    font-size: 8pt;
+    padding-top: 30px;
+    margin-top: 30px;
+    border-top: 1px solid #e2e8f0;
+  }
+
+  /* ── Print Utilities ── */
+  .no-break { page-break-inside: avoid; }
+  .break-before { page-break-before: always; }
+  .break-after { page-break-after: always; }
+
+  .two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 15px;
+    margin: 10px 0;
+  }
+
+  .info-box {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 14px 16px;
+    page-break-inside: avoid;
+  }
+
+  .info-box h4 {
+    margin-top: 0;
+    color: #7c3aed;
+    font-size: 10pt;
+  }
+
+  .compact-table {
+    font-size: 8.5pt;
+  }
+
+  .compact-table td, .compact-table th {
+    padding: 5px 8px;
+  }
+
+  /* ── Download Toolbar ── */
+  .download-bar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 9999;
+    background: linear-gradient(135deg, #0f172a, #1e293b);
+    padding: 10px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.3);
+  }
+
+  .download-bar-brand {
+    font-size: 11pt;
+    font-weight: 700;
+    color: #a78bfa;
+    letter-spacing: 2px;
+  }
+
+  .download-bar-brand span {
+    color: #f472b6;
+  }
+
+  .download-bar-actions {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+  }
+
+  .btn-download {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: linear-gradient(135deg, #8b5cf6, #ec4899);
+    color: #fff;
+    border: none;
+    padding: 8px 20px;
+    border-radius: 6px;
+    font-size: 10pt;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-family: inherit;
+  }
+
+  .btn-download:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 15px rgba(139,92,246,0.4);
+  }
+
+  .btn-download:active {
+    transform: translateY(0);
+  }
+
+  .btn-download svg {
+    width: 16px;
+    height: 16px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .btn-secondary {
+    background: rgba(255,255,255,0.1);
+    border: 1px solid rgba(255,255,255,0.2);
+  }
+
+  .btn-secondary:hover {
+    background: rgba(255,255,255,0.15);
+    box-shadow: 0 4px 15px rgba(255,255,255,0.1);
+  }
+
+  .download-bar-hint {
+    font-size: 8.5pt;
+    color: #64748b;
+  }
+
+  /* spacer so content isn't hidden behind fixed bar */
+  .toolbar-spacer {
+    height: 52px;
+  }
+
+  /* Toast notification */
+  .toast {
+    position: fixed;
+    bottom: 30px;
+    left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: #0f172a;
+    color: #fff;
+    padding: 12px 24px;
+    border-radius: 8px;
+    font-size: 10pt;
+    font-weight: 500;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.3);
+    z-index: 10000;
+    opacity: 0;
+    transition: all 0.3s ease;
+    pointer-events: none;
+    border: 1px solid rgba(139,92,246,0.3);
+  }
+
+  .toast.show {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+
+  @media print {
+    .download-bar,
+    .toolbar-spacer,
+    .toast {
+      display: none !important;
+    }
+
+    body {
+      padding-top: 0;
+    }
+  }
+</style>
+</head>
+<body>
+
+<!-- ── Download Toolbar ── -->
+<div class="download-bar">
+  <div class="download-bar-brand">BOOM<span>CARD</span> &mdash; Pre-Launch Framework</div>
+  <div class="download-bar-actions">
+    <span class="download-bar-hint">28 pages &middot; A4</span>
+    <button class="btn-download btn-secondary" onclick="handlePrint()" title="Open print dialog (Ctrl+P)">
+      <svg viewBox="0 0 24 24"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+      Print
+    </button>
+    <button class="btn-download" onclick="handleDownload()" title="Save as PDF">
+      <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      Download PDF
+    </button>
+  </div>
+</div>
+<div class="toolbar-spacer"></div>
+
+<!-- Toast notification -->
+<div class="toast" id="toast"></div>
+
+<script>
+function showToast(msg, duration) {
+  duration = duration || 3000;
+  var t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(function() { t.classList.remove('show'); }, duration);
+}
+
+function handlePrint() {
+  window.print();
+}
+
+function handleDownload() {
+  showToast('Opening print dialog \u2014 select "Save as PDF" as destination', 4000);
+  setTimeout(function() { window.print(); }, 500);
+}
+</script>
+
+<!-- ═══════════════════════════════════════════ -->
+<!-- COVER PAGE                                  -->
+<!-- ═══════════════════════════════════════════ -->
+<div class="cover">
+  <div class="cover-logo">BOOM<span>CARD</span></div>
+  <div class="cover-badge">Вътрешен документ</div>
+  <h1>Pre-Launch Framework</h1>
+  <p class="cover-subtitle">
+    Плащания, тестове, правна рамка, партньори и фирма.<br>
+    Готовност за реален launch с минимален риск и ясна операционна дисциплина.
+  </p>
+  <div class="cover-meta">
+    <span><strong>Версия:</strong> 1.0.0</span>
+    <span><strong>Дата:</strong> 24 февруари 2026</span>
+    <span><strong>Обхват:</strong> Уеб + Backend + Mobile + Ops</span>
+    <span><strong>Статус:</strong> Draft</span>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════ -->
+<!-- TABLE OF CONTENTS                           -->
+<!-- ═══════════════════════════════════════════ -->
+<div class="toc">
+  <h2>Съдържание</h2>
+  <ul class="toc-list">
+    <li>
+      <span class="toc-num">1</span>
+      <div>
+        <div class="toc-title">Плащания &ndash; процеси и тестове</div>
+        <div class="toc-desc">Paysera, Stripe, trial, recurring billing, refunds, edge cases</div>
+      </div>
+    </li>
+    <li>
+      <span class="toc-num">2</span>
+      <div>
+        <div class="toc-title">Тестове &ndash; функционални и натоварване</div>
+        <div class="toc-desc">P0/P1/P2 сценарии, load testing, мобилен тест план</div>
+      </div>
+    </li>
+    <li>
+      <span class="toc-num">3</span>
+      <div>
+        <div class="toc-title">Онбординг на тестови партньори (5-10)</div>
+        <div class="toc-desc">Процес, критерии, feedback форма</div>
+      </div>
+    </li>
+    <li>
+      <span class="toc-num">4</span>
+      <div>
+        <div class="toc-title">Правни политики</div>
+        <div class="toc-desc">Общи условия, поверителност, бисквитки, плащания/възстановяване</div>
+      </div>
+    </li>
+    <li>
+      <span class="toc-num">5</span>
+      <div>
+        <div class="toc-title">Интеграция платформа &harr; мобилно приложение</div>
+        <div class="toc-desc">Архитектура, subscription validation, тестова матрица</div>
+      </div>
+    </li>
+    <li>
+      <span class="toc-num">6</span>
+      <div>
+        <div class="toc-title">Онбординг чеклист (вътрешен)</div>
+        <div class="toc-desc">6-стъпков процес до &bdquo;Активен партньор&ldquo;</div>
+      </div>
+    </li>
+    <li>
+      <span class="toc-num">7</span>
+      <div>
+        <div class="toc-title">Първи таргетирани партньори</div>
+        <div class="toc-desc">Критерии, категории, sales pitch, outreach процес</div>
+      </div>
+    </li>
+    <li>
+      <span class="toc-num">8</span>
+      <div>
+        <div class="toc-title">Регистрация на фирма и административни действия</div>
+        <div class="toc-desc">ЕООД, данъци, акаунти, timeline</div>
+      </div>
+    </li>
+  </ul>
+</div>
+
+<!-- ═══════════════════════════════════════════ -->
+<!-- SECTION 1: PAYMENTS                         -->
+<!-- ═══════════════════════════════════════════ -->
+<div class="section">
+  <div class="section-header">
+    <span class="section-num">Раздел 1</span>
+    <h2>Плащания &ndash; процеси и тестове</h2>
+  </div>
+
+  <h3>1.1 Текуща архитектура</h3>
+  <table>
+    <thead><tr><th>Компонент</th><th>Технология</th><th>Статус</th></tr></thead>
+    <tbody>
+      <tr><td>Основен gateway</td><td>Paysera Checkout API v1.6</td><td>Интегриран</td></tr>
+      <tr><td>Алтернативен gateway</td><td>Stripe (cards, subscriptions)</td><td>Интегриран</td></tr>
+      <tr><td>Абонаментни планове</td><td>STANDARD (безплатен), PREMIUM (&euro;9.99/мес), PLATINUM (&euro;19.99/мес)</td><td>Дефинирани</td></tr>
+      <tr><td>Wallet система</td><td>BGN, top-up, cashback, refund</td><td>Изградена</td></tr>
+      <tr><td>Webhook обработка</td><td>Paysera callback + Stripe webhooks</td><td>Имплементирана</td></tr>
+      <tr><td>Мобилни плащания</td><td>Expo WebBrowser &rarr; Paysera &rarr; deep link redirect</td><td>Работещ</td></tr>
+    </tbody>
+  </table>
+
+  <h3>1.2 Сценарии за тестване на плащания</h3>
+
+  <h4>A. Trial период (ако е активиран)</h4>
+  <table class="compact-table">
+    <thead><tr><th>#</th><th>Сценарий</th><th>Стъпки</th><th>Очакван резултат</th><th style="width:40px">OK</th></tr></thead>
+    <tbody>
+      <tr><td>T1</td><td>Стартиране на trial</td><td>Регистрация &rarr; избор на PREMIUM &rarr; trial</td><td>Subscription status = TRIALING, няма таксуване</td><td><span class="status-badge"></span></td></tr>
+      <tr><td>T2</td><td>Trial &rarr; активен абонамент</td><td>Изчакване на trial_end</td><td>Автоматично таксуване, status &rarr; ACTIVE</td><td><span class="status-badge"></span></td></tr>
+      <tr><td>T3</td><td>Отмяна по време на trial</td><td>Cancel преди trial_end</td><td>Status &rarr; CANCELLED, без таксуване</td><td><span class="status-badge"></span></td></tr>
+      <tr><td>T4</td><td>Trial с невалидна карта</td><td>Trial_end + declined card</td><td>Status &rarr; PAST_DUE, retry logic</td><td><span class="status-badge"></span></td></tr>
+    </tbody>
+  </table>
+
+  <h4>B. Автоматично таксуване (recurring billing)</h4>
+  <table class="compact-table">
+    <thead><tr><th>#</th><th>Сценарий</th><th>Стъпки</th><th>Очакван резултат</th><th style="width:40px">OK</th></tr></thead>
+    <tbody>
+      <tr><td>R1</td><td>Месечно таксуване</td><td>currentPeriodEnd настъпва</td><td>Нов invoice, успешно плащане, нов период</td><td><span class="status-badge"></span></td></tr>
+      <tr><td>R2</td><td>Годишно таксуване</td><td>Yearly billing, period end</td><td>Коректна сума (с 20% отстъпка), нов период</td><td><span class="status-badge"></span></td></tr>
+      <tr><td>R3</td><td>Failed payment retry</td><td>Declined card при renewal</td><td>PAST_DUE status, retry на 1/3/7 ден</td><td><span class="status-badge"></span></td></tr>
+      <tr><td>R4</td><td>Upgrade mid-cycle</td><td>PREMIUM &rarr; PLATINUM</td><td>Proration изчислен коректно</td><td><span class="status-badge"></span></td></tr>
+      <tr><td>R5</td><td>Downgrade mid-cycle</td><td>PLATINUM &rarr; PREMIUM</td><td>Промяна от следващия период</td><td><span class="status-badge"></span></td></tr>
+    </tbody>
+  </table>
+
+  <h4>C. Анулиране и възстановяване</h4>
+  <table class="compact-table">
+    <thead><tr><th>#</th><th>Сценарий</th><th>Стъпки</th><th>Очакван резултат</th><th style="width:40px">OK</th></tr></thead>
+    <tbody>
+      <tr><td>C1</td><td>Cancel at period end</td><td>Потребител натиска Cancel</td><td>cancelAtPeriodEnd = true, достъп до края</td><td><span class="status-badge"></span></td></tr>
+      <tr><td>C2</td><td>Cancel immediately</td><td>Admin force cancel</td><td>Незабавно прекъсване, prorated refund</td><td><span class="status-badge"></span></td></tr>
+      <tr><td>C3</td><td>Refund &ndash; пълен</td><td>Admin инициира full refund</td><td>Transaction REFUND, wallet credit</td><td><span class="status-badge"></span></td></tr>
+      <tr><td>C4</td><td>Refund &ndash; частичен</td><td>Partial refund request</td><td>Коректна сума, wallet update</td><td><span class="status-badge"></span></td></tr>
+      <tr><td>C5</td><td>Re-subscribe след cancel</td><td>Потребител се абонира отново</td><td>Нов subscription, чист старт</td><td><span class="status-badge"></span></td></tr>
+    </tbody>
+  </table>
+
+  <h4>D. Paysera-специфични тестове</h4>
+  <table class="compact-table">
+    <thead><tr><th>#</th><th>Сценарий</th><th>Стъпки</th><th>Очакван резултат</th><th style="width:40px">OK</th></tr></thead>
+    <tbody>
+      <tr><td>P1</td><td>Успешно плащане</td><td>Create &rarr; redirect &rarr; pay &rarr; callback</td><td>status=1, wallet credited</td><td><span class="status-badge"></span></td></tr>
+      <tr><td>P2</td><td>Отказано плащане</td><td>Cancel на Paysera страницата</td><td>Cancel redirect, status unchanged</td><td><span class="status-badge"></span></td></tr>
+      <tr><td>P3</td><td>Callback verification</td><td>Paysera изпраща callback</td><td>MD5 signature валидиран, OK response</td><td><span class="status-badge"></span></td></tr>
+      <tr><td>P4</td><td>Duplicate callback</td><td>Същият callback 2 пъти</td><td>Идемпотентна обработка, без дублиране</td><td><span class="status-badge"></span></td></tr>
+      <tr><td>P5</td><td>Test mode &rarr; Production</td><td>Превключване PAYSERA_TEST_MODE=false</td><td>Реални транзакции преминават</td><td><span class="status-badge"></span></td></tr>
+      <tr><td>P6</td><td>Wallet top-up (mobile)</td><td>Top-up от мобилното приложение</td><td>WebBrowser &rarr; Paysera &rarr; deep link &rarr; balance update</td><td><span class="status-badge"></span></td></tr>
+    </tbody>
+  </table>
+
+  <h4>E. Edge cases</h4>
+  <table class="compact-table">
+    <thead><tr><th>#</th><th>Сценарий</th><th>Стъпки</th><th>Очакван резултат</th><th style="width:40px">OK</th></tr></thead>
+    <tbody>
+      <tr><td>E1</td><td>Timeout при плащане</td><td>Потребител затваря browser</td><td>Status polling открива състоянието</td><td><span class="status-badge"></span></td></tr>
+      <tr><td>E2</td><td>Network failure mid-payment</td><td>Прекъсване на връзката</td><td>Graceful error, retry възможност</td><td><span class="status-badge"></span></td></tr>
+      <tr><td>E3</td><td>Валутна конверсия</td><td>EUR &rarr; BGN</td><td>Коректен курс, правилна сума</td><td><span class="status-badge"></span></td></tr>
+      <tr><td>E4</td><td>Concurrent payments</td><td>Два плащания едновременно</td><td>Wallet lock предотвратява race condition</td><td><span class="status-badge"></span></td></tr>
+      <tr><td>E5</td><td>Минимална/максимална сума</td><td>0.01 EUR и 10,000 EUR</td><td>Валидация работи коректно</td><td><span class="status-badge"></span></td></tr>
+    </tbody>
+  </table>
+
+  <h3>1.3 Чеклист за production-ready плащания</h3>
+  <ul class="checklist">
+    <li>Paysera production credentials конфигурирани (<code>PAYSERA_PROJECT_ID</code>, <code>PAYSERA_SIGN_PASSWORD</code>)</li>
+    <li><code>PAYSERA_TEST_MODE=false</code> за production</li>
+    <li>Stripe production API keys (ако се използва Stripe)</li>
+    <li>Webhook URL-та регистрирани в Paysera dashboard</li>
+    <li>Webhook URL-та регистрирани в Stripe dashboard</li>
+    <li>SSL сертификат валиден за callback URL-та</li>
+    <li>Тестово реално плащане завършено успешно (&euro;1-2 тест)</li>
+    <li>Refund на тестовото плащане завършен</li>
+    <li>Wallet balance коректен след всички операции</li>
+    <li>Payment failure alert конфигуриран в Sentry</li>
+    <li>Transaction logging работи за audit trail</li>
+    <li>PCI DSS compliance потвърден (Paysera/Stripe обработват карти &rarr; SAQ A)</li>
+  </ul>
+</div>
+
+<!-- ═══════════════════════════════════════════ -->
+<!-- SECTION 2: TESTING                          -->
+<!-- ═══════════════════════════════════════════ -->
+<div class="section">
+  <div class="section-header">
+    <span class="section-num">Раздел 2</span>
+    <h2>Тестове &ndash; функционални и натоварване</h2>
+  </div>
+
+  <h3>2.1 Текуща тестова инфраструктура</h3>
+  <table>
+    <thead><tr><th>Компонент</th><th>Framework</th><th>Местоположение</th></tr></thead>
+    <tbody>
+      <tr><td>Backend unit тестове</td><td>Jest + TypeScript</td><td><code>backend-api/tests/unit/</code></td></tr>
+      <tr><td>Backend integration</td><td>Jest + Supertest</td><td><code>backend-api/tests/integration/</code></td></tr>
+      <tr><td>Frontend E2E</td><td>Playwright</td><td><code>partner-dashboard/tests/e2e/</code></td></tr>
+      <tr><td>Frontend unit</td><td>Vitest</td><td><code>partner-dashboard/</code></td></tr>
+      <tr><td>CI/CD</td><td>GitHub Actions</td><td><code>.github/workflows/ci-cd.yml</code></td></tr>
+    </tbody>
+  </table>
+
+  <h3>2.2 Функционални тестови сценарии</h3>
+
+  <h4>P0 &ndash; Critical Path (блокиращи за launch)</h4>
+  <table class="compact-table">
+    <thead><tr><th>#</th><th>Сценарий</th><th>Модул</th><th style="width:40px">OK</th></tr></thead>
+    <tbody>
+      <tr><td>F01</td><td>Регистрация на нов потребител</td><td>Auth</td><td><span class="status-badge"></span></td></tr>
+      <tr><td>F02</td><td>Login + JWT refresh</td><td>Auth</td><td><span class="status-badge"></span></td></tr>
+      <tr><td>F03</td><td>Избор на план и checkout</td><td>Subscriptions</td><td><span class="status-badge"></span></td></tr>
+      <tr><td>F04</td><td>Успешно Paysera плащане end-to-end</td><td>Payments</td><td><span class="status-badge"></span></td></tr>
+      <tr><td>F05</td><td>Webhook обработка (Paysera callback)</td><td>Webhooks</td><td><span class="status-badge"></span></td></tr>
+      <tr><td>F06</td><td>Wallet top-up и balance update</td><td>Wallet</td><td><span class="status-badge"></span></td></tr>
+      <tr><td>F07</td><td>BOOM стикер сканиране + GPS verification</td><td>Stickers</td><td><span class="status-badge"></span></td></tr>
+      <tr><td>F08</td><td>Receipt upload и OCR обработка</td><td>Receipts</td><td><span class="status-badge"></span></td></tr>
+      <tr><td>F09</td><td>Cashback crediting при approved receipt</td><td>Cashback</td><td><span class="status-badge"></span></td></tr>
+      <tr><td>F10</td><td>Мобилно приложение &ndash; login и основен flow</td><td>Mobile</td><td><span class="status-badge"></span></td></tr>
+    </tbody>
+  </table>
+
+  <h4>P1 &ndash; Важни (трябва да работят преди launch)</h4>
+  <table class="compact-table">
+    <thead><tr><th>#</th><th>Сценарий</th><th>Модул</th><th style="width:40px">OK</th></tr></thead>
+    <tbody>
+      <tr><td>F11</td><td>Partner registration flow</td><td>Partners</td><td><span class="status-badge"></span></td></tr>
+      <tr><td>F12</td><td>Offer CRUD операции</td><td>Offers</td><td><span class="status-badge"></span></td></tr>
+      <tr><td>F13</td><td>Venue management</td><td>Venues</td><td><span class="status-badge"></span></td></tr>
+      <tr><td>F14</td><td>Push notifications delivery</td><td>Notifications</td><td><span class="status-badge"></span></td></tr>
+      <tr><td>F15</td><td>Password reset flow</td><td>Auth</td><td><span class="status-badge"></span></td></tr>
+      <tr><td>F16</td><td>Subscription upgrade/downgrade</td><td>Subscriptions</td><td><span class="status-badge"></span></td></tr>
+      <tr><td>F17</td><td>Review submission и moderation</td><td>Reviews</td><td><span class="status-badge"></span></td></tr>
+      <tr><td>F18</td><td>Fraud detection scoring</td><td>Receipts</td><td><span class="status-badge"></span></td></tr>
+      <tr><td>F19</td><td>Email verification flow</td><td>Auth</td><td><span class="status-badge"></span></td></tr>
+      <tr><td>F20</td><td>Admin dashboard функционалности</td><td>Admin</td><td><span class="status-badge"></span></td></tr>
+    </tbody>
+  </table>
+
+  <h4>P2 &ndash; Nice to have (след launch)</h4>
+  <table class="compact-table">
+    <thead><tr><th>#</th><th>Сценарий</th><th>Модул</th></tr></thead>
+    <tbody>
+      <tr><td>F21</td><td>Loyalty tier progression</td><td>Loyalty</td></tr>
+      <tr><td>F22</td><td>Booking management</td><td>Bookings</td></tr>
+      <tr><td>F23</td><td>Direct messaging</td><td>Messaging</td></tr>
+      <tr><td>F24</td><td>Badge system</td><td>Gamification</td></tr>
+      <tr><td>F25</td><td>Analytics dashboard</td><td>Analytics</td></tr>
+    </tbody>
+  </table>
+
+  <h3>2.3 Тестове за натоварване (Load Testing)</h3>
+
+  <p><strong>Инструменти:</strong> k6 (препоръчителен) или Artillery за HTTP load testing; pgbench за database stress testing.</p>
+
+  <div class="two-col">
+    <div class="info-box no-break">
+      <h4>Baseline Load Test</h4>
+      <ul>
+        <li>Virtual Users: <strong>50</strong> concurrent</li>
+        <li>Duration: 10 минути</li>
+        <li>Ramp-up: 30 секунди</li>
+        <li>Endpoints: health (100/s), login (20/s), offers (50/s), venues (30/s), receipts (10/s)</li>
+      </ul>
+    </div>
+    <div class="info-box no-break">
+      <h4>Peak Load Test</h4>
+      <ul>
+        <li>Virtual Users: <strong>200</strong> concurrent</li>
+        <li>Duration: 5 минути</li>
+        <li>p95 &lt; 500ms, p99 &lt; 2s</li>
+        <li>Error rate &lt; 1%, No memory leaks</li>
+      </ul>
+    </div>
+  </div>
+  <div class="two-col">
+    <div class="info-box no-break">
+      <h4>Stress Test</h4>
+      <ul>
+        <li>Virtual Users: <strong>500</strong> concurrent</li>
+        <li>Duration: 3 минути</li>
+        <li>Цел: Намиране на breaking point</li>
+        <li>Мониторинг: CPU, Memory, DB pool, Response curve</li>
+      </ul>
+    </div>
+    <div class="info-box no-break">
+      <h4>Payment-Specific Load Test</h4>
+      <ul>
+        <li>Virtual Users: <strong>20</strong> concurrent</li>
+        <li>Duration: 5 минути</li>
+        <li>Create intent &rarr; webhook &rarr; wallet credit</li>
+        <li>Verify: Няма загубени транзакции</li>
+      </ul>
+    </div>
+  </div>
+
+  <h4>Acceptance Criteria</h4>
+  <table>
+    <thead><tr><th>Метрика</th><th>Цел</th><th>Блокиращо?</th></tr></thead>
+    <tbody>
+      <tr><td>API p95 latency</td><td>&lt; 500ms</td><td><span class="tag tag-yes">Да</span></td></tr>
+      <tr><td>API p99 latency</td><td>&lt; 2s</td><td><span class="tag tag-yes">Да</span></td></tr>
+      <tr><td>Error rate under load</td><td>&lt; 1%</td><td><span class="tag tag-yes">Да</span></td></tr>
+      <tr><td>Payment success rate</td><td>&gt; 99%</td><td><span class="tag tag-yes">Да</span></td></tr>
+      <tr><td>DB connection pool exhaustion</td><td>Няма</td><td><span class="tag tag-yes">Да</span></td></tr>
+      <tr><td>Memory leak</td><td>Няма</td><td><span class="tag tag-yes">Да</span></td></tr>
+      <tr><td>Concurrent users supported</td><td>&gt; 100</td><td><span class="tag tag-yes">Да</span></td></tr>
+    </tbody>
+  </table>
+
+  <h3>2.4 Тестов план за мобилно приложение</h3>
+  <table class="compact-table">
+    <thead><tr><th>#</th><th>Тест</th><th style="width:40px">iOS</th><th style="width:55px">Android</th></tr></thead>
+    <tbody>
+      <tr><td>M01</td><td>App стартира без crash</td><td><span class="status-badge"></span></td><td><span class="status-badge"></span></td></tr>
+      <tr><td>M02</td><td>Регистрация + login</td><td><span class="status-badge"></span></td><td><span class="status-badge"></span></td></tr>
+      <tr><td>M03</td><td>Plan selection &rarr; checkout</td><td><span class="status-badge"></span></td><td><span class="status-badge"></span></td></tr>
+      <tr><td>M04</td><td>Paysera плащане (WebBrowser &rarr; redirect)</td><td><span class="status-badge"></span></td><td><span class="status-badge"></span></td></tr>
+      <tr><td>M05</td><td>Deep link <code>boomcard://payment-result</code></td><td><span class="status-badge"></span></td><td><span class="status-badge"></span></td></tr>
+      <tr><td>M06</td><td>Camera permissions + receipt scan</td><td><span class="status-badge"></span></td><td><span class="status-badge"></span></td></tr>
+      <tr><td>M07</td><td>GPS permissions + sticker scan</td><td><span class="status-badge"></span></td><td><span class="status-badge"></span></td></tr>
+      <tr><td>M08</td><td>Wallet balance display + top-up</td><td><span class="status-badge"></span></td><td><span class="status-badge"></span></td></tr>
+      <tr><td>M09</td><td>Push notification received</td><td><span class="status-badge"></span></td><td><span class="status-badge"></span></td></tr>
+      <tr><td>M10</td><td>Offline &rarr; Online recovery</td><td><span class="status-badge"></span></td><td><span class="status-badge"></span></td></tr>
+      <tr><td>M11</td><td>Background &rarr; Foreground (state preserved)</td><td><span class="status-badge"></span></td><td><span class="status-badge"></span></td></tr>
+      <tr><td>M12</td><td>Dark mode / Light mode switch</td><td><span class="status-badge"></span></td><td><span class="status-badge"></span></td></tr>
+      <tr><td>M13</td><td>BG / EN language switch</td><td><span class="status-badge"></span></td><td><span class="status-badge"></span></td></tr>
+      <tr><td>M14</td><td>Low memory conditions</td><td><span class="status-badge"></span></td><td><span class="status-badge"></span></td></tr>
+      <tr><td>M15</td><td>Slow network (3G simulation)</td><td><span class="status-badge"></span></td><td><span class="status-badge"></span></td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ═══════════════════════════════════════════ -->
+<!-- SECTION 3: TEST PARTNER ONBOARDING          -->
+<!-- ═══════════════════════════════════════════ -->
+<div class="section">
+  <div class="section-header">
+    <span class="section-num">Раздел 3</span>
+    <h2>Онбординг на тестови партньори (5-10)</h2>
+  </div>
+
+  <h3>3.1 Цели на тестовия онбординг</h3>
+  <ol>
+    <li><strong>Валидиране на данни</strong> &ndash; дали партньорският профил се попълва коректно</li>
+    <li><strong>UX feedback</strong> &ndash; дали процесът е интуитивен за реални бизнеси</li>
+    <li><strong>Стикер тестване</strong> &ndash; дали BOOM стикерите работят в реална среда</li>
+    <li><strong>Receipt обработка</strong> &ndash; дали OCR разпознава реални касови бележки</li>
+    <li><strong>Cashback flow</strong> &ndash; дали cashback-ът се кредитира правилно</li>
+  </ol>
+
+  <h3>3.2 Процес за тестови онбординг</h3>
+  <div class="tree">Стъпка 1: Подписване на споразумение
+├── NDA (ако е необходимо)
+├── Тестово споразумение (без финансови ангажименти)
+└── Определяне на контактно лице
+
+Стъпка 2: Заявка за данни
+├── Име на бизнеса (BG + EN)
+├── Категория (ресторант, кафене, хотел, магазин, и т.н.)
+├── Описание (BG + EN)
+├── Лого (мин. 400&times;400px, PNG/JPG)
+├── Cover image (мин. 1200&times;600px)
+├── Адрес + GPS координати
+├── Работно време
+├── Телефон, имейл, уебсайт
+└── Контактно лице
+
+Стъпка 3: Въвеждане в системата
+├── Създаване на Partner запис (status: PENDING)
+├── Създаване на Venue запис(и)
+├── Създаване на 2-3 тестови оферти
+├── Генериране на BOOM стикер QR кодове
+└── Качване на лого и cover image в S3
+
+Стъпка 4: QA ревю
+├── Проверка на данните за коректност
+├── Визуална проверка на офертите
+├── Тест на стикер сканирането
+├── Тест на receipt обработката
+└── Активиране (status: ACTIVE)
+
+Стъпка 5: Тестов период (2 седмици)
+├── Реално сканиране на стикери от тест-потребители
+├── Submit на реални касови бележки
+├── Събиране на feedback (форма или интервю)
+└── Документиране на бъгове и проблеми
+
+Стъпка 6: Обратна връзка
+├── Structured feedback форма
+├── UX проблеми &rarr; backlog
+├── Data issues &rarr; корекции
+└── Решение: продължава / напуска пилота</div>
+
+  <h3>3.3 Критерии за избор на тестови партньори</h3>
+  <table>
+    <thead><tr><th>Критерий</th><th>Защо е важен</th></tr></thead>
+    <tbody>
+      <tr><td>Физическо местоположение в София</td><td>Лесен достъп за стикер тестване</td></tr>
+      <tr><td>Активен бизнес с клиенти</td><td>Реални касови бележки</td></tr>
+      <tr><td>Технически грамотен собственик</td><td>По-качествен feedback</td></tr>
+      <tr><td>Различни категории</td><td>Тестване на разнообразни сценарии</td></tr>
+      <tr><td>Готовност за feedback</td><td>Ангажираност с процеса</td></tr>
+      <tr><td>Средно 50+ клиента на ден</td><td>Достатъчен обем за тестване</td></tr>
+    </tbody>
+  </table>
+
+  <h3>3.4 Feedback форма (шаблон)</h3>
+  <pre>BoomCard Pilot Partner Feedback
+================================
+
+Бизнес: _______________
+Дата: _______________
+Попълва: _______________
+
+1. Колко лесен беше процесът на регистрация? (1-5)  ___
+2. Данните ви в платформата коректни ли са?    (Да/Не) ___
+   Ако не, какво трябва да се коригира: _______________
+3. Офертите ви се показват правилно?           (Да/Не) ___
+4. BOOM стикерът работи ли при сканиране?      (Да/Не) ___
+5. Касовите бележки се разпознават ли правилно?(Да/Не) ___
+6. Какво бихте подобрили в процеса? _______________
+7. Бихте ли препоръчали BoomCard на друг бизнес?(Да/Не)___
+8. Допълнителни коментари: _______________</pre>
+</div>
+
+<!-- ═══════════════════════════════════════════ -->
+<!-- SECTION 4: LEGAL POLICIES                   -->
+<!-- ═══════════════════════════════════════════ -->
+<div class="section">
+  <div class="section-header">
+    <span class="section-num">Раздел 4</span>
+    <h2>Правни политики</h2>
+  </div>
+
+  <h3>4.1 Текущо състояние</h3>
+  <table>
+    <thead><tr><th>Документ</th><th>Статус</th><th>Местоположение</th></tr></thead>
+    <tbody>
+      <tr><td>Общи условия (Terms &amp; Conditions)</td><td><span class="tag tag-partial">Placeholder</span></td><td><code>TermsPage.tsx</code></td></tr>
+      <tr><td>Политика за поверителност (Privacy Policy)</td><td><span class="tag tag-partial">Placeholder</span></td><td><code>PrivacyPage.tsx</code></td></tr>
+      <tr><td>Политика за бисквитки (Cookie Policy)</td><td><span class="tag tag-p2">Имплементирана</span></td><td><code>CookiePolicyPage.tsx</code></td></tr>
+      <tr><td>Политика за плащания и възстановяване</td><td><span class="tag tag-p0">Липсва</span></td><td>&ndash;</td></tr>
+    </tbody>
+  </table>
+
+  <h3>4.2 Общи условия &ndash; структура</h3>
+  <div class="callout">
+    <strong>ВАЖНО:</strong> Текстът по-долу е структурен план. Финалният текст ТРЯБВА да бъде изготвен или прегледан от адвокат.
+  </div>
+
+  <div class="two-col">
+    <div class="info-box no-break">
+      <h4>1. Определения</h4>
+      <p style="font-size:9pt">Платформа, Потребител, Партньор, BoomCard карта, BOOM стикер, Cashback</p>
+      <h4>2. Регистрация и акаунт</h4>
+      <p style="font-size:9pt">Мин. възраст 18; 1 акаунт/лице; сигурност на паролата</p>
+      <h4>3. Абонаментни планове</h4>
+      <p style="font-size:9pt">STANDARD/PREMIUM/PLATINUM; месечно/годишно; trial</p>
+      <h4>4. Отмяна и възстановяване</h4>
+      <p style="font-size:9pt">14-дневен срок (ЗЗП); process; частични refunds</p>
+      <h4>5. Wallet система</h4>
+      <p style="font-size:9pt">Top-up, withdrawal, cashback, лимити, конверсия</p>
+      <h4>6. BOOM стикери и Receipts</h4>
+      <p style="font-size:9pt">Сканиране, GPS (100м), антифрод мерки</p>
+    </div>
+    <div class="info-box no-break">
+      <h4>7. Оферти и партньори</h4>
+      <p style="font-size:9pt">BoomCard = посредник; отговорност на партньора</p>
+      <h4>8. Интелектуална собственост</h4>
+      <p style="font-size:9pt">Лиценз; потребителско съдържание</p>
+      <h4>9. Ограничение на отговорността</h4>
+      <p style="font-size:9pt">&bdquo;As is&ldquo;; макс. = платена абонаментна такса</p>
+      <h4>10. Прекратяване</h4>
+      <p style="font-size:9pt">От потребител / от BoomCard; последствия</p>
+      <h4>11. Приложимо право</h4>
+      <p style="font-size:9pt">Република България; КЗП</p>
+      <h4>12. Промени в условията</h4>
+      <p style="font-size:9pt">30 дни предизвестие; имейл; продължаване = съгласие</p>
+    </div>
+  </div>
+
+  <h3>4.3 Политика за поверителност &ndash; ключови секции</h3>
+  <div class="two-col">
+    <div class="info-box no-break">
+      <h4>Събиране на данни</h4>
+      <ul style="font-size:9pt">
+        <li>Регистрация: име, имейл, телефон</li>
+        <li>Плащания: Paysera/Stripe (ние НЕ съхраняваме карти)</li>
+        <li>Ползване: GPS, снимки, транзакции</li>
+        <li>Автоматично: IP, устройство, бисквитки</li>
+      </ul>
+      <h4>GDPR основание (чл. 6)</h4>
+      <ul style="font-size:9pt">
+        <li>Изпълнение на договор (6.1.b)</li>
+        <li>Законен интерес (6.1.f) &ndash; антифрод</li>
+        <li>Съгласие (6.1.a) &ndash; маркетинг</li>
+      </ul>
+    </div>
+    <div class="info-box no-break">
+      <h4>Трети страни</h4>
+      <ul style="font-size:9pt">
+        <li>Paysera (Lithuania)</li>
+        <li>Stripe (USA &ndash; DPF)</li>
+        <li>AWS S3 (EU Frankfurt)</li>
+        <li>Resend, Sentry</li>
+      </ul>
+      <h4>Права на субекта (чл. 15-22)</h4>
+      <ul style="font-size:9pt">
+        <li>Достъп, коригиране, изтриване</li>
+        <li>Ограничаване, преносимост, възражение</li>
+        <li>Контакт: privacy@boomcard.bg</li>
+        <li>КЗЛД: бул. Проф. Цветан Лазаров 2, София</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3>4.4 Политика за плащания и възстановяване &ndash; структура</h3>
+  <table class="compact-table">
+    <thead><tr><th>Секция</th><th>Съдържание</th></tr></thead>
+    <tbody>
+      <tr><td><strong>1. Методи</strong></td><td>Банкова карта, банков превод, e-wallet (през Paysera/Stripe)</td></tr>
+      <tr><td><strong>2. Валути</strong></td><td>BGN (основна), EUR; конверсия по курс на процесора</td></tr>
+      <tr><td><strong>3. Auto-renewal</strong></td><td>Уведомление 7 дни преди; Cancel преди renewal</td></tr>
+      <tr><td><strong>4. 14-дневен отказ</strong></td><td>ЗЗП; пълно възстановяване; формуляр в Settings</td></tr>
+      <tr><td><strong>5. След 14 дни</strong></td><td>Достъп до края на периода; без prorated refund</td></tr>
+      <tr><td><strong>6. Процес</strong></td><td>Заявка &rarr; 5 работни дни &rarr; банково 5-10 дни</td></tr>
+      <tr><td><strong>7. Wallet</strong></td><td>Top-up: възстановява се; Cashback: не подлежи</td></tr>
+      <tr><td><strong>8. Спорове</strong></td><td>support@boomcard.bg &rarr; КЗП &rarr; EU ODR платформа</td></tr>
+    </tbody>
+  </table>
+
+  <h3>4.5 Действия за правна готовност</h3>
+  <table>
+    <thead><tr><th>#</th><th>Действие</th><th>Приоритет</th><th style="width:40px">OK</th></tr></thead>
+    <tbody>
+      <tr><td>L1</td><td>Наемане на адвокат за преглед на Общи условия</td><td><span class="tag tag-p0">Critical</span></td><td><span class="status-badge"></span></td></tr>
+      <tr><td>L2</td><td>GDPR съответствие &ndash; пълен audit</td><td><span class="tag tag-p0">Critical</span></td><td><span class="status-badge"></span></td></tr>
+      <tr><td>L3</td><td>Попълване на пълен текст в TermsPage.tsx</td><td><span class="tag tag-p0">High</span></td><td><span class="status-badge"></span></td></tr>
+      <tr><td>L4</td><td>Попълване на пълен текст в PrivacyPage.tsx</td><td><span class="tag tag-p0">High</span></td><td><span class="status-badge"></span></td></tr>
+      <tr><td>L5</td><td>Създаване на RefundPolicyPage.tsx</td><td><span class="tag tag-p0">High</span></td><td><span class="status-badge"></span></td></tr>
+      <tr><td>L6</td><td>Допълване на CookiePolicyPage.tsx с таблица</td><td><span class="tag tag-p1">Medium</span></td><td><span class="status-badge"></span></td></tr>
+      <tr><td>L7</td><td>Checkbox &bdquo;Приемам Общите условия&ldquo; при регистрация</td><td><span class="tag tag-p0">High</span></td><td><span class="status-badge"></span></td></tr>
+      <tr><td>L8</td><td>Double opt-in за маркетинг имейли</td><td><span class="tag tag-p1">Medium</span></td><td><span class="status-badge"></span></td></tr>
+      <tr><td>L9</td><td>Механизъм за Data Export (GDPR чл. 20)</td><td><span class="tag tag-p1">Medium</span></td><td><span class="status-badge"></span></td></tr>
+      <tr><td>L10</td><td>Механизъм за Account Deletion (GDPR чл. 17)</td><td><span class="tag tag-p0">High</span></td><td><span class="status-badge"></span></td></tr>
+      <tr><td>L11</td><td>Регистрация в КЗЛД като администратор на данни</td><td><span class="tag tag-p0">High</span></td><td><span class="status-badge"></span></td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ═══════════════════════════════════════════ -->
+<!-- SECTION 5: PLATFORM ↔ MOBILE INTEGRATION    -->
+<!-- ═══════════════════════════════════════════ -->
+<div class="section">
+  <div class="section-header">
+    <span class="section-num">Раздел 5</span>
+    <h2>Интеграция платформа &harr; мобилно приложение</h2>
+  </div>
+
+  <h3>5.1 Архитектура на интеграцията</h3>
+  <div class="diagram">&#9484;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9488;     HTTPS/REST      &#9484;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9488;
+&#9474;  Mobile App     &#9474; &#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472; &#9474;  Backend API &#9474;
+&#9474;  (React Native) &#9474;     JWT Auth         &#9474;  (Express)   &#9474;
+&#9474;  Expo SDK 54    &#9474;                      &#9474;  Port 3001   &#9474;
+&#9492;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9516;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9496;                      &#9492;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9516;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9496;
+        &#9474;                                       &#9474;
+        &#9474;  Deep Links                     Prisma ORM
+        &#9474;  boomcard://                          &#9474;
+        &#9474;                                &#9484;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9524;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9488;
+        &#9474;                                &#9474;  PostgreSQL  &#9474;
+   &#9484;&#9472;&#9472;&#9472;&#9472;&#9524;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9488;                  &#9492;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9496;
+   &#9474;  Paysera  &#9474;
+   &#9474;  Browser  &#9474;   Callback/Webhook
+   &#9474;  Payment  &#9474; &#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9654; Backend API
+   &#9492;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9496;</div>
+
+  <h3>5.2 Валидация на абонамент (критичен поток)</h3>
+  <div class="diagram">Mobile App                    Backend API                    Database
+    &#9474;                              &#9474;                            &#9474;
+    &#9500;&#9472;&#9472; POST /api/auth/login &#9472;&#9472;&#9472;&#9472;&#9472;&#9654;&#9474;                            &#9474;
+    &#9474;&#9668;&#9472;&#9472;&#9472; JWT (access + refresh) &#9472;&#9472;&#9508;                            &#9474;
+    &#9474;                              &#9474;                            &#9474;
+    &#9500;&#9472;&#9472; GET /subscriptions/current &#9472;&#9654;&#9474;                            &#9474;
+    &#9474;&#9668;&#9472;&#9472;&#9472; { plan, status, period } &#9472;&#9508;                            &#9474;
+    &#9474;                              &#9474;                            &#9474;
+    &#9474;  [If no subscription]        &#9474;                            &#9474;
+    &#9500;&#9472;&#9472; Navigate to PlanSelection  &#9474;                            &#9474;
+    &#9474;                              &#9474;                            &#9474;
+    &#9500;&#9472;&#9472; POST /api/payments/create &#9472;&#9654;&#9474;                            &#9474;
+    &#9474;&#9668;&#9472;&#9472;&#9472; { paymentUrl } &#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9508;                            &#9474;
+    &#9474;                              &#9474;                            &#9474;
+    &#9500;&#9472;&#9472; Open WebBrowser(paymentUrl)&#9474;                            &#9474;
+    &#9474;        &#9474;                     &#9474;                            &#9474;
+    &#9474;   [User pays on Paysera]     &#9474;                            &#9474;
+    &#9474;        &#9474;                     &#9474;                            &#9474;
+    &#9474;&#9668;&#9472;&#9472; Deep link redirect        &#9474;                            &#9474;
+    &#9474;   boomcard://payment-result  &#9474;                            &#9474;
+    &#9474;                              &#9474;                            &#9474;
+    &#9500;&#9472;&#9472; GET /subscriptions/status/:id &#9472;&#9654;&#9474;                      &#9474;
+    &#9474;&#9668;&#9472;&#9472;&#9472; { status: 'ACTIVE' } &#9472;&#9472;&#9472;&#9472;&#9508;                      &#9474;
+    &#9474;                              &#9474;                            &#9474;
+    &#9500;&#9472;&#9472; Navigate to Success        &#9474;                            &#9474;</div>
+
+  <h3>5.3 Тестови матрица за интеграция</h3>
+  <table class="compact-table">
+    <thead><tr><th>#</th><th>Поток</th><th style="width:35px">Уеб</th><th style="width:45px">Mobile</th><th style="width:50px">Backend</th></tr></thead>
+    <tbody>
+      <tr><td>I1</td><td>Auth: Register &rarr; Verify Email &rarr; Login</td><td><span class="status-badge"></span></td><td><span class="status-badge"></span></td><td><span class="status-badge"></span></td></tr>
+      <tr><td>I2</td><td>Subscription: Select Plan &rarr; Pay &rarr; Activate</td><td><span class="status-badge"></span></td><td><span class="status-badge"></span></td><td><span class="status-badge"></span></td></tr>
+      <tr><td>I3</td><td>Sticker: Scan QR &rarr; GPS Check &rarr; Credit</td><td><span class="status-badge"></span></td><td><span class="status-badge"></span></td><td><span class="status-badge"></span></td></tr>
+      <tr><td>I4</td><td>Receipt: Upload &rarr; OCR &rarr; Approve &rarr; Cashback</td><td><span class="status-badge"></span></td><td><span class="status-badge"></span></td><td><span class="status-badge"></span></td></tr>
+      <tr><td>I5</td><td>Wallet: Top-up &rarr; Balance Update &rarr; View History</td><td><span class="status-badge"></span></td><td><span class="status-badge"></span></td><td><span class="status-badge"></span></td></tr>
+      <tr><td>I6</td><td>Profile: Edit &rarr; Save &rarr; Reflect in All Clients</td><td><span class="status-badge"></span></td><td><span class="status-badge"></span></td><td><span class="status-badge"></span></td></tr>
+      <tr><td>I7</td><td>Notifications: Send &rarr; Receive &rarr; Open</td><td><span class="status-badge"></span></td><td><span class="status-badge"></span></td><td><span class="status-badge"></span></td></tr>
+      <tr><td>I8</td><td>Offers: Browse &rarr; Favorite &rarr; Redeem</td><td><span class="status-badge"></span></td><td><span class="status-badge"></span></td><td><span class="status-badge"></span></td></tr>
+      <tr><td>I9</td><td>Subscription: Cancel &rarr; Access Until End</td><td><span class="status-badge"></span></td><td><span class="status-badge"></span></td><td><span class="status-badge"></span></td></tr>
+      <tr><td>I10</td><td>Token Refresh: Expired &rarr; Auto-refresh &rarr; Continue</td><td><span class="status-badge"></span></td><td><span class="status-badge"></span></td><td><span class="status-badge"></span></td></tr>
+    </tbody>
+  </table>
+
+  <h3>5.4 API contract consistency чеклист</h3>
+  <ul class="checklist">
+    <li>Всички API endpoints връщат consistent error format <code>{ error, message, statusCode }</code></li>
+    <li>JWT token expiry е синхронизиран (access: 15min, refresh: 7d)</li>
+    <li>Mobile deep link scheme <code>boomcard://</code> регистриран в app.json</li>
+    <li>CORS разрешава origin на мобилното приложение</li>
+    <li>API versioning е консистентен (<code>/api/v1/</code> или <code>/api/</code>)</li>
+    <li>Date formats са ISO 8601 навсякъде</li>
+    <li>Pagination format е еднакъв (<code>{ data, total, page, limit }</code>)</li>
+    <li>File upload limits са еднакви (receipt images &lt; 10MB)</li>
+  </ul>
+</div>
+
+<!-- ═══════════════════════════════════════════ -->
+<!-- SECTION 6: INTERNAL ONBOARDING CHECKLIST    -->
+<!-- ═══════════════════════════════════════════ -->
+<div class="section">
+  <div class="section-header">
+    <span class="section-num">Раздел 6</span>
+    <h2>Онбординг чеклист (вътрешен)</h2>
+  </div>
+
+  <h3>6.1 Стъпки до &bdquo;Активен партньор&ldquo;</h3>
+  <div class="tree"> СТЪПКА 1: Споразумение
+ ├── Подписване на партньорско споразумение
+ ├── NDA (ако е необходимо)
+ └── Определяне на контактно лице
+                                  &#9660;
+ СТЪПКА 2: Заявка за данни
+ ├── Изпращане на шаблон за попълване
+ ├── Бизнес информация (BG + EN)
+ ├── Визуални материали (лого, cover)
+ ├── Локация(и) и работно време
+ └── Офертни предложения (мин. 2-3 оферти)
+                                  &#9660;
+ СТЪПКА 3: Въвеждане в системата
+ ├── Създаване на User (role: PARTNER)
+ ├── Създаване на Partner запис
+ ├── Създаване на Venue запис(и)
+ ├── Качване на визуални материали (S3)
+ ├── Създаване на оферти
+ └── Генериране на QR код стикери
+                                  &#9660;
+ СТЪПКА 4: Верификация и QA
+ ├── Проверка на данните за коректност
+ ├── Тест на стикер сканирането
+ ├── Проверка на GPS координати
+ ├── Визуална проверка на профила
+ └── Approval от QA team
+                                  &#9660;
+ СТЪПКА 5: Печат и доставка на стикери
+ ├── Поръчка на BOOM стикери (размер, дизайн)
+ ├── Печат
+ ├── Доставка до обекта
+ └── Поставяне на стикерите (инструкции)
+                                  &#9660;
+ СТЪПКА 6: Активиране
+ ├── Partner status &rarr; ACTIVE
+ ├── Venue status &rarr; ACTIVE
+ ├── Offer status &rarr; ACTIVE
+ ├── Уведомяване на партньора
+ └── Вътрешна бележка в системата</div>
+
+  <h3>6.2 Детайлен чеклист за всеки партньор</h3>
+  <pre>Партньор: _______________
+Дата на заявка: _______________     Отговорен: _______________
+
+СПОРАЗУМЕНИЕ                         ДАННИ
+&#9744; Партньорско споразумение подписано   &#9744; Бизнес име (BG): ___________
+&#9744; Контактно лице определено           &#9744; Бизнес име (EN): ___________
+&#9744; Комуникационен канал установен      &#9744; Категория: ___________
+                                         &#9744; Описание (BG, мин. 100 думи)
+ОФЕРТИ                                  &#9744; Описание (EN, мин. 100 думи)
+&#9744; Оферта 1: ___________ (___%)        &#9744; Лого (мин. 400x400)
+&#9744; Оферта 2: ___________ (___%)        &#9744; Cover image (мин. 1200x600)
+&#9744; Оферта 3: ___________ (___%)        &#9744; Адрес + GPS верифицирани
+                                         &#9744; Работно време
+СИСТЕМНИ ДЕЙСТВИЯ                        &#9744; Телефон / Имейл / Уебсайт
+&#9744; User акаунт (role: PARTNER)
+&#9744; Partner запис (status: PENDING)     QA
+&#9744; Venue запис(и)                      &#9744; Данни проверени
+&#9744; Оферти създадени                    &#9744; Стикер сканирането тествано
+&#9744; Лого + Cover в S3                   &#9744; GPS на място верифициран
+&#9744; QR код стикери генерирани            &#9744; Профил ОК на уеб + мобилно
+
+СТИКЕРИ                                АКТИВИРАНЕ
+&#9744; Поръчани (бр: ___)                  &#9744; Partner status &rarr; ACTIVE
+&#9744; Получени                            &#9744; Партньорът уведомен
+&#9744; Доставени + поставени               &#9744; Първо сканиране: &#9744;</pre>
+
+  <h3>6.3 Шаблон за партньорско споразумение</h3>
+  <table class="compact-table">
+    <thead><tr><th>Секция</th><th>Ключови точки</th></tr></thead>
+    <tbody>
+      <tr><td><strong>1. Предмет</strong></td><td>Партньорът предоставя оферти чрез BoomCard; BoomCard осигурява видимост</td></tr>
+      <tr><td><strong>2. Задължения BoomCard</strong></td><td>Публикуване на профил; BOOM стикери; техническа поддръжка; аналитики</td></tr>
+      <tr><td><strong>3. Задължения Партньор</strong></td><td>Актуални данни; изпълнение на оферти; поддръжка на стикери; уведомяване</td></tr>
+      <tr><td><strong>4. Финансови условия</strong></td><td>Без такса за BASIC; комисия от cashback; Premium тиерове</td></tr>
+      <tr><td><strong>5. Срок</strong></td><td>12 месеца + автоматично продължаване; 30 дни прекратяване</td></tr>
+      <tr><td><strong>6. Лични данни</strong></td><td>GDPR чл. 28; DPA като приложение</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ═══════════════════════════════════════════ -->
+<!-- SECTION 7: TARGET PARTNERS                  -->
+<!-- ═══════════════════════════════════════════ -->
+<div class="section">
+  <div class="section-header">
+    <span class="section-num">Раздел 7</span>
+    <h2>Първи таргетирани партньори</h2>
+  </div>
+
+  <h3>7.1 Критерии за подбор</h3>
+  <table>
+    <thead><tr><th>Критерий</th><th>Тежест</th><th>Описание</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Локация</strong></td><td>25%</td><td>София център / Лозенец, Младост, Витоша</td></tr>
+      <tr><td><strong>Категория</strong></td><td>20%</td><td>Микс: ресторанти, кафенета, фитнес, красота, забавления</td></tr>
+      <tr><td><strong>Клиентопоток</strong></td><td>20%</td><td>Мин. 50 клиента/ден за значим тестови обем</td></tr>
+      <tr><td><strong>Дигитална зрялост</strong></td><td>15%</td><td>Има Facebook/Instagram, познава loyalty програми</td></tr>
+      <tr><td><strong>Готовност</strong></td><td>10%</td><td>Мотивиран, отзивчив, склонен за feedback</td></tr>
+      <tr><td><strong>Brand fit</strong></td><td>10%</td><td>Съвместим имидж с BoomCard (модерен, urban, quality)</td></tr>
+    </tbody>
+  </table>
+
+  <h3>7.2 Целеви микс по категории (10 партньора)</h3>
+  <table>
+    <thead><tr><th>#</th><th>Категория</th><th>Бр.</th><th>Обосновка</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td>Ресторанти / Заведения</td><td><strong>3</strong></td><td>Най-висок cashback потенциал, чести посещения</td></tr>
+      <tr><td>2</td><td>Кафенета / Барове</td><td><strong>2</strong></td><td>Ежедневни покупки, лоялни клиенти</td></tr>
+      <tr><td>3</td><td>Фитнес / Спа / Красота</td><td><strong>2</strong></td><td>Recurring клиенти, абонаментна нагласа</td></tr>
+      <tr><td>4</td><td>Магазини / Търговия</td><td><strong>2</strong></td><td>Разнообразни receipt-и за OCR тест</td></tr>
+      <tr><td>5</td><td>Забавления / Преживявания</td><td><strong>1</strong></td><td>Unique value proposition, social sharing</td></tr>
+    </tbody>
+  </table>
+
+  <h3>7.3 Шаблон за списък с партньори</h3>
+  <table class="compact-table">
+    <thead><tr><th>#</th><th>Бизнес</th><th>Категория</th><th>Район</th><th>Контакт</th><th>Статус</th><th>Приор.</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td></td><td>Ресторант</td><td></td><td></td><td>Потенциален</td><td>A</td></tr>
+      <tr><td>2</td><td></td><td>Ресторант</td><td></td><td></td><td>Потенциален</td><td>A</td></tr>
+      <tr><td>3</td><td></td><td>Ресторант</td><td></td><td></td><td>Потенциален</td><td>A</td></tr>
+      <tr><td>4</td><td></td><td>Кафене</td><td></td><td></td><td>Потенциален</td><td>A</td></tr>
+      <tr><td>5</td><td></td><td>Кафене</td><td></td><td></td><td>Потенциален</td><td>B</td></tr>
+      <tr><td>6</td><td></td><td>Фитнес</td><td></td><td></td><td>Потенциален</td><td>A</td></tr>
+      <tr><td>7</td><td></td><td>Красота/Спа</td><td></td><td></td><td>Потенциален</td><td>B</td></tr>
+      <tr><td>8</td><td></td><td>Магазин</td><td></td><td></td><td>Потенциален</td><td>B</td></tr>
+      <tr><td>9</td><td></td><td>Магазин</td><td></td><td></td><td>Потенциален</td><td>B</td></tr>
+      <tr><td>10</td><td></td><td>Забавления</td><td></td><td></td><td>Потенциален</td><td>A</td></tr>
+    </tbody>
+  </table>
+  <p style="font-size:9pt;color:#64748b"><strong>Статуси:</strong> Потенциален &rarr; Контактуван &rarr; Интересуван &rarr; Подписан &rarr; Активен</p>
+
+  <h3>7.4 Sales pitch</h3>
+  <pre>Уважаеми [Име],
+
+BoomCard е нова лоялност и cashback платформа, която помага
+на бизнеси като Вашия да привличат и задържат клиенти.
+
+Какво предлагаме:
+&#10003; Безплатно публикуване на профил и оферти в приложението
+&#10003; BOOM стикери за обекта Ви &ndash; клиентите сканират и получават cashback
+&#10003; Аналитики за клиентско поведение
+&#10003; Видимост пред хиляди потребители на платформата
+
+Какво искаме от Вас:
+&#10003; 15 минути за попълване на данни
+&#10003; 2-3 оферти за клиентите ни
+&#10003; Място за BOOM стикер в обекта
+
+Без начална инвестиция. Без месечни такси за базовия план.
+
+Можем ли да насрочим 15-минутна среща тази седмица?
+
+С уважение,
+[Име], BoomCard Team</pre>
+
+  <h3>7.5 Outreach процес</h3>
+  <table class="compact-table">
+    <thead><tr><th>Период</th><th>Действие</th></tr></thead>
+    <tbody>
+      <tr><td>Ден 1-3</td><td>Изготвяне на списък с 20-30 потенциални партньори</td></tr>
+      <tr><td>Ден 4-7</td><td>Първи контакт (имейл + телефонно обаждане)</td></tr>
+      <tr><td>Ден 8-10</td><td>Follow-up на контактуваните</td></tr>
+      <tr><td>Ден 11-14</td><td>Срещи с интересуваните (on-site или виртуални)</td></tr>
+      <tr><td>Ден 15-17</td><td>Подписване на споразумения</td></tr>
+      <tr><td>Ден 18-21</td><td>Събиране на данни и въвеждане в системата</td></tr>
+      <tr><td>Ден 22-25</td><td>QA и печат на стикери</td></tr>
+      <tr><td>Ден 26-28</td><td>Активиране на първите партньори</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ═══════════════════════════════════════════ -->
+<!-- SECTION 8: COMPANY REGISTRATION             -->
+<!-- ═══════════════════════════════════════════ -->
+<div class="section">
+  <div class="section-header">
+    <span class="section-num">Раздел 8</span>
+    <h2>Регистрация на фирма и административни действия</h2>
+  </div>
+
+  <h3>8.1 Юридическа форма</h3>
+  <table>
+    <thead><tr><th>Опция</th><th>За</th><th>Против</th><th>Препоръка</th></tr></thead>
+    <tbody>
+      <tr><td><strong>ЕООД</strong></td><td>Прост, бърз, евтин; 1 собственик</td><td>Ограничена капитализация</td><td><span class="tag tag-p2">Да, за start</span></td></tr>
+      <tr><td><strong>ООД</strong></td><td>Повече съдружници</td><td>По-сложна структура</td><td>Ако има co-founders</td></tr>
+      <tr><td><strong>ЕАД/АД</strong></td><td>Привличане на инвестиции</td><td>Скъпо, сложно</td><td>За по-късен етап</td></tr>
+    </tbody>
+  </table>
+
+  <h3>8.2 Регистрация в Търговски регистър</h3>
+  <ul class="checklist">
+    <li>Избор на фирмено име (проверка за уникалност в ТР)
+      <br><span style="font-size:8.5pt;color:#64748b">Основно: BoomCard ЕООД | Резервни: BoomCard Bulgaria ЕООД, BoomCard BG ЕООД</span></li>
+    <li>Определяне на седалище и адрес на управление</li>
+    <li>Подготовка на учредителен акт / дружествен договор</li>
+    <li>Определяне на капитал (мин. 2 лв. за ЕООД)</li>
+    <li>Специмен от подписа на управителя</li>
+    <li>Декларация по чл. 13 ал. 4 от ЗТР</li>
+    <li>Декларация по чл. 141 ал. 8 от ТЗ (за управителя)</li>
+    <li>Заявление А4 за вписване в ТР</li>
+    <li>Заплащане на държавна такса (55 лв. онлайн / 110 лв. на хартия)</li>
+    <li>Подаване чрез портала на ТР (с КЕП) или чрез адвокат</li>
+  </ul>
+  <p><strong>КОД ПО КИД:</strong> 62.01 &ndash; Компютърно програмиране<br>
+  <strong>Алтернативно:</strong> 63.11 &ndash; Обработка на данни, хостинг</p>
+
+  <h3>8.3 След регистрацията</h3>
+  <ul class="checklist">
+    <li>Получаване на ЕИК (единен идентификационен код)</li>
+    <li>Регистрация по ДДС (задължителна при оборот &gt; 100 000 лв.)
+      <br><span style="font-size:8.5pt;color:#64748b">Или доброволна регистрация (за приспадане на ДДС от разходи)</span></li>
+    <li>Откриване на фирмена банкова сметка (UniCredit, DSK, Postbank, Revolut Business)</li>
+    <li>Регистрация в НАП (Национална агенция за приходите)</li>
+    <li>Регистрация в НОИ (ако ще има наети лица)</li>
+    <li>Назначаване на счетоводител / счетоводна къща</li>
+  </ul>
+
+  <h3>8.4 Допълнителни регистрации</h3>
+  <ul class="checklist">
+    <li><strong>КЗЛД</strong> &ndash; Регистрация като администратор на лични данни (cpdp.bg)</li>
+    <li><strong>КЗП</strong> &ndash; Запознаване с изискванията (ЗЕТ, право на отказ 14 дни)</li>
+    <li><strong>Домейни:</strong> boomcard.bg (основен), boomcard.com (защитен)</li>
+    <li><strong>Търговска марка</strong> &ndash; Патентно ведомство (класове 9, 35, 36) или EUIPO</li>
+  </ul>
+
+  <h3>8.5 Данъчен профил</h3>
+  <div class="two-col">
+    <div class="info-box no-break">
+      <h4>Данъци</h4>
+      <ul style="font-size:9pt">
+        <li>Корпоративен данък: <strong>10%</strong></li>
+        <li>ДДС стандартна ставка: <strong>20%</strong></li>
+        <li>Данък дивидент: <strong>5%</strong></li>
+      </ul>
+    </div>
+    <div class="info-box no-break">
+      <h4>Приходни модели</h4>
+      <ul style="font-size:9pt">
+        <li>Абонаментни такси &rarr; услуга + ДДС</li>
+        <li>Комисии от партньори &rarr; услуга + ДДС</li>
+        <li>Premium placement / реклама &rarr; услуга + ДДС</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3>8.6 Оперативни акаунти за създаване</h3>
+  <table class="compact-table">
+    <thead><tr><th>#</th><th>Акаунт</th><th>Цел</th><th style="width:40px">OK</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td>Paysera Business</td><td>Получаване на плащания</td><td><span class="status-badge"></span></td></tr>
+      <tr><td>2</td><td>Stripe Business</td><td>Алтернативни плащания</td><td><span class="status-badge"></span></td></tr>
+      <tr><td>3</td><td>AWS</td><td>S3 storage за receipts</td><td><span class="status-badge"></span></td></tr>
+      <tr><td>4</td><td>Render</td><td>Backend hosting</td><td><span class="status-badge"></span></td></tr>
+      <tr><td>5</td><td>Vercel</td><td>Frontend hosting</td><td><span class="status-badge"></span></td></tr>
+      <tr><td>6</td><td>Sentry</td><td>Error tracking</td><td><span class="status-badge"></span></td></tr>
+      <tr><td>7</td><td>Resend</td><td>Transactional emails</td><td><span class="status-badge"></span></td></tr>
+      <tr><td>8</td><td>Apple Developer</td><td>iOS App Store ($99/year)</td><td><span class="status-badge"></span></td></tr>
+      <tr><td>9</td><td>Google Play Developer</td><td>Android Play Store ($25)</td><td><span class="status-badge"></span></td></tr>
+      <tr><td>10</td><td>Expo (EAS)</td><td>Mobile builds</td><td><span class="status-badge"></span></td></tr>
+      <tr><td>11</td><td>Google Workspace</td><td>@boomcard.bg имейли</td><td><span class="status-badge"></span></td></tr>
+      <tr><td>12</td><td>UptimeRobot</td><td>Monitoring</td><td><span class="status-badge"></span></td></tr>
+      <tr><td>13</td><td>Firebase</td><td>Push notifications</td><td><span class="status-badge"></span></td></tr>
+      <tr><td>14</td><td>GitHub Organization</td><td>Source code management</td><td><span class="status-badge"></span></td></tr>
+    </tbody>
+  </table>
+
+  <h3>8.7 Timeline за административни действия</h3>
+  <div class="phase no-break">
+    <div class="phase-title">Седмица 1-2: Фирмена регистрация</div>
+    <ul class="phase-items">
+      <li>Ден 1-2: Избор на име + проверка в ТР</li>
+      <li>Ден 3-4: Подготовка на документи (адвокат / самостоятелно)</li>
+      <li>Ден 5: Подаване в ТР (онлайн с КЕП)</li>
+      <li>Ден 6-10: Изчакване на вписване (2-3 работни дни)</li>
+      <li>Ден 10-14: ЕИК получен, банкова сметка открита</li>
+    </ul>
+  </div>
+  <div class="phase no-break">
+    <div class="phase-title">Седмица 3: Данъчна регистрация</div>
+    <ul class="phase-items">
+      <li>ДДС регистрация (ако е приложимо)</li>
+      <li>НАП регистрация</li>
+      <li>Счетоводител / счетоводна къща</li>
+      <li>Фирмени имейли setup</li>
+    </ul>
+  </div>
+  <div class="phase no-break">
+    <div class="phase-title">Седмица 4: Платформени акаунти</div>
+    <ul class="phase-items">
+      <li>Paysera Business верификация (5-10 дни)</li>
+      <li>Apple Developer + Google Play акаунти</li>
+      <li>AWS, Render, Vercel &rarr; прехвърляне на фирмата</li>
+      <li>Домейн и SSL &rarr; фирмени данни</li>
+    </ul>
+  </div>
+  <div class="phase no-break">
+    <div class="phase-title">Седмица 5: Правна рамка</div>
+    <ul class="phase-items">
+      <li>Общи условия &rarr; адвокатски преглед</li>
+      <li>Privacy Policy &rarr; GDPR audit</li>
+      <li>КЗЛД регистрация</li>
+      <li>Търговска марка (подаване)</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════ -->
+<!-- SUMMARY MATRIX                              -->
+<!-- ═══════════════════════════════════════════ -->
+<div class="section">
+  <div class="section-header" style="background: linear-gradient(135deg, #581c87, #7e22ce);">
+    <span class="section-num" style="background: rgba(255,255,255,0.2);">Обобщение</span>
+    <h2>Матрица за готовност &amp; График за изпълнение</h2>
+  </div>
+
+  <h3>Обобщена матрица за готовност</h3>
+  <table>
+    <thead><tr><th>#</th><th>Област</th><th>Текущ статус</th><th>Блокиращо?</th><th>Приоритет</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td>Плащания &ndash; Paysera production</td><td>Тестов режим</td><td><span class="tag tag-yes">Да</span></td><td><span class="tag tag-p0">P0</span></td></tr>
+      <tr><td>2</td><td>Плащания &ndash; тестови сценарии</td><td>Не са изпълнени</td><td><span class="tag tag-yes">Да</span></td><td><span class="tag tag-p0">P0</span></td></tr>
+      <tr><td>3</td><td>Функционални тестове P0</td><td>Частично покрити</td><td><span class="tag tag-yes">Да</span></td><td><span class="tag tag-p0">P0</span></td></tr>
+      <tr><td>4</td><td>Load testing</td><td>Не е правен</td><td><span class="tag tag-yes">Да</span></td><td><span class="tag tag-p0">P0</span></td></tr>
+      <tr><td>5</td><td>Тестови партньори онбордвани</td><td>0 от 5-10</td><td><span class="tag tag-yes">Да</span></td><td><span class="tag tag-p0">P0</span></td></tr>
+      <tr><td>6</td><td>Общи условия (пълен текст)</td><td>Placeholder</td><td><span class="tag tag-yes">Да</span></td><td><span class="tag tag-p0">P0</span></td></tr>
+      <tr><td>7</td><td>Privacy Policy (пълен текст)</td><td>Placeholder</td><td><span class="tag tag-yes">Да</span></td><td><span class="tag tag-p0">P0</span></td></tr>
+      <tr><td>8</td><td>Refund Policy</td><td>Липсва</td><td><span class="tag tag-yes">Да</span></td><td><span class="tag tag-p0">P0</span></td></tr>
+      <tr><td>9</td><td>Mobile &harr; Backend интеграция</td><td>Изградена, нетествана</td><td><span class="tag tag-yes">Да</span></td><td><span class="tag tag-p0">P0</span></td></tr>
+      <tr><td>10</td><td>Фирмена регистрация</td><td>Не е започната</td><td><span class="tag tag-yes">Да</span></td><td><span class="tag tag-p0">P0</span></td></tr>
+      <tr><td>11</td><td>Paysera Business акаунт</td><td>Не е създаден</td><td><span class="tag tag-yes">Да</span></td><td><span class="tag tag-p0">P0</span></td></tr>
+      <tr><td>12</td><td>Apple + Google Developer</td><td>Не е потвърдено</td><td><span class="tag tag-yes">Да</span></td><td><span class="tag tag-p0">P0</span></td></tr>
+      <tr><td>13</td><td>GDPR compliance (Data Export/Delete)</td><td>Частично</td><td><span class="tag tag-partial">Средно</span></td><td><span class="tag tag-p1">P1</span></td></tr>
+      <tr><td>14</td><td>Cookie Policy (пълна таблица)</td><td>Частично</td><td><span class="tag tag-partial">Средно</span></td><td><span class="tag tag-p1">P1</span></td></tr>
+      <tr><td>15</td><td>Търговска марка</td><td>Не е подадена</td><td><span class="tag tag-no">Ниско</span></td><td><span class="tag tag-p2">P2</span></td></tr>
+      <tr><td>16</td><td>Застраховки</td><td>Няма</td><td><span class="tag tag-no">Ниско</span></td><td><span class="tag tag-p2">P2</span></td></tr>
+    </tbody>
+  </table>
+
+  <h3>Предложен график за изпълнение</h3>
+  <div class="phase no-break">
+    <div class="phase-title">ФАЗА 1 (Седмици 1-2): Фирма + Правна рамка</div>
+    <ul class="phase-items">
+      <li>Регистрация на ЕООД</li>
+      <li>Банкова сметка</li>
+      <li>Адвокат &rarr; Общи условия, Privacy Policy, Refund Policy</li>
+      <li>Paysera Business акаунт &rarr; верификация</li>
+      <li>Apple Developer + Google Play акаунти</li>
+    </ul>
+  </div>
+  <div class="phase no-break">
+    <div class="phase-title">ФАЗА 2 (Седмици 3-4): Тестове + Плащания</div>
+    <ul class="phase-items">
+      <li>Payment тестови сценарии (всички от раздел 1)</li>
+      <li>Функционални тестове P0 (10 сценария)</li>
+      <li>Load testing (baseline + peak)</li>
+      <li>Mobile &harr; Backend integration тестове</li>
+      <li>Bug fixes от тестовете</li>
+    </ul>
+  </div>
+  <div class="phase no-break">
+    <div class="phase-title">ФАЗА 3 (Седмици 5-6): Партньори</div>
+    <ul class="phase-items">
+      <li>Контакт с 20-30 потенциални партньора</li>
+      <li>Среща и подписване с 5-10</li>
+      <li>Въвеждане на данни в системата</li>
+      <li>Печат и доставка на стикери</li>
+      <li>Активиране на партньори</li>
+    </ul>
+  </div>
+  <div class="phase no-break">
+    <div class="phase-title">ФАЗА 4 (Седмица 7): Pilot</div>
+    <ul class="phase-items">
+      <li>Тестови потребители (20-30 човека)</li>
+      <li>Реални сканирания и receipt uploads</li>
+      <li>Събиране на feedback</li>
+      <li>Bug fixes и подобрения</li>
+      <li>Правни текстове публикувани</li>
+    </ul>
+  </div>
+  <div class="phase no-break">
+    <div class="phase-title">ФАЗА 5 (Седмица 8): Launch Prep</div>
+    <ul class="phase-items">
+      <li>PRE_LAUNCH_CHECKLIST.md &rarr; 95% завършен</li>
+      <li>LAUNCH_DAY_RUNBOOK.md &rarr; финализиран</li>
+      <li>GO/NO-GO решение</li>
+      <li>Launch!</li>
+    </ul>
+  </div>
+
+  <div class="page-footer">
+    <p><strong>BoomCard Pre-Launch Framework</strong> | Версия 1.0.0 | 24 февруари 2026</p>
+    <p>Вътрешен документ &ndash; Поверително</p>
+  </div>
+</div>
+
+</body>
+</html>

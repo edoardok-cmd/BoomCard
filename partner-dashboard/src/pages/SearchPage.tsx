@@ -3,7 +3,8 @@ import { motion } from 'framer-motion';
 import styled from 'styled-components';
 import { useLanguage } from '../contexts/LanguageContext';
 import SearchAutocomplete from '../components/common/SearchAutocomplete/SearchAutocomplete';
-import OfferCard, { Offer } from '../components/common/OfferCard/OfferCard';
+import OfferCard from '../components/common/OfferCard/OfferCard';
+import { offerToEntity, type Offer, type Entity } from '../types/entity.types';
 import Button from '../components/common/Button/Button';
 import Badge from '../components/common/Badge/Badge';
 
@@ -210,10 +211,12 @@ const sampleOffers: Offer[] = [
   }
 ];
 
+const sampleEntities = sampleOffers.map(offerToEntity);
+
 const SearchPage: React.FC = () => {
   const { language, t } = useLanguage();
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<Offer[]>([]);
+  const [searchResults, setSearchResults] = useState<Entity[]>([]);
   const [hasSearched, setHasSearched] = useState(false);
 
   const popularSearches = [
@@ -229,9 +232,9 @@ const SearchPage: React.FC = () => {
     setSearchQuery(query);
     setHasSearched(true);
     // Simulate search - in real app would call API
-    const filtered = sampleOffers.filter(offer =>
-      offer.title.toLowerCase().includes(query.toLowerCase()) ||
-      offer.category.toLowerCase().includes(query.toLowerCase())
+    const filtered = sampleEntities.filter(entity =>
+      entity.name.en.toLowerCase().includes(query.toLowerCase()) ||
+      entity.category.en.toLowerCase().includes(query.toLowerCase())
     );
     setSearchResults(filtered);
   };
@@ -313,14 +316,14 @@ const SearchPage: React.FC = () => {
 
               {searchResults.length > 0 ? (
                 <OffersGrid>
-                  {searchResults.map((offer, index) => (
+                  {searchResults.map((entity, index) => (
                     <motion.div
-                      key={offer.id}
+                      key={entity.id}
                       initial={{ opacity: 0, y: 20 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ duration: 0.4, delay: index * 0.05 }}
                     >
-                      <OfferCard offer={offer} />
+                      <OfferCard entity={entity} />
                     </motion.div>
                   ))}
                 </OffersGrid>

@@ -1,10 +1,10 @@
 import React from 'react';
 import GenericPage from '../components/templates/GenericPage';
-import { useOffers } from '../hooks/useOffers';
+import { useEntities } from '../hooks/useOffers';
 
 const LocationsTypeAllPage: React.FC = () => {
-  const { data, isLoading } = useOffers({ limit: 100 });
-  const offers = data?.data || [];
+  const { data, isLoading } = useEntities({ limit: 100 });
+  const entities = data?.data || [];
 
   return (
     <GenericPage
@@ -12,7 +12,7 @@ const LocationsTypeAllPage: React.FC = () => {
       titleBg="Всички Места"
       subtitleEn="Browse all available venues and offers across Bulgaria"
       subtitleBg="Разгледайте всички налични места и оферти из България"
-      offers={offers}
+      entities={entities}
       isLoading={isLoading}
     />
   );

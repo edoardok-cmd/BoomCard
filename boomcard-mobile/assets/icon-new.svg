@@ -1,0 +1,58 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg-gradient" x1="0" y1="0" x2="1024" y2="1024">
+      <stop offset="0%" stop-color="#667eea"/>
+      <stop offset="100%" stop-color="#764ba2"/>
+    </linearGradient>
+    <radialGradient id="highlight" cx="0.3" cy="0.2" r="0.75">
+      <stop offset="0%" stop-color="rgba(255,255,255,0.12)"/>
+      <stop offset="100%" stop-color="rgba(255,255,255,0)"/>
+    </radialGradient>
+    <radialGradient id="top-fill" cx="0.4" cy="0.35" r="0.65">
+      <stop offset="0%" stop-color="#B0D4EC"/>
+      <stop offset="100%" stop-color="#6FA8D6"/>
+    </radialGradient>
+    <radialGradient id="bottom-fill" cx="0.4" cy="0.35" r="0.65">
+      <stop offset="0%" stop-color="#F5E6A3"/>
+      <stop offset="100%" stop-color="#D4B94E"/>
+    </radialGradient>
+    <linearGradient id="slash-fill" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#908A9A"/>
+      <stop offset="100%" stop-color="#6E6878"/>
+    </linearGradient>
+    <filter id="circle-shadow" x="-20%" y="-15%" width="140%" height="145%">
+      <feDropShadow dx="4" dy="8" stdDeviation="16" flood-color="rgba(0,0,0,0.35)"/>
+    </filter>
+    <filter id="slash-shadow" x="-20%" y="-10%" width="140%" height="130%">
+      <feDropShadow dx="3" dy="6" stdDeviation="14" flood-color="rgba(0,0,0,0.35)"/>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1024" height="1024" fill="url(#bg-gradient)"/>
+  <rect width="1024" height="1024" fill="url(#highlight)"/>
+
+  <!-- % symbol group, slightly rotated like the original -->
+  <g transform="translate(512, 512) rotate(-11) translate(-512, -512)">
+
+    <!-- Top-left circle (blue) - drawn first (behind slash) -->
+    <g filter="url(#circle-shadow)" transform="translate(245, 200)">
+      <circle cx="135" cy="135" r="135" fill="url(#top-fill)"/>
+      <circle cx="135" cy="135" r="55" fill="url(#bg-gradient)"/>
+      <ellipse cx="110" cy="105" rx="45" ry="35" fill="rgba(255,255,255,0.15)"/>
+    </g>
+
+    <!-- Bottom-right circle (gold) - drawn second (behind slash) -->
+    <g filter="url(#circle-shadow)" transform="translate(505, 480)">
+      <circle cx="160" cy="160" r="160" fill="url(#bottom-fill)"/>
+      <circle cx="160" cy="160" r="65" fill="url(#bg-gradient)"/>
+      <ellipse cx="130" cy="125" rx="55" ry="42" fill="rgba(255,255,255,0.13)"/>
+    </g>
+
+    <!-- Diagonal slash - drawn LAST (on top of circles, like original) -->
+    <g filter="url(#slash-shadow)">
+      <rect x="450" y="60" width="85" height="860" rx="42" fill="url(#slash-fill)" transform="rotate(44, 512, 512)"/>
+    </g>
+
+  </g>
+</svg>

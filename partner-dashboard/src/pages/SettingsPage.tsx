@@ -5,6 +5,7 @@ import { Bell, Mail, Smartphone, Globe, Lock, CreditCard, Trash2, Save } from 'l
 import { Button } from '../components/common/Button/Button';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
+import { apiService } from '../services/api.service';
 import toast from 'react-hot-toast';
 import NotificationPreferences from '../components/common/NotificationPreferences/NotificationPreferences';
 
@@ -435,11 +436,11 @@ const SettingsPage: React.FC = () => {
     setIsSaving(true);
 
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1500));
-
-      // In a real app, you would save settings via API:
-      // await updateSettings({ notifications, privacy, language: selectedLanguage });
+      // Persist marketing consent to backend (GDPR audit trail)
+      await apiService.post('/auth/consent', {
+        type: 'marketing',
+        granted: notifications.promotions,
+      });
 
       toast.success(t.savedSuccess);
     } catch (error) {

@@ -1,10 +1,10 @@
 import React from 'react';
 import GenericPage from '../components/templates/GenericPage';
-import { useOffers } from '../hooks/useOffers';
+import { useEntities } from '../hooks/useOffers';
 
 const PartnersNewPage: React.FC = () => {
-  const { data, isLoading } = useOffers({ sortBy: 'createdAt', sortOrder: 'desc', limit: 50 });
-  const offers = data?.data || [];
+  const { data, isLoading } = useEntities({ sortBy: 'createdAt', sortOrder: 'desc', limit: 50 });
+  const entities = data?.data || [];
 
   return (
     <GenericPage
@@ -12,7 +12,7 @@ const PartnersNewPage: React.FC = () => {
       titleBg="Нови Партньори"
       subtitleEn="Discover freshly joined partners with exclusive welcome offers"
       subtitleBg="Открийте новоприсъединени партньори с ексклузивни приветствени оферти"
-      offers={offers}
+      entities={entities}
       isLoading={isLoading}
     />
   );
