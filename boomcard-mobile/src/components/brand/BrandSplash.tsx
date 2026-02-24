@@ -284,7 +284,7 @@ const BrandSplash: React.FC<BrandSplashProps> = ({
             <Image
               source={require('../../../assets/icon.png')}
               style={styles.logoImage}
-              resizeMode="contain"
+              resizeMode="cover"
             />
           </View>
           <Animated.View
@@ -313,7 +313,7 @@ const BrandSplash: React.FC<BrandSplashProps> = ({
               animatedScale={cardScale}
               animatedRotateX={cardRotateXInterpolated}
               animatedOpacity={cardOpacity}
-              cardType="STANDARD"
+              cardType="PREMIUM"
             />
           </Animated.View>
         )}
@@ -343,28 +343,28 @@ const styles = StyleSheet.create({
     zIndex: 2,
   },
   logoCircle: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    justifyContent: 'center',
-    alignItems: 'center',
+    width: 110,
+    height: 110,
+    borderRadius: 55,
+    overflow: 'hidden',
+    borderWidth: 3,
+    borderColor: 'rgba(255,255,255,0.3)',
     marginBottom: 16,
     ...Platform.select({
       ios: {
         shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.2,
-        shadowRadius: 12,
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.3,
+        shadowRadius: 16,
       },
       android: {
-        elevation: 8,
+        elevation: 12,
       },
     }),
   },
   logoImage: {
-    width: 64,
-    height: 64,
+    width: 110,
+    height: 110,
   },
   brandRow: {
     flexDirection: 'row',

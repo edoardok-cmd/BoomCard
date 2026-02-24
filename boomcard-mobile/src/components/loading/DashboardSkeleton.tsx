@@ -11,7 +11,7 @@ interface DashboardSkeletonProps {
 
 const DashboardSkeleton: React.FC<DashboardSkeletonProps> = ({ isDarkMode }) => {
   const bg = isDarkMode ? '#111827' : '#FFFFFF';
-  const surface = isDarkMode ? '#1F2937' : '#F3F4F6';
+  const surface = isDarkMode ? '#1F2937' : '#FAFBFC';
   const heroGradient: [string, string] = isDarkMode
     ? ['#1E3A8A', '#5B21B6']
     : ['#3B82F6', '#8B5CF6'];

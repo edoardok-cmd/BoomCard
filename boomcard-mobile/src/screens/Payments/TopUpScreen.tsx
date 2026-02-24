@@ -141,7 +141,7 @@ export default function TopUpScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: '#FAFBFC',
   },
   card: {
     margin: 16,

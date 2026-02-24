@@ -304,7 +304,7 @@ export const AppNavigator = () => {
           <Text style={[brandLoadingStyles.brandBoom, { color: theme.colors.onSurface }]}>BOOM</Text>
           <Text style={[brandLoadingStyles.brandCard, { color: theme.colors.onSurfaceVariant }]}>Card</Text>
         </View>
-        <ProgressRing size={48} strokeWidth={3} color={theme.colors.primary} trackColor={isDarkMode ? 'rgba(96,165,250,0.15)' : 'rgba(59,130,246,0.1)'} />
+        <ProgressRing size={48} strokeWidth={3} color={theme.colors.primary} trackColor={isDarkMode ? 'rgba(59,130,246,0.15)' : 'rgba(59,130,246,0.1)'} />
       </View>
     );
   }

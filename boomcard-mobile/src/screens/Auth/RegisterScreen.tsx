@@ -513,11 +513,11 @@ const getStyles = (theme: any) => StyleSheet.create({
     borderColor: theme.colors.outline,
   },
   planError: {
-    backgroundColor: '#fef2f2',
-    borderColor: '#ef4444',
+    backgroundColor: '#FEF2F2',
+    borderColor: '#EF4444',
   },
   planErrorText: {
-    color: '#991b1b',
+    color: '#7F1D1D',
     fontSize: 14,
     textAlign: 'center',
   },
@@ -562,16 +562,16 @@ const getStyles = (theme: any) => StyleSheet.create({
     color: theme.colors.primary,
   },
   paymentInfo: {
-    backgroundColor: '#eff6ff',
+    backgroundColor: '#EFF6FF',
     borderWidth: 1,
-    borderColor: '#3b82f6',
+    borderColor: '#3B82F6',
     borderRadius: 8,
     padding: 14,
     marginBottom: 24,
   },
   paymentInfoText: {
     fontSize: 14,
-    color: '#1e40af',
+    color: '#1E40AF',
     lineHeight: 20,
   },
   paymentInfoBold: {

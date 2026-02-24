@@ -133,7 +133,7 @@ const getStyles = (theme: any, isDarkMode: boolean) => StyleSheet.create({
   },
   infoText: {
     fontSize: 13,
-    color: isDarkMode ? '#93C5FD' : '#1e40af',
+    color: isDarkMode ? '#93C5FD' : '#1E40AF',
     lineHeight: 20,
   },
 

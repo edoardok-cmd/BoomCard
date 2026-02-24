@@ -453,7 +453,7 @@ const SettingsScreen = ({ navigation }: any) => {
             <Switch
               value={settings.pushNotifications}
               onValueChange={() => handleToggle('pushNotifications')}
-              trackColor={{ false: '#D1D5DB', true: '#93C5FD' }}
+              trackColor={{ false: '#CBD5E1', true: '#93C5FD' }}
               thumbColor={settings.pushNotifications ? theme.colors.primary : '#F3F4F6'}
             />
           </View>
@@ -471,7 +471,7 @@ const SettingsScreen = ({ navigation }: any) => {
             <Switch
               value={settings.emailNotifications}
               onValueChange={() => handleToggle('emailNotifications')}
-              trackColor={{ false: '#D1D5DB', true: '#93C5FD' }}
+              trackColor={{ false: '#CBD5E1', true: '#93C5FD' }}
               thumbColor={settings.emailNotifications ? theme.colors.primary : '#F3F4F6'}
             />
           </View>
@@ -509,7 +509,7 @@ const SettingsScreen = ({ navigation }: any) => {
             <Switch
               value={settings.locationServices}
               onValueChange={() => handleToggle('locationServices')}
-              trackColor={{ false: '#D1D5DB', true: '#93C5FD' }}
+              trackColor={{ false: '#CBD5E1', true: '#93C5FD' }}
               thumbColor={settings.locationServices ? theme.colors.primary : '#F3F4F6'}
             />
           </View>
@@ -551,7 +551,7 @@ const SettingsScreen = ({ navigation }: any) => {
             <Switch
               value={settings.biometricAuth}
               onValueChange={() => handleToggle('biometricAuth')}
-              trackColor={{ false: '#D1D5DB', true: '#93C5FD' }}
+              trackColor={{ false: '#CBD5E1', true: '#93C5FD' }}
               thumbColor={settings.biometricAuth ? theme.colors.primary : '#F3F4F6'}
               disabled={!isBiometricAvailable || !isBiometricEnrolled}
             />
@@ -574,7 +574,7 @@ const SettingsScreen = ({ navigation }: any) => {
             <Switch
               value={isDarkMode}
               onValueChange={() => handleToggle('darkMode')}
-              trackColor={{ false: '#D1D5DB', true: '#93C5FD' }}
+              trackColor={{ false: '#CBD5E1', true: '#93C5FD' }}
               thumbColor={isDarkMode ? theme.colors.primary : '#F3F4F6'}
             />
           </View>

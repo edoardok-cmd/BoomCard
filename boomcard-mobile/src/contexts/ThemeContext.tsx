@@ -10,37 +10,41 @@ import { MD3LightTheme, MD3DarkTheme, Provider as PaperProvider } from 'react-na
 import { useColorScheme } from 'react-native';
 import StorageService from '../services/storage.service';
 
-// Custom light theme colors
+// Custom light theme colors — aligned with partner-dashboard website palette
 const lightTheme = {
   ...MD3LightTheme,
   colors: {
     ...MD3LightTheme.colors,
-    primary: '#3B82F6', // Blue
+    primary: '#3B82F6', // Blue (website info/action color)
+    onPrimary: '#FFFFFF',
     secondary: '#8B5CF6', // Purple
-    tertiary: '#10B981', // Green
+    tertiary: '#10B981', // Green (website accent)
     error: '#EF4444', // Red
     background: '#FFFFFF',
-    surface: '#F3F4F6',
-    surfaceVariant: '#E5E7EB',
-    onSurface: '#1F2937',
-    onSurfaceVariant: '#6B7280',
+    surface: '#FAFBFC', // Website background-secondary
+    surfaceVariant: '#F3F4F6', // Website background-tertiary
+    onSurface: '#0F172A', // Website text-primary (slate-900)
+    onSurfaceVariant: '#64748B', // Website text-secondary (slate-500)
+    outline: '#E5E7EB', // Website border color
   },
 };
 
-// Custom dark theme colors
+// Custom dark theme colors — aligned with partner-dashboard website palette
 const darkTheme = {
   ...MD3DarkTheme,
   colors: {
     ...MD3DarkTheme.colors,
-    primary: '#60A5FA', // Lighter blue for dark mode
-    secondary: '#A78BFA', // Lighter purple
-    tertiary: '#34D399', // Lighter green
-    error: '#F87171', // Lighter red
-    background: '#111827', // Dark gray
-    surface: '#1F2937',
-    surfaceVariant: '#374151',
-    onSurface: '#F9FAFB',
-    onSurfaceVariant: '#D1D5DB',
+    primary: '#3B82F6', // Website dark mode primary (same blue)
+    onPrimary: '#FFFFFF',
+    secondary: '#8B5CF6', // Purple
+    tertiary: '#34D399', // Green
+    error: '#EF4444', // Red (website uses same)
+    background: '#111827', // Deep dark
+    surface: '#1F2937', // Website dark background
+    surfaceVariant: '#374151', // Website dark border/tertiary
+    onSurface: '#F8FAFC', // Website dark text-primary (slate-50)
+    onSurfaceVariant: '#CBD5E1', // Website dark text-secondary (slate-300)
+    outline: '#374151', // Website dark border
   },
 };
 

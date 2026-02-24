@@ -53,13 +53,13 @@ export default function TransactionHistoryScreen() {
 
   const getTransactionColor = (type: string) => {
     const colors: Record<string, string> = {
-      TOP_UP: '#4caf50',
-      CASHBACK_CREDIT: '#ff9800',
-      PURCHASE: '#f44336',
-      REFUND: '#2196f3',
-      WITHDRAWAL: '#f44336',
+      TOP_UP: '#10B981',
+      CASHBACK_CREDIT: '#F59E0B',
+      PURCHASE: '#EF4444',
+      REFUND: '#3B82F6',
+      WITHDRAWAL: '#EF4444',
     };
-    return colors[type] || '#757575';
+    return colors[type] || '#64748B';
   };
 
   const renderTransaction = ({ item }: { item: any }) => (
@@ -79,7 +79,7 @@ export default function TransactionHistoryScreen() {
             <Text
               style={[
                 styles.amount,
-                { color: item.amount >= 0 ? '#4caf50' : '#f44336' },
+                { color: item.amount >= 0 ? '#10B981' : '#EF4444' },
               ]}
             >
               {item.amount >= 0 ? '+' : ''}
@@ -140,7 +140,7 @@ export default function TransactionHistoryScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: '#FAFBFC',
   },
   centered: {
     flex: 1,

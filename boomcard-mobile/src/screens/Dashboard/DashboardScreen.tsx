@@ -276,7 +276,7 @@ const DashboardScreen = ({ navigation }: any) => {
           activeOpacity={0.7}
           onPress={() => navigation.navigate('ReceiptScanner')}
         >
-          <View style={[s.actionIconCircle, { backgroundColor: isDarkMode ? 'rgba(96,165,250,0.15)' : 'rgba(59,130,246,0.1)' }]}>
+          <View style={[s.actionIconCircle, { backgroundColor: isDarkMode ? 'rgba(59,130,246,0.15)' : 'rgba(59,130,246,0.1)' }]}>
             <Ionicons name="camera-outline" size={24} color={theme.colors.primary} />
           </View>
           <Text style={s.actionTitle}>{t('dashboard.scanReceipt')}</Text>
@@ -288,8 +288,8 @@ const DashboardScreen = ({ navigation }: any) => {
           activeOpacity={0.7}
           onPress={() => navigation.navigate('Scan')}
         >
-          <View style={[s.actionIconCircle, { backgroundColor: isDarkMode ? 'rgba(167,139,250,0.15)' : 'rgba(139,92,246,0.1)' }]}>
-            <Ionicons name="qr-code-outline" size={24} color={isDarkMode ? '#A78BFA' : '#8B5CF6'} />
+          <View style={[s.actionIconCircle, { backgroundColor: isDarkMode ? 'rgba(139,92,246,0.15)' : 'rgba(139,92,246,0.1)' }]}>
+            <Ionicons name="qr-code-outline" size={24} color="#8B5CF6" />
           </View>
           <Text style={s.actionTitle}>{t('dashboard.scanSticker')}</Text>
           <Text style={s.actionSubtitle}>{t('dashboard.qrCodeAtVenue')}</Text>
@@ -301,8 +301,8 @@ const DashboardScreen = ({ navigation }: any) => {
       <FadeInView delay={200}>
       <View style={s.statsRow}>
         <View style={s.statCard}>
-          <View style={[s.statIconCircle, { backgroundColor: isDarkMode ? 'rgba(52,211,153,0.15)' : 'rgba(16,185,129,0.1)' }]}>
-            <Ionicons name="wallet-outline" size={20} color={isDarkMode ? '#34D399' : '#10B981'} />
+          <View style={[s.statIconCircle, { backgroundColor: isDarkMode ? 'rgba(16,185,129,0.15)' : 'rgba(16,185,129,0.1)' }]}>
+            <Ionicons name="wallet-outline" size={20} color="#10B981" />
           </View>
           <AnimatedCounter
             targetValue={stats?.totalCashback || cardStats?.totalCashbackEarned || 0}
@@ -313,7 +313,7 @@ const DashboardScreen = ({ navigation }: any) => {
         </View>
 
         <View style={s.statCard}>
-          <View style={[s.statIconCircle, { backgroundColor: isDarkMode ? 'rgba(96,165,250,0.15)' : 'rgba(59,130,246,0.1)' }]}>
+          <View style={[s.statIconCircle, { backgroundColor: isDarkMode ? 'rgba(59,130,246,0.15)' : 'rgba(59,130,246,0.1)' }]}>
             <Ionicons name="receipt-outline" size={20} color={theme.colors.primary} />
           </View>
           <AnimatedCounter
@@ -324,8 +324,8 @@ const DashboardScreen = ({ navigation }: any) => {
         </View>
 
         <View style={s.statCard}>
-          <View style={[s.statIconCircle, { backgroundColor: isDarkMode ? 'rgba(167,139,250,0.15)' : 'rgba(139,92,246,0.1)' }]}>
-            <Ionicons name="storefront-outline" size={20} color={isDarkMode ? '#A78BFA' : '#8B5CF6'} />
+          <View style={[s.statIconCircle, { backgroundColor: isDarkMode ? 'rgba(139,92,246,0.15)' : 'rgba(139,92,246,0.1)' }]}>
+            <Ionicons name="storefront-outline" size={20} color="#8B5CF6" />
           </View>
           <AnimatedCounter
             targetValue={recentVisits.length}
@@ -364,7 +364,7 @@ const DashboardScreen = ({ navigation }: any) => {
               <View style={s.venueStats}>
                 <Text style={s.venueAmount}>{formatDualCurrency(visit.totalSpent)}</Text>
                 <View style={s.venueCashbackRow}>
-                  <Ionicons name="arrow-up-circle-outline" size={14} color={isDarkMode ? '#34D399' : '#10B981'} />
+                  <Ionicons name="arrow-up-circle-outline" size={14} color="#10B981" />
                   <Text style={s.venueCashback}>
                     {formatDualCurrency(visit.totalCashback)}
                   </Text>
@@ -724,7 +724,7 @@ const getStyles = (theme: any, isDarkMode: boolean) => StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: isDarkMode ? 'rgba(96,165,250,0.12)' : 'rgba(59,130,246,0.08)',
+    backgroundColor: isDarkMode ? 'rgba(59,130,246,0.12)' : 'rgba(59,130,246,0.08)',
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
@@ -759,7 +759,7 @@ const getStyles = (theme: any, isDarkMode: boolean) => StyleSheet.create({
   },
   venueCashback: {
     fontSize: 12,
-    color: isDarkMode ? '#34D399' : '#10B981',
+    color: '#10B981',
     fontWeight: '500',
   },
 

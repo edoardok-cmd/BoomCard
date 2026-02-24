@@ -447,18 +447,18 @@ const DownloadButton = styled.a`
   align-items: center;
   gap: 0.5rem;
   padding: 0.875rem 2rem;
-  background: linear-gradient(135deg, #c9a237 0%, #d4af37 100%);
+  background: #ffffff;
   color: #111827;
   border-radius: 0.75rem;
   font-size: 1.125rem;
   font-weight: 700;
   text-decoration: none;
   transition: all 200ms;
-  box-shadow: 0 4px 15px rgba(201, 162, 55, 0.4);
+  box-shadow: 0 4px 15px rgba(255, 255, 255, 0.3);
 
   &:hover {
     transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(201, 162, 55, 0.5);
+    box-shadow: 0 6px 20px rgba(255, 255, 255, 0.4);
   }
 
   [data-theme="color"] & {
