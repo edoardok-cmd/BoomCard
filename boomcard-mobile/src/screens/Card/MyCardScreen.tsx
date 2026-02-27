@@ -191,7 +191,7 @@ export default function MyCardScreen() {
           >
             {/* Card Header */}
             <View style={styles.cardHeader}>
-              <View>
+              <View style={styles.cardBrandRow}>
                 <Text style={[
                   styles.cardBrand,
                   { color: accent.text },
@@ -201,7 +201,8 @@ export default function MyCardScreen() {
                     textShadowRadius: 12,
                   },
                 ]}>BOOM</Text>
-                <Text style={[styles.cardBrandSub, { color: accent.text, opacity: 0.7 }]}>Card</Text>
+                <View style={[styles.cardBrandDot, { backgroundColor: accent.text }]} />
+                <Text style={[styles.cardBrandSub, { color: accent.text }]}>Card</Text>
               </View>
               <View style={[styles.tierBadge, { backgroundColor: accent.text + '20' }]}>
                 <Text style={[styles.tierBadgeText, { color: accent.text }]}>
@@ -434,16 +435,26 @@ const getStyles = (theme: any, isDarkMode: boolean) => StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'flex-start',
   },
+  cardBrandRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   cardBrand: {
     fontSize: 26,
     fontWeight: '900',
     letterSpacing: 3,
   },
+  cardBrandDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+    marginHorizontal: 6,
+    opacity: 0.7,
+  },
   cardBrandSub: {
-    fontSize: 14,
+    fontSize: 22,
     fontWeight: '300',
     letterSpacing: 1,
-    marginTop: -2,
   },
   tierBadge: {
     paddingHorizontal: 12,

@@ -15,6 +15,7 @@ import { useAuth } from '../store/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { View, Text, StyleSheet } from 'react-native';
 import { ProgressRing } from '../components/loading';
+import BoomLogo from '../components/brand/BoomLogo';
 import * as SecureStore from '../utils/secureStore';
 import { STORAGE_KEYS } from '../constants/config';
 
@@ -95,6 +96,11 @@ const TabNavigator = () => {
           tabBarLabel: t('navigation.home'),
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="home" size={size} color={color} />
+          ),
+          headerRight: () => (
+            <View style={{ marginRight: 16 }}>
+              <BoomLogo size={32} />
+            </View>
           ),
         }}
       />

@@ -18,8 +18,6 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useQueryClient } from '@tanstack/react-query';
 import StorageService from '../../services/storage.service';
 import LocationService from '../../services/location.service';
 import BiometricService from '../../services/biometric.service';
@@ -27,12 +25,12 @@ import NotificationService from '../../services/notification.service';
 import notificationsApi from '../../api/notifications.api';
 import { useTheme } from '../../contexts/ThemeContext';
 import { changeLanguage, getCurrentLanguage } from '../../i18n';
+import queryClient from '../../queryClient';
 
 const SettingsScreen = ({ navigation }: any) => {
   const { t, i18n } = useTranslation();
   // Get theme state and toggle function from ThemeContext
   const { isDarkMode, toggleTheme, theme } = useTheme();
-  const queryClient = useQueryClient();
   const [currentLanguage, setCurrentLanguage] = useState(getCurrentLanguage());
 
   // Set translated navigation title
@@ -380,14 +378,19 @@ const SettingsScreen = ({ navigation }: any) => {
               await LocationService.clearCache();
 
               // Clear AsyncStorage except authentication and preferences
-              const keys = await AsyncStorage.getAllKeys();
-              const keysToRemove = keys.filter(
-                key => !key.includes('token') &&
-                       !key.includes('user') &&
-                       !key.includes('theme') &&
-                       !key.includes('language')
-              );
-              await AsyncStorage.multiRemove(keysToRemove);
+              try {
+                const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+                const keys = await AsyncStorage.getAllKeys();
+                const keysToRemove = keys.filter(
+                  (key: string) => !key.includes('token') &&
+                         !key.includes('user') &&
+                         !key.includes('theme') &&
+                         !key.includes('language')
+                );
+                await AsyncStorage.multiRemove(keysToRemove);
+              } catch (e) {
+                console.warn('AsyncStorage clear skipped:', e);
+              }
 
               // Restore preferences
               if (theme) await StorageService.setTheme(theme);
@@ -425,6 +428,7 @@ const SettingsScreen = ({ navigation }: any) => {
   };
 
   const styles = getStyles(theme);
+  const chevronColor = theme.colors.onSurfaceVariant;
 
   return (
     <ScrollView style={styles.container}>
@@ -635,7 +639,7 @@ const SettingsScreen = ({ navigation }: any) => {
                 </Text>
               </View>
             </View>
-            <Ionicons name="chevron-forward" size={24} color={styles.chevronColor} />
+            <Ionicons name="chevron-forward" size={24} color={chevronColor} />
           </TouchableOpacity>
         </View>
 
@@ -652,7 +656,7 @@ const SettingsScreen = ({ navigation }: any) => {
                 </Text>
               </View>
             </View>
-            <Ionicons name="chevron-forward" size={24} color={styles.chevronColor} />
+            <Ionicons name="chevron-forward" size={24} color={chevronColor} />
           </TouchableOpacity>
         </View>
 
@@ -748,7 +752,6 @@ const getStyles = (theme: any) => StyleSheet.create({
     fontWeight: '500',
     color: theme.colors.primary,
   },
-  chevronColor: theme.colors.onSurfaceVariant,
   appInfo: {
     marginTop: 32,
     alignItems: 'center',

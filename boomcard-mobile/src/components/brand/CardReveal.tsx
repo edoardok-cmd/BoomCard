@@ -4,12 +4,41 @@ import { LinearGradient } from 'expo-linear-gradient';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CARD_WIDTH = SCREEN_WIDTH * 0.82;
-const CARD_HEIGHT = CARD_WIDTH * 0.6;
+const CARD_HEIGHT = CARD_WIDTH * 0.625; // Credit card aspect ratio
 
+// Gradients matching the website HomePage.tsx CreditCardPlan
 const CARD_GRADIENTS: Record<string, [string, string]> = {
-  STANDARD: ['#4A5568', '#2D3748'],
-  PREMIUM: ['#D4AF37', '#FFD700'],
-  PLATINUM: ['#C0C0C0', '#E8E8E8'],
+  STANDARD: ['#ffffff', '#f5f5f5'],
+  PREMIUM: ['#1a1a1a', '#2d2d2d'],
+  PLATINUM: ['#c0c0c0', '#939393'],
+};
+
+// Border colors per card type (website uses gold border for premium)
+const CARD_BORDERS: Record<string, { color: string; width: number }> = {
+  STANDARD: { color: 'rgba(200, 200, 200, 0.5)', width: 2 },
+  PREMIUM: { color: '#ffd700', width: 3 },
+  PLATINUM: { color: 'rgba(255, 255, 255, 0.3)', width: 2 },
+};
+
+// Logo text color per type (website CardLogoText)
+const LOGO_COLORS: Record<string, string> = {
+  STANDARD: '#4a4a4a',
+  PREMIUM: '#ffd700',
+  PLATINUM: '#1a1a1a',
+};
+
+// Card number color per type (website CardNumber)
+const NUMBER_COLORS: Record<string, string> = {
+  STANDARD: 'rgba(100, 100, 100, 0.8)',
+  PREMIUM: 'rgba(255, 255, 255, 0.9)',
+  PLATINUM: 'rgba(26, 26, 26, 0.9)',
+};
+
+// Cardholder name color per type (website CardHolderName)
+const HOLDER_COLORS: Record<string, string> = {
+  STANDARD: 'rgba(74, 74, 74, 0.95)',
+  PREMIUM: 'rgba(255, 255, 255, 0.95)',
+  PLATINUM: 'rgba(26, 26, 26, 0.95)',
 };
 
 interface CardRevealProps {
@@ -26,12 +55,19 @@ const CardReveal: React.FC<CardRevealProps> = ({
   cardType = 'STANDARD',
 }) => {
   const gradientColors = CARD_GRADIENTS[cardType] || CARD_GRADIENTS.STANDARD;
+  const border = CARD_BORDERS[cardType] || CARD_BORDERS.STANDARD;
+  const logoColor = LOGO_COLORS[cardType] || LOGO_COLORS.STANDARD;
+  const numberColor = NUMBER_COLORS[cardType] || NUMBER_COLORS.STANDARD;
+  const holderColor = HOLDER_COLORS[cardType] || HOLDER_COLORS.STANDARD;
+  const isPremium = cardType === 'PREMIUM';
 
   return (
     <Animated.View
       style={[
         styles.cardWrapper,
         {
+          borderColor: border.color,
+          borderWidth: border.width,
           opacity: animatedOpacity,
           transform: [
             { perspective: 800 },
@@ -47,42 +83,30 @@ const CardReveal: React.FC<CardRevealProps> = ({
         end={{ x: 1, y: 1 }}
         style={styles.card}
       >
-        {/* Card header */}
-        <View style={styles.cardHeader}>
-          <Text style={styles.cardLogo}>BOOMCARD</Text>
-          <View style={styles.cardChip}>
-            <View style={styles.chipLine} />
-            <View style={[styles.chipLine, { width: 16 }]} />
-            <View style={styles.chipLine} />
-          </View>
+        {/* Card logo - matches website "BOOM Card" with Arial Black style */}
+        <Text
+          style={[
+            styles.cardLogo,
+            { color: logoColor },
+            isPremium && styles.cardLogoPremiumShadow,
+          ]}
+        >
+          BOOM Card
+        </Text>
+
+        {/* Card number dots - matches website CardNumber with Courier */}
+        <View style={styles.cardNumberRow}>
+          <Text style={[styles.cardNumber, { color: numberColor }]}>••••</Text>
+          <Text style={[styles.cardNumber, { color: numberColor }]}>••••</Text>
+          <Text style={[styles.cardNumber, { color: numberColor }]}>••••</Text>
+          <Text style={[styles.cardNumber, { color: numberColor }]}>••••</Text>
         </View>
 
-        {/* Decorative QR dots */}
-        <View style={styles.qrArea}>
-          {Array.from({ length: 3 }).map((_, row) => (
-            <View key={row} style={styles.qrRow}>
-              {Array.from({ length: 4 }).map((_, col) => (
-                <View
-                  key={col}
-                  style={[
-                    styles.qrDot,
-                    { opacity: ((row + col) % 3 === 0) ? 0.6 : 0.3 },
-                  ]}
-                />
-              ))}
-            </View>
-          ))}
-        </View>
-
-        {/* Card footer */}
-        <View style={styles.cardFooter}>
-          <View>
-            <Text style={styles.cardNumber}>**** **** **** 1234</Text>
-            <Text style={styles.cardLabel}>Your Card</Text>
-          </View>
-          <View style={styles.tierBadge}>
-            <Text style={styles.tierText}>{cardType}</Text>
-          </View>
+        {/* Bottom row - matches website CardBottomRow */}
+        <View style={styles.cardBottomRow}>
+          <Text style={[styles.cardHolderName, { color: holderColor }]}>
+            {cardType}
+          </Text>
         </View>
       </LinearGradient>
     </Animated.View>
@@ -93,13 +117,13 @@ const styles = StyleSheet.create({
   cardWrapper: {
     width: CARD_WIDTH,
     height: CARD_HEIGHT,
-    borderRadius: 16,
+    borderRadius: 20, // 1.25rem from website
     ...Platform.select({
       ios: {
         shadowColor: '#000',
-        shadowOffset: { width: 0, height: 8 },
+        shadowOffset: { width: 0, height: 10 },
         shadowOpacity: 0.3,
-        shadowRadius: 16,
+        shadowRadius: 20,
       },
       android: {
         elevation: 12,
@@ -108,82 +132,41 @@ const styles = StyleSheet.create({
   },
   card: {
     flex: 1,
-    borderRadius: 16,
-    padding: 20,
+    borderRadius: 17, // Slightly less than wrapper to avoid clipping
+    paddingHorizontal: 28, // ~2rem from website
+    paddingVertical: 24, // ~1.75rem from website
     justifyContent: 'space-between',
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
   },
   cardLogo: {
-    fontSize: 20,
+    fontSize: 26, // ~1.75rem from website
     fontWeight: '900',
-    color: '#FFFFFF',
     letterSpacing: 2,
-    textShadowColor: 'rgba(0,0,0,0.3)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 3,
   },
-  cardChip: {
-    width: 32,
-    height: 24,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    borderRadius: 4,
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 2,
+  cardLogoPremiumShadow: {
+    textShadowColor: 'rgba(255, 215, 0, 0.3)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 10,
   },
-  chipLine: {
-    width: 20,
-    height: 2,
-    backgroundColor: 'rgba(255,255,255,0.4)',
-    borderRadius: 1,
-  },
-  qrArea: {
-    alignSelf: 'flex-end',
-    gap: 3,
-  },
-  qrRow: {
+  cardNumberRow: {
     flexDirection: 'row',
-    gap: 3,
+    gap: 12, // 0.75rem from website
   },
-  qrDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 1,
-    backgroundColor: 'rgba(255,255,255,0.5)',
+  cardNumber: {
+    fontSize: 18, // ~1.25rem from website
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+    letterSpacing: 4, // 0.25rem from website
+    fontWeight: '400',
   },
-  cardFooter: {
+  cardBottomRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-end',
   },
-  cardNumber: {
-    fontSize: 14,
-    color: 'rgba(255,255,255,0.7)',
-    letterSpacing: 2,
-    fontWeight: '500',
-    marginBottom: 2,
-  },
-  cardLabel: {
-    fontSize: 11,
-    color: 'rgba(255,255,255,0.5)',
+  cardHolderName: {
+    fontSize: 13, // ~0.8125rem from website
+    fontWeight: '400',
     textTransform: 'uppercase',
-    letterSpacing: 1,
-  },
-  tierBadge: {
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 8,
-  },
-  tierText: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    letterSpacing: 1,
+    letterSpacing: 1.5,
   },
 });
 

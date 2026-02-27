@@ -9,7 +9,7 @@
 import React, { useState, useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { View } from 'react-native';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClientProvider } from '@tanstack/react-query';
 import * as SecureStore from './src/utils/secureStore';
 import { ThemeProvider } from './src/contexts/ThemeContext';
 import { AuthProvider } from './src/store/AuthContext';
@@ -21,17 +21,7 @@ import { STORAGE_KEYS } from './src/constants/config';
 import StorageService from './src/services/storage.service';
 import './src/i18n'; // Initialize i18n
 import { warmupApi } from './src/utils/apiWarmup';
-
-// Create React Query client
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      retry: 2,
-      staleTime: 5 * 60 * 1000, // 5 minutes
-      refetchOnWindowFocus: false,
-    },
-  },
-});
+import queryClient from './src/queryClient';
 
 export default function App() {
   const [languageSelected, setLanguageSelected] = useState<boolean | null>(null);

@@ -451,7 +451,7 @@ const RegisterScreen = ({ navigation, route }: any) => {
                 </Text>
               </View>
             ) : (
-              <Text style={styles.buttonText}>
+              <Text style={[styles.buttonText, (planLoading || !acceptTerms) && styles.buttonTextDisabled]}>
                 {selectedPlan
                   ? (language === 'bg' ? 'Създай профил и продължи към плащане' : 'Create Account & Continue to Payment')
                   : t('auth.createAccount')}
@@ -655,6 +655,9 @@ const getStyles = (theme: any) => StyleSheet.create({
     color: theme.colors.onGold,
     fontSize: 16,
     fontWeight: '700',
+  },
+  buttonTextDisabled: {
+    color: '#FFFFFF',
   },
   buttonContent: {
     flexDirection: 'row',

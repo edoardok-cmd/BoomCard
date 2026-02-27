@@ -875,7 +875,7 @@ const CheckoutPage: React.FC = () => {
     return (
       <PageContainer>
         <CheckoutContainer>
-          <BackLink to="/pricing">
+          <BackLink to="/#subscription-plans">
             <ArrowLeft size={18} />
             {language === 'bg' ? 'Обратно към плановете' : 'Back to plans'}
           </BackLink>
@@ -892,7 +892,7 @@ const CheckoutPage: React.FC = () => {
   return (
     <PageContainer>
       <CheckoutContainer>
-        <BackLink to="/pricing">
+        <BackLink to="/#subscription-plans">
           <ArrowLeft size={18} />
           {language === 'bg' ? 'Обратно към плановете' : 'Back to plans'}
         </BackLink>
