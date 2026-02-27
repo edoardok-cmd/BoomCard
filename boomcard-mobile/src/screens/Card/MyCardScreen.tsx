@@ -191,19 +191,15 @@ export default function MyCardScreen() {
           >
             {/* Card Header */}
             <View style={styles.cardHeader}>
-              <View style={styles.cardBrandRow}>
-                <Text style={[
-                  styles.cardBrand,
-                  { color: accent.text },
-                  isDarkMode && isPremium && {
-                    textShadowColor: accent.glow,
-                    textShadowOffset: { width: 0, height: 0 },
-                    textShadowRadius: 12,
-                  },
-                ]}>BOOM</Text>
-                <View style={[styles.cardBrandDot, { backgroundColor: accent.text }]} />
-                <Text style={[styles.cardBrandSub, { color: accent.text }]}>Card</Text>
-              </View>
+              <Text style={[
+                styles.cardLogo,
+                { color: accent.text },
+                isDarkMode && isPremium && {
+                  textShadowColor: accent.glow,
+                  textShadowOffset: { width: 0, height: 0 },
+                  textShadowRadius: 12,
+                },
+              ]}>BOOM Card</Text>
               <View style={[styles.tierBadge, { backgroundColor: accent.text + '20' }]}>
                 <Text style={[styles.tierBadgeText, { color: accent.text }]}>
                   {card.cardType}
@@ -435,26 +431,11 @@ const getStyles = (theme: any, isDarkMode: boolean) => StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'flex-start',
   },
-  cardBrandRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  cardBrand: {
+  cardLogo: {
     fontSize: 26,
     fontWeight: '900',
-    letterSpacing: 3,
-  },
-  cardBrandDot: {
-    width: 5,
-    height: 5,
-    borderRadius: 2.5,
-    marginHorizontal: 6,
-    opacity: 0.7,
-  },
-  cardBrandSub: {
-    fontSize: 22,
-    fontWeight: '300',
-    letterSpacing: 1,
+    letterSpacing: 2,
+    fontFamily: Platform.select({ web: "'Arial Black', sans-serif", default: undefined }),
   },
   tierBadge: {
     paddingHorizontal: 12,

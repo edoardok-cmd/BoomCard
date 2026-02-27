@@ -268,7 +268,24 @@ const BrandSplash: React.FC<BrandSplashProps> = ({
         end={{ x: 1, y: 1 }}
         style={styles.gradient}
       >
-        {/* Logo + Brand Text */}
+        {/* Card Reveal (rendered first so logo stays on top) */}
+        {showCardReveal && (
+          <Animated.View
+            style={[
+              styles.cardArea,
+              { transform: [{ scale: cardPulse }] },
+            ]}
+          >
+            <CardReveal
+              animatedScale={cardScale}
+              animatedRotateX={cardRotateXInterpolated}
+              animatedOpacity={cardOpacity}
+              cardType="PREMIUM"
+            />
+          </Animated.View>
+        )}
+
+        {/* Logo + Brand Text (rendered after card so it stays on top) */}
         <Animated.View
           style={[
             styles.logoContainer,
@@ -322,23 +339,6 @@ const BrandSplash: React.FC<BrandSplashProps> = ({
             <Text style={styles.tagline}>Your Cashback Companion</Text>
           </Animated.View>
         </Animated.View>
-
-        {/* Card Reveal */}
-        {showCardReveal && (
-          <Animated.View
-            style={[
-              styles.cardArea,
-              { transform: [{ scale: cardPulse }] },
-            ]}
-          >
-            <CardReveal
-              animatedScale={cardScale}
-              animatedRotateX={cardRotateXInterpolated}
-              animatedOpacity={cardOpacity}
-              cardType="PREMIUM"
-            />
-          </Animated.View>
-        )}
 
         {/* Decorative circles */}
         <View style={[styles.decorCircle, styles.decorCircle1]} />

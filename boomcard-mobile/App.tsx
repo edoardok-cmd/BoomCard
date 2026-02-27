@@ -10,6 +10,8 @@ import React, { useState, useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { View } from 'react-native';
 import { QueryClientProvider } from '@tanstack/react-query';
+import * as Font from 'expo-font';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import * as SecureStore from './src/utils/secureStore';
 import { ThemeProvider } from './src/contexts/ThemeContext';
 import { AuthProvider } from './src/store/AuthContext';
@@ -35,18 +37,31 @@ export default function App() {
       .then(t => setInitialDarkMode(t === 'dark'))
       .catch(() => {});
 
-    checkLanguageSelection();
+    prepareApp();
     // Warm up the API server in the background (helps with Render cold starts)
     warmupApi().catch(err => console.log('API warmup failed:', err));
   }, []);
 
-  const checkLanguageSelection = async () => {
+  const prepareApp = async () => {
     try {
-      const hasSelected = await SecureStore.getItemAsync('language_selected');
+      // Load icon fonts and check language selection in parallel
+      const [hasSelected] = await Promise.all([
+        SecureStore.getItemAsync('language_selected'),
+        Font.loadAsync({
+          ...Ionicons.font,
+          ...MaterialCommunityIcons.font,
+        }),
+      ]);
       setLanguageSelected(hasSelected === 'true');
     } catch (error) {
-      console.error('Error checking language selection:', error);
-      setLanguageSelected(false);
+      console.error('Error preparing app:', error);
+      // Still allow the app to proceed even if font loading fails
+      try {
+        const hasSelected = await SecureStore.getItemAsync('language_selected');
+        setLanguageSelected(hasSelected === 'true');
+      } catch {
+        setLanguageSelected(false);
+      }
     } finally {
       setAppReady(true);
     }

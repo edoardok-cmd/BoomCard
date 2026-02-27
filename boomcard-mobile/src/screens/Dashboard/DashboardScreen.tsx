@@ -167,11 +167,7 @@ const DashboardScreen = ({ navigation }: any) => {
         style={s.hero}
       >
         <View style={s.heroBrandRow}>
-          <View style={s.brandContainer}>
-            <Text style={s.brandText}>BOOM</Text>
-            <View style={s.brandDot} />
-            <Text style={s.brandCardText}>Card</Text>
-          </View>
+          <Text style={s.brandLogo}>BOOM Card</Text>
           <TouchableOpacity style={s.notificationBtn}>
             <Ionicons name="notifications-outline" size={24} color="rgba(255,255,255,0.9)" />
           </TouchableOpacity>
@@ -488,27 +484,12 @@ const getStyles = (theme: any, isDarkMode: boolean) => StyleSheet.create({
     alignItems: 'center',
     marginBottom: 16,
   },
-  brandContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  brandText: {
+  brandLogo: {
     fontSize: 22,
     fontWeight: '900',
     color: '#FFFFFF',
     letterSpacing: 2,
-  },
-  brandDot: {
-    width: 4,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: '#D4A843',
-    marginHorizontal: 5,
-  },
-  brandCardText: {
-    fontSize: 22,
-    fontWeight: '300',
-    color: 'rgba(255,255,255,0.7)',
+    fontFamily: Platform.select({ web: "'Arial Black', sans-serif", default: undefined }),
   },
   heroContent: {
     flexDirection: 'row',
