@@ -68,7 +68,7 @@ const plans = [
     yearlyDiscountPct: 0,
   },
   {
-    planCode: 'PREMIUM',
+    planCode: 'BASIC',
     displayName: 'Basic',
     displayNameBg: 'Основен',
     priceWeeklyEur: null,
@@ -101,7 +101,7 @@ const plans = [
     yearlyDiscountPct: 20,
   },
   {
-    planCode: 'PLATINUM',
+    planCode: 'PREMIUM',
     displayName: 'Premium',
     displayNameBg: 'Премиум',
     priceWeeklyEur: null,

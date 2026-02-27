@@ -5,7 +5,7 @@
  * Redesigned with premium credit-card aesthetic and dark mode support.
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   StyleSheet,
@@ -14,6 +14,7 @@ import {
   Alert,
   Platform,
   TouchableOpacity,
+  Animated,
 } from 'react-native';
 import { Text, Button } from 'react-native-paper';
 import QRCode from 'react-native-qrcode-svg';
@@ -68,6 +69,36 @@ export default function MyCardScreen() {
   const [card, setCard] = useState<any>(null);
   const [statistics, setStatistics] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
+  const [isFlipped, setIsFlipped] = useState(false);
+  const flipAnimation = useRef(new Animated.Value(0)).current;
+
+  const flipCard = () => {
+    const toValue = isFlipped ? 0 : 1;
+    Animated.spring(flipAnimation, {
+      toValue,
+      friction: 8,
+      tension: 10,
+      useNativeDriver: true,
+    }).start();
+    setIsFlipped(!isFlipped);
+  };
+
+  const frontRotateY = flipAnimation.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '180deg'],
+  });
+  const backRotateY = flipAnimation.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['180deg', '360deg'],
+  });
+  const frontOpacity = flipAnimation.interpolate({
+    inputRange: [0, 0.5, 0.5, 1],
+    outputRange: [1, 1, 0, 0],
+  });
+  const backOpacity = flipAnimation.interpolate({
+    inputRange: [0, 0.5, 0.5, 1],
+    outputRange: [0, 0, 1, 1],
+  });
 
   const translateBenefit = (benefit: string): string => {
     const benefitMap: Record<string, string> = {
@@ -172,64 +203,140 @@ export default function MyCardScreen() {
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
       <FadeInView duration={500}>
-        {/* Credit Card */}
-        <View style={styles.cardOuter}>
-          <LinearGradient
-            colors={gradient}
-            {...(gradient.length === 3 ? { locations: [0, 0.5, 1] } : {})}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={[
-              styles.card,
-              {
-                borderColor: accent.border,
-                borderWidth: isPremium ? 2 : 1,
-                shadowColor: accent.border,
-                shadowOpacity: isDarkMode ? 0.5 : 0.25,
-              },
-            ]}
-          >
-            {/* Card Header */}
-            <View style={styles.cardHeader}>
-              <Text style={[
-                styles.cardLogo,
-                { color: accent.text },
-                isDarkMode && isPremium && {
-                  textShadowColor: accent.glow,
-                  textShadowOffset: { width: 0, height: 0 },
-                  textShadowRadius: 12,
-                },
-              ]}>BOOM Card</Text>
-              <View style={[styles.tierBadge, { backgroundColor: accent.text + '20' }]}>
-                <Text style={[styles.tierBadgeText, { color: accent.text }]}>
-                  {card.cardType}
-                </Text>
-              </View>
-            </View>
+        {/* Credit Card - Flippable */}
+        <TouchableOpacity activeOpacity={0.95} onPress={flipCard}>
+          <View style={styles.cardOuter}>
+            <View style={styles.cardFlipContainer}>
+              {/* Front Side */}
+              <Animated.View
+                style={[
+                  StyleSheet.absoluteFill,
+                  {
+                    opacity: frontOpacity,
+                    transform: [{ perspective: 1200 }, { rotateY: frontRotateY }],
+                  },
+                ]}
+              >
+                <LinearGradient
+                  colors={gradient}
+                  {...(gradient.length === 3 ? { locations: [0, 0.5, 1] } : {})}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={[
+                    styles.card,
+                    {
+                      borderColor: accent.border,
+                      borderWidth: isPremium ? 2 : 1,
+                      shadowColor: accent.border,
+                      shadowOpacity: isDarkMode ? 0.5 : 0.25,
+                    },
+                  ]}
+                >
+                  {/* Card Header with small QR in top right */}
+                  <View style={styles.cardHeader}>
+                    <View style={styles.cardHeaderLeft}>
+                      <Text style={[
+                        styles.cardLogo,
+                        { color: accent.text },
+                        isDarkMode && isPremium && {
+                          textShadowColor: accent.glow,
+                          textShadowOffset: { width: 0, height: 0 },
+                          textShadowRadius: 12,
+                        },
+                      ]}>BOOM Card</Text>
+                      <View style={[styles.tierBadge, { backgroundColor: accent.text + '20' }]}>
+                        <Text style={[styles.tierBadgeText, { color: accent.text }]}>
+                          {card.cardType}
+                        </Text>
+                      </View>
+                    </View>
+                    <View style={styles.qrFrameSmall}>
+                      <QRCode
+                        value={qrData}
+                        size={50}
+                        backgroundColor="white"
+                        color="black"
+                      />
+                    </View>
+                  </View>
 
-            {/* QR Code Center */}
-            <View style={styles.qrSection}>
-              <View style={styles.qrFrame}>
-                <QRCode
-                  value={qrData}
-                  size={110}
-                  backgroundColor="white"
-                  color="black"
-                />
-              </View>
-            </View>
+                  {/* Spacer */}
+                  <View style={{ flex: 1 }} />
 
-            {/* Card Footer */}
-            <View style={styles.cardFooter}>
-              <Text style={[styles.cardNumber, { color: accent.text }]}>
-                {card.cardNumber}
-              </Text>
-              <Text style={styles.memberSince}>
-                {t('card.memberSince')} {card.issuedAt ? new Date(card.issuedAt).getFullYear() : ''}
-              </Text>
+                  {/* Card Footer */}
+                  <View style={styles.cardFooter}>
+                    <Text style={[styles.cardNumber, { color: accent.text }]}>
+                      {card.cardNumber}
+                    </Text>
+                    <Text style={styles.memberSince}>
+                      {t('card.memberSince')} {card.issuedAt ? new Date(card.issuedAt).getFullYear() : ''}
+                    </Text>
+                  </View>
+
+                  {/* Flip Hint */}
+                  <View style={styles.flipHintRow}>
+                    <Ionicons name="sync-outline" size={11} color="rgba(255,255,255,0.35)" />
+                    <Text style={styles.flipHintText}>{t('card.tapToShowQR', 'Tap to show QR')}</Text>
+                  </View>
+                </LinearGradient>
+              </Animated.View>
+
+              {/* Back Side */}
+              <Animated.View
+                style={[
+                  StyleSheet.absoluteFill,
+                  {
+                    opacity: backOpacity,
+                    transform: [{ perspective: 1200 }, { rotateY: backRotateY }],
+                  },
+                ]}
+              >
+                <LinearGradient
+                  colors={gradient}
+                  {...(gradient.length === 3 ? { locations: [0, 0.5, 1] } : {})}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={[
+                    styles.card,
+                    {
+                      borderColor: accent.border,
+                      borderWidth: isPremium ? 2 : 1,
+                      shadowColor: accent.border,
+                      shadowOpacity: isDarkMode ? 0.5 : 0.25,
+                      paddingTop: 16,
+                      paddingBottom: 14,
+                    },
+                  ]}
+                >
+                  {/* Large QR Code */}
+                  <View style={styles.qrCenterSection}>
+                    <View style={styles.qrFrameLarge}>
+                      <QRCode
+                        value={qrData}
+                        size={120}
+                        backgroundColor="white"
+                        color="black"
+                      />
+                    </View>
+                  </View>
+
+                  {/* Back Footer */}
+                  <View style={styles.backFooter}>
+                    <Text style={[styles.cardNumber, { color: accent.text }]}>
+                      {card.cardNumber}
+                    </Text>
+                  </View>
+
+                  {/* Flip Hint */}
+                  <View style={styles.flipHintRow}>
+                    <Ionicons name="sync-outline" size={11} color="rgba(255,255,255,0.35)" />
+                    <Text style={styles.flipHintText}>{t('card.tapToFlipBack', 'Tap to flip back')}</Text>
+                  </View>
+                </LinearGradient>
+              </Animated.View>
             </View>
-          </LinearGradient>
-        </View>
+          </View>
+        </TouchableOpacity>
 
         {/* Benefits Section */}
         <View style={styles.section}>
@@ -448,12 +555,36 @@ const getStyles = (theme: any, isDarkMode: boolean) => StyleSheet.create({
     letterSpacing: 1,
     textTransform: 'uppercase',
   },
-  qrSection: {
+  cardFlipContainer: {
+    width: CARD_WIDTH,
+    height: CARD_WIDTH * CARD_ASPECT,
+  },
+  cardHeaderLeft: {
+    flex: 1,
+    gap: 8,
+  },
+  qrFrameSmall: {
+    backgroundColor: '#ffffff',
+    padding: 5,
+    borderRadius: 8,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+      },
+      android: {
+        elevation: 3,
+      },
+    }),
+  },
+  qrCenterSection: {
     alignItems: 'center',
     justifyContent: 'center',
     flex: 1,
   },
-  qrFrame: {
+  qrFrameLarge: {
     backgroundColor: '#ffffff',
     padding: 10,
     borderRadius: 14,
@@ -461,13 +592,29 @@ const getStyles = (theme: any, isDarkMode: boolean) => StyleSheet.create({
       ios: {
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
+        shadowOpacity: 0.15,
         shadowRadius: 8,
       },
       android: {
         elevation: 4,
       },
     }),
+  },
+  backFooter: {
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  flipHintRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    marginTop: 4,
+  },
+  flipHintText: {
+    fontSize: 10,
+    color: 'rgba(255,255,255,0.35)',
+    letterSpacing: 0.5,
   },
   cardFooter: {
     alignItems: 'center',
