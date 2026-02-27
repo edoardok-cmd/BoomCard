@@ -219,7 +219,7 @@ const LoginScreen = ({ navigation }: any) => {
               onPress={handleBiometricLogin}
               disabled={isLoading}
             >
-              <Ionicons name="finger-print" size={24} color={theme.colors.primary} />
+              <Ionicons name="finger-print" size={24} color={theme.colors.gold} />
               <Text style={styles.biometricButtonText}>
                 {t('auth.loginWith', { type: biometricType })}
               </Text>
@@ -279,19 +279,26 @@ const getStyles = (theme: any) => StyleSheet.create({
     color: theme.colors.onSurface,
   },
   button: {
-    backgroundColor: theme.colors.primary,
-    borderRadius: 12,
+    backgroundColor: theme.colors.gold,
+    borderRadius: 28,
     padding: 16,
     alignItems: 'center',
     marginTop: 8,
+    shadowColor: '#C49B38',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
   },
   buttonDisabled: {
     backgroundColor: theme.colors.surfaceVariant,
+    shadowOpacity: 0,
+    elevation: 0,
   },
   buttonText: {
-    color: '#FFFFFF',
+    color: theme.colors.onGold,
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   divider: {
     flexDirection: 'row',
@@ -314,15 +321,15 @@ const getStyles = (theme: any) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: theme.colors.surface,
-    borderRadius: 12,
+    borderRadius: 28,
     padding: 16,
     marginBottom: 24,
     gap: 12,
-    borderWidth: 1,
-    borderColor: theme.colors.primary,
+    borderWidth: 1.5,
+    borderColor: theme.colors.gold,
   },
   biometricButtonText: {
-    color: theme.colors.primary,
+    color: theme.colors.gold,
     fontSize: 16,
     fontWeight: '600',
   },
@@ -337,7 +344,7 @@ const getStyles = (theme: any) => StyleSheet.create({
   },
   link: {
     fontSize: 14,
-    color: theme.colors.primary,
+    color: theme.colors.gold,
     fontWeight: '600',
   },
 });

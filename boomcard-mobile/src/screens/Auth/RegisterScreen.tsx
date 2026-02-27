@@ -559,12 +559,12 @@ const getStyles = (theme: any) => StyleSheet.create({
   planPriceValue: {
     fontSize: 20,
     fontWeight: '700',
-    color: theme.colors.primary,
+    color: theme.colors.gold,
   },
   paymentInfo: {
     backgroundColor: '#EFF6FF',
     borderWidth: 1,
-    borderColor: '#3B82F6',
+    borderColor: (theme.colors as any).info || '#3B82F6',
     borderRadius: 8,
     padding: 14,
     marginBottom: 24,
@@ -615,8 +615,8 @@ const getStyles = (theme: any) => StyleSheet.create({
     backgroundColor: theme.colors.surface,
   },
   checkboxChecked: {
-    backgroundColor: theme.colors.primary,
-    borderColor: theme.colors.primary,
+    backgroundColor: theme.colors.gold,
+    borderColor: theme.colors.gold,
   },
   checkmark: {
     color: '#FFFFFF',
@@ -630,24 +630,31 @@ const getStyles = (theme: any) => StyleSheet.create({
     lineHeight: 20,
   },
   termsLink: {
-    color: theme.colors.primary,
+    color: theme.colors.gold,
     fontWeight: '600',
     textDecorationLine: 'underline' as const,
   },
   button: {
-    backgroundColor: theme.colors.primary,
-    borderRadius: 12,
+    backgroundColor: theme.colors.gold,
+    borderRadius: 28,
     padding: 16,
     alignItems: 'center',
     marginTop: 8,
+    shadowColor: '#C49B38',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
   },
   buttonDisabled: {
     backgroundColor: theme.colors.surfaceVariant,
+    shadowOpacity: 0,
+    elevation: 0,
   },
   buttonText: {
-    color: '#FFFFFF',
+    color: theme.colors.onGold,
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   buttonContent: {
     flexDirection: 'row',
@@ -666,7 +673,7 @@ const getStyles = (theme: any) => StyleSheet.create({
   },
   link: {
     fontSize: 14,
-    color: theme.colors.primary,
+    color: theme.colors.gold,
     fontWeight: '600',
   },
 });

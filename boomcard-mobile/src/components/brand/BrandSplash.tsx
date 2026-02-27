@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Animated, View, Text, StyleSheet, Dimensions, Image, Platform } from 'react-native';
+import { Animated, View, Text, StyleSheet, Dimensions } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import Svg, { Circle, Rect, Defs, RadialGradient, LinearGradient as SvgLinearGradient, Stop, G } from 'react-native-svg';
 import CardReveal from './CardReveal';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -246,10 +247,10 @@ const BrandSplash: React.FC<BrandSplashProps> = ({
     outputRange: ['0deg', '15deg'],
   });
 
-  const bgColor = isDarkMode ? '#111827' : '#3B82F6';
+  const bgColor = isDarkMode ? '#111827' : '#111827';
   const accentGradient: [string, string] = isDarkMode
     ? ['#1E3A8A', '#5B21B6']
-    : ['#3B82F6', '#8B5CF6'];
+    : ['#111827', '#1F2937'];
 
   return (
     <Animated.View
@@ -281,11 +282,32 @@ const BrandSplash: React.FC<BrandSplashProps> = ({
           ]}
         >
           <View style={styles.logoCircle}>
-            <Image
-              source={require('../../../assets/icon.png')}
-              style={styles.logoImage}
-              resizeMode="cover"
-            />
+            <Svg width={120} height={120} viewBox="0 0 120 120">
+              <Defs>
+                <RadialGradient id="topFill" cx="0.4" cy="0.35" rx="0.65" ry="0.65">
+                  <Stop offset="0%" stopColor="#B0D4EC" />
+                  <Stop offset="100%" stopColor="#6FA8D6" />
+                </RadialGradient>
+                <RadialGradient id="bottomFill" cx="0.4" cy="0.35" rx="0.65" ry="0.65">
+                  <Stop offset="0%" stopColor="#F5E6A3" />
+                  <Stop offset="100%" stopColor="#D4B94E" />
+                </RadialGradient>
+                <SvgLinearGradient id="slashFill" x1="0" y1="0" x2="1" y2="1">
+                  <Stop offset="0%" stopColor="#908A9A" />
+                  <Stop offset="100%" stopColor="#6E6878" />
+                </SvgLinearGradient>
+              </Defs>
+              <G transform="translate(60, 60) rotate(-11) translate(-60, -60)">
+                {/* Top-left circle (blue) */}
+                <Circle cx="38" cy="32" r="22" fill="url(#topFill)" />
+                <Circle cx="38" cy="32" r="9" fill="#5B6EAE" />
+                {/* Bottom-right circle (gold) */}
+                <Circle cx="82" cy="88" r="26" fill="url(#bottomFill)" />
+                <Circle cx="82" cy="88" r="10.5" fill="#5B6EAE" />
+                {/* Diagonal slash */}
+                <Rect x="53" y="-2" width="14" height="124" rx="7" fill="url(#slashFill)" transform="translate(60, 60) rotate(44) translate(-60, -60)" />
+              </G>
+            </Svg>
           </View>
           <Animated.View
             style={{
@@ -343,28 +365,9 @@ const styles = StyleSheet.create({
     zIndex: 2,
   },
   logoCircle: {
-    width: 110,
-    height: 110,
-    borderRadius: 55,
-    overflow: 'hidden',
-    borderWidth: 3,
-    borderColor: 'rgba(255,255,255,0.3)',
-    marginBottom: 16,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 6 },
-        shadowOpacity: 0.3,
-        shadowRadius: 16,
-      },
-      android: {
-        elevation: 12,
-      },
-    }),
-  },
-  logoImage: {
-    width: 110,
-    height: 110,
+    width: 120,
+    height: 120,
+    marginBottom: 12,
   },
   brandRow: {
     flexDirection: 'row',

@@ -453,8 +453,8 @@ const SettingsScreen = ({ navigation }: any) => {
             <Switch
               value={settings.pushNotifications}
               onValueChange={() => handleToggle('pushNotifications')}
-              trackColor={{ false: '#CBD5E1', true: '#93C5FD' }}
-              thumbColor={settings.pushNotifications ? theme.colors.primary : '#F3F4F6'}
+              trackColor={{ false: '#CBD5E1', true: '#E6D5A8' }}
+              thumbColor={settings.pushNotifications ? theme.colors.gold : '#F3F4F6'}
             />
           </View>
 
@@ -471,8 +471,8 @@ const SettingsScreen = ({ navigation }: any) => {
             <Switch
               value={settings.emailNotifications}
               onValueChange={() => handleToggle('emailNotifications')}
-              trackColor={{ false: '#CBD5E1', true: '#93C5FD' }}
-              thumbColor={settings.emailNotifications ? theme.colors.primary : '#F3F4F6'}
+              trackColor={{ false: '#CBD5E1', true: '#E6D5A8' }}
+              thumbColor={settings.emailNotifications ? theme.colors.gold : '#F3F4F6'}
             />
           </View>
         </View>
@@ -509,8 +509,8 @@ const SettingsScreen = ({ navigation }: any) => {
             <Switch
               value={settings.locationServices}
               onValueChange={() => handleToggle('locationServices')}
-              trackColor={{ false: '#CBD5E1', true: '#93C5FD' }}
-              thumbColor={settings.locationServices ? theme.colors.primary : '#F3F4F6'}
+              trackColor={{ false: '#CBD5E1', true: '#E6D5A8' }}
+              thumbColor={settings.locationServices ? theme.colors.gold : '#F3F4F6'}
             />
           </View>
           {settings.locationServices && !isDeviceLocationEnabled && (
@@ -551,8 +551,8 @@ const SettingsScreen = ({ navigation }: any) => {
             <Switch
               value={settings.biometricAuth}
               onValueChange={() => handleToggle('biometricAuth')}
-              trackColor={{ false: '#CBD5E1', true: '#93C5FD' }}
-              thumbColor={settings.biometricAuth ? theme.colors.primary : '#F3F4F6'}
+              trackColor={{ false: '#CBD5E1', true: '#E6D5A8' }}
+              thumbColor={settings.biometricAuth ? theme.colors.gold : '#F3F4F6'}
               disabled={!isBiometricAvailable || !isBiometricEnrolled}
             />
           </View>
@@ -574,8 +574,8 @@ const SettingsScreen = ({ navigation }: any) => {
             <Switch
               value={isDarkMode}
               onValueChange={() => handleToggle('darkMode')}
-              trackColor={{ false: '#CBD5E1', true: '#93C5FD' }}
-              thumbColor={isDarkMode ? theme.colors.primary : '#F3F4F6'}
+              trackColor={{ false: '#CBD5E1', true: '#E6D5A8' }}
+              thumbColor={isDarkMode ? theme.colors.gold : '#F3F4F6'}
             />
           </View>
         </View>
@@ -597,7 +597,7 @@ const SettingsScreen = ({ navigation }: any) => {
               </View>
             </View>
             {currentLanguage === 'bg' && (
-              <Ionicons name="checkmark-circle" size={24} color={theme.colors.primary} />
+              <Ionicons name="checkmark-circle" size={24} color={theme.colors.gold} />
             )}
           </TouchableOpacity>
 
@@ -615,7 +615,7 @@ const SettingsScreen = ({ navigation }: any) => {
               </View>
             </View>
             {currentLanguage === 'en' && (
-              <Ionicons name="checkmark-circle" size={24} color={theme.colors.primary} />
+              <Ionicons name="checkmark-circle" size={24} color={theme.colors.gold} />
             )}
           </TouchableOpacity>
         </View>

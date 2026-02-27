@@ -172,7 +172,7 @@ const getStyles = (theme: any, isDarkMode: boolean) => StyleSheet.create({
     width: 120,
     height: 120,
     borderRadius: 60,
-    backgroundColor: isDarkMode ? 'rgba(59, 130, 246, 0.1)' : '#EEF2FF',
+    backgroundColor: isDarkMode ? 'rgba(59, 130, 246, 0.1)' : '#F3F4F6',
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 16,
@@ -217,7 +217,7 @@ const getStyles = (theme: any, isDarkMode: boolean) => StyleSheet.create({
   },
   languageButtonSelected: {
     borderColor: theme.colors.primary,
-    backgroundColor: isDarkMode ? 'rgba(59, 130, 246, 0.1)' : '#EEF2FF',
+    backgroundColor: isDarkMode ? 'rgba(59, 130, 246, 0.1)' : 'rgba(0, 0, 0, 0.04)',
   },
   languageContent: {
     flexDirection: 'row',

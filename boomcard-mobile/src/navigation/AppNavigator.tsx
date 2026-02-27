@@ -78,7 +78,7 @@ const TabNavigator = () => {
           backgroundColor: theme.colors.surface,
         },
         headerTintColor: theme.colors.onSurface,
-        tabBarActiveTintColor: theme.colors.primary,
+        tabBarActiveTintColor: theme.colors.gold,
         tabBarInactiveTintColor: theme.colors.onSurfaceVariant,
         tabBarStyle: {
           backgroundColor: theme.colors.surface,
@@ -304,7 +304,7 @@ export const AppNavigator = () => {
           <Text style={[brandLoadingStyles.brandBoom, { color: theme.colors.onSurface }]}>BOOM</Text>
           <Text style={[brandLoadingStyles.brandCard, { color: theme.colors.onSurfaceVariant }]}>Card</Text>
         </View>
-        <ProgressRing size={48} strokeWidth={3} color={theme.colors.primary} trackColor={isDarkMode ? 'rgba(59,130,246,0.15)' : 'rgba(59,130,246,0.1)'} />
+        <ProgressRing size={48} strokeWidth={3} color={theme.colors.primary} trackColor={isDarkMode ? 'rgba(59,130,246,0.15)' : 'rgba(0,0,0,0.08)'} />
       </View>
     );
   }

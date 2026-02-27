@@ -256,5 +256,6 @@ const styles = StyleSheet.create({
     position: 'absolute',
     right: 16,
     bottom: 16,
+    backgroundColor: '#D4A843',
   },
 });

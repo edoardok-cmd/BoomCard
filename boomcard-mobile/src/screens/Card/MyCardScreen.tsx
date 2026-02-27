@@ -1,12 +1,21 @@
 /**
  * My Card Screen
  *
- * Display user's BoomCard with QR code, benefits, and statistics
+ * Display user's BoomCard with QR code, benefits, and statistics.
+ * Redesigned with premium credit-card aesthetic and dark mode support.
  */
 
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, ScrollView, Dimensions, Alert } from 'react-native';
-import { Text, Card, Button, Chip } from 'react-native-paper';
+import {
+  View,
+  StyleSheet,
+  ScrollView,
+  Dimensions,
+  Alert,
+  Platform,
+  TouchableOpacity,
+} from 'react-native';
+import { Text, Button } from 'react-native-paper';
 import QRCode from 'react-native-qrcode-svg';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -16,24 +25,50 @@ import { cardApi } from '../../api/card.api';
 import { formatDualCurrency } from '../../utils/format';
 import { ShimmerPlaceholder, FadeInView } from '../../components/loading';
 
-const { width } = Dimensions.get('window');
-const CARD_WIDTH = width - 32;
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const CARD_WIDTH = SCREEN_WIDTH - 32;
+const CARD_ASPECT = 0.63; // Credit card aspect ratio
 
-const CARD_GRADIENTS: Record<string, [string, string]> = {
-  STANDARD: ['#4A5568', '#2D3748'],
-  PREMIUM: ['#D4AF37', '#FFD700'],
-  PLATINUM: ['#C0C0C0', '#E8E8E8'],
+type CardGradient = [string, string, ...string[]];
+
+const getCardGradient = (cardType: string, isDarkMode: boolean): CardGradient => {
+  if (isDarkMode) {
+    switch (cardType?.toUpperCase()) {
+      case 'PREMIUM': return ['#111827', '#1f2937', '#0f172a'];
+      case 'PLATINUM': return ['#1e293b', '#334155'];
+      default: return ['#374151', '#4b5563'];
+    }
+  }
+  switch (cardType?.toUpperCase()) {
+    case 'PREMIUM': return ['#1a1a1a', '#2d2d2d'];
+    case 'PLATINUM': return ['#c0c0c0', '#e8e8e8'];
+    default: return ['#4A5568', '#2D3748'];
+  }
+};
+
+const getCardAccent = (cardType: string, isDarkMode: boolean) => {
+  if (isDarkMode) {
+    switch (cardType?.toUpperCase()) {
+      case 'PREMIUM': return { text: '#06b6d4', glow: 'rgba(6, 182, 212, 0.5)', border: '#06b6d4' };
+      case 'PLATINUM': return { text: '#a78bfa', glow: 'rgba(167, 139, 250, 0.4)', border: '#8b5cf6' };
+      default: return { text: '#93c5fd', glow: 'rgba(59, 130, 246, 0.3)', border: '#3b82f6' };
+    }
+  }
+  switch (cardType?.toUpperCase()) {
+    case 'PREMIUM': return { text: '#ffd700', glow: 'rgba(212, 175, 55, 0.3)', border: '#ffd700' };
+    case 'PLATINUM': return { text: '#1a1a1a', glow: 'rgba(0, 0, 0, 0.15)', border: 'rgba(192, 192, 192, 0.5)' };
+    default: return { text: '#ffffff', glow: 'rgba(0, 0, 0, 0.2)', border: 'rgba(255, 255, 255, 0.2)' };
+  }
 };
 
 export default function MyCardScreen() {
   const { t } = useTranslation();
-  const { theme } = useTheme();
+  const { theme, isDarkMode } = useTheme();
   const [loading, setLoading] = useState(true);
   const [card, setCard] = useState<any>(null);
   const [statistics, setStatistics] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Translate card benefits
   const translateBenefit = (benefit: string): string => {
     const benefitMap: Record<string, string> = {
       '5% cashback on receipts': t('card.benefits.cashback5'),
@@ -55,7 +90,6 @@ export default function MyCardScreen() {
   const loadCard = async () => {
     setError(null);
     try {
-      // Use Promise.allSettled so a failing statistics call doesn't block
       const [cardResult, statsResult] = await Promise.allSettled([
         cardApi.getMyCard(),
         cardApi.getStatistics(),
@@ -82,20 +116,22 @@ export default function MyCardScreen() {
     loadCard();
   }, []);
 
-  const styles = getStyles(theme);
+  const styles = getStyles(theme, isDarkMode);
 
   if (loading) {
     return (
-      <View style={styles.centered}>
-        <ShimmerPlaceholder
-          width={CARD_WIDTH}
-          height={CARD_WIDTH * 0.6}
-          borderRadius={16}
-          isDarkMode={theme.colors.background === '#111827'}
-        />
-        <View style={{ marginTop: 20, gap: 12, width: CARD_WIDTH }}>
-          <ShimmerPlaceholder width={CARD_WIDTH} height={80} borderRadius={12} isDarkMode={theme.colors.background === '#111827'} />
-          <ShimmerPlaceholder width={CARD_WIDTH} height={80} borderRadius={12} isDarkMode={theme.colors.background === '#111827'} />
+      <View style={styles.container}>
+        <View style={styles.centered}>
+          <ShimmerPlaceholder
+            width={CARD_WIDTH}
+            height={CARD_WIDTH * CARD_ASPECT}
+            borderRadius={20}
+            isDarkMode={isDarkMode}
+          />
+          <View style={{ marginTop: 20, gap: 12, width: CARD_WIDTH }}>
+            <ShimmerPlaceholder width={CARD_WIDTH} height={100} borderRadius={16} isDarkMode={isDarkMode} />
+            <ShimmerPlaceholder width={CARD_WIDTH} height={120} borderRadius={16} isDarkMode={isDarkMode} />
+          </View>
         </View>
       </View>
     );
@@ -103,17 +139,21 @@ export default function MyCardScreen() {
 
   if (!card) {
     return (
-      <View style={styles.centered}>
-        <Ionicons name="card-outline" size={56} color={theme.colors.onSurfaceVariant} style={{ marginBottom: 16 }} />
-        <Text style={{ fontSize: 18, fontWeight: '600', color: theme.colors.onSurface, marginBottom: 8, textAlign: 'center' }}>
-          {t('card.noCard', 'No card found')}
-        </Text>
-        <Text style={{ fontSize: 14, color: theme.colors.onSurfaceVariant, textAlign: 'center', marginBottom: 24 }}>
-          {error || t('card.noCardDescription', 'Your card will appear here once your account is set up.')}
-        </Text>
-        <Button mode="contained" onPress={loadCard}>
-          {t('common.retry', 'Retry')}
-        </Button>
+      <View style={[styles.container, styles.centered]}>
+        <View style={styles.emptyState}>
+          <View style={styles.emptyIconCircle}>
+            <Ionicons name="card-outline" size={40} color={theme.colors.onSurfaceVariant} />
+          </View>
+          <Text style={styles.emptyTitle}>
+            {t('card.noCard', 'No card found')}
+          </Text>
+          <Text style={styles.emptyDescription}>
+            {error || t('card.noCardDescription', 'Your card will appear here once your account is set up.')}
+          </Text>
+          <TouchableOpacity style={styles.retryButton} onPress={loadCard}>
+            <Text style={styles.retryButtonText}>{t('common.retry', 'Retry')}</Text>
+          </TouchableOpacity>
+        </View>
       </View>
     );
   }
@@ -125,152 +165,203 @@ export default function MyCardScreen() {
     issuedAt: card.issuedAt,
   });
 
+  const gradient = getCardGradient(card.cardType, isDarkMode);
+  const accent = getCardAccent(card.cardType, isDarkMode);
+  const isPremium = card.cardType?.toUpperCase() === 'PREMIUM';
+
   return (
-    <ScrollView style={styles.container}>
+    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
       <FadeInView duration={500}>
-      {/* Card Visual */}
-      <View style={styles.cardContainer}>
-        <LinearGradient
-          colors={CARD_GRADIENTS[card.cardType] || CARD_GRADIENTS.STANDARD}
-          style={styles.cardGradient}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-        >
-          <View style={styles.cardContent}>
+        {/* Credit Card */}
+        <View style={styles.cardOuter}>
+          <LinearGradient
+            colors={gradient}
+            {...(gradient.length === 3 ? { locations: [0, 0.5, 1] } : {})}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={[
+              styles.card,
+              {
+                borderColor: accent.border,
+                borderWidth: isPremium ? 2 : 1,
+                shadowColor: accent.border,
+                shadowOpacity: isDarkMode ? 0.5 : 0.25,
+              },
+            ]}
+          >
+            {/* Card Header */}
             <View style={styles.cardHeader}>
-              <Text style={styles.cardLogo}>BOOMCARD</Text>
-              <Chip mode="flat" textStyle={styles.tierText}>
-                {card.cardType}
-              </Chip>
+              <View>
+                <Text style={[
+                  styles.cardBrand,
+                  { color: accent.text },
+                  isDarkMode && isPremium && {
+                    textShadowColor: accent.glow,
+                    textShadowOffset: { width: 0, height: 0 },
+                    textShadowRadius: 12,
+                  },
+                ]}>BOOM</Text>
+                <Text style={[styles.cardBrandSub, { color: accent.text, opacity: 0.7 }]}>Card</Text>
+              </View>
+              <View style={[styles.tierBadge, { backgroundColor: accent.text + '20' }]}>
+                <Text style={[styles.tierBadgeText, { color: accent.text }]}>
+                  {card.cardType}
+                </Text>
+              </View>
             </View>
 
-            <View style={styles.qrContainer}>
-              <View style={styles.qrWrapper}>
+            {/* QR Code Center */}
+            <View style={styles.qrSection}>
+              <View style={styles.qrFrame}>
                 <QRCode
                   value={qrData}
-                  size={99}
+                  size={110}
                   backgroundColor="white"
                   color="black"
                 />
               </View>
             </View>
 
+            {/* Card Footer */}
             <View style={styles.cardFooter}>
-              <Text style={styles.cardNumber}>{card.cardNumber}</Text>
-            </View>
-
-            <View style={styles.memberSinceContainer}>
+              <Text style={[styles.cardNumber, { color: accent.text }]}>
+                {card.cardNumber}
+              </Text>
               <Text style={styles.memberSince}>
                 {t('card.memberSince')} {card.issuedAt ? new Date(card.issuedAt).getFullYear() : ''}
               </Text>
             </View>
+          </LinearGradient>
+        </View>
+
+        {/* Benefits Section */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <View style={[styles.sectionIcon, { backgroundColor: isDarkMode ? 'rgba(34, 197, 94, 0.15)' : 'rgba(34, 197, 94, 0.1)' }]}>
+              <Ionicons name="star" size={18} color="#22c55e" />
+            </View>
+            <Text style={styles.sectionTitle}>{t('card.yourBenefits')}</Text>
           </View>
-        </LinearGradient>
-      </View>
+          <View style={styles.benefitsList}>
+            {card.benefits?.features?.map((feature: string, index: number) => (
+              <View key={index} style={styles.benefitRow}>
+                <View style={styles.benefitCheck}>
+                  <Ionicons name="checkmark" size={14} color="#22c55e" />
+                </View>
+                <Text style={styles.benefitText}>{translateBenefit(feature)}</Text>
+              </View>
+            ))}
+          </View>
+        </View>
 
-      {/* Benefits */}
-      <Card style={styles.benefitsCard}>
-        <Card.Title title={t('card.yourBenefits')} />
-        <Card.Content>
-          {card.benefits?.features?.map((feature: string, index: number) => (
-            <Text key={index} style={styles.benefitItem}>
-              ✓ {translateBenefit(feature)}
-            </Text>
-          ))}
-        </Card.Content>
-      </Card>
+        {/* Activity Section */}
+        {statistics && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <View style={[styles.sectionIcon, { backgroundColor: isDarkMode ? 'rgba(59, 130, 246, 0.15)' : 'rgba(59, 130, 246, 0.1)' }]}>
+                <Ionicons name="stats-chart" size={18} color="#3b82f6" />
+              </View>
+              <Text style={styles.sectionTitle}>{t('card.yourActivity')}</Text>
+            </View>
 
-      {/* Statistics */}
-      {statistics && (
-        <Card style={styles.statsCard}>
-          <Card.Title title={t('card.yourActivity')} />
-          <Card.Content>
-            <View style={styles.statRow}>
-              <View style={styles.statItem}>
-                <Text variant="headlineMedium" style={styles.statValue}>
+            <View style={styles.statsGrid}>
+              <View style={styles.statBox}>
+                <Text style={styles.statNumber}>
                   {statistics.receiptsScanned || 0}
                 </Text>
-                <Text variant="bodySmall" style={styles.statLabel}>
+                <Text style={styles.statLabel}>
                   {t('card.receiptsScanned')}
                 </Text>
               </View>
-
-              <View style={styles.statItem}>
-                <Text variant="headlineMedium" style={styles.statValue}>
+              <View style={styles.statDivider} />
+              <View style={styles.statBox}>
+                <Text style={styles.statNumber}>
                   {statistics.stickersScanned || 0}
                 </Text>
-                <Text variant="bodySmall" style={styles.statLabel}>
+                <Text style={styles.statLabel}>
                   {t('card.stickersScanned')}
                 </Text>
               </View>
             </View>
 
-            <View style={styles.cashbackContainer}>
-              <Text variant="titleLarge" style={styles.cashbackAmount}>
+            <LinearGradient
+              colors={isDarkMode ? ['#92400e', '#78350f'] : ['#fef3c7', '#fde68a']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.cashbackBanner}
+            >
+              <Text style={[styles.cashbackAmount, { color: isDarkMode ? '#fbbf24' : '#92400e' }]}>
                 {formatDualCurrency(statistics.totalCashbackEarned || 0)}
               </Text>
-              <Text variant="bodySmall" style={styles.cashbackLabel}>
+              <Text style={[styles.cashbackLabel, { color: isDarkMode ? 'rgba(251, 191, 36, 0.7)' : 'rgba(146, 64, 14, 0.7)' }]}>
                 {t('card.totalCashbackEarned')}
               </Text>
-            </View>
-          </Card.Content>
-        </Card>
-      )}
+            </LinearGradient>
+          </View>
+        )}
 
-      {/* Upgrade Card (if not Platinum) */}
-      {card.cardType && card.cardType.toUpperCase() !== 'PLATINUM' && (
-        <Card style={styles.upgradeCard}>
-          <Card.Title title={t('card.upgradeYourCard')} />
-          <Card.Content>
-            <Text style={styles.upgradeDescription}>
-              {t('card.upgradeDescription')}
-            </Text>
-            <Button
-              mode="contained"
+        {/* Upgrade CTA */}
+        {card.cardType && card.cardType.toUpperCase() !== 'PLATINUM' && (
+          <View style={[styles.section, { marginBottom: 40 }]}>
+            <TouchableOpacity
               style={styles.upgradeButton}
+              activeOpacity={0.8}
               onPress={() => {
                 const currentTier = (card.cardType || '').toUpperCase();
                 const nextTier = currentTier === 'STANDARD' ? 'PREMIUM' : 'PLATINUM';
-                const benefits = {
+                const benefits: Record<string, string[]> = {
                   PREMIUM: [
                     '10% cashback on receipts',
                     'Priority customer support',
                     'Exclusive partner discounts',
-                    'Annual bonus rewards'
+                    'Annual bonus rewards',
                   ],
                   PLATINUM: [
                     '15% cashback on receipts',
                     '24/7 dedicated support',
                     'Premium partner network',
                     'VIP event access',
-                    'Travel insurance included'
-                  ]
+                    'Travel insurance included',
+                  ],
                 };
 
                 Alert.alert(
                   `${t('card.upgradeTo')} ${t('card.tiers.' + nextTier)}`,
-                  `${t('card.upgradeBenefits')}\n\n${benefits[nextTier].map(b => `• ${translateBenefit(b)}`).join('\n')}\n\n${t('card.upgradeMessage')}`,
+                  `${t('card.upgradeBenefits')}\n\n${(benefits[nextTier] || []).map(b => `\u2022 ${translateBenefit(b)}`).join('\n')}\n\n${t('card.upgradeMessage')}`,
                   [
                     { text: t('card.maybeLater'), style: 'cancel' },
                     {
                       text: t('card.contactSupport'),
-                      onPress: () => Alert.alert(t('card.supportTitle'), t('card.supportContact'))
-                    }
-                  ]
+                      onPress: () => Alert.alert(t('card.supportTitle'), t('card.supportContact')),
+                    },
+                  ],
                 );
               }}
             >
-              {t('card.viewUpgradeOptions')}
-            </Button>
-          </Card.Content>
-        </Card>
-      )}
+              <LinearGradient
+                colors={isDarkMode ? ['#1e3a8a', '#3730a3'] : ['#000000', '#1a1a1a']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.upgradeGradient}
+              >
+                <View style={styles.upgradeContent}>
+                  <Ionicons name="arrow-up-circle" size={24} color="#ffd700" />
+                  <View style={{ flex: 1, marginLeft: 12 }}>
+                    <Text style={styles.upgradeTitle}>{t('card.upgradeYourCard')}</Text>
+                    <Text style={styles.upgradeDesc}>{t('card.upgradeDescription')}</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={20} color="rgba(255,255,255,0.5)" />
+                </View>
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
+        )}
       </FadeInView>
     </ScrollView>
   );
 }
 
-const getStyles = (theme: any) => StyleSheet.create({
+const getStyles = (theme: any, isDarkMode: boolean) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: theme.colors.background,
@@ -279,127 +370,265 @@ const getStyles = (theme: any) => StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  cardContainer: {
     padding: 16,
   },
-  cardGradient: {
-    borderRadius: 16,
-    elevation: 12,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 6,
-    },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    overflow: 'hidden',
+
+  // Empty state
+  emptyState: {
+    alignItems: 'center',
+    paddingHorizontal: 32,
   },
-  cardContent: {
+  emptyIconCircle: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: isDarkMode ? theme.colors.surface : theme.colors.surfaceVariant,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  emptyTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: theme.colors.onSurface,
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  emptyDescription: {
+    fontSize: 14,
+    color: theme.colors.onSurfaceVariant,
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: 24,
+  },
+  retryButton: {
+    backgroundColor: theme.colors.primary,
+    paddingHorizontal: 32,
+    paddingVertical: 12,
+    borderRadius: 28,
+  },
+  retryButtonText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+
+  // Card
+  cardOuter: {
+    padding: 16,
+    paddingBottom: 8,
+  },
+  card: {
+    width: CARD_WIDTH,
+    height: CARD_WIDTH * CARD_ASPECT,
+    borderRadius: 20,
     padding: 24,
-    height: CARD_WIDTH * 0.68, // Adjusted for better QR code spacing
+    justifyContent: 'space-between',
+    overflow: 'hidden',
+    shadowOffset: { width: 0, height: 8 },
+    shadowRadius: 24,
+    elevation: 12,
   },
   cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
   },
-  cardLogo: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: 'white',
-    textShadowColor: 'rgba(0,0,0,0.3)',
-    textShadowOffset: { width: 1, height: 1 },
-    textShadowRadius: 2,
+  cardBrand: {
+    fontSize: 26,
+    fontWeight: '900',
+    letterSpacing: 3,
   },
-  tierText: {
-    color: 'white',
-    fontWeight: 'bold',
+  cardBrandSub: {
+    fontSize: 14,
+    fontWeight: '300',
+    letterSpacing: 1,
+    marginTop: -2,
   },
-  qrContainer: {
-    height: 125,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginVertical: 8,
-  },
-  qrWrapper: {
-    backgroundColor: 'white',
-    padding: 8,
+  tierBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 4,
     borderRadius: 12,
   },
-  cardFooter: {
-    marginTop: 'auto',
+  tierBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+  },
+  qrSection: {
     alignItems: 'center',
-    marginBottom: 8,
+    justifyContent: 'center',
+    flex: 1,
+  },
+  qrFrame: {
+    backgroundColor: '#ffffff',
+    padding: 10,
+    borderRadius: 14,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 8,
+      },
+      android: {
+        elevation: 4,
+      },
+    }),
+  },
+  cardFooter: {
+    alignItems: 'center',
+    gap: 4,
   },
   cardNumber: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '600',
-    color: 'white',
-    letterSpacing: 2,
-    textAlign: 'center',
-    textShadowColor: 'rgba(0,0,0,0.3)',
-    textShadowOffset: { width: 1, height: 1 },
-    textShadowRadius: 2,
-  },
-  memberSinceContainer: {
-    position: 'absolute',
-    bottom: 8,
-    left: 0,
-    right: 0,
-    alignItems: 'center',
+    letterSpacing: 2.5,
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
   },
   memberSince: {
     fontSize: 11,
-    color: 'rgba(255,255,255,0.7)',
+    color: 'rgba(255,255,255,0.5)',
+    letterSpacing: 0.5,
   },
-  benefitsCard: {
-    margin: 16,
-    marginTop: 0,
+
+  // Sections
+  section: {
+    marginHorizontal: 16,
+    marginTop: 16,
+    backgroundColor: isDarkMode ? theme.colors.surface : '#ffffff',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: isDarkMode ? theme.colors.outline : 'rgba(0,0,0,0.06)',
+    overflow: 'hidden',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: isDarkMode ? 0.2 : 0.06,
+        shadowRadius: 8,
+      },
+      android: {
+        elevation: 3,
+      },
+    }),
   },
-  benefitItem: {
-    paddingVertical: 4,
-  },
-  statsCard: {
-    margin: 16,
-  },
-  statRow: {
+  sectionHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
-    marginBottom: 24,
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 12,
+    gap: 10,
   },
-  statItem: {
+  sectionIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    justifyContent: 'center',
     alignItems: 'center',
   },
-  statValue: {
-    fontWeight: 'bold',
-    color: theme.colors.primary,
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: theme.colors.onSurface,
+  },
+
+  // Benefits
+  benefitsList: {
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+    gap: 2,
+  },
+  benefitRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    gap: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+  },
+  benefitCheck: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: isDarkMode ? 'rgba(34, 197, 94, 0.15)' : 'rgba(34, 197, 94, 0.1)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  benefitText: {
+    fontSize: 14,
+    color: theme.colors.onSurface,
+    flex: 1,
+    lineHeight: 20,
+  },
+
+  // Stats
+  statsGrid: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: 16,
+    marginBottom: 12,
+  },
+  statBox: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+  statDivider: {
+    width: 1,
+    height: 40,
+    backgroundColor: isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)',
+  },
+  statNumber: {
+    fontSize: 28,
+    fontWeight: '700',
+    color: isDarkMode ? '#3b82f6' : theme.colors.primary,
   },
   statLabel: {
-    opacity: 0.6,
+    fontSize: 12,
+    color: theme.colors.onSurfaceVariant,
     textAlign: 'center',
+    marginTop: 4,
   },
-  cashbackContainer: {
+  cashbackBanner: {
+    marginHorizontal: 16,
+    marginBottom: 16,
+    paddingVertical: 16,
+    borderRadius: 12,
     alignItems: 'center',
-    padding: 16,
-    backgroundColor: theme.dark ? '#1E3A5F' : '#f0f9ff',
-    borderRadius: 8,
   },
   cashbackAmount: {
-    color: theme.dark ? '#FFA726' : '#ff9800',
-    fontWeight: 'bold',
+    fontSize: 22,
+    fontWeight: '800',
   },
   cashbackLabel: {
-    opacity: 0.6,
+    fontSize: 12,
+    marginTop: 4,
   },
-  upgradeCard: {
-    margin: 16,
-  },
-  upgradeDescription: {
-    marginBottom: 8,
-    color: theme.colors.onSurfaceVariant,
-  },
+
+  // Upgrade
   upgradeButton: {
-    marginTop: 16,
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  upgradeGradient: {
+    borderRadius: 16,
+  },
+  upgradeContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+  },
+  upgradeTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#ffffff',
+  },
+  upgradeDesc: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.6)',
+    marginTop: 2,
   },
 });

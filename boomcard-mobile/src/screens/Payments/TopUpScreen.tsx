@@ -172,6 +172,7 @@ const styles = StyleSheet.create({
   payButton: {
     marginTop: 16,
     paddingVertical: 8,
+    backgroundColor: '#D4A843',
   },
   secureNote: {
     textAlign: 'center',

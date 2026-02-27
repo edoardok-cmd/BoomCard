@@ -4,18 +4,19 @@
  * Scan BOOM-Sticker QR codes with GPS validation
  */
 
-import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, Alert } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, StyleSheet, Alert, ActivityIndicator } from 'react-native';
 import { Text, Button, Portal, Modal, TextInput, HelperText } from 'react-native-paper';
 import { CameraView, Camera } from 'expo-camera';
 import * as Location from 'expo-location';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useIsFocused } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
 import StickersApi from '../../api/stickers.api';
 
 export default function StickerScannerScreen() {
   const navigation = useNavigation();
   const { t } = useTranslation();
+  const isFocused = useIsFocused();
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const [scanned, setScanned] = useState(false);
   const [showAmountModal, setShowAmountModal] = useState(false);
@@ -23,11 +24,34 @@ export default function StickerScannerScreen() {
   const [billAmount, setBillAmount] = useState('');
   const [processing, setProcessing] = useState(false);
   const [cameraReady, setCameraReady] = useState(false);
+  const cameraReadyTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     console.log('StickerScannerScreen: Requesting permissions...');
     requestPermissions();
   }, []);
+
+  // When the tab gains focus, start a fallback timeout to dismiss the loading overlay
+  // in case onCameraReady never fires (common expo-camera issue on many devices).
+  // When the tab loses focus, reset state and clear the timeout.
+  useEffect(() => {
+    if (isFocused) {
+      cameraReadyTimeout.current = setTimeout(() => {
+        setCameraReady(true);
+      }, 2000);
+    } else {
+      setCameraReady(false);
+      if (cameraReadyTimeout.current) {
+        clearTimeout(cameraReadyTimeout.current);
+        cameraReadyTimeout.current = null;
+      }
+    }
+    return () => {
+      if (cameraReadyTimeout.current) {
+        clearTimeout(cameraReadyTimeout.current);
+      }
+    };
+  }, [isFocused]);
 
   const requestPermissions = async () => {
     try {
@@ -135,48 +159,60 @@ export default function StickerScannerScreen() {
 
   return (
     <View style={styles.container}>
-      <CameraView
-        style={styles.camera}
-        facing="back"
-        onBarcodeScanned={scanned ? undefined : handleBarCodeScanned}
-        barcodeScannerSettings={{
-          barcodeTypes: ['qr'],
-        }}
-        onCameraReady={() => {
-          console.log('Camera is ready!');
-          setCameraReady(true);
-        }}
-        onMountError={(error) => {
-          console.error('Camera mount error:', error);
-          Alert.alert(t('common.error'), 'Camera failed to start: ' + error.message);
-        }}
-      >
-        {!cameraReady && (
-          <View style={styles.loadingContainer}>
-            <Text style={styles.loadingText}>Starting camera...</Text>
-          </View>
-        )}
-
-        {/* Dark borders around transparent scan area */}
-        <View style={styles.overlay}>
-          <View style={styles.darkTop} />
-          <View style={styles.middleRow}>
-            <View style={styles.darkSide} />
-            <View style={styles.scanArea}>
-              <View style={[styles.corner, styles.topLeft]} />
-              <View style={[styles.corner, styles.topRight]} />
-              <View style={[styles.corner, styles.bottomLeft]} />
-              <View style={[styles.corner, styles.bottomRight]} />
+      {/* Only mount camera when tab is focused — prevents black screen on Android */}
+      {isFocused ? (
+        <CameraView
+          style={styles.camera}
+          facing="back"
+          onBarcodeScanned={scanned ? undefined : handleBarCodeScanned}
+          barcodeScannerSettings={{
+            barcodeTypes: ['qr'],
+          }}
+          onCameraReady={() => {
+            console.log('Camera is ready!');
+            if (cameraReadyTimeout.current) {
+              clearTimeout(cameraReadyTimeout.current);
+              cameraReadyTimeout.current = null;
+            }
+            setCameraReady(true);
+          }}
+          onMountError={(error) => {
+            console.error('Camera mount error:', error);
+            Alert.alert(t('common.error'), 'Camera failed to start: ' + error.message);
+          }}
+        >
+          {!cameraReady && (
+            <View style={styles.cameraLoadingOverlay}>
+              <ActivityIndicator size="large" color="#ffffff" />
+              <Text style={styles.loadingText}>{t('stickers.startingCamera', 'Starting camera...')}</Text>
             </View>
-            <View style={styles.darkSide} />
+          )}
+
+          {/* Dark borders around transparent scan area */}
+          <View style={styles.overlay}>
+            <View style={styles.darkTop} />
+            <View style={styles.middleRow}>
+              <View style={styles.darkSide} />
+              <View style={styles.scanArea}>
+                <View style={[styles.corner, styles.topLeft]} />
+                <View style={[styles.corner, styles.topRight]} />
+                <View style={[styles.corner, styles.bottomLeft]} />
+                <View style={[styles.corner, styles.bottomRight]} />
+              </View>
+              <View style={styles.darkSide} />
+            </View>
+            <View style={styles.darkBottom}>
+              <Text style={styles.instructions}>
+                {t('stickers.scanInstructions')}
+              </Text>
+            </View>
           </View>
-          <View style={styles.darkBottom}>
-            <Text style={styles.instructions}>
-              {t('stickers.scanInstructions')}
-            </Text>
-          </View>
+        </CameraView>
+      ) : (
+        <View style={styles.loadingContainer}>
+          <Text style={styles.loadingText}>{t('stickers.camerapaused', 'Camera paused')}</Text>
         </View>
-      </CameraView>
+      )}
 
       {/* Amount Input Modal */}
       <Portal>
@@ -313,16 +349,23 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontSize: 16,
   },
-  loadingContainer: {
+  cameraLoadingOverlay: {
     ...StyleSheet.absoluteFillObject,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
     zIndex: 10,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#000000',
   },
   loadingText: {
     color: 'white',
-    fontSize: 18,
+    fontSize: 16,
+    marginTop: 12,
   },
   modal: {
     backgroundColor: 'white',

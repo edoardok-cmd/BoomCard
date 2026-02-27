@@ -29,6 +29,12 @@ interface VenueVisit {
   lastVisit: string;
 }
 
+const RANK_COLORS = [
+  { bg: 'rgba(212,168,67,0.15)', text: '#D4A843' },   // #1 gold
+  { bg: 'rgba(156,163,175,0.15)', text: '#9CA3AF' },   // #2 silver
+  { bg: 'rgba(205,127,50,0.15)', text: '#CD7F32' },    // #3 bronze
+];
+
 const DashboardScreen = ({ navigation }: any) => {
   const { t } = useTranslation();
   const { user } = useAuth();
@@ -133,6 +139,15 @@ const DashboardScreen = ({ navigation }: any) => {
     });
   };
 
+  const getCashbackRate = () => {
+    if (subscription?.benefits?.cashbackRate) {
+      return Math.round(subscription.benefits.cashbackRate * 100);
+    }
+    if (subscription?.plan === 'PLATINUM') return 10;
+    if (subscription?.plan === 'PREMIUM') return 7;
+    return 5;
+  };
+
   const s = getStyles(theme, isDarkMode);
 
   if (loading) {
@@ -146,7 +161,7 @@ const DashboardScreen = ({ navigation }: any) => {
     >
       {/* Hero Header */}
       <LinearGradient
-        colors={isDarkMode ? ['#1E3A8A', '#5B21B6'] : ['#3B82F6', '#8B5CF6']}
+        colors={isDarkMode ? ['#0F172A', '#1E293B'] : ['#000000', '#0A0A0A', '#111111']}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={s.hero}
@@ -154,6 +169,7 @@ const DashboardScreen = ({ navigation }: any) => {
         <View style={s.heroBrandRow}>
           <View style={s.brandContainer}>
             <Text style={s.brandText}>BOOM</Text>
+            <View style={s.brandDot} />
             <Text style={s.brandCardText}>Card</Text>
           </View>
           <TouchableOpacity style={s.notificationBtn}>
@@ -162,13 +178,13 @@ const DashboardScreen = ({ navigation }: any) => {
         </View>
         <View style={s.heroContent}>
           <View style={s.heroTextContainer}>
-            <Text style={s.heroGreeting}>{t('dashboard.welcome')},</Text>
+            <Text style={s.heroGreeting}>{t('dashboard.welcome')}</Text>
             <Text style={s.heroName}>{user?.firstName || user?.email}!</Text>
           </View>
         </View>
 
-        {/* Cashback Amount */}
-        <View style={s.heroCashback}>
+        {/* Cashback Card */}
+        <View style={s.heroCashbackCard}>
           <View style={s.heroCashbackLeft}>
             <Text style={s.heroCashbackLabel}>{t('dashboard.totalCashback')}</Text>
             <AnimatedCounter
@@ -179,15 +195,9 @@ const DashboardScreen = ({ navigation }: any) => {
           </View>
           {subscription && (
             <View style={s.heroCashbackRate}>
-              <Ionicons name="trending-up" size={16} color="rgba(255,255,255,0.9)" />
+              <Ionicons name="trending-up" size={16} color={isDarkMode ? '#60A5FA' : '#D4A843'} />
               <Text style={s.heroCashbackRateText}>
-                {t('dashboard.cashbackRate', {
-                  rate: subscription.benefits?.cashbackRate
-                    ? Math.round(subscription.benefits.cashbackRate * 100)
-                    : subscription.plan === 'PLATINUM' ? 10
-                    : subscription.plan === 'PREMIUM' ? 7
-                    : 5
-                })}
+                {t('dashboard.cashbackRate', { rate: getCashbackRate() })}
               </Text>
             </View>
           )}
@@ -198,24 +208,33 @@ const DashboardScreen = ({ navigation }: any) => {
       {subscription && (
         <FadeInView delay={0}>
         <TouchableOpacity
-          style={s.planBanner}
+          style={[
+            s.planBanner,
+            {
+              borderColor: subscription.plan === 'PLATINUM'
+                ? 'rgba(192,192,192,0.4)'
+                : subscription.plan === 'PREMIUM'
+                ? 'rgba(255,215,0,0.3)'
+                : 'rgba(255,255,255,0.1)',
+            },
+          ]}
           activeOpacity={0.7}
           onPress={() => navigation.navigate('Card')}
         >
           <LinearGradient
             colors={
               subscription.plan === 'PLATINUM'
-                ? ['#C0C0C0', '#E8E8E8']
+                ? ['#9CA3AF', '#D1D5DB', '#E5E7EB'] as const
                 : subscription.plan === 'PREMIUM'
-                ? ['#D4AF37', '#FFD700']
-                : ['#4A5568', '#2D3748']
+                ? ['#C49B38', '#D4AF37', '#FFD700'] as const
+                : ['#2D3748', '#4A5568', '#2D3748'] as const
             }
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={s.planGradient}
           >
             <View style={s.planLeft}>
-              <Ionicons name="card" size={28} color="#FFFFFF" />
+              <Ionicons name="card" size={32} color="#FFFFFF" />
               <View style={s.planTextGroup}>
                 <Text style={s.planLabel}>{t('dashboard.yourPlan')}</Text>
                 <Text style={s.planName}>
@@ -263,6 +282,7 @@ const DashboardScreen = ({ navigation }: any) => {
                 return null;
               })()}
             </View>
+            <Ionicons name="chevron-forward" size={18} color="rgba(255,255,255,0.4)" style={{ marginLeft: 4 }} />
           </LinearGradient>
         </TouchableOpacity>
         </FadeInView>
@@ -270,14 +290,14 @@ const DashboardScreen = ({ navigation }: any) => {
 
       {/* Quick Actions */}
       <FadeInView delay={100}>
-      <View style={[s.quickActions, !subscription && { marginTop: -28 }]}>
+      <View style={[s.quickActions, !subscription && { marginTop: -32 }]}>
         <TouchableOpacity
           style={s.actionCard}
           activeOpacity={0.7}
           onPress={() => navigation.navigate('ReceiptScanner')}
         >
           <View style={[s.actionIconCircle, { backgroundColor: isDarkMode ? 'rgba(59,130,246,0.15)' : 'rgba(59,130,246,0.1)' }]}>
-            <Ionicons name="camera-outline" size={24} color={theme.colors.primary} />
+            <Ionicons name="camera-outline" size={22} color={theme.colors.primary} />
           </View>
           <Text style={s.actionTitle}>{t('dashboard.scanReceipt')}</Text>
           <Text style={s.actionSubtitle}>{t('dashboard.uploadEarnCashback')}</Text>
@@ -289,32 +309,46 @@ const DashboardScreen = ({ navigation }: any) => {
           onPress={() => navigation.navigate('Scan')}
         >
           <View style={[s.actionIconCircle, { backgroundColor: isDarkMode ? 'rgba(139,92,246,0.15)' : 'rgba(139,92,246,0.1)' }]}>
-            <Ionicons name="qr-code-outline" size={24} color="#8B5CF6" />
+            <Ionicons name="qr-code-outline" size={22} color="#8B5CF6" />
           </View>
           <Text style={s.actionTitle}>{t('dashboard.scanSticker')}</Text>
           <Text style={s.actionSubtitle}>{t('dashboard.qrCodeAtVenue')}</Text>
         </TouchableOpacity>
+
+        <TouchableOpacity
+          style={s.actionCard}
+          activeOpacity={0.7}
+          onPress={() => navigation.navigate('Wallet')}
+        >
+          <View style={[s.actionIconCircle, { backgroundColor: isDarkMode ? 'rgba(212,168,67,0.15)' : 'rgba(212,168,67,0.1)' }]}>
+            <Ionicons name="wallet-outline" size={22} color="#D4A843" />
+          </View>
+          <Text style={s.actionTitle}>{t('wallet.title')}</Text>
+          <Text style={s.actionSubtitle}>{t('wallet.balance')}</Text>
+        </TouchableOpacity>
       </View>
       </FadeInView>
 
-      {/* Stats Row */}
+      {/* Stats Card */}
       <FadeInView delay={200}>
-      <View style={s.statsRow}>
-        <View style={s.statCard}>
-          <View style={[s.statIconCircle, { backgroundColor: isDarkMode ? 'rgba(16,185,129,0.15)' : 'rgba(16,185,129,0.1)' }]}>
-            <Ionicons name="wallet-outline" size={20} color="#10B981" />
+      <View style={s.statsCard}>
+        <View style={s.statItem}>
+          <View style={[s.statIconCircle, { backgroundColor: isDarkMode ? 'rgba(212,168,67,0.15)' : 'rgba(212,168,67,0.1)' }]}>
+            <Ionicons name="wallet-outline" size={18} color="#D4A843" />
           </View>
           <AnimatedCounter
             targetValue={stats?.totalCashback || cardStats?.totalCashbackEarned || 0}
             formatFn={formatDualCurrency}
-            style={s.statValue}
+            style={s.statValueGold}
           />
           <Text style={s.statLabel}>{t('dashboard.totalCashback')}</Text>
         </View>
 
-        <View style={s.statCard}>
+        <View style={s.statDivider} />
+
+        <View style={s.statItem}>
           <View style={[s.statIconCircle, { backgroundColor: isDarkMode ? 'rgba(59,130,246,0.15)' : 'rgba(59,130,246,0.1)' }]}>
-            <Ionicons name="receipt-outline" size={20} color={theme.colors.primary} />
+            <Ionicons name="receipt-outline" size={18} color={theme.colors.primary} />
           </View>
           <AnimatedCounter
             targetValue={stats?.totalReceipts || 0}
@@ -323,9 +357,11 @@ const DashboardScreen = ({ navigation }: any) => {
           <Text style={s.statLabel}>{t('dashboard.receipts')}</Text>
         </View>
 
-        <View style={s.statCard}>
+        <View style={s.statDivider} />
+
+        <View style={s.statItem}>
           <View style={[s.statIconCircle, { backgroundColor: isDarkMode ? 'rgba(139,92,246,0.15)' : 'rgba(139,92,246,0.1)' }]}>
-            <Ionicons name="storefront-outline" size={20} color="#8B5CF6" />
+            <Ionicons name="storefront-outline" size={18} color="#8B5CF6" />
           </View>
           <AnimatedCounter
             targetValue={recentVisits.length}
@@ -335,6 +371,33 @@ const DashboardScreen = ({ navigation }: any) => {
         </View>
       </View>
       </FadeInView>
+
+      {/* Upgrade Banner */}
+      {subscription && subscription.plan !== 'PLATINUM' && (
+        <FadeInView delay={250}>
+        <TouchableOpacity
+          style={s.upgradeBanner}
+          activeOpacity={0.8}
+          onPress={() => navigation.navigate('Card')}
+        >
+          <LinearGradient
+            colors={isDarkMode ? ['#1E3A8A', '#3730A3'] : ['#000000', '#1A1A1A']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={s.upgradeGradient}
+          >
+            <Ionicons name="arrow-up-circle" size={28} color="#FFD700" />
+            <View style={s.upgradeTextGroup}>
+              <Text style={s.upgradeTitle}>{t('dashboard.upgradeYourPlan')}</Text>
+              <Text style={s.upgradeSubtitle}>{t('dashboard.unlockHigherCashback')}</Text>
+            </View>
+            <View style={s.upgradeArrow}>
+              <Ionicons name="chevron-forward" size={20} color="rgba(255,255,255,0.5)" />
+            </View>
+          </LinearGradient>
+        </TouchableOpacity>
+        </FadeInView>
+      )}
 
       {/* Recent Venues */}
       {recentVisits.length > 0 && (
@@ -347,31 +410,39 @@ const DashboardScreen = ({ navigation }: any) => {
             </TouchableOpacity>
           </View>
 
-          {recentVisits.map((visit, index) => (
-            <View key={index} style={s.venueCard}>
-              <View style={s.venueIconCircle}>
-                <Ionicons name="storefront-outline" size={22} color={theme.colors.primary} />
-              </View>
-              <View style={s.venueInfo}>
-                <Text style={s.venueName} numberOfLines={1}>
-                  {visit.merchantName}
-                </Text>
-                <Text style={s.venueDetails}>
-                  {visit.visitCount} {visit.visitCount > 1 ? t('dashboard.visits') : t('dashboard.visit')} • {t('dashboard.lastVisit')}:{' '}
-                  {formatDate(visit.lastVisit)}
-                </Text>
-              </View>
-              <View style={s.venueStats}>
-                <Text style={s.venueAmount}>{formatDualCurrency(visit.totalSpent)}</Text>
-                <View style={s.venueCashbackRow}>
-                  <Ionicons name="arrow-up-circle-outline" size={14} color="#10B981" />
-                  <Text style={s.venueCashback}>
-                    {formatDualCurrency(visit.totalCashback)}
+          {recentVisits.map((visit, index) => {
+            const rankColor = index < 3
+              ? RANK_COLORS[index]
+              : { bg: isDarkMode ? 'rgba(59,130,246,0.12)' : 'rgba(59,130,246,0.08)', text: theme.colors.primary };
+
+            return (
+              <View key={index} style={s.venueCard}>
+                <View style={[s.venueRankBadge, { backgroundColor: rankColor.bg }]}>
+                  <Text style={[s.venueRankText, { color: rankColor.text }]}>
+                    {index + 1}
                   </Text>
                 </View>
+                <View style={s.venueInfo}>
+                  <Text style={s.venueName} numberOfLines={1}>
+                    {visit.merchantName}
+                  </Text>
+                  <Text style={s.venueDetails}>
+                    {visit.visitCount} {visit.visitCount > 1 ? t('dashboard.visits') : t('dashboard.visit')} • {t('dashboard.lastVisit')}:{' '}
+                    {formatDate(visit.lastVisit)}
+                  </Text>
+                </View>
+                <View style={s.venueStats}>
+                  <Text style={s.venueAmount}>{formatDualCurrency(visit.totalSpent)}</Text>
+                  <View style={s.venueCashbackRow}>
+                    <Ionicons name="trending-up" size={14} color="#10B981" />
+                    <Text style={s.venueCashback}>
+                      {formatDualCurrency(visit.totalCashback)}
+                    </Text>
+                  </View>
+                </View>
               </View>
-            </View>
-          ))}
+            );
+          })}
         </View>
         </FadeInView>
       )}
@@ -394,7 +465,7 @@ const DashboardScreen = ({ navigation }: any) => {
       )}
 
       {/* Bottom spacer */}
-      <View style={{ height: 24 }} />
+      <View style={{ height: 32 }} />
     </ScrollView>
   );
 };
@@ -404,40 +475,40 @@ const getStyles = (theme: any, isDarkMode: boolean) => StyleSheet.create({
     flex: 1,
     backgroundColor: theme.colors.background,
   },
-  centered: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
 
   // Hero Header
   hero: {
-    paddingTop: Platform.OS === 'ios' ? 16 : 12,
-    paddingBottom: 48,
-    paddingHorizontal: 20,
+    paddingTop: Platform.OS === 'ios' ? 20 : 16,
+    paddingBottom: 56,
+    paddingHorizontal: 24,
   },
   heroBrandRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 16,
   },
   brandContainer: {
     flexDirection: 'row',
-    alignItems: 'baseline',
+    alignItems: 'center',
   },
   brandText: {
     fontSize: 22,
     fontWeight: '900',
     color: '#FFFFFF',
-    letterSpacing: 1,
+    letterSpacing: 2,
+  },
+  brandDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#D4A843',
+    marginHorizontal: 5,
   },
   brandCardText: {
     fontSize: 22,
     fontWeight: '300',
-    color: 'rgba(255,255,255,0.85)',
-    marginLeft: 4,
+    color: 'rgba(255,255,255,0.7)',
   },
   heroContent: {
     flexDirection: 'row',
@@ -448,77 +519,84 @@ const getStyles = (theme: any, isDarkMode: boolean) => StyleSheet.create({
     flex: 1,
   },
   heroGreeting: {
-    fontSize: 15,
-    color: 'rgba(255,255,255,0.8)',
-    marginBottom: 2,
+    fontSize: 14,
+    fontWeight: '500',
+    color: 'rgba(255,255,255,0.6)',
+    marginBottom: 4,
+    textTransform: 'uppercase',
+    letterSpacing: 1.5,
   },
   heroName: {
-    fontSize: 26,
-    fontWeight: 'bold',
+    fontSize: 30,
+    fontWeight: '800',
     color: '#FFFFFF',
   },
   notificationBtn: {
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: 'rgba(255,255,255,0.15)',
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
     justifyContent: 'center',
     alignItems: 'center',
   },
 
-  // Hero Cashback
-  heroCashback: {
+  // Hero Cashback Card
+  heroCashbackCard: {
     flexDirection: 'row',
     alignItems: 'flex-end',
     justifyContent: 'space-between',
-    marginTop: 16,
-    paddingTop: 14,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.15)',
+    marginTop: 20,
+    backgroundColor: isDarkMode ? 'rgba(59,130,246,0.12)' : 'rgba(212,168,67,0.12)',
+    borderRadius: 16,
+    padding: 16,
   },
   heroCashbackLeft: {
     flex: 1,
   },
   heroCashbackLabel: {
     fontSize: 12,
-    color: 'rgba(255,255,255,0.7)',
+    color: isDarkMode ? '#93C5FD' : '#D4A843',
     marginBottom: 4,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
+    fontWeight: '600',
   },
   heroCashbackAmount: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: '#FFFFFF',
+    fontSize: 28,
+    fontWeight: '800',
+    color: isDarkMode ? '#FFFFFF' : '#FFD700',
   },
   heroCashbackRate: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 12,
-    gap: 4,
+    backgroundColor: isDarkMode ? 'rgba(59,130,246,0.2)' : 'rgba(212,168,67,0.2)',
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 20,
+    gap: 5,
   },
   heroCashbackRateText: {
     fontSize: 13,
-    fontWeight: '600',
-    color: '#FFFFFF',
+    fontWeight: '700',
+    color: isDarkMode ? '#93C5FD' : '#D4A843',
   },
 
   // Card Plan Banner
   planBanner: {
     marginHorizontal: 16,
-    marginTop: -28,
-    marginBottom: 12,
-    borderRadius: 16,
+    marginTop: -32,
+    marginBottom: 20,
+    borderRadius: 24,
+    borderWidth: 1,
     overflow: 'hidden',
     ...Platform.select({
       ios: {
         shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: isDarkMode ? 0.3 : 0.15,
-        shadowRadius: 12,
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: isDarkMode ? 0.4 : 0.12,
+        shadowRadius: 24,
       },
       android: {
         elevation: 8,
@@ -529,12 +607,13 @@ const getStyles = (theme: any, isDarkMode: boolean) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: 16,
+    padding: 20,
   },
   planLeft: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
+    flex: 1,
   },
   planTextGroup: {
     gap: 2,
@@ -547,9 +626,10 @@ const getStyles = (theme: any, isDarkMode: boolean) => StyleSheet.create({
     letterSpacing: 0.5,
   },
   planName: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: '700',
     color: '#FFFFFF',
+    letterSpacing: 1,
     textShadowColor: 'rgba(0,0,0,0.2)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 2,
@@ -561,9 +641,9 @@ const getStyles = (theme: any, isDarkMode: boolean) => StyleSheet.create({
   statusBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 16,
     gap: 5,
   },
   statusDot: {
@@ -590,86 +670,104 @@ const getStyles = (theme: any, isDarkMode: boolean) => StyleSheet.create({
   quickActions: {
     flexDirection: 'row',
     paddingHorizontal: 16,
-    gap: 12,
-    marginBottom: 16,
+    gap: 10,
+    marginBottom: 20,
   },
   actionCard: {
     flex: 1,
     backgroundColor: theme.colors.surface,
-    padding: 16,
-    borderRadius: 16,
-    alignItems: 'center',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: isDarkMode ? 0.3 : 0.1,
-        shadowRadius: 12,
-      },
-      android: {
-        elevation: 6,
-      },
-    }),
-  },
-  actionIconCircle: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  actionTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: theme.colors.onSurface,
-    marginBottom: 4,
-    textAlign: 'center',
-  },
-  actionSubtitle: {
-    fontSize: 12,
-    color: theme.colors.onSurfaceVariant,
-    textAlign: 'center',
-  },
-
-  // Stats Row
-  statsRow: {
-    flexDirection: 'row',
-    paddingHorizontal: 16,
-    gap: 10,
-    marginBottom: 20,
-  },
-  statCard: {
-    flex: 1,
-    backgroundColor: theme.colors.surface,
     padding: 14,
-    borderRadius: 16,
+    borderRadius: 20,
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: isDarkMode ? theme.colors.outline : 'rgba(0,0,0,0.04)',
     ...Platform.select({
       ios: {
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: isDarkMode ? 0.2 : 0.06,
-        shadowRadius: 8,
+        shadowOpacity: isDarkMode ? 0.25 : 0.06,
+        shadowRadius: 12,
       },
       android: {
         elevation: 3,
       },
     }),
   },
-  statIconCircle: {
-    width: 40,
+  actionIconCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  actionTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: theme.colors.onSurface,
+    marginBottom: 4,
+    textAlign: 'center',
+  },
+  actionSubtitle: {
+    fontSize: 11,
+    color: theme.colors.onSurfaceVariant,
+    textAlign: 'center',
+    lineHeight: 15,
+  },
+
+  // Stats Card (unified)
+  statsCard: {
+    backgroundColor: theme.colors.surface,
+    borderRadius: 24,
+    padding: 20,
+    marginHorizontal: 16,
+    marginBottom: 24,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: isDarkMode ? theme.colors.outline : 'rgba(0,0,0,0.04)',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: isDarkMode ? 0.25 : 0.08,
+        shadowRadius: 16,
+      },
+      android: {
+        elevation: 4,
+      },
+    }),
+  },
+  statItem: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+  statDivider: {
+    width: 1,
     height: 40,
-    borderRadius: 20,
+    backgroundColor: isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
+  },
+  statIconCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 8,
   },
   statValue: {
-    fontSize: 16,
-    fontWeight: 'bold',
+    fontSize: 20,
+    fontWeight: '800',
     color: theme.colors.onSurface,
-    marginBottom: 2,
+    marginBottom: 4,
+    textAlign: 'center',
+  },
+  statValueGold: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#D4A843',
+    marginBottom: 4,
     textAlign: 'center',
   },
   statLabel: {
@@ -678,10 +776,56 @@ const getStyles = (theme: any, isDarkMode: boolean) => StyleSheet.create({
     textAlign: 'center',
   },
 
+  // Upgrade Banner
+  upgradeBanner: {
+    marginHorizontal: 16,
+    marginBottom: 24,
+    borderRadius: 20,
+    overflow: 'hidden',
+    ...Platform.select({
+      ios: {
+        shadowColor: isDarkMode ? '#3B82F6' : '#000',
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: isDarkMode ? 0.3 : 0.15,
+        shadowRadius: 16,
+      },
+      android: {
+        elevation: 6,
+      },
+    }),
+  },
+  upgradeGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 18,
+    gap: 14,
+  },
+  upgradeTextGroup: {
+    flex: 1,
+  },
+  upgradeTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  upgradeSubtitle: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.6)',
+    marginTop: 2,
+  },
+  upgradeArrow: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
   // Section
   section: {
     paddingHorizontal: 16,
-    marginBottom: 8,
+    marginBottom: 16,
   },
   sectionHeader: {
     flexDirection: 'row',
@@ -690,13 +834,13 @@ const getStyles = (theme: any, isDarkMode: boolean) => StyleSheet.create({
     marginBottom: 12,
   },
   sectionTitle: {
-    fontSize: 18,
+    fontSize: 19,
     fontWeight: '700',
     color: theme.colors.onSurface,
   },
   seeAll: {
     fontSize: 14,
-    color: theme.colors.primary,
+    color: '#D4A843',
     fontWeight: '600',
   },
 
@@ -704,39 +848,44 @@ const getStyles = (theme: any, isDarkMode: boolean) => StyleSheet.create({
   venueCard: {
     flexDirection: 'row',
     backgroundColor: theme.colors.surface,
-    padding: 14,
-    borderRadius: 14,
-    marginBottom: 8,
+    padding: 16,
+    borderRadius: 20,
+    marginBottom: 10,
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: isDarkMode ? theme.colors.outline : 'rgba(0,0,0,0.04)',
     ...Platform.select({
       ios: {
         shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
+        shadowOffset: { width: 0, height: 2 },
         shadowOpacity: isDarkMode ? 0.15 : 0.04,
-        shadowRadius: 4,
+        shadowRadius: 8,
       },
       android: {
         elevation: 2,
       },
     }),
   },
-  venueIconCircle: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: isDarkMode ? 'rgba(59,130,246,0.12)' : 'rgba(59,130,246,0.08)',
+  venueRankBadge: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
+  },
+  venueRankText: {
+    fontSize: 14,
+    fontWeight: '800',
   },
   venueInfo: {
     flex: 1,
   },
   venueName: {
     fontSize: 15,
-    fontWeight: '600',
+    fontWeight: '700',
     color: theme.colors.onSurface,
-    marginBottom: 3,
+    marginBottom: 4,
   },
   venueDetails: {
     fontSize: 12,
@@ -767,10 +916,11 @@ const getStyles = (theme: any, isDarkMode: boolean) => StyleSheet.create({
   pendingCard: {
     flexDirection: 'row',
     backgroundColor: isDarkMode ? '#3E3412' : '#FFFBEB',
-    padding: 16,
-    borderRadius: 14,
+    padding: 18,
+    borderRadius: 20,
     marginHorizontal: 16,
     marginTop: 8,
+    marginBottom: 8,
     alignItems: 'center',
     borderWidth: 1,
     borderColor: isDarkMode ? 'rgba(252,211,77,0.2)' : 'rgba(217,119,6,0.15)',

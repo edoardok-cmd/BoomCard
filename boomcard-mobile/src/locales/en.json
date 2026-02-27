@@ -95,7 +95,9 @@
     "cardSuspended": "Suspended",
     "viewCard": "View Card",
     "daysRemaining": "{{days}} days left",
-    "cashbackRate": "{{rate}}% cashback"
+    "cashbackRate": "{{rate}}% cashback",
+    "upgradeYourPlan": "Upgrade Your Plan",
+    "unlockHigherCashback": "Unlock higher cashback rates"
   },
   "wallet": {
     "title": "Wallet",

@@ -18,6 +18,7 @@ import {
   Dimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useTranslation } from 'react-i18next';
 import { useTheme } from '../../contexts/ThemeContext';
 import apiClient from '../../api/client';
@@ -120,28 +121,59 @@ const getFallbackPlans = (): Plan[] => [
   },
 ];
 
-// Credit card colors stay the same regardless of theme
-const CARD_COLORS = {
+// Credit card colors & gradients — matching website homepage cards per theme
+type GradientColors = [string, string, ...string[]];
+const getCardColors = (isDarkMode: boolean) => isDarkMode ? {
+  // Dark mode cards — matching website [data-theme="dark"] card styles
   light: {
-    bg: '#ffffff',
+    gradientColors: ['#f9fafb', '#e5e7eb'] as GradientColors,
+    text: '#1a1a1a',
+    price: '#1a1a1a',
+    number: 'rgba(26, 26, 26, 0.8)',
+    border: 'rgba(156, 163, 175, 0.5)',
+    borderWidth: 2,
+  },
+  silver: {
+    gradientColors: ['#374151', '#4b5563'] as GradientColors,
+    text: '#f8fafc',
+    price: '#f8fafc',
+    number: 'rgba(248, 250, 252, 0.9)',
+    border: '#3b82f6',
+    borderWidth: 3,
+  },
+  black: {
+    gradientColors: ['#111827', '#1f2937', '#0f172a'] as GradientColors,
+    text: '#06b6d4',
+    price: '#06b6d4',
+    number: 'rgba(248, 250, 252, 0.9)',
+    border: '#06b6d4',
+    borderWidth: 3,
+  },
+} : {
+  // Light mode cards — matching website light theme
+  light: {
+    gradientColors: ['#ffffff', '#f5f5f5'] as GradientColors,
     text: '#4a4a4a',
     price: '#4a4a4a',
     number: 'rgba(100, 100, 100, 0.8)',
     border: 'rgba(200, 200, 200, 0.5)',
+    borderWidth: 2,
   },
   silver: {
-    bg: '#c0c0c0',
+    gradientColors: ['#c0c0c0', '#939393'] as GradientColors,
     text: '#1a1a1a',
     price: '#1a1a1a',
     number: 'rgba(26, 26, 26, 0.9)',
     border: 'rgba(255, 255, 255, 0.3)',
+    borderWidth: 2,
   },
   black: {
-    bg: '#1a1a1a',
+    gradientColors: ['#1a1a1a', '#2d2d2d'] as GradientColors,
     text: '#ffd700',
     price: '#ffd700',
     number: 'rgba(255, 255, 255, 0.9)',
     border: '#ffd700',
+    borderWidth: 3,
   },
 };
 
@@ -213,7 +245,7 @@ const PlanSelectionScreen = ({ navigation }: any) => {
     }
 
     const priceBGN = priceEUR ? convertEURToBGN(priceEUR) : 0;
-    const colors = CARD_COLORS[plan.cardType];
+    const colors = getCardColors(isDarkMode)[plan.cardType];
     const features = language === 'bg' ? plan.featuresBg : plan.features;
     const planName = language === 'bg' ? plan.displayNameBg : plan.displayName;
     const badgeText = plan.badge ? (language === 'bg' ? plan.badge.textBg : plan.badge.text) : null;
@@ -224,30 +256,61 @@ const PlanSelectionScreen = ({ navigation }: any) => {
         style={[styles.planWrapper, isDisabled && styles.planDisabled]}
       >
         {badgeText ? (
-          <View style={[
-            styles.badge,
-            plan.isFeatured ? styles.featuredBadge : styles.mostBoughtBadge,
-          ]}>
-            <Text style={[
-              styles.badgeText,
-              plan.isFeatured ? styles.featuredBadgeText : styles.mostBoughtBadgeText,
-            ]}>
-              {badgeText}
-            </Text>
-          </View>
+          plan.isFeatured ? (
+            <LinearGradient
+              colors={['#ffd700', '#ffed4e']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={[styles.badge, styles.featuredBadge]}
+            >
+              <Text style={[styles.badgeText, styles.featuredBadgeText]}>
+                {badgeText}
+              </Text>
+            </LinearGradient>
+          ) : (
+            <View style={[styles.badge, styles.mostBoughtBadge]}>
+              <Text style={[styles.badgeText, styles.mostBoughtBadgeText]}>
+                {badgeText}
+              </Text>
+            </View>
+          )
         ) : (
           <View style={styles.badgeSpacer} />
         )}
 
-        <View style={[
-          styles.creditCard,
-          {
-            backgroundColor: colors.bg,
-            borderColor: colors.border,
-            borderWidth: plan.cardType === 'black' ? 3 : 2,
-          },
-        ]}>
-          <Text style={[styles.cardLogo, { color: colors.text }]}>BOOM Card</Text>
+        <LinearGradient
+          colors={colors.gradientColors}
+          {...(colors.gradientColors.length === 3 ? { locations: [0, 0.5, 1] } : {})}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={[
+            styles.creditCard,
+            {
+              borderColor: colors.border,
+              borderWidth: colors.borderWidth,
+              shadowColor: isDarkMode
+                ? (plan.cardType === 'black' ? '#06b6d4' : plan.cardType === 'silver' ? '#3b82f6' : '#000')
+                : '#000',
+              shadowOpacity: isDarkMode
+                ? (plan.cardType === 'black' ? 0.6 : plan.cardType === 'silver' ? 0.4 : 0.2)
+                : 0.3,
+            },
+          ]}
+        >
+          <Text style={[
+            styles.cardLogo,
+            { color: colors.text },
+            isDarkMode && plan.cardType === 'black' && {
+              textShadowColor: 'rgba(6, 182, 212, 0.6)',
+              textShadowOffset: { width: 0, height: 2 },
+              textShadowRadius: 15,
+            },
+            isDarkMode && plan.cardType === 'silver' && {
+              textShadowColor: 'rgba(59, 130, 246, 0.3)',
+              textShadowOffset: { width: 0, height: 2 },
+              textShadowRadius: 8,
+            },
+          ]}>BOOM Card</Text>
           <View style={styles.cardNumber}>
             {['••••', '••••', '••••', '••••'].map((dots, i) => (
               <Text key={i} style={[styles.cardDots, { color: colors.number }]}>{dots}</Text>
@@ -267,7 +330,7 @@ const PlanSelectionScreen = ({ navigation }: any) => {
               </Text>
             </View>
           </View>
-        </View>
+        </LinearGradient>
 
         <View style={styles.featuresList}>
           {features.map((feature, i) => (
@@ -444,10 +507,14 @@ const getStyles = (theme: any, isDarkMode: boolean) => StyleSheet.create({
     height: 0,
   },
   featuredBadge: {
-    backgroundColor: '#d4af37',
+    shadowColor: '#c9a237',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.5,
+    shadowRadius: 12,
+    elevation: 6,
   },
   mostBoughtBadge: {
-    backgroundColor: 'transparent',
+    backgroundColor: isDarkMode ? 'rgba(201, 162, 55, 0.15)' : 'transparent',
     borderWidth: 2,
     borderColor: '#c9a237',
   },
@@ -469,9 +536,7 @@ const getStyles = (theme: any, isDarkMode: boolean) => StyleSheet.create({
     borderRadius: 20,
     padding: 20,
     justifyContent: 'space-between',
-    shadowColor: '#000',
     shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.3,
     shadowRadius: 20,
     elevation: 10,
   },
@@ -515,10 +580,10 @@ const getStyles = (theme: any, isDarkMode: boolean) => StyleSheet.create({
   },
   featuresList: {
     width: CARD_WIDTH,
-    backgroundColor: theme.colors.surface,
+    backgroundColor: isDarkMode ? theme.colors.surface : theme.colors.background,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: theme.colors.surfaceVariant,
+    borderColor: theme.colors.outline,
     paddingVertical: 12,
     marginTop: 16,
   },
@@ -528,7 +593,7 @@ const getStyles = (theme: any, isDarkMode: boolean) => StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderBottomWidth: 1,
-    borderBottomColor: theme.colors.surfaceVariant,
+    borderBottomColor: theme.colors.outline,
     gap: 12,
   },
   featureCheck: {
@@ -579,7 +644,7 @@ const getStyles = (theme: any, isDarkMode: boolean) => StyleSheet.create({
   },
   footerLink: {
     fontSize: 14,
-    color: theme.colors.primary,
+    color: theme.colors.gold,
     fontWeight: '600',
   },
 });

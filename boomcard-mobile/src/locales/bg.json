@@ -95,7 +95,9 @@
     "cardSuspended": "Спряна",
     "viewCard": "Виж картата",
     "daysRemaining": "{{days}} дни остават",
-    "cashbackRate": "{{rate}}% кешбек"
+    "cashbackRate": "{{rate}}% кешбек",
+    "upgradeYourPlan": "Подобрете плана си",
+    "unlockHigherCashback": "Отключете по-висок кешбек"
   },
   "wallet": {
     "title": "Портфейл",

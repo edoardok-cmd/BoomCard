@@ -10,12 +10,22 @@ import { MD3LightTheme, MD3DarkTheme, Provider as PaperProvider } from 'react-na
 import { useColorScheme } from 'react-native';
 import StorageService from '../services/storage.service';
 
+// Gold accent colors — matching website golden button style
+const goldColors = {
+  gold: '#D4A843', // Primary gold (website golden button)
+  goldDark: '#C49B38', // Darker gold
+  goldDarker: '#B8922F', // Darkest gold
+  goldLight: '#E6B84D', // Lighter gold
+  goldBright: '#FFD700', // Bright gold accent
+  onGold: '#1A1A1A', // Text on gold backgrounds
+};
+
 // Custom light theme colors — aligned with partner-dashboard website palette
 const lightTheme = {
   ...MD3LightTheme,
   colors: {
     ...MD3LightTheme.colors,
-    primary: '#3B82F6', // Blue (website info/action color)
+    primary: '#000000', // Black (website light --color-primary)
     onPrimary: '#FFFFFF',
     secondary: '#8B5CF6', // Purple
     tertiary: '#10B981', // Green (website accent)
@@ -26,6 +36,8 @@ const lightTheme = {
     onSurface: '#0F172A', // Website text-primary (slate-900)
     onSurfaceVariant: '#64748B', // Website text-secondary (slate-500)
     outline: '#E5E7EB', // Website border color
+    info: '#3B82F6', // Blue — preserved for info boxes and semantic use
+    ...goldColors,
   },
 };
 
@@ -45,6 +57,8 @@ const darkTheme = {
     onSurface: '#F8FAFC', // Website dark text-primary (slate-50)
     onSurfaceVariant: '#CBD5E1', // Website dark text-secondary (slate-300)
     outline: '#374151', // Website dark border
+    info: '#3B82F6', // Blue — same as primary in dark mode
+    ...goldColors,
   },
 };
 

@@ -502,14 +502,14 @@ const getStyles = (theme: any, isDarkMode: boolean) => StyleSheet.create({
 
   // Login Prompt
   loginPrompt: {
-    backgroundColor: isDarkMode ? 'rgba(59, 130, 246, 0.1)' : 'rgba(59, 130, 246, 0.08)',
+    backgroundColor: isDarkMode ? 'rgba(59, 130, 246, 0.1)' : 'rgba(0, 0, 0, 0.04)',
     borderRadius: 12,
     padding: 16,
     marginBottom: 20,
     alignItems: 'center',
   },
   loginPromptText: {
-    color: isDarkMode ? '#93C5FD' : '#3B82F6',
+    color: isDarkMode ? '#93C5FD' : '#1E40AF',
     fontSize: 14,
     textAlign: 'center',
     marginBottom: 12,
