@@ -268,77 +268,80 @@ const BrandSplash: React.FC<BrandSplashProps> = ({
         end={{ x: 1, y: 1 }}
         style={styles.gradient}
       >
-        {/* Card Reveal (rendered first so logo stays on top) */}
-        {showCardReveal && (
+        {/* Logo + Card in a flex column so they never overlap */}
+        <View style={styles.contentColumn}>
+          {/* Logo + Brand Text */}
           <Animated.View
             style={[
-              styles.cardArea,
-              { transform: [{ scale: cardPulse }] },
+              styles.logoContainer,
+              {
+                opacity: logoOpacity,
+                transform: [
+                  { scale: logoScale },
+                  { translateY: logoTranslateY },
+                ],
+              },
             ]}
           >
-            <CardReveal
-              animatedScale={cardScale}
-              animatedRotateX={cardRotateXInterpolated}
-              animatedOpacity={cardOpacity}
-              cardType="PREMIUM"
-            />
-          </Animated.View>
-        )}
-
-        {/* Logo + Brand Text (rendered after card so it stays on top) */}
-        <Animated.View
-          style={[
-            styles.logoContainer,
-            {
-              opacity: logoOpacity,
-              transform: [
-                { scale: logoScale },
-                { translateY: logoTranslateY },
-              ],
-            },
-          ]}
-        >
-          <View style={styles.logoCircle}>
-            <Svg width={120} height={120} viewBox="0 0 120 120">
-              <Defs>
-                <RadialGradient id="topFill" cx="0.4" cy="0.35" rx="0.65" ry="0.65">
-                  <Stop offset="0%" stopColor="#B0D4EC" />
-                  <Stop offset="100%" stopColor="#6FA8D6" />
-                </RadialGradient>
-                <RadialGradient id="bottomFill" cx="0.4" cy="0.35" rx="0.65" ry="0.65">
-                  <Stop offset="0%" stopColor="#F5E6A3" />
-                  <Stop offset="100%" stopColor="#D4B94E" />
-                </RadialGradient>
-                <SvgLinearGradient id="slashFill" x1="0" y1="0" x2="1" y2="1">
-                  <Stop offset="0%" stopColor="#908A9A" />
-                  <Stop offset="100%" stopColor="#6E6878" />
-                </SvgLinearGradient>
-              </Defs>
-              <G transform="translate(60, 60) rotate(-11) translate(-60, -60)">
-                {/* Top-left circle (blue) */}
-                <Circle cx="38" cy="32" r="22" fill="url(#topFill)" />
-                <Circle cx="38" cy="32" r="9" fill="#5B6EAE" />
-                {/* Bottom-right circle (gold) */}
-                <Circle cx="82" cy="88" r="26" fill="url(#bottomFill)" />
-                <Circle cx="82" cy="88" r="10.5" fill="#5B6EAE" />
-                {/* Diagonal slash */}
-                <Rect x="53" y="-2" width="14" height="124" rx="7" fill="url(#slashFill)" transform="translate(60, 60) rotate(44) translate(-60, -60)" />
-              </G>
-            </Svg>
-          </View>
-          <Animated.View
-            style={{
-              opacity: textOpacity,
-              transform: [{ translateY: textTranslateY }],
-            }}
-          >
-            <View style={styles.brandRow}>
-              <Text style={styles.brandBoom}>BOOM</Text>
-              <Text style={styles.brandCard}>Card</Text>
+            <View style={styles.logoCircle}>
+              <Svg width={120} height={120} viewBox="0 0 120 120">
+                <Defs>
+                  <RadialGradient id="topFill" cx="0.4" cy="0.35" rx="0.65" ry="0.65">
+                    <Stop offset="0%" stopColor="#B0D4EC" />
+                    <Stop offset="100%" stopColor="#6FA8D6" />
+                  </RadialGradient>
+                  <RadialGradient id="bottomFill" cx="0.4" cy="0.35" rx="0.65" ry="0.65">
+                    <Stop offset="0%" stopColor="#F5E6A3" />
+                    <Stop offset="100%" stopColor="#D4B94E" />
+                  </RadialGradient>
+                  <SvgLinearGradient id="slashFill" x1="0" y1="0" x2="1" y2="1">
+                    <Stop offset="0%" stopColor="#908A9A" />
+                    <Stop offset="100%" stopColor="#6E6878" />
+                  </SvgLinearGradient>
+                </Defs>
+                <G transform="translate(60, 60) rotate(-11) translate(-60, -60)">
+                  {/* Top-left circle (blue) */}
+                  <Circle cx="38" cy="32" r="22" fill="url(#topFill)" />
+                  <Circle cx="38" cy="32" r="9" fill="#5B6EAE" />
+                  {/* Bottom-right circle (gold) */}
+                  <Circle cx="82" cy="88" r="26" fill="url(#bottomFill)" />
+                  <Circle cx="82" cy="88" r="10.5" fill="#5B6EAE" />
+                  {/* Diagonal slash */}
+                  <Rect x="53" y="-2" width="14" height="124" rx="7" fill="url(#slashFill)" transform="translate(60, 60) rotate(44) translate(-60, -60)" />
+                </G>
+              </Svg>
             </View>
-            <Text style={styles.tagline}>Your Cashback Companion</Text>
+            <Animated.View
+              style={{
+                opacity: textOpacity,
+                transform: [{ translateY: textTranslateY }],
+              }}
+            >
+              <View style={styles.brandRow}>
+                <Text style={styles.brandBoom}>BOOM</Text>
+                <Text style={styles.brandCard}>Card</Text>
+              </View>
+              <Text style={styles.tagline}>Your Cashback Companion</Text>
+            </Animated.View>
           </Animated.View>
-        </Animated.View>
+
+          {/* Card Reveal */}
+          {showCardReveal && (
+            <Animated.View
+              style={[
+                styles.cardArea,
+                { transform: [{ scale: cardPulse }] },
+              ]}
+            >
+              <CardReveal
+                animatedScale={cardScale}
+                animatedRotateX={cardRotateXInterpolated}
+                animatedOpacity={cardOpacity}
+                cardType="PREMIUM"
+              />
+            </Animated.View>
+          )}
+        </View>
 
         {/* Decorative circles */}
         <View style={[styles.decorCircle, styles.decorCircle1]} />
@@ -360,9 +363,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  contentColumn: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   logoContainer: {
     alignItems: 'center',
-    zIndex: 2,
   },
   logoCircle: {
     width: 120,
@@ -394,10 +400,8 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   cardArea: {
-    position: 'absolute',
-    bottom: SCREEN_HEIGHT * 0.2,
     alignItems: 'center',
-    zIndex: 1,
+    marginTop: 24,
   },
   // Decorative background circles
   decorCircle: {
