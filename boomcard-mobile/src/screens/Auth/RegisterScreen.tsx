@@ -28,7 +28,7 @@ import type { RegisterRequest } from '../../types';
 import { getErrorMessage } from '../../utils/error';
 import { plansService, Plan } from '../../services/plans.service';
 import apiClient from '../../api/client';
-import * as SecureStore from 'expo-secure-store';
+import * as SecureStore from '../../utils/secureStore';
 import { STORAGE_KEYS } from '../../constants/config';
 
 // Fallback plan data when API is unavailable
@@ -125,7 +125,7 @@ const RegisterScreen = ({ navigation, route }: any) => {
       try {
         setPlanLoading(true);
         setPlanError(null);
-        const response = await apiClient.get<{ success: boolean; data: Plan }>(`/plans/${planId}`);
+        const response = await apiClient.get<{ success: boolean; data: Plan }>(`/api/plans/${planId}`);
         if (response.data?.success && response.data.data) {
           setSelectedPlan(response.data.data);
         } else {

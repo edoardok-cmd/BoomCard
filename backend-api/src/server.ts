@@ -66,6 +66,9 @@ const io = new SocketServer(httpServer, {
 const PORT = process.env.PORT || 3000;
 const WS_PORT = process.env.WS_PORT || 4000;
 
+// Trust first proxy (Fly.io) for correct client IP in rate limiting
+app.set('trust proxy', 1);
+
 // Security middleware
 app.use(helmet());
 app.use(cors({

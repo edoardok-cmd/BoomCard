@@ -10,7 +10,7 @@ import React, { useState, useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { View } from 'react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import * as SecureStore from 'expo-secure-store';
+import * as SecureStore from './src/utils/secureStore';
 import { ThemeProvider } from './src/contexts/ThemeContext';
 import { AuthProvider } from './src/store/AuthContext';
 import AppNavigator from './src/navigation/AppNavigator';

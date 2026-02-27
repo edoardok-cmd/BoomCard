@@ -6,7 +6,7 @@
 
 import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
-import * as SecureStore from 'expo-secure-store';
+import * as SecureStore from '../utils/secureStore';
 import { APP_CONFIG, STORAGE_KEYS } from '../constants/config';
 
 // Import translations

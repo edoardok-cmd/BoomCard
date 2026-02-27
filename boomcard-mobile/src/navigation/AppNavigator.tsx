@@ -15,7 +15,7 @@ import { useAuth } from '../store/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { View, Text, StyleSheet } from 'react-native';
 import { ProgressRing } from '../components/loading';
-import * as SecureStore from 'expo-secure-store';
+import * as SecureStore from '../utils/secureStore';
 import { STORAGE_KEYS } from '../constants/config';
 
 // Auth Screens
@@ -56,6 +56,7 @@ const AuthNavigator = () => {
     <Stack.Navigator
       screenOptions={{
         headerShown: false,
+        cardStyle: { flex: 1 },
       }}
     >
       <Stack.Screen name="Login" component={LoginScreen} />

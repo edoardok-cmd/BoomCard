@@ -194,7 +194,7 @@ const PlanSelectionScreen = ({ navigation }: any) => {
           setTimeout(() => reject(new Error('timeout')), 5000);
         });
         const response = await Promise.race([
-          apiClient.get<{ success: boolean; data: Plan[] }>('/plans'),
+          apiClient.get<{ success: boolean; data: Plan[] }>('/api/plans'),
           timeoutPromise,
         ]);
         if (response.data?.success && response.data.data?.length) {
@@ -369,7 +369,7 @@ const PlanSelectionScreen = ({ navigation }: any) => {
         </TouchableOpacity>
       </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
         <Text style={styles.title}>{t('subscription.title')}</Text>
         <Text style={styles.subtitle}>{t('subscription.subtitle')}</Text>
         <Text style={styles.trialText}>{t('subscription.trialText')}</Text>
@@ -430,6 +430,9 @@ const getStyles = (theme: any, isDarkMode: boolean) => StyleSheet.create({
     backgroundColor: theme.colors.surface,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  scrollView: {
+    flex: 1,
   },
   scrollContent: {
     paddingHorizontal: 24,

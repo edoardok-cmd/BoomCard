@@ -278,6 +278,26 @@ const MethodLogo = styled.img`
   }
 `;
 
+const MethodLogoFallback = styled.div`
+  width: 48px;
+  height: 48px;
+  border-radius: 0.5rem;
+  background: var(--color-background-tertiary, #f3f4f6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--color-text-tertiary, #9ca3af);
+  text-transform: uppercase;
+
+  @media (max-width: 768px) {
+    width: 40px;
+    height: 40px;
+    font-size: 1rem;
+  }
+`;
+
 const MethodName = styled.span`
   font-size: 0.75rem;
   font-weight: 500;
@@ -611,6 +631,52 @@ const EmailInput = styled.input`
   }
 `;
 
+// Inline SVG fallback icons for common payment method groups
+const FALLBACK_ICONS: Record<string, string> = {
+  // Bank transfer / banklink — building with columns
+  banklink: `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" fill="none"><rect width="48" height="48" rx="8" fill="#EEF2FF"/><path d="M24 10L10 18v2h28v-2L24 10z" fill="#4F46E5"/><rect x="13" y="22" width="4" height="10" rx="1" fill="#6366F1"/><rect x="22" y="22" width="4" height="10" rx="1" fill="#6366F1"/><rect x="31" y="22" width="4" height="10" rx="1" fill="#6366F1"/><rect x="10" y="34" width="28" height="4" rx="1" fill="#4F46E5"/></svg>')}`,
+  // Generic card icon
+  card: `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" fill="none"><rect width="48" height="48" rx="8" fill="#FEF3C7"/><rect x="8" y="14" width="32" height="20" rx="3" fill="#F59E0B"/><rect x="8" y="19" width="32" height="5" fill="#D97706"/><rect x="12" y="28" width="10" height="3" rx="1" fill="#FDE68A"/></svg>')}`,
+  // Wallet icon
+  wallet: `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" fill="none"><rect width="48" height="48" rx="8" fill="#ECFDF5"/><rect x="8" y="14" width="32" height="22" rx="3" fill="#10B981"/><circle cx="34" cy="25" r="3" fill="#FFF"/></svg>')}`,
+};
+
+/**
+ * Payment method icon with robust fallback chain:
+ * logoRoundUrl -> logoUrl -> inline SVG -> initials placeholder
+ */
+const PaymentMethodIcon: React.FC<{ method: PayseraPaymentMethod; language: string }> = ({ method, language }) => {
+  const [failCount, setFailCount] = useState(0);
+
+  const altText = language === 'bg' ? method.titleBg : method.titleEn;
+
+  // Build ordered list of image sources to try
+  const sources: string[] = [];
+  if (method.logoRoundUrl) sources.push(method.logoRoundUrl);
+  if (method.logoUrl) sources.push(method.logoUrl);
+  // Add inline SVG fallback matching the method key or group
+  const svgFallback = FALLBACK_ICONS[method.key] || FALLBACK_ICONS[method.group];
+  if (svgFallback) sources.push(svgFallback);
+
+  const currentSrc = sources[failCount];
+
+  if (!currentSrc) {
+    // All sources exhausted — show initials
+    const initials = (altText || method.key).slice(0, 2);
+    return <MethodLogoFallback>{initials}</MethodLogoFallback>;
+  }
+
+  return (
+    <MethodLogo
+      src={currentSrc}
+      alt={altText}
+      loading="lazy"
+      referrerPolicy="no-referrer"
+      onError={() => setFailCount(prev => prev + 1)}
+    />
+  );
+};
+
 const CheckoutPage: React.FC = () => {
   const [searchParams] = useSearchParams();
   const { language, t } = useLanguage();
@@ -695,11 +761,40 @@ const CheckoutPage: React.FC = () => {
         setPaymentMethods(methods);
       } catch (err) {
         console.error('Error fetching payment methods:', err);
-        setMethodsError(
-          language === 'bg'
-            ? 'Не могат да се заредят методите за плащане'
-            : 'Could not load payment methods'
-        );
+        // Use frontend fallback methods instead of showing an error
+        console.warn('API unavailable, using fallback payment methods');
+        setPaymentMethods([
+          {
+            key: 'card',
+            title: 'Банкови карти',
+            titleBg: 'Банкови карти',
+            titleEn: 'Bank cards',
+            logoUrl: 'https://bank.paysera.com/assets/image/payment_types/card.png',
+            currency: 'EUR',
+            group: 'cards',
+            groupTitle: 'Cards',
+          },
+          {
+            key: 'wallet',
+            title: 'Paysera',
+            titleBg: 'Paysera',
+            titleEn: 'Paysera',
+            logoUrl: 'https://bank.paysera.com/assets/image/payment_types/wallet.png',
+            currency: 'EUR',
+            group: 'wallet',
+            groupTitle: 'Wallet',
+          },
+          {
+            key: 'banklink',
+            title: 'Банков превод',
+            titleBg: 'Банков превод',
+            titleEn: 'Bank transfer',
+            logoUrl: FALLBACK_ICONS.banklink,
+            currency: 'EUR',
+            group: 'banks',
+            groupTitle: 'Banks',
+          },
+        ]);
       } finally {
         setMethodsLoading(false);
       }
@@ -883,17 +978,7 @@ const CheckoutPage: React.FC = () => {
                         <Check size={12} />
                       </SelectedCheckmark>
                     )}
-                    <MethodLogo
-                      src={method.logoRoundUrl || method.logoUrl}
-                      alt={language === 'bg' ? method.titleBg : method.titleEn}
-                      loading="lazy"
-                      onError={(e) => {
-                        const target = e.target as HTMLImageElement;
-                        if (method.logoRoundUrl && target.src.includes(method.logoRoundUrl)) {
-                          target.src = method.logoUrl;
-                        }
-                      }}
-                    />
+                    <PaymentMethodIcon method={method} language={language} />
                     <MethodName>
                       {language === 'bg' ? method.titleBg : method.titleEn}
                     </MethodName>

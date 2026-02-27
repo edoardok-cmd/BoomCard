@@ -126,7 +126,7 @@ const CheckoutScreen = ({ navigation, route }: any) => {
     const fetchPlan = async () => {
       if (!planId) { setLoading(false); return; }
       try {
-        const response = await apiClient.get<{ success: boolean; data: Plan }>(`/plans/${planId}`);
+        const response = await apiClient.get<{ success: boolean; data: Plan }>(`/api/plans/${planId}`);
         if (response.data?.success && response.data.data) {
           setPlan(response.data.data);
         } else {

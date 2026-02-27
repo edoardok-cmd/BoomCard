@@ -18,7 +18,7 @@ import {
   StyleSheet,
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
-import * as SecureStore from 'expo-secure-store';
+import * as SecureStore from '../../utils/secureStore';
 import { STORAGE_KEYS } from '../../constants/config';
 import { plansService } from '../../services/plans.service';
 import { paymentService } from '../../services/payment.service';

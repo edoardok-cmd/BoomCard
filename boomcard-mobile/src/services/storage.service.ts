@@ -5,7 +5,7 @@
  * Uses Expo SecureStore for encrypted storage
  */
 
-import * as SecureStore from 'expo-secure-store';
+import * as SecureStore from '../utils/secureStore';
 import { STORAGE_KEYS } from '../constants/config';
 import type { User } from '../types';
 

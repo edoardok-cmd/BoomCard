@@ -77,8 +77,12 @@ export class ApiClient {
           _retry?: boolean;
         };
 
-        // Handle 401 Unauthorized - token expired
-        if (error.response?.status === 401 && !originalRequest._retry) {
+        // Skip token refresh for auth endpoints (401 = invalid credentials, not expired token)
+        const requestUrl = originalRequest.url || '';
+        const isAuthEndpoint = requestUrl.includes('/auth/login') || requestUrl.includes('/auth/register');
+
+        // Handle 401 Unauthorized - token expired (but not on auth endpoints)
+        if (error.response?.status === 401 && !originalRequest._retry && !isAuthEndpoint) {
           if (this.isRefreshing) {
             // If already refreshing, queue the request
             return new Promise((resolve) => {

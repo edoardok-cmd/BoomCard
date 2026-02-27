@@ -34,6 +34,7 @@ export async function warmupApi(): Promise<boolean> {
 
       const response = await fetch(`${API_CONFIG.BASE_URL}/health`, {
         method: 'GET',
+        mode: 'cors',
         signal: controller.signal,
       });
 

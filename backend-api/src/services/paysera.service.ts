@@ -541,16 +541,38 @@ export class PayseraService {
     return ['EUR', 'USD', 'GBP', 'PLN', 'CZK', 'RON', 'BGN'];
   }
 
-  static getSupportedPaymentMethods(): Array<{
-    code: string;
-    name: string;
-    nameEn: string;
-  }> {
+  static getSupportedPaymentMethods(): PayseraPaymentMethod[] {
     return [
-      { code: '', name: 'Всички методи', nameEn: 'All methods' },
-      { code: 'hanzaee', name: 'Банкови карти', nameEn: 'Bank cards' },
-      { code: 'paysera', name: 'Paysera wallet', nameEn: 'Paysera wallet' },
-      { code: 'banklink', name: 'Bank link', nameEn: 'Bank link' },
+      {
+        key: 'card',
+        title: 'Банкови карти',
+        titleBg: 'Банкови карти',
+        titleEn: 'Bank cards',
+        logoUrl: 'https://bank.paysera.com/assets/image/payment_types/card.png',
+        currency: 'EUR',
+        group: 'cards',
+        groupTitle: 'Cards',
+      },
+      {
+        key: 'paysera',
+        title: 'Paysera',
+        titleBg: 'Paysera',
+        titleEn: 'Paysera',
+        logoUrl: 'https://bank.paysera.com/assets/image/payment_types/wallet.png',
+        currency: 'EUR',
+        group: 'wallet',
+        groupTitle: 'Wallet',
+      },
+      {
+        key: 'banklink',
+        title: 'Банков превод',
+        titleBg: 'Банков превод',
+        titleEn: 'Bank transfer',
+        logoUrl: `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" fill="none"><rect width="48" height="48" rx="8" fill="#EEF2FF"/><path d="M24 10L10 18v2h28v-2L24 10z" fill="#4F46E5"/><rect x="13" y="22" width="4" height="10" rx="1" fill="#6366F1"/><rect x="22" y="22" width="4" height="10" rx="1" fill="#6366F1"/><rect x="31" y="22" width="4" height="10" rx="1" fill="#6366F1"/><rect x="10" y="34" width="28" height="4" rx="1" fill="#4F46E5"/></svg>')}`,
+        currency: 'EUR',
+        group: 'banks',
+        groupTitle: 'Banks',
+      },
     ];
   }
 }

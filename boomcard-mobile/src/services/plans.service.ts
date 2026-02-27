@@ -72,7 +72,7 @@ class PlansService {
    */
   async getPlans(): Promise<Plan[]> {
     try {
-      const response = await apiClient.get<{ success: boolean; data: Plan[] }>('/plans');
+      const response = await apiClient.get<{ success: boolean; data: Plan[] }>('/api/plans');
       if (response.data?.success) {
         return response.data.data;
       }
@@ -126,7 +126,7 @@ class PlansService {
   async checkSubscriptionStatus(orderId: string): Promise<SubscriptionStatus> {
     try {
       const response = await apiClient.get<{ success: boolean; data: SubscriptionStatus }>(
-        `/subscriptions/status/${orderId}`
+        `/api/subscriptions/status/${orderId}`
       );
       if (response.data?.success) {
         return response.data.data;
@@ -151,7 +151,7 @@ class PlansService {
   ): Promise<SubscriptionPaymentResult> {
     try {
       const response = await apiClient.post<{ success: boolean; data: SubscriptionPaymentResult }>(
-        '/payments/subscription',
+        '/api/subscriptions/create',
         { planId, billingPeriod }
       );
 

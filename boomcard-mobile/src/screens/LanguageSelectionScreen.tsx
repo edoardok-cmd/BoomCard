@@ -9,7 +9,8 @@ import React, { useState } from 'react';
 import { View, StyleSheet, TouchableOpacity, Image } from 'react-native';
 import { Text } from 'react-native-paper';
 import { Ionicons } from '@expo/vector-icons';
-import * as SecureStore from 'expo-secure-store';
+import * as SecureStore from '../utils/secureStore';
+
 
 import { changeLanguage } from '../i18n';
 import { STORAGE_KEYS } from '../constants/config';
@@ -21,7 +22,7 @@ interface LanguageSelectionScreenProps {
 
 export default function LanguageSelectionScreen({ onLanguageSelected }: LanguageSelectionScreenProps) {
   const [selectedLanguage, setSelectedLanguage] = useState<string | null>(null);
-  const { isDarkMode, toggleTheme, theme } = useTheme();
+  const { isDarkMode, theme } = useTheme();
 
   const styles = getStyles(theme, isDarkMode);
 
@@ -43,22 +44,9 @@ export default function LanguageSelectionScreen({ onLanguageSelected }: Language
   return (
     <View style={styles.container}>
       <View style={styles.content}>
-        {/* Theme Toggle */}
-        <View style={styles.themeToggleContainer}>
-          <TouchableOpacity style={styles.themeToggle} onPress={toggleTheme}>
-            <Ionicons
-              name={isDarkMode ? 'sunny' : 'moon'}
-              size={22}
-              color={isDarkMode ? '#FCD34D' : '#6B7280'}
-            />
-          </TouchableOpacity>
-        </View>
-
         {/* Logo or App Icon */}
         <View style={styles.logoContainer}>
-          <View style={styles.logoCircle}>
-            <Image source={require('../../assets/icon.png')} style={styles.logoImage} />
-          </View>
+          <Image source={require('../../assets/icon.png')} style={styles.logoImage} />
           <Text variant="headlineLarge" style={styles.appName}>
             BOOM Card
           </Text>
@@ -146,41 +134,15 @@ const getStyles = (theme: any, isDarkMode: boolean) => StyleSheet.create({
     justifyContent: 'center',
   },
 
-  // Theme Toggle
-  themeToggleContainer: {
-    position: 'absolute',
-    top: 60,
-    right: 24,
-    zIndex: 10,
-  },
-  themeToggle: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: theme.colors.surface,
-    borderWidth: 1,
-    borderColor: theme.colors.surfaceVariant,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-
   logoContainer: {
     alignItems: 'center',
     marginBottom: 48,
   },
-  logoCircle: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: isDarkMode ? 'rgba(59, 130, 246, 0.1)' : '#F3F4F6',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 16,
-    overflow: 'hidden',
-  },
   logoImage: {
-    width: 90,
-    height: 90,
+    width: 100,
+    height: 100,
+    borderRadius: 20,
+    marginBottom: 16,
   },
   appName: {
     fontWeight: 'bold',
