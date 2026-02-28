@@ -41,6 +41,8 @@ router.get('/my-card', asyncHandler(async (req: AuthRequest, res: Response) => {
 
   res.json({
     ...card,
+    issuedAt: card.createdAt,
+    cardType: card.type,
     benefits,
   });
 }));
