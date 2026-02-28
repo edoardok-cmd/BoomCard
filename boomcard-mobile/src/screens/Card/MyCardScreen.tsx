@@ -244,11 +244,6 @@ export default function MyCardScreen() {
                           textShadowRadius: 12,
                         },
                       ]}>BOOM Card</Text>
-                      <View style={[styles.tierBadge, { backgroundColor: accent.text + '20' }]}>
-                        <Text style={[styles.tierBadgeText, { color: accent.text }]}>
-                          {card.cardType}
-                        </Text>
-                      </View>
                     </View>
                     <View style={styles.qrFrameSmall}>
                       <QRCode
@@ -269,13 +264,15 @@ export default function MyCardScreen() {
                       {card.cardNumber}
                     </Text>
                     <Text style={styles.memberSince}>
-                      {t('card.memberSince')} {card.issuedAt ? new Date(card.issuedAt).getFullYear() : ''}
+                      {t('card.memberSince')} {card.issuedAt
+                        ? new Date(card.issuedAt).toLocaleDateString(undefined, { month: 'short', year: 'numeric' })
+                        : '—'}
                     </Text>
                   </View>
 
                   {/* Flip Hint */}
                   <View style={styles.flipHintRow}>
-                    <Ionicons name="sync-outline" size={11} color="rgba(255,255,255,0.35)" />
+                    <Ionicons name="sync-outline" size={14} color="rgba(255,255,255,0.55)" />
                     <Text style={styles.flipHintText}>{t('card.tapToShowQR', 'Tap to show QR')}</Text>
                   </View>
                 </LinearGradient>
@@ -612,8 +609,8 @@ const getStyles = (theme: any, isDarkMode: boolean) => StyleSheet.create({
     marginTop: 4,
   },
   flipHintText: {
-    fontSize: 10,
-    color: 'rgba(255,255,255,0.35)',
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.55)',
     letterSpacing: 0.5,
   },
   cardFooter: {
