@@ -225,18 +225,17 @@
     "supportTitle": "Support",
     "supportContact": "Email: support@boomcard.com\nPhone: +359 XXX XXXX",
     "benefits": {
-      "cashback5": "5% cashback on receipts",
-      "cashback10": "10% cashback on receipts",
-      "cashback15": "15% cashback on receipts",
-      "standardQR": "Standard QR code",
-      "basicRewards": "Basic rewards",
-      "prioritySupport": "Priority customer support",
-      "exclusiveDiscounts": "Exclusive partner discounts",
-      "annualBonus": "Annual bonus rewards",
-      "support247": "24/7 dedicated support",
-      "premiumNetwork": "Premium partner network",
-      "vipEvents": "VIP event access",
-      "travelInsurance": "Travel insurance included"
+      "weeklyPremiumAccess": "One week Premium access",
+      "discount20": "Up to 20% discount",
+      "exclusivePremiumOffers": "Exclusive Premium offers",
+      "vipPrioritySupport": "VIP priority support",
+      "cashbackViaApp": "Cashback via the app",
+      "monthlyAccess": "One month access",
+      "discount10": "Up to 10% discount",
+      "partnerOffers": "Access to partner offers",
+      "standardSupport": "Standard support",
+      "monthlyPremiumAccess": "One month Premium access",
+      "stickerBonus": "Additional sticker bonus"
     }
   },
   "stickers": {

@@ -102,18 +102,17 @@ export default function MyCardScreen() {
 
   const translateBenefit = (benefit: string): string => {
     const benefitMap: Record<string, string> = {
-      '5% cashback on receipts': t('card.benefits.cashback5'),
-      '10% cashback on receipts': t('card.benefits.cashback10'),
-      '15% cashback on receipts': t('card.benefits.cashback15'),
-      'Standard QR code': t('card.benefits.standardQR'),
-      'Basic rewards': t('card.benefits.basicRewards'),
-      'Priority customer support': t('card.benefits.prioritySupport'),
-      'Exclusive partner discounts': t('card.benefits.exclusiveDiscounts'),
-      'Annual bonus rewards': t('card.benefits.annualBonus'),
-      '24/7 dedicated support': t('card.benefits.support247'),
-      'Premium partner network': t('card.benefits.premiumNetwork'),
-      'VIP event access': t('card.benefits.vipEvents'),
-      'Travel insurance included': t('card.benefits.travelInsurance'),
+      'One week Premium access': t('card.benefits.weeklyPremiumAccess'),
+      'Up to 20% discount': t('card.benefits.discount20'),
+      'Exclusive Premium offers': t('card.benefits.exclusivePremiumOffers'),
+      'VIP priority support': t('card.benefits.vipPrioritySupport'),
+      'Cashback via the app': t('card.benefits.cashbackViaApp'),
+      'One month access': t('card.benefits.monthlyAccess'),
+      'Up to 10% discount': t('card.benefits.discount10'),
+      'Access to partner offers': t('card.benefits.partnerOffers'),
+      'Standard support': t('card.benefits.standardSupport'),
+      'One month Premium access': t('card.benefits.monthlyPremiumAccess'),
+      'Additional sticker bonus': t('card.benefits.stickerBonus'),
     };
     return benefitMap[benefit] || benefit;
   };
@@ -409,20 +408,22 @@ export default function MyCardScreen() {
               activeOpacity={0.8}
               onPress={() => {
                 const currentTier = (card.cardType || '').toUpperCase();
-                const nextTier = currentTier === 'STANDARD' ? 'PREMIUM' : 'PLATINUM';
+                const nextTier = currentTier === 'LIGHT' ? 'BASIC' : 'PREMIUM';
                 const benefits: Record<string, string[]> = {
-                  PREMIUM: [
-                    '10% cashback on receipts',
-                    'Priority customer support',
-                    'Exclusive partner discounts',
-                    'Annual bonus rewards',
+                  BASIC: [
+                    'One month access',
+                    'Up to 10% discount',
+                    'Cashback via the app',
+                    'Access to partner offers',
+                    'Standard support',
                   ],
-                  PLATINUM: [
-                    '15% cashback on receipts',
-                    '24/7 dedicated support',
-                    'Premium partner network',
-                    'VIP event access',
-                    'Travel insurance included',
+                  PREMIUM: [
+                    'One month Premium access',
+                    'Up to 20% discount',
+                    'Exclusive Premium offers',
+                    'VIP priority support',
+                    'Cashback via the app',
+                    'Additional sticker bonus',
                   ],
                 };
 

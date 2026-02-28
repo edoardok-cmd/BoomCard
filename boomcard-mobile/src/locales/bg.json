@@ -225,18 +225,17 @@
     "supportTitle": "Поддръжка",
     "supportContact": "Имейл: support@boomcard.com\nТелефон: +359 XXX XXXX",
     "benefits": {
-      "cashback5": "5% кешбек от касови бонове",
-      "cashback10": "10% кешбек от касови бонове",
-      "cashback15": "15% кешбек от касови бонове",
-      "standardQR": "Стандартен QR код",
-      "basicRewards": "Базови награди",
-      "prioritySupport": "Приоритетна клиентска поддръжка",
-      "exclusiveDiscounts": "Ексклузивни отстъпки от партньори",
-      "annualBonus": "Годишни бонус награди",
-      "support247": "24/7 dedicated поддръжка",
-      "premiumNetwork": "Премиум партньорска мрежа",
-      "vipEvents": "Достъп до VIP събития",
-      "travelInsurance": "Включена пътна застраховка"
+      "weeklyPremiumAccess": "Едноседмичен Premium достъп",
+      "discount20": "До 20% отстъпка",
+      "exclusivePremiumOffers": "Ексклузивни Premium оферти",
+      "vipPrioritySupport": "VIP приоритетна поддръжка",
+      "cashbackViaApp": "Връщане на пари чрез приложението",
+      "monthlyAccess": "Едномесечен достъп",
+      "discount10": "До 10% отстъпка",
+      "partnerOffers": "Достъп до партньорски оферти",
+      "standardSupport": "Стандартна поддръжка",
+      "monthlyPremiumAccess": "Едномесечен Premium достъп",
+      "stickerBonus": "Допълнителен бонус от стикери"
     }
   },
   "stickers": {
