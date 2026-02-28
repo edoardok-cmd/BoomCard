@@ -1,6 +1,8 @@
 import { Router, Request, Response } from 'express';
 import { asyncHandler } from '../middleware/error.middleware';
 import { authenticate, AuthRequest } from '../middleware/auth.middleware';
+import { validate } from '../middleware/validation.middleware';
+import { registerValidation, loginValidation, updateProfileValidation, changePasswordValidation } from '../validators/auth.validator';
 import { AuthService } from '../services/auth.service';
 import { logger } from '../utils/logger';
 
@@ -39,25 +41,10 @@ const router = Router();
  */
 router.post(
   '/register',
+  validate(registerValidation),
   asyncHandler(async (req: Request, res: Response) => {
     const { email, password, firstName, lastName, phone, acceptTerms } = req.body;
 
-    // Validation
-    if (!email || !password) {
-      return res.status(400).json({
-        error: 'Validation Error',
-        message: 'Email and password are required',
-      });
-    }
-
-    if (password.length < 8) {
-      return res.status(400).json({
-        error: 'Validation Error',
-        message: 'Password must be at least 8 characters long',
-      });
-    }
-
-    // Register user
     const result = await AuthService.register({
       email,
       password,
@@ -107,18 +94,10 @@ router.post(
  */
 router.post(
   '/login',
+  validate(loginValidation),
   asyncHandler(async (req: Request, res: Response) => {
     const { email, password } = req.body;
 
-    // Validation
-    if (!email || !password) {
-      return res.status(400).json({
-        error: 'Validation Error',
-        message: 'Email and password are required',
-      });
-    }
-
-    // Login user
     const result = await AuthService.login({ email, password });
 
     res.json({
@@ -201,6 +180,7 @@ router.get(
 router.put(
   '/profile',
   authenticate,
+  validate(updateProfileValidation),
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const userId = req.user!.id;
     const { firstName, lastName, phone } = req.body;
@@ -226,24 +206,10 @@ router.put(
 router.post(
   '/change-password',
   authenticate,
+  validate(changePasswordValidation),
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const userId = req.user!.id;
     const { currentPassword, newPassword } = req.body;
-
-    // Validation
-    if (!currentPassword || !newPassword) {
-      return res.status(400).json({
-        error: 'Validation Error',
-        message: 'Current password and new password are required',
-      });
-    }
-
-    if (newPassword.length < 8) {
-      return res.status(400).json({
-        error: 'Validation Error',
-        message: 'New password must be at least 8 characters long',
-      });
-    }
 
     const result = await AuthService.changePassword(userId, currentPassword, newPassword);
 

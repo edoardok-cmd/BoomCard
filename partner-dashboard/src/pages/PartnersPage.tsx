@@ -1207,7 +1207,7 @@ const PartnersPage: React.FC = () => {
 
       case 'password':
         if (!value) return t('partnerRegistration.passwordRequired');
-        if (value.length < 6) return t('partnerRegistration.passwordMinLength');
+        if (value.length < 8) return t('partnerRegistration.passwordMinLength');
         return undefined;
 
       case 'confirmPassword':

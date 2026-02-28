@@ -26,6 +26,7 @@ import { useTranslation } from 'react-i18next';
 import { useTheme } from '../../contexts/ThemeContext';
 import type { RegisterRequest } from '../../types';
 import { getErrorMessage } from '../../utils/error';
+import { validateEmail, validatePhone, validatePassword, validateName, normalizePhone, filterPhoneInput } from '../../utils/validation';
 import { plansService, Plan } from '../../services/plans.service';
 import apiClient from '../../api/client';
 import * as SecureStore from '../../utils/secureStore';
@@ -170,7 +171,11 @@ const RegisterScreen = ({ navigation, route }: any) => {
 
   const handleRegister = async () => {
     // Validation
-    if (!formData.email || !formData.password || !formData.firstName || !formData.lastName) {
+    if (validateName(formData.firstName)) {
+      crossPlatformAlert(t('common.error'), t('auth.fillRequiredFields'));
+      return;
+    }
+    if (validateName(formData.lastName)) {
       crossPlatformAlert(t('common.error'), t('auth.fillRequiredFields'));
       return;
     }
@@ -185,12 +190,17 @@ const RegisterScreen = ({ navigation, route }: any) => {
       return;
     }
 
-    if (!formData.email.includes('@')) {
+    if (validateEmail(formData.email)) {
       crossPlatformAlert(t('common.error'), t('auth.invalidEmail'));
       return;
     }
 
-    if (formData.password.length < 8) {
+    if (validatePhone(formData.phone || '')) {
+      crossPlatformAlert(t('common.error'), t('auth.invalidPhone'));
+      return;
+    }
+
+    if (validatePassword(formData.password)) {
       crossPlatformAlert(t('common.error'), t('auth.invalidPassword'));
       return;
     }
@@ -214,8 +224,14 @@ const RegisterScreen = ({ navigation, route }: any) => {
         );
       }
 
-      console.log('Starting registration with data:', { ...formData, password: '***' });
-      await register(formData);
+      // Normalize phone before sending (strip spaces/dashes, convert empty to undefined)
+      const registrationData = {
+        ...formData,
+        phone: normalizePhone(formData.phone || ''),
+      };
+
+      console.log('Starting registration with data:', { ...registrationData, password: '***' });
+      await register(registrationData as any);
       console.log('Registration successful!');
 
       // After registration:
@@ -372,7 +388,7 @@ const RegisterScreen = ({ navigation, route }: any) => {
             placeholderTextColor={theme.colors.onSurfaceVariant}
             value={formData.phone}
             onChangeText={(text) =>
-              setFormData({ ...formData, phone: text })
+              setFormData({ ...formData, phone: filterPhoneInput(text) })
             }
             keyboardType="phone-pad"
             editable={!isLoading}

@@ -18,6 +18,7 @@ import { useTranslation } from 'react-i18next';
 import { crossPlatformAlert } from '../../utils/alert';
 import { useAuth } from '../../store/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
+import { validateName, validatePhone, normalizePhone, filterPhoneInput } from '../../utils/validation';
 
 const EditProfileScreen = ({ navigation }: any) => {
   const { t } = useTranslation();
@@ -37,9 +38,26 @@ const EditProfileScreen = ({ navigation }: any) => {
   });
 
   const handleSave = async () => {
+    if (validateName(formData.firstName)) {
+      crossPlatformAlert(t('common.error'), t('profile.firstNameRequired'));
+      return;
+    }
+    if (validateName(formData.lastName)) {
+      crossPlatformAlert(t('common.error'), t('profile.lastNameRequired'));
+      return;
+    }
+    if (validatePhone(formData.phone)) {
+      crossPlatformAlert(t('common.error'), t('profile.invalidPhone'));
+      return;
+    }
+
     setIsLoading(true);
     try {
-      await updateProfile(formData);
+      await updateProfile({
+        firstName: formData.firstName.trim(),
+        lastName: formData.lastName.trim(),
+        phone: normalizePhone(formData.phone),
+      });
       crossPlatformAlert(t('common.success'), t('profile.updateSuccess'), [
         { text: t('common.ok'), onPress: () => navigation.goBack() }
       ]);
@@ -89,11 +107,12 @@ const EditProfileScreen = ({ navigation }: any) => {
             placeholderTextColor={theme.colors.onSurfaceVariant}
             value={formData.phone}
             onChangeText={(text) =>
-              setFormData({ ...formData, phone: text })
+              setFormData({ ...formData, phone: filterPhoneInput(text) })
             }
             keyboardType="phone-pad"
             editable={!isLoading}
           />
+          <Text style={styles.helperText}>{t('profile.phoneFormatHint')}</Text>
 
           <Text style={styles.label}>{t('profile.email')}</Text>
           <TextInput

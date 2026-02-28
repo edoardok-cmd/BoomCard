@@ -68,14 +68,17 @@ export class AuthService {
         }
       : {};
 
+    // Sanitize phone: convert empty string to null
+    const sanitizedPhone = phone && phone.trim() !== '' ? phone.trim() : null;
+
     // Create user
     const user = await prisma.user.create({
       data: {
         email: email.toLowerCase(),
         passwordHash,
-        firstName,
-        lastName,
-        phone,
+        firstName: firstName?.trim() || undefined,
+        lastName: lastName?.trim() || undefined,
+        phone: sanitizedPhone,
         role: 'USER',
         status: UserStatus.PENDING_VERIFICATION,
         ...consentData,
@@ -287,13 +290,15 @@ export class AuthService {
    * Update user profile
    */
   static async updateProfile(userId: string, data: Partial<RegisterInput>) {
+    // Sanitize: trim names, convert empty phone to null
+    const sanitizedData: Record<string, any> = {};
+    if (data.firstName !== undefined) sanitizedData.firstName = data.firstName?.trim() || undefined;
+    if (data.lastName !== undefined) sanitizedData.lastName = data.lastName?.trim() || undefined;
+    if (data.phone !== undefined) sanitizedData.phone = data.phone && data.phone.trim() !== '' ? data.phone.trim() : null;
+
     const user = await prisma.user.update({
       where: { id: userId },
-      data: {
-        firstName: data.firstName,
-        lastName: data.lastName,
-        phone: data.phone,
-      },
+      data: sanitizedData,
       select: {
         id: true,
         email: true,

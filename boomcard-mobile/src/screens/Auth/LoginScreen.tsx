@@ -25,6 +25,7 @@ import BiometricService from '../../services/biometric.service';
 import StorageService from '../../services/storage.service';
 import type { LoginRequest } from '../../types';
 import { getErrorMessage } from '../../utils/error';
+import { validateEmail } from '../../utils/validation';
 
 const LoginScreen = ({ navigation }: any) => {
   const { login, refetchUser } = useAuth();
@@ -77,7 +78,7 @@ const LoginScreen = ({ navigation }: any) => {
       return;
     }
 
-    if (!credentials.email.includes('@')) {
+    if (validateEmail(credentials.email)) {
       crossPlatformAlert(t('common.error'), t('auth.invalidEmail'));
       return;
     }

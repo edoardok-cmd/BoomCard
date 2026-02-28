@@ -1,0 +1,95 @@
+import { body } from 'express-validator';
+
+const PHONE_REGEX = /^(\+359|0)\d{9}$/;
+
+/**
+ * Sanitizer: converts empty/whitespace-only phone strings to null
+ */
+const phoneSanitizer = body('phone').customSanitizer(
+  (value: string | null | undefined) => {
+    if (!value || value.trim() === '') return null;
+    // Strip spaces and dashes before storing
+    return value.replace(/[\s-]/g, '');
+  }
+);
+
+export const registerValidation = [
+  body('email')
+    .notEmpty()
+    .withMessage('Email is required')
+    .isEmail()
+    .withMessage('Invalid email format')
+    .normalizeEmail(),
+
+  body('password')
+    .notEmpty()
+    .withMessage('Password is required')
+    .isLength({ min: 8 })
+    .withMessage('Password must be at least 8 characters'),
+
+  body('firstName')
+    .optional()
+    .trim()
+    .isLength({ min: 2, max: 50 })
+    .withMessage('First name must be 2-50 characters'),
+
+  body('lastName')
+    .optional()
+    .trim()
+    .isLength({ min: 2, max: 50 })
+    .withMessage('Last name must be 2-50 characters'),
+
+  body('phone')
+    .optional({ values: 'falsy' })
+    .trim()
+    .matches(PHONE_REGEX)
+    .withMessage('Invalid phone number format. Use +359XXXXXXXXX or 0XXXXXXXXX'),
+
+  phoneSanitizer,
+];
+
+export const loginValidation = [
+  body('email')
+    .notEmpty()
+    .withMessage('Email is required')
+    .isEmail()
+    .withMessage('Invalid email format'),
+
+  body('password')
+    .notEmpty()
+    .withMessage('Password is required'),
+];
+
+export const updateProfileValidation = [
+  body('firstName')
+    .optional()
+    .trim()
+    .isLength({ min: 2, max: 50 })
+    .withMessage('First name must be 2-50 characters'),
+
+  body('lastName')
+    .optional()
+    .trim()
+    .isLength({ min: 2, max: 50 })
+    .withMessage('Last name must be 2-50 characters'),
+
+  body('phone')
+    .optional({ values: 'falsy' })
+    .trim()
+    .matches(PHONE_REGEX)
+    .withMessage('Invalid phone number format. Use +359XXXXXXXXX or 0XXXXXXXXX'),
+
+  phoneSanitizer,
+];
+
+export const changePasswordValidation = [
+  body('currentPassword')
+    .notEmpty()
+    .withMessage('Current password is required'),
+
+  body('newPassword')
+    .notEmpty()
+    .withMessage('New password is required')
+    .isLength({ min: 8 })
+    .withMessage('New password must be at least 8 characters'),
+];

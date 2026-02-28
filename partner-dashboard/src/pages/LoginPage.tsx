@@ -297,7 +297,7 @@ const LoginPage: React.FC = () => {
     if (!password) {
       return t('auth.passwordRequired');
     }
-    if (password.length < 6) {
+    if (password.length < 8) {
       return t('auth.passwordMinLength');
     }
     return undefined;

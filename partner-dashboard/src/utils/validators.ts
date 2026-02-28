@@ -9,6 +9,14 @@ export const validatePhone = (phone: string): boolean => {
   return phoneRegex.test(phone);
 };
 
+/**
+ * Strip spaces and dashes from phone number for API submission.
+ * Returns empty string if input is empty.
+ */
+export const normalizePhone = (phone: string): string => {
+  return phone.replace(/[\s-]/g, '');
+};
+
 export const validatePassword = (password: string): string | null => {
   if (password.length < 8) {
     return 'Паролата трябва да е поне 8 символа';
@@ -26,7 +34,7 @@ export const validatePassword = (password: string): string | null => {
 };
 
 export const validateBulgarianEGN = (egn: string): boolean => {
-  if (!/^\\d{10}$/.test(egn)) return false;
+  if (!/^\d{10}$/.test(egn)) return false;
   
   const weights = [2, 4, 8, 5, 10, 9, 7, 3, 6];
   let sum = 0;

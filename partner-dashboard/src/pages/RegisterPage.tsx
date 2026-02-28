@@ -13,6 +13,7 @@ import Header from '../components/layout/Header/Header';
 import Footer from '../components/layout/Footer/Footer';
 import { plansService, Plan } from '../services/plans.service';
 import { apiService } from '../services/api.service';
+import { normalizePhone } from '../utils/validators';
 
 const PageWrapper = styled.div`
   min-height: 100vh;
@@ -575,7 +576,7 @@ const RegisterPage: React.FC = () => {
 
       case 'password':
         if (!value) return t('auth.passwordRequired');
-        if (value.length < 6) {
+        if (value.length < 8) {
           return t('auth.passwordMinLength');
         }
         return undefined;
@@ -663,7 +664,7 @@ const RegisterPage: React.FC = () => {
         password: formData.password,
         firstName: formData.firstName,
         lastName: formData.lastName,
-        phone: formData.phone || undefined,
+        phone: formData.phone ? normalizePhone(formData.phone) : undefined,
         acceptTerms: formData.acceptTerms,
       });
 

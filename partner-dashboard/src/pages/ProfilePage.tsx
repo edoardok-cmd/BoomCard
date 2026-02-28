@@ -4,6 +4,7 @@ import styled from 'styled-components';
 import Button from '../components/common/Button/Button';
 import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
+import { normalizePhone } from '../utils/validators';
 
 const PageContainer = styled.div`
   max-width: 56rem;
@@ -293,7 +294,7 @@ const ProfilePage: React.FC = () => {
 
       case 'newPassword':
         if (!value) return t('profile.enterNewPassword');
-        if (value.length < 6) {
+        if (value.length < 8) {
           return t('profile.passwordMinLength');
         }
         return undefined;
@@ -341,7 +342,10 @@ const ProfilePage: React.FC = () => {
     }
 
     try {
-      await updateProfile(formData);
+      await updateProfile({
+        ...formData,
+        phone: formData.phone ? normalizePhone(formData.phone) : '',
+      });
       setIsEditing(false);
       setSuccessMessage(t('profile.profileUpdatedSuccess'));
       setTimeout(() => setSuccessMessage(''), 5000);

@@ -5,6 +5,7 @@ import { motion } from 'framer-motion';
 import Button from '../components/common/Button/Button';
 import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
+import { normalizePhone } from '../utils/validators';
 import Header from '../components/layout/Header/Header';
 
 const PageWrapper = styled.div`
@@ -392,7 +393,7 @@ const RegisterPartnerPage: React.FC = () => {
 
       case 'password':
         if (!value) return t('partnerRegistration.passwordRequired');
-        if (value.length < 6) return t('partnerRegistration.passwordMinLength');
+        if (value.length < 8) return t('partnerRegistration.passwordMinLength');
         return undefined;
 
       case 'confirmPassword':
@@ -486,7 +487,7 @@ const RegisterPartnerPage: React.FC = () => {
         password: formData.password,
         firstName: formData.firstName,
         lastName: formData.lastName,
-        phone: formData.phone,
+        phone: formData.phone ? normalizePhone(formData.phone) : undefined,
         acceptTerms: formData.acceptTerms,
         accountType: 'partner',
         businessInfo: {
