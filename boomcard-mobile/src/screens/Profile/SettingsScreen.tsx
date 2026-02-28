@@ -12,12 +12,12 @@ import {
   StyleSheet,
   ScrollView,
   Switch,
-  Alert,
   Linking,
   Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
+import { crossPlatformAlert } from '../../utils/alert';
 import StorageService from '../../services/storage.service';
 import LocationService from '../../services/location.service';
 import BiometricService from '../../services/biometric.service';
@@ -148,7 +148,7 @@ const SettingsScreen = ({ navigation }: any) => {
   };
 
   const openDeviceSettings = () => {
-    Alert.alert(
+    crossPlatformAlert(
       'Enable Location Services',
       'Please enable location services in your device settings to use this feature.',
       [
@@ -176,7 +176,7 @@ const SettingsScreen = ({ navigation }: any) => {
     if (setting === 'pushNotifications' && newValue) {
       // Check if notifications are available (not in Expo Go)
       if (!NotificationService.isAvailable()) {
-        Alert.alert(
+        crossPlatformAlert(
           'Notifications Unavailable',
           'Push notifications are not available in Expo Go. To use push notifications, you need to create a development build or use a production build.',
           [
@@ -194,7 +194,7 @@ const SettingsScreen = ({ navigation }: any) => {
         const result = await NotificationService.requestPermissions();
 
         if (!result.granted) {
-          Alert.alert(
+          crossPlatformAlert(
             'Permission Denied',
             'Please enable notifications in your device settings to receive updates about offers and receipts.',
             [
@@ -225,19 +225,19 @@ const SettingsScreen = ({ navigation }: any) => {
         );
 
         if (registerResponse.success) {
-          Alert.alert(
+          crossPlatformAlert(
             'Success',
             'Push notifications enabled! You will receive updates about offers and receipts.'
           );
         } else {
           console.warn('Failed to register token with backend:', registerResponse.error);
-          Alert.alert(
+          crossPlatformAlert(
             'Partial Success',
             'Notifications enabled locally. Token will be synced with server when connection is available.'
           );
         }
       } else {
-        Alert.alert(
+        crossPlatformAlert(
           'Warning',
           'Notifications enabled, but push token could not be obtained. You may not receive remote notifications.'
         );
@@ -259,7 +259,7 @@ const SettingsScreen = ({ navigation }: any) => {
         // Request permissions
         const result = await LocationService.requestPermissions();
         if (!result.granted) {
-          Alert.alert(
+          crossPlatformAlert(
             'Permission Denied',
             'Location permission is required for receipt verification. Please enable it in settings.',
             [
@@ -283,7 +283,7 @@ const SettingsScreen = ({ navigation }: any) => {
     if (setting === 'biometricAuth' && newValue) {
       // Check if biometric is available
       if (!isBiometricAvailable) {
-        Alert.alert(
+        crossPlatformAlert(
           'Not Available',
           'Biometric authentication is not available on this device.'
         );
@@ -292,7 +292,7 @@ const SettingsScreen = ({ navigation }: any) => {
 
       // Check if biometric credentials are enrolled
       if (!isBiometricEnrolled) {
-        Alert.alert(
+        crossPlatformAlert(
           'Not Enrolled',
           `Please add a ${biometricType.toLowerCase()} in your device settings first.`,
           [
@@ -313,11 +313,11 @@ const SettingsScreen = ({ navigation }: any) => {
       );
 
       if (!result.success) {
-        Alert.alert('Authentication Failed', result.error || 'Please try again.');
+        crossPlatformAlert('Authentication Failed', result.error || 'Please try again.');
         return;
       }
 
-      Alert.alert(
+      crossPlatformAlert(
         'Success',
         `${biometricType} authentication enabled. You can now use it to login.`
       );
@@ -352,12 +352,12 @@ const SettingsScreen = ({ navigation }: any) => {
         ...settings,
         [setting]: !newValue,
       });
-      Alert.alert('Error', 'Failed to save setting');
+      crossPlatformAlert('Error', 'Failed to save setting');
     }
   };
 
   const handleClearCache = () => {
-    Alert.alert(
+    crossPlatformAlert(
       t('settings.clearCache'),
       'Are you sure you want to clear all cached data? This will not remove your login credentials.',
       [
@@ -396,13 +396,13 @@ const SettingsScreen = ({ navigation }: any) => {
               if (theme) await StorageService.setTheme(theme);
               if (language) await StorageService.setLanguage(language);
 
-              Alert.alert(
+              crossPlatformAlert(
                 'Success',
                 'Cache cleared successfully. Some data will be reloaded when you use the app.'
               );
             } catch (error) {
               console.error('Failed to clear cache:', error);
-              Alert.alert('Error', 'Failed to clear cache. Please try again.');
+              crossPlatformAlert('Error', 'Failed to clear cache. Please try again.');
             }
           },
         },
@@ -411,7 +411,7 @@ const SettingsScreen = ({ navigation }: any) => {
   };
 
   const handleReportProblem = () => {
-    Alert.alert(
+    crossPlatformAlert(
       t('settings.reportProblem'),
       t('settings.reportProblemMessage'),
       [
@@ -420,7 +420,7 @@ const SettingsScreen = ({ navigation }: any) => {
           text: t('settings.sendEmail'),
           onPress: () => {
             // Open email client
-            Alert.alert(t('settings.info'), 'Opening email client...');
+            crossPlatformAlert(t('settings.info'), 'Opening email client...');
           },
         },
       ]

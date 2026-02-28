@@ -291,9 +291,9 @@ enum WalletTransactionStatus {
 }
 
 enum SubscriptionPlan {
-  STANDARD // 5% cashback, free
-  PREMIUM // 7% cashback, 9.99 BGN/month
-  PLATINUM // 10% cashback, 19.99 BGN/month
+  LIGHT    // Lite Premium - weekly, 20% cashback
+  BASIC    // Basic - monthly, 10% cashback
+  PREMIUM  // Premium - monthly, 20% cashback
 }
 
 enum SubscriptionStatus {
@@ -1101,9 +1101,9 @@ enum ScanStatus {
 }
 
 enum CardType {
-  STANDARD
+  LIGHT
+  BASIC
   PREMIUM
-  PLATINUM
 }
 
 enum CardStatus {
@@ -1117,7 +1117,7 @@ model Card {
   id         String     @id @default(uuid())
   userId     String
   cardNumber String     @unique
-  type       CardType   @default(STANDARD)
+  type       CardType   @default(LIGHT)
   status     CardStatus @default(ACTIVE)
   qrCode     String     // Base64 data URL - too large for unique index
   createdAt  DateTime   @default(now())

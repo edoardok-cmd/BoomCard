@@ -11,7 +11,6 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
-  Alert,
   ActivityIndicator,
   Image,
   ScrollView,
@@ -19,6 +18,7 @@ import {
   Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { crossPlatformAlert } from '../../utils/alert';
 import { CameraView, Camera } from 'expo-camera';
 import { useTranslation } from 'react-i18next';
 import * as ImagePicker from 'expo-image-picker';
@@ -66,14 +66,14 @@ const ReceiptScannerScreen = ({ navigation, route }: any) => {
     setHasPermission(cameraPermission.status === 'granted' && locationPermission.granted);
 
     if (!cameraPermission.granted) {
-      Alert.alert(
+      crossPlatformAlert(
         t('receipts.scanner.cameraPermissionTitle'),
         t('receipts.scanner.cameraPermissionMessage')
       );
     }
 
     if (!locationPermission.granted) {
-      Alert.alert(
+      crossPlatformAlert(
         t('receipts.scanner.locationPermissionTitle'),
         t('receipts.scanner.locationPermissionMessage')
       );
@@ -100,7 +100,7 @@ const ReceiptScannerScreen = ({ navigation, route }: any) => {
       setIsProcessing(false);
     } catch (error) {
       console.error('Error taking picture:', error);
-      Alert.alert(t('common.error'), t('receipts.scanner.captureError'));
+      crossPlatformAlert(t('common.error'), t('receipts.scanner.captureError'));
       setIsProcessing(false);
     }
   };
@@ -122,7 +122,7 @@ const ReceiptScannerScreen = ({ navigation, route }: any) => {
       }
     } catch (error) {
       console.error('Error picking image:', error);
-      Alert.alert(t('common.error'), t('receipts.scanner.selectImageError'));
+      crossPlatformAlert(t('common.error'), t('receipts.scanner.selectImageError'));
     }
   };
 
@@ -144,7 +144,7 @@ const ReceiptScannerScreen = ({ navigation, route }: any) => {
       const validation = OCRService.validateOCRResult(ocrResult);
 
       if (!validation.isValid) {
-        Alert.alert(
+        crossPlatformAlert(
           t('receipts.scanner.ocrQualityWarning'),
           `Some data could not be automatically extracted:\n${validation.errors.join('\n')}\n\nPlease verify and enter missing information manually.`
         );
@@ -158,14 +158,14 @@ const ReceiptScannerScreen = ({ navigation, route }: any) => {
 
       // Show success message with confidence
       if (ocrResult.confidence >= 80) {
-        Alert.alert(
+        crossPlatformAlert(
           t('receipts.scanner.ocrSuccess'),
           `Receipt processed with ${OCRService.formatConfidence(ocrResult.confidence)} confidence. Please verify the extracted data.`
         );
       }
     } catch (error: any) {
       console.error('OCR processing error:', error);
-      Alert.alert(
+      crossPlatformAlert(
         t('receipts.scanner.ocrFailed'),
         t('receipts.scanner.ocrFailedMessage')
       );
@@ -188,7 +188,7 @@ const ReceiptScannerScreen = ({ navigation, route }: any) => {
    */
   const validateLocation = async (): Promise<boolean> => {
     if (!venueLatitude || !venueLongitude) {
-      Alert.alert(
+      crossPlatformAlert(
         t('receipts.scanner.venueRequired'),
         t('receipts.scanner.venueRequiredMessage')
       );
@@ -206,7 +206,7 @@ const ReceiptScannerScreen = ({ navigation, route }: any) => {
       setGpsValidation(validation);
 
       if (!validation.isValid) {
-        Alert.alert(
+        crossPlatformAlert(
           t('receipts.scanner.locationVerificationFailed'),
           `${validation.message}\n\nYou are ${formatDistance(validation.distance)} from the venue. You must be within ${formatDistance(GPS_CONFIG.MAX_RADIUS_METERS)} to submit this receipt.`,
           [{ text: 'OK' }]
@@ -216,7 +216,7 @@ const ReceiptScannerScreen = ({ navigation, route }: any) => {
 
       return true;
     } catch (error: any) {
-      Alert.alert(
+      crossPlatformAlert(
         t('receipts.scanner.locationError'),
         error.message || 'Unable to verify your location. Please ensure GPS is enabled.'
       );
@@ -227,18 +227,18 @@ const ReceiptScannerScreen = ({ navigation, route }: any) => {
   const submitReceipt = async () => {
     // Validation
     if (!capturedImage) {
-      Alert.alert(t('common.error'), t('receipts.scanner.capturePhotoFirst'));
+      crossPlatformAlert(t('common.error'), t('receipts.scanner.capturePhotoFirst'));
       return;
     }
 
     if (!merchantName || !totalAmount) {
-      Alert.alert(t('common.error'), t('receipts.scanner.enterMerchantAndAmount'));
+      crossPlatformAlert(t('common.error'), t('receipts.scanner.enterMerchantAndAmount'));
       return;
     }
 
     const amount = parseFloat(totalAmount);
     if (isNaN(amount) || amount <= 0) {
-      Alert.alert(t('common.error'), t('receipts.scanner.enterValidAmount'));
+      crossPlatformAlert(t('common.error'), t('receipts.scanner.enterValidAmount'));
       return;
     }
 
@@ -281,7 +281,7 @@ const ReceiptScannerScreen = ({ navigation, route }: any) => {
         throw new Error(submitResponse.error || 'Failed to submit receipt');
       }
 
-      Alert.alert(
+      crossPlatformAlert(
         t('receipts.scanner.submitSuccess'),
         t('receipts.scanner.submitSuccessMessage'),
         [
@@ -292,7 +292,7 @@ const ReceiptScannerScreen = ({ navigation, route }: any) => {
         ]
       );
     } catch (error: any) {
-      Alert.alert(t('receipts.scanner.submissionFailed'), error.message);
+      crossPlatformAlert(t('receipts.scanner.submissionFailed'), error.message);
     } finally {
       setIsProcessing(false);
     }

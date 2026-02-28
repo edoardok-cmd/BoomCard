@@ -604,7 +604,7 @@ class StripeService {
 
       // Determine plan from price ID
       const priceId = subscription.items.data[0]?.price.id;
-      let plan: 'STANDARD' | 'PREMIUM' | 'PLATINUM' = 'STANDARD';
+      let plan: 'LIGHT' | 'BASIC' | 'PREMIUM' = 'LIGHT';
 
       // TODO: Map price IDs to plans based on your Stripe configuration
       // For now, use metadata

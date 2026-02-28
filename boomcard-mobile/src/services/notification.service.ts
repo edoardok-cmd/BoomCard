@@ -1,8 +1,7 @@
 /**
  * Notification Service
  *
- * Handles push notifications using Expo Notifications
- * Manages permissions, tokens, and notification delivery
+ * Handles push notifications using Expo Notifications (native) or Web Notifications API (web).
  *
  * NOTE: Push notifications are NOT available in Expo Go SDK 53+
  * Use a development build for full notification functionality
@@ -14,31 +13,32 @@ import Constants from 'expo-constants';
 // Conditional import - notifications are not available in Expo Go
 let Notifications: any = null;
 let isNotificationsAvailable = false;
+const isWeb = Platform.OS === 'web';
 
-try {
-  // Only import if not in Expo Go
-  // Check if we're running in Expo Go by checking the executionEnvironment
-  const executionEnvironment = Constants.executionEnvironment;
+if (isWeb) {
+  // On web, use the browser's Notification API
+  isNotificationsAvailable = typeof window !== 'undefined' && 'Notification' in window;
+} else {
+  try {
+    const executionEnvironment = Constants.executionEnvironment;
+    if (executionEnvironment !== 'storeClient') {
+      Notifications = require('expo-notifications');
+      isNotificationsAvailable = true;
 
-  // In Expo Go, executionEnvironment is 'storeClient' or 'standalone' for production builds
-  if (executionEnvironment !== 'storeClient') {
-    Notifications = require('expo-notifications');
-    isNotificationsAvailable = true;
-
-    // Configure how notifications should be handled when app is in foreground
-    Notifications.setNotificationHandler({
-      handleNotification: async () => ({
-        shouldShowAlert: true,
-        shouldPlaySound: true,
-        shouldSetBadge: true,
-        shouldShowBanner: true,
-        shouldShowList: true,
-      }),
-    });
+      Notifications.setNotificationHandler({
+        handleNotification: async () => ({
+          shouldShowAlert: true,
+          shouldPlaySound: true,
+          shouldSetBadge: true,
+          shouldShowBanner: true,
+          shouldShowList: true,
+        }),
+      });
+    }
+  } catch (error) {
+    console.log('Notifications not available (Expo Go detected)');
+    isNotificationsAvailable = false;
   }
-} catch (error) {
-  console.log('Notifications not available (Expo Go detected)');
-  isNotificationsAvailable = false;
 }
 
 export interface NotificationPermissionStatus {
@@ -88,15 +88,15 @@ export class NotificationService {
    */
   async initialize(): Promise<void> {
     if (!isNotificationsAvailable) {
-      console.log('Notifications not available in Expo Go - use development build for notifications');
+      console.log('Notifications not available');
       return;
     }
 
     try {
-      // Set up notification listeners
-      this.setupNotificationListeners();
+      if (!isWeb) {
+        this.setupNotificationListeners();
+      }
 
-      // Request permissions if granted
       const permissions = await this.checkPermissions();
       if (permissions.granted) {
         await this.registerForPushNotifications();
@@ -107,26 +107,20 @@ export class NotificationService {
   }
 
   /**
-   * Set up listeners for incoming notifications and user responses
+   * Set up listeners for incoming notifications and user responses (native only)
    */
   private setupNotificationListeners(): void {
-    if (!isNotificationsAvailable || !Notifications) return;
+    if (!isNotificationsAvailable || !Notifications || isWeb) return;
 
-    // Listener for notifications received while app is in foreground
     this.notificationListener = Notifications.addNotificationReceivedListener(
       (notification: any) => {
         console.log('Notification received:', notification);
-        // You can add custom handling here
       }
     );
 
-    // Listener for user tapping on notifications
     this.responseListener = Notifications.addNotificationResponseReceivedListener(
       (response: any) => {
         console.log('Notification response:', response);
-        // Handle navigation based on notification data
-        // You can emit events or call navigation handlers here
-        // const data = response.notification.request.content.data;
       }
     );
   }
@@ -135,16 +129,26 @@ export class NotificationService {
    * Check current notification permission status
    */
   async checkPermissions(): Promise<NotificationPermissionStatus> {
-    if (!isNotificationsAvailable || !Notifications) {
+    if (!isNotificationsAvailable) {
+      return { granted: false, canAskAgain: false };
+    }
+
+    // Web: use browser Notification API
+    if (isWeb) {
+      const permission = (window as any).Notification?.permission;
       return {
-        granted: false,
-        canAskAgain: false,
+        granted: permission === 'granted',
+        canAskAgain: permission !== 'denied',
       };
+    }
+
+    // Native: use expo-notifications
+    if (!Notifications) {
+      return { granted: false, canAskAgain: false };
     }
 
     try {
       const settings = await Notifications.getPermissionsAsync();
-
       const result: NotificationPermissionStatus = {
         granted: settings.granted,
         canAskAgain: settings.canAskAgain,
@@ -162,10 +166,7 @@ export class NotificationService {
       return result;
     } catch (error) {
       console.error('Error checking notification permissions:', error);
-      return {
-        granted: false,
-        canAskAgain: false,
-      };
+      return { granted: false, canAskAgain: false };
     }
   }
 
@@ -173,12 +174,27 @@ export class NotificationService {
    * Request notification permissions from user
    */
   async requestPermissions(): Promise<NotificationPermissionStatus> {
-    if (!isNotificationsAvailable || !Notifications) {
-      console.log('Notifications not available in Expo Go');
-      return {
-        granted: false,
-        canAskAgain: false,
-      };
+    if (!isNotificationsAvailable) {
+      return { granted: false, canAskAgain: false };
+    }
+
+    // Web: use browser Notification.requestPermission()
+    if (isWeb) {
+      try {
+        const permission = await (window as any).Notification.requestPermission();
+        return {
+          granted: permission === 'granted',
+          canAskAgain: permission !== 'denied',
+        };
+      } catch (error) {
+        console.error('Error requesting web notification permission:', error);
+        return { granted: false, canAskAgain: false };
+      }
+    }
+
+    // Native: use expo-notifications
+    if (!Notifications) {
+      return { granted: false, canAskAgain: false };
     }
 
     try {
@@ -207,51 +223,45 @@ export class NotificationService {
       return result;
     } catch (error) {
       console.error('Error requesting notification permissions:', error);
-      return {
-        granted: false,
-        canAskAgain: false,
-      };
+      return { granted: false, canAskAgain: false };
     }
   }
 
   /**
    * Register for push notifications and get token
-   * This should be called after permissions are granted
    */
   async registerForPushNotifications(): Promise<PushToken | null> {
-    if (!isNotificationsAvailable || !Notifications) {
-      console.log('Notifications not available in Expo Go - use development build');
+    if (!isNotificationsAvailable) return null;
+
+    // Web: no push token needed for basic browser notifications
+    if (isWeb) {
+      const permissions = await this.checkPermissions();
+      if (permissions.granted) {
+        this.pushToken = 'web-notifications-enabled';
+        return { token: this.pushToken, type: 'expo' };
+      }
       return null;
     }
 
+    // Native: use expo-notifications
+    if (!Notifications) return null;
+
     try {
-      // Check permissions
       const permissions = await this.checkPermissions();
       if (!permissions.granted) {
         console.warn('Notification permissions not granted');
         return null;
       }
 
-      // Get push token
-      // Note: On simulators, this may fail. That's expected.
       const tokenData = await Notifications.getExpoPushTokenAsync();
-
       this.pushToken = tokenData.data;
-
       console.log('Push token obtained:', this.pushToken);
 
-      if (!this.pushToken) {
-        return null;
-      }
+      if (!this.pushToken) return null;
 
-      return {
-        token: this.pushToken,
-        type: 'expo',
-      };
+      return { token: this.pushToken, type: 'expo' };
     } catch (error) {
       console.error('Failed to register for push notifications:', error);
-      // On simulator or without proper setup, this is expected
-      console.warn('Note: Push notifications require a physical device and proper EAS configuration');
       return null;
     }
   }
@@ -272,10 +282,35 @@ export class NotificationService {
     data?: Record<string, any>,
     triggerSeconds?: number
   ): Promise<string | null> {
-    if (!isNotificationsAvailable || !Notifications) {
-      console.log('Notifications not available in Expo Go');
-      return null;
+    if (!isNotificationsAvailable) return null;
+
+    // Web: use browser Notification API
+    if (isWeb) {
+      try {
+        const permissions = await this.checkPermissions();
+        if (!permissions.granted) {
+          throw new Error('Notification permissions not granted');
+        }
+
+        const showNotification = () => {
+          new (window as any).Notification(title, { body, data });
+        };
+
+        if (triggerSeconds) {
+          setTimeout(showNotification, triggerSeconds * 1000);
+        } else {
+          showNotification();
+        }
+
+        return `web-${Date.now()}`;
+      } catch (error) {
+        console.error('Failed to show web notification:', error);
+        return null;
+      }
     }
+
+    // Native
+    if (!Notifications) return null;
 
     try {
       const permissions = await this.checkPermissions();
@@ -293,7 +328,7 @@ export class NotificationService {
         },
         trigger: triggerSeconds
           ? { type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL, seconds: triggerSeconds }
-          : null, // null means show immediately
+          : null,
       });
 
       return notificationId;

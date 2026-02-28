@@ -13,7 +13,7 @@ router.use(authenticate);
  * Create card for user
  */
 const createCardSchema = z.object({
-  cardType: z.enum(['STANDARD', 'PREMIUM', 'PLATINUM']).default('STANDARD'),
+  cardType: z.enum(['LIGHT', 'BASIC', 'PREMIUM']).default('LIGHT'),
 });
 
 router.post('/', asyncHandler(async (req: AuthRequest, res: Response) => {
@@ -50,7 +50,7 @@ router.get('/my-card', asyncHandler(async (req: AuthRequest, res: Response) => {
  * Get all card tier benefits
  */
 router.get('/benefits', asyncHandler(async (req: AuthRequest, res: Response) => {
-  const tiers = (['STANDARD', 'PREMIUM', 'PLATINUM'] as const).map(tier => ({
+  const tiers = (['LIGHT', 'BASIC', 'PREMIUM'] as const).map(tier => ({
     tier,
     ...cardService.getCardBenefits(tier),
   }));
@@ -63,7 +63,7 @@ router.get('/benefits', asyncHandler(async (req: AuthRequest, res: Response) => 
  * Upgrade card tier
  */
 const upgradeSchema = z.object({
-  newTier: z.enum(['PREMIUM', 'PLATINUM']),
+  newTier: z.enum(['BASIC', 'PREMIUM']),
 });
 
 router.post('/:id/upgrade', asyncHandler(async (req: AuthRequest, res: Response) => {

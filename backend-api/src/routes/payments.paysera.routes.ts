@@ -650,9 +650,9 @@ router.post(
 
       // Map plan code to subscription enum
       const subscriptionPlanMap: Record<string, SubscriptionPlan> = {
-        'STANDARD': SubscriptionPlan.STANDARD,
+        'LIGHT': SubscriptionPlan.LIGHT,
+        'BASIC': SubscriptionPlan.BASIC,
         'PREMIUM': SubscriptionPlan.PREMIUM,
-        'PLATINUM': SubscriptionPlan.PLATINUM,
       };
 
       const subscriptionPlan = subscriptionPlanMap[plan.planCode];

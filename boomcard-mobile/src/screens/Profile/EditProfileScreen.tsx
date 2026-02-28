@@ -13,9 +13,9 @@ import {
   StyleSheet,
   ScrollView,
   ActivityIndicator,
-  Alert,
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
+import { crossPlatformAlert } from '../../utils/alert';
 import { useAuth } from '../../store/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
 
@@ -40,11 +40,11 @@ const EditProfileScreen = ({ navigation }: any) => {
     setIsLoading(true);
     try {
       await updateProfile(formData);
-      Alert.alert(t('common.success'), t('profile.updateSuccess'), [
+      crossPlatformAlert(t('common.success'), t('profile.updateSuccess'), [
         { text: t('common.ok'), onPress: () => navigation.goBack() }
       ]);
     } catch (error: any) {
-      Alert.alert(t('common.error'), error.message || t('profile.updateError'));
+      crossPlatformAlert(t('common.error'), error.message || t('profile.updateError'));
     } finally {
       setIsLoading(false);
     }

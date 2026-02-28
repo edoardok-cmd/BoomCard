@@ -5,9 +5,10 @@
  */
 
 import React, { useState } from 'react';
-import { View, StyleSheet, Image, Alert } from 'react-native';
+import { View, StyleSheet, Image } from 'react-native';
 import { Text, Card, Button } from 'react-native-paper';
 import * as ImagePicker from 'expo-image-picker';
+import { crossPlatformAlert } from '../../utils/alert';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import StickersApi from '../../api/stickers.api';
 
@@ -45,7 +46,7 @@ export default function UploadReceiptScreen() {
 
   const handleUpload = async () => {
     if (!image) {
-      Alert.alert('Error', 'Please select a receipt image');
+      crossPlatformAlert('Error', 'Please select a receipt image');
       return;
     }
 
@@ -61,7 +62,7 @@ export default function UploadReceiptScreen() {
 
       const cashbackAmount = (billAmount * cashbackPercent) / 100;
 
-      Alert.alert(
+      crossPlatformAlert(
         'Success',
         `Receipt uploaded! You will earn ${cashbackAmount.toFixed(2)} BGN cashback once approved.`,
         [
@@ -72,7 +73,7 @@ export default function UploadReceiptScreen() {
         ]
       );
     } catch (error: any) {
-      Alert.alert('Error', error.message || 'Failed to upload receipt');
+      crossPlatformAlert('Error', error.message || 'Failed to upload receipt');
     } finally {
       setUploading(false);
     }

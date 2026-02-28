@@ -209,8 +209,8 @@ const swaggerOptions: swaggerJsdoc.Options = {
             },
             cardType: {
               type: 'string',
-              enum: ['STANDARD', 'PREMIUM', 'PLATINUM'],
-              example: 'PREMIUM',
+              enum: ['LIGHT', 'BASIC', 'PREMIUM'],
+              example: 'BASIC',
             },
             cardNumber: {
               type: 'string',

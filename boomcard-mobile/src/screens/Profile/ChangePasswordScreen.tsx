@@ -13,9 +13,9 @@ import {
   StyleSheet,
   ScrollView,
   ActivityIndicator,
-  Alert,
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
+import { crossPlatformAlert } from '../../utils/alert';
 import AuthApi from '../../api/auth.api';
 import { useTheme } from '../../contexts/ThemeContext';
 
@@ -37,27 +37,27 @@ const ChangePasswordScreen = ({ navigation }: any) => {
 
   const validateForm = () => {
     if (!formData.currentPassword) {
-      Alert.alert(t('common.error'), t('profile.enterCurrentPassword'));
+      crossPlatformAlert(t('common.error'), t('profile.enterCurrentPassword'));
       return false;
     }
 
     if (!formData.newPassword) {
-      Alert.alert(t('common.error'), t('profile.enterNewPassword'));
+      crossPlatformAlert(t('common.error'), t('profile.enterNewPassword'));
       return false;
     }
 
     if (formData.newPassword.length < 8) {
-      Alert.alert(t('common.error'), t('profile.passwordMinLength'));
+      crossPlatformAlert(t('common.error'), t('profile.passwordMinLength'));
       return false;
     }
 
     if (formData.newPassword !== formData.confirmPassword) {
-      Alert.alert(t('common.error'), t('profile.passwordMismatch'));
+      crossPlatformAlert(t('common.error'), t('profile.passwordMismatch'));
       return false;
     }
 
     if (formData.currentPassword === formData.newPassword) {
-      Alert.alert(t('common.error'), t('profile.passwordMustBeDifferent'));
+      crossPlatformAlert(t('common.error'), t('profile.passwordMustBeDifferent'));
       return false;
     }
 
@@ -75,14 +75,14 @@ const ChangePasswordScreen = ({ navigation }: any) => {
       );
 
       if (response.success) {
-        Alert.alert(t('common.success'), t('profile.passwordChangeSuccess'), [
+        crossPlatformAlert(t('common.success'), t('profile.passwordChangeSuccess'), [
           { text: t('common.ok'), onPress: () => navigation.goBack() }
         ]);
       } else {
-        Alert.alert(t('common.error'), response.error || t('profile.passwordChangeError'));
+        crossPlatformAlert(t('common.error'), response.error || t('profile.passwordChangeError'));
       }
     } catch (error: any) {
-      Alert.alert(t('common.error'), error.message || t('profile.passwordChangeError'));
+      crossPlatformAlert(t('common.error'), error.message || t('profile.passwordChangeError'));
     } finally {
       setIsLoading(false);
     }

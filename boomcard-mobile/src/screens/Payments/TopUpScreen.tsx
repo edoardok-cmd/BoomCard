@@ -5,8 +5,9 @@
  */
 
 import React, { useState } from 'react';
-import { View, StyleSheet, ScrollView, Alert } from 'react-native';
+import { View, StyleSheet, ScrollView } from 'react-native';
 import { Text, Card, Button, TextInput, HelperText } from 'react-native-paper';
+import { crossPlatformAlert } from '../../utils/alert';
 import { paymentService } from '../../services/payment.service';
 import { useNavigation } from '@react-navigation/native';
 
@@ -26,12 +27,12 @@ export default function TopUpScreen() {
     const amountValue = parseFloat(amount);
 
     if (!amountValue || amountValue < 5) {
-      Alert.alert('Error', 'Minimum top-up amount is 5 BGN');
+      crossPlatformAlert('Error', 'Minimum top-up amount is 5 BGN');
       return;
     }
 
     if (amountValue > 10000) {
-      Alert.alert('Error', 'Maximum top-up amount is 10,000 BGN');
+      crossPlatformAlert('Error', 'Maximum top-up amount is 10,000 BGN');
       return;
     }
 
@@ -50,7 +51,7 @@ export default function TopUpScreen() {
       });
 
       if (result.success && result.status?.status === 'completed') {
-        Alert.alert(
+        crossPlatformAlert(
           'Success',
           `Your wallet has been topped up with ${amountValue} BGN`,
           [
@@ -61,7 +62,7 @@ export default function TopUpScreen() {
           ]
         );
       } else {
-        Alert.alert(
+        crossPlatformAlert(
           'Payment Cancelled',
           'Your payment was cancelled. No charges were made.',
           [
@@ -72,7 +73,7 @@ export default function TopUpScreen() {
         );
       }
     } catch (error: any) {
-      Alert.alert('Error', error.message || 'Failed to process payment');
+      crossPlatformAlert('Error', error.message || 'Failed to process payment');
     } finally {
       setLoading(false);
     }

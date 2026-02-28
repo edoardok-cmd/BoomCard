@@ -31,7 +31,7 @@ interface FraudCheckParams {
   merchantName?: string;
   userId: string;
   venueId?: string;
-  cardTier?: 'STANDARD' | 'PREMIUM' | 'PLATINUM';
+  cardTier?: 'LIGHT' | 'BASIC' | 'PREMIUM';
 }
 
 interface FraudCheckResult {
@@ -164,9 +164,9 @@ class FraudDetectionService {
       }
 
       // 9. Card tier verification (reduce score for premium users)
-      if (params.cardTier === 'PLATINUM') {
+      if (params.cardTier === 'PREMIUM') {
         score = Math.max(0, score - 5);
-      } else if (params.cardTier === 'PREMIUM') {
+      } else if (params.cardTier === 'BASIC') {
         score = Math.max(0, score - 3);
       }
 
@@ -374,16 +374,16 @@ class FraudDetectionService {
   async calculateCashback(params: {
     venueId?: string;
     amount: number;
-    cardTier: 'STANDARD' | 'PREMIUM' | 'PLATINUM';
+    cardTier: 'LIGHT' | 'BASIC' | 'PREMIUM';
   }): Promise<{ cashbackAmount: number; cashbackPercent: number }> {
     const config = params.venueId ? await this.getVenueConfig(params.venueId) : null;
 
     let basePercent = config?.cashbackPercent || 5.0;
 
     // Add card tier bonuses
-    if (params.cardTier === 'PREMIUM') {
+    if (params.cardTier === 'BASIC') {
       basePercent += config?.premiumBonus || 2.0;
-    } else if (params.cardTier === 'PLATINUM') {
+    } else if (params.cardTier === 'PREMIUM') {
       basePercent += config?.platinumBonus || 5.0;
     }
 

@@ -473,7 +473,7 @@ class StickerService {
           venueId: scan.venueId,
           locationName: updated.sticker.location.name,
           billAmount: scan.billAmount,
-          cardTier: scan.card?.type || 'STANDARD',
+          cardTier: scan.card?.type || 'LIGHT',
         },
       });
 
@@ -537,14 +537,14 @@ class StickerService {
     let cashback = config.cashbackPercent;
 
     switch (cardType) {
-      case CardType.PREMIUM:
+      case CardType.BASIC:
         cashback += config.premiumBonus;
         break;
-      case CardType.PLATINUM:
+      case CardType.PREMIUM:
         cashback += config.platinumBonus;
         break;
       default:
-        // STANDARD card gets base cashback
+        // LIGHT card gets base cashback
         break;
     }
 

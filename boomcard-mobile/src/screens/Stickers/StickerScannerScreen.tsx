@@ -5,11 +5,12 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
-import { View, StyleSheet, Alert, ActivityIndicator } from 'react-native';
+import { View, StyleSheet, ActivityIndicator } from 'react-native';
 import { Text, Button, Portal, Modal, TextInput, HelperText } from 'react-native-paper';
 import { CameraView, Camera } from 'expo-camera';
 import * as Location from 'expo-location';
 import { useNavigation, useIsFocused } from '@react-navigation/native';
+import { crossPlatformAlert } from '../../utils/alert';
 import { useTranslation } from 'react-i18next';
 import StickersApi from '../../api/stickers.api';
 
@@ -84,7 +85,7 @@ export default function StickerScannerScreen() {
     const amount = parseFloat(billAmount);
 
     if (!amount || amount <= 0) {
-      Alert.alert(t('common.error'), t('stickers.enterValidAmount'));
+      crossPlatformAlert(t('common.error'), t('stickers.enterValidAmount'));
       return;
     }
 
@@ -120,7 +121,7 @@ export default function StickerScannerScreen() {
         cashbackPercent: scan.cashbackPercent,
       });
     } catch (error: any) {
-      Alert.alert(t('common.error'), error.message || t('stickers.processFailed'));
+      crossPlatformAlert(t('common.error'), error.message || t('stickers.processFailed'));
       setScanned(false);
     } finally {
       setProcessing(false);
@@ -178,7 +179,7 @@ export default function StickerScannerScreen() {
           }}
           onMountError={(error) => {
             console.error('Camera mount error:', error);
-            Alert.alert(t('common.error'), 'Camera failed to start: ' + error.message);
+            crossPlatformAlert(t('common.error'), 'Camera failed to start: ' + error.message);
           }}
         >
           {!cameraReady && (

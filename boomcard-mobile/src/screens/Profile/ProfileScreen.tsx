@@ -1,8 +1,9 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../store/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
+import { crossPlatformAlert } from '../../utils/alert';
 
 const ProfileScreen = ({ navigation }: any) => {
   const { t } = useTranslation();
@@ -10,7 +11,7 @@ const ProfileScreen = ({ navigation }: any) => {
   const { theme } = useTheme();
 
   const handleLogout = () => {
-    Alert.alert(
+    crossPlatformAlert(
       t('auth.logout'),
       t('profile.confirmLogout'),
       [

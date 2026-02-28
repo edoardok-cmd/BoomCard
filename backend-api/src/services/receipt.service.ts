@@ -635,11 +635,11 @@ class ReceiptService {
         where: { userId: request.userId },
       });
 
-      const cardTier = userCard?.type || 'STANDARD';
+      const cardTier = userCard?.type || 'LIGHT';
 
       // Auto-create card if user doesn't have one
       if (!userCard) {
-        await cardService.createCard({ userId: request.userId, cardType: 'STANDARD' });
+        await cardService.createCard({ userId: request.userId, cardType: 'LIGHT' });
       }
 
       // Get venue location if provided
@@ -911,7 +911,7 @@ class ReceiptService {
           where: { userId: receipt.userId },
         });
 
-        const cardTier = userCard?.type || 'STANDARD';
+        const cardTier = userCard?.type || 'LIGHT';
 
         const cashbackCalc = await fraudDetectionService.calculateCashback({
           venueId: undefined,

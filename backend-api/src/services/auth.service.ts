@@ -102,7 +102,7 @@ export class AuthService {
           lifetimePoints: 0,
         },
       }),
-      cardService.createCard({ userId: user.id, cardType: 'STANDARD' }),
+      cardService.createCard({ userId: user.id, cardType: 'LIGHT' }),
       walletService.getOrCreateWallet(user.id),
     ]);
 

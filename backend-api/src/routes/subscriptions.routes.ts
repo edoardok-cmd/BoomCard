@@ -70,7 +70,7 @@ router.get('/status/:orderId', asyncHandler(async (req: Request, res: Response) 
  * Get available subscription plans
  */
 router.get('/plans', authenticate, asyncHandler(async (req: AuthRequest, res: Response) => {
-  const plans = ['STANDARD', 'PREMIUM', 'PLATINUM'].map(plan => ({
+  const plans = ['LIGHT', 'BASIC', 'PREMIUM'].map(plan => ({
     plan,
     ...subscriptionService.getPlanBenefits(plan as any),
   }));
@@ -88,9 +88,9 @@ router.get('/current', authenticate, asyncHandler(async (req: AuthRequest, res: 
 
   if (!subscription) {
     return res.json({
-      plan: 'STANDARD',
+      plan: 'LIGHT',
       status: 'ACTIVE',
-      benefits: subscriptionService.getPlanBenefits('STANDARD'),
+      benefits: subscriptionService.getPlanBenefits('LIGHT'),
     });
   }
 
@@ -105,7 +105,7 @@ router.get('/current', authenticate, asyncHandler(async (req: AuthRequest, res: 
  * Create new subscription
  */
 const createSchema = z.object({
-  plan: z.enum(['STANDARD', 'PREMIUM', 'PLATINUM']),
+  plan: z.enum(['LIGHT', 'BASIC', 'PREMIUM']),
   paymentMethodId: z.string().optional(),
 });
 
@@ -152,7 +152,7 @@ router.post('/:id/cancel', authenticate, asyncHandler(async (req: AuthRequest, r
  * Upgrade or downgrade subscription
  */
 const updatePlanSchema = z.object({
-  plan: z.enum(['STANDARD', 'PREMIUM', 'PLATINUM']),
+  plan: z.enum(['LIGHT', 'BASIC', 'PREMIUM']),
 });
 
 router.post('/:id/update-plan', authenticate, asyncHandler(async (req: AuthRequest, res: Response) => {

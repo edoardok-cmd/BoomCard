@@ -35,7 +35,7 @@ const sql = neon(databaseUrl);
 
 const plans = [
   {
-    planCode: 'STANDARD',
+    planCode: 'LIGHT',
     displayName: 'Lite Premium',
     displayNameBg: 'Лайт Премиум',
     priceWeeklyEur: 499,

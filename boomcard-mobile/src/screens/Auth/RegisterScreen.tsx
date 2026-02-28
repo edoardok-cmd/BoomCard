@@ -14,13 +14,13 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
-  Alert,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
   Image,
   Linking,
 } from 'react-native';
+import { crossPlatformAlert } from '../../utils/alert';
 import { useAuth } from '../../store/AuthContext';
 import { useTranslation } from 'react-i18next';
 import { useTheme } from '../../contexts/ThemeContext';
@@ -171,12 +171,12 @@ const RegisterScreen = ({ navigation, route }: any) => {
   const handleRegister = async () => {
     // Validation
     if (!formData.email || !formData.password || !formData.firstName || !formData.lastName) {
-      Alert.alert(t('common.error'), t('auth.fillRequiredFields'));
+      crossPlatformAlert(t('common.error'), t('auth.fillRequiredFields'));
       return;
     }
 
     if (!acceptTerms) {
-      Alert.alert(
+      crossPlatformAlert(
         t('common.error'),
         language === 'bg'
           ? 'Трябва да приемете Общите условия и Политиката за поверителност'
@@ -186,17 +186,17 @@ const RegisterScreen = ({ navigation, route }: any) => {
     }
 
     if (!formData.email.includes('@')) {
-      Alert.alert(t('common.error'), t('auth.invalidEmail'));
+      crossPlatformAlert(t('common.error'), t('auth.invalidEmail'));
       return;
     }
 
     if (formData.password.length < 8) {
-      Alert.alert(t('common.error'), t('auth.invalidPassword'));
+      crossPlatformAlert(t('common.error'), t('auth.invalidPassword'));
       return;
     }
 
     if (formData.password !== confirmPassword) {
-      Alert.alert(t('common.error'), t('auth.passwordMismatch'));
+      crossPlatformAlert(t('common.error'), t('auth.passwordMismatch'));
       return;
     }
 
@@ -239,7 +239,7 @@ const RegisterScreen = ({ navigation, route }: any) => {
         errorMessage = t('auth.registrationFailedMessage');
       }
 
-      Alert.alert(
+      crossPlatformAlert(
         t('auth.registerError'),
         errorMessage
       );

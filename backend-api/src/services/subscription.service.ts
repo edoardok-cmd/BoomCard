@@ -5,9 +5,9 @@ import { logger } from '../utils/logger';
 
 // Stripe Price IDs (create these in Stripe Dashboard)
 const PRICE_IDS = {
-  STANDARD: null, // Free plan
+  LIGHT: process.env.STRIPE_LIGHT_PRICE_ID || 'price_LIGHT',
+  BASIC: process.env.STRIPE_BASIC_PRICE_ID || 'price_BASIC',
   PREMIUM: process.env.STRIPE_PREMIUM_PRICE_ID || 'price_PREMIUM',
-  PLATINUM: process.env.STRIPE_PLATINUM_PRICE_ID || 'price_PLATINUM',
 };
 
 export class SubscriptionService {
@@ -21,12 +21,12 @@ export class SubscriptionService {
   }) {
     const { userId, plan, paymentMethodId } = params;
 
-    if (plan === 'STANDARD') {
-      // Standard is free, just create in database
+    if (plan === 'LIGHT') {
+      // Light is the entry-level weekly plan
       return prisma.subscription.create({
         data: {
           userId,
-          plan: 'STANDARD',
+          plan: 'LIGHT',
           status: 'ACTIVE',
           currentPeriodStart: new Date(),
           currentPeriodEnd: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000), // 1 year
@@ -110,9 +110,9 @@ export class SubscriptionService {
       throw new Error('Subscription not found');
     }
 
-    if (subscription.plan === 'STANDARD') {
-      // Can't cancel standard plan
-      throw new Error('Cannot cancel standard plan');
+    if (subscription.plan === 'LIGHT') {
+      // Can't cancel light plan
+      throw new Error('Cannot cancel light plan');
     }
 
     if (!subscription.stripeSubscriptionId) {
@@ -150,15 +150,15 @@ export class SubscriptionService {
       throw new Error('Subscription not found');
     }
 
-    if (newPlan === 'STANDARD') {
-      // Downgrade to free - cancel current subscription
+    if (newPlan === 'LIGHT') {
+      // Downgrade to light - cancel current subscription
       if (subscription.stripeSubscriptionId) {
         await this.cancelSubscription(subscriptionId, false);
       }
 
       return prisma.subscription.update({
         where: { id: subscriptionId },
-        data: { plan: 'STANDARD' },
+        data: { plan: 'LIGHT' },
       });
     }
 
@@ -230,40 +230,38 @@ export class SubscriptionService {
    */
   getPlanBenefits(plan: SubscriptionPlan) {
     const benefits = {
-      STANDARD: {
-        cashbackRate: 0.05,
-        monthlyFee: 0,
+      LIGHT: {
+        cashbackRate: 0.20,
+        monthlyFee: 4.99,
         features: [
-          '5% cashback on all purchases',
-          'Basic receipt scanning',
-          'Transaction history',
-          'Email support',
+          'Up to 20% cashback',
+          'Weekly Premium access',
+          'Exclusive Premium offers',
+          'VIP priority support',
+          'Cashback via the app',
+        ],
+      },
+      BASIC: {
+        cashbackRate: 0.10,
+        monthlyFee: 7.99,
+        features: [
+          'Up to 10% cashback',
+          'Monthly access',
+          'Cashback via the app',
+          'Access to partner offers',
+          'Standard support',
         ],
       },
       PREMIUM: {
-        cashbackRate: 0.07,
-        monthlyFee: 9.99,
+        cashbackRate: 0.20,
+        monthlyFee: 12.99,
         features: [
-          '7% cashback on all purchases',
-          '+2% bonus on BOOM-Sticker scans',
-          'Priority receipt processing',
-          'Advanced analytics',
-          'Priority support',
-          'No ads',
-        ],
-      },
-      PLATINUM: {
-        cashbackRate: 0.10,
-        monthlyFee: 19.99,
-        features: [
-          '10% cashback on all purchases',
+          'Up to 20% cashback',
           '+5% bonus on BOOM-Sticker scans',
-          'Instant receipt approval',
-          'Premium analytics & insights',
-          '24/7 priority support',
-          'Exclusive partner offers',
-          'No ads',
-          'Early access to new features',
+          'Exclusive Premium offers',
+          'VIP priority support',
+          'Cashback via the app',
+          'Additional sticker bonus',
         ],
       },
     };

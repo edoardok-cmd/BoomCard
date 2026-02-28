@@ -11,7 +11,6 @@ import {
   StyleSheet,
   ScrollView,
   Dimensions,
-  Alert,
   Platform,
   TouchableOpacity,
   Animated,
@@ -22,6 +21,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { useTheme } from '../../contexts/ThemeContext';
+import { crossPlatformAlert } from '../../utils/alert';
 import { cardApi } from '../../api/card.api';
 import { formatDualCurrency } from '../../utils/format';
 import { ShimmerPlaceholder, FadeInView } from '../../components/loading';
@@ -429,14 +429,14 @@ export default function MyCardScreen() {
                   ],
                 };
 
-                Alert.alert(
+                crossPlatformAlert(
                   `${t('card.upgradeTo')} ${t('card.tiers.' + nextTier)}`,
                   `${t('card.upgradeBenefits')}\n\n${(benefits[nextTier] || []).map(b => `\u2022 ${translateBenefit(b)}`).join('\n')}\n\n${t('card.upgradeMessage')}`,
                   [
                     { text: t('card.maybeLater'), style: 'cancel' },
                     {
                       text: t('card.contactSupport'),
-                      onPress: () => Alert.alert(t('card.supportTitle'), t('card.supportContact')),
+                      onPress: () => crossPlatformAlert(t('card.supportTitle'), t('card.supportContact')),
                     },
                   ],
                 );

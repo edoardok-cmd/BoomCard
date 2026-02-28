@@ -13,7 +13,7 @@ export class CardService {
     cardNumber?: string;
     cardType?: CardType;
   }) {
-    const { userId, cardNumber, cardType = 'STANDARD' } = params;
+    const { userId, cardNumber, cardType = 'LIGHT' } = params;
 
     // Check if user already has a card
     const existingCard = await prisma.card.findFirst({
@@ -89,7 +89,7 @@ export class CardService {
     }
 
     // Check tier progression
-    const tierOrder = ['STANDARD', 'PREMIUM', 'PLATINUM'];
+    const tierOrder = ['LIGHT', 'BASIC', 'PREMIUM'];
     const currentIndex = tierOrder.indexOf(card.type);
     const newIndex = tierOrder.indexOf(newTier);
 
@@ -100,12 +100,12 @@ export class CardService {
     // Check subscription
     const subscription = await subscriptionService.getActiveSubscription(card.userId);
 
-    if (newTier === 'PREMIUM' && subscription?.plan !== 'PREMIUM' && subscription?.plan !== 'PLATINUM') {
-      throw new Error('Premium card requires Premium or Platinum subscription');
+    if (newTier === 'BASIC' && subscription?.plan !== 'BASIC' && subscription?.plan !== 'PREMIUM') {
+      throw new Error('Basic card requires Basic or Premium subscription');
     }
 
-    if (newTier === 'PLATINUM' && subscription?.plan !== 'PLATINUM') {
-      throw new Error('Platinum card requires Platinum subscription');
+    if (newTier === 'PREMIUM' && subscription?.plan !== 'PREMIUM') {
+      throw new Error('Premium card requires Premium subscription');
     }
 
     // Update card
@@ -154,35 +154,33 @@ export class CardService {
    */
   getCardBenefits(cardType: CardType) {
     const benefits = {
-      STANDARD: {
-        cashbackRate: 0.05,
+      LIGHT: {
+        cashbackRate: 0.20,
         bonusCashback: 0,
         features: [
-          '5% cashback on receipts',
+          'Up to 20% cashback',
+          'Weekly Premium access',
           'Standard QR code',
-          'Basic rewards',
+        ],
+      },
+      BASIC: {
+        cashbackRate: 0.10,
+        bonusCashback: 0,
+        features: [
+          'Up to 10% cashback',
+          'Monthly access',
+          'Standard support',
+          'Partner offers',
         ],
       },
       PREMIUM: {
-        cashbackRate: 0.07,
-        bonusCashback: 0.02,
-        features: [
-          '7% cashback on receipts',
-          '+2% bonus on sticker scans',
-          'Premium QR code design',
-          'Priority support',
-          'Advanced analytics',
-        ],
-      },
-      PLATINUM: {
-        cashbackRate: 0.10,
+        cashbackRate: 0.20,
         bonusCashback: 0.05,
         features: [
-          '10% cashback on receipts',
+          'Up to 20% cashback',
           '+5% bonus on sticker scans',
-          'Platinum QR code design',
+          'Premium QR code design',
           'VIP support',
-          'Premium analytics',
           'Exclusive offers',
         ],
       },

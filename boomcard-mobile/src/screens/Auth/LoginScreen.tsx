@@ -12,13 +12,13 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
-  Alert,
   KeyboardAvoidingView,
   Platform,
   Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
+import { crossPlatformAlert } from '../../utils/alert';
 import { useAuth } from '../../store/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import BiometricService from '../../services/biometric.service';
@@ -73,12 +73,12 @@ const LoginScreen = ({ navigation }: any) => {
   const handleLogin = async () => {
     // Validation
     if (!credentials.email || !credentials.password) {
-      Alert.alert(t('common.error'), t('auth.enterEmailPassword'));
+      crossPlatformAlert(t('common.error'), t('auth.enterEmailPassword'));
       return;
     }
 
     if (!credentials.email.includes('@')) {
-      Alert.alert(t('common.error'), t('auth.invalidEmail'));
+      crossPlatformAlert(t('common.error'), t('auth.invalidEmail'));
       return;
     }
 
@@ -95,7 +95,7 @@ const LoginScreen = ({ navigation }: any) => {
         errorMessage = t('auth.loginFailedMessage');
       }
 
-      Alert.alert(t('auth.loginError'), errorMessage);
+      crossPlatformAlert(t('auth.loginError'), errorMessage);
     } finally {
       setIsLoading(false);
     }
@@ -112,7 +112,7 @@ const LoginScreen = ({ navigation }: any) => {
 
       if (!result.success) {
         if (result.error && !result.error.includes('cancel')) {
-          Alert.alert(t('auth.authenticationFailed'), result.error);
+          crossPlatformAlert(t('auth.authenticationFailed'), result.error);
         }
         return;
       }
@@ -120,7 +120,7 @@ const LoginScreen = ({ navigation }: any) => {
       // Check if we have valid tokens stored
       const hasToken = await StorageService.getAccessToken();
       if (!hasToken) {
-        Alert.alert(
+        crossPlatformAlert(
           t('auth.sessionExpired'),
           t('auth.sessionExpiredMessage'),
           [
@@ -138,7 +138,7 @@ const LoginScreen = ({ navigation }: any) => {
       // Navigation will be handled automatically by AppNavigator
     } catch (error: any) {
       console.error('Biometric login error:', error);
-      Alert.alert(
+      crossPlatformAlert(
         t('auth.biometricLoginFailed'),
         t('auth.biometricLoginFailedMessage')
       );
