@@ -252,7 +252,8 @@ const MainNavigator = ({ initialRouteName = 'MainTabs' }: { initialRouteName?: s
         component={UpgradePlansScreen}
         options={{
           headerShown: true,
-          title: 'Upgrade Plan'
+          title: 'Upgrade Plan',
+          presentation: 'modal',
         }}
       />
 

@@ -6,7 +6,7 @@
  * Navigates to Checkout screen for payment.
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useLayoutEffect } from 'react';
 import {
   View,
   Text,
@@ -188,6 +188,20 @@ const UpgradePlansScreen = ({ navigation, route }: any) => {
   const [loading, setLoading] = useState(true);
   const [isAnnual, setIsAnnual] = useState(false);
 
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      title: t('card.upgradePlansTitle'),
+      headerRight: () => (
+        <TouchableOpacity
+          onPress={() => navigation.goBack()}
+          style={{ marginRight: 16, padding: 4 }}
+        >
+          <Ionicons name="close-circle" size={26} color={theme.colors.onSurfaceVariant} />
+        </TouchableOpacity>
+      ),
+    });
+  }, [navigation, theme, t]);
+
   useEffect(() => {
     const fetchPlans = async () => {
       try {
@@ -320,10 +334,18 @@ const UpgradePlansScreen = ({ navigation, route }: any) => {
               textShadowRadius: 8,
             },
           ]}>BOOM Card</Text>
-          <View style={styles.cardNumber}>
-            {['••••', '••••', '••••', '••••'].map((dots, i) => (
-              <Text key={i} style={[styles.cardDots, { color: colors.number }]}>{dots}</Text>
-            ))}
+          <View style={styles.cardNumberRow}>
+            <View style={styles.cardNumber}>
+              {['••••', '••••', '••••', '••••'].map((dots, i) => (
+                <Text key={i} style={[styles.cardDots, { color: colors.number }]}>{dots}</Text>
+              ))}
+            </View>
+            <View style={styles.cashbackBadge}>
+              <Ionicons name="wallet-outline" size={13} color={colors.text} style={{ opacity: 0.8 }} />
+              <Text style={[styles.cashbackBadgeText, { color: colors.text }]}>
+                {plan.cashbackRate}% cashback
+              </Text>
+            </View>
           </View>
           <View style={styles.cardBottom}>
             <Text style={[styles.cardHolder, { color: colors.text }]}>{planName}</Text>
@@ -376,15 +398,33 @@ const UpgradePlansScreen = ({ navigation, route }: any) => {
         <Text style={styles.title}>{t('card.upgradePlansTitle')}</Text>
         <Text style={styles.subtitle}>{t('card.upgradePlansSubtitle')}</Text>
 
+        {/* Current Plan Indicator */}
+        <View style={styles.currentPlanChip}>
+          <Ionicons name="card" size={14} color={theme.colors.onSurfaceVariant} />
+          <Text style={styles.currentPlanText}>
+            {language === 'bg' ? 'Текущ план: ' : 'Current plan: '}
+            {currentCardType.toLowerCase() === 'light'
+              ? (language === 'bg' ? 'Лайт Премиум' : 'Lite Premium')
+              : currentCardType.toLowerCase() === 'silver'
+                ? (language === 'bg' ? 'Основен' : 'Basic')
+                : (language === 'bg' ? 'Премиум' : 'Premium')}
+          </Text>
+        </View>
+
         {/* Billing Toggle */}
         <View style={styles.toggleContainer}>
           <TouchableOpacity
             style={[styles.toggleOption, isAnnual && styles.toggleOptionActive]}
             onPress={() => setIsAnnual(true)}
           >
-            <Text style={[styles.toggleText, isAnnual && styles.toggleTextActive]}>
-              {t('subscription.yearly')}
-            </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Text style={[styles.toggleText, isAnnual && styles.toggleTextActive]}>
+                {t('subscription.yearly')}
+              </Text>
+              <View style={styles.savingsBadge}>
+                <Text style={styles.savingsBadgeText}>-20%</Text>
+              </View>
+            </View>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.toggleOption, !isAnnual && styles.toggleOptionActive]}
@@ -442,7 +482,25 @@ const getStyles = (theme: any, isDarkMode: boolean) => StyleSheet.create({
     fontSize: 16,
     color: theme.colors.onSurfaceVariant,
     textAlign: 'center',
-    marginBottom: 24,
+    marginBottom: 16,
+  },
+
+  // Current Plan Chip
+  currentPlanChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'center',
+    gap: 6,
+    backgroundColor: isDarkMode ? 'rgba(59, 130, 246, 0.1)' : 'rgba(0, 0, 0, 0.05)',
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 16,
+    marginBottom: 20,
+  },
+  currentPlanText: {
+    fontSize: 13,
+    color: theme.colors.onSurfaceVariant,
+    fontWeight: '500',
   },
 
   // Billing Toggle
@@ -471,6 +529,17 @@ const getStyles = (theme: any, isDarkMode: boolean) => StyleSheet.create({
   },
   toggleTextActive: {
     color: '#FFFFFF',
+  },
+  savingsBadge: {
+    backgroundColor: '#22c55e',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+  },
+  savingsBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#ffffff',
   },
 
   // Loading
@@ -547,9 +616,24 @@ const getStyles = (theme: any, isDarkMode: boolean) => StyleSheet.create({
     fontWeight: '900',
     letterSpacing: 2,
   },
+  cardNumberRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
   cardNumber: {
     flexDirection: 'row',
     gap: 12,
+  },
+  cashbackBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  cashbackBadgeText: {
+    fontSize: 11,
+    fontWeight: '600',
+    opacity: 0.8,
   },
   cardDots: {
     fontSize: 18,
