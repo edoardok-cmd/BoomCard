@@ -86,7 +86,8 @@
     "pendingReceipts": "Pending Receipts",
     "receiptsBeingReviewed": "Your receipts are being reviewed",
     "yourPlan": "Your Plan",
-    "planStandard": "Standard",
+    "planLitePremium": "Lite Premium",
+    "planBasic": "Basic",
     "planPremium": "Premium",
     "planPlatinum": "Platinum",
     "validUntil": "Valid until",
@@ -205,7 +206,8 @@
     "tier": "Tier",
     "points": "Points",
     "tiers": {
-      "STANDARD": "Standard",
+      "LIGHT": "Lite Premium",
+      "BASIC": "Basic",
       "PREMIUM": "Premium",
       "PLATINUM": "Platinum"
     },
@@ -228,14 +230,15 @@
       "weeklyPremiumAccess": "One week Premium access",
       "discount20": "Up to 20% discount",
       "exclusivePremiumOffers": "Exclusive Premium offers",
+      "limitedOffers": "Limited availability special offers",
+      "exclusiveCampaigns": "Access to exclusive Premium campaigns",
       "vipPrioritySupport": "VIP priority support",
       "cashbackViaApp": "Cashback via the app",
       "monthlyAccess": "One month access",
       "discount10": "Up to 10% discount",
       "partnerOffers": "Access to partner offers",
       "standardSupport": "Standard support",
-      "monthlyPremiumAccess": "One month Premium access",
-      "stickerBonus": "Additional sticker bonus"
+      "monthlyPremiumAccess": "One month Premium access"
     }
   },
   "stickers": {

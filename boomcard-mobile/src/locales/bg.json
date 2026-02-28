@@ -86,7 +86,8 @@
     "pendingReceipts": "Бележки в обработка",
     "receiptsBeingReviewed": "Вашите касови бонове се преглеждат",
     "yourPlan": "Вашият план",
-    "planStandard": "Стандартен",
+    "planLitePremium": "Лайт Премиум",
+    "planBasic": "Основен",
     "planPremium": "Премиум",
     "planPlatinum": "Платинен",
     "validUntil": "Валидна до",
@@ -205,9 +206,10 @@
     "tier": "Ниво",
     "points": "Точки",
     "tiers": {
-      "STANDARD": "Стандартна",
+      "LIGHT": "Лайт Премиум",
+      "BASIC": "Основен",
       "PREMIUM": "Премиум",
-      "PLATINUM": "Платинена"
+      "PLATINUM": "Платинен"
     },
     "yourBenefits": "Вашите ползи",
     "yourActivity": "Вашата активност",
@@ -228,14 +230,15 @@
       "weeklyPremiumAccess": "Едноседмичен Premium достъп",
       "discount20": "До 20% отстъпка",
       "exclusivePremiumOffers": "Ексклузивни Premium оферти",
+      "limitedOffers": "Оферти с ограничена наличност",
+      "exclusiveCampaigns": "Достъп до ексклузивни Premium кампании",
       "vipPrioritySupport": "VIP приоритетна поддръжка",
       "cashbackViaApp": "Връщане на пари чрез приложението",
       "monthlyAccess": "Едномесечен достъп",
       "discount10": "До 10% отстъпка",
       "partnerOffers": "Достъп до партньорски оферти",
       "standardSupport": "Стандартна поддръжка",
-      "monthlyPremiumAccess": "Едномесечен Premium достъп",
-      "stickerBonus": "Допълнителен бонус от стикери"
+      "monthlyPremiumAccess": "Едномесечен Premium достъп"
     }
   },
   "stickers": {

@@ -238,7 +238,9 @@ const DashboardScreen = ({ navigation }: any) => {
                     ? t('dashboard.planPlatinum')
                     : subscription.plan === 'PREMIUM'
                     ? t('dashboard.planPremium')
-                    : t('dashboard.planStandard')}
+                    : subscription.plan === 'BASIC'
+                    ? t('dashboard.planBasic')
+                    : t('dashboard.planLitePremium')}
                 </Text>
               </View>
             </View>

@@ -105,6 +105,8 @@ export default function MyCardScreen() {
       'One week Premium access': t('card.benefits.weeklyPremiumAccess'),
       'Up to 20% discount': t('card.benefits.discount20'),
       'Exclusive Premium offers': t('card.benefits.exclusivePremiumOffers'),
+      'Limited availability special offers': t('card.benefits.limitedOffers'),
+      'Access to exclusive Premium campaigns': t('card.benefits.exclusiveCampaigns'),
       'VIP priority support': t('card.benefits.vipPrioritySupport'),
       'Cashback via the app': t('card.benefits.cashbackViaApp'),
       'One month access': t('card.benefits.monthlyAccess'),
@@ -112,7 +114,6 @@ export default function MyCardScreen() {
       'Access to partner offers': t('card.benefits.partnerOffers'),
       'Standard support': t('card.benefits.standardSupport'),
       'One month Premium access': t('card.benefits.monthlyPremiumAccess'),
-      'Additional sticker bonus': t('card.benefits.stickerBonus'),
     };
     return benefitMap[benefit] || benefit;
   };
@@ -421,9 +422,10 @@ export default function MyCardScreen() {
                     'One month Premium access',
                     'Up to 20% discount',
                     'Exclusive Premium offers',
+                    'Limited availability special offers',
+                    'Access to exclusive Premium campaigns',
                     'VIP priority support',
                     'Cashback via the app',
-                    'Additional sticker bonus',
                   ],
                 };
 
