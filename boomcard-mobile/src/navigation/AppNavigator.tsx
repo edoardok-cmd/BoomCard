@@ -33,6 +33,7 @@ import StickerScannerScreen from '../screens/Stickers/StickerScannerScreen';
 import UploadReceiptScreen from '../screens/Stickers/UploadReceiptScreen';
 import CardWalletScreen from '../screens/Card/CardWalletScreen';
 import MyCardScreen from '../screens/Card/MyCardScreen';
+import UpgradePlansScreen from '../screens/Card/UpgradePlansScreen';
 import ProfileScreen from '../screens/Profile/ProfileScreen';
 import EditProfileScreen from '../screens/Profile/EditProfileScreen';
 import ChangePasswordScreen from '../screens/Profile/ChangePasswordScreen';
@@ -242,6 +243,25 @@ const MainNavigator = ({ initialRouteName = 'MainTabs' }: { initialRouteName?: s
         options={{
           headerShown: true,
           title: 'Settings'
+        }}
+      />
+
+      {/* Upgrade Plans */}
+      <Stack.Screen
+        name="UpgradePlans"
+        component={UpgradePlansScreen}
+        options={{
+          headerShown: true,
+          title: 'Upgrade Plan'
+        }}
+      />
+
+      {/* Checkout (for authenticated upgrade flow) */}
+      <Stack.Screen
+        name="Checkout"
+        component={CheckoutScreen}
+        options={{
+          headerShown: false,
         }}
       />
 

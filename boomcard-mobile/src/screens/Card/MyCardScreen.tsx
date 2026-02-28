@@ -20,8 +20,8 @@ import QRCode from 'react-native-qrcode-svg';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
+import { useNavigation } from '@react-navigation/native';
 import { useTheme } from '../../contexts/ThemeContext';
-import { crossPlatformAlert } from '../../utils/alert';
 import { cardApi } from '../../api/card.api';
 import { formatDualCurrency } from '../../utils/format';
 import { ShimmerPlaceholder, FadeInView } from '../../components/loading';
@@ -65,6 +65,7 @@ const getCardAccent = (cardType: string, isDarkMode: boolean) => {
 export default function MyCardScreen() {
   const { t } = useTranslation();
   const { theme, isDarkMode } = useTheme();
+  const navigation = useNavigation<any>();
   const [loading, setLoading] = useState(true);
   const [card, setCard] = useState<any>(null);
   const [statistics, setStatistics] = useState<any>(null);
@@ -408,38 +409,7 @@ export default function MyCardScreen() {
               style={styles.upgradeButton}
               activeOpacity={0.8}
               onPress={() => {
-                const currentTier = (card.cardType || '').toUpperCase();
-                const nextTier = currentTier === 'LIGHT' ? 'BASIC' : 'PREMIUM';
-                const benefits: Record<string, string[]> = {
-                  BASIC: [
-                    'One month access',
-                    'Up to 10% discount',
-                    'Cashback via the app',
-                    'Access to partner offers',
-                    'Standard support',
-                  ],
-                  PREMIUM: [
-                    'One month Premium access',
-                    'Up to 20% discount',
-                    'Exclusive Premium offers',
-                    'Limited availability special offers',
-                    'Access to exclusive Premium campaigns',
-                    'VIP priority support',
-                    'Cashback via the app',
-                  ],
-                };
-
-                crossPlatformAlert(
-                  `${t('card.upgradeTo')} ${t('card.tiers.' + nextTier)}`,
-                  `${t('card.upgradeBenefits')}\n\n${(benefits[nextTier] || []).map(b => `\u2022 ${translateBenefit(b)}`).join('\n')}\n\n${t('card.upgradeMessage')}`,
-                  [
-                    { text: t('card.maybeLater'), style: 'cancel' },
-                    {
-                      text: t('card.contactSupport'),
-                      onPress: () => crossPlatformAlert(t('card.supportTitle'), t('card.supportContact')),
-                    },
-                  ],
-                );
+                navigation.navigate('UpgradePlans', { currentCardType: card.cardType });
               }}
             >
               <LinearGradient
