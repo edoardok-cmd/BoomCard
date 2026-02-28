@@ -27,7 +27,7 @@ import { formatDualCurrency } from '../../utils/format';
 import { ShimmerPlaceholder, FadeInView } from '../../components/loading';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const CARD_WIDTH = SCREEN_WIDTH - 32;
+const CARD_WIDTH = Math.min(SCREEN_WIDTH - 24, 440);
 const CARD_ASPECT = 0.63; // Credit card aspect ratio
 
 type CardGradient = [string, string, ...string[]];

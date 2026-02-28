@@ -334,7 +334,7 @@ const UpgradePlansScreen = ({ navigation, route }: any) => {
               textShadowRadius: 8,
             },
           ]}>BOOM Card</Text>
-          <View style={styles.cardNumberRow}>
+          <View style={styles.cardMiddle}>
             <View style={styles.cardNumber}>
               {['••••', '••••', '••••', '••••'].map((dots, i) => (
                 <Text key={i} style={[styles.cardDots, { color: colors.number }]}>{dots}</Text>
@@ -343,7 +343,7 @@ const UpgradePlansScreen = ({ navigation, route }: any) => {
             <View style={styles.cashbackBadge}>
               <Ionicons name="wallet-outline" size={13} color={colors.text} style={{ opacity: 0.8 }} />
               <Text style={[styles.cashbackBadgeText, { color: colors.text }]}>
-                {plan.cashbackRate}% cashback
+                {plan.cashbackRate < 1 ? Math.round(plan.cashbackRate * 100) : plan.cashbackRate}% cashback
               </Text>
             </View>
           </View>
@@ -616,10 +616,8 @@ const getStyles = (theme: any, isDarkMode: boolean) => StyleSheet.create({
     fontWeight: '900',
     letterSpacing: 2,
   },
-  cardNumberRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+  cardMiddle: {
+    gap: 6,
   },
   cardNumber: {
     flexDirection: 'row',

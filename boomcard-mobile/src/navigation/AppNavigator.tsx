@@ -351,7 +351,7 @@ export const AppNavigator = () => {
   };
 
   return (
-    <NavigationContainer theme={navigationTheme}>
+    <NavigationContainer theme={navigationTheme} documentTitle={{ formatter: () => 'BOOM Card' }}>
       {isAuthenticated ? (
         <MainNavigator initialRouteName={mainInitialRoute || 'MainTabs'} />
       ) : (
