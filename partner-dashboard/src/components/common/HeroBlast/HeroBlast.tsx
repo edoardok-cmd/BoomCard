@@ -30,18 +30,23 @@ const HeroContainer = styled.div`
   @media (max-width: 768px) {
     overflow: visible;
     min-height: auto;
+    height: calc(100dvh - 58px); /* Fit viewport below header; dvh accounts for Android system buttons */
+    max-height: calc(100dvh - 58px);
     margin-top: 58px;
-    padding-top: 45px; /* Reduced for mobile */
-    padding-bottom: 80px; /* Account for 64px fixed bottom nav */
+    padding-top: 20px;
+    padding-bottom: 64px; /* Account for 64px fixed bottom nav */
     justify-content: flex-start;
+    box-sizing: border-box;
   }
 
   @media (max-width: 480px) {
-    min-height: auto;
+    height: calc(100dvh - 54px);
+    max-height: calc(100dvh - 54px);
     margin-top: 54px;
-    padding-top: 42px;
-    padding-bottom: 80px; /* Account for 64px fixed bottom nav */
+    padding-top: 16px;
+    padding-bottom: 64px; /* Account for 64px fixed bottom nav */
     justify-content: flex-start;
+    box-sizing: border-box;
   }
 
   /* Side card positioning */
@@ -166,15 +171,15 @@ const StaticContentWrapper = styled.div<{ $ready: boolean }>`
   will-change: opacity, transform;
 
   @media (max-width: 768px) {
-    padding: 0.5rem 1rem;
+    padding: 0.25rem 1rem;
     padding-top: 0;
-    padding-bottom: 1rem;
+    padding-bottom: 0.5rem;
   }
 
   @media (max-width: 480px) {
-    padding: 0.5rem;
+    padding: 0.25rem 0.5rem;
     padding-top: 0;
-    padding-bottom: 0.75rem;
+    padding-bottom: 0.25rem;
   }
 `;
 
@@ -655,18 +660,18 @@ const LogoExplode = styled(motion.img)<{ $showAnimation?: boolean; $stopAnimatio
   }
 
   @media (max-width: 768px) {
-    width: min(340px, 85vw); /* Reduced from 420px */
-    max-height: 215px; /* Reduced from 265px */
+    width: min(280px, 70vw);
+    max-height: 170px;
   }
 
   @media (max-width: 480px) {
-    width: min(300px, 82vw); /* Reduced from 360px */
-    max-height: 190px; /* Reduced from 230px */
+    width: min(240px, 65vw);
+    max-height: 145px;
   }
 
   @media (max-width: 375px) {
-    width: 80vw;
-    max-height: 170px; /* Reduced from 200px */
+    width: 60vw;
+    max-height: 130px;
   }
 `;
 
@@ -767,12 +772,12 @@ const LogoContainer = styled(motion.div)`
 
   @media (max-width: 768px) {
     margin-top: 0;
-    margin-bottom: clamp(4px, 1vw, 8px); /* Reduced from clamp(5px, 1.5vw, 10px) */
+    margin-bottom: 2px;
   }
 
   @media (max-width: 480px) {
     margin-top: 0;
-    margin-bottom: clamp(2px, 0.8vw, 5px); /* Reduced from clamp(3px, 1vw, 6px) */
+    margin-bottom: 0;
   }
 `;
 
@@ -816,8 +821,10 @@ const TrustBadge: React.FC<{ iconType: 'clock' | 'lock' | 'refresh'; topText: st
     }
   };
 
+  const isSmall = size <= 40;
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: isSmall ? '0.2rem' : '0.5rem' }}>
       {/* Gold Icon */}
       <svg width={size} height={size} viewBox="0 0 50 50" style={{ filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.3))' }}>
         {renderIcon()}
@@ -827,7 +834,7 @@ const TrustBadge: React.FC<{ iconType: 'clock' | 'lock' | 'refresh'; topText: st
         textAlign: 'center',
         color: '#ffffff',
         fontFamily: "'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-        fontSize: '0.75rem',
+        fontSize: isSmall ? '0.6rem' : '0.75rem',
         fontWeight: 700,
         lineHeight: 1.2,
         textShadow: '0 2px 4px rgba(0,0,0,0.5)'
@@ -890,36 +897,36 @@ const CTATitle = styled(motion.h1)`
   }
 
   @media (max-width: 768px) {
-    font-size: 2.4rem; /* Reduced from 2.9rem */
-    margin-bottom: 0.5rem;
+    font-size: 1.8rem;
+    margin-bottom: 0.3rem;
 
     [lang="bg"] & {
-      font-size: 2.2rem; /* Reduced from 2.7rem */
+      font-size: 1.7rem;
     }
   }
 
   @media (max-width: 480px) {
-    font-size: 2rem; /* Reduced from 2.5rem */
-    margin-bottom: 0.4rem;
+    font-size: 1.5rem;
+    margin-bottom: 0.25rem;
 
     [lang="bg"] & {
-      font-size: 1.9rem; /* Reduced from 2.3rem */
+      font-size: 1.4rem;
     }
   }
 
   @media (max-width: 375px) {
-    font-size: 1.8rem; /* Reduced from 2.2rem */
+    font-size: 1.35rem;
 
     [lang="bg"] & {
-      font-size: 1.7rem; /* Reduced from 2rem */
+      font-size: 1.25rem;
     }
   }
 
   @media (max-width: 320px) {
-    font-size: 1.6rem; /* Reduced from 2rem */
+    font-size: 1.2rem;
 
     [lang="bg"] & {
-      font-size: 1.5rem; /* Reduced from 1.75rem */
+      font-size: 1.1rem;
     }
   }
 `;
@@ -939,21 +946,21 @@ const CTASubtitle = styled(motion.p)`
   line-height: 1.4;
 
   @media (max-width: 768px) {
-    font-size: 1rem; /* Reduced from 1.1rem */
-    margin-bottom: 1.25rem; /* Reduced from 1.75rem */
+    font-size: 0.9rem;
+    margin-bottom: 0.6rem;
   }
 
   @media (max-width: 480px) {
-    font-size: 0.9rem; /* Reduced from 0.95rem */
-    margin-bottom: 1rem; /* Reduced from 1.5rem */
+    font-size: 0.82rem;
+    margin-bottom: 0.4rem;
   }
 
   @media (max-width: 375px) {
-    font-size: 0.85rem; /* Reduced from 0.9rem */
+    font-size: 0.78rem;
   }
 
   @media (max-width: 320px) {
-    font-size: 0.8rem; /* Reduced from 0.85rem */
+    font-size: 0.72rem;
   }
 `;
 
@@ -989,16 +996,16 @@ const ButtonContainer = styled(motion.div)`
   margin-top: clamp(8px, 1.5vw, 20px);
 
   @media (max-width: 768px) {
-    margin-top: 8px;
-    margin-bottom: 8px;
+    margin-top: 4px;
+    margin-bottom: 4px;
   }
 
   @media (max-width: 480px) {
     flex-direction: column;
     align-items: stretch;
     max-width: min(350px, 90vw);
-    margin: 8px auto 0;
-    gap: 0.5rem;
+    margin: 4px auto 0;
+    gap: 0.4rem;
   }
 
   a {
@@ -1145,12 +1152,20 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
   const [hideCardsOnScroll, setHideCardsOnScroll] = useState(false);
   const [shouldPlayVideo, setShouldPlayVideo] = useState(true);
   const [logoPreloaded, setLogoPreloaded] = useState(false);
+  const [isMobile, setIsMobile] = useState(window.innerWidth <= 480);
   const videoRef = useRef<HTMLVideoElement>(null);
   const heroRef = useRef<HTMLDivElement>(null);
   const videoPlayedRef = useRef(false);
 
   // Ref for the hero card image element
   const heroCardRef = useRef<HTMLImageElement>(null);
+
+  // Track mobile viewport for responsive trust badge sizing
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth <= 480);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   // Check if image is already cached on mount (instant display for return visits)
   useEffect(() => {
@@ -1456,6 +1471,7 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
   };
 
   const t = content[language];
+  const trustBadgeSize = isMobile ? 40 : 75;
 
   return (
     <HeroContainer ref={heroRef}>
@@ -1484,7 +1500,7 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
             <div style={{
               position: 'relative',
               marginTop: '0',
-              marginBottom: 'clamp(8px, 2vw, 16px)',
+              marginBottom: isMobile ? '2px' : 'clamp(8px, 2vw, 16px)',
               width: '100%',
               display: 'flex',
               justifyContent: 'center'
@@ -1502,9 +1518,9 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
                   onLoad={() => setLogoPreloaded(true)}
                   style={{
                     width: '100%',
-                    maxWidth: '460px',
+                    maxWidth: isMobile ? '240px' : '460px',
                     height: 'auto',
-                    maxHeight: '290px',
+                    maxHeight: isMobile ? '145px' : '290px',
                     objectFit: 'contain',
                     backgroundColor: '#000000',
                     borderRadius: 'clamp(10px, 2.5vw, 18px)',
@@ -1521,9 +1537,9 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
             }}>
               <h1 style={{
                 fontFamily: "'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-                fontSize: 'clamp(2.2rem, 8vw, 3.25rem)',
+                fontSize: isMobile ? '1.5rem' : 'clamp(2.2rem, 8vw, 3.25rem)',
                 fontWeight: 800,
-                marginBottom: 'clamp(0.5rem, 2vw, 1.25rem)',
+                marginBottom: isMobile ? '0.25rem' : 'clamp(0.5rem, 2vw, 1.25rem)',
                 lineHeight: 1.2,
                 letterSpacing: '-0.02em',
                 whiteSpace: 'pre-line',
@@ -1542,9 +1558,9 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
 
               <p style={{
                 fontFamily: "'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-                fontSize: 'clamp(0.85rem, 2.5vw, 1.3rem)',
+                fontSize: isMobile ? '0.82rem' : 'clamp(0.85rem, 2.5vw, 1.3rem)',
                 fontWeight: 400,
-                marginBottom: 'clamp(1.5rem, 4vw, 2rem)',
+                marginBottom: isMobile ? '0.4rem' : 'clamp(1.5rem, 4vw, 2rem)',
                 color: '#ffffff',
                 opacity: 0.95,
                 textShadow: '0 2px 10px rgba(0, 0, 0, 0.8)',
@@ -1566,7 +1582,7 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
                 padding: '0 0.5rem',
                 maxWidth: '100%',
                 width: '100%',
-                marginTop: 'clamp(8px, 1.5vw, 20px)'
+                marginTop: isMobile ? '4px' : 'clamp(8px, 1.5vw, 20px)'
               }}>
                 <a
                   href="#subscription-plans"
@@ -1605,10 +1621,10 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
               <div style={{
                 display: 'flex',
                 justifyContent: 'center',
-                gap: 'clamp(0.5rem, 1.5vw, 1rem)',
+                gap: isMobile ? '0.3rem' : 'clamp(0.5rem, 1.5vw, 1rem)',
                 flexWrap: 'wrap',
-                marginTop: 'clamp(1.5rem, 4vw, 2rem)',
-                marginBottom: 'clamp(0.5rem, 1.5vw, 1rem)',
+                marginTop: isMobile ? '0.5rem' : 'clamp(1.5rem, 4vw, 2rem)',
+                marginBottom: isMobile ? '0.25rem' : 'clamp(0.5rem, 1.5vw, 1rem)',
                 padding: '0 0.5rem'
               }}>
                 {/* Badge 1 - 24h Free Trial (Clock icon) */}
@@ -1616,21 +1632,21 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
                   iconType="clock"
                   topText={language === 'bg' ? '24 часа' : '24 hours'}
                   bottomText={language === 'bg' ? 'безплатен тест' : 'free trial'}
-                  size={75}
+                  size={trustBadgeSize}
                 />
                 {/* Badge 2 - 100% Secure (Lock icon) */}
                 <TrustBadge
                   iconType="lock"
                   topText={language === 'bg' ? '100% сигурно' : '100% secure'}
                   bottomText={language === 'bg' ? 'плащане' : 'payment'}
-                  size={75}
+                  size={trustBadgeSize}
                 />
                 {/* Badge 3 - Cancel Anytime (Refresh icon) */}
                 <TrustBadge
                   iconType="refresh"
                   topText={language === 'bg' ? 'Отказ' : 'Cancel'}
                   bottomText={language === 'bg' ? 'по всяко време' : 'anytime'}
-                  size={75}
+                  size={trustBadgeSize}
                 />
               </div>
             </div>
@@ -1807,10 +1823,10 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
                   style={{
                     display: 'flex',
                     justifyContent: 'center',
-                    gap: 'clamp(0.5rem, 1.5vw, 1rem)',
+                    gap: isMobile ? '0.3rem' : 'clamp(0.5rem, 1.5vw, 1rem)',
                     flexWrap: 'wrap',
-                    marginTop: 'clamp(1.5rem, 4vw, 2rem)',
-                    marginBottom: 'clamp(0.5rem, 1.5vw, 1rem)'
+                    marginTop: isMobile ? '0.5rem' : 'clamp(1.5rem, 4vw, 2rem)',
+                    marginBottom: isMobile ? '0.25rem' : 'clamp(0.5rem, 1.5vw, 1rem)'
                   }}
                 >
                   {/* Badge 1 - 24h Free Trial (Clock icon) */}
@@ -1818,21 +1834,21 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
                     iconType="clock"
                     topText={language === 'bg' ? '24 часа' : '24 hours'}
                     bottomText={language === 'bg' ? 'безплатен тест' : 'free trial'}
-                    size={75}
+                    size={trustBadgeSize}
                   />
                   {/* Badge 2 - 100% Secure (Lock icon) */}
                   <TrustBadge
                     iconType="lock"
                     topText={language === 'bg' ? '100% сигурно' : '100% secure'}
                     bottomText={language === 'bg' ? 'плащане' : 'payment'}
-                    size={75}
+                    size={trustBadgeSize}
                   />
                   {/* Badge 3 - Cancel Anytime (Refresh icon) */}
                   <TrustBadge
                     iconType="refresh"
                     topText={language === 'bg' ? 'Отказ' : 'Cancel'}
                     bottomText={language === 'bg' ? 'по всяко време' : 'anytime'}
-                    size={75}
+                    size={trustBadgeSize}
                   />
                 </motion.div>
               </CTAContainer>
