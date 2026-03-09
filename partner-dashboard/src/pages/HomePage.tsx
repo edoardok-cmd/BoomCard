@@ -13,6 +13,7 @@ import FomoBanner from '../components/common/FomoBanner/FomoBanner';
 import ReviewCard from '../components/reviews/ReviewCard';
 import ReviewSubmissionForm from '../components/reviews/ReviewSubmissionForm';
 import ClientCTA from '../components/common/ClientCTA/ClientCTA';
+import DownloadAppSection from '../components/common/DownloadAppSection/DownloadAppSection';
 import Tooltip from '../components/common/Tooltip/Tooltip';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -461,96 +462,6 @@ const CreditCardPlan = styled(motion.div)<{ $type: 'starter' | 'basic' | 'premiu
     box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
   }
 
-  /* Dark Theme - Sophisticated dark gradients */
-  [data-theme="dark"] & {
-    ${props => props.$type === 'starter' && `
-      background: linear-gradient(135deg, #f9fafb 0%, #e5e7eb 100%);
-      border: 2px solid rgba(156, 163, 175, 0.5);
-      box-shadow:
-        0 10px 40px rgba(0, 0, 0, 0.2);
-
-      &::before {
-        background: radial-gradient(circle, rgba(0, 0, 0, 0.05) 0%, transparent 70%);
-      }
-    `}
-
-    ${props => props.$type === 'basic' && `
-      background: linear-gradient(135deg, #374151 0%, #4b5563 100%);
-      border: 3px solid #3b82f6;
-      box-shadow:
-        0 10px 40px rgba(59, 130, 246, 0.3),
-        0 8px 30px rgba(6, 182, 212, 0.2);
-
-      &::before {
-        background: radial-gradient(circle, rgba(59, 130, 246, 0.15) 0%, transparent 70%);
-      }
-    `}
-
-    ${props => props.$type === 'premium' && `
-      background: linear-gradient(135deg, #111827 0%, #1f2937 50%, #0f172a 100%);
-      border: 3px solid #06b6d4;
-      box-shadow:
-        0 10px 40px rgba(6, 182, 212, 0.5),
-        0 8px 35px rgba(59, 130, 246, 0.4);
-
-      &::before {
-        background: radial-gradient(circle, rgba(6, 182, 212, 0.2) 0%, transparent 70%);
-      }
-    `}
-
-    &:hover {
-      box-shadow:
-        0 20px 60px rgba(59, 130, 246, 0.4),
-        0 15px 50px rgba(6, 182, 212, 0.35);
-    }
-  }
-
-  /* Color Theme - Vibrant gradients */
-  [data-theme="color"] & {
-    ${props => props.$type === 'starter' && `
-      background: linear-gradient(135deg, #ffffff 0%, #fff5f0 100%);
-      border: 2px solid rgba(255, 148, 214, 0.3);
-      box-shadow:
-        0 10px 40px rgba(0, 0, 0, 0.15);
-
-      &::before {
-        background: radial-gradient(circle, rgba(255, 105, 180, 0.08) 0%, transparent 70%);
-      }
-    `}
-
-    ${props => props.$type === 'basic' && `
-      background: linear-gradient(135deg, #ffd6a5 0%, #ffb5d5 50%, #c9e4ff 100%);
-      border: 3px solid #ff94d6;
-      box-shadow:
-        0 10px 40px rgba(255, 148, 214, 0.4),
-        0 8px 30px rgba(178, 75, 243, 0.3);
-
-      &::before {
-        background: radial-gradient(circle, rgba(255, 105, 180, 0.2) 0%, transparent 70%);
-      }
-    `}
-
-    ${props => props.$type === 'premium' && `
-      background: linear-gradient(135deg, #1a0a2e 0%, #6a0572 50%, #ab2567 100%);
-      border: 3px solid #ff4500;
-      box-shadow:
-        0 10px 40px rgba(255, 69, 0, 0.6),
-        0 8px 35px rgba(255, 0, 110, 0.5),
-        0 6px 30px rgba(139, 47, 184, 0.4);
-
-      &::before {
-        background: radial-gradient(circle, rgba(255, 69, 0, 0.15) 0%, transparent 70%);
-      }
-    `}
-
-    &:hover {
-      box-shadow:
-        0 20px 60px rgba(255, 69, 0, 0.5),
-        0 15px 50px rgba(255, 0, 110, 0.4),
-        0 10px 40px rgba(139, 47, 184, 0.3);
-    }
-  }
-
   @media (max-width: 480px) {
     width: min(340px, 90vw);
     height: 212px;
@@ -600,15 +511,6 @@ const MostBoughtBadge = styled.div`
   -webkit-backdrop-filter: blur(10px);
   pointer-events: none;
 
-  /* Light mode */
-  [data-theme="light"] & {
-    background: rgba(255, 255, 255, 0.9);
-  }
-
-  /* Dark mode */
-  [data-theme="dark"] & {
-    background: rgba(201, 162, 55, 0.15);
-  }
 `;
 
 const CardLogoText = styled.div<{ $type: 'starter' | 'basic' | 'premium' }>`
@@ -623,24 +525,6 @@ const CardLogoText = styled.div<{ $type: 'starter' | 'basic' | 'premium' }>`
     : props.$type === 'starter'
     ? '0 1px 2px rgba(0, 0, 0, 0.1)'
     : '0 1px 2px rgba(255, 255, 255, 0.5)'};
-
-  [data-theme="dark"] & {
-    color: ${props => props.$type === 'premium' ? '#06b6d4' : props.$type === 'starter' ? '#1a1a1a' : '#f8fafc'};
-    text-shadow: ${props => props.$type === 'premium'
-      ? '0 2px 15px rgba(6, 182, 212, 0.6), 0 0 30px rgba(59, 130, 246, 0.4)'
-      : props.$type === 'starter'
-      ? '0 1px 2px rgba(0, 0, 0, 0.1)'
-      : '0 2px 8px rgba(59, 130, 246, 0.3)'};
-  }
-
-  [data-theme="color"] & {
-    color: ${props => props.$type === 'premium' ? '#ff4500' : props.$type === 'starter' ? '#1a0a2e' : '#1a0a2e'};
-    text-shadow: ${props => props.$type === 'premium'
-      ? '0 2px 15px rgba(255, 69, 0, 0.6), 0 0 30px rgba(255, 0, 110, 0.4)'
-      : props.$type === 'starter'
-      ? '0 1px 2px rgba(0, 0, 0, 0.08)'
-      : '0 2px 8px rgba(139, 47, 184, 0.3)'};
-  }
 `;
 
 const CardNumber = styled.div<{ $type?: 'starter' | 'basic' | 'premium' }>`
@@ -651,14 +535,6 @@ const CardNumber = styled.div<{ $type?: 'starter' | 'basic' | 'premium' }>`
   color: ${props => props.$type === 'starter' ? 'rgba(100, 100, 100, 0.8)' : props.$type === 'basic' ? 'rgba(26, 26, 26, 0.9)' : 'rgba(255, 255, 255, 0.9)'};
   letter-spacing: 0.25rem;
   font-family: 'Courier New', monospace;
-
-  [data-theme="dark"] & {
-    color: ${props => props.$type === 'starter' ? 'rgba(26, 26, 26, 0.8)' : 'rgba(248, 250, 252, 0.9)'};
-  }
-
-  [data-theme="color"] & {
-    color: ${props => props.$type === 'starter' ? 'rgba(26, 10, 46, 0.7)' : props.$type === 'basic' ? 'rgba(26, 10, 46, 0.8)' : 'rgba(255, 255, 255, 0.95)'};
-  }
 `;
 
 const CardBottomRow = styled.div`
@@ -674,14 +550,6 @@ const CardHolderName = styled.div<{ $type?: 'starter' | 'basic' | 'premium' }>`
   text-transform: uppercase;
   letter-spacing: 1.5px;
   font-weight: 400;
-
-  [data-theme="dark"] & {
-    color: ${props => props.$type === 'starter' ? 'rgba(26, 26, 26, 0.95)' : 'rgba(248, 250, 252, 0.95)'};
-  }
-
-  [data-theme="color"] & {
-    color: ${props => props.$type === 'starter' ? 'rgba(26, 10, 46, 0.85)' : props.$type === 'basic' ? 'rgba(26, 10, 46, 0.9)' : 'rgba(255, 255, 255, 0.95)'};
-  }
 `;
 
 const CardPriceDisplay = styled.div<{ $type: 'starter' | 'basic' | 'premium' }>`
@@ -696,24 +564,6 @@ const CardPriceDisplay = styled.div<{ $type: 'starter' | 'basic' | 'premium' }>`
     font-size: 0.875rem;
     font-weight: 400;
     opacity: 0.9;
-  }
-
-  [data-theme="dark"] & {
-    color: ${props => props.$type === 'premium' ? '#06b6d4' : props.$type === 'starter' ? '#1a1a1a' : '#f8fafc'};
-    text-shadow: ${props => props.$type === 'premium'
-      ? '0 2px 10px rgba(6, 182, 212, 0.4)'
-      : props.$type === 'starter'
-      ? 'none'
-      : '0 1px 4px rgba(59, 130, 246, 0.2)'};
-  }
-
-  [data-theme="color"] & {
-    color: ${props => props.$type === 'premium' ? '#ff4500' : props.$type === 'starter' ? '#1a0a2e' : '#1a0a2e'};
-    text-shadow: ${props => props.$type === 'premium'
-      ? '0 2px 10px rgba(255, 69, 0, 0.4)'
-      : props.$type === 'starter'
-      ? 'none'
-      : '0 1px 4px rgba(139, 47, 184, 0.2)'};
   }
 `;
 
@@ -1388,43 +1238,7 @@ const HomePage: React.FC = () => {
           </HowItWorksContainer>
 
           {/* Download App CTA */}
-          <div className="text-center mt-12">
-            <a
-              href="https://apps.apple.com/app/boomcard/id6740091561"
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '0.5rem',
-                padding: '0.875rem 2rem',
-                background: 'var(--color-primary, #111827)',
-                color: 'var(--color-secondary, #ffffff)',
-                borderRadius: '0.75rem',
-                fontSize: 'clamp(1rem, 3vw, 1.125rem)',
-                fontWeight: 700,
-                textDecoration: 'none',
-                transition: 'all 200ms',
-                boxShadow: '0 4px 14px rgba(0, 0, 0, 0.15)',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.transform = 'translateY(-2px)';
-                e.currentTarget.style.boxShadow = '0 6px 20px rgba(0, 0, 0, 0.2)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.transform = 'translateY(0)';
-                e.currentTarget.style.boxShadow = '0 4px 14px rgba(0, 0, 0, 0.15)';
-              }}
-            >
-              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '1.25rem', height: '1.25rem' }}>
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-              </svg>
-              {t('home.downloadAppCta')}
-            </a>
-            <p style={{ color: 'var(--color-text-tertiary, #6b7280)', fontSize: '0.875rem', marginTop: '0.75rem' }}>
-              {t('home.availableForIosAndroid')}
-            </p>
-          </div>
+          <DownloadAppSection />
         </div>
       </section>
 
@@ -2070,59 +1884,7 @@ const HomePage: React.FC = () => {
           </div>
 
           {/* Download App CTA below FAQ */}
-          <div style={{ textAlign: 'center', marginTop: 'clamp(2rem, 4vw, 3rem)', paddingTop: '2rem', borderTop: '1px solid var(--color-border, #e5e7eb)' }}>
-            <p style={{ color: 'var(--color-text-secondary)', fontSize: 'clamp(1rem, 3vw, 1.125rem)', marginBottom: '1.25rem', fontWeight: 500 }}>
-              {language === 'bg' ? 'Свали мобилно приложение' : 'Download the mobile app'}
-            </p>
-            <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem', flexWrap: 'wrap' }}>
-              <a
-                href="https://apps.apple.com/app/boomcard/id6740091561"
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '0.5rem',
-                  padding: '0.75rem 1.5rem',
-                  background: '#000',
-                  color: '#fff',
-                  borderRadius: '0.625rem',
-                  fontSize: '0.9375rem',
-                  fontWeight: 600,
-                  textDecoration: 'none',
-                  transition: 'opacity 200ms',
-                }}
-                onMouseEnter={(e) => { e.currentTarget.style.opacity = '0.85'; }}
-                onMouseLeave={(e) => { e.currentTarget.style.opacity = '1'; }}
-              >
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>
-                App Store
-              </a>
-              <a
-                href="https://play.google.com/store/apps/details?id=com.boomcard.app"
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '0.5rem',
-                  padding: '0.75rem 1.5rem',
-                  background: '#000',
-                  color: '#fff',
-                  borderRadius: '0.625rem',
-                  fontSize: '0.9375rem',
-                  fontWeight: 600,
-                  textDecoration: 'none',
-                  transition: 'opacity 200ms',
-                }}
-                onMouseEnter={(e) => { e.currentTarget.style.opacity = '0.85'; }}
-                onMouseLeave={(e) => { e.currentTarget.style.opacity = '1'; }}
-              >
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M3.18 23.49c.28.17.6.24.92.2.33-.05.63-.2.86-.43L17.21 12 4.96.74c-.23-.23-.53-.38-.86-.43-.32-.04-.64.03-.92.2-.56.34-.91.95-.91 1.62v19.74c0 .67.35 1.28.91 1.62zM20.16 10.65L17.21 12l2.95 1.35L22.06 12l-1.9-1.35z"/></svg>
-                Google Play
-              </a>
-            </div>
-          </div>
+          <DownloadAppSection />
         </div>
       </section>
 

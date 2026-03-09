@@ -14,6 +14,7 @@ import { CheckCircle, Clock, AlertCircle, Loader2, RefreshCw } from 'lucide-reac
 import Button from '../components/common/Button/Button';
 import { useLanguage } from '../contexts/LanguageContext';
 import { plansService, SubscriptionStatus } from '../services/plans.service';
+import DownloadAppSection from '../components/common/DownloadAppSection/DownloadAppSection';
 
 const PageContainer = styled.div`
   flex: 1;
@@ -188,43 +189,6 @@ const TimeoutWarning = styled.div`
     background: rgba(245, 158, 11, 0.1);
     border-color: #f59e0b;
     color: #fbbf24;
-  }
-`;
-
-const AppDownloadSection = styled.div`
-  width: 100%;
-  max-width: 32rem;
-  margin-top: 1.5rem;
-  text-align: center;
-`;
-
-const AppDownloadTitle = styled.div`
-  font-size: 0.9375rem;
-  font-weight: 600;
-  color: var(--color-text-primary);
-  margin-bottom: 0.75rem;
-`;
-
-const StoreBadgesRow = styled.div`
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.75rem;
-`;
-
-const StoreBadgeLink = styled.a`
-  display: inline-flex;
-  transition: opacity 0.2s, transform 0.2s;
-  border-radius: 8px;
-
-  &:hover {
-    opacity: 0.85;
-    transform: scale(1.03);
-  }
-
-  img {
-    height: 44px;
-    width: auto;
   }
 `;
 
@@ -495,38 +459,13 @@ const SubscriptionSuccessPage: React.FC = () => {
         </Card>
 
         {status === 'success' && (
-          <AppDownloadSection
-            as={motion.div}
+          <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4, delay: 0.2 }}
           >
-            <AppDownloadTitle>
-              {language === 'bg' ? 'Изтеглете мобилното приложение' : 'Download the Mobile App'}
-            </AppDownloadTitle>
-            <StoreBadgesRow>
-              <StoreBadgeLink
-                href="https://play.google.com/store/apps/details?id=com.boomcard.app"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                <img
-                  src="/badge-google-play.svg"
-                  alt="Get it on Google Play"
-                />
-              </StoreBadgeLink>
-              <StoreBadgeLink
-                href="https://apps.apple.com/app/boomcard/id6740091561"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                <img
-                  src="/badge-app-store.svg"
-                  alt="Download on the App Store"
-                />
-              </StoreBadgeLink>
-            </StoreBadgesRow>
-          </AppDownloadSection>
+            <DownloadAppSection />
+          </motion.div>
         )}
     </PageContainer>
   );

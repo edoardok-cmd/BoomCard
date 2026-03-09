@@ -27,8 +27,15 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CARD_WIDTH = Math.min(SCREEN_WIDTH - 48, 340);
 const CARD_HEIGHT = 200;
 
-// Tier order for filtering — cardType values
+// Tier order for filtering — cardType values from plan definitions
 const TIER_ORDER = ['light', 'silver', 'black'] as const;
+
+// Map backend card types (LIGHT/BASIC/PREMIUM) to plan card types (light/silver/black)
+const BACKEND_TO_PLAN_CARD_TYPE: Record<string, string> = {
+  light: 'light',
+  basic: 'silver',
+  premium: 'black',
+};
 
 // Fallback plans when API is unavailable
 const getFallbackPlans = (): Plan[] => [
@@ -228,7 +235,9 @@ const UpgradePlansScreen = ({ navigation, route }: any) => {
   }, []);
 
   // Filter to only show plans above current tier
-  const currentTierIndex = TIER_ORDER.indexOf(currentCardType.toLowerCase() as typeof TIER_ORDER[number]);
+  // Map backend card type (LIGHT/BASIC/PREMIUM) to plan card type (light/silver/black)
+  const mappedCardType = BACKEND_TO_PLAN_CARD_TYPE[currentCardType.toLowerCase()] || currentCardType.toLowerCase();
+  const currentTierIndex = TIER_ORDER.indexOf(mappedCardType as typeof TIER_ORDER[number]);
   const upgradePlans = plans.filter(plan => {
     const planTierIndex = TIER_ORDER.indexOf(plan.cardType);
     return planTierIndex > currentTierIndex;
@@ -403,9 +412,9 @@ const UpgradePlansScreen = ({ navigation, route }: any) => {
           <Ionicons name="card" size={14} color={theme.colors.onSurfaceVariant} />
           <Text style={styles.currentPlanText}>
             {language === 'bg' ? 'Текущ план: ' : 'Current plan: '}
-            {currentCardType.toLowerCase() === 'light'
+            {mappedCardType === 'light'
               ? (language === 'bg' ? 'Лайт Премиум' : 'Lite Premium')
-              : currentCardType.toLowerCase() === 'silver'
+              : mappedCardType === 'silver'
                 ? (language === 'bg' ? 'Основен' : 'Basic')
                 : (language === 'bg' ? 'Премиум' : 'Premium')}
           </Text>

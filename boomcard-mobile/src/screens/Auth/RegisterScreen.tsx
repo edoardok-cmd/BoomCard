@@ -671,6 +671,7 @@ const getStyles = (theme: any) => StyleSheet.create({
     color: theme.colors.onGold,
     fontSize: 16,
     fontWeight: '700',
+    textAlign: 'center',
   },
   buttonTextDisabled: {
     color: '#FFFFFF',

@@ -299,6 +299,21 @@
     </script>
 
     <!-- Paysera Quality Sign -->
+    <style>
+      /* Move Paysera badge to bottom-left */
+      #paysera-quality-sign,
+      [id^="paysera"] {
+        left: 16px !important;
+        right: auto !important;
+      }
+      /* Hide on tablet and mobile (< 1024px) */
+      @media (max-width: 1024px) {
+        #paysera-quality-sign,
+        [id^="paysera"] {
+          display: none !important;
+        }
+      }
+    </style>
     <script type="text/javascript" charset="utf-8">
     (function() {
         const script = document.createElement('script');

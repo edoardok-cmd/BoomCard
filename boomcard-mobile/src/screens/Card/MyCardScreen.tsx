@@ -33,32 +33,38 @@ const CARD_ASPECT = 0.63; // Credit card aspect ratio
 type CardGradient = [string, string, ...string[]];
 
 const getCardGradient = (cardType: string, isDarkMode: boolean): CardGradient => {
+  const type = cardType?.toUpperCase();
   if (isDarkMode) {
-    switch (cardType?.toUpperCase()) {
-      case 'PREMIUM': return ['#111827', '#1f2937', '#0f172a'];
-      case 'PLATINUM': return ['#1e293b', '#334155'];
-      default: return ['#374151', '#4b5563'];
+    switch (type) {
+      case 'PREMIUM': return ['#111827', '#1f2937', '#0f172a']; // Black card
+      case 'BASIC': return ['#374151', '#4b5563'];               // Silver card
+      case 'LIGHT':
+      default: return ['#f9fafb', '#e5e7eb'];                    // Light/white card
     }
   }
-  switch (cardType?.toUpperCase()) {
-    case 'PREMIUM': return ['#1a1a1a', '#2d2d2d'];
-    case 'PLATINUM': return ['#c0c0c0', '#e8e8e8'];
-    default: return ['#4A5568', '#2D3748'];
+  switch (type) {
+    case 'PREMIUM': return ['#1a1a1a', '#2d2d2d'];   // Black card
+    case 'BASIC': return ['#c0c0c0', '#e8e8e8'];      // Silver card
+    case 'LIGHT':
+    default: return ['#ffffff', '#f5f5f5'];            // Light/white card
   }
 };
 
 const getCardAccent = (cardType: string, isDarkMode: boolean) => {
+  const type = cardType?.toUpperCase();
   if (isDarkMode) {
-    switch (cardType?.toUpperCase()) {
+    switch (type) {
       case 'PREMIUM': return { text: '#06b6d4', glow: 'rgba(6, 182, 212, 0.5)', border: '#06b6d4' };
-      case 'PLATINUM': return { text: '#a78bfa', glow: 'rgba(167, 139, 250, 0.4)', border: '#8b5cf6' };
-      default: return { text: '#93c5fd', glow: 'rgba(59, 130, 246, 0.3)', border: '#3b82f6' };
+      case 'BASIC': return { text: '#93c5fd', glow: 'rgba(59, 130, 246, 0.3)', border: '#3b82f6' };
+      case 'LIGHT':
+      default: return { text: '#374151', glow: 'rgba(0, 0, 0, 0.1)', border: 'rgba(55, 65, 81, 0.3)' };
     }
   }
-  switch (cardType?.toUpperCase()) {
+  switch (type) {
     case 'PREMIUM': return { text: '#ffd700', glow: 'rgba(212, 175, 55, 0.3)', border: '#ffd700' };
-    case 'PLATINUM': return { text: '#1a1a1a', glow: 'rgba(0, 0, 0, 0.15)', border: 'rgba(192, 192, 192, 0.5)' };
-    default: return { text: '#ffffff', glow: 'rgba(0, 0, 0, 0.2)', border: 'rgba(255, 255, 255, 0.2)' };
+    case 'BASIC': return { text: '#1a1a1a', glow: 'rgba(0, 0, 0, 0.15)', border: 'rgba(192, 192, 192, 0.5)' };
+    case 'LIGHT':
+    default: return { text: '#4a4a4a', glow: 'rgba(0, 0, 0, 0.1)', border: 'rgba(200, 200, 200, 0.5)' };
   }
 };
 
@@ -199,7 +205,9 @@ export default function MyCardScreen() {
 
   const gradient = getCardGradient(card.cardType, isDarkMode);
   const accent = getCardAccent(card.cardType, isDarkMode);
-  const isPremium = card.cardType?.toUpperCase() === 'PREMIUM';
+  const cardTypeUpper = card.cardType?.toUpperCase();
+  const isPremium = cardTypeUpper === 'PREMIUM';
+  const isLight = cardTypeUpper === 'LIGHT';
 
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
@@ -261,10 +269,10 @@ export default function MyCardScreen() {
 
                   {/* Card Footer */}
                   <View style={styles.cardFooter}>
-                    <Text style={[styles.cardNumber, { color: accent.text }]}>
-                      {card.cardNumber}
+                    <Text style={[styles.planName, { color: accent.text }]}>
+                      {cardTypeUpper === 'LIGHT' ? 'LITE PREMIUM' : cardTypeUpper === 'BASIC' ? 'BASIC' : 'PREMIUM'}
                     </Text>
-                    <Text style={styles.memberSince}>
+                    <Text style={[styles.memberSince, isLight && !isDarkMode && { color: 'rgba(0,0,0,0.4)' }]}>
                       {t('card.memberSince')} {card.issuedAt
                         ? new Date(card.issuedAt).toLocaleDateString(undefined, { month: 'short', year: 'numeric' })
                         : '—'}
@@ -273,8 +281,8 @@ export default function MyCardScreen() {
 
                   {/* Flip Hint */}
                   <View style={styles.flipHintRow}>
-                    <Ionicons name="sync-outline" size={14} color="rgba(255,255,255,0.55)" />
-                    <Text style={styles.flipHintText}>{t('card.tapToShowQR', 'Tap to show QR')}</Text>
+                    <Ionicons name="sync-outline" size={14} color={isLight && !isDarkMode ? 'rgba(0,0,0,0.35)' : 'rgba(255,255,255,0.55)'} />
+                    <Text style={[styles.flipHintText, isLight && !isDarkMode && { color: 'rgba(0,0,0,0.35)' }]}>{t('card.tapToShowQR', 'Tap to show QR')}</Text>
                   </View>
                 </LinearGradient>
               </Animated.View>
@@ -327,8 +335,8 @@ export default function MyCardScreen() {
 
                   {/* Flip Hint */}
                   <View style={styles.flipHintRow}>
-                    <Ionicons name="sync-outline" size={11} color="rgba(255,255,255,0.35)" />
-                    <Text style={styles.flipHintText}>{t('card.tapToFlipBack', 'Tap to flip back')}</Text>
+                    <Ionicons name="sync-outline" size={11} color={isLight && !isDarkMode ? 'rgba(0,0,0,0.35)' : 'rgba(255,255,255,0.35)'} />
+                    <Text style={[styles.flipHintText, isLight && !isDarkMode && { color: 'rgba(0,0,0,0.35)' }]}>{t('card.tapToFlipBack', 'Tap to flip back')}</Text>
                   </View>
                 </LinearGradient>
               </Animated.View>
@@ -403,7 +411,7 @@ export default function MyCardScreen() {
         )}
 
         {/* Upgrade CTA */}
-        {card.cardType && card.cardType.toUpperCase() !== 'PLATINUM' && (
+        {card.cardType && cardTypeUpper !== 'PREMIUM' && (
           <View style={[styles.section, { marginBottom: 40 }]}>
             <TouchableOpacity
               style={styles.upgradeButton}
@@ -595,6 +603,12 @@ const getStyles = (theme: any, isDarkMode: boolean) => StyleSheet.create({
     fontWeight: '600',
     letterSpacing: 2.5,
     fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+  },
+  planName: {
+    fontSize: 15,
+    fontWeight: '700',
+    letterSpacing: 2,
+    textTransform: 'uppercase' as const,
   },
   memberSince: {
     fontSize: 11,

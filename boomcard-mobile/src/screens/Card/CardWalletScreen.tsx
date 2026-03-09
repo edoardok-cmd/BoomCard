@@ -17,31 +17,34 @@ interface CardData {
 }
 
 const CARD_BENEFITS: Record<string, { cashback: number; features: string[] }> = {
-  STANDARD: {
-    cashback: 5,
+  LIGHT: {
+    cashback: 20,
     features: [
-      '5% Cashback on all purchases',
-      'Valid at all partner venues',
-      'Digital card - no physical card needed',
+      'One week Premium access',
+      'Up to 20% discount',
+      'Exclusive Premium offers',
+      'VIP priority support',
+      'Cashback via the app',
+    ],
+  },
+  BASIC: {
+    cashback: 10,
+    features: [
+      'One month access',
+      'Up to 10% discount',
+      'Cashback via the app',
+      'Access to partner offers',
+      'Standard support',
     ],
   },
   PREMIUM: {
-    cashback: 7,
+    cashback: 20,
     features: [
-      '7% Cashback on all purchases',
-      'Priority customer support',
-      'Exclusive partner deals',
-      'Valid at all partner venues',
-    ],
-  },
-  PLATINUM: {
-    cashback: 10,
-    features: [
-      '10% Cashback on all purchases',
-      'VIP customer support',
-      'Premium partner access',
-      'Early access to new features',
-      'Valid at all partner venues',
+      'One month Premium access',
+      'Up to 20% discount',
+      'Exclusive Premium offers',
+      'VIP priority support',
+      'Cashback via the app',
     ],
   },
 };
@@ -103,7 +106,7 @@ const CardWalletScreen = () => {
     issuedAt: card.issuedAt,
   });
 
-  const benefits = CARD_BENEFITS[card.cardType] || CARD_BENEFITS.STANDARD;
+  const benefits = CARD_BENEFITS[card.cardType] || CARD_BENEFITS.LIGHT;
 
   return (
     <ScrollView

@@ -7,6 +7,7 @@ import OfferCard from '../components/common/OfferCard/OfferCard';
 import { offerToEntity, type Offer, type Entity } from '../types/entity.types';
 import Button from '../components/common/Button/Button';
 import Loading from '../components/common/Loading/Loading';
+import { placesCategories } from '../types/categories.types';
 
 const PageContainer = styled.div`
 
@@ -238,6 +239,35 @@ const FilterDivider = styled.hr`
   }
 `;
 
+const SubcategorySection = styled(motion.div)`
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  padding: 0.625rem 0.75rem;
+  margin-top: 0.25rem;
+  background: #f9fafb;
+  border-radius: 0.75rem;
+  border-left: 3px solid var(--color-primary, #ff4500);
+
+  [data-theme="dark"] & {
+    background: #111827;
+    border-left-color: #ff4500;
+  }
+`;
+
+const SubcategoryParentLabel = styled.span`
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 0.125rem;
+
+  [data-theme="dark"] & {
+    color: #9ca3af;
+  }
+`;
+
 const Main = styled.main`
   min-height: 60vh;
 `;
@@ -372,18 +402,70 @@ const allOffers: Offer[] = [
 const allEntities = allOffers.map(offerToEntity);
 
 const CategoryListingPage: React.FC = () => {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const navigate = useNavigate();
   const [filteredOffers, setFilteredOffers] = useState<Entity[]>(allEntities);
   const [sortBy, setSortBy] = useState('relevance');
   const [isLoading] = useState(false);
   const [showMobileFilters, setShowMobileFilters] = useState(false);
   const [activeFilters, setActiveFilters] = useState<Record<string, string[]>>({
+    category: [],
     location: [],
     discount: [],
     rating: [],
     priceLevel: [],
   });
+
+  const handleCategoryToggle = (categoryId: string) => {
+    setActiveFilters(prev => {
+      const current = prev.category || [];
+      const category = placesCategories.find(c => c.id === categoryId);
+      if (!category) return prev;
+
+      const isSelected = current.includes(categoryId);
+      // Collect all subcategory IDs including nested children
+      const allSubIds: string[] = [];
+      category.subcategories.forEach(s => {
+        allSubIds.push(s.id);
+        if (s.children) {
+          s.children.forEach(c => allSubIds.push(c.id));
+        }
+      });
+
+      let updated: string[];
+      if (isSelected) {
+        // Deselect parent + all its subcategories
+        updated = current.filter(id => id !== categoryId && !allSubIds.includes(id));
+      } else {
+        // Select parent only
+        updated = [...current, categoryId];
+      }
+      return { ...prev, category: updated };
+    });
+  };
+
+  const handleSubcategoryToggle = (subcategoryId: string, parentId: string) => {
+    setActiveFilters(prev => {
+      const current = prev.category || [];
+      const isSelected = current.includes(subcategoryId);
+      let updated: string[];
+
+      if (isSelected) {
+        // Deselect subcategory + any nested children
+        const category = placesCategories.find(c => c.id === parentId);
+        const sub = category?.subcategories.find(s => s.id === subcategoryId);
+        const childIds = sub?.children?.map(c => c.id) || [];
+        updated = current.filter(id => id !== subcategoryId && !childIds.includes(id));
+      } else {
+        updated = [...current, subcategoryId];
+        // Auto-select parent if not already selected
+        if (!updated.includes(parentId)) {
+          updated.push(parentId);
+        }
+      }
+      return { ...prev, category: updated };
+    });
+  };
 
   const toggleFilter = (group: string, value: string) => {
     setActiveFilters(prev => {
@@ -503,6 +585,50 @@ const CategoryListingPage: React.FC = () => {
           <LayoutGrid>
             {/* Sidebar Filters */}
             <FilterSidebar $showMobile={showMobileFilters}>
+              {/* Category */}
+              <FilterGroup>
+                <FilterLabel>{language === 'bg' ? 'Категория' : 'Category'}</FilterLabel>
+                <FilterChipsWrapper>
+                  {placesCategories.map(cat => (
+                    <FilterChip
+                      key={cat.id}
+                      $active={activeFilters.category.includes(cat.id)}
+                      onClick={() => handleCategoryToggle(cat.id)}
+                    >
+                      {language === 'bg' ? cat.name.bg : cat.name.en}
+                    </FilterChip>
+                  ))}
+                </FilterChipsWrapper>
+                {/* Dynamic subcategories - appear after selecting a category */}
+                {placesCategories
+                  .filter(cat => activeFilters.category.includes(cat.id))
+                  .map(cat => (
+                    <SubcategorySection
+                      key={`sub-${cat.id}`}
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      transition={{ duration: 0.2 }}
+                    >
+                      <SubcategoryParentLabel>
+                        {language === 'bg' ? cat.name.bg : cat.name.en}
+                      </SubcategoryParentLabel>
+                      <FilterChipsWrapper>
+                        {cat.subcategories.map(sub => (
+                          <FilterChip
+                            key={sub.id}
+                            $active={activeFilters.category.includes(sub.id)}
+                            onClick={() => handleSubcategoryToggle(sub.id, cat.id)}
+                          >
+                            {language === 'bg' ? sub.name.bg : sub.name.en}
+                          </FilterChip>
+                        ))}
+                      </FilterChipsWrapper>
+                    </SubcategorySection>
+                  ))}
+              </FilterGroup>
+
+              <FilterDivider />
+
               {/* Location */}
               <FilterGroup>
                 <FilterLabel>{t('boomPlacesFilters.location')}</FilterLabel>
