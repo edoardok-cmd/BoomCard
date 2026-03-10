@@ -272,17 +272,22 @@ export default function MyCardScreen() {
                     <Text style={[styles.planName, { color: accent.text }]}>
                       {cardTypeUpper === 'LIGHT' ? 'LITE PREMIUM' : cardTypeUpper === 'BASIC' ? 'BASIC' : 'PREMIUM'}
                     </Text>
-                    <Text style={[styles.memberSince, isLight && !isDarkMode && { color: 'rgba(0,0,0,0.4)' }]}>
-                      {t('card.memberSince')} {card.issuedAt
-                        ? new Date(card.issuedAt).toLocaleDateString(undefined, { month: 'short', year: 'numeric' })
+                    <Text style={[styles.memberSince, isLight && { color: 'rgba(0,0,0,0.5)' }]}>
+                      {t('card.validFrom')} {card.validFrom || card.issuedAt
+                        ? new Date(card.validFrom || card.issuedAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
                         : '—'}
                     </Text>
+                    {card.validUntil && (
+                      <Text style={[styles.memberSince, isLight && { color: 'rgba(0,0,0,0.5)' }]}>
+                        {t('card.validUntil')} {new Date(card.validUntil).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}
+                      </Text>
+                    )}
                   </View>
 
                   {/* Flip Hint */}
                   <View style={styles.flipHintRow}>
-                    <Ionicons name="sync-outline" size={14} color={isLight && !isDarkMode ? 'rgba(0,0,0,0.35)' : 'rgba(255,255,255,0.55)'} />
-                    <Text style={[styles.flipHintText, isLight && !isDarkMode && { color: 'rgba(0,0,0,0.35)' }]}>{t('card.tapToShowQR', 'Tap to show QR')}</Text>
+                    <Ionicons name="sync-outline" size={14} color={isLight ? 'rgba(0,0,0,0.35)' : 'rgba(255,255,255,0.55)'} />
+                    <Text style={[styles.flipHintText, isLight && { color: 'rgba(0,0,0,0.35)' }]}>{t('card.tapToShowQR', 'Tap to show QR')}</Text>
                   </View>
                 </LinearGradient>
               </Animated.View>
@@ -335,8 +340,8 @@ export default function MyCardScreen() {
 
                   {/* Flip Hint */}
                   <View style={styles.flipHintRow}>
-                    <Ionicons name="sync-outline" size={11} color={isLight && !isDarkMode ? 'rgba(0,0,0,0.35)' : 'rgba(255,255,255,0.35)'} />
-                    <Text style={[styles.flipHintText, isLight && !isDarkMode && { color: 'rgba(0,0,0,0.35)' }]}>{t('card.tapToFlipBack', 'Tap to flip back')}</Text>
+                    <Ionicons name="sync-outline" size={11} color={isLight ? 'rgba(0,0,0,0.35)' : 'rgba(255,255,255,0.35)'} />
+                    <Text style={[styles.flipHintText, isLight && { color: 'rgba(0,0,0,0.35)' }]}>{t('card.tapToFlipBack', 'Tap to flip back')}</Text>
                   </View>
                 </LinearGradient>
               </Animated.View>

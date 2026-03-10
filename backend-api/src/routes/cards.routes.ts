@@ -2,6 +2,7 @@ import { Router, Response } from 'express';
 import { authenticate, AuthRequest } from '../middleware/auth.middleware';
 import { cardService } from '../services/card.service';
 import { asyncHandler } from '../utils/asyncHandler';
+import { prisma } from '../lib/prisma';
 import { z } from 'zod';
 
 const router = Router();
@@ -39,11 +40,21 @@ router.get('/my-card', asyncHandler(async (req: AuthRequest, res: Response) => {
 
   const benefits = cardService.getCardBenefits(card.type);
 
+  // Include active subscription expiry
+  const subscription = await prisma.subscription.findFirst({
+    where: { userId, status: { in: ['ACTIVE', 'TRIALING'] } },
+    orderBy: { currentPeriodEnd: 'desc' },
+    select: { currentPeriodStart: true, currentPeriodEnd: true, plan: true },
+  });
+
   res.json({
     ...card,
     issuedAt: card.createdAt,
     cardType: card.type,
     benefits,
+    validFrom: subscription?.currentPeriodStart ?? card.createdAt,
+    validUntil: subscription?.currentPeriodEnd ?? null,
+    subscriptionPlan: subscription?.plan ?? null,
   });
 }));
 
