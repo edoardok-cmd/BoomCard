@@ -244,7 +244,7 @@ const UpgradePlansScreen = ({ navigation, route }: any) => {
   });
 
   const handleSelectPlan = (plan: Plan, billingPeriod: 'weekly' | 'monthly' | 'yearly') => {
-    navigation.navigate('Checkout', {
+    navigation.push('Checkout', {
       planId: plan.id,
       billing: billingPeriod,
     });
