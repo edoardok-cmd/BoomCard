@@ -421,28 +421,28 @@ const UpgradePlansScreen = ({ navigation, route }: any) => {
         </View>
 
         {/* Billing Toggle */}
-        <View style={styles.toggleContainer}>
-          <TouchableOpacity
-            style={[styles.toggleOption, isAnnual && styles.toggleOptionActive]}
-            onPress={() => setIsAnnual(true)}
-          >
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+        <View style={styles.toggleWrapper}>
+          <View style={styles.toggleContainer}>
+            <TouchableOpacity
+              style={[styles.toggleOption, isAnnual && styles.toggleOptionActive]}
+              onPress={() => setIsAnnual(true)}
+            >
               <Text style={[styles.toggleText, isAnnual && styles.toggleTextActive]}>
                 {t('subscription.yearly')}
               </Text>
-              <View style={styles.savingsBadge}>
-                <Text style={styles.savingsBadgeText}>-20%</Text>
-              </View>
-            </View>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.toggleOption, !isAnnual && styles.toggleOptionActive]}
-            onPress={() => setIsAnnual(false)}
-          >
-            <Text style={[styles.toggleText, !isAnnual && styles.toggleTextActive]}>
-              {t('subscription.monthlyWeekly')}
-            </Text>
-          </TouchableOpacity>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.toggleOption, !isAnnual && styles.toggleOptionActive]}
+              onPress={() => setIsAnnual(false)}
+            >
+              <Text style={[styles.toggleText, !isAnnual && styles.toggleTextActive]}>
+                {t('subscription.monthlyWeekly')}
+              </Text>
+            </TouchableOpacity>
+          </View>
+          <View style={styles.savingsBadge}>
+            <Text style={styles.savingsBadgeText}>-20%</Text>
+          </View>
         </View>
 
         {loading ? (
@@ -513,12 +513,18 @@ const getStyles = (theme: any, isDarkMode: boolean) => StyleSheet.create({
   },
 
   // Billing Toggle
+  toggleWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 32,
+  },
   toggleContainer: {
+    flex: 1,
     flexDirection: 'row',
     backgroundColor: theme.colors.surface,
     borderRadius: 30,
     padding: 4,
-    marginBottom: 32,
     borderWidth: 1,
     borderColor: theme.colors.surfaceVariant,
   },
