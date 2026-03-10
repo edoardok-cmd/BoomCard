@@ -309,13 +309,22 @@
       /* Hide on tablet and mobile (< 1024px) */
       @media (max-width: 1024px) {
         #paysera-quality-sign,
-        [id^="paysera"] {
+        [id^="paysera"],
+        iframe[src*="paysera"],
+        div[class*="paysera"],
+        .paysera-quality-sign {
           display: none !important;
+          visibility: hidden !important;
+          opacity: 0 !important;
+          pointer-events: none !important;
         }
       }
     </style>
     <script type="text/javascript" charset="utf-8">
     (function() {
+        // Only load Paysera Quality Sign on desktop (> 1024px)
+        if (window.innerWidth <= 1024) return;
+
         const script = document.createElement('script');
         const dateToday = new Date();
         const todayFullDate = dateToday.getDate() + '-' + (dateToday.getMonth() + 1) + '-' + dateToday.getFullYear();

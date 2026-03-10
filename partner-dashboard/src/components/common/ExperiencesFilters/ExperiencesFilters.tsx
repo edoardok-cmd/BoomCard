@@ -374,6 +374,7 @@ export const defaultExperiencesFilters: ExperiencesFiltersState = {
 interface ExperiencesFiltersProps {
   filters: ExperiencesFiltersState;
   onChange: (filters: ExperiencesFiltersState) => void;
+  sidebar?: boolean;
 }
 
 // ── Component ──────────────────────────────────────────────
@@ -381,6 +382,7 @@ interface ExperiencesFiltersProps {
 const ExperiencesFilters: React.FC<ExperiencesFiltersProps> = ({
   filters,
   onChange,
+  sidebar = false,
 }) => {
   const { language } = useLanguage();
   const [isExpanded, setIsExpanded] = useState(true);
@@ -537,6 +539,307 @@ const ExperiencesFilters: React.FC<ExperiencesFiltersProps> = ({
 
   const activeCount = getActiveCount();
 
+  const innerContent = (
+    <>
+      {/* Search */}
+      <SearchRow>
+        <SearchInput>
+          <Search />
+          <input
+            type="text"
+            placeholder={language === 'bg' ? 'Търси изживяване...' : 'Search experiences...'}
+            defaultValue={filters.search}
+            onChange={handleSearchChange}
+          />
+        </SearchInput>
+      </SearchRow>
+
+      <FilterGrid>
+        {/* Category */}
+        <CategoryFilterGroup>
+          <Label>
+            <LayoutGrid />
+            {language === 'bg' ? 'Категория' : 'Category'}
+          </Label>
+          <CheckboxGroup>
+            {experiencesCategories.map(cat => (
+              <CheckboxLabel
+                key={cat.id}
+                $checked={filters.categories.includes(cat.id)}
+              >
+                <input
+                  type="checkbox"
+                  checked={filters.categories.includes(cat.id)}
+                  onChange={() => handleCategoryToggle(cat.id)}
+                />
+                {language === 'bg' ? cat.name.bg : cat.name.en}
+              </CheckboxLabel>
+            ))}
+          </CheckboxGroup>
+          {experiencesCategories
+            .filter(cat => filters.categories.includes(cat.id))
+            .map(cat => (
+              <SubcategoryGroup key={`sub-${cat.id}`}>
+                <SubcategoryParentLabel>
+                  {language === 'bg' ? cat.name.bg : cat.name.en}
+                </SubcategoryParentLabel>
+                {cat.subcategories.map(sub => (
+                  <SubcategoryLabel
+                    key={sub.id}
+                    $checked={filters.categories.includes(sub.id)}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={filters.categories.includes(sub.id)}
+                      onChange={() => handleSubcategoryToggle(sub.id, cat.id)}
+                    />
+                    {language === 'bg' ? sub.name.bg : sub.name.en}
+                  </SubcategoryLabel>
+                ))}
+              </SubcategoryGroup>
+            ))}
+        </CategoryFilterGroup>
+
+        {/* Location */}
+        <FilterGroup>
+          <Label>
+            <MapPin />
+            {language === 'bg' ? 'Локация' : 'Location'}
+          </Label>
+          <CheckboxGroup>
+            {locations.map(item => (
+              <CheckboxLabel
+                key={item.id}
+                $checked={filters.locations.includes(item.id)}
+              >
+                <input
+                  type="checkbox"
+                  checked={filters.locations.includes(item.id)}
+                  onChange={() => handleToggle('locations', item.id)}
+                />
+                {language === 'bg' ? item.bg : item.en}
+              </CheckboxLabel>
+            ))}
+          </CheckboxGroup>
+        </FilterGroup>
+
+        {/* Duration */}
+        <FilterGroup>
+          <Label>
+            <Clock />
+            {language === 'bg' ? 'Продължителност' : 'Duration'}
+          </Label>
+          <CheckboxGroup>
+            {durations.map(item => (
+              <CheckboxLabel
+                key={item.id}
+                $checked={filters.durations.includes(item.id)}
+              >
+                <input
+                  type="checkbox"
+                  checked={filters.durations.includes(item.id)}
+                  onChange={() => handleToggle('durations', item.id)}
+                />
+                {language === 'bg' ? item.bg : item.en}
+              </CheckboxLabel>
+            ))}
+          </CheckboxGroup>
+        </FilterGroup>
+
+        {/* Type */}
+        <FilterGroup>
+          <Label>
+            <Crown />
+            {language === 'bg' ? 'Тип' : 'Type'}
+          </Label>
+          <CheckboxGroup>
+            {experienceTypes.map(item => (
+              <CheckboxLabel
+                key={item.id}
+                $checked={filters.types.includes(item.id)}
+              >
+                <input
+                  type="checkbox"
+                  checked={filters.types.includes(item.id)}
+                  onChange={() => handleToggle('types', item.id)}
+                />
+                {language === 'bg' ? item.bg : item.en}
+              </CheckboxLabel>
+            ))}
+          </CheckboxGroup>
+        </FilterGroup>
+
+        {/* Availability */}
+        <FilterGroup>
+          <Label>
+            <Calendar />
+            {language === 'bg' ? 'Наличност' : 'Availability'}
+          </Label>
+          <CheckboxGroup>
+            {availabilityOptions.map(item => (
+              <CheckboxLabel
+                key={item.id}
+                $checked={filters.availability.includes(item.id)}
+              >
+                <input
+                  type="checkbox"
+                  checked={filters.availability.includes(item.id)}
+                  onChange={() => handleToggle('availability', item.id)}
+                />
+                {language === 'bg' ? item.bg : item.en}
+              </CheckboxLabel>
+            ))}
+          </CheckboxGroup>
+        </FilterGroup>
+
+        {/* Format */}
+        <FilterGroup>
+          <Label>
+            <Compass />
+            {language === 'bg' ? 'Формат' : 'Format'}
+          </Label>
+          <CheckboxGroup>
+            {formats.map(item => (
+              <CheckboxLabel
+                key={item.id}
+                $checked={filters.formats.includes(item.id)}
+              >
+                <input
+                  type="checkbox"
+                  checked={filters.formats.includes(item.id)}
+                  onChange={() => handleToggle('formats', item.id)}
+                />
+                {language === 'bg' ? item.bg : item.en}
+              </CheckboxLabel>
+            ))}
+          </CheckboxGroup>
+        </FilterGroup>
+
+        {/* Season */}
+        <FilterGroup>
+          <Label>
+            <Sun />
+            {language === 'bg' ? 'Сезон' : 'Season'}
+          </Label>
+          <CheckboxGroup>
+            {seasons.map(item => (
+              <CheckboxLabel
+                key={item.id}
+                $checked={filters.seasons.includes(item.id)}
+              >
+                <input
+                  type="checkbox"
+                  checked={filters.seasons.includes(item.id)}
+                  onChange={() => handleToggle('seasons', item.id)}
+                />
+                {language === 'bg' ? item.bg : item.en}
+              </CheckboxLabel>
+            ))}
+          </CheckboxGroup>
+        </FilterGroup>
+
+        {/* Participation */}
+        <FilterGroup>
+          <Label>
+            <Users />
+            {language === 'bg' ? 'Тип участие' : 'Participation'}
+          </Label>
+          <CheckboxGroup>
+            {participations.map(item => (
+              <CheckboxLabel
+                key={item.id}
+                $checked={filters.participations.includes(item.id)}
+              >
+                <input
+                  type="checkbox"
+                  checked={filters.participations.includes(item.id)}
+                  onChange={() => handleToggle('participations', item.id)}
+                />
+                {language === 'bg' ? item.bg : item.en}
+              </CheckboxLabel>
+            ))}
+          </CheckboxGroup>
+        </FilterGroup>
+
+        {/* Rating */}
+        <FilterGroup>
+          <Label>
+            <Star />
+            {language === 'bg' ? 'Рейтинг' : 'Rating'}
+            <LabelHint>(Google Maps)</LabelHint>
+          </Label>
+          <CheckboxGroup>
+            {ratingRanges.map(range => (
+              <CheckboxLabel
+                key={range.id}
+                $checked={filters.ratingRanges.includes(range.id)}
+              >
+                <input
+                  type="checkbox"
+                  checked={filters.ratingRanges.includes(range.id)}
+                  onChange={() => handleToggle('ratingRanges', range.id)}
+                />
+                {range.label}
+              </CheckboxLabel>
+            ))}
+          </CheckboxGroup>
+        </FilterGroup>
+
+        {/* Price Level */}
+        <FilterGroup>
+          <Label>
+            <DollarSign />
+            {language === 'bg' ? 'Ценово ниво' : 'Price Level'}
+          </Label>
+          <CheckboxGroup>
+            {priceLevels.map(level => (
+              <CheckboxLabel
+                key={level.id}
+                $checked={filters.priceLevels.includes(level.id)}
+              >
+                <input
+                  type="checkbox"
+                  checked={filters.priceLevels.includes(level.id)}
+                  onChange={() => handleToggle('priceLevels', level.id)}
+                />
+                {language === 'bg' ? level.bg : level.en}
+              </CheckboxLabel>
+            ))}
+          </CheckboxGroup>
+        </FilterGroup>
+      </FilterGrid>
+
+      {/* Sort By */}
+      <SortRow>
+        <SortLabel>
+          <ArrowUpDown />
+          {language === 'bg' ? 'Сортирай:' : 'Sort:'}
+        </SortLabel>
+        {sortOptions.map(opt => (
+          <SortPill
+            key={opt.id}
+            $active={filters.sortBy === opt.id}
+            onClick={() => onChange({ ...filters, sortBy: opt.id })}
+          >
+            {language === 'bg' ? opt.bg : opt.en}
+          </SortPill>
+        ))}
+      </SortRow>
+
+      {activeCount > 0 && (
+        <FilterActions>
+          <Button variant="ghost" size="small" onClick={handleClearAll}>
+            {language === 'bg' ? 'Изчисти всички' : 'Clear all'}
+          </Button>
+        </FilterActions>
+      )}
+    </>
+  );
+
+  if (sidebar) {
+    return <>{innerContent}</>;
+  }
+
   return (
     <FilterContainer
       initial={{ opacity: 0, y: -10 }}
@@ -562,298 +865,7 @@ const ExperiencesFilters: React.FC<ExperiencesFiltersProps> = ({
             exit={{ height: 0, opacity: 0 }}
             transition={{ duration: 0.2 }}
           >
-            {/* Search */}
-            <SearchRow>
-              <SearchInput>
-                <Search />
-                <input
-                  type="text"
-                  placeholder={language === 'bg' ? 'Търси изживяване...' : 'Search experiences...'}
-                  defaultValue={filters.search}
-                  onChange={handleSearchChange}
-                />
-              </SearchInput>
-            </SearchRow>
-
-            <FilterGrid>
-              {/* Category */}
-              <CategoryFilterGroup>
-                <Label>
-                  <LayoutGrid />
-                  {language === 'bg' ? 'Категория' : 'Category'}
-                </Label>
-                <CheckboxGroup>
-                  {experiencesCategories.map(cat => (
-                    <CheckboxLabel
-                      key={cat.id}
-                      $checked={filters.categories.includes(cat.id)}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={filters.categories.includes(cat.id)}
-                        onChange={() => handleCategoryToggle(cat.id)}
-                      />
-                      {language === 'bg' ? cat.name.bg : cat.name.en}
-                    </CheckboxLabel>
-                  ))}
-                </CheckboxGroup>
-                {experiencesCategories
-                  .filter(cat => filters.categories.includes(cat.id))
-                  .map(cat => (
-                    <SubcategoryGroup key={`sub-${cat.id}`}>
-                      <SubcategoryParentLabel>
-                        {language === 'bg' ? cat.name.bg : cat.name.en}
-                      </SubcategoryParentLabel>
-                      {cat.subcategories.map(sub => (
-                        <SubcategoryLabel
-                          key={sub.id}
-                          $checked={filters.categories.includes(sub.id)}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={filters.categories.includes(sub.id)}
-                            onChange={() => handleSubcategoryToggle(sub.id, cat.id)}
-                          />
-                          {language === 'bg' ? sub.name.bg : sub.name.en}
-                        </SubcategoryLabel>
-                      ))}
-                    </SubcategoryGroup>
-                  ))}
-              </CategoryFilterGroup>
-
-              {/* Location */}
-              <FilterGroup>
-                <Label>
-                  <MapPin />
-                  {language === 'bg' ? 'Локация' : 'Location'}
-                </Label>
-                <CheckboxGroup>
-                  {locations.map(item => (
-                    <CheckboxLabel
-                      key={item.id}
-                      $checked={filters.locations.includes(item.id)}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={filters.locations.includes(item.id)}
-                        onChange={() => handleToggle('locations', item.id)}
-                      />
-                      {language === 'bg' ? item.bg : item.en}
-                    </CheckboxLabel>
-                  ))}
-                </CheckboxGroup>
-              </FilterGroup>
-
-              {/* Duration */}
-              <FilterGroup>
-                <Label>
-                  <Clock />
-                  {language === 'bg' ? 'Продължителност' : 'Duration'}
-                </Label>
-                <CheckboxGroup>
-                  {durations.map(item => (
-                    <CheckboxLabel
-                      key={item.id}
-                      $checked={filters.durations.includes(item.id)}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={filters.durations.includes(item.id)}
-                        onChange={() => handleToggle('durations', item.id)}
-                      />
-                      {language === 'bg' ? item.bg : item.en}
-                    </CheckboxLabel>
-                  ))}
-                </CheckboxGroup>
-              </FilterGroup>
-
-              {/* Type (group/private/VIP) */}
-              <FilterGroup>
-                <Label>
-                  <Crown />
-                  {language === 'bg' ? 'Тип' : 'Type'}
-                </Label>
-                <CheckboxGroup>
-                  {experienceTypes.map(item => (
-                    <CheckboxLabel
-                      key={item.id}
-                      $checked={filters.types.includes(item.id)}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={filters.types.includes(item.id)}
-                        onChange={() => handleToggle('types', item.id)}
-                      />
-                      {language === 'bg' ? item.bg : item.en}
-                    </CheckboxLabel>
-                  ))}
-                </CheckboxGroup>
-              </FilterGroup>
-
-              {/* Availability */}
-              <FilterGroup>
-                <Label>
-                  <Calendar />
-                  {language === 'bg' ? 'Наличност' : 'Availability'}
-                </Label>
-                <CheckboxGroup>
-                  {availabilityOptions.map(item => (
-                    <CheckboxLabel
-                      key={item.id}
-                      $checked={filters.availability.includes(item.id)}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={filters.availability.includes(item.id)}
-                        onChange={() => handleToggle('availability', item.id)}
-                      />
-                      {language === 'bg' ? item.bg : item.en}
-                    </CheckboxLabel>
-                  ))}
-                </CheckboxGroup>
-              </FilterGroup>
-
-              {/* Format */}
-              <FilterGroup>
-                <Label>
-                  <Compass />
-                  {language === 'bg' ? 'Формат' : 'Format'}
-                </Label>
-                <CheckboxGroup>
-                  {formats.map(item => (
-                    <CheckboxLabel
-                      key={item.id}
-                      $checked={filters.formats.includes(item.id)}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={filters.formats.includes(item.id)}
-                        onChange={() => handleToggle('formats', item.id)}
-                      />
-                      {language === 'bg' ? item.bg : item.en}
-                    </CheckboxLabel>
-                  ))}
-                </CheckboxGroup>
-              </FilterGroup>
-
-              {/* Season */}
-              <FilterGroup>
-                <Label>
-                  <Sun />
-                  {language === 'bg' ? 'Сезон' : 'Season'}
-                </Label>
-                <CheckboxGroup>
-                  {seasons.map(item => (
-                    <CheckboxLabel
-                      key={item.id}
-                      $checked={filters.seasons.includes(item.id)}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={filters.seasons.includes(item.id)}
-                        onChange={() => handleToggle('seasons', item.id)}
-                      />
-                      {language === 'bg' ? item.bg : item.en}
-                    </CheckboxLabel>
-                  ))}
-                </CheckboxGroup>
-              </FilterGroup>
-
-              {/* Participation */}
-              <FilterGroup>
-                <Label>
-                  <Users />
-                  {language === 'bg' ? 'Тип участие' : 'Participation'}
-                </Label>
-                <CheckboxGroup>
-                  {participations.map(item => (
-                    <CheckboxLabel
-                      key={item.id}
-                      $checked={filters.participations.includes(item.id)}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={filters.participations.includes(item.id)}
-                        onChange={() => handleToggle('participations', item.id)}
-                      />
-                      {language === 'bg' ? item.bg : item.en}
-                    </CheckboxLabel>
-                  ))}
-                </CheckboxGroup>
-              </FilterGroup>
-
-              {/* Rating */}
-              <FilterGroup>
-                <Label>
-                  <Star />
-                  {language === 'bg' ? 'Рейтинг' : 'Rating'}
-                  <LabelHint>(Google Maps)</LabelHint>
-                </Label>
-                <CheckboxGroup>
-                  {ratingRanges.map(range => (
-                    <CheckboxLabel
-                      key={range.id}
-                      $checked={filters.ratingRanges.includes(range.id)}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={filters.ratingRanges.includes(range.id)}
-                        onChange={() => handleToggle('ratingRanges', range.id)}
-                      />
-                      {range.label}
-                    </CheckboxLabel>
-                  ))}
-                </CheckboxGroup>
-              </FilterGroup>
-
-              {/* Price Level */}
-              <FilterGroup>
-                <Label>
-                  <DollarSign />
-                  {language === 'bg' ? 'Ценово ниво' : 'Price Level'}
-                </Label>
-                <CheckboxGroup>
-                  {priceLevels.map(level => (
-                    <CheckboxLabel
-                      key={level.id}
-                      $checked={filters.priceLevels.includes(level.id)}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={filters.priceLevels.includes(level.id)}
-                        onChange={() => handleToggle('priceLevels', level.id)}
-                      />
-                      {language === 'bg' ? level.bg : level.en}
-                    </CheckboxLabel>
-                  ))}
-                </CheckboxGroup>
-              </FilterGroup>
-            </FilterGrid>
-
-            {/* Sort By */}
-            <SortRow>
-              <SortLabel>
-                <ArrowUpDown />
-                {language === 'bg' ? 'Сортирай:' : 'Sort:'}
-              </SortLabel>
-              {sortOptions.map(opt => (
-                <SortPill
-                  key={opt.id}
-                  $active={filters.sortBy === opt.id}
-                  onClick={() => onChange({ ...filters, sortBy: opt.id })}
-                >
-                  {language === 'bg' ? opt.bg : opt.en}
-                </SortPill>
-              ))}
-            </SortRow>
-
-            {activeCount > 0 && (
-              <FilterActions>
-                <Button variant="ghost" size="small" onClick={handleClearAll}>
-                  {language === 'bg' ? 'Изчисти всички' : 'Clear all'}
-                </Button>
-              </FilterActions>
-            )}
+            {innerContent}
           </motion.div>
         )}
       </AnimatePresence>

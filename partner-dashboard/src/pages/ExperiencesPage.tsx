@@ -341,6 +341,71 @@ const ContentSection = styled.div`
   padding: 3rem 0;
 `;
 
+const LayoutGrid = styled.div`
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: 2rem;
+  align-items: start;
+
+  @media (max-width: 1024px) {
+    grid-template-columns: 1fr;
+  }
+`;
+
+const FilterSidebar = styled.aside<{ $showMobile?: boolean }>`
+  background: var(--color-background, #ffffff);
+  border: 1px solid var(--color-border, #e5e7eb);
+  border-radius: 1rem;
+  padding: 1.25rem;
+  position: sticky;
+  top: 5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+
+  [data-theme="dark"] & {
+    background: #1f2937;
+    border-color: #374151;
+  }
+
+  @media (max-width: 1024px) {
+    position: static;
+    display: ${props => props.$showMobile ? 'flex' : 'none'};
+  }
+`;
+
+const MobileFilterToggle = styled.button`
+  display: none;
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--color-border, #e5e7eb);
+  border-radius: 0.75rem;
+  background: var(--color-background, #ffffff);
+  color: var(--color-text-primary, #374151);
+  font-size: 0.9375rem;
+  font-weight: 500;
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  font-family: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+
+  [data-theme="dark"] & {
+    background: #1f2937;
+    border-color: #374151;
+    color: #d1d5db;
+  }
+
+  @media (max-width: 1024px) {
+    display: flex;
+  }
+`;
+
+const MainContent = styled.main`
+  min-height: 60vh;
+`;
+
 const ResultsHeader = styled.div`
   display: flex;
   align-items: center;
@@ -358,10 +423,10 @@ const ResultCount = styled.p`
 
 const ExperiencesGrid = styled.div`
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
   gap: 1.5rem;
 
-  @media (max-width: 768px) {
+  @media (max-width: 640px) {
     grid-template-columns: 1fr;
   }
 `;
@@ -537,6 +602,7 @@ const ExperiencesPage: React.FC = () => {
 
   // Filters
   const [filters, setFilters] = useState<ExperiencesFiltersState>(defaultExperiencesFilters);
+  const [showMobileFilters, setShowMobileFilters] = useState(false);
 
   // Booking modal
   const [selectedEntity, setSelectedEntity] = useState<Entity | null>(null);
@@ -613,44 +679,58 @@ const ExperiencesPage: React.FC = () => {
       {/* Content */}
       <ContentSection>
         <Container>
-          {/* Filters */}
-          <ExperiencesFilters filters={filters} onChange={setFilters} />
+          {/* Mobile filter toggle */}
+          <MobileFilterToggle onClick={() => setShowMobileFilters(v => !v)}>
+            <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+            </svg>
+            {language === 'bg' ? 'Филтри' : 'Filters'}
+          </MobileFilterToggle>
 
-          {/* Results */}
-          <ResultsHeader>
-            <ResultCount>{t.results(filteredEntities.length)}</ResultCount>
-          </ResultsHeader>
+          <LayoutGrid>
+            {/* Sidebar Filters */}
+            <FilterSidebar $showMobile={showMobileFilters}>
+              <ExperiencesFilters filters={filters} onChange={setFilters} sidebar />
+            </FilterSidebar>
 
-          {filteredEntities.length > 0 ? (
-            <ExperiencesGrid>
-              {filteredEntities.map((entity, index) => (
-                <motion.div
-                  key={entity.id}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.4, delay: index * 0.08 }}
-                >
-                  <OfferCard
-                    entity={entity}
-                    onBookClick={handleBookClick}
-                  />
-                </motion.div>
-              ))}
-            </ExperiencesGrid>
-          ) : (
-            <EmptyState>
-              <EmptyIcon>🔍</EmptyIcon>
-              <EmptyTitle>{t.emptyTitle}</EmptyTitle>
-              <EmptyText>{t.emptyText}</EmptyText>
-              <Button
-                variant="ghost"
-                size="small"
-                onClick={() => setFilters(defaultExperiencesFilters)}
-              >
-                {t.clearFilters}
-              </Button>
-            </EmptyState>
-          )}
+            {/* Results */}
+            <MainContent>
+              <ResultsHeader>
+                <ResultCount>{t.results(filteredEntities.length)}</ResultCount>
+              </ResultsHeader>
+
+              {filteredEntities.length > 0 ? (
+                <ExperiencesGrid>
+                  {filteredEntities.map((entity, index) => (
+                    <motion.div
+                      key={entity.id}
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.4, delay: index * 0.08 }}
+                    >
+                      <OfferCard
+                        entity={entity}
+                        onBookClick={handleBookClick}
+                      />
+                    </motion.div>
+                  ))}
+                </ExperiencesGrid>
+              ) : (
+                <EmptyState>
+                  <EmptyIcon>🔍</EmptyIcon>
+                  <EmptyTitle>{t.emptyTitle}</EmptyTitle>
+                  <EmptyText>{t.emptyText}</EmptyText>
+                  <Button
+                    variant="ghost"
+                    size="small"
+                    onClick={() => setFilters(defaultExperiencesFilters)}
+                  >
+                    {t.clearFilters}
+                  </Button>
+                </EmptyState>
+              )}
+            </MainContent>
+          </LayoutGrid>
         </Container>
       </ContentSection>
 
