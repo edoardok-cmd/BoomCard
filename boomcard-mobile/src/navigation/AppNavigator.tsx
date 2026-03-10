@@ -24,6 +24,7 @@ import LoginScreen from '../screens/Auth/LoginScreen';
 import RegisterScreen from '../screens/Auth/RegisterScreen';
 import PlanSelectionScreen from '../screens/Auth/PlanSelectionScreen';
 import CheckoutScreen from '../screens/Auth/CheckoutScreen';
+import ForgotPasswordScreen from '../screens/Auth/ForgotPasswordScreen';
 
 // Main App Screens
 import DashboardScreen from '../screens/Dashboard/DashboardScreen';
@@ -62,6 +63,7 @@ const AuthNavigator = () => {
       }}
     >
       <Stack.Screen name="Login" component={LoginScreen} />
+      <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} options={{ headerShown: false }} />
       <Stack.Screen name="PlanSelection" component={PlanSelectionScreen} />
       <Stack.Screen name="Checkout" component={CheckoutScreen} />
       <Stack.Screen name="Register" component={RegisterScreen} />

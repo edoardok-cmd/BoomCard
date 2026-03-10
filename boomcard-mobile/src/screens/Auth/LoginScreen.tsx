@@ -194,6 +194,13 @@ const LoginScreen = ({ navigation }: any) => {
           />
 
           <TouchableOpacity
+            style={styles.forgotPasswordButton}
+            onPress={() => navigation.navigate('ForgotPassword')}
+          >
+            <Text style={styles.forgotPasswordText}>{t('auth.forgotPassword')}</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
             style={[styles.button, isLoading && styles.buttonDisabled]}
             onPress={handleLogin}
             disabled={isLoading}
@@ -270,6 +277,15 @@ const getStyles = (theme: any) => StyleSheet.create({
   },
   form: {
     marginBottom: 24,
+  },
+  forgotPasswordButton: {
+    alignSelf: 'flex-end',
+    marginBottom: 8,
+  },
+  forgotPasswordText: {
+    fontSize: 13,
+    color: theme.colors.gold,
+    fontWeight: '500',
   },
   input: {
     backgroundColor: theme.colors.surface,

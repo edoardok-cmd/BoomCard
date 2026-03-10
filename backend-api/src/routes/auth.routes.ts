@@ -200,6 +200,48 @@ router.put(
 );
 
 /**
+ * POST /api/auth/forgot-password
+ * Send password reset OTP to email
+ */
+router.post(
+  '/forgot-password',
+  asyncHandler(async (req: Request, res: Response) => {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ error: 'Validation Error', message: 'Email is required' });
+    }
+
+    const result = await AuthService.forgotPassword(email);
+
+    res.json({ success: true, message: result.message });
+  })
+);
+
+/**
+ * POST /api/auth/reset-password
+ * Reset password using OTP
+ */
+router.post(
+  '/reset-password',
+  asyncHandler(async (req: Request, res: Response) => {
+    const { email, otp, newPassword } = req.body;
+
+    if (!email || !otp || !newPassword) {
+      return res.status(400).json({ error: 'Validation Error', message: 'Email, OTP, and new password are required' });
+    }
+
+    if (newPassword.length < 8) {
+      return res.status(400).json({ error: 'Validation Error', message: 'Password must be at least 8 characters' });
+    }
+
+    const result = await AuthService.resetPassword(email, otp, newPassword);
+
+    res.json({ success: true, message: result.message });
+  })
+);
+
+/**
  * POST /api/auth/change-password
  * Change user password
  */

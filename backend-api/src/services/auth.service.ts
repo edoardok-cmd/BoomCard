@@ -1,4 +1,5 @@
 import bcrypt from 'bcrypt';
+import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import { v4 as uuid } from 'uuid';
 import { prisma } from '../lib/prisma';
@@ -561,6 +562,75 @@ export class AuthService {
     logger.info(`Consent recorded: ${type} for user ${userId}`);
 
     return user;
+  }
+
+  /**
+   * Forgot password — generate OTP and send email
+   */
+  static async forgotPassword(email: string) {
+    // Always return success to prevent email enumeration
+    const user = await prisma.user.findUnique({ where: { email: email.toLowerCase() } });
+
+    if (user) {
+      const otp = Math.floor(100000 + Math.random() * 900000).toString(); // 6-digit
+      const hashedOtp = crypto.createHash('sha256').update(otp).digest('hex');
+      const expires = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
+
+      await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          passwordResetToken: hashedOtp,
+          passwordResetExpires: expires,
+        },
+      });
+
+      await emailService.sendPasswordResetEmail({
+        customerName: user.firstName || user.email,
+        email: user.email,
+        otp,
+      });
+
+      logger.info(`Password reset OTP sent to ${user.email}`);
+    }
+
+    return { message: 'If an account with that email exists, a reset code has been sent.' };
+  }
+
+  /**
+   * Reset password using OTP
+   */
+  static async resetPassword(email: string, otp: string, newPassword: string) {
+    const hashedOtp = crypto.createHash('sha256').update(otp).digest('hex');
+
+    const user = await prisma.user.findFirst({
+      where: {
+        email: email.toLowerCase(),
+        passwordResetToken: hashedOtp,
+        passwordResetExpires: { gt: new Date() },
+      },
+    });
+
+    if (!user) {
+      throw new AppError('Invalid or expired reset code', 400);
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, 12);
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        passwordHash,
+        passwordResetToken: null,
+        passwordResetExpires: null,
+      },
+    });
+
+    // Invalidate all refresh tokens
+    await prisma.refreshToken.deleteMany({ where: { userId: user.id } });
+
+    logger.info(`Password reset successful for ${user.email}`);
+
+    return { message: 'Password reset successful' };
   }
 
   /**

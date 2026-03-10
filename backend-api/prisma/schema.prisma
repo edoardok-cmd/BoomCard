@@ -43,6 +43,10 @@ model User {
   lastLoginAt      DateTime?
   stripeCustomerId String?    @unique // Stripe customer ID for payments
 
+  // Password Reset
+  passwordResetToken   String?
+  passwordResetExpires DateTime?
+
   // GDPR Consent Tracking
   termsAcceptedAt    DateTime?
   privacyAcceptedAt  DateTime?
