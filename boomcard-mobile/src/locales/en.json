@@ -235,6 +235,8 @@
     "upgradeTo": "Upgrade to",
     "upgradeBenefits": "Benefits:",
     "upgradeMessage": "Contact support to upgrade your card.",
+    "validFrom": "Valid from",
+    "validUntil": "Valid until",
     "tapToShowQR": "Tap to show QR",
     "tapToFlipBack": "Tap to flip back",
     "maybeLater": "Maybe Later",

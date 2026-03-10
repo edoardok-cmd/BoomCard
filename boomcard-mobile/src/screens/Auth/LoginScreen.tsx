@@ -291,7 +291,7 @@ const getStyles = (theme: any) => StyleSheet.create({
     backgroundColor: theme.colors.surface,
     borderRadius: 12,
     padding: 16,
-    fontSize: 16,
+    fontSize: 14,
     marginBottom: 16,
     color: theme.colors.onSurface,
   },

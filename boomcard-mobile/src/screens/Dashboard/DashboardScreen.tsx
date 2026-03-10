@@ -510,7 +510,7 @@ const getStyles = (theme: any, isDarkMode: boolean) => StyleSheet.create({
     letterSpacing: 1.5,
   },
   heroName: {
-    fontSize: 30,
+    fontSize: 24,
     fontWeight: '800',
     color: '#FFFFFF',
   },
@@ -609,7 +609,7 @@ const getStyles = (theme: any, isDarkMode: boolean) => StyleSheet.create({
     letterSpacing: 0.5,
   },
   planName: {
-    fontSize: 20,
+    fontSize: 17,
     fontWeight: '700',
     color: '#FFFFFF',
     letterSpacing: 1,

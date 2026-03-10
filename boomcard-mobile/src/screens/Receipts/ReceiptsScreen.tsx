@@ -377,6 +377,7 @@ const getStyles = (theme: any, isDarkMode: boolean) => StyleSheet.create({
 
   listContent: {
     padding: 16,
+    paddingTop: 28,
     paddingBottom: 32,
   },
   emptyContainer: {
