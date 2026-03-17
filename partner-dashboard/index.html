@@ -300,9 +300,12 @@
 
     <!-- Paysera Quality Sign -->
     <style>
-      /* Move Paysera badge to bottom-left on desktop */
+      /* Move Paysera badge to bottom-left on desktop.
+         The script injects a div with id="wtpQualitySign_fixedCSS" */
+      #wtpQualitySign_fixedCSS,
       #paysera-quality-sign,
       [id^="paysera"],
+      [id*="QualitySign"],
       iframe[src*="paysera"],
       div[class*="paysera"],
       .paysera-quality-sign {
@@ -311,8 +314,10 @@
       }
       /* Hide on tablet and mobile (< 1024px) */
       @media (max-width: 1024px) {
+        #wtpQualitySign_fixedCSS,
         #paysera-quality-sign,
         [id^="paysera"],
+        [id*="QualitySign"],
         iframe[src*="paysera"],
         div[class*="paysera"],
         .paysera-quality-sign {
@@ -328,34 +333,54 @@
         // Only load Paysera Quality Sign on desktop (> 1024px)
         if (window.innerWidth <= 1024) return;
 
-        const script = document.createElement('script');
-        const dateToday = new Date();
-        const todayFullDate = dateToday.getDate() + '-' + (dateToday.getMonth() + 1) + '-' + dateToday.getFullYear();
+        function moveToLeft(el) {
+            el.style.setProperty('left', '16px', 'important');
+            el.style.setProperty('right', 'auto', 'important');
+        }
+
+        function isPayseraEl(el) {
+            var id = el.id || '';
+            var cls = (typeof el.className === 'string') ? el.className : '';
+            var src = el.src || el.getAttribute('src') || '';
+            return id.includes('QualitySign') || id.toLowerCase().includes('paysera') ||
+                   cls.toLowerCase().includes('paysera') || src.toLowerCase().includes('paysera');
+        }
+
+        // MutationObserver: catch the element when the Paysera script injects it
+        var observer = new MutationObserver(function(mutations) {
+            mutations.forEach(function(mutation) {
+                mutation.addedNodes.forEach(function(node) {
+                    if (node.nodeType !== 1) return;
+                    if (isPayseraEl(node)) moveToLeft(node);
+                    // Also scan descendants (script may inject a wrapper containing the badge)
+                    node.querySelectorAll && node.querySelectorAll('*').forEach(function(child) {
+                        if (isPayseraEl(child)) moveToLeft(child);
+                    });
+                });
+            });
+        });
+
+        var script = document.createElement('script');
+        var dateToday = new Date();
+        var todayFullDate = dateToday.getDate() + '-' + (dateToday.getMonth() + 1) + '-' + dateToday.getFullYear();
 
         script.src = 'https://bank.paysera.com/js/compiled/quality-sign.js?v=' + todayFullDate;
         script.setAttribute('data-paysera-project-id', 255573);
         script.setAttribute('data-lang', "bg");
         script.async = true;
 
-        document.head.appendChild(script);
+        // Start observing before appending the script so we don't miss the injection
+        function startObserving() {
+            observer.observe(document.body, { childList: true, subtree: true });
+        }
 
-        // MutationObserver fallback: override inline styles set by the Paysera script
-        const observer = new MutationObserver(function(mutations) {
-            mutations.forEach(function(mutation) {
-                mutation.addedNodes.forEach(function(node) {
-                    if (node.nodeType !== 1) return;
-                    const el = node;
-                    const id = el.id || '';
-                    const cls = el.className || '';
-                    const src = el.src || '';
-                    if (id.startsWith('paysera') || cls.includes('paysera') || src.includes('paysera')) {
-                        el.style.setProperty('left', '16px', 'important');
-                        el.style.setProperty('right', 'auto', 'important');
-                    }
-                });
-            });
-        });
-        observer.observe(document.body, { childList: true, subtree: true });
+        if (document.body) {
+            startObserving();
+        } else {
+            document.addEventListener('DOMContentLoaded', startObserving);
+        }
+
+        document.head.appendChild(script);
     })();
     </script>
   </head>
