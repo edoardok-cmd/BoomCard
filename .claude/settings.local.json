@@ -269,7 +269,16 @@
       "Bash(tsc:*)",
       "Bash(npm run:*)",
       "Bash(flyctl ssh console:*)",
-      "mcp__playwright__browser_install"
+      "mcp__playwright__browser_install",
+      "WebFetch(domain:mobile.boomcard.bg)",
+      "Bash(gh api:*)",
+      "mcp__playwright__browser_navigate_back",
+      "Bash(git -C /Users/administrator/Documents/BoomCard/boomcard-mobile status)",
+      "Bash(command tsc --noEmit --project /Users/administrator/Documents/BoomCard/backend-api/tsconfig.json)",
+      "Bash(# Kill any existing expo processes first pkill -f \"\"expo start\"\" ; sleep 2 # Start expo and capture output to a file cd /Users/administrator/Documents/BoomCard/boomcard-mobile npx expo start 2>&1)",
+      "Bash(fly secrets:*)",
+      "Bash(fly status:*)",
+      "Bash(Premium campaigns\" to LIGHT and PREMIUM plans\n- Remove \"Additional sticker bonus\" from PREMIUM\n- Replace \"Standard\" plan name on dashboard with actual plan names\n  \\(Lite Premium, Basic\\)\n- Update card tiers, locale translations, and seed data\n\nCo-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>\nEOF\n\\)\")"
     ],
     "deny": [],
     "ask": []

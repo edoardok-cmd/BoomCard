@@ -1,7 +1,13 @@
 {
   "permissions": {
     "allow": [
-      "mcp__playwright__browser_take_screenshot"
+      "mcp__playwright__browser_take_screenshot",
+      "Bash(export PATH=\"$PATH:/usr/local/bin:/opt/homebrew/bin:$HOME/.nvm/versions/node/v24.14.0/bin:/usr/bin\")",
+      "Bash(/Users/administrator/.nvm/versions/node/v24.14.0/bin/npx eas-cli build:list --platform android --limit 3 --non-interactive)",
+      "Bash(export PATH=\"/Users/administrator/.nvm/versions/node/v24.14.0/bin:$PATH\")",
+      "Bash(source \"$NVM_DIR/nvm.sh\")",
+      "Bash(source ~/.nvm/nvm.sh)",
+      "Bash(/Users/administrator/.nvm/versions/node/v24.14.0/bin/eas build:list --platform android --limit 2 --non-interactive)"
     ]
   }
 }

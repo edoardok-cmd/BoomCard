@@ -236,6 +236,12 @@ async function staleWhileRevalidate(request, cacheName) {
       cache.put(request, response.clone());
     }
     return response;
+  }).catch((error) => {
+    // Suppress background revalidation errors when we already have a cached response
+    if (!cached) {
+      throw error;
+    }
+    console.warn('[SW] Background revalidation failed (serving from cache):', error);
   });
 
   return cached || fetchPromise;
@@ -333,6 +339,11 @@ self.addEventListener('message', (event) => {
 
   if (event.data.type === 'SKIP_WAITING') {
     self.skipWaiting();
+    // Acknowledge so the sender's port doesn't hang open
+    if (event.ports && event.ports[0]) {
+      event.ports[0].postMessage({ type: 'SKIP_WAITING_ACK' });
+    }
+    return;
   }
 
   if (event.data.type === 'CACHE_URLS') {
@@ -341,6 +352,10 @@ self.addEventListener('message', (event) => {
         return cache.addAll(event.data.urls);
       })
     );
+    if (event.ports && event.ports[0]) {
+      event.ports[0].postMessage({ type: 'CACHE_URLS_ACK' });
+    }
+    return;
   }
 
   if (event.data.type === 'CLEAR_CACHE') {
@@ -351,6 +366,15 @@ self.addEventListener('message', (event) => {
         );
       })
     );
+    if (event.ports && event.ports[0]) {
+      event.ports[0].postMessage({ type: 'CLEAR_CACHE_ACK' });
+    }
+    return;
+  }
+
+  // Unknown message — acknowledge to prevent "message port closed" warnings
+  if (event.ports && event.ports[0]) {
+    event.ports[0].postMessage({ type: 'ACK' });
   }
 });
 
