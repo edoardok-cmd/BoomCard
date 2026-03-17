@@ -1256,28 +1256,19 @@ const HomePage: React.FC = () => {
             </BodyText>
           </div>
 
-          {isLoadingOffers ? (
-            <div className="text-center py-12">
-              <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2" style={{ borderColor: 'var(--color-primary)' }}></div>
-              <BodyText className="mt-4" style={{ color: 'var(--color-text-secondary)' }}>
-                {language === 'bg' ? 'Зареждане на оферти...' : 'Loading offers...'}
-              </BodyText>
-            </div>
-          ) : (
-            <TopOffersGrid>
-              {(topEntities.length > 0 ? topEntities : fallbackEntities).slice(0, 6).map((entity: Entity, index: number) => (
-                <motion.div
-                  key={entity.id}
-                  initial={{ opacity: 0, y: 30 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true }}
-                  transition={{ duration: 0.5, delay: index * 0.1 }}
-                >
-                  <OfferCard entity={entity} />
-                </motion.div>
-              ))}
-            </TopOffersGrid>
-          )}
+          <TopOffersGrid>
+            {(topEntities.length > 0 ? topEntities : fallbackEntities).slice(0, 6).map((entity: Entity, index: number) => (
+              <motion.div
+                key={entity.id}
+                initial={{ opacity: 0, y: 30 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.5, delay: index * 0.1 }}
+              >
+                <OfferCard entity={entity} />
+              </motion.div>
+            ))}
+          </TopOffersGrid>
 
           <div className="text-center mt-10">
             <Link to="/offers" style={{ textDecoration: 'none' }}>
