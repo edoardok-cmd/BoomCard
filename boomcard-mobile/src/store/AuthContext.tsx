@@ -8,6 +8,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import AuthApi from '../api/auth.api';
 import StorageService from '../services/storage.service';
+import { authLogoutEmitter } from '../api/client';
 import type { User, LoginRequest, RegisterRequest, AuthResponse } from '../types';
 
 interface AuthContextType {
@@ -32,6 +33,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     loadUserFromStorage();
   }, []);
+
+  // Listen for forced logout when token refresh fails
+  useEffect(() => {
+    const handleForceLogout = () => {
+      setUser(null);
+      queryClient.clear();
+    };
+    authLogoutEmitter.on('logout', handleForceLogout);
+    return () => { authLogoutEmitter.off('logout', handleForceLogout); };
+  }, [queryClient]);
 
   const loadUserFromStorage = async () => {
     try {

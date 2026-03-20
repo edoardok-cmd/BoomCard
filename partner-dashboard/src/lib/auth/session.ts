@@ -50,11 +50,12 @@ export function createSession(user: Session['user']): Session {
 export function storeSession(session: Session): void {
   if (typeof document === 'undefined') return;
 
-  // Store access token (short-lived, httpOnly in production)
-  document.cookie = `${SESSION_COOKIE_NAME}=${session.accessToken}; path=/; max-age=${15 * 60}; SameSite=Strict`;
+  const secure = location.protocol === 'https:' ? '; Secure' : '';
+  // Store access token (short-lived)
+  document.cookie = `${SESSION_COOKIE_NAME}=${session.accessToken}; path=/; max-age=${15 * 60}; SameSite=Strict${secure}`;
 
-  // Store refresh token (long-lived, httpOnly in production)
-  document.cookie = `${REFRESH_COOKIE_NAME}=${session.refreshToken}; path=/; max-age=${7 * 24 * 60 * 60}; SameSite=Strict`;
+  // Store refresh token (long-lived)
+  document.cookie = `${REFRESH_COOKIE_NAME}=${session.refreshToken}; path=/; max-age=${7 * 24 * 60 * 60}; SameSite=Strict${secure}`;
 
   // Store user data in localStorage for quick access
   localStorage.setItem('boomcard_user', JSON.stringify(session.user));
@@ -107,8 +108,9 @@ function attemptRefresh(refreshToken: string): Session | null {
     return null;
   }
 
+  const secure = location.protocol === 'https:' ? '; Secure' : '';
   // Update access token cookie
-  document.cookie = `${SESSION_COOKIE_NAME}=${newAccessToken}; path=/; max-age=${15 * 60}; SameSite=Strict`;
+  document.cookie = `${SESSION_COOKIE_NAME}=${newAccessToken}; path=/; max-age=${15 * 60}; SameSite=Strict${secure}`;
 
   const payload = validateToken(newAccessToken);
   if (!payload) return null;

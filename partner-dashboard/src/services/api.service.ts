@@ -1,4 +1,5 @@
 import axios, { AxiosInstance, AxiosRequestConfig, InternalAxiosRequestConfig } from 'axios';
+import { getAccessToken, clearSession } from '../lib/auth/session';
 
 interface RefreshTokenResponse {
   accessToken: string;
@@ -28,7 +29,7 @@ class ApiService {
     // Request interceptor - Add auth token
     this.api.interceptors.request.use(
       (config: InternalAxiosRequestConfig) => {
-        const token = localStorage.getItem('token');
+        const token = getAccessToken();
         if (token && config.headers) {
           config.headers.Authorization = `Bearer ${token}`;
         }
@@ -65,7 +66,15 @@ class ApiService {
           this.isRefreshing = true;
 
           try {
-            const refreshToken = localStorage.getItem('refreshToken');
+            const { getCookie } = await import('../lib/auth/session').then(m => ({
+              getCookie: () => {
+                const value = `; ${document.cookie}`;
+                const parts = value.split('; boomcard_refresh=');
+                if (parts.length === 2) return parts.pop()?.split(';').shift() || null;
+                return null;
+              }
+            }));
+            const refreshToken = getCookie();
 
             if (!refreshToken) {
               throw new Error('No refresh token');
@@ -79,9 +88,10 @@ class ApiService {
 
             const { accessToken, refreshToken: newRefreshToken } = response.data;
 
-            // Store new tokens
-            localStorage.setItem('token', accessToken);
-            localStorage.setItem('refreshToken', newRefreshToken);
+            // Store new tokens in cookies
+            const secure = location.protocol === 'https:' ? '; Secure' : '';
+            document.cookie = `boomcard_session=${accessToken}; path=/; max-age=${15 * 60}; SameSite=Strict${secure}`;
+            document.cookie = `boomcard_refresh=${newRefreshToken}; path=/; max-age=${7 * 24 * 60 * 60}; SameSite=Strict${secure}`;
 
             // Update authorization header
             this.api.defaults.headers.common['Authorization'] = `Bearer ${accessToken}`;
@@ -95,8 +105,7 @@ class ApiService {
           } catch (refreshError) {
             // Refresh failed - log out user ONLY if they were authenticated
             this.processQueue(refreshError, null);
-            // Check if user was actually logged in before redirecting
-            const hadToken = !!localStorage.getItem('token');
+            const hadToken = !!getAccessToken();
             if (hadToken) {
               this.logout();
             }
@@ -139,10 +148,7 @@ class ApiService {
    * Logout user and redirect to login
    */
   private logout() {
-    localStorage.removeItem('token');
-    localStorage.removeItem('refreshToken');
-    localStorage.removeItem('user');
-    localStorage.removeItem('boomcard_auth');
+    clearSession();
     window.location.href = '/login';
   }
 
@@ -190,7 +196,8 @@ class ApiService {
    * Set auth token
    */
   setAuthToken(token: string) {
-    localStorage.setItem('token', token);
+    const secure = location.protocol === 'https:' ? '; Secure' : '';
+    document.cookie = `boomcard_session=${token}; path=/; max-age=${15 * 60}; SameSite=Strict${secure}`;
     this.api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
   }
 
@@ -198,8 +205,7 @@ class ApiService {
    * Clear auth token
    */
   clearAuthToken() {
-    localStorage.removeItem('token');
-    localStorage.removeItem('refreshToken');
+    clearSession();
     delete this.api.defaults.headers.common['Authorization'];
   }
 
@@ -207,7 +213,7 @@ class ApiService {
    * Get current auth token
    */
   getAuthToken(): string | null {
-    return localStorage.getItem('token');
+    return getAccessToken();
   }
 }
 

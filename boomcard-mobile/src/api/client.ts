@@ -14,6 +14,10 @@ import axios, {
 import { API_CONFIG } from '../constants/config';
 import StorageService from '../services/storage.service';
 import type { ApiResponse, ApiError } from '../types';
+import { EventEmitter } from 'events';
+
+// Emits 'logout' when a token refresh fails — AuthContext listens to auto-clear user state
+export const authLogoutEmitter = new EventEmitter();
 
 export class ApiClient {
   private static instance: ApiClient;
@@ -24,12 +28,6 @@ export class ApiClient {
   private readonly RETRY_DELAY = 1000; // 1 second
 
   private constructor() {
-    console.log('🔧 API Client Configuration:');
-    console.log('  BASE_URL:', API_CONFIG.BASE_URL);
-    console.log('  TIMEOUT:', API_CONFIG.TIMEOUT);
-    console.log('  EXPO_PUBLIC_API_URL:', process.env.EXPO_PUBLIC_API_URL);
-    console.log('  __DEV__:', __DEV__);
-
     this.axiosInstance = axios.create({
       baseURL: API_CONFIG.BASE_URL,
       timeout: API_CONFIG.TIMEOUT,
@@ -115,15 +113,9 @@ export class ApiClient {
             this.isRefreshing = false;
             this.refreshSubscribers = [];
 
-            // Refresh failed - clear all stored data (tokens, user data)
+            // Refresh failed - clear all stored data and notify AuthContext
             await StorageService.clearAll();
-
-            // Note: This clears tokens from storage. The AuthContext user state
-            // remains in memory until the app restarts. When the user sees
-            // "Session expired" errors, they can:
-            // 1. Manually log out (calls AuthContext.logout which clears user state)
-            // 2. Restart the app (user state is reinitialized from cleared storage)
-            // 3. In production, implement an event-based system to auto-logout
+            authLogoutEmitter.emit('logout');
             return Promise.reject(refreshError);
           }
         }
@@ -169,9 +161,28 @@ export class ApiClient {
     if (error.response) {
       // Server responded with error
       const data = error.response.data as any;
+      const statusCode = error.response.status;
+
+      // Detect tier-access denial: backend returns 404 (not 403) to avoid
+      // leaking existence of restricted resources. Surface a clear message.
+      const rawMessage: string = data?.message || data?.error || 'Server error occurred';
+      const isTierBlock =
+        statusCode === 403 ||
+        (statusCode === 404 && rawMessage.toLowerCase().includes('subscription'));
+      const isUpgradeRequired =
+        rawMessage.toLowerCase().includes('upgrade') ||
+        rawMessage.toLowerCase().includes('subscription does not include');
+
+      const message = isUpgradeRequired
+        ? rawMessage // pass the server's upgrade prompt through unchanged
+        : isTierBlock
+          ? 'This content requires a higher subscription plan.'
+          : rawMessage;
+
       return {
-        message: data?.message || data?.error || 'Server error occurred',
-        code: data?.code,
+        message,
+        code: isUpgradeRequired || isTierBlock ? 'TIER_ACCESS_DENIED' : data?.code,
+        statusCode,
         details: data?.details,
       };
     } else if (error.request) {
@@ -207,7 +218,6 @@ export class ApiClient {
       const shouldRetry = isNetworkError && retries < this.MAX_RETRIES;
 
       if (shouldRetry) {
-        console.log(`Retrying request (attempt ${retries + 1}/${this.MAX_RETRIES})...`);
         await new Promise(resolve => setTimeout(resolve, this.RETRY_DELAY * (retries + 1)));
         return this.retryRequest(requestFn, retries + 1);
       }

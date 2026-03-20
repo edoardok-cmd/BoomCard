@@ -63,6 +63,31 @@ export const API_CONFIG = {
       TOP: '/api/offers/top',
       FEATURED: '/api/offers/featured',
     },
+    // Partners (tier-gated — results depend on user's subscription plan)
+    PARTNERS: {
+      BASE: '/api/partners',
+      ME: '/api/partners/me',
+      TIER_INFO: '/api/partners/:id/tier-info',
+    },
+    // Cards
+    CARDS: {
+      BASE: '/api/cards',
+      MY_CARD: '/api/cards/my-card',
+      BENEFITS: '/api/cards/benefits',
+      UPGRADE: '/api/cards/:id/upgrade',
+      VALIDATE: '/api/cards/validate',
+    },
+    // Subscriptions
+    SUBSCRIPTIONS: {
+      CURRENT: '/api/subscriptions/current',
+      CREATE: '/api/subscriptions/create',
+      STATUS: '/api/subscriptions/status',
+    },
+    // Plans (public — no auth required)
+    PLANS: {
+      BASE: '/api/plans',
+      BY_CODE: '/api/plans/code',
+    },
     // Loyalty
     LOYALTY: {
       ACCOUNT: '/api/loyalty/accounts/me',
@@ -155,24 +180,42 @@ export const APP_CONFIG = {
   },
 };
 
-// Card Tier Configuration
+/**
+ * Card Tier Configuration — mirrors backend CardType enum (LIGHT, BASIC, PREMIUM).
+ *
+ * Partner tier → max offer discount:
+ *   BASIC partner     → up to 10%
+ *   STANDARD partner  → up to 15%
+ *   PREMIUM partner   → up to 20%
+ *   VIP partner       → up to 30%
+ *   EXCLUSIVE partner → up to 100%
+ *
+ * User plan → accessible partner tiers:
+ *   LIGHT   → BASIC partners only
+ *   BASIC   → BASIC + STANDARD + PREMIUM partners
+ *   PREMIUM → all partners (including VIP + EXCLUSIVE)
+ */
 export const CARD_TIERS = {
-  STANDARD: {
-    name: 'Standard',
-    color: '#3B82F6',
-    cashbackPercent: 5,
+  LIGHT: {
+    name: 'Lite Premium',
+    color: '#FFFFFF',
+    cardStyle: 'light' as const,
+    baseCashbackPercent: 20,
+    accessiblePartnerTiers: ['BASIC'] as const,
+  },
+  BASIC: {
+    name: 'Basic',
+    color: '#C0C0C0',
+    cardStyle: 'silver' as const,
+    baseCashbackPercent: 10,
+    accessiblePartnerTiers: ['BASIC', 'STANDARD', 'PREMIUM'] as const,
   },
   PREMIUM: {
     name: 'Premium',
-    color: '#8B5CF6',
-    cashbackPercent: 7,
-    premiumBonus: 2,
-  },
-  PLATINUM: {
-    name: 'Platinum',
-    color: '#F59E0B',
-    cashbackPercent: 10,
-    platinumBonus: 3,
+    color: '#1A1A2E',
+    cardStyle: 'black' as const,
+    baseCashbackPercent: 20,
+    accessiblePartnerTiers: ['BASIC', 'STANDARD', 'PREMIUM', 'VIP', 'EXCLUSIVE'] as const,
   },
 };
 

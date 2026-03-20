@@ -28,6 +28,7 @@ import webhooksRouter from './routes/webhooks.routes';
 import cardsRouter from './routes/cards.routes';
 import notificationsRouter from './routes/notifications.routes';
 import plansRouter from './routes/plans.routes';
+import partnersRouter from './routes/partners.routes';
 
 // Import WebSocket handler
 import { initializeWebSocket } from './websocket/server';
@@ -150,6 +151,7 @@ app.use('/api/messaging', messagingRouter);
 app.use('/api/bookings', bookingsRouter);
 app.use('/api/venues', venuesRouter);
 app.use('/api/sidebar', sidebarRouter);
+app.use('/api/partners', partnersRouter);
 app.use('/api/offers', offersRouter);
 app.use('/api/integrations', integrationsRouter);
 app.use('/api/reviews', reviewsRouter);

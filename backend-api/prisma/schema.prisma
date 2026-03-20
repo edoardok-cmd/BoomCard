@@ -73,6 +73,7 @@ model User {
   stickerScans        StickerScan[]
   wallet              Wallet?
   subscriptions       Subscription[]
+  offerRedemptions    OfferRedemption[]
   savedPaymentMethods SavedPaymentMethod[]
   pushTokens          PushToken[]
 
@@ -237,14 +238,35 @@ model Offer {
   createdAt         DateTime    @default(now())
   updatedAt         DateTime    @updatedAt
 
-  partner      Partner       @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  partner      Partner           @relation(fields: [partnerId], references: [id], onDelete: Cascade)
   transactions Transaction[]
+  redemptions  OfferRedemption[]
 
   @@index([partnerId])
   @@index([status])
   @@index([isFeatured])
   @@index([startDate])
   @@index([endDate])
+}
+
+// Tracks each user's redemption of an offer.
+// Prevents the same user from redeeming the same offer more than once,
+// and persists the one-time code so it can be verified by the partner.
+model OfferRedemption {
+  id         String   @id @default(uuid())
+  offerId    String
+  userId     String
+  code       String   @unique
+  redeemedAt DateTime @default(now())
+  expiresAt  DateTime
+
+  offer Offer @relation(fields: [offerId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, offerId]) // one redemption per user per offer
+  @@index([offerId])
+  @@index([userId])
+  @@index([expiresAt])
 }
 
 // ============================================

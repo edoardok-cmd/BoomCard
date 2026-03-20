@@ -1,4 +1,5 @@
 import { apiService } from './api.service';
+import { storeSession, clearSession, createSession } from '../lib/auth/session';
 
 interface LoginCredentials {
   email: string;
@@ -40,10 +41,20 @@ interface AuthResponse {
 class AuthService {
   async login(credentials: LoginCredentials): Promise<AuthResponse> {
     const response = await apiService.post<BackendAuthResponse>('/auth/login', credentials);
-    // Store both access and refresh tokens
-    this.setToken(response.data.accessToken);
-    localStorage.setItem('refreshToken', response.data.refreshToken);
-    localStorage.setItem('user', JSON.stringify(response.data.user));
+    // Store tokens in secure cookies
+    const user = response.data.user;
+    const session = createSession({
+      id: user.id,
+      email: user.email,
+      firstName: user.firstName || '',
+      lastName: user.lastName || '',
+      role: (user.role as 'user' | 'partner' | 'admin') || 'user',
+      avatar: user.avatar,
+    });
+    // Override generated tokens with real tokens from backend
+    (session as any).accessToken = response.data.accessToken;
+    (session as any).refreshToken = response.data.refreshToken;
+    storeSession(session);
 
     // Return in expected format
     return {
@@ -60,10 +71,19 @@ class AuthService {
 
   async register(data: RegisterData): Promise<AuthResponse> {
     const response = await apiService.post<BackendAuthResponse>('/auth/register', data);
-    // Store both access and refresh tokens
-    this.setToken(response.data.accessToken);
-    localStorage.setItem('refreshToken', response.data.refreshToken);
-    localStorage.setItem('user', JSON.stringify(response.data.user));
+    // Store tokens in secure cookies
+    const user = response.data.user;
+    const session = createSession({
+      id: user.id,
+      email: user.email,
+      firstName: user.firstName || '',
+      lastName: user.lastName || '',
+      role: (user.role as 'user' | 'partner' | 'admin') || 'user',
+      avatar: user.avatar,
+    });
+    (session as any).accessToken = response.data.accessToken;
+    (session as any).refreshToken = response.data.refreshToken;
+    storeSession(session);
 
     // Return in expected format
     return {
@@ -80,27 +100,15 @@ class AuthService {
 
   async logout(): Promise<void> {
     await apiService.post('/auth/logout');
-    this.removeToken();
+    clearSession();
   }
 
   async getCurrentUser() {
     return apiService.get('/auth/me');
   }
 
-  setToken(token: string): void {
-    localStorage.setItem('token', token);
-  }
-
-  getToken(): string | null {
-    return localStorage.getItem('token');
-  }
-
-  removeToken(): void {
-    localStorage.removeItem('token');
-  }
-
   isAuthenticated(): boolean {
-    return !!this.getToken();
+    return !!apiService.getAuthToken();
   }
 }
 

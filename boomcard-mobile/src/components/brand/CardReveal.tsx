@@ -7,58 +7,59 @@ const CARD_WIDTH = SCREEN_WIDTH * 0.82;
 const CARD_HEIGHT = CARD_WIDTH * 0.625; // Credit card aspect ratio
 
 // Gradients matching the website HomePage.tsx CreditCardPlan
+// LIGHT = white card, BASIC = silver card, PREMIUM = black/gold card
 const CARD_GRADIENTS: Record<string, [string, string]> = {
-  STANDARD: ['#ffffff', '#f5f5f5'],
+  LIGHT:   ['#ffffff', '#f5f5f5'],
+  BASIC:   ['#c0c0c0', '#939393'],
   PREMIUM: ['#1a1a1a', '#2d2d2d'],
-  PLATINUM: ['#c0c0c0', '#939393'],
 };
 
-// Border colors per card type (website uses gold border for premium)
+// Border colors per card type
 const CARD_BORDERS: Record<string, { color: string; width: number }> = {
-  STANDARD: { color: 'rgba(200, 200, 200, 0.5)', width: 2 },
+  LIGHT:   { color: 'rgba(200, 200, 200, 0.5)', width: 2 },
+  BASIC:   { color: 'rgba(255, 255, 255, 0.3)', width: 2 },
   PREMIUM: { color: '#ffd700', width: 3 },
-  PLATINUM: { color: 'rgba(255, 255, 255, 0.3)', width: 2 },
 };
 
-// Logo text color per type (website CardLogoText)
+// Logo text color per type
 const LOGO_COLORS: Record<string, string> = {
-  STANDARD: '#4a4a4a',
+  LIGHT:   '#4a4a4a',
+  BASIC:   '#1a1a1a',
   PREMIUM: '#ffd700',
-  PLATINUM: '#1a1a1a',
 };
 
-// Card number color per type (website CardNumber)
+// Card number color per type
 const NUMBER_COLORS: Record<string, string> = {
-  STANDARD: 'rgba(100, 100, 100, 0.8)',
+  LIGHT:   'rgba(100, 100, 100, 0.8)',
+  BASIC:   'rgba(26, 26, 26, 0.9)',
   PREMIUM: 'rgba(255, 255, 255, 0.9)',
-  PLATINUM: 'rgba(26, 26, 26, 0.9)',
 };
 
-// Cardholder name color per type (website CardHolderName)
+// Cardholder name color per type
 const HOLDER_COLORS: Record<string, string> = {
-  STANDARD: 'rgba(74, 74, 74, 0.95)',
+  LIGHT:   'rgba(74, 74, 74, 0.95)',
+  BASIC:   'rgba(26, 26, 26, 0.95)',
   PREMIUM: 'rgba(255, 255, 255, 0.95)',
-  PLATINUM: 'rgba(26, 26, 26, 0.95)',
 };
 
 interface CardRevealProps {
   animatedScale: Animated.Value;
   animatedRotateX: Animated.AnimatedInterpolation<string>;
   animatedOpacity: Animated.Value;
-  cardType?: 'STANDARD' | 'PREMIUM' | 'PLATINUM';
+  cardType?: 'LIGHT' | 'BASIC' | 'PREMIUM';
 }
 
 const CardReveal: React.FC<CardRevealProps> = ({
   animatedScale,
   animatedRotateX,
   animatedOpacity,
-  cardType = 'STANDARD',
+  cardType = 'LIGHT',
 }) => {
-  const gradientColors = CARD_GRADIENTS[cardType] || CARD_GRADIENTS.STANDARD;
-  const border = CARD_BORDERS[cardType] || CARD_BORDERS.STANDARD;
-  const logoColor = LOGO_COLORS[cardType] || LOGO_COLORS.STANDARD;
-  const numberColor = NUMBER_COLORS[cardType] || NUMBER_COLORS.STANDARD;
-  const holderColor = HOLDER_COLORS[cardType] || HOLDER_COLORS.STANDARD;
+  const gradientColors = CARD_GRADIENTS[cardType] || CARD_GRADIENTS.LIGHT;
+  const border = CARD_BORDERS[cardType] || CARD_BORDERS.LIGHT;
+  const logoColor = LOGO_COLORS[cardType] || LOGO_COLORS.LIGHT;
+  const numberColor = NUMBER_COLORS[cardType] || NUMBER_COLORS.LIGHT;
+  const holderColor = HOLDER_COLORS[cardType] || HOLDER_COLORS.LIGHT;
   const isPremium = cardType === 'PREMIUM';
 
   return (

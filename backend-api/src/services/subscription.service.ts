@@ -2,6 +2,7 @@ import { SubscriptionPlan } from '@prisma/client';
 import prisma from '../lib/prisma';
 import { stripeService } from './stripe.service';
 import { logger } from '../utils/logger';
+import { cardService } from './card.service';
 
 // Stripe Price IDs (create these in Stripe Dashboard)
 const PRICE_IDS = {
@@ -22,8 +23,8 @@ export class SubscriptionService {
     const { userId, plan, paymentMethodId } = params;
 
     if (plan === 'LIGHT') {
-      // Light is the entry-level weekly plan
-      return prisma.subscription.create({
+      // Light is the entry-level weekly plan — immediately active, no payment required
+      const subscription = await prisma.subscription.create({
         data: {
           userId,
           plan: 'LIGHT',
@@ -32,6 +33,11 @@ export class SubscriptionService {
           currentPeriodEnd: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000), // 1 year
         },
       });
+      // Ensure the user has a card; create one if not
+      await this.ensureCardExists(userId);
+      // Sync card type to match the new subscription
+      await cardService.syncCardTypeWithSubscription(userId, plan);
+      return subscription;
     }
 
     // Get user email for Stripe customer
@@ -69,11 +75,12 @@ export class SubscriptionService {
     });
 
     // Create subscription in database
+    const isImmediatelyActive = stripeSubscription.status === 'active';
     const subscription = await prisma.subscription.create({
       data: {
         userId,
         plan,
-        status: stripeSubscription.status === 'active' ? 'ACTIVE' : 'INCOMPLETE',
+        status: isImmediatelyActive ? 'ACTIVE' : 'INCOMPLETE',
         stripeSubscriptionId: stripeSubscription.id,
         stripePriceId: PRICE_IDS[plan],
         stripeCustomerId: customerId,
@@ -87,6 +94,16 @@ export class SubscriptionService {
           : null,
       },
     });
+
+    // Ensure the user has a card; create a LIGHT card if not (will be upgraded below)
+    await this.ensureCardExists(userId);
+
+    // Sync card type immediately if Stripe activated the subscription right away
+    // (e.g. when a saved payment method is used). For INCOMPLETE subscriptions,
+    // the webhook handler (customer.subscription.updated) triggers the sync.
+    if (isImmediatelyActive) {
+      await cardService.syncCardTypeWithSubscription(userId, plan);
+    }
 
     const invoice = stripeSubscription.latest_invoice as any;
     const paymentIntent = invoice?.payment_intent;
@@ -194,6 +211,19 @@ export class SubscriptionService {
   }
 
   /**
+   * Ensure the user has a card. If none exists, creates a LIGHT card.
+   * Called during subscription creation so the card is always present
+   * before syncCardTypeWithSubscription runs.
+   */
+  private async ensureCardExists(userId: string) {
+    const existing = await prisma.card.findFirst({ where: { userId } });
+    if (!existing) {
+      await cardService.createCard({ userId, cardType: 'LIGHT' });
+      logger.info(`Auto-created LIGHT card for user ${userId} during subscription creation`);
+    }
+  }
+
+  /**
    * Get user's active subscription
    */
   async getActiveSubscription(userId: string) {
@@ -234,21 +264,19 @@ export class SubscriptionService {
         cashbackRate: 0.20,
         monthlyFee: 4.99,
         features: [
-          'Up to 20% cashback',
-          'Weekly Premium access',
-          'Exclusive Premium offers',
-          'VIP priority support',
-          'Cashback via the app',
+          'Up to 20% cashback via the app',
+          'Access to BASIC partner offers',
+          'One week trial period',
+          'Standard support',
         ],
       },
       BASIC: {
         cashbackRate: 0.10,
         monthlyFee: 7.99,
         features: [
-          'Up to 10% cashback',
-          'Monthly access',
-          'Cashback via the app',
-          'Access to partner offers',
+          'Up to 10% cashback via the app',
+          'Access to BASIC, STANDARD & PREMIUM partner offers',
+          'Monthly subscription',
           'Standard support',
         ],
       },
@@ -256,12 +284,11 @@ export class SubscriptionService {
         cashbackRate: 0.20,
         monthlyFee: 12.99,
         features: [
-          'Up to 20% cashback',
-          '+5% bonus on BOOM-Sticker scans',
-          'Exclusive Premium offers',
+          'Up to 20% cashback via the app',
+          '+5% bonus cashback on BOOM-Sticker scans',
+          'Access to all partner tiers including VIP & EXCLUSIVE',
+          'Monthly subscription',
           'VIP priority support',
-          'Cashback via the app',
-          'Additional sticker bonus',
         ],
       },
     };

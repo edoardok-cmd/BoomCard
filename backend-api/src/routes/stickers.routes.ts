@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { stickerService } from '../services/sticker.service';
-import { authenticate, AuthRequest } from '../middleware/auth.middleware';
-import { uploadSingle } from '../middleware/upload.middleware';
+import { authenticate, authorize, AuthRequest } from '../middleware/auth.middleware';
+import { uploadSingle, validateMagicBytes } from '../middleware/upload.middleware';
 import { imageUploadService } from '../services/imageUpload.service';
 import { LocationType } from '@prisma/client';
 import prisma from '../lib/prisma';
@@ -22,10 +22,11 @@ router.post('/scan', authenticate, async (req: Request, res: Response) => {
     const { stickerId, cardId, billAmount, latitude, longitude } = req.body;
     const userId = (req as any).user.id; // From auth middleware
 
-    if (!stickerId || !cardId || !billAmount) {
+    // cardId is optional — the service auto-resolves it from userId when absent
+    if (!stickerId || !billAmount) {
       return res.status(400).json({
         success: false,
-        error: 'Missing required fields: stickerId, cardId, billAmount',
+        error: 'Missing required fields: stickerId, billAmount',
       });
     }
 
@@ -67,7 +68,7 @@ router.post('/scan', authenticate, async (req: Request, res: Response) => {
  * Upload receipt image and OCR data for a scan
  * Requires authentication
  */
-router.post('/scan/:scanId/receipt', authenticate, uploadSingle, async (req: AuthRequest, res: Response) => {
+router.post('/scan/:scanId/receipt', authenticate, uploadSingle, validateMagicBytes, async (req: AuthRequest, res: Response) => {
   try {
     const { scanId } = req.params;
     const userId = req.user!.id;
@@ -145,27 +146,30 @@ router.get('/my-scans', authenticate, async (req: Request, res: Response) => {
 
 /**
  * GET /api/stickers/validate/:stickerId
- * Validate a sticker QR code (check if it's active)
- * Public endpoint (for QR scanner preview)
+ * Lightweight validation of a sticker QR code — checks existence and active status.
+ * Full fraud / subscription / GPS checks happen during the actual scan.
+ * Public endpoint (no auth required for scanner preview).
  */
 router.get('/validate/:stickerId', async (req: Request, res: Response) => {
   try {
     const { stickerId } = req.params;
 
-    // This is a lightweight validation endpoint
-    // Full validation happens during scan
-    const sticker = await stickerService.getStickersByVenue('dummy'); // We'll add a validation method
+    const result = await stickerService.validateStickerById(stickerId);
 
-    res.json({
-      success: true,
-      valid: true,
-      message: 'Valid BOOM sticker',
-    });
+    if (!result.valid) {
+      return res.status(404).json({
+        success: false,
+        ...result,
+      });
+    }
+
+    res.json({ success: true, ...result });
   } catch (error: any) {
-    res.status(404).json({
+    res.status(500).json({
       success: false,
       valid: false,
-      error: 'Invalid or inactive sticker',
+      error: 'Failed to validate sticker',
+      message: error.message,
     });
   }
 });
@@ -179,7 +183,7 @@ router.get('/validate/:stickerId', async (req: Request, res: Response) => {
  * Create a new sticker location for a venue
  * Requires authentication (Partner role)
  */
-router.post('/locations', authenticate, async (req: Request, res: Response) => {
+router.post('/locations', authenticate, authorize('PARTNER', 'ADMIN', 'SUPER_ADMIN'), async (req: Request, res: Response) => {
   try {
     const { venueId, name, nameBg, locationType, locationNumber, capacity, floor, section } = req.body;
 
@@ -219,7 +223,7 @@ router.post('/locations', authenticate, async (req: Request, res: Response) => {
  * Create multiple sticker locations at once
  * Requires authentication (Partner role)
  */
-router.post('/locations/bulk', authenticate, async (req: Request, res: Response) => {
+router.post('/locations/bulk', authenticate, authorize('PARTNER', 'ADMIN', 'SUPER_ADMIN'), async (req: Request, res: Response) => {
   try {
     const { locations } = req.body;
 
@@ -251,7 +255,7 @@ router.post('/locations/bulk', authenticate, async (req: Request, res: Response)
  * Generate a sticker with QR code for a location
  * Requires authentication (Partner role)
  */
-router.post('/generate/:locationId', authenticate, async (req: Request, res: Response) => {
+router.post('/generate/:locationId', authenticate, authorize('PARTNER', 'ADMIN', 'SUPER_ADMIN'), async (req: Request, res: Response) => {
   try {
     const { locationId } = req.params;
 
@@ -275,7 +279,7 @@ router.post('/generate/:locationId', authenticate, async (req: Request, res: Res
  * Generate multiple stickers at once
  * Requires authentication (Partner role)
  */
-router.post('/generate/bulk', authenticate, async (req: Request, res: Response) => {
+router.post('/generate/bulk', authenticate, authorize('PARTNER', 'ADMIN', 'SUPER_ADMIN'), async (req: Request, res: Response) => {
   try {
     const { locationIds } = req.body;
 
@@ -307,7 +311,7 @@ router.post('/generate/bulk', authenticate, async (req: Request, res: Response) 
  * Mark sticker as printed and active
  * Requires authentication (Partner role)
  */
-router.post('/activate/:stickerId', authenticate, async (req: Request, res: Response) => {
+router.post('/activate/:stickerId', authenticate, authorize('PARTNER', 'ADMIN', 'SUPER_ADMIN'), async (req: Request, res: Response) => {
   try {
     const { stickerId } = req.params;
 
@@ -461,7 +465,7 @@ router.put('/venue/:venueId/config', authenticate, async (req: Request, res: Res
  * Query params: status, riskLevel, limit
  * Requires authentication (Admin role)
  */
-router.get('/admin/pending-review', authenticate, async (req: Request, res: Response) => {
+router.get('/admin/pending-review', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), async (req: Request, res: Response) => {
   try {
     const limit = parseInt(req.query.limit as string) || 50;
     const status = req.query.status as string;
@@ -540,7 +544,7 @@ router.get('/admin/pending-review', authenticate, async (req: Request, res: Resp
  * Get admin review statistics
  * Requires authentication (Admin role)
  */
-router.get('/admin/stats', authenticate, async (req: Request, res: Response) => {
+router.get('/admin/stats', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), async (req: Request, res: Response) => {
   try {
     const stats = await stickerService.getAdminStats();
 
@@ -562,7 +566,7 @@ router.get('/admin/stats', authenticate, async (req: Request, res: Response) => 
  * Approve a scan and credit cashback
  * Requires authentication (Admin role)
  */
-router.post('/admin/approve/:scanId', authenticate, async (req: Request, res: Response) => {
+router.post('/admin/approve/:scanId', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), async (req: Request, res: Response) => {
   try {
     const { scanId } = req.params;
 
@@ -587,7 +591,7 @@ router.post('/admin/approve/:scanId', authenticate, async (req: Request, res: Re
  * Body: { notes?: string } - Optional admin notes
  * Requires authentication (Admin role)
  */
-router.post('/admin/reject/:scanId', authenticate, async (req: Request, res: Response) => {
+router.post('/admin/reject/:scanId', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), async (req: Request, res: Response) => {
   try {
     const { scanId } = req.params;
     const { notes } = req.body;

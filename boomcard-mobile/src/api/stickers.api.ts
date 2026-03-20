@@ -18,11 +18,22 @@ export class StickersApi {
   /**
    * Initiate sticker scan with GPS validation
    * CRITICAL: GPS coordinates are required for venue proximity validation
+   *
+   * Note: the backend wraps the StickerScan in { success, data: <scan>, message }.
+   * The apiClient also wraps, so we unwrap one level here to expose the scan directly.
    */
   static async scanSticker(
     data: StickerScanRequest
-  ): Promise<ApiResponse<{ scanId: string; cashbackPercent: number; message: string }>> {
-    return await apiClient.post(API_CONFIG.ENDPOINTS.STICKERS.SCAN, data);
+  ): Promise<ApiResponse<StickerScan & { message?: string }>> {
+    const result = await apiClient.post(API_CONFIG.ENDPOINTS.STICKERS.SCAN, data);
+    if (result.success && result.data) {
+      // Backend sends { success, data: <StickerScan>, message }; apiClient wraps once more.
+      // Unwrap to expose the StickerScan directly.
+      const backendBody = result.data as any;
+      const scan: StickerScan = backendBody?.data ?? backendBody;
+      return { success: true, data: { ...scan, message: backendBody?.message } };
+    }
+    return result;
   }
 
   /**

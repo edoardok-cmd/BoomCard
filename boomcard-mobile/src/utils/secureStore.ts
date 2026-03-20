@@ -8,10 +8,12 @@
 
 import { Platform } from 'react-native';
 
+// On web, use sessionStorage (cleared when tab closes, not persisted across sessions)
+// to reduce exposure compared to localStorage. Native uses expo-secure-store.
 export async function getItemAsync(key: string): Promise<string | null> {
   if (Platform.OS === 'web') {
     try {
-      return localStorage.getItem(key);
+      return sessionStorage.getItem(key);
     } catch {
       return null;
     }
@@ -23,7 +25,7 @@ export async function getItemAsync(key: string): Promise<string | null> {
 export async function setItemAsync(key: string, value: string): Promise<void> {
   if (Platform.OS === 'web') {
     try {
-      localStorage.setItem(key, value);
+      sessionStorage.setItem(key, value);
     } catch {
       // Storage quota exceeded or unavailable
     }
@@ -36,7 +38,7 @@ export async function setItemAsync(key: string, value: string): Promise<void> {
 export async function deleteItemAsync(key: string): Promise<void> {
   if (Platform.OS === 'web') {
     try {
-      localStorage.removeItem(key);
+      sessionStorage.removeItem(key);
     } catch {
       // Ignore
     }

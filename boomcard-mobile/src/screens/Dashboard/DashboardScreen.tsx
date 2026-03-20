@@ -49,7 +49,7 @@ const DashboardScreen = ({ navigation }: any) => {
   const loadData = async () => {
     // Show fallback subscription immediately so the UI isn't empty
     if (!subscription) {
-      setSubscription({ plan: 'STANDARD', status: 'ACTIVE', benefits: { cashbackRate: 0.05 } });
+      setSubscription({ plan: 'LIGHT', status: 'ACTIVE', benefits: { cashbackRate: 0.20 } });
     }
     // Don't block the whole screen — show UI after a short delay even if APIs are slow
     const loadingTimeout = setTimeout(() => {
@@ -143,9 +143,9 @@ const DashboardScreen = ({ navigation }: any) => {
     if (subscription?.benefits?.cashbackRate) {
       return Math.round(subscription.benefits.cashbackRate * 100);
     }
-    if (subscription?.plan === 'PLATINUM') return 10;
-    if (subscription?.plan === 'PREMIUM') return 7;
-    return 5;
+    if (subscription?.plan === 'PREMIUM') return 20;
+    if (subscription?.plan === 'BASIC') return 10;
+    return 20; // LIGHT plan default
   };
 
   const s = getStyles(theme, isDarkMode);
@@ -207,7 +207,7 @@ const DashboardScreen = ({ navigation }: any) => {
           style={[
             s.planBanner,
             {
-              borderColor: subscription.plan === 'PLATINUM'
+              borderColor: subscription.plan === 'BASIC'
                 ? 'rgba(192,192,192,0.4)'
                 : subscription.plan === 'PREMIUM'
                 ? 'rgba(255,215,0,0.3)'
@@ -219,7 +219,7 @@ const DashboardScreen = ({ navigation }: any) => {
         >
           <LinearGradient
             colors={
-              subscription.plan === 'PLATINUM'
+              subscription.plan === 'BASIC'
                 ? ['#9CA3AF', '#D1D5DB', '#E5E7EB'] as const
                 : subscription.plan === 'PREMIUM'
                 ? ['#C49B38', '#D4AF37', '#FFD700'] as const
@@ -234,9 +234,7 @@ const DashboardScreen = ({ navigation }: any) => {
               <View style={s.planTextGroup}>
                 <Text style={s.planLabel}>{t('dashboard.yourPlan')}</Text>
                 <Text style={s.planName}>
-                  {subscription.plan === 'PLATINUM'
-                    ? t('dashboard.planPlatinum')
-                    : subscription.plan === 'PREMIUM'
+                  {subscription.plan === 'PREMIUM'
                     ? t('dashboard.planPremium')
                     : subscription.plan === 'BASIC'
                     ? t('dashboard.planBasic')
@@ -371,7 +369,7 @@ const DashboardScreen = ({ navigation }: any) => {
       </FadeInView>
 
       {/* Upgrade Banner */}
-      {subscription && subscription.plan !== 'PLATINUM' && (
+      {subscription && subscription.plan !== 'PREMIUM' && (
         <FadeInView delay={250}>
         <TouchableOpacity
           style={s.upgradeBanner}

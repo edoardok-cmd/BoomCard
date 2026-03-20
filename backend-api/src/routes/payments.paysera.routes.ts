@@ -8,11 +8,13 @@ import { authenticate, optionalAuthenticate, AuthRequest } from '../middleware/a
 import { asyncHandler } from '../middleware/error.middleware';
 import { payseraService, PayseraService } from '../services/paysera.service';
 import { emailService } from '../services/email.service';
+import { cardService } from '../services/card.service';
 import { TransactionType, TransactionStatus, SubscriptionStatus, SubscriptionPlan, UserStatus } from '@prisma/client';
 import prisma from '../lib/prisma';
 import { logger } from '../utils/logger';
 import crypto from 'crypto';
 import { z } from 'zod';
+import { paymentRateLimiter } from '../middleware/security.middleware';
 
 const router = Router();
 
@@ -817,6 +819,11 @@ async function handleSubscriptionCallback(req: Request, res: Response) {
 
         logger.info(`Subscription activated: ${subscription.id} for user ${subscription.userId}`);
 
+        // Sync user's card type to match the newly activated subscription plan
+        await cardService.syncCardTypeWithSubscription(subscription.userId, subscription.plan).catch((err) => {
+          logger.error(`Failed to sync card type for user ${subscription.userId}:`, err);
+        });
+
         // Send confirmation email
         if (subscription.user?.email) {
           const metadata = JSON.parse(subscription.metadata as string || '{}');
@@ -869,7 +876,7 @@ router.post('/subscription/callback', asyncHandler(handleSubscriptionCallback));
 // Used by success page to verify payment when no subscription exists (guest checkout)
 // ============================================
 
-router.post('/verify-redirect', asyncHandler(async (req: Request, res: Response) => {
+router.post('/verify-redirect', paymentRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const { data, ss1 } = req.body;
 
   if (!data || !ss1) {

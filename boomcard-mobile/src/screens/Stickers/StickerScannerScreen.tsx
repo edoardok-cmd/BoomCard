@@ -77,7 +77,25 @@ export default function StickerScannerScreen() {
     if (scanned) return;
 
     setScanned(true);
-    setStickerId(data);
+
+    // BOOM sticker QR codes are JSON: { type: "BOOM_STICKER", stickerId: "...", ... }
+    // Plain strings / other QR formats are rejected early.
+    let parsedStickerId: string;
+    try {
+      const qrPayload = JSON.parse(data);
+      if (qrPayload.type !== 'BOOM_STICKER' || !qrPayload.stickerId) {
+        crossPlatformAlert(t('common.error'), t('stickers.invalidQRCode', 'Not a valid BOOM sticker QR code'));
+        setScanned(false);
+        return;
+      }
+      parsedStickerId = qrPayload.stickerId;
+    } catch {
+      crossPlatformAlert(t('common.error'), t('stickers.invalidQRCode', 'Not a valid BOOM sticker QR code'));
+      setScanned(false);
+      return;
+    }
+
+    setStickerId(parsedStickerId);
     setShowAmountModal(true);
   };
 
@@ -116,7 +134,7 @@ export default function StickerScannerScreen() {
 
       // Navigate to receipt upload
       (navigation as any).navigate('UploadReceipt', {
-        scanId: scan.scanId,
+        scanId: scan.id,
         billAmount: amount,
         cashbackPercent: scan.cashbackPercent,
       });

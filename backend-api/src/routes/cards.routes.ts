@@ -11,18 +11,13 @@ router.use(authenticate);
 
 /**
  * POST /api/cards
- * Create card for user
+ * Create a LIGHT card for users who don't have one yet.
+ * Card type is always LIGHT at creation — use /upgrade to promote
+ * after an active subscription has been confirmed.
  */
-const createCardSchema = z.object({
-  cardType: z.enum(['LIGHT', 'BASIC', 'PREMIUM']).default('LIGHT'),
-});
-
 router.post('/', asyncHandler(async (req: AuthRequest, res: Response) => {
   const userId = req.user!.id;
-  const { cardType } = createCardSchema.parse(req.body);
-
-  const card = await cardService.createCard({ userId, cardType });
-
+  const card = await cardService.createCard({ userId, cardType: 'LIGHT' });
   res.status(201).json(card);
 }));
 

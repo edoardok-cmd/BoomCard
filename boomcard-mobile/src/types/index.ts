@@ -194,6 +194,51 @@ export interface Venue {
   updatedAt: string;
 }
 
+// ==================== Partner Types ====================
+
+export enum PartnerTier {
+  BASIC     = 'BASIC',
+  STANDARD  = 'STANDARD',
+  PREMIUM   = 'PREMIUM',
+  VIP       = 'VIP',
+  EXCLUSIVE = 'EXCLUSIVE',
+}
+
+export enum PartnerStatus {
+  PENDING  = 'PENDING',
+  ACTIVE   = 'ACTIVE',
+  SUSPENDED = 'SUSPENDED',
+  INACTIVE = 'INACTIVE',
+}
+
+export interface Partner {
+  id: string;
+  businessName: string;
+  businessNameBg?: string;
+  category: string;
+  description?: string;
+  descriptionBg?: string;
+  tier: PartnerTier;
+  status: PartnerStatus;
+  city?: string;
+  region?: string;
+  address?: string;
+  phone?: string;
+  email?: string;
+  website?: string;
+  logo?: string;
+  coverImage?: string;
+  rating: number;
+  reviewCount: number;
+  openingHours?: string;
+  features?: string;
+  amenities?: string;
+  joinedAt: string;
+  verifiedAt?: string;
+  /** Max discount % this partner is permitted to offer (determined by tier) */
+  tierMaxDiscountPercent?: number;
+}
+
 // ==================== Card Types ====================
 
 export interface Card {
@@ -204,15 +249,22 @@ export interface Card {
   status: CardStatus;
   qrCode: string;
   validFrom: string;
-  validUntil: string;
+  validUntil: string | null;
+  subscriptionPlan: SubscriptionPlan | null;
   createdAt: string;
   updatedAt: string;
 }
 
+/**
+ * CardType mirrors the backend enum exactly.
+ * LIGHT   = entry level (free / LIGHT plan)
+ * BASIC   = mid tier (BASIC plan)
+ * PREMIUM = top tier (PREMIUM plan)
+ */
 export enum CardType {
-  STANDARD = 'STANDARD',
+  LIGHT   = 'LIGHT',
+  BASIC   = 'BASIC',
   PREMIUM = 'PREMIUM',
-  PLATINUM = 'PLATINUM',
 }
 
 export enum CardStatus {
@@ -386,10 +438,16 @@ export interface Subscription {
   updatedAt: string;
 }
 
+/**
+ * SubscriptionPlan mirrors the backend enum exactly.
+ * LIGHT   = weekly entry-level plan (replaces legacy STANDARD)
+ * BASIC   = monthly mid-tier plan   (replaces legacy PLATINUM)
+ * PREMIUM = monthly top-tier plan
+ */
 export enum SubscriptionPlan {
-  STANDARD = 'STANDARD',
+  LIGHT   = 'LIGHT',
+  BASIC   = 'BASIC',
   PREMIUM = 'PREMIUM',
-  PLATINUM = 'PLATINUM',
 }
 
 export enum SubscriptionStatus {
@@ -430,6 +488,8 @@ export interface Offer {
   city?: string;
   createdAt: string;
   updatedAt: string;
+  /** Populated by the backend when listing/fetching offers */
+  partner?: Pick<Partner, 'id' | 'businessName' | 'businessNameBg' | 'category' | 'city' | 'logo' | 'rating' | 'tier'>;
 }
 
 export enum OfferType {
@@ -555,6 +615,8 @@ export interface ApiError {
   message: string;
   code?: string;
   details?: any;
+  /** HTTP status code from the server response (if available) */
+  statusCode?: number;
 }
 
 // ==================== GPS Location Types ====================

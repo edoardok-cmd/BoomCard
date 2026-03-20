@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import { receiptService } from '../services/receipt.service';
 import { authenticate, authorize, AuthRequest } from '../middleware/auth.middleware';
 import { asyncHandler } from '../middleware/error.middleware';
-import { uploadSingle } from '../middleware/upload.middleware';
+import { uploadSingle, validateMagicBytes } from '../middleware/upload.middleware';
 import { imageUploadService } from '../services/imageUpload.service';
 
 const router = Router();
@@ -19,6 +19,7 @@ router.post(
   '/',
   authenticate,
   uploadSingle,
+  validateMagicBytes,
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const userId = req.user!.id;
 
@@ -87,6 +88,7 @@ router.post(
   '/ocr',
   authenticate,
   uploadSingle,
+  validateMagicBytes,
   asyncHandler(async (req: AuthRequest, res: Response) => {
     if (!req.file) {
       return res.status(400).json({

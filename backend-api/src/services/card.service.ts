@@ -158,23 +158,19 @@ export class CardService {
         cashbackRate: 0.20,
         bonusCashback: 0,
         features: [
-          'One week Premium access',
-          'Up to 20% discount',
-          'Exclusive Premium offers',
-          'Limited availability special offers',
-          'Access to exclusive Premium campaigns',
-          'VIP priority support',
-          'Cashback via the app',
+          'Up to 20% cashback via the app',
+          'Access to BASIC partner offers',
+          'One week trial period',
+          'Standard support',
         ],
       },
       BASIC: {
         cashbackRate: 0.10,
         bonusCashback: 0,
         features: [
-          'One month access',
-          'Up to 10% discount',
-          'Cashback via the app',
-          'Access to partner offers',
+          'Up to 10% cashback via the app',
+          'Access to BASIC, STANDARD & PREMIUM partner offers',
+          'Monthly subscription',
           'Standard support',
         ],
       },
@@ -182,18 +178,67 @@ export class CardService {
         cashbackRate: 0.20,
         bonusCashback: 0.05,
         features: [
-          'One month Premium access',
-          'Up to 20% discount',
-          'Exclusive Premium offers',
-          'Limited availability special offers',
-          'Access to exclusive Premium campaigns',
+          'Up to 20% cashback via the app',
+          '+5% bonus cashback on BOOM-Sticker scans',
+          'Access to all partner tiers including VIP & EXCLUSIVE',
+          'Monthly subscription',
           'VIP priority support',
-          'Cashback via the app',
         ],
       },
     };
 
     return benefits[cardType];
+  }
+
+  /**
+   * Sync the user's card type to match their active subscription plan.
+   *
+   * Plan → CardType mapping:
+   *   LIGHT   → LIGHT   (entry-level weekly plan)
+   *   BASIC   → BASIC
+   *   PREMIUM → PREMIUM
+   *
+   * Cards are only UPGRADED here, never downgraded automatically
+   * (downgrade requires explicit admin action to avoid accidental loss
+   * of benefits mid-period).
+   *
+   * Returns the (possibly updated) card, or null if the user has no card.
+   */
+  async syncCardTypeWithSubscription(userId: string, plan: string) {
+    const planToCardType: Record<string, CardType> = {
+      LIGHT:   CardType.LIGHT,
+      BASIC:   CardType.BASIC,
+      PREMIUM: CardType.PREMIUM,
+    };
+
+    const targetType = planToCardType[plan];
+    if (!targetType) {
+      logger.warn(`syncCardTypeWithSubscription: unknown plan "${plan}" for user ${userId}`);
+      return null;
+    }
+
+    const card = await prisma.card.findFirst({ where: { userId } });
+    if (!card) {
+      logger.warn(`syncCardTypeWithSubscription: no card found for user ${userId}`);
+      return null;
+    }
+
+    const tierOrder: CardType[] = [CardType.LIGHT, CardType.BASIC, CardType.PREMIUM];
+    const currentIndex = tierOrder.indexOf(card.type);
+    const targetIndex = tierOrder.indexOf(targetType);
+
+    if (targetIndex <= currentIndex) {
+      // Already at or above the target tier — no change needed
+      return card;
+    }
+
+    const updatedCard = await prisma.card.update({
+      where: { id: card.id },
+      data: { type: targetType },
+    });
+
+    logger.info(`Synced card ${card.id} from ${card.type} → ${targetType} for user ${userId} (plan: ${plan})`);
+    return updatedCard;
   }
 
   /**

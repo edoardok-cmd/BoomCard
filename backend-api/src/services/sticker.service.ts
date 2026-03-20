@@ -1,8 +1,9 @@
-import { Sticker, StickerScan, StickerLocation, VenueStickerConfig, CardType, ScanStatus, StickerStatus, LocationType, TransactionStatus, TransactionType, PaymentMethod } from '@prisma/client';
+import { Sticker, StickerScan, StickerLocation, VenueStickerConfig, CardType, ScanStatus, StickerStatus, LocationType, TransactionStatus, TransactionType, PaymentMethod, PartnerTier, SubscriptionStatus } from '@prisma/client';
 import QRCode from 'qrcode';
 import { prisma } from '../lib/prisma';
 import { walletService } from './wallet.service';
 import { logger } from '../utils/logger';
+import { PLAN_ACCESSIBLE_TIERS } from './offers.service';
 
 // ============================================
 // Interfaces
@@ -32,7 +33,7 @@ export interface CreateStickerLocationData {
 export interface ScanStickerData {
   userId: string;
   stickerId: string;
-  cardId: string;
+  cardId?: string; // Optional — resolved from userId when omitted
   billAmount: number;
   latitude?: number;
   longitude?: number;
@@ -198,34 +199,67 @@ class StickerService {
   }
 
   /**
-   * Get venue code from venue ID (simplified for now)
+   * Get a guaranteed-unique venue code.
+   *
+   * Uses the first 8 characters of the venue's UUID (hex).
+   * This is collision-free because UUIDs are unique per venue.
+   * Name-based codes were intentionally removed: two venues with the
+   * same name prefix (e.g., two "McDonald's" branches) would produce
+   * the same code, causing sticker ID collisions.
    */
   private async getVenueCode(venueId: string): Promise<string> {
-    // In production, you might want to store a short code for each venue
-    // For now, using a simple hash of the venue ID
-    const venue = await prisma.venue.findUnique({
-      where: { id: venueId },
+    const venue = await prisma.venue.findUnique({ where: { id: venueId } });
+    if (!venue) throw new Error('Venue not found');
+    // Strip hyphens from UUID and take the first 8 hex characters → always unique
+    return venue.id.replace(/-/g, '').substring(0, 8).toUpperCase();
+  }
+
+  /**
+   * Look up a sticker by its short ID and return lightweight validation info.
+   * Used by the pre-scan validate endpoint — does not initiate a scan or
+   * perform fraud / subscription checks.
+   */
+  async validateStickerById(stickerId: string): Promise<{
+    valid: boolean;
+    venueId?: string;
+    venueName?: string;
+    cashbackPercent?: number;
+    message?: string;
+  }> {
+    const sticker = await prisma.sticker.findUnique({
+      where: { stickerId },
+      include: {
+        venue: {
+          select: { id: true, name: true, stickerConfig: true },
+        },
+      },
     });
 
-    if (!venue) {
-      throw new Error('Venue not found');
+    if (!sticker) {
+      return { valid: false, message: 'Sticker not found' };
     }
 
-    // Generate a simple code based on name or ID
-    // You can customize this logic
-    const code = venue.name
-      .toUpperCase()
-      .replace(/[^A-Z0-9]/g, '')
-      .substring(0, 6);
+    if (sticker.status !== StickerStatus.ACTIVE) {
+      return { valid: false, message: `Sticker is ${sticker.status.toLowerCase()}` };
+    }
 
-    return code || venueId.substring(0, 6).toUpperCase();
+    const cashbackPercent = (sticker.venue.stickerConfig as any)?.cashbackPercent ?? 0;
+
+    return {
+      valid: true,
+      venueId: sticker.venueId,
+      venueName: sticker.venue.name,
+      cashbackPercent,
+      message: 'Valid BOOM sticker',
+    };
   }
 
   /**
    * Validate and initiate a sticker scan
    */
   async scanSticker(data: ScanStickerData): Promise<StickerScan> {
-    const { userId, stickerId, cardId, billAmount, latitude, longitude, ipAddress, userAgent } = data;
+    const { userId, billAmount, latitude, longitude, ipAddress, userAgent } = data;
+    let { stickerId, cardId } = data;
 
     // 1. Validate sticker exists and is active
     const sticker = await prisma.sticker.findUnique({
@@ -248,9 +282,19 @@ class StickerService {
       throw new Error('Sticker is not active');
     }
 
-    // 2. Validate card exists and is active
+    // 2. Resolve and validate the user's card
+    // cardId is optional — if omitted, resolve from the authenticated userId.
+    let resolvedCardId = cardId;
+    if (!resolvedCardId) {
+      const userCard = await prisma.card.findFirst({ where: { userId } });
+      if (!userCard) {
+        throw new Error('No card found for your account. Please create a card first.');
+      }
+      resolvedCardId = userCard.id;
+    }
+
     const card = await prisma.card.findUnique({
-      where: { id: cardId },
+      where: { id: resolvedCardId },
       include: { user: true },
     });
 
@@ -266,15 +310,40 @@ class StickerService {
       throw new Error(`Card is ${card.status.toLowerCase()}`);
     }
 
-    // 3. Get venue sticker config
+    // 3. Verify the user's subscription plan grants access to this venue's partner tier
+    const partner = await prisma.partner.findFirst({
+      where: { venues: { some: { id: sticker.venueId } } },
+      select: { tier: true, status: true },
+    });
+
+    if (partner) {
+      const userSubscription = await prisma.subscription.findFirst({
+        where: { userId, status: SubscriptionStatus.ACTIVE },
+        orderBy: { currentPeriodEnd: 'desc' },
+      });
+
+      const userPlan = userSubscription?.plan ?? null;
+      const accessibleTiers: PartnerTier[] = userPlan
+        ? PLAN_ACCESSIBLE_TIERS[userPlan]
+        : [PartnerTier.BASIC]; // No subscription → only BASIC
+
+      if (!accessibleTiers.includes(partner.tier)) {
+        throw new Error(
+          `Your current subscription does not include access to this partner. ` +
+          `Upgrade your plan to scan this venue.`,
+        );
+      }
+    }
+
+    // 5. Get venue sticker config
     const config = sticker.venue.stickerConfig || await this.getOrCreateVenueConfig(sticker.venueId);
 
-    // 4. Validate bill amount
+    // 5. Validate bill amount
     if (billAmount < config.minBillAmount) {
       throw new Error(`Minimum bill amount is ${config.minBillAmount} BGN`);
     }
 
-    // 5. Calculate cashback
+    // 6. Calculate cashback
     const cashbackPercent = this.calculateCashbackPercent(card.type, config);
     let cashbackAmount = (billAmount * cashbackPercent) / 100;
 
@@ -283,7 +352,7 @@ class StickerService {
       cashbackAmount = config.maxCashbackPerScan;
     }
 
-    // 6. Calculate distance from venue if GPS provided
+    // 7. Calculate distance from venue if GPS provided
     let distance: number | undefined;
     if (latitude && longitude) {
       distance = this.calculateDistance(
@@ -294,7 +363,7 @@ class StickerService {
       );
     }
 
-    // 7. Run fraud checks
+    // 8. Run fraud checks
     const fraudCheck = await this.performFraudCheck({
       userId,
       venueId: sticker.venueId,
@@ -303,13 +372,13 @@ class StickerService {
       config,
     });
 
-    // 8. Create scan record
+    // 9. Create scan record
     const scan = await prisma.stickerScan.create({
       data: {
         userId,
         stickerId: sticker.id,
         venueId: sticker.venueId,
-        cardId,
+        cardId: resolvedCardId,
         billAmount,
         cashbackPercent,
         cashbackAmount,
@@ -341,7 +410,7 @@ class StickerService {
       },
     });
 
-    // 9. Update sticker stats
+    // 10. Update sticker stats
     await prisma.sticker.update({
       where: { id: sticker.id },
       data: {
@@ -531,20 +600,25 @@ class StickerService {
   }
 
   /**
-   * Calculate cashback percentage based on card type and venue config
+   * Calculate cashback percentage based on card type and venue config.
+   *
+   * DB column naming note:
+   *   `premiumBonus`  — extra % added for BASIC card holders   (column predates the plan rename)
+   *   `platinumBonus` — extra % added for PREMIUM card holders (column predates the plan rename)
+   * LIGHT cards receive only the base `cashbackPercent`.
    */
   private calculateCashbackPercent(cardType: CardType, config: VenueStickerConfig): number {
     let cashback = config.cashbackPercent;
 
     switch (cardType) {
       case CardType.BASIC:
-        cashback += config.premiumBonus;
+        cashback += config.premiumBonus;   // bonus for BASIC (formerly "premium") cardholders
         break;
       case CardType.PREMIUM:
-        cashback += config.platinumBonus;
+        cashback += config.platinumBonus;  // bonus for PREMIUM (formerly "platinum") cardholders
         break;
       default:
-        // LIGHT card gets base cashback
+        // LIGHT card gets base cashback only
         break;
     }
 
