@@ -286,12 +286,12 @@ export const en = {
     // How It Works Section
     howItWorks: 'How BOOM Card Works',
     howItWorksSubtitle: 'Discounts activate directly from your table',
-    step1Title: 'Choose a place',
-    step1Description: 'Go to a partner venue and sit down comfortably',
-    step2Title: 'Scan the QR code',
-    step2Description: 'Mark your visit with the BOOM app',
-    step3Title: 'Get your discount',
-    step3Description: 'Pay the bill, upload your receipt and receive cashback',
+    step1Title: 'Scan the QR code',
+    step1Description: 'At your table, scan the BOOM sticker with the app to check in',
+    step2Title: 'Enjoy & pay',
+    step2Description: 'Order, enjoy your meal and pay the bill',
+    step3Title: 'Get your cashback',
+    step3Description: 'Upload your receipt and receive cashback directly to your account',
     downloadAppCta: 'Download the BOOM App',
     availableForIosAndroid: 'Available for iOS and Android',
 

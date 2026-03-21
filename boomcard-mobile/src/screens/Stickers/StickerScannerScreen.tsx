@@ -5,7 +5,7 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
-import { View, StyleSheet, ActivityIndicator } from 'react-native';
+import { Platform, View, StyleSheet, ActivityIndicator } from 'react-native';
 import { Text, Button, Portal, Modal, TextInput, HelperText } from 'react-native-paper';
 import { CameraView, Camera } from 'expo-camera';
 import * as Location from 'expo-location';
@@ -19,6 +19,7 @@ export default function StickerScannerScreen() {
   const { t } = useTranslation();
   const isFocused = useIsFocused();
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
+  const [cameraPermanentlyDenied, setCameraPermanentlyDenied] = useState(false);
   const [scanned, setScanned] = useState(false);
   const [showAmountModal, setShowAmountModal] = useState(false);
   const [stickerId, setStickerId] = useState('');
@@ -26,9 +27,10 @@ export default function StickerScannerScreen() {
   const [processing, setProcessing] = useState(false);
   const [cameraReady, setCameraReady] = useState(false);
   const cameraReadyTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const permissionRequestInProgress = useRef(false);
+  const permissionChecked = useRef(false);
 
   useEffect(() => {
-    console.log('StickerScannerScreen: Requesting permissions...');
     requestPermissions();
   }, []);
 
@@ -55,21 +57,43 @@ export default function StickerScannerScreen() {
   }, [isFocused]);
 
   const requestPermissions = async () => {
+    if (permissionRequestInProgress.current) return;
+    if (permissionChecked.current && cameraPermanentlyDenied) return;
+    permissionRequestInProgress.current = true;
     try {
-      console.log('Requesting camera permissions...');
-      const cameraStatus = await Camera.requestCameraPermissionsAsync();
-      console.log('Camera permission:', cameraStatus.status);
+      // On web, camera permission can't be re-requested once blocked in browser settings.
+      // Check canAskAgain to avoid an infinite request loop.
+      let cameraGranted: boolean;
+      if (Platform.OS === 'web') {
+        const existing = await Camera.getCameraPermissionsAsync();
+        if (existing.status === 'granted') {
+          cameraGranted = true;
+        } else if (!permissionChecked.current || existing.canAskAgain) {
+          const result = await Camera.requestCameraPermissionsAsync();
+          cameraGranted = result.status === 'granted';
+          if (!result.canAskAgain) {
+            setCameraPermanentlyDenied(true);
+          }
+        } else {
+          cameraGranted = false;
+          setCameraPermanentlyDenied(true);
+        }
+      } else {
+        const result = await Camera.requestCameraPermissionsAsync();
+        cameraGranted = result.status === 'granted';
+      }
 
-      console.log('Requesting location permissions...');
-      const locationStatus = await Location.requestForegroundPermissionsAsync();
-      console.log('Location permission:', locationStatus.status);
+      const locationResult = await Location.requestForegroundPermissionsAsync();
+      const locationGranted = locationResult.status === 'granted';
 
-      const granted = cameraStatus.status === 'granted' && locationStatus.status === 'granted';
-      console.log('Permissions granted:', granted);
-      setHasPermission(granted);
+      permissionChecked.current = true;
+      setHasPermission(cameraGranted && locationGranted);
     } catch (error) {
       console.error('Error requesting permissions:', error);
+      permissionChecked.current = true;
       setHasPermission(false);
+    } finally {
+      permissionRequestInProgress.current = false;
     }
   };
 
@@ -167,11 +191,15 @@ export default function StickerScannerScreen() {
           {t('stickers.permissionsRequired')}
         </Text>
         <HelperText type="info" style={styles.helperText}>
-          {t('stickers.permissionsHelp')}
+          {cameraPermanentlyDenied
+            ? t('stickers.cameraBlockedHelp', 'Camera access is blocked. Please allow camera access in your browser settings and reload the page.')
+            : t('stickers.permissionsHelp')}
         </HelperText>
-        <Button mode="contained" onPress={requestPermissions} style={styles.permissionButton}>
-          {t('stickers.grantPermissions')}
-        </Button>
+        {!cameraPermanentlyDenied && (
+          <Button mode="contained" onPress={requestPermissions} style={styles.permissionButton}>
+            {t('stickers.grantPermissions')}
+          </Button>
+        )}
       </View>
     );
   }
@@ -221,8 +249,16 @@ export default function StickerScannerScreen() {
               <View style={styles.darkSide} />
             </View>
             <View style={styles.darkBottom}>
+              <View style={styles.stepBadge}>
+                <Text style={styles.stepBadgeText}>
+                  {t('stickers.step1of2', 'STEP 1 OF 2')}
+                </Text>
+              </View>
               <Text style={styles.instructions}>
                 {t('stickers.scanInstructions')}
+              </Text>
+              <Text style={styles.stepHint}>
+                {t('stickers.step1Hint', 'After scanning, you\'ll upload your receipt to complete the process')}
               </Text>
             </View>
           </View>
@@ -363,10 +399,30 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingTop: 32,
   },
+  stepBadge: {
+    backgroundColor: 'rgba(255, 152, 0, 0.9)',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    marginBottom: 12,
+  },
+  stepBadgeText: {
+    color: 'white',
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 1,
+  },
   instructions: {
     color: 'white',
     textAlign: 'center',
     fontSize: 16,
+  },
+  stepHint: {
+    color: 'rgba(255,255,255,0.7)',
+    textAlign: 'center',
+    fontSize: 12,
+    marginTop: 8,
+    paddingHorizontal: 32,
   },
   cameraLoadingOverlay: {
     ...StyleSheet.absoluteFillObject,

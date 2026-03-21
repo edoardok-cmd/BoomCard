@@ -22,6 +22,7 @@ import { offerToEntity, type Offer, type Entity } from '../types/entity.types';
 import { usePartnerReviews } from '../hooks/usePartnerReviews';
 import { updateSEO, addOrganizationSchema, addWebSiteSchema, generateHowToSchema, generateFAQSchema } from '../utils/seo';
 import { convertEURToBGN } from '../utils/helpers';
+import { Plan, plansService } from '../services/plans.service';
 
 // Global styled components for typography
 const SectionTitle = styled.h2`
@@ -836,6 +837,26 @@ const HomePage: React.FC = () => {
   const heroOpacity = useTransform(scrollY, [0, 300], [1, 0]);
   const heroScale = useTransform(scrollY, [0, 300], [1, 0.95]);
   const [billingPeriod, setBillingPeriod] = useState<'monthly' | 'yearly'>('monthly');
+  const [subscriptionPlans, setSubscriptionPlans] = useState<Plan[]>([]);
+  const [plansError, setPlansError] = useState<string | null>(null);
+
+  useEffect(() => {
+    plansService.getPlans().then(setSubscriptionPlans).catch(() => {
+      setPlansError(
+        language === 'bg'
+          ? 'Грешка при зареждане на плановете.'
+          : 'Error loading plans.',
+      );
+    });
+  }, []);
+
+  function cardTypeToStyle(cardType: string): 'starter' | 'basic' | 'premium' {
+    switch (cardType) {
+      case 'silver': return 'basic';
+      case 'black': return 'premium';
+      default: return 'starter';
+    }
+  }
 
   // Scroll to section when navigating with hash (e.g. /#subscription-plans)
   useEffect(() => {
@@ -1101,82 +1122,6 @@ const HomePage: React.FC = () => {
 
   const fallbackEntities = fallbackExclusiveOffers.map(offerToEntity);
 
-  const subscriptionPlans = [
-    {
-      name: language === 'bg' ? 'ЛАЙТ ПРЕМИУМ' : 'LITE PREMIUM',
-      monthlyPrice: 4.99,
-      monthlyPriceBGN: 9.77,
-      yearlyPrice: 52,
-      duration: language === 'bg' ? '/седмица' : '/week',
-      type: 'starter' as const,
-      features: [
-        language === 'bg' ? 'Едноседмичен Premium достъп' : 'One week Premium access',
-        language === 'bg' ? 'До 20% отстъпка' : 'Up to 20% discount',
-        language === 'bg' ? 'Ексклузивни Premium оферти' : 'Exclusive Premium offers',
-        language === 'bg' ? 'Специални предложения с ограничена наличност' : 'Limited availability special offers',
-        language === 'bg' ? 'Достъп до затворени Premium кампании' : 'Access to exclusive Premium campaigns',
-        language === 'bg' ? 'VIP приоритетна поддръжка' : 'VIP priority support',
-        language === 'bg' ? 'Връщане на пари чрез приложението' : 'Cashback via the app'
-      ],
-      tooltips: [
-        language === 'bg' ? 'Пълен Premium достъп за 7 дни' : 'Full Premium access for 7 days',
-        language === 'bg' ? 'Най-високи отстъпки във всички партньори' : 'Highest discounts at all partners',
-        language === 'bg' ? 'Достъп до затворени Premium кампании' : 'Access to exclusive Premium campaigns',
-        language === 'bg' ? 'Оферти с ограничен брой или време' : 'Offers with limited quantity or time',
-        language === 'bg' ? 'Ексклузивен достъп до VIP кампании' : 'Exclusive access to VIP campaigns',
-        language === 'bg' ? 'Получете помощ в рамките на 1 час' : 'Get help within 1 hour',
-        language === 'bg' ? 'Качи касова бележка и получи пари обратно' : 'Upload receipt and get money back'
-      ]
-    },
-    {
-      name: language === 'bg' ? 'ОСНОВЕН' : 'BASIC',
-      monthlyPrice: 7.99,
-      monthlyPriceBGN: 15.63,
-      yearlyPrice: 84,
-      duration: language === 'bg' ? '/месец' : '/month',
-      features: [
-        language === 'bg' ? 'Едномесечен достъп' : 'One month access',
-        language === 'bg' ? 'До 10% отстъпка' : 'Up to 10% discount',
-        language === 'bg' ? 'Връщане на пари чрез приложението' : 'Cashback via the app',
-        language === 'bg' ? 'Достъп до партньорски оферти' : 'Access to partner offers',
-        language === 'bg' ? 'Стандартна поддръжка' : 'Standard support'
-      ],
-      tooltips: [
-        language === 'bg' ? 'Пълен достъп за 30 дни' : 'Full access for 30 days',
-        language === 'bg' ? 'Отстъпки в избрани заведения' : 'Discounts at selected venues',
-        language === 'bg' ? 'Качи касова бележка и получи пари обратно' : 'Upload receipt and get money back',
-        language === 'bg' ? 'Над 500 партньори в цялата страна' : 'Over 500 partners across the country',
-        language === 'bg' ? 'Отговор в рамките на 24 часа' : 'Response within 24 hours'
-      ]
-    },
-    {
-      name: language === 'bg' ? 'ПРЕМИУМ' : 'PREMIUM',
-      monthlyPrice: 12.99,
-      monthlyPriceBGN: 25.41,
-      yearlyPrice: 136,
-      duration: language === 'bg' ? '/месец' : '/month',
-      featured: true,
-      features: [
-        language === 'bg' ? 'Едномесечен Premium достъп' : 'One month Premium access',
-        language === 'bg' ? 'До 20% отстъпка' : 'Up to 20% discount',
-        language === 'bg' ? 'Ексклузивни Premium оферти' : 'Exclusive Premium offers',
-        language === 'bg' ? 'Специални предложения с ограничена наличност' : 'Limited availability special offers',
-        language === 'bg' ? 'Достъп до затворени Premium кампании' : 'Access to exclusive Premium campaigns',
-        language === 'bg' ? 'VIP приоритетна поддръжка' : 'VIP priority support',
-        language === 'bg' ? 'Връщане на пари чрез приложението' : 'Cashback via the app'
-      ],
-      tooltips: [
-        language === 'bg' ? 'Пълен Premium достъп за 30 дни' : 'Full Premium access for 30 days',
-        language === 'bg' ? 'Най-високи отстъпки във всички партньори' : 'Highest discounts at all partners',
-        language === 'bg' ? 'Достъп до затворени Premium кампании' : 'Access to exclusive Premium campaigns',
-        language === 'bg' ? 'Оферти с ограничен брой или време' : 'Offers with limited quantity or time',
-        language === 'bg' ? 'Ексклузивен достъп до VIP кампании' : 'Exclusive access to VIP campaigns',
-        language === 'bg' ? 'Получете помощ в рамките на 1 час' : 'Get help within 1 hour',
-        language === 'bg' ? 'Качи касова бележка и получи пари обратно' : 'Upload receipt and get money back'
-      ]
-    }
-  ];
-
   // Reviews are now fetched from API via usePartnerReviews hook above
 
   return (
@@ -1206,19 +1151,19 @@ const HomePage: React.FC = () => {
                 step: '1',
                 title: 'step1Title',
                 desc: 'step1Description',
-                tooltip: language === 'bg' ? 'Бърза регистрация за 30 секунди' : 'Quick 30-second registration'
+                tooltip: language === 'bg' ? 'Сканирай BOOM стикера на масата' : 'Scan the BOOM sticker at your table'
               },
               {
                 step: '2',
                 title: 'step2Title',
                 desc: 'step2Description',
-                tooltip: language === 'bg' ? 'Разгледайте над 500 ексклузивни оферти' : 'Browse over 500 exclusive offers'
+                tooltip: language === 'bg' ? 'Поръчай, насладей се и плати сметката' : 'Order, enjoy and pay your bill'
               },
               {
                 step: '3',
                 title: 'step3Title',
                 desc: 'step3Description',
-                tooltip: language === 'bg' ? 'Моментално активиране и спестяване' : 'Instant activation and savings'
+                tooltip: language === 'bg' ? 'Моментално получаване на кешбек' : 'Instant cashback to your account'
               }
             ].map((item, index) => (
               <HowItWorksStep key={index} className="text-center">
@@ -1320,43 +1265,46 @@ const HomePage: React.FC = () => {
             </BillingToggle>
           </BillingToggleContainer>
 
+          {plansError && (
+            <div style={{ textAlign: 'center', padding: '2rem', color: '#ef4444' }}>
+              {plansError}
+            </div>
+          )}
+
           <SubscriptionCardsContainer>
             {subscriptionPlans.map((plan, index) => {
-              const planType = (plan as any).type || (plan.featured ? 'premium' : 'basic');
-              const isLitePlan = planType === 'starter';
+              const planType = cardTypeToStyle(plan.cardType);
+              const isLitePlan = !plan.billingOptions.hasMonthly && plan.billingOptions.hasWeekly;
               const isDisabled = isLitePlan && billingPeriod === 'yearly';
-              // Lite plan always shows weekly price, even when disabled
               const eurPrice = isLitePlan
-                ? plan.monthlyPrice
-                : (billingPeriod === 'yearly' ? plan.yearlyPrice : plan.monthlyPrice);
-              const bgnPrice = isLitePlan
-                ? (plan as any).monthlyPriceBGN
-                : (billingPeriod === 'yearly' ? convertEURToBGN(plan.yearlyPrice) : (plan as any).monthlyPriceBGN);
+                ? plan.pricing.weekly
+                : (billingPeriod === 'yearly' ? plan.pricing.yearly : plan.pricing.monthly);
+              const bgnPrice = eurPrice != null ? convertEURToBGN(eurPrice) : null;
               const bgnLabel = language === 'bg' ? 'лв.' : 'BGN';
-              // Display dual currency: BGN / €EUR
-              const displayPrice = `${bgnPrice.toFixed(2)} ${bgnLabel} / €${eurPrice}`;
               const priceLabel = isLitePlan
-                ? (plan as any).duration
+                ? (language === 'bg' ? '/седмица' : '/week')
                 : (billingPeriod === 'yearly'
                   ? (language === 'bg' ? '/година' : '/year')
-                  : ((plan as any).duration || (language === 'bg' ? '/месец' : '/month')));
+                  : (language === 'bg' ? '/месец' : '/month'));
+              const features = language === 'bg' ? plan.featuresBg : plan.features;
+              const planName = (language === 'bg' && plan.displayNameBg) ? plan.displayNameBg : plan.displayName;
               return (
               <PlanCardWrapper
-                key={index}
+                key={plan.id}
                 $disabled={isDisabled}
                 initial={{ opacity: 0, y: 30 }}
                 animate={{ opacity: isDisabled ? 0.5 : 1, y: 0 }}
                 transition={{ duration: 0.5, delay: index * 0.2 }}
               >
                 {/* Most Bought Badge for Light Plan */}
-                {planType === 'starter' && (
+                {isLitePlan && (
                   <MostBoughtBadge>
                     {language === 'bg' ? 'Най-купуван' : 'Most Bought'}
                   </MostBoughtBadge>
                 )}
 
                 {/* Most Popular Badge - positioned relative to wrapper */}
-                {plan.featured && (
+                {plan.isFeatured && !isLitePlan && (
                   <PopularBadge>
                     {language === 'bg' ? 'Най-популярен' : 'Most Popular'}
                   </PopularBadge>
@@ -1377,13 +1325,19 @@ const HomePage: React.FC = () => {
 
                   <CardBottomRow>
                     <CardHolderName $type={planType}>
-                      {plan.name.toUpperCase()}
+                      {planName.toUpperCase()}
                     </CardHolderName>
                     <CardPriceDisplay $type={planType}>
-                      <span style={{ fontSize: '0.9rem', opacity: 0.85 }}>{bgnPrice.toFixed(2)} {bgnLabel} /</span> €{eurPrice}
-                      <span style={{ fontSize: '0.75rem', opacity: 0.8 }}>
-                        {priceLabel}
-                      </span>
+                      {eurPrice != null && bgnPrice != null ? (
+                        <>
+                          <span style={{ fontSize: '0.9rem', opacity: 0.85 }}>{bgnPrice.toFixed(2)} {bgnLabel} /</span> €{eurPrice}
+                          <span style={{ fontSize: '0.75rem', opacity: 0.8 }}>
+                            {priceLabel}
+                          </span>
+                        </>
+                      ) : (
+                        <span style={{ fontSize: '0.875rem' }}>N/A</span>
+                      )}
                     </CardPriceDisplay>
                   </CardBottomRow>
                 </CreditCardPlan>
@@ -1391,7 +1345,7 @@ const HomePage: React.FC = () => {
                 {/* Plan Details Below Card */}
                 <PlanDetails>
                   <FeaturesList>
-                    {plan.features.map((feature, i) => {
+                    {features.map((feature, i) => {
                       const isEmpty = !feature || feature.trim() === '';
                       return (
                         <FeatureItem key={i} $isEmpty={isEmpty}>
@@ -1413,9 +1367,10 @@ const HomePage: React.FC = () => {
                         </Button>
                       </div>
                     ) : (
-                      <Link to={`/checkout?planCode=${planType}&billing=${isLitePlan ? 'weekly' : billingPeriod}`}>
+                      /* SECURITY: Only pass planCode and billing period - NO PRICE IN URL */
+                      <Link to={`/checkout?planCode=${plan.planCode}&billing=${isLitePlan ? 'weekly' : billingPeriod}`}>
                         <Button
-                          variant={plan.featured ? 'primary' : 'secondary'}
+                          variant={plan.isFeatured ? 'primary' : 'secondary'}
                           size="large"
                         >
                           {language === 'bg' ? 'Избери План' : 'Choose Plan'}
@@ -1517,6 +1472,7 @@ const HomePage: React.FC = () => {
                 {[
                   {
                     author: language === 'bg' ? 'Мария С.' : 'Maria S.',
+                    photo: 'https://randomuser.me/api/portraits/women/44.jpg',
                     rating: 5,
                     comment: language === 'bg'
                       ? 'Спестих около 35 лв. / €18 при вечеря за двама. Качих бележката за под минута.'
@@ -1524,6 +1480,7 @@ const HomePage: React.FC = () => {
                   },
                   {
                     author: language === 'bg' ? 'Иван П.' : 'Ivan P.',
+                    photo: 'https://randomuser.me/api/portraits/men/32.jpg',
                     rating: 5,
                     comment: language === 'bg'
                       ? 'Ползвах го в бар и ресторант. Процесът е ясен и работи както е описано.'
@@ -1531,6 +1488,7 @@ const HomePage: React.FC = () => {
                   },
                   {
                     author: language === 'bg' ? 'Георги М.' : 'Georgi M.',
+                    photo: 'https://randomuser.me/api/portraits/men/46.jpg',
                     rating: 5,
                     comment: language === 'bg'
                       ? 'Сканирането е бързо, а качването на бележката е супер лесно. Няма излишни стъпки.'
@@ -1538,6 +1496,7 @@ const HomePage: React.FC = () => {
                   },
                   {
                     author: language === 'bg' ? 'Петя К.' : 'Petya K.',
+                    photo: 'https://randomuser.me/api/portraits/women/26.jpg',
                     rating: 5,
                     comment: language === 'bg'
                       ? 'Спестих 23 лв. / €12 на първата си поръчка. Приложението е лесно за използване.'
@@ -1545,6 +1504,7 @@ const HomePage: React.FC = () => {
                   },
                   {
                     author: language === 'bg' ? 'Николай Т.' : 'Nikolay T.',
+                    photo: 'https://randomuser.me/api/portraits/men/12.jpg',
                     rating: 5,
                     comment: language === 'bg'
                       ? 'Добри отстъпки за СПА уикенд. Спестихме 68 лв. / €35 за масажи.'
@@ -1552,6 +1512,7 @@ const HomePage: React.FC = () => {
                   },
                   {
                     author: language === 'bg' ? 'Силвия В.' : 'Silvia V.',
+                    photo: 'https://randomuser.me/api/portraits/women/26.jpg',
                     rating: 5,
                     comment: language === 'bg'
                       ? 'Много лесно за използване. Вече препоръчах на приятели.'
@@ -1559,6 +1520,7 @@ const HomePage: React.FC = () => {
                   },
                   {
                     author: language === 'bg' ? 'Димитър А.' : 'Dimitar A.',
+                    photo: 'https://randomuser.me/api/portraits/men/33.jpg',
                     rating: 4,
                     comment: language === 'bg'
                       ? 'Работи добре в София. Искам повече партньори в Пловдив.'
@@ -1566,6 +1528,7 @@ const HomePage: React.FC = () => {
                   },
                   {
                     author: language === 'bg' ? 'Александра Н.' : 'Alexandra N.',
+                    photo: 'https://randomuser.me/api/portraits/women/33.jpg',
                     rating: 5,
                     comment: language === 'bg'
                       ? 'Използвам картата всяка седмица. Спестих над 150 лв. / €77 за месец.'
@@ -1573,6 +1536,7 @@ const HomePage: React.FC = () => {
                   },
                   {
                     author: language === 'bg' ? 'Ваня Р.' : 'Vanya R.',
+                    photo: 'https://randomuser.me/api/portraits/women/68.jpg',
                     rating: 4,
                     comment: language === 'bg'
                       ? 'Добро приложение, лесен интерфейс. Би било страхотно с повече винарни.'
@@ -1580,6 +1544,7 @@ const HomePage: React.FC = () => {
                   },
                   {
                     author: language === 'bg' ? 'Красимир Л.' : 'Krasimir L.',
+                    photo: 'https://randomuser.me/api/portraits/men/22.jpg',
                     rating: 5,
                     comment: language === 'bg'
                       ? 'Спестих 42 лв. / €21 на рожден ден в ресторант. Препоръчвам!'
@@ -1587,6 +1552,7 @@ const HomePage: React.FC = () => {
                   },
                   {
                     author: language === 'bg' ? 'Даниела К.' : 'Daniela K.',
+                    photo: 'https://randomuser.me/api/portraits/women/57.jpg',
                     rating: 5,
                     comment: language === 'bg'
                       ? 'Супер за семейни излизания. Децата се радват, а ние спестяваме.'
@@ -1594,6 +1560,7 @@ const HomePage: React.FC = () => {
                   },
                   {
                     author: language === 'bg' ? 'Тодор В.' : 'Todor V.',
+                    photo: 'https://randomuser.me/api/portraits/men/36.jpg',
                     rating: 5,
                     comment: language === 'bg'
                       ? 'Качих 5 бележки тази седмица. Всички кешбеци дойдоха навреме.'
@@ -1601,6 +1568,7 @@ const HomePage: React.FC = () => {
                   },
                   {
                     author: language === 'bg' ? 'Ирина Х.' : 'Irina H.',
+                    photo: 'https://randomuser.me/api/portraits/women/49.jpg',
                     rating: 4,
                     comment: language === 'bg'
                       ? 'Харесва ми концепцията. Използвам го предимно в кафенета.'
@@ -1608,6 +1576,7 @@ const HomePage: React.FC = () => {
                   },
                   {
                     author: language === 'bg' ? 'Борис Г.' : 'Boris G.',
+                    photo: 'https://randomuser.me/api/portraits/men/64.jpg',
                     rating: 5,
                     comment: language === 'bg'
                       ? 'Отлична услуга! Спестих 89 лв. / €45 за уикенд в Банско.'
@@ -1615,6 +1584,7 @@ const HomePage: React.FC = () => {
                   },
                   {
                     author: language === 'bg' ? 'Надя П.' : 'Nadya P.',
+                    photo: 'https://randomuser.me/api/portraits/women/11.jpg',
                     rating: 5,
                     comment: language === 'bg'
                       ? 'Приложението работи безупречно. VIP поддръжката отговаря веднага.'
@@ -1622,6 +1592,7 @@ const HomePage: React.FC = () => {
                   },
                   {
                     author: language === 'bg' ? 'Мартин Й.' : 'Martin Y.',
+                    photo: 'https://randomuser.me/api/portraits/men/41.jpg',
                     rating: 5,
                     comment: language === 'bg'
                       ? 'Най-добрата инвестиция тази година. Спестих колкото годишен абонамент за месец.'
@@ -1629,6 +1600,7 @@ const HomePage: React.FC = () => {
                   },
                   {
                     author: language === 'bg' ? 'Росица Ф.' : 'Rositsa F.',
+                    photo: 'https://randomuser.me/api/portraits/women/72.jpg',
                     rating: 4,
                     comment: language === 'bg'
                       ? 'Много партньори във Варна. Използвам го всеки уикенд на морето.'
@@ -1636,6 +1608,7 @@ const HomePage: React.FC = () => {
                   },
                   {
                     author: language === 'bg' ? 'Калоян С.' : 'Kaloyan S.',
+                    photo: 'https://randomuser.me/api/portraits/men/19.jpg',
                     rating: 5,
                     comment: language === 'bg'
                       ? 'Спестих 56 лв. / €29 на вечеря за четирима. Определено си струва.'
@@ -1643,6 +1616,7 @@ const HomePage: React.FC = () => {
                   },
                   {
                     author: language === 'bg' ? 'Анна М.' : 'Anna M.',
+                    photo: 'https://randomuser.me/api/portraits/women/38.jpg',
                     rating: 5,
                     comment: language === 'bg'
                       ? 'Премиум планът е страхотен. Получавам достъп до ексклузивни оферти.'
@@ -1650,6 +1624,7 @@ const HomePage: React.FC = () => {
                   },
                   {
                     author: language === 'bg' ? 'Христо Д.' : 'Hristo D.',
+                    photo: 'https://randomuser.me/api/portraits/men/77.jpg',
                     rating: 5,
                     comment: language === 'bg'
                       ? 'Лесно и бързо. Сканираш, качваш, получаваш кешбек. Толкова просто.'
@@ -1657,6 +1632,7 @@ const HomePage: React.FC = () => {
                   },
                   {
                     author: language === 'bg' ? 'Виктория Т.' : 'Victoria T.',
+                    photo: 'https://randomuser.me/api/portraits/women/32.jpg',
                     rating: 4,
                     comment: language === 'bg'
                       ? 'Добро съотношение качество-цена. Бих искала повече хотели в мрежата.'
@@ -1664,6 +1640,7 @@ const HomePage: React.FC = () => {
                   },
                   {
                     author: language === 'bg' ? 'Пламен К.' : 'Plamen K.',
+                    photo: 'https://randomuser.me/api/portraits/men/28.jpg',
                     rating: 5,
                     comment: language === 'bg'
                       ? 'Използвам го от 3 месеца. Общо спестени над 280 лв. / €143.'
@@ -1684,21 +1661,17 @@ const HomePage: React.FC = () => {
                     }}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', marginBottom: '1rem', gap: '0.75rem' }}>
-                      <div style={{
-                        width: '3rem',
-                        height: '3rem',
-                        borderRadius: '50%',
-                        background: 'linear-gradient(135deg, var(--color-primary) 0%, #ff006e 100%)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        color: 'white',
-                        fontWeight: 700,
-                        fontSize: '1.25rem',
-                        flexShrink: 0
-                      }}>
-                        {testimonial.author[0]}
-                      </div>
+                      <img
+                        src={testimonial.photo}
+                        alt={testimonial.author}
+                        style={{
+                          width: '3rem',
+                          height: '3rem',
+                          borderRadius: '50%',
+                          objectFit: 'cover',
+                          flexShrink: 0
+                        }}
+                      />
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{
                           fontWeight: 600,

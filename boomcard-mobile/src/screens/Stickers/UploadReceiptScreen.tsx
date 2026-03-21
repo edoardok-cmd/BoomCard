@@ -10,11 +10,13 @@ import { Text, Card, Button } from 'react-native-paper';
 import * as ImagePicker from 'expo-image-picker';
 import { crossPlatformAlert } from '../../utils/alert';
 import { useRoute, useNavigation } from '@react-navigation/native';
+import { useTranslation } from 'react-i18next';
 import StickersApi from '../../api/stickers.api';
 
 export default function UploadReceiptScreen() {
   const route = useRoute();
   const navigation = useNavigation();
+  const { t } = useTranslation();
   const { scanId, billAmount, cashbackPercent } = route.params as any;
 
   const [image, setImage] = useState<string | null>(null);
@@ -63,17 +65,17 @@ export default function UploadReceiptScreen() {
       const cashbackAmount = (billAmount * cashbackPercent) / 100;
 
       crossPlatformAlert(
-        'Success',
-        `Receipt uploaded! You will earn ${cashbackAmount.toFixed(2)} BGN cashback once approved.`,
+        t('common.success'),
+        t('stickers.receiptUploaded', `Receipt uploaded! You will earn ${cashbackAmount.toFixed(2)} BGN cashback once approved.`, { amount: cashbackAmount.toFixed(2) }),
         [
           {
-            text: 'OK',
+            text: t('common.ok'),
             onPress: () => (navigation as any).navigate('Dashboard'),
           },
         ]
       );
     } catch (error: any) {
-      crossPlatformAlert('Error', error.message || 'Failed to upload receipt');
+      crossPlatformAlert(t('common.error'), error.message || t('stickers.uploadFailed', 'Failed to upload receipt'));
     } finally {
       setUploading(false);
     }
@@ -81,19 +83,26 @@ export default function UploadReceiptScreen() {
 
   return (
     <View style={styles.container}>
+      <View style={styles.stepHeader}>
+        <View style={styles.stepBadge}>
+          <Text style={styles.stepBadgeText}>
+            {t('stickers.step2of2', 'STEP 2 OF 2')}
+          </Text>
+        </View>
+        <Text style={styles.stepHeaderTitle}>
+          {t('stickers.uploadReceiptTitle', 'Upload Your Receipt')}
+        </Text>
+      </View>
+
       <Card style={styles.card}>
         <Card.Content>
-          <Text variant="titleLarge" style={styles.title}>
-            Upload Your Receipt
-          </Text>
-
           <View style={styles.infoRow}>
-            <Text>Bill Amount:</Text>
+            <Text>{t('stickers.billAmountLabel', 'Bill Amount:')}</Text>
             <Text style={styles.value}>{billAmount.toFixed(2)} BGN</Text>
           </View>
 
           <View style={styles.infoRow}>
-            <Text>Expected Cashback:</Text>
+            <Text>{t('stickers.expectedCashback', 'Expected Cashback:')}</Text>
             <Text style={[styles.value, styles.cashback]}>
               {((billAmount * cashbackPercent) / 100).toFixed(2)} BGN
             </Text>
@@ -103,7 +112,7 @@ export default function UploadReceiptScreen() {
             <View style={styles.imageContainer}>
               <Image source={{ uri: image }} style={styles.image} />
               <Button mode="text" onPress={() => setImage(null)}>
-                Remove Image
+                {t('stickers.removeImage', 'Remove Image')}
               </Button>
             </View>
           ) : (
@@ -114,7 +123,7 @@ export default function UploadReceiptScreen() {
                 onPress={pickImage}
                 style={styles.imageButton}
               >
-                Take Photo
+                {t('stickers.takePhoto', 'Take Photo')}
               </Button>
               <Button
                 mode="outlined"
@@ -122,7 +131,7 @@ export default function UploadReceiptScreen() {
                 onPress={pickFromGallery}
                 style={styles.imageButton}
               >
-                Choose from Gallery
+                {t('stickers.chooseFromGallery', 'Choose from Gallery')}
               </Button>
             </View>
           )}
@@ -134,11 +143,11 @@ export default function UploadReceiptScreen() {
             disabled={!image || uploading}
             style={styles.uploadButton}
           >
-            {uploading ? 'Uploading...' : 'Upload Receipt'}
+            {uploading ? t('stickers.uploading', 'Uploading...') : t('stickers.uploadReceipt', 'Upload Receipt')}
           </Button>
 
           <Text variant="bodySmall" style={styles.note}>
-            Make sure the receipt is clear and shows the total amount
+            {t('stickers.receiptNote', 'Make sure the receipt is clear and shows the total amount')}
           </Text>
         </Card.Content>
       </Card>
@@ -152,12 +161,30 @@ const styles = StyleSheet.create({
     backgroundColor: '#FAFBFC',
     padding: 16,
   },
+  stepHeader: {
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  stepBadge: {
+    backgroundColor: '#ff9800',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    marginBottom: 8,
+  },
+  stepBadgeText: {
+    color: 'white',
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 1,
+  },
+  stepHeaderTitle: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#1a1a2e',
+  },
   card: {
     flex: 1,
-  },
-  title: {
-    marginBottom: 16,
-    textAlign: 'center',
   },
   infoRow: {
     flexDirection: 'row',

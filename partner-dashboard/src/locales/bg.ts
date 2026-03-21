@@ -288,12 +288,12 @@ export const bg: TranslationKey = {
     // How It Works Section
     howItWorks: 'Как работи BOOM Card',
     howItWorksSubtitle: 'Отстъпките се активират директно от масата ти',
-    step1Title: 'Избираш място',
-    step1Description: 'Отиваш в партньорско заведение и сядаш спокойно',
-    step2Title: 'Сканираш QR кода',
-    step2Description: 'С BOOM приложението отбелязваш посещението си',
-    step3Title: 'Получаваш отстъпка',
-    step3Description: 'Плащаш сметката, качваш касовата бележка и получаваш връщане на пари',
+    step1Title: 'Сканираш QR кода',
+    step1Description: 'На масата сканираш BOOM стикера с приложението и отбелязваш посещението',
+    step2Title: 'Насладей се и плати',
+    step2Description: 'Поръчай, насладей се и плати сметката',
+    step3Title: 'Получаваш кешбек',
+    step3Description: 'Качи касовата бележка и получи пари обратно по сметката си',
     downloadAppCta: 'Изтегли BOOM приложението',
     availableForIosAndroid: 'Налично за iOS и Android',
 
