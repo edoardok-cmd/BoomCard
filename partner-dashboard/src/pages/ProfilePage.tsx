@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import styled from 'styled-components';
 import Button from '../components/common/Button/Button';
@@ -53,7 +53,19 @@ const ProfileHeader = styled.div`
   }
 `;
 
-const Avatar = styled.div`
+const AvatarWrapper = styled.div`
+  position: relative;
+  width: 6rem;
+  height: 6rem;
+  flex-shrink: 0;
+  cursor: pointer;
+
+  &:hover > div {
+    opacity: 1;
+  }
+`;
+
+const AvatarInitials = styled.div`
   width: 6rem;
   height: 6rem;
   border-radius: 50%;
@@ -65,7 +77,56 @@ const Avatar = styled.div`
   font-size: 2rem;
   font-weight: 700;
   text-transform: uppercase;
-  flex-shrink: 0;
+`;
+
+const AvatarPhoto = styled.img`
+  width: 6rem;
+  height: 6rem;
+  border-radius: 50%;
+  object-fit: cover;
+  display: block;
+`;
+
+const AvatarOverlay = styled.div`
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.5);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-align: center;
+  opacity: 0;
+  transition: opacity 150ms;
+  pointer-events: none;
+  line-height: 1.2;
+`;
+
+const RemoveAvatarButton = styled.button`
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  width: 1.25rem;
+  height: 1.25rem;
+  border-radius: 50%;
+  background: var(--color-error, #ef4444);
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  font-size: 0.75rem;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  z-index: 1;
+
+  &:hover {
+    background: #dc2626;
+  }
 `;
 
 const ProfileInfo = styled.div`
@@ -242,11 +303,13 @@ interface PasswordErrors {
 }
 
 const ProfilePage: React.FC = () => {
-  const { user, updateProfile, changePassword, isLoading } = useAuth();
+  const { user, updateProfile, changePassword, uploadAvatar, removeAvatar, isLoading } = useAuth();
   const { language, t } = useLanguage();
   const [isEditing, setIsEditing] = useState(false);
   const [showPasswordForm, setShowPasswordForm] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
 
   const [formData, setFormData] = useState({
     firstName: user?.firstName || '',
@@ -404,6 +467,41 @@ const ProfilePage: React.FC = () => {
     setPasswordErrors({});
   };
 
+  const handleAvatarClick = () => {
+    avatarInputRef.current?.click();
+  };
+
+  const handleAvatarFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = '';
+
+    setIsUploadingAvatar(true);
+    try {
+      await uploadAvatar(file);
+      setSuccessMessage(t('profile.avatarUpdated'));
+      setTimeout(() => setSuccessMessage(''), 5000);
+    } catch {
+      // toast shown by context
+    } finally {
+      setIsUploadingAvatar(false);
+    }
+  };
+
+  const handleRemoveAvatar = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setIsUploadingAvatar(true);
+    try {
+      await removeAvatar();
+      setSuccessMessage(t('profile.avatarRemoved'));
+      setTimeout(() => setSuccessMessage(''), 5000);
+    } catch {
+      // toast shown by context
+    } finally {
+      setIsUploadingAvatar(false);
+    }
+  };
+
   const getUserInitials = () => {
     if (!user) return '';
     return `${user.firstName[0]}${user.lastName[0]}`;
@@ -453,7 +551,28 @@ const ProfilePage: React.FC = () => {
         transition={{ duration: 0.3 }}
       >
         <ProfileHeader>
-          <Avatar>{getUserInitials()}</Avatar>
+          <input
+            ref={avatarInputRef}
+            type="file"
+            accept="image/jpeg,image/jpg,image/png,image/webp"
+            style={{ display: 'none' }}
+            onChange={handleAvatarFileChange}
+          />
+          <AvatarWrapper onClick={handleAvatarClick} title={t('profile.changePhoto')}>
+            {user.avatar ? (
+              <AvatarPhoto src={user.avatar} alt={`${user.firstName} ${user.lastName}`} />
+            ) : (
+              <AvatarInitials>{getUserInitials()}</AvatarInitials>
+            )}
+            <AvatarOverlay>
+              {isUploadingAvatar ? t('profile.uploading') : t('profile.changePhoto')}
+            </AvatarOverlay>
+            {user.avatar && !isUploadingAvatar && (
+              <RemoveAvatarButton onClick={handleRemoveAvatar} title={t('profile.removePhoto')}>
+                ×
+              </RemoveAvatarButton>
+            )}
+          </AvatarWrapper>
           <ProfileInfo>
             <UserName>{`${user.firstName} ${user.lastName}`}</UserName>
             <UserEmail>{user.email}</UserEmail>

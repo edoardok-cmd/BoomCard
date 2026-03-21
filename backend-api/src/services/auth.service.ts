@@ -9,6 +9,9 @@ import { cardService } from './card.service';
 import { walletService } from './wallet.service';
 import { UserStatus } from '@prisma/client';
 import { emailService } from './email.service';
+import { SECURITY_CONFIG } from '../config/security.config';
+
+const TERMS_VERSION = process.env.TERMS_VERSION || '2026-02-24';
 
 const JWT_SECRET = process.env.JWT_SECRET;
 const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET;
@@ -68,7 +71,7 @@ export class AuthService {
       ? {
           termsAcceptedAt: new Date(),
           privacyAcceptedAt: new Date(),
-          termsVersion: '2026-02-24',
+          termsVersion: TERMS_VERSION,
         }
       : {};
 
@@ -318,6 +321,46 @@ export class AuthService {
     logger.info(`User profile updated: ${user.email}`);
 
     return user;
+  }
+
+  /**
+   * Update user avatar URL
+   */
+  static async updateAvatar(userId: string, avatarUrl: string) {
+    return prisma.user.update({
+      where: { id: userId },
+      data: { avatar: avatarUrl },
+      select: {
+        id: true,
+        email: true,
+        firstName: true,
+        lastName: true,
+        phone: true,
+        avatar: true,
+        role: true,
+        status: true,
+      },
+    });
+  }
+
+  /**
+   * Remove user avatar
+   */
+  static async removeAvatar(userId: string) {
+    return prisma.user.update({
+      where: { id: userId },
+      data: { avatar: null },
+      select: {
+        id: true,
+        email: true,
+        firstName: true,
+        lastName: true,
+        phone: true,
+        avatar: true,
+        role: true,
+        status: true,
+      },
+    });
   }
 
   /**
@@ -577,7 +620,7 @@ export class AuthService {
     if (user) {
       const otp = Math.floor(100000 + Math.random() * 900000).toString(); // 6-digit
       const hashedOtp = crypto.createHash('sha256').update(otp).digest('hex');
-      const expires = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
+      const expires = new Date(Date.now() + SECURITY_CONFIG.SECURITY.OTP_EXPIRY_MS);
 
       await prisma.user.update({
         where: { id: user.id },

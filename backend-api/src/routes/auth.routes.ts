@@ -1,10 +1,22 @@
 import { Router, Request, Response } from 'express';
+import multer from 'multer';
 import { asyncHandler } from '../middleware/error.middleware';
-import { authenticate, AuthRequest } from '../middleware/auth.middleware';
+import { authenticate, authorize, AuthRequest } from '../middleware/auth.middleware';
 import { validate } from '../middleware/validation.middleware';
 import { registerValidation, loginValidation, updateProfileValidation, changePasswordValidation } from '../validators/auth.validator';
 import { AuthService } from '../services/auth.service';
+import { imageUploadService } from '../services/imageUpload.service';
+import { prisma } from '../lib/prisma';
 import { logger } from '../utils/logger';
+import { authRateLimiter } from '../middleware/security.middleware';
+
+const avatarUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    cb(null, ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'].includes(file.mimetype));
+  },
+});
 
 const router = Router();
 
@@ -205,6 +217,7 @@ router.put(
  */
 router.post(
   '/forgot-password',
+  authRateLimiter,
   asyncHandler(async (req: Request, res: Response) => {
     const { email } = req.body;
 
@@ -224,6 +237,7 @@ router.post(
  */
 router.post(
   '/reset-password',
+  authRateLimiter,
   asyncHandler(async (req: Request, res: Response) => {
     const { email, otp, newPassword } = req.body;
 
@@ -338,6 +352,98 @@ router.post(
       data: result,
     });
   })
+);
+
+/**
+ * POST /api/auth/avatar
+ * Upload profile photo
+ */
+router.post(
+  '/avatar',
+  authenticate,
+  avatarUpload.single('avatar'),
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    if (!req.file) {
+      return res.status(400).json({ error: 'Validation Error', message: 'No image file provided' });
+    }
+
+    const userId = req.user!.id;
+    const result = await imageUploadService.uploadImage({
+      file: req.file.buffer,
+      fileName: req.file.originalname,
+      mimeType: req.file.mimetype,
+      folder: 'avatars',
+      userId,
+    });
+
+    const user = await AuthService.updateAvatar(userId, result.url);
+
+    res.json({
+      success: true,
+      message: 'Profile photo updated',
+      data: user,
+    });
+  })
+);
+
+/**
+ * DELETE /api/auth/avatar
+ * Remove profile photo
+ */
+router.delete(
+  '/avatar',
+  authenticate,
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    const userId = req.user!.id;
+    const user = await AuthService.removeAvatar(userId);
+
+    res.json({
+      success: true,
+      message: 'Profile photo removed',
+      data: user,
+    });
+  })
+);
+
+// ----------------------------------------------------------------
+// GET /api/auth/users/partners
+// Admin only — returns users with PARTNER role who don't yet have
+// a Partner record (i.e., unattached PARTNER users available for
+// partner creation). Supports optional ?search= query.
+// ----------------------------------------------------------------
+router.get(
+  '/users/partners',
+  authenticate,
+  authorize('ADMIN', 'SUPER_ADMIN'),
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    const { search } = req.query as { search?: string };
+
+    const where: any = { role: 'PARTNER' };
+    if (search && search.trim()) {
+      where.OR = [
+        { firstName: { contains: search.trim(), mode: 'insensitive' } },
+        { lastName: { contains: search.trim(), mode: 'insensitive' } },
+        { email: { contains: search.trim(), mode: 'insensitive' } },
+      ];
+    }
+
+    // Fetch all PARTNER-role users
+    const users = await prisma.user.findMany({
+      where,
+      select: { id: true, firstName: true, lastName: true, email: true },
+      orderBy: [{ firstName: 'asc' }, { lastName: 'asc' }],
+      take: 50,
+    });
+
+    // Exclude users who already have a Partner record
+    const existingPartnerUserIds = await prisma.partner
+      .findMany({ select: { userId: true } })
+      .then(partners => new Set(partners.map(p => p.userId)));
+
+    const available = users.filter(u => !existingPartnerUserIds.has(u.id));
+
+    res.json({ success: true, data: available });
+  }),
 );
 
 export default router;

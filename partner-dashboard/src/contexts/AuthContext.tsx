@@ -60,6 +60,8 @@ export interface AuthContextType extends AuthState {
   logout: () => void;
   updateProfile: (data: Partial<User>) => Promise<void>;
   changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
+  uploadAvatar: (file: File) => Promise<void>;
+  removeAvatar: () => Promise<void>;
 }
 
 interface AuthResponse {
@@ -90,9 +92,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (storedAuth && storedToken) {
           const userData = JSON.parse(storedAuth);
 
+          // For mock tokens, skip backend verification and use stored data
+          if (storedToken.startsWith('mock-')) {
+            setUser(userData);
+          } else {
           // Verify token with backend
           try {
-            const verifiedUser = await apiService.get<User>('/auth/me');
+            const meResponse = await apiService.get<any>('/auth/me');
+            const meData = meResponse?.data || meResponse;
+            const verifiedUser: User = {
+              id: meData.id,
+              email: meData.email,
+              firstName: meData.firstName || '',
+              lastName: meData.lastName || '',
+              role: (meData.role === 'SUPER_ADMIN' || meData.role === 'admin') ? 'admin'
+                  : meData.role === 'partner' ? 'partner' : 'user',
+              createdAt: meData.createdAt ? new Date(meData.createdAt).getTime() : Date.now(),
+              emailVerified: meData.emailVerified ?? true,
+              avatar: meData.avatar,
+            };
             setUser(verifiedUser);
           } catch (error) {
             // Token invalid or expired, clear storage
@@ -101,6 +119,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             localStorage.removeItem(TOKEN_KEY);
             localStorage.removeItem(REFRESH_TOKEN_KEY);
             setUser(null);
+          }
           }
         }
       } catch (error) {
@@ -131,11 +150,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       // Try real API endpoint first
       try {
-        const response = await apiService.post<AuthResponse>('/auth/login', credentials);
+        const rawResponse = await apiService.post<any>('/auth/login', credentials);
 
-        // Extract token (handle both 'token' and 'accessToken' field names)
-        const token = response.token || response.accessToken;
-        const refreshToken = response.refreshToken;
+        // Extract token — handle both flat { token, accessToken } and nested { data: { accessToken } } shapes
+        const responseData = rawResponse?.data || rawResponse;
+        const token = responseData?.token || responseData?.accessToken || rawResponse?.token || rawResponse?.accessToken;
+        const refreshToken = responseData?.refreshToken || rawResponse?.refreshToken;
+        const userPayload = responseData?.user || rawResponse?.user;
 
         if (!token) {
           throw new Error('No authentication token received');
@@ -152,9 +173,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         apiService.setAuthToken(token);
 
         // Set user state
-        setUser(response.user);
+        const user: User = {
+          id: userPayload.id,
+          email: userPayload.email,
+          firstName: userPayload.firstName || '',
+          lastName: userPayload.lastName || '',
+          role: (userPayload.role === 'SUPER_ADMIN' || userPayload.role === 'admin') ? 'admin'
+              : userPayload.role === 'partner' ? 'partner' : 'user',
+          createdAt: userPayload.createdAt ? new Date(userPayload.createdAt).getTime() : Date.now(),
+          emailVerified: userPayload.emailVerified ?? true,
+          avatar: userPayload.avatar,
+        };
+        setUser(user);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(user));
 
-        toast.success(`Welcome back, ${response.user.firstName}!`);
+        toast.success(`Welcome back, ${user.firstName}!`);
         return;
       } catch (apiError: any) {
         // If API fails, fall back to mock authentication for development
@@ -333,8 +366,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     try {
       // Validate new password
-      if (newPassword.length < 6) {
-        throw new Error('Password must be at least 6 characters');
+      if (newPassword.length < 8) {
+        throw new Error('Password must be at least 8 characters');
+      }
+      if (!/[A-Z]/.test(newPassword)) {
+        throw new Error('Password must contain at least one uppercase letter');
+      }
+      if (!/[a-z]/.test(newPassword)) {
+        throw new Error('Password must contain at least one lowercase letter');
+      }
+      if (!/[0-9]/.test(newPassword)) {
+        throw new Error('Password must contain at least one number');
+      }
+      if (!/[^A-Za-z0-9]/.test(newPassword)) {
+        throw new Error('Password must contain at least one special character');
       }
 
       // Call real API endpoint
@@ -430,6 +475,48 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const uploadAvatar = async (file: File): Promise<void> => {
+    if (!user) throw new Error('No user logged in');
+
+    setIsLoading(true);
+    try {
+      const formData = new FormData();
+      formData.append('avatar', file);
+
+      const response = await apiService.post<any>('/auth/avatar', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+
+      const updatedUser = response?.data || response;
+      setUser(prev => prev ? { ...prev, avatar: updatedUser.avatar } : prev);
+
+      toast.success('Profile photo updated');
+    } catch (error: any) {
+      const message = error.response?.data?.message || error.message || 'Upload failed';
+      toast.error(message);
+      throw error;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const removeAvatar = async (): Promise<void> => {
+    if (!user) throw new Error('No user logged in');
+
+    setIsLoading(true);
+    try {
+      await apiService.delete('/auth/avatar');
+      setUser(prev => prev ? { ...prev, avatar: undefined } : prev);
+      toast.success('Profile photo removed');
+    } catch (error: any) {
+      const message = error.response?.data?.message || error.message || 'Remove failed';
+      toast.error(message);
+      throw error;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const value: AuthContextType = {
     user,
     token,
@@ -441,6 +528,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     logout,
     updateProfile,
     changePassword,
+    uploadAvatar,
+    removeAvatar,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
