@@ -168,6 +168,8 @@ export interface Entity {
   partnerId?: string;
   partnerName?: BilingualText;
   partnerStatus?: PartnerStatus;
+  partnerTypeId?: string;
+  partnerType?: { id: string; name: string; nameBg?: string; color: string; maxDiscountRate: number };
 
   // Experience-specific metadata (only for kind === 'experience')
   experience?: ExperienceMetadata;
@@ -274,6 +276,8 @@ export function offerToEntity(offer: Offer): Entity {
       ? { display: offer.workingHours, displayBg: offer.workingHoursBg }
       : undefined,
     partnerName: { en: offer.partnerName, bg: offer.partnerName },
+    partnerTypeId: (offer as any).partner?.partnerTypeId,
+    partnerType: (offer as any).partner?.partnerType,
     path: offer.path,
   };
 }

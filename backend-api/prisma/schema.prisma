@@ -99,14 +99,6 @@ model RefreshToken {
 // Partner Models
 // ============================================
 
-enum PartnerTier {
-  BASIC
-  STANDARD
-  PREMIUM
-  VIP
-  EXCLUSIVE
-}
-
 enum PartnerStatus {
   PENDING
   ACTIVE
@@ -124,7 +116,8 @@ model Partner {
   descriptionBg  String?
   logo           String?
   coverImage     String?
-  tier           PartnerTier   @default(BASIC)
+  partnerTypeId  String?       // FK → PartnerType (dynamic, replaces hardcoded tier enum)
+  discountRate   Float?        // Effective discount % for cardholders. NULL = use partnerType.maxDiscountRate.
   status         PartnerStatus @default(PENDING)
   rating         Float         @default(0)
   reviewCount    Int           @default(0)
@@ -141,21 +134,50 @@ model Partner {
   amenities      String? // JSON string
   joinedAt       DateTime      @default(now())
   verifiedAt     DateTime?
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  pendingChanges    Json?
+  pendingChangesAt  DateTime?
 
   // Relations
-  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  venues       Venue[]
-  offers       Offer[]
-  reviews      Review[]
-  bookings     Booking[]
-  transactions Transaction[]
+  user             User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  partnerType      PartnerType?             @relation(fields: [partnerTypeId], references: [id])
+  venues           Venue[]
+  offers           Offer[]
+  reviews          Review[]
+  bookings         Booking[]
+  transactions     Transaction[]
+  cashbackPayments PartnerCashbackPayment[]
 
   @@index([category])
-  @@index([tier])
+  @@index([partnerTypeId])
   @@index([status])
   @@index([city])
+}
+
+enum CashbackPaymentStatus {
+  PENDING
+  PAID
+  OVERDUE
+}
+
+model PartnerCashbackPayment {
+  id                String                @id @default(uuid())
+  partnerId         String
+  month             String                // "YYYY-MM"
+  totalCashbackOwed Float                 @default(0) // sum of APPROVED receipt cashbackAmounts
+  paidAt            DateTime?
+  paidBy            String?               // admin userId
+  notes             String?
+  status            CashbackPaymentStatus @default(PENDING)
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+
+  partner Partner @relation(fields: [partnerId], references: [id])
+
+  @@unique([partnerId, month])
+  @@index([status])
+  @@index([month])
 }
 
 model Venue {
@@ -173,6 +195,7 @@ model Venue {
   description   String?
   descriptionBg String?
   images        String? // JSON array
+  menuImages    String? // JSON array — menu/price list images uploaded by partner
   openingHours  String? // JSON string
   capacity      Int?
   features      String? // JSON array
@@ -189,6 +212,46 @@ model Venue {
 
   @@index([partnerId])
   @@index([city])
+}
+
+// ============================================
+// Partner Type (replaces hardcoded PartnerTier enum)
+// ============================================
+
+model PartnerType {
+  id              String   @id @default(uuid())
+  name            String   @unique        // e.g. "BASIC", "GOLD", "VIP" — admin-defined
+  nameBg          String?
+  description     String?
+  descriptionBg   String?
+  maxDiscountRate Float                   // max % discount partners of this type may publish
+  color           String   @default("#6b7280") // hex color for badges
+  sortOrder       Int      @default(0)
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  partners   Partner[]
+  planAccess PlanTypeAccess[]
+
+  @@index([isActive])
+  @@index([sortOrder])
+}
+
+// Controls which subscription plans can view and/or redeem offers
+// from partners of a given type. Replaces hardcoded PLAN_REDEEMABLE_TIERS.
+model PlanTypeAccess {
+  id            String           @id @default(uuid())
+  plan          SubscriptionPlan
+  partnerTypeId String
+  canView       Boolean          @default(true)
+  canRedeem     Boolean          @default(true)
+
+  partnerType PartnerType @relation(fields: [partnerTypeId], references: [id], onDelete: Cascade)
+
+  @@unique([plan, partnerTypeId])
+  @@index([plan])
+  @@index([partnerTypeId])
 }
 
 // ============================================
@@ -228,6 +291,7 @@ model Offer {
   termsConditions   String?
   termsConditionsBg String?
   image             String?
+  tags              String?     // JSON array of tag strings, e.g. ["spa","wellness"]
   status            OfferStatus @default(DRAFT)
   isFeatured        Boolean     @default(false)
   featuredOrder     Int?
@@ -599,7 +663,8 @@ model Receipt {
   // Receipt Image
   imageUrl  String? // Optional for test receipts
   imageKey  String? // Storage key (S3/CloudFlare R2)
-  imageHash String? // SHA-256 for duplicate detection
+  imageHash      String? // SHA-256 for duplicate detection
+  perceptualHash String? // 60-char dHash hex for visual similarity
 
   // OCR Extracted Data
   ocrRawText     String? // Full OCR text output
@@ -649,6 +714,7 @@ model Receipt {
   @@index([venueId])
   @@index([status])
   @@index([imageHash])
+  @@index([perceptualHash])
   @@index([createdAt])
   @@index([merchantName])
   @@index([fraudScore])
@@ -743,6 +809,15 @@ model VenueFraudConfig {
   autoApproveThreshold   Float   @default(30) // Fraud score threshold
   autoRejectThreshold    Float   @default(60)
 
+  // Template Matching Settings
+  templateMatchEnabled      Boolean @default(false)
+  templateVisualWeight      Float   @default(0.5)
+  templateMerchantWeight    Float   @default(0.3)
+  templateKeywordWeight     Float   @default(0.2)
+  templateMinSimilarity     Float   @default(0.6)
+  templateFraudPoints       Int     @default(20)
+  templateMerchantThreshold Float   @default(0.8)
+
   // Metadata
   isActive  Boolean  @default(true)
   metadata  String? // JSON
@@ -751,6 +826,29 @@ model VenueFraudConfig {
 
   @@index([venueId])
   @@index([partnerId])
+}
+
+// ============================================
+// Venue Receipt Templates (admin-uploaded reference receipts for fraud comparison)
+// ============================================
+
+model VenueReceiptTemplate {
+  id               String  @id @default(uuid())
+  venueId          String  // References Partner.id (no FK — matches VenueFraudConfig pattern)
+  merchantName     String  // Expected merchant name on valid receipts
+  description      String? // Admin note
+  expectedKeywords String? // JSON string[] of OCR keywords that should appear
+  imageUrl         String  // S3 URL
+  imageKey         String  // S3 key (used for deletion)
+  perceptualHash   String  // 60-char dHash hex for visual comparison
+  isActive         Boolean @default(true)
+  uploadedBy       String  // Admin user ID
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([venueId])
+  @@index([venueId, isActive])
 }
 
 // ============================================

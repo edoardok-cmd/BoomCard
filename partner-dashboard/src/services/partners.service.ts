@@ -1,8 +1,14 @@
 import { apiService } from './api.service';
 import { PaginatedResponse } from './venues.service';
+import { PartnerType } from './partnerTypes.service';
+
+export type PartnerStatus = 'PENDING' | 'ACTIVE' | 'SUSPENDED' | 'INACTIVE';
 
 export interface Partner {
   id: string;
+  userId?: string;
+  businessName: string;
+  businessNameBg?: string;
   name: string;
   nameEn?: string;
   nameBg?: string;
@@ -10,9 +16,14 @@ export interface Partner {
   descriptionEn?: string;
   descriptionBg?: string;
   category: string;
-  status: 'new' | 'vip' | 'exclusive' | 'regular';
-  city: string;
+  partnerTypeId?: string;
+  partnerType?: PartnerType;
+  status: PartnerStatus | 'new' | 'vip' | 'exclusive' | 'regular';
+  city?: string;
   region?: string;
+  address?: string;
+  phone?: string;
+  email?: string;
   logo?: string;
   coverImage?: string;
   contactEmail?: string;
@@ -23,16 +34,59 @@ export interface Partner {
     instagram?: string;
     twitter?: string;
   };
+  venues?: Array<{ id: string; name: string; city?: string }>;
   venueCount?: number;
   offerCount?: number;
   totalRedemptions?: number;
   rating?: number;
   reviewCount?: number;
+  discountRate?: number | null;
+  effectiveDiscountRate?: number;
+  typeMaxDiscountPercent?: number;
+  joinedAt?: string;
   joinedDate?: string;
+  verifiedAt?: string;
   isVerified?: boolean;
   features?: string[];
   createdAt?: string;
   updatedAt?: string;
+  pendingChanges?: Record<string, unknown> | null;
+  pendingChangesAt?: string | null;
+}
+
+export interface PartnerLocationInput {
+  name: string;
+  address: string;
+  city: string;
+  region?: string;
+  latitude?: number;
+  longitude?: number;
+  phone?: string;
+}
+
+export interface CreatePartnerPayload {
+  userId: string;
+  businessName: string;
+  businessNameBg?: string;
+  category: string;
+  description?: string;
+  descriptionBg?: string;
+  partnerTypeId?: string;
+  discountRate?: number;
+  city?: string;
+  region?: string;
+  address?: string;
+  phone?: string;
+  email?: string;
+  website?: string;
+  locations?: PartnerLocationInput[];
+}
+
+export interface PartnerUserOption {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
 }
 
 export interface PartnerFilters {
@@ -136,6 +190,24 @@ class PartnersService {
    */
   async getCurrentPartner(): Promise<Partner> {
     return apiService.get<Partner>(`${this.baseUrl}/me`);
+  }
+
+  /**
+   * Search users with PARTNER role who don't yet have a partner record (admin only)
+   */
+  async searchPartnerUsers(search: string): Promise<PartnerUserOption[]> {
+    const response = await apiService.get<{ data: PartnerUserOption[] }>(
+      '/auth/users/partners',
+      search ? { search } : undefined,
+    );
+    return response.data;
+  }
+
+  /**
+   * Create a new partner (admin only)
+   */
+  async createPartner(data: CreatePartnerPayload): Promise<Partner> {
+    return apiService.post<Partner>(this.baseUrl, data);
   }
 
   /**

@@ -4,10 +4,21 @@
  */
 
 import { Router, Response } from 'express';
+import multer from 'multer';
 import { asyncHandler } from '../middleware/error.middleware';
 import { authenticate, AuthRequest } from '../middleware/auth.middleware';
 import { venueService } from '../services/venue.service';
+import { imageUploadService } from '../services/imageUpload.service';
 import { logger } from '../utils/logger';
+
+const menuUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 20 * 1024 * 1024, files: 20 },
+  fileFilter: (_req, file, cb) => {
+    const allowed = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'application/octet-stream'];
+    cb(null, allowed.includes(file.mimetype));
+  },
+});
 
 const router = Router();
 
@@ -194,10 +205,10 @@ router.post(
     } = req.body;
 
     // Validate required fields
-    if (!partnerId || !name || !address || !city || latitude === undefined || longitude === undefined) {
+    if (!partnerId || !name || !address || !city) {
       return res.status(400).json({
         success: false,
-        error: 'Missing required fields: partnerId, name, address, city, latitude, longitude',
+        error: 'Missing required fields: partnerId, name, address, city',
       });
     }
 
@@ -208,8 +219,8 @@ router.post(
       address,
       city,
       region,
-      latitude,
-      longitude,
+      latitude: latitude ?? 0,
+      longitude: longitude ?? 0,
       phone,
       email,
       description,
@@ -264,6 +275,84 @@ router.delete(
       success: true,
       message: 'Venue deleted successfully',
     });
+  })
+);
+
+/**
+ * POST /api/venues/:id/menu
+ * Upload menu images for a venue (Admin or owning Partner)
+ * multipart/form-data field: images (up to 20 files)
+ */
+router.post(
+  '/:id/menu',
+  authenticate,
+  menuUpload.array('images', 20),
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    const { id } = req.params;
+    const files = req.files as Express.Multer.File[] | undefined;
+
+    if (!files || files.length === 0) {
+      return res.status(400).json({ success: false, error: 'At least one image file is required (field: images)' });
+    }
+
+    const venue = await venueService.getVenueById(id);
+    if (!venue) {
+      return res.status(404).json({ success: false, error: 'Venue not found' });
+    }
+
+    // Upload each image to S3
+    const uploadedUrls: string[] = [];
+    for (const file of files) {
+      try {
+        const result = await imageUploadService.uploadImage({
+          file: file.buffer,
+          fileName: file.originalname,
+          mimeType: file.mimetype,
+          folder: 'venue-menus',
+          userId: req.user!.id,
+        });
+        uploadedUrls.push(result.url);
+      } catch (err: any) {
+        logger.warn(`Failed to upload menu image "${file.originalname}": ${err.message}`);
+      }
+    }
+
+    if (uploadedUrls.length === 0) {
+      return res.status(500).json({ success: false, error: 'All image uploads failed' });
+    }
+
+    // Append to existing menuImages
+    const existing: string[] = venue.menuImages ? JSON.parse(venue.menuImages as string) : [];
+    const merged = [...existing, ...uploadedUrls];
+
+    const updated = await venueService.updateVenue(id, { menuImages: JSON.stringify(merged) });
+
+    res.json({
+      success: true,
+      data: { menuImages: merged, uploaded: uploadedUrls.length },
+      message: `${uploadedUrls.length} menu image(s) uploaded`,
+    });
+  })
+);
+
+/**
+ * DELETE /api/venues/:id/menu
+ * Clear all menu images for a venue (Admin or owning Partner)
+ */
+router.delete(
+  '/:id/menu',
+  authenticate,
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    const { id } = req.params;
+
+    const venue = await venueService.getVenueById(id);
+    if (!venue) {
+      return res.status(404).json({ success: false, error: 'Venue not found' });
+    }
+
+    await venueService.updateVenue(id, { menuImages: null });
+
+    res.json({ success: true, message: 'Menu images cleared' });
   })
 );
 

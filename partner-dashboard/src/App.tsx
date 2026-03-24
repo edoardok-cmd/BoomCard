@@ -126,7 +126,13 @@ const RefundPolicyPage = lazy(() => import('./pages/RefundPolicyPage'));
 // Admin pages
 const AdminDashboardPage = lazy(() => import('./pages/AdminDashboardPage'));
 const AdminOffersPage = lazy(() => import('./pages/AdminOffersPage'));
+const AdminPartnersPage = lazy(() => import('./pages/AdminPartnersPage'));
+const AdminPartnerTypesPage = lazy(() => import('./pages/AdminPartnerTypesPage'));
 const AdminScanReviewPage = lazy(() => import('./pages/AdminScanReviewPage'));
+const AdminBulkImportPage = lazy(() => import('./pages/AdminBulkImportPage'));
+const AdminCashbackPage = lazy(() => import('./pages/AdminCashbackPage'));
+const AdminTopDiscountsPage = lazy(() => import('./pages/AdminTopDiscountsPage'));
+const AdminPartnerOnboardingPage = lazy(() => import('./pages/AdminPartnerOnboardingPage'));
 
 // Receipt pages
 const ReceiptsPage = lazy(() => import('./pages/ReceiptsPage'));
@@ -407,6 +413,30 @@ function App() {
                       }
                     />
                     <Route
+                      path="admin/top-discounts"
+                      element={
+                        <ProtectedRoute requiredRole="admin">
+                          <AdminTopDiscountsPage />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="admin/partners"
+                      element={
+                        <ProtectedRoute requiredRole="admin">
+                          <AdminPartnersPage />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="admin/partner-types"
+                      element={
+                        <ProtectedRoute requiredRole="admin">
+                          <AdminPartnerTypesPage />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
                       path="admin/receipts"
                       element={
                         <ProtectedRoute requiredRole="admin">
@@ -419,6 +449,30 @@ function App() {
                       element={
                         <ProtectedRoute requiredRole="admin">
                           <AdminScanReviewPage />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="admin/bulk-import"
+                      element={
+                        <ProtectedRoute requiredRole="admin">
+                          <AdminBulkImportPage />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="admin/cashback"
+                      element={
+                        <ProtectedRoute requiredRole="admin">
+                          <AdminCashbackPage />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="admin/partner-onboarding"
+                      element={
+                        <ProtectedRoute requiredRole="admin">
+                          <AdminPartnerOnboardingPage />
                         </ProtectedRoute>
                       }
                     />

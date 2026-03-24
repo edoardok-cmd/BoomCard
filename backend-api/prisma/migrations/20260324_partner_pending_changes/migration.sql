@@ -1,0 +1,2 @@
+ALTER TABLE "Partner" ADD COLUMN IF NOT EXISTS "pendingChanges" JSONB;
+ALTER TABLE "Partner" ADD COLUMN IF NOT EXISTS "pendingChangesAt" TIMESTAMP(3);
