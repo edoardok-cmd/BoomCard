@@ -74,8 +74,8 @@ export const navigationConfig: NavConfig = {
             },
             {
               id: 'asian',
-              label: 'Asian Cuisine',
-              labelBg: 'Азиатска кухня',
+              label: 'Asian',
+              labelBg: 'Азиатски',
               path: '/venues/restaurants?type=asian',
             },
           ],

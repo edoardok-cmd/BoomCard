@@ -25,10 +25,10 @@ export const placesCategories: CategoryDefinition[] = [
     name: { en: 'Restaurants & Food', bg: 'Ресторанти и храна' },
     subcategories: [
       { id: 'restaurants/curated', name: { en: 'BOOM Restaurants', bg: 'BOOM Ресторанти' } },
-      { id: 'restaurants/fast-food', name: { en: 'Fast Food', bg: 'Бързо хранене' } },
+      { id: 'restaurants/fast-food', name: { en: 'Fast Food', bg: 'Бърза храна' } },
       { id: 'restaurants/traditional', name: { en: 'Traditional Cuisine', bg: 'Традиционна кухня' } },
-      { id: 'restaurants/vegetarian-vegan', name: { en: 'Vegetarian & Vegan', bg: 'Вегетарианска и веган' } },
-      { id: 'restaurants/asian', name: { en: 'Asian Cuisine', bg: 'Азиатска кухня' } },
+      { id: 'restaurants/vegetarian-vegan', name: { en: 'Vegetarian & Vegan', bg: 'Вегетарианско и веган' } },
+      { id: 'restaurants/asian', name: { en: 'Asian', bg: 'Азиатски' } },
     ],
   },
   {
@@ -55,8 +55,8 @@ export const placesCategories: CategoryDefinition[] = [
     id: 'panoramic',
     name: { en: 'Panoramic Places', bg: 'Панорамни места' },
     subcategories: [
-      { id: 'panoramic/bars', name: { en: 'Rooftop Bars', bg: 'Руфтоп барове' } },
-      { id: 'panoramic/restaurants', name: { en: 'Sky Restaurants', bg: 'Скай ресторанти' } },
+      { id: 'panoramic/bars', name: { en: 'Rooftop Bars', bg: 'Rooftop Барове' } },
+      { id: 'panoramic/restaurants', name: { en: 'Sky Restaurants', bg: 'Sky Ресторанти' } },
     ],
   },
   {
@@ -76,7 +76,7 @@ export const placesCategories: CategoryDefinition[] = [
     subcategories: [
       { id: 'cafes/cafes', name: { en: 'Cafes', bg: 'Кафенета' } },
       { id: 'cafes/pastry-shops', name: { en: 'Pastry Shops', bg: 'Сладкарници' } },
-      { id: 'cafes/brunch', name: { en: 'Brunch', bg: 'Бранч' } },
+      { id: 'cafes/brunch', name: { en: 'Brunch', bg: 'Брънч' } },
       { id: 'cafes/bakeries', name: { en: 'Bakeries', bg: 'Пекарни' } },
     ],
   },
