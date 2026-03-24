@@ -3,7 +3,9 @@
  * Token generation, verification, and management
  */
 
-import crypto from 'crypto';
+// jwt.ts — shared JWT types and browser-safe token utilities.
+// Crypto-dependent functions (generateToken, verifyToken) must only be called
+// server-side. The browser uses decodeToken (no crypto/process required).
 
 export interface JWTPayload {
   sub: string; // Subject (user ID)
@@ -21,145 +23,21 @@ export interface TokenPair {
   expiresIn: number;
 }
 
-const JWT_SECRET = process.env.JWT_SECRET;
-const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET;
-if (!JWT_SECRET || !JWT_REFRESH_SECRET) {
-  throw new Error('JWT_SECRET and JWT_REFRESH_SECRET environment variables are required');
-}
-const ACCESS_TOKEN_EXPIRY = 15 * 60; // 15 minutes
-const REFRESH_TOKEN_EXPIRY = 7 * 24 * 60 * 60; // 7 days
+const ACCESS_TOKEN_EXPIRY = 15 * 60; // 15 minutes — used by getTokenExpiry fallback
 
 /**
- * Base64 URL encode
- */
-function base64UrlEncode(data: string): string {
-  return Buffer.from(data)
-    .toString('base64')
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=/g, '');
-}
-
-/**
- * Base64 URL decode
+ * Base64 URL decode — browser-safe (uses atob).
  */
 function base64UrlDecode(data: string): string {
-  // Add padding
   const padding = '='.repeat((4 - (data.length % 4)) % 4);
   const base64 = data.replace(/-/g, '+').replace(/_/g, '/') + padding;
-
-  return Buffer.from(base64, 'base64').toString('utf-8');
-}
-
-/**
- * Create HMAC signature
- */
-function createSignature(data: string, secret: string): string {
-  return base64UrlEncode(
-    crypto.createHmac('sha256', secret).update(data).digest('base64')
-  );
-}
-
-/**
- * Generate JWT token
- */
-export function generateToken(
-  payload: Omit<JWTPayload, 'iat' | 'exp' | 'jti'>,
-  expiresIn: number = ACCESS_TOKEN_EXPIRY,
-  secret: string = JWT_SECRET
-): string {
-  const now = Math.floor(Date.now() / 1000);
-
-  const fullPayload = {
-    ...payload,
-    iat: now,
-    exp: now + expiresIn,
-    jti: crypto.randomBytes(16).toString('hex'),
-  } as JWTPayload;
-
-  const header = {
-    alg: 'HS256',
-    typ: 'JWT',
-  };
-
-  const encodedHeader = base64UrlEncode(JSON.stringify(header));
-  const encodedPayload = base64UrlEncode(JSON.stringify(fullPayload));
-
-  const signature = createSignature(`${encodedHeader}.${encodedPayload}`, secret);
-
-  return `${encodedHeader}.${encodedPayload}.${signature}`;
-}
-
-/**
- * Verify JWT token
- */
-export function verifyToken(token: string, secret: string = JWT_SECRET): JWTPayload | null {
   try {
-    const parts = token.split('.');
-
-    if (parts.length !== 3) {
-      throw new Error('Invalid token format');
-    }
-
-    const [encodedHeader, encodedPayload, signature] = parts;
-
-    // Verify signature
-    const expectedSignature = createSignature(
-      `${encodedHeader}.${encodedPayload}`,
-      secret
-    );
-
-    if (signature !== expectedSignature) {
-      throw new Error('Invalid signature');
-    }
-
-    // Decode payload
-    const payload: JWTPayload = JSON.parse(base64UrlDecode(encodedPayload));
-
-    // Check expiration
-    const now = Math.floor(Date.now() / 1000);
-    if (payload.exp && payload.exp < now) {
-      throw new Error('Token expired');
-    }
-
-    return payload;
-  } catch (error) {
-    console.error('Token verification failed:', error);
-    return null;
+    // Browser
+    return atob(base64);
+  } catch {
+    // Node fallback (tests)
+    return Buffer.from(base64, 'base64').toString('utf-8');
   }
-}
-
-/**
- * Generate access and refresh token pair
- */
-export function generateTokenPair(payload: Omit<JWTPayload, 'iat' | 'exp' | 'jti'>): TokenPair {
-  const accessToken = generateToken(payload, ACCESS_TOKEN_EXPIRY, JWT_SECRET);
-  const refreshToken = generateToken(
-    { ...payload, type: 'refresh' },
-    REFRESH_TOKEN_EXPIRY,
-    JWT_REFRESH_SECRET
-  );
-
-  return {
-    accessToken,
-    refreshToken,
-    expiresIn: ACCESS_TOKEN_EXPIRY,
-  };
-}
-
-/**
- * Refresh access token using refresh token
- */
-export function refreshAccessToken(refreshToken: string): string | null {
-  const payload = verifyToken(refreshToken, JWT_REFRESH_SECRET);
-
-  if (!payload || payload.type !== 'refresh') {
-    return null;
-  }
-
-  // Generate new access token
-  const { type, iat, exp, jti, ...userPayload } = payload;
-  return generateToken(userPayload, ACCESS_TOKEN_EXPIRY, JWT_SECRET);
 }
 
 /**
@@ -198,14 +76,14 @@ export function getTokenExpiry(token: string): Date | null {
 }
 
 /**
- * Extract user info from token
+ * Extract user info from token (browser-safe, no signature verification)
  */
 export function getUserFromToken(token: string): {
   id: string;
   email: string;
   role: string;
 } | null {
-  const payload = verifyToken(token);
+  const payload = decodeToken(token);
   if (!payload) return null;
 
   return {
@@ -250,12 +128,19 @@ export function clearExpiredRevocations(): void {
 }
 
 /**
- * Validate token and check revocation
+ * Validate token: decode + expiry check (browser-safe, no HMAC verification).
+ * Signature integrity is enforced by the backend on every API call.
  */
 export function validateToken(token: string): JWTPayload | null {
   if (isTokenRevoked(token)) {
     return null;
   }
 
-  return verifyToken(token);
+  const payload = decodeToken(token);
+  if (!payload) return null;
+
+  const now = Math.floor(Date.now() / 1000);
+  if (payload.exp && payload.exp < now) return null;
+
+  return payload;
 }

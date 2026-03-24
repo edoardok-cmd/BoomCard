@@ -329,10 +329,17 @@ export const PaymentMethodForm: React.FC<PaymentMethodFormProps> = ({
     if (!formData.expiryYear) {
       newErrors.expiryYear = t('payment.required');
     } else {
-      const currentYear = new Date().getFullYear() % 100;
+      const now = new Date();
+      const currentYear = now.getFullYear() % 100;
+      const currentMonth = now.getMonth() + 1;
       const year = parseInt(formData.expiryYear);
       if (year < currentYear) {
         newErrors.expiryYear = t('payment.expired');
+      } else if (year === currentYear && !newErrors.expiryMonth) {
+        const month = parseInt(formData.expiryMonth);
+        if (month < currentMonth) {
+          newErrors.expiryMonth = t('payment.expired');
+        }
       }
     }
 
@@ -460,8 +467,11 @@ export const PaymentMethodForm: React.FC<PaymentMethodFormProps> = ({
               placeholder={t('payment.cardholderPlaceholder')}
               value={formData.cardholderName}
               onChange={(e) => {
-                setFormData({ ...formData, cardholderName: e.target.value.toUpperCase() });
-                setErrors({ ...errors, cardholderName: undefined });
+                const value = e.target.value.toUpperCase();
+                if (/^[A-Z\s-]*$/.test(value)) {
+                  setFormData({ ...formData, cardholderName: value });
+                  setErrors({ ...errors, cardholderName: undefined });
+                }
               }}
               disabled={loading}
             />

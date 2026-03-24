@@ -8,6 +8,13 @@ import { notificationService } from './notification.service';
 import { walletService } from './wallet.service';
 import { cardService } from './card.service';
 import { prisma } from '../lib/prisma';
+import {
+  CASHBACK_ESTIMATED_CREDIT_DAYS,
+  DEFAULT_CARD_TIER,
+  DEFAULT_DAILY_SUBMISSION_LIMIT,
+  DEFAULT_MONTHLY_SUBMISSION_LIMIT,
+  FRAUD_ALERT_SCORE_THRESHOLD,
+} from '../constants/receipt.constants';
 
 /**
  * Receipt Item structure (parsed from OCR)
@@ -603,6 +610,7 @@ class ReceiptService {
     userId: string;
     imageUrl: string;
     imageHash: string;
+    perceptualHash?: string;
     ocrData?: {
       rawText?: string;
       merchantName?: string;
@@ -635,11 +643,11 @@ class ReceiptService {
         where: { userId: request.userId },
       });
 
-      const cardTier = userCard?.type || 'LIGHT';
+      const cardTier = userCard?.type || DEFAULT_CARD_TIER;
 
       // Auto-create card if user doesn't have one
       if (!userCard) {
-        await cardService.createCard({ userId: request.userId, cardType: 'LIGHT' });
+        await cardService.createCard({ userId: request.userId, cardType: DEFAULT_CARD_TIER });
       }
 
       // Get venue location if provided
@@ -657,18 +665,20 @@ class ReceiptService {
 
       // Run fraud detection
       const fraudCheck = await fraudDetectionService.checkReceipt({
-        imageHash: request.imageHash,
-        ocrAmount: request.ocrData?.totalAmount,
-        userAmount: request.userAmount,
-        userLat: request.latitude,
-        userLon: request.longitude,
+        imageHash:      request.imageHash,
+        perceptualHash: request.perceptualHash,
+        ocrAmount:      request.ocrData?.totalAmount,
+        userAmount:     request.userAmount,
+        userLat:        request.latitude,
+        userLon:        request.longitude,
         venueLat,
         venueLon,
-        ocrConfidence: request.ocrData?.confidence || 0,
-        merchantName: request.ocrData?.merchantName,
-        userId: request.userId,
-        venueId: request.venueId,
-        cardTier: cardTier as any,
+        ocrConfidence:  request.ocrData?.confidence || 0,
+        merchantName:   request.ocrData?.merchantName,
+        ocrRawText:     request.ocrData?.rawText,
+        userId:         request.userId,
+        venueId:        request.venueId,
+        cardTier:       cardTier as any,
       });
 
       // Calculate cashback
@@ -702,9 +712,10 @@ class ReceiptService {
         data: {
           userId: request.userId,
           cardId: card?.id,
-          imageUrl: request.imageUrl,
-          imageHash: request.imageHash,
-          ocrRawText: request.ocrData?.rawText || '',
+          imageUrl:      request.imageUrl,
+          imageHash:     request.imageHash,
+          perceptualHash: request.perceptualHash,
+          ocrRawText:    request.ocrData?.rawText || '',
           merchantName: request.ocrData?.merchantName,
           totalAmount: amount,
           receiptDate: request.ocrData?.receiptDate ? new Date(request.ocrData.receiptDate) : undefined,
@@ -757,7 +768,7 @@ class ReceiptService {
       }
 
       // Send fraud alert to admins if high score
-      if (fraudCheck.fraudScore >= 60) {
+      if (fraudCheck.fraudScore >= FRAUD_ALERT_SCORE_THRESHOLD) {
         await notificationService.notifyFraudAlert({
           receiptId: receipt.id,
           userId: request.userId,
@@ -795,7 +806,7 @@ class ReceiptService {
           amount: cashbackAmount,
           percentage: cashbackCalc.cashbackPercent,
           status: cashbackAmount > 0 ? 'PENDING' : 'NOT_APPLICABLE',
-          estimatedDate: cashbackAmount > 0 ? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) : null, // 7 days from now
+          estimatedDate: cashbackAmount > 0 ? new Date(Date.now() + CASHBACK_ESTIMATED_CREDIT_DAYS * 24 * 60 * 60 * 1000) : null,
         },
       };
     } catch (error) {
@@ -846,10 +857,10 @@ class ReceiptService {
       submissionsToday: today,
       submissionsThisMonth: thisMonth,
       totalSubmissions: total,
-      dailyLimit: 10,
-      monthlyLimit: 100,
-      remainingToday: Math.max(0, 10 - today),
-      remainingThisMonth: Math.max(0, 100 - thisMonth),
+      dailyLimit: DEFAULT_DAILY_SUBMISSION_LIMIT,
+      monthlyLimit: DEFAULT_MONTHLY_SUBMISSION_LIMIT,
+      remainingToday: Math.max(0, DEFAULT_DAILY_SUBMISSION_LIMIT - today),
+      remainingThisMonth: Math.max(0, DEFAULT_MONTHLY_SUBMISSION_LIMIT - thisMonth),
     };
   }
 
@@ -898,27 +909,52 @@ class ReceiptService {
         throw new AppError('Receipt not found', 404);
       }
 
+      // Top-level guard: prevent re-processing a receipt that has already been
+      // admin-reviewed. Auto-approved receipts (status=APPROVED, reviewedBy=null)
+      // are still pending admin confirmation and can be reviewed.
+      const alreadyAdminReviewed = receipt.reviewedBy !== null;
+      if (alreadyAdminReviewed || receipt.status === 'REJECTED' as any) {
+        throw new AppError(
+          `Receipt has already been reviewed by an admin and cannot be reviewed again`,
+          409
+        );
+      }
+
       const oldStatus = receipt.status;
       const newStatus: ReceiptStatus = params.action === 'APPROVE' ? 'APPROVED' as any : 'REJECTED' as any;
 
-      // Recalculate cashback if verifiedAmount provided
+      // Determine cashback amount for APPROVE action.
+      // If the receipt was auto-approved (reviewedBy=null) and no verifiedAmount override
+      // is provided, re-use the already-calculated cashbackAmount from submission so the
+      // user gets exactly what was promised. Recalculate only when the admin provides a
+      // corrected verifiedAmount.
       let cashbackAmount = 0;
       if (params.action === 'APPROVE') {
-        const amount = params.verifiedAmount || receipt.totalAmount || 0;
-
-        // Get user's card tier
-        const userCard = await prisma.card.findFirst({
-          where: { userId: receipt.userId },
-        });
-
-        const cardTier = userCard?.type || 'LIGHT';
-
-        const cashbackCalc = await fraudDetectionService.calculateCashback({
-          venueId: undefined,
-          amount,
-          cardTier: cardTier as any,
-        });
-        cashbackAmount = cashbackCalc.cashbackAmount;
+        if (params.verifiedAmount) {
+          // Admin corrected the amount — recalculate cashback on the corrected figure
+          const userCard = await prisma.card.findFirst({ where: { userId: receipt.userId } });
+          const cardTier = userCard?.type || DEFAULT_CARD_TIER;
+          const cashbackCalc = await fraudDetectionService.calculateCashback({
+            venueId: receipt.venueId ?? undefined,
+            amount: params.verifiedAmount,
+            cardTier: cardTier as any,
+          });
+          cashbackAmount = cashbackCalc.cashbackAmount;
+        } else if (receipt.cashbackAmount > 0) {
+          // Auto-approved receipt — honour the pre-calculated cashback
+          cashbackAmount = receipt.cashbackAmount;
+        } else {
+          // MANUAL_REVIEW with no prior cashback — calculate now
+          const amount = receipt.totalAmount || 0;
+          const userCard = await prisma.card.findFirst({ where: { userId: receipt.userId } });
+          const cardTier = userCard?.type || DEFAULT_CARD_TIER;
+          const cashbackCalc = await fraudDetectionService.calculateCashback({
+            venueId: receipt.venueId ?? undefined,
+            amount,
+            cardTier: cardTier as any,
+          });
+          cashbackAmount = cashbackCalc.cashbackAmount;
+        }
       }
 
       // Update receipt
@@ -927,10 +963,11 @@ class ReceiptService {
         data: {
           status: newStatus,
           totalAmount: params.verifiedAmount || receipt.totalAmount,
-          validatedBy: params.reviewedBy,
-          validatedAt: new Date(),
+          cashbackAmount: params.action === 'APPROVE' ? cashbackAmount : 0,
+          reviewedBy: params.reviewedBy,
+          reviewedAt: new Date(),
           rejectionReason: params.rejectionReason,
-          metadata: params.notes ? JSON.stringify({ ...JSON.parse(receipt.metadata || '{}'), reviewNotes: params.notes }) : receipt.metadata,
+          reviewNotes: params.notes,
         } as any,
       });
 
@@ -1063,7 +1100,7 @@ class ReceiptService {
   private getStatusMessage(status: string, cashbackAmount: number): string {
     switch (status) {
       case 'APPROVED':
-        return `Receipt approved! You earned ${cashbackAmount.toFixed(2)} BGN cashback.`;
+        return `Receipt pre-approved! Your ${cashbackAmount.toFixed(2)} BGN cashback will be credited once an admin confirms eligibility.`;
       case 'MANUAL_REVIEW':
         return 'Receipt is under review. You will be notified within 24-48 hours.';
       case 'REJECTED':
@@ -1103,10 +1140,11 @@ class ReceiptService {
       SUSPICIOUS_MERCHANT: 30,
       AMOUNT_MISMATCH: 25,
       LOCATION_MISMATCH: 25,
+      TEMPLATE_MISMATCH: 35,
       FREQUENT_SUBMISSIONS: 20,
       INVALID_GPS: 20,
       LOW_OCR_CONFIDENCE: 15,
-      UNUSUAL_TIME: 15,
+      UNUSUAL_TIME: 10,
     };
     return scores[reason] || 0;
   }

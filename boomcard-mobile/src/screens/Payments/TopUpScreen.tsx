@@ -17,22 +17,39 @@ export default function TopUpScreen() {
   const navigation = useNavigation();
 
   const [amount, setAmount] = useState('');
+  const [amountError, setAmountError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  const handleAmountChange = (text: string) => {
+    // Only allow digits and a single decimal point
+    const filtered = text.replace(/[^0-9.]/g, '');
+    // Prevent more than one decimal point
+    const parts = filtered.split('.');
+    const normalized = parts.length > 2 ? parts[0] + '.' + parts.slice(1).join('') : filtered;
+    setAmount(normalized);
+    setAmountError(null);
+  };
 
   const handlePresetAmount = (value: number) => {
     setAmount(value.toString());
+    setAmountError(null);
   };
 
   const handleTopUp = async () => {
     const amountValue = parseFloat(amount);
 
-    if (!amountValue || amountValue < 5) {
-      crossPlatformAlert('Error', 'Minimum top-up amount is 5 BGN');
+    if (!amount || isNaN(amountValue) || amountValue < 5) {
+      setAmountError('Minimum top-up amount is 5 BGN');
       return;
     }
 
     if (amountValue > 10000) {
-      crossPlatformAlert('Error', 'Maximum top-up amount is 10,000 BGN');
+      setAmountError('Maximum top-up amount is 10,000 BGN');
+      return;
+    }
+
+    if (!/^\d+(\.\d{1,2})?$/.test(amount)) {
+      setAmountError('Amount can have at most 2 decimal places');
       return;
     }
 
@@ -105,13 +122,14 @@ export default function TopUpScreen() {
           <TextInput
             label="Custom Amount (BGN)"
             value={amount}
-            onChangeText={setAmount}
+            onChangeText={handleAmountChange}
             keyboardType="decimal-pad"
             mode="outlined"
             style={styles.input}
+            error={!!amountError}
           />
-          <HelperText type="info">
-            Minimum: 5 BGN • Maximum: 10,000 BGN
+          <HelperText type={amountError ? 'error' : 'info'}>
+            {amountError || 'Minimum: 5 BGN • Maximum: 10,000 BGN'}
           </HelperText>
 
           {/* Payment Info */}
@@ -124,7 +142,7 @@ export default function TopUpScreen() {
             mode="contained"
             onPress={handleTopUp}
             loading={loading}
-            disabled={loading || !amount}
+            disabled={loading || !amount || !!amountError}
             style={styles.payButton}
           >
             {loading ? 'Processing...' : `Top Up ${amount || '0'} BGN`}

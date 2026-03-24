@@ -108,7 +108,7 @@ const StatsGrid = styled.div`
 `;
 
 const StatCard = styled.div<{ $color?: string }>`
-  background: white;
+  background: var(--color-background);
   border-radius: 12px;
   padding: 24px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
@@ -117,7 +117,7 @@ const StatCard = styled.div<{ $color?: string }>`
 
 const StatLabel = styled.div`
   font-size: 14px;
-  color: #666;
+  color: var(--color-text-secondary);
   margin-bottom: 8px;
   font-weight: 500;
 `;
@@ -125,11 +125,11 @@ const StatLabel = styled.div`
 const StatValue = styled.div`
   font-size: 36px;
   font-weight: 700;
-  color: #333;
+  color: var(--color-text-primary);
 `;
 
 const FiltersBar = styled.div`
-  background: white;
+  background: var(--color-background);
   border-radius: 12px;
   padding: 20px;
   margin-bottom: 24px;
@@ -150,18 +150,18 @@ const FilterGroup = styled.div`
 const FilterLabel = styled.label`
   font-size: 12px;
   font-weight: 600;
-  color: #666;
+  color: var(--color-text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.5px;
 `;
 
 const Select = styled.select`
   padding: 10px 16px;
-  border: 2px solid #e0e0e0;
+  border: 2px solid var(--color-border);
   border-radius: 8px;
   font-size: 14px;
-  color: #333;
-  background: white;
+  color: var(--color-text-primary);
+  background: var(--color-background);
   cursor: pointer;
   transition: all 0.2s ease;
 
@@ -178,10 +178,11 @@ const Select = styled.select`
 
 const Input = styled.input`
   padding: 10px 16px;
-  border: 2px solid #e0e0e0;
+  border: 2px solid var(--color-border);
   border-radius: 8px;
   font-size: 14px;
-  color: #333;
+  color: var(--color-text-primary);
+  background: var(--color-background);
   transition: all 0.2s ease;
 
   &:focus {
@@ -197,7 +198,7 @@ const ScansGrid = styled.div`
 `;
 
 const ScanCard = styled.div<{ $selected?: boolean }>`
-  background: white;
+  background: var(--color-background);
   border-radius: 12px;
   padding: 24px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
@@ -224,7 +225,7 @@ const ScanInfo = styled.div`
 
 const ScanId = styled.div`
   font-size: 12px;
-  color: #999;
+  color: var(--color-text-tertiary);
   margin-bottom: 4px;
   font-family: monospace;
 `;
@@ -232,13 +233,13 @@ const ScanId = styled.div`
 const VenueName = styled.div`
   font-size: 18px;
   font-weight: 700;
-  color: #333;
+  color: var(--color-text-primary);
   margin-bottom: 4px;
 `;
 
 const StickerInfo = styled.div`
   font-size: 14px;
-  color: #666;
+  color: var(--color-text-secondary);
 `;
 
 const RiskBadge = styled.div<{ $level: string }>`
@@ -274,13 +275,13 @@ const DetailItem = styled.div`
 
 const DetailLabel = styled.span`
   font-size: 12px;
-  color: #999;
+  color: var(--color-text-tertiary);
   font-weight: 500;
 `;
 
 const DetailValue = styled.span`
   font-size: 16px;
-  color: #333;
+  color: var(--color-text-primary);
   font-weight: 600;
 `;
 
@@ -328,7 +329,7 @@ const FraudReason = styled.li`
   border-left: 3px solid #ff9800;
   margin-bottom: 8px;
   font-size: 14px;
-  color: #666;
+  color: var(--color-text-secondary);
   border-radius: 4px;
 `;
 
@@ -370,7 +371,7 @@ const Button = styled.button<{ $variant?: 'approve' | 'reject' | 'view' }>`
 `;
 
 const EmptyState = styled.div`
-  background: white;
+  background: var(--color-background);
   border-radius: 12px;
   padding: 60px 24px;
   text-align: center;
@@ -384,13 +385,13 @@ const EmptyIcon = styled.div`
 
 const EmptyTitle = styled.h3`
   font-size: 24px;
-  color: #333;
+  color: var(--color-text-primary);
   margin-bottom: 8px;
 `;
 
 const EmptyText = styled.p`
   font-size: 16px;
-  color: #666;
+  color: var(--color-text-secondary);
 `;
 
 const LoadingSpinner = styled.div`
@@ -398,7 +399,7 @@ const LoadingSpinner = styled.div`
   justify-content: center;
   align-items: center;
   padding: 60px;
-  background: white;
+  background: var(--color-background);
   border-radius: 12px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 `;
@@ -406,7 +407,7 @@ const LoadingSpinner = styled.div`
 const Spinner = styled.div`
   width: 50px;
   height: 50px;
-  border: 4px solid #e0e0e0;
+  border: 4px solid var(--color-border);
   border-top-color: #667eea;
   border-radius: 50%;
   animation: spin 1s linear infinite;
@@ -423,7 +424,7 @@ const BulkActionsBar = styled.div<{ $visible: boolean }>`
   bottom: ${props => props.$visible ? '24px' : '-100px'};
   left: 50%;
   transform: translateX(-50%);
-  background: white;
+  background: var(--color-background);
   border-radius: 12px;
   padding: 16px 24px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
@@ -437,7 +438,7 @@ const BulkActionsBar = styled.div<{ $visible: boolean }>`
 const BulkInfo = styled.div`
   font-size: 14px;
   font-weight: 600;
-  color: #333;
+  color: var(--color-text-primary);
 `;
 
 const BulkButton = styled(Button)`
@@ -464,7 +465,7 @@ const Modal = styled.div<{ $isOpen: boolean }>`
 `;
 
 const ModalContent = styled.div`
-  background: white;
+  background: var(--color-background);
   border-radius: 16px;
   max-width: 800px;
   width: 100%;
@@ -476,19 +477,19 @@ const ModalContent = styled.div`
 const ModalHeader = styled.div`
   margin-bottom: 24px;
   padding-bottom: 16px;
-  border-bottom: 2px solid #e0e0e0;
+  border-bottom: 2px solid var(--color-border);
 `;
 
 const ModalTitle = styled.h2`
   font-size: 24px;
   font-weight: 700;
-  color: #333;
+  color: var(--color-text-primary);
   margin-bottom: 8px;
 `;
 
 const ModalSubtitle = styled.div`
   font-size: 14px;
-  color: #666;
+  color: var(--color-text-secondary);
 `;
 
 const ModalSection = styled.div`
@@ -498,7 +499,7 @@ const ModalSection = styled.div`
 const SectionTitle = styled.h3`
   font-size: 16px;
   font-weight: 700;
-  color: #333;
+  color: var(--color-text-primary);
   margin-bottom: 12px;
 `;
 
@@ -506,10 +507,11 @@ const TextArea = styled.textarea`
   width: 100%;
   min-height: 100px;
   padding: 12px 16px;
-  border: 2px solid #e0e0e0;
+  border: 2px solid var(--color-border);
   border-radius: 8px;
   font-size: 14px;
-  color: #333;
+  color: var(--color-text-primary);
+  background: var(--color-background);
   font-family: inherit;
   resize: vertical;
   transition: all 0.2s ease;

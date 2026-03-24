@@ -3,7 +3,7 @@
  * Handles user sessions with secure cookie storage
  */
 
-import { JWTPayload, generateTokenPair, validateToken, refreshAccessToken } from './jwt';
+import { JWTPayload, validateToken } from './jwt';
 
 export interface Session {
   user: {
@@ -24,24 +24,21 @@ const SESSION_COOKIE_NAME = 'boomcard_session';
 const REFRESH_COOKIE_NAME = 'boomcard_refresh';
 
 /**
- * Create a new session
+ * Create a new session from backend-issued tokens.
  */
-export function createSession(user: Session['user']): Session {
-  const tokens = generateTokenPair({
-    sub: user.id,
-    email: user.email,
-    role: user.role,
-  });
-
-  const session: Session = {
+export function createSession(
+  user: Session['user'],
+  accessToken: string,
+  refreshToken: string,
+  expiresIn: number = 15 * 60
+): Session {
+  return {
     user,
-    accessToken: tokens.accessToken,
-    refreshToken: tokens.refreshToken,
-    expiresAt: new Date(Date.now() + tokens.expiresIn * 1000),
+    accessToken,
+    refreshToken,
+    expiresAt: new Date(Date.now() + expiresIn * 1000),
     createdAt: new Date(),
   };
-
-  return session;
 }
 
 /**
@@ -98,35 +95,12 @@ export function getSession(): Session | null {
 }
 
 /**
- * Attempt to refresh session
+ * Attempt to refresh session — returns null; the caller should hit /api/auth/refresh.
+ * Client-side token signing is not available in the browser.
  */
-function attemptRefresh(refreshToken: string): Session | null {
-  const newAccessToken = refreshAccessToken(refreshToken);
-
-  if (!newAccessToken) {
-    clearSession();
-    return null;
-  }
-
-  const secure = location.protocol === 'https:' ? '; Secure' : '';
-  // Update access token cookie
-  document.cookie = `${SESSION_COOKIE_NAME}=${newAccessToken}; path=/; max-age=${15 * 60}; SameSite=Strict${secure}`;
-
-  const payload = validateToken(newAccessToken);
-  if (!payload) return null;
-
-  const userDataStr = localStorage.getItem('boomcard_user');
-  if (!userDataStr) return null;
-
-  const user = JSON.parse(userDataStr);
-
-  return {
-    user,
-    accessToken: newAccessToken,
-    refreshToken,
-    expiresAt: new Date(payload.exp * 1000),
-    createdAt: new Date(payload.iat * 1000),
-  };
+function attemptRefresh(_refreshToken: string): Session | null {
+  clearSession();
+  return null;
 }
 
 /**
@@ -175,10 +149,10 @@ export function getSessionUser(): Session['user'] | null {
 }
 
 /**
- * Get access token
+ * Get access token — from cookie first, then localStorage fallback
  */
 export function getAccessToken(): string | null {
-  return getCookie(SESSION_COOKIE_NAME);
+  return getCookie(SESSION_COOKIE_NAME) || localStorage.getItem('token');
 }
 
 /**

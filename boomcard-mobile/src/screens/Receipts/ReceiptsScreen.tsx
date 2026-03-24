@@ -15,10 +15,12 @@ import { useTranslation } from 'react-i18next';
 import { ReceiptsApi } from '../../api/receipts.api';
 import { useTheme } from '../../contexts/ThemeContext';
 import type { Receipt, ReceiptStats, ReceiptStatus } from '../../types';
+import { APP_CONFIG } from '../../constants/config';
 
 // Soft status badge colors matching website design (light bg + dark text)
 const STATUS_CONFIG: Record<string, { bg: string; text: string; icon: keyof typeof Ionicons.glyphMap }> = {
   APPROVED: { bg: '#D1FAE5', text: '#065F46', icon: 'checkmark-circle' },
+  PENDING_CONFIRMATION: { bg: '#E0F2FE', text: '#0369A1', icon: 'hourglass' },
   PENDING: { bg: '#FEF3C7', text: '#92400E', icon: 'time' },
   PROCESSING: { bg: '#DBEAFE', text: '#1E40AF', icon: 'sync' },
   VALIDATING: { bg: '#E0E7FF', text: '#3730A3', icon: 'shield-checkmark' },
@@ -91,7 +93,7 @@ const ReceiptsScreen = ({ navigation }: any) => {
   };
 
   const formatDate = (dateString: string | undefined) => {
-    if (!dateString) return 'Няма данни';
+    if (!dateString) return t('common.noData');
     const date = new Date(dateString);
     return date.toLocaleDateString('bg-BG', {
       month: 'short',
@@ -103,7 +105,7 @@ const ReceiptsScreen = ({ navigation }: any) => {
   const formatAmount = (amount: number | undefined) => {
     if (!amount) return '0.00 лв / €0.00';
     const bgnFormatted = `${amount.toFixed(2)} лв`;
-    const eurAmount = amount / 1.95583;
+    const eurAmount = amount / APP_CONFIG.EUR_EXCHANGE_RATE;
     const eurFormatted = `€${eurAmount.toFixed(2)}`;
     return `${bgnFormatted} / ${eurFormatted}`;
   };
@@ -111,7 +113,10 @@ const ReceiptsScreen = ({ navigation }: any) => {
   const s = getStyles(theme, isDarkMode);
 
   const renderReceiptItem = ({ item }: { item: Receipt }) => {
-    const statusConfig = STATUS_CONFIG[item.status] || STATUS_CONFIG.EXPIRED;
+    // Auto-approved = APPROVED but not yet admin-confirmed (reviewedBy is absent)
+    const isAutoApproved = item.status === 'APPROVED' && !item.reviewedBy;
+    const effectiveStatus = isAutoApproved ? 'PENDING_CONFIRMATION' : item.status;
+    const statusConfig = STATUS_CONFIG[effectiveStatus] || STATUS_CONFIG[item.status] || STATUS_CONFIG.EXPIRED;
 
     return (
       <TouchableOpacity
@@ -136,7 +141,9 @@ const ReceiptsScreen = ({ navigation }: any) => {
             <View style={[s.statusBadge, { backgroundColor: isDarkMode ? `${statusConfig.bg}30` : statusConfig.bg }]}>
               <Ionicons name={statusConfig.icon} size={13} color={isDarkMode ? statusConfig.text.replace('#0', '#6').replace('#1', '#5').replace('#3', '#7').replace('#5', '#9').replace('#9', '#D') : statusConfig.text} />
               <Text style={[s.statusText, { color: isDarkMode ? statusConfig.text.replace('#0', '#6').replace('#1', '#5').replace('#3', '#7').replace('#5', '#9').replace('#9', '#D') : statusConfig.text }]}>
-                {t(`receipts.status.${item.status}`) || item.status}
+                {isAutoApproved
+                  ? t('receipts.status.PENDING_CONFIRMATION')
+                  : (t(`receipts.status.${item.status}`) || item.status)}
               </Text>
             </View>
           </View>
@@ -158,13 +165,14 @@ const ReceiptsScreen = ({ navigation }: any) => {
             {item.cashbackAmount && item.cashbackAmount > 0 && (
               <View style={s.detailRow}>
                 <View style={s.detailLabelRow}>
-                  <Ionicons name="trending-up" size={14} color="#10B981" />
+                  <Ionicons name="trending-up" size={14} color={isAutoApproved ? '#0369A1' : '#10B981'} />
                   <Text style={s.detailLabel}>{t('receipts.cashback')}</Text>
                 </View>
-                <View style={s.cashbackBadge}>
-                  <Text style={s.cashbackValue}>
-                    +{formatAmount(item.cashbackAmount)}
+                <View style={[s.cashbackBadge, isAutoApproved ? { backgroundColor: '#E0F2FE' } : undefined]}>
+                  <Text style={[s.cashbackValue, isAutoApproved ? { color: '#0369A1' } : undefined]}>
+                    {isAutoApproved ? '~' : '+'}{formatAmount(item.cashbackAmount)}
                     {item.cashbackPercent && ` (${item.cashbackPercent}%)`}
+                    {isAutoApproved ? ' ⏳' : ''}
                   </Text>
                 </View>
               </View>

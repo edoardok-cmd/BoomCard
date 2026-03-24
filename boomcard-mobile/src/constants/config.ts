@@ -26,10 +26,10 @@ export const API_CONFIG = {
     RECEIPTS: {
       BASE: '/api/receipts',
       STATS: '/api/receipts/stats',
-      SUBMIT: '/api/receipts/submit',
-      UPLOAD: '/api/receipts/upload',
-      CHECK_DUPLICATE: '/api/receipts/check-duplicate',
-      ANALYTICS: '/api/receipts/analytics',
+      SUBMIT: '/api/receipts/v2/submit',
+      UPLOAD: '/api/receipts/v2/upload',
+      CHECK_DUPLICATE: '/api/receipts/v2/check-duplicate',
+      ANALYTICS: '/api/receipts/v2/analytics',
     },
     // Stickers
     STICKERS: {
@@ -63,7 +63,7 @@ export const API_CONFIG = {
       TOP: '/api/offers/top',
       FEATURED: '/api/offers/featured',
     },
-    // Partners (tier-gated — results depend on user's subscription plan)
+    // Partners
     PARTNERS: {
       BASE: '/api/partners',
       ME: '/api/partners/me',
@@ -97,8 +97,7 @@ export const API_CONFIG = {
   },
 
   // Request timeout in milliseconds
-  // 10 seconds timeout
-  TIMEOUT: 10000,
+  TIMEOUT: 30000,
 };
 
 // GPS Configuration
@@ -140,6 +139,7 @@ export const STORAGE_KEYS = {
 export const APP_CONFIG = {
   NAME: 'BoomCard',
   VERSION: '1.0.0',
+  MOBILE_APP_URL: process.env.EXPO_PUBLIC_MOBILE_URL || 'https://mobile.boomcard.bg',
   BUNDLE_ID_IOS: 'bg.boomcard.mobile',
   BUNDLE_ID_ANDROID: 'bg.boomcard.mobile',
 
@@ -181,41 +181,26 @@ export const APP_CONFIG = {
 };
 
 /**
- * Card Tier Configuration — mirrors backend CardType enum (LIGHT, BASIC, PREMIUM).
+ * Card Tier Configuration — display-only properties for the LIGHT, BASIC, PREMIUM tiers.
  *
- * Partner tier → max offer discount:
- *   BASIC partner     → up to 10%
- *   STANDARD partner  → up to 15%
- *   PREMIUM partner   → up to 20%
- *   VIP partner       → up to 30%
- *   EXCLUSIVE partner → up to 100%
- *
- * User plan → accessible partner tiers:
- *   LIGHT   → BASIC partners only
- *   BASIC   → BASIC + STANDARD + PREMIUM partners
- *   PREMIUM → all partners (including VIP + EXCLUSIVE)
+ * Cashback rates, sticker bonuses, and redeemable partner tiers are served by the backend
+ * and must be read from plansService.getPlans() — do NOT hardcode them here.
  */
 export const CARD_TIERS = {
   LIGHT: {
     name: 'Lite Premium',
     color: '#FFFFFF',
     cardStyle: 'light' as const,
-    baseCashbackPercent: 20,
-    accessiblePartnerTiers: ['BASIC'] as const,
   },
   BASIC: {
     name: 'Basic',
     color: '#C0C0C0',
     cardStyle: 'silver' as const,
-    baseCashbackPercent: 10,
-    accessiblePartnerTiers: ['BASIC', 'STANDARD', 'PREMIUM'] as const,
   },
   PREMIUM: {
     name: 'Premium',
     color: '#1A1A2E',
     cardStyle: 'black' as const,
-    baseCashbackPercent: 20,
-    accessiblePartnerTiers: ['BASIC', 'STANDARD', 'PREMIUM', 'VIP', 'EXCLUSIVE'] as const,
   },
 };
 

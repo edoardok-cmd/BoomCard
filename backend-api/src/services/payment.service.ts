@@ -2,6 +2,7 @@ import Stripe from 'stripe';
 import { prisma } from '../lib/prisma';
 import { AppError } from '../middleware/error.middleware';
 import { logger } from '../utils/logger';
+import { LOYALTY_TIER_CASHBACK } from '../constants/tiers';
 
 // Initialize Stripe
 const stripeKey = process.env.STRIPE_SECRET_KEY || '';
@@ -118,23 +119,8 @@ export class PaymentService {
       },
     });
 
-    let cashbackPercent = 0.02; // 2% default
-    if (user?.loyaltyAccount) {
-      switch (user.loyaltyAccount.tier) {
-        case 'SILVER':
-          cashbackPercent = 0.03;
-          break;
-        case 'GOLD':
-          cashbackPercent = 0.05;
-          break;
-        case 'PLATINUM':
-          cashbackPercent = 0.07;
-          break;
-        case 'DIAMOND':
-          cashbackPercent = 0.10;
-          break;
-      }
-    }
+    const loyaltyTier = user?.loyaltyAccount?.tier ?? 'BRONZE';
+    const cashbackPercent = LOYALTY_TIER_CASHBACK[loyaltyTier];
 
     const cashbackAmount = amount * cashbackPercent;
 

@@ -110,7 +110,9 @@
     "daysRemaining": "{{days}} дни остават",
     "cashbackRate": "{{rate}}% кешбек",
     "upgradeYourPlan": "Подобрете плана си",
-    "unlockHigherCashback": "Отключете по-висок кешбек"
+    "unlockHigherCashback": "Отключете по-висок кешбек",
+    "noCardTitle": "Картата не е активирана",
+    "noCardDesc": "Докоснете, за да активирате вашата BOOM Card"
   },
   "wallet": {
     "title": "Портфейл",
@@ -241,6 +243,11 @@
     "validUntil": "Валидна до",
     "tapToShowQR": "Докоснете, за да видите QR",
     "tapToFlipBack": "Докоснете, за да върнете",
+    "noCard": "Картата не е намерена",
+    "noActiveCard": "Няма активна карта",
+    "noActiveCardDesc": "Абонаментът ви може да е изтекъл или нямате активен план. Изберете план, за да получите вашата BOOM Card.",
+    "expired": "Изтекла",
+    "choosePlan": "Изберете план",
     "maybeLater": "Може би по-късно",
     "contactSupport": "Свържи се с поддръжката",
     "supportTitle": "Поддръжка",

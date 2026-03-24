@@ -9,6 +9,10 @@ import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import { logger } from '../utils/logger';
 
+// Inline rate limit values to avoid circular dependency with security.config.ts
+const UPLOAD_RATE_LIMIT = { WINDOW_MS: 60000, MAX: 5 };
+const PAYMENT_RATE_LIMIT = { WINDOW_MS: 900000, MAX: 10 };
+
 /**
  * Enhanced Helmet Configuration for Production
  * Provides strict security headers
@@ -20,13 +24,17 @@ export const productionHelmetConfig = helmet({
       defaultSrc: ["'self'"],
       scriptSrc: [
         "'self'",
-        "'unsafe-inline'", // Required for some frameworks
+        // NOTE: Remove 'unsafe-inline' — use nonces or 'strict-dynamic' for any inline scripts.
+        // Swagger UI requires inline scripts; serve docs behind a separate route without CSP
+        // or add a nonce via middleware if you re-enable Swagger in production.
         'https://js.stripe.com',
         'https://maps.googleapis.com',
       ],
       styleSrc: [
         "'self'",
-        "'unsafe-inline'", // Required for styled-components
+        // 'unsafe-inline' retained for styled-components runtime CSS injection.
+        // Migrate to babel-plugin-styled-components with SSR to eliminate this.
+        "'unsafe-inline'",
         'https://fonts.googleapis.com',
       ],
       fontSrc: [
@@ -44,7 +52,9 @@ export const productionHelmetConfig = helmet({
       connectSrc: [
         "'self'",
         'https://api.stripe.com',
-        process.env.CORS_ORIGIN || "'self'",
+        ...(process.env.CORS_ORIGIN
+          ? process.env.CORS_ORIGIN.split(',').map(s => s.trim()).filter(Boolean)
+          : []),
       ],
       frameSrc: [
         "'self'",
@@ -104,10 +114,16 @@ export const developmentHelmetConfig = helmet({
 /**
  * Auth Endpoints Rate Limiter
  * More restrictive for login/register endpoints
+ * Keyed by IP (email-based brute-force protection is handled in AuthService via OTP lockout)
  */
 export const authRateLimiter = rateLimit({
   windowMs: parseInt(process.env.AUTH_RATE_LIMIT_WINDOW_MS || '900000'), // 15 minutes
   max: parseInt(process.env.AUTH_RATE_LIMIT_MAX_REQUESTS || '5'), // 5 attempts
+  keyGenerator: (req) => {
+    // Prefer authenticated user ID when present, fall back to IP
+    const userId = (req as any).user?.id;
+    return userId ? `user:${userId}` : req.ip || 'unknown';
+  },
   message: {
     error: 'Too many authentication attempts',
     message: 'Please try again later',
@@ -115,7 +131,6 @@ export const authRateLimiter = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
-  // Store in memory (use Redis for distributed systems)
   handler: (req, res) => {
     logger.warn(`Rate limit exceeded for IP: ${req.ip} on ${req.path}`);
     res.status(429).json({
@@ -147,8 +162,8 @@ export const apiRateLimiter = rateLimit({
  * More restrictive for file uploads (receipts, images)
  */
 export const uploadRateLimiter = rateLimit({
-  windowMs: 60000, // 1 minute
-  max: 5, // 5 uploads per minute
+  windowMs: UPLOAD_RATE_LIMIT.WINDOW_MS,
+  max: UPLOAD_RATE_LIMIT.MAX,
   message: {
     error: 'Upload rate limit exceeded',
     message: 'Too many uploads, please wait before uploading again',
@@ -161,10 +176,15 @@ export const uploadRateLimiter = rateLimit({
 /**
  * Strict Rate Limiter for Payment Endpoints
  * Very restrictive for payment-related operations
+ * Keyed per-user when authenticated to prevent relay/proxy attacks
  */
 export const paymentRateLimiter = rateLimit({
-  windowMs: 900000, // 15 minutes
-  max: 10, // 10 payment attempts per 15 minutes
+  windowMs: PAYMENT_RATE_LIMIT.WINDOW_MS,
+  max: PAYMENT_RATE_LIMIT.MAX,
+  keyGenerator: (req) => {
+    const userId = (req as any).user?.id;
+    return userId ? `user:${userId}` : req.ip || 'unknown';
+  },
   message: {
     error: 'Payment rate limit exceeded',
     message: 'Too many payment attempts, please contact support if you need assistance',
@@ -396,4 +416,46 @@ export const corsPreflightCache = (req: Request, res: Response, next: NextFuncti
     res.setHeader('Access-Control-Max-Age', '86400'); // 24 hours
   }
   next();
+};
+
+/**
+ * CSRF Protection via Origin/Referer checking
+ *
+ * Defense-in-depth layer on top of SameSite=Strict cookies and Bearer token auth.
+ * Rejects state-changing requests (POST/PUT/PATCH/DELETE) whose Origin or Referer
+ * header doesn't match an allowed origin.
+ *
+ * Webhooks and same-origin requests (no Origin header, e.g. server-to-server) are
+ * excluded via the skipPaths list passed at mount time.
+ */
+export const csrfProtection = (skipPaths: string[] = []) => {
+  const allowedOrigins = process.env.CORS_ORIGIN
+    ? process.env.CORS_ORIGIN.split(',').map(o => o.trim().replace(/\/$/, ''))
+    : ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:5175',
+       'http://localhost:5176', 'http://localhost:5177', 'http://localhost:5178'];
+
+  const stateMutatingMethods = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+
+  return (req: Request, res: Response, next: NextFunction) => {
+    // Only check state-mutating requests
+    if (!stateMutatingMethods.has(req.method)) return next();
+
+    // Skip explicitly excluded paths (e.g. webhooks)
+    if (skipPaths.some(p => req.path.startsWith(p))) return next();
+
+    // Requests without an Origin header are server-to-server (no browser = no CSRF risk)
+    const origin = req.headers.origin as string | undefined;
+    if (!origin) return next();
+
+    const normalizedOrigin = origin.replace(/\/$/, '');
+    if (!allowedOrigins.includes(normalizedOrigin)) {
+      logger.warn(`CSRF: rejected request from origin "${origin}" to ${req.method} ${req.path}`);
+      return res.status(403).json({
+        error: 'Forbidden',
+        message: 'Request origin not allowed',
+      });
+    }
+
+    next();
+  };
 };

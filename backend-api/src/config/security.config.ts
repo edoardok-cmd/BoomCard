@@ -98,6 +98,7 @@ export function applyRateLimiters(app: Application) {
   // Upload endpoints - moderately restrictive
   app.use('/api/receipts/upload', uploadRateLimiter);
   app.use('/api/receipts/scan', uploadRateLimiter);
+  app.use('/api/offers/:id/image', uploadRateLimiter);
 
   // General API endpoints - standard rate limiting
   app.use('/api/', apiRateLimiter);
@@ -184,6 +185,7 @@ export const SECURITY_CONFIG = {
   SECURITY: {
     MAX_LOGIN_ATTEMPTS: 5,
     LOCKOUT_DURATION: 15 * 60 * 1000, // 15 minutes
+    OTP_EXPIRY_MS: 15 * 60 * 1000, // 15 minutes
     PASSWORD_RESET_EXPIRY: 1 * 60 * 60 * 1000, // 1 hour
     EMAIL_VERIFICATION_EXPIRY: 24 * 60 * 60 * 1000, // 24 hours
   },

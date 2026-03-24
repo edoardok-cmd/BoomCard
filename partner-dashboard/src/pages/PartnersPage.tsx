@@ -691,6 +691,155 @@ const LocationsSection = styled.div`
   }
 `;
 
+// ─── Partner Tiers ─────────────────────────────────────────────────────────────
+
+const TiersSection = styled.section`
+  padding: 5rem 0;
+  background: white;
+
+  [data-theme="dark"] & {
+    background: #111827;
+  }
+`;
+
+const TiersGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 2rem;
+  margin-top: 3rem;
+
+  @media (max-width: 900px) {
+    grid-template-columns: 1fr;
+    max-width: 480px;
+    margin: 3rem auto 0;
+  }
+`;
+
+const TierCard = styled.div<{ $accent: string; $featured?: boolean }>`
+  background: var(--color-background, #fff);
+  border: 2px solid ${p => p.$featured ? p.$accent : '#e5e7eb'};
+  border-radius: 1.25rem;
+  padding: 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  position: relative;
+  transition: box-shadow 0.2s, transform 0.2s;
+  box-shadow: ${p => p.$featured ? `0 8px 32px ${p.$accent}33` : '0 2px 8px rgba(0,0,0,0.06)'};
+
+  &:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 16px 48px ${p => p.$accent}44;
+  }
+
+  [data-theme="dark"] & {
+    background: #1f2937;
+    border-color: ${p => p.$featured ? p.$accent : '#374151'};
+  }
+`;
+
+const TierTopBadge = styled.div<{ $accent: string }>`
+  position: absolute;
+  top: -0.9rem;
+  left: 50%;
+  transform: translateX(-50%);
+  background: ${p => p.$accent};
+  color: #fff;
+  padding: 0.3rem 1rem;
+  border-radius: 9999px;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+`;
+
+const TierLabel = styled.div<{ $accent: string }>`
+  display: inline-flex;
+  align-items: center;
+  background: ${p => p.$accent}22;
+  color: ${p => p.$accent};
+  border: 1px solid ${p => p.$accent}55;
+  border-radius: 9999px;
+  padding: 0.3rem 0.9rem;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  width: fit-content;
+`;
+
+const TierDiscountDisplay = styled.div<{ $accent: string }>`
+  font-size: 3rem;
+  font-weight: 900;
+  color: ${p => p.$accent};
+  line-height: 1;
+
+  span {
+    font-size: 1.125rem;
+    font-weight: 600;
+    opacity: 0.85;
+  }
+`;
+
+const TierCardTitle = styled.h3`
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #111827;
+  margin: 0;
+
+  [data-theme="dark"] & {
+    color: #f9fafb;
+  }
+`;
+
+const TierCardDesc = styled.p`
+  font-size: 0.9375rem;
+  color: #6b7280;
+  line-height: 1.6;
+  margin: 0;
+
+  [data-theme="dark"] & {
+    color: #9ca3af;
+  }
+`;
+
+const TierFeatureList = styled.ul`
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+`;
+
+const TierFeature = styled.li<{ $accent: string }>`
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  font-size: 0.9375rem;
+  color: #4b5563;
+
+  &::before {
+    content: '✓';
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: ${p => p.$accent}22;
+    color: ${p => p.$accent};
+    font-size: 0.7rem;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  [data-theme="dark"] & {
+    color: #d1d5db;
+  }
+`;
+
 const CityFilter = styled.div`
   display: flex;
   gap: 1rem;
@@ -1481,6 +1630,117 @@ const PartnersPage: React.FC = () => {
           </div>
         </Container>
       </LocationsSection>
+
+      {/* ── Partner Tiers ── */}
+      <TiersSection id="tiers">
+        <Container>
+          <SectionTitle>
+            {language === 'bg' ? 'Партньорски нива' : 'Partner Tiers'}
+          </SectionTitle>
+          <SectionSubtitle>
+            {language === 'bg'
+              ? 'Изберете с каква отстъпка искате да привлечете клиентите си — вие я предлагате от менюто, ние я доставяме до тях.'
+              : 'Choose the discount you want to offer your customers — you give it from your menu, we deliver it to them.'}
+          </SectionSubtitle>
+
+          <TiersGrid>
+            {/* BASIC */}
+            <TierCard $accent="#6b7280">
+              <TierLabel $accent="#6b7280">Basic</TierLabel>
+              <TierDiscountDisplay $accent="#6b7280">
+                5%<span> {language === 'bg' ? 'за клиентите' : 'to customers'}</span>
+              </TierDiscountDisplay>
+              <TierCardTitle>{language === 'bg' ? 'Основен' : 'Basic'}</TierCardTitle>
+              <TierCardDesc>
+                {language === 'bg'
+                  ? 'Идеален старт — предлагате 5% отстъпка на клиентите от цялото меню и привличате нова аудитория.'
+                  : 'A great starting point — offer customers 5% off your entire menu and attract a new audience.'}
+              </TierCardDesc>
+              <TierFeatureList>
+                <TierFeature $accent="#6b7280">
+                  {language === 'bg' ? 'Давате 5% отстъпка на клиентите от менюто' : 'Give customers 5% off all menu items'}
+                </TierFeature>
+                <TierFeature $accent="#6b7280">
+                  {language === 'bg' ? 'Стандартно присъствие в приложението' : 'Standard listing in the app'}
+                </TierFeature>
+                <TierFeature $accent="#6b7280">
+                  {language === 'bg' ? 'Базова статистика' : 'Basic analytics'}
+                </TierFeature>
+              </TierFeatureList>
+            </TierCard>
+
+            {/* LITE */}
+            <TierCard $accent="#3b82f6" $featured>
+              <TierTopBadge $accent="#3b82f6">
+                {language === 'bg' ? 'Популярен избор' : 'Popular choice'}
+              </TierTopBadge>
+              <TierLabel $accent="#3b82f6">Lite</TierLabel>
+              <TierDiscountDisplay $accent="#3b82f6">
+                10%<span> {language === 'bg' ? 'за клиентите' : 'to customers'}</span>
+              </TierDiscountDisplay>
+              <TierCardTitle>{language === 'bg' ? 'Лайт' : 'Lite'}</TierCardTitle>
+              <TierCardDesc>
+                {language === 'bg'
+                  ? 'Предлагате 10% отстъпка на клиентите — по-голяма видимост и по-атрактивна полза за лоялната аудитория.'
+                  : 'Offer customers 10% off — greater visibility and a more attractive benefit for your loyal audience.'}
+              </TierCardDesc>
+              <TierFeatureList>
+                <TierFeature $accent="#3b82f6">
+                  {language === 'bg' ? 'Давате 10% отстъпка на клиентите от менюто' : 'Give customers 10% off all menu items'}
+                </TierFeature>
+                <TierFeature $accent="#3b82f6">
+                  {language === 'bg' ? 'Подобрено присъствие в приложението' : 'Enhanced listing in the app'}
+                </TierFeature>
+                <TierFeature $accent="#3b82f6">
+                  {language === 'bg' ? 'Разширена статистика' : 'Enhanced analytics'}
+                </TierFeature>
+                <TierFeature $accent="#3b82f6">
+                  {language === 'bg' ? 'Качване на снимки на менюто' : 'Menu image upload'}
+                </TierFeature>
+              </TierFeatureList>
+            </TierCard>
+
+            {/* PREMIUM */}
+            <TierCard $accent="#c9a237" $featured>
+              <TierTopBadge $accent="#c9a237">
+                {language === 'bg' ? 'Максимален ефект' : 'Maximum impact'}
+              </TierTopBadge>
+              <TierLabel $accent="#c9a237">Premium</TierLabel>
+              <TierDiscountDisplay $accent="#c9a237">
+                20%<span> {language === 'bg' ? 'за клиентите' : 'to customers'}</span>
+              </TierDiscountDisplay>
+              <TierCardTitle>{language === 'bg' ? 'Премиум' : 'Premium'}</TierCardTitle>
+              <TierCardDesc>
+                {language === 'bg'
+                  ? 'Предлагате 20% отстъпка от менюто и добавяте персонализирани оферти — пълен контрол над ползите за клиентите.'
+                  : 'Offer customers 20% off your menu and add custom deals — full control over the benefits you provide.'}
+              </TierCardDesc>
+              <TierFeatureList>
+                <TierFeature $accent="#c9a237">
+                  {language === 'bg' ? 'Давате 20% отстъпка на клиентите от менюто' : 'Give customers 20% off the menu'}
+                </TierFeature>
+                <TierFeature $accent="#c9a237">
+                  {language === 'bg'
+                    ? 'Добавяте множество персонализирани оферти (извън менюто)'
+                    : 'Add multiple custom offers (beyond the menu)'}
+                </TierFeature>
+                <TierFeature $accent="#c9a237">
+                  {language === 'bg' ? 'Приоритетно класиране в приложението' : 'Priority ranking in the app'}
+                </TierFeature>
+                <TierFeature $accent="#c9a237">
+                  {language === 'bg' ? 'Пълна статистика и отчети' : 'Full analytics & reporting'}
+                </TierFeature>
+                <TierFeature $accent="#c9a237">
+                  {language === 'bg' ? 'Качване на снимки на менюто' : 'Menu image upload'}
+                </TierFeature>
+                <TierFeature $accent="#c9a237">
+                  {language === 'bg' ? 'Персонален мениджър на акаунта' : 'Dedicated account manager'}
+                </TierFeature>
+              </TierFeatureList>
+            </TierCard>
+          </TiersGrid>
+        </Container>
+      </TiersSection>
 
       <CTASection id="application">
         <Container>

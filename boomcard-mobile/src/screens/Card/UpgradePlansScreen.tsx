@@ -22,6 +22,7 @@ import { useTranslation } from 'react-i18next';
 import { useTheme } from '../../contexts/ThemeContext';
 import apiClient from '../../api/client';
 import { Plan } from '../../services/plans.service';
+import { APP_CONFIG } from '../../constants/config';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CARD_WIDTH = Math.min(SCREEN_WIDTH - 48, 340);
@@ -37,98 +38,6 @@ const BACKEND_TO_PLAN_CARD_TYPE: Record<string, string> = {
   premium: 'black',
 };
 
-// Fallback plans when API is unavailable
-const getFallbackPlans = (): Plan[] => [
-  {
-    id: 'lite-premium',
-    planCode: 'LITE_PREMIUM',
-    displayName: 'LITE PREMIUM',
-    displayNameBg: 'ЛАЙТ ПРЕМИУМ',
-    pricing: { weekly: 4.99, monthly: null, yearly: 52, currency: 'EUR', yearlyDiscountPct: 20 },
-    billingOptions: { hasWeekly: true, hasMonthly: false, hasYearly: false },
-    cashbackRate: 20,
-    stickerBonus: 0,
-    features: [
-      'One week Premium access',
-      'Up to 20% discount',
-      'Exclusive Premium offers',
-      'Limited availability special offers',
-      'Access to exclusive Premium campaigns',
-      'VIP priority support',
-      'Cashback via the app',
-    ],
-    featuresBg: [
-      'Едноседмичен Premium достъп',
-      'До 20% отстъпка',
-      'Ексклузивни Premium оферти',
-      'Специални предложения с ограничена наличност',
-      'Достъп до затворени Premium кампании',
-      'VIP приоритетна поддръжка',
-      'Връщане на пари чрез приложението',
-    ],
-    cardType: 'light',
-    isFeatured: false,
-    badge: { text: 'Most Bought', textBg: 'Най-купуван' },
-  },
-  {
-    id: 'basic',
-    planCode: 'BASIC',
-    displayName: 'BASIC',
-    displayNameBg: 'ОСНОВЕН',
-    pricing: { weekly: null, monthly: 7.99, yearly: 84, currency: 'EUR', yearlyDiscountPct: 20 },
-    billingOptions: { hasWeekly: false, hasMonthly: true, hasYearly: true },
-    cashbackRate: 10,
-    stickerBonus: 0,
-    features: [
-      'One month access',
-      'Up to 10% discount',
-      'Cashback via the app',
-      'Access to partner offers',
-      'Standard support',
-    ],
-    featuresBg: [
-      'Едномесечен достъп',
-      'До 10% отстъпка',
-      'Връщане на пари чрез приложението',
-      'Достъп до партньорски оферти',
-      'Стандартна поддръжка',
-    ],
-    cardType: 'silver',
-    isFeatured: false,
-    badge: null,
-  },
-  {
-    id: 'premium',
-    planCode: 'PREMIUM',
-    displayName: 'PREMIUM',
-    displayNameBg: 'ПРЕМИУМ',
-    pricing: { weekly: null, monthly: 12.99, yearly: 136, currency: 'EUR', yearlyDiscountPct: 20 },
-    billingOptions: { hasWeekly: false, hasMonthly: true, hasYearly: true },
-    cashbackRate: 20,
-    stickerBonus: 0,
-    features: [
-      'One month Premium access',
-      'Up to 20% discount',
-      'Exclusive Premium offers',
-      'Limited availability special offers',
-      'Access to exclusive Premium campaigns',
-      'VIP priority support',
-      'Cashback via the app',
-    ],
-    featuresBg: [
-      'Едномесечен Premium достъп',
-      'До 20% отстъпка',
-      'Ексклузивни Premium оферти',
-      'Специални предложения с ограничена наличност',
-      'Достъп до затворени Premium кампании',
-      'VIP приоритетна поддръжка',
-      'Връщане на пари чрез приложението',
-    ],
-    cardType: 'black',
-    isFeatured: true,
-    badge: { text: 'Most Popular', textBg: 'Най-популярен' },
-  },
-];
 
 // Credit card colors & gradients per theme
 type GradientColors = [string, string, ...string[]];
@@ -223,10 +132,10 @@ const UpgradePlansScreen = ({ navigation, route }: any) => {
         if (response.data?.success && response.data.data?.length) {
           setPlans(response.data.data);
         } else {
-          setPlans(getFallbackPlans());
+          setPlans([]);
         }
       } catch {
-        setPlans(getFallbackPlans());
+        setPlans([]);
       } finally {
         setLoading(false);
       }
@@ -250,7 +159,7 @@ const UpgradePlansScreen = ({ navigation, route }: any) => {
     });
   };
 
-  const convertEURToBGN = (eur: number) => +(eur * 1.9558).toFixed(2);
+  const convertEURToBGN = (eur: number) => +(eur * APP_CONFIG.EUR_EXCHANGE_RATE).toFixed(2);
 
   const styles = getStyles(theme, isDarkMode);
 

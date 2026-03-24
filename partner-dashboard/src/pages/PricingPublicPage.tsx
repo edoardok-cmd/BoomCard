@@ -457,6 +457,8 @@ const PlanButtonContainer = styled.div`
   }
 `;
 
+// ─── FAQ ──────────────────────────────────────────────────────────────────────
+
 const FAQSection = styled.section`
   max-width: 800px;
   margin: 0 auto;
@@ -525,128 +527,6 @@ const ErrorMessage = styled.div`
   font-size: 1.125rem;
 `;
 
-// Fallback plans data when API is unavailable
-const getFallbackPlans = (lang: 'en' | 'bg'): Plan[] => [
-  {
-    id: 'lite-premium',
-    planCode: 'LITE_PREMIUM',
-    displayName: 'LITE PREMIUM',
-    displayNameBg: 'ЛАЙТ ПРЕМИУМ',
-    pricing: {
-      weekly: 4.99,
-      monthly: null,
-      yearly: 52,
-      currency: 'EUR',
-      yearlyDiscountPct: 20
-    },
-    billingOptions: {
-      hasWeekly: true,
-      hasMonthly: false,
-      hasYearly: false
-    },
-    cashbackRate: 20,
-    stickerBonus: 0,
-    features: [
-      'One week Premium access',
-      'Up to 20% discount',
-      'Exclusive Premium offers',
-      'Limited availability special offers',
-      'Access to exclusive Premium campaigns',
-      'VIP priority support',
-      'Cashback via the app'
-    ],
-    featuresBg: [
-      'Едноседмичен Premium достъп',
-      'До 20% отстъпка',
-      'Ексклузивни Premium оферти',
-      'Специални предложения с ограничена наличност',
-      'Достъп до затворени Premium кампании',
-      'VIP приоритетна поддръжка',
-      'Връщане на пари чрез приложението'
-    ],
-    cardType: 'light',
-    isFeatured: false,
-    badge: { text: 'Most Bought', textBg: 'Най-купуван' }
-  },
-  {
-    id: 'basic',
-    planCode: 'BASIC',
-    displayName: 'BASIC',
-    displayNameBg: 'ОСНОВЕН',
-    pricing: {
-      weekly: null,
-      monthly: 7.99,
-      yearly: 84,
-      currency: 'EUR',
-      yearlyDiscountPct: 20
-    },
-    billingOptions: {
-      hasWeekly: false,
-      hasMonthly: true,
-      hasYearly: true
-    },
-    cashbackRate: 10,
-    stickerBonus: 0,
-    features: [
-      'One month access',
-      'Up to 10% discount',
-      'Cashback via the app',
-      'Access to partner offers',
-      'Standard support'
-    ],
-    featuresBg: [
-      'Едномесечен достъп',
-      'До 10% отстъпка',
-      'Връщане на пари чрез приложението',
-      'Достъп до партньорски оферти',
-      'Стандартна поддръжка'
-    ],
-    cardType: 'silver',
-    isFeatured: false,
-    badge: null
-  },
-  {
-    id: 'premium',
-    planCode: 'PREMIUM',
-    displayName: 'PREMIUM',
-    displayNameBg: 'ПРЕМИУМ',
-    pricing: {
-      weekly: null,
-      monthly: 12.99,
-      yearly: 136,
-      currency: 'EUR',
-      yearlyDiscountPct: 20
-    },
-    billingOptions: {
-      hasWeekly: false,
-      hasMonthly: true,
-      hasYearly: true
-    },
-    cashbackRate: 20,
-    stickerBonus: 0,
-    features: [
-      'One month Premium access',
-      'Up to 20% discount',
-      'Exclusive Premium offers',
-      'Limited availability special offers',
-      'Access to exclusive Premium campaigns',
-      'VIP priority support',
-      'Cashback via the app'
-    ],
-    featuresBg: [
-      'Едномесечен Premium достъп',
-      'До 20% отстъпка',
-      'Ексклузивни Premium оферти',
-      'Специални предложения с ограничена наличност',
-      'Достъп до затворени Premium кампании',
-      'VIP приоритетна поддръжка',
-      'Връщане на пари чрез приложението'
-    ],
-    cardType: 'black',
-    isFeatured: true,
-    badge: { text: 'Most Popular', textBg: 'Най-популярен' }
-  }
-];
 
 const PricingPublicPage: React.FC = () => {
   const { language } = useLanguage();
@@ -673,9 +553,8 @@ const PricingPublicPage: React.FC = () => {
         ]);
         setPlans(apiPlans);
       } catch (err) {
-        console.warn('API unavailable, using fallback plans:', err);
-        // Use fallback plans instead of showing error
-        setPlans(getFallbackPlans(language as 'en' | 'bg'));
+        console.error('Error loading plans:', err);
+        setError(language === 'bg' ? 'Грешка при зареждане на плановете' : 'Error loading plans');
       } finally {
         setLoading(false);
       }

@@ -43,17 +43,18 @@ class AuthService {
     const response = await apiService.post<BackendAuthResponse>('/auth/login', credentials);
     // Store tokens in secure cookies
     const user = response.data.user;
-    const session = createSession({
-      id: user.id,
-      email: user.email,
-      firstName: user.firstName || '',
-      lastName: user.lastName || '',
-      role: (user.role as 'user' | 'partner' | 'admin') || 'user',
-      avatar: user.avatar,
-    });
-    // Override generated tokens with real tokens from backend
-    (session as any).accessToken = response.data.accessToken;
-    (session as any).refreshToken = response.data.refreshToken;
+    const session = createSession(
+      {
+        id: user.id,
+        email: user.email,
+        firstName: user.firstName || '',
+        lastName: user.lastName || '',
+        role: (user.role as 'user' | 'partner' | 'admin') || 'user',
+        avatar: user.avatar,
+      },
+      response.data.accessToken,
+      response.data.refreshToken,
+    );
     storeSession(session);
 
     // Return in expected format
@@ -73,16 +74,18 @@ class AuthService {
     const response = await apiService.post<BackendAuthResponse>('/auth/register', data);
     // Store tokens in secure cookies
     const user = response.data.user;
-    const session = createSession({
-      id: user.id,
-      email: user.email,
-      firstName: user.firstName || '',
-      lastName: user.lastName || '',
-      role: (user.role as 'user' | 'partner' | 'admin') || 'user',
-      avatar: user.avatar,
-    });
-    (session as any).accessToken = response.data.accessToken;
-    (session as any).refreshToken = response.data.refreshToken;
+    const session = createSession(
+      {
+        id: user.id,
+        email: user.email,
+        firstName: user.firstName || '',
+        lastName: user.lastName || '',
+        role: (user.role as 'user' | 'partner' | 'admin') || 'user',
+        avatar: user.avatar,
+      },
+      response.data.accessToken,
+      response.data.refreshToken,
+    );
     storeSession(session);
 
     // Return in expected format

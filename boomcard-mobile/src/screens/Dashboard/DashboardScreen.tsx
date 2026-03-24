@@ -44,13 +44,11 @@ const DashboardScreen = ({ navigation }: any) => {
   const [stats, setStats] = useState<ReceiptStats | null>(null);
   const [cardStats, setCardStats] = useState<any>(null);
   const [subscription, setSubscription] = useState<any>(null);
+  const [cardMissing, setCardMissing] = useState(false);
   const [recentVisits, setRecentVisits] = useState<VenueVisit[]>([]);
 
   const loadData = async () => {
-    // Show fallback subscription immediately so the UI isn't empty
-    if (!subscription) {
-      setSubscription({ plan: 'LIGHT', status: 'ACTIVE', benefits: { cashbackRate: 0.20 } });
-    }
+    // Leave subscription null until the API responds — no hardcoded values
     // Don't block the whole screen — show UI after a short delay even if APIs are slow
     const loadingTimeout = setTimeout(() => {
       setLoading(false);
@@ -70,10 +68,15 @@ const DashboardScreen = ({ navigation }: any) => {
         }
       }).catch(() => {});
 
-      const cardStatsPromise = cardApi.getStatistics().then((data) => {
-        if (data) {
-          setCardStats(data);
+      const cardStatsPromise = cardApi.getMyCardOrNull().then((card) => {
+        if (!card) {
+          setCardMissing(true);
+          return;
         }
+        setCardMissing(false);
+        return apiClient.get(`/api/cards/${card.id}/statistics`).then((res) => {
+          if (res.success && res.data) setCardStats(res.data);
+        });
       }).catch(() => {});
 
       const receiptsPromise = ReceiptsApi.getReceipts({ limit: 50 }).then((response) => {
@@ -200,8 +203,37 @@ const DashboardScreen = ({ navigation }: any) => {
         </View>
       </LinearGradient>
 
+      {/* No card warning — subscription exists but card was never provisioned */}
+      {subscription && cardMissing && (
+        <FadeInView delay={0}>
+          <TouchableOpacity
+            style={[s.planBanner, { borderColor: 'rgba(239,68,68,0.35)', marginBottom: 12 }]}
+            activeOpacity={0.8}
+            onPress={() => navigation.navigate('Card')}
+          >
+            <LinearGradient
+              colors={isDarkMode ? ['#7f1d1d', '#991b1b'] : ['#dc2626', '#b91c1c']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={s.planGradient}
+            >
+              <View style={s.planLeft}>
+                <Ionicons name="warning-outline" size={28} color="#fca5a5" />
+                <View style={s.planTextGroup}>
+                  <Text style={[s.planLabel, { color: '#fca5a5' }]}>{t('dashboard.noCardTitle', 'Card not activated')}</Text>
+                  <Text style={[s.planName, { color: '#ffffff', fontSize: 14 }]}>
+                    {t('dashboard.noCardDesc', 'Tap to activate your BOOM Card')}
+                  </Text>
+                </View>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color="rgba(255,255,255,0.5)" />
+            </LinearGradient>
+          </TouchableOpacity>
+        </FadeInView>
+      )}
+
       {/* Card Plan Info */}
-      {subscription && (
+      {subscription && !cardMissing && (
         <FadeInView delay={0}>
         <TouchableOpacity
           style={[
@@ -230,10 +262,10 @@ const DashboardScreen = ({ navigation }: any) => {
             style={s.planGradient}
           >
             <View style={s.planLeft}>
-              <Ionicons name="card" size={32} color="#FFFFFF" />
+              <Ionicons name="card" size={32} color={subscription.plan === 'PREMIUM' ? 'rgba(0,0,0,0.6)' : '#FFFFFF'} />
               <View style={s.planTextGroup}>
-                <Text style={s.planLabel}>{t('dashboard.yourPlan')}</Text>
-                <Text style={s.planName}>
+                <Text style={[s.planLabel, subscription.plan === 'PREMIUM' && { color: 'rgba(0,0,0,0.5)' }]}>{t('dashboard.yourPlan')}</Text>
+                <Text style={[s.planName, subscription.plan === 'PREMIUM' && { color: 'rgba(0,0,0,0.8)', textShadowColor: 'transparent' }]}>
                   {subscription.plan === 'PREMIUM'
                     ? t('dashboard.planPremium')
                     : subscription.plan === 'BASIC'
@@ -243,42 +275,54 @@ const DashboardScreen = ({ navigation }: any) => {
               </View>
             </View>
             <View style={s.planRight}>
-              <View style={[
-                s.statusBadge,
-                { backgroundColor: (subscription.status === 'ACTIVE' || subscription.status === 'TRIALING') ? 'rgba(16,185,129,0.25)' : 'rgba(239,68,68,0.25)' },
-              ]}>
-                <View style={[
-                  s.statusDot,
-                  { backgroundColor: (subscription.status === 'ACTIVE' || subscription.status === 'TRIALING') ? '#10B981' : '#EF4444' },
-                ]} />
-                <Text style={s.statusText}>
-                  {(subscription.status === 'ACTIVE' || subscription.status === 'TRIALING')
-                    ? t('dashboard.cardActive')
-                    : subscription.status === 'CANCELLED'
-                    ? t('dashboard.cardExpired')
-                    : t('dashboard.cardSuspended')}
-                </Text>
-              </View>
-              {subscription.currentPeriodEnd && (
-                <Text style={s.planValidity}>
-                  {t('dashboard.validUntil')}: {new Date(subscription.currentPeriodEnd).toLocaleDateString()}
-                </Text>
-              )}
-              {(subscription.status === 'ACTIVE' || subscription.status === 'TRIALING') && subscription.currentPeriodEnd && (() => {
-                const daysLeft = Math.ceil(
-                  (new Date(subscription.currentPeriodEnd).getTime() - Date.now()) / (1000 * 60 * 60 * 24)
+              {(() => {
+                const isYellowCard = subscription.plan === 'PREMIUM';
+                const textColor = isYellowCard ? 'rgba(0,0,0,0.75)' : '#FFFFFF';
+                const subtextColor = isYellowCard ? 'rgba(0,0,0,0.55)' : 'rgba(255,255,255,0.8)';
+                const isActive = subscription.status === 'ACTIVE' || subscription.status === 'TRIALING';
+                return (
+                  <>
+                    <View style={[
+                      s.statusBadge,
+                      { backgroundColor: isActive
+                          ? (isYellowCard ? 'rgba(0,0,0,0.15)' : 'rgba(16,185,129,0.25)')
+                          : (isYellowCard ? 'rgba(0,0,0,0.15)' : 'rgba(239,68,68,0.25)') },
+                    ]}>
+                      <View style={[
+                        s.statusDot,
+                        { backgroundColor: isActive ? '#10B981' : '#EF4444' },
+                      ]} />
+                      <Text style={[s.statusText, { color: textColor }]}>
+                        {isActive
+                          ? t('dashboard.cardActive')
+                          : subscription.status === 'CANCELLED'
+                          ? t('dashboard.cardExpired')
+                          : t('dashboard.cardSuspended')}
+                      </Text>
+                    </View>
+                    {subscription.currentPeriodEnd && (
+                      <Text style={[s.planValidity, { color: subtextColor }]}>
+                        {t('dashboard.validUntil')}: {new Date(subscription.currentPeriodEnd).toLocaleDateString()}
+                      </Text>
+                    )}
+                    {isActive && subscription.currentPeriodEnd && (() => {
+                      const daysLeft = Math.ceil(
+                        (new Date(subscription.currentPeriodEnd).getTime() - Date.now()) / (1000 * 60 * 60 * 24)
+                      );
+                      if (daysLeft > 0 && daysLeft <= 90) {
+                        return (
+                          <Text style={[s.daysRemaining, { color: isYellowCard ? 'rgba(0,0,0,0.45)' : 'rgba(255,255,255,0.65)' }]}>
+                            {t('dashboard.daysRemaining', { days: daysLeft })}
+                          </Text>
+                        );
+                      }
+                      return null;
+                    })()}
+                  </>
                 );
-                if (daysLeft > 0 && daysLeft <= 90) {
-                  return (
-                    <Text style={s.daysRemaining}>
-                      {t('dashboard.daysRemaining', { days: daysLeft })}
-                    </Text>
-                  );
-                }
-                return null;
               })()}
             </View>
-            <Ionicons name="chevron-forward" size={18} color="rgba(255,255,255,0.4)" style={{ marginLeft: 4 }} />
+            <Ionicons name="chevron-forward" size={18} color={subscription.plan === 'PREMIUM' ? 'rgba(0,0,0,0.3)' : 'rgba(255,255,255,0.4)'} style={{ marginLeft: 4 }} />
           </LinearGradient>
         </TouchableOpacity>
         </FadeInView>

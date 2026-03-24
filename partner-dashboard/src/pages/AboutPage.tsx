@@ -1,10 +1,32 @@
-import React from 'react';
+import React, { Fragment } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import styled from 'styled-components';
 import { useLanguage } from '../contexts/LanguageContext';
 import Button from '../components/common/Button/Button';
 import ClientCTA from '../components/common/ClientCTA/ClientCTA';
+
+/**
+ * Safely renders strings that contain only <p> and <strong> tags.
+ * Used instead of dangerouslySetInnerHTML to avoid XSS risk.
+ */
+function renderSafeHtml(html: string): React.ReactNode {
+  return html
+    .split(/<\/p>/i)
+    .map(chunk => chunk.trim().replace(/^<p>/i, '').trim())
+    .filter(Boolean)
+    .map((text, i) => {
+      const parts = text.split(/(<strong>.*?<\/strong>)/i);
+      return (
+        <p key={i}>
+          {parts.map((part, j) => {
+            const match = part.match(/^<strong>(.*?)<\/strong>$/i);
+            return match ? <strong key={j}>{match[1]}</strong> : <Fragment key={j}>{part}</Fragment>;
+          })}
+        </p>
+      );
+    });
+}
 
 // ─── Layout ─────────────────────────────────────────────
 const PageContainer = styled.div`
@@ -298,7 +320,7 @@ const AboutPage: React.FC = () => {
               variants={fadeUp}
             >
               <SectionTitle>{section.title}</SectionTitle>
-              <SectionText dangerouslySetInnerHTML={{ __html: section.text }} />
+              <SectionText>{renderSafeHtml(section.text)}</SectionText>
             </SectionBlock>
           ))}
 

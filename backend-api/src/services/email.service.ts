@@ -1011,6 +1011,44 @@ ${isBg ? 'Въпроси? Свържете се с нас на' : 'Questions? Co
 
     return this.sendEmail({ to: email, subject, html, text });
   }
+  /**
+   * Send cashback payment reminder to a partner
+   */
+  async sendCashbackReminder(
+    email: string,
+    data: { partnerName: string; month: string; amount: number; adminDashboardUrl?: string }
+  ): Promise<{ success: boolean }> {
+    const subject = `BoomCard – Cashback Payment Reminder for ${data.month}`;
+    const html = `<!DOCTYPE html>
+<html>
+<body style="margin:0;padding:0;background-color:#f4f4f4;font-family:Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0">
+    <tr><td align="center" style="padding:40px 20px;">
+      <table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:8px;overflow:hidden;">
+        <tr><td style="background:linear-gradient(135deg,#dc2626,#ea580c);padding:30px;text-align:center;">
+          <h1 style="color:#fff;margin:0;font-size:24px;">BoomCard Cashback Reminder</h1>
+        </td></tr>
+        <tr><td style="padding:30px;">
+          <p style="color:#333;">Dear <strong>${data.partnerName}</strong>,</p>
+          <p style="color:#555;">This is a reminder that your cashback payment for <strong>${data.month}</strong> is outstanding.</p>
+          <table width="100%" style="background:#f8f9fa;border-radius:8px;padding:20px;margin:20px 0;">
+            <tr><td><strong>Month:</strong></td><td style="text-align:right;">${data.month}</td></tr>
+            <tr><td><strong>Amount Owed:</strong></td><td style="text-align:right;color:#dc2626;font-size:20px;font-weight:bold;">${data.amount.toFixed(2)} BGN</td></tr>
+          </table>
+          <p style="color:#555;">Please arrange payment at your earliest convenience. If you have already made this payment, please disregard this email.</p>
+          <p style="color:#555;">For questions, contact us at <a href="mailto:support@boomcard.bg">support@boomcard.bg</a>.</p>
+        </td></tr>
+        <tr><td style="background:#f8f9fa;padding:20px;text-align:center;">
+          <p style="margin:0;color:#999;font-size:12px;">&copy; ${new Date().getFullYear()} BoomCard. All rights reserved.</p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+    const text = `Dear ${data.partnerName},\n\nYour cashback payment for ${data.month} of ${data.amount.toFixed(2)} BGN is outstanding.\n\nPlease contact support@boomcard.bg for questions.`;
+    return this.sendEmail({ to: email, subject, html, text });
+  }
 }
 
 // Export singleton instance

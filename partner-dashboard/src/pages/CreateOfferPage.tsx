@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import styled from 'styled-components';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -6,6 +6,8 @@ import toast from 'react-hot-toast';
 import { useLanguage } from '../contexts/LanguageContext';
 import { Upload, X, Check, ArrowLeft, ArrowRight } from 'lucide-react';
 import Button from '../components/common/Button/Button';
+import { offersService } from '../services/offers.service';
+import { apiService } from '../services/api.service';
 
 const content = {
   en: {
@@ -112,6 +114,16 @@ const CreateOfferPage: React.FC = () => {
   const t = content[language as keyof typeof content];
 
   const [currentStep, setCurrentStep] = useState(1);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [partnerId, setPartnerId] = useState<string | null>(null);
+
+  // Fetch the logged-in user's partner ID on mount
+  useEffect(() => {
+    apiService.get<{ success: boolean; data: { id: string } }>('/partners/me')
+      .then(res => setPartnerId(res.data?.id ?? null))
+      .catch(() => setPartnerId(null));
+  }, []);
+
   const [formData, setFormData] = useState<OfferFormData>({
     title: '',
     category: '',
@@ -178,16 +190,29 @@ const CreateOfferPage: React.FC = () => {
   const handleImageUpload = (files: FileList | null) => {
     if (!files) return;
 
-    const validFiles = Array.from(files).filter(file => {
+    const allFiles = Array.from(files);
+    const validFiles = allFiles.filter(file => {
       const isValidType = ['image/jpeg', 'image/png', 'image/webp'].includes(file.type);
       const isValidSize = file.size <= 5 * 1024 * 1024; // 5MB
       return isValidType && isValidSize;
     });
 
-    setFormData(prev => ({
-      ...prev,
-      images: [...prev.images, ...validFiles].slice(0, 5), // Max 5 images
-    }));
+    const rejected = allFiles.length - validFiles.length;
+    if (rejected > 0) {
+      toast.error(
+        language === 'bg'
+          ? `${rejected} файл(а) са отхвърлени. Само JPG, PNG, WebP до 5MB.`
+          : `${rejected} file(s) rejected. Only JPG, PNG, WebP up to 5MB allowed.`
+      );
+    }
+
+    setFormData(prev => {
+      const next = [...prev.images, ...validFiles].slice(0, 5);
+      if (prev.images.length < 5 && next.length === 5 && validFiles.length > 0) {
+        toast(language === 'bg' ? 'Максимум 5 снимки.' : 'Maximum 5 images allowed.', { icon: 'ℹ️' });
+      }
+      return { ...prev, images: next };
+    });
   };
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -214,15 +239,42 @@ const CreateOfferPage: React.FC = () => {
 
   const handleSubmit = async () => {
     if (!validateStep(3)) return;
+    if (!partnerId) {
+      toast.error(language === 'bg' ? 'Партньорският профил не е намерен.' : 'Partner profile not found.');
+      return;
+    }
 
+    setIsSubmitting(true);
     try {
-      // Mock API call - replace with real API
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      const offer = await offersService.createOffer({
+        partnerId,
+        title: formData.title,
+        description: formData.description,
+        type: 'DISCOUNT',
+        discountPercent: parseInt(formData.discount),
+        startDate: formData.validFrom,
+        endDate: formData.validUntil,
+        usageLimit: formData.maxRedemptions ? parseInt(formData.maxRedemptions) : undefined,
+        termsConditions: formData.terms,
+        status: 'ACTIVE',
+      });
+
+      // Upload images sequentially after offer creation
+      for (const file of formData.images) {
+        try {
+          await offersService.uploadOfferImage(offer.id, file);
+        } catch (imgErr) {
+          // Non-blocking: offer is created; warn about image failure
+          toast.error(language === 'bg' ? 'Снимката не беше качена.' : 'Image upload failed — offer saved without image.');
+        }
+      }
 
       toast.success(t.success);
       navigate('/partners/offers');
     } catch {
       toast.error(t.error);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -464,8 +516,8 @@ const CreateOfferPage: React.FC = () => {
               {t.next} <ArrowRight size={18} />
             </Button>
           ) : (
-            <Button onClick={handleSubmit}>
-              <Check size={18} /> {t.submit}
+            <Button onClick={handleSubmit} disabled={isSubmitting}>
+              <Check size={18} /> {isSubmitting ? '...' : t.submit}
             </Button>
           )}
         </ActionButtons>

@@ -13,6 +13,8 @@ interface OfferCardProps {
   className?: string;
   /** Callback when "Book" CTA is clicked (experience cards). Prevents navigation. */
   onBookClick?: (entity: Entity | CardEntity) => void;
+  /** When true, show the offer as locked (visible but not redeemable) */
+  isLocked?: boolean;
 }
 
 // Normalized card data shape (internal)
@@ -52,9 +54,9 @@ function normalizeEntity(entity: Entity | CardEntity, language: 'en' | 'bg'): Ca
 
   return {
     id: entity.id,
-    title: language === 'bg' ? entity.name.bg : entity.name.en,
-    description: language === 'bg' ? entity.description.bg : entity.description.en,
-    category: language === 'bg' ? entity.category.bg : entity.category.en,
+    title: language === 'bg' ? (entity.name.bg || entity.name.en) : entity.name.en,
+    description: language === 'bg' ? (entity.description.bg || entity.description.en) : entity.description.en,
+    category: language === 'bg' ? (entity.category.bg || entity.category.en) : entity.category.en,
     location: entity.location.displayBg && language === 'bg'
       ? entity.location.displayBg
       : entity.location.display,
@@ -170,6 +172,28 @@ const Image = styled.img`
 
   ${CardContainer}:hover & {
     transform: scale(1.05);
+  }
+`;
+
+const ImagePlaceholder = styled.div`
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  background: #f3f4f6;
+  color: #9ca3af;
+
+  [data-theme="dark"] & {
+    background: #1f2937;
+  }
+
+  svg {
+    width: 2.5rem;
+    height: 2.5rem;
+    opacity: 0.4;
   }
 `;
 
@@ -495,6 +519,43 @@ const CTAButton = styled.span`
   }
 `;
 
+const LockedOverlay = styled.div`
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(2px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border-radius: 1.5rem;
+  z-index: 20;
+  cursor: default;
+`;
+
+const LockedLabel = styled.div`
+  background: rgba(30, 30, 30, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 0.625rem;
+  padding: 0.5rem 1rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+`;
+
+const LockedTitle = styled.span`
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: #ffffff;
+`;
+
+const LockedSubtitle = styled.span`
+  font-size: 0.6875rem;
+  color: rgba(255, 255, 255, 0.65);
+`;
+
 const renderStars = (rating: number) => {
   const stars = [];
   const fullStars = Math.floor(rating);
@@ -541,8 +602,9 @@ const localizeType = (type: string, lang: string) => {
 
 const formatCurrency = (amount: number) => `€${amount.toFixed(0)}`;
 
-export const OfferCard: React.FC<OfferCardProps> = ({ entity, className, onBookClick }) => {
+export const OfferCard: React.FC<OfferCardProps> = ({ entity, className, onBookClick, isLocked }) => {
   const { language } = useLanguage();
+  const [imgError, setImgError] = React.useState(false);
 
   const data = normalizeEntity(entity, language as 'en' | 'bg');
 
@@ -554,6 +616,7 @@ export const OfferCard: React.FC<OfferCardProps> = ({ entity, className, onBookC
   const ctaLabel = language === 'bg' ? 'Виж офертата' : 'View offer';
 
   const handleCardClick = (e: React.MouseEvent) => {
+    if (isLocked) { e.preventDefault(); return; }
     if (onBookClick && entity && data.isExperience) {
       e.preventDefault();
       onBookClick(entity);
@@ -564,11 +627,40 @@ export const OfferCard: React.FC<OfferCardProps> = ({ entity, className, onBookC
     <Link to={data.path} style={{ textDecoration: 'none' }} onClick={handleCardClick}>
       <CardContainer
         className={className}
-        whileHover={{ y: -4 }}
+        whileHover={{ y: isLocked ? 0 : -4 }}
         transition={{ duration: 0.3 }}
+        style={isLocked ? { filter: 'grayscale(0.4)', opacity: 0.85 } : undefined}
       >
+        {isLocked && (
+          <LockedOverlay onClick={(e) => e.preventDefault()}>
+            <svg width="32" height="32" fill="none" stroke="white" strokeWidth={2} viewBox="0 0 24 24">
+              <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M7 11V7a5 5 0 0110 0v4" />
+            </svg>
+            <LockedLabel>
+              <LockedTitle>{language === 'bg' ? 'Недостъпно' : 'Locked'}</LockedTitle>
+              <LockedSubtitle>
+                {language === 'bg' ? 'Надградете абонамента си' : 'Upgrade your subscription'}
+              </LockedSubtitle>
+            </LockedLabel>
+          </LockedOverlay>
+        )}
         <ImageContainer>
-          <Image src={data.imageUrl} alt={data.title} loading="lazy" />
+          {data.imageUrl && !imgError ? (
+            <Image
+              src={data.imageUrl}
+              alt={data.title}
+              loading="lazy"
+              onError={() => setImgError(true)}
+            />
+          ) : (
+            <ImagePlaceholder>
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                  d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+            </ImagePlaceholder>
+          )}
           <FavoriteButtonWrapper onClick={(e) => e.preventDefault()}>
             <FavoriteButton
               offerId={data.id}

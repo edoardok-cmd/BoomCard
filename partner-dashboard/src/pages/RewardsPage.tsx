@@ -693,13 +693,12 @@ const PointsSubtext = styled.div`
 `;
 
 const TierCard = styled(motion.div)`
-  background: white;
+  background: var(--color-background);
   border-radius: 1.5rem;
   padding: 2rem;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
 
   [data-theme="dark"] & {
-    background: #1f2937;
     box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
   }
 `;
@@ -776,7 +775,7 @@ const EarnGrid = styled.div`
 `;
 
 const EarnCard = styled(motion.div)`
-  background: white;
+  background: var(--color-background);
   border-radius: 1rem;
   padding: 1.5rem;
   text-align: center;
@@ -784,7 +783,6 @@ const EarnCard = styled(motion.div)`
   transition: all 0.2s;
 
   [data-theme="dark"] & {
-    background: #1f2937;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
   }
 
@@ -830,7 +828,7 @@ const RewardsGrid = styled.div`
 `;
 
 const RewardCard = styled(motion.div)<{ locked?: boolean }>`
-  background: white;
+  background: var(--color-background);
   border-radius: 1.25rem;
   overflow: hidden;
   box-shadow:
@@ -845,7 +843,6 @@ const RewardCard = styled(motion.div)<{ locked?: boolean }>`
   height: 100%;
 
   [data-theme="dark"] & {
-    background: #1f2937;
     box-shadow:
       0 1px 3px rgba(0, 0, 0, 0.3),
       0 4px 12px rgba(0, 0, 0, 0.2),
@@ -966,7 +963,7 @@ const RewardContent = styled.div`
   padding: 1.75rem;
   display: flex;
   flex-direction: column;
-  background: linear-gradient(to bottom, #ffffff 0%, #fafbfc 100%);
+  background: var(--color-background);
 `;
 
 const RewardTitle = styled.h3`
@@ -1030,13 +1027,12 @@ const RewardAction = styled.div`
 `;
 
 const HistoryList = styled.div`
-  background: white;
+  background: var(--color-background);
   border-radius: 1rem;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
   overflow: hidden;
 
   [data-theme="dark"] & {
-    background: #1f2937;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
   }
 `;
@@ -1109,12 +1105,11 @@ const HistoryAmount = styled.div<{ positive: boolean }>`
 const EmptyState = styled.div`
   text-align: center;
   padding: 4rem 2rem;
-  background: white;
+  background: var(--color-background);
   border-radius: 1rem;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
 
   [data-theme="dark"] & {
-    background: #1f2937;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
   }
 `;

@@ -110,7 +110,9 @@
     "daysRemaining": "{{days}} days left",
     "cashbackRate": "{{rate}}% cashback",
     "upgradeYourPlan": "Upgrade Your Plan",
-    "unlockHigherCashback": "Unlock higher cashback rates"
+    "unlockHigherCashback": "Unlock higher cashback rates",
+    "noCardTitle": "Card not activated",
+    "noCardDesc": "Tap to activate your BOOM Card"
   },
   "wallet": {
     "title": "Wallet",
@@ -241,6 +243,11 @@
     "validUntil": "Valid until",
     "tapToShowQR": "Tap to show QR",
     "tapToFlipBack": "Tap to flip back",
+    "noCard": "No card found",
+    "noActiveCard": "No active card",
+    "noActiveCardDesc": "Your subscription may have expired or you don't have an active plan. Choose a plan to get your BOOM Card.",
+    "expired": "Expired",
+    "choosePlan": "Choose a Plan",
     "maybeLater": "Maybe Later",
     "contactSupport": "Contact Support",
     "supportTitle": "Support",

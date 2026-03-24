@@ -431,7 +431,7 @@ const SettingsScreen = ({ navigation }: any) => {
   const chevronColor = theme.colors.onSurfaceVariant;
 
   return (
-    <ScrollView style={styles.container}>
+    <ScrollView style={styles.container} contentContainerStyle={{ flexGrow: 1 }}>
       <View style={styles.content}>
         {/* Notifications */}
         <Text style={styles.sectionTitle}>{t('settings.notifications')}</Text>

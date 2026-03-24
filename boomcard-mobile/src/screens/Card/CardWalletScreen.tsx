@@ -11,43 +11,11 @@ interface CardData {
   userId: string;
   issuedAt: string;
   benefits?: {
+    cashbackRate?: number;
+    bonusCashback?: number;
     features?: string[];
-    cashbackPercentage?: number;
   };
 }
-
-const CARD_BENEFITS: Record<string, { cashback: number; features: string[] }> = {
-  LIGHT: {
-    cashback: 20,
-    features: [
-      'One week Premium access',
-      'Up to 20% discount',
-      'Exclusive Premium offers',
-      'VIP priority support',
-      'Cashback via the app',
-    ],
-  },
-  BASIC: {
-    cashback: 10,
-    features: [
-      'One month access',
-      'Up to 10% discount',
-      'Cashback via the app',
-      'Access to partner offers',
-      'Standard support',
-    ],
-  },
-  PREMIUM: {
-    cashback: 20,
-    features: [
-      'One month Premium access',
-      'Up to 20% discount',
-      'Exclusive Premium offers',
-      'VIP priority support',
-      'Cashback via the app',
-    ],
-  },
-};
 
 const CardWalletScreen = () => {
   const { theme } = useTheme();
@@ -106,7 +74,7 @@ const CardWalletScreen = () => {
     issuedAt: card.issuedAt,
   });
 
-  const benefits = CARD_BENEFITS[card.cardType] || CARD_BENEFITS.LIGHT;
+  const features = card.benefits?.features ?? [];
 
   return (
     <ScrollView
@@ -128,14 +96,16 @@ const CardWalletScreen = () => {
           />
         </View>
       </View>
-      <View style={styles.benefits}>
-        <Text style={styles.benefitsTitle}>Card Benefits</Text>
-        {benefits.features.map((feature, index) => (
-          <Text key={index} style={styles.benefitItem}>
-            • {feature}
-          </Text>
-        ))}
-      </View>
+      {features.length > 0 && (
+        <View style={styles.benefits}>
+          <Text style={styles.benefitsTitle}>Card Benefits</Text>
+          {features.map((feature, index) => (
+            <Text key={index} style={styles.benefitItem}>
+              • {feature}
+            </Text>
+          ))}
+        </View>
+      )}
     </ScrollView>
   );
 };

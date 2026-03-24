@@ -32,54 +32,6 @@ import apiClient from '../../api/client';
 import * as SecureStore from '../../utils/secureStore';
 import { STORAGE_KEYS } from '../../constants/config';
 
-// Fallback plan data when API is unavailable
-const FALLBACK_PLANS: Record<string, Plan> = {
-  'lite-premium': {
-    id: 'lite-premium',
-    planCode: 'LITE_PREMIUM',
-    displayName: 'LITE PREMIUM',
-    displayNameBg: 'ЛАЙТ ПРЕМИУМ',
-    pricing: { weekly: 4.99, monthly: null, yearly: 207.48, currency: 'EUR', yearlyDiscountPct: 20 },
-    billingOptions: { hasWeekly: true, hasMonthly: false, hasYearly: true },
-    cashbackRate: 5,
-    stickerBonus: 0,
-    features: ['5% cashback on receipts', 'Standard QR code', 'Basic rewards'],
-    featuresBg: ['5% кешбек от касови бележки', 'Стандартен QR код', 'Базови награди'],
-    cardType: 'light',
-    isFeatured: false,
-    badge: null,
-  },
-  'basic': {
-    id: 'basic',
-    planCode: 'BASIC',
-    displayName: 'BASIC',
-    displayNameBg: 'БАЗОВ',
-    pricing: { weekly: null, monthly: 7.99, yearly: 76.70, currency: 'EUR', yearlyDiscountPct: 20 },
-    billingOptions: { hasWeekly: false, hasMonthly: true, hasYearly: true },
-    cashbackRate: 10,
-    stickerBonus: 5,
-    features: ['10% cashback on receipts', 'Priority support', 'Exclusive discounts'],
-    featuresBg: ['10% кешбек от касови бележки', 'Приоритетна поддръжка', 'Ексклузивни отстъпки'],
-    cardType: 'silver',
-    isFeatured: true,
-    badge: { text: 'Most Popular', textBg: 'Най-популярен' },
-  },
-  'premium': {
-    id: 'premium',
-    planCode: 'PREMIUM',
-    displayName: 'PREMIUM',
-    displayNameBg: 'ПРЕМИУМ',
-    pricing: { weekly: null, monthly: 12.99, yearly: 124.70, currency: 'EUR', yearlyDiscountPct: 20 },
-    billingOptions: { hasWeekly: false, hasMonthly: true, hasYearly: true },
-    cashbackRate: 15,
-    stickerBonus: 10,
-    features: ['15% cashback on receipts', '24/7 support', 'VIP events', 'Travel insurance'],
-    featuresBg: ['15% кешбек от касови бележки', '24/7 поддръжка', 'VIP събития', 'Застраховка за пътуване'],
-    cardType: 'black',
-    isFeatured: false,
-    badge: { text: 'Best Value', textBg: 'Най-купуван' },
-  },
-};
 
 interface RouteParams {
   planId?: string;
@@ -130,25 +82,13 @@ const RegisterScreen = ({ navigation, route }: any) => {
         if (response.data?.success && response.data.data) {
           setSelectedPlan(response.data.data);
         } else {
-          // Fallback to static data
-          const fallback = FALLBACK_PLANS[planId];
-          if (fallback) {
-            setSelectedPlan(fallback);
-          } else {
-            setPlanError(t('subscription.planLoadError'));
-            setSelectedPlan(null);
-          }
-        }
-      } catch (err) {
-        // Use console.warn instead of console.error to avoid Expo red error overlay
-        console.warn('Plan fetch failed, using fallback:', planId);
-        const fallback = FALLBACK_PLANS[planId];
-        if (fallback) {
-          setSelectedPlan(fallback);
-        } else {
           setPlanError(t('subscription.planLoadError'));
           setSelectedPlan(null);
         }
+      } catch (err) {
+        console.warn('Plan fetch failed:', planId);
+        setPlanError(t('subscription.planLoadError'));
+        setSelectedPlan(null);
       } finally {
         setPlanLoading(false);
       }
@@ -409,7 +349,9 @@ const RegisterScreen = ({ navigation, route }: any) => {
           />
 
           <Text style={styles.passwordRequirement}>
-            {t('profile.requirement8Chars')}
+            {language === 'bg'
+              ? 'Мин. 8 символа, главна и малка буква, цифра и специален символ'
+              : 'Min. 8 chars, uppercase & lowercase letter, number, and special character'}
           </Text>
 
           <TextInput

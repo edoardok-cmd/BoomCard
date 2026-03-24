@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import GenericPage from '../components/templates/GenericPage';
 import Button from '../components/common/Button/Button';
 import { useLanguage } from '../contexts/LanguageContext';
 import { convertEURToBGN } from '../utils/helpers';
+import { Plan, plansService } from '../services/plans.service';
 import styled from 'styled-components';
 
 // Subscription cards - Credit card design matching HomePage
@@ -390,87 +391,97 @@ const SaveBadge = styled.div`
   }
 `;
 
+// Static marketing tooltips — not pricing, safe to keep hardcoded
+const PLAN_TOOLTIPS: Record<string, { en: string[]; bg: string[] }> = {
+  LIGHT: {
+    en: [
+      'Full Premium access for 7 days',
+      'Highest discounts at all partners',
+      'Access to exclusive Premium campaigns',
+      'Offers with limited quantity or time',
+      'Exclusive access to VIP campaigns',
+      'Get help within 1 hour',
+      'Upload receipt and get money back',
+    ],
+    bg: [
+      'Пълен Premium достъп за 7 дни',
+      'Най-високи отстъпки във всички партньори',
+      'Достъп до затворени Premium кампании',
+      'Оферти с ограничен брой или време',
+      'Ексклузивен достъп до VIP кампании',
+      'Получете помощ в рамките на 1 час',
+      'Качи касова бележка и получи пари обратно',
+    ],
+  },
+  BASIC: {
+    en: [
+      'Full access for 30 days',
+      'Discounts at selected venues',
+      'Upload receipt and get money back',
+      'Over 500 partners across the country',
+      'Response within 24 hours',
+    ],
+    bg: [
+      'Пълен достъп за 30 дни',
+      'Отстъпки в избрани заведения',
+      'Качи касова бележка и получи пари обратно',
+      'Над 500 партньори в цялата страна',
+      'Отговор в рамките на 24 часа',
+    ],
+  },
+  PREMIUM: {
+    en: [
+      'Full Premium access for 30 days',
+      'Highest discounts at all partners',
+      'Access to exclusive Premium campaigns',
+      'Offers with limited quantity or time',
+      'Exclusive access to VIP campaigns',
+      'Get help within 1 hour',
+      'Upload receipt and get money back',
+    ],
+    bg: [
+      'Пълен Premium достъп за 30 дни',
+      'Най-високи отстъпки във всички партньори',
+      'Достъп до затворени Premium кампании',
+      'Оферти с ограничен брой или време',
+      'Ексклузивен достъп до VIP кампании',
+      'Получете помощ в рамките на 1 час',
+      'Качи касова бележка и получи пари обратно',
+    ],
+  },
+};
+
+function cardTypeToStyle(cardType: string): 'starter' | 'basic' | 'premium' {
+  switch (cardType) {
+    case 'silver': return 'basic';
+    case 'black': return 'premium';
+    default: return 'starter';
+  }
+}
+
 const SubscriptionsPage: React.FC = () => {
   const { language } = useLanguage();
   const [billingPeriod, setBillingPeriod] = useState<'monthly' | 'yearly'>('monthly');
+  const [plans, setPlans] = useState<Plan[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const subscriptionPlans = [
-    {
-      name: language === 'bg' ? 'ЛАЙТ ПРЕМИУМ' : 'LITE PREMIUM',
-      monthlyPrice: 4.99,
-      monthlyPriceBGN: 9.77,
-      yearlyPrice: 52,
-      duration: language === 'bg' ? '/седмица' : '/week',
-      type: 'starter' as const,
-      features: [
-        language === 'bg' ? 'Едноседмичен Premium достъп' : 'One week Premium access',
-        language === 'bg' ? 'До 20% отстъпка' : 'Up to 20% discount',
-        language === 'bg' ? 'Ексклузивни Premium оферти' : 'Exclusive Premium offers',
-        language === 'bg' ? 'Специални предложения с ограничена наличност' : 'Limited availability special offers',
-        language === 'bg' ? 'Достъп до затворени Premium кампании' : 'Access to exclusive Premium campaigns',
-        language === 'bg' ? 'VIP приоритетна поддръжка' : 'VIP priority support',
-        language === 'bg' ? 'Връщане на пари чрез приложението' : 'Cashback via the app'
-      ],
-      tooltips: [
-        language === 'bg' ? 'Пълен Premium достъп за 7 дни' : 'Full Premium access for 7 days',
-        language === 'bg' ? 'Най-високи отстъпки във всички партньори' : 'Highest discounts at all partners',
-        language === 'bg' ? 'Достъп до затворени Premium кампании' : 'Access to exclusive Premium campaigns',
-        language === 'bg' ? 'Оферти с ограничен брой или време' : 'Offers with limited quantity or time',
-        language === 'bg' ? 'Ексклузивен достъп до VIP кампании' : 'Exclusive access to VIP campaigns',
-        language === 'bg' ? 'Получете помощ в рамките на 1 час' : 'Get help within 1 hour',
-        language === 'bg' ? 'Качи касова бележка и получи пари обратно' : 'Upload receipt and get money back'
-      ]
-    },
-    {
-      name: language === 'bg' ? 'ОСНОВЕН' : 'BASIC',
-      monthlyPrice: 7.99,
-      monthlyPriceBGN: 15.63,
-      yearlyPrice: 84,
-      duration: language === 'bg' ? '/месец' : '/month',
-      type: 'basic' as const,
-      features: [
-        language === 'bg' ? 'Едномесечен достъп' : 'One month access',
-        language === 'bg' ? 'До 10% отстъпка' : 'Up to 10% discount',
-        language === 'bg' ? 'Връщане на пари чрез приложението' : 'Cashback via the app',
-        language === 'bg' ? 'Достъп до партньорски оферти' : 'Access to partner offers',
-        language === 'bg' ? 'Стандартна поддръжка' : 'Standard support'
-      ],
-      tooltips: [
-        language === 'bg' ? 'Пълен достъп за 30 дни' : 'Full access for 30 days',
-        language === 'bg' ? 'Отстъпки в избрани заведения' : 'Discounts at selected venues',
-        language === 'bg' ? 'Качи касова бележка и получи пари обратно' : 'Upload receipt and get money back',
-        language === 'bg' ? 'Над 500 партньори в цялата страна' : 'Over 500 partners across the country',
-        language === 'bg' ? 'Отговор в рамките на 24 часа' : 'Response within 24 hours'
-      ]
-    },
-    {
-      name: language === 'bg' ? 'ПРЕМИУМ' : 'PREMIUM',
-      monthlyPrice: 12.99,
-      monthlyPriceBGN: 25.41,
-      yearlyPrice: 136,
-      duration: language === 'bg' ? '/месец' : '/month',
-      featured: true,
-      type: 'premium' as const,
-      features: [
-        language === 'bg' ? 'Едномесечен Premium достъп' : 'One month Premium access',
-        language === 'bg' ? 'До 20% отстъпка' : 'Up to 20% discount',
-        language === 'bg' ? 'Ексклузивни Premium оферти' : 'Exclusive Premium offers',
-        language === 'bg' ? 'Специални предложения с ограничена наличност' : 'Limited availability special offers',
-        language === 'bg' ? 'Достъп до затворени Premium кампании' : 'Access to exclusive Premium campaigns',
-        language === 'bg' ? 'VIP приоритетна поддръжка' : 'VIP priority support',
-        language === 'bg' ? 'Връщане на пари чрез приложението' : 'Cashback via the app'
-      ],
-      tooltips: [
-        language === 'bg' ? 'Пълен Premium достъп за 30 дни' : 'Full Premium access for 30 days',
-        language === 'bg' ? 'Най-високи отстъпки във всички партньори' : 'Highest discounts at all partners',
-        language === 'bg' ? 'Достъп до затворени Premium кампании' : 'Access to exclusive Premium campaigns',
-        language === 'bg' ? 'Оферти с ограничен брой или време' : 'Offers with limited quantity or time',
-        language === 'bg' ? 'Ексклузивен достъп до VIP кампании' : 'Exclusive access to VIP campaigns',
-        language === 'bg' ? 'Получете помощ в рамките на 1 час' : 'Get help within 1 hour',
-        language === 'bg' ? 'Качи касова бележка и получи пари обратно' : 'Upload receipt and get money back'
-      ]
-    }
-  ];
+  useEffect(() => {
+    plansService
+      .getPlans()
+      .then(data => {
+        setPlans(data);
+        setLoading(false);
+      })
+      .catch(() => {
+        setError(
+          language === 'bg'
+            ? 'Грешка при зареждане на плановете. Моля, опитайте отново.'
+            : 'Error loading plans. Please try again.',
+        );
+        setLoading(false);
+      });
+  }, []);
 
   return (
     <GenericPage
@@ -515,116 +526,135 @@ const SubscriptionsPage: React.FC = () => {
         </BillingToggle>
       </BillingToggleContainer>
 
-      <SubscriptionCardsContainer>
-        {subscriptionPlans.map((plan, index) => {
-          const planType = plan.type;
-          const isLitePlan = planType === 'starter';
-          const isDisabled = isLitePlan && billingPeriod === 'yearly';
-          // Calculate EUR and BGN prices
-          const eurPrice = isLitePlan
-            ? plan.monthlyPrice
-            : (billingPeriod === 'yearly' ? plan.yearlyPrice : plan.monthlyPrice);
-          const bgnPrice = isLitePlan
-            ? plan.monthlyPriceBGN
-            : (billingPeriod === 'yearly' ? convertEURToBGN(plan.yearlyPrice) : plan.monthlyPriceBGN);
-          const bgnLabel = language === 'bg' ? 'лв.' : 'BGN';
-          // Display dual currency: BGN / €EUR
-          const displayPrice = `${bgnPrice.toFixed(2)} ${bgnLabel} / €${eurPrice}`;
-          const priceLabel = isLitePlan
-            ? plan.duration
-            : (billingPeriod === 'yearly'
-              ? (language === 'bg' ? '/година' : '/year')
-              : plan.duration);
+      {loading && (
+        <div style={{ textAlign: 'center', padding: '4rem', color: 'var(--color-text-secondary)' }}>
+          {language === 'bg' ? 'Зареждане...' : 'Loading...'}
+        </div>
+      )}
 
-          return (
-            <PlanCardWrapper
-              key={index}
-              $disabled={isDisabled}
-              initial={{ opacity: 0, y: 30 }}
-              animate={{ opacity: isDisabled ? 0.5 : 1, y: 0 }}
-              transition={{ duration: 0.5, delay: index * 0.2 }}
-            >
-              {/* Most Bought Badge for Light Plan */}
-              {planType === 'starter' && (
-                <MostBoughtBadge>
-                  {language === 'bg' ? 'Най-купуван' : 'Most Bought'}
-                </MostBoughtBadge>
-              )}
+      {error && (
+        <div style={{ textAlign: 'center', padding: '4rem', color: '#ef4444' }}>
+          {error}
+        </div>
+      )}
 
-              {/* Most Popular Badge */}
-              {plan.featured && (
-                <PopularBadge>
-                  {language === 'bg' ? 'Най-популярен' : 'Most Popular'}
-                </PopularBadge>
-              )}
+      {!loading && !error && (
+        <SubscriptionCardsContainer>
+          {plans.map((plan, index) => {
+            const planType = cardTypeToStyle(plan.cardType);
+            const isLitePlan = !plan.billingOptions.hasMonthly && plan.billingOptions.hasWeekly;
+            const isDisabled = isLitePlan && billingPeriod === 'yearly';
+            // EUR price from API
+            const eurPrice = isLitePlan
+              ? plan.pricing.weekly
+              : (billingPeriod === 'yearly' ? plan.pricing.yearly : plan.pricing.monthly);
+            const bgnPrice = eurPrice != null ? convertEURToBGN(eurPrice) : null;
+            const bgnLabel = language === 'bg' ? 'лв.' : 'BGN';
+            const priceLabel = isLitePlan
+              ? (language === 'bg' ? '/седмица' : '/week')
+              : (billingPeriod === 'yearly'
+                ? (language === 'bg' ? '/година' : '/year')
+                : (language === 'bg' ? '/месец' : '/month'));
+            const features = language === 'bg' ? plan.featuresBg : plan.features;
+            const planName = (language === 'bg' && plan.displayNameBg) ? plan.displayNameBg : plan.displayName;
+            const tooltips = PLAN_TOOLTIPS[plan.planCode]?.[language === 'bg' ? 'bg' : 'en'] ?? [];
 
-              {/* Credit Card matching HomePage design */}
-              <CreditCardPlan $type={planType}>
-                <CardLogoText $type={planType}>
-                  BOOM Card
-                </CardLogoText>
+            return (
+              <PlanCardWrapper
+                key={plan.id}
+                $disabled={isDisabled}
+                initial={{ opacity: 0, y: 30 }}
+                animate={{ opacity: isDisabled ? 0.5 : 1, y: 0 }}
+                transition={{ duration: 0.5, delay: index * 0.2 }}
+              >
+                {/* Most Bought Badge for Light Plan */}
+                {isLitePlan && (
+                  <MostBoughtBadge>
+                    {language === 'bg' ? 'Най-купуван' : 'Most Bought'}
+                  </MostBoughtBadge>
+                )}
 
-                <CardNumber $type={planType}>
-                  <span>••••</span>
-                  <span>••••</span>
-                  <span>••••</span>
-                  <span>••••</span>
-                </CardNumber>
+                {/* Most Popular Badge */}
+                {plan.isFeatured && !isLitePlan && (
+                  <PopularBadge>
+                    {language === 'bg' ? 'Най-популярен' : 'Most Popular'}
+                  </PopularBadge>
+                )}
 
-                <CardBottomRow>
-                  <CardHolderName $type={planType}>
-                    {plan.name.toUpperCase()}
-                  </CardHolderName>
-                  <CardPriceDisplay $type={planType}>
-                    <span style={{ fontSize: '0.9rem', opacity: 0.85 }}>{bgnPrice.toFixed(2)} {bgnLabel} /</span> €{eurPrice}
-                    <span style={{ fontSize: '0.75rem', opacity: 0.8 }}>
-                      {priceLabel}
-                    </span>
-                  </CardPriceDisplay>
-                </CardBottomRow>
-              </CreditCardPlan>
+                {/* Credit Card matching HomePage design */}
+                <CreditCardPlan $type={planType}>
+                  <CardLogoText $type={planType}>
+                    BOOM Card
+                  </CardLogoText>
 
-              {/* Plan Details Below Card */}
-              <PlanDetails>
-                <FeaturesList>
-                  {plan.features.map((feature, i) => {
-                    const isEmpty = !feature || feature.trim() === '';
-                    return (
-                      <FeatureItem key={i} $isEmpty={isEmpty}>
-                        {isEmpty ? '\u00A0' : feature}
-                      </FeatureItem>
-                    );
-                  })}
-                </FeaturesList>
+                  <CardNumber $type={planType}>
+                    <span>••••</span>
+                    <span>••••</span>
+                    <span>••••</span>
+                    <span>••••</span>
+                  </CardNumber>
 
-                <PlanButtonContainer>
-                  {isDisabled ? (
-                    <div style={{ opacity: 0.6 }}>
-                      <Button
-                        variant="secondary"
-                        size="large"
-                        disabled
-                      >
-                        {language === 'bg' ? 'Само седмичен план' : 'Weekly only'}
-                      </Button>
-                    </div>
-                  ) : (
-                    /* SECURITY: Only pass planCode and billing period - NO PRICE IN URL */
-                    <Link to={`/checkout?planCode=${plan.type}&billing=${isLitePlan ? 'weekly' : billingPeriod}`}>
-                      <Button
-                        variant={plan.featured ? 'primary' : 'secondary'}
-                        size="large"
-                      >
-                        {language === 'bg' ? 'Избери План' : 'Choose Plan'}
-                      </Button>
-                    </Link>
-                  )}
-                </PlanButtonContainer>
-              </PlanDetails>
-            </PlanCardWrapper>
-          );
-        })}
-      </SubscriptionCardsContainer>
+                  <CardBottomRow>
+                    <CardHolderName $type={planType}>
+                      {planName.toUpperCase()}
+                    </CardHolderName>
+                    <CardPriceDisplay $type={planType}>
+                      {eurPrice != null && bgnPrice != null ? (
+                        <>
+                          <span style={{ fontSize: '0.9rem', opacity: 0.85 }}>{bgnPrice.toFixed(2)} {bgnLabel} /</span> €{eurPrice}
+                          <span style={{ fontSize: '0.75rem', opacity: 0.8 }}>
+                            {priceLabel}
+                          </span>
+                        </>
+                      ) : (
+                        <span style={{ fontSize: '0.875rem' }}>N/A</span>
+                      )}
+                    </CardPriceDisplay>
+                  </CardBottomRow>
+                </CreditCardPlan>
+
+                {/* Plan Details Below Card */}
+                <PlanDetails>
+                  <FeaturesList>
+                    {features.map((feature, i) => {
+                      const isEmpty = !feature || feature.trim() === '';
+                      return (
+                        <FeatureItem key={i} title={tooltips[i]} $isEmpty={isEmpty}>
+                          {isEmpty ? '\u00A0' : feature}
+                        </FeatureItem>
+                      );
+                    })}
+                  </FeaturesList>
+
+                  <PlanButtonContainer>
+                    {isDisabled ? (
+                      <div style={{ opacity: 0.6 }}>
+                        <Button
+                          variant="secondary"
+                          size="large"
+                          disabled
+                        >
+                          {language === 'bg' ? 'Само седмичен план' : 'Weekly only'}
+                        </Button>
+                      </div>
+                    ) : (
+                      /* SECURITY: Only pass planCode and billing period - NO PRICE IN URL */
+                      <Link to={`/checkout?planCode=${plan.planCode}&billing=${isLitePlan ? 'weekly' : billingPeriod}`}>
+                        <Button
+                          variant={plan.isFeatured ? 'primary' : 'secondary'}
+                          size="large"
+                        >
+                          {language === 'bg' ? 'Избери План' : 'Choose Plan'}
+                        </Button>
+                      </Link>
+                    )}
+                  </PlanButtonContainer>
+                </PlanDetails>
+              </PlanCardWrapper>
+            );
+          })}
+        </SubscriptionCardsContainer>
+      )}
 
       {/* Cashback Explanation */}
       <div style={{

@@ -70,10 +70,12 @@ router.get('/status/:orderId', asyncHandler(async (req: Request, res: Response) 
  * Get available subscription plans
  */
 router.get('/plans', authenticate, asyncHandler(async (req: AuthRequest, res: Response) => {
-  const plans = ['LIGHT', 'BASIC', 'PREMIUM'].map(plan => ({
-    plan,
-    ...subscriptionService.getPlanBenefits(plan as any),
-  }));
+  const plans = await Promise.all(
+    (['LIGHT', 'BASIC', 'PREMIUM'] as const).map(async plan => ({
+      plan,
+      ...await subscriptionService.getPlanBenefits(plan),
+    })),
+  );
 
   res.json({ plans });
 }));
@@ -90,13 +92,13 @@ router.get('/current', authenticate, asyncHandler(async (req: AuthRequest, res: 
     return res.json({
       plan: 'LIGHT',
       status: 'ACTIVE',
-      benefits: subscriptionService.getPlanBenefits('LIGHT'),
+      benefits: await subscriptionService.getPlanBenefits('LIGHT'),
     });
   }
 
   res.json({
     ...subscription,
-    benefits: subscriptionService.getPlanBenefits(subscription.plan),
+    benefits: await subscriptionService.getPlanBenefits(subscription.plan),
   });
 }));
 

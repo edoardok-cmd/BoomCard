@@ -1,9 +1,9 @@
 // API Configuration for production deployment
 export const API_CONFIG = {
-  baseURL: process.env.REACT_APP_API_URL || 'http://localhost:3000',
-  graphqlURL: process.env.REACT_APP_GRAPHQL_URL || 'http://localhost:4000/graphql',
-  wsURL: process.env.REACT_APP_WS_URL || 'ws://localhost:4000/graphql',
-  
+  baseURL: import.meta.env.VITE_API_BASE_URL || '/api',
+  graphqlURL: import.meta.env.VITE_GRAPHQL_URL || '',
+  wsURL: import.meta.env.VITE_WS_URL || '',
+
   // API endpoints
   endpoints: {
     auth: {
@@ -18,11 +18,11 @@ export const API_CONFIG = {
       update: '/api/users/update'
     }
   },
-  
+
   // Request configuration
-  timeout: 30000,
+  timeout: Number(import.meta.env.VITE_API_TIMEOUT) || 30000,
   withCredentials: true,
-  
+
   // Retry configuration
   retry: {
     attempts: 3,
@@ -34,7 +34,7 @@ export const API_CONFIG = {
 export const GRAPHQL_CONFIG = {
   uri: API_CONFIG.graphqlURL,
   wsUri: API_CONFIG.wsURL,
-  connectToDevTools: process.env.NODE_ENV === 'development',
+  connectToDevTools: import.meta.env.DEV,
   defaultOptions: {
     watchQuery: {
       fetchPolicy: 'cache-and-network'

@@ -16,6 +16,14 @@ import crypto from 'crypto';
 import { z } from 'zod';
 import { paymentRateLimiter } from '../middleware/security.middleware';
 
+const FRONTEND_URL = process.env.FRONTEND_URL || (process.env.NODE_ENV === 'production'
+  ? (() => { throw new Error('FRONTEND_URL must be set in production'); })()
+  : 'http://localhost:5173');
+
+const API_BASE_URL = process.env.API_BASE_URL || (process.env.NODE_ENV === 'production'
+  ? (() => { throw new Error('API_BASE_URL must be set in production'); })()
+  : 'http://localhost:3000');
+
 const router = Router();
 
 // ============================================
@@ -85,20 +93,31 @@ const router = Router();
  *       400:
  *         $ref: '#/components/responses/ValidationError'
  */
+// Schema for payment creation — metadata is restricted to a flat string map
+// to prevent object injection and limit stored payload size.
+const createPaymentSchema = z.object({
+  amount: z.number().positive(),
+  description: z.string().max(255).optional(),
+  currency: z.string().length(3).optional().default('EUR'),
+  paymentMethod: z.string().max(50).optional(),
+  metadata: z.record(z.string().max(100), z.string().max(500)).optional(),
+});
+
 router.post(
   '/create',
   authenticate,
   asyncHandler(async (req: AuthRequest, res: Response) => {
-    const { amount, description, currency = 'EUR', paymentMethod, metadata } = req.body;
-    const user = req.user!;
-
-    // Validation
-    if (!amount || amount <= 0) {
+    const parseResult = createPaymentSchema.safeParse(req.body);
+    if (!parseResult.success) {
       return res.status(400).json({
         success: false,
-        message: 'Invalid amount',
+        message: 'Invalid request body',
+        errors: parseResult.error.issues,
       });
     }
+
+    const { amount, description, currency, paymentMethod, metadata } = parseResult.data;
+    const user = req.user!;
 
     if (!PayseraService.validateAmount(PayseraService.amountToCents(amount))) {
       return res.status(400).json({
@@ -146,10 +165,9 @@ router.post(
       });
 
       // Build callback URLs
-      const baseUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
-      const acceptUrl = `${baseUrl}/payments/success?orderId=${orderId}`;
-      const cancelUrl = `${baseUrl}/payments/cancel?orderId=${orderId}`;
-      const callbackUrl = `${process.env.API_BASE_URL || 'http://localhost:3000'}/api/payments/callback`;
+      const acceptUrl = `${FRONTEND_URL}/payments/success?orderId=${orderId}`;
+      const cancelUrl = `${FRONTEND_URL}/payments/cancel?orderId=${orderId}`;
+      const callbackUrl = `${API_BASE_URL}/api/payments/callback`;
 
       // Create Paysera payment
       const payment = await payseraService.createPayment({
@@ -441,6 +459,8 @@ router.get(
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const user = req.user!;
     const { limit = '20', offset = '0' } = req.query;
+    const limitVal = Math.min(Math.max(parseInt(limit as string) || 20, 1), 100);
+    const offsetVal = Math.max(parseInt(offset as string) || 0, 0);
 
     try {
       const transactions = await prisma.transaction.findMany({
@@ -451,8 +471,8 @@ router.get(
         orderBy: {
           createdAt: 'desc',
         },
-        take: parseInt(limit as string),
-        skip: parseInt(offset as string),
+        take: limitVal,
+        skip: offsetVal,
       });
 
       const total = await prisma.transaction.count({
@@ -475,8 +495,8 @@ router.get(
         })),
         pagination: {
           total,
-          limit: parseInt(limit as string),
-          offset: parseInt(offset as string),
+          limit: limitVal,
+          offset: offsetVal,
         },
       });
     } catch (error: any) {
@@ -557,6 +577,22 @@ function calculatePeriodEnd(billingPeriod: 'weekly' | 'monthly' | 'yearly'): Dat
  * SECURITY: Price is determined by planId lookup from database.
  * Client ONLY sends planId and billingPeriod - NEVER the price.
  */
+const ALLOWED_REDIRECT_DOMAINS = [
+  'mobile.boomcard.bg',
+  'boomcard.bg',
+  'boomcard-api.fly.dev',
+];
+
+function isAllowedRedirectUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === 'https:' &&
+      ALLOWED_REDIRECT_DOMAINS.some(d => parsed.hostname === d || parsed.hostname.endsWith(`.${d}`));
+  } catch {
+    return false;
+  }
+}
+
 const subscriptionSchema = z.object({
   planId: z.string().uuid(),
   billingPeriod: z.enum(['weekly', 'monthly', 'yearly']),
@@ -564,6 +600,8 @@ const subscriptionSchema = z.object({
   name: z.string().min(1).max(100).optional(),
   phone: z.string().min(1).max(30).optional(),
   paymentMethod: z.string().min(1).max(50).optional(),
+  successUrl: z.string().url().optional(),
+  cancelUrl: z.string().url().optional(),
 });
 
 router.post(
@@ -579,7 +617,7 @@ router.post(
       });
     }
 
-    const { planId, billingPeriod, email: guestEmail, name: guestName, phone: guestPhone, paymentMethod } = parseResult.data;
+    const { planId, billingPeriod, email: guestEmail, name: guestName, phone: guestPhone, paymentMethod, successUrl: clientSuccessUrl, cancelUrl: clientCancelUrl } = parseResult.data;
     const user = req.user; // May be undefined for guest checkout
 
     // Fetch plan from database (SOURCE OF TRUTH for pricing)
@@ -694,10 +732,13 @@ router.post(
     }
 
     // Build callback URLs
-    const baseUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
-    const acceptUrl = `${baseUrl}/subscription/success?orderId=${orderId}`;
-    const cancelUrl = `${baseUrl}/subscription/cancel?orderId=${orderId}`;
-    const callbackUrl = `${process.env.API_BASE_URL || 'http://localhost:3000'}/api/payments/subscription/callback`;
+    const acceptUrl = (clientSuccessUrl && isAllowedRedirectUrl(clientSuccessUrl))
+      ? `${clientSuccessUrl}?orderId=${orderId}`
+      : `${FRONTEND_URL}/subscription/success?orderId=${orderId}`;
+    const cancelUrl = (clientCancelUrl && isAllowedRedirectUrl(clientCancelUrl))
+      ? `${clientCancelUrl}?orderId=${orderId}`
+      : `${FRONTEND_URL}/subscription/cancel?orderId=${orderId}`;
+    const callbackUrl = `${API_BASE_URL}/api/payments/subscription/callback`;
 
     // Create Paysera payment
     const payment = await payseraService.createPayment({

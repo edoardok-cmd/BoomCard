@@ -94,7 +94,6 @@ const ReceiptScannerScreen = ({ navigation, route }: any) => {
 
       setCapturedImage(photo.uri);
 
-      // Process image with OCR (placeholder - would integrate Tesseract.js or ML Kit)
       await processReceiptImage(photo.uri);
 
       setIsProcessing(false);

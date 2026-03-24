@@ -164,6 +164,7 @@ const MainNavigator = ({ initialRouteName = 'MainTabs' }: { initialRouteName?: s
       initialRouteName={initialRouteName}
       screenOptions={{
         headerShown: false,
+        cardStyle: { flex: 1 },
       }}
     >
       {/* Main Tabs */}

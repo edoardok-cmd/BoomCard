@@ -1,32 +1,22 @@
-import { Offer, OfferStatus, PartnerTier, Prisma, SubscriptionPlan, SubscriptionStatus } from '@prisma/client';
+import { Offer, OfferStatus, Prisma, SubscriptionPlan, SubscriptionStatus } from '@prisma/client';
 import crypto from 'crypto';
 import { prisma } from '../lib/prisma';
+import { partnerTypeService } from './partnerType.service';
+import { imageUploadService } from './imageUpload.service';
 
-// ============================================================
-// Partner tier → max allowed discount % on offers
-// A partner's tier determines what discounts they are permitted to publish.
-// ============================================================
-export const PARTNER_TIER_MAX_DISCOUNT: Record<PartnerTier, number> = {
-  BASIC:     10,
-  STANDARD:  15,
-  PREMIUM:   20,
-  VIP:       30,
-  EXCLUSIVE: 100,
-};
+function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371000;
+  const φ1 = (lat1 * Math.PI) / 180;
+  const φ2 = (lat2 * Math.PI) / 180;
+  const Δφ = ((lat2 - lat1) * Math.PI) / 180;
+  const Δλ = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+    Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
 
-// ============================================================
-// User subscription plan → accessible partner tiers
-// Higher-tier partners (VIP, EXCLUSIVE) require a PREMIUM subscription.
-// Unauthenticated / free users see BASIC partners only.
-// ============================================================
-export const PLAN_ACCESSIBLE_TIERS: Record<SubscriptionPlan, PartnerTier[]> = {
-  LIGHT:   [PartnerTier.BASIC],
-  BASIC:   [PartnerTier.BASIC, PartnerTier.STANDARD, PartnerTier.PREMIUM],
-  PREMIUM: [PartnerTier.BASIC, PartnerTier.STANDARD, PartnerTier.PREMIUM, PartnerTier.VIP, PartnerTier.EXCLUSIVE],
-};
-
-// Tiers visible to unauthenticated (public) requests
-const PUBLIC_ACCESSIBLE_TIERS: PartnerTier[] = [PartnerTier.BASIC];
+const OFFER_REDEMPTION_RADIUS_METERS = 100;
 
 export interface OfferFilters {
   category?: string;
@@ -36,6 +26,7 @@ export interface OfferFilters {
   search?: string;
   status?: OfferStatus;
   isFeatured?: boolean;
+  tags?: string[];
   page?: number;
   limit?: number;
   // Access control: pass the user's active plan (null = unauthenticated)
@@ -59,12 +50,35 @@ export interface CreateOfferData {
   termsConditions?: string;
   termsConditionsBg?: string;
   image?: string;
+  tags?: string[];
   startDate: Date;
   endDate: Date;
   usageLimit?: number;
   isFeatured?: boolean;
   featuredOrder?: number;
+  status?: OfferStatus;
 }
+
+// Partner select shape used across all offer queries
+const PARTNER_SELECT = {
+  id: true,
+  businessName: true,
+  businessNameBg: true,
+  category: true,
+  city: true,
+  logo: true,
+  rating: true,
+  partnerTypeId: true,
+  partnerType: {
+    select: {
+      id: true,
+      name: true,
+      nameBg: true,
+      color: true,
+      maxDiscountRate: true,
+    },
+  },
+} as const;
 
 class OffersService {
   // ----------------------------------------------------------
@@ -72,25 +86,11 @@ class OffersService {
   // ----------------------------------------------------------
 
   /**
-   * Resolve which partner tiers the caller is allowed to see.
-   * Admins bypass all restrictions.
-   */
-  private getAccessibleTiers(userPlan: SubscriptionPlan | null | undefined, isAdmin: boolean): PartnerTier[] | undefined {
-    if (isAdmin) return undefined; // undefined = no tier filter → see all
-    if (!userPlan) return PUBLIC_ACCESSIBLE_TIERS;
-    return PLAN_ACCESSIBLE_TIERS[userPlan];
-  }
-
-  /**
    * Fetch the user's currently active subscription plan from the DB.
-   * Returns null if the user has no active subscription.
    */
   async getUserActivePlan(userId: string): Promise<SubscriptionPlan | null> {
     const subscription = await prisma.subscription.findFirst({
-      where: {
-        userId,
-        status: SubscriptionStatus.ACTIVE,
-      },
+      where: { userId, status: SubscriptionStatus.ACTIVE },
       orderBy: { currentPeriodEnd: 'desc' },
     });
     return subscription?.plan ?? null;
@@ -98,18 +98,25 @@ class OffersService {
 
   /**
    * Verify that the authenticated user owns the partner, or is an admin.
-   * Throws if the check fails.
+   * Returns the partner's partnerTypeId for discount validation.
    */
-  private async assertPartnerOwnership(partnerId: string, userId: string, userRole: string): Promise<{ tier: PartnerTier }> {
+  private async assertPartnerOwnership(
+    partnerId: string,
+    userId: string,
+    userRole: string,
+  ): Promise<{ partnerTypeId: string | null }> {
     if (userRole === 'ADMIN' || userRole === 'SUPER_ADMIN') {
-      const partner = await prisma.partner.findUnique({ where: { id: partnerId }, select: { tier: true } });
+      const partner = await prisma.partner.findUnique({
+        where: { id: partnerId },
+        select: { partnerTypeId: true },
+      });
       if (!partner) throw new Error('Partner not found');
       return partner;
     }
 
     const partner = await prisma.partner.findFirst({
       where: { id: partnerId, userId },
-      select: { tier: true },
+      select: { partnerTypeId: true },
     });
     if (!partner) {
       throw new Error('Partner not found or you are not authorized to manage this partner');
@@ -118,15 +125,17 @@ class OffersService {
   }
 
   /**
-   * Validate discount / cashback percentages against the partner's tier limits.
+   * Validate discount/cashback against the partner type's max rate.
    */
-  private validateDiscountBounds(
+  private async validateDiscountBounds(
     discountPercent: number | null | undefined,
     cashbackPercent: number | null | undefined,
-    partnerTier: PartnerTier,
+    partnerTypeId: string | null,
     isAdmin: boolean,
   ) {
-    const maxDiscount = PARTNER_TIER_MAX_DISCOUNT[partnerTier];
+    const maxDiscount = partnerTypeId
+      ? await partnerTypeService.getMaxDiscountForType(partnerTypeId)
+      : 100; // no type = no cap (shouldn't happen after migration)
 
     if (discountPercent !== undefined && discountPercent !== null) {
       if (discountPercent < 0 || discountPercent > 100) {
@@ -134,8 +143,8 @@ class OffersService {
       }
       if (!isAdmin && discountPercent > maxDiscount) {
         throw new Error(
-          `Discount percent cannot exceed ${maxDiscount}% for ${partnerTier} tier partners. ` +
-          `Upgrade the partner tier to offer higher discounts.`,
+          `Discount percent cannot exceed ${maxDiscount}% for this partner type. ` +
+            `Upgrade the partner type to offer higher discounts.`,
         );
       }
     }
@@ -146,11 +155,19 @@ class OffersService {
       }
       if (!isAdmin && cashbackPercent > maxDiscount) {
         throw new Error(
-          `Cashback percent cannot exceed ${maxDiscount}% for ${partnerTier} tier partners. ` +
-          `Upgrade the partner tier to offer higher cashback.`,
+          `Cashback percent cannot exceed ${maxDiscount}% for this partner type. ` +
+            `Upgrade the partner type to offer higher cashback.`,
         );
       }
     }
+  }
+
+  /**
+   * Serialize tags array to JSON string for storage.
+   */
+  private serializeTags(tags?: string[]): string | undefined {
+    if (!tags || tags.length === 0) return undefined;
+    return JSON.stringify(tags.map(t => t.trim().toLowerCase()).filter(Boolean));
   }
 
   // ----------------------------------------------------------
@@ -159,8 +176,7 @@ class OffersService {
 
   /**
    * Get all offers with filters and pagination.
-   * When userPlan is provided (including null for unauthenticated),
-   * results are restricted to partner tiers the caller can access.
+   * Visibility is now controlled by PlanTypeAccess.canView (via partnerType).
    */
   async getOffers(filters: OfferFilters = {}) {
     const {
@@ -171,13 +187,12 @@ class OffersService {
       search,
       status = OfferStatus.ACTIVE,
       isFeatured,
+      tags,
       page = 1,
       limit = 10,
       userPlan,
       isAdmin = false,
     } = filters;
-
-    const accessibleTiers = this.getAccessibleTiers(userPlan, isAdmin);
 
     const where: Prisma.OfferWhereInput = {
       status,
@@ -191,17 +206,36 @@ class OffersService {
 
     if (search) {
       where.OR = [
-        { title: { contains: search } },
-        { titleBg: { contains: search } },
-        { description: { contains: search } },
+        { title: { contains: search, mode: 'insensitive' } },
+        { titleBg: { contains: search, mode: 'insensitive' } },
+        { description: { contains: search, mode: 'insensitive' } },
       ];
     }
 
-    // Build partner sub-filter (category, city, tier access control)
+    // Tag filter: check if tags JSON string contains each requested tag
+    if (tags && tags.length > 0) {
+      const tagFilters = tags.map(tag => ({
+        tags: { contains: tag.toLowerCase() },
+      }));
+      if (where.AND) {
+        (where.AND as any[]).push(...tagFilters);
+      } else {
+        where.AND = tagFilters as any;
+      }
+    }
+
+    // Partner sub-filter: category, city, and optional visibility gating
     const partnerFilter: Prisma.PartnerWhereInput = {};
     if (category) partnerFilter.category = category;
     if (city) partnerFilter.city = city;
-    if (accessibleTiers) partnerFilter.tier = { in: accessibleTiers };
+
+    // Apply canView filter unless admin or no plan constraint
+    if (!isAdmin) {
+      const visibleTypeIds = await partnerTypeService.getVisibleTypeIdsForPlan(userPlan ?? null);
+      if (visibleTypeIds !== null) {
+        partnerFilter.partnerTypeId = { in: visibleTypeIds };
+      }
+    }
 
     if (Object.keys(partnerFilter).length > 0) {
       where.partner = partnerFilter;
@@ -212,20 +246,7 @@ class OffersService {
     const [offers, total] = await Promise.all([
       prisma.offer.findMany({
         where,
-        include: {
-          partner: {
-            select: {
-              id: true,
-              businessName: true,
-              businessNameBg: true,
-              category: true,
-              city: true,
-              logo: true,
-              rating: true,
-              tier: true,
-            },
-          },
-        },
+        include: { partner: { select: PARTNER_SELECT } },
         orderBy: [
           { isFeatured: 'desc' },
           { featuredOrder: 'asc' },
@@ -239,7 +260,7 @@ class OffersService {
     ]);
 
     return {
-      data: offers,
+      data: offers.map(o => ({ ...o, tags: o.tags ? JSON.parse(o.tags) : [] })),
       pagination: {
         page,
         limit,
@@ -250,185 +271,199 @@ class OffersService {
   }
 
   /**
-   * Get top offers (highest discounts or featured), respecting tier access.
+   * Get all distinct tags used across active offers (for filter UI).
    */
-  async getTopOffers(limit: number = 10, userPlan?: SubscriptionPlan | null, isAdmin = false): Promise<Offer[]> {
-    const accessibleTiers = this.getAccessibleTiers(userPlan, isAdmin);
-    const partnerFilter: Prisma.PartnerWhereInput = {};
-    if (accessibleTiers) partnerFilter.tier = { in: accessibleTiers };
-
-    return prisma.offer.findMany({
-      where: {
-        status: OfferStatus.ACTIVE,
-        startDate: { lte: new Date() },
-        endDate: { gte: new Date() },
-        OR: [
-          { isFeatured: true },
-          { discountPercent: { gte: 10 } },
-        ],
-        ...(Object.keys(partnerFilter).length > 0 ? { partner: partnerFilter } : {}),
-      },
-      include: {
-        partner: {
-          select: {
-            id: true,
-            businessName: true,
-            businessNameBg: true,
-            category: true,
-            city: true,
-            logo: true,
-            rating: true,
-            tier: true,
-          },
-        },
-      },
-      orderBy: [
-        { isFeatured: 'desc' },
-        { featuredOrder: 'asc' },
-        { discountPercent: 'desc' },
-      ],
-      take: limit,
+  async getAllTags(): Promise<string[]> {
+    const offers = await prisma.offer.findMany({
+      where: { status: OfferStatus.ACTIVE, tags: { not: null } },
+      select: { tags: true },
     });
+    const tagSet = new Set<string>();
+    for (const o of offers) {
+      if (o.tags) {
+        try {
+          const parsed: string[] = JSON.parse(o.tags);
+          parsed.forEach(t => tagSet.add(t));
+        } catch {
+          // ignore malformed
+        }
+      }
+    }
+    return Array.from(tagSet).sort();
   }
 
   /**
-   * Get featured offers only, respecting tier access.
+   * Get top offers (highest discounts or featured). Visible to all users.
    */
-  async getFeaturedOffers(limit: number = 10, userPlan?: SubscriptionPlan | null, isAdmin = false): Promise<Offer[]> {
-    const accessibleTiers = this.getAccessibleTiers(userPlan, isAdmin);
-    const partnerFilter: Prisma.PartnerWhereInput = {};
-    if (accessibleTiers) partnerFilter.tier = { in: accessibleTiers };
+  async getTopOffers(limit: number = 10, userPlan?: SubscriptionPlan | null, isAdmin = false): Promise<any[]> {
+    const where: Prisma.OfferWhereInput = {
+      status: OfferStatus.ACTIVE,
+      startDate: { lte: new Date() },
+      endDate: { gte: new Date() },
+      OR: [{ isFeatured: true }, { discountPercent: { gte: 10 } }],
+    };
 
-    return prisma.offer.findMany({
-      where: {
-        status: OfferStatus.ACTIVE,
-        isFeatured: true,
-        startDate: { lte: new Date() },
-        endDate: { gte: new Date() },
-        ...(Object.keys(partnerFilter).length > 0 ? { partner: partnerFilter } : {}),
-      },
-      include: {
-        partner: {
-          select: {
-            id: true,
-            businessName: true,
-            businessNameBg: true,
-            category: true,
-            city: true,
-            logo: true,
-            rating: true,
-            tier: true,
-          },
-        },
-      },
-      orderBy: [
-        { featuredOrder: 'asc' },
-        { createdAt: 'desc' },
-      ],
+    if (!isAdmin) {
+      const visibleTypeIds = await partnerTypeService.getVisibleTypeIdsForPlan(userPlan ?? null);
+      if (visibleTypeIds !== null) {
+        where.partner = { partnerTypeId: { in: visibleTypeIds } };
+      }
+    }
+
+    const offers = await prisma.offer.findMany({
+      where,
+      include: { partner: { select: PARTNER_SELECT } },
+      orderBy: [{ isFeatured: 'desc' }, { featuredOrder: 'asc' }, { discountPercent: 'desc' }],
       take: limit,
     });
+    return offers.map(o => ({ ...o, tags: o.tags ? JSON.parse(o.tags) : [] }));
+  }
+
+  /**
+   * Get featured offers only.
+   */
+  async getFeaturedOffers(limit: number = 10, userPlan?: SubscriptionPlan | null, isAdmin = false): Promise<any[]> {
+    const where: Prisma.OfferWhereInput = {
+      status: OfferStatus.ACTIVE,
+      isFeatured: true,
+      startDate: { lte: new Date() },
+      endDate: { gte: new Date() },
+    };
+
+    if (!isAdmin) {
+      const visibleTypeIds = await partnerTypeService.getVisibleTypeIdsForPlan(userPlan ?? null);
+      if (visibleTypeIds !== null) {
+        where.partner = { partnerTypeId: { in: visibleTypeIds } };
+      }
+    }
+
+    const offers = await prisma.offer.findMany({
+      where,
+      include: { partner: { select: PARTNER_SELECT } },
+      orderBy: [{ featuredOrder: 'asc' }, { createdAt: 'desc' }],
+      take: limit,
+    });
+    return offers.map(o => ({ ...o, tags: o.tags ? JSON.parse(o.tags) : [] }));
   }
 
   /**
    * Get single offer by ID.
-   * Returns null if the offer belongs to a partner tier the caller cannot access.
    */
-  async getOfferById(id: string, userPlan?: SubscriptionPlan | null, isAdmin = false): Promise<Offer | null> {
+  async getOfferById(id: string, userPlan?: SubscriptionPlan | null, isAdmin = false): Promise<any | null> {
     const offer = await prisma.offer.findUnique({
       where: { id },
       include: {
         partner: {
           select: {
-            id: true,
-            businessName: true,
-            businessNameBg: true,
-            category: true,
-            city: true,
-            logo: true,
-            rating: true,
+            ...PARTNER_SELECT,
             address: true,
             phone: true,
             website: true,
-            tier: true,
           },
         },
       },
     });
-
     if (!offer) return null;
-
-    // Enforce tier access even on single-offer lookups
-    const accessibleTiers = this.getAccessibleTiers(userPlan, isAdmin);
-    if (accessibleTiers && !(accessibleTiers as string[]).includes((offer.partner as any).tier)) {
-      return null; // treat as not found — do not expose 403 which leaks existence
-    }
-
-    return offer;
+    return { ...offer, tags: offer.tags ? JSON.parse(offer.tags) : [] };
   }
 
   /**
    * Create a new offer.
-   * - Validates that the authenticated user owns the partner (unless admin).
-   * - Validates that the discount does not exceed the partner tier's limit.
    */
-  async createOffer(data: CreateOfferData, userId: string, userRole: string): Promise<Offer> {
+  async createOffer(data: CreateOfferData, userId: string, userRole: string): Promise<any> {
     const isAdmin = userRole === 'ADMIN' || userRole === 'SUPER_ADMIN';
-
-    // Ownership check: also fetches the partner tier for discount validation
     const partner = await this.assertPartnerOwnership(data.partnerId, userId, userRole);
 
-    // Discount bounds validation
-    this.validateDiscountBounds(data.discountPercent, data.cashbackPercent, partner.tier, isAdmin);
+    await this.validateDiscountBounds(data.discountPercent, data.cashbackPercent, partner.partnerTypeId, isAdmin);
 
-    return prisma.offer.create({
+    const { tags, status, ...rest } = data;
+    const offer = await prisma.offer.create({
       data: {
-        ...data,
-        status: OfferStatus.DRAFT,
+        ...rest,
+        tags: this.serializeTags(tags),
+        status: status ?? OfferStatus.DRAFT,
       },
-      include: {
-        partner: true,
-      },
+      include: { partner: { select: PARTNER_SELECT } },
     });
+    return { ...offer, tags: offer.tags ? JSON.parse(offer.tags) : [] };
   }
 
   /**
    * Update an offer.
-   * - Validates that the authenticated user owns the partner (unless admin).
-   * - Prevents changing the partnerId of an existing offer.
-   * - Re-validates discount bounds after update.
    */
-  async updateOffer(id: string, data: Partial<CreateOfferData>, userId: string, userRole: string): Promise<Offer> {
+  async updateOffer(id: string, data: Partial<CreateOfferData>, userId: string, userRole: string): Promise<any> {
     const isAdmin = userRole === 'ADMIN' || userRole === 'SUPER_ADMIN';
 
     const existingOffer = await prisma.offer.findUnique({
       where: { id },
-      include: { partner: { select: { userId: true, tier: true } } },
+      include: { partner: { select: { userId: true, partnerTypeId: true } } },
     });
     if (!existingOffer) throw new Error('Offer not found');
 
-    // Ownership check
     if (!isAdmin && existingOffer.partner.userId !== userId) {
       throw new Error('Not authorized to update this offer');
     }
 
-    // Block partnerId reassignment — offers are immutably tied to their partner
     if (data.partnerId && data.partnerId !== existingOffer.partnerId) {
       throw new Error('Cannot change the partner of an existing offer');
     }
 
-    // Resolve the effective discount values after the update
     const effectiveDiscount = data.discountPercent !== undefined ? data.discountPercent : existingOffer.discountPercent;
     const effectiveCashback = data.cashbackPercent !== undefined ? data.cashbackPercent : existingOffer.cashbackPercent;
-    this.validateDiscountBounds(effectiveDiscount, effectiveCashback, existingOffer.partner.tier, isAdmin);
+    await this.validateDiscountBounds(
+      effectiveDiscount,
+      effectiveCashback,
+      existingOffer.partner.partnerTypeId,
+      isAdmin,
+    );
 
-    // Strip partnerId from the update payload (immutable field)
-    const { partnerId: _ignored, ...updateData } = data as any;
+    const { partnerId: _ignored, tags, ...updateData } = data as any;
+    const finalData: any = { ...updateData };
+    if (tags !== undefined) finalData.tags = this.serializeTags(tags);
 
-    return prisma.offer.update({
+    const offer = await prisma.offer.update({
       where: { id },
-      data: updateData,
-      include: { partner: true },
+      data: finalData,
+      include: { partner: { select: PARTNER_SELECT } },
     });
+    return { ...offer, tags: offer.tags ? JSON.parse(offer.tags) : [] };
+  }
+
+  /**
+   * Upload an image for an offer and persist the URL.
+   * Validates ownership, processes via imageUploadService, updates DB.
+   */
+  async uploadOfferImage(
+    offerId: string,
+    file: Express.Multer.File,
+    userId: string,
+    userRole: string,
+  ): Promise<string> {
+    const isAdmin = userRole === 'ADMIN' || userRole === 'SUPER_ADMIN';
+
+    const offer = await prisma.offer.findUnique({
+      where: { id: offerId },
+      include: { partner: { select: { userId: true } } },
+    });
+    if (!offer) throw new Error('Offer not found');
+    if (!isAdmin && offer.partner.userId !== userId) {
+      throw new Error('Not authorized to upload images for this offer');
+    }
+
+    const result = await imageUploadService.uploadImage({
+      file: file.buffer,
+      fileName: file.originalname,
+      mimeType: file.mimetype,
+      folder: 'offers',
+      userId,
+    });
+
+    await prisma.offer.update({
+      where: { id: offerId },
+      data: { image: result.url },
+    });
+
+    return result.url;
   }
 
   /**
@@ -443,85 +478,117 @@ class OffersService {
 
   /**
    * Redeem an offer for a user.
-   * Validates:
-   *  - Offer exists and is currently active (dates, status).
-   *  - User's subscription tier grants access to the offer's partner.
-   *  - usageLimit hasn't been reached.
-   *  - User hasn't already redeemed this offer (one-per-user enforcement).
-   * On success, atomically increments usageCount, persists the redemption
-   * record, and returns the one-time code.
+   * Checks that the user's plan grants canRedeem access to this partner's type.
    */
   async redeemOffer(
     offerId: string,
     userId: string,
     userRole: string,
+    latitude?: number,
+    longitude?: number,
   ): Promise<{ code: string; expiresAt: string }> {
     const isAdmin = userRole === 'ADMIN' || userRole === 'SUPER_ADMIN';
 
     const offer = await prisma.offer.findUnique({
       where: { id: offerId },
-      include: { partner: { select: { tier: true } } },
+      include: {
+        partner: {
+          select: {
+            partnerTypeId: true,
+            latitude: true,
+            longitude: true,
+            venues: { select: { latitude: true, longitude: true } },
+          },
+        },
+      },
     });
 
     if (!offer) throw new Error('Offer not found');
 
-    // Status check
-    if (offer.status !== 'ACTIVE') {
-      throw new Error('This offer is no longer active');
-    }
+    if (offer.status !== 'ACTIVE') throw new Error('This offer is no longer active');
 
-    // Date range check
     const now = new Date();
     if (offer.startDate > now) throw new Error('This offer has not started yet');
     if (offer.endDate < now) throw new Error('This offer has expired');
 
-    // Tier access check (skip for admins)
+    // Type-based redemption check (skip for admins)
     if (!isAdmin) {
       const userPlan = await this.getUserActivePlan(userId);
-      const accessibleTiers = this.getAccessibleTiers(userPlan, false)!;
-      if (!(accessibleTiers as string[]).includes((offer.partner as any).tier)) {
-        throw new Error('Your subscription plan does not include access to this partner. Upgrade to redeem this offer.');
+      const redeemableTypeIds = await partnerTypeService.getRedeemableTypeIdsForPlan(userPlan);
+      const partnerTypeId = (offer.partner as any).partnerTypeId;
+      if (partnerTypeId && !redeemableTypeIds.includes(partnerTypeId)) {
+        throw new Error(
+          'Your subscription plan does not allow redeeming offers from this partner. Upgrade to redeem this offer.',
+        );
       }
     }
 
-    // Per-user double-redemption check
+    // Proximity check — user must be within 100m of at least one of the partner's venues (skip for admins)
+    if (!isAdmin) {
+      if (latitude === undefined || longitude === undefined) {
+        throw new Error(
+          'Location access is required to redeem this offer. Please enable GPS and try again.'
+        );
+      }
+
+      const partner = offer.partner as any;
+      const venues: Array<{ latitude: number; longitude: number }> = partner.venues ?? [];
+      let minDistance = Infinity;
+
+      if (venues.length > 0) {
+        for (const venue of venues) {
+          const d = calculateDistance(latitude, longitude, venue.latitude, venue.longitude);
+          if (d < minDistance) minDistance = d;
+        }
+      } else if (partner.latitude != null && partner.longitude != null) {
+        minDistance = calculateDistance(latitude, longitude, partner.latitude, partner.longitude);
+      } else {
+        // Partner has no location data — skip proximity check
+        minDistance = 0;
+      }
+
+      if (minDistance > OFFER_REDEMPTION_RADIUS_METERS) {
+        throw new Error(
+          `You must be within ${OFFER_REDEMPTION_RADIUS_METERS}m of the venue to redeem this offer. You are currently ${Math.round(minDistance)}m away.`
+        );
+      }
+    }
+
     const existingRedemption = await prisma.offerRedemption.findUnique({
       where: { userId_offerId: { userId, offerId } },
     });
     if (existingRedemption) {
-      // Return the existing code if still valid, otherwise reject
       if (existingRedemption.expiresAt > now) {
         return { code: existingRedemption.code, expiresAt: existingRedemption.expiresAt.toISOString() };
       }
       throw new Error('You have already redeemed this offer and the code has expired.');
     }
 
-    // Global usage limit check
     if (offer.usageLimit !== null && offer.usageCount >= offer.usageLimit) {
       throw new Error('This offer has reached its redemption limit');
     }
 
-    // Generate a cryptographically random one-time code
     const code = `BOOM-${crypto.randomBytes(4).toString('hex').toUpperCase()}-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
-    // Atomically increment usageCount and persist the redemption record
     await prisma.$transaction([
-      prisma.offer.update({
-        where: { id: offerId },
-        data: { usageCount: { increment: 1 } },
-      }),
-      prisma.offerRedemption.create({
-        data: { offerId, userId, code, expiresAt },
-      }),
+      prisma.offer.update({ where: { id: offerId }, data: { usageCount: { increment: 1 } } }),
+      prisma.offerRedemption.create({ data: { offerId, userId, code, expiresAt } }),
     ]);
 
     return { code, expiresAt: expiresAt.toISOString() };
   }
 
   /**
+   * Bulk-delete offers by IDs — admin only, no ownership check.
+   */
+  async bulkDeleteOffers(ids: string[]): Promise<number> {
+    const result = await prisma.offer.deleteMany({ where: { id: { in: ids } } });
+    return result.count;
+  }
+
+  /**
    * Delete an offer.
-   * - Validates that the authenticated user owns the partner (unless admin).
    */
   async deleteOffer(id: string, userId: string, userRole: string): Promise<void> {
     const isAdmin = userRole === 'ADMIN' || userRole === 'SUPER_ADMIN';
@@ -539,23 +606,14 @@ class OffersService {
     await prisma.offer.delete({ where: { id } });
   }
 
-  /**
-   * Get offers by partner (respects tier access).
-   */
   async getOffersByPartner(partnerId: string, filters: OfferFilters = {}) {
     return this.getOffers({ ...filters, partnerId });
   }
 
-  /**
-   * Get offers by city (respects tier access).
-   */
   async getOffersByCity(city: string, filters: OfferFilters = {}) {
     return this.getOffers({ ...filters, city });
   }
 
-  /**
-   * Get offers by category (respects tier access).
-   */
   async getOffersByCategory(category: string, filters: OfferFilters = {}) {
     return this.getOffers({ ...filters, category });
   }

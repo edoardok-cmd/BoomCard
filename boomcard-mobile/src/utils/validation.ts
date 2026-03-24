@@ -9,6 +9,7 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PHONE_REGEX = /^(\+359|0)\d{9}$/;
 const PASSWORD_MIN_LENGTH = 8;
 const NAME_MIN_LENGTH = 2;
+const NAME_MAX_LENGTH = 50;
 
 export const validateEmail = (email: string): string | null => {
   if (!email || email.trim() === '') return 'required';
@@ -30,12 +31,17 @@ export const validatePhone = (phone: string): string | null => {
 export const validatePassword = (password: string): string | null => {
   if (!password) return 'required';
   if (password.length < PASSWORD_MIN_LENGTH) return 'tooShort';
+  if (!/[A-Z]/.test(password)) return 'needsUppercase';
+  if (!/[a-z]/.test(password)) return 'needsLowercase';
+  if (!/[0-9]/.test(password)) return 'needsNumber';
+  if (!/[^A-Za-z0-9]/.test(password)) return 'needsSpecial';
   return null;
 };
 
 export const validateName = (name: string): string | null => {
   if (!name || name.trim() === '') return 'required';
   if (name.trim().length < NAME_MIN_LENGTH) return 'tooShort';
+  if (name.trim().length > NAME_MAX_LENGTH) return 'tooLong';
   return null;
 };
 

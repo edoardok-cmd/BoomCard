@@ -1,18 +1,19 @@
 /**
  * Sticker Scanner Screen
  *
- * Scan BOOM-Sticker QR codes with GPS validation
+ * Step 1 of 2: Scan venue QR sticker with GPS validation.
+ * After a valid scan, navigates directly to the receipt scanner (Step 2).
  */
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Platform, View, StyleSheet, ActivityIndicator } from 'react-native';
-import { Text, Button, Portal, Modal, TextInput, HelperText } from 'react-native-paper';
+import { Text, Button } from 'react-native-paper';
+import { HelperText } from 'react-native-paper';
 import { CameraView, Camera } from 'expo-camera';
 import * as Location from 'expo-location';
 import { useNavigation, useIsFocused } from '@react-navigation/native';
 import { crossPlatformAlert } from '../../utils/alert';
 import { useTranslation } from 'react-i18next';
-import StickersApi from '../../api/stickers.api';
 
 export default function StickerScannerScreen() {
   const navigation = useNavigation();
@@ -21,10 +22,7 @@ export default function StickerScannerScreen() {
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const [cameraPermanentlyDenied, setCameraPermanentlyDenied] = useState(false);
   const [scanned, setScanned] = useState(false);
-  const [showAmountModal, setShowAmountModal] = useState(false);
-  const [stickerId, setStickerId] = useState('');
-  const [billAmount, setBillAmount] = useState('');
-  const [processing, setProcessing] = useState(false);
+  const [locating, setLocating] = useState(false);
   const [cameraReady, setCameraReady] = useState(false);
   const cameraReadyTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const permissionRequestInProgress = useRef(false);
@@ -34,11 +32,9 @@ export default function StickerScannerScreen() {
     requestPermissions();
   }, []);
 
-  // When the tab gains focus, start a fallback timeout to dismiss the loading overlay
-  // in case onCameraReady never fires (common expo-camera issue on many devices).
-  // When the tab loses focus, reset state and clear the timeout.
   useEffect(() => {
     if (isFocused) {
+      setScanned(false);
       cameraReadyTimeout.current = setTimeout(() => {
         setCameraReady(true);
       }, 2000);
@@ -50,9 +46,7 @@ export default function StickerScannerScreen() {
       }
     }
     return () => {
-      if (cameraReadyTimeout.current) {
-        clearTimeout(cameraReadyTimeout.current);
-      }
+      if (cameraReadyTimeout.current) clearTimeout(cameraReadyTimeout.current);
     };
   }, [isFocused]);
 
@@ -61,8 +55,6 @@ export default function StickerScannerScreen() {
     if (permissionChecked.current && cameraPermanentlyDenied) return;
     permissionRequestInProgress.current = true;
     try {
-      // On web, camera permission can't be re-requested once blocked in browser settings.
-      // Check canAskAgain to avoid an infinite request loop.
       let cameraGranted: boolean;
       if (Platform.OS === 'web') {
         const existing = await Camera.getCameraPermissionsAsync();
@@ -71,9 +63,7 @@ export default function StickerScannerScreen() {
         } else if (!permissionChecked.current || existing.canAskAgain) {
           const result = await Camera.requestCameraPermissionsAsync();
           cameraGranted = result.status === 'granted';
-          if (!result.canAskAgain) {
-            setCameraPermanentlyDenied(true);
-          }
+          if (!result.canAskAgain) setCameraPermanentlyDenied(true);
         } else {
           cameraGranted = false;
           setCameraPermanentlyDenied(true);
@@ -84,12 +74,9 @@ export default function StickerScannerScreen() {
       }
 
       const locationResult = await Location.requestForegroundPermissionsAsync();
-      const locationGranted = locationResult.status === 'granted';
-
       permissionChecked.current = true;
-      setHasPermission(cameraGranted && locationGranted);
-    } catch (error) {
-      console.error('Error requesting permissions:', error);
+      setHasPermission(cameraGranted && locationResult.status === 'granted');
+    } catch {
       permissionChecked.current = true;
       setHasPermission(false);
     } finally {
@@ -98,13 +85,11 @@ export default function StickerScannerScreen() {
   };
 
   const handleBarCodeScanned = async ({ data }: { data: string }) => {
-    if (scanned) return;
-
+    if (scanned || locating) return;
     setScanned(true);
 
-    // BOOM sticker QR codes are JSON: { type: "BOOM_STICKER", stickerId: "...", ... }
-    // Plain strings / other QR formats are rejected early.
-    let parsedStickerId: string;
+    // Validate BOOM sticker QR format
+    let stickerId: string;
     try {
       const qrPayload = JSON.parse(data);
       if (qrPayload.type !== 'BOOM_STICKER' || !qrPayload.stickerId) {
@@ -112,68 +97,31 @@ export default function StickerScannerScreen() {
         setScanned(false);
         return;
       }
-      parsedStickerId = qrPayload.stickerId;
+      stickerId = qrPayload.stickerId;
     } catch {
       crossPlatformAlert(t('common.error'), t('stickers.invalidQRCode', 'Not a valid BOOM sticker QR code'));
       setScanned(false);
       return;
     }
 
-    setStickerId(parsedStickerId);
-    setShowAmountModal(true);
-  };
-
-  const handleConfirmScan = async () => {
-    const amount = parseFloat(billAmount);
-
-    if (!amount || amount <= 0) {
-      crossPlatformAlert(t('common.error'), t('stickers.enterValidAmount'));
-      return;
-    }
-
-    setProcessing(true);
-
+    // Get GPS location immediately — passed to Step 2 so it stays consistent
+    setLocating(true);
     try {
-      // Get current location
       const location = await Location.getCurrentPositionAsync({
         accuracy: Location.Accuracy.Balanced,
       });
 
-      // Initiate scan
-      const response = await StickersApi.scanSticker({
+      (navigation as any).navigate('UploadReceipt', {
         stickerId,
-        billAmount: amount,
         latitude: location.coords.latitude,
         longitude: location.coords.longitude,
       });
-
-      if (!response.success || !response.data) {
-        throw new Error(response.error || t('stickers.scanFailed'));
-      }
-
-      const scan = response.data;
-
-      setShowAmountModal(false);
-      setBillAmount('');
-
-      // Navigate to receipt upload
-      (navigation as any).navigate('UploadReceipt', {
-        scanId: scan.id,
-        billAmount: amount,
-        cashbackPercent: scan.cashbackPercent,
-      });
-    } catch (error: any) {
-      crossPlatformAlert(t('common.error'), error.message || t('stickers.processFailed'));
+    } catch {
+      crossPlatformAlert(t('common.error'), t('stickers.locationError', 'Could not get your location. Please enable GPS and try again.'));
       setScanned(false);
     } finally {
-      setProcessing(false);
+      setLocating(false);
     }
-  };
-
-  const handleCancel = () => {
-    setShowAmountModal(false);
-    setBillAmount('');
-    setScanned(false);
   };
 
   if (hasPermission === null) {
@@ -187,9 +135,7 @@ export default function StickerScannerScreen() {
   if (hasPermission === false) {
     return (
       <View style={styles.centered}>
-        <Text style={styles.errorText}>
-          {t('stickers.permissionsRequired')}
-        </Text>
+        <Text style={styles.errorText}>{t('stickers.permissionsRequired')}</Text>
         <HelperText type="info" style={styles.helperText}>
           {cameraPermanentlyDenied
             ? t('stickers.cameraBlockedHelp', 'Camera access is blocked. Please allow camera access in your browser settings and reload the page.')
@@ -206,17 +152,13 @@ export default function StickerScannerScreen() {
 
   return (
     <View style={styles.container}>
-      {/* Only mount camera when tab is focused — prevents black screen on Android */}
       {isFocused ? (
         <CameraView
           style={styles.camera}
           facing="back"
           onBarcodeScanned={scanned ? undefined : handleBarCodeScanned}
-          barcodeScannerSettings={{
-            barcodeTypes: ['qr'],
-          }}
+          barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
           onCameraReady={() => {
-            console.log('Camera is ready!');
             if (cameraReadyTimeout.current) {
               clearTimeout(cameraReadyTimeout.current);
               cameraReadyTimeout.current = null;
@@ -224,18 +166,20 @@ export default function StickerScannerScreen() {
             setCameraReady(true);
           }}
           onMountError={(error) => {
-            console.error('Camera mount error:', error);
             crossPlatformAlert(t('common.error'), 'Camera failed to start: ' + error.message);
           }}
         >
-          {!cameraReady && (
+          {(!cameraReady || locating) && (
             <View style={styles.cameraLoadingOverlay}>
               <ActivityIndicator size="large" color="#ffffff" />
-              <Text style={styles.loadingText}>{t('stickers.startingCamera', 'Starting camera...')}</Text>
+              <Text style={styles.loadingText}>
+                {locating
+                  ? t('stickers.gettingLocation', 'Getting your location...')
+                  : t('stickers.startingCamera', 'Starting camera...')}
+              </Text>
             </View>
           )}
 
-          {/* Dark borders around transparent scan area */}
           <View style={styles.overlay}>
             <View style={styles.darkTop} />
             <View style={styles.middleRow}>
@@ -250,15 +194,11 @@ export default function StickerScannerScreen() {
             </View>
             <View style={styles.darkBottom}>
               <View style={styles.stepBadge}>
-                <Text style={styles.stepBadgeText}>
-                  {t('stickers.step1of2', 'STEP 1 OF 2')}
-                </Text>
+                <Text style={styles.stepBadgeText}>{t('stickers.step1of2', 'STEP 1 OF 2')}</Text>
               </View>
-              <Text style={styles.instructions}>
-                {t('stickers.scanInstructions')}
-              </Text>
+              <Text style={styles.instructions}>{t('stickers.scanInstructions')}</Text>
               <Text style={styles.stepHint}>
-                {t('stickers.step1Hint', 'After scanning, you\'ll upload your receipt to complete the process')}
+                {t('stickers.step1Hint', "After scanning the QR, you'll photograph your receipt to earn cashback")}
               </Text>
             </View>
           </View>
@@ -268,131 +208,27 @@ export default function StickerScannerScreen() {
           <Text style={styles.loadingText}>{t('stickers.camerapaused', 'Camera paused')}</Text>
         </View>
       )}
-
-      {/* Amount Input Modal */}
-      <Portal>
-        <Modal
-          visible={showAmountModal}
-          onDismiss={handleCancel}
-          contentContainerStyle={styles.modal}
-        >
-          <Text variant="headlineSmall" style={styles.modalTitle}>
-            {t('stickers.enterBillAmount')}
-          </Text>
-
-          <TextInput
-            label={t('stickers.billAmount')}
-            value={billAmount}
-            onChangeText={setBillAmount}
-            keyboardType="decimal-pad"
-            mode="outlined"
-            style={styles.input}
-            autoFocus
-          />
-
-          <HelperText type="info">
-            {t('stickers.cashbackInfo')}
-          </HelperText>
-
-          <View style={styles.modalButtons}>
-            <Button
-              mode="outlined"
-              onPress={handleCancel}
-              style={styles.button}
-              disabled={processing}
-            >
-              {t('common.cancel')}
-            </Button>
-            <Button
-              mode="contained"
-              onPress={handleConfirmScan}
-              style={styles.button}
-              loading={processing}
-              disabled={processing}
-            >
-              {t('common.continue')}
-            </Button>
-          </View>
-        </Modal>
-      </Portal>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  centered: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 24,
-  },
-  errorText: {
-    textAlign: 'center',
-    marginBottom: 16,
-    fontSize: 16,
-  },
-  helperText: {
-    textAlign: 'center',
-    marginBottom: 24,
-    paddingHorizontal: 16,
-  },
-  permissionButton: {
-    marginTop: 8,
-  },
-  camera: {
-    flex: 1,
-  },
-  overlay: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  darkTop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-  },
-  middleRow: {
-    flexDirection: 'row',
-  },
-  darkSide: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-  },
-  scanArea: {
-    width: 250,
-    height: 250,
-  },
-  corner: {
-    position: 'absolute',
-    width: 40,
-    height: 40,
-    borderColor: 'white',
-  },
-  topLeft: {
-    top: 0,
-    left: 0,
-    borderTopWidth: 4,
-    borderLeftWidth: 4,
-  },
-  topRight: {
-    top: 0,
-    right: 0,
-    borderTopWidth: 4,
-    borderRightWidth: 4,
-  },
-  bottomLeft: {
-    bottom: 0,
-    left: 0,
-    borderBottomWidth: 4,
-    borderLeftWidth: 4,
-  },
-  bottomRight: {
-    bottom: 0,
-    right: 0,
-    borderBottomWidth: 4,
-    borderRightWidth: 4,
-  },
+  container: { flex: 1 },
+  centered: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 },
+  errorText: { textAlign: 'center', marginBottom: 16, fontSize: 16 },
+  helperText: { textAlign: 'center', marginBottom: 24, paddingHorizontal: 16 },
+  permissionButton: { marginTop: 8 },
+  camera: { flex: 1 },
+  overlay: { ...StyleSheet.absoluteFillObject },
+  darkTop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)' },
+  middleRow: { flexDirection: 'row' },
+  darkSide: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)' },
+  scanArea: { width: 250, height: 250 },
+  corner: { position: 'absolute', width: 40, height: 40, borderColor: 'white' },
+  topLeft: { top: 0, left: 0, borderTopWidth: 4, borderLeftWidth: 4 },
+  topRight: { top: 0, right: 0, borderTopWidth: 4, borderRightWidth: 4 },
+  bottomLeft: { bottom: 0, left: 0, borderBottomWidth: 4, borderLeftWidth: 4 },
+  bottomRight: { bottom: 0, right: 0, borderBottomWidth: 4, borderRightWidth: 4 },
   darkBottom: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',
@@ -400,23 +236,14 @@ const styles = StyleSheet.create({
     paddingTop: 32,
   },
   stepBadge: {
-    backgroundColor: 'rgba(255, 152, 0, 0.9)',
+    backgroundColor: 'rgba(255,152,0,0.9)',
     borderRadius: 12,
     paddingHorizontal: 12,
     paddingVertical: 4,
     marginBottom: 12,
   },
-  stepBadgeText: {
-    color: 'white',
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 1,
-  },
-  instructions: {
-    color: 'white',
-    textAlign: 'center',
-    fontSize: 16,
-  },
+  stepBadgeText: { color: 'white', fontSize: 11, fontWeight: '700', letterSpacing: 1 },
+  instructions: { color: 'white', textAlign: 'center', fontSize: 16 },
   stepHint: {
     color: 'rgba(255,255,255,0.7)',
     textAlign: 'center',
@@ -428,40 +255,14 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: 'rgba(0,0,0,0.6)',
     zIndex: 10,
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#000000',
+    backgroundColor: '#000',
   },
-  loadingText: {
-    color: 'white',
-    fontSize: 16,
-    marginTop: 12,
-  },
-  modal: {
-    backgroundColor: 'white',
-    padding: 24,
-    margin: 20,
-    borderRadius: 8,
-  },
-  modalTitle: {
-    marginBottom: 16,
-    textAlign: 'center',
-  },
-  input: {
-    marginBottom: 8,
-  },
-  modalButtons: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 16,
-    gap: 8,
-  },
-  button: {
-    flex: 1,
-  },
+  loadingText: { color: 'white', fontSize: 16, marginTop: 12 },
 });

@@ -3,6 +3,7 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import sharp from 'sharp';
 import crypto from 'crypto';
 import { logger } from '../utils/logger';
+import { DHASH_BITS, DHASH_GRID_SIZE, DHASH_HEX_LENGTH } from '../constants/receipt.constants';
 
 // Multer file type
 interface MulterFile {
@@ -57,6 +58,13 @@ export class ImageUploadService {
     const key = userId
       ? `${folder}/${userId}/${uniqueName}`
       : `${folder}/${uniqueName}`;
+
+    // Dev mode: skip actual S3 upload if using test credentials
+    if (process.env.AWS_ACCESS_KEY_ID === 'test') {
+      const placeholderUrl = `https://placehold.co/800x600/f59e0b/ffffff?text=${encodeURIComponent(folder)}`;
+      logger.info(`[DEV] Skipping S3 upload, returning placeholder: ${placeholderUrl}`);
+      return { url: placeholderUrl, key, size: processedImage.length };
+    }
 
     // Upload to S3
     const command = new PutObjectCommand({
@@ -157,15 +165,59 @@ export class ImageUploadService {
   }
 
   /**
-   * Legacy method for backward compatibility
-   * Upload receipt image (Multer file)
+   * Compute a perceptual difference hash (dHash) of an image buffer.
+   *
+   * Algorithm:
+   *   1. Resize to DHASH_GRID_SIZE × DHASH_GRID_SIZE using Sharp (grayscale, 1 channel).
+   *   2. For each row, compare adjacent pixel pairs horizontally (col vs col+1).
+   *      → 15 comparisons × 16 rows = 240 bits (DHASH_BITS).
+   *   3. Pack bits into a 60-char hex string (DHASH_HEX_LENGTH).
+   *
+   * Returns an empty string on failure so callers can fail open.
+   */
+  async computePerceptualHash(buffer: Buffer): Promise<string> {
+    try {
+      const { data } = await sharp(buffer)
+        .resize(DHASH_GRID_SIZE, DHASH_GRID_SIZE, { fit: 'fill' })
+        .grayscale()
+        .raw()
+        .toBuffer({ resolveWithObject: true });
+
+      // Build 240-bit string: for each row compare pixel[col] < pixel[col+1]
+      let bits = '';
+      for (let row = 0; row < DHASH_GRID_SIZE; row++) {
+        for (let col = 0; col < DHASH_GRID_SIZE - 1; col++) {
+          const idx = row * DHASH_GRID_SIZE + col;
+          bits += data[idx] < data[idx + 1] ? '1' : '0';
+        }
+      }
+
+      // Convert binary string to hex (4 bits per hex char)
+      let hex = '';
+      for (let i = 0; i < DHASH_BITS; i += 4) {
+        hex += parseInt(bits.slice(i, i + 4), 2).toString(16);
+      }
+
+      return hex.padStart(DHASH_HEX_LENGTH, '0');
+    } catch (err) {
+      logger.warn('computePerceptualHash failed — returning empty hash', err);
+      return '';
+    }
+  }
+
+  /**
+   * Legacy method for backward compatibility.
+   * Upload receipt image (Multer file), returns SHA-256 hash and perceptual hash.
    */
   async uploadReceipt(
     file: MulterFile,
     userId: string
-  ): Promise<{ url: string; key: string; hash: string }> {
-    // Generate SHA-256 hash for duplicate detection
+  ): Promise<{ url: string; key: string; hash: string; perceptualHash: string }> {
+    // SHA-256 for exact duplicate detection
     const hash = crypto.createHash('sha256').update(file.buffer).digest('hex');
+
+    // dHash for visual similarity comparison
+    const perceptualHash = await this.computePerceptualHash(file.buffer);
 
     const result = await this.uploadImage({
       file: file.buffer,
@@ -175,7 +227,7 @@ export class ImageUploadService {
       userId,
     });
 
-    return { ...result, hash };
+    return { ...result, hash, perceptualHash };
   }
 
   /**

@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, Link, Navigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import styled from 'styled-components';
 import { useLanguage } from '../contexts/LanguageContext';
+import { useAuth } from '../contexts/AuthContext';
 import ImageGallery from '../components/common/ImageGallery/ImageGallery';
 import Button from '../components/common/Button/Button';
 import Badge from '../components/common/Badge/Badge';
@@ -10,8 +11,176 @@ import Card from '../components/common/Card/Card';
 import QRCode from '../components/common/QRCode/QRCode';
 import FavoriteButton from '../components/common/FavoriteButton/FavoriteButton';
 import ShareButton from '../components/common/ShareButton/ShareButton';
-import { getOfferById } from '../data/mockOffers';
+import { useOffer } from '../hooks/useOffers';
+import { useUserPlan } from '../hooks/useBilling';
+import { offersService } from '../services/offers.service';
+import toast from 'react-hot-toast';
 import { convertBGNToEUR } from '../utils/helpers';
+
+// ─── Menu Modal Styles ─────────────────────────────────────────────────────────
+
+const MenuModalOverlay = styled.div`
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.85);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  backdrop-filter: blur(4px);
+`;
+
+const MenuModalContent = styled.div`
+  background: white;
+  border-radius: 1.25rem;
+  width: 100%;
+  max-width: 900px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.5);
+
+  [data-theme="dark"] & {
+    background: #1f2937;
+  }
+`;
+
+const MenuModalHeader = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid #e5e7eb;
+  flex-shrink: 0;
+
+  [data-theme="dark"] & {
+    border-bottom-color: #374151;
+  }
+`;
+
+const MenuModalTitle = styled.h2`
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #111827;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+
+  [data-theme="dark"] & {
+    color: #f9fafb;
+  }
+`;
+
+const MenuModalClose = styled.button`
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  border: 1px solid #e5e7eb;
+  background: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.25rem;
+  color: #6b7280;
+  transition: background 0.15s, color 0.15s;
+
+  &:hover {
+    background: #f3f4f6;
+    color: #111827;
+  }
+
+  [data-theme="dark"] & {
+    border-color: #374151;
+    &:hover { background: #374151; color: #f9fafb; }
+  }
+`;
+
+const MenuModalBody = styled.div`
+  overflow-y: auto;
+  padding: 1.5rem;
+  flex: 1;
+`;
+
+const MenuNavigation = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  margin-top: 1rem;
+  flex-shrink: 0;
+  padding: 1rem 1.5rem;
+  border-top: 1px solid #e5e7eb;
+
+  [data-theme="dark"] & {
+    border-top-color: #374151;
+  }
+`;
+
+const MenuNavBtn = styled.button`
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+  border: 1px solid #e5e7eb;
+  background: white;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+  color: #374151;
+  transition: background 0.15s;
+
+  &:hover:not(:disabled) { background: #f3f4f6; }
+  &:disabled { opacity: 0.35; cursor: default; }
+
+  [data-theme="dark"] & {
+    background: #374151;
+    border-color: #4b5563;
+    color: #d1d5db;
+    &:hover:not(:disabled) { background: #4b5563; }
+  }
+`;
+
+const MenuPageIndicator = styled.span`
+  font-size: 0.875rem;
+  color: #6b7280;
+  min-width: 5rem;
+  text-align: center;
+`;
+
+const MenuEmptyState = styled.div`
+  text-align: center;
+  padding: 3rem;
+  color: #9ca3af;
+  font-size: 0.95rem;
+`;
+
+const MenuButtonStyled = styled.button`
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 1.25rem;
+  background: #111827;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+  width: 100%;
+  justify-content: center;
+
+  &:hover { background: #374151; }
+
+  [data-theme="dark"] & {
+    background: #374151;
+    &:hover { background: #4b5563; }
+  }
+`;
 
 const PageContainer = styled.div`
   min-height: 100vh;
@@ -434,53 +603,192 @@ const AddressText = styled.p`
   }
 `;
 
+// ─── Menu Modal Component ──────────────────────────────────────────────────────
+
+interface MenuModalProps {
+  images: string[];
+  title: string;
+  onClose: () => void;
+}
+
+const MenuModal: React.FC<MenuModalProps> = ({ images, title, onClose }) => {
+  const [page, setPage] = useState(0);
+  const overlayRef = useRef<HTMLDivElement>(null);
+
+  // Close on overlay click
+  const handleOverlayClick = (e: React.MouseEvent) => {
+    if (e.target === overlayRef.current) onClose();
+  };
+
+  // Close on Escape
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [onClose]);
+
+  return (
+    <MenuModalOverlay ref={overlayRef} onClick={handleOverlayClick}>
+      <MenuModalContent>
+        <MenuModalHeader>
+          <MenuModalTitle>
+            <span>🍽️</span>
+            {title} — Menu
+          </MenuModalTitle>
+          <MenuModalClose onClick={onClose} aria-label="Close">×</MenuModalClose>
+        </MenuModalHeader>
+
+        <MenuModalBody>
+          {images.length === 0 ? (
+            <MenuEmptyState>No menu images available.</MenuEmptyState>
+          ) : (
+            <img
+              src={images[page]}
+              alt={`Menu page ${page + 1}`}
+              style={{ width: '100%', borderRadius: '0.75rem', display: 'block', objectFit: 'contain', maxHeight: '65vh' }}
+            />
+          )}
+        </MenuModalBody>
+
+        {images.length > 1 && (
+          <MenuNavigation>
+            <MenuNavBtn onClick={() => setPage((p) => p - 1)} disabled={page === 0}>‹</MenuNavBtn>
+            <MenuPageIndicator>Page {page + 1} of {images.length}</MenuPageIndicator>
+            <MenuNavBtn onClick={() => setPage((p) => p + 1)} disabled={page === images.length - 1}>›</MenuNavBtn>
+          </MenuNavigation>
+        )}
+      </MenuModalContent>
+    </MenuModalOverlay>
+  );
+};
+
+// ─── Page ──────────────────────────────────────────────────────────────────────
+
 const VenueDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const { language, t } = useLanguage();
+  const { isAuthenticated } = useAuth();
+  const [isActivating, setIsActivating] = useState(false);
+  const [activationCode, setActivationCode] = useState<string | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
 
-  // Get offer by ID from shared mock data
-  const offer = id ? getOfferById(id) : undefined;
+  const { data: offerDetails, isLoading, isError } = useOffer(id);
+  const { data: planData } = useUserPlan();
+  const userPlan = planData?.plan ?? null;
 
-  // If offer not found, redirect to offers page
-  if (!offer) {
+  if (isLoading) {
+    return (
+      <PageContainer>
+        <Container>
+          <div style={{ textAlign: 'center', padding: '4rem', color: '#6b7280' }}>
+            {language === 'bg' ? 'Зареждане...' : 'Loading...'}
+          </div>
+        </Container>
+      </PageContainer>
+    );
+  }
+
+  if (isError || !offerDetails) {
     return <Navigate to="/offers" replace />;
   }
 
+  // Access gating is handled server-side; if the offer is returned it's redeemable
+  const isLocked = false;
+
+  const handleActivate = async () => {
+    if (!id || isLocked) return;
+    setIsActivating(true);
+    try {
+      // Require GPS location — user must be at the venue
+      let location: { latitude: number; longitude: number };
+      try {
+        const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(resolve, reject, {
+            enableHighAccuracy: true,
+            timeout: 10000,
+            maximumAge: 0,
+          });
+        });
+        location = {
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+        };
+      } catch {
+        toast.error(
+          language === 'bg'
+            ? 'Моля, разрешете достъп до местоположение, за да активирате офертата'
+            : 'Please allow location access to activate this offer',
+        );
+        setIsActivating(false);
+        return;
+      }
+
+      const result = await offersService.activateOffer(id, location);
+      if (result.success && result.code) {
+        setActivationCode(result.code);
+        toast.success(language === 'bg' ? 'Офертата е активирана!' : 'Offer activated!');
+      } else {
+        toast.error(result.message || (language === 'bg' ? 'Грешка при активиране' : 'Activation failed'));
+      }
+    } catch (err: any) {
+      toast.error(err?.message || (language === 'bg' ? 'Грешка при активиране' : 'Activation failed'));
+    } finally {
+      setIsActivating(false);
+    }
+  };
+
+  // Parse menu images from offer's partner venue data
+  const menuImages: string[] = (() => {
+    try {
+      const raw = (offerDetails as any)?.partner?.venue?.menuImages || (offerDetails as any)?.menuImages;
+      if (!raw) return [];
+      const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  })();
+
   // Map offer data to venue format for display
   const venue = {
-    id: offer.id,
-    title: language === 'bg' ? offer.titleBg : offer.title,
-    category: language === 'bg' ? offer.categoryBg : offer.category,
-    location: offer.location,
-    locationBg: offer.location,
-    rating: offer.rating,
-    reviewCount: offer.reviewCount,
-    partnerName: offer.partnerName,
-    discount: offer.discount,
-    originalPrice: offer.originalPrice,
-    discountedPrice: offer.discountedPrice,
-    savings: offer.originalPrice - offer.discountedPrice,
-    description: language === 'bg' ? offer.descriptionBg : offer.description,
+    id: offerDetails.id,
+    title: language === 'bg' ? (offerDetails.titleBg || offerDetails.title) : offerDetails.title,
+    category: language === 'bg' ? (offerDetails.categoryBg || offerDetails.category) : offerDetails.category,
+    location: offerDetails.location || offerDetails.partner?.city || 'Bulgaria',
+    locationBg: offerDetails.location || offerDetails.partner?.city || 'Bulgaria',
+    rating: offerDetails.rating,
+    reviewCount: offerDetails.reviewCount,
+    partnerName: offerDetails.partnerName || offerDetails.partner?.businessName || '',
+    discount: offerDetails.discount || offerDetails.discountPercent || 0,
+    originalPrice: offerDetails.originalPrice || 0,
+    discountedPrice: offerDetails.discountedPrice || 0,
+    savings: (offerDetails.originalPrice || 0) - (offerDetails.discountedPrice || 0),
+    description: language === 'bg' ? (offerDetails.descriptionBg || offerDetails.description) : offerDetails.description,
     features: [
-      { icon: '✓', text: language === 'bg' ? `${offer.discount}% отстъпка` : `${offer.discount}% discount` },
+      { icon: '✓', text: language === 'bg' ? `${offerDetails.discount || offerDetails.discountPercent || 0}% отстъпка` : `${offerDetails.discount || offerDetails.discountPercent || 0}% discount` },
       { icon: '✓', text: language === 'bg' ? 'Валидно с BOOM Card' : 'Valid with BOOM Card' },
       { icon: '✓', text: language === 'bg' ? 'Лесно активиране' : 'Easy activation' },
       { icon: '✓', text: language === 'bg' ? 'Моментална валидация' : 'Instant validation' },
     ],
-    images: [
-      offer.imageUrl,
-      offer.imageUrl,
-      offer.imageUrl,
-    ],
-    validUntil: language === 'bg' ? '31 Декември 2025' : 'December 31, 2025',
-    phone: '+359 88 123 4567',
-    email: 'contact@boomcard.bg',
-    website: 'www.boomcard.bg',
-    address: language === 'bg' ? offer.location : offer.location,
+    images: offerDetails.imageUrl ? [offerDetails.imageUrl, offerDetails.imageUrl, offerDetails.imageUrl] : [],
+    validUntil: offerDetails.validUntil
+      ? new Date(offerDetails.validUntil).toLocaleDateString(language === 'bg' ? 'bg-BG' : 'en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
+      : (language === 'bg' ? '31 Декември 2025' : 'December 31, 2025'),
+    phone: offerDetails.partner?.['phone' as keyof typeof offerDetails.partner] as string || '+359 88 123 4567',
+    email: offerDetails.partner?.['email' as keyof typeof offerDetails.partner] as string || 'contact@boomcard.bg',
+    website: offerDetails.partner?.['website' as keyof typeof offerDetails.partner] as string || 'www.boomcard.bg',
+    address: offerDetails.location || offerDetails.partner?.city || 'Bulgaria',
   };
 
   return (
     <PageContainer>
+      {menuOpen && (
+        <MenuModal
+          images={menuImages}
+          title={venue.title}
+          onClose={() => setMenuOpen(false)}
+        />
+      )}
       <Container>
         <Breadcrumb>
           <Link to="/offers">{t('venueDetail.home')}</Link>
@@ -593,9 +901,31 @@ const VenueDetailPage: React.FC = () => {
               </ValidityInfo>
 
               <ActionButtons>
-                <Button variant="primary" size="large">
-                  {t('venueDetail.getThisOffer')}
-                </Button>
+                {activationCode ? (
+                  <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: '0.5rem', padding: '1rem', textAlign: 'center', width: '100%' }}>
+                    <div style={{ fontSize: '0.75rem', color: '#166534', marginBottom: '0.25rem', fontWeight: 600 }}>
+                      {language === 'bg' ? 'Вашият код:' : 'Your code:'}
+                    </div>
+                    <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#15803d', letterSpacing: '0.1em' }}>
+                      {activationCode}
+                    </div>
+                  </div>
+                ) : isLocked ? (
+                  <Button variant="secondary" size="large" disabled>
+                    {language === 'bg' ? '🔒 Надградете абонамента' : '🔒 Upgrade to unlock'}
+                  </Button>
+                ) : (
+                  <Button variant="primary" size="large" onClick={handleActivate} disabled={isActivating}>
+                    {isActivating
+                      ? (language === 'bg' ? 'Активиране...' : 'Activating...')
+                      : t('venueDetail.getThisOffer')}
+                  </Button>
+                )}
+                {menuImages.length > 0 && (
+                  <MenuButtonStyled onClick={() => setMenuOpen(true)}>
+                    🍽️ {language === 'bg' ? 'Виж менюто' : 'View Menu'}
+                  </MenuButtonStyled>
+                )}
                 <div style={{ display: 'flex', gap: '1rem', width: '100%' }}>
                   <FavoriteButton
                     offerId={venue.id}

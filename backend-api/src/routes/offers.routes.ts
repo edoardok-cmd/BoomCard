@@ -1,6 +1,10 @@
 import { Router, Response } from 'express';
 import { offersService } from '../services/offers.service';
 import { authenticate, authorize, optionalAuthenticate, AuthRequest } from '../middleware/auth.middleware';
+import { asyncHandler } from '../middleware/error.middleware';
+import { logger } from '../utils/logger';
+import { uploadSingle, validateMagicBytes } from '../middleware/upload.middleware';
+import { imageUploadService } from '../services/imageUpload.service';
 
 const router = Router();
 
@@ -15,6 +19,20 @@ async function resolveUserPlan(req: AuthRequest) {
 }
 
 // ------------------------------------------------------------------
+// GET /api/offers/tags
+// Public — returns all distinct tags used across active offers
+// ------------------------------------------------------------------
+router.get('/tags', optionalAuthenticate, async (_req: AuthRequest, res: Response) => {
+  try {
+    const tags = await offersService.getAllTags();
+    res.json({ success: true, data: tags });
+  } catch (error: any) {
+    logger.error('Failed to fetch offer tags:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch offer tags' });
+  }
+});
+
+// ------------------------------------------------------------------
 // GET /api/offers/top
 // Public — but tier-filtered by subscription plan
 // ------------------------------------------------------------------
@@ -27,7 +45,8 @@ router.get('/top', optionalAuthenticate, async (req: AuthRequest, res: Response)
 
     res.json({ success: true, data: offers });
   } catch (error: any) {
-    res.status(500).json({ success: false, error: 'Failed to fetch top offers', message: error.message });
+    logger.error('Failed to fetch top offers:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch top offers' });
   }
 });
 
@@ -44,7 +63,8 @@ router.get('/featured', optionalAuthenticate, async (req: AuthRequest, res: Resp
 
     res.json({ success: true, data: offers });
   } catch (error: any) {
-    res.status(500).json({ success: false, error: 'Failed to fetch featured offers', message: error.message });
+    logger.error('Failed to fetch featured offers:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch featured offers' });
   }
 });
 
@@ -56,12 +76,19 @@ router.get('/', optionalAuthenticate, async (req: AuthRequest, res: Response) =>
   try {
     const isAdmin = req.user?.role === 'ADMIN' || req.user?.role === 'SUPER_ADMIN';
     const userPlan = await resolveUserPlan(req);
+    // tags query param: comma-separated or repeated: ?tags=spa,wellness or ?tags=spa&tags=wellness
+    const rawTags = req.query.tags;
+    const tags = rawTags
+      ? (Array.isArray(rawTags) ? rawTags : (rawTags as string).split(',')).map(t => (t as string).trim()).filter(Boolean)
+      : undefined;
+
     const filters = {
       category: req.query.category as string,
       city: req.query.city as string,
       minDiscount: req.query.minDiscount ? parseFloat(req.query.minDiscount as string) : undefined,
       search: req.query.search as string,
       isFeatured: req.query.featured === 'true' ? true : undefined,
+      tags,
       page: parseInt(req.query.page as string) || 1,
       limit: parseInt(req.query.limit as string) || 10,
       userPlan,
@@ -71,7 +98,8 @@ router.get('/', optionalAuthenticate, async (req: AuthRequest, res: Response) =>
     const result = await offersService.getOffers(filters);
     res.json({ success: true, ...result });
   } catch (error: any) {
-    res.status(500).json({ success: false, error: 'Failed to fetch offers', message: error.message });
+    logger.error('Failed to fetch offers:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch offers' });
   }
 });
 
@@ -93,7 +121,8 @@ router.get('/partner/:partnerId', optionalAuthenticate, async (req: AuthRequest,
     const result = await offersService.getOffersByPartner(req.params.partnerId, filters);
     res.json({ success: true, ...result });
   } catch (error: any) {
-    res.status(500).json({ success: false, error: 'Failed to fetch partner offers', message: error.message });
+    logger.error('Failed to fetch partner offers:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch partner offers' });
   }
 });
 
@@ -115,7 +144,8 @@ router.get('/city/:city', optionalAuthenticate, async (req: AuthRequest, res: Re
     const result = await offersService.getOffersByCity(req.params.city, filters);
     res.json({ success: true, ...result });
   } catch (error: any) {
-    res.status(500).json({ success: false, error: 'Failed to fetch city offers', message: error.message });
+    logger.error('Failed to fetch city offers:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch city offers' });
   }
 });
 
@@ -137,7 +167,8 @@ router.get('/category/:category', optionalAuthenticate, async (req: AuthRequest,
     const result = await offersService.getOffersByCategory(req.params.category, filters);
     res.json({ success: true, ...result });
   } catch (error: any) {
-    res.status(500).json({ success: false, error: 'Failed to fetch category offers', message: error.message });
+    logger.error('Failed to fetch category offers:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch category offers' });
   }
 });
 
@@ -151,13 +182,28 @@ router.post(
   authenticate,
   async (req: AuthRequest, res: Response) => {
     try {
-      const result = await offersService.redeemOffer(req.params.id, req.user!.id, req.user!.role);
+      const { latitude, longitude } = req.body;
+      const lat = latitude !== undefined ? parseFloat(latitude) : undefined;
+      const lon = longitude !== undefined ? parseFloat(longitude) : undefined;
+      const result = await offersService.redeemOffer(
+        req.params.id,
+        req.user!.id,
+        req.user!.role,
+        lat,
+        lon,
+      );
       res.json({ success: true, data: result });
     } catch (error: any) {
-      const status = error.message.includes('not found') ? 404
-        : error.message.includes('subscription') || error.message.includes('limit') ? 403
+      const msg = error.message || '';
+      const isLocationError = msg.includes('Location access is required') || msg.includes('must be within') || msg.includes('away.');
+      const status = msg.includes('not found') ? 404
+        : msg.includes('subscription') || msg.includes('limit') || isLocationError ? 403
         : 400;
-      res.status(status).json({ success: false, error: error.message });
+      const safeMessage = status === 404 ? 'Offer not found'
+        : isLocationError ? msg
+        : status === 403 ? 'Subscription required or usage limit reached'
+        : 'Unable to activate offer';
+      res.status(status).json({ success: false, error: safeMessage });
     }
   },
 );
@@ -178,7 +224,8 @@ router.get('/:id', optionalAuthenticate, async (req: AuthRequest, res: Response)
 
     res.json({ success: true, data: offer });
   } catch (error: any) {
-    res.status(500).json({ success: false, error: 'Failed to fetch offer', message: error.message });
+    logger.error('Failed to fetch offer:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch offer' });
   }
 });
 
@@ -196,8 +243,11 @@ router.post(
       const offer = await offersService.createOffer(req.body, req.user!.id, req.user!.role);
       res.status(201).json({ success: true, data: offer });
     } catch (error: any) {
-      const status = error.message.includes('not authorized') || error.message.includes('not found') ? 403 : 400;
-      res.status(status).json({ success: false, error: 'Failed to create offer', message: error.message });
+      const msg = error.message || '';
+      logger.error('createOffer error:', { message: msg, stack: error.stack });
+      const status = msg.includes('not authorized') || msg.includes('not found') ? 403 : 400;
+      const safeMessage = status === 403 ? 'Not authorized to create offers for this partner' : 'Invalid offer data';
+      res.status(status).json({ success: false, error: safeMessage });
     }
   },
 );
@@ -216,8 +266,12 @@ router.put(
       const offer = await offersService.updateOffer(req.params.id, req.body, req.user!.id, req.user!.role);
       res.json({ success: true, data: offer });
     } catch (error: any) {
-      const status = error.message.includes('Not authorized') ? 403 : error.message.includes('not found') ? 404 : 400;
-      res.status(status).json({ success: false, error: 'Failed to update offer', message: error.message });
+      const msg = error.message || '';
+      const status = msg.includes('Not authorized') ? 403 : msg.includes('not found') ? 404 : 400;
+      const safeMessage = status === 403 ? 'Not authorized to update this offer'
+        : status === 404 ? 'Offer not found'
+        : 'Invalid offer data';
+      res.status(status).json({ success: false, error: safeMessage });
     }
   },
 );
@@ -236,9 +290,63 @@ router.patch(
       const offer = await offersService.toggleFeaturedStatus(req.params.id, isFeatured, featuredOrder);
       res.json({ success: true, data: offer });
     } catch (error: any) {
-      res.status(500).json({ success: false, error: 'Failed to update featured status', message: error.message });
+      logger.error('Failed to update featured status:', error);
+      res.status(500).json({ success: false, error: 'Failed to update featured status' });
     }
   },
+);
+
+// ------------------------------------------------------------------
+// POST /api/offers/:id/image
+// Upload a single image for an offer.
+// Requires PARTNER or ADMIN ownership of the offer.
+// ------------------------------------------------------------------
+router.post(
+  '/:id/image',
+  authenticate,
+  authorize('PARTNER', 'ADMIN', 'SUPER_ADMIN'),
+  uploadSingle,
+  validateMagicBytes,
+  async (req: AuthRequest, res: Response) => {
+    if (!req.file) {
+      return res.status(400).json({ success: false, error: 'No image file provided' });
+    }
+    try {
+      const imageUrl = await offersService.uploadOfferImage(
+        req.params.id,
+        req.file,
+        req.user!.id,
+        req.user!.role,
+      );
+      res.json({ success: true, data: { imageUrl } });
+    } catch (error: any) {
+      const msg = error.message || '';
+      logger.error('Failed to upload offer image:', error);
+      const status = msg.includes('Not authorized') ? 403 : msg.includes('not found') ? 404 : 500;
+      const safeMessage = status === 403 ? 'Not authorized to upload images for this offer'
+        : status === 404 ? 'Offer not found'
+        : 'Failed to upload image';
+      res.status(status).json({ success: false, error: safeMessage });
+    }
+  },
+);
+
+// ------------------------------------------------------------------
+// DELETE /api/offers  (bulk)
+// Admin only — deletes multiple offers by IDs in the request body.
+// ------------------------------------------------------------------
+router.delete(
+  '/',
+  authenticate,
+  authorize('ADMIN', 'SUPER_ADMIN'),
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    const { ids } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ success: false, error: 'ids must be a non-empty array' });
+    }
+    const deleted = await offersService.bulkDeleteOffers(ids);
+    res.json({ success: true, deleted });
+  }),
 );
 
 // ------------------------------------------------------------------
@@ -255,8 +363,12 @@ router.delete(
       await offersService.deleteOffer(req.params.id, req.user!.id, req.user!.role);
       res.json({ success: true, message: 'Offer deleted successfully' });
     } catch (error: any) {
-      const status = error.message.includes('Not authorized') ? 403 : error.message.includes('not found') ? 404 : 500;
-      res.status(status).json({ success: false, error: 'Failed to delete offer', message: error.message });
+      const msg = error.message || '';
+      const status = msg.includes('Not authorized') ? 403 : msg.includes('not found') ? 404 : 500;
+      const safeMessage = status === 403 ? 'Not authorized to delete this offer'
+        : status === 404 ? 'Offer not found'
+        : 'Failed to delete offer';
+      res.status(status).json({ success: false, error: safeMessage });
     }
   },
 );

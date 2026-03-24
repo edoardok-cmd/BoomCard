@@ -16,7 +16,39 @@ import billingService, {
   UpdateSubscriptionData,
   AddPaymentMethodData,
 } from '../services/billing.service';
+import { apiService } from '../services/api.service';
+import { useAuth } from '../contexts/AuthContext';
 import toast from 'react-hot-toast';
+
+export type SubscriptionPlan = 'BASIC' | 'LIGHT' | 'PREMIUM';
+
+export const PLAN_REDEEMABLE_TIERS: Record<SubscriptionPlan, ('BASIC' | 'LIGHT' | 'PREMIUM')[]> = {
+  BASIC:   ['BASIC'],
+  LIGHT:   ['BASIC', 'LIGHT'],
+  PREMIUM: ['BASIC', 'LIGHT', 'PREMIUM'],
+};
+
+/**
+ * Hook to get the authenticated user's active BoomCard subscription plan.
+ * Returns null when not authenticated or no active subscription.
+ */
+export function useUserPlan() {
+  const { isAuthenticated } = useAuth();
+
+  return useQuery<{ plan: SubscriptionPlan; status: string } | null>({
+    queryKey: ['subscriptions', 'current'],
+    queryFn: async () => {
+      try {
+        return await apiService.get<{ plan: SubscriptionPlan; status: string }>('/subscriptions/current');
+      } catch {
+        return null;
+      }
+    },
+    enabled: isAuthenticated,
+    staleTime: 5 * 60 * 1000,
+    retry: false,
+  });
+}
 
 /**
  * Hook to get current subscription

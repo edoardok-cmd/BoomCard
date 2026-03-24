@@ -6,6 +6,9 @@ export default {
   ],
   theme: {
     extend: {
+      screens: {
+        'nav': '1400px',
+      },
       colors: {
         // Whoop-inspired minimalist palette
         primary: {

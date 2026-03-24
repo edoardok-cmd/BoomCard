@@ -394,6 +394,10 @@ const RegisterPartnerPage: React.FC = () => {
       case 'password':
         if (!value) return t('partnerRegistration.passwordRequired');
         if (value.length < 8) return t('partnerRegistration.passwordMinLength');
+        if (!/[A-Z]/.test(value)) return t('partnerRegistration.passwordNeedsUppercase');
+        if (!/[a-z]/.test(value)) return t('partnerRegistration.passwordNeedsLowercase');
+        if (!/[0-9]/.test(value)) return t('partnerRegistration.passwordNeedsNumber');
+        if (!/[^A-Za-z0-9]/.test(value)) return t('partnerRegistration.passwordNeedsSpecial');
         return undefined;
 
       case 'confirmPassword':

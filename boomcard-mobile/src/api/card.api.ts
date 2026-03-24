@@ -8,12 +8,34 @@ import apiClient from './client';
 
 export const cardApi = {
   /**
-   * Get user's card
+   * Get user's card — throws on error
    */
   async getMyCard() {
     const response = await apiClient.get('/api/cards/my-card');
     if (!response.success) {
       throw new Error(response.error || 'Failed to get card');
+    }
+    return response.data;
+  },
+
+  /**
+   * Get user's card — returns null when no card exists instead of throwing
+   */
+  async getMyCardOrNull(): Promise<any | null> {
+    try {
+      return await this.getMyCard();
+    } catch {
+      return null;
+    }
+  },
+
+  /**
+   * Create a new LIGHT card for the current user
+   */
+  async createCard() {
+    const response = await apiClient.post('/api/cards');
+    if (!response.success) {
+      throw new Error(response.error || 'Failed to create card');
     }
     return response.data;
   },

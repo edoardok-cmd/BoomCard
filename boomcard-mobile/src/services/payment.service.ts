@@ -46,7 +46,7 @@ class PaymentService {
     try {
       // Create payment on backend
       const response = await apiClient.post<{ success: boolean; data: PaymentResult }>(
-        '/payments/create',
+        '/api/payments/create',
         {
           amount: params.amount,
           currency: params.currency || 'BGN',
@@ -157,7 +157,7 @@ class PaymentService {
   async checkPaymentStatus(orderId: string): Promise<PaymentStatus> {
     try {
       const response = await apiClient.get<{ success: boolean; data: PaymentStatus }>(
-        `/payments/${orderId}/status`
+        `/api/payments/${orderId}/status`
       );
 
       if (!response.data?.success) {
@@ -207,7 +207,7 @@ class PaymentService {
    */
   async getPaymentHistory(limit: number = 20, offset: number = 0) {
     try {
-      const response = await apiClient.get('/payments/history', {
+      const response = await apiClient.get('/api/payments/history', {
         params: { limit, offset },
       });
 
@@ -223,7 +223,7 @@ class PaymentService {
    */
   async getPaymentMethods() {
     try {
-      const response = await apiClient.get('/payments/methods');
+      const response = await apiClient.get('/api/payments/methods');
       return response.data;
     } catch (error: any) {
       console.error('Payment methods error:', error);

@@ -192,7 +192,7 @@ const UserName = styled.span`
     color: #d1d5db;
   }
 
-  @media (max-width: 1024px) {
+  @media (max-width: 1400px) {
     display: none;
   }
 `;
@@ -910,7 +910,7 @@ export const Header: React.FC<HeaderProps> = ({
           </Link>
 
           {/* Desktop Navigation - Absolutely centered on page */}
-          <div className="hidden xl:flex items-center justify-center absolute left-1/2 transform -translate-x-1/2 pointer-events-auto" style={{ maxWidth: 'calc(100% - 500px)' }}>
+          <div className="hidden nav:flex items-center justify-center absolute left-1/2 transform -translate-x-1/2 pointer-events-auto" style={{ maxWidth: 'calc(100% - 500px)' }}>
             <MegaMenu items={navigationConfig.main} language={language} onMenuItemClick={undefined} />
           </div>
 
@@ -935,7 +935,7 @@ export const Header: React.FC<HeaderProps> = ({
 
             {/* Nearby Offers - Desktop only */}
             <Tooltip content={language === 'bg' ? 'Близки оферти' : 'Nearby Offers'} position="bottom">
-              <FavoritesLink to="/nearby" aria-label="Nearby Offers" className="hidden xl:flex">
+              <FavoritesLink to="/nearby" aria-label="Nearby Offers" className="hidden nav:flex">
                 <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path
                     strokeLinecap="round"
@@ -956,7 +956,7 @@ export const Header: React.FC<HeaderProps> = ({
             {/* Favorites - Desktop only, only for authenticated users */}
             {isAuthenticated ? (
               <Tooltip content={language === 'bg' ? 'Любими' : 'Favorites'} position="bottom">
-                <FavoritesLink to="/favorites" aria-label="Favorites" className="hidden xl:flex">
+                <FavoritesLink to="/favorites" aria-label="Favorites" className="hidden nav:flex">
                   <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path
                       strokeLinecap="round"
@@ -981,7 +981,7 @@ export const Header: React.FC<HeaderProps> = ({
               </Tooltip>
             ) : (
               <Tooltip content={language === 'bg' ? 'Влезте, за да запазите любими' : 'Sign in to save favorites'} position="bottom">
-                <FavoritesLink to="/login" aria-label="Sign in to save favorites" className="hidden xl:flex" style={{ opacity: 0.5 }}>
+                <FavoritesLink to="/login" aria-label="Sign in to save favorites" className="hidden nav:flex" style={{ opacity: 0.5 }}>
                   <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path
                       strokeLinecap="round"
@@ -1004,7 +1004,7 @@ export const Header: React.FC<HeaderProps> = ({
             )}
 
             {/* Theme Switcher - Desktop only */}
-            <ThemeMenuContainer ref={themeMenuRef} className="hidden xl:flex">
+            <ThemeMenuContainer ref={themeMenuRef} className="hidden nav:flex">
               <Tooltip content={language === 'bg' ? 'Промени тема' : 'Change Theme'} position="bottom">
                 <ThemeButton
                   onClick={() => setThemeMenuOpen(!themeMenuOpen)}
@@ -1061,7 +1061,7 @@ export const Header: React.FC<HeaderProps> = ({
             {/* Language Toggle - Desktop only */}
             <Tooltip content={language === 'en' ? 'Switch to Bulgarian' : 'Превключи на английски'} position="bottom">
               <LanguageButton
-                className="hidden xl:flex"
+                className="hidden nav:flex"
                 onClick={() => setLanguage(language === 'en' ? 'bg' : 'en')}
                 aria-label="Toggle language"
               >
@@ -1115,116 +1115,257 @@ export const Header: React.FC<HeaderProps> = ({
                       </UserMenuHeader>
 
                       <UserMenuItems>
-                        <UserMenuItem
-                          to="/profile"
-                          onClick={() => setUserMenuOpen(false)}
-                        >
-                          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
-                            />
-                          </svg>
-                          {t('header.profile')}
-                        </UserMenuItem>
+                        {user.role === 'admin' ? (
+                          <>
+                            <UserMenuItem
+                              to="/admin"
+                              onClick={() => setUserMenuOpen(false)}
+                            >
+                              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"
+                                />
+                              </svg>
+                              {t('header.adminDashboard')}
+                            </UserMenuItem>
 
-                        <UserMenuItem
-                          to="/dashboard"
-                          onClick={() => setUserMenuOpen(false)}
-                        >
-                          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"
-                            />
-                          </svg>
-                          {t('header.myCards')}
-                        </UserMenuItem>
+                            <UserMenuItem
+                              to="/admin/partners"
+                              onClick={() => setUserMenuOpen(false)}
+                            >
+                              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"
+                                />
+                              </svg>
+                              {t('header.managePartners')}
+                            </UserMenuItem>
 
-                        <UserMenuItem
-                          to="/favorites"
-                          onClick={() => setUserMenuOpen(false)}
-                        >
-                          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"
-                            />
-                          </svg>
-                          {t('header.favorites')}
-                        </UserMenuItem>
+                            <UserMenuItem
+                              to="/admin/top-discounts"
+                              onClick={() => setUserMenuOpen(false)}
+                            >
+                              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"
+                                />
+                              </svg>
+                              Топ Отстъпки
+                            </UserMenuItem>
 
-                        <UserMenuItem
-                          to="/rewards"
-                          onClick={() => setUserMenuOpen(false)}
-                        >
-                          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M12 8v13m0-13V6a2 2 0 112 2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"
-                            />
-                          </svg>
-                          {t('header.rewards')}
-                        </UserMenuItem>
+                            <UserMenuItem
+                              to="/admin/offers"
+                              onClick={() => setUserMenuOpen(false)}
+                            >
+                              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"
+                                />
+                              </svg>
+                              {t('header.manageOffers')}
+                            </UserMenuItem>
 
-                        <UserMenuItem
-                          to="/partners/offers"
-                          onClick={() => setUserMenuOpen(false)}
-                        >
-                          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"
-                            />
-                          </svg>
-                          {t('header.myOffers')}
-                        </UserMenuItem>
+                            <UserMenuItem
+                              to="/admin/partner-types"
+                              onClick={() => setUserMenuOpen(false)}
+                            >
+                              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"
+                                />
+                              </svg>
+                              {t('header.partnerTypes')}
+                            </UserMenuItem>
 
-                        <UserMenuItem
-                          to="/analytics"
-                          onClick={() => setUserMenuOpen(false)}
-                        >
-                          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
-                            />
-                          </svg>
-                          {t('header.analytics')}
-                        </UserMenuItem>
+                            <UserMenuItem
+                              to="/admin/receipts"
+                              onClick={() => setUserMenuOpen(false)}
+                            >
+                              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                                />
+                              </svg>
+                              {t('header.adminReceipts')}
+                            </UserMenuItem>
 
-                        <UserMenuItem
-                          to="/settings"
-                          onClick={() => setUserMenuOpen(false)}
-                        >
-                          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
-                            />
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-                            />
-                          </svg>
-                          {t('header.settings')}
-                        </UserMenuItem>
+                            <UserMenuItem
+                              to="/admin/scan-review"
+                              onClick={() => setUserMenuOpen(false)}
+                            >
+                              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2M15 13l-3 3-1.5-1.5"
+                                />
+                              </svg>
+                              {t('header.scanReview')}
+                            </UserMenuItem>
+
+                            <UserMenuItem
+                              to="/admin/bulk-import"
+                              onClick={() => setUserMenuOpen(false)}
+                            >
+                              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"
+                                />
+                              </svg>
+                              {t('header.bulkImport')}
+                            </UserMenuItem>
+
+                            <UserMenuItem
+                              to="/admin/cashback"
+                              onClick={() => setUserMenuOpen(false)}
+                            >
+                              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                                />
+                              </svg>
+                              {language === 'bg' ? 'Кешбек Плащания' : 'Cashback Payments'}
+                            </UserMenuItem>
+                          </>
+                        ) : (
+                          <>
+                            <UserMenuItem
+                              to="/profile"
+                              onClick={() => setUserMenuOpen(false)}
+                            >
+                              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+                                />
+                              </svg>
+                              {t('header.profile')}
+                            </UserMenuItem>
+
+                            <UserMenuItem
+                              to="/dashboard"
+                              onClick={() => setUserMenuOpen(false)}
+                            >
+                              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"
+                                />
+                              </svg>
+                              {t('header.myCards')}
+                            </UserMenuItem>
+
+                            <UserMenuItem
+                              to="/favorites"
+                              onClick={() => setUserMenuOpen(false)}
+                            >
+                              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"
+                                />
+                              </svg>
+                              {t('header.favorites')}
+                            </UserMenuItem>
+
+                            <UserMenuItem
+                              to="/rewards"
+                              onClick={() => setUserMenuOpen(false)}
+                            >
+                              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M12 8v13m0-13V6a2 2 0 112 2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"
+                                />
+                              </svg>
+                              {t('header.rewards')}
+                            </UserMenuItem>
+
+                            <UserMenuItem
+                              to="/partners/offers"
+                              onClick={() => setUserMenuOpen(false)}
+                            >
+                              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"
+                                />
+                              </svg>
+                              {t('header.myOffers')}
+                            </UserMenuItem>
+
+                            <UserMenuItem
+                              to="/analytics"
+                              onClick={() => setUserMenuOpen(false)}
+                            >
+                              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
+                                />
+                              </svg>
+                              {t('header.analytics')}
+                            </UserMenuItem>
+
+                            <UserMenuItem
+                              to="/settings"
+                              onClick={() => setUserMenuOpen(false)}
+                            >
+                              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+                                />
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                                />
+                              </svg>
+                              {t('header.settings')}
+                            </UserMenuItem>
+                          </>
+                        )}
 
                         <UserMenuDivider />
 
@@ -1246,7 +1387,7 @@ export const Header: React.FC<HeaderProps> = ({
               </UserMenuContainer>
             ) : (
               <>
-                <Link to="/login" className="hidden xl:block">
+                <Link to="/login" className="hidden nav:block">
                   <Button variant="ghost" size="small">
                     {t('common.signIn')}
                   </Button>
@@ -1258,7 +1399,7 @@ export const Header: React.FC<HeaderProps> = ({
           {/* Mobile Menu Button - Show when menu is hidden */}
           <button
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="xl:hidden z-[10000] p-1.5 sm:p-2 transition-colors ml-1.5 sm:ml-2 flex-shrink-0"
+            className="nav:hidden z-[10000] p-1.5 sm:p-2 transition-colors ml-1.5 sm:ml-2 flex-shrink-0"
             style={{
               color: 'var(--color-text-primary)'
             }}

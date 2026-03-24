@@ -4,8 +4,14 @@ import { receiptService } from '../services/receipt.service';
 import { fraudDetectionService } from '../services/fraudDetection.service';
 import { receiptAnalyticsService } from '../services/receiptAnalytics.service';
 import { imageUploadService } from '../services/imageUpload.service';
+import { receiptTemplateService } from '../services/receiptTemplate.service';
 import { authenticate, authorize, AuthRequest } from '../middleware/auth.middleware';
 import { asyncHandler } from '../middleware/error.middleware';
+import { uploadSingle, validateMagicBytes } from '../middleware/upload.middleware';
+import {
+  ALLOWED_RECEIPT_MIME_TYPES,
+  MAX_RECEIPT_FILE_SIZE_BYTES,
+} from '../constants/receipt.constants';
 
 const router = Router();
 
@@ -13,14 +19,14 @@ const router = Router();
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: 10 * 1024 * 1024, // 10MB max
+    fileSize: MAX_RECEIPT_FILE_SIZE_BYTES,
   },
   fileFilter: (req, file, cb) => {
-    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
+    const allowedTypes: readonly string[] = ALLOWED_RECEIPT_MIME_TYPES;
     if (allowedTypes.includes(file.mimetype)) {
       cb(null, true);
     } else {
-      cb(new Error('Invalid file type. Only JPEG, PNG, and WebP are allowed.'));
+      cb(new Error(`Invalid file type. Allowed types: ${ALLOWED_RECEIPT_MIME_TYPES.join(', ')}`));
     }
   },
 });
@@ -115,6 +121,7 @@ router.post(
     const {
       imageUrl,
       imageHash,
+      perceptualHash,
       ocrData,
       userAmount,
       venueId,
@@ -134,17 +141,18 @@ router.post(
 
     // Process receipt with fraud detection and cashback calculation
     const result = await receiptService.submitReceipt({
-      userId: req.user!.id,
+      userId:         req.user!.id,
       imageUrl,
       imageHash,
+      perceptualHash,
       ocrData,
       userAmount,
       venueId,
       offerId,
       latitude,
       longitude,
-      ipAddress: req.ip,
-      userAgent: req.headers['user-agent'],
+      ipAddress:  req.ip,
+      userAgent:  req.headers['user-agent'],
       metadata,
     });
 
@@ -571,6 +579,166 @@ router.put(
     );
 
     res.json(result);
+  })
+);
+
+// ============================================
+// VENUE RECEIPT TEMPLATES (Admin only)
+// ============================================
+
+/**
+ * POST /api/receipts/venues/:venueId/templates
+ * Upload an example receipt image as a template for fraud comparison.
+ * Requires: multipart/form-data with field "image" + body fields:
+ *   merchantName (string, required)
+ *   description  (string, optional)
+ *   expectedKeywords (JSON array string, optional) e.g. '["MENU","VAT"]'
+ */
+router.post(
+  '/venues/:venueId/templates',
+  authenticate,
+  authorize('ADMIN', 'SUPER_ADMIN'),
+  uploadSingle,
+  validateMagicBytes,
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    const { venueId } = req.params;
+    const { merchantName, description, expectedKeywords } = req.body;
+
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: 'Template image is required' });
+    }
+    if (!merchantName) {
+      return res.status(400).json({ success: false, message: 'merchantName is required' });
+    }
+
+    // Parse expectedKeywords — sent as a JSON string in multipart form data
+    let keywords: string[] = [];
+    if (expectedKeywords) {
+      try {
+        const parsed = typeof expectedKeywords === 'string'
+          ? JSON.parse(expectedKeywords)
+          : expectedKeywords;
+        if (!Array.isArray(parsed)) throw new Error('not an array');
+        keywords = parsed.map(String);
+      } catch {
+        return res.status(400).json({
+          success: false,
+          message: 'expectedKeywords must be a JSON array of strings, e.g. ["MENU","VAT"]',
+        });
+      }
+    }
+
+    // Compute dHash before upload — throws on corrupt image (returns 422)
+    const perceptualHash = await imageUploadService.computePerceptualHash(req.file.buffer);
+    if (!perceptualHash) {
+      return res.status(422).json({
+        success: false,
+        message: 'Could not compute perceptual hash from the provided image',
+      });
+    }
+
+    // Upload template image to dedicated S3 folder
+    const upload = await imageUploadService.uploadImage({
+      file:     req.file.buffer,
+      fileName: req.file.originalname,
+      mimeType: req.file.mimetype,
+      folder:   'receipt-templates',
+      userId:   req.user!.id,
+    });
+
+    const template = await receiptTemplateService.createTemplate({
+      venueId,
+      merchantName,
+      description,
+      expectedKeywords: keywords,
+      imageUrl:         upload.url,
+      imageKey:         upload.key,
+      perceptualHash,
+      uploadedBy:       req.user!.id,
+    });
+
+    res.status(201).json({ success: true, data: template });
+  })
+);
+
+/**
+ * GET /api/receipts/venues/:venueId/templates
+ * List all templates for a venue (active and inactive), newest first.
+ */
+router.get(
+  '/venues/:venueId/templates',
+  authenticate,
+  authorize('ADMIN', 'SUPER_ADMIN'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const { venueId } = req.params;
+    const templates = await receiptTemplateService.listTemplates(venueId);
+    res.json({ success: true, data: templates });
+  })
+);
+
+/**
+ * PATCH /api/receipts/venues/:venueId/templates/:id
+ * Update a template's metadata or active status.
+ * Body fields (all optional):
+ *   merchantName, description, expectedKeywords (JSON array string), isActive (boolean)
+ */
+router.patch(
+  '/venues/:venueId/templates/:id',
+  authenticate,
+  authorize('ADMIN', 'SUPER_ADMIN'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const { id } = req.params;
+    const { merchantName, description, expectedKeywords, isActive } = req.body;
+
+    let keywords: string[] | undefined;
+    if (expectedKeywords !== undefined) {
+      try {
+        const parsed = typeof expectedKeywords === 'string'
+          ? JSON.parse(expectedKeywords)
+          : expectedKeywords;
+        if (!Array.isArray(parsed)) throw new Error('not an array');
+        keywords = parsed.map(String);
+      } catch {
+        return res.status(400).json({
+          success: false,
+          message: 'expectedKeywords must be a JSON array of strings',
+        });
+      }
+    }
+
+    const template = await receiptTemplateService.updateTemplate(id, {
+      merchantName,
+      description,
+      expectedKeywords: keywords,
+      isActive:         typeof isActive === 'boolean' ? isActive : undefined,
+    });
+
+    res.json({ success: true, data: template });
+  })
+);
+
+/**
+ * DELETE /api/receipts/venues/:venueId/templates/:id
+ * Deactivate (soft delete) or permanently delete a template.
+ * Query param: ?hard=true for permanent deletion (removes S3 object + DB row).
+ * Default: soft deactivation (isActive = false).
+ */
+router.delete(
+  '/venues/:venueId/templates/:id',
+  authenticate,
+  authorize('ADMIN', 'SUPER_ADMIN'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const { id } = req.params;
+    const hardDelete = req.query.hard === 'true';
+
+    await receiptTemplateService.deleteTemplate(id, hardDelete);
+
+    res.json({
+      success: true,
+      message: hardDelete
+        ? 'Template permanently deleted'
+        : 'Template deactivated',
+    });
   })
 );
 

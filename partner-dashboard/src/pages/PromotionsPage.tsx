@@ -3,12 +3,14 @@ import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import styled from 'styled-components';
 import { useLanguage } from '../contexts/LanguageContext';
+import { useAuth } from '../contexts/AuthContext';
 import Button from '../components/common/Button/Button';
 import OfferCard from '../components/common/OfferCard/OfferCard';
 import ClientCTA from '../components/common/ClientCTA/ClientCTA';
 import DownloadAppSection from '../components/common/DownloadAppSection/DownloadAppSection';
 import { updateSEO, generateOfferSchema } from '../utils/seo';
-import { mockEntities } from '../data/mockOffers';
+import { useEntities } from '../hooks/useOffers';
+import { useUserPlan } from '../hooks/useBilling';
 
 const PageContainer = styled.div`
 
@@ -439,9 +441,32 @@ const CashbackTrustText = styled.p`
 
 const PromotionsPage: React.FC = () => {
   const { language } = useLanguage();
+  const { isAuthenticated, user } = useAuth();
   const navigate = useNavigate();
+
+  const { data: entitiesData, isLoading } = useEntities({ limit: 50 });
+  const entities = entitiesData?.data ?? [];
+
+  const { data: planData } = useUserPlan();
+  const userPlan = planData?.plan ?? null;
+
+  // Tier-based locking: BASIC plan → BASIC partners only; LIGHT → BASIC+LIGHT; PREMIUM → all
+  const PLAN_REDEEMABLE_TIERS: Record<string, string[]> = {
+    BASIC:   ['BASIC'],
+    LIGHT:   ['BASIC', 'LIGHT'],
+    PREMIUM: ['BASIC', 'LIGHT', 'PREMIUM'],
+  };
+  const isOfferLocked = (entity: typeof entities[0]) => {
+    if (!isAuthenticated) return false; // unauthenticated users see all (no lock)
+    if (user?.role === 'admin') return false; // admins bypass tier restrictions
+    if (!userPlan) return false; // no plan data yet → don't lock
+    const partnerTypeName = (entity as any).partnerType?.name as string | undefined;
+    if (!partnerTypeName) return false;
+    return !PLAN_REDEEMABLE_TIERS[userPlan]?.includes(partnerTypeName);
+  };
+
   // Sort promotions by discount size for SEO
-  const topPromotions = [...mockEntities]
+  const topPromotions = [...entities]
     .sort((a, b) => (b.discount?.percent ?? 0) - (a.discount?.percent ?? 0))
     .slice(0, 4);
 
@@ -586,19 +611,31 @@ const PromotionsPage: React.FC = () => {
               {content.selectedOffers}
             </SectionTitle>
             <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>
-              {mockEntities.length} {language === 'bg' ? 'оферти' : 'offers'}
+              {isLoading
+                ? (language === 'bg' ? 'Зареждане...' : 'Loading...')
+                : `${entities.length} ${language === 'bg' ? 'оферти' : 'offers'}`}
             </div>
           </SectionHeader>
 
           <OffersGrid>
-            {[...mockEntities].sort((a, b) => (b.discount?.percent ?? 0) - (a.discount?.percent ?? 0)).map((entity, index) => (
+            {isLoading && (
+              <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '3rem', color: '#6b7280' }}>
+                {language === 'bg' ? 'Зареждане на оферти...' : 'Loading offers...'}
+              </div>
+            )}
+            {!isLoading && entities.length === 0 && (
+              <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '3rem', color: '#6b7280' }}>
+                {language === 'bg' ? 'Няма налични оферти.' : 'No offers available yet.'}
+              </div>
+            )}
+            {[...entities].sort((a, b) => (b.discount?.percent ?? 0) - (a.discount?.percent ?? 0)).map((entity, index) => (
               <motion.div
                 key={entity.id}
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.4, delay: index * 0.1 }}
               >
-                <OfferCard entity={entity} />
+                <OfferCard entity={entity} isLocked={isOfferLocked(entity)} />
               </motion.div>
             ))}
           </OffersGrid>

@@ -196,12 +196,12 @@ export interface Venue {
 
 // ==================== Partner Types ====================
 
-export enum PartnerTier {
-  BASIC     = 'BASIC',
-  STANDARD  = 'STANDARD',
-  PREMIUM   = 'PREMIUM',
-  VIP       = 'VIP',
-  EXCLUSIVE = 'EXCLUSIVE',
+export interface PartnerType {
+  id: string;
+  name: string;
+  nameBg?: string;
+  color: string;
+  maxDiscountRate: number;
 }
 
 export enum PartnerStatus {
@@ -218,7 +218,8 @@ export interface Partner {
   category: string;
   description?: string;
   descriptionBg?: string;
-  tier: PartnerTier;
+  partnerTypeId?: string;
+  partnerType?: PartnerType;
   status: PartnerStatus;
   city?: string;
   region?: string;
@@ -235,8 +236,8 @@ export interface Partner {
   amenities?: string;
   joinedAt: string;
   verifiedAt?: string;
-  /** Max discount % this partner is permitted to offer (determined by tier) */
-  tierMaxDiscountPercent?: number;
+  /** Max discount % this partner is permitted to offer (determined by partner type) */
+  typeMaxDiscountPercent?: number;
 }
 
 // ==================== Card Types ====================
@@ -489,7 +490,7 @@ export interface Offer {
   createdAt: string;
   updatedAt: string;
   /** Populated by the backend when listing/fetching offers */
-  partner?: Pick<Partner, 'id' | 'businessName' | 'businessNameBg' | 'category' | 'city' | 'logo' | 'rating' | 'tier'>;
+  partner?: Pick<Partner, 'id' | 'businessName' | 'businessNameBg' | 'category' | 'city' | 'logo' | 'rating' | 'partnerTypeId' | 'partnerType'>;
 }
 
 export enum OfferType {

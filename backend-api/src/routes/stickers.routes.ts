@@ -139,7 +139,7 @@ router.get('/my-scans', authenticate, async (req: Request, res: Response) => {
     res.status(500).json({
       success: false,
       error: 'Failed to fetch scans',
-      message: error.message,
+      message: 'An unexpected error occurred',
     });
   }
 });
@@ -169,7 +169,7 @@ router.get('/validate/:stickerId', async (req: Request, res: Response) => {
       success: false,
       valid: false,
       error: 'Failed to validate sticker',
-      message: error.message,
+      message: 'An unexpected error occurred',
     });
   }
 });
@@ -350,7 +350,7 @@ router.get('/venue/:venueId', authenticate, async (req: Request, res: Response) 
     res.status(500).json({
       success: false,
       error: 'Failed to fetch stickers',
-      message: error.message,
+      message: 'An unexpected error occurred',
     });
   }
 });
@@ -376,7 +376,7 @@ router.get('/venue/:venueId/scans', authenticate, async (req: Request, res: Resp
     res.status(500).json({
       success: false,
       error: 'Failed to fetch venue scans',
-      message: error.message,
+      message: 'An unexpected error occurred',
     });
   }
 });
@@ -401,7 +401,7 @@ router.get('/venue/:venueId/analytics', authenticate, async (req: Request, res: 
     res.status(500).json({
       success: false,
       error: 'Failed to fetch analytics',
-      message: error.message,
+      message: 'An unexpected error occurred',
     });
   }
 });
@@ -425,7 +425,7 @@ router.get('/venue/:venueId/config', authenticate, async (req: Request, res: Res
     res.status(500).json({
       success: false,
       error: 'Failed to fetch config',
-      message: error.message,
+      message: 'An unexpected error occurred',
     });
   }
 });
@@ -534,7 +534,7 @@ router.get('/admin/pending-review', authenticate, authorize('ADMIN', 'SUPER_ADMI
     res.status(500).json({
       success: false,
       error: 'Failed to fetch pending scans',
-      message: error.message,
+      message: 'An unexpected error occurred',
     });
   }
 });
@@ -556,7 +556,7 @@ router.get('/admin/stats', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), asyn
     res.status(500).json({
       success: false,
       error: 'Failed to fetch admin stats',
-      message: error.message,
+      message: 'An unexpected error occurred',
     });
   }
 });

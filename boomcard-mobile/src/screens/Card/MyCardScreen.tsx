@@ -23,6 +23,7 @@ import { useTranslation } from 'react-i18next';
 import { useNavigation } from '@react-navigation/native';
 import { useTheme } from '../../contexts/ThemeContext';
 import { cardApi } from '../../api/card.api';
+import apiClient from '../../api/client';
 import { formatDualCurrency } from '../../utils/format';
 import { ShimmerPlaceholder, FadeInView } from '../../components/loading';
 
@@ -128,19 +129,32 @@ export default function MyCardScreen() {
   const loadCard = async () => {
     setError(null);
     try {
-      const [cardResult, statsResult] = await Promise.allSettled([
-        cardApi.getMyCard(),
-        cardApi.getStatistics(),
-      ]);
+      // Try to get card; if missing but user has an active subscription, auto-provision a LIGHT card
+      let cardData = await cardApi.getMyCardOrNull();
 
-      if (cardResult.status === 'fulfilled') {
-        setCard(cardResult.value);
-      } else {
-        setError(cardResult.reason?.message || 'Failed to load card');
+      if (!cardData) {
+        // Check if there's an active subscription — if so, create the card automatically
+        const subResponse = await apiClient.get('/api/subscriptions/current');
+        const hasSub = subResponse.success && subResponse.data;
+        if (hasSub) {
+          try {
+            cardData = await cardApi.createCard();
+          } catch {
+            // Creation failed — show the no-card UI
+          }
+        }
       }
 
-      if (statsResult.status === 'fulfilled') {
-        setStatistics(statsResult.value);
+      setCard(cardData);
+
+      // Load stats only if we have a card
+      if (cardData) {
+        try {
+          const stats = await cardApi.getStatistics();
+          setStatistics(stats);
+        } catch {
+          // Stats are non-critical
+        }
       }
     } catch (err: any) {
       console.warn('Failed to load card:', err);
@@ -177,22 +191,57 @@ export default function MyCardScreen() {
 
   if (!card) {
     return (
-      <View style={[styles.container, styles.centered]}>
-        <View style={styles.emptyState}>
-          <View style={styles.emptyIconCircle}>
-            <Ionicons name="card-outline" size={40} color={theme.colors.onSurfaceVariant} />
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={[styles.centered, { paddingVertical: 40 }]}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Expired card illustration */}
+        <LinearGradient
+          colors={isDarkMode ? ['#1f2937', '#111827'] : ['#f9fafb', '#e5e7eb']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.noCardPlaceholder}
+        >
+          <View style={styles.noCardChip} />
+          <View style={styles.noCardBottom}>
+            <View style={styles.noCardLine} />
+            <View style={[styles.noCardLine, { width: '55%' }]} />
           </View>
-          <Text style={styles.emptyTitle}>
-            {t('card.noCard', 'No card found')}
-          </Text>
-          <Text style={styles.emptyDescription}>
-            {error || t('card.noCardDescription', 'Your card will appear here once your account is set up.')}
-          </Text>
-          <TouchableOpacity style={styles.retryButton} onPress={loadCard}>
-            <Text style={styles.retryButtonText}>{t('common.retry', 'Retry')}</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
+          <View style={styles.noCardExpiredBadge}>
+            <Ionicons name="time-outline" size={14} color={isDarkMode ? '#fbbf24' : '#d97706'} />
+            <Text style={styles.noCardExpiredText}>{t('card.expired', 'Expired')}</Text>
+          </View>
+        </LinearGradient>
+
+        <Text style={styles.emptyTitle}>
+          {t('card.noActiveCard', 'No active card')}
+        </Text>
+        <Text style={styles.emptyDescription}>
+          {t('card.noActiveCardDesc', 'Your subscription may have expired or you don\'t have an active plan. Choose a plan to get your BOOM Card.')}
+        </Text>
+
+        {/* Renew / upgrade CTA */}
+        <TouchableOpacity
+          style={styles.choosePlanButton}
+          activeOpacity={0.85}
+          onPress={() => navigation.navigate('UpgradePlans', { currentCardType: null })}
+        >
+          <LinearGradient
+            colors={isDarkMode ? ['#1e3a8a', '#3730a3'] : ['#000000', '#1a1a1a']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.choosePlanGradient}
+          >
+            <Ionicons name="arrow-up-circle" size={22} color="#ffd700" />
+            <Text style={styles.choosePlanText}>{t('card.choosePlan', 'Choose a Plan')}</Text>
+          </LinearGradient>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.retryButton} onPress={loadCard}>
+          <Text style={styles.retryButtonText}>{t('common.retry', 'Try again')}</Text>
+        </TouchableOpacity>
+      </ScrollView>
     );
   }
 
@@ -460,44 +509,96 @@ const getStyles = (theme: any, isDarkMode: boolean) => StyleSheet.create({
     padding: 16,
   },
 
-  // Empty state
-  emptyState: {
-    alignItems: 'center',
-    paddingHorizontal: 32,
+  // Empty / no-card state
+  noCardPlaceholder: {
+    width: CARD_WIDTH,
+    height: CARD_WIDTH * CARD_ASPECT,
+    borderRadius: 20,
+    padding: 24,
+    marginBottom: 28,
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderColor: isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)',
+    opacity: 0.6,
   },
-  emptyIconCircle: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: isDarkMode ? theme.colors.surface : theme.colors.surfaceVariant,
-    justifyContent: 'center',
+  noCardChip: {
+    width: 44,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: isDarkMode ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.1)',
+  },
+  noCardBottom: {
+    gap: 8,
+  },
+  noCardLine: {
+    height: 10,
+    width: '75%',
+    borderRadius: 5,
+    backgroundColor: isDarkMode ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)',
+  },
+  noCardExpiredBadge: {
+    position: 'absolute',
+    top: 20,
+    right: 20,
+    flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 20,
+    gap: 4,
+    backgroundColor: isDarkMode ? 'rgba(251,191,36,0.15)' : 'rgba(217,119,6,0.1)',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  noCardExpiredText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: isDarkMode ? '#fbbf24' : '#d97706',
   },
   emptyTitle: {
     fontSize: 20,
     fontWeight: '700',
     color: theme.colors.onSurface,
-    marginBottom: 8,
+    marginBottom: 10,
     textAlign: 'center',
   },
   emptyDescription: {
     fontSize: 14,
     color: theme.colors.onSurfaceVariant,
     textAlign: 'center',
-    lineHeight: 20,
-    marginBottom: 24,
+    lineHeight: 21,
+    marginBottom: 28,
+    paddingHorizontal: 24,
+  },
+  choosePlanButton: {
+    width: CARD_WIDTH,
+    borderRadius: 16,
+    overflow: 'hidden',
+    marginBottom: 14,
+  },
+  choosePlanGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    paddingVertical: 16,
+    paddingHorizontal: 32,
+    borderRadius: 16,
+  },
+  choosePlanText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
   },
   retryButton: {
-    backgroundColor: theme.colors.primary,
     paddingHorizontal: 32,
     paddingVertical: 12,
     borderRadius: 28,
+    borderWidth: 1,
+    borderColor: isDarkMode ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.12)',
   },
   retryButtonText: {
-    color: '#FFFFFF',
-    fontSize: 15,
-    fontWeight: '600',
+    color: theme.colors.onSurfaceVariant,
+    fontSize: 14,
+    fontWeight: '500',
   },
 
   // Card

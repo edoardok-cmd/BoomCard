@@ -50,7 +50,7 @@ const sizeStyles = {
   },
 };
 
-const StyledBadge = styled.span<{ variant: BadgeVariant; size: BadgeSize; dot?: boolean }>`
+const StyledBadge = styled.span<{ variant: BadgeVariant; size: BadgeSize; $dot?: boolean }>`
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -64,7 +64,7 @@ const StyledBadge = styled.span<{ variant: BadgeVariant; size: BadgeSize; dot?: 
   padding: ${props => sizeStyles[props.size].padding};
   font-size: ${props => sizeStyles[props.size].fontSize};
 
-  ${props => props.dot && `
+  ${props => props.$dot && `
     &::before {
       content: '';
       width: 6px;
@@ -86,7 +86,7 @@ export const Badge: React.FC<BadgeProps> = ({
     <StyledBadge
       variant={variant}
       size={size}
-      dot={dot}
+      $dot={dot}
       className={className}
     >
       {children}

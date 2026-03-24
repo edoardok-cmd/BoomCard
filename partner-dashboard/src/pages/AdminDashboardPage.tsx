@@ -1,10 +1,11 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import styled from 'styled-components';
 import { motion } from 'framer-motion';
 import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useOffers } from '../hooks/useOffers';
+import { adminCashbackService, CashbackDashboardStats } from '../services/adminCashback.service';
 
 const PageContainer = styled.div`
   max-width: 80rem;
@@ -152,6 +153,11 @@ const AdminDashboardPage: React.FC = () => {
   const { user } = useAuth();
   const { language } = useLanguage();
   const { data: offersData } = useOffers({ limit: 100 });
+  const [cashbackStats, setCashbackStats] = useState<CashbackDashboardStats | null>(null);
+
+  useEffect(() => {
+    adminCashbackService.getStats().then(setCashbackStats).catch(() => {});
+  }, []);
 
   // Calculate stats
   const totalOffers = offersData?.total || 0;
@@ -219,6 +225,32 @@ const AdminDashboardPage: React.FC = () => {
             {language === 'bg' ? 'От всички оферти' : 'Of all offers'}
           </StatChange>
         </StatCard>
+
+        <StatCard
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.5 }}
+        >
+          <StatLabel>{language === 'bg' ? 'Очакван Кешбек (лв.)' : 'Pending Cashback (BGN)'}</StatLabel>
+          <StatValue>{cashbackStats ? cashbackStats.pendingTotal.toFixed(2) : '—'}</StatValue>
+          <StatChange>
+            {language === 'bg' ? 'Неплатен от партньори' : 'Unpaid by partners'}
+          </StatChange>
+        </StatCard>
+
+        <StatCard
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.6 }}
+        >
+          <StatLabel>{language === 'bg' ? 'Просрочени Партньори' : 'Overdue Partners'}</StatLabel>
+          <StatValue style={{ color: cashbackStats && cashbackStats.overdueCount > 0 ? '#dc2626' : undefined }}>
+            {cashbackStats ? cashbackStats.overdueCount : '—'}
+          </StatValue>
+          <StatChange>
+            {language === 'bg' ? 'С просрочен кешбек' : 'With overdue cashback'}
+          </StatChange>
+        </StatCard>
       </StatsGrid>
 
       <Section>
@@ -229,35 +261,49 @@ const AdminDashboardPage: React.FC = () => {
         </SectionHeader>
 
         <QuickActionsGrid>
-          <ActionCard to="/admin/offers">
+          <ActionCard to="/admin/partner-types">
+            <ActionIcon>🏷️</ActionIcon>
+            <div>
+              <ActionTitle>
+                {language === 'bg' ? 'Типове Партньори' : 'Partner Types'}
+              </ActionTitle>
+              <ActionDescription>
+                {language === 'bg'
+                  ? 'Създавайте типове партньори, задавайте лимити за отстъпки и контролирайте достъпа по абонамент'
+                  : 'Create partner types, set discount rate caps, and control which subscription plans can view or redeem offers'}
+              </ActionDescription>
+            </div>
+          </ActionCard>
+
+          <ActionCard to="/admin/top-discounts">
             <ActionIcon>⭐</ActionIcon>
             <div>
               <ActionTitle>
-                {language === 'bg' ? 'Управление на Топ Оферти' : 'Manage Top Offers'}
+                {language === 'bg' ? 'Топ Отстъпки' : 'Top Discounts'}
               </ActionTitle>
               <ActionDescription>
                 {language === 'bg'
-                  ? 'Маркирайте оферти като топ, подредете ги и управлявайте показването им на началната страница'
-                  : 'Mark offers as featured, reorder them, and manage homepage display'}
+                  ? 'Управлявайте featured оферти — всички полета и снимка са задължителни'
+                  : 'Manage featured Top Discounts — all fields and image are required'}
               </ActionDescription>
             </div>
           </ActionCard>
 
-          <ActionCard to="/partners/offers">
+          <ActionCard to="/admin/offers">
             <ActionIcon>📋</ActionIcon>
             <div>
               <ActionTitle>
-                {language === 'bg' ? 'Всички Оферти' : 'All Offers'}
+                {language === 'bg' ? 'Управление на Оферти' : 'Manage Offers'}
               </ActionTitle>
               <ActionDescription>
                 {language === 'bg'
-                  ? 'Преглед и редакция на всички оферти от всички партньори'
-                  : 'View and edit all offers from all partners'}
+                  ? 'Създавайте и редактирайте оферти за всички партньори — заглавия, описания, снимки, тагове и отстъпки'
+                  : 'Create and edit offers for any partner — bilingual titles, descriptions, photos, tags, and discounts'}
               </ActionDescription>
             </div>
           </ActionCard>
 
-          <ActionCard to="/partners">
+          <ActionCard to="/admin/partners">
             <ActionIcon>🏢</ActionIcon>
             <div>
               <ActionTitle>
@@ -281,6 +327,48 @@ const AdminDashboardPage: React.FC = () => {
                 {language === 'bg'
                   ? 'Преглед на статистики и отчети на системата'
                   : 'View system statistics and reports'}
+              </ActionDescription>
+            </div>
+          </ActionCard>
+
+          <ActionCard to="/admin/bulk-import">
+            <ActionIcon>📥</ActionIcon>
+            <div>
+              <ActionTitle>
+                {language === 'bg' ? 'Масов Импорт' : 'Bulk Import'}
+              </ActionTitle>
+              <ActionDescription>
+                {language === 'bg'
+                  ? 'Импортирайте партньори и техните оферти от CSV или Excel файл с шаблон'
+                  : 'Import partners and their offers in bulk from a CSV or Excel spreadsheet template'}
+              </ActionDescription>
+            </div>
+          </ActionCard>
+
+          <ActionCard to="/admin/receipts">
+            <ActionIcon>🧾</ActionIcon>
+            <div>
+              <ActionTitle>
+                {language === 'bg' ? 'Преглед на Касови Бележки' : 'Receipt Review'}
+              </ActionTitle>
+              <ActionDescription>
+                {language === 'bg'
+                  ? 'Одобрявайте или отхвърляйте касови бележки с изчакване и управлявайте начисления за кешбек'
+                  : 'Approve or reject pending receipts and manage cashback credits'}
+              </ActionDescription>
+            </div>
+          </ActionCard>
+
+          <ActionCard to="/admin/cashback">
+            <ActionIcon>💰</ActionIcon>
+            <div>
+              <ActionTitle>
+                {language === 'bg' ? 'Плащания за Кешбек' : 'Cashback Payments'}
+              </ActionTitle>
+              <ActionDescription>
+                {language === 'bg'
+                  ? 'Проследявайте месечните кешбек задължения на партньорите и маркирайте платените'
+                  : 'Track monthly cashback owed by partners and mark payments as received'}
               </ActionDescription>
             </div>
           </ActionCard>

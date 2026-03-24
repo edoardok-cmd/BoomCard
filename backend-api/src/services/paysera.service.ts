@@ -105,6 +105,25 @@ const PAYSERA_METHODS_URL = 'https://www.paysera.com/new/api/paymentMethods';
 // Paysera Service Class
 // ============================================
 
+// Cached Paysera RSA public key (fetched once per process lifetime)
+let payseraPublicKeyCache: string | null = null;
+
+async function getPayseraPublicKey(): Promise<string | null> {
+  if (payseraPublicKeyCache) return payseraPublicKeyCache;
+  try {
+    const response = await axios.get('https://www.paysera.com/download/public.key', {
+      timeout: 5000,
+      responseType: 'text',
+    });
+    payseraPublicKeyCache = response.data as string;
+    logger.info('Paysera RSA public key cached');
+    return payseraPublicKeyCache;
+  } catch (err) {
+    logger.warn('Failed to fetch Paysera public key — ss2 verification skipped');
+    return null;
+  }
+}
+
 export class PayseraService {
   private config: PayseraConfig;
   private methodsCache: Map<string, { data: PayseraPaymentMethod[]; fetchedAt: number }> = new Map();
@@ -272,23 +291,43 @@ export class PayseraService {
   }
 
   /**
-   * Verify callback signature (ss1 = md5(data + password))
+   * Verify callback signatures:
+   *   ss1 = MD5(data + signPassword)   — required per Paysera spec
+   *   ss2 = RSA-SHA1(data) signed with Paysera's private key — optional but recommended
    */
-  verifyCallback(callback: PayseraCallback): boolean {
+  async verifyCallback(callback: PayseraCallback): Promise<boolean> {
     try {
-      // Verify MD5 signature (ss1)
+      // 1. Verify MD5 signature (ss1) — always required
       const expectedSs1 = this.generateSign(callback.data);
       if (callback.ss1 !== expectedSs1) {
         logger.warn('Invalid MD5 signature (ss1)');
         return false;
       }
 
-      // Note: ss2 is RSA SHA-1 signature verified with Paysera's public key
-      // For production, consider downloading https://www.paysera.com/download/public.key
-      // and verifying ss2/ss3 for enhanced security.
-      // ss1 (md5) is sufficient for most cases per Paysera docs.
+      // 2. Verify RSA-SHA1 signature (ss2) when present
+      if (callback.ss2) {
+        const publicKey = await getPayseraPublicKey();
+        if (publicKey) {
+          try {
+            const ss2Buffer = Buffer.from(callback.ss2, 'base64');
+            const verify = crypto.createVerify('SHA1');
+            verify.update(callback.data);
+            const valid = verify.verify(publicKey, ss2Buffer);
+            if (!valid) {
+              logger.warn('Invalid RSA signature (ss2) — rejecting callback');
+              return false;
+            }
+            logger.info('Callback signatures verified (ss1 + ss2 RSA)');
+          } catch (rsaErr) {
+            logger.warn('RSA ss2 verification error — falling back to ss1 only', rsaErr);
+          }
+        } else {
+          logger.info('Callback signature verified (ss1 only — public key unavailable)');
+        }
+      } else {
+        logger.info('Callback signature verified (ss1 only — ss2 not provided)');
+      }
 
-      logger.info('Callback signature verified (ss1)');
       return true;
     } catch (error: any) {
       logger.error('Error verifying callback:', error);
@@ -354,8 +393,8 @@ export class PayseraService {
     payCurrency?: string;
   }> {
     try {
-      // Verify signature
-      if (!this.verifyCallback(callback)) {
+      // Verify signature (async — includes RSA ss2 check when available)
+      if (!await this.verifyCallback(callback)) {
         throw new Error('Invalid callback signature');
       }
 

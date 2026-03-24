@@ -464,9 +464,9 @@ const ConnectionStatus = styled.div<{ $status: 'connected' | 'disconnected' | 't
   font-size: 0.875rem;
   font-weight: 600;
   background: ${props => {
-    if (props.$status === 'connected') return '#ecfdf5';
-    if (props.$status === 'testing') return '#fef3c7';
-    return '#fef2f2';
+    if (props.$status === 'connected') return 'rgba(16, 185, 129, 0.1)';
+    if (props.$status === 'testing') return 'rgba(245, 158, 11, 0.1)';
+    return 'rgba(220, 38, 38, 0.1)';
   }};
   color: ${props => {
     if (props.$status === 'connected') return '#047857';

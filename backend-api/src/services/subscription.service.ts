@@ -256,44 +256,19 @@ export class SubscriptionService {
   }
 
   /**
-   * Get plan benefits
+   * Get plan benefits — reads from DB Plans table (source of truth).
    */
-  getPlanBenefits(plan: SubscriptionPlan) {
-    const benefits = {
-      LIGHT: {
-        cashbackRate: 0.20,
-        monthlyFee: 4.99,
-        features: [
-          'Up to 20% cashback via the app',
-          'Access to BASIC partner offers',
-          'One week trial period',
-          'Standard support',
-        ],
-      },
-      BASIC: {
-        cashbackRate: 0.10,
-        monthlyFee: 7.99,
-        features: [
-          'Up to 10% cashback via the app',
-          'Access to BASIC, STANDARD & PREMIUM partner offers',
-          'Monthly subscription',
-          'Standard support',
-        ],
-      },
-      PREMIUM: {
-        cashbackRate: 0.20,
-        monthlyFee: 12.99,
-        features: [
-          'Up to 20% cashback via the app',
-          '+5% bonus cashback on BOOM-Sticker scans',
-          'Access to all partner tiers including VIP & EXCLUSIVE',
-          'Monthly subscription',
-          'VIP priority support',
-        ],
-      },
-    };
+  async getPlanBenefits(plan: SubscriptionPlan) {
+    const row = await prisma.plan.findFirst({
+      where: { planCode: plan, isActive: true },
+      select: { cashbackRate: true, priceMonthlyEur: true, features: true },
+    });
 
-    return benefits[plan];
+    const cashbackRate = row?.cashbackRate ?? 0;
+    const monthlyFee   = row?.priceMonthlyEur != null ? row.priceMonthlyEur / 100 : null;
+    const features: string[] = row?.features ? JSON.parse(row.features) : [];
+
+    return { cashbackRate, monthlyFee, features };
   }
 }
 

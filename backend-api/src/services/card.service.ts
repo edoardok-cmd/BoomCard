@@ -150,44 +150,20 @@ export class CardService {
   }
 
   /**
-   * Get card benefits based on tier
+   * Get card benefits based on tier — reads from DB Plans table (source of truth).
+   * CardType maps 1-to-1 to plan planCode (LIGHT / BASIC / PREMIUM).
    */
-  getCardBenefits(cardType: CardType) {
-    const benefits = {
-      LIGHT: {
-        cashbackRate: 0.20,
-        bonusCashback: 0,
-        features: [
-          'Up to 20% cashback via the app',
-          'Access to BASIC partner offers',
-          'One week trial period',
-          'Standard support',
-        ],
-      },
-      BASIC: {
-        cashbackRate: 0.10,
-        bonusCashback: 0,
-        features: [
-          'Up to 10% cashback via the app',
-          'Access to BASIC, STANDARD & PREMIUM partner offers',
-          'Monthly subscription',
-          'Standard support',
-        ],
-      },
-      PREMIUM: {
-        cashbackRate: 0.20,
-        bonusCashback: 0.05,
-        features: [
-          'Up to 20% cashback via the app',
-          '+5% bonus cashback on BOOM-Sticker scans',
-          'Access to all partner tiers including VIP & EXCLUSIVE',
-          'Monthly subscription',
-          'VIP priority support',
-        ],
-      },
-    };
+  async getCardBenefits(cardType: CardType) {
+    const plan = await prisma.plan.findFirst({
+      where: { planCode: cardType, isActive: true },
+      select: { cashbackRate: true, stickerBonus: true, features: true },
+    });
 
-    return benefits[cardType];
+    const cashbackRate  = plan?.cashbackRate  ?? 0;
+    const bonusCashback = plan?.stickerBonus  ?? 0;
+    const features: string[] = plan?.features ? JSON.parse(plan.features) : [];
+
+    return { cashbackRate, bonusCashback, features };
   }
 
   /**

@@ -14,10 +14,25 @@ import axios, {
 import { API_CONFIG } from '../constants/config';
 import StorageService from '../services/storage.service';
 import type { ApiResponse, ApiError } from '../types';
-import { EventEmitter } from 'events';
+// Minimal browser-safe emitter (replaces Node's `events` module which is unavailable on web)
+class SimpleEmitter {
+  private listeners: Record<string, Array<(...args: any[]) => void>> = {};
+  on(event: string, listener: (...args: any[]) => void) {
+    (this.listeners[event] ??= []).push(listener);
+    return this;
+  }
+  off(event: string, listener: (...args: any[]) => void) {
+    this.listeners[event] = (this.listeners[event] ?? []).filter(l => l !== listener);
+    return this;
+  }
+  emit(event: string, ...args: any[]) {
+    (this.listeners[event] ?? []).forEach(l => l(...args));
+    return true;
+  }
+}
 
 // Emits 'logout' when a token refresh fails — AuthContext listens to auto-clear user state
-export const authLogoutEmitter = new EventEmitter();
+export const authLogoutEmitter = new SimpleEmitter();
 
 export class ApiClient {
   private static instance: ApiClient;
@@ -165,7 +180,11 @@ export class ApiClient {
 
       // Detect tier-access denial: backend returns 404 (not 403) to avoid
       // leaking existence of restricted resources. Surface a clear message.
-      const rawMessage: string = data?.message || data?.error || 'Server error occurred';
+      const rawMessage: string =
+        typeof data?.message === 'string' ? data.message :
+        typeof data?.error === 'string' ? data.error :
+        typeof data?.error?.message === 'string' ? data.error.message :
+        'Server error occurred';
       const isTierBlock =
         statusCode === 403 ||
         (statusCode === 404 && rawMessage.toLowerCase().includes('subscription'));

@@ -534,11 +534,12 @@ const RegisterPage: React.FC = () => {
 
   const calculatePasswordStrength = (password: string): number => {
     let strength = 0;
-    if (password.length >= 6) strength += 25;
-    if (password.length >= 10) strength += 25;
-    if (/[a-z]/.test(password) && /[A-Z]/.test(password)) strength += 25;
-    if (/\d/.test(password)) strength += 12.5;
-    if (/[!@#$%^&*(),.?":{}|<>]/.test(password)) strength += 12.5;
+    if (password.length >= 8) strength += 20;
+    if (password.length >= 12) strength += 20;
+    if (/[A-Z]/.test(password)) strength += 20;
+    if (/[a-z]/.test(password)) strength += 20;
+    if (/\d/.test(password)) strength += 10;
+    if (/[^A-Za-z0-9]/.test(password)) strength += 10;
     return Math.min(strength, 100);
   };
 
@@ -576,9 +577,11 @@ const RegisterPage: React.FC = () => {
 
       case 'password':
         if (!value) return t('auth.passwordRequired');
-        if (value.length < 8) {
-          return t('auth.passwordMinLength');
-        }
+        if (value.length < 8) return t('auth.passwordMinLength');
+        if (!/[A-Z]/.test(value)) return t('auth.passwordNeedsUppercase');
+        if (!/[a-z]/.test(value)) return t('auth.passwordNeedsLowercase');
+        if (!/[0-9]/.test(value)) return t('auth.passwordNeedsNumber');
+        if (!/[^A-Za-z0-9]/.test(value)) return t('auth.passwordNeedsSpecial');
         return undefined;
 
       case 'confirmPassword':

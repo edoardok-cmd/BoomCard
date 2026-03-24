@@ -72,7 +72,7 @@ export async function loginTestUser(email: string, password: string) {
  */
 export async function createTestSubscription(
   userId: string,
-  plan: 'STANDARD' | 'PREMIUM' | 'PLATINUM' = 'PREMIUM',
+  plan: 'LIGHT' | 'BASIC' | 'PREMIUM' = 'BASIC',
   status: 'ACTIVE' | 'PAST_DUE' | 'CANCELLED' | 'INCOMPLETE' | 'INCOMPLETE_EXPIRED' | 'TRIALING' | 'UNPAID' | 'PAUSED' = 'ACTIVE'
 ) {
   // Get or create plan details
@@ -86,10 +86,10 @@ export async function createTestSubscription(
         planCode: plan,
         displayName: `${plan.charAt(0)}${plan.slice(1).toLowerCase()} Plan`,
         displayNameBg: `${plan.charAt(0)}${plan.slice(1).toLowerCase()} План`,
-        priceMonthlyEur: plan === 'PREMIUM' ? 999 : plan === 'PLATINUM' ? 1999 : 0,
-        priceYearlyEur: plan === 'PREMIUM' ? 9990 : plan === 'PLATINUM' ? 19990 : 0,
-        priceWeeklyEur: plan === 'PREMIUM' ? 299 : plan === 'PLATINUM' ? 599 : 0,
-        cashbackRate: plan === 'PREMIUM' ? 7 : plan === 'PLATINUM' ? 10 : 5,
+        priceMonthlyEur: plan === 'PREMIUM' ? 1999 : plan === 'BASIC' ? 999 : 0,
+        priceYearlyEur: plan === 'PREMIUM' ? 19990 : plan === 'BASIC' ? 9990 : 0,
+        priceWeeklyEur: plan === 'PREMIUM' ? 599 : plan === 'BASIC' ? 299 : 199,
+        cashbackRate: plan === 'PREMIUM' ? 20 : plan === 'BASIC' ? 10 : 5,
         isActive: true,
       },
     });

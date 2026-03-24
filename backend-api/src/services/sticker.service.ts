@@ -1,9 +1,9 @@
-import { Sticker, StickerScan, StickerLocation, VenueStickerConfig, CardType, ScanStatus, StickerStatus, LocationType, TransactionStatus, TransactionType, PaymentMethod, PartnerTier, SubscriptionStatus } from '@prisma/client';
+import { Sticker, StickerScan, StickerLocation, VenueStickerConfig, CardType, ScanStatus, StickerStatus, LocationType, TransactionStatus, TransactionType, PaymentMethod, SubscriptionStatus } from '@prisma/client';
 import QRCode from 'qrcode';
 import { prisma } from '../lib/prisma';
 import { walletService } from './wallet.service';
 import { logger } from '../utils/logger';
-import { PLAN_ACCESSIBLE_TIERS } from './offers.service';
+import { partnerTypeService } from './partnerType.service';
 
 // ============================================
 // Interfaces
@@ -141,12 +141,10 @@ class StickerService {
       version: '1.0',
     };
 
-    // Generate QR code image (base64)
-    const qrCodeImage = await QRCode.toDataURL(JSON.stringify(qrData), {
-      errorCorrectionLevel: 'H',
-      width: 512,
-      margin: 2,
-    });
+    // Store the QR payload (JSON string) — the client renders the QR image from this.
+    // We intentionally do NOT store a base64 PNG: the unique index on qrCode has a
+    // 2704-byte limit in Postgres BTREE, which a base64-encoded PNG easily exceeds.
+    const qrCodePayload = JSON.stringify(qrData);
 
     // Create sticker record
     const sticker = await prisma.sticker.create({
@@ -154,10 +152,10 @@ class StickerService {
         venueId: location.venueId,
         locationId: location.id,
         stickerId,
-        qrCode: qrCodeImage,
+        qrCode: qrCodePayload,
         locationType: location.locationType,
         status: StickerStatus.PENDING,
-        metadata: JSON.stringify({ qrData }),
+        metadata: JSON.stringify({ stickerId }),
       },
       include: {
         venue: true,
@@ -310,24 +308,22 @@ class StickerService {
       throw new Error(`Card is ${card.status.toLowerCase()}`);
     }
 
-    // 3. Verify the user's subscription plan grants access to this venue's partner tier
+    // 3. Verify the user's subscription plan grants access to this venue's partner type
     const partner = await prisma.partner.findFirst({
       where: { venues: { some: { id: sticker.venueId } } },
-      select: { tier: true, status: true },
+      select: { partnerTypeId: true, status: true },
     });
 
-    if (partner) {
+    if (partner && partner.partnerTypeId) {
       const userSubscription = await prisma.subscription.findFirst({
         where: { userId, status: SubscriptionStatus.ACTIVE },
         orderBy: { currentPeriodEnd: 'desc' },
       });
 
       const userPlan = userSubscription?.plan ?? null;
-      const accessibleTiers: PartnerTier[] = userPlan
-        ? PLAN_ACCESSIBLE_TIERS[userPlan]
-        : [PartnerTier.BASIC]; // No subscription → only BASIC
+      const redeemableTypeIds = await partnerTypeService.getRedeemableTypeIdsForPlan(userPlan);
 
-      if (!accessibleTiers.includes(partner.tier)) {
+      if (!redeemableTypeIds.includes(partner.partnerTypeId)) {
         throw new Error(
           `Your current subscription does not include access to this partner. ` +
           `Upgrade your plan to scan this venue.`,
@@ -354,13 +350,27 @@ class StickerService {
 
     // 7. Calculate distance from venue if GPS provided
     let distance: number | undefined;
-    if (latitude && longitude) {
+    if (latitude !== undefined && longitude !== undefined) {
       distance = this.calculateDistance(
         latitude,
         longitude,
         sticker.venue.latitude,
         sticker.venue.longitude
       );
+    }
+
+    // 7b. Hard proximity enforcement — reject before fraud scoring
+    if (config.gpsVerificationEnabled) {
+      if (distance === undefined) {
+        throw new Error(
+          'Location access is required to scan at this venue. Please enable GPS and try again.'
+        );
+      }
+      if (distance > config.gpsRadiusMeters) {
+        throw new Error(
+          `You must be within ${config.gpsRadiusMeters}m of the venue to scan. You are currently ${Math.round(distance)}m away.`
+        );
+      }
     }
 
     // 8. Run fraud checks

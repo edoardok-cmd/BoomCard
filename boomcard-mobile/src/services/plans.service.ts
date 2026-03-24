@@ -7,6 +7,7 @@
  */
 
 import apiClient from '../api/client';
+import { APP_CONFIG } from '../constants/config';
 
 export interface PlanPricing {
   weekly: number | null;
@@ -66,6 +67,7 @@ export interface SubscriptionPaymentResult {
   billingPeriod: string;
 }
 
+
 class PlansService {
   /**
    * Get all active plans with pricing (PUBLIC - no auth required)
@@ -89,7 +91,7 @@ class PlansService {
   async getPlanByCode(planCode: string): Promise<Plan> {
     try {
       const response = await apiClient.get<{ success: boolean; data: Plan }>(
-        `/plans/code/${planCode}`
+        `/api/plans/code/${planCode}`
       );
       if (response.data?.success) {
         return response.data.data;
@@ -107,7 +109,7 @@ class PlansService {
   async getPlanById(planId: string): Promise<Plan> {
     try {
       const response = await apiClient.get<{ success: boolean; data: Plan }>(
-        `/plans/${planId}`
+        `/api/plans/${planId}`
       );
       if (response.data?.success) {
         return response.data.data;
@@ -151,8 +153,13 @@ class PlansService {
   ): Promise<SubscriptionPaymentResult> {
     try {
       const response = await apiClient.post<{ success: boolean; data: SubscriptionPaymentResult }>(
-        '/api/subscriptions/create',
-        { planId, billingPeriod }
+        '/api/payments/subscription',
+        {
+          planId,
+          billingPeriod,
+          successUrl: `${APP_CONFIG.MOBILE_APP_URL}/subscription/success`,
+          cancelUrl: `${APP_CONFIG.MOBILE_APP_URL}/subscription/cancel`,
+        }
       );
 
       if (response.data?.success) {

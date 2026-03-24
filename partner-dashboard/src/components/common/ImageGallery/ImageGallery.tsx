@@ -193,10 +193,67 @@ const CloseButton = styled.button`
   }
 `;
 
+const PlaceholderContainer = styled.div`
+  position: relative;
+  width: 100%;
+  padding-top: 56.25%;
+  background: #f3f4f6;
+  border-radius: 1rem;
+  overflow: hidden;
+
+  [data-theme="dark"] & {
+    background: #1f2937;
+  }
+`;
+
+const PlaceholderInner = styled.div`
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  color: #9ca3af;
+
+  svg {
+    width: 3rem;
+    height: 3rem;
+    opacity: 0.5;
+  }
+
+  span {
+    font-size: 0.875rem;
+  }
+`;
+
 export const ImageGallery: React.FC<ImageGalleryProps> = ({ images, alt = 'Gallery image' }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [direction, setDirection] = useState(0);
+  const [brokenImages, setBrokenImages] = useState<Set<number>>(new Set());
+
+  const handleImageError = (index: number) => {
+    setBrokenImages(prev => new Set(prev).add(index));
+  };
+
+  const validImages = images.filter((_, i) => !brokenImages.has(i));
+
+  if (images.length === 0 || validImages.length === 0) {
+    return (
+      <GalleryContainer>
+        <PlaceholderContainer>
+          <PlaceholderInner>
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+            <span>No image available</span>
+          </PlaceholderInner>
+        </PlaceholderContainer>
+      </GalleryContainer>
+    );
+  }
 
   const goToNext = () => {
     setDirection(1);
@@ -243,7 +300,7 @@ export const ImageGallery: React.FC<ImageGalleryProps> = ({ images, alt = 'Galle
           <AnimatePresence initial={false} custom={direction}>
             <MainImage
               key={currentIndex}
-              src={images[currentIndex]}
+              src={validImages[currentIndex]}
               alt={`${alt} ${currentIndex + 1}`}
               custom={direction}
               variants={variants}
@@ -254,10 +311,11 @@ export const ImageGallery: React.FC<ImageGalleryProps> = ({ images, alt = 'Galle
                 x: { type: 'spring', stiffness: 300, damping: 30 },
                 opacity: { duration: 0.2 }
               }}
+              onError={() => handleImageError(images.indexOf(validImages[currentIndex]))}
             />
           </AnimatePresence>
 
-          {images.length > 1 && (
+          {validImages.length > 1 && (
             <>
               <NavigationButton
                 $direction="left"
@@ -286,15 +344,15 @@ export const ImageGallery: React.FC<ImageGalleryProps> = ({ images, alt = 'Galle
               </NavigationButton>
 
               <Counter>
-                {currentIndex + 1} / {images.length}
+                {currentIndex + 1} / {validImages.length}
               </Counter>
             </>
           )}
         </MainImageContainer>
 
-        {images.length > 1 && (
+        {validImages.length > 1 && (
           <ThumbnailsContainer>
-            {images.map((image, index) => (
+            {validImages.map((image, index) => (
               <Thumbnail
                 key={index}
                 $active={index === currentIndex}
@@ -326,7 +384,7 @@ export const ImageGallery: React.FC<ImageGalleryProps> = ({ images, alt = 'Galle
             </CloseButton>
 
             <FullscreenImage
-              src={images[currentIndex]}
+              src={validImages[currentIndex]}
               alt={`${alt} ${currentIndex + 1}`}
               initial={{ scale: 0.9 }}
               animate={{ scale: 1 }}
@@ -334,7 +392,7 @@ export const ImageGallery: React.FC<ImageGalleryProps> = ({ images, alt = 'Galle
               onClick={(e) => e.stopPropagation()}
             />
 
-            {images.length > 1 && (
+            {validImages.length > 1 && (
               <>
                 <NavigationButton
                   $direction="left"

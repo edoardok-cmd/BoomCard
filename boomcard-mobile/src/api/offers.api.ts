@@ -99,12 +99,16 @@ export class OffersApi {
   }
 
   /**
-   * Activate/redeem offer
+   * Activate/redeem offer — requires user to be within 100m of the venue
    */
   static async activateOffer(
-    offerId: string
+    offerId: string,
+    location: { latitude: number; longitude: number },
   ): Promise<ApiResponse<{ code: string; expiresAt: string }>> {
-    return await apiClient.post(`${API_CONFIG.ENDPOINTS.OFFERS.BASE}/${offerId}/activate`);
+    return await apiClient.post(
+      `${API_CONFIG.ENDPOINTS.OFFERS.BASE}/${offerId}/activate`,
+      { latitude: location.latitude, longitude: location.longitude },
+    );
   }
 }
 

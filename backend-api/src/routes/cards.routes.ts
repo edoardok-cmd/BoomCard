@@ -33,7 +33,7 @@ router.get('/my-card', asyncHandler(async (req: AuthRequest, res: Response) => {
     return res.status(404).json({ error: 'No card found. Create one first.' });
   }
 
-  const benefits = cardService.getCardBenefits(card.type);
+  const benefits = await cardService.getCardBenefits(card.type);
 
   // Include active subscription expiry
   const subscription = await prisma.subscription.findFirst({
@@ -58,10 +58,12 @@ router.get('/my-card', asyncHandler(async (req: AuthRequest, res: Response) => {
  * Get all card tier benefits
  */
 router.get('/benefits', asyncHandler(async (req: AuthRequest, res: Response) => {
-  const tiers = (['LIGHT', 'BASIC', 'PREMIUM'] as const).map(tier => ({
-    tier,
-    ...cardService.getCardBenefits(tier),
-  }));
+  const tiers = await Promise.all(
+    (['LIGHT', 'BASIC', 'PREMIUM'] as const).map(async tier => ({
+      tier,
+      ...await cardService.getCardBenefits(tier),
+    })),
+  );
 
   res.json({ tiers });
 }));

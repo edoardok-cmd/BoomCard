@@ -8,128 +8,6 @@ import { plansService, Plan, PayseraPaymentMethod } from '../services/plans.serv
 import { convertEURToBGN } from '../utils/helpers';
 import Button from '../components/common/Button/Button';
 
-// Fallback plans when API is unavailable
-const getFallbackPlans = (): Plan[] => [
-  {
-    id: 'lite-premium',
-    planCode: 'starter',
-    displayName: 'LITE PREMIUM',
-    displayNameBg: 'ЛАЙТ ПРЕМИУМ',
-    pricing: {
-      weekly: 4.99,
-      monthly: null,
-      yearly: 52,
-      currency: 'EUR',
-      yearlyDiscountPct: 0,
-    },
-    billingOptions: {
-      hasWeekly: true,
-      hasMonthly: false,
-      hasYearly: false,
-    },
-    cashbackRate: 20,
-    stickerBonus: 0,
-    features: [
-      'One week Premium access',
-      'Up to 20% discount',
-      'Exclusive Premium offers',
-      'Limited availability special offers',
-      'Access to exclusive Premium campaigns',
-      'VIP priority support',
-      'Cashback via the app',
-    ],
-    featuresBg: [
-      'Едноседмичен Premium достъп',
-      'До 20% отстъпка',
-      'Ексклузивни Premium оферти',
-      'Специални предложения с ограничена наличност',
-      'Достъп до затворени Premium кампании',
-      'VIP приоритетна поддръжка',
-      'Връщане на пари чрез приложението',
-    ],
-    cardType: 'light',
-    isFeatured: false,
-    badge: { text: 'Most Bought', textBg: 'Най-купуван' },
-  },
-  {
-    id: 'basic',
-    planCode: 'basic',
-    displayName: 'BASIC',
-    displayNameBg: 'ОСНОВЕН',
-    pricing: {
-      weekly: null,
-      monthly: 7.99,
-      yearly: 84,
-      currency: 'EUR',
-      yearlyDiscountPct: 12,
-    },
-    billingOptions: {
-      hasWeekly: false,
-      hasMonthly: true,
-      hasYearly: true,
-    },
-    cashbackRate: 10,
-    stickerBonus: 0,
-    features: [
-      'One month access',
-      'Up to 10% discount',
-      'Cashback via the app',
-      'Access to partner offers',
-      'Standard support',
-    ],
-    featuresBg: [
-      'Едномесечен достъп',
-      'До 10% отстъпка',
-      'Връщане на пари чрез приложението',
-      'Достъп до партньорски оферти',
-      'Стандартна поддръжка',
-    ],
-    cardType: 'silver',
-    isFeatured: false,
-    badge: null,
-  },
-  {
-    id: 'premium',
-    planCode: 'premium',
-    displayName: 'PREMIUM',
-    displayNameBg: 'ПРЕМИУМ',
-    pricing: {
-      weekly: null,
-      monthly: 12.99,
-      yearly: 136,
-      currency: 'EUR',
-      yearlyDiscountPct: 13,
-    },
-    billingOptions: {
-      hasWeekly: false,
-      hasMonthly: true,
-      hasYearly: true,
-    },
-    cashbackRate: 20,
-    stickerBonus: 0,
-    features: [
-      'One month Premium access',
-      'Up to 20% discount',
-      'Exclusive Premium offers',
-      'Limited availability special offers',
-      'Access to exclusive Premium campaigns',
-      'VIP priority support',
-      'Cashback via the app',
-    ],
-    featuresBg: [
-      'Едномесечен Premium достъп',
-      'До 20% отстъпка',
-      'Ексклузивни Premium оферти',
-      'Специални предложения с ограничена наличност',
-      'Достъп до затворени Premium кампании',
-      'VIP приоритетна поддръжка',
-      'Връщане на пари чрез приложението',
-    ],
-    cardType: 'black',
-    isFeatured: true,
-    badge: { text: 'Most Popular', textBg: 'Най-популярен' },
-  },
-];
 
 const PageContainer = styled.div`
   min-height: 100vh;
@@ -684,7 +562,10 @@ const CheckoutPage: React.FC = () => {
 
   const planId = searchParams.get('planId');
   const planCode = searchParams.get('planCode');
-  const billingPeriod = (searchParams.get('billing') || 'monthly') as 'weekly' | 'monthly' | 'yearly';
+  const rawBilling = searchParams.get('billing');
+  const billingPeriod = (['weekly', 'monthly', 'yearly'].includes(rawBilling || '')
+    ? rawBilling
+    : 'monthly') as 'weekly' | 'monthly' | 'yearly';
 
   const [plan, setPlan] = useState<Plan | null>(null);
   const [loading, setLoading] = useState(true);
@@ -696,6 +577,7 @@ const CheckoutPage: React.FC = () => {
   const [guestName, setGuestName] = useState('');
   const [guestEmail, setGuestEmail] = useState('');
   const [guestPhone, setGuestPhone] = useState('');
+  const [guestError, setGuestError] = useState<string | null>(null);
 
   // Payment method selection state
   const [paymentMethods, setPaymentMethods] = useState<PayseraPaymentMethod[]>([]);
@@ -728,21 +610,7 @@ const CheckoutPage: React.FC = () => {
         setPlan(fetchedPlan);
       } catch (err) {
         console.error('Error fetching plan:', err);
-        // Try to find plan in fallback data
-        const fallbackPlans = getFallbackPlans();
-        const identifier = (planId || planCode || '').toLowerCase();
-        const fallbackPlan = fallbackPlans.find(
-          p => p.id.toLowerCase() === identifier
-            || p.planCode.toLowerCase() === identifier
-        );
-
-        if (fallbackPlan) {
-          console.warn('API unavailable, using fallback plan data');
-          setPlan(fallbackPlan);
-          setResolvedPlanId(fallbackPlan.id);
-        } else {
-          setError(language === 'bg' ? 'Грешка при зареждане на плана' : 'Error loading plan');
-        }
+        setError(language === 'bg' ? 'Грешка при зареждане на плана' : 'Error loading plan');
       } finally {
         setLoading(false);
       }
@@ -837,7 +705,25 @@ const CheckoutPage: React.FC = () => {
 
   const handlePayment = async () => {
     if (!plan || !resolvedPlanId || !selectedMethod) return;
-    if (!isAuthenticated && (!guestEmail || !guestName || !guestPhone)) return;
+
+    if (!isAuthenticated) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      const phoneRegex = /^(\+359|0)[0-9\s-]{8,}$/;
+
+      if (!guestName.trim() || guestName.trim().length < 2) {
+        setGuestError(language === 'bg' ? 'Моля, въведете вашето пълно име' : 'Please enter your full name');
+        return;
+      }
+      if (!guestEmail || !emailRegex.test(guestEmail.trim())) {
+        setGuestError(language === 'bg' ? 'Моля, въведете валиден имейл адрес' : 'Please enter a valid email address');
+        return;
+      }
+      if (!guestPhone || !phoneRegex.test(guestPhone.trim())) {
+        setGuestError(language === 'bg' ? 'Моля, въведете валиден телефонен номер (+359XXXXXXXXX или 0XXXXXXXXX)' : 'Please enter a valid phone number (+359XXXXXXXXX or 0XXXXXXXXX)');
+        return;
+      }
+      setGuestError(null);
+    }
 
     setIsProcessing(true);
     try {
@@ -928,23 +814,28 @@ const CheckoutPage: React.FC = () => {
                       type="text"
                       placeholder={language === 'bg' ? 'Име и фамилия' : 'Full name'}
                       value={guestName}
-                      onChange={(e) => setGuestName(e.target.value)}
+                      onChange={(e) => { setGuestName(e.target.value); setGuestError(null); }}
                       required
                     />
                     <EmailInput
                       type="email"
                       placeholder={language === 'bg' ? 'Имейл адрес' : 'Email address'}
                       value={guestEmail}
-                      onChange={(e) => setGuestEmail(e.target.value)}
+                      onChange={(e) => { setGuestEmail(e.target.value); setGuestError(null); }}
                       required
                     />
                     <EmailInput
                       type="tel"
-                      placeholder={language === 'bg' ? 'Телефонен номер' : 'Phone number'}
+                      placeholder={language === 'bg' ? 'Телефонен номер (+359XXXXXXXXX)' : 'Phone number (+359XXXXXXXXX)'}
                       value={guestPhone}
-                      onChange={(e) => setGuestPhone(e.target.value)}
+                      onChange={(e) => { setGuestPhone(e.target.value); setGuestError(null); }}
                       required
                     />
+                    {guestError && (
+                      <div style={{ color: '#ef4444', fontSize: '0.875rem' }}>
+                        {guestError}
+                      </div>
+                    )}
                   </FormFieldsGrid>
                 </EmailSection>
               </>

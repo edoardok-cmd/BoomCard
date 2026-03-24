@@ -1,4 +1,27 @@
 import { prisma } from '../lib/prisma';
+import {
+  DEFAULT_AUTO_APPROVE_THRESHOLD,
+  DEFAULT_AUTO_REJECT_THRESHOLD,
+  DEFAULT_BASIC_TIER_BONUS,
+  DEFAULT_CASHBACK_PERCENT,
+  DEFAULT_DAILY_SUBMISSION_LIMIT,
+  DEFAULT_MAX_CASHBACK_PER_SCAN,
+  DEFAULT_MIN_BILL_AMOUNT,
+  DEFAULT_MONTHLY_SUBMISSION_LIMIT,
+  DEFAULT_PREMIUM_TIER_BONUS,
+  GPS_FAR_THRESHOLD_M,
+  GPS_WARNING_THRESHOLD_M,
+  OCR_LOW_CONFIDENCE_THRESHOLD,
+  OCR_MODERATE_CONFIDENCE_THRESHOLD,
+  AMOUNT_LARGE_MISMATCH_PCT,
+  AMOUNT_MODERATE_MISMATCH_PCT,
+  RAPID_SUBMISSION_WINDOW_MS,
+  RAPID_SUBMISSION_COUNT_THRESHOLD,
+  UNUSUAL_HOUR_START,
+  UNUSUAL_HOUR_END,
+  DEFAULT_TEMPLATE_FRAUD_POINTS,
+} from '../constants/receipt.constants';
+import { receiptTemplateService } from './receiptTemplate.service';
 
 /**
  * Fraud Detection Service
@@ -29,6 +52,8 @@ interface FraudCheckParams {
   venueLon?: number;
   ocrConfidence: number;
   merchantName?: string;
+  ocrRawText?: string;      // for template keyword matching
+  perceptualHash?: string;  // dHash hex for visual template comparison
   userId: string;
   venueId?: string;
   cardTier?: 'LIGHT' | 'BASIC' | 'PREMIUM';
@@ -72,11 +97,11 @@ class FraudDetectionService {
         const diff = Math.abs(params.ocrAmount - params.userAmount);
         const percentDiff = (diff / Math.max(params.ocrAmount, params.userAmount)) * 100;
 
-        if (percentDiff > 50) {
+        if (percentDiff > AMOUNT_LARGE_MISMATCH_PCT) {
           score += 30;
           reasons.push('LARGE_AMOUNT_MISMATCH');
           recommendations.push(`OCR detected ${params.ocrAmount} BGN but user entered ${params.userAmount} BGN`);
-        } else if (percentDiff > 20) {
+        } else if (percentDiff > AMOUNT_MODERATE_MISMATCH_PCT) {
           score += 15;
           reasons.push('AMOUNT_MISMATCH');
           recommendations.push('Moderate mismatch between OCR and user-entered amount');
@@ -92,23 +117,23 @@ class FraudDetectionService {
           params.venueLon
         );
 
-        if (distance > 500) {
+        if (distance > GPS_FAR_THRESHOLD_M) {
           score += 25;
           reasons.push('GPS_FAR_FROM_VENUE');
-          recommendations.push(`User is ${Math.round(distance)}m away from venue (max: 500m)`);
-        } else if (distance > 200) {
+          recommendations.push(`User is ${Math.round(distance)}m away from venue (max: ${GPS_FAR_THRESHOLD_M}m)`);
+        } else if (distance > GPS_WARNING_THRESHOLD_M) {
           score += 15;
           reasons.push('GPS_OUTSIDE_RANGE');
-          recommendations.push(`User is ${Math.round(distance)}m away from venue (recommended: <200m)`);
+          recommendations.push(`User is ${Math.round(distance)}m away from venue (recommended: <${GPS_WARNING_THRESHOLD_M}m)`);
         }
       }
 
       // 4. OCR confidence check (20 points)
-      if (params.ocrConfidence < 50) {
+      if (params.ocrConfidence < OCR_LOW_CONFIDENCE_THRESHOLD) {
         score += 20;
         reasons.push('LOW_OCR_CONFIDENCE');
-        recommendations.push(`OCR confidence is ${params.ocrConfidence.toFixed(0)}% (min: 50%)`);
-      } else if (params.ocrConfidence < 70) {
+        recommendations.push(`OCR confidence is ${params.ocrConfidence.toFixed(0)}% (min: ${OCR_LOW_CONFIDENCE_THRESHOLD}%)`);
+      } else if (params.ocrConfidence < OCR_MODERATE_CONFIDENCE_THRESHOLD) {
         score += 10;
         reasons.push('MODERATE_OCR_CONFIDENCE');
       }
@@ -117,8 +142,8 @@ class FraudDetectionService {
       const userStats = await this.getUserStats(params.userId);
       const config = params.venueId ? await this.getVenueConfig(params.venueId) : null;
 
-      const maxDaily = config?.maxScansPerDay || 10;
-      const maxMonthly = config?.maxScansPerMonth || 100;
+      const maxDaily = config?.maxScansPerDay || DEFAULT_DAILY_SUBMISSION_LIMIT;
+      const maxMonthly = config?.maxScansPerMonth || DEFAULT_MONTHLY_SUBMISSION_LIMIT;
 
       if (userStats.submissionsToday >= maxDaily) {
         score += 30;
@@ -155,7 +180,7 @@ class FraudDetectionService {
 
       // 8. Amount threshold check (10 points)
       if (params.userAmount) {
-        const minAmount = config?.minBillAmount || 10;
+        const minAmount = config?.minBillAmount || DEFAULT_MIN_BILL_AMOUNT;
         if (params.userAmount < minAmount) {
           score += 10;
           reasons.push('AMOUNT_TOO_LOW');
@@ -170,12 +195,46 @@ class FraudDetectionService {
         score = Math.max(0, score - 3);
       }
 
+      // 10. Venue receipt template comparison
+      // Only runs when: templateMatchEnabled is true, venueId is known, and a
+      // perceptual hash was computed for the submitted image.
+      // config is already in scope from check #5 — no additional DB query.
+      if (
+        params.venueId &&
+        params.perceptualHash &&
+        config?.templateMatchEnabled === true
+      ) {
+        const templateResult = await receiptTemplateService.compareAgainstTemplates({
+          venueId:       params.venueId,
+          perceptualHash: params.perceptualHash,
+          merchantName:  params.merchantName,
+          ocrRawText:    params.ocrRawText,
+          config: {
+            templateVisualWeight:      config.templateVisualWeight      ?? 0.5,
+            templateMerchantWeight:    config.templateMerchantWeight    ?? 0.3,
+            templateKeywordWeight:     config.templateKeywordWeight     ?? 0.2,
+            templateMinSimilarity:     config.templateMinSimilarity     ?? 0.6,
+            templateFraudPoints:       config.templateFraudPoints       ?? DEFAULT_TEMPLATE_FRAUD_POINTS,
+            templateMerchantThreshold: config.templateMerchantThreshold ?? 0.8,
+          },
+        });
+
+        if (templateResult.templatesChecked > 0 && !templateResult.matches) {
+          const fraudPoints = config.templateFraudPoints ?? DEFAULT_TEMPLATE_FRAUD_POINTS;
+          score += fraudPoints;
+          reasons.push('TEMPLATE_MISMATCH');
+          recommendations.push(
+            `Receipt does not match venue templates (best similarity: ${templateResult.bestSimilarity.toFixed(2)})`
+          );
+        }
+      }
+
       // Final score capping
       const finalScore = Math.min(100, Math.max(0, score));
 
       // Determine approval based on thresholds
-      const autoApproveThreshold = config?.autoApproveThreshold || 30;
-      const autoRejectThreshold = config?.autoRejectThreshold || 60;
+      const autoApproveThreshold = config?.autoApproveThreshold || DEFAULT_AUTO_APPROVE_THRESHOLD;
+      const autoRejectThreshold = config?.autoRejectThreshold || DEFAULT_AUTO_REJECT_THRESHOLD;
 
       const isApproved = finalScore <= autoApproveThreshold;
       const requiresManualReview = finalScore > autoApproveThreshold && finalScore <= autoRejectThreshold;
@@ -311,28 +370,29 @@ class FraudDetectionService {
     recommendation: string;
   }> {
     const now = new Date();
-    const fiveMinutesAgo = new Date(now.getTime() - 5 * 60 * 1000);
+    const windowStart = new Date(now.getTime() - RAPID_SUBMISSION_WINDOW_MS);
 
     // Check for rapid submissions
     const recentSubmissions = await prisma.receipt.count({
       where: {
         userId,
-        createdAt: { gte: fiveMinutesAgo },
+        createdAt: { gte: windowStart },
       },
     });
 
-    if (recentSubmissions >= 3) {
+    const windowMinutes = RAPID_SUBMISSION_WINDOW_MS / (60 * 1000);
+    if (recentSubmissions >= RAPID_SUBMISSION_COUNT_THRESHOLD) {
       return {
         isSuspicious: true,
         score: 15,
         reason: 'RAPID_SUBMISSIONS',
-        recommendation: `User submitted ${recentSubmissions} receipts in last 5 minutes`,
+        recommendation: `User submitted ${recentSubmissions} receipts in last ${windowMinutes} minutes`,
       };
     }
 
-    // Check for unusual hours (2-6 AM)
+    // Check for unusual hours
     const hour = now.getHours();
-    if (hour >= 2 && hour < 6) {
+    if (hour >= UNUSUAL_HOUR_START && hour < UNUSUAL_HOUR_END) {
       return {
         isSuspicious: true,
         score: 10,
@@ -378,19 +438,36 @@ class FraudDetectionService {
   }): Promise<{ cashbackAmount: number; cashbackPercent: number }> {
     const config = params.venueId ? await this.getVenueConfig(params.venueId) : null;
 
-    let basePercent = config?.cashbackPercent || 5.0;
+    let basePercent = config?.cashbackPercent || DEFAULT_CASHBACK_PERCENT;
 
     // Add card tier bonuses
     if (params.cardTier === 'BASIC') {
-      basePercent += config?.premiumBonus || 2.0;
+      basePercent += config?.premiumBonus || DEFAULT_BASIC_TIER_BONUS;
     } else if (params.cardTier === 'PREMIUM') {
-      basePercent += config?.platinumBonus || 5.0;
+      basePercent += config?.platinumBonus || DEFAULT_PREMIUM_TIER_BONUS;
+    }
+
+    // Enforce PartnerType.maxDiscountRate cap — look up the partner via venueId
+    // Note: venueId in receipts is stored as the Partner's id (the service uses partner lookup)
+    if (params.venueId) {
+      try {
+        const partner = await prisma.partner.findUnique({
+          where: { id: params.venueId },
+          select: { partnerType: { select: { maxDiscountRate: true } } },
+        });
+        const maxRate = partner?.partnerType?.maxDiscountRate;
+        if (maxRate !== undefined && maxRate !== null) {
+          basePercent = Math.min(basePercent, maxRate);
+        }
+      } catch {
+        // Non-fatal — proceed with uncapped rate
+      }
     }
 
     let cashbackAmount = (params.amount * basePercent) / 100;
 
     // Cap at max cashback per scan
-    const maxCashback = config?.maxCashbackPerScan || 50.0;
+    const maxCashback = config?.maxCashbackPerScan || DEFAULT_MAX_CASHBACK_PER_SCAN;
     cashbackAmount = Math.min(cashbackAmount, maxCashback);
 
     return {

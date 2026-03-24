@@ -32,6 +32,14 @@ export interface OfferDetails extends Offer {
     city?: string;
     logo?: string;
     rating?: number;
+    partnerTypeId?: string;
+    partnerType?: {
+      id: string;
+      name: string;
+      nameBg?: string;
+      color: string;
+      maxDiscountRate: number;
+    };
   };
 }
 
@@ -50,25 +58,33 @@ export interface OfferFilters {
   featured?: boolean;
   active?: boolean;
   partnerId?: string;
+  tags?: string[];
+  status?: string;
 }
 
 export interface CreateOfferData {
+  partnerId: string;
   title: string;
-  titleBg: string;
+  titleBg?: string;
   description: string;
-  descriptionBg: string;
-  category: string;
-  categoryBg: string;
-  discount: number;
-  originalPrice: number;
-  discountedPrice: number;
-  imageUrl?: string;
-  validFrom?: string;
-  validUntil?: string;
+  descriptionBg?: string;
+  type: 'DISCOUNT' | 'CASHBACK' | 'POINTS' | 'BUNDLE' | 'SEASONAL';
+  discountPercent?: number;
+  discountAmount?: number;
+  cashbackPercent?: number;
+  pointsMultiplier?: number;
+  minPurchase?: number;
+  maxDiscount?: number;
   termsConditions?: string;
   termsConditionsBg?: string;
-  maxRedemptions?: number;
-  venueId?: string;
+  image?: string;
+  tags?: string[];
+  startDate: string;
+  endDate: string;
+  usageLimit?: number;
+  isFeatured?: boolean;
+  featuredOrder?: number;
+  status?: 'DRAFT' | 'ACTIVE' | 'PAUSED' | 'EXPIRED' | 'CANCELLED';
 }
 
 class OffersService {
@@ -93,10 +109,11 @@ class OffersService {
       originalPrice,
       discountedPrice,
       discount,
-      // Add location and partnerName from partner data if available
+      // Map partner fields to top-level for offerToEntity compatibility
+      category: offer.category || offer.partner?.category || '',
+      categoryBg: offer.categoryBg || offer.partner?.category || '',
       location: offer.location || offer.partner?.city || 'Bulgaria',
       partnerName: offer.partnerName || offer.partner?.businessName || offer.partner?.businessNameBg || '',
-      // Add path if not provided
       path: offer.path || `/offers/${offer.id}`,
     };
   }
@@ -106,6 +123,14 @@ class OffersService {
    */
   private mapOffers(offers: any[]): OfferDetails[] {
     return offers.map(offer => this.mapOffer(offer));
+  }
+
+  /**
+   * Get all distinct tags used across active offers (for filter UI).
+   */
+  async getOfferTags(): Promise<string[]> {
+    const res = await apiService.get<{ success: boolean; data: string[] }>(`${this.baseUrl}/tags`);
+    return res.data;
   }
 
   /**
@@ -123,7 +148,8 @@ class OffersService {
    * Get a single offer by ID
    */
   async getOfferById(id: string): Promise<OfferDetails> {
-    const offer = await apiService.get<any>(`${this.baseUrl}/${id}`);
+    const response = await apiService.get<any>(`${this.baseUrl}/${id}`);
+    const offer = response?.data || response;
     return this.mapOffer(offer);
   }
 
@@ -169,8 +195,8 @@ class OffersService {
    * Get featured offers
    */
   async getFeaturedOffers(limit: number = 10): Promise<OfferDetails[]> {
-    const offers = await apiService.get<any[]>(`${this.baseUrl}/featured`, { limit });
-    return this.mapOffers(offers);
+    const response = await apiService.get<{ success: boolean; data: any[] }>(`${this.baseUrl}/featured`, { limit });
+    return this.mapOffers(response.data);
   }
 
   /**
@@ -207,7 +233,8 @@ class OffersService {
    * Create a new offer (for partners)
    */
   async createOffer(offer: CreateOfferData): Promise<OfferDetails> {
-    return apiService.post<OfferDetails>(this.baseUrl, offer);
+    const res = await apiService.post<{ success: boolean; data: OfferDetails }>(this.baseUrl, offer);
+    return res.data ?? (res as any);
   }
 
   /**
@@ -225,10 +252,45 @@ class OffersService {
   }
 
   /**
+   * Bulk delete offers (admin only)
+   */
+  async bulkDeleteOffers(ids: string[]): Promise<{ deleted: number }> {
+    return apiService.delete<{ deleted: number }>(this.baseUrl, { data: { ids } });
+  }
+
+  /**
    * Activate/deactivate offer
    */
   async toggleOfferStatus(id: string, isActive: boolean): Promise<OfferDetails> {
     return apiService.put<OfferDetails>(`${this.baseUrl}/${id}/status`, { isActive });
+  }
+
+  /**
+   * Upload an image for an offer.
+   * Sends as multipart/form-data; Axios auto-sets Content-Type boundary.
+   */
+  async uploadOfferImage(offerId: string, file: File): Promise<string> {
+    const formData = new FormData();
+    formData.append('image', file);
+    const response = await apiService.post<{ success: boolean; data: { imageUrl: string } }>(
+      `${this.baseUrl}/${offerId}/image`,
+      formData,
+      { headers: { 'Content-Type': undefined } },
+    );
+    return response.data.imageUrl;
+  }
+
+  /**
+   * Activate offer (redeem and get code)
+   */
+  async activateOffer(
+    id: string,
+    location?: { latitude: number; longitude: number },
+  ): Promise<{ success: boolean; code?: string; expiresAt?: string; message?: string }> {
+    return apiService.post<{ success: boolean; code?: string; expiresAt?: string; message?: string }>(
+      `${this.baseUrl}/${id}/activate`,
+      location ? { latitude: location.latitude, longitude: location.longitude } : {}
+    );
   }
 
   /**

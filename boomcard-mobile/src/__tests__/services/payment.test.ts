@@ -61,7 +61,7 @@ describe('PaymentService', () => {
       });
 
       expect(apiClient.post).toHaveBeenCalledWith(
-        '/payments/create',
+        '/api/payments/create',
         expect.objectContaining({
           amount: 50.0,
           currency: 'BGN',
@@ -89,7 +89,7 @@ describe('PaymentService', () => {
       await paymentService.initiatePayment({ amount: 10.0 });
 
       expect(apiClient.post).toHaveBeenCalledWith(
-        '/payments/create',
+        '/api/payments/create',
         expect.objectContaining({
           currency: 'BGN',
         })
@@ -173,7 +173,7 @@ describe('PaymentService', () => {
 
       const status = await paymentService.checkPaymentStatus('ORDER-001');
 
-      expect(apiClient.get).toHaveBeenCalledWith('/payments/ORDER-001/status');
+      expect(apiClient.get).toHaveBeenCalledWith('/api/payments/ORDER-001/status');
       expect(status.status).toBe('completed');
     });
   });
@@ -192,7 +192,7 @@ describe('PaymentService', () => {
 
       await paymentService.getPaymentHistory(20, 0);
 
-      expect(apiClient.get).toHaveBeenCalledWith('/payments/history', {
+      expect(apiClient.get).toHaveBeenCalledWith('/api/payments/history', {
         params: { limit: 20, offset: 0 },
       });
     });
@@ -214,7 +214,7 @@ describe('PaymentService', () => {
 
       const result = await paymentService.getPaymentMethods();
 
-      expect(apiClient.get).toHaveBeenCalledWith('/payments/methods');
+      expect(apiClient.get).toHaveBeenCalledWith('/api/payments/methods');
       expect(result).toBeTruthy();
     });
   });

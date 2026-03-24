@@ -14,7 +14,6 @@ import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
-  TextInput,
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
@@ -28,53 +27,12 @@ import { useTheme } from '../../contexts/ThemeContext';
 import { plansService, Plan } from '../../services/plans.service';
 import { paymentService } from '../../services/payment.service';
 import apiClient from '../../api/client';
+import { APP_CONFIG } from '../../constants/config';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CARD_WIDTH = Math.min(SCREEN_WIDTH - 48, 340);
 const CARD_HEIGHT = 200;
 
-// Same fallback plans used in PlanSelectionScreen
-const getFallbackPlanById = (planId: string): Plan | null => {
-  const plans: Record<string, Plan> = {
-    'lite-premium': {
-      id: 'lite-premium',
-      planCode: 'LITE_PREMIUM',
-      displayName: 'LITE PREMIUM',
-      displayNameBg: 'ЛАЙТ ПРЕМИУМ',
-      pricing: { weekly: 4.99, monthly: null, yearly: 52, currency: 'EUR', yearlyDiscountPct: 20 },
-      billingOptions: { hasWeekly: true, hasMonthly: false, hasYearly: false },
-      cashbackRate: 20, stickerBonus: 0,
-      features: ['One week Premium access', 'Up to 20% discount', 'Exclusive Premium offers', 'Limited availability special offers', 'Access to exclusive Premium campaigns', 'VIP priority support', 'Cashback via the app'],
-      featuresBg: ['Едноседмичен Premium достъп', 'До 20% отстъпка', 'Ексклузивни Premium оферти', 'Специални предложения с ограничена наличност', 'Достъп до затворени Premium кампании', 'VIP приоритетна поддръжка', 'Връщане на пари чрез приложението'],
-      cardType: 'light', isFeatured: false, badge: { text: 'Most Bought', textBg: 'Най-купуван' },
-    },
-    'basic': {
-      id: 'basic',
-      planCode: 'BASIC',
-      displayName: 'BASIC',
-      displayNameBg: 'ОСНОВЕН',
-      pricing: { weekly: null, monthly: 7.99, yearly: 84, currency: 'EUR', yearlyDiscountPct: 20 },
-      billingOptions: { hasWeekly: false, hasMonthly: true, hasYearly: true },
-      cashbackRate: 10, stickerBonus: 0,
-      features: ['One month access', 'Up to 10% discount', 'Cashback via the app', 'Access to partner offers', 'Standard support'],
-      featuresBg: ['Едномесечен достъп', 'До 10% отстъпка', 'Връщане на пари чрез приложението', 'Достъп до партньорски оферти', 'Стандартна поддръжка'],
-      cardType: 'silver', isFeatured: false, badge: null,
-    },
-    'premium': {
-      id: 'premium',
-      planCode: 'PREMIUM',
-      displayName: 'PREMIUM',
-      displayNameBg: 'ПРЕМИУМ',
-      pricing: { weekly: null, monthly: 12.99, yearly: 136, currency: 'EUR', yearlyDiscountPct: 20 },
-      billingOptions: { hasWeekly: false, hasMonthly: true, hasYearly: true },
-      cashbackRate: 20, stickerBonus: 0,
-      features: ['One month Premium access', 'Up to 20% discount', 'Exclusive Premium offers', 'Limited availability special offers', 'Access to exclusive Premium campaigns', 'VIP priority support', 'Cashback via the app'],
-      featuresBg: ['Едномесечен Premium достъп', 'До 20% отстъпка', 'Ексклузивни Premium оферти', 'Специални предложения с ограничена наличност', 'Достъп до затворени Premium кампании', 'VIP приоритетна поддръжка', 'Връщане на пари чрез приложението'],
-      cardType: 'black', isFeatured: true, badge: { text: 'Most Popular', textBg: 'Най-популярен' },
-    },
-  };
-  return plans[planId] || null;
-};
 
 // Credit card visual colors — brand elements, stay constant regardless of theme
 const CARD_COLORS = {
@@ -114,12 +72,6 @@ const CheckoutScreen = ({ navigation, route }: any) => {
   const [loading, setLoading] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
 
-  // Card form state (display only — actual payment handled by Paysera)
-  const [cardName, setCardName] = useState('');
-  const [cardNumber, setCardNumber] = useState('');
-  const [expiry, setExpiry] = useState('');
-  const [cvv, setCvv] = useState('');
-
   const styles = getStyles(theme, isDarkMode);
 
   useEffect(() => {
@@ -130,10 +82,10 @@ const CheckoutScreen = ({ navigation, route }: any) => {
         if (response.data?.success && response.data.data) {
           setPlan(response.data.data);
         } else {
-          setPlan(getFallbackPlanById(planId));
+          setPlan(null);
         }
       } catch {
-        setPlan(getFallbackPlanById(planId));
+        setPlan(null);
       } finally {
         setLoading(false);
       }
@@ -141,7 +93,7 @@ const CheckoutScreen = ({ navigation, route }: any) => {
     fetchPlan();
   }, [planId]);
 
-  const convertEURToBGN = (eur: number) => +(eur * 1.9558).toFixed(2);
+  const convertEURToBGN = (eur: number) => +(eur * APP_CONFIG.EUR_EXCHANGE_RATE).toFixed(2);
 
   const getPrice = (): number | null => {
     if (!plan) return null;
@@ -160,20 +112,6 @@ const CheckoutScreen = ({ navigation, route }: any) => {
     if (billingPeriod === 'weekly') return language === 'bg' ? '/седмица' : '/week';
     if (billingPeriod === 'monthly') return language === 'bg' ? '/месец' : '/month';
     return language === 'bg' ? '/година' : '/year';
-  };
-
-  const formatCardNumber = (value: string) => {
-    const cleaned = value.replace(/\D/g, '');
-    const groups = cleaned.match(/.{1,4}/g);
-    return groups ? groups.join(' ').substr(0, 19) : '';
-  };
-
-  const formatExpiry = (value: string) => {
-    const cleaned = value.replace(/\D/g, '');
-    if (cleaned.length >= 2) {
-      return `${cleaned.slice(0, 2)}/${cleaned.slice(2, 4)}`;
-    }
-    return cleaned;
   };
 
   const handlePay = async () => {
@@ -270,68 +208,23 @@ const CheckoutScreen = ({ navigation, route }: any) => {
           </View>
         )}
 
-        {/* Payment Details Section */}
+        {/* Payment Section */}
         <View style={styles.paymentSection}>
           <View style={styles.sectionTitleRow}>
             <Ionicons name="card" size={20} color={theme.colors.onSurface} />
             <Text style={styles.sectionTitle}>
-              {language === 'bg' ? 'Данни за плащане' : 'Payment Details'}
+              {language === 'bg' ? 'Плащане' : 'Payment'}
             </Text>
           </View>
 
-          <Text style={styles.inputLabel}>
-            {language === 'bg' ? 'Име на картодържателя' : 'Cardholder Name'}
-          </Text>
-          <TextInput
-            style={styles.input}
-            placeholder={language === 'bg' ? 'Иван Иванов' : 'John Doe'}
-            placeholderTextColor={theme.colors.onSurfaceVariant}
-            value={cardName}
-            onChangeText={setCardName}
-            autoCapitalize="words"
-          />
-
-          <Text style={styles.inputLabel}>
-            {language === 'bg' ? 'Номер на картата' : 'Card Number'}
-          </Text>
-          <TextInput
-            style={styles.input}
-            placeholder="4242 4242 4242 4242"
-            placeholderTextColor={theme.colors.onSurfaceVariant}
-            value={cardNumber}
-            onChangeText={(text) => setCardNumber(formatCardNumber(text))}
-            keyboardType="numeric"
-            maxLength={19}
-          />
-
-          <View style={styles.cardInputRow}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.inputLabel}>
-                {language === 'bg' ? 'Валидност' : 'Expiry Date'}
-              </Text>
-              <TextInput
-                style={styles.input}
-                placeholder="MM/YY"
-                placeholderTextColor={theme.colors.onSurfaceVariant}
-                value={expiry}
-                onChangeText={(text) => setExpiry(formatExpiry(text))}
-                keyboardType="numeric"
-                maxLength={5}
-              />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.inputLabel}>CVV</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="123"
-                placeholderTextColor={theme.colors.onSurfaceVariant}
-                value={cvv}
-                onChangeText={(text) => setCvv(text.replace(/\D/g, '').substr(0, 4))}
-                keyboardType="numeric"
-                maxLength={4}
-                secureTextEntry
-              />
-            </View>
+          {/* Paysera redirect notice */}
+          <View style={styles.payseraNotice}>
+            <Ionicons name="shield-checkmark" size={20} color="#10b981" />
+            <Text style={styles.payseraNoticeText}>
+              {language === 'bg'
+                ? 'Ще бъдете пренасочени към Paysera за сигурно завършване на плащането.'
+                : 'You will be redirected to Paysera to securely complete your payment.'}
+            </Text>
           </View>
 
           {/* Pay Button */}
@@ -548,25 +441,20 @@ const getStyles = (theme: any, isDarkMode: boolean) => StyleSheet.create({
     fontWeight: '600',
     color: theme.colors.onSurface,
   },
-  inputLabel: {
-    fontSize: 13,
-    fontWeight: '500',
-    color: theme.colors.onSurfaceVariant,
-    marginBottom: 6,
-  },
-  input: {
-    backgroundColor: theme.colors.background,
-    borderRadius: 8,
+  payseraNotice: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    backgroundColor: isDarkMode ? 'rgba(16,185,129,0.1)' : 'rgba(16,185,129,0.08)',
+    borderRadius: 10,
     padding: 14,
-    fontSize: 16,
-    color: theme.colors.onSurface,
-    borderWidth: 1,
-    borderColor: theme.colors.surfaceVariant,
     marginBottom: 16,
   },
-  cardInputRow: {
-    flexDirection: 'row',
-    gap: 12,
+  payseraNoticeText: {
+    flex: 1,
+    fontSize: 14,
+    color: isDarkMode ? '#6EE7B7' : '#065F46',
+    lineHeight: 20,
   },
 
   // Pay Button

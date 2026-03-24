@@ -29,12 +29,16 @@ import cardsRouter from './routes/cards.routes';
 import notificationsRouter from './routes/notifications.routes';
 import plansRouter from './routes/plans.routes';
 import partnersRouter from './routes/partners.routes';
+import partnerTypesRouter from './routes/partnerTypes.routes';
+import bulkImportRouter from './routes/bulkImport.routes';
+import adminCashbackRouter from './routes/adminCashback.routes';
 
 // Import WebSocket handler
 import { initializeWebSocket } from './websocket/server';
 
 // Import middleware
 import { errorHandler } from './middleware/error.middleware';
+import { csrfProtection } from './middleware/security.middleware';
 import { logger } from './utils/logger';
 import { prisma } from './lib/prisma';
 import SentryConfig from './config/sentry.config';
@@ -71,7 +75,9 @@ const WS_PORT = process.env.WS_PORT || 4000;
 app.set('trust proxy', 1);
 
 // Security middleware
-app.use(helmet());
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+}));
 app.use(cors({
   origin: corsOrigins,
   credentials: true,
@@ -87,14 +93,20 @@ if (process.env.NODE_ENV === 'production' && process.env.SENTRY_DSN) {
   app.use(SentryConfig.tracingHandler());
 }
 
-// Rate limiting - more lenient for development
+// Rate limiting — 100 req/min in production, skipped in development
 const limiter = rateLimit({
   windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '60000'), // 1 minute window
-  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '1000'), // 1000 requests per minute in dev
+  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '100'), // 100 req/min per IP
   message: 'Too many requests from this IP, please try again later.',
-  skip: (req) => process.env.NODE_ENV === 'development', // Skip rate limiting in development
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: (req) => process.env.NODE_ENV === 'development',
 });
 app.use('/api/', limiter);
+
+// CSRF protection: reject cross-origin state-mutating requests
+// Webhooks excluded because they come from external servers (no Origin header or known 3rd-party origin)
+app.use('/api/', csrfProtection(['/webhooks']));
 
 // Request metrics tracking (for /api/health/metrics)
 app.use(requestTracker);
@@ -152,6 +164,9 @@ app.use('/api/bookings', bookingsRouter);
 app.use('/api/venues', venuesRouter);
 app.use('/api/sidebar', sidebarRouter);
 app.use('/api/partners', partnersRouter);
+app.use('/api/admin/cashback', adminCashbackRouter);
+app.use('/api/admin/partner-types', partnerTypesRouter);
+app.use('/api/admin/bulk-import', bulkImportRouter);
 app.use('/api/offers', offersRouter);
 app.use('/api/integrations', integrationsRouter);
 app.use('/api/reviews', reviewsRouter);

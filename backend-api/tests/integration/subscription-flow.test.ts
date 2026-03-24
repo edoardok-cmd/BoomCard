@@ -40,9 +40,9 @@ describe('Subscription Flow (F02, F03)', () => {
       expect(res.body.plans.length).toBe(3);
 
       const planNames = res.body.plans.map((p: any) => p.plan);
-      expect(planNames).toContain('STANDARD');
+      expect(planNames).toContain('LIGHT');
+      expect(planNames).toContain('BASIC');
       expect(planNames).toContain('PREMIUM');
-      expect(planNames).toContain('PLATINUM');
     });
 
     it('should require authentication', async () => {
@@ -54,14 +54,14 @@ describe('Subscription Flow (F02, F03)', () => {
   // ─── Current Subscription ─────────────────────────────────────
 
   describe('GET /api/subscriptions/current', () => {
-    it('should return STANDARD for user without subscription', async () => {
+    it('should return LIGHT for user without subscription', async () => {
       const { accessToken, user } = await createTestUser();
       createdUserIds.push(user.id);
 
       const res = await authRequest(accessToken).get('/api/subscriptions/current');
 
       expect(res.status).toBe(200);
-      expect(res.body.plan).toBe('STANDARD');
+      expect(res.body.plan).toBe('LIGHT');
       expect(res.body.status).toBe('ACTIVE');
       expect(res.body).toHaveProperty('benefits');
     });
@@ -70,12 +70,12 @@ describe('Subscription Flow (F02, F03)', () => {
       const { accessToken, user } = await createTestUser();
       createdUserIds.push(user.id);
 
-      await createTestSubscription(user.id, 'PREMIUM');
+      await createTestSubscription(user.id, 'BASIC');
 
       const res = await authRequest(accessToken).get('/api/subscriptions/current');
 
       expect(res.status).toBe(200);
-      expect(res.body.plan).toBe('PREMIUM');
+      expect(res.body.plan).toBe('BASIC');
       expect(res.body.status).toBe('ACTIVE');
       expect(res.body).toHaveProperty('benefits');
       expect(res.body).toHaveProperty('currentPeriodEnd');
@@ -110,7 +110,7 @@ describe('Subscription Flow (F02, F03)', () => {
 
       const res = await authRequest(accessToken)
         .post('/api/subscriptions/create')
-        .send({ plan: 'PLATINUM' });
+        .send({ plan: 'BASIC' });
 
       expect(res.status).toBe(400);
       expect(res.body.error).toContain('already have an active subscription');
@@ -180,7 +180,7 @@ describe('Subscription Flow (F02, F03)', () => {
 
       const res = await request(app)
         .post(`/api/subscriptions/${sub.id}/update-plan`)
-        .send({ plan: 'PLATINUM' });
+        .send({ plan: 'BASIC' });
 
       expect(res.status).toBe(401);
     });
