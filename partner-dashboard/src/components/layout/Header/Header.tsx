@@ -14,49 +14,6 @@ import { useAuth } from '../../../contexts/AuthContext';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { useTheme, ThemeMode } from '../../../contexts/ThemeContext';
 
-const FavoritesLink = styled(Link)`
-  position: relative;
-  align-items: center;
-  justify-content: center;
-  width: 2.5rem;
-  height: 2.5rem;
-  border-radius: 50%;
-  color: #374151;
-  transition: all 200ms;
-
-  [data-theme="dark"] & {
-    color: #d1d5db;
-  }
-
-  &:not(.hidden) {
-    display: flex;
-  }
-
-  &:hover {
-    background: #f3f4f6;
-    color: #111827;
-
-    [data-theme="dark"] & {
-      background: #374151;
-      color: #f9fafb;
-    }
-  }
-
-  svg {
-    width: 1.25rem;
-    height: 1.25rem;
-  }
-
-  @media (max-width: 640px) {
-    width: 2.25rem;
-    height: 2.25rem;
-
-    svg {
-      width: 1.125rem;
-      height: 1.125rem;
-    }
-  }
-`;
 
 const MobileFavoritesLink = styled(Link)`
   position: relative;
@@ -105,23 +62,6 @@ const MobileFavoritesBadge = styled.span`
   margin-left: auto;
 `;
 
-const FavoritesBadge = styled(motion.span)`
-  position: absolute;
-  top: 0;
-  right: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 1.25rem;
-  height: 1.25rem;
-  padding: 0 0.25rem;
-  background: #ef4444;
-  color: white;
-  border-radius: 9999px;
-  font-size: 0.6875rem;
-  font-weight: 700;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-`;
 
 const UserMenuContainer = styled.div`
   position: relative;
@@ -287,6 +227,37 @@ const UserMenuItem = styled(Link)`
     [data-theme="dark"] & {
       color: #9ca3af;
     }
+  }
+`;
+
+const UserMenuNotificationItem = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.375rem 0.25rem 0.375rem 1rem;
+  position: relative;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #374151;
+  cursor: pointer;
+  transition: all 200ms;
+
+  [data-theme="dark"] & {
+    color: #d1d5db;
+  }
+
+  &:hover {
+    background: #f9fafb;
+    color: #111827;
+
+    [data-theme="dark"] & {
+      background: #374151;
+      color: #f9fafb;
+    }
+  }
+
+  span {
+    flex: 1;
   }
 `;
 
@@ -933,75 +904,6 @@ export const Header: React.FC<HeaderProps> = ({
               </SearchButton>
             </Tooltip>
 
-            {/* Nearby Offers - Desktop only */}
-            <Tooltip content={language === 'bg' ? 'Близки оферти' : 'Nearby Offers'} position="bottom">
-              <FavoritesLink to="/nearby" aria-label="Nearby Offers" className="hidden nav:flex">
-                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"
-                  />
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"
-                  />
-                </svg>
-              </FavoritesLink>
-            </Tooltip>
-
-            {/* Favorites - Desktop only, only for authenticated users */}
-            {isAuthenticated ? (
-              <Tooltip content={language === 'bg' ? 'Любими' : 'Favorites'} position="bottom">
-                <FavoritesLink to="/favorites" aria-label="Favorites" className="hidden nav:flex">
-                  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"
-                    />
-                  </svg>
-                  <AnimatePresence>
-                    {favoritesCount > 0 && (
-                      <FavoritesBadge
-                        initial={{ scale: 0 }}
-                        animate={{ scale: 1 }}
-                        exit={{ scale: 0 }}
-                        transition={{ type: 'spring', stiffness: 500, damping: 30 }}
-                      >
-                        {favoritesCount > 99 ? '99+' : favoritesCount}
-                      </FavoritesBadge>
-                    )}
-                  </AnimatePresence>
-                </FavoritesLink>
-              </Tooltip>
-            ) : (
-              <Tooltip content={language === 'bg' ? 'Влезте, за да запазите любими' : 'Sign in to save favorites'} position="bottom">
-                <FavoritesLink to="/login" aria-label="Sign in to save favorites" className="hidden nav:flex" style={{ opacity: 0.5 }}>
-                  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"
-                    />
-                  </svg>
-                </FavoritesLink>
-              </Tooltip>
-            )}
-
-            {/* Notification Center - Hidden on small screens */}
-            {isAuthenticated && (
-              <div className="hidden sm:flex">
-                <Tooltip content={language === 'bg' ? 'Известия' : 'Notifications'} position="bottom">
-                  <NotificationCenter />
-                </Tooltip>
-              </div>
-            )}
 
             {/* Theme Switcher - Desktop only */}
             <ThemeMenuContainer ref={themeMenuRef} className="hidden nav:flex">
@@ -1285,6 +1187,27 @@ export const Header: React.FC<HeaderProps> = ({
                             </UserMenuItem>
 
                             <UserMenuItem
+                              to="/nearby"
+                              onClick={() => setUserMenuOpen(false)}
+                            >
+                              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"
+                                />
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"
+                                />
+                              </svg>
+                              {t('header.nearby') || 'Nearby'}
+                            </UserMenuItem>
+
+                            <UserMenuItem
                               to="/favorites"
                               onClick={() => setUserMenuOpen(false)}
                             >
@@ -1298,6 +1221,11 @@ export const Header: React.FC<HeaderProps> = ({
                               </svg>
                               {t('header.favorites')}
                             </UserMenuItem>
+
+                            <UserMenuNotificationItem>
+                              <NotificationCenter />
+                              <span>{language === 'bg' ? 'Известия' : 'Notifications'}</span>
+                            </UserMenuNotificationItem>
 
                             <UserMenuItem
                               to="/rewards"

@@ -27,21 +27,8 @@ export const placesCategories: CategoryDefinition[] = [
       { id: 'restaurants/curated', name: { en: 'BOOM Restaurants', bg: 'BOOM Ресторанти' } },
       { id: 'restaurants/fast-food', name: { en: 'Fast Food', bg: 'Бързо хранене' } },
       { id: 'restaurants/traditional', name: { en: 'Traditional Cuisine', bg: 'Традиционна кухня' } },
-      { id: 'restaurants/mehana', name: { en: 'Mehana (Tavern)', bg: 'Механа' } },
       { id: 'restaurants/vegetarian-vegan', name: { en: 'Vegetarian & Vegan', bg: 'Вегетарианска и веган' } },
-      {
-        id: 'restaurants/foreign',
-        name: { en: 'Foreign Cuisine', bg: 'Чуждестранна кухня' },
-        children: [
-          { id: 'restaurants/foreign/fine-dining', name: { en: 'Fine Dining', bg: 'Фино хранене' } },
-          { id: 'restaurants/foreign/seafood', name: { en: 'Seafood', bg: 'Морска храна' } },
-          { id: 'restaurants/foreign/pizza-italian', name: { en: 'Pizza & Italian', bg: 'Пица и италианска кухня' } },
-          { id: 'restaurants/foreign/asian', name: { en: 'Asian Cuisine', bg: 'Азиатска кухня' } },
-          { id: 'restaurants/foreign/bbq-grill', name: { en: 'BBQ & Grill', bg: 'Барбекю и скара' } },
-          { id: 'restaurants/foreign/steakhouse', name: { en: 'Steakhouse', bg: 'Стейкхаус' } },
-          { id: 'restaurants/foreign/sushi', name: { en: 'Sushi', bg: 'Суши' } },
-        ],
-      },
+      { id: 'restaurants/asian', name: { en: 'Asian Cuisine', bg: 'Азиатска кухня' } },
     ],
   },
   {

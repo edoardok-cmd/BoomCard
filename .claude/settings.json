@@ -7,7 +7,11 @@
       "Bash(export PATH=\"/Users/administrator/.nvm/versions/node/v24.14.0/bin:$PATH\")",
       "Bash(source \"$NVM_DIR/nvm.sh\")",
       "Bash(source ~/.nvm/nvm.sh)",
-      "Bash(/Users/administrator/.nvm/versions/node/v24.14.0/bin/eas build:list --platform android --limit 2 --non-interactive)"
+      "Bash(/Users/administrator/.nvm/versions/node/v24.14.0/bin/eas build:list --platform android --limit 2 --non-interactive)",
+      "Bash(node -e \":*)",
+      "Bash(DATABASE_URL=\"postgresql://neondb_owner:npg_3f1FtdpRDOTH@ep-old-salad-agie89z3-pooler.c-2.eu-central-1.aws.neon.tech/boomcard?sslmode=require\" node -e \":*)",
+      "Bash(PGPASSWORD=\"npg_3f1FtdpRDOTH\" psql \"postgresql://neondb_owner@ep-old-salad-agie89z3-pooler.c-2.eu-central-1.aws.neon.tech/boomcard?sslmode=require\" -c \"UPDATE \"\"Partner\"\" SET \"\"pendingChanges\"\" = ''{\"\"description\"\": \"\"Обновено описание от партньора\"\", \"\"phone\"\": \"\"+359 888 000 111\"\"}''::jsonb, \"\"pendingChangesAt\"\" = NOW\\(\\) WHERE id = ''d1ffb582-64c9-413c-a955-6fb8fdafae54'' RETURNING \"\"businessName\"\", \"\"pendingChangesAt\"\";\")",
+      "Bash(PGPASSWORD=\"npg_3f1FtdpRDOTH\" psql \"postgresql://neondb_owner@ep-old-salad-agie89z3-pooler.c-2.eu-central-1.aws.neon.tech/boomcard?sslmode=require\" -c \"SELECT \"\"businessName\"\", \"\"pendingChanges\"\", \"\"pendingChangesAt\"\" FROM \"\"Partner\"\" WHERE id = ''d1ffb582-64c9-413c-a955-6fb8fdafae54'';\")"
     ]
   }
 }

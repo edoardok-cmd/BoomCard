@@ -55,14 +55,10 @@ const ExpandIcon = styled.div`
 `;
 
 const FilterGrid = styled.div`
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  display: flex;
+  flex-direction: column;
   gap: 1.5rem;
   margin-top: 1.5rem;
-
-  @media (max-width: 768px) {
-    grid-template-columns: 1fr;
-  }
 `;
 
 const FilterGroup = styled.div`
@@ -146,6 +142,17 @@ const CheckboxLabel = styled.label<{ $checked: boolean }>`
   }
 `;
 
+const CategoryList = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+`;
+
+const CategoryItem = styled.div`
+  display: flex;
+  flex-direction: column;
+`;
+
 const SubcategoryGroup = styled.div`
   display: flex;
   flex-wrap: wrap;
@@ -179,19 +186,6 @@ const NestedChildrenGroup = styled.div`
   }
 `;
 
-const SubcategoryParentLabel = styled.span`
-  font-size: 0.6875rem;
-  font-weight: 600;
-  color: #6b7280;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  width: 100%;
-  margin-bottom: 0.125rem;
-
-  [data-theme="dark"] & {
-    color: #9ca3af;
-  }
-`;
 
 const SubcategoryLabel = styled.label<{ $checked: boolean }>`
   display: flex;
@@ -478,63 +472,57 @@ const BoomPlacesFilters: React.FC<BoomPlacesFiltersProps> = ({
                   <LayoutGrid />
                   {language === 'bg' ? 'Категория' : 'Category'}
                 </Label>
-                <CheckboxGroup>
+                <CategoryList>
                   {placesCategories.map(cat => (
-                    <CheckboxLabel
-                      key={cat.id}
-                      $checked={filters.categories.includes(cat.id)}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={filters.categories.includes(cat.id)}
-                        onChange={() => handleCategoryToggle(cat.id)}
-                      />
-                      {language === 'bg' ? cat.name.bg : cat.name.en}
-                    </CheckboxLabel>
-                  ))}
-                </CheckboxGroup>
-                {/* Subcategories for selected parents */}
-                {placesCategories
-                  .filter(cat => filters.categories.includes(cat.id))
-                  .map(cat => (
-                    <SubcategoryGroup key={`sub-${cat.id}`}>
-                      <SubcategoryParentLabel>
+                    <CategoryItem key={cat.id}>
+                      <CheckboxLabel
+                        $checked={filters.categories.includes(cat.id)}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={filters.categories.includes(cat.id)}
+                          onChange={() => handleCategoryToggle(cat.id)}
+                        />
                         {language === 'bg' ? cat.name.bg : cat.name.en}
-                      </SubcategoryParentLabel>
-                      {cat.subcategories.map(sub => (
-                        <React.Fragment key={sub.id}>
-                          <SubcategoryLabel
-                            $checked={filters.categories.includes(sub.id)}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={filters.categories.includes(sub.id)}
-                              onChange={() => handleSubcategoryToggle(sub.id, cat.id)}
-                            />
-                            {language === 'bg' ? sub.name.bg : sub.name.en}
-                          </SubcategoryLabel>
-                          {/* Nested children for subcategories like Foreign Cuisine */}
-                          {sub.children && filters.categories.includes(sub.id) && (
-                            <NestedChildrenGroup>
-                              {sub.children.map(child => (
-                                <SubcategoryLabel
-                                  key={child.id}
-                                  $checked={filters.categories.includes(child.id)}
-                                >
-                                  <input
-                                    type="checkbox"
-                                    checked={filters.categories.includes(child.id)}
-                                    onChange={() => handleChildToggle(child.id, sub.id, cat.id)}
-                                  />
-                                  {language === 'bg' ? child.name.bg : child.name.en}
-                                </SubcategoryLabel>
-                              ))}
-                            </NestedChildrenGroup>
-                          )}
-                        </React.Fragment>
-                      ))}
-                    </SubcategoryGroup>
+                      </CheckboxLabel>
+                      {filters.categories.includes(cat.id) && (
+                        <SubcategoryGroup>
+                          {cat.subcategories.map(sub => (
+                            <React.Fragment key={sub.id}>
+                              <SubcategoryLabel
+                                $checked={filters.categories.includes(sub.id)}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={filters.categories.includes(sub.id)}
+                                  onChange={() => handleSubcategoryToggle(sub.id, cat.id)}
+                                />
+                                {language === 'bg' ? sub.name.bg : sub.name.en}
+                              </SubcategoryLabel>
+                              {sub.children && filters.categories.includes(sub.id) && (
+                                <NestedChildrenGroup>
+                                  {sub.children.map(child => (
+                                    <SubcategoryLabel
+                                      key={child.id}
+                                      $checked={filters.categories.includes(child.id)}
+                                    >
+                                      <input
+                                        type="checkbox"
+                                        checked={filters.categories.includes(child.id)}
+                                        onChange={() => handleChildToggle(child.id, sub.id, cat.id)}
+                                      />
+                                      {language === 'bg' ? child.name.bg : child.name.en}
+                                    </SubcategoryLabel>
+                                  ))}
+                                </NestedChildrenGroup>
+                              )}
+                            </React.Fragment>
+                          ))}
+                        </SubcategoryGroup>
+                      )}
+                    </CategoryItem>
                   ))}
+                </CategoryList>
               </CategoryFilterGroup>
 
               {/* Location */}

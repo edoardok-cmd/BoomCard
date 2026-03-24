@@ -90,6 +90,40 @@ const ContentSection = styled.div`
   padding: 3rem 0;
 `;
 
+const ContentLayout = styled.div`
+  display: grid;
+  grid-template-columns: 300px 1fr;
+  gap: 2rem;
+  align-items: start;
+
+  @media (max-width: 1024px) {
+    grid-template-columns: 260px 1fr;
+  }
+
+  @media (max-width: 768px) {
+    grid-template-columns: 1fr;
+  }
+`;
+
+const SidebarFilters = styled.aside`
+  position: sticky;
+  top: 1.5rem;
+  max-height: calc(100vh - 3rem);
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #e5e7eb transparent;
+
+  &::-webkit-scrollbar {
+    width: 4px;
+  }
+  &::-webkit-scrollbar-thumb {
+    background: #e5e7eb;
+    border-radius: 2px;
+  }
+`;
+
+const MainContent = styled.div``;
+
 const OffersGrid = styled.div`
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
@@ -201,37 +235,74 @@ export const GenericPage: React.FC<GenericPageProps> = ({
 
       <ContentSection>
         <Container>
-          {filters}
-          {children}
+          {filters ? (
+            <ContentLayout>
+              <SidebarFilters>{filters}</SidebarFilters>
+              <MainContent>
+                {children}
 
-          {entities && entities.length > 0 && (
-            <OffersGrid>
-              {entities.map((entity, index) => (
-                <motion.div
-                  key={entity.id}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.4, delay: index * 0.1 }}
-                >
-                  <OfferCard entity={entity} />
-                </motion.div>
-              ))}
-            </OffersGrid>
+                {entities && entities.length > 0 && (
+                  <OffersGrid>
+                    {entities.map((entity, index) => (
+                      <motion.div
+                        key={entity.id}
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.4, delay: index * 0.1 }}
+                      >
+                        <OfferCard entity={entity} />
+                      </motion.div>
+                    ))}
+                  </OffersGrid>
+                )}
+
+                {(showEmptyState || (entities && entities.length === 0)) && (
+                  <EmptyState>
+                    <EmptyIcon>{emptyIcon}</EmptyIcon>
+                    <EmptyTitle>{emptyTitle}</EmptyTitle>
+                    <EmptyText>{emptyText}</EmptyText>
+                    <Link to="/search">
+                      <Button variant="primary">
+                        {language === 'bg' ? 'Разгледай Всички Оферти' : 'Browse All Offers'}
+                      </Button>
+                    </Link>
+                  </EmptyState>
+                )}
+              </MainContent>
+            </ContentLayout>
+          ) : (
+            <>
+              {children}
+
+              {entities && entities.length > 0 && (
+                <OffersGrid>
+                  {entities.map((entity, index) => (
+                    <motion.div
+                      key={entity.id}
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.4, delay: index * 0.1 }}
+                    >
+                      <OfferCard entity={entity} />
+                    </motion.div>
+                  ))}
+                </OffersGrid>
+              )}
+
+              {(showEmptyState || (entities && entities.length === 0)) && (
+                <EmptyState>
+                  <EmptyIcon>{emptyIcon}</EmptyIcon>
+                  <EmptyTitle>{emptyTitle}</EmptyTitle>
+                  <EmptyText>{emptyText}</EmptyText>
+                  <Link to="/search">
+                    <Button variant="primary">
+                      {language === 'bg' ? 'Разгледай Всички Оферти' : 'Browse All Offers'}
+                    </Button>
+                  </Link>
+                </EmptyState>
+              )}
+            </>
           )}
-
-          {(showEmptyState || (entities && entities.length === 0)) && (
-            <EmptyState>
-              <EmptyIcon>{emptyIcon}</EmptyIcon>
-              <EmptyTitle>{emptyTitle}</EmptyTitle>
-              <EmptyText>{emptyText}</EmptyText>
-              <Link to="/search">
-                <Button variant="primary">
-                  {language === 'bg' ? 'Разгледай Всички Оферти' : 'Browse All Offers'}
-                </Button>
-              </Link>
-            </EmptyState>
-          )}
-
         </Container>
       </ContentSection>
 
