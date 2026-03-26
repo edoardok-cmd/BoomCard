@@ -1631,7 +1631,7 @@ const PartnersPage: React.FC = () => {
         </Container>
       </LocationsSection>
 
-      {/* ── Partner Tiers ── */}
+      {/* ── Partner Tiers ── (hidden)
       <TiersSection id="tiers">
         <Container>
           <SectionTitle>
@@ -1741,6 +1741,7 @@ const PartnersPage: React.FC = () => {
           </TiersGrid>
         </Container>
       </TiersSection>
+      ── */}
 
       <CTASection id="application">
         <Container>
