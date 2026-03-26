@@ -1303,6 +1303,12 @@ const PartnersPage: React.FC = () => {
       textBg: 'Задавате ясни отстъпки и се подготвяте за старт. Нашият екип помага на всяка стъпка.'
     },
     {
+      titleEn: 'Get approved',
+      titleBg: 'Получавате одобрение',
+      textEn: 'Our team reviews your profile and approves it before you go live. You\'ll be notified once you\'re ready to welcome customers.',
+      textBg: 'Нашият екип преглежда профила ви и го одобрява преди да станете видими. Ще бъдете уведомени, когато сте готови да приемате клиенти.'
+    },
+    {
       titleEn: 'Welcome customers',
       titleBg: 'Приемате клиенти',
       textEn: 'Customers scan a QR code and you get real visits. Simple and transparent.',
