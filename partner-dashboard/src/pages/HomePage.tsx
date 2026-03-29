@@ -1187,45 +1187,7 @@ const HomePage: React.FC = () => {
         </div>
       </section>
 
-      {/* Top Discounts - Exclusive Offers Section */}
-      <section id="top-discounts" className="section" style={{ background: 'var(--color-background-secondary)' }}>
-        <div className="container-custom">
-          <div className="text-center mb-12">
-            <SectionTitle className="text-4xl md:text-5xl font-bold mb-4" style={{ color: 'var(--color-text-primary)' }}>
-              {language === 'bg' ? 'Топ Отстъпки' : 'Top Discounts'}
-            </SectionTitle>
-            <BodyText className="text-xl max-w-2xl mx-auto" style={{ color: 'var(--color-text-secondary)' }}>
-              {language === 'bg'
-                ? 'Ексклузивни оферти от нашите най-добри партньори'
-                : 'Exclusive offers from our best partners'}
-            </BodyText>
-          </div>
-
-          <TopOffersGrid>
-            {(topEntities.length > 0 ? topEntities : fallbackEntities).slice(0, 6).map((entity: Entity, index: number) => (
-              <motion.div
-                key={entity.id}
-                initial={{ opacity: 0, y: 30 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ duration: 0.5, delay: index * 0.1 }}
-              >
-                <OfferCard entity={entity} />
-              </motion.div>
-            ))}
-          </TopOffersGrid>
-
-          <div className="text-center mt-10">
-            <Link to="/offers" style={{ textDecoration: 'none' }}>
-              <Button variant="secondary" size="large">
-                {language === 'bg' ? 'Виж всички оферти' : 'View all offers'}
-              </Button>
-            </Link>
-          </div>
-        </div>
-      </section>
-
-      {/* Divider between Top Discounts and Subscription Plans */}
+      {/* Divider */}
       <SectionDivider />
 
       {/* Subscription Plans Section */}
