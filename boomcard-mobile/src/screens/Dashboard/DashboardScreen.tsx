@@ -146,9 +146,10 @@ const DashboardScreen = ({ navigation }: any) => {
     if (subscription?.benefits?.cashbackRate) {
       return Math.round(subscription.benefits.cashbackRate * 100);
     }
-    if (subscription?.plan === 'PREMIUM') return 20;
-    if (subscription?.plan === 'BASIC') return 10;
-    return 20; // LIGHT plan default
+    if (subscription?.plan === 'PREMIUM') return 24; // max per cashback matrix (30% partner → 24% user)
+    if (subscription?.plan === 'BASIC') return 10;   // hard cap per cashback matrix
+    if (subscription?.plan === 'LIGHT') return 24;   // Premium Weekly: same max as Premium Monthly
+    return 5; // unauthenticated / no plan fallback
   };
 
   const s = getStyles(theme, isDarkMode);

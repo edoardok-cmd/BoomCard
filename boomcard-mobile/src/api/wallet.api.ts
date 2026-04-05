@@ -63,4 +63,16 @@ export const walletApi = {
     }
     return response.data;
   },
+
+  /**
+   * Request cashback payout.
+   * Backend validates plan threshold before initiating.
+   */
+  async requestPayout() {
+    const response = await apiClient.post('/api/wallet/payout', {});
+    if (!response.success) {
+      throw new Error(response.error || 'Failed to request payout');
+    }
+    return response.data;
+  },
 };

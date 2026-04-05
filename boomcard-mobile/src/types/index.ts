@@ -158,6 +158,7 @@ export interface StickerScan {
 }
 
 export enum StickerScanStatus {
+  SESSION_ACTIVE = 'SESSION_ACTIVE',
   PENDING = 'PENDING',
   VALIDATING = 'VALIDATING',
   APPROVED = 'APPROVED',
@@ -165,12 +166,21 @@ export enum StickerScanStatus {
   MANUAL_REVIEW = 'MANUAL_REVIEW',
 }
 
-export interface StickerScanRequest {
+export interface StickerSessionRequest {
   stickerId: string;
+  cardId?: string;
+  latitude: number;
+  longitude: number;
+}
+
+export interface StickerScanRequest {
+  stickerId?: string;
   cardId?: string;
   billAmount: number;
   latitude: number;
   longitude: number;
+  /** Two-step flow: complete an existing session created via POST /api/stickers/session */
+  sessionId?: string;
 }
 
 // ==================== Venue Types ====================
@@ -369,6 +379,8 @@ export interface WalletTransaction {
   stripePaymentIntentId?: string;
   receiptId?: string;
   stickerScanId?: string;
+  /** ISO timestamp — only present on CASHBACK_CREDIT transactions (60-day cascading expiry) */
+  cashbackExpiresAt?: string;
   createdAt: string;
 }
 
@@ -589,6 +601,8 @@ export enum NotificationType {
   RECEIPT_APPROVED = 'RECEIPT_APPROVED',
   RECEIPT_REJECTED = 'RECEIPT_REJECTED',
   CASHBACK_CREDITED = 'CASHBACK_CREDITED',
+  CASHBACK_EXPIRY = 'CASHBACK_EXPIRY',
+  THRESHOLD_REACHED = 'THRESHOLD_REACHED',
   OFFER_AVAILABLE = 'OFFER_AVAILABLE',
   STICKER_SCAN_APPROVED = 'STICKER_SCAN_APPROVED',
   STICKER_SCAN_REJECTED = 'STICKER_SCAN_REJECTED',

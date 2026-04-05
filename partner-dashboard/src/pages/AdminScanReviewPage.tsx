@@ -49,7 +49,7 @@ interface StickerScan {
   };
   card: {
     id: string;
-    cardType: 'STANDARD' | 'PREMIUM' | 'PLATINUM';
+    cardType: 'BASIC' | 'LIGHT' | 'PREMIUM';
     lastFourDigits: string;
   };
 }

@@ -27,6 +27,8 @@ import { useTheme } from '../../contexts/ThemeContext';
 import StickersApi from '../../api/stickers.api';
 import { OCRService } from '../../services/ocr.service';
 import { crossPlatformAlert } from '../../utils/alert';
+import notificationService from '../../services/notification.service';
+import { APP_CONFIG } from '../../constants/config';
 
 type Stage = 'photo' | 'ocr' | 'confirm' | 'submitting' | 'success';
 
@@ -36,10 +38,13 @@ export default function UploadReceiptScreen() {
   const { t } = useTranslation();
   const { theme, isDarkMode } = useTheme();
 
-  const { stickerId, latitude, longitude } = route.params as {
+  const { stickerId, sessionId, latitude, longitude, reminderNotificationId } = route.params as {
     stickerId: string;
+    /** Session ID from POST /api/stickers/session — registered at QR scan time */
+    sessionId?: string;
     latitude: number;
     longitude: number;
+    reminderNotificationId?: string | null;
   };
 
   const [stage, setStage] = useState<Stage>('photo');
@@ -107,9 +112,11 @@ export default function UploadReceiptScreen() {
     setStage('submitting');
 
     try {
-      // Register the scan at the venue (GPS + amount validated server-side)
+      // Complete the session with the bill amount.
+      // If a sessionId exists (two-step flow), the server updates the existing session record.
+      // Otherwise falls back to the legacy single-call flow for backward compatibility.
       const scanRes = await StickersApi.scanSticker({
-        stickerId,
+        ...(sessionId ? { sessionId } : { stickerId }),
         billAmount,
         latitude,
         longitude,
@@ -127,6 +134,11 @@ export default function UploadReceiptScreen() {
       // Upload the receipt photo linked to this scan
       if (imageUri) {
         await StickersApi.uploadReceiptForScan(scanId, imageUri);
+      }
+
+      // Cancel the 30-minute reminder now that the receipt has been submitted
+      if (reminderNotificationId) {
+        notificationService.cancelNotification(reminderNotificationId);
       }
 
       setStage('success');
@@ -205,7 +217,7 @@ export default function UploadReceiptScreen() {
               <Text style={s.venueName}>{venueName}</Text>
               {cashbackPercent > 0 && (
                 <View style={s.cashbackBadge}>
-                  <Text style={s.cashbackBadgeText}>{cashbackPercent}% cashback</Text>
+                  <Text style={s.cashbackBadgeText}>{t('stickers.maxCashbackBadge', { rate: cashbackPercent })}</Text>
                 </View>
               )}
             </View>
@@ -216,6 +228,10 @@ export default function UploadReceiptScreen() {
           <Ionicons name="receipt-outline" size={40} color={theme.colors.primary} style={{ marginBottom: 12 }} />
           <Text style={s.instructionTitle}>{t('stickers.photoInstructionTitle', 'Take a clear photo of your receipt')}</Text>
           <Text style={s.instructionText}>{t('stickers.photoInstruction', 'Make sure the total amount is visible. We\'ll read it automatically.')}</Text>
+          <View style={s.timeWindowRow}>
+            <Ionicons name="time-outline" size={14} color={theme.colors.onSurfaceVariant} />
+            <Text style={s.timeWindowText}>{t('stickers.receiptTimeWindow', 'Take a photo before leaving. Submissions after 1 hour are flagged for review; deadline is 6am the following morning.')}</Text>
+          </View>
         </View>
 
         <TouchableOpacity style={s.primaryButton} activeOpacity={0.85} onPress={pickFromCamera}>
@@ -286,7 +302,7 @@ export default function UploadReceiptScreen() {
             </View>
             {ocrConfidence > 0 && (
               <Text style={s.ocrConfidence}>
-                {ocrConfidence >= 0.8
+                {ocrConfidence >= APP_CONFIG.OCR.CONFIDENCE_THRESHOLD / 100
                   ? `✓ ${t('stickers.ocrDetected', 'Detected automatically')}`
                   : `⚠ ${t('stickers.ocrLowConfidence', 'Low confidence — please verify')}`}
               </Text>
@@ -301,7 +317,7 @@ export default function UploadReceiptScreen() {
           >
             <Ionicons name="trending-up" size={18} color="#16a34a" />
             <Text style={s.cashbackPreviewText}>
-              {t('stickers.estimatedCashback', 'Estimated cashback')}: {((billAmount * cashbackPercent) / 100).toFixed(2)} BGN
+              {t('stickers.estimatedCashback', 'Max. possible cashback')}: {((billAmount * cashbackPercent) / 100).toFixed(2)} BGN
             </Text>
           </LinearGradient>
         )}
@@ -368,6 +384,21 @@ const getStyles = (theme: any, isDarkMode: boolean) => StyleSheet.create({
     color: theme.colors.onSurfaceVariant,
     textAlign: 'center',
     lineHeight: 20,
+  },
+  timeWindowRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'flex-start' as const,
+    gap: 6,
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
+  },
+  timeWindowText: {
+    flex: 1,
+    fontSize: 11,
+    color: theme.colors.onSurfaceVariant,
+    lineHeight: 16,
   },
 
   // Receipt preview (confirm stage)

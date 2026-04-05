@@ -67,6 +67,16 @@ const CheckoutScreen = ({ navigation, route }: any) => {
 
   const planId: string = route?.params?.planId;
   const billingPeriod: 'weekly' | 'monthly' | 'yearly' = route?.params?.billing || 'monthly';
+  // Passed from UpgradePlansScreen when this is an upgrade flow (light/silver/black)
+  const currentCardType: string | undefined = route?.params?.currentCardType;
+
+  // Mirrors the credit logic in UpgradePlansScreen
+  const getUpgradeCreditPercent = (targetCardType: string): number | null => {
+    if (!currentCardType) return null;
+    if (currentCardType === 'light' && targetCardType === 'black') return 100;
+    if (currentCardType === 'silver' && targetCardType === 'black') return 60;
+    return null;
+  };
 
   const [plan, setPlan] = useState<Plan | null>(null);
   const [loading, setLoading] = useState(true);
@@ -144,6 +154,7 @@ const CheckoutScreen = ({ navigation, route }: any) => {
 
   const priceEUR = getPrice();
   const priceBGN = priceEUR ? convertEURToBGN(priceEUR) : 0;
+  const upgradeCreditPct = plan ? getUpgradeCreditPercent(plan.cardType) : null;
   const colors = plan ? CARD_COLORS[plan.cardType] : CARD_COLORS.light;
   const planName = plan ? (language === 'bg' ? plan.displayNameBg : plan.displayName) : '';
   const features = plan ? (language === 'bg' ? plan.featuresBg : plan.features) : [];
@@ -309,8 +320,19 @@ const CheckoutScreen = ({ navigation, route }: any) => {
             <Text style={styles.summaryLabel}>
               {language === 'bg' ? 'Кешбек процент' : 'Cashback Rate'}
             </Text>
-            <Text style={styles.summaryValue}>{plan.cashbackRate}%</Text>
+            <Text style={styles.summaryValue}>
+              {language === 'bg' ? 'до ' : 'up to '}{plan.cashbackRate < 1 ? Math.round(plan.cashbackRate * 100) : plan.cashbackRate}%
+            </Text>
           </View>
+
+          {upgradeCreditPct !== null && (
+            <View style={styles.creditNotice}>
+              <Ionicons name="gift-outline" size={15} color="#16a34a" />
+              <Text style={styles.creditNoticeText}>
+                {t('subscription.upgradeCredit', { percent: upgradeCreditPct })}
+              </Text>
+            </View>
+          )}
 
           <View style={styles.divider} />
 
@@ -612,6 +634,26 @@ const getStyles = (theme: any, isDarkMode: boolean) => StyleSheet.create({
     fontSize: 11,
     color: theme.colors.onSurfaceVariant,
     marginTop: 1,
+  },
+
+  // Upgrade credit notice
+  creditNotice: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 8,
+    backgroundColor: 'rgba(34, 197, 94, 0.08)',
+    borderRadius: 10,
+    padding: 12,
+    marginTop: 4,
+    marginBottom: 4,
+    borderWidth: 1,
+    borderColor: 'rgba(34, 197, 94, 0.25)',
+  },
+  creditNoticeText: {
+    flex: 1,
+    fontSize: 13,
+    color: '#16a34a',
+    fontWeight: '500' as const,
   },
 
   // Features List

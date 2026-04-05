@@ -10,14 +10,32 @@ import { API_CONFIG } from '../constants/config';
 import type {
   StickerScan,
   StickerScanRequest,
+  StickerSessionRequest,
   ApiResponse,
   PaginatedResponse,
 } from '../types';
 
 export class StickersApi {
   /**
-   * Initiate sticker scan with GPS validation
-   * CRITICAL: GPS coordinates are required for venue proximity validation
+   * Register a BOOM session at QR-scan time (Step 1 of 2).
+   * Per spec §6 Step 3: records time, venue, device, GPS immediately.
+   * Returns { sessionId } to pass into scanSticker() when the bill is known.
+   */
+  static async createSession(
+    data: StickerSessionRequest
+  ): Promise<ApiResponse<{ sessionId: string; venueId: string }>> {
+    const result = await apiClient.post(`${API_CONFIG.ENDPOINTS.STICKERS.BASE}/session`, data);
+    if (result.success && result.data) {
+      const body = result.data as any;
+      return { success: true, data: body?.data ?? body };
+    }
+    return result;
+  }
+
+  /**
+   * Complete a scan by submitting the bill amount (Step 2 of 2).
+   * Pass sessionId from createSession() for the spec-compliant two-step flow.
+   * Without sessionId falls back to the legacy single-call flow.
    *
    * Note: the backend wraps the StickerScan in { success, data: <scan>, message }.
    * The apiClient also wraps, so we unwrap one level here to expose the scan directly.

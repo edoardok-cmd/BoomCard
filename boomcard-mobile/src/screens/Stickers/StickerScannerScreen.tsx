@@ -14,6 +14,8 @@ import * as Location from 'expo-location';
 import { useNavigation, useIsFocused } from '@react-navigation/native';
 import { crossPlatformAlert } from '../../utils/alert';
 import { useTranslation } from 'react-i18next';
+import notificationService from '../../services/notification.service';
+import StickersApi from '../../api/stickers.api';
 
 export default function StickerScannerScreen() {
   const navigation = useNavigation();
@@ -104,20 +106,51 @@ export default function StickerScannerScreen() {
       return;
     }
 
-    // Get GPS location immediately — passed to Step 2 so it stays consistent
+    // Get GPS location immediately — used for session registration and passed to Step 2
     setLocating(true);
     try {
       const location = await Location.getCurrentPositionAsync({
         accuracy: Location.Accuracy.Balanced,
       });
 
-      (navigation as any).navigate('UploadReceipt', {
+      // Register the BOOM session with the server at scan time (spec §6 Step 3).
+      // This records the exact time, venue, device, and GPS coordinates immediately.
+      // The session is completed with the bill amount when the receipt is submitted.
+      const sessionRes = await StickersApi.createSession({
         stickerId,
         latitude: location.coords.latitude,
         longitude: location.coords.longitude,
       });
+
+      if (!sessionRes.success || !sessionRes.data?.sessionId) {
+        crossPlatformAlert(t('common.error'), sessionRes.error || t('stickers.scanFailed', 'Failed to scan sticker'));
+        setScanned(false);
+        return;
+      }
+
+      const sessionId = sessionRes.data.sessionId;
+
+      // Schedule a 30-minute local reminder per spec §6:
+      // "30 minutes after activating the table, the app must send a push message
+      //  reminding the subscriber not to forget to scan the receipt."
+      const reminderTitle = t('stickers.scanReminderTitle');
+      const reminderBody = t('stickers.scanReminderBody');
+      const notificationId = await notificationService.scheduleLocalNotification(
+        reminderTitle,
+        reminderBody,
+        { type: 'RECEIPT_REMINDER', stickerId, sessionId },
+        30 * 60
+      );
+
+      (navigation as any).navigate('UploadReceipt', {
+        stickerId,
+        sessionId,
+        latitude: location.coords.latitude,
+        longitude: location.coords.longitude,
+        reminderNotificationId: notificationId,
+      });
     } catch {
-      crossPlatformAlert(t('common.error'), t('stickers.locationError', 'Could not get your location. Please enable GPS and try again.'));
+      crossPlatformAlert(t('common.error'), t('stickers.locationError'));
       setScanned(false);
     } finally {
       setLocating(false);

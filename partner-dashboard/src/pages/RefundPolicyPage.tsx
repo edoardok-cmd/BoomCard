@@ -135,7 +135,7 @@ const RefundPolicyPage: React.FC = () => {
 
               <h2>3. Автоматично Подновяване</h2>
               <ul>
-                <li>Абонаментите PREMIUM и PLATINUM се подновяват автоматично в края на всеки период на фактуриране (седмичен, месечен или годишен).</li>
+                <li>Абонаментите Basic, Premium Седмичен и Premium Месечен се подновяват автоматично в края на всеки период на фактуриране (седмичен, месечен или годишен).</li>
                 <li>Ще получите имейл напомняне 7 дни преди датата на подновяване.</li>
                 <li>За да предотвратите следващо таксуване, отменете абонамента преди датата на подновяване от настройките на профила си.</li>
                 <li>BoomCard си запазва правото да променя цените с 30-дневно предизвестие по имейл. Ако не сте съгласни с промяната, можете да отмените абонамента преди влизането в сила на новата цена.</li>
@@ -156,9 +156,9 @@ const RefundPolicyPage: React.FC = () => {
               <h2>5. Отказ След 14-Дневния Период</h2>
               <ul>
                 <li>Можете да отмените абонамента си по всяко време от настройките на профила или чрез <a href="mailto:support@boomcard.bg">support@boomcard.bg</a>.</li>
-                <li>Достъпът ви до Premium/Platinum функциите ще продължи до края на текущия период на фактуриране.</li>
+                <li>Достъпът ви до Premium функциите ще продължи до края на текущия период на фактуриране.</li>
                 <li>Не се предоставя пропорционално възстановяване на средства за оставащия период.</li>
-                <li>След изтичане на периода, акаунтът ви ще бъде преминат към безплатния STANDARD план.</li>
+                <li>След изтичане на периода абонаментът приключва и достъпът до платените функции се прекратява.</li>
               </ul>
 
               <h2>6. Процес на Възстановяване на Средства</h2>
@@ -173,11 +173,16 @@ const RefundPolicyPage: React.FC = () => {
               </p>
 
               <h2>7. Средства в Портфейла</h2>
+              <p>
+                Кешбек средствата се изплащат автоматично по регистрираната карта, след като балансът достигне минималния праг
+                за съответния план (€10 за Premium Седмичен, €15 за Premium Месечен, €20 за Basic).
+                Изплащането се обработва в рамките на 3–5 работни дни.
+              </p>
               <table>
                 <thead>
                   <tr>
                     <th>Тип средства</th>
-                    <th>Възстановяване</th>
+                    <th>Изплащане / Възстановяване при закриване на акаунт</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -187,7 +192,7 @@ const RefundPolicyPage: React.FC = () => {
                   </tr>
                   <tr>
                     <td>Кешбек средства</td>
-                    <td>Не подлежат на възстановяване при закриване на акаунт</td>
+                    <td>Изплащат се по карта при достигане на минималния праг; натрупан, но неизплатен кешбек при закриване на акаунт не подлежа на възстановяване</td>
                   </tr>
                   <tr>
                     <td>Бонус средства / Промоции</td>
@@ -197,8 +202,8 @@ const RefundPolicyPage: React.FC = () => {
               </table>
               <ul>
                 <li>При закриване на акаунт, имате 30 дни да изтеглите заредените средства.</li>
-                <li>След 30-дневния период, неизтеглените средства се считат за загубени.</li>
-                <li>Кешбек и бонус средствата не могат да бъдат превърнати в налични пари и не подлежат на изтегляне.</li>
+                <li>След 30-дневния период, неизтеглените заредени средства се считат за загубени.</li>
+                <li>Кешбек средствата се изплащат по регистрираната карта при достигане на минималния праг — те не могат да бъдат изплатени в брой или по банков път извън тази процедура.</li>
               </ul>
 
               <h2>8. Спорове и Жалби</h2>
@@ -275,7 +280,7 @@ const RefundPolicyPage: React.FC = () => {
 
               <h2>3. Auto-Renewal</h2>
               <ul>
-                <li>PREMIUM and PLATINUM subscriptions auto-renew at the end of each billing period (weekly, monthly, or annual).</li>
+                <li>Basic, Premium Weekly, and Premium Monthly subscriptions auto-renew at the end of each billing period (weekly, monthly, or annual).</li>
                 <li>You will receive an email reminder 7 days before the renewal date.</li>
                 <li>To prevent the next charge, cancel your subscription before the renewal date from your profile settings.</li>
                 <li>BoomCard reserves the right to change prices with 30 days' email notice. If you disagree with the change, you may cancel before the new price takes effect.</li>
@@ -296,9 +301,9 @@ const RefundPolicyPage: React.FC = () => {
               <h2>5. Cancellation After the 14-Day Period</h2>
               <ul>
                 <li>You may cancel your subscription at any time from your profile settings or via <a href="mailto:support@boomcard.bg">support@boomcard.bg</a>.</li>
-                <li>Your access to Premium/Platinum features will continue until the end of the current billing period.</li>
+                <li>Your access to Premium features will continue until the end of the current billing period.</li>
                 <li>No prorated refund is provided for the remaining period.</li>
-                <li>After the period expires, your account will revert to the free STANDARD plan.</li>
+                <li>After the period expires, the subscription ends and access to paid features is discontinued.</li>
               </ul>
 
               <h2>6. Refund Process</h2>
@@ -313,11 +318,16 @@ const RefundPolicyPage: React.FC = () => {
               </p>
 
               <h2>7. Wallet Funds</h2>
+              <p>
+                Cashback is paid out automatically to your registered card once your balance reaches the minimum threshold
+                for your plan (€10 for Premium Weekly, €15 for Premium Monthly, €20 for Basic).
+                Payouts are processed within 3–5 business days.
+              </p>
               <table>
                 <thead>
                   <tr>
                     <th>Fund Type</th>
-                    <th>Refundability</th>
+                    <th>Payout / Refundability upon Account Closure</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -327,7 +337,7 @@ const RefundPolicyPage: React.FC = () => {
                   </tr>
                   <tr>
                     <td>Cashback funds</td>
-                    <td>Non-refundable upon account closure</td>
+                    <td>Paid out to registered card when minimum threshold is reached; accumulated but unpaid cashback at account closure is non-refundable</td>
                   </tr>
                   <tr>
                     <td>Bonus funds / Promotions</td>
@@ -337,8 +347,8 @@ const RefundPolicyPage: React.FC = () => {
               </table>
               <ul>
                 <li>Upon account closure, you have 30 days to withdraw top-up funds.</li>
-                <li>After the 30-day period, unclaimed funds are forfeited.</li>
-                <li>Cashback and bonus funds cannot be converted to cash and are not withdrawable.</li>
+                <li>After the 30-day period, unclaimed top-up funds are forfeited.</li>
+                <li>Cashback is paid to your registered card upon reaching the minimum threshold — it cannot be paid out in cash or via bank transfer outside of this process.</li>
               </ul>
 
               <h2>8. Disputes & Complaints</h2>

@@ -70,7 +70,7 @@ const getCardAccent = (cardType: string, isDarkMode: boolean) => {
 };
 
 export default function MyCardScreen() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { theme, isDarkMode } = useTheme();
   const navigation = useNavigation<any>();
   const [loading, setLoading] = useState(true);
@@ -319,7 +319,7 @@ export default function MyCardScreen() {
                   {/* Card Footer */}
                   <View style={styles.cardFooter}>
                     <Text style={[styles.planName, { color: accent.text }]}>
-                      {cardTypeUpper === 'LIGHT' ? 'LITE PREMIUM' : cardTypeUpper === 'BASIC' ? 'BASIC' : 'PREMIUM'}
+                      {cardTypeUpper === 'LIGHT' ? 'PREMIUM WEEKLY' : cardTypeUpper === 'BASIC' ? 'BASIC' : 'PREMIUM'}
                     </Text>
                     <Text style={[styles.memberSince, isLight && { color: 'rgba(0,0,0,0.5)' }]}>
                       {t('card.validFrom')} {card.validFrom || card.issuedAt
@@ -407,14 +407,20 @@ export default function MyCardScreen() {
             <Text style={styles.sectionTitle}>{t('card.yourBenefits')}</Text>
           </View>
           <View style={styles.benefitsList}>
-            {card.benefits?.features?.map((feature: string, index: number) => (
-              <View key={index} style={styles.benefitRow}>
-                <View style={styles.benefitCheck}>
-                  <Ionicons name="checkmark" size={14} color="#22c55e" />
+            {(() => {
+              const isBg = i18n.language === 'bg';
+              const bgFeatures: string[] = card.benefits?.featuresBg ?? [];
+              const enFeatures: string[] = card.benefits?.features ?? [];
+              const displayFeatures = isBg && bgFeatures.length > 0 ? bgFeatures : enFeatures;
+              return displayFeatures.map((feature: string, index: number) => (
+                <View key={index} style={styles.benefitRow}>
+                  <View style={styles.benefitCheck}>
+                    <Ionicons name="checkmark" size={14} color="#22c55e" />
+                  </View>
+                  <Text style={styles.benefitText}>{isBg ? feature : translateBenefit(feature)}</Text>
                 </View>
-                <Text style={styles.benefitText}>{translateBenefit(feature)}</Text>
-              </View>
-            ))}
+              ));
+            })()}
           </View>
         </View>
 

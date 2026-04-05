@@ -51,16 +51,49 @@ export const UNUSUAL_HOUR_START = 2;
 /** Hour (0-23, exclusive) when the suspicious-time window ends. */
 export const UNUSUAL_HOUR_END = 6;
 
-// ── Cashback Defaults (used when no venue config exists) ───────────────────────
-export const DEFAULT_CASHBACK_PERCENT = 5.0;
-export const DEFAULT_BASIC_TIER_BONUS = 2.0;
-export const DEFAULT_PREMIUM_TIER_BONUS = 5.0;
+// ── Cashback Matrix (partner discount % → user cashback %) ────────────────────
+// Source of truth: BOOM_Card_Master_Functionality.docx — Section 2
+// Basic plan has a hard 10% cap regardless of partner discount.
+// Premium/Light plans scale up to 24% at 30% partner discount.
+export const CASHBACK_MATRIX: Record<number, { basic: number; premium: number }> = {
+  5:  { basic: 5,  premium: 5  },
+  10: { basic: 5,  premium: 8  },
+  15: { basic: 8,  premium: 12 },
+  20: { basic: 10, premium: 16 },
+  25: { basic: 10, premium: 20 },
+  30: { basic: 10, premium: 24 },
+};
+/** Ordered discount steps used to find the nearest row in CASHBACK_MATRIX. */
+export const CASHBACK_MATRIX_STEPS = [5, 10, 15, 20, 25, 30] as const;
+/** Hard cap for Basic plan cashback (%). Premium has no separate cap — matrix governs. */
+export const BASIC_MAX_CASHBACK_PCT = 10;
+
+// ── Payout Thresholds (EUR) ────────────────────────────────────────────────────
+// Cashback is not paid out until the balance reaches the plan's minimum threshold.
+export const PAYOUT_THRESHOLD_BASIC_EUR = 20;
+export const PAYOUT_THRESHOLD_PREMIUM_WEEKLY_EUR = 10;
+export const PAYOUT_THRESHOLD_PREMIUM_MONTHLY_EUR = 15;
+
+// ── Cashback Validity ──────────────────────────────────────────────────────────
+/** Cashback earned from each approved transaction expires after this many days. */
+export const CASHBACK_VALIDITY_DAYS = 60;
+
 export const DEFAULT_MAX_CASHBACK_PER_SCAN = 50.0;
 export const DEFAULT_MIN_BILL_AMOUNT = 10;
 
 // ── Cashback Crediting ─────────────────────────────────────────────────────────
 /** Days after approval when cashback is estimated to land in the wallet. */
 export const CASHBACK_ESTIMATED_CREDIT_DAYS = 7;
+
+// ── Currency ───────────────────────────────────────────────────────────────────
+/** Fixed BGN/EUR rate (Bulgaria currency board). 1 EUR = 1.95583 BGN. */
+export const EUR_TO_BGN_RATE = 1.95583;
+
+// ── Upgrade Credit Rates ───────────────────────────────────────────────────────
+/** Premium Weekly → Premium Monthly: full remaining value credited to wallet. */
+export const UPGRADE_CREDIT_WEEKLY_TO_MONTHLY = 1.00;
+/** Basic → Premium: 60% of remaining value credited to wallet (anti-abuse). */
+export const UPGRADE_CREDIT_BASIC_TO_PREMIUM = 0.60;
 
 // ── Default Card Tier ──────────────────────────────────────────────────────────
 export const DEFAULT_CARD_TIER = 'LIGHT' as const;

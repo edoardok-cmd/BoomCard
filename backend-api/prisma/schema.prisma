@@ -381,9 +381,9 @@ enum WalletTransactionStatus {
 }
 
 enum SubscriptionPlan {
-  LIGHT    // Lite Premium - weekly, 20% cashback
-  BASIC    // Basic - monthly, 10% cashback
-  PREMIUM  // Premium - monthly, 20% cashback
+  LIGHT    // Premium Weekly - €6.99/week, up to 24% cashback, min payout €10
+  BASIC    // Basic - €8.99/month, up to 10% cashback, min payout €20
+  PREMIUM  // Premium - €13.99/month, up to 24% cashback, min payout €15
 }
 
 enum SubscriptionStatus {
@@ -538,6 +538,9 @@ model WalletTransaction {
   description String?
   metadata    String? // JSON
 
+  // Cashback expiry: each CASHBACK_CREDIT expires 60 days after approval (cascading)
+  cashbackExpiresAt DateTime? // null = non-cashback transaction; non-null = expiry date
+
   // Link to related records
   transactionId         String?      @unique
   transaction           Transaction? @relation(fields: [transactionId], references: [id])
@@ -553,6 +556,7 @@ model WalletTransaction {
   @@index([type])
   @@index([status])
   @@index([createdAt])
+  @@index([cashbackExpiresAt])
   @@map("wallet_transactions")
 }
 
@@ -1217,7 +1221,8 @@ enum StickerStatus {
 }
 
 enum ScanStatus {
-  PENDING // Scan initiated, waiting for receipt
+  SESSION_ACTIVE // QR scanned, session open — awaiting receipt upload
+  PENDING // Receipt submitted, waiting for processing
   VALIDATING // OCR processing
   APPROVED // Approved, cashback credited
   REJECTED // Rejected (fraud, invalid, etc.)
@@ -1304,16 +1309,17 @@ model StickerLocation {
 }
 
 model StickerScan {
-  id              String     @id @default(uuid())
-  userId          String
-  stickerId       String
-  venueId         String
-  cardId          String
-  billAmount      Float
-  verifiedAmount  Float?
-  cashbackPercent Float
-  cashbackAmount  Float
-  status          ScanStatus @default(PENDING)
+  id               String     @id @default(uuid())
+  userId           String
+  stickerId        String
+  venueId          String
+  cardId           String
+  billAmount       Float      @default(0)
+  verifiedAmount   Float?
+  cashbackPercent  Float      @default(0)
+  cashbackAmount   Float      @default(0)
+  sessionStartedAt DateTime?  // Timestamp when the QR was first scanned (session start)
+  status           ScanStatus @default(SESSION_ACTIVE)
   latitude        Float?
   longitude       Float?
   distance        Float?

@@ -114,8 +114,10 @@ class ReceiptService {
         );
       }
 
-      // Step 7: Check receipt age
-      const receiptAge = ocrData.date ? validateReceiptAge(new Date(ocrData.date), 7) : { isValid: true, ageDays: null };
+      // Step 7: Check receipt age against upload window (default: 1-day / 6am-next-day cutoff)
+      const receiptAge = ocrData.date ? validateReceiptAge(new Date(ocrData.date)) : { isValid: true, ageDays: null };
+      // Flag receipts uploaded more than 1 hour after issuance (spec: may route to manual review)
+      const receiptLate = receiptAge.ageDays !== null && receiptAge.ageDays * 24 > 1;
 
       // Step 8: Get user submission stats for rate limiting
       const userStats = await this.getUserSubmissionStats();
@@ -148,20 +150,19 @@ class ReceiptService {
         maxDailyScans: venueConfig?.maxScansPerDay,
         merchantBlacklisted: merchantCheck.isBlacklisted,
         merchantWhitelisted: merchantCheck.isWhitelisted,
+        receiptLate,
+        receiptTooOld: !receiptAge.isValid,
       });
 
       console.log('🎯 Fraud score:', fraudCheck.fraudScore);
 
-      // Step 12: Calculate cashback
+      // Step 12: Calculate cashback using fixed lookup table
       const amount = ocrData.totalAmount || request.userAmount || 0;
       const cashback = calculateCashback({
         amount,
-        baseCashbackPercent: venueConfig?.cashbackPercent || 5,
+        partnerDiscountPercent: venueConfig?.discountPercent || 5,
         cardType: userStats.cardType,
-        premiumBonus: venueConfig?.premiumBonus,
-        platinumBonus: venueConfig?.platinumBonus,
         maxCashbackPerTransaction: venueConfig?.maxCashbackPerScan,
-        offerDiscount: request.offerId ? await this.getOfferDiscount(request.offerId) : 0,
       });
 
       console.log('💰 Cashback:', cashback.cashbackAmount, 'BGN');
@@ -305,7 +306,7 @@ class ReceiptService {
       return {
         submissionsToday: 0,
         submissionsThisMonth: 0,
-        cardType: 'STANDARD',
+        cardType: 'BASIC',
       };
     }
   }

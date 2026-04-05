@@ -1,9 +1,10 @@
-import { Sticker, StickerScan, StickerLocation, VenueStickerConfig, CardType, ScanStatus, StickerStatus, LocationType, TransactionStatus, TransactionType, PaymentMethod, SubscriptionStatus } from '@prisma/client';
+import { Sticker, StickerScan, StickerLocation, VenueStickerConfig, ScanStatus, StickerStatus, LocationType, TransactionStatus, TransactionType, PaymentMethod, SubscriptionStatus, WalletTransactionType } from '@prisma/client';
 import QRCode from 'qrcode';
 import { prisma } from '../lib/prisma';
 import { walletService } from './wallet.service';
 import { logger } from '../utils/logger';
 import { partnerTypeService } from './partnerType.service';
+import { fraudDetectionService } from './fraudDetection.service';
 
 // ============================================
 // Interfaces
@@ -30,6 +31,16 @@ export interface CreateStickerLocationData {
   metadata?: any;
 }
 
+export interface CreateSessionData {
+  userId: string;
+  stickerId: string;
+  cardId?: string; // Optional — resolved from userId when omitted
+  latitude?: number;
+  longitude?: number;
+  ipAddress?: string;
+  userAgent?: string;
+}
+
 export interface ScanStickerData {
   userId: string;
   stickerId: string;
@@ -39,6 +50,8 @@ export interface ScanStickerData {
   longitude?: number;
   ipAddress?: string;
   userAgent?: string;
+  /** If provided, complete an existing SESSION_ACTIVE session rather than creating a new scan. */
+  sessionId?: string;
 }
 
 export interface UploadReceiptData {
@@ -228,7 +241,12 @@ class StickerService {
       where: { stickerId },
       include: {
         venue: {
-          select: { id: true, name: true, stickerConfig: true },
+          select: {
+            id: true,
+            name: true,
+            stickerConfig: true,
+            partner: { select: { id: true, discountRate: true, partnerType: { select: { maxDiscountRate: true } } } },
+          },
         },
       },
     });
@@ -241,7 +259,13 @@ class StickerService {
       return { valid: false, message: `Sticker is ${sticker.status.toLowerCase()}` };
     }
 
-    const cashbackPercent = (sticker.venue.stickerConfig as any)?.cashbackPercent ?? 0;
+    // Show the best-case cashback % for this venue (Premium tier at partner's discount level).
+    // The actual % at scan time depends on the user's card tier.
+    const { cashbackPercent } = await fraudDetectionService.calculateCashback({
+      venueId: sticker.venue.partner?.id,
+      amount: 100, // dummy amount — we only need the percent
+      cardTier: 'PREMIUM', // show maximum possible
+    });
 
     return {
       valid: true,
@@ -253,10 +277,194 @@ class StickerService {
   }
 
   /**
+   * Register a BOOM session when the user scans the QR sticker.
+   *
+   * Per BOOM_Card_Master_Functionality §6, Step 3: "Scans QR code on the table/venue →
+   * Create active BOOM session; record time, table, venue, device, and location."
+   *
+   * This runs subscription + GPS validation immediately so the server knows the exact
+   * scan time. The receipt (+ bill amount) are attached later via scanSticker(sessionId).
+   */
+  async createSession(data: CreateSessionData): Promise<StickerScan> {
+    const { userId, latitude, longitude, ipAddress, userAgent } = data;
+    let { stickerId, cardId } = data;
+
+    // 1. Validate sticker
+    const sticker = await prisma.sticker.findUnique({
+      where: { stickerId },
+      include: {
+        venue: { include: { stickerConfig: true } },
+        location: true,
+      },
+    });
+
+    if (!sticker) throw new Error('Invalid sticker code');
+    if (sticker.status !== StickerStatus.ACTIVE) throw new Error('Sticker is not active');
+
+    // 2. Resolve card
+    if (!cardId) {
+      const userCard = await prisma.card.findFirst({ where: { userId } });
+      if (!userCard) throw new Error('No card found for your account. Please create a card first.');
+      cardId = userCard.id;
+    }
+    const card = await prisma.card.findUnique({ where: { id: cardId }, include: { user: true } });
+    if (!card) throw new Error('Card not found');
+    if (card.userId !== userId) throw new Error('Card does not belong to user');
+    if (card.status !== 'ACTIVE') throw new Error(`Card is ${card.status.toLowerCase()}`);
+
+    // 3. Subscription / partner access check
+    const partner = await prisma.partner.findFirst({
+      where: { venues: { some: { id: sticker.venueId } } },
+      select: { id: true, partnerTypeId: true },
+    });
+
+    if (partner?.partnerTypeId) {
+      const userSubscription = await prisma.subscription.findFirst({
+        where: { userId, status: SubscriptionStatus.ACTIVE },
+        orderBy: { currentPeriodEnd: 'desc' },
+      });
+      const redeemableTypeIds = await partnerTypeService.getRedeemableTypeIdsForPlan(
+        userSubscription?.plan ?? null
+      );
+      if (!redeemableTypeIds.includes(partner.partnerTypeId)) {
+        throw new Error(
+          'Your current subscription does not include access to this partner. ' +
+          'Upgrade your plan to scan this venue.'
+        );
+      }
+    }
+
+    // 4. GPS check
+    const config = sticker.venue.stickerConfig || (await this.getOrCreateVenueConfig(sticker.venueId));
+    let distance: number | undefined;
+    if (latitude !== undefined && longitude !== undefined) {
+      distance = this.calculateDistance(latitude, longitude, sticker.venue.latitude, sticker.venue.longitude);
+    }
+
+    if (config.gpsVerificationEnabled) {
+      if (distance === undefined) {
+        throw new Error('Location access is required to scan at this venue. Please enable GPS and try again.');
+      }
+      if (distance > config.gpsRadiusMeters) {
+        throw new Error(
+          `You must be within ${config.gpsRadiusMeters}m of the venue to scan. ` +
+          `You are currently ${Math.round(distance)}m away.`
+        );
+      }
+    }
+
+    // 5. Create SESSION_ACTIVE record (no bill amount yet)
+    const session = await prisma.stickerScan.create({
+      data: {
+        userId,
+        stickerId: sticker.id,
+        venueId: sticker.venueId,
+        cardId,
+        billAmount: 0,
+        cashbackPercent: 0,
+        cashbackAmount: 0,
+        sessionStartedAt: new Date(),
+        status: ScanStatus.SESSION_ACTIVE,
+        latitude,
+        longitude,
+        distance,
+        fraudScore: 0,
+        ipAddress,
+        userAgent,
+      },
+      include: {
+        sticker: { include: { venue: true, location: true } },
+        card: true,
+      },
+    });
+
+    // Update sticker last-scanned timestamp
+    await prisma.sticker.update({
+      where: { id: sticker.id },
+      data: { lastScannedAt: new Date() },
+    });
+
+    logger.info(`Session created: ${session.id} for sticker ${stickerId} by user ${userId}`);
+    return session;
+  }
+
+  /**
    * Validate and initiate a sticker scan
    */
   async scanSticker(data: ScanStickerData): Promise<StickerScan> {
-    const { userId, billAmount, latitude, longitude, ipAddress, userAgent } = data;
+    const { userId, billAmount, latitude, longitude, ipAddress, userAgent, sessionId } = data;
+
+    // ── Path A: complete an existing SESSION_ACTIVE session ──────────────────
+    if (sessionId) {
+      const existing = await prisma.stickerScan.findUnique({
+        where: { id: sessionId },
+        include: {
+          sticker: { include: { venue: { include: { stickerConfig: true } }, location: true } },
+          card: true,
+        },
+      });
+
+      if (!existing) throw new Error('Session not found');
+      if (existing.userId !== userId) throw new Error('Session does not belong to user');
+      if (existing.status !== ScanStatus.SESSION_ACTIVE) {
+        throw new Error('Session has already been submitted or is no longer active');
+      }
+
+      const config = existing.sticker.venue.stickerConfig ||
+        await this.getOrCreateVenueConfig(existing.venueId);
+
+      if (billAmount < config.minBillAmount) {
+        throw new Error(`Minimum bill amount is ${config.minBillAmount} BGN`);
+      }
+
+      const partner = await prisma.partner.findFirst({
+        where: { venues: { some: { id: existing.venueId } } },
+        select: { id: true },
+      });
+
+      const { cashbackAmount, cashbackPercent } = await fraudDetectionService.calculateCashback({
+        venueId: partner?.id,
+        amount: billAmount,
+        cardTier: existing.card.type as 'LIGHT' | 'BASIC' | 'PREMIUM',
+      });
+
+      const fraudCheck = await this.performFraudCheck({
+        userId,
+        venueId: existing.venueId,
+        billAmount,
+        distance: existing.distance ?? undefined,
+        config,
+      });
+
+      const updated = await prisma.stickerScan.update({
+        where: { id: sessionId },
+        data: {
+          billAmount,
+          cashbackPercent,
+          cashbackAmount,
+          fraudScore: fraudCheck.fraudScore,
+          fraudReasons: JSON.stringify(fraudCheck.fraudReasons),
+          status: ScanStatus.PENDING,
+          // Keep original GPS from session start; update only if re-submitted
+          ...(latitude !== undefined && { latitude }),
+          ...(longitude !== undefined && { longitude }),
+        },
+        include: {
+          user: { select: { id: true, firstName: true, lastName: true, email: true } },
+          sticker: { include: { venue: true, location: true } },
+          card: true,
+        },
+      });
+
+      await prisma.sticker.update({
+        where: { id: existing.stickerId },
+        data: { totalScans: { increment: 1 } },
+      });
+
+      return updated;
+    }
+
+    // ── Path B: legacy — create scan + session in one call (no sessionId) ────
     let { stickerId, cardId } = data;
 
     // 1. Validate sticker exists and is active
@@ -281,7 +489,6 @@ class StickerService {
     }
 
     // 2. Resolve and validate the user's card
-    // cardId is optional — if omitted, resolve from the authenticated userId.
     let resolvedCardId = cardId;
     if (!resolvedCardId) {
       const userCard = await prisma.card.findFirst({ where: { userId } });
@@ -296,22 +503,14 @@ class StickerService {
       include: { user: true },
     });
 
-    if (!card) {
-      throw new Error('Card not found');
-    }
+    if (!card) throw new Error('Card not found');
+    if (card.userId !== userId) throw new Error('Card does not belong to user');
+    if (card.status !== 'ACTIVE') throw new Error(`Card is ${card.status.toLowerCase()}`);
 
-    if (card.userId !== userId) {
-      throw new Error('Card does not belong to user');
-    }
-
-    if (card.status !== 'ACTIVE') {
-      throw new Error(`Card is ${card.status.toLowerCase()}`);
-    }
-
-    // 3. Verify the user's subscription plan grants access to this venue's partner type
+    // 3. Subscription check
     const partner = await prisma.partner.findFirst({
       where: { venues: { some: { id: sticker.venueId } } },
-      select: { partnerTypeId: true, status: true },
+      select: { id: true, partnerTypeId: true, status: true },
     });
 
     if (partner && partner.partnerTypeId) {
@@ -331,40 +530,29 @@ class StickerService {
       }
     }
 
-    // 5. Get venue sticker config
+    // 4. Config + bill amount validation
     const config = sticker.venue.stickerConfig || await this.getOrCreateVenueConfig(sticker.venueId);
 
-    // 5. Validate bill amount
     if (billAmount < config.minBillAmount) {
       throw new Error(`Minimum bill amount is ${config.minBillAmount} BGN`);
     }
 
-    // 6. Calculate cashback
-    const cashbackPercent = this.calculateCashbackPercent(card.type, config);
-    let cashbackAmount = (billAmount * cashbackPercent) / 100;
+    // 5. Cashback calculation
+    const { cashbackAmount, cashbackPercent } = await fraudDetectionService.calculateCashback({
+      venueId: partner?.id,
+      amount: billAmount,
+      cardTier: card.type as 'LIGHT' | 'BASIC' | 'PREMIUM',
+    });
 
-    // Apply max cashback limit if set
-    if (config.maxCashbackPerScan && cashbackAmount > config.maxCashbackPerScan) {
-      cashbackAmount = config.maxCashbackPerScan;
-    }
-
-    // 7. Calculate distance from venue if GPS provided
+    // 6. GPS distance
     let distance: number | undefined;
     if (latitude !== undefined && longitude !== undefined) {
-      distance = this.calculateDistance(
-        latitude,
-        longitude,
-        sticker.venue.latitude,
-        sticker.venue.longitude
-      );
+      distance = this.calculateDistance(latitude, longitude, sticker.venue.latitude, sticker.venue.longitude);
     }
 
-    // 7b. Hard proximity enforcement — reject before fraud scoring
     if (config.gpsVerificationEnabled) {
       if (distance === undefined) {
-        throw new Error(
-          'Location access is required to scan at this venue. Please enable GPS and try again.'
-        );
+        throw new Error('Location access is required to scan at this venue. Please enable GPS and try again.');
       }
       if (distance > config.gpsRadiusMeters) {
         throw new Error(
@@ -373,7 +561,7 @@ class StickerService {
       }
     }
 
-    // 8. Run fraud checks
+    // 7. Fraud check
     const fraudCheck = await this.performFraudCheck({
       userId,
       venueId: sticker.venueId,
@@ -382,7 +570,7 @@ class StickerService {
       config,
     });
 
-    // 9. Create scan record
+    // 8. Create scan record
     const scan = await prisma.stickerScan.create({
       data: {
         userId,
@@ -392,6 +580,7 @@ class StickerService {
         billAmount,
         cashbackPercent,
         cashbackAmount,
+        sessionStartedAt: new Date(), // legacy path: session starts and completes together
         latitude,
         longitude,
         distance,
@@ -402,31 +591,15 @@ class StickerService {
         userAgent,
       },
       include: {
-        user: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            email: true,
-          },
-        },
-        sticker: {
-          include: {
-            venue: true,
-            location: true,
-          },
-        },
+        user: { select: { id: true, firstName: true, lastName: true, email: true } },
+        sticker: { include: { venue: true, location: true } },
         card: true,
       },
     });
 
-    // 10. Update sticker stats
     await prisma.sticker.update({
       where: { id: sticker.id },
-      data: {
-        totalScans: { increment: 1 },
-        lastScannedAt: new Date(),
-      },
+      data: { totalScans: { increment: 1 }, lastScannedAt: new Date() },
     });
 
     return scan;
@@ -491,46 +664,6 @@ class StickerService {
         user: true,
         venue: true,
         card: true,
-      },
-    });
-
-    if (!scan) {
-      throw new Error('Scan not found');
-    }
-
-    // Create transaction record
-    const transaction = await prisma.transaction.create({
-      data: {
-        userId: scan.userId,
-        venueId: scan.venueId,
-        cardId: scan.cardId,
-        type: TransactionType.PURCHASE,
-        paymentMethod: PaymentMethod.CARD,
-        amount: scan.billAmount,
-        discount: scan.cashbackPercent,
-        discountAmount: scan.cashbackAmount,
-        finalAmount: scan.billAmount - scan.cashbackAmount,
-        currency: 'BGN',
-        status: TransactionStatus.COMPLETED,
-        metadata: JSON.stringify({
-          scanId: scan.id,
-          stickerId: scan.stickerId,
-          source: 'STICKER_SCAN',
-        }),
-      },
-    });
-
-    // Update scan status and link to transaction
-    const updated = await prisma.stickerScan.update({
-      where: { id: scanId },
-      data: {
-        status: ScanStatus.APPROVED,
-        transactionId: transaction.id,
-        processedAt: new Date(),
-      },
-      include: {
-        transaction: true,
-        user: true,
         sticker: {
           include: {
             venue: true,
@@ -540,17 +673,90 @@ class StickerService {
       },
     });
 
-    // Credit cashback to wallet
+    if (!scan) {
+      throw new Error('Scan not found');
+    }
+
+    if (scan.status === ScanStatus.APPROVED) {
+      throw new Error('Scan has already been approved');
+    }
+
+    if (scan.cashbackAmount <= 0) {
+      throw new Error('Scan cashback amount must be positive');
+    }
+
+    // Save original state so rollback can restore precisely.
+    const oldStatus = scan.status;
+    const oldProcessedAt = scan.processedAt;
+
+    // Atomic claim — prevents concurrent double-approval.
+    // Two simultaneous calls both see status !== APPROVED above, but only one
+    // updateMany can match the { status: { not: APPROVED } } condition.
+    const claimResult = await prisma.stickerScan.updateMany({
+      where: { id: scanId, status: { not: ScanStatus.APPROVED } },
+      data: { status: ScanStatus.APPROVED, processedAt: new Date() },
+    });
+
+    if (claimResult.count === 0) {
+      throw new Error('Scan has already been approved');
+    }
+
+    const locationName = scan.sticker?.location?.name ?? 'location';
+
+    // All post-claim writes are inside a single try/catch so ANY failure — including
+    // transaction.create or stickerScan.update — rolls back the claim. Without this,
+    // a DB error on those steps would leave the scan permanently APPROVED with no
+    // cashback and no retry path (both guards throw "already approved" on re-entry).
+    let transactionId: string | null = null;
+    let updated: StickerScan | null = null;
+
     try {
+      const transaction = await prisma.transaction.create({
+        data: {
+          userId: scan.userId,
+          venueId: scan.venueId,
+          cardId: scan.cardId,
+          type: TransactionType.PURCHASE,
+          paymentMethod: PaymentMethod.CARD,
+          amount: scan.billAmount,
+          discount: scan.cashbackPercent,
+          discountAmount: scan.cashbackAmount,
+          finalAmount: scan.billAmount - scan.cashbackAmount,
+          currency: 'BGN',
+          status: TransactionStatus.COMPLETED,
+          metadata: JSON.stringify({
+            scanId: scan.id,
+            stickerId: scan.stickerId,
+            source: 'STICKER_SCAN',
+          }),
+        },
+      });
+      transactionId = transaction.id;
+
+      updated = await prisma.stickerScan.update({
+        where: { id: scanId },
+        data: { transactionId: transaction.id },
+        include: {
+          transaction: true,
+          user: true,
+          sticker: {
+            include: {
+              venue: true,
+              location: true,
+            },
+          },
+        },
+      }) as unknown as StickerScan;
+
       await walletService.credit({
         userId: scan.userId,
         amount: scan.cashbackAmount,
-        type: 'CASHBACK_CREDIT',
-        description: `Cashback from sticker scan at ${updated.sticker.location.name}`,
+        type: WalletTransactionType.CASHBACK_CREDIT,
+        description: `Cashback from sticker scan at ${locationName}`,
         stickerScanId: scan.id,
         metadata: {
           venueId: scan.venueId,
-          locationName: updated.sticker.location.name,
+          locationName,
           billAmount: scan.billAmount,
           cardTier: scan.card?.type || 'LIGHT',
         },
@@ -558,13 +764,29 @@ class StickerService {
 
       logger.info(`Credited ${scan.cashbackAmount} BGN cashback for scan ${scanId}`);
     } catch (error) {
-      logger.error(`Failed to credit cashback for scan ${scanId}:`, error);
-      // Continue even if wallet credit fails - scan is still approved
+      logger.error(`Failed to process scan ${scanId} after claim, rolling back:`, error);
+      // Each rollback step is independent so a failure on one doesn't prevent the other.
+      try {
+        await prisma.stickerScan.update({
+          where: { id: scanId },
+          data: { status: oldStatus, transactionId: null, processedAt: oldProcessedAt },
+        });
+      } catch (rollbackError) {
+        logger.error(`CRITICAL: Failed to restore scan status for ${scanId}. Manual intervention required.`, rollbackError);
+      }
+      if (transactionId) {
+        try {
+          await prisma.transaction.delete({ where: { id: transactionId } });
+        } catch (rollbackError) {
+          logger.error(`CRITICAL: Failed to delete orphaned transaction ${transactionId} for scan ${scanId}. Manual intervention required.`, rollbackError);
+        }
+      }
+      throw new Error('Failed to process scan. Scan approval has been rolled back — please retry.');
     }
 
     // TODO: Send notification to user (implement in next phase)
 
-    return updated;
+    return updated!;
   }
 
   /**
@@ -607,32 +829,6 @@ class StickerService {
       update: data,
       create: { venueId, ...data },
     });
-  }
-
-  /**
-   * Calculate cashback percentage based on card type and venue config.
-   *
-   * DB column naming note:
-   *   `premiumBonus`  — extra % added for BASIC card holders   (column predates the plan rename)
-   *   `platinumBonus` — extra % added for PREMIUM card holders (column predates the plan rename)
-   * LIGHT cards receive only the base `cashbackPercent`.
-   */
-  private calculateCashbackPercent(cardType: CardType, config: VenueStickerConfig): number {
-    let cashback = config.cashbackPercent;
-
-    switch (cardType) {
-      case CardType.BASIC:
-        cashback += config.premiumBonus;   // bonus for BASIC (formerly "premium") cardholders
-        break;
-      case CardType.PREMIUM:
-        cashback += config.platinumBonus;  // bonus for PREMIUM (formerly "platinum") cardholders
-        break;
-      default:
-        // LIGHT card gets base cashback only
-        break;
-    }
-
-    return cashback;
   }
 
   /**

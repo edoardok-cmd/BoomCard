@@ -12,7 +12,7 @@ import { walletApi } from '../../api/wallet.api';
 import { formatDualCurrency, formatDateTime } from '../../utils/format';
 
 export default function TransactionHistoryScreen() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [transactions, setTransactions] = useState<any[]>([]);
@@ -47,6 +47,7 @@ export default function TransactionHistoryScreen() {
       PURCHASE: 'shopping',
       REFUND: 'undo',
       WITHDRAWAL: 'minus-circle',
+      ADJUSTMENT: 'tune',
     };
     return icons[type] || 'swap-horizontal';
   };
@@ -58,45 +59,63 @@ export default function TransactionHistoryScreen() {
       PURCHASE: '#EF4444',
       REFUND: '#3B82F6',
       WITHDRAWAL: '#EF4444',
+      ADJUSTMENT: '#64748B',
     };
     return colors[type] || '#64748B';
   };
 
-  const renderTransaction = ({ item }: { item: any }) => (
-    <Card style={styles.transactionCard}>
-      <List.Item
-        title={item.description || item.type}
-        description={formatDateTime(item.createdAt)}
-        left={(props) => (
-          <List.Icon
-            {...props}
-            icon={getTransactionIcon(item.type)}
-            color={getTransactionColor(item.type)}
-          />
-        )}
-        right={() => (
-          <View style={styles.amountContainer}>
-            <Text
-              style={[
-                styles.amount,
-                { color: item.amount >= 0 ? '#10B981' : '#EF4444' },
-              ]}
-            >
-              {item.amount >= 0 ? '+' : ''}
-              {formatDualCurrency(Math.abs(item.amount))}
-            </Text>
-            <Chip
-              mode="outlined"
-              style={styles.statusChip}
-              textStyle={styles.statusText}
-            >
-              {item.status}
-            </Chip>
-          </View>
-        )}
-      />
-    </Card>
-  );
+  const getCashbackExpiryLabel = (item: any): string | null => {
+    if (item.type !== 'CASHBACK_CREDIT' || !item.cashbackExpiresAt) return null;
+    const expiresAt = new Date(item.cashbackExpiresAt);
+    const now = new Date();
+    const daysLeft = Math.ceil((expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+    if (daysLeft <= 0) return null; // already expired / cancelled by backend
+    return t('wallet.cashbackExpiry', {
+      date: expiresAt.toLocaleDateString(i18n.language === 'bg' ? 'bg-BG' : 'en-GB'),
+    });
+  };
+
+  const renderTransaction = ({ item }: { item: any }) => {
+    const expiryLabel = getCashbackExpiryLabel(item);
+    return (
+      <Card style={styles.transactionCard}>
+        <List.Item
+          title={item.description || item.type}
+          description={formatDateTime(item.createdAt)}
+          left={(props) => (
+            <List.Icon
+              {...props}
+              icon={getTransactionIcon(item.type)}
+              color={getTransactionColor(item.type)}
+            />
+          )}
+          right={() => (
+            <View style={styles.amountContainer}>
+              <Text
+                style={[
+                  styles.amount,
+                  { color: item.amount >= 0 ? '#10B981' : '#EF4444' },
+                ]}
+              >
+                {item.amount >= 0 ? '+' : ''}
+                {formatDualCurrency(Math.abs(item.amount))}
+              </Text>
+              <Chip
+                mode="outlined"
+                style={styles.statusChip}
+                textStyle={styles.statusText}
+              >
+                {item.status}
+              </Chip>
+              {expiryLabel && (
+                <Text style={styles.expiryText}>{expiryLabel}</Text>
+              )}
+            </View>
+          )}
+        />
+      </Card>
+    );
+  };
 
   if (loading) {
     return (
@@ -168,6 +187,11 @@ const styles = StyleSheet.create({
   },
   statusText: {
     fontSize: 10,
+  },
+  expiryText: {
+    fontSize: 10,
+    color: '#F59E0B',
+    marginTop: 2,
   },
   emptyContainer: {
     flex: 1,

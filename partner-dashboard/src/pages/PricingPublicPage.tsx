@@ -495,6 +495,67 @@ const FAQAnswer = styled.p`
   line-height: 1.6;
 `;
 
+const MatrixSection = styled.section`
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 0 2rem 3rem;
+`;
+
+const MatrixTitle = styled.h2`
+  font-size: 1.75rem;
+  font-weight: 700;
+  text-align: center;
+  margin-bottom: 0.75rem;
+  color: var(--color-text-primary);
+`;
+
+const MatrixSubtitle = styled.p`
+  text-align: center;
+  font-size: 0.9375rem;
+  color: var(--color-text-secondary);
+  margin-bottom: 1.5rem;
+  line-height: 1.6;
+`;
+
+const MatrixTable = styled.table`
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9375rem;
+  border-radius: 0.75rem;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  border: 1px solid var(--color-border);
+
+  th, td {
+    border: 1px solid var(--color-border);
+    padding: 0.75rem 1.25rem;
+    text-align: center;
+  }
+
+  th {
+    background: var(--color-background-secondary);
+    font-weight: 700;
+    color: var(--color-text-primary);
+    font-size: 0.875rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  td {
+    color: var(--color-text-secondary);
+  }
+
+  tbody tr:hover td {
+    background: var(--color-background-secondary);
+  }
+
+  [data-theme="dark"] & {
+    th { background: #1f2937; color: #f9fafb; border-color: #374151; }
+    td { border-color: #374151; }
+    tbody tr:hover td { background: #1f2937; }
+  }
+`;
+
 const LoadingContainer = styled.div`
   display: flex;
   flex-direction: column;
@@ -565,22 +626,40 @@ const PricingPublicPage: React.FC = () => {
 
   const faqs = [
     {
-      questionEn: 'Can I change my plan later?',
-      questionBg: 'Мога ли да променя плана си по-късно?',
-      answerEn: 'Yes, you can upgrade or downgrade your plan at any time. Changes take effect immediately.',
-      answerBg: 'Да, можете да надстроите или понижите плана си по всяко време. Промените влизат в сила незабавно.',
+      questionEn: 'How is my cashback percentage calculated?',
+      questionBg: 'Как се изчислява моят процент кешбек?',
+      answerEn: 'Cashback depends on the discount the partner offers. Basic plan: up to 10%. Premium plans: up to 24%. The exact % follows a fixed matrix — e.g. a partner offering 20% discount gives Basic users 10% and Premium users 16% cashback.',
+      answerBg: 'Кешбекът зависи от отстъпката на партньора. Basic план: до 10%. Premium планове: до 24%. Точният % следва фиксирана матрица — напр. партньор с 20% отстъпка дава 10% кешбек на Basic и 16% на Premium потребители.',
     },
     {
-      questionEn: 'What payment methods do you accept?',
-      questionBg: 'Какви методи за плащане приемате?',
-      answerEn: 'We accept all major credit cards, debit cards, and bank transfers for annual plans.',
-      answerBg: 'Приемаме всички основни кредитни карти, дебитни карти и банкови преводи за годишни планове.',
+      questionEn: 'When can I withdraw my cashback?',
+      questionBg: 'Кога мога да изтегля кешбека си?',
+      answerEn: 'Cashback is paid out once your balance reaches the minimum threshold: €10 for Premium Weekly, €15 for Premium Monthly, €20 for Basic. Funds arrive within 3–5 business days.',
+      answerBg: 'Кешбекът се изплаща след достигане на минималния праг: €10 за Premium Седмичен, €15 за Premium Месечен, €20 за Basic. Средствата постъпват в рамките на 3–5 работни дни.',
+    },
+    {
+      questionEn: 'Does my cashback expire?',
+      questionBg: 'Изтича ли кешбекът ми?',
+      answerEn: 'Yes — each approved transaction carries a 60-day cashback window. The oldest cashback expires first (cascading). This encourages regular use of the platform.',
+      answerBg: 'Да — всяка одобрена транзакция носи 60-дневен период на валидност. Най-старият кешбек изтича първи (каскадно). Това насърчава редовното използване на платформата.',
+    },
+    {
+      questionEn: 'Can I upgrade my plan later?',
+      questionBg: 'Мога ли да надстроя плана си по-късно?',
+      answerEn: 'Yes. Upgrading from Premium Weekly to Premium Monthly credits 100% of the remaining weekly value. Upgrading from Basic to Premium credits 60% of the remaining Basic value.',
+      answerBg: 'Да. При надграждане от Premium Седмичен към Premium Месечен се приспада 100% от остатъчната стойност. При надграждане от Basic към Premium се приспада 60% от остатъчната стойност.',
+    },
+    {
+      questionEn: 'How long do I have to upload my receipt?',
+      questionBg: 'Колко време имам да кача касовата бележка?',
+      answerEn: 'Upload your receipt before leaving the venue or shortly after paying. Receipts uploaded more than 1 hour after issuance may be flagged for manual review. The upload window closes at 6am the following day.',
+      answerBg: 'Качете касовата бележка преди напускане на заведението или малко след плащането. Бележки, качени повече от 1 час след издаването им, може да бъдат насочени към ръчен преглед. Прозорецът за качване се затваря в 6:00 ч. на следващия ден.',
     },
     {
       questionEn: 'Is there a setup fee?',
       questionBg: 'Има ли такса за настройка?',
-      answerEn: 'No, there are no setup fees or hidden charges. You only pay the monthly or annual subscription.',
-      answerBg: 'Не, няма такси за настройка или скрити такси. Плащате само месечния или годишния абонамент.',
+      answerEn: 'No, there are no setup fees or hidden charges. You only pay the subscription.',
+      answerBg: 'Не, няма такси за настройка или скрити такси. Плащате само абонамента.',
     },
   ];
 
@@ -762,9 +841,38 @@ const PricingPublicPage: React.FC = () => {
 
       <CashbackExplanation>
         {language === 'bg'
-          ? 'Отстъпките се получават под формата на връщане на пари след качване на касова бележка в приложението. Процентът зависи от абонаментния план.'
-          : 'Discounts are received as cashback after uploading a receipt in the app. The percentage depends on the subscription plan.'}
+          ? 'Кешбекът зависи от отстъпката, която партньорът предлага. Basic план дава до 10% кешбек, а Premium планове — до 24%. Кешбекът се изплаща след достигане на минималния праг (€10–€20 спрямо плана) и е валиден 60 дни след всяка одобрена транзакция.'
+          : 'Cashback depends on the discount the partner offers. Basic plan gives up to 10% cashback, Premium plans up to 24%. Cashback is paid out once the minimum threshold (€10–€20 depending on your plan) is reached, and is valid for 60 days per approved transaction.'}
       </CashbackExplanation>
+
+      {/* Cashback Matrix */}
+      <MatrixSection>
+        <MatrixTitle>
+          {language === 'bg' ? 'Матрица на кешбека' : 'Cashback Matrix'}
+        </MatrixTitle>
+        <MatrixSubtitle>
+          {language === 'bg'
+            ? 'Точният процент кешбек зависи от отстъпката, предоставена от партньора. Партньори с 20%+ отстъпка получават Premium статус и по-добра видимост в платформата.'
+            : 'The exact cashback percentage depends on the discount level offered by the partner. Partners offering 20%+ unlock Premium status and stronger visibility on the platform.'}
+        </MatrixSubtitle>
+        <MatrixTable>
+          <thead>
+            <tr>
+              <th>{language === 'bg' ? 'Отстъпка на партньора' : 'Partner Discount'}</th>
+              <th>Basic</th>
+              <th>Premium</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td>5%</td><td>5%</td><td>5%</td></tr>
+            <tr><td>10%</td><td>5%</td><td>8%</td></tr>
+            <tr><td>15%</td><td>8%</td><td>12%</td></tr>
+            <tr><td>20%</td><td>10%</td><td>16%</td></tr>
+            <tr><td>25%</td><td>10%</td><td>20%</td></tr>
+            <tr><td>30%</td><td>10%</td><td>24%</td></tr>
+          </tbody>
+        </MatrixTable>
+      </MatrixSection>
 
       <FAQSection>
         <FAQTitle>{language === 'bg' ? 'Често задавани въпроси' : 'Frequently Asked Questions'}</FAQTitle>

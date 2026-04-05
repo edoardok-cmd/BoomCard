@@ -947,8 +947,8 @@ const HomePage: React.FC = () => {
       {
         question: language === 'bg' ? 'Колко струва BOOM Card?' : 'How much does BOOM Card cost?',
         answer: language === 'bg'
-          ? 'BOOM Card предлага два плана: Безплатен основен план и Премиум план за 57 лв./€29/месец.'
-          : 'BOOM Card offers two plans: Free basic plan and Premium plan for 57 BGN/€29/month.',
+          ? 'BOOM Card предлага три плана: Basic €8.99/месец, Premium Седмичен €6.99/седмица и Premium Месечен €13.99/месец. Всички планове включват 24 часа безплатен Premium пробен период.'
+          : 'BOOM Card offers three plans: Basic at €8.99/month, Premium Weekly at €6.99/week, and Premium Monthly at €13.99/month. All plans include a 24-hour free Premium trial.',
       },
       {
         question: language === 'bg' ? 'Къде мога да използвам BOOM Card?' : 'Where can I use BOOM Card?',
@@ -959,8 +959,8 @@ const HomePage: React.FC = () => {
       {
         question: language === 'bg' ? 'Каква е средната отстъпка?' : 'What is the average discount?',
         answer: language === 'bg'
-          ? 'Средната отстъпка варира между 10% и 50%, в зависимост от вашия план и партньора.'
-          : 'The average discount ranges from 10% to 50%, depending on your plan and the partner.',
+          ? 'Кешбекът зависи от отстъпката на партньора. Basic план дава до 10% кешбек, а Premium планове — до 24%. Точният процент следва фиксирана матрица спрямо нивото на партньора.'
+          : 'Cashback depends on the discount offered by the partner. The Basic plan gives up to 10% cashback, and Premium plans up to 24%. The exact percentage follows a fixed matrix based on the partner\'s discount level.',
       },
     ]);
   }, [language]);
@@ -1163,7 +1163,7 @@ const HomePage: React.FC = () => {
                 step: '3',
                 title: 'step3Title',
                 desc: 'step3Description',
-                tooltip: language === 'bg' ? 'Моментално получаване на кешбек' : 'Instant cashback to your account'
+                tooltip: language === 'bg' ? 'Кешбек се кредитира в портфейла след проверка на бележката' : 'Cashback credited to your wallet after receipt verification'
               }
             ].map((item, index) => (
               <HowItWorksStep key={index} className="text-center">
@@ -1777,8 +1777,8 @@ const HomePage: React.FC = () => {
               {
                 q: language === 'bg' ? 'Колко струва BOOM Card?' : 'How much does BOOM Card cost?',
                 a: language === 'bg'
-                  ? 'BOOM Card предлага два плана: Безплатен основен план и Премиум план за 57 лв./€29/месец. Започнете с 24 часа безплатен Premium!'
-                  : 'BOOM Card offers two plans: Free basic plan and Premium plan for 57 BGN/€29/month. Start with 24 hours of free Premium!',
+                  ? 'BOOM Card предлага три плана: Basic €8.99/месец, Premium Седмичен €6.99/седмица и Premium Месечен €13.99/месец. Всички планове включват 24 часа безплатен Premium пробен период!'
+                  : 'BOOM Card offers three plans: Basic at €8.99/month, Premium Weekly at €6.99/week, and Premium Monthly at €13.99/month. All plans include a 24-hour free Premium trial!',
               },
               {
                 q: language === 'bg' ? 'Къде мога да използвам BOOM Card?' : 'Where can I use BOOM Card?',
@@ -1789,8 +1789,8 @@ const HomePage: React.FC = () => {
               {
                 q: language === 'bg' ? 'Каква е средната отстъпка?' : 'What is the average discount?',
                 a: language === 'bg'
-                  ? 'Средната отстъпка варира между 10% и 50%, в зависимост от вашия план и партньора.'
-                  : 'The average discount ranges from 10% to 50%, depending on your plan and the partner.',
+                  ? 'Кешбекът зависи от отстъпката на партньора. Basic план дава до 10% кешбек, а Premium планове — до 24%. Точният процент следва фиксирана матрица спрямо нивото на партньора.'
+                  : 'Cashback depends on the discount offered by the partner. The Basic plan gives up to 10% cashback, and Premium plans up to 24%. The exact percentage follows a fixed matrix based on the partner\'s discount level.',
               },
               {
                 q: language === 'bg' ? 'Мога ли да откажа абонамента си?' : 'Can I cancel my subscription?',
@@ -1801,8 +1801,8 @@ const HomePage: React.FC = () => {
               {
                 q: language === 'bg' ? 'Как работи мобилното приложение?' : 'How does the mobile app work?',
                 a: language === 'bg'
-                  ? 'Изтеглете приложението от App Store или Google Play, влезте с вашия акаунт и покажете дигиталната си карта на място, за да получите отстъпка.'
-                  : 'Download the app from the App Store or Google Play, sign in with your account, and show your digital card at the venue to get your discount.',
+                  ? 'Изтеглете приложението от App Store или Google Play, влезте с акаунта си, сканирайте BOOM стикера на масата, платете сметката, след което качете снимка на касовата бележка, за да получите кешбек по портфейла.'
+                  : 'Download the app from the App Store or Google Play, sign in, scan the BOOM sticker at your table, pay your bill, then upload a photo of your receipt — cashback is credited to your wallet after verification.',
               },
             ].map((faq, index) => (
               <FAQAccordionItem key={index} question={faq.q} answer={faq.a} />

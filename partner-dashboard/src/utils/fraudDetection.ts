@@ -91,6 +91,10 @@ export function calculateFraudScore(params: {
   merchantBlacklisted?: boolean;
   merchantWhitelisted?: boolean;
   suspiciousPattern?: boolean;
+  /** Receipt uploaded >1 hour after issuance — soft flag, routes to manual review */
+  receiptLate?: boolean;
+  /** Receipt uploaded after the 6am-next-day hard cutoff — should auto-reject */
+  receiptTooOld?: boolean;
 }): FraudCheckResult {
   let score = 0;
   const reasons: string[] = [];
@@ -163,6 +167,18 @@ export function calculateFraudScore(params: {
     reasons.push('SUSPICIOUS_PATTERN');
   }
 
+  // Receipt uploaded >1 hour after issuance (soft flag → manual review)
+  if (params.receiptLate) {
+    score += 30;
+    reasons.push('RECEIPT_LATE_UPLOAD');
+  }
+
+  // Receipt outside upload window — 6am cutoff is a hard close (auto-reject)
+  if (params.receiptTooOld) {
+    score += 70;
+    reasons.push('RECEIPT_OUTSIDE_UPLOAD_WINDOW');
+  }
+
   // Cap score at 100
   score = Math.min(100, score);
 
@@ -228,11 +244,13 @@ export function verifyGPSLocation(
 }
 
 /**
- * Validate receipt age (receipts should be recent)
+ * Validate receipt age against the upload window.
+ * Per spec: upload window closes at 6am the following day (~1 day max).
+ * Receipts older than 1 hour are flagged for manual review but not outright rejected here.
  */
 export function validateReceiptAge(
   receiptDate: Date | null,
-  maxAgeDays: number = 7
+  maxAgeDays: number = 1
 ): { isValid: boolean; ageDays: number | null } {
   if (!receiptDate) {
     return { isValid: false, ageDays: null };
@@ -322,45 +340,63 @@ export function validateImageQuality(params: {
 }
 
 /**
- * Calculate cashback amount based on receipt and offer
+ * Fixed cashback lookup table (production-locked).
+ * Maps partner discount % → user cashback % per plan type.
+ * Source: BOOM_Card_Master_Functionality — §2 Cashback Matrix
+ *
+ * BASIC has a hard cap at 10% to preserve the upgrade incentive.
+ * LIGHT (Premium Weekly) and PREMIUM (Premium Monthly) share the same premium column.
+ */
+const CASHBACK_MATRIX: Array<{ partnerDiscount: number; basic: number; premium: number }> = [
+  { partnerDiscount: 5,  basic: 5,  premium: 5  },
+  { partnerDiscount: 10, basic: 5,  premium: 8  },
+  { partnerDiscount: 15, basic: 8,  premium: 12 },
+  { partnerDiscount: 20, basic: 10, premium: 16 },
+  { partnerDiscount: 25, basic: 10, premium: 20 },
+  { partnerDiscount: 30, basic: 10, premium: 24 },
+];
+
+/**
+ * Resolve cashback % from the fixed lookup table.
+ * Uses the highest row whose partnerDiscount does not exceed the actual partner discount.
+ * Returns 0 if the partner discount is below the minimum table entry (5%).
+ */
+function lookupCashbackPercent(
+  partnerDiscountPercent: number,
+  cardType: 'BASIC' | 'LIGHT' | 'PREMIUM'
+): number {
+  let matched: typeof CASHBACK_MATRIX[0] | null = null;
+  for (const row of CASHBACK_MATRIX) {
+    if (partnerDiscountPercent >= row.partnerDiscount) {
+      matched = row;
+    }
+  }
+  if (!matched) return 0;
+  return cardType === 'BASIC' ? matched.basic : matched.premium;
+}
+
+/**
+ * Calculate cashback amount based on the fixed partner-discount → cashback matrix.
+ * Plan codes: BASIC (max 10%), LIGHT = Premium Weekly, PREMIUM = Premium Monthly (both max 24%).
  */
 export function calculateCashback(params: {
   amount: number;
-  baseCashbackPercent: number;
-  cardType?: 'STANDARD' | 'PREMIUM' | 'PLATINUM';
-  premiumBonus?: number;
-  platinumBonus?: number;
+  partnerDiscountPercent: number;
+  cardType?: 'BASIC' | 'LIGHT' | 'PREMIUM';
   maxCashbackPerTransaction?: number;
-  offerDiscount?: number;
 }): { cashbackPercent: number; cashbackAmount: number } {
-  let cashbackPercent = params.baseCashbackPercent;
+  const cardType = params.cardType ?? 'BASIC';
+  const cashbackPercent = lookupCashbackPercent(params.partnerDiscountPercent, cardType);
 
-  // Add card tier bonuses
-  if (params.cardType === 'PREMIUM' && params.premiumBonus) {
-    cashbackPercent += params.premiumBonus;
-  } else if (params.cardType === 'PLATINUM' && params.platinumBonus) {
-    cashbackPercent += params.platinumBonus;
-  }
-
-  // Add offer discount if applicable
-  if (params.offerDiscount) {
-    cashbackPercent += params.offerDiscount;
-  }
-
-  // Calculate cashback amount
   let cashbackAmount = (params.amount * cashbackPercent) / 100;
 
-  // Apply max cashback limit
   if (params.maxCashbackPerTransaction && cashbackAmount > params.maxCashbackPerTransaction) {
     cashbackAmount = params.maxCashbackPerTransaction;
   }
 
-  // Round to 2 decimal places
-  cashbackAmount = Math.round(cashbackAmount * 100) / 100;
-
   return {
     cashbackPercent,
-    cashbackAmount,
+    cashbackAmount: Math.round(cashbackAmount * 100) / 100,
   };
 }
 

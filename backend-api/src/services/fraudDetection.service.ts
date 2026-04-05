@@ -2,13 +2,10 @@ import { prisma } from '../lib/prisma';
 import {
   DEFAULT_AUTO_APPROVE_THRESHOLD,
   DEFAULT_AUTO_REJECT_THRESHOLD,
-  DEFAULT_BASIC_TIER_BONUS,
-  DEFAULT_CASHBACK_PERCENT,
   DEFAULT_DAILY_SUBMISSION_LIMIT,
   DEFAULT_MAX_CASHBACK_PER_SCAN,
   DEFAULT_MIN_BILL_AMOUNT,
   DEFAULT_MONTHLY_SUBMISSION_LIMIT,
-  DEFAULT_PREMIUM_TIER_BONUS,
   GPS_FAR_THRESHOLD_M,
   GPS_WARNING_THRESHOLD_M,
   OCR_LOW_CONFIDENCE_THRESHOLD,
@@ -20,6 +17,8 @@ import {
   UNUSUAL_HOUR_START,
   UNUSUAL_HOUR_END,
   DEFAULT_TEMPLATE_FRAUD_POINTS,
+  CASHBACK_MATRIX,
+  CASHBACK_MATRIX_STEPS,
 } from '../constants/receipt.constants';
 import { receiptTemplateService } from './receiptTemplate.service';
 
@@ -429,51 +428,66 @@ class FraudDetectionService {
   }
 
   /**
-   * Calculate cashback amount based on venue config and card tier
+   * Calculate cashback amount using the BOOM cashback matrix.
+   *
+   * The cashback % is determined by:
+   *   1. The partner's effective discount rate (discountRate or partnerType.maxDiscountRate)
+   *   2. The user's card tier (BASIC → basic column; LIGHT/PREMIUM → premium column)
+   *
+   * Matrix rows are keyed by partner discount steps [5, 10, 15, 20, 25, 30].
+   * The nearest step that does not exceed the partner's actual discount is used.
+   * Partners offering less than 5% discount yield 0% cashback.
    */
   async calculateCashback(params: {
     venueId?: string;
     amount: number;
     cardTier: 'LIGHT' | 'BASIC' | 'PREMIUM';
   }): Promise<{ cashbackAmount: number; cashbackPercent: number }> {
-    const config = params.venueId ? await this.getVenueConfig(params.venueId) : null;
-
-    let basePercent = config?.cashbackPercent || DEFAULT_CASHBACK_PERCENT;
-
-    // Add card tier bonuses
-    if (params.cardTier === 'BASIC') {
-      basePercent += config?.premiumBonus || DEFAULT_BASIC_TIER_BONUS;
-    } else if (params.cardTier === 'PREMIUM') {
-      basePercent += config?.platinumBonus || DEFAULT_PREMIUM_TIER_BONUS;
-    }
-
-    // Enforce PartnerType.maxDiscountRate cap — look up the partner via venueId
-    // Note: venueId in receipts is stored as the Partner's id (the service uses partner lookup)
+    // Step 1: resolve partner's discount rate
+    let partnerDiscountPct = 0;
     if (params.venueId) {
       try {
         const partner = await prisma.partner.findUnique({
           where: { id: params.venueId },
-          select: { partnerType: { select: { maxDiscountRate: true } } },
+          select: {
+            discountRate: true,
+            partnerType: { select: { maxDiscountRate: true } },
+          },
         });
-        const maxRate = partner?.partnerType?.maxDiscountRate;
-        if (maxRate !== undefined && maxRate !== null) {
-          basePercent = Math.min(basePercent, maxRate);
-        }
+        // Prefer the partner's own discountRate; fall back to their type's cap
+        partnerDiscountPct = partner?.discountRate
+          ?? partner?.partnerType?.maxDiscountRate
+          ?? 0;
       } catch {
-        // Non-fatal — proceed with uncapped rate
+        // Non-fatal — proceed with 0 (no cashback)
       }
     }
 
-    let cashbackAmount = (params.amount * basePercent) / 100;
+    // Step 2: find the highest matrix step that does not exceed the partner discount
+    const minStep = CASHBACK_MATRIX_STEPS[0];
+    if (partnerDiscountPct < minStep) {
+      return { cashbackAmount: 0, cashbackPercent: 0 };
+    }
 
-    // Cap at max cashback per scan
+    let step = CASHBACK_MATRIX_STEPS[0];
+    for (const s of CASHBACK_MATRIX_STEPS) {
+      if (partnerDiscountPct >= s) step = s;
+    }
+
+    // Step 3: look up user cashback percent from matrix
+    const matrixRow = CASHBACK_MATRIX[step];
+    const isPremium = params.cardTier === 'PREMIUM' || params.cardTier === 'LIGHT';
+    const cashbackPercent = isPremium ? matrixRow.premium : matrixRow.basic;
+
+    // Step 4: calculate amount and cap at max per scan
+    const config = params.venueId ? await this.getVenueConfig(params.venueId) : null;
     const maxCashback = config?.maxCashbackPerScan || DEFAULT_MAX_CASHBACK_PER_SCAN;
-    cashbackAmount = Math.min(cashbackAmount, maxCashback);
+    const cashbackAmount = Math.min(
+      parseFloat(((params.amount * cashbackPercent) / 100).toFixed(2)),
+      maxCashback,
+    );
 
-    return {
-      cashbackAmount: parseFloat(cashbackAmount.toFixed(2)),
-      cashbackPercent: basePercent,
-    };
+    return { cashbackAmount, cashbackPercent };
   }
 
   // ===== Admin Methods =====

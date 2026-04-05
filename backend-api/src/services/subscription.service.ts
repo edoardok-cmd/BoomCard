@@ -1,8 +1,14 @@
-import { SubscriptionPlan } from '@prisma/client';
+import { SubscriptionPlan, WalletTransactionType } from '@prisma/client';
 import prisma from '../lib/prisma';
 import { stripeService } from './stripe.service';
 import { logger } from '../utils/logger';
 import { cardService } from './card.service';
+import { walletService } from './wallet.service';
+import {
+  EUR_TO_BGN_RATE,
+  UPGRADE_CREDIT_WEEKLY_TO_MONTHLY,
+  UPGRADE_CREDIT_BASIC_TO_PREMIUM,
+} from '../constants/receipt.constants';
 
 // Stripe Price IDs (create these in Stripe Dashboard)
 const PRICE_IDS = {
@@ -23,21 +29,11 @@ export class SubscriptionService {
     const { userId, plan, paymentMethodId } = params;
 
     if (plan === 'LIGHT') {
-      // Light is the entry-level weekly plan — immediately active, no payment required
-      const subscription = await prisma.subscription.create({
-        data: {
-          userId,
-          plan: 'LIGHT',
-          status: 'ACTIVE',
-          currentPeriodStart: new Date(),
-          currentPeriodEnd: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000), // 1 year
-        },
-      });
-      // Ensure the user has a card; create one if not
-      await this.ensureCardExists(userId);
-      // Sync card type to match the new subscription
-      await cardService.syncCardTypeWithSubscription(userId, plan);
-      return subscription;
+      // LIGHT (Premium Weekly) subscriptions must be purchased through Paysera.
+      // The Paysera webhook (POST /api/payments/paysera/callback) creates the subscription
+      // directly in the DB once payment is confirmed. Allowing free creation here would
+      // bypass payment entirely.
+      throw new Error('LIGHT plan must be purchased via the Paysera payment flow');
     }
 
     // Get user email for Stripe customer
@@ -156,16 +152,29 @@ export class SubscriptionService {
   }
 
   /**
-   * Upgrade/Downgrade subscription
+   * Upgrade/Downgrade subscription.
+   *
+   * Upgrade credit rules (credited to wallet before plan change):
+   *   LIGHT  → PREMIUM : 100% of remaining weekly value
+   *   BASIC  → PREMIUM : 60%  of remaining monthly value
+   *   All other transitions: no credit
    */
   async updateSubscriptionPlan(subscriptionId: string, newPlan: SubscriptionPlan) {
     const subscription = await prisma.subscription.findUnique({
       where: { id: subscriptionId },
+      include: { planDetails: { select: { priceWeeklyEur: true, priceMonthlyEur: true } } },
     });
 
     if (!subscription) {
       throw new Error('Subscription not found');
     }
+
+    if (subscription.plan === newPlan) {
+      throw new Error(`Subscription is already on the ${newPlan} plan`);
+    }
+
+    // Calculate and credit any applicable upgrade credit to the user's wallet
+    await this.applyUpgradeCredit(subscription, newPlan);
 
     if (newPlan === 'LIGHT') {
       // Downgrade to light - cancel current subscription
@@ -173,17 +182,35 @@ export class SubscriptionService {
         await this.cancelSubscription(subscriptionId, false);
       }
 
+      await cardService.syncCardTypeWithSubscription(subscription.userId, 'LIGHT');
       return prisma.subscription.update({
         where: { id: subscriptionId },
-        data: { plan: 'LIGHT' },
+        data: {
+          plan: 'LIGHT',
+          currentPeriodStart: new Date(),
+          currentPeriodEnd: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        },
       });
     }
 
     if (!subscription.stripeSubscriptionId) {
-      throw new Error('No Stripe subscription to update');
+      // Paysera-based subscription — update plan directly in DB
+      // BASIC and PREMIUM are both monthly (30d). The LIGHT case is handled above.
+      const now = new Date();
+      const newPeriodEnd = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+
+      await cardService.syncCardTypeWithSubscription(subscription.userId, newPlan);
+      return prisma.subscription.update({
+        where: { id: subscriptionId },
+        data: {
+          plan: newPlan,
+          currentPeriodStart: now,
+          currentPeriodEnd: newPeriodEnd,
+        },
+      });
     }
 
-    // Update in Stripe
+    // Stripe-based subscription — update through Stripe
     const stripeSubscription = await stripeService.stripe.subscriptions.retrieve(
       subscription.stripeSubscriptionId
     );
@@ -195,10 +222,13 @@ export class SubscriptionService {
           id: stripeSubscription.items.data[0].id,
           price: PRICE_IDS[newPlan],
         }],
-        proration_behavior: 'create_prorations',
+        proration_behavior: 'none', // Credits are handled via wallet, not Stripe prorations
         metadata: { plan: newPlan },
       }
     );
+
+    // Sync card type immediately — don't wait for Stripe webhook
+    await cardService.syncCardTypeWithSubscription(subscription.userId, newPlan);
 
     // Update database
     return prisma.subscription.update({
@@ -208,6 +238,83 @@ export class SubscriptionService {
         stripePriceId: PRICE_IDS[newPlan],
       },
     });
+  }
+
+  /**
+   * Calculate and apply upgrade wallet credit based on document rules:
+   *   LIGHT → PREMIUM : 100% of remaining weekly value
+   *   BASIC → PREMIUM : 60%  of remaining monthly value
+   */
+  private async applyUpgradeCredit(
+    subscription: {
+      id: string;
+      userId: string;
+      plan: SubscriptionPlan;
+      currentPeriodStart: Date;
+      currentPeriodEnd: Date;
+      planDetails: { priceWeeklyEur: number | null; priceMonthlyEur: number | null } | null;
+    },
+    newPlan: SubscriptionPlan,
+  ): Promise<void> {
+    const { plan: oldPlan, currentPeriodStart, currentPeriodEnd, userId } = subscription;
+
+    // Determine credit percentage
+    let creditPct: number;
+    if (oldPlan === 'LIGHT' && newPlan === 'PREMIUM') {
+      creditPct = UPGRADE_CREDIT_WEEKLY_TO_MONTHLY;
+    } else if (oldPlan === 'BASIC' && newPlan === 'PREMIUM') {
+      creditPct = UPGRADE_CREDIT_BASIC_TO_PREMIUM;
+    } else {
+      return; // No credit for other transitions
+    }
+
+    // Resolve plan price from planDetails or fall back to Plan table
+    let planDetails = subscription.planDetails;
+    if (!planDetails) {
+      planDetails = await prisma.plan.findFirst({
+        where: { planCode: oldPlan, isActive: true },
+        select: { priceWeeklyEur: true, priceMonthlyEur: true },
+      });
+    }
+
+    const priceEurCents = oldPlan === 'LIGHT'
+      ? (planDetails?.priceWeeklyEur ?? 0)
+      : (planDetails?.priceMonthlyEur ?? 0);
+
+    if (priceEurCents <= 0) return; // Can't calculate credit without a price
+
+    const priceEur = priceEurCents / 100;
+    const now = Date.now();
+    const totalMs = currentPeriodEnd.getTime() - currentPeriodStart.getTime();
+    const remainingMs = Math.max(0, currentPeriodEnd.getTime() - now);
+
+    if (totalMs <= 0 || remainingMs <= 0) return; // Period already ended
+
+    const remainingFraction = remainingMs / totalMs;
+    const creditEur = priceEur * remainingFraction * creditPct;
+    const creditBGN = parseFloat((creditEur * EUR_TO_BGN_RATE).toFixed(2));
+
+    if (creditBGN < 0.01) return; // Too small to credit
+
+    await walletService.credit({
+      userId,
+      amount: creditBGN,
+      type: WalletTransactionType.ADJUSTMENT,
+      description: `Upgrade credit: ${oldPlan} → ${newPlan} (${Math.round(creditPct * 100)}% of ${priceEur.toFixed(2)} EUR remaining value)`,
+      metadata: {
+        upgradeFrom: oldPlan,
+        upgradeTo: newPlan,
+        creditPct,
+        remainingFraction: parseFloat(remainingFraction.toFixed(4)),
+        creditEur,
+        creditBGN,
+      },
+    });
+
+    logger.info(
+      `Upgrade credit applied: ${creditBGN} BGN (€${creditEur.toFixed(2)}) to user ${userId} ` +
+      `for ${oldPlan}→${newPlan} upgrade (${Math.round(creditPct * 100)}%, ${(remainingFraction * 100).toFixed(1)}% remaining)`
+    );
   }
 
   /**

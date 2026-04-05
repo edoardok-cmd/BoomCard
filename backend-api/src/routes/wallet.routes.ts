@@ -4,6 +4,7 @@ import { walletService } from '../services/wallet.service';
 import { asyncHandler } from '../utils/asyncHandler';
 import { z } from 'zod';
 import prisma from '../lib/prisma';
+import { WalletTransactionStatus, WalletTransactionType } from '@prisma/client';
 
 const router = Router();
 
@@ -59,6 +60,25 @@ router.post('/topup', asyncHandler(async (req: AuthRequest, res: Response) => {
 }));
 
 /**
+ * POST /api/wallet/payout
+ * Request cashback payout.
+ * Validates that the available balance meets the plan's minimum threshold,
+ * then initiates a WITHDRAWAL (PROCESSING status). Funds arrive in 3–5 business days.
+ */
+router.post('/payout', asyncHandler(async (req: AuthRequest, res: Response) => {
+  const userId = req.user!.id;
+
+  const result = await walletService.requestPayout(userId);
+
+  res.json({
+    success: true,
+    message: 'Payout initiated. Funds will arrive within 3–5 business days.',
+    amount: result.amount,
+    currency: result.currency,
+  });
+}));
+
+/**
  * GET /api/wallet/statistics
  * Get wallet statistics
  */
@@ -70,7 +90,7 @@ router.get('/statistics', asyncHandler(async (req: AuthRequest, res: Response) =
     by: ['type'],
     where: {
       walletId: wallet.id,
-      status: 'COMPLETED',
+      status: WalletTransactionStatus.COMPLETED,
     },
     _sum: {
       amount: true,
@@ -79,15 +99,15 @@ router.get('/statistics', asyncHandler(async (req: AuthRequest, res: Response) =
   });
 
   const totalCashback = stats
-    .filter(s => s.type === 'CASHBACK_CREDIT')
+    .filter(s => s.type === WalletTransactionType.CASHBACK_CREDIT)
     .reduce((sum, s) => sum + (s._sum.amount || 0), 0);
 
   const totalTopups = stats
-    .filter(s => s.type === 'TOP_UP')
+    .filter(s => s.type === WalletTransactionType.TOP_UP)
     .reduce((sum, s) => sum + (s._sum.amount || 0), 0);
 
   const totalSpent = stats
-    .filter(s => s.type === 'PURCHASE')
+    .filter(s => s.type === WalletTransactionType.PURCHASE)
     .reduce((sum, s) => sum + Math.abs(s._sum.amount || 0), 0);
 
   res.json({

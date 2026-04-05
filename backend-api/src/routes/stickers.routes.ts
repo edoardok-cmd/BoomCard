@@ -13,28 +13,71 @@ const router = Router();
 // ============================================
 
 /**
+ * POST /api/stickers/session
+ * Register a BOOM session the moment the user scans the QR sticker.
+ * Per spec §6 Step 3: records time, venue, device, and GPS at scan time.
+ * Returns a sessionId that must be passed to POST /api/stickers/scan when
+ * the receipt is submitted.
+ * Requires authentication.
+ */
+router.post('/session', authenticate, async (req: Request, res: Response) => {
+  try {
+    const { stickerId, cardId, latitude, longitude } = req.body;
+    const userId = (req as any).user.id;
+
+    if (!stickerId) {
+      return res.status(400).json({ success: false, error: 'Missing required field: stickerId' });
+    }
+
+    const session = await stickerService.createSession({
+      userId,
+      stickerId,
+      cardId,
+      latitude: latitude ? parseFloat(latitude) : undefined,
+      longitude: longitude ? parseFloat(longitude) : undefined,
+      ipAddress: req.ip,
+      userAgent: req.get('user-agent'),
+    });
+
+    res.json({
+      success: true,
+      data: { sessionId: session.id, venueId: session.venueId },
+      message: 'Session created. Please upload your receipt to earn cashback.',
+    });
+  } catch (error: any) {
+    res.status(400).json({ success: false, error: error.message || 'Failed to create session' });
+  }
+});
+
+/**
  * POST /api/stickers/scan
- * Initiate a sticker scan (user scans QR code)
- * Requires authentication
+ * Complete a scan by submitting the bill amount.
+ * If sessionId is provided: completes an existing SESSION_ACTIVE session.
+ * If not: legacy flow — creates session + scan in one call (backward compat).
+ * Requires authentication.
  */
 router.post('/scan', authenticate, async (req: Request, res: Response) => {
   try {
-    const { stickerId, cardId, billAmount, latitude, longitude } = req.body;
-    const userId = (req as any).user.id; // From auth middleware
+    const { stickerId, cardId, billAmount, latitude, longitude, sessionId } = req.body;
+    const userId = (req as any).user.id;
 
-    // cardId is optional — the service auto-resolves it from userId when absent
-    if (!stickerId || !billAmount) {
+    // When using the two-step flow, sessionId + billAmount is sufficient.
+    // Legacy one-step flow still requires stickerId + billAmount.
+    if (!billAmount) {
       return res.status(400).json({
         success: false,
-        error: 'Missing required fields: stickerId, billAmount',
+        error: 'Missing required field: billAmount',
+      });
+    }
+    if (!sessionId && !stickerId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Provide either sessionId (two-step flow) or stickerId (legacy)',
       });
     }
 
-    if (billAmount <= 0) {
-      return res.status(400).json({
-        success: false,
-        error: 'Bill amount must be greater than 0',
-      });
+    if (parseFloat(billAmount) <= 0) {
+      return res.status(400).json({ success: false, error: 'Bill amount must be greater than 0' });
     }
 
     const scan = await stickerService.scanSticker({
@@ -46,6 +89,7 @@ router.post('/scan', authenticate, async (req: Request, res: Response) => {
       longitude: longitude ? parseFloat(longitude) : undefined,
       ipAddress: req.ip,
       userAgent: req.get('user-agent'),
+      sessionId,
     });
 
     res.json({

@@ -506,7 +506,7 @@ const PromotionsPage: React.FC = () => {
       title: 'Top Discounts with BOOM Card',
       subtitle: 'Real discounts and exclusive offers from selected top venues in Bulgaria',
       stat1Label: 'New offers at top venues',
-      stat2Label: 'discount based on subscription plan',
+      stat2Label: 'cashback based on subscription plan',
       stat3Label: 'Curated offers',
       all: 'All',
       active: 'Active',
@@ -523,7 +523,7 @@ const PromotionsPage: React.FC = () => {
       cashbackTitle: 'Money Back with BOOM Card in 3 steps',
       cashbackStep1: 'Scan the sticker on the table in the app',
       cashbackStep2: 'Take a photo of your receipt after payment',
-      cashbackStep3: 'Receive the refund to the card used to activate your subscription',
+      cashbackStep3: 'Cashback is added to your wallet and paid out to your registered card once your plan\'s minimum threshold is reached',
       cashbackNote: 'Everything happens through the app. No explanations to staff.',
       cashbackTrustText: 'The amount is refunded after a quick receipt verification.',
       downloadAppCta: 'Download the App',
@@ -535,7 +535,7 @@ const PromotionsPage: React.FC = () => {
       title: 'Топ отстъпки с BOOM Card',
       subtitle: 'Реални отстъпки и ексклузивни предложения от подбрани топ места в България',
       stat1Label: 'Нови предложения на топ места',
-      stat2Label: 'отстъпка според абонаментния план',
+      stat2Label: 'кешбек според абонаментния план',
       stat3Label: 'Подбрани предложения',
       all: 'Всички',
       active: 'Активни',
@@ -552,7 +552,7 @@ const PromotionsPage: React.FC = () => {
       cashbackTitle: 'Възстановяване на сума с BOOM Card в 3 стъпки',
       cashbackStep1: 'Сканирай стикера на масата в приложението',
       cashbackStep2: 'Снимай касовата бележка след плащане',
-      cashbackStep3: 'Получи възстановената сума по картата, с която е активиран абонаментът',
+      cashbackStep3: 'Кешбекът се добавя в портфейла и се изплаща по регистрираната карта при достигане на минималния праг за плана',
       cashbackNote: 'Всичко става през приложението. Без обяснения с персонала.',
       cashbackTrustText: 'Сумата се възстановява след кратка проверка на касовата бележка.',
       downloadAppCta: 'Свали приложението',
@@ -588,7 +588,7 @@ const PromotionsPage: React.FC = () => {
                 </StatItem>
                 <StatItem>
                   <StatLabel style={{ marginBottom: '0.25rem' }}>{language === 'bg' ? 'до' : 'up to'}</StatLabel>
-                  <StatValue>20%</StatValue>
+                  <StatValue>24%</StatValue>
                   <StatLabel>{content.stat2Label}</StatLabel>
                 </StatItem>
               </StatsRow>

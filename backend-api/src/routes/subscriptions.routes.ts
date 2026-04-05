@@ -104,10 +104,11 @@ router.get('/current', authenticate, asyncHandler(async (req: AuthRequest, res: 
 
 /**
  * POST /api/subscriptions/create
- * Create new subscription
+ * Create new subscription (BASIC or PREMIUM only via Stripe).
+ * The LIGHT (Premium Weekly) plan must be purchased via POST /api/payments/subscription (Paysera).
  */
 const createSchema = z.object({
-  plan: z.enum(['LIGHT', 'BASIC', 'PREMIUM']),
+  plan: z.enum(['BASIC', 'PREMIUM']),
   paymentMethodId: z.string().optional(),
 });
 

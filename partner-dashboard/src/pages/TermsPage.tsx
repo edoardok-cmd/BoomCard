@@ -102,7 +102,7 @@ const TermsPage: React.FC = () => {
                 <li><strong>BOOM стикер</strong> — физически NFC/QR стикер, поставен на определено място в обект на Партньор, чрез който Потребителите инициират транзакции.</li>
                 <li><strong>Кешбек (Cashback)</strong> — парично възстановяване (в проценти от сумата на покупка), кредитирано в електронния портфейл на Потребителя след валидирана покупка.</li>
                 <li><strong>Портфейл (Wallet)</strong> — виртуална сметка в Платформата, в която се съхраняват кешбек средства и потребителски заредени суми.</li>
-                <li><strong>Абонаментен план</strong> — платен или безплатен план (STANDARD, PREMIUM, PLATINUM), определящ нивото на кешбек и достъп до функционалности.</li>
+                <li><strong>Абонаментен план</strong> — платен план (Basic, Premium Седмичен, Premium Месечен), определящ нивото на кешбек и достъп до функционалности.</li>
               </ul>
 
               <h2>2. Регистрация и Акаунт</h2>
@@ -127,19 +127,19 @@ const TermsPage: React.FC = () => {
                 </thead>
                 <tbody>
                   <tr>
-                    <td>STANDARD</td>
-                    <td>До 5%</td>
-                    <td>Безплатно</td>
-                  </tr>
-                  <tr>
-                    <td>PREMIUM</td>
-                    <td>До 7%</td>
-                    <td>9.99 лв./месец или годишен план</td>
-                  </tr>
-                  <tr>
-                    <td>PLATINUM</td>
+                    <td>Basic</td>
                     <td>До 10%</td>
-                    <td>19.99 лв./месец или годишен план</td>
+                    <td>€8.99/месец</td>
+                  </tr>
+                  <tr>
+                    <td>Premium Седмичен</td>
+                    <td>До 24%</td>
+                    <td>€6.99/седмица</td>
+                  </tr>
+                  <tr>
+                    <td>Premium Месечен</td>
+                    <td>До 24%</td>
+                    <td>€13.99/месец</td>
                   </tr>
                 </tbody>
               </table>
@@ -163,7 +163,10 @@ const TermsPage: React.FC = () => {
               <ul>
                 <li><strong>Зареждане:</strong> Можете да заредите портфейла си чрез банков превод, карта или електронен портфейл.</li>
                 <li><strong>Кешбек:</strong> Кешбек средствата се кредитират автоматично след валидиране на покупка чрез BOOM стикер или касова бележка.</li>
-                <li><strong>Процентът на кешбек зависи от:</strong> вашия абонаментен план, конкретния Партньор и действащите промоции.</li>
+                <li><strong>Процентът на кешбек зависи от:</strong> вашия абонаментен план и отстъпката, предлагана от конкретния Партньор (фиксирана матрица). Basic план: до 10%; Premium планове: до 24%.</li>
+                <li><strong>Минимален праг за изплащане:</strong> €10 за Premium Седмичен, €15 за Premium Месечен, €20 за Basic. Изплащането се обработва по регистрираната карта в рамките на 3–5 работни дни след достигане на прага.</li>
+                <li><strong>Валидност на кешбека:</strong> Всяка одобрена транзакция носи 60-дневен период на валидност от датата на одобрение. Кешбекът изтича на каскаден принцип — най-старите суми изтичат първи.</li>
+                <li><strong>Надграждане на план:</strong> При надграждане от Premium Седмичен към Premium Месечен се приспада 100% от остатъчната стойност на седмичния план. При надграждане от Basic към Premium се приспада 60% от остатъчната стойност.</li>
                 <li><strong>Лимити:</strong> BoomCard може да определи максимален дневен/месечен лимит за кешбек транзакции, за да осигури целостта на системата.</li>
                 <li><strong>Средствата в портфейла не генерират лихва</strong> и не представляват банков депозит.</li>
               </ul>
@@ -173,6 +176,7 @@ const TermsPage: React.FC = () => {
                 <li><strong>Сканиране:</strong> Потребителите сканират BOOM стикер в обект на Партньор, за да инициират транзакция за кешбек.</li>
                 <li><strong>GPS валидация:</strong> Платформата може да провери GPS локацията ви, за да потвърди присъствието ви в обекта.</li>
                 <li><strong>Касова бележка:</strong> Може да се изиска качване на снимка на касовата бележка за валидиране на сумата и търговеца.</li>
+                <li><strong>Срок за качване:</strong> Касовата бележка трябва да бъде качена преди напускане на заведението или малко след плащането. Прозорецът за качване се затваря в 6:00 ч. на следващия ден. Бележки, качени повече от 1 час след издаването им, може да бъдат насочени към ръчен преглед.</li>
                 <li><strong>OCR обработка:</strong> Касовите бележки се обработват чрез автоматично разпознаване на текст (OCR) и проверка за измами.</li>
                 <li><strong>Анти-фрод:</strong> Опити за злоупотреба (фалшиви бележки, множество сканирания, манипулиране на данни) могат да доведат до незабавно спиране на акаунта и загуба на натрупания кешбек.</li>
               </ul>
@@ -251,7 +255,7 @@ const TermsPage: React.FC = () => {
                 <li><strong>BOOM Sticker</strong> — a physical NFC/QR sticker placed at a designated location in a Partner's venue, through which Users initiate transactions.</li>
                 <li><strong>Cashback</strong> — a monetary return (as a percentage of the purchase amount) credited to the User's electronic wallet after a validated purchase.</li>
                 <li><strong>Wallet</strong> — a virtual account on the Platform where cashback funds and user-loaded balances are stored.</li>
-                <li><strong>Subscription Plan</strong> — a paid or free plan (STANDARD, PREMIUM, PLATINUM) determining the cashback rate and feature access.</li>
+                <li><strong>Subscription Plan</strong> — a paid plan (Basic, Premium Weekly, Premium Monthly) determining the cashback rate and feature access.</li>
               </ul>
 
               <h2>2. Registration & Account</h2>
@@ -276,19 +280,19 @@ const TermsPage: React.FC = () => {
                 </thead>
                 <tbody>
                   <tr>
-                    <td>STANDARD</td>
-                    <td>Up to 5%</td>
-                    <td>Free</td>
-                  </tr>
-                  <tr>
-                    <td>PREMIUM</td>
-                    <td>Up to 7%</td>
-                    <td>9.99 BGN/month or annual plan</td>
-                  </tr>
-                  <tr>
-                    <td>PLATINUM</td>
+                    <td>Basic</td>
                     <td>Up to 10%</td>
-                    <td>19.99 BGN/month or annual plan</td>
+                    <td>€8.99/month</td>
+                  </tr>
+                  <tr>
+                    <td>Premium Weekly</td>
+                    <td>Up to 24%</td>
+                    <td>€6.99/week</td>
+                  </tr>
+                  <tr>
+                    <td>Premium Monthly</td>
+                    <td>Up to 24%</td>
+                    <td>€13.99/month</td>
                   </tr>
                 </tbody>
               </table>
@@ -312,7 +316,10 @@ const TermsPage: React.FC = () => {
               <ul>
                 <li><strong>Top-up:</strong> You can top up your wallet via bank transfer, card, or e-wallet.</li>
                 <li><strong>Cashback:</strong> Cashback is automatically credited after a purchase is validated through a BOOM sticker or receipt scan.</li>
-                <li><strong>The cashback rate depends on:</strong> your subscription plan, the specific Partner, and active promotions.</li>
+                <li><strong>The cashback rate depends on:</strong> your subscription plan and the discount offered by the specific Partner (fixed matrix). Basic plan: up to 10%; Premium plans: up to 24%.</li>
+                <li><strong>Minimum payout threshold:</strong> €10 for Premium Weekly, €15 for Premium Monthly, €20 for Basic. Payouts are processed to your registered card within 3–5 business days of reaching the threshold.</li>
+                <li><strong>Cashback validity:</strong> Each approved transaction carries a 60-day validity window from the date of approval. Cashback expires on a cascading basis — the oldest amounts expire first.</li>
+                <li><strong>Plan upgrades:</strong> Upgrading from Premium Weekly to Premium Monthly credits 100% of the remaining weekly value. Upgrading from Basic to Premium credits 60% of the remaining Basic value.</li>
                 <li><strong>Limits:</strong> BoomCard may set maximum daily/monthly limits on cashback transactions to ensure system integrity.</li>
                 <li><strong>Wallet funds do not accrue interest</strong> and do not constitute a bank deposit.</li>
               </ul>
@@ -322,6 +329,7 @@ const TermsPage: React.FC = () => {
                 <li><strong>Scanning:</strong> Users scan a BOOM sticker at a Partner's venue to initiate a cashback transaction.</li>
                 <li><strong>GPS validation:</strong> The Platform may verify your GPS location to confirm your presence at the venue.</li>
                 <li><strong>Receipt:</strong> You may be required to upload a photo of your receipt to validate the amount and merchant.</li>
+                <li><strong>Upload window:</strong> Receipts must be uploaded before leaving the venue or shortly after paying. The upload window closes at 6am the following day. Receipts uploaded more than 1 hour after issuance may be flagged for manual review.</li>
                 <li><strong>OCR processing:</strong> Receipts are processed through automated text recognition (OCR) and fraud checks.</li>
                 <li><strong>Anti-fraud:</strong> Attempts at abuse (fake receipts, multiple scans, data manipulation) may result in immediate account suspension and loss of accumulated cashback.</li>
               </ul>

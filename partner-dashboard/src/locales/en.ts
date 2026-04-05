@@ -291,7 +291,7 @@ export const en = {
     step2Title: 'Enjoy & pay',
     step2Description: 'Order, enjoy your meal and pay the bill',
     step3Title: 'Get your cashback',
-    step3Description: 'Upload your receipt and receive cashback directly to your account',
+    step3Description: 'Upload your receipt and earn cashback to your wallet — paid out to your card when your balance reaches the plan threshold',
     downloadAppCta: 'Download the BOOM App',
     availableForIosAndroid: 'Available for iOS and Android',
 
@@ -306,7 +306,7 @@ export const en = {
 
     // Categories
     restaurantsBars: 'Restaurants & Bars',
-    restaurantsBarsDesc: 'Discover 150+ venues with up to 70% off',
+    restaurantsBarsDesc: 'Discover 150+ venues with up to 24% cashback',
     hotelsSpa: 'Hotels & Spa',
     hotelsSpaDesc: 'Luxury stays and spa treatments',
     wineries: 'Wineries',
@@ -332,7 +332,7 @@ export const en = {
     // Hero Section - 2.1
     breadcrumb: 'BOOM Places',
     title: 'All BOOM Discounts in One Place',
-    subtitle: 'BOOM Card gives you access to exclusive offers with up to 20% discount, based on your chosen plan.',
+    subtitle: 'BOOM Card gives you access to exclusive offers with up to 24% cashback, based on your chosen plan.',
     heroCta: 'Unlock BOOM Card',
     heroTrustLine: 'Free 24-hour trial period. No payment required.',
 
@@ -340,12 +340,12 @@ export const en = {
     resultsTitle: 'Curated BOOM Places',
 
     // Card Content - 2.3
-    discountLabel: 'up to 20%',
-    discountNote: 'based on subscription plan',
+    discountLabel: 'up to 24%',
+    discountNote: 'cashback based on subscription plan',
 
     // Statistics
     activeOffers: 'New offers at top venues',
-    upToDiscount: 'Up to 20% discount based on subscription plan',
+    upToDiscount: 'Up to 24% cashback based on subscription plan',
     newOffersRegularly: 'Curated offers',
     premiumOnlyNote: 'Some offers are available only with Premium.',
 
@@ -353,7 +353,7 @@ export const en = {
     cashbackTitle: 'Money Back with BOOM Card in 3 steps',
     cashbackStep1: 'Scan the sticker on the table in the app',
     cashbackStep2: 'Take a photo of your receipt after payment',
-    cashbackStep3: 'Receive the refund to the card used to activate your subscription',
+    cashbackStep3: 'Cashback is added to your wallet and paid out to your registered card once your plan\'s minimum threshold is reached',
     cashbackNote: 'Everything happens through the app. No explanations to staff.',
     cashbackTrustText: 'The amount is refunded after a quick receipt verification.',
     cashbackImportant: 'Important: Refunds are valid only when scanning on-site with a valid receipt.',
@@ -980,10 +980,10 @@ export const en = {
   pricing: {
     title: 'Choose Your Plan',
     subtitle: 'Select the perfect plan for your business needs',
-    trialSubtitle: 'Start with a 14-day free trial. No credit card required.',
+    trialSubtitle: 'Start with a 24-hour free Premium trial. No credit card required.',
     monthly: 'Monthly',
     annually: 'Annually',
-    save25: 'Save 25%',
+    save25: 'Save 20%',
     perMonth: '/month',
     getStarted: 'Get Started',
     choosePlan: 'Choose Plan',
@@ -1049,7 +1049,7 @@ export const en = {
     apiAccessLabel: 'API Access',
     support: 'Support',
     priority: 'Priority',
-    save17: 'Save 17%',
+    save17: 'Save 20%',
     month: 'month',
     monthly_billing: 'monthly',
   },
@@ -1072,7 +1072,7 @@ export const en = {
     weeklyPlanTitle: 'BOOM Card PREMIUM – 7 DAYS',
     weeklyPlanPeriod: '/ week',
     weeklyPlanFeature1: 'Full Premium access',
-    weeklyPlanFeature2: 'Up to 20% discount (depending on venue)',
+    weeklyPlanFeature2: 'Up to 24% cashback (depending on partner)',
     weeklyPlanFeature3: 'Activate discounts directly from your table',
     weeklyPlanFeature4: 'Everything managed through the app',
     weeklyPlanFeature5: 'No commitment after the period ends',
@@ -1084,7 +1084,7 @@ export const en = {
     monthlyPlanTitle: 'BOOM Card PREMIUM – MONTHLY',
     monthlyPlanPeriod: '/ month',
     monthlyPlanFeature1: 'All Premium venues',
-    monthlyPlanFeature2: 'Up to 20% discount',
+    monthlyPlanFeature2: 'Up to 24% cashback',
     monthlyPlanFeature3: 'Exclusive offers',
     monthlyPlanFeature4: 'Priority support',
     monthlyPlanFeature5: 'First access to new partners',
@@ -1096,7 +1096,7 @@ export const en = {
     basicPlanPeriod: '/ month',
     basicPlanFeature1: 'Access to partner venues',
     basicPlanFeature2: 'Basic offers',
-    basicPlanFeature3: 'Up to 10% discount',
+    basicPlanFeature3: 'Up to 10% cashback',
     basicPlanFeature4: 'Managed through the app',
     basicPlanCta: '👉 Start with 24 hours Premium – FREE',
     basicPlanNote: 'After the trial, you switch to Basic unless you choose Premium',
@@ -1104,9 +1104,9 @@ export const en = {
     // Annual Plan
     annualPlanBadge: 'Save 20%',
     annualPlanTitle: 'BOOM Card PREMIUM – ANNUAL',
-    annualPlanPrice: '99.99',
+    annualPlanPrice: '134.30',
     annualPlanPeriod: '/ year',
-    annualPlanMonthly: '(only €8.33/month)',
+    annualPlanMonthly: '(only €11.19/month)',
   },
 
   // ===== TESTIMONIALS =====
@@ -1845,7 +1845,7 @@ export const en = {
     // Subscription CTAs for non-subscribers
     subscriptionCta: {
       unlockDiscount: 'Unlock this discount',
-      getDiscount: 'Get up to 20% off',
+      getDiscount: 'Get up to 24% cashback',
       joinBoomCard: 'Join BOOM Card',
       memberBenefit: 'Member benefit',
       exclusiveAccess: 'Exclusive member access',

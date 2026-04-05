@@ -98,7 +98,8 @@ const UpgradePlansScreen = ({ navigation, route }: any) => {
   const { theme, isDarkMode } = useTheme();
   const language = i18n.language === 'bg' ? 'bg' : 'en';
 
-  const currentCardType: string = route?.params?.currentCardType || 'light';
+  // null means no card / no subscription — show all plans
+  const currentCardType: string | null = route?.params?.currentCardType ?? null;
 
   const [plans, setPlans] = useState<Plan[]>([]);
   const [loading, setLoading] = useState(true);
@@ -143,23 +144,43 @@ const UpgradePlansScreen = ({ navigation, route }: any) => {
     fetchPlans();
   }, []);
 
-  // Filter to only show plans above current tier
-  // Map backend card type (LIGHT/BASIC/PREMIUM) to plan card type (light/silver/black)
-  const mappedCardType = BACKEND_TO_PLAN_CARD_TYPE[currentCardType.toLowerCase()] || currentCardType.toLowerCase();
-  const currentTierIndex = TIER_ORDER.indexOf(mappedCardType as typeof TIER_ORDER[number]);
+  // Filter to only show valid upgrade plans per the BOOM cashback model:
+  //   null   (no card / no subscription)          → show all plans
+  //   LIGHT  (Premium Weekly, up to 24% cashback) → only PREMIUM Monthly (100% credit)
+  //   BASIC  (up to 10% cashback)                 → only PREMIUM Monthly (60% credit)
+  //   PREMIUM                                     → no upgrades available
+  //
+  // LIGHT → BASIC is intentionally excluded: BASIC has a 10% cashback cap while
+  // LIGHT already provides up to 24%, so offering BASIC would be a cashback downgrade.
+  const mappedCardType = currentCardType
+    ? (BACKEND_TO_PLAN_CARD_TYPE[currentCardType.toLowerCase()] || currentCardType.toLowerCase())
+    : null;
+  const currentTierIndex = mappedCardType ? TIER_ORDER.indexOf(mappedCardType as typeof TIER_ORDER[number]) : -1;
   const upgradePlans = plans.filter(plan => {
     const planTierIndex = TIER_ORDER.indexOf(plan.cardType);
-    return planTierIndex > currentTierIndex;
+    if (planTierIndex <= currentTierIndex) return false;
+    // LIGHT users can only upgrade to PREMIUM (black), not to BASIC (silver)
+    if (mappedCardType === 'light' && plan.cardType !== 'black') return false;
+    return true;
   });
 
   const handleSelectPlan = (plan: Plan, billingPeriod: 'weekly' | 'monthly' | 'yearly') => {
     navigation.push('Checkout', {
       planId: plan.id,
       billing: billingPeriod,
+      currentCardType: mappedCardType,
     });
   };
 
   const convertEURToBGN = (eur: number) => +(eur * APP_CONFIG.EUR_EXCHANGE_RATE).toFixed(2);
+
+  // Credit only applies for specific upgrade paths per backend logic:
+  // LIGHT → PREMIUM: 100%   BASIC → PREMIUM: 60%   all others: no credit
+  const getUpgradeCreditPercent = (targetCardType: string): number | null => {
+    if (mappedCardType === 'light' && targetCardType === 'black') return 100;
+    if (mappedCardType === 'silver' && targetCardType === 'black') return 60;
+    return null;
+  };
 
   const styles = getStyles(theme, isDarkMode);
 
@@ -261,7 +282,7 @@ const UpgradePlansScreen = ({ navigation, route }: any) => {
             <View style={styles.cashbackBadge}>
               <Ionicons name="wallet-outline" size={13} color={colors.text} style={{ opacity: 0.8 }} />
               <Text style={[styles.cashbackBadgeText, { color: colors.text }]}>
-                {plan.cashbackRate < 1 ? Math.round(plan.cashbackRate * 100) : plan.cashbackRate}% cashback
+                {language === 'bg' ? 'до ' : 'up to '}{plan.cashbackRate < 1 ? Math.round(plan.cashbackRate * 100) : plan.cashbackRate}% cashback
               </Text>
             </View>
           </View>
@@ -280,6 +301,20 @@ const UpgradePlansScreen = ({ navigation, route }: any) => {
             </View>
           </View>
         </LinearGradient>
+
+        {/* Per-plan upgrade credit notice — only for paths that have a credit */}
+        {(() => {
+          const creditPct = getUpgradeCreditPercent(plan.cardType);
+          if (creditPct === null) return null;
+          return (
+            <View style={styles.creditNotice}>
+              <Ionicons name="gift-outline" size={15} color="#16a34a" />
+              <Text style={styles.creditNoticeText}>
+                {t('subscription.upgradeCredit', { percent: creditPct })}
+              </Text>
+            </View>
+          );
+        })()}
 
         <View style={styles.featuresList}>
           {features.map((feature, i) => (
@@ -316,18 +351,20 @@ const UpgradePlansScreen = ({ navigation, route }: any) => {
         <Text style={styles.title}>{t('card.upgradePlansTitle')}</Text>
         <Text style={styles.subtitle}>{t('card.upgradePlansSubtitle')}</Text>
 
-        {/* Current Plan Indicator */}
-        <View style={styles.currentPlanChip}>
-          <Ionicons name="card" size={14} color={theme.colors.onSurfaceVariant} />
-          <Text style={styles.currentPlanText}>
-            {language === 'bg' ? 'Текущ план: ' : 'Current plan: '}
-            {mappedCardType === 'light'
-              ? (language === 'bg' ? 'Лайт Премиум' : 'Lite Premium')
-              : mappedCardType === 'silver'
-                ? (language === 'bg' ? 'Основен' : 'Basic')
-                : (language === 'bg' ? 'Премиум' : 'Premium')}
-          </Text>
-        </View>
+        {/* Current Plan Indicator — only shown when user already has a plan */}
+        {mappedCardType !== null && (
+          <View style={styles.currentPlanChip}>
+            <Ionicons name="card" size={14} color={theme.colors.onSurfaceVariant} />
+            <Text style={styles.currentPlanText}>
+              {language === 'bg' ? 'Текущ план: ' : 'Current plan: '}
+              {mappedCardType === 'light'
+                ? (language === 'bg' ? 'Премиум Седмичен' : 'Premium Weekly')
+                : mappedCardType === 'silver'
+                  ? (language === 'bg' ? 'Основен' : 'Basic')
+                  : (language === 'bg' ? 'Премиум' : 'Premium')}
+            </Text>
+          </View>
+        )}
 
         {/* Billing Toggle */}
         <View style={styles.toggleWrapper}>
@@ -419,6 +456,27 @@ const getStyles = (theme: any, isDarkMode: boolean) => StyleSheet.create({
     fontSize: 13,
     color: theme.colors.onSurfaceVariant,
     fontWeight: '500',
+  },
+
+  // Upgrade credit notice
+  creditNotice: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    alignSelf: 'center' as const,
+    gap: 6,
+    backgroundColor: isDarkMode ? 'rgba(34, 197, 94, 0.1)' : 'rgba(34, 197, 94, 0.08)',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 12,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(34, 197, 94, 0.3)',
+  },
+  creditNoticeText: {
+    fontSize: 13,
+    color: '#16a34a',
+    fontWeight: '500' as const,
+    flex: 1,
   },
 
   // Billing Toggle

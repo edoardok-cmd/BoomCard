@@ -1,4 +1,4 @@
-import { Receipt, ReceiptStatus, Prisma } from '@prisma/client';
+import { Receipt, ReceiptStatus, Prisma, WalletTransactionType } from '@prisma/client';
 import { AppError } from '../middleware/error.middleware';
 import { logger } from '../utils/logger';
 import * as crypto from 'crypto';
@@ -436,16 +436,16 @@ class ReceiptService {
    * Apply cashback for a validated receipt
    */
   async applyCashback(id: string, cashbackAmount: number) {
+    if (cashbackAmount <= 0) {
+      throw new AppError('Cashback amount must be positive', 400);
+    }
+
     try {
       const receipt = await prisma.receipt.findUnique({
         where: { id },
         include: {
           transaction: true,
-          user: {
-            include: {
-              loyaltyAccount: true
-            }
-          }
+          user: true,
         }
       });
 
@@ -457,44 +457,65 @@ class ReceiptService {
         throw new AppError('Receipt must be approved before applying cashback', 400);
       }
 
-      if (receipt.cashbackAmount > 0) {
+      // Step 1: Atomically claim the cashback slot — prevents double-credit race.
+      // Two concurrent calls both see cashbackAmount === 0 in the read above, but
+      // only one updateMany can win the WHERE cashbackAmount = 0 condition.
+      const claimResult = await prisma.receipt.updateMany({
+        where: { id, cashbackAmount: 0 },
+        data: { cashbackAmount },
+      });
+
+      if (claimResult.count === 0) {
+        // Another concurrent call already stamped it — idempotent, no double credit.
         throw new AppError('Cashback has already been applied to this receipt', 400);
       }
 
-      // Create or update loyalty account
-      let loyaltyAccount = receipt.user.loyaltyAccount;
-      if (!loyaltyAccount) {
-        loyaltyAccount = await prisma.loyaltyAccount.create({
-          data: {
-            userId: receipt.userId,
-            cashbackBalance: cashbackAmount
-          }
+      // Step 2: Credit wallet — only one concurrent call reaches this point.
+      let updatedWallet;
+      try {
+        const result = await walletService.credit({
+          userId: receipt.userId,
+          amount: cashbackAmount,
+          type: WalletTransactionType.CASHBACK_CREDIT,
+          description: `Cashback for receipt ${id}`,
+          receiptId: id,
         });
-      } else {
-        loyaltyAccount = await prisma.loyaltyAccount.update({
-          where: { id: loyaltyAccount.id },
-          data: {
-            cashbackBalance: loyaltyAccount.cashbackBalance + cashbackAmount
-          }
-        });
+        updatedWallet = result.wallet;
+      } catch (creditError) {
+        // Roll back the claim so the operation can be safely retried.
+        // Wrap the rollback itself so a secondary DB failure doesn't mask the original error.
+        try {
+          await prisma.receipt.updateMany({ where: { id }, data: { cashbackAmount: 0 } });
+        } catch (rollbackError) {
+          logger.error(`CRITICAL: Failed to roll back cashback claim for receipt ${id}. Manual intervention required.`, rollbackError);
+        }
+        throw new AppError('Failed to credit cashback to wallet. Please retry.', 500);
       }
 
-      // Update receipt cashback amount
-      const updatedReceipt = await prisma.receipt.update({
-        where: { id },
-        data: {
-          cashbackAmount
-        }
-      });
+      // Keep legacy loyaltyAccount in sync — non-fatal: wallet credit and receipt stamp
+      // have already succeeded, so a loyaltyAccount failure must not roll them back.
+      // Use upsert to eliminate the concurrent-create race that the if/else pattern had
+      // when two calls both saw loyaltyAccount === null and both tried to create it.
+      try {
+        await prisma.loyaltyAccount.upsert({
+          where: { userId: receipt.userId },
+          create: { userId: receipt.userId, cashbackBalance: cashbackAmount },
+          update: { cashbackBalance: { increment: cashbackAmount } },
+        });
+      } catch (loyaltyError) {
+        logger.error(`Failed to sync loyaltyAccount for receipt ${id} — wallet credit stands:`, loyaltyError);
+      }
 
       logger.info(`Cashback applied: ${cashbackAmount} BGN to user ${receipt.userId} for receipt ${id}`);
 
+      // No second DB read needed — the only field that changed since the initial read
+      // is cashbackAmount, which was stamped by the claim in step 1.
       return {
         success: true,
         data: {
-          receipt: this.formatReceipt(updatedReceipt),
+          receipt: this.formatReceipt({ ...receipt, cashbackAmount }),
           cashbackAmount,
-          newBalance: loyaltyAccount.cashbackBalance
+          newBalance: updatedWallet.availableBalance,
         }
       };
     } catch (error) {
@@ -957,12 +978,13 @@ class ReceiptService {
         }
       }
 
-      // Update receipt
+      // Update receipt.
+      // Use != null check for verifiedAmount so an explicit 0 is honoured (|| would treat 0 as falsy).
       const updated = await prisma.receipt.update({
         where: { id: params.receiptId },
         data: {
           status: newStatus,
-          totalAmount: params.verifiedAmount || receipt.totalAmount,
+          totalAmount: params.verifiedAmount != null ? params.verifiedAmount : receipt.totalAmount,
           cashbackAmount: params.action === 'APPROVE' ? cashbackAmount : 0,
           reviewedBy: params.reviewedBy,
           reviewedAt: new Date(),
@@ -971,21 +993,14 @@ class ReceiptService {
         } as any,
       });
 
-      // Update analytics
-      await receiptAnalyticsService.updateAnalyticsOnStatusChange({
-        userId: receipt.userId,
-        oldStatus: oldStatus as string,
-        newStatus: newStatus as string,
-        cashbackAmount,
-      });
-
-      // Credit cashback to wallet if approved
+      // Credit cashback to wallet if approved — must succeed before analytics is updated
+      // so that a rollback on wallet failure doesn't leave analytics inflated.
       if (newStatus === 'APPROVED' && cashbackAmount > 0) {
         try {
           await walletService.credit({
             userId: receipt.userId,
             amount: cashbackAmount,
-            type: 'CASHBACK_CREDIT',
+            type: WalletTransactionType.CASHBACK_CREDIT,
             description: `Cashback from receipt at ${receipt.merchantName || 'merchant'}`,
             receiptId: receipt.id,
             metadata: {
@@ -997,26 +1012,63 @@ class ReceiptService {
 
           logger.info(`Approved receipt ${params.receiptId} and credited ${cashbackAmount} BGN`);
         } catch (error) {
-          logger.error(`Failed to credit cashback for receipt ${params.receiptId}:`, error);
-          // Continue even if wallet credit fails
+          // Roll back the receipt so the admin can safely retry — don't leave the receipt
+          // APPROVED with cashbackAmount > 0 but no wallet credit.
+          logger.error(`Failed to credit cashback for receipt ${params.receiptId}, rolling back receipt status:`, error);
+          // Wrap the rollback itself so a secondary DB failure doesn't mask the primary error.
+          try {
+            await prisma.receipt.update({
+              where: { id: params.receiptId },
+              data: {
+                status: oldStatus,
+                totalAmount: receipt.totalAmount,
+                cashbackAmount: 0,
+                reviewedBy: null,
+                reviewedAt: null,
+                // Restore original values so prior rejection metadata is preserved.
+                rejectionReason: receipt.rejectionReason ?? null,
+                reviewNotes: (receipt as any).reviewNotes ?? null,
+              } as any,
+            });
+          } catch (rollbackError) {
+            logger.error(`CRITICAL: Failed to roll back receipt review for ${params.receiptId}. Manual intervention required.`, rollbackError);
+          }
+          throw new AppError('Failed to credit cashback to wallet. Receipt approval has been rolled back — please retry.', 500);
         }
       }
 
-      // Send notification
-      if (newStatus === 'APPROVED') {
-        await notificationService.notifyReceiptApproved({
+      // Update analytics after wallet credit succeeds (or for REJECT where no credit is needed).
+      // Non-fatal: analytics failure must not block or reverse the review result.
+      try {
+        await receiptAnalyticsService.updateAnalyticsOnStatusChange({
           userId: receipt.userId,
-          receiptId: receipt.id,
-          merchantName: receipt.merchantName || 'Unknown Merchant',
+          oldStatus: oldStatus as string,
+          newStatus: newStatus as string,
           cashbackAmount,
         });
-      } else {
-        await notificationService.notifyReceiptRejected({
-          userId: receipt.userId,
-          receiptId: receipt.id,
-          merchantName: receipt.merchantName || 'Unknown Merchant',
-          reason: params.rejectionReason || 'Receipt did not pass verification',
-        });
+      } catch (analyticsError) {
+        logger.error(`Failed to update analytics for receipt ${params.receiptId} — review stands:`, analyticsError);
+      }
+
+      // Send notification — non-fatal: a notify failure must not mask a successful review.
+      try {
+        if (newStatus === 'APPROVED') {
+          await notificationService.notifyReceiptApproved({
+            userId: receipt.userId,
+            receiptId: receipt.id,
+            merchantName: receipt.merchantName || 'Unknown Merchant',
+            cashbackAmount,
+          });
+        } else {
+          await notificationService.notifyReceiptRejected({
+            userId: receipt.userId,
+            receiptId: receipt.id,
+            merchantName: receipt.merchantName || 'Unknown Merchant',
+            reason: params.rejectionReason || 'Receipt did not pass verification',
+          });
+        }
+      } catch (notifyError) {
+        logger.error(`Failed to send notification for receipt ${params.receiptId} — review stands:`, notifyError);
       }
 
       logger.info(`Receipt ${params.receiptId} ${newStatus.toLowerCase()} by admin`);

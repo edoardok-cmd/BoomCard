@@ -293,7 +293,7 @@ export const bg: TranslationKey = {
     step2Title: 'Насладей се и плати',
     step2Description: 'Поръчай, насладей се и плати сметката',
     step3Title: 'Получаваш кешбек',
-    step3Description: 'Качи касовата бележка и получи пари обратно по сметката си',
+    step3Description: 'Качи касовата бележка и спечели кешбек в портфейла — изплаща се по картата при достигане на минималния праг за плана',
     downloadAppCta: 'Изтегли BOOM приложението',
     availableForIosAndroid: 'Налично за iOS и Android',
 
@@ -308,7 +308,7 @@ export const bg: TranslationKey = {
 
     // Categories
     restaurantsBars: 'Ресторанти и Барове',
-    restaurantsBarsDesc: 'Открийте над 150 заведения с отстъпки до 70%',
+    restaurantsBarsDesc: 'Открийте над 150 заведения с до 24% кешбек',
     hotelsSpa: 'Хотели и СПА',
     hotelsSpaDesc: 'Луксозни престои и спа третирания',
     wineries: 'Винарни',
@@ -334,7 +334,7 @@ export const bg: TranslationKey = {
     // Hero секция - 2.1
     breadcrumb: 'BOOM места',
     title: 'Всички BOOM отстъпки на едно място',
-    subtitle: 'BOOM Card ти дава достъп до ексклузивни оферти с до 20% отстъпка, според избрания от теб план.',
+    subtitle: 'BOOM Card ти дава достъп до ексклузивни оферти с до 24% кешбек, според избрания от теб план.',
     heroCta: 'Отключи BOOM Card',
     heroTrustLine: 'Безплатен 24-часов пробен период. Без заплащане.',
 
@@ -342,12 +342,12 @@ export const bg: TranslationKey = {
     resultsTitle: 'Подбрани BOOM места',
 
     // Карти - съдържание - 2.3
-    discountLabel: 'до 20%',
-    discountNote: 'според абонаментния план',
+    discountLabel: 'до 24%',
+    discountNote: 'кешбек според абонаментния план',
 
     // Статистика
     activeOffers: 'Нови предложения на топ места',
-    upToDiscount: 'До 20% отстъпка според абонаментния план',
+    upToDiscount: 'До 24% кешбек според абонаментния план',
     newOffersRegularly: 'Подбрани предложения',
     premiumOnlyNote: 'Някои оферти са достъпни само с Premium.',
 
@@ -355,7 +355,7 @@ export const bg: TranslationKey = {
     cashbackTitle: 'Възстановяване на сума с BOOM Card в 3 стъпки',
     cashbackStep1: 'Сканирай стикера на масата в приложението',
     cashbackStep2: 'Снимай касовата бележка след плащане',
-    cashbackStep3: 'Получи възстановената сума по картата, с която е активиран абонаментът',
+    cashbackStep3: 'Кешбекът се добавя в портфейла и се изплаща по регистрираната карта при достигане на минималния праг за плана',
     cashbackNote: 'Всичко става през приложението. Без обяснения с персонала.',
     cashbackTrustText: 'Сумата се възстановява след кратка проверка на касовата бележка.',
     cashbackImportant: 'Важно: Възстановяването важи само при сканиране на място и валидна касова бележка.',
@@ -982,10 +982,10 @@ export const bg: TranslationKey = {
   pricing: {
     title: 'Изберете вашия план',
     subtitle: 'Изберете перфектния план за вашия бизнес',
-    trialSubtitle: 'Започнете безплатно за 14 дни. Без кредитна карта.',
+    trialSubtitle: 'Започнете с 24-часов безплатен Premium пробен период. Без кредитна карта.',
     monthly: 'Месечно',
     annually: 'Годишно',
-    save25: 'Спестете 25%',
+    save25: 'Спестете 20%',
     perMonth: '/месец',
     getStarted: 'Започни сега',
     choosePlan: 'Избери план',
@@ -1051,7 +1051,7 @@ export const bg: TranslationKey = {
     apiAccessLabel: 'API Достъп',
     support: 'Поддръжка',
     priority: 'Приоритетна',
-    save17: 'Спести 17%',
+    save17: 'Спести 20%',
     month: 'месец',
     monthly_billing: 'месечно',
   },
@@ -1074,7 +1074,7 @@ export const bg: TranslationKey = {
     weeklyPlanTitle: 'BOOM Card PREMIUM – 7 ДНИ',
     weeklyPlanPeriod: '€ / седмица',
     weeklyPlanFeature1: 'Пълен Premium достъп',
-    weeklyPlanFeature2: 'До 20% отстъпка (в зависимост от заведението)',
+    weeklyPlanFeature2: 'До 24% кешбек (в зависимост от партньора)',
     weeklyPlanFeature3: 'Активираш отстъпките директно от масата',
     weeklyPlanFeature4: 'Всичко се управлява през приложението',
     weeklyPlanFeature5: 'Без ангажимент след изтичане на периода',
@@ -1086,7 +1086,7 @@ export const bg: TranslationKey = {
     monthlyPlanTitle: 'BOOM Card PREMIUM – МЕСЕЧЕН',
     monthlyPlanPeriod: '€ / месец',
     monthlyPlanFeature1: 'Всички Premium заведения',
-    monthlyPlanFeature2: 'До 20% отстъпка',
+    monthlyPlanFeature2: 'До 24% кешбек',
     monthlyPlanFeature3: 'Ексклузивни оферти',
     monthlyPlanFeature4: 'Приоритетна поддръжка',
     monthlyPlanFeature5: 'Първи достъп до нови партньори',
@@ -1098,7 +1098,7 @@ export const bg: TranslationKey = {
     basicPlanPeriod: '€ / месец',
     basicPlanFeature1: 'Достъп до партньорски заведения',
     basicPlanFeature2: 'Основни оферти',
-    basicPlanFeature3: 'До 10% отстъпка',
+    basicPlanFeature3: 'До 10% кешбек',
     basicPlanFeature4: 'Управление през приложението',
     basicPlanCta: '👉 Започни с 24 часа Premium – БЕЗПЛАТНО',
     basicPlanNote: 'След теста преминаваш към Basic, ако не избереш Premium',
@@ -1106,9 +1106,9 @@ export const bg: TranslationKey = {
     // Годишен план
     annualPlanBadge: 'Спести 20%',
     annualPlanTitle: 'BOOM Card PREMIUM – ГОДИШЕН',
-    annualPlanPrice: '99.99',
+    annualPlanPrice: '134.30',
     annualPlanPeriod: '€ / година',
-    annualPlanMonthly: '(само 8.33 € / месец)',
+    annualPlanMonthly: '(само 11.19 € / месец)',
   },
 
   // ===== ОТЗИВИ ОТ КЛИЕНТИ =====
@@ -1847,7 +1847,7 @@ export const bg: TranslationKey = {
     // CTA за абонамент за неабонати
     subscriptionCta: {
       unlockDiscount: 'Отключи тази отстъпка',
-      getDiscount: 'Вземи до 20% отстъпка',
+      getDiscount: 'Вземи до 24% кешбек',
       joinBoomCard: 'Присъедини се към BOOM Card',
       memberBenefit: 'Предимство за членове',
       exclusiveAccess: 'Ексклузивен достъп за членове',

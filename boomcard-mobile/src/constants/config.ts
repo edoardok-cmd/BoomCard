@@ -164,7 +164,7 @@ export const APP_CONFIG = {
   RECEIPT: {
     MAX_FILE_SIZE_MB: 10,
     ALLOWED_TYPES: ['image/jpeg', 'image/png', 'image/jpg'],
-    MAX_AGE_DAYS: 7, // Maximum receipt age for submission
+    MAX_AGE_DAYS: 1, // Receipts must be submitted the same day (until 6am the following day per policy)
     RATE_LIMIT: {
       PER_DAY: 10,
       PER_MONTH: 100,
@@ -188,7 +188,7 @@ export const APP_CONFIG = {
  */
 export const CARD_TIERS = {
   LIGHT: {
-    name: 'Lite Premium',
+    name: 'Premium Weekly',
     color: '#FFFFFF',
     cardStyle: 'light' as const,
   },

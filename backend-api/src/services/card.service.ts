@@ -156,14 +156,15 @@ export class CardService {
   async getCardBenefits(cardType: CardType) {
     const plan = await prisma.plan.findFirst({
       where: { planCode: cardType, isActive: true },
-      select: { cashbackRate: true, stickerBonus: true, features: true },
+      select: { cashbackRate: true, stickerBonus: true, features: true, featuresBg: true },
     });
 
     const cashbackRate  = plan?.cashbackRate  ?? 0;
     const bonusCashback = plan?.stickerBonus  ?? 0;
-    const features: string[] = plan?.features ? JSON.parse(plan.features) : [];
+    const features: string[]   = plan?.features   ? JSON.parse(plan.features)   : [];
+    const featuresBg: string[] = plan?.featuresBg ? JSON.parse(plan.featuresBg) : [];
 
-    return { cashbackRate, bonusCashback, features };
+    return { cashbackRate, bonusCashback, features, featuresBg };
   }
 
   /**
