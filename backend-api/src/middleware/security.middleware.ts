@@ -429,10 +429,16 @@ export const corsPreflightCache = (req: Request, res: Response, next: NextFuncti
  * excluded via the skipPaths list passed at mount time.
  */
 export const csrfProtection = (skipPaths: string[] = []) => {
-  const allowedOrigins = process.env.CORS_ORIGIN
-    ? process.env.CORS_ORIGIN.split(',').map(o => o.trim().replace(/\/$/, ''))
-    : ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:5175',
-       'http://localhost:5176', 'http://localhost:5177', 'http://localhost:5178'];
+  const _raw = process.env.CORS_ORIGIN;
+  const allowedOrigins = (_raw && _raw !== '*')
+    ? _raw.split(',').map(o => o.trim().replace(/\/$/, ''))
+    : [
+        'https://boomcard.eu',
+        'https://boomcard.bg',
+        'https://mobile.boomcard.bg',
+        'http://localhost:5173', 'http://localhost:5174', 'http://localhost:5175',
+        'http://localhost:5176', 'http://localhost:5177', 'http://localhost:5178',
+      ];
 
   const stateMutatingMethods = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
