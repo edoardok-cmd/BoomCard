@@ -369,6 +369,19 @@ async function handlePaymentCallback(req: Request, res: Response) {
           },
         });
 
+        // Send payment failed email
+        if (transaction.user?.email) {
+          emailService.sendPaymentFailedEmail(transaction.user.email, {
+            customerName: transaction.user.email.split('@')[0],
+            orderId: result.orderId,
+            amount: transaction.amount,
+            currency: transaction.currency,
+            reason: result.status as 'failed' | 'cancelled',
+          }).catch((error) => {
+            logger.error('Failed to send payment failed email:', error);
+          });
+        }
+
         logger.warn(`Payment ${result.status}: ${result.orderId}`);
       }
       // For 'pending' status (0, 2, 3), we don't update - wait for final callback
@@ -863,9 +876,9 @@ async function handleSubscriptionCallback(req: Request, res: Response) {
           logger.error(`Failed to sync card type for user ${subscription.userId}:`, err);
         });
 
-        // Send confirmation email
+        // Send confirmation + activation emails
         if (subscription.user?.email) {
-          const metadata = JSON.parse(subscription.metadata as string || '{}');
+          const planDisplayName = subscription.plan.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
           emailService.sendPaymentConfirmation(subscription.user.email, {
             customerName: subscription.user.firstName || 'Customer',
             orderId: result.orderId,
@@ -874,6 +887,17 @@ async function handleSubscriptionCallback(req: Request, res: Response) {
             date: new Date(),
           }).catch((error) => {
             logger.error('Failed to send subscription confirmation email:', error);
+          });
+
+          emailService.sendSubscriptionActivatedEmail(subscription.user.email, {
+            customerName: subscription.user.firstName || subscription.user.email.split('@')[0],
+            planName: planDisplayName,
+            orderId: result.orderId,
+            amount: result.amount / 100,
+            currency: 'EUR',
+            dashboardUrl: process.env.APP_URL || 'https://mobile.boomcard.bg',
+          }).catch((error) => {
+            logger.error('Failed to send subscription activation email:', error);
           });
         }
       } else if (result.status === 'failed' || result.status === 'cancelled') {
@@ -905,6 +929,19 @@ async function handleSubscriptionCallback(req: Request, res: Response) {
           await prisma.user.update({
             where: { id: subscription.userId },
             data: { status: UserStatus.ACTIVE },
+          });
+        }
+
+        // Send payment failed email
+        if (subscription.user?.email) {
+          emailService.sendPaymentFailedEmail(subscription.user.email, {
+            customerName: subscription.user.firstName || subscription.user.email.split('@')[0],
+            orderId: result.orderId,
+            amount: result.amount / 100,
+            currency: 'EUR',
+            reason: result.status as 'failed' | 'cancelled',
+          }).catch((error) => {
+            logger.error('Failed to send subscription payment failed email:', error);
           });
         }
 

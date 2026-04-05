@@ -74,7 +74,7 @@ const SubscriptionSuccessScreen = ({ navigation, route }: any) => {
         setStatusTracked('pending');
       }
     } catch (error) {
-      console.warn('Error checking subscription status:', error);
+      if (__DEV__) console.warn('Error checking subscription status:', error);
       if (elapsedRef.current > MAX_TOTAL_TIME) {
         setStatusTracked('error');
         setIsPollingTracked(false);

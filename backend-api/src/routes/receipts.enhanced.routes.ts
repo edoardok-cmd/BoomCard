@@ -5,6 +5,7 @@ import { fraudDetectionService } from '../services/fraudDetection.service';
 import { receiptAnalyticsService } from '../services/receiptAnalytics.service';
 import { imageUploadService } from '../services/imageUpload.service';
 import { receiptTemplateService } from '../services/receiptTemplate.service';
+import { emailService } from '../services/email.service';
 import { authenticate, authorize, AuthRequest } from '../middleware/auth.middleware';
 import { asyncHandler } from '../middleware/error.middleware';
 import { uploadSingle, validateMagicBytes } from '../middleware/upload.middleware';
@@ -469,11 +470,31 @@ router.post(
       });
     }
 
-    // TODO: Implement email service integration
-    // For now, return success
+    const customerName = email.split('@')[0];
+
+    const totalCashback = receipts.reduce(
+      (sum: number, r: any) => sum + (Number(r.cashbackAmount) || 0),
+      0
+    );
+
+    await emailService.sendReceiptExportEmail(email, {
+      customerName,
+      receipts: receipts.map((r: any) => ({
+        merchantName: r.merchantName || 'Unknown',
+        amount: Number(r.totalAmount) || 0,
+        cashbackAmount: Number(r.cashbackAmount) || 0,
+        date: r.receiptDate
+          ? new Date(r.receiptDate).toLocaleDateString('en-GB')
+          : (r.createdAt ? new Date(r.createdAt).toLocaleDateString('en-GB') : '—'),
+        status: r.status || 'UNKNOWN',
+      })),
+      totalCashback,
+      exportDate: new Date(),
+    });
+
     res.json({
       success: true,
-      message: `Receipts will be sent to ${email}`,
+      message: `Receipts sent to ${email}`,
     });
   })
 );

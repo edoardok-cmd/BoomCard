@@ -185,7 +185,7 @@ export default function UploadReceiptScreen() {
       }
     } catch {
       // GPS unavailable — warn but don't block (server will re-validate)
-      console.warn('UploadReceiptScreen: GPS check failed, proceeding without distance guard');
+      if (__DEV__) console.warn('UploadReceiptScreen: GPS check failed, proceeding without distance guard');
     }
 
     setStage('submitting');

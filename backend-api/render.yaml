@@ -61,7 +61,7 @@ services:
         value: boomcard-receipts-prod
 
       - key: CORS_ORIGIN
-        value: https://boomcard.vercel.app
+        value: https://boomcard.vercel.app,https://mobile.boomcard.bg,https://boomcard.eu,https://boomcard.bg,https://partner.boomcard.bg
 
       - key: SENDGRID_API_KEY
         sync: false

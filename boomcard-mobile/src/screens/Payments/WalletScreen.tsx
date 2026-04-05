@@ -6,7 +6,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { View, StyleSheet, ScrollView, RefreshControl, Alert } from 'react-native';
-import { Text, Card, Button, FAB, List, Chip, TextInput } from 'react-native-paper';
+import { Text, Card, Button, FAB, List, Chip } from 'react-native-paper';
 import { useNavigation } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
 import { walletApi } from '../../api/wallet.api';
@@ -53,8 +53,6 @@ export default function WalletScreen() {
     payoutIban: null,
     payoutBeneficiaryName: null,
   });
-  const [payoutIban, setPayoutIban] = useState('');
-  const [payoutBeneficiaryName, setPayoutBeneficiaryName] = useState('');
   const mountedRef = useRef(true);
   useEffect(() => { return () => { mountedRef.current = false; }; }, []);
 
@@ -79,16 +77,7 @@ export default function WalletScreen() {
 
     if (!mountedRef.current) return;
 
-    if (balanceResult.status === 'fulfilled') {
-      setBalance(balanceResult.value);
-      // Pre-populate IBAN fields from stored wallet values (only on first load)
-      if (balanceResult.value.payoutIban && !payoutIban) {
-        setPayoutIban(balanceResult.value.payoutIban);
-      }
-      if (balanceResult.value.payoutBeneficiaryName && !payoutBeneficiaryName) {
-        setPayoutBeneficiaryName(balanceResult.value.payoutBeneficiaryName);
-      }
-    }
+    if (balanceResult.status === 'fulfilled') setBalance(balanceResult.value);
     if (txResult.status === 'fulfilled') setTransactions((txResult.value as any).transactions || []);
     if (statsResult.status === 'fulfilled') setStatistics(statsResult.value as any);
 
@@ -110,18 +99,21 @@ export default function WalletScreen() {
   };
 
   const handleRequestPayout = async () => {
-    const ibanClean = payoutIban.replace(/\s+/g, '').toUpperCase();
-    if (!ibanClean) {
-      Alert.alert(t('wallet.payoutIbanRequired'), t('wallet.payoutIbanRequiredDesc'));
-      return;
-    }
-    if (!payoutBeneficiaryName.trim()) {
-      Alert.alert(t('wallet.payoutBeneficiaryRequired'), t('wallet.payoutBeneficiaryRequiredDesc'));
+    // If no IBAN is stored, direct the user to their profile to set it up first
+    if (!balance.payoutIban) {
+      Alert.alert(
+        t('wallet.payoutIbanRequired'),
+        t('wallet.payoutSetupInProfile'),
+        [
+          { text: t('common.cancel'), style: 'cancel' },
+          { text: t('profile.goToProfile'), onPress: () => (navigation as any).navigate('EditProfile') },
+        ]
+      );
       return;
     }
     setPayoutLoading(true);
     try {
-      const result = await walletApi.requestPayout({ iban: ibanClean, beneficiaryName: payoutBeneficiaryName.trim() });
+      const result = await walletApi.requestPayout();
       const payoutAmount: number | undefined = result?.amount;
       Alert.alert(
         t('wallet.requestPayout'),
@@ -218,6 +210,25 @@ export default function WalletScreen() {
 
             {/* Payout threshold and request button */}
             <View style={styles.payoutRow}>
+              {/* Setup banner — shown when user hasn't saved their bank account yet */}
+              {!balance.payoutIban && (
+                <Button
+                  mode="outlined"
+                  icon="bank-outline"
+                  onPress={() => (navigation as any).navigate('EditProfile')}
+                  style={styles.setupBannerButton}
+                  labelStyle={styles.setupBannerLabel}
+                >
+                  {t('wallet.setupPayoutAccount')}
+                </Button>
+              )}
+
+              {balance.payoutIban && (
+                <Text variant="bodySmall" style={styles.ibanStoredText}>
+                  {t('wallet.payoutIbanStored', { iban: `****${balance.payoutIban.slice(-4)}` })}
+                </Text>
+              )}
+
               <Text variant="bodySmall" style={styles.payoutThresholdText}>
                 {balance.isLocked
                   ? t('wallet.walletLocked')
@@ -228,30 +239,6 @@ export default function WalletScreen() {
                         thresholdEUR: balance.payoutThresholdEUR,
                       })}
               </Text>
-
-              {/* IBAN + beneficiary name — required for Paysera B2C transfer */}
-              <TextInput
-                label={t('wallet.payoutIbanLabel')}
-                value={payoutIban}
-                onChangeText={(v) => setPayoutIban(v.replace(/\s+/g, '').toUpperCase())}
-                placeholder={t('wallet.payoutIbanPlaceholder')}
-                autoCapitalize="characters"
-                autoCorrect={false}
-                mode="outlined"
-                dense
-                style={styles.ibanInput}
-              />
-              <TextInput
-                label={t('wallet.payoutBeneficiaryLabel')}
-                value={payoutBeneficiaryName}
-                onChangeText={setPayoutBeneficiaryName}
-                placeholder={t('wallet.payoutBeneficiaryPlaceholder')}
-                autoCapitalize="words"
-                autoCorrect={false}
-                mode="outlined"
-                dense
-                style={styles.ibanInput}
-              />
 
               <Button
                 mode="contained"
@@ -409,9 +396,18 @@ const styles = StyleSheet.create({
     marginTop: 12,
     gap: 8,
   },
-  ibanInput: {
-    backgroundColor: '#fff',
-    fontSize: 13,
+  setupBannerButton: {
+    borderColor: '#D4A843',
+    borderWidth: 1.5,
+    borderRadius: 8,
+  },
+  setupBannerLabel: {
+    color: '#D4A843',
+    fontWeight: '600',
+  },
+  ibanStoredText: {
+    opacity: 0.55,
+    fontStyle: 'italic',
   },
   payoutThresholdText: {
     opacity: 0.65,

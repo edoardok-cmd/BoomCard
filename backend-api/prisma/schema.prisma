@@ -1226,6 +1226,7 @@ enum StickerStatus {
 
 enum ScanStatus {
   SESSION_ACTIVE // QR scanned, session open — awaiting receipt upload
+  EXPIRED // Session deadline passed without receipt submission
   PENDING // Receipt submitted, waiting for processing
   VALIDATING // OCR processing
   APPROVED // Approved, cashback credited

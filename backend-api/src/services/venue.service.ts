@@ -309,6 +309,7 @@ export const venueService = {
       openingHours: any;
       capacity: number;
       features: string[];
+      menuImages: string | null;
     }>
   ): Promise<Venue> {
     const updateData: any = { ...data };

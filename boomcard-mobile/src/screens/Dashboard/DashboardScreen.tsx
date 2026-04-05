@@ -71,7 +71,7 @@ const DashboardScreen = ({ navigation }: any) => {
           setSubscription(subResponse.data);
           anySucceeded = true;
         }
-      }).catch((err) => { console.warn('Dashboard: subscription fetch failed', err); anyFailed = true; });
+      }).catch((err) => { if (__DEV__) console.warn('Dashboard: subscription fetch failed', err); anyFailed = true; });
 
       const receiptsStatsPromise = ReceiptsApi.getStats().then((response) => {
         if (!mountedRef.current) return;
@@ -79,7 +79,7 @@ const DashboardScreen = ({ navigation }: any) => {
           setStats(response.data);
           anySucceeded = true;
         }
-      }).catch((err) => { console.warn('Dashboard: receipt stats fetch failed', err); anyFailed = true; });
+      }).catch((err) => { if (__DEV__) console.warn('Dashboard: receipt stats fetch failed', err); anyFailed = true; });
 
       const cardStatsPromise = cardApi.getMyCardOrNull().then((card) => {
         if (!mountedRef.current) return;
@@ -94,7 +94,7 @@ const DashboardScreen = ({ navigation }: any) => {
           if (!mountedRef.current) return;
           if (res.success && res.data) setCardStats(res.data);
         });
-      }).catch((err) => { console.warn('Dashboard: card stats fetch failed', err); anyFailed = true; });
+      }).catch((err) => { if (__DEV__) console.warn('Dashboard: card stats fetch failed', err); anyFailed = true; });
 
       const receiptsPromise = ReceiptsApi.getReceipts({ limit: 50 }).then((response) => {
         if (!mountedRef.current) return;
@@ -132,7 +132,7 @@ const DashboardScreen = ({ navigation }: any) => {
           setRecentVisits(visits);
           anySucceeded = true;
         }
-      }).catch((err) => { console.warn('Dashboard: receipts fetch failed', err); anyFailed = true; });
+      }).catch((err) => { if (__DEV__) console.warn('Dashboard: receipts fetch failed', err); anyFailed = true; });
 
       await Promise.allSettled([subscriptionPromise, receiptsStatsPromise, cardStatsPromise, receiptsPromise]);
 
@@ -141,7 +141,7 @@ const DashboardScreen = ({ navigation }: any) => {
         setLoadError(true);
       }
     } catch (error) {
-      console.warn('Failed to load dashboard data:', error);
+      if (__DEV__) console.warn('Failed to load dashboard data:', error);
       if (mountedRef.current) setLoadError(true);
     } finally {
       clearTimeout(loadingTimeout);

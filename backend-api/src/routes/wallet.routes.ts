@@ -60,6 +60,37 @@ router.post('/topup', asyncHandler(async (req: AuthRequest, res: Response) => {
   });
 }));
 
+/**
+ * PUT /api/wallet/payout-account
+ * Save the user's payout bank account (IBAN + beneficiary name) without initiating a payout.
+ * These are stored on the wallet and reused on subsequent payout requests.
+ */
+const payoutAccountSchema = z.object({
+  iban: z
+    .string()
+    .transform((v) => v.replace(/\s+/g, '').toUpperCase())
+    .refine((v) => /^[A-Z]{2}[0-9]{2}[A-Z0-9]{11,30}$/.test(v), 'Invalid IBAN format'),
+  beneficiaryName: z.string().min(2).max(100),
+});
+
+router.put('/payout-account', asyncHandler(async (req: AuthRequest, res: Response) => {
+  const userId = req.user!.id;
+
+  const parseResult = payoutAccountSchema.safeParse(req.body);
+  if (!parseResult.success) {
+    return res.status(400).json({
+      success: false,
+      message: 'Invalid payout account details',
+      errors: parseResult.error.issues,
+    });
+  }
+
+  const { iban, beneficiaryName } = parseResult.data;
+  await walletService.updatePayoutAccount(userId, { iban, beneficiaryName });
+
+  res.json({ success: true, iban, beneficiaryName });
+}));
+
 const payoutSchema = z.object({
   iban: z
     .string()

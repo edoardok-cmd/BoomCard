@@ -490,6 +490,25 @@ export class WalletService {
   }
 
   /**
+   * Save the user's payout bank account details without initiating a payout.
+   * Creates the wallet if it doesn't exist yet.
+   */
+  async updatePayoutAccount(
+    userId: string,
+    opts: { iban: string; beneficiaryName: string }
+  ): Promise<void> {
+    await this.getOrCreateWallet(userId);
+    await prisma.wallet.update({
+      where: { userId },
+      data: {
+        payoutIban: opts.iban,
+        payoutBeneficiaryName: opts.beneficiaryName,
+      },
+    });
+    logger.info(`Payout account updated for user ${userId}: ${opts.iban}`);
+  }
+
+  /**
    * Add pending balance (for pending cashback)
    */
   async addPendingBalance(userId: string, amount: number) {

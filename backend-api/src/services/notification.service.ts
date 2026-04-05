@@ -1,4 +1,5 @@
 import { prisma } from '../lib/prisma';
+import { emailService } from './email.service';
 
 /**
  * Notification Service
@@ -206,6 +207,20 @@ class NotificationService {
           },
           priority: 'HIGH',
         });
+      }
+
+      // Also send email to each admin
+      for (const admin of admins) {
+        if (admin.email) {
+          emailService.sendFraudAlertEmail(admin.email, {
+            receiptId,
+            userId,
+            fraudScore,
+            fraudReasons,
+          }).catch((err) => {
+            console.error('❌ Error sending fraud alert email:', err);
+          });
+        }
       }
 
       console.log(`🚨 Fraud alert sent for receipt ${receiptId} (score: ${fraudScore})`);

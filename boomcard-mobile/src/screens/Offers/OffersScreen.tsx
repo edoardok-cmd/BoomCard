@@ -2,8 +2,8 @@
  * Offers Screen
  *
  * Browse partner offers and deals with search, category filtering,
- * and a featured section. Addresses the data gap between the partner
- * dashboard's offer catalogue and the mobile app.
+ * and a featured section. Toggle between Places and Experiences tabs
+ * to mirror the categories available on the public boomcard.bg site.
  */
 
 import React, { useState, useCallback, useEffect, useRef } from 'react';
@@ -25,14 +25,26 @@ import { OffersApi } from '../../api/offers.api';
 import type { Offer } from '../../types';
 import { OfferType } from '../../types';
 
-const CATEGORIES = [
+type Tab = 'places' | 'experiences';
+
+const PLACES_CATEGORIES = [
   { key: '', labelKey: 'offers.categoryAll' },
-  { key: 'restaurant', labelKey: 'offers.categoryRestaurant' },
-  { key: 'cafe', labelKey: 'offers.categoryCafe' },
-  { key: 'hotel', labelKey: 'offers.categoryHotel' },
+  { key: 'restaurants', labelKey: 'offers.categoryRestaurants' },
+  { key: 'accommodation', labelKey: 'offers.categoryAccommodation' },
   { key: 'spa', labelKey: 'offers.categorySpa' },
-  { key: 'club', labelKey: 'offers.categoryClub' },
-  { key: 'winery', labelKey: 'offers.categoryWinery' },
+  { key: 'panoramic', labelKey: 'offers.categoryPanoramic' },
+  { key: 'clubs', labelKey: 'offers.categoryClubs' },
+  { key: 'cafes', labelKey: 'offers.categoryCafes' },
+];
+
+const EXPERIENCES_CATEGORIES = [
+  { key: '', labelKey: 'offers.categoryAll' },
+  { key: 'gastronomic', labelKey: 'offers.categoryGastronomic' },
+  { key: 'historical-cultural', labelKey: 'offers.categoryHistoricalCultural' },
+  { key: 'active-adventure', labelKey: 'offers.categoryActiveAdventure' },
+  { key: 'extreme', labelKey: 'offers.categoryExtreme' },
+  { key: 'educational-creative', labelKey: 'offers.categoryEducationalCreative' },
+  { key: 'relax-wellness', labelKey: 'offers.categoryRelaxWellness' },
 ];
 
 function getTypeBadgeColor(type: OfferType, theme: any): string {
@@ -185,6 +197,7 @@ export default function OffersScreen() {
   const navigation = useNavigation<any>();
   const lang = i18n.language;
 
+  const [activeTab, setActiveTab] = useState<Tab>('places');
   const [offers, setOffers] = useState<Offer[]>([]);
   const [featuredOffers, setFeaturedOffers] = useState<Offer[]>([]);
   const [loading, setLoading] = useState(true);
@@ -192,19 +205,19 @@ export default function OffersScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('');
   const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Always-current ref so the debounced timeout fires the latest loadOffers,
-  // not the stale closure captured when the timeout was scheduled.
   const loadOffersRef = useRef<((isRefresh?: boolean) => Promise<void>) | null>(null);
+
+  const currentCategories = activeTab === 'places' ? PLACES_CATEGORIES : EXPERIENCES_CATEGORIES;
 
   const loadOffers = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
     else if (!offers.length) setLoading(true);
 
-    const params: Parameters<typeof OffersApi.getOffers>[0] = { limit: 30, page: 1 };
+    const params: Parameters<typeof OffersApi.getOffers>[0] = { limit: 100, page: 1 };
     if (selectedCategory) params.category = selectedCategory;
     if (searchQuery.trim()) params.search = searchQuery.trim();
 
-    const showFeatured = !selectedCategory && !searchQuery.trim();
+    const showFeatured = !selectedCategory && !searchQuery.trim() && activeTab === 'places';
 
     const [offersRes, featuredRes] = await Promise.all([
       OffersApi.getOffers(params),
@@ -224,21 +237,20 @@ export default function OffersScreen() {
 
     setLoading(false);
     setRefreshing(false);
-  }, [selectedCategory, searchQuery]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [selectedCategory, searchQuery, activeTab]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Keep ref in sync every render so the debounced callback always calls the latest version.
   loadOffersRef.current = loadOffers;
 
   useEffect(() => {
     loadOffers();
-  }, [selectedCategory]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [selectedCategory, activeTab]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSearchChange = (query: string) => {
     setSearchQuery(query);
     if (searchTimeout.current) clearTimeout(searchTimeout.current);
     searchTimeout.current = setTimeout(() => {
       loadOffersRef.current?.();
-    }, 500);
+    }, 400);
   };
 
   const handleCategorySelect = (key: string) => {
@@ -246,14 +258,66 @@ export default function OffersScreen() {
     setSearchQuery('');
   };
 
+  const handleTabSwitch = (tab: Tab) => {
+    setActiveTab(tab);
+    setSelectedCategory('');
+    setSearchQuery('');
+  };
+
   const navigateToDetail = (offer: Offer) => {
     navigation.navigate('OfferDetail', { offer });
   };
 
-  const showFeaturedSection = featuredOffers.length > 0 && !selectedCategory && !searchQuery.trim();
+  const showFeaturedSection = featuredOffers.length > 0 && !selectedCategory && !searchQuery.trim() && activeTab === 'places';
 
   const ListHeader = (
     <View>
+      {/* Places / Experiences toggle */}
+      <View style={[styles.tabBar, { backgroundColor: theme.colors.surfaceVariant }]}>
+        <TouchableOpacity
+          style={[
+            styles.tabItem,
+            activeTab === 'places' && { backgroundColor: theme.colors.gold },
+          ]}
+          onPress={() => handleTabSwitch('places')}
+          activeOpacity={0.8}
+        >
+          <Ionicons
+            name="storefront-outline"
+            size={15}
+            color={activeTab === 'places' ? theme.colors.onGold : theme.colors.onSurfaceVariant}
+            style={{ marginRight: 5 }}
+          />
+          <Text style={[
+            styles.tabText,
+            { color: activeTab === 'places' ? theme.colors.onGold : theme.colors.onSurfaceVariant },
+          ]}>
+            {t('offers.tabPlaces')}
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[
+            styles.tabItem,
+            activeTab === 'experiences' && { backgroundColor: theme.colors.gold },
+          ]}
+          onPress={() => handleTabSwitch('experiences')}
+          activeOpacity={0.8}
+        >
+          <Ionicons
+            name="sparkles-outline"
+            size={15}
+            color={activeTab === 'experiences' ? theme.colors.onGold : theme.colors.onSurfaceVariant}
+            style={{ marginRight: 5 }}
+          />
+          <Text style={[
+            styles.tabText,
+            { color: activeTab === 'experiences' ? theme.colors.onGold : theme.colors.onSurfaceVariant },
+          ]}>
+            {t('offers.tabExperiences')}
+          </Text>
+        </TouchableOpacity>
+      </View>
+
       {/* Search */}
       <Searchbar
         placeholder={t('offers.searchPlaceholder')}
@@ -271,7 +335,7 @@ export default function OffersScreen() {
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.chipsRow}
       >
-        {CATEGORIES.map(cat => (
+        {currentCategories.map(cat => (
           <Chip
             key={cat.key}
             selected={selectedCategory === cat.key}
@@ -292,7 +356,7 @@ export default function OffersScreen() {
         ))}
       </ScrollView>
 
-      {/* Featured section */}
+      {/* Featured section — places only */}
       {showFeaturedSection && (
         <View>
           <Text style={[styles.sectionTitle, { color: theme.colors.onSurface }]}>
@@ -316,7 +380,7 @@ export default function OffersScreen() {
         </View>
       )}
 
-      {/* All offers title */}
+      {/* Section title */}
       <Text style={[styles.sectionTitle, { color: theme.colors.onSurface }]}>
         {selectedCategory
           ? t(`offers.categoryLabel.${selectedCategory}`)
@@ -385,6 +449,24 @@ const styles = StyleSheet.create({
   listContent: {
     padding: 16,
     paddingBottom: 32,
+  },
+  tabBar: {
+    flexDirection: 'row',
+    borderRadius: 12,
+    padding: 4,
+    marginBottom: 14,
+  },
+  tabItem: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 9,
+    borderRadius: 9,
+  },
+  tabText: {
+    fontSize: 14,
+    fontWeight: '600',
   },
   searchBar: {
     marginBottom: 12,

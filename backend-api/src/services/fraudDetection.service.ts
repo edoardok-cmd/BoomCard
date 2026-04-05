@@ -1,4 +1,5 @@
 import { prisma } from '../lib/prisma';
+import { logger } from '../utils/logger';
 import {
   DEFAULT_AUTO_APPROVE_THRESHOLD,
   DEFAULT_AUTO_REJECT_THRESHOLD,
@@ -246,7 +247,7 @@ class FraudDetectionService {
         recommendations: recommendations.length > 0 ? recommendations : undefined,
       };
     } catch (error) {
-      console.error('❌ Error in fraud detection:', error);
+      logger.error('Error in fraud detection:', error);
       // On error, require manual review
       return {
         fraudScore: 50,
@@ -469,7 +470,7 @@ class FraudDetectionService {
       return { cashbackAmount: 0, cashbackPercent: 0 };
     }
 
-    let step = CASHBACK_MATRIX_STEPS[0];
+    let step: typeof CASHBACK_MATRIX_STEPS[number] = CASHBACK_MATRIX_STEPS[0];
     for (const s of CASHBACK_MATRIX_STEPS) {
       if (partnerDiscountPct >= s) step = s;
     }

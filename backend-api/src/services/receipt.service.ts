@@ -8,6 +8,7 @@ import { notificationService } from './notification.service';
 import { walletService } from './wallet.service';
 import { cardService } from './card.service';
 import { prisma } from '../lib/prisma';
+import { emailService } from './email.service';
 import {
   CASHBACK_ESTIMATED_CREDIT_DAYS,
   DEFAULT_CARD_TIER,
@@ -978,20 +979,28 @@ class ReceiptService {
         }
       }
 
-      // Update receipt.
+      // Atomic claim: only one concurrent admin can win the reviewedBy: null condition.
       // Use != null check for verifiedAmount so an explicit 0 is honoured (|| would treat 0 as falsy).
-      const updated = await prisma.receipt.update({
-        where: { id: params.receiptId },
+      const reviewedAt = new Date();
+      const claimResult = await prisma.receipt.updateMany({
+        where: { id: params.receiptId, reviewedBy: null },
         data: {
           status: newStatus,
           totalAmount: params.verifiedAmount != null ? params.verifiedAmount : receipt.totalAmount,
           cashbackAmount: params.action === 'APPROVE' ? cashbackAmount : 0,
           reviewedBy: params.reviewedBy,
-          reviewedAt: new Date(),
+          reviewedAt,
           rejectionReason: params.rejectionReason,
           reviewNotes: params.notes,
         } as any,
       });
+
+      if (claimResult.count === 0) {
+        throw new AppError('Receipt has already been reviewed by another admin', 409);
+      }
+
+      // Fetch updated record for response (updateMany doesn't return records).
+      const updated = await prisma.receipt.findUniqueOrThrow({ where: { id: params.receiptId } });
 
       // Credit cashback to wallet if approved — must succeed before analytics is updated
       // so that a rollback on wallet failure doesn't leave analytics inflated.
@@ -1069,6 +1078,34 @@ class ReceiptService {
         }
       } catch (notifyError) {
         logger.error(`Failed to send notification for receipt ${params.receiptId} — review stands:`, notifyError);
+      }
+
+      // Send email notification to user (non-fatal)
+      try {
+        const user = await prisma.user.findUnique({
+          where: { id: receipt.userId },
+          select: { email: true, firstName: true },
+        });
+        if (user?.email) {
+          if (newStatus === 'APPROVED') {
+            emailService.sendReceiptApprovedEmail(user.email, {
+              customerName: user.firstName || user.email.split('@')[0],
+              merchantName: receipt.merchantName || 'Unknown Merchant',
+              amount: updated.totalAmount || 0,
+              cashbackAmount,
+              receiptDate: receipt.receiptDate || undefined,
+            }).catch((err) => logger.error('Failed to send receipt approved email:', err));
+          } else {
+            emailService.sendReceiptRejectedEmail(user.email, {
+              customerName: user.firstName || user.email.split('@')[0],
+              merchantName: receipt.merchantName || 'Unknown Merchant',
+              amount: receipt.totalAmount || 0,
+              reason: params.rejectionReason || 'Receipt did not pass verification',
+            }).catch((err) => logger.error('Failed to send receipt rejected email:', err));
+          }
+        }
+      } catch (emailError) {
+        logger.error(`Failed to send email for receipt ${params.receiptId} — review stands:`, emailError);
       }
 
       logger.info(`Receipt ${params.receiptId} ${newStatus.toLowerCase()} by admin`);

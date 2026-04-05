@@ -81,7 +81,7 @@ const ReceiptsScreen = ({ navigation }: any) => {
         setError(timedOut ? t('common.connectionTimeout') : t('receipts.failedToLoad'));
       }
     } catch (error: any) {
-      console.warn('Failed to load receipts:', error);
+      if (__DEV__) console.warn('Failed to load receipts:', error);
       if (mountedRef.current) setError(error.message || t('receipts.failedToLoad'));
     } finally {
       if (mountedRef.current) {

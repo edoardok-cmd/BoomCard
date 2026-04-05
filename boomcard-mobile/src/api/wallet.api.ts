@@ -65,6 +65,18 @@ export const walletApi = {
   },
 
   /**
+   * Save payout bank account details (IBAN + beneficiary name) without initiating a payout.
+   * Call this from the profile settings screen.
+   */
+  async updatePayoutAccount(iban: string, beneficiaryName: string) {
+    const response = await apiClient.put('/api/wallet/payout-account', { iban, beneficiaryName });
+    if (!response.success) {
+      throw new Error(response.error || 'Failed to save payout account');
+    }
+    return response.data;
+  },
+
+  /**
    * Request cashback payout.
    * Backend validates plan threshold and fires the Paysera B2C Transfer API.
    * iban and beneficiaryName are stored on the wallet and reused on subsequent requests.

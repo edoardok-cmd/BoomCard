@@ -76,6 +76,63 @@ export interface RenewalReminderData {
   language: 'en' | 'bg';
 }
 
+export interface ReceiptApprovedData {
+  customerName: string;
+  merchantName: string;
+  amount: number;
+  cashbackAmount: number;
+  receiptDate?: Date;
+  walletUrl?: string;
+}
+
+export interface ReceiptRejectedData {
+  customerName: string;
+  merchantName: string;
+  amount: number;
+  reason: string;
+  supportUrl?: string;
+}
+
+export interface PaymentFailedData {
+  customerName: string;
+  orderId: string;
+  amount: number;
+  currency: string;
+  reason: 'failed' | 'cancelled';
+  retryUrl?: string;
+}
+
+export interface SubscriptionActivatedData {
+  customerName: string;
+  planName: string;
+  orderId: string;
+  amount: number;
+  currency: string;
+  nextBillingDate?: Date;
+  dashboardUrl?: string;
+}
+
+export interface FraudAlertData {
+  receiptId: string;
+  userId: string;
+  fraudScore: number;
+  fraudReasons: string[];
+  reviewUrl?: string;
+}
+
+export interface ReceiptExportData {
+  customerName: string;
+  receipts: Array<{
+    merchantName: string;
+    amount: number;
+    cashbackAmount: number;
+    date: string;
+    status: string;
+  }>;
+  totalCashback: number;
+  exportDate: Date;
+}
+
 // ============================================
 // Email Service Class
 // ============================================
@@ -1011,6 +1068,372 @@ ${isBg ? 'Въпроси? Свържете се с нас на' : 'Questions? Co
 
     return this.sendEmail({ to: email, subject, html, text });
   }
+  /**
+   * Send receipt approved email to user
+   */
+  async sendReceiptApprovedEmail(
+    email: string,
+    data: ReceiptApprovedData
+  ): Promise<{ success: boolean }> {
+    const html = `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
+<body style="margin:0;padding:0;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;background:#f5f5f5;">
+  <table width="100%" cellpadding="0" cellspacing="0" border="0">
+    <tr><td align="center" style="padding:40px 20px;">
+      <table width="600" cellpadding="0" cellspacing="0" border="0" style="background:#fff;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,0.1);">
+        <tr><td style="background:linear-gradient(135deg,#22c55e,#16a34a);padding:40px;text-align:center;border-radius:8px 8px 0 0;">
+          <div style="font-size:48px;margin-bottom:8px;">✅</div>
+          <h1 style="margin:0;color:#fff;font-size:28px;">Receipt Approved!</h1>
+        </td></tr>
+        <tr><td style="padding:40px;">
+          <p style="margin:0 0 20px;color:#333;font-size:16px;">Hi ${data.customerName},</p>
+          <p style="margin:0 0 30px;color:#666;font-size:16px;line-height:1.6;">
+            Great news! Your receipt from <strong>${data.merchantName}</strong> has been approved and your cashback has been credited to your wallet.
+          </p>
+          <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f8f9fa;border-radius:6px;padding:20px;margin-bottom:30px;">
+            <tr>
+              <td style="color:#666;font-size:14px;padding:8px 0;">Merchant:</td>
+              <td align="right" style="color:#333;font-size:14px;font-weight:bold;padding:8px 0;">${data.merchantName}</td>
+            </tr>
+            <tr>
+              <td style="color:#666;font-size:14px;padding:8px 0;border-top:1px solid #dee2e6;">Receipt Amount:</td>
+              <td align="right" style="color:#333;font-size:14px;padding:8px 0;border-top:1px solid #dee2e6;">${data.amount.toFixed(2)} BGN</td>
+            </tr>
+            <tr>
+              <td style="color:#666;font-size:14px;padding:8px 0;border-top:1px solid #dee2e6;">Cashback Earned:</td>
+              <td align="right" style="color:#22c55e;font-size:20px;font-weight:bold;padding:8px 0;border-top:1px solid #dee2e6;">+${data.cashbackAmount.toFixed(2)} BGN</td>
+            </tr>
+          </table>
+          ${data.walletUrl ? `<div style="text-align:center;margin-bottom:30px;"><a href="${data.walletUrl}" style="display:inline-block;background:#22c55e;color:#fff;text-decoration:none;padding:14px 32px;border-radius:6px;font-size:16px;font-weight:bold;">View My Wallet</a></div>` : ''}
+          <p style="color:#999;font-size:13px;margin:0;">Questions? Contact us at <a href="mailto:support@boomcard.bg" style="color:#667eea;">support@boomcard.bg</a></p>
+        </td></tr>
+        <tr><td style="background:#f8f9fa;padding:20px;text-align:center;border-radius:0 0 8px 8px;">
+          <p style="margin:0;color:#999;font-size:12px;">&copy; ${new Date().getFullYear()} BoomCard. All rights reserved.</p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+    const text = `Hi ${data.customerName},\n\nYour receipt from ${data.merchantName} has been approved!\n\nReceipt Amount: ${data.amount.toFixed(2)} BGN\nCashback Earned: +${data.cashbackAmount.toFixed(2)} BGN\n\nThe cashback has been credited to your wallet.\n\nQuestions? Contact support@boomcard.bg`;
+    return this.sendEmail({
+      to: email,
+      subject: `Receipt Approved – +${data.cashbackAmount.toFixed(2)} BGN Cashback Credited!`,
+      html,
+      text,
+    });
+  }
+
+  /**
+   * Send receipt rejected email to user
+   */
+  async sendReceiptRejectedEmail(
+    email: string,
+    data: ReceiptRejectedData
+  ): Promise<{ success: boolean }> {
+    const html = `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
+<body style="margin:0;padding:0;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;background:#f5f5f5;">
+  <table width="100%" cellpadding="0" cellspacing="0" border="0">
+    <tr><td align="center" style="padding:40px 20px;">
+      <table width="600" cellpadding="0" cellspacing="0" border="0" style="background:#fff;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,0.1);">
+        <tr><td style="background:linear-gradient(135deg,#ef4444,#dc2626);padding:40px;text-align:center;border-radius:8px 8px 0 0;">
+          <div style="font-size:48px;margin-bottom:8px;">❌</div>
+          <h1 style="margin:0;color:#fff;font-size:28px;">Receipt Not Approved</h1>
+        </td></tr>
+        <tr><td style="padding:40px;">
+          <p style="margin:0 0 20px;color:#333;font-size:16px;">Hi ${data.customerName},</p>
+          <p style="margin:0 0 30px;color:#666;font-size:16px;line-height:1.6;">
+            Unfortunately, your receipt from <strong>${data.merchantName}</strong> could not be approved.
+          </p>
+          <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#fff5f5;border:1px solid #fecaca;border-radius:6px;padding:20px;margin-bottom:30px;">
+            <tr>
+              <td style="color:#666;font-size:14px;padding:8px 0;">Merchant:</td>
+              <td align="right" style="color:#333;font-size:14px;font-weight:bold;padding:8px 0;">${data.merchantName}</td>
+            </tr>
+            <tr>
+              <td style="color:#666;font-size:14px;padding:8px 0;border-top:1px solid #fecaca;">Amount:</td>
+              <td align="right" style="color:#333;font-size:14px;padding:8px 0;border-top:1px solid #fecaca;">${data.amount.toFixed(2)} BGN</td>
+            </tr>
+            <tr>
+              <td style="color:#666;font-size:14px;padding:8px 0;border-top:1px solid #fecaca;">Reason:</td>
+              <td align="right" style="color:#ef4444;font-size:14px;padding:8px 0;border-top:1px solid #fecaca;">${data.reason}</td>
+            </tr>
+          </table>
+          <p style="color:#666;font-size:14px;line-height:1.6;">If you believe this is a mistake, please contact our support team with your receipt details.</p>
+          ${data.supportUrl ? `<div style="text-align:center;margin-bottom:30px;"><a href="${data.supportUrl}" style="display:inline-block;background:#ef4444;color:#fff;text-decoration:none;padding:14px 32px;border-radius:6px;font-size:16px;font-weight:bold;">Contact Support</a></div>` : ''}
+          <p style="color:#999;font-size:13px;margin:0;">Questions? Contact us at <a href="mailto:support@boomcard.bg" style="color:#667eea;">support@boomcard.bg</a></p>
+        </td></tr>
+        <tr><td style="background:#f8f9fa;padding:20px;text-align:center;border-radius:0 0 8px 8px;">
+          <p style="margin:0;color:#999;font-size:12px;">&copy; ${new Date().getFullYear()} BoomCard. All rights reserved.</p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+    const text = `Hi ${data.customerName},\n\nYour receipt from ${data.merchantName} (${data.amount.toFixed(2)} BGN) was not approved.\n\nReason: ${data.reason}\n\nIf you believe this is a mistake, please contact support@boomcard.bg`;
+    return this.sendEmail({
+      to: email,
+      subject: `Receipt Update – Your receipt from ${data.merchantName}`,
+      html,
+      text,
+    });
+  }
+
+  /**
+   * Send payment failed/cancelled email to user
+   */
+  async sendPaymentFailedEmail(
+    email: string,
+    data: PaymentFailedData
+  ): Promise<{ success: boolean }> {
+    const isCancelled = data.reason === 'cancelled';
+    const title = isCancelled ? 'Payment Cancelled' : 'Payment Failed';
+    const html = `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
+<body style="margin:0;padding:0;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;background:#f5f5f5;">
+  <table width="100%" cellpadding="0" cellspacing="0" border="0">
+    <tr><td align="center" style="padding:40px 20px;">
+      <table width="600" cellpadding="0" cellspacing="0" border="0" style="background:#fff;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,0.1);">
+        <tr><td style="background:linear-gradient(135deg,#f59e0b,#d97706);padding:40px;text-align:center;border-radius:8px 8px 0 0;">
+          <div style="font-size:48px;margin-bottom:8px;">${isCancelled ? '⚠️' : '❗'}</div>
+          <h1 style="margin:0;color:#fff;font-size:28px;">${title}</h1>
+        </td></tr>
+        <tr><td style="padding:40px;">
+          <p style="margin:0 0 20px;color:#333;font-size:16px;">Hi ${data.customerName},</p>
+          <p style="margin:0 0 30px;color:#666;font-size:16px;line-height:1.6;">
+            ${isCancelled ? 'Your payment was cancelled and no charge was made to your account.' : 'We were unable to process your payment. No charge was made to your account.'}
+          </p>
+          <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:20px;margin-bottom:30px;">
+            <tr>
+              <td style="color:#666;font-size:14px;padding:8px 0;">Order ID:</td>
+              <td align="right" style="color:#333;font-size:14px;font-family:monospace;padding:8px 0;">${data.orderId}</td>
+            </tr>
+            <tr>
+              <td style="color:#666;font-size:14px;padding:8px 0;border-top:1px solid #fde68a;">Amount:</td>
+              <td align="right" style="color:#333;font-size:14px;padding:8px 0;border-top:1px solid #fde68a;">${data.amount.toFixed(2)} ${data.currency}</td>
+            </tr>
+            <tr>
+              <td style="color:#666;font-size:14px;padding:8px 0;border-top:1px solid #fde68a;">Status:</td>
+              <td align="right" style="color:#f59e0b;font-size:14px;font-weight:bold;padding:8px 0;border-top:1px solid #fde68a;">${title}</td>
+            </tr>
+          </table>
+          ${data.retryUrl ? `<div style="text-align:center;margin-bottom:30px;"><a href="${data.retryUrl}" style="display:inline-block;background:#667eea;color:#fff;text-decoration:none;padding:14px 32px;border-radius:6px;font-size:16px;font-weight:bold;">Try Again</a></div>` : ''}
+          <p style="color:#999;font-size:13px;margin:0;">Questions? Contact us at <a href="mailto:support@boomcard.bg" style="color:#667eea;">support@boomcard.bg</a></p>
+        </td></tr>
+        <tr><td style="background:#f8f9fa;padding:20px;text-align:center;border-radius:0 0 8px 8px;">
+          <p style="margin:0;color:#999;font-size:12px;">&copy; ${new Date().getFullYear()} BoomCard. All rights reserved.</p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+    const text = `Hi ${data.customerName},\n\n${isCancelled ? 'Your payment was cancelled.' : 'Your payment failed.'}\n\nOrder ID: ${data.orderId}\nAmount: ${data.amount.toFixed(2)} ${data.currency}\n\n${data.retryUrl ? `Try again: ${data.retryUrl}\n\n` : ''}Questions? Contact support@boomcard.bg`;
+    return this.sendEmail({
+      to: email,
+      subject: `BoomCard – ${title}`,
+      html,
+      text,
+    });
+  }
+
+  /**
+   * Send subscription activated email to user
+   */
+  async sendSubscriptionActivatedEmail(
+    email: string,
+    data: SubscriptionActivatedData
+  ): Promise<{ success: boolean }> {
+    const html = `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
+<body style="margin:0;padding:0;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;background:#f5f5f5;">
+  <table width="100%" cellpadding="0" cellspacing="0" border="0">
+    <tr><td align="center" style="padding:40px 20px;">
+      <table width="600" cellpadding="0" cellspacing="0" border="0" style="background:#fff;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,0.1);">
+        <tr><td style="background:linear-gradient(135deg,#667eea,#764ba2);padding:40px;text-align:center;border-radius:8px 8px 0 0;">
+          <div style="font-size:48px;margin-bottom:8px;">🎉</div>
+          <h1 style="margin:0;color:#fff;font-size:28px;">Subscription Activated!</h1>
+        </td></tr>
+        <tr><td style="padding:40px;">
+          <p style="margin:0 0 20px;color:#333;font-size:16px;">Hi ${data.customerName},</p>
+          <p style="margin:0 0 30px;color:#666;font-size:16px;line-height:1.6;">
+            Your <strong>${data.planName}</strong> subscription is now active. You can start earning cashback on all your receipts right away!
+          </p>
+          <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f8f9fa;border-radius:6px;padding:20px;margin-bottom:30px;">
+            <tr>
+              <td style="color:#666;font-size:14px;padding:8px 0;">Plan:</td>
+              <td align="right" style="color:#333;font-size:14px;font-weight:bold;padding:8px 0;">${data.planName}</td>
+            </tr>
+            <tr>
+              <td style="color:#666;font-size:14px;padding:8px 0;border-top:1px solid #dee2e6;">Order ID:</td>
+              <td align="right" style="color:#333;font-size:14px;font-family:monospace;padding:8px 0;border-top:1px solid #dee2e6;">${data.orderId}</td>
+            </tr>
+            <tr>
+              <td style="color:#666;font-size:14px;padding:8px 0;border-top:1px solid #dee2e6;">Amount Paid:</td>
+              <td align="right" style="color:#333;font-size:18px;font-weight:bold;padding:8px 0;border-top:1px solid #dee2e6;">${data.amount.toFixed(2)} ${data.currency}</td>
+            </tr>
+            ${data.nextBillingDate ? `
+            <tr>
+              <td style="color:#666;font-size:14px;padding:8px 0;border-top:1px solid #dee2e6;">Next Billing Date:</td>
+              <td align="right" style="color:#333;font-size:14px;padding:8px 0;border-top:1px solid #dee2e6;">${data.nextBillingDate.toLocaleDateString('en-GB')}</td>
+            </tr>` : ''}
+          </table>
+          ${data.dashboardUrl ? `<div style="text-align:center;margin-bottom:30px;"><a href="${data.dashboardUrl}" style="display:inline-block;background:#667eea;color:#fff;text-decoration:none;padding:14px 32px;border-radius:6px;font-size:16px;font-weight:bold;">Go to Dashboard</a></div>` : ''}
+          <p style="color:#999;font-size:13px;margin:0;">Questions? Contact us at <a href="mailto:support@boomcard.bg" style="color:#667eea;">support@boomcard.bg</a></p>
+        </td></tr>
+        <tr><td style="background:#f8f9fa;padding:20px;text-align:center;border-radius:0 0 8px 8px;">
+          <p style="margin:0;color:#999;font-size:12px;">&copy; ${new Date().getFullYear()} BoomCard. All rights reserved.</p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+    const text = `Hi ${data.customerName},\n\nYour ${data.planName} subscription is now active!\n\nOrder ID: ${data.orderId}\nAmount Paid: ${data.amount.toFixed(2)} ${data.currency}${data.nextBillingDate ? `\nNext Billing: ${data.nextBillingDate.toLocaleDateString('en-GB')}` : ''}\n\nQuestions? Contact support@boomcard.bg`;
+    return this.sendEmail({
+      to: email,
+      subject: `Your BoomCard ${data.planName} Subscription is Active!`,
+      html,
+      text,
+    });
+  }
+
+  /**
+   * Send fraud alert email to admin
+   */
+  async sendFraudAlertEmail(
+    email: string,
+    data: FraudAlertData
+  ): Promise<{ success: boolean }> {
+    const riskLevel = data.fraudScore >= 80 ? 'CRITICAL' : data.fraudScore >= 61 ? 'HIGH' : 'MEDIUM';
+    const riskColor = data.fraudScore >= 80 ? '#dc2626' : data.fraudScore >= 61 ? '#ef4444' : '#f59e0b';
+    const html = `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
+<body style="margin:0;padding:0;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;background:#f5f5f5;">
+  <table width="100%" cellpadding="0" cellspacing="0" border="0">
+    <tr><td align="center" style="padding:40px 20px;">
+      <table width="600" cellpadding="0" cellspacing="0" border="0" style="background:#fff;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,0.1);">
+        <tr><td style="background:linear-gradient(135deg,#dc2626,#991b1b);padding:40px;text-align:center;border-radius:8px 8px 0 0;">
+          <div style="font-size:48px;margin-bottom:8px;">🚨</div>
+          <h1 style="margin:0;color:#fff;font-size:28px;">Fraud Alert – ${riskLevel} Risk</h1>
+        </td></tr>
+        <tr><td style="padding:40px;">
+          <p style="margin:0 0 20px;color:#333;font-size:16px;">A receipt with a high fraud score has been flagged for review.</p>
+          <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#fff5f5;border:1px solid #fecaca;border-radius:6px;padding:20px;margin-bottom:30px;">
+            <tr>
+              <td style="color:#666;font-size:14px;padding:8px 0;">Receipt ID:</td>
+              <td align="right" style="color:#333;font-size:14px;font-family:monospace;padding:8px 0;">${data.receiptId}</td>
+            </tr>
+            <tr>
+              <td style="color:#666;font-size:14px;padding:8px 0;border-top:1px solid #fecaca;">User ID:</td>
+              <td align="right" style="color:#333;font-size:14px;font-family:monospace;padding:8px 0;border-top:1px solid #fecaca;">${data.userId}</td>
+            </tr>
+            <tr>
+              <td style="color:#666;font-size:14px;padding:8px 0;border-top:1px solid #fecaca;">Fraud Score:</td>
+              <td align="right" style="color:${riskColor};font-size:20px;font-weight:bold;padding:8px 0;border-top:1px solid #fecaca;">${data.fraudScore} / 100 (${riskLevel})</td>
+            </tr>
+          </table>
+          <h3 style="color:#333;font-size:16px;margin:0 0 12px;">Fraud Indicators:</h3>
+          <ul style="margin:0 0 30px;padding-left:20px;color:#666;font-size:14px;line-height:1.8;">
+            ${data.fraudReasons.map(r => `<li>${r}</li>`).join('')}
+          </ul>
+          ${data.reviewUrl ? `<div style="text-align:center;margin-bottom:30px;"><a href="${data.reviewUrl}" style="display:inline-block;background:#dc2626;color:#fff;text-decoration:none;padding:14px 32px;border-radius:6px;font-size:16px;font-weight:bold;">Review Receipt</a></div>` : ''}
+        </td></tr>
+        <tr><td style="background:#f8f9fa;padding:20px;text-align:center;border-radius:0 0 8px 8px;">
+          <p style="margin:0;color:#999;font-size:12px;">BoomCard Admin Alert – Do not reply to this email.</p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+    const text = `FRAUD ALERT – ${riskLevel} Risk\n\nReceipt ID: ${data.receiptId}\nUser ID: ${data.userId}\nFraud Score: ${data.fraudScore}/100\n\nIndicators:\n${data.fraudReasons.map(r => `- ${r}`).join('\n')}${data.reviewUrl ? `\n\nReview: ${data.reviewUrl}` : ''}`;
+    return this.sendEmail({
+      to: email,
+      subject: `[BoomCard Admin] Fraud Alert – Score ${data.fraudScore}/100 (${riskLevel})`,
+      html,
+      text,
+    });
+  }
+
+  /**
+   * Send receipt export email to user
+   */
+  async sendReceiptExportEmail(
+    email: string,
+    data: ReceiptExportData
+  ): Promise<{ success: boolean }> {
+    const rows = data.receipts.map(r => `
+      <tr>
+        <td style="padding:10px;border-bottom:1px solid #dee2e6;color:#333;font-size:14px;">${r.merchantName}</td>
+        <td style="padding:10px;border-bottom:1px solid #dee2e6;color:#333;font-size:14px;">${r.date}</td>
+        <td style="padding:10px;border-bottom:1px solid #dee2e6;color:#333;font-size:14px;text-align:right;">${Number(r.amount).toFixed(2)} BGN</td>
+        <td style="padding:10px;border-bottom:1px solid #dee2e6;color:#22c55e;font-size:14px;text-align:right;font-weight:bold;">+${Number(r.cashbackAmount).toFixed(2)} BGN</td>
+        <td style="padding:10px;border-bottom:1px solid #dee2e6;font-size:13px;text-align:center;">
+          <span style="background:${r.status === 'APPROVED' ? '#dcfce7' : r.status === 'REJECTED' ? '#fee2e2' : '#fef9c3'};color:${r.status === 'APPROVED' ? '#166534' : r.status === 'REJECTED' ? '#991b1b' : '#854d0e'};padding:2px 8px;border-radius:4px;">${r.status}</span>
+        </td>
+      </tr>`).join('');
+    const html = `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
+<body style="margin:0;padding:0;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;background:#f5f5f5;">
+  <table width="100%" cellpadding="0" cellspacing="0" border="0">
+    <tr><td align="center" style="padding:40px 20px;">
+      <table width="700" cellpadding="0" cellspacing="0" border="0" style="background:#fff;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,0.1);">
+        <tr><td style="background:linear-gradient(135deg,#667eea,#764ba2);padding:40px;text-align:center;border-radius:8px 8px 0 0;">
+          <h1 style="margin:0;color:#fff;font-size:28px;">Your Receipt Export</h1>
+          <p style="color:rgba(255,255,255,0.8);margin:8px 0 0;font-size:14px;">Exported on ${data.exportDate.toLocaleDateString('en-GB')}</p>
+        </td></tr>
+        <tr><td style="padding:40px;">
+          <p style="margin:0 0 20px;color:#333;font-size:16px;">Hi ${data.customerName},</p>
+          <p style="margin:0 0 30px;color:#666;font-size:16px;line-height:1.6;">
+            Here is your receipt export summary (${data.receipts.length} receipt${data.receipts.length !== 1 ? 's' : ''}).
+          </p>
+          <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid #dee2e6;border-radius:6px;overflow:hidden;margin-bottom:30px;">
+            <thead>
+              <tr style="background:#f8f9fa;">
+                <th style="padding:12px;text-align:left;font-size:13px;color:#666;font-weight:600;border-bottom:2px solid #dee2e6;">Merchant</th>
+                <th style="padding:12px;text-align:left;font-size:13px;color:#666;font-weight:600;border-bottom:2px solid #dee2e6;">Date</th>
+                <th style="padding:12px;text-align:right;font-size:13px;color:#666;font-weight:600;border-bottom:2px solid #dee2e6;">Amount</th>
+                <th style="padding:12px;text-align:right;font-size:13px;color:#666;font-weight:600;border-bottom:2px solid #dee2e6;">Cashback</th>
+                <th style="padding:12px;text-align:center;font-size:13px;color:#666;font-weight:600;border-bottom:2px solid #dee2e6;">Status</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+            <tfoot>
+              <tr style="background:#f0fdf4;">
+                <td colspan="3" style="padding:12px;font-size:14px;font-weight:bold;color:#333;">Total Cashback</td>
+                <td style="padding:12px;text-align:right;font-size:18px;font-weight:bold;color:#22c55e;">+${data.totalCashback.toFixed(2)} BGN</td>
+                <td></td>
+              </tr>
+            </tfoot>
+          </table>
+          <p style="color:#999;font-size:13px;margin:0;">Questions? Contact us at <a href="mailto:support@boomcard.bg" style="color:#667eea;">support@boomcard.bg</a></p>
+        </td></tr>
+        <tr><td style="background:#f8f9fa;padding:20px;text-align:center;border-radius:0 0 8px 8px;">
+          <p style="margin:0;color:#999;font-size:12px;">&copy; ${new Date().getFullYear()} BoomCard. All rights reserved.</p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+    const text = `Hi ${data.customerName},\n\nYour receipt export (${data.receipts.length} receipts):\n\n${data.receipts.map(r => `${r.merchantName} | ${r.date} | ${Number(r.amount).toFixed(2)} BGN | Cashback: +${Number(r.cashbackAmount).toFixed(2)} BGN | ${r.status}`).join('\n')}\n\nTotal Cashback: +${data.totalCashback.toFixed(2)} BGN\n\nQuestions? Contact support@boomcard.bg`;
+    return this.sendEmail({
+      to: email,
+      subject: `Your BoomCard Receipt Export – ${data.receipts.length} receipt${data.receipts.length !== 1 ? 's' : ''}`,
+      html,
+      text,
+    });
+  }
+
   /**
    * Send cashback payment reminder to a partner
    */

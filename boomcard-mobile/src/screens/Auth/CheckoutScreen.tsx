@@ -150,7 +150,7 @@ const CheckoutScreen = ({ navigation, route }: any) => {
         navigation.navigate('SubscriptionCancel', { orderId: paymentResult.orderId });
       }
     } catch (err) {
-      console.warn('Payment error:', err);
+      if (__DEV__) console.warn('Payment error:', err);
       setIsProcessing(false);
     }
   };

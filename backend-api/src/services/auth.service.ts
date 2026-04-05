@@ -118,6 +118,15 @@ export class AuthService {
 
     logger.info(`Created user ${user.email} with card and wallet`);
 
+    // Send welcome email (non-fatal)
+    emailService.sendWelcomeEmail(user.email, {
+      customerName: user.firstName || user.email.split('@')[0],
+      email: user.email,
+      dashboardUrl: process.env.APP_URL || 'https://mobile.boomcard.bg',
+    }).catch((err) => {
+      logger.error('Failed to send welcome email:', err);
+    });
+
     // Generate tokens
     const tokens = await this.generateTokens(user);
 

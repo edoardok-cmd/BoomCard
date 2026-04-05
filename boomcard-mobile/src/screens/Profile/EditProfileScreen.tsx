@@ -19,6 +19,7 @@ import { crossPlatformAlert } from '../../utils/alert';
 import { useAuth } from '../../store/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { validateName, validatePhone, normalizePhone, filterPhoneInput } from '../../utils/validation';
+import { walletApi } from '../../api/wallet.api';
 
 const EditProfileScreen = ({ navigation }: any) => {
   const { t } = useTranslation();
@@ -36,6 +37,41 @@ const EditProfileScreen = ({ navigation }: any) => {
     lastName: user?.lastName || '',
     phone: user?.phone || '',
   });
+
+  const [payoutIban, setPayoutIban] = useState('');
+  const [payoutBeneficiaryName, setPayoutBeneficiaryName] = useState('');
+  const [ibanLoading, setIbanLoading] = useState(false);
+  const [ibanSaved, setIbanSaved] = useState(false);
+
+  useEffect(() => {
+    walletApi.getBalance().then((balance: any) => {
+      if (balance.payoutIban) setPayoutIban(balance.payoutIban);
+      if (balance.payoutBeneficiaryName) setPayoutBeneficiaryName(balance.payoutBeneficiaryName);
+    }).catch(() => {});
+  }, []);
+
+  const handleSavePayoutAccount = async () => {
+    const ibanClean = payoutIban.replace(/\s+/g, '').toUpperCase();
+    if (!ibanClean) {
+      crossPlatformAlert(t('common.error'), t('wallet.payoutIbanRequiredDesc'));
+      return;
+    }
+    if (!payoutBeneficiaryName.trim()) {
+      crossPlatformAlert(t('common.error'), t('wallet.payoutBeneficiaryRequiredDesc'));
+      return;
+    }
+    setIbanLoading(true);
+    setIbanSaved(false);
+    try {
+      await walletApi.updatePayoutAccount(ibanClean, payoutBeneficiaryName.trim());
+      setPayoutIban(ibanClean);
+      setIbanSaved(true);
+    } catch (error: any) {
+      crossPlatformAlert(t('common.error'), error.message || t('profile.updateError'));
+    } finally {
+      setIbanLoading(false);
+    }
+  };
 
   const handleSave = async () => {
     if (validateName(formData.firstName)) {
@@ -144,6 +180,51 @@ const EditProfileScreen = ({ navigation }: any) => {
         >
           <Text style={styles.buttonSecondaryText}>{t('common.cancel')}</Text>
         </TouchableOpacity>
+
+        {/* Payout Bank Account ─────────────────────────────────────────── */}
+        <View style={styles.divider} />
+        <Text style={styles.sectionTitle}>{t('profile.payoutAccountTitle')}</Text>
+        <Text style={styles.sectionSubtitle}>{t('profile.payoutAccountSubtitle')}</Text>
+
+        <View style={styles.form}>
+          <Text style={styles.label}>{t('wallet.payoutIbanLabel')}</Text>
+          <TextInput
+            style={styles.input}
+            placeholder={t('wallet.payoutIbanPlaceholder')}
+            placeholderTextColor={theme.colors.onSurfaceVariant}
+            value={payoutIban}
+            onChangeText={(v) => { setPayoutIban(v.replace(/\s+/g, '').toUpperCase()); setIbanSaved(false); }}
+            autoCapitalize="characters"
+            autoCorrect={false}
+            editable={!ibanLoading}
+          />
+
+          <Text style={styles.label}>{t('wallet.payoutBeneficiaryLabel')}</Text>
+          <TextInput
+            style={styles.input}
+            placeholder={t('wallet.payoutBeneficiaryPlaceholder')}
+            placeholderTextColor={theme.colors.onSurfaceVariant}
+            value={payoutBeneficiaryName}
+            onChangeText={(v) => { setPayoutBeneficiaryName(v); setIbanSaved(false); }}
+            autoCapitalize="words"
+            autoCorrect={false}
+            editable={!ibanLoading}
+          />
+        </View>
+
+        <TouchableOpacity
+          style={[styles.button, ibanLoading && styles.buttonDisabled]}
+          onPress={handleSavePayoutAccount}
+          disabled={ibanLoading}
+        >
+          {ibanLoading ? (
+            <ActivityIndicator color="#FFFFFF" />
+          ) : (
+            <Text style={styles.buttonText}>
+              {ibanSaved ? t('profile.payoutAccountSaved') : t('profile.savePayoutAccount')}
+            </Text>
+          )}
+        </TouchableOpacity>
       </View>
     </ScrollView>
   );
@@ -188,6 +269,16 @@ const getStyles = (theme: any) => StyleSheet.create({
     fontSize: 12,
     color: theme.colors.onSurfaceVariant,
     marginTop: 4,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: theme.colors.surfaceVariant,
+    marginVertical: 24,
+  },
+  sectionSubtitle: {
+    fontSize: 14,
+    color: theme.colors.onSurfaceVariant,
+    marginBottom: 8,
   },
   button: {
     backgroundColor: theme.colors.gold,
