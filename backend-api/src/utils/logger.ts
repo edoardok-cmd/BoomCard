@@ -37,6 +37,12 @@ export const logger = winston.createLogger({
   ],
   // Handle uncaught exceptions and unhandled rejections
   exceptionHandlers: [
+    new winston.transports.Console({
+      format: winston.format.combine(
+        winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
+        winston.format.simple()
+      ),
+    }),
     new winston.transports.File({
       filename: path.join(logsDir, 'exceptions.log'),
       maxsize: 10 * 1024 * 1024,
@@ -44,6 +50,12 @@ export const logger = winston.createLogger({
     }),
   ],
   rejectionHandlers: [
+    new winston.transports.Console({
+      format: winston.format.combine(
+        winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
+        winston.format.simple()
+      ),
+    }),
     new winston.transports.File({
       filename: path.join(logsDir, 'rejections.log'),
       maxsize: 10 * 1024 * 1024,

@@ -51,6 +51,7 @@
     "@aws-sdk/s3-request-presigner": "^3.922.0",
     "@neondatabase/serverless": "^1.0.2",
     "@prisma/adapter-neon": "^7.0.0",
+    "@prisma/adapter-pg": "^7.6.0",
     "@prisma/client": "^7.3.0",
     "@sentry/node": "^7.109.0",
     "@sentry/profiling-node": "^7.109.0",
