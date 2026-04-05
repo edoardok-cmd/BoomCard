@@ -37,6 +37,7 @@ export interface Plan {
   billingOptions: PlanBillingOptions;
   cashbackRate: number;
   stickerBonus: number;
+  payoutThreshold: number | null;
   features: string[];
   featuresBg: string[];
   cardType: 'light' | 'silver' | 'black';
@@ -173,33 +174,49 @@ class PlansService {
   }
 
   /**
-   * Poll subscription status until active or timeout
+   * Poll subscription status until active or timeout.
+   * Stops early after 3 consecutive network failures; applies exponential backoff on errors.
    */
   async pollSubscriptionStatus(
     orderId: string,
     maxAttempts: number = 15,
     interval: number = 2000
   ): Promise<SubscriptionStatus> {
+    const MAX_CONSECUTIVE_FAILURES = 3;
+    let consecutiveFailures = 0;
+
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       try {
         const status = await this.checkSubscriptionStatus(orderId);
+        consecutiveFailures = 0;
 
-        // If subscription is active, return immediately
         if (status.isActive) {
           return status;
         }
 
-        // Wait before next attempt
+        // Stop polling immediately if the subscription reached a terminal failure state
+        const terminalFailedStatuses = ['cancelled', 'expired', 'failed', 'suspended'];
+        if (status.status && terminalFailedStatuses.includes(status.status.toLowerCase())) {
+          return status;
+        }
+
         if (attempt < maxAttempts - 1) {
           await new Promise(resolve => setTimeout(resolve, interval));
         }
       } catch (error) {
-        // Continue polling even if one request fails
-        console.warn(`Poll attempt ${attempt + 1} failed:`, error);
+        consecutiveFailures++;
+        if (__DEV__) console.warn(`Poll attempt ${attempt + 1} failed (${consecutiveFailures} consecutive):`, error);
+
+        if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+          throw new Error('Subscription verification failed after repeated network errors');
+        }
+
+        const backoff = interval * Math.pow(2, consecutiveFailures - 1);
+        await new Promise(resolve => setTimeout(resolve, backoff));
       }
     }
 
-    // Return last status after timeout
+    // Return final status check after exhausting attempts
     return this.checkSubscriptionStatus(orderId);
   }
 

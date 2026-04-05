@@ -300,7 +300,7 @@ const sizeStyles = {
 type VariantType = 'primary' | 'secondary' | 'ghost' | 'danger' | 'outline' | 'golden';
 type SizeType = 'small' | 'medium' | 'large';
 
-export const StyledButton = styled.button<{ variant?: VariantType; size?: SizeType; $fullWidth?: boolean }>`
+export const StyledButton = styled.button<{ $variant?: VariantType; $size?: SizeType; $fullWidth?: boolean }>`
   border-radius: 9999px;
   cursor: pointer;
   transition: all 300ms cubic-bezier(0.4, 0, 0.2, 1);
@@ -315,8 +315,8 @@ export const StyledButton = styled.button<{ variant?: VariantType; size?: SizeTy
   -moz-osx-font-smoothing: grayscale;
   width: ${props => props.$fullWidth ? '100%' : 'auto'};
 
-  ${props => variantStyles[props.variant || 'primary']}
-  ${props => sizeStyles[props.size || 'medium']}
+  ${props => variantStyles[props.$variant || 'primary']}
+  ${props => sizeStyles[props.$size || 'medium']}
 
   &:disabled {
     opacity: 0.5;

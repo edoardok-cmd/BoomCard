@@ -165,14 +165,26 @@ const UpgradePlansScreen = ({ navigation, route }: any) => {
   });
 
   const handleSelectPlan = (plan: Plan, billingPeriod: 'weekly' | 'monthly' | 'yearly') => {
+    // Find the current plan's price so CheckoutScreen can show the exact credit/net breakdown.
+    // LIGHT (Premium Weekly) is billed weekly; BASIC is billed monthly.
+    const currentPlan = mappedCardType ? plans.find(p => p.cardType === mappedCardType) : null;
+    const currentPlanPrice: number | null = currentPlan
+      ? (mappedCardType === 'light' ? (currentPlan.pricing.weekly ?? null) : (currentPlan.pricing.monthly ?? null))
+      : null;
     navigation.push('Checkout', {
       planId: plan.id,
       billing: billingPeriod,
       currentCardType: mappedCardType,
+      ...(currentPlanPrice !== null ? { currentPlanPrice } : {}),
     });
   };
 
   const convertEURToBGN = (eur: number) => +(eur * APP_CONFIG.EUR_EXCHANGE_RATE).toFixed(2);
+
+  // Max yearly discount across all plans with yearly billing — drives the savings badge
+  const maxYearlyDiscount = plans
+    .filter(p => p.billingOptions.hasYearly)
+    .reduce((max, p) => Math.max(max, p.pricing.yearlyDiscountPct), 0);
 
   // Credit only applies for specific upgrade paths per backend logic:
   // LIGHT → PREMIUM: 100%   BASIC → PREMIUM: 60%   all others: no credit
@@ -325,6 +337,16 @@ const UpgradePlansScreen = ({ navigation, route }: any) => {
               <Text style={styles.featureText}>{feature}</Text>
             </View>
           ))}
+          {plan.payoutThreshold != null && (
+            <View style={styles.featureItem}>
+              <View style={[styles.featureCheck, { backgroundColor: 'rgba(212,175,55,0.15)' }]}>
+                <Ionicons name="wallet-outline" size={13} color="#d4af37" />
+              </View>
+              <Text style={[styles.featureText, { color: theme.colors.onSurface }]}>
+                {t('subscription.minPayout', { amount: plan.payoutThreshold })}
+              </Text>
+            </View>
+          )}
         </View>
 
         {isDisabled ? (
@@ -386,9 +408,11 @@ const UpgradePlansScreen = ({ navigation, route }: any) => {
               </Text>
             </TouchableOpacity>
           </View>
-          <View style={styles.savingsBadge}>
-            <Text style={styles.savingsBadgeText}>-20%</Text>
-          </View>
+          {maxYearlyDiscount > 0 && (
+            <View style={styles.savingsBadge}>
+              <Text style={styles.savingsBadgeText}>-{maxYearlyDiscount}%</Text>
+            </View>
+          )}
         </View>
 
         {loading ? (

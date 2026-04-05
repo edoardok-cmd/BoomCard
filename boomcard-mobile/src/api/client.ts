@@ -39,8 +39,9 @@ export class ApiClient {
   private axiosInstance: AxiosInstance;
   private isRefreshing: boolean = false;
   private refreshSubscribers: Array<(token: string) => void> = [];
-  private readonly MAX_RETRIES = 1;
+  private readonly MAX_RETRIES = 3;
   private readonly RETRY_DELAY = 1000; // 1 second
+  private readonly MAX_REFRESH_RETRIES = 3;
 
   private constructor() {
     this.axiosInstance = axios.create({
@@ -141,9 +142,9 @@ export class ApiClient {
   }
 
   /**
-   * Refresh access token using refresh token
+   * Refresh access token using refresh token, with retry on transient network errors
    */
-  private async refreshAccessToken(): Promise<string> {
+  private async refreshAccessToken(retryCount = 0): Promise<string> {
     const refreshToken = await StorageService.getRefreshToken();
 
     if (!refreshToken) {
@@ -163,7 +164,14 @@ export class ApiClient {
       await StorageService.setTokens(accessToken, newRefreshToken);
 
       return accessToken;
-    } catch (error) {
+    } catch (error: any) {
+      // Only retry on network errors (no response), not on 401/403 (invalid token)
+      const isNetworkError = !error.response;
+      if (isNetworkError && retryCount < this.MAX_REFRESH_RETRIES) {
+        const delay = this.RETRY_DELAY * Math.pow(2, retryCount);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        return this.refreshAccessToken(retryCount + 1);
+      }
       console.error('Token refresh failed:', error);
       throw new Error('Session expired. Please login again.');
     }
@@ -232,12 +240,14 @@ export class ApiClient {
     try {
       return await requestFn();
     } catch (error) {
-      const axiosError = error as AxiosError;
-      const isNetworkError = !axiosError.response;
-      const shouldRetry = isNetworkError && retries < this.MAX_RETRIES;
+      // The response interceptor transforms AxiosError → ApiError before reaching here,
+      // so we check the code it assigns rather than the absent .response property.
+      const apiError = error as ApiError;
+      const isRetryable = apiError.code === 'NETWORK_ERROR' || apiError.code === 'TIMEOUT_ERROR';
+      const shouldRetry = isRetryable && retries < this.MAX_RETRIES;
 
       if (shouldRetry) {
-        await new Promise(resolve => setTimeout(resolve, this.RETRY_DELAY * (retries + 1)));
+        await new Promise(resolve => setTimeout(resolve, this.RETRY_DELAY * Math.pow(2, retries)));
         return this.retryRequest(requestFn, retries + 1);
       }
 
@@ -305,10 +315,8 @@ export class ApiClient {
     config?: AxiosRequestConfig
   ): Promise<ApiResponse<T>> {
     try {
-      const response: AxiosResponse<T> = await this.axiosInstance.put(
-        url,
-        data,
-        config
+      const response: AxiosResponse<T> = await this.retryRequest(() =>
+        this.axiosInstance.put(url, data, config)
       );
       return {
         success: true,
@@ -331,9 +339,8 @@ export class ApiClient {
     config?: AxiosRequestConfig
   ): Promise<ApiResponse<T>> {
     try {
-      const response: AxiosResponse<T> = await this.axiosInstance.delete(
-        url,
-        config
+      const response: AxiosResponse<T> = await this.retryRequest(() =>
+        this.axiosInstance.delete(url, config)
       );
       return {
         success: true,
@@ -349,7 +356,9 @@ export class ApiClient {
   }
 
   /**
-   * Upload file with multipart/form-data
+   * Upload file with multipart/form-data.
+   * No retry — uploads are not idempotent; retrying after a silent server-side success
+   * would create duplicate records.
    */
   async upload<T = any>(
     url: string,
@@ -357,16 +366,12 @@ export class ApiClient {
     onUploadProgress?: (progressEvent: any) => void
   ): Promise<ApiResponse<T>> {
     try {
-      const response: AxiosResponse<T> = await this.axiosInstance.post(
-        url,
-        formData,
-        {
-          headers: {
-            'Content-Type': 'multipart/form-data',
-          },
-          onUploadProgress,
-        }
-      );
+      const response: AxiosResponse<T> = await this.axiosInstance.post(url, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+        onUploadProgress,
+      });
       return {
         success: true,
         data: response.data,

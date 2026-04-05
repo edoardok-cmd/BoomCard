@@ -28,17 +28,19 @@ import ForgotPasswordScreen from '../screens/Auth/ForgotPasswordScreen';
 
 // Main App Screens
 import DashboardScreen from '../screens/Dashboard/DashboardScreen';
+import OffersScreen from '../screens/Offers/OffersScreen';
+import OfferDetailScreen from '../screens/Offers/OfferDetailScreen';
 import ReceiptsScreen from '../screens/Receipts/ReceiptsScreen';
 import ReceiptScannerScreen from '../screens/Receipts/ReceiptScannerScreen';
 import StickerScannerScreen from '../screens/Stickers/StickerScannerScreen';
 import UploadReceiptScreen from '../screens/Stickers/UploadReceiptScreen';
-import CardWalletScreen from '../screens/Card/CardWalletScreen';
 import MyCardScreen from '../screens/Card/MyCardScreen';
 import UpgradePlansScreen from '../screens/Card/UpgradePlansScreen';
 import ProfileScreen from '../screens/Profile/ProfileScreen';
 import EditProfileScreen from '../screens/Profile/EditProfileScreen';
 import ChangePasswordScreen from '../screens/Profile/ChangePasswordScreen';
 import SettingsScreen from '../screens/Profile/SettingsScreen';
+import SyncAnalysisScreen from '../screens/Profile/SyncAnalysisScreen';
 
 // Payment Screens
 import WalletScreen from '../screens/Payments/WalletScreen';
@@ -104,6 +106,17 @@ const TabNavigator = () => {
             <View style={{ marginRight: 16 }}>
               <BoomLogo size={32} />
             </View>
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="Offers"
+        component={OffersScreen}
+        options={{
+          title: t('offers.title'),
+          tabBarLabel: t('navigation.offers'),
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="pricetag" size={size} color={color} />
           ),
         }}
       />
@@ -212,6 +225,16 @@ const MainNavigator = ({ initialRouteName = 'MainTabs' }: { initialRouteName?: s
         }}
       />
 
+      {/* Offer Screens */}
+      <Stack.Screen
+        name="OfferDetail"
+        component={OfferDetailScreen}
+        options={{
+          headerShown: true,
+          title: t('offers.detail'),
+        }}
+      />
+
       {/* Receipt Screens */}
       <Stack.Screen
         name="ReceiptScanner"
@@ -246,6 +269,14 @@ const MainNavigator = ({ initialRouteName = 'MainTabs' }: { initialRouteName?: s
         options={{
           headerShown: true,
           title: 'Settings'
+        }}
+      />
+      <Stack.Screen
+        name="SyncAnalysis"
+        component={SyncAnalysisScreen}
+        options={{
+          headerShown: true,
+          title: 'Sync Analysis'
         }}
       />
 

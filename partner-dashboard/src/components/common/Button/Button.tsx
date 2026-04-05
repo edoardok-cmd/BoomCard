@@ -27,8 +27,8 @@ export const Button: React.FC<ButtonProps> = ({
   return (
     <StyledButton
       className={className}
-      variant={variant}
-      size={size}
+      $variant={variant}
+      $size={size}
       onClick={onClick}
       disabled={disabled || isLoading}
       type={type}

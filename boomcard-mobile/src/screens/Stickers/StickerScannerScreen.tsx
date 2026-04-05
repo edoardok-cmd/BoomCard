@@ -148,6 +148,7 @@ export default function StickerScannerScreen() {
         latitude: location.coords.latitude,
         longitude: location.coords.longitude,
         reminderNotificationId: notificationId,
+        sessionCreatedAt: new Date().toISOString(),
       });
     } catch {
       crossPlatformAlert(t('common.error'), t('stickers.locationError'));

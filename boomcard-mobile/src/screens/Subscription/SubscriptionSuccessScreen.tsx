@@ -20,6 +20,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { plansService, SubscriptionStatus } from '../../services/plans.service';
 import { useTheme } from '../../contexts/ThemeContext';
+import { useAuth } from '../../store/AuthContext';
 
 const POLLING_INTERVAL = 2000; // 2 seconds
 const MAX_POLLING_TIME = 30000; // 30 seconds before showing warning
@@ -30,6 +31,9 @@ type StatusType = 'loading' | 'success' | 'pending' | 'error';
 const SubscriptionSuccessScreen = ({ navigation, route }: any) => {
   const { i18n } = useTranslation();
   const { theme, isDarkMode } = useTheme();
+  const { refetchUser } = useAuth();
+  const refetchUserRef = useRef(refetchUser);
+  useEffect(() => { refetchUserRef.current = refetchUser; });
   const language = i18n.language === 'bg' ? 'bg' : 'en';
 
   const orderId: string | null = route?.params?.orderId || null;
@@ -39,12 +43,21 @@ const SubscriptionSuccessScreen = ({ navigation, route }: any) => {
   const [elapsedTime, setElapsedTime] = useState(0);
   const [isPolling, setIsPolling] = useState(true);
   const elapsedRef = useRef(0);
+  // Refs mirror state so the interval callback can read current values
+  // without triggering effect re-runs on every status/isPolling change.
+  const isPollingRef = useRef(true);
+  const statusRef = useRef<StatusType>('loading');
+  // Stored so handleRetry can clear and restart the kill-switch timeout
+  const killSwitchRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const setStatusTracked = (s: StatusType) => { statusRef.current = s; setStatus(s); };
+  const setIsPollingTracked = (v: boolean) => { isPollingRef.current = v; setIsPolling(v); };
 
   const styles = getStyles(theme, isDarkMode);
 
   const checkStatus = useCallback(async () => {
     if (!orderId) {
-      setStatus('error');
+      setStatusTracked('error');
       return;
     }
 
@@ -53,52 +66,60 @@ const SubscriptionSuccessScreen = ({ navigation, route }: any) => {
       setSubscription(result);
 
       if (result.isActive) {
-        setStatus('success');
-        setIsPolling(false);
+        setStatusTracked('success');
+        setIsPollingTracked(false);
+        // Refresh AuthContext so Dashboard immediately reflects the new plan
+        refetchUserRef.current().catch(() => {});
       } else {
-        setStatus('pending');
+        setStatusTracked('pending');
       }
     } catch (error) {
       console.warn('Error checking subscription status:', error);
       if (elapsedRef.current > MAX_TOTAL_TIME) {
-        setStatus('error');
-        setIsPolling(false);
+        setStatusTracked('error');
+        setIsPollingTracked(false);
       }
     }
   }, [orderId]);
 
   useEffect(() => {
     if (!orderId) {
-      setStatus('error');
+      setStatusTracked('error');
       return;
     }
 
     // Initial check
     checkStatus();
 
+    // Single stable interval — reads live state via refs to avoid re-creation on every status change
     const pollInterval = setInterval(() => {
-      if (isPolling && status !== 'success') {
+      if (isPollingRef.current && statusRef.current !== 'success') {
         checkStatus();
         elapsedRef.current += POLLING_INTERVAL;
         setElapsedTime(elapsedRef.current);
       }
     }, POLLING_INTERVAL);
 
-    const timeoutId = setTimeout(() => {
-      setIsPolling(false);
+    killSwitchRef.current = setTimeout(() => {
+      setIsPollingTracked(false);
     }, MAX_TOTAL_TIME);
 
     return () => {
       clearInterval(pollInterval);
-      clearTimeout(timeoutId);
+      if (killSwitchRef.current) clearTimeout(killSwitchRef.current);
     };
-  }, [orderId, checkStatus, isPolling, status]);
+  }, [orderId, checkStatus]); // stable: checkStatus only changes if orderId changes
 
   const handleRetry = () => {
     elapsedRef.current = 0;
     setElapsedTime(0);
-    setIsPolling(true);
-    setStatus('loading');
+    setIsPollingTracked(true);
+    setStatusTracked('loading');
+    // Restart the kill-switch timeout so retrying gives a fresh 2-minute window
+    if (killSwitchRef.current) clearTimeout(killSwitchRef.current);
+    killSwitchRef.current = setTimeout(() => {
+      setIsPollingTracked(false);
+    }, MAX_TOTAL_TIME);
     checkStatus();
   };
 

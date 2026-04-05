@@ -624,6 +624,13 @@ const PricingPublicPage: React.FC = () => {
     fetchPlans();
   }, [language]);
 
+  // Returns the payout threshold for a card type, formatted as "€N" or "—" if unknown.
+  const getPayoutThreshold = (cardType: 'light' | 'silver' | 'black'): string => {
+    const plan = plans.find(p => p.cardType === cardType);
+    if (!plan || plan.payoutThreshold == null) return '—';
+    return `€${plan.payoutThreshold}`;
+  };
+
   const faqs = [
     {
       questionEn: 'How is my cashback percentage calculated?',
@@ -634,8 +641,8 @@ const PricingPublicPage: React.FC = () => {
     {
       questionEn: 'When can I withdraw my cashback?',
       questionBg: 'Кога мога да изтегля кешбека си?',
-      answerEn: 'Cashback is paid out once your balance reaches the minimum threshold: €10 for Premium Weekly, €15 for Premium Monthly, €20 for Basic. Funds arrive within 3–5 business days.',
-      answerBg: 'Кешбекът се изплаща след достигане на минималния праг: €10 за Premium Седмичен, €15 за Premium Месечен, €20 за Basic. Средствата постъпват в рамките на 3–5 работни дни.',
+      answerEn: `Cashback is paid out once your balance reaches the minimum threshold: ${getPayoutThreshold('light')} for Premium Weekly, ${getPayoutThreshold('black')} for Premium Monthly, ${getPayoutThreshold('silver')} for Basic. Funds arrive within 3–5 business days.`,
+      answerBg: `Кешбекът се изплаща след достигане на минималния праг: ${getPayoutThreshold('light')} за Premium Седмичен, ${getPayoutThreshold('black')} за Premium Месечен, ${getPayoutThreshold('silver')} за Basic. Средствата постъпват в рамките на 3–5 работни дни.`,
     },
     {
       questionEn: 'Does my cashback expire?',
@@ -662,6 +669,11 @@ const PricingPublicPage: React.FC = () => {
       answerBg: 'Не, няма такси за настройка или скрити такси. Плащате само абонамента.',
     },
   ];
+
+  // Max yearly discount across plans with yearly billing — drives the toggle label
+  const maxYearlyDiscount = plans
+    .filter(p => p.billingOptions.hasYearly)
+    .reduce((max, p) => Math.max(max, p.pricing.yearlyDiscountPct), 0);
 
   return (
     <PageContainer>
@@ -699,7 +711,9 @@ const PricingPublicPage: React.FC = () => {
               $active={isAnnual}
               onClick={() => setIsAnnual(true)}
             >
-              {language === 'bg' ? 'Годишен абонамент (20% отстъпка)' : 'Yearly (20% off)'}
+              {language === 'bg'
+              ? `Годишен абонамент${maxYearlyDiscount > 0 ? ` (${maxYearlyDiscount}% отстъпка)` : ''}`
+              : `Yearly${maxYearlyDiscount > 0 ? ` (${maxYearlyDiscount}% off)` : ''}`}
             </ToggleOption>
             <ToggleOption
               $active={!isAnnual}
@@ -761,18 +775,17 @@ const PricingPublicPage: React.FC = () => {
                 animate={{ opacity: isDisabled ? 0.5 : 1, y: 0 }}
                 transition={{ duration: 0.5, delay: index * 0.2 }}
               >
-                {/* Badge from API - Most Bought for light card type */}
-                {plan.cardType === 'light' && plan.badge && (
-                  <MostBoughtBadge>
-                    {language === 'bg' ? plan.badge.textBg : plan.badge.text}
-                  </MostBoughtBadge>
-                )}
-
-                {/* Most Popular Badge for featured plans */}
-                {plan.isFeatured && plan.badge && (
-                  <FeaturedBadge>
-                    {language === 'bg' ? plan.badge.textBg : plan.badge.text}
-                  </FeaturedBadge>
+                {/* Single badge per plan: featured takes priority over non-featured */}
+                {plan.badge && (
+                  plan.isFeatured ? (
+                    <FeaturedBadge>
+                      {language === 'bg' ? plan.badge.textBg : plan.badge.text}
+                    </FeaturedBadge>
+                  ) : (
+                    <MostBoughtBadge>
+                      {language === 'bg' ? plan.badge.textBg : plan.badge.text}
+                    </MostBoughtBadge>
+                  )
                 )}
 
                 <CreditCardPlan $type={plan.cardType}>
@@ -863,6 +876,9 @@ const PricingPublicPage: React.FC = () => {
               <th>Premium</th>
             </tr>
           </thead>
+          {/* STATIC: cashback matrix values are not yet exposed via /api/plans.
+               If business rules change, update backend/src/constants/receipt.constants.ts
+               AND this table together. */}
           <tbody>
             <tr><td>5%</td><td>5%</td><td>5%</td></tr>
             <tr><td>10%</td><td>5%</td><td>8%</td></tr>

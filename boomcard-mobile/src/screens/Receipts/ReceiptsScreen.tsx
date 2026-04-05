@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
+import { useFocusEffect } from '@react-navigation/native';
 import { ReceiptsApi } from '../../api/receipts.api';
 import { useTheme } from '../../contexts/ThemeContext';
 import type { Receipt, ReceiptStats, ReceiptStatus } from '../../types';
@@ -40,6 +41,9 @@ const withTimeout = <T,>(promise: Promise<T>, ms: number): Promise<T> =>
 const ReceiptsScreen = ({ navigation }: any) => {
   const { t } = useTranslation();
   const { theme, isDarkMode } = useTheme();
+  const mountedRef = useRef(true);
+  useEffect(() => { return () => { mountedRef.current = false; }; }, []);
+
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [receipts, setReceipts] = useState<Receipt[]>([]);
@@ -57,6 +61,8 @@ const ReceiptsScreen = ({ navigation }: any) => {
 
       const receiptsResponse = receiptsResult.status === 'fulfilled' ? receiptsResult.value : { success: false, data: null };
       const statsResponse = statsResult.status === 'fulfilled' ? statsResult.value : { success: false, data: null };
+
+      if (!mountedRef.current) return;
 
       let hasData = false;
 
@@ -76,16 +82,21 @@ const ReceiptsScreen = ({ navigation }: any) => {
       }
     } catch (error: any) {
       console.warn('Failed to load receipts:', error);
-      setError(error.message || t('receipts.failedToLoad'));
+      if (mountedRef.current) setError(error.message || t('receipts.failedToLoad'));
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (mountedRef.current) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
   };
 
-  useEffect(() => {
-    loadData();
-  }, []);
+  // Refetch whenever the screen comes into focus (e.g. after submitting a receipt)
+  useFocusEffect(
+    useCallback(() => {
+      loadData();
+    }, [])
+  );
 
   const onRefresh = () => {
     setRefreshing(true);

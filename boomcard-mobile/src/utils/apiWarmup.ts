@@ -25,7 +25,7 @@ export async function warmupApi(): Promise<boolean> {
     return true;
   }
 
-  console.log('🔥 Warming up API server...');
+  if (__DEV__) console.log('🔥 Warming up API server...');
 
   warmupPromise = (async () => {
     try {
@@ -41,18 +41,20 @@ export async function warmupApi(): Promise<boolean> {
       clearTimeout(timeoutId);
 
       if (response.ok) {
-        console.log('✅ API server is ready');
+        if (__DEV__) console.log('✅ API server is ready');
         isWarmedUp = true;
         return true;
       } else {
-        console.warn('⚠️ API health check returned non-OK status:', response.status);
+        if (__DEV__) console.warn('⚠️ API health check returned non-OK status:', response.status);
         return false;
       }
     } catch (error) {
-      if (error instanceof Error && error.name === 'AbortError') {
-        console.warn('⚠️ API warmup timed out - server may be sleeping');
-      } else {
-        console.warn('⚠️ API warmup failed:', error);
+      if (__DEV__) {
+        if (error instanceof Error && error.name === 'AbortError') {
+          console.warn('⚠️ API warmup timed out - server may be sleeping');
+        } else {
+          console.warn('⚠️ API warmup failed:', error);
+        }
       }
       return false;
     } finally {

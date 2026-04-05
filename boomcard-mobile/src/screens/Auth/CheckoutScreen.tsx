@@ -69,6 +69,9 @@ const CheckoutScreen = ({ navigation, route }: any) => {
   const billingPeriod: 'weekly' | 'monthly' | 'yearly' = route?.params?.billing || 'monthly';
   // Passed from UpgradePlansScreen when this is an upgrade flow (light/silver/black)
   const currentCardType: string | undefined = route?.params?.currentCardType;
+  // Price of the user's current subscription (EUR) — used to compute the credit deduction.
+  // Passed by UpgradePlansScreen; null means we can't show a breakdown (still show % notice).
+  const currentPlanPrice: number | null = route?.params?.currentPlanPrice ?? null;
 
   // Mirrors the credit logic in UpgradePlansScreen
   const getUpgradeCreditPercent = (targetCardType: string): number | null => {
@@ -155,6 +158,15 @@ const CheckoutScreen = ({ navigation, route }: any) => {
   const priceEUR = getPrice();
   const priceBGN = priceEUR ? convertEURToBGN(priceEUR) : 0;
   const upgradeCreditPct = plan ? getUpgradeCreditPercent(plan.cardType) : null;
+  // Credit amount deducted from the upgrade price, and the net amount the user actually pays.
+  // Only available when the current plan price was passed from UpgradePlansScreen.
+  const creditAmount = (upgradeCreditPct !== null && currentPlanPrice !== null)
+    ? (currentPlanPrice * upgradeCreditPct / 100)
+    : null;
+  // Clamp to 0 — defensive against edge-case where credit would exceed target price.
+  const netAmount = (priceEUR !== null && creditAmount !== null)
+    ? Math.max(0, priceEUR - creditAmount)
+    : null;
   const colors = plan ? CARD_COLORS[plan.cardType] : CARD_COLORS.light;
   const planName = plan ? (language === 'bg' ? plan.displayNameBg : plan.displayName) : '';
   const features = plan ? (language === 'bg' ? plan.featuresBg : plan.features) : [];
@@ -251,6 +263,12 @@ const CheckoutScreen = ({ navigation, route }: any) => {
                   {language === 'bg' ? 'Обработка...' : 'Processing...'}
                 </Text>
               </View>
+            ) : upgradeCreditPct !== null ? (
+              <Text style={styles.payButtonText}>
+                {netAmount !== null
+                  ? (language === 'bg' ? `Надградете — Платете €${netAmount.toFixed(2)}` : `Upgrade — Pay €${netAmount.toFixed(2)}`)
+                  : t('subscription.upgradePayButton')}
+              </Text>
             ) : (
               <Text style={styles.payButtonText}>
                 {language === 'bg'
@@ -325,12 +343,33 @@ const CheckoutScreen = ({ navigation, route }: any) => {
             </Text>
           </View>
 
+          {plan.payoutThreshold != null && (
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>
+                {language === 'bg' ? 'Мин. изплащане' : 'Min. payout'}
+              </Text>
+              <Text style={styles.summaryValue}>
+                €{plan.payoutThreshold}
+              </Text>
+            </View>
+          )}
+
           {upgradeCreditPct !== null && (
             <View style={styles.creditNotice}>
               <Ionicons name="gift-outline" size={15} color="#16a34a" />
-              <Text style={styles.creditNoticeText}>
-                {t('subscription.upgradeCredit', { percent: upgradeCreditPct })}
-              </Text>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.creditNoticeText}>
+                  {t('subscription.upgradeCredit', { percent: upgradeCreditPct })}
+                </Text>
+                {creditAmount !== null && netAmount !== null && (
+                  <Text style={[styles.creditNoticeText, { marginTop: 4, fontWeight: '700' }]}>
+                    {t('subscription.upgradeCreditBreakdown', {
+                      credit: creditAmount.toFixed(2),
+                      net: netAmount.toFixed(2),
+                    })}
+                  </Text>
+                )}
+              </View>
             </View>
           )}
 
@@ -339,10 +378,24 @@ const CheckoutScreen = ({ navigation, route }: any) => {
           <View style={styles.summaryRow}>
             <Text style={styles.totalLabel}>{language === 'bg' ? 'Общо' : 'Total'}</Text>
             <View style={{ alignItems: 'flex-end' }}>
-              <Text style={styles.totalPrice}>€{priceEUR}</Text>
-              <Text style={styles.totalPriceBGN}>
-                {priceBGN.toFixed(2)} {language === 'bg' ? 'лв.' : 'BGN'}
-              </Text>
+              {netAmount !== null ? (
+                <>
+                  <Text style={[styles.totalPrice, { textDecorationLine: 'line-through', opacity: 0.4, fontSize: 16 }]}>
+                    €{priceEUR}
+                  </Text>
+                  <Text style={styles.totalPrice}>€{netAmount.toFixed(2)}</Text>
+                  <Text style={styles.totalPriceBGN}>
+                    {convertEURToBGN(netAmount).toFixed(2)} {language === 'bg' ? 'лв.' : 'BGN'}
+                  </Text>
+                </>
+              ) : (
+                <>
+                  <Text style={styles.totalPrice}>€{priceEUR}</Text>
+                  <Text style={styles.totalPriceBGN}>
+                    {priceBGN.toFixed(2)} {language === 'bg' ? 'лв.' : 'BGN'}
+                  </Text>
+                </>
+              )}
               <Text style={styles.totalPricePeriod}>{getPeriodSuffix()}</Text>
             </View>
           </View>

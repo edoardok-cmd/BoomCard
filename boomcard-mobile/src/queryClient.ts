@@ -11,8 +11,8 @@ const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       retry: 2,
-      staleTime: 5 * 60 * 1000, // 5 minutes
-      refetchOnWindowFocus: false,
+      staleTime: 60 * 1000, // 1 minute — keeps financial data reasonably fresh
+      refetchOnWindowFocus: true, // re-fetch when app is foregrounded
     },
   },
 });

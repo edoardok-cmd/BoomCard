@@ -21,6 +21,7 @@ import { Text } from 'react-native-paper';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as ImagePicker from 'expo-image-picker';
+import * as Location from 'expo-location';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
 import { useTheme } from '../../contexts/ThemeContext';
@@ -28,7 +29,9 @@ import StickersApi from '../../api/stickers.api';
 import { OCRService } from '../../services/ocr.service';
 import { crossPlatformAlert } from '../../utils/alert';
 import notificationService from '../../services/notification.service';
-import { APP_CONFIG } from '../../constants/config';
+import { APP_CONFIG, GPS_CONFIG } from '../../constants/config';
+import { validateLocationProximity, formatDistance } from '../../utils/distance';
+import apiClient from '../../api/client';
 
 type Stage = 'photo' | 'ocr' | 'confirm' | 'submitting' | 'success';
 
@@ -38,13 +41,15 @@ export default function UploadReceiptScreen() {
   const { t } = useTranslation();
   const { theme, isDarkMode } = useTheme();
 
-  const { stickerId, sessionId, latitude, longitude, reminderNotificationId } = route.params as {
+  const { stickerId, sessionId, latitude, longitude, reminderNotificationId, sessionCreatedAt } = route.params as {
     stickerId: string;
     /** Session ID from POST /api/stickers/session — registered at QR scan time */
     sessionId?: string;
     latitude: number;
     longitude: number;
     reminderNotificationId?: string | null;
+    /** ISO timestamp of when the QR sticker was scanned — used to enforce the 6am deadline */
+    sessionCreatedAt?: string;
   };
 
   const [stage, setStage] = useState<Stage>('photo');
@@ -54,6 +59,9 @@ export default function UploadReceiptScreen() {
   const [billAmount, setBillAmount] = useState<number>(0);
   const [ocrConfidence, setOcrConfidence] = useState<number>(0);
   const [cashbackEarned, setCashbackEarned] = useState<number>(0);
+  // User's plan code (BASIC / LIGHT / PREMIUM) — used to compute accurate cashback estimate
+  // per the master cashback matrix (§2). Fetched once on mount; null = not yet known.
+  const [userPlanCode, setUserPlanCode] = useState<string | null>(null);
 
   const ocrService = OCRService.getInstance();
   const s = getStyles(theme, isDarkMode);
@@ -63,10 +71,44 @@ export default function UploadReceiptScreen() {
     StickersApi.validateSticker(stickerId).then((res) => {
       if (res.success && res.data) {
         setVenueName(res.data.venueName || '');
-        setCashbackPercent(res.data.cashbackPercent || 0);
+        setCashbackPercent(Math.max(0, Math.min(100, res.data.cashbackPercent || 0)));
       }
     }).catch(() => {});
   }, [stickerId]);
+
+  // Fetch user's plan code so we can show an accurate cashback estimate
+  // per the cashback matrix (§2): Basic cap = 10%, Premium ≈ D×0.80
+  useEffect(() => {
+    apiClient.get('/api/subscriptions/current').then((res) => {
+      // Backend may return plan as a string ('BASIC') or as an object ({ code: 'BASIC', ... })
+      const rawPlan = (res as any)?.data?.plan;
+      const code = typeof rawPlan === 'object' ? rawPlan?.code : rawPlan;
+      if (code) setUserPlanCode(String(code).toUpperCase());
+    }).catch(() => {});
+  }, []);
+
+  /**
+   * Estimated user cashback using the document's cashback matrix formulas (§2/§3):
+   *   - venueDiscount ≤ 5%  → full pass-through (BOOM margin = 0 at entry level)
+   *   - Basic               → min(D × 0.525, 10%)  [midpoint of doc's 0.50–0.55 range]
+   *   - LIGHT / PREMIUM     → D × 0.80
+   * Returns BGN amount.  Actual amount is server-computed after submission.
+   */
+  const getEstimatedCashback = (billAmt: number, venueDiscount: number, planCode: string | null): number => {
+    if (venueDiscount <= 0 || billAmt <= 0) return 0;
+    let rate: number;
+    if (venueDiscount <= 5) {
+      rate = venueDiscount / 100;
+    } else if (planCode === 'BASIC') {
+      // 0.525 is the midpoint of the doc's range (0.50–0.55), aligns with the lookup table
+      // (e.g. 15% venue → 15×0.525=7.875≈8% per table vs 7.5% with flat 0.50)
+      rate = Math.min(venueDiscount * 0.525, 10) / 100;
+    } else {
+      // LIGHT (Premium Weekly) and PREMIUM (Premium Monthly) both use Premium cashback
+      rate = (venueDiscount * 0.80) / 100;
+    }
+    return billAmt * rate;
+  };
 
   const pickFromCamera = async () => {
     const result = await ImagePicker.launchCameraAsync({
@@ -103,10 +145,47 @@ export default function UploadReceiptScreen() {
     }
   };
 
+  /** Returns 6:00 AM on the calendar day after the QR scan. */
+  const getSessionDeadline = (createdAt: string): Date => {
+    const deadline = new Date(createdAt);
+    deadline.setDate(deadline.getDate() + 1);
+    deadline.setHours(6, 0, 0, 0);
+    return deadline;
+  };
+
   const handleSubmit = async () => {
     if (!billAmount || billAmount <= 0) {
       crossPlatformAlert(t('common.error'), t('stickers.enterValidAmount', 'Please enter a valid bill amount'));
       return;
+    }
+
+    // Hard block: past 6am the following morning from QR scan time
+    if (sessionCreatedAt && Date.now() > getSessionDeadline(sessionCreatedAt).getTime()) {
+      crossPlatformAlert(t('common.error'), t('stickers.receiptDeadlineExpired'));
+      return;
+    }
+
+    // Hard block: user is too far from the venue (GPS_CONFIG.MAX_RADIUS_METERS = 60m)
+    try {
+      const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      const proximity = validateLocationProximity(
+        { latitude: loc.coords.latitude, longitude: loc.coords.longitude },
+        { latitude, longitude },
+        GPS_CONFIG.MAX_RADIUS_METERS
+      );
+      if (!proximity.isValid) {
+        crossPlatformAlert(
+          t('common.error'),
+          t('stickers.locationTooFar', {
+            distance: formatDistance(proximity.distance),
+            limit: GPS_CONFIG.MAX_RADIUS_METERS,
+          })
+        );
+        return;
+      }
+    } catch {
+      // GPS unavailable — warn but don't block (server will re-validate)
+      console.warn('UploadReceiptScreen: GPS check failed, proceeding without distance guard');
     }
 
     setStage('submitting');
@@ -127,8 +206,12 @@ export default function UploadReceiptScreen() {
       }
 
       const scanId = scanRes.data.id;
-      const serverCashback = scanRes.data.cashbackPercent || cashbackPercent;
-      const earned = (billAmount * serverCashback) / 100;
+      // Prefer the server's pre-computed absolute amount; fall back to rate-based derivation.
+      // Never use cashbackPercent (venue discount state) as a fallback — it is the partner's
+      // full rate, not the user's plan-adjusted cashback rate.
+      const earned = scanRes.data.cashbackAmount > 0
+        ? scanRes.data.cashbackAmount
+        : (billAmount * Math.max(0, scanRes.data.cashbackPercent ?? 0)) / 100;
       setCashbackEarned(earned);
 
       // Upload the receipt photo linked to this scan
@@ -294,7 +377,7 @@ export default function UploadReceiptScreen() {
               </TouchableOpacity>
               <Text style={s.amountText}>{billAmount.toFixed(2)} BGN</Text>
               <TouchableOpacity
-                onPress={() => setBillAmount(billAmount + 1)}
+                onPress={() => setBillAmount(Math.min(10000, billAmount + 1))}
                 style={s.amountBtn}
               >
                 <Ionicons name="add" size={18} color={theme.colors.onSurface} />
@@ -317,10 +400,13 @@ export default function UploadReceiptScreen() {
           >
             <Ionicons name="trending-up" size={18} color="#16a34a" />
             <Text style={s.cashbackPreviewText}>
-              {t('stickers.estimatedCashback', 'Max. possible cashback')}: {((billAmount * cashbackPercent) / 100).toFixed(2)} BGN
+              {/* When plan is unknown fall back to the Basic formula (conservative lower bound)
+                  rather than showing the raw venue discount which would inflate the estimate. */}
+              {`${t('stickers.userEstimatedCashback')}: ${getEstimatedCashback(billAmount, cashbackPercent, userPlanCode ?? 'BASIC').toFixed(2)} BGN`}
             </Text>
           </LinearGradient>
         )}
+        <Text style={s.cashbackInfoNote}>{t('stickers.cashbackInfo')}</Text>
       </View>
 
       <TouchableOpacity style={s.primaryButton} activeOpacity={0.85} onPress={handleSubmit}>
@@ -399,6 +485,15 @@ const getStyles = (theme: any, isDarkMode: boolean) => StyleSheet.create({
     fontSize: 11,
     color: theme.colors.onSurfaceVariant,
     lineHeight: 16,
+  },
+  cashbackInfoNote: {
+    fontSize: 11,
+    color: theme.colors.onSurfaceVariant,
+    textAlign: 'center',
+    marginTop: 8,
+    lineHeight: 15,
+    opacity: 0.75,
+    paddingHorizontal: 4,
   },
 
   // Receipt preview (confirm stage)

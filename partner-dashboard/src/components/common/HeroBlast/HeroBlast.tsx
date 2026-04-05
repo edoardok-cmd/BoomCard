@@ -1482,8 +1482,6 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
           muted
           playsInline
           preload="auto"
-          webkit-playsinline="true"
-          x5-playsinline="true"
         >
           <source src="/boom-blast.mp4" type="video/mp4" />
           Your browser does not support the video tag.

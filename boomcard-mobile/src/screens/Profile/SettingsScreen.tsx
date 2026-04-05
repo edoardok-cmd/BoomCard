@@ -215,8 +215,6 @@ const SettingsScreen = ({ navigation }: any) => {
       const tokenResult = await NotificationService.registerForPushNotifications();
 
       if (tokenResult) {
-        console.log('Push token registered:', tokenResult.token);
-
         // Send token to backend
         const platform = Platform.OS;
         const registerResponse = await notificationsApi.registerPushToken(
@@ -627,6 +625,19 @@ const SettingsScreen = ({ navigation }: any) => {
         {/* Data & Storage */}
         <Text style={styles.sectionTitle}>{t('settings.dataStorage')}</Text>
         <View style={styles.section}>
+          <TouchableOpacity
+            style={[styles.actionRow, { marginBottom: 4 }]}
+            onPress={() => navigation.navigate('SyncAnalysis')}
+          >
+            <View style={styles.settingInfo}>
+              <Ionicons name="sync" size={24} color={theme.colors.primary} />
+              <View style={styles.settingText}>
+                <Text style={styles.settingLabel}>{t('sync.title')}</Text>
+                <Text style={styles.settingDescription}>{t('sync.settingsDesc')}</Text>
+              </View>
+            </View>
+            <Ionicons name="chevron-forward" size={24} color={chevronColor} />
+          </TouchableOpacity>
           <TouchableOpacity style={styles.actionRow} onPress={handleClearCache}>
             <View style={styles.settingInfo}>
               <Ionicons name="trash" size={24} color={theme.colors.error} />

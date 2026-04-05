@@ -1,0 +1,512 @@
+/**
+ * Offers Screen
+ *
+ * Browse partner offers and deals with search, category filtering,
+ * and a featured section. Addresses the data gap between the partner
+ * dashboard's offer catalogue and the mobile app.
+ */
+
+import React, { useState, useCallback, useEffect, useRef } from 'react';
+import {
+  View,
+  StyleSheet,
+  FlatList,
+  ScrollView,
+  TouchableOpacity,
+  Image,
+  RefreshControl,
+} from 'react-native';
+import { Text, Searchbar, Chip, ActivityIndicator } from 'react-native-paper';
+import { useTranslation } from 'react-i18next';
+import { useNavigation } from '@react-navigation/native';
+import { Ionicons } from '@expo/vector-icons';
+import { useTheme } from '../../contexts/ThemeContext';
+import { OffersApi } from '../../api/offers.api';
+import type { Offer } from '../../types';
+import { OfferType } from '../../types';
+
+const CATEGORIES = [
+  { key: '', labelKey: 'offers.categoryAll' },
+  { key: 'restaurant', labelKey: 'offers.categoryRestaurant' },
+  { key: 'cafe', labelKey: 'offers.categoryCafe' },
+  { key: 'hotel', labelKey: 'offers.categoryHotel' },
+  { key: 'spa', labelKey: 'offers.categorySpa' },
+  { key: 'club', labelKey: 'offers.categoryClub' },
+  { key: 'winery', labelKey: 'offers.categoryWinery' },
+];
+
+function getTypeBadgeColor(type: OfferType, theme: any): string {
+  switch (type) {
+    case OfferType.CASHBACK: return theme.colors.gold;
+    case OfferType.DISCOUNT: return theme.colors.info;
+    case OfferType.POINTS: return '#8B5CF6';
+    case OfferType.BUNDLE: return theme.colors.tertiary;
+    case OfferType.SEASONAL: return '#F97316';
+    default: return theme.colors.info;
+  }
+}
+
+function getDiscountLabel(offer: Offer): string {
+  if (offer.discountPercent) return `${offer.discountPercent}% off`;
+  if (offer.cashbackPercent) return `${offer.cashbackPercent}% cashback`;
+  if (offer.discountAmount) return `${offer.discountAmount} лв. off`;
+  return '';
+}
+
+interface OfferCardProps {
+  offer: Offer;
+  onPress: () => void;
+  theme: any;
+  t: (key: string) => string;
+  lang: string;
+}
+
+const OfferCard = ({ offer, onPress, theme, t, lang }: OfferCardProps) => {
+  const title = lang === 'bg' && offer.titleBg ? offer.titleBg : offer.title;
+  const partnerName =
+    (lang === 'bg' && offer.partner?.businessNameBg)
+      ? offer.partner.businessNameBg
+      : offer.partner?.businessName ?? '';
+  const discountLabel = getDiscountLabel(offer);
+  const badgeColor = getTypeBadgeColor(offer.type, theme);
+
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.82}
+      style={[styles.card, { backgroundColor: theme.colors.surface, borderColor: theme.colors.outline }]}
+    >
+      {offer.image ? (
+        <Image source={{ uri: offer.image }} style={styles.cardImage} resizeMode="cover" />
+      ) : (
+        <View style={[styles.cardImagePlaceholder, { backgroundColor: theme.colors.surfaceVariant }]}>
+          <Ionicons name="pricetag-outline" size={36} color={theme.colors.onSurfaceVariant} />
+        </View>
+      )}
+
+      <View style={[styles.typeBadge, { backgroundColor: badgeColor }]}>
+        <Text style={styles.typeBadgeText}>{t(`offers.type.${offer.type}`)}</Text>
+      </View>
+
+      <View style={styles.cardContent}>
+        {partnerName ? (
+          <Text
+            style={[styles.partnerName, { color: theme.colors.onSurfaceVariant }]}
+            numberOfLines={1}
+          >
+            {partnerName}
+          </Text>
+        ) : null}
+
+        <Text
+          style={[styles.offerTitle, { color: theme.colors.onSurface }]}
+          numberOfLines={2}
+        >
+          {title}
+        </Text>
+
+        {discountLabel ? (
+          <Text style={[styles.discountText, { color: theme.colors.gold }]}>
+            {discountLabel}
+          </Text>
+        ) : null}
+
+        <View style={styles.metaRow}>
+          {offer.city ? (
+            <View style={styles.metaItem}>
+              <Ionicons name="location-outline" size={12} color={theme.colors.onSurfaceVariant} />
+              <Text style={[styles.metaText, { color: theme.colors.onSurfaceVariant }]}>
+                {offer.city}
+              </Text>
+            </View>
+          ) : null}
+          <View style={styles.metaItem}>
+            <Ionicons name="calendar-outline" size={12} color={theme.colors.onSurfaceVariant} />
+            <Text style={[styles.metaText, { color: theme.colors.onSurfaceVariant }]}>
+              {new Date(offer.endDate).toLocaleDateString()}
+            </Text>
+          </View>
+        </View>
+      </View>
+    </TouchableOpacity>
+  );
+};
+
+interface FeaturedCardProps {
+  offer: Offer;
+  onPress: () => void;
+  theme: any;
+  lang: string;
+}
+
+const FeaturedCard = ({ offer, onPress, theme, lang }: FeaturedCardProps) => {
+  const title = lang === 'bg' && offer.titleBg ? offer.titleBg : offer.title;
+  const partnerName =
+    (lang === 'bg' && offer.partner?.businessNameBg)
+      ? offer.partner.businessNameBg
+      : offer.partner?.businessName ?? '';
+  const discountLabel = getDiscountLabel(offer);
+
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.82}
+      style={[styles.featuredCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.outline }]}
+    >
+      {offer.image ? (
+        <Image source={{ uri: offer.image }} style={styles.featuredImage} resizeMode="cover" />
+      ) : (
+        <View style={[styles.featuredImage, { backgroundColor: theme.colors.surfaceVariant, justifyContent: 'center', alignItems: 'center' }]}>
+          <Ionicons name="pricetag-outline" size={40} color={theme.colors.onSurfaceVariant} />
+        </View>
+      )}
+      <View style={styles.featuredContent}>
+        {partnerName ? (
+          <Text style={[styles.featuredPartner, { color: theme.colors.onSurfaceVariant }]} numberOfLines={1}>
+            {partnerName}
+          </Text>
+        ) : null}
+        <Text style={[styles.featuredTitle, { color: theme.colors.onSurface }]} numberOfLines={2}>
+          {title}
+        </Text>
+        {discountLabel ? (
+          <Text style={[styles.featuredDiscount, { color: theme.colors.gold }]}>
+            {discountLabel}
+          </Text>
+        ) : null}
+      </View>
+    </TouchableOpacity>
+  );
+};
+
+export default function OffersScreen() {
+  const { t, i18n } = useTranslation();
+  const { theme } = useTheme();
+  const navigation = useNavigation<any>();
+  const lang = i18n.language;
+
+  const [offers, setOffers] = useState<Offer[]>([]);
+  const [featuredOffers, setFeaturedOffers] = useState<Offer[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState('');
+  const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Always-current ref so the debounced timeout fires the latest loadOffers,
+  // not the stale closure captured when the timeout was scheduled.
+  const loadOffersRef = useRef<((isRefresh?: boolean) => Promise<void>) | null>(null);
+
+  const loadOffers = useCallback(async (isRefresh = false) => {
+    if (isRefresh) setRefreshing(true);
+    else if (!offers.length) setLoading(true);
+
+    const params: Parameters<typeof OffersApi.getOffers>[0] = { limit: 30, page: 1 };
+    if (selectedCategory) params.category = selectedCategory;
+    if (searchQuery.trim()) params.search = searchQuery.trim();
+
+    const showFeatured = !selectedCategory && !searchQuery.trim();
+
+    const [offersRes, featuredRes] = await Promise.all([
+      OffersApi.getOffers(params),
+      showFeatured ? OffersApi.getFeaturedOffers() : Promise.resolve({ success: false as const, error: '' }),
+    ]);
+
+    if (offersRes.success) {
+      const items = offersRes.data.items?.length ? offersRes.data.items : (offersRes.data.data ?? []);
+      setOffers(items);
+    }
+
+    if (featuredRes.success) {
+      setFeaturedOffers((featuredRes as { success: true; data: Offer[] }).data ?? []);
+    } else if (!showFeatured) {
+      setFeaturedOffers([]);
+    }
+
+    setLoading(false);
+    setRefreshing(false);
+  }, [selectedCategory, searchQuery]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Keep ref in sync every render so the debounced callback always calls the latest version.
+  loadOffersRef.current = loadOffers;
+
+  useEffect(() => {
+    loadOffers();
+  }, [selectedCategory]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleSearchChange = (query: string) => {
+    setSearchQuery(query);
+    if (searchTimeout.current) clearTimeout(searchTimeout.current);
+    searchTimeout.current = setTimeout(() => {
+      loadOffersRef.current?.();
+    }, 500);
+  };
+
+  const handleCategorySelect = (key: string) => {
+    setSelectedCategory(key);
+    setSearchQuery('');
+  };
+
+  const navigateToDetail = (offer: Offer) => {
+    navigation.navigate('OfferDetail', { offer });
+  };
+
+  const showFeaturedSection = featuredOffers.length > 0 && !selectedCategory && !searchQuery.trim();
+
+  const ListHeader = (
+    <View>
+      {/* Search */}
+      <Searchbar
+        placeholder={t('offers.searchPlaceholder')}
+        value={searchQuery}
+        onChangeText={handleSearchChange}
+        style={[styles.searchBar, { backgroundColor: theme.colors.surfaceVariant }]}
+        inputStyle={{ color: theme.colors.onSurface }}
+        iconColor={theme.colors.onSurfaceVariant}
+        placeholderTextColor={theme.colors.onSurfaceVariant}
+      />
+
+      {/* Category chips */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.chipsRow}
+      >
+        {CATEGORIES.map(cat => (
+          <Chip
+            key={cat.key}
+            selected={selectedCategory === cat.key}
+            onPress={() => handleCategorySelect(cat.key)}
+            style={[
+              styles.chip,
+              selectedCategory === cat.key
+                ? { backgroundColor: theme.colors.gold }
+                : { backgroundColor: theme.colors.surfaceVariant },
+            ]}
+            textStyle={{
+              color: selectedCategory === cat.key ? theme.colors.onGold : theme.colors.onSurface,
+              fontSize: 13,
+            }}
+          >
+            {t(cat.labelKey)}
+          </Chip>
+        ))}
+      </ScrollView>
+
+      {/* Featured section */}
+      {showFeaturedSection && (
+        <View>
+          <Text style={[styles.sectionTitle, { color: theme.colors.onSurface }]}>
+            {t('offers.featured')}
+          </Text>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.featuredRow}
+          >
+            {featuredOffers.map(offer => (
+              <FeaturedCard
+                key={offer.id}
+                offer={offer}
+                onPress={() => navigateToDetail(offer)}
+                theme={theme}
+                lang={lang}
+              />
+            ))}
+          </ScrollView>
+        </View>
+      )}
+
+      {/* All offers title */}
+      <Text style={[styles.sectionTitle, { color: theme.colors.onSurface }]}>
+        {selectedCategory
+          ? t(`offers.categoryLabel.${selectedCategory}`)
+          : searchQuery.trim()
+          ? t('offers.searchResults')
+          : t('offers.allOffers')}
+      </Text>
+    </View>
+  );
+
+  if (loading) {
+    return (
+      <View style={[styles.centered, { backgroundColor: theme.colors.background }]}>
+        <ActivityIndicator size="large" color={theme.colors.gold} />
+      </View>
+    );
+  }
+
+  return (
+    <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+      <FlatList
+        data={offers}
+        keyExtractor={item => item.id}
+        renderItem={({ item }) => (
+          <OfferCard
+            offer={item}
+            onPress={() => navigateToDetail(item)}
+            theme={theme}
+            t={t}
+            lang={lang}
+          />
+        )}
+        ListHeaderComponent={ListHeader}
+        contentContainerStyle={styles.listContent}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => loadOffers(true)}
+            tintColor={theme.colors.gold}
+            colors={[theme.colors.gold]}
+          />
+        }
+        ListEmptyComponent={
+          <View style={styles.empty}>
+            <Ionicons name="pricetag-outline" size={48} color={theme.colors.onSurfaceVariant} />
+            <Text style={[styles.emptyText, { color: theme.colors.onSurfaceVariant }]}>
+              {t('offers.noOffers')}
+            </Text>
+          </View>
+        }
+        showsVerticalScrollIndicator={false}
+      />
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
+  centered: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  listContent: {
+    padding: 16,
+    paddingBottom: 32,
+  },
+  searchBar: {
+    marginBottom: 12,
+    elevation: 0,
+    borderRadius: 12,
+  },
+  chipsRow: {
+    paddingBottom: 16,
+    gap: 8,
+  },
+  chip: {
+    marginRight: 4,
+  },
+  sectionTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    marginBottom: 12,
+    marginTop: 4,
+  },
+  featuredRow: {
+    paddingBottom: 16,
+    gap: 12,
+  },
+  featuredCard: {
+    width: 220,
+    borderRadius: 14,
+    overflow: 'hidden',
+    borderWidth: 1,
+  },
+  featuredImage: {
+    width: '100%',
+    height: 120,
+  },
+  featuredContent: {
+    padding: 12,
+  },
+  featuredPartner: {
+    fontSize: 11,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 4,
+  },
+  featuredTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  featuredDiscount: {
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  card: {
+    borderRadius: 14,
+    overflow: 'hidden',
+    borderWidth: 1,
+    marginBottom: 14,
+  },
+  cardImage: {
+    width: '100%',
+    height: 150,
+  },
+  cardImagePlaceholder: {
+    width: '100%',
+    height: 150,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  typeBadge: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 20,
+  },
+  typeBadgeText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  cardContent: {
+    padding: 14,
+  },
+  partnerName: {
+    fontSize: 11,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 4,
+  },
+  offerTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 6,
+  },
+  discountText: {
+    fontSize: 18,
+    fontWeight: '800',
+    marginBottom: 8,
+  },
+  metaRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  metaItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  metaText: {
+    fontSize: 12,
+  },
+  empty: {
+    alignItems: 'center',
+    paddingTop: 60,
+    gap: 12,
+  },
+  emptyText: {
+    fontSize: 15,
+    textAlign: 'center',
+  },
+});

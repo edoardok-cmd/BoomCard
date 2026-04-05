@@ -83,6 +83,24 @@ export interface PayseraCallbackData {
   payer_country?: string;
 }
 
+// ============================================
+// Transfer API (B2C) types
+// ============================================
+
+export interface CreateTransferParams {
+  amountEUR: number;         // Amount in EUR (major units, e.g. 12.34)
+  beneficiaryIban: string;   // Destination IBAN
+  beneficiaryName: string;   // Account holder name
+  purpose: string;           // Payment purpose text
+  callbackUrl: string;       // URL Paysera will POST status updates to
+}
+
+export interface PayseraTransfer {
+  id: string;
+  status: 'pending' | 'reserved' | 'done' | 'failed' | 'rejected' | string;
+  amount: { amount: string; currency: string };
+}
+
 export interface PayseraPaymentMethod {
   key: string;
   title: string;
@@ -97,9 +115,12 @@ export interface PayseraPaymentMethod {
   groupTitle: string;
 }
 
-// Paysera payment gateway URL
+// Paysera payment gateway URL (Checkout API)
 const PAYSERA_PAY_URL = 'https://www.paysera.com/pay/';
 const PAYSERA_METHODS_URL = 'https://www.paysera.com/new/api/paymentMethods';
+
+// Paysera Transfer API (B2C) base URL
+const PAYSERA_TRANSFER_API_URL = 'https://bank.paysera.com/rest/v1';
 
 // ============================================
 // Paysera Service Class
@@ -554,6 +575,188 @@ export class PayseraService {
     if (typeof element === 'string') return element;
     if (element['#text'] !== undefined) return String(element['#text']);
     return '';
+  }
+
+  // ============================================
+  // Transfer API (B2C) — Paysera MAC auth
+  // Credentials: PAYSERA_TRANSFER_CLIENT_ID, PAYSERA_TRANSFER_MAC_KEY
+  // Business account: PAYSERA_ACCOUNT_NUMBER
+  // ============================================
+
+  isTransferConfigured(): boolean {
+    return !!(
+      process.env.PAYSERA_TRANSFER_CLIENT_ID &&
+      process.env.PAYSERA_TRANSFER_MAC_KEY &&
+      process.env.PAYSERA_ACCOUNT_NUMBER
+    );
+  }
+
+  /**
+   * Build MAC Access Authentication header for the Paysera Transfer API.
+   * Normalization string (each part on its own line, terminated by \n):
+   *   ts, nonce, METHOD, /path, host, port, ext
+   * ext = SHA256(body) base64 for POST/PUT, empty string for GET.
+   * mac = HMAC-SHA256(normalization, macKey) base64.
+   */
+  private buildTransferMacHeader(
+    method: string,
+    urlPath: string,
+    body?: string
+  ): string {
+    const clientId = process.env.PAYSERA_TRANSFER_CLIENT_ID!;
+    const macKey = process.env.PAYSERA_TRANSFER_MAC_KEY!;
+
+    const ts = Math.floor(Date.now() / 1000).toString();
+    const nonce = crypto.randomBytes(8).toString('hex');
+
+    let ext = '';
+    if (body && (method === 'POST' || method === 'PUT')) {
+      ext = crypto.createHash('sha256').update(body, 'utf8').digest('base64');
+    }
+
+    const normalString = [ts, nonce, method.toUpperCase(), urlPath, 'bank.paysera.com', '443', ext, ''].join('\n');
+    const mac = crypto.createHmac('sha256', macKey).update(normalString, 'utf8').digest('base64');
+
+    return `MAC id="${clientId}", ts="${ts}", nonce="${nonce}", mac="${mac}", ext="${ext}"`;
+  }
+
+  /**
+   * Verify an incoming MAC Authorization header from Paysera Transfer API callbacks.
+   * Returns true if the signature is valid.
+   */
+  verifyTransferCallbackMac(
+    method: string,
+    urlPath: string,
+    authHeader: string,
+    host: string,
+    body?: string
+  ): boolean {
+    try {
+      const macKey = process.env.PAYSERA_TRANSFER_MAC_KEY;
+      if (!macKey) return false;
+
+      const tsMatch = authHeader.match(/ts="([^"]+)"/);
+      const nonceMatch = authHeader.match(/nonce="([^"]+)"/);
+      const macMatch = authHeader.match(/(?:^|,\s*)mac="([^"]+)"/);
+      const extMatch = authHeader.match(/(?:^|,\s*)ext="([^"]*)"/);
+
+      if (!tsMatch || !nonceMatch || !macMatch) {
+        logger.warn('Transfer callback MAC: missing required fields');
+        return false;
+      }
+
+      const ts = tsMatch[1];
+      const nonce = nonceMatch[1];
+      const providedMac = macMatch[1];
+      const ext = extMatch ? extMatch[1] : '';
+
+      // Verify body hash if ext was provided
+      if (ext && body) {
+        const expectedBodyHash = crypto.createHash('sha256').update(body, 'utf8').digest('base64');
+        if (ext !== expectedBodyHash) {
+          logger.warn('Transfer callback MAC: body hash mismatch');
+          return false;
+        }
+      }
+
+      const normalString = [ts, nonce, method.toUpperCase(), urlPath, host, '443', ext, ''].join('\n');
+      const expectedMac = crypto.createHmac('sha256', macKey).update(normalString, 'utf8').digest('base64');
+
+      if (providedMac !== expectedMac) {
+        logger.warn('Transfer callback MAC: signature mismatch');
+        return false;
+      }
+
+      return true;
+    } catch (err) {
+      logger.error('Transfer callback MAC verification error:', err);
+      return false;
+    }
+  }
+
+  /**
+   * Make an authenticated request to the Paysera Transfer API.
+   */
+  private async transferApiRequest<T>(
+    method: string,
+    path: string,
+    body?: Record<string, any>
+  ): Promise<T> {
+    const bodyString = body ? JSON.stringify(body) : undefined;
+    const authorization = this.buildTransferMacHeader(method, path, bodyString);
+
+    const response = await axios({
+      method,
+      url: `${PAYSERA_TRANSFER_API_URL}${path}`,
+      headers: {
+        Authorization: authorization,
+        ...(bodyString ? { 'Content-Type': 'application/json' } : {}),
+        Accept: 'application/json',
+      },
+      data: bodyString,
+      timeout: 15000,
+    });
+
+    return response.data as T;
+  }
+
+  /**
+   * Create a Paysera B2C transfer (bank account payout).
+   * Sets auto_process_to_done=true so Paysera executes after reserve without
+   * requiring a separate /done call.
+   */
+  async createTransfer(params: CreateTransferParams): Promise<PayseraTransfer> {
+    if (params.amountEUR < 0.01) {
+      throw new Error(`Transfer amount too small: €${params.amountEUR.toFixed(2)} (minimum €0.01)`);
+    }
+
+    const accountNumber = process.env.PAYSERA_ACCOUNT_NUMBER!;
+    const amountStr = params.amountEUR.toFixed(2);
+
+    const body = {
+      amount: { amount: amountStr, currency: 'EUR' },
+      beneficiary: {
+        type: 'bank_account',
+        name: params.beneficiaryName,
+        bank_account: { iban: params.beneficiaryIban.replace(/\s+/g, '') },
+      },
+      payer: { account_number: accountNumber },
+      purpose: params.purpose,
+      auto_process_to_done: true,
+      callback_url: params.callbackUrl,
+    };
+
+    logger.info(`Creating Paysera transfer: ${amountStr} EUR → ${params.beneficiaryIban}`);
+
+    const transfer = await this.transferApiRequest<PayseraTransfer>('POST', '/transfers', body);
+
+    logger.info(`Paysera transfer created: ${transfer.id}, status: ${transfer.status}`);
+    return transfer;
+  }
+
+  /**
+   * Reserve (commit) a pending Paysera transfer.
+   * After reserve + auto_process_to_done the transfer moves to "done" and the
+   * callback fires.
+   */
+  async reserveTransfer(transferId: string): Promise<PayseraTransfer> {
+    const accountNumber = process.env.PAYSERA_ACCOUNT_NUMBER!;
+
+    const transfer = await this.transferApiRequest<PayseraTransfer>(
+      'PUT',
+      `/transfers/${transferId}/reserve`,
+      { account_numbers: [accountNumber] }
+    );
+
+    logger.info(`Paysera transfer reserved: ${transferId}, status: ${transfer.status}`);
+    return transfer;
+  }
+
+  /**
+   * Fetch the current status of a transfer.
+   */
+  async getTransfer(transferId: string): Promise<PayseraTransfer> {
+    return this.transferApiRequest<PayseraTransfer>('GET', `/transfers/${transferId}`);
   }
 
   // ============================================

@@ -220,10 +220,18 @@ const PlanSelectionScreen = ({ navigation }: any) => {
               textShadowRadius: 8,
             },
           ]}>BOOM Card</Text>
-          <View style={styles.cardNumber}>
-            {['••••', '••••', '••••', '••••'].map((dots, i) => (
-              <Text key={i} style={[styles.cardDots, { color: colors.number }]}>{dots}</Text>
-            ))}
+          <View style={styles.cardMiddle}>
+            <View style={styles.cardNumber}>
+              {['••••', '••••', '••••', '••••'].map((dots, i) => (
+                <Text key={i} style={[styles.cardDots, { color: colors.number }]}>{dots}</Text>
+              ))}
+            </View>
+            <View style={styles.cashbackBadge}>
+              <Ionicons name="wallet-outline" size={13} color={colors.text} style={{ opacity: 0.8 }} />
+              <Text style={[styles.cashbackBadgeText, { color: colors.text }]}>
+                {language === 'bg' ? 'до ' : 'up to '}{plan.cashbackRate < 1 ? Math.round(plan.cashbackRate * 100) : plan.cashbackRate}% {language === 'bg' ? 'кешбек' : 'cashback'}
+              </Text>
+            </View>
           </View>
           <View style={styles.cardBottom}>
             <Text style={[styles.cardHolder, { color: colors.text }]}>{planName}</Text>
@@ -250,6 +258,16 @@ const PlanSelectionScreen = ({ navigation }: any) => {
               <Text style={styles.featureText}>{feature}</Text>
             </View>
           ))}
+          {plan.payoutThreshold != null && (
+            <View style={styles.featureItem}>
+              <View style={[styles.featureCheck, { backgroundColor: 'rgba(212,175,55,0.15)' }]}>
+                <Ionicons name="wallet-outline" size={13} color="#d4af37" />
+              </View>
+              <Text style={[styles.featureText, { color: theme.colors.onSurface }]}>
+                {t('subscription.minPayout', { amount: plan.payoutThreshold })}
+              </Text>
+            </View>
+          )}
         </View>
 
         {isDisabled ? (
@@ -457,9 +475,22 @@ const getStyles = (theme: any, isDarkMode: boolean) => StyleSheet.create({
     fontWeight: '900',
     letterSpacing: 2,
   },
+  cardMiddle: {
+    gap: 6,
+  },
   cardNumber: {
     flexDirection: 'row',
     gap: 12,
+  },
+  cashbackBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  cashbackBadgeText: {
+    fontSize: 11,
+    fontWeight: '600',
+    opacity: 0.8,
   },
   cardDots: {
     fontSize: 18,

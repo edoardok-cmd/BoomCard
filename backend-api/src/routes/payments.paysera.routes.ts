@@ -9,7 +9,8 @@ import { asyncHandler } from '../middleware/error.middleware';
 import { payseraService, PayseraService } from '../services/paysera.service';
 import { emailService } from '../services/email.service';
 import { cardService } from '../services/card.service';
-import { TransactionType, TransactionStatus, SubscriptionStatus, SubscriptionPlan, UserStatus } from '@prisma/client';
+import { TransactionType, TransactionStatus, SubscriptionStatus, SubscriptionPlan, UserStatus, WalletTransactionType, WalletTransactionStatus } from '@prisma/client';
+import { walletService } from '../services/wallet.service';
 import prisma from '../lib/prisma';
 import { logger } from '../utils/logger';
 import crypto from 'crypto';
@@ -277,7 +278,35 @@ async function handlePaymentCallback(req: Request, res: Response) {
 
       // Update transaction based on payment status
       if (result.status === 'success') {
-        // Payment successful
+        // Idempotency: Paysera retries callbacks until it receives "OK".
+        // Guard on the WalletTransaction (not Transaction.status) so that if the
+        // wallet credit succeeded but the status update failed on a prior attempt,
+        // we still skip correctly and don't double-credit.
+        const alreadyCredited = await prisma.walletTransaction.findFirst({
+          where: { transactionId: transaction.id },
+        });
+        if (alreadyCredited) {
+          logger.info(`Top-up callback for ${result.orderId} already credited — skipping`);
+          return res.send(payseraService.generateCallbackResponse());
+        }
+
+        // Credit wallet FIRST — atomically via walletService (lock-safe, correct audit trail).
+        // We mark the payment Transaction COMPLETED only after the credit succeeds so that
+        // if the credit throws, Paysera will retry the callback and we will retry the credit.
+        const { wallet } = await walletService.credit({
+          userId: transaction.userId,
+          amount: transaction.amount,
+          type: WalletTransactionType.TOP_UP,
+          description: `Top-up: ${result.orderId}`,
+          transactionId: transaction.id,
+          metadata: {
+            orderId: result.orderId,
+            payseraTransactionId: result.transactionId,
+            paymentMethod: result.paymentMethod,
+          },
+        });
+
+        // Now mark the payment transaction COMPLETED — credit already landed.
         const existingMetadata = transaction.metadata ? JSON.parse(transaction.metadata as string) : {};
         await prisma.transaction.update({
           where: { id: transaction.id },
@@ -294,38 +323,6 @@ async function handlePaymentCallback(req: Request, res: Response) {
               rawStatus: result.rawStatus,
               completedAt: new Date().toISOString(),
             }),
-          },
-        });
-
-        // Update wallet balance
-        const wallet = await prisma.wallet.upsert({
-          where: { userId: transaction.userId },
-          create: {
-            userId: transaction.userId,
-            balance: transaction.amount,
-            availableBalance: transaction.amount,
-            currency: transaction.currency,
-          },
-          update: {
-            balance: {
-              increment: transaction.amount,
-            },
-            availableBalance: {
-              increment: transaction.amount,
-            },
-          },
-        });
-
-        // Create wallet transaction
-        await prisma.walletTransaction.create({
-          data: {
-            walletId: wallet.id,
-            transactionId: transaction.id,
-            amount: transaction.amount,
-            balanceBefore: wallet.balance - transaction.amount,
-            balanceAfter: wallet.balance,
-            type: 'TOP_UP',
-            description: `Payment successful: ${result.orderId}`,
           },
         });
 
@@ -486,7 +483,7 @@ router.get(
         success: true,
         data: transactions.map(t => ({
           id: t.id,
-          orderId: (t.metadata as any)?.orderId,
+          orderId: t.metadata ? (JSON.parse(t.metadata as string) as any)?.orderId : undefined,
           amount: t.amount,
           currency: t.currency,
           status: t.status.toLowerCase(),
@@ -580,7 +577,8 @@ function calculatePeriodEnd(billingPeriod: 'weekly' | 'monthly' | 'yearly'): Dat
 const ALLOWED_REDIRECT_DOMAINS = [
   'mobile.boomcard.bg',
   'boomcard.bg',
-  'boomcard-api.fly.dev',
+  'boomcard.eu',
+  'boomcard.onrender.com',
 ];
 
 function isAllowedRedirectUrl(url: string): boolean {
@@ -894,6 +892,22 @@ async function handleSubscriptionCallback(req: Request, res: Response) {
           },
         });
 
+        // Unblock the user — subscription creation set them to PENDING_PAYMENT.
+        // If they have no other active subscription, reset back to ACTIVE so they
+        // are not permanently stuck in the pending state.
+        const hasActiveSubscription = await prisma.subscription.findFirst({
+          where: {
+            userId: subscription.userId,
+            status: { in: [SubscriptionStatus.ACTIVE, SubscriptionStatus.TRIALING] },
+          },
+        });
+        if (!hasActiveSubscription) {
+          await prisma.user.update({
+            where: { id: subscription.userId },
+            data: { status: UserStatus.ACTIVE },
+          });
+        }
+
         logger.warn(`Subscription payment ${result.status}: ${result.orderId}`);
       }
       // For 'pending' status (0, 2, 3), we don't update - wait for final callback
@@ -948,6 +962,163 @@ router.post('/verify-redirect', paymentRateLimiter, asyncHandler(async (req: Req
       message: 'Invalid payment data or signature',
     });
   }
+}));
+
+// ============================================
+// Paysera Transfer API Callback (B2C Payouts)
+// POST /api/payments/transfer-callback?secret=<per-payout-secret>
+//
+// Paysera POSTs a JSON body when a transfer status changes.
+// The secret query param is a per-payout random token stored in the
+// WITHDRAWAL WalletTransaction metadata — used for lightweight verification
+// without needing full MAC header reconstruction.
+//
+// Expected body (Paysera Transfer API v1):
+//   { "id": "<transfer_id>", "status": "done"|"failed"|"rejected", ... }
+//   OR { "data": { "id": "...", "status": "..." } }
+// ============================================
+
+router.post('/transfer-callback', asyncHandler(async (req: Request, res: Response) => {
+  const { secret } = req.query;
+
+  // Parse transfer ID and status — handle both flat and nested body shapes
+  const body = req.body as Record<string, any>;
+  const transferId: string | undefined = body?.id ?? body?.transfer_id ?? body?.data?.id;
+  const status: string | undefined = body?.status ?? body?.data?.status;
+
+  if (!transferId || !status) {
+    logger.warn('Transfer callback: missing transfer id or status');
+    return res.status(200).json({ ok: true }); // Return 200 to stop retries
+  }
+
+  logger.info(`Transfer callback received: ${transferId} → ${status}`);
+
+  // Find the PROCESSING WITHDRAWAL with this transfer ID in its metadata
+  const walletTx = await prisma.walletTransaction.findFirst({
+    where: {
+      type: WalletTransactionType.WITHDRAWAL,
+      status: WalletTransactionStatus.PROCESSING,
+      metadata: { contains: `"payseraTransferId":"${transferId}"` },
+    },
+    include: {
+      wallet: {
+        include: {
+          user: { select: { id: true, email: true, firstName: true } },
+        },
+      },
+    },
+  });
+
+  if (!walletTx) {
+    // Already processed or never recorded — safe to acknowledge
+    logger.info(`Transfer callback: no PROCESSING withdrawal found for transfer ${transferId}`);
+    return res.status(200).json({ ok: true });
+  }
+
+  // Verify the per-payout secret
+  const metadata = walletTx.metadata ? JSON.parse(walletTx.metadata) : {};
+  if (!secret || secret !== metadata.callbackSecret) {
+    logger.warn(`Transfer callback: invalid secret for transfer ${transferId}`);
+    return res.status(200).json({ ok: true }); // Silent — don't leak info
+  }
+
+  const userId = walletTx.wallet.userId;
+
+  if (status === 'done') {
+    // ── Transfer completed — mark WITHDRAWAL as COMPLETED ────────────────
+    await prisma.walletTransaction.update({
+      where: { id: walletTx.id },
+      data: {
+        status: WalletTransactionStatus.COMPLETED,
+        description: 'Cashback payout completed — funds sent to bank account',
+        metadata: JSON.stringify({ ...metadata, completedAt: new Date().toISOString() }),
+      },
+    });
+
+    logger.info(`Payout completed: transfer ${transferId} for user ${userId}, ${Math.abs(walletTx.amount).toFixed(2)} BGN`);
+
+    // Notify user via email
+    if (walletTx.wallet.user?.email) {
+      const amountBGN = Math.abs(walletTx.amount);
+      emailService.sendWalletUpdate(walletTx.wallet.user.email, {
+        customerName: walletTx.wallet.user.firstName || 'Customer',
+        newBalance: walletTx.balanceAfter,
+        changeAmount: amountBGN,
+        transactionType: 'debit',
+        description: `Your payout of ${amountBGN.toFixed(2)} BGN has been sent to your bank account (IBAN: ${metadata.beneficiaryIban || 'on file'}). Funds typically arrive within 1–2 business days.`,
+        date: new Date(),
+      }).catch((err) => logger.error('Failed to send payout completion email:', err));
+    }
+
+  } else if (status === 'failed' || status === 'rejected') {
+    // ── Transfer failed — reverse the debit and mark WITHDRAWAL as FAILED ─
+    const payoutAmount = Math.abs(walletTx.amount);
+
+    try {
+      await prisma.$transaction(async (tx) => {
+        // Read the ACTUAL current balance inside the transaction — the wallet may have
+        // received cashback credits since the WITHDRAWAL was created (hours/days ago).
+        const currentWallet = await tx.wallet.update({
+          where: { userId },
+          data: {
+            balance: { increment: payoutAmount },
+            availableBalance: { increment: payoutAmount },
+          },
+        });
+
+        // Mark original WITHDRAWAL as FAILED
+        await tx.walletTransaction.update({
+          where: { id: walletTx.id },
+          data: {
+            status: WalletTransactionStatus.FAILED,
+            description: `Payout failed (Paysera transfer ${status})`,
+            metadata: JSON.stringify({ ...metadata, failedAt: new Date().toISOString(), failureStatus: status }),
+          },
+        });
+
+        // Record the reversal credit for the audit trail with accurate balance figures
+        await tx.walletTransaction.create({
+          data: {
+            walletId: walletTx.walletId,
+            type: WalletTransactionType.ADJUSTMENT,
+            amount: payoutAmount,
+            balanceBefore: currentWallet.balance - payoutAmount, // post-increment minus amount = pre-increment
+            balanceAfter: currentWallet.balance,
+            status: WalletTransactionStatus.COMPLETED,
+            description: `Payout reversal (Paysera transfer ${status})`,
+            metadata: JSON.stringify({ payseraTransferId: transferId, reversedWithdrawalId: walletTx.id }),
+          },
+        });
+      });
+
+      logger.warn(`Payout reversed for user ${userId}: transfer ${transferId} ${status}`);
+
+      // Notify user that payout failed and balance was restored
+      if (walletTx.wallet.user?.email) {
+        emailService.sendWalletUpdate(walletTx.wallet.user.email, {
+          customerName: walletTx.wallet.user.firstName || 'Customer',
+          newBalance: walletTx.balanceAfter + payoutAmount,
+          changeAmount: payoutAmount,
+          transactionType: 'credit',
+          description: `Your payout of ${payoutAmount.toFixed(2)} BGN could not be processed and has been returned to your wallet. Please verify your IBAN and try again.`,
+          date: new Date(),
+        }).catch((err) => logger.error('Failed to send payout failure email:', err));
+      }
+    } catch (reversalError: any) {
+      logger.error(`CRITICAL: payout reversal failed for transfer ${transferId}: ${reversalError.message}`);
+      // Lock wallet for manual review
+      await prisma.wallet.update({
+        where: { userId },
+        data: {
+          isLocked: true,
+          lockedReason: `Payout reversal failed after transfer ${status}: ${reversalError.message}`,
+          lockedAt: new Date(),
+        },
+      }).catch(() => {});
+    }
+  }
+
+  res.status(200).json({ ok: true });
 }));
 
 export default router;

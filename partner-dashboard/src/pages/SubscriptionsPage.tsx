@@ -515,7 +515,14 @@ const SubscriptionsPage: React.FC = () => {
             $active={billingPeriod === 'yearly'}
             onClick={() => setBillingPeriod('yearly')}
           >
-            {language === 'bg' ? 'Годишен абонамент (20% отстъпка)' : 'Yearly (20% off)'}
+            {(() => {
+              const maxDiscount = plans
+                .filter(p => p.billingOptions.hasYearly)
+                .reduce((max, p) => Math.max(max, p.pricing.yearlyDiscountPct), 0);
+              return language === 'bg'
+                ? `Годишен абонамент${maxDiscount > 0 ? ` (${maxDiscount}% отстъпка)` : ''}`
+                : `Yearly${maxDiscount > 0 ? ` (${maxDiscount}% off)` : ''}`;
+            })()}
           </ToggleOption>
           <ToggleOption
             $active={billingPeriod === 'monthly'}

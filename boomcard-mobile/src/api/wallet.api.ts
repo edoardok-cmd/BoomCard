@@ -66,10 +66,11 @@ export const walletApi = {
 
   /**
    * Request cashback payout.
-   * Backend validates plan threshold before initiating.
+   * Backend validates plan threshold and fires the Paysera B2C Transfer API.
+   * iban and beneficiaryName are stored on the wallet and reused on subsequent requests.
    */
-  async requestPayout() {
-    const response = await apiClient.post('/api/wallet/payout', {});
+  async requestPayout(opts: { iban?: string; beneficiaryName?: string } = {}) {
+    const response = await apiClient.post('/api/wallet/payout', opts);
     if (!response.success) {
       throw new Error(response.error || 'Failed to request payout');
     }

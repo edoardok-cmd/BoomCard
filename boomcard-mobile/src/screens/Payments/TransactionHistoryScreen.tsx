@@ -97,7 +97,7 @@ export default function TransactionHistoryScreen() {
                   { color: item.amount >= 0 ? '#10B981' : '#EF4444' },
                 ]}
               >
-                {item.amount >= 0 ? '+' : ''}
+                {item.amount >= 0 ? '+' : '-'}
                 {formatDualCurrency(Math.abs(item.amount))}
               </Text>
               <Chip
@@ -105,7 +105,7 @@ export default function TransactionHistoryScreen() {
                 style={styles.statusChip}
                 textStyle={styles.statusText}
               >
-                {item.status}
+                {String(t(`transactions.status.${item.status}`, item.status))}
               </Chip>
               {expiryLabel && (
                 <Text style={styles.expiryText}>{expiryLabel}</Text>

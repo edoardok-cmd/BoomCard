@@ -410,6 +410,21 @@ class StickerService {
         throw new Error('Session has already been submitted or is no longer active');
       }
 
+      // Server-side deadline: receipts must be submitted by 6:00 AM the morning after scan.
+      // The client enforces this too, but we re-check here so a modified client cannot bypass it.
+      const sessionStart = existing.sessionStartedAt ?? existing.createdAt;
+      const deadline = new Date(sessionStart);
+      deadline.setDate(deadline.getDate() + 1);
+      deadline.setHours(6, 0, 0, 0);
+      if (Date.now() > deadline.getTime()) {
+        // Expire the session so it can't be retried
+        await prisma.stickerScan.update({
+          where: { id: sessionId },
+          data: { status: ScanStatus.EXPIRED },
+        }).catch(() => {});
+        throw new Error('Submission deadline has passed. Receipts must be submitted by 6:00 AM the following morning.');
+      }
+
       const config = existing.sticker.venue.stickerConfig ||
         await this.getOrCreateVenueConfig(existing.venueId);
 

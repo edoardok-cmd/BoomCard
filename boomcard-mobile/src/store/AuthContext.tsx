@@ -9,6 +9,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import AuthApi from '../api/auth.api';
 import StorageService from '../services/storage.service';
 import { authLogoutEmitter } from '../api/client';
+import SyncService from '../services/sync.service';
 import type { User, LoginRequest, RegisterRequest, AuthResponse } from '../types';
 
 interface AuthContextType {
@@ -39,10 +40,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const handleForceLogout = () => {
       setUser(null);
       queryClient.clear();
+      SyncService.clear();
     };
     authLogoutEmitter.on('logout', handleForceLogout);
     return () => { authLogoutEmitter.off('logout', handleForceLogout); };
   }, [queryClient]);
+
+  // Refresh user profile every 15 minutes to pick up subscription/plan changes
+  useEffect(() => {
+    if (!user) return;
+    const intervalId = setInterval(async () => {
+      try {
+        const response = await AuthApi.getProfile();
+        if (response.success && response.data) {
+          setUser(response.data);
+          await StorageService.setUserData(response.data);
+        }
+      } catch {
+        // silent — network may be unavailable; will retry next interval
+      }
+    }, 15 * 60 * 1000);
+    return () => clearInterval(intervalId);
+  }, [!!user]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadUserFromStorage = async () => {
     try {
@@ -73,7 +92,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     },
     onSuccess: (data: AuthResponse) => {
       setUser(data.user);
-      queryClient.invalidateQueries();
+      queryClient.clear(); // new session — remove all stale data from previous user
     },
   });
 
@@ -92,7 +111,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     },
     onSuccess: (data: AuthResponse) => {
       setUser(data.user);
-      queryClient.invalidateQueries();
+      queryClient.clear(); // new session — remove all stale data
     },
   });
 
@@ -104,6 +123,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     onSuccess: () => {
       setUser(null);
       queryClient.clear();
+      SyncService.clear();
     },
   });
 

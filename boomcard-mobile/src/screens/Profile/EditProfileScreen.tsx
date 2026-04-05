@@ -28,7 +28,7 @@ const EditProfileScreen = ({ navigation }: any) => {
       title: t('navigation.editProfile'),
     });
   }, [navigation, t]);
-  const { user, updateProfile } = useAuth();
+  const { user, updateProfile, refetchUser } = useAuth();
   const { theme } = useTheme();
   const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState({
@@ -58,6 +58,8 @@ const EditProfileScreen = ({ navigation }: any) => {
         lastName: formData.lastName.trim(),
         phone: normalizePhone(formData.phone),
       });
+      // Sync AuthContext with confirmed server state after the mutation succeeds
+      refetchUser().catch(() => {});
       crossPlatformAlert(t('common.success'), t('profile.updateSuccess'), [
         { text: t('common.ok'), onPress: () => navigation.goBack() }
       ]);

@@ -38,6 +38,7 @@ export interface Plan {
   billingOptions: PlanBillingOptions;
   cashbackRate: number;
   stickerBonus: number;
+  payoutThreshold: number | null;
   features: string[];
   featuresBg: string[];
   cardType: 'light' | 'silver' | 'black';

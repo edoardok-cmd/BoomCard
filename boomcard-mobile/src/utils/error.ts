@@ -7,11 +7,6 @@
  * Handles Error objects, API error objects, and strings
  */
 export function getErrorMessage(error: any): string {
-  console.log('getErrorMessage received:', error);
-  console.log('Error type:', typeof error);
-  console.log('Error instanceof Error:', error instanceof Error);
-  console.log('Error.toString():', error?.toString ? error.toString() : 'no toString');
-
   // If it's a string, return it
   if (typeof error === 'string') {
     return error;
@@ -20,8 +15,6 @@ export function getErrorMessage(error: any): string {
   // Try to access message property directly (works for Error objects)
   try {
     if (error?.message && typeof error.message === 'string') {
-      console.log('Found error.message:', error.message);
-
       // Check if the message is a JSON string and parse it
       if (error.message.startsWith('{') || error.message.startsWith('[')) {
         try {
@@ -40,7 +33,7 @@ export function getErrorMessage(error: any): string {
       return error.message;
     }
   } catch (e) {
-    console.error('Error accessing error.message:', e);
+    // ignore
   }
 
   // Try toString() method (works for Error objects that don't expose enumerable properties)
@@ -48,12 +41,11 @@ export function getErrorMessage(error: any): string {
     if (error && typeof error.toString === 'function') {
       const errorStr = error.toString();
       if (errorStr !== '[object Object]' && errorStr !== 'Error') {
-        console.log('Using toString():', errorStr);
         return errorStr.replace('Error: ', '');
       }
     }
   } catch (e) {
-    console.error('Error calling toString:', e);
+    // ignore
   }
 
   // If it's an object, try to extract meaningful info
@@ -75,7 +67,6 @@ export function getErrorMessage(error: any): string {
     // Try to create a readable message from the object
     try {
       const errorString = JSON.stringify(error, Object.getOwnPropertyNames(error), 2);
-      console.log('Error as JSON (with non-enumerable props):', errorString);
 
       if (errorString && errorString !== '{}' && errorString !== 'null') {
         const parsed = JSON.parse(errorString);
@@ -92,7 +83,7 @@ export function getErrorMessage(error: any): string {
         return errorString;
       }
     } catch (stringifyError) {
-      console.error('Failed to stringify error:', stringifyError);
+      // ignore
     }
   }
 

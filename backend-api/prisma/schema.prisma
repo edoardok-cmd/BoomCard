@@ -515,6 +515,10 @@ model Wallet {
   lockedReason String?
   lockedAt     DateTime?
 
+  // Paysera B2C payout destination — stored once, reused on subsequent payouts
+  payoutIban            String? // IBAN of the user's bank account
+  payoutBeneficiaryName String? // Name as it appears on the bank account
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

@@ -2,6 +2,7 @@ import { Router, Response } from 'express';
 import { authenticate, AuthRequest } from '../middleware/auth.middleware';
 import { walletService } from '../services/wallet.service';
 import { asyncHandler } from '../utils/asyncHandler';
+import { paymentRateLimiter } from '../middleware/security.middleware';
 import { z } from 'zod';
 import prisma from '../lib/prisma';
 import { WalletTransactionStatus, WalletTransactionType } from '@prisma/client';
@@ -59,22 +60,44 @@ router.post('/topup', asyncHandler(async (req: AuthRequest, res: Response) => {
   });
 }));
 
+const payoutSchema = z.object({
+  iban: z
+    .string()
+    .transform((v) => v.replace(/\s+/g, '').toUpperCase())
+    .refine((v) => /^[A-Z]{2}[0-9]{2}[A-Z0-9]{11,30}$/.test(v), 'Invalid IBAN format')
+    .optional(),
+  beneficiaryName: z.string().min(2).max(100).optional(),
+});
+
 /**
  * POST /api/wallet/payout
  * Request cashback payout.
  * Validates that the available balance meets the plan's minimum threshold,
- * then initiates a WITHDRAWAL (PROCESSING status). Funds arrive in 3–5 business days.
+ * then calls Paysera Transfer API to initiate a bank transfer.
+ * Body: { iban?: string, beneficiaryName?: string }
+ * If omitted, stored wallet IBAN is used (must have been set previously).
  */
-router.post('/payout', asyncHandler(async (req: AuthRequest, res: Response) => {
+router.post('/payout', paymentRateLimiter, asyncHandler(async (req: AuthRequest, res: Response) => {
   const userId = req.user!.id;
 
-  const result = await walletService.requestPayout(userId);
+  const parseResult = payoutSchema.safeParse(req.body);
+  if (!parseResult.success) {
+    return res.status(400).json({
+      success: false,
+      message: 'Invalid payout request',
+      errors: parseResult.error.issues,
+    });
+  }
+
+  const { iban, beneficiaryName } = parseResult.data;
+  const result = await walletService.requestPayout(userId, { iban, beneficiaryName });
 
   res.json({
     success: true,
     message: 'Payout initiated. Funds will arrive within 3–5 business days.',
     amount: result.amount,
     currency: result.currency,
+    ...(result.transferId ? { transferId: result.transferId } : {}),
   });
 }));
 

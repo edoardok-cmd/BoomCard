@@ -61,7 +61,7 @@ class PaymentService {
 
       return response.data?.data;
     } catch (error: any) {
-      console.error('Payment initiation error:', error);
+      if (__DEV__) console.error('Payment initiation error:', error);
       throw new Error(error.response?.data?.message || 'Failed to initiate payment');
     }
   }
@@ -86,16 +86,18 @@ class PaymentService {
       );
 
       if (result.type === 'success') {
-        // Parse result URL to check if payment was successful
-        const url = result.url;
+        // Parse result URL properly to avoid loose string-matching
+        const parsed = Linking.parse(result.url);
+        const status = parsed.queryParams?.status as string | undefined;
+        const path = parsed.path ?? '';
 
-        if (url.includes('success')) {
-          return 'success';
-        } else if (url.includes('cancel')) {
-          return 'cancel';
-        }
+        const isCancel = status === 'cancel' || path === 'cancel' || path.endsWith('/cancel');
+        const isSuccess = status === 'success' || path === 'success' || path.endsWith('/success');
 
-        // Default to success if redirected back
+        if (isCancel) return 'cancel';
+        if (isSuccess) return 'success';
+
+        // Default to success if browser redirected back without explicit status
         return 'success';
       } else if (result.type === 'cancel') {
         return 'cancel';
@@ -103,7 +105,7 @@ class PaymentService {
 
       return 'cancel';
     } catch (error) {
-      console.error('Browser payment error:', error);
+      if (__DEV__) console.error('Browser payment error:', error);
       throw new Error('Failed to open payment browser');
     }
   }
@@ -146,7 +148,7 @@ class PaymentService {
         status,
       };
     } catch (error: any) {
-      console.error('Payment process error:', error);
+      if (__DEV__) console.error('Payment process error:', error);
       throw error;
     }
   }
@@ -166,39 +168,49 @@ class PaymentService {
 
       return response.data?.data;
     } catch (error: any) {
-      console.error('Payment status check error:', error);
+      if (__DEV__) console.error('Payment status check error:', error);
       throw new Error(error.response?.data?.message || 'Failed to check payment status');
     }
   }
 
   /**
-   * Poll payment status until completed or timeout
+   * Poll payment status until completed or timeout.
+   * Stops early after 3 consecutive network failures; applies exponential backoff on errors.
    */
   async pollPaymentStatus(
     orderId: string,
     maxAttempts: number = 10,
     interval: number = 2000
   ): Promise<PaymentStatus> {
+    const MAX_CONSECUTIVE_FAILURES = 3;
+    let consecutiveFailures = 0;
+
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       try {
         const status = await this.checkPaymentStatus(orderId);
+        consecutiveFailures = 0;
 
-        // If payment is completed or failed, return immediately
-        if (status.status === 'completed' || status.status === 'failed') {
+        if (status.status === 'completed' || status.status === 'failed' || status.status === 'cancelled') {
           return status;
         }
 
-        // Wait before next attempt
         if (attempt < maxAttempts - 1) {
           await new Promise(resolve => setTimeout(resolve, interval));
         }
       } catch (error) {
-        // Continue polling even if one request fails
-        console.warn(`Poll attempt ${attempt + 1} failed:`, error);
+        consecutiveFailures++;
+        if (__DEV__) console.warn(`Poll attempt ${attempt + 1} failed (${consecutiveFailures} consecutive):`, error);
+
+        if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+          throw new Error('Payment verification failed after repeated network errors');
+        }
+
+        // Exponential backoff on failures
+        const backoff = interval * Math.pow(2, consecutiveFailures - 1);
+        await new Promise(resolve => setTimeout(resolve, backoff));
       }
     }
 
-    // Timeout - return last known status
     throw new Error('Payment verification timeout');
   }
 
@@ -213,7 +225,7 @@ class PaymentService {
 
       return response.data;
     } catch (error: any) {
-      console.error('Payment history error:', error);
+      if (__DEV__) console.error('Payment history error:', error);
       throw new Error(error.response?.data?.message || 'Failed to get payment history');
     }
   }
@@ -226,7 +238,7 @@ class PaymentService {
       const response = await apiClient.get('/api/payments/methods');
       return response.data;
     } catch (error: any) {
-      console.error('Payment methods error:', error);
+      if (__DEV__) console.error('Payment methods error:', error);
       throw new Error(error.response?.data?.message || 'Failed to get payment methods');
     }
   }
@@ -282,7 +294,7 @@ class PaymentService {
         status,
       };
     } catch (error: any) {
-      console.error('Subscription payment process error:', error);
+      if (__DEV__) console.error('Subscription payment process error:', error);
       throw error;
     }
   }
@@ -310,15 +322,18 @@ class PaymentService {
       );
 
       if (result.type === 'success') {
-        const url = result.url;
+        // Parse result URL properly to avoid loose string-matching
+        const parsed = Linking.parse(result.url);
+        const status = parsed.queryParams?.status as string | undefined;
+        const path = parsed.path ?? '';
 
-        if (url.includes('success')) {
-          return 'success';
-        } else if (url.includes('cancel')) {
-          return 'cancel';
-        }
+        const isCancel = status === 'cancel' || path === 'cancel' || path.endsWith('/cancel');
+        const isSuccess = status === 'success' || path === 'success' || path.endsWith('/success');
 
-        // Default to success if redirected back
+        if (isCancel) return 'cancel';
+        if (isSuccess) return 'success';
+
+        // Default to success if browser redirected back without explicit status
         return 'success';
       } else if (result.type === 'cancel') {
         return 'cancel';
@@ -326,7 +341,7 @@ class PaymentService {
 
       return 'cancel';
     } catch (error) {
-      console.error('Subscription browser payment error:', error);
+      if (__DEV__) console.error('Subscription browser payment error:', error);
       throw new Error('Failed to open subscription payment browser');
     }
   }

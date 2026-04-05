@@ -255,7 +255,6 @@ export class NotificationService {
 
       const tokenData = await Notifications.getExpoPushTokenAsync();
       this.pushToken = tokenData.data;
-      console.log('Push token obtained:', this.pushToken);
 
       if (!this.pushToken) return null;
 

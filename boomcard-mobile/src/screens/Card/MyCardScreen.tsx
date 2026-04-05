@@ -22,6 +22,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { useNavigation } from '@react-navigation/native';
 import { useTheme } from '../../contexts/ThemeContext';
+import { useAuth } from '../../store/AuthContext';
 import { cardApi } from '../../api/card.api';
 import apiClient from '../../api/client';
 import { formatDualCurrency } from '../../utils/format';
@@ -72,6 +73,7 @@ const getCardAccent = (cardType: string, isDarkMode: boolean) => {
 export default function MyCardScreen() {
   const { t, i18n } = useTranslation();
   const { theme, isDarkMode } = useTheme();
+  const { refetchUser } = useAuth();
   const navigation = useNavigation<any>();
   const [loading, setLoading] = useState(true);
   const [card, setCard] = useState<any>(null);
@@ -111,14 +113,16 @@ export default function MyCardScreen() {
   const translateBenefit = (benefit: string): string => {
     const benefitMap: Record<string, string> = {
       'One week Premium access': t('card.benefits.weeklyPremiumAccess'),
-      'Up to 20% discount': t('card.benefits.discount20'),
+      'Up to 20% discount': t('card.benefits.discount24'),   // legacy backend string — maps to corrected translation
+      'Up to 24% cashback': t('card.benefits.discount24'),   // corrected backend string (forward-compatible)
       'Exclusive Premium offers': t('card.benefits.exclusivePremiumOffers'),
       'Limited availability special offers': t('card.benefits.limitedOffers'),
       'Access to exclusive Premium campaigns': t('card.benefits.exclusiveCampaigns'),
       'VIP priority support': t('card.benefits.vipPrioritySupport'),
       'Cashback via the app': t('card.benefits.cashbackViaApp'),
       'One month access': t('card.benefits.monthlyAccess'),
-      'Up to 10% discount': t('card.benefits.discount10'),
+      'Up to 10% discount': t('card.benefits.discount10'),   // legacy backend string — maps to corrected translation
+      'Up to 10% cashback': t('card.benefits.discount10'),   // corrected backend string (forward-compatible)
       'Access to partner offers': t('card.benefits.partnerOffers'),
       'Standard support': t('card.benefits.standardSupport'),
       'One month Premium access': t('card.benefits.monthlyPremiumAccess'),
@@ -139,6 +143,8 @@ export default function MyCardScreen() {
         if (hasSub) {
           try {
             cardData = await cardApi.createCard();
+            // Refresh AuthContext so subscription/plan info reflects the new card
+            refetchUser().catch(() => {});
           } catch {
             // Creation failed — show the no-card UI
           }
@@ -319,7 +325,7 @@ export default function MyCardScreen() {
                   {/* Card Footer */}
                   <View style={styles.cardFooter}>
                     <Text style={[styles.planName, { color: accent.text }]}>
-                      {cardTypeUpper === 'LIGHT' ? 'PREMIUM WEEKLY' : cardTypeUpper === 'BASIC' ? 'BASIC' : 'PREMIUM'}
+                      {String(t(`card.tiers.${cardTypeUpper}`, cardTypeUpper)).toUpperCase()}
                     </Text>
                     <Text style={[styles.memberSince, isLight && { color: 'rgba(0,0,0,0.5)' }]}>
                       {t('card.validFrom')} {card.validFrom || card.issuedAt
@@ -411,13 +417,14 @@ export default function MyCardScreen() {
               const isBg = i18n.language === 'bg';
               const bgFeatures: string[] = card.benefits?.featuresBg ?? [];
               const enFeatures: string[] = card.benefits?.features ?? [];
-              const displayFeatures = isBg && bgFeatures.length > 0 ? bgFeatures : enFeatures;
+              const usesBgFeatures = isBg && bgFeatures.length > 0;
+              const displayFeatures = usesBgFeatures ? bgFeatures : enFeatures;
               return displayFeatures.map((feature: string, index: number) => (
                 <View key={index} style={styles.benefitRow}>
                   <View style={styles.benefitCheck}>
                     <Ionicons name="checkmark" size={14} color="#22c55e" />
                   </View>
-                  <Text style={styles.benefitText}>{isBg ? feature : translateBenefit(feature)}</Text>
+                  <Text style={styles.benefitText}>{usesBgFeatures ? feature : translateBenefit(feature)}</Text>
                 </View>
               ));
             })()}

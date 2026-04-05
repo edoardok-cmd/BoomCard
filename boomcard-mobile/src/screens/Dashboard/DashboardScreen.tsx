@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -39,8 +39,12 @@ const DashboardScreen = ({ navigation }: any) => {
   const { t } = useTranslation();
   const { user } = useAuth();
   const { theme, isDarkMode } = useTheme();
+  const mountedRef = useRef(true);
+  useEffect(() => { return () => { mountedRef.current = false; }; }, []);
+
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [loadError, setLoadError] = useState(false);
   const [stats, setStats] = useState<ReceiptStats | null>(null);
   const [cardStats, setCardStats] = useState<any>(null);
   const [subscription, setSubscription] = useState<any>(null);
@@ -50,36 +54,50 @@ const DashboardScreen = ({ navigation }: any) => {
   const loadData = async () => {
     // Leave subscription null until the API responds — no hardcoded values
     // Don't block the whole screen — show UI after a short delay even if APIs are slow
+    if (mountedRef.current) setLoadError(false);
     const loadingTimeout = setTimeout(() => {
-      setLoading(false);
+      if (mountedRef.current) setLoading(false);
     }, 2000);
 
     try {
+      // Local flags track actual results — React state is async and stale inside this closure
+      let anySucceeded = false;
+      let anyFailed = false;
+
       // Fire all requests in parallel, each updates state independently
       const subscriptionPromise = apiClient.get('/api/subscriptions/current').then((subResponse) => {
+        if (!mountedRef.current) return;
         if (subResponse.success && subResponse.data) {
           setSubscription(subResponse.data);
+          anySucceeded = true;
         }
-      }).catch(() => {});
+      }).catch((err) => { console.warn('Dashboard: subscription fetch failed', err); anyFailed = true; });
 
       const receiptsStatsPromise = ReceiptsApi.getStats().then((response) => {
+        if (!mountedRef.current) return;
         if (response.success && response.data) {
           setStats(response.data);
+          anySucceeded = true;
         }
-      }).catch(() => {});
+      }).catch((err) => { console.warn('Dashboard: receipt stats fetch failed', err); anyFailed = true; });
 
       const cardStatsPromise = cardApi.getMyCardOrNull().then((card) => {
+        if (!mountedRef.current) return;
         if (!card) {
           setCardMissing(true);
+          anySucceeded = true; // card check itself succeeded (no card is a valid result)
           return;
         }
         setCardMissing(false);
+        anySucceeded = true;
         return apiClient.get(`/api/cards/${card.id}/statistics`).then((res) => {
+          if (!mountedRef.current) return;
           if (res.success && res.data) setCardStats(res.data);
         });
-      }).catch(() => {});
+      }).catch((err) => { console.warn('Dashboard: card stats fetch failed', err); anyFailed = true; });
 
       const receiptsPromise = ReceiptsApi.getReceipts({ limit: 50 }).then((response) => {
+        if (!mountedRef.current) return;
         if (response.success && response.data) {
           const receipts = response.data.data || [];
           const venueMap = new Map<string, VenueVisit>();
@@ -112,16 +130,25 @@ const DashboardScreen = ({ navigation }: any) => {
             .slice(0, 5);
 
           setRecentVisits(visits);
+          anySucceeded = true;
         }
-      }).catch(() => {});
+      }).catch((err) => { console.warn('Dashboard: receipts fetch failed', err); anyFailed = true; });
 
       await Promise.allSettled([subscriptionPromise, receiptsStatsPromise, cardStatsPromise, receiptsPromise]);
+
+      // Show error banner only when no request yielded data (complete outage)
+      if (mountedRef.current && anyFailed && !anySucceeded) {
+        setLoadError(true);
+      }
     } catch (error) {
       console.warn('Failed to load dashboard data:', error);
+      if (mountedRef.current) setLoadError(true);
     } finally {
       clearTimeout(loadingTimeout);
-      setLoading(false);
-      setRefreshing(false);
+      if (mountedRef.current) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
   };
 
@@ -142,14 +169,26 @@ const DashboardScreen = ({ navigation }: any) => {
     });
   };
 
-  const getCashbackRate = () => {
+  // Normalize plan code — API may return plan as a string ('BASIC') or as an object ({ code: 'BASIC', ... })
+  // UploadReceiptScreen uses the same defensive pattern for the same endpoint.
+  const planCode: string | null = (() => {
+    if (!subscription?.plan) return null;
+    const p = subscription.plan;
+    return typeof p === 'object' ? (p?.code?.toUpperCase() ?? null) : String(p).toUpperCase();
+  })();
+
+  const getCashbackRate = (): number | null => {
+    // Prioritise plan code per master doc — API cashbackRate may carry a legacy value (e.g. 0.20
+    // for PREMIUM before the seeder was corrected). MyCardScreen handles the same issue via
+    // translateBenefit(); keeping both screens consistent requires plan code to win here.
+    if (planCode === 'PREMIUM') return 24; // max per cashback matrix (30% partner → 24% user)
+    if (planCode === 'BASIC') return 10;   // hard cap per cashback matrix
+    if (planCode === 'LIGHT') return 24;   // Premium Weekly: same max as Premium Monthly
+    // Fall back to API value only when plan code is unknown
     if (subscription?.benefits?.cashbackRate) {
       return Math.round(subscription.benefits.cashbackRate * 100);
     }
-    if (subscription?.plan === 'PREMIUM') return 24; // max per cashback matrix (30% partner → 24% user)
-    if (subscription?.plan === 'BASIC') return 10;   // hard cap per cashback matrix
-    if (subscription?.plan === 'LIGHT') return 24;   // Premium Weekly: same max as Premium Monthly
-    return 5; // unauthenticated / no plan fallback
+    return null; // plan code unknown — don't display a rate
   };
 
   const s = getStyles(theme, isDarkMode);
@@ -163,6 +202,13 @@ const DashboardScreen = ({ navigation }: any) => {
       style={s.container}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
     >
+      {/* Error banner — shown only when all APIs failed */}
+      {loadError && (
+        <TouchableOpacity style={s.errorBanner} onPress={onRefresh} activeOpacity={0.7}>
+          <Ionicons name="wifi-outline" size={16} color="#92400E" />
+          <Text style={s.errorBannerText}>{t('common.loadError', 'Could not load data. Tap to retry.')}</Text>
+        </TouchableOpacity>
+      )}
       {/* Hero Header */}
       <LinearGradient
         colors={isDarkMode ? ['#0F172A', '#1E293B'] : ['#000000', '#0A0A0A', '#111111']}
@@ -193,7 +239,7 @@ const DashboardScreen = ({ navigation }: any) => {
               style={s.heroCashbackAmount}
             />
           </View>
-          {subscription && (
+          {subscription && getCashbackRate() !== null && (
             <View style={s.heroCashbackRate}>
               <Ionicons name="trending-up" size={16} color={isDarkMode ? '#60A5FA' : '#D4A843'} />
               <Text style={s.heroCashbackRateText}>
@@ -240,9 +286,9 @@ const DashboardScreen = ({ navigation }: any) => {
           style={[
             s.planBanner,
             {
-              borderColor: subscription.plan === 'BASIC'
+              borderColor: planCode === 'BASIC'
                 ? 'rgba(192,192,192,0.4)'
-                : subscription.plan === 'PREMIUM'
+                : planCode === 'PREMIUM'
                 ? 'rgba(255,215,0,0.3)'
                 : 'rgba(255,255,255,0.1)',
             },
@@ -252,9 +298,9 @@ const DashboardScreen = ({ navigation }: any) => {
         >
           <LinearGradient
             colors={
-              subscription.plan === 'BASIC'
+              planCode === 'BASIC'
                 ? ['#9CA3AF', '#D1D5DB', '#E5E7EB'] as const
-                : subscription.plan === 'PREMIUM'
+                : planCode === 'PREMIUM'
                 ? ['#C49B38', '#D4AF37', '#FFD700'] as const
                 : ['#2D3748', '#4A5568', '#2D3748'] as const
             }
@@ -263,13 +309,13 @@ const DashboardScreen = ({ navigation }: any) => {
             style={s.planGradient}
           >
             <View style={s.planLeft}>
-              <Ionicons name="card" size={32} color={subscription.plan === 'PREMIUM' ? 'rgba(0,0,0,0.6)' : '#FFFFFF'} />
+              <Ionicons name="card" size={32} color={planCode === 'PREMIUM' ? 'rgba(0,0,0,0.6)' : '#FFFFFF'} />
               <View style={s.planTextGroup}>
-                <Text style={[s.planLabel, subscription.plan === 'PREMIUM' && { color: 'rgba(0,0,0,0.5)' }]}>{t('dashboard.yourPlan')}</Text>
-                <Text style={[s.planName, subscription.plan === 'PREMIUM' && { color: 'rgba(0,0,0,0.8)', textShadowColor: 'transparent' }]}>
-                  {subscription.plan === 'PREMIUM'
+                <Text style={[s.planLabel, planCode === 'PREMIUM' && { color: 'rgba(0,0,0,0.5)' }]}>{t('dashboard.yourPlan')}</Text>
+                <Text style={[s.planName, planCode === 'PREMIUM' && { color: 'rgba(0,0,0,0.8)', textShadowColor: 'transparent' }]}>
+                  {planCode === 'PREMIUM'
                     ? t('dashboard.planPremium')
-                    : subscription.plan === 'BASIC'
+                    : planCode === 'BASIC'
                     ? t('dashboard.planBasic')
                     : t('dashboard.planLitePremium')}
                 </Text>
@@ -277,7 +323,7 @@ const DashboardScreen = ({ navigation }: any) => {
             </View>
             <View style={s.planRight}>
               {(() => {
-                const isYellowCard = subscription.plan === 'PREMIUM';
+                const isYellowCard = planCode === 'PREMIUM';
                 const textColor = isYellowCard ? 'rgba(0,0,0,0.75)' : '#FFFFFF';
                 const subtextColor = isYellowCard ? 'rgba(0,0,0,0.55)' : 'rgba(255,255,255,0.8)';
                 const isActive = subscription.status === 'ACTIVE' || subscription.status === 'TRIALING';
@@ -323,7 +369,7 @@ const DashboardScreen = ({ navigation }: any) => {
                 );
               })()}
             </View>
-            <Ionicons name="chevron-forward" size={18} color={subscription.plan === 'PREMIUM' ? 'rgba(0,0,0,0.3)' : 'rgba(255,255,255,0.4)'} style={{ marginLeft: 4 }} />
+            <Ionicons name="chevron-forward" size={18} color={planCode === 'PREMIUM' ? 'rgba(0,0,0,0.3)' : 'rgba(255,255,255,0.4)'} style={{ marginLeft: 4 }} />
           </LinearGradient>
         </TouchableOpacity>
         </FadeInView>
@@ -414,7 +460,7 @@ const DashboardScreen = ({ navigation }: any) => {
       </FadeInView>
 
       {/* Upgrade Banner */}
-      {subscription && subscription.plan !== 'PREMIUM' && (
+      {subscription && planCode !== 'PREMIUM' && (
         <FadeInView delay={250}>
         <TouchableOpacity
           style={s.upgradeBanner}
@@ -515,6 +561,20 @@ const getStyles = (theme: any, isDarkMode: boolean) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: theme.colors.background,
+  },
+
+  errorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  errorBannerText: {
+    fontSize: 13,
+    color: '#92400E',
+    flex: 1,
   },
 
   // Hero Header
