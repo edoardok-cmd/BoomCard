@@ -54,10 +54,23 @@ const httpServer = createServer(app);
 // Initialize Sentry for error tracking (must be first)
 SentryConfig.init(app as any);
 
-// Parse CORS_ORIGIN to support multiple origins
-const corsOrigins = process.env.CORS_ORIGIN
-  ? process.env.CORS_ORIGIN.split(',').map(origin => origin.trim())
-  : ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:5175', 'http://localhost:5176', 'http://localhost:5177', 'http://localhost:5178'];
+// Parse CORS_ORIGIN to support multiple origins.
+// If CORS_ORIGIN="*", reflect the actual request origin so credentials work.
+// Otherwise split the comma-separated list; fallback includes production + local dev.
+const _rawCorsOrigin = process.env.CORS_ORIGIN;
+const corsOrigins: string[] | boolean = (_rawCorsOrigin && _rawCorsOrigin !== '*')
+  ? _rawCorsOrigin.split(',').map(origin => origin.trim())
+  : [
+      'https://boomcard.eu',
+      'https://boomcard.bg',
+      'https://mobile.boomcard.bg',
+      'http://localhost:5173',
+      'http://localhost:5174',
+      'http://localhost:5175',
+      'http://localhost:5176',
+      'http://localhost:5177',
+      'http://localhost:5178',
+    ];
 
 const io = new SocketServer(httpServer, {
   cors: {
