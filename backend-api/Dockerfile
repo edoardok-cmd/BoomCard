@@ -77,6 +77,9 @@ COPY --from=builder --chown=nodejs:nodejs /app/prisma ./prisma
 COPY --from=builder --chown=nodejs:nodejs /app/node_modules/.bin/prisma ./node_modules/.bin/prisma
 COPY --from=builder --chown=nodejs:nodejs /app/node_modules/prisma ./node_modules/prisma
 
+# Copy Prisma 7 config (required for migrate deploy to resolve DATABASE_URL)
+COPY --chown=nodejs:nodejs prisma.config.ts ./
+
 # Create logs directory
 RUN mkdir -p /app/logs && chown -R nodejs:nodejs /app/logs
 
@@ -97,5 +100,5 @@ ENV NODE_ENV=production
 # Use dumb-init to handle signals properly
 ENTRYPOINT ["dumb-init", "--"]
 
-# Start the application (run migrations then start server)
-CMD ["sh", "-c", "node_modules/.bin/prisma migrate deploy && node dist/server.js"]
+# Start the application
+CMD ["node", "dist/server.js"]
