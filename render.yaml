@@ -1,32 +1,84 @@
 services:
   - type: web
-    name: boomcard-backend
-    env: node
-    region: frankfurt
+    name: boomcard-api
+    runtime: node
     plan: starter
-    rootDirectory: ./backend-api
+    region: frankfurt
+    rootDir: backend-api
     buildCommand: npm ci && npx prisma generate && npm run build
     startCommand: npx prisma migrate deploy && npm start
     healthCheckPath: /health
+
     envVars:
       - key: NODE_ENV
         value: production
+
+      - key: PORT
+        value: 3000
+
       - key: DATABASE_URL
         fromDatabase:
           name: boomcard-postgres
           property: connectionString
+
       - key: JWT_SECRET
         generateValue: true
+
       - key: REFRESH_TOKEN_SECRET
         generateValue: true
-      - key: SESSION_SECRET
-        generateValue: true
+
+      - key: STRIPE_SECRET_KEY
+        sync: false
+
+      - key: STRIPE_PUBLISHABLE_KEY
+        sync: false
+
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+
+      - key: AWS_ACCESS_KEY_ID
+        sync: false
+
+      - key: AWS_SECRET_ACCESS_KEY
+        sync: false
+
+      - key: AWS_REGION
+        value: eu-west-1
+
+      - key: AWS_S3_BUCKET
+        value: boomcard-receipts-prod
+
+      - key: CORS_ORIGIN
+        value: https://boomcard.vercel.app,https://mobile.boomcard.bg,https://boomcard.eu,https://boomcard.bg,https://partner.boomcard.bg
+
+      - key: API_BASE_URL
+        value: https://boomcard.onrender.com
+
+      - key: FRONTEND_URL
+        value: https://mobile.boomcard.bg
+
+      - key: RESEND_API_KEY
+        sync: false
+
+      - key: EMAIL_FROM
+        value: noreply@boomcard.bg
+
+      - key: EMAIL_FROM_NAME
+        value: BoomCard
+
+      - key: SENTRY_DSN
+        sync: false
+
+      - key: LOG_LEVEL
+        value: info
+
     autoDeploy: true
 
 databases:
   - name: boomcard-postgres
-    databaseName: boomcard_production
-    user: boomcard
+    databaseName: boomcard
+    user: boomcard_user
     plan: starter
     region: frankfurt
-    postgresMajorVersion: 14
+    postgresMajorVersion: "15"
+    ipAllowList: []
