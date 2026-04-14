@@ -63,11 +63,14 @@ services:
       - key: CORS_ORIGIN
         value: https://boomcard.vercel.app,https://mobile.boomcard.bg,https://boomcard.eu,https://boomcard.bg,https://partner.boomcard.bg
 
-      - key: SENDGRID_API_KEY
+      - key: RESEND_API_KEY
         sync: false
 
-      - key: SENDGRID_FROM_EMAIL
+      - key: EMAIL_FROM
         value: noreply@boomcard.bg
+
+      - key: EMAIL_FROM_NAME
+        value: BoomCard
 
       - key: SENTRY_DSN
         sync: false
@@ -151,7 +154,7 @@ databases:
 #    - STRIPE_WEBHOOK_SECRET
 #    - AWS_ACCESS_KEY_ID
 #    - AWS_SECRET_ACCESS_KEY
-#    - SENDGRID_API_KEY
+#    - RESEND_API_KEY (for transactional emails)
 #    - SENTRY_DSN
 #    - ALERT_WEBHOOK_URL (Slack/Discord webhook for critical alerts)
 #
