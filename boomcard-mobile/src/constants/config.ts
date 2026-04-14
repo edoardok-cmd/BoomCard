@@ -166,16 +166,16 @@ export const APP_CONFIG = {
     ALLOWED_TYPES: ['image/jpeg', 'image/png', 'image/jpg'],
     MAX_AGE_DAYS: 1, // Receipts must be submitted the same day (until 6am the following day per policy)
     RATE_LIMIT: {
-      PER_DAY: 10,
-      PER_MONTH: 100,
+      PER_DAY: Infinity,
+      PER_MONTH: Infinity,
     },
   },
 
   // Sticker Scan Configuration
   STICKER: {
     RATE_LIMIT: {
-      PER_DAY: 20,
-      PER_MONTH: 200,
+      PER_DAY: Infinity,
+      PER_MONTH: Infinity,
     },
   },
 };

@@ -133,12 +133,12 @@ const TermsPage: React.FC = () => {
                   </tr>
                   <tr>
                     <td>Premium Седмичен</td>
-                    <td>До 24%</td>
+                    <td>До 20%</td>
                     <td>€6.99/седмица</td>
                   </tr>
                   <tr>
                     <td>Premium Месечен</td>
-                    <td>До 24%</td>
+                    <td>До 20%</td>
                     <td>€13.99/месец</td>
                   </tr>
                 </tbody>
@@ -163,7 +163,7 @@ const TermsPage: React.FC = () => {
               <ul>
                 <li><strong>Зареждане:</strong> Можете да заредите портфейла си чрез банков превод, карта или електронен портфейл.</li>
                 <li><strong>Кешбек:</strong> Кешбек средствата се кредитират автоматично след валидиране на покупка чрез BOOM стикер или касова бележка.</li>
-                <li><strong>Процентът на кешбек зависи от:</strong> вашия абонаментен план и отстъпката, предлагана от конкретния Партньор (фиксирана матрица). Basic план: до 10%; Premium планове: до 24%.</li>
+                <li><strong>Процентът на кешбек зависи от:</strong> вашия абонаментен план и отстъпката, предлагана от конкретния Партньор (фиксирана матрица). Basic план: до 10%; Premium планове: до 20%.</li>
                 <li><strong>Минимален праг за изплащане:</strong> €10 за Premium Седмичен, €15 за Premium Месечен, €20 за Basic. Изплащането се обработва по регистрираната карта в рамките на 3–5 работни дни след достигане на прага.</li>
                 <li><strong>Валидност на кешбека:</strong> Всяка одобрена транзакция носи 60-дневен период на валидност от датата на одобрение. Кешбекът изтича на каскаден принцип — най-старите суми изтичат първи.</li>
                 <li><strong>Надграждане на план:</strong> При надграждане от Premium Седмичен към Premium Месечен се приспада 100% от остатъчната стойност на седмичния план. При надграждане от Basic към Premium се приспада 60% от остатъчната стойност.</li>
@@ -286,12 +286,12 @@ const TermsPage: React.FC = () => {
                   </tr>
                   <tr>
                     <td>Premium Weekly</td>
-                    <td>Up to 24%</td>
+                    <td>Up to 20%</td>
                     <td>€6.99/week</td>
                   </tr>
                   <tr>
                     <td>Premium Monthly</td>
-                    <td>Up to 24%</td>
+                    <td>Up to 20%</td>
                     <td>€13.99/month</td>
                   </tr>
                 </tbody>
@@ -316,7 +316,7 @@ const TermsPage: React.FC = () => {
               <ul>
                 <li><strong>Top-up:</strong> You can top up your wallet via bank transfer, card, or e-wallet.</li>
                 <li><strong>Cashback:</strong> Cashback is automatically credited after a purchase is validated through a BOOM sticker or receipt scan.</li>
-                <li><strong>The cashback rate depends on:</strong> your subscription plan and the discount offered by the specific Partner (fixed matrix). Basic plan: up to 10%; Premium plans: up to 24%.</li>
+                <li><strong>The cashback rate depends on:</strong> your subscription plan and the discount offered by the specific Partner (fixed matrix). Basic plan: up to 10%; Premium plans: up to 20%.</li>
                 <li><strong>Minimum payout threshold:</strong> €10 for Premium Weekly, €15 for Premium Monthly, €20 for Basic. Payouts are processed to your registered card within 3–5 business days of reaching the threshold.</li>
                 <li><strong>Cashback validity:</strong> Each approved transaction carries a 60-day validity window from the date of approval. Cashback expires on a cascading basis — the oldest amounts expire first.</li>
                 <li><strong>Plan upgrades:</strong> Upgrading from Premium Weekly to Premium Monthly credits 100% of the remaining weekly value. Upgrading from Basic to Premium credits 60% of the remaining Basic value.</li>

@@ -1,10 +1,11 @@
+import { WalletTransactionType, WalletTransactionStatus } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { logger } from '../utils/logger';
 import {
-  DEFAULT_AUTO_APPROVE_THRESHOLD,
-  DEFAULT_AUTO_REJECT_THRESHOLD,
   DEFAULT_DAILY_SUBMISSION_LIMIT,
   DEFAULT_MAX_CASHBACK_PER_SCAN,
+  DEFAULT_MAX_CASHBACK_PER_DAY,
+  DEFAULT_MAX_CASHBACK_PER_MONTH,
   DEFAULT_MIN_BILL_AMOUNT,
   DEFAULT_MONTHLY_SUBMISSION_LIMIT,
   GPS_FAR_THRESHOLD_M,
@@ -20,6 +21,8 @@ import {
   DEFAULT_TEMPLATE_FRAUD_POINTS,
   CASHBACK_MATRIX,
   CASHBACK_MATRIX_STEPS,
+  PERCEPTUAL_HASH_CLOSE_THRESHOLD,
+  PERCEPTUAL_HASH_MODERATE_THRESHOLD,
 } from '../constants/receipt.constants';
 import { receiptTemplateService } from './receiptTemplate.service';
 
@@ -37,9 +40,8 @@ import { receiptTemplateService } from './receiptTemplate.service';
  * - Card tier verification
  *
  * Fraud Score Scale:
- * - 0-30: Auto-approve
- * - 31-60: Manual review required
- * - 61-100: Auto-reject
+ * - All receipts require admin manual review regardless of score
+ * - Score is recorded for admin reference only
  */
 
 interface FraudCheckParams {
@@ -57,6 +59,9 @@ interface FraudCheckParams {
   userId: string;
   venueId?: string;
   cardTier?: 'LIGHT' | 'BASIC' | 'PREMIUM';
+  /** When re-checking an existing receipt (e.g. admin amount correction), pass its ID
+   *  so the duplicate-image check doesn't penalise the receipt against itself. */
+  excludeReceiptId?: string;
 }
 
 interface FraudCheckResult {
@@ -85,11 +90,32 @@ class FraudDetectionService {
 
     try {
       // 1. Duplicate image check (40 points)
-      const isDuplicate = await this.checkDuplicate(params.imageHash);
+      const isDuplicate = await this.checkDuplicate(params.imageHash, params.excludeReceiptId);
       if (isDuplicate) {
         score += 40;
         reasons.push('DUPLICATE_IMAGE');
         recommendations.push('Image has been previously submitted');
+      }
+
+      // 1b. Perceptual hash duplicate check (35/15 points)
+      // Detects resubmission of the same receipt as a slightly different image file,
+      // which bypasses the SHA-256 check. Compares dHash Hamming distance against
+      // all of this user's previously approved receipts.
+      if (params.perceptualHash) {
+        const phResult = await this.checkPerceptualDuplicate({
+          perceptualHash: params.perceptualHash,
+          userId: params.userId,
+          excludeReceiptId: params.excludeReceiptId,
+        });
+        if (phResult.isClose) {
+          score += 35;
+          reasons.push('PERCEPTUAL_DUPLICATE_CLOSE');
+          recommendations.push('Receipt image is visually near-identical to a previously submitted receipt');
+        } else if (phResult.isModerate) {
+          score += 15;
+          reasons.push('PERCEPTUAL_DUPLICATE_MODERATE');
+          recommendations.push('Receipt image is visually similar to a previously submitted receipt');
+        }
       }
 
       // 2. Amount validation (15-30 points)
@@ -170,12 +196,13 @@ class FraudDetectionService {
         }
       }
 
-      // 7. Suspicious time patterns (10-15 points)
-      const isSuspiciousTime = await this.checkTimePattern(params.userId);
-      if (isSuspiciousTime.isSuspicious) {
-        score += isSuspiciousTime.score;
-        reasons.push(isSuspiciousTime.reason);
-        recommendations.push(isSuspiciousTime.recommendation);
+      // 7. Suspicious time patterns (up to 25 points: 15 rapid + 10 unusual hour)
+      // Both signals are evaluated independently and can combine.
+      const timePatterns = await this.checkTimePattern(params.userId);
+      for (const pattern of timePatterns) {
+        score += pattern.score;
+        reasons.push(pattern.reason);
+        recommendations.push(pattern.recommendation);
       }
 
       // 8. Amount threshold check (10 points)
@@ -232,18 +259,12 @@ class FraudDetectionService {
       // Final score capping
       const finalScore = Math.min(100, Math.max(0, score));
 
-      // Determine approval based on thresholds
-      const autoApproveThreshold = config?.autoApproveThreshold || DEFAULT_AUTO_APPROVE_THRESHOLD;
-      const autoRejectThreshold = config?.autoRejectThreshold || DEFAULT_AUTO_REJECT_THRESHOLD;
-
-      const isApproved = finalScore <= autoApproveThreshold;
-      const requiresManualReview = finalScore > autoApproveThreshold && finalScore <= autoRejectThreshold;
-
+      // All receipts require admin manual review — no auto-approve or auto-reject
       return {
         fraudScore: finalScore,
         fraudReasons: reasons,
-        isApproved,
-        requiresManualReview,
+        isApproved: false,
+        requiresManualReview: true,
         recommendations: recommendations.length > 0 ? recommendations : undefined,
       };
     } catch (error) {
@@ -260,13 +281,80 @@ class FraudDetectionService {
   }
 
   /**
-   * Check if image hash exists in database (duplicate detection)
+   * Check if image hash exists in database (duplicate detection).
+   * Pass excludeReceiptId when re-checking an existing receipt so it isn't
+   * flagged against its own stored hash.
+   *
+   * Only counts APPROVED/PENDING receipts as true duplicates. REJECTED receipts
+   * are excluded so users can re-submit legitimately rejected receipts without
+   * being penalized 40 fraud points for the same hash.
    */
-  private async checkDuplicate(imageHash: string): Promise<boolean> {
+  private async checkDuplicate(imageHash: string, excludeReceiptId?: string): Promise<boolean> {
     const existing = await prisma.receipt.findFirst({
-      where: { imageHash },
+      where: {
+        imageHash,
+        status: { in: ['APPROVED', 'PENDING', 'MANUAL_REVIEW'] },
+        ...(excludeReceiptId ? { id: { not: excludeReceiptId } } : {}),
+      },
     });
     return !!existing;
+  }
+
+  /**
+   * Count set bits in a nibble (0–15).
+   */
+  private popcount4(n: number): number {
+    return ((n >> 3) & 1) + ((n >> 2) & 1) + ((n >> 1) & 1) + (n & 1);
+  }
+
+  /**
+   * Hamming distance between two dHash hex strings (character-by-character XOR).
+   * Returns Infinity if lengths differ (hashes are incomparable).
+   */
+  private hexHammingDistance(a: string, b: string): number {
+    if (a.length !== b.length) return Infinity;
+    let distance = 0;
+    for (let i = 0; i < a.length; i++) {
+      distance += this.popcount4(parseInt(a[i], 16) ^ parseInt(b[i], 16));
+    }
+    return distance;
+  }
+
+  /**
+   * Compare a submitted perceptualHash against all of the user's approved receipts.
+   * Returns whether the closest match is within the close or moderate duplicate thresholds.
+   */
+  private async checkPerceptualDuplicate(params: {
+    perceptualHash: string;
+    userId: string;
+    excludeReceiptId?: string;
+  }): Promise<{ isClose: boolean; isModerate: boolean }> {
+    // Include both APPROVED and MANUAL_REVIEW receipts — consistent with SHA-256
+    // checkDuplicate() which has no status filter. Excluding MANUAL_REVIEW would let
+    // a fraudster submit a slightly-modified image of a receipt already under review.
+    const existing = await prisma.receipt.findMany({
+      where: {
+        userId: params.userId,
+        status: { in: ['APPROVED', 'MANUAL_REVIEW'] as any[] },
+        perceptualHash: { not: null },
+        ...(params.excludeReceiptId ? { id: { not: params.excludeReceiptId } } : {}),
+      },
+      select: { perceptualHash: true },
+    });
+
+    let minDistance = Infinity;
+    for (const r of existing) {
+      if (!r.perceptualHash) continue;
+      const d = this.hexHammingDistance(params.perceptualHash, r.perceptualHash);
+      if (d < minDistance) minDistance = d;
+    }
+
+    return {
+      isClose: minDistance <= PERCEPTUAL_HASH_CLOSE_THRESHOLD,
+      isModerate:
+        minDistance > PERCEPTUAL_HASH_CLOSE_THRESHOLD &&
+        minDistance <= PERCEPTUAL_HASH_MODERATE_THRESHOLD,
+    };
   }
 
   /**
@@ -321,25 +409,9 @@ class FraudDetectionService {
       },
     });
 
-    // Average submission frequency
-    const firstReceipt = await prisma.receipt.findFirst({
-      where: { userId },
-      orderBy: { createdAt: 'asc' },
-    });
-
-    let averagePerDay = 0;
-    if (firstReceipt) {
-      const daysSinceFirst = Math.ceil(
-        (now.getTime() - firstReceipt.createdAt.getTime()) / (1000 * 60 * 60 * 24)
-      );
-      const totalReceipts = await prisma.receipt.count({ where: { userId } });
-      averagePerDay = totalReceipts / Math.max(1, daysSinceFirst);
-    }
-
     return {
       submissionsToday,
       submissionsThisMonth,
-      averagePerDay,
     };
   }
 
@@ -359,16 +431,17 @@ class FraudDetectionService {
   }
 
   /**
-   * Detect suspicious time patterns
-   * - Multiple submissions in short time span
-   * - Submissions at unusual hours (2-6 AM)
+   * Detect suspicious time patterns.
+   * Returns ALL signals that fire — both RAPID_SUBMISSIONS and UNUSUAL_TIME can trigger
+   * simultaneously (e.g. a user submitting many receipts at 3 AM). The previous early-return
+   * design prevented the combination, under-scoring high-risk patterns by up to 10 points.
    */
-  private async checkTimePattern(userId: string): Promise<{
-    isSuspicious: boolean;
+  private async checkTimePattern(userId: string): Promise<Array<{
     score: number;
     reason: string;
     recommendation: string;
-  }> {
+  }>> {
+    const results: Array<{ score: number; reason: string; recommendation: string }> = [];
     const now = new Date();
     const windowStart = new Date(now.getTime() - RAPID_SUBMISSION_WINDOW_MS);
 
@@ -382,31 +455,24 @@ class FraudDetectionService {
 
     const windowMinutes = RAPID_SUBMISSION_WINDOW_MS / (60 * 1000);
     if (recentSubmissions >= RAPID_SUBMISSION_COUNT_THRESHOLD) {
-      return {
-        isSuspicious: true,
+      results.push({
         score: 15,
         reason: 'RAPID_SUBMISSIONS',
         recommendation: `User submitted ${recentSubmissions} receipts in last ${windowMinutes} minutes`,
-      };
+      });
     }
 
-    // Check for unusual hours
+    // Check for unusual hours — evaluated independently so both signals can combine
     const hour = now.getHours();
     if (hour >= UNUSUAL_HOUR_START && hour < UNUSUAL_HOUR_END) {
-      return {
-        isSuspicious: true,
+      results.push({
         score: 10,
         reason: 'UNUSUAL_TIME',
         recommendation: `Receipt submitted at ${hour}:00 (unusual hours)`,
-      };
+      });
     }
 
-    return {
-      isSuspicious: false,
-      score: 0,
-      reason: '',
-      recommendation: '',
-    };
+    return results;
   }
 
   /**
@@ -435,7 +501,7 @@ class FraudDetectionService {
    *   1. The partner's effective discount rate (discountRate or partnerType.maxDiscountRate)
    *   2. The user's card tier (BASIC → basic column; LIGHT/PREMIUM → premium column)
    *
-   * Matrix rows are keyed by partner discount steps [5, 10, 15, 20, 25, 30].
+   * Matrix rows are keyed by partner discount steps [5, 10, 15, 20, 25].
    * The nearest step that does not exceed the partner's actual discount is used.
    * Partners offering less than 5% discount yield 0% cashback.
    */
@@ -443,21 +509,30 @@ class FraudDetectionService {
     venueId?: string;
     amount: number;
     cardTier: 'LIGHT' | 'BASIC' | 'PREMIUM';
+    /** When provided, rolling daily/monthly cashback caps are enforced. */
+    userId?: string;
   }): Promise<{ cashbackAmount: number; cashbackPercent: number }> {
-    // Step 1: resolve partner's discount rate
+    // Step 1: resolve partner's discount rate via the venue's partner relation.
+    // NOTE: params.venueId is a Venue.id — Partner IDs are different UUIDs, so we
+    // must traverse Venue → partner rather than doing partner.findUnique(venueId).
+    // `as any` casts are needed because the Prisma client types are stale (run `prisma generate`).
     let partnerDiscountPct = 0;
     if (params.venueId) {
       try {
-        const partner = await prisma.partner.findUnique({
+        const venue = await (prisma.venue.findUnique as any)({
           where: { id: params.venueId },
           select: {
-            discountRate: true,
-            partnerType: { select: { maxDiscountRate: true } },
+            partner: {
+              select: {
+                discountRate: true,
+                partnerType: { select: { maxDiscountRate: true } },
+              },
+            },
           },
-        });
+        }) as { partner?: { discountRate?: number | null; partnerType?: { maxDiscountRate?: number | null } | null } | null } | null;
         // Prefer the partner's own discountRate; fall back to their type's cap
-        partnerDiscountPct = partner?.discountRate
-          ?? partner?.partnerType?.maxDiscountRate
+        partnerDiscountPct = venue?.partner?.discountRate
+          ?? venue?.partner?.partnerType?.maxDiscountRate
           ?? 0;
       } catch {
         // Non-fatal — proceed with 0 (no cashback)
@@ -475,18 +550,146 @@ class FraudDetectionService {
       if (partnerDiscountPct >= s) step = s;
     }
 
-    // Step 3: look up user cashback percent from matrix
-    const matrixRow = CASHBACK_MATRIX[step];
+    // Step 3: look up user cashback percent from DB rate matrix, fall back to hardcoded constants.
+    // Fetch only the most recent effective row for this specific step (single DB call).
+    let matrixRow: { basic: number; premium: number } = CASHBACK_MATRIX[step];
+    try {
+      const dbRate = await prisma.cashbackRate.findFirst({
+        where: { discountStep: step, effectiveFrom: { lte: new Date() } },
+        orderBy: { effectiveFrom: 'desc' },
+      });
+      if (dbRate) {
+        matrixRow = { basic: dbRate.basic, premium: dbRate.premium };
+      }
+    } catch {
+      // Non-fatal: fall back to hardcoded constants if DB lookup fails
+    }
     const isPremium = params.cardTier === 'PREMIUM' || params.cardTier === 'LIGHT';
     const cashbackPercent = isPremium ? matrixRow.premium : matrixRow.basic;
 
     // Step 4: calculate amount and cap at max per scan
     const config = params.venueId ? await this.getVenueConfig(params.venueId) : null;
     const maxCashback = config?.maxCashbackPerScan || DEFAULT_MAX_CASHBACK_PER_SCAN;
-    const cashbackAmount = Math.min(
+    let cashbackAmount = Math.min(
       parseFloat(((params.amount * cashbackPercent) / 100).toFixed(2)),
       maxCashback,
     );
+
+    // Step 5: enforce rolling daily/monthly caps per user
+    if (params.userId && cashbackAmount > 0) {
+      try {
+        const now = new Date();
+        // Rolling windows: 24 h back and 30 d back from the current instant.
+        // Calendar-day/month resets would allow near-double spending at midnight or
+        // month boundaries (earn cap just before reset, earn cap again just after).
+        const dayStart = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+        const monthStart = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+        // Two-part cap check to close the TOCTOU window between receipt creation and
+        // wallet crediting:
+        //
+        //  Part A — completed wallet credits (the authoritative ledger).
+        //  Part B — APPROVED receipts whose CASHBACK_CREDIT wallet transaction does not
+        //           yet exist (receipts in-flight between receipt.create and walletService.credit).
+        //           The `walletTransactions: { none: { type: CASHBACK_CREDIT } }` guard
+        //           ensures a credited record is counted ONLY in Part A, never in both.
+        //
+        //  Part C — sticker scans in any non-terminal pending state (PENDING, VALIDATING,
+        //           MANUAL_REVIEW, APPROVED) whose CASHBACK_CREDIT wallet transaction does
+        //           not yet exist. Mirrors Part B but for StickerScan records, which are
+        //           invisible to the receipt aggregate and would otherwise bypass the cap.
+        const [
+          dailyAgg, monthlyAgg,
+          dailyPendingReceiptAgg, monthlyPendingReceiptAgg,
+          dailyPendingStickerAgg, monthlyPendingStickerAgg,
+        ] = await Promise.all([
+          prisma.walletTransaction.aggregate({
+            where: {
+              wallet: { userId: params.userId },
+              type: WalletTransactionType.CASHBACK_CREDIT,
+              status: WalletTransactionStatus.COMPLETED,
+              createdAt: { gte: dayStart },
+            },
+            _sum: { amount: true },
+          }),
+          prisma.walletTransaction.aggregate({
+            where: {
+              wallet: { userId: params.userId },
+              type: WalletTransactionType.CASHBACK_CREDIT,
+              status: WalletTransactionStatus.COMPLETED,
+              createdAt: { gte: monthStart },
+            },
+            _sum: { amount: true },
+          }),
+          // Part B — daily: receipts approved but wallet credit not yet committed
+          prisma.receipt.aggregate({
+            where: {
+              userId: params.userId,
+              status: 'APPROVED' as any,
+              cashbackAmount: { gt: 0 },
+              createdAt: { gte: dayStart },
+              walletTransactions: { none: { type: WalletTransactionType.CASHBACK_CREDIT } },
+            },
+            _sum: { cashbackAmount: true },
+          }),
+          // Part B — monthly
+          prisma.receipt.aggregate({
+            where: {
+              userId: params.userId,
+              status: 'APPROVED' as any,
+              cashbackAmount: { gt: 0 },
+              createdAt: { gte: monthStart },
+              walletTransactions: { none: { type: WalletTransactionType.CASHBACK_CREDIT } },
+            },
+            _sum: { cashbackAmount: true },
+          }),
+          // Part C — daily: sticker scans pending or approved but not yet credited
+          (prisma.stickerScan as any).aggregate({
+            where: {
+              userId: params.userId,
+              status: { in: ['PENDING', 'VALIDATING', 'MANUAL_REVIEW', 'APPROVED'] },
+              cashbackAmount: { gt: 0 },
+              createdAt: { gte: dayStart },
+              walletTransactions: { none: { type: WalletTransactionType.CASHBACK_CREDIT } },
+            },
+            _sum: { cashbackAmount: true },
+          }),
+          // Part C — monthly
+          (prisma.stickerScan as any).aggregate({
+            where: {
+              userId: params.userId,
+              status: { in: ['PENDING', 'VALIDATING', 'MANUAL_REVIEW', 'APPROVED'] },
+              cashbackAmount: { gt: 0 },
+              createdAt: { gte: monthStart },
+              walletTransactions: { none: { type: WalletTransactionType.CASHBACK_CREDIT } },
+            },
+            _sum: { cashbackAmount: true },
+          }),
+        ]);
+
+        const earnedToday = (dailyAgg._sum.amount ?? 0)
+          + (dailyPendingReceiptAgg._sum.cashbackAmount ?? 0)
+          + ((dailyPendingStickerAgg as any)?._sum?.cashbackAmount ?? 0);
+        const earnedThisMonth = (monthlyAgg._sum.amount ?? 0)
+          + (monthlyPendingReceiptAgg._sum.cashbackAmount ?? 0)
+          + ((monthlyPendingStickerAgg as any)?._sum?.cashbackAmount ?? 0);
+
+        const remainingDaily = Math.max(0, DEFAULT_MAX_CASHBACK_PER_DAY - earnedToday);
+        const remainingMonthly = Math.max(0, DEFAULT_MAX_CASHBACK_PER_MONTH - earnedThisMonth);
+        cashbackAmount = Math.min(cashbackAmount, remainingDaily, remainingMonthly);
+        cashbackAmount = parseFloat(cashbackAmount.toFixed(2));
+      } catch (capError) {
+        // If cap check fails, do NOT proceed with uncapped cashback — that would defeat the
+        // purpose of caps. Instead, zero out the amount and log a CRITICAL error so ops can
+        // investigate and manually process affected users when DB is healthy.
+        logger.error(
+          `CRITICAL: Failed to check cashback caps for user ${params.userId}. ` +
+          `Cashback credit blocked until cap verification is restored. Error: ${capError}`,
+          capError
+        );
+        cashbackAmount = 0;
+      }
+    }
 
     return { cashbackAmount, cashbackPercent };
   }

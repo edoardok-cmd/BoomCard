@@ -181,9 +181,9 @@ const DashboardScreen = ({ navigation }: any) => {
     // Prioritise plan code per master doc — API cashbackRate may carry a legacy value (e.g. 0.20
     // for PREMIUM before the seeder was corrected). MyCardScreen handles the same issue via
     // translateBenefit(); keeping both screens consistent requires plan code to win here.
-    if (planCode === 'PREMIUM') return 24; // max per cashback matrix (30% partner → 24% user)
+    if (planCode === 'PREMIUM') return 20; // max per cashback matrix (25% partner → 20% user)
     if (planCode === 'BASIC') return 10;   // hard cap per cashback matrix
-    if (planCode === 'LIGHT') return 24;   // Premium Weekly: same max as Premium Monthly
+    if (planCode === 'LIGHT') return 20;   // Premium Weekly: same max as Premium Monthly
     // Fall back to API value only when plan code is unknown
     if (subscription?.benefits?.cashbackRate) {
       return Math.round(subscription.benefits.cashbackRate * 100);

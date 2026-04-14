@@ -75,6 +75,44 @@ class NotificationService {
   }
 
   /**
+   * Send sticker scan approved notification.
+   * Separate from notifyReceiptApproved so the message is scan-specific
+   * and the notification type is distinct for client-side routing.
+   */
+  async notifyStickerScanApproved(params: {
+    userId: string;
+    scanId: string;
+    venueName: string;
+    cashbackAmount: number;
+  }): Promise<void> {
+    const { userId, scanId, venueName, cashbackAmount } = params;
+
+    try {
+      await this.createNotification({
+        userId,
+        type: 'STICKER_SCAN_APPROVED',
+        title: 'Cashback Earned!',
+        message: `Your visit to ${venueName} was confirmed. You earned ${cashbackAmount.toFixed(2)} BGN cashback!`,
+        data: {
+          scanId,
+          venueName,
+          cashbackAmount,
+        },
+        priority: 'HIGH',
+      });
+
+      await this.sendPushNotification({
+        userId,
+        title: 'Cashback Earned!',
+        body: `+${cashbackAmount.toFixed(2)} BGN from ${venueName}`,
+        data: { scanId, type: 'sticker_scan_approved' },
+      });
+    } catch (error) {
+      console.error('❌ Error sending sticker scan approved notification:', error);
+    }
+  }
+
+  /**
    * Send receipt rejected notification
    */
   async notifyReceiptRejected(params: {
@@ -126,7 +164,7 @@ class NotificationService {
     try {
       await this.createNotification({
         userId,
-        type: 'RECEIPT_UNDER_REVIEW',
+        type: 'RECEIPT_MANUAL_REVIEW',
         title: 'Receipt Under Review',
         message: `Your receipt from ${merchantName} requires manual verification. ${estimatedReviewTime || 'This usually takes 24-48 hours.'}`,
         data: {
@@ -265,7 +303,7 @@ class NotificationService {
         ['PENDING', 'MANUAL_REVIEW', 'PROCESSING'].includes(r.status)
       ).length;
 
-      await this.sendEmail({
+      await emailService.sendEmail({
         to: user.email,
         subject: `Your Daily Receipt Summary - ${receipts.length} receipts`,
         html: this.generateDailySummaryHTML({
@@ -377,7 +415,7 @@ class NotificationService {
   private async getAdminUsers(): Promise<Array<{ id: string; email: string }>> {
     const admins = await prisma.user.findMany({
       where: {
-        role: 'ADMIN',
+        role: { in: ['ADMIN', 'SUPER_ADMIN'] as any[] },
       },
       select: {
         id: true,

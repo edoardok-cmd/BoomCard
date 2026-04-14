@@ -276,9 +276,9 @@ export const AdminReceiptsPage: React.FC = () => {
   const t = {
     en: {
       title: 'Receipt Review',
-      subtitle: 'Cashback is pre-calculated automatically — confirm eligibility to credit the user\'s wallet',
+      subtitle: 'All receipts require admin review — approve to credit cashback to the user\'s wallet',
       pending: 'Pending', approved: 'Confirmed', rejected: 'Rejected',
-      manualReview: 'Needs Review', all: 'All', unconfirmed: 'Auto-approved',
+      manualReview: 'Needs Review', all: 'All',
       approve: 'Confirm', reject: 'Reject', view: 'View Image',
       loading: 'Loading receipts…',
       emptyTitle: 'No Receipts', emptyDesc: 'No receipts match the current filter',
@@ -287,15 +287,14 @@ export const AdminReceiptsPage: React.FC = () => {
       notesLabel: 'Admin Notes', notesPlaceholder: 'Optional internal notes…',
       cancel: 'Cancel', confirm: 'Confirm & Credit',
       statPending: 'Pending', statApproved: 'Confirmed',
-      statUnconfirmed: 'Auto-approved (pending)',
       statReview: 'Needs Review', statRejected: 'Rejected',
       statCashback: 'Cashback Credited (BGN)',
     },
     bg: {
       title: 'Преглед на бележки',
-      subtitle: 'Кешбекът се изчислява автоматично — потвърдете легитимността, за да прехвърлите сумата',
+      subtitle: 'Всички бележки изискват одобрение — потвърдете, за да кредитирате кешбек',
       pending: 'Чакащи', approved: 'Потвърдени', rejected: 'Отхвърлени',
-      manualReview: 'За преглед', all: 'Всички', unconfirmed: 'Авт. одобрени',
+      manualReview: 'За преглед', all: 'Всички',
       approve: 'Потвърди', reject: 'Отхвърли', view: 'Виж снимка',
       loading: 'Зареждане…',
       emptyTitle: 'Няма бележки', emptyDesc: 'Няма намерени бележки',
@@ -304,7 +303,6 @@ export const AdminReceiptsPage: React.FC = () => {
       notesLabel: 'Бележки', notesPlaceholder: 'Вътрешни бележки (по желание)…',
       cancel: 'Отказ', confirm: 'Потвърди и кредитирай',
       statPending: 'Чакащи', statApproved: 'Потвърдени',
-      statUnconfirmed: 'Авт. одобрени (чакащи)',
       statReview: 'За преглед', statRejected: 'Отхвърлени',
       statCashback: 'Кредитиран кешбек (лв)',
     },
@@ -314,8 +312,7 @@ export const AdminReceiptsPage: React.FC = () => {
   const fetchReceipts = useCallback(async () => {
     setLoading(true);
     try {
-      // 'unconfirmed' = auto-approved receipts not yet admin-confirmed → fetch APPROVED and filter client-side
-      const apiStatus = filter === 'all' || filter === 'unconfirmed'
+      const apiStatus = filter === 'all'
         ? undefined
         : filter as ReceiptStatus;
       const response = await receiptsApiService.getAllReceipts({
@@ -324,10 +321,7 @@ export const AdminReceiptsPage: React.FC = () => {
         sortBy: 'createdAt',
         sortOrder: 'desc',
       });
-      let data: Receipt[] = (response as any)?.data ?? [];
-      if (filter === 'unconfirmed') {
-        data = data.filter(r => r.status === ReceiptStatus.APPROVED && !r.reviewedBy);
-      }
+      const data: Receipt[] = (response as any)?.data ?? [];
       setReceipts(data);
     } catch (err) {
       console.error('Failed to fetch receipts:', err);
@@ -343,18 +337,10 @@ export const AdminReceiptsPage: React.FC = () => {
     setTimeout(() => setNotification(null), 3500);
   };
 
-  // Auto-approved = APPROVED status but not yet admin-reviewed (reviewedBy is null/undefined)
-  const isAutoApproved = (r: Receipt) =>
-    r.status === ReceiptStatus.APPROVED && !r.reviewedBy;
-
   const handleApprove = async (receipt: Receipt) => {
     setProcessingId(receipt.id);
     try {
-      // For auto-approved receipts, don't pass verifiedAmount — backend will use
-      // the pre-calculated cashbackAmount stored at submission time.
-      const opts = isAutoApproved(receipt)
-        ? {}
-        : { verifiedAmount: receipt.verifiedAmount ?? receipt.totalAmount };
+      const opts = { verifiedAmount: receipt.verifiedAmount ?? receipt.totalAmount };
       await receiptsApiService.reviewReceipt(receipt.id, 'APPROVE', opts);
       notify(`Approved: ${receipt.merchantName || receipt.id}`);
       fetchReceipts();
@@ -387,12 +373,11 @@ export const AdminReceiptsPage: React.FC = () => {
 
   const stats = {
     pending: receipts.filter(r => r.status === ReceiptStatus.PENDING).length,
-    unconfirmed: receipts.filter(r => isAutoApproved(r)).length,
-    approved: receipts.filter(r => r.status === ReceiptStatus.APPROVED && !isAutoApproved(r)).length,
+    approved: receipts.filter(r => r.status === ReceiptStatus.APPROVED).length,
     rejected: receipts.filter(r => r.status === ReceiptStatus.REJECTED).length,
     review: receipts.filter(r => r.status === ReceiptStatus.MANUAL_REVIEW).length,
     cashback: receipts
-      .filter(r => r.status === ReceiptStatus.APPROVED && !isAutoApproved(r))
+      .filter(r => r.status === ReceiptStatus.APPROVED)
       .reduce((sum, r) => sum + (r.cashbackAmount || 0), 0),
   };
 
@@ -401,12 +386,9 @@ export const AdminReceiptsPage: React.FC = () => {
       day: 'numeric', month: 'short', year: 'numeric',
     });
 
-  // A receipt needs action if it's pending, needs manual review, or was auto-approved
-  // but not yet admin-confirmed (cashback not yet credited)
   const canAction = (r: Receipt) =>
     r.status === ReceiptStatus.PENDING ||
-    r.status === ReceiptStatus.MANUAL_REVIEW ||
-    isAutoApproved(r);
+    r.status === ReceiptStatus.MANUAL_REVIEW;
 
   return (
     <PageContainer>
@@ -435,12 +417,6 @@ export const AdminReceiptsPage: React.FC = () => {
           <StatLabel>{c.statReview}</StatLabel>
           <StatValue>{stats.review}</StatValue>
         </StatCard>
-        <StatCard $accent="#0ea5e9" style={{ borderWidth: stats.unconfirmed > 0 ? '2px' : '2px' }}>
-          <StatLabel>{c.statUnconfirmed}</StatLabel>
-          <StatValue style={{ color: stats.unconfirmed > 0 ? '#0369a1' : undefined }}>
-            {stats.unconfirmed}
-          </StatValue>
-        </StatCard>
         <StatCard $accent="#10b981">
           <StatLabel>{c.statApproved}</StatLabel>
           <StatValue>{stats.approved}</StatValue>
@@ -456,12 +432,11 @@ export const AdminReceiptsPage: React.FC = () => {
       </StatsRow>
 
       <FiltersBar>
-        {(['all', ReceiptStatus.PENDING, ReceiptStatus.MANUAL_REVIEW, 'unconfirmed', ReceiptStatus.APPROVED, ReceiptStatus.REJECTED] as (FilterType | 'unconfirmed')[]).map(s => (
+        {(['all', ReceiptStatus.PENDING, ReceiptStatus.MANUAL_REVIEW, ReceiptStatus.APPROVED, ReceiptStatus.REJECTED] as FilterType[]).map(s => (
           <FilterButton key={s} $active={filter === s as any} onClick={() => setFilter(s as any)}>
             {s === 'all' ? c.all
               : s === ReceiptStatus.PENDING ? c.pending
               : s === ReceiptStatus.MANUAL_REVIEW ? c.manualReview
-              : s === 'unconfirmed' ? c.unconfirmed
               : s === ReceiptStatus.APPROVED ? c.approved
               : c.rejected}
           </FilterButton>
@@ -500,16 +475,12 @@ export const AdminReceiptsPage: React.FC = () => {
                 {receipt.fraudScore != null ? receipt.fraudScore.toFixed(0) : '—'}
               </FraudScore>
 
-              <StatusBadge $status={isAutoApproved(receipt) ? 'AUTO_APPROVED' as any : receipt.status}
-                style={isAutoApproved(receipt) ? { background: '#e0f2fe', color: '#0369a1' } : undefined}>
+              <StatusBadge $status={receipt.status}>
                 {receipt.status === ReceiptStatus.MANUAL_REVIEW && <AlertTriangle size={11} />}
                 {receipt.status === ReceiptStatus.PENDING && <Clock size={11} />}
-                {receipt.status === ReceiptStatus.APPROVED && !isAutoApproved(receipt) && <CheckCircle size={11} />}
-                {receipt.status === ReceiptStatus.APPROVED && isAutoApproved(receipt) && <Clock size={11} />}
+                {receipt.status === ReceiptStatus.APPROVED && <CheckCircle size={11} />}
                 {receipt.status === ReceiptStatus.REJECTED && <XCircle size={11} />}
-                {isAutoApproved(receipt)
-                  ? (language === 'bg' ? 'Авт. одобрена' : 'Pre-approved')
-                  : receipt.status.replace('_', ' ')}
+                {receipt.status.replace('_', ' ')}
               </StatusBadge>
 
               <ActionsGroup>

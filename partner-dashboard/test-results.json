@@ -1,0 +1,2446 @@
+
+> partner-dashboard@1.0.1 test:e2e:cashback
+> playwright test cashback --reporter=json
+
+{
+  "config": {
+    "configFile": "/Users/administrator/Documents/BoomCard/partner-dashboard/playwright.config.ts",
+    "rootDir": "/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e",
+    "forbidOnly": false,
+    "fullyParallel": true,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {
+      "actualWorkers": 6
+    },
+    "preserveOutput": "always",
+    "reporter": [
+      [
+        "json"
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "quiet": false,
+    "projects": [
+      {
+        "outputDir": "/Users/administrator/Documents/BoomCard/partner-dashboard/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 6
+        },
+        "id": "chromium",
+        "name": "chromium",
+        "testDir": "/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 30000
+      }
+    ],
+    "shard": null,
+    "updateSnapshots": "missing",
+    "updateSourceMethod": "patch",
+    "version": "1.56.0",
+    "workers": 6,
+    "webServer": null
+  },
+  "suites": [
+    {
+      "title": "cashback-admin.spec.ts",
+      "file": "cashback-admin.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Admin Cashback Management",
+          "file": "cashback-admin.spec.ts",
+          "line": 44,
+          "column": 6,
+          "specs": [],
+          "suites": [
+            {
+              "title": "Navigation & Page Load",
+              "file": "cashback-admin.spec.ts",
+              "line": 51,
+              "column": 8,
+              "specs": [
+                {
+                  "title": "should navigate to admin cashback page and display UI elements",
+                  "ok": false,
+                  "tags": [],
+                  "tests": [
+                    {
+                      "timeout": 30000,
+                      "annotations": [],
+                      "expectedStatus": "passed",
+                      "projectId": "chromium",
+                      "projectName": "chromium",
+                      "results": [
+                        {
+                          "workerIndex": 0,
+                          "parallelIndex": 0,
+                          "status": "timedOut",
+                          "duration": 30135,
+                          "error": {
+                            "message": "\u001b[31mTest timeout of 30000ms exceeded.\u001b[39m",
+                            "stack": "\u001b[31mTest timeout of 30000ms exceeded.\u001b[39m"
+                          },
+                          "errors": [
+                            {
+                              "message": "\u001b[31mTest timeout of 30000ms exceeded.\u001b[39m"
+                            },
+                            {
+                              "location": {
+                                "file": "/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts",
+                                "column": 60,
+                                "line": 33
+                              },
+                              "message": "Error: locator.click: Test timeout of 30000ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByRole('button', { name: /log in|влез/i })\u001b[22m\n\n\n  31 |   await emailInput.fill(TEST_USER.email);\n  32 |   await page.getByLabel(/password|парола/i).fill(TEST_USER.password);\n> 33 |   await page.getByRole('button', { name: /log in|влез/i }).click();\n     |                                                            ^\n  34 |   await page.waitForURL(/\\/dashboard/, { timeout: 10000 });\n  35 | }\n  36 |\n    at loginAsAdmin (/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts:33:60)\n    at /Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts:46:7"
+                            }
+                          ],
+                          "stdout": [],
+                          "stderr": [],
+                          "retry": 0,
+                          "startTime": "2026-04-14T14:10:55.697Z",
+                          "annotations": [],
+                          "attachments": [
+                            {
+                              "name": "screenshot",
+                              "contentType": "image/png",
+                              "path": "/Users/administrator/Documents/BoomCard/partner-dashboard/test-results/cashback-admin-Admin-Cashb-1d459-age-and-display-UI-elements-chromium/test-failed-1.png"
+                            },
+                            {
+                              "name": "error-context",
+                              "contentType": "text/markdown",
+                              "path": "/Users/administrator/Documents/BoomCard/partner-dashboard/test-results/cashback-admin-Admin-Cashb-1d459-age-and-display-UI-elements-chromium/error-context.md"
+                            }
+                          ]
+                        }
+                      ],
+                      "status": "unexpected"
+                    }
+                  ],
+                  "id": "6a6070f53114b426a371-b673738b31bcfc8cb01f",
+                  "file": "cashback-admin.spec.ts",
+                  "line": 52,
+                  "column": 5
+                },
+                {
+                  "title": "should redirect to login if not authenticated",
+                  "ok": true,
+                  "tags": [],
+                  "tests": [
+                    {
+                      "timeout": 30000,
+                      "annotations": [],
+                      "expectedStatus": "passed",
+                      "projectId": "chromium",
+                      "projectName": "chromium",
+                      "results": [
+                        {
+                          "workerIndex": 1,
+                          "parallelIndex": 1,
+                          "status": "passed",
+                          "duration": 1663,
+                          "errors": [],
+                          "stdout": [],
+                          "stderr": [],
+                          "retry": 0,
+                          "startTime": "2026-04-14T14:10:55.690Z",
+                          "annotations": [],
+                          "attachments": []
+                        }
+                      ],
+                      "status": "expected"
+                    }
+                  ],
+                  "id": "6a6070f53114b426a371-9a1f401eec1d5898f968",
+                  "file": "cashback-admin.spec.ts",
+                  "line": 81,
+                  "column": 5
+                },
+                {
+                  "title": "should display statistics with proper formatting",
+                  "ok": false,
+                  "tags": [],
+                  "tests": [
+                    {
+                      "timeout": 30000,
+                      "annotations": [],
+                      "expectedStatus": "passed",
+                      "projectId": "chromium",
+                      "projectName": "chromium",
+                      "results": [
+                        {
+                          "workerIndex": 2,
+                          "parallelIndex": 2,
+                          "status": "timedOut",
+                          "duration": 30141,
+                          "error": {
+                            "message": "\u001b[31mTest timeout of 30000ms exceeded.\u001b[39m",
+                            "stack": "\u001b[31mTest timeout of 30000ms exceeded.\u001b[39m"
+                          },
+                          "errors": [
+                            {
+                              "message": "\u001b[31mTest timeout of 30000ms exceeded.\u001b[39m"
+                            },
+                            {
+                              "location": {
+                                "file": "/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts",
+                                "column": 60,
+                                "line": 33
+                              },
+                              "message": "Error: locator.click: Test timeout of 30000ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByRole('button', { name: /log in|влез/i })\u001b[22m\n\n\n  31 |   await emailInput.fill(TEST_USER.email);\n  32 |   await page.getByLabel(/password|парола/i).fill(TEST_USER.password);\n> 33 |   await page.getByRole('button', { name: /log in|влез/i }).click();\n     |                                                            ^\n  34 |   await page.waitForURL(/\\/dashboard/, { timeout: 10000 });\n  35 | }\n  36 |\n    at loginAsAdmin (/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts:33:60)\n    at /Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts:77:7"
+                            }
+                          ],
+                          "stdout": [],
+                          "stderr": [],
+                          "retry": 0,
+                          "startTime": "2026-04-14T14:10:55.699Z",
+                          "annotations": [],
+                          "attachments": [
+                            {
+                              "name": "screenshot",
+                              "contentType": "image/png",
+                              "path": "/Users/administrator/Documents/BoomCard/partner-dashboard/test-results/cashback-admin-Admin-Cashb-a1754-tics-with-proper-formatting-chromium/test-failed-1.png"
+                            },
+                            {
+                              "name": "error-context",
+                              "contentType": "text/markdown",
+                              "path": "/Users/administrator/Documents/BoomCard/partner-dashboard/test-results/cashback-admin-Admin-Cashb-a1754-tics-with-proper-formatting-chromium/error-context.md"
+                            }
+                          ]
+                        }
+                      ],
+                      "status": "unexpected"
+                    }
+                  ],
+                  "id": "6a6070f53114b426a371-4c7875ec9bd9d90f5e35",
+                  "file": "cashback-admin.spec.ts",
+                  "line": 90,
+                  "column": 5
+                }
+              ]
+            },
+            {
+              "title": "Filter Controls",
+              "file": "cashback-admin.spec.ts",
+              "line": 109,
+              "column": 8,
+              "specs": [
+                {
+                  "title": "should display all status filter buttons",
+                  "ok": false,
+                  "tags": [],
+                  "tests": [
+                    {
+                      "timeout": 30000,
+                      "annotations": [],
+                      "expectedStatus": "passed",
+                      "projectId": "chromium",
+                      "projectName": "chromium",
+                      "results": [
+                        {
+                          "workerIndex": 3,
+                          "parallelIndex": 3,
+                          "status": "timedOut",
+                          "duration": 30133,
+                          "error": {
+                            "message": "\u001b[31mTest timeout of 30000ms exceeded while running \"beforeEach\" hook.\u001b[39m",
+                            "stack": "\u001b[31mTest timeout of 30000ms exceeded while running \"beforeEach\" hook.\u001b[39m\n    at /Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts:93:10",
+                            "location": {
+                              "file": "/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts",
+                              "column": 10,
+                              "line": 93
+                            },
+                            "snippet": "  91 |\n  92 |   test.describe('Filter Controls', () => {\n> 93 |     test.beforeEach(async ({ page }) => {\n     |          ^\n  94 |       await loginAsAdmin(page);\n  95 |       await page.goto('/admin/cashback');\n  96 |       await page.waitForLoadState('networkidle', { timeout: 5000 });"
+                          },
+                          "errors": [
+                            {
+                              "location": {
+                                "file": "/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts",
+                                "column": 10,
+                                "line": 93
+                              },
+                              "message": "\u001b[31mTest timeout of 30000ms exceeded while running \"beforeEach\" hook.\u001b[39m\n\n  91 |\n  92 |   test.describe('Filter Controls', () => {\n> 93 |     test.beforeEach(async ({ page }) => {\n     |          ^\n  94 |       await loginAsAdmin(page);\n  95 |       await page.goto('/admin/cashback');\n  96 |       await page.waitForLoadState('networkidle', { timeout: 5000 });\n    at /Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts:93:10"
+                            },
+                            {
+                              "location": {
+                                "file": "/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts",
+                                "column": 60,
+                                "line": 33
+                              },
+                              "message": "Error: locator.click: Test timeout of 30000ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByRole('button', { name: /log in|влез/i })\u001b[22m\n\n\n  31 |   await emailInput.fill(TEST_USER.email);\n  32 |   await page.getByLabel(/password|парола/i).fill(TEST_USER.password);\n> 33 |   await page.getByRole('button', { name: /log in|влез/i }).click();\n     |                                                            ^\n  34 |   await page.waitForURL(/\\/dashboard/, { timeout: 10000 });\n  35 | }\n  36 |\n    at loginAsAdmin (/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts:33:60)\n    at /Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts:94:7"
+                            }
+                          ],
+                          "stdout": [],
+                          "stderr": [],
+                          "retry": 0,
+                          "startTime": "2026-04-14T14:10:55.682Z",
+                          "annotations": [],
+                          "attachments": [
+                            {
+                              "name": "screenshot",
+                              "contentType": "image/png",
+                              "path": "/Users/administrator/Documents/BoomCard/partner-dashboard/test-results/cashback-admin-Admin-Cashb-8b254-y-all-status-filter-buttons-chromium/test-failed-1.png"
+                            },
+                            {
+                              "name": "error-context",
+                              "contentType": "text/markdown",
+                              "path": "/Users/administrator/Documents/BoomCard/partner-dashboard/test-results/cashback-admin-Admin-Cashb-8b254-y-all-status-filter-buttons-chromium/error-context.md"
+                            }
+                          ],
+                          "errorLocation": {
+                            "file": "/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts",
+                            "column": 10,
+                            "line": 93
+                          }
+                        }
+                      ],
+                      "status": "unexpected"
+                    }
+                  ],
+                  "id": "6a6070f53114b426a371-4f6008c2263c6103ef74",
+                  "file": "cashback-admin.spec.ts",
+                  "line": 119,
+                  "column": 5
+                },
+                {
+                  "title": "should filter cashback entries by status",
+                  "ok": false,
+                  "tags": [],
+                  "tests": [
+                    {
+                      "timeout": 30000,
+                      "annotations": [],
+                      "expectedStatus": "passed",
+                      "projectId": "chromium",
+                      "projectName": "chromium",
+                      "results": [
+                        {
+                          "workerIndex": 4,
+                          "parallelIndex": 4,
+                          "status": "timedOut",
+                          "duration": 30128,
+                          "error": {
+                            "message": "\u001b[31mTest timeout of 30000ms exceeded while running \"beforeEach\" hook.\u001b[39m",
+                            "stack": "\u001b[31mTest timeout of 30000ms exceeded while running \"beforeEach\" hook.\u001b[39m\n    at /Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts:93:10",
+                            "location": {
+                              "file": "/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts",
+                              "column": 10,
+                              "line": 93
+                            },
+                            "snippet": "  91 |\n  92 |   test.describe('Filter Controls', () => {\n> 93 |     test.beforeEach(async ({ page }) => {\n     |          ^\n  94 |       await loginAsAdmin(page);\n  95 |       await page.goto('/admin/cashback');\n  96 |       await page.waitForLoadState('networkidle', { timeout: 5000 });"
+                          },
+                          "errors": [
+                            {
+                              "location": {
+                                "file": "/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts",
+                                "column": 10,
+                                "line": 93
+                              },
+                              "message": "\u001b[31mTest timeout of 30000ms exceeded while running \"beforeEach\" hook.\u001b[39m\n\n  91 |\n  92 |   test.describe('Filter Controls', () => {\n> 93 |     test.beforeEach(async ({ page }) => {\n     |          ^\n  94 |       await loginAsAdmin(page);\n  95 |       await page.goto('/admin/cashback');\n  96 |       await page.waitForLoadState('networkidle', { timeout: 5000 });\n    at /Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts:93:10"
+                            },
+                            {
+                              "location": {
+                                "file": "/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts",
+                                "column": 60,
+                                "line": 33
+                              },
+                              "message": "Error: locator.click: Test timeout of 30000ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByRole('button', { name: /log in|влез/i })\u001b[22m\n\n\n  31 |   await emailInput.fill(TEST_USER.email);\n  32 |   await page.getByLabel(/password|парола/i).fill(TEST_USER.password);\n> 33 |   await page.getByRole('button', { name: /log in|влез/i }).click();\n     |                                                            ^\n  34 |   await page.waitForURL(/\\/dashboard/, { timeout: 10000 });\n  35 | }\n  36 |\n    at loginAsAdmin (/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts:33:60)\n    at /Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts:94:7"
+                            }
+                          ],
+                          "stdout": [],
+                          "stderr": [],
+                          "retry": 0,
+                          "startTime": "2026-04-14T14:10:55.694Z",
+                          "annotations": [],
+                          "attachments": [
+                            {
+                              "name": "screenshot",
+                              "contentType": "image/png",
+                              "path": "/Users/administrator/Documents/BoomCard/partner-dashboard/test-results/cashback-admin-Admin-Cashb-19a94--cashback-entries-by-status-chromium/test-failed-1.png"
+                            },
+                            {
+                              "name": "error-context",
+                              "contentType": "text/markdown",
+                              "path": "/Users/administrator/Documents/BoomCard/partner-dashboard/test-results/cashback-admin-Admin-Cashb-19a94--cashback-entries-by-status-chromium/error-context.md"
+                            }
+                          ],
+                          "errorLocation": {
+                            "file": "/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts",
+                            "column": 10,
+                            "line": 93
+                          }
+                        }
+                      ],
+                      "status": "unexpected"
+                    }
+                  ],
+                  "id": "6a6070f53114b426a371-987fcb4ebd52609e53ec",
+                  "file": "cashback-admin.spec.ts",
+                  "line": 145,
+                  "column": 5
+                },
+                {
+                  "title": "should highlight active filter button",
+                  "ok": false,
+                  "tags": [],
+                  "tests": [
+                    {
+                      "timeout": 30000,
+                      "annotations": [],
+                      "expectedStatus": "passed",
+                      "projectId": "chromium",
+                      "projectName": "chromium",
+                      "results": [
+                        {
+                          "workerIndex": 5,
+                          "parallelIndex": 5,
+                          "status": "timedOut",
+                          "duration": 30133,
+                          "error": {
+                            "message": "\u001b[31mTest timeout of 30000ms exceeded while running \"beforeEach\" hook.\u001b[39m",
+                            "stack": "\u001b[31mTest timeout of 30000ms exceeded while running \"beforeEach\" hook.\u001b[39m\n    at /Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts:93:10",
+                            "location": {
+                              "file": "/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts",
+                              "column": 10,
+                              "line": 93
+                            },
+                            "snippet": "  91 |\n  92 |   test.describe('Filter Controls', () => {\n> 93 |     test.beforeEach(async ({ page }) => {\n     |          ^\n  94 |       await loginAsAdmin(page);\n  95 |       await page.goto('/admin/cashback');\n  96 |       await page.waitForLoadState('networkidle', { timeout: 5000 });"
+                          },
+                          "errors": [
+                            {
+                              "location": {
+                                "file": "/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts",
+                                "column": 10,
+                                "line": 93
+                              },
+                              "message": "\u001b[31mTest timeout of 30000ms exceeded while running \"beforeEach\" hook.\u001b[39m\n\n  91 |\n  92 |   test.describe('Filter Controls', () => {\n> 93 |     test.beforeEach(async ({ page }) => {\n     |          ^\n  94 |       await loginAsAdmin(page);\n  95 |       await page.goto('/admin/cashback');\n  96 |       await page.waitForLoadState('networkidle', { timeout: 5000 });\n    at /Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts:93:10"
+                            },
+                            {
+                              "location": {
+                                "file": "/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts",
+                                "column": 60,
+                                "line": 33
+                              },
+                              "message": "Error: locator.click: Test timeout of 30000ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByRole('button', { name: /log in|влез/i })\u001b[22m\n\n\n  31 |   await emailInput.fill(TEST_USER.email);\n  32 |   await page.getByLabel(/password|парола/i).fill(TEST_USER.password);\n> 33 |   await page.getByRole('button', { name: /log in|влез/i }).click();\n     |                                                            ^\n  34 |   await page.waitForURL(/\\/dashboard/, { timeout: 10000 });\n  35 | }\n  36 |\n    at loginAsAdmin (/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts:33:60)\n    at /Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts:94:7"
+                            }
+                          ],
+                          "stdout": [],
+                          "stderr": [],
+                          "retry": 0,
+                          "startTime": "2026-04-14T14:10:55.704Z",
+                          "annotations": [],
+                          "attachments": [
+                            {
+                              "name": "screenshot",
+                              "contentType": "image/png",
+                              "path": "/Users/administrator/Documents/BoomCard/partner-dashboard/test-results/cashback-admin-Admin-Cashb-d71bb-hlight-active-filter-button-chromium/test-failed-1.png"
+                            },
+                            {
+                              "name": "error-context",
+                              "contentType": "text/markdown",
+                              "path": "/Users/administrator/Documents/BoomCard/partner-dashboard/test-results/cashback-admin-Admin-Cashb-d71bb-hlight-active-filter-button-chromium/error-context.md"
+                            }
+                          ],
+                          "errorLocation": {
+                            "file": "/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts",
+                            "column": 10,
+                            "line": 93
+                          }
+                        }
+                      ],
+                      "status": "unexpected"
+                    }
+                  ],
+                  "id": "6a6070f53114b426a371-72eeb0a53933bfb39896",
+                  "file": "cashback-admin.spec.ts",
+                  "line": 197,
+                  "column": 5
+                }
+              ]
+            },
+            {
+              "title": "Month Selection",
+              "file": "cashback-admin.spec.ts",
+              "line": 222,
+              "column": 8,
+              "specs": [
+                {
+                  "title": "should display month input field",
+                  "ok": false,
+                  "tags": [],
+                  "tests": [
+                    {
+                      "timeout": 30000,
+                      "annotations": [],
+                      "expectedStatus": "passed",
+                      "projectId": "chromium",
+                      "projectName": "chromium",
+                      "results": [
+                        {
+                          "workerIndex": 1,
+                          "parallelIndex": 1,
+                          "status": "timedOut",
+                          "duration": 30151,
+                          "error": {
+                            "message": "\u001b[31mTest timeout of 30000ms exceeded while running \"beforeEach\" hook.\u001b[39m",
+                            "stack": "\u001b[31mTest timeout of 30000ms exceeded while running \"beforeEach\" hook.\u001b[39m\n    at /Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts:165:10",
+                            "location": {
+                              "file": "/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts",
+                              "column": 10,
+                              "line": 165
+                            },
+                            "snippet": "  163 |\n  164 |   test.describe('Month Selection', () => {\n> 165 |     test.beforeEach(async ({ page }) => {\n      |          ^\n  166 |       await loginAsAdmin(page);\n  167 |       await page.goto('/admin/cashback');\n  168 |       await page.waitForLoadState('networkidle', { timeout: 5000 });"
+                          },
+                          "errors": [
+                            {
+                              "location": {
+                                "file": "/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts",
+                                "column": 10,
+                                "line": 165
+                              },
+                              "message": "\u001b[31mTest timeout of 30000ms exceeded while running \"beforeEach\" hook.\u001b[39m\n\n  163 |\n  164 |   test.describe('Month Selection', () => {\n> 165 |     test.beforeEach(async ({ page }) => {\n      |          ^\n  166 |       await loginAsAdmin(page);\n  167 |       await page.goto('/admin/cashback');\n  168 |       await page.waitForLoadState('networkidle', { timeout: 5000 });\n    at /Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts:165:10"
+                            },
+                            {
+                              "location": {
+                                "file": "/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts",
+                                "column": 60,
+                                "line": 33
+                              },
+                              "message": "Error: locator.click: Test timeout of 30000ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByRole('button', { name: /log in|влез/i })\u001b[22m\n\n\n  31 |   await emailInput.fill(TEST_USER.email);\n  32 |   await page.getByLabel(/password|парола/i).fill(TEST_USER.password);\n> 33 |   await page.getByRole('button', { name: /log in|влез/i }).click();\n     |                                                            ^\n  34 |   await page.waitForURL(/\\/dashboard/, { timeout: 10000 });\n  35 | }\n  36 |\n    at loginAsAdmin (/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts:33:60)\n    at /Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts:166:7"
+                            }
+                          ],
+                          "stdout": [],
+                          "stderr": [],
+                          "retry": 0,
+                          "startTime": "2026-04-14T14:10:57.828Z",
+                          "annotations": [],
+                          "attachments": [
+                            {
+                              "name": "screenshot",
+                              "contentType": "image/png",
+                              "path": "/Users/administrator/Documents/BoomCard/partner-dashboard/test-results/cashback-admin-Admin-Cashb-f6ff0-d-display-month-input-field-chromium/test-failed-1.png"
+                            },
+                            {
+                              "name": "error-context",
+                              "contentType": "text/markdown",
+                              "path": "/Users/administrator/Documents/BoomCard/partner-dashboard/test-results/cashback-admin-Admin-Cashb-f6ff0-d-display-month-input-field-chromium/error-context.md"
+                            }
+                          ],
+                          "errorLocation": {
+                            "file": "/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts",
+                            "column": 10,
+                            "line": 165
+                          }
+                        }
+                      ],
+                      "status": "unexpected"
+                    }
+                  ],
+                  "id": "6a6070f53114b426a371-3c721028ff53ad21e741",
+                  "file": "cashback-admin.spec.ts",
+                  "line": 232,
+                  "column": 5
+                },
+                {
+                  "title": "should change data when month is selected",
+                  "ok": false,
+                  "tags": [],
+                  "tests": [
+                    {
+                      "timeout": 30000,
+                      "annotations": [],
+                      "expectedStatus": "passed",
+                      "projectId": "chromium",
+                      "projectName": "chromium",
+                      "results": [
+                        {
+                          "workerIndex": 7,
+                          "parallelIndex": 5,
+                          "status": "timedOut",
+                          "duration": 30140,
+                          "error": {
+                            "message": "\u001b[31mTest timeout of 30000ms exceeded while running \"beforeEach\" hook.\u001b[39m",
+                            "stack": "\u001b[31mTest timeout of 30000ms exceeded while running \"beforeEach\" hook.\u001b[39m\n    at /Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts:165:10",
+                            "location": {
+                              "file": "/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts",
+                              "column": 10,
+                              "line": 165
+                            },
+                            "snippet": "  163 |\n  164 |   test.describe('Month Selection', () => {\n> 165 |     test.beforeEach(async ({ page }) => {\n      |          ^\n  166 |       await loginAsAdmin(page);\n  167 |       await page.goto('/admin/cashback');\n  168 |       await page.waitForLoadState('networkidle', { timeout: 5000 });"
+                          },
+                          "errors": [
+                            {
+                              "location": {
+                                "file": "/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts",
+                                "column": 10,
+                                "line": 165
+                              },
+                              "message": "\u001b[31mTest timeout of 30000ms exceeded while running \"beforeEach\" hook.\u001b[39m\n\n  163 |\n  164 |   test.describe('Month Selection', () => {\n> 165 |     test.beforeEach(async ({ page }) => {\n      |          ^\n  166 |       await loginAsAdmin(page);\n  167 |       await page.goto('/admin/cashback');\n  168 |       await page.waitForLoadState('networkidle', { timeout: 5000 });\n    at /Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts:165:10"
+                            },
+                            {
+                              "location": {
+                                "file": "/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts",
+                                "column": 60,
+                                "line": 33
+                              },
+                              "message": "Error: locator.click: Test timeout of 30000ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByRole('button', { name: /log in|влез/i })\u001b[22m\n\n\n  31 |   await emailInput.fill(TEST_USER.email);\n  32 |   await page.getByLabel(/password|парола/i).fill(TEST_USER.password);\n> 33 |   await page.getByRole('button', { name: /log in|влез/i }).click();\n     |                                                            ^\n  34 |   await page.waitForURL(/\\/dashboard/, { timeout: 10000 });\n  35 | }\n  36 |\n    at loginAsAdmin (/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts:33:60)\n    at /Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts:166:7"
+                            }
+                          ],
+                          "stdout": [],
+                          "stderr": [],
+                          "retry": 0,
+                          "startTime": "2026-04-14T14:11:26.806Z",
+                          "annotations": [],
+                          "attachments": [
+                            {
+                              "name": "screenshot",
+                              "contentType": "image/png",
+                              "path": "/Users/administrator/Documents/BoomCard/partner-dashboard/test-results/cashback-admin-Admin-Cashb-61bb6-data-when-month-is-selected-chromium/test-failed-1.png"
+                            },
+                            {
+                              "name": "error-context",
+                              "contentType": "text/markdown",
+                              "path": "/Users/administrator/Documents/BoomCard/partner-dashboard/test-results/cashback-admin-Admin-Cashb-61bb6-data-when-month-is-selected-chromium/error-context.md"
+                            }
+                          ],
+                          "errorLocation": {
+                            "file": "/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts",
+                            "column": 10,
+                            "line": 165
+                          }
+                        }
+                      ],
+                      "status": "unexpected"
+                    }
+                  ],
+                  "id": "6a6070f53114b426a371-bb57f51393c32f023024",
+                  "file": "cashback-admin.spec.ts",
+                  "line": 242,
+                  "column": 5
+                }
+              ]
+            },
+            {
+              "title": "Table Display",
+              "file": "cashback-admin.spec.ts",
+              "line": 270,
+              "column": 8,
+              "specs": [
+                {
+                  "title": "should display cashback table with correct columns",
+                  "ok": false,
+                  "tags": [],
+                  "tests": [
+                    {
+                      "timeout": 30000,
+                      "annotations": [],
+                      "expectedStatus": "passed",
+                      "projectId": "chromium",
+                      "projectName": "chromium",
+                      "results": [
+                        {
+                          "workerIndex": 9,
+                          "parallelIndex": 4,
+                          "status": "timedOut",
+                          "duration": 30151,
+                          "error": {
+                            "message": "\u001b[31mTest timeout of 30000ms exceeded while running \"beforeEach\" hook.\u001b[39m",
+                            "stack": "\u001b[31mTest timeout of 30000ms exceeded while running \"beforeEach\" hook.\u001b[39m\n    at /Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts:206:10",
+                            "location": {
+                              "file": "/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts",
+                              "column": 10,
+                              "line": 206
+                            },
+                            "snippet": "  204 |\n  205 |   test.describe('Table Display', () => {\n> 206 |     test.beforeEach(async ({ page }) => {\n      |          ^\n  207 |       await loginAsAdmin(page);\n  208 |       await page.goto('/admin/cashback');\n  209 |       await page.waitForLoadState('networkidle', { timeout: 5000 });"
+                          },
+                          "errors": [
+                            {
+                              "location": {
+                                "file": "/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts",
+                                "column": 10,
+                                "line": 206
+                              },
+                              "message": "\u001b[31mTest timeout of 30000ms exceeded while running \"beforeEach\" hook.\u001b[39m\n\n  204 |\n  205 |   test.describe('Table Display', () => {\n> 206 |     test.beforeEach(async ({ page }) => {\n      |          ^\n  207 |       await loginAsAdmin(page);\n  208 |       await page.goto('/admin/cashback');\n  209 |       await page.waitForLoadState('networkidle', { timeout: 5000 });\n    at /Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts:206:10"
+                            },
+                            {
+                              "location": {
+                                "file": "/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts",
+                                "column": 60,
+                                "line": 33
+                              },
+                              "message": "Error: locator.click: Test timeout of 30000ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByRole('button', { name: /log in|влез/i })\u001b[22m\n\n\n  31 |   await emailInput.fill(TEST_USER.email);\n  32 |   await page.getByLabel(/password|парола/i).fill(TEST_USER.password);\n> 33 |   await page.getByRole('button', { name: /log in|влез/i }).click();\n     |                                                            ^\n  34 |   await page.waitForURL(/\\/dashboard/, { timeout: 10000 });\n  35 | }\n  36 |\n    at loginAsAdmin (/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts:33:60)\n    at /Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts:207:7"
+                            }
+                          ],
+                          "stdout": [],
+                          "stderr": [],
+                          "retry": 0,
+                          "startTime": "2026-04-14T14:11:26.809Z",
+                          "annotations": [],
+                          "attachments": [
+                            {
+                              "name": "screenshot",
+                              "contentType": "image/png",
+                              "path": "/Users/administrator/Documents/BoomCard/partner-dashboard/test-results/cashback-admin-Admin-Cashb-b01e4--table-with-correct-columns-chromium/test-failed-1.png"
+                            },
+                            {
+                              "name": "error-context",
+                              "contentType": "text/markdown",
+                              "path": "/Users/administrator/Documents/BoomCard/partner-dashboard/test-results/cashback-admin-Admin-Cashb-b01e4--table-with-correct-columns-chromium/error-context.md"
+                            }
+                          ],
+                          "errorLocation": {
+                            "file": "/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts",
+                            "column": 10,
+                            "line": 206
+                          }
+                        }
+                      ],
+                      "status": "unexpected"
+                    }
+                  ],
+                  "id": "6a6070f53114b426a371-2ab7d011d04d9c2eca59",
+                  "file": "cashback-admin.spec.ts",
+                  "line": 280,
+                  "column": 5
+                },
+                {
+                  "title": "should display loading state",
+                  "ok": false,
+                  "tags": [],
+                  "tests": [
+                    {
+                      "timeout": 30000,
+                      "annotations": [],
+                      "expectedStatus": "passed",
+                      "projectId": "chromium",
+                      "projectName": "chromium",
+                      "results": [
+                        {
+                          "workerIndex": 8,
+                          "parallelIndex": 3,
+                          "status": "timedOut",
+                          "duration": 30117,
+                          "error": {
+                            "message": "\u001b[31mTest timeout of 30000ms exceeded while running \"beforeEach\" hook.\u001b[39m",
+                            "stack": "\u001b[31mTest timeout of 30000ms exceeded while running \"beforeEach\" hook.\u001b[39m\n    at /Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts:206:10",
+                            "location": {
+                              "file": "/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts",
+                              "column": 10,
+                              "line": 206
+                            },
+                            "snippet": "  204 |\n  205 |   test.describe('Table Display', () => {\n> 206 |     test.beforeEach(async ({ page }) => {\n      |          ^\n  207 |       await loginAsAdmin(page);\n  208 |       await page.goto('/admin/cashback');\n  209 |       await page.waitForLoadState('networkidle', { timeout: 5000 });"
+                          },
+                          "errors": [
+                            {
+                              "location": {
+                                "file": "/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts",
+                                "column": 10,
+                                "line": 206
+                              },
+                              "message": "\u001b[31mTest timeout of 30000ms exceeded while running \"beforeEach\" hook.\u001b[39m\n\n  204 |\n  205 |   test.describe('Table Display', () => {\n> 206 |     test.beforeEach(async ({ page }) => {\n      |          ^\n  207 |       await loginAsAdmin(page);\n  208 |       await page.goto('/admin/cashback');\n  209 |       await page.waitForLoadState('networkidle', { timeout: 5000 });\n    at /Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts:206:10"
+                            },
+                            {
+                              "location": {
+                                "file": "/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts",
+                                "column": 60,
+                                "line": 33
+                              },
+                              "message": "Error: locator.click: Test timeout of 30000ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByRole('button', { name: /log in|влез/i })\u001b[22m\n\n\n  31 |   await emailInput.fill(TEST_USER.email);\n  32 |   await page.getByLabel(/password|парола/i).fill(TEST_USER.password);\n> 33 |   await page.getByRole('button', { name: /log in|влез/i }).click();\n     |                                                            ^\n  34 |   await page.waitForURL(/\\/dashboard/, { timeout: 10000 });\n  35 | }\n  36 |\n    at loginAsAdmin (/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts:33:60)\n    at /Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts:207:7"
+                            }
+                          ],
+                          "stdout": [],
+                          "stderr": [],
+                          "retry": 0,
+                          "startTime": "2026-04-14T14:11:26.803Z",
+                          "annotations": [],
+                          "attachments": [
+                            {
+                              "name": "screenshot",
+                              "contentType": "image/png",
+                              "path": "/Users/administrator/Documents/BoomCard/partner-dashboard/test-results/cashback-admin-Admin-Cashb-86aaf-hould-display-loading-state-chromium/test-failed-1.png"
+                            },
+                            {
+                              "name": "error-context",
+                              "contentType": "text/markdown",
+                              "path": "/Users/administrator/Documents/BoomCard/partner-dashboard/test-results/cashback-admin-Admin-Cashb-86aaf-hould-display-loading-state-chromium/error-context.md"
+                            }
+                          ],
+                          "errorLocation": {
+                            "file": "/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts",
+                            "column": 10,
+                            "line": 206
+                          }
+                        }
+                      ],
+                      "status": "unexpected"
+                    }
+                  ],
+                  "id": "6a6070f53114b426a371-5ae634601fb0ef5c4891",
+                  "file": "cashback-admin.spec.ts",
+                  "line": 298,
+                  "column": 5
+                },
+                {
+                  "title": "should display empty state message",
+                  "ok": false,
+                  "tags": [],
+                  "tests": [
+                    {
+                      "timeout": 30000,
+                      "annotations": [],
+                      "expectedStatus": "passed",
+                      "projectId": "chromium",
+                      "projectName": "chromium",
+                      "results": [
+                        {
+                          "workerIndex": 6,
+                          "parallelIndex": 0,
+                          "status": "timedOut",
+                          "duration": 30125,
+                          "error": {
+                            "message": "\u001b[31mTest timeout of 30000ms exceeded while running \"beforeEach\" hook.\u001b[39m",
+                            "stack": "\u001b[31mTest timeout of 30000ms exceeded while running \"beforeEach\" hook.\u001b[39m\n    at /Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts:206:10",
+                            "location": {
+                              "file": "/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts",
+                              "column": 10,
+                              "line": 206
+                            },
+                            "snippet": "  204 |\n  205 |   test.describe('Table Display', () => {\n> 206 |     test.beforeEach(async ({ page }) => {\n      |          ^\n  207 |       await loginAsAdmin(page);\n  208 |       await page.goto('/admin/cashback');\n  209 |       await page.waitForLoadState('networkidle', { timeout: 5000 });"
+                          },
+                          "errors": [
+                            {
+                              "location": {
+                                "file": "/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts",
+                                "column": 10,
+                                "line": 206
+                              },
+                              "message": "\u001b[31mTest timeout of 30000ms exceeded while running \"beforeEach\" hook.\u001b[39m\n\n  204 |\n  205 |   test.describe('Table Display', () => {\n> 206 |     test.beforeEach(async ({ page }) => {\n      |          ^\n  207 |       await loginAsAdmin(page);\n  208 |       await page.goto('/admin/cashback');\n  209 |       await page.waitForLoadState('networkidle', { timeout: 5000 });\n    at /Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts:206:10"
+                            },
+                            {
+                              "location": {
+                                "file": "/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts",
+                                "column": 60,
+                                "line": 33
+                              },
+                              "message": "Error: locator.click: Test timeout of 30000ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByRole('button', { name: /log in|влез/i })\u001b[22m\n\n\n  31 |   await emailInput.fill(TEST_USER.email);\n  32 |   await page.getByLabel(/password|парола/i).fill(TEST_USER.password);\n> 33 |   await page.getByRole('button', { name: /log in|влез/i }).click();\n     |                                                            ^\n  34 |   await page.waitForURL(/\\/dashboard/, { timeout: 10000 });\n  35 | }\n  36 |\n    at loginAsAdmin (/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts:33:60)\n    at /Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts:207:7"
+                            }
+                          ],
+                          "stdout": [],
+                          "stderr": [],
+                          "retry": 0,
+                          "startTime": "2026-04-14T14:11:26.804Z",
+                          "annotations": [],
+                          "attachments": [
+                            {
+                              "name": "screenshot",
+                              "contentType": "image/png",
+                              "path": "/Users/administrator/Documents/BoomCard/partner-dashboard/test-results/cashback-admin-Admin-Cashb-a97f4-display-empty-state-message-chromium/test-failed-1.png"
+                            },
+                            {
+                              "name": "error-context",
+                              "contentType": "text/markdown",
+                              "path": "/Users/administrator/Documents/BoomCard/partner-dashboard/test-results/cashback-admin-Admin-Cashb-a97f4-display-empty-state-message-chromium/error-context.md"
+                            }
+                          ],
+                          "errorLocation": {
+                            "file": "/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts",
+                            "column": 10,
+                            "line": 206
+                          }
+                        }
+                      ],
+                      "status": "unexpected"
+                    }
+                  ],
+                  "id": "6a6070f53114b426a371-ab6809eb4a9efd3c0057",
+                  "file": "cashback-admin.spec.ts",
+                  "line": 316,
+                  "column": 5
+                }
+              ]
+            },
+            {
+              "title": "Action Buttons - Mark as Paid",
+              "file": "cashback-admin.spec.ts",
+              "line": 347,
+              "column": 8,
+              "specs": [
+                {
+                  "title": "should open mark paid modal when button clicked",
+                  "ok": false,
+                  "tags": [],
+                  "tests": [
+                    {
+                      "timeout": 30000,
+                      "annotations": [],
+                      "expectedStatus": "passed",
+                      "projectId": "chromium",
+                      "projectName": "chromium",
+                      "results": [
+                        {
+                          "workerIndex": 10,
+                          "parallelIndex": 2,
+                          "status": "timedOut",
+                          "duration": 30115,
+                          "error": {
+                            "message": "\u001b[31mTest timeout of 30000ms exceeded while running \"beforeEach\" hook.\u001b[39m",
+                            "stack": "\u001b[31mTest timeout of 30000ms exceeded while running \"beforeEach\" hook.\u001b[39m\n    at /Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts:275:10",
+                            "location": {
+                              "file": "/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts",
+                              "column": 10,
+                              "line": 275
+                            },
+                            "snippet": "  273 |\n  274 |   test.describe('Action Buttons - Mark as Paid', () => {\n> 275 |     test.beforeEach(async ({ page }) => {\n      |          ^\n  276 |       await loginAsAdmin(page);\n  277 |       await page.goto('/admin/cashback');\n  278 |       await page.waitForLoadState('networkidle', { timeout: 5000 });"
+                          },
+                          "errors": [
+                            {
+                              "location": {
+                                "file": "/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts",
+                                "column": 10,
+                                "line": 275
+                              },
+                              "message": "\u001b[31mTest timeout of 30000ms exceeded while running \"beforeEach\" hook.\u001b[39m\n\n  273 |\n  274 |   test.describe('Action Buttons - Mark as Paid', () => {\n> 275 |     test.beforeEach(async ({ page }) => {\n      |          ^\n  276 |       await loginAsAdmin(page);\n  277 |       await page.goto('/admin/cashback');\n  278 |       await page.waitForLoadState('networkidle', { timeout: 5000 });\n    at /Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts:275:10"
+                            },
+                            {
+                              "location": {
+                                "file": "/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts",
+                                "column": 60,
+                                "line": 33
+                              },
+                              "message": "Error: locator.click: Test timeout of 30000ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByRole('button', { name: /log in|влез/i })\u001b[22m\n\n\n  31 |   await emailInput.fill(TEST_USER.email);\n  32 |   await page.getByLabel(/password|парола/i).fill(TEST_USER.password);\n> 33 |   await page.getByRole('button', { name: /log in|влез/i }).click();\n     |                                                            ^\n  34 |   await page.waitForURL(/\\/dashboard/, { timeout: 10000 });\n  35 | }\n  36 |\n    at loginAsAdmin (/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts:33:60)\n    at /Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts:276:7"
+                            }
+                          ],
+                          "stdout": [],
+                          "stderr": [],
+                          "retry": 0,
+                          "startTime": "2026-04-14T14:11:26.807Z",
+                          "annotations": [],
+                          "attachments": [
+                            {
+                              "name": "screenshot",
+                              "contentType": "image/png",
+                              "path": "/Users/administrator/Documents/BoomCard/partner-dashboard/test-results/cashback-admin-Admin-Cashb-bc5c2-d-modal-when-button-clicked-chromium/test-failed-1.png"
+                            },
+                            {
+                              "name": "error-context",
+                              "contentType": "text/markdown",
+                              "path": "/Users/administrator/Documents/BoomCard/partner-dashboard/test-results/cashback-admin-Admin-Cashb-bc5c2-d-modal-when-button-clicked-chromium/error-context.md"
+                            }
+                          ],
+                          "errorLocation": {
+                            "file": "/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts",
+                            "column": 10,
+                            "line": 275
+                          }
+                        }
+                      ],
+                      "status": "unexpected"
+                    }
+                  ],
+                  "id": "6a6070f53114b426a371-a3836de1b6b7b4df047d",
+                  "file": "cashback-admin.spec.ts",
+                  "line": 357,
+                  "column": 5
+                },
+                {
+                  "title": "should handle mark paid with notes",
+                  "ok": false,
+                  "tags": [],
+                  "tests": [
+                    {
+                      "timeout": 30000,
+                      "annotations": [],
+                      "expectedStatus": "passed",
+                      "projectId": "chromium",
+                      "projectName": "chromium",
+                      "results": [
+                        {
+                          "workerIndex": 11,
+                          "parallelIndex": 1,
+                          "status": "timedOut",
+                          "duration": 30241,
+                          "error": {
+                            "message": "\u001b[31mTest timeout of 30000ms exceeded while running \"beforeEach\" hook.\u001b[39m",
+                            "stack": "\u001b[31mTest timeout of 30000ms exceeded while running \"beforeEach\" hook.\u001b[39m\n    at /Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts:275:10",
+                            "location": {
+                              "file": "/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts",
+                              "column": 10,
+                              "line": 275
+                            },
+                            "snippet": "  273 |\n  274 |   test.describe('Action Buttons - Mark as Paid', () => {\n> 275 |     test.beforeEach(async ({ page }) => {\n      |          ^\n  276 |       await loginAsAdmin(page);\n  277 |       await page.goto('/admin/cashback');\n  278 |       await page.waitForLoadState('networkidle', { timeout: 5000 });"
+                          },
+                          "errors": [
+                            {
+                              "location": {
+                                "file": "/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts",
+                                "column": 10,
+                                "line": 275
+                              },
+                              "message": "\u001b[31mTest timeout of 30000ms exceeded while running \"beforeEach\" hook.\u001b[39m\n\n  273 |\n  274 |   test.describe('Action Buttons - Mark as Paid', () => {\n> 275 |     test.beforeEach(async ({ page }) => {\n      |          ^\n  276 |       await loginAsAdmin(page);\n  277 |       await page.goto('/admin/cashback');\n  278 |       await page.waitForLoadState('networkidle', { timeout: 5000 });\n    at /Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts:275:10"
+                            },
+                            {
+                              "location": {
+                                "file": "/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts",
+                                "column": 60,
+                                "line": 33
+                              },
+                              "message": "Error: locator.click: Test timeout of 30000ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByRole('button', { name: /log in|влез/i })\u001b[22m\n\n\n  31 |   await emailInput.fill(TEST_USER.email);\n  32 |   await page.getByLabel(/password|парола/i).fill(TEST_USER.password);\n> 33 |   await page.getByRole('button', { name: /log in|влез/i }).click();\n     |                                                            ^\n  34 |   await page.waitForURL(/\\/dashboard/, { timeout: 10000 });\n  35 | }\n  36 |\n    at loginAsAdmin (/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts:33:60)\n    at /Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts:276:7"
+                            }
+                          ],
+                          "stdout": [],
+                          "stderr": [],
+                          "retry": 0,
+                          "startTime": "2026-04-14T14:11:28.639Z",
+                          "annotations": [],
+                          "attachments": [
+                            {
+                              "name": "screenshot",
+                              "contentType": "image/png",
+                              "path": "/Users/administrator/Documents/BoomCard/partner-dashboard/test-results/cashback-admin-Admin-Cashb-c1033-handle-mark-paid-with-notes-chromium/test-failed-1.png"
+                            },
+                            {
+                              "name": "error-context",
+                              "contentType": "text/markdown",
+                              "path": "/Users/administrator/Documents/BoomCard/partner-dashboard/test-results/cashback-admin-Admin-Cashb-c1033-handle-mark-paid-with-notes-chromium/error-context.md"
+                            }
+                          ],
+                          "errorLocation": {
+                            "file": "/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts",
+                            "column": 10,
+                            "line": 275
+                          }
+                        }
+                      ],
+                      "status": "unexpected"
+                    }
+                  ],
+                  "id": "6a6070f53114b426a371-e1b9512e86db6b9b3ed9",
+                  "file": "cashback-admin.spec.ts",
+                  "line": 393,
+                  "column": 5
+                }
+              ]
+            },
+            {
+              "title": "Action Buttons - Send Reminder",
+              "file": "cashback-admin.spec.ts",
+              "line": 426,
+              "column": 8,
+              "specs": [
+                {
+                  "title": "should have send reminder button",
+                  "ok": false,
+                  "tags": [],
+                  "tests": [
+                    {
+                      "timeout": 30000,
+                      "annotations": [],
+                      "expectedStatus": "passed",
+                      "projectId": "chromium",
+                      "projectName": "chromium",
+                      "results": [
+                        {
+                          "workerIndex": 12,
+                          "parallelIndex": 3,
+                          "status": "timedOut",
+                          "duration": 30121,
+                          "error": {
+                            "message": "\u001b[31mTest timeout of 30000ms exceeded while running \"beforeEach\" hook.\u001b[39m",
+                            "stack": "\u001b[31mTest timeout of 30000ms exceeded while running \"beforeEach\" hook.\u001b[39m\n    at /Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts:339:10",
+                            "location": {
+                              "file": "/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts",
+                              "column": 10,
+                              "line": 339
+                            },
+                            "snippet": "  337 |\n  338 |   test.describe('Action Buttons - Send Reminder', () => {\n> 339 |     test.beforeEach(async ({ page }) => {\n      |          ^\n  340 |       await loginAsAdmin(page);\n  341 |       await page.goto('/admin/cashback');\n  342 |       await page.waitForLoadState('networkidle', { timeout: 5000 });"
+                          },
+                          "errors": [
+                            {
+                              "location": {
+                                "file": "/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts",
+                                "column": 10,
+                                "line": 339
+                              },
+                              "message": "\u001b[31mTest timeout of 30000ms exceeded while running \"beforeEach\" hook.\u001b[39m\n\n  337 |\n  338 |   test.describe('Action Buttons - Send Reminder', () => {\n> 339 |     test.beforeEach(async ({ page }) => {\n      |          ^\n  340 |       await loginAsAdmin(page);\n  341 |       await page.goto('/admin/cashback');\n  342 |       await page.waitForLoadState('networkidle', { timeout: 5000 });\n    at /Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts:339:10"
+                            },
+                            {
+                              "location": {
+                                "file": "/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts",
+                                "column": 60,
+                                "line": 33
+                              },
+                              "message": "Error: locator.click: Test timeout of 30000ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByRole('button', { name: /log in|влез/i })\u001b[22m\n\n\n  31 |   await emailInput.fill(TEST_USER.email);\n  32 |   await page.getByLabel(/password|парола/i).fill(TEST_USER.password);\n> 33 |   await page.getByRole('button', { name: /log in|влез/i }).click();\n     |                                                            ^\n  34 |   await page.waitForURL(/\\/dashboard/, { timeout: 10000 });\n  35 | }\n  36 |\n    at loginAsAdmin (/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts:33:60)\n    at /Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts:340:7"
+                            }
+                          ],
+                          "stdout": [],
+                          "stderr": [],
+                          "retry": 0,
+                          "startTime": "2026-04-14T14:11:57.700Z",
+                          "annotations": [],
+                          "attachments": [
+                            {
+                              "name": "screenshot",
+                              "contentType": "image/png",
+                              "path": "/Users/administrator/Documents/BoomCard/partner-dashboard/test-results/cashback-admin-Admin-Cashb-ed84b-d-have-send-reminder-button-chromium/test-failed-1.png"
+                            },
+                            {
+                              "name": "error-context",
+                              "contentType": "text/markdown",
+                              "path": "/Users/administrator/Documents/BoomCard/partner-dashboard/test-results/cashback-admin-Admin-Cashb-ed84b-d-have-send-reminder-button-chromium/error-context.md"
+                            }
+                          ],
+                          "errorLocation": {
+                            "file": "/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts",
+                            "column": 10,
+                            "line": 339
+                          }
+                        }
+                      ],
+                      "status": "unexpected"
+                    }
+                  ],
+                  "id": "6a6070f53114b426a371-e78c53efd1b702968212",
+                  "file": "cashback-admin.spec.ts",
+                  "line": 436,
+                  "column": 5
+                }
+              ]
+            },
+            {
+              "title": "Status Chips",
+              "file": "cashback-admin.spec.ts",
+              "line": 453,
+              "column": 8,
+              "specs": [
+                {
+                  "title": "should display status chips with appropriate colors",
+                  "ok": false,
+                  "tags": [],
+                  "tests": [
+                    {
+                      "timeout": 30000,
+                      "annotations": [],
+                      "expectedStatus": "passed",
+                      "projectId": "chromium",
+                      "projectName": "chromium",
+                      "results": [
+                        {
+                          "workerIndex": 13,
+                          "parallelIndex": 2,
+                          "status": "timedOut",
+                          "duration": 30135,
+                          "error": {
+                            "message": "\u001b[31mTest timeout of 30000ms exceeded while running \"beforeEach\" hook.\u001b[39m",
+                            "stack": "\u001b[31mTest timeout of 30000ms exceeded while running \"beforeEach\" hook.\u001b[39m\n    at /Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts:359:10",
+                            "location": {
+                              "file": "/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts",
+                              "column": 10,
+                              "line": 359
+                            },
+                            "snippet": "  357 |\n  358 |   test.describe('Status Chips', () => {\n> 359 |     test.beforeEach(async ({ page }) => {\n      |          ^\n  360 |       await loginAsAdmin(page);\n  361 |       await page.goto('/admin/cashback');\n  362 |       await page.waitForLoadState('networkidle', { timeout: 5000 });"
+                          },
+                          "errors": [
+                            {
+                              "location": {
+                                "file": "/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts",
+                                "column": 10,
+                                "line": 359
+                              },
+                              "message": "\u001b[31mTest timeout of 30000ms exceeded while running \"beforeEach\" hook.\u001b[39m\n\n  357 |\n  358 |   test.describe('Status Chips', () => {\n> 359 |     test.beforeEach(async ({ page }) => {\n      |          ^\n  360 |       await loginAsAdmin(page);\n  361 |       await page.goto('/admin/cashback');\n  362 |       await page.waitForLoadState('networkidle', { timeout: 5000 });\n    at /Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts:359:10"
+                            },
+                            {
+                              "location": {
+                                "file": "/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts",
+                                "column": 60,
+                                "line": 33
+                              },
+                              "message": "Error: locator.click: Test timeout of 30000ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByRole('button', { name: /log in|влез/i })\u001b[22m\n\n\n  31 |   await emailInput.fill(TEST_USER.email);\n  32 |   await page.getByLabel(/password|парола/i).fill(TEST_USER.password);\n> 33 |   await page.getByRole('button', { name: /log in|влез/i }).click();\n     |                                                            ^\n  34 |   await page.waitForURL(/\\/dashboard/, { timeout: 10000 });\n  35 | }\n  36 |\n    at loginAsAdmin (/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts:33:60)\n    at /Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts:360:7"
+                            }
+                          ],
+                          "stdout": [],
+                          "stderr": [],
+                          "retry": 0,
+                          "startTime": "2026-04-14T14:11:57.696Z",
+                          "annotations": [],
+                          "attachments": [
+                            {
+                              "name": "screenshot",
+                              "contentType": "image/png",
+                              "path": "/Users/administrator/Documents/BoomCard/partner-dashboard/test-results/cashback-admin-Admin-Cashb-85771-ips-with-appropriate-colors-chromium/test-failed-1.png"
+                            },
+                            {
+                              "name": "error-context",
+                              "contentType": "text/markdown",
+                              "path": "/Users/administrator/Documents/BoomCard/partner-dashboard/test-results/cashback-admin-Admin-Cashb-85771-ips-with-appropriate-colors-chromium/error-context.md"
+                            }
+                          ],
+                          "errorLocation": {
+                            "file": "/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts",
+                            "column": 10,
+                            "line": 359
+                          }
+                        }
+                      ],
+                      "status": "unexpected"
+                    }
+                  ],
+                  "id": "6a6070f53114b426a371-a7963392e5d26cf602fe",
+                  "file": "cashback-admin.spec.ts",
+                  "line": 463,
+                  "column": 5
+                }
+              ]
+            },
+            {
+              "title": "Toast Notifications",
+              "file": "cashback-admin.spec.ts",
+              "line": 482,
+              "column": 8,
+              "specs": [
+                {
+                  "title": "should show toast on successful action",
+                  "ok": false,
+                  "tags": [],
+                  "tests": [
+                    {
+                      "timeout": 30000,
+                      "annotations": [],
+                      "expectedStatus": "passed",
+                      "projectId": "chromium",
+                      "projectName": "chromium",
+                      "results": [
+                        {
+                          "workerIndex": 14,
+                          "parallelIndex": 0,
+                          "status": "timedOut",
+                          "duration": 30133,
+                          "error": {
+                            "message": "\u001b[31mTest timeout of 30000ms exceeded while running \"beforeEach\" hook.\u001b[39m",
+                            "stack": "\u001b[31mTest timeout of 30000ms exceeded while running \"beforeEach\" hook.\u001b[39m\n    at /Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts:383:10",
+                            "location": {
+                              "file": "/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts",
+                              "column": 10,
+                              "line": 383
+                            },
+                            "snippet": "  381 |\n  382 |   test.describe('Toast Notifications', () => {\n> 383 |     test.beforeEach(async ({ page }) => {\n      |          ^\n  384 |       await loginAsAdmin(page);\n  385 |       await page.goto('/admin/cashback');\n  386 |       await page.waitForLoadState('networkidle', { timeout: 5000 });"
+                          },
+                          "errors": [
+                            {
+                              "location": {
+                                "file": "/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts",
+                                "column": 10,
+                                "line": 383
+                              },
+                              "message": "\u001b[31mTest timeout of 30000ms exceeded while running \"beforeEach\" hook.\u001b[39m\n\n  381 |\n  382 |   test.describe('Toast Notifications', () => {\n> 383 |     test.beforeEach(async ({ page }) => {\n      |          ^\n  384 |       await loginAsAdmin(page);\n  385 |       await page.goto('/admin/cashback');\n  386 |       await page.waitForLoadState('networkidle', { timeout: 5000 });\n    at /Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts:383:10"
+                            },
+                            {
+                              "location": {
+                                "file": "/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts",
+                                "column": 60,
+                                "line": 33
+                              },
+                              "message": "Error: locator.click: Test timeout of 30000ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByRole('button', { name: /log in|влез/i })\u001b[22m\n\n\n  31 |   await emailInput.fill(TEST_USER.email);\n  32 |   await page.getByLabel(/password|парола/i).fill(TEST_USER.password);\n> 33 |   await page.getByRole('button', { name: /log in|влез/i }).click();\n     |                                                            ^\n  34 |   await page.waitForURL(/\\/dashboard/, { timeout: 10000 });\n  35 | }\n  36 |\n    at loginAsAdmin (/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts:33:60)\n    at /Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts:384:7"
+                            }
+                          ],
+                          "stdout": [],
+                          "stderr": [],
+                          "retry": 0,
+                          "startTime": "2026-04-14T14:11:57.701Z",
+                          "annotations": [],
+                          "attachments": [
+                            {
+                              "name": "screenshot",
+                              "contentType": "image/png",
+                              "path": "/Users/administrator/Documents/BoomCard/partner-dashboard/test-results/cashback-admin-Admin-Cashb-126fc--toast-on-successful-action-chromium/test-failed-1.png"
+                            },
+                            {
+                              "name": "error-context",
+                              "contentType": "text/markdown",
+                              "path": "/Users/administrator/Documents/BoomCard/partner-dashboard/test-results/cashback-admin-Admin-Cashb-126fc--toast-on-successful-action-chromium/error-context.md"
+                            }
+                          ],
+                          "errorLocation": {
+                            "file": "/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts",
+                            "column": 10,
+                            "line": 383
+                          }
+                        }
+                      ],
+                      "status": "unexpected"
+                    }
+                  ],
+                  "id": "6a6070f53114b426a371-afdaac88b3519ab82499",
+                  "file": "cashback-admin.spec.ts",
+                  "line": 492,
+                  "column": 5
+                }
+              ]
+            },
+            {
+              "title": "Responsive Design",
+              "file": "cashback-admin.spec.ts",
+              "line": 529,
+              "column": 8,
+              "specs": [
+                {
+                  "title": "should display correctly on desktop (1920x1080)",
+                  "ok": false,
+                  "tags": [],
+                  "tests": [
+                    {
+                      "timeout": 30000,
+                      "annotations": [],
+                      "expectedStatus": "passed",
+                      "projectId": "chromium",
+                      "projectName": "chromium",
+                      "results": [
+                        {
+                          "workerIndex": 15,
+                          "parallelIndex": 4,
+                          "status": "timedOut",
+                          "duration": 30144,
+                          "error": {
+                            "message": "\u001b[31mTest timeout of 30000ms exceeded.\u001b[39m",
+                            "stack": "\u001b[31mTest timeout of 30000ms exceeded.\u001b[39m"
+                          },
+                          "errors": [
+                            {
+                              "message": "\u001b[31mTest timeout of 30000ms exceeded.\u001b[39m"
+                            },
+                            {
+                              "location": {
+                                "file": "/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts",
+                                "column": 60,
+                                "line": 33
+                              },
+                              "message": "Error: locator.click: Test timeout of 30000ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByRole('button', { name: /log in|влез/i })\u001b[22m\n\n\n  31 |   await emailInput.fill(TEST_USER.email);\n  32 |   await page.getByLabel(/password|парола/i).fill(TEST_USER.password);\n> 33 |   await page.getByRole('button', { name: /log in|влез/i }).click();\n     |                                                            ^\n  34 |   await page.waitForURL(/\\/dashboard/, { timeout: 10000 });\n  35 | }\n  36 |\n    at loginAsAdmin (/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts:33:60)\n    at /Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts:424:7"
+                            }
+                          ],
+                          "stdout": [],
+                          "stderr": [],
+                          "retry": 0,
+                          "startTime": "2026-04-14T14:11:57.699Z",
+                          "annotations": [],
+                          "attachments": [
+                            {
+                              "name": "screenshot",
+                              "contentType": "image/png",
+                              "path": "/Users/administrator/Documents/BoomCard/partner-dashboard/test-results/cashback-admin-Admin-Cashb-9e4b1-ectly-on-desktop-1920x1080--chromium/test-failed-1.png"
+                            },
+                            {
+                              "name": "error-context",
+                              "contentType": "text/markdown",
+                              "path": "/Users/administrator/Documents/BoomCard/partner-dashboard/test-results/cashback-admin-Admin-Cashb-9e4b1-ectly-on-desktop-1920x1080--chromium/error-context.md"
+                            }
+                          ]
+                        }
+                      ],
+                      "status": "unexpected"
+                    }
+                  ],
+                  "id": "6a6070f53114b426a371-6dbebc2969d7e240e68e",
+                  "file": "cashback-admin.spec.ts",
+                  "line": 530,
+                  "column": 5
+                },
+                {
+                  "title": "should display correctly on tablet (768x1024)",
+                  "ok": false,
+                  "tags": [],
+                  "tests": [
+                    {
+                      "timeout": 30000,
+                      "annotations": [],
+                      "expectedStatus": "passed",
+                      "projectId": "chromium",
+                      "projectName": "chromium",
+                      "results": [
+                        {
+                          "workerIndex": 16,
+                          "parallelIndex": 5,
+                          "status": "timedOut",
+                          "duration": 30102,
+                          "error": {
+                            "message": "\u001b[31mTest timeout of 30000ms exceeded.\u001b[39m",
+                            "stack": "\u001b[31mTest timeout of 30000ms exceeded.\u001b[39m"
+                          },
+                          "errors": [
+                            {
+                              "message": "\u001b[31mTest timeout of 30000ms exceeded.\u001b[39m"
+                            },
+                            {
+                              "location": {
+                                "file": "/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts",
+                                "column": 60,
+                                "line": 33
+                              },
+                              "message": "Error: locator.click: Test timeout of 30000ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByRole('button', { name: /log in|влез/i })\u001b[22m\n\n\n  31 |   await emailInput.fill(TEST_USER.email);\n  32 |   await page.getByLabel(/password|парола/i).fill(TEST_USER.password);\n> 33 |   await page.getByRole('button', { name: /log in|влез/i }).click();\n     |                                                            ^\n  34 |   await page.waitForURL(/\\/dashboard/, { timeout: 10000 });\n  35 | }\n  36 |\n    at loginAsAdmin (/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts:33:60)\n    at /Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts:439:7"
+                            }
+                          ],
+                          "stdout": [],
+                          "stderr": [],
+                          "retry": 0,
+                          "startTime": "2026-04-14T14:11:57.699Z",
+                          "annotations": [],
+                          "attachments": [
+                            {
+                              "name": "screenshot",
+                              "contentType": "image/png",
+                              "path": "/Users/administrator/Documents/BoomCard/partner-dashboard/test-results/cashback-admin-Admin-Cashb-d0e0d-rrectly-on-tablet-768x1024--chromium/test-failed-1.png"
+                            },
+                            {
+                              "name": "error-context",
+                              "contentType": "text/markdown",
+                              "path": "/Users/administrator/Documents/BoomCard/partner-dashboard/test-results/cashback-admin-Admin-Cashb-d0e0d-rrectly-on-tablet-768x1024--chromium/error-context.md"
+                            }
+                          ]
+                        }
+                      ],
+                      "status": "unexpected"
+                    }
+                  ],
+                  "id": "6a6070f53114b426a371-847b90fd385b2bb7fbc0",
+                  "file": "cashback-admin.spec.ts",
+                  "line": 552,
+                  "column": 5
+                },
+                {
+                  "title": "should display correctly on mobile (375x667)",
+                  "ok": false,
+                  "tags": [],
+                  "tests": [
+                    {
+                      "timeout": 30000,
+                      "annotations": [],
+                      "expectedStatus": "passed",
+                      "projectId": "chromium",
+                      "projectName": "chromium",
+                      "results": [
+                        {
+                          "workerIndex": 17,
+                          "parallelIndex": 1,
+                          "status": "timedOut",
+                          "duration": 30142,
+                          "error": {
+                            "message": "\u001b[31mTest timeout of 30000ms exceeded.\u001b[39m",
+                            "stack": "\u001b[31mTest timeout of 30000ms exceeded.\u001b[39m"
+                          },
+                          "errors": [
+                            {
+                              "message": "\u001b[31mTest timeout of 30000ms exceeded.\u001b[39m"
+                            },
+                            {
+                              "location": {
+                                "file": "/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts",
+                                "column": 60,
+                                "line": 33
+                              },
+                              "message": "Error: locator.click: Test timeout of 30000ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByRole('button', { name: /log in|влез/i })\u001b[22m\n\n\n  31 |   await emailInput.fill(TEST_USER.email);\n  32 |   await page.getByLabel(/password|парола/i).fill(TEST_USER.password);\n> 33 |   await page.getByRole('button', { name: /log in|влез/i }).click();\n     |                                                            ^\n  34 |   await page.waitForURL(/\\/dashboard/, { timeout: 10000 });\n  35 | }\n  36 |\n    at loginAsAdmin (/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts:33:60)\n    at /Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts:452:7"
+                            }
+                          ],
+                          "stdout": [],
+                          "stderr": [],
+                          "retry": 0,
+                          "startTime": "2026-04-14T14:11:59.602Z",
+                          "annotations": [],
+                          "attachments": [
+                            {
+                              "name": "screenshot",
+                              "contentType": "image/png",
+                              "path": "/Users/administrator/Documents/BoomCard/partner-dashboard/test-results/cashback-admin-Admin-Cashb-d7010-orrectly-on-mobile-375x667--chromium/test-failed-1.png"
+                            },
+                            {
+                              "name": "error-context",
+                              "contentType": "text/markdown",
+                              "path": "/Users/administrator/Documents/BoomCard/partner-dashboard/test-results/cashback-admin-Admin-Cashb-d7010-orrectly-on-mobile-375x667--chromium/error-context.md"
+                            }
+                          ]
+                        }
+                      ],
+                      "status": "unexpected"
+                    }
+                  ],
+                  "id": "6a6070f53114b426a371-0afe34ec2aa9a5172345",
+                  "file": "cashback-admin.spec.ts",
+                  "line": 572,
+                  "column": 5
+                }
+              ]
+            },
+            {
+              "title": "Language Support",
+              "file": "cashback-admin.spec.ts",
+              "line": 600,
+              "column": 8,
+              "specs": [
+                {
+                  "title": "should display content in English",
+                  "ok": false,
+                  "tags": [],
+                  "tests": [
+                    {
+                      "timeout": 30000,
+                      "annotations": [],
+                      "expectedStatus": "passed",
+                      "projectId": "chromium",
+                      "projectName": "chromium",
+                      "results": [
+                        {
+                          "workerIndex": 18,
+                          "parallelIndex": 5,
+                          "status": "failed",
+                          "duration": 244,
+                          "error": {
+                            "message": "Error: page.evaluate: SecurityError: Failed to read the 'localStorage' property from 'Window': Access is denied for this document.\n    at UtilityScript.evaluate (<anonymous>:292:16)\n    at UtilityScript.<anonymous> (<anonymous>:1:44)",
+                            "stack": "Error: page.evaluate: SecurityError: Failed to read the 'localStorage' property from 'Window': Access is denied for this document.\n    at UtilityScript.evaluate (<anonymous>:292:16)\n    at UtilityScript.<anonymous> (<anonymous>:1:44)\n    at UtilityScript.evaluate (<anonymous>:292:16)\n    at UtilityScript.<anonymous> (<anonymous>:1:44)\n    at /Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts:474:18",
+                            "location": {
+                              "file": "<anonymous>",
+                              "column": 16,
+                              "line": 292
+                            }
+                          },
+                          "errors": [
+                            {
+                              "location": {
+                                "file": "<anonymous>",
+                                "column": 16,
+                                "line": 292
+                              },
+                              "message": "Error: page.evaluate: SecurityError: Failed to read the 'localStorage' property from 'Window': Access is denied for this document.\n    at UtilityScript.evaluate (<anonymous>:292:16)\n    at UtilityScript.<anonymous> (<anonymous>:1:44)\n    at UtilityScript.evaluate (<anonymous>:292:16)\n    at UtilityScript.<anonymous> (<anonymous>:1:44)\n    at /Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts:474:18"
+                            }
+                          ],
+                          "stdout": [],
+                          "stderr": [],
+                          "retry": 0,
+                          "startTime": "2026-04-14T14:12:28.596Z",
+                          "annotations": [],
+                          "attachments": [
+                            {
+                              "name": "screenshot",
+                              "contentType": "image/png",
+                              "path": "/Users/administrator/Documents/BoomCard/partner-dashboard/test-results/cashback-admin-Admin-Cashb-c70ac--display-content-in-English-chromium/test-failed-1.png"
+                            }
+                          ],
+                          "errorLocation": {
+                            "file": "<anonymous>",
+                            "column": 16,
+                            "line": 292
+                          }
+                        }
+                      ],
+                      "status": "unexpected"
+                    }
+                  ],
+                  "id": "6a6070f53114b426a371-4534e1bcddfb7fc90276",
+                  "file": "cashback-admin.spec.ts",
+                  "line": 601,
+                  "column": 5
+                },
+                {
+                  "title": "should display content in Bulgarian",
+                  "ok": false,
+                  "tags": [],
+                  "tests": [
+                    {
+                      "timeout": 30000,
+                      "annotations": [],
+                      "expectedStatus": "passed",
+                      "projectId": "chromium",
+                      "projectName": "chromium",
+                      "results": [
+                        {
+                          "workerIndex": 19,
+                          "parallelIndex": 2,
+                          "status": "failed",
+                          "duration": 248,
+                          "error": {
+                            "message": "Error: page.evaluate: SecurityError: Failed to read the 'localStorage' property from 'Window': Access is denied for this document.\n    at UtilityScript.evaluate (<anonymous>:292:16)\n    at UtilityScript.<anonymous> (<anonymous>:1:44)",
+                            "stack": "Error: page.evaluate: SecurityError: Failed to read the 'localStorage' property from 'Window': Access is denied for this document.\n    at UtilityScript.evaluate (<anonymous>:292:16)\n    at UtilityScript.<anonymous> (<anonymous>:1:44)\n    at UtilityScript.evaluate (<anonymous>:292:16)\n    at UtilityScript.<anonymous> (<anonymous>:1:44)\n    at /Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts:489:18",
+                            "location": {
+                              "file": "<anonymous>",
+                              "column": 16,
+                              "line": 292
+                            }
+                          },
+                          "errors": [
+                            {
+                              "location": {
+                                "file": "<anonymous>",
+                                "column": 16,
+                                "line": 292
+                              },
+                              "message": "Error: page.evaluate: SecurityError: Failed to read the 'localStorage' property from 'Window': Access is denied for this document.\n    at UtilityScript.evaluate (<anonymous>:292:16)\n    at UtilityScript.<anonymous> (<anonymous>:1:44)\n    at UtilityScript.evaluate (<anonymous>:292:16)\n    at UtilityScript.<anonymous> (<anonymous>:1:44)\n    at /Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts:489:18"
+                            }
+                          ],
+                          "stdout": [],
+                          "stderr": [],
+                          "retry": 0,
+                          "startTime": "2026-04-14T14:12:28.590Z",
+                          "annotations": [],
+                          "attachments": [
+                            {
+                              "name": "screenshot",
+                              "contentType": "image/png",
+                              "path": "/Users/administrator/Documents/BoomCard/partner-dashboard/test-results/cashback-admin-Admin-Cashb-debe3-isplay-content-in-Bulgarian-chromium/test-failed-1.png"
+                            }
+                          ],
+                          "errorLocation": {
+                            "file": "<anonymous>",
+                            "column": 16,
+                            "line": 292
+                          }
+                        }
+                      ],
+                      "status": "unexpected"
+                    }
+                  ],
+                  "id": "6a6070f53114b426a371-0680f41c6c5d84a09fbe",
+                  "file": "cashback-admin.spec.ts",
+                  "line": 619,
+                  "column": 5
+                }
+              ]
+            },
+            {
+              "title": "Error Handling",
+              "file": "cashback-admin.spec.ts",
+              "line": 641,
+              "column": 8,
+              "specs": [
+                {
+                  "title": "should handle API errors gracefully",
+                  "ok": false,
+                  "tags": [],
+                  "tests": [
+                    {
+                      "timeout": 30000,
+                      "annotations": [],
+                      "expectedStatus": "passed",
+                      "projectId": "chromium",
+                      "projectName": "chromium",
+                      "results": [
+                        {
+                          "workerIndex": 20,
+                          "parallelIndex": 0,
+                          "status": "timedOut",
+                          "duration": 30112,
+                          "error": {
+                            "message": "\u001b[31mTest timeout of 30000ms exceeded.\u001b[39m",
+                            "stack": "\u001b[31mTest timeout of 30000ms exceeded.\u001b[39m"
+                          },
+                          "errors": [
+                            {
+                              "message": "\u001b[31mTest timeout of 30000ms exceeded.\u001b[39m"
+                            },
+                            {
+                              "location": {
+                                "file": "/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts",
+                                "column": 60,
+                                "line": 33
+                              },
+                              "message": "Error: locator.click: Test timeout of 30000ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByRole('button', { name: /log in|влез/i })\u001b[22m\n\n\n  31 |   await emailInput.fill(TEST_USER.email);\n  32 |   await page.getByLabel(/password|парола/i).fill(TEST_USER.password);\n> 33 |   await page.getByRole('button', { name: /log in|влез/i }).click();\n     |                                                            ^\n  34 |   await page.waitForURL(/\\/dashboard/, { timeout: 10000 });\n  35 | }\n  36 |\n    at loginAsAdmin (/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts:33:60)\n    at /Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts:516:7"
+                            }
+                          ],
+                          "stdout": [],
+                          "stderr": [],
+                          "retry": 0,
+                          "startTime": "2026-04-14T14:12:28.594Z",
+                          "annotations": [],
+                          "attachments": [
+                            {
+                              "name": "screenshot",
+                              "contentType": "image/png",
+                              "path": "/Users/administrator/Documents/BoomCard/partner-dashboard/test-results/cashback-admin-Admin-Cashb-c1656-andle-API-errors-gracefully-chromium/test-failed-1.png"
+                            },
+                            {
+                              "name": "error-context",
+                              "contentType": "text/markdown",
+                              "path": "/Users/administrator/Documents/BoomCard/partner-dashboard/test-results/cashback-admin-Admin-Cashb-c1656-andle-API-errors-gracefully-chromium/error-context.md"
+                            }
+                          ]
+                        }
+                      ],
+                      "status": "unexpected"
+                    }
+                  ],
+                  "id": "6a6070f53114b426a371-5d6a1f3637448629e35b",
+                  "file": "cashback-admin.spec.ts",
+                  "line": 642,
+                  "column": 5
+                },
+                {
+                  "title": "should handle network timeout",
+                  "ok": false,
+                  "tags": [],
+                  "tests": [
+                    {
+                      "timeout": 30000,
+                      "annotations": [],
+                      "expectedStatus": "passed",
+                      "projectId": "chromium",
+                      "projectName": "chromium",
+                      "results": [
+                        {
+                          "workerIndex": 21,
+                          "parallelIndex": 3,
+                          "status": "failed",
+                          "duration": 254,
+                          "error": {
+                            "message": "Error: page.goto: net::ERR_INTERNET_DISCONNECTED at http://localhost:3021/login\nCall log:\n\u001b[2m  - navigating to \"http://localhost:3021/login\", waiting until \"load\"\u001b[22m\n",
+                            "stack": "Error: page.goto: net::ERR_INTERNET_DISCONNECTED at http://localhost:3021/login\nCall log:\n\u001b[2m  - navigating to \"http://localhost:3021/login\", waiting until \"load\"\u001b[22m\n\n    at loginAsAdmin (/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts:24:14)\n    at /Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts:529:13",
+                            "location": {
+                              "file": "/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts",
+                              "column": 14,
+                              "line": 24
+                            },
+                            "snippet": "  22 | // Helper function to login\n  23 | async function loginAsAdmin(page) {\n> 24 |   await page.goto('/login');\n     |              ^\n  25 |   await page.waitForLoadState('networkidle', { timeout: 5000 });\n  26 |\n  27 |   // Wait for form to be interactive"
+                          },
+                          "errors": [
+                            {
+                              "location": {
+                                "file": "/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts",
+                                "column": 14,
+                                "line": 24
+                              },
+                              "message": "Error: page.goto: net::ERR_INTERNET_DISCONNECTED at http://localhost:3021/login\nCall log:\n\u001b[2m  - navigating to \"http://localhost:3021/login\", waiting until \"load\"\u001b[22m\n\n\n  22 | // Helper function to login\n  23 | async function loginAsAdmin(page) {\n> 24 |   await page.goto('/login');\n     |              ^\n  25 |   await page.waitForLoadState('networkidle', { timeout: 5000 });\n  26 |\n  27 |   // Wait for form to be interactive\n    at loginAsAdmin (/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts:24:14)\n    at /Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts:529:13"
+                            }
+                          ],
+                          "stdout": [],
+                          "stderr": [],
+                          "retry": 0,
+                          "startTime": "2026-04-14T14:12:28.597Z",
+                          "annotations": [],
+                          "attachments": [
+                            {
+                              "name": "screenshot",
+                              "contentType": "image/png",
+                              "path": "/Users/administrator/Documents/BoomCard/partner-dashboard/test-results/cashback-admin-Admin-Cashb-a1769-ould-handle-network-timeout-chromium/test-failed-1.png"
+                            }
+                          ],
+                          "errorLocation": {
+                            "file": "/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts",
+                            "column": 14,
+                            "line": 24
+                          }
+                        }
+                      ],
+                      "status": "unexpected"
+                    }
+                  ],
+                  "id": "6a6070f53114b426a371-21de4ef6a13daaa74bcd",
+                  "file": "cashback-admin.spec.ts",
+                  "line": 665,
+                  "column": 5
+                }
+              ]
+            },
+            {
+              "title": "Data Display",
+              "file": "cashback-admin.spec.ts",
+              "line": 682,
+              "column": 8,
+              "specs": [
+                {
+                  "title": "should display partner information correctly",
+                  "ok": false,
+                  "tags": [],
+                  "tests": [
+                    {
+                      "timeout": 30000,
+                      "annotations": [],
+                      "expectedStatus": "passed",
+                      "projectId": "chromium",
+                      "projectName": "chromium",
+                      "results": [
+                        {
+                          "workerIndex": 22,
+                          "parallelIndex": 4,
+                          "status": "timedOut",
+                          "duration": 30102,
+                          "error": {
+                            "message": "\u001b[31mTest timeout of 30000ms exceeded.\u001b[39m",
+                            "stack": "\u001b[31mTest timeout of 30000ms exceeded.\u001b[39m"
+                          },
+                          "errors": [
+                            {
+                              "message": "\u001b[31mTest timeout of 30000ms exceeded.\u001b[39m"
+                            },
+                            {
+                              "location": {
+                                "file": "/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts",
+                                "column": 60,
+                                "line": 33
+                              },
+                              "message": "Error: locator.click: Test timeout of 30000ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByRole('button', { name: /log in|влез/i })\u001b[22m\n\n\n  31 |   await emailInput.fill(TEST_USER.email);\n  32 |   await page.getByLabel(/password|парола/i).fill(TEST_USER.password);\n> 33 |   await page.getByRole('button', { name: /log in|влез/i }).click();\n     |                                                            ^\n  34 |   await page.waitForURL(/\\/dashboard/, { timeout: 10000 });\n  35 | }\n  36 |\n    at loginAsAdmin (/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts:33:60)\n    at /Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts:542:7"
+                            }
+                          ],
+                          "stdout": [],
+                          "stderr": [],
+                          "retry": 0,
+                          "startTime": "2026-04-14T14:12:28.593Z",
+                          "annotations": [],
+                          "attachments": [
+                            {
+                              "name": "screenshot",
+                              "contentType": "image/png",
+                              "path": "/Users/administrator/Documents/BoomCard/partner-dashboard/test-results/cashback-admin-Admin-Cashb-f3c8b-rtner-information-correctly-chromium/test-failed-1.png"
+                            },
+                            {
+                              "name": "error-context",
+                              "contentType": "text/markdown",
+                              "path": "/Users/administrator/Documents/BoomCard/partner-dashboard/test-results/cashback-admin-Admin-Cashb-f3c8b-rtner-information-correctly-chromium/error-context.md"
+                            }
+                          ]
+                        }
+                      ],
+                      "status": "unexpected"
+                    }
+                  ],
+                  "id": "6a6070f53114b426a371-536430646f95820f5c7c",
+                  "file": "cashback-admin.spec.ts",
+                  "line": 683,
+                  "column": 5
+                },
+                {
+                  "title": "should display amounts with proper formatting",
+                  "ok": false,
+                  "tags": [],
+                  "tests": [
+                    {
+                      "timeout": 30000,
+                      "annotations": [],
+                      "expectedStatus": "passed",
+                      "projectId": "chromium",
+                      "projectName": "chromium",
+                      "results": [
+                        {
+                          "workerIndex": 23,
+                          "parallelIndex": 5,
+                          "status": "timedOut",
+                          "duration": 30141,
+                          "error": {
+                            "message": "\u001b[31mTest timeout of 30000ms exceeded.\u001b[39m",
+                            "stack": "\u001b[31mTest timeout of 30000ms exceeded.\u001b[39m"
+                          },
+                          "errors": [
+                            {
+                              "message": "\u001b[31mTest timeout of 30000ms exceeded.\u001b[39m"
+                            },
+                            {
+                              "location": {
+                                "file": "/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts",
+                                "column": 60,
+                                "line": 33
+                              },
+                              "message": "Error: locator.click: Test timeout of 30000ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByRole('button', { name: /log in|влез/i })\u001b[22m\n\n\n  31 |   await emailInput.fill(TEST_USER.email);\n  32 |   await page.getByLabel(/password|парола/i).fill(TEST_USER.password);\n> 33 |   await page.getByRole('button', { name: /log in|влез/i }).click();\n     |                                                            ^\n  34 |   await page.waitForURL(/\\/dashboard/, { timeout: 10000 });\n  35 | }\n  36 |\n    at loginAsAdmin (/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts:33:60)\n    at /Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts:560:7"
+                            }
+                          ],
+                          "stdout": [],
+                          "stderr": [],
+                          "retry": 0,
+                          "startTime": "2026-04-14T14:12:29.667Z",
+                          "annotations": [],
+                          "attachments": [
+                            {
+                              "name": "screenshot",
+                              "contentType": "image/png",
+                              "path": "/Users/administrator/Documents/BoomCard/partner-dashboard/test-results/cashback-admin-Admin-Cashb-2d0a4-unts-with-proper-formatting-chromium/test-failed-1.png"
+                            },
+                            {
+                              "name": "error-context",
+                              "contentType": "text/markdown",
+                              "path": "/Users/administrator/Documents/BoomCard/partner-dashboard/test-results/cashback-admin-Admin-Cashb-2d0a4-unts-with-proper-formatting-chromium/error-context.md"
+                            }
+                          ]
+                        }
+                      ],
+                      "status": "unexpected"
+                    }
+                  ],
+                  "id": "6a6070f53114b426a371-55336fcfb4fe3ce2d84c",
+                  "file": "cashback-admin.spec.ts",
+                  "line": 704,
+                  "column": 5
+                },
+                {
+                  "title": "should display dates in correct format",
+                  "ok": false,
+                  "tags": [],
+                  "tests": [
+                    {
+                      "timeout": 30000,
+                      "annotations": [],
+                      "expectedStatus": "passed",
+                      "projectId": "chromium",
+                      "projectName": "chromium",
+                      "results": [
+                        {
+                          "workerIndex": 24,
+                          "parallelIndex": 2,
+                          "status": "timedOut",
+                          "duration": 30139,
+                          "error": {
+                            "message": "\u001b[31mTest timeout of 30000ms exceeded.\u001b[39m",
+                            "stack": "\u001b[31mTest timeout of 30000ms exceeded.\u001b[39m"
+                          },
+                          "errors": [
+                            {
+                              "message": "\u001b[31mTest timeout of 30000ms exceeded.\u001b[39m"
+                            },
+                            {
+                              "location": {
+                                "file": "/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts",
+                                "column": 60,
+                                "line": 33
+                              },
+                              "message": "Error: locator.click: Test timeout of 30000ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByRole('button', { name: /log in|влез/i })\u001b[22m\n\n\n  31 |   await emailInput.fill(TEST_USER.email);\n  32 |   await page.getByLabel(/password|парола/i).fill(TEST_USER.password);\n> 33 |   await page.getByRole('button', { name: /log in|влез/i }).click();\n     |                                                            ^\n  34 |   await page.waitForURL(/\\/dashboard/, { timeout: 10000 });\n  35 | }\n  36 |\n    at loginAsAdmin (/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts:33:60)\n    at /Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts:578:7"
+                            }
+                          ],
+                          "stdout": [],
+                          "stderr": [],
+                          "retry": 0,
+                          "startTime": "2026-04-14T14:12:29.666Z",
+                          "annotations": [],
+                          "attachments": [
+                            {
+                              "name": "screenshot",
+                              "contentType": "image/png",
+                              "path": "/Users/administrator/Documents/BoomCard/partner-dashboard/test-results/cashback-admin-Admin-Cashb-091dd-lay-dates-in-correct-format-chromium/test-failed-1.png"
+                            },
+                            {
+                              "name": "error-context",
+                              "contentType": "text/markdown",
+                              "path": "/Users/administrator/Documents/BoomCard/partner-dashboard/test-results/cashback-admin-Admin-Cashb-091dd-lay-dates-in-correct-format-chromium/error-context.md"
+                            }
+                          ]
+                        }
+                      ],
+                      "status": "unexpected"
+                    }
+                  ],
+                  "id": "6a6070f53114b426a371-96bbbe71497d5a5b2983",
+                  "file": "cashback-admin.spec.ts",
+                  "line": 725,
+                  "column": 5
+                }
+              ]
+            },
+            {
+              "title": "Accessibility",
+              "file": "cashback-admin.spec.ts",
+              "line": 741,
+              "column": 8,
+              "specs": [
+                {
+                  "title": "should have proper heading hierarchy",
+                  "ok": false,
+                  "tags": [],
+                  "tests": [
+                    {
+                      "timeout": 30000,
+                      "annotations": [],
+                      "expectedStatus": "passed",
+                      "projectId": "chromium",
+                      "projectName": "chromium",
+                      "results": [
+                        {
+                          "workerIndex": 25,
+                          "parallelIndex": 3,
+                          "status": "timedOut",
+                          "duration": 30143,
+                          "error": {
+                            "message": "\u001b[31mTest timeout of 30000ms exceeded.\u001b[39m",
+                            "stack": "\u001b[31mTest timeout of 30000ms exceeded.\u001b[39m"
+                          },
+                          "errors": [
+                            {
+                              "message": "\u001b[31mTest timeout of 30000ms exceeded.\u001b[39m"
+                            },
+                            {
+                              "location": {
+                                "file": "/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts",
+                                "column": 60,
+                                "line": 33
+                              },
+                              "message": "Error: locator.click: Test timeout of 30000ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByRole('button', { name: /log in|влез/i })\u001b[22m\n\n\n  31 |   await emailInput.fill(TEST_USER.email);\n  32 |   await page.getByLabel(/password|парола/i).fill(TEST_USER.password);\n> 33 |   await page.getByRole('button', { name: /log in|влез/i }).click();\n     |                                                            ^\n  34 |   await page.waitForURL(/\\/dashboard/, { timeout: 10000 });\n  35 | }\n  36 |\n    at loginAsAdmin (/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts:33:60)\n    at /Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts:590:7"
+                            }
+                          ],
+                          "stdout": [],
+                          "stderr": [],
+                          "retry": 0,
+                          "startTime": "2026-04-14T14:12:29.684Z",
+                          "annotations": [],
+                          "attachments": [
+                            {
+                              "name": "screenshot",
+                              "contentType": "image/png",
+                              "path": "/Users/administrator/Documents/BoomCard/partner-dashboard/test-results/cashback-admin-Admin-Cashb-fda91-ve-proper-heading-hierarchy-chromium/test-failed-1.png"
+                            },
+                            {
+                              "name": "error-context",
+                              "contentType": "text/markdown",
+                              "path": "/Users/administrator/Documents/BoomCard/partner-dashboard/test-results/cashback-admin-Admin-Cashb-fda91-ve-proper-heading-hierarchy-chromium/error-context.md"
+                            }
+                          ]
+                        }
+                      ],
+                      "status": "unexpected"
+                    }
+                  ],
+                  "id": "6a6070f53114b426a371-b62ebe83b6050a69ce27",
+                  "file": "cashback-admin.spec.ts",
+                  "line": 742,
+                  "column": 5
+                },
+                {
+                  "title": "should have accessible button labels",
+                  "ok": false,
+                  "tags": [],
+                  "tests": [
+                    {
+                      "timeout": 30000,
+                      "annotations": [],
+                      "expectedStatus": "passed",
+                      "projectId": "chromium",
+                      "projectName": "chromium",
+                      "results": [
+                        {
+                          "workerIndex": 26,
+                          "parallelIndex": 1,
+                          "status": "timedOut",
+                          "duration": 30098,
+                          "error": {
+                            "message": "\u001b[31mTest timeout of 30000ms exceeded.\u001b[39m",
+                            "stack": "\u001b[31mTest timeout of 30000ms exceeded.\u001b[39m"
+                          },
+                          "errors": [
+                            {
+                              "message": "\u001b[31mTest timeout of 30000ms exceeded.\u001b[39m"
+                            },
+                            {
+                              "location": {
+                                "file": "/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts",
+                                "column": 60,
+                                "line": 33
+                              },
+                              "message": "Error: locator.click: Test timeout of 30000ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByRole('button', { name: /log in|влез/i })\u001b[22m\n\n\n  31 |   await emailInput.fill(TEST_USER.email);\n  32 |   await page.getByLabel(/password|парола/i).fill(TEST_USER.password);\n> 33 |   await page.getByRole('button', { name: /log in|влез/i }).click();\n     |                                                            ^\n  34 |   await page.waitForURL(/\\/dashboard/, { timeout: 10000 });\n  35 | }\n  36 |\n    at loginAsAdmin (/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts:33:60)\n    at /Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts:604:7"
+                            }
+                          ],
+                          "stdout": [],
+                          "stderr": [],
+                          "retry": 0,
+                          "startTime": "2026-04-14T14:12:30.675Z",
+                          "annotations": [],
+                          "attachments": [
+                            {
+                              "name": "screenshot",
+                              "contentType": "image/png",
+                              "path": "/Users/administrator/Documents/BoomCard/partner-dashboard/test-results/cashback-admin-Admin-Cashb-2c1c1-ve-accessible-button-labels-chromium/test-failed-1.png"
+                            },
+                            {
+                              "name": "error-context",
+                              "contentType": "text/markdown",
+                              "path": "/Users/administrator/Documents/BoomCard/partner-dashboard/test-results/cashback-admin-Admin-Cashb-2c1c1-ve-accessible-button-labels-chromium/error-context.md"
+                            }
+                          ]
+                        }
+                      ],
+                      "status": "unexpected"
+                    }
+                  ],
+                  "id": "6a6070f53114b426a371-eb1008e61964b8beab2f",
+                  "file": "cashback-admin.spec.ts",
+                  "line": 759,
+                  "column": 5
+                },
+                {
+                  "title": "should have proper table structure",
+                  "ok": false,
+                  "tags": [],
+                  "tests": [
+                    {
+                      "timeout": 30000,
+                      "annotations": [],
+                      "expectedStatus": "passed",
+                      "projectId": "chromium",
+                      "projectName": "chromium",
+                      "results": [
+                        {
+                          "workerIndex": 27,
+                          "parallelIndex": 4,
+                          "status": "timedOut",
+                          "duration": 30099,
+                          "error": {
+                            "message": "\u001b[31mTest timeout of 30000ms exceeded.\u001b[39m",
+                            "stack": "\u001b[31mTest timeout of 30000ms exceeded.\u001b[39m"
+                          },
+                          "errors": [
+                            {
+                              "message": "\u001b[31mTest timeout of 30000ms exceeded.\u001b[39m"
+                            },
+                            {
+                              "location": {
+                                "file": "/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts",
+                                "column": 60,
+                                "line": 33
+                              },
+                              "message": "Error: locator.click: Test timeout of 30000ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByRole('button', { name: /log in|влез/i })\u001b[22m\n\n\n  31 |   await emailInput.fill(TEST_USER.email);\n  32 |   await page.getByLabel(/password|парола/i).fill(TEST_USER.password);\n> 33 |   await page.getByRole('button', { name: /log in|влез/i }).click();\n     |                                                            ^\n  34 |   await page.waitForURL(/\\/dashboard/, { timeout: 10000 });\n  35 | }\n  36 |\n    at loginAsAdmin (/Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts:33:60)\n    at /Users/administrator/Documents/BoomCard/partner-dashboard/tests/e2e/cashback-admin.spec.ts:616:7"
+                            }
+                          ],
+                          "stdout": [],
+                          "stderr": [],
+                          "retry": 0,
+                          "startTime": "2026-04-14T14:12:59.284Z",
+                          "annotations": [],
+                          "attachments": [
+                            {
+                              "name": "screenshot",
+                              "contentType": "image/png",
+                              "path": "/Users/administrator/Documents/BoomCard/partner-dashboard/test-results/cashback-admin-Admin-Cashb-b6eff-have-proper-table-structure-chromium/test-failed-1.png"
+                            },
+                            {
+                              "name": "error-context",
+                              "contentType": "text/markdown",
+                              "path": "/Users/administrator/Documents/BoomCard/partner-dashboard/test-results/cashback-admin-Admin-Cashb-b6eff-have-proper-table-structure-chromium/error-context.md"
+                            }
+                          ]
+                        }
+                      ],
+                      "status": "unexpected"
+                    }
+                  ],
+                  "id": "6a6070f53114b426a371-1ec93bf323ba6b7d6644",
+                  "file": "cashback-admin.spec.ts",
+                  "line": 773,
+                  "column": 5
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "cashback-ui-simple.spec.ts",
+      "file": "cashback-ui-simple.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Admin Cashback Page - UI Visual Testing",
+          "file": "cashback-ui-simple.spec.ts",
+          "line": 8,
+          "column": 6,
+          "specs": [
+            {
+              "title": "should navigate and display page structure",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 28,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1111,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-14T14:12:59.281Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "7e53a366f05a19375da1-9e42dc33b99ed7ede6c2",
+              "file": "cashback-ui-simple.spec.ts",
+              "line": 10,
+              "column": 3
+            },
+            {
+              "title": "should display responsive layout",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 29,
+                      "parallelIndex": 2,
+                      "status": "passed",
+                      "duration": 1428,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-14T14:13:00.461Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "7e53a366f05a19375da1-dc57c25832ce08d7d2d9",
+              "file": "cashback-ui-simple.spec.ts",
+              "line": 24,
+              "column": 3
+            },
+            {
+              "title": "should display tablet layout",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 30,
+                      "parallelIndex": 5,
+                      "status": "passed",
+                      "duration": 1372,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-14T14:13:00.465Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "7e53a366f05a19375da1-e0825153275127c07095",
+              "file": "cashback-ui-simple.spec.ts",
+              "line": 39,
+              "column": 3
+            },
+            {
+              "title": "should display mobile layout",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 31,
+                      "parallelIndex": 3,
+                      "status": "passed",
+                      "duration": 1228,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-14T14:13:00.474Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "7e53a366f05a19375da1-5b1fece3bf5160359b65",
+              "file": "cashback-ui-simple.spec.ts",
+              "line": 54,
+              "column": 3
+            },
+            {
+              "title": "should have proper console error handling",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 28,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1020,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-14T14:13:00.550Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "7e53a366f05a19375da1-b990bde85f9bba73e7fa",
+              "file": "cashback-ui-simple.spec.ts",
+              "line": 69,
+              "column": 3
+            },
+            {
+              "title": "should check network requests",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 32,
+                      "parallelIndex": 1,
+                      "status": "passed",
+                      "duration": 1471,
+                      "errors": [],
+                      "stdout": [
+                        {
+                          "text": "API requests: 2\n"
+                        }
+                      ],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-14T14:13:01.607Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "7e53a366f05a19375da1-e814d02950a98b185660",
+              "file": "cashback-ui-simple.spec.ts",
+              "line": 90,
+              "column": 3
+            },
+            {
+              "title": "check accessibility features",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 28,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1058,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-14T14:13:01.578Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "7e53a366f05a19375da1-9cd3b9f737484ca0f8b2",
+              "file": "cashback-ui-simple.spec.ts",
+              "line": 109,
+              "column": 3
+            },
+            {
+              "title": "homepage should load without errors",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 31,
+                      "parallelIndex": 3,
+                      "status": "passed",
+                      "duration": 1525,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-14T14:13:01.858Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "7e53a366f05a19375da1-b1cb8cb7c348f1bb9cbf",
+              "file": "cashback-ui-simple.spec.ts",
+              "line": 127,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-04-14T14:10:55.144Z",
+    "duration": 154428.072,
+    "expected": 9,
+    "skipped": 0,
+    "unexpected": 28,
+    "flaky": 0
+  }
+}
+npm error Lifecycle script `test:e2e:cashback` failed with error:
+npm error code 1
+npm error path /Users/administrator/Documents/BoomCard/partner-dashboard
+npm error workspace partner-dashboard@1.0.1
+npm error location /Users/administrator/Documents/BoomCard/partner-dashboard
+npm error command failed
+npm error command sh -c playwright test cashback --reporter=json

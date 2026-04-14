@@ -308,7 +308,7 @@ export const bg: TranslationKey = {
 
     // Categories
     restaurantsBars: 'Ресторанти и Барове',
-    restaurantsBarsDesc: 'Открийте над 150 заведения с до 24% кешбек',
+    restaurantsBarsDesc: 'Открийте над 150 заведения с до 20% кешбек',
     hotelsSpa: 'Хотели и СПА',
     hotelsSpaDesc: 'Луксозни престои и спа третирания',
     wineries: 'Винарни',
@@ -334,7 +334,7 @@ export const bg: TranslationKey = {
     // Hero секция - 2.1
     breadcrumb: 'BOOM места',
     title: 'Всички BOOM отстъпки на едно място',
-    subtitle: 'BOOM Card ти дава достъп до ексклузивни оферти с до 24% кешбек, според избрания от теб план.',
+    subtitle: 'BOOM Card ти дава достъп до ексклузивни оферти с до 20% кешбек, според избрания от теб план.',
     heroCta: 'Отключи BOOM Card',
     heroTrustLine: 'Безплатен 24-часов пробен период. Без заплащане.',
 
@@ -342,12 +342,12 @@ export const bg: TranslationKey = {
     resultsTitle: 'Подбрани BOOM места',
 
     // Карти - съдържание - 2.3
-    discountLabel: 'до 24%',
+    discountLabel: 'до 20%',
     discountNote: 'кешбек според абонаментния план',
 
     // Статистика
     activeOffers: 'Нови предложения на топ места',
-    upToDiscount: 'До 24% кешбек според абонаментния план',
+    upToDiscount: 'До 20% кешбек според абонаментния план',
     newOffersRegularly: 'Подбрани предложения',
     premiumOnlyNote: 'Някои оферти са достъпни само с Premium.',
 
@@ -1074,7 +1074,7 @@ export const bg: TranslationKey = {
     weeklyPlanTitle: 'BOOM Card PREMIUM – 7 ДНИ',
     weeklyPlanPeriod: '€ / седмица',
     weeklyPlanFeature1: 'Пълен Premium достъп',
-    weeklyPlanFeature2: 'До 24% кешбек (в зависимост от партньора)',
+    weeklyPlanFeature2: 'До 20% кешбек (в зависимост от партньора)',
     weeklyPlanFeature3: 'Активираш отстъпките директно от масата',
     weeklyPlanFeature4: 'Всичко се управлява през приложението',
     weeklyPlanFeature5: 'Без ангажимент след изтичане на периода',
@@ -1086,7 +1086,7 @@ export const bg: TranslationKey = {
     monthlyPlanTitle: 'BOOM Card PREMIUM – МЕСЕЧЕН',
     monthlyPlanPeriod: '€ / месец',
     monthlyPlanFeature1: 'Всички Premium заведения',
-    monthlyPlanFeature2: 'До 24% кешбек',
+    monthlyPlanFeature2: 'До 20% кешбек',
     monthlyPlanFeature3: 'Ексклузивни оферти',
     monthlyPlanFeature4: 'Приоритетна поддръжка',
     monthlyPlanFeature5: 'Първи достъп до нови партньори',
@@ -1847,7 +1847,7 @@ export const bg: TranslationKey = {
     // CTA за абонамент за неабонати
     subscriptionCta: {
       unlockDiscount: 'Отключи тази отстъпка',
-      getDiscount: 'Вземи до 24% кешбек',
+      getDiscount: 'Вземи до 20% кешбек',
       joinBoomCard: 'Присъедини се към BOOM Card',
       memberBenefit: 'Предимство за членове',
       exclusiveAccess: 'Ексклузивен достъп за членове',

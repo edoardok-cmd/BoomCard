@@ -44,69 +44,11 @@ export class WalletService {
   }
 
   /**
-   * Expire cashback transactions whose 60-day window has passed.
-   * Idempotent — transactions already CANCELLED are skipped.
-   * Creates a single ADJUSTMENT debit for the total expired amount.
-   */
-  async expireOldCashback(userId: string): Promise<void> {
-    const wallet = await this.getOrCreateWallet(userId);
-    const now = new Date();
-
-    await prisma.$transaction(async (tx) => {
-      const expired = await tx.walletTransaction.findMany({
-        where: {
-          walletId: wallet.id,
-          type: WalletTransactionType.CASHBACK_CREDIT,
-          status: WalletTransactionStatus.COMPLETED,
-          cashbackExpiresAt: { lt: now },
-        },
-      });
-
-      if (expired.length === 0) return;
-
-      const totalExpired = expired.reduce((sum, t) => sum + t.amount, 0);
-
-      // Read current balance inside the transaction for accurate balanceBefore/After
-      const currentWallet = await tx.wallet.findUniqueOrThrow({ where: { userId } });
-
-      // Mark each expired cashback as CANCELLED
-      await tx.walletTransaction.updateMany({
-        where: { id: { in: expired.map(t => t.id) } },
-        data: { status: WalletTransactionStatus.CANCELLED },
-      });
-
-      // Deduct expired amount from wallet (balance + availableBalance)
-      await tx.wallet.update({
-        where: { userId },
-        data: {
-          balance: { decrement: totalExpired },
-          availableBalance: { decrement: totalExpired },
-        },
-      });
-
-      // Record the expiry as an ADJUSTMENT transaction for transparency
-      await tx.walletTransaction.create({
-        data: {
-          walletId: wallet.id,
-          type: WalletTransactionType.ADJUSTMENT,
-          amount: -totalExpired,
-          balanceBefore: currentWallet.balance,
-          balanceAfter: currentWallet.balance - totalExpired,
-          status: WalletTransactionStatus.COMPLETED,
-          description: `Cashback expired (${expired.length} transaction${expired.length > 1 ? 's' : ''})`,
-          metadata: JSON.stringify({ expiredTransactionIds: expired.map(t => t.id) }),
-        },
-      });
-
-      logger.info(`Expired ${totalExpired.toFixed(2)} BGN cashback (${expired.length} txns) for user ${userId}`);
-    });
-  }
-
-  /**
-   * Get wallet balance — expires stale cashback before returning figures.
+   * Get wallet balance.
+   * Cashback expiry is intentionally NOT run here — it is handled by a
+   * nightly cron job (see cashbackExpiry.cron.ts) to keep reads lightweight.
    */
   async getBalance(userId: string) {
-    await this.expireOldCashback(userId);
     const wallet = await this.getOrCreateWallet(userId);
 
     // Resolve payout threshold for this user's active plan
@@ -219,8 +161,9 @@ export class WalletService {
     description?: string;
     metadata?: any;
     transactionId?: string;
+    receiptId?: string;
   }) {
-    const { userId, amount, type, description, metadata, transactionId } = params;
+    const { userId, amount, type, description, metadata, transactionId, receiptId } = params;
 
     if (amount <= 0) {
       throw new Error('Debit amount must be positive');
@@ -260,6 +203,7 @@ export class WalletService {
           description,
           metadata: metadata ? JSON.stringify(metadata) : undefined,
           transactionId,
+          receiptId,
         },
       });
 
@@ -291,9 +235,6 @@ export class WalletService {
     userId: string,
     opts: { iban?: string; beneficiaryName?: string } = {}
   ): Promise<{ amount: number; currency: string; transferId?: string }> {
-    // Expire stale cashback first so the balance is accurate
-    await this.expireOldCashback(userId);
-
     const wallet = await this.getOrCreateWallet(userId);
 
     if (wallet.isLocked) {
@@ -401,6 +342,10 @@ export class WalletService {
     const amountEUR = parseFloat((amount / EUR_TO_BGN_RATE).toFixed(2));
 
     try {
+      // Stable idempotency key: walletId + withdrawalTxId ensures a network-retry
+      // of createTransfer does not create a duplicate bank transfer.
+      const idempotencyKey = `${wallet.id}-${withdrawalTxId}`;
+
       // Create transfer then reserve (auto_process_to_done moves it to "done")
       const transfer = await payseraService.createTransfer({
         amountEUR,
@@ -408,6 +353,7 @@ export class WalletService {
         beneficiaryName,
         purpose: 'BoomCard cashback payout',
         callbackUrl: `${apiBaseUrl}/api/payments/transfer-callback?secret=${callbackSecret}`,
+        idempotencyKey,
       });
 
       // Stamp the transfer ID BEFORE reserving — if reserve throws the outer catch

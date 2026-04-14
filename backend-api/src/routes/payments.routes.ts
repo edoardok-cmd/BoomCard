@@ -1,5 +1,5 @@
 import { Router, Response } from 'express';
-import { authenticate, AuthRequest } from '../middleware/auth.middleware';
+import { authenticate, authorize, AuthRequest } from '../middleware/auth.middleware';
 import { asyncHandler } from '../middleware/error.middleware';
 import { stripeService } from '../services/stripe.service';
 import prisma from '../lib/prisma';
@@ -101,6 +101,15 @@ router.post('/intents/:id/cancel', asyncHandler(async (req: AuthRequest, res: Re
   const { id } = req.params;
 
   try {
+    // Verify the intent belongs to this user
+    const transaction = await prisma.transaction.findFirst({
+      where: { paymentIntentId: id, userId: req.user!.id },
+      select: { id: true },
+    });
+    if (!transaction) {
+      return res.status(403).json({ success: false, message: 'Payment intent not found or not owned by you' });
+    }
+
     await stripeService.cancelPaymentIntent(id);
 
     res.json({
@@ -237,6 +246,19 @@ router.delete('/cards/:id', asyncHandler(async (req: AuthRequest, res: Response)
   const { id } = req.params;
 
   try {
+    // Verify the payment method belongs to the calling user's Stripe customer
+    const userDetails = await prisma.user.findUnique({
+      where: { id: req.user!.id },
+      select: { stripeCustomerId: true },
+    });
+    if (!userDetails?.stripeCustomerId) {
+      return res.status(404).json({ success: false, message: 'No payment methods on file' });
+    }
+    const userPMs = await stripeService.listPaymentMethods(userDetails.stripeCustomerId);
+    if (!userPMs.some(pm => pm.id === id)) {
+      return res.status(403).json({ success: false, message: 'Payment method not found or not owned by you' });
+    }
+
     await stripeService.detachPaymentMethod(id);
 
     res.json({
@@ -292,7 +314,7 @@ router.post('/cards/:id/default', asyncHandler(async (req: AuthRequest, res: Res
  * POST /api/payments/refunds
  * Request refund
  */
-router.post('/refunds', asyncHandler(async (req: AuthRequest, res: Response) => {
+router.post('/refunds', authorize('ADMIN', 'SUPER_ADMIN'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const { paymentIntentId, amount, reason } = req.body;
 
   if (!paymentIntentId) {

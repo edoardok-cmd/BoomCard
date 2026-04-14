@@ -93,6 +93,8 @@ export interface CreateTransferParams {
   beneficiaryName: string;   // Account holder name
   purpose: string;           // Payment purpose text
   callbackUrl: string;       // URL Paysera will POST status updates to
+  /** Stable idempotency key — prevents duplicate transfers on retry. Format: walletId+withdrawalTxId */
+  idempotencyKey?: string;
 }
 
 export interface PayseraTransfer {
@@ -680,7 +682,8 @@ export class PayseraService {
   private async transferApiRequest<T>(
     method: string,
     path: string,
-    body?: Record<string, any>
+    body?: Record<string, any>,
+    extraHeaders?: Record<string, string>
   ): Promise<T> {
     const bodyString = body ? JSON.stringify(body) : undefined;
     const authorization = this.buildTransferMacHeader(method, path, bodyString);
@@ -692,6 +695,7 @@ export class PayseraService {
         Authorization: authorization,
         ...(bodyString ? { 'Content-Type': 'application/json' } : {}),
         Accept: 'application/json',
+        ...extraHeaders,
       },
       data: bodyString,
       timeout: 15000,
@@ -728,7 +732,11 @@ export class PayseraService {
 
     logger.info(`Creating Paysera transfer: ${amountStr} EUR → ${params.beneficiaryIban}`);
 
-    const transfer = await this.transferApiRequest<PayseraTransfer>('POST', '/transfers', body);
+    const idempotencyHeaders = params.idempotencyKey
+      ? { 'Idempotency-Key': params.idempotencyKey }
+      : undefined;
+
+    const transfer = await this.transferApiRequest<PayseraTransfer>('POST', '/transfers', body, idempotencyHeaders);
 
     logger.info(`Paysera transfer created: ${transfer.id}, status: ${transfer.status}`);
     return transfer;

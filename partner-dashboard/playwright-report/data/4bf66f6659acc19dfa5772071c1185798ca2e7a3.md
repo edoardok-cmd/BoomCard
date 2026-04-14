@@ -1,0 +1,168 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e1]:
+  - link "Skip to main content" [ref=e2] [cursor=pointer]:
+    - /url: "#main-content"
+  - generic [ref=e3]:
+    - generic [ref=e4]:
+      - banner [ref=e5]:
+        - generic [ref=e7]:
+          - link "BOOM Card" [ref=e8] [cursor=pointer]:
+            - /url: /
+            - img "BOOM Card" [ref=e9]
+          - navigation [ref=e11]:
+            - link "Начало" [ref=e13] [cursor=pointer]:
+              - /url: /
+            - link "Топ отстъпки" [ref=e15] [cursor=pointer]:
+              - /url: /offers
+            - link "BOOM Места" [ref=e17] [cursor=pointer]:
+              - /url: /venues
+              - text: BOOM Места
+              - img [ref=e18]
+            - link "Изживявания" [ref=e21] [cursor=pointer]:
+              - /url: /experiences
+              - text: Изживявания
+              - img [ref=e22]
+            - link "Партньори" [ref=e25] [cursor=pointer]:
+              - /url: /partners
+          - generic [ref=e26]:
+            - button "Search" [ref=e28] [cursor=pointer]:
+              - img [ref=e29]
+            - button "Change theme" [ref=e33] [cursor=pointer]:
+              - img [ref=e34]
+            - button "Toggle language" [ref=e37] [cursor=pointer]:
+              - img [ref=e38]
+            - link "Вход" [ref=e40] [cursor=pointer]:
+              - /url: /login
+              - button "Вход" [ref=e41]
+      - generic [ref=e43]:
+        - link "BOOM Card" [ref=e44] [cursor=pointer]:
+          - /url: /
+          - generic [ref=e45]: BOOM Card
+        - heading "Добре дошли обратно" [level=1] [ref=e46]
+        - paragraph [ref=e47]: Влезте в профила си, за да продължите
+        - generic [ref=e48]:
+          - generic [ref=e49]:
+            - generic [ref=e50]: Имейл адрес
+            - textbox "Имейл адрес" [ref=e51]:
+              - /placeholder: your@email.com
+              - text: demo@boomcard.bg
+          - generic [ref=e52]:
+            - generic [ref=e53]: Парола
+            - textbox "Парола" [active] [ref=e54]:
+              - /placeholder: ••••••••
+              - text: demo123
+          - generic [ref=e55]:
+            - generic [ref=e56]:
+              - checkbox "Запомни ме" [ref=e57] [cursor=pointer]
+              - generic [ref=e58] [cursor=pointer]: Запомни ме
+            - link "Забравена парола?" [ref=e59] [cursor=pointer]:
+              - /url: /forgot-password
+          - button "Вход" [ref=e60] [cursor=pointer]
+        - generic [ref=e62]: или
+        - generic [ref=e63]:
+          - button "Продължи с Google" [ref=e64] [cursor=pointer]:
+            - img [ref=e65]
+            - text: Продължи с Google
+          - button "Продължи с Facebook" [ref=e70] [cursor=pointer]:
+            - img [ref=e71]
+            - text: Продължи с Facebook
+        - paragraph [ref=e73]:
+          - text: Нямате профил?
+          - link "Изберете план" [ref=e74] [cursor=pointer]:
+            - /url: /#subscription-plans
+      - contentinfo [ref=e75]:
+        - generic [ref=e76]:
+          - generic [ref=e77]:
+            - generic [ref=e78]:
+              - button "Toggle BOOM Card menu" [expanded]:
+                - heading "BOOM Card" [level=4]
+              - paragraph [ref=e81]: Ексклузивни отстъпки и специални предложения в ресторанти, хотели, СПА центрове и изживявания в цяла България.
+            - generic [ref=e82]:
+              - button "Toggle Продукт menu":
+                - heading "Продукт" [level=4]
+              - list [ref=e85]:
+                - listitem [ref=e86]:
+                  - link "Как работи / FAQ" [ref=e87] [cursor=pointer]:
+                    - /url: /#how-it-works
+                - listitem [ref=e88]:
+                  - link "FAQ" [ref=e89] [cursor=pointer]:
+                    - /url: /#faq
+                - listitem [ref=e90]:
+                  - link "Мобилно приложение" [ref=e91] [cursor=pointer]:
+                    - /url: https://apps.apple.com/app/boomcard/id6740091561
+                - listitem [ref=e92]:
+                  - link "Цени" [ref=e93] [cursor=pointer]:
+                    - /url: /#subscription-plans
+                - listitem [ref=e94]:
+                  - link "Партньорска мрежа" [ref=e95] [cursor=pointer]:
+                    - /url: /partners
+            - generic [ref=e96]:
+              - button "Toggle Компания menu":
+                - heading "Компания" [level=4]
+              - list [ref=e99]:
+                - listitem [ref=e100]:
+                  - link "За нас" [ref=e101] [cursor=pointer]:
+                    - /url: /about
+                - listitem [ref=e102]:
+                  - link "Контакт" [ref=e103] [cursor=pointer]:
+                    - /url: /contact
+                - listitem [ref=e104]:
+                  - link "Стани партньор" [ref=e105] [cursor=pointer]:
+                    - /url: /become-partner
+            - generic [ref=e106]:
+              - button "Toggle Правна информация menu":
+                - heading "Правна информация" [level=4]
+              - list [ref=e109]:
+                - listitem [ref=e110]:
+                  - link "Политика за поверителност" [ref=e111] [cursor=pointer]:
+                    - /url: /privacy
+                - listitem [ref=e112]:
+                  - link "Общи условия" [ref=e113] [cursor=pointer]:
+                    - /url: /terms
+                - listitem [ref=e114]:
+                  - link "Политика за сигурност" [ref=e115] [cursor=pointer]:
+                    - /url: /security
+                - listitem [ref=e116]:
+                  - link "Политика за възстановяване" [ref=e117] [cursor=pointer]:
+                    - /url: /refund-policy
+                - listitem [ref=e118]:
+                  - link "Политика за бисквитки" [ref=e119] [cursor=pointer]:
+                    - /url: /cookies
+                - listitem [ref=e120]:
+                  - button "Настройки на бисквитките" [ref=e121] [cursor=pointer]
+            - generic [ref=e122]:
+              - button "Toggle Последвайте ни menu":
+                - heading "Последвайте ни" [level=4]
+              - generic [ref=e125]:
+                - link "Facebook" [ref=e126] [cursor=pointer]:
+                  - /url: https://facebook.com/boomcard
+                  - img [ref=e127]
+                  - text: Facebook
+                - link "Instagram" [ref=e129] [cursor=pointer]:
+                  - /url: https://instagram.com/boomcard
+                  - img [ref=e130]
+                  - text: Instagram
+                - link "LinkedIn" [ref=e132] [cursor=pointer]:
+                  - /url: https://linkedin.com/company/boomcard
+                  - img [ref=e133]
+                  - text: LinkedIn
+                - link "Twitter" [ref=e135] [cursor=pointer]:
+                  - /url: https://twitter.com/boomcard
+                  - img [ref=e136]
+                  - text: Twitter
+                - button "Сподели" [ref=e140] [cursor=pointer]:
+                  - img [ref=e141]
+                  - text: Сподели
+          - paragraph [ref=e148]: © 2026 BOOM Card. Всички права запазени.
+    - generic [ref=e149]:
+      - generic [ref=e150]:
+        - heading "Използваме бисквитки" [level=3] [ref=e151]
+        - paragraph [ref=e152]: Използваме бисквитки, за да подобрим вашето преживяване. Бисквитките за анализ ни помагат да разберем как използвате сайта.
+      - generic [ref=e153]:
+        - button "Приемам всички" [ref=e154] [cursor=pointer]
+        - button "Отхвърлям ненужните" [ref=e155] [cursor=pointer]
+        - button "Настройки" [ref=e156] [cursor=pointer]
+  - img [ref=e158]
+```

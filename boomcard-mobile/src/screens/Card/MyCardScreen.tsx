@@ -114,7 +114,7 @@ export default function MyCardScreen() {
     const benefitMap: Record<string, string> = {
       'One week Premium access': t('card.benefits.weeklyPremiumAccess'),
       'Up to 20% discount': t('card.benefits.discount24'),   // legacy backend string — maps to corrected translation
-      'Up to 24% cashback': t('card.benefits.discount24'),   // corrected backend string (forward-compatible)
+      'Up to 20% cashback': t('card.benefits.discount24'),   // corrected backend string (forward-compatible)
       'Exclusive Premium offers': t('card.benefits.exclusivePremiumOffers'),
       'Limited availability special offers': t('card.benefits.limitedOffers'),
       'Access to exclusive Premium campaigns': t('card.benefits.exclusiveCampaigns'),

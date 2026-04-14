@@ -8,6 +8,7 @@
 import { prisma } from '../lib/prisma';
 import { logger } from '../utils/logger';
 import { emailService } from './email.service';
+import { CASHBACK_MATRIX, CASHBACK_MATRIX_STEPS } from '../constants/receipt.constants';
 
 export interface CashbackSummaryEntry {
   partnerId: string;
@@ -101,12 +102,13 @@ class AdminCashbackService {
       };
     });
 
-    // Filter by status if requested
+    const sorted = results.sort((a, b) => a.partnerName.localeCompare(b.partnerName));
+
     if (params?.status) {
-      return results.filter(r => r.paymentStatus === params.status);
+      return sorted.filter(r => r.paymentStatus === params.status);
     }
 
-    return results.sort((a, b) => a.partnerName.localeCompare(b.partnerName));
+    return sorted;
   }
 
   /**
@@ -221,6 +223,173 @@ class AdminCashbackService {
       overdueCount: summary.filter(s => s.paymentStatus === 'OVERDUE').length,
       activePartners: summary.length,
     };
+  }
+
+  /**
+   * List all APPROVED receipts for a given (partnerId, year, month).
+   * Used for reconciliation: confirms exactly which receipts were included in a
+   * partner's cashback payment period.
+   */
+  async getReceiptsByPartnerMonth(params: {
+    partnerId: string;
+    month: string; // "YYYY-MM"
+  }): Promise<{
+    receipts: Array<{
+      id: string;
+      userId: string;
+      totalAmount: number | null;
+      cashbackAmount: number;
+      merchantName: string | null;
+      receiptDate: Date | null;
+      reviewedAt: Date | null;
+      reviewedBy: string | null;
+    }>;
+    receiptCount: number;
+    totalCashbackOwed: number;
+  }> {
+    const [year, mon] = params.month.split('-').map(Number);
+    const monthStart = new Date(year, mon - 1, 1);
+    const monthEnd = new Date(year, mon, 1);
+
+    const receipts = await prisma.receipt.findMany({
+      where: {
+        venueId: params.partnerId,
+        status: 'APPROVED' as any,
+        createdAt: { gte: monthStart, lt: monthEnd },
+      },
+      select: {
+        id: true,
+        userId: true,
+        totalAmount: true,
+        cashbackAmount: true,
+        merchantName: true,
+        receiptDate: true,
+        reviewedAt: true,
+        reviewedBy: true,
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    const totalCashbackOwed = receipts.reduce((sum, r) => sum + r.cashbackAmount, 0);
+
+    return {
+      receipts,
+      receiptCount: receipts.length,
+      totalCashbackOwed,
+    };
+  }
+
+  // ── Cashback Rate Matrix Management ──────────────────────────────────────────
+
+  /**
+   * Get all cashback rate rows, newest first. Each row covers one discount step.
+   */
+  async getCashbackRates(): Promise<Array<{
+    id: string;
+    discountStep: number;
+    basic: number;
+    premium: number;
+    effectiveFrom: Date;
+    createdBy: string | null;
+    notes: string | null;
+    createdAt: Date;
+  }>> {
+    return prisma.cashbackRate.findMany({
+      orderBy: [{ effectiveFrom: 'desc' }, { discountStep: 'asc' }],
+    });
+  }
+
+  /**
+   * The currently effective rate for every discount step (one row per step).
+   * Returns hardcoded constants for any step with no DB entry.
+   */
+  async getCurrentRates(): Promise<Array<{
+    discountStep: number;
+    basic: number;
+    premium: number;
+    effectiveFrom: Date | null;
+    source: 'db' | 'default';
+  }>> {
+    const now = new Date();
+    const dbRates = await prisma.cashbackRate.findMany({
+      where: { effectiveFrom: { lte: now } },
+      orderBy: { effectiveFrom: 'desc' },
+    });
+
+    const rateMap = new Map<number, { basic: number; premium: number; effectiveFrom: Date }>();
+    for (const rate of dbRates) {
+      if (!rateMap.has(rate.discountStep)) {
+        rateMap.set(rate.discountStep, {
+          basic: rate.basic,
+          premium: rate.premium,
+          effectiveFrom: rate.effectiveFrom,
+        });
+      }
+    }
+
+    return CASHBACK_MATRIX_STEPS.map(step => {
+      const db = rateMap.get(step);
+      if (db) {
+        return { discountStep: step, basic: db.basic, premium: db.premium, effectiveFrom: db.effectiveFrom, source: 'db' as const };
+      }
+      const defaults = CASHBACK_MATRIX[step];
+      return { discountStep: step, basic: defaults.basic, premium: defaults.premium, effectiveFrom: null, source: 'default' as const };
+    });
+  }
+
+  /**
+   * Create a new rate set covering all discount steps.
+   * All rows share the same effectiveFrom so they form one versioned "snapshot".
+   *
+   * @param rates  Array of { discountStep, basic, premium } — must cover all 5 steps.
+   * @param params Admin metadata.
+   */
+  async createCashbackRates(params: {
+    rates: Array<{ discountStep: number; basic: number; premium: number }>;
+    effectiveFrom?: Date;
+    adminUserId: string;
+    notes?: string;
+  }): Promise<void> {
+    const allowedSteps = new Set(CASHBACK_MATRIX_STEPS as readonly number[]);
+    const seenSteps = new Set<number>();
+    for (const r of params.rates) {
+      if (typeof r.discountStep !== 'number' || typeof r.basic !== 'number' || typeof r.premium !== 'number') {
+        throw new Error(`discountStep, basic, and premium must all be numbers`);
+      }
+      if (!allowedSteps.has(r.discountStep)) {
+        throw new Error(`Invalid discount step: ${r.discountStep}. Allowed: ${[...allowedSteps].join(', ')}`);
+      }
+      if (seenSteps.has(r.discountStep)) {
+        throw new Error(`Duplicate discountStep ${r.discountStep} in input — each step must appear once`);
+      }
+      seenSteps.add(r.discountStep);
+      if (r.basic < 0 || r.premium < 0 || r.basic > 100 || r.premium > 100) {
+        throw new Error(`Cashback percentages must be between 0 and 100`);
+      }
+    }
+
+    // All steps must be supplied so the snapshot is self-contained.
+    // Partial updates would mix DB-controlled and hardcoded-fallback rates in the same
+    // "version", making it impossible to reason about which rates are currently active.
+    const missingSteps = [...allowedSteps].filter(s => !seenSteps.has(s));
+    if (missingSteps.length > 0) {
+      throw new Error(`Missing discount steps: ${missingSteps.join(', ')}. All ${allowedSteps.size} steps must be provided to form a complete snapshot`);
+    }
+
+    const effectiveFrom = params.effectiveFrom ?? new Date();
+
+    await prisma.cashbackRate.createMany({
+      data: params.rates.map(r => ({
+        discountStep: r.discountStep,
+        basic: r.basic,
+        premium: r.premium,
+        effectiveFrom,
+        createdBy: params.adminUserId,
+        notes: params.notes ?? null,
+      })),
+    });
+
+    logger.info(`Admin ${params.adminUserId} created cashback rates effective ${effectiveFrom.toISOString()} (${params.rates.length} steps)`);
   }
 
   private currentMonth(): string {

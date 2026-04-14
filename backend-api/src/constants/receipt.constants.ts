@@ -10,13 +10,13 @@ export const MAX_RECEIPT_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
 export const ALLOWED_RECEIPT_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const;
 
 // ── Rate Limiting ──────────────────────────────────────────────────────────────
-export const DEFAULT_DAILY_SUBMISSION_LIMIT = 10;
-export const DEFAULT_MONTHLY_SUBMISSION_LIMIT = 100;
+export const DEFAULT_DAILY_SUBMISSION_LIMIT = Infinity;
+export const DEFAULT_MONTHLY_SUBMISSION_LIMIT = Infinity;
 
 // ── Fraud Score Thresholds ─────────────────────────────────────────────────────
-/** Receipts at or below this score are auto-approved. */
+// All receipts require admin manual review — these thresholds are retained
+// only for admin-facing risk-level labels and fraud alert notifications.
 export const DEFAULT_AUTO_APPROVE_THRESHOLD = 30;
-/** Receipts above this score are auto-rejected; in-between → manual review. */
 export const DEFAULT_AUTO_REJECT_THRESHOLD = 60;
 /** Fraud score at which admin fraud-alert notifications are sent. */
 export const FRAUD_ALERT_SCORE_THRESHOLD = 60;
@@ -54,19 +54,16 @@ export const UNUSUAL_HOUR_END = 6;
 // ── Cashback Matrix (partner discount % → user cashback %) ────────────────────
 // Source of truth: BOOM_Card_Master_Functionality.docx — Section 2
 // Basic plan has a hard 10% cap regardless of partner discount.
-// Premium/Light plans scale up to 24% at 30% partner discount.
+// Premium/Light plans scale up to 20% at 25% partner discount.
 export const CASHBACK_MATRIX: Record<number, { basic: number; premium: number }> = {
   5:  { basic: 5,  premium: 5  },
   10: { basic: 5,  premium: 8  },
   15: { basic: 8,  premium: 12 },
   20: { basic: 10, premium: 16 },
   25: { basic: 10, premium: 20 },
-  30: { basic: 10, premium: 24 },
 };
 /** Ordered discount steps used to find the nearest row in CASHBACK_MATRIX. */
-export const CASHBACK_MATRIX_STEPS = [5, 10, 15, 20, 25, 30] as const;
-/** Hard cap for Basic plan cashback (%). Premium has no separate cap — matrix governs. */
-export const BASIC_MAX_CASHBACK_PCT = 10;
+export const CASHBACK_MATRIX_STEPS = [5, 10, 15, 20, 25] as const;
 
 // ── Payout Thresholds (EUR) ────────────────────────────────────────────────────
 // Cashback is not paid out until the balance reaches the plan's minimum threshold.
@@ -78,8 +75,14 @@ export const PAYOUT_THRESHOLD_PREMIUM_MONTHLY_EUR = 15;
 /** Cashback earned from each approved transaction expires after this many days. */
 export const CASHBACK_VALIDITY_DAYS = 60;
 
-export const DEFAULT_MAX_CASHBACK_PER_SCAN = 50.0;
-export const DEFAULT_MIN_BILL_AMOUNT = 10;
+export const DEFAULT_MAX_CASHBACK_PER_SCAN = Infinity;
+export const DEFAULT_MIN_BILL_AMOUNT = 0;
+
+// ── Per-User Cashback Caps (rolling windows) ───────────────────────────────────
+/** Maximum total cashback (BGN) a user can earn in a rolling 24-hour window. */
+export const DEFAULT_MAX_CASHBACK_PER_DAY = Infinity;
+/** Maximum total cashback (BGN) a user can earn in a rolling 30-day window. */
+export const DEFAULT_MAX_CASHBACK_PER_MONTH = Infinity;
 
 // ── Cashback Crediting ─────────────────────────────────────────────────────────
 /** Days after approval when cashback is estimated to land in the wallet. */
@@ -105,6 +108,12 @@ export const DHASH_GRID_SIZE = 16;
 export const DHASH_BITS = 240;
 /** Stored hex string length: DHASH_BITS / 4 = 60 chars. */
 export const DHASH_HEX_LENGTH = 60;
+
+// ── Perceptual Hash Duplicate Detection ────────────────────────────────────────
+/** Hamming distance (bits) at or below which two dHash hexes are near-identical duplicates. */
+export const PERCEPTUAL_HASH_CLOSE_THRESHOLD = 10;
+/** Hamming distance (bits) at or below which two dHash hexes are considered visually similar. */
+export const PERCEPTUAL_HASH_MODERATE_THRESHOLD = 20;
 
 export const DEFAULT_TEMPLATE_MATCH_ENABLED      = false;
 export const DEFAULT_TEMPLATE_VISUAL_WEIGHT       = 0.5;

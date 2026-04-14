@@ -36,6 +36,9 @@ import adminCashbackRouter from './routes/adminCashback.routes';
 // Import WebSocket handler
 import { initializeWebSocket } from './websocket/server';
 
+// Import job scheduler
+import { registerScheduledJobs } from './jobs/scheduler';
+
 // Import middleware
 import { errorHandler } from './middleware/error.middleware';
 import { csrfProtection } from './middleware/security.middleware';
@@ -226,6 +229,9 @@ async function startServer() {
 
       // Start production monitoring (memory checks, self health check, alerting)
       monitoring.startMonitoring(Number(PORT));
+
+      // Register nightly background jobs (cashback expiry, manual-review expiry)
+      registerScheduledJobs();
     });
   } catch (error) {
     logger.error('❌ Failed to connect to database:', error);

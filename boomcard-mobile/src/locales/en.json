@@ -279,7 +279,7 @@
     "supportContact": "Email: support@boomcard.com\nPhone: +359 XXX XXXX",
     "benefits": {
       "weeklyPremiumAccess": "One week Premium access",
-      "discount24": "Up to 24% cashback",
+      "discount24": "Up to 20% cashback",
       "exclusivePremiumOffers": "Exclusive Premium offers",
       "limitedOffers": "Limited availability special offers",
       "exclusiveCampaigns": "Access to exclusive Premium campaigns",
@@ -306,7 +306,7 @@
     "scanInstructions": "Scan the QR code on the BOOM-Sticker",
     "enterBillAmount": "Enter Bill Amount",
     "billAmount": "Bill Amount (BGN)",
-    "cashbackInfo": "You will earn cashback based on your plan: up to 10% (Basic) or up to 24% (Premium & Premium Weekly)",
+    "cashbackInfo": "You will earn cashback based on your plan: up to 10% (Basic) or up to 20% (Premium & Premium Weekly)",
     "userEstimatedCashback": "Estimated cashback",
     "enterValidAmount": "Please enter a valid bill amount",
     "invalidQRCode": "Not a valid BOOM sticker QR code",

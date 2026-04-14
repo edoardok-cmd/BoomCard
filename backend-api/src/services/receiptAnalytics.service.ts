@@ -203,45 +203,44 @@ class ReceiptAnalyticsService {
 
       if (!analytics) return;
 
+      // Use a delta approach so old and new blocks that target the same field
+      // (e.g. APPROVED→APPROVED, MANUAL_REVIEW→PENDING) don't overwrite each other.
+      // Plain object-key assignment means the second block silently replaces the first,
+      // turning a no-op into a net-increment.
+      let approvedDelta = 0;
+      let rejectedDelta = 0;
+      let pendingDelta = 0;
+      let cashbackDelta = 0;
+
+      if (oldStatus === 'APPROVED') { approvedDelta--; cashbackDelta -= cashbackAmount; }
+      else if (oldStatus === 'REJECTED') { rejectedDelta--; }
+      else if (oldStatus === 'PENDING' || oldStatus === 'MANUAL_REVIEW') { pendingDelta--; }
+
+      if (newStatus === 'APPROVED') { approvedDelta++; cashbackDelta += cashbackAmount; }
+      else if (newStatus === 'REJECTED') { rejectedDelta++; }
+      else if (newStatus === 'PENDING' || newStatus === 'MANUAL_REVIEW') { pendingDelta++; }
+
       const updates: any = {};
+      if (approvedDelta !== 0) updates.approvedReceipts = approvedDelta > 0 ? { increment: approvedDelta } : { decrement: -approvedDelta };
+      if (rejectedDelta !== 0) updates.rejectedReceipts = rejectedDelta > 0 ? { increment: rejectedDelta } : { decrement: -rejectedDelta };
+      if (pendingDelta !== 0) updates.pendingReceipts = pendingDelta > 0 ? { increment: pendingDelta } : { decrement: -pendingDelta };
+      if (cashbackDelta !== 0) updates.totalCashback = cashbackDelta > 0 ? { increment: cashbackDelta } : { decrement: -cashbackDelta };
 
-      // Handle status transitions
-      if (oldStatus === 'PENDING' || oldStatus === 'MANUAL_REVIEW') {
-        updates.pendingReceipts = { decrement: 1 };
-      } else if (oldStatus === 'APPROVED') {
-        updates.approvedReceipts = { decrement: 1 };
-        updates.totalCashback = { decrement: cashbackAmount };
-      } else if (oldStatus === 'REJECTED') {
-        updates.rejectedReceipts = { decrement: 1 };
-      }
+      if (Object.keys(updates).length === 0) return; // same-status no-op (e.g. APPROVED→APPROVED)
 
-      if (newStatus === 'APPROVED') {
-        updates.approvedReceipts = { increment: 1 };
-        updates.totalCashback = { increment: cashbackAmount };
-      } else if (newStatus === 'REJECTED') {
-        updates.rejectedReceipts = { increment: 1 };
-      } else if (newStatus === 'MANUAL_REVIEW' || newStatus === 'PENDING') {
-        updates.pendingReceipts = { increment: 1 };
-      }
+      // Fold successRate into the same update to avoid a read-then-write TOCTOU race.
+      // analytics.approvedReceipts + approvedDelta gives the post-update approved count;
+      // totalReceipts is not modified by this method, so it's stable as a denominator.
+      const newApproved = analytics.approvedReceipts + approvedDelta;
+      updates.successRate =
+        analytics.totalReceipts > 0
+          ? parseFloat(((newApproved / analytics.totalReceipts) * 100).toFixed(2))
+          : 0;
 
       await prisma.receiptAnalytics.update({
         where: { userId },
         data: updates,
       });
-
-      // Recalculate success rate
-      const updated = await prisma.receiptAnalytics.findUnique({
-        where: { userId },
-      });
-
-      if (updated) {
-        await prisma.receiptAnalytics.update({
-          where: { userId },
-          data: {
-            successRate: (updated.approvedReceipts / updated.totalReceipts) * 100,
-          },
-        });
-      }
 
       console.log(`📊 Analytics updated for status change: ${oldStatus} → ${newStatus}`);
     } catch (error) {

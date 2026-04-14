@@ -80,6 +80,14 @@ router.post('/:id/upgrade', asyncHandler(async (req: AuthRequest, res: Response)
   const { id } = req.params;
   const { newTier } = upgradeSchema.parse(req.body);
 
+  const existing = await prisma.card.findUnique({ where: { id }, select: { userId: true } });
+  if (!existing) {
+    return res.status(404).json({ error: 'Card not found' });
+  }
+  if (existing.userId !== req.user!.id) {
+    return res.status(403).json({ error: 'You do not have permission to upgrade this card' });
+  }
+
   const card = await cardService.upgradeCardTier(id, newTier);
 
   res.json(card);
@@ -97,6 +105,14 @@ router.post('/:id/deactivate', asyncHandler(async (req: AuthRequest, res: Respon
   const { id } = req.params;
   const { reason } = deactivateSchema.parse(req.body);
 
+  const existing = await prisma.card.findUnique({ where: { id }, select: { userId: true } });
+  if (!existing) {
+    return res.status(404).json({ error: 'Card not found' });
+  }
+  if (existing.userId !== req.user!.id) {
+    return res.status(403).json({ error: 'You do not have permission to deactivate this card' });
+  }
+
   const card = await cardService.deactivateCard(id, reason);
 
   res.json(card);
@@ -108,6 +124,15 @@ router.post('/:id/deactivate', asyncHandler(async (req: AuthRequest, res: Respon
  */
 router.post('/:id/activate', asyncHandler(async (req: AuthRequest, res: Response) => {
   const { id } = req.params;
+
+  const existing = await prisma.card.findUnique({ where: { id }, select: { userId: true } });
+  if (!existing) {
+    return res.status(404).json({ error: 'Card not found' });
+  }
+  if (existing.userId !== req.user!.id) {
+    return res.status(403).json({ error: 'You do not have permission to activate this card' });
+  }
+
   const card = await cardService.activateCard(id);
 
   res.json(card);
@@ -119,6 +144,15 @@ router.post('/:id/activate', asyncHandler(async (req: AuthRequest, res: Response
  */
 router.get('/:id/statistics', asyncHandler(async (req: AuthRequest, res: Response) => {
   const { id } = req.params;
+
+  const existing = await prisma.card.findUnique({ where: { id }, select: { userId: true } });
+  if (!existing) {
+    return res.status(404).json({ error: 'Card not found' });
+  }
+  if (existing.userId !== req.user!.id) {
+    return res.status(403).json({ error: 'You do not have permission to view this card' });
+  }
+
   const stats = await cardService.getCardStatistics(id);
 
   res.json(stats);

@@ -124,10 +124,7 @@ const ReceiptsScreen = ({ navigation }: any) => {
   const s = getStyles(theme, isDarkMode);
 
   const renderReceiptItem = ({ item }: { item: Receipt }) => {
-    // Auto-approved = APPROVED but not yet admin-confirmed (reviewedBy is absent)
-    const isAutoApproved = item.status === 'APPROVED' && !item.reviewedBy;
-    const effectiveStatus = isAutoApproved ? 'PENDING_CONFIRMATION' : item.status;
-    const statusConfig = STATUS_CONFIG[effectiveStatus] || STATUS_CONFIG[item.status] || STATUS_CONFIG.EXPIRED;
+    const statusConfig = STATUS_CONFIG[item.status] || STATUS_CONFIG.EXPIRED;
 
     return (
       <TouchableOpacity
@@ -152,9 +149,7 @@ const ReceiptsScreen = ({ navigation }: any) => {
             <View style={[s.statusBadge, { backgroundColor: isDarkMode ? `${statusConfig.bg}30` : statusConfig.bg }]}>
               <Ionicons name={statusConfig.icon} size={13} color={isDarkMode ? statusConfig.text.replace('#0', '#6').replace('#1', '#5').replace('#3', '#7').replace('#5', '#9').replace('#9', '#D') : statusConfig.text} />
               <Text style={[s.statusText, { color: isDarkMode ? statusConfig.text.replace('#0', '#6').replace('#1', '#5').replace('#3', '#7').replace('#5', '#9').replace('#9', '#D') : statusConfig.text }]}>
-                {isAutoApproved
-                  ? t('receipts.status.PENDING_CONFIRMATION')
-                  : (t(`receipts.status.${item.status}`) || item.status)}
+                {t(`receipts.status.${item.status}`) || item.status}
               </Text>
             </View>
           </View>
@@ -176,14 +171,13 @@ const ReceiptsScreen = ({ navigation }: any) => {
             {item.cashbackAmount && item.cashbackAmount > 0 && (
               <View style={s.detailRow}>
                 <View style={s.detailLabelRow}>
-                  <Ionicons name="trending-up" size={14} color={isAutoApproved ? '#0369A1' : '#10B981'} />
+                  <Ionicons name="trending-up" size={14} color="#10B981" />
                   <Text style={s.detailLabel}>{t('receipts.cashback')}</Text>
                 </View>
-                <View style={[s.cashbackBadge, isAutoApproved ? { backgroundColor: '#E0F2FE' } : undefined]}>
-                  <Text style={[s.cashbackValue, isAutoApproved ? { color: '#0369A1' } : undefined]}>
-                    {isAutoApproved ? '~' : '+'}{formatAmount(item.cashbackAmount)}
+                <View style={s.cashbackBadge}>
+                  <Text style={s.cashbackValue}>
+                    +{formatAmount(item.cashbackAmount)}
                     {item.cashbackPercent && ` (${item.cashbackPercent}%)`}
-                    {isAutoApproved ? ' ⏳' : ''}
                   </Text>
                 </View>
               </View>
@@ -401,6 +395,8 @@ const getStyles = (theme: any, isDarkMode: boolean) => StyleSheet.create({
   },
   emptyContainer: {
     flexGrow: 1,
+    paddingTop: 28,
+    paddingHorizontal: 16,
   },
 
   // Stats Card — matching Dashboard design
@@ -408,6 +404,8 @@ const getStyles = (theme: any, isDarkMode: boolean) => StyleSheet.create({
     backgroundColor: theme.colors.surface,
     borderRadius: 24,
     padding: 20,
+    marginTop: 20,
+    marginHorizontal: 16,
     marginBottom: 20,
     flexDirection: 'row',
     alignItems: 'center',

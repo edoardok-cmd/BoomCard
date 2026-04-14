@@ -193,10 +193,11 @@ export const SECURITY_CONFIG = {
   // Fraud Detection
   FRAUD: {
     MIN_OCR_CONFIDENCE: parseInt(process.env.MIN_OCR_CONFIDENCE || '30'),
-    AUTO_APPROVE_THRESHOLD: parseInt(process.env.FRAUD_SCORE_AUTO_APPROVE || '30'),
-    AUTO_REJECT_THRESHOLD: parseInt(process.env.FRAUD_SCORE_AUTO_REJECT || '70'),
-    MAX_SCANS_PER_DAY: parseInt(process.env.MAX_SCANS_PER_DAY || '3'),
-    MAX_SCANS_PER_MONTH: parseInt(process.env.MAX_SCANS_PER_MONTH || '30'),
+    // All receipts/scans require admin review — thresholds are for risk-level labels only
+    RISK_LEVEL_MEDIUM_THRESHOLD: parseInt(process.env.FRAUD_SCORE_AUTO_APPROVE || '30'),
+    RISK_LEVEL_HIGH_THRESHOLD: parseInt(process.env.FRAUD_SCORE_AUTO_REJECT || '70'),
+    MAX_SCANS_PER_DAY: parseInt(process.env.MAX_SCANS_PER_DAY || '999999'),
+    MAX_SCANS_PER_MONTH: parseInt(process.env.MAX_SCANS_PER_MONTH || '999999'),
   },
 
   // Content Security

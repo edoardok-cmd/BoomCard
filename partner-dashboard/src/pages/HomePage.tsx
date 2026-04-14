@@ -959,8 +959,8 @@ const HomePage: React.FC = () => {
       {
         question: language === 'bg' ? 'Каква е средната отстъпка?' : 'What is the average discount?',
         answer: language === 'bg'
-          ? 'Кешбекът зависи от отстъпката на партньора. Basic план дава до 10% кешбек, а Premium планове — до 24%. Точният процент следва фиксирана матрица спрямо нивото на партньора.'
-          : 'Cashback depends on the discount offered by the partner. The Basic plan gives up to 10% cashback, and Premium plans up to 24%. The exact percentage follows a fixed matrix based on the partner\'s discount level.',
+          ? 'Кешбекът зависи от отстъпката на партньора. Basic план дава до 10% кешбек, а Premium планове — до 20%. Точният процент следва фиксирана матрица спрямо нивото на партньора.'
+          : 'Cashback depends on the discount offered by the partner. The Basic plan gives up to 10% cashback, and Premium plans up to 20%. The exact percentage follows a fixed matrix based on the partner\'s discount level.',
       },
     ]);
   }, [language]);
@@ -1789,8 +1789,8 @@ const HomePage: React.FC = () => {
               {
                 q: language === 'bg' ? 'Каква е средната отстъпка?' : 'What is the average discount?',
                 a: language === 'bg'
-                  ? 'Кешбекът зависи от отстъпката на партньора. Basic план дава до 10% кешбек, а Premium планове — до 24%. Точният процент следва фиксирана матрица спрямо нивото на партньора.'
-                  : 'Cashback depends on the discount offered by the partner. The Basic plan gives up to 10% cashback, and Premium plans up to 24%. The exact percentage follows a fixed matrix based on the partner\'s discount level.',
+                  ? 'Кешбекът зависи от отстъпката на партньора. Basic план дава до 10% кешбек, а Premium планове — до 20%. Точният процент следва фиксирана матрица спрямо нивото на партньора.'
+                  : 'Cashback depends on the discount offered by the partner. The Basic plan gives up to 10% cashback, and Premium plans up to 20%. The exact percentage follows a fixed matrix based on the partner\'s discount level.',
               },
               {
                 q: language === 'bg' ? 'Мога ли да откажа абонамента си?' : 'Can I cancel my subscription?',

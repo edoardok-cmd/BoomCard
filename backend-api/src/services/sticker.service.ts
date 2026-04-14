@@ -2,6 +2,7 @@ import { Sticker, StickerScan, StickerLocation, VenueStickerConfig, ScanStatus, 
 import QRCode from 'qrcode';
 import { prisma } from '../lib/prisma';
 import { walletService } from './wallet.service';
+import { notificationService } from './notification.service';
 import { logger } from '../utils/logger';
 import { partnerTypeService } from './partnerType.service';
 import { fraudDetectionService } from './fraudDetection.service';
@@ -74,7 +75,6 @@ export interface FraudCheckResult {
   fraudScore: number; // 0-100
   fraudReasons: string[];
   riskLevel: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
-  shouldAutoApprove: boolean;
   requiresManualReview: boolean;
 }
 
@@ -262,7 +262,7 @@ class StickerService {
     // Show the best-case cashback % for this venue (Premium tier at partner's discount level).
     // The actual % at scan time depends on the user's card tier.
     const { cashbackPercent } = await fraudDetectionService.calculateCashback({
-      venueId: sticker.venue.partner?.id,
+      venueId: sticker.venue.id, // venue ID — calculateCashback traverses Venue → partner internally
       amount: 100, // dummy amount — we only need the percent
       cardTier: 'PREMIUM', // show maximum possible
     });
@@ -432,15 +432,11 @@ class StickerService {
         throw new Error(`Minimum bill amount is ${config.minBillAmount} BGN`);
       }
 
-      const partner = await prisma.partner.findFirst({
-        where: { venues: { some: { id: existing.venueId } } },
-        select: { id: true },
-      });
-
       const { cashbackAmount, cashbackPercent } = await fraudDetectionService.calculateCashback({
-        venueId: partner?.id,
+        venueId: existing.venueId, // venue ID — calculateCashback traverses Venue → partner internally
         amount: billAmount,
         cardTier: existing.card.type as 'LIGHT' | 'BASIC' | 'PREMIUM',
+        userId,
       });
 
       const fraudCheck = await this.performFraudCheck({
@@ -552,11 +548,12 @@ class StickerService {
       throw new Error(`Minimum bill amount is ${config.minBillAmount} BGN`);
     }
 
-    // 5. Cashback calculation
+    // 5. Cashback calculation (userId enforces rolling daily/monthly caps)
     const { cashbackAmount, cashbackPercent } = await fraudDetectionService.calculateCashback({
-      venueId: partner?.id,
+      venueId: sticker.venueId, // venue ID — calculateCashback traverses Venue → partner internally
       amount: billAmount,
       cardTier: card.type as 'LIGHT' | 'BASIC' | 'PREMIUM',
+      userId: data.userId,
     });
 
     // 6. GPS distance
@@ -654,19 +651,11 @@ class StickerService {
       },
     });
 
-    // Auto-process if fraud score is low
-    const config = scan.venue.stickerConfig;
-    if (config && scan.fraudScore < config.autoApproveThreshold) {
-      await this.approveScan(scanId);
-    } else {
-      // Flag for manual review
-      await prisma.stickerScan.update({
-        where: { id: scanId },
-        data: { status: ScanStatus.MANUAL_REVIEW },
-      });
-    }
-
-    return updated;
+    // All scans require admin approval — no auto-approve
+    return prisma.stickerScan.update({
+      where: { id: scanId },
+      data: { status: ScanStatus.MANUAL_REVIEW },
+    });
   }
 
   /**
@@ -692,8 +681,9 @@ class StickerService {
       throw new Error('Scan not found');
     }
 
-    if (scan.status === ScanStatus.APPROVED) {
-      throw new Error('Scan has already been approved');
+    const approvableStatuses: ScanStatus[] = [ScanStatus.PENDING, ScanStatus.VALIDATING, ScanStatus.MANUAL_REVIEW];
+    if (!approvableStatuses.includes(scan.status)) {
+      throw new Error(`Scan cannot be approved: current status is ${scan.status}`);
     }
 
     if (scan.cashbackAmount <= 0) {
@@ -704,11 +694,11 @@ class StickerService {
     const oldStatus = scan.status;
     const oldProcessedAt = scan.processedAt;
 
-    // Atomic claim — prevents concurrent double-approval.
-    // Two simultaneous calls both see status !== APPROVED above, but only one
-    // updateMany can match the { status: { not: APPROVED } } condition.
+    // Atomic claim — prevents concurrent double-approval and blocks REJECTED/EXPIRED scans
+    // from being approved after the fact. Narrowing to approvable statuses (not just
+    // "not APPROVED") prevents a rejected scan from being re-approved by a retry.
     const claimResult = await prisma.stickerScan.updateMany({
-      where: { id: scanId, status: { not: ScanStatus.APPROVED } },
+      where: { id: scanId, status: { in: approvableStatuses } },
       data: { status: ScanStatus.APPROVED, processedAt: new Date() },
     });
 
@@ -717,6 +707,40 @@ class StickerService {
     }
 
     const locationName = scan.sticker?.location?.name ?? 'location';
+
+    // Pre-check: if wallet is locked, don't attempt credit — roll back the claim and
+    // leave the scan in MANUAL_REVIEW with a clear log. This prevents opaque retry loops.
+    try {
+      const wallet = await prisma.wallet.findUnique({ where: { userId: scan.userId } });
+      if (wallet?.isLocked) {
+        logger.warn(
+          `Cannot approve scan ${scanId}: wallet is locked (${wallet.lockedReason}). ` +
+          `Rolling back and leaving scan in MANUAL_REVIEW for retry after lock is lifted.`
+        );
+        // Roll back the claim so the scan can be retried
+        await prisma.stickerScan.update({
+          where: { id: scanId },
+          data: { status: oldStatus, processedAt: oldProcessedAt },
+        });
+        throw new Error(
+          `User's wallet is locked and cannot receive cashback credits. ` +
+          `Contact support to resolve: ${wallet.lockedReason}`
+        );
+      }
+    } catch (walletCheckError) {
+      // If the pre-check query fails, be conservative: don't proceed with credit
+      logger.error(`Failed to check wallet lock status for user ${scan.userId}:`, walletCheckError);
+      // Try to roll back the claim
+      try {
+        await prisma.stickerScan.update({
+          where: { id: scanId },
+          data: { status: oldStatus, processedAt: oldProcessedAt },
+        });
+      } catch (rollbackError) {
+        logger.error(`CRITICAL: Failed to restore scan status for ${scanId}. Manual intervention required.`, rollbackError);
+      }
+      throw new Error(`Failed to verify wallet status. Scan approval has been rolled back — please retry.`);
+    }
 
     // All post-claim writes are inside a single try/catch so ANY failure — including
     // transaction.create or stickerScan.update — rolls back the claim. Without this,
@@ -799,7 +823,17 @@ class StickerService {
       throw new Error('Failed to process scan. Scan approval has been rolled back — please retry.');
     }
 
-    // TODO: Send notification to user (implement in next phase)
+    // Notify user of cashback credit (non-fatal)
+    try {
+      await notificationService.notifyStickerScanApproved({
+        userId: scan.userId,
+        scanId,
+        venueName: (scan as any).venue?.name || 'venue',
+        cashbackAmount: scan.cashbackAmount,
+      });
+    } catch (notifyError) {
+      logger.error(`Failed to send notification for sticker scan ${scanId}:`, notifyError);
+    }
 
     return updated!;
   }
@@ -808,14 +842,16 @@ class StickerService {
    * Reject a scan
    */
   async rejectScan(scanId: string, reason: string): Promise<StickerScan> {
-    return prisma.stickerScan.update({
-      where: { id: scanId },
-      data: {
-        status: ScanStatus.REJECTED,
-        rejectionReason: reason,
-        processedAt: new Date(),
-      },
+    // Guard against rejecting an already-approved scan — cashback would already be
+    // credited to the wallet, leaving the user with funds but a REJECTED status.
+    const result = await prisma.stickerScan.updateMany({
+      where: { id: scanId, status: { not: ScanStatus.APPROVED } },
+      data: { status: ScanStatus.REJECTED, rejectionReason: reason, processedAt: new Date() },
     });
+    if (result.count === 0) {
+      throw new Error('Scan has already been approved and cannot be rejected');
+    }
+    return prisma.stickerScan.findUniqueOrThrow({ where: { id: scanId } });
   }
 
   /**
@@ -959,8 +995,7 @@ class StickerService {
       fraudScore,
       fraudReasons,
       riskLevel,
-      shouldAutoApprove: fraudScore < config.autoApproveThreshold,
-      requiresManualReview: fraudScore >= config.autoApproveThreshold,
+      requiresManualReview: true,
     };
   }
 

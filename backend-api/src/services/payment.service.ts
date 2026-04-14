@@ -1,8 +1,10 @@
 import Stripe from 'stripe';
+import { WalletTransactionType, WalletTransactionStatus } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { AppError } from '../middleware/error.middleware';
 import { logger } from '../utils/logger';
 import { LOYALTY_TIER_CASHBACK } from '../constants/tiers';
+import { walletService } from './wallet.service';
 
 // Initialize Stripe
 const stripeKey = process.env.STRIPE_SECRET_KEY || '';
@@ -398,6 +400,62 @@ export class PaymentService {
             metadata: JSON.stringify({ transactionId, refundId: refund.id }),
           },
         });
+      }
+
+      // Reverse cashback if an approved receipt is linked to this transaction
+      try {
+        const linkedReceipt = await prisma.receipt.findFirst({
+          where: { transactionId, status: 'APPROVED' as any },
+          select: { id: true },
+        });
+        if (linkedReceipt) {
+          const userWallet = await prisma.wallet.findUnique({ where: { userId: transaction.userId } });
+          if (userWallet) {
+            const cashbackTx = await prisma.walletTransaction.findFirst({
+              where: {
+                walletId: userWallet.id,
+                type: WalletTransactionType.CASHBACK_CREDIT,
+                receiptId: linkedReceipt.id,
+                status: WalletTransactionStatus.COMPLETED,
+              },
+            });
+            if (cashbackTx && cashbackTx.amount > 0) {
+              // Pro-rate reversal for partial refunds
+              const reversalAmount = parseFloat(
+                ((cashbackTx.amount * refundedAmount) / transaction.amount).toFixed(2)
+              );
+              if (reversalAmount > 0) {
+                // Use refund.id (not transactionId) so that multiple partial refunds on
+                // the same payment each get a distinct WalletTransaction.transactionId.
+                // WalletTransaction.transactionId has @unique — using the payment transactionId
+                // would cause the 2nd partial refund's ADJUSTMENT to silently fail.
+                await walletService.debit({
+                  userId: transaction.userId,
+                  amount: reversalAmount,
+                  type: WalletTransactionType.ADJUSTMENT,
+                  description: `Cashback reversal for refund on transaction ${transactionId}`,
+                  transactionId: refund.id,
+                  metadata: { refundId: refund.id, receiptId: linkedReceipt.id, originalTransactionId: transactionId },
+                });
+                logger.info(`Reversed ${reversalAmount} BGN cashback for refund on transaction ${transactionId}`);
+              }
+            }
+          }
+        }
+      } catch (cashbackReversalError: any) {
+        logger.error(`Failed to reverse cashback for refund on transaction ${transactionId}: ${cashbackReversalError.message}`);
+        // Cashback reversal failed — lock the wallet to prevent payout of unreconciled debt.
+        // This covers both "Insufficient wallet balance" (user spent the cashback) and other errors
+        // (DB failures, network issues) where we cannot guarantee the reversal succeeded.
+        await prisma.wallet.updateMany({
+          where: { userId: transaction.userId },
+          data: {
+            isLocked: true,
+            lockedReason: `Cashback reversal failed on refund ${refund.id}: ${cashbackReversalError.message}. Manual reconciliation required.`,
+            lockedAt: new Date(),
+          },
+        }).catch((lockErr: any) => logger.error(`Failed to lock wallet for user ${transaction.userId}:`, lockErr));
+        logger.warn(`Locked wallet for user ${transaction.userId} — cashback reversal debt on refund ${refund.id}`);
       }
 
       logger.info(`Refund created: ${refund.id} for transaction ${transactionId}`);

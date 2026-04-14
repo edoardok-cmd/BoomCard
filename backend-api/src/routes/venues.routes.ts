@@ -6,7 +6,8 @@
 import { Router, Response } from 'express';
 import multer from 'multer';
 import { asyncHandler } from '../middleware/error.middleware';
-import { authenticate, AuthRequest } from '../middleware/auth.middleware';
+import { authenticate, authorize, AuthRequest } from '../middleware/auth.middleware';
+import { prisma } from '../lib/prisma';
 import { venueService } from '../services/venue.service';
 import { imageUploadService } from '../services/imageUpload.service';
 import { logger } from '../utils/logger';
@@ -184,6 +185,7 @@ router.get(
 router.post(
   '/',
   authenticate,
+  authorize('PARTNER', 'ADMIN', 'SUPER_ADMIN'),
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const {
       partnerId,
@@ -210,6 +212,20 @@ router.post(
         success: false,
         error: 'Missing required fields: partnerId, name, address, city',
       });
+    }
+
+    // PARTNER role: verify they own the specified partner record
+    if (req.user!.role === 'PARTNER') {
+      const partner = await prisma.partner.findUnique({
+        where: { id: partnerId },
+        select: { userId: true },
+      });
+      if (!partner || partner.userId !== req.user!.id) {
+        return res.status(403).json({
+          success: false,
+          error: 'You do not have permission to create a venue for this partner',
+        });
+      }
     }
 
     const venue = await venueService.createVenue({
@@ -246,8 +262,23 @@ router.post(
 router.put(
   '/:id',
   authenticate,
+  authorize('PARTNER', 'ADMIN', 'SUPER_ADMIN'),
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const { id } = req.params;
+
+    // PARTNER role: verify they own this venue
+    if (req.user!.role === 'PARTNER') {
+      const venue = await prisma.venue.findUnique({
+        where: { id },
+        include: { partner: { select: { userId: true } } },
+      });
+      if (!venue || venue.partner?.userId !== req.user!.id) {
+        return res.status(403).json({
+          success: false,
+          error: 'You do not have permission to update this venue',
+        });
+      }
+    }
 
     const venue = await venueService.updateVenue(id, req.body);
 
@@ -266,6 +297,7 @@ router.put(
 router.delete(
   '/:id',
   authenticate,
+  authorize('ADMIN', 'SUPER_ADMIN'),
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const { id } = req.params;
 
@@ -286,6 +318,7 @@ router.delete(
 router.post(
   '/:id/menu',
   authenticate,
+  authorize('PARTNER', 'ADMIN', 'SUPER_ADMIN'),
   menuUpload.array('images', 20),
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const { id } = req.params;
@@ -298,6 +331,17 @@ router.post(
     const venue = await venueService.getVenueById(id);
     if (!venue) {
       return res.status(404).json({ success: false, error: 'Venue not found' });
+    }
+
+    // PARTNER role: verify they own this venue
+    if (req.user!.role === 'PARTNER') {
+      const venueRecord = await prisma.venue.findUnique({
+        where: { id },
+        include: { partner: { select: { userId: true } } },
+      });
+      if (!venueRecord || venueRecord.partner?.userId !== req.user!.id) {
+        return res.status(403).json({ success: false, error: 'You do not have permission to upload menu images for this venue' });
+      }
     }
 
     // Upload each image to S3
@@ -342,12 +386,24 @@ router.post(
 router.delete(
   '/:id/menu',
   authenticate,
+  authorize('PARTNER', 'ADMIN', 'SUPER_ADMIN'),
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const { id } = req.params;
 
     const venue = await venueService.getVenueById(id);
     if (!venue) {
       return res.status(404).json({ success: false, error: 'Venue not found' });
+    }
+
+    // PARTNER role: verify they own this venue
+    if (req.user!.role === 'PARTNER') {
+      const venueRecord = await prisma.venue.findUnique({
+        where: { id },
+        include: { partner: { select: { userId: true } } },
+      });
+      if (!venueRecord || venueRecord.partner?.userId !== req.user!.id) {
+        return res.status(403).json({ success: false, error: 'You do not have permission to delete menu images for this venue' });
+      }
     }
 
     await venueService.updateVenue(id, { menuImages: null });

@@ -33,7 +33,7 @@ const FAQPage: React.FC = () => {
     },
     {
       q: 'Как се изчислява моят процент кешбек?',
-      a: 'Кешбекът зависи от отстъпката на партньора. Basic план: до 10%. Premium планове: до 24%. Точният % следва фиксирана матрица — напр. партньор с 20% отстъпка дава 10% кешбек на Basic и 16% на Premium потребители.'
+      a: 'Кешбекът зависи от отстъпката на партньора. Basic план: до 10%. Premium планове: до 20%. Точният % следва фиксирана матрица — напр. партньор с 20% отстъпка дава 10% кешбек на Basic и 16% на Premium потребители.'
     },
     {
       q: 'Кога мога да изтегля кешбека си?',
@@ -70,7 +70,7 @@ const FAQPage: React.FC = () => {
     },
     {
       q: 'How is my cashback percentage calculated?',
-      a: 'Cashback depends on the discount the partner offers. Basic plan: up to 10%. Premium plans: up to 24%. The exact % follows a fixed matrix — e.g. a partner offering 20% discount gives Basic users 10% and Premium users 16% cashback.'
+      a: 'Cashback depends on the discount the partner offers. Basic plan: up to 10%. Premium plans: up to 20%. The exact % follows a fixed matrix — e.g. a partner offering 20% discount gives Basic users 10% and Premium users 16% cashback.'
     },
     {
       q: 'When can I withdraw my cashback?',

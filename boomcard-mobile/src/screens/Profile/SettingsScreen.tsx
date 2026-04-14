@@ -409,20 +409,7 @@ const SettingsScreen = ({ navigation }: any) => {
   };
 
   const handleReportProblem = () => {
-    crossPlatformAlert(
-      t('settings.reportProblem'),
-      t('settings.reportProblemMessage'),
-      [
-        { text: t('common.cancel'), style: 'cancel' },
-        {
-          text: t('settings.sendEmail'),
-          onPress: () => {
-            // Open email client
-            crossPlatformAlert(t('settings.info'), 'Opening email client...');
-          },
-        },
-      ]
-    );
+    Linking.openURL('mailto:support@boomcard.bg');
   };
 
   const styles = getStyles(theme);

@@ -306,7 +306,7 @@ export const en = {
 
     // Categories
     restaurantsBars: 'Restaurants & Bars',
-    restaurantsBarsDesc: 'Discover 150+ venues with up to 24% cashback',
+    restaurantsBarsDesc: 'Discover 150+ venues with up to 20% cashback',
     hotelsSpa: 'Hotels & Spa',
     hotelsSpaDesc: 'Luxury stays and spa treatments',
     wineries: 'Wineries',
@@ -332,7 +332,7 @@ export const en = {
     // Hero Section - 2.1
     breadcrumb: 'BOOM Places',
     title: 'All BOOM Discounts in One Place',
-    subtitle: 'BOOM Card gives you access to exclusive offers with up to 24% cashback, based on your chosen plan.',
+    subtitle: 'BOOM Card gives you access to exclusive offers with up to 20% cashback, based on your chosen plan.',
     heroCta: 'Unlock BOOM Card',
     heroTrustLine: 'Free 24-hour trial period. No payment required.',
 
@@ -340,12 +340,12 @@ export const en = {
     resultsTitle: 'Curated BOOM Places',
 
     // Card Content - 2.3
-    discountLabel: 'up to 24%',
+    discountLabel: 'up to 20%',
     discountNote: 'cashback based on subscription plan',
 
     // Statistics
     activeOffers: 'New offers at top venues',
-    upToDiscount: 'Up to 24% cashback based on subscription plan',
+    upToDiscount: 'Up to 20% cashback based on subscription plan',
     newOffersRegularly: 'Curated offers',
     premiumOnlyNote: 'Some offers are available only with Premium.',
 
@@ -1072,7 +1072,7 @@ export const en = {
     weeklyPlanTitle: 'BOOM Card PREMIUM – 7 DAYS',
     weeklyPlanPeriod: '/ week',
     weeklyPlanFeature1: 'Full Premium access',
-    weeklyPlanFeature2: 'Up to 24% cashback (depending on partner)',
+    weeklyPlanFeature2: 'Up to 20% cashback (depending on partner)',
     weeklyPlanFeature3: 'Activate discounts directly from your table',
     weeklyPlanFeature4: 'Everything managed through the app',
     weeklyPlanFeature5: 'No commitment after the period ends',
@@ -1084,7 +1084,7 @@ export const en = {
     monthlyPlanTitle: 'BOOM Card PREMIUM – MONTHLY',
     monthlyPlanPeriod: '/ month',
     monthlyPlanFeature1: 'All Premium venues',
-    monthlyPlanFeature2: 'Up to 24% cashback',
+    monthlyPlanFeature2: 'Up to 20% cashback',
     monthlyPlanFeature3: 'Exclusive offers',
     monthlyPlanFeature4: 'Priority support',
     monthlyPlanFeature5: 'First access to new partners',
@@ -1845,7 +1845,7 @@ export const en = {
     // Subscription CTAs for non-subscribers
     subscriptionCta: {
       unlockDiscount: 'Unlock this discount',
-      getDiscount: 'Get up to 24% cashback',
+      getDiscount: 'Get up to 20% cashback',
       joinBoomCard: 'Join BOOM Card',
       memberBenefit: 'Member benefit',
       exclusiveAccess: 'Exclusive member access',

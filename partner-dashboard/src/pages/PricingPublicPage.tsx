@@ -635,8 +635,8 @@ const PricingPublicPage: React.FC = () => {
     {
       questionEn: 'How is my cashback percentage calculated?',
       questionBg: 'Как се изчислява моят процент кешбек?',
-      answerEn: 'Cashback depends on the discount the partner offers. Basic plan: up to 10%. Premium plans: up to 24%. The exact % follows a fixed matrix — e.g. a partner offering 20% discount gives Basic users 10% and Premium users 16% cashback.',
-      answerBg: 'Кешбекът зависи от отстъпката на партньора. Basic план: до 10%. Premium планове: до 24%. Точният % следва фиксирана матрица — напр. партньор с 20% отстъпка дава 10% кешбек на Basic и 16% на Premium потребители.',
+      answerEn: 'Cashback depends on the discount the partner offers. Basic plan: up to 10%. Premium plans: up to 20%. The exact % follows a fixed matrix — e.g. a partner offering 20% discount gives Basic users 10% and Premium users 16% cashback.',
+      answerBg: 'Кешбекът зависи от отстъпката на партньора. Basic план: до 10%. Premium планове: до 20%. Точният % следва фиксирана матрица — напр. партньор с 20% отстъпка дава 10% кешбек на Basic и 16% на Premium потребители.',
     },
     {
       questionEn: 'When can I withdraw my cashback?',
@@ -854,8 +854,8 @@ const PricingPublicPage: React.FC = () => {
 
       <CashbackExplanation>
         {language === 'bg'
-          ? 'Кешбекът зависи от отстъпката, която партньорът предлага. Basic план дава до 10% кешбек, а Premium планове — до 24%. Кешбекът се изплаща след достигане на минималния праг (€10–€20 спрямо плана) и е валиден 60 дни след всяка одобрена транзакция.'
-          : 'Cashback depends on the discount the partner offers. Basic plan gives up to 10% cashback, Premium plans up to 24%. Cashback is paid out once the minimum threshold (€10–€20 depending on your plan) is reached, and is valid for 60 days per approved transaction.'}
+          ? 'Кешбекът зависи от отстъпката, която партньорът предлага. Basic план дава до 10% кешбек, а Premium планове — до 20%. Кешбекът се изплаща след достигане на минималния праг (€10–€20 спрямо плана) и е валиден 60 дни след всяка одобрена транзакция.'
+          : 'Cashback depends on the discount the partner offers. Basic plan gives up to 10% cashback, Premium plans up to 20%. Cashback is paid out once the minimum threshold (€10–€20 depending on your plan) is reached, and is valid for 60 days per approved transaction.'}
       </CashbackExplanation>
 
       {/* Cashback Matrix */}
@@ -885,7 +885,6 @@ const PricingPublicPage: React.FC = () => {
             <tr><td>15%</td><td>8%</td><td>12%</td></tr>
             <tr><td>20%</td><td>10%</td><td>16%</td></tr>
             <tr><td>25%</td><td>10%</td><td>20%</td></tr>
-            <tr><td>30%</td><td>10%</td><td>24%</td></tr>
           </tbody>
         </MatrixTable>
       </MatrixSection>

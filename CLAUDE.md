@@ -92,4 +92,17 @@ mcp__playwright__browser_console_messages()
 
 ---
 
-*Last Updated: 2025-01-18*
+## Session Protocol
+
+### Handover Prompt
+- **End every session with a kickoff prompt** — before closing out, provide a concise prompt the user can paste at the start of the next session to restore context quickly.
+- Format the prompt as a markdown code block so VSCode shows a copy icon
+- Keep it focused: key files/PRs touched, current state, next steps (2-3 sentences max)
+- Example:
+  ```
+  Working on BoomCard partner dashboard. Just added CORS fix for production domains. Next: test payment flow integration with Paysera.
+  ```
+
+---
+
+*Last Updated: 2026-04-14*

@@ -279,7 +279,7 @@
     "supportContact": "Имейл: support@boomcard.com\nТелефон: +359 XXX XXXX",
     "benefits": {
       "weeklyPremiumAccess": "Едноседмичен Premium достъп",
-      "discount24": "До 24% кешбек",
+      "discount24": "До 20% кешбек",
       "exclusivePremiumOffers": "Ексклузивни Premium оферти",
       "limitedOffers": "Оферти с ограничена наличност",
       "exclusiveCampaigns": "Достъп до ексклузивни Premium кампании",
@@ -306,7 +306,7 @@
     "scanInstructions": "Сканирайте QR кода на BOOM-Стикера",
     "enterBillAmount": "Въведете сумата на сметката",
     "billAmount": "Сума на сметката (лв)",
-    "cashbackInfo": "Ще получите кешбек според вашия план: до 10% (Основен) или до 24% (Премиум и Премиум Седмичен)",
+    "cashbackInfo": "Ще получите кешбек според вашия план: до 10% (Основен) или до 20% (Премиум и Премиум Седмичен)",
     "userEstimatedCashback": "Очакван кешбек",
     "enterValidAmount": "Моля, въведете валидна сума на сметката",
     "invalidQRCode": "Невалиден QR код на BOOM стикер",

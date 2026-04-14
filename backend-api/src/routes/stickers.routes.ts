@@ -5,6 +5,7 @@ import { uploadSingle, validateMagicBytes } from '../middleware/upload.middlewar
 import { imageUploadService } from '../services/imageUpload.service';
 import { LocationType } from '@prisma/client';
 import prisma from '../lib/prisma';
+import { validateAmount, validateGPSCoordinates, ValidationError } from '../utils/validation';
 
 const router = Router();
 
@@ -76,17 +77,46 @@ router.post('/scan', authenticate, async (req: Request, res: Response) => {
       });
     }
 
-    if (parseFloat(billAmount) <= 0) {
-      return res.status(400).json({ success: false, error: 'Bill amount must be greater than 0' });
+    // Validate bill amount (S-INJECT security tests)
+    let validatedBillAmount: number;
+    try {
+      validatedBillAmount = validateAmount(billAmount, 'billAmount');
+    } catch (error) {
+      if (error instanceof ValidationError) {
+        return res.status(400).json({
+          success: false,
+          error: error.message,
+        });
+      }
+      throw error;
+    }
+
+    // Validate GPS coordinates if provided (S-INJECT security tests)
+    let validatedLat: number | undefined = latitude;
+    let validatedLon: number | undefined = longitude;
+    if (latitude !== undefined || longitude !== undefined) {
+      try {
+        const coords = validateGPSCoordinates(latitude, longitude);
+        validatedLat = coords.latitude;
+        validatedLon = coords.longitude;
+      } catch (error) {
+        if (error instanceof ValidationError) {
+          return res.status(400).json({
+            success: false,
+            error: error.message,
+          });
+        }
+        throw error;
+      }
     }
 
     const scan = await stickerService.scanSticker({
       userId,
       stickerId,
       cardId,
-      billAmount: parseFloat(billAmount),
-      latitude: latitude ? parseFloat(latitude) : undefined,
-      longitude: longitude ? parseFloat(longitude) : undefined,
+      billAmount: validatedBillAmount,
+      latitude: validatedLat,
+      longitude: validatedLon,
       ipAddress: req.ip,
       userAgent: req.get('user-agent'),
       sessionId,
@@ -379,7 +409,7 @@ router.post('/activate/:stickerId', authenticate, authorize('PARTNER', 'ADMIN', 
  * Get all stickers for a venue
  * Requires authentication (Partner role)
  */
-router.get('/venue/:venueId', authenticate, async (req: Request, res: Response) => {
+router.get('/venue/:venueId', authenticate, authorize('PARTNER', 'ADMIN', 'SUPER_ADMIN'), async (req: Request, res: Response) => {
   try {
     const { venueId } = req.params;
 
@@ -404,7 +434,7 @@ router.get('/venue/:venueId', authenticate, async (req: Request, res: Response) 
  * Get all scans for a venue
  * Requires authentication (Partner role)
  */
-router.get('/venue/:venueId/scans', authenticate, async (req: Request, res: Response) => {
+router.get('/venue/:venueId/scans', authenticate, authorize('PARTNER', 'ADMIN', 'SUPER_ADMIN'), async (req: Request, res: Response) => {
   try {
     const { venueId } = req.params;
     const limit = parseInt(req.query.limit as string) || 100;
@@ -430,7 +460,7 @@ router.get('/venue/:venueId/scans', authenticate, async (req: Request, res: Resp
  * Get analytics for venue sticker scans
  * Requires authentication (Partner role)
  */
-router.get('/venue/:venueId/analytics', authenticate, async (req: Request, res: Response) => {
+router.get('/venue/:venueId/analytics', authenticate, authorize('PARTNER', 'ADMIN', 'SUPER_ADMIN'), async (req: Request, res: Response) => {
   try {
     const { venueId } = req.params;
     const days = parseInt(req.query.days as string) || 30;
@@ -455,7 +485,7 @@ router.get('/venue/:venueId/analytics', authenticate, async (req: Request, res: 
  * Get venue sticker configuration
  * Requires authentication (Partner role)
  */
-router.get('/venue/:venueId/config', authenticate, async (req: Request, res: Response) => {
+router.get('/venue/:venueId/config', authenticate, authorize('PARTNER', 'ADMIN', 'SUPER_ADMIN'), async (req: Request, res: Response) => {
   try {
     const { venueId } = req.params;
 
@@ -479,10 +509,24 @@ router.get('/venue/:venueId/config', authenticate, async (req: Request, res: Res
  * Update venue sticker configuration
  * Requires authentication (Partner role)
  */
-router.put('/venue/:venueId/config', authenticate, async (req: Request, res: Response) => {
+router.put('/venue/:venueId/config', authenticate, authorize('PARTNER', 'ADMIN', 'SUPER_ADMIN'), async (req: AuthRequest, res: Response) => {
   try {
     const { venueId } = req.params;
     const config = req.body;
+
+    // PARTNER role: verify they own this venue
+    if (req.user!.role === 'PARTNER') {
+      const venue = await prisma.venue.findUnique({
+        where: { id: venueId },
+        include: { partner: { select: { userId: true } } },
+      });
+      if (!venue || venue.partner?.userId !== req.user!.id) {
+        return res.status(403).json({
+          success: false,
+          error: 'You do not have permission to update this venue configuration',
+        });
+      }
+    }
 
     const updated = await stickerService.updateVenueConfig(venueId, config);
 

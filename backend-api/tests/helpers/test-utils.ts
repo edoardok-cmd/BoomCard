@@ -166,7 +166,7 @@ export async function createTestVenue(userId: string) {
       cashbackPercent: 5.0,
       premiumBonus: 2.0,
       platinumBonus: 5.0,
-      minBillAmount: 10.0,
+      minBillAmount: 0,
       autoApproveThreshold: 10,
     },
   });

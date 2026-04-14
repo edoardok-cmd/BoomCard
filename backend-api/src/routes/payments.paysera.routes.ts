@@ -282,8 +282,10 @@ async function handlePaymentCallback(req: Request, res: Response) {
         // Guard on the WalletTransaction (not Transaction.status) so that if the
         // wallet credit succeeded but the status update failed on a prior attempt,
         // we still skip correctly and don't double-credit.
+        // Filter by type=TOP_UP so a cashback-reversal ADJUSTMENT that shares
+        // the same transactionId field doesn't falsely suppress the credit.
         const alreadyCredited = await prisma.walletTransaction.findFirst({
-          where: { transactionId: transaction.id },
+          where: { transactionId: transaction.id, type: WalletTransactionType.TOP_UP },
         });
         if (alreadyCredited) {
           logger.info(`Top-up callback for ${result.orderId} already credited — skipping`);
@@ -368,6 +370,105 @@ async function handlePaymentCallback(req: Request, res: Response) {
             }),
           },
         });
+
+        // ── 1. Reverse wallet TOP_UP if it was already credited ──────────────────
+        // Paysera can send status=5 (refunded) AFTER a successful status=1 callback
+        // has already topped up the wallet. Without this reversal the user keeps
+        // the balance from a refunded payment.
+        // Idempotency key: 'topup-rev-<tx.id>' — distinct from the TOP_UP's own
+        // transactionId ('tx.id') so the @unique constraint is not violated.
+        try {
+          const existingTopUp = await prisma.walletTransaction.findFirst({
+            where: { transactionId: transaction.id, type: WalletTransactionType.TOP_UP },
+          });
+          if (existingTopUp && existingTopUp.amount > 0) {
+            const topUpReversalId = `topup-rev-${transaction.id}`;
+            const alreadyReversedTopUp = await prisma.walletTransaction.findFirst({
+              where: { transactionId: topUpReversalId },
+            });
+            if (alreadyReversedTopUp) {
+              logger.info(`TOP_UP reversal for order ${result.orderId} already processed — skipping`);
+            } else {
+              await walletService.debit({
+                userId: transaction.userId,
+                amount: existingTopUp.amount,
+                type: WalletTransactionType.ADJUSTMENT,
+                description: `Wallet top-up reversal — payment ${result.status} for order ${result.orderId}`,
+                transactionId: topUpReversalId,
+                metadata: { orderId: result.orderId, reason: result.status, reversedTopUpId: existingTopUp.id },
+              });
+              logger.warn(`Reversed ${existingTopUp.amount} BGN TOP_UP for ${result.status} payment ${result.orderId}`);
+            }
+          }
+        } catch (topUpReversalError: any) {
+          logger.error(`Failed to reverse TOP_UP for ${result.status} payment ${result.orderId}: ${topUpReversalError.message}`);
+          if (topUpReversalError.message?.includes('Insufficient wallet balance')) {
+            await prisma.wallet.updateMany({
+              where: { userId: transaction.userId },
+              data: {
+                isLocked: true,
+                lockedReason: `TOP_UP reversal failed on ${result.status} payment ${result.orderId}: balance insufficient. Manual reconciliation required.`,
+                lockedAt: new Date(),
+              },
+            }).catch((lockErr: any) => logger.error(`Failed to lock wallet for user ${transaction.userId}:`, lockErr));
+          }
+        }
+
+        // ── 2. Reverse cashback for any approved receipt linked to this transaction ─
+        // Idempotency key: 'cashback-rev-<tx.id>' — distinct from the TOP_UP's
+        // transactionId so the @unique constraint is not violated when both exist.
+        try {
+          const cashbackReversalId = `cashback-rev-${transaction.id}`;
+          const alreadyReversed = await prisma.walletTransaction.findFirst({
+            where: { transactionId: cashbackReversalId },
+          });
+          if (alreadyReversed) {
+            logger.info(`Cashback reversal for order ${result.orderId} already processed — skipping`);
+          } else {
+            const linkedReceipt = await prisma.receipt.findFirst({
+              where: { transactionId: transaction.id, status: 'APPROVED' as any },
+              select: { id: true, userId: true },
+            });
+            if (linkedReceipt) {
+              const userWallet = await prisma.wallet.findUnique({ where: { userId: linkedReceipt.userId } });
+              if (userWallet) {
+                const cashbackTx = await prisma.walletTransaction.findFirst({
+                  where: {
+                    walletId: userWallet.id,
+                    type: WalletTransactionType.CASHBACK_CREDIT,
+                    receiptId: linkedReceipt.id,
+                    status: WalletTransactionStatus.COMPLETED,
+                  },
+                });
+                if (cashbackTx && cashbackTx.amount > 0) {
+                  await walletService.debit({
+                    userId: linkedReceipt.userId,
+                    amount: cashbackTx.amount,
+                    type: WalletTransactionType.ADJUSTMENT,
+                    description: `Cashback reversal — payment ${result.status} for order ${result.orderId}`,
+                    transactionId: cashbackReversalId,
+                    metadata: { orderId: result.orderId, receiptId: linkedReceipt.id, reason: result.status },
+                  });
+                  logger.info(`Reversed ${cashbackTx.amount} BGN cashback for ${result.status} payment ${result.orderId}`);
+                }
+              }
+            }
+          }
+        } catch (reversalError: any) {
+          logger.error(`Failed to reverse cashback for ${result.status} payment ${result.orderId}: ${reversalError.message}`);
+          // Cashback reversal failed — lock the wallet to prevent payout of unreconciled debt.
+          // This covers both "Insufficient wallet balance" (user spent the cashback) and other errors
+          // (DB failures, network issues) where we cannot guarantee the reversal succeeded.
+          await prisma.wallet.updateMany({
+            where: { userId: transaction.userId },
+            data: {
+              isLocked: true,
+              lockedReason: `Cashback reversal failed on ${result.status} payment ${result.orderId}: ${reversalError.message}. Manual reconciliation required.`,
+              lockedAt: new Date(),
+            },
+          }).catch((lockErr: any) => logger.error(`Failed to lock wallet for user ${transaction.userId}:`, lockErr));
+          logger.warn(`Locked wallet for user ${transaction.userId} — cashback reversal debt on payment ${result.orderId}`);
+        }
 
         // Send payment failed email
         if (transaction.user?.email) {
@@ -689,11 +790,25 @@ router.post(
       // Authenticated user flow
       const userDetails = await prisma.user.findUnique({
         where: { id: user.id },
-        select: { email: true, firstName: true, lastName: true },
+        select: { email: true, firstName: true, lastName: true, status: true },
       });
 
       if (!userDetails) {
         return res.status(404).json({ success: false, message: 'User not found' });
+      }
+
+      // Guard: block users who already have an active subscription.
+      // Without this guard, calling this endpoint overwrites user.status to PENDING_PAYMENT,
+      // temporarily revoking access for currently-active users. If the payment then fails,
+      // the user stays stuck as PENDING_PAYMENT with no automated recovery.
+      const existingActiveSub = await prisma.subscription.findFirst({
+        where: { userId: user.id, status: { in: [SubscriptionStatus.ACTIVE, SubscriptionStatus.TRIALING] } },
+      });
+      if (existingActiveSub) {
+        return res.status(400).json({
+          success: false,
+          message: 'You already have an active subscription. Please cancel it before subscribing to a new plan.',
+        });
       }
 
       customerEmail = userDetails.email;
@@ -735,11 +850,14 @@ router.post(
 
       subscriptionId = subscription.id;
 
-      // Update user status to PENDING_PAYMENT
-      await prisma.user.update({
-        where: { id: user.id },
-        data: { status: UserStatus.PENDING_PAYMENT },
-      });
+      // Only set PENDING_PAYMENT if the user is not already in that state —
+      // avoids a redundant write for users who abandoned a previous checkout.
+      if (userDetails.status !== UserStatus.PENDING_PAYMENT) {
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { status: UserStatus.PENDING_PAYMENT },
+        });
+      }
     }
 
     // Build callback URLs
@@ -837,17 +955,13 @@ async function handleSubscriptionCallback(req: Request, res: Response) {
         return res.send(payseraService.generateCallbackResponse());
       }
 
-      // Idempotency check - don't process if already active
-      if (subscription.status === SubscriptionStatus.ACTIVE) {
-        logger.info(`Subscription ${subscription.id} already active, skipping`);
-        return res.send(payseraService.generateCallbackResponse());
-      }
-
       if (result.status === 'success') {
         // ACTIVATE SUBSCRIPTION (webhook-first - this is the only place!)
+        // Atomic guard: only activates if not already ACTIVE, preventing duplicate processing
+        // from concurrent Paysera callback retries (TOCTOU-safe).
         const existingMetadata = subscription.metadata ? JSON.parse(subscription.metadata as string) : {};
-        await prisma.subscription.update({
-          where: { id: subscription.id },
+        const activationResult = await prisma.subscription.updateMany({
+          where: { id: subscription.id, status: { not: SubscriptionStatus.ACTIVE } },
           data: {
             status: SubscriptionStatus.ACTIVE,
             metadata: JSON.stringify({
@@ -862,6 +976,11 @@ async function handleSubscriptionCallback(req: Request, res: Response) {
             }),
           },
         });
+
+        if (activationResult.count === 0) {
+          logger.info(`Subscription ${subscription.id} already activated — skipping`);
+          return res.send(payseraService.generateCallbackResponse());
+        }
 
         // UPDATE USER STATUS TO ACTIVE
         await prisma.user.update({

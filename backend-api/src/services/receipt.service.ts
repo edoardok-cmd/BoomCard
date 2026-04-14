@@ -11,6 +11,7 @@ import { prisma } from '../lib/prisma';
 import { emailService } from './email.service';
 import {
   CASHBACK_ESTIMATED_CREDIT_DAYS,
+  DEFAULT_AUTO_APPROVE_THRESHOLD,
   DEFAULT_CARD_TIER,
   DEFAULT_DAILY_SUBMISSION_LIMIT,
   DEFAULT_MONTHLY_SUBMISSION_LIMIT,
@@ -458,6 +459,11 @@ class ReceiptService {
         throw new AppError('Receipt must be approved before applying cashback', 400);
       }
 
+      // Guard: linked transaction must still be COMPLETED
+      if (receipt.transactionId && receipt.transaction?.status !== 'COMPLETED') {
+        throw new AppError('Linked payment transaction is not completed — cashback cannot be credited', 409);
+      }
+
       // Step 1: Atomically claim the cashback slot — prevents double-credit race.
       // Two concurrent calls both see cashbackAmount === 0 in the read above, but
       // only one updateMany can win the WHERE cashbackAmount = 0 condition.
@@ -543,9 +549,12 @@ class ReceiptService {
         throw new AppError('Unauthorized to delete this receipt', 403);
       }
 
-      // Only allow deletion of PENDING or REJECTED receipts
-      if (receipt.cashbackAmount > 0) {
-        throw new AppError('Cannot delete receipt with applied cashback', 400);
+      // Only allow deletion of PENDING or REJECTED receipts.
+      // Checking cashbackAmount > 0 is insufficient — an APPROVED receipt with 0 cashback
+      // (e.g., caps exhausted) would pass the old guard, letting users erase fraud history
+      // and corrupt analytics counters. Check status directly instead.
+      if (receipt.status !== ReceiptStatus.PENDING && receipt.status !== ReceiptStatus.REJECTED) {
+        throw new AppError('Only pending or rejected receipts can be deleted', 400);
       }
 
       await prisma.receipt.delete({
@@ -677,7 +686,7 @@ class ReceiptService {
       let venueLon: number | undefined;
 
       if (request.venueId) {
-        const venue = await prisma.partner.findUnique({
+        const venue = await prisma.venue.findUnique({
           where: { id: request.venueId },
           select: { latitude: true, longitude: true },
         });
@@ -703,26 +712,18 @@ class ReceiptService {
         cardTier:       cardTier as any,
       });
 
-      // Calculate cashback
+      // Calculate cashback (passes userId so rolling daily/monthly caps are enforced)
       const amount = request.userAmount || request.ocrData?.totalAmount || 0;
       const cashbackCalc = await fraudDetectionService.calculateCashback({
         venueId: request.venueId,
         amount,
         cardTier: cardTier as any,
+        userId: request.userId,
       });
 
-      // Determine status
-      let status: ReceiptStatus = 'PENDING' as any;
-      let cashbackAmount = 0;
-
-      if (fraudCheck.isApproved) {
-        status = 'APPROVED' as any;
-        cashbackAmount = cashbackCalc.cashbackAmount;
-      } else if (fraudCheck.requiresManualReview) {
-        status = 'MANUAL_REVIEW' as any;
-      } else {
-        status = 'REJECTED' as any;
-      }
+      // All receipts require admin approval — no auto-approve or auto-reject
+      const status: ReceiptStatus = 'MANUAL_REVIEW' as any;
+      const cashbackAmount = 0;
 
       // Get card ID (refresh to get newly created card if needed)
       const card = await prisma.card.findFirst({
@@ -766,28 +767,12 @@ class ReceiptService {
         totalAmount: amount,
       });
 
-      // Send notifications
-      if (status === 'APPROVED') {
-        await notificationService.notifyReceiptApproved({
-          userId: request.userId,
-          receiptId: receipt.id,
-          merchantName: request.ocrData?.merchantName || 'Unknown Merchant',
-          cashbackAmount,
-        });
-      } else if (status === 'MANUAL_REVIEW') {
-        await notificationService.notifyManualReviewRequired({
-          userId: request.userId,
-          receiptId: receipt.id,
-          merchantName: request.ocrData?.merchantName || 'Unknown Merchant',
-        });
-      } else if (status === 'REJECTED') {
-        await notificationService.notifyReceiptRejected({
-          userId: request.userId,
-          receiptId: receipt.id,
-          merchantName: request.ocrData?.merchantName || 'Unknown Merchant',
-          reason: fraudCheck.fraudReasons?.join(', ') || 'Fraud score too high',
-        });
-      }
+      // Notify user that receipt is pending admin review
+      await notificationService.notifyManualReviewRequired({
+        userId: request.userId,
+        receiptId: receipt.id,
+        merchantName: request.ocrData?.merchantName || 'Unknown Merchant',
+      });
 
       // Send fraud alert to admins if high score
       if (fraudCheck.fraudScore >= FRAUD_ALERT_SCORE_THRESHOLD) {
@@ -815,7 +800,7 @@ class ReceiptService {
         },
         fraudAnalysis: {
           score: fraudCheck.fraudScore,
-          decision: fraudCheck.isApproved ? 'APPROVED' : fraudCheck.requiresManualReview ? 'MANUAL_REVIEW' : 'REJECTED',
+          decision: 'MANUAL_REVIEW',
           riskLevel: fraudCheck.fraudScore <= 30 ? 'LOW' : fraudCheck.fraudScore <= 60 ? 'MEDIUM' : 'HIGH',
           flagsTriggered: fraudCheck.fraudReasons?.map(reason => ({
             indicator: reason,
@@ -825,10 +810,12 @@ class ReceiptService {
           requiresManualReview: status === 'MANUAL_REVIEW',
         },
         cashback: {
-          amount: cashbackAmount,
+          amount: cashbackCalc.cashbackAmount,
           percentage: cashbackCalc.cashbackPercent,
-          status: cashbackAmount > 0 ? 'PENDING' : 'NOT_APPLICABLE',
-          estimatedDate: cashbackAmount > 0 ? new Date(Date.now() + CASHBACK_ESTIMATED_CREDIT_DAYS * 24 * 60 * 60 * 1000) : null,
+          // Cashback is credited only when an admin explicitly approves the receipt.
+          // The amount shown here is an estimate — admin may adjust on approval.
+          status: cashbackCalc.cashbackAmount > 0 ? 'PENDING_REVIEW' : 'NOT_APPLICABLE',
+          estimatedDate: cashbackCalc.cashbackAmount > 0 ? new Date(Date.now() + CASHBACK_ESTIMATED_CREDIT_DAYS * 24 * 60 * 60 * 1000) : null,
         },
       };
     } catch (error) {
@@ -879,10 +866,10 @@ class ReceiptService {
       submissionsToday: today,
       submissionsThisMonth: thisMonth,
       totalSubmissions: total,
-      dailyLimit: DEFAULT_DAILY_SUBMISSION_LIMIT,
-      monthlyLimit: DEFAULT_MONTHLY_SUBMISSION_LIMIT,
-      remainingToday: Math.max(0, DEFAULT_DAILY_SUBMISSION_LIMIT - today),
-      remainingThisMonth: Math.max(0, DEFAULT_MONTHLY_SUBMISSION_LIMIT - thisMonth),
+      dailyLimit: isFinite(DEFAULT_DAILY_SUBMISSION_LIMIT) ? DEFAULT_DAILY_SUBMISSION_LIMIT : null,
+      monthlyLimit: isFinite(DEFAULT_MONTHLY_SUBMISSION_LIMIT) ? DEFAULT_MONTHLY_SUBMISSION_LIMIT : null,
+      remainingToday: isFinite(DEFAULT_DAILY_SUBMISSION_LIMIT) ? Math.max(0, DEFAULT_DAILY_SUBMISSION_LIMIT - today) : null,
+      remainingThisMonth: isFinite(DEFAULT_MONTHLY_SUBMISSION_LIMIT) ? Math.max(0, DEFAULT_MONTHLY_SUBMISSION_LIMIT - thisMonth) : null,
     };
   }
 
@@ -932,8 +919,7 @@ class ReceiptService {
       }
 
       // Top-level guard: prevent re-processing a receipt that has already been
-      // admin-reviewed. Auto-approved receipts (status=APPROVED, reviewedBy=null)
-      // are still pending admin confirmation and can be reviewed.
+      // admin-reviewed.
       const alreadyAdminReviewed = receipt.reviewedBy !== null;
       if (alreadyAdminReviewed || receipt.status === 'REJECTED' as any) {
         throw new AppError(
@@ -946,27 +932,49 @@ class ReceiptService {
       const newStatus: ReceiptStatus = params.action === 'APPROVE' ? 'APPROVED' as any : 'REJECTED' as any;
 
       // Determine cashback amount for APPROVE action.
-      // If the receipt was auto-approved (reviewedBy=null) and no verifiedAmount override
-      // is provided, re-use the already-calculated cashbackAmount from submission so the
-      // user gets exactly what was promised. Recalculate only when the admin provides a
-      // corrected verifiedAmount.
+      // If no verifiedAmount override is provided, calculate cashback from the receipt's
+      // totalAmount. Recalculate when the admin provides a corrected verifiedAmount.
       let cashbackAmount = 0;
+      let updatedFraudScore: number | undefined;
       if (params.action === 'APPROVE') {
         if (params.verifiedAmount) {
-          // Admin corrected the amount — recalculate cashback on the corrected figure
+          // Admin corrected the amount — recalculate cashback AND recompute fraud score
           const userCard = await prisma.card.findFirst({ where: { userId: receipt.userId } });
           const cardTier = userCard?.type || DEFAULT_CARD_TIER;
           const cashbackCalc = await fraudDetectionService.calculateCashback({
             venueId: receipt.venueId ?? undefined,
             amount: params.verifiedAmount,
             cardTier: cardTier as any,
+            userId: receipt.userId,
           });
           cashbackAmount = cashbackCalc.cashbackAmount;
-        } else if (receipt.cashbackAmount > 0) {
-          // Auto-approved receipt — honour the pre-calculated cashback
-          cashbackAmount = receipt.cashbackAmount;
+
+          // Recompute fraud score with the corrected amount so the record reflects
+          // the actual risk of the verified transaction, not the originally-submitted one.
+          try {
+            const recomputedFraud = await fraudDetectionService.checkReceipt({
+              imageHash: (receipt as any).imageHash || '',
+              ocrAmount: receipt.totalAmount ?? undefined,
+              userAmount: params.verifiedAmount,
+              ocrConfidence: (receipt as any).ocrConfidence || 0,
+              userId: receipt.userId,
+              venueId: (receipt as any).venueId ?? undefined,
+              cardTier: cardTier as any,
+              // Exclude this receipt from its own duplicate check — the hash is already
+              // in the DB and would otherwise always add 40 fraud points.
+              excludeReceiptId: params.receiptId,
+            });
+            updatedFraudScore = recomputedFraud.fraudScore;
+            if (recomputedFraud.fraudScore > DEFAULT_AUTO_APPROVE_THRESHOLD) {
+              logger.warn(
+                `Receipt ${params.receiptId} corrected to ${params.verifiedAmount} BGN — recomputed fraud score ${recomputedFraud.fraudScore} exceeds auto-approve threshold (admin override applied)`
+              );
+            }
+          } catch (fraudRecomputeError) {
+            logger.error(`Failed to recompute fraud score for receipt ${params.receiptId}:`, fraudRecomputeError);
+          }
         } else {
-          // MANUAL_REVIEW with no prior cashback — calculate now
+          // Calculate cashback from the receipt's original amount
           const amount = receipt.totalAmount || 0;
           const userCard = await prisma.card.findFirst({ where: { userId: receipt.userId } });
           const cardTier = userCard?.type || DEFAULT_CARD_TIER;
@@ -974,8 +982,23 @@ class ReceiptService {
             venueId: receipt.venueId ?? undefined,
             amount,
             cardTier: cardTier as any,
+            userId: receipt.userId,
           });
           cashbackAmount = cashbackCalc.cashbackAmount;
+        }
+      }
+
+      // Guard: linked transaction must be COMPLETED BEFORE we claim the receipt.
+      // If this check were after claimResult, a failed guard would leave the receipt
+      // APPROVED with cashbackAmount > 0 but no wallet credit — and the admin claim
+      // would be consumed, making it impossible to retry.
+      if (newStatus === 'APPROVED' && cashbackAmount > 0 && receipt.transactionId) {
+        const linkedTx = await prisma.transaction.findUnique({
+          where: { id: receipt.transactionId },
+          select: { status: true },
+        });
+        if (!linkedTx || linkedTx.status !== 'COMPLETED') {
+          throw new AppError('Linked payment transaction is not completed — cashback cannot be credited', 409);
         }
       }
 
@@ -992,6 +1015,7 @@ class ReceiptService {
           reviewedAt,
           rejectionReason: params.rejectionReason,
           reviewNotes: params.notes,
+          ...(updatedFraudScore !== undefined && { fraudScore: updatedFraudScore }),
         } as any,
       });
 
@@ -1002,8 +1026,9 @@ class ReceiptService {
       // Fetch updated record for response (updateMany doesn't return records).
       const updated = await prisma.receipt.findUniqueOrThrow({ where: { id: params.receiptId } });
 
-      // Credit cashback to wallet if approved — must succeed before analytics is updated
-      // so that a rollback on wallet failure doesn't leave analytics inflated.
+      // Credit cashback to wallet on admin approval.
+      // Cashback is never credited at submission time — only an explicit admin APPROVE
+      // triggers the wallet credit. On failure, roll back the claim so the admin can retry.
       if (newStatus === 'APPROVED' && cashbackAmount > 0) {
         try {
           await walletService.credit({
@@ -1024,17 +1049,15 @@ class ReceiptService {
           // Roll back the receipt so the admin can safely retry — don't leave the receipt
           // APPROVED with cashbackAmount > 0 but no wallet credit.
           logger.error(`Failed to credit cashback for receipt ${params.receiptId}, rolling back receipt status:`, error);
-          // Wrap the rollback itself so a secondary DB failure doesn't mask the primary error.
           try {
             await prisma.receipt.update({
               where: { id: params.receiptId },
               data: {
                 status: oldStatus,
                 totalAmount: receipt.totalAmount,
-                cashbackAmount: 0,
+                cashbackAmount: receipt.cashbackAmount,
                 reviewedBy: null,
                 reviewedAt: null,
-                // Restore original values so prior rejection metadata is preserved.
                 rejectionReason: receipt.rejectionReason ?? null,
                 reviewNotes: (receipt as any).reviewNotes ?? null,
               } as any,
@@ -1186,14 +1209,14 @@ class ReceiptService {
   /**
    * Get user-friendly status message
    */
-  private getStatusMessage(status: string, cashbackAmount: number): string {
+  private getStatusMessage(status: string, _cashbackAmount: number): string {
     switch (status) {
-      case 'APPROVED':
-        return `Receipt pre-approved! Your ${cashbackAmount.toFixed(2)} BGN cashback will be credited once an admin confirms eligibility.`;
       case 'MANUAL_REVIEW':
-        return 'Receipt is under review. You will be notified within 24-48 hours.';
+        return 'Receipt submitted and is pending admin review. You will be notified once reviewed.';
+      case 'APPROVED':
+        return 'Receipt approved.';
       case 'REJECTED':
-        return 'Receipt was not approved. Please ensure the receipt is clear and meets our guidelines.';
+        return 'Receipt was not approved.';
       default:
         return 'Receipt submitted successfully.';
     }

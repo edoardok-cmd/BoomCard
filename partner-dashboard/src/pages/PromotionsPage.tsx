@@ -588,7 +588,7 @@ const PromotionsPage: React.FC = () => {
                 </StatItem>
                 <StatItem>
                   <StatLabel style={{ marginBottom: '0.25rem' }}>{language === 'bg' ? 'до' : 'up to'}</StatLabel>
-                  <StatValue>24%</StatValue>
+                  <StatValue>20%</StatValue>
                   <StatLabel>{content.stat2Label}</StatLabel>
                 </StatItem>
               </StatsRow>

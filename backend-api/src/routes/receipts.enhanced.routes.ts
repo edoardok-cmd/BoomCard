@@ -7,12 +7,14 @@ import { imageUploadService } from '../services/imageUpload.service';
 import { receiptTemplateService } from '../services/receiptTemplate.service';
 import { emailService } from '../services/email.service';
 import { authenticate, authorize, AuthRequest } from '../middleware/auth.middleware';
+import { prisma } from '../lib/prisma';
 import { asyncHandler } from '../middleware/error.middleware';
 import { uploadSingle, validateMagicBytes } from '../middleware/upload.middleware';
 import {
   ALLOWED_RECEIPT_MIME_TYPES,
   MAX_RECEIPT_FILE_SIZE_BYTES,
 } from '../constants/receipt.constants';
+import { validateAmount, validateGPSCoordinates, ValidationError } from '../utils/validation';
 
 const router = Router();
 
@@ -140,6 +142,56 @@ router.post(
       });
     }
 
+    // Validate amounts if provided (S-INJECT security tests)
+    let validatedUserAmount: number | undefined;
+    if (userAmount !== undefined && userAmount !== null) {
+      try {
+        validatedUserAmount = validateAmount(userAmount, 'userAmount');
+      } catch (error) {
+        if (error instanceof ValidationError) {
+          return res.status(400).json({
+            success: false,
+            message: error.message,
+          });
+        }
+        throw error;
+      }
+    }
+
+    // Validate OCR amount if provided
+    if (ocrData?.totalAmount !== undefined && ocrData?.totalAmount !== null) {
+      try {
+        validateAmount(ocrData.totalAmount, 'ocrData.totalAmount');
+      } catch (error) {
+        if (error instanceof ValidationError) {
+          return res.status(400).json({
+            success: false,
+            message: error.message,
+          });
+        }
+        throw error;
+      }
+    }
+
+    // Validate GPS coordinates if provided (S-INJECT security tests)
+    let validatedLat: number | undefined = latitude;
+    let validatedLon: number | undefined = longitude;
+    if (latitude !== undefined || longitude !== undefined) {
+      try {
+        const coords = validateGPSCoordinates(latitude, longitude);
+        validatedLat = coords.latitude;
+        validatedLon = coords.longitude;
+      } catch (error) {
+        if (error instanceof ValidationError) {
+          return res.status(400).json({
+            success: false,
+            message: error.message,
+          });
+        }
+        throw error;
+      }
+    }
+
     // Process receipt with fraud detection and cashback calculation
     const result = await receiptService.submitReceipt({
       userId:         req.user!.id,
@@ -147,11 +199,11 @@ router.post(
       imageHash,
       perceptualHash,
       ocrData,
-      userAmount,
+      userAmount: validatedUserAmount,
       venueId,
       offerId,
-      latitude,
-      longitude,
+      latitude: validatedLat,
+      longitude: validatedLon,
       ipAddress:  req.ip,
       userAgent:  req.headers['user-agent'],
       metadata,
@@ -201,6 +253,35 @@ router.get(
   authenticate,
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const result = await receiptService.getUserSubmissionStats(req.user!.id);
+
+    res.json(result);
+  })
+);
+
+/**
+ * GET /api/receipts/analytics
+ * Get receipt analytics (user-specific or global if admin)
+ * IMPORTANT: Must be defined before GET /:id to avoid route shadowing.
+ */
+router.get(
+  '/analytics',
+  authenticate,
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    const userId = req.query.userId as string;
+
+    // Only admins can view other users' analytics
+    if (userId && userId !== req.user!.id) {
+      if (req.user!.role !== 'ADMIN' && req.user!.role !== 'SUPER_ADMIN') {
+        return res.status(403).json({
+          success: false,
+          message: 'Unauthorized to view other user analytics',
+        });
+      }
+    }
+
+    const targetUserId = userId || req.user!.id;
+
+    const result = await receiptAnalyticsService.getAnalytics(targetUserId);
 
     res.json(result);
   })
@@ -371,40 +452,13 @@ router.post(
 // ============================================
 
 /**
- * GET /api/receipts/analytics
- * Get receipt analytics (user-specific or global if admin)
- */
-router.get(
-  '/analytics',
-  authenticate,
-  asyncHandler(async (req: AuthRequest, res: Response) => {
-    const userId = req.query.userId as string;
-
-    // Only admins can view other users' analytics
-    if (userId && userId !== req.user!.id) {
-      if (req.user!.role !== 'ADMIN' && req.user!.role !== 'SUPER_ADMIN') {
-        return res.status(403).json({
-          success: false,
-          message: 'Unauthorized to view other user analytics',
-        });
-      }
-    }
-
-    const targetUserId = userId || req.user!.id;
-
-    const result = await receiptAnalyticsService.getAnalytics(targetUserId);
-
-    res.json(result);
-  })
-);
-
-/**
  * POST /api/receipts/analytics/update
  * Update receipt analytics (internal use, called after receipt status changes)
  */
 router.post(
   '/analytics/update',
   authenticate,
+  authorize('ADMIN', 'SUPER_ADMIN'),
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const { receiptId, status, cashbackAmount, totalAmount } = req.body;
 
@@ -415,8 +469,18 @@ router.post(
       });
     }
 
+    // Look up the receipt owner — this is an admin endpoint; use the receipt's userId,
+    // not the admin's own ID.
+    const receipt = await prisma.receipt.findUnique({
+      where: { id: receiptId },
+      select: { userId: true },
+    });
+    if (!receipt) {
+      return res.status(404).json({ success: false, message: 'Receipt not found' });
+    }
+
     await receiptAnalyticsService.updateAnalytics({
-      userId: req.user!.id,
+      userId: receipt.userId,
       receiptId,
       status,
       cashbackAmount: cashbackAmount || 0,
@@ -574,6 +638,7 @@ router.patch(
 router.get(
   '/venues/:venueId/config',
   authenticate,
+  authorize('PARTNER', 'ADMIN', 'SUPER_ADMIN'),
   asyncHandler(async (req: Request, res: Response) => {
     const result = await fraudDetectionService.getVenueConfig(req.params.venueId);
 
@@ -592,7 +657,19 @@ router.put(
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const config = req.body;
 
-    // TODO: Check if user is partner of this venue
+    // PARTNER role: verify they own this specific venue
+    if (req.user!.role === 'PARTNER') {
+      const partner = await prisma.partner.findUnique({
+        where: { id: req.params.venueId },
+        select: { userId: true },
+      });
+      if (!partner || partner.userId !== req.user!.id) {
+        return res.status(403).json({
+          success: false,
+          message: 'You do not have permission to modify this venue configuration',
+        });
+      }
+    }
 
     const result = await fraudDetectionService.updateVenueConfig(
       req.params.venueId,

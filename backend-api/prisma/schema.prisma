@@ -803,12 +803,12 @@ model VenueFraudConfig {
   cashbackPercent    Float  @default(5.0)
   premiumBonus       Float  @default(2.0)
   platinumBonus      Float  @default(5.0)
-  minBillAmount      Float  @default(10.0)
+  minBillAmount      Float  @default(0)
   maxCashbackPerScan Float?
 
   // Rate Limiting
-  maxScansPerDay   Int @default(3)
-  maxScansPerMonth Int @default(30)
+  maxScansPerDay   Int @default(999999)
+  maxScansPerMonth Int @default(999999)
 
   // Fraud Detection Settings
   gpsVerificationEnabled Boolean @default(true)
@@ -1162,6 +1162,8 @@ enum NotificationType {
   RECEIPT_REJECTED
   RECEIPT_MANUAL_REVIEW
   CASHBACK_CREDITED
+  STICKER_SCAN_APPROVED
+  FRAUD_ALERT
   SYSTEM
 }
 
@@ -1362,10 +1364,10 @@ model VenueStickerConfig {
   cashbackPercent        Float    @default(5.0)
   premiumBonus           Float    @default(2.0)
   platinumBonus          Float    @default(5.0)
-  minBillAmount          Float    @default(10.0)
+  minBillAmount          Float    @default(0)
   maxCashbackPerScan     Float?
-  maxScansPerDay         Int      @default(3)
-  maxScansPerMonth       Int      @default(30)
+  maxScansPerDay         Int      @default(999999)
+  maxScansPerMonth       Int      @default(999999)
   gpsVerificationEnabled Boolean  @default(true)
   gpsRadiusMeters        Int      @default(100)
   ocrVerificationEnabled Boolean  @default(true)
@@ -1396,4 +1398,23 @@ model PushToken {
   @@index([userId])
   @@index([token])
   @@index([isActive])
+}
+
+// ============================================
+// Cashback Rate Matrix (DB-backed, versioned)
+// ============================================
+
+model CashbackRate {
+  id           String   @id @default(uuid())
+  discountStep Int      // Partner discount % step: 5, 10, 15, 20, or 25
+  basic        Float    // User cashback % for BASIC card tier
+  premium      Float    // User cashback % for LIGHT/PREMIUM card tiers
+  effectiveFrom DateTime @default(now()) // Rates take effect from this timestamp
+  createdBy    String?  // Admin user ID who set these rates
+  notes        String?  // Optional note (reason for rate change, etc.)
+  createdAt    DateTime @default(now())
+
+  @@index([discountStep])
+  @@index([effectiveFrom])
+  @@map("cashback_rates")
 }

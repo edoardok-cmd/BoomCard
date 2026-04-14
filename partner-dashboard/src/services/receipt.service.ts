@@ -18,7 +18,6 @@ import {
   validateAmount,
   verifyGPSLocation,
   validateReceiptAge,
-  checkRateLimit,
   FraudCheckResult,
 } from '../utils/fraudDetection';
 import { Receipt, ReceiptStatus } from '../types/receipt.types';
@@ -123,15 +122,7 @@ class ReceiptService {
       const userStats = await this.getUserSubmissionStats();
 
       // Step 9: Check rate limits
-      const dailyLimit = checkRateLimit(
-        userStats.submissionsToday,
-        venueConfig?.maxScansPerDay || 10,
-        'day'
-      );
-
-      if (!dailyLimit.isAllowed) {
-        throw new Error(dailyLimit.reason || 'Daily submission limit exceeded');
-      }
+      // Rate limits deactivated — venue config defaults to 999999 (unlimited)
 
       // Step 10: Check merchant whitelist
       const merchantCheck = ocrData.merchantName

@@ -145,9 +145,17 @@ router.post('/:id/cancel', authenticate, asyncHandler(async (req: AuthRequest, r
   const { id } = req.params;
   const { cancelAtPeriodEnd } = cancelSchema.parse(req.body);
 
-  const subscription = await subscriptionService.cancelSubscription(id, cancelAtPeriodEnd);
+  const subscription = await subscriptionService.getSubscription(id);
+  if (!subscription) {
+    return res.status(404).json({ error: 'Subscription not found' });
+  }
+  if (subscription.userId !== req.user!.id) {
+    return res.status(403).json({ error: 'You do not have permission to cancel this subscription' });
+  }
 
-  res.json(subscription);
+  const result = await subscriptionService.cancelSubscription(id, cancelAtPeriodEnd);
+
+  res.json(result);
 }));
 
 /**
@@ -162,9 +170,17 @@ router.post('/:id/update-plan', authenticate, asyncHandler(async (req: AuthReque
   const { id } = req.params;
   const { plan } = updatePlanSchema.parse(req.body);
 
-  const subscription = await subscriptionService.updateSubscriptionPlan(id, plan);
+  const subscription = await subscriptionService.getSubscription(id);
+  if (!subscription) {
+    return res.status(404).json({ error: 'Subscription not found' });
+  }
+  if (subscription.userId !== req.user!.id) {
+    return res.status(403).json({ error: 'You do not have permission to update this subscription' });
+  }
 
-  res.json(subscription);
+  const result = await subscriptionService.updateSubscriptionPlan(id, plan);
+
+  res.json(result);
 }));
 
 export default router;

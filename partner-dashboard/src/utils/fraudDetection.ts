@@ -377,7 +377,7 @@ function lookupCashbackPercent(
 
 /**
  * Calculate cashback amount based on the fixed partner-discount → cashback matrix.
- * Plan codes: BASIC (max 10%), LIGHT = Premium Weekly, PREMIUM = Premium Monthly (both max 24%).
+ * Plan codes: BASIC (max 10%), LIGHT = Premium Weekly, PREMIUM = Premium Monthly (both max 20%).
  */
 export function calculateCashback(params: {
   amount: number;

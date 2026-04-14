@@ -146,12 +146,12 @@ const UpgradePlansScreen = ({ navigation, route }: any) => {
 
   // Filter to only show valid upgrade plans per the BOOM cashback model:
   //   null   (no card / no subscription)          → show all plans
-  //   LIGHT  (Premium Weekly, up to 24% cashback) → only PREMIUM Monthly (100% credit)
+  //   LIGHT  (Premium Weekly, up to 20% cashback) → only PREMIUM Monthly (100% credit)
   //   BASIC  (up to 10% cashback)                 → only PREMIUM Monthly (60% credit)
   //   PREMIUM                                     → no upgrades available
   //
   // LIGHT → BASIC is intentionally excluded: BASIC has a 10% cashback cap while
-  // LIGHT already provides up to 24%, so offering BASIC would be a cashback downgrade.
+  // LIGHT already provides up to 20%, so offering BASIC would be a cashback downgrade.
   const mappedCardType = currentCardType
     ? (BACKEND_TO_PLAN_CARD_TYPE[currentCardType.toLowerCase()] || currentCardType.toLowerCase())
     : null;

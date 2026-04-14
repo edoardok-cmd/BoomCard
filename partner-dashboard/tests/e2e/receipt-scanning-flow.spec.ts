@@ -199,7 +199,7 @@ test.describe('Receipt Scanning Flow', () => {
       }
     });
 
-    test('should require minimum receipt amount', async ({ page }) => {
+    test('should accept low receipt amounts (min bill deactivated)', async ({ page }) => {
       await page.goto('/receipt-scanner-demo');
 
       const filePath = path.join(__dirname, '../fixtures/test-receipt.png');
@@ -209,7 +209,7 @@ test.describe('Receipt Scanning Flow', () => {
         await fileInput.first().setInputFiles(filePath);
         await page.waitForTimeout(5000);
 
-        // Try amount below minimum (e.g., 1 BGN when minimum is 10 BGN)
+        // Low amounts should be accepted (minimum bill amount is 0)
         const amountInput = page.locator('input[name="totalAmount"]').or(page.getByLabel(/amount|сума/i));
 
         if (await amountInput.count() > 0) {
@@ -220,8 +220,8 @@ test.describe('Receipt Scanning Flow', () => {
           if (await submitButton.count() > 0) {
             await submitButton.first().click();
 
-            // Should show minimum amount error
-            await expect(page.getByText(/minimum|минимум|10/i)).toBeVisible({ timeout: 3000 });
+            // Should NOT show minimum amount error
+            await expect(page.getByText(/minimum|минимум|10/i)).not.toBeVisible({ timeout: 3000 });
           }
         }
       }

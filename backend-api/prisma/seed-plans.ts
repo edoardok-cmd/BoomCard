@@ -41,11 +41,11 @@ const plans = [
     priceWeeklyEur: 699,
     priceMonthlyEur: null,
     priceYearlyEur: 29100, // €6.99 × 52 weeks × ~0.80 discount ≈ €291
-    cashbackRate: 0.24, // max possible from cashback matrix at 30% partner discount
+    cashbackRate: 0.20, // max possible from cashback matrix at 25% partner discount
     stickerBonus: 0,
     features: JSON.stringify([
       'One week Premium access',
-      'Up to 24% cashback (partner-dependent)',
+      'Up to 20% cashback (partner-dependent)',
       'Exclusive Premium offers',
       'Limited availability special offers',
       'Access to exclusive Premium campaigns',
@@ -55,7 +55,7 @@ const plans = [
     ]),
     featuresBg: JSON.stringify([
       'Едноседмичен Premium достъп',
-      'До 24% кешбек (зависи от партньора)',
+      'До 20% кешбек (зависи от партньора)',
       'Ексклузивни Premium оферти',
       'Оферти с ограничена наличност',
       'Достъп до ексклузивни Premium кампании',
@@ -117,11 +117,11 @@ const plans = [
     priceWeeklyEur: null,
     priceMonthlyEur: 1399,
     priceYearlyEur: 13430, // €13.99 × 12 × 0.80 = €134.30
-    cashbackRate: 0.24, // max possible from cashback matrix at 30% partner discount
+    cashbackRate: 0.20, // max possible from cashback matrix at 25% partner discount
     stickerBonus: 0.05,
     features: JSON.stringify([
       'One month Premium access',
-      'Up to 24% cashback (partner-dependent)',
+      'Up to 20% cashback (partner-dependent)',
       'Exclusive Premium offers',
       'Limited availability special offers',
       'Access to exclusive Premium campaigns',
@@ -131,7 +131,7 @@ const plans = [
     ]),
     featuresBg: JSON.stringify([
       'Едномесечен Premium достъп',
-      'До 24% кешбек (зависи от партньора)',
+      'До 20% кешбек (зависи от партньора)',
       'Ексклузивни Premium оферти',
       'Оферти с ограничена наличност',
       'Достъп до ексклузивни Premium кампании',
