@@ -103,13 +103,6 @@ services:
       mountPath: /tmp/uploads
       sizeGB: 1
 
-    # Health Check Configuration
-    healthCheckPath: /health
-    healthCheckInterval: 30 # seconds
-    healthCheckTimeout: 10 # seconds
-    healthCheckUnhealthyThreshold: 3
-    healthCheckHealthyThreshold: 2
-
   # Redis Cache Service
   - type: redis
     name: boomcard-redis
@@ -124,12 +117,8 @@ databases:
     user: boomcard_user
     plan: starter # 256MB RAM, 1GB Storage
     region: frankfurt
-
-    # Automatic backups
+    postgresMajorVersion: "15"
     ipAllowList: [] # Empty = allow all. Restrict in production.
-
-    # Database version
-    postgresMajorVersion: 15
 
 # Cron Jobs (Optional - requires separate service)
 # Uncomment if you need scheduled tasks
