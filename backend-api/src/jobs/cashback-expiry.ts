@@ -12,7 +12,8 @@
  */
 
 import { PrismaClient, WalletTransactionType, WalletTransactionStatus } from '@prisma/client';
-import { PrismaNeon } from '@prisma/adapter-neon';
+import { PrismaPg } from '@prisma/adapter-pg';
+import pg from 'pg';
 import dotenv from 'dotenv';
 import path from 'path';
 import { logger } from '../utils/logger';
@@ -25,7 +26,8 @@ if (!databaseUrl) {
   process.exit(1);
 }
 
-const adapter = new PrismaNeon({ connectionString: databaseUrl });
+const pool = new pg.Pool({ connectionString: databaseUrl });
+const adapter = new PrismaPg(pool);
 const prisma = new PrismaClient({ adapter } as any);
 
 const BATCH_SIZE = 10; // wallets processed concurrently per batch

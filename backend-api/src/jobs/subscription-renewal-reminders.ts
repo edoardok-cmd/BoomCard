@@ -9,7 +9,8 @@
  */
 
 import { PrismaClient } from '@prisma/client';
-import { PrismaNeon } from '@prisma/adapter-neon';
+import { PrismaPg } from '@prisma/adapter-pg';
+import pg from 'pg';
 import dotenv from 'dotenv';
 import path from 'path';
 import { emailService, RenewalReminderData } from '../services/email.service';
@@ -25,7 +26,8 @@ if (!databaseUrl) {
   process.exit(1);
 }
 
-const adapter = new PrismaNeon({ connectionString: databaseUrl });
+const pool = new pg.Pool({ connectionString: databaseUrl });
+const adapter = new PrismaPg(pool);
 const prisma = new PrismaClient({ adapter });
 
 /**
