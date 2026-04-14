@@ -34,7 +34,6 @@ tests/
 # Database files
 *.db
 *.db-journal
-prisma/migrations/
 
 # Temporary files
 tmp/
