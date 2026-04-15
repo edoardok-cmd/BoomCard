@@ -56,7 +56,7 @@ export interface PayseraPayment {
 export interface PayseraCallback {
   data: string; // URL-safe base64 encoded data
   ss1: string; // MD5 signature: md5(data + password)
-  ss2?: string; // RSA SHA-1 signature (optional, verified with public key)
+  ss2?: string; // SHA-256 signature: sha256(data + password) (optional)
 }
 
 export interface PayseraCallbackData {
@@ -128,24 +128,6 @@ const PAYSERA_TRANSFER_API_URL = 'https://bank.paysera.com/rest/v1';
 // Paysera Service Class
 // ============================================
 
-// Cached Paysera RSA public key (fetched once per process lifetime)
-let payseraPublicKeyCache: string | null = null;
-
-async function getPayseraPublicKey(): Promise<string | null> {
-  if (payseraPublicKeyCache) return payseraPublicKeyCache;
-  try {
-    const response = await axios.get('https://www.paysera.com/download/public.key', {
-      timeout: 5000,
-      responseType: 'text',
-    });
-    payseraPublicKeyCache = response.data as string;
-    logger.info('Paysera RSA public key cached');
-    return payseraPublicKeyCache;
-  } catch (err) {
-    logger.warn('Failed to fetch Paysera public key — ss2 verification skipped');
-    return null;
-  }
-}
 
 export class PayseraService {
   private config: PayseraConfig;
@@ -156,7 +138,7 @@ export class PayseraService {
     this.config = {
       projectId: process.env.PAYSERA_PROJECT_ID || '',
       signPassword: process.env.PAYSERA_SIGN_PASSWORD || '',
-      testMode: process.env.PAYSERA_TEST_MODE === 'true' || process.env.NODE_ENV !== 'production',
+      testMode: process.env.PAYSERA_TEST_MODE === 'true',
     };
 
     if (!this.config.projectId || !this.config.signPassword) {
@@ -315,8 +297,8 @@ export class PayseraService {
 
   /**
    * Verify callback signatures:
-   *   ss1 = MD5(data + signPassword)   — required per Paysera spec
-   *   ss2 = RSA-SHA1(data) signed with Paysera's private key — optional but recommended
+   *   ss1 = MD5(data + signPassword)    — required per Paysera spec
+   *   ss2 = SHA-256(data + signPassword) — optional additional verification
    */
   async verifyCallback(callback: PayseraCallback): Promise<boolean> {
     try {
@@ -327,28 +309,19 @@ export class PayseraService {
         return false;
       }
 
-      // 2. Verify RSA-SHA1 signature (ss2) when present
+      // 2. Verify SHA-256 signature (ss2) when present
       if (callback.ss2) {
-        const publicKey = await getPayseraPublicKey();
-        if (publicKey) {
-          try {
-            const ss2Buffer = Buffer.from(callback.ss2, 'base64');
-            const verify = crypto.createVerify('SHA1');
-            verify.update(callback.data);
-            const valid = verify.verify(publicKey, ss2Buffer);
-            if (!valid) {
-              logger.warn('Invalid RSA signature (ss2) — rejecting callback');
-              return false;
-            }
-            logger.info('Callback signatures verified (ss1 + ss2 RSA)');
-          } catch (rsaErr) {
-            logger.warn('RSA ss2 verification error — falling back to ss1 only', rsaErr);
-          }
-        } else {
-          logger.info('Callback signature verified (ss1 only — public key unavailable)');
+        const expectedSs2 = crypto
+          .createHash('sha256')
+          .update(callback.data + this.config.signPassword)
+          .digest('hex');
+        if (callback.ss2 !== expectedSs2) {
+          logger.warn('Invalid SHA-256 signature (ss2)');
+          return false;
         }
+        logger.info('Callback signatures verified (ss1 + ss2 SHA-256)');
       } else {
-        logger.info('Callback signature verified (ss1 only — ss2 not provided)');
+        logger.info('Callback signature verified (ss1 only)');
       }
 
       return true;
@@ -364,6 +337,9 @@ export class PayseraService {
   parseCallback(encodedData: string): PayseraCallbackData {
     try {
       const data = this.decodeData(encodedData);
+      if (!data.projectid && !data.orderid) {
+        throw new Error('Missing required callback fields');
+      }
       return data as unknown as PayseraCallbackData;
     } catch (error: any) {
       logger.error('Error parsing callback data:', error);
@@ -375,12 +351,12 @@ export class PayseraService {
    * Map Paysera status codes to our status:
    * 0 = Payment has not been executed
    * 1 = Payment successful
-   * 2 = Payment order accepted, but not yet executed
-   * 3 = Additional payment information
+   * 2 = Payment failed / rejected
+   * 3 = Payment cancelled
    * 4 = Payment executed, but no bank confirmation
    * 5 = Payment was refunded
    */
-  getPaymentStatus(status: string): 'pending' | 'success' | 'failed' | 'cancelled' {
+  getPaymentStatus(status: string): 'pending' | 'success' | 'failed' | 'cancelled' | 'unknown' {
     switch (status) {
       case '1':
         return 'success';
@@ -389,13 +365,13 @@ export class PayseraService {
       case '0':
         return 'pending';
       case '2':
-        return 'pending'; // accepted but not yet executed
+        return 'failed';
       case '3':
-        return 'pending'; // additional info
+        return 'cancelled';
       case '5':
         return 'cancelled'; // refunded
       default:
-        return 'pending';
+        return 'unknown';
     }
   }
 
@@ -404,7 +380,7 @@ export class PayseraService {
    */
   async handleCallback(callback: PayseraCallback): Promise<{
     orderId: string;
-    status: 'pending' | 'success' | 'failed' | 'cancelled';
+    status: 'pending' | 'success' | 'failed' | 'cancelled' | 'unknown';
     rawStatus: string;
     amount: number;
     currency: string;

@@ -131,7 +131,7 @@ describe('BiometricService', () => {
 
       const result = await service.authenticate();
       expect(result.success).toBe(false);
-      expect(result.error).toMatch(/not enrolled/i);
+      expect(result.error).toMatch(/biometric credentials enrolled/i);
     });
 
     it('should handle generic failure', async () => {

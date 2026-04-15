@@ -74,13 +74,15 @@ describe('PayseraService', () => {
 
       const result = await payseraService.createPayment(params);
 
-      // Decode the data parameter from URL
+      // Decode the data parameter from URL (URL-safe base64 → URL-encoded query string)
       const url = new URL(result.paymentUrl);
       const encodedData = url.searchParams.get('data');
       expect(encodedData).toBeTruthy();
 
-      const decodedData = JSON.parse(Buffer.from(encodedData!, 'base64').toString());
-      expect(decodedData.test).toBe('1');
+      const base64 = encodedData!.replace(/-/g, '+').replace(/_/g, '/');
+      const queryString = Buffer.from(base64, 'base64').toString();
+      const params2 = new URLSearchParams(queryString);
+      expect(params2.get('test')).toBe('1');
     });
 
     it('should generate valid MD5 signature', async () => {
@@ -134,7 +136,7 @@ describe('PayseraService', () => {
   });
 
   describe('verifyCallback', () => {
-    it('should verify valid callback with MD5 signature', () => {
+    it('should verify valid callback with MD5 signature', async () => {
       const data = Buffer.from(JSON.stringify({ test: 'data' })).toString('base64');
       const ss1 = crypto
         .createHash('md5')
@@ -142,22 +144,22 @@ describe('PayseraService', () => {
         .digest('hex');
 
       const callback = { data, ss1 };
-      const result = payseraService.verifyCallback(callback);
+      const result = await payseraService.verifyCallback(callback);
 
       expect(result).toBe(true);
     });
 
-    it('should reject callback with invalid MD5 signature', () => {
+    it('should reject callback with invalid MD5 signature', async () => {
       const data = Buffer.from(JSON.stringify({ test: 'data' })).toString('base64');
       const ss1 = 'invalid-signature';
 
       const callback = { data, ss1 };
-      const result = payseraService.verifyCallback(callback);
+      const result = await payseraService.verifyCallback(callback);
 
       expect(result).toBe(false);
     });
 
-    it('should verify valid callback with both MD5 and SHA-256 signatures', () => {
+    it('should verify valid callback with both MD5 and SHA-256 signatures', async () => {
       const data = Buffer.from(JSON.stringify({ test: 'data' })).toString('base64');
       const ss1 = crypto
         .createHash('md5')
@@ -169,12 +171,12 @@ describe('PayseraService', () => {
         .digest('hex');
 
       const callback = { data, ss1, ss2 };
-      const result = payseraService.verifyCallback(callback);
+      const result = await payseraService.verifyCallback(callback);
 
       expect(result).toBe(true);
     });
 
-    it('should reject callback with invalid SHA-256 signature', () => {
+    it('should reject callback with invalid SHA-256 signature', async () => {
       const data = Buffer.from(JSON.stringify({ test: 'data' })).toString('base64');
       const ss1 = crypto
         .createHash('md5')
@@ -183,7 +185,7 @@ describe('PayseraService', () => {
       const ss2 = 'invalid-sha256-signature';
 
       const callback = { data, ss1, ss2 };
-      const result = payseraService.verifyCallback(callback);
+      const result = await payseraService.verifyCallback(callback);
 
       expect(result).toBe(false);
     });
@@ -194,13 +196,14 @@ describe('PayseraService', () => {
       const callbackData = {
         projectid: mockConfig.projectId,
         orderid: 'ORDER-123',
-        amount: '5000',
-        currency: 'BGN',
+        request_amount: '50',     // 50.00 BGN = 5000 cents
+        request_currency: 'BGN',
         status: '1', // Success
         requestid: 'REQ-123',
       };
 
-      const encodedData = Buffer.from(JSON.stringify(callbackData)).toString('base64');
+      const queryString = new URLSearchParams(callbackData).toString();
+      const encodedData = Buffer.from(queryString).toString('base64').replace(/\//g, '_').replace(/\+/g, '-');
       const ss1 = crypto
         .createHash('md5')
         .update(`${encodedData}${mockConfig.signPassword}`)
@@ -219,13 +222,14 @@ describe('PayseraService', () => {
       const callbackData = {
         projectid: mockConfig.projectId,
         orderid: 'ORDER-456',
-        amount: '2500',
-        currency: 'EUR',
+        request_amount: '25',
+        request_currency: 'EUR',
         status: '0', // Pending
         requestid: 'REQ-456',
       };
 
-      const encodedData = Buffer.from(JSON.stringify(callbackData)).toString('base64');
+      const queryString = new URLSearchParams(callbackData).toString();
+      const encodedData = Buffer.from(queryString).toString('base64').replace(/\//g, '_').replace(/\+/g, '-');
       const ss1 = crypto
         .createHash('md5')
         .update(`${encodedData}${mockConfig.signPassword}`)
@@ -241,13 +245,14 @@ describe('PayseraService', () => {
       const callbackData = {
         projectid: mockConfig.projectId,
         orderid: 'ORDER-789',
-        amount: '1000',
-        currency: 'USD',
+        request_amount: '10',
+        request_currency: 'USD',
         status: '2', // Failed
         requestid: 'REQ-789',
       };
 
-      const encodedData = Buffer.from(JSON.stringify(callbackData)).toString('base64');
+      const queryString = new URLSearchParams(callbackData).toString();
+      const encodedData = Buffer.from(queryString).toString('base64').replace(/\//g, '_').replace(/\+/g, '-');
       const ss1 = crypto
         .createHash('md5')
         .update(`${encodedData}${mockConfig.signPassword}`)
@@ -288,7 +293,8 @@ describe('PayseraService', () => {
         status: '1',
       };
 
-      const encodedData = Buffer.from(JSON.stringify(callbackData)).toString('base64');
+      const queryString = new URLSearchParams(callbackData).toString();
+      const encodedData = Buffer.from(queryString).toString('base64').replace(/\//g, '_').replace(/\+/g, '-');
       const result = payseraService.parseCallback(encodedData);
 
       expect(result).toEqual(callbackData);
@@ -457,8 +463,10 @@ describe('PayseraService', () => {
       const result = await service.createPayment(params);
       const url = new URL(result.paymentUrl);
       const encodedData = url.searchParams.get('data');
-      const decodedData = JSON.parse(Buffer.from(encodedData!, 'base64').toString());
-      expect(decodedData.test).toBeUndefined();
+      const base64 = encodedData!.replace(/-/g, '+').replace(/_/g, '/');
+      const queryString = Buffer.from(base64, 'base64').toString();
+      const urlParams = new URLSearchParams(queryString);
+      expect(urlParams.get('test')).toBeNull();
     });
   });
 });
