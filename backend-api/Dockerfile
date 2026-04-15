@@ -100,5 +100,5 @@ ENV NODE_ENV=production
 # Use dumb-init to handle signals properly
 ENTRYPOINT ["dumb-init", "--"]
 
-# Start the application (run migrations then start server)
-CMD ["sh", "-c", "node_modules/.bin/prisma migrate deploy && node dist/server.js"]
+# Start the application (resolve any failed no-op migration, then deploy + start)
+CMD ["sh", "-c", "node_modules/.bin/prisma migrate resolve --rolled-back 20260321_simplify_partner_tiers 2>&1 || true && node_modules/.bin/prisma migrate deploy && node dist/server.js"]
