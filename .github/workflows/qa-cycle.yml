@@ -39,6 +39,7 @@ jobs:
     needs: dependency-check
     
     strategy:
+      fail-fast: false
       matrix:
         service: [
           'api-gateway',
