@@ -75,6 +75,8 @@ jobs:
     - name: Run tests
       working-directory: ${{ matrix.service }}
       continue-on-error: true
+      env:
+        DATABASE_URL: postgresql://postgres:postgres@localhost:5432/boomcard_test
       run: npm test -- --passWithNoTests
 
   python-verification:
