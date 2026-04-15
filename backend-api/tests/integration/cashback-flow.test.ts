@@ -165,7 +165,6 @@ describe('Cashback Flow Integration Tests', () => {
           userId,
           businessName: 'Test Venue',
           category: 'Restaurant',
-          tier: 'BASIC',
           status: 'ACTIVE',
         },
       });

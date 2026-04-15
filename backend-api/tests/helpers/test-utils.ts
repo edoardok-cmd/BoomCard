@@ -125,7 +125,6 @@ export async function createTestVenue(userId: string) {
       userId,
       businessName: `Test Venue ${testId()}`,
       category: 'Restaurant',
-      tier: 'BASIC',
       status: 'ACTIVE',
     },
   });
