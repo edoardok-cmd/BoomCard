@@ -20,6 +20,7 @@ vi.mock('lucide-react', () => ({
   FileText: () => <div data-testid="filetext-icon">FileText</div>,
   CheckCircle: () => <div data-testid="checkcircle-icon">CheckCircle</div>,
   AlertCircle: () => <div data-testid="alertcircle-icon">AlertCircle</div>,
+  Save: () => <div data-testid="save-icon">Save</div>,
 }));
 
 // Mock LanguageContext
