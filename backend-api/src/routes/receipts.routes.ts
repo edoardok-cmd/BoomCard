@@ -4,6 +4,7 @@ import { authenticate, authorize, AuthRequest } from '../middleware/auth.middlew
 import { asyncHandler } from '../middleware/error.middleware';
 import { uploadSingle, validateMagicBytes } from '../middleware/upload.middleware';
 import { imageUploadService } from '../services/imageUpload.service';
+import { recognizeReceiptImage } from '../services/ocr.service';
 
 const router = Router();
 
@@ -97,23 +98,20 @@ router.post(
       });
     }
 
-    // For now, return mock OCR results
-    // In production, this would call an OCR service like Google Vision API, AWS Textract, etc.
-    const mockOCRResult = {
+    const ocrResult = await recognizeReceiptImage(req.file.buffer);
+
+    res.json({
       success: true,
       data: {
-        merchantName: 'Sample Merchant',
-        date: new Date().toISOString(),
-        totalAmount: 0,
-        currency: 'BGN',
-        items: [],
-        confidence: 0,
-        rawText: 'OCR processing not yet implemented. Please enter receipt details manually.'
+        merchantName: ocrResult.merchantName,
+        receiptDate: ocrResult.receiptDate,
+        totalAmount: ocrResult.totalAmount,
+        currency: ocrResult.currency,
+        items: ocrResult.items,
+        confidence: ocrResult.confidence,
+        rawText: ocrResult.rawText,
       },
-      message: 'OCR processing not yet implemented. Please enter details manually.'
-    };
-
-    res.json(mockOCRResult);
+    });
   })
 );
 

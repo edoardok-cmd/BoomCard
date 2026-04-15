@@ -28,6 +28,76 @@ export interface OCROptions {
 }
 
 /**
+ * Parse raw OCR text into structured receipt data.
+ * Exported separately so it can be unit-tested without a live Tesseract worker.
+ */
+export function parseReceiptText(text: string, confidence: number): ReceiptData {
+  const receiptData: ReceiptData = {
+    rawText: text,
+    confidence,
+  };
+
+  // Total amount (common patterns in Bulgarian receipts)
+  const totalPatterns = [
+    /(?:всичко|total|сума|общо)[:\s]*(\d+[.,]\d{2})/i,
+    /(?:за\s+плащане|to\s+pay)[:\s]*(\d+[.,]\d{2})/i,
+    /итого[:\s]*(\d+[.,]\d{2})/i,
+    /(\d+[.,]\d{2})\s*(?:лв|bgn|lev)/i,
+  ];
+
+  for (const pattern of totalPatterns) {
+    const match = text.match(pattern);
+    if (match) {
+      receiptData.totalAmount = parseFloat(match[1].replace(',', '.'));
+      break;
+    }
+  }
+
+  // Date (various formats — ISO/4-digit-year patterns checked first to avoid
+  // partial matches where the DD.MM.YY pattern eats the start of YYYY-MM-DD)
+  const datePatterns = [
+    /(\d{4}[./-]\d{1,2}[./-]\d{1,2})/,
+    /(\d{1,2}[./-]\d{1,2}[./-]\d{2,4})/,
+    /(\d{1,2}\s+(?:януари|февруари|март|април|май|юни|юли|август|септември|октомври|ноември|декември)\s+\d{4})/i,
+  ];
+
+  for (const pattern of datePatterns) {
+    const match = text.match(pattern);
+    if (match) {
+      receiptData.date = match[1];
+      break;
+    }
+  }
+
+  // Merchant name — first non-empty line
+  const lines = text.split('\n').filter(line => line.trim().length > 0);
+  if (lines.length > 0) {
+    receiptData.merchantName = lines[0].trim();
+  }
+
+  // Line items — text followed by price
+  const itemPattern = /(.+?)\s+(\d+[.,]\d{2})/g;
+  const items: ReceiptItem[] = [];
+  let match;
+
+  while ((match = itemPattern.exec(text)) !== null) {
+    const name = match[1].trim();
+    const price = parseFloat(match[2].replace(',', '.'));
+
+    const skipWords = /total|всичко|сума|общо|дата|date|час|time|бон|receipt|cash|card|ддс|vat/i;
+    if (name.length > 2 && !skipWords.test(name)) {
+      items.push({ name, price });
+    }
+  }
+
+  if (items.length > 0) {
+    receiptData.items = items;
+  }
+
+  return receiptData;
+}
+
+/**
  * OCR Service using Tesseract.js
  * Handles receipt scanning and text extraction
  */
@@ -131,72 +201,7 @@ class OCRService {
    * Parse raw OCR text to extract structured receipt data
    */
   private parseReceiptData(text: string, confidence: number): ReceiptData {
-    const receiptData: ReceiptData = {
-      rawText: text,
-      confidence,
-    };
-
-    // Extract total amount (common patterns in Bulgarian receipts)
-    const totalPatterns = [
-      /(?:всичко|total|сума|общо)[:\s]*(\d+[.,]\d{2})/i,
-      /(?:за\s+плащане|to\s+pay)[:\s]*(\d+[.,]\d{2})/i,
-      /(?:total|итого)[:\s]*(\d+[.,]\d{2})/i,
-      /(\d+[.,]\d{2})\s*(?:лв|bgn|lev)/i,
-    ];
-
-    for (const pattern of totalPatterns) {
-      const match = text.match(pattern);
-      if (match) {
-        receiptData.totalAmount = parseFloat(match[1].replace(',', '.'));
-        break;
-      }
-    }
-
-    // Extract date (various formats)
-    const datePatterns = [
-      /(\d{1,2}[./-]\d{1,2}[./-]\d{2,4})/,
-      /(\d{4}[./-]\d{1,2}[./-]\d{1,2})/,
-      /(\d{1,2}\s+(?:януари|февруари|март|април|май|юни|юли|август|септември|октомври|ноември|декември)\s+\d{4})/i,
-    ];
-
-    for (const pattern of datePatterns) {
-      const match = text.match(pattern);
-      if (match) {
-        receiptData.date = match[1];
-        break;
-      }
-    }
-
-    // Extract merchant name (usually in first few lines)
-    const lines = text.split('\n').filter(line => line.trim().length > 0);
-    if (lines.length > 0) {
-      // Take first non-empty line as potential merchant name
-      receiptData.merchantName = lines[0].trim();
-    }
-
-    // Extract items (simple pattern: text followed by price)
-    const itemPattern = /(.+?)\s+(\d+[.,]\d{2})/g;
-    const items: ReceiptItem[] = [];
-    let match;
-
-    while ((match = itemPattern.exec(text)) !== null) {
-      const name = match[1].trim();
-      const price = parseFloat(match[2].replace(',', '.'));
-
-      // Filter out likely non-item lines
-      if (name.length > 2 &&
-          !name.toLowerCase().includes('total') &&
-          !name.toLowerCase().includes('всичко') &&
-          !name.toLowerCase().includes('сума')) {
-        items.push({ name, price });
-      }
-    }
-
-    if (items.length > 0) {
-      receiptData.items = items;
-    }
-
-    return receiptData;
+    return parseReceiptText(text, confidence);
   }
 
   /**

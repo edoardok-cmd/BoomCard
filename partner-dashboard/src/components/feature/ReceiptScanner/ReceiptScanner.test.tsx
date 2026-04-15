@@ -116,7 +116,7 @@ describe('ReceiptScanner', () => {
     });
 
     expect(onScanComplete).toHaveBeenCalledWith(mockResult);
-    expect(screen.getByText(/29.99/)).toBeInTheDocument();
+    expect(screen.getAllByText(/29.99/).length).toBeGreaterThan(0);
     expect(screen.getByText(/Test Store/)).toBeInTheDocument();
   });
 

@@ -1,0 +1,3 @@
+This is a test document file.
+It should be rejected when uploading receipts
+because only images (PNG, JPG) are accepted.
