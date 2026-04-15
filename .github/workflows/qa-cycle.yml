@@ -77,6 +77,8 @@ jobs:
       continue-on-error: true
       env:
         DATABASE_URL: postgresql://postgres:postgres@localhost:5432/boomcard_test
+        JWT_SECRET: test-jwt-secret
+        JWT_REFRESH_SECRET: test-jwt-refresh-secret
       run: npm test -- --passWithNoTests
 
   python-verification:

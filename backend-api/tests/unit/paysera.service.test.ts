@@ -35,6 +35,7 @@ describe('PayseraService', () => {
         orderId: 'BOOM-1234567890-abcd',
         amount: 5000, // 50.00 BGN in cents
         currency: 'BGN',
+        description: 'BoomCard subscription',
         acceptUrl: 'http://localhost:3000/success',
         cancelUrl: 'http://localhost:3000/cancel',
         callbackUrl: 'http://localhost:3000/callback',
@@ -56,6 +57,7 @@ describe('PayseraService', () => {
         orderId: 'TEST-001',
         amount: 1000,
         currency: 'EUR',
+        description: 'Test payment',
         acceptUrl: 'http://localhost:3000/success',
         cancelUrl: 'http://localhost:3000/cancel',
         callbackUrl: 'http://localhost:3000/callback',
@@ -77,6 +79,7 @@ describe('PayseraService', () => {
         orderId: 'SIG-TEST',
         amount: 2500,
         currency: 'BGN',
+        description: 'Signature test',
         acceptUrl: 'http://localhost:3000/success',
         cancelUrl: 'http://localhost:3000/cancel',
         callbackUrl: 'http://localhost:3000/callback',
