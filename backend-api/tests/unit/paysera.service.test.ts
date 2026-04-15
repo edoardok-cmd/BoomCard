@@ -4,9 +4,11 @@
 
 import crypto from 'crypto';
 import { PayseraService } from '../../src/services/paysera.service';
+import { logger } from '../../src/utils/logger';
 
 describe('PayseraService', () => {
   let payseraService: PayseraService;
+  let originalEnv: NodeJS.ProcessEnv;
 
   const mockConfig = {
     projectId: '123456',
@@ -14,6 +16,10 @@ describe('PayseraService', () => {
     apiUrl: 'https://www.paysera.com/pay',
     testMode: true,
   };
+
+  beforeAll(() => {
+    originalEnv = { ...process.env };
+  });
 
   beforeEach(() => {
     // Reset environment variables
@@ -26,7 +32,10 @@ describe('PayseraService', () => {
   });
 
   afterEach(() => {
+    // Restore original env to prevent pollution between tests
+    process.env = { ...originalEnv };
     jest.clearAllMocks();
+    jest.restoreAllMocks();
   });
 
   describe('createPayment', () => {
@@ -400,20 +409,26 @@ describe('PayseraService', () => {
   });
 
   describe('Configuration validation', () => {
-    it('should throw error if project ID is missing', () => {
+    it('should warn if project ID is missing', () => {
+      const warnSpy = jest.spyOn(logger, 'warn');
       delete process.env.PAYSERA_PROJECT_ID;
 
-      expect(() => {
-        new PayseraService();
-      }).toThrow();
+      const service = new PayseraService();
+      expect(service).toBeDefined();
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Paysera credentials not configured')
+      );
     });
 
-    it('should throw error if sign password is missing', () => {
+    it('should warn if sign password is missing', () => {
+      const warnSpy = jest.spyOn(logger, 'warn');
       delete process.env.PAYSERA_SIGN_PASSWORD;
 
-      expect(() => {
-        new PayseraService();
-      }).toThrow();
+      const service = new PayseraService();
+      expect(service).toBeDefined();
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Paysera credentials not configured')
+      );
     });
 
     it('should use default API URL if not provided', () => {
@@ -424,7 +439,7 @@ describe('PayseraService', () => {
       expect(service).toBeDefined();
     });
 
-    it('should default to production mode if not specified', () => {
+    it('should default to production mode if not specified', async () => {
       delete process.env.PAYSERA_TEST_MODE;
       const service = new PayseraService();
 
@@ -439,12 +454,11 @@ describe('PayseraService', () => {
         callbackUrl: 'http://localhost:3000/callback',
       };
 
-      service.createPayment(params).then((result) => {
-        const url = new URL(result.paymentUrl);
-        const encodedData = url.searchParams.get('data');
-        const decodedData = JSON.parse(Buffer.from(encodedData!, 'base64').toString());
-        expect(decodedData.test).toBeUndefined();
-      });
+      const result = await service.createPayment(params);
+      const url = new URL(result.paymentUrl);
+      const encodedData = url.searchParams.get('data');
+      const decodedData = JSON.parse(Buffer.from(encodedData!, 'base64').toString());
+      expect(decodedData.test).toBeUndefined();
     });
   });
 });

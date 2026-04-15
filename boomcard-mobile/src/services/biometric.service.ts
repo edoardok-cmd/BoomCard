@@ -35,6 +35,11 @@ export class BiometricService {
     return BiometricService.instance;
   }
 
+  /** @internal Reset singleton for testing */
+  public static resetForTesting(): void {
+    BiometricService.instance = undefined as unknown as BiometricService;
+  }
+
   /**
    * Check if biometric authentication is available and enrolled on device
    */

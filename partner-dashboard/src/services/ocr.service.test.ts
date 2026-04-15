@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseReceiptText } from './ocr.service';
+import { parseReceiptText, parseAmount } from './ocr.service';
 
 describe('parseReceiptText', () => {
   // ─── Total amount ──────────────────────────────────────────────
@@ -49,6 +49,30 @@ describe('parseReceiptText', () => {
       const result = parseReceiptText('Store\nTotal: 29,99', 90);
       expect(result.totalAmount).toBe(29.99);
     });
+
+    it('parses BG thousands-separator amount "1.234,56 лв"', () => {
+      const result = parseReceiptText('Store\n1.234,56 лв', 90);
+      expect(result.totalAmount).toBe(1234.56);
+    });
+
+    it('parses EN thousands-separator amount "1,234.56 BGN"', () => {
+      const result = parseReceiptText('Store\n1,234.56 BGN', 90);
+      expect(result.totalAmount).toBe(1234.56);
+    });
+
+    it('parses BG keyword total with thousands: "Всичко: 2.500,00"', () => {
+      const result = parseReceiptText('Store\nВсичко: 2.500,00', 90);
+      expect(result.totalAmount).toBe(2500.0);
+    });
+  });
+
+  // ─── parseAmount helper ───────────────────────────────────────
+
+  describe('parseAmount', () => {
+    it('handles BG format "1.234,56"', () => expect(parseAmount('1.234,56')).toBe(1234.56));
+    it('handles EN format "1,234.56"', () => expect(parseAmount('1,234.56')).toBe(1234.56));
+    it('handles plain "29,99"', () => expect(parseAmount('29,99')).toBe(29.99));
+    it('handles plain "29.99"', () => expect(parseAmount('29.99')).toBe(29.99));
   });
 
   // ─── Date extraction ──────────────────────────────────────────
@@ -183,5 +207,9 @@ describe('parseReceiptText', () => {
     expect(result.totalAmount).toBe(16.5);
     expect(result.date).toBe('12.04.2025');
     expect(result.confidence).toBe(88);
+    expect(result.items).toBeDefined();
+    expect(result.items!.some(i => i.name === 'Пилешка супа' && i.price === 8.0)).toBe(true);
+    expect(result.items!.some(i => i.name === 'Шопска салата' && i.price === 6.5)).toBe(true);
+    expect(result.items!.some(i => i.name === 'Вода 0.5л' && i.price === 2.0)).toBe(true);
   });
 });

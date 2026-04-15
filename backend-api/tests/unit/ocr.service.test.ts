@@ -7,7 +7,7 @@
  *   2. Item regex requires 2+ spaces separator (stricter, fewer false positives)
  */
 
-import { parseReceiptText } from '../../src/services/ocr.service';
+import { parseReceiptText, parseAmount } from '../../src/services/ocr.service';
 
 describe('parseReceiptText (backend)', () => {
   // ─── Total amount ──────────────────────────────────────────────
@@ -52,6 +52,30 @@ describe('parseReceiptText (backend)', () => {
       const r = parseReceiptText('Receipt with no total', 90);
       expect(r.totalAmount).toBeUndefined();
     });
+
+    it('parses BG thousands-separator amount "1.234,56 лв"', () => {
+      const r = parseReceiptText('Store\n1.234,56 лв', 90);
+      expect(r.totalAmount).toBe(1234.56);
+    });
+
+    it('parses EN thousands-separator amount "1,234.56 BGN"', () => {
+      const r = parseReceiptText('Store\n1,234.56 BGN', 90);
+      expect(r.totalAmount).toBe(1234.56);
+    });
+
+    it('parses BG keyword total with thousands: "Всичко: 2.500,00"', () => {
+      const r = parseReceiptText('Store\nВсичко: 2.500,00', 90);
+      expect(r.totalAmount).toBe(2500.0);
+    });
+  });
+
+  // ─── parseAmount helper ───────────────────────────────────────
+
+  describe('parseAmount', () => {
+    it('handles BG format "1.234,56"', () => expect(parseAmount('1.234,56')).toBe(1234.56));
+    it('handles EN format "1,234.56"', () => expect(parseAmount('1,234.56')).toBe(1234.56));
+    it('handles plain "29,99"', () => expect(parseAmount('29,99')).toBe(29.99));
+    it('handles plain "29.99"', () => expect(parseAmount('29.99')).toBe(29.99));
   });
 
   // ─── Date normalisation (backend-specific) ────────────────────
@@ -157,6 +181,14 @@ describe('parseReceiptText (backend)', () => {
     it('returns empty items array when nothing matches', () => {
       const r = parseReceiptText('Just a receipt', 90);
       expect(r.items).toEqual([]);
+    });
+
+    it('extracts items from lines with trailing whitespace (real OCR output)', () => {
+      // Tesseract frequently appends trailing spaces — $ alone would drop these lines
+      const receipt = 'SHOP\nПиле с картофи  12,50   \nSalata  5.00  \nВсичко  17,50';
+      const r = parseReceiptText(receipt, 90);
+      expect(r.items.some(i => i.name === 'Пиле с картофи' && i.price === 12.5)).toBe(true);
+      expect(r.items.some(i => i.name === 'Salata' && i.price === 5.0)).toBe(true);
     });
   });
 

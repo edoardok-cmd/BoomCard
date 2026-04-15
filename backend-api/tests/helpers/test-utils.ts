@@ -192,9 +192,13 @@ export async function cleanupTestUser(userId: string) {
     await prisma.subscription.deleteMany({ where: { userId } });
     await prisma.card.deleteMany({ where: { userId } });
     await prisma.loyaltyAccount.deleteMany({ where: { userId } });
-    await prisma.user.delete({ where: { id: userId } }).catch(() => {});
-  } catch {
-    // Ignore cleanup errors in tests
+    await prisma.user.delete({ where: { id: userId } }).catch((e) => {
+      if (!String(e).includes('Record to delete does not exist')) {
+        console.warn(`cleanupTestUser: unexpected error deleting user ${userId}:`, e);
+      }
+    });
+  } catch (e) {
+    console.warn(`cleanupTestUser: cleanup failed for ${userId}:`, e);
   }
 }
 
@@ -213,10 +217,14 @@ export async function cleanupTestVenue(venueId: string) {
     const venue = await prisma.venue.findUnique({ where: { id: venueId } });
     if (venue) {
       await prisma.venue.delete({ where: { id: venueId } });
-      await prisma.partner.delete({ where: { id: venue.partnerId } }).catch(() => {});
+      await prisma.partner.delete({ where: { id: venue.partnerId } }).catch((e) => {
+        if (!String(e).includes('Record to delete does not exist')) {
+          console.warn(`cleanupTestVenue: unexpected error deleting partner ${venue.partnerId}:`, e);
+        }
+      });
     }
-  } catch {
-    // Ignore cleanup errors
+  } catch (e) {
+    console.warn(`cleanupTestVenue: cleanup failed for ${venueId}:`, e);
   }
 }
 

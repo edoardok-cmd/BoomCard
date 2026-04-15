@@ -12,9 +12,24 @@ export interface OCRResult {
 }
 
 /**
- * Parse raw OCR text into structured receipt data.
- * Exported for unit testing.
+ * Parse a Bulgarian or English formatted amount string to a JS number.
+ * Handles:
+ *   "1.234,56"  → 1234.56  (BG: dot=thousands, comma=decimal)
+ *   "1,234.56"  → 1234.56  (EN: comma=thousands, dot=decimal)
+ *   "1234,56"   → 1234.56  (BG no thousands sep)
+ *   "1234.56"   → 1234.56  (EN no thousands sep)
  */
+export function parseAmount(s: string): number {
+  const lastComma = s.lastIndexOf(',');
+  const lastDot = s.lastIndexOf('.');
+  if (lastComma > lastDot) {
+    // comma is decimal separator (Bulgarian style)
+    return parseFloat(s.replace(/\./g, '').replace(',', '.'));
+  }
+  // dot is decimal separator (English style)
+  return parseFloat(s.replace(/,/g, ''));
+}
+
 export function parseReceiptText(text: string, confidence: number): OCRResult {
   const result: OCRResult = {
     rawText: text,
@@ -24,17 +39,19 @@ export function parseReceiptText(text: string, confidence: number): OCRResult {
   };
 
   // Total amount — Bulgarian and common English patterns
+  // Amount group supports thousands separators: 1.234,56 or 1,234.56
+  const AMT = String.raw`(\d{1,3}(?:[.,]\d{3})*[.,]\d{2}|\d+[.,]\d{2})`;
   const totalPatterns = [
-    /(?:всичко|общо|за\s+плащане)[:\s]*(\d+[.,]\d{2})/i,
-    /(?:total|сума)[:\s]*(\d+[.,]\d{2})/i,
-    /(?:to\s+pay|итого)[:\s]*(\d+[.,]\d{2})/i,
-    /(\d+[.,]\d{2})\s*(?:лв\.?|bgn|lev)/i,
+    new RegExp(String.raw`(?:всичко|общо|за\s+плащане)[:\s]*` + AMT, 'i'),
+    new RegExp(String.raw`(?:total|сума)[:\s]*` + AMT, 'i'),
+    new RegExp(String.raw`(?:to\s+pay|итого)[:\s]*` + AMT, 'i'),
+    new RegExp(AMT + String.raw`\s*(?:лв\.?|bgn|lev)`, 'i'),
   ];
 
   for (const pattern of totalPatterns) {
     const match = text.match(pattern);
     if (match) {
-      result.totalAmount = parseFloat(match[1].replace(',', '.'));
+      result.totalAmount = parseAmount(match[1]);
       break;
     }
   }
@@ -74,12 +91,12 @@ export function parseReceiptText(text: string, confidence: number): OCRResult {
   }
 
   // Line items — "description   12.34" pattern, skip total/header lines
-  const itemPattern = /^(.{2,40}?)\s{2,}(\d+[.,]\d{2})$/gm;
+  const itemPattern = /^(.{2,40}?)\s{2,}(\d{1,3}(?:[.,]\d{3})*[.,]\d{2}|\d+[.,]\d{2})\s*$/gm;
   const skipWords = /total|всичко|сума|общо|дата|date|час|time|бон|receipt|cash|card|ддс|vat/i;
   let m: RegExpExecArray | null;
   while ((m = itemPattern.exec(text)) !== null) {
     const name = m[1].trim();
-    const price = parseFloat(m[2].replace(',', '.'));
+    const price = parseAmount(m[2]);
     if (!skipWords.test(name)) {
       result.items.push({ name, price });
     }

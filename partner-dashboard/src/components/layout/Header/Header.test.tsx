@@ -1,50 +1,51 @@
-import { render, screen } from '@testing-library/react';
+import React from 'react';
+import { render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { vi } from 'vitest';
+import { LanguageProvider } from '../../../contexts/LanguageContext';
+import { AuthProvider } from '../../../contexts/AuthContext';
+import { FavoritesProvider } from '../../../contexts/FavoritesContext';
+import { ThemeProvider } from '../../../contexts/ThemeContext';
 import Header from './Header';
 
-vi.mock('../../../contexts/LanguageContext', () => ({
-  useLanguage: () => ({ language: 'en', setLanguage: vi.fn(), toggleLanguage: vi.fn(), t: (k: string) => k }),
-}));
-
-vi.mock('../../../contexts/AuthContext', () => ({
-  useAuth: () => ({
-    user: null,
-    isAuthenticated: false,
-    isLoading: false,
-    token: null,
-    login: vi.fn(),
-    loginWithOAuth: vi.fn(),
-    register: vi.fn(),
-    logout: vi.fn(),
-    updateProfile: vi.fn(),
-    changePassword: vi.fn(),
-    uploadAvatar: vi.fn(),
-    removeAvatar: vi.fn(),
-  }),
-}));
-
-vi.mock('../../../contexts/FavoritesContext', () => ({
-  useFavorites: () => ({
-    favorites: [],
-    addFavorite: vi.fn(),
-    removeFavorite: vi.fn(),
-    isFavorite: vi.fn(() => false),
-  }),
-}));
-
-vi.mock('../../../contexts/ThemeContext', () => ({
-  useTheme: () => ({ theme: 'light', setTheme: vi.fn() }),
-  ThemeMode: { LIGHT: 'light', DARK: 'dark', COLOR: 'color' },
-}));
+function AllProviders({ children }: { children: React.ReactNode }) {
+  return (
+    <LanguageProvider>
+      <ThemeProvider>
+        <AuthProvider>
+          <FavoritesProvider>
+            <MemoryRouter>
+              {children}
+            </MemoryRouter>
+          </FavoritesProvider>
+        </AuthProvider>
+      </ThemeProvider>
+    </LanguageProvider>
+  );
+}
 
 describe('Header', () => {
-  it('renders without crashing', () => {
+  beforeEach(() => {
+    // Ensure English language in test environment (jsdom hostname ≠ boomcard.eu → defaults to bg)
+    localStorage.setItem('boomcard_language', 'en');
+    // No stored auth token — AuthProvider will initialise as logged-out without API calls
+    localStorage.removeItem('token');
+    localStorage.removeItem('boomcard_auth');
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it('renders without crashing', async () => {
     render(
-      <MemoryRouter>
+      <AllProviders>
         <Header>Test</Header>
-      </MemoryRouter>
+      </AllProviders>
     );
-    expect(screen.getByText('Test')).toBeInTheDocument();
+
+    // waitFor handles the async isLoading → false transition in AuthProvider
+    await waitFor(() => {
+      expect(screen.getByText('Test')).toBeInTheDocument();
+    });
   });
 });

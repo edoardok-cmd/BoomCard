@@ -65,10 +65,10 @@ describe('Webhook / Callback Handling', () => {
     afterEach(async () => {
       await prisma.walletTransaction.deleteMany({
         where: { transactionId: testTransactionId },
-      }).catch(() => {});
+      }).catch((e) => { console.warn('afterEach cleanup: walletTransaction:', e); });
       await prisma.transaction.deleteMany({
         where: { id: testTransactionId },
-      }).catch(() => {});
+      }).catch((e) => { console.warn('afterEach cleanup: transaction:', e); });
     });
 
     it('should accept callback with valid MD5 signature (ss1) and complete transaction', async () => {
@@ -255,9 +255,17 @@ describe('Webhook / Callback Handling', () => {
       const walletAfterSecond = await prisma.wallet.findUnique({ where: { userId } });
       expect(walletAfterSecond?.balance).toBeLessThanOrEqual(balanceAfterFirst + 20);
 
+      // Transaction should be in a terminal state (not reverted or corrupted)
+      const txAfterDuplicate = await prisma.transaction.findUnique({ where: { id: tx.id } });
+      expect(txAfterDuplicate?.status).toBe('COMPLETED');
+
       // Cleanup
-      await prisma.walletTransaction.deleteMany({ where: { transactionId: tx.id } }).catch(() => {});
-      await prisma.transaction.delete({ where: { id: tx.id } }).catch(() => {});
+      await prisma.walletTransaction.deleteMany({ where: { transactionId: tx.id } }).catch((e) => {
+        console.warn('idempotency cleanup: walletTransaction:', e);
+      });
+      await prisma.transaction.delete({ where: { id: tx.id } }).catch((e) => {
+        console.warn('idempotency cleanup: transaction:', e);
+      });
     });
   });
 

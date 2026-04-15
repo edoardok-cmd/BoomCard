@@ -35,6 +35,11 @@ export class LocationService {
     return LocationService.instance;
   }
 
+  /** @internal Reset singleton for testing */
+  public static resetForTesting(): void {
+    LocationService.instance = undefined as unknown as LocationService;
+  }
+
   /**
    * Request location permissions from user
    * Required before any location operations

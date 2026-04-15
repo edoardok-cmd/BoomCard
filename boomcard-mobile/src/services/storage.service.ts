@@ -24,6 +24,11 @@ export class StorageService {
     return StorageService.instance;
   }
 
+  /** @internal Reset singleton for testing */
+  public static resetForTesting(): void {
+    StorageService.instance = undefined as unknown as StorageService;
+  }
+
   /**
    * Store value securely
    */

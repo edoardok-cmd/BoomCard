@@ -65,6 +65,11 @@ export class ApiClient {
     return ApiClient.instance;
   }
 
+  /** @internal Reset singleton for testing */
+  public static resetForTesting(): void {
+    ApiClient.instance = undefined as unknown as ApiClient;
+  }
+
   /**
    * Setup request and response interceptors
    */

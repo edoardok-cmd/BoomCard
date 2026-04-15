@@ -1,34 +1,13 @@
-// Mock expo modules
-jest.mock('expo-secure-store', () => ({
-  getItemAsync: jest.fn(),
-  setItemAsync: jest.fn(),
-  deleteItemAsync: jest.fn(),
-}));
+// Prevent expo's ReadableStream polyfill from crashing axios's fetch adapter detection.
+// Axios's fetch.js tests ReadableStream.cancel() at module load, which throws with expo's
+// stream polyfill. Temporarily removing fetch forces axios to auto-select the http adapter.
+const _fetch = globalThis.fetch;
+delete globalThis.fetch;
+const axios = require('axios');
+axios.defaults.adapter = 'http';
+globalThis.fetch = _fetch;
 
-jest.mock('expo-web-browser', () => ({
-  openAuthSessionAsync: jest.fn(),
-  maybeCompleteAuthSession: jest.fn(),
-}));
-
-jest.mock('expo-linking', () => ({
-  createURL: jest.fn(() => 'boomcard://'),
-}));
-
-jest.mock('@react-native-async-storage/async-storage', () => ({
-  getItem: jest.fn(),
-  setItem: jest.fn(),
-  removeItem: jest.fn(),
-  clear: jest.fn(),
-}));
-
-// Mock react-native globals (safe — module may not exist in all RN versions)
-try {
-  jest.mock('react-native/Libraries/Animated/NativeAnimatedHelper');
-} catch (e) {
-  // Module not available in this RN version — skip
-}
-
-// Suppress console warnings in tests
+// Suppress noisy React Native / Animated console warnings in test output
 const originalWarn = console.warn;
 console.warn = (...args) => {
   if (
@@ -39,3 +18,4 @@ console.warn = (...args) => {
   }
   originalWarn.call(console, ...args);
 };
+

@@ -227,8 +227,8 @@ test.describe('Admin Cashback Management', () => {
     });
 
     test('should display loading state', async ({ page }) => {
-      // Mock slow network
-      await page.route('**/api/**', async route => {
+      // Mock slow network for cashback endpoint only
+      await page.route('**/api/admin/cashback**', async route => {
         await new Promise(resolve => setTimeout(resolve, 2000));
         await route.continue();
       });
@@ -244,7 +244,7 @@ test.describe('Admin Cashback Management', () => {
 
     test('should display empty state message', async ({ page }) => {
       // Mock API to return empty data
-      await page.route('**/api/**/cashback/**', route => {
+      await page.route('**/api/admin/cashback**', route => {
         route.fulfill({
           status: 200,
           body: JSON.stringify({
@@ -387,9 +387,9 @@ test.describe('Admin Cashback Management', () => {
     });
 
     test('should show toast on successful action', async ({ page }) => {
-      // Mock the API to return success
+      // Mock admin API to return success
       let apiCalled = false;
-      await page.route('**/api/**', route => {
+      await page.route('**/api/admin/**', route => {
         apiCalled = true;
         route.fulfill({
           status: 200,
@@ -505,8 +505,8 @@ test.describe('Admin Cashback Management', () => {
 
   test.describe('Error Handling', () => {
     test('should handle API errors gracefully', async ({ page }) => {
-      // Mock API to return error
-      await page.route('**/api/**', route => {
+      // Mock cashback API to return error
+      await page.route('**/api/admin/cashback**', route => {
         route.fulfill({
           status: 500,
           body: JSON.stringify({ error: 'Server error' }),

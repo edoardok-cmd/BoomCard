@@ -28,6 +28,23 @@ export interface OCROptions {
 }
 
 /**
+ * Parse a Bulgarian or English formatted amount string to a JS number.
+ * Handles:
+ *   "1.234,56"  → 1234.56  (BG: dot=thousands, comma=decimal)
+ *   "1,234.56"  → 1234.56  (EN: comma=thousands, dot=decimal)
+ *   "1234,56"   → 1234.56  (BG no thousands sep)
+ *   "1234.56"   → 1234.56  (EN no thousands sep)
+ */
+export function parseAmount(s: string): number {
+  const lastComma = s.lastIndexOf(',');
+  const lastDot = s.lastIndexOf('.');
+  if (lastComma > lastDot) {
+    return parseFloat(s.replace(/\./g, '').replace(',', '.'));
+  }
+  return parseFloat(s.replace(/,/g, ''));
+}
+
+/**
  * Parse raw OCR text into structured receipt data.
  * Exported separately so it can be unit-tested without a live Tesseract worker.
  */
@@ -38,17 +55,19 @@ export function parseReceiptText(text: string, confidence: number): ReceiptData 
   };
 
   // Total amount (common patterns in Bulgarian receipts)
+  // Amount group supports thousands separators: 1.234,56 or 1,234.56
+  const AMT = String.raw`(\d{1,3}(?:[.,]\d{3})*[.,]\d{2}|\d+[.,]\d{2})`;
   const totalPatterns = [
-    /(?:всичко|total|сума|общо)[:\s]*(\d+[.,]\d{2})/i,
-    /(?:за\s+плащане|to\s+pay)[:\s]*(\d+[.,]\d{2})/i,
-    /итого[:\s]*(\d+[.,]\d{2})/i,
-    /(\d+[.,]\d{2})\s*(?:лв|bgn|lev)/i,
+    new RegExp(String.raw`(?:всичко|total|сума|общо)[:\s]*` + AMT, 'i'),
+    new RegExp(String.raw`(?:за\s+плащане|to\s+pay)[:\s]*` + AMT, 'i'),
+    new RegExp(String.raw`итого[:\s]*` + AMT, 'i'),
+    new RegExp(AMT + String.raw`\s*(?:лв|bgn|lev)`, 'i'),
   ];
 
   for (const pattern of totalPatterns) {
     const match = text.match(pattern);
     if (match) {
-      receiptData.totalAmount = parseFloat(match[1].replace(',', '.'));
+      receiptData.totalAmount = parseAmount(match[1]);
       break;
     }
   }
@@ -76,15 +95,15 @@ export function parseReceiptText(text: string, confidence: number): ReceiptData 
   }
 
   // Line items — text followed by price
-  const itemPattern = /(.+?)\s+(\d+[.,]\d{2})/g;
+  const itemPattern = /(.+?)\s+(\d{1,3}(?:[.,]\d{3})*[.,]\d{2}|\d+[.,]\d{2})/g;
+  const skipWords = /total|всичко|сума|общо|дата|date|час|time|бон|receipt|cash|card|ддс|vat/i;
   const items: ReceiptItem[] = [];
   let match;
 
   while ((match = itemPattern.exec(text)) !== null) {
     const name = match[1].trim();
-    const price = parseFloat(match[2].replace(',', '.'));
+    const price = parseAmount(match[2]);
 
-    const skipWords = /total|всичко|сума|общо|дата|date|час|time|бон|receipt|cash|card|ддс|vat/i;
     if (name.length > 2 && !skipWords.test(name)) {
       items.push({ name, price });
     }

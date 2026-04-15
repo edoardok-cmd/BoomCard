@@ -1,31 +1,41 @@
-import { render, screen } from '@testing-library/react';
+import React from 'react';
+import { render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { vi } from 'vitest';
+import { LanguageProvider } from '../../../contexts/LanguageContext';
+import { CookieConsentProvider } from '../../../contexts/CookieConsentContext';
 import Footer from './Footer';
 
-vi.mock('../../../contexts/LanguageContext', () => ({
-  useLanguage: () => ({ language: 'en', setLanguage: vi.fn(), toggleLanguage: vi.fn(), t: (k: string) => k }),
-}));
-
-vi.mock('../../../contexts/CookieConsentContext', () => ({
-  useCookieConsent: () => ({
-    consent: null,
-    preferences: { essential: true, analytics: false, marketing: false, functional: false },
-    isConsentGiven: false,
-    openSettings: vi.fn(),
-    acceptAll: vi.fn(),
-    rejectAll: vi.fn(),
-    savePreferences: vi.fn(),
-  }),
-}));
+function AllProviders({ children }: { children: React.ReactNode }) {
+  return (
+    <LanguageProvider>
+      <CookieConsentProvider>
+        <MemoryRouter>
+          {children}
+        </MemoryRouter>
+      </CookieConsentProvider>
+    </LanguageProvider>
+  );
+}
 
 describe('Footer', () => {
-  it('renders without crashing', () => {
+  beforeEach(() => {
+    // Ensure English language in test environment
+    localStorage.setItem('boomcard_language', 'en');
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it('renders without crashing', async () => {
     render(
-      <MemoryRouter>
+      <AllProviders>
         <Footer>Test</Footer>
-      </MemoryRouter>
+      </AllProviders>
     );
-    expect(screen.getByText('Test')).toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(screen.getByText('Test')).toBeInTheDocument();
+    });
   });
 });
