@@ -252,7 +252,7 @@ export const en = {
     lastNameMinLength: 'Last name must be at least 2 characters',
     emailRequired: 'Email is required',
     emailInvalid: 'Invalid email address',
-    phoneRequired: 'Phone number is required for business accounts',
+    phoneRequired: 'Phone number is required',
     phoneInvalid: 'Invalid phone number (Bulgarian format)',
     passwordRequired: 'Password is required',
     passwordMinLength: 'Password must be at least 8 characters',

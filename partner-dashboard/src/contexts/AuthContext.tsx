@@ -219,11 +219,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       // Call real API endpoint
-      const response = await apiService.post<AuthResponse>('/auth/register', data);
+      const rawResponse = await apiService.post<any>('/auth/register', data);
 
-      // Extract token
-      const token = response.token || response.accessToken;
-      const refreshToken = response.refreshToken;
+      // Extract token — handle both flat { token, accessToken } and nested { data: { accessToken } } shapes
+      const responseData = rawResponse?.data || rawResponse;
+      const token = responseData?.token || responseData?.accessToken || rawResponse?.token || rawResponse?.accessToken;
+      const refreshToken = responseData?.refreshToken || rawResponse?.refreshToken;
+      const userPayload = responseData?.user || rawResponse?.user;
 
       if (!token) {
         throw new Error('No authentication token received');
@@ -240,11 +242,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       apiService.setAuthToken(token);
 
       // Set user state
-      setUser(response.user);
+      setUser(userPayload);
 
       // Different success messages for different account types
       if (data.accountType === 'partner') {
-        toast.success(`Welcome ${response.user.firstName}! Your partner account is pending verification.`);
+        toast.success(`Welcome ${userPayload?.firstName || ''}! Your partner account is pending verification.`);
       } else {
         toast.success('Account created successfully! Welcome to BoomCard!');
       }

@@ -34,7 +34,7 @@ model User {
   passwordHash     String
   firstName        String?
   lastName         String?
-  phone            String?
+  phone            String?    @unique
   avatar           String?
   role             UserRole   @default(USER)
   status           UserStatus @default(PENDING_VERIFICATION)

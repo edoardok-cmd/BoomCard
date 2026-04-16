@@ -63,6 +63,19 @@ export class AuthService {
       throw new AppError('User with this email already exists', 409);
     }
 
+    // Sanitize phone: convert empty string to null
+    const sanitizedPhone = phone && phone.trim() !== '' ? phone.trim() : null;
+
+    // Check for duplicate phone number
+    if (sanitizedPhone) {
+      const existingPhone = await prisma.user.findUnique({
+        where: { phone: sanitizedPhone },
+      });
+      if (existingPhone) {
+        throw new AppError('An account with this phone number already exists', 409);
+      }
+    }
+
     // Hash password
     const passwordHash = await bcrypt.hash(password, 12);
 
@@ -74,9 +87,6 @@ export class AuthService {
           termsVersion: TERMS_VERSION,
         }
       : {};
-
-    // Sanitize phone: convert empty string to null
-    const sanitizedPhone = phone && phone.trim() !== '' ? phone.trim() : null;
 
     // Create user
     const user = await prisma.user.create({

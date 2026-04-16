@@ -254,7 +254,7 @@ export const bg: TranslationKey = {
     lastNameMinLength: 'Фамилията трябва да е поне 2 символа',
     emailRequired: 'Имейлът е задължителен',
     emailInvalid: 'Невалиден имейл адрес',
-    phoneRequired: 'Телефонният номер е задължителен за бизнес акаунти',
+    phoneRequired: 'Телефонният номер е задължителен',
     phoneInvalid: 'Невалиден телефонен номер (български формат)',
     passwordRequired: 'Паролата е задължителна',
     passwordMinLength: 'Паролата трябва да е поне 8 символа',

@@ -570,7 +570,8 @@ const RegisterPage: React.FC = () => {
       }
 
       case 'phone':
-        if (value && !/^(\+359|0)[0-9\s-]{8,}$/.test(value)) {
+        if (!value || !value.trim()) return t('auth.phoneRequired');
+        if (!/^(\+359|0)[0-9\s-]{8,}$/.test(value)) {
           return t('auth.invalidPhone');
         }
         return undefined;
@@ -667,7 +668,7 @@ const RegisterPage: React.FC = () => {
         password: formData.password,
         firstName: formData.firstName,
         lastName: formData.lastName,
-        phone: formData.phone ? normalizePhone(formData.phone) : undefined,
+        phone: normalizePhone(formData.phone) || formData.phone,
         acceptTerms: formData.acceptTerms,
       });
 
@@ -968,7 +969,7 @@ const RegisterPage: React.FC = () => {
 
           <FormGroup>
             <Label htmlFor="phone">
-              {t('auth.phoneOptional')}
+              {t('auth.phone')} *
             </Label>
             <Input
               id="phone"
