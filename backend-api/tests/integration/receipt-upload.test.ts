@@ -30,26 +30,17 @@ describe('Receipt Upload & Offer Redemption (F07, F08)', () => {
   // ─── Create Receipt ───────────────────────────────────────────
 
   describe('POST /api/receipts', () => {
-    it('should create a receipt with valid data', async () => {
+    it('should return 410 — endpoint retired (use sticker scan flow)', async () => {
       const { accessToken, user } = await createTestUser();
       createdUserIds.push(user.id);
 
-      const receiptData = {
-        merchantName: 'Test Restaurant',
-        totalAmount: 50.0,
-        currency: 'BGN',
-        items: [
-          { name: 'Main Course', amount: 35.0 },
-          { name: 'Drink', amount: 15.0 },
-        ],
-      };
-
       const res = await authRequest(accessToken)
         .post('/api/receipts')
-        .send(receiptData);
+        .send({ merchantName: 'Test Restaurant', totalAmount: 50.0 });
 
-      expect(res.status).toBe(201);
-      expect(res.body.data).toHaveProperty('id');
+      expect(res.status).toBe(410);
+      expect(res.body).toHaveProperty('success', false);
+      expect(res.body.code).toBe('ENDPOINT_RETIRED');
     });
 
     it('should require authentication', async () => {
@@ -156,18 +147,18 @@ describe('Receipt Upload & Offer Redemption (F07, F08)', () => {
   // ─── Cashback Calculation by Plan Tier ────────────────────────
 
   describe('Cashback by Plan Tier', () => {
-    it('STANDARD plan should give 5% cashback', async () => {
+    it('LIGHT plan should give 5% cashback', async () => {
       const { user } = await createTestUser();
       createdUserIds.push(user.id);
 
       const card = await prisma.card.findFirst({ where: { userId: user.id } });
-      expect(card?.type).toBe('STANDARD');
+      expect(card?.type).toBe('LIGHT');
 
       const receipt = await prisma.receipt.create({
         data: {
           userId: user.id,
           cardId: card!.id,
-          merchantName: 'Standard Test',
+          merchantName: 'Light Test',
           totalAmount: 100,
           cashbackPercent: 5,
           cashbackAmount: 5,
@@ -181,11 +172,41 @@ describe('Receipt Upload & Offer Redemption (F07, F08)', () => {
       expect(receipt.cashbackAmount).toBe(5);
     });
 
-    it('PREMIUM plan should give 7% cashback', async () => {
+    it('BASIC plan should give 10% cashback', async () => {
       const { user } = await createTestUser();
       createdUserIds.push(user.id);
 
-      // Upgrade card to PREMIUM
+      await prisma.card.updateMany({
+        where: { userId: user.id },
+        data: { type: 'BASIC' },
+      });
+
+      await createTestSubscription(user.id, 'BASIC');
+
+      const card = await prisma.card.findFirst({ where: { userId: user.id } });
+
+      const receipt = await prisma.receipt.create({
+        data: {
+          userId: user.id,
+          cardId: card!.id,
+          merchantName: 'Basic Test',
+          totalAmount: 100,
+          cashbackPercent: 10,
+          cashbackAmount: 10,
+          status: 'APPROVED',
+          ocrConfidence: 95,
+          fraudScore: 2,
+        },
+      });
+
+      expect(receipt.cashbackPercent).toBe(10);
+      expect(receipt.cashbackAmount).toBe(10);
+    });
+
+    it('PREMIUM plan should give 20% cashback', async () => {
+      const { user } = await createTestUser();
+      createdUserIds.push(user.id);
+
       await prisma.card.updateMany({
         where: { userId: user.id },
         data: { type: 'PREMIUM' },
@@ -201,47 +222,16 @@ describe('Receipt Upload & Offer Redemption (F07, F08)', () => {
           cardId: card!.id,
           merchantName: 'Premium Test',
           totalAmount: 100,
-          cashbackPercent: 7,
-          cashbackAmount: 7,
+          cashbackPercent: 20,
+          cashbackAmount: 20,
           status: 'APPROVED',
           ocrConfidence: 95,
           fraudScore: 2,
         },
       });
 
-      expect(receipt.cashbackPercent).toBe(7);
-      expect(receipt.cashbackAmount).toBe(7);
-    });
-
-    it('PLATINUM plan should give 10% cashback', async () => {
-      const { user } = await createTestUser();
-      createdUserIds.push(user.id);
-
-      await prisma.card.updateMany({
-        where: { userId: user.id },
-        data: { type: 'PLATINUM' },
-      });
-
-      await createTestSubscription(user.id, 'PLATINUM');
-
-      const card = await prisma.card.findFirst({ where: { userId: user.id } });
-
-      const receipt = await prisma.receipt.create({
-        data: {
-          userId: user.id,
-          cardId: card!.id,
-          merchantName: 'Platinum Test',
-          totalAmount: 100,
-          cashbackPercent: 10,
-          cashbackAmount: 10,
-          status: 'APPROVED',
-          ocrConfidence: 95,
-          fraudScore: 2,
-        },
-      });
-
-      expect(receipt.cashbackPercent).toBe(10);
-      expect(receipt.cashbackAmount).toBe(10);
+      expect(receipt.cashbackPercent).toBe(20);
+      expect(receipt.cashbackAmount).toBe(20);
     });
   });
 

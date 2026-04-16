@@ -79,7 +79,7 @@ describe('Authentication Flow (F01)', () => {
       expect(wallet).toBeTruthy();
       expect(wallet?.balance).toBe(0);
       expect(card).toBeTruthy();
-      expect(card?.type).toBe('STANDARD');
+      expect(card?.type).toBe('LIGHT');
       expect(loyalty).toBeTruthy();
       expect(loyalty?.tier).toBe('BRONZE');
     });

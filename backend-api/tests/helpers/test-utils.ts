@@ -126,6 +126,7 @@ export async function createTestVenue(userId: string) {
       businessName: `Test Venue ${testId()}`,
       category: 'Restaurant',
       status: 'ACTIVE',
+      discountRate: 5, // 5% partner discount — both basic and premium tiers yield 5% cashback
     },
   });
 
