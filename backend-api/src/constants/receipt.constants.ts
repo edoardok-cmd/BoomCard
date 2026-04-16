@@ -10,8 +10,10 @@ export const MAX_RECEIPT_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
 export const ALLOWED_RECEIPT_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const;
 
 // ── Rate Limiting ──────────────────────────────────────────────────────────────
-export const DEFAULT_DAILY_SUBMISSION_LIMIT = Infinity;
-export const DEFAULT_MONTHLY_SUBMISSION_LIMIT = Infinity;
+// Global fallback when no VenueFraudConfig row exists. Override per-venue via
+// the admin API (PATCH /api/fraud/venue/:venueId/config).
+export const DEFAULT_DAILY_SUBMISSION_LIMIT = 10;
+export const DEFAULT_MONTHLY_SUBMISSION_LIMIT = 100;
 
 // ── Fraud Score Thresholds ─────────────────────────────────────────────────────
 // All receipts require admin manual review — these thresholds are retained
@@ -75,14 +77,14 @@ export const PAYOUT_THRESHOLD_PREMIUM_MONTHLY_EUR = 15;
 /** Cashback earned from each approved transaction expires after this many days. */
 export const CASHBACK_VALIDITY_DAYS = 60;
 
-export const DEFAULT_MAX_CASHBACK_PER_SCAN = Infinity;
-export const DEFAULT_MIN_BILL_AMOUNT = 0;
+export const DEFAULT_MAX_CASHBACK_PER_SCAN = 50; // 50 BGN per single scan
+export const DEFAULT_MIN_BILL_AMOUNT = 1; // Receipts under 1 BGN are suspicious
 
 // ── Per-User Cashback Caps (rolling windows) ───────────────────────────────────
 /** Maximum total cashback (BGN) a user can earn in a rolling 24-hour window. */
-export const DEFAULT_MAX_CASHBACK_PER_DAY = Infinity;
+export const DEFAULT_MAX_CASHBACK_PER_DAY = 100;
 /** Maximum total cashback (BGN) a user can earn in a rolling 30-day window. */
-export const DEFAULT_MAX_CASHBACK_PER_MONTH = Infinity;
+export const DEFAULT_MAX_CASHBACK_PER_MONTH = 500;
 
 // ── Cashback Crediting ─────────────────────────────────────────────────────────
 /** Days after approval when cashback is estimated to land in the wallet. */

@@ -6,7 +6,7 @@ test.describe('Mobile Layout Tests', () => {
   });
 
   test('should check homepage mobile layout', async ({ page }) => {
-    await page.goto('http://localhost:3005/');
+    await page.goto('/');
 
     // Wait for page to load
     await page.waitForLoadState('networkidle');
@@ -53,7 +53,7 @@ test.describe('Mobile Layout Tests', () => {
   });
 
   test('should check footer on mobile', async ({ page }) => {
-    await page.goto('http://localhost:3005/');
+    await page.goto('/');
     await page.waitForLoadState('networkidle');
 
     // Scroll to footer

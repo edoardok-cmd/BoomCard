@@ -7,7 +7,7 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('Admin Cashback Page - UI Visual Testing', () => {
-  const baseURL = 'http://localhost:3022';
+  const baseURL = '';
 
   test('should navigate and display page structure', async ({ page }) => {
     // Navigate directly to login

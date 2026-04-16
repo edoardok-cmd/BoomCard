@@ -31,7 +31,8 @@ import DashboardScreen from '../screens/Dashboard/DashboardScreen';
 import OffersScreen from '../screens/Offers/OffersScreen';
 import OfferDetailScreen from '../screens/Offers/OfferDetailScreen';
 import ReceiptsScreen from '../screens/Receipts/ReceiptsScreen';
-import ReceiptScannerScreen from '../screens/Receipts/ReceiptScannerScreen';
+import ReceiptDetailScreen from '../screens/Receipts/ReceiptDetailScreen';
+
 import StickerScannerScreen from '../screens/Stickers/StickerScannerScreen';
 import UploadReceiptScreen from '../screens/Stickers/UploadReceiptScreen';
 import MyCardScreen from '../screens/Card/MyCardScreen';
@@ -235,17 +236,6 @@ const MainNavigator = ({ initialRouteName = 'MainTabs' }: { initialRouteName?: s
         }}
       />
 
-      {/* Receipt Screens */}
-      <Stack.Screen
-        name="ReceiptScanner"
-        component={ReceiptScannerScreen}
-        options={{
-          headerShown: true,
-          title: 'Scan Receipt',
-          presentation: 'modal'
-        }}
-      />
-
       {/* Profile Screens */}
       <Stack.Screen
         name="EditProfile"
@@ -297,6 +287,16 @@ const MainNavigator = ({ initialRouteName = 'MainTabs' }: { initialRouteName?: s
         component={CheckoutScreen}
         options={{
           headerShown: false,
+        }}
+      />
+
+      {/* Receipt Detail */}
+      <Stack.Screen
+        name="ReceiptDetails"
+        component={ReceiptDetailScreen}
+        options={{
+          headerShown: true,
+          title: 'Receipt Details'
         }}
       />
 

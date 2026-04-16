@@ -140,14 +140,12 @@
                   - img [ref=e132]
                   - text: Twitter
           - paragraph [ref=e135]: © 2026 BOOM Card. Всички права запазени.
-    - button "Scroll to top" [ref=e136] [cursor=pointer]:
-      - img [ref=e137]
-    - generic [ref=e139]:
+    - generic [ref=e136]:
+      - generic [ref=e137]:
+        - heading "Използваме бисквитки" [level=3] [ref=e138]
+        - paragraph [ref=e139]: Използваме бисквитки, за да подобрим вашето преживяване. Бисквитките за анализ ни помагат да разберем как използвате сайта.
       - generic [ref=e140]:
-        - heading "Използваме бисквитки" [level=3] [ref=e141]
-        - paragraph [ref=e142]: Използваме бисквитки, за да подобрим вашето преживяване. Бисквитките за анализ ни помагат да разберем как използвате сайта.
-      - generic [ref=e143]:
-        - button "Приемам всички" [ref=e144] [cursor=pointer]
-        - button "Отхвърлям ненужните" [ref=e145] [cursor=pointer]
-        - button "Настройки" [ref=e146] [cursor=pointer]
+        - button "Приемам всички" [ref=e141] [cursor=pointer]
+        - button "Отхвърлям ненужните" [ref=e142] [cursor=pointer]
+        - button "Настройки" [ref=e143] [cursor=pointer]
 ```

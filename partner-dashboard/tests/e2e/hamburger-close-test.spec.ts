@@ -3,7 +3,7 @@ import { test, expect } from '@playwright/test';
 test.describe('Hamburger Button Close Test', () => {
   test('Hamburger button toggles menu open and closed', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 667 });
-    await page.goto('http://localhost:3005/');
+    await page.goto('/');
     await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(1500);
 

@@ -246,10 +246,10 @@ const ReceiptsScreen = ({ navigation }: any) => {
       <TouchableOpacity
         style={s.scanButton}
         activeOpacity={0.8}
-        onPress={() => navigation.navigate('ReceiptScanner')}
+        onPress={() => navigation.navigate('Scan')}
       >
-        <Ionicons name="camera-outline" size={20} color="#FFFFFF" />
-        <Text style={s.scanButtonText}>{t('receipts.scanReceipt')}</Text>
+        <Ionicons name="qr-code-outline" size={20} color="#FFFFFF" />
+        <Text style={s.scanButtonText}>{t('dashboard.scanSticker')}</Text>
       </TouchableOpacity>
     </View>
   );
@@ -262,15 +262,15 @@ const ReceiptsScreen = ({ navigation }: any) => {
         <TouchableOpacity
           style={s.scanCta}
           activeOpacity={0.8}
-          onPress={() => navigation.navigate('ReceiptScanner')}
+          onPress={() => navigation.navigate('Scan')}
         >
           <View style={s.scanCtaLeft}>
-            <View style={[s.scanCtaIcon, { backgroundColor: isDarkMode ? 'rgba(59,130,246,0.15)' : 'rgba(0,0,0,0.06)' }]}>
-              <Ionicons name="camera-outline" size={20} color={isDarkMode ? '#60A5FA' : '#000000'} />
+            <View style={[s.scanCtaIcon, { backgroundColor: isDarkMode ? 'rgba(139,92,246,0.15)' : 'rgba(139,92,246,0.06)' }]}>
+              <Ionicons name="qr-code-outline" size={20} color={isDarkMode ? '#A78BFA' : '#8B5CF6'} />
             </View>
             <View>
-              <Text style={s.scanCtaTitle}>{t('receipts.scanReceipt')}</Text>
-              <Text style={s.scanCtaSubtitle}>{t('receipts.startScanning')}</Text>
+              <Text style={s.scanCtaTitle}>{t('dashboard.scanSticker')}</Text>
+              <Text style={s.scanCtaSubtitle}>{t('dashboard.qrCodeAtVenue')}</Text>
             </View>
           </View>
           <Ionicons name="chevron-forward" size={20} color={theme.colors.onSurfaceVariant} />

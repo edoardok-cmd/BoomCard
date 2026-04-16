@@ -70,7 +70,7 @@ describe('Cashback Flow Integration Tests', () => {
       });
 
       expect(card).toBeDefined();
-      expect(card?.type).toBe('STANDARD');
+      expect(card?.type).toBe('LIGHT');
       expect(card?.status).toBe('ACTIVE');
     });
   });
@@ -279,12 +279,12 @@ describe('Cashback Flow Integration Tests', () => {
   });
 
   describe('Card Tier Cashback Rates', () => {
-    test('STANDARD card should give 5% cashback', async () => {
+    test('LIGHT card should give 5% cashback', async () => {
       const card = await prisma.card.findFirst({
         where: { userId },
       });
 
-      expect(card?.type).toBe('STANDARD');
+      expect(card?.type).toBe('LIGHT');
 
       // Create receipt with 100 BGN
       const receipt = await prisma.receipt.create({

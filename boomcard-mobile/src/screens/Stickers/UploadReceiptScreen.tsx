@@ -90,7 +90,9 @@ export default function UploadReceiptScreen() {
         setVenueName(res.data.venueName || '');
         setCashbackPercent(Math.max(0, Math.min(100, res.data.cashbackPercent || 0)));
       }
-    }).catch(() => {});
+    }).catch((err) => {
+      if (__DEV__) console.warn('Failed to validate sticker:', err);
+    });
   }, [stickerId]);
 
   // Fetch user's plan code so we can show an accurate cashback estimate
@@ -101,7 +103,10 @@ export default function UploadReceiptScreen() {
       const rawPlan = (res as any)?.data?.plan;
       const code = typeof rawPlan === 'object' ? rawPlan?.code : rawPlan;
       if (code) setUserPlanCode(String(code).toUpperCase());
-    }).catch(() => {});
+    }).catch((err) => {
+      // Falls back to BASIC rate (conservative) — log for debugging
+      if (__DEV__) console.warn('Failed to fetch subscription:', err);
+    });
   }, []);
 
   /**

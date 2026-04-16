@@ -4,10 +4,9 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useLanguage } from '../contexts/LanguageContext';
 import {
   partnersService,
-  CreatePartnerPayload,
+  OnboardPartnerPayload,
   PartnerLocationInput,
   PartnerStatus,
-  PartnerUserOption,
   Partner,
 } from '../services/partners.service';
 import { partnerTypesService, PartnerType } from '../services/partnerTypes.service';
@@ -467,31 +466,6 @@ const AutocompleteItem = styled.li`
   }
 `;
 
-const SelectedUser = styled.div`
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0.75rem 1rem;
-  border: 2px solid #10b981;
-  border-radius: 0.75rem;
-  background: #f0fdf4;
-  font-size: 0.9375rem;
-`;
-
-const ClearButton = styled.button`
-  background: none;
-  border: none;
-  color: var(--color-text-secondary);
-  cursor: pointer;
-  font-size: 1rem;
-  padding: 0;
-  line-height: 1;
-
-  &:hover {
-    color: var(--color-text-primary);
-  }
-`;
-
 // ─── Location Manager Styles ──────────────────────────────────────────────────
 
 const LocationsSection = styled.div`
@@ -647,84 +621,6 @@ function effectiveRate(partner: Partner): number {
   return partner.effectiveDiscountRate
     ?? (partner.discountRate != null ? partner.discountRate : partner.partnerType?.maxDiscountRate ?? 0);
 }
-
-// ─── User Autocomplete Component ─────────────────────────────────────────────
-
-interface UserAutocompleteProps {
-  value: string;
-  onSelect: (user: PartnerUserOption) => void;
-  onClear: () => void;
-  selectedUser: PartnerUserOption | null;
-  language: string;
-}
-
-const UserAutocomplete: React.FC<UserAutocompleteProps> = ({ value, onSelect, onClear, selectedUser, language }) => {
-  const [query, setQuery] = useState('');
-  const [open, setOpen] = useState(false);
-  const wrapperRef = useRef<HTMLDivElement>(null);
-
-  const { data: users = [], isFetching } = useQuery({
-    queryKey: ['partner-users', query],
-    queryFn: () => partnersService.searchPartnerUsers(query),
-    enabled: query.length >= 2,
-    staleTime: 10_000,
-  });
-
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, []);
-
-  if (selectedUser) {
-    return (
-      <SelectedUser>
-        <span>{selectedUser.firstName} {selectedUser.lastName} — {selectedUser.email}</span>
-        <ClearButton type="button" onClick={onClear} title="Clear selection">✕</ClearButton>
-      </SelectedUser>
-    );
-  }
-
-  return (
-    <AutocompleteWrapper ref={wrapperRef}>
-      <Input
-        type="text"
-        placeholder={language === 'bg' ? 'Търсете по име или имейл...' : 'Search by name or email...'}
-        value={query}
-        onChange={e => { setQuery(e.target.value); setOpen(true); }}
-        onFocus={() => query.length >= 2 && setOpen(true)}
-      />
-      <AnimatePresence>
-        {open && query.length >= 2 && (
-          <AutocompleteDropdown>
-            {isFetching ? (
-              <AutocompleteItem style={{ color: '#9ca3af', cursor: 'default' }}>
-                {language === 'bg' ? 'Търсене...' : 'Searching...'}
-              </AutocompleteItem>
-            ) : users.length === 0 ? (
-              <AutocompleteItem style={{ color: '#9ca3af', cursor: 'default' }}>
-                {language === 'bg' ? 'Не са намерени потребители' : 'No users found'}
-              </AutocompleteItem>
-            ) : (
-              users.map(u => (
-                <AutocompleteItem
-                  key={u.id}
-                  onMouseDown={() => { onSelect(u); setQuery(''); setOpen(false); }}
-                >
-                  {u.firstName} {u.lastName}<span>{u.email}</span>
-                </AutocompleteItem>
-              ))
-            )}
-          </AutocompleteDropdown>
-        )}
-      </AnimatePresence>
-    </AutocompleteWrapper>
-  );
-};
 
 // ─── Address Autocomplete (Nominatim / OpenStreetMap) ─────────────────────────
 
@@ -971,7 +867,8 @@ const LocationManager: React.FC<LocationManagerProps> = ({ locations, onChange, 
 
 // ─── Create Form ──────────────────────────────────────────────────────────────
 
-const emptyCreate: Omit<CreatePartnerPayload, 'userId' | 'discountRate' | 'locations'> & { discountRate: string } = {
+const emptyCreate: Omit<OnboardPartnerPayload, 'discountRate' | 'locations'> & { discountRate: string } = {
+  email: '',
   businessName: '',
   businessNameBg: '',
   category: '',
@@ -980,7 +877,6 @@ const emptyCreate: Omit<CreatePartnerPayload, 'userId' | 'discountRate' | 'locat
   partnerTypeId: '',
   discountRate: '0',
   phone: '',
-  email: '',
   website: '',
 };
 
@@ -1007,7 +903,6 @@ const AdminPartnersPage: React.FC = () => {
   const [showCreate, setShowCreate] = useState(false);
   const [createForm, setCreateForm] = useState(emptyCreate);
   const [createLocations, setCreateLocations] = useState<PartnerLocationInput[]>([]);
-  const [selectedUser, setSelectedUser] = useState<PartnerUserOption | null>(null);
 
   // Edit modal
   const [editingPartner, setEditingPartner] = useState<Partner | null>(null);
@@ -1046,15 +941,13 @@ const AdminPartnersPage: React.FC = () => {
   });
 
   const createMutation = useMutation({
-    mutationFn: (data: CreatePartnerPayload) => partnersService.createPartner(data),
+    mutationFn: (data: OnboardPartnerPayload) => partnersService.onboardPartner(data),
     onSuccess: () => {
       toast.success(language === 'bg' ? 'Партньорът е създаден успешно' : 'Partner created successfully');
       queryClient.invalidateQueries({ queryKey: ['admin-partners'] });
-      queryClient.invalidateQueries({ queryKey: ['partner-users'] });
       setShowCreate(false);
       setCreateForm(emptyCreate);
       setCreateLocations([]);
-      setSelectedUser(null);
     },
     onError: (err: any) => {
       toast.error(err?.response?.data?.error || (language === 'bg' ? 'Грешка при създаването' : 'Failed to create partner'));
@@ -1126,7 +1019,7 @@ const AdminPartnersPage: React.FC = () => {
 
   const handleCreateSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedUser || !createForm.businessName || !createForm.category) return;
+    if (!createForm.email || !createForm.businessName || !createForm.category) return;
     // Validate locations: every added location must have name, address, and city
     for (const loc of createLocations) {
       if (!loc.name.trim() || !loc.address.trim() || !loc.city.trim()) {
@@ -1139,7 +1032,6 @@ const AdminPartnersPage: React.FC = () => {
     const rate = parseFloat(createForm.discountRate);
     createMutation.mutate({
       ...createForm,
-      userId: selectedUser.id,
       discountRate: isNaN(rate) ? undefined : rate,
       locations: createLocations.length > 0 ? createLocations : undefined,
     });
@@ -1586,7 +1478,7 @@ const AdminPartnersPage: React.FC = () => {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            onClick={e => { if (e.target === e.currentTarget) { setShowCreate(false); setCreateForm(emptyCreate); setCreateLocations([]); setSelectedUser(null); } }}
+            onClick={e => { if (e.target === e.currentTarget) { setShowCreate(false); setCreateForm(emptyCreate); setCreateLocations([]); } }}
           >
             <Modal
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
@@ -1597,22 +1489,20 @@ const AdminPartnersPage: React.FC = () => {
 
               <form onSubmit={handleCreateSubmit}>
                 <FormGrid>
-                  {/* User search */}
                   <FormField $full>
                     <Label>
-                      {language === 'bg' ? 'Потребител (PARTNER роля)' : 'User (PARTNER role)'} <Required>*</Required>
+                      {language === 'bg' ? 'Имейл (акаунт на партньора)' : 'Email (partner account)'} <Required>*</Required>
                     </Label>
-                    <UserAutocomplete
-                      value={selectedUser?.id || ''}
-                      onSelect={u => setSelectedUser(u)}
-                      onClear={() => setSelectedUser(null)}
-                      selectedUser={selectedUser}
-                      language={language}
+                    <Input
+                      type="email"
+                      value={createForm.email}
+                      onChange={e => handleCreateField('email', e.target.value)}
+                      required
                     />
                     <FieldHint>
                       {language === 'bg'
-                        ? 'Въведете поне 2 символа за търсене по потребителите с роля PARTNER'
-                        : 'Type at least 2 characters to search PARTNER-role users'}
+                        ? 'Ако потребителят не съществува, ще бъде създаден автоматично с роля PARTNER'
+                        : 'If the user does not exist, they will be created automatically with the PARTNER role'}
                     </FieldHint>
                   </FormField>
 
@@ -1696,11 +1586,6 @@ const AdminPartnersPage: React.FC = () => {
                     <Input type="tel" value={createForm.phone} onChange={e => handleCreateField('phone', e.target.value)} />
                   </FormField>
 
-                  <FormField>
-                    <Label>{language === 'bg' ? 'Имейл' : 'Email'}</Label>
-                    <Input type="email" value={createForm.email} onChange={e => handleCreateField('email', e.target.value)} />
-                  </FormField>
-
                   <FormField $full>
                     <Label>{language === 'bg' ? 'Уебсайт' : 'Website'}</Label>
                     <Input type="url" placeholder="https://" value={createForm.website} onChange={e => handleCreateField('website', e.target.value)} />
@@ -1721,10 +1606,10 @@ const AdminPartnersPage: React.FC = () => {
                 </FormGrid>
 
                 <ModalFooter>
-                  <CancelButton type="button" onClick={() => { setShowCreate(false); setCreateForm(emptyCreate); setCreateLocations([]); setSelectedUser(null); }}>
+                  <CancelButton type="button" onClick={() => { setShowCreate(false); setCreateForm(emptyCreate); setCreateLocations([]); }}>
                     {language === 'bg' ? 'Отказ' : 'Cancel'}
                   </CancelButton>
-                  <SubmitButton type="submit" disabled={!selectedUser || createMutation.isPending}>
+                  <SubmitButton type="submit" disabled={!createForm.email || createMutation.isPending}>
                     {createMutation.isPending
                       ? (language === 'bg' ? 'Създаване...' : 'Creating...')
                       : (language === 'bg' ? 'Създай Партньор' : 'Create Partner')}

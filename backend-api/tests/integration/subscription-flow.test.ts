@@ -153,20 +153,21 @@ describe('Subscription Flow (F02, F03)', () => {
       expect(res.status).toBe(401);
     });
 
-    it('should attempt cancellation on subscription without Stripe (returns error)', async () => {
+    it('should cancel Paysera-based subscription without Stripe (marks cancel at period end)', async () => {
       const { accessToken, user } = await createTestUser();
       createdUserIds.push(user.id);
 
-      // Test subscription created directly in DB — no Stripe subscription ID
+      // Test subscription created directly in DB — no Stripe subscription ID (Paysera-based)
       const sub = await createTestSubscription(user.id, 'PREMIUM');
 
       const res = await authRequest(accessToken)
         .post(`/api/subscriptions/${sub.id}/cancel`)
         .send({ cancelAtPeriodEnd: true });
 
-      // Without Stripe subscription ID, service returns error about missing Stripe data
-      expect(res.status).toBe(500);
-      expect(res.body.error || res.body.message).toMatch(/stripe|subscription/i);
+      // Paysera-based subscriptions can now be cancelled — they're marked to expire at period end
+      expect(res.status).toBe(200);
+      expect(res.body.cancelAtPeriodEnd).toBe(true);
+      expect(res.body.canceledAt).toBeTruthy();
     });
   });
 

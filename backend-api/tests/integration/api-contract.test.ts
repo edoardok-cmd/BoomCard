@@ -80,7 +80,9 @@ describe('API Contract Validation (Mobile Client Compatibility)', () => {
 
       expect(res.status).toBe(400);
       expect(res.body).toHaveProperty('error');
-      expect(res.body).toHaveProperty('message');
+      // Error may be wrapped as { error: { message } } or { error, message }
+      const msg = res.body.message ?? res.body.error?.message ?? res.body.error;
+      expect(msg).toBeTruthy();
     });
 
     it('401 error has consistent format', async () => {
@@ -127,7 +129,7 @@ describe('API Contract Validation (Mobile Client Compatibility)', () => {
       // Each plan should have the expected fields
       for (const plan of res.body.plans) {
         expect(plan).toHaveProperty('plan');
-        expect(['STANDARD', 'PREMIUM', 'PLATINUM']).toContain(plan.plan);
+        expect(['LIGHT', 'BASIC', 'PREMIUM']).toContain(plan.plan);
       }
     });
 

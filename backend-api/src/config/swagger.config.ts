@@ -63,8 +63,8 @@ const swaggerOptions: swaggerJsdoc.Options = {
         description: 'Development server',
       },
       {
-        url: 'https://boomcard-api.onrender.com',
-        description: 'Production server',
+        url: 'https://boomcard-api.fly.dev',
+        description: 'Production server (Fly.io)',
       },
       {
         url: 'https://api.boomcard.bg',

@@ -6,7 +6,7 @@ import { test, expect } from '@playwright/test';
  */
 
 test.describe('Advanced SEO Optimization Verification', () => {
-  const BASE_URL = 'http://localhost:5177';
+  const BASE_URL = '';
 
   test.beforeEach(async ({ page }) => {
     await page.goto(BASE_URL);

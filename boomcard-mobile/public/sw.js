@@ -2,7 +2,7 @@
 // Strategy:
 //   - Immutable hashed assets (_expo/, assets/) → cache-first, cached on first fetch
 //   - App shell (index.html, manifest, icons) → stale-while-revalidate
-//   - API calls (boomcard.onrender.com) → network-only, never cached
+//   - API calls (boomcard-api.fly.dev) → network-only, never cached
 
 const CACHE_NAME = 'boomcard-shell-v1';
 

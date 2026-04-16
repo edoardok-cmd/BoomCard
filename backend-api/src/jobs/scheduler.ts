@@ -5,13 +5,14 @@
  * inside the API process. Jobs are also runnable as one-off scripts via npx tsx.
  *
  * Schedule:
+ *   subscription-expiry      — 30 1 * * *  (1:30 AM every day)
  *   cashback-expiry          — 0 2 * * *   (2 AM every day)
  *   upload-token-cleanup     — 30 3 * * *  (3:30 AM every day)
  *   stale-session-cleanup    — 15 7 * * *  (7:15 AM every day — after the 6 AM deadline)
  */
 
 import cron from 'node-cron';
-import { WalletTransactionType, WalletTransactionStatus } from '@prisma/client';
+import { WalletTransactionType, WalletTransactionStatus, SubscriptionStatus } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { logger } from '../utils/logger';
 
@@ -191,6 +192,69 @@ async function expireStaleSessions(): Promise<void> {
   logger.info(`[stale-session-cleanup] Expired ${count} stale session(s)`);
 }
 
+// ── Subscription expiry ───────────────────────────────────────────────────────
+// Paysera subscriptions marked with cancelAtPeriodEnd=true have no external
+// webhook to finalize the cancellation. This job checks daily and expires them.
+// Stripe subscriptions don't need this — Stripe fires customer.subscription.deleted.
+
+async function expireCancelledSubscriptions(): Promise<void> {
+  const now = new Date();
+  logger.info(`[subscription-expiry] Starting run at ${now.toISOString()}`);
+
+  const expiredSubs = await prisma.subscription.findMany({
+    where: {
+      status: SubscriptionStatus.ACTIVE,
+      cancelAtPeriodEnd: true,
+      currentPeriodEnd: { lt: now },
+      // Only Paysera-based (no Stripe subscription ID)
+      stripeSubscriptionId: null,
+    },
+  });
+
+  logger.info(`[subscription-expiry] Found ${expiredSubs.length} subscription(s) past period end`);
+
+  let processed = 0;
+  let failed = 0;
+
+  for (const sub of expiredSubs) {
+    try {
+      await prisma.subscription.update({
+        where: { id: sub.id },
+        data: { status: SubscriptionStatus.CANCELLED },
+      });
+
+      // Check if the user has another active subscription (e.g. they re-subscribed
+      // before the old period ended). If so, sync card to the new plan rather than
+      // blindly downgrading to LIGHT.
+      const otherActiveSub = await prisma.subscription.findFirst({
+        where: {
+          userId: sub.userId,
+          status: { in: [SubscriptionStatus.ACTIVE, SubscriptionStatus.TRIALING] },
+          id: { not: sub.id },
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      const targetPlan = otherActiveSub?.plan ?? 'LIGHT';
+
+      // Dynamic import to avoid circular dependency (card → subscription → scheduler)
+      const { cardService } = await import('../services/card.service');
+      await cardService.syncCardTypeWithSubscription(sub.userId, targetPlan);
+
+      processed++;
+      logger.info(`[subscription-expiry] Expired subscription ${sub.id} for user ${sub.userId}`);
+    } catch (err) {
+      failed++;
+      logger.error(`[subscription-expiry] Failed to expire subscription ${sub.id}:`, err);
+    }
+  }
+
+  logger.info(
+    `[subscription-expiry] Done — expired ${processed} subscription(s)` +
+    (failed > 0 ? `, ${failed} failed` : '')
+  );
+}
+
 // ── Registration ───────────────────────────────────────────────────────────────
 
 export function registerScheduledJobs(): void {
@@ -228,4 +292,14 @@ export function registerScheduledJobs(): void {
   }, { timezone: 'Europe/Sofia' });
 
   logger.info('[scheduler] Registered: stale-session-cleanup (15 7 * * *)');
+
+  // 1:30 AM every day — expire Paysera subscriptions past their billing period
+  // that were marked cancelAtPeriodEnd=true but never finalized.
+  cron.schedule('30 1 * * *', () => {
+    expireCancelledSubscriptions().catch((err) =>
+      logger.error('[subscription-expiry] Unhandled error in scheduled run:', err)
+    );
+  }, { timezone: 'Europe/Sofia' });
+
+  logger.info('[scheduler] Registered: subscription-expiry (30 1 * * *)');
 }

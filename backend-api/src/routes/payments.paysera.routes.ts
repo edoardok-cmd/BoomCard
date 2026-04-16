@@ -692,7 +692,7 @@ const ALLOWED_REDIRECT_DOMAINS = [
   'mobile.boomcard.bg',
   'boomcard.bg',
   'boomcard.eu',
-  'boomcard.onrender.com',
+  'boomcard-api.fly.dev',
 ];
 
 function isAllowedRedirectUrl(url: string): boolean {

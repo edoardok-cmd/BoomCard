@@ -6,11 +6,13 @@
 
 import { apiService } from './api.service';
 import {
+  CreateReceiptDTO,
   Receipt,
   ReceiptFilters,
   ReceiptListResponse,
   ReceiptResponse,
   ReceiptStatsResponse,
+  UpdateReceiptDTO,
 } from '../types/receipt.types';
 
 class ReceiptsApiService {
@@ -35,6 +37,27 @@ class ReceiptsApiService {
    */
   async getUserStats(): Promise<ReceiptStatsResponse> {
     return apiService.get<ReceiptStatsResponse>(`${this.baseUrl}/stats/user`);
+  }
+
+  /**
+   * Create a new receipt from OCR scan data
+   */
+  async createReceipt(data: CreateReceiptDTO): Promise<ReceiptResponse> {
+    return apiService.post<ReceiptResponse>(this.baseUrl, data);
+  }
+
+  /**
+   * Update an existing receipt
+   */
+  async updateReceipt(id: string, data: UpdateReceiptDTO): Promise<ReceiptResponse> {
+    return apiService.patch<ReceiptResponse>(`${this.baseUrl}/${id}`, data);
+  }
+
+  /**
+   * Delete a receipt
+   */
+  async deleteReceipt(id: string): Promise<{ success: boolean }> {
+    return apiService.delete<{ success: boolean }>(`${this.baseUrl}/${id}`);
   }
 
   // ============================================

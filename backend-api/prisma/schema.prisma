@@ -312,6 +312,7 @@ model Offer {
   @@index([isFeatured])
   @@index([startDate])
   @@index([endDate])
+  @@index([status, isFeatured, startDate, endDate]) // Active-offer list queries
 }
 
 // Tracks each user's redemption of an offer.
@@ -406,8 +407,8 @@ model Plan {
   id              String  @id @default(uuid())
 
   // Plan identification
-  planCode        String  @unique // STANDARD, PREMIUM, PLATINUM
-  displayName     String           // "Lite Premium", "Basic", "Premium"
+  planCode        String  @unique // LIGHT, BASIC, PREMIUM
+  displayName     String           // "Premium Weekly", "Basic", "Premium"
   displayNameBg   String?          // Bulgarian translation
 
   // Pricing (stored in cents to avoid floating point issues)
@@ -562,6 +563,7 @@ model WalletTransaction {
   @@index([status])
   @@index([createdAt])
   @@index([cashbackExpiresAt])
+  @@index([stripePaymentIntentId]) // TOP_UP idempotency check in handlePaymentSucceeded
   @@map("wallet_transactions")
 }
 
@@ -732,6 +734,8 @@ model Receipt {
   @@index([merchantName])
   @@index([fraudScore])
   @@index([userId, deviceFingerprint])
+  @@index([userId, perceptualHash]) // Fraud perceptual-duplicate check
+  @@index([userId, createdAt])      // Rate-limit daily/monthly count queries
 }
 
 // ============================================

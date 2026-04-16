@@ -35,7 +35,7 @@ test.describe('Mobile Responsiveness', () => {
       // Form should be visible
       await expect(page.getByLabel(/email/i)).toBeVisible();
       await expect(page.getByLabel(/password/i)).toBeVisible();
-      await expect(page.getByRole('button', { name: /log in/i })).toBeVisible();
+      await expect(page.getByRole('button', { name: /sign in|вход/i })).toBeVisible();
 
       // Check form takes full width
       const emailInput = page.getByLabel(/email/i);
@@ -51,7 +51,7 @@ test.describe('Mobile Responsiveness', () => {
       await page.goto('/login');
       await page.getByLabel(/email/i).fill(TEST_USER.email);
       await page.getByLabel(/password/i).fill(TEST_USER.password);
-      await page.getByRole('button', { name: /log in/i }).click();
+      await page.getByRole('button', { name: /sign in|вход/i }).click();
       await page.waitForURL('/dashboard', { timeout: 5000 });
 
       // Hamburger menu should be visible
@@ -64,7 +64,7 @@ test.describe('Mobile Responsiveness', () => {
       await page.goto('/login');
       await page.getByLabel(/email/i).fill(TEST_USER.email);
       await page.getByLabel(/password/i).fill(TEST_USER.password);
-      await page.getByRole('button', { name: /log in/i }).click();
+      await page.getByRole('button', { name: /sign in|вход/i }).click();
       await page.waitForURL('/dashboard', { timeout: 5000 });
 
       // Click hamburger
@@ -80,7 +80,7 @@ test.describe('Mobile Responsiveness', () => {
       await page.goto('/login');
       await page.getByLabel(/email/i).fill(TEST_USER.email);
       await page.getByLabel(/password/i).fill(TEST_USER.password);
-      await page.getByRole('button', { name: /log in/i }).click();
+      await page.getByRole('button', { name: /sign in|вход/i }).click();
       await page.waitForURL('/dashboard', { timeout: 5000 });
 
       // Wait for cards to load
@@ -104,7 +104,7 @@ test.describe('Mobile Responsiveness', () => {
       await page.goto('/login');
       await page.getByLabel(/email/i).fill(TEST_USER.email);
       await page.getByLabel(/password/i).fill(TEST_USER.password);
-      await page.getByRole('button', { name: /log in/i }).click();
+      await page.getByRole('button', { name: /sign in|вход/i }).click();
       await page.waitForURL('/dashboard', { timeout: 5000 });
 
       await page.goto('/receipts');
@@ -148,7 +148,7 @@ test.describe('Mobile Responsiveness', () => {
       await page.goto('/login');
       await page.getByLabel(/email/i).fill(TEST_USER.email);
       await page.getByLabel(/password/i).fill(TEST_USER.password);
-      await page.getByRole('button', { name: /log in/i }).click();
+      await page.getByRole('button', { name: /sign in|вход/i }).click();
       await page.waitForURL('/dashboard', { timeout: 5000 });
 
       // Check if horizontal nav or hamburger is shown
@@ -162,7 +162,7 @@ test.describe('Mobile Responsiveness', () => {
       await page.goto('/login');
       await page.getByLabel(/email/i).fill(TEST_USER.email);
       await page.getByLabel(/password/i).fill(TEST_USER.password);
-      await page.getByRole('button', { name: /log in/i }).click();
+      await page.getByRole('button', { name: /sign in|вход/i }).click();
       await page.waitForURL('/dashboard', { timeout: 5000 });
 
       await page.waitForTimeout(1000);
@@ -188,7 +188,7 @@ test.describe('Mobile Responsiveness', () => {
       await page.goto('/login');
       await page.getByLabel(/email/i).fill(TEST_USER.email);
       await page.getByLabel(/password/i).fill(TEST_USER.password);
-      await page.getByRole('button', { name: /log in/i }).click();
+      await page.getByRole('button', { name: /sign in|вход/i }).click();
       await page.waitForURL('/dashboard', { timeout: 5000 });
 
       await page.goto('/receipts/analytics');
@@ -214,7 +214,7 @@ test.describe('Mobile Responsiveness', () => {
       await page.goto('/login');
       await page.getByLabel(/email/i).fill(TEST_USER.email);
       await page.getByLabel(/password/i).fill(TEST_USER.password);
-      await page.getByRole('button', { name: /log in/i }).click();
+      await page.getByRole('button', { name: /sign in|вход/i }).click();
       await page.waitForURL('/dashboard', { timeout: 5000 });
 
       // Desktop should show horizontal navigation
@@ -232,7 +232,7 @@ test.describe('Mobile Responsiveness', () => {
       await page.goto('/login');
       await page.getByLabel(/email/i).fill(TEST_USER.email);
       await page.getByLabel(/password/i).fill(TEST_USER.password);
-      await page.getByRole('button', { name: /log in/i }).click();
+      await page.getByRole('button', { name: /sign in|вход/i }).click();
       await page.waitForURL('/dashboard', { timeout: 5000 });
 
       await page.waitForTimeout(1000);
@@ -279,7 +279,7 @@ test.describe('Mobile Responsiveness', () => {
       await page.goto('/login');
       await page.getByLabel(/email/i).fill(TEST_USER.email);
       await page.getByLabel(/password/i).fill(TEST_USER.password);
-      await page.getByRole('button', { name: /log in/i }).click();
+      await page.getByRole('button', { name: /sign in|вход/i }).click();
       await page.waitForURL('/dashboard', { timeout: 5000 });
 
       // Navigation should have max-width constraint
@@ -299,7 +299,7 @@ test.describe('Mobile Responsiveness', () => {
       await page.goto('/login');
       await page.getByLabel(/email/i).fill(TEST_USER.email);
       await page.getByLabel(/password/i).fill(TEST_USER.password);
-      await page.getByRole('button', { name: /log in/i }).click();
+      await page.getByRole('button', { name: /sign in|вход/i }).click();
       await page.waitForURL('/dashboard', { timeout: 5000 });
 
       // Hover over menu item to show mega menu
@@ -331,7 +331,7 @@ test.describe('Mobile Responsiveness', () => {
       await page.goto('/login');
       await page.getByLabel(/email/i).fill(TEST_USER.email);
       await page.getByLabel(/password/i).fill(TEST_USER.password);
-      await page.getByRole('button', { name: /log in/i }).click();
+      await page.getByRole('button', { name: /sign in|вход/i }).click();
       await page.waitForURL('/dashboard', { timeout: 5000 });
 
       // Rotate to landscape
@@ -354,7 +354,7 @@ test.describe('Mobile Responsiveness', () => {
     test('should handle touch events on buttons', async ({ page }) => {
       await page.goto('/login');
 
-      const loginButton = page.getByRole('button', { name: /log in/i });
+      const loginButton = page.getByRole('button', { name: /sign in|вход/i });
 
       // Tap button (mobile touch event)
       await loginButton.tap();
@@ -381,7 +381,7 @@ test.describe('Mobile Responsiveness', () => {
       await page.goto('/login');
       await page.getByLabel(/email/i).fill(TEST_USER.email);
       await page.getByLabel(/password/i).fill(TEST_USER.password);
-      await page.getByRole('button', { name: /log in/i }).click();
+      await page.getByRole('button', { name: /sign in|вход/i }).click();
       await page.waitForURL('/dashboard', { timeout: 5000 });
 
       await page.goto('/receipts');
@@ -445,7 +445,7 @@ test.describe('Mobile Responsiveness', () => {
       await page.setViewportSize(VIEWPORTS.mobile);
       await page.goto('/login');
 
-      const loginButton = page.getByRole('button', { name: /log in/i });
+      const loginButton = page.getByRole('button', { name: /sign in|вход/i });
       const box = await loginButton.boundingBox();
 
       if (box) {

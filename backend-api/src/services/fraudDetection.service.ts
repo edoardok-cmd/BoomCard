@@ -125,9 +125,10 @@ class FraudDetectionService {
       }
 
       // 2. Amount validation (15-30 points)
-      if (params.ocrAmount && params.userAmount) {
+      if (params.ocrAmount != null && params.userAmount != null && (params.ocrAmount > 0 || params.userAmount > 0)) {
         const diff = Math.abs(params.ocrAmount - params.userAmount);
-        const percentDiff = (diff / Math.max(params.ocrAmount, params.userAmount)) * 100;
+        const maxAmount = Math.max(params.ocrAmount, params.userAmount);
+        const percentDiff = maxAmount > 0 ? (diff / maxAmount) * 100 : 0;
 
         if (percentDiff > AMOUNT_LARGE_MISMATCH_PCT) {
           score += 30;
@@ -495,19 +496,18 @@ class FraudDetectionService {
   private async getUserStats(userId: string) {
     const now = new Date();
 
-    // Today's submissions (from midnight)
-    const todayStart = new Date(now);
-    todayStart.setHours(0, 0, 0, 0);
+    // Rolling 24-hour window — matches the cashback cap window in calculateCashback()
+    const dayStart = new Date(now.getTime() - 24 * 60 * 60 * 1000);
 
     const submissionsToday = await prisma.receipt.count({
       where: {
         userId,
-        createdAt: { gte: todayStart },
+        createdAt: { gte: dayStart },
       },
     });
 
-    // This month's submissions
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    // Rolling 30-day window — matches the cashback cap window in calculateCashback()
+    const monthStart = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
     const submissionsThisMonth = await prisma.receipt.count({
       where: {

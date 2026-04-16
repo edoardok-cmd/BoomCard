@@ -175,9 +175,9 @@ export class CardService {
    *   BASIC   → BASIC
    *   PREMIUM → PREMIUM
    *
-   * Cards are only UPGRADED here, never downgraded automatically
-   * (downgrade requires explicit admin action to avoid accidental loss
-   * of benefits mid-period).
+   * Upgrades are always applied. Downgrades are only applied when
+   * the target is LIGHT (subscription expired / cancelled) to prevent
+   * accidental loss of benefits mid-period for tier swaps.
    *
    * Returns the (possibly updated) card, or null if the user has no card.
    */
@@ -204,8 +204,13 @@ export class CardService {
     const currentIndex = tierOrder.indexOf(card.type);
     const targetIndex = tierOrder.indexOf(targetType);
 
-    if (targetIndex <= currentIndex) {
-      // Already at or above the target tier — no change needed
+    if (targetIndex === currentIndex) {
+      return card;
+    }
+
+    // Allow downgrades only to LIGHT (subscription expired).
+    // Block mid-tier downgrades (PREMIUM→BASIC) to prevent accidental benefit loss.
+    if (targetIndex < currentIndex && targetType !== CardType.LIGHT) {
       return card;
     }
 

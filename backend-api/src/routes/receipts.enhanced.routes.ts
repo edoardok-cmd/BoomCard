@@ -1,41 +1,16 @@
-import crypto from 'crypto';
 import { Router, Request, Response } from 'express';
-import multer from 'multer';
 import { receiptService } from '../services/receipt.service';
 import { fraudDetectionService } from '../services/fraudDetection.service';
 import { receiptAnalyticsService } from '../services/receiptAnalytics.service';
 import { imageUploadService } from '../services/imageUpload.service';
-import { receiptUploadTokenService } from '../services/receiptUploadToken.service';
 import { receiptTemplateService } from '../services/receiptTemplate.service';
 import { emailService } from '../services/email.service';
 import { authenticate, authorize, AuthRequest } from '../middleware/auth.middleware';
 import { prisma } from '../lib/prisma';
 import { asyncHandler } from '../middleware/error.middleware';
 import { uploadSingle, validateMagicBytes } from '../middleware/upload.middleware';
-import {
-  ALLOWED_RECEIPT_MIME_TYPES,
-  MAX_RECEIPT_FILE_SIZE_BYTES,
-} from '../constants/receipt.constants';
-import { validateAmount, validateGPSCoordinates, ValidationError } from '../utils/validation';
-import { checkLivePhoto } from '../utils/exifLivePhoto';
 
 const router = Router();
-
-// Configure multer for file uploads
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: {
-    fileSize: MAX_RECEIPT_FILE_SIZE_BYTES,
-  },
-  fileFilter: (req, file, cb) => {
-    const allowedTypes: readonly string[] = ALLOWED_RECEIPT_MIME_TYPES;
-    if (allowedTypes.includes(file.mimetype)) {
-      cb(null, true);
-    } else {
-      cb(new Error(`Invalid file type. Allowed types: ${ALLOWED_RECEIPT_MIME_TYPES.join(', ')}`));
-    }
-  },
-});
 
 // ============================================
 // PUBLIC/UTILITY ROUTES
@@ -92,204 +67,30 @@ router.get(
 // ============================================
 
 /**
- * POST /api/receipts/upload
- * Upload receipt image to storage
+ * POST /api/receipts/upload — RETIRED
+ * Direct receipt upload has been removed. All receipts must be submitted
+ * through the sticker scan flow (POST /api/stickers/scan/:id/receipt).
  */
-router.post(
-  '/upload',
-  authenticate,
-  upload.single('receipt'),
-  asyncHandler(async (req: AuthRequest, res: Response) => {
-    if (!req.file) {
-      return res.status(400).json({
-        success: false,
-        message: 'No file uploaded',
-      });
-    }
-
-    // Live-photo gate — same EXIF age check as the sticker receipt route. No session
-    // exists in this flow, so we only run the stale-photo rule (>30 min old → reject).
-    // Closes the bypass where a fraudster could hit /api/receipts/v2/upload to skip
-    // the hardening applied at /api/stickers/scan/:id/receipt.
-    const gate = await checkLivePhoto(req.file.buffer, null);
-    if (gate.ok === false) {
-      return res.status(400).json({ success: false, message: gate.message });
-    }
-
-    // uploadReceipt computes SHA-256 + dHash server-side from the buffer and
-    // uploads to S3. These hashes are trusted; they're the only ones /submit
-    // will accept (via the token below).
-    const result = await imageUploadService.uploadReceipt(
-      req.file,
-      req.user!.id
-    );
-
-    // Issue an opaque single-use token binding the trusted hash + live-photo
-    // result + S3 location to this user. /submit MUST present this token —
-    // without it the server would have no way to verify the client's hash
-    // matches the actual uploaded bytes (the original forgery gap).
-    const issued = await receiptUploadTokenService.issue({
-      userId:         req.user!.id,
-      imageHash:      result.hash,
-      perceptualHash: result.perceptualHash || null,
-      livePhotoOk:    gate.ok === true,
-      imageUrl:       result.url,
-      imageKey:       result.key,
-    });
-
-    res.json({
-      uploadToken: issued.token,
-      expiresAt:   issued.expiresAt.toISOString(),
-      imageUrl:    result.url,
-      // imageHash/perceptualHash are NOT returned — the client has no legitimate
-      // need for them post-upload, and returning them invites clients to store
-      // and re-send them, which is the pattern we're deliberately killing.
-    });
-  })
-);
+router.post('/upload', authenticate, (_req: AuthRequest, res: Response) => {
+  res.status(410).json({
+    success: false,
+    message: 'Direct receipt upload has been retired. Please scan a venue QR sticker first, then upload your receipt through the sticker scan flow. Update your app for the latest experience.',
+    code: 'ENDPOINT_RETIRED',
+  });
+});
 
 /**
- * POST /api/receipts/submit
- * Complete receipt submission with fraud detection & cashback calculation
+ * POST /api/receipts/submit — RETIRED
+ * Direct receipt submission has been removed. All receipts must be submitted
+ * through the sticker scan flow (POST /api/stickers/scan/:id/receipt).
  */
-router.post(
-  '/submit',
-  authenticate,
-  asyncHandler(async (req: AuthRequest, res: Response) => {
-    const {
-      uploadToken,
-      ocrData,
-      userAmount,
-      venueId,
-      offerId,
-      latitude,
-      longitude,
-      metadata,
-      deviceFingerprint: rawDeviceFp,
-    } = req.body;
-
-    // Require the opaque upload token issued by /upload. Client-supplied hash
-    // and URL are no longer accepted — see receiptUploadToken.service.ts for
-    // the rationale (defeats the hash-forgery replay gap).
-    if (!uploadToken || typeof uploadToken !== 'string') {
-      return res.status(400).json({
-        success: false,
-        message: 'uploadToken is required',
-      });
-    }
-
-    // Atomic single-use claim. Returns null on any failure mode (unknown token,
-    // wrong user, expired, already consumed). We intentionally surface one
-    // generic error regardless of which — an attacker probing for valid but
-    // consumed tokens shouldn't be able to distinguish the cases.
-    const bound = await receiptUploadTokenService.consume(uploadToken, req.user!.id);
-    if (!bound) {
-      return res.status(403).json({
-        success: false,
-        message: 'Invalid or expired upload token',
-      });
-    }
-    if (!bound.livePhotoOk) {
-      // Should never happen — /upload rejects stale photos before issuing a
-      // token. Belt-and-braces guard in case the gate behaviour is softened
-      // later without this check being revisited.
-      return res.status(400).json({
-        success: false,
-        message: 'Upload did not pass live-photo check',
-      });
-    }
-
-    const imageUrl      = bound.imageUrl;
-    const imageHash     = bound.imageHash;
-    const perceptualHash = bound.perceptualHash ?? undefined;
-
-    // Validate amounts if provided (S-INJECT security tests)
-    let validatedUserAmount: number | undefined;
-    if (userAmount !== undefined && userAmount !== null) {
-      try {
-        validatedUserAmount = validateAmount(userAmount, 'userAmount');
-      } catch (error) {
-        if (error instanceof ValidationError) {
-          return res.status(400).json({
-            success: false,
-            message: error.message,
-          });
-        }
-        throw error;
-      }
-    }
-
-    // Validate OCR amount if provided
-    if (ocrData?.totalAmount !== undefined && ocrData?.totalAmount !== null) {
-      try {
-        validateAmount(ocrData.totalAmount, 'ocrData.totalAmount');
-      } catch (error) {
-        if (error instanceof ValidationError) {
-          return res.status(400).json({
-            success: false,
-            message: error.message,
-          });
-        }
-        throw error;
-      }
-    }
-
-    // Validate GPS coordinates if provided (S-INJECT security tests)
-    let validatedLat: number | undefined = latitude;
-    let validatedLon: number | undefined = longitude;
-    if (latitude !== undefined || longitude !== undefined) {
-      try {
-        const coords = validateGPSCoordinates(latitude, longitude);
-        validatedLat = coords.latitude;
-        validatedLon = coords.longitude;
-      } catch (error) {
-        if (error instanceof ValidationError) {
-          return res.status(400).json({
-            success: false,
-            message: error.message,
-          });
-        }
-        throw error;
-      }
-    }
-
-    // Compute device fingerprint hash server-side from client-supplied components.
-    // The canonical JSON ensures consistent hashing regardless of key order.
-    let deviceFingerprintHash: string | undefined;
-    let deviceFingerprintRaw: string | undefined;
-    if (rawDeviceFp && typeof rawDeviceFp === 'object') {
-      const canonical = JSON.stringify({
-        installationId: rawDeviceFp.installationId || '',
-        platform: rawDeviceFp.platform || '',
-        osVersion: rawDeviceFp.osVersion || '',
-        appVersion: rawDeviceFp.appVersion || '',
-      });
-      deviceFingerprintHash = crypto.createHash('sha256').update(canonical).digest('hex');
-      deviceFingerprintRaw = canonical;
-    }
-
-    // Process receipt with fraud detection and cashback calculation
-    const result = await receiptService.submitReceipt({
-      userId:         req.user!.id,
-      imageUrl,
-      imageHash,
-      perceptualHash,
-      ocrData,
-      userAmount: validatedUserAmount,
-      venueId,
-      offerId,
-      latitude: validatedLat,
-      longitude: validatedLon,
-      ipAddress:  req.ip,
-      userAgent:  req.headers['user-agent'],
-      metadata,
-      deviceFingerprint: deviceFingerprintHash,
-      deviceFingerprintRaw,
-    });
-
-    res.status(201).json(result);
-  })
-);
+router.post('/submit', authenticate, (_req: AuthRequest, res: Response) => {
+  res.status(410).json({
+    success: false,
+    message: 'Direct receipt submission has been retired. Please scan a venue QR sticker first, then upload your receipt through the sticker scan flow. Update your app for the latest experience.',
+    code: 'ENDPOINT_RETIRED',
+  });
+});
 
 /**
  * GET /api/receipts

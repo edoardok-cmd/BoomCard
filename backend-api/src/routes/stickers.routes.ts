@@ -703,7 +703,7 @@ router.get('/admin/pending-review', authenticate, authorize('ADMIN', 'SUPER_ADMI
       take: limit,
     });
 
-    res.json(scans);
+    res.json({ success: true, data: scans });
   } catch (error: any) {
     res.status(500).json({
       success: false,

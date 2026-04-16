@@ -134,7 +134,7 @@ class NotificationsService {
    * Initialize WebSocket connection for real-time notifications
    */
   connectWebSocket(userId: string): void {
-    const wsUrl = import.meta.env.VITE_WS_URL || 'ws://localhost:3000';
+    const wsUrl = import.meta.env.VITE_WS_URL || 'ws://localhost:3025';
     const token = localStorage.getItem('token');
 
     if (!token) {

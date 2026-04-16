@@ -270,7 +270,7 @@ let globalWebSocket: WebSocketService | null = null;
  */
 export function initWebSocket(partnerId: string): WebSocketService {
   if (!globalWebSocket) {
-    const wsUrl = process.env.REACT_APP_WS_URL || 'wss://api.boomcard.bg/ws';
+    const wsUrl = import.meta.env.VITE_WS_URL || 'wss://api.boomcard.bg/ws';
     globalWebSocket = new WebSocketService(wsUrl, partnerId);
   }
 

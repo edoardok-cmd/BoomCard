@@ -11,7 +11,7 @@
   "redirects": [
     {
       "source": "/api/:path*",
-      "destination": "https://api-gateway.railway.app/api/:path*",
+      "destination": "https://boomcard-api.fly.dev/api/:path*",
       "permanent": false
     }
   ],

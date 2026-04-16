@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+const API_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3025/api';
 
 export interface CreatePaymentParams {
   amount: number;
@@ -44,7 +44,7 @@ class PayseraService {
   ): Promise<PaymentResponse> {
     try {
       const response = await axios.post(
-        `${API_URL}/api/payments/create`,
+        `${API_URL}/payments/create`,
         {
           amount: params.amount,
           description: params.description,
@@ -77,7 +77,7 @@ class PayseraService {
   ): Promise<PaymentStatusResponse> {
     try {
       const response = await axios.get(
-        `${API_URL}/api/payments/${orderId}/status`,
+        `${API_URL}/payments/${orderId}/status`,
         {
           headers: {
             'Authorization': `Bearer ${token}`,
@@ -104,7 +104,7 @@ class PayseraService {
   ): Promise<any> {
     try {
       const response = await axios.get(
-        `${API_URL}/api/payments/history`,
+        `${API_URL}/payments/history`,
         {
           params: { limit, offset },
           headers: {
@@ -128,7 +128,7 @@ class PayseraService {
   async getSupportedMethods(): Promise<any> {
     try {
       const response = await axios.get(
-        `${API_URL}/api/payments/methods`
+        `${API_URL}/payments/methods`
       );
 
       return response.data;

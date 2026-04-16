@@ -13,6 +13,8 @@ import { app } from '../../src/server';
 import { prisma } from '../../src/lib/prisma';
 import {
   createTestUser,
+  createTestSubscription,
+  loginTestUser,
   createTestVenue,
   cleanupTestUser,
   cleanupTestVenue,
@@ -26,6 +28,8 @@ describe('Sticker Scan Flow (F06)', () => {
   let cardId: string;
   let venueId: string;
   let stickerId: string;
+  let userEmail: string;
+  let userPassword: string;
 
   // Sofia coordinates for GPS tests
   const venueLatitude = 42.6977;
@@ -35,11 +39,16 @@ describe('Sticker Scan Flow (F06)', () => {
     const testData = await createTestUser();
     userId = testData.user.id;
     accessToken = testData.accessToken;
+    userEmail = testData.email;
+    userPassword = testData.password;
     createdUserIds.push(userId);
 
     // Get user's card
     const card = await prisma.card.findFirst({ where: { userId } });
     cardId = card!.id;
+
+    // Create LIGHT subscription (cashback requires active subscription)
+    await createTestSubscription(userId, 'LIGHT');
 
     // Create test venue with sticker
     const venueData = await createTestVenue(userId);
@@ -66,6 +75,8 @@ describe('Sticker Scan Flow (F06)', () => {
           billAmount: 50.0,
           latitude: venueLatitude,
           longitude: venueLongitude,
+          payloadVenueId: venueId,
+          payloadVersion: '1',
         });
 
       expect(res.status).toBe(200);
@@ -84,10 +95,12 @@ describe('Sticker Scan Flow (F06)', () => {
           billAmount: 100.0,
           latitude: venueLatitude,
           longitude: venueLongitude,
+          payloadVenueId: venueId,
+          payloadVersion: '1',
         });
 
       if (res.status === 200) {
-        // Standard card = 5% cashback
+        // LIGHT card = 5% cashback
         expect(res.body.data.cashbackPercent).toBe(5);
         expect(res.body.data.cashbackAmount).toBe(5); // 5% of 100
       }
@@ -144,6 +157,8 @@ describe('Sticker Scan Flow (F06)', () => {
           billAmount: 25.0,
           latitude: venueLatitude + 0.0003,
           longitude: venueLongitude,
+          payloadVenueId: venueId,
+          payloadVersion: '1',
         });
 
       // Should not be rejected for GPS reasons
@@ -163,6 +178,8 @@ describe('Sticker Scan Flow (F06)', () => {
           billAmount: 25.0,
           latitude: venueLatitude + 0.05,
           longitude: venueLongitude + 0.05,
+          payloadVenueId: venueId,
+          payloadVersion: '1',
         });
 
       if (res.status === 200) {
@@ -187,6 +204,8 @@ describe('Sticker Scan Flow (F06)', () => {
           billAmount: 50.0,
           latitude: venueLatitude,
           longitude: venueLongitude,
+          payloadVenueId: venueId,
+          payloadVersion: '1',
         });
 
       expect(res.status).toBe(400);
@@ -214,12 +233,20 @@ describe('Sticker Scan Flow (F06)', () => {
 
   describe('GET /api/stickers/venue/:venueId/analytics', () => {
     it('should return venue scan analytics', async () => {
-      const res = await authRequest(accessToken)
+      // Promote test user to PARTNER role (analytics requires PARTNER/ADMIN)
+      await prisma.user.update({ where: { id: userId }, data: { role: 'PARTNER' } });
+      // Re-login to get a token with the updated role
+      const { accessToken: partnerToken } = await loginTestUser(userEmail, userPassword);
+
+      const res = await authRequest(partnerToken)
         .get(`/api/stickers/venue/${venueId}/analytics`);
 
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
       expect(res.body.data).toBeDefined();
+
+      // Restore role
+      await prisma.user.update({ where: { id: userId }, data: { role: 'USER' } });
     });
   });
 });

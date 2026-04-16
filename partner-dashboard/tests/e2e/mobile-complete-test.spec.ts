@@ -6,7 +6,7 @@ test.describe('Mobile Header Complete Implementation', () => {
   });
 
   test('verify all requirements are met', async ({ page }) => {
-    await page.goto('http://localhost:3005/');
+    await page.goto('/');
     await page.waitForLoadState('networkidle');
 
     // REQUIREMENT 1: Language toggle (EN/BG) should be hidden on mobile header

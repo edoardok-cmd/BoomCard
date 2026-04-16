@@ -3,7 +3,7 @@ import { test, expect } from '@playwright/test';
 test.describe('BoomCard Implementation Verification', () => {
   test('Homepage loads successfully with new features', async ({ page }) => {
     // Navigate to homepage
-    await page.goto('http://localhost:5177/', { waitUntil: 'load', timeout: 15000 });
+    await page.goto('/', { waitUntil: 'load', timeout: 15000 });
 
     // Wait for page to be interactive
     await page.waitForLoadState('domcontentloaded');
@@ -23,7 +23,7 @@ test.describe('BoomCard Implementation Verification', () => {
 
   test('Hero CTA button is visible and has proper styling', async ({ page }) => {
     // Navigate to homepage
-    await page.goto('http://localhost:5177/', { waitUntil: 'load', timeout: 15000 });
+    await page.goto('/', { waitUntil: 'load', timeout: 15000 });
 
     // Wait for page load and animations
     await page.waitForTimeout(5000);
@@ -54,7 +54,7 @@ test.describe('BoomCard Implementation Verification', () => {
 
   test('Reviews section is present on homepage', async ({ page }) => {
     // Navigate to homepage
-    await page.goto('http://localhost:5177/', { waitUntil: 'load', timeout: 15000 });
+    await page.goto('/', { waitUntil: 'load', timeout: 15000 });
 
     // Wait for content to load
     await page.waitForTimeout(2000);
@@ -73,8 +73,8 @@ test.describe('BoomCard Implementation Verification', () => {
       fullPage: false
     });
 
-    // Check for any button containing "review" text (case insensitive)
-    const reviewButtons = page.locator('button').filter({ hasText: /review/i });
+    // Check for any button containing "review" or "отзив" text (case insensitive)
+    const reviewButtons = page.locator('button').filter({ hasText: /review|отзив/i });
     const count = await reviewButtons.count();
 
     console.log(`✅ Found ${count} button(s) related to reviews`);
@@ -105,7 +105,7 @@ test.describe('BoomCard Implementation Verification', () => {
     });
 
     // Navigate to homepage
-    await page.goto('http://localhost:5177/', { waitUntil: 'load', timeout: 15000 });
+    await page.goto('/', { waitUntil: 'load', timeout: 15000 });
 
     // Wait for page to settle
     await page.waitForTimeout(3000);

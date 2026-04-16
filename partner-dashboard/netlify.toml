@@ -4,13 +4,12 @@
 
 [build.environment]
   NODE_VERSION = "18"
-  REACT_APP_API_URL = "https://api-gateway.onrender.com"
-  REACT_APP_GRAPHQL_URL = "https://query-service.onrender.com/graphql"
-  REACT_APP_WS_URL = "wss://query-service.onrender.com/graphql"
+  VITE_API_BASE_URL = "https://boomcard-api.fly.dev/api"
+  VITE_WS_URL = "wss://boomcard-api.fly.dev"
 
 [[redirects]]
   from = "/api/*"
-  to = "https://api-gateway.onrender.com/api/:splat"
+  to = "https://boomcard-api.fly.dev/api/:splat"
   status = 200
   force = true
 
