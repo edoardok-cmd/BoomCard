@@ -47,7 +47,9 @@ class ApiService {
         const originalRequest = error.config;
 
         // If error is 401 and we haven't tried to refresh yet
-        if (error.response?.status === 401 && !originalRequest._retry) {
+        // Skip token-refresh / logout for mock tokens — they always 401 against the real backend
+        const currentToken = localStorage.getItem('token');
+        if (error.response?.status === 401 && !originalRequest._retry && !currentToken?.startsWith('mock-')) {
           if (this.isRefreshing) {
             // If already refreshing, queue this request
             return new Promise((resolve, reject) => {

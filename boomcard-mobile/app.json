@@ -90,7 +90,7 @@
       "eas": {
         "projectId": "77543a0c-e238-4616-9fc4-22dcc565080b"
       },
-      "EXPO_PUBLIC_API_URL": "https://boomcard.onrender.com"
+      "EXPO_PUBLIC_API_URL": "https://boomcard-api.fly.dev"
     },
     "owner": "edoardok1",
     "runtimeVersion": {

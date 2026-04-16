@@ -9,7 +9,7 @@ echo "📱 Publishing BoomCard to Expo Go..."
 echo ""
 
 # Set the API URL to the Render production server
-export EXPO_PUBLIC_API_URL="https://boomcard.onrender.com"
+export EXPO_PUBLIC_API_URL="https://boomcard-api.fly.dev"
 
 echo "✅ Using API URL: $EXPO_PUBLIC_API_URL"
 echo ""

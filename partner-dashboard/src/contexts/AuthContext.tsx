@@ -78,7 +78,14 @@ const TOKEN_KEY = 'token';
 const REFRESH_TOKEN_KEY = 'refreshToken';
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<User | null>(() => {
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY);
+      const storedToken = localStorage.getItem(TOKEN_KEY);
+      if (stored && storedToken) return JSON.parse(stored);
+    } catch { /* ignore parse errors */ }
+    return null;
+  });
   const [token, setToken] = useState<string | null>(() => localStorage.getItem(TOKEN_KEY));
   const [isLoading, setIsLoading] = useState(true);
 
@@ -135,14 +142,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     loadUser();
   }, []);
 
-  // Save user to localStorage when it changes
+  // Save user to localStorage when it changes (skip during initial load to
+  // avoid clearing boomcard_auth before loadUser can read it — race with StrictMode)
   useEffect(() => {
+    if (isLoading) return;
     if (user) {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(user));
     } else {
       localStorage.removeItem(STORAGE_KEY);
     }
-  }, [user]);
+  }, [user, isLoading]);
 
   const login = async (credentials: LoginCredentials): Promise<void> => {
     setIsLoading(true);
