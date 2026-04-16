@@ -508,10 +508,20 @@ class FraudDetectionService {
   async calculateCashback(params: {
     venueId?: string;
     amount: number;
-    cardTier: 'LIGHT' | 'BASIC' | 'PREMIUM';
+    /**
+     * The user's cashback tier. Source of truth is the user's active Subscription.plan
+     * (see resolveCashbackTier). Pass `null` when the user has no active subscription —
+     * in that case cashback is 0 regardless of Card.type (Finding #1 fix).
+     */
+    cardTier: 'LIGHT' | 'BASIC' | 'PREMIUM' | null;
     /** When provided, rolling daily/monthly cashback caps are enforced. */
     userId?: string;
   }): Promise<{ cashbackAmount: number; cashbackPercent: number }> {
+    // Gate: no active subscription → no cashback. Prevents FREE users (no sub) from earning
+    // via the Card.type fallback that existed previously.
+    if (params.cardTier === null) {
+      return { cashbackAmount: 0, cashbackPercent: 0 };
+    }
     // Step 1: resolve partner's discount rate via the venue's partner relation.
     // NOTE: params.venueId is a Venue.id — Partner IDs are different UUIDs, so we
     // must traverse Venue → partner rather than doing partner.findUnique(venueId).

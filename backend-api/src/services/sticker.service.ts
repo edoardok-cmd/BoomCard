@@ -6,6 +6,9 @@ import { notificationService } from './notification.service';
 import { logger } from '../utils/logger';
 import { partnerTypeService } from './partnerType.service';
 import { fraudDetectionService } from './fraudDetection.service';
+import { recognizeReceiptImage } from './ocr.service';
+import { imageUploadService } from './imageUpload.service';
+import { enqueueMerchantVerification } from '../queues/merchantVerification.queue';
 
 // ============================================
 // Interfaces
@@ -40,6 +43,17 @@ export interface CreateSessionData {
   longitude?: number;
   ipAddress?: string;
   userAgent?: string;
+  /**
+   * venueId embedded in the QR payload. Required: must match the sticker's true
+   * venueId (server-side cross-check; Finding #4). Clients that omit it are rejected.
+   */
+  payloadVenueId?: string;
+  /**
+   * version embedded in the QR payload. Required: major must be >= 1 (Finding #5).
+   * Missing / non-numeric / < 1.0 is rejected so retired sticker formats can be cut off
+   * server-side and not only in the mobile client.
+   */
+  payloadVersion?: string;
 }
 
 export interface ScanStickerData {
@@ -53,12 +67,17 @@ export interface ScanStickerData {
   userAgent?: string;
   /** If provided, complete an existing SESSION_ACTIVE session rather than creating a new scan. */
   sessionId?: string;
+  /** Legacy one-call flow only: required here too so the legacy path can't bypass Finding #4/#5. */
+  payloadVenueId?: string;
+  payloadVersion?: string;
 }
 
 export interface UploadReceiptData {
   scanId: string;
   userId?: string;
   receiptImageUrl: string;
+  /** SHA-256 of raw bytes. Required for duplicate rejection (Finding #6). */
+  receiptImageHash?: string;
   imageKey?: string;
   ocrData?: {
     amount?: number;
@@ -69,6 +88,79 @@ export interface UploadReceiptData {
     currency?: string;
     confidence?: number;
   };
+  /**
+   * Raw receipt bytes. When supplied, the service runs server-side OCR and compares
+   * the extracted merchant name against the venue/partner names. Mismatches append
+   * a MERCHANT_MISMATCH fraudReason and bump fraudScore — routes that need this
+   * fraud gate MUST pass the buffer; client-supplied ocrData is untrusted.
+   */
+  imageBuffer?: Buffer;
+}
+
+/**
+ * Normalize a merchant string for fuzzy matching: lowercase, strip punctuation,
+ * collapse whitespace. Leaves Latin + Cyrillic + digits so Bulgarian names work.
+ */
+function normalizeMerchantString(s: string): string {
+  return s
+    .toLowerCase()
+    .replace(/[^a-z0-9\u0400-\u04FF\s]/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Tokens that appear on almost every Bulgarian receipt and carry no identity:
+ * legal-entity suffixes (EOOD / OOD / AD / ET), generic venue-type words, and
+ * very common filler. Without this list "KRISTAL EOOD" matches "Bar EOOD" with
+ * score 1.0 even though they're unrelated businesses. Each entry is pre-normalized
+ * (lowercase, Cyrillic where applicable).
+ */
+const MERCHANT_STOPWORDS = new Set<string>([
+  // BG legal-entity suffixes (Latin + Cyrillic forms)
+  'eood', 'ood', 'ad', 'et', 'ead', 'kd', 'sd',
+  'еоод', 'оод', 'ад', 'ет', 'еад', 'кд', 'сд',
+  // generic venue/business words
+  'bar', 'cafe', 'restaurant', 'pub', 'bistro', 'shop', 'store', 'market',
+  'бар', 'кафе', 'ресторант', 'бистро', 'магазин', 'маркет',
+  // filler
+  'the', 'and', 'bg', 'ltd', 'inc',
+]);
+
+/**
+ * Token-set overlap between two merchant strings (0..1). We strip single-char
+ * tokens and domain stopwords first so "Kristal EOOD" vs "Bar EOOD" doesn't score
+ * 1.0 on the shared legal suffix. Denominator is min(|a|,|b|) of meaningful tokens
+ * so a 1-vs-1 match still registers when both names have one distinctive word.
+ */
+function merchantMatchScore(ocrName: string, candidate: string): number {
+  const tokenize = (s: string) =>
+    new Set(
+      normalizeMerchantString(s)
+        .split(' ')
+        .filter((t) => t.length > 1 && !MERCHANT_STOPWORDS.has(t)),
+    );
+  const a = tokenize(ocrName);
+  const b = tokenize(candidate);
+  if (!a.size || !b.size) return 0;
+  let common = 0;
+  for (const t of a) if (b.has(t)) common++;
+  return common / Math.min(a.size, b.size);
+}
+
+const MERCHANT_MATCH_THRESHOLD = 0.5;
+
+/**
+ * Guard: if BOTH the OCR merchant and the venue/partner candidates reduce to zero
+ * meaningful tokens after stopword filtering, we can't make a meaningful
+ * comparison — return null from the verifier rather than flagging a mismatch.
+ * This happens when e.g. the seeded venue is literally named "Bar" (one stopword
+ * token) — we can't prove the receipt doesn't belong to that venue from name alone.
+ */
+function hasMeaningfulTokens(s: string): boolean {
+  return normalizeMerchantString(s)
+    .split(' ')
+    .some((t) => t.length > 1 && !MERCHANT_STOPWORDS.has(t));
 }
 
 export interface FraudCheckResult {
@@ -83,6 +175,22 @@ export interface FraudCheckResult {
 // ============================================
 
 class StickerService {
+  /**
+   * Resolve the user's cashback tier from their active Subscription.
+   * Returns null when no active subscription exists — callers should treat this as
+   * "no cashback" (Finding #1 fix). Using Subscription.plan as the single source of
+   * truth (not Card.type) resolves Finding #2.
+   */
+  private async resolveCashbackTier(userId: string): Promise<'LIGHT' | 'BASIC' | 'PREMIUM' | null> {
+    const sub = await prisma.subscription.findFirst({
+      where: { userId, status: SubscriptionStatus.ACTIVE },
+      orderBy: { currentPeriodEnd: 'desc' },
+    });
+    if (!sub) return null;
+    const plan = sub.plan as 'LIGHT' | 'BASIC' | 'PREMIUM';
+    return plan === 'LIGHT' || plan === 'BASIC' || plan === 'PREMIUM' ? plan : null;
+  }
+
   /**
    * Create a new sticker location for a venue
    */
@@ -289,6 +397,18 @@ class StickerService {
     const { userId, latitude, longitude, ipAddress, userAgent } = data;
     let { stickerId, cardId } = data;
 
+    // Findings #4 + #5 (info-leak mitigation): validate payload fields that do NOT depend
+    // on the DB BEFORE the sticker lookup, so attackers can't enumerate stickerIds by
+    // distinguishing "missing field" from "invalid sticker" errors.
+    if (!data.payloadVenueId) {
+      throw new Error('QR payload is missing venueId — refusing to proceed.');
+    }
+    const rawVersion = typeof data.payloadVersion === 'string' ? data.payloadVersion : '';
+    const major = parseInt(rawVersion.split('.')[0], 10);
+    if (!Number.isFinite(major) || major < 1) {
+      throw new Error('QR payload version is outdated — please ask the venue for a new sticker.');
+    }
+
     // 1. Validate sticker
     const sticker = await prisma.sticker.findUnique({
       where: { stickerId },
@@ -300,6 +420,11 @@ class StickerService {
 
     if (!sticker) throw new Error('Invalid sticker code');
     if (sticker.status !== StickerStatus.ACTIVE) throw new Error('Sticker is not active');
+
+    // Final cross-check: payload venueId must match the sticker's true venue.
+    if (data.payloadVenueId !== sticker.venueId) {
+      throw new Error('QR payload venue does not match sticker — refusing to proceed.');
+    }
 
     // 2. Resolve card
     if (!cardId) {
@@ -334,23 +459,19 @@ class StickerService {
       }
     }
 
-    // 4. GPS check
+    // 4. GPS check — always mandatory. Per product decision, no venue may opt out of
+    // proximity verification; we ignore VenueStickerConfig.gpsVerificationEnabled here
+    // and always require the user to be within gpsRadiusMeters of the venue.
     const config = sticker.venue.stickerConfig || (await this.getOrCreateVenueConfig(sticker.venueId));
-    let distance: number | undefined;
-    if (latitude !== undefined && longitude !== undefined) {
-      distance = this.calculateDistance(latitude, longitude, sticker.venue.latitude, sticker.venue.longitude);
+    if (latitude === undefined || longitude === undefined) {
+      throw new Error('Location access is required to scan. Please enable GPS and try again.');
     }
-
-    if (config.gpsVerificationEnabled) {
-      if (distance === undefined) {
-        throw new Error('Location access is required to scan at this venue. Please enable GPS and try again.');
-      }
-      if (distance > config.gpsRadiusMeters) {
-        throw new Error(
-          `You must be within ${config.gpsRadiusMeters}m of the venue to scan. ` +
-          `You are currently ${Math.round(distance)}m away.`
-        );
-      }
+    const distance = this.calculateDistance(latitude, longitude, sticker.venue.latitude, sticker.venue.longitude);
+    if (distance > config.gpsRadiusMeters) {
+      throw new Error(
+        `You must be within ${config.gpsRadiusMeters}m of the venue to scan. ` +
+        `You are currently ${Math.round(distance)}m away.`
+      );
     }
 
     // 5. Create SESSION_ACTIVE record (no bill amount yet)
@@ -432,10 +553,11 @@ class StickerService {
         throw new Error(`Minimum bill amount is ${config.minBillAmount} BGN`);
       }
 
+      const tier = await this.resolveCashbackTier(userId);
       const { cashbackAmount, cashbackPercent } = await fraudDetectionService.calculateCashback({
         venueId: existing.venueId, // venue ID — calculateCashback traverses Venue → partner internally
         amount: billAmount,
-        cardTier: existing.card.type as 'LIGHT' | 'BASIC' | 'PREMIUM',
+        cardTier: tier, // null when no active subscription → 0 cashback (Finding #1)
         userId,
       });
 
@@ -454,7 +576,7 @@ class StickerService {
           cashbackPercent,
           cashbackAmount,
           fraudScore: fraudCheck.fraudScore,
-          fraudReasons: JSON.stringify(fraudCheck.fraudReasons),
+          fraudReasons: fraudCheck.fraudReasons,
           status: ScanStatus.PENDING,
           // Keep original GPS from session start; update only if re-submitted
           ...(latitude !== undefined && { latitude }),
@@ -478,6 +600,20 @@ class StickerService {
     // ── Path B: legacy — create scan + session in one call (no sessionId) ────
     let { stickerId, cardId } = data;
 
+    // Findings #4 + #5 (info-leak mitigation): validate payload fields that do NOT depend
+    // on the DB BEFORE the sticker lookup, so attackers can't enumerate stickerIds by
+    // distinguishing "missing field" from "invalid sticker" errors.
+    if (!data.payloadVenueId) {
+      throw new Error('QR payload is missing venueId — refusing to proceed.');
+    }
+    {
+      const raw = typeof data.payloadVersion === 'string' ? data.payloadVersion : '';
+      const major = parseInt(raw.split('.')[0], 10);
+      if (!Number.isFinite(major) || major < 1) {
+        throw new Error('QR payload version is outdated — please ask the venue for a new sticker.');
+      }
+    }
+
     // 1. Validate sticker exists and is active
     const sticker = await prisma.sticker.findUnique({
       where: { stickerId },
@@ -497,6 +633,11 @@ class StickerService {
 
     if (sticker.status !== StickerStatus.ACTIVE) {
       throw new Error('Sticker is not active');
+    }
+
+    // Final cross-check: payload venueId must match the sticker's true venue.
+    if (data.payloadVenueId !== sticker.venueId) {
+      throw new Error('QR payload venue does not match sticker — refusing to proceed.');
     }
 
     // 2. Resolve and validate the user's card
@@ -548,29 +689,24 @@ class StickerService {
       throw new Error(`Minimum bill amount is ${config.minBillAmount} BGN`);
     }
 
-    // 5. Cashback calculation (userId enforces rolling daily/monthly caps)
+    // 5. Cashback calculation — tier comes from active Subscription, not Card.type (Finding #1+#2)
+    const tier = await this.resolveCashbackTier(userId);
     const { cashbackAmount, cashbackPercent } = await fraudDetectionService.calculateCashback({
       venueId: sticker.venueId, // venue ID — calculateCashback traverses Venue → partner internally
       amount: billAmount,
-      cardTier: card.type as 'LIGHT' | 'BASIC' | 'PREMIUM',
-      userId: data.userId,
+      cardTier: tier,
+      userId,
     });
 
-    // 6. GPS distance
-    let distance: number | undefined;
-    if (latitude !== undefined && longitude !== undefined) {
-      distance = this.calculateDistance(latitude, longitude, sticker.venue.latitude, sticker.venue.longitude);
+    // 6. GPS distance — mandatory, no opt-out (see createSession comment).
+    if (latitude === undefined || longitude === undefined) {
+      throw new Error('Location access is required to scan. Please enable GPS and try again.');
     }
-
-    if (config.gpsVerificationEnabled) {
-      if (distance === undefined) {
-        throw new Error('Location access is required to scan at this venue. Please enable GPS and try again.');
-      }
-      if (distance > config.gpsRadiusMeters) {
-        throw new Error(
-          `You must be within ${config.gpsRadiusMeters}m of the venue to scan. You are currently ${Math.round(distance)}m away.`
-        );
-      }
+    const distance = this.calculateDistance(latitude, longitude, sticker.venue.latitude, sticker.venue.longitude);
+    if (distance > config.gpsRadiusMeters) {
+      throw new Error(
+        `You must be within ${config.gpsRadiusMeters}m of the venue to scan. You are currently ${Math.round(distance)}m away.`
+      );
     }
 
     // 7. Fraud check
@@ -597,7 +733,7 @@ class StickerService {
         longitude,
         distance,
         fraudScore: fraudCheck.fraudScore,
-        fraudReasons: JSON.stringify(fraudCheck.fraudReasons),
+        fraudReasons: fraudCheck.fraudReasons,
         status: ScanStatus.PENDING,
         ipAddress,
         userAgent,
@@ -618,43 +754,236 @@ class StickerService {
   }
 
   /**
+   * Finding #6: SHA-256 dedupe probe. Call BEFORE uploading to S3 so duplicates don't
+   * incur storage cost. Returns a truthy value if a prior scan with the same hash exists
+   * (excluding the caller's own scanId).
+   */
+  async findDuplicateReceipt(
+    receiptImageHash: string,
+    excludeScanId?: string,
+  ): Promise<{ id: string; userId: string; status: ScanStatus } | null> {
+    if (!receiptImageHash) return null;
+    return (prisma.stickerScan as any).findFirst({
+      where: {
+        receiptImageHash,
+        ...(excludeScanId ? { id: { not: excludeScanId } } : {}),
+      },
+      select: { id: true, userId: true, status: true },
+    });
+  }
+
+  /**
    * Upload receipt image and OCR data for a scan
    */
   async uploadReceipt(data: UploadReceiptData): Promise<StickerScan> {
-    const { scanId, receiptImageUrl, ocrData } = data;
+    const { scanId, userId, receiptImageUrl, receiptImageHash, ocrData, imageBuffer } = data;
 
-    const scan = await prisma.stickerScan.findUnique({
-      where: { id: scanId },
-      include: {
-        venue: {
-          include: {
-            stickerConfig: true,
+    // IDOR guard: when the caller provides a userId, the scan must belong to that user.
+    // Route handlers pass req.user.id here. Internal callers that omit userId fall back
+    // to the old unguarded lookup — they already know what scan they're working with.
+    const scan = userId
+      ? await prisma.stickerScan.findFirst({
+          where: { id: scanId, userId },
+          include: { venue: { include: { stickerConfig: true, partner: true } } },
+        })
+      : await prisma.stickerScan.findUnique({
+          where: { id: scanId },
+          include: { venue: { include: { stickerConfig: true, partner: true } } },
+        });
+
+    if (!scan) throw new Error('Scan not found');
+
+    // Pre-existing-bug fix: reject re-upload on scans past the upload stage. Without this,
+    // a second POST to /scan/:id/receipt would silently downgrade APPROVED → VALIDATING →
+    // MANUAL_REVIEW while the original wallet credit stayed paid. Allowed states are
+    // PENDING (first upload after submitScan) and VALIDATING (client retry after crash).
+    const uploadableStates: ScanStatus[] = [ScanStatus.PENDING, ScanStatus.VALIDATING];
+    if (!uploadableStates.includes(scan.status)) {
+      throw new Error(
+        `Receipt cannot be uploaded: scan is in ${scan.status} state. ` +
+        `Only PENDING or VALIDATING scans accept a receipt upload.`,
+      );
+    }
+
+    // Finding #6: reject duplicate receipts by SHA-256 across ALL scans. The route already
+    // runs this probe BEFORE S3 upload; we run it again here as defence-in-depth for any
+    // caller that bypasses the route (e.g. internal services).
+    if (receiptImageHash) {
+      const existing = await this.findDuplicateReceipt(receiptImageHash, scanId);
+      if (existing) {
+        // Mark this scan as REJECTED and surface the duplicate reason in fraudReasons.
+        // We do NOT swallow update failures — if the REJECTED state can't be persisted the
+        // caller deserves to know so they can retry or page ops, rather than leaving the
+        // scan in an inconsistent intermediate state.
+        await prisma.stickerScan.update({
+          where: { id: scanId },
+          data: {
+            status: ScanStatus.REJECTED,
+            rejectionReason: 'Duplicate receipt image (SHA-256 match)',
+            fraudReasons: ['DUPLICATE_IMAGE_HASH'],
           },
-        },
-      },
-    });
-
-    if (!scan) {
-      throw new Error('Scan not found');
+        });
+        throw new Error('This receipt has already been submitted. Duplicate receipts are not accepted.');
+      }
     }
 
     const verifiedAmount = ocrData?.amount || ocrData?.total;
 
-    // Update scan with receipt data
-    const updated = await prisma.stickerScan.update({
-      where: { id: scanId },
-      data: {
-        receiptImageUrl,
-        ocrData: ocrData as any,
-        verifiedAmount,
-        status: ScanStatus.VALIDATING,
-      },
-    });
+    try {
+      await (prisma.stickerScan.update as any)({
+        where: { id: scanId },
+        data: {
+          receiptImageUrl,
+          receiptImageHash: receiptImageHash ?? null,
+          ocrData: ocrData as any,
+          verifiedAmount,
+          status: ScanStatus.VALIDATING,
+        },
+      });
+    } catch (err: any) {
+      // Finding #6 race: the unique index on receiptImageHash (migration
+      // 20260417_sticker_scan_receipt_image_hash_unique) throws P2002 when a concurrent
+      // request inserts the same hash between our findFirst and update. Treat as duplicate.
+      if (err?.code === 'P2002') {
+        await prisma.stickerScan.update({
+          where: { id: scanId },
+          data: {
+            status: ScanStatus.REJECTED,
+            rejectionReason: 'Duplicate receipt image (SHA-256 race)',
+            fraudReasons: ['DUPLICATE_IMAGE_HASH_RACE'],
+          },
+        });
+        throw new Error('This receipt has already been submitted. Duplicate receipts are not accepted.');
+      }
+      throw err;
+    }
+
+    // Server-side OCR merchant verification is run asynchronously after the response
+    // returns: Tesseract takes 10–30s per receipt, and blocking the upload response
+    // that long would time out the mobile client. The scan is already in MANUAL_REVIEW,
+    // so enriching fraudReasons after the fact is always safe — an admin reviewing a
+    // flagged scan a minute later will see MERCHANT_MISMATCH. Client-supplied ocrData
+    // is still ignored — merchant verification must be independent of the client.
+    //
+    // Preferred path: enqueue a BullMQ job. Survives server restart, retries on failure.
+    // Fallback (Redis unconfigured): detached promise — the legacy behavior, no durability.
+    const candidateNames = [
+      scan.venue?.name,
+      scan.venue?.nameBg,
+      scan.venue?.partner?.businessName,
+      scan.venue?.partner?.businessNameBg,
+    ].filter((n): n is string => !!n && n.trim().length > 0);
+    if (candidateNames.length > 0) {
+      const enqueued = await enqueueMerchantVerification(scanId);
+      if (!enqueued && imageBuffer) {
+        // Fallback: in-process detached promise (legacy). No restart durability.
+        void this.runMerchantVerificationFromBuffer(scanId, imageBuffer, candidateNames, scan.venue?.name ?? '');
+      }
+    }
 
     // All scans require admin approval — no auto-approve
     return prisma.stickerScan.update({
       where: { id: scanId },
       data: { status: ScanStatus.MANUAL_REVIEW },
+    });
+  }
+
+  /**
+   * Worker entrypoint: re-fetches the scan + image from S3 and runs verification.
+   * Throws on real failure (so BullMQ can retry); short-circuits silently when the
+   * scan is missing/invalid (those are not retryable).
+   */
+  async runMerchantVerification(scanId: string): Promise<void> {
+    const scan = await prisma.stickerScan.findUnique({
+      where: { id: scanId },
+      include: {
+        venue: { include: { partner: true } },
+      },
+    });
+    if (!scan) {
+      logger.warn(`runMerchantVerification: scan ${scanId} not found — dropping job`);
+      return;
+    }
+    if (!scan.receiptImageUrl) {
+      logger.warn(`runMerchantVerification: scan ${scanId} has no receiptImageUrl — dropping job`);
+      return;
+    }
+
+    const candidateNames = [
+      scan.venue?.name,
+      scan.venue?.nameBg,
+      scan.venue?.partner?.businessName,
+      scan.venue?.partner?.businessNameBg,
+    ].filter((n): n is string => !!n && n.trim().length > 0);
+    if (candidateNames.length === 0) return;
+
+    // Re-download the receipt bytes. We never queue the buffer itself — it would
+    // bloat Redis and tie payload size to image size. S3 is the source of truth.
+    const buffer = await imageUploadService.downloadImageFromUrl(scan.receiptImageUrl);
+    await this.verifyAndAnnotateScan(scanId, buffer, candidateNames, scan.venue?.name ?? '');
+  }
+
+  /**
+   * Legacy in-process fallback used when REDIS_URL is unset. Same body as
+   * runMerchantVerification but skips the S3 round-trip because the caller already
+   * has the buffer. Errors are swallowed (legacy contract: detached promise).
+   */
+  private async runMerchantVerificationFromBuffer(
+    scanId: string,
+    imageBuffer: Buffer,
+    candidateNames: string[],
+    venueName: string,
+  ): Promise<void> {
+    try {
+      await this.verifyAndAnnotateScan(scanId, imageBuffer, candidateNames, venueName);
+    } catch (err: any) {
+      logger.warn(`OCR merchant verification (fallback) failed for scan ${scanId}: ${err?.message ?? err}`);
+    }
+  }
+
+  /**
+   * Shared core: runs OCR, scores the merchant match, atomically appends a
+   * MERCHANT_MISMATCH fraudReason when the score is below threshold. Idempotent —
+   * a re-fire (from BullMQ retry or detached re-call) won't double-flag a scan.
+   */
+  private async verifyAndAnnotateScan(
+    scanId: string,
+    imageBuffer: Buffer,
+    candidateNames: string[],
+    venueName: string,
+  ): Promise<void> {
+    const serverOcr = await recognizeReceiptImage(imageBuffer);
+    const ocrMerchant = serverOcr.merchantName?.trim() ?? '';
+    // Only score a mismatch when OCR is confident enough to be trusted. Thermal
+    // receipt photos routinely OCR at 30–40% confidence and produce garbage merchant
+    // strings; flagging those would false-positive on every legitimate upload. 60
+    // is an empirical floor for "the first line is actually readable text".
+    if (ocrMerchant.length < 2 || serverOcr.confidence < 60) return;
+
+    // Skip if no venue candidate has any distinctive token after stopword filtering —
+    // otherwise we'd false-flag every receipt against a venue literally named "Bar".
+    const meaningfulCandidates = candidateNames.filter(hasMeaningfulTokens);
+    if (meaningfulCandidates.length === 0) return;
+
+    const bestScore = Math.max(...meaningfulCandidates.map((c) => merchantMatchScore(ocrMerchant, c)));
+    if (bestScore >= MERCHANT_MATCH_THRESHOLD) return;
+
+    const newReason = `MERCHANT_MISMATCH: receipt="${ocrMerchant}" vs venue="${venueName}"`;
+    // Idempotency guard: read to check whether MERCHANT_MISMATCH is already recorded
+    // (BullMQ retry, detached re-fire). Concurrent admin edits between this read and
+    // the push below are safe — both writes use server-side atomic operators.
+    const current = await prisma.stickerScan.findUnique({
+      where: { id: scanId },
+      select: { fraudReasons: true },
+    });
+    if (!current) return;
+    if (current.fraudReasons.some((r) => r.startsWith('MERCHANT_MISMATCH'))) return;
+    await prisma.stickerScan.update({
+      where: { id: scanId },
+      data: {
+        fraudReasons: { push: newReason },
+        fraudScore: { increment: 40 },
+      },
     });
   }
 
@@ -787,6 +1116,10 @@ class StickerService {
         },
       }) as unknown as StickerScan;
 
+      // Resolve the subscription-backed tier for metadata consistency. Falling back to
+      // scan.card?.type was misleading (Finding #1/#2 leftover) — the tier at the time of
+      // the scan was already gated by the subscription, so record it that way.
+      const metadataTier = await this.resolveCashbackTier(scan.userId);
       await walletService.credit({
         userId: scan.userId,
         amount: scan.cashbackAmount,
@@ -797,7 +1130,7 @@ class StickerService {
           venueId: scan.venueId,
           locationName,
           billAmount: scan.billAmount,
-          cardTier: scan.card?.type || 'LIGHT',
+          cashbackTier: metadataTier ?? 'NONE',
         },
       });
 
@@ -916,13 +1249,9 @@ class StickerService {
     let fraudScore = 0;
     const fraudReasons: string[] = [];
 
-    // 1. GPS verification
-    if (config.gpsVerificationEnabled && distance !== undefined) {
-      if (distance > config.gpsRadiusMeters) {
-        fraudScore += 30;
-        fraudReasons.push(`GPS_MISMATCH: ${Math.round(distance)}m from venue`);
-      }
-    }
+    // GPS is enforced at the gate (createSession + scanSticker Path B): an out-of-radius
+    // scan throws before reaching here, and VenueStickerConfig.gpsVerificationEnabled is
+    // ignored by product decision. No duplicate GPS scoring at this layer.
 
     // 2. Check for duplicate scans (same user, same venue, same day)
     const today = new Date();
@@ -1002,16 +1331,32 @@ class StickerService {
   /**
    * Get sticker scans by user
    */
-  async getScansByUser(userId: string, limit: number = 50): Promise<StickerScan[]> {
+  async getScansByUser(userId: string, limit: number = 50) {
+    // Explicit select: fraudScore, fraudReasons, ipAddress, userAgent, ocrData MUST NOT
+    // reach the scan owner. Leaking MERCHANT_MISMATCH or GPS_MISMATCH tells a fraudster
+    // which rule tripped so they iterate on forged receipts. rejectionReason is kept
+    // because users need to know *why* a scan was rejected (e.g. "receipt unreadable");
+    // admin rejection copy must be written for the user, not for analysts. Admin-only
+    // endpoints use a separate query that includes all internal fields.
     return prisma.stickerScan.findMany({
       where: { userId },
-      include: {
-        sticker: {
-          include: {
-            venue: true,
-            location: true,
-          },
-        },
+      select: {
+        id: true,
+        stickerId: true,
+        venueId: true,
+        cardId: true,
+        billAmount: true,
+        verifiedAmount: true,
+        cashbackPercent: true,
+        cashbackAmount: true,
+        status: true,
+        receiptImageUrl: true,
+        rejectionReason: true,
+        sessionStartedAt: true,
+        processedAt: true,
+        createdAt: true,
+        updatedAt: true,
+        sticker: { include: { venue: true, location: true } },
         transaction: true,
       },
       orderBy: { createdAt: 'desc' },

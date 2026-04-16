@@ -1,4 +1,4 @@
-import { Receipt, ReceiptStatus, Prisma, WalletTransactionType } from '@prisma/client';
+import { Receipt, ReceiptStatus, Prisma, WalletTransactionType, SubscriptionStatus } from '@prisma/client';
 import { AppError } from '../middleware/error.middleware';
 import { logger } from '../utils/logger';
 import * as crypto from 'crypto';
@@ -84,6 +84,9 @@ export interface ReceiptFilters {
   limit?: number;
   sortBy?: 'createdAt' | 'totalAmount' | 'date';
   sortOrder?: 'asc' | 'desc';
+  // Admin-only: include fraudScore/fraudReasons/ipAddress/userAgent/ocrRawText.
+  // Default false — formatReceipt strips these so user-facing endpoints never leak.
+  includeInternal?: boolean;
 }
 
 /**
@@ -92,6 +95,21 @@ export interface ReceiptFilters {
  * validation, duplicate detection, and cashback processing
  */
 class ReceiptService {
+  /**
+   * Resolve the user's cashback tier from their active Subscription.
+   * Returns null when no active subscription → cashback must be 0 (Finding #1+#2).
+   * Mirrors sticker.service.ts resolveCashbackTier so both flows share the same gate.
+   */
+  private async resolveCashbackTier(userId: string): Promise<'LIGHT' | 'BASIC' | 'PREMIUM' | null> {
+    const sub = await prisma.subscription.findFirst({
+      where: { userId, status: SubscriptionStatus.ACTIVE },
+      orderBy: { currentPeriodEnd: 'desc' },
+    });
+    if (!sub) return null;
+    const plan = sub.plan as 'LIGHT' | 'BASIC' | 'PREMIUM';
+    return plan === 'LIGHT' || plan === 'BASIC' || plan === 'PREMIUM' ? plan : null;
+  }
+
   /**
    * Create a new receipt from OCR results
    */
@@ -209,7 +227,8 @@ class ReceiptService {
         page = 1,
         limit = 10,
         sortBy = 'createdAt',
-        sortOrder = 'desc'
+        sortOrder = 'desc',
+        includeInternal = false,
       } = filters;
 
       const skip = (page - 1) * limit;
@@ -266,7 +285,7 @@ class ReceiptService {
 
       return {
         success: true,
-        data: receipts.map(r => this.formatReceipt(r)),
+        data: receipts.map(r => this.formatReceipt(r, { includeInternal })),
         pagination: {
           page,
           limit,
@@ -426,7 +445,8 @@ class ReceiptService {
 
       logger.info(`Receipt ${newStatus.toLowerCase()}: ${id} by validator: ${validatorId}`);
 
-      return { success: true, data: this.formatReceipt(updatedReceipt) };
+      // Admin-only call site (PATCH /:id/validate is gated by authorize('ADMIN','SUPER_ADMIN')).
+      return { success: true, data: this.formatReceipt(updatedReceipt, { includeInternal: true }) };
     } catch (error) {
       if (error instanceof AppError) throw error;
       logger.error('Error validating receipt:', error);
@@ -517,10 +537,11 @@ class ReceiptService {
 
       // No second DB read needed — the only field that changed since the initial read
       // is cashbackAmount, which was stamped by the claim in step 1.
+      // Admin-only call site (POST /:id/cashback is gated by authorize('ADMIN','SUPER_ADMIN')).
       return {
         success: true,
         data: {
-          receipt: this.formatReceipt({ ...receipt, cashbackAmount }),
+          receipt: this.formatReceipt({ ...receipt, cashbackAmount }, { includeInternal: true }),
           cashbackAmount,
           newBalance: updatedWallet.availableBalance,
         }
@@ -619,14 +640,30 @@ class ReceiptService {
   }
 
   /**
-   * Format receipt for response (parse JSON fields)
+   * Format receipt for response. By default strips server-internal fields
+   * (fraudScore, fraudReasons, ipAddress, userAgent, raw OCR text) that would leak
+   * fraud-detection signals to the owner — telling a fraudster which rule tripped
+   * makes the next forgery easier. Admin endpoints must pass { includeInternal: true }.
    */
-  private formatReceipt(receipt: any) {
-    return {
+  private formatReceipt(receipt: any, opts: { includeInternal?: boolean } = {}) {
+    const base = {
       ...receipt,
       items: receipt.items ? JSON.parse(receipt.items) : undefined,
-      metadata: receipt.metadata ? JSON.parse(receipt.metadata) : undefined
+      metadata: receipt.metadata ? JSON.parse(receipt.metadata) : undefined,
     };
+    if (opts.includeInternal) return base;
+    // rejectionReason is intentionally kept: users need to know why their scan was
+    // rejected ("receipt unreadable — please retake"). Admin rejection copy must be
+    // user-appropriate and not leak which fraud rule tripped.
+    const {
+      fraudScore: _fs,
+      fraudReasons: _fr,
+      ipAddress: _ip,
+      userAgent: _ua,
+      ocrRawText: _ocr,
+      ...safe
+    } = base;
+    return safe;
   }
 
   // ============================================
@@ -669,14 +706,11 @@ class ReceiptService {
         throw new AppError('User not found', 404);
       }
 
-      // Get user's card tier
-      const userCard = await prisma.card.findFirst({
-        where: { userId: request.userId },
-      });
+      // Cashback tier — sourced from active Subscription (Finding #1+#2). null = no cashback.
+      const cardTier = await this.resolveCashbackTier(request.userId);
 
-      const cardTier = userCard?.type || DEFAULT_CARD_TIER;
-
-      // Auto-create card if user doesn't have one
+      // Auto-create card if user doesn't have one (keeps UI card display happy even for FREE users)
+      const userCard = await prisma.card.findFirst({ where: { userId: request.userId } });
       if (!userCard) {
         await cardService.createCard({ userId: request.userId, cardType: DEFAULT_CARD_TIER });
       }
@@ -746,7 +780,7 @@ class ReceiptService {
           cashbackAmount,
           cashbackPercent: cashbackCalc.cashbackPercent,
           fraudScore: fraudCheck.fraudScore,
-          fraudReasons: JSON.stringify(fraudCheck.fraudReasons || []),
+          fraudReasons: fraudCheck.fraudReasons || [],
           status: status,
           venueId: request.venueId,
           offerId: request.offerId,
@@ -939,12 +973,11 @@ class ReceiptService {
       if (params.action === 'APPROVE') {
         if (params.verifiedAmount) {
           // Admin corrected the amount — recalculate cashback AND recompute fraud score
-          const userCard = await prisma.card.findFirst({ where: { userId: receipt.userId } });
-          const cardTier = userCard?.type || DEFAULT_CARD_TIER;
+          const cardTier = await this.resolveCashbackTier(receipt.userId);
           const cashbackCalc = await fraudDetectionService.calculateCashback({
             venueId: receipt.venueId ?? undefined,
             amount: params.verifiedAmount,
-            cardTier: cardTier as any,
+            cardTier,
             userId: receipt.userId,
           });
           cashbackAmount = cashbackCalc.cashbackAmount;
@@ -959,7 +992,7 @@ class ReceiptService {
               ocrConfidence: (receipt as any).ocrConfidence || 0,
               userId: receipt.userId,
               venueId: (receipt as any).venueId ?? undefined,
-              cardTier: cardTier as any,
+              cardTier: cardTier as any, // null is OK (no sub → checkReceipt just skips cashback bit)
               // Exclude this receipt from its own duplicate check — the hash is already
               // in the DB and would otherwise always add 40 fraud points.
               excludeReceiptId: params.receiptId,
@@ -976,12 +1009,11 @@ class ReceiptService {
         } else {
           // Calculate cashback from the receipt's original amount
           const amount = receipt.totalAmount || 0;
-          const userCard = await prisma.card.findFirst({ where: { userId: receipt.userId } });
-          const cardTier = userCard?.type || DEFAULT_CARD_TIER;
+          const cardTier = await this.resolveCashbackTier(receipt.userId);
           const cashbackCalc = await fraudDetectionService.calculateCashback({
             venueId: receipt.venueId ?? undefined,
             amount,
-            cardTier: cardTier as any,
+            cardTier,
             userId: receipt.userId,
           });
           cashbackAmount = cashbackCalc.cashbackAmount;
@@ -1133,9 +1165,10 @@ class ReceiptService {
 
       logger.info(`Receipt ${params.receiptId} ${newStatus.toLowerCase()} by admin`);
 
+      // Admin-only call site (POST /:id/review is gated by authorize('ADMIN','SUPER_ADMIN')).
       return {
         success: true,
-        receipt: this.formatReceipt(updated),
+        receipt: this.formatReceipt(updated, { includeInternal: true }),
         message: `Receipt ${params.action.toLowerCase()}d successfully`,
       };
     } catch (error) {

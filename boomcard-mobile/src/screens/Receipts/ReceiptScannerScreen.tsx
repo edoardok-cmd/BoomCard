@@ -21,7 +21,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { crossPlatformAlert } from '../../utils/alert';
 import { CameraView, Camera } from 'expo-camera';
 import { useTranslation } from 'react-i18next';
-import * as ImagePicker from 'expo-image-picker';
 import LocationService from '../../services/location.service';
 import OCRService from '../../services/ocr.service';
 import ReceiptsApi from '../../api/receipts.api';
@@ -101,27 +100,6 @@ const ReceiptScannerScreen = ({ navigation, route }: any) => {
       console.error('Error taking picture:', error);
       crossPlatformAlert(t('common.error'), t('receipts.scanner.captureError'));
       setIsProcessing(false);
-    }
-  };
-
-  const pickImageFromGallery = async () => {
-    try {
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        quality: 0.8,
-        allowsEditing: true,
-        aspect: [3, 4],
-      });
-
-      if (!result.canceled && result.assets[0]) {
-        setCapturedImage(result.assets[0].uri);
-        setIsProcessing(true);
-        await processReceiptImage(result.assets[0].uri);
-        setIsProcessing(false);
-      }
-    } catch (error) {
-      console.error('Error picking image:', error);
-      crossPlatformAlert(t('common.error'), t('receipts.scanner.selectImageError'));
     }
   };
 
@@ -250,7 +228,9 @@ const ReceiptScannerScreen = ({ navigation, route }: any) => {
     setIsProcessing(true);
 
     try {
-      // Upload receipt image first
+      // Upload receipt image first. The server returns an opaque uploadToken
+      // that binds this upload to its server-computed hash / live-photo result
+      // — we must pass that token to /submit instead of any client-side hash.
       const uploadResponse = await ReceiptsApi.uploadReceiptImage(
         capturedImage,
         (progress) => {
@@ -262,8 +242,9 @@ const ReceiptScannerScreen = ({ navigation, route }: any) => {
         throw new Error(uploadResponse.error || 'Failed to upload image');
       }
 
-      // Submit receipt with GPS coordinates
+      // Submit receipt with GPS coordinates + uploadToken
       const submitData: ReceiptSubmitRequest = {
+        uploadToken: uploadResponse.data.uploadToken,
         merchantName,
         totalAmount: amount,
         receiptDate,
@@ -405,13 +386,9 @@ const ReceiptScannerScreen = ({ navigation, route }: any) => {
       </CameraView>
 
       <View style={[styles.controls, { paddingBottom: Math.max(insets.bottom, 24) + 8 }]}>
-        <TouchableOpacity
-          style={styles.galleryButton}
-          onPress={pickImageFromGallery}
-        >
-          <Text style={styles.buttonText}>{t('receipts.scanner.gallery')}</Text>
-        </TouchableOpacity>
-
+        {/* Gallery upload removed: receipts must be captured live. Server-side EXIF
+            enforcement rejects stale photos anyway, but removing the UX affordance
+            avoids the confusing "your photo was rejected" round-trip. */}
         <TouchableOpacity
           style={styles.captureButton}
           onPress={takePicture}
@@ -468,12 +445,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 24,
     backgroundColor: '#000000',
-  },
-  galleryButton: {
-    backgroundColor: '#3B82F6',
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 24,
   },
   captureButton: {
     width: 72,

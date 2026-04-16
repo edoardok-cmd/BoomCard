@@ -119,21 +119,49 @@ async function preprocessImage(buffer: Buffer): Promise<Buffer> {
 }
 
 /**
+ * Concurrency gate around Tesseract. Each worker holds ~100 MB and runs on one core
+ * for 10–30 s per receipt, so unbounded concurrency under a burst (busy venue at
+ * close-out) would OOM the backend. A simple promise-chain semaphore is enough —
+ * we don't need priority or fairness, just a ceiling. Tune via env for prod sizing.
+ */
+const OCR_MAX_CONCURRENT = Math.max(1, parseInt(process.env.OCR_MAX_CONCURRENT ?? '2', 10));
+const ocrSlots: Array<Promise<void>> = [];
+async function withOcrSlot<T>(fn: () => Promise<T>): Promise<T> {
+  while (ocrSlots.length >= OCR_MAX_CONCURRENT) {
+    await Promise.race(ocrSlots);
+  }
+  let release!: () => void;
+  const slot = new Promise<void>((resolve) => { release = resolve; });
+  ocrSlots.push(slot);
+  try {
+    return await fn();
+  } finally {
+    release();
+    const idx = ocrSlots.indexOf(slot);
+    if (idx >= 0) ocrSlots.splice(idx, 1);
+  }
+}
+
+/**
  * Run Tesseract OCR on an image buffer.
  * Supports Bulgarian + English (common for BG receipts).
  */
 export async function recognizeReceiptImage(imageBuffer: Buffer): Promise<OCRResult> {
-  const processed = await preprocessImage(imageBuffer);
+  return withOcrSlot(async () => {
+    const processed = await preprocessImage(imageBuffer);
 
-  const worker = await createWorker('bul+eng', 1, {
-    logger: process.env.NODE_ENV === 'production' ? () => {} : undefined,
+    // Tesseract.js requires `logger` to be a function (or the field to be absent).
+    // Passing `undefined` explicitly throws TypeError inside the worker, so we supply a
+    // silent noop in prod and the default verbose logger in dev via an omitted field.
+    const workerOpts = process.env.NODE_ENV === 'production' ? { logger: () => {} } : undefined;
+    const worker = await createWorker('bul+eng', 1, workerOpts);
+
+    try {
+      const { data } = await worker.recognize(processed);
+      return parseReceiptText(data.text, data.confidence);
+    } finally {
+      await worker.terminate();
+    }
   });
-
-  try {
-    const { data } = await worker.recognize(processed);
-    return parseReceiptText(data.text, data.confidence);
-  } finally {
-    await worker.terminate();
-  }
 }
 

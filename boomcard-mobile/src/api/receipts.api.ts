@@ -30,12 +30,13 @@ export class ReceiptsApi {
   }
 
   /**
-   * Upload receipt image
+   * Upload receipt image. Returns an opaque uploadToken that MUST be passed to
+   * submitReceipt — the server no longer accepts client-supplied image hashes.
    */
   static async uploadReceiptImage(
     imageUri: string,
     onProgress?: (progress: number) => void
-  ): Promise<ApiResponse<{ imageUrl: string; imageKey: string; imageHash: string }>> {
+  ): Promise<ApiResponse<{ uploadToken: string; expiresAt: string; imageUrl: string }>> {
     const formData = new FormData();
 
     // Convert URI to blob/file for upload

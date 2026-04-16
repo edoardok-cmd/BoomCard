@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import crypto from 'crypto';
 import { stickerService } from '../services/sticker.service';
 import { authenticate, authorize, AuthRequest } from '../middleware/auth.middleware';
 import { uploadSingle, validateMagicBytes } from '../middleware/upload.middleware';
@@ -6,6 +7,7 @@ import { imageUploadService } from '../services/imageUpload.service';
 import { LocationType } from '@prisma/client';
 import prisma from '../lib/prisma';
 import { validateAmount, validateGPSCoordinates, ValidationError } from '../utils/validation';
+import { checkLivePhoto } from '../utils/exifLivePhoto';
 
 const router = Router();
 
@@ -23,7 +25,7 @@ const router = Router();
  */
 router.post('/session', authenticate, async (req: Request, res: Response) => {
   try {
-    const { stickerId, cardId, latitude, longitude } = req.body;
+    const { stickerId, cardId, latitude, longitude, payloadVenueId, payloadVersion } = req.body;
     const userId = (req as any).user.id;
 
     if (!stickerId) {
@@ -38,6 +40,8 @@ router.post('/session', authenticate, async (req: Request, res: Response) => {
       longitude: longitude ? parseFloat(longitude) : undefined,
       ipAddress: req.ip,
       userAgent: req.get('user-agent'),
+      payloadVenueId,
+      payloadVersion,
     });
 
     res.json({
@@ -59,7 +63,7 @@ router.post('/session', authenticate, async (req: Request, res: Response) => {
  */
 router.post('/scan', authenticate, async (req: Request, res: Response) => {
   try {
-    const { stickerId, cardId, billAmount, latitude, longitude, sessionId } = req.body;
+    const { stickerId, cardId, billAmount, latitude, longitude, sessionId, payloadVenueId, payloadVersion } = req.body;
     const userId = (req as any).user.id;
 
     // When using the two-step flow, sessionId + billAmount is sufficient.
@@ -120,6 +124,8 @@ router.post('/scan', authenticate, async (req: Request, res: Response) => {
       ipAddress: req.ip,
       userAgent: req.get('user-agent'),
       sessionId,
+      payloadVenueId,
+      payloadVersion,
     });
 
     res.json({
@@ -154,7 +160,49 @@ router.post('/scan/:scanId/receipt', authenticate, uploadSingle, validateMagicBy
       });
     }
 
-    // Upload to S3
+    // Live-photo enforcement: parse EXIF and reject stale or pre-scan images. Paired
+    // with the mobile UI's gallery-pick removal — two barriers: UX and server.
+    {
+      const scanForGate = await prisma.stickerScan.findFirst({
+        where: { id: scanId, userId },
+        select: { sessionStartedAt: true, createdAt: true },
+      });
+      const sessionStart = scanForGate?.sessionStartedAt ?? scanForGate?.createdAt ?? null;
+      const gate = await checkLivePhoto(req.file.buffer, sessionStart);
+      if (gate.ok === false) {
+        return res.status(400).json({ success: false, error: gate.message });
+      }
+    }
+
+    // Finding #6: hash BEFORE S3 upload and probe for existing duplicates first. This
+    // avoids paying for storage on rejected requests and gives the user a fast failure.
+    const receiptImageHash = crypto.createHash('sha256').update(req.file.buffer).digest('hex');
+
+    const duplicate = await stickerService.findDuplicateReceipt(receiptImageHash, scanId);
+    if (duplicate) {
+      // IDOR + status guard: only flip status on scans that belong to the requester AND
+      // are still in an uploadable state. Without the status filter a duplicate upload
+      // could downgrade an already-APPROVED scan to REJECTED while its cashback stayed
+      // paid. The userId filter closes the IDOR hole separately.
+      await prisma.stickerScan.updateMany({
+        where: {
+          id: scanId,
+          userId,
+          status: { in: ['PENDING', 'VALIDATING'] as any },
+        },
+        data: {
+          status: 'REJECTED' as any,
+          rejectionReason: 'Duplicate receipt image (SHA-256 match)',
+          fraudReasons: ['DUPLICATE_IMAGE_HASH'],
+        },
+      });
+      return res.status(400).json({
+        success: false,
+        error: 'This receipt has already been submitted. Duplicate receipts are not accepted.',
+      });
+    }
+
+    // Upload to S3 only after dedupe passes.
     const upload = await imageUploadService.uploadImage({
       file: req.file.buffer,
       fileName: req.file.originalname,
@@ -166,13 +214,17 @@ router.post('/scan/:scanId/receipt', authenticate, uploadSingle, validateMagicBy
     // Parse OCR data if provided
     const ocrData = req.body.ocrData ? JSON.parse(req.body.ocrData) : undefined;
 
-    // Update sticker scan with receipt
+    // Update sticker scan with receipt.
+    // Pass the raw buffer so server-side OCR can fuzzy-verify the merchant name
+    // against the venue/partner independently of any client-supplied ocrData.
     const scan = await stickerService.uploadReceipt({
       scanId,
       userId,
       receiptImageUrl: upload.url,
+      receiptImageHash,
       imageKey: upload.key,
       ocrData,
+      imageBuffer: req.file.buffer,
     });
 
     res.json({

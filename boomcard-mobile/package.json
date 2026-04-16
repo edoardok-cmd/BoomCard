@@ -68,11 +68,15 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
+    "@playwright/test": "^1.59.1",
     "@testing-library/jest-native": "^5.4.3",
     "@testing-library/react-native": "^13.3.3",
     "@types/jest": "^30.0.0",
+    "@types/pg": "^8.20.0",
     "@types/react": "~19.1.0",
     "jest-expo": "^54.0.17",
+    "pg": "^8.20.0",
+    "piexifjs": "^1.0.6",
     "typescript": "~5.9.2"
   },
   "private": true

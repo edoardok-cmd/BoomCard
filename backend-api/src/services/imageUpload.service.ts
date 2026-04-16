@@ -122,6 +122,41 @@ export class ImageUploadService {
   }
 
   /**
+   * Download image bytes from a stored S3 URL. Used by the merchant-verification
+   * worker which only receives a scanId (the image buffer can't be queued in
+   * Redis cheaply). Parses the key from the public-style URL so we don't need
+   * a separate column to store it.
+   */
+  async downloadImageFromUrl(url: string): Promise<Buffer> {
+    // Dev-mode placeholder URLs (placehold.co) — short-circuit so tests don't
+    // depend on the public network.
+    if (url.includes('placehold.co')) {
+      throw new Error('Cannot download placeholder image (dev mode)');
+    }
+
+    // URL shape: https://<bucket>.s3.<region>.amazonaws.com/<key>
+    // Extract <key> as the path minus the leading slash. Fail loud on anything
+    // that doesn't look like our own URL — we don't want the worker silently
+    // following a third-party redirect.
+    const parsed = new URL(url);
+    if (!parsed.host.endsWith('.amazonaws.com')) {
+      throw new Error(`Refusing to download non-S3 URL: ${parsed.host}`);
+    }
+    const key = parsed.pathname.replace(/^\//, '');
+
+    const command = new GetObjectCommand({ Bucket: BUCKET_NAME, Key: key });
+    const response = await s3Client.send(command);
+    if (!response.Body) throw new Error(`S3 GetObject returned no body for key ${key}`);
+
+    // The Body is a Readable stream in Node.js. Buffer it.
+    const chunks: Buffer[] = [];
+    for await (const chunk of response.Body as AsyncIterable<Buffer | Uint8Array>) {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    }
+    return Buffer.concat(chunks);
+  }
+
+  /**
    * Get presigned URL for temporary access
    */
   async getPresignedUrl(key: string, expiresIn = 3600): Promise<string> {

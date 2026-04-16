@@ -54,3 +54,15 @@ screenshots/
 !assets/**/*.jpg
 !boomcard-mobile/assets/**/*.png
 !boomcard-mobile/assets/**/*.jpg
+
+# Test artifacts
+coverage/
+test-results/
+**/e2e/.report/
+**/e2e/.blob-report/
+
+# Tesseract language data (downloaded at runtime)
+*.traineddata
+
+# Claude task tracking
+tasks/

@@ -1,0 +1,69 @@
+{
+  "password": "TestPass1!",
+  "users": {
+    "free": {
+      "id": "fcab0949-cad3-4336-86d5-e72c25110abd",
+      "email": "free@test.local"
+    },
+    "basic": {
+      "id": "0770aa07-ef2b-41e7-9ce5-309544cc870d",
+      "email": "basic@test.local"
+    },
+    "premium": {
+      "id": "3bd76b60-ea01-4cf5-9c88-980789a84876",
+      "email": "premium@test.local"
+    },
+    "light": {
+      "id": "21f13103-2381-4078-9b06-570434245d73",
+      "email": "light@test.local"
+    },
+    "expired": {
+      "id": "e994e097-da42-4ad2-90f3-ba1d4e51ea95",
+      "email": "expired@test.local"
+    },
+    "admin": {
+      "id": "fffa6c08-3321-4a77-9c79-6d5fe576fcb2",
+      "email": "admin@test.local"
+    }
+  },
+  "venues": {
+    "5": {
+      "venueId": "d27fe087-39d9-4d71-853a-26b4d4bb6262",
+      "stickerId": "V5PCT-T1",
+      "qrPayload": "{\"type\":\"BOOM_STICKER\",\"stickerId\":\"V5PCT-T1\",\"venueId\":\"d27fe087-39d9-4d71-853a-26b4d4bb6262\",\"locationId\":\"85983055-9b0d-4123-aa1c-d5032c5ebc5b\",\"locationType\":\"TABLE\",\"version\":\"1.0\"}"
+    },
+    "10": {
+      "venueId": "99b36f3d-d474-4d52-a60a-927596ff8107",
+      "stickerId": "V10PCT-T1",
+      "qrPayload": "{\"type\":\"BOOM_STICKER\",\"stickerId\":\"V10PCT-T1\",\"venueId\":\"99b36f3d-d474-4d52-a60a-927596ff8107\",\"locationId\":\"b07867b4-6326-4f9b-8fec-b880ea1eb432\",\"locationType\":\"TABLE\",\"version\":\"1.0\"}"
+    },
+    "15": {
+      "venueId": "aef0cda8-c8ca-4b98-8649-cbfa39049951",
+      "stickerId": "V15PCT-T1",
+      "qrPayload": "{\"type\":\"BOOM_STICKER\",\"stickerId\":\"V15PCT-T1\",\"venueId\":\"aef0cda8-c8ca-4b98-8649-cbfa39049951\",\"locationId\":\"97a7a1d4-20c9-480f-9a4d-f4c5e5408523\",\"locationType\":\"TABLE\",\"version\":\"1.0\"}"
+    },
+    "20": {
+      "venueId": "5432ae69-48c4-4ce6-9546-6249b780f632",
+      "stickerId": "V20PCT-T1",
+      "qrPayload": "{\"type\":\"BOOM_STICKER\",\"stickerId\":\"V20PCT-T1\",\"venueId\":\"5432ae69-48c4-4ce6-9546-6249b780f632\",\"locationId\":\"95159cc4-f828-4e2f-b253-5065fd9c53e0\",\"locationType\":\"TABLE\",\"version\":\"1.0\"}"
+    },
+    "25": {
+      "venueId": "562eeaff-893e-4c68-8000-2cdfc6404789",
+      "stickerId": "V25PCT-T1",
+      "qrPayload": "{\"type\":\"BOOM_STICKER\",\"stickerId\":\"V25PCT-T1\",\"venueId\":\"562eeaff-893e-4c68-8000-2cdfc6404789\",\"locationId\":\"708959b7-d73c-4924-b4a8-2046e92b0dcd\",\"locationType\":\"TABLE\",\"version\":\"1.0\"}"
+    }
+  },
+  "venueCoords": {
+    "lat": 42.6977,
+    "lng": 23.3219
+  },
+  "bar": {
+    "venueId": "85945847-bd62-428b-9db0-5811cf9cccbc",
+    "stickerId": "BAR-6SEP-T1",
+    "qrPayload": "{\"type\":\"BOOM_STICKER\",\"stickerId\":\"BAR-6SEP-T1\",\"venueId\":\"85945847-bd62-428b-9db0-5811cf9cccbc\",\"locationId\":\"8c679da1-3e48-469e-8677-c4a3003328b4\",\"locationType\":\"TABLE\",\"version\":\"1.0\"}",
+    "lat": 42.6934,
+    "lng": 23.3262,
+    "gpsRadiusMeters": 100,
+    "address": "ул. 6-ти септември 10А, София"
+  }
+}

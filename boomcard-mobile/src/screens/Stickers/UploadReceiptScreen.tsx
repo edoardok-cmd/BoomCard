@@ -66,6 +66,22 @@ export default function UploadReceiptScreen() {
   const ocrService = OCRService.getInstance();
   const s = getStyles(theme, isDarkMode);
 
+  // __DEV__-gated Playwright hook: tests inject image URIs without invoking the native picker.
+  useEffect(() => {
+    if (!__DEV__ || Platform.OS !== 'web') return;
+    const w = globalThis as any;
+    w.__BOOM_TEST_UPLOAD_IMAGE__ = (dataUri: string) => { void handleImage(dataUri); };
+    w.__BOOM_TEST_SET_AMOUNT__ = (amt: number) => setBillAmount(amt);
+    w.__BOOM_TEST_SUBMIT__ = () => { void handleSubmit(); };
+    w.__BOOM_TEST_GET_STATE__ = () => ({ stage, billAmount, venueName, cashbackPercent, ocrConfidence, cashbackEarned, imageUri });
+    return () => {
+      delete w.__BOOM_TEST_UPLOAD_IMAGE__;
+      delete w.__BOOM_TEST_SET_AMOUNT__;
+      delete w.__BOOM_TEST_SUBMIT__;
+      delete w.__BOOM_TEST_GET_STATE__;
+    };
+  });
+
   // Load venue info from sticker ID
   useEffect(() => {
     StickersApi.validateSticker(stickerId).then((res) => {
@@ -111,16 +127,10 @@ export default function UploadReceiptScreen() {
   };
 
   const pickFromCamera = async () => {
+    // Product rule: receipt uploads must be LIVE photos taken with the camera. Gallery
+    // picking is disabled to prevent users from submitting saved images (or screenshots
+    // of receipts belonging to someone else).
     const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: false,
-      quality: 0.85,
-    });
-    if (!result.canceled) handleImage(result.assets[0].uri);
-  };
-
-  const pickFromGallery = async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: false,
       quality: 0.85,
@@ -131,6 +141,12 @@ export default function UploadReceiptScreen() {
   const handleImage = async (uri: string) => {
     setImageUri(uri);
     setStage('ocr');
+
+    // Playwright bypass: skip OCR so tests don't wait on Tesseract.
+    if (__DEV__ && Platform.OS === 'web' && (globalThis as any).__BOOM_TEST_SKIP_OCR__) {
+      setStage('confirm');
+      return;
+    }
 
     try {
       const ocr = await ocrService.processReceiptImage(uri, () => {});
@@ -322,10 +338,9 @@ export default function UploadReceiptScreen() {
           <Text style={s.primaryButtonText}>{t('stickers.takePhoto', 'Take Photo')}</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={s.secondaryButton} activeOpacity={0.85} onPress={pickFromGallery}>
-          <Ionicons name="image-outline" size={22} color={theme.colors.onSurface} />
-          <Text style={s.secondaryButtonText}>{t('stickers.chooseFromGallery', 'Choose from Gallery')}</Text>
-        </TouchableOpacity>
+        <Text style={s.cameraOnlyHint}>
+          {t('stickers.cameraOnlyHint', 'Receipts must be photographed live with your camera. Gallery upload is not accepted.')}
+        </Text>
       </ScrollView>
     );
   }
@@ -595,6 +610,14 @@ const getStyles = (theme: any, isDarkMode: boolean) => StyleSheet.create({
     marginBottom: 8,
   },
   secondaryButtonText: { fontSize: 15, fontWeight: '600', color: theme.colors.onSurface },
+  cameraOnlyHint: {
+    fontSize: 12,
+    color: theme.colors.onSurfaceVariant,
+    textAlign: 'center',
+    marginTop: 4,
+    paddingHorizontal: 8,
+    lineHeight: 16,
+  },
 
   // OCR loading
   thumbnailOcr: { width: '100%', height: 200, borderRadius: 16 },

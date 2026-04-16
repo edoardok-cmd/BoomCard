@@ -34,6 +34,15 @@ export default function StickerScannerScreen() {
     requestPermissions();
   }, []);
 
+  // __DEV__-gated Playwright hook: tests drive the scanner without a real camera.
+  useEffect(() => {
+    if (!__DEV__ || Platform.OS !== 'web') return;
+    const w = globalThis as any;
+    w.__BOOM_TEST_BYPASS_PERM__ = () => setHasPermission(true);
+    w.__BOOM_TEST_SCAN__ = (qrData: string) => { void handleBarCodeScanned({ data: qrData }); };
+    return () => { delete w.__BOOM_TEST_SCAN__; delete w.__BOOM_TEST_BYPASS_PERM__; };
+  }, []);
+
   useEffect(() => {
     if (isFocused) {
       setScanned(false);
@@ -92,6 +101,8 @@ export default function StickerScannerScreen() {
 
     // Validate BOOM sticker QR format
     let stickerId: string;
+    let payloadVenueId: string | undefined;
+    let payloadVersion: string;
     try {
       const qrPayload = JSON.parse(data);
       if (qrPayload.type !== 'BOOM_STICKER' || !qrPayload.stickerId) {
@@ -99,7 +110,19 @@ export default function StickerScannerScreen() {
         setScanned(false);
         return;
       }
+      // Finding #5: reject QR payloads with version < 1.0. Missing version is treated as 1.0
+      // for backward-compat with stickers printed before the field was added. Server performs
+      // the same check as defence-in-depth.
+      const ver = typeof qrPayload.version === 'string' ? qrPayload.version : '1.0';
+      const [major] = ver.split('.').map((n: string) => parseInt(n, 10));
+      if (!(major >= 1)) {
+        crossPlatformAlert(t('common.error'), t('stickers.outdatedQr', 'This BOOM sticker is outdated. Please ask the venue for a new one.'));
+        setScanned(false);
+        return;
+      }
       stickerId = qrPayload.stickerId;
+      payloadVenueId = typeof qrPayload.venueId === 'string' ? qrPayload.venueId : undefined;
+      payloadVersion = ver;
     } catch {
       crossPlatformAlert(t('common.error'), t('stickers.invalidQRCode', 'Not a valid BOOM sticker QR code'));
       setScanned(false);
@@ -120,7 +143,10 @@ export default function StickerScannerScreen() {
         stickerId,
         latitude: location.coords.latitude,
         longitude: location.coords.longitude,
-      });
+        // Forward payload venueId + version so server can reject tampered/outdated QRs (Finding #4 + #5).
+        payloadVenueId,
+        payloadVersion,
+      } as any);
 
       if (!sessionRes.success || !sessionRes.data?.sessionId) {
         crossPlatformAlert(t('common.error'), sessionRes.error || t('stickers.scanFailed', 'Failed to scan sticker'));

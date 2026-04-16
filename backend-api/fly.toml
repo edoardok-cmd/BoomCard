@@ -12,6 +12,11 @@ primary_region = 'fra'
 [env]
   NODE_ENV = 'production'
   PORT = '3001'
+  OCR_MAX_CONCURRENT = '2'
+
+[processes]
+  app = "sh -c 'node_modules/.bin/prisma migrate resolve --rolled-back 20260321_simplify_partner_tiers 2>&1 || true && node_modules/.bin/prisma migrate deploy && node dist/server.js'"
+  worker = "node dist/worker.js"
 
 [http_service]
   internal_port = 3001
@@ -25,3 +30,4 @@ primary_region = 'fra'
   memory = '512mb'
   cpu_kind = 'shared'
   cpus = 1
+  processes = ['app', 'worker']

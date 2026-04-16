@@ -5,6 +5,7 @@ import { asyncHandler } from '../middleware/error.middleware';
 import { uploadSingle, validateMagicBytes } from '../middleware/upload.middleware';
 import { imageUploadService } from '../services/imageUpload.service';
 import { recognizeReceiptImage } from '../services/ocr.service';
+import { checkLivePhoto } from '../utils/exifLivePhoto';
 
 const router = Router();
 
@@ -32,6 +33,13 @@ router.post(
 
     // Upload image to S3 if provided
     if (req.file) {
+      // Live-photo gate — same EXIF rule as /api/stickers/... and /api/receipts/v2/upload.
+      // Without this, POST /api/receipts is an unprotected alternate path for gallery uploads.
+      const gate = await checkLivePhoto(req.file.buffer, null);
+      if (gate.ok === false) {
+        return res.status(400).json({ success: false, message: gate.message });
+      }
+
       const upload = await imageUploadService.uploadImage({
         file: req.file.buffer,
         fileName: req.file.originalname,
@@ -96,6 +104,12 @@ router.post(
         success: false,
         message: 'No image file provided'
       });
+    }
+
+    // Gate stale/gallery-picked images before running expensive OCR.
+    const gate = await checkLivePhoto(req.file.buffer, null);
+    if (gate.ok === false) {
+      return res.status(400).json({ success: false, message: gate.message });
     }
 
     const ocrResult = await recognizeReceiptImage(req.file.buffer);
@@ -190,7 +204,8 @@ router.get(
       page: req.query.page ? parseInt(req.query.page as string) : 1,
       limit: req.query.limit ? parseInt(req.query.limit as string) : 10,
       sortBy: req.query.sortBy as any,
-      sortOrder: req.query.sortOrder as any
+      sortOrder: req.query.sortOrder as any,
+      includeInternal: true,
     });
 
     res.json(result);

@@ -4,6 +4,7 @@ import { receiptService } from '../services/receipt.service';
 import { fraudDetectionService } from '../services/fraudDetection.service';
 import { receiptAnalyticsService } from '../services/receiptAnalytics.service';
 import { imageUploadService } from '../services/imageUpload.service';
+import { receiptUploadTokenService } from '../services/receiptUploadToken.service';
 import { receiptTemplateService } from '../services/receiptTemplate.service';
 import { emailService } from '../services/email.service';
 import { authenticate, authorize, AuthRequest } from '../middleware/auth.middleware';
@@ -15,6 +16,7 @@ import {
   MAX_RECEIPT_FILE_SIZE_BYTES,
 } from '../constants/receipt.constants';
 import { validateAmount, validateGPSCoordinates, ValidationError } from '../utils/validation';
+import { checkLivePhoto } from '../utils/exifLivePhoto';
 
 const router = Router();
 
@@ -104,12 +106,44 @@ router.post(
       });
     }
 
+    // Live-photo gate — same EXIF age check as the sticker receipt route. No session
+    // exists in this flow, so we only run the stale-photo rule (>30 min old → reject).
+    // Closes the bypass where a fraudster could hit /api/receipts/v2/upload to skip
+    // the hardening applied at /api/stickers/scan/:id/receipt.
+    const gate = await checkLivePhoto(req.file.buffer, null);
+    if (gate.ok === false) {
+      return res.status(400).json({ success: false, message: gate.message });
+    }
+
+    // uploadReceipt computes SHA-256 + dHash server-side from the buffer and
+    // uploads to S3. These hashes are trusted; they're the only ones /submit
+    // will accept (via the token below).
     const result = await imageUploadService.uploadReceipt(
       req.file,
       req.user!.id
     );
 
-    res.json(result);
+    // Issue an opaque single-use token binding the trusted hash + live-photo
+    // result + S3 location to this user. /submit MUST present this token —
+    // without it the server would have no way to verify the client's hash
+    // matches the actual uploaded bytes (the original forgery gap).
+    const issued = await receiptUploadTokenService.issue({
+      userId:         req.user!.id,
+      imageHash:      result.hash,
+      perceptualHash: result.perceptualHash || null,
+      livePhotoOk:    gate.ok === true,
+      imageUrl:       result.url,
+      imageKey:       result.key,
+    });
+
+    res.json({
+      uploadToken: issued.token,
+      expiresAt:   issued.expiresAt.toISOString(),
+      imageUrl:    result.url,
+      // imageHash/perceptualHash are NOT returned — the client has no legitimate
+      // need for them post-upload, and returning them invites clients to store
+      // and re-send them, which is the pattern we're deliberately killing.
+    });
   })
 );
 
@@ -122,9 +156,7 @@ router.post(
   authenticate,
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const {
-      imageUrl,
-      imageHash,
-      perceptualHash,
+      uploadToken,
       ocrData,
       userAmount,
       venueId,
@@ -134,13 +166,40 @@ router.post(
       metadata,
     } = req.body;
 
-    // Validate required fields
-    if (!imageUrl || !imageHash) {
+    // Require the opaque upload token issued by /upload. Client-supplied hash
+    // and URL are no longer accepted — see receiptUploadToken.service.ts for
+    // the rationale (defeats the hash-forgery replay gap).
+    if (!uploadToken || typeof uploadToken !== 'string') {
       return res.status(400).json({
         success: false,
-        message: 'Image URL and hash are required',
+        message: 'uploadToken is required',
       });
     }
+
+    // Atomic single-use claim. Returns null on any failure mode (unknown token,
+    // wrong user, expired, already consumed). We intentionally surface one
+    // generic error regardless of which — an attacker probing for valid but
+    // consumed tokens shouldn't be able to distinguish the cases.
+    const bound = await receiptUploadTokenService.consume(uploadToken, req.user!.id);
+    if (!bound) {
+      return res.status(403).json({
+        success: false,
+        message: 'Invalid or expired upload token',
+      });
+    }
+    if (!bound.livePhotoOk) {
+      // Should never happen — /upload rejects stale photos before issuing a
+      // token. Belt-and-braces guard in case the gate behaviour is softened
+      // later without this check being revisited.
+      return res.status(400).json({
+        success: false,
+        message: 'Upload did not pass live-photo check',
+      });
+    }
+
+    const imageUrl      = bound.imageUrl;
+    const imageHash     = bound.imageHash;
+    const perceptualHash = bound.perceptualHash ?? undefined;
 
     // Validate amounts if provided (S-INJECT security tests)
     let validatedUserAmount: number | undefined;
@@ -353,6 +412,7 @@ router.get(
       limit: req.query.limit ? parseInt(req.query.limit as string) : 20,
       sortBy: (req.query.sortBy as any) || 'fraudScore',
       sortOrder: (req.query.sortOrder as 'asc' | 'desc') || 'desc',
+      includeInternal: true,
     };
 
     const result = await receiptService.getReceipts(filters);

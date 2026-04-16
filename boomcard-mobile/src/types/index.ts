@@ -104,6 +104,10 @@ export enum ReceiptStatus {
 }
 
 export interface ReceiptSubmitRequest {
+  // Opaque token returned by /api/receipts/v2/upload. Required — the server
+  // uses the token to look up the trusted image hash / URL / live-photo result
+  // that were computed server-side at upload time.
+  uploadToken: string;
   merchantName: string;
   totalAmount: number;
   receiptDate: string;

@@ -639,13 +639,17 @@ export class AuthService {
         },
       });
 
-      await emailService.sendPasswordResetEmail({
+      const emailResult = await emailService.sendPasswordResetEmail({
         customerName: user.firstName || user.email,
         email: user.email,
         otp,
       });
 
-      logger.info(`Password reset OTP sent to ${user.email}`);
+      if (!emailResult.success) {
+        logger.error(`Failed to send password reset email to ${user.email}`);
+      } else {
+        logger.info(`Password reset OTP sent to ${user.email}`);
+      }
     }
 
     return { message: 'If an account with that email exists, a reset code has been sent.' };

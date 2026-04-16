@@ -62,6 +62,7 @@ model User {
   partner             Partner?
   transactions        Transaction[]
   receipts            Receipt[]
+  receiptUploadTokens ReceiptUploadToken[]
   loyaltyAccount      LoyaltyAccount?
   conversations       ConversationParticipant[]
   messages            Message[]
@@ -688,9 +689,11 @@ model Receipt {
   cashbackAmount  Float @default(0)
 
   // OCR & Fraud Scores
-  ocrConfidence Float   @default(0) // 0-100
-  fraudScore    Float   @default(0) // 0-100
-  fraudReasons  String? // JSON array of reason codes
+  ocrConfidence Float    @default(0) // 0-100
+  fraudScore    Float    @default(0) // 0-100
+  // Native TEXT[] — append with `{ push: 'CODE' }` for atomic array_append.
+  // Migration 20260418_fraud_reasons_text_array converted from a JSON-encoded TEXT.
+  fraudReasons  String[] @default([])
 
   // GPS Verification
   latitude  Float?
@@ -726,6 +729,34 @@ model Receipt {
   @@index([createdAt])
   @@index([merchantName])
   @@index([fraudScore])
+}
+
+// ============================================
+// Receipt Upload Tokens
+// ============================================
+// Server-issued single-use tokens that bind an uploaded image to its
+// server-computed hash and live-photo result. Used by /api/receipts/v2/submit
+// to defeat the client-supplied hash forgery gap (an attacker could otherwise
+// upload a real photo, then submit with a forged hash to bypass SHA-256
+// uniqueness). /submit must present the token; the server trusts only the
+// fields stored here, never the client body.
+model ReceiptUploadToken {
+  id             String    @id @default(uuid())
+  token          String    @unique
+  userId         String
+  imageHash      String    // SHA-256 computed server-side at /upload
+  perceptualHash String?   // dHash, computed server-side
+  livePhotoOk    Boolean   @default(true)
+  imageUrl       String
+  imageKey       String
+  createdAt      DateTime  @default(now())
+  expiresAt      DateTime  // 1 hour after issue
+  consumedAt     DateTime? // single-use guard; set by atomic updateMany at /submit
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
 }
 
 // ============================================
@@ -1331,9 +1362,12 @@ model StickerScan {
   longitude       Float?
   distance        Float?
   receiptImageUrl String?
+  receiptImageHash String?    @unique  // SHA-256 of the uploaded receipt bytes (Finding #6 — unique-index-enforced dedupe)
   ocrData         String?
   fraudScore      Float      @default(0)
-  fraudReasons    String?
+  // Native TEXT[] — append with `{ push: 'CODE' }` for atomic array_append.
+  // Migration 20260418_fraud_reasons_text_array converted from a JSON-encoded TEXT.
+  fraudReasons    String[]   @default([])
   ipAddress       String?
   userAgent       String?
   transactionId   String?    @unique
