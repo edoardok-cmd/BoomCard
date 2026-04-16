@@ -407,8 +407,8 @@ model Plan {
   id              String  @id @default(uuid())
 
   // Plan identification
-  planCode        String  @unique // STANDARD, PREMIUM, PLATINUM
-  displayName     String           // "Lite Premium", "Basic", "Premium"
+  planCode        String  @unique // LIGHT, BASIC, PREMIUM
+  displayName     String           // "Premium Weekly", "Basic", "Premium"
   displayNameBg   String?          // Bulgarian translation
 
   // Pricing (stored in cents to avoid floating point issues)

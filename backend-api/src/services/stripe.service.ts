@@ -420,31 +420,46 @@ class StripeService {
         });
       }
 
-      // If this is a wallet top-up, credit the wallet
+      // If this is a wallet top-up, credit the wallet.
+      // Idempotency guard: Stripe may deliver the same event more than once.
+      // Skip the credit if a COMPLETED wallet transaction already exists for this
+      // paymentIntent — otherwise we'd double-credit the user's wallet.
       if (type === 'TOP_UP') {
-        const amount = paymentIntent.amount / 100;
-
-        await walletService.credit({
-          userId,
-          amount,
-          type: 'TOP_UP',
-          description: 'Wallet top-up via card payment',
-          stripePaymentIntentId: paymentIntent.id,
-          metadata: { paymentIntent: paymentIntent.id },
-        });
-
-        // Update wallet transaction status
-        await prisma.walletTransaction.updateMany({
+        const alreadyCredited = await prisma.walletTransaction.findFirst({
           where: {
             stripePaymentIntentId: paymentIntent.id,
-            status: 'PENDING',
-          },
-          data: {
+            type: 'TOP_UP',
             status: 'COMPLETED',
           },
         });
 
-        logger.info(`Credited ${amount} BGN to wallet for user ${userId}`);
+        if (alreadyCredited) {
+          logger.info(`Wallet already credited for payment ${paymentIntent.id} — skipping (idempotent)`);
+        } else {
+          const amount = paymentIntent.amount / 100;
+
+          await walletService.credit({
+            userId,
+            amount,
+            type: 'TOP_UP',
+            description: 'Wallet top-up via card payment',
+            stripePaymentIntentId: paymentIntent.id,
+            metadata: { paymentIntent: paymentIntent.id },
+          });
+
+          // Update wallet transaction status
+          await prisma.walletTransaction.updateMany({
+            where: {
+              stripePaymentIntentId: paymentIntent.id,
+              status: 'PENDING',
+            },
+            data: {
+              status: 'COMPLETED',
+            },
+          });
+
+          logger.info(`Credited ${amount} BGN to wallet for user ${userId}`);
+        }
       }
 
       logger.info(`Transaction created/updated for payment ${paymentIntent.id}`);
@@ -707,11 +722,23 @@ class StripeService {
           },
         });
 
-        // Downgrade card to LIGHT (no active subscription)
-        const { cardService } = await import('./card.service');
-        await cardService.syncCardTypeWithSubscription(dbSub.userId, 'LIGHT');
+        // Check if the user has another active subscription (e.g. they upgraded
+        // to a new Stripe subscription before the old one was deleted). Sync card
+        // to the surviving plan rather than blindly downgrading to LIGHT.
+        const otherActiveSub = await prisma.subscription.findFirst({
+          where: {
+            userId: dbSub.userId,
+            status: { in: ['ACTIVE', 'TRIALING'] },
+            id: { not: dbSub.id },
+          },
+          orderBy: { createdAt: 'desc' },
+        });
 
-        logger.info(`Subscription ${subscription.id} cancelled for user ${dbSub.userId}, card downgraded`);
+        const targetPlan = otherActiveSub?.plan ?? 'LIGHT';
+        const { cardService } = await import('./card.service');
+        await cardService.syncCardTypeWithSubscription(dbSub.userId, targetPlan);
+
+        logger.info(`Subscription ${subscription.id} cancelled for user ${dbSub.userId}, card synced to ${targetPlan}`);
       } else {
         logger.warn(`No DB subscription found for Stripe subscription ${subscription.id}`);
       }

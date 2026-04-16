@@ -35,10 +35,10 @@ test.describe('Authentication Flow', () => {
       // Check form elements exist
       await expect(page.getByLabel(/email/i)).toBeVisible();
       await expect(page.getByLabel(/password/i)).toBeVisible();
-      await expect(page.getByRole('button', { name: /log in|влез/i })).toBeVisible();
+      await expect(page.getByRole('button', { name: /sign in|вход/i })).toBeVisible();
 
       // Check links
-      await expect(page.getByRole('link', { name: /register|регистрация/i })).toBeVisible();
+      await expect(page.getByRole('link', { name: /choose.*plan|изберете.*план|sign up|регистрация/i })).toBeVisible();
       await expect(page.getByRole('link', { name: /forgot password|забравена парола/i })).toBeVisible();
     });
 
@@ -50,7 +50,7 @@ test.describe('Authentication Flow', () => {
       await page.getByLabel(/password/i).fill(TEST_USER.password);
 
       // Submit form
-      await page.getByRole('button', { name: /log in|влез/i }).click();
+      await page.getByRole('button', { name: /sign in|вход/i }).click();
 
       // Should redirect to dashboard
       await page.waitForURL('/dashboard', { timeout: 5000 });
@@ -75,7 +75,7 @@ test.describe('Authentication Flow', () => {
       await page.getByLabel(/password/i).fill(INVALID_USER.password);
 
       // Submit form
-      await page.getByRole('button', { name: /log in|влез/i }).click();
+      await page.getByRole('button', { name: /sign in|вход/i }).click();
 
       // Should show error message
       await expect(page.getByText(/invalid|неправилен|грешка/i)).toBeVisible({ timeout: 3000 });
@@ -92,7 +92,7 @@ test.describe('Authentication Flow', () => {
       await page.getByLabel(/password/i).fill(TEST_USER.invalidPassword);
 
       // Submit form
-      await page.getByRole('button', { name: /log in|влез/i }).click();
+      await page.getByRole('button', { name: /sign in|вход/i }).click();
 
       // Should show error message
       await expect(page.getByText(/invalid|неправилен|грешка|wrong/i)).toBeVisible({ timeout: 3000 });
@@ -105,7 +105,7 @@ test.describe('Authentication Flow', () => {
       await page.goto('/login');
 
       // Try to submit without filling anything
-      await page.getByRole('button', { name: /log in|влез/i }).click();
+      await page.getByRole('button', { name: /sign in|вход/i }).click();
 
       // Should show validation errors (HTML5 validation or custom)
       const emailInput = page.getByLabel(/email/i);
@@ -145,7 +145,7 @@ test.describe('Authentication Flow', () => {
       await page.goto('/login');
       await page.getByLabel(/email/i).fill(TEST_USER.email);
       await page.getByLabel(/password/i).fill(TEST_USER.password);
-      await page.getByRole('button', { name: /log in|влез/i }).click();
+      await page.getByRole('button', { name: /sign in|вход/i }).click();
       await page.waitForURL('/dashboard', { timeout: 5000 });
     });
 
@@ -214,7 +214,7 @@ test.describe('Authentication Flow', () => {
       await page.goto('/login');
       await page.getByLabel(/email/i).fill(TEST_USER.email);
       await page.getByLabel(/password/i).fill(TEST_USER.password);
-      await page.getByRole('button', { name: /log in|влез/i }).click();
+      await page.getByRole('button', { name: /sign in|вход/i }).click();
       await page.waitForURL('/dashboard', { timeout: 5000 });
 
       // Should be able to access protected routes
@@ -235,7 +235,7 @@ test.describe('Authentication Flow', () => {
       await page.goto('/login');
       await page.getByLabel(/email/i).fill(TEST_USER.email);
       await page.getByLabel(/password/i).fill(TEST_USER.password);
-      await page.getByRole('button', { name: /log in|влез/i }).click();
+      await page.getByRole('button', { name: /sign in|вход/i }).click();
       await page.waitForURL('/dashboard', { timeout: 5000 });
 
       // Reload page
@@ -254,7 +254,7 @@ test.describe('Authentication Flow', () => {
       await page.goto('/login');
       await page.getByLabel(/email/i).fill(TEST_USER.email);
       await page.getByLabel(/password/i).fill(TEST_USER.password);
-      await page.getByRole('button', { name: /log in|влез/i }).click();
+      await page.getByRole('button', { name: /sign in|вход/i }).click();
       await page.waitForURL('/dashboard', { timeout: 5000 });
 
       // Navigate to different pages
@@ -279,7 +279,7 @@ test.describe('Authentication Flow', () => {
       await page.goto('/login');
       await page.getByLabel(/email/i).fill(TEST_USER.email);
       await page.getByLabel(/password/i).fill(TEST_USER.password);
-      await page.getByRole('button', { name: /log in|влез/i }).click();
+      await page.getByRole('button', { name: /sign in|вход/i }).click();
       await page.waitForURL('/dashboard', { timeout: 5000 });
 
       // Manually set an expired token (this simulates token expiration)
@@ -320,7 +320,7 @@ test.describe('Authentication Flow', () => {
         // Login
         await page.getByLabel(/email|имейл/i).fill(TEST_USER.email);
         await page.getByLabel(/password|парола/i).fill(TEST_USER.password);
-        await page.getByRole('button', { name: /log in|влез/i }).click();
+        await page.getByRole('button', { name: /sign in|вход/i }).click();
         await page.waitForURL('/dashboard', { timeout: 5000 });
 
         // Language preference should persist
@@ -338,7 +338,7 @@ test.describe('Authentication Flow', () => {
       await page.goto('/login');
       await page.getByLabel(/email/i).fill(TEST_USER.email);
       await page.getByLabel(/password/i).fill(TEST_USER.password);
-      await page.getByRole('button', { name: /log in|влез/i }).click();
+      await page.getByRole('button', { name: /sign in|вход/i }).click();
 
       // Should show network error
       await expect(page.getByText(/network|connection|свързване/i)).toBeVisible({ timeout: 5000 });
@@ -359,7 +359,7 @@ test.describe('Authentication Flow', () => {
       await page.goto('/login');
       await page.getByLabel(/email/i).fill(TEST_USER.email);
       await page.getByLabel(/password/i).fill(TEST_USER.password);
-      await page.getByRole('button', { name: /log in|влез/i }).click();
+      await page.getByRole('button', { name: /sign in|вход/i }).click();
 
       // Should show error message
       await expect(page.getByText(/error|грешка|server|сървър/i)).toBeVisible({ timeout: 5000 });
@@ -390,7 +390,7 @@ test.describe('Authentication Flow', () => {
       await page.goto('/login');
       await page.getByLabel(/email/i).fill(TEST_USER.email);
       await page.getByLabel(/password/i).fill(TEST_USER.password);
-      await page.getByRole('button', { name: /log in|влез/i }).click();
+      await page.getByRole('button', { name: /sign in|вход/i }).click();
       await page.waitForURL('/dashboard', { timeout: 5000 });
 
       // Check that password is not logged

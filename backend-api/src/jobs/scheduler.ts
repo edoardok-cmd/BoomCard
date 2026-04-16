@@ -223,9 +223,23 @@ async function expireCancelledSubscriptions(): Promise<void> {
         data: { status: SubscriptionStatus.CANCELLED },
       });
 
+      // Check if the user has another active subscription (e.g. they re-subscribed
+      // before the old period ended). If so, sync card to the new plan rather than
+      // blindly downgrading to LIGHT.
+      const otherActiveSub = await prisma.subscription.findFirst({
+        where: {
+          userId: sub.userId,
+          status: { in: [SubscriptionStatus.ACTIVE, 'TRIALING' as any] },
+          id: { not: sub.id },
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      const targetPlan = otherActiveSub?.plan ?? 'LIGHT';
+
       // Dynamic import to avoid circular dependency (card → subscription → scheduler)
       const { cardService } = await import('../services/card.service');
-      await cardService.syncCardTypeWithSubscription(sub.userId, 'LIGHT');
+      await cardService.syncCardTypeWithSubscription(sub.userId, targetPlan);
 
       processed++;
       logger.info(`[subscription-expiry] Expired subscription ${sub.id} for user ${sub.userId}`);
