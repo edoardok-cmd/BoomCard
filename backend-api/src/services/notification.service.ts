@@ -322,6 +322,53 @@ class NotificationService {
     }
   }
 
+  /**
+   * Notify user that a payment or subscription renewal failed.
+   * Prompts them to update their payment method.
+   */
+  async notifyPaymentFailed(params: {
+    userId: string;
+    paymentIntentId: string;
+    amount: number;
+    currency: string;
+  }): Promise<void> {
+    const { userId, paymentIntentId, amount, currency } = params;
+
+    try {
+      await this.createNotification({
+        userId,
+        type: 'PAYMENT_FAILED',
+        title: 'Payment Failed',
+        message: `Your payment of ${amount.toFixed(2)} ${currency} could not be processed. Please update your payment method to avoid service interruption.`,
+        data: { paymentIntentId, amount, currency },
+        priority: 'HIGH',
+      });
+
+      // Send email notification
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { email: true, firstName: true },
+      });
+
+      if (user?.email) {
+        await emailService.sendEmail({
+          to: user.email,
+          subject: 'Action Required: Payment Failed',
+          html: `
+            <p>Hi ${user.firstName || 'there'},</p>
+            <p>Your payment of <strong>${amount.toFixed(2)} ${currency}</strong> could not be processed.</p>
+            <p>Please update your payment method in the app to avoid any interruption to your subscription.</p>
+            <p>— The BoomCard Team</p>
+          `,
+        }).catch((err) => {
+          console.error('Error sending payment-failed email:', err);
+        });
+      }
+    } catch (error) {
+      console.error('Error sending payment-failed notification:', error);
+    }
+  }
+
   // ===== Internal Methods =====
 
   /**

@@ -123,16 +123,35 @@ export class SubscriptionService {
       throw new Error('Subscription not found');
     }
 
-    if (subscription.plan === 'LIGHT') {
-      // Can't cancel light plan
-      throw new Error('Cannot cancel light plan');
-    }
-
     if (!subscription.stripeSubscriptionId) {
-      throw new Error('No Stripe subscription found');
+      // Paysera-based subscription (LIGHT or legacy) — no external billing to cancel.
+      // Mark it to expire at the end of the current period so the user keeps access
+      // until then, mirroring Stripe's cancel_at_period_end behaviour.
+      if (cancelAtPeriodEnd) {
+        return prisma.subscription.update({
+          where: { id: subscriptionId },
+          data: {
+            cancelAtPeriodEnd: true,
+            cancelAt: subscription.currentPeriodEnd,
+            canceledAt: new Date(),
+          },
+        });
+      }
+
+      // Immediate cancellation — end it now and downgrade the card
+      await cardService.syncCardTypeWithSubscription(subscription.userId, 'LIGHT');
+      return prisma.subscription.update({
+        where: { id: subscriptionId },
+        data: {
+          status: 'CANCELLED',
+          cancelAtPeriodEnd: false,
+          cancelAt: new Date(),
+          canceledAt: new Date(),
+        },
+      });
     }
 
-    // Cancel in Stripe
+    // Stripe-based subscription — cancel through Stripe
     const stripeSubscription = await stripeService.stripe.subscriptions.update(
       subscription.stripeSubscriptionId,
       { cancel_at_period_end: cancelAtPeriodEnd }

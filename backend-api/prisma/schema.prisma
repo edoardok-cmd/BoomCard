@@ -312,6 +312,7 @@ model Offer {
   @@index([isFeatured])
   @@index([startDate])
   @@index([endDate])
+  @@index([status, isFeatured, startDate, endDate]) // Active-offer list queries
 }
 
 // Tracks each user's redemption of an offer.
@@ -732,6 +733,8 @@ model Receipt {
   @@index([merchantName])
   @@index([fraudScore])
   @@index([userId, deviceFingerprint])
+  @@index([userId, perceptualHash]) // Fraud perceptual-duplicate check
+  @@index([userId, createdAt])      // Rate-limit daily/monthly count queries
 }
 
 // ============================================

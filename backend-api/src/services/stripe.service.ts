@@ -3,6 +3,7 @@ import { AppError } from '../middleware/error.middleware';
 import { logger } from '../utils/logger';
 import { prisma } from '../lib/prisma';
 import { walletService } from './wallet.service';
+import { notificationService } from './notification.service';
 
 /**
  * Stripe Service for Payment Processing
@@ -506,7 +507,13 @@ class StripeService {
         });
       }
 
-      // TODO: Send notification to user about failed payment
+      // Notify user so they can update their payment method
+      await notificationService.notifyPaymentFailed({
+        userId,
+        paymentIntentId: paymentIntent.id,
+        amount: paymentIntent.amount / 100,
+        currency: paymentIntent.currency.toUpperCase(),
+      }).catch((err: unknown) => logger.error('Failed to send payment-failed notification:', err));
 
       logger.info(`Transaction marked as failed for payment ${paymentIntent.id}`);
     } catch (error) {
@@ -518,8 +525,33 @@ class StripeService {
    * Handle canceled payment
    */
   private async handlePaymentCanceled(paymentIntent: Stripe.PaymentIntent): Promise<void> {
-    // TODO: Update transaction status
     logger.info(`Payment canceled: ${paymentIntent.id}`);
+
+    try {
+      const existing = await prisma.transaction.findFirst({
+        where: { paymentIntentId: paymentIntent.id },
+      });
+
+      if (existing) {
+        await prisma.transaction.update({
+          where: { id: existing.id },
+          data: { status: 'CANCELLED' },
+        });
+      }
+
+      // Mark any pending wallet top-up as failed
+      if (paymentIntent.metadata.type === 'TOP_UP') {
+        await prisma.walletTransaction.updateMany({
+          where: {
+            stripePaymentIntentId: paymentIntent.id,
+            status: 'PENDING',
+          },
+          data: { status: 'FAILED' },
+        });
+      }
+    } catch (error) {
+      logger.error(`Error handling payment cancel: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
   }
 
   /**
@@ -602,13 +634,24 @@ class StripeService {
         'paused': 'PAUSED',
       };
 
-      // Determine plan from price ID
+      // Determine plan from Stripe price ID, falling back to metadata
       const priceId = subscription.items.data[0]?.price.id;
       let plan: 'LIGHT' | 'BASIC' | 'PREMIUM' = 'LIGHT';
 
-      // TODO: Map price IDs to plans based on your Stripe configuration
-      // For now, use metadata
-      if (subscription.metadata.plan) {
+      // Reverse-lookup the plan from the configured Stripe price IDs
+      const priceIdToPlan: Record<string, 'LIGHT' | 'BASIC' | 'PREMIUM'> = {};
+      const PRICE_IDS = {
+        LIGHT: process.env.STRIPE_LIGHT_PRICE_ID || 'price_LIGHT',
+        BASIC: process.env.STRIPE_BASIC_PRICE_ID || 'price_BASIC',
+        PREMIUM: process.env.STRIPE_PREMIUM_PRICE_ID || 'price_PREMIUM',
+      };
+      for (const [key, val] of Object.entries(PRICE_IDS)) {
+        priceIdToPlan[val] = key as 'LIGHT' | 'BASIC' | 'PREMIUM';
+      }
+
+      if (priceId && priceIdToPlan[priceId]) {
+        plan = priceIdToPlan[priceId];
+      } else if (subscription.metadata.plan) {
         plan = subscription.metadata.plan as any;
       }
 
@@ -648,24 +691,111 @@ class StripeService {
    * Handle subscription deletion
    */
   private async handleSubscriptionDeleted(subscription: Stripe.Subscription): Promise<void> {
-    // TODO: Mark subscription as canceled in database
     logger.info(`Subscription deleted: ${subscription.id}`);
+
+    try {
+      const dbSub = await prisma.subscription.findFirst({
+        where: { stripeSubscriptionId: subscription.id },
+      });
+
+      if (dbSub) {
+        await prisma.subscription.update({
+          where: { id: dbSub.id },
+          data: {
+            status: 'CANCELLED',
+            canceledAt: new Date(),
+          },
+        });
+
+        // Downgrade card to LIGHT (no active subscription)
+        const { cardService } = await import('./card.service');
+        await cardService.syncCardTypeWithSubscription(dbSub.userId, 'LIGHT');
+
+        logger.info(`Subscription ${subscription.id} cancelled for user ${dbSub.userId}, card downgraded`);
+      } else {
+        logger.warn(`No DB subscription found for Stripe subscription ${subscription.id}`);
+      }
+    } catch (error) {
+      logger.error(`Error handling subscription deletion: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
   }
 
   /**
    * Handle successful invoice payment
    */
   private async handleInvoicePaymentSucceeded(invoice: Stripe.Invoice): Promise<void> {
-    // TODO: Record invoice payment in database
     logger.info(`Invoice paid: ${invoice.id}`);
+
+    try {
+      const subscriptionId = invoice.subscription as string | null;
+      if (!subscriptionId) return; // One-off invoice, handled by payment_intent.succeeded
+
+      // Find the subscription to get the userId
+      const dbSub = await prisma.subscription.findFirst({
+        where: { stripeSubscriptionId: subscriptionId },
+      });
+
+      if (!dbSub) {
+        logger.warn(`No DB subscription for invoice ${invoice.id} (sub: ${subscriptionId})`);
+        return;
+      }
+
+      // Record the invoice payment as a transaction
+      const amount = (invoice.amount_paid ?? 0) / 100;
+      await prisma.transaction.create({
+        data: {
+          userId: dbSub.userId,
+          type: 'SUBSCRIPTION' as any,
+          status: 'COMPLETED',
+          amount,
+          finalAmount: amount,
+          currency: (invoice.currency ?? 'bgn').toUpperCase(),
+          paymentMethod: 'CARD',
+          stripePaymentId: invoice.payment_intent as string ?? invoice.id,
+          paymentIntentId: invoice.payment_intent as string ?? null,
+          metadata: JSON.stringify({
+            invoiceId: invoice.id,
+            subscriptionId,
+            billingReason: invoice.billing_reason,
+          }),
+          completedAt: new Date(),
+        },
+      });
+
+      logger.info(`Invoice payment recorded: ${amount} ${invoice.currency} for user ${dbSub.userId}`);
+    } catch (error) {
+      logger.error(`Error handling invoice payment: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
   }
 
   /**
    * Handle failed invoice payment
    */
   private async handleInvoicePaymentFailed(invoice: Stripe.Invoice): Promise<void> {
-    // TODO: Notify user of failed payment
     logger.warn(`Invoice payment failed: ${invoice.id}`);
+
+    try {
+      const subscriptionId = invoice.subscription as string | null;
+      if (!subscriptionId) return;
+
+      const dbSub = await prisma.subscription.findFirst({
+        where: { stripeSubscriptionId: subscriptionId },
+      });
+
+      if (!dbSub) return;
+
+      // Notify user so they can update their payment method
+      await notificationService.notifyPaymentFailed({
+        userId: dbSub.userId,
+        paymentIntentId: invoice.payment_intent as string ?? invoice.id,
+        amount: (invoice.amount_due ?? 0) / 100,
+        currency: (invoice.currency ?? 'bgn').toUpperCase(),
+      }).catch((err: unknown) => logger.error('Failed to send invoice-failed notification:', err));
+
+      logger.info(`User ${dbSub.userId} notified of failed invoice ${invoice.id}`);
+    } catch (error) {
+      logger.error(`Error handling invoice failure: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
   }
 }
 
