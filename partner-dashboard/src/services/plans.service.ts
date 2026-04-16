@@ -231,7 +231,16 @@ class PlansService {
 
       const response = await axios.post(
         `${this.baseUrl}/payments/subscription`,
-        { planId, billingPeriod, email, name, phone, paymentMethod },
+        {
+          planId,
+          billingPeriod,
+          email,
+          name,
+          phone,
+          paymentMethod,
+          successUrl: `${window.location.origin}/subscription/success`,
+          cancelUrl: `${window.location.origin}/subscription/cancel`,
+        },
         { headers }
       );
 
