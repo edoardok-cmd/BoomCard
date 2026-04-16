@@ -103,6 +103,13 @@ export enum ReceiptStatus {
   EXPIRED = 'EXPIRED',
 }
 
+export interface DeviceFingerprint {
+  installationId: string;
+  platform: string;
+  osVersion: string;
+  appVersion: string;
+}
+
 export interface ReceiptSubmitRequest {
   // Opaque token returned by /api/receipts/v2/upload. Required — the server
   // uses the token to look up the trusted image hash / URL / live-photo result
@@ -119,6 +126,7 @@ export interface ReceiptSubmitRequest {
   ocrData?: any;
   ocrConfidence?: number;
   items?: any;
+  deviceFingerprint?: DeviceFingerprint;
 }
 
 export interface ReceiptStats {
@@ -175,6 +183,7 @@ export interface StickerSessionRequest {
   cardId?: string;
   latitude: number;
   longitude: number;
+  deviceFingerprint?: DeviceFingerprint;
 }
 
 export interface StickerScanRequest {
@@ -185,6 +194,7 @@ export interface StickerScanRequest {
   longitude: number;
   /** Two-step flow: complete an existing session created via POST /api/stickers/session */
   sessionId?: string;
+  deviceFingerprint?: DeviceFingerprint;
 }
 
 // ==================== Venue Types ====================

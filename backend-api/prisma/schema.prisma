@@ -700,9 +700,11 @@ model Receipt {
   longitude Float?
 
   // Request Metadata
-  ipAddress       String?
-  userAgent       String?
-  submissionCount Int     @default(1)
+  ipAddress            String?
+  userAgent            String?
+  deviceFingerprint    String?  // SHA-256 of canonical device JSON
+  deviceFingerprintRaw String?  // Raw device JSON for admin inspection
+  submissionCount      Int     @default(1)
 
   // Validation & Admin Review
   status          ReceiptStatus @default(PENDING)
@@ -729,6 +731,7 @@ model Receipt {
   @@index([createdAt])
   @@index([merchantName])
   @@index([fraudScore])
+  @@index([userId, deviceFingerprint])
 }
 
 // ============================================
@@ -1368,8 +1371,10 @@ model StickerScan {
   // Native TEXT[] — append with `{ push: 'CODE' }` for atomic array_append.
   // Migration 20260418_fraud_reasons_text_array converted from a JSON-encoded TEXT.
   fraudReasons    String[]   @default([])
-  ipAddress       String?
-  userAgent       String?
+  ipAddress            String?
+  userAgent            String?
+  deviceFingerprint    String?  // SHA-256 of canonical device JSON
+  deviceFingerprintRaw String?  // Raw device JSON for admin inspection
   transactionId   String?    @unique
   rejectionReason String?
   processedAt     DateTime?
@@ -1390,6 +1395,7 @@ model StickerScan {
   @@index([cardId])
   @@index([status])
   @@index([createdAt])
+  @@index([userId, deviceFingerprint])
 }
 
 model VenueStickerConfig {

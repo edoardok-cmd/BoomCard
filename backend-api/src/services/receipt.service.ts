@@ -865,13 +865,28 @@ class ReceiptService {
   }
 
   /**
-   * Check if image hash already exists (duplicate detection)
+   * Check if image hash already exists (duplicate detection).
+   * Cross-flow aware: checks both Receipt.imageHash and StickerScan.receiptImageHash.
+   *
+   * Only counts non-REJECTED records so users can re-submit legitimately rejected
+   * receipts without being blocked. Mirrors fraudDetection.checkDuplicate() filters.
    */
   async checkDuplicateImage(imageHash: string): Promise<boolean> {
-    const existing = await prisma.receipt.findFirst({
-      where: { imageHash },
-    });
-    return !!existing;
+    const [receiptDup, stickerDup] = await Promise.all([
+      prisma.receipt.findFirst({
+        where: {
+          imageHash,
+          status: { in: ['APPROVED', 'PENDING', 'MANUAL_REVIEW'] as any[] },
+        },
+      }),
+      (prisma.stickerScan as any).findFirst({
+        where: {
+          receiptImageHash: imageHash,
+          status: { in: ['PENDING', 'VALIDATING', 'APPROVED', 'MANUAL_REVIEW'] },
+        },
+      }),
+    ]);
+    return !!(receiptDup || stickerDup);
   }
 
   /**

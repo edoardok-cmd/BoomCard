@@ -318,19 +318,31 @@ class FraudDetectionService {
    * Pass excludeReceiptId when re-checking an existing receipt so it isn't
    * flagged against its own stored hash.
    *
-   * Only counts APPROVED/PENDING receipts as true duplicates. REJECTED receipts
-   * are excluded so users can re-submit legitimately rejected receipts without
+   * Cross-flow aware: checks BOTH Receipt.imageHash AND StickerScan.receiptImageHash
+   * so a user can't submit the same receipt photo via the sticker flow and the
+   * receipt flow without detection.
+   *
+   * Only counts non-REJECTED records as true duplicates. REJECTED records are
+   * excluded so users can re-submit legitimately rejected receipts without
    * being penalized 40 fraud points for the same hash.
    */
   private async checkDuplicate(imageHash: string, excludeReceiptId?: string): Promise<boolean> {
-    const existing = await prisma.receipt.findFirst({
-      where: {
-        imageHash,
-        status: { in: ['APPROVED', 'PENDING', 'MANUAL_REVIEW'] },
-        ...(excludeReceiptId ? { id: { not: excludeReceiptId } } : {}),
-      },
-    });
-    return !!existing;
+    const [receiptDup, stickerDup] = await Promise.all([
+      prisma.receipt.findFirst({
+        where: {
+          imageHash,
+          status: { in: ['APPROVED', 'PENDING', 'MANUAL_REVIEW'] },
+          ...(excludeReceiptId ? { id: { not: excludeReceiptId } } : {}),
+        },
+      }),
+      (prisma.stickerScan as any).findFirst({
+        where: {
+          receiptImageHash: imageHash,
+          status: { in: ['PENDING', 'VALIDATING', 'APPROVED', 'MANUAL_REVIEW'] },
+        },
+      }),
+    ]);
+    return !!(receiptDup || stickerDup);
   }
 
   /**
@@ -832,9 +844,25 @@ class FraudDetectionService {
   }
 
   /**
-   * Update venue fraud configuration
+   * Update venue fraud configuration.
+   * Only known config fields are accepted — callers pass req.body directly, so we
+   * must not spread arbitrary properties into the Prisma upsert (an attacker could
+   * inject `id`, `venueId`, or `createdAt` to tamper with the record identity).
    */
-  async updateVenueConfig(venueId: string, config: any) {
+  async updateVenueConfig(venueId: string, raw: Record<string, unknown>) {
+    const config: Record<string, unknown> = {};
+    const ALLOWED = [
+      'cashbackPercent', 'premiumBonus', 'platinumBonus', 'minBillAmount',
+      'maxCashbackPerScan', 'maxScansPerDay', 'maxScansPerMonth',
+      'gpsVerificationEnabled', 'gpsRadiusMeters', 'ocrVerificationEnabled',
+      'autoApproveThreshold', 'autoRejectThreshold',
+      'templateMatchEnabled', 'templateVisualWeight', 'templateMerchantWeight',
+      'templateKeywordWeight', 'templateMinSimilarity', 'templateFraudPoints',
+      'templateMerchantThreshold', 'isActive', 'metadata',
+    ] as const;
+    for (const key of ALLOWED) {
+      if (key in raw) config[key] = raw[key];
+    }
     return prisma.venueFraudConfig.upsert({
       where: { venueId },
       create: { venueId, ...config },

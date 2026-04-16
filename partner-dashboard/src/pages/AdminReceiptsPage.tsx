@@ -4,6 +4,7 @@ import { useLanguage } from '../contexts/LanguageContext';
 import { receiptsApiService } from '../services/receipts-api.service';
 import { Receipt, ReceiptStatus } from '../types/receipt.types';
 import { CheckCircle, XCircle, Eye, FileText, AlertTriangle, Clock } from 'lucide-react';
+import FraudReasonTag from '../components/admin/FraudReasonTag';
 
 const PageContainer = styled.div`
   max-width: 1400px;
@@ -474,6 +475,14 @@ export const AdminReceiptsPage: React.FC = () => {
               <FraudScore $score={receipt.fraudScore || 0}>
                 {receipt.fraudScore != null ? receipt.fraudScore.toFixed(0) : '—'}
               </FraudScore>
+
+              {receipt.fraudReasons && (
+                <div style={{ display: 'flex', gap: '0.25rem', flexWrap: 'wrap', marginTop: '0.25rem' }}>
+                  {(Array.isArray(receipt.fraudReasons) ? receipt.fraudReasons : [receipt.fraudReasons]).map((reason: string, idx: number) => (
+                    <FraudReasonTag key={idx} reason={reason} language={language} />
+                  ))}
+                </div>
+              )}
 
               <StatusBadge $status={receipt.status}>
                 {receipt.status === ReceiptStatus.MANUAL_REVIEW && <AlertTriangle size={11} />}

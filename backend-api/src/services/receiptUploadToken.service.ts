@@ -4,8 +4,8 @@ import { logger } from '../utils/logger';
 
 // One hour. Long enough to cover mobile flows where the user reviews OCR and
 // edits fields before submitting, short enough that abandoned tokens don't pile
-// up indefinitely. Consumed tokens can be purged sooner; unexpired-unconsumed
-// rows fall off via the cleanup job (TODO: add a cron).
+// up indefinitely. All expired tokens are purged by the nightly cleanup cron
+// (scheduler.ts, 3:30 AM Europe/Sofia).
 const TOKEN_TTL_MS = 60 * 60 * 1000;
 
 export interface IssuedUploadToken {

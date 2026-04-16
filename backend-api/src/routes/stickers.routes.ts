@@ -25,11 +25,25 @@ const router = Router();
  */
 router.post('/session', authenticate, async (req: Request, res: Response) => {
   try {
-    const { stickerId, cardId, latitude, longitude, payloadVenueId, payloadVersion } = req.body;
+    const { stickerId, cardId, latitude, longitude, payloadVenueId, payloadVersion, deviceFingerprint: rawDeviceFp } = req.body;
     const userId = (req as any).user.id;
 
     if (!stickerId) {
       return res.status(400).json({ success: false, error: 'Missing required field: stickerId' });
+    }
+
+    // Compute device fingerprint hash server-side
+    let deviceFingerprintHash: string | undefined;
+    let deviceFingerprintRaw: string | undefined;
+    if (rawDeviceFp && typeof rawDeviceFp === 'object') {
+      const canonical = JSON.stringify({
+        installationId: rawDeviceFp.installationId || '',
+        platform: rawDeviceFp.platform || '',
+        osVersion: rawDeviceFp.osVersion || '',
+        appVersion: rawDeviceFp.appVersion || '',
+      });
+      deviceFingerprintHash = crypto.createHash('sha256').update(canonical).digest('hex');
+      deviceFingerprintRaw = canonical;
     }
 
     const session = await stickerService.createSession({
@@ -40,6 +54,8 @@ router.post('/session', authenticate, async (req: Request, res: Response) => {
       longitude: longitude ? parseFloat(longitude) : undefined,
       ipAddress: req.ip,
       userAgent: req.get('user-agent'),
+      deviceFingerprint: deviceFingerprintHash,
+      deviceFingerprintRaw,
       payloadVenueId,
       payloadVersion,
     });
@@ -63,7 +79,7 @@ router.post('/session', authenticate, async (req: Request, res: Response) => {
  */
 router.post('/scan', authenticate, async (req: Request, res: Response) => {
   try {
-    const { stickerId, cardId, billAmount, latitude, longitude, sessionId, payloadVenueId, payloadVersion } = req.body;
+    const { stickerId, cardId, billAmount, latitude, longitude, sessionId, payloadVenueId, payloadVersion, deviceFingerprint: rawDeviceFpScan } = req.body;
     const userId = (req as any).user.id;
 
     // When using the two-step flow, sessionId + billAmount is sufficient.
@@ -114,6 +130,20 @@ router.post('/scan', authenticate, async (req: Request, res: Response) => {
       }
     }
 
+    // Compute device fingerprint hash server-side
+    let scanDeviceFpHash: string | undefined;
+    let scanDeviceFpRaw: string | undefined;
+    if (rawDeviceFpScan && typeof rawDeviceFpScan === 'object') {
+      const canonical = JSON.stringify({
+        installationId: rawDeviceFpScan.installationId || '',
+        platform: rawDeviceFpScan.platform || '',
+        osVersion: rawDeviceFpScan.osVersion || '',
+        appVersion: rawDeviceFpScan.appVersion || '',
+      });
+      scanDeviceFpHash = crypto.createHash('sha256').update(canonical).digest('hex');
+      scanDeviceFpRaw = canonical;
+    }
+
     const scan = await stickerService.scanSticker({
       userId,
       stickerId,
@@ -123,6 +153,8 @@ router.post('/scan', authenticate, async (req: Request, res: Response) => {
       longitude: validatedLon,
       ipAddress: req.ip,
       userAgent: req.get('user-agent'),
+      deviceFingerprint: scanDeviceFpHash,
+      deviceFingerprintRaw: scanDeviceFpRaw,
       sessionId,
       payloadVenueId,
       payloadVersion,
@@ -184,18 +216,20 @@ router.post('/scan/:scanId/receipt', authenticate, uploadSingle, validateMagicBy
       // are still in an uploadable state. Without the status filter a duplicate upload
       // could downgrade an already-APPROVED scan to REJECTED while its cashback stayed
       // paid. The userId filter closes the IDOR hole separately.
-      await prisma.stickerScan.updateMany({
-        where: {
-          id: scanId,
-          userId,
-          status: { in: ['PENDING', 'VALIDATING'] as any },
-        },
-        data: {
-          status: 'REJECTED' as any,
-          rejectionReason: 'Duplicate receipt image (SHA-256 match)',
-          fraudReasons: ['DUPLICATE_IMAGE_HASH'],
-        },
-      });
+      //
+      // We use raw SQL instead of updateMany so we can array_append to preserve any
+      // existing fraudReasons from the scan phase (GPS, OCR, etc.) rather than
+      // overwriting them. The WHERE clause mirrors the IDOR + status guard above.
+      await prisma.$executeRaw`
+        UPDATE "StickerScan"
+        SET status = 'REJECTED'::"ScanStatus",
+            "rejectionReason" = 'Duplicate receipt image (SHA-256 match)',
+            "fraudReasons" = array_append("fraudReasons", 'DUPLICATE_IMAGE_HASH'),
+            "updatedAt" = NOW()
+        WHERE id = ${scanId}
+          AND "userId" = ${userId}
+          AND status IN ('PENDING'::"ScanStatus", 'VALIDATING'::"ScanStatus")
+      `;
       return res.status(400).json({
         success: false,
         error: 'This receipt has already been submitted. Duplicate receipts are not accepted.',

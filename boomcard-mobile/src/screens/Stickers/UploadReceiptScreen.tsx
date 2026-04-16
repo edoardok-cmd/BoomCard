@@ -26,6 +26,7 @@ import { useRoute, useNavigation } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
 import { useTheme } from '../../contexts/ThemeContext';
 import StickersApi from '../../api/stickers.api';
+import { getDeviceFingerprint } from '../../services/deviceFingerprint.service';
 import { OCRService } from '../../services/ocr.service';
 import { crossPlatformAlert } from '../../utils/alert';
 import notificationService from '../../services/notification.service';
@@ -161,12 +162,21 @@ export default function UploadReceiptScreen() {
     }
   };
 
-  /** Returns 6:00 AM on the calendar day after the QR scan. */
+  /**
+   * Returns 6:00 AM Sofia time on the calendar day after the QR scan.
+   * All BoomCard venues are in Bulgaria; the deadline must be consistent
+   * regardless of the user's device timezone. We format the scan timestamp
+   * into Sofia's calendar day, add one day, then build a UTC date using
+   * the conservative max offset (UTC+3 = EEST) so the client is never
+   * more generous than the server.
+   */
   const getSessionDeadline = (createdAt: string): Date => {
-    const deadline = new Date(createdAt);
-    deadline.setDate(deadline.getDate() + 1);
-    deadline.setHours(6, 0, 0, 0);
-    return deadline;
+    const scanDate = new Date(createdAt);
+    // Get the Sofia calendar day as YYYY-MM-DD
+    const sofiaDayStr = scanDate.toLocaleDateString('en-CA', { timeZone: 'Europe/Sofia' });
+    const [y, m, d] = sofiaDayStr.split('-').map(Number);
+    // 06:00 Sofia ≈ 03:00 UTC (conservative; exact in summer, 1h strict in winter)
+    return new Date(Date.UTC(y, m - 1, d + 1, 3, 0, 0));
   };
 
   const handleSubmit = async () => {
@@ -210,11 +220,13 @@ export default function UploadReceiptScreen() {
       // Complete the session with the bill amount.
       // If a sessionId exists (two-step flow), the server updates the existing session record.
       // Otherwise falls back to the legacy single-call flow for backward compatibility.
+      const fp = await getDeviceFingerprint();
       const scanRes = await StickersApi.scanSticker({
         ...(sessionId ? { sessionId } : { stickerId }),
         billAmount,
         latitude,
         longitude,
+        deviceFingerprint: fp,
       });
 
       if (!scanRes.success || !scanRes.data) {

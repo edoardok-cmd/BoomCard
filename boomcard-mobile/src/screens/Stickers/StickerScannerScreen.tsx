@@ -15,6 +15,7 @@ import { useNavigation, useIsFocused } from '@react-navigation/native';
 import { crossPlatformAlert } from '../../utils/alert';
 import { useTranslation } from 'react-i18next';
 import notificationService from '../../services/notification.service';
+import { getDeviceFingerprint } from '../../services/deviceFingerprint.service';
 import StickersApi from '../../api/stickers.api';
 
 export default function StickerScannerScreen() {
@@ -139,6 +140,7 @@ export default function StickerScannerScreen() {
       // Register the BOOM session with the server at scan time (spec §6 Step 3).
       // This records the exact time, venue, device, and GPS coordinates immediately.
       // The session is completed with the bill amount when the receipt is submitted.
+      const fp = await getDeviceFingerprint();
       const sessionRes = await StickersApi.createSession({
         stickerId,
         latitude: location.coords.latitude,
@@ -146,6 +148,7 @@ export default function StickerScannerScreen() {
         // Forward payload venueId + version so server can reject tampered/outdated QRs (Finding #4 + #5).
         payloadVenueId,
         payloadVersion,
+        deviceFingerprint: fp,
       } as any);
 
       if (!sessionRes.success || !sessionRes.data?.sessionId) {

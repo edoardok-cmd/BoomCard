@@ -139,6 +139,9 @@ const ReceiptsPage = lazy(() => import('./pages/ReceiptsPage'));
 const ReceiptDetailPage = lazy(() => import('./pages/ReceiptDetailPage'));
 const ReceiptAnalyticsPage = lazy(() => import('./pages/ReceiptAnalyticsPage'));
 const AdminReceiptsPage = lazy(() => import('./pages/AdminReceiptsPage'));
+const AdminMerchantWhitelistPage = lazy(() => import('./pages/AdminMerchantWhitelistPage'));
+const AdminVenueFraudConfigPage = lazy(() => import('./pages/AdminVenueFraudConfigPage'));
+const AdminReceiptTemplatesPage = lazy(() => import('./pages/AdminReceiptTemplatesPage'));
 
 // Payment pages
 const PaymentSuccessPage = lazy(() => import('./pages/PaymentSuccessPage'));
@@ -473,6 +476,30 @@ function App() {
                       element={
                         <ProtectedRoute requiredRole="admin">
                           <AdminPartnerOnboardingPage />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="admin/merchant-whitelist"
+                      element={
+                        <ProtectedRoute requiredRole="admin">
+                          <AdminMerchantWhitelistPage />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="admin/venue-fraud-config"
+                      element={
+                        <ProtectedRoute requiredRole="admin">
+                          <AdminVenueFraudConfigPage />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="admin/receipt-templates"
+                      element={
+                        <ProtectedRoute requiredRole="admin">
+                          <AdminReceiptTemplatesPage />
                         </ProtectedRoute>
                       }
                     />

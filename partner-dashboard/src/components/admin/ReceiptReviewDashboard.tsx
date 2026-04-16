@@ -4,6 +4,7 @@ import { receiptService, Receipt, ReceiptStatus, AdminReviewRequest } from '../.
 import { useLanguage } from '../../contexts/LanguageContext';
 import { CheckCircle, XCircle, AlertTriangle, Eye, Filter, Download } from 'lucide-react';
 import toast from 'react-hot-toast';
+import FraudReasonTag from './FraudReasonTag';
 
 // Styled Components
 const DashboardContainer = styled.div`
@@ -617,7 +618,7 @@ export const ReceiptReviewDashboard: React.FC = () => {
               {receipt.fraudReasons && (
                 <FraudReasons>
                   {(Array.isArray(receipt.fraudReasons) ? receipt.fraudReasons : [receipt.fraudReasons]).map((reason: string, idx: number) => (
-                    <FraudTag key={idx}>{reason}</FraudTag>
+                    <FraudReasonTag key={idx} reason={reason} language={language} />
                   ))}
                 </FraudReasons>
               )}

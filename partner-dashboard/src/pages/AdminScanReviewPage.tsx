@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
 import { API_CONFIG } from '../config/api.config';
+import FraudReasonTag from '../components/admin/FraudReasonTag';
 
 // ============================================
 // Types
@@ -887,7 +888,9 @@ export const AdminScanReviewPage: React.FC = () => {
               {scan.fraudReasons.length > 0 && (
                 <FraudReasonsList>
                   {scan.fraudReasons.map((reason, idx) => (
-                    <FraudReason key={idx}>⚠️ {reason}</FraudReason>
+                    <FraudReason key={idx}>
+                      <FraudReasonTag reason={reason} />
+                    </FraudReason>
                   ))}
                 </FraudReasonsList>
               )}

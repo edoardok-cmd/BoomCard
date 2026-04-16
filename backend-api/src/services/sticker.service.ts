@@ -537,12 +537,17 @@ class StickerService {
         throw new Error('Session has already been submitted or is no longer active');
       }
 
-      // Server-side deadline: receipts must be submitted by 6:00 AM the morning after scan.
-      // The client enforces this too, but we re-check here so a modified client cannot bypass it.
+      // Server-side deadline: receipts must be submitted by 6:00 AM Sofia time the morning
+      // after scan. The server runs UTC (Fly.io), so naive setHours(6) would give 06:00 UTC
+      // = 08:00/09:00 Sofia — up to 3 hours too generous.
+      //
+      // Sofia is UTC+2 (EET, winter) or UTC+3 (EEST, summer). We compute "next day 06:00
+      // Sofia" by converting the session date to Sofia's calendar day and subtracting 3 hours
+      // (max offset). This makes the deadline at most 1 hour strict in winter — acceptable.
       const sessionStart = existing.sessionStartedAt ?? existing.createdAt;
-      const deadline = new Date(sessionStart);
-      deadline.setDate(deadline.getDate() + 1);
-      deadline.setHours(6, 0, 0, 0);
+      const sofiaDayStr = sessionStart.toLocaleDateString('en-CA', { timeZone: 'Europe/Sofia' });
+      const [y, m, d] = sofiaDayStr.split('-').map(Number);
+      const deadline = new Date(Date.UTC(y, m - 1, d + 1, 3, 0, 0)); // 06:00 Sofia ≈ 03:00 UTC
       if (Date.now() > deadline.getTime()) {
         // Expire the session so it can't be retried
         await prisma.stickerScan.update({
@@ -765,19 +770,35 @@ class StickerService {
    * Finding #6: SHA-256 dedupe probe. Call BEFORE uploading to S3 so duplicates don't
    * incur storage cost. Returns a truthy value if a prior scan with the same hash exists
    * (excluding the caller's own scanId).
+   *
+   * Cross-flow aware: also checks Receipt.imageHash so a user can't submit the same
+   * receipt photo via the receipt flow and escape detection in the sticker flow.
    */
   async findDuplicateReceipt(
     receiptImageHash: string,
     excludeScanId?: string,
-  ): Promise<{ id: string; userId: string; status: ScanStatus } | null> {
+  ): Promise<{ id: string; userId: string; status: string } | null> {
     if (!receiptImageHash) return null;
-    return (prisma.stickerScan as any).findFirst({
-      where: {
-        receiptImageHash,
-        ...(excludeScanId ? { id: { not: excludeScanId } } : {}),
-      },
-      select: { id: true, userId: true, status: true },
-    });
+
+    const [stickerDup, receiptDup] = await Promise.all([
+      (prisma.stickerScan as any).findFirst({
+        where: {
+          receiptImageHash,
+          status: { in: ['PENDING', 'VALIDATING', 'APPROVED', 'MANUAL_REVIEW'] },
+          ...(excludeScanId ? { id: { not: excludeScanId } } : {}),
+        },
+        select: { id: true, userId: true, status: true },
+      }),
+      prisma.receipt.findFirst({
+        where: {
+          imageHash: receiptImageHash,
+          status: { in: ['APPROVED', 'PENDING', 'MANUAL_REVIEW'] as any[] },
+        },
+        select: { id: true, userId: true, status: true },
+      }),
+    ]);
+
+    return stickerDup || receiptDup || null;
   }
 
   /**
@@ -823,12 +844,14 @@ class StickerService {
         // We do NOT swallow update failures — if the REJECTED state can't be persisted the
         // caller deserves to know so they can retry or page ops, rather than leaving the
         // scan in an inconsistent intermediate state.
+        // Use { push } to append rather than overwrite — preserves any fraud reasons
+        // from the scan phase (GPS, OCR, device checks, etc.).
         await prisma.stickerScan.update({
           where: { id: scanId },
           data: {
             status: ScanStatus.REJECTED,
             rejectionReason: 'Duplicate receipt image (SHA-256 match)',
-            fraudReasons: ['DUPLICATE_IMAGE_HASH'],
+            fraudReasons: { push: 'DUPLICATE_IMAGE_HASH' },
           },
         });
         throw new Error('This receipt has already been submitted. Duplicate receipts are not accepted.');
@@ -858,7 +881,7 @@ class StickerService {
           data: {
             status: ScanStatus.REJECTED,
             rejectionReason: 'Duplicate receipt image (SHA-256 race)',
-            fraudReasons: ['DUPLICATE_IMAGE_HASH_RACE'],
+            fraudReasons: { push: 'DUPLICATE_IMAGE_HASH_RACE' },
           },
         });
         throw new Error('This receipt has already been submitted. Duplicate receipts are not accepted.');
@@ -1214,9 +1237,21 @@ class StickerService {
   }
 
   /**
-   * Update venue sticker configuration
+   * Update venue sticker configuration.
+   * Only known config fields are accepted — callers pass req.body, so we must not
+   * spread arbitrary properties into the upsert (prevents id/venueId injection).
    */
-  async updateVenueConfig(venueId: string, data: Partial<VenueStickerConfig>): Promise<VenueStickerConfig> {
+  async updateVenueConfig(venueId: string, raw: Record<string, unknown>): Promise<VenueStickerConfig> {
+    const data: Record<string, unknown> = {};
+    const ALLOWED = [
+      'cashbackPercent', 'premiumBonus', 'platinumBonus', 'minBillAmount',
+      'maxCashbackPerScan', 'maxScansPerDay', 'maxScansPerMonth',
+      'gpsVerificationEnabled', 'gpsRadiusMeters', 'ocrVerificationEnabled',
+      'autoApproveThreshold', 'isActive', 'metadata',
+    ] as const;
+    for (const key of ALLOWED) {
+      if (key in raw) data[key] = raw[key];
+    }
     return prisma.venueStickerConfig.upsert({
       where: { venueId },
       update: data,

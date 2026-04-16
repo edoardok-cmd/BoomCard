@@ -372,6 +372,48 @@ const AdminDashboardPage: React.FC = () => {
               </ActionDescription>
             </div>
           </ActionCard>
+
+          <ActionCard to="/admin/merchant-whitelist">
+            <ActionIcon>🛡️</ActionIcon>
+            <div>
+              <ActionTitle>
+                {language === 'bg' ? 'Списък Търговци' : 'Merchant Whitelist'}
+              </ActionTitle>
+              <ActionDescription>
+                {language === 'bg'
+                  ? 'Управлявайте одобрени и блокирани търговци за проверка на бележки'
+                  : 'Manage approved and blocked merchants for receipt verification'}
+              </ActionDescription>
+            </div>
+          </ActionCard>
+
+          <ActionCard to="/admin/venue-fraud-config">
+            <ActionIcon>⚙️</ActionIcon>
+            <div>
+              <ActionTitle>
+                {language === 'bg' ? 'Конфиг за Измами' : 'Venue Fraud Config'}
+              </ActionTitle>
+              <ActionDescription>
+                {language === 'bg'
+                  ? 'Настройте прагове за измами, GPS и OCR проверки по обекти'
+                  : 'Configure fraud thresholds, GPS and OCR verification per venue'}
+              </ActionDescription>
+            </div>
+          </ActionCard>
+
+          <ActionCard to="/admin/receipt-templates">
+            <ActionIcon>📄</ActionIcon>
+            <div>
+              <ActionTitle>
+                {language === 'bg' ? 'Шаблони за Бележки' : 'Receipt Templates'}
+              </ActionTitle>
+              <ActionDescription>
+                {language === 'bg'
+                  ? 'Управлявайте шаблони за визуално сравнение на бележки по обекти'
+                  : 'Manage receipt templates for visual comparison per venue'}
+              </ActionDescription>
+            </div>
+          </ActionCard>
         </QuickActionsGrid>
       </Section>
     </PageContainer>

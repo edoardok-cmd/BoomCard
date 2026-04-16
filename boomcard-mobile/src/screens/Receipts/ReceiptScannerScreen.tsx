@@ -23,6 +23,7 @@ import { CameraView, Camera } from 'expo-camera';
 import { useTranslation } from 'react-i18next';
 import LocationService from '../../services/location.service';
 import OCRService from '../../services/ocr.service';
+import { getDeviceFingerprint } from '../../services/deviceFingerprint.service';
 import ReceiptsApi from '../../api/receipts.api';
 import { GPS_CONFIG } from '../../constants/config';
 import { formatDistance } from '../../utils/distance';
@@ -242,6 +243,9 @@ const ReceiptScannerScreen = ({ navigation, route }: any) => {
         throw new Error(uploadResponse.error || 'Failed to upload image');
       }
 
+      // Collect device fingerprint for fraud detection (cached after first call)
+      const fp = await getDeviceFingerprint();
+
       // Submit receipt with GPS coordinates + uploadToken
       const submitData: ReceiptSubmitRequest = {
         uploadToken: uploadResponse.data.uploadToken,
@@ -253,6 +257,7 @@ const ReceiptScannerScreen = ({ navigation, route }: any) => {
         venueId,
         ocrData,
         ocrConfidence: ocrData?.confidence || 0,
+        deviceFingerprint: fp,
       };
 
       const submitResponse = await ReceiptsApi.submitReceipt(submitData);

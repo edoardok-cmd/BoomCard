@@ -5,7 +5,9 @@
  * inside the API process. Jobs are also runnable as one-off scripts via npx tsx.
  *
  * Schedule:
- *   cashback-expiry        — 0 2 * * *  (2 AM every day)
+ *   cashback-expiry          — 0 2 * * *   (2 AM every day)
+ *   upload-token-cleanup     — 30 3 * * *  (3:30 AM every day)
+ *   stale-session-cleanup    — 15 7 * * *  (7:15 AM every day — after the 6 AM deadline)
  */
 
 import cron from 'node-cron';
@@ -147,6 +149,48 @@ async function runCashbackExpiry(): Promise<void> {
   );
 }
 
+// ── Upload token cleanup ──────────────────────────────────────────────────────
+
+async function purgeExpiredUploadTokens(): Promise<void> {
+  const now = new Date();
+  logger.info(`[upload-token-cleanup] Starting run at ${now.toISOString()}`);
+
+  const { count } = await prisma.receiptUploadToken.deleteMany({
+    where: { expiresAt: { lt: now } },
+  });
+
+  logger.info(`[upload-token-cleanup] Purged ${count} expired token(s)`);
+}
+
+// ── Stale session cleanup ─────────────────────────────────────────────────
+// SESSION_ACTIVE sticker scans that were never completed (user scanned QR but
+// never submitted a receipt). Runs at 7:15 AM Sofia, well after the 6 AM deadline.
+
+async function expireStaleSessions(): Promise<void> {
+  const now = new Date();
+  logger.info(`[stale-session-cleanup] Starting run at ${now.toISOString()}`);
+
+  // The per-session deadline is "6 AM Sofia the calendar day after the scan".
+  // The maximum possible wait is ~30 hours (scan at 23:59 → deadline next day 06:00).
+  // We use a 36-hour cutoff from now: any SESSION_ACTIVE scan older than 36 hours has
+  // definitely passed its deadline regardless of timezone or DST transitions. This is
+  // slightly conservative (sessions linger 6 hours past deadline at worst) but avoids
+  // all timezone edge cases.
+  const cutoff = new Date(now.getTime() - 36 * 60 * 60 * 1000);
+
+  const { count } = await prisma.stickerScan.updateMany({
+    where: {
+      status: 'SESSION_ACTIVE' as any,
+      createdAt: { lt: cutoff },
+    },
+    data: {
+      status: 'EXPIRED' as any,
+    },
+  });
+
+  logger.info(`[stale-session-cleanup] Expired ${count} stale session(s)`);
+}
+
 // ── Registration ───────────────────────────────────────────────────────────────
 
 export function registerScheduledJobs(): void {
@@ -165,4 +209,23 @@ export function registerScheduledJobs(): void {
   }, { timezone: 'Europe/Sofia' });
 
   logger.info('[scheduler] Registered: cashback-expiry (0 2 * * *)');
+
+  // 3:30 AM every day — purge expired upload tokens (already past 1h TTL)
+  cron.schedule('30 3 * * *', () => {
+    purgeExpiredUploadTokens().catch((err) =>
+      logger.error('[upload-token-cleanup] Unhandled error in scheduled run:', err)
+    );
+  }, { timezone: 'Europe/Sofia' });
+
+  logger.info('[scheduler] Registered: upload-token-cleanup (30 3 * * *)');
+
+  // 7:15 AM every day — expire SESSION_ACTIVE sticker scans past their deadline
+  // Runs after the 6 AM Sofia deadline so all expired sessions are caught.
+  cron.schedule('15 7 * * *', () => {
+    expireStaleSessions().catch((err) =>
+      logger.error('[stale-session-cleanup] Unhandled error in scheduled run:', err)
+    );
+  }, { timezone: 'Europe/Sofia' });
+
+  logger.info('[scheduler] Registered: stale-session-cleanup (15 7 * * *)');
 }

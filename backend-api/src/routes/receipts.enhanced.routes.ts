@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import { Router, Request, Response } from 'express';
 import multer from 'multer';
 import { receiptService } from '../services/receipt.service';
@@ -164,6 +165,7 @@ router.post(
       latitude,
       longitude,
       metadata,
+      deviceFingerprint: rawDeviceFp,
     } = req.body;
 
     // Require the opaque upload token issued by /upload. Client-supplied hash
@@ -251,6 +253,21 @@ router.post(
       }
     }
 
+    // Compute device fingerprint hash server-side from client-supplied components.
+    // The canonical JSON ensures consistent hashing regardless of key order.
+    let deviceFingerprintHash: string | undefined;
+    let deviceFingerprintRaw: string | undefined;
+    if (rawDeviceFp && typeof rawDeviceFp === 'object') {
+      const canonical = JSON.stringify({
+        installationId: rawDeviceFp.installationId || '',
+        platform: rawDeviceFp.platform || '',
+        osVersion: rawDeviceFp.osVersion || '',
+        appVersion: rawDeviceFp.appVersion || '',
+      });
+      deviceFingerprintHash = crypto.createHash('sha256').update(canonical).digest('hex');
+      deviceFingerprintRaw = canonical;
+    }
+
     // Process receipt with fraud detection and cashback calculation
     const result = await receiptService.submitReceipt({
       userId:         req.user!.id,
@@ -266,6 +283,8 @@ router.post(
       ipAddress:  req.ip,
       userAgent:  req.headers['user-agent'],
       metadata,
+      deviceFingerprint: deviceFingerprintHash,
+      deviceFingerprintRaw,
     });
 
     res.status(201).json(result);

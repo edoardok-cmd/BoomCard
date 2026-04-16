@@ -115,6 +115,18 @@ export const PERCEPTUAL_HASH_CLOSE_THRESHOLD = 10;
 /** Hamming distance (bits) at or below which two dHash hexes are considered visually similar. */
 export const PERCEPTUAL_HASH_MODERATE_THRESHOLD = 20;
 
+// ── Device Fingerprint Detection ──────────────────────────────────────────────
+/** Lookback window (ms) for device fingerprint history. */
+export const DEVICE_FINGERPRINT_LOOKBACK_MS = 90 * 24 * 60 * 60 * 1000; // 90 days
+/** Minimum submissions with a device before it's considered "familiar". */
+export const DEVICE_FINGERPRINT_FAMILIAR_THRESHOLD = 3;
+/** Fraud points for a brand-new device when user has multiple known devices. */
+export const DEVICE_FINGERPRINT_NEW_MULTI_DEVICE_POINTS = 25;
+/** Fraud points for a brand-new device (first submission or single-device user). */
+export const DEVICE_FINGERPRINT_NEW_POINTS = 15;
+/** Fraud points for a rarely-seen device on a multi-device user. */
+export const DEVICE_FINGERPRINT_RARE_MULTI_DEVICE_POINTS = 15;
+
 export const DEFAULT_TEMPLATE_MATCH_ENABLED      = false;
 export const DEFAULT_TEMPLATE_VISUAL_WEIGHT       = 0.5;
 export const DEFAULT_TEMPLATE_MERCHANT_WEIGHT     = 0.3;

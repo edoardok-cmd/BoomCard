@@ -1,0 +1,529 @@
+import React, { useState, useEffect, useCallback } from 'react';
+import styled from 'styled-components';
+import { useLanguage } from '../contexts/LanguageContext';
+import { fraudAdminService } from '../services/fraudAdmin.service';
+import { apiService } from '../services/api.service';
+import type { VenueFraudConfig } from '../types/fraud.types';
+import { Shield, ChevronDown, ChevronRight, Save, Search, Loader } from 'lucide-react';
+
+// ─────────────────────── Styled Components ───────────────────────
+
+const PageContainer = styled.div`
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 2rem;
+`;
+
+const PageHeader = styled.div`
+  margin-bottom: 2rem;
+`;
+
+const Title = styled.h1`
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--color-text-primary);
+  margin: 0 0 0.5rem 0;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  svg { color: var(--color-text-secondary); }
+`;
+
+const VenueSelector = styled.div`
+  background: var(--color-background);
+  border: 2px solid var(--color-border);
+  border-radius: 1rem;
+  padding: 1.5rem;
+  margin-bottom: 2rem;
+`;
+
+const VenueSelectorLabel = styled.label`
+  display: block;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  margin-bottom: 0.5rem;
+`;
+
+const SearchWrapper = styled.div`
+  position: relative;
+  margin-bottom: 0.75rem;
+  svg {
+    position: absolute;
+    left: 0.75rem;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 16px;
+    height: 16px;
+    color: var(--color-text-secondary);
+  }
+`;
+
+const SearchInput = styled.input`
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.625rem 0.875rem 0.625rem 2.25rem;
+  border: 2px solid var(--color-border);
+  border-radius: 0.75rem;
+  font-size: 0.9rem;
+  background: var(--color-background);
+  color: var(--color-text-primary);
+  &:focus { outline: none; border-color: #000; }
+`;
+
+const VenueSelect = styled.select`
+  width: 100%;
+  padding: 0.625rem 0.875rem;
+  border: 2px solid var(--color-border);
+  border-radius: 0.75rem;
+  font-size: 0.9rem;
+  background: var(--color-background);
+  color: var(--color-text-primary);
+  cursor: pointer;
+  &:focus { outline: none; border-color: #000; }
+`;
+
+const SectionHeader = styled.button<{ $expanded: boolean }>`
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 1rem 1.25rem;
+  background: var(--color-background);
+  border: 2px solid var(--color-border);
+  border-radius: ${p => p.$expanded ? '1rem 1rem 0 0' : '1rem'};
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--color-text-primary);
+  cursor: pointer;
+  transition: all 0.15s;
+  text-align: left;
+  &:hover { background: rgba(0,0,0,0.02); }
+  svg { width: 18px; height: 18px; color: var(--color-text-secondary); flex-shrink: 0; }
+`;
+
+const FormSection = styled.div<{ $expanded: boolean }>`
+  display: ${p => p.$expanded ? 'block' : 'none'};
+  background: var(--color-background);
+  border: 2px solid var(--color-border);
+  border-top: none;
+  border-radius: 0 0 1rem 1rem;
+  padding: 1.25rem;
+  margin-bottom: 1rem;
+`;
+
+const SectionWrapper = styled.div`
+  margin-bottom: 1rem;
+`;
+
+const FormRow = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid var(--color-border);
+  &:last-child { border-bottom: none; }
+`;
+
+const FormLabel = styled.label`
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  flex: 1;
+  min-width: 0;
+`;
+
+const FormInput = styled.input`
+  width: 140px;
+  padding: 0.5rem 0.75rem;
+  border: 2px solid var(--color-border);
+  border-radius: 0.5rem;
+  font-size: 0.9rem;
+  text-align: right;
+  background: var(--color-background);
+  color: var(--color-text-primary);
+  &:focus { outline: none; border-color: #000; }
+`;
+
+const FormCheckbox = styled.input`
+  width: 20px;
+  height: 20px;
+  cursor: pointer;
+  accent-color: #000;
+`;
+
+const SaveButton = styled.button`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 1rem;
+  margin-top: 1rem;
+  background: #000;
+  color: #fff;
+  border: none;
+  border-radius: 0.75rem;
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s;
+  &:hover:not(:disabled) { box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
+  &:disabled { opacity: 0.45; cursor: not-allowed; }
+  svg { width: 18px; height: 18px; }
+`;
+
+const EmptyState = styled.div`
+  text-align: center;
+  padding: 4rem 2rem;
+  background: var(--color-background);
+  border: 2px dashed var(--color-border);
+  border-radius: 1rem;
+  color: var(--color-text-secondary);
+`;
+
+const SpinnerWrapper = styled.div`
+  display: flex;
+  justify-content: center;
+  padding: 4rem;
+  svg {
+    animation: spin 1s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+`;
+
+const Toast = styled.div<{ $ok: boolean }>`
+  position: fixed; top: 1.5rem; right: 1.5rem; z-index: 2000;
+  background: ${p => p.$ok ? '#10b981' : '#dc2626'};
+  color: #fff;
+  padding: 0.75rem 1.5rem;
+  border-radius: 0.75rem;
+  font-weight: 600;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+`;
+
+// ─────────────────────── Defaults ───────────────────────
+
+// Must match the Prisma schema defaults for VenueFraudConfig so the admin
+// sees the same values a freshly-created row would contain.
+const DEFAULT_CONFIG: Omit<VenueFraudConfig, 'id' | 'venueId' | 'partnerId' | 'isActive' | 'metadata' | 'createdAt' | 'updatedAt'> = {
+  cashbackPercent: 5,
+  premiumBonus: 2,
+  platinumBonus: 5,
+  minBillAmount: 0,
+  maxCashbackPerScan: 0,
+  maxScansPerDay: 999999,
+  maxScansPerMonth: 999999,
+  gpsVerificationEnabled: true,
+  gpsRadiusMeters: 100,
+  ocrVerificationEnabled: true,
+  autoApproveThreshold: 30,
+  autoRejectThreshold: 60,
+  templateMatchEnabled: false,
+  templateVisualWeight: 0.5,
+  templateMerchantWeight: 0.3,
+  templateKeywordWeight: 0.2,
+  templateMinSimilarity: 0.6,
+  templateFraudPoints: 20,
+  templateMerchantThreshold: 0.8,
+};
+
+// ─────────────────────── Component ───────────────────────
+
+interface Venue {
+  id: string;
+  businessName: string;
+}
+
+type SectionKey = 'cashback' | 'rateLimit' | 'fraud' | 'template';
+
+export const AdminVenueFraudConfigPage: React.FC = () => {
+  const { language } = useLanguage();
+
+  // Venues
+  const [venues, setVenues] = useState<Venue[]>([]);
+  const [venueSearch, setVenueSearch] = useState('');
+  const [selectedVenueId, setSelectedVenueId] = useState('');
+
+  // Config form
+  const [formData, setFormData] = useState({ ...DEFAULT_CONFIG });
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [configLoaded, setConfigLoaded] = useState(false);
+
+  // UI
+  const [expandedSections, setExpandedSections] = useState<Record<SectionKey, boolean>>({
+    cashback: true,
+    rateLimit: true,
+    fraud: true,
+    template: false,
+  });
+  const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
+
+  const notify = (msg: string, ok = true) => {
+    setToast({ msg, ok });
+    setTimeout(() => setToast(null), 3500);
+  };
+
+  // ── Load venues on mount ──────────────────────────────────────
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await apiService.get<{ success: boolean; data: Venue[] }>('/partners');
+        if (res.data) setVenues(res.data);
+      } catch (err) {
+        console.error('Failed to load venues:', err);
+      }
+    })();
+  }, []);
+
+  // ── Load config when venue changes ────────────────────────────
+  const loadConfig = useCallback(async (venueId: string) => {
+    if (!venueId) return;
+    setLoading(true);
+    setConfigLoaded(false);
+    try {
+      const res = await fraudAdminService.getVenueConfig(venueId);
+      if (res.success && res.data) {
+        const d = res.data;
+        setFormData({
+          cashbackPercent: d.cashbackPercent,
+          premiumBonus: d.premiumBonus,
+          platinumBonus: d.platinumBonus,
+          minBillAmount: d.minBillAmount,
+          maxCashbackPerScan: d.maxCashbackPerScan ?? 0,
+          maxScansPerDay: d.maxScansPerDay,
+          maxScansPerMonth: d.maxScansPerMonth,
+          gpsVerificationEnabled: d.gpsVerificationEnabled,
+          gpsRadiusMeters: d.gpsRadiusMeters,
+          ocrVerificationEnabled: d.ocrVerificationEnabled,
+          autoApproveThreshold: d.autoApproveThreshold,
+          autoRejectThreshold: d.autoRejectThreshold,
+          templateMatchEnabled: d.templateMatchEnabled,
+          templateVisualWeight: d.templateVisualWeight,
+          templateMerchantWeight: d.templateMerchantWeight,
+          templateKeywordWeight: d.templateKeywordWeight,
+          templateMinSimilarity: d.templateMinSimilarity,
+          templateFraudPoints: d.templateFraudPoints,
+          templateMerchantThreshold: d.templateMerchantThreshold,
+        });
+      }
+      setConfigLoaded(true);
+    } catch (err) {
+      console.error('Failed to load venue config:', err);
+      setFormData({ ...DEFAULT_CONFIG });
+      setConfigLoaded(true);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (selectedVenueId) loadConfig(selectedVenueId);
+  }, [selectedVenueId, loadConfig]);
+
+  // ── Handlers ──────────────────────────────────────────────────
+  const handleNumberChange = (field: string, value: string) => {
+    setFormData(prev => ({ ...prev, [field]: value === '' ? 0 : Number(value) }));
+  };
+
+  const handleCheckboxChange = (field: string, checked: boolean) => {
+    setFormData(prev => ({ ...prev, [field]: checked }));
+  };
+
+  const toggleSection = (key: SectionKey) => {
+    setExpandedSections(prev => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const handleSave = async () => {
+    if (!selectedVenueId) return;
+    setSaving(true);
+    try {
+      await fraudAdminService.updateVenueConfig(selectedVenueId, formData);
+      notify(language === 'bg' ? 'Конфигурацията е запазена' : 'Configuration saved');
+    } catch (err) {
+      console.error('Failed to save config:', err);
+      notify(language === 'bg' ? 'Грешка при запазване' : 'Failed to save', false);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // ── Filtered venues ───────────────────────────────────────────
+  const filteredVenues = venues.filter(v =>
+    v.businessName.toLowerCase().includes(venueSearch.toLowerCase())
+  );
+
+  // ── Section rendering helper ──────────────────────────────────
+  const renderSection = (
+    key: SectionKey,
+    title: string,
+    titleBg: string,
+    children: React.ReactNode
+  ) => (
+    <SectionWrapper key={key}>
+      <SectionHeader
+        $expanded={expandedSections[key]}
+        onClick={() => toggleSection(key)}
+        type="button"
+      >
+        {expandedSections[key] ? <ChevronDown /> : <ChevronRight />}
+        {language === 'bg' ? titleBg : title}
+      </SectionHeader>
+      <FormSection $expanded={expandedSections[key]}>
+        {children}
+      </FormSection>
+    </SectionWrapper>
+  );
+
+  const renderNumberField = (
+    field: string,
+    label: string,
+    labelBg: string,
+    step: number,
+    min?: number,
+    max?: number
+  ) => (
+    <FormRow key={field}>
+      <FormLabel>{language === 'bg' ? labelBg : label}</FormLabel>
+      <FormInput
+        type="number"
+        step={step}
+        min={min}
+        max={max}
+        value={(formData as any)[field]}
+        onChange={e => handleNumberChange(field, e.target.value)}
+      />
+    </FormRow>
+  );
+
+  const renderCheckboxField = (
+    field: string,
+    label: string,
+    labelBg: string
+  ) => (
+    <FormRow key={field}>
+      <FormLabel>{language === 'bg' ? labelBg : label}</FormLabel>
+      <FormCheckbox
+        type="checkbox"
+        checked={(formData as any)[field]}
+        onChange={e => handleCheckboxChange(field, e.target.checked)}
+      />
+    </FormRow>
+  );
+
+  // ─────────────────────── Render ───────────────────────
+
+  return (
+    <PageContainer>
+      {toast && <Toast $ok={toast.ok}>{toast.msg}</Toast>}
+
+      <PageHeader>
+        <Title>
+          <Shield />
+          {language === 'bg' ? 'Конфигурация за Измами' : 'Venue Fraud Configuration'}
+        </Title>
+      </PageHeader>
+
+      {/* ── Venue Selector ────────────────────────────────── */}
+      <VenueSelector>
+        <VenueSelectorLabel>
+          {language === 'bg' ? 'Изберете обект' : 'Select Venue'}
+        </VenueSelectorLabel>
+        <SearchWrapper>
+          <Search />
+          <SearchInput
+            type="text"
+            placeholder={language === 'bg' ? 'Търсене на обект...' : 'Search venues...'}
+            value={venueSearch}
+            onChange={e => setVenueSearch(e.target.value)}
+          />
+        </SearchWrapper>
+        <VenueSelect
+          value={selectedVenueId}
+          onChange={e => setSelectedVenueId(e.target.value)}
+        >
+          <option value="">
+            {language === 'bg' ? '-- Изберете обект --' : '-- Select a venue --'}
+          </option>
+          {filteredVenues.map(v => (
+            <option key={v.id} value={v.id}>{v.businessName}</option>
+          ))}
+        </VenueSelect>
+      </VenueSelector>
+
+      {/* ── States ────────────────────────────────────────── */}
+      {!selectedVenueId && (
+        <EmptyState>
+          {language === 'bg'
+            ? 'Изберете обект, за да видите конфигурацията'
+            : 'Select a venue to view its fraud configuration'}
+        </EmptyState>
+      )}
+
+      {selectedVenueId && loading && (
+        <SpinnerWrapper>
+          <Loader size={40} />
+        </SpinnerWrapper>
+      )}
+
+      {/* ── Config Form ───────────────────────────────────── */}
+      {selectedVenueId && !loading && configLoaded && (
+        <>
+          {/* Section 1: Cashback Settings */}
+          {renderSection('cashback', 'Cashback Settings', 'Настройки за кешбек', (
+            <>
+              {renderNumberField('cashbackPercent', 'Cashback Percent (%)', 'Процент кешбек (%)', 0.1, 0)}
+              {renderNumberField('premiumBonus', 'Premium Bonus (%)', 'Премиум бонус (%)', 0.1, 0)}
+              {renderNumberField('platinumBonus', 'Platinum Bonus (%)', 'Платинен бонус (%)', 0.1, 0)}
+              {renderNumberField('minBillAmount', 'Min Bill Amount (BGN)', 'Мин. сума на сметка (лв)', 1, 0)}
+              {renderNumberField('maxCashbackPerScan', 'Max Cashback Per Scan (0 = unlimited)', 'Макс. кешбек на скан (0 = неограничен)', 1, 0)}
+            </>
+          ))}
+
+          {/* Section 2: Rate Limiting */}
+          {renderSection('rateLimit', 'Rate Limiting', 'Ограничения', (
+            <>
+              {renderNumberField('maxScansPerDay', 'Max Scans Per Day', 'Макс. сканирания на ден', 1, 1)}
+              {renderNumberField('maxScansPerMonth', 'Max Scans Per Month', 'Макс. сканирания на месец', 1, 1)}
+            </>
+          ))}
+
+          {/* Section 3: Fraud Detection */}
+          {renderSection('fraud', 'Fraud Detection', 'Разпознаване на измами', (
+            <>
+              {renderCheckboxField('gpsVerificationEnabled', 'GPS Verification Enabled', 'GPS верификация')}
+              {renderNumberField('gpsRadiusMeters', 'GPS Radius (meters)', 'GPS радиус (метри)', 50, 0)}
+              {renderCheckboxField('ocrVerificationEnabled', 'OCR Verification Enabled', 'OCR верификация')}
+              {renderNumberField('autoApproveThreshold', 'Auto-Approve Threshold (0-100)', 'Праг за авто-одобрение (0-100)', 1, 0, 100)}
+              {renderNumberField('autoRejectThreshold', 'Auto-Reject Threshold (0-100)', 'Праг за авто-отхвърляне (0-100)', 1, 0, 100)}
+            </>
+          ))}
+
+          {/* Section 4: Template Matching */}
+          {renderSection('template', 'Template Matching', 'Съпоставяне с шаблон', (
+            <>
+              {renderCheckboxField('templateMatchEnabled', 'Template Match Enabled', 'Активно съпоставяне с шаблон')}
+              {renderNumberField('templateVisualWeight', 'Visual Weight (0-1)', 'Визуално тегло (0-1)', 0.05, 0, 1)}
+              {renderNumberField('templateMerchantWeight', 'Merchant Weight (0-1)', 'Тегло на търговец (0-1)', 0.05, 0, 1)}
+              {renderNumberField('templateKeywordWeight', 'Keyword Weight (0-1)', 'Тегло на ключови думи (0-1)', 0.05, 0, 1)}
+              {renderNumberField('templateMinSimilarity', 'Min Similarity (0-1)', 'Мин. сходство (0-1)', 0.05, 0, 1)}
+              {renderNumberField('templateFraudPoints', 'Fraud Points', 'Точки за измама', 5, 0)}
+              {renderNumberField('templateMerchantThreshold', 'Merchant Threshold (0-1)', 'Праг на търговец (0-1)', 0.05, 0, 1)}
+            </>
+          ))}
+
+          {/* Save Button */}
+          <SaveButton onClick={handleSave} disabled={saving}>
+            {saving ? <Loader size={18} /> : <Save />}
+            {saving
+              ? (language === 'bg' ? 'Запазване...' : 'Saving...')
+              : (language === 'bg' ? 'Запази конфигурация' : 'Save Configuration')}
+          </SaveButton>
+        </>
+      )}
+    </PageContainer>
+  );
+};
+
+export default AdminVenueFraudConfigPage;
