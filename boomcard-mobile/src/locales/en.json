@@ -73,7 +73,7 @@
     "joinBoomCard": "Join BOOM Card today!",
     "firstNamePlaceholder": "First Name *",
     "lastNamePlaceholder": "Last Name *",
-    "phonePlaceholder": "Phone (optional)",
+    "phonePlaceholder": "Phone *",
     "confirmPasswordPlaceholder": "Confirm Password *",
     "fillRequiredFields": "Please fill in all required fields",
     "createAccountButton": "Create Account",

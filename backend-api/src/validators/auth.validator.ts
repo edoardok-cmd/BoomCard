@@ -48,7 +48,8 @@ export const registerValidation = [
     .withMessage('Last name must be 2-50 characters'),
 
   body('phone')
-    .optional({ values: 'falsy' })
+    .notEmpty()
+    .withMessage('Phone number is required')
     .trim()
     .matches(PHONE_REGEX)
     .withMessage('Invalid phone number format. Use +359XXXXXXXXX or 0XXXXXXXXX'),

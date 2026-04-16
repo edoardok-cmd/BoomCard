@@ -384,9 +384,9 @@ enum WalletTransactionStatus {
 }
 
 enum SubscriptionPlan {
-  LIGHT    // Premium Weekly - €6.99/week, up to 24% cashback, min payout €10
+  LIGHT    // Premium Weekly - €6.99/week, up to 20% cashback, min payout €10
   BASIC    // Basic - €8.99/month, up to 10% cashback, min payout €20
-  PREMIUM  // Premium - €13.99/month, up to 24% cashback, min payout €15
+  PREMIUM  // Premium - €13.99/month, up to 20% cashback, min payout €15
 }
 
 enum SubscriptionStatus {

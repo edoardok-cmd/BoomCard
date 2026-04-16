@@ -18,10 +18,21 @@ export const validateEmail = (email: string): string | null => {
 };
 
 /**
- * Validate Bulgarian phone number. Phone is optional — returns null if empty.
+ * Validate Bulgarian phone number. Phone is required.
  * Strips spaces/dashes before checking against strict regex.
  */
 export const validatePhone = (phone: string): string | null => {
+  if (!phone || phone.trim() === '') return 'required';
+  const cleaned = phone.replace(/[\s-]/g, '');
+  if (!PHONE_REGEX.test(cleaned)) return 'invalid';
+  return null;
+};
+
+/**
+ * Validate Bulgarian phone number. Phone is optional — returns null if empty.
+ * Used for profile editing where existing users may not have a phone.
+ */
+export const validatePhoneOptional = (phone: string): string | null => {
   if (!phone || phone.trim() === '') return null;
   const cleaned = phone.replace(/[\s-]/g, '');
   if (!PHONE_REGEX.test(cleaned)) return 'invalid';

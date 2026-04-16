@@ -135,7 +135,12 @@ const RegisterScreen = ({ navigation, route }: any) => {
       return;
     }
 
-    if (validatePhone(formData.phone || '')) {
+    const phoneResult = validatePhone(formData.phone || '');
+    if (phoneResult === 'required') {
+      crossPlatformAlert(t('common.error'), t('auth.fillRequiredFields'));
+      return;
+    }
+    if (phoneResult === 'invalid') {
       crossPlatformAlert(t('common.error'), t('auth.invalidPhone'));
       return;
     }
@@ -164,14 +169,14 @@ const RegisterScreen = ({ navigation, route }: any) => {
         );
       }
 
-      // Normalize phone before sending (strip spaces/dashes, convert empty to undefined)
+      // Normalize phone before sending (strip spaces/dashes)
       const registrationData = {
         ...formData,
-        phone: normalizePhone(formData.phone || ''),
+        phone: normalizePhone(formData.phone || '') || formData.phone,
       };
 
       if (__DEV__) console.log('Starting registration with data:', { ...registrationData, password: '***' });
-      await register(registrationData as any);
+      await register(registrationData);
       if (__DEV__) console.log('Registration successful!');
 
       // After registration:

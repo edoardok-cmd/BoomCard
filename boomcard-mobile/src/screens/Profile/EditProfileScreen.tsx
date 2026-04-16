@@ -18,7 +18,7 @@ import { useTranslation } from 'react-i18next';
 import { crossPlatformAlert } from '../../utils/alert';
 import { useAuth } from '../../store/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
-import { validateName, validatePhone, normalizePhone, filterPhoneInput } from '../../utils/validation';
+import { validateName, validatePhoneOptional, normalizePhone, filterPhoneInput } from '../../utils/validation';
 import { walletApi } from '../../api/wallet.api';
 
 const EditProfileScreen = ({ navigation }: any) => {
@@ -82,7 +82,7 @@ const EditProfileScreen = ({ navigation }: any) => {
       crossPlatformAlert(t('common.error'), t('profile.lastNameRequired'));
       return;
     }
-    if (validatePhone(formData.phone)) {
+    if (validatePhoneOptional(formData.phone)) {
       crossPlatformAlert(t('common.error'), t('profile.invalidPhone'));
       return;
     }
