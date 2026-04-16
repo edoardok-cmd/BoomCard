@@ -355,6 +355,26 @@ const Input = styled.input`
   }
 `;
 
+const Textarea = styled.textarea`
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border: 2px solid var(--color-border);
+  border-radius: 0.75rem;
+  font-size: 0.9375rem;
+  transition: all 200ms;
+  box-sizing: border-box;
+  background: var(--color-background);
+  color: var(--color-text-primary);
+  resize: vertical;
+  min-height: 80px;
+
+  &:focus {
+    outline: none;
+    border-color: #dc2626;
+    box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.1);
+  }
+`;
+
 const Select = styled.select`
   width: 100%;
   padding: 0.75rem 1rem;
@@ -378,6 +398,28 @@ const FieldHint = styled.p`
   font-size: 0.8125rem;
   color: var(--color-text-secondary);
   margin-top: 0.375rem;
+`;
+
+const CategoryChips = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+`;
+
+const CategoryChip = styled.button<{ $selected: boolean }>`
+  padding: 0.375rem 0.875rem;
+  border-radius: 999px;
+  font-size: 0.875rem;
+  cursor: pointer;
+  border: 2px solid ${({ $selected }) => ($selected ? 'var(--color-primary, #6366f1)' : 'var(--color-border, #e5e7eb)')};
+  background: ${({ $selected }) => ($selected ? 'var(--color-primary, #6366f1)' : 'transparent')};
+  color: ${({ $selected }) => ($selected ? '#fff' : 'var(--color-text-primary)')};
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+
+  &:hover {
+    border-color: var(--color-primary, #6366f1);
+  }
 `;
 
 const ModalFooter = styled.div`
@@ -867,11 +909,10 @@ const LocationManager: React.FC<LocationManagerProps> = ({ locations, onChange, 
 
 // ─── Create Form ──────────────────────────────────────────────────────────────
 
-const emptyCreate: Omit<OnboardPartnerPayload, 'discountRate' | 'locations'> & { discountRate: string } = {
+const emptyCreate: Omit<OnboardPartnerPayload, 'category' | 'categories' | 'discountRate' | 'locations'> & { discountRate: string } = {
   email: '',
   businessName: '',
   businessNameBg: '',
-  category: '',
   description: '',
   descriptionBg: '',
   partnerTypeId: '',
@@ -902,6 +943,7 @@ const AdminPartnersPage: React.FC = () => {
   // Create modal
   const [showCreate, setShowCreate] = useState(false);
   const [createForm, setCreateForm] = useState(emptyCreate);
+  const [createCategories, setCreateCategories] = useState<string[]>([]);
   const [createLocations, setCreateLocations] = useState<PartnerLocationInput[]>([]);
 
   // Edit modal
@@ -947,6 +989,7 @@ const AdminPartnersPage: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ['admin-partners'] });
       setShowCreate(false);
       setCreateForm(emptyCreate);
+      setCreateCategories([]);
       setCreateLocations([]);
     },
     onError: (err: any) => {
@@ -1019,7 +1062,7 @@ const AdminPartnersPage: React.FC = () => {
 
   const handleCreateSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!createForm.email || !createForm.businessName || !createForm.category) return;
+    if (!createForm.email || !createForm.businessName || createCategories.length === 0) return;
     // Validate locations: every added location must have name, address, and city
     for (const loc of createLocations) {
       if (!loc.name.trim() || !loc.address.trim() || !loc.city.trim()) {
@@ -1032,6 +1075,8 @@ const AdminPartnersPage: React.FC = () => {
     const rate = parseFloat(createForm.discountRate);
     createMutation.mutate({
       ...createForm,
+      category: createCategories[0],
+      categories: createCategories,
       discountRate: isNaN(rate) ? undefined : rate,
       locations: createLocations.length > 0 ? createLocations : undefined,
     });
@@ -1478,7 +1523,7 @@ const AdminPartnersPage: React.FC = () => {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            onClick={e => { if (e.target === e.currentTarget) { setShowCreate(false); setCreateForm(emptyCreate); setCreateLocations([]); } }}
+            onClick={e => { if (e.target === e.currentTarget) { setShowCreate(false); setCreateForm(emptyCreate); setCreateCategories([]); setCreateLocations([]); } }}
           >
             <Modal
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
@@ -1527,20 +1572,29 @@ const AdminPartnersPage: React.FC = () => {
                     />
                   </FormField>
 
-                  <FormField>
+                  <FormField $full>
                     <Label>
-                      {language === 'bg' ? 'Категория' : 'Category'} <Required>*</Required>
+                      {language === 'bg' ? 'Категории' : 'Categories'} <Required>*</Required>
                     </Label>
-                    <Select
-                      value={createForm.category}
-                      onChange={e => handleCreateField('category', e.target.value)}
-                      required
-                    >
-                      <option value="">{language === 'bg' ? 'Изберете категория' : 'Select category'}</option>
+                    <CategoryChips>
                       {PARTNER_CATEGORIES.map(cat => (
-                        <option key={cat} value={cat}>{cat}</option>
+                        <CategoryChip
+                          key={cat}
+                          type="button"
+                          $selected={createCategories.includes(cat)}
+                          onClick={() => setCreateCategories(prev =>
+                            prev.includes(cat) ? prev.filter(c => c !== cat) : [...prev, cat]
+                          )}
+                        >
+                          {cat}
+                        </CategoryChip>
                       ))}
-                    </Select>
+                    </CategoryChips>
+                    {createCategories.length > 0 && (
+                      <FieldHint>
+                        {language === 'bg' ? `Избрано: ${createCategories.join(', ')}` : `Selected: ${createCategories.join(', ')}`}
+                      </FieldHint>
+                    )}
                   </FormField>
 
                   <FormField>
@@ -1592,6 +1646,24 @@ const AdminPartnersPage: React.FC = () => {
                   </FormField>
 
                   <FormField $full>
+                    <Label>{language === 'bg' ? 'Описание (EN)' : 'Description (EN)'}</Label>
+                    <Textarea
+                      value={createForm.description}
+                      onChange={e => handleCreateField('description', e.target.value)}
+                      placeholder={language === 'bg' ? 'Кратко описание на бизнеса...' : 'Short business description...'}
+                    />
+                  </FormField>
+
+                  <FormField $full>
+                    <Label>{language === 'bg' ? 'Описание (БГ)' : 'Description (BG)'}</Label>
+                    <Textarea
+                      value={createForm.descriptionBg}
+                      onChange={e => handleCreateField('descriptionBg', e.target.value)}
+                      placeholder={language === 'bg' ? 'Кратко описание на бизнеса на български...' : 'Short business description in Bulgarian...'}
+                    />
+                  </FormField>
+
+                  <FormField $full>
                     <LocationManager
                       locations={createLocations}
                       onChange={setCreateLocations}
@@ -1606,10 +1678,10 @@ const AdminPartnersPage: React.FC = () => {
                 </FormGrid>
 
                 <ModalFooter>
-                  <CancelButton type="button" onClick={() => { setShowCreate(false); setCreateForm(emptyCreate); setCreateLocations([]); }}>
+                  <CancelButton type="button" onClick={() => { setShowCreate(false); setCreateForm(emptyCreate); setCreateCategories([]); setCreateLocations([]); }}>
                     {language === 'bg' ? 'Отказ' : 'Cancel'}
                   </CancelButton>
-                  <SubmitButton type="submit" disabled={!createForm.email || createMutation.isPending}>
+                  <SubmitButton type="submit" disabled={!createForm.email || createCategories.length === 0 || createMutation.isPending}>
                     {createMutation.isPending
                       ? (language === 'bg' ? 'Създаване...' : 'Creating...')
                       : (language === 'bg' ? 'Създай Партньор' : 'Create Partner')}

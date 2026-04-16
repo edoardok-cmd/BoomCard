@@ -807,6 +807,7 @@ router.post(
           businessNameBg: businessNameBg || null,
           category,
           description: description || null,
+          descriptionBg: descriptionBg || null,
           city: city || null,
           region: region || null,
           address: address || null,
