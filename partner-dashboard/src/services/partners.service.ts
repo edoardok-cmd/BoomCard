@@ -82,6 +82,23 @@ export interface CreatePartnerPayload {
   locations?: PartnerLocationInput[];
 }
 
+export interface OnboardPartnerPayload {
+  email: string;
+  businessName: string;
+  businessNameBg?: string;
+  category: string;
+  description?: string;
+  descriptionBg?: string;
+  partnerTypeId?: string;
+  discountRate?: number;
+  city?: string;
+  region?: string;
+  address?: string;
+  phone?: string;
+  website?: string;
+  locations?: PartnerLocationInput[];
+}
+
 export interface PartnerUserOption {
   id: string;
   firstName: string;
@@ -208,6 +225,10 @@ class PartnersService {
    */
   async createPartner(data: CreatePartnerPayload): Promise<Partner> {
     return apiService.post<Partner>(this.baseUrl, data);
+  }
+
+  async onboardPartner(data: OnboardPartnerPayload): Promise<Partner> {
+    return apiService.post<Partner>(`${this.baseUrl}/onboard`, data);
   }
 
   /**
