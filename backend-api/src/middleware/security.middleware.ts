@@ -436,6 +436,7 @@ export const csrfProtection = (skipPaths: string[] = []) => {
         'https://boomcard.eu',
         'https://boomcard.bg',
         'https://mobile.boomcard.bg',
+        'https://boomcard.vercel.app',
         'http://localhost:5173', 'http://localhost:5174', 'http://localhost:5175',
         'http://localhost:5176', 'http://localhost:5177', 'http://localhost:5178',
       ];

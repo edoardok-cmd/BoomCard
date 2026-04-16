@@ -114,8 +114,12 @@ function getCorsOrigins(): string[] {
     return process.env.CORS_ORIGIN.split(',').map(origin => origin.trim());
   }
 
-  // Default development origins
+  // Default origins (production + local dev)
   return [
+    'https://boomcard.eu',
+    'https://boomcard.bg',
+    'https://mobile.boomcard.bg',
+    'https://boomcard.vercel.app',
     'http://localhost:5173',
     'http://localhost:5174',
     'http://localhost:5175',

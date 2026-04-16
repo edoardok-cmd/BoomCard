@@ -4,7 +4,7 @@
  */
 
 import { Router, Response, Request } from 'express';
-import { authenticate, optionalAuthenticate, AuthRequest } from '../middleware/auth.middleware';
+import { authenticate, AuthRequest } from '../middleware/auth.middleware';
 import { asyncHandler } from '../middleware/error.middleware';
 import { payseraService, PayseraService } from '../services/paysera.service';
 import { emailService } from '../services/email.service';
@@ -180,7 +180,7 @@ router.post(
         cancelUrl,
         callbackUrl,
         customerEmail: userDetails.email,
-        customerName: `${userDetails.firstName} ${userDetails.lastName}`,
+        customerName: `${userDetails.firstName || ''} ${userDetails.lastName || ''}`.trim() || userDetails.email,
         paymentMethod,
         lang: 'BUL',
         country: 'BG',
@@ -266,6 +266,8 @@ async function handlePaymentCallback(req: Request, res: Response) {
             select: {
               id: true,
               email: true,
+              firstName: true,
+              lastName: true,
             },
           },
         },
@@ -332,8 +334,9 @@ async function handlePaymentCallback(req: Request, res: Response) {
 
         // Send payment confirmation email
         if (transaction.user?.email) {
+          const txFullName = `${transaction.user.firstName || ''} ${transaction.user.lastName || ''}`.trim();
           emailService.sendPaymentConfirmation(transaction.user.email, {
-            customerName: transaction.user.email.split('@')[0],
+            customerName: txFullName || transaction.user.email.split('@')[0],
             orderId: result.orderId,
             amount: transaction.amount,
             currency: transaction.currency,
@@ -344,7 +347,7 @@ async function handlePaymentCallback(req: Request, res: Response) {
 
           // Send wallet update notification
           emailService.sendWalletUpdate(transaction.user.email, {
-            customerName: transaction.user.email.split('@')[0],
+            customerName: txFullName || transaction.user.email.split('@')[0],
             newBalance: wallet.balance,
             changeAmount: transaction.amount,
             transactionType: 'credit',
@@ -472,8 +475,9 @@ async function handlePaymentCallback(req: Request, res: Response) {
 
         // Send payment failed email
         if (transaction.user?.email) {
+          const txFailedName = `${transaction.user.firstName || ''} ${transaction.user.lastName || ''}`.trim();
           emailService.sendPaymentFailedEmail(transaction.user.email, {
-            customerName: transaction.user.email.split('@')[0],
+            customerName: txFailedName || transaction.user.email.split('@')[0],
             orderId: result.orderId,
             amount: transaction.amount,
             currency: transaction.currency,
@@ -693,6 +697,7 @@ const ALLOWED_REDIRECT_DOMAINS = [
   'boomcard.bg',
   'boomcard.eu',
   'boomcard-api.fly.dev',
+  'boomcard.vercel.app',
 ];
 
 function isAllowedRedirectUrl(url: string): boolean {
@@ -708,9 +713,6 @@ function isAllowedRedirectUrl(url: string): boolean {
 const subscriptionSchema = z.object({
   planId: z.string().uuid(),
   billingPeriod: z.enum(['weekly', 'monthly', 'yearly']),
-  email: z.string().email().optional(),
-  name: z.string().min(1).max(100).optional(),
-  phone: z.string().min(1).max(30).optional(),
   paymentMethod: z.string().min(1).max(50).optional(),
   successUrl: z.string().url().optional(),
   cancelUrl: z.string().url().optional(),
@@ -718,7 +720,7 @@ const subscriptionSchema = z.object({
 
 router.post(
   '/subscription',
-  optionalAuthenticate,
+  authenticate,
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const parseResult = subscriptionSchema.safeParse(req.body);
     if (!parseResult.success) {
@@ -729,8 +731,8 @@ router.post(
       });
     }
 
-    const { planId, billingPeriod, email: guestEmail, name: guestName, phone: guestPhone, paymentMethod, successUrl: clientSuccessUrl, cancelUrl: clientCancelUrl } = parseResult.data;
-    const user = req.user; // May be undefined for guest checkout
+    const { planId, billingPeriod, paymentMethod, successUrl: clientSuccessUrl, cancelUrl: clientCancelUrl } = parseResult.data;
+    const user = req.user!; // authenticate() guarantees user exists
 
     // Fetch plan from database (SOURCE OF TRUTH for pricing)
     const plan = await prisma.plan.findUnique({
@@ -781,83 +783,70 @@ router.post(
     // Generate unique order ID
     const orderId = `BOOM-SUB-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
 
-    let subscriptionId: string | null = null;
-    let customerEmail = guestEmail || '';
-    let customerName = guestName || '';
-    let customerPhone = guestPhone || '';
+    const userDetails = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: { email: true, firstName: true, lastName: true, status: true },
+    });
 
-    if (user) {
-      // Authenticated user flow
-      const userDetails = await prisma.user.findUnique({
+    if (!userDetails) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    // Guard: block users who already have an active subscription.
+    const existingActiveSub = await prisma.subscription.findFirst({
+      where: { userId: user.id, status: { in: [SubscriptionStatus.ACTIVE, SubscriptionStatus.TRIALING] } },
+    });
+    if (existingActiveSub) {
+      return res.status(400).json({
+        success: false,
+        message: 'You already have an active subscription. Please cancel it before subscribing to a new plan.',
+      });
+    }
+
+    const customerEmail = userDetails.email;
+    const customerName = `${userDetails.firstName || ''} ${userDetails.lastName || ''}`.trim() || userDetails.email;
+
+    // Map plan code to subscription enum
+    const subscriptionPlanMap: Record<string, SubscriptionPlan> = {
+      'LIGHT': SubscriptionPlan.LIGHT,
+      'BASIC': SubscriptionPlan.BASIC,
+      'PREMIUM': SubscriptionPlan.PREMIUM,
+    };
+
+    const subscriptionPlan = subscriptionPlanMap[plan.planCode];
+    if (!subscriptionPlan) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid plan code',
+      });
+    }
+
+    // Create pending subscription record
+    const subscription = await prisma.subscription.create({
+      data: {
+        userId: user.id,
+        plan: subscriptionPlan,
+        status: SubscriptionStatus.INCOMPLETE,
+        planId: plan.id,
+        payseraOrderId: orderId,
+        currentPeriodStart: new Date(),
+        currentPeriodEnd: calculatePeriodEnd(billingPeriod),
+        metadata: JSON.stringify({
+          billingPeriod,
+          priceInCents,
+          currency: 'EUR',
+          displayName: plan.displayName,
+        }),
+      },
+    });
+
+    // Only set PENDING_PAYMENT if the user is not already in that state —
+    // avoids a redundant write for users who abandoned a previous checkout.
+    if (userDetails.status !== UserStatus.PENDING_PAYMENT) {
+      await prisma.user.update({
         where: { id: user.id },
-        select: { email: true, firstName: true, lastName: true, status: true },
+        data: { status: UserStatus.PENDING_PAYMENT },
       });
-
-      if (!userDetails) {
-        return res.status(404).json({ success: false, message: 'User not found' });
-      }
-
-      // Guard: block users who already have an active subscription.
-      // Without this guard, calling this endpoint overwrites user.status to PENDING_PAYMENT,
-      // temporarily revoking access for currently-active users. If the payment then fails,
-      // the user stays stuck as PENDING_PAYMENT with no automated recovery.
-      const existingActiveSub = await prisma.subscription.findFirst({
-        where: { userId: user.id, status: { in: [SubscriptionStatus.ACTIVE, SubscriptionStatus.TRIALING] } },
-      });
-      if (existingActiveSub) {
-        return res.status(400).json({
-          success: false,
-          message: 'You already have an active subscription. Please cancel it before subscribing to a new plan.',
-        });
-      }
-
-      customerEmail = userDetails.email;
-      customerName = `${userDetails.firstName || ''} ${userDetails.lastName || ''}`.trim() || userDetails.email;
-
-      // Map plan code to subscription enum
-      const subscriptionPlanMap: Record<string, SubscriptionPlan> = {
-        'LIGHT': SubscriptionPlan.LIGHT,
-        'BASIC': SubscriptionPlan.BASIC,
-        'PREMIUM': SubscriptionPlan.PREMIUM,
-      };
-
-      const subscriptionPlan = subscriptionPlanMap[plan.planCode];
-      if (!subscriptionPlan) {
-        return res.status(400).json({
-          success: false,
-          message: 'Invalid plan code',
-        });
-      }
-
-      // Create pending subscription record
-      const subscription = await prisma.subscription.create({
-        data: {
-          userId: user.id,
-          plan: subscriptionPlan,
-          status: SubscriptionStatus.INCOMPLETE,
-          planId: plan.id,
-          payseraOrderId: orderId,
-          currentPeriodStart: new Date(),
-          currentPeriodEnd: calculatePeriodEnd(billingPeriod),
-          metadata: JSON.stringify({
-            billingPeriod,
-            priceInCents,
-            currency: 'EUR',
-            displayName: plan.displayName,
-          }),
-        },
-      });
-
-      subscriptionId = subscription.id;
-
-      // Only set PENDING_PAYMENT if the user is not already in that state —
-      // avoids a redundant write for users who abandoned a previous checkout.
-      if (userDetails.status !== UserStatus.PENDING_PAYMENT) {
-        await prisma.user.update({
-          where: { id: user.id },
-          data: { status: UserStatus.PENDING_PAYMENT },
-        });
-      }
     }
 
     // Build callback URLs
@@ -878,21 +867,20 @@ router.post(
       acceptUrl,
       cancelUrl,
       callbackUrl,
-      customerEmail: customerEmail || undefined,
-      customerName: customerName || undefined,
-      customerPhone: customerPhone || undefined,
+      customerEmail,
+      customerName,
       paymentMethod,
       lang: 'BUL',
       country: 'BG',
     });
 
-    logger.info(`✅ Subscription payment created: ${orderId} for ${user ? `user ${user.id}` : `guest ${customerEmail || 'anonymous'}`}, plan ${plan.planCode}, ${priceInCents / 100} EUR`);
+    logger.info(`✅ Subscription payment created: ${orderId} for user ${user.id}, plan ${plan.planCode}, ${priceInCents / 100} EUR`);
 
     res.status(201).json({
       success: true,
       data: {
         orderId: payment.orderId,
-        subscriptionId,
+        subscriptionId: subscription.id,
         paymentUrl: payment.paymentUrl,
         plan: {
           code: plan.planCode,
@@ -944,6 +932,7 @@ async function handleSubscriptionCallback(req: Request, res: Response) {
               id: true,
               email: true,
               firstName: true,
+              lastName: true,
             },
           },
           planDetails: true,
@@ -998,8 +987,9 @@ async function handleSubscriptionCallback(req: Request, res: Response) {
         // Send confirmation + activation emails
         if (subscription.user?.email) {
           const planDisplayName = subscription.plan.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+          const fullName = `${subscription.user.firstName || ''} ${subscription.user.lastName || ''}`.trim();
           emailService.sendPaymentConfirmation(subscription.user.email, {
-            customerName: subscription.user.firstName || 'Customer',
+            customerName: fullName || subscription.user.email.split('@')[0],
             orderId: result.orderId,
             amount: result.amount / 100,
             currency: 'EUR',
@@ -1009,7 +999,7 @@ async function handleSubscriptionCallback(req: Request, res: Response) {
           });
 
           emailService.sendSubscriptionActivatedEmail(subscription.user.email, {
-            customerName: subscription.user.firstName || subscription.user.email.split('@')[0],
+            customerName: fullName || subscription.user.email.split('@')[0],
             planName: planDisplayName,
             orderId: result.orderId,
             amount: result.amount / 100,
@@ -1053,8 +1043,9 @@ async function handleSubscriptionCallback(req: Request, res: Response) {
 
         // Send payment failed email
         if (subscription.user?.email) {
+          const fullNameFailed = `${subscription.user.firstName || ''} ${subscription.user.lastName || ''}`.trim();
           emailService.sendPaymentFailedEmail(subscription.user.email, {
-            customerName: subscription.user.firstName || subscription.user.email.split('@')[0],
+            customerName: fullNameFailed || subscription.user.email.split('@')[0],
             orderId: result.orderId,
             amount: result.amount / 100,
             currency: 'EUR',

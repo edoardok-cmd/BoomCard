@@ -10,13 +10,15 @@
  * then processed here when MainNavigator loads.
  */
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
   ActivityIndicator,
   StyleSheet,
+  TouchableOpacity,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import * as SecureStore from '../../utils/secureStore';
 import { STORAGE_KEYS } from '../../constants/config';
@@ -29,51 +31,97 @@ const ProcessPaymentScreen = ({ navigation }: any) => {
   const { theme } = useTheme();
   const language = i18n.language === 'bg' ? 'bg' : 'en';
   const processed = useRef(false);
+  const [error, setError] = useState<string | null>(null);
+  const pendingRef = useRef<{ planId: string; billingPeriod: string } | null>(null);
 
   const styles = getStyles(theme);
 
-  useEffect(() => {
-    const processPayment = async () => {
-      if (processed.current) return;
-      processed.current = true;
+  const processPayment = async () => {
+    setError(null);
 
-      try {
+    try {
+      let pending = pendingRef.current;
+
+      if (!pending) {
         const pendingData = await SecureStore.getItemAsync(STORAGE_KEYS.PENDING_PAYMENT);
         if (!pendingData) {
-          // No pending payment, go to dashboard
           navigation.reset({ index: 0, routes: [{ name: 'MainTabs' }] });
           return;
         }
-
-        // Clear the pending payment immediately
         await SecureStore.deleteItemAsync(STORAGE_KEYS.PENDING_PAYMENT);
-
-        const { planId, billingPeriod } = JSON.parse(pendingData);
-
-        // Create subscription payment on server
-        const payment = await plansService.createSubscriptionPayment(planId, billingPeriod);
-
-        // Open Paysera in browser
-        const browserResult = await paymentService.openSubscriptionPaymentBrowser(
-          payment.paymentUrl,
-          payment.orderId
-        );
-
-        // Navigate to success or cancel screen
-        if (browserResult === 'success') {
-          navigation.replace('SubscriptionSuccess', { orderId: payment.orderId });
-        } else {
-          navigation.replace('SubscriptionCancel', { orderId: payment.orderId });
-        }
-      } catch (error) {
-        console.warn('Payment processing error:', error);
-        // On error, just go to dashboard — user can retry later
-        navigation.reset({ index: 0, routes: [{ name: 'MainTabs' }] });
+        pending = JSON.parse(pendingData);
+        pendingRef.current = pending;
       }
-    };
 
+      const { planId, billingPeriod } = pending!;
+
+      const payment = await plansService.createSubscriptionPayment(
+        planId,
+        billingPeriod as 'weekly' | 'monthly' | 'yearly'
+      );
+
+      const browserResult = await paymentService.openSubscriptionPaymentBrowser(
+        payment.paymentUrl,
+        payment.orderId
+      );
+
+      if (browserResult === 'success') {
+        navigation.replace('SubscriptionSuccess', { orderId: payment.orderId });
+      } else {
+        navigation.replace('SubscriptionCancel', { orderId: payment.orderId });
+      }
+    } catch (err: any) {
+      console.warn('Payment processing error:', err);
+      setError(
+        err?.response?.data?.message ||
+        (language === 'bg'
+          ? 'Грешка при обработка на плащането. Моля, опитайте отново.'
+          : 'Error processing payment. Please try again.')
+      );
+    }
+  };
+
+  useEffect(() => {
+    if (processed.current) return;
+    processed.current = true;
     processPayment();
-  }, [navigation]);
+  }, []);
+
+  const handleRetry = () => {
+    setError(null);
+    processPayment();
+  };
+
+  const handleGoToDashboard = () => {
+    navigation.reset({ index: 0, routes: [{ name: 'MainTabs' }] });
+  };
+
+  if (error) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.card}>
+          <View style={[styles.iconCircle, { backgroundColor: 'rgba(239, 68, 68, 0.1)' }]}>
+            <Ionicons name="alert-circle" size={40} color="#ef4444" />
+          </View>
+          <Text style={styles.title}>
+            {language === 'bg' ? 'Грешка при плащане' : 'Payment Error'}
+          </Text>
+          <Text style={styles.errorText}>{error}</Text>
+          <TouchableOpacity style={[styles.button, styles.primaryButton]} onPress={handleRetry}>
+            <Ionicons name="refresh" size={18} color="#fff" style={{ marginRight: 8 }} />
+            <Text style={styles.primaryButtonText}>
+              {language === 'bg' ? 'Опитай отново' : 'Try Again'}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.button, styles.secondaryButton]} onPress={handleGoToDashboard}>
+            <Text style={styles.secondaryButtonText}>
+              {language === 'bg' ? 'Към профила' : 'Go to Dashboard'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -110,6 +158,14 @@ const getStyles = (theme: any) => StyleSheet.create({
     borderColor: theme.colors.surfaceVariant,
     alignItems: 'center',
   },
+  iconCircle: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
   title: {
     fontSize: 20,
     fontWeight: '700',
@@ -123,6 +179,40 @@ const getStyles = (theme: any) => StyleSheet.create({
     color: theme.colors.onSurfaceVariant,
     textAlign: 'center',
     lineHeight: 22,
+  },
+  errorText: {
+    fontSize: 14,
+    color: theme.colors.onSurfaceVariant,
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 24,
+  },
+  button: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+    paddingVertical: 14,
+    borderRadius: 12,
+    marginTop: 12,
+  },
+  primaryButton: {
+    backgroundColor: theme.colors.primary,
+  },
+  primaryButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  secondaryButton: {
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: theme.colors.outline,
+  },
+  secondaryButtonText: {
+    color: theme.colors.onSurface,
+    fontSize: 16,
+    fontWeight: '600',
   },
 });
 

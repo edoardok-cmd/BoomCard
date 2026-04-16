@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import styled from 'styled-components';
-import { ArrowLeft, Building2, Lock, Check, Loader2, Mail, User, Phone } from 'lucide-react';
+import { ArrowLeft, Lock, Check, Loader2 } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
-import { plansService, Plan, PayseraPaymentMethod } from '../services/plans.service';
+import { plansService, Plan } from '../services/plans.service';
 import { convertEURToBGN } from '../utils/helpers';
 import Button from '../components/common/Button/Button';
 
@@ -84,123 +84,6 @@ const SectionTitle = styled.h2`
   align-items: center;
   gap: 0.5rem;
   font-family: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-`;
-
-const PaymentMethodsGrid = styled.div`
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 0.75rem;
-  margin-bottom: 1.5rem;
-
-  @media (max-width: 768px) {
-    grid-template-columns: repeat(2, 1fr);
-    gap: 0.5rem;
-  }
-`;
-
-const PaymentMethodCard = styled.div<{ $isSelected: boolean }>`
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 1rem 0.75rem;
-  border: 2px solid ${props => props.$isSelected ? 'var(--color-primary)' : 'var(--color-border)'};
-  border-radius: 0.75rem;
-  background: ${props => props.$isSelected ? 'rgba(0, 0, 0, 0.03)' : 'var(--color-background)'};
-  cursor: pointer;
-  transition: all 300ms cubic-bezier(0.4, 0, 0.2, 1);
-  position: relative;
-  min-height: 90px;
-  justify-content: center;
-
-  &:hover {
-    border-color: ${props => props.$isSelected ? 'var(--color-primary)' : 'var(--color-text-tertiary)'};
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-  }
-
-  @media (max-width: 768px) {
-    padding: 0.75rem 0.5rem;
-    min-height: 80px;
-  }
-`;
-
-const SelectedCheckmark = styled.div`
-  position: absolute;
-  top: 0.4rem;
-  right: 0.4rem;
-  width: 20px;
-  height: 20px;
-  background: var(--color-primary, #000);
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: white;
-
-  svg {
-    width: 12px;
-    height: 12px;
-  }
-`;
-
-const MethodLogo = styled.img`
-  width: 48px;
-  height: 48px;
-  object-fit: contain;
-  border-radius: 0.5rem;
-
-  @media (max-width: 768px) {
-    width: 40px;
-    height: 40px;
-  }
-`;
-
-const MethodLogoFallback = styled.div`
-  width: 48px;
-  height: 48px;
-  border-radius: 0.5rem;
-  background: var(--color-background-tertiary, #f3f4f6);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 1.25rem;
-  font-weight: 700;
-  color: var(--color-text-tertiary, #9ca3af);
-  text-transform: uppercase;
-
-  @media (max-width: 768px) {
-    width: 40px;
-    height: 40px;
-    font-size: 1rem;
-  }
-`;
-
-const MethodName = styled.span`
-  font-size: 0.75rem;
-  font-weight: 500;
-  color: var(--color-text-secondary);
-  text-align: center;
-  line-height: 1.3;
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-`;
-
-const MethodSkeleton = styled.div`
-  height: 90px;
-  border-radius: 0.75rem;
-  background: linear-gradient(90deg, var(--color-background-tertiary, #f3f4f6) 0%, var(--color-border, #e5e7eb) 50%, var(--color-background-tertiary, #f3f4f6) 100%);
-  background-size: 1000px 100%;
-  animation: shimmer 2s infinite linear;
-
-  @keyframes shimmer {
-    0% { background-position: -1000px 0; }
-    100% { background-position: 1000px 0; }
-  }
 `;
 
 const OrderSummary = styled.div`
@@ -477,84 +360,6 @@ const LoginPromptText = styled.p`
   margin-bottom: 1rem;
 `;
 
-const EmailSection = styled.div`
-  margin-bottom: 1.5rem;
-`;
-
-const FormFieldsGrid = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-`;
-
-const EmailInput = styled.input`
-  width: 100%;
-  padding: 0.875rem 1rem;
-  border: 2px solid var(--color-border);
-  border-radius: 0.75rem;
-  font-size: 1rem;
-  color: var(--color-text);
-  background: var(--color-surface);
-  transition: border-color 200ms ease;
-  box-sizing: border-box;
-
-  &:focus {
-    outline: none;
-    border-color: var(--color-primary);
-  }
-
-  &::placeholder {
-    color: var(--color-text-secondary);
-    opacity: 0.6;
-  }
-`;
-
-// Inline SVG fallback icons for common payment method groups
-const FALLBACK_ICONS: Record<string, string> = {
-  // Bank transfer / banklink — building with columns
-  banklink: `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" fill="none"><rect width="48" height="48" rx="8" fill="#EEF2FF"/><path d="M24 10L10 18v2h28v-2L24 10z" fill="#4F46E5"/><rect x="13" y="22" width="4" height="10" rx="1" fill="#6366F1"/><rect x="22" y="22" width="4" height="10" rx="1" fill="#6366F1"/><rect x="31" y="22" width="4" height="10" rx="1" fill="#6366F1"/><rect x="10" y="34" width="28" height="4" rx="1" fill="#4F46E5"/></svg>')}`,
-  // Generic card icon
-  card: `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" fill="none"><rect width="48" height="48" rx="8" fill="#FEF3C7"/><rect x="8" y="14" width="32" height="20" rx="3" fill="#F59E0B"/><rect x="8" y="19" width="32" height="5" fill="#D97706"/><rect x="12" y="28" width="10" height="3" rx="1" fill="#FDE68A"/></svg>')}`,
-  // Wallet icon
-  wallet: `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" fill="none"><rect width="48" height="48" rx="8" fill="#ECFDF5"/><rect x="8" y="14" width="32" height="22" rx="3" fill="#10B981"/><circle cx="34" cy="25" r="3" fill="#FFF"/></svg>')}`,
-};
-
-/**
- * Payment method icon with robust fallback chain:
- * logoRoundUrl -> logoUrl -> inline SVG -> initials placeholder
- */
-const PaymentMethodIcon: React.FC<{ method: PayseraPaymentMethod; language: string }> = ({ method, language }) => {
-  const [failCount, setFailCount] = useState(0);
-
-  const altText = language === 'bg' ? method.titleBg : method.titleEn;
-
-  // Build ordered list of image sources to try
-  const sources: string[] = [];
-  if (method.logoRoundUrl) sources.push(method.logoRoundUrl);
-  if (method.logoUrl) sources.push(method.logoUrl);
-  // Add inline SVG fallback matching the method key or group
-  const svgFallback = FALLBACK_ICONS[method.key] || FALLBACK_ICONS[method.group];
-  if (svgFallback) sources.push(svgFallback);
-
-  const currentSrc = sources[failCount];
-
-  if (!currentSrc) {
-    // All sources exhausted — show initials
-    const initials = (altText || method.key).slice(0, 2);
-    return <MethodLogoFallback>{initials}</MethodLogoFallback>;
-  }
-
-  return (
-    <MethodLogo
-      src={currentSrc}
-      alt={altText}
-      loading="lazy"
-      referrerPolicy="no-referrer"
-      onError={() => setFailCount(prev => prev + 1)}
-    />
-  );
-};
-
 const CheckoutPage: React.FC = () => {
   const [searchParams] = useSearchParams();
   const { language, t } = useLanguage();
@@ -573,17 +378,9 @@ const CheckoutPage: React.FC = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [resolvedPlanId, setResolvedPlanId] = useState<string | null>(planId);
 
-  // Guest checkout state
-  const [guestName, setGuestName] = useState('');
-  const [guestEmail, setGuestEmail] = useState('');
-  const [guestPhone, setGuestPhone] = useState('');
-  const [guestError, setGuestError] = useState<string | null>(null);
-
   // Payment method selection state
-  const [paymentMethods, setPaymentMethods] = useState<PayseraPaymentMethod[]>([]);
   const [selectedMethod, setSelectedMethod] = useState<string | null>(null);
   const [methodsLoading, setMethodsLoading] = useState(true);
-  const [methodsError, setMethodsError] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchPlan = async () => {
@@ -660,33 +457,17 @@ const CheckoutPage: React.FC = () => {
   const handlePayment = async () => {
     if (!plan || !resolvedPlanId || !selectedMethod) return;
 
-    if (!isAuthenticated) {
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      const phoneRegex = /^(\+359|0)[0-9\s-]{8,}$/;
-
-      if (!guestName.trim() || guestName.trim().length < 2) {
-        setGuestError(language === 'bg' ? 'Моля, въведете вашето пълно име' : 'Please enter your full name');
-        return;
-      }
-      if (!guestEmail || !emailRegex.test(guestEmail.trim())) {
-        setGuestError(language === 'bg' ? 'Моля, въведете валиден имейл адрес' : 'Please enter a valid email address');
-        return;
-      }
-      if (!guestPhone || !phoneRegex.test(guestPhone.trim())) {
-        setGuestError(language === 'bg' ? 'Моля, въведете валиден телефонен номер (+359XXXXXXXXX или 0XXXXXXXXX)' : 'Please enter a valid phone number (+359XXXXXXXXX or 0XXXXXXXXX)');
-        return;
-      }
-      setGuestError(null);
-    }
+    // Unauthenticated users must register first — the button below navigates them
+    if (!isAuthenticated) return;
 
     setIsProcessing(true);
     try {
       const paymentResult = await plansService.createSubscriptionPayment(
         resolvedPlanId,
         billingPeriod,
-        isAuthenticated ? undefined : guestEmail,
-        isAuthenticated ? undefined : guestName,
-        isAuthenticated ? undefined : guestPhone,
+        undefined,
+        undefined,
+        undefined,
         selectedMethod
       );
       // Redirect directly to the selected bank/payment provider
@@ -743,78 +524,55 @@ const CheckoutPage: React.FC = () => {
 
         <CheckoutGrid>
           <PaymentSection>
-            {!isAuthenticated && (
+            {!isAuthenticated ? (
               <>
                 <LoginPrompt>
                   <LoginPromptText>
                     {language === 'bg'
-                      ? 'Имате акаунт? Влезте за по-бърз checkout.'
-                      : 'Have an account? Log in for faster checkout.'}
+                      ? 'Създайте акаунт, за да завършите покупката.'
+                      : 'Create an account to complete your purchase.'}
                   </LoginPromptText>
-                  <Link to={`/login?redirect=/checkout?planId=${planId}&billing=${billingPeriod}`}>
-                    <Button variant="outline" size="medium">
-                      {language === 'bg' ? 'Вход' : 'Log in'}
-                    </Button>
-                  </Link>
                 </LoginPrompt>
 
-                <EmailSection>
-                  <SectionTitle>
-                    <User size={20} />
-                    {language === 'bg' ? 'Вашите данни' : 'Your details'}
-                  </SectionTitle>
-                  <FormFieldsGrid>
-                    <EmailInput
-                      type="text"
-                      placeholder={language === 'bg' ? 'Име и фамилия' : 'Full name'}
-                      value={guestName}
-                      onChange={(e) => { setGuestName(e.target.value); setGuestError(null); }}
-                      required
-                    />
-                    <EmailInput
-                      type="email"
-                      placeholder={language === 'bg' ? 'Имейл адрес' : 'Email address'}
-                      value={guestEmail}
-                      onChange={(e) => { setGuestEmail(e.target.value); setGuestError(null); }}
-                      required
-                    />
-                    <EmailInput
-                      type="tel"
-                      placeholder={language === 'bg' ? 'Телефонен номер (+359XXXXXXXXX)' : 'Phone number (+359XXXXXXXXX)'}
-                      value={guestPhone}
-                      onChange={(e) => { setGuestPhone(e.target.value); setGuestError(null); }}
-                      required
-                    />
-                    {guestError && (
-                      <div style={{ color: '#ef4444', fontSize: '0.875rem' }}>
-                        {guestError}
-                      </div>
-                    )}
-                  </FormFieldsGrid>
-                </EmailSection>
+                <Link to={`/register?planId=${resolvedPlanId || planId || ''}&billing=${billingPeriod}`} style={{ width: '100%' }}>
+                  <Button variant="primary" size="large" fullWidth>
+                    {language === 'bg' ? 'Създай акаунт и плати' : 'Create Account & Pay'}
+                  </Button>
+                </Link>
+
+                <div style={{ textAlign: 'center', marginTop: '1rem' }}>
+                  <LoginPromptText>
+                    {language === 'bg' ? 'Вече имате акаунт?' : 'Already have an account?'}{' '}
+                    <Link to={`/login?redirect=/checkout?planId=${planId}&billing=${billingPeriod}`} style={{ color: 'var(--color-primary)', fontWeight: 600 }}>
+                      {language === 'bg' ? 'Вход' : 'Log in'}
+                    </Link>
+                  </LoginPromptText>
+                </div>
+              </>
+            ) : (
+              <>
+                {/* Payment method is pre-selected to Paysera — no selection UI needed */}
+
+                <Button
+                  variant="primary"
+                  size="large"
+                  fullWidth
+                  onClick={handlePayment}
+                  disabled={isProcessing || methodsLoading || !selectedMethod}
+                >
+                  {isProcessing ? (
+                    <>
+                      <LoadingSpinner style={{ width: '1rem', height: '1rem', marginRight: '0.5rem' }} />
+                      {language === 'bg' ? 'Пренасочване...' : 'Redirecting...'}
+                    </>
+                  ) : (
+                    language === 'bg'
+                      ? `Плати €${displayPrice} ${getPeriodLabel()}`
+                      : `Pay €${displayPrice} ${getPeriodLabel()}`
+                  )}
+                </Button>
               </>
             )}
-
-            {/* Payment method is pre-selected to Paysera — no selection UI needed */}
-
-            <Button
-              variant="primary"
-              size="large"
-              fullWidth
-              onClick={handlePayment}
-              disabled={isProcessing || methodsLoading || !selectedMethod || (!isAuthenticated && (!guestEmail || !guestName || !guestPhone))}
-            >
-              {isProcessing ? (
-                <>
-                  <LoadingSpinner style={{ width: '1rem', height: '1rem', marginRight: '0.5rem' }} />
-                  {language === 'bg' ? 'Пренасочване...' : 'Redirecting...'}
-                </>
-              ) : (
-                language === 'bg'
-                  ? `Плати €${displayPrice} ${getPeriodLabel()}`
-                  : `Pay €${displayPrice} ${getPeriodLabel()}`
-              )}
-            </Button>
 
             <SecureNote>
               <Lock size={14} />

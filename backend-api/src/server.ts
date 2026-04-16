@@ -79,6 +79,7 @@ const corsOrigins: string[] | boolean = (_rawCorsOrigin && _rawCorsOrigin !== '*
       'https://boomcard.eu',
       'https://boomcard.bg',
       'https://mobile.boomcard.bg',
+      'https://boomcard.vercel.app',
       'http://localhost:5173',
       'http://localhost:5174',
       'http://localhost:5175',

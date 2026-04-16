@@ -5,6 +5,7 @@
  * Opens browser for payment, then redirects back to app.
  */
 
+import { Platform } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 import * as Linking from 'expo-linking';
 import apiClient from '../api/client';
@@ -70,6 +71,17 @@ class PaymentService {
    * Open Paysera payment page in browser
    */
   async openPaymentBrowser(paymentUrl: string, orderId: string): Promise<'success' | 'cancel'> {
+    // On web, openAuthSessionAsync opens a popup that can't redirect back to
+    // the parent page. Use a full-page redirect instead — Paysera will redirect
+    // back to the successUrl/cancelUrl configured in the payment.
+    if (Platform.OS === 'web') {
+      window.location.href = paymentUrl;
+      // Page should navigate away. If it doesn't within 5s, throw so caller can handle.
+      return new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Payment redirect failed')), 5000);
+      });
+    }
+
     try {
       // Create redirect URLs
       const appScheme = Linking.createURL('');
@@ -306,6 +318,14 @@ class PaymentService {
     paymentUrl: string,
     orderId: string
   ): Promise<'success' | 'cancel'> {
+    // On web, use full-page redirect instead of popup (see openPaymentBrowser)
+    if (Platform.OS === 'web') {
+      window.location.href = paymentUrl;
+      return new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Payment redirect failed')), 5000);
+      });
+    }
+
     try {
       // Create redirect URLs for subscription flow
       const appScheme = Linking.createURL('');

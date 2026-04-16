@@ -267,6 +267,9 @@ export class PayseraService {
         paymentParams.test = '1';
       }
 
+      // Log payer info for debugging name issues
+      logger.info(`Paysera payment params for ${params.orderId}: p_firstname=${paymentParams.p_firstname || '(not set)'}, p_lastname=${paymentParams.p_lastname || '(not set)'}, p_email=${paymentParams.p_email || '(not set)'}, test=${paymentParams.test || '0'}`);
+
       // Encode data per Paysera specification
       const encodedData = this.encodeData(paymentParams);
 

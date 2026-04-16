@@ -739,6 +739,17 @@ const RegisterPage: React.FC = () => {
         // Consent recording is best-effort; user is already logged in
       }
 
+      // If a plan was selected before OAuth, create the subscription payment
+      if (selectedPlan && planId) {
+        try {
+          const paymentResult = await plansService.createSubscriptionPayment(planId, billingPeriod);
+          window.location.href = paymentResult.paymentUrl;
+          return;
+        } catch (paymentError) {
+          console.error('Payment creation error after Google OAuth:', paymentError);
+        }
+      }
+
       const from = (location.state as any)?.from?.pathname || '/dashboard';
       navigate(from, { replace: true });
     } catch (error) {
@@ -769,6 +780,17 @@ const RegisterPage: React.FC = () => {
         await apiService.post('/auth/consent', { type: 'privacy' });
       } catch {
         // Consent recording is best-effort; user is already logged in
+      }
+
+      // If a plan was selected before OAuth, create the subscription payment
+      if (selectedPlan && planId) {
+        try {
+          const paymentResult = await plansService.createSubscriptionPayment(planId, billingPeriod);
+          window.location.href = paymentResult.paymentUrl;
+          return;
+        } catch (paymentError) {
+          console.error('Payment creation error after Facebook OAuth:', paymentError);
+        }
       }
 
       const from = (location.state as any)?.from?.pathname || '/dashboard';

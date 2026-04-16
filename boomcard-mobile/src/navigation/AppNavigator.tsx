@@ -13,7 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../store/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, Platform } from 'react-native';
 import { ProgressRing } from '../components/loading';
 import BoomLogo from '../components/brand/BoomLogo';
 import * as SecureStore from '../utils/secureStore';
@@ -170,7 +170,7 @@ const TabNavigator = () => {
 };
 
 // Main App Stack Navigator with nested tabs
-const MainNavigator = ({ initialRouteName = 'MainTabs' }: { initialRouteName?: string }) => {
+const MainNavigator = ({ initialRouteName = 'MainTabs', initialParams }: { initialRouteName?: string; initialParams?: Record<string, any> }) => {
   const { t } = useTranslation();
 
   return (
@@ -321,16 +321,14 @@ const MainNavigator = ({ initialRouteName = 'MainTabs' }: { initialRouteName?: s
       <Stack.Screen
         name="SubscriptionSuccess"
         component={SubscriptionSuccessScreen}
-        options={{
-          headerShown: false,
-        }}
+        options={{ headerShown: false }}
+        initialParams={initialRouteName === 'SubscriptionSuccess' ? initialParams : undefined}
       />
       <Stack.Screen
         name="SubscriptionCancel"
         component={SubscriptionCancelScreen}
-        options={{
-          headerShown: false,
-        }}
+        options={{ headerShown: false }}
+        initialParams={initialRouteName === 'SubscriptionCancel' ? initialParams : undefined}
       />
     </Stack.Navigator>
   );
@@ -342,9 +340,29 @@ export const AppNavigator = () => {
   const { isDarkMode, theme } = useTheme();
   const [mainInitialRoute, setMainInitialRoute] = useState<string | null>(null);
 
-  // Check for pending payment when user becomes authenticated
+  // Check for pending payment or subscription return URL when user becomes authenticated
   useEffect(() => {
     if (isAuthenticated && !mainInitialRoute) {
+      // On web, check if Paysera redirected back to a subscription result URL.
+      // After payment, Paysera redirects to e.g. /subscription/success?orderId=XXX
+      if (Platform.OS === 'web') {
+        const path = window.location.pathname;
+        const params = new URLSearchParams(window.location.search);
+        const orderId = params.get('orderId') || undefined;
+
+        if (path.includes('/subscription/success')) {
+          // Clean the URL so refreshing doesn't re-trigger this routing
+          window.history.replaceState({}, '', '/');
+          setMainInitialRoute(`SubscriptionSuccess|${orderId || ''}`);
+          return;
+        }
+        if (path.includes('/subscription/cancel')) {
+          window.history.replaceState({}, '', '/');
+          setMainInitialRoute(`SubscriptionCancel|${orderId || ''}`);
+          return;
+        }
+      }
+
       SecureStore.getItemAsync(STORAGE_KEYS.PENDING_PAYMENT)
         .then(data => {
           // If there's a pending payment, start with ProcessPayment screen
@@ -384,10 +402,17 @@ export const AppNavigator = () => {
     },
   };
 
+  // Parse encoded route (e.g. "SubscriptionSuccess|orderId123") into route name + params
+  const resolvedRoute = mainInitialRoute || 'MainTabs';
+  const pipeIdx = resolvedRoute.indexOf('|');
+  const routeName = pipeIdx >= 0 ? resolvedRoute.slice(0, pipeIdx) : resolvedRoute;
+  const routeOrderId = pipeIdx >= 0 ? resolvedRoute.slice(pipeIdx + 1) : undefined;
+  const routeParams = routeOrderId ? { orderId: routeOrderId } : undefined;
+
   return (
     <NavigationContainer theme={navigationTheme} documentTitle={{ formatter: () => 'BOOM Card' }}>
       {isAuthenticated ? (
-        <MainNavigator initialRouteName={mainInitialRoute || 'MainTabs'} />
+        <MainNavigator initialRouteName={routeName} initialParams={routeParams} />
       ) : (
         <AuthNavigator />
       )}
