@@ -619,59 +619,13 @@ const CheckoutPage: React.FC = () => {
     fetchPlan();
   }, [planId, planCode, language]);
 
+  // Pre-select Paysera as the only payment method (no method selection UI shown)
   useEffect(() => {
-    const fetchMethods = async () => {
-      try {
-        setMethodsLoading(true);
-        setMethodsError(null);
-        const amountInCents = displayPrice ? Math.round(displayPrice * 100) : 1000;
-        const methods = await plansService.getPaymentMethods('bg', 'EUR', amountInCents);
-        setPaymentMethods(methods);
-      } catch (err) {
-        console.error('Error fetching payment methods:', err);
-        // Use frontend fallback methods instead of showing an error
-        console.warn('API unavailable, using fallback payment methods');
-        setPaymentMethods([
-          {
-            key: 'card',
-            title: 'Банкови карти',
-            titleBg: 'Банкови карти',
-            titleEn: 'Bank cards',
-            logoUrl: 'https://bank.paysera.com/assets/image/payment_types/card.png',
-            currency: 'EUR',
-            group: 'cards',
-            groupTitle: 'Cards',
-          },
-          {
-            key: 'wallet',
-            title: 'Paysera',
-            titleBg: 'Paysera',
-            titleEn: 'Paysera',
-            logoUrl: 'https://bank.paysera.com/assets/image/payment_types/wallet.png',
-            currency: 'EUR',
-            group: 'wallet',
-            groupTitle: 'Wallet',
-          },
-          {
-            key: 'banklink',
-            title: 'Банков превод',
-            titleBg: 'Банков превод',
-            titleEn: 'Bank transfer',
-            logoUrl: FALLBACK_ICONS.banklink,
-            currency: 'EUR',
-            group: 'banks',
-            groupTitle: 'Banks',
-          },
-        ]);
-      } finally {
-        setMethodsLoading(false);
-      }
-    };
-
     if (plan) {
-      fetchMethods();
+      setSelectedMethod('wallet');
+      setMethodsLoading(false);
     }
-  }, [plan, language]);
+  }, [plan]);
 
   const getDisplayPrice = (): number | null => {
     if (!plan) return null;
@@ -841,42 +795,7 @@ const CheckoutPage: React.FC = () => {
               </>
             )}
 
-            <SectionTitle>
-              <Building2 size={20} />
-              {language === 'bg' ? 'Изберете метод за плащане' : 'Choose payment method'}
-            </SectionTitle>
-
-            {methodsLoading ? (
-              <PaymentMethodsGrid>
-                {Array.from({ length: 6 }).map((_, i) => (
-                  <MethodSkeleton key={i} />
-                ))}
-              </PaymentMethodsGrid>
-            ) : methodsError ? (
-              <ErrorMessage style={{ marginBottom: '1.5rem', padding: '1.5rem' }}>
-                {methodsError}
-              </ErrorMessage>
-            ) : (
-              <PaymentMethodsGrid>
-                {paymentMethods.map((method) => (
-                  <PaymentMethodCard
-                    key={method.key}
-                    $isSelected={selectedMethod === method.key}
-                    onClick={() => setSelectedMethod(method.key)}
-                  >
-                    {selectedMethod === method.key && (
-                      <SelectedCheckmark>
-                        <Check size={12} />
-                      </SelectedCheckmark>
-                    )}
-                    <PaymentMethodIcon method={method} language={language} />
-                    <MethodName>
-                      {language === 'bg' ? method.titleBg : method.titleEn}
-                    </MethodName>
-                  </PaymentMethodCard>
-                ))}
-              </PaymentMethodsGrid>
-            )}
+            {/* Payment method is pre-selected to Paysera — no selection UI needed */}
 
             <Button
               variant="primary"

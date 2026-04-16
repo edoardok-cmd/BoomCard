@@ -15,6 +15,7 @@ import { OfferStatus, OfferType, PartnerStatus } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { imageUploadService } from './imageUpload.service';
 import { logger } from '../utils/logger';
+import { CASHBACK_MATRIX_STEPS } from '../constants/receipt.constants';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -334,7 +335,11 @@ export async function importFromSpreadsheet(
   const partnerLatitude = toNumber(firstRow[COL.PARTNER_LATITUDE]);
   const partnerLongitude = toNumber(firstRow[COL.PARTNER_LONGITUDE]);
   const partnerOpeningHours = str(firstRow[COL.PARTNER_OPENING_HOURS]) || undefined;
-  const partnerDiscountRate = toNumber(firstRow[COL.PARTNER_DISCOUNT_RATE]);
+  const partnerDiscountRateRaw = toNumber(firstRow[COL.PARTNER_DISCOUNT_RATE]);
+  if (partnerDiscountRateRaw !== undefined && !(CASHBACK_MATRIX_STEPS as readonly number[]).includes(partnerDiscountRateRaw)) {
+    throw new Error(`Invalid partner_discount_rate "${partnerDiscountRateRaw}". Must be one of: ${CASHBACK_MATRIX_STEPS.join(', ')}`);
+  }
+  const partnerDiscountRate = partnerDiscountRateRaw;
   const partnerTypeName = str(firstRow[COL.PARTNER_TYPE_NAME]) || undefined;
   const partnerStatusRaw = str(firstRow[COL.PARTNER_STATUS]).toUpperCase() || 'ACTIVE';
   const partnerStatus = Object.values(PartnerStatus).includes(partnerStatusRaw as PartnerStatus)
@@ -725,6 +730,14 @@ export async function importPartnersFromSpreadsheet(
       ? (statusRaw as PartnerStatus)
       : PartnerStatus.ACTIVE;
 
+    // Validate discount rate against allowed steps
+    const rowDiscountRate = toNumber(row[PCOL.DISCOUNT_RATE]);
+    if (rowDiscountRate !== undefined && !(CASHBACK_MATRIX_STEPS as readonly number[]).includes(rowDiscountRate)) {
+      warnings.push(`Row ${rowNum}: invalid discount_rate "${rowDiscountRate}" — must be one of: ${CASHBACK_MATRIX_STEPS.join(', ')}. Skipped.`);
+      partnersSkipped++;
+      continue;
+    }
+
     // Find or create the partner user
     let partnerUser: { id: string };
     if (partnerEmail) {
@@ -812,7 +825,7 @@ export async function importPartnersFromSpreadsheet(
             latitude: toNumber(row[PCOL.LATITUDE]),
             longitude: toNumber(row[PCOL.LONGITUDE]),
             openingHours: str(row[PCOL.OPENING_HOURS]) || undefined,
-            discountRate: toNumber(row[PCOL.DISCOUNT_RATE]),
+            discountRate: rowDiscountRate,
             partnerTypeId,
             status: partnerStatus,
             ...(logoUrl ? { logo: logoUrl } : {}),
@@ -839,7 +852,7 @@ export async function importPartnersFromSpreadsheet(
             latitude: toNumber(row[PCOL.LATITUDE]),
             longitude: toNumber(row[PCOL.LONGITUDE]),
             openingHours: str(row[PCOL.OPENING_HOURS]) || undefined,
-            discountRate: toNumber(row[PCOL.DISCOUNT_RATE]),
+            discountRate: rowDiscountRate,
             partnerTypeId,
             status: partnerStatus,
             ...(logoUrl ? { logo: logoUrl } : {}),

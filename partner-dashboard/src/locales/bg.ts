@@ -75,7 +75,6 @@ export const bg: TranslationKey = {
     adminDashboard: 'Административно табло',
     managePartners: 'Управление на партньори',
     topDiscounts: 'Топ Отстъпки',
-    manageOffers: 'Управление на оферти',
     partnerTypes: 'Видове партньори',
     bulkImport: 'Масов импорт',
     scanReview: 'Преглед на сканирания',

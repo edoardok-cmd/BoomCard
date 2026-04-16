@@ -2,6 +2,7 @@ import { apiService } from './api.service';
 import type { Offer } from '../types/entity.types';
 import { PaginatedResponse } from './venues.service';
 import { Entity, offerToEntity } from '../types/entity.types';
+import { getCategoryName } from '../types/categories.types';
 
 // Enhanced Offer type with backend fields
 export interface OfferDetails extends Offer {
@@ -24,6 +25,8 @@ export interface OfferDetails extends Offer {
   status?: 'DRAFT' | 'ACTIVE' | 'INACTIVE' | 'EXPIRED';
   image?: string;
   discountPercent?: number;
+  /** Raw canonical category ID from partner (e.g. 'restaurants'), used for filtering */
+  partnerCategoryId?: string;
   partner?: {
     id: string;
     businessName?: string;
@@ -110,8 +113,10 @@ class OffersService {
       discountedPrice,
       discount,
       // Map partner fields to top-level for offerToEntity compatibility
-      category: offer.category || offer.partner?.category || '',
-      categoryBg: offer.categoryBg || offer.partner?.category || '',
+      // Resolve canonical category IDs to human-readable names for display
+      partnerCategoryId: offer.partner?.category || '',
+      category: offer.category || getCategoryName(offer.partner?.category || '', 'en'),
+      categoryBg: offer.categoryBg || getCategoryName(offer.partner?.category || '', 'bg'),
       location: offer.location || offer.partner?.city || 'Bulgaria',
       partnerName: offer.partnerName || offer.partner?.businessName || offer.partner?.businessNameBg || '',
       path: offer.path || `/offers/${offer.id}`,
@@ -341,6 +346,15 @@ class OffersService {
   // Entity-based methods (unified model)
   // ============================================================
 
+  /** Convert an OfferDetails to Entity, using the raw partner category ID for filtering */
+  private toEntity(offer: OfferDetails): Entity {
+    const entity = offerToEntity(offer);
+    if (offer.partnerCategoryId) {
+      entity.categoryId = offer.partnerCategoryId;
+    }
+    return entity;
+  }
+
   /**
    * Get offers as Entity[] (unified format)
    */
@@ -348,7 +362,7 @@ class OffersService {
     const response = await this.getOffers(filters);
     return {
       ...response,
-      data: response.data.map(offer => offerToEntity(offer)),
+      data: response.data.map(offer => this.toEntity(offer)),
     };
   }
 
@@ -359,7 +373,7 @@ class OffersService {
     const response = await this.getOffersByCategory(category, filters);
     return {
       ...response,
-      data: response.data.map(offer => offerToEntity(offer)),
+      data: response.data.map(offer => this.toEntity(offer)),
     };
   }
 
@@ -368,7 +382,7 @@ class OffersService {
    */
   async getTopEntities(limit: number = 10): Promise<Entity[]> {
     const offers = await this.getTopOffers(limit);
-    return offers.map(offer => offerToEntity(offer));
+    return offers.map(offer => this.toEntity(offer));
   }
 
   /**
@@ -376,7 +390,7 @@ class OffersService {
    */
   async getFeaturedEntities(limit: number = 10): Promise<Entity[]> {
     const offers = await this.getFeaturedOffers(limit);
-    return offers.map(offer => offerToEntity(offer));
+    return offers.map(offer => this.toEntity(offer));
   }
 
   /**
@@ -386,7 +400,7 @@ class OffersService {
     const response = await this.getOffersByCity(city, filters);
     return {
       ...response,
-      data: response.data.map(offer => offerToEntity(offer)),
+      data: response.data.map(offer => this.toEntity(offer)),
     };
   }
 
@@ -397,7 +411,7 @@ class OffersService {
     const response = await this.searchOffers(query, filters);
     return {
       ...response,
-      data: response.data.map(offer => offerToEntity(offer)),
+      data: response.data.map(offer => this.toEntity(offer)),
     };
   }
 }

@@ -15,6 +15,19 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getAccessToken } from '../lib/auth/session';
 import { bulkImportService } from '../services/bulkImport.service';
 import axios from 'axios';
+import { placesCategories, experiencesCategories, getCategoryName } from '../types/categories.types';
+
+/** Mirrors CASHBACK_MATRIX_STEPS from backend — the only valid partner discount rates. */
+const DISCOUNT_STEPS = [5, 10, 15, 20, 25] as const;
+
+/** Snap a number to the highest DISCOUNT_STEPS value that doesn't exceed it, or '' if below min. */
+function snapToStep(rate: number): string {
+  let best: number | undefined;
+  for (const s of DISCOUNT_STEPS) {
+    if (rate >= s) best = s;
+  }
+  return best !== undefined ? String(best) : '';
+}
 
 // ─── Styled Components ────────────────────────────────────────────────────────
 
@@ -692,10 +705,39 @@ const EmptyLocations = styled.div`
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 const PARTNER_CATEGORIES = [
-  'Restaurant', 'Cafe', 'Retail', 'Beauty & Wellness', 'Sports & Fitness',
-  'Entertainment', 'Travel', 'Health & Medical', 'Education', 'Technology',
-  'Fashion', 'Home & Living', 'Automotive', 'Other',
-];
+  ...placesCategories,
+  ...experiencesCategories,
+].map(cat => ({ id: cat.id, label: cat.name.en, labelBg: cat.name.bg }));
+
+// ─── Legacy category migration ────────────────────────────────────────────────
+// Maps old display-name strings (EN and BG) that were stored before canonical IDs
+// were introduced, so the edit modal pre-populates correctly for existing partners.
+const LEGACY_CATEGORY_MAP: Record<string, string> = {
+  // Old AdminPartnersPage string values (EN)
+  'Restaurant': 'restaurants',
+  'Cafe': 'cafes',
+  'Beauty & Wellness': 'spa',
+  'Sports & Fitness': 'spa',
+  'Entertainment': 'clubs',
+  'Travel': 'accommodation',
+  // Old AdminPartnerOnboardingPage values (BG full names)
+  'Ресторанти и храна': 'restaurants',
+  'Настаняване': 'accommodation',
+  'СПА и уелнес': 'spa',
+  'Панорамни места': 'panoramic',
+  'Клубове и нощен живот': 'clubs',
+  'Кафенета, сладкарници и пекарни': 'cafes',
+  'Гастрономични': 'gastronomic',
+  'Исторически и културни': 'historical-cultural',
+  'Активни и приключенски': 'active-adventure',
+  'Екстремни': 'extreme',
+  'Образователни и творчески': 'educational-creative',
+  'Релакс и уелнес': 'relax-wellness',
+};
+
+function migrateCategoryId(id: string): string {
+  return LEGACY_CATEGORY_MAP[id] ?? id;
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -959,7 +1001,7 @@ const emptyCreate: Omit<OnboardPartnerPayload, 'category' | 'categories' | 'disc
   description: '',
   descriptionBg: '',
   partnerTypeId: '',
-  discountRate: '0',
+  discountRate: '',
   phone: '',
   website: '',
 };
@@ -1007,7 +1049,7 @@ const AdminPartnersPage: React.FC = () => {
   const [editForm, setEditForm] = useState<EditForm>({
     businessName: '', businessNameBg: '', description: '', descriptionBg: '',
     city: '', region: '', address: '', phone: '', email: '', website: '',
-    partnerTypeId: '', discountRate: '0', status: 'ACTIVE',
+    partnerTypeId: '', discountRate: '', status: 'ACTIVE',
   });
 
   // Menu upload modal
@@ -1120,10 +1162,10 @@ const AdminPartnersPage: React.FC = () => {
   const handleCreateField = (field: keyof typeof createForm, value: string) => {
     setCreateForm(prev => {
       const next = { ...prev, [field]: value };
-      // Auto-fill discountRate when partnerTypeId changes
+      // Auto-fill discountRate when partnerTypeId changes — snap to nearest valid step
       if (field === 'partnerTypeId') {
         const type = partnerTypes.find(t => t.id === value);
-        if (type) next.discountRate = String(type.maxDiscountRate);
+        if (type) next.discountRate = snapToStep(type.maxDiscountRate);
       }
       return next;
     });
@@ -1153,7 +1195,10 @@ const AdminPartnersPage: React.FC = () => {
 
   const openEdit = (partner: Partner) => {
     setEditingPartner(partner);
-    setEditCategories(partner.categories?.length ? partner.categories : partner.category ? [partner.category] : []);
+    const rawCategories = partner.categories?.length
+      ? partner.categories
+      : partner.category ? [partner.category] : [];
+    setEditCategories(rawCategories.map(migrateCategoryId));
     setEditForm({
       businessName: partner.businessName || '',
       businessNameBg: partner.businessNameBg || '',
@@ -1166,7 +1211,7 @@ const AdminPartnersPage: React.FC = () => {
       email: partner.email || '',
       website: partner.website || '',
       partnerTypeId: partner.partnerTypeId || '',
-      discountRate: String(effectiveRate(partner)),
+      discountRate: snapToStep(effectiveRate(partner)),
       status: (String(partner.status).toUpperCase() as PartnerStatus) || 'ACTIVE',
     });
   };
@@ -1176,7 +1221,7 @@ const AdminPartnersPage: React.FC = () => {
     setEditForm(prev => ({
       ...prev,
       partnerTypeId,
-      discountRate: type ? String(type.maxDiscountRate) : prev.discountRate,
+      discountRate: type ? snapToStep(type.maxDiscountRate) : prev.discountRate,
     }));
   };
 
@@ -1523,7 +1568,10 @@ const AdminPartnersPage: React.FC = () => {
                 )}
                 {partner.city && <PartnerMeta>{partner.city}</PartnerMeta>}
               </div>
-              <span>{partner.category}</span>
+              <span>{(() => {
+                const catId = partner.categories?.length ? partner.categories[0] : partner.category;
+                return catId ? getCategoryName(migrateCategoryId(catId), language) : '—';
+              })()}</span>
               <span>
                 {partner.partnerType ? (
                   <TypeBadge $color={partner.partnerType.color}>
@@ -1775,20 +1823,22 @@ const AdminPartnersPage: React.FC = () => {
                     <CategoryChips>
                       {PARTNER_CATEGORIES.map(cat => (
                         <CategoryChip
-                          key={cat}
+                          key={cat.id}
                           type="button"
-                          $selected={createCategories.includes(cat)}
+                          $selected={createCategories.includes(cat.id)}
                           onClick={() => setCreateCategories(prev =>
-                            prev.includes(cat) ? prev.filter(c => c !== cat) : [...prev, cat]
+                            prev.includes(cat.id) ? prev.filter(c => c !== cat.id) : [...prev, cat.id]
                           )}
                         >
-                          {cat}
+                          {language === 'bg' ? cat.labelBg : cat.label}
                         </CategoryChip>
                       ))}
                     </CategoryChips>
                     {createCategories.length > 0 && (
                       <FieldHint>
-                        {language === 'bg' ? `Избрано: ${createCategories.join(', ')}` : `Selected: ${createCategories.join(', ')}`}
+                        {language === 'bg'
+                          ? `Избрано: ${createCategories.map(id => getCategoryName(id, 'bg')).join(', ')}`
+                          : `Selected: ${createCategories.map(id => getCategoryName(id, 'en')).join(', ')}`}
                       </FieldHint>
                     )}
                   </FormField>
@@ -1815,15 +1865,16 @@ const AdminPartnersPage: React.FC = () => {
                     <Label>
                       {language === 'bg' ? 'Отстъпка (%)' : 'Discount Rate (%)'} <Required>*</Required>
                     </Label>
-                    <Input
-                      type="number"
-                      min="0"
-                      max={createTypeMax}
-                      step="0.5"
+                    <Select
                       value={createForm.discountRate}
                       onChange={e => handleCreateField('discountRate', e.target.value)}
                       required
-                    />
+                    >
+                      <option value="">{language === 'bg' ? 'Изберете отстъпка' : 'Select discount'}</option>
+                      {DISCOUNT_STEPS.filter(s => s <= createTypeMax).map(s => (
+                        <option key={s} value={String(s)}>{s}%</option>
+                      ))}
+                    </Select>
                     <FieldHint>
                       {language === 'bg'
                         ? `Макс. за избрания тип: ${createTypeMax}%`
@@ -1934,20 +1985,22 @@ const AdminPartnersPage: React.FC = () => {
                     <CategoryChips>
                       {PARTNER_CATEGORIES.map(cat => (
                         <CategoryChip
-                          key={cat}
+                          key={cat.id}
                           type="button"
-                          $selected={editCategories.includes(cat)}
+                          $selected={editCategories.includes(cat.id)}
                           onClick={() => setEditCategories(prev =>
-                            prev.includes(cat) ? prev.filter(c => c !== cat) : [...prev, cat]
+                            prev.includes(cat.id) ? prev.filter(c => c !== cat.id) : [...prev, cat.id]
                           )}
                         >
-                          {cat}
+                          {language === 'bg' ? cat.labelBg : cat.label}
                         </CategoryChip>
                       ))}
                     </CategoryChips>
                     {editCategories.length > 0 && (
                       <FieldHint>
-                        {language === 'bg' ? `Избрано: ${editCategories.join(', ')}` : `Selected: ${editCategories.join(', ')}`}
+                        {language === 'bg'
+                          ? `Избрано: ${editCategories.map(id => getCategoryName(id, 'bg')).join(', ')}`
+                          : `Selected: ${editCategories.map(id => getCategoryName(id, 'en')).join(', ')}`}
                       </FieldHint>
                     )}
                   </FormField>
@@ -2045,14 +2098,15 @@ const AdminPartnersPage: React.FC = () => {
 
                   <FormField>
                     <Label>{language === 'bg' ? 'Отстъпка (%)' : 'Discount Rate (%)'}</Label>
-                    <Input
-                      type="number"
-                      min="0"
-                      max={editTypeMax}
-                      step="0.5"
+                    <Select
                       value={editForm.discountRate}
                       onChange={e => setEditForm(prev => ({ ...prev, discountRate: e.target.value }))}
-                    />
+                    >
+                      <option value="">{language === 'bg' ? 'Изберете отстъпка' : 'Select discount'}</option>
+                      {DISCOUNT_STEPS.filter(s => s <= editTypeMax).map(s => (
+                        <option key={s} value={String(s)}>{s}%</option>
+                      ))}
+                    </Select>
                     <FieldHint>
                       {language === 'bg'
                         ? `Макс. за избрания тип: ${editTypeMax}%`

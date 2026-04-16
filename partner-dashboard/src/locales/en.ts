@@ -73,7 +73,6 @@ export const en = {
     adminDashboard: 'Admin Dashboard',
     managePartners: 'Manage Partners',
     topDiscounts: 'Top Discounts',
-    manageOffers: 'Manage Offers',
     partnerTypes: 'Partner Types',
     bulkImport: 'Bulk Import',
     scanReview: 'Scan Review',

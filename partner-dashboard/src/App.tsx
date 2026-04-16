@@ -125,7 +125,6 @@ const RefundPolicyPage = lazy(() => import('./pages/RefundPolicyPage'));
 
 // Admin pages
 const AdminDashboardPage = lazy(() => import('./pages/AdminDashboardPage'));
-const AdminOffersPage = lazy(() => import('./pages/AdminOffersPage'));
 const AdminPartnersPage = lazy(() => import('./pages/AdminPartnersPage'));
 const AdminPartnerTypesPage = lazy(() => import('./pages/AdminPartnerTypesPage'));
 const AdminScanReviewPage = lazy(() => import('./pages/AdminScanReviewPage'));
@@ -404,14 +403,6 @@ function App() {
                       element={
                         <ProtectedRoute requiredRole="admin">
                           <AdminDashboardPage />
-                        </ProtectedRoute>
-                      }
-                    />
-                    <Route
-                      path="admin/offers"
-                      element={
-                        <ProtectedRoute requiredRole="admin">
-                          <AdminOffersPage />
                         </ProtectedRoute>
                       }
                     />

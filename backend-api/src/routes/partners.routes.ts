@@ -17,6 +17,7 @@ import { authenticate, authorize, optionalAuthenticate, AuthRequest } from '../m
 import { prisma } from '../lib/prisma';
 import { OfferStatus, PartnerStatus } from '@prisma/client';
 import { partnerTypeService } from '../services/partnerType.service';
+import { CASHBACK_MATRIX_STEPS } from '../constants/receipt.constants';
 
 const PARTNER_TYPE_SELECT = {
   id: true,
@@ -239,12 +240,12 @@ router.post(
       }
     }
 
-    // Validate optional discountRate against the type's cap
+    // Validate optional discountRate against allowed steps and the type's cap
     let resolvedDiscountRate: number | undefined;
     if (discountRate !== undefined) {
       const rate = Number(discountRate);
-      if (!isFinite(rate) || rate < 0 || rate > 100) {
-        return res.status(400).json({ success: false, error: 'discountRate must be a number between 0 and 100' });
+      if (!isFinite(rate) || !(CASHBACK_MATRIX_STEPS as readonly number[]).includes(rate)) {
+        return res.status(400).json({ success: false, error: `discountRate must be one of: ${CASHBACK_MATRIX_STEPS.join(', ')}` });
       }
       if (resolvedTypeId) {
         const typeMax = await partnerTypeService.getMaxDiscountForType(resolvedTypeId);
@@ -463,8 +464,8 @@ router.put(
 
       if (discountRate !== undefined) {
         const rate = Number(discountRate);
-        if (!isFinite(rate) || rate < 0 || rate > 100) {
-          return res.status(400).json({ success: false, error: 'discountRate must be a number between 0 and 100' });
+        if (!isFinite(rate) || !(CASHBACK_MATRIX_STEPS as readonly number[]).includes(rate)) {
+          return res.status(400).json({ success: false, error: `discountRate must be one of: ${CASHBACK_MATRIX_STEPS.join(', ')}` });
         }
         const effectiveTypeId = updateData.partnerTypeId ?? partner.partnerTypeId;
         if (effectiveTypeId) {
@@ -738,6 +739,9 @@ router.post(
       }
       if (discountRate !== undefined) {
         const rate = Number(discountRate);
+        if (!isFinite(rate) || !(CASHBACK_MATRIX_STEPS as readonly number[]).includes(rate)) {
+          return res.status(400).json({ success: false, error: `discountRate must be one of: ${CASHBACK_MATRIX_STEPS.join(', ')}` });
+        }
         if (rate > ptype.maxDiscountRate) {
           return res.status(400).json({
             success: false,

@@ -7,6 +7,10 @@ import Header from '../components/layout/Header/Header';
 import { apiService } from '../services/api.service';
 import { PartnerType } from '../services/partnerTypes.service';
 import toast from 'react-hot-toast';
+import { placesCategories, experiencesCategories, getCategoryName } from '../types/categories.types';
+
+/** Mirrors CASHBACK_MATRIX_STEPS from backend — the only valid partner discount rates. */
+const DISCOUNT_STEPS = [5, 10, 15, 20, 25] as const;
 
 // ─── Data ──────────────────────────────────────────────────────────────────
 
@@ -19,14 +23,14 @@ const BULGARIAN_CITIES = [
   'Пазарджик', 'Хасково', 'Кърджали', 'Ямбол', 'Сливен',
 ];
 
-const CATEGORIES_WITH_SUBS: { value: string; label: string; subcategories: string[] }[] = [
-  { value: 'Ресторанти и храна', label: 'Ресторанти и храна', subcategories: ['BOOM Ресторанти', 'Бърза храна', 'Традиционна кухня', 'Вегетарианско и веган', 'Азиатски'] },
-  { value: 'Настаняване', label: 'Настаняване', subcategories: ['Хотели', 'Къщи за гости', 'Апартаменти'] },
-  { value: 'СПА и уелнес', label: 'СПА и уелнес', subcategories: ['СПА центрове', 'Басейни', 'Минерални басейни', 'Фитнес и уелнес', 'Спорт'] },
-  { value: 'Панорамни места', label: 'Панорамни места', subcategories: ['Rooftop Барове', 'Sky Ресторанти'] },
-  { value: 'Клубове и нощен живот', label: 'Клубове и нощен живот', subcategories: ['Клубове', 'Барове', 'Лаундж', 'Партита и събития', 'Жива музика'] },
-  { value: 'Кафенета, сладкарници и пекарни', label: 'Кафенета, сладкарници и пекарни', subcategories: ['Кафенета', 'Сладкарници', 'Брънч', 'Пекарни'] },
-];
+const CATEGORIES_WITH_SUBS = [
+  ...placesCategories,
+  ...experiencesCategories,
+].map(cat => ({
+  value: cat.id,
+  label: cat.name.bg,
+  subcategories: cat.subcategories.map(sub => ({ value: sub.id, label: sub.name.bg })),
+}));
 
 const PARTNERSHIP_TYPES_FALLBACK = ['BASIC', 'STANDARD', 'GOLD', 'VIP', 'PREMIUM', 'EXCLUSIVE'];
 const MARKETING_VISIBILITY = ['Публична', 'Ограничена', 'Скрита'];
@@ -44,6 +48,8 @@ interface VenueEntry {
   region: string;
   phone: string;
   googleMapsLink: string;
+  latitude: string;
+  longitude: string;
 }
 
 interface FormData {
@@ -57,6 +63,8 @@ interface FormData {
   region: string;
   address: string;
   googleMapsLink: string;
+  latitude: string;
+  longitude: string;
   totalVenues: string;
   boomVenues: string;
   description: string;
@@ -102,6 +110,8 @@ const INITIAL_FORM: FormData = {
   region: '',
   address: '',
   googleMapsLink: '',
+  latitude: '',
+  longitude: '',
   totalVenues: '',
   boomVenues: '',
   description: '',
@@ -497,7 +507,7 @@ const AdminPartnerOnboardingPage: React.FC = () => {
   const addVenue = () => {
     setForm(prev => ({
       ...prev,
-      additionalVenues: [...prev.additionalVenues, { name: '', address: '', city: '', region: '', phone: '', googleMapsLink: '' }],
+      additionalVenues: [...prev.additionalVenues, { name: '', address: '', city: '', region: '', phone: '', googleMapsLink: '', latitude: '', longitude: '' }],
     }));
   };
 
@@ -534,9 +544,6 @@ const AdminPartnerOnboardingPage: React.FC = () => {
     }
     if (currentStep === 3) {
       if (!form.discountRate) e.discountRate = 'Задължително поле';
-      else if (isNaN(Number(form.discountRate)) || Number(form.discountRate) < 0 || Number(form.discountRate) > 100) {
-        e.discountRate = 'Въведете число между 0 и 100';
-      }
     }
     setErrors(e);
     return Object.keys(e).length === 0;
@@ -550,9 +557,12 @@ const AdminPartnerOnboardingPage: React.FC = () => {
     setSubmitting(true);
     try {
       const primaryCat = form.categoryEntries.find(c => c.category);
-      const allCategories = form.categoryEntries
-        .filter(c => c.category)
-        .map(c => ({ category: c.category, subcategory: c.subcategory }));
+      // Flatten to canonical ID strings: include the category ID and subcategory ID (if selected)
+      const allCategories = [...new Set(
+        form.categoryEntries
+          .filter(c => c.category)
+          .flatMap(c => c.subcategory ? [c.category, c.subcategory] : [c.category])
+      )];
 
       const payload = {
         email: form.email.toLowerCase(),
@@ -569,8 +579,31 @@ const AdminPartnerOnboardingPage: React.FC = () => {
         boomVenues: form.boomVenues ? parseInt(form.boomVenues) : undefined,
         description: form.description || undefined,
         highlights: form.highlights ? form.highlights.split(',').map(h => h.trim()).filter(Boolean) : undefined,
-        additionalVenues: form.additionalVenues.length > 0 ? form.additionalVenues : undefined,
-        category: primaryCat?.category || 'Друго',
+        locations: [
+          {
+            name: form.businessName,
+            address: form.address,
+            city: form.city,
+            region: form.region || null,
+            phone: form.phone || null,
+            googleMapsLink: form.googleMapsLink || null,
+            latitude: form.latitude ? parseFloat(form.latitude) : null,
+            longitude: form.longitude ? parseFloat(form.longitude) : null,
+          },
+          ...form.additionalVenues
+            .filter(v => v.name && v.address && v.city)
+            .map(v => ({
+              name: v.name,
+              address: v.address,
+              city: v.city,
+              region: v.region || null,
+              phone: v.phone || null,
+              googleMapsLink: v.googleMapsLink || null,
+              latitude: v.latitude ? parseFloat(v.latitude) : null,
+              longitude: v.longitude ? parseFloat(v.longitude) : null,
+            })),
+        ],
+        category: primaryCat?.category || 'restaurants',
         subcategory: primaryCat?.subcategory || undefined,
         categories: allCategories,
         ownerName: form.ownerName || undefined,
@@ -696,11 +729,55 @@ const AdminPartnerOnboardingPage: React.FC = () => {
         <FormGrid style={{ marginTop: '1rem' }}>
           <FormGroup $span>
             <Label>Google Maps линк</Label>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <Input
+                type="url"
+                value={form.googleMapsLink}
+                onChange={e => set('googleMapsLink', e.target.value)}
+                placeholder="https://maps.google.com/..."
+                style={{ flex: 1 }}
+              />
+              <button
+                type="button"
+                title="Извлечи координати от линка"
+                style={{ padding: '0 0.75rem', background: 'var(--color-background-secondary)', border: '2px solid var(--color-border)', borderRadius: '0.5rem', cursor: 'pointer', fontWeight: 600, fontSize: '0.8rem', whiteSpace: 'nowrap', color: 'var(--color-text-secondary)' }}
+                onClick={() => {
+                  const match = form.googleMapsLink.match(/@(-?\d+\.?\d*),(-?\d+\.?\d*)/);
+                  if (match) {
+                    set('latitude', match[1]);
+                    set('longitude', match[2]);
+                  } else {
+                    const match2 = form.googleMapsLink.match(/[?&]q=(-?\d+\.?\d*),(-?\d+\.?\d*)/);
+                    if (match2) { set('latitude', match2[1]); set('longitude', match2[2]); }
+                    else toast.error('Не са намерени координати в линка');
+                  }
+                }}
+              >
+                📍 Извлечи
+              </button>
+            </div>
+          </FormGroup>
+        </FormGrid>
+
+        <FormGrid style={{ marginTop: '1rem' }}>
+          <FormGroup>
+            <Label>Географска ширина (Latitude)</Label>
             <Input
-              type="url"
-              value={form.googleMapsLink}
-              onChange={e => set('googleMapsLink', e.target.value)}
-              placeholder="https://maps.google.com/..."
+              type="number"
+              step="any"
+              value={form.latitude}
+              onChange={e => set('latitude', e.target.value)}
+              placeholder="напр. 42.6977"
+            />
+          </FormGroup>
+          <FormGroup>
+            <Label>Географска дължина (Longitude)</Label>
+            <Input
+              type="number"
+              step="any"
+              value={form.longitude}
+              onChange={e => set('longitude', e.target.value)}
+              placeholder="напр. 23.3219"
             />
           </FormGroup>
         </FormGrid>
@@ -796,6 +873,16 @@ const AdminPartnerOnboardingPage: React.FC = () => {
                   <Input value={venue.googleMapsLink} onChange={e => setVenueField(i, 'googleMapsLink', e.target.value)} placeholder="https://maps.google.com/..." />
                 </FormGroup>
               </FormGrid>
+              <FormGrid style={{ marginBottom: '0.5rem' }}>
+                <FormGroup>
+                  <Label>Latitude</Label>
+                  <Input type="number" step="any" value={venue.latitude} onChange={e => setVenueField(i, 'latitude', e.target.value)} placeholder="напр. 42.6977" />
+                </FormGroup>
+                <FormGroup>
+                  <Label>Longitude</Label>
+                  <Input type="number" step="any" value={venue.longitude} onChange={e => setVenueField(i, 'longitude', e.target.value)} placeholder="напр. 23.3219" />
+                </FormGroup>
+              </FormGrid>
             </div>
           ))}
           <button
@@ -847,7 +934,7 @@ const AdminPartnerOnboardingPage: React.FC = () => {
                 disabled={!entry.category}
               >
                 <option value="">— Подкатегория —</option>
-                {subs.map(s => <option key={s} value={s}>{s}</option>)}
+                {subs.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
               </Select>
             </CategoryRow>
           );
@@ -860,12 +947,12 @@ const AdminPartnerOnboardingPage: React.FC = () => {
           <SubSectionTitle>Автоматично обобщение</SubSectionTitle>
           <div style={{ fontSize: '0.875rem', color: 'var(--color-text-secondary)', lineHeight: '1.6' }}>
             <strong>Категории: </strong>
-            {form.categoryEntries.filter(c => c.category).map(c => c.category).join(', ')}
+            {form.categoryEntries.filter(c => c.category).map(c => getCategoryName(c.category, 'bg')).join(', ')}
           </div>
           {form.categoryEntries.some(c => c.subcategory) && (
             <div style={{ fontSize: '0.875rem', color: 'var(--color-text-secondary)', marginTop: '0.25rem', lineHeight: '1.6' }}>
               <strong>Подкатегории: </strong>
-              {form.categoryEntries.filter(c => c.subcategory).map(c => c.subcategory).join(', ')}
+              {form.categoryEntries.filter(c => c.subcategory).map(c => getCategoryName(c.subcategory, 'bg')).join(', ')}
             </div>
           )}
         </SubSection>
@@ -1036,15 +1123,20 @@ const AdminPartnerOnboardingPage: React.FC = () => {
         <FormGrid>
           <FormGroup>
             <Label $required>Partner Discount Pool (%)</Label>
-            <Input
-              type="number"
-              min="0"
-              max="100"
-              step="0.5"
-              value={form.discountRate}
-              onChange={e => set('discountRate', e.target.value)}
-              placeholder="напр. 15"
-            />
+            {(() => {
+              const typeMax = partnerTypes.find(pt => pt.id === form.partnerTypeId)?.maxDiscountRate ?? 100;
+              return (
+                <Select
+                  value={form.discountRate}
+                  onChange={e => set('discountRate', e.target.value)}
+                >
+                  <option value="">— Изберете отстъпка —</option>
+                  {DISCOUNT_STEPS.filter(s => s <= typeMax).map(s => (
+                    <option key={s} value={String(s)}>{s}%</option>
+                  ))}
+                </Select>
+              );
+            })()}
             {errors.discountRate && <span style={{ color: 'var(--color-error)', fontSize: '0.8rem' }}>{errors.discountRate}</span>}
           </FormGroup>
           <FormGroup>
@@ -1152,6 +1244,7 @@ const AdminPartnerOnboardingPage: React.FC = () => {
               {form.vatNumber && <SummaryRow><SummaryKey>ЕИК / ДДС</SummaryKey><SummaryVal>{form.vatNumber}</SummaryVal></SummaryRow>}
               <SummaryRow><SummaryKey>Местоположение</SummaryKey><SummaryVal>{[form.city, form.address].filter(Boolean).join(', ')}</SummaryVal></SummaryRow>
               {form.googleMapsLink && <SummaryRow><SummaryKey>Google Maps</SummaryKey><SummaryVal>{form.googleMapsLink.slice(0, 50)}...</SummaryVal></SummaryRow>}
+              {(form.latitude || form.longitude) && <SummaryRow><SummaryKey>GPS</SummaryKey><SummaryVal>{form.latitude}, {form.longitude}</SummaryVal></SummaryRow>}
               {form.description && <SummaryRow><SummaryKey>Описание</SummaryKey><SummaryVal>{form.description.slice(0, 100)}{form.description.length > 100 ? '...' : ''}</SummaryVal></SummaryRow>}
               {form.highlights && <SummaryRow><SummaryKey>Акценти</SummaryKey><SummaryVal>{form.highlights}</SummaryVal></SummaryRow>}
               {form.additionalVenues.length > 0 && (
@@ -1170,7 +1263,7 @@ const AdminPartnerOnboardingPage: React.FC = () => {
                 ? activeCats.map((c, i) => (
                     <SummaryRow key={i}>
                       <SummaryKey>Категория {i + 1}</SummaryKey>
-                      <SummaryVal>{c.category}{c.subcategory ? ` → ${c.subcategory}` : ''}</SummaryVal>
+                      <SummaryVal>{getCategoryName(c.category, 'bg')}{c.subcategory ? ` → ${getCategoryName(c.subcategory, 'bg')}` : ''}</SummaryVal>
                     </SummaryRow>
                   ))
                 : <SummaryRow><SummaryKey>—</SummaryKey><SummaryVal>Не са избрани категории</SummaryVal></SummaryRow>

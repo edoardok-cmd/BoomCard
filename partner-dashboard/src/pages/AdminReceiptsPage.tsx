@@ -3,7 +3,7 @@ import styled from 'styled-components';
 import { useLanguage } from '../contexts/LanguageContext';
 import { receiptsApiService } from '../services/receipts-api.service';
 import { Receipt, ReceiptStatus } from '../types/receipt.types';
-import { CheckCircle, XCircle, Eye, FileText, AlertTriangle, Clock } from 'lucide-react';
+import { CheckCircle, XCircle, Eye, FileText, AlertTriangle, Clock, Square, CheckSquare, Loader, Timer } from 'lucide-react';
 import FraudReasonTag from '../components/admin/FraudReasonTag';
 
 const PageContainer = styled.div`
@@ -87,17 +87,17 @@ const ReceiptsList = styled.div`
   gap: 1rem;
 `;
 
-const ReceiptRow = styled.div`
+const ReceiptRow = styled.div<{ $selected?: boolean }>`
   background: var(--color-background);
-  border: 2px solid var(--color-border);
+  border: 2px solid ${p => p.$selected ? '#6366f1' : 'var(--color-border)'};
   border-radius: 1rem;
   padding: 1.25rem 1.5rem;
   display: grid;
-  grid-template-columns: 2fr 1fr 1fr 1fr 1fr auto;
+  grid-template-columns: 2rem 2fr 1fr 1fr 1fr 1fr auto;
   gap: 1rem;
   align-items: center;
   transition: border-color 0.15s;
-  &:hover { border-color: #000; }
+  &:hover { border-color: ${p => p.$selected ? '#6366f1' : '#000'}; }
   @media (max-width: 900px) { grid-template-columns: 1fr; }
 `;
 
@@ -145,6 +145,9 @@ const StatusBadge = styled.span<{ $status: ReceiptStatus }>`
       case ReceiptStatus.REJECTED: return '#fee2e2';
       case ReceiptStatus.MANUAL_REVIEW: return '#ede9fe';
       case ReceiptStatus.PENDING: return '#fef3c7';
+      case ReceiptStatus.PROCESSING: return '#dbeafe';
+      case ReceiptStatus.VALIDATING: return '#e0e7ff';
+      case ReceiptStatus.EXPIRED: return '#f3f4f6';
       default: return '#f3f4f6';
     }
   }};
@@ -154,6 +157,9 @@ const StatusBadge = styled.span<{ $status: ReceiptStatus }>`
       case ReceiptStatus.REJECTED: return '#991b1b';
       case ReceiptStatus.MANUAL_REVIEW: return '#5b21b6';
       case ReceiptStatus.PENDING: return '#92400e';
+      case ReceiptStatus.PROCESSING: return '#1d4ed8';
+      case ReceiptStatus.VALIDATING: return '#3730a3';
+      case ReceiptStatus.EXPIRED: return '#6b7280';
       default: return '#374151';
     }
   }};
@@ -247,6 +253,69 @@ const ModalActions = styled.div`
   display: flex; gap: 0.75rem; justify-content: flex-end;
 `;
 
+const ReceiptTableHeader = styled.div`
+  display: grid;
+  grid-template-columns: 2rem 2fr 1fr 1fr 1fr 1fr auto;
+  gap: 1rem;
+  align-items: center;
+  padding: 0.5rem 1.5rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  @media (max-width: 900px) { display: none; }
+`;
+
+const BulkBar = styled.div`
+  position: sticky;
+  top: 1rem;
+  z-index: 100;
+  background: #1e293b;
+  color: #fff;
+  border-radius: 0.75rem;
+  padding: 0.75rem 1.25rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.25);
+`;
+
+const BulkCount = styled.span`
+  font-weight: 700;
+  font-size: 0.9375rem;
+  flex: 1;
+`;
+
+const BulkButton = styled.button<{ $variant: 'approve' | 'reject' | 'clear' }>`
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.5rem 1rem;
+  border: none;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  background: ${p => p.$variant === 'approve' ? '#10b981' : p.$variant === 'reject' ? '#dc2626' : 'rgba(255,255,255,0.15)'};
+  color: #fff;
+  &:hover { filter: brightness(1.15); }
+  &:disabled { opacity: 0.5; cursor: not-allowed; }
+  svg { width: 14px; height: 14px; }
+`;
+
+const CheckboxBtn = styled.button`
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  color: var(--color-text-secondary);
+  display: flex;
+  align-items: center;
+  &:hover { color: var(--color-text-primary); }
+`;
+
 const EmptyState = styled.div`
   text-align: center; padding: 4rem 2rem;
   background: var(--color-background);
@@ -273,6 +342,10 @@ export const AdminReceiptsPage: React.FC = () => {
   const [rejectNotes, setRejectNotes] = useState('');
   const [processingId, setProcessingId] = useState<string | null>(null);
   const [notification, setNotification] = useState<{ msg: string; ok: boolean } | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkRejectModal, setBulkRejectModal] = useState(false);
+  const [bulkRejectReason, setBulkRejectReason] = useState('');
+  const [bulkProcessing, setBulkProcessing] = useState(false);
 
   const t = {
     en: {
@@ -280,6 +353,7 @@ export const AdminReceiptsPage: React.FC = () => {
       subtitle: 'All receipts require admin review — approve to credit cashback to the user\'s wallet',
       pending: 'Pending', approved: 'Confirmed', rejected: 'Rejected',
       manualReview: 'Needs Review', all: 'All',
+      processing: 'Processing', validating: 'Validating', expired: 'Expired',
       approve: 'Confirm', reject: 'Reject', view: 'View Image',
       loading: 'Loading receipts…',
       emptyTitle: 'No Receipts', emptyDesc: 'No receipts match the current filter',
@@ -290,12 +364,16 @@ export const AdminReceiptsPage: React.FC = () => {
       statPending: 'Pending', statApproved: 'Confirmed',
       statReview: 'Needs Review', statRejected: 'Rejected',
       statCashback: 'Cashback Credited (BGN)',
+      bulkApprove: 'Bulk Approve', bulkReject: 'Bulk Reject', clearSelection: 'Clear',
+      bulkRejectTitle: 'Bulk Reject Receipts',
+      bulkSelected: (n: number) => `${n} receipt${n === 1 ? '' : 's'} selected`,
     },
     bg: {
       title: 'Преглед на бележки',
       subtitle: 'Всички бележки изискват одобрение — потвърдете, за да кредитирате кешбек',
       pending: 'Чакащи', approved: 'Потвърдени', rejected: 'Отхвърлени',
       manualReview: 'За преглед', all: 'Всички',
+      processing: 'Обработване', validating: 'Валидиране', expired: 'Изтекли',
       approve: 'Потвърди', reject: 'Отхвърли', view: 'Виж снимка',
       loading: 'Зареждане…',
       emptyTitle: 'Няма бележки', emptyDesc: 'Няма намерени бележки',
@@ -306,6 +384,9 @@ export const AdminReceiptsPage: React.FC = () => {
       statPending: 'Чакащи', statApproved: 'Потвърдени',
       statReview: 'За преглед', statRejected: 'Отхвърлени',
       statCashback: 'Кредитиран кешбек (лв)',
+      bulkApprove: 'Масово одобрение', bulkReject: 'Масово отхвърляне', clearSelection: 'Изчисти',
+      bulkRejectTitle: 'Масово отхвърляне',
+      bulkSelected: (n: number) => `${n} бележк${n === 1 ? 'а' : 'и'} избран${n === 1 ? 'а' : 'и'}`,
     },
   };
   const c = language === 'bg' ? t.bg : t.en;
@@ -344,6 +425,7 @@ export const AdminReceiptsPage: React.FC = () => {
       const opts = { verifiedAmount: receipt.verifiedAmount ?? receipt.totalAmount };
       await receiptsApiService.reviewReceipt(receipt.id, 'APPROVE', opts);
       notify(`Approved: ${receipt.merchantName || receipt.id}`);
+      setSelectedIds(prev => { const next = new Set(prev); next.delete(receipt.id); return next; });
       fetchReceipts();
     } catch (err: any) {
       notify(err?.response?.data?.message || err?.message || 'Failed to approve', false);
@@ -361,6 +443,7 @@ export const AdminReceiptsPage: React.FC = () => {
         notes: rejectNotes || undefined,
       });
       notify('Receipt rejected');
+      setSelectedIds(prev => { const next = new Set(prev); next.delete(rejectModal.receiptId); return next; });
       setRejectModal(null);
       setRejectReason('');
       setRejectNotes('');
@@ -369,6 +452,65 @@ export const AdminReceiptsPage: React.FC = () => {
       notify(err?.response?.data?.message || err?.message || 'Failed to reject', false);
     } finally {
       setProcessingId(null);
+    }
+  };
+
+  const canAction = (r: Receipt) =>
+    r.status === ReceiptStatus.PENDING ||
+    r.status === ReceiptStatus.MANUAL_REVIEW;
+
+  const actionableReceipts = receipts.filter(r => canAction(r));
+  const allActionableSelected =
+    actionableReceipts.length > 0 &&
+    actionableReceipts.every(r => selectedIds.has(r.id));
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (allActionableSelected) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(actionableReceipts.map(r => r.id)));
+    }
+  };
+
+  const handleBulkApprove = async () => {
+    if (selectedIds.size === 0) return;
+    const ids = [...selectedIds];
+    setBulkProcessing(true);
+    try {
+      await receiptsApiService.bulkApprove(ids);
+      notify(`Approved ${ids.length} receipt(s)`);
+      setSelectedIds(new Set());
+      fetchReceipts();
+    } catch (err: any) {
+      notify(err?.response?.data?.message || 'Bulk approve failed', false);
+    } finally {
+      setBulkProcessing(false);
+    }
+  };
+
+  const handleBulkRejectConfirm = async () => {
+    if (selectedIds.size === 0 || !bulkRejectReason.trim()) return;
+    const ids = [...selectedIds];
+    setBulkProcessing(true);
+    try {
+      await receiptsApiService.bulkReject(ids, bulkRejectReason);
+      notify(`Rejected ${ids.length} receipt(s)`);
+      setSelectedIds(new Set());
+      setBulkRejectModal(false);
+      setBulkRejectReason('');
+      fetchReceipts();
+    } catch (err: any) {
+      notify(err?.response?.data?.message || 'Bulk reject failed', false);
+    } finally {
+      setBulkProcessing(false);
     }
   };
 
@@ -386,10 +528,6 @@ export const AdminReceiptsPage: React.FC = () => {
     new Date(d).toLocaleDateString(language === 'bg' ? 'bg-BG' : 'en-GB', {
       day: 'numeric', month: 'short', year: 'numeric',
     });
-
-  const canAction = (r: Receipt) =>
-    r.status === ReceiptStatus.PENDING ||
-    r.status === ReceiptStatus.MANUAL_REVIEW;
 
   return (
     <PageContainer>
@@ -433,12 +571,24 @@ export const AdminReceiptsPage: React.FC = () => {
       </StatsRow>
 
       <FiltersBar>
-        {(['all', ReceiptStatus.PENDING, ReceiptStatus.MANUAL_REVIEW, ReceiptStatus.APPROVED, ReceiptStatus.REJECTED] as FilterType[]).map(s => (
-          <FilterButton key={s} $active={filter === s as any} onClick={() => setFilter(s as any)}>
+        {([
+          'all',
+          ReceiptStatus.PENDING,
+          ReceiptStatus.MANUAL_REVIEW,
+          ReceiptStatus.PROCESSING,
+          ReceiptStatus.VALIDATING,
+          ReceiptStatus.APPROVED,
+          ReceiptStatus.REJECTED,
+          ReceiptStatus.EXPIRED,
+        ] as FilterType[]).map(s => (
+          <FilterButton key={s} $active={filter === s as any} onClick={() => { setFilter(s as any); setSelectedIds(new Set()); }}>
             {s === 'all' ? c.all
               : s === ReceiptStatus.PENDING ? c.pending
               : s === ReceiptStatus.MANUAL_REVIEW ? c.manualReview
+              : s === ReceiptStatus.PROCESSING ? c.processing
+              : s === ReceiptStatus.VALIDATING ? c.validating
               : s === ReceiptStatus.APPROVED ? c.approved
+              : s === ReceiptStatus.EXPIRED ? c.expired
               : c.rejected}
           </FilterButton>
         ))}
@@ -452,74 +602,123 @@ export const AdminReceiptsPage: React.FC = () => {
           <p>{c.emptyDesc}</p>
         </EmptyState>
       ) : (
-        <ReceiptsList>
-          {receipts.map(receipt => (
-            <ReceiptRow key={receipt.id}>
-              <div>
-                <ReceiptMerchant>{receipt.merchantName || '—'}</ReceiptMerchant>
-                <ReceiptMeta>
-                  {receipt.user?.email} • {fmt(receipt.createdAt)}
-                </ReceiptMeta>
-              </div>
+        <>
+          {selectedIds.size > 0 && (
+            <BulkBar>
+              <BulkCount>{c.bulkSelected(selectedIds.size)}</BulkCount>
+              <BulkButton $variant="approve" disabled={bulkProcessing} onClick={handleBulkApprove}>
+                {bulkProcessing ? <Loader size={14} /> : <CheckCircle size={14} />}
+                {c.bulkApprove}
+              </BulkButton>
+              <BulkButton $variant="reject" disabled={bulkProcessing} onClick={() => setBulkRejectModal(true)}>
+                <XCircle size={14} />{c.bulkReject}
+              </BulkButton>
+              <BulkButton $variant="clear" disabled={bulkProcessing} onClick={() => setSelectedIds(new Set())}>{c.clearSelection}</BulkButton>
+            </BulkBar>
+          )}
 
-              <Amount>
-                {receipt.totalAmount != null ? `${receipt.totalAmount.toFixed(2)} лв` : '—'}
-              </Amount>
+          {actionableReceipts.length > 0 && (
+            <ReceiptTableHeader>
+              <CheckboxBtn onClick={toggleSelectAll} title="Select all actionable">
+                {allActionableSelected
+                  ? <CheckSquare size={16} color="#6366f1" />
+                  : <Square size={16} />}
+              </CheckboxBtn>
+              <span>{language === 'bg' ? 'Бележка' : 'Receipt'}</span>
+              <span>{language === 'bg' ? 'Сума' : 'Amount'}</span>
+              <span>{language === 'bg' ? 'Кешбек' : 'Cashback'}</span>
+              <span>{language === 'bg' ? 'Измама' : 'Fraud'}</span>
+              <span>{language === 'bg' ? 'Статус' : 'Status'}</span>
+              <span>{language === 'bg' ? 'Действия' : 'Actions'}</span>
+            </ReceiptTableHeader>
+          )}
 
-              <Cashback>
-                {receipt.cashbackAmount > 0
-                  ? `${receipt.cashbackAmount.toFixed(2)} лв (${(receipt.cashbackPercent || 0).toFixed(1)}%)`
-                  : '—'}
-              </Cashback>
+          <ReceiptsList>
+            {receipts.map(receipt => {
+              const isSelected = selectedIds.has(receipt.id);
+              const actionable = canAction(receipt);
+              return (
+                <ReceiptRow key={receipt.id} $selected={isSelected}>
+                  <CheckboxBtn
+                    onClick={() => actionable && toggleSelect(receipt.id)}
+                    style={{ opacity: actionable ? 1 : 0.2, cursor: actionable ? 'pointer' : 'default' }}
+                  >
+                    {isSelected
+                      ? <CheckSquare size={16} color="#6366f1" />
+                      : <Square size={16} />}
+                  </CheckboxBtn>
 
-              <FraudScore $score={receipt.fraudScore || 0}>
-                {receipt.fraudScore != null ? receipt.fraudScore.toFixed(0) : '—'}
-              </FraudScore>
+                  <div>
+                    <ReceiptMerchant>{receipt.merchantName || '—'}</ReceiptMerchant>
+                    <ReceiptMeta>
+                      {receipt.user?.email} • {fmt(receipt.createdAt)}
+                    </ReceiptMeta>
+                  </div>
 
-              {receipt.fraudReasons && (
-                <div style={{ display: 'flex', gap: '0.25rem', flexWrap: 'wrap', marginTop: '0.25rem' }}>
-                  {(Array.isArray(receipt.fraudReasons) ? receipt.fraudReasons : [receipt.fraudReasons]).map((reason: string, idx: number) => (
-                    <FraudReasonTag key={idx} reason={reason} language={language} />
-                  ))}
-                </div>
-              )}
+                  <Amount>
+                    {receipt.totalAmount != null ? `${receipt.totalAmount.toFixed(2)} лв` : '—'}
+                  </Amount>
 
-              <StatusBadge $status={receipt.status}>
-                {receipt.status === ReceiptStatus.MANUAL_REVIEW && <AlertTriangle size={11} />}
-                {receipt.status === ReceiptStatus.PENDING && <Clock size={11} />}
-                {receipt.status === ReceiptStatus.APPROVED && <CheckCircle size={11} />}
-                {receipt.status === ReceiptStatus.REJECTED && <XCircle size={11} />}
-                {receipt.status.replace('_', ' ')}
-              </StatusBadge>
+                  <Cashback>
+                    {receipt.cashbackAmount > 0
+                      ? `${receipt.cashbackAmount.toFixed(2)} лв (${(receipt.cashbackPercent || 0).toFixed(1)}%)`
+                      : '—'}
+                  </Cashback>
 
-              <ActionsGroup>
-                {canAction(receipt) && (
-                  <>
-                    <ActionButton
-                      $variant="approve"
-                      disabled={processingId === receipt.id}
-                      onClick={() => handleApprove(receipt)}
-                    >
-                      <CheckCircle />{c.approve}
-                    </ActionButton>
-                    <ActionButton
-                      $variant="reject"
-                      disabled={processingId === receipt.id}
-                      onClick={() => setRejectModal({ receiptId: receipt.id })}
-                    >
-                      <XCircle />{c.reject}
-                    </ActionButton>
-                  </>
-                )}
-                {receipt.imageUrl && (
-                  <ActionButton $variant="view" onClick={() => window.open(receipt.imageUrl, '_blank')}>
-                    <Eye />{c.view}
-                  </ActionButton>
-                )}
-              </ActionsGroup>
-            </ReceiptRow>
-          ))}
-        </ReceiptsList>
+                  <div>
+                    <FraudScore $score={receipt.fraudScore || 0}>
+                      {receipt.fraudScore != null ? receipt.fraudScore.toFixed(0) : '—'}
+                    </FraudScore>
+                    {receipt.fraudReasons && (
+                      <div style={{ display: 'flex', gap: '0.25rem', flexWrap: 'wrap', marginTop: '0.25rem' }}>
+                        {(Array.isArray(receipt.fraudReasons) ? receipt.fraudReasons : [receipt.fraudReasons]).map((reason: string, idx: number) => (
+                          <FraudReasonTag key={idx} reason={reason} language={language} />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <StatusBadge $status={receipt.status}>
+                    {receipt.status === ReceiptStatus.MANUAL_REVIEW && <AlertTriangle size={11} />}
+                    {receipt.status === ReceiptStatus.PENDING && <Clock size={11} />}
+                    {receipt.status === ReceiptStatus.APPROVED && <CheckCircle size={11} />}
+                    {receipt.status === ReceiptStatus.REJECTED && <XCircle size={11} />}
+                    {receipt.status === ReceiptStatus.PROCESSING && <Loader size={11} />}
+                    {receipt.status === ReceiptStatus.VALIDATING && <Loader size={11} />}
+                    {receipt.status === ReceiptStatus.EXPIRED && <Timer size={11} />}
+                    {receipt.status.replace('_', ' ')}
+                  </StatusBadge>
+
+                  <ActionsGroup>
+                    {actionable && (
+                      <>
+                        <ActionButton
+                          $variant="approve"
+                          disabled={processingId === receipt.id}
+                          onClick={() => handleApprove(receipt)}
+                        >
+                          <CheckCircle />{c.approve}
+                        </ActionButton>
+                        <ActionButton
+                          $variant="reject"
+                          disabled={processingId === receipt.id}
+                          onClick={() => setRejectModal({ receiptId: receipt.id })}
+                        >
+                          <XCircle />{c.reject}
+                        </ActionButton>
+                      </>
+                    )}
+                    {receipt.imageUrl && (
+                      <ActionButton $variant="view" onClick={() => window.open(receipt.imageUrl, '_blank')}>
+                        <Eye />{c.view}
+                      </ActionButton>
+                    )}
+                  </ActionsGroup>
+                </ReceiptRow>
+              );
+            })}
+          </ReceiptsList>
+        </>
       )}
 
       {rejectModal && (
@@ -548,6 +747,31 @@ export const AdminReceiptsPage: React.FC = () => {
                 $variant="reject"
                 onClick={handleRejectConfirm}
                 disabled={!rejectReason.trim() || processingId !== null}
+              >
+                {c.confirm}
+              </ActionButton>
+            </ModalActions>
+          </ModalContent>
+        </Modal>
+      )}
+      {bulkRejectModal && (
+        <Modal onClick={() => setBulkRejectModal(false)}>
+          <ModalContent onClick={e => e.stopPropagation()}>
+            <ModalTitle>{c.bulkRejectTitle} ({selectedIds.size})</ModalTitle>
+            <FormGroup>
+              <Label>{c.rejectLabel}</Label>
+              <Textarea
+                value={bulkRejectReason}
+                onChange={e => setBulkRejectReason(e.target.value)}
+                placeholder={c.rejectPlaceholder}
+              />
+            </FormGroup>
+            <ModalActions>
+              <ActionButton $variant="view" onClick={() => setBulkRejectModal(false)}>{c.cancel}</ActionButton>
+              <ActionButton
+                $variant="reject"
+                onClick={handleBulkRejectConfirm}
+                disabled={!bulkRejectReason.trim() || bulkProcessing}
               >
                 {c.confirm}
               </ActionButton>

@@ -289,19 +289,6 @@ const AdminDashboardPage: React.FC = () => {
             </div>
           </ActionCard>
 
-          <ActionCard to="/admin/offers">
-            <ActionIcon>📋</ActionIcon>
-            <div>
-              <ActionTitle>
-                {language === 'bg' ? 'Управление на Оферти' : 'Manage Offers'}
-              </ActionTitle>
-              <ActionDescription>
-                {language === 'bg'
-                  ? 'Създавайте и редактирайте оферти за всички партньори — заглавия, описания, снимки, тагове и отстъпки'
-                  : 'Create and edit offers for any partner — bilingual titles, descriptions, photos, tags, and discounts'}
-              </ActionDescription>
-            </div>
-          </ActionCard>
 
           <ActionCard to="/admin/partners">
             <ActionIcon>🏢</ActionIcon>
