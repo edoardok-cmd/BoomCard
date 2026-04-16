@@ -496,19 +496,18 @@ class FraudDetectionService {
   private async getUserStats(userId: string) {
     const now = new Date();
 
-    // Today's submissions (from midnight)
-    const todayStart = new Date(now);
-    todayStart.setHours(0, 0, 0, 0);
+    // Rolling 24-hour window — matches the cashback cap window in calculateCashback()
+    const dayStart = new Date(now.getTime() - 24 * 60 * 60 * 1000);
 
     const submissionsToday = await prisma.receipt.count({
       where: {
         userId,
-        createdAt: { gte: todayStart },
+        createdAt: { gte: dayStart },
       },
     });
 
-    // This month's submissions
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    // Rolling 30-day window — matches the cashback cap window in calculateCashback()
+    const monthStart = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
     const submissionsThisMonth = await prisma.receipt.count({
       where: {
