@@ -170,7 +170,7 @@ router.post(
       const cancelUrl = `${FRONTEND_URL}/payments/cancel?orderId=${orderId}`;
       const callbackUrl = `${API_BASE_URL}/api/payments/callback`;
 
-      // Create Paysera payment
+      // Create Paysera payment — default to 'wallet' (Paysera account)
       const payment = await payseraService.createPayment({
         orderId,
         amount: PayseraService.amountToCents(amount),
@@ -181,7 +181,7 @@ router.post(
         callbackUrl,
         customerEmail: userDetails.email,
         customerName: `${userDetails.firstName || ''} ${userDetails.lastName || ''}`.trim() || userDetails.email,
-        paymentMethod,
+        paymentMethod: paymentMethod || 'wallet',
         lang: 'BUL',
         country: 'BG',
       });
@@ -859,6 +859,8 @@ router.post(
     const callbackUrl = `${API_BASE_URL}/api/payments/subscription/callback`;
 
     // Create Paysera payment
+    // Default to 'wallet' (Paysera account) — skips the payment method selection
+    // page entirely, taking the user directly to Paysera wallet login.
     const payment = await payseraService.createPayment({
       orderId,
       amount: priceInCents,
@@ -869,7 +871,7 @@ router.post(
       callbackUrl,
       customerEmail,
       customerName,
-      paymentMethod,
+      paymentMethod: paymentMethod || 'wallet',
       lang: 'BUL',
       country: 'BG',
     });
