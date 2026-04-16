@@ -39,8 +39,8 @@ COPY package*.json ./
 COPY tsconfig.json ./
 COPY prisma ./prisma/
 
-# Install all dependencies (including dev)
-RUN npm install
+# Install all dependencies (including dev); skip native scripts (see dependencies stage)
+RUN npm install --ignore-scripts
 
 # Generate Prisma Client
 RUN npx prisma generate
