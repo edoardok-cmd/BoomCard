@@ -229,7 +229,7 @@ async function expireCancelledSubscriptions(): Promise<void> {
       const otherActiveSub = await prisma.subscription.findFirst({
         where: {
           userId: sub.userId,
-          status: { in: [SubscriptionStatus.ACTIVE, 'TRIALING' as any] },
+          status: { in: [SubscriptionStatus.ACTIVE, SubscriptionStatus.TRIALING] },
           id: { not: sub.id },
         },
         orderBy: { createdAt: 'desc' },

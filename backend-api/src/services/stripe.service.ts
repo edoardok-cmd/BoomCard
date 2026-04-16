@@ -389,6 +389,11 @@ class StripeService {
       return;
     }
 
+    // Map metadata type to the TransactionType enum. Metadata stores 'TOP_UP'
+    // but the enum value is 'WALLET_TOPUP'.
+    const isTopUp = type === 'TOP_UP';
+    const txType = isTopUp ? 'WALLET_TOPUP' : (type || 'PURCHASE');
+
     try {
       // Upsert transaction — atomic on the unique stripePaymentId to eliminate the
       // TOCTOU race between findFirst and create when Stripe retries the webhook.
@@ -396,7 +401,7 @@ class StripeService {
         where: { stripePaymentId: paymentIntent.id },
         create: {
           userId,
-          type: (type || 'PURCHASE') as any,
+          type: txType as any,
           status: 'COMPLETED',
           amount: paymentIntent.amount / 100,
           finalAmount: paymentIntent.amount / 100,
@@ -414,23 +419,27 @@ class StripeService {
       });
 
       // If this is a wallet top-up, credit the wallet.
-      // Idempotency guard: Stripe may deliver the same event more than once.
-      // Skip the credit if a COMPLETED wallet transaction already exists for this
-      // paymentIntent — otherwise we'd double-credit the user's wallet.
-      if (type === 'TOP_UP') {
-        const alreadyCredited = await prisma.walletTransaction.findFirst({
-          where: {
-            stripePaymentIntentId: paymentIntent.id,
-            type: 'TOP_UP',
-            status: 'COMPLETED',
-          },
-        });
+      // Idempotency: use a Serializable transaction so two concurrent webhook
+      // deliveries can't both pass the findFirst check and double-credit.
+      if (isTopUp) {
+        await prisma.$transaction(async (tx) => {
+          const alreadyCredited = await tx.walletTransaction.findFirst({
+            where: {
+              stripePaymentIntentId: paymentIntent.id,
+              type: 'TOP_UP',
+              status: 'COMPLETED',
+            },
+          });
 
-        if (alreadyCredited) {
-          logger.info(`Wallet already credited for payment ${paymentIntent.id} — skipping (idempotent)`);
-        } else {
+          if (alreadyCredited) {
+            logger.info(`Wallet already credited for payment ${paymentIntent.id} — skipping (idempotent)`);
+            return;
+          }
+
           const amount = paymentIntent.amount / 100;
 
+          // Credit creates a COMPLETED walletTransaction inside its own
+          // nested transaction — safe because Prisma flattens nested calls.
           await walletService.credit({
             userId,
             amount,
@@ -440,8 +449,8 @@ class StripeService {
             metadata: { paymentIntent: paymentIntent.id },
           });
 
-          // Update wallet transaction status
-          await prisma.walletTransaction.updateMany({
+          // Update any pre-existing PENDING wallet transactions to COMPLETED
+          await tx.walletTransaction.updateMany({
             where: {
               stripePaymentIntentId: paymentIntent.id,
               status: 'PENDING',
@@ -452,7 +461,7 @@ class StripeService {
           });
 
           logger.info(`Credited ${amount} BGN to wallet for user ${userId}`);
-        }
+        }, { isolationLevel: 'Serializable' });
       }
 
       logger.info(`Transaction created/updated for payment ${paymentIntent.id}`);
@@ -529,13 +538,15 @@ class StripeService {
     logger.info(`Payment canceled: ${paymentIntent.id}`);
 
     try {
-      const existing = await prisma.transaction.findFirst({
-        where: { paymentIntentId: paymentIntent.id },
+      // Use the unique stripePaymentId for a direct lookup (consistent with the
+      // upsert pattern in handlePaymentSucceeded / handlePaymentFailed).
+      const existing = await prisma.transaction.findUnique({
+        where: { stripePaymentId: paymentIntent.id },
       });
 
       if (existing) {
         await prisma.transaction.update({
-          where: { id: existing.id },
+          where: { stripePaymentId: paymentIntent.id },
           data: { status: 'CANCELLED' },
         });
       }
@@ -572,11 +583,20 @@ class StripeService {
         return;
       }
 
-      const refundAmount = charge.amount_refunded / 100;
+      // Use the latest refund ID as the unique key so partial refunds each
+      // get their own transaction, and webhook retries are idempotent.
+      const latestRefund = charge.refunds?.data?.[0];
+      const refundKey = latestRefund?.id ?? `refund_${charge.id}`;
+      const refundAmount = latestRefund
+        ? latestRefund.amount / 100
+        : charge.amount_refunded / 100;
 
-      // Create refund transaction
-      await prisma.transaction.create({
-        data: {
+      // Upsert — Stripe may deliver the same charge.refunded event more than
+      // once. Without upsert, retries would hit the unique stripePaymentId
+      // constraint and throw, leaving the wallet credit below un-guarded.
+      await prisma.transaction.upsert({
+        where: { stripePaymentId: refundKey },
+        create: {
           userId: transaction.userId,
           type: 'REFUND',
           status: 'COMPLETED',
@@ -584,27 +604,48 @@ class StripeService {
           finalAmount: refundAmount,
           currency: charge.currency.toUpperCase(),
           paymentMethod: 'CARD',
-          stripePaymentId: charge.id,
+          stripePaymentId: refundKey,
           metadata: JSON.stringify({
             originalTransaction: transaction.id,
             chargeId: charge.id,
+            refundId: latestRefund?.id,
           }),
+          completedAt: new Date(),
+        },
+        update: {
+          status: 'COMPLETED',
+          amount: refundAmount,
+          finalAmount: refundAmount,
           completedAt: new Date(),
         },
       });
 
-      // Credit wallet if this was a wallet top-up
+      // Credit wallet if the original payment was a wallet top-up.
+      // Idempotency: wrap in Serializable transaction (same pattern as TOP_UP).
       if (transaction.type === 'WALLET_TOPUP') {
-        await walletService.credit({
-          userId: transaction.userId,
-          amount: refundAmount,
-          type: 'REFUND',
-          description: `Refund for payment ${charge.payment_intent}`,
-          metadata: { chargeId: charge.id },
-        });
+        await prisma.$transaction(async (tx) => {
+          const alreadyRefunded = await tx.walletTransaction.findFirst({
+            where: {
+              description: { contains: refundKey },
+              type: 'REFUND',
+              status: 'COMPLETED',
+            },
+          });
+          if (alreadyRefunded) {
+            logger.info(`Wallet refund already processed for ${refundKey} — skipping`);
+            return;
+          }
+          await walletService.credit({
+            userId: transaction.userId,
+            amount: refundAmount,
+            type: 'REFUND',
+            description: `Refund ${refundKey} for payment ${charge.payment_intent}`,
+            metadata: { chargeId: charge.id, refundId: latestRefund?.id },
+          });
+        }, { isolationLevel: 'Serializable' });
       }
 
-      logger.info(`Refund transaction created for ${refundAmount} BGN`);
+      logger.info(`Refund transaction created for ${refundAmount} BGN (${refundKey})`);
     } catch (error) {
       logger.error(`Error handling refund: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }

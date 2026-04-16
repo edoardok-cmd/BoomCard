@@ -41,16 +41,22 @@ router.post('/stripe', async (req: Request, res: Response) => {
   try {
     const event = stripeService.verifyWebhookSignature(req.body, signature);
 
-    // Acknowledge immediately so Stripe doesn't retry while we process.
-    res.status(200).json({ received: true });
+    // Process synchronously so Stripe sees a non-200 on failure and retries.
+    // Fire-and-forget (200 before processing) would permanently lose events
+    // if the process crashes or the handler throws.
+    await stripeService.handleWebhookEvent(event);
 
-    // Process asynchronously — errors are logged inside handleWebhookEvent.
-    stripeService.handleWebhookEvent(event).catch((err) => {
-      logger.error(`Stripe webhook processing failed for ${event.type} (${event.id}):`, err);
-    });
-  } catch (error) {
-    logger.error('Stripe webhook signature verification failed:', error);
-    res.status(401).json({ error: 'Invalid signature' });
+    res.status(200).json({ received: true });
+  } catch (error: any) {
+    // Signature verification failures → 401
+    if (error.statusCode === 401 || error.message?.includes('signature')) {
+      logger.error('Stripe webhook signature verification failed:', error);
+      res.status(401).json({ error: 'Invalid signature' });
+    } else {
+      // Processing failures → 500, Stripe will retry
+      logger.error('Stripe webhook processing failed:', error);
+      res.status(500).json({ error: 'Webhook processing failed' });
+    }
   }
 });
 

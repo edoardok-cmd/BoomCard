@@ -3,7 +3,7 @@ import { test, expect } from '@playwright/test';
 test.describe('Mobile Menu - Simple Visibility Test', () => {
   test('Menu opens, is visible, and closes properly', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 667 });
-    await page.goto('http://localhost:3005/');
+    await page.goto('/');
     await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(1500);
 

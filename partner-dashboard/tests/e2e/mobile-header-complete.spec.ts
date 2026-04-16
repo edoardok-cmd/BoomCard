@@ -3,7 +3,7 @@ import { test, expect } from '@playwright/test';
 test.describe('Mobile Header - All Buttons Hidden', () => {
   test('Mobile header should only show logo and hamburger', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 667 });
-    await page.goto('http://localhost:3005/');
+    await page.goto('/');
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(2000);
 

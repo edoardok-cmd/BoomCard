@@ -3,12 +3,12 @@ import { test, expect } from '@playwright/test';
 test.describe('Cookie Consent Visual Verification', () => {
   test.beforeEach(async ({ page }) => {
     // Clear localStorage to ensure cookie banner appears
-    await page.goto('http://localhost:3022');
+    await page.goto('/');
     await page.evaluate(() => localStorage.clear());
   });
 
   test('cookie consent banner is visible on homepage', async ({ page }) => {
-    await page.goto('http://localhost:3022');
+    await page.goto('/');
     await page.waitForLoadState('networkidle');
 
     // Take homepage screenshot
@@ -21,20 +21,20 @@ test.describe('Cookie Consent Visual Verification', () => {
   });
 
   test('cookie policy page loads correctly', async ({ page }) => {
-    await page.goto('http://localhost:3022/cookies');
+    await page.goto('/cookies');
     await page.waitForLoadState('networkidle');
 
     // Take cookie policy page screenshot
     await page.screenshot({ path: 'tests/e2e/screenshots/cookies-page.png', fullPage: true });
 
     // Check for page title
-    const title = page.locator('text=Cookie Policy, text=Политика за Бисквитки').first();
+    const title = page.getByText(/Cookie Policy|Политика за бисквитки/i).first();
     await expect(title).toBeVisible();
     console.log('✅ Cookie policy page loads correctly');
   });
 
   test('footer has cookie links', async ({ page }) => {
-    await page.goto('http://localhost:3022');
+    await page.goto('/');
     await page.waitForLoadState('networkidle');
 
     // Scroll to footer
@@ -56,7 +56,7 @@ test.describe('Cookie Consent Visual Verification', () => {
   });
 
   test('cookie preferences modal opens', async ({ page }) => {
-    await page.goto('http://localhost:3022');
+    await page.goto('/');
     await page.waitForLoadState('networkidle');
 
     // Look for settings button in banner or footer

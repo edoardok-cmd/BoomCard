@@ -3,7 +3,7 @@ import { test, expect } from '@playwright/test';
 test.describe('Dark Mode Page Styling', () => {
   test('Login page should have dark background in dark mode', async ({ page }) => {
     // Navigate to login page
-    await page.goto('http://localhost:3021/login');
+    await page.goto('/login');
 
     // Set dark theme
     await page.evaluate(() => {
@@ -48,7 +48,7 @@ test.describe('Dark Mode Page Styling', () => {
 
   test('Register Partner page should have dark background in dark mode', async ({ page }) => {
     // Navigate to register partner page
-    await page.goto('http://localhost:3021/register/partner');
+    await page.goto('/register/partner');
 
     // Set dark theme
     await page.evaluate(() => {
@@ -114,7 +114,7 @@ test.describe('Dark Mode Page Styling', () => {
 
   test('Login page should have light background in light mode', async ({ page }) => {
     // Navigate to login page
-    await page.goto('http://localhost:3021/login');
+    await page.goto('/login');
 
     // Set light theme
     await page.evaluate(() => {
@@ -156,7 +156,7 @@ test.describe('Dark Mode Page Styling', () => {
   });
 
   test('Form inputs should have proper contrast in dark mode', async ({ page }) => {
-    await page.goto('http://localhost:3021/login');
+    await page.goto('/login');
 
     // Set dark theme
     await page.evaluate(() => {

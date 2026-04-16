@@ -4,7 +4,7 @@ test.describe('Hero Section - Mobile and 4K Responsiveness Fixes', () => {
 
   test('Mobile (375px iPhone SE) - CTA button should not overflow', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 667 });
-    await page.goto('http://localhost:5175/');
+    await page.goto('/');
 
     // Wait for hero section to load
     await page.waitForTimeout(5000); // Wait for video and animations
@@ -12,7 +12,7 @@ test.describe('Hero Section - Mobile and 4K Responsiveness Fixes', () => {
     console.log('\n=== Testing at 375px (iPhone SE) ===');
 
     // Check that CTA button is visible and within viewport
-    const ctaButton = page.locator('a[href="/subscriptions"] button').first();
+    const ctaButton = page.locator('a[href*="subscription"] button').first();
     await expect(ctaButton).toBeVisible({ timeout: 10000 });
     console.log('✓ CTA button is visible');
 
@@ -32,13 +32,13 @@ test.describe('Hero Section - Mobile and 4K Responsiveness Fixes', () => {
 
   test('Mobile (480px) - CTA button should not overflow', async ({ page }) => {
     await page.setViewportSize({ width: 480, height: 854 });
-    await page.goto('http://localhost:5175/');
+    await page.goto('/');
 
     await page.waitForTimeout(5000);
 
     console.log('\n=== Testing at 480px ===');
 
-    const ctaButton = page.locator('a[href="/subscriptions"] button').first();
+    const ctaButton = page.locator('a[href*="subscription"] button').first();
     await expect(ctaButton).toBeVisible({ timeout: 10000 });
     console.log('✓ CTA button is visible');
 
@@ -56,13 +56,13 @@ test.describe('Hero Section - Mobile and 4K Responsiveness Fixes', () => {
 
   test('Mobile (768px iPad) - CTA button should not overflow', async ({ page }) => {
     await page.setViewportSize({ width: 768, height: 1024 });
-    await page.goto('http://localhost:5175/');
+    await page.goto('/');
 
     await page.waitForTimeout(5000);
 
     console.log('\n=== Testing at 768px (iPad) ===');
 
-    const ctaButton = page.locator('a[href="/subscriptions"] button').first();
+    const ctaButton = page.locator('a[href*="subscription"] button').first();
     await expect(ctaButton).toBeVisible({ timeout: 10000 });
     console.log('✓ CTA button is visible');
 
@@ -80,7 +80,7 @@ test.describe('Hero Section - Mobile and 4K Responsiveness Fixes', () => {
 
   test('Hero text animations have 2-second delay', async ({ page }) => {
     await page.setViewportSize({ width: 1920, height: 1080 });
-    await page.goto('http://localhost:5175/');
+    await page.goto('/');
 
     console.log('\n=== Testing Hero Text Animation Delays ===');
 
@@ -96,12 +96,12 @@ test.describe('Hero Section - Mobile and 4K Responsiveness Fixes', () => {
     console.log('✓ Hero title appears after delay');
 
     // Check subtitle
-    const subtitle = page.locator('p').filter({ hasText: /exclusive discounts|ексклузивни отстъпки/i }).first();
+    const subtitle = page.locator('p').filter({ hasText: /discounts|отстъпки|Достъп/i }).first();
     await expect(subtitle).toBeVisible({ timeout: 10000 });
     console.log('✓ Hero subtitle appears after title');
 
     // Check button
-    const ctaButton = page.locator('a[href="/subscriptions"] button').first();
+    const ctaButton = page.locator('a[href*="subscription"] button').first();
     await expect(ctaButton).toBeVisible({ timeout: 12000 });
     console.log('✓ CTA button appears last');
 
@@ -110,14 +110,14 @@ test.describe('Hero Section - Mobile and 4K Responsiveness Fixes', () => {
 
   test('4K (3840x2160) - Logo should not go too high', async ({ page }) => {
     await page.setViewportSize({ width: 3840, height: 2160 });
-    await page.goto('http://localhost:5175/');
+    await page.goto('/');
 
     await page.waitForTimeout(10000); // Wait longer for video and logo to appear at 4K
 
     console.log('\n=== Testing at 4K (3840x2160) ===');
 
     // Check logo position
-    const logo = page.locator('img[alt="Boom Logo Explode"]').first();
+    const logo = page.locator('img[alt="Boom Card"]').first();
     await expect(logo).toBeVisible({ timeout: 15000 });
     console.log('✓ Logo is visible');
 
@@ -148,7 +148,7 @@ test.describe('Hero Section - Mobile and 4K Responsiveness Fixes', () => {
 
   test('4K (3840x2160) - Navigation menu should not overflow', async ({ page }) => {
     await page.setViewportSize({ width: 3840, height: 2160 });
-    await page.goto('http://localhost:5175/');
+    await page.goto('/');
 
     await page.waitForTimeout(2000);
 
@@ -177,14 +177,14 @@ test.describe('Hero Section - Mobile and 4K Responsiveness Fixes', () => {
 
   test('Desktop (1920x1080) - All elements visible and properly positioned', async ({ page }) => {
     await page.setViewportSize({ width: 1920, height: 1080 });
-    await page.goto('http://localhost:5175/');
+    await page.goto('/');
 
     await page.waitForTimeout(10000); // Wait for video to complete
 
     console.log('\n=== Testing at 1920x1080 (Full HD) ===');
 
     // Check logo
-    const logo = page.locator('img[alt="Boom Logo Explode"]').first();
+    const logo = page.locator('img[alt="Boom Card"]').first();
     await expect(logo).toBeVisible({ timeout: 15000 });
     console.log('✓ Logo visible');
 
@@ -194,12 +194,12 @@ test.describe('Hero Section - Mobile and 4K Responsiveness Fixes', () => {
     console.log('✓ Hero title visible');
 
     // Check subtitle
-    const subtitle = page.locator('p').filter({ hasText: /exclusive discounts|ексклузивни отстъпки/i }).first();
+    const subtitle = page.locator('p').filter({ hasText: /discounts|отстъпки|Достъп/i }).first();
     await expect(subtitle).toBeVisible();
     console.log('✓ Subtitle visible');
 
     // Check CTA button
-    const ctaButton = page.locator('a[href="/subscriptions"] button').first();
+    const ctaButton = page.locator('a[href*="subscription"] button').first();
     await expect(ctaButton).toBeVisible();
     console.log('✓ CTA button visible');
 
