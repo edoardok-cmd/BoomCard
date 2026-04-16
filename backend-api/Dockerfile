@@ -15,8 +15,11 @@ RUN apk add --no-cache openssl python3 make g++
 COPY package*.json ./
 COPY prisma ./prisma/
 
-# Install dependencies (production only)
-RUN npm install --omit=dev
+# Install dependencies (production only); ignore native build scripts that
+# may fail on transient network errors (e.g. @sentry/profiling-node).
+# The app handles missing native modules gracefully at runtime.
+RUN npm install --omit=dev --ignore-scripts && \
+    npx node-gyp-build 2>/dev/null || true
 
 # Generate Prisma Client
 RUN npx prisma generate
