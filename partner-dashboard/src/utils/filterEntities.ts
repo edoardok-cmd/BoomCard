@@ -2,23 +2,43 @@ import type { Entity } from '../types/entity.types';
 import type { BoomPlacesFiltersState } from '../components/common/BoomPlacesFilters';
 import { placesCategories } from '../types/categories.types';
 
+const NEAR_ME_RADIUS_KM = 20;
+
+/** Haversine great-circle distance in km */
+function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLng = ((lng2 - lng1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
 /**
  * Client-side filtering of entities based on BoomPlacesFiltersState.
  * Returns entities matching ALL active filter groups (AND logic between groups,
  * OR logic within each group).
+ *
+ * @param userCoords - Required when filters.nearMe is true; entities without
+ *   coordinates are excluded when nearMe is active.
  */
 export function filterEntities(
   entities: Entity[],
-  filters: BoomPlacesFiltersState
+  filters: BoomPlacesFiltersState,
+  userCoords?: { lat: number; lng: number }
 ): Entity[] {
   const hasCategories = filters.categories.length > 0;
   const hasLocations = filters.locations.length > 0;
   const hasDiscount = filters.discountRanges.length > 0;
   const hasRating = filters.ratingRanges.length > 0;
   const hasPriceLevels = filters.priceLevels.length > 0;
+  const hasNearMe = filters.nearMe && !!userCoords;
 
   // No filters active → return all
-  if (!hasCategories && !hasLocations && !hasDiscount && !hasRating && !hasPriceLevels) {
+  if (!hasCategories && !hasLocations && !hasDiscount && !hasRating && !hasPriceLevels && !hasNearMe) {
     return entities;
   }
 
@@ -117,6 +137,14 @@ export function filterEntities(
     if (hasPriceLevels) {
       const priceRange = entity.priceRange || '';
       if (!filters.priceLevels.includes(priceRange)) return false;
+    }
+
+    // --- Near me filter ---
+    if (hasNearMe && userCoords) {
+      const coords = entity.location.coordinates;
+      if (!coords) return false;
+      const distKm = haversineKm(userCoords.lat, userCoords.lng, coords.lat, coords.lng);
+      if (distKm > NEAR_ME_RADIUS_KM) return false;
     }
 
     return true;

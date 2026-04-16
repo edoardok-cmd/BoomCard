@@ -6,7 +6,7 @@ test.describe('App Verification', () => {
     await page.goto('/', { waitUntil: 'networkidle' });
 
     // Check page loads without errors
-    await expect(page).toHaveTitle(/BoomCard/i);
+    await expect(page).toHaveTitle(/BOOM Card|BoomCard/i);
 
     // Take screenshot for visual verification
     await page.screenshot({ path: 'test-results/homepage-verification.png', fullPage: true });
@@ -17,8 +17,8 @@ test.describe('App Verification', () => {
   test('can access integrations page', async ({ page }) => {
     await page.goto('/integrations', { waitUntil: 'networkidle' });
 
-    // Should see integrations content (BG: Интеграции / EN: Integrations)
-    await expect(page.locator('h1, h2').first()).toContainText(/integration|интеграции/i);
+    // Should see integrations content (BG: Поддържани Платежни Системи / EN: Supported Payment Systems)
+    await expect(page.locator('h1, h2').first()).toContainText(/integration|интеграции|платежни системи|payment systems/i);
 
     console.log('Integrations page loaded successfully');
   });

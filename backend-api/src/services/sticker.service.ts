@@ -470,6 +470,9 @@ class StickerService {
     if (latitude === undefined || longitude === undefined) {
       throw new Error('Location access is required to scan. Please enable GPS and try again.');
     }
+    if (sticker.venue.latitude == null || sticker.venue.longitude == null) {
+      throw new Error('Venue location is not configured. Please contact support.');
+    }
     const distance = this.calculateDistance(latitude, longitude, sticker.venue.latitude, sticker.venue.longitude);
     if (distance > config.gpsRadiusMeters) {
       throw new Error(
@@ -712,6 +715,9 @@ class StickerService {
     // 6. GPS distance — mandatory, no opt-out (see createSession comment).
     if (latitude === undefined || longitude === undefined) {
       throw new Error('Location access is required to scan. Please enable GPS and try again.');
+    }
+    if (sticker.venue.latitude == null || sticker.venue.longitude == null) {
+      throw new Error('Venue location is not configured. Please contact support.');
     }
     const distance = this.calculateDistance(latitude, longitude, sticker.venue.latitude, sticker.venue.longitude);
     if (distance > config.gpsRadiusMeters) {

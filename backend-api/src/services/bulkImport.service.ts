@@ -106,6 +106,7 @@ function str(val: unknown): string {
 const COL = {
   PARTNER_NAME_BG: 'partner_name_bg',
   PARTNER_CATEGORY: 'partner_category',
+  PARTNER_CATEGORIES: 'partner_categories', // comma-separated e.g. "RESTAURANT,CAFE"
   PARTNER_DESCRIPTION: 'partner_description',
   PARTNER_DESCRIPTION_BG: 'partner_description_bg',
   PARTNER_WEBSITE: 'partner_website',
@@ -151,6 +152,7 @@ export function generateTemplate(): Buffer {
     // Partner fields
     COL.PARTNER_NAME_BG,
     COL.PARTNER_CATEGORY,
+    COL.PARTNER_CATEGORIES,
     COL.PARTNER_DESCRIPTION,
     COL.PARTNER_DESCRIPTION_BG,
     COL.PARTNER_WEBSITE,
@@ -191,6 +193,7 @@ export function generateTemplate(): Buffer {
     // Partner fields (fill only in the first row; subsequent rows can leave blank)
     'Примерен партньор',      // partner_name_bg
     'RESTAURANT',             // partner_category
+    'RESTAURANT,CAFE',        // partner_categories (comma-separated; if blank, uses partner_category)
     'A great restaurant',     // partner_description
     'Страхотен ресторант',    // partner_description_bg
     'https://example.com',    // partner_website
@@ -319,6 +322,8 @@ export async function importFromSpreadsheet(
   const partnerEmail = str(firstRow[COL.PARTNER_EMAIL]);
   const partnerNameBg = str(firstRow[COL.PARTNER_NAME_BG]) || undefined;
   const partnerCategory = str(firstRow[COL.PARTNER_CATEGORY]) || 'OTHER';
+  const partnerCategoriesRaw = toStringArray(firstRow[COL.PARTNER_CATEGORIES]);
+  const partnerCategories = partnerCategoriesRaw.length > 0 ? partnerCategoriesRaw : [partnerCategory];
   const partnerDescription = str(firstRow[COL.PARTNER_DESCRIPTION]) || undefined;
   const partnerDescriptionBg = str(firstRow[COL.PARTNER_DESCRIPTION_BG]) || undefined;
   const partnerWebsite = str(firstRow[COL.PARTNER_WEBSITE]) || undefined;
@@ -413,6 +418,7 @@ export async function importFromSpreadsheet(
         businessName,
         businessNameBg: partnerNameBg,
         category: partnerCategory,
+        categories: partnerCategories,
         description: partnerDescription,
         descriptionBg: partnerDescriptionBg,
         website: partnerWebsite,
@@ -548,6 +554,7 @@ const PCOL = {
   BUSINESS_NAME:    'business_name',
   BUSINESS_NAME_BG: 'business_name_bg',
   CATEGORY:         'category',
+  CATEGORIES:       'categories', // comma-separated e.g. "RESTAURANT,CAFE"
   DESCRIPTION:      'description',
   DESCRIPTION_BG:   'description_bg',
   WEBSITE:          'website',
@@ -573,7 +580,8 @@ export function generatePartnersTemplate(): Buffer {
   const exampleRow = [
     'Example Restaurant',          // business_name
     'Примерен Ресторант',           // business_name_bg
-    'RESTAURANT',                   // category
+    'RESTAURANT',                   // category (primary)
+    'RESTAURANT,CAFE',              // categories (comma-separated; if blank, uses category)
     'A great place to eat',         // description
     'Страхотно място за хранене',   // description_bg
     'https://example.com',          // website
@@ -710,6 +718,8 @@ export async function importPartnersFromSpreadsheet(
     const partnerEmail = str(row[PCOL.EMAIL]);
     const partnerNameBg = str(row[PCOL.BUSINESS_NAME_BG]) || undefined;
     const category = str(row[PCOL.CATEGORY]) || 'OTHER';
+    const categoriesRaw = toStringArray(row[PCOL.CATEGORIES]);
+    const categories = categoriesRaw.length > 0 ? categoriesRaw : [category];
     const statusRaw = str(row[PCOL.STATUS]).toUpperCase() || 'ACTIVE';
     const partnerStatus = Object.values(PartnerStatus).includes(statusRaw as PartnerStatus)
       ? (statusRaw as PartnerStatus)
@@ -790,6 +800,7 @@ export async function importPartnersFromSpreadsheet(
             businessName,
             businessNameBg: partnerNameBg,
             category,
+            categories,
             description: str(row[PCOL.DESCRIPTION]) || undefined,
             descriptionBg: str(row[PCOL.DESCRIPTION_BG]) || undefined,
             website: str(row[PCOL.WEBSITE]) || undefined,
@@ -816,6 +827,7 @@ export async function importPartnersFromSpreadsheet(
             businessName,
             businessNameBg: partnerNameBg,
             category,
+            categories,
             description: str(row[PCOL.DESCRIPTION]) || undefined,
             descriptionBg: str(row[PCOL.DESCRIPTION_BG]) || undefined,
             website: str(row[PCOL.WEBSITE]) || undefined,

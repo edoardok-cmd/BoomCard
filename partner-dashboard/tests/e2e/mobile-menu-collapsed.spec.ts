@@ -15,10 +15,8 @@ test.describe('Mobile Menu - Collapsed by Default', () => {
     await page.waitForTimeout(1000);
 
     // Check that menu panel is visible
-    const menuPanel = page.locator('nav').first();
-    const isPanelVisible = await menuPanel.isVisible();
-    console.log(`Menu panel visible: ${isPanelVisible}`);
-    expect(isPanelVisible).toBe(true);
+    const menuPanel = page.locator('[data-testid="mobile-menu-panel"]');
+    await expect(menuPanel).toBeVisible({ timeout: 3000 });
 
     // Look for expanded menu sections - they should NOT be visible by default
     // We'll check for common navigation items that would be in expanded sections

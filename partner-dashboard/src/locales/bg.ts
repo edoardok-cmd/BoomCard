@@ -74,6 +74,7 @@ export const bg: TranslationKey = {
     downloadApp: 'Изтегли приложение',
     adminDashboard: 'Административно табло',
     managePartners: 'Управление на партньори',
+    topDiscounts: 'Топ Отстъпки',
     manageOffers: 'Управление на оферти',
     partnerTypes: 'Видове партньори',
     bulkImport: 'Масов импорт',
@@ -276,7 +277,7 @@ export const bg: TranslationKey = {
     // Hero Section
     heroTitle: 'Повече преживявания. По-малко сметки.',
     heroTitleHighlight: 'Пробвай безплатно.',
-    heroSubtitle: 'Ексклузивни отстъпки за ресторанти, хотели, спа центрове и изживявания',
+    heroSubtitle: 'Ексклузивни отстъпки до 20% за ресторанти, хотели, спа центрове и изживявания',
     heroCta: 'Активирай своя Premium – БЕЗПЛАТНО!',
     browseOffers: 'Разгледай офертите',
     topOffers: 'ТОП оферти',

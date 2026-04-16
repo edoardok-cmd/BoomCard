@@ -201,7 +201,7 @@ test.describe('§6 Bar proximity + time limits (real receipts)', () => {
     let reasons: string[] = [];
     while (Date.now() < deadline) {
       const row = await getScanById(scanId);
-      reasons = row?.fraudReasons ? JSON.parse(row.fraudReasons) : [];
+      reasons = row?.fraudReasons ?? [];
       if (reasons.some((r: string) => r.startsWith('MERCHANT_MISMATCH'))) return reasons;
       await new Promise((r) => setTimeout(r, 1000));
     }
@@ -229,7 +229,7 @@ test.describe('§6 Bar proximity + time limits (real receipts)', () => {
     // Give the detached OCR job time to complete, then confirm no false flag.
     await new Promise((r) => setTimeout(r, 45_000));
     const row = await getScanById(scan.data.id);
-    const reasons: string[] = row.fraudReasons ? JSON.parse(row.fraudReasons) : [];
+    const reasons: string[] = row.fraudReasons ?? [];
     expect(reasons.some((r) => r.startsWith('MERCHANT_MISMATCH'))).toBe(false);
   });
 

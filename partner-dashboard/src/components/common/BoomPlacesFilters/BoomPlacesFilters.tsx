@@ -285,7 +285,7 @@ interface BoomPlacesFiltersProps {
 const BoomPlacesFilters: React.FC<BoomPlacesFiltersProps> = ({
   filters,
   onChange,
-  showCategory = false,
+  showCategory = true,
   categoryOptions = [],
 }) => {
   const { language, t } = useLanguage();
@@ -467,63 +467,88 @@ const BoomPlacesFilters: React.FC<BoomPlacesFiltersProps> = ({
           >
             <FilterGrid>
               {/* Category */}
-              <CategoryFilterGroup>
-                <Label>
-                  <LayoutGrid />
-                  {language === 'bg' ? 'Категория' : 'Category'}
-                </Label>
-                <CategoryList>
-                  {placesCategories.map(cat => (
-                    <CategoryItem key={cat.id}>
-                      <CheckboxLabel
-                        $checked={filters.categories.includes(cat.id)}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={filters.categories.includes(cat.id)}
-                          onChange={() => handleCategoryToggle(cat.id)}
-                        />
-                        {language === 'bg' ? cat.name.bg : cat.name.en}
-                      </CheckboxLabel>
-                      {filters.categories.includes(cat.id) && (
-                        <SubcategoryGroup>
-                          {cat.subcategories.map(sub => (
-                            <React.Fragment key={sub.id}>
-                              <SubcategoryLabel
-                                $checked={filters.categories.includes(sub.id)}
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={filters.categories.includes(sub.id)}
-                                  onChange={() => handleSubcategoryToggle(sub.id, cat.id)}
-                                />
-                                {language === 'bg' ? sub.name.bg : sub.name.en}
-                              </SubcategoryLabel>
-                              {sub.children && filters.categories.includes(sub.id) && (
-                                <NestedChildrenGroup>
-                                  {sub.children.map(child => (
-                                    <SubcategoryLabel
-                                      key={child.id}
-                                      $checked={filters.categories.includes(child.id)}
-                                    >
-                                      <input
-                                        type="checkbox"
-                                        checked={filters.categories.includes(child.id)}
-                                        onChange={() => handleChildToggle(child.id, sub.id, cat.id)}
-                                      />
-                                      {language === 'bg' ? child.name.bg : child.name.en}
-                                    </SubcategoryLabel>
-                                  ))}
-                                </NestedChildrenGroup>
-                              )}
-                            </React.Fragment>
-                          ))}
-                        </SubcategoryGroup>
-                      )}
-                    </CategoryItem>
-                  ))}
-                </CategoryList>
-              </CategoryFilterGroup>
+              {showCategory && (
+                <CategoryFilterGroup>
+                  <Label>
+                    <LayoutGrid />
+                    {language === 'bg' ? 'Категория' : 'Category'}
+                  </Label>
+                  {categoryOptions.length > 0 ? (
+                    <CheckboxGroup>
+                      {categoryOptions.map(opt => (
+                        <CheckboxLabel
+                          key={opt.id}
+                          $checked={filters.categories.includes(opt.id)}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={filters.categories.includes(opt.id)}
+                            onChange={() => {
+                              const updated = filters.categories.includes(opt.id)
+                                ? filters.categories.filter(c => c !== opt.id)
+                                : [...filters.categories, opt.id];
+                              onChange({ ...filters, categories: updated });
+                            }}
+                          />
+                          {language === 'bg' ? opt.labelBg : opt.label}
+                        </CheckboxLabel>
+                      ))}
+                    </CheckboxGroup>
+                  ) : (
+                    <CategoryList>
+                      {placesCategories.map(cat => (
+                        <CategoryItem key={cat.id}>
+                          <CheckboxLabel
+                            $checked={filters.categories.includes(cat.id)}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={filters.categories.includes(cat.id)}
+                              onChange={() => handleCategoryToggle(cat.id)}
+                            />
+                            {language === 'bg' ? cat.name.bg : cat.name.en}
+                          </CheckboxLabel>
+                          {filters.categories.includes(cat.id) && (
+                            <SubcategoryGroup>
+                              {cat.subcategories.map(sub => (
+                                <React.Fragment key={sub.id}>
+                                  <SubcategoryLabel
+                                    $checked={filters.categories.includes(sub.id)}
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={filters.categories.includes(sub.id)}
+                                      onChange={() => handleSubcategoryToggle(sub.id, cat.id)}
+                                    />
+                                    {language === 'bg' ? sub.name.bg : sub.name.en}
+                                  </SubcategoryLabel>
+                                  {sub.children && filters.categories.includes(sub.id) && (
+                                    <NestedChildrenGroup>
+                                      {sub.children.map(child => (
+                                        <SubcategoryLabel
+                                          key={child.id}
+                                          $checked={filters.categories.includes(child.id)}
+                                        >
+                                          <input
+                                            type="checkbox"
+                                            checked={filters.categories.includes(child.id)}
+                                            onChange={() => handleChildToggle(child.id, sub.id, cat.id)}
+                                          />
+                                          {language === 'bg' ? child.name.bg : child.name.en}
+                                        </SubcategoryLabel>
+                                      ))}
+                                    </NestedChildrenGroup>
+                                  )}
+                                </React.Fragment>
+                              ))}
+                            </SubcategoryGroup>
+                          )}
+                        </CategoryItem>
+                      ))}
+                    </CategoryList>
+                  )}
+                </CategoryFilterGroup>
+              )}
 
               {/* Location */}
               <FilterGroup>

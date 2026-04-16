@@ -72,6 +72,7 @@ export const en = {
     downloadApp: 'Download App',
     adminDashboard: 'Admin Dashboard',
     managePartners: 'Manage Partners',
+    topDiscounts: 'Top Discounts',
     manageOffers: 'Manage Offers',
     partnerTypes: 'Partner Types',
     bulkImport: 'Bulk Import',
@@ -274,7 +275,7 @@ export const en = {
     // Hero Section
     heroTitle: 'More experiences. Lower bills.',
     heroTitleHighlight: 'Try it free.',
-    heroSubtitle: 'Exclusive discounts for restaurants, hotels, spas, and experiences',
+    heroSubtitle: 'Exclusive discounts up to 20% for restaurants, hotels, spas, and experiences',
     heroCta: 'Activate your Premium – FREE!',
     browseOffers: 'Browse Deals',
     topOffers: 'Top Offers',

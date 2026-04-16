@@ -16,6 +16,7 @@ export interface Partner {
   descriptionEn?: string;
   descriptionBg?: string;
   category: string;
+  categories?: string[];
   partnerTypeId?: string;
   partnerType?: PartnerType;
   status: PartnerStatus | 'new' | 'vip' | 'exclusive' | 'regular';
@@ -47,7 +48,7 @@ export interface Partner {
   joinedDate?: string;
   verifiedAt?: string;
   isVerified?: boolean;
-  features?: string[];
+  features?: Record<string, unknown>;
   createdAt?: string;
   updatedAt?: string;
   pendingChanges?: Record<string, unknown> | null;
@@ -69,6 +70,7 @@ export interface CreatePartnerPayload {
   businessName: string;
   businessNameBg?: string;
   category: string;
+  categories?: string[];
   description?: string;
   descriptionBg?: string;
   partnerTypeId?: string;
@@ -86,17 +88,47 @@ export interface OnboardPartnerPayload {
   email: string;
   businessName: string;
   businessNameBg?: string;
+  legalName?: string;
+  vatNumber?: string;
+  country?: string;
   category: string;
+  categories?: string[];
+  subcategory?: string;
   description?: string;
   descriptionBg?: string;
+  highlights?: string | string[];
   partnerTypeId?: string;
   discountRate?: number;
+  status?: string;
   city?: string;
   region?: string;
   address?: string;
+  googleMapsLink?: string;
+  totalVenues?: number;
+  boomVenues?: number;
+  additionalAddresses?: string;
   phone?: string;
   website?: string;
+  ownerName?: string;
+  primaryContact?: string;
+  secondaryContact?: string;
+  secondaryPhone?: string;
+  instagram?: string;
+  facebook?: string;
+  tiktok?: string;
+  googleBusiness?: string;
+  menuLink?: string;
+  logoLink?: string;
+  photosLink?: string;
+  marketingVisibility?: string;
+  contractSigned?: boolean;
+  contractStartDate?: string;
+  contractDuration?: string;
+  onboardingDate?: string;
+  addedBy?: string;
+  internalNotes?: string;
   locations?: PartnerLocationInput[];
+  additionalVenues?: PartnerLocationInput[];
 }
 
 export interface PartnerUserOption {

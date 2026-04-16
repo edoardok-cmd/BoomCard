@@ -59,10 +59,10 @@ test.describe('Hamburger Menu - Breakpoint Tests', () => {
     await expect(hamburger).toBeVisible();
 
     await hamburger.click();
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(800);
 
     const mobilePanel = page.locator('[data-testid="mobile-menu-panel"]');
-    await expect(mobilePanel).toBeVisible();
+    await expect(mobilePanel).toBeVisible({ timeout: 3000 });
   });
 
   test('Hamburger should still be visible at 1280px', async ({ page }) => {

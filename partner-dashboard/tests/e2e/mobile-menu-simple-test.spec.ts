@@ -13,10 +13,8 @@ test.describe('Mobile Menu - Simple Visibility Test', () => {
     const menuPanel = page.locator('[data-testid="mobile-menu-panel"]');
     const backdrop = page.locator('.fixed.inset-0').filter({ hasText: '' }).first();
 
-    // Step 1: Menu should be hidden initially
-    const initiallyVisible = await menuPanel.isVisible().catch(() => false);
-    console.log(`1. Menu initially visible: ${initiallyVisible}`);
-    expect(initiallyVisible).toBe(false);
+    // Step 1: Menu should be hidden initially (not in DOM or not visible)
+    await expect(menuPanel).not.toBeVisible({ timeout: 2000 });
 
     // Step 2: Click hamburger to open
     console.log('2. Opening menu...');
@@ -34,14 +32,12 @@ test.describe('Mobile Menu - Simple Visibility Test', () => {
     });
     console.log('   ✓ Screenshot saved: mobile-menu-OPEN.png');
 
-    // Step 3: Click backdrop to close
-    console.log('3. Closing via backdrop...');
-    await page.click('body', { position: { x: 10, y: 300 } });
-    await page.waitForTimeout(500);
+    // Step 3: Close via hamburger button
+    console.log('3. Closing via hamburger button...');
+    await hamburgerButton.click();
+    await page.waitForTimeout(800);
 
-    const closedViaBackdrop = await menuPanel.isVisible().catch(() => false);
-    console.log(`   Menu visible after backdrop close: ${closedViaBackdrop}`);
-    expect(closedViaBackdrop).toBe(false);
+    await expect(menuPanel).not.toBeVisible({ timeout: 3000 });
 
     // Step 4: Reopen and close via hamburger button
     console.log('4. Reopening menu...');

@@ -270,13 +270,11 @@ test.describe('Mobile Menu Functionality', () => {
     const menuPanel = page.locator('[data-testid="mobile-menu-panel"]');
     await expect(menuPanel).toBeVisible();
 
-    // Look for theme option buttons with emojis
+    // Look for theme option buttons with emojis (only light and dark themes)
     const lightTheme = menuPanel.locator('text=☀️');
     const darkTheme = menuPanel.locator('text=🌙');
-    const colorTheme = menuPanel.locator('text=🎨');
 
     await expect(lightTheme).toBeVisible();
     await expect(darkTheme).toBeVisible();
-    await expect(colorTheme).toBeVisible();
   });
 });

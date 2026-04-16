@@ -266,6 +266,24 @@ const VenueButton = styled.button`
   }
 `;
 
+const EditVenueButton = styled.button`
+  padding: 0.5rem 0.75rem;
+  background: var(--color-background-tertiary);
+  border: 1px solid var(--color-border);
+  border-radius: 0.5rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #0d9488;
+  cursor: pointer;
+  transition: all 200ms;
+  white-space: nowrap;
+
+  &:hover {
+    background: #ccfbf1;
+    border-color: #5eead4;
+  }
+`;
+
 const ActionCell = styled.div`
   display: flex;
   gap: 0.5rem;
@@ -459,6 +477,28 @@ const SubmitButton = styled.button`
   &:hover:not(:disabled) {
     opacity: 0.9;
     transform: translateY(-1px);
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+`;
+
+const DangerButton = styled.button`
+  padding: 0.75rem 1.5rem;
+  background: transparent;
+  color: #dc2626;
+  border: 2px solid #dc2626;
+  border-radius: 0.75rem;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 200ms;
+
+  &:hover:not(:disabled) {
+    background: #dc2626;
+    color: white;
   }
 
   &:disabled {
@@ -689,9 +729,10 @@ interface AddressAutocompleteProps {
   onChange: (value: string) => void;
   onSelect: (result: { address: string; city: string; region: string; latitude: number; longitude: number }) => void;
   placeholder?: string;
+  large?: boolean;
 }
 
-const AddressAutocomplete: React.FC<AddressAutocompleteProps> = ({ value, onChange, onSelect, placeholder }) => {
+const AddressAutocomplete: React.FC<AddressAutocompleteProps> = ({ value, onChange, onSelect, placeholder, large }) => {
   const [suggestions, setSuggestions] = useState<NominatimResult[]>([]);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -756,9 +797,11 @@ const AddressAutocomplete: React.FC<AddressAutocompleteProps> = ({ value, onChan
     setOpen(false);
   };
 
+  const InputComponent = large ? Input : SmallInput;
+
   return (
     <div ref={wrapperRef} style={{ position: 'relative' }}>
-      <SmallInput
+      <InputComponent
         type="text"
         value={value}
         onChange={handleChange}
@@ -924,6 +967,18 @@ const emptyCreate: Omit<OnboardPartnerPayload, 'category' | 'categories' | 'disc
 // ─── Edit Form ────────────────────────────────────────────────────────────────
 
 interface EditForm {
+  // Profile fields
+  businessName: string;
+  businessNameBg: string;
+  description: string;
+  descriptionBg: string;
+  city: string;
+  region: string;
+  address: string;
+  phone: string;
+  email: string;
+  website: string;
+  // Admin-only fields
   partnerTypeId: string;
   discountRate: string;
   status: PartnerStatus;
@@ -948,7 +1003,12 @@ const AdminPartnersPage: React.FC = () => {
 
   // Edit modal
   const [editingPartner, setEditingPartner] = useState<Partner | null>(null);
-  const [editForm, setEditForm] = useState<EditForm>({ partnerTypeId: '', discountRate: '0', status: 'ACTIVE' });
+  const [editCategories, setEditCategories] = useState<string[]>([]);
+  const [editForm, setEditForm] = useState<EditForm>({
+    businessName: '', businessNameBg: '', description: '', descriptionBg: '',
+    city: '', region: '', address: '', phone: '', email: '', website: '',
+    partnerTypeId: '', discountRate: '0', status: 'ACTIVE',
+  });
 
   // Menu upload modal
   const [menuPartner, setMenuPartner] = useState<Partner | null>(null);
@@ -963,8 +1023,17 @@ const AdminPartnersPage: React.FC = () => {
 
   // Venue creation modal
   const [venuePartner, setVenuePartner] = useState<Partner | null>(null);
-  const [venueForm, setVenueForm] = useState({ name: '', address: '', city: '', region: '', phone: '', description: '' });
+  const [venueForm, setVenueForm] = useState({ name: '', nameBg: '', address: '', city: '', region: '', phone: '', email: '', description: '', descriptionBg: '', latitude: undefined as number | undefined, longitude: undefined as number | undefined });
   const [venueSubmitting, setVenueSubmitting] = useState(false);
+
+  // Venue edit modal
+  const [editVenuePartner, setEditVenuePartner] = useState<Partner | null>(null);
+  const [editVenueId, setEditVenueId] = useState<string>('');
+  const [editVenueForm, setEditVenueForm] = useState({ name: '', nameBg: '', address: '', city: '', region: '', phone: '', email: '', description: '', descriptionBg: '', latitude: undefined as number | undefined, longitude: undefined as number | undefined });
+  const [editVenueSubmitting, setEditVenueSubmitting] = useState(false);
+  const [editVenueLoading, setEditVenueLoading] = useState(false);
+  const [deleteVenueConfirm, setDeleteVenueConfirm] = useState(false);
+  const [deletingVenue, setDeletingVenue] = useState(false);
 
   // ── Data ──────────────────────────────────────────────────────────────────
 
@@ -1084,7 +1153,18 @@ const AdminPartnersPage: React.FC = () => {
 
   const openEdit = (partner: Partner) => {
     setEditingPartner(partner);
+    setEditCategories(partner.categories?.length ? partner.categories : partner.category ? [partner.category] : []);
     setEditForm({
+      businessName: partner.businessName || '',
+      businessNameBg: partner.businessNameBg || '',
+      description: partner.description || '',
+      descriptionBg: partner.descriptionBg || '',
+      city: partner.city || '',
+      region: partner.region || '',
+      address: partner.address || '',
+      phone: partner.phone || '',
+      email: partner.email || '',
+      website: partner.website || '',
       partnerTypeId: partner.partnerTypeId || '',
       discountRate: String(effectiveRate(partner)),
       status: (String(partner.status).toUpperCase() as PartnerStatus) || 'ACTIVE',
@@ -1103,10 +1183,26 @@ const AdminPartnersPage: React.FC = () => {
   const handleEditSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingPartner) return;
+    if (editCategories.length === 0) {
+      toast.error(language === 'bg' ? 'Изберете поне една категория' : 'Select at least one category');
+      return;
+    }
     const rate = parseFloat(editForm.discountRate);
     updateMutation.mutate({
       id: editingPartner.id,
       data: {
+        businessName: editForm.businessName || undefined,
+        businessNameBg: editForm.businessNameBg || undefined,
+        category: editCategories[0],
+        categories: editCategories,
+        description: editForm.description || undefined,
+        descriptionBg: editForm.descriptionBg || undefined,
+        city: editForm.city || undefined,
+        region: editForm.region || undefined,
+        address: editForm.address || undefined,
+        phone: editForm.phone || undefined,
+        email: editForm.email || undefined,
+        website: editForm.website || undefined,
         partnerTypeId: editForm.partnerTypeId || undefined,
         discountRate: isNaN(rate) ? undefined : rate,
         status: editForm.status,
@@ -1147,11 +1243,16 @@ const AdminPartnersPage: React.FC = () => {
     setVenuePartner(partner);
     setVenueForm({
       name: partner.businessName || '',
+      nameBg: '',
       address: partner.address || '',
       city: partner.city || '',
       region: partner.region || '',
       phone: partner.phone || '',
+      email: partner.email || '',
       description: partner.description || '',
+      descriptionBg: '',
+      latitude: undefined,
+      longitude: undefined,
     });
   };
 
@@ -1176,6 +1277,96 @@ const AdminPartnersPage: React.FC = () => {
       toast.error(err?.message || 'Грешка при създаване на обект');
     } finally {
       setVenueSubmitting(false);
+    }
+  };
+
+  // ── Venue edit ─────────────────────────────────────────────────────────────
+
+  const loadEditVenue = async (venueId: string) => {
+    setEditVenueId(venueId);
+    setEditVenueLoading(true);
+    setEditVenueForm({ name: '', nameBg: '', address: '', city: '', region: '', phone: '', email: '', description: '', descriptionBg: '', latitude: undefined, longitude: undefined });
+    setDeleteVenueConfirm(false);
+    try {
+      const baseURL = import.meta.env.VITE_API_BASE_URL || '/api';
+      const token = getAccessToken();
+      const res = await fetch(`${baseURL}/venues/${venueId}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || 'Failed to load venue');
+      const v = data.data ?? data;
+      setEditVenueForm({
+        name: v.name || '',
+        nameBg: v.nameBg || '',
+        address: v.address || '',
+        city: v.city || '',
+        region: v.region || '',
+        phone: v.phone || '',
+        email: v.email || '',
+        description: v.description || '',
+        descriptionBg: v.descriptionBg || '',
+        latitude: v.latitude != null ? v.latitude : undefined,
+        longitude: v.longitude != null ? v.longitude : undefined,
+      });
+    } catch {
+      // form stays empty; user can still fill in fields manually
+    } finally {
+      setEditVenueLoading(false);
+    }
+  };
+
+  const openEditVenueModal = (partner: Partner) => {
+    const venues = partner.venues ?? [];
+    if (!venues.length) return;
+    setEditVenuePartner(partner);
+    loadEditVenue(venues[0].id);
+  };
+
+  const handleVenueEditSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editVenueId) return;
+    setEditVenueSubmitting(true);
+    try {
+      const token = getAccessToken();
+      const baseURL = import.meta.env.VITE_API_BASE_URL || '/api';
+      const res = await fetch(`${baseURL}/venues/${editVenueId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify(editVenueForm),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || 'Грешка');
+      toast.success(language === 'bg' ? `Обектът "${editVenueForm.name}" е обновен!` : `Venue "${editVenueForm.name}" updated!`);
+      setEditVenuePartner(null);
+      queryClient.invalidateQueries({ queryKey: ['admin-partners'] });
+    } catch (err: any) {
+      toast.error(err?.message || 'Грешка при обновяване на обект');
+    } finally {
+      setEditVenueSubmitting(false);
+    }
+  };
+
+  const handleVenueDelete = async () => {
+    if (!editVenueId) return;
+    setDeletingVenue(true);
+    try {
+      const token = getAccessToken();
+      const baseURL = import.meta.env.VITE_API_BASE_URL || '/api';
+      const res = await fetch(`${baseURL}/venues/${editVenueId}`, {
+        method: 'DELETE',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || 'Грешка');
+      toast.success(language === 'bg' ? `Обектът "${editVenueForm.name}" е изтрит!` : `Venue "${editVenueForm.name}" deleted!`);
+      setEditVenuePartner(null);
+      queryClient.invalidateQueries({ queryKey: ['admin-partners'] });
+    } catch (err: any) {
+      toast.error(err?.message || 'Грешка при изтриване на обект');
+      setDeleteVenueConfirm(false);
+    } finally {
+      setDeletingVenue(false);
     }
   };
 
@@ -1355,6 +1546,11 @@ const AdminPartnersPage: React.FC = () => {
                 <VenueButton type="button" onClick={() => openVenueModal(partner)} title={language === 'bg' ? 'Създай нов обект' : 'Create venue'}>
                   {language === 'bg' ? '+ Обект' : '+ Venue'}
                 </VenueButton>
+                {partner.venues && partner.venues.length > 0 && (
+                  <EditVenueButton type="button" onClick={() => openEditVenueModal(partner)} title={language === 'bg' ? 'Редактирай обект' : 'Edit venue'}>
+                    {language === 'bg' ? '✎ Обект' : '✎ Venue'}
+                  </EditVenueButton>
+                )}
                 <MenuButton type="button" onClick={() => openMenuModal(partner)} title={language === 'bg' ? 'Качи меню' : 'Upload menu'}>
                   {language === 'bg' ? 'Меню' : 'Menu'}
                 </MenuButton>
@@ -1712,7 +1908,126 @@ const AdminPartnersPage: React.FC = () => {
               </ModalTitle>
 
               <form onSubmit={handleEditSubmit}>
+                {/* ── Profile fields ── */}
                 <FormGrid>
+                  <FormField>
+                    <Label>{language === 'bg' ? 'Бизнес Название' : 'Business Name'} <Required>*</Required></Label>
+                    <Input
+                      type="text"
+                      value={editForm.businessName}
+                      onChange={e => setEditForm(prev => ({ ...prev, businessName: e.target.value }))}
+                      required
+                    />
+                  </FormField>
+
+                  <FormField>
+                    <Label>{language === 'bg' ? 'Название (БГ)' : 'Business Name (BG)'}</Label>
+                    <Input
+                      type="text"
+                      value={editForm.businessNameBg}
+                      onChange={e => setEditForm(prev => ({ ...prev, businessNameBg: e.target.value }))}
+                    />
+                  </FormField>
+
+                  <FormField $full>
+                    <Label>{language === 'bg' ? 'Категории' : 'Categories'} <Required>*</Required></Label>
+                    <CategoryChips>
+                      {PARTNER_CATEGORIES.map(cat => (
+                        <CategoryChip
+                          key={cat}
+                          type="button"
+                          $selected={editCategories.includes(cat)}
+                          onClick={() => setEditCategories(prev =>
+                            prev.includes(cat) ? prev.filter(c => c !== cat) : [...prev, cat]
+                          )}
+                        >
+                          {cat}
+                        </CategoryChip>
+                      ))}
+                    </CategoryChips>
+                    {editCategories.length > 0 && (
+                      <FieldHint>
+                        {language === 'bg' ? `Избрано: ${editCategories.join(', ')}` : `Selected: ${editCategories.join(', ')}`}
+                      </FieldHint>
+                    )}
+                  </FormField>
+
+                  <FormField>
+                    <Label>{language === 'bg' ? 'Град' : 'City'}</Label>
+                    <Input
+                      type="text"
+                      value={editForm.city}
+                      onChange={e => setEditForm(prev => ({ ...prev, city: e.target.value }))}
+                    />
+                  </FormField>
+
+                  <FormField>
+                    <Label>{language === 'bg' ? 'Регион' : 'Region'}</Label>
+                    <Input
+                      type="text"
+                      value={editForm.region}
+                      onChange={e => setEditForm(prev => ({ ...prev, region: e.target.value }))}
+                    />
+                  </FormField>
+
+                  <FormField $full>
+                    <Label>{language === 'bg' ? 'Адрес' : 'Address'}</Label>
+                    <Input
+                      type="text"
+                      value={editForm.address}
+                      onChange={e => setEditForm(prev => ({ ...prev, address: e.target.value }))}
+                    />
+                  </FormField>
+
+                  <FormField>
+                    <Label>{language === 'bg' ? 'Телефон' : 'Phone'}</Label>
+                    <Input
+                      type="tel"
+                      value={editForm.phone}
+                      onChange={e => setEditForm(prev => ({ ...prev, phone: e.target.value }))}
+                    />
+                  </FormField>
+
+                  <FormField>
+                    <Label>{language === 'bg' ? 'Имейл' : 'Email'}</Label>
+                    <Input
+                      type="email"
+                      value={editForm.email}
+                      onChange={e => setEditForm(prev => ({ ...prev, email: e.target.value }))}
+                    />
+                  </FormField>
+
+                  <FormField $full>
+                    <Label>{language === 'bg' ? 'Уебсайт' : 'Website'}</Label>
+                    <Input
+                      type="url"
+                      placeholder="https://"
+                      value={editForm.website}
+                      onChange={e => setEditForm(prev => ({ ...prev, website: e.target.value }))}
+                    />
+                  </FormField>
+
+                  <FormField $full>
+                    <Label>{language === 'bg' ? 'Описание (EN)' : 'Description (EN)'}</Label>
+                    <Textarea
+                      value={editForm.description}
+                      onChange={e => setEditForm(prev => ({ ...prev, description: e.target.value }))}
+                      placeholder={language === 'bg' ? 'Кратко описание...' : 'Short description...'}
+                    />
+                  </FormField>
+
+                  <FormField $full>
+                    <Label>{language === 'bg' ? 'Описание (БГ)' : 'Description (BG)'}</Label>
+                    <Textarea
+                      value={editForm.descriptionBg}
+                      onChange={e => setEditForm(prev => ({ ...prev, descriptionBg: e.target.value }))}
+                      placeholder={language === 'bg' ? 'Кратко описание на български...' : 'Short description in Bulgarian...'}
+                    />
+                  </FormField>
+                </FormGrid>
+
+                {/* ── Admin fields ── */}
+                <FormGrid style={{ marginTop: '1.25rem' }}>
                   <FormField>
                     <Label>{language === 'bg' ? 'Тип Партньор' : 'Partner Type'}</Label>
                     <Select
@@ -1918,13 +2233,29 @@ const AdminPartnersPage: React.FC = () => {
                     />
                   </FormField>
                   <FormField $full>
-                    <Label>{language === 'bg' ? 'Адрес' : 'Address'}<Required>*</Required></Label>
+                    <Label>{language === 'bg' ? 'Име на обекта (БГ)' : 'Venue name (BG)'}</Label>
                     <Input
-                      value={venueForm.address}
-                      onChange={e => setVenueForm(f => ({ ...f, address: e.target.value }))}
-                      placeholder={language === 'bg' ? 'напр. бул. Черни връх 45' : 'e.g. 45 Main St'}
-                      required
+                      value={venueForm.nameBg}
+                      onChange={e => setVenueForm(f => ({ ...f, nameBg: e.target.value }))}
+                      placeholder={language === 'bg' ? 'напр. Ресторант Дива' : 'e.g. Ресторант Дива'}
                     />
+                  </FormField>
+                  <FormField $full>
+                    <Label>{language === 'bg' ? 'Адрес' : 'Address'}<Required>*</Required></Label>
+                    <AddressAutocomplete
+                      large
+                      value={venueForm.address}
+                      onChange={val => setVenueForm(f => ({ ...f, address: val, latitude: undefined, longitude: undefined }))}
+                      onSelect={({ address, city, region, latitude, longitude }) =>
+                        setVenueForm(f => ({ ...f, address, city, region, latitude, longitude }))
+                      }
+                      placeholder={language === 'bg' ? 'напр. бул. Черни връх 45' : 'e.g. 45 Main St'}
+                    />
+                    {venueForm.latitude !== undefined && venueForm.longitude !== undefined && (
+                      <LocationCoords>
+                        ✓ {language === 'bg' ? 'Координатите са зададени' : 'Coordinates set'}: {venueForm.latitude.toFixed(5)}, {venueForm.longitude.toFixed(5)}
+                      </LocationCoords>
+                    )}
                   </FormField>
                   <FormField>
                     <Label>{language === 'bg' ? 'Град' : 'City'}<Required>*</Required></Label>
@@ -1951,6 +2282,15 @@ const AdminPartnersPage: React.FC = () => {
                       placeholder="+359 88 ..."
                     />
                   </FormField>
+                  <FormField>
+                    <Label>{language === 'bg' ? 'Имейл' : 'Email'}</Label>
+                    <Input
+                      type="email"
+                      value={venueForm.email}
+                      onChange={e => setVenueForm(f => ({ ...f, email: e.target.value }))}
+                      placeholder={language === 'bg' ? 'напр. info@ресторант.bg' : 'e.g. info@venue.com'}
+                    />
+                  </FormField>
                   <FormField $full>
                     <Label>{language === 'bg' ? 'Описание' : 'Description'}</Label>
                     <Input
@@ -1958,6 +2298,16 @@ const AdminPartnersPage: React.FC = () => {
                       value={venueForm.description}
                       onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setVenueForm(f => ({ ...f, description: e.target.value }))}
                       placeholder={language === 'bg' ? 'Кратко описание на обекта...' : 'Short venue description...'}
+                      style={{ minHeight: '80px', resize: 'vertical' }}
+                    />
+                  </FormField>
+                  <FormField $full>
+                    <Label>{language === 'bg' ? 'Описание (БГ)' : 'Description (BG)'}</Label>
+                    <Input
+                      as="textarea"
+                      value={venueForm.descriptionBg}
+                      onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setVenueForm(f => ({ ...f, descriptionBg: e.target.value }))}
+                      placeholder={language === 'bg' ? 'Кратко описание на обекта на български...' : 'Short venue description in Bulgarian...'}
                       style={{ minHeight: '80px', resize: 'vertical' }}
                     />
                   </FormField>
@@ -1973,6 +2323,170 @@ const AdminPartnersPage: React.FC = () => {
                   </SubmitButton>
                 </ModalFooter>
               </form>
+            </Modal>
+          </Overlay>
+        )}
+      </AnimatePresence>
+
+      {/* ── Venue Edit Modal ───────────────────────────────────────────────── */}
+      <AnimatePresence>
+        {editVenuePartner && (
+          <Overlay
+            key="edit-venue-modal"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setEditVenuePartner(null)}
+          >
+            <Modal
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              onClick={e => e.stopPropagation()}
+            >
+              <ModalTitle>
+                {language === 'bg' ? 'Редактирай Обект' : 'Edit Venue'} — {editVenuePartner.businessName}
+              </ModalTitle>
+              {editVenuePartner.venues && editVenuePartner.venues.length > 1 && (
+                <FormField $full style={{ marginBottom: '1rem' }}>
+                  <Label>{language === 'bg' ? 'Избери обект' : 'Select venue'}</Label>
+                  <Select value={editVenueId} onChange={e => loadEditVenue(e.target.value)}>
+                    {editVenuePartner.venues.map(v => (
+                      <option key={v.id} value={v.id}>{v.name}{v.city ? ` — ${v.city}` : ''}</option>
+                    ))}
+                  </Select>
+                </FormField>
+              )}
+              {editVenueLoading ? (
+                <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--color-text-secondary)' }}>
+                  {language === 'bg' ? 'Зареждане...' : 'Loading...'}
+                </div>
+              ) : (
+                <form onSubmit={handleVenueEditSubmit}>
+                  <FormGrid>
+                    <FormField $full>
+                      <Label>{language === 'bg' ? 'Име на обекта' : 'Venue name'}<Required>*</Required></Label>
+                      <Input
+                        value={editVenueForm.name}
+                        onChange={e => setEditVenueForm(f => ({ ...f, name: e.target.value }))}
+                        placeholder={language === 'bg' ? 'напр. Ресторант Дива — Лозенец' : 'e.g. Main Branch'}
+                        required
+                      />
+                    </FormField>
+                    <FormField $full>
+                      <Label>{language === 'bg' ? 'Име на обекта (БГ)' : 'Venue name (BG)'}</Label>
+                      <Input
+                        value={editVenueForm.nameBg}
+                        onChange={e => setEditVenueForm(f => ({ ...f, nameBg: e.target.value }))}
+                        placeholder={language === 'bg' ? 'напр. Ресторант Дива' : 'e.g. Ресторант Дива'}
+                      />
+                    </FormField>
+                    <FormField $full>
+                      <Label>{language === 'bg' ? 'Адрес' : 'Address'}<Required>*</Required></Label>
+                      <AddressAutocomplete
+                        value={editVenueForm.address}
+                        onChange={val => setEditVenueForm(f => ({ ...f, address: val, latitude: undefined, longitude: undefined }))}
+                        onSelect={({ address, city, region, latitude, longitude }) =>
+                          setEditVenueForm(f => ({ ...f, address, city, region, latitude, longitude }))
+                        }
+                        placeholder={language === 'bg' ? 'напр. бул. Черни връх 45' : 'e.g. 45 Main St'}
+                      />
+                      {editVenueForm.latitude !== undefined && editVenueForm.longitude !== undefined && (
+                        <LocationCoords>
+                          ✓ {language === 'bg' ? 'Координатите са зададени' : 'Coordinates set'}: {editVenueForm.latitude.toFixed(5)}, {editVenueForm.longitude.toFixed(5)}
+                        </LocationCoords>
+                      )}
+                    </FormField>
+                    <FormField>
+                      <Label>{language === 'bg' ? 'Град' : 'City'}<Required>*</Required></Label>
+                      <Input
+                        value={editVenueForm.city}
+                        onChange={e => setEditVenueForm(f => ({ ...f, city: e.target.value }))}
+                        placeholder={language === 'bg' ? 'напр. София' : 'e.g. Sofia'}
+                        required
+                      />
+                    </FormField>
+                    <FormField>
+                      <Label>{language === 'bg' ? 'Квартал / Район' : 'Region'}</Label>
+                      <Input
+                        value={editVenueForm.region}
+                        onChange={e => setEditVenueForm(f => ({ ...f, region: e.target.value }))}
+                        placeholder={language === 'bg' ? 'напр. Лозенец' : 'e.g. Downtown'}
+                      />
+                    </FormField>
+                    <FormField>
+                      <Label>{language === 'bg' ? 'Телефон' : 'Phone'}</Label>
+                      <Input
+                        value={editVenueForm.phone}
+                        onChange={e => setEditVenueForm(f => ({ ...f, phone: e.target.value }))}
+                        placeholder="+359 88 ..."
+                      />
+                    </FormField>
+                    <FormField>
+                      <Label>{language === 'bg' ? 'Имейл' : 'Email'}</Label>
+                      <Input
+                        type="email"
+                        value={editVenueForm.email}
+                        onChange={e => setEditVenueForm(f => ({ ...f, email: e.target.value }))}
+                        placeholder={language === 'bg' ? 'напр. info@ресторант.bg' : 'e.g. info@venue.com'}
+                      />
+                    </FormField>
+                    <FormField $full>
+                      <Label>{language === 'bg' ? 'Описание' : 'Description'}</Label>
+                      <Input
+                        as="textarea"
+                        value={editVenueForm.description}
+                        onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setEditVenueForm(f => ({ ...f, description: e.target.value }))}
+                        placeholder={language === 'bg' ? 'Кратко описание на обекта...' : 'Short venue description...'}
+                        style={{ minHeight: '80px', resize: 'vertical' }}
+                      />
+                    </FormField>
+                    <FormField $full>
+                      <Label>{language === 'bg' ? 'Описание (БГ)' : 'Description (BG)'}</Label>
+                      <Input
+                        as="textarea"
+                        value={editVenueForm.descriptionBg}
+                        onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setEditVenueForm(f => ({ ...f, descriptionBg: e.target.value }))}
+                        placeholder={language === 'bg' ? 'Кратко описание на обекта на български...' : 'Short venue description in Bulgarian...'}
+                        style={{ minHeight: '80px', resize: 'vertical' }}
+                      />
+                    </FormField>
+                  </FormGrid>
+                  <ModalFooter style={{ justifyContent: 'space-between' }}>
+                    <div>
+                      {!deleteVenueConfirm ? (
+                        <DangerButton type="button" onClick={() => setDeleteVenueConfirm(true)} disabled={deletingVenue}>
+                          {language === 'bg' ? 'Изтрий обекта' : 'Delete venue'}
+                        </DangerButton>
+                      ) : (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                          <span style={{ fontSize: '0.9rem', color: '#dc2626', fontWeight: 600 }}>
+                            {language === 'bg' ? 'Сигурен ли си?' : 'Are you sure?'}
+                          </span>
+                          <DangerButton type="button" onClick={handleVenueDelete} disabled={deletingVenue}>
+                            {deletingVenue
+                              ? (language === 'bg' ? 'Изтриване...' : 'Deleting...')
+                              : (language === 'bg' ? 'Да, изтрий' : 'Yes, delete')}
+                          </DangerButton>
+                          <CancelButton type="button" onClick={() => setDeleteVenueConfirm(false)} disabled={deletingVenue}>
+                            {language === 'bg' ? 'Отказ' : 'Cancel'}
+                          </CancelButton>
+                        </div>
+                      )}
+                    </div>
+                    <div style={{ display: 'flex', gap: '0.75rem' }}>
+                      <CancelButton type="button" onClick={() => setEditVenuePartner(null)}>
+                        {language === 'bg' ? 'Отказ' : 'Cancel'}
+                      </CancelButton>
+                      <SubmitButton type="submit" disabled={editVenueSubmitting}>
+                        {editVenueSubmitting
+                          ? (language === 'bg' ? 'Запазване...' : 'Saving...')
+                          : (language === 'bg' ? 'Запази промените' : 'Save Changes')}
+                      </SubmitButton>
+                    </div>
+                  </ModalFooter>
+                </form>
+              )}
             </Modal>
           </Overlay>
         )}

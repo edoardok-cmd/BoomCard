@@ -15,15 +15,21 @@ interface MulterFile {
   buffer: Buffer;
 }
 
+// Cloudflare R2 — S3-compatible object storage.
+// Required env vars: R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY,
+//                    R2_BUCKET_NAME, R2_PUBLIC_URL
 const s3Client = new S3Client({
-  region: process.env.AWS_REGION || 'eu-west-1',
+  region: 'auto',
+  endpoint: `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
   credentials: {
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
+    accessKeyId: process.env.R2_ACCESS_KEY_ID!,
+    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
   },
 });
 
-const BUCKET_NAME = process.env.AWS_S3_BUCKET || 'boomcard-receipts-prod';
+const BUCKET_NAME = process.env.R2_BUCKET_NAME || 'boomcard-receipts';
+// Public base URL for serving stored objects (e.g. https://pub-xxx.r2.dev or custom domain)
+const PUBLIC_URL = (process.env.R2_PUBLIC_URL || '').replace(/\/$/, '');
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/jpg', 'image/webp'];
 
@@ -59,10 +65,10 @@ export class ImageUploadService {
       ? `${folder}/${userId}/${uniqueName}`
       : `${folder}/${uniqueName}`;
 
-    // Dev mode: skip actual S3 upload if using test credentials
-    if (process.env.AWS_ACCESS_KEY_ID === 'test') {
+    // Dev mode: skip actual R2 upload if using test credentials
+    if (process.env.R2_ACCESS_KEY_ID === 'test') {
       const placeholderUrl = `https://placehold.co/800x600/f59e0b/ffffff?text=${encodeURIComponent(folder)}`;
-      logger.info(`[DEV] Skipping S3 upload, returning placeholder: ${placeholderUrl}`);
+      logger.info(`[DEV] Skipping R2 upload, returning placeholder: ${placeholderUrl}`);
       return { url: placeholderUrl, key, size: processedImage.length };
     }
 
@@ -81,7 +87,7 @@ export class ImageUploadService {
 
     await s3Client.send(command);
 
-    const url = `https://${BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${key}`;
+    const url = `${PUBLIC_URL}/${key}`;
 
     logger.info(`Uploaded image to S3: ${key}`);
 
@@ -134,13 +140,20 @@ export class ImageUploadService {
       throw new Error('Cannot download placeholder image (dev mode)');
     }
 
-    // URL shape: https://<bucket>.s3.<region>.amazonaws.com/<key>
-    // Extract <key> as the path minus the leading slash. Fail loud on anything
-    // that doesn't look like our own URL — we don't want the worker silently
-    // following a third-party redirect.
+    // Extract the object key from a R2 public URL (or legacy S3 URL).
+    // Key is the URL path minus the leading slash.
+    // Fail loud on anything that doesn't look like our own storage URL.
     const parsed = new URL(url);
-    if (!parsed.host.endsWith('.amazonaws.com')) {
-      throw new Error(`Refusing to download non-S3 URL: ${parsed.host}`);
+    const ownHosts = [
+      // R2 dev subdomain: pub-xxx.r2.dev
+      parsed.host.endsWith('.r2.dev'),
+      // R2 custom domain configured via R2_PUBLIC_URL
+      PUBLIC_URL && parsed.origin === PUBLIC_URL,
+      // Legacy S3 (kept for any pre-migration URLs still in the DB)
+      parsed.host.endsWith('.amazonaws.com'),
+    ];
+    if (!ownHosts.some(Boolean)) {
+      throw new Error(`Refusing to download from unrecognised storage host: ${parsed.host}`);
     }
     const key = parsed.pathname.replace(/^\//, '');
 

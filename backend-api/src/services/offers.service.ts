@@ -358,6 +358,7 @@ class OffersService {
             ...PARTNER_SELECT,
             address: true,
             phone: true,
+            email: true,
             website: true,
           },
         },
@@ -532,12 +533,13 @@ class OffersService {
       }
 
       const partner = offer.partner as any;
-      const venues: Array<{ latitude: number; longitude: number }> = partner.venues ?? [];
+      const venues: Array<{ latitude: number | null; longitude: number | null }> = partner.venues ?? [];
+      const geocodedVenues = venues.filter(v => v.latitude != null && v.longitude != null);
       let minDistance = Infinity;
 
-      if (venues.length > 0) {
-        for (const venue of venues) {
-          const d = calculateDistance(latitude, longitude, venue.latitude, venue.longitude);
+      if (geocodedVenues.length > 0) {
+        for (const venue of geocodedVenues) {
+          const d = calculateDistance(latitude, longitude, venue.latitude!, venue.longitude!);
           if (d < minDistance) minDistance = d;
         }
       } else if (partner.latitude != null && partner.longitude != null) {

@@ -17,9 +17,9 @@ test.describe('Receipt Scanning Flow', () => {
   test.beforeEach(async ({ page }) => {
     // Login before each test
     await page.goto('/login');
-    await page.getByLabel(/email/i).fill(TEST_USER.email);
-    await page.getByLabel(/password/i).fill(TEST_USER.password);
-    await page.getByRole('button', { name: /sign in|вход/i }).click();
+    await page.getByLabel(/email|имейл/i).fill(TEST_USER.email);
+    await page.getByLabel(/password|парола/i).fill(TEST_USER.password);
+    await page.locator('button[type="submit"]').click();
     await page.waitForURL('/dashboard', { timeout: 5000 });
   });
 

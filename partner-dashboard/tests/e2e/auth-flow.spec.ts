@@ -22,6 +22,7 @@ test.describe('Authentication Flow', () => {
   test.beforeEach(async ({ page }) => {
     // Clear all cookies and local storage before each test
     await page.context().clearCookies();
+    await page.goto('/login');
     await page.evaluate(() => localStorage.clear());
   });
 
@@ -33,9 +34,9 @@ test.describe('Authentication Flow', () => {
       await expect(page).toHaveTitle(/BoomCard/);
 
       // Check form elements exist
-      await expect(page.getByLabel(/email/i)).toBeVisible();
-      await expect(page.getByLabel(/password/i)).toBeVisible();
-      await expect(page.getByRole('button', { name: /sign in|вход/i })).toBeVisible();
+      await expect(page.getByLabel(/email|имейл/i)).toBeVisible();
+      await expect(page.getByLabel(/password|парола/i)).toBeVisible();
+      await expect(page.locator('button[type="submit"]')).toBeVisible();
 
       // Check links
       await expect(page.getByRole('link', { name: /choose.*plan|изберете.*план|sign up|регистрация/i })).toBeVisible();
@@ -46,11 +47,11 @@ test.describe('Authentication Flow', () => {
       await page.goto('/login');
 
       // Fill in credentials
-      await page.getByLabel(/email/i).fill(TEST_USER.email);
-      await page.getByLabel(/password/i).fill(TEST_USER.password);
+      await page.getByLabel(/email|имейл/i).fill(TEST_USER.email);
+      await page.getByLabel(/password|парола/i).fill(TEST_USER.password);
 
       // Submit form
-      await page.getByRole('button', { name: /sign in|вход/i }).click();
+      await page.locator('button[type="submit"]').click();
 
       // Should redirect to dashboard
       await page.waitForURL('/dashboard', { timeout: 5000 });
@@ -71,11 +72,11 @@ test.describe('Authentication Flow', () => {
       await page.goto('/login');
 
       // Fill invalid email
-      await page.getByLabel(/email/i).fill(INVALID_USER.email);
-      await page.getByLabel(/password/i).fill(INVALID_USER.password);
+      await page.getByLabel(/email|имейл/i).fill(INVALID_USER.email);
+      await page.getByLabel(/password|парола/i).fill(INVALID_USER.password);
 
       // Submit form
-      await page.getByRole('button', { name: /sign in|вход/i }).click();
+      await page.locator('button[type="submit"]').click();
 
       // Should show error message
       await expect(page.getByText(/invalid|неправилен|грешка/i)).toBeVisible({ timeout: 3000 });
@@ -88,11 +89,11 @@ test.describe('Authentication Flow', () => {
       await page.goto('/login');
 
       // Fill correct email but wrong password
-      await page.getByLabel(/email/i).fill(TEST_USER.email);
-      await page.getByLabel(/password/i).fill(TEST_USER.invalidPassword);
+      await page.getByLabel(/email|имейл/i).fill(TEST_USER.email);
+      await page.getByLabel(/password|парола/i).fill(TEST_USER.invalidPassword);
 
       // Submit form
-      await page.getByRole('button', { name: /sign in|вход/i }).click();
+      await page.locator('button[type="submit"]').click();
 
       // Should show error message
       await expect(page.getByText(/invalid|неправилен|грешка|wrong/i)).toBeVisible({ timeout: 3000 });
@@ -105,10 +106,10 @@ test.describe('Authentication Flow', () => {
       await page.goto('/login');
 
       // Try to submit without filling anything
-      await page.getByRole('button', { name: /sign in|вход/i }).click();
+      await page.locator('button[type="submit"]').click();
 
       // Should show validation errors (HTML5 validation or custom)
-      const emailInput = page.getByLabel(/email/i);
+      const emailInput = page.getByLabel(/email|имейл/i);
       const isInvalid = await emailInput.evaluate((input: HTMLInputElement) => !input.validity.valid);
 
       expect(isInvalid).toBeTruthy();
@@ -117,7 +118,7 @@ test.describe('Authentication Flow', () => {
     test('should toggle password visibility', async ({ page }) => {
       await page.goto('/login');
 
-      const passwordInput = page.getByLabel(/password/i);
+      const passwordInput = page.getByLabel(/password|парола/i);
       await passwordInput.fill('testpassword');
 
       // Check initial type is password
@@ -143,9 +144,9 @@ test.describe('Authentication Flow', () => {
     test.beforeEach(async ({ page }) => {
       // Login before each logout test
       await page.goto('/login');
-      await page.getByLabel(/email/i).fill(TEST_USER.email);
-      await page.getByLabel(/password/i).fill(TEST_USER.password);
-      await page.getByRole('button', { name: /sign in|вход/i }).click();
+      await page.getByLabel(/email|имейл/i).fill(TEST_USER.email);
+      await page.getByLabel(/password|парола/i).fill(TEST_USER.password);
+      await page.locator('button[type="submit"]').click();
       await page.waitForURL('/dashboard', { timeout: 5000 });
     });
 
@@ -212,9 +213,9 @@ test.describe('Authentication Flow', () => {
     test('should allow access to protected routes when authenticated', async ({ page }) => {
       // Login
       await page.goto('/login');
-      await page.getByLabel(/email/i).fill(TEST_USER.email);
-      await page.getByLabel(/password/i).fill(TEST_USER.password);
-      await page.getByRole('button', { name: /sign in|вход/i }).click();
+      await page.getByLabel(/email|имейл/i).fill(TEST_USER.email);
+      await page.getByLabel(/password|парола/i).fill(TEST_USER.password);
+      await page.locator('button[type="submit"]').click();
       await page.waitForURL('/dashboard', { timeout: 5000 });
 
       // Should be able to access protected routes
@@ -233,9 +234,9 @@ test.describe('Authentication Flow', () => {
     test('should maintain session after page reload', async ({ page }) => {
       // Login
       await page.goto('/login');
-      await page.getByLabel(/email/i).fill(TEST_USER.email);
-      await page.getByLabel(/password/i).fill(TEST_USER.password);
-      await page.getByRole('button', { name: /sign in|вход/i }).click();
+      await page.getByLabel(/email|имейл/i).fill(TEST_USER.email);
+      await page.getByLabel(/password|парола/i).fill(TEST_USER.password);
+      await page.locator('button[type="submit"]').click();
       await page.waitForURL('/dashboard', { timeout: 5000 });
 
       // Reload page
@@ -252,9 +253,9 @@ test.describe('Authentication Flow', () => {
     test('should maintain session across navigation', async ({ page }) => {
       // Login
       await page.goto('/login');
-      await page.getByLabel(/email/i).fill(TEST_USER.email);
-      await page.getByLabel(/password/i).fill(TEST_USER.password);
-      await page.getByRole('button', { name: /sign in|вход/i }).click();
+      await page.getByLabel(/email|имейл/i).fill(TEST_USER.email);
+      await page.getByLabel(/password|парола/i).fill(TEST_USER.password);
+      await page.locator('button[type="submit"]').click();
       await page.waitForURL('/dashboard', { timeout: 5000 });
 
       // Navigate to different pages
@@ -277,9 +278,9 @@ test.describe('Authentication Flow', () => {
     test('should handle expired access token', async ({ page, context }) => {
       // Login
       await page.goto('/login');
-      await page.getByLabel(/email/i).fill(TEST_USER.email);
-      await page.getByLabel(/password/i).fill(TEST_USER.password);
-      await page.getByRole('button', { name: /sign in|вход/i }).click();
+      await page.getByLabel(/email|имейл/i).fill(TEST_USER.email);
+      await page.getByLabel(/password|парола/i).fill(TEST_USER.password);
+      await page.locator('button[type="submit"]').click();
       await page.waitForURL('/dashboard', { timeout: 5000 });
 
       // Manually set an expired token (this simulates token expiration)
@@ -320,7 +321,7 @@ test.describe('Authentication Flow', () => {
         // Login
         await page.getByLabel(/email|имейл/i).fill(TEST_USER.email);
         await page.getByLabel(/password|парола/i).fill(TEST_USER.password);
-        await page.getByRole('button', { name: /sign in|вход/i }).click();
+        await page.locator('button[type="submit"]').click();
         await page.waitForURL('/dashboard', { timeout: 5000 });
 
         // Language preference should persist
@@ -336,9 +337,9 @@ test.describe('Authentication Flow', () => {
       await context.setOffline(true);
 
       await page.goto('/login');
-      await page.getByLabel(/email/i).fill(TEST_USER.email);
-      await page.getByLabel(/password/i).fill(TEST_USER.password);
-      await page.getByRole('button', { name: /sign in|вход/i }).click();
+      await page.getByLabel(/email|имейл/i).fill(TEST_USER.email);
+      await page.getByLabel(/password|парола/i).fill(TEST_USER.password);
+      await page.locator('button[type="submit"]').click();
 
       // Should show network error
       await expect(page.getByText(/network|connection|свързване/i)).toBeVisible({ timeout: 5000 });
@@ -357,9 +358,9 @@ test.describe('Authentication Flow', () => {
       });
 
       await page.goto('/login');
-      await page.getByLabel(/email/i).fill(TEST_USER.email);
-      await page.getByLabel(/password/i).fill(TEST_USER.password);
-      await page.getByRole('button', { name: /sign in|вход/i }).click();
+      await page.getByLabel(/email|имейл/i).fill(TEST_USER.email);
+      await page.getByLabel(/password|парола/i).fill(TEST_USER.password);
+      await page.locator('button[type="submit"]').click();
 
       // Should show error message
       await expect(page.getByText(/error|грешка|server|сървър/i)).toBeVisible({ timeout: 5000 });
@@ -369,10 +370,10 @@ test.describe('Authentication Flow', () => {
   test.describe('Security', () => {
     test('should not expose password in DOM', async ({ page }) => {
       await page.goto('/login');
-      await page.getByLabel(/password/i).fill('supersecretpassword');
+      await page.getByLabel(/password|парола/i).fill('supersecretpassword');
 
       // Password field should have type="password"
-      const passwordInput = page.getByLabel(/password/i);
+      const passwordInput = page.getByLabel(/password|парола/i);
       await expect(passwordInput).toHaveAttribute('type', 'password');
 
       // Password should not be visible in page content
@@ -388,9 +389,9 @@ test.describe('Authentication Flow', () => {
       });
 
       await page.goto('/login');
-      await page.getByLabel(/email/i).fill(TEST_USER.email);
-      await page.getByLabel(/password/i).fill(TEST_USER.password);
-      await page.getByRole('button', { name: /sign in|вход/i }).click();
+      await page.getByLabel(/email|имейл/i).fill(TEST_USER.email);
+      await page.getByLabel(/password|парола/i).fill(TEST_USER.password);
+      await page.locator('button[type="submit"]').click();
       await page.waitForURL('/dashboard', { timeout: 5000 });
 
       // Check that password is not logged

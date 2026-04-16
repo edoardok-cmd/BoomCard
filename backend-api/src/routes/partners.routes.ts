@@ -41,7 +41,11 @@ router.get(
     const where: any = {
       status: status ?? PartnerStatus.ACTIVE,
     };
-    if (category) where.category = category;
+    if (category) {
+      // Match on the categories array (new records) OR the category field (legacy records with empty array)
+      if (!where.AND) where.AND = [];
+      where.AND.push({ OR: [{ categories: { has: category } }, { category }] });
+    }
     if (city) where.city = city;
     if (partnerTypeId) where.partnerTypeId = partnerTypeId;
     if (search) {
@@ -63,6 +67,7 @@ router.get(
           businessName: true,
           businessNameBg: true,
           category: true,
+          categories: true,
           partnerType: { select: PARTNER_TYPE_SELECT },
           status: true,
           city: true,
@@ -186,6 +191,7 @@ router.post(
       businessName,
       businessNameBg,
       category,
+      categories,
       description,
       descriptionBg,
       city,
@@ -273,6 +279,9 @@ router.post(
         businessName,
         businessNameBg,
         category,
+        categories: categories && Array.isArray(categories) && categories.length > 0
+          ? categories
+          : [category],
         description,
         descriptionBg,
         partnerTypeId: resolvedTypeId,
@@ -297,8 +306,8 @@ router.post(
           address: loc.address,
           city: loc.city,
           region: loc.region ?? null,
-          latitude: typeof loc.latitude === 'number' ? loc.latitude : 0,
-          longitude: typeof loc.longitude === 'number' ? loc.longitude : 0,
+          latitude: typeof loc.latitude === 'number' ? loc.latitude : null,
+          longitude: typeof loc.longitude === 'number' ? loc.longitude : null,
           phone: loc.phone ?? null,
         })),
       });
@@ -348,6 +357,7 @@ router.put(
       businessName,
       businessNameBg,
       category,
+      categories,
       description,
       descriptionBg,
       city,
@@ -369,6 +379,7 @@ router.put(
       businessName,
       businessNameBg,
       category,
+      categories: categories && Array.isArray(categories) ? categories : undefined,
       description,
       descriptionBg,
       city,
@@ -388,6 +399,7 @@ router.put(
       if (businessName !== undefined) partnerUpdates.businessName = businessName;
       if (businessNameBg !== undefined) partnerUpdates.businessNameBg = businessNameBg;
       if (category !== undefined) partnerUpdates.category = category;
+      if (categories !== undefined && Array.isArray(categories)) partnerUpdates.categories = categories;
       if (description !== undefined) partnerUpdates.description = description;
       if (descriptionBg !== undefined) partnerUpdates.descriptionBg = descriptionBg;
       if (city !== undefined) partnerUpdates.city = city;
@@ -668,9 +680,11 @@ router.post(
       totalVenues,
       boomVenues,
       description,
+      descriptionBg,
       highlights,
       additionalAddresses,
       additionalVenues,
+      locations,
       // Categories
       category,
       subcategory,
@@ -761,7 +775,6 @@ router.post(
     if (addedBy) featuresData.addedBy = addedBy;
     if (internalNotes) featuresData.internalNotes = internalNotes;
     if (subcategory) featuresData.subcategory = subcategory;
-    if (categories && Array.isArray(categories)) featuresData.categories = categories;
 
     // Build amenities from highlights
     const amenitiesData = highlights && highlights.length > 0
@@ -806,6 +819,9 @@ router.post(
           businessName,
           businessNameBg: businessNameBg || null,
           category,
+          categories: categories && Array.isArray(categories) && categories.length > 0
+            ? categories
+            : [category],
           description: description || null,
           descriptionBg: descriptionBg || null,
           city: city || null,
@@ -830,34 +846,52 @@ router.post(
     // Auto-create venues from onboarding data
     const venuesToCreate = [];
 
-    // Always create primary venue from main address
-    if (address && city) {
-      venuesToCreate.push({
-        partnerId: result.partner.id,
-        name: businessName,
-        address,
-        city,
-        region: region || null,
-        phone: phone || null,
-        latitude: 0,
-        longitude: 0,
-      });
-    }
-
-    // Create additional venues
-    if (Array.isArray(additionalVenues)) {
-      for (const v of additionalVenues) {
-        if (v.name && v.address && v.city) {
+    if (Array.isArray(locations) && locations.length > 0) {
+      // Prefer structured locations array (from admin create form with geocoded coords)
+      for (const loc of locations) {
+        if (loc.name && loc.address && loc.city) {
           venuesToCreate.push({
             partnerId: result.partner.id,
-            name: v.name,
-            address: v.address,
-            city: v.city,
-            region: v.region || null,
-            phone: v.phone || null,
-            latitude: 0,
-            longitude: 0,
+            name: loc.name,
+            address: loc.address,
+            city: loc.city,
+            region: loc.region || null,
+            phone: loc.phone || null,
+            latitude: typeof loc.latitude === 'number' ? loc.latitude : null,
+            longitude: typeof loc.longitude === 'number' ? loc.longitude : null,
           });
+        }
+      }
+    } else {
+      // Fallback: create primary venue from top-level address fields
+      if (address && city) {
+        venuesToCreate.push({
+          partnerId: result.partner.id,
+          name: businessName,
+          address,
+          city,
+          region: region || null,
+          phone: phone || null,
+          latitude: null,
+          longitude: null,
+        });
+      }
+
+      // Additional venues from legacy additionalVenues array
+      if (Array.isArray(additionalVenues)) {
+        for (const v of additionalVenues) {
+          if (v.name && v.address && v.city) {
+            venuesToCreate.push({
+              partnerId: result.partner.id,
+              name: v.name,
+              address: v.address,
+              city: v.city,
+              region: v.region || null,
+              phone: v.phone || null,
+              latitude: typeof v.latitude === 'number' ? v.latitude : null,
+              longitude: typeof v.longitude === 'number' ? v.longitude : null,
+            });
+          }
         }
       }
     }

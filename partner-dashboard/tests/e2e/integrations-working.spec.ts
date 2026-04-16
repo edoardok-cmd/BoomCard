@@ -60,7 +60,7 @@ test.describe('Integrations Page - Working Tests', () => {
     await page.waitForTimeout(2000);
 
     // Check for count text (e.g., "12 payment systems supported")
-    const countText = page.getByText(/\d+.*payment systems|платежни системи/i);
+    const countText = page.getByText(/\d+.*payment systems|платежни системи/i).first();
     await expect(countText).toBeVisible({ timeout: 10000 });
   });
 

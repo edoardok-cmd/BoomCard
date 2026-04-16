@@ -114,9 +114,10 @@ export const venueService = {
 
     if (latitude !== undefined && longitude !== undefined) {
       venuesWithDistance = venues
+        .filter((venue) => venue.latitude != null && venue.longitude != null)
         .map((venue) => ({
           ...venue,
-          distance: calculateDistance(latitude, longitude, venue.latitude, venue.longitude),
+          distance: calculateDistance(latitude, longitude, venue.latitude!, venue.longitude!),
         }))
         .filter((venue) => !radius || venue.distance! <= radius)
         .sort((a, b) => a.distance! - b.distance!);
@@ -157,11 +158,12 @@ export const venueService = {
       },
     });
 
-    // Calculate distances and filter
+    // Calculate distances and filter (skip venues with no coordinates)
     const venuesWithDistance = venues
+      .filter((venue) => venue.latitude != null && venue.longitude != null)
       .map((venue) => ({
         ...venue,
-        distance: calculateDistance(latitude, longitude, venue.latitude, venue.longitude),
+        distance: calculateDistance(latitude, longitude, venue.latitude!, venue.longitude!),
       }))
       .filter((venue) => venue.distance <= radius)
       .sort((a, b) => a.distance - b.distance)
@@ -255,8 +257,8 @@ export const venueService = {
     address: string;
     city: string;
     region?: string;
-    latitude: number;
-    longitude: number;
+    latitude?: number | null;
+    longitude?: number | null;
     phone?: string;
     email?: string;
     description?: string;
@@ -268,7 +270,19 @@ export const venueService = {
   }): Promise<Venue> {
     const venue = await prisma.venue.create({
       data: {
-        ...data,
+        partnerId: data.partnerId,
+        name: data.name,
+        nameBg: data.nameBg,
+        address: data.address,
+        city: data.city,
+        region: data.region,
+        latitude: data.latitude ?? null,
+        longitude: data.longitude ?? null,
+        phone: data.phone,
+        email: data.email,
+        description: data.description,
+        descriptionBg: data.descriptionBg,
+        capacity: data.capacity,
         images: data.images ? JSON.stringify(data.images) : null,
         openingHours: data.openingHours ? JSON.stringify(data.openingHours) : null,
         features: data.features ? JSON.stringify(data.features) : null,

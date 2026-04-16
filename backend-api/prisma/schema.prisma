@@ -113,6 +113,7 @@ model Partner {
   businessName   String
   businessNameBg String?
   category       String
+  categories     String[]      // All categories; category holds the primary one
   description    String?
   descriptionBg  String?
   logo           String?
@@ -189,8 +190,8 @@ model Venue {
   address       String
   city          String
   region        String?
-  latitude      Float
-  longitude     Float
+  latitude      Float?
+  longitude     Float?
   phone         String?
   email         String?
   description   String?

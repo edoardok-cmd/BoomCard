@@ -1450,7 +1450,7 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
   const content = {
     en: {
       title: 'Live More.\nPay Less.',
-      subtitle: 'Access discounts at selected venues and experiences across Bulgaria.',
+      subtitle: 'Access discounts of up to 20% at selected venues and experiences across Bulgaria.',
       ctaButton: 'Unlock access with BOOM Card',
       cardHolder: 'CARD HOLDER',
       // Trust badges (gold seal style)
@@ -1460,7 +1460,7 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
     },
     bg: {
       title: 'Живей повече.\nПлащай по-малко.',
-      subtitle: 'Достъп до отстъпки в подбрани заведения и изживявания из цяла България.',
+      subtitle: 'Достъп до отстъпки до 20% в подбрани заведения и изживявания из цяла България.',
       ctaButton: 'Отключи достъпа с BOOM Card',
       cardHolder: 'ПРИТЕЖАТЕЛ',
       // Trust badges (gold seal style)

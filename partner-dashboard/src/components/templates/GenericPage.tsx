@@ -6,6 +6,7 @@ import { useLanguage } from '../../contexts/LanguageContext';
 import Button from '../common/Button/Button';
 import OfferCard from '../common/OfferCard/OfferCard';
 import ClientCTA from '../common/ClientCTA/ClientCTA';
+import Loading from '../common/Loading/Loading';
 import type { Entity } from '../../types/entity.types';
 
 const PageContainer = styled.div`
@@ -199,6 +200,7 @@ export const GenericPage: React.FC<GenericPageProps> = ({
   emptyTextEn = 'Check back soon for new items!',
   emptyTextBg = 'Проверете отново скоро!',
   showEmptyState = false,
+  isLoading = false,
   filters,
 }) => {
   const { language, t } = useLanguage();
@@ -241,7 +243,9 @@ export const GenericPage: React.FC<GenericPageProps> = ({
               <MainContent>
                 {children}
 
-                {entities && entities.length > 0 && (
+                {isLoading && <Loading size="large" fullScreen={false} />}
+
+                {!isLoading && entities && entities.length > 0 && (
                   <OffersGrid>
                     {entities.map((entity, index) => (
                       <motion.div
@@ -256,7 +260,7 @@ export const GenericPage: React.FC<GenericPageProps> = ({
                   </OffersGrid>
                 )}
 
-                {(showEmptyState || (entities && entities.length === 0)) && (
+                {!isLoading && (showEmptyState || (entities && entities.length === 0)) && (
                   <EmptyState>
                     <EmptyIcon>{emptyIcon}</EmptyIcon>
                     <EmptyTitle>{emptyTitle}</EmptyTitle>
@@ -274,7 +278,9 @@ export const GenericPage: React.FC<GenericPageProps> = ({
             <>
               {children}
 
-              {entities && entities.length > 0 && (
+              {isLoading && <Loading size="large" fullScreen={false} />}
+
+              {!isLoading && entities && entities.length > 0 && (
                 <OffersGrid>
                   {entities.map((entity, index) => (
                     <motion.div
@@ -289,7 +295,7 @@ export const GenericPage: React.FC<GenericPageProps> = ({
                 </OffersGrid>
               )}
 
-              {(showEmptyState || (entities && entities.length === 0)) && (
+              {!isLoading && (showEmptyState || (entities && entities.length === 0)) && (
                 <EmptyState>
                   <EmptyIcon>{emptyIcon}</EmptyIcon>
                   <EmptyTitle>{emptyTitle}</EmptyTitle>

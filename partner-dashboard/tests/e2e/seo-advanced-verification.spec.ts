@@ -192,7 +192,7 @@ test.describe('Advanced SEO Optimization Verification', () => {
     const ogImageAlt = await page.getAttribute('meta[property="og:image:alt"]', 'content');
 
     expect(ogImageAlt).toBeTruthy();
-    expect(ogImageAlt).toContain('BoomCard');
+    expect(ogImageAlt).toContain('BOOM Card');
     console.log('✅ WhatsApp optimization (og:image:alt)');
   });
 

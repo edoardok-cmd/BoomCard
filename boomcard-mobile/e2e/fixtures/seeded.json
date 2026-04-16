@@ -30,27 +30,27 @@
     "5": {
       "venueId": "d27fe087-39d9-4d71-853a-26b4d4bb6262",
       "stickerId": "V5PCT-T1",
-      "qrPayload": "{\"type\":\"BOOM_STICKER\",\"stickerId\":\"V5PCT-T1\",\"venueId\":\"d27fe087-39d9-4d71-853a-26b4d4bb6262\",\"locationId\":\"85983055-9b0d-4123-aa1c-d5032c5ebc5b\",\"locationType\":\"TABLE\",\"version\":\"1.0\"}"
+      "qrPayload": "{\"type\":\"BOOM_STICKER\",\"stickerId\":\"V5PCT-T1\",\"venueId\":\"d27fe087-39d9-4d71-853a-26b4d4bb6262\",\"locationId\":\"9fbeca76-3ea8-4aa0-85d0-f542f36c727c\",\"locationType\":\"TABLE\",\"version\":\"1.0\"}"
     },
     "10": {
       "venueId": "99b36f3d-d474-4d52-a60a-927596ff8107",
       "stickerId": "V10PCT-T1",
-      "qrPayload": "{\"type\":\"BOOM_STICKER\",\"stickerId\":\"V10PCT-T1\",\"venueId\":\"99b36f3d-d474-4d52-a60a-927596ff8107\",\"locationId\":\"b07867b4-6326-4f9b-8fec-b880ea1eb432\",\"locationType\":\"TABLE\",\"version\":\"1.0\"}"
+      "qrPayload": "{\"type\":\"BOOM_STICKER\",\"stickerId\":\"V10PCT-T1\",\"venueId\":\"99b36f3d-d474-4d52-a60a-927596ff8107\",\"locationId\":\"860a41e2-4025-4582-b7fb-b874622ff491\",\"locationType\":\"TABLE\",\"version\":\"1.0\"}"
     },
     "15": {
       "venueId": "aef0cda8-c8ca-4b98-8649-cbfa39049951",
       "stickerId": "V15PCT-T1",
-      "qrPayload": "{\"type\":\"BOOM_STICKER\",\"stickerId\":\"V15PCT-T1\",\"venueId\":\"aef0cda8-c8ca-4b98-8649-cbfa39049951\",\"locationId\":\"97a7a1d4-20c9-480f-9a4d-f4c5e5408523\",\"locationType\":\"TABLE\",\"version\":\"1.0\"}"
+      "qrPayload": "{\"type\":\"BOOM_STICKER\",\"stickerId\":\"V15PCT-T1\",\"venueId\":\"aef0cda8-c8ca-4b98-8649-cbfa39049951\",\"locationId\":\"815329f4-950c-453b-a189-6bdf899c56f2\",\"locationType\":\"TABLE\",\"version\":\"1.0\"}"
     },
     "20": {
       "venueId": "5432ae69-48c4-4ce6-9546-6249b780f632",
       "stickerId": "V20PCT-T1",
-      "qrPayload": "{\"type\":\"BOOM_STICKER\",\"stickerId\":\"V20PCT-T1\",\"venueId\":\"5432ae69-48c4-4ce6-9546-6249b780f632\",\"locationId\":\"95159cc4-f828-4e2f-b253-5065fd9c53e0\",\"locationType\":\"TABLE\",\"version\":\"1.0\"}"
+      "qrPayload": "{\"type\":\"BOOM_STICKER\",\"stickerId\":\"V20PCT-T1\",\"venueId\":\"5432ae69-48c4-4ce6-9546-6249b780f632\",\"locationId\":\"3bf5ed2e-0d30-41ea-84e5-415ac34923f7\",\"locationType\":\"TABLE\",\"version\":\"1.0\"}"
     },
     "25": {
       "venueId": "562eeaff-893e-4c68-8000-2cdfc6404789",
       "stickerId": "V25PCT-T1",
-      "qrPayload": "{\"type\":\"BOOM_STICKER\",\"stickerId\":\"V25PCT-T1\",\"venueId\":\"562eeaff-893e-4c68-8000-2cdfc6404789\",\"locationId\":\"708959b7-d73c-4924-b4a8-2046e92b0dcd\",\"locationType\":\"TABLE\",\"version\":\"1.0\"}"
+      "qrPayload": "{\"type\":\"BOOM_STICKER\",\"stickerId\":\"V25PCT-T1\",\"venueId\":\"562eeaff-893e-4c68-8000-2cdfc6404789\",\"locationId\":\"0941f82d-f0ca-4880-a6a4-128c19653cb1\",\"locationType\":\"TABLE\",\"version\":\"1.0\"}"
     }
   },
   "venueCoords": {
@@ -60,7 +60,7 @@
   "bar": {
     "venueId": "85945847-bd62-428b-9db0-5811cf9cccbc",
     "stickerId": "BAR-6SEP-T1",
-    "qrPayload": "{\"type\":\"BOOM_STICKER\",\"stickerId\":\"BAR-6SEP-T1\",\"venueId\":\"85945847-bd62-428b-9db0-5811cf9cccbc\",\"locationId\":\"8c679da1-3e48-469e-8677-c4a3003328b4\",\"locationType\":\"TABLE\",\"version\":\"1.0\"}",
+    "qrPayload": "{\"type\":\"BOOM_STICKER\",\"stickerId\":\"BAR-6SEP-T1\",\"venueId\":\"85945847-bd62-428b-9db0-5811cf9cccbc\",\"locationId\":\"45de1010-3991-48a5-a4cf-6dac034ba1ee\",\"locationType\":\"TABLE\",\"version\":\"1.0\"}",
     "lat": 42.6934,
     "lng": 23.3262,
     "gpsRadiusMeters": 100,
