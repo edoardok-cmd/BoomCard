@@ -170,9 +170,9 @@ const RegisterScreen = ({ navigation, route }: any) => {
         phone: normalizePhone(formData.phone || ''),
       };
 
-      console.log('Starting registration with data:', { ...registrationData, password: '***' });
+      if (__DEV__) console.log('Starting registration with data:', { ...registrationData, password: '***' });
       await register(registrationData as any);
-      console.log('Registration successful!');
+      if (__DEV__) console.log('Registration successful!');
 
       // After registration:
       // - If plan selected: AppNavigator switches to MainNavigator → ProcessPaymentScreen
@@ -183,12 +183,14 @@ const RegisterScreen = ({ navigation, route }: any) => {
       await SecureStore.deleteItemAsync(STORAGE_KEYS.PENDING_PAYMENT).catch(() => {});
       setIsProcessingPayment(false);
 
-      console.warn('Registration error:', error);
-      console.warn('Error type:', typeof error);
-      console.warn('Error keys:', error ? Object.keys(error) : 'null');
+      if (__DEV__) {
+        console.warn('Registration error:', error);
+        console.warn('Error type:', typeof error);
+        console.warn('Error keys:', error ? Object.keys(error) : 'null');
+      }
 
       let errorMessage = getErrorMessage(error);
-      console.log('Formatted error message:', errorMessage);
+      if (__DEV__) console.log('Formatted error message:', errorMessage);
 
       // Final safety check: never show "[object Object]"
       if (!errorMessage || errorMessage.includes('[object Object]') || errorMessage.includes('[object') || errorMessage === '{}') {

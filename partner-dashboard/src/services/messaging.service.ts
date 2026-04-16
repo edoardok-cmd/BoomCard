@@ -217,7 +217,7 @@ class MessagingService {
    * Connect to WebSocket for real-time messaging
    */
   connectWebSocket(userId: string): void {
-    const wsUrl = `${process.env.REACT_APP_WS_URL || 'ws://localhost:4000'}/messaging?userId=${userId}`;
+    const wsUrl = `${import.meta.env.VITE_WS_URL || 'ws://localhost:3025'}/messaging?userId=${userId}`;
 
     this.ws = new WebSocket(wsUrl);
 

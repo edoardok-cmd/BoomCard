@@ -51,6 +51,18 @@ import monitoring from './config/monitoring.config';
 // Load environment variables
 dotenv.config();
 
+// Validate critical env vars early — fail fast rather than at first request
+if (process.env.NODE_ENV === 'production') {
+  const required = ['JWT_SECRET', 'DATABASE_URL', 'API_BASE_URL', 'FRONTEND_URL'];
+  const missing = required.filter(k => !process.env[k]);
+  if (missing.length) {
+    throw new Error(`Missing required environment variables: ${missing.join(', ')}`);
+  }
+  if ((process.env.JWT_SECRET?.length ?? 0) < 32) {
+    throw new Error('JWT_SECRET must be at least 32 characters');
+  }
+}
+
 const app = express();
 const httpServer = createServer(app);
 

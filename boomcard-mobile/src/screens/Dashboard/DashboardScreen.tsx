@@ -381,18 +381,6 @@ const DashboardScreen = ({ navigation }: any) => {
         <TouchableOpacity
           style={s.actionCard}
           activeOpacity={0.7}
-          onPress={() => navigation.navigate('ReceiptScanner')}
-        >
-          <View style={[s.actionIconCircle, { backgroundColor: isDarkMode ? 'rgba(59,130,246,0.15)' : 'rgba(59,130,246,0.1)' }]}>
-            <Ionicons name="camera-outline" size={22} color={theme.colors.primary} />
-          </View>
-          <Text style={s.actionTitle}>{t('dashboard.scanReceipt')}</Text>
-          <Text style={s.actionSubtitle}>{t('dashboard.uploadEarnCashback')}</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={s.actionCard}
-          activeOpacity={0.7}
           onPress={() => navigation.navigate('Scan')}
         >
           <View style={[s.actionIconCircle, { backgroundColor: isDarkMode ? 'rgba(139,92,246,0.15)' : 'rgba(139,92,246,0.1)' }]}>

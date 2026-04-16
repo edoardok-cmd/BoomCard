@@ -125,9 +125,10 @@ class FraudDetectionService {
       }
 
       // 2. Amount validation (15-30 points)
-      if (params.ocrAmount && params.userAmount) {
+      if (params.ocrAmount != null && params.userAmount != null && (params.ocrAmount > 0 || params.userAmount > 0)) {
         const diff = Math.abs(params.ocrAmount - params.userAmount);
-        const percentDiff = (diff / Math.max(params.ocrAmount, params.userAmount)) * 100;
+        const maxAmount = Math.max(params.ocrAmount, params.userAmount);
+        const percentDiff = maxAmount > 0 ? (diff / maxAmount) * 100 : 0;
 
         if (percentDiff > AMOUNT_LARGE_MISMATCH_PCT) {
           score += 30;

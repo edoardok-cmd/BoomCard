@@ -2,10 +2,6 @@ import { Router, Request, Response } from 'express';
 import { receiptService } from '../services/receipt.service';
 import { authenticate, authorize, AuthRequest } from '../middleware/auth.middleware';
 import { asyncHandler } from '../middleware/error.middleware';
-import { uploadSingle, validateMagicBytes } from '../middleware/upload.middleware';
-import { imageUploadService } from '../services/imageUpload.service';
-import { recognizeReceiptImage } from '../services/ocr.service';
-import { checkLivePhoto } from '../utils/exifLivePhoto';
 
 const router = Router();
 
@@ -14,54 +10,17 @@ const router = Router();
 // ============================================
 
 /**
- * POST /api/receipts
- * Create a new receipt from OCR results with optional image upload
+ * POST /api/receipts — RETIRED
+ * Direct receipt creation has been removed. All receipts must be submitted
+ * through the sticker scan flow (POST /api/stickers/scan/:id/receipt).
  */
-router.post(
-  '/',
-  authenticate,
-  uploadSingle,
-  validateMagicBytes,
-  asyncHandler(async (req: AuthRequest, res: Response) => {
-    const userId = req.user!.id;
-
-    // Get form data
-    const data = req.body.data ? JSON.parse(req.body.data) : req.body;
-
-    let imageUrl: string | undefined;
-    let imageKey: string | undefined;
-
-    // Upload image to S3 if provided
-    if (req.file) {
-      // Live-photo gate — same EXIF rule as /api/stickers/... and /api/receipts/v2/upload.
-      // Without this, POST /api/receipts is an unprotected alternate path for gallery uploads.
-      const gate = await checkLivePhoto(req.file.buffer, null);
-      if (gate.ok === false) {
-        return res.status(400).json({ success: false, message: gate.message });
-      }
-
-      const upload = await imageUploadService.uploadImage({
-        file: req.file.buffer,
-        fileName: req.file.originalname,
-        mimeType: req.file.mimetype,
-        folder: 'receipts',
-        userId,
-      });
-
-      imageUrl = upload.url;
-      imageKey = upload.key;
-    }
-
-    // Create receipt with image data
-    const result = await receiptService.createReceipt(userId, {
-      ...data,
-      receiptImageUrl: imageUrl,
-      imageKey,
-    });
-
-    res.status(201).json(result);
-  })
-);
+router.post('/', authenticate, (_req: AuthRequest, res: Response) => {
+  res.status(410).json({
+    success: false,
+    message: 'Direct receipt submission has been retired. Please scan a venue QR sticker first, then upload your receipt through the sticker scan flow. Update your app for the latest experience.',
+    code: 'ENDPOINT_RETIRED',
+  });
+});
 
 /**
  * GET /api/receipts
@@ -90,44 +49,17 @@ router.get(
 );
 
 /**
- * POST /api/receipts/ocr
- * Process receipt image with OCR
+ * POST /api/receipts/ocr — RETIRED
+ * Direct receipt OCR has been removed. OCR processing now happens within
+ * the sticker scan flow.
  */
-router.post(
-  '/ocr',
-  authenticate,
-  uploadSingle,
-  validateMagicBytes,
-  asyncHandler(async (req: AuthRequest, res: Response) => {
-    if (!req.file) {
-      return res.status(400).json({
-        success: false,
-        message: 'No image file provided'
-      });
-    }
-
-    // Gate stale/gallery-picked images before running expensive OCR.
-    const gate = await checkLivePhoto(req.file.buffer, null);
-    if (gate.ok === false) {
-      return res.status(400).json({ success: false, message: gate.message });
-    }
-
-    const ocrResult = await recognizeReceiptImage(req.file.buffer);
-
-    res.json({
-      success: true,
-      data: {
-        merchantName: ocrResult.merchantName,
-        receiptDate: ocrResult.receiptDate,
-        totalAmount: ocrResult.totalAmount,
-        currency: ocrResult.currency,
-        items: ocrResult.items,
-        confidence: ocrResult.confidence,
-        rawText: ocrResult.rawText,
-      },
-    });
-  })
-);
+router.post('/ocr', authenticate, (_req: AuthRequest, res: Response) => {
+  res.status(410).json({
+    success: false,
+    message: 'Direct receipt OCR has been retired. Please scan a venue QR sticker first, then upload your receipt through the sticker scan flow. Update your app for the latest experience.',
+    code: 'ENDPOINT_RETIRED',
+  });
+});
 
 /**
  * GET /api/receipts/stats

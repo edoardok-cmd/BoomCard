@@ -99,12 +99,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (storedAuth && storedToken) {
           const userData = JSON.parse(storedAuth);
 
-          // For mock tokens, skip backend verification and use stored data
-          if (storedToken.startsWith('mock-')) {
-            setUser(userData);
-          } else {
           // Verify token with backend
           try {
+            apiService.setAuthToken(storedToken);
             const meResponse = await apiService.get<any>('/auth/me');
             const meData = meResponse?.data || meResponse;
             const verifiedUser: User = {
@@ -126,7 +123,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             localStorage.removeItem(TOKEN_KEY);
             localStorage.removeItem(REFRESH_TOKEN_KEY);
             setUser(null);
-          }
           }
         }
       } catch (error) {
@@ -199,72 +195,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         toast.success(`Welcome back, ${user.firstName}!`);
         return;
       } catch (apiError: any) {
-        // If API fails, fall back to mock authentication for development
-        console.log('API unavailable, using mock authentication');
-
-        // Mock user database
-        const mockUsers = [
-          {
-            email: 'demo@boomcard.bg',
-            password: 'demo123',
-            user: {
-              id: '1',
-              email: 'demo@boomcard.bg',
-              firstName: 'Demo',
-              lastName: 'User',
-              role: 'user' as const,
-              createdAt: Date.now(),
-              emailVerified: true,
-            }
-          },
-          {
-            email: 'partner@boomcard.bg',
-            password: 'partner123',
-            user: {
-              id: '2',
-              email: 'partner@boomcard.bg',
-              firstName: 'Partner',
-              lastName: 'User',
-              role: 'partner' as const,
-              createdAt: Date.now(),
-              emailVerified: true,
-            }
-          },
-          {
-            email: 'admin@boomcard.bg',
-            password: 'admin123',
-            user: {
-              id: '3',
-              email: 'admin@boomcard.bg',
-              firstName: 'Admin',
-              lastName: 'User',
-              role: 'admin' as const,
-              createdAt: Date.now(),
-              emailVerified: true,
-            }
-          }
-        ];
-
-        // Find matching user
-        const mockUser = mockUsers.find(
-          u => u.email === credentials.email && u.password === credentials.password
-        );
-
-        if (!mockUser) {
-          throw new Error('Invalid email or password');
-        }
-
-        // Generate mock token
-        const mockToken = `mock-jwt-token-${mockUser.user.id}-${Date.now()}`;
-
-        // Store mock token
-        localStorage.setItem(TOKEN_KEY, mockToken);
-        setToken(mockToken);
-
-        // Set user state
-        setUser(mockUser.user);
-
-        toast.success(`Welcome back, ${mockUser.user.firstName}! (Mock Auth)`);
+        // API is unavailable — surface the error instead of falling back to mock credentials.
+        // Mock auth was removed to prevent hardcoded credentials from shipping in production bundles.
+        console.error('API unavailable:', apiError.message || apiError);
+        throw new Error('Server is currently unavailable. Please try again later.');
       }
     } catch (error: any) {
       const message = error.message || 'Login failed';
@@ -442,38 +376,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         toast.success(`Welcome, ${response.user.firstName}!`);
         return;
       } catch (apiError: any) {
-        // If API fails, fall back to mock authentication for development
-        console.log('OAuth API unavailable, using mock authentication');
-
-        // Parse name from OAuth data
-        const nameParts = (oauthData.name || oauthData.email?.split('@')[0] || 'User').split(' ');
-        const firstName = nameParts[0] || 'User';
-        const lastName = nameParts.slice(1).join(' ') || oauthData.provider.charAt(0).toUpperCase() + oauthData.provider.slice(1);
-
-        // Create mock user from OAuth data
-        const mockUser: User = {
-          id: oauthData.id || `${oauthData.provider}-${Date.now()}`,
-          email: oauthData.email || `${oauthData.provider}user@example.com`,
-          firstName,
-          lastName,
-          avatar: oauthData.picture,
-          role: 'user',
-          createdAt: Date.now(),
-          emailVerified: true,
-        };
-
-        // Generate mock token
-        const mockToken = `mock-oauth-token-${mockUser.id}-${Date.now()}`;
-
-        // Store mock token
-        localStorage.setItem(TOKEN_KEY, mockToken);
-        setToken(mockToken);
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(mockUser));
-
-        // Set user state
-        setUser(mockUser);
-
-        toast.success(`Welcome, ${mockUser.firstName}! (Mock OAuth ${oauthData.provider})`);
+        // OAuth API unavailable — surface the error instead of falling back to mock credentials.
+        console.error('OAuth API unavailable:', apiError.message || apiError);
+        throw new Error('Server is currently unavailable. Please try again later.');
       }
     } catch (error: any) {
       const message = error.message || `${oauthData.provider} login failed`;
