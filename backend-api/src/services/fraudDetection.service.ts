@@ -23,6 +23,11 @@ import {
   CASHBACK_MATRIX_STEPS,
   PERCEPTUAL_HASH_CLOSE_THRESHOLD,
   PERCEPTUAL_HASH_MODERATE_THRESHOLD,
+  DEVICE_FINGERPRINT_LOOKBACK_MS,
+  DEVICE_FINGERPRINT_FAMILIAR_THRESHOLD,
+  DEVICE_FINGERPRINT_NEW_MULTI_DEVICE_POINTS,
+  DEVICE_FINGERPRINT_NEW_POINTS,
+  DEVICE_FINGERPRINT_RARE_MULTI_DEVICE_POINTS,
 } from '../constants/receipt.constants';
 import { receiptTemplateService } from './receiptTemplate.service';
 
@@ -59,6 +64,7 @@ interface FraudCheckParams {
   userId: string;
   venueId?: string;
   cardTier?: 'LIGHT' | 'BASIC' | 'PREMIUM';
+  deviceFingerprint?: string;  // SHA-256 hash of device properties
   /** When re-checking an existing receipt (e.g. admin amount correction), pass its ID
    *  so the duplicate-image check doesn't penalise the receipt against itself. */
   excludeReceiptId?: string;
@@ -205,6 +211,32 @@ class FraudDetectionService {
         recommendations.push(pattern.recommendation);
       }
 
+      // 7b. Device fingerprint check (15-25 points)
+      if (params.deviceFingerprint) {
+        const deviceCheck = await this.checkDeviceFingerprint({
+          userId: params.userId,
+          deviceFingerprint: params.deviceFingerprint,
+        });
+
+        if (deviceCheck.isNew && deviceCheck.distinctDevices >= 2) {
+          score += DEVICE_FINGERPRINT_NEW_MULTI_DEVICE_POINTS;
+          reasons.push('NEW_DEVICE_MULTI_DEVICE_USER');
+          recommendations.push(
+            `Submission from a never-seen device; user has ${deviceCheck.distinctDevices} distinct devices in the last 90 days`
+          );
+        } else if (deviceCheck.isNew) {
+          score += DEVICE_FINGERPRINT_NEW_POINTS;
+          reasons.push('NEW_DEVICE');
+          recommendations.push('First submission from this device');
+        } else if (deviceCheck.isRare && deviceCheck.distinctDevices >= 3) {
+          score += DEVICE_FINGERPRINT_RARE_MULTI_DEVICE_POINTS;
+          reasons.push('RARE_DEVICE_MULTI_DEVICE_USER');
+          recommendations.push(
+            `Rarely-used device (${deviceCheck.distinctDevices} distinct devices in 90 days)`
+          );
+        }
+      }
+
       // 8. Amount threshold check (10 points)
       if (params.userAmount) {
         const minAmount = config?.minBillAmount || DEFAULT_MIN_BILL_AMOUNT;
@@ -215,7 +247,8 @@ class FraudDetectionService {
         }
       }
 
-      // 9. Card tier verification (reduce score for premium users)
+      // 9. Card tier verification (reduce score for premium users).
+      // cardTier === null (no active subscription) gets no discount — intentional.
       if (params.cardTier === 'PREMIUM') {
         score = Math.max(0, score - 5);
       } else if (params.cardTier === 'BASIC') {
@@ -354,6 +387,68 @@ class FraudDetectionService {
       isModerate:
         minDistance > PERCEPTUAL_HASH_CLOSE_THRESHOLD &&
         minDistance <= PERCEPTUAL_HASH_MODERATE_THRESHOLD,
+    };
+  }
+
+  /**
+   * Check if the submitting device is familiar for this user.
+   * Queries the user's last 90 days of receipts + sticker scans.
+   */
+  private async checkDeviceFingerprint(params: {
+    userId: string;
+    deviceFingerprint: string;
+  }): Promise<{ isNew: boolean; isRare: boolean; distinctDevices: number }> {
+    const cutoff = new Date(Date.now() - DEVICE_FINGERPRINT_LOOKBACK_MS);
+
+    const [matchCount, distinctReceipts, distinctScans] = await Promise.all([
+      // How many times has this exact fingerprint been seen for this user?
+      prisma.receipt.count({
+        where: {
+          userId: params.userId,
+          deviceFingerprint: params.deviceFingerprint,
+          createdAt: { gte: cutoff },
+        },
+      }).then(async (receiptCount) => {
+        const scanCount = await prisma.stickerScan.count({
+          where: {
+            userId: params.userId,
+            deviceFingerprint: params.deviceFingerprint,
+            createdAt: { gte: cutoff },
+          },
+        });
+        return receiptCount + scanCount;
+      }),
+      // Distinct device fingerprints from receipts
+      prisma.receipt.findMany({
+        where: {
+          userId: params.userId,
+          deviceFingerprint: { not: null },
+          createdAt: { gte: cutoff },
+        },
+        select: { deviceFingerprint: true },
+        distinct: ['deviceFingerprint'],
+      }),
+      // Distinct device fingerprints from sticker scans
+      prisma.stickerScan.findMany({
+        where: {
+          userId: params.userId,
+          deviceFingerprint: { not: null },
+          createdAt: { gte: cutoff },
+        },
+        select: { deviceFingerprint: true },
+        distinct: ['deviceFingerprint'],
+      }),
+    ]);
+
+    const allFingerprints = new Set([
+      ...distinctReceipts.map((r) => r.deviceFingerprint),
+      ...distinctScans.map((s) => s.deviceFingerprint),
+    ]);
+
+    return {
+      isNew: matchCount === 0,
+      isRare: matchCount > 0 && matchCount < DEVICE_FINGERPRINT_FAMILIAR_THRESHOLD,
+      distinctDevices: allFingerprints.size,
     };
   }
 

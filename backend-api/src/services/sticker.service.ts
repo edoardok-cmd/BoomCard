@@ -43,6 +43,8 @@ export interface CreateSessionData {
   longitude?: number;
   ipAddress?: string;
   userAgent?: string;
+  deviceFingerprint?: string;
+  deviceFingerprintRaw?: string;
   /**
    * venueId embedded in the QR payload. Required: must match the sticker's true
    * venueId (server-side cross-check; Finding #4). Clients that omit it are rejected.
@@ -65,6 +67,8 @@ export interface ScanStickerData {
   longitude?: number;
   ipAddress?: string;
   userAgent?: string;
+  deviceFingerprint?: string;
+  deviceFingerprintRaw?: string;
   /** If provided, complete an existing SESSION_ACTIVE session rather than creating a new scan. */
   sessionId?: string;
   /** Legacy one-call flow only: required here too so the legacy path can't bypass Finding #4/#5. */
@@ -492,6 +496,8 @@ class StickerService {
         fraudScore: 0,
         ipAddress,
         userAgent,
+        deviceFingerprint: data.deviceFingerprint,
+        deviceFingerprintRaw: data.deviceFingerprintRaw,
       },
       include: {
         sticker: { include: { venue: true, location: true } },
@@ -737,6 +743,8 @@ class StickerService {
         status: ScanStatus.PENDING,
         ipAddress,
         userAgent,
+        deviceFingerprint: data.deviceFingerprint,
+        deviceFingerprintRaw: data.deviceFingerprintRaw,
       },
       include: {
         user: { select: { id: true, firstName: true, lastName: true, email: true } },
@@ -1023,9 +1031,10 @@ class StickerService {
     const oldStatus = scan.status;
     const oldProcessedAt = scan.processedAt;
 
-    // Atomic claim — prevents concurrent double-approval and blocks REJECTED/EXPIRED scans
-    // from being approved after the fact. Narrowing to approvable statuses (not just
-    // "not APPROVED") prevents a rejected scan from being re-approved by a retry.
+    // Atomic claim — prevents concurrent double-approval AND blocks REJECTED/EXPIRED scans
+    // from being approved after the fact (mirrors the rejectScan guard which excludes
+    // APPROVED scans to protect already-credited cashback). Narrowing to approvable
+    // statuses (not just "not APPROVED") prevents a rejected scan from being re-approved.
     const claimResult = await prisma.stickerScan.updateMany({
       where: { id: scanId, status: { in: approvableStatuses } },
       data: { status: ScanStatus.APPROVED, processedAt: new Date() },

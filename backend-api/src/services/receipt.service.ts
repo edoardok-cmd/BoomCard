@@ -694,6 +694,8 @@ class ReceiptService {
     ipAddress?: string;
     userAgent?: string;
     metadata?: Record<string, any>;
+    deviceFingerprint?: string;
+    deviceFingerprintRaw?: string;
   }) {
     try {
       // Get user
@@ -744,6 +746,7 @@ class ReceiptService {
         userId:         request.userId,
         venueId:        request.venueId,
         cardTier:       cardTier as any,
+        deviceFingerprint: request.deviceFingerprint,
       });
 
       // Calculate cashback (passes userId so rolling daily/monthly caps are enforced)
@@ -788,6 +791,8 @@ class ReceiptService {
           longitude: request.longitude,
           ipAddress: request.ipAddress,
           userAgent: request.userAgent,
+          deviceFingerprint: request.deviceFingerprint,
+          deviceFingerprintRaw: request.deviceFingerprintRaw,
           metadata: request.metadata ? JSON.stringify(request.metadata) : undefined,
         },
       });
@@ -1005,6 +1010,8 @@ class ReceiptService {
             }
           } catch (fraudRecomputeError) {
             logger.error(`Failed to recompute fraud score for receipt ${params.receiptId}:`, fraudRecomputeError);
+            // Keep the original fraud score so the admin record is explicit, not silently stale
+            updatedFraudScore = receipt.fraudScore as number;
           }
         } else {
           // Calculate cashback from the receipt's original amount

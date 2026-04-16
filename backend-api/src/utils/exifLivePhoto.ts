@@ -15,6 +15,8 @@ import exifr from 'exifr';
 
 export const LIVE_PHOTO_MAX_AGE_MIN = 30;
 const EXIF_PARSE_TIMEOUT_MS = 5000;
+// All BoomCard venues currently operate in Bulgaria. If multi-timezone support is
+// needed, accept timezone as a parameter instead of using this constant.
 const VENUE_TIMEZONE = 'Europe/Sofia';
 
 function resolveExifLocalToUtc(rawDateTime: string, rawOffset?: string): Date | null {
