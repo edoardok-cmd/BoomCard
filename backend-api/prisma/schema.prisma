@@ -563,6 +563,7 @@ model WalletTransaction {
   @@index([status])
   @@index([createdAt])
   @@index([cashbackExpiresAt])
+  @@index([stripePaymentIntentId]) // TOP_UP idempotency check in handlePaymentSucceeded
   @@map("wallet_transactions")
 }
 

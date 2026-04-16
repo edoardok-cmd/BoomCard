@@ -390,35 +390,28 @@ class StripeService {
     }
 
     try {
-      // Create or update transaction
-      const existing = await prisma.transaction.findFirst({
-        where: { paymentIntentId: paymentIntent.id },
+      // Upsert transaction — atomic on the unique stripePaymentId to eliminate the
+      // TOCTOU race between findFirst and create when Stripe retries the webhook.
+      await prisma.transaction.upsert({
+        where: { stripePaymentId: paymentIntent.id },
+        create: {
+          userId,
+          type: (type || 'PURCHASE') as any,
+          status: 'COMPLETED',
+          amount: paymentIntent.amount / 100,
+          finalAmount: paymentIntent.amount / 100,
+          currency: paymentIntent.currency.toUpperCase(),
+          paymentMethod: 'CARD',
+          stripePaymentId: paymentIntent.id,
+          paymentIntentId: paymentIntent.id,
+          metadata: JSON.stringify(paymentIntent.metadata),
+          completedAt: new Date(),
+        },
+        update: {
+          status: 'COMPLETED',
+          completedAt: new Date(),
+        },
       });
-
-      if (existing) {
-        await prisma.transaction.update({
-          where: { id: existing.id },
-          data: {
-            status: 'COMPLETED',
-          },
-        });
-      } else {
-        await prisma.transaction.create({
-          data: {
-            userId,
-            type: (type || 'PURCHASE') as any,
-            status: 'COMPLETED',
-            amount: paymentIntent.amount / 100,
-            finalAmount: paymentIntent.amount / 100,
-            currency: paymentIntent.currency.toUpperCase(),
-            paymentMethod: 'CARD',
-            stripePaymentId: paymentIntent.id,
-            paymentIntentId: paymentIntent.id,
-            metadata: JSON.stringify(paymentIntent.metadata),
-            completedAt: new Date(),
-          },
-        });
-      }
 
       // If this is a wallet top-up, credit the wallet.
       // Idempotency guard: Stripe may deliver the same event more than once.
@@ -480,34 +473,27 @@ class StripeService {
     if (!userId) return;
 
     try {
-      // Update or create transaction with failed status
-      const existing = await prisma.transaction.findFirst({
-        where: { paymentIntentId: paymentIntent.id },
+      // Upsert transaction — atomic on unique stripePaymentId (same rationale as
+      // handlePaymentSucceeded). Also handles the retry-after-success case: if the
+      // payment previously succeeded and Stripe later fires a failure, we update status.
+      await prisma.transaction.upsert({
+        where: { stripePaymentId: paymentIntent.id },
+        create: {
+          userId,
+          type: (type || 'PURCHASE') as any,
+          status: 'FAILED',
+          amount: paymentIntent.amount / 100,
+          finalAmount: paymentIntent.amount / 100,
+          currency: paymentIntent.currency.toUpperCase(),
+          paymentMethod: 'CARD',
+          stripePaymentId: paymentIntent.id,
+          paymentIntentId: paymentIntent.id,
+          metadata: JSON.stringify(paymentIntent.metadata),
+        },
+        update: {
+          status: 'FAILED',
+        },
       });
-
-      if (existing) {
-        await prisma.transaction.update({
-          where: { id: existing.id },
-          data: {
-            status: 'FAILED',
-          },
-        });
-      } else {
-        await prisma.transaction.create({
-          data: {
-            userId,
-            type: (type || 'PURCHASE') as any,
-            status: 'FAILED',
-            amount: paymentIntent.amount / 100,
-            finalAmount: paymentIntent.amount / 100,
-            currency: paymentIntent.currency.toUpperCase(),
-            paymentMethod: 'CARD',
-            stripePaymentId: paymentIntent.id,
-            paymentIntentId: paymentIntent.id,
-            metadata: JSON.stringify(paymentIntent.metadata),
-          },
-        });
-      }
 
       // If wallet top-up, mark transaction as failed
       if (type === 'TOP_UP') {
@@ -688,6 +674,8 @@ class StripeService {
           trialEnd: subscription.trial_end ? new Date(subscription.trial_end * 1000) : null,
         },
         update: {
+          plan,
+          stripePriceId: priceId,
           status: statusMap[subscription.status] || 'ACTIVE',
           currentPeriodStart: new Date(subscription.current_period_start * 1000),
           currentPeriodEnd: new Date(subscription.current_period_end * 1000),
@@ -696,7 +684,16 @@ class StripeService {
         },
       });
 
-      logger.info(`Subscription updated in database for user ${userId}`);
+      // Sync card type when subscription becomes active (handles INCOMPLETE→ACTIVE
+      // transitions after payment completes). Without this, users who create an
+      // incomplete subscription and pay later keep a LIGHT card indefinitely.
+      const mappedStatus = statusMap[subscription.status];
+      if (mappedStatus === 'ACTIVE' || mappedStatus === 'TRIALING') {
+        const { cardService } = await import('./card.service');
+        await cardService.syncCardTypeWithSubscription(userId, plan);
+      }
+
+      logger.info(`Subscription updated in database for user ${userId} (plan: ${plan}, status: ${statusMap[subscription.status]})`);
     } catch (error) {
       logger.error(`Error handling subscription update: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
@@ -767,10 +764,13 @@ class StripeService {
         return;
       }
 
-      // Record the invoice payment as a transaction
+      // Upsert the invoice payment as a transaction — Stripe may retry the webhook,
+      // and a blind create would hit the unique constraint on stripePaymentId.
       const amount = (invoice.amount_paid ?? 0) / 100;
-      await prisma.transaction.create({
-        data: {
+      const invoiceStripePaymentId = (invoice.payment_intent as string) ?? invoice.id;
+      await prisma.transaction.upsert({
+        where: { stripePaymentId: invoiceStripePaymentId },
+        create: {
           userId: dbSub.userId,
           type: 'SUBSCRIPTION' as any,
           status: 'COMPLETED',
@@ -778,13 +778,17 @@ class StripeService {
           finalAmount: amount,
           currency: (invoice.currency ?? 'bgn').toUpperCase(),
           paymentMethod: 'CARD',
-          stripePaymentId: invoice.payment_intent as string ?? invoice.id,
-          paymentIntentId: invoice.payment_intent as string ?? null,
+          stripePaymentId: invoiceStripePaymentId,
+          paymentIntentId: (invoice.payment_intent as string) ?? null,
           metadata: JSON.stringify({
             invoiceId: invoice.id,
             subscriptionId,
             billingReason: invoice.billing_reason,
           }),
+          completedAt: new Date(),
+        },
+        update: {
+          status: 'COMPLETED',
           completedAt: new Date(),
         },
       });
