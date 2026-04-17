@@ -252,6 +252,7 @@ const SearchPage: React.FC = () => {
               initial={{ opacity: 0, y: 30 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.8 }}
+              style={{ position: 'relative', zIndex: 1001 }}
             >
               <Title>
                 {t('search.title')}

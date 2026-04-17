@@ -11,6 +11,8 @@ import { Router, Response } from 'express';
 import { authenticate, authorize, AuthRequest } from '../middleware/auth.middleware';
 import { asyncHandler } from '../middleware/error.middleware';
 import { prisma } from '../lib/prisma';
+import { logger } from '../utils/logger';
+import { emailService } from '../services/email.service';
 
 const router = Router();
 
@@ -78,7 +80,14 @@ adminVenueMenuRouter.post(
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const { id } = req.params;
     const expectedUrl = typeof req.body?.expectedUrl === 'string' ? req.body.expectedUrl : null;
-    const venue = await prisma.venue.findUnique({ where: { id } });
+    const venue = await prisma.venue.findUnique({
+      where: { id },
+      include: {
+        partner: {
+          select: { businessName: true, user: { select: { email: true, firstName: true } } },
+        },
+      },
+    });
     if (!venue) {
       return res.status(404).json({ success: false, error: 'Venue not found' });
     }
@@ -103,6 +112,24 @@ adminVenueMenuRouter.post(
         menuReviewedBy: req.user!.id,
       },
     });
+
+    logger.info('[menu-audit] APPROVED', {
+      venueId: id,
+      venueName: venue.name,
+      adminId: req.user!.id,
+      menuUrl: updated.menuUrl,
+      at: new Date().toISOString(),
+    });
+
+    const partnerEmail = venue.partner?.user?.email;
+    if (partnerEmail) {
+      emailService.sendMenuApprovedEmail(partnerEmail, {
+        partnerName: venue.partner!.businessName,
+        venueName: venue.name,
+        menuUrl: updated.menuUrl!,
+        dashboardUrl: process.env.PARTNER_DASHBOARD_URL,
+      }).catch((err) => logger.error('[menu-audit] Failed to send approval email:', err));
+    }
 
     res.json({
       success: true,
@@ -133,7 +160,14 @@ adminVenueMenuRouter.post(
       return res.status(400).json({ success: false, error: 'Rejection reason is too long (max 1000 characters)' });
     }
 
-    const venue = await prisma.venue.findUnique({ where: { id } });
+    const venue = await prisma.venue.findUnique({
+      where: { id },
+      include: {
+        partner: {
+          select: { businessName: true, user: { select: { email: true, firstName: true } } },
+        },
+      },
+    });
     if (!venue) {
       return res.status(404).json({ success: false, error: 'Venue not found' });
     }
@@ -150,6 +184,25 @@ adminVenueMenuRouter.post(
         menuReviewedBy: req.user!.id,
       },
     });
+
+    logger.info('[menu-audit] REJECTED', {
+      venueId: id,
+      venueName: venue.name,
+      adminId: req.user!.id,
+      reason,
+      at: new Date().toISOString(),
+    });
+
+    const partnerEmail = venue.partner?.user?.email;
+    if (partnerEmail) {
+      emailService.sendMenuRejectedEmail(partnerEmail, {
+        partnerName: venue.partner!.businessName,
+        venueName: venue.name,
+        rejectedUrl: venue.pendingMenuUrl,
+        reason,
+        dashboardUrl: process.env.PARTNER_DASHBOARD_URL,
+      }).catch((err) => logger.error('[menu-audit] Failed to send rejection email:', err));
+    }
 
     res.json({
       success: true,
@@ -195,6 +248,13 @@ adminVenueMenuRouter.put(
       },
     });
 
+    logger.info('[menu-audit] DIRECT_EDIT', {
+      venueId: id,
+      adminId: req.user!.id,
+      menuUrl: updated.menuUrl,
+      at: new Date().toISOString(),
+    });
+
     res.json({
       success: true,
       data: {
@@ -231,6 +291,12 @@ adminVenueMenuRouter.delete(
         menuReviewedAt: new Date(),
         menuReviewedBy: req.user!.id,
       },
+    });
+
+    logger.info('[menu-audit] CLEARED', {
+      venueId: id,
+      adminId: req.user!.id,
+      at: new Date().toISOString(),
     });
 
     res.json({ success: true, message: 'Menu cleared' });

@@ -133,6 +133,21 @@ export interface ReceiptExportData {
   exportDate: Date;
 }
 
+export interface MenuApprovedData {
+  partnerName: string;
+  venueName: string;
+  menuUrl: string;
+  dashboardUrl?: string;
+}
+
+export interface MenuRejectedData {
+  partnerName: string;
+  venueName: string;
+  rejectedUrl: string;
+  reason: string;
+  dashboardUrl?: string;
+}
+
 // ============================================
 // Email Service Class
 // ============================================
@@ -1471,6 +1486,113 @@ ${isBg ? 'Въпроси? Свържете се с нас на' : 'Questions? Co
 </html>`;
     const text = `Dear ${data.partnerName},\n\nYour cashback payment for ${data.month} of ${data.amount.toFixed(2)} BGN is outstanding.\n\nPlease contact support@boomcard.bg for questions.`;
     return this.sendEmail({ to: email, subject, html, text });
+  }
+
+  async sendMenuApprovedEmail(
+    email: string,
+    data: MenuApprovedData
+  ): Promise<{ success: boolean }> {
+    const dashboardLink = data.dashboardUrl ?? 'https://partners.boomcard.bg';
+    const html = `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
+<body style="margin:0;padding:0;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;background:#f5f5f5;">
+  <table width="100%" cellpadding="0" cellspacing="0" border="0">
+    <tr><td align="center" style="padding:40px 20px;">
+      <table width="600" cellpadding="0" cellspacing="0" border="0" style="background:#fff;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,0.1);">
+        <tr><td style="background:linear-gradient(135deg,#22c55e,#16a34a);padding:40px;text-align:center;border-radius:8px 8px 0 0;">
+          <div style="font-size:48px;margin-bottom:8px;">✅</div>
+          <h1 style="margin:0;color:#fff;font-size:28px;">Menu Approved!</h1>
+        </td></tr>
+        <tr><td style="padding:40px;">
+          <p style="margin:0 0 20px;color:#333;font-size:16px;">Hi ${data.partnerName},</p>
+          <p style="margin:0 0 30px;color:#666;font-size:16px;line-height:1.6;">
+            Great news! The menu you submitted for <strong>${data.venueName}</strong> has been approved and is now live for BoomCard users.
+          </p>
+          <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f8f9fa;border-radius:6px;padding:20px;margin-bottom:30px;">
+            <tr>
+              <td style="color:#666;font-size:14px;padding:8px 0;">Venue:</td>
+              <td align="right" style="color:#333;font-size:14px;font-weight:bold;padding:8px 0;">${data.venueName}</td>
+            </tr>
+            <tr>
+              <td style="color:#666;font-size:14px;padding:8px 0;border-top:1px solid #dee2e6;">Menu URL:</td>
+              <td align="right" style="font-size:14px;padding:8px 0;border-top:1px solid #dee2e6;word-break:break-all;"><a href="${data.menuUrl}" style="color:#22c55e;">${data.menuUrl}</a></td>
+            </tr>
+          </table>
+          <div style="text-align:center;margin-bottom:30px;"><a href="${dashboardLink}" style="display:inline-block;background:#22c55e;color:#fff;text-decoration:none;padding:14px 32px;border-radius:6px;font-size:16px;font-weight:bold;">View Partner Dashboard</a></div>
+          <p style="color:#999;font-size:13px;margin:0;">Questions? Contact us at <a href="mailto:support@boomcard.bg" style="color:#667eea;">support@boomcard.bg</a></p>
+        </td></tr>
+        <tr><td style="background:#f8f9fa;padding:20px;text-align:center;border-radius:0 0 8px 8px;">
+          <p style="margin:0;color:#999;font-size:12px;">&copy; ${new Date().getFullYear()} BoomCard. All rights reserved.</p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+    const text = `Hi ${data.partnerName},\n\nYour menu for ${data.venueName} has been approved and is now live for BoomCard users.\n\nMenu URL: ${data.menuUrl}\n\nView your dashboard: ${dashboardLink}\n\nQuestions? Contact support@boomcard.bg`;
+    return this.sendEmail({
+      to: email,
+      subject: `Menu Approved – ${data.venueName} is now live`,
+      html,
+      text,
+    });
+  }
+
+  async sendMenuRejectedEmail(
+    email: string,
+    data: MenuRejectedData
+  ): Promise<{ success: boolean }> {
+    const dashboardLink = data.dashboardUrl ?? 'https://partners.boomcard.bg';
+    const html = `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
+<body style="margin:0;padding:0;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;background:#f5f5f5;">
+  <table width="100%" cellpadding="0" cellspacing="0" border="0">
+    <tr><td align="center" style="padding:40px 20px;">
+      <table width="600" cellpadding="0" cellspacing="0" border="0" style="background:#fff;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,0.1);">
+        <tr><td style="background:linear-gradient(135deg,#ef4444,#dc2626);padding:40px;text-align:center;border-radius:8px 8px 0 0;">
+          <div style="font-size:48px;margin-bottom:8px;">❌</div>
+          <h1 style="margin:0;color:#fff;font-size:28px;">Menu Not Approved</h1>
+        </td></tr>
+        <tr><td style="padding:40px;">
+          <p style="margin:0 0 20px;color:#333;font-size:16px;">Hi ${data.partnerName},</p>
+          <p style="margin:0 0 30px;color:#666;font-size:16px;line-height:1.6;">
+            Unfortunately, the menu you submitted for <strong>${data.venueName}</strong> could not be approved.
+          </p>
+          <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#fff5f5;border:1px solid #fecaca;border-radius:6px;padding:20px;margin-bottom:30px;">
+            <tr>
+              <td style="color:#666;font-size:14px;padding:8px 0;">Venue:</td>
+              <td align="right" style="color:#333;font-size:14px;font-weight:bold;padding:8px 0;">${data.venueName}</td>
+            </tr>
+            <tr>
+              <td style="color:#666;font-size:14px;padding:8px 0;border-top:1px solid #fecaca;">Submitted URL:</td>
+              <td align="right" style="font-size:14px;padding:8px 0;border-top:1px solid #fecaca;word-break:break-all;">${data.rejectedUrl}</td>
+            </tr>
+            <tr>
+              <td style="color:#666;font-size:14px;padding:8px 0;border-top:1px solid #fecaca;">Reason:</td>
+              <td align="right" style="color:#ef4444;font-size:14px;padding:8px 0;border-top:1px solid #fecaca;">${data.reason}</td>
+            </tr>
+          </table>
+          <p style="color:#666;font-size:14px;line-height:1.6;">You can update your submission and resubmit from your partner dashboard.</p>
+          <div style="text-align:center;margin-bottom:30px;"><a href="${dashboardLink}" style="display:inline-block;background:#ef4444;color:#fff;text-decoration:none;padding:14px 32px;border-radius:6px;font-size:16px;font-weight:bold;">Resubmit Menu</a></div>
+          <p style="color:#999;font-size:13px;margin:0;">Questions? Contact us at <a href="mailto:support@boomcard.bg" style="color:#667eea;">support@boomcard.bg</a></p>
+        </td></tr>
+        <tr><td style="background:#f8f9fa;padding:20px;text-align:center;border-radius:0 0 8px 8px;">
+          <p style="margin:0;color:#999;font-size:12px;">&copy; ${new Date().getFullYear()} BoomCard. All rights reserved.</p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+    const text = `Hi ${data.partnerName},\n\nYour menu for ${data.venueName} was not approved.\n\nSubmitted URL: ${data.rejectedUrl}\nReason: ${data.reason}\n\nYou can resubmit from your partner dashboard: ${dashboardLink}\n\nQuestions? Contact support@boomcard.bg`;
+    return this.sendEmail({
+      to: email,
+      subject: `Menu Update – ${data.venueName}`,
+      html,
+      text,
+    });
   }
 }
 
