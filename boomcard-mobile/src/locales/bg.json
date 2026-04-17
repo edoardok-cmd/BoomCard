@@ -487,6 +487,7 @@
   "offers": {
     "title": "Оферти",
     "detail": "Детайли за офертата",
+    "viewMenu": "Меню",
     "searchPlaceholder": "Търси оферти...",
     "categoryAll": "Всички",
     "categoryRestaurants": "Ресторанти и храна",

@@ -487,6 +487,7 @@
   "offers": {
     "title": "Offers",
     "detail": "Offer Details",
+    "viewMenu": "Menu",
     "searchPlaceholder": "Search offers...",
     "categoryAll": "All",
     "categoryRestaurants": "Restaurants & Food",

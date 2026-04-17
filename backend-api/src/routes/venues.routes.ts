@@ -412,4 +412,122 @@ router.delete(
   })
 );
 
+/**
+ * POST /api/venues/:id/menu/submit
+ * Partner submits a menu URL for admin review.
+ * Sets pendingMenuUrl + status=PENDING. Existing menuUrl (if approved) remains visible to users.
+ */
+router.post(
+  '/:id/menu/submit',
+  authenticate,
+  authorize('PARTNER', 'ADMIN', 'SUPER_ADMIN'),
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    const { id } = req.params;
+    const { url } = req.body as { url?: string };
+
+    const trimmed = (url ?? '').trim();
+    if (!trimmed) {
+      return res.status(400).json({ success: false, error: 'Menu URL is required' });
+    }
+    if (trimmed.length > 2048) {
+      return res.status(400).json({ success: false, error: 'Menu URL is too long (max 2048 characters)' });
+    }
+    try {
+      const parsed = new URL(trimmed);
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+        return res.status(400).json({ success: false, error: 'Menu URL must use http or https' });
+      }
+    } catch {
+      return res.status(400).json({ success: false, error: 'Menu URL is not a valid URL' });
+    }
+
+    const venueRecord = await prisma.venue.findUnique({
+      where: { id },
+      include: { partner: { select: { userId: true } } },
+    });
+    if (!venueRecord) {
+      return res.status(404).json({ success: false, error: 'Venue not found' });
+    }
+
+    // PARTNER role: verify they own this venue
+    if (req.user!.role === 'PARTNER' && venueRecord.partner?.userId !== req.user!.id) {
+      return res.status(403).json({ success: false, error: 'You do not have permission to submit a menu for this venue' });
+    }
+
+    const updated = await prisma.venue.update({
+      where: { id },
+      data: {
+        pendingMenuUrl: trimmed,
+        menuStatus: 'PENDING',
+        menuSubmittedAt: new Date(),
+        menuRejectionReason: null,
+      },
+    });
+
+    res.json({
+      success: true,
+      data: {
+        menuUrl: updated.menuUrl,
+        pendingMenuUrl: updated.pendingMenuUrl,
+        menuStatus: updated.menuStatus,
+        menuRejectionReason: updated.menuRejectionReason,
+        menuSubmittedAt: updated.menuSubmittedAt,
+      },
+      message: 'Menu URL submitted for review',
+    });
+  })
+);
+
+/**
+ * POST /api/venues/:id/menu/withdraw
+ * Partner withdraws a PENDING menu submission.
+ * - If a previously approved menuUrl exists, keeps it and reverts status to APPROVED.
+ * - Otherwise clears menu state back to NONE.
+ */
+router.post(
+  '/:id/menu/withdraw',
+  authenticate,
+  authorize('PARTNER', 'ADMIN', 'SUPER_ADMIN'),
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    const { id } = req.params;
+
+    const venueRecord = await prisma.venue.findUnique({
+      where: { id },
+      include: { partner: { select: { userId: true } } },
+    });
+    if (!venueRecord) {
+      return res.status(404).json({ success: false, error: 'Venue not found' });
+    }
+    if (req.user!.role === 'PARTNER' && venueRecord.partner?.userId !== req.user!.id) {
+      return res.status(403).json({ success: false, error: 'You do not have permission to modify this venue' });
+    }
+    if (venueRecord.menuStatus !== 'PENDING') {
+      return res.status(400).json({ success: false, error: 'No pending submission to withdraw' });
+    }
+
+    const nextStatus = venueRecord.menuUrl ? 'APPROVED' : 'NONE';
+    const updated = await prisma.venue.update({
+      where: { id },
+      data: {
+        pendingMenuUrl: null,
+        menuStatus: nextStatus,
+        menuRejectionReason: null,
+        menuSubmittedAt: venueRecord.menuUrl ? venueRecord.menuSubmittedAt : null,
+      },
+    });
+
+    res.json({
+      success: true,
+      data: {
+        menuUrl: updated.menuUrl,
+        pendingMenuUrl: updated.pendingMenuUrl,
+        menuStatus: updated.menuStatus,
+        menuRejectionReason: updated.menuRejectionReason,
+        menuSubmittedAt: updated.menuSubmittedAt,
+      },
+      message: 'Submission withdrawn',
+    });
+  })
+);
+
 export default router;

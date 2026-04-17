@@ -38,6 +38,29 @@ export interface Venue {
   updatedAt?: string;
 }
 
+export type MenuStatus = 'NONE' | 'PENDING' | 'APPROVED' | 'REJECTED';
+
+export interface VenueMenuState {
+  menuUrl: string | null;
+  pendingMenuUrl: string | null;
+  menuStatus: MenuStatus;
+  menuRejectionReason: string | null;
+  menuSubmittedAt: string | null;
+  menuReviewedAt: string | null;
+}
+
+export interface PendingMenuVenue {
+  id: string;
+  name: string;
+  city: string;
+  address: string;
+  menuUrl: string | null;
+  pendingMenuUrl: string | null;
+  menuStatus: MenuStatus;
+  menuSubmittedAt: string | null;
+  partner: { id: string; businessName: string } | null;
+}
+
 export interface VenueFilters {
   category?: string;
   city?: string;
@@ -169,6 +192,64 @@ class VenuesService {
    */
   async deleteImage(venueId: string, imageUrl: string): Promise<void> {
     return apiService.delete<void>(`${this.baseUrl}/${venueId}/images`, { data: { imageUrl } });
+  }
+
+  /**
+   * Partner submits a menu URL for admin review.
+   */
+  async submitMenuUrl(venueId: string, url: string): Promise<VenueMenuState> {
+    const res = await apiService.post<{ data: VenueMenuState }>(`${this.baseUrl}/${venueId}/menu/submit`, { url });
+    return res.data;
+  }
+
+  /**
+   * Partner withdraws a PENDING menu submission.
+   */
+  async withdrawMenuSubmission(venueId: string): Promise<VenueMenuState> {
+    const res = await apiService.post<{ data: VenueMenuState }>(`${this.baseUrl}/${venueId}/menu/withdraw`);
+    return res.data;
+  }
+
+  /**
+   * Admin approves pending menu URL. Pass `expectedUrl` to guard against stale approvals.
+   */
+  async adminApproveMenu(venueId: string, expectedUrl?: string): Promise<Partial<VenueMenuState>> {
+    const res = await apiService.post<{ data: Partial<VenueMenuState> }>(
+      `/admin/venues/${venueId}/menu/approve`,
+      expectedUrl ? { expectedUrl } : undefined
+    );
+    return res.data;
+  }
+
+  /**
+   * Admin rejects pending menu URL.
+   */
+  async adminRejectMenu(venueId: string, reason: string): Promise<Partial<VenueMenuState>> {
+    const res = await apiService.post<{ data: Partial<VenueMenuState> }>(`/admin/venues/${venueId}/menu/reject`, { reason });
+    return res.data;
+  }
+
+  /**
+   * Admin direct-edit menu URL (bypasses vetting).
+   */
+  async adminSetMenuUrl(venueId: string, url: string): Promise<Partial<VenueMenuState>> {
+    const res = await apiService.put<{ data: Partial<VenueMenuState> }>(`/admin/venues/${venueId}/menu`, { url });
+    return res.data;
+  }
+
+  /**
+   * Admin clears menu URL entirely.
+   */
+  async adminClearMenu(venueId: string): Promise<void> {
+    await apiService.delete<void>(`/admin/venues/${venueId}/menu`);
+  }
+
+  /**
+   * Admin: list all venues with PENDING menu submissions.
+   */
+  async adminListPendingMenus(): Promise<PendingMenuVenue[]> {
+    const res = await apiService.get<{ data: PendingMenuVenue[] }>(`/admin/menus/pending`);
+    return res.data;
   }
 
   // ============================================================

@@ -238,7 +238,9 @@ class PartnersService {
    * Get current partner profile (authenticated)
    */
   async getCurrentPartner(): Promise<Partner> {
-    return apiService.get<Partner>(`${this.baseUrl}/me`);
+    const res = await apiService.get<{ success: boolean; data: Partner } | Partner>(`${this.baseUrl}/me`);
+    // Backend wraps the record in `{ success, data }`; older deployments may return it raw.
+    return (res as { data?: Partner })?.data ?? (res as Partner);
   }
 
   /**

@@ -199,6 +199,8 @@ export interface StickerScanRequest {
 
 // ==================== Venue Types ====================
 
+export type MenuStatus = 'NONE' | 'PENDING' | 'APPROVED' | 'REJECTED';
+
 export interface Venue {
   id: string;
   name: string;
@@ -214,6 +216,8 @@ export interface Venue {
   features?: string[];
   rating?: number;
   reviewCount?: number;
+  menuUrl?: string | null;
+  menuStatus?: MenuStatus;
   createdAt: string;
   updatedAt: string;
 }
@@ -516,7 +520,9 @@ export interface Offer {
   createdAt: string;
   updatedAt: string;
   /** Populated by the backend when listing/fetching offers */
-  partner?: Pick<Partner, 'id' | 'businessName' | 'businessNameBg' | 'category' | 'city' | 'logo' | 'rating' | 'partnerTypeId' | 'partnerType'>;
+  partner?: Pick<Partner, 'id' | 'businessName' | 'businessNameBg' | 'category' | 'city' | 'logo' | 'rating' | 'partnerTypeId' | 'partnerType'> & {
+    venues?: Array<Pick<Venue, 'id' | 'name' | 'city' | 'menuUrl'>>;
+  };
 }
 
 export enum OfferType {

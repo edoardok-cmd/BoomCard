@@ -115,6 +115,8 @@ const MyOffersPage: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
 
+  const canEditOffers = user?.role === 'admin';
+
   // Fetch real offers data
   const { data: offersData, isLoading, refetch } = useOffers({
     partnerId: user?.id,
@@ -207,9 +209,11 @@ const MyOffersPage: React.FC = () => {
       <Header>
         <HeaderContent>
           <Title>{t.title}</Title>
-          <Button onClick={() => navigate('/partners/offers/new')}>
-            <Plus size={18} /> {t.createNew}
-          </Button>
+          {canEditOffers && (
+            <Button onClick={() => navigate('/partners/offers/new')}>
+              <Plus size={18} /> {t.createNew}
+            </Button>
+          )}
         </HeaderContent>
       </Header>
 
@@ -287,10 +291,12 @@ const MyOffersPage: React.FC = () => {
         <EmptyState>
           <EmptyIcon><ClipboardList size={64} /></EmptyIcon>
           <EmptyTitle>{t.noOffers}</EmptyTitle>
-          <EmptyText>{t.createFirst}</EmptyText>
-          <Button onClick={() => navigate('/partners/offers/new')}>
-            <Plus size={18} /> {t.createNew}
-          </Button>
+          {canEditOffers && <EmptyText>{t.createFirst}</EmptyText>}
+          {canEditOffers && (
+            <Button onClick={() => navigate('/partners/offers/new')}>
+              <Plus size={18} /> {t.createNew}
+            </Button>
+          )}
         </EmptyState>
       ) : (
         <OffersGrid>
@@ -309,39 +315,41 @@ const MyOffersPage: React.FC = () => {
                     ? t.active
                     : t.inactive}
                 </OfferStatus>
-                <div style={{ position: 'relative' }} data-menu-container>
-                  <MenuButton onClick={() => setActiveMenu(activeMenu === offer.id ? null : offer.id)}>
-                    <MoreVertical size={18} />
-                  </MenuButton>
-                  <AnimatePresence>
-                    {activeMenu === offer.id && (
-                      <MenuDropdown
-                        initial={{ opacity: 0, scale: 0.95, y: -8 }}
-                        animate={{ opacity: 1, scale: 1, y: 0 }}
-                        exit={{ opacity: 0, scale: 0.95, y: -8 }}
-                        transition={{ duration: 0.15 }}
-                      >
-                        <MenuItem onClick={() => navigate(`/partners/offers/${offer.id}/edit`)}>
-                          <Edit size={16} /> {t.edit}
-                        </MenuItem>
-                        <MenuItem onClick={() => handleToggleActive(offer.id)}>
-                          {offer.isActive ? (
-                            <>
-                              <EyeOff size={16} /> {t.deactivate}
-                            </>
-                          ) : (
-                            <>
-                              <Eye size={16} /> {t.activate}
-                            </>
-                          )}
-                        </MenuItem>
-                        <MenuItem danger onClick={() => handleDelete(offer.id)}>
-                          <Trash2 size={16} /> {t.delete}
-                        </MenuItem>
-                      </MenuDropdown>
-                    )}
-                  </AnimatePresence>
-                </div>
+                {canEditOffers && (
+                  <div style={{ position: 'relative' }} data-menu-container>
+                    <MenuButton onClick={() => setActiveMenu(activeMenu === offer.id ? null : offer.id)}>
+                      <MoreVertical size={18} />
+                    </MenuButton>
+                    <AnimatePresence>
+                      {activeMenu === offer.id && (
+                        <MenuDropdown
+                          initial={{ opacity: 0, scale: 0.95, y: -8 }}
+                          animate={{ opacity: 1, scale: 1, y: 0 }}
+                          exit={{ opacity: 0, scale: 0.95, y: -8 }}
+                          transition={{ duration: 0.15 }}
+                        >
+                          <MenuItem onClick={() => navigate(`/partners/offers/${offer.id}/edit`)}>
+                            <Edit size={16} /> {t.edit}
+                          </MenuItem>
+                          <MenuItem onClick={() => handleToggleActive(offer.id)}>
+                            {offer.isActive ? (
+                              <>
+                                <EyeOff size={16} /> {t.deactivate}
+                              </>
+                            ) : (
+                              <>
+                                <Eye size={16} /> {t.activate}
+                              </>
+                            )}
+                          </MenuItem>
+                          <MenuItem danger onClick={() => handleDelete(offer.id)}>
+                            <Trash2 size={16} /> {t.delete}
+                          </MenuItem>
+                        </MenuDropdown>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                )}
               </OfferHeader>
 
               <OfferTitle>{offer.title}</OfferTitle>

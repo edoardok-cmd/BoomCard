@@ -197,10 +197,19 @@ model Venue {
   description   String?
   descriptionBg String?
   images        String? // JSON array
-  menuImages    String? // JSON array — menu/price list images uploaded by partner
+  menuImages    String? // JSON array — legacy; kept for backwards compat
   openingHours  String? // JSON string
   capacity      Int?
   features      String? // JSON array
+
+  menuUrl             String?
+  pendingMenuUrl      String?
+  menuStatus          MenuStatus @default(NONE)
+  menuRejectionReason String?
+  menuSubmittedAt     DateTime?
+  menuReviewedAt      DateTime?
+  menuReviewedBy      String?
+
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -214,6 +223,14 @@ model Venue {
 
   @@index([partnerId])
   @@index([city])
+  @@index([menuStatus])
+}
+
+enum MenuStatus {
+  NONE
+  PENDING
+  APPROVED
+  REJECTED
 }
 
 // ============================================

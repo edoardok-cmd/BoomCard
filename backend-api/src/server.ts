@@ -32,6 +32,7 @@ import partnersRouter from './routes/partners.routes';
 import partnerTypesRouter from './routes/partnerTypes.routes';
 import bulkImportRouter from './routes/bulkImport.routes';
 import adminCashbackRouter from './routes/adminCashback.routes';
+import adminMenusRouter, { adminVenueMenuRouter } from './routes/adminMenus.routes';
 
 // Import WebSocket handler
 import { initializeWebSocket } from './websocket/server';
@@ -200,6 +201,8 @@ app.use('/api/partners', partnersRouter);
 app.use('/api/admin/cashback', adminCashbackRouter);
 app.use('/api/admin/partner-types', partnerTypesRouter);
 app.use('/api/admin/bulk-import', bulkImportRouter);
+app.use('/api/admin/menus', adminMenusRouter);
+app.use('/api/admin/venues', adminVenueMenuRouter);
 app.use('/api/offers', offersRouter);
 app.use('/api/integrations', integrationsRouter);
 app.use('/api/reviews', reviewsRouter);

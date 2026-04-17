@@ -2,9 +2,10 @@ import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import styled from 'styled-components';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Mail, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, Mail, Lock, KeyRound, CheckCircle2 } from 'lucide-react';
 import { Button } from '../components/common/Button/Button';
 import { useLanguage } from '../contexts/LanguageContext';
+import { apiService } from '../services/api.service';
 import toast from 'react-hot-toast';
 
 const PageContainer = styled.div`
@@ -49,6 +50,29 @@ const BackLink = styled(Link)`
   }
 `;
 
+const BackButton = styled.button`
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: none;
+  border: none;
+  padding: 0;
+  color: #6b7280;
+  font-size: 0.875rem;
+  cursor: pointer;
+  margin-bottom: 1.5rem;
+  transition: color 0.2s;
+
+  &:hover {
+    color: #111827;
+  }
+
+  svg {
+    width: 16px;
+    height: 16px;
+  }
+`;
+
 const Title = styled.h1`
   font-size: 1.875rem;
   font-weight: 700;
@@ -61,6 +85,17 @@ const Subtitle = styled.p`
   font-size: 0.95rem;
   margin-bottom: 2rem;
   line-height: 1.6;
+`;
+
+const EmailHint = styled.div`
+  background: #f3f4ff;
+  color: #4c51bf;
+  font-weight: 600;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.5rem;
+  display: inline-block;
+  margin-bottom: 1.5rem;
+  font-size: 0.875rem;
 `;
 
 const Form = styled.form`
@@ -119,12 +154,35 @@ const Input = styled.input<{ $hasError?: boolean }>`
   }
 `;
 
+const OtpInput = styled(Input)`
+  letter-spacing: 0.5rem;
+  text-align: center;
+  font-size: 1.25rem;
+  font-weight: 600;
+`;
+
 const ErrorMessage = styled(motion.span)`
   color: #ef4444;
   font-size: 0.875rem;
   display: flex;
   align-items: center;
   gap: 0.25rem;
+`;
+
+const ResendButton = styled.button`
+  background: none;
+  border: none;
+  color: #667eea;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0.5rem;
+  margin-top: 0.5rem;
+  align-self: center;
+
+  &:hover {
+    text-decoration: underline;
+  }
 `;
 
 const SuccessCard = styled(motion.div)`
@@ -205,85 +263,143 @@ const HelpText = styled.p`
   }
 `;
 
+type Step = 'email' | 'otp' | 'done';
+
 interface FormData {
   email: string;
+  otp: string;
+  newPassword: string;
+  confirmPassword: string;
 }
 
 interface FormErrors {
   email?: string;
+  otp?: string;
+  newPassword?: string;
+  confirmPassword?: string;
 }
 
 const ForgotPasswordPage: React.FC = () => {
   const { language } = useLanguage();
+  const [step, setStep] = useState<Step>('email');
   const [formData, setFormData] = useState<FormData>({
     email: '',
+    otp: '',
+    newPassword: '',
+    confirmPassword: '',
   });
   const [errors, setErrors] = useState<FormErrors>({});
   const [isLoading, setIsLoading] = useState(false);
-  const [isSuccess, setIsSuccess] = useState(false);
 
   const content = {
     en: {
       backToLogin: 'Back to login',
       title: 'Forgot Password?',
-      subtitle: "No worries! Enter your email address and we'll send you a link to reset your password.",
+      subtitle: "Enter your email and we'll send you a 6-digit code to reset your password.",
+      otpTitle: 'Enter Reset Code',
+      otpSubtitle: 'We sent a 6-digit code to',
       emailLabel: 'Email Address',
       emailPlaceholder: 'your.email@example.com',
+      otpLabel: 'Reset Code',
+      otpPlaceholder: '000000',
+      newPasswordLabel: 'New Password',
+      newPasswordPlaceholder: 'At least 8 characters',
+      confirmPasswordLabel: 'Confirm Password',
+      confirmPasswordPlaceholder: 'Re-enter your new password',
       emailRequired: 'Email is required',
       emailInvalid: 'Invalid email address',
-      sendButton: 'Send Reset Link',
+      otpRequired: 'Please enter the 6-digit code',
+      otpInvalid: 'Code must be 6 digits',
+      passwordRequired: 'Password is required',
+      passwordTooShort: 'Password must be at least 8 characters',
+      passwordMismatch: 'Passwords do not match',
+      sendButton: 'Send Reset Code',
       sending: 'Sending...',
-      successTitle: 'Check Your Email',
-      successMessage: "We've sent a password reset link to your email address. Please check your inbox and follow the instructions.",
+      resetButton: 'Reset Password',
+      resetting: 'Resetting...',
+      resendCode: 'Use a different email',
+      successTitle: 'Password Reset Successfully',
+      successMessage: 'Your password has been reset. You can now log in with your new password.',
       backToLoginButton: 'Back to Login',
       needHelp: 'Need help?',
       contactSupport: 'Contact Support',
+      genericError: 'Something went wrong. Please try again.',
+      invalidCodeError: 'Invalid or expired code. Please try again.',
     },
     bg: {
       backToLogin: 'Обратно към вход',
       title: 'Забравена Парола?',
-      subtitle: 'Без проблем! Въведете вашия имейл адрес и ще ви изпратим линк за нулиране на паролата.',
+      subtitle: 'Въведете вашия имейл и ще ви изпратим 6-цифрен код за нулиране на паролата.',
+      otpTitle: 'Въведете Кода',
+      otpSubtitle: 'Изпратихме 6-цифрен код на',
       emailLabel: 'Имейл Адрес',
       emailPlaceholder: 'your.email@example.com',
+      otpLabel: 'Код за Нулиране',
+      otpPlaceholder: '000000',
+      newPasswordLabel: 'Нова Парола',
+      newPasswordPlaceholder: 'Поне 8 символа',
+      confirmPasswordLabel: 'Потвърдете Паролата',
+      confirmPasswordPlaceholder: 'Въведете новата парола отново',
       emailRequired: 'Имейлът е задължителен',
       emailInvalid: 'Невалиден имейл адрес',
-      sendButton: 'Изпрати Линк',
+      otpRequired: 'Моля, въведете 6-цифрения код',
+      otpInvalid: 'Кодът трябва да е 6 цифри',
+      passwordRequired: 'Паролата е задължителна',
+      passwordTooShort: 'Паролата трябва да е поне 8 символа',
+      passwordMismatch: 'Паролите не съвпадат',
+      sendButton: 'Изпрати Код',
       sending: 'Изпращане...',
-      successTitle: 'Проверете Имейла Си',
-      successMessage: 'Изпратихме линк за нулиране на паролата на вашия имейл адрес. Моля, проверете входящата си поща и следвайте инструкциите.',
+      resetButton: 'Нулиране на Паролата',
+      resetting: 'Нулиране...',
+      resendCode: 'Използвай друг имейл',
+      successTitle: 'Паролата е Нулирана Успешно',
+      successMessage: 'Вашата парола беше нулирана успешно. Сега можете да влезете с новата си парола.',
       backToLoginButton: 'Обратно към Вход',
       needHelp: 'Нуждаете се от помощ?',
       contactSupport: 'Свържете се с поддръжка',
+      genericError: 'Нещо се обърка. Моля, опитайте отново.',
+      invalidCodeError: 'Невалиден или изтекъл код. Моля, опитайте отново.',
     },
   };
 
   const t = content[language as keyof typeof content];
 
   const validateEmail = (email: string): string | undefined => {
-    if (!email) {
-      return t.emailRequired;
-    }
+    if (!email) return t.emailRequired;
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      return t.emailInvalid;
-    }
+    if (!emailRegex.test(email)) return t.emailInvalid;
+    return undefined;
+  };
+
+  const validateOtp = (otp: string): string | undefined => {
+    if (!otp) return t.otpRequired;
+    if (!/^\d{6}$/.test(otp)) return t.otpInvalid;
+    return undefined;
+  };
+
+  const validatePassword = (password: string): string | undefined => {
+    if (!password) return t.passwordRequired;
+    if (password.length < 8) return t.passwordTooShort;
+    return undefined;
+  };
+
+  const validateConfirmPassword = (confirm: string, password: string): string | undefined => {
+    if (!confirm) return t.passwordRequired;
+    if (confirm !== password) return t.passwordMismatch;
     return undefined;
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
-
-    // Clear error when user starts typing
+    const nextValue = name === 'otp' ? value.replace(/\D/g, '').slice(0, 6) : value;
+    setFormData(prev => ({ ...prev, [name]: nextValue }));
     if (errors[name as keyof FormErrors]) {
       setErrors(prev => ({ ...prev, [name]: undefined }));
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSendCode = async (e: React.FormEvent) => {
     e.preventDefault();
-
-    // Validate
     const emailError = validateEmail(formData.email);
     if (emailError) {
       setErrors({ email: emailError });
@@ -291,25 +407,49 @@ const ForgotPasswordPage: React.FC = () => {
     }
 
     setIsLoading(true);
-
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1500));
-
-      // In a real app, you would call the API here:
-      // await forgotPassword(formData.email);
-
-      setIsSuccess(true);
-      toast.success(language === 'bg' ? 'Имейлът е изпратен успешно' : 'Email sent successfully');
-    } catch (error) {
-      console.error('Forgot password error:', error);
-      toast.error(language === 'bg' ? 'Възникна грешка' : 'An error occurred');
+      await apiService.post('/auth/forgot-password', {
+        email: formData.email.toLowerCase().trim(),
+      });
+      setStep('otp');
+    } catch {
+      // Enumeration protection: advance regardless of whether the email exists
+      setStep('otp');
     } finally {
       setIsLoading(false);
     }
   };
 
-  if (isSuccess) {
+  const handleResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const otpError = validateOtp(formData.otp);
+    const passwordError = validatePassword(formData.newPassword);
+    const confirmError = validateConfirmPassword(formData.confirmPassword, formData.newPassword);
+
+    if (otpError || passwordError || confirmError) {
+      setErrors({ otp: otpError, newPassword: passwordError, confirmPassword: confirmError });
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      await apiService.post('/auth/reset-password', {
+        email: formData.email.toLowerCase().trim(),
+        otp: formData.otp.trim(),
+        newPassword: formData.newPassword,
+      });
+      setStep('done');
+      toast.success(t.successTitle);
+    } catch (err: any) {
+      const serverMessage = err?.response?.data?.message;
+      toast.error(serverMessage || t.invalidCodeError);
+      setErrors({ otp: serverMessage || t.invalidCodeError });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  if (step === 'done') {
     return (
       <PageContainer>
         <FormCard
@@ -341,6 +481,129 @@ const ForgotPasswordPage: React.FC = () => {
     );
   }
 
+  if (step === 'otp') {
+    return (
+      <PageContainer>
+        <FormCard
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4 }}
+        >
+          <BackButton type="button" onClick={() => { setStep('email'); setErrors({}); }}>
+            <ArrowLeft />
+            {t.backToLogin}
+          </BackButton>
+
+          <Title>{t.otpTitle}</Title>
+          <Subtitle>{t.otpSubtitle}</Subtitle>
+          <EmailHint>{formData.email}</EmailHint>
+
+          <Form onSubmit={handleResetPassword}>
+            <FormGroup>
+              <Label htmlFor="otp">{t.otpLabel}</Label>
+              <InputWrapper>
+                <InputIcon>
+                  <KeyRound />
+                </InputIcon>
+                <OtpInput
+                  id="otp"
+                  name="otp"
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  maxLength={6}
+                  placeholder={t.otpPlaceholder}
+                  value={formData.otp}
+                  onChange={handleInputChange}
+                  $hasError={!!errors.otp}
+                />
+              </InputWrapper>
+              {errors.otp && (
+                <ErrorMessage initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}>
+                  {errors.otp}
+                </ErrorMessage>
+              )}
+            </FormGroup>
+
+            <FormGroup>
+              <Label htmlFor="newPassword">{t.newPasswordLabel}</Label>
+              <InputWrapper>
+                <InputIcon>
+                  <Lock />
+                </InputIcon>
+                <Input
+                  id="newPassword"
+                  name="newPassword"
+                  type="password"
+                  autoComplete="new-password"
+                  placeholder={t.newPasswordPlaceholder}
+                  value={formData.newPassword}
+                  onChange={handleInputChange}
+                  $hasError={!!errors.newPassword}
+                />
+              </InputWrapper>
+              {errors.newPassword && (
+                <ErrorMessage initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}>
+                  {errors.newPassword}
+                </ErrorMessage>
+              )}
+            </FormGroup>
+
+            <FormGroup>
+              <Label htmlFor="confirmPassword">{t.confirmPasswordLabel}</Label>
+              <InputWrapper>
+                <InputIcon>
+                  <Lock />
+                </InputIcon>
+                <Input
+                  id="confirmPassword"
+                  name="confirmPassword"
+                  type="password"
+                  autoComplete="new-password"
+                  placeholder={t.confirmPasswordPlaceholder}
+                  value={formData.confirmPassword}
+                  onChange={handleInputChange}
+                  $hasError={!!errors.confirmPassword}
+                />
+              </InputWrapper>
+              {errors.confirmPassword && (
+                <ErrorMessage initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}>
+                  {errors.confirmPassword}
+                </ErrorMessage>
+              )}
+            </FormGroup>
+
+            <Button
+              type="submit"
+              variant="primary"
+              size="large"
+              isLoading={isLoading}
+              disabled={isLoading}
+            >
+              {isLoading ? t.resetting : t.resetButton}
+            </Button>
+
+            <ResendButton
+              type="button"
+              onClick={() => {
+                setStep('email');
+                setFormData(prev => ({ ...prev, otp: '', newPassword: '', confirmPassword: '' }));
+                setErrors({});
+              }}
+            >
+              {t.resendCode}
+            </ResendButton>
+          </Form>
+
+          <HelpText>
+            {t.needHelp}{' '}
+            <a href="mailto:support@boomcard.bg">{t.contactSupport}</a>
+          </HelpText>
+        </FormCard>
+      </PageContainer>
+    );
+  }
+
   return (
     <PageContainer>
       <FormCard
@@ -356,7 +619,7 @@ const ForgotPasswordPage: React.FC = () => {
         <Title>{t.title}</Title>
         <Subtitle>{t.subtitle}</Subtitle>
 
-        <Form onSubmit={handleSubmit}>
+        <Form onSubmit={handleSendCode}>
           <FormGroup>
             <Label htmlFor="email">{t.emailLabel}</Label>
             <InputWrapper>
@@ -367,6 +630,7 @@ const ForgotPasswordPage: React.FC = () => {
                 id="email"
                 name="email"
                 type="email"
+                autoComplete="email"
                 placeholder={t.emailPlaceholder}
                 value={formData.email}
                 onChange={handleInputChange}

@@ -36,6 +36,8 @@ const FavoritesPage = lazy(() => import('./pages/FavoritesPage'));
 const MyOffersPage = lazy(() => import('./pages/MyOffersPage'));
 const CreateOfferPage = lazy(() => import('./pages/CreateOfferPage'));
 const EditOfferPage = lazy(() => import('./pages/EditOfferPage'));
+const PartnerMenusPage = lazy(() => import('./pages/PartnerMenusPage'));
+const AdminMenuApprovalsPage = lazy(() => import('./pages/AdminMenuApprovalsPage'));
 const NearbyOffersPage = lazy(() => import('./pages/NearbyOffersPage'));
 const RewardsPage = lazy(() => import('./pages/RewardsPage'));
 const PromotionsPage = lazy(() => import('./pages/PromotionsPage'));
@@ -262,7 +264,7 @@ function App() {
                     <Route
                       path="partners/offers/new"
                       element={
-                        <ProtectedRoute>
+                        <ProtectedRoute requiredRole="admin">
                           <CreateOfferPage />
                         </ProtectedRoute>
                       }
@@ -270,8 +272,16 @@ function App() {
                     <Route
                       path="partners/offers/:id/edit"
                       element={
-                        <ProtectedRoute>
+                        <ProtectedRoute requiredRole="admin">
                           <EditOfferPage />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="partners/menus"
+                      element={
+                        <ProtectedRoute>
+                          <PartnerMenusPage />
                         </ProtectedRoute>
                       }
                     />
@@ -467,6 +477,14 @@ function App() {
                       element={
                         <ProtectedRoute requiredRole="admin">
                           <AdminPartnerOnboardingPage />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="admin/menu-approvals"
+                      element={
+                        <ProtectedRoute requiredRole="admin">
+                          <AdminMenuApprovalsPage />
                         </ProtectedRoute>
                       }
                     />

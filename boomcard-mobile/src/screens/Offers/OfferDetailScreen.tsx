@@ -5,13 +5,15 @@
  * Requires user to be within 100m of the venue to activate.
  */
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   View,
   StyleSheet,
   ScrollView,
   Image,
   Alert,
+  Linking,
+  Pressable,
 } from 'react-native';
 import { Text, Button, Chip, ActivityIndicator } from 'react-native-paper';
 import { useTranslation } from 'react-i18next';
@@ -61,6 +63,10 @@ export default function OfferDetailScreen() {
   const [redeeming, setRedeeming] = useState(false);
   const [redeemCode, setRedeemCode] = useState<string | null>(null);
   const [codeExpiry, setCodeExpiry] = useState<string | null>(null);
+  const menuVenues = useMemo(
+    () => (offer.partner?.venues ?? []).filter(v => !!v.menuUrl),
+    [offer.partner?.venues]
+  );
 
   const title = lang === 'bg' && offer.titleBg ? offer.titleBg : offer.title;
   const description = lang === 'bg' && offer.descriptionBg ? offer.descriptionBg : offer.description;
@@ -204,6 +210,38 @@ export default function OfferDetailScreen() {
           <Text style={[styles.desc, { color: theme.colors.onSurfaceVariant }]}>
             {description}
           </Text>
+        </View>
+      ) : null}
+
+      {/* Menus */}
+      {menuVenues.length > 0 ? (
+        <View style={styles.descSection}>
+          <Text style={[styles.descTitle, { color: theme.colors.onSurface }]}>
+            {t('offers.viewMenu', { defaultValue: 'Menu' })}
+          </Text>
+          {menuVenues.map(venue => (
+            <Pressable
+              key={venue.id}
+              onPress={() => venue.menuUrl && Linking.openURL(venue.menuUrl)}
+              style={[
+                styles.menuLinkRow,
+                { backgroundColor: theme.colors.surface, borderColor: theme.colors.outline },
+              ]}
+            >
+              <Ionicons name="restaurant-outline" size={18} color={theme.colors.gold} />
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.menuVenueName, { color: theme.colors.onSurface }]}>
+                  {venue.name}
+                </Text>
+                {venue.city ? (
+                  <Text style={[styles.menuVenueCity, { color: theme.colors.onSurfaceVariant }]}>
+                    {venue.city}
+                  </Text>
+                ) : null}
+              </View>
+              <Ionicons name="open-outline" size={18} color={theme.colors.onSurfaceVariant} />
+            </Pressable>
+          ))}
         </View>
       ) : null}
 
@@ -418,5 +456,22 @@ const styles = StyleSheet.create({
     fontSize: 12,
     textAlign: 'center',
     lineHeight: 18,
+  },
+  menuLinkRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    marginBottom: 8,
+  },
+  menuVenueName: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  menuVenueCity: {
+    fontSize: 12,
+    marginTop: 2,
   },
 });

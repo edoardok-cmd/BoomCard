@@ -231,13 +231,12 @@ router.get('/:id', optionalAuthenticate, async (req: AuthRequest, res: Response)
 
 // ------------------------------------------------------------------
 // POST /api/offers
-// Requires PARTNER or ADMIN role.
-// The service verifies that the partner belongs to req.user.
+// Admin-only: partners no longer create offers; discount is partner-wide.
 // ------------------------------------------------------------------
 router.post(
   '/',
   authenticate,
-  authorize('PARTNER', 'ADMIN', 'SUPER_ADMIN'),
+  authorize('ADMIN', 'SUPER_ADMIN'),
   async (req: AuthRequest, res: Response) => {
     try {
       const offer = await offersService.createOffer(req.body, req.user!.id, req.user!.role);
@@ -254,13 +253,12 @@ router.post(
 
 // ------------------------------------------------------------------
 // PUT /api/offers/:id
-// Requires PARTNER or ADMIN role.
-// The service verifies that the offer belongs to req.user's partner.
+// Admin-only: partners no longer edit offers.
 // ------------------------------------------------------------------
 router.put(
   '/:id',
   authenticate,
-  authorize('PARTNER', 'ADMIN', 'SUPER_ADMIN'),
+  authorize('ADMIN', 'SUPER_ADMIN'),
   async (req: AuthRequest, res: Response) => {
     try {
       const offer = await offersService.updateOffer(req.params.id, req.body, req.user!.id, req.user!.role);
@@ -298,13 +296,12 @@ router.patch(
 
 // ------------------------------------------------------------------
 // POST /api/offers/:id/image
-// Upload a single image for an offer.
-// Requires PARTNER or ADMIN ownership of the offer.
+// Admin-only: partners no longer upload offer images.
 // ------------------------------------------------------------------
 router.post(
   '/:id/image',
   authenticate,
-  authorize('PARTNER', 'ADMIN', 'SUPER_ADMIN'),
+  authorize('ADMIN', 'SUPER_ADMIN'),
   uploadSingle,
   validateMagicBytes,
   async (req: AuthRequest, res: Response) => {
@@ -351,13 +348,12 @@ router.delete(
 
 // ------------------------------------------------------------------
 // DELETE /api/offers/:id
-// Requires PARTNER or ADMIN role.
-// The service verifies that the offer belongs to req.user's partner.
+// Admin-only: partners no longer delete offers.
 // ------------------------------------------------------------------
 router.delete(
   '/:id',
   authenticate,
-  authorize('PARTNER', 'ADMIN', 'SUPER_ADMIN'),
+  authorize('ADMIN', 'SUPER_ADMIN'),
   async (req: AuthRequest, res: Response) => {
     try {
       await offersService.deleteOffer(req.params.id, req.user!.id, req.user!.role);

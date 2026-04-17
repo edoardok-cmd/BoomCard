@@ -43,6 +43,19 @@ export interface VenueWithDistance extends Venue {
   distance?: number; // in km
 }
 
+// Fields that are admin-only and must not leak via public venue endpoints.
+const ADMIN_ONLY_VENUE_FIELDS = [
+  'pendingMenuUrl',
+  'menuRejectionReason',
+  'menuReviewedBy',
+] as const;
+
+function stripAdminVenueFields<T extends Record<string, any>>(venue: T): T {
+  const out: any = { ...venue };
+  for (const f of ADMIN_ONLY_VENUE_FIELDS) delete out[f];
+  return out;
+}
+
 export const venueService = {
   /**
    * Get all venues with optional filters
@@ -126,7 +139,7 @@ export const venueService = {
     logger.info(`Found ${venuesWithDistance.length} venues`, { filters });
 
     return {
-      venues: venuesWithDistance,
+      venues: venuesWithDistance.map(stripAdminVenueFields),
       total: latitude !== undefined ? venuesWithDistance.length : total,
       page: Math.floor(offset / limit) + 1,
       limit,
@@ -171,7 +184,7 @@ export const venueService = {
 
     logger.info(`Found ${venuesWithDistance.length} nearby venues`);
 
-    return venuesWithDistance;
+    return venuesWithDistance.map(stripAdminVenueFields);
   },
 
   /**
@@ -200,7 +213,7 @@ export const venueService = {
     }
 
     logger.info(`Retrieved venue: ${venue.name}`, { venueId: id });
-    return venue;
+    return stripAdminVenueFields(venue);
   },
 
   /**
@@ -224,7 +237,7 @@ export const venueService = {
     });
 
     logger.info(`Found ${venues.length} venues in ${city}`);
-    return venues;
+    return venues.map(stripAdminVenueFields);
   },
 
   /**
@@ -396,6 +409,6 @@ export const venueService = {
     });
 
     logger.info(`Search for "${query}" returned ${venues.length} venues`);
-    return venues;
+    return venues.map(stripAdminVenueFields);
   },
 };

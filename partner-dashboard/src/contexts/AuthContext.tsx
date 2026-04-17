@@ -195,8 +195,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         toast.success(`Welcome back, ${user.firstName}!`);
         return;
       } catch (apiError: any) {
-        // API is unavailable — surface the error instead of falling back to mock credentials.
-        // Mock auth was removed to prevent hardcoded credentials from shipping in production bundles.
+        const apiMessage = apiError?.response?.data?.error?.message
+          || apiError?.response?.data?.message
+          || (typeof apiError?.response?.data?.error === 'string' ? apiError?.response?.data?.error : null);
+        if (apiMessage) throw new Error(apiMessage);
+        if (apiError?.response) throw new Error('Login failed. Please try again.');
         console.error('API unavailable:', apiError.message || apiError);
         throw new Error('Server is currently unavailable. Please try again later.');
       }
@@ -378,7 +381,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         toast.success(`Welcome, ${response.user.firstName}!`);
         return;
       } catch (apiError: any) {
-        // OAuth API unavailable — surface the error instead of falling back to mock credentials.
+        const apiMessage = apiError?.response?.data?.message || apiError?.response?.data?.error;
+        if (apiMessage) throw new Error(apiMessage);
         console.error('OAuth API unavailable:', apiError.message || apiError);
         throw new Error('Server is currently unavailable. Please try again later.');
       }

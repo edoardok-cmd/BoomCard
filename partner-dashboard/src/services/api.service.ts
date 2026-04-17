@@ -79,7 +79,8 @@ class ApiService {
             const refreshToken = getCookie();
 
             if (!refreshToken) {
-              throw new Error('No refresh token');
+              this.isRefreshing = false;
+              return Promise.reject(error);
             }
 
             // Attempt to refresh token

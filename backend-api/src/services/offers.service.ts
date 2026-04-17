@@ -78,6 +78,15 @@ const PARTNER_SELECT = {
       maxDiscountRate: true,
     },
   },
+  venues: {
+    where: { menuStatus: 'APPROVED' as const, menuUrl: { not: null } },
+    select: {
+      id: true,
+      name: true,
+      city: true,
+      menuUrl: true,
+    },
+  },
 } as const;
 
 class OffersService {

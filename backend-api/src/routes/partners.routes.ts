@@ -112,7 +112,20 @@ router.get(
       include: {
         partnerType: { select: PARTNER_TYPE_SELECT },
         offers: { where: { status: 'ACTIVE' }, select: { id: true, title: true, discountPercent: true, status: true } },
-        venues: { select: { id: true, name: true, city: true } },
+        venues: {
+          select: {
+            id: true,
+            name: true,
+            city: true,
+            address: true,
+            menuUrl: true,
+            pendingMenuUrl: true,
+            menuStatus: true,
+            menuRejectionReason: true,
+            menuSubmittedAt: true,
+            menuReviewedAt: true,
+          },
+        },
       },
     });
 
