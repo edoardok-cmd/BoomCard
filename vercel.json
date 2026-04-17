@@ -1,5 +1,7 @@
 {
   "framework": null,
+  "buildCommand": "npm run build --workspace=partner-dashboard",
+  "outputDirectory": "partner-dashboard/dist",
   "redirects": [
     {
       "source": "/api/:path*",
