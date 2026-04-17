@@ -1,6 +1,38 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { toast } from 'react-hot-toast';
 import { apiService } from '../services/api.service';
+import { useLanguage } from './LanguageContext';
+
+const humanizeError = (
+  error: any,
+  t: (key: string) => string,
+  fallbackKey: string
+): string => {
+  const backendMessage: string =
+    error?.response?.data?.error?.message ||
+    error?.response?.data?.message ||
+    error?.message ||
+    '';
+  const status: number | undefined = error?.response?.status;
+  const msg = backendMessage.toLowerCase();
+
+  if (msg.includes('email already exists') || msg.includes('email is already')) {
+    return t('errors.emailAlreadyRegistered');
+  }
+  if (msg.includes('phone number already exists') || msg.includes('phone is already')) {
+    return t('errors.phoneAlreadyRegistered');
+  }
+  if (status === 401 && msg.includes('invalid')) {
+    return t('errors.invalidCredentials');
+  }
+  if (!error?.response && (msg.includes('network') || error?.code === 'ERR_NETWORK')) {
+    return t('errors.networkError');
+  }
+  if (status && status >= 500) {
+    return t('errors.serverError');
+  }
+  return t(fallbackKey);
+};
 
 export interface User {
   id: string;
@@ -78,6 +110,7 @@ const TOKEN_KEY = 'token';
 const REFRESH_TOKEN_KEY = 'refreshToken';
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { t } = useLanguage();
   const [user, setUser] = useState<User | null>(() => {
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
@@ -254,7 +287,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         toast.success('Account created successfully! Welcome to BoomCard!');
       }
     } catch (error: any) {
-      const message = error.response?.data?.message || error.message || 'Registration failed';
+      const message = humanizeError(error, t, 'errors.registrationFailed');
       toast.error(message);
       throw error;
     } finally {
@@ -294,7 +327,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       toast.success('Profile updated successfully');
     } catch (error: any) {
-      const message = error.response?.data?.message || error.message || 'Update failed';
+      const message = error.response?.data?.error?.message || error.response?.data?.message || error.message || 'Update failed';
       toast.error(message);
       throw error;
     } finally {
@@ -338,7 +371,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       toast.success('Password changed successfully');
     } catch (error: any) {
-      const message = error.response?.data?.message || error.message || 'Password change failed';
+      const message = error.response?.data?.error?.message || error.response?.data?.message || error.message || 'Password change failed';
       toast.error(message);
       throw error;
     } finally {
@@ -412,7 +445,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       toast.success('Profile photo updated');
     } catch (error: any) {
-      const message = error.response?.data?.message || error.message || 'Upload failed';
+      const message = error.response?.data?.error?.message || error.response?.data?.message || error.message || 'Upload failed';
       toast.error(message);
       throw error;
     } finally {
@@ -429,7 +462,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUser(prev => prev ? { ...prev, avatar: undefined } : prev);
       toast.success('Profile photo removed');
     } catch (error: any) {
-      const message = error.response?.data?.message || error.message || 'Remove failed';
+      const message = error.response?.data?.error?.message || error.response?.data?.message || error.message || 'Remove failed';
       toast.error(message);
       throw error;
     } finally {

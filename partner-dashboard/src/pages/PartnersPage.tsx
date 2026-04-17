@@ -1566,7 +1566,7 @@ const PartnersPage: React.FC = () => {
         </Container>
       </Section>
 
-      <ProcessSection ref={processRef}>
+      <ProcessSection ref={processRef} id="how-it-works">
         <Container>
           <SectionTitle>
             {t('partners.howItWorks')}

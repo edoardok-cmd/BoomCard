@@ -33,6 +33,7 @@ import partnerTypesRouter from './routes/partnerTypes.routes';
 import bulkImportRouter from './routes/bulkImport.routes';
 import adminCashbackRouter from './routes/adminCashback.routes';
 import adminMenusRouter, { adminVenueMenuRouter } from './routes/adminMenus.routes';
+import contactRouter from './routes/contact.routes';
 
 // Import WebSocket handler
 import { initializeWebSocket } from './websocket/server';
@@ -188,6 +189,7 @@ setupSwagger(app);
 app.use('/api/health', healthRouter); // Health checks (monitoring)
 app.use('/api/webhooks', webhooksRouter); // Webhooks (must be first for raw body)
 app.use('/api/plans', plansRouter); // Public plans API (no auth required)
+app.use('/api/contact', contactRouter); // Public contact form (no auth required)
 app.use('/api/auth', authRouter);
 app.use('/api/payments', payseraPaymentsRouter); // Paysera payment routes
 app.use('/api/wallet', walletRouter);

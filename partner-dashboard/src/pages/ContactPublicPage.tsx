@@ -2,8 +2,11 @@ import React, { useState } from 'react';
 import styled from 'styled-components';
 import { motion } from 'framer-motion';
 import { Mail, MapPin, Phone, Send, CheckCircle } from 'lucide-react';
+import axios from 'axios';
 import { useLanguage } from '../contexts/LanguageContext';
 import toast from 'react-hot-toast';
+
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
 
 const PageContainer = styled.div`
   min-height: 100vh;
@@ -186,28 +189,23 @@ const ContactPublicPage: React.FC = () => {
     setIsSubmitting(true);
 
     try {
-      const subject = encodeURIComponent(
-        language === 'bg'
-          ? `[BOOM Card] Запитване от ${formData.name}`
-          : `[BOOM Card] Inquiry from ${formData.name}`
-      );
-      const body = encodeURIComponent(
-        `${language === 'bg' ? 'Име' : 'Name'}: ${formData.name}\n` +
-        `${language === 'bg' ? 'Имейл' : 'Email'}: ${formData.email}\n\n` +
-        `${formData.message}`
-      );
+      await axios.post(`${API_BASE_URL}/contact`, {
+        name: formData.name,
+        email: formData.email,
+        message: formData.message,
+        language,
+      });
 
-      window.location.href = `mailto:support@boomcard.bg?subject=${subject}&body=${body}`;
-
-      await new Promise(resolve => setTimeout(resolve, 800));
       toast.success(language === 'bg'
-        ? 'Имейл клиентът ви е отворен. Моля, изпратете съобщението.'
-        : 'Your email client is open. Please send the message.');
+        ? 'Съобщението е изпратено успешно. Ще се свържем с вас скоро.'
+        : 'Your message has been sent. We\'ll get back to you soon.');
       setFormData({ name: '', email: '', message: '' });
-    } catch {
-      toast.error(language === 'bg'
-        ? 'Грешка при изпращане'
-        : 'Error sending message');
+    } catch (err: any) {
+      const status = err?.response?.status;
+      const msg = status === 429
+        ? (language === 'bg' ? 'Твърде много опити. Моля, опитайте по-късно.' : 'Too many attempts. Please try again later.')
+        : (language === 'bg' ? 'Грешка при изпращане. Моля, опитайте отново.' : 'Error sending message. Please try again.');
+      toast.error(msg);
     } finally {
       setIsSubmitting(false);
     }

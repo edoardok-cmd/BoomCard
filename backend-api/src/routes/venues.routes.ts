@@ -464,6 +464,13 @@ router.post(
       },
     });
 
+    logger.info('[menu-audit] SUBMITTED', {
+      venueId: id,
+      userId: req.user!.id,
+      pendingMenuUrl: trimmed,
+      at: new Date().toISOString(),
+    });
+
     res.json({
       success: true,
       data: {
@@ -514,6 +521,13 @@ router.post(
         menuRejectionReason: null,
         menuSubmittedAt: venueRecord.menuUrl ? venueRecord.menuSubmittedAt : null,
       },
+    });
+
+    logger.info('[menu-audit] WITHDRAWN', {
+      venueId: id,
+      userId: req.user!.id,
+      revertedTo: nextStatus,
+      at: new Date().toISOString(),
     });
 
     res.json({

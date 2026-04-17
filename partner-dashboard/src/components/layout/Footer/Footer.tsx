@@ -91,7 +91,7 @@ export const Footer: React.FC<FooterProps> = ({
             <ul className="space-y-2.5 md:space-y-3 text-sm md:text-base">
               <li><Link to="/about" className="text-gray-300 hover:text-white transition-colors">{t('footer.about')}</Link></li>
               <li><Link to="/contact" className="text-gray-300 hover:text-white transition-colors">{t('footer.contact')}</Link></li>
-              <li><Link to="/become-partner" className="text-gray-300 hover:text-white transition-colors">{t('footer.becomePartner')}</Link></li>
+              <li><a href="/partners#how-it-works" className="text-gray-300 hover:text-white transition-colors">{t('footer.becomePartner')}</a></li>
             </ul>
           </FooterSection>
 

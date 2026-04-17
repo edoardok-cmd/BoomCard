@@ -15,6 +15,7 @@ import cron from 'node-cron';
 import { WalletTransactionType, WalletTransactionStatus, SubscriptionStatus } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { logger } from '../utils/logger';
+import { emailService } from '../services/email.service';
 
 const CASHBACK_EXPIRY_BATCH = 10;
 
@@ -255,6 +256,72 @@ async function expireCancelledSubscriptions(): Promise<void> {
   );
 }
 
+// ── Stale menu submission expiry ──────────────────────────────────────────────
+// Submissions left PENDING for more than MENU_EXPIRY_DAYS are auto-rejected.
+// Partner receives an email so they know to resubmit.
+
+const MENU_EXPIRY_DAYS = 30;
+
+async function expireStaleMenuSubmissions(): Promise<void> {
+  const now = new Date();
+  logger.info(`[menu-expiry] Starting run at ${now.toISOString()}`);
+
+  const cutoff = new Date(now.getTime() - MENU_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
+  const stale = await prisma.venue.findMany({
+    where: {
+      menuStatus: 'PENDING',
+      menuSubmittedAt: { lt: cutoff },
+    },
+    include: {
+      partner: {
+        select: { businessName: true, user: { select: { email: true } } },
+      },
+    },
+  });
+
+  logger.info(`[menu-expiry] ${stale.length} submission(s) older than ${MENU_EXPIRY_DAYS} days`);
+
+  let processed = 0;
+  let failed = 0;
+
+  for (const venue of stale) {
+    try {
+      const expiryReason = `Review request expired after ${MENU_EXPIRY_DAYS} days without admin action. Please resubmit.`;
+
+      await prisma.venue.update({
+        where: { id: venue.id },
+        data: {
+          menuStatus: 'REJECTED',
+          menuRejectionReason: expiryReason,
+          menuReviewedAt: now,
+        },
+      });
+
+      const partnerEmail: string | undefined = venue.partner?.user?.email;
+      if (partnerEmail) {
+        await emailService.sendMenuRejectedEmail(partnerEmail, {
+          partnerName: venue.partner.businessName,
+          venueName: venue.name,
+          rejectedUrl: venue.pendingMenuUrl ?? '',
+          reason: expiryReason,
+          dashboardUrl: process.env.PARTNER_DASHBOARD_URL,
+        });
+      }
+
+      logger.info(`[menu-expiry] Expired venue ${venue.id} (${venue.name})`);
+      processed++;
+    } catch (err) {
+      failed++;
+      logger.error(`[menu-expiry] Failed for venue ${venue.id}:`, err);
+    }
+  }
+
+  logger.info(
+    `[menu-expiry] Done — expired ${processed} submission(s)` +
+    (failed > 0 ? `, ${failed} failed` : '')
+  );
+}
+
 // ── Registration ───────────────────────────────────────────────────────────────
 
 export function registerScheduledJobs(): void {
@@ -302,4 +369,13 @@ export function registerScheduledJobs(): void {
   }, { timezone: 'Europe/Sofia' });
 
   logger.info('[scheduler] Registered: subscription-expiry (30 1 * * *)');
+
+  // 5 AM every day — auto-reject menu submissions pending for more than 30 days
+  cron.schedule('0 5 * * *', () => {
+    expireStaleMenuSubmissions().catch((err) =>
+      logger.error('[menu-expiry] Unhandled error in scheduled run:', err)
+    );
+  }, { timezone: 'Europe/Sofia' });
+
+  logger.info('[scheduler] Registered: menu-expiry (0 5 * * *)');
 }

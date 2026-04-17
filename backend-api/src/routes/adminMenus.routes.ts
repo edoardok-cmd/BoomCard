@@ -84,7 +84,7 @@ adminVenueMenuRouter.post(
       where: { id },
       include: {
         partner: {
-          select: { businessName: true, user: { select: { email: true, firstName: true } } },
+          select: { businessName: true, user: { select: { email: true } } },
         },
       },
     });
@@ -164,7 +164,7 @@ adminVenueMenuRouter.post(
       where: { id },
       include: {
         partner: {
-          select: { businessName: true, user: { select: { email: true, firstName: true } } },
+          select: { businessName: true, user: { select: { email: true } } },
         },
       },
     });

@@ -656,6 +656,12 @@ export const en = {
     tryAgain: 'Please try again',
     pageNotFound: 'Page not found',
     goHome: 'Go to home page',
+    emailAlreadyRegistered: 'This email is already registered. Please sign in or use a different email.',
+    phoneAlreadyRegistered: 'This phone number is already registered. Please use a different number.',
+    registrationFailed: 'We couldn\'t create your account. Please check your details and try again.',
+    invalidCredentials: 'Incorrect email or password.',
+    networkError: 'Connection problem. Please check your internet and try again.',
+    serverError: 'Our servers had a problem. Please try again in a moment.',
   },
 
   // Payment Method Form
