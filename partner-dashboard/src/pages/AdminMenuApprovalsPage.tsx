@@ -25,6 +25,7 @@ const copy = {
     partnerLabel: 'Partner',
     venueLabel: 'Venue',
     loading: 'Loading…',
+    loadError: 'Failed to load pending menus',
   },
   bg: {
     title: 'Одобрение на менюта',
@@ -44,21 +45,28 @@ const copy = {
     partnerLabel: 'Партньор',
     venueLabel: 'Обект',
     loading: 'Зареждане…',
+    loadError: 'Грешка при зареждане на менютата',
   },
 };
 
-const formatRelative = (iso: string | null): string => {
+const relativeLabels = {
+  en: { now: 'just now', min: 'm ago', hour: 'h ago', day: 'd ago' },
+  bg: { now: 'преди малко', min: 'мин. назад', hour: 'ч. назад', day: 'дни назад' },
+};
+
+const formatRelative = (iso: string | null, lang: string): string => {
   if (!iso) return '';
   const then = new Date(iso).getTime();
   if (Number.isNaN(then)) return '';
+  const l = relativeLabels[lang as keyof typeof relativeLabels] ?? relativeLabels.en;
   const diffMs = Date.now() - then;
   const mins = Math.floor(diffMs / 60_000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
+  if (mins < 1) return l.now;
+  if (mins < 60) return `${mins}${l.min}`;
   const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
+  if (hours < 24) return `${hours}${l.hour}`;
   const days = Math.floor(hours / 24);
-  return `${days}d ago`;
+  return `${days}${l.day}`;
 };
 
 const AdminMenuApprovalsPage: React.FC = () => {
@@ -75,7 +83,7 @@ const AdminMenuApprovalsPage: React.FC = () => {
       const list = await venuesService.adminListPendingMenus();
       setItems(list);
     } catch (err) {
-      toast.error('Failed to load pending menus');
+      toast.error(t.loadError);
     } finally {
       setLoading(false);
     }
@@ -154,7 +162,7 @@ const AdminMenuApprovalsPage: React.FC = () => {
                 </div>
                 {venue.menuSubmittedAt && (
                   <Meta>
-                    {t.submittedAt}: {formatRelative(venue.menuSubmittedAt)}
+                    {t.submittedAt}: {formatRelative(venue.menuSubmittedAt, language)}
                     <MetaAbsolute>{new Date(venue.menuSubmittedAt).toLocaleString()}</MetaAbsolute>
                   </Meta>
                 )}
