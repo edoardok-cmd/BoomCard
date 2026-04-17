@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import ReactDOM from 'react-dom';
 import styled from 'styled-components';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -526,11 +527,11 @@ const AutocompleteWrapper = styled.div`
   position: relative;
 `;
 
-const AutocompleteDropdown = styled.ul`
-  position: absolute;
-  top: calc(100% + 4px);
-  left: 0;
-  right: 0;
+const AutocompleteDropdown = styled.ul<{ $top: number; $left: number; $width: number }>`
+  position: fixed;
+  top: ${({ $top }) => $top}px;
+  left: ${({ $left }) => $left}px;
+  width: ${({ $width }) => $width}px;
   background: var(--color-background);
   border: 2px solid var(--color-border);
   border-radius: 0.75rem;
@@ -538,7 +539,7 @@ const AutocompleteDropdown = styled.ul`
   list-style: none;
   margin: 0;
   padding: 0.25rem 0;
-  z-index: 100;
+  z-index: 9999;
   max-height: 200px;
   overflow-y: auto;
 `;
@@ -778,18 +779,47 @@ const AddressAutocomplete: React.FC<AddressAutocompleteProps> = ({ value, onChan
   const [suggestions, setSuggestions] = useState<NominatimResult[]>([]);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0, width: 0 });
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
+  const dropdownRef = useRef<HTMLUListElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
+  const updatePos = useCallback(() => {
+    if (wrapperRef.current) {
+      const r = wrapperRef.current.getBoundingClientRect();
+      setDropdownPos({ top: r.bottom + 4, left: r.left, width: r.width });
+    }
+  }, []);
+
   useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
+    if (open) updatePos();
+  }, [open, suggestions, updatePos]);
+
+  // Reposition on scroll/resize while open so fixed coords stay accurate
+  useEffect(() => {
+    if (!open) return;
+    window.addEventListener('scroll', updatePos, true);
+    window.addEventListener('resize', updatePos);
+    return () => {
+      window.removeEventListener('scroll', updatePos, true);
+      window.removeEventListener('resize', updatePos);
+    };
+  }, [open, updatePos]);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent | TouchEvent) => {
+      const target = e.target as Node;
+      const inWrapper = wrapperRef.current?.contains(target);
+      const inDropdown = dropdownRef.current?.contains(target);
+      if (!inWrapper && !inDropdown) setOpen(false);
     };
     document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
+    document.addEventListener('touchstart', handler);
+    return () => {
+      document.removeEventListener('mousedown', handler);
+      document.removeEventListener('touchstart', handler);
+    };
   }, []);
 
   const search = useCallback((q: string) => {
@@ -856,14 +886,15 @@ const AddressAutocomplete: React.FC<AddressAutocompleteProps> = ({ value, onChan
         </div>
       )}
       <AnimatePresence>
-        {open && suggestions.length > 0 && (
-          <AutocompleteDropdown>
+        {open && suggestions.length > 0 && dropdownPos.width > 0 && ReactDOM.createPortal(
+          <AutocompleteDropdown ref={dropdownRef} $top={dropdownPos.top} $left={dropdownPos.left} $width={dropdownPos.width}>
             {suggestions.map(item => (
-              <AutocompleteItem key={item.place_id} onMouseDown={() => handleSelect(item)}>
+              <AutocompleteItem key={item.place_id} onPointerDown={() => handleSelect(item)}>
                 {item.display_name}
               </AutocompleteItem>
             ))}
-          </AutocompleteDropdown>
+          </AutocompleteDropdown>,
+          document.body
         )}
       </AnimatePresence>
     </div>

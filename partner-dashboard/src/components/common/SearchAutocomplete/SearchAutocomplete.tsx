@@ -117,7 +117,7 @@ const ResultsDropdown = styled(motion.div)`
   box-shadow: 0 10px 40px -10px rgba(0, 0, 0, 0.15);
   max-height: 400px;
   overflow-y: auto;
-  z-index: 50;
+  z-index: 1050;
 
   [data-theme="dark"] & {
     box-shadow: 0 10px 40px -10px rgba(0, 0, 0, 0.4);
@@ -290,14 +290,18 @@ export const SearchAutocomplete: React.FC<SearchAutocompleteProps> = ({
   const defaultPlaceholder = t('common.searchPlaceholder');
 
   useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
+    const handleClickOutside = (event: MouseEvent | TouchEvent) => {
       if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
         setIsOpen(false);
       }
     };
 
     document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+    };
   }, []);
 
   useEffect(() => {
