@@ -491,7 +491,20 @@ const AdminPartnerOnboardingPage: React.FC = () => {
   }, []);
 
   const set = (key: keyof FormData, value: any) => {
-    setForm(prev => ({ ...prev, [key]: value }));
+    setForm(prev => {
+      const next = { ...prev, [key]: value };
+      if (key === 'partnerTypeId') {
+        const type = partnerTypes.find(pt => pt.id === value);
+        const typeMax = type?.maxDiscountRate ?? 100;
+        const currentRate = parseFloat(prev.discountRate);
+        if (!isNaN(currentRate) && currentRate > typeMax) {
+          let best: number | undefined;
+          for (const s of DISCOUNT_STEPS) { if (typeMax >= s) best = s; }
+          next.discountRate = best !== undefined ? String(best) : '';
+        }
+      }
+      return next;
+    });
     if (errors[key]) setErrors(prev => { const e = { ...prev }; delete e[key]; return e; });
   };
 
