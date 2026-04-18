@@ -78,6 +78,29 @@ router.post(
   })
 );
 
+router.get(
+  '/verify-email',
+  asyncHandler(async (req: Request, res: Response) => {
+    const { token } = req.query as { token?: string };
+    const frontendBase = process.env.FRONTEND_URL || 'https://boomcard.bg';
+
+    if (!token) {
+      return res.redirect(`${frontendBase}/login?error=missing_token`);
+    }
+
+    try {
+      const { alreadyVerified } = await AuthService.verifyEmail(token);
+      const dest = alreadyVerified
+        ? `${frontendBase}/login?emailVerified=already`
+        : `${frontendBase}/login?emailVerified=true`;
+      return res.redirect(dest);
+    } catch (err: any) {
+      const msg = encodeURIComponent(err?.message || 'invalid_token');
+      return res.redirect(`${frontendBase}/login?error=${msg}`);
+    }
+  })
+);
+
 /**
  * @swagger
  * /api/auth/login:

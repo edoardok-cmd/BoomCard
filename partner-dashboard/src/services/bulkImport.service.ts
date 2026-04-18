@@ -1,4 +1,5 @@
 import { API_CONFIG } from '../config/api.config';
+import * as authStorage from '../lib/auth/authStorage';
 
 export interface BulkImportResult {
   partnerCreated: boolean;
@@ -22,7 +23,7 @@ export interface PartnerImportResult {
 }
 
 function getAuthHeader(): Record<string, string> {
-  const token = localStorage.getItem('token');
+  const token = authStorage.getItem('token');
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 

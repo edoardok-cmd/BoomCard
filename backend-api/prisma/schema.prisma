@@ -43,6 +43,10 @@ model User {
   lastLoginAt      DateTime?
   stripeCustomerId String?    @unique // Stripe customer ID for payments
 
+  // Email Verification
+  emailVerificationToken  String?   @unique
+  emailVerificationExpiry DateTime?
+
   // Password Reset
   passwordResetToken   String?
   passwordResetExpires DateTime?

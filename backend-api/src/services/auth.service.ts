@@ -185,9 +185,11 @@ export class AuthService {
               phone: sanitizedPhone,
               role: 'PARTNER',
               status: UserStatus.PENDING_VERIFICATION,
+              emailVerificationToken: crypto.randomBytes(32).toString('hex'),
+              emailVerificationExpiry: new Date(Date.now() + 24 * 60 * 60 * 1000),
               ...consentData,
             },
-            select: userSelect,
+            select: { ...userSelect, emailVerificationToken: true },
           });
 
           const primaryCategory = info.businessCategory.trim();
@@ -223,10 +225,13 @@ export class AuthService {
       logger.info(`Partner application received: ${user.email} (user ${user.id}, partner ${result.partnerId})`);
 
       // Fire-and-forget emails — don't block the response on delivery
-      emailService.sendPartnerApplicationConfirmation(user.email, {
+      const apiBase = process.env.API_URL || 'https://boomcard-api.fly.dev';
+      const verificationUrl = `${apiBase}/api/auth/verify-email?token=${user.emailVerificationToken}`;
+      emailService.sendPartnerEmailVerification(user.email, {
         firstName: user.firstName || user.email.split('@')[0],
         businessName: info.businessName.trim(),
-      }).catch((err) => logger.error('Failed to send partner application confirmation:', err));
+        verificationUrl,
+      }).catch((err) => logger.error('Failed to send partner email verification:', err));
 
       emailService.sendPartnerApplicationAdminNotification({
         applicantName: [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email,
@@ -296,6 +301,40 @@ export class AuthService {
   }
 
   /**
+   * Verify a partner's email address via the token sent on registration.
+   * Sets emailVerified=true and clears the token.
+   */
+  static async verifyEmail(token: string) {
+    const user = await prisma.user.findUnique({
+      where: { emailVerificationToken: token },
+      select: { id: true, email: true, emailVerificationExpiry: true, emailVerified: true },
+    });
+
+    if (!user) {
+      throw new AppError('Invalid or expired verification link', 400);
+    }
+    if (user.emailVerified) {
+      return { alreadyVerified: true };
+    }
+    if (user.emailVerificationExpiry && user.emailVerificationExpiry < new Date()) {
+      throw new AppError('Verification link has expired. Please contact support@boomcard.bg', 400);
+    }
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        emailVerified: true,
+        emailVerifiedAt: new Date(),
+        emailVerificationToken: null,
+        emailVerificationExpiry: null,
+      },
+    });
+
+    logger.info(`Email verified for user ${user.email}`);
+    return { alreadyVerified: false };
+  }
+
+  /**
    * Login user
    */
   static async login(input: LoginInput) {
@@ -315,6 +354,7 @@ export class AuthService {
         role: true,
         status: true,
         avatar: true,
+        emailVerified: true,
       },
       // Stable ordering so password-disambiguation picks the same row
       // across replicas/pods if more than one candidate matches.
@@ -347,6 +387,15 @@ export class AuthService {
     // Check if user is active
     if (user.status === 'SUSPENDED') {
       throw new AppError('Account has been suspended', 403);
+    }
+
+    if (user.role === 'PARTNER') {
+      if (!user.emailVerified) {
+        throw new AppError('Please verify your email address before logging in. Check your inbox for the verification link.', 403);
+      }
+      if (user.status === 'PENDING_VERIFICATION') {
+        throw new AppError('Your partner application is under review. You will be notified by email once approved.', 403);
+      }
     }
 
     // The mobile app is for customers (role=USER) only. Block partner/admin roles

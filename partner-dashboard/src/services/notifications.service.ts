@@ -11,6 +11,7 @@
  */
 
 import { apiService } from './api.service';
+import * as authStorage from '../lib/auth/authStorage';
 
 export type NotificationType =
   | 'booking_confirmed'
@@ -135,7 +136,7 @@ class NotificationsService {
    */
   connectWebSocket(userId: string): void {
     const wsUrl = import.meta.env.VITE_WS_URL || 'ws://localhost:3025';
-    const token = localStorage.getItem('token');
+    const token = authStorage.getItem('token');
 
     if (!token) {
       console.warn('No auth token found, skipping WebSocket connection');

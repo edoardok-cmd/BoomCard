@@ -1,5 +1,6 @@
 import axios, { AxiosInstance, AxiosRequestConfig, InternalAxiosRequestConfig } from 'axios';
 import { getAccessToken, clearSession } from '../lib/auth/session';
+import * as authStorage from '../lib/auth/authStorage';
 
 interface RefreshTokenResponse {
   accessToken: string;
@@ -48,7 +49,7 @@ class ApiService {
 
         // If error is 401 and we haven't tried to refresh yet
         // Skip token-refresh / logout for mock tokens — they always 401 against the real backend
-        const currentToken = localStorage.getItem('token');
+        const currentToken = authStorage.getItem('token');
         if (error.response?.status === 401 && !originalRequest._retry && !currentToken?.startsWith('mock-')) {
           if (this.isRefreshing) {
             // If already refreshing, queue this request

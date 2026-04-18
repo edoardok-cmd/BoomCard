@@ -1648,6 +1648,54 @@ ${isBg ? 'Въпроси? Свържете се с нас на' : 'Questions? Co
     });
   }
 
+  async sendPartnerEmailVerification(
+    email: string,
+    data: { firstName: string; businessName: string; verificationUrl: string }
+  ): Promise<{ success: boolean }> {
+    const html = `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
+<body style="margin:0;padding:0;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;background:#f5f5f5;">
+  <table width="100%" cellpadding="0" cellspacing="0" border="0">
+    <tr><td align="center" style="padding:40px 20px;">
+      <table width="600" cellpadding="0" cellspacing="0" border="0" style="background:#fff;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,0.1);">
+        <tr><td style="background:linear-gradient(135deg,#f5a623,#e8890c);padding:40px;text-align:center;border-radius:8px 8px 0 0;">
+          <div style="font-size:48px;margin-bottom:8px;">✉️</div>
+          <h1 style="margin:0;color:#fff;font-size:28px;">Confirm your email</h1>
+        </td></tr>
+        <tr><td style="padding:40px;">
+          <p style="margin:0 0 20px;color:#333;font-size:16px;">Hi ${data.firstName},</p>
+          <p style="margin:0 0 20px;color:#666;font-size:16px;line-height:1.6;">
+            Thank you for applying to the <strong>BOOM Card partner network</strong> with <strong>${data.businessName}</strong>.
+          </p>
+          <p style="margin:0 0 30px;color:#666;font-size:16px;line-height:1.6;">
+            Please confirm your email address by clicking the button below. This link expires in <strong>24 hours</strong>.
+          </p>
+          <div style="text-align:center;margin-bottom:30px;">
+            <a href="${data.verificationUrl}" style="display:inline-block;background:#f5a623;color:#fff;text-decoration:none;padding:14px 32px;border-radius:6px;font-size:16px;font-weight:bold;">Verify Email Address</a>
+          </div>
+          <p style="margin:0 0 20px;color:#666;font-size:14px;line-height:1.6;">
+            Once your email is confirmed, our team will review your application and get back to you within 24 hours.
+          </p>
+          <p style="color:#999;font-size:12px;margin:0;">If you did not apply for a BOOM Card partner account, you can safely ignore this email.<br>Questions? <a href="mailto:support@boomcard.bg" style="color:#f5a623;">support@boomcard.bg</a></p>
+        </td></tr>
+        <tr><td style="background:#f8f9fa;padding:20px;text-align:center;border-radius:0 0 8px 8px;">
+          <p style="margin:0;color:#999;font-size:12px;">&copy; ${new Date().getFullYear()} BoomCard. All rights reserved.</p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+    const text = `Hi ${data.firstName},\n\nThank you for applying to the BOOM Card partner network with ${data.businessName}.\n\nPlease verify your email address by visiting:\n${data.verificationUrl}\n\nThis link expires in 24 hours.\n\nOnce confirmed, our team will review your application.\n\nQuestions? Contact support@boomcard.bg`;
+    return this.sendEmail({
+      to: email,
+      subject: 'Verify your email – BOOM Card partner application',
+      html,
+      text,
+    });
+  }
+
   async sendPartnerApplicationAdminNotification(data: {
     applicantName: string;
     applicantEmail: string;

@@ -4,6 +4,7 @@
  */
 
 import { JWTPayload, validateToken } from './jwt';
+import * as authStorage from './authStorage';
 
 export interface Session {
   user: {
@@ -118,18 +119,21 @@ export function clearSession(): void {
   document.cookie = `${SESSION_COOKIE_NAME}=; path=/; max-age=0; SameSite=Strict`;
   document.cookie = `${REFRESH_COOKIE_NAME}=; path=/; max-age=0; SameSite=Strict`;
 
-  // Clear every AuthContext-managed localStorage key. `boomcard_token` is
-  // legacy (pre-AuthContext) — left for safety in case an old tab wrote it.
-  localStorage.removeItem('boomcard_user');
-  localStorage.removeItem('boomcard_auth');
-  localStorage.removeItem('boomcard_token');
-  localStorage.removeItem('token');
-  localStorage.removeItem('refreshToken');
-  localStorage.removeItem('boomcard_switchable_accounts');
+  // Clear every AuthContext-managed key from BOTH localStorage and
+  // sessionStorage — a login with "remember me" unchecked writes to
+  // sessionStorage, so a localStorage-only clear would leave the ephemeral
+  // session alive. `boomcard_token` is legacy (pre-AuthContext) — left for
+  // safety in case an old tab wrote it.
+  authStorage.removeItem('boomcard_user');
+  authStorage.removeItem('boomcard_auth');
+  authStorage.removeItem('boomcard_token');
+  authStorage.removeItem('token');
+  authStorage.removeItem('refreshToken');
+  authStorage.removeItem('boomcard_switchable_accounts');
   // Drop impersonation metadata too — otherwise a 401-driven refresh failure
   // during an impersonation session leaves `boomcard_impersonation` behind,
   // and the banner rehydrates on the next login screen load.
-  localStorage.removeItem('boomcard_impersonation');
+  authStorage.removeItem('boomcard_impersonation');
 }
 
 /**
@@ -162,10 +166,12 @@ export function getSessionUser(): Session['user'] | null {
 }
 
 /**
- * Get access token — from cookie first, then localStorage fallback
+ * Get access token. Cookie first (the axios interceptor rotates here on 401
+ * refresh), then authStorage which covers both sessionStorage (remember-me
+ * off) and localStorage (remember-me on).
  */
 export function getAccessToken(): string | null {
-  return getCookie(SESSION_COOKIE_NAME) || localStorage.getItem('token');
+  return getCookie(SESSION_COOKIE_NAME) || authStorage.getItem('token');
 }
 
 /**

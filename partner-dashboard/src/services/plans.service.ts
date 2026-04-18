@@ -7,6 +7,7 @@
  */
 
 import axios from 'axios';
+import * as authStorage from '../lib/auth/authStorage';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
 
@@ -223,7 +224,7 @@ class PlansService {
     billingPeriod: string;
   }> {
     try {
-      const token = localStorage.getItem('token');
+      const token = authStorage.getItem('token');
       const headers: Record<string, string> = {};
       if (token) {
         headers['Authorization'] = `Bearer ${token}`;

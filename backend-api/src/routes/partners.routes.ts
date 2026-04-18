@@ -522,7 +522,7 @@ router.put(
     if (updateData.status === PartnerStatus.ACTIVE && partner.status !== PartnerStatus.ACTIVE) {
       const partnerUser = await prisma.user.update({
         where: { id: updated.userId },
-        data: { status: UserStatus.ACTIVE, emailVerified: true },
+        data: { status: UserStatus.ACTIVE },
         select: { email: true, firstName: true, status: true },
       });
 

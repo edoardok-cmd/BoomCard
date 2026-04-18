@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
 import { API_CONFIG } from '../config/api.config';
 import FraudReasonTag from '../components/admin/FraudReasonTag';
+import * as authStorage from '../lib/auth/authStorage';
 
 // ============================================
 // Types
@@ -556,7 +557,7 @@ export const AdminScanReviewPage: React.FC = () => {
   const fetchScans = async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem('token');
+      const token = authStorage.getItem('token');
       const params = new URLSearchParams();
 
       if (filterStatus !== 'all') {
@@ -589,7 +590,7 @@ export const AdminScanReviewPage: React.FC = () => {
 
   const fetchStats = async () => {
     try {
-      const token = localStorage.getItem('token');
+      const token = authStorage.getItem('token');
       const response = await fetch(
         `${API_CONFIG.baseURL}/api/stickers/admin/stats`,
         {
@@ -630,7 +631,7 @@ export const AdminScanReviewPage: React.FC = () => {
     if (!currentScanId) return;
 
     try {
-      const token = localStorage.getItem('token');
+      const token = authStorage.getItem('token');
       const endpoint = modalMode === 'approve' ? 'approve' : 'reject';
 
       const response = await fetch(
@@ -670,7 +671,7 @@ export const AdminScanReviewPage: React.FC = () => {
     }
 
     try {
-      const token = localStorage.getItem('token');
+      const token = authStorage.getItem('token');
 
       await Promise.all(
         Array.from(selectedScans).map(scanId =>
@@ -704,7 +705,7 @@ export const AdminScanReviewPage: React.FC = () => {
     if (!reason) return;
 
     try {
-      const token = localStorage.getItem('token');
+      const token = authStorage.getItem('token');
 
       await Promise.all(
         Array.from(selectedScans).map(scanId =>

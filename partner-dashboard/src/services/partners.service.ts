@@ -1,6 +1,7 @@
 import { apiService } from './api.service';
 import { PaginatedResponse } from './venues.service';
 import { PartnerType } from './partnerTypes.service';
+import * as authStorage from '../lib/auth/authStorage';
 
 export type PartnerStatus = 'PENDING' | 'ACTIVE' | 'SUSPENDED' | 'INACTIVE';
 
@@ -283,7 +284,7 @@ class PartnersService {
       method: 'POST',
       body: formData,
       headers: {
-        Authorization: `Bearer ${localStorage.getItem('token')}`,
+        Authorization: `Bearer ${authStorage.getItem('token')}`,
       },
     });
 
@@ -303,7 +304,7 @@ class PartnersService {
       method: 'POST',
       body: formData,
       headers: {
-        Authorization: `Bearer ${localStorage.getItem('token')}`,
+        Authorization: `Bearer ${authStorage.getItem('token')}`,
       },
     });
 

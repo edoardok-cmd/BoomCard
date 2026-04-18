@@ -1,3 +1,5 @@
+import * as authStorage from '../lib/auth/authStorage';
+
 export const handleApiError = (error: any): string => {
   if (error.response?.data?.message) {
     return error.response.data.message;
@@ -19,7 +21,7 @@ export const handleApiError = (error: any): string => {
 };
 
 export const getAuthHeaders = (): Record<string, string> => {
-  const token = localStorage.getItem('token');
+  const token = authStorage.getItem('token');
   return token ? { Authorization: `Bearer ${token}` } : {};
 };
 

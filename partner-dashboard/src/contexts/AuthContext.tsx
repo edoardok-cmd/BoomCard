@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { toast } from 'react-hot-toast';
 import { apiService } from '../services/api.service';
 import { useLanguage } from './LanguageContext';
+import * as authStorage from '../lib/auth/authStorage';
 
 const humanizeError = (
   error: any,
@@ -148,30 +149,41 @@ const IMPERSONATION_KEY = 'boomcard_impersonation';
 
 // Mirror the refresh token into the `boomcard_refresh` cookie that the axios
 // 401-interceptor in api.service.ts reads from. If we only write to
-// localStorage, the very first 401 after login/register/OAuth/switch fails
+// storage, the very first 401 after login/register/OAuth/switch fails
 // to refresh because the interceptor finds no cookie. Every auth flow that
 // returns a refresh token must go through this.
-function persistRefreshToken(refreshToken: string): void {
-  localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
+//
+// `persistent` mirrors the rememberMe choice from login: when false the
+// refresh token goes to sessionStorage and the cookie omits max-age (session
+// cookie) so both evaporate when the browser closes. When undefined, we
+// inherit whichever storage currently holds the refresh token so token
+// rotations (switchAccount, refresh interceptor, impersonate) don't quietly
+// upgrade an ephemeral session into a remembered one.
+function persistRefreshToken(refreshToken: string, persistent?: boolean): void {
+  const shouldPersist = persistent === undefined
+    ? authStorage.isPersistent(REFRESH_TOKEN_KEY)
+    : persistent;
+  authStorage.setItem(REFRESH_TOKEN_KEY, refreshToken, shouldPersist);
   if (typeof document === 'undefined') return;
   const secure = location.protocol === 'https:' ? '; Secure' : '';
-  document.cookie = `boomcard_refresh=${refreshToken}; path=/; max-age=${7 * 24 * 60 * 60}; SameSite=Strict${secure}`;
+  const lifetime = shouldPersist ? `; max-age=${7 * 24 * 60 * 60}` : '';
+  document.cookie = `boomcard_refresh=${refreshToken}; path=/${lifetime}; SameSite=Strict${secure}`;
 }
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { t } = useLanguage();
   const [user, setUser] = useState<User | null>(() => {
     try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      const storedToken = localStorage.getItem(TOKEN_KEY);
+      const stored = authStorage.getItem(STORAGE_KEY);
+      const storedToken = authStorage.getItem(TOKEN_KEY);
       if (stored && storedToken) return JSON.parse(stored);
     } catch { /* ignore parse errors */ }
     return null;
   });
-  const [token, setToken] = useState<string | null>(() => localStorage.getItem(TOKEN_KEY));
+  const [token, setToken] = useState<string | null>(() => authStorage.getItem(TOKEN_KEY));
   const [switchableAccounts, setSwitchableAccounts] = useState<SwitchableAccount[]>(() => {
     try {
-      const raw = localStorage.getItem(SWITCHABLE_ACCOUNTS_KEY);
+      const raw = authStorage.getItem(SWITCHABLE_ACCOUNTS_KEY);
       return raw ? JSON.parse(raw) : [];
     } catch {
       return [];
@@ -179,7 +191,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   });
   const [impersonation, setImpersonation] = useState<ImpersonationMeta | null>(() => {
     try {
-      const raw = localStorage.getItem(IMPERSONATION_KEY);
+      const raw = authStorage.getItem(IMPERSONATION_KEY);
       return raw ? JSON.parse(raw) : null;
     } catch {
       return null;
@@ -187,23 +199,35 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   });
   const [isLoading, setIsLoading] = useState(true);
 
-  // Keep the switchable-accounts list in sync with localStorage so hard
-  // reloads preserve the switcher UI.
+  // Keep the switchable-accounts list in sync with storage so hard reloads
+  // preserve the switcher UI. Anchor persistence on TOKEN_KEY (always
+  // written first during login) so these satellite keys follow the same
+  // lifetime — otherwise the isPersistent default would write to
+  // localStorage on first login, leaking an ephemeral session's switcher
+  // list across browser restarts.
   useEffect(() => {
     if (switchableAccounts.length > 0) {
-      localStorage.setItem(SWITCHABLE_ACCOUNTS_KEY, JSON.stringify(switchableAccounts));
+      authStorage.setItem(
+        SWITCHABLE_ACCOUNTS_KEY,
+        JSON.stringify(switchableAccounts),
+        authStorage.isPersistent(TOKEN_KEY),
+      );
     } else {
-      localStorage.removeItem(SWITCHABLE_ACCOUNTS_KEY);
+      authStorage.removeItem(SWITCHABLE_ACCOUNTS_KEY);
     }
   }, [switchableAccounts]);
 
-  // Mirror impersonation metadata into localStorage so a hard reload while
+  // Mirror impersonation metadata into storage so a hard reload while
   // impersonating keeps the banner visible before the context re-hydrates.
   useEffect(() => {
     if (impersonation) {
-      localStorage.setItem(IMPERSONATION_KEY, JSON.stringify(impersonation));
+      authStorage.setItem(
+        IMPERSONATION_KEY,
+        JSON.stringify(impersonation),
+        authStorage.isPersistent(TOKEN_KEY),
+      );
     } else {
-      localStorage.removeItem(IMPERSONATION_KEY);
+      authStorage.removeItem(IMPERSONATION_KEY);
     }
   }, [impersonation]);
 
@@ -213,12 +237,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // update the banner + session everywhere. Each branch short-circuits when
   // the parsed value already matches current state, which prevents the
   // state→storage effects above from ping-ponging writes between tabs.
+  //
+  // Reads go through authStorage so an ephemeral (sessionStorage) session in
+  // THIS tab isn't overwritten by a remembered session's logout event firing
+  // from another tab — sessionStorage is tab-scoped and still holds the
+  // token, so we correctly short-circuit.
   useEffect(() => {
     const handler = (e: StorageEvent) => {
       if (e.storageArea && e.storageArea !== localStorage) return;
 
       const applyToken = () => {
-        const raw = localStorage.getItem(TOKEN_KEY);
+        const raw = authStorage.getItem(TOKEN_KEY);
         if (raw === token) return;
         if (raw) apiService.setAuthToken(raw);
         else apiService.clearAuthToken();
@@ -226,7 +255,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       };
 
       const applyUser = () => {
-        const raw = localStorage.getItem(STORAGE_KEY);
+        const raw = authStorage.getItem(STORAGE_KEY);
         let next: User | null = null;
         if (raw) {
           try { next = JSON.parse(raw) as User; } catch { next = null; }
@@ -236,7 +265,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       };
 
       const applyImpersonation = () => {
-        const raw = localStorage.getItem(IMPERSONATION_KEY);
+        const raw = authStorage.getItem(IMPERSONATION_KEY);
         let next: ImpersonationMeta | null = null;
         if (raw) {
           try { next = JSON.parse(raw) as ImpersonationMeta; } catch { next = null; }
@@ -246,7 +275,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       };
 
       const applySwitchable = () => {
-        const raw = localStorage.getItem(SWITCHABLE_ACCOUNTS_KEY);
+        const raw = authStorage.getItem(SWITCHABLE_ACCOUNTS_KEY);
         let next: SwitchableAccount[] = [];
         if (raw) {
           try {
@@ -279,8 +308,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     const loadUser = async () => {
       try {
-        const storedAuth = localStorage.getItem(STORAGE_KEY);
-        const storedToken = localStorage.getItem(TOKEN_KEY);
+        const storedAuth = authStorage.getItem(STORAGE_KEY);
+        const storedToken = authStorage.getItem(TOKEN_KEY);
 
         if (storedAuth && storedToken) {
           const userData = JSON.parse(storedAuth);
@@ -311,7 +340,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             if (meData.impersonation) {
               const prevStarted = (() => {
                 try {
-                  const raw = localStorage.getItem(IMPERSONATION_KEY);
+                  const raw = authStorage.getItem(IMPERSONATION_KEY);
                   return raw ? (JSON.parse(raw) as ImpersonationMeta).startedAt : undefined;
                 } catch {
                   return undefined;
@@ -340,11 +369,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           } catch (error) {
             // Token invalid or expired, clear storage
             console.error('Token verification failed:', error);
-            localStorage.removeItem(STORAGE_KEY);
-            localStorage.removeItem(TOKEN_KEY);
-            localStorage.removeItem(REFRESH_TOKEN_KEY);
-            localStorage.removeItem(SWITCHABLE_ACCOUNTS_KEY);
-            localStorage.removeItem(IMPERSONATION_KEY);
+            authStorage.removeItem(STORAGE_KEY);
+            authStorage.removeItem(TOKEN_KEY);
+            authStorage.removeItem(REFRESH_TOKEN_KEY);
+            authStorage.removeItem(SWITCHABLE_ACCOUNTS_KEY);
+            authStorage.removeItem(IMPERSONATION_KEY);
             setUser(null);
             setSwitchableAccounts([]);
             setImpersonation(null);
@@ -352,11 +381,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       } catch (error) {
         console.error('Failed to load user from storage:', error);
-        localStorage.removeItem(STORAGE_KEY);
-        localStorage.removeItem(TOKEN_KEY);
-        localStorage.removeItem(REFRESH_TOKEN_KEY);
-        localStorage.removeItem(SWITCHABLE_ACCOUNTS_KEY);
-        localStorage.removeItem(IMPERSONATION_KEY);
+        authStorage.removeItem(STORAGE_KEY);
+        authStorage.removeItem(TOKEN_KEY);
+        authStorage.removeItem(REFRESH_TOKEN_KEY);
+        authStorage.removeItem(SWITCHABLE_ACCOUNTS_KEY);
+        authStorage.removeItem(IMPERSONATION_KEY);
         setImpersonation(null);
       } finally {
         setIsLoading(false);
@@ -366,19 +395,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     loadUser();
   }, []);
 
-  // Save user to localStorage when it changes (skip during initial load to
-  // avoid clearing boomcard_auth before loadUser can read it — race with StrictMode)
+  // Save user to storage when it changes (skip during initial load to
+  // avoid clearing boomcard_auth before loadUser can read it — race with
+  // StrictMode). authStorage writes back to whichever storage the key
+  // already lives in, preserving the rememberMe choice from login.
   useEffect(() => {
     if (isLoading) return;
     if (user) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(user));
+      authStorage.setItem(STORAGE_KEY, JSON.stringify(user));
     } else {
-      localStorage.removeItem(STORAGE_KEY);
+      authStorage.removeItem(STORAGE_KEY);
     }
   }, [user, isLoading]);
 
   const login = async (credentials: LoginCredentials): Promise<void> => {
     setIsLoading(true);
+
+    // rememberMe drives storage persistence. true → localStorage (survives
+    // browser restart); false → sessionStorage (evaporates on tab close).
+    // Default to true when omitted so programmatic logins (tests, scripts)
+    // behave like they did before this toggle existed.
+    const persistent = credentials.rememberMe !== false;
 
     try {
       // Try real API endpoint first
@@ -398,11 +435,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           throw new Error('No authentication token received');
         }
 
-        // Store tokens
-        localStorage.setItem(TOKEN_KEY, token);
+        // Store tokens — `persistent` routes every auth key to the matching
+        // storage (local vs session) and wipes any stale copy in the other,
+        // so toggling rememberMe across successive logins always honors the
+        // latest choice.
+        authStorage.setItem(TOKEN_KEY, token, persistent);
         setToken(token);
         if (refreshToken) {
-          persistRefreshToken(refreshToken);
+          persistRefreshToken(refreshToken, persistent);
         }
 
         // Set auth token in API service
@@ -420,7 +460,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           avatar: userPayload.avatar,
         };
         setUser(user);
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(user));
+        authStorage.setItem(STORAGE_KEY, JSON.stringify(user), persistent);
         setSwitchableAccounts(Array.isArray(switchable) ? switchable : []);
         // A fresh login is never an impersonation session — clear any stale
         // metadata left over from a prior tab (e.g. user closed the tab
@@ -479,11 +519,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         throw new Error('No authentication token received');
       }
 
-      // Store tokens
-      localStorage.setItem(TOKEN_KEY, token);
+      // Store tokens — registration auto-login has no rememberMe toggle, so
+      // default to persistent (matches historical behavior).
+      authStorage.setItem(TOKEN_KEY, token, true);
       setToken(token);
       if (refreshToken) {
-        persistRefreshToken(refreshToken);
+        persistRefreshToken(refreshToken, true);
       }
 
       // Set auth token in API service
@@ -523,7 +564,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return parts.length === 2 ? parts.pop()?.split(';').shift() || null : null;
     };
     const refreshTokenForRevoke =
-      getCookie('boomcard_refresh') || localStorage.getItem(REFRESH_TOKEN_KEY);
+      getCookie('boomcard_refresh') || authStorage.getItem(REFRESH_TOKEN_KEY);
     // Snapshot the access token too. The axios request interceptor reads the
     // access token lazily (inside a microtask) via getAccessToken(), so by
     // the time it runs the localStorage clear below has already happened and
@@ -531,7 +572,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // header explicitly via config bypasses the interceptor's lookup and
     // closes the race regardless of whether /auth/logout ever starts
     // requiring auth.
-    const accessTokenForRevoke = getCookie('boomcard_session') || localStorage.getItem(TOKEN_KEY);
+    const accessTokenForRevoke = getCookie('boomcard_session') || authStorage.getItem(TOKEN_KEY);
     if (refreshTokenForRevoke) {
       const config = accessTokenForRevoke
         ? { headers: { Authorization: `Bearer ${accessTokenForRevoke}` } }
@@ -550,12 +591,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setSwitchableAccounts([]);
     setImpersonation(null);
 
-    // Clear localStorage
-    localStorage.removeItem(STORAGE_KEY);
-    localStorage.removeItem(TOKEN_KEY);
-    localStorage.removeItem(REFRESH_TOKEN_KEY);
-    localStorage.removeItem(SWITCHABLE_ACCOUNTS_KEY);
-    localStorage.removeItem(IMPERSONATION_KEY);
+    // Clear persistent AND ephemeral storage. authStorage.removeItem wipes
+    // both local and session, so an ephemeral (remember-me=off) session is
+    // logged out cleanly too.
+    authStorage.removeItem(STORAGE_KEY);
+    authStorage.removeItem(TOKEN_KEY);
+    authStorage.removeItem(REFRESH_TOKEN_KEY);
+    authStorage.removeItem(SWITCHABLE_ACCOUNTS_KEY);
+    authStorage.removeItem(IMPERSONATION_KEY);
 
     // Clear cookies — the axios interceptor reads `boomcard_refresh` first
     // when handling 401s, so leaving it behind would let a post-logout 401
@@ -581,7 +624,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const parts = `; ${document.cookie}`.split('; boomcard_refresh=');
       return parts.length === 2 ? parts.pop()?.split(';').shift() || null : null;
     })();
-    const existingRefreshToken = cookieRefresh || localStorage.getItem(REFRESH_TOKEN_KEY);
+    const existingRefreshToken = cookieRefresh || authStorage.getItem(REFRESH_TOKEN_KEY);
+
+    // Account switches inherit the lifetime of the current session — a user
+    // who logged in without remember-me shouldn't get upgraded to persistent
+    // storage just because they switched to a sibling account.
+    const inheritPersistent = authStorage.isPersistent(TOKEN_KEY);
 
     try {
       const rawResponse = await apiService.post<any>('/auth/switch-account', {
@@ -599,10 +647,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         throw new Error('Invalid switch response');
       }
 
-      localStorage.setItem(TOKEN_KEY, newToken);
+      authStorage.setItem(TOKEN_KEY, newToken, inheritPersistent);
       setToken(newToken);
       if (newRefreshToken) {
-        persistRefreshToken(newRefreshToken);
+        persistRefreshToken(newRefreshToken, inheritPersistent);
       }
       apiService.setAuthToken(newToken);
 
@@ -617,7 +665,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         avatar: userPayload.avatar,
       };
       setUser(nextUser);
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(nextUser));
+      authStorage.setItem(STORAGE_KEY, JSON.stringify(nextUser), inheritPersistent);
       if (Array.isArray(switchable)) setSwitchableAccounts(switchable);
 
       const label = nextUser.role === 'admin'
@@ -649,7 +697,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const parts = `; ${document.cookie}`.split('; boomcard_refresh=');
       return parts.length === 2 ? parts.pop()?.split(';').shift() || null : null;
     })();
-    const adminRefreshToken = cookieRefresh || localStorage.getItem(REFRESH_TOKEN_KEY);
+    const adminRefreshToken = cookieRefresh || authStorage.getItem(REFRESH_TOKEN_KEY);
+    const inheritPersistent = authStorage.isPersistent(TOKEN_KEY);
 
     try {
       const rawResponse = await apiService.post<any>('/auth/impersonate', {
@@ -666,9 +715,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         throw new Error('Invalid impersonation response');
       }
 
-      localStorage.setItem(TOKEN_KEY, newToken);
+      authStorage.setItem(TOKEN_KEY, newToken, inheritPersistent);
       setToken(newToken);
-      if (newRefreshToken) persistRefreshToken(newRefreshToken);
+      if (newRefreshToken) persistRefreshToken(newRefreshToken, inheritPersistent);
       apiService.setAuthToken(newToken);
 
       const nextUser: User = {
@@ -682,7 +731,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         avatar: userPayload.avatar,
       };
       setUser(nextUser);
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(nextUser));
+      authStorage.setItem(STORAGE_KEY, JSON.stringify(nextUser), inheritPersistent);
       // Impersonation tokens intentionally carry no `ag`; clear any stale
       // sibling list from the admin session so the switcher hides.
       setSwitchableAccounts([]);
@@ -707,7 +756,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const parts = `; ${document.cookie}`.split('; boomcard_refresh=');
       return parts.length === 2 ? parts.pop()?.split(';').shift() || null : null;
     })();
-    const currentRefreshToken = cookieRefresh || localStorage.getItem(REFRESH_TOKEN_KEY);
+    const currentRefreshToken = cookieRefresh || authStorage.getItem(REFRESH_TOKEN_KEY);
+    const inheritPersistent = authStorage.isPersistent(TOKEN_KEY);
 
     try {
       const rawResponse = await apiService.post<any>('/auth/stop-impersonate', {
@@ -723,9 +773,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         throw new Error('Invalid stop-impersonate response');
       }
 
-      localStorage.setItem(TOKEN_KEY, newToken);
+      authStorage.setItem(TOKEN_KEY, newToken, inheritPersistent);
       setToken(newToken);
-      if (newRefreshToken) persistRefreshToken(newRefreshToken);
+      if (newRefreshToken) persistRefreshToken(newRefreshToken, inheritPersistent);
       apiService.setAuthToken(newToken);
 
       const adminUser: User = {
@@ -739,7 +789,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         avatar: userPayload.avatar,
       };
       setUser(adminUser);
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(adminUser));
+      authStorage.setItem(STORAGE_KEY, JSON.stringify(adminUser), inheritPersistent);
       setSwitchableAccounts(Array.isArray(switchable) ? switchable : []);
       setImpersonation(null);
 
@@ -838,11 +888,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           throw new Error('No authentication token received');
         }
 
-        // Store tokens
-        localStorage.setItem(TOKEN_KEY, token);
+        // Store tokens — OAuth has no rememberMe toggle, default persistent.
+        authStorage.setItem(TOKEN_KEY, token, true);
         setToken(token);
         if (refreshToken) {
-          persistRefreshToken(refreshToken);
+          persistRefreshToken(refreshToken, true);
         }
 
         // Set auth token in API service
@@ -852,7 +902,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setUser(response.user);
 
         // Store auth data
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(response.user));
+        authStorage.setItem(STORAGE_KEY, JSON.stringify(response.user), true);
 
         // Capture sibling accounts if the OAuth response included them. For
         // providers that don't yet return the list, fall back to a fetch so

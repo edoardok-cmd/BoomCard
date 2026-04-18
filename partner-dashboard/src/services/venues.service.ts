@@ -1,6 +1,7 @@
 import { apiService } from './api.service';
 import type { Offer } from '../types/entity.types';
 import { Entity, venueToEntity } from '../types/entity.types';
+import * as authStorage from '../lib/auth/authStorage';
 
 // Types
 export interface Venue {
@@ -179,7 +180,7 @@ class VenuesService {
       method: 'POST',
       body: formData,
       headers: {
-        Authorization: `Bearer ${localStorage.getItem('token')}`,
+        Authorization: `Bearer ${authStorage.getItem('token')}`,
       },
     });
 
