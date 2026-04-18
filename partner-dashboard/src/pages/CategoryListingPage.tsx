@@ -120,6 +120,7 @@ const CategoryListingPage: React.FC = () => {
       entities={sortedEntities}
       isLoading={isLoading}
       filters={<BoomPlacesFilters filters={filters} onChange={setFilters} />}
+      backgroundImage="https://images.unsplash.com/photo-1483985988355-763728e1935b?w=1920&q=80"
     >
       {sortRow}
     </GenericPage>

@@ -995,7 +995,7 @@ export default function AdminOffersPage() {
                   <Input
                     value={form.title || ''}
                     onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
-                    placeholder="e.g. 20% off all spa treatments"
+                    placeholder="e.g. 20% off your entire purchase"
                   />
                 </FormField>
                 <FormField>
@@ -1003,7 +1003,7 @@ export default function AdminOffersPage() {
                   <Input
                     value={form.titleBg || ''}
                     onChange={e => setForm(f => ({ ...f, titleBg: e.target.value }))}
-                    placeholder="Напр. 20% отстъпка на спа"
+                    placeholder="Напр. 20% отстъпка от покупката"
                   />
                 </FormField>
 

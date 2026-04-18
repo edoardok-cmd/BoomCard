@@ -26,21 +26,45 @@ const getDefaultLanguageForDomain = (): Language => {
   if (hostname.endsWith('boomcard.eu') || hostname === 'boomcard.eu') {
     return 'en';
   }
-  // boomcard.bg and all other domains default to Bulgarian
   return 'bg';
+};
+
+const getLangFromUrl = (): Language | null => {
+  const params = new URLSearchParams(window.location.search);
+  const lang = params.get('lang');
+  if (lang === 'en' || lang === 'bg') return lang;
+  return null;
+};
+
+const stripLangParam = () => {
+  const url = new URL(window.location.href);
+  url.searchParams.delete('lang');
+  window.history.replaceState(null, '', url.toString());
 };
 
 export const LanguageProvider: React.FC<LanguageProviderProps> = ({ children }) => {
   const [language, setLanguageState] = useState<Language>(() => {
-    // Check localStorage first
+    // ?lang= param wins (used by .eu → .bg redirect)
+    const urlLang = getLangFromUrl();
+    if (urlLang) {
+      localStorage.setItem(STORAGE_KEY, urlLang);
+      return urlLang;
+    }
+
+    // Then localStorage
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored === 'bg' || stored === 'en') {
       return stored;
     }
 
-    // Detect from domain
+    // Fall back to domain detection
     return getDefaultLanguageForDomain();
   });
+
+  // Strip ?lang= from URL after reading it (keep URLs clean)
+  useEffect(() => {
+    if (getLangFromUrl()) stripLangParam();
+  }, []);
 
   // Persist to localStorage whenever language changes
   useEffect(() => {

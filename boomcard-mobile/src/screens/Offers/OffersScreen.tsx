@@ -16,7 +16,7 @@ import {
   Image,
   RefreshControl,
 } from 'react-native';
-import { Text, Searchbar, Chip, ActivityIndicator } from 'react-native-paper';
+import { Text, Searchbar, Chip, ActivityIndicator, Menu, Button } from 'react-native-paper';
 import { useTranslation } from 'react-i18next';
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
@@ -46,6 +46,9 @@ const EXPERIENCES_CATEGORIES = [
   { key: 'educational-creative', labelKey: 'offers.categoryEducationalCreative' },
   { key: 'relax-wellness', labelKey: 'offers.categoryRelaxWellness' },
 ];
+
+const PLACES_KEYS = new Set(PLACES_CATEGORIES.filter(c => c.key).map(c => c.key));
+const EXPERIENCES_KEYS = new Set(EXPERIENCES_CATEGORIES.filter(c => c.key).map(c => c.key));
 
 function getTypeBadgeColor(type: OfferType, theme: any): string {
   switch (type) {
@@ -124,11 +127,11 @@ const OfferCard = ({ offer, onPress, theme, t, lang }: OfferCardProps) => {
         ) : null}
 
         <View style={styles.metaRow}>
-          {offer.city ? (
+          {offer.partner?.city ? (
             <View style={styles.metaItem}>
               <Ionicons name="location-outline" size={12} color={theme.colors.onSurfaceVariant} />
               <Text style={[styles.metaText, { color: theme.colors.onSurfaceVariant }]}>
-                {offer.city}
+                {offer.partner.city}
               </Text>
             </View>
           ) : null}
@@ -204,6 +207,8 @@ export default function OffersScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('');
+  const [selectedCity, setSelectedCity] = useState('');
+  const [cityMenuVisible, setCityMenuVisible] = useState(false);
   const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const loadOffersRef = useRef<((isRefresh?: boolean) => Promise<void>) | null>(null);
 
@@ -225,7 +230,7 @@ export default function OffersScreen() {
     ]);
 
     if (offersRes.success) {
-      const items = offersRes.data.items?.length ? offersRes.data.items : (offersRes.data.data ?? []);
+      const items = offersRes.data?.items?.length ? offersRes.data.items : (offersRes.data?.data ?? []);
       setOffers(items);
     }
 
@@ -247,6 +252,7 @@ export default function OffersScreen() {
 
   const handleSearchChange = (query: string) => {
     setSearchQuery(query);
+    setSelectedCity('');
     if (searchTimeout.current) clearTimeout(searchTimeout.current);
     searchTimeout.current = setTimeout(() => {
       loadOffersRef.current?.();
@@ -256,12 +262,14 @@ export default function OffersScreen() {
   const handleCategorySelect = (key: string) => {
     setSelectedCategory(key);
     setSearchQuery('');
+    setSelectedCity('');
   };
 
   const handleTabSwitch = (tab: Tab) => {
     setActiveTab(tab);
     setSelectedCategory('');
     setSearchQuery('');
+    setSelectedCity('');
   };
 
   const navigateToDetail = (offer: Offer) => {
@@ -269,6 +277,26 @@ export default function OffersScreen() {
   };
 
   const showFeaturedSection = featuredOffers.length > 0 && !selectedCategory && !searchQuery.trim() && activeTab === 'places';
+
+  const featuredCities = Array.from(
+    new Set(featuredOffers.map(o => o.partner?.city ?? '').filter(Boolean))
+  ).sort();
+
+  const filteredFeatured = (
+    selectedCity
+      ? featuredOffers.filter(o => (o.partner?.city ?? '') === selectedCity)
+      : featuredOffers
+  ).slice(0, 9);
+
+  // When no category chip is selected, scope offers to the active tab's category set
+  // so the word filter only returns relevant results (places vs experiences)
+  const displayedOffers = selectedCategory
+    ? offers
+    : offers.filter(o => {
+        const cat = o.partner?.category ?? '';
+        if (!cat) return true; // uncategorized shows in both tabs
+        return activeTab === 'places' ? PLACES_KEYS.has(cat) : EXPERIENCES_KEYS.has(cat);
+      });
 
   const ListHeader = (
     <View>
@@ -359,24 +387,66 @@ export default function OffersScreen() {
       {/* Featured section — places only */}
       {showFeaturedSection && (
         <View>
-          <Text style={[styles.sectionTitle, { color: theme.colors.onSurface }]}>
-            {t('offers.featured')}
-          </Text>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.featuredRow}
-          >
-            {featuredOffers.map(offer => (
-              <FeaturedCard
-                key={offer.id}
-                offer={offer}
-                onPress={() => navigateToDetail(offer)}
-                theme={theme}
-                lang={lang}
-              />
-            ))}
-          </ScrollView>
+          <View style={styles.featuredHeader}>
+            <Text style={[styles.sectionTitle, { color: theme.colors.onSurface, marginBottom: 0 }]}>
+              {t('offers.featured')}
+            </Text>
+            {featuredCities.length > 0 && (
+              <Menu
+                visible={cityMenuVisible}
+                onDismiss={() => setCityMenuVisible(false)}
+                anchor={
+                  <Button
+                    mode="outlined"
+                    compact
+                    onPress={() => setCityMenuVisible(true)}
+                    textColor={theme.colors.onSurface}
+                    style={[styles.cityButton, { borderColor: theme.colors.outline }]}
+                    contentStyle={styles.cityButtonContent}
+                    labelStyle={styles.cityButtonLabel}
+                    icon="chevron-down"
+                  >
+                    {selectedCity || t('offers.allCities')}
+                  </Button>
+                }
+              >
+                <Menu.Item
+                  onPress={() => { setSelectedCity(''); setCityMenuVisible(false); }}
+                  title={t('offers.allCities')}
+                  titleStyle={!selectedCity ? { fontWeight: '700', color: theme.colors.primary } : undefined}
+                />
+                {featuredCities.map(city => (
+                  <Menu.Item
+                    key={city}
+                    onPress={() => { setSelectedCity(city); setCityMenuVisible(false); }}
+                    title={city}
+                    titleStyle={selectedCity === city ? { fontWeight: '700', color: theme.colors.primary } : undefined}
+                  />
+                ))}
+              </Menu>
+            )}
+          </View>
+          {filteredFeatured.length > 0 ? (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.featuredRow}
+            >
+              {filteredFeatured.map(offer => (
+                <FeaturedCard
+                  key={offer.id}
+                  offer={offer}
+                  onPress={() => navigateToDetail(offer)}
+                  theme={theme}
+                  lang={lang}
+                />
+              ))}
+            </ScrollView>
+          ) : (
+            <Text style={[styles.featuredEmpty, { color: theme.colors.onSurfaceVariant }]}>
+              {t('offers.noOffers')}
+            </Text>
+          )}
         </View>
       )}
 
@@ -402,7 +472,7 @@ export default function OffersScreen() {
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
       <FlatList
-        data={offers}
+        data={displayedOffers}
         keyExtractor={item => item.id}
         renderItem={({ item }) => (
           <OfferCard
@@ -485,6 +555,32 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     marginBottom: 12,
     marginTop: 4,
+  },
+  featuredHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+    marginTop: 4,
+  },
+  cityButton: {
+    borderRadius: 20,
+    height: 34,
+  },
+  cityButtonContent: {
+    height: 34,
+    flexDirection: 'row-reverse',
+    paddingHorizontal: 4,
+  },
+  cityButtonLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    marginHorizontal: 4,
+  },
+  featuredEmpty: {
+    fontSize: 14,
+    paddingVertical: 16,
+    paddingBottom: 20,
   },
   featuredRow: {
     paddingBottom: 16,

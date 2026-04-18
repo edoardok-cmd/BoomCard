@@ -988,7 +988,7 @@ const AdminPartnerOnboardingPage: React.FC = () => {
             <Input
               value={form.ownerName}
               onChange={e => set('ownerName', e.target.value)}
-              placeholder="Пълно иmе"
+              placeholder="Пълно име"
             />
           </FormGroup>
           <FormGroup>
@@ -996,7 +996,7 @@ const AdminPartnerOnboardingPage: React.FC = () => {
             <Input
               value={form.primaryContact}
               onChange={e => set('primaryContact', e.target.value)}
-              placeholder="Иmе на контактното лице"
+              placeholder="Име на контактното лице"
             />
           </FormGroup>
         </FormGrid>
@@ -1030,7 +1030,7 @@ const AdminPartnerOnboardingPage: React.FC = () => {
             <Input
               value={form.secondaryContact}
               onChange={e => set('secondaryContact', e.target.value)}
-              placeholder="Иmе"
+              placeholder="Име"
             />
           </FormGroup>
           <FormGroup>
@@ -1221,7 +1221,7 @@ const AdminPartnerOnboardingPage: React.FC = () => {
             <Input
               value={form.addedBy}
               onChange={e => set('addedBy', e.target.value)}
-              placeholder="Иmе на служителя"
+              placeholder="Име на служителя"
             />
           </FormGroup>
         </FormGrid>

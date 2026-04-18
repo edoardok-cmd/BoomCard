@@ -41,19 +41,6 @@ const BackLink = styled(Link)`
   }
 `;
 
-const PageTitle = styled.h1`
-  font-size: 2rem;
-  font-weight: 700;
-  color: var(--color-text-primary);
-  margin-bottom: 2rem;
-  font-family: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-
-  @media (max-width: 768px) {
-    font-size: 1.5rem;
-    margin-bottom: 1.25rem;
-  }
-`;
-
 const CheckoutGrid = styled.div`
   display: grid;
   grid-template-columns: 1fr 400px;
@@ -432,17 +419,6 @@ const CheckoutPage: React.FC = () => {
   const displayPrice = getDisplayPrice();
   const displayPriceBGN = displayPrice ? convertEURToBGN(displayPrice) : 0;
 
-  const getBillingLabel = () => {
-    switch (billingPeriod) {
-      case 'weekly':
-        return language === 'bg' ? 'Седмичен' : 'Weekly';
-      case 'yearly':
-        return language === 'bg' ? 'Годишен' : 'Yearly';
-      default:
-        return language === 'bg' ? 'Месечен' : 'Monthly';
-    }
-  };
-
   const getPeriodLabel = () => {
     switch (billingPeriod) {
       case 'weekly':
@@ -517,10 +493,6 @@ const CheckoutPage: React.FC = () => {
           <ArrowLeft size={18} />
           {language === 'bg' ? 'Обратно към плановете' : 'Back to plans'}
         </BackLink>
-
-        <PageTitle>
-          {language === 'bg' ? 'Завършете поръчката' : 'Complete your order'}
-        </PageTitle>
 
         <CheckoutGrid>
           <PaymentSection>
@@ -615,16 +587,6 @@ const CheckoutPage: React.FC = () => {
               <SummaryValue>
                 {language === 'bg' ? plan.displayNameBg : plan.displayName}
               </SummaryValue>
-            </SummaryRow>
-
-            <SummaryRow>
-              <SummaryLabel>{language === 'bg' ? 'Период на фактуриране' : 'Billing Period'}</SummaryLabel>
-              <SummaryValue>{getBillingLabel()}</SummaryValue>
-            </SummaryRow>
-
-            <SummaryRow>
-              <SummaryLabel>{language === 'bg' ? 'Кешбек процент' : 'Cashback Rate'}</SummaryLabel>
-              <SummaryValue>{plan.cashbackRate}%</SummaryValue>
             </SummaryRow>
 
             <TotalRow>

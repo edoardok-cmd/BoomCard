@@ -31,7 +31,7 @@ const copy = {
     noMenu: 'No menu submitted yet',
     rejectionReason: 'Reason:',
     urlLabel: 'Menu URL',
-    placeholder: 'https://your-restaurant.com/menu.pdf',
+    placeholder: 'https://your-venue.com/menu.pdf',
     submit: 'Submit for review',
     resubmit: 'Resubmit',
     replace: 'Replace menu',

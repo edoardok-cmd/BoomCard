@@ -16,27 +16,53 @@ const PageContainer = styled.div`
 `;
 
 const Hero = styled.div`
-  background: linear-gradient(135deg, #000000 0%, #1f2937 100%);
+  background-image: url('https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=1920&q=80');
+  background-size: cover;
+  background-position: center;
+  color: white;
+  padding: 8rem 0 6rem;
+  position: relative;
+  overflow: hidden;
+  min-height: 480px;
+  display: flex;
+  align-items: center;
 
-  /* Vibrant mode - explosive gradient hero */
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      to bottom,
+      rgba(0, 0, 0, 0.55) 0%,
+      rgba(0, 0, 0, 0.65) 50%,
+      rgba(0, 0, 0, 0.75) 100%
+    );
+    z-index: 0;
+  }
+
   [data-theme="color"] & {
-    background: linear-gradient(135deg, #1a0a2e 0%, #6a0572 25%, #ab2567 50%, #ff006e 75%, #ff4500 100%);
-    background-size: 200% 200%;
-    animation: heroGradientFlow 10s ease infinite;
-    box-shadow:
-      inset 0 -8px 40px -10px rgba(255, 69, 0, 0.3),
-      inset 0 -4px 30px -10px rgba(255, 0, 110, 0.2);
+    &::before {
+      background: linear-gradient(
+        135deg,
+        rgba(26, 10, 46, 0.75) 0%,
+        rgba(106, 5, 114, 0.65) 25%,
+        rgba(171, 37, 103, 0.6) 50%,
+        rgba(255, 0, 110, 0.55) 75%,
+        rgba(255, 69, 0, 0.6) 100%
+      );
+      background-size: 200% 200%;
+      animation: heroGradientFlow 10s ease infinite;
+    }
   }
 
   @keyframes heroGradientFlow {
     0%, 100% { background-position: 0% 50%; }
     50% { background-position: 100% 50%; }
   }
-  color: white;
-  padding: 4rem 0 3rem;
 
   @media (max-width: 768px) {
-    padding: 3rem 0 2rem;
+    padding: 5rem 0 3rem;
+    min-height: 360px;
   }
 `;
 
@@ -44,6 +70,9 @@ const Container = styled.div`
   max-width: 1400px;
   margin: 0 auto;
   padding: 0 1.5rem;
+  position: relative;
+  z-index: 1;
+  width: 100%;
 `;
 
 const HeroContent = styled.div`

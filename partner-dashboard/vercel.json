@@ -5,6 +5,14 @@
   "devCommand": "npm run dev",
   "installCommand": "npm install",
   "framework": "vite",
+  "redirects": [
+    {
+      "source": "/(.*)",
+      "has": [{ "type": "host", "value": "boomcard.eu" }],
+      "destination": "https://boomcard.bg/$1?$query&lang=en",
+      "permanent": false
+    }
+  ],
   "rewrites": [
     {
       "source": "/(.*)",

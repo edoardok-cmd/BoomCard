@@ -54,8 +54,8 @@ export class OffersApi {
   /**
    * Get featured offers
    */
-  static async getFeaturedOffers(): Promise<ApiResponse<Offer[]>> {
-    return await apiClient.get<Offer[]>(API_CONFIG.ENDPOINTS.OFFERS.FEATURED);
+  static async getFeaturedOffers(limit = 100): Promise<ApiResponse<Offer[]>> {
+    return await apiClient.get<Offer[]>(`${API_CONFIG.ENDPOINTS.OFFERS.FEATURED}?limit=${limit}`);
   }
 
   /**

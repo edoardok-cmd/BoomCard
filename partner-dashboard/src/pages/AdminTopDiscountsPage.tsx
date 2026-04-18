@@ -16,11 +16,68 @@ const PageContainer = styled.div`
   min-height: calc(100vh - 4rem);
 `;
 
-const PageHeader = styled.div`
+const Hero = styled.div`
+  background-image: url('https://images.unsplash.com/photo-1483985988355-763728e1935b?w=1920&q=80');
+  background-size: cover;
+  background-position: center;
+  color: white;
+  padding: 6rem 0 5rem;
+  position: relative;
+  overflow: hidden;
+  min-height: 400px;
+  display: flex;
+  align-items: center;
+  margin: -2rem -1rem 2rem;
+
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      to bottom,
+      rgba(0, 0, 0, 0.55) 0%,
+      rgba(0, 0, 0, 0.65) 50%,
+      rgba(0, 0, 0, 0.75) 100%
+    );
+    z-index: 0;
+  }
+
+  [data-theme="color"] & {
+    &::before {
+      background: linear-gradient(
+        135deg,
+        rgba(26, 10, 46, 0.75) 0%,
+        rgba(106, 5, 114, 0.65) 25%,
+        rgba(171, 37, 103, 0.6) 50%,
+        rgba(255, 0, 110, 0.55) 75%,
+        rgba(255, 69, 0, 0.6) 100%
+      );
+      background-size: 200% 200%;
+      animation: heroGradientFlow 10s ease infinite;
+    }
+  }
+
+  @keyframes heroGradientFlow {
+    0%, 100% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+  }
+
+  @media (max-width: 768px) {
+    padding: 4rem 0 3rem;
+    min-height: 300px;
+  }
+`;
+
+const HeroInner = styled.div`
+  max-width: 90rem;
+  margin: 0 auto;
+  padding: 0 1rem;
+  position: relative;
+  z-index: 1;
+  width: 100%;
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  margin-bottom: 2rem;
   flex-wrap: wrap;
   gap: 1rem;
 `;
@@ -28,16 +85,15 @@ const PageHeader = styled.div`
 const Title = styled.h1`
   font-size: 2.5rem;
   font-weight: 800;
-  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  color: white;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
   margin-bottom: 0.5rem;
 `;
 
 const Subtitle = styled.p`
   font-size: 1.125rem;
-  color: var(--color-text-secondary);
+  color: rgba(255, 255, 255, 0.85);
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
 `;
 
 const CreateButton = styled.button`
@@ -923,17 +979,19 @@ export default function AdminTopDiscountsPage() {
 
   return (
     <PageContainer>
-      <PageHeader>
-        <div>
-          <Title>⭐ Топ Отстъпки</Title>
-          <Subtitle>
-            {language === 'bg'
-              ? 'Управлявайте featured оферти — всички полета и снимка са задължителни.'
-              : 'Manage featured "Top Discounts" — all fields and image are required.'}
-          </Subtitle>
-        </div>
-        <CreateButton onClick={openCreate}>+ Нова Топ Отстъпка</CreateButton>
-      </PageHeader>
+      <Hero>
+        <HeroInner>
+          <div>
+            <Title>⭐ Топ Отстъпки</Title>
+            <Subtitle>
+              {language === 'bg'
+                ? 'Управлявайте featured оферти — всички полета и снимка са задължителни.'
+                : 'Manage featured "Top Discounts" — all fields and image are required.'}
+            </Subtitle>
+          </div>
+          <CreateButton onClick={openCreate}>+ Нова Топ Отстъпка</CreateButton>
+        </HeroInner>
+      </Hero>
 
       {/* Filters */}
       <FiltersBar>
@@ -1103,7 +1161,7 @@ export default function AdminTopDiscountsPage() {
                   <Input
                     value={form.title}
                     onChange={e => { setForm(f => ({ ...f, title: e.target.value })); setFormErrors(prev => ({ ...prev, title: undefined })); }}
-                    placeholder="e.g. 20% off all spa treatments"
+                    placeholder="e.g. 20% off your entire purchase"
                     $error={!!formErrors.title}
                   />
                   {formErrors.title && <ErrorMsg>{formErrors.title}</ErrorMsg>}
@@ -1113,7 +1171,7 @@ export default function AdminTopDiscountsPage() {
                   <Input
                     value={form.titleBg}
                     onChange={e => { setForm(f => ({ ...f, titleBg: e.target.value })); setFormErrors(prev => ({ ...prev, titleBg: undefined })); }}
-                    placeholder="напр. 20% отстъпка на спа"
+                    placeholder="напр. 20% отстъпка от покупката"
                     $error={!!formErrors.titleBg}
                   />
                   {formErrors.titleBg && <ErrorMsg>{formErrors.titleBg}</ErrorMsg>}

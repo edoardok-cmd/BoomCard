@@ -107,8 +107,8 @@ export default function OfferDetailScreen() {
     setRedeeming(false);
 
     if (res.success) {
-      setRedeemCode(res.data.code);
-      setCodeExpiry(res.data.expiresAt);
+      setRedeemCode(res.data?.code ?? '');
+      setCodeExpiry(res.data?.expiresAt ?? '');
     } else {
       const msg = res.error ?? '';
       if (msg.toLowerCase().includes('100') || msg.toLowerCase().includes('distance') || msg.toLowerCase().includes('proximity')) {
@@ -158,13 +158,13 @@ export default function OfferDetailScreen() {
 
       {/* Meta chips */}
       <View style={styles.chipsRow}>
-        {offer.city ? (
+        {offer.partner?.city ? (
           <Chip
             icon="map-marker"
             style={[styles.metaChip, { backgroundColor: theme.colors.surfaceVariant }]}
             textStyle={{ color: theme.colors.onSurface, fontSize: 13 }}
           >
-            {offer.city}
+            {offer.partner.city}
           </Chip>
         ) : null}
         {offer.category ? (

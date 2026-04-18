@@ -146,7 +146,7 @@ describe('AuthContext', () => {
           password: 'pass',
           firstName: 'Test',
           lastName: 'User',
-          acceptTerms: true,
+          phone: '',
         });
       });
 

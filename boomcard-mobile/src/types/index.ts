@@ -516,7 +516,6 @@ export interface Offer {
   featuredOrder?: number;
   image?: string;
   category?: string;
-  city?: string;
   createdAt: string;
   updatedAt: string;
   /** Populated by the backend when listing/fetching offers */
