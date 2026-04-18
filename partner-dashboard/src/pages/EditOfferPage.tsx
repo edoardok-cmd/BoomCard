@@ -6,6 +6,7 @@ import toast from 'react-hot-toast';
 import { useLanguage } from '../contexts/LanguageContext';
 import { Upload, X, Check, ArrowLeft, ArrowRight, Save } from 'lucide-react';
 import Button from '../components/common/Button/Button';
+import { DISCOUNT_STEPS } from '../utils/discountSteps';
 
 const content = {
   en: {
@@ -38,7 +39,6 @@ const content = {
     save: 'Save Changes',
     cancel: 'Cancel',
     required: 'This field is required',
-    invalidDiscount: 'Discount must be between 1 and 100',
     invalidDate: 'End date must be after start date',
     success: 'Offer updated successfully!',
     error: 'Failed to update offer. Please try again.',
@@ -83,7 +83,6 @@ const content = {
     save: 'Запази Промените',
     cancel: 'Отказ',
     required: 'Това поле е задължително',
-    invalidDiscount: 'Отстъпката трябва да е между 1 и 100',
     invalidDate: 'Крайната дата трябва да е след началната',
     success: 'Офертата е обновена успешно!',
     error: 'Неуспешно обновяване. Моля опитайте отново.',
@@ -180,14 +179,7 @@ const EditOfferPage: React.FC = () => {
     if (step === 1) {
       if (!formData.title.trim()) newErrors.title = t.required;
       if (!formData.category) newErrors.category = t.required;
-      if (!formData.discount) {
-        newErrors.discount = t.required;
-      } else {
-        const discountNum = parseInt(formData.discount);
-        if (isNaN(discountNum) || discountNum < 1 || discountNum > 100) {
-          newErrors.discount = t.invalidDiscount;
-        }
-      }
+      if (!formData.discount) newErrors.discount = t.required;
     }
 
     if (step === 2) {
@@ -332,17 +324,16 @@ const EditOfferPage: React.FC = () => {
 
         <FormGroup>
           <Label>{t.discount}</Label>
-          <InputWithSuffix>
-            <Input
-              type="number"
-              min="1"
-              max="100"
-              value={formData.discount}
-              onChange={(e) => handleInputChange('discount', e.target.value)}
-              error={!!errors.discount}
-            />
-            <Suffix>%</Suffix>
-          </InputWithSuffix>
+          <Select
+            value={formData.discount}
+            onChange={(e) => handleInputChange('discount', e.target.value)}
+            error={!!errors.discount}
+          >
+            <option value="">—</option>
+            {DISCOUNT_STEPS.map(s => (
+              <option key={s} value={s}>{s}%</option>
+            ))}
+          </Select>
           {errors.discount && <ErrorText>{errors.discount}</ErrorText>}
         </FormGroup>
       </FormRow>

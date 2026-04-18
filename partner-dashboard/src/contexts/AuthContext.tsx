@@ -46,6 +46,19 @@ export interface User {
   emailVerified: boolean;
 }
 
+// Backend emits roles in uppercase (USER|PARTNER|ADMIN|SUPER_ADMIN); this
+// context exposes them lowercased. Keep all login/loadUser/register/switch
+// paths going through this helper so a new role (or casing drift) is a
+// one-line change. Pre-fix, loadUser/login only checked SUPER_ADMIN and
+// lowercase variants, silently dropping PARTNER/ADMIN to 'user' and
+// breaking admin menus + the switcher's role-to-route map.
+function normalizeRole(role: unknown): User['role'] {
+  const r = typeof role === 'string' ? role.toLowerCase() : '';
+  if (r === 'admin' || r === 'super_admin') return 'admin';
+  if (r === 'partner') return 'partner';
+  return 'user';
+}
+
 export interface AuthState {
   user: User | null;
   isAuthenticated: boolean;
@@ -84,8 +97,18 @@ export interface OAuthData {
   id?: string;
 }
 
+export interface SwitchableAccount {
+  id: string;
+  role: string;
+  firstName: string | null;
+  lastName: string | null;
+  avatar: string | null;
+  businessName: string | null;
+}
+
 export interface AuthContextType extends AuthState {
   token: string | null;
+  switchableAccounts: SwitchableAccount[];
   login: (credentials: LoginCredentials) => Promise<void>;
   loginWithOAuth: (oauthData: OAuthData) => Promise<void>;
   register: (data: RegisterData) => Promise<void>;
@@ -94,6 +117,7 @@ export interface AuthContextType extends AuthState {
   changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
   uploadAvatar: (file: File) => Promise<void>;
   removeAvatar: () => Promise<void>;
+  switchAccount: (targetAccountId: string) => Promise<void>;
 }
 
 interface AuthResponse {
@@ -108,6 +132,19 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 const STORAGE_KEY = 'boomcard_auth';
 const TOKEN_KEY = 'token';
 const REFRESH_TOKEN_KEY = 'refreshToken';
+const SWITCHABLE_ACCOUNTS_KEY = 'boomcard_switchable_accounts';
+
+// Mirror the refresh token into the `boomcard_refresh` cookie that the axios
+// 401-interceptor in api.service.ts reads from. If we only write to
+// localStorage, the very first 401 after login/register/OAuth/switch fails
+// to refresh because the interceptor finds no cookie. Every auth flow that
+// returns a refresh token must go through this.
+function persistRefreshToken(refreshToken: string): void {
+  localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
+  if (typeof document === 'undefined') return;
+  const secure = location.protocol === 'https:' ? '; Secure' : '';
+  document.cookie = `boomcard_refresh=${refreshToken}; path=/; max-age=${7 * 24 * 60 * 60}; SameSite=Strict${secure}`;
+}
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { t } = useLanguage();
@@ -120,7 +157,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return null;
   });
   const [token, setToken] = useState<string | null>(() => localStorage.getItem(TOKEN_KEY));
+  const [switchableAccounts, setSwitchableAccounts] = useState<SwitchableAccount[]>(() => {
+    try {
+      const raw = localStorage.getItem(SWITCHABLE_ACCOUNTS_KEY);
+      return raw ? JSON.parse(raw) : [];
+    } catch {
+      return [];
+    }
+  });
   const [isLoading, setIsLoading] = useState(true);
+
+  // Keep the switchable-accounts list in sync with localStorage so hard
+  // reloads preserve the switcher UI.
+  useEffect(() => {
+    if (switchableAccounts.length > 0) {
+      localStorage.setItem(SWITCHABLE_ACCOUNTS_KEY, JSON.stringify(switchableAccounts));
+    } else {
+      localStorage.removeItem(SWITCHABLE_ACCOUNTS_KEY);
+    }
+  }, [switchableAccounts]);
 
   // Load user from localStorage and verify token on mount
   useEffect(() => {
@@ -142,20 +197,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               email: meData.email,
               firstName: meData.firstName || '',
               lastName: meData.lastName || '',
-              role: (meData.role === 'SUPER_ADMIN' || meData.role === 'admin') ? 'admin'
-                  : meData.role === 'partner' ? 'partner' : 'user',
+              role: normalizeRole(meData.role),
               createdAt: meData.createdAt ? new Date(meData.createdAt).getTime() : Date.now(),
               emailVerified: meData.emailVerified ?? true,
               avatar: meData.avatar,
             };
             setUser(verifiedUser);
+
+            // Refresh the switchable-accounts list so the UI reflects any
+            // changes since login (businesses renamed, accounts deleted, etc).
+            // Non-fatal — an auth surface that can't enumerate siblings is
+            // fine to fall back to whatever was persisted.
+            try {
+              const switchResp = await apiService.get<any>('/auth/switchable-accounts');
+              const accounts = (switchResp?.data ?? switchResp) as SwitchableAccount[];
+              if (Array.isArray(accounts)) setSwitchableAccounts(accounts);
+            } catch (err) {
+              console.warn('Could not refresh switchable accounts:', err);
+            }
           } catch (error) {
             // Token invalid or expired, clear storage
             console.error('Token verification failed:', error);
             localStorage.removeItem(STORAGE_KEY);
             localStorage.removeItem(TOKEN_KEY);
             localStorage.removeItem(REFRESH_TOKEN_KEY);
+            localStorage.removeItem(SWITCHABLE_ACCOUNTS_KEY);
             setUser(null);
+            setSwitchableAccounts([]);
           }
         }
       } catch (error) {
@@ -163,6 +231,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         localStorage.removeItem(STORAGE_KEY);
         localStorage.removeItem(TOKEN_KEY);
         localStorage.removeItem(REFRESH_TOKEN_KEY);
+        localStorage.removeItem(SWITCHABLE_ACCOUNTS_KEY);
       } finally {
         setIsLoading(false);
       }
@@ -195,6 +264,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const token = responseData?.token || responseData?.accessToken || rawResponse?.token || rawResponse?.accessToken;
         const refreshToken = responseData?.refreshToken || rawResponse?.refreshToken;
         const userPayload = responseData?.user || rawResponse?.user;
+        const switchable = (responseData?.switchableAccounts || rawResponse?.switchableAccounts) as
+          | SwitchableAccount[]
+          | undefined;
 
         if (!token) {
           throw new Error('No authentication token received');
@@ -204,7 +276,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         localStorage.setItem(TOKEN_KEY, token);
         setToken(token);
         if (refreshToken) {
-          localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
+          persistRefreshToken(refreshToken);
         }
 
         // Set auth token in API service
@@ -216,14 +288,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           email: userPayload.email,
           firstName: userPayload.firstName || '',
           lastName: userPayload.lastName || '',
-          role: (userPayload.role === 'SUPER_ADMIN' || userPayload.role === 'admin') ? 'admin'
-              : userPayload.role === 'partner' ? 'partner' : 'user',
+          role: normalizeRole(userPayload.role),
           createdAt: userPayload.createdAt ? new Date(userPayload.createdAt).getTime() : Date.now(),
           emailVerified: userPayload.emailVerified ?? true,
           avatar: userPayload.avatar,
         };
         setUser(user);
         localStorage.setItem(STORAGE_KEY, JSON.stringify(user));
+        setSwitchableAccounts(Array.isArray(switchable) ? switchable : []);
 
         toast.success(`Welcome back, ${user.firstName}!`);
         return;
@@ -281,20 +353,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       localStorage.setItem(TOKEN_KEY, token);
       setToken(token);
       if (refreshToken) {
-        localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
+        persistRefreshToken(refreshToken);
       }
 
       // Set auth token in API service
       apiService.setAuthToken(token);
 
-      // Set user state (normalize role casing to match the login/loadUser paths)
+      // Set user state
       const normalizedUser: User = {
         id: userPayload.id,
         email: userPayload.email,
         firstName: userPayload.firstName || '',
         lastName: userPayload.lastName || '',
-        role: (userPayload.role === 'SUPER_ADMIN' || userPayload.role === 'ADMIN' || userPayload.role === 'admin') ? 'admin'
-            : (userPayload.role === 'PARTNER' || userPayload.role === 'partner') ? 'partner' : 'user',
+        role: normalizeRole(userPayload.role),
         createdAt: userPayload.createdAt ? new Date(userPayload.createdAt).getTime() : Date.now(),
         emailVerified: userPayload.emailVerified ?? false,
         avatar: userPayload.avatar,
@@ -312,19 +383,123 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const logout = () => {
+    // Grab the refresh AND access tokens BEFORE we clear storage so we can
+    // tell the server to revoke the row. Fire-and-forget — the UX shouldn't
+    // block on a logout API call, and even if it fails the local clear below
+    // still signs the user out of this tab.
+    const getCookie = (name: string): string | null => {
+      if (typeof document === 'undefined') return null;
+      const parts = `; ${document.cookie}`.split(`; ${name}=`);
+      return parts.length === 2 ? parts.pop()?.split(';').shift() || null : null;
+    };
+    const refreshTokenForRevoke =
+      getCookie('boomcard_refresh') || localStorage.getItem(REFRESH_TOKEN_KEY);
+    // Snapshot the access token too. The axios request interceptor reads the
+    // access token lazily (inside a microtask) via getAccessToken(), so by
+    // the time it runs the localStorage clear below has already happened and
+    // the /auth/logout POST fires with no Authorization header. Passing the
+    // header explicitly via config bypasses the interceptor's lookup and
+    // closes the race regardless of whether /auth/logout ever starts
+    // requiring auth.
+    const accessTokenForRevoke = getCookie('boomcard_session') || localStorage.getItem(TOKEN_KEY);
+    if (refreshTokenForRevoke) {
+      const config = accessTokenForRevoke
+        ? { headers: { Authorization: `Bearer ${accessTokenForRevoke}` } }
+        : undefined;
+      apiService.post('/auth/logout', { refreshToken: refreshTokenForRevoke }, config)
+        .catch((err) => {
+          // Non-fatal: DB row will expire on its own (7d TTL). Logging so
+          // repeated failures surface in monitoring.
+          console.warn('Server-side logout failed:', err);
+        });
+    }
+
     // Clear user state
     setUser(null);
     setToken(null);
+    setSwitchableAccounts([]);
 
-    // Clear storage
+    // Clear localStorage
     localStorage.removeItem(STORAGE_KEY);
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(REFRESH_TOKEN_KEY);
+    localStorage.removeItem(SWITCHABLE_ACCOUNTS_KEY);
+
+    // Clear cookies — the axios interceptor reads `boomcard_refresh` first
+    // when handling 401s, so leaving it behind would let a post-logout 401
+    // silently refresh the session back into existence.
+    if (typeof document !== 'undefined') {
+      document.cookie = 'boomcard_session=; path=/; max-age=0; SameSite=Strict';
+      document.cookie = 'boomcard_refresh=; path=/; max-age=0; SameSite=Strict';
+    }
 
     // Clear API service token
     apiService.clearAuthToken();
 
     toast.success('Logged out successfully');
+  };
+
+  const switchAccount = async (targetAccountId: string): Promise<void> => {
+    // The axios interceptor rotates the refresh token into the
+    // `boomcard_refresh` cookie on 401-driven refresh, but login() writes
+    // it to localStorage. Read the cookie first so we delete the *current*
+    // token on the server rather than a stale one.
+    const cookieRefresh = (() => {
+      if (typeof document === 'undefined') return null;
+      const parts = `; ${document.cookie}`.split('; boomcard_refresh=');
+      return parts.length === 2 ? parts.pop()?.split(';').shift() || null : null;
+    })();
+    const existingRefreshToken = cookieRefresh || localStorage.getItem(REFRESH_TOKEN_KEY);
+
+    try {
+      const rawResponse = await apiService.post<any>('/auth/switch-account', {
+        targetAccountId,
+        refreshToken: existingRefreshToken,
+      });
+
+      const responseData = rawResponse?.data || rawResponse;
+      const newToken = responseData?.accessToken || responseData?.token;
+      const newRefreshToken = responseData?.refreshToken;
+      const userPayload = responseData?.user;
+      const switchable = responseData?.switchableAccounts as SwitchableAccount[] | undefined;
+
+      if (!newToken || !userPayload) {
+        throw new Error('Invalid switch response');
+      }
+
+      localStorage.setItem(TOKEN_KEY, newToken);
+      setToken(newToken);
+      if (newRefreshToken) {
+        persistRefreshToken(newRefreshToken);
+      }
+      apiService.setAuthToken(newToken);
+
+      const nextUser: User = {
+        id: userPayload.id,
+        email: userPayload.email,
+        firstName: userPayload.firstName || '',
+        lastName: userPayload.lastName || '',
+        role: normalizeRole(userPayload.role),
+        createdAt: userPayload.createdAt ? new Date(userPayload.createdAt).getTime() : Date.now(),
+        emailVerified: userPayload.emailVerified ?? true,
+        avatar: userPayload.avatar,
+      };
+      setUser(nextUser);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(nextUser));
+      if (Array.isArray(switchable)) setSwitchableAccounts(switchable);
+
+      const label = nextUser.role === 'admin'
+        ? 'admin account'
+        : switchable?.find(s => s.id === nextUser.id)?.businessName || `${nextUser.firstName} ${nextUser.lastName}`.trim() || nextUser.email;
+      toast.success(`Switched to ${label}`);
+    } catch (error: any) {
+      const message = error?.response?.data?.error?.message
+        || error?.response?.data?.message
+        || error?.message
+        || 'Failed to switch account';
+      toast.error(message);
+      throw error;
+    }
   };
 
   const updateProfile = async (data: Partial<User>): Promise<void> => {
@@ -401,7 +576,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       // Try real API endpoint first
       try {
-        const response = await apiService.post<AuthResponse>('/auth/oauth/login', oauthData);
+        const response = await apiService.post<AuthResponse & { switchableAccounts?: SwitchableAccount[] }>('/auth/oauth/login', oauthData);
 
         // Extract token
         const token = response.token || response.accessToken;
@@ -415,7 +590,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         localStorage.setItem(TOKEN_KEY, token);
         setToken(token);
         if (refreshToken) {
-          localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
+          persistRefreshToken(refreshToken);
         }
 
         // Set auth token in API service
@@ -426,6 +601,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         // Store auth data
         localStorage.setItem(STORAGE_KEY, JSON.stringify(response.user));
+
+        // Capture sibling accounts if the OAuth response included them. For
+        // providers that don't yet return the list, fall back to a fetch so
+        // the switcher is populated on first render instead of waiting for
+        // the next loadUser pass.
+        if (Array.isArray(response.switchableAccounts)) {
+          setSwitchableAccounts(response.switchableAccounts);
+        } else {
+          try {
+            const switchResp = await apiService.get<any>('/auth/switchable-accounts');
+            const accounts = (switchResp?.data ?? switchResp) as SwitchableAccount[];
+            if (Array.isArray(accounts)) setSwitchableAccounts(accounts);
+          } catch {
+            // Non-fatal: session still usable without the switcher.
+          }
+        }
 
         toast.success(`Welcome, ${response.user.firstName}!`);
         return;
@@ -491,6 +682,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     token,
     isAuthenticated: !!user,
     isLoading,
+    switchableAccounts,
     login,
     loginWithOAuth,
     register,
@@ -499,6 +691,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     changePassword,
     uploadAvatar,
     removeAvatar,
+    switchAccount,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

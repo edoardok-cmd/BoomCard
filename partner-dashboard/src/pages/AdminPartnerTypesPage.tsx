@@ -11,6 +11,7 @@ import {
 } from '../services/partnerTypes.service';
 import { toast } from 'react-hot-toast';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { DISCOUNT_STEPS } from '../utils/discountSteps';
 
 // ─── Styled Components ────────────────────────────────────────────────────────
 
@@ -269,6 +270,25 @@ const Input = styled.input`
   box-sizing: border-box;
   background: var(--color-background);
   color: var(--color-text-primary);
+
+  &:focus {
+    outline: none;
+    border-color: #dc2626;
+    box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.1);
+  }
+`;
+
+const Select = styled.select`
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border: 2px solid var(--color-border);
+  border-radius: 0.75rem;
+  font-size: 0.9375rem;
+  transition: all 200ms;
+  box-sizing: border-box;
+  background: var(--color-background);
+  color: var(--color-text-primary);
+  cursor: pointer;
 
   &:focus {
     outline: none;
@@ -726,14 +746,14 @@ export default function AdminPartnerTypesPage() {
 
                   <FormField>
                     <Label>Max Discount Rate (%)<Required>*</Required></Label>
-                    <Input
-                      type="number"
-                      min={0}
-                      max={100}
-                      step={1}
+                    <Select
                       value={form.maxDiscountRate}
                       onChange={e => setForm(f => ({ ...f, maxDiscountRate: Number(e.target.value) }))}
-                    />
+                    >
+                      {DISCOUNT_STEPS.map(s => (
+                        <option key={s} value={s}>{s}%</option>
+                      ))}
+                    </Select>
                   </FormField>
 
                   <FormField>

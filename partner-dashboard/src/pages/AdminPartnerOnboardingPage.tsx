@@ -8,9 +8,7 @@ import { apiService } from '../services/api.service';
 import { PartnerType } from '../services/partnerTypes.service';
 import toast from 'react-hot-toast';
 import { placesCategories, experiencesCategories, getCategoryName } from '../types/categories.types';
-
-/** Mirrors CASHBACK_MATRIX_STEPS from backend — the only valid partner discount rates. */
-const DISCOUNT_STEPS = [5, 10, 15, 20, 25] as const;
+import { DISCOUNT_STEPS, snapToStep } from '../utils/discountSteps';
 
 // ─── Data ──────────────────────────────────────────────────────────────────
 
@@ -498,9 +496,7 @@ const AdminPartnerOnboardingPage: React.FC = () => {
         const typeMax = type?.maxDiscountRate ?? 100;
         const currentRate = parseFloat(prev.discountRate);
         if (!isNaN(currentRate) && currentRate > typeMax) {
-          let best: number | undefined;
-          for (const s of DISCOUNT_STEPS) { if (typeMax >= s) best = s; }
-          next.discountRate = best !== undefined ? String(best) : '';
+          next.discountRate = snapToStep(typeMax);
         }
       }
       return next;

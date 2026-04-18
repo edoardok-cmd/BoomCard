@@ -6,6 +6,7 @@ import { offersService, CreateOfferData, OfferDetails } from '../services/offers
 import { partnersService, Partner } from '../services/partners.service';
 import { toast } from 'react-hot-toast';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { DISCOUNT_STEPS, snapToStepNumber } from '../utils/discountSteps';
 
 // ─── Styled Components ────────────────────────────────────────────────────────
 
@@ -816,7 +817,7 @@ export default function AdminTopDiscountsPage() {
       titleBg: o.titleBg || '',
       description: o.description || '',
       descriptionBg: o.descriptionBg || '',
-      discountPercent: o.discountPercent,
+      discountPercent: snapToStepNumber(o.discountPercent),
       minPurchase: o.minPurchase,
       maxDiscount: o.maxDiscount,
       termsConditions: o.termsConditions || '',
@@ -1244,13 +1245,16 @@ export default function AdminTopDiscountsPage() {
 
                 <FormField>
                   <Label>{language === 'bg' ? 'Отстъпка %' : 'Discount %'}<Req>*</Req></Label>
-                  <Input
-                    type="number" min={1} max={100} step={1}
+                  <Select
                     value={form.discountPercent ?? ''}
                     onChange={e => { setForm(f => ({ ...f, discountPercent: e.target.value ? Number(e.target.value) : undefined })); setFormErrors(prev => ({ ...prev, discountPercent: undefined })); }}
-                    placeholder="e.g. 20"
                     $error={!!formErrors.discountPercent}
-                  />
+                  >
+                    <option value="">{language === 'bg' ? 'Изберете отстъпка' : 'Select discount'}</option>
+                    {DISCOUNT_STEPS.map(s => (
+                      <option key={s} value={s}>{s}%</option>
+                    ))}
+                  </Select>
                   {formErrors.discountPercent && <ErrorMsg>{formErrors.discountPercent}</ErrorMsg>}
                 </FormField>
 

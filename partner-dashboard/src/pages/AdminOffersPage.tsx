@@ -6,6 +6,7 @@ import { offersService, CreateOfferData, OfferDetails } from '../services/offers
 import { partnersService, Partner } from '../services/partners.service';
 import { toast } from 'react-hot-toast';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { DISCOUNT_STEPS, snapToStepNumber } from '../utils/discountSteps';
 
 // ─── Styled Components ────────────────────────────────────────────────────────
 
@@ -706,9 +707,9 @@ export default function AdminOffersPage() {
       description: o.description || '',
       descriptionBg: o.descriptionBg || '',
       type: o.type || 'DISCOUNT',
-      discountPercent: o.discountPercent,
+      discountPercent: snapToStepNumber(o.discountPercent),
       discountAmount: o.discountAmount,
-      cashbackPercent: o.cashbackPercent,
+      cashbackPercent: snapToStepNumber(o.cashbackPercent),
       pointsMultiplier: o.pointsMultiplier,
       minPurchase: o.minPurchase,
       maxDiscount: o.maxDiscount,
@@ -1098,12 +1099,15 @@ export default function AdminOffersPage() {
                   <>
                     <FormField>
                       <Label>Discount %</Label>
-                      <Input
-                        type="number" min={0} max={100} step={0.5}
+                      <Select
                         value={form.discountPercent ?? ''}
                         onChange={e => setForm(f => ({ ...f, discountPercent: e.target.value ? Number(e.target.value) : undefined }))}
-                        placeholder="e.g. 20"
-                      />
+                      >
+                        <option value="">Select discount</option>
+                        {DISCOUNT_STEPS.map(s => (
+                          <option key={s} value={s}>{s}%</option>
+                        ))}
+                      </Select>
                     </FormField>
                     <FormField>
                       <Label>Fixed Discount Amount</Label>
@@ -1119,11 +1123,15 @@ export default function AdminOffersPage() {
                 {form.type === 'CASHBACK' && (
                   <FormField>
                     <Label>Cashback %</Label>
-                    <Input
-                      type="number" min={0} max={100} step={0.5}
+                    <Select
                       value={form.cashbackPercent ?? ''}
                       onChange={e => setForm(f => ({ ...f, cashbackPercent: e.target.value ? Number(e.target.value) : undefined }))}
-                    />
+                    >
+                      <option value="">Select cashback</option>
+                      {DISCOUNT_STEPS.map(s => (
+                        <option key={s} value={s}>{s}%</option>
+                      ))}
+                    </Select>
                   </FormField>
                 )}
                 {form.type === 'POINTS' && (

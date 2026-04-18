@@ -271,6 +271,117 @@ const UserMenuDivider = styled.div`
   }
 `;
 
+const AccountSwitcherSection = styled.div`
+  padding: 0.5rem 0;
+  border-bottom: 1px solid #e5e7eb;
+
+  [data-theme="dark"] & {
+    border-bottom-color: #374151;
+  }
+`;
+
+const AccountSwitcherLabel = styled.div`
+  padding: 0.25rem 1rem 0.5rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #9ca3af;
+
+  [data-theme="dark"] & {
+    color: #6b7280;
+  }
+`;
+
+const AccountSwitcherItem = styled.button<{ $active: boolean; $disabled: boolean }>`
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  width: 100%;
+  padding: 0.5rem 1rem;
+  background: ${p => (p.$active ? '#f3f4f6' : 'transparent')};
+  border: none;
+  color: #111827;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  text-align: left;
+  cursor: ${p => (p.$disabled ? 'not-allowed' : 'pointer')};
+  opacity: ${p => (p.$disabled && !p.$active ? 0.6 : 1)};
+  transition: background 150ms;
+
+  [data-theme="dark"] & {
+    background: ${p => (p.$active ? '#374151' : 'transparent')};
+    color: #f9fafb;
+  }
+
+  &:hover {
+    background: ${p => (p.$disabled ? (p.$active ? '#f3f4f6' : 'transparent') : '#f9fafb')};
+
+    [data-theme="dark"] & {
+      background: ${p => (p.$disabled ? (p.$active ? '#374151' : 'transparent') : '#374151')};
+    }
+  }
+`;
+
+const AccountSwitcherAvatar = styled.div<{ $active: boolean }>`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 50%;
+  background: ${p => (p.$active ? 'linear-gradient(135deg, #111827 0%, #374151 100%)' : '#e5e7eb')};
+  color: ${p => (p.$active ? 'white' : '#6b7280')};
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+
+  [data-theme="dark"] & {
+    background: ${p => (p.$active ? 'linear-gradient(135deg, #f9fafb 0%, #d1d5db 100%)' : '#4b5563')};
+    color: ${p => (p.$active ? '#111827' : '#d1d5db')};
+  }
+`;
+
+const AccountSwitcherBody = styled.div`
+  flex: 1;
+  min-width: 0;
+`;
+
+const AccountSwitcherName = styled.div`
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #111827;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+
+  [data-theme="dark"] & {
+    color: #f9fafb;
+  }
+`;
+
+const AccountSwitcherRole = styled.div`
+  font-size: 0.6875rem;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+
+  [data-theme="dark"] & {
+    color: #9ca3af;
+  }
+`;
+
+const AccountSwitcherCheck = styled.div`
+  flex-shrink: 0;
+  color: #10b981;
+
+  svg {
+    width: 1rem;
+    height: 1rem;
+  }
+`;
+
 const UserMenuButton = styled.button`
   display: flex;
   align-items: center;
@@ -685,7 +796,8 @@ export const Header: React.FC<HeaderProps> = ({
   const { language, setLanguage, t } = useLanguage();
   const { theme, setTheme } = useTheme();
   const { favoritesCount } = useFavorites();
-  const { user, isAuthenticated, logout } = useAuth();
+  const { user, isAuthenticated, logout, switchableAccounts, switchAccount } = useAuth();
+  const [isSwitching, setIsSwitching] = useState<string | null>(null);
   const userMenuRef = useRef<HTMLDivElement>(null);
   const themeMenuRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLDivElement>(null);
@@ -724,9 +836,13 @@ export const Header: React.FC<HeaderProps> = ({
     };
   }, [mobileMenuOpen]);
 
-  // Close user menu when clicking outside
+  // Close user menu when clicking outside — but suppress while a switch is
+  // in flight so the success toast + navigate still happen on the same menu
+  // the user initiated from (otherwise the menu would close mid-await and
+  // the "Switched to X" UX feels like a cancellation).
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
+      if (isSwitching !== null) return;
       if (userMenuRef.current && !userMenuRef.current.contains(event.target as Node)) {
         setUserMenuOpen(false);
       }
@@ -739,7 +855,7 @@ export const Header: React.FC<HeaderProps> = ({
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [userMenuOpen]);
+  }, [userMenuOpen, isSwitching]);
 
   // Close theme menu when clicking outside
   useEffect(() => {
@@ -865,6 +981,91 @@ export const Header: React.FC<HeaderProps> = ({
     // Hidden: Vibrant mode
     // { mode: 'color', label: 'Vibrant', labelBg: 'Цветен', icon: '🎨', color: '#8b5cf6' },
   ];
+
+  // Rendered in both the desktop user-menu dropdown and the mobile drawer so
+  // narrow-viewport partner-dashboard users can also switch accounts.
+  // `closeMenu` lets each surface dismiss its own container after success.
+  const renderAccountSwitcher = (closeMenu: () => void) => {
+    if (!user || switchableAccounts.length <= 1) return null;
+    return (
+      <AccountSwitcherSection>
+        <AccountSwitcherLabel>
+          {language === 'bg' ? 'Смени акаунт' : 'Switch account'}
+        </AccountSwitcherLabel>
+        {switchableAccounts.map((account) => {
+          const isActive = account.id === user.id;
+          const displayName =
+            account.businessName ||
+            [account.firstName, account.lastName].filter(Boolean).join(' ') ||
+            account.role;
+          const initials = (
+            account.businessName?.[0] ||
+            account.firstName?.[0] ||
+            account.role[0]
+          ) + (
+            account.businessName?.[1] ||
+            account.lastName?.[0] ||
+            ''
+          );
+          const roleLabel =
+            account.role === 'SUPER_ADMIN' || account.role === 'ADMIN'
+              ? (language === 'bg' ? 'Администратор' : 'Admin')
+              : account.role === 'PARTNER'
+                ? (language === 'bg' ? 'Партньор' : 'Partner')
+                : account.role;
+          const isRowBusy = isSwitching !== null;
+          return (
+            <AccountSwitcherItem
+              key={account.id}
+              $active={isActive}
+              $disabled={isRowBusy || isActive}
+              onClick={async () => {
+                if (isActive || isRowBusy) return;
+                setIsSwitching(account.id);
+                try {
+                  await switchAccount(account.id);
+                  closeMenu();
+                  // Send the user to a surface that makes sense for the
+                  // new role — admin menu items and partner menu items
+                  // don't overlap, so "stay on current route" usually 404s.
+                  if (account.role === 'SUPER_ADMIN' || account.role === 'ADMIN') {
+                    navigate('/admin');
+                  } else if (account.role === 'PARTNER') {
+                    navigate('/dashboard');
+                  }
+                } catch {
+                  // toast already shown by switchAccount
+                } finally {
+                  setIsSwitching(null);
+                }
+              }}
+            >
+              <AccountSwitcherAvatar $active={isActive}>
+                {initials.toUpperCase()}
+              </AccountSwitcherAvatar>
+              <AccountSwitcherBody>
+                <AccountSwitcherName>{displayName}</AccountSwitcherName>
+                <AccountSwitcherRole>{roleLabel}</AccountSwitcherRole>
+              </AccountSwitcherBody>
+              {isActive && (
+                <AccountSwitcherCheck>
+                  <svg viewBox="0 0 16 16" fill="none">
+                    <path
+                      d="M13.3334 4L6.00002 11.3333L2.66669 8"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </AccountSwitcherCheck>
+              )}
+            </AccountSwitcherItem>
+          );
+        })}
+      </AccountSwitcherSection>
+    );
+  };
 
   return (
     <StyledHeader className={`${className || ''} ${scrolled ? 'scrolled' : ''}`}>
@@ -1015,6 +1216,8 @@ export const Header: React.FC<HeaderProps> = ({
                         <UserMenuName>{`${user.firstName} ${user.lastName}`}</UserMenuName>
                         <UserMenuEmail>{user.email}</UserMenuEmail>
                       </UserMenuHeader>
+
+                      {renderAccountSwitcher(() => setUserMenuOpen(false))}
 
                       <UserMenuItems>
                         {user.role === 'admin' ? (
@@ -1534,6 +1737,14 @@ export const Header: React.FC<HeaderProps> = ({
                     </button>
                   ))}
                 </div>
+
+                {/* Account Switcher Mobile — only rendered when the session
+                    has sibling accounts (same logic as the desktop dropdown). */}
+                {isAuthenticated && (
+                  <div className="mb-4">
+                    {renderAccountSwitcher(() => setMobileMenuOpen(false))}
+                  </div>
+                )}
 
                 {/* Nearby Link Mobile */}
                 <MobileFavoritesLink

@@ -17,18 +17,7 @@ import { getAccessToken } from '../lib/auth/session';
 import { bulkImportService } from '../services/bulkImport.service';
 import axios from 'axios';
 import { placesCategories, experiencesCategories, getCategoryName } from '../types/categories.types';
-
-/** Mirrors CASHBACK_MATRIX_STEPS from backend — the only valid partner discount rates. */
-const DISCOUNT_STEPS = [5, 10, 15, 20, 25] as const;
-
-/** Snap a number to the highest DISCOUNT_STEPS value that doesn't exceed it, or '' if below min. */
-function snapToStep(rate: number): string {
-  let best: number | undefined;
-  for (const s of DISCOUNT_STEPS) {
-    if (rate >= s) best = s;
-  }
-  return best !== undefined ? String(best) : '';
-}
+import { DISCOUNT_STEPS, snapToStep } from '../utils/discountSteps';
 
 // ─── Styled Components ────────────────────────────────────────────────────────
 
@@ -454,6 +443,56 @@ const CategoryChip = styled.button<{ $selected: boolean }>`
   }
 `;
 
+const SubcategorySection = styled.div`
+  margin-top: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+`;
+
+const SubcategoryBlock = styled.div`
+  padding: 0.625rem 0.75rem;
+  background: var(--color-background-secondary, #f9fafb);
+  border-radius: 0.75rem;
+  border-left: 3px solid var(--color-border, #e5e7eb);
+
+  [data-theme="dark"] & {
+    background: #111827;
+    border-left-color: #374151;
+  }
+`;
+
+const SubcategoryBlockTitle = styled.div`
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--color-text-secondary, #6b7280);
+  margin-bottom: 0.5rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+`;
+
+const SubcategoryChips = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+`;
+
+const SubcategoryChip = styled.button<{ $selected: boolean }>`
+  padding: 0.25rem 0.625rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  cursor: pointer;
+  border: 1.5px solid ${({ $selected }) => ($selected ? 'var(--color-primary, #6366f1)' : 'var(--color-border, #e5e7eb)')};
+  background: ${({ $selected }) => ($selected ? 'rgba(99, 102, 241, 0.1)' : 'transparent')};
+  color: ${({ $selected }) => ($selected ? 'var(--color-primary, #6366f1)' : 'var(--color-text-secondary, #6b7280)')};
+  font-weight: ${({ $selected }) => ($selected ? 500 : 400)};
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+
+  &:hover {
+    border-color: var(--color-primary, #6366f1);
+  }
+`;
+
 const ModalFooter = styled.div`
   display: flex;
   justify-content: flex-end;
@@ -708,7 +747,16 @@ const EmptyLocations = styled.div`
 const PARTNER_CATEGORIES = [
   ...placesCategories,
   ...experiencesCategories,
-].map(cat => ({ id: cat.id, label: cat.name.en, labelBg: cat.name.bg }));
+].map(cat => ({
+  id: cat.id,
+  label: cat.name.en,
+  labelBg: cat.name.bg,
+  subcategories: cat.subcategories.map(s => ({
+    id: s.id,
+    label: s.name.en,
+    labelBg: s.name.bg,
+  })),
+}));
 
 // ─── Legacy category migration ────────────────────────────────────────────────
 // Maps old display-name strings (EN and BG) that were stored before canonical IDs
@@ -739,6 +787,74 @@ const LEGACY_CATEGORY_MAP: Record<string, string> = {
 function migrateCategoryId(id: string): string {
   return LEGACY_CATEGORY_MAP[id] ?? id;
 }
+
+// ─── Category Picker ──────────────────────────────────────────────────────────
+// Renders the parent-category pills and, below them, a subcategory block for
+// each currently-selected parent. Parent and subcategory IDs share a single
+// `selected` string[] (subs live alongside parents in Partner.categories).
+interface CategoryPickerProps {
+  selected: string[];
+  onChange: React.Dispatch<React.SetStateAction<string[]>>;
+  language: 'en' | 'bg';
+}
+
+const CategoryPicker: React.FC<CategoryPickerProps> = ({ selected, onChange, language }) => {
+  const toggleParent = (id: string) => {
+    onChange(prev => {
+      if (prev.includes(id)) {
+        const subIds = PARTNER_CATEGORIES.find(c => c.id === id)?.subcategories.map(s => s.id) ?? [];
+        return prev.filter(c => c !== id && !subIds.includes(c));
+      }
+      return [...prev, id];
+    });
+  };
+
+  const toggleSub = (subId: string) => {
+    onChange(prev => prev.includes(subId) ? prev.filter(c => c !== subId) : [...prev, subId]);
+  };
+
+  const selectedParents = PARTNER_CATEGORIES.filter(c => selected.includes(c.id));
+
+  return (
+    <>
+      <CategoryChips>
+        {PARTNER_CATEGORIES.map(cat => (
+          <CategoryChip
+            key={cat.id}
+            type="button"
+            $selected={selected.includes(cat.id)}
+            onClick={() => toggleParent(cat.id)}
+          >
+            {language === 'bg' ? cat.labelBg : cat.label}
+          </CategoryChip>
+        ))}
+      </CategoryChips>
+      {selectedParents.length > 0 && (
+        <SubcategorySection>
+          {selectedParents.map(cat => cat.subcategories.length > 0 && (
+            <SubcategoryBlock key={cat.id}>
+              <SubcategoryBlockTitle>
+                {language === 'bg' ? cat.labelBg : cat.label}
+              </SubcategoryBlockTitle>
+              <SubcategoryChips>
+                {cat.subcategories.map(sub => (
+                  <SubcategoryChip
+                    key={sub.id}
+                    type="button"
+                    $selected={selected.includes(sub.id)}
+                    onClick={() => toggleSub(sub.id)}
+                  >
+                    {language === 'bg' ? sub.labelBg : sub.label}
+                  </SubcategoryChip>
+                ))}
+              </SubcategoryChips>
+            </SubcategoryBlock>
+          ))}
+        </SubcategorySection>
+      )}
+    </>
+  );
+};
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -1851,20 +1967,11 @@ const AdminPartnersPage: React.FC = () => {
                     <Label>
                       {language === 'bg' ? 'Категории' : 'Categories'} <Required>*</Required>
                     </Label>
-                    <CategoryChips>
-                      {PARTNER_CATEGORIES.map(cat => (
-                        <CategoryChip
-                          key={cat.id}
-                          type="button"
-                          $selected={createCategories.includes(cat.id)}
-                          onClick={() => setCreateCategories(prev =>
-                            prev.includes(cat.id) ? prev.filter(c => c !== cat.id) : [...prev, cat.id]
-                          )}
-                        >
-                          {language === 'bg' ? cat.labelBg : cat.label}
-                        </CategoryChip>
-                      ))}
-                    </CategoryChips>
+                    <CategoryPicker
+                      selected={createCategories}
+                      onChange={setCreateCategories}
+                      language={language}
+                    />
                     {createCategories.length > 0 && (
                       <FieldHint>
                         {language === 'bg'
@@ -2013,20 +2120,11 @@ const AdminPartnersPage: React.FC = () => {
 
                   <FormField $full>
                     <Label>{language === 'bg' ? 'Категории' : 'Categories'} <Required>*</Required></Label>
-                    <CategoryChips>
-                      {PARTNER_CATEGORIES.map(cat => (
-                        <CategoryChip
-                          key={cat.id}
-                          type="button"
-                          $selected={editCategories.includes(cat.id)}
-                          onClick={() => setEditCategories(prev =>
-                            prev.includes(cat.id) ? prev.filter(c => c !== cat.id) : [...prev, cat.id]
-                          )}
-                        >
-                          {language === 'bg' ? cat.labelBg : cat.label}
-                        </CategoryChip>
-                      ))}
-                    </CategoryChips>
+                    <CategoryPicker
+                      selected={editCategories}
+                      onChange={setEditCategories}
+                      language={language}
+                    />
                     {editCategories.length > 0 && (
                       <FieldHint>
                         {language === 'bg'

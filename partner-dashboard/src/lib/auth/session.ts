@@ -104,19 +104,28 @@ function attemptRefresh(_refreshToken: string): Session | null {
 }
 
 /**
- * Clear session
+ * Clear session.
+ *
+ * Must remove every storage key AuthContext writes, otherwise a 401-driven
+ * refresh failure (which routes through api.service.ts → clearSession)
+ * leaves `token` / `refreshToken` / `boomcard_switchable_accounts` behind
+ * and the next page load bootstraps into a zombie session.
  */
 export function clearSession(): void {
   if (typeof document === 'undefined') return;
 
   // Clear cookies
-  document.cookie = `${SESSION_COOKIE_NAME}=; path=/; max-age=0`;
-  document.cookie = `${REFRESH_COOKIE_NAME}=; path=/; max-age=0`;
+  document.cookie = `${SESSION_COOKIE_NAME}=; path=/; max-age=0; SameSite=Strict`;
+  document.cookie = `${REFRESH_COOKIE_NAME}=; path=/; max-age=0; SameSite=Strict`;
 
-  // Clear localStorage
+  // Clear every AuthContext-managed localStorage key. `boomcard_token` is
+  // legacy (pre-AuthContext) — left for safety in case an old tab wrote it.
   localStorage.removeItem('boomcard_user');
   localStorage.removeItem('boomcard_auth');
   localStorage.removeItem('boomcard_token');
+  localStorage.removeItem('token');
+  localStorage.removeItem('refreshToken');
+  localStorage.removeItem('boomcard_switchable_accounts');
 }
 
 /**
