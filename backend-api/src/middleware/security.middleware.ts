@@ -175,6 +175,34 @@ export const switchAccountRateLimiter = rateLimit({
 });
 
 /**
+ * Admin impersonation rate limiter.
+ *
+ * /auth/impersonate is tighter than switch-account because an admin
+ * flipping between many partners in quick succession is almost always
+ * a misconfigured script or a credential-abuse pattern, not a real
+ * workflow. Keyed by userId so an admin can't starve another admin
+ * sharing an IP. Mounted AFTER `authenticate`.
+ */
+export const impersonateRateLimiter = rateLimit({
+  windowMs: parseInt(process.env.IMPERSONATE_RATE_LIMIT_WINDOW_MS || '900000'), // 15 minutes
+  max: parseInt(process.env.IMPERSONATE_RATE_LIMIT_MAX_REQUESTS || '10'), // 10 impersonations
+  keyGenerator: (req) => {
+    const userId = (req as any).user?.id;
+    return userId ? `impersonate:${userId}` : `impersonate-ip:${req.ip || 'unknown'}`;
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req, res) => {
+    logger.warn(`Impersonate rate limit exceeded for user ${(req as any).user?.id} (ip ${req.ip})`);
+    res.status(429).json({
+      error: 'Too Many Requests',
+      message: 'Too many impersonation requests, please slow down',
+    });
+  },
+  skip: () => process.env.NODE_ENV === 'development',
+});
+
+/**
  * Read-side rate limiter for the switcher list.
  *
  * /switchable-accounts filters out SUSPENDED / INACTIVE siblings, so without

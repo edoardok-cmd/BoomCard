@@ -19,6 +19,14 @@ export interface AuthRequest extends Request {
     // to compare against target.passwordChangedAt and refuse pivots from
     // tokens issued before the target rotated their credentials.
     iat?: number;
+    // Impersonation claims — present only when this session was minted by
+    // POST /auth/impersonate. `imp` marks the session as an impersonation,
+    // `impBy` is the admin userId who initiated it. /auth/stop-impersonate
+    // uses `impBy` to restore the admin's own session.
+    imp?: true;
+    impBy?: string;
+    impByRole?: string;
+    impAg?: string[];
   };
   file?: any; // Multer file upload
 }

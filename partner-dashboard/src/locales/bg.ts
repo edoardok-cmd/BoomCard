@@ -79,6 +79,28 @@ export const bg: TranslationKey = {
     bulkImport: 'Масов импорт',
     scanReview: 'Преглед на сканирания',
     adminReceipts: 'Касови бележки',
+    switchAccount: 'Смени акаунт',
+    impersonatePartner: 'Представи се като партньор',
+    role: {
+      admin: 'Администратор',
+      partner: 'Партньор',
+      user: 'Потребител',
+      impersonating: 'Представяне като партньор',
+    },
+  },
+
+  // Admin impersonation UI (modal + banner + menu)
+  impersonation: {
+    modalTitle: 'Представи се като партньор',
+    modalSubtitle: 'Избери партньор, за да видиш портала от негова гледна точка.',
+    searchPlaceholder: 'Търси по име или имейл…',
+    loading: 'Зареждане…',
+    empty: 'Няма партньори.',
+    cancel: 'Отказ',
+    stop: 'Спри представянето',
+    stopping: 'Спиране…',
+    bannerPrefix: 'Представяш се като',
+    bannerSuffix: '. Действията ти се отчитат.',
   },
 
   // Mobile Bottom Navigation
@@ -226,16 +248,6 @@ export const bg: TranslationKey = {
     alreadyHaveAccount: 'Вече имате акаунт?',
     signIn: 'Вход',
     selectCategory: 'Изберете категория...',
-    // Categories
-    restaurant: 'Ресторант',
-    hotel: 'Хотел',
-    spa: 'Спа и Уелнес',
-    winery: 'Винарна',
-    entertainment: 'Развлечения',
-    sports: 'Спорт и Фитнес',
-    beauty: 'Красота и Салон',
-    shopping: 'Магазини и Търговия',
-    travel: 'Пътувания и Туризъм',
     // Placeholders
     firstNamePlaceholder: 'Иван',
     lastNamePlaceholder: 'Петров',

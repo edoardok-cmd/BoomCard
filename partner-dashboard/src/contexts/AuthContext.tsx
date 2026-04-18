@@ -83,6 +83,7 @@ export interface RegisterData {
     businessName: string;
     businessNameBg?: string;
     businessCategory: string;
+    businessSubcategory?: string;
     taxId?: string;
     website?: string;
   };
@@ -106,9 +107,17 @@ export interface SwitchableAccount {
   businessName: string | null;
 }
 
+export interface ImpersonationMeta {
+  adminId: string;
+  adminRole: string;
+  startedAt: string;
+}
+
 export interface AuthContextType extends AuthState {
   token: string | null;
   switchableAccounts: SwitchableAccount[];
+  isImpersonating: boolean;
+  impersonation: ImpersonationMeta | null;
   login: (credentials: LoginCredentials) => Promise<void>;
   loginWithOAuth: (oauthData: OAuthData) => Promise<void>;
   register: (data: RegisterData) => Promise<void>;
@@ -118,6 +127,8 @@ export interface AuthContextType extends AuthState {
   uploadAvatar: (file: File) => Promise<void>;
   removeAvatar: () => Promise<void>;
   switchAccount: (targetAccountId: string) => Promise<void>;
+  impersonate: (targetPartnerUserId: string) => Promise<void>;
+  stopImpersonating: () => Promise<void>;
 }
 
 interface AuthResponse {
@@ -133,6 +144,7 @@ const STORAGE_KEY = 'boomcard_auth';
 const TOKEN_KEY = 'token';
 const REFRESH_TOKEN_KEY = 'refreshToken';
 const SWITCHABLE_ACCOUNTS_KEY = 'boomcard_switchable_accounts';
+const IMPERSONATION_KEY = 'boomcard_impersonation';
 
 // Mirror the refresh token into the `boomcard_refresh` cookie that the axios
 // 401-interceptor in api.service.ts reads from. If we only write to
@@ -165,6 +177,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return [];
     }
   });
+  const [impersonation, setImpersonation] = useState<ImpersonationMeta | null>(() => {
+    try {
+      const raw = localStorage.getItem(IMPERSONATION_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  });
   const [isLoading, setIsLoading] = useState(true);
 
   // Keep the switchable-accounts list in sync with localStorage so hard
@@ -176,6 +196,84 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       localStorage.removeItem(SWITCHABLE_ACCOUNTS_KEY);
     }
   }, [switchableAccounts]);
+
+  // Mirror impersonation metadata into localStorage so a hard reload while
+  // impersonating keeps the banner visible before the context re-hydrates.
+  useEffect(() => {
+    if (impersonation) {
+      localStorage.setItem(IMPERSONATION_KEY, JSON.stringify(impersonation));
+    } else {
+      localStorage.removeItem(IMPERSONATION_KEY);
+    }
+  }, [impersonation]);
+
+  // Cross-tab sync: the `storage` event fires in every OTHER tab when a key
+  // changes. Mirror auth-related keys into this tab's React state so
+  // impersonation start/stop, logout, and account-switch in one tab instantly
+  // update the banner + session everywhere. Each branch short-circuits when
+  // the parsed value already matches current state, which prevents the
+  // state→storage effects above from ping-ponging writes between tabs.
+  useEffect(() => {
+    const handler = (e: StorageEvent) => {
+      if (e.storageArea && e.storageArea !== localStorage) return;
+
+      const applyToken = () => {
+        const raw = localStorage.getItem(TOKEN_KEY);
+        if (raw === token) return;
+        if (raw) apiService.setAuthToken(raw);
+        else apiService.clearAuthToken();
+        setToken(raw);
+      };
+
+      const applyUser = () => {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        let next: User | null = null;
+        if (raw) {
+          try { next = JSON.parse(raw) as User; } catch { next = null; }
+        }
+        if (JSON.stringify(next) === JSON.stringify(user)) return;
+        setUser(next);
+      };
+
+      const applyImpersonation = () => {
+        const raw = localStorage.getItem(IMPERSONATION_KEY);
+        let next: ImpersonationMeta | null = null;
+        if (raw) {
+          try { next = JSON.parse(raw) as ImpersonationMeta; } catch { next = null; }
+        }
+        if (JSON.stringify(next) === JSON.stringify(impersonation)) return;
+        setImpersonation(next);
+      };
+
+      const applySwitchable = () => {
+        const raw = localStorage.getItem(SWITCHABLE_ACCOUNTS_KEY);
+        let next: SwitchableAccount[] = [];
+        if (raw) {
+          try {
+            const parsed = JSON.parse(raw);
+            next = Array.isArray(parsed) ? parsed : [];
+          } catch { next = []; }
+        }
+        if (JSON.stringify(next) === JSON.stringify(switchableAccounts)) return;
+        setSwitchableAccounts(next);
+      };
+
+      // `e.key === null` means another tab called localStorage.clear().
+      if (e.key === null) {
+        applyToken();
+        applyUser();
+        applyImpersonation();
+        applySwitchable();
+        return;
+      }
+      if (e.key === TOKEN_KEY) applyToken();
+      else if (e.key === STORAGE_KEY) applyUser();
+      else if (e.key === IMPERSONATION_KEY) applyImpersonation();
+      else if (e.key === SWITCHABLE_ACCOUNTS_KEY) applySwitchable();
+    };
+    window.addEventListener('storage', handler);
+    return () => window.removeEventListener('storage', handler);
+  }, [token, user, impersonation, switchableAccounts]);
 
   // Load user from localStorage and verify token on mount
   useEffect(() => {
@@ -204,6 +302,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             };
             setUser(verifiedUser);
 
+            // Reconcile impersonation state against the token's imp claim so
+            // a cleared/stale localStorage entry can't mask (or fabricate)
+            // impersonation. `/auth/me` echoes the server-side truth; treat
+            // it as authoritative. When echoing, preserve the original
+            // startedAt from local metadata so the banner doesn't reset the
+            // session clock on every reload.
+            if (meData.impersonation) {
+              const prevStarted = (() => {
+                try {
+                  const raw = localStorage.getItem(IMPERSONATION_KEY);
+                  return raw ? (JSON.parse(raw) as ImpersonationMeta).startedAt : undefined;
+                } catch {
+                  return undefined;
+                }
+              })();
+              setImpersonation({
+                adminId: meData.impersonation.adminId,
+                adminRole: meData.impersonation.adminRole,
+                startedAt: prevStarted || new Date().toISOString(),
+              });
+            } else {
+              setImpersonation(null);
+            }
+
             // Refresh the switchable-accounts list so the UI reflects any
             // changes since login (businesses renamed, accounts deleted, etc).
             // Non-fatal — an auth surface that can't enumerate siblings is
@@ -222,8 +344,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             localStorage.removeItem(TOKEN_KEY);
             localStorage.removeItem(REFRESH_TOKEN_KEY);
             localStorage.removeItem(SWITCHABLE_ACCOUNTS_KEY);
+            localStorage.removeItem(IMPERSONATION_KEY);
             setUser(null);
             setSwitchableAccounts([]);
+            setImpersonation(null);
           }
         }
       } catch (error) {
@@ -232,6 +356,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         localStorage.removeItem(TOKEN_KEY);
         localStorage.removeItem(REFRESH_TOKEN_KEY);
         localStorage.removeItem(SWITCHABLE_ACCOUNTS_KEY);
+        localStorage.removeItem(IMPERSONATION_KEY);
+        setImpersonation(null);
       } finally {
         setIsLoading(false);
       }
@@ -296,6 +422,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setUser(user);
         localStorage.setItem(STORAGE_KEY, JSON.stringify(user));
         setSwitchableAccounts(Array.isArray(switchable) ? switchable : []);
+        // A fresh login is never an impersonation session — clear any stale
+        // metadata left over from a prior tab (e.g. user closed the tab
+        // mid-impersonation and later logged in again).
+        setImpersonation(null);
 
         toast.success(`Welcome back, ${user.firstName}!`);
         return;
@@ -418,12 +548,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUser(null);
     setToken(null);
     setSwitchableAccounts([]);
+    setImpersonation(null);
 
     // Clear localStorage
     localStorage.removeItem(STORAGE_KEY);
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(REFRESH_TOKEN_KEY);
     localStorage.removeItem(SWITCHABLE_ACCOUNTS_KEY);
+    localStorage.removeItem(IMPERSONATION_KEY);
 
     // Clear cookies — the axios interceptor reads `boomcard_refresh` first
     // when handling 401s, so leaving it behind would let a post-logout 401
@@ -497,6 +629,126 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         || error?.response?.data?.message
         || error?.message
         || 'Failed to switch account';
+      toast.error(message);
+      throw error;
+    }
+  };
+
+  // Admin-only: assume a PARTNER session. Swaps tokens and user state in
+  // place (same mechanism as switchAccount), and records impersonation
+  // metadata so the banner + stop button render across reloads.
+  const impersonate = async (targetPartnerUserId: string): Promise<void> => {
+    // Read the admin's current refresh token from its authoritative location
+    // (cookie first, because the 401-interceptor writes here on rotation;
+    // localStorage only holds whatever login() originally persisted). Sent
+    // so the backend can revoke the pre-impersonation admin session — closes
+    // the window where a leaked admin refresh token could silently resurrect
+    // the admin session in parallel with the impersonation one.
+    const cookieRefresh = (() => {
+      if (typeof document === 'undefined') return null;
+      const parts = `; ${document.cookie}`.split('; boomcard_refresh=');
+      return parts.length === 2 ? parts.pop()?.split(';').shift() || null : null;
+    })();
+    const adminRefreshToken = cookieRefresh || localStorage.getItem(REFRESH_TOKEN_KEY);
+
+    try {
+      const rawResponse = await apiService.post<any>('/auth/impersonate', {
+        targetPartnerUserId,
+        refreshToken: adminRefreshToken,
+      });
+      const responseData = rawResponse?.data || rawResponse;
+      const newToken = responseData?.accessToken || responseData?.token;
+      const newRefreshToken = responseData?.refreshToken;
+      const userPayload = responseData?.user;
+      const impersonationMeta = responseData?.impersonation as ImpersonationMeta | undefined;
+
+      if (!newToken || !userPayload || !impersonationMeta) {
+        throw new Error('Invalid impersonation response');
+      }
+
+      localStorage.setItem(TOKEN_KEY, newToken);
+      setToken(newToken);
+      if (newRefreshToken) persistRefreshToken(newRefreshToken);
+      apiService.setAuthToken(newToken);
+
+      const nextUser: User = {
+        id: userPayload.id,
+        email: userPayload.email,
+        firstName: userPayload.firstName || '',
+        lastName: userPayload.lastName || '',
+        role: normalizeRole(userPayload.role),
+        createdAt: userPayload.createdAt ? new Date(userPayload.createdAt).getTime() : Date.now(),
+        emailVerified: userPayload.emailVerified ?? true,
+        avatar: userPayload.avatar,
+      };
+      setUser(nextUser);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(nextUser));
+      // Impersonation tokens intentionally carry no `ag`; clear any stale
+      // sibling list from the admin session so the switcher hides.
+      setSwitchableAccounts([]);
+      setImpersonation(impersonationMeta);
+
+      toast.success(`Impersonating ${nextUser.firstName} ${nextUser.lastName}`.trim() || `Impersonating ${nextUser.email}`);
+    } catch (error: any) {
+      const message = error?.response?.data?.error?.message
+        || error?.response?.data?.message
+        || error?.message
+        || 'Failed to start impersonation';
+      toast.error(message);
+      throw error;
+    }
+  };
+
+  const stopImpersonating = async (): Promise<void> => {
+    // Pull the refresh token from where it was last written — cookie takes
+    // priority because the 401-interceptor rotates it there.
+    const cookieRefresh = (() => {
+      if (typeof document === 'undefined') return null;
+      const parts = `; ${document.cookie}`.split('; boomcard_refresh=');
+      return parts.length === 2 ? parts.pop()?.split(';').shift() || null : null;
+    })();
+    const currentRefreshToken = cookieRefresh || localStorage.getItem(REFRESH_TOKEN_KEY);
+
+    try {
+      const rawResponse = await apiService.post<any>('/auth/stop-impersonate', {
+        refreshToken: currentRefreshToken,
+      });
+      const responseData = rawResponse?.data || rawResponse;
+      const newToken = responseData?.accessToken || responseData?.token;
+      const newRefreshToken = responseData?.refreshToken;
+      const userPayload = responseData?.user;
+      const switchable = responseData?.switchableAccounts as SwitchableAccount[] | undefined;
+
+      if (!newToken || !userPayload) {
+        throw new Error('Invalid stop-impersonate response');
+      }
+
+      localStorage.setItem(TOKEN_KEY, newToken);
+      setToken(newToken);
+      if (newRefreshToken) persistRefreshToken(newRefreshToken);
+      apiService.setAuthToken(newToken);
+
+      const adminUser: User = {
+        id: userPayload.id,
+        email: userPayload.email,
+        firstName: userPayload.firstName || '',
+        lastName: userPayload.lastName || '',
+        role: normalizeRole(userPayload.role),
+        createdAt: userPayload.createdAt ? new Date(userPayload.createdAt).getTime() : Date.now(),
+        emailVerified: userPayload.emailVerified ?? true,
+        avatar: userPayload.avatar,
+      };
+      setUser(adminUser);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(adminUser));
+      setSwitchableAccounts(Array.isArray(switchable) ? switchable : []);
+      setImpersonation(null);
+
+      toast.success('Stopped impersonating');
+    } catch (error: any) {
+      const message = error?.response?.data?.error?.message
+        || error?.response?.data?.message
+        || error?.message
+        || 'Failed to stop impersonation';
       toast.error(message);
       throw error;
     }
@@ -683,6 +935,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     isAuthenticated: !!user,
     isLoading,
     switchableAccounts,
+    isImpersonating: impersonation !== null,
+    impersonation,
     login,
     loginWithOAuth,
     register,
@@ -692,6 +946,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     uploadAvatar,
     removeAvatar,
     switchAccount,
+    impersonate,
+    stopImpersonating,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

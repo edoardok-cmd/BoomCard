@@ -7,6 +7,7 @@ import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import Button from '../components/common/Button/Button';
 import Card from '../components/common/Card/Card';
+import { placesCategories, experiencesCategories } from '../types/categories.types';
 
 const PageContainer = styled.div`
   min-height: 100vh;
@@ -1192,51 +1193,22 @@ const PartnersPage: React.FC = () => {
 
   const categories = [
     { value: '', label: t('partnerRegistration.selectCategory') },
-    { value: 'RESTAURANTS_FOOD', label: t('categories.restaurantsAndFood') },
-    { value: 'ACCOMMODATION', label: t('categories.accommodation') },
-    { value: 'SPA_WELLNESS', label: t('categories.spaAndWellness') },
-    { value: 'PANORAMIC_PLACES', label: t('categories.panoramicPlaces') },
-    { value: 'CLUBS_NIGHTLIFE', label: t('categories.clubsAndNightlife') },
-    { value: 'CAFES_BAKERIES', label: t('categories.cafesAndBakeries') },
+    ...[...placesCategories, ...experiencesCategories].map(cat => ({
+      value: cat.id,
+      label: cat.name[language as 'en' | 'bg'] ?? cat.name.bg,
+    })),
   ];
 
-  const subcategoriesMap: Record<string, { value: string; label: string }[]> = {
-    RESTAURANTS_FOOD: [
-      { value: 'CURATED', label: t('categories.curated') },
-      { value: 'FAST_FOOD', label: t('categories.fastFood') },
-      { value: 'TRADITIONAL', label: t('categories.traditionalCuisine') },
-      { value: 'VEGETARIAN_VEGAN', label: t('categories.vegetarianVegan') },
-    ],
-    ACCOMMODATION: [
-      { value: 'HOTELS', label: t('categories.hotels') },
-      { value: 'GUEST_HOUSES', label: t('categories.guestHouses') },
-      { value: 'APARTMENTS', label: t('categories.apartments') },
-    ],
-    SPA_WELLNESS: [
-      { value: 'SPA_CENTERS', label: t('categories.spaCenters') },
-      { value: 'POOLS', label: t('categories.pools') },
-      { value: 'MINERAL_POOLS', label: t('categories.mineralPools') },
-      { value: 'FITNESS_WELLNESS', label: t('categories.fitnessAndWellness') },
-      { value: 'SPORTS', label: t('categories.sports') },
-    ],
-    PANORAMIC_PLACES: [
-      { value: 'BARS', label: t('categories.rooftopBars') },
-      { value: 'RESTAURANTS', label: t('categories.skyRestaurants') },
-    ],
-    CLUBS_NIGHTLIFE: [
-      { value: 'CLUBS', label: t('categories.clubs') },
-      { value: 'BARS', label: t('categories.bars') },
-      { value: 'LOUNGE', label: t('categories.lounge') },
-      { value: 'PARTIES_EVENTS', label: t('categories.partiesAndEvents') },
-      { value: 'LIVE_MUSIC', label: t('categories.liveMusic') },
-    ],
-    CAFES_BAKERIES: [
-      { value: 'CAFES', label: t('categories.cafes') },
-      { value: 'PASTRY_SHOPS', label: t('categories.pastryShops') },
-      { value: 'BRUNCH', label: t('categories.brunch') },
-      { value: 'BAKERIES', label: t('categories.bakeries') },
-    ],
-  };
+  const subcategoriesMap: Record<string, { value: string; label: string }[]> =
+    Object.fromEntries(
+      [...placesCategories, ...experiencesCategories].map(cat => [
+        cat.id,
+        cat.subcategories.map(sub => ({
+          value: sub.id,
+          label: sub.name[language as 'en' | 'bg'] ?? sub.name.bg,
+        })),
+      ])
+    );
 
   const [formData, setFormData] = useState({
     firstName: '',
@@ -1467,6 +1439,7 @@ const PartnersPage: React.FC = () => {
           businessName: formData.businessName,
           businessNameBg: formData.businessNameBg || undefined,
           businessCategory: formData.businessCategory,
+          businessSubcategory: formData.businessSubcategory || undefined,
           taxId: formData.taxId || undefined,
           website: formData.website || undefined,
         },

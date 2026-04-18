@@ -13,6 +13,20 @@ import { useFavorites } from '../../../contexts/FavoritesContext';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { useTheme, ThemeMode } from '../../../contexts/ThemeContext';
+import { apiService } from '../../../services/api.service';
+
+interface ImpersonatablePartner {
+  partnerId: string;
+  userId: string;
+  businessName: string;
+  businessNameBg?: string | null;
+  logo?: string | null;
+  status: string;
+  email: string;
+  firstName?: string | null;
+  lastName?: string | null;
+  avatar?: string | null;
+}
 
 
 const MobileFavoritesLink = styled(Link)`
@@ -190,8 +204,95 @@ const UserMenuName = styled.div`
   }
 `;
 
+const UserMenuRoleBadge = styled.span<{ $role: 'admin' | 'partner' | 'user'; $impersonating?: boolean }>`
+  display: inline-block;
+  margin-top: 0.375rem;
+  padding: 0.1875rem 0.5rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border-radius: 999px;
+  background: ${p =>
+    p.$impersonating
+      ? '#fef3c7'
+      : p.$role === 'admin'
+        ? '#ede9fe'
+        : p.$role === 'partner'
+          ? '#dcfce7'
+          : '#e5e7eb'};
+  color: ${p =>
+    p.$impersonating
+      ? '#92400e'
+      : p.$role === 'admin'
+        ? '#5b21b6'
+        : p.$role === 'partner'
+          ? '#166534'
+          : '#374151'};
+
+  [data-theme="dark"] & {
+    background: ${p =>
+      p.$impersonating
+        ? '#78350f'
+        : p.$role === 'admin'
+          ? '#4c1d95'
+          : p.$role === 'partner'
+            ? '#14532d'
+            : '#374151'};
+    color: ${p =>
+      p.$impersonating
+        ? '#fde68a'
+        : p.$role === 'admin'
+          ? '#ddd6fe'
+          : p.$role === 'partner'
+            ? '#bbf7d0'
+            : '#e5e7eb'};
+  }
+`;
+
 const UserMenuItems = styled.nav`
   padding: 0.5rem 0;
+`;
+
+const UserMenuButtonItem = styled.button`
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.75rem 1rem;
+  background: transparent;
+  border: none;
+  color: #374151;
+  text-align: left;
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 200ms;
+
+  [data-theme="dark"] & {
+    color: #d1d5db;
+  }
+
+  &:hover {
+    background: #f9fafb;
+    color: #111827;
+
+    [data-theme="dark"] & {
+      background: #374151;
+      color: #f9fafb;
+    }
+  }
+
+  svg {
+    width: 1.125rem;
+    height: 1.125rem;
+    color: #6b7280;
+
+    [data-theme="dark"] & {
+      color: #9ca3af;
+    }
+  }
 `;
 
 const UserMenuItem = styled(Link)`
@@ -379,6 +480,132 @@ const AccountSwitcherCheck = styled.div`
   svg {
     width: 1rem;
     height: 1rem;
+  }
+`;
+
+const ImpersonateOverlay = styled(motion.div)`
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  z-index: 1000;
+`;
+
+const ImpersonateModal = styled(motion.div)`
+  width: 100%;
+  max-width: 480px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  background: #ffffff;
+  border-radius: 0.75rem;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  overflow: hidden;
+
+  [data-theme="dark"] & {
+    background: #1f2937;
+  }
+`;
+
+const ImpersonateModalHeader = styled.div`
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid #e5e7eb;
+
+  [data-theme="dark"] & {
+    border-bottom-color: #374151;
+  }
+`;
+
+const ImpersonateModalTitle = styled.h3`
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #111827;
+
+  [data-theme="dark"] & {
+    color: #f9fafb;
+  }
+`;
+
+const ImpersonateModalSubtitle = styled.p`
+  margin: 0.25rem 0 0 0;
+  font-size: 0.8125rem;
+  color: #6b7280;
+
+  [data-theme="dark"] & {
+    color: #9ca3af;
+  }
+`;
+
+const ImpersonateSearchInput = styled.input`
+  width: 100%;
+  padding: 0.625rem 0.875rem;
+  font-size: 0.875rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
+  background: #ffffff;
+  color: #111827;
+  outline: none;
+  margin-top: 0.75rem;
+
+  &:focus {
+    border-color: #6366f1;
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
+  }
+
+  [data-theme="dark"] & {
+    background: #111827;
+    border-color: #374151;
+    color: #f9fafb;
+  }
+`;
+
+const ImpersonateModalBody = styled.div`
+  flex: 1;
+  overflow-y: auto;
+  padding: 0.5rem 0;
+`;
+
+const ImpersonateModalFooter = styled.div`
+  padding: 0.75rem 1.25rem;
+  border-top: 1px solid #e5e7eb;
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+
+  [data-theme="dark"] & {
+    border-top-color: #374151;
+  }
+`;
+
+const ImpersonateCancelButton = styled.button`
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  border: 1px solid #e5e7eb;
+  background: #ffffff;
+  color: #374151;
+  border-radius: 0.5rem;
+  cursor: pointer;
+
+  [data-theme="dark"] & {
+    background: transparent;
+    border-color: #374151;
+    color: #d1d5db;
+  }
+`;
+
+const ImpersonateEmptyState = styled.div`
+  padding: 2rem 1.25rem;
+  text-align: center;
+  font-size: 0.875rem;
+  color: #6b7280;
+
+  [data-theme="dark"] & {
+    color: #9ca3af;
   }
 `;
 
@@ -796,8 +1023,24 @@ export const Header: React.FC<HeaderProps> = ({
   const { language, setLanguage, t } = useLanguage();
   const { theme, setTheme } = useTheme();
   const { favoritesCount } = useFavorites();
-  const { user, isAuthenticated, logout, switchableAccounts, switchAccount } = useAuth();
+  const {
+    user,
+    isAuthenticated,
+    logout,
+    switchableAccounts,
+    switchAccount,
+    isImpersonating,
+    impersonate,
+    stopImpersonating,
+  } = useAuth();
   const [isSwitching, setIsSwitching] = useState<string | null>(null);
+  const [impersonateModalOpen, setImpersonateModalOpen] = useState(false);
+  const [impersonatableSearch, setImpersonatableSearch] = useState('');
+  const [impersonatablePartners, setImpersonatablePartners] = useState<ImpersonatablePartner[] | null>(null);
+  const [impersonatableLoading, setImpersonatableLoading] = useState(false);
+  const [impersonatableError, setImpersonatableError] = useState<string | null>(null);
+  const [isImpersonateBusy, setIsImpersonateBusy] = useState<string | null>(null);
+  const [isStoppingImpersonation, setIsStoppingImpersonation] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
   const themeMenuRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLDivElement>(null);
@@ -814,6 +1057,62 @@ export const Header: React.FC<HeaderProps> = ({
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
   }, [scrolled]);
+
+  // Fetch impersonatable partners lazily when the modal opens. Refetch each
+  // open so admins see newly-onboarded partners without a full reload. If the
+  // admin types in the search box, debouncing lives on the input itself —
+  // here we just reload on open.
+  useEffect(() => {
+    if (!impersonateModalOpen) return;
+    let cancelled = false;
+    setImpersonatableLoading(true);
+    setImpersonatableError(null);
+    apiService
+      .get<any>('/auth/impersonatable-partners')
+      .then((resp) => {
+        if (cancelled) return;
+        const list = (resp?.data ?? resp) as ImpersonatablePartner[];
+        setImpersonatablePartners(Array.isArray(list) ? list : []);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        const message = err?.response?.data?.error?.message
+          || err?.response?.data?.message
+          || err?.message
+          || 'Failed to load partners';
+        setImpersonatableError(message);
+      })
+      .finally(() => {
+        if (!cancelled) setImpersonatableLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [impersonateModalOpen]);
+
+  // Reset search + list on close so reopening starts clean.
+  useEffect(() => {
+    if (!impersonateModalOpen) {
+      setImpersonatableSearch('');
+      setImpersonatablePartners(null);
+      setImpersonatableError(null);
+      setIsImpersonateBusy(null);
+    }
+  }, [impersonateModalOpen]);
+
+  // Close impersonate modal on Escape. Suppress while a request is in flight
+  // so the admin doesn't accidentally dismiss the UI while a pick is still
+  // being processed (the overlay click is already guarded against the same).
+  useEffect(() => {
+    if (!impersonateModalOpen) return;
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isImpersonateBusy === null) {
+        setImpersonateModalOpen(false);
+      }
+    };
+    document.addEventListener('keydown', handleEscape);
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, [impersonateModalOpen, isImpersonateBusy]);
 
   // Close mobile menu on escape key
   useEffect(() => {
@@ -990,7 +1289,7 @@ export const Header: React.FC<HeaderProps> = ({
     return (
       <AccountSwitcherSection>
         <AccountSwitcherLabel>
-          {language === 'bg' ? 'Смени акаунт' : 'Switch account'}
+          {t('header.switchAccount')}
         </AccountSwitcherLabel>
         {switchableAccounts.map((account) => {
           const isActive = account.id === user.id;
@@ -1009,9 +1308,9 @@ export const Header: React.FC<HeaderProps> = ({
           );
           const roleLabel =
             account.role === 'SUPER_ADMIN' || account.role === 'ADMIN'
-              ? (language === 'bg' ? 'Администратор' : 'Admin')
+              ? t('header.role.admin')
               : account.role === 'PARTNER'
-                ? (language === 'bg' ? 'Партньор' : 'Partner')
+                ? t('header.role.partner')
                 : account.role;
           const isRowBusy = isSwitching !== null;
           return (
@@ -1215,11 +1514,68 @@ export const Header: React.FC<HeaderProps> = ({
                       <UserMenuHeader>
                         <UserMenuName>{`${user.firstName} ${user.lastName}`}</UserMenuName>
                         <UserMenuEmail>{user.email}</UserMenuEmail>
+                        <UserMenuRoleBadge $role={user.role} $impersonating={isImpersonating}>
+                          {isImpersonating
+                            ? t('header.role.impersonating')
+                            : user.role === 'admin'
+                              ? t('header.role.admin')
+                              : user.role === 'partner'
+                                ? t('header.role.partner')
+                                : t('header.role.user')}
+                        </UserMenuRoleBadge>
                       </UserMenuHeader>
 
                       {renderAccountSwitcher(() => setUserMenuOpen(false))}
 
                       <UserMenuItems>
+                        {isImpersonating && (
+                          <UserMenuButtonItem
+                            type="button"
+                            disabled={isStoppingImpersonation}
+                            onClick={async () => {
+                              if (isStoppingImpersonation) return;
+                              setIsStoppingImpersonation(true);
+                              try {
+                                await stopImpersonating();
+                                setUserMenuOpen(false);
+                                navigate('/admin');
+                              } catch {
+                                // toast already shown
+                              } finally {
+                                setIsStoppingImpersonation(false);
+                              }
+                            }}
+                          >
+                            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M15 19l-7-7 7-7"
+                              />
+                            </svg>
+                            {t('impersonation.stop')}
+                          </UserMenuButtonItem>
+                        )}
+                        {user.role === 'admin' && !isImpersonating && (
+                          <UserMenuButtonItem
+                            type="button"
+                            onClick={() => {
+                              setUserMenuOpen(false);
+                              setImpersonateModalOpen(true);
+                            }}
+                          >
+                            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+                              />
+                            </svg>
+                            {t('header.impersonatePartner')}
+                          </UserMenuButtonItem>
+                        )}
                         {user.role === 'admin' ? (
                           <>
                             <UserMenuItem
@@ -1846,6 +2202,122 @@ export const Header: React.FC<HeaderProps> = ({
       </AnimatePresence>
 
       {children}
+
+      <AnimatePresence>
+        {impersonateModalOpen && (
+          <ImpersonateOverlay
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={(e) => {
+              if (e.target === e.currentTarget && !isImpersonateBusy) {
+                setImpersonateModalOpen(false);
+              }
+            }}
+          >
+            <ImpersonateModal
+              initial={{ opacity: 0, y: 12, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 12, scale: 0.98 }}
+              transition={{ duration: 0.15 }}
+            >
+              <ImpersonateModalHeader>
+                <ImpersonateModalTitle>
+                  {t('impersonation.modalTitle')}
+                </ImpersonateModalTitle>
+                <ImpersonateModalSubtitle>
+                  {t('impersonation.modalSubtitle')}
+                </ImpersonateModalSubtitle>
+                <ImpersonateSearchInput
+                  autoFocus
+                  type="text"
+                  value={impersonatableSearch}
+                  onChange={(e) => setImpersonatableSearch(e.target.value)}
+                  placeholder={t('impersonation.searchPlaceholder')}
+                />
+              </ImpersonateModalHeader>
+
+              <ImpersonateModalBody>
+                {impersonatableLoading && (
+                  <ImpersonateEmptyState>
+                    {t('impersonation.loading')}
+                  </ImpersonateEmptyState>
+                )}
+                {impersonatableError && !impersonatableLoading && (
+                  <ImpersonateEmptyState>{impersonatableError}</ImpersonateEmptyState>
+                )}
+                {!impersonatableLoading && !impersonatableError && impersonatablePartners && (() => {
+                  const term = impersonatableSearch.trim().toLowerCase();
+                  const filtered = term
+                    ? impersonatablePartners.filter((p) => {
+                        return (
+                          (p.businessName || '').toLowerCase().includes(term) ||
+                          (p.businessNameBg || '').toLowerCase().includes(term) ||
+                          (p.email || '').toLowerCase().includes(term) ||
+                          (p.firstName || '').toLowerCase().includes(term) ||
+                          (p.lastName || '').toLowerCase().includes(term)
+                        );
+                      })
+                    : impersonatablePartners;
+
+                  if (filtered.length === 0) {
+                    return (
+                      <ImpersonateEmptyState>
+                        {t('impersonation.empty')}
+                      </ImpersonateEmptyState>
+                    );
+                  }
+
+                  return filtered.map((p) => {
+                    const displayName = p.businessName || [p.firstName, p.lastName].filter(Boolean).join(' ') || p.email;
+                    const initials = (
+                      (p.businessName?.[0] || p.firstName?.[0] || p.email[0] || '?') +
+                      (p.businessName?.[1] || p.lastName?.[0] || '')
+                    ).toUpperCase();
+                    const isRowBusy = isImpersonateBusy !== null;
+                    return (
+                      <AccountSwitcherItem
+                        key={p.userId}
+                        $active={false}
+                        $disabled={isRowBusy}
+                        onClick={async () => {
+                          if (isRowBusy) return;
+                          setIsImpersonateBusy(p.userId);
+                          try {
+                            await impersonate(p.userId);
+                            setImpersonateModalOpen(false);
+                            navigate('/dashboard');
+                          } catch {
+                            // toast already shown by impersonate()
+                          } finally {
+                            setIsImpersonateBusy(null);
+                          }
+                        }}
+                      >
+                        <AccountSwitcherAvatar $active={false}>{initials}</AccountSwitcherAvatar>
+                        <AccountSwitcherBody>
+                          <AccountSwitcherName>{displayName}</AccountSwitcherName>
+                          <AccountSwitcherRole>{p.email}</AccountSwitcherRole>
+                        </AccountSwitcherBody>
+                      </AccountSwitcherItem>
+                    );
+                  });
+                })()}
+              </ImpersonateModalBody>
+
+              <ImpersonateModalFooter>
+                <ImpersonateCancelButton
+                  type="button"
+                  disabled={isImpersonateBusy !== null}
+                  onClick={() => setImpersonateModalOpen(false)}
+                >
+                  {t('impersonation.cancel')}
+                </ImpersonateCancelButton>
+              </ImpersonateModalFooter>
+            </ImpersonateModal>
+          </ImpersonateOverlay>
+        )}
+      </AnimatePresence>
     </StyledHeader>
   );
 };

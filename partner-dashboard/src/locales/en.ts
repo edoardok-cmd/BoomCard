@@ -77,6 +77,28 @@ export const en = {
     bulkImport: 'Bulk Import',
     scanReview: 'Scan Review',
     adminReceipts: 'Receipts',
+    switchAccount: 'Switch account',
+    impersonatePartner: 'Impersonate partner',
+    role: {
+      admin: 'Administrator',
+      partner: 'Partner',
+      user: 'User',
+      impersonating: 'Impersonating partner',
+    },
+  },
+
+  // Admin impersonation UI (modal + banner + menu)
+  impersonation: {
+    modalTitle: 'Impersonate partner',
+    modalSubtitle: 'Pick a partner to view the dashboard from their perspective.',
+    searchPlaceholder: 'Search by name or email…',
+    loading: 'Loading…',
+    empty: 'No partners found.',
+    cancel: 'Cancel',
+    stop: 'Stop impersonating',
+    stopping: 'Stopping…',
+    bannerPrefix: 'You are impersonating',
+    bannerSuffix: '. Actions are audited.',
   },
 
   // Mobile Bottom Navigation
@@ -224,16 +246,6 @@ export const en = {
     alreadyHaveAccount: 'Already have an account?',
     signIn: 'Sign In',
     selectCategory: 'Select a category...',
-    // Categories
-    restaurant: 'Restaurant',
-    hotel: 'Hotel',
-    spa: 'Spa & Wellness',
-    winery: 'Winery',
-    entertainment: 'Entertainment',
-    sports: 'Sports & Fitness',
-    beauty: 'Beauty & Salon',
-    shopping: 'Shopping & Retail',
-    travel: 'Travel & Tourism',
     // Placeholders
     firstNamePlaceholder: 'John',
     lastNamePlaceholder: 'Smith',

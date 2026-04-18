@@ -94,6 +94,13 @@ export const registerValidation = [
     .isLength({ min: 1, max: 60 })
     .withMessage('businessInfo.businessCategory must be 1-60 characters'),
 
+  body('businessInfo.businessSubcategory')
+    .optional({ values: 'falsy' })
+    .isString()
+    .trim()
+    .isLength({ max: 80 })
+    .withMessage('businessInfo.businessSubcategory must be at most 80 characters'),
+
   body('businessInfo.taxId')
     .optional({ values: 'falsy' })
     .isString()

@@ -126,6 +126,10 @@ export function clearSession(): void {
   localStorage.removeItem('token');
   localStorage.removeItem('refreshToken');
   localStorage.removeItem('boomcard_switchable_accounts');
+  // Drop impersonation metadata too — otherwise a 401-driven refresh failure
+  // during an impersonation session leaves `boomcard_impersonation` behind,
+  // and the banner rehydrates on the next login screen load.
+  localStorage.removeItem('boomcard_impersonation');
 }
 
 /**

@@ -7,6 +7,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import { normalizePhone } from '../utils/validators';
 import Header from '../components/layout/Header/Header';
+import { placesCategories, experiencesCategories } from '../types/categories.types';
 
 const PageWrapper = styled.div`
   min-height: 100vh;
@@ -335,15 +336,10 @@ const RegisterPartnerPage: React.FC = () => {
 
   const categories = [
     { value: '', label: t('partnerRegistration.selectCategory') },
-    { value: 'RESTAURANT', label: t('partnerRegistration.restaurant') },
-    { value: 'HOTEL', label: t('partnerRegistration.hotel') },
-    { value: 'SPA', label: t('partnerRegistration.spa') },
-    { value: 'WINERY', label: t('partnerRegistration.winery') },
-    { value: 'ENTERTAINMENT', label: t('partnerRegistration.entertainment') },
-    { value: 'SPORTS', label: t('partnerRegistration.sports') },
-    { value: 'BEAUTY', label: t('partnerRegistration.beauty') },
-    { value: 'SHOPPING', label: t('partnerRegistration.shopping') },
-    { value: 'TRAVEL', label: t('partnerRegistration.travel') },
+    ...[...placesCategories, ...experiencesCategories].map(cat => ({
+      value: cat.id,
+      label: cat.name[language as 'en' | 'bg'] ?? cat.name.bg,
+    })),
   ];
 
   const [formData, setFormData] = useState({

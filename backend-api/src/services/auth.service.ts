@@ -41,6 +41,7 @@ export interface BusinessInfo {
   businessName: string;
   businessNameBg?: string;
   businessCategory: string;
+  businessSubcategory?: string;
   taxId?: string;
   website?: string;
 }
@@ -74,6 +75,22 @@ export interface TokenPayload {
   // preserved across refresh/switch so server-side surface filters
   // (mobile=USER-only) don't have to be re-derived from role.
   ct?: 'mobile' | 'web';
+  // Impersonation claims — set only by AuthService.impersonate() when an
+  // ADMIN/SUPER_ADMIN assumes a PARTNER session. `imp` flags the session,
+  // `impBy` is the admin userId used by /auth/stop-impersonate to restore
+  // the admin's own session without re-auth. `impAg` is the admin's own
+  // `ag` at impersonation time, carried here so stop-impersonate can
+  // rebuild the admin's sibling switcher without the admin's password.
+  imp?: true;
+  impBy?: string;
+  impByRole?: string;
+  impAg?: string[];
+}
+
+export interface ImpersonationClaims {
+  impBy: string;
+  impByRole: string;
+  impAg?: string[];
 }
 
 export interface SwitchableAccount {
@@ -174,13 +191,17 @@ export class AuthService {
           });
 
           const primaryCategory = info.businessCategory.trim();
+          const subcategory = info.businessSubcategory?.trim() || '';
+          const categoriesList = subcategory
+            ? [primaryCategory, subcategory]
+            : [primaryCategory];
           await tx.partner.create({
             data: {
               userId: created.id,
               businessName: info.businessName.trim(),
               businessNameBg: info.businessNameBg?.trim() || null,
               category: primaryCategory,
-              categories: [primaryCategory],
+              categories: categoriesList,
               status: PartnerStatus.PENDING,
               email: normalizedEmail,
               phone: sanitizedPhone,
@@ -427,7 +448,22 @@ export class AuthService {
         storedToken.accountGroup && storedToken.accountGroup.length > 0
           ? storedToken.accountGroup
           : undefined;
-      const tokens = await this.generateTokens(storedToken.user, clientType, ag);
+      // Carry impersonation claims across the rotation. Without this, the
+      // `imp/impBy/impByRole/impAg` fields are dropped on first refresh
+      // (~15m in), which (a) severs the audit trail — further actions look
+      // like a normal partner session — and (b) strands the admin in the
+      // partner account because /auth/stop-impersonate requires `imp:true`.
+      // The JWT signature has already been verified above, so decoded
+      // claims are trustworthy.
+      const impersonation: ImpersonationClaims | undefined =
+        decoded.imp && decoded.impBy && decoded.impByRole
+          ? {
+              impBy: decoded.impBy,
+              impByRole: decoded.impByRole,
+              impAg: decoded.impAg,
+            }
+          : undefined;
+      const tokens = await this.generateTokens(storedToken.user, clientType, ag, impersonation);
 
       // Delete old refresh token
       await prisma.refreshToken.delete({
@@ -944,7 +980,8 @@ export class AuthService {
       role: string;
     },
     clientType?: 'mobile' | 'web',
-    accountGroup?: string[]
+    accountGroup?: string[],
+    impersonation?: ImpersonationClaims
   ): Promise<AuthTokens> {
     const payload: TokenPayload = {
       id: user.id,
@@ -952,6 +989,16 @@ export class AuthService {
       role: user.role,
       ...(accountGroup && accountGroup.length > 1 ? { ag: accountGroup } : {}),
       ...(clientType ? { ct: clientType } : {}),
+      ...(impersonation
+        ? {
+            imp: true as const,
+            impBy: impersonation.impBy,
+            impByRole: impersonation.impByRole,
+            ...(impersonation.impAg && impersonation.impAg.length > 1
+              ? { impAg: impersonation.impAg }
+              : {}),
+          }
+        : {}),
     };
 
     // Generate access token (jti ensures uniqueness even within same second)
@@ -1185,6 +1232,230 @@ export class AuthService {
       user: targetWithoutPassword,
       ...tokens,
       switchableAccounts: filtered,
+    };
+  }
+
+  /**
+   * Admin-initiated impersonation of a PARTNER account.
+   *
+   * Unlike switchAccount (which uses the login-time bcrypt-match `accountGroup`
+   * to authorize sibling pivots), impersonation grants an ADMIN/SUPER_ADMIN a
+   * PARTNER session based purely on the admin's role. The returned token is
+   * stamped with `imp:true` + `impBy:<adminId>` so downstream code can tell
+   * it's an impersonation and /auth/stop-impersonate knows who to restore.
+   *
+   * The impersonation token does NOT carry any accountGroup — a caller
+   * holding the partner-token must not be able to pivot further via
+   * /switch-account. Returning to admin is only possible via
+   * stopImpersonate(), which requires `impBy` in the current token.
+   */
+  static async impersonate(input: {
+    adminId: string;
+    adminRole: string;
+    adminAccountGroup?: string[];
+    targetPartnerUserId: string;
+    clientType: 'mobile' | 'web' | undefined;
+    tokenIssuedAt?: number;
+    // Admin's current refresh token. Revoked here so the pre-impersonation
+    // admin session can't be silently replayed from a leaked refresh token
+    // after the admin has already opened an impersonation session. Scoped
+    // to (token, userId=adminId) so a body-supplied string can only delete
+    // rows belonging to the authenticated caller — same invariant as
+    // switchAccount.
+    currentAdminRefreshToken?: string;
+  }) {
+    const { adminId, adminRole, adminAccountGroup, targetPartnerUserId, clientType, tokenIssuedAt, currentAdminRefreshToken } = input;
+
+    if (clientType === 'mobile') {
+      throw new AppError('Impersonation is not available on mobile', 403);
+    }
+    if (adminRole !== 'ADMIN' && adminRole !== 'SUPER_ADMIN') {
+      throw new AppError('Not authorized', 403);
+    }
+    if (!targetPartnerUserId) {
+      throw new AppError('targetPartnerUserId is required', 400);
+    }
+    if (targetPartnerUserId === adminId) {
+      throw new AppError('Cannot impersonate yourself', 400);
+    }
+
+    const [target, admin] = await Promise.all([
+      prisma.user.findUnique({
+        where: { id: targetPartnerUserId },
+        select: {
+          id: true,
+          email: true,
+          firstName: true,
+          lastName: true,
+          role: true,
+          status: true,
+          avatar: true,
+          passwordChangedAt: true,
+        },
+      }),
+      prisma.user.findUnique({
+        where: { id: adminId },
+        select: { id: true, role: true, status: true, passwordChangedAt: true },
+      }),
+    ]);
+
+    if (!target) throw new AppError('Target partner not found', 404);
+    if (target.role !== 'PARTNER') {
+      throw new AppError('Target is not a partner', 400);
+    }
+    if (target.status !== 'ACTIVE') {
+      throw new AppError('Target partner is not active', 403);
+    }
+    if (!admin) throw new AppError('Admin account not found', 404);
+    if (admin.role !== 'ADMIN' && admin.role !== 'SUPER_ADMIN') {
+      throw new AppError('Not authorized', 403);
+    }
+    if (admin.status !== 'ACTIVE') {
+      throw new AppError('Admin account is not active', 403);
+    }
+
+    // Mirror switchAccount's password-rotation guard — if the admin rotated
+    // their own password after this access token was minted, force re-auth.
+    // We do NOT guard on target.passwordChangedAt here: the admin never
+    // entered the partner's password to begin with, so a rotation on the
+    // partner side doesn't invalidate an admin action.
+    if (typeof tokenIssuedAt === 'number') {
+      const graceMs = (tokenIssuedAt + 1) * 1000;
+      if (admin.passwordChangedAt && admin.passwordChangedAt.getTime() > graceMs) {
+        throw new AppError(
+          'Your credentials have changed — please sign in again',
+          401
+        );
+      }
+    }
+
+    await prisma.user.update({
+      where: { id: target.id },
+      data: { lastLoginAt: new Date() },
+    });
+
+    // Revoke the admin's pre-impersonation refresh token so a stolen copy of
+    // it can't be replayed to silently resurrect the admin session alongside
+    // the impersonation session. Stop-impersonate mints a fresh admin pair
+    // on exit, so nothing else depends on this row.
+    if (currentAdminRefreshToken) {
+      await prisma.refreshToken.deleteMany({
+        where: { token: currentAdminRefreshToken, userId: admin.id },
+      });
+    }
+
+    // No accountGroup passed — impersonation tokens are single-purpose; we
+    // don't want a captured impersonation token to enable pivots to other
+    // siblings via /switch-account. Stop-impersonate is the only way back.
+    const tokens = await this.generateTokens(
+      { id: target.id, email: target.email, role: target.role },
+      'web',
+      undefined,
+      {
+        impBy: admin.id,
+        impByRole: admin.role,
+        ...(adminAccountGroup && adminAccountGroup.length > 1 ? { impAg: adminAccountGroup } : {}),
+      },
+    );
+
+    const startedAt = new Date().toISOString();
+    logger.warn('Admin impersonation started', {
+      adminId: admin.id,
+      adminRole: admin.role,
+      targetUserId: target.id,
+      targetEmail: target.email,
+      targetRole: target.role,
+      startedAt,
+    });
+
+    const { passwordChangedAt: _pwc, ...targetUser } = target;
+    return {
+      user: targetUser,
+      ...tokens,
+      impersonation: { adminId: admin.id, adminRole: admin.role, startedAt },
+    };
+  }
+
+  /**
+   * End an impersonation session. The caller's access token must carry
+   * `imp:true` + `impBy:<adminId>`; we use those claims to locate the admin,
+   * verify they're still ADMIN/ACTIVE (defense against role demotion while
+   * impersonating), and issue a fresh admin token pair.
+   */
+  static async stopImpersonate(input: {
+    currentUserId: string;
+    impersonatedBy: string | undefined;
+    impersonatedByAg: string[] | undefined;
+    isImpersonation: boolean;
+    clientType: 'mobile' | 'web' | undefined;
+    currentRefreshToken?: string;
+  }) {
+    const { currentUserId, impersonatedBy, impersonatedByAg, isImpersonation, clientType, currentRefreshToken } = input;
+
+    if (!isImpersonation || !impersonatedBy) {
+      throw new AppError('Not an impersonation session', 400);
+    }
+
+    const admin = await prisma.user.findUnique({
+      where: { id: impersonatedBy },
+      select: {
+        id: true,
+        email: true,
+        firstName: true,
+        lastName: true,
+        role: true,
+        status: true,
+        avatar: true,
+      },
+    });
+
+    if (!admin) throw new AppError('Admin account no longer exists', 404);
+    if (admin.role !== 'ADMIN' && admin.role !== 'SUPER_ADMIN') {
+      throw new AppError('Your admin privileges have changed — please sign in again', 401);
+    }
+    if (admin.status !== 'ACTIVE') {
+      throw new AppError('Admin account is not active', 403);
+    }
+
+    // Revoke the current (impersonation) refresh token. Scope to the
+    // impersonation userId so a body-supplied token string can only delete
+    // a row belonging to the authenticated caller — same invariant as
+    // switchAccount.
+    if (currentRefreshToken) {
+      await prisma.refreshToken.deleteMany({
+        where: { token: currentRefreshToken, userId: currentUserId },
+      });
+    }
+
+    // Restore the admin's original accountGroup from the `impAg` claim we
+    // stamped at impersonate() time. We can't reconstruct it from scratch
+    // here without the admin's password (bcrypt matching happens at login),
+    // so the impersonation token carries it forward.
+    const accountGroup =
+      impersonatedByAg && impersonatedByAg.length > 1 ? impersonatedByAg : undefined;
+
+    const tokens = await this.generateTokens(
+      { id: admin.id, email: admin.email, role: admin.role },
+      clientType,
+      accountGroup,
+    );
+
+    let switchableAccounts: SwitchableAccount[] | undefined;
+    if (accountGroup) {
+      switchableAccounts = await this.getSwitchableAccounts(accountGroup, clientType);
+    }
+
+    logger.warn('Admin impersonation ended', {
+      adminId: admin.id,
+      adminRole: admin.role,
+      impersonatedUserId: currentUserId,
+      endedAt: new Date().toISOString(),
+    });
+
+    return {
+      user: admin,
+      ...tokens,
+      ...(switchableAccounts ? { switchableAccounts } : {}),
     };
   }
 }

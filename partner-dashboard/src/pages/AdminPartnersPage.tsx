@@ -782,6 +782,28 @@ const LEGACY_CATEGORY_MAP: Record<string, string> = {
   'Екстремни': 'extreme',
   'Образователни и творчески': 'educational-creative',
   'Релакс и уелнес': 'relax-wellness',
+  // Old PartnersPage SCREAMING_SNAKE_CASE values (pre-canonical-ID migration)
+  'RESTAURANTS_FOOD': 'restaurants',
+  'ACCOMMODATION': 'accommodation',
+  'SPA_WELLNESS': 'spa',
+  'PANORAMIC_PLACES': 'panoramic',
+  'CLUBS_NIGHTLIFE': 'clubs',
+  'CAFES_BAKERIES': 'cafes',
+  'GASTRONOMIC': 'gastronomic',
+  'HISTORICAL_CULTURAL': 'historical-cultural',
+  'ACTIVE_ADVENTURE': 'active-adventure',
+  'EXTREME': 'extreme',
+  'EDUCATIONAL_CREATIVE': 'educational-creative',
+  'RELAX_WELLNESS': 'relax-wellness',
+  // Old RegisterPartnerPage business-type values (pre-canonical-ID migration)
+  'RESTAURANT': 'restaurants',
+  'HOTEL': 'accommodation',
+  'SPA': 'spa',
+  'WINERY': 'restaurants',
+  'SPORTS': 'spa',
+  'BEAUTY': 'spa',
+  'SHOPPING': 'cafes',
+  'TRAVEL': 'accommodation',
 };
 
 function migrateCategoryId(id: string): string {

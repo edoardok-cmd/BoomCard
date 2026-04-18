@@ -8,7 +8,7 @@ import { AuthService } from '../services/auth.service';
 import { imageUploadService } from '../services/imageUpload.service';
 import { prisma } from '../lib/prisma';
 import { logger } from '../utils/logger';
-import { authRateLimiter, switchAccountRateLimiter, switchableAccountsRateLimiter } from '../middleware/security.middleware';
+import { authRateLimiter, switchAccountRateLimiter, switchableAccountsRateLimiter, impersonateRateLimiter } from '../middleware/security.middleware';
 
 const avatarUpload = multer({
   storage: multer.memoryStorage(),
@@ -182,9 +182,23 @@ router.get(
 
     const user = await AuthService.getUserById(userId);
 
+    // Echo impersonation claims from the bearer token so the frontend can
+    // reconcile its local banner state against authoritative server truth.
+    // Without this, a cleared localStorage entry (or a tab that rehydrates
+    // from stale state) would desync the banner from the actual session.
+    const impersonation = req.user!.imp
+      ? {
+          adminId: req.user!.impBy!,
+          adminRole: req.user!.impByRole!,
+        }
+      : undefined;
+
     res.json({
       success: true,
-      data: user,
+      data: {
+        ...user,
+        ...(impersonation ? { impersonation } : {}),
+      },
     });
   })
 );
@@ -464,6 +478,17 @@ router.post(
       });
     }
 
+    // Belt-and-braces: impersonation tokens intentionally carry no `ag`, so
+    // switchAccount already refuses them at the service layer (no sibling
+    // group). Rejecting them at the route gives a clearer error and mirrors
+    // the guard on /auth/impersonate so the two flows can't interleave.
+    if (req.user!.imp) {
+      return res.status(400).json({
+        error: 'Validation Error',
+        message: 'Cannot switch accounts while impersonating — stop impersonation first',
+      });
+    }
+
     const result = await AuthService.switchAccount({
       currentUserId: req.user!.id,
       accountGroup: req.user!.ag,
@@ -519,6 +544,149 @@ router.get(
     const available = users.filter(u => !existingPartnerUserIds.has(u.id));
 
     res.json({ success: true, data: available });
+  }),
+);
+
+// ----------------------------------------------------------------
+// GET /api/auth/impersonatable-partners
+// Admin only — lists partners (PARTNER users WITH an attached Partner
+// record) that an admin can impersonate. Distinct from /users/partners,
+// which returns partner-role users WITHOUT a Partner record (for the
+// attach-partner admin flow). Response is intentionally minimal.
+// ----------------------------------------------------------------
+router.get(
+  '/impersonatable-partners',
+  authenticate,
+  authorize('ADMIN', 'SUPER_ADMIN'),
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    const { search } = req.query as { search?: string };
+
+    const where: any = {
+      user: { role: 'PARTNER', status: 'ACTIVE' },
+    };
+    if (search && search.trim()) {
+      const term = search.trim();
+      where.OR = [
+        { businessName: { contains: term, mode: 'insensitive' } },
+        { businessNameBg: { contains: term, mode: 'insensitive' } },
+        { user: { email: { contains: term, mode: 'insensitive' } } },
+        { user: { firstName: { contains: term, mode: 'insensitive' } } },
+        { user: { lastName: { contains: term, mode: 'insensitive' } } },
+      ];
+    }
+
+    const partners = await prisma.partner.findMany({
+      where,
+      select: {
+        id: true,
+        userId: true,
+        businessName: true,
+        businessNameBg: true,
+        logo: true,
+        status: true,
+        user: {
+          select: { id: true, email: true, firstName: true, lastName: true, avatar: true },
+        },
+      },
+      orderBy: [{ businessName: 'asc' }],
+      take: 100,
+    });
+
+    res.json({
+      success: true,
+      data: partners.map((p) => ({
+        partnerId: p.id,
+        userId: p.userId,
+        businessName: p.businessName,
+        businessNameBg: p.businessNameBg,
+        logo: p.logo,
+        status: p.status,
+        email: p.user.email,
+        firstName: p.user.firstName,
+        lastName: p.user.lastName,
+        avatar: p.user.avatar,
+      })),
+    });
+  }),
+);
+
+// ----------------------------------------------------------------
+// POST /api/auth/impersonate
+// Admin only — assume a PARTNER session. Issues tokens stamped with
+// `imp:true` + `impBy:<adminId>` so /auth/stop-impersonate can restore
+// the admin without re-auth. See AuthService.impersonate for invariants.
+// ----------------------------------------------------------------
+router.post(
+  '/impersonate',
+  authenticate,
+  authorize('ADMIN', 'SUPER_ADMIN'),
+  impersonateRateLimiter,
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    const { targetPartnerUserId, refreshToken } = req.body as {
+      targetPartnerUserId?: string;
+      refreshToken?: string;
+    };
+
+    if (!targetPartnerUserId || typeof targetPartnerUserId !== 'string') {
+      return res.status(400).json({
+        error: 'Validation Error',
+        message: 'targetPartnerUserId is required',
+      });
+    }
+
+    // Refuse to start a nested impersonation — the `imp` bit on the caller's
+    // token means they're already impersonating. Requiring them to stop
+    // first keeps the audit trail linear and avoids "impBy of impBy" chains.
+    if (req.user!.imp) {
+      return res.status(400).json({
+        error: 'Validation Error',
+        message: 'Already impersonating — stop the current session first',
+      });
+    }
+
+    const result = await AuthService.impersonate({
+      adminId: req.user!.id,
+      adminRole: req.user!.role,
+      adminAccountGroup: req.user!.ag,
+      targetPartnerUserId,
+      clientType: resolveClientType(req),
+      tokenIssuedAt: req.user!.iat,
+      currentAdminRefreshToken: refreshToken,
+    });
+
+    res.json({
+      success: true,
+      message: 'Impersonation started',
+      data: result,
+    });
+  }),
+);
+
+// ----------------------------------------------------------------
+// POST /api/auth/stop-impersonate
+// Ends the current impersonation session and issues a fresh admin token
+// pair based on the `impBy` claim. Requires an impersonation token.
+// ----------------------------------------------------------------
+router.post(
+  '/stop-impersonate',
+  authenticate,
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    const { refreshToken } = req.body as { refreshToken?: string };
+
+    const result = await AuthService.stopImpersonate({
+      currentUserId: req.user!.id,
+      impersonatedBy: req.user!.impBy,
+      impersonatedByAg: req.user!.impAg,
+      isImpersonation: req.user!.imp === true,
+      clientType: resolveClientType(req),
+      currentRefreshToken: refreshToken,
+    });
+
+    res.json({
+      success: true,
+      message: 'Impersonation ended',
+      data: result,
+    });
   }),
 );
 
