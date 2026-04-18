@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import styled from 'styled-components';
-import { Filter, MapPin, Percent, Star, DollarSign, ChevronDown, ChevronUp, Navigation, LayoutGrid } from 'lucide-react';
+import { Filter, MapPin, Percent, Star, DollarSign, ChevronDown, ChevronUp, Navigation, LayoutGrid, Search } from 'lucide-react';
 import Button from '../Button/Button';
 import { placesCategories } from '../../../types/categories.types';
 
@@ -254,6 +254,56 @@ const NearMeButton = styled.button<{ $active: boolean }>`
   }
 `;
 
+const SearchRow = styled.div`
+  margin-top: 1.25rem;
+  margin-bottom: 0.25rem;
+`;
+
+const SearchInput = styled.div`
+  position: relative;
+
+  svg {
+    position: absolute;
+    left: 0.875rem;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 1rem;
+    height: 1rem;
+    color: #9ca3af;
+  }
+
+  input {
+    width: 100%;
+    padding: 0.625rem 0.875rem 0.625rem 2.5rem;
+    border: 2px solid #e5e7eb;
+    border-radius: 0.75rem;
+    font-size: 0.875rem;
+    background: white;
+    color: #111827;
+    transition: all 0.2s;
+    box-sizing: border-box;
+
+    [data-theme="dark"] & {
+      border-color: #4b5563;
+      background: #374151;
+      color: #f9fafb;
+    }
+
+    &::placeholder {
+      color: #9ca3af;
+    }
+
+    &:focus {
+      outline: none;
+      border-color: #000000;
+
+      [data-theme="dark"] & {
+        border-color: #f9fafb;
+      }
+    }
+  }
+`;
+
 const FilterActions = styled.div`
   display: flex;
   gap: 0.75rem;
@@ -273,6 +323,7 @@ export interface BoomPlacesFiltersState {
   discountRanges: string[];
   ratingRanges: string[];
   priceLevels: string[];
+  search?: string;
 }
 
 interface BoomPlacesFiltersProps {
@@ -290,6 +341,19 @@ const BoomPlacesFilters: React.FC<BoomPlacesFiltersProps> = ({
 }) => {
   const { language, t } = useLanguage();
   const [isExpanded, setIsExpanded] = useState(true);
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleSearchChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    searchTimerRef.current = setTimeout(() => {
+      onChange({ ...filters, search: value });
+    }, 300);
+  }, [filters, onChange]);
+
+  useEffect(() => {
+    return () => { if (searchTimerRef.current) clearTimeout(searchTimerRef.current); };
+  }, []);
 
   const locations = [
     { id: 'sofia', en: 'Sofia', bg: 'София' },
@@ -424,6 +488,7 @@ const BoomPlacesFilters: React.FC<BoomPlacesFiltersProps> = ({
       discountRanges: [],
       ratingRanges: [],
       priceLevels: [],
+      search: '',
     });
   };
 
@@ -435,6 +500,7 @@ const BoomPlacesFilters: React.FC<BoomPlacesFiltersProps> = ({
     count += filters.discountRanges.length;
     count += filters.ratingRanges.length;
     count += filters.priceLevels.length;
+    if (filters.search) count++;
     return count;
   };
 
@@ -465,6 +531,19 @@ const BoomPlacesFilters: React.FC<BoomPlacesFiltersProps> = ({
             exit={{ height: 0, opacity: 0 }}
             transition={{ duration: 0.2 }}
           >
+            {/* Search */}
+            <SearchRow>
+              <SearchInput>
+                <Search />
+                <input
+                  type="text"
+                  placeholder={language === 'bg' ? 'Търси...' : 'Search venues...'}
+                  defaultValue={filters.search}
+                  onChange={handleSearchChange}
+                />
+              </SearchInput>
+            </SearchRow>
+
             <FilterGrid>
               {/* Category */}
               {showCategory && (

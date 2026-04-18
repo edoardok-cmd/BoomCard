@@ -826,7 +826,18 @@ const ExperiencesFilters: React.FC<ExperiencesFiltersProps> = ({
   );
 
   if (sidebar) {
-    return <>{innerContent}</>;
+    return (
+      <>
+        <FilterHeader style={{ cursor: 'default' }}>
+          <FilterTitle>
+            <Filter />
+            {language === 'bg' ? 'Филтри' : 'Filters'}
+            {activeCount > 0 && ` (${activeCount})`}
+          </FilterTitle>
+        </FilterHeader>
+        {innerContent}
+      </>
+    );
   }
 
   return (

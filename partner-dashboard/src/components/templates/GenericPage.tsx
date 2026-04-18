@@ -1,4 +1,4 @@
-import React, { ReactNode } from 'react';
+import React, { ReactNode, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import styled from 'styled-components';
@@ -154,7 +154,7 @@ const ContentLayout = styled.div`
   }
 `;
 
-const SidebarFilters = styled.aside`
+const SidebarFilters = styled.aside<{ $showMobile: boolean }>`
   position: sticky;
   top: 1.5rem;
   max-height: calc(100vh - 3rem);
@@ -168,6 +168,40 @@ const SidebarFilters = styled.aside`
   &::-webkit-scrollbar-thumb {
     background: #e5e7eb;
     border-radius: 2px;
+  }
+
+  @media (max-width: 768px) {
+    position: static;
+    max-height: none;
+    display: ${props => props.$showMobile ? 'block' : 'none'};
+  }
+`;
+
+const MobileFilterToggle = styled.button`
+  display: none;
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--color-border, #e5e7eb);
+  border-radius: 0.75rem;
+  background: var(--color-background, #ffffff);
+  color: var(--color-text-primary, #374151);
+  font-size: 0.9375rem;
+  font-weight: 500;
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  font-family: inherit;
+
+  [data-theme="dark"] & {
+    background: #1f2937;
+    border-color: #374151;
+    color: #d1d5db;
+  }
+
+  @media (max-width: 768px) {
+    display: flex;
   }
 `;
 
@@ -254,6 +288,7 @@ export const GenericPage: React.FC<GenericPageProps> = ({
   backgroundImage,
 }) => {
   const { language, t } = useLanguage();
+  const [showMobileFilters, setShowMobileFilters] = useState(false);
 
   const title = language === 'bg' ? titleBg : titleEn;
   const subtitle = language === 'bg' ? subtitleBg : subtitleEn;
@@ -288,8 +323,15 @@ export const GenericPage: React.FC<GenericPageProps> = ({
       <ContentSection>
         <Container>
           {filters ? (
-            <ContentLayout>
-              <SidebarFilters>{filters}</SidebarFilters>
+            <>
+              <MobileFilterToggle onClick={() => setShowMobileFilters(v => !v)}>
+                <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+                </svg>
+                {language === 'bg' ? 'Филтри' : 'Filters'}
+              </MobileFilterToggle>
+              <ContentLayout>
+              <SidebarFilters $showMobile={showMobileFilters}>{filters}</SidebarFilters>
               <MainContent>
                 {children}
 
@@ -323,7 +365,8 @@ export const GenericPage: React.FC<GenericPageProps> = ({
                   </EmptyState>
                 )}
               </MainContent>
-            </ContentLayout>
+              </ContentLayout>
+            </>
           ) : (
             <>
               {children}

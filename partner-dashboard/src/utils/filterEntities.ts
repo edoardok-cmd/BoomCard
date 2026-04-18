@@ -36,9 +36,11 @@ export function filterEntities(
   const hasRating = filters.ratingRanges.length > 0;
   const hasPriceLevels = filters.priceLevels.length > 0;
   const hasNearMe = filters.nearMe && !!userCoords;
+  const searchTerm = filters.search?.toLowerCase().trim() ?? '';
+  const hasSearch = searchTerm.length > 0;
 
   // No filters active → return all
-  if (!hasCategories && !hasLocations && !hasDiscount && !hasRating && !hasPriceLevels && !hasNearMe) {
+  if (!hasCategories && !hasLocations && !hasDiscount && !hasRating && !hasPriceLevels && !hasNearMe && !hasSearch) {
     return entities;
   }
 
@@ -145,6 +147,20 @@ export function filterEntities(
       if (!coords) return false;
       const distKm = haversineKm(userCoords.lat, userCoords.lng, coords.lat, coords.lng);
       if (distKm > NEAR_ME_RADIUS_KM) return false;
+    }
+
+    // --- Search filter ---
+    if (hasSearch) {
+      const nameEn = (entity.name?.en || '').toLowerCase();
+      const nameBg = (entity.name?.bg || '').toLowerCase();
+      const descEn = (entity.description?.en || '').toLowerCase();
+      const descBg = (entity.description?.bg || '').toLowerCase();
+      const city = (entity.location.city || entity.location.display || '').toLowerCase();
+      if (!nameEn.includes(searchTerm) && !nameBg.includes(searchTerm) &&
+          !descEn.includes(searchTerm) && !descBg.includes(searchTerm) &&
+          !city.includes(searchTerm)) {
+        return false;
+      }
     }
 
     return true;
