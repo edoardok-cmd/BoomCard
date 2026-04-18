@@ -8,7 +8,7 @@ import { AuthService } from '../services/auth.service';
 import { imageUploadService } from '../services/imageUpload.service';
 import { prisma } from '../lib/prisma';
 import { logger } from '../utils/logger';
-import { authRateLimiter } from '../middleware/security.middleware';
+import { authRateLimiter, switchAccountRateLimiter, switchableAccountsRateLimiter } from '../middleware/security.middleware';
 
 const avatarUpload = multer({
   storage: multer.memoryStorage(),
@@ -407,6 +407,78 @@ router.delete(
       data: user,
     });
   })
+);
+
+// Prefer the `ct` claim stamped at login time. Tokens minted before that
+// claim existed (pre-deploy) fall back to Origin/Referer inference: a
+// browser always sends at least one of those; the Expo native app sends
+// neither. Role-based inference was lossy for USER-on-web sessions (a
+// customer browsing the web app would be misclassified as mobile and get
+// 403'd on /switch-account).
+function resolveClientType(req: AuthRequest): 'mobile' | 'web' {
+  if (req.user!.ct) return req.user!.ct;
+  const origin = req.get('origin') || req.get('referer');
+  return origin ? 'web' : 'mobile';
+}
+
+/**
+ * GET /api/auth/switchable-accounts
+ * List sibling accounts the current session can switch into without re-auth.
+ * Empty list when the session's login matched a single account.
+ */
+router.get(
+  '/switchable-accounts',
+  authenticate,
+  switchableAccountsRateLimiter,
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    const accounts = await AuthService.getSwitchableAccounts(req.user!.ag, resolveClientType(req));
+
+    res.json({ success: true, data: accounts });
+  }),
+);
+
+/**
+ * POST /api/auth/switch-account
+ * Mint a fresh token pair for one of the sibling accounts from the current
+ * session's ag claim. Old refresh token (if supplied) is rotated out.
+ *
+ * Rate-limited via `switchAccountRateLimiter` (userId-keyed, 30/15min) —
+ * tighter than ordinary API traffic but loose enough to never get in a
+ * real user's way. Mounted AFTER `authenticate` so the limiter keys by
+ * req.user.id rather than IP (office NAT would otherwise starve itself).
+ */
+router.post(
+  '/switch-account',
+  authenticate,
+  switchAccountRateLimiter,
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    const { targetAccountId, refreshToken } = req.body as {
+      targetAccountId?: string;
+      refreshToken?: string;
+    };
+
+    if (!targetAccountId || typeof targetAccountId !== 'string') {
+      return res.status(400).json({
+        error: 'Validation Error',
+        message: 'targetAccountId is required',
+      });
+    }
+
+    const result = await AuthService.switchAccount({
+      currentUserId: req.user!.id,
+      accountGroup: req.user!.ag,
+      clientType: resolveClientType(req),
+      targetAccountId,
+      currentRefreshToken: refreshToken,
+      tokenIssuedAt: req.user!.iat,
+    });
+
+    res.json({
+      success: true,
+      message: 'Account switched',
+      data: result,
+    });
+  }),
 );
 
 // ----------------------------------------------------------------

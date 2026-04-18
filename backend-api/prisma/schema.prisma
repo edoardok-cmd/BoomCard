@@ -46,6 +46,11 @@ model User {
   // Password Reset
   passwordResetToken   String?
   passwordResetExpires DateTime?
+  // Stamped whenever the passwordHash is rotated (change, reset, delete-anonymize).
+  // Used by /auth/switch-account to refuse sibling-pivot attempts from an
+  // access token that was issued before the rotation (access tokens are not
+  // individually revocable, so we compare against the token's iat).
+  passwordChangedAt    DateTime?
 
   // GDPR Consent Tracking
   termsAcceptedAt    DateTime?
@@ -85,17 +90,27 @@ model User {
 }
 
 model RefreshToken {
-  id         String   @id @default(uuid())
-  token      String   @unique
-  userId     String
-  clientType String?
-  expiresAt  DateTime
-  createdAt  DateTime @default(now())
+  id           String   @id @default(uuid())
+  token        String   @unique
+  userId       String
+  clientType   String?
+  // IDs of sibling accounts the same login (same email + same password) also
+  // opened. Lets the user freely switch between them without re-auth. Empty
+  // array means "no siblings" — the common single-account case.
+  accountGroup String[] @default([])
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([token])
   @@index([userId])
+  // Matches the SQL migration `20260418_refresh_token_account_group_gin`.
+  // Required so password rotation / account deletion's `accountGroup: { has: userId }`
+  // filter uses the index instead of seq-scanning RefreshToken.
+  // `map:` pins the name so `prisma migrate diff` doesn't see drift against
+  // the migration's `_gin` suffix (Prisma's default would be `_idx`).
+  @@index([accountGroup], type: Gin, map: "RefreshToken_accountGroup_gin")
 }
 
 // ============================================

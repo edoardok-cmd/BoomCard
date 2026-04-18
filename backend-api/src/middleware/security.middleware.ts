@@ -142,6 +142,67 @@ export const authRateLimiter = rateLimit({
 });
 
 /**
+ * Account-switch rate limiter.
+ *
+ * /switch-account is authenticated, so brute-force isn't the concern here —
+ * the point is to cap DB-write griefing (token rotation) and accidental
+ * runaway loops. Keyed by the authenticated user id so shared-IP offices /
+ * NATed households don't starve each other, and the cap is deliberately
+ * higher than authRateLimiter's 5/15min so a user flipping between 2–3
+ * accounts during a normal work session never hits it.
+ *
+ * Must be mounted AFTER `authenticate` so req.user is populated by the time
+ * this runs; the keyGenerator falls back to IP only as a defence-in-depth
+ * against misordering.
+ */
+export const switchAccountRateLimiter = rateLimit({
+  windowMs: parseInt(process.env.SWITCH_ACCOUNT_RATE_LIMIT_WINDOW_MS || '900000'), // 15 minutes
+  max: parseInt(process.env.SWITCH_ACCOUNT_RATE_LIMIT_MAX_REQUESTS || '30'), // 30 switches
+  keyGenerator: (req) => {
+    const userId = (req as any).user?.id;
+    return userId ? `switch:${userId}` : `switch-ip:${req.ip || 'unknown'}`;
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req, res) => {
+    logger.warn(`Switch-account rate limit exceeded for user ${(req as any).user?.id} (ip ${req.ip})`);
+    res.status(429).json({
+      error: 'Too Many Requests',
+      message: 'Too many account switches, please slow down',
+    });
+  },
+  skip: () => process.env.NODE_ENV === 'development',
+});
+
+/**
+ * Read-side rate limiter for the switcher list.
+ *
+ * /switchable-accounts filters out SUSPENDED / INACTIVE siblings, so without
+ * any cap a leaked access token could poll the endpoint as an oracle for
+ * "when does sibling X get suspended?". Cap is looser than the write-side
+ * switchAccountRateLimiter because legitimate UIs may pull the list on every
+ * tab focus / route change.
+ */
+export const switchableAccountsRateLimiter = rateLimit({
+  windowMs: parseInt(process.env.SWITCHABLE_ACCOUNTS_RATE_LIMIT_WINDOW_MS || '900000'), // 15 minutes
+  max: parseInt(process.env.SWITCHABLE_ACCOUNTS_RATE_LIMIT_MAX_REQUESTS || '120'), // 120 reads
+  keyGenerator: (req) => {
+    const userId = (req as any).user?.id;
+    return userId ? `switchable:${userId}` : `switchable-ip:${req.ip || 'unknown'}`;
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req, res) => {
+    logger.warn(`Switchable-accounts rate limit exceeded for user ${(req as any).user?.id} (ip ${req.ip})`);
+    res.status(429).json({
+      error: 'Too Many Requests',
+      message: 'Too many requests, please slow down',
+    });
+  },
+  skip: () => process.env.NODE_ENV === 'development',
+});
+
+/**
  * API Rate Limiter
  * Standard rate limiting for API endpoints
  */

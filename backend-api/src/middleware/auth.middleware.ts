@@ -7,6 +7,18 @@ export interface AuthRequest extends Request {
     id: string;
     email: string;
     role: string;
+    // Sibling-account IDs this session can switch between without re-auth.
+    // Populated from the `ag` claim on the access token; only present when
+    // the login matched more than one account (see AuthService.login).
+    ag?: string[];
+    // Client surface the token was minted for. Populated from the `ct`
+    // claim; absent on tokens issued before the claim was added, in which
+    // case callers should fall back to Origin/Referer inference.
+    ct?: 'mobile' | 'web';
+    // Standard JWT `iat` (seconds since epoch). Needed by /switch-account
+    // to compare against target.passwordChangedAt and refuse pivots from
+    // tokens issued before the target rotated their credentials.
+    iat?: number;
   };
   file?: any; // Multer file upload
 }

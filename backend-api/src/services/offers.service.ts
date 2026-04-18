@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import { prisma } from '../lib/prisma';
 import { partnerTypeService } from './partnerType.service';
 import { imageUploadService } from './imageUpload.service';
+import { CASHBACK_MATRIX_STEPS } from '../constants/receipt.constants';
 
 function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371000;
@@ -146,9 +147,11 @@ class OffersService {
       ? await partnerTypeService.getMaxDiscountForType(partnerTypeId)
       : 100; // no type = no cap (shouldn't happen after migration)
 
+    const steps = CASHBACK_MATRIX_STEPS as readonly number[];
+
     if (discountPercent !== undefined && discountPercent !== null) {
-      if (discountPercent < 0 || discountPercent > 100) {
-        throw new Error('Discount percent must be between 0 and 100');
+      if (!steps.includes(discountPercent)) {
+        throw new Error(`Discount percent must be one of: ${steps.join(', ')}`);
       }
       if (!isAdmin && discountPercent > maxDiscount) {
         throw new Error(
@@ -159,8 +162,8 @@ class OffersService {
     }
 
     if (cashbackPercent !== undefined && cashbackPercent !== null) {
-      if (cashbackPercent < 0 || cashbackPercent > 100) {
-        throw new Error('Cashback percent must be between 0 and 100');
+      if (!steps.includes(cashbackPercent)) {
+        throw new Error(`Cashback percent must be one of: ${steps.join(', ')}`);
       }
       if (!isAdmin && cashbackPercent > maxDiscount) {
         throw new Error(

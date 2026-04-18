@@ -11,6 +11,7 @@ import { asyncHandler } from '../middleware/error.middleware';
 import { authenticate, authorize, AuthRequest } from '../middleware/auth.middleware';
 import { partnerTypeService } from '../services/partnerType.service';
 import { SubscriptionPlan } from '@prisma/client';
+import { CASHBACK_MATRIX_STEPS } from '../constants/receipt.constants';
 
 const router = Router();
 
@@ -43,8 +44,11 @@ router.post(
     }
 
     const rate = Number(maxDiscountRate);
-    if (!isFinite(rate) || rate < 0 || rate > 100) {
-      return res.status(400).json({ success: false, error: 'maxDiscountRate must be a number between 0 and 100' });
+    if (!isFinite(rate) || !(CASHBACK_MATRIX_STEPS as readonly number[]).includes(rate)) {
+      return res.status(400).json({
+        success: false,
+        error: `maxDiscountRate must be one of: ${CASHBACK_MATRIX_STEPS.join(', ')}`,
+      });
     }
 
     try {
@@ -87,8 +91,11 @@ router.put(
     if (isActive !== undefined) updateData.isActive = Boolean(isActive);
     if (maxDiscountRate !== undefined) {
       const rate = Number(maxDiscountRate);
-      if (!isFinite(rate) || rate < 0 || rate > 100) {
-        return res.status(400).json({ success: false, error: 'maxDiscountRate must be a number between 0 and 100' });
+      if (!isFinite(rate) || !(CASHBACK_MATRIX_STEPS as readonly number[]).includes(rate)) {
+        return res.status(400).json({
+          success: false,
+          error: `maxDiscountRate must be one of: ${CASHBACK_MATRIX_STEPS.join(', ')}`,
+        });
       }
       updateData.maxDiscountRate = rate;
     }

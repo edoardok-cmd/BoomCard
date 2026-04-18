@@ -66,6 +66,23 @@ export interface TokenPayload {
   id: string;
   email: string;
   role: string;
+  // IDs of sibling accounts that share the same email+password. Present when
+  // login matched more than one account on the chosen surface (web or mobile).
+  // Used by /auth/switch-account to authorize switching without re-auth.
+  ag?: string[];
+  // Client surface the token was minted for. Stamped at login time and
+  // preserved across refresh/switch so server-side surface filters
+  // (mobile=USER-only) don't have to be re-derived from role.
+  ct?: 'mobile' | 'web';
+}
+
+export interface SwitchableAccount {
+  id: string;
+  role: string;
+  firstName: string | null;
+  lastName: string | null;
+  avatar: string | null;
+  businessName: string | null;
 }
 
 export interface AuthTokens {
@@ -311,9 +328,28 @@ export class AuthService {
 
     logger.info(`User logged in: ${user.email}`);
 
-    // Generate tokens (stamp clientType so refresh-time checks can enforce
-    // mobile=USER-only even if role changes or a leaked token is replayed).
-    const tokens = await this.generateTokens(user, clientType);
+    // Compute the sibling-account group eligible for switching on this
+    // surface. Web clients may switch between PARTNER/ADMIN/SUPER_ADMIN;
+    // mobile is USER-only so there's no cross-surface switching.
+    const eligible = matches.filter((m) =>
+      clientType === 'mobile' ? m.role === 'USER' : m.role !== 'USER'
+    );
+    const accountGroup = eligible.length > 1 ? eligible.map((m) => m.id) : undefined;
+
+    const tokens = await this.generateTokens(user, clientType, accountGroup);
+
+    // Expose sibling accounts so the client can render a switcher. Only
+    // included when there's more than one — avoids an extra DB hit and a
+    // useless UI entry on the common single-account login.
+    //
+    // Route through getSwitchableAccounts (not fetchSwitchableAccounts) so
+    // the surface filter is applied in one authoritative place — keeps the
+    // login response consistent with what /switchable-accounts and
+    // /switch-account will return on the same session.
+    let switchableAccounts: SwitchableAccount[] | undefined;
+    if (accountGroup) {
+      switchableAccounts = await this.getSwitchableAccounts(accountGroup, clientType);
+    }
 
     // Remove password hash from response
     const { passwordHash, ...userWithoutPassword } = user;
@@ -321,6 +357,7 @@ export class AuthService {
     return {
       user: userWithoutPassword,
       ...tokens,
+      ...(switchableAccounts ? { switchableAccounts } : {}),
     };
   }
 
@@ -380,12 +417,17 @@ export class AuthService {
       }
 
       // Generate new tokens, preserving the original clientType so the guard
-      // above keeps applying across rotations.
+      // above keeps applying across rotations. Also preserve accountGroup so
+      // the switch-account capability survives refresh.
       const clientType =
         storedToken.clientType === 'mobile' || storedToken.clientType === 'web'
           ? (storedToken.clientType as 'mobile' | 'web')
           : undefined;
-      const tokens = await this.generateTokens(storedToken.user, clientType);
+      const ag =
+        storedToken.accountGroup && storedToken.accountGroup.length > 0
+          ? storedToken.accountGroup
+          : undefined;
+      const tokens = await this.generateTokens(storedToken.user, clientType, ag);
 
       // Delete old refresh token
       await prisma.refreshToken.delete({
@@ -549,15 +591,25 @@ export class AuthService {
     // Hash new password
     const newPasswordHash = await bcrypt.hash(newPassword, 12);
 
-    // Update password
+    // Update password. Stamp passwordChangedAt so switchAccount can refuse
+    // sibling-pivot attempts from access tokens issued before this rotation
+    // (access tokens are not individually revocable — see switchAccount).
     await prisma.user.update({
       where: { id: userId },
-      data: { passwordHash: newPasswordHash },
+      data: { passwordHash: newPasswordHash, passwordChangedAt: new Date() },
     });
 
-    // Invalidate all refresh tokens
+    // Invalidate all refresh tokens for this user AND any sibling session
+    // whose accountGroup claim still lists this user as a switch target —
+    // otherwise a sibling session could switchAccount into this now-rotated
+    // account without knowing the new password.
     await prisma.refreshToken.deleteMany({
-      where: { userId },
+      where: {
+        OR: [
+          { userId },
+          { accountGroup: { has: userId } },
+        ],
+      },
     });
 
     logger.info(`Password changed for user: ${user.email}`);
@@ -613,6 +665,9 @@ export class AuthService {
         avatar: null,
         status: 'INACTIVE',
         passwordHash: await bcrypt.hash(uuid(), 12), // Invalidate password
+        // Stamp so any sibling session's access token (still valid for its
+        // 15-min TTL) can't pivot into this now-deleted account.
+        passwordChangedAt: new Date(),
       },
     });
 
@@ -628,9 +683,15 @@ export class AuthService {
       });
     }
 
-    // Invalidate all refresh tokens
+    // Invalidate all refresh tokens for this user AND any sibling session
+    // whose accountGroup still lists this deleted user as a switch target.
     await prisma.refreshToken.deleteMany({
-      where: { userId },
+      where: {
+        OR: [
+          { userId },
+          { accountGroup: { has: userId } },
+        ],
+      },
     });
 
     // Check wallet balance for user notification
@@ -850,11 +911,23 @@ export class AuthService {
         passwordHash,
         passwordResetToken: null,
         passwordResetExpires: null,
+        // Same reason as changePassword: close the sibling-pivot window
+        // for access tokens minted before this reset.
+        passwordChangedAt: new Date(),
       },
     });
 
-    // Invalidate all refresh tokens
-    await prisma.refreshToken.deleteMany({ where: { userId: user.id } });
+    // Invalidate all refresh tokens for this user AND any sibling session
+    // whose accountGroup claim still lists this user — see changePassword
+    // for rationale.
+    await prisma.refreshToken.deleteMany({
+      where: {
+        OR: [
+          { userId: user.id },
+          { accountGroup: { has: user.id } },
+        ],
+      },
+    });
 
     logger.info(`Password reset successful for ${user.email}`);
 
@@ -870,12 +943,15 @@ export class AuthService {
       email: string;
       role: string;
     },
-    clientType?: 'mobile' | 'web'
+    clientType?: 'mobile' | 'web',
+    accountGroup?: string[]
   ): Promise<AuthTokens> {
     const payload: TokenPayload = {
       id: user.id,
       email: user.email,
       role: user.role,
+      ...(accountGroup && accountGroup.length > 1 ? { ag: accountGroup } : {}),
+      ...(clientType ? { ct: clientType } : {}),
     };
 
     // Generate access token (jti ensures uniqueness even within same second)
@@ -897,13 +973,15 @@ export class AuthService {
       expiresAt.setDate(expiresAt.getDate() + 7); // Default 7 days
     }
 
-    // Store refresh token in database with clientType so refresh-time checks
-    // can enforce role/surface rules (mobile = USER only).
+    // Store refresh token in database with clientType + accountGroup so
+    // surface rules (mobile = USER only) and the switch-account capability
+    // both survive rotation.
     await prisma.refreshToken.create({
       data: {
         token: refreshTokenString,
         userId: user.id,
         clientType: clientType ?? null,
+        accountGroup: accountGroup ?? [],
         expiresAt,
       },
     });
@@ -912,6 +990,201 @@ export class AuthService {
       accessToken,
       refreshToken: refreshTokenString,
       expiresIn: JWT_EXPIRES_IN,
+    };
+  }
+
+  /**
+   * Hydrate a list of account IDs into the UI-friendly shape used by the
+   * account switcher. Caller is responsible for authorizing which IDs the
+   * current session is allowed to see.
+   */
+  private static async fetchSwitchableAccounts(accountIds: string[]): Promise<SwitchableAccount[]> {
+    if (accountIds.length === 0) return [];
+
+    // Exclude SUSPENDED/INACTIVE: listing them in the switcher only lets the
+    // user click a row that then 403s in switchAccount — hide them instead.
+    const users = await prisma.user.findMany({
+      where: {
+        id: { in: accountIds },
+        status: { notIn: ['SUSPENDED', 'INACTIVE'] },
+      },
+      select: {
+        id: true,
+        role: true,
+        firstName: true,
+        lastName: true,
+        avatar: true,
+        partner: { select: { businessName: true } },
+      },
+    });
+
+    // Preserve caller-requested order so the primary account stays first
+    // in the switcher.
+    const byId = new Map(users.map((u) => [u.id, u]));
+    return accountIds
+      .map((id) => byId.get(id))
+      .filter((u): u is NonNullable<typeof u> => Boolean(u))
+      .map((u) => ({
+        id: u.id,
+        role: u.role,
+        firstName: u.firstName,
+        lastName: u.lastName,
+        avatar: u.avatar,
+        businessName: u.partner?.businessName ?? null,
+      }));
+  }
+
+  /**
+   * Return the list of sibling accounts the current session may switch to.
+   *
+   * The `accountGroup` claim was computed at login time from the bcrypt
+   * match set, so every ID in it has already been authenticated with the
+   * same password. We still refilter by surface (mobile = USER only) to
+   * stop a leaked web token from discovering USER siblings.
+   */
+  static async getSwitchableAccounts(
+    accountGroup: string[] | undefined,
+    clientType: 'mobile' | 'web' | undefined
+  ): Promise<SwitchableAccount[]> {
+    if (!accountGroup || accountGroup.length < 2) return [];
+
+    const accounts = await this.fetchSwitchableAccounts(accountGroup);
+    return accounts.filter((a) =>
+      clientType === 'mobile' ? a.role === 'USER' : a.role !== 'USER'
+    );
+  }
+
+  /**
+   * Switch the current session to one of the sibling accounts from the
+   * current access token's `ag` claim. Issues a fresh token pair for the
+   * target account (carrying the same group so switching back works), and
+   * revokes the caller's refresh token so we don't accumulate orphans.
+   */
+  static async switchAccount(input: {
+    currentUserId: string;
+    accountGroup: string[] | undefined;
+    clientType: 'mobile' | 'web' | undefined;
+    targetAccountId: string;
+    currentRefreshToken?: string;
+    // iat (seconds since epoch) of the access token authorizing this call.
+    // Used to detect password rotation on the target that happened after the
+    // caller's token was minted — see the passwordChangedAt check below.
+    tokenIssuedAt?: number;
+  }) {
+    const { currentUserId, accountGroup, clientType, targetAccountId, currentRefreshToken, tokenIssuedAt } = input;
+
+    if (!accountGroup || accountGroup.length < 2) {
+      throw new AppError('This session has no switchable accounts', 400);
+    }
+    if (!accountGroup.includes(targetAccountId)) {
+      throw new AppError('Target account is not in this session', 403);
+    }
+    if (targetAccountId === currentUserId) {
+      throw new AppError('Already signed in to this account', 400);
+    }
+
+    const [target, caller] = await Promise.all([
+      prisma.user.findUnique({
+        where: { id: targetAccountId },
+        select: {
+          id: true,
+          email: true,
+          passwordHash: true,
+          firstName: true,
+          lastName: true,
+          role: true,
+          status: true,
+          avatar: true,
+          passwordChangedAt: true,
+        },
+      }),
+      // Caller's own passwordChangedAt so we can also refuse pivots from a
+      // stale access token minted before the CALLER's own password rotated.
+      // Covers the incident-response flow where an admin rotates A's password
+      // because A is suspected compromised: any leaked access token for A
+      // must not be usable to hop to B within the 15-min TTL.
+      prisma.user.findUnique({
+        where: { id: currentUserId },
+        select: { passwordChangedAt: true },
+      }),
+    ]);
+
+    if (!target) {
+      throw new AppError('Target account no longer exists', 404);
+    }
+
+    if (target.status === 'SUSPENDED' || target.status === 'INACTIVE') {
+      throw new AppError('Target account is not available', 403);
+    }
+
+    // Close the sibling-pivot window. Access tokens are not individually
+    // revocable; if EITHER the target or the caller rotated their password
+    // after this access token was minted, the shared-password bond is stale
+    // and we must force re-authentication. Checking both sides closes the
+    // asymmetry where a leaked caller-token could still pivot even after
+    // the caller's own credentials were rotated in response to a breach.
+    // The 1-second grace is a clock-skew cushion (iat is seconds, Date.now
+    // is ms; jwt.sign can emit iat floored from a ms clock drift ahead of
+    // the subsequent DB write).
+    if (typeof tokenIssuedAt === 'number') {
+      const graceMs = (tokenIssuedAt + 1) * 1000;
+      if (target.passwordChangedAt && target.passwordChangedAt.getTime() > graceMs) {
+        throw new AppError(
+          'Target account credentials have changed — please sign in again',
+          401
+        );
+      }
+      if (caller?.passwordChangedAt && caller.passwordChangedAt.getTime() > graceMs) {
+        throw new AppError(
+          'Your credentials have changed — please sign in again',
+          401
+        );
+      }
+    }
+
+    // Enforce surface rules on the target too — a web-issued group should
+    // only ever contain non-USER IDs, but guard anyway in case of drift.
+    if (clientType === 'mobile' && target.role !== 'USER') {
+      throw new AppError('Cannot switch to this account on mobile', 403);
+    }
+    if (clientType === 'web' && target.role === 'USER') {
+      throw new AppError('Cannot switch to a customer account on web', 403);
+    }
+
+    await prisma.user.update({
+      where: { id: target.id },
+      data: { lastLoginAt: new Date() },
+    });
+
+    // Rotate: revoke caller's refresh token (if provided) and issue a fresh
+    // pair for the target. The new pair carries the same accountGroup, so
+    // the user can switch back (or to another sibling) without re-auth.
+    //
+    // Scoped to userId so a body-supplied token string can only delete a
+    // refresh token belonging to the authenticated caller — otherwise any
+    // authed user could nuke an arbitrary token by passing its string.
+    if (currentRefreshToken) {
+      await prisma.refreshToken.deleteMany({
+        where: { token: currentRefreshToken, userId: currentUserId },
+      });
+    }
+
+    const tokens = await this.generateTokens(target, clientType, accountGroup);
+
+    const { passwordHash, ...targetWithoutPassword } = target;
+    const switchableAccounts = await this.fetchSwitchableAccounts(accountGroup);
+    const filtered = switchableAccounts.filter((a) =>
+      clientType === 'mobile' ? a.role === 'USER' : a.role !== 'USER'
+    );
+
+    logger.info(
+      `Account switched: user ${currentUserId} -> ${target.id} (${target.email}, role=${target.role})`
+    );
+
+    return {
+      user: targetWithoutPassword,
+      ...tokens,
+      switchableAccounts: filtered,
     };
   }
 }
