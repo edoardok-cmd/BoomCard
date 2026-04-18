@@ -15,7 +15,7 @@ import { Router, Response } from 'express';
 import { asyncHandler } from '../middleware/error.middleware';
 import { authenticate, authorize, optionalAuthenticate, AuthRequest } from '../middleware/auth.middleware';
 import { prisma } from '../lib/prisma';
-import { OfferStatus, PartnerStatus, UserStatus } from '@prisma/client';
+import { OfferStatus, PartnerStatus, ScanStatus, UserStatus } from '@prisma/client';
 import { partnerTypeService } from '../services/partnerType.service';
 import { CASHBACK_MATRIX_STEPS } from '../constants/receipt.constants';
 import { emailService } from '../services/email.service';
@@ -143,6 +143,169 @@ router.get(
         ...partner,
         typeMaxDiscountPercent: typeMaxDiscount,
         effectiveDiscountRate: partner.discountRate ?? typeMaxDiscount,
+      },
+    });
+  }),
+);
+
+// ----------------------------------------------------------------
+// GET /api/partners/me/analytics?days=30
+// Returns real scan analytics aggregated across the partner's venues
+// ----------------------------------------------------------------
+router.get(
+  '/me/analytics',
+  authenticate,
+  authorize('PARTNER', 'ADMIN', 'SUPER_ADMIN'),
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    const days = Math.min(parseInt(req.query.days as string) || 30, 365);
+
+    const partner = await prisma.partner.findUnique({
+      where: { userId: req.user!.id },
+      select: { id: true, venues: { select: { id: true, name: true } } },
+    });
+
+    if (!partner) {
+      return res.status(404).json({ success: false, error: 'Partner profile not found' });
+    }
+
+    const venueIds = partner.venues.map(v => v.id);
+
+    if (venueIds.length === 0) {
+      return res.json({
+        success: true,
+        data: {
+          period: { days, startDate: new Date(), endDate: new Date() },
+          stats: { totalSavings: 0, activeCards: 0, totalUses: 0, avgDiscount: 0 },
+          changes: { totalSavings: 0, activeCards: 0, totalUses: 0, avgDiscount: 0 },
+          timeSeries: [],
+          byVenue: [],
+        },
+      });
+    }
+
+    const now = new Date();
+    const currentStart = new Date(now);
+    currentStart.setDate(currentStart.getDate() - days);
+    const previousStart = new Date(currentStart);
+    previousStart.setDate(previousStart.getDate() - days);
+
+    const [currentScans, previousScans] = await Promise.all([
+      prisma.stickerScan.findMany({
+        where: { venueId: { in: venueIds }, createdAt: { gte: currentStart } },
+        select: {
+          id: true,
+          venueId: true,
+          cardId: true,
+          cashbackAmount: true,
+          cashbackPercent: true,
+          status: true,
+          createdAt: true,
+        },
+      }),
+      prisma.stickerScan.findMany({
+        where: { venueId: { in: venueIds }, createdAt: { gte: previousStart, lt: currentStart } },
+        select: { cardId: true, cashbackAmount: true, cashbackPercent: true, status: true },
+      }),
+    ]);
+
+    const approved = currentScans.filter(s => s.status === ScanStatus.APPROVED);
+    const prevApproved = previousScans.filter(s => s.status === ScanStatus.APPROVED);
+
+    const totalSavings = approved.reduce((sum, s) => sum + s.cashbackAmount, 0);
+    const activeCards = new Set(approved.map(s => s.cardId).filter(Boolean)).size;
+    const totalUses = approved.length;
+    const avgDiscount = approved.length > 0
+      ? approved.reduce((sum, s) => sum + s.cashbackPercent, 0) / approved.length
+      : 0;
+
+    const prevSavings = prevApproved.reduce((sum, s) => sum + s.cashbackAmount, 0);
+    const prevCards = new Set(prevApproved.map(s => s.cardId).filter(Boolean)).size;
+    const prevUses = prevApproved.length;
+    const prevAvgDiscount = prevApproved.length > 0
+      ? prevApproved.reduce((sum, s) => sum + s.cashbackPercent, 0) / prevApproved.length
+      : 0;
+
+    const pctChange = (curr: number, prev: number) =>
+      prev === 0 ? (curr > 0 ? 100 : 0) : Math.round(((curr - prev) / prev) * 1000) / 10;
+
+    // Time series — group by day (7d/30d), by week (90d), by month (1y)
+    const buckets: Record<string, { label: string; savings: number; uses: number }> = {};
+    const bucketKey = (date: Date) => {
+      if (days <= 30) {
+        return date.toISOString().slice(0, 10);
+      } else if (days <= 90) {
+        const d = new Date(date);
+        d.setDate(d.getDate() - d.getDay());
+        return d.toISOString().slice(0, 10);
+      } else {
+        return date.toISOString().slice(0, 7);
+      }
+    };
+    const bucketLabel = (key: string) => {
+      if (days <= 30) {
+        const d = new Date(key);
+        return d.toLocaleDateString('en-US', { weekday: 'short', timeZone: 'UTC' });
+      } else if (days <= 90) {
+        const d = new Date(key);
+        return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+      } else {
+        const [y, m] = key.split('-');
+        return new Date(Number(y), Number(m) - 1).toLocaleDateString('en-US', { month: 'short' });
+      }
+    };
+
+    for (const scan of approved) {
+      const key = bucketKey(scan.createdAt);
+      if (!buckets[key]) buckets[key] = { label: bucketLabel(key), savings: 0, uses: 0 };
+      buckets[key].savings = Math.round((buckets[key].savings + scan.cashbackAmount) * 100) / 100;
+      buckets[key].uses += 1;
+    }
+    const timeSeries = Object.entries(buckets)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([date, data]) => ({ date, ...data }));
+
+    // By venue breakdown
+    const COLORS = ['#667eea', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
+    const venueTotals: Record<string, number> = {};
+    for (const scan of approved) {
+      venueTotals[scan.venueId] = (venueTotals[scan.venueId] || 0) + scan.cashbackAmount;
+    }
+    const sortedVenues = partner.venues
+      .map((v) => ({
+        venueId: v.id,
+        venueName: v.name,
+        savings: Math.round((venueTotals[v.id] || 0) * 100) / 100,
+      }))
+      .filter(v => v.savings > 0)
+      .sort((a, b) => b.savings - a.savings);
+    let runningPct = 0;
+    const byVenue = sortedVenues.map((v, i, arr) => {
+      const isLast = i === arr.length - 1;
+      const percentage = totalSavings > 0
+        ? (isLast ? 100 - runningPct : Math.round((v.savings / totalSavings) * 100))
+        : 0;
+      if (!isLast) runningPct += percentage;
+      return { ...v, color: COLORS[i % COLORS.length], percentage };
+    });
+
+    res.json({
+      success: true,
+      data: {
+        period: { days, startDate: currentStart, endDate: now },
+        stats: {
+          totalSavings: Math.round(totalSavings * 100) / 100,
+          activeCards,
+          totalUses,
+          avgDiscount: Math.round(avgDiscount * 10) / 10,
+        },
+        changes: {
+          totalSavings: pctChange(totalSavings, prevSavings),
+          activeCards: pctChange(activeCards, prevCards),
+          totalUses: pctChange(totalUses, prevUses),
+          avgDiscount: pctChange(avgDiscount, prevAvgDiscount),
+        },
+        timeSeries,
+        byVenue,
       },
     });
   }),

@@ -2,7 +2,10 @@ import React, { useState } from 'react';
 import styled from 'styled-components';
 import { motion } from 'framer-motion';
 import { TrendingUp, TrendingDown, DollarSign, CreditCard, Users, ArrowUp, ArrowDown } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
 import { useLanguage } from '../contexts/LanguageContext';
+import { apiService } from '../services/api.service';
+import { useCurrentPartner } from '../hooks/usePartners';
 
 const PageContainer = styled.div`
   min-height: calc(100vh - 4rem);
@@ -325,9 +328,58 @@ const CategoryValue = styled.div`
   }
 `;
 
+const EmptyState = styled.div`
+  text-align: center;
+  padding: 3rem;
+  color: #6b7280;
+  font-size: 0.875rem;
+`;
+
+const ErrorBanner = styled.div`
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 0.5rem;
+  color: #dc2626;
+  font-size: 0.875rem;
+  font-weight: 500;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1.5rem;
+
+  [data-theme="dark"] & {
+    background: #450a0a;
+    border-color: #7f1d1d;
+    color: #fca5a5;
+  }
+`;
+
+const PERIOD_DAYS: Record<string, number> = { '7d': 7, '30d': 30, '90d': 90, '1y': 365 };
+
+interface AnalyticsData {
+  period: { days: number; startDate: string; endDate: string };
+  stats: { totalSavings: number; activeCards: number; totalUses: number; avgDiscount: number };
+  changes: { totalSavings: number; activeCards: number; totalUses: number; avgDiscount: number };
+  timeSeries: { date: string; label: string; savings: number; uses: number }[];
+  byVenue: { venueId: string; venueName: string; savings: number; percentage: number; color: string }[];
+}
+
 const AnalyticsPage: React.FC = () => {
   const { language } = useLanguage();
   const [selectedPeriod, setSelectedPeriod] = useState<'7d' | '30d' | '90d' | '1y'>('30d');
+
+  const { data: currentPartner } = useCurrentPartner();
+  const partnerId = currentPartner?.id ?? null;
+
+  const { data: analyticsResponse, isLoading, isError } = useQuery({
+    queryKey: ['partner-analytics', selectedPeriod, partnerId],
+    queryFn: () => apiService.get<{ success: boolean; data: AnalyticsData }>(
+      '/partners/me/analytics',
+      { days: PERIOD_DAYS[selectedPeriod] },
+    ),
+    staleTime: 2 * 60 * 1000,
+    retry: 1,
+  });
+
+  const analytics: AnalyticsData | null = analyticsResponse?.data ?? null;
 
   const content = {
     en: {
@@ -347,15 +399,8 @@ const AnalyticsPage: React.FC = () => {
       },
       charts: {
         savingsOverTime: 'Savings Over Time',
-        savingsByCategory: 'Savings by Category',
+        savingsByVenue: 'Savings by Venue',
         savings: 'Savings',
-        uses: 'Uses',
-      },
-      categories: {
-        restaurants: 'Restaurants',
-        hotels: 'Hotels',
-        spa: 'Spa & Wellness',
-        entertainment: 'Entertainment',
       },
     },
     bg: {
@@ -375,57 +420,26 @@ const AnalyticsPage: React.FC = () => {
       },
       charts: {
         savingsOverTime: 'Спестявания във Времето',
-        savingsByCategory: 'Спестявания по Категория',
+        savingsByVenue: 'Спестявания по Обект',
         savings: 'Спестявания',
-        uses: 'Използвания',
-      },
-      categories: {
-        restaurants: 'Ресторанти',
-        hotels: 'Хотели',
-        spa: 'Спа и Уелнес',
-        entertainment: 'Развлечения',
       },
     },
   };
 
   const t = content[language as keyof typeof content];
 
-  // Mock data - would come from API in production
-  const stats = {
-    totalSavings: { value: 1247, change: 12.5, positive: true },
-    activeCards: { value: 3, change: 0, positive: true },
-    totalUses: { value: 24, change: 8.3, positive: true },
-    avgDiscount: { value: 38, change: -2.1, positive: false },
-  };
+  const stats = analytics?.stats ?? { totalSavings: 0, activeCards: 0, totalUses: 0, avgDiscount: 0 };
+  const changes = analytics?.changes ?? { totalSavings: 0, activeCards: 0, totalUses: 0, avgDiscount: 0 };
+  const timeSeries = analytics?.timeSeries ?? [];
+  const byVenue = analytics?.byVenue ?? [];
 
-  const savingsData = [
-    { label: 'Mon', value: 45, uses: 3 },
-    { label: 'Tue', value: 78, uses: 5 },
-    { label: 'Wed', value: 120, uses: 8 },
-    { label: 'Thu', value: 95, uses: 6 },
-    { label: 'Fri', value: 180, uses: 12 },
-    { label: 'Sat', value: 240, uses: 15 },
-    { label: 'Sun', value: 210, uses: 11 },
-  ];
+  const maxSavings = Math.max(...timeSeries.map(d => d.savings), 1);
 
-  const categoryData = [
-    { name: t.categories.restaurants, value: 450, percentage: 36, color: '#667eea' },
-    { name: t.categories.hotels, value: 380, percentage: 30, color: '#10b981' },
-    { name: t.categories.spa, value: 280, percentage: 22, color: '#f59e0b' },
-    { name: t.categories.entertainment, value: 137, percentage: 12, color: '#ef4444' },
-  ];
-
-  const maxSavings = Math.max(...savingsData.map(d => d.value));
-
-  // Calculate pie chart segments
+  // Pie chart segments from by-venue data
   let currentAngle = 0;
-  const pieSegments = categoryData.map(cat => {
-    const angle = (cat.percentage / 100) * 360;
-    const segment = {
-      ...cat,
-      startAngle: currentAngle,
-      endAngle: currentAngle + angle,
-    };
+  const pieSegments = byVenue.map(v => {
+    const angle = (v.percentage / 100) * 360;
+    const segment = { ...v, startAngle: currentAngle, endAngle: currentAngle + angle };
     currentAngle += angle;
     return segment;
   });
@@ -434,17 +448,13 @@ const AnalyticsPage: React.FC = () => {
     const radius = 80;
     const cx = 100;
     const cy = 100;
-
     const angleInRadians = (percentage / 100) * 2 * Math.PI;
     const startAngleRad = (startAngle / 100) * 2 * Math.PI;
-
     const x1 = cx + radius * Math.cos(startAngleRad);
     const y1 = cy + radius * Math.sin(startAngleRad);
     const x2 = cx + radius * Math.cos(startAngleRad + angleInRadians);
     const y2 = cy + radius * Math.sin(startAngleRad + angleInRadians);
-
     const largeArc = percentage > 50 ? 1 : 0;
-
     return `M ${cx} ${cy} L ${x1} ${y1} A ${radius} ${radius} 0 ${largeArc} 1 ${x2} ${y2} Z`;
   };
 
@@ -455,6 +465,10 @@ const AnalyticsPage: React.FC = () => {
           <Title>{t.title}</Title>
           <Subtitle>{t.subtitle}</Subtitle>
         </PageHeader>
+
+        {isError && (
+          <ErrorBanner>Failed to load analytics data. Please try again later.</ErrorBanner>
+        )}
 
         <DateFilter>
           {(Object.keys(t.periods) as Array<keyof typeof t.periods>).map(period => (
@@ -469,149 +483,129 @@ const AnalyticsPage: React.FC = () => {
         </DateFilter>
 
         <StatsGrid>
-          <StatCard
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 }}
-          >
+          <StatCard initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
             <StatHeader>
-              <div>
-                <StatLabel>{t.stats.totalSavings}</StatLabel>
-              </div>
-              <StatIconWrapper $color="#10b981">
-                <DollarSign />
-              </StatIconWrapper>
+              <div><StatLabel>{t.stats.totalSavings}</StatLabel></div>
+              <StatIconWrapper $color="#10b981"><DollarSign /></StatIconWrapper>
             </StatHeader>
-            <StatValue>€{stats.totalSavings.value}</StatValue>
-            <StatChange $positive={stats.totalSavings.positive}>
-              {stats.totalSavings.positive ? <ArrowUp /> : <ArrowDown />}
-              {Math.abs(stats.totalSavings.change)}%
+            <StatValue>€{isLoading ? '—' : stats.totalSavings.toLocaleString()}</StatValue>
+            <StatChange $positive={changes.totalSavings >= 0}>
+              {changes.totalSavings >= 0 ? <ArrowUp /> : <ArrowDown />}
+              {Math.abs(changes.totalSavings)}%
             </StatChange>
           </StatCard>
 
-          <StatCard
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
-          >
+          <StatCard initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
             <StatHeader>
-              <div>
-                <StatLabel>{t.stats.activeCards}</StatLabel>
-              </div>
-              <StatIconWrapper $color="#667eea">
-                <CreditCard />
-              </StatIconWrapper>
+              <div><StatLabel>{t.stats.activeCards}</StatLabel></div>
+              <StatIconWrapper $color="#667eea"><CreditCard /></StatIconWrapper>
             </StatHeader>
-            <StatValue>{stats.activeCards.value}</StatValue>
-            <StatChange $positive={stats.activeCards.positive}>
-              {stats.activeCards.positive ? <ArrowUp /> : <ArrowDown />}
-              {Math.abs(stats.activeCards.change)}%
+            <StatValue>{isLoading ? '—' : stats.activeCards}</StatValue>
+            <StatChange $positive={changes.activeCards >= 0}>
+              {changes.activeCards >= 0 ? <ArrowUp /> : <ArrowDown />}
+              {Math.abs(changes.activeCards)}%
             </StatChange>
           </StatCard>
 
-          <StatCard
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3 }}
-          >
+          <StatCard initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
             <StatHeader>
-              <div>
-                <StatLabel>{t.stats.totalUses}</StatLabel>
-              </div>
-              <StatIconWrapper $color="#f59e0b">
-                <Users />
-              </StatIconWrapper>
+              <div><StatLabel>{t.stats.totalUses}</StatLabel></div>
+              <StatIconWrapper $color="#f59e0b"><Users /></StatIconWrapper>
             </StatHeader>
-            <StatValue>{stats.totalUses.value}</StatValue>
-            <StatChange $positive={stats.totalUses.positive}>
-              {stats.totalUses.positive ? <ArrowUp /> : <ArrowDown />}
-              {Math.abs(stats.totalUses.change)}%
+            <StatValue>{isLoading ? '—' : stats.totalUses}</StatValue>
+            <StatChange $positive={changes.totalUses >= 0}>
+              {changes.totalUses >= 0 ? <ArrowUp /> : <ArrowDown />}
+              {Math.abs(changes.totalUses)}%
             </StatChange>
           </StatCard>
 
-          <StatCard
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.4 }}
-          >
+          <StatCard initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}>
             <StatHeader>
-              <div>
-                <StatLabel>{t.stats.avgDiscount}</StatLabel>
-              </div>
+              <div><StatLabel>{t.stats.avgDiscount}</StatLabel></div>
               <StatIconWrapper $color="#ef4444">
-                {stats.avgDiscount.positive ? <TrendingUp /> : <TrendingDown />}
+                {changes.avgDiscount >= 0 ? <TrendingUp /> : <TrendingDown />}
               </StatIconWrapper>
             </StatHeader>
-            <StatValue>{stats.avgDiscount.value}%</StatValue>
-            <StatChange $positive={stats.avgDiscount.positive}>
-              {stats.avgDiscount.positive ? <ArrowUp /> : <ArrowDown />}
-              {Math.abs(stats.avgDiscount.change)}%
+            <StatValue>{isLoading ? '—' : `${stats.avgDiscount}%`}</StatValue>
+            <StatChange $positive={changes.avgDiscount >= 0}>
+              {changes.avgDiscount >= 0 ? <ArrowUp /> : <ArrowDown />}
+              {Math.abs(changes.avgDiscount)}%
             </StatChange>
           </StatCard>
         </StatsGrid>
 
         <ChartsGrid>
-          <ChartCard
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.5 }}
-          >
+          <ChartCard initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }}>
             <ChartHeader>
               <ChartTitle>{t.charts.savingsOverTime}</ChartTitle>
               <ChartLegend>
                 <LegendItem $color="#667eea">{t.charts.savings}</LegendItem>
               </ChartLegend>
             </ChartHeader>
-            <BarChart>
-              {savingsData.map((data, index) => (
-                <Bar
-                  key={data.label}
-                  $height={(data.value / maxSavings) * 100}
-                  $color="#667eea"
-                  initial={{ height: 0 }}
-                  animate={{ height: `${(data.value / maxSavings) * 100}%` }}
-                  transition={{ delay: 0.6 + index * 0.1, duration: 0.5 }}
-                >
-                  <BarValue>{data.value}</BarValue>
-                  <BarLabel>{data.label}</BarLabel>
-                </Bar>
-              ))}
-            </BarChart>
+            {isLoading ? (
+              <EmptyState>Loading…</EmptyState>
+            ) : timeSeries.length === 0 ? (
+              <EmptyState>No scan data for this period</EmptyState>
+            ) : (
+              <BarChart>
+                {timeSeries.map((data, index) => (
+                  <Bar
+                    key={data.date}
+                    $height={(data.savings / maxSavings) * 100}
+                    $color="#667eea"
+                    initial={{ height: 0 }}
+                    animate={{ height: `${(data.savings / maxSavings) * 100}%` }}
+                    transition={{ delay: 0.6 + index * 0.05, duration: 0.5 }}
+                  >
+                    <BarValue>€{data.savings}</BarValue>
+                    <BarLabel>{data.label}</BarLabel>
+                  </Bar>
+                ))}
+              </BarChart>
+            )}
           </ChartCard>
 
-          <ChartCard
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.6 }}
-          >
+          <ChartCard initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.6 }}>
             <ChartHeader>
-              <ChartTitle>{t.charts.savingsByCategory}</ChartTitle>
+              <ChartTitle>{t.charts.savingsByVenue}</ChartTitle>
             </ChartHeader>
-            <PieChartContainer>
-              <PieChart viewBox="0 0 200 200">
-                {pieSegments.map((segment, index) => (
-                  <motion.path
-                    key={segment.name}
-                    d={createPieSegmentPath(segment.percentage, (segment.startAngle / 360) * 100)}
-                    fill={segment.color}
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    transition={{ delay: 0.7 + index * 0.1 }}
-                  />
-                ))}
-              </PieChart>
-            </PieChartContainer>
-            <CategoryList>
-              {categoryData.map(category => (
-                <CategoryItem key={category.name}>
-                  <CategoryInfo>
-                    <CategoryDot $color={category.color} />
-                    <CategoryName>{category.name}</CategoryName>
-                  </CategoryInfo>
-                  <CategoryValue>€{category.value} ({category.percentage}%)</CategoryValue>
-                </CategoryItem>
-              ))}
-            </CategoryList>
+            {isLoading ? (
+              <EmptyState>Loading…</EmptyState>
+            ) : byVenue.length === 0 ? (
+              <EmptyState>No data yet</EmptyState>
+            ) : (
+              <>
+                <PieChartContainer>
+                  <PieChart viewBox="0 0 200 200">
+                    {byVenue.length === 1 ? (
+                      <circle cx="100" cy="100" r="80" fill={byVenue[0].color} />
+                    ) : (
+                      pieSegments.map((segment, index) => (
+                        <motion.path
+                          key={segment.venueId}
+                          d={createPieSegmentPath(segment.percentage, (segment.startAngle / 360) * 100)}
+                          fill={segment.color}
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          transition={{ delay: 0.7 + index * 0.1 }}
+                        />
+                      ))
+                    )}
+                  </PieChart>
+                </PieChartContainer>
+                <CategoryList>
+                  {byVenue.map(venue => (
+                    <CategoryItem key={venue.venueId}>
+                      <CategoryInfo>
+                        <CategoryDot $color={venue.color} />
+                        <CategoryName>{venue.venueName}</CategoryName>
+                      </CategoryInfo>
+                      <CategoryValue>€{venue.savings} ({venue.percentage}%)</CategoryValue>
+                    </CategoryItem>
+                  ))}
+                </CategoryList>
+              </>
+            )}
           </ChartCard>
         </ChartsGrid>
       </Container>
