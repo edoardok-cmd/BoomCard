@@ -15,9 +15,11 @@ import { Router, Response } from 'express';
 import { asyncHandler } from '../middleware/error.middleware';
 import { authenticate, authorize, optionalAuthenticate, AuthRequest } from '../middleware/auth.middleware';
 import { prisma } from '../lib/prisma';
-import { OfferStatus, PartnerStatus } from '@prisma/client';
+import { OfferStatus, PartnerStatus, UserStatus } from '@prisma/client';
 import { partnerTypeService } from '../services/partnerType.service';
 import { CASHBACK_MATRIX_STEPS } from '../constants/receipt.constants';
+import { emailService } from '../services/email.service';
+import { logger } from '../utils/logger';
 
 const PARTNER_TYPE_SELECT = {
   id: true,
@@ -515,6 +517,21 @@ router.put(
       include: { partnerType: { select: PARTNER_TYPE_SELECT } },
     });
 
+    // When a partner transitions TO ACTIVE, activate the owning user account and
+    // send the approval email. Guard against re-firing on already-active partners.
+    if (updateData.status === PartnerStatus.ACTIVE && partner.status !== PartnerStatus.ACTIVE) {
+      const partnerUser = await prisma.user.update({
+        where: { id: updated.userId },
+        data: { status: UserStatus.ACTIVE, emailVerified: true },
+        select: { email: true, firstName: true, status: true },
+      });
+
+      emailService.sendPartnerApprovalEmail(partnerUser.email, {
+        firstName: partnerUser.firstName || partnerUser.email.split('@')[0],
+        businessName: updated.businessName,
+      }).catch((err) => logger.error('Failed to send partner approval email:', err));
+    }
+
     const typeMax = updated.partnerType?.maxDiscountRate ?? null;
     const response: any = {
       success: true,
@@ -805,13 +822,17 @@ router.post(
           lastName: primaryContact?.split(' ').slice(1).join(' ') || ownerName?.split(' ').slice(1).join(' ') || '',
           role: 'PARTNER' as any,
           phone: phone || null,
-          emailVerified: false,
+          // Admin-created accounts are pre-verified — no email confirmation needed.
+          emailVerified: true,
+          status: UserStatus.ACTIVE,
         },
       });
 
+      // Admin onboarding always creates an active partner; a status override in
+      // the request body is still honoured (e.g. bulk-import with explicit status).
       const resolvedStatus = status && Object.values(PartnerStatus).includes(status)
         ? (status as PartnerStatus)
-        : PartnerStatus.PENDING;
+        : PartnerStatus.ACTIVE;
 
       const partner = await tx.partner.create({
         data: {

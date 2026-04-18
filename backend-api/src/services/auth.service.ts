@@ -173,9 +173,9 @@ export class AuthService {
     // atomically so we never end up with an orphan partner-role user.
     if (isPartner) {
       const info = businessInfo!;
-      let user;
+      let result: { user: typeof userSelect extends object ? any : never; partnerId: string };
       try {
-        user = await prisma.$transaction(async (tx) => {
+        result = await prisma.$transaction(async (tx) => {
           const created = await tx.user.create({
             data: {
               email: normalizedEmail,
@@ -195,7 +195,7 @@ export class AuthService {
           const categoriesList = subcategory
             ? [primaryCategory, subcategory]
             : [primaryCategory];
-          await tx.partner.create({
+          const partner = await tx.partner.create({
             data: {
               userId: created.id,
               businessName: info.businessName.trim(),
@@ -207,9 +207,10 @@ export class AuthService {
               phone: sanitizedPhone,
               website: info.website?.trim() || null,
             },
+            select: { id: true },
           });
 
-          return created;
+          return { user: created, partnerId: partner.id };
         });
       } catch (err) {
         if (isEmailRoleUniqueViolation(err)) {
@@ -218,7 +219,22 @@ export class AuthService {
         throw err;
       }
 
-      logger.info(`Partner application received: ${user.email} (user ${user.id})`);
+      const user = result.user;
+      logger.info(`Partner application received: ${user.email} (user ${user.id}, partner ${result.partnerId})`);
+
+      // Fire-and-forget emails — don't block the response on delivery
+      emailService.sendPartnerApplicationConfirmation(user.email, {
+        firstName: user.firstName || user.email.split('@')[0],
+        businessName: info.businessName.trim(),
+      }).catch((err) => logger.error('Failed to send partner application confirmation:', err));
+
+      emailService.sendPartnerApplicationAdminNotification({
+        applicantName: [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email,
+        applicantEmail: user.email,
+        businessName: info.businessName.trim(),
+        businessCategory: info.businessCategory.trim(),
+        partnerId: result.partnerId,
+      }).catch((err) => logger.error('Failed to send admin application notification:', err));
 
       // Do NOT issue tokens. Partner accounts are PENDING_VERIFICATION and the
       // dashboard has no useful state for them yet (GET /partners/:id filters on
