@@ -173,6 +173,7 @@ function testAuthEndpoints() {
       JSON.stringify({
         email: `loadtest-${__VU}-${__ITER}@test.invalid`,
         password: 'wrongpassword123',
+        clientType: 'web',
       }),
       { headers: { 'Content-Type': 'application/json' } }
     );

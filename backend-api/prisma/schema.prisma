@@ -30,11 +30,11 @@ enum UserStatus {
 
 model User {
   id               String     @id @default(uuid())
-  email            String     @unique
+  email            String
   passwordHash     String
   firstName        String?
   lastName         String?
-  phone            String?    @unique
+  phone            String?
   avatar           String?
   role             UserRole   @default(USER)
   status           UserStatus @default(PENDING_VERIFICATION)
@@ -78,17 +78,19 @@ model User {
   savedPaymentMethods SavedPaymentMethod[]
   pushTokens          PushToken[]
 
+  @@unique([email, role], map: "User_email_role_key")
   @@index([email])
   @@index([role])
   @@index([status])
 }
 
 model RefreshToken {
-  id        String   @id @default(uuid())
-  token     String   @unique
-  userId    String
-  expiresAt DateTime
-  createdAt DateTime @default(now())
+  id         String   @id @default(uuid())
+  token      String   @unique
+  userId     String
+  clientType String?
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 

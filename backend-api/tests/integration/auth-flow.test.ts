@@ -31,6 +31,7 @@ describe('Authentication Flow (F01)', () => {
           password: 'SecurePass123!',
           firstName: 'John',
           lastName: 'Doe',
+          phone: '+359888000123',
           acceptTerms: true,
         });
 
@@ -84,9 +85,11 @@ describe('Authentication Flow (F01)', () => {
       expect(loyalty?.tier).toBe('BRONZE');
     });
 
-    it('should reject duplicate email with 409', async () => {
+    it('should allow a partner account to share the email of an existing customer', async () => {
+      // Users and partners are separate profiles and may share contact info.
       const { email } = await createTestUser();
-      createdUserIds.push((await prisma.user.findUnique({ where: { email } }))!.id);
+      const first = await prisma.user.findFirst({ where: { email } });
+      if (first) createdUserIds.push(first.id);
 
       const res = await request(app)
         .post('/api/auth/register')
@@ -94,9 +97,75 @@ describe('Authentication Flow (F01)', () => {
           email,
           password: 'AnotherPass123!',
           firstName: 'Duplicate',
+          phone: '+359888000111',
+          acceptTerms: true,
+          accountType: 'partner',
+          businessInfo: {
+            businessName: 'Test Bistro',
+            businessCategory: 'RESTAURANT',
+          },
+        });
+
+      expect(res.status).toBe(201);
+      expect(res.body.data.user.role).toBe('PARTNER');
+      if (res.body?.data?.user?.id) createdUserIds.push(res.body.data.user.id);
+    });
+
+    it('should reject a second customer account on the same email', async () => {
+      const { email } = await createTestUser();
+      const first = await prisma.user.findFirst({ where: { email } });
+      if (first) createdUserIds.push(first.id);
+
+      const res = await request(app)
+        .post('/api/auth/register')
+        .send({
+          email,
+          password: 'AnotherPass123!',
+          firstName: 'Duplicate',
+          phone: '+359888000222',
+          acceptTerms: true,
         });
 
       expect(res.status).toBe(409);
+    });
+
+    it('should create a Partner record for partner-account registrations', async () => {
+      const email = `partner-app-${Date.now()}@boomcard.bg`;
+      const res = await request(app)
+        .post('/api/auth/register')
+        .send({
+          email,
+          password: 'SecurePass123!',
+          firstName: 'Partner',
+          lastName: 'Owner',
+          phone: '+359888333444',
+          acceptTerms: true,
+          accountType: 'partner',
+          businessInfo: {
+            businessName: 'Boom Cafe',
+            businessNameBg: 'Бум Кафе',
+            businessCategory: 'CAFE',
+            website: 'https://boom.example',
+          },
+        });
+
+      expect(res.status).toBe(201);
+      expect(res.body.data.user.role).toBe('PARTNER');
+      expect(res.body.data.user.status).toBe('PENDING_VERIFICATION');
+      createdUserIds.push(res.body.data.user.id);
+
+      // Partner registrations must NOT auto-log-in: the Partner record is
+      // PENDING and the dashboard has no useful state for them yet.
+      expect(res.body.data).not.toHaveProperty('accessToken');
+      expect(res.body.data).not.toHaveProperty('refreshToken');
+      expect(res.body.data.pendingVerification).toBe(true);
+
+      const partner = await prisma.partner.findUnique({ where: { userId: res.body.data.user.id } });
+      expect(partner).toBeTruthy();
+      expect(partner?.status).toBe('PENDING');
+      expect(partner?.businessName).toBe('Boom Cafe');
+      expect(partner?.category).toBe('CAFE');
+      expect(partner?.categories).toContain('CAFE');
     });
 
     it('should reject registration without email', async () => {
@@ -110,7 +179,7 @@ describe('Authentication Flow (F01)', () => {
     it('should reject registration with short password', async () => {
       const res = await request(app)
         .post('/api/auth/register')
-        .send({ email: `short-${Date.now()}@test.com`, password: '123' });
+        .send({ email: `short-${Date.now()}@test.com`, password: '123', phone: '+359888000999' });
 
       expect(res.status).toBe(400);
     });
@@ -132,7 +201,7 @@ describe('Authentication Flow (F01)', () => {
     it('should login with correct credentials', async () => {
       const res = await request(app)
         .post('/api/auth/login')
-        .send({ email: testEmail, password: testPassword });
+        .send({ email: testEmail, password: testPassword, clientType: 'mobile' });
 
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
@@ -147,7 +216,7 @@ describe('Authentication Flow (F01)', () => {
     it('should reject login with wrong password', async () => {
       const res = await request(app)
         .post('/api/auth/login')
-        .send({ email: testEmail, password: 'WrongPass123!' });
+        .send({ email: testEmail, password: 'WrongPass123!', clientType: 'mobile' });
 
       expect(res.status).toBe(401);
     });
@@ -155,7 +224,7 @@ describe('Authentication Flow (F01)', () => {
     it('should reject login with non-existent email', async () => {
       const res = await request(app)
         .post('/api/auth/login')
-        .send({ email: 'nobody@boomcard.bg', password: 'TestPass123!' });
+        .send({ email: 'nobody@boomcard.bg', password: 'TestPass123!', clientType: 'mobile' });
 
       expect(res.status).toBe(401);
     });
@@ -166,6 +235,164 @@ describe('Authentication Flow (F01)', () => {
         .send({});
 
       expect(res.status).toBe(400);
+    });
+
+    it('should reject login without clientType (validator enforces it)', async () => {
+      const res = await request(app)
+        .post('/api/auth/login')
+        .send({ email: testEmail, password: testPassword });
+
+      expect(res.status).toBe(400);
+    });
+
+    it('should reject login with invalid clientType value', async () => {
+      const res = await request(app)
+        .post('/api/auth/login')
+        .send({ email: testEmail, password: testPassword, clientType: 'bogus' });
+
+      expect(res.status).toBe(400);
+    });
+  });
+
+  // ─── Mobile-surface role guard (invariant: USER-only on mobile) ────
+  //
+  // The mobile app is for customers (role=USER) only. PARTNER/ADMIN must
+  // never obtain tokens via the mobile surface — not at login, not at
+  // refresh, even if their role changed after an earlier mobile login.
+  //
+  // Both login and refresh return 401 on violation (same shape as bad
+  // credentials / bad refresh token) so role can't be enumerated from
+  // the error response.
+
+  describe('Mobile client guard', () => {
+    it('rejects PARTNER login with clientType=mobile (invariant a)', async () => {
+      const { email, password, user } = await createTestUser();
+      createdUserIds.push(user.id);
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { role: 'PARTNER' },
+      });
+
+      const res = await request(app)
+        .post('/api/auth/login')
+        .send({ email, password, clientType: 'mobile' });
+
+      expect(res.status).toBe(401);
+      // Must not leak role in the error body
+      expect(JSON.stringify(res.body).toLowerCase()).not.toContain('partner');
+      expect(JSON.stringify(res.body).toLowerCase()).not.toContain('customer');
+    });
+
+    it('rejects ADMIN login with clientType=mobile (invariant a)', async () => {
+      const { email, password, user } = await createTestUser();
+      createdUserIds.push(user.id);
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { role: 'ADMIN' },
+      });
+
+      const res = await request(app)
+        .post('/api/auth/login')
+        .send({ email, password, clientType: 'mobile' });
+
+      expect(res.status).toBe(401);
+    });
+
+    it('rejects refresh when stored clientType=mobile but user role became PARTNER (invariant b)', async () => {
+      // Simulate: user logs into mobile as USER, gets a mobile-stamped refresh
+      // token, is then promoted to PARTNER. Subsequent refresh must fail so a
+      // leaked/old mobile token can't mint access for a partner account.
+      const { email, password, user } = await createTestUser();
+      createdUserIds.push(user.id);
+
+      const loginRes = await request(app)
+        .post('/api/auth/login')
+        .send({ email, password, clientType: 'mobile' });
+      expect(loginRes.status).toBe(200);
+      const mobileRefreshToken = loginRes.body.data.refreshToken;
+
+      // Verify the stored token actually carries clientType='mobile'
+      const stored = await prisma.refreshToken.findUnique({
+        where: { token: mobileRefreshToken },
+      });
+      expect(stored?.clientType).toBe('mobile');
+
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { role: 'PARTNER' },
+      });
+
+      const res = await request(app)
+        .post('/api/auth/refresh')
+        .send({ refreshToken: mobileRefreshToken });
+
+      expect(res.status).toBe(401);
+
+      // Guard must also revoke the offending token
+      const afterDelete = await prisma.refreshToken.findUnique({
+        where: { token: mobileRefreshToken },
+      });
+      expect(afterDelete).toBeNull();
+    });
+
+    it('allows USER login with clientType=mobile (invariant c)', async () => {
+      const { email, password, user } = await createTestUser();
+      createdUserIds.push(user.id);
+
+      const res = await request(app)
+        .post('/api/auth/login')
+        .send({ email, password, clientType: 'mobile' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.user.role).toBe('USER');
+
+      // Refresh token must carry clientType='mobile' forward
+      const stored = await prisma.refreshToken.findUnique({
+        where: { token: res.body.data.refreshToken },
+      });
+      expect(stored?.clientType).toBe('mobile');
+    });
+
+    it('allows PARTNER login with clientType=web (invariant d)', async () => {
+      const { email, password, user } = await createTestUser();
+      createdUserIds.push(user.id);
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { role: 'PARTNER' },
+      });
+
+      const res = await request(app)
+        .post('/api/auth/login')
+        .send({ email, password, clientType: 'web' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.user.role).toBe('PARTNER');
+    });
+
+    it('preserves clientType across refresh rotation for web partner', async () => {
+      // Web PARTNER refresh must continue to work and the new token must also
+      // be stamped 'web' so the guard applies consistently across rotations.
+      const { email, password, user } = await createTestUser();
+      createdUserIds.push(user.id);
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { role: 'PARTNER' },
+      });
+
+      const loginRes = await request(app)
+        .post('/api/auth/login')
+        .send({ email, password, clientType: 'web' });
+      expect(loginRes.status).toBe(200);
+
+      const refreshRes = await request(app)
+        .post('/api/auth/refresh')
+        .send({ refreshToken: loginRes.body.data.refreshToken });
+      expect(refreshRes.status).toBe(200);
+
+      const rotated = await prisma.refreshToken.findUnique({
+        where: { token: refreshRes.body.data.refreshToken },
+      });
+      expect(rotated?.clientType).toBe('web');
     });
   });
 

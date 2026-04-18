@@ -40,7 +40,7 @@ interface AuthResponse {
 
 class AuthService {
   async login(credentials: LoginCredentials): Promise<AuthResponse> {
-    const response = await apiService.post<BackendAuthResponse>('/auth/login', credentials);
+    const response = await apiService.post<BackendAuthResponse>('/auth/login', { ...credentials, clientType: 'web' });
     // Store tokens in secure cookies
     const user = response.data.user;
     const session = createSession(

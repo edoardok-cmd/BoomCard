@@ -84,7 +84,7 @@ const swaggerOptions: swaggerJsdoc.Options = {
         // ===== Authentication Schemas =====
         LoginRequest: {
           type: 'object',
-          required: ['email', 'password'],
+          required: ['email', 'password', 'clientType'],
           properties: {
             email: {
               type: 'string',
@@ -95,6 +95,12 @@ const swaggerOptions: swaggerJsdoc.Options = {
               type: 'string',
               format: 'password',
               example: 'SecurePass123!',
+            },
+            clientType: {
+              type: 'string',
+              enum: ['mobile', 'web'],
+              example: 'web',
+              description: 'Which surface the login is coming from. "mobile" is USER-only; PARTNER/ADMIN accounts must use "web".',
             },
           },
         },

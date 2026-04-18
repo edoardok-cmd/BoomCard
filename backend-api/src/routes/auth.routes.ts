@@ -55,7 +55,7 @@ router.post(
   '/register',
   validate(registerValidation),
   asyncHandler(async (req: Request, res: Response) => {
-    const { email, password, firstName, lastName, phone, acceptTerms } = req.body;
+    const { email, password, firstName, lastName, phone, acceptTerms, accountType, businessInfo } = req.body;
 
     const result = await AuthService.register({
       email,
@@ -64,11 +64,15 @@ router.post(
       lastName,
       phone,
       acceptTerms,
+      accountType,
+      businessInfo,
     });
 
     res.status(201).json({
       success: true,
-      message: 'User registered successfully',
+      message: accountType === 'partner'
+        ? 'Partner application received — pending verification'
+        : 'User registered successfully',
       data: result,
     });
   })
@@ -108,9 +112,9 @@ router.post(
   '/login',
   validate(loginValidation),
   asyncHandler(async (req: Request, res: Response) => {
-    const { email, password } = req.body;
+    const { email, password, clientType } = req.body;
 
-    const result = await AuthService.login({ email, password });
+    const result = await AuthService.login({ email, password, clientType });
 
     res.json({
       success: true,

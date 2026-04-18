@@ -79,7 +79,8 @@ test_user_registration() {
             \"password\": \"$TEST_PASSWORD\",
             \"firstName\": \"Payment\",
             \"lastName\": \"Tester\",
-            \"phoneNumber\": \"+359888123456\"
+            \"phone\": \"+359888123456\",
+            \"acceptTerms\": true
         }" > /dev/null 2>&1
 
     # Login to get token
@@ -87,7 +88,8 @@ test_user_registration() {
         -H "Content-Type: application/json" \
         -d "{
             \"email\": \"$TEST_EMAIL\",
-            \"password\": \"$TEST_PASSWORD\"
+            \"password\": \"$TEST_PASSWORD\",
+            \"clientType\": \"web\"
         }")
 
     TOKEN=$(echo "$RESPONSE" | grep -o '"accessToken":"[^"]*' | sed 's/"accessToken":"//')

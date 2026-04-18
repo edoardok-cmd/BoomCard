@@ -55,6 +55,58 @@ export const registerValidation = [
     .withMessage('Invalid phone number format. Use +359XXXXXXXXX or 0XXXXXXXXX'),
 
   phoneSanitizer,
+
+  body('accountType')
+    .optional()
+    .isIn(['user', 'partner'])
+    .withMessage('accountType must be "user" or "partner"'),
+
+  body('businessInfo')
+    .if(body('accountType').equals('partner'))
+    .exists({ checkNull: true })
+    .withMessage('businessInfo is required for partner accounts')
+    .bail()
+    .isObject()
+    .withMessage('businessInfo must be an object'),
+
+  body('businessInfo.businessName')
+    .if(body('accountType').equals('partner'))
+    .isString()
+    .withMessage('businessInfo.businessName is required')
+    .bail()
+    .trim()
+    .isLength({ min: 2, max: 120 })
+    .withMessage('businessInfo.businessName must be 2-120 characters'),
+
+  body('businessInfo.businessNameBg')
+    .optional({ values: 'falsy' })
+    .isString()
+    .trim()
+    .isLength({ min: 2, max: 120 })
+    .withMessage('businessInfo.businessNameBg must be 2-120 characters'),
+
+  body('businessInfo.businessCategory')
+    .if(body('accountType').equals('partner'))
+    .isString()
+    .withMessage('businessInfo.businessCategory is required')
+    .bail()
+    .trim()
+    .isLength({ min: 1, max: 60 })
+    .withMessage('businessInfo.businessCategory must be 1-60 characters'),
+
+  body('businessInfo.taxId')
+    .optional({ values: 'falsy' })
+    .isString()
+    .trim()
+    .isLength({ max: 40 })
+    .withMessage('businessInfo.taxId must be at most 40 characters'),
+
+  body('businessInfo.website')
+    .optional({ values: 'falsy' })
+    .isString()
+    .trim()
+    .isLength({ max: 255 })
+    .withMessage('businessInfo.website must be at most 255 characters'),
 ];
 
 export const loginValidation = [
@@ -67,6 +119,13 @@ export const loginValidation = [
   body('password')
     .notEmpty()
     .withMessage('Password is required'),
+
+  body('clientType')
+    .notEmpty()
+    .withMessage('clientType is required')
+    .bail()
+    .isIn(['mobile', 'web'])
+    .withMessage('clientType must be "mobile" or "web"'),
 ];
 
 export const updateProfileValidation = [

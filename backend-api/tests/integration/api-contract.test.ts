@@ -33,7 +33,7 @@ describe('API Contract Validation (Mobile Client Compatibility)', () => {
       // Mobile client expects: { data: { user, accessToken, refreshToken, expiresIn } }
       const res = await request(app)
         .post('/api/auth/login')
-        .send({ email: user.email, password: 'TestPass123!' });
+        .send({ email: user.email, password: 'TestPass123!', clientType: 'mobile' });
 
       expect(res.body).toHaveProperty('success', true);
       expect(res.body).toHaveProperty('data');

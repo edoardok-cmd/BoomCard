@@ -15,10 +15,11 @@ echo "--------------------------"
 REGISTER_RESPONSE=$(curl -s -X POST $BASE_URL/auth/register \
   -H "Content-Type: application/json" \
   -d '{
-    "email": "partner@boom card.bg",
-    "password": "Partner123",
+    "email": "partner@boomcard.bg",
+    "password": "Partner123!",
     "firstName": "Partner",
-    "lastName": "Business"
+    "lastName": "Business",
+    "phone": "+359888123456"
   }')
 
 echo "$REGISTER_RESPONSE" | python3 -m json.tool | head -20
@@ -31,7 +32,8 @@ LOGIN_RESPONSE=$(curl -s -X POST $BASE_URL/auth/login \
   -H "Content-Type: application/json" \
   -d '{
     "email": "test@boomcard.bg",
-    "password": "Test1234"
+    "password": "Test1234",
+    "clientType": "web"
   }')
 
 ACCESS_TOKEN=$(echo "$LOGIN_RESPONSE" | python3 -c "import sys, json; data = json.load(sys.stdin); print(data['data']['accessToken'])" 2>/dev/null)

@@ -20,6 +20,7 @@ export async function createTestUser(overrides: {
   password?: string;
   firstName?: string;
   lastName?: string;
+  phone?: string;
   acceptTerms?: boolean;
 } = {}) {
   const email = overrides.email || `test-${testId()}@boomcard.bg`;
@@ -32,6 +33,7 @@ export async function createTestUser(overrides: {
       password,
       firstName: overrides.firstName || 'Test',
       lastName: overrides.lastName || 'User',
+      phone: overrides.phone || '+359888000000',
       acceptTerms: overrides.acceptTerms ?? true,
     });
 
@@ -49,12 +51,21 @@ export async function createTestUser(overrides: {
 }
 
 /**
- * Login an existing test user
+ * Login an existing test user.
+ *
+ * clientType is required by the login endpoint (surface guard that blocks
+ * PARTNER/ADMIN from the mobile app). Defaults to 'web' since that works
+ * for all roles — tests exercising mobile-specific behavior should pass
+ * 'mobile' explicitly.
  */
-export async function loginTestUser(email: string, password: string) {
+export async function loginTestUser(
+  email: string,
+  password: string,
+  clientType: 'web' | 'mobile' = 'web',
+) {
   const res = await request(app)
     .post('/api/auth/login')
-    .send({ email, password });
+    .send({ email, password, clientType });
 
   if (res.status !== 200) {
     throw new Error(`Failed to login: ${res.status} ${JSON.stringify(res.body)}`);

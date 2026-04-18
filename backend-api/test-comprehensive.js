@@ -119,7 +119,8 @@ async function testAuthentication() {
   await runTest('Login with existing user', async () => {
     const res = await makeRequest('POST', '/api/auth/login', {
       email: TEST_USER.email,
-      password: TEST_USER.password
+      password: TEST_USER.password,
+      clientType: 'web'
     });
 
     assert(res.status === 200 || res.status === 201, `Login should succeed, got ${res.status}`);

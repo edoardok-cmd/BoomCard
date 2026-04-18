@@ -1,0 +1,12 @@
+-- Add clientType tag to RefreshToken so the mobile-surface role guard
+-- (services/auth.service.ts login + refresh) survives token rotation.
+--
+-- IF NOT EXISTS because dev/Neon had this column added via `prisma db push`
+-- before this migration was generated. On prod the column does not exist yet;
+-- the `ADD COLUMN` branch runs. Idempotent in either environment.
+--
+-- Existing rows get clientType=NULL. NULL is treated by the guard as "not
+-- mobile", so pre-existing partner refresh tokens would keep minting access
+-- tokens for up to 7d unless purged. Run scripts/purge-partner-refresh-tokens.sql
+-- immediately after this migration deploys to prod.
+ALTER TABLE "RefreshToken" ADD COLUMN IF NOT EXISTS "clientType" TEXT;

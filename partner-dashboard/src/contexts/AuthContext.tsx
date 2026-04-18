@@ -188,7 +188,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       // Try real API endpoint first
       try {
-        const rawResponse = await apiService.post<any>('/auth/login', credentials);
+        const rawResponse = await apiService.post<any>('/auth/login', { ...credentials, clientType: 'web' });
 
         // Extract token — handle both flat { token, accessToken } and nested { data: { accessToken } } shapes
         const responseData = rawResponse?.data || rawResponse;
@@ -262,6 +262,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const token = responseData?.token || responseData?.accessToken || rawResponse?.token || rawResponse?.accessToken;
       const refreshToken = responseData?.refreshToken || rawResponse?.refreshToken;
       const userPayload = responseData?.user || rawResponse?.user;
+      const pendingVerification = responseData?.pendingVerification === true;
+
+      // Partner registrations are intentionally not auto-logged-in: the backend
+      // returns the user record without tokens because the Partner row is
+      // PENDING and the dashboard has no useful state for them yet. Show the
+      // pending toast and let the caller navigate to /login.
+      if (pendingVerification || data.accountType === 'partner') {
+        toast.success(`Thanks ${userPayload?.firstName || ''}! Your partner application is under review — you'll be able to sign in once approved.`);
+        return;
+      }
 
       if (!token) {
         throw new Error('No authentication token received');
@@ -277,15 +287,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Set auth token in API service
       apiService.setAuthToken(token);
 
-      // Set user state
-      setUser(userPayload);
+      // Set user state (normalize role casing to match the login/loadUser paths)
+      const normalizedUser: User = {
+        id: userPayload.id,
+        email: userPayload.email,
+        firstName: userPayload.firstName || '',
+        lastName: userPayload.lastName || '',
+        role: (userPayload.role === 'SUPER_ADMIN' || userPayload.role === 'ADMIN' || userPayload.role === 'admin') ? 'admin'
+            : (userPayload.role === 'PARTNER' || userPayload.role === 'partner') ? 'partner' : 'user',
+        createdAt: userPayload.createdAt ? new Date(userPayload.createdAt).getTime() : Date.now(),
+        emailVerified: userPayload.emailVerified ?? false,
+        avatar: userPayload.avatar,
+      };
+      setUser(normalizedUser);
 
-      // Different success messages for different account types
-      if (data.accountType === 'partner') {
-        toast.success(`Welcome ${userPayload?.firstName || ''}! Your partner account is pending verification.`);
-      } else {
-        toast.success('Account created successfully! Welcome to BoomCard!');
-      }
+      toast.success('Account created successfully! Welcome to BoomCard!');
     } catch (error: any) {
       const message = humanizeError(error, t, 'errors.registrationFailed');
       toast.error(message);

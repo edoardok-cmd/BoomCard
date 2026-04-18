@@ -23,7 +23,7 @@ export class AuthApi {
     try {
       const response = await apiClient.post<AuthResponse>(
         API_CONFIG.ENDPOINTS.AUTH.LOGIN,
-        credentials
+        { ...credentials, clientType: 'mobile' }
       );
 
       if (response.success && response.data) {
@@ -33,6 +33,13 @@ export class AuthApi {
         // Validate tokens before storing
         if (!authData || typeof authData.accessToken !== 'string' || typeof authData.refreshToken !== 'string') {
           throw new Error('Invalid authentication response: missing or invalid tokens');
+        }
+
+        // Defense-in-depth: the server already blocks non-USER roles on mobile login,
+        // but older servers may not. Refuse to persist tokens for partner/admin accounts.
+        if (authData.user && authData.user.role && authData.user.role !== 'USER') {
+          await StorageService.clearAll();
+          throw new Error('This account is not a customer account. Please sign in at the partner dashboard.');
         }
 
         // Store tokens and user data

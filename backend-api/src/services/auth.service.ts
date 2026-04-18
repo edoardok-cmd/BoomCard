@@ -7,9 +7,25 @@ import { AppError } from '../middleware/error.middleware';
 import { logger } from '../utils/logger';
 import { cardService } from './card.service';
 import { walletService } from './wallet.service';
-import { UserStatus } from '@prisma/client';
+import { PartnerStatus, Prisma, UserStatus } from '@prisma/client';
 import { emailService } from './email.service';
 import { SECURITY_CONFIG } from '../config/security.config';
+
+// Translate a Prisma P2002 (unique violation) on the (email, role) index
+// into a user-facing 409. Two concurrent register POSTs with the same
+// email+role can both pass the findFirst guard above and reach the
+// create — the DB-level unique is the authoritative backstop.
+function isEmailRoleUniqueViolation(err: unknown): boolean {
+  if (!(err instanceof Prisma.PrismaClientKnownRequestError)) return false;
+  if (err.code !== 'P2002') return false;
+  const target = err.meta?.target;
+  const fields = Array.isArray(target)
+    ? target
+    : typeof target === 'string'
+      ? [target]
+      : [];
+  return fields.includes('email') || fields.includes('User_email_role_key');
+}
 
 const TERMS_VERSION = process.env.TERMS_VERSION || '2026-02-24';
 
@@ -21,6 +37,14 @@ if (!JWT_SECRET || !JWT_REFRESH_SECRET) {
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '15m';
 const JWT_REFRESH_EXPIRES_IN = process.env.JWT_REFRESH_EXPIRES_IN || '7d';
 
+export interface BusinessInfo {
+  businessName: string;
+  businessNameBg?: string;
+  businessCategory: string;
+  taxId?: string;
+  website?: string;
+}
+
 export interface RegisterInput {
   email: string;
   password: string;
@@ -28,11 +52,14 @@ export interface RegisterInput {
   lastName?: string;
   phone: string;
   acceptTerms?: boolean;
+  accountType?: 'user' | 'partner';
+  businessInfo?: BusinessInfo;
 }
 
 export interface LoginInput {
   email: string;
   password: string;
+  clientType?: 'mobile' | 'web';
 }
 
 export interface TokenPayload {
@@ -49,32 +76,41 @@ export interface AuthTokens {
 
 export class AuthService {
   /**
-   * Register a new user
+   * Register a new user or partner.
+   *
+   * Email is intentionally non-unique so a person may hold both a customer
+   * (USER) and a partner (PARTNER) account on the same address. We DO,
+   * however, refuse a second account with the same email AND the same role,
+   * because login disambiguation would become a coin-flip.
    */
   static async register(input: RegisterInput) {
-    const { email, password, firstName, lastName, phone, acceptTerms } = input;
+    const { email, password, firstName, lastName, phone, acceptTerms, accountType, businessInfo } = input;
+    const isPartner = accountType === 'partner';
 
-    // Check if user already exists
-    const existingUser = await prisma.user.findUnique({
-      where: { email: email.toLowerCase() },
+    if (isPartner && !businessInfo) {
+      throw new AppError('businessInfo is required for partner accounts', 400);
+    }
+
+    const targetRole: 'USER' | 'PARTNER' = isPartner ? 'PARTNER' : 'USER';
+    const normalizedEmail = email.toLowerCase();
+
+    // Block same-email + same-role duplicates. Cross-role coexistence
+    // (USER + PARTNER on the same email) is still allowed by design.
+    const sameRoleExisting = await prisma.user.findFirst({
+      where: { email: normalizedEmail, role: targetRole },
+      select: { id: true },
     });
-
-    if (existingUser) {
-      throw new AppError('User with this email already exists', 409);
+    if (sameRoleExisting) {
+      throw new AppError(
+        isPartner
+          ? 'A partner account with this email already exists'
+          : 'An account with this email already exists',
+        409
+      );
     }
 
     // Sanitize phone: convert empty string to null
     const sanitizedPhone = phone && phone.trim() !== '' ? phone.trim() : null;
-
-    // Check for duplicate phone number
-    if (sanitizedPhone) {
-      const existingPhone = await prisma.user.findUnique({
-        where: { phone: sanitizedPhone },
-      });
-      if (existingPhone) {
-        throw new AppError('An account with this phone number already exists', 409);
-      }
-    }
 
     // Hash password
     const passwordHash = await bcrypt.hash(password, 12);
@@ -88,31 +124,95 @@ export class AuthService {
         }
       : {};
 
-    // Create user
-    const user = await prisma.user.create({
-      data: {
-        email: email.toLowerCase(),
-        passwordHash,
-        firstName: firstName?.trim() || undefined,
-        lastName: lastName?.trim() || undefined,
-        phone: sanitizedPhone,
-        role: 'USER',
-        status: UserStatus.PENDING_VERIFICATION,
-        ...consentData,
-      },
-      select: {
-        id: true,
-        email: true,
-        firstName: true,
-        lastName: true,
-        phone: true,
-        role: true,
-        status: true,
-        createdAt: true,
-      },
-    });
+    const userSelect = {
+      id: true,
+      email: true,
+      firstName: true,
+      lastName: true,
+      phone: true,
+      role: true,
+      status: true,
+      createdAt: true,
+    } as const;
 
-    // Create loyalty account, card, and wallet for new user
+    // Partner registration: create User (role=PARTNER) and Partner (status=PENDING)
+    // atomically so we never end up with an orphan partner-role user.
+    if (isPartner) {
+      const info = businessInfo!;
+      let user;
+      try {
+        user = await prisma.$transaction(async (tx) => {
+          const created = await tx.user.create({
+            data: {
+              email: normalizedEmail,
+              passwordHash,
+              firstName: firstName?.trim() || undefined,
+              lastName: lastName?.trim() || undefined,
+              phone: sanitizedPhone,
+              role: 'PARTNER',
+              status: UserStatus.PENDING_VERIFICATION,
+              ...consentData,
+            },
+            select: userSelect,
+          });
+
+          const primaryCategory = info.businessCategory.trim();
+          await tx.partner.create({
+            data: {
+              userId: created.id,
+              businessName: info.businessName.trim(),
+              businessNameBg: info.businessNameBg?.trim() || null,
+              category: primaryCategory,
+              categories: [primaryCategory],
+              status: PartnerStatus.PENDING,
+              email: normalizedEmail,
+              phone: sanitizedPhone,
+              website: info.website?.trim() || null,
+            },
+          });
+
+          return created;
+        });
+      } catch (err) {
+        if (isEmailRoleUniqueViolation(err)) {
+          throw new AppError('A partner account with this email already exists', 409);
+        }
+        throw err;
+      }
+
+      logger.info(`Partner application received: ${user.email} (user ${user.id})`);
+
+      // Do NOT issue tokens. Partner accounts are PENDING_VERIFICATION and the
+      // dashboard has no useful state for them yet (GET /partners/:id filters on
+      // status=ACTIVE). Auto-logging them in sends them to a broken dashboard.
+      // The frontend should redirect to a "pending review" screen.
+      return { user, pendingVerification: true as const };
+    }
+
+    // Regular customer registration
+    let user;
+    try {
+      user = await prisma.user.create({
+        data: {
+          email: normalizedEmail,
+          passwordHash,
+          firstName: firstName?.trim() || undefined,
+          lastName: lastName?.trim() || undefined,
+          phone: sanitizedPhone,
+          role: 'USER',
+          status: UserStatus.PENDING_VERIFICATION,
+          ...consentData,
+        },
+        select: userSelect,
+      });
+    } catch (err) {
+      if (isEmailRoleUniqueViolation(err)) {
+        throw new AppError('An account with this email already exists', 409);
+      }
+      throw err;
+    }
+
+    // Create loyalty account, card, and wallet for new customer
     await Promise.all([
       prisma.loyaltyAccount.create({
         data: {
@@ -137,23 +237,20 @@ export class AuthService {
       logger.error('Failed to send welcome email:', err);
     });
 
-    // Generate tokens
     const tokens = await this.generateTokens(user);
-
-    return {
-      user,
-      ...tokens,
-    };
+    return { user, ...tokens };
   }
 
   /**
    * Login user
    */
   static async login(input: LoginInput) {
-    const { email, password } = input;
+    const { email, password, clientType } = input;
 
-    // Find user
-    const user = await prisma.user.findUnique({
+    // Email is no longer unique — multiple accounts (user vs partner) may share
+    // the same email. Disambiguate by matching the submitted password against
+    // each candidate. Prefer the account whose role fits the requesting client.
+    const candidates = await prisma.user.findMany({
       where: { email: email.toLowerCase() },
       select: {
         id: true,
@@ -165,21 +262,44 @@ export class AuthService {
         status: true,
         avatar: true,
       },
+      // Stable ordering so password-disambiguation picks the same row
+      // across replicas/pods if more than one candidate matches.
+      orderBy: { createdAt: 'asc' },
     });
 
-    if (!user) {
+    if (candidates.length === 0) {
       throw new AppError('Invalid email or password', 401);
     }
+
+    const matches: typeof candidates = [];
+    for (const candidate of candidates) {
+      if (await bcrypt.compare(password, candidate.passwordHash)) {
+        matches.push(candidate);
+      }
+    }
+
+    if (matches.length === 0) {
+      throw new AppError('Invalid email or password', 401);
+    }
+
+    // Prefer the account whose role matches the client surface:
+    //   mobile → USER (customer app)
+    //   web    → non-USER (partner/admin dashboard)
+    const preferred = matches.find((m) =>
+      clientType === 'mobile' ? m.role === 'USER' : m.role !== 'USER'
+    );
+    const user = preferred ?? matches[0];
 
     // Check if user is active
     if (user.status === 'SUSPENDED') {
       throw new AppError('Account has been suspended', 403);
     }
 
-    // Verify password
-    const isPasswordValid = await bcrypt.compare(password, user.passwordHash);
-
-    if (!isPasswordValid) {
+    // The mobile app is for customers (role=USER) only. Block partner/admin roles
+    // so they can't sign in as a regular user. Return the same 401 as a bad
+    // password so role/existence can't be enumerated from error shape.
+    if (clientType === 'mobile' && user.role !== 'USER') {
+      logger.warn(`Mobile login rejected for non-USER role: ${user.email} (role=${user.role})`);
       throw new AppError('Invalid email or password', 401);
     }
 
@@ -191,8 +311,9 @@ export class AuthService {
 
     logger.info(`User logged in: ${user.email}`);
 
-    // Generate tokens
-    const tokens = await this.generateTokens(user);
+    // Generate tokens (stamp clientType so refresh-time checks can enforce
+    // mobile=USER-only even if role changes or a leaked token is replayed).
+    const tokens = await this.generateTokens(user, clientType);
 
     // Remove password hash from response
     const { passwordHash, ...userWithoutPassword } = user;
@@ -244,8 +365,27 @@ export class AuthService {
         throw new AppError('Account has been suspended', 403);
       }
 
-      // Generate new tokens
-      const tokens = await this.generateTokens(storedToken.user);
+      // Mobile surface is customer-only. Reject refresh if this token was
+      // issued to the mobile app but the bound user is not a customer (USER).
+      // Covers: role changed after issuance, or leaked mobile token replayed.
+      if (
+        storedToken.clientType === 'mobile' &&
+        storedToken.user.role !== 'USER'
+      ) {
+        logger.warn(
+          `Mobile refresh rejected for non-USER role: ${storedToken.user.email} (role=${storedToken.user.role})`
+        );
+        await prisma.refreshToken.delete({ where: { id: storedToken.id } });
+        throw new AppError('Invalid refresh token', 401);
+      }
+
+      // Generate new tokens, preserving the original clientType so the guard
+      // above keeps applying across rotations.
+      const clientType =
+        storedToken.clientType === 'mobile' || storedToken.clientType === 'web'
+          ? (storedToken.clientType as 'mobile' | 'web')
+          : undefined;
+      const tokens = await this.generateTokens(storedToken.user, clientType);
 
       // Delete old refresh token
       await prisma.refreshToken.delete({
@@ -633,10 +773,18 @@ export class AuthService {
    * Forgot password — generate OTP and send email
    */
   static async forgotPassword(email: string) {
-    // Always return success to prevent email enumeration
-    const user = await prisma.user.findUnique({ where: { email: email.toLowerCase() } });
+    // Email is not unique — multiple accounts (user/partner) may share it.
+    // Issue a separate OTP per matching account so reset links don't collide.
+    // Always return success to prevent email enumeration.
+    const users = await prisma.user.findMany({
+      where: { email: email.toLowerCase() },
+      orderBy: { createdAt: 'asc' },
+      include: { partner: { select: { businessName: true } } },
+    });
 
-    if (user) {
+    const multipleAccounts = users.length > 1;
+
+    for (const user of users) {
       const otp = Math.floor(100000 + Math.random() * 900000).toString(); // 6-digit
       const hashedOtp = crypto.createHash('sha256').update(otp).digest('hex');
       const expires = new Date(Date.now() + SECURITY_CONFIG.SECURITY.OTP_EXPIRY_MS);
@@ -649,16 +797,27 @@ export class AuthService {
         },
       });
 
+      // When the same email backs more than one account, label each email so
+      // the recipient can tell which OTP belongs to which account.
+      const accountLabel = !multipleAccounts
+        ? undefined
+        : user.role === 'PARTNER'
+          ? `Partner account${user.partner?.businessName ? ` — ${user.partner.businessName}` : ''}`
+          : user.role === 'ADMIN' || user.role === 'SUPER_ADMIN'
+            ? 'Admin account'
+            : 'Customer account';
+
       const emailResult = await emailService.sendPasswordResetEmail({
         customerName: user.firstName || user.email,
         email: user.email,
         otp,
+        accountLabel,
       });
 
       if (!emailResult.success) {
         logger.error(`Failed to send password reset email to ${user.email}`);
       } else {
-        logger.info(`Password reset OTP sent to ${user.email}`);
+        logger.info(`Password reset OTP sent to ${user.email} (account ${user.id})`);
       }
     }
 
@@ -705,11 +864,14 @@ export class AuthService {
   /**
    * Generate JWT access and refresh tokens
    */
-  private static async generateTokens(user: {
-    id: string;
-    email: string;
-    role: string;
-  }): Promise<AuthTokens> {
+  private static async generateTokens(
+    user: {
+      id: string;
+      email: string;
+      role: string;
+    },
+    clientType?: 'mobile' | 'web'
+  ): Promise<AuthTokens> {
     const payload: TokenPayload = {
       id: user.id,
       email: user.email,
@@ -735,11 +897,13 @@ export class AuthService {
       expiresAt.setDate(expiresAt.getDate() + 7); // Default 7 days
     }
 
-    // Store refresh token in database
+    // Store refresh token in database with clientType so refresh-time checks
+    // can enforce role/surface rules (mobile = USER only).
     await prisma.refreshToken.create({
       data: {
         token: refreshTokenString,
         userId: user.id,
+        clientType: clientType ?? null,
         expiresAt,
       },
     });

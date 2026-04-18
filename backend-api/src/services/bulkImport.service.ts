@@ -363,13 +363,12 @@ export async function importFromSpreadsheet(
   let partnerUser: { id: string };
 
   if (partnerEmail) {
-    const existingUser = await prisma.user.findUnique({ where: { email: partnerEmail } });
+    // Email is not unique — scope the lookup to PARTNER role so we don't
+    // hijack a customer's account that happens to share the email.
+    const existingUser = await prisma.user.findFirst({
+      where: { email: partnerEmail, role: 'PARTNER' },
+    });
     if (existingUser) {
-      if (existingUser.role !== 'PARTNER') {
-        warnings.push(
-          `User "${partnerEmail}" exists but has role "${existingUser.role}". Proceeding with this user.`,
-        );
-      }
       partnerUser = existingUser;
     } else {
       // Create a new PARTNER user
@@ -741,7 +740,11 @@ export async function importPartnersFromSpreadsheet(
     // Find or create the partner user
     let partnerUser: { id: string };
     if (partnerEmail) {
-      const existing = await prisma.user.findUnique({ where: { email: partnerEmail } });
+      // Email is not unique — scope the lookup to PARTNER role so we don't
+      // hijack a customer's account that happens to share the email.
+      const existing = await prisma.user.findFirst({
+        where: { email: partnerEmail, role: 'PARTNER' },
+      });
       if (existing) {
         partnerUser = existing;
       } else {

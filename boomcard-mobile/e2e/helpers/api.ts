@@ -5,11 +5,11 @@
 
 export const API_BASE = process.env.E2E_API_URL || 'http://localhost:3025';
 
-export async function login(email: string, password: string) {
+export async function login(email: string, password: string, clientType: 'mobile' | 'web' = 'mobile') {
   const res = await fetch(`${API_BASE}/api/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({ email, password, clientType }),
   });
   const json = await res.json();
   if (!json.success) throw new Error(`login failed: ${JSON.stringify(json)}`);

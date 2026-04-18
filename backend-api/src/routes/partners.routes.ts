@@ -734,16 +734,6 @@ router.post(
       return res.status(400).json({ success: false, error: 'email, businessName, and category are required' });
     }
 
-    // Check if a user with this email already exists
-    const existingUser = await prisma.user.findUnique({ where: { email: email.toLowerCase() } });
-    if (existingUser) {
-      // Check if they already have a partner record
-      const existingPartner = await prisma.partner.findUnique({ where: { userId: existingUser.id } });
-      if (existingPartner) {
-        return res.status(409).json({ success: false, error: 'A partner with this email already exists' });
-      }
-    }
-
     // Validate partnerTypeId if provided
     if (partnerTypeId) {
       const ptype = await prisma.partnerType.findUnique({ where: { id: partnerTypeId } });
@@ -800,31 +790,24 @@ router.post(
 
     // Use a transaction to ensure atomicity
     const result = await prisma.$transaction(async (tx) => {
-      // Get or create the user with PARTNER role
-      let user = existingUser;
-      if (!user) {
-        const bcrypt = await import('bcryptjs');
-        const tempPassword = await bcrypt.hash(
-          Math.random().toString(36).slice(-10) + Math.random().toString(36).slice(-10).toUpperCase() + '!1',
-          10
-        );
-        user = await tx.user.create({
-          data: {
-            email: email.toLowerCase(),
-            passwordHash: tempPassword,
-            firstName: primaryContact?.split(' ')[0] || ownerName?.split(' ')[0] || businessName.split(' ')[0],
-            lastName: primaryContact?.split(' ').slice(1).join(' ') || ownerName?.split(' ').slice(1).join(' ') || '',
-            role: 'PARTNER' as any,
-            phone: phone || null,
-            emailVerified: false,
-          },
-        });
-      } else if (existingUser!.role !== 'PARTNER') {
-        user = await tx.user.update({
-          where: { id: existingUser!.id },
-          data: { role: 'PARTNER' as any },
-        });
-      }
+      // Each onboarded partner gets its own dedicated PARTNER user account,
+      // even if another account (user or partner) shares the same email/phone.
+      const bcrypt = await import('bcryptjs');
+      const tempPassword = await bcrypt.hash(
+        Math.random().toString(36).slice(-10) + Math.random().toString(36).slice(-10).toUpperCase() + '!1',
+        10
+      );
+      const user = await tx.user.create({
+        data: {
+          email: email.toLowerCase(),
+          passwordHash: tempPassword,
+          firstName: primaryContact?.split(' ')[0] || ownerName?.split(' ')[0] || businessName.split(' ')[0],
+          lastName: primaryContact?.split(' ').slice(1).join(' ') || ownerName?.split(' ').slice(1).join(' ') || '',
+          role: 'PARTNER' as any,
+          phone: phone || null,
+          emailVerified: false,
+        },
+      });
 
       const resolvedStatus = status && Object.values(PartnerStatus).includes(status)
         ? (status as PartnerStatus)
@@ -924,7 +907,7 @@ router.post(
         ...result.partner,
         typeMaxDiscountPercent: typeMax,
         effectiveDiscountRate: result.partner.discountRate ?? typeMax,
-        userCreated: !existingUser,
+        userCreated: true,
         userId: result.user.id,
       },
       message: `Partner "${businessName}" created successfully`,

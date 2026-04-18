@@ -284,10 +284,21 @@ export class EmailService {
   /**
    * Send password reset OTP email
    */
-  async sendPasswordResetEmail(data: { customerName: string; email: string; otp: string }): Promise<{ success: boolean }> {
+  async sendPasswordResetEmail(data: { customerName: string; email: string; otp: string; accountLabel?: string }): Promise<{ success: boolean }> {
+    // accountLabel is set only when the same email backs more than one account,
+    // so the recipient can tell which OTP belongs to which account.
+    const labelHtml = data.accountLabel
+      ? `<p style="color:#1a1a1a;margin-bottom:16px;font-weight:600;">For: ${data.accountLabel}</p>`
+      : '';
+    const labelText = data.accountLabel ? `For: ${data.accountLabel}\n\n` : '';
+    const subject = data.accountLabel
+      ? `Your BoomCard password reset code (${data.accountLabel})`
+      : 'Your BoomCard password reset code';
+
     const html = `
       <div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:32px;background:#fff;">
         <h2 style="color:#1a1a1a;margin-bottom:8px;">Reset your password</h2>
+        ${labelHtml}
         <p style="color:#555;margin-bottom:24px;">Hi ${data.customerName}, use the code below to reset your BoomCard password. It expires in <strong>15 minutes</strong>.</p>
         <div style="background:#f5f5f5;border-radius:12px;padding:24px;text-align:center;margin-bottom:24px;">
           <span style="font-size:40px;font-weight:700;letter-spacing:12px;color:#1a1a1a;">${data.otp}</span>
@@ -297,9 +308,9 @@ export class EmailService {
 
     return this.sendEmail({
       to: data.email,
-      subject: 'Your BoomCard password reset code',
+      subject,
       html,
-      text: `Your BoomCard password reset code is: ${data.otp}\n\nIt expires in 15 minutes.\n\nIf you didn't request this, ignore this email.`,
+      text: `${labelText}Your BoomCard password reset code is: ${data.otp}\n\nIt expires in 15 minutes.\n\nIf you didn't request this, ignore this email.`,
     });
   }
 

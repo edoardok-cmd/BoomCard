@@ -503,8 +503,10 @@ const RegisterPartnerPage: React.FC = () => {
         },
       });
 
-      // Redirect to dashboard after successful registration
-      navigate('/dashboard', { replace: true });
+      // Partner accounts are created PENDING and don't get tokens — send the
+      // applicant to /login so they can come back after approval. The pending
+      // toast is shown by AuthContext.register.
+      navigate('/login', { replace: true });
     } catch (error) {
       // Error is handled by the AuthContext with toast
       console.error('Registration error:', error);

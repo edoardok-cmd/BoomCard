@@ -3,7 +3,7 @@
 # Login and get token
 TOKEN=$(curl -X POST http://localhost:3001/api/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"email":"demo@boomcard.bg","password":"demo123"}' \
+  -d '{"email":"demo@boomcard.bg","password":"demo123","clientType":"mobile"}' \
   -s | jq -r '.data.accessToken')
 
 echo "Token obtained: ${TOKEN:0:50}..."

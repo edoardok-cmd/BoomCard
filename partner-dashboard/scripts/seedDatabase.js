@@ -53,7 +53,8 @@ async function seedDatabase() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             email: 'partner@boomcard.bg',
-            password: 'partner123'
+            password: 'partner123',
+            clientType: 'web'
           })
         });
 
@@ -95,7 +96,8 @@ async function seedDatabase() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             email: 'partner@boomcard.bg',
-            password: 'partner123'
+            password: 'partner123',
+            clientType: 'web'
           })
         });
 
