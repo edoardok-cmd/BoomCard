@@ -95,6 +95,11 @@ class FraudDetectionService {
     const recommendations: string[] = [];
 
     try {
+      // Fetch per-venue config up front so later checks (GPS/OCR/rate-limit/
+      // template) share a single DB read. Toggles like gpsVerificationEnabled
+      // and ocrVerificationEnabled must be known before those checks run.
+      const config = params.venueId ? await this.getVenueConfig(params.venueId) : null;
+
       // 1. Duplicate image check (40 points)
       const isDuplicate = await this.checkDuplicate(params.imageHash, params.excludeReceiptId);
       if (isDuplicate) {
@@ -142,18 +147,28 @@ class FraudDetectionService {
       }
 
       // 3. GPS verification (15-25 points)
-      if (params.userLat && params.userLon && params.venueLat && params.venueLon) {
+      // Skipped when the partner has explicitly disabled GPS scoring for their
+      // locations (e.g. delivery/no-fixed-address partners). Per-venue radius
+      // override (config.gpsRadiusMeters) replaces the global FAR threshold;
+      // warning threshold stays global so the scoring curve still makes sense.
+      if (
+        config?.gpsVerificationEnabled !== false &&
+        params.userLat && params.userLon && params.venueLat && params.venueLon
+      ) {
         const distance = this.calculateDistance(
           params.userLat,
           params.userLon,
           params.venueLat,
           params.venueLon
         );
+        const farThreshold = config?.gpsRadiusMeters && config.gpsRadiusMeters > 0
+          ? config.gpsRadiusMeters
+          : GPS_FAR_THRESHOLD_M;
 
-        if (distance > GPS_FAR_THRESHOLD_M) {
+        if (distance > farThreshold) {
           score += 25;
           reasons.push('GPS_FAR_FROM_VENUE');
-          recommendations.push(`User is ${Math.round(distance)}m away from venue (max: ${GPS_FAR_THRESHOLD_M}m)`);
+          recommendations.push(`User is ${Math.round(distance)}m away from venue (max: ${farThreshold}m)`);
         } else if (distance > GPS_WARNING_THRESHOLD_M) {
           score += 15;
           reasons.push('GPS_OUTSIDE_RANGE');
@@ -162,18 +177,19 @@ class FraudDetectionService {
       }
 
       // 4. OCR confidence check (20 points)
-      if (params.ocrConfidence < OCR_LOW_CONFIDENCE_THRESHOLD) {
-        score += 20;
-        reasons.push('LOW_OCR_CONFIDENCE');
-        recommendations.push(`OCR confidence is ${params.ocrConfidence.toFixed(0)}% (min: ${OCR_LOW_CONFIDENCE_THRESHOLD}%)`);
-      } else if (params.ocrConfidence < OCR_MODERATE_CONFIDENCE_THRESHOLD) {
-        score += 10;
-        reasons.push('MODERATE_OCR_CONFIDENCE');
+      if (config?.ocrVerificationEnabled !== false) {
+        if (params.ocrConfidence < OCR_LOW_CONFIDENCE_THRESHOLD) {
+          score += 20;
+          reasons.push('LOW_OCR_CONFIDENCE');
+          recommendations.push(`OCR confidence is ${params.ocrConfidence.toFixed(0)}% (min: ${OCR_LOW_CONFIDENCE_THRESHOLD}%)`);
+        } else if (params.ocrConfidence < OCR_MODERATE_CONFIDENCE_THRESHOLD) {
+          score += 10;
+          reasons.push('MODERATE_OCR_CONFIDENCE');
+        }
       }
 
       // 5. Rate limiting check (30 points)
       const userStats = await this.getUserStats(params.userId);
-      const config = params.venueId ? await this.getVenueConfig(params.venueId) : null;
 
       const maxDaily = config?.maxScansPerDay || DEFAULT_DAILY_SUBMISSION_LIMIT;
       const maxMonthly = config?.maxScansPerMonth || DEFAULT_MONTHLY_SUBMISSION_LIMIT;
@@ -583,12 +599,27 @@ class FraudDetectionService {
   }
 
   /**
-   * Get venue-specific fraud configuration
-   * Falls back to global config if venue config not found
+   * Get venue-specific fraud configuration.
+   *
+   * Despite the name, VenueFraudConfig.venueId stores a Partner.id
+   * (see schema.prisma comment + admin UI which lists partners, not venues).
+   * Callers inside this service pass a real Venue.id though — so we accept
+   * either and resolve Venue.id → partnerId transparently with a single
+   * indexed lookup. If the argument is already a Partner.id, the Venue
+   * lookup returns null and we use it as-is.
+   *
+   * Falls back to the global config (venueId: null) if no per-partner row.
    */
-  async getVenueConfig(venueId: string) {
+  async getVenueConfig(venueOrPartnerId: string) {
+    let partnerId = venueOrPartnerId;
+    const venue = await prisma.venue.findUnique({
+      where: { id: venueOrPartnerId },
+      select: { partnerId: true },
+    });
+    if (venue?.partnerId) partnerId = venue.partnerId;
+
     let config = await prisma.venueFraudConfig.findUnique({
-      where: { venueId },
+      where: { venueId: partnerId },
     });
 
     // Fall back to global config (venueId: null)
@@ -851,11 +882,16 @@ class FraudDetectionService {
    */
   async updateVenueConfig(venueId: string, raw: Record<string, unknown>) {
     const config: Record<string, unknown> = {};
+    // Only the fields that the detection/cashback engine actually consults are
+    // accepted. cashbackPercent / premiumBonus / platinumBonus are NOT here:
+    // cashback is matrix-driven (CASHBACK_MATRIX + Partner.discountRate) and
+    // managed via the Admin › Cashback Rates and Admin › Partners pages.
+    // autoApproveThreshold / autoRejectThreshold are NOT here either: every
+    // receipt is sent to manual review regardless of score (see checkReceipt).
     const ALLOWED = [
-      'cashbackPercent', 'premiumBonus', 'platinumBonus', 'minBillAmount',
-      'maxCashbackPerScan', 'maxScansPerDay', 'maxScansPerMonth',
+      'minBillAmount', 'maxCashbackPerScan',
+      'maxScansPerDay', 'maxScansPerMonth',
       'gpsVerificationEnabled', 'gpsRadiusMeters', 'ocrVerificationEnabled',
-      'autoApproveThreshold', 'autoRejectThreshold',
       'templateMatchEnabled', 'templateVisualWeight', 'templateMerchantWeight',
       'templateKeywordWeight', 'templateMinSimilarity', 'templateFraudPoints',
       'templateMerchantThreshold', 'isActive', 'metadata',

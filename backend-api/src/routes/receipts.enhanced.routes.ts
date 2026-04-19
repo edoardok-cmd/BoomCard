@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import { z } from 'zod';
 import { receiptService } from '../services/receipt.service';
 import { fraudDetectionService } from '../services/fraudDetection.service';
 import { receiptAnalyticsService } from '../services/receiptAnalytics.service';
@@ -10,7 +11,18 @@ import { prisma } from '../lib/prisma';
 import { asyncHandler } from '../middleware/error.middleware';
 import { uploadSingle, validateMagicBytes } from '../middleware/upload.middleware';
 
+const analyticsUpdateSchema = z.object({
+  receiptId: z.string().min(1),
+  status: z.enum(['PENDING', 'PROCESSING', 'VALIDATING', 'APPROVED', 'REJECTED', 'MANUAL_REVIEW']),
+  cashbackAmount: z.number().finite().nonnegative().optional(),
+  totalAmount: z.number().finite().nonnegative().optional(),
+});
+
 const router = Router();
+
+// Cap bulk review endpoints so a rogue/buggy client can't blow up the DB in
+// one request. 500 is generous for a human-driven review workflow.
+const BULK_RECEIPT_LIMIT = 500;
 
 // ============================================
 // PUBLIC/UTILITY ROUTES
@@ -290,6 +302,13 @@ router.post(
       });
     }
 
+    if (receiptIds.length > BULK_RECEIPT_LIMIT) {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot process more than ${BULK_RECEIPT_LIMIT} receipts per request`,
+      });
+    }
+
     const result = await receiptService.bulkApprove(receiptIds, req.user!.id);
 
     res.json(result);
@@ -311,6 +330,13 @@ router.post(
       return res.status(400).json({
         success: false,
         message: 'Receipt IDs array is required',
+      });
+    }
+
+    if (receiptIds.length > BULK_RECEIPT_LIMIT) {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot process more than ${BULK_RECEIPT_LIMIT} receipts per request`,
       });
     }
 
@@ -340,14 +366,15 @@ router.post(
   authenticate,
   authorize('ADMIN', 'SUPER_ADMIN'),
   asyncHandler(async (req: AuthRequest, res: Response) => {
-    const { receiptId, status, cashbackAmount, totalAmount } = req.body;
-
-    if (!receiptId || !status) {
+    const parsed = analyticsUpdateSchema.safeParse(req.body);
+    if (!parsed.success) {
       return res.status(400).json({
         success: false,
-        message: 'Receipt ID and status are required',
+        message: 'Invalid request body',
+        errors: parsed.error.flatten().fieldErrors,
       });
     }
+    const { receiptId, status, cashbackAmount, totalAmount } = parsed.data;
 
     // Look up the receipt owner — this is an admin endpoint; use the receipt's userId,
     // not the admin's own ID.
@@ -363,8 +390,8 @@ router.post(
       userId: receipt.userId,
       receiptId,
       status,
-      cashbackAmount: cashbackAmount || 0,
-      totalAmount: totalAmount || 0,
+      cashbackAmount: cashbackAmount ?? 0,
+      totalAmount: totalAmount ?? 0,
     });
 
     res.json({ success: true });
@@ -513,22 +540,34 @@ router.patch(
 
 /**
  * GET /api/receipts/venues/:venueId/config
- * Get venue fraud detection and cashback configuration
+ * Get venue fraud detection configuration. Returns the global fallback row
+ * (venueId: null) or null if no config has been set — callers should hydrate
+ * from their client-side defaults in that case.
+ *
+ * NOTE: venueId here refers to Partner.id (matches VenueFraudConfig schema
+ * convention — see VenueReceiptTemplate comment in prisma/schema.prisma).
  */
 router.get(
   '/venues/:venueId/config',
   authenticate,
   authorize('PARTNER', 'ADMIN', 'SUPER_ADMIN'),
   asyncHandler(async (req: Request, res: Response) => {
-    const result = await fraudDetectionService.getVenueConfig(req.params.venueId);
-
-    res.json(result);
+    const partner = await prisma.partner.findUnique({
+      where: { id: req.params.venueId },
+      select: { id: true },
+    });
+    if (!partner) {
+      return res.status(404).json({ success: false, message: 'Venue not found' });
+    }
+    const config = await fraudDetectionService.getVenueConfig(req.params.venueId);
+    res.json({ success: true, data: config });
   })
 );
 
 /**
  * PUT /api/receipts/venues/:venueId/config
- * Update venue fraud detection configuration (partner/admin only)
+ * Update venue fraud detection configuration (partner/admin only).
+ * venueId here is Partner.id — see schema comment in VenueReceiptTemplate.
  */
 router.put(
   '/venues/:venueId/config',
@@ -537,18 +576,20 @@ router.put(
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const config = req.body;
 
+    const partner = await prisma.partner.findUnique({
+      where: { id: req.params.venueId },
+      select: { id: true, userId: true },
+    });
+    if (!partner) {
+      return res.status(404).json({ success: false, message: 'Venue not found' });
+    }
+
     // PARTNER role: verify they own this specific venue
-    if (req.user!.role === 'PARTNER') {
-      const partner = await prisma.partner.findUnique({
-        where: { id: req.params.venueId },
-        select: { userId: true },
+    if (req.user!.role === 'PARTNER' && partner.userId !== req.user!.id) {
+      return res.status(403).json({
+        success: false,
+        message: 'You do not have permission to modify this venue configuration',
       });
-      if (!partner || partner.userId !== req.user!.id) {
-        return res.status(403).json({
-          success: false,
-          message: 'You do not have permission to modify this venue configuration',
-        });
-      }
     }
 
     const result = await fraudDetectionService.updateVenueConfig(
@@ -556,7 +597,7 @@ router.put(
       config
     );
 
-    res.json(result);
+    res.json({ success: true, data: result });
   })
 );
 
