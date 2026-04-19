@@ -160,7 +160,9 @@ const UserMenuDropdown = styled(motion.div)`
   border: 1px solid #e5e7eb;
   border-radius: 0.75rem;
   box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
-  overflow: hidden;
+  max-height: calc(100vh - 5rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
   z-index: 50;
 
   [data-theme="dark"] & {
