@@ -234,8 +234,9 @@ export const ReviewSubmissionForm: React.FC<ReviewSubmissionFormProps> = ({
       setTitle('');
       setComment('');
       onClose();
-    } catch (err: any) {
-      setError(err.message || (language === 'bg' ? 'Грешка при изпращане' : 'Error submitting review'));
+    } catch (err) {
+      const message = err instanceof Error ? err.message : '';
+      setError(message || (language === 'bg' ? 'Грешка при изпращане' : 'Error submitting review'));
     } finally {
       setSubmitting(false);
     }

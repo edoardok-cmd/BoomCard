@@ -1070,10 +1070,10 @@ export const Header: React.FC<HeaderProps> = ({
     setImpersonatableLoading(true);
     setImpersonatableError(null);
     apiService
-      .get<any>('/auth/impersonatable-partners')
+      .get<ImpersonatablePartner[] | { data?: ImpersonatablePartner[] }>('/auth/impersonatable-partners')
       .then((resp) => {
         if (cancelled) return;
-        const list = (resp?.data ?? resp) as ImpersonatablePartner[];
+        const list = Array.isArray(resp) ? resp : resp?.data;
         setImpersonatablePartners(Array.isArray(list) ? list : []);
       })
       .catch((err) => {

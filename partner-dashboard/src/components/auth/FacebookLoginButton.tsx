@@ -2,9 +2,44 @@ import React, { useEffect } from 'react';
 import styled from 'styled-components';
 import { initFacebookSDK } from '../../config/oauth';
 
+interface FacebookAuthResponse {
+  accessToken: string;
+  userID: string;
+  expiresIn: number;
+  signedRequest: string;
+}
+
+interface FacebookLoginResponse {
+  authResponse: FacebookAuthResponse | null;
+  status: string;
+}
+
+interface FacebookUserInfo {
+  id: string;
+  name: string;
+  email?: string;
+  picture?: { data: { url: string } };
+}
+
+interface FacebookSDK {
+  login: (
+    cb: (response: FacebookLoginResponse) => void,
+    opts?: { scope?: string }
+  ) => void;
+  api: (
+    path: string,
+    params: Record<string, unknown>,
+    cb: (userInfo: FacebookUserInfo) => void
+  ) => void;
+}
+
+interface FacebookLoginSuccess extends FacebookAuthResponse {
+  userInfo: FacebookUserInfo;
+}
+
 interface FacebookLoginButtonProps {
-  onSuccess: (response: any) => void;
-  onError: (error: any) => void;
+  onSuccess: (response: FacebookLoginSuccess) => void;
+  onError: (error: Error) => void;
   text?: string;
 }
 
@@ -60,18 +95,19 @@ export const FacebookLoginButton: React.FC<FacebookLoginButtonProps> = ({
   }, []);
 
   const handleFacebookLogin = () => {
-    if (!(window as any).FB) {
+    const fb = (window as unknown as { FB?: FacebookSDK }).FB;
+    if (!fb) {
       onError(new Error('Facebook SDK not loaded'));
       return;
     }
 
-    (window as any).FB.login(
-      (response: any) => {
+    fb.login(
+      (response) => {
         if (response.authResponse) {
-          // Get user details
-          (window as any).FB.api('/me', { fields: 'id,name,email,picture' }, (userInfo: any) => {
+          const authResponse = response.authResponse;
+          fb.api('/me', { fields: 'id,name,email,picture' }, (userInfo) => {
             onSuccess({
-              ...response.authResponse,
+              ...authResponse,
               userInfo,
             });
           });

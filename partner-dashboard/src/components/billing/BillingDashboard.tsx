@@ -633,7 +633,7 @@ export const BillingDashboard: React.FC<BillingDashboardProps> = ({
                   </TableCell>
                   <TableCell>
                     <InvoiceStatus $status={invoice.status}>
-                      {t(`billing.${invoice.status}` as any)}
+                      {t(`billing.${invoice.status}`)}
                     </InvoiceStatus>
                   </TableCell>
                   <TableCell>

@@ -12,7 +12,7 @@ interface PaymentButtonProps {
   amount: number;
   currency?: string;
   description?: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
   className?: string;
   variant?: 'primary' | 'secondary' | 'success';
   size?: 'sm' | 'md' | 'lg';
@@ -49,9 +49,10 @@ export function PaymentButton({
       });
 
       // User will be redirected to Paysera, so no further action needed
-    } catch (err: any) {
+    } catch (err) {
       console.error('Payment error:', err);
-      setError(err.response?.data?.message || err.message || 'Payment failed');
+      const axiosErr = err as { response?: { data?: { message?: string } }; message?: string };
+      setError(axiosErr.response?.data?.message || axiosErr.message || 'Payment failed');
       setLoading(false);
     }
   };

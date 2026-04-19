@@ -55,7 +55,7 @@ const GoogleButtonContent: React.FC<GoogleLoginButtonProps> = ({
     onSuccess: (tokenResponse) => {
       // Convert tokenResponse to CredentialResponse format
       // The parent expects CredentialResponse, so we need to handle this
-      onSuccess(tokenResponse as any);
+      onSuccess(tokenResponse as unknown as CredentialResponse);
     },
     onError: () => {
       onError();

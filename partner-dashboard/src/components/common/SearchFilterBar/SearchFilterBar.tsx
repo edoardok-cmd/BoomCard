@@ -8,9 +8,19 @@ interface FilterOption {
   value: string;
 }
 
+export interface ApiFilters {
+  category?: string;
+  city?: string;
+  priceRange?: string;
+  minDiscount?: number;
+  minRating?: number;
+  sortBy?: string;
+  sortOrder?: string;
+}
+
 interface SearchFilterBarProps {
   onSearchChange: (query: string) => void;
-  onFilterChange: (filters: any) => void;
+  onFilterChange: (filters: ApiFilters) => void;
   showCategoryFilter?: boolean;
   showCityFilter?: boolean;
   showPriceFilter?: boolean;
@@ -217,7 +227,7 @@ const SearchFilterBar: React.FC<SearchFilterBarProps> = ({
     setFilters(updatedFilters);
 
     // Convert to API format
-    const apiFilters: any = {};
+    const apiFilters: ApiFilters = {};
     if (updatedFilters.category) apiFilters.category = updatedFilters.category;
     if (updatedFilters.city) apiFilters.city = updatedFilters.city;
     if (updatedFilters.priceRange) apiFilters.priceRange = updatedFilters.priceRange;
