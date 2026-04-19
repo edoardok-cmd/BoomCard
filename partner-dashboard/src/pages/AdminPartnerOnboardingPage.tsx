@@ -686,7 +686,7 @@ const AdminPartnerOnboardingPage: React.FC = () => {
 
         <FormGrid style={{ marginTop: '1rem' }}>
           <FormGroup>
-            <Label $required>Ime за показване в платформата</Label>
+            <Label $required>Име за показване в платформата</Label>
             <Input
               value={form.businessName}
               onChange={e => set('businessName', e.target.value)}
@@ -695,7 +695,7 @@ const AdminPartnerOnboardingPage: React.FC = () => {
             {errors.businessName && <span style={{ color: 'var(--color-error)', fontSize: '0.8rem' }}>{errors.businessName}</span>}
           </FormGroup>
           <FormGroup>
-            <Label>Юридическо иmе на фирмата</Label>
+            <Label>Юридическо име на фирмата</Label>
             <Input
               value={form.legalName}
               onChange={e => set('legalName', e.target.value)}
@@ -849,7 +849,7 @@ const AdminPartnerOnboardingPage: React.FC = () => {
               </div>
               <FormGrid style={{ marginBottom: '0.5rem' }}>
                 <FormGroup $span>
-                  <Label $required>Иmе на обекта</Label>
+                  <Label $required>Име на обекта</Label>
                   <Input value={venue.name} onChange={e => setVenueField(i, 'name', e.target.value)} placeholder="напр. Ресторант Дива — Банско" />
                 </FormGroup>
               </FormGrid>

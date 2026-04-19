@@ -596,6 +596,10 @@ export default function AdminPartnerTypesPage() {
   function handleSaveAccess() {
     if (!editingType) return;
     const rules = PLANS.map(plan => ({ plan, ...accessRules[plan] }));
+    const summary = rules
+      .map(r => `${r.plan}: ${r.canRedeem ? 'view+redeem' : r.canView ? 'view only' : 'no access'}`)
+      .join('\n');
+    if (!window.confirm(`Replace plan access for "${editingType.name}" with:\n\n${summary}\n\nThis affects all subscribers immediately.`)) return;
     accessMutation.mutate({ id: editingType.id, rules });
   }
 

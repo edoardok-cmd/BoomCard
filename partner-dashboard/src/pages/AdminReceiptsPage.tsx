@@ -483,6 +483,10 @@ export const AdminReceiptsPage: React.FC = () => {
   const handleBulkApprove = async () => {
     if (selectedIds.size === 0) return;
     const ids = [...selectedIds];
+    const confirmMsg = language === 'bg'
+      ? `Одобрете ${ids.length} касов(и) бележк(и)? Това ще кредитира кешбек и не може да се отмени.`
+      : `Approve ${ids.length} receipt(s)? This credits cashback and cannot be undone.`;
+    if (!window.confirm(confirmMsg)) return;
     setBulkProcessing(true);
     try {
       await receiptsApiService.bulkApprove(ids);

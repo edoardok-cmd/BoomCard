@@ -26,6 +26,8 @@ const copy = {
     venueLabel: 'Venue',
     loading: 'Loading…',
     loadError: 'Failed to load pending menus',
+    confirmApprove: (name: string) => `Approve menu for "${name}"? It will go live on the venue page immediately.`,
+    confirmReject: (name: string) => `Reject menu for "${name}"? The partner will be notified with your reason.`,
   },
   bg: {
     title: 'Одобрение на менюта',
@@ -46,6 +48,8 @@ const copy = {
     venueLabel: 'Обект',
     loading: 'Зареждане…',
     loadError: 'Грешка при зареждане на менютата',
+    confirmApprove: (name: string) => `Да одобрите ли менюто за "${name}"? То ще стане публично веднага.`,
+    confirmReject: (name: string) => `Да отхвърлите ли менюто за "${name}"? Партньорът ще получи известие с вашата причина.`,
   },
 };
 
@@ -94,6 +98,7 @@ const AdminMenuApprovalsPage: React.FC = () => {
   }, []);
 
   const handleApprove = async (venue: PendingMenuVenue) => {
+    if (!window.confirm(t.confirmApprove(venue.name))) return;
     setBusy(prev => ({ ...prev, [venue.id]: true }));
     try {
       await venuesService.adminApproveMenu(venue.id, venue.pendingMenuUrl ?? undefined);
@@ -118,6 +123,8 @@ const AdminMenuApprovalsPage: React.FC = () => {
       toast.error(t.needReason);
       return;
     }
+    const venue = items.find(v => v.id === venueId);
+    if (!window.confirm(t.confirmReject(venue?.name ?? 'this venue'))) return;
     setBusy(prev => ({ ...prev, [venueId]: true }));
     try {
       await venuesService.adminRejectMenu(venueId, reason);

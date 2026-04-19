@@ -304,20 +304,6 @@ const AdminDashboardPage: React.FC = () => {
             </div>
           </ActionCard>
 
-          <ActionCard to="/analytics">
-            <ActionIcon>📊</ActionIcon>
-            <div>
-              <ActionTitle>
-                {language === 'bg' ? 'Аналитика' : 'Analytics'}
-              </ActionTitle>
-              <ActionDescription>
-                {language === 'bg'
-                  ? 'Преглед на статистики и отчети на системата'
-                  : 'View system statistics and reports'}
-              </ActionDescription>
-            </div>
-          </ActionCard>
-
           <ActionCard to="/admin/bulk-import">
             <ActionIcon>📥</ActionIcon>
             <div>
@@ -398,6 +384,48 @@ const AdminDashboardPage: React.FC = () => {
                 {language === 'bg'
                   ? 'Управлявайте шаблони за визуално сравнение на бележки по обекти'
                   : 'Manage receipt templates for visual comparison per venue'}
+              </ActionDescription>
+            </div>
+          </ActionCard>
+
+          <ActionCard to="/admin/menu-approvals">
+            <ActionIcon>📋</ActionIcon>
+            <div>
+              <ActionTitle>
+                {language === 'bg' ? 'Одобрения на Менюта' : 'Menu Approvals'}
+              </ActionTitle>
+              <ActionDescription>
+                {language === 'bg'
+                  ? 'Преглед и одобряване на подадени URL адреси за менюта на обекти'
+                  : 'Review and approve partner-submitted menu URLs for venues'}
+              </ActionDescription>
+            </div>
+          </ActionCard>
+
+          <ActionCard to="/admin/scan-review">
+            <ActionIcon>🔍</ActionIcon>
+            <div>
+              <ActionTitle>
+                {language === 'bg' ? 'Преглед на Сканирания' : 'Scan Review'}
+              </ActionTitle>
+              <ActionDescription>
+                {language === 'bg'
+                  ? 'Ръчен преглед на стикер сканирания с възможна измама'
+                  : 'Manual review of sticker scans flagged for potential fraud'}
+              </ActionDescription>
+            </div>
+          </ActionCard>
+
+          <ActionCard to="/admin/partner-onboarding">
+            <ActionIcon>🤝</ActionIcon>
+            <div>
+              <ActionTitle>
+                {language === 'bg' ? 'Въвеждане на Партньор' : 'Partner Onboarding'}
+              </ActionTitle>
+              <ActionDescription>
+                {language === 'bg'
+                  ? 'Ръчно въвеждане на партньор с бизнес данни, обекти и условия'
+                  : 'Manually onboard a partner with business info, venues, and terms'}
               </ActionDescription>
             </div>
           </ActionCard>
