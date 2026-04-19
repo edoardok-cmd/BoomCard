@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { offersService, OfferFilters } from '../services/offers.service';
+import { offersService, OfferFilters, CreateOfferData } from '../services/offers.service';
 import toast from 'react-hot-toast';
 
 /**
@@ -106,7 +106,7 @@ export function useCreateOffer() {
       queryClient.invalidateQueries({ queryKey: ['offers'] });
       toast.success('Offer created successfully!');
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(error.message || 'Failed to create offer');
     },
   });
@@ -119,14 +119,14 @@ export function useUpdateOffer() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ id, updates }: { id: string; updates: any }) =>
+    mutationFn: ({ id, updates }: { id: string; updates: Partial<CreateOfferData> }) =>
       offersService.updateOffer(id, updates),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['offers'] });
       queryClient.invalidateQueries({ queryKey: ['offer', variables.id] });
       toast.success('Offer updated successfully!');
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(error.message || 'Failed to update offer');
     },
   });
@@ -144,7 +144,7 @@ export function useDeleteOffer() {
       queryClient.invalidateQueries({ queryKey: ['offers'] });
       toast.success('Offer deleted successfully!');
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(error.message || 'Failed to delete offer');
     },
   });
@@ -167,7 +167,7 @@ export function useRedeemOffer() {
         toast.error(data.message || 'Failed to redeem offer');
       }
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(error.message || 'Failed to redeem offer');
     },
   });
@@ -260,7 +260,7 @@ export function useToggleOfferStatus() {
       queryClient.invalidateQueries({ queryKey: ['offer', variables.id] });
       toast.success(`Offer ${variables.isActive ? 'activated' : 'deactivated'} successfully!`);
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(error.message || 'Failed to update offer status');
     },
   });

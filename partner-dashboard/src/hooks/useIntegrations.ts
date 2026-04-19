@@ -74,7 +74,7 @@ export function useConnectIntegration() {
       queryClient.invalidateQueries({ queryKey: ['integrations', 'stats'] });
       toast.success('Integration connected successfully');
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(error?.message || 'Failed to connect integration');
     },
   });
@@ -94,7 +94,7 @@ export function useUpdateIntegration() {
       queryClient.invalidateQueries({ queryKey: ['integrations', 'connected', variables.id] });
       toast.success('Integration updated successfully');
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(error?.message || 'Failed to update integration');
     },
   });
@@ -114,7 +114,7 @@ export function useDisconnectIntegration() {
       queryClient.invalidateQueries({ queryKey: ['integrations', 'stats'] });
       toast.success('Integration disconnected');
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(error?.message || 'Failed to disconnect integration');
     },
   });
@@ -134,7 +134,7 @@ export function useTestIntegration() {
         toast.error(result.message || 'Integration test failed');
       }
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(error?.message || 'Failed to test integration');
     },
   });
@@ -159,7 +159,7 @@ export function useSyncIntegration() {
         toast.error(result.message || 'Integration sync failed');
       }
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(error?.message || 'Failed to sync integration');
     },
   });

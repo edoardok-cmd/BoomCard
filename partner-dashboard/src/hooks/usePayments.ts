@@ -60,7 +60,7 @@ export function useCreatePaymentIntent() {
           : 'Payment initiated successfully'
       );
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(
         error.message ||
           (language === 'bg'
@@ -88,7 +88,7 @@ export function useConfirmPayment() {
         language === 'bg' ? 'Плащането е потвърдено' : 'Payment confirmed successfully'
       );
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(
         error.message ||
           (language === 'bg' ? 'Неуспешно потвърждаване на плащане' : 'Payment confirmation failed')
@@ -113,7 +113,7 @@ export function useCancelPayment() {
         language === 'bg' ? 'Плащането е отменено' : 'Payment cancelled successfully'
       );
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(
         error.message ||
           (language === 'bg' ? 'Неуспешно отменяне на плащане' : 'Failed to cancel payment')
@@ -149,7 +149,7 @@ export function useAddPaymentCard() {
         language === 'bg' ? 'Картата е добавена успешно' : 'Card added successfully'
       );
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(
         error.message ||
           (language === 'bg' ? 'Неуспешно добавяне на карта' : 'Failed to add card')
@@ -173,7 +173,7 @@ export function useRemovePaymentCard() {
         language === 'bg' ? 'Картата е премахната' : 'Card removed successfully'
       );
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(
         error.message ||
           (language === 'bg' ? 'Неуспешно премахване на карта' : 'Failed to remove card')
@@ -199,7 +199,7 @@ export function useSetDefaultCard() {
           : 'Default card set successfully'
       );
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(
         error.message ||
           (language === 'bg'
@@ -238,7 +238,7 @@ export function useRequestRefund() {
           : 'Refund request submitted successfully'
       );
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(
         error.message ||
           (language === 'bg'
@@ -290,7 +290,7 @@ export function useProcessRefund() {
           : 'Refund rejected';
       toast.success(message);
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(
         error.message ||
           (language === 'bg' ? 'Неуспешна обработка на връщане' : 'Failed to process refund')
@@ -350,7 +350,7 @@ export function useDownloadInvoice() {
         language === 'bg' ? 'Фактурата е изтеглена' : 'Invoice downloaded successfully'
       );
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(
         error.message ||
           (language === 'bg' ? 'Неуспешно изтегляне на фактура' : 'Failed to download invoice')
@@ -400,7 +400,7 @@ export function useRequestPayout() {
           : 'Payout request submitted successfully'
       );
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(
         error.message ||
           (language === 'bg'
@@ -441,7 +441,7 @@ export function useAddWalletFunds() {
           : 'Funds added to wallet successfully'
       );
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(
         error.message ||
           (language === 'bg'
@@ -476,7 +476,7 @@ export function useTransferFromWallet() {
         language === 'bg' ? 'Преводът е успешен' : 'Transfer completed successfully'
       );
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(
         error.message ||
           (language === 'bg' ? 'Неуспешен превод' : 'Failed to complete transfer')
@@ -508,7 +508,7 @@ export function useGetReceipt() {
         language === 'bg' ? 'Разписката е изтеглена' : 'Receipt downloaded successfully'
       );
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(
         error.message ||
           (language === 'bg' ? 'Неуспешно изтегляне на разписка' : 'Failed to download receipt')
@@ -524,7 +524,18 @@ export function useExportTransactions() {
   const { language } = useLanguage();
 
   return useMutation({
-    mutationFn: ({ filters, format }: { filters?: any; format?: 'csv' | 'xlsx' | 'pdf' }) =>
+    mutationFn: ({ filters, format }: {
+      filters?: {
+        type?: TransactionType;
+        status?: PaymentStatus;
+        paymentMethod?: PaymentMethod;
+        userId?: string;
+        partnerId?: string;
+        startDate?: string;
+        endDate?: string;
+      };
+      format?: 'csv' | 'xlsx' | 'pdf';
+    }) =>
       paymentsService.exportTransactions(filters, format),
     onSuccess: (blob, variables) => {
       // Create download link
@@ -544,7 +555,7 @@ export function useExportTransactions() {
           : 'Transactions exported successfully'
       );
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(
         error.message ||
           (language === 'bg'
@@ -573,7 +584,7 @@ export function useCreateSubscription() {
           : 'Subscription created successfully'
       );
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(
         error.message ||
           (language === 'bg'
@@ -600,7 +611,7 @@ export function useCancelSubscription() {
         language === 'bg' ? 'Абонаментът е отменен' : 'Subscription cancelled successfully'
       );
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(
         error.message ||
           (language === 'bg'
@@ -624,7 +635,7 @@ export function useVerifyPayment() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['transactions'] });
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(
         error.message ||
           (language === 'bg'
@@ -672,7 +683,7 @@ export function useCreateSplitPayment() {
           : 'Split payment created successfully'
       );
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(
         error.message ||
           (language === 'bg'

@@ -171,7 +171,7 @@ export function useCreateReview() {
       queryClient.invalidateQueries({ queryKey: ['reviews', review.entityType, review.entityId] });
       toast.success('Review submitted successfully!');
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(error.message || 'Failed to submit review');
     },
   });
@@ -191,7 +191,7 @@ export function useUpdateReview() {
       queryClient.invalidateQueries({ queryKey: ['review', review.id] });
       toast.success('Review updated successfully!');
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(error.message || 'Failed to update review');
     },
   });
@@ -209,7 +209,7 @@ export function useDeleteReview() {
       queryClient.invalidateQueries({ queryKey: ['reviews'] });
       toast.success('Review deleted');
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(error.message || 'Failed to delete review');
     },
   });
@@ -229,7 +229,7 @@ export function useAddResponse() {
       queryClient.invalidateQueries({ queryKey: ['review', review.id] });
       toast.success('Response added successfully!');
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(error.message || 'Failed to add response');
     },
   });
@@ -248,7 +248,7 @@ export function useUpdateResponse() {
       queryClient.invalidateQueries({ queryKey: ['review', review.id] });
       toast.success('Response updated!');
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(error.message || 'Failed to update response');
     },
   });
@@ -266,7 +266,7 @@ export function useDeleteResponse() {
       queryClient.invalidateQueries({ queryKey: ['review', review.id] });
       toast.success('Response deleted');
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(error.message || 'Failed to delete response');
     },
   });
@@ -311,7 +311,7 @@ export function useFlagReview() {
     onSuccess: () => {
       toast.success('Review flagged for moderation');
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(error.message || 'Failed to flag review');
     },
   });
@@ -333,7 +333,7 @@ export function useModerateReview() {
       queryClient.invalidateQueries({ queryKey: ['reviews'] });
       toast.success('Review moderated successfully');
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(error.message || 'Failed to moderate review');
     },
   });
@@ -383,7 +383,7 @@ export function useBulkApproveReviews() {
       queryClient.invalidateQueries({ queryKey: ['reviews'] });
       toast.success(`${result.approved} reviews approved`);
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(error.message || 'Failed to approve reviews');
     },
   });
@@ -402,7 +402,7 @@ export function useBulkRejectReviews() {
       queryClient.invalidateQueries({ queryKey: ['reviews'] });
       toast.success(`${result.rejected} reviews rejected`);
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(error.message || 'Failed to reject reviews');
     },
   });
@@ -427,7 +427,7 @@ export function useRequestReview() {
     onSuccess: () => {
       toast.success('Review request sent!');
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(error.message || 'Failed to send review request');
     },
   });

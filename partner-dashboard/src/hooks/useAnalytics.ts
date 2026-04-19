@@ -39,7 +39,7 @@ export function usePageTracking() {
  * Returns a function to track events
  */
 export function useTrackEvent() {
-  return useCallback((action: EventAction, label: string, value?: number, metadata?: Record<string, any>) => {
+  return useCallback((action: EventAction, label: string, value?: number, metadata?: Record<string, unknown>) => {
     analyticsService.trackAction(action, label, value, metadata);
   }, []);
 }
@@ -97,7 +97,7 @@ export function useTrackVisibility(label: string, threshold = 0.5) {
  * Hook to track search
  */
 export function useTrackSearch() {
-  return useCallback((query: string, resultCount: number, filters?: Record<string, any>) => {
+  return useCallback((query: string, resultCount: number, filters?: Record<string, unknown>) => {
     analyticsService.trackSearch(query, resultCount, filters);
   }, []);
 }
@@ -232,7 +232,7 @@ export function useTrackMedia(mediaType: 'video' | 'audio' | 'image', mediaId: s
 export function useTrackFilters() {
   const trackEvent = useTrackEvent();
 
-  return useCallback((filters: Record<string, any>) => {
+  return useCallback((filters: Record<string, unknown>) => {
     trackEvent('filter', 'apply', undefined, { filters });
   }, [trackEvent]);
 }

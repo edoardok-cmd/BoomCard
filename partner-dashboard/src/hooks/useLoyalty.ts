@@ -68,7 +68,7 @@ export function useEarnPoints() {
           : `You earned ${data.points} points!`
       );
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(
         error.message ||
           (language === 'bg' ? 'Неуспешно добавяне на точки' : 'Failed to earn points')
@@ -96,7 +96,7 @@ export function useRedeemReward() {
           : 'Reward redeemed successfully!'
       );
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(
         error.message ||
           (language === 'bg' ? 'Неуспешна активация на награда' : 'Failed to redeem reward')
@@ -152,7 +152,7 @@ export function useCreateReward() {
         language === 'bg' ? 'Наградата е създадена' : 'Reward created successfully'
       );
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(
         error.message ||
           (language === 'bg' ? 'Неуспешно създаване на награда' : 'Failed to create reward')
@@ -178,7 +178,7 @@ export function useUpdateReward() {
         language === 'bg' ? 'Наградата е актуализирана' : 'Reward updated successfully'
       );
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(
         error.message ||
           (language === 'bg' ? 'Неуспешна актуализация на награда' : 'Failed to update reward')
@@ -202,7 +202,7 @@ export function useDeleteReward() {
         language === 'bg' ? 'Наградата е изтрита' : 'Reward deleted successfully'
       );
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(
         error.message ||
           (language === 'bg' ? 'Неуспешно изтриване на награда' : 'Failed to delete reward')
@@ -255,7 +255,7 @@ export function useUseRedemption() {
         language === 'bg' ? 'Ваучерът е използван' : 'Voucher used successfully'
       );
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(
         error.message ||
           (language === 'bg' ? 'Неуспешно използване на ваучер' : 'Failed to use voucher')
@@ -371,7 +371,7 @@ export function useApplyReferralCode() {
           : 'Referral code applied successfully!'
       );
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(
         error.message ||
           (language === 'bg'
@@ -412,7 +412,7 @@ export function useTransferPoints() {
           : 'Points transferred successfully'
       );
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(
         error.message ||
           (language === 'bg'
@@ -504,7 +504,7 @@ export function useAwardBadge() {
         language === 'bg' ? 'Значката е присъдена!' : 'Badge awarded successfully!'
       );
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(
         error.message ||
           (language === 'bg' ? 'Неуспешно присъждане на значка' : 'Failed to award badge')

@@ -33,8 +33,9 @@ export const usePartnerReviews = (options: UsePartnerReviewsOptions = {}) => {
       queryClient.invalidateQueries({ queryKey: ['reviews'] });
       toast.success('Review submitted successfully! It will be visible after approval.');
     },
-    onError: (err: any) => {
-      const errorMessage = err.response?.data?.message || err.message || 'Failed to submit review';
+    onError: (err: unknown) => {
+      const axiosErr = err as { response?: { data?: { message?: string } }; message?: string };
+      const errorMessage = axiosErr.response?.data?.message || axiosErr.message || 'Failed to submit review';
       toast.error(errorMessage);
     },
   });
@@ -46,8 +47,9 @@ export const usePartnerReviews = (options: UsePartnerReviewsOptions = {}) => {
       queryClient.invalidateQueries({ queryKey: ['reviews'] });
       toast.success('Review deleted successfully');
     },
-    onError: (err: any) => {
-      const errorMessage = err.response?.data?.message || err.message || 'Failed to delete review';
+    onError: (err: unknown) => {
+      const axiosErr = err as { response?: { data?: { message?: string } }; message?: string };
+      const errorMessage = axiosErr.response?.data?.message || axiosErr.message || 'Failed to delete review';
       toast.error(errorMessage);
     },
   });
@@ -59,8 +61,9 @@ export const usePartnerReviews = (options: UsePartnerReviewsOptions = {}) => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['reviews'] });
     },
-    onError: (err: any) => {
-      const errorMessage = err.response?.data?.message || err.message || 'Failed to vote';
+    onError: (err: unknown) => {
+      const axiosErr = err as { response?: { data?: { message?: string } }; message?: string };
+      const errorMessage = axiosErr.response?.data?.message || axiosErr.message || 'Failed to vote';
       toast.error(errorMessage);
     },
   });
@@ -68,7 +71,7 @@ export const usePartnerReviews = (options: UsePartnerReviewsOptions = {}) => {
   return {
     reviews: data?.data || [],
     loading: isLoading,
-    error: error ? (error as any).message : null,
+    error: error ? (error as Error).message : null,
     pagination: data?.pagination || {
       page: 1,
       limit: 10,

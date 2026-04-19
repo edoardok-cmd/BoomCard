@@ -100,7 +100,7 @@ export function useCreateConversation() {
           : 'Conversation created successfully'
       );
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(
         error.message ||
           (language === 'bg'
@@ -130,7 +130,7 @@ export function useUpdateConversation() {
           : 'Conversation updated successfully'
       );
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(
         error.message ||
           (language === 'bg'
@@ -156,7 +156,7 @@ export function useDeleteConversation() {
         language === 'bg' ? 'Разговорът е изтрит' : 'Conversation deleted successfully'
       );
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(
         error.message ||
           (language === 'bg'
@@ -182,7 +182,7 @@ export function useArchiveConversation() {
         language === 'bg' ? 'Разговорът е архивиран' : 'Conversation archived'
       );
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(
         error.message ||
           (language === 'bg'
@@ -289,7 +289,7 @@ export function useSendMessage() {
       queryClient.invalidateQueries({ queryKey: ['conversations'] });
       queryClient.invalidateQueries({ queryKey: ['conversation', variables.conversationId] });
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(
         error.message ||
           (language === 'bg' ? 'Неуспешно изпращане на съобщение' : 'Failed to send message')
@@ -323,7 +323,7 @@ export function useEditMessage() {
           : 'Message edited successfully'
       );
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(
         error.message ||
           (language === 'bg'
@@ -350,7 +350,7 @@ export function useDeleteMessage() {
         language === 'bg' ? 'Съобщението е изтрито' : 'Message deleted successfully'
       );
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(
         error.message ||
           (language === 'bg'
@@ -427,7 +427,7 @@ export function useAddParticipant() {
           : 'Participant added successfully'
       );
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(
         error.message ||
           (language === 'bg'
@@ -454,7 +454,7 @@ export function useRemoveParticipant() {
         language === 'bg' ? 'Участникът е премахнат' : 'Participant removed'
       );
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(
         error.message ||
           (language === 'bg'
@@ -498,7 +498,7 @@ export function useCreateTemplate() {
         language === 'bg' ? 'Шаблонът е създаден' : 'Template created successfully'
       );
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(
         error.message ||
           (language === 'bg' ? 'Неуспешно създаване на шаблон' : 'Failed to create template')
@@ -523,7 +523,7 @@ export function useUpdateTemplate() {
         language === 'bg' ? 'Шаблонът е актуализиран' : 'Template updated successfully'
       );
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(
         error.message ||
           (language === 'bg'
@@ -549,7 +549,7 @@ export function useDeleteTemplate() {
         language === 'bg' ? 'Шаблонът е изтрит' : 'Template deleted successfully'
       );
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(
         error.message ||
           (language === 'bg' ? 'Неуспешно изтриване на шаблон' : 'Failed to delete template')
@@ -633,7 +633,7 @@ export function useBlockUser() {
         language === 'bg' ? 'Потребителят е блокиран' : 'User blocked'
       );
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(
         error.message ||
           (language === 'bg'
@@ -704,7 +704,7 @@ export function useExportConversation() {
           : 'Conversation exported successfully'
       );
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(
         error.message ||
           (language === 'bg'
@@ -738,7 +738,7 @@ export function useReportMessage() {
           : 'Message reported successfully'
       );
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(
         error.message ||
           (language === 'bg'

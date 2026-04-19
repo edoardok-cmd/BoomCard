@@ -212,7 +212,7 @@ export function useCreateBooking() {
       queryClient.invalidateQueries({ queryKey: ['availability'] });
       toast.success('Booking created successfully!');
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(error.message || 'Failed to create booking');
     },
   });
@@ -232,7 +232,7 @@ export function useUpdateBooking() {
       queryClient.invalidateQueries({ queryKey: ['booking', booking.id] });
       toast.success('Booking updated successfully!');
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(error.message || 'Failed to update booking');
     },
   });
@@ -252,7 +252,7 @@ export function useConfirmBooking() {
       queryClient.invalidateQueries({ queryKey: ['booking', booking.id] });
       toast.success('Booking confirmed!');
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(error.message || 'Failed to confirm booking');
     },
   });
@@ -273,7 +273,7 @@ export function useCancelBooking() {
       queryClient.invalidateQueries({ queryKey: ['availability'] });
       toast.success('Booking cancelled');
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(error.message || 'Failed to cancel booking');
     },
   });
@@ -293,7 +293,7 @@ export function useCompleteBooking() {
       queryClient.invalidateQueries({ queryKey: ['booking', booking.id] });
       toast.success('Booking completed!');
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(error.message || 'Failed to complete booking');
     },
   });
@@ -312,7 +312,7 @@ export function useMarkNoShow() {
       queryClient.invalidateQueries({ queryKey: ['booking', booking.id] });
       toast.success('Marked as no-show');
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(error.message || 'Failed to mark as no-show');
     },
   });
@@ -333,7 +333,7 @@ export function useRescheduleBooking() {
       queryClient.invalidateQueries({ queryKey: ['availability'] });
       toast.success('Booking rescheduled!');
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(error.message || 'Failed to reschedule booking');
     },
   });
@@ -352,7 +352,7 @@ export function useAddSpecialRequests() {
       queryClient.invalidateQueries({ queryKey: ['booking', booking.id] });
       toast.success('Special requests added!');
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(error.message || 'Failed to add special requests');
     },
   });
@@ -371,7 +371,7 @@ export function useApplyPromoCode() {
       queryClient.invalidateQueries({ queryKey: ['booking', booking.id] });
       toast.success('Promo code applied!');
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(error.message || 'Invalid promo code');
     },
   });
@@ -389,7 +389,7 @@ export function useVerifyBookingQR() {
       queryClient.invalidateQueries({ queryKey: ['booking', booking.id] });
       toast.success('Booking verified!');
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(error.message || 'Invalid QR code');
     },
   });
@@ -404,7 +404,7 @@ export function useSendConfirmationEmail() {
     onSuccess: () => {
       toast.success('Confirmation email sent!');
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(error.message || 'Failed to send email');
     },
   });
@@ -419,7 +419,7 @@ export function useSendReminder() {
     onSuccess: () => {
       toast.success('Reminder sent!');
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(error.message || 'Failed to send reminder');
     },
   });
@@ -431,7 +431,7 @@ export function useSendReminder() {
 export function useCalculatePrice() {
   return useMutation({
     mutationFn: (data: CreateBookingData) => bookingsService.calculatePrice(data),
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(error.message || 'Failed to calculate price');
     },
   });

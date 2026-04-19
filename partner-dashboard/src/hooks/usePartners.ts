@@ -144,7 +144,7 @@ export function useUpdatePartner() {
       queryClient.invalidateQueries({ queryKey: ['partner', 'me'] });
       toast.success('Partner profile updated successfully!');
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(error.message || 'Failed to update partner');
     },
   });
@@ -164,7 +164,7 @@ export function useUploadPartnerLogo(partnerId: string) {
       queryClient.invalidateQueries({ queryKey: ['partner', 'me'] });
       toast.success('Logo uploaded successfully!');
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(error.message || 'Failed to upload logo');
     },
   });
@@ -184,7 +184,7 @@ export function useUploadPartnerCover(partnerId: string) {
       queryClient.invalidateQueries({ queryKey: ['partner', 'me'] });
       toast.success('Cover image uploaded successfully!');
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(error.message || 'Failed to upload cover image');
     },
   });
@@ -203,7 +203,7 @@ export function useRequestStatusUpgrade() {
       queryClient.invalidateQueries({ queryKey: ['partner'] });
       toast.success('Upgrade request submitted successfully!');
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(error.message || 'Failed to submit upgrade request');
     },
   });

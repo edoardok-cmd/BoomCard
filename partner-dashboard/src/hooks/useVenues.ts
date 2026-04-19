@@ -115,7 +115,7 @@ export function useCreateVenue() {
       queryClient.invalidateQueries({ queryKey: ['venues'] });
       toast.success('Venue created successfully!');
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(error.message || 'Failed to create venue');
     },
   });
@@ -135,7 +135,7 @@ export function useUpdateVenue() {
       queryClient.invalidateQueries({ queryKey: ['venue', variables.id] });
       toast.success('Venue updated successfully!');
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(error.message || 'Failed to update venue');
     },
   });
@@ -153,7 +153,7 @@ export function useDeleteVenue() {
       queryClient.invalidateQueries({ queryKey: ['venues'] });
       toast.success('Venue deleted successfully!');
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(error.message || 'Failed to delete venue');
     },
   });
@@ -172,7 +172,7 @@ export function useUploadVenueImages(venueId: string) {
       queryClient.invalidateQueries({ queryKey: ['venues'] });
       toast.success('Images uploaded successfully!');
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(error.message || 'Failed to upload images');
     },
   });
@@ -191,7 +191,7 @@ export function useDeleteVenueImage(venueId: string) {
       queryClient.invalidateQueries({ queryKey: ['venues'] });
       toast.success('Image deleted successfully!');
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(error.message || 'Failed to delete image');
     },
   });

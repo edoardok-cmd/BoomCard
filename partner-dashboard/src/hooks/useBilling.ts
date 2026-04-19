@@ -81,7 +81,7 @@ export function useCreateSubscription() {
       queryClient.invalidateQueries({ queryKey: ['billing', 'subscription'] });
       toast.success('Subscription created successfully!');
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(error.message || 'Failed to create subscription');
     },
   });
@@ -99,7 +99,7 @@ export function useUpdateSubscription() {
       queryClient.invalidateQueries({ queryKey: ['billing', 'subscription'] });
       toast.success('Subscription updated successfully!');
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(error.message || 'Failed to update subscription');
     },
   });
@@ -117,7 +117,7 @@ export function useCancelSubscription() {
       queryClient.invalidateQueries({ queryKey: ['billing', 'subscription'] });
       toast.success('Subscription canceled');
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(error.message || 'Failed to cancel subscription');
     },
   });
@@ -135,7 +135,7 @@ export function useReactivateSubscription() {
       queryClient.invalidateQueries({ queryKey: ['billing', 'subscription'] });
       toast.success('Subscription reactivated!');
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(error.message || 'Failed to reactivate subscription');
     },
   });
@@ -176,7 +176,7 @@ export function useAddPaymentMethod() {
       queryClient.invalidateQueries({ queryKey: ['billing', 'payment-methods'] });
       toast.success('Payment method added successfully!');
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(error.message || 'Failed to add payment method');
     },
   });
@@ -194,7 +194,7 @@ export function useSetDefaultPaymentMethod() {
       queryClient.invalidateQueries({ queryKey: ['billing', 'payment-methods'] });
       toast.success('Default payment method updated!');
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(error.message || 'Failed to update default payment method');
     },
   });
@@ -212,7 +212,7 @@ export function useDeletePaymentMethod() {
       queryClient.invalidateQueries({ queryKey: ['billing', 'payment-methods'] });
       toast.success('Payment method deleted');
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(error.message || 'Failed to delete payment method');
     },
   });
@@ -264,7 +264,7 @@ export function useDownloadInvoice() {
     onSuccess: () => {
       toast.success('Invoice downloaded!');
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(error.message || 'Failed to download invoice');
     },
   });
@@ -282,7 +282,7 @@ export function useRetryInvoicePayment() {
       queryClient.invalidateQueries({ queryKey: ['billing', 'invoices'] });
       toast.success('Payment retry initiated');
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(error.message || 'Failed to retry payment');
     },
   });
@@ -332,7 +332,7 @@ export function useGetBillingPortalUrl() {
       // Redirect to billing portal
       window.location.href = data.url;
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(error.message || 'Failed to open billing portal');
     },
   });
