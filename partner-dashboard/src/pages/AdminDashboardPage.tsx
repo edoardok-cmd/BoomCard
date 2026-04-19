@@ -2,6 +2,25 @@ import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import styled from 'styled-components';
 import { motion } from 'framer-motion';
+import {
+  BuildingStorefrontIcon,
+  TagIcon,
+  StarIcon,
+  ArrowUpTrayIcon,
+  ReceiptPercentIcon,
+  BanknotesIcon,
+  ShieldCheckIcon,
+  Cog6ToothIcon,
+  DocumentTextIcon,
+  ClipboardDocumentCheckIcon,
+  MagnifyingGlassIcon,
+  HandRaisedIcon,
+  ChartBarIcon,
+  CurrencyDollarIcon,
+  ExclamationTriangleIcon,
+  CheckCircleIcon,
+  ArrowRightIcon,
+} from '@heroicons/react/24/outline';
 import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useOffers } from '../hooks/useOffers';
@@ -10,144 +29,287 @@ import { adminCashbackService, CashbackDashboardStats } from '../services/adminC
 const PageContainer = styled.div`
   max-width: 80rem;
   margin: 0 auto;
-  padding: 2rem 1rem;
+  padding: 2rem 1.5rem 3rem;
   min-height: calc(100vh - 4rem);
 `;
 
-const PageHeader = styled.div`
-  margin-bottom: 3rem;
+const PageHeader = styled.header`
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1.5rem;
+  margin-bottom: 2rem;
+  padding-bottom: 1.25rem;
+  border-bottom: 1px solid var(--color-border, #e5e7eb);
+
+  @media (max-width: 640px) {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+`;
+
+const HeaderLeft = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+`;
+
+const Eyebrow = styled.span`
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text-secondary, #6b7280);
+
+  &::before {
+    content: '';
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 50%;
+    background: #10b981;
+    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.15);
+  }
 `;
 
 const Title = styled.h1`
-  font-size: 3rem;
-  font-weight: 800;
-  background: linear-gradient(135deg, #dc2626 0%, #ea580c 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  margin-bottom: 0.5rem;
-  letter-spacing: -0.03em;
+  font-size: 1.875rem;
+  font-weight: 700;
+  color: var(--color-text-primary, #0f172a);
+  margin: 0;
+  letter-spacing: -0.02em;
 
   @media (max-width: 640px) {
-    font-size: 2rem;
+    font-size: 1.5rem;
   }
 `;
 
 const Subtitle = styled.p`
-  font-size: 1.125rem;
-  color: #6b7280;
-  font-weight: 500;
+  font-size: 0.9375rem;
+  color: var(--color-text-secondary, #64748b);
+  margin: 0;
+`;
+
+const HeaderMeta = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.25rem;
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary, #64748b);
+
+  @media (max-width: 640px) {
+    align-items: flex-start;
+  }
+`;
+
+const MetaLabel = styled.span`
+  font-weight: 600;
+  color: var(--color-text-primary, #0f172a);
 `;
 
 const StatsGrid = styled.div`
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
-  gap: 1.5rem;
-  margin-bottom: 3rem;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: 0.875rem;
+  margin-bottom: 2.5rem;
 `;
 
-const StatCard = styled(motion.div)`
-  background: linear-gradient(to bottom right, #ffffff 0%, #fafbfc 100%);
-  border-radius: 1.5rem;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
-  border: 1px solid rgba(0, 0, 0, 0.06);
-  padding: 2rem;
-  transition: all 300ms;
-
-  &:hover {
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
-    transform: translateY(-4px);
-  }
-`;
-
-const StatLabel = styled.p`
-  font-size: 0.875rem;
-  font-weight: 600;
-  color: #6b7280;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  margin-bottom: 0.5rem;
-`;
-
-const StatValue = styled.h3`
-  font-size: 2.5rem;
-  font-weight: 800;
-  color: #111827;
-  margin-bottom: 0.5rem;
-`;
-
-const StatChange = styled.p<{ positive?: boolean }>`
-  font-size: 0.875rem;
-  color: ${props => props.positive ? '#10b981' : '#6b7280'};
-  font-weight: 600;
-`;
-
-const QuickActionsGrid = styled.div`
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));
-  gap: 1.5rem;
-  margin-bottom: 3rem;
-`;
-
-const ActionCard = styled(Link)`
-  background: white;
-  border-radius: 1.25rem;
-  padding: 2rem;
-  border: 2px solid #e5e7eb;
-  text-decoration: none;
-  transition: all 300ms;
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-
-  &:hover {
-    border-color: #dc2626;
-    box-shadow: 0 8px 24px rgba(220, 38, 38, 0.15);
-    transform: translateY(-4px);
-  }
-`;
-
-const ActionIcon = styled.div`
-  width: 3rem;
-  height: 3rem;
+const StatCard = styled(motion.div)<{ $accent?: string }>`
+  position: relative;
+  background: var(--color-background, #ffffff);
+  border: 1px solid var(--color-border, #e5e7eb);
   border-radius: 0.75rem;
-  background: linear-gradient(135deg, #dc2626 0%, #ea580c 100%);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 1.5rem;
+  padding: 1.25rem 1.25rem 1.125rem;
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+  overflow: hidden;
+
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: ${p => p.$accent || '#0f172a'};
+    opacity: 0.9;
+  }
+
+  &:hover {
+    border-color: var(--color-text-tertiary, #cbd5e1);
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 4px 12px rgba(15, 23, 42, 0.06);
+  }
 `;
 
-const ActionTitle = styled.h3`
-  font-size: 1.25rem;
-  font-weight: 700;
-  color: #111827;
-  margin: 0;
-`;
-
-const ActionDescription = styled.p`
-  font-size: 0.9375rem;
-  color: #6b7280;
-  margin: 0;
-  line-height: 1.5;
-`;
-
-const Section = styled.div`
-  margin-bottom: 3rem;
-`;
-
-const SectionHeader = styled.div`
+const StatTop = styled.div`
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 1.5rem;
+  margin-bottom: 0.75rem;
+`;
+
+const StatLabel = styled.p`
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-text-secondary, #64748b);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin: 0;
+`;
+
+const StatIconBox = styled.div<{ $color?: string; $bg?: string }>`
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 0.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: ${p => p.$bg || 'var(--color-background-tertiary, #f1f5f9)'};
+  color: ${p => p.$color || 'var(--color-text-secondary, #475569)'};
+
+  svg {
+    width: 1rem;
+    height: 1rem;
+  }
+`;
+
+const StatValue = styled.h3<{ $danger?: boolean }>`
+  font-size: 1.875rem;
+  font-weight: 700;
+  color: ${p => (p.$danger ? '#dc2626' : 'var(--color-text-primary, #0f172a)')};
+  margin: 0 0 0.25rem 0;
+  letter-spacing: -0.025em;
+  font-feature-settings: 'tnum';
+`;
+
+const StatChange = styled.p<{ $positive?: boolean; $warning?: boolean }>`
+  font-size: 0.8125rem;
+  color: ${p =>
+    p.$positive ? '#059669' : p.$warning ? '#d97706' : 'var(--color-text-secondary, #64748b)'};
+  font-weight: 500;
+  margin: 0;
+`;
+
+const SectionGroup = styled.section`
+  margin-bottom: 2rem;
+`;
+
+const SectionHead = styled.div`
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.875rem;
 `;
 
 const SectionTitle = styled.h2`
-  font-size: 1.5rem;
+  font-size: 0.8125rem;
   font-weight: 700;
-  color: #111827;
+  color: var(--color-text-secondary, #64748b);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin: 0;
 `;
+
+const SectionHint = styled.span`
+  font-size: 0.75rem;
+  color: var(--color-text-tertiary, #94a3b8);
+  text-align: right;
+
+  @media (max-width: 640px) {
+    display: none;
+  }
+`;
+
+const ActionsGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr));
+  gap: 0.75rem;
+`;
+
+const ActionCard = styled(Link)`
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.875rem;
+  background: var(--color-background, #ffffff);
+  border: 1px solid var(--color-border, #e5e7eb);
+  border-radius: 0.625rem;
+  padding: 0.875rem 1rem;
+  text-decoration: none;
+  transition: border-color 150ms ease, box-shadow 150ms ease, transform 150ms ease;
+
+  &:hover {
+    border-color: #94a3b8;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 4px 12px rgba(15, 23, 42, 0.06);
+
+    .arrow {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+`;
+
+const ActionIcon = styled.div<{ $tint?: string }>`
+  flex-shrink: 0;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 0.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: ${p => p.$tint || 'var(--color-background-tertiary, #f1f5f9)'};
+  color: ${p => (p.$tint ? '#ffffff' : 'var(--color-text-secondary, #475569)')};
+
+  svg {
+    width: 1.125rem;
+    height: 1.125rem;
+  }
+`;
+
+const ActionBody = styled.div`
+  flex: 1;
+  min-width: 0;
+`;
+
+const ActionTitle = styled.h3`
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--color-text-primary, #0f172a);
+  margin: 0 0 0.1875rem 0;
+  line-height: 1.3;
+`;
+
+const ActionDescription = styled.p`
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary, #64748b);
+  margin: 0;
+  line-height: 1.45;
+`;
+
+const ActionArrow = styled.div.attrs({ className: 'arrow' })`
+  flex-shrink: 0;
+  align-self: center;
+  color: var(--color-text-tertiary, #94a3b8);
+  opacity: 0;
+  transform: translateX(-4px);
+  transition: all 150ms ease;
+
+  svg {
+    width: 1rem;
+    height: 1rem;
+  }
+`;
+
+type ActionDef = {
+  to: string;
+  title: string;
+  description: string;
+  icon: React.ComponentType<React.SVGProps<SVGSVGElement>>;
+  tint?: string;
+};
 
 const AdminDashboardPage: React.FC = () => {
   const { user } = useAuth();
@@ -159,278 +321,307 @@ const AdminDashboardPage: React.FC = () => {
     adminCashbackService.getStats().then(setCashbackStats).catch(() => {});
   }, []);
 
-  // Calculate stats
   const totalOffers = offersData?.total || 0;
   const featuredOffers = offersData?.data?.filter(o => o.isFeatured)?.length || 0;
   const activeOffers = offersData?.data?.filter(o => o.status === 'ACTIVE')?.length || 0;
+  const featuredRate = totalOffers > 0 ? Math.round((featuredOffers / totalOffers) * 100) : 0;
+  const pendingCashback = cashbackStats ? cashbackStats.pendingTotal.toFixed(2) : '—';
+  const overdueCount = cashbackStats ? cashbackStats.overdueCount : null;
+
+  const bg = language === 'bg';
+
+  const today = new Date().toLocaleDateString(bg ? 'bg-BG' : 'en-US', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
+
+  const partnerActions: ActionDef[] = [
+    {
+      to: '/admin/partners',
+      title: bg ? 'Партньори' : 'Partners',
+      description: bg
+        ? 'Управление на партньорски акаунти и одобрения'
+        : 'Manage partner accounts and approvals',
+      icon: BuildingStorefrontIcon,
+      tint: '#0f172a',
+    },
+    {
+      to: '/admin/partner-types',
+      title: bg ? 'Типове Партньори' : 'Partner Types',
+      description: bg
+        ? 'Лимити за отстъпки и достъп по абонамент'
+        : 'Discount rate caps and subscription plan access',
+      icon: TagIcon,
+    },
+    {
+      to: '/admin/partner-onboarding',
+      title: bg ? 'Въвеждане на Партньор' : 'Partner Onboarding',
+      description: bg
+        ? 'Ръчно въвеждане с бизнес данни, обекти и условия'
+        : 'Onboard a partner with business info, venues, and terms',
+      icon: HandRaisedIcon,
+    },
+    {
+      to: '/admin/bulk-import',
+      title: bg ? 'Масов Импорт' : 'Bulk Import',
+      description: bg
+        ? 'Импорт на партньори и оферти от CSV/Excel'
+        : 'Import partners and offers from CSV or Excel',
+      icon: ArrowUpTrayIcon,
+    },
+  ];
+
+  const contentActions: ActionDef[] = [
+    {
+      to: '/admin/top-discounts',
+      title: bg ? 'Топ Отстъпки' : 'Top Discounts',
+      description: bg
+        ? 'Управление на featured оферти — снимки и полета'
+        : 'Manage featured Top Discounts — images and copy',
+      icon: StarIcon,
+      tint: '#ea580c',
+    },
+    {
+      to: '/admin/menu-approvals',
+      title: bg ? 'Одобрения на Менюта' : 'Menu Approvals',
+      description: bg
+        ? 'Преглед и одобряване на URL адреси за менюта'
+        : 'Review and approve partner-submitted menu URLs',
+      icon: ClipboardDocumentCheckIcon,
+    },
+  ];
+
+  const cashbackActions: ActionDef[] = [
+    {
+      to: '/admin/receipts',
+      title: bg ? 'Преглед на Касови Бележки' : 'Receipt Review',
+      description: bg
+        ? 'Одобрявайте, отхвърляйте и управлявайте начисления'
+        : 'Approve, reject, and manage cashback credits',
+      icon: ReceiptPercentIcon,
+      tint: '#0891b2',
+    },
+    {
+      to: '/admin/cashback',
+      title: bg ? 'Плащания за Кешбек' : 'Cashback Payments',
+      description: bg
+        ? 'Месечни кешбек задължения на партньорите'
+        : 'Track monthly cashback owed by partners',
+      icon: BanknotesIcon,
+      tint: '#059669',
+    },
+    {
+      to: '/admin/cashback/rates',
+      title: bg ? 'Ставки за Кешбек' : 'Cashback Rates',
+      description: bg
+        ? 'Матрица на ставки по ниво и категория'
+        : 'Rate matrix by tier and category',
+      icon: CurrencyDollarIcon,
+    },
+  ];
+
+  const fraudActions: ActionDef[] = [
+    {
+      to: '/admin/merchant-whitelist',
+      title: bg ? 'Списък Търговци' : 'Merchant Whitelist',
+      description: bg
+        ? 'Одобрени и блокирани търговци за проверка'
+        : 'Approved and blocked merchants for verification',
+      icon: ShieldCheckIcon,
+    },
+    {
+      to: '/admin/venue-fraud-config',
+      title: bg ? 'Конфиг за Измами' : 'Venue Fraud Config',
+      description: bg
+        ? 'Прагове за измами, GPS и OCR проверки'
+        : 'Fraud thresholds, GPS and OCR verification',
+      icon: Cog6ToothIcon,
+    },
+    {
+      to: '/admin/receipt-templates',
+      title: bg ? 'Шаблони за Бележки' : 'Receipt Templates',
+      description: bg
+        ? 'Шаблони за визуално сравнение по обекти'
+        : 'Visual comparison templates per venue',
+      icon: DocumentTextIcon,
+    },
+    {
+      to: '/admin/scan-review',
+      title: bg ? 'Преглед на Сканирания' : 'Scan Review',
+      description: bg
+        ? 'Ръчен преглед на сканирания с възможна измама'
+        : 'Manual review of scans flagged as suspicious',
+      icon: MagnifyingGlassIcon,
+    },
+  ];
+
+  const renderSection = (titleText: string, hint: string, actions: ActionDef[]) => (
+    <SectionGroup>
+      <SectionHead>
+        <SectionTitle>{titleText}</SectionTitle>
+        <SectionHint>{hint}</SectionHint>
+      </SectionHead>
+      <ActionsGrid>
+        {actions.map(a => (
+          <ActionCard key={a.to} to={a.to}>
+            <ActionIcon $tint={a.tint}>
+              <a.icon />
+            </ActionIcon>
+            <ActionBody>
+              <ActionTitle>{a.title}</ActionTitle>
+              <ActionDescription>{a.description}</ActionDescription>
+            </ActionBody>
+            <ActionArrow>
+              <ArrowRightIcon />
+            </ActionArrow>
+          </ActionCard>
+        ))}
+      </ActionsGrid>
+    </SectionGroup>
+  );
 
   return (
     <PageContainer>
       <PageHeader>
-        <Title>
-          {language === 'bg' ? 'Администраторски Панел' : 'Admin Dashboard'}
-        </Title>
-        <Subtitle>
-          {language === 'bg'
-            ? `Добре дошли обратно, ${user?.firstName || 'Admin'}`
-            : `Welcome back, ${user?.firstName || 'Admin'}`}
-        </Subtitle>
+        <HeaderLeft>
+          <Eyebrow>{bg ? 'Администрация' : 'Administration'}</Eyebrow>
+          <Title>{bg ? 'Администраторски Панел' : 'Admin Dashboard'}</Title>
+          <Subtitle>
+            {bg
+              ? `Добре дошли обратно, ${user?.firstName || 'Admin'}. Ето обзор на платформата.`
+              : `Welcome back, ${user?.firstName || 'Admin'}. Here's an overview of the platform.`}
+          </Subtitle>
+        </HeaderLeft>
+        <HeaderMeta>
+          <MetaLabel>{bg ? 'Днес' : 'Today'}</MetaLabel>
+          <span>{today}</span>
+        </HeaderMeta>
       </PageHeader>
 
       <StatsGrid>
         <StatCard
-          initial={{ opacity: 0, y: 20 }}
+          $accent="#0f172a"
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.05 }}
+        >
+          <StatTop>
+            <StatLabel>{bg ? 'Общо Оферти' : 'Total Offers'}</StatLabel>
+            <StatIconBox $bg="rgba(15,23,42,0.06)" $color="var(--color-text-primary, #0f172a)">
+              <ChartBarIcon />
+            </StatIconBox>
+          </StatTop>
+          <StatValue>{totalOffers}</StatValue>
+          <StatChange>{bg ? 'Всички оферти' : 'All offers'}</StatChange>
+        </StatCard>
+
+        <StatCard
+          $accent="#ea580c"
+          initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
         >
-          <StatLabel>{language === 'bg' ? 'Общо Оферти' : 'Total Offers'}</StatLabel>
-          <StatValue>{totalOffers}</StatValue>
-          <StatChange positive>
-            {language === 'bg' ? 'Всички оферти' : 'All offers'}
+          <StatTop>
+            <StatLabel>{bg ? 'Топ Оферти' : 'Featured'}</StatLabel>
+            <StatIconBox $bg="#fff7ed" $color="#ea580c">
+              <StarIcon />
+            </StatIconBox>
+          </StatTop>
+          <StatValue>{featuredOffers}</StatValue>
+          <StatChange $positive>
+            {bg ? `${featuredRate}% от всички оферти` : `${featuredRate}% of all offers`}
           </StatChange>
         </StatCard>
 
         <StatCard
-          initial={{ opacity: 0, y: 20 }}
+          $accent="#059669"
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.15 }}
+        >
+          <StatTop>
+            <StatLabel>{bg ? 'Активни Оферти' : 'Active Offers'}</StatLabel>
+            <StatIconBox $bg="#ecfdf5" $color="#059669">
+              <CheckCircleIcon />
+            </StatIconBox>
+          </StatTop>
+          <StatValue>{activeOffers}</StatValue>
+          <StatChange $positive>{bg ? 'Видими за клиенти' : 'Visible to customers'}</StatChange>
+        </StatCard>
+
+        <StatCard
+          $accent="#0891b2"
+          initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
         >
-          <StatLabel>{language === 'bg' ? 'Топ Оферти' : 'Featured Offers'}</StatLabel>
-          <StatValue>{featuredOffers}</StatValue>
-          <StatChange positive>
-            {language === 'bg' ? 'Показани на началната страница' : 'Shown on homepage'}
-          </StatChange>
-        </StatCard>
-
-        <StatCard
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3 }}
-        >
-          <StatLabel>{language === 'bg' ? 'Активни Оферти' : 'Active Offers'}</StatLabel>
-          <StatValue>{activeOffers}</StatValue>
-          <StatChange positive>
-            {language === 'bg' ? 'Видими за клиенти' : 'Visible to clients'}
-          </StatChange>
-        </StatCard>
-
-        <StatCard
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.4 }}
-        >
-          <StatLabel>{language === 'bg' ? 'Процент Показвани' : 'Featured Rate'}</StatLabel>
-          <StatValue>{totalOffers > 0 ? Math.round((featuredOffers / totalOffers) * 100) : 0}%</StatValue>
-          <StatChange>
-            {language === 'bg' ? 'От всички оферти' : 'Of all offers'}
-          </StatChange>
-        </StatCard>
-
-        <StatCard
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.5 }}
-        >
-          <StatLabel>{language === 'bg' ? 'Очакван Кешбек (лв.)' : 'Pending Cashback (BGN)'}</StatLabel>
-          <StatValue>{cashbackStats ? cashbackStats.pendingTotal.toFixed(2) : '—'}</StatValue>
-          <StatChange>
-            {language === 'bg' ? 'Неплатен от партньори' : 'Unpaid by partners'}
-          </StatChange>
-        </StatCard>
-
-        <StatCard
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.6 }}
-        >
-          <StatLabel>{language === 'bg' ? 'Просрочени Партньори' : 'Overdue Partners'}</StatLabel>
-          <StatValue style={{ color: cashbackStats && cashbackStats.overdueCount > 0 ? '#dc2626' : undefined }}>
-            {cashbackStats ? cashbackStats.overdueCount : '—'}
+          <StatTop>
+            <StatLabel>{bg ? 'Очакван Кешбек' : 'Pending Cashback'}</StatLabel>
+            <StatIconBox $bg="#ecfeff" $color="#0891b2">
+              <BanknotesIcon />
+            </StatIconBox>
+          </StatTop>
+          <StatValue>
+            {pendingCashback === '—' ? '—' : `${pendingCashback} ${bg ? 'лв.' : 'BGN'}`}
           </StatValue>
-          <StatChange>
-            {language === 'bg' ? 'С просрочен кешбек' : 'With overdue cashback'}
+          <StatChange>{bg ? 'Неплатен от партньори' : 'Unpaid by partners'}</StatChange>
+        </StatCard>
+
+        <StatCard
+          $accent={overdueCount && overdueCount > 0 ? '#dc2626' : '#64748b'}
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.25 }}
+        >
+          <StatTop>
+            <StatLabel>{bg ? 'Просрочени Партньори' : 'Overdue Partners'}</StatLabel>
+            <StatIconBox
+              $bg={overdueCount && overdueCount > 0 ? '#fef2f2' : 'var(--color-background-tertiary, #f1f5f9)'}
+              $color={overdueCount && overdueCount > 0 ? '#dc2626' : 'var(--color-text-secondary, #64748b)'}
+            >
+              <ExclamationTriangleIcon />
+            </StatIconBox>
+          </StatTop>
+          <StatValue $danger={!!overdueCount && overdueCount > 0}>
+            {overdueCount !== null ? overdueCount : '—'}
+          </StatValue>
+          <StatChange $warning={!!overdueCount && overdueCount > 0}>
+            {overdueCount && overdueCount > 0
+              ? bg
+                ? 'Нуждаят се от внимание'
+                : 'Require attention'
+              : bg
+                ? 'Всички са актуални'
+                : 'All current'}
           </StatChange>
         </StatCard>
       </StatsGrid>
 
-      <Section>
-        <SectionHeader>
-          <SectionTitle>
-            {language === 'bg' ? 'Бързи Действия' : 'Quick Actions'}
-          </SectionTitle>
-        </SectionHeader>
+      {renderSection(
+        bg ? 'Партньори' : 'Partners',
+        bg ? 'Акаунти, типове и въвеждане' : 'Accounts, types, and onboarding',
+        partnerActions,
+      )}
 
-        <QuickActionsGrid>
-          <ActionCard to="/admin/partner-types">
-            <ActionIcon>🏷️</ActionIcon>
-            <div>
-              <ActionTitle>
-                {language === 'bg' ? 'Типове Партньори' : 'Partner Types'}
-              </ActionTitle>
-              <ActionDescription>
-                {language === 'bg'
-                  ? 'Създавайте типове партньори, задавайте лимити за отстъпки и контролирайте достъпа по абонамент'
-                  : 'Create partner types, set discount rate caps, and control which subscription plans can view or redeem offers'}
-              </ActionDescription>
-            </div>
-          </ActionCard>
+      {renderSection(
+        bg ? 'Съдържание' : 'Content',
+        bg ? 'Оферти и одобрения' : 'Offers and approvals',
+        contentActions,
+      )}
 
-          <ActionCard to="/admin/top-discounts">
-            <ActionIcon>⭐</ActionIcon>
-            <div>
-              <ActionTitle>
-                {language === 'bg' ? 'Топ Отстъпки' : 'Top Discounts'}
-              </ActionTitle>
-              <ActionDescription>
-                {language === 'bg'
-                  ? 'Управлявайте featured оферти — всички полета и снимка са задължителни'
-                  : 'Manage featured Top Discounts — all fields and image are required'}
-              </ActionDescription>
-            </div>
-          </ActionCard>
+      {renderSection(
+        bg ? 'Кешбек и Бележки' : 'Cashback & Receipts',
+        bg ? 'Прегледи, плащания и ставки' : 'Reviews, payments, and rates',
+        cashbackActions,
+      )}
 
-
-          <ActionCard to="/admin/partners">
-            <ActionIcon>🏢</ActionIcon>
-            <div>
-              <ActionTitle>
-                {language === 'bg' ? 'Партньори' : 'Partners'}
-              </ActionTitle>
-              <ActionDescription>
-                {language === 'bg'
-                  ? 'Управление на партньорски акаунти и одобрения'
-                  : 'Manage partner accounts and approvals'}
-              </ActionDescription>
-            </div>
-          </ActionCard>
-
-          <ActionCard to="/admin/bulk-import">
-            <ActionIcon>📥</ActionIcon>
-            <div>
-              <ActionTitle>
-                {language === 'bg' ? 'Масов Импорт' : 'Bulk Import'}
-              </ActionTitle>
-              <ActionDescription>
-                {language === 'bg'
-                  ? 'Импортирайте партньори и техните оферти от CSV или Excel файл с шаблон'
-                  : 'Import partners and their offers in bulk from a CSV or Excel spreadsheet template'}
-              </ActionDescription>
-            </div>
-          </ActionCard>
-
-          <ActionCard to="/admin/receipts">
-            <ActionIcon>🧾</ActionIcon>
-            <div>
-              <ActionTitle>
-                {language === 'bg' ? 'Преглед на Касови Бележки' : 'Receipt Review'}
-              </ActionTitle>
-              <ActionDescription>
-                {language === 'bg'
-                  ? 'Одобрявайте или отхвърляйте касови бележки с изчакване и управлявайте начисления за кешбек'
-                  : 'Approve or reject pending receipts and manage cashback credits'}
-              </ActionDescription>
-            </div>
-          </ActionCard>
-
-          <ActionCard to="/admin/cashback">
-            <ActionIcon>💰</ActionIcon>
-            <div>
-              <ActionTitle>
-                {language === 'bg' ? 'Плащания за Кешбек' : 'Cashback Payments'}
-              </ActionTitle>
-              <ActionDescription>
-                {language === 'bg'
-                  ? 'Проследявайте месечните кешбек задължения на партньорите и маркирайте платените'
-                  : 'Track monthly cashback owed by partners and mark payments as received'}
-              </ActionDescription>
-            </div>
-          </ActionCard>
-
-          <ActionCard to="/admin/merchant-whitelist">
-            <ActionIcon>🛡️</ActionIcon>
-            <div>
-              <ActionTitle>
-                {language === 'bg' ? 'Списък Търговци' : 'Merchant Whitelist'}
-              </ActionTitle>
-              <ActionDescription>
-                {language === 'bg'
-                  ? 'Управлявайте одобрени и блокирани търговци за проверка на бележки'
-                  : 'Manage approved and blocked merchants for receipt verification'}
-              </ActionDescription>
-            </div>
-          </ActionCard>
-
-          <ActionCard to="/admin/venue-fraud-config">
-            <ActionIcon>⚙️</ActionIcon>
-            <div>
-              <ActionTitle>
-                {language === 'bg' ? 'Конфиг за Измами' : 'Venue Fraud Config'}
-              </ActionTitle>
-              <ActionDescription>
-                {language === 'bg'
-                  ? 'Настройте прагове за измами, GPS и OCR проверки по обекти'
-                  : 'Configure fraud thresholds, GPS and OCR verification per venue'}
-              </ActionDescription>
-            </div>
-          </ActionCard>
-
-          <ActionCard to="/admin/receipt-templates">
-            <ActionIcon>📄</ActionIcon>
-            <div>
-              <ActionTitle>
-                {language === 'bg' ? 'Шаблони за Бележки' : 'Receipt Templates'}
-              </ActionTitle>
-              <ActionDescription>
-                {language === 'bg'
-                  ? 'Управлявайте шаблони за визуално сравнение на бележки по обекти'
-                  : 'Manage receipt templates for visual comparison per venue'}
-              </ActionDescription>
-            </div>
-          </ActionCard>
-
-          <ActionCard to="/admin/menu-approvals">
-            <ActionIcon>📋</ActionIcon>
-            <div>
-              <ActionTitle>
-                {language === 'bg' ? 'Одобрения на Менюта' : 'Menu Approvals'}
-              </ActionTitle>
-              <ActionDescription>
-                {language === 'bg'
-                  ? 'Преглед и одобряване на подадени URL адреси за менюта на обекти'
-                  : 'Review and approve partner-submitted menu URLs for venues'}
-              </ActionDescription>
-            </div>
-          </ActionCard>
-
-          <ActionCard to="/admin/scan-review">
-            <ActionIcon>🔍</ActionIcon>
-            <div>
-              <ActionTitle>
-                {language === 'bg' ? 'Преглед на Сканирания' : 'Scan Review'}
-              </ActionTitle>
-              <ActionDescription>
-                {language === 'bg'
-                  ? 'Ръчен преглед на стикер сканирания с възможна измама'
-                  : 'Manual review of sticker scans flagged for potential fraud'}
-              </ActionDescription>
-            </div>
-          </ActionCard>
-
-          <ActionCard to="/admin/partner-onboarding">
-            <ActionIcon>🤝</ActionIcon>
-            <div>
-              <ActionTitle>
-                {language === 'bg' ? 'Въвеждане на Партньор' : 'Partner Onboarding'}
-              </ActionTitle>
-              <ActionDescription>
-                {language === 'bg'
-                  ? 'Ръчно въвеждане на партньор с бизнес данни, обекти и условия'
-                  : 'Manually onboard a partner with business info, venues, and terms'}
-              </ActionDescription>
-            </div>
-          </ActionCard>
-        </QuickActionsGrid>
-      </Section>
+      {renderSection(
+        bg ? 'Измами и Съответствие' : 'Fraud & Compliance',
+        bg ? 'Търговци, прагове и проверки' : 'Merchants, thresholds, and verification',
+        fraudActions,
+      )}
     </PageContainer>
   );
 };

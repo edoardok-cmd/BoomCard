@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
 import { receiptService, Receipt, ReceiptStatus, AdminReviewRequest } from '../../services/receipt.service';
 import { useLanguage } from '../../contexts/LanguageContext';
-import { CheckCircle, XCircle, AlertTriangle, Eye, Filter, Download } from 'lucide-react';
+import { CheckCircle, XCircle, AlertTriangle, Eye } from 'lucide-react';
 import toast from 'react-hot-toast';
 import FraudReasonTag from './FraudReasonTag';
 
@@ -251,14 +251,6 @@ const FraudReasons = styled.div`
   margin-top: 0.5rem;
 `;
 
-const FraudTag = styled.span`
-  padding: 0.25rem 0.5rem;
-  background: #fef3c7;
-  color: #92400e;
-  border-radius: 0.25rem;
-  font-size: 0.75rem;
-`;
-
 const Actions = styled.div`
   display: flex;
   flex-direction: column;
@@ -334,7 +326,7 @@ export const ReceiptReviewDashboard: React.FC = () => {
   const [receipts, setReceipts] = useState<Receipt[]>([]);
   const [filter, setFilter] = useState<ReceiptStatus | 'ALL'>(ReceiptStatus.MANUAL_REVIEW);
   const [selectedReceipts, setSelectedReceipts] = useState<Set<string>>(new Set());
-  const [loading, setLoading] = useState(false);
+  const [, setLoading] = useState(false);
   const [selectedReceipt, setSelectedReceipt] = useState<Receipt | null>(null);
   const [reviewNotes, setReviewNotes] = useState('');
   const [verifiedAmount, setVerifiedAmount] = useState('');
