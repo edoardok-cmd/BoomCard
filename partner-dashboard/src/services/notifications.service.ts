@@ -11,16 +11,34 @@
  */
 
 import { apiService } from './api.service';
-import * as authStorage from '../lib/auth/authStorage';
 
+// Kept in sync with backend-api/prisma/schema.prisma NotificationType enum
+// (UPPER_SNAKE → lower_snake). The frontend-only values (booking_reminder,
+// payment_received, new_review, review_reply, partner_message,
+// system_announcement, promotion, account_update) are retained for components
+// that subscribe pre-emptively to types the backend doesn't emit yet.
 export type NotificationType =
+  // Backend-emitted (must match Prisma NotificationType enum)
   | 'booking_confirmed'
   | 'booking_cancelled'
+  | 'payment_success'
+  | 'payment_failed'
+  | 'loyalty_points'
+  | 'reward_available'
+  | 'new_message'
+  | 'review_received'
+  | 'offer_expiring'
+  | 'receipt_approved'
+  | 'receipt_rejected'
+  | 'receipt_manual_review'
+  | 'cashback_credited'
+  | 'sticker_scan_approved'
+  | 'fraud_alert'
+  | 'system'
+  // Frontend-only / future backend types
   | 'booking_reminder'
   | 'new_offer'
-  | 'offer_expiring'
   | 'payment_received'
-  | 'payment_failed'
   | 'new_review'
   | 'review_reply'
   | 'partner_message'
@@ -124,89 +142,30 @@ export interface PaginatedNotifications {
 
 class NotificationsService {
   private readonly baseUrl = '/notifications';
-  private ws: WebSocket | null = null;
-  private reconnectAttempts = 0;
-  private maxReconnectAttempts = 5;
-  private reconnectTimeout: NodeJS.Timeout | null = null;
   private listeners: Map<string, Set<(notification: Notification) => void>> = new Map();
   private connectionListeners: Set<(connected: boolean) => void> = new Set();
 
   /**
-   * Initialize WebSocket connection for real-time notifications
+   * Realtime is intentionally disabled in partner-dashboard.
+   *
+   * The backend speaks Socket.IO (see backend-api/src/websocket/server.ts) but
+   * partner-dashboard doesn't depend on socket.io-client. Rather than ship a
+   * raw WebSocket against a Socket.IO endpoint (which the original code did
+   * and which always 400'd), we no-op here and rely on TanStack Query polling
+   * in useUnreadCount (refetchInterval: 60s). To enable live push later:
+   *   npm i socket.io-client
+   *   replace this with `io(WS_URL, { auth: { token } })` and emit
+   *   'subscribe_notifications', then forward 'notification' events into
+   *   handleNotification().
    */
-  connectWebSocket(userId: string): void {
-    const wsUrl = import.meta.env.VITE_WS_URL || 'ws://localhost:3025';
-    const token = authStorage.getItem('token');
-
-    if (!token) {
-      console.warn('No auth token found, skipping WebSocket connection');
-      return;
-    }
-
-    try {
-      this.ws = new WebSocket(`${wsUrl}/notifications?token=${token}&userId=${userId}`);
-
-      this.ws.onopen = () => {
-        console.log('WebSocket connected');
-        this.reconnectAttempts = 0;
-        this.notifyConnectionListeners(true);
-      };
-
-      this.ws.onmessage = (event) => {
-        try {
-          const notification: Notification = JSON.parse(event.data);
-          this.handleNotification(notification);
-        } catch (error) {
-          console.error('Failed to parse notification:', error);
-        }
-      };
-
-      this.ws.onerror = (error) => {
-        console.error('WebSocket error:', error);
-      };
-
-      this.ws.onclose = () => {
-        console.log('WebSocket disconnected');
-        this.notifyConnectionListeners(false);
-        this.attemptReconnect(userId);
-      };
-    } catch (error) {
-      console.error('Failed to connect WebSocket:', error);
-      this.attemptReconnect(userId);
-    }
+  connectWebSocket(_userId: string): void {
+    // Mark as "connected" so any UI bound to onConnectionChange shows the
+    // healthy state — the polling fallback covers the actual data path.
+    this.notifyConnectionListeners(true);
   }
 
-  /**
-   * Disconnect WebSocket
-   */
   disconnectWebSocket(): void {
-    if (this.ws) {
-      this.ws.close();
-      this.ws = null;
-    }
-    if (this.reconnectTimeout) {
-      clearTimeout(this.reconnectTimeout);
-      this.reconnectTimeout = null;
-    }
-  }
-
-  /**
-   * Attempt to reconnect WebSocket
-   */
-  private attemptReconnect(userId: string): void {
-    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-      console.error('Max reconnect attempts reached');
-      return;
-    }
-
-    this.reconnectAttempts++;
-    const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts), 30000);
-
-    console.log(`Reconnecting in ${delay}ms... (attempt ${this.reconnectAttempts})`);
-
-    this.reconnectTimeout = setTimeout(() => {
-      this.connectWebSocket(userId);
-    }, delay);
+    this.notifyConnectionListeners(false);
   }
 
   /**

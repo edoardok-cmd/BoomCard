@@ -1,7 +1,17 @@
 /**
  * Push Notifications Service
- * Handles Web Push API integration for browser notifications
+ * Handles Web Push API integration for browser notifications.
+ *
+ * Server wiring: the VAPID public key is fetched from
+ * GET /api/notifications/push/vapid-public-key (public, no auth). Active
+ * subscriptions are registered via notificationsService.registerPushSubscription,
+ * which posts to /api/notifications/push/subscribe and stores the subscription
+ * in the pushToken table with platform='web'. Pushes are sent by the backend
+ * via lib/webPush.ts whenever the notification service fires.
  */
+
+import { apiService } from './api.service';
+import { notificationsService } from './notifications.service';
 
 export type NotificationPermissionState = 'default' | 'granted' | 'denied';
 
@@ -38,9 +48,28 @@ export interface NotificationTemplate {
 class PushNotificationService {
   private static instance: PushNotificationService;
   private registration: ServiceWorkerRegistration | null = null;
+  private vapidPublicKeyPromise: Promise<string | null> | null = null;
 
   private constructor() {
     this.init();
+  }
+
+  /**
+   * Fetch the server's VAPID public key once and cache the promise.
+   * Returns null if the backend returned 503 (web push not configured) or
+   * the network call failed — callers should treat null as "not available".
+   */
+  private async getVapidPublicKey(): Promise<string | null> {
+    if (!this.vapidPublicKeyPromise) {
+      this.vapidPublicKeyPromise = apiService
+        .get<{ publicKey: string }>('/notifications/push/vapid-public-key')
+        .then((res) => res.publicKey || null)
+        .catch((err) => {
+          console.error('Failed to fetch VAPID public key:', err);
+          return null;
+        });
+    }
+    return this.vapidPublicKeyPromise;
   }
 
   public static getInstance(): PushNotificationService {
@@ -128,18 +157,19 @@ class PushNotificationService {
     }
 
     try {
-      // Generate VAPID keys for your server
-      // This is a placeholder - replace with your actual public key
-      const applicationServerKey = this.urlBase64ToUint8Array(
-        'YOUR_VAPID_PUBLIC_KEY_HERE'
-      );
+      const vapidPublicKey = await this.getVapidPublicKey();
+      if (!vapidPublicKey) {
+        console.warn('Web push not configured on server');
+        return null;
+      }
+
+      const applicationServerKey = this.urlBase64ToUint8Array(vapidPublicKey);
 
       const subscription = await this.registration.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: applicationServerKey as any,
       });
 
-      // Send subscription to your server
       await this.sendSubscriptionToServer(subscription);
 
       return subscription;
@@ -337,46 +367,31 @@ class PushNotificationService {
   }
 
   /**
-   * Send subscription to server
+   * Send subscription to the backend. Delegates to notificationsService which
+   * handles auth + base URL via apiService. The `_subscription` arg is unused
+   * here (the server reads the full subscription from the call) but kept for
+   * signature parity with `removeSubscriptionFromServer`.
    */
   private async sendSubscriptionToServer(
     subscription: PushSubscription
   ): Promise<void> {
     try {
-      // Replace with your actual API endpoint
-      await fetch('/api/push-subscriptions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          subscription: subscription.toJSON(),
-          userAgent: navigator.userAgent,
-          timestamp: new Date().toISOString(),
-        }),
-      });
+      await notificationsService.registerPushSubscription(subscription);
     } catch (error) {
       console.error('Failed to send subscription to server:', error);
     }
   }
 
   /**
-   * Remove subscription from server
+   * Remove subscription from server. The backend unsubscribe route deactivates
+   * every active web token for the user rather than matching by endpoint, so
+   * the `_subscription` arg is intentionally ignored.
    */
   private async removeSubscriptionFromServer(
-    subscription: PushSubscription
+    _subscription: PushSubscription
   ): Promise<void> {
     try {
-      // Replace with your actual API endpoint
-      await fetch('/api/push-subscriptions', {
-        method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          endpoint: subscription.endpoint,
-        }),
-      });
+      await notificationsService.unregisterPushSubscription();
     } catch (error) {
       console.error('Failed to remove subscription from server:', error);
     }

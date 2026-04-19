@@ -71,8 +71,8 @@ export function useUnreadCount() {
   const query = useQuery({
     queryKey: ['notifications', 'unread-count'],
     queryFn: () => notificationsService.getUnreadCount(),
-    staleTime: 30 * 1000,
-    refetchInterval: 60 * 1000, // Refetch every minute
+    staleTime: 10 * 1000,
+    refetchInterval: 20 * 1000, // 20s — keeps badge lag under half a minute without realtime
   });
 
   // Subscribe to real-time updates

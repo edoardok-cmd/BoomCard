@@ -63,6 +63,11 @@ model User {
   marketingConsent   Boolean    @default(false)
   marketingConsentAt DateTime?
 
+  // Notification channel preferences (email/push/inApp/sms toggles + quiet hours).
+  // Shape mirrors NotificationPreferences in partner-dashboard's notifications.service.ts.
+  // Stored as JSON to avoid a wide column explosion as preference categories grow.
+  notificationPreferences Json?
+
   createdAt        DateTime   @default(now())
   updatedAt        DateTime   @updatedAt
 
@@ -1248,19 +1253,35 @@ model Notification {
   id        String           @id @default(uuid())
   userId    String
   type      NotificationType
+  // 'low' | 'medium' | 'high' | 'urgent'. Stored as string to keep parity with the
+  // frontend service union without forcing a Prisma enum migration.
+  priority  String           @default("medium")
   title     String
   titleBg   String?
   message   String
   messageBg String?
-  data      String? // JSON string
+  data      String? // JSON string of arbitrary metadata
   isRead    Boolean          @default(false)
   readAt    DateTime?
+  // Soft-archive — keeps the row but hides it from the default "all" list.
+  archivedAt        DateTime?
+  // Optional deep-link target (e.g. /partner/offers/123) and action button copy.
+  actionUrl         String?
+  actionText        String?
+  actionTextBg      String?
+  // Optional thumbnail rendered in the notification card.
+  imageUrl          String?
+  // Lightweight pointer back to the entity that triggered the notification.
+  relatedEntityType String?
+  relatedEntityId   String?
+  expiresAt         DateTime?
   createdAt DateTime         @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([isRead])
+  @@index([archivedAt])
   @@index([createdAt])
 }
 

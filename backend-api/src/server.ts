@@ -37,6 +37,7 @@ import contactRouter from './routes/contact.routes';
 
 // Import WebSocket handler
 import { initializeWebSocket } from './websocket/server';
+import { setIO } from './lib/socket';
 
 // Import job scheduler
 import { registerScheduledJobs } from './jobs/scheduler';
@@ -233,6 +234,8 @@ app.use(errorHandler);
 
 // Initialize WebSocket server
 initializeWebSocket(io);
+// Expose io to non-route modules (notification.service uses it to push live events).
+setIO(io);
 
 // Start HTTP server with database connectivity check
 async function startServer() {

@@ -1,5 +1,7 @@
 import { prisma } from '../lib/prisma';
 import { emailService } from './email.service';
+import { emitNotification } from '../lib/socket';
+import { sendWebPushToUser } from '../lib/webPush';
 
 /**
  * Notification Service
@@ -21,9 +23,20 @@ interface NotificationParams {
   userId: string;
   type: string;
   title: string;
+  titleBg?: string;
   message: string;
+  messageBg?: string;
   data?: Record<string, any>;
-  priority?: 'LOW' | 'MEDIUM' | 'HIGH';
+  // Lowercase to match the DB column (`String @default("medium")`) and the
+  // frontend NotificationPriority union. 'urgent' drives elevated toast UX.
+  priority?: 'low' | 'medium' | 'high' | 'urgent';
+  actionUrl?: string;
+  actionText?: string;
+  actionTextBg?: string;
+  imageUrl?: string;
+  relatedEntityType?: string;
+  relatedEntityId?: string;
+  expiresAt?: Date;
 }
 
 interface EmailParams {
@@ -51,13 +64,15 @@ class NotificationService {
         userId,
         type: 'RECEIPT_APPROVED',
         title: 'Receipt Approved!',
+        titleBg: 'Касовата бележка е одобрена!',
         message: `Your receipt from ${merchantName} was approved. You earned ${cashbackAmount.toFixed(2)} BGN cashback!`,
+        messageBg: `Вашата касова бележка от ${merchantName} е одобрена. Спечелихте ${cashbackAmount.toFixed(2)} лв. кешбек!`,
         data: {
           receiptId,
           merchantName,
           cashbackAmount,
         },
-        priority: 'HIGH',
+        priority: 'high',
       });
 
       // Send push notification
@@ -92,13 +107,15 @@ class NotificationService {
         userId,
         type: 'STICKER_SCAN_APPROVED',
         title: 'Cashback Earned!',
+        titleBg: 'Спечелихте кешбек!',
         message: `Your visit to ${venueName} was confirmed. You earned ${cashbackAmount.toFixed(2)} BGN cashback!`,
+        messageBg: `Посещението ви в ${venueName} е потвърдено. Спечелихте ${cashbackAmount.toFixed(2)} лв. кешбек!`,
         data: {
           scanId,
           venueName,
           cashbackAmount,
         },
-        priority: 'HIGH',
+        priority: 'high',
       });
 
       await this.sendPushNotification({
@@ -128,13 +145,15 @@ class NotificationService {
         userId,
         type: 'RECEIPT_REJECTED',
         title: 'Receipt Not Approved',
+        titleBg: 'Касовата бележка не е одобрена',
         message: `Your receipt from ${merchantName} was not approved. Reason: ${reason}`,
+        messageBg: `Вашата касова бележка от ${merchantName} не е одобрена. Причина: ${reason}`,
         data: {
           receiptId,
           merchantName,
           reason,
         },
-        priority: 'MEDIUM',
+        priority: 'medium',
       });
 
       await this.sendPushNotification({
@@ -166,12 +185,14 @@ class NotificationService {
         userId,
         type: 'RECEIPT_MANUAL_REVIEW',
         title: 'Receipt Under Review',
+        titleBg: 'Касовата бележка се преглежда',
         message: `Your receipt from ${merchantName} requires manual verification. ${estimatedReviewTime || 'This usually takes 24-48 hours.'}`,
+        messageBg: `Вашата касова бележка от ${merchantName} изисква ръчна проверка. ${estimatedReviewTime || 'Обикновено отнема 24-48 часа.'}`,
         data: {
           receiptId,
           merchantName,
         },
-        priority: 'LOW',
+        priority: 'low',
       });
 
       console.log(`🔍 Review notification sent for receipt ${receiptId}`);
@@ -195,12 +216,14 @@ class NotificationService {
         userId,
         type: 'CASHBACK_CREDITED',
         title: 'Cashback Credited',
+        titleBg: 'Кешбек е кредитиран',
         message: `${amount.toFixed(2)} BGN has been added to your account. New balance: ${newBalance.toFixed(2)} BGN`,
+        messageBg: `${amount.toFixed(2)} лв. са добавени към акаунта ви. Нов баланс: ${newBalance.toFixed(2)} лв.`,
         data: {
           amount,
           newBalance,
         },
-        priority: 'HIGH',
+        priority: 'high',
       });
 
       await this.sendPushNotification({
@@ -236,14 +259,16 @@ class NotificationService {
           userId: admin.id,
           type: 'FRAUD_ALERT',
           title: 'High Fraud Score Detected',
+          titleBg: 'Засечен е висок риск от измама',
           message: `Receipt ${receiptId} from user ${userId} has fraud score ${fraudScore}. Reasons: ${fraudReasons.join(', ')}`,
+          messageBg: `Касова бележка ${receiptId} от потребител ${userId} с риск ${fraudScore}. Причини: ${fraudReasons.join(', ')}`,
           data: {
             receiptId,
             userId,
             fraudScore,
             fraudReasons,
           },
-          priority: 'HIGH',
+          priority: 'high',
         });
       }
 
@@ -339,9 +364,11 @@ class NotificationService {
         userId,
         type: 'PAYMENT_FAILED',
         title: 'Payment Failed',
+        titleBg: 'Плащането не успя',
         message: `Your payment of ${amount.toFixed(2)} ${currency} could not be processed. Please update your payment method to avoid service interruption.`,
+        messageBg: `Плащането ви от ${amount.toFixed(2)} ${currency} не можа да бъде обработено. Моля, актуализирайте метода си на плащане, за да избегнете прекъсване на услугата.`,
         data: { paymentIntentId, amount, currency },
-        priority: 'HIGH',
+        priority: 'high',
       });
 
       // Send email notification
@@ -372,23 +399,67 @@ class NotificationService {
   // ===== Internal Methods =====
 
   /**
-   * Create in-app notification record
+   * Create in-app notification record AND push it over the realtime channel.
+   *
+   * Single source of truth for notification creation — anything that needs to
+   * surface in the bell-icon dropdown should call this so both the DB row and
+   * the live WebSocket broadcast happen together. The realtime payload uses the
+   * same shape the REST endpoints serialize (lowercase type, status string,
+   * iso timestamps) so the frontend can drop it straight into TanStack Query
+   * cache without re-fetching.
    */
   private async createNotification(params: NotificationParams): Promise<void> {
-    await prisma.notification.create({
+    const created = await prisma.notification.create({
       data: {
         userId: params.userId,
         type: params.type as any,
+        priority: params.priority || 'medium',
         title: params.title,
+        titleBg: params.titleBg,
         message: params.message,
+        messageBg: params.messageBg,
         data: params.data ? JSON.stringify(params.data) : null,
+        actionUrl: params.actionUrl,
+        actionText: params.actionText,
+        actionTextBg: params.actionTextBg,
+        imageUrl: params.imageUrl,
+        relatedEntityType: params.relatedEntityType,
+        relatedEntityId: params.relatedEntityId,
+        expiresAt: params.expiresAt,
         isRead: false,
       },
+    });
+
+    emitNotification(params.userId, {
+      id: created.id,
+      userId: created.userId,
+      type: created.type.toLowerCase(),
+      priority: created.priority,
+      status: 'unread' as const,
+      title: created.title,
+      titleBg: created.titleBg ?? created.title,
+      message: created.message,
+      messageBg: created.messageBg ?? created.message,
+      actionUrl: created.actionUrl ?? undefined,
+      actionText: created.actionText ?? undefined,
+      actionTextBg: created.actionTextBg ?? undefined,
+      relatedEntityType: created.relatedEntityType ?? undefined,
+      relatedEntityId: created.relatedEntityId ?? undefined,
+      imageUrl: created.imageUrl ?? undefined,
+      metadata: params.data,
+      createdAt: created.createdAt.toISOString(),
+      expiresAt: created.expiresAt?.toISOString(),
     });
   }
 
   /**
-   * Send push notification via FCM/APNS
+   * Send push notification. Currently delivers via Web Push (VAPID) to any
+   * active browser subscriptions the user has registered.
+   *
+   * Native/Expo tokens (platform='ios'|'android') are tracked in the same
+   * PushToken table but need an FCM/APNS integration to actually deliver —
+   * that remains a TODO. Failures here never throw: push is a best-effort
+   * side channel on top of the in-app notification that already got written.
    */
   private async sendPushNotification(params: {
     userId: string;
@@ -396,34 +467,16 @@ class NotificationService {
     body: string;
     data?: Record<string, any>;
   }): Promise<void> {
-    // Get user's push tokens
-    const user = await prisma.user.findUnique({
-      where: { id: params.userId },
-      select: { id: true },
-    });
-
-    if (!user) {
-      return; // User doesn't exist
-    }
-
-    // TODO: Add pushToken field to User model or create separate PushToken table
-    // For now, skip push notification sending
-
-    // TODO: Integrate with FCM (Firebase Cloud Messaging)
-    // Example using firebase-admin:
-    /*
-    const admin = require('firebase-admin');
-    await admin.messaging().send({
-      token: userPushToken,
-      notification: {
+    try {
+      await sendWebPushToUser(params.userId, {
         title: params.title,
         body: params.body,
-      },
-      data: params.data || {},
-    });
-    */
-
-    console.log(`📱 Push notification queued for user ${params.userId}`);
+        data: params.data,
+        url: typeof params.data?.url === 'string' ? params.data.url : undefined,
+      });
+    } catch (err) {
+      console.error('[notification.service] sendWebPushToUser failed', err);
+    }
   }
 
   /**

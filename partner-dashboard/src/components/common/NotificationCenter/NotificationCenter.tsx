@@ -1,8 +1,19 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import styled from 'styled-components';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Bell, X, Check, Info, AlertCircle, Gift } from 'lucide-react';
 import { useLanguage } from '../../../contexts/LanguageContext';
+import {
+  useNotifications,
+  useUnreadCount,
+  useMarkAsRead,
+  useMarkAllAsRead,
+  useDeleteNotification,
+} from '../../../hooks/useNotifications';
+import type {
+  Notification as ApiNotification,
+  NotificationType,
+} from '../../../services/notifications.service';
 
 const NotificationButton = styled.button`
   position: relative;
@@ -250,111 +261,162 @@ const EmptyText = styled.div`
   font-size: 0.875rem;
 `;
 
-interface Notification {
-  id: string;
-  type: 'success' | 'info' | 'warning' | 'offer';
-  title: string;
-  titleBg: string;
-  message: string;
-  messageBg: string;
-  time: string;
-  read: boolean;
-}
+const LoadingText = styled.div`
+  text-align: center;
+  padding: 2rem;
+  color: #9ca3af;
+  font-size: 0.875rem;
+`;
 
 interface NotificationCenterProps {
   className?: string;
 }
 
+/**
+ * Map a backend notification type → an icon "bucket" used by the styled
+ * components above. Keeps the visual taxonomy (success/info/warning/offer)
+ * stable while the API model uses a much wider type union.
+ */
+function bucketForType(type: NotificationType | string): 'success' | 'info' | 'warning' | 'offer' {
+  switch (type) {
+    case 'booking_confirmed':
+    case 'payment_received':
+    case 'payment_success':
+    case 'cashback_credited':
+    case 'receipt_approved':
+    case 'sticker_scan_approved':
+    case 'reward_available':
+    case 'loyalty_points':
+      return 'success';
+    case 'booking_cancelled':
+    case 'payment_failed':
+    case 'receipt_rejected':
+    case 'fraud_alert':
+    case 'offer_expiring':
+      return 'warning';
+    case 'new_offer':
+    case 'promotion':
+      return 'offer';
+    default:
+      return 'info';
+  }
+}
+
+function getIcon(bucket: 'success' | 'info' | 'warning' | 'offer') {
+  switch (bucket) {
+    case 'success': return <Check />;
+    case 'warning': return <AlertCircle />;
+    case 'offer': return <Gift />;
+    case 'info':
+    default: return <Info />;
+  }
+}
+
+/**
+ * Render a notification's createdAt as a short relative string ("5m ago").
+ * Avoids pulling in date-fns just for one component — the partner-dashboard
+ * already depends on date-fns but TanStack-Query-driven re-renders mean we'd
+ * recompute on every poll, so a tiny inline formatter is cheaper.
+ */
+function formatRelative(iso: string, language: string): string {
+  const then = new Date(iso).getTime();
+  const now = Date.now();
+  const diffSec = Math.max(1, Math.floor((now - then) / 1000));
+
+  const units: Array<[number, string, string]> = [
+    [60, 'sec ago', 'сек'],
+    [60, 'min ago', 'мин'],
+    [24, 'h ago', 'ч'],
+    [7, 'd ago', 'д'],
+    [4, 'w ago', 'седм'],
+    [12, 'mo ago', 'мес'],
+    [Number.POSITIVE_INFINITY, 'y ago', 'г'],
+  ];
+
+  let value = diffSec;
+  let suffix = units[0];
+  for (const unit of units) {
+    if (value < unit[0]) {
+      suffix = unit;
+      break;
+    }
+    value = Math.floor(value / unit[0]);
+    suffix = unit;
+  }
+
+  return language === 'bg' ? `преди ${value} ${suffix[2]}` : `${value} ${suffix[1]}`;
+}
+
 export const NotificationCenter: React.FC<NotificationCenterProps> = ({ className }) => {
   const { language } = useLanguage();
   const [isOpen, setIsOpen] = useState(false);
-  const [notifications, setNotifications] = useState<Notification[]>([
-    {
-      id: '1',
-      type: 'offer',
-      title: 'New Offer Available',
-      titleBg: 'Нова оферта налична',
-      message: '50% off at Sense Hotel Sofia this weekend!',
-      messageBg: '50% отстъпка в Sense Hotel Sofia този уикенд!',
-      time: '5 min ago',
-      read: false,
-    },
-    {
-      id: '2',
-      type: 'success',
-      title: 'Card Activated',
-      titleBg: 'Карта активирана',
-      message: 'Your Premium BoomCard has been activated successfully.',
-      messageBg: 'Вашата Premium BoomCard беше активирана успешно.',
-      time: '1 hour ago',
-      read: false,
-    },
-    {
-      id: '3',
-      type: 'info',
-      title: 'Savings Milestone',
-      titleBg: 'Постижение при спестявания',
-      message: 'Congratulations! You have saved 1000 BGN with BoomCard.',
-      messageBg: 'Поздравления! Спестили сте 1000 лв с BoomCard.',
-      time: '2 hours ago',
-      read: true,
-    },
-    {
-      id: '4',
-      type: 'warning',
-      title: 'Card Expiring Soon',
-      titleBg: 'Картата изтича скоро',
-      message: 'Your BoomCard expires in 7 days. Renew now to keep saving.',
-      messageBg: 'Вашата BoomCard изтича след 7 дни. Подновете сега.',
-      time: '1 day ago',
-      read: true,
-    },
-  ]);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+
+  // Only fetch the list when the panel is open — the badge count drives the
+  // closed-state UI and is cheap.
+  const { data: countData } = useUnreadCount();
+  const { data: listData, isLoading } = useNotifications(
+    isOpen ? { page: 1, limit: 20 } : undefined
+  );
+
+  const markAsRead = useMarkAsRead();
+  const markAllAsRead = useMarkAllAsRead();
+  const deleteOne = useDeleteNotification();
+
+  const notifications = useMemo<ApiNotification[]>(
+    () => listData?.data ?? [],
+    [listData]
+  );
+  const unreadCount = countData ?? 0;
+
+  // Click-outside to dismiss — without it the panel stays open when the
+  // user clicks elsewhere in the dropdown menu.
+  useEffect(() => {
+    if (!isOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [isOpen]);
 
   const content = {
     en: {
       title: 'Notifications',
       markAllRead: 'Mark all read',
       empty: 'No notifications',
+      loading: 'Loading…',
     },
     bg: {
       title: 'Известия',
       markAllRead: 'Маркирай всички',
       empty: 'Няма известия',
+      loading: 'Зареждане…',
     },
   };
-
   const t = content[language as keyof typeof content];
-  const unreadCount = notifications.filter(n => !n.read).length;
 
-  const handleMarkAllRead = () => {
-    setNotifications(notifications.map(n => ({ ...n, read: true })));
-  };
-
-  const handleNotificationClick = (id: string) => {
-    setNotifications(notifications.map(n =>
-      n.id === id ? { ...n, read: true } : n
-    ));
+  const handleNotificationClick = (notification: ApiNotification) => {
+    if (notification.status === 'unread') {
+      markAsRead.mutate(notification.id);
+    }
+    if (notification.actionUrl) {
+      // location.assign satisfies the react-hooks/immutability lint rule that
+      // forbids assigning to window.location.href; behavior is identical.
+      window.location.assign(notification.actionUrl);
+    }
   };
 
   const handleDelete = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    setNotifications(notifications.filter(n => n.id !== id));
-  };
-
-  const getIcon = (type: string) => {
-    switch (type) {
-      case 'success': return <Check />;
-      case 'info': return <Info />;
-      case 'warning': return <AlertCircle />;
-      case 'offer': return <Gift />;
-      default: return <Bell />;
-    }
+    deleteOne.mutate(id);
   };
 
   return (
-    <div className={className} style={{ position: 'relative' }}>
-      <NotificationButton onClick={() => setIsOpen(!isOpen)}>
+    <div ref={containerRef} className={className} style={{ position: 'relative' }}>
+      <NotificationButton onClick={() => setIsOpen(prev => !prev)}>
         <Bell />
         {unreadCount > 0 && (
           <Badge
@@ -362,7 +424,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ classNam
             animate={{ scale: 1 }}
             transition={{ type: 'spring', stiffness: 500, damping: 30 }}
           >
-            {unreadCount}
+            {unreadCount > 99 ? '99+' : unreadCount}
           </Badge>
         )}
       </NotificationButton>
@@ -378,13 +440,18 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ classNam
             <PanelHeader>
               <PanelTitle>{t.title}</PanelTitle>
               {unreadCount > 0 && (
-                <MarkAllButton onClick={handleMarkAllRead}>
+                <MarkAllButton
+                  onClick={() => markAllAsRead.mutate()}
+                  disabled={markAllAsRead.isPending}
+                >
                   {t.markAllRead}
                 </MarkAllButton>
               )}
             </PanelHeader>
 
-            {notifications.length === 0 ? (
+            {isLoading ? (
+              <LoadingText>{t.loading}</LoadingText>
+            ) : notifications.length === 0 ? (
               <EmptyState>
                 <EmptyIcon>
                   <Bell />
@@ -393,32 +460,38 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ classNam
               </EmptyState>
             ) : (
               <NotificationList>
-                {notifications.map((notification) => (
-                  <NotificationItem
-                    key={notification.id}
-                    $read={notification.read}
-                    onClick={() => handleNotificationClick(notification.id)}
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: 20 }}
-                  >
-                    <NotificationIcon $type={notification.type}>
-                      {getIcon(notification.type)}
-                    </NotificationIcon>
-                    <NotificationContent>
-                      <NotificationTitle $read={notification.read}>
-                        {language === 'bg' ? notification.titleBg : notification.title}
-                      </NotificationTitle>
-                      <NotificationMessage>
-                        {language === 'bg' ? notification.messageBg : notification.message}
-                      </NotificationMessage>
-                      <NotificationTime>{notification.time}</NotificationTime>
-                    </NotificationContent>
-                    <DeleteButton onClick={(e) => handleDelete(notification.id, e)}>
-                      <X />
-                    </DeleteButton>
-                  </NotificationItem>
-                ))}
+                {notifications.map((notification) => {
+                  const bucket = bucketForType(notification.type);
+                  const isRead = notification.status !== 'unread';
+                  return (
+                    <NotificationItem
+                      key={notification.id}
+                      $read={isRead}
+                      onClick={() => handleNotificationClick(notification)}
+                      initial={{ opacity: 0, x: -20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: 20 }}
+                    >
+                      <NotificationIcon $type={bucket}>
+                        {getIcon(bucket)}
+                      </NotificationIcon>
+                      <NotificationContent>
+                        <NotificationTitle $read={isRead}>
+                          {language === 'bg' ? notification.titleBg : notification.title}
+                        </NotificationTitle>
+                        <NotificationMessage>
+                          {language === 'bg' ? notification.messageBg : notification.message}
+                        </NotificationMessage>
+                        <NotificationTime>
+                          {formatRelative(notification.createdAt, language)}
+                        </NotificationTime>
+                      </NotificationContent>
+                      <DeleteButton onClick={(e) => handleDelete(notification.id, e)}>
+                        <X />
+                      </DeleteButton>
+                    </NotificationItem>
+                  );
+                })}
               </NotificationList>
             )}
           </NotificationPanel>
