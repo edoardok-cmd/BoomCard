@@ -33,9 +33,9 @@ import { fraudAdminService } from '../services/fraudAdmin.service';
 import { apiService } from '../services/api.service';
 
 const PageContainer = styled.div`
-  max-width: 80rem;
+  max-width: 82rem;
   margin: 0 auto;
-  padding: 2rem 1.5rem 3rem;
+  padding: 2.25rem 1.75rem 4rem;
   min-height: calc(100vh - 4rem);
 `;
 
@@ -45,7 +45,7 @@ const PageHeader = styled.header`
   justify-content: space-between;
   gap: 1.5rem;
   margin-bottom: 2rem;
-  padding-bottom: 1.25rem;
+  padding-bottom: 1.5rem;
   border-bottom: 1px solid var(--color-border, #e5e7eb);
 
   @media (max-width: 640px) {
@@ -57,35 +57,36 @@ const PageHeader = styled.header`
 const HeaderLeft = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 0.375rem;
+  gap: 0.5rem;
 `;
 
 const Eyebrow = styled.span`
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
-  font-size: 0.75rem;
+  font-size: 0.6875rem;
   font-weight: 600;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--color-text-secondary, #6b7280);
 
   &::before {
     content: '';
-    width: 0.5rem;
-    height: 0.5rem;
+    width: 0.4375rem;
+    height: 0.4375rem;
     border-radius: 50%;
     background: #10b981;
-    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.15);
+    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.18);
   }
 `;
 
 const Title = styled.h1`
-  font-size: 1.875rem;
+  font-size: 1.75rem;
   font-weight: 700;
   color: var(--color-text-primary, #0f172a);
   margin: 0;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.025em;
+  line-height: 1.15;
 
   @media (max-width: 640px) {
     font-size: 1.5rem;
@@ -112,40 +113,63 @@ const HeaderMeta = styled.div`
 `;
 
 const MetaLabel = styled.span`
+  font-size: 0.6875rem;
   font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--color-text-tertiary, #94a3b8);
+`;
+
+const MetaDate = styled.span`
+  font-weight: 500;
   color: var(--color-text-primary, #0f172a);
 `;
 
 const StatsGrid = styled.div`
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
-  gap: 0.875rem;
-  margin-bottom: 2.5rem;
+  grid-template-columns: repeat(auto-fit, minmax(12.5rem, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 2.75rem;
 `;
 
 const StatCard = styled(motion.div)<{ $accent?: string }>`
   position: relative;
   background: var(--color-background, #ffffff);
   border: 1px solid var(--color-border, #e5e7eb);
-  border-radius: 0.75rem;
-  padding: 1.25rem 1.25rem 1.125rem;
-  transition: border-color 150ms ease, box-shadow 150ms ease;
+  border-radius: 0.875rem;
+  padding: 1.125rem 1.25rem 1.25rem;
+  transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
   overflow: hidden;
+  min-height: 7.5rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
 
-  &::before {
+  &::after {
     content: '';
     position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 3px;
-    background: ${p => p.$accent || '#0f172a'};
-    opacity: 0.9;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(135deg, ${p => p.$accent || '#0f172a'}22, transparent 55%);
+    -webkit-mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+            mask-composite: exclude;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 180ms ease;
   }
 
   &:hover {
     border-color: var(--color-text-tertiary, #cbd5e1);
-    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 4px 12px rgba(15, 23, 42, 0.06);
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 8px 24px -8px rgba(15, 23, 42, 0.08);
+    transform: translateY(-1px);
+
+    &::after {
+      opacity: 1;
+    }
   }
 `;
 
@@ -153,21 +177,21 @@ const StatTop = styled.div`
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 0.75rem;
+  margin-bottom: 0.875rem;
 `;
 
 const StatLabel = styled.p`
-  font-size: 0.75rem;
+  font-size: 0.6875rem;
   font-weight: 600;
   color: var(--color-text-secondary, #64748b);
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.08em;
   margin: 0;
 `;
 
 const StatIconBox = styled.div<{ $color?: string; $bg?: string }>`
-  width: 1.75rem;
-  height: 1.75rem;
+  width: 1.875rem;
+  height: 1.875rem;
   border-radius: 0.5rem;
   display: flex;
   align-items: center;
@@ -178,6 +202,7 @@ const StatIconBox = styled.div<{ $color?: string; $bg?: string }>`
   svg {
     width: 1rem;
     height: 1rem;
+    stroke-width: 2;
   }
 `;
 
@@ -186,7 +211,8 @@ const StatValue = styled.h3<{ $danger?: boolean }>`
   font-weight: 700;
   color: ${p => (p.$danger ? '#dc2626' : 'var(--color-text-primary, #0f172a)')};
   margin: 0 0 0.25rem 0;
-  letter-spacing: -0.025em;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
   font-feature-settings: 'tnum';
 `;
 
@@ -196,6 +222,7 @@ const StatChange = styled.p<{ $positive?: boolean; $warning?: boolean }>`
     p.$positive ? '#059669' : p.$warning ? '#d97706' : 'var(--color-text-secondary, #64748b)'};
   font-weight: 500;
   margin: 0;
+  line-height: 1.3;
 `;
 
 const SectionGroup = styled.section`
@@ -207,22 +234,34 @@ const SectionHead = styled.div`
   align-items: baseline;
   justify-content: space-between;
   gap: 0.75rem;
-  margin-bottom: 0.875rem;
+  margin-bottom: 1rem;
 `;
 
 const SectionTitle = styled.h2`
-  font-size: 0.8125rem;
+  font-size: 0.75rem;
   font-weight: 700;
-  color: var(--color-text-secondary, #64748b);
+  color: var(--color-text-primary, #0f172a);
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.1em;
   margin: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.625rem;
+
+  &::before {
+    content: '';
+    width: 0.25rem;
+    height: 0.875rem;
+    border-radius: 1px;
+    background: var(--color-text-primary, #0f172a);
+  }
 `;
 
 const SectionHint = styled.span`
   font-size: 0.75rem;
   color: var(--color-text-tertiary, #94a3b8);
   text-align: right;
+  font-weight: 500;
 
   @media (max-width: 640px) {
     display: none;
@@ -231,25 +270,28 @@ const SectionHint = styled.span`
 
 const ActionsGrid = styled.div`
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr));
   gap: 0.75rem;
 `;
 
 const ActionCard = styled(Link)`
   position: relative;
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 0.875rem;
   background: var(--color-background, #ffffff);
   border: 1px solid var(--color-border, #e5e7eb);
-  border-radius: 0.625rem;
-  padding: 0.875rem 1rem;
+  border-radius: 0.75rem;
+  padding: 1rem 1.125rem;
+  min-height: 4.75rem;
   text-decoration: none;
-  transition: border-color 150ms ease, box-shadow 150ms ease, transform 150ms ease;
+  transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease,
+    background-color 180ms ease;
 
   &:hover {
     border-color: #94a3b8;
-    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 4px 12px rgba(15, 23, 42, 0.06);
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 8px 20px -8px rgba(15, 23, 42, 0.1);
+    transform: translateY(-1px);
 
     .arrow {
       opacity: 1;
@@ -260,48 +302,67 @@ const ActionCard = styled(Link)`
 
 const ActionIcon = styled.div<{ $tint?: string }>`
   flex-shrink: 0;
-  width: 2.25rem;
-  height: 2.25rem;
+  width: 2.375rem;
+  height: 2.375rem;
   border-radius: 0.5rem;
   display: flex;
   align-items: center;
   justify-content: center;
   background: ${p => p.$tint || 'var(--color-background-tertiary, #f1f5f9)'};
   color: ${p => (p.$tint ? '#ffffff' : 'var(--color-text-secondary, #475569)')};
+  box-shadow: ${p => (p.$tint ? '0 1px 2px rgba(15, 23, 42, 0.08)' : 'none')};
 
   svg {
     width: 1.125rem;
     height: 1.125rem;
+    stroke-width: 2;
   }
 `;
 
 const ActionBody = styled.div`
-  flex: 1;
+  flex: 1 1 auto;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1875rem;
 `;
 
 const ActionTitle = styled.h3`
   font-size: 0.9375rem;
   font-weight: 600;
   color: var(--color-text-primary, #0f172a);
-  margin: 0 0 0.1875rem 0;
+  margin: 0;
   line-height: 1.3;
+  letter-spacing: -0.005em;
 `;
 
 const ActionDescription = styled.p`
   font-size: 0.8125rem;
   color: var(--color-text-secondary, #64748b);
   margin: 0;
-  line-height: 1.45;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: break-word;
+`;
+
+const ActionTrail = styled.div`
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
 `;
 
 const ActionArrow = styled.div.attrs({ className: 'arrow' })`
   flex-shrink: 0;
-  align-self: center;
   color: var(--color-text-tertiary, #94a3b8);
   opacity: 0;
   transform: translateX(-4px);
-  transition: all 150ms ease;
+  transition: all 180ms ease;
+  display: flex;
+  align-items: center;
 
   svg {
     width: 1rem;
@@ -311,14 +372,11 @@ const ActionArrow = styled.div.attrs({ className: 'arrow' })`
 
 const MetricBadge = styled.div<{ $tone?: 'neutral' | 'warning' | 'danger' | 'success' }>`
   flex-shrink: 0;
-  align-self: center;
   display: inline-flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 0.125rem;
+  align-items: baseline;
+  gap: 0.3125rem;
   padding: 0.3125rem 0.625rem;
-  border-radius: 0.5rem;
-  min-width: 3rem;
+  border-radius: 999px;
   background: ${p =>
     p.$tone === 'warning'
       ? '#fffbeb'
@@ -339,7 +397,7 @@ const MetricBadge = styled.div<{ $tone?: 'neutral' | 'warning' | 'danger' | 'suc
 `;
 
 const MetricValue = styled.span<{ $tone?: 'neutral' | 'warning' | 'danger' | 'success' }>`
-  font-size: 1rem;
+  font-size: 0.875rem;
   font-weight: 700;
   line-height: 1;
   letter-spacing: -0.01em;
@@ -355,12 +413,12 @@ const MetricValue = styled.span<{ $tone?: 'neutral' | 'warning' | 'danger' | 'su
 `;
 
 const MetricLabel = styled.span`
-  font-size: 0.6875rem;
-  font-weight: 500;
+  font-size: 0.625rem;
+  font-weight: 600;
   line-height: 1;
   color: var(--color-text-secondary, #64748b);
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.06em;
 `;
 
 type MetricTone = 'neutral' | 'warning' | 'danger' | 'success';
@@ -658,15 +716,17 @@ const AdminDashboardPage: React.FC = () => {
               <ActionTitle>{a.title}</ActionTitle>
               <ActionDescription>{a.description}</ActionDescription>
             </ActionBody>
-            {a.metric && (
-              <MetricBadge $tone={a.metric.tone ?? 'neutral'}>
-                <MetricValue $tone={a.metric.tone ?? 'neutral'}>{a.metric.value}</MetricValue>
-                <MetricLabel>{a.metric.label}</MetricLabel>
-              </MetricBadge>
-            )}
-            <ActionArrow>
-              <ArrowRightIcon />
-            </ActionArrow>
+            <ActionTrail>
+              {a.metric && (
+                <MetricBadge $tone={a.metric.tone ?? 'neutral'}>
+                  <MetricValue $tone={a.metric.tone ?? 'neutral'}>{a.metric.value}</MetricValue>
+                  <MetricLabel>{a.metric.label}</MetricLabel>
+                </MetricBadge>
+              )}
+              <ActionArrow>
+                <ArrowRightIcon />
+              </ActionArrow>
+            </ActionTrail>
           </ActionCard>
         ))}
       </ActionsGrid>
@@ -687,7 +747,7 @@ const AdminDashboardPage: React.FC = () => {
         </HeaderLeft>
         <HeaderMeta>
           <MetaLabel>{bg ? 'Днес' : 'Today'}</MetaLabel>
-          <span>{today}</span>
+          <MetaDate>{today}</MetaDate>
         </HeaderMeta>
       </PageHeader>
 
