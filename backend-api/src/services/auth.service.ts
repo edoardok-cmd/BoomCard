@@ -9,6 +9,7 @@ import { cardService } from './card.service';
 import { walletService } from './wallet.service';
 import { PartnerStatus, Prisma, UserStatus } from '@prisma/client';
 import { emailService } from './email.service';
+import { notificationService } from './notification.service';
 import { SECURITY_CONFIG } from '../config/security.config';
 
 // Translate a Prisma P2002 (unique violation) on the (email, role) index
@@ -240,6 +241,25 @@ export class AuthService {
         businessCategory: info.businessCategory.trim(),
         partnerId: result.partnerId,
       }).catch((err) => logger.error('Failed to send admin application notification:', err));
+
+      // Fan out to the unified admin-ops channel (in-app + email on critical) in
+      // addition to the legacy email above. Both can coexist; the ops channel is
+      // what admins filter in the dashboard bell.
+      notificationService.notifyAdminPartnerSignup({
+        partnerId: result.partnerId,
+        businessName: info.businessName.trim(),
+        email: user.email,
+        category: info.businessCategory.trim(),
+      }).catch((err) => logger.error('Failed to post admin-ops partner signup:', err));
+
+      // Welcome notification for the partner themselves — they see it the first
+      // time they log in after email verification. Safe to fire here: the user
+      // row exists and the partner is in PENDING status awaiting admin review.
+      notificationService.notifyPartnerWelcome({
+        partnerUserId: user.id,
+        businessName: info.businessName.trim(),
+        isBulkImport: false,
+      }).catch((err) => logger.error('Failed to send partner welcome:', err));
 
       // Do NOT issue tokens. Partner accounts are PENDING_VERIFICATION and the
       // dashboard has no useful state for them yet (GET /partners/:id filters on

@@ -333,37 +333,6 @@ const UserMenuItem = styled(Link)`
   }
 `;
 
-const UserMenuNotificationItem = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 0.25rem;
-  padding: 0.375rem 0.25rem 0.375rem 1rem;
-  position: relative;
-  font-size: 0.875rem;
-  font-weight: 500;
-  color: #374151;
-  cursor: pointer;
-  transition: all 200ms;
-
-  [data-theme="dark"] & {
-    color: #d1d5db;
-  }
-
-  &:hover {
-    background: #f9fafb;
-    color: #111827;
-
-    [data-theme="dark"] & {
-      background: #374151;
-      color: #f9fafb;
-    }
-  }
-
-  span {
-    flex: 1;
-  }
-`;
-
 const UserMenuDivider = styled.div`
   height: 1px;
   background: #e5e7eb;
@@ -1481,7 +1450,9 @@ export const Header: React.FC<HeaderProps> = ({
             </Tooltip>
 
             {isAuthenticated && user ? (
-              <UserMenuContainer ref={userMenuRef}>
+              <>
+                <NotificationCenter />
+                <UserMenuContainer ref={userMenuRef}>
                 <UserButton onClick={() => setUserMenuOpen(!userMenuOpen)}>
                   <UserAvatar>{getUserInitials()}</UserAvatar>
                   <UserName>{user.firstName}</UserName>
@@ -1798,11 +1769,6 @@ export const Header: React.FC<HeaderProps> = ({
                               {t('header.profile')}
                             </UserMenuItem>
 
-                            <UserMenuNotificationItem>
-                              <NotificationCenter />
-                              <span>{language === 'bg' ? 'Известия' : 'Notifications'}</span>
-                            </UserMenuNotificationItem>
-
                             <UserMenuItem
                               to="/partners/menus"
                               onClick={() => setUserMenuOpen(false)}
@@ -1922,11 +1888,6 @@ export const Header: React.FC<HeaderProps> = ({
                               {t('header.favorites')}
                             </UserMenuItem>
 
-                            <UserMenuNotificationItem>
-                              <NotificationCenter />
-                              <span>{language === 'bg' ? 'Известия' : 'Notifications'}</span>
-                            </UserMenuNotificationItem>
-
                             <UserMenuItem
                               to="/rewards"
                               onClick={() => setUserMenuOpen(false)}
@@ -1983,6 +1944,7 @@ export const Header: React.FC<HeaderProps> = ({
                   )}
                 </AnimatePresence>
               </UserMenuContainer>
+              </>
             ) : (
               <>
                 <Link to="/login" className="hidden nav:block">

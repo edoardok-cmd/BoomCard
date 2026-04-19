@@ -14,6 +14,7 @@ import bcrypt from 'bcryptjs';
 import { OfferStatus, OfferType, PartnerStatus } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { imageUploadService } from './imageUpload.service';
+import { notificationService } from './notification.service';
 import { logger } from '../utils/logger';
 import { CASHBACK_MATRIX_STEPS } from '../constants/receipt.constants';
 
@@ -866,6 +867,14 @@ export async function importPartnersFromSpreadsheet(
         created = true;
         partnersCreated++;
         logger.info(`Partners bulk import: created partner "${businessName}" (${partnerId})`);
+
+        // Welcome the new partner — non-fatal, don't block the import batch.
+        // Fires only for newly-created partners (not updated ones).
+        notificationService.notifyPartnerWelcome({
+          partnerUserId: partnerUser.id,
+          businessName,
+          isBulkImport: true,
+        }).catch((err) => logger.error(`Failed to send bulk-import welcome for ${businessName}:`, err));
       }
       partners.push({ id: partnerId, businessName, created });
     } catch (err: any) {

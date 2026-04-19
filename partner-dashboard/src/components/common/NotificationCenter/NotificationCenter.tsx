@@ -29,14 +29,33 @@ const NotificationButton = styled.button`
   color: #374151;
   transition: all 0.2s;
 
+  [data-theme="dark"] & {
+    color: #d1d5db;
+  }
+
   &:hover {
     background: #f3f4f6;
     color: #111827;
+
+    [data-theme="dark"] & {
+      background: #374151;
+      color: #f9fafb;
+    }
   }
 
   svg {
     width: 20px;
     height: 20px;
+  }
+
+  @media (max-width: 640px) {
+    width: 36px;
+    height: 36px;
+
+    svg {
+      width: 18px;
+      height: 18px;
+    }
   }
 `;
 
@@ -56,6 +75,10 @@ const Badge = styled(motion.span)`
   align-items: center;
   justify-content: center;
   border: 2px solid white;
+
+  [data-theme="dark"] & {
+    border-color: #1f2937;
+  }
 `;
 
 const NotificationPanel = styled(motion.div)`
@@ -70,6 +93,11 @@ const NotificationPanel = styled(motion.div)`
   z-index: 1000;
   overflow: hidden;
 
+  [data-theme="dark"] & {
+    background: #1f2937;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+  }
+
   @media (max-width: 640px) {
     width: calc(100vw - 2rem);
   }
@@ -81,6 +109,10 @@ const PanelHeader = styled.div`
   align-items: center;
   padding: 1rem 1.25rem;
   border-bottom: 1px solid #e5e7eb;
+
+  [data-theme="dark"] & {
+    border-bottom-color: #374151;
+  }
 `;
 
 const PanelTitle = styled.h3`
@@ -88,6 +120,10 @@ const PanelTitle = styled.h3`
   font-weight: 600;
   color: #111827;
   margin: 0;
+
+  [data-theme="dark"] & {
+    color: #f9fafb;
+  }
 `;
 
 const MarkAllButton = styled.button`
@@ -116,11 +152,19 @@ const NotificationList = styled.div`
 
   &::-webkit-scrollbar-track {
     background: #f3f4f6;
+
+    [data-theme="dark"] & {
+      background: #111827;
+    }
   }
 
   &::-webkit-scrollbar-thumb {
     background: #d1d5db;
     border-radius: 3px;
+
+    [data-theme="dark"] & {
+      background: #4b5563;
+    }
   }
 `;
 
@@ -133,8 +177,17 @@ const NotificationItem = styled(motion.div)<{ $read: boolean }>`
   background: ${props => props.$read ? 'white' : '#f9fafb'};
   transition: background 0.2s;
 
+  [data-theme="dark"] & {
+    background: ${props => props.$read ? '#1f2937' : '#111827'};
+    border-bottom-color: #374151;
+  }
+
   &:hover {
     background: #f3f4f6;
+
+    [data-theme="dark"] & {
+      background: #374151;
+    }
   }
 
   &:last-child {
@@ -185,6 +238,10 @@ const NotificationTitle = styled.div<{ $read: boolean }>`
   font-weight: ${props => props.$read ? '500' : '600'};
   color: #111827;
   margin-bottom: 0.25rem;
+
+  [data-theme="dark"] & {
+    color: #f9fafb;
+  }
 `;
 
 const NotificationMessage = styled.div`
@@ -196,12 +253,20 @@ const NotificationMessage = styled.div`
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
+
+  [data-theme="dark"] & {
+    color: #d1d5db;
+  }
 `;
 
 const NotificationTime = styled.div`
   font-size: 0.75rem;
   color: #9ca3af;
   margin-top: 0.25rem;
+
+  [data-theme="dark"] & {
+    color: #6b7280;
+  }
 `;
 
 const DeleteButton = styled.button`
@@ -223,9 +288,18 @@ const DeleteButton = styled.button`
     opacity: 1;
   }
 
+  @media (max-width: 640px) {
+    opacity: 1;
+  }
+
   &:hover {
     background: #fee2e2;
     color: #ef4444;
+
+    [data-theme="dark"] & {
+      background: #7f1d1d;
+      color: #fca5a5;
+    }
   }
 
   svg {
@@ -249,6 +323,10 @@ const EmptyIcon = styled.div`
   align-items: center;
   justify-content: center;
 
+  [data-theme="dark"] & {
+    background: #374151;
+  }
+
   svg {
     width: 32px;
     height: 32px;
@@ -259,6 +337,10 @@ const EmptyIcon = styled.div`
 const EmptyText = styled.div`
   color: #6b7280;
   font-size: 0.875rem;
+
+  [data-theme="dark"] & {
+    color: #9ca3af;
+  }
 `;
 
 const LoadingText = styled.div`
@@ -276,8 +358,17 @@ interface NotificationCenterProps {
  * Map a backend notification type → an icon "bucket" used by the styled
  * components above. Keeps the visual taxonomy (success/info/warning/offer)
  * stable while the API model uses a much wider type union.
+ *
+ * The backend stores many partner/admin-ops events under the catch-all
+ * 'SYSTEM' enum because the Prisma NotificationType is narrow; the real
+ * discriminator lives in `metadata.severity` / `metadata.opsType`. For
+ * 'system' rows we consult that metadata so warning/critical events don't
+ * all show the neutral info icon.
  */
-function bucketForType(type: NotificationType | string): 'success' | 'info' | 'warning' | 'offer' {
+function bucketForType(
+  type: NotificationType | string,
+  metadata?: Record<string, unknown>
+): 'success' | 'info' | 'warning' | 'offer' {
   switch (type) {
     case 'booking_confirmed':
     case 'payment_received':
@@ -297,6 +388,11 @@ function bucketForType(type: NotificationType | string): 'success' | 'info' | 'w
     case 'new_offer':
     case 'promotion':
       return 'offer';
+    case 'system': {
+      const severity = typeof metadata?.severity === 'string' ? metadata.severity : undefined;
+      if (severity === 'critical' || severity === 'warning') return 'warning';
+      return 'info';
+    }
     default:
       return 'info';
   }
@@ -461,7 +557,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ classNam
             ) : (
               <NotificationList>
                 {notifications.map((notification) => {
-                  const bucket = bucketForType(notification.type);
+                  const bucket = bucketForType(notification.type, notification.metadata);
                   const isRead = notification.status !== 'unread';
                   return (
                     <NotificationItem

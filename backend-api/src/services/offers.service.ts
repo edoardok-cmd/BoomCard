@@ -3,6 +3,8 @@ import crypto from 'crypto';
 import { prisma } from '../lib/prisma';
 import { partnerTypeService } from './partnerType.service';
 import { imageUploadService } from './imageUpload.service';
+import { notificationService } from './notification.service';
+import { logger } from '../utils/logger';
 import { CASHBACK_MATRIX_STEPS } from '../constants/receipt.constants';
 
 function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -585,10 +587,55 @@ class OffersService {
     const code = `BOOM-${crypto.randomBytes(4).toString('hex').toUpperCase()}-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
-    await prisma.$transaction([
-      prisma.offer.update({ where: { id: offerId }, data: { usageCount: { increment: 1 } } }),
+    const [updatedOffer] = await prisma.$transaction([
+      prisma.offer.update({
+        where: { id: offerId },
+        data: { usageCount: { increment: 1 } },
+        select: { usageCount: true, usageLimit: true },
+      }),
       prisma.offerRedemption.create({ data: { offerId, userId, code, expiresAt } }),
     ]);
+
+    // Notify the partner that owns this offer (non-fatal). Fire-and-forget so
+    // a notification hiccup can never mask a successful redemption.
+    (async () => {
+      try {
+        const user = await prisma.user.findUnique({
+          where: { id: userId },
+          select: { firstName: true, lastName: true },
+        });
+        const userName = [user?.firstName, user?.lastName].filter(Boolean).join(' ').trim() || undefined;
+        await notificationService.notifyPartnerOfferRedeemed({ offerId, userName, code });
+
+        // Low-capacity alert: notify the partner when the offer crosses the
+        // 90% usage mark. Only fires once per offer — the next tick's count
+        // will be above the threshold so this branch won't re-enter.
+        if (updatedOffer.usageLimit && updatedOffer.usageLimit > 0) {
+          const remaining = updatedOffer.usageLimit - updatedOffer.usageCount;
+          const prevRemaining = remaining + 1;
+          const tenPercent = Math.max(1, Math.ceil(updatedOffer.usageLimit * 0.1));
+          // Edge crossing: previous tick was above threshold, current tick is at/below.
+          if (remaining <= tenPercent && prevRemaining > tenPercent) {
+            const partner = await prisma.offer.findUnique({
+              where: { id: offerId },
+              select: { title: true, partner: { select: { user: { select: { id: true } } } } },
+            });
+            const partnerUserId = partner?.partner?.user?.id;
+            if (partnerUserId) {
+              await notificationService.notifyPartnerOfferLowCapacity({
+                partnerUserId,
+                offerId,
+                offerTitle: partner!.title,
+                remaining,
+                usageLimit: updatedOffer.usageLimit,
+              });
+            }
+          }
+        }
+      } catch (err) {
+        logger.error('[offers] notifyPartnerOfferRedeemed failed:', err);
+      }
+    })();
 
     return { code, expiresAt: expiresAt.toISOString() };
   }

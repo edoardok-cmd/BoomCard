@@ -3,6 +3,7 @@ import { AppError } from '../middleware/error.middleware';
 import { isReviewCommentAppropriate } from '../utils/profanity-filter';
 import { logger } from '../utils/logger';
 import { prisma } from '../lib/prisma';
+import { notificationService } from './notification.service';
 
 export interface CreateReviewDTO {
   partnerId: string;
@@ -426,20 +427,55 @@ class ReviewsService {
    */
   async approveReview(id: string) {
     try {
+      // Read first to detect the PENDING→APPROVED transition — without this,
+      // re-approving an already-APPROVED review would re-fire the partner
+      // notification and re-run rating aggregation.
+      const existing = await prisma.review.findUnique({
+        where: { id },
+        select: { status: true },
+      });
+      if (!existing) {
+        throw new AppError('Review not found', 404);
+      }
+      const wasAlreadyApproved = existing.status === ReviewStatus.APPROVED;
+
       const review = await prisma.review.update({
         where: { id },
         data: {
           status: ReviewStatus.APPROVED
-        }
+        },
+        include: {
+          user: { select: { firstName: true, lastName: true } },
+          partner: { select: { userId: true } },
+        },
       });
 
-      // Update partner rating
-      await this.updatePartnerRating(review.partnerId);
+      if (!wasAlreadyApproved) {
+        // Update partner rating
+        await this.updatePartnerRating(review.partnerId);
+
+        // Fire-and-forget partner notification. Only fires on the
+        // PENDING→APPROVED transition so partners aren't pinged twice if an
+        // admin re-clicks approve.
+        if (review.partner?.userId) {
+          const reviewerName = [review.user?.firstName, review.user?.lastName]
+            .filter(Boolean)
+            .join(' ')
+            .trim() || undefined;
+          notificationService.notifyReviewReceived({
+            partnerUserId: review.partner.userId,
+            reviewId: review.id,
+            rating: review.rating,
+            reviewerName,
+          }).catch((err) => logger.error('Failed to send review notification:', err));
+        }
+      }
 
       logger.info(`Review approved: ${id}`);
 
       return { success: true, data: review };
     } catch (error) {
+      if (error instanceof AppError) throw error;
       logger.error('Error approving review:', error);
       throw new AppError('Failed to approve review', 500);
     }

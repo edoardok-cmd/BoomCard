@@ -2,6 +2,9 @@ import { prisma } from '../lib/prisma';
 import { emailService } from './email.service';
 import { emitNotification } from '../lib/socket';
 import { sendWebPushToUser } from '../lib/webPush';
+import { logger } from '../utils/logger';
+
+type NotificationSeverity = 'info' | 'warning' | 'critical';
 
 /**
  * Notification Service
@@ -13,10 +16,9 @@ import { sendWebPushToUser } from '../lib/webPush';
  * - Daily/weekly summary emails
  *
  * Supports multiple notification channels:
- * - Push notifications (via FCM/APNS)
+ * - In-app (DB row + socket event to the bell)
+ * - Web Push (browser push via VAPID)
  * - Email (via SMTP)
- * - SMS (via Twilio)
- * - In-app notifications
  */
 
 interface NotificationParams {
@@ -348,6 +350,132 @@ class NotificationService {
   }
 
   /**
+   * Notify a partner that their submitted menu URL was approved.
+   * Uses SYSTEM type (no dedicated enum value) until the NotificationType
+   * enum gets MENU_APPROVED — the icon bucket falls through to 'info' which
+   * is fine for this event.
+   */
+  async notifyMenuApproved(params: {
+    partnerUserId: string;
+    venueId: string;
+    venueName: string;
+    menuUrl: string;
+  }): Promise<void> {
+    const { partnerUserId, venueId, venueName, menuUrl } = params;
+
+    try {
+      await this.createNotification({
+        userId: partnerUserId,
+        type: 'SYSTEM',
+        title: 'Menu Approved',
+        titleBg: 'Менюто е одобрено',
+        message: `Your menu for ${venueName} is now live.`,
+        messageBg: `Менюто за ${venueName} вече е публикувано.`,
+        priority: 'medium',
+        actionUrl: '/partners/menus',
+        actionText: 'View menu',
+        actionTextBg: 'Прегледай',
+        relatedEntityType: 'venue',
+        relatedEntityId: venueId,
+        data: { venueId, venueName, menuUrl },
+      });
+
+      await this.sendPushNotification({
+        userId: partnerUserId,
+        title: 'Menu Approved',
+        body: `Your menu for ${venueName} is now live.`,
+        data: { venueId, type: 'menu_approved', url: '/partners/menus' },
+      });
+    } catch (error) {
+      console.error('❌ Error sending menu approved notification:', error);
+    }
+  }
+
+  /**
+   * Notify a partner that their submitted menu URL was rejected.
+   * Partner keeps the rejected URL visible in-app so they can edit; the
+   * notification surfaces the reason so they know what to change.
+   */
+  async notifyMenuRejected(params: {
+    partnerUserId: string;
+    venueId: string;
+    venueName: string;
+    reason: string;
+  }): Promise<void> {
+    const { partnerUserId, venueId, venueName, reason } = params;
+
+    try {
+      await this.createNotification({
+        userId: partnerUserId,
+        type: 'SYSTEM',
+        title: 'Menu Rejected',
+        titleBg: 'Менюто е отхвърлено',
+        message: `Your menu for ${venueName} was rejected: ${reason}`,
+        messageBg: `Менюто за ${venueName} беше отхвърлено: ${reason}`,
+        priority: 'high',
+        actionUrl: '/partners/menus',
+        actionText: 'Update menu',
+        actionTextBg: 'Обнови менюто',
+        relatedEntityType: 'venue',
+        relatedEntityId: venueId,
+        data: { venueId, venueName, reason },
+      });
+
+      await this.sendPushNotification({
+        userId: partnerUserId,
+        title: 'Menu Rejected',
+        body: `Your menu for ${venueName} was rejected. Tap to update.`,
+        data: { venueId, type: 'menu_rejected', url: '/partners/menus' },
+      });
+    } catch (error) {
+      console.error('❌ Error sending menu rejected notification:', error);
+    }
+  }
+
+  /**
+   * Notify a partner that a customer review was approved and is now live.
+   * Fires from reviewsService.approveReview so partners don't get pinged for
+   * reviews still in moderation (or later rejected).
+   */
+  async notifyReviewReceived(params: {
+    partnerUserId: string;
+    reviewId: string;
+    rating: number;
+    reviewerName?: string;
+  }): Promise<void> {
+    const { partnerUserId, reviewId, rating, reviewerName } = params;
+    const who = reviewerName?.trim() || 'A customer';
+    const whoBg = reviewerName?.trim() || 'Клиент';
+
+    try {
+      await this.createNotification({
+        userId: partnerUserId,
+        type: 'REVIEW_RECEIVED',
+        title: 'New review',
+        titleBg: 'Ново ревю',
+        message: `${who} left a ${rating}-star review.`,
+        messageBg: `${whoBg} остави ревю с ${rating} звезди.`,
+        priority: rating <= 2 ? 'high' : 'medium',
+        actionUrl: '/analytics',
+        actionText: 'View reviews',
+        actionTextBg: 'Виж ревютата',
+        relatedEntityType: 'review',
+        relatedEntityId: reviewId,
+        data: { reviewId, rating, reviewerName },
+      });
+
+      await this.sendPushNotification({
+        userId: partnerUserId,
+        title: 'New review',
+        body: `${who} left a ${rating}-star review.`,
+        data: { reviewId, type: 'review_received', url: '/analytics' },
+      });
+    } catch (error) {
+      console.error('❌ Error sending review received notification:', error);
+    }
+  }
+
+  /**
    * Notify user that a payment or subscription renewal failed.
    * Prompts them to update their payment method.
    */
@@ -394,6 +522,677 @@ class NotificationService {
     } catch (error) {
       console.error('Error sending payment-failed notification:', error);
     }
+  }
+
+  // ===== Partner-facing event notifications =====
+
+  /**
+   * Notify a venue's partner owner that a customer just had a cashback
+   * sticker scan approved at their venue. Fires alongside the existing
+   * customer-facing notifyStickerScanApproved so both sides learn about
+   * the event in real time.
+   */
+  async notifyPartnerScanAtVenue(params: {
+    venueId: string;
+    scanId: string;
+    billAmount: number;
+    cashbackAmount: number;
+  }): Promise<void> {
+    try {
+      const venue = await this.getVenuePartnerOwner(params.venueId);
+      if (!venue) return;
+      await this.createNotification({
+        userId: venue.partnerUserId,
+        type: 'SYSTEM',
+        title: 'New scan at your venue',
+        titleBg: 'Ново сканиране във вашия обект',
+        message: `A customer just scanned at ${venue.venueName} — ${params.billAmount.toFixed(2)} BGN bill, ${params.cashbackAmount.toFixed(2)} BGN cashback.`,
+        messageBg: `Клиент току-що сканира в ${venue.venueName} — сметка ${params.billAmount.toFixed(2)} лв., кешбек ${params.cashbackAmount.toFixed(2)} лв.`,
+        priority: 'low',
+        actionUrl: '/analytics',
+        actionText: 'View analytics',
+        actionTextBg: 'Виж анализа',
+        relatedEntityType: 'sticker_scan',
+        relatedEntityId: params.scanId,
+        data: { venueId: params.venueId, scanId: params.scanId, billAmount: params.billAmount, cashbackAmount: params.cashbackAmount },
+      });
+    } catch (error) {
+      logger.error('❌ Error sending partner scan notification:', error);
+    }
+  }
+
+  /**
+   * Notify a venue's partner owner that a customer's uploaded receipt
+   * (classic OCR flow, not sticker) at their venue was approved.
+   */
+  async notifyPartnerReceiptAtVenue(params: {
+    venueId: string;
+    receiptId: string;
+    totalAmount: number;
+    cashbackAmount: number;
+  }): Promise<void> {
+    try {
+      const venue = await this.getVenuePartnerOwner(params.venueId);
+      if (!venue) return;
+      await this.createNotification({
+        userId: venue.partnerUserId,
+        type: 'SYSTEM',
+        title: 'New receipt at your venue',
+        titleBg: 'Нова касова бележка във вашия обект',
+        message: `A customer submitted a ${params.totalAmount.toFixed(2)} BGN receipt at ${venue.venueName}. ${params.cashbackAmount.toFixed(2)} BGN cashback credited.`,
+        messageBg: `Клиент качи касова бележка за ${params.totalAmount.toFixed(2)} лв. в ${venue.venueName}. Кешбек: ${params.cashbackAmount.toFixed(2)} лв.`,
+        priority: 'low',
+        actionUrl: '/analytics',
+        actionText: 'View analytics',
+        actionTextBg: 'Виж анализа',
+        relatedEntityType: 'receipt',
+        relatedEntityId: params.receiptId,
+        data: { venueId: params.venueId, receiptId: params.receiptId, totalAmount: params.totalAmount, cashbackAmount: params.cashbackAmount },
+      });
+    } catch (error) {
+      logger.error('❌ Error sending partner receipt notification:', error);
+    }
+  }
+
+  /**
+   * Notify the partner that owns an offer that a customer just redeemed it.
+   */
+  async notifyPartnerOfferRedeemed(params: {
+    offerId: string;
+    userName?: string;
+    code: string;
+  }): Promise<void> {
+    try {
+      const offer = await prisma.offer.findUnique({
+        where: { id: params.offerId },
+        select: {
+          title: true,
+          partner: { select: { businessName: true, user: { select: { id: true } } } },
+        },
+      });
+      const partnerUserId = offer?.partner?.user?.id;
+      if (!partnerUserId) return;
+      const who = params.userName?.trim() || 'A customer';
+      const whoBg = params.userName?.trim() || 'Клиент';
+      await this.createNotification({
+        userId: partnerUserId,
+        type: 'SYSTEM',
+        title: 'Offer redeemed',
+        titleBg: 'Офертата е използвана',
+        message: `${who} just redeemed "${offer?.title || 'your offer'}" — code ${params.code}.`,
+        messageBg: `${whoBg} използва "${offer?.title || 'вашата оферта'}" — код ${params.code}.`,
+        priority: 'medium',
+        actionUrl: '/partners/offers',
+        actionText: 'View offers',
+        actionTextBg: 'Виж офертите',
+        relatedEntityType: 'offer',
+        relatedEntityId: params.offerId,
+        data: { offerId: params.offerId, code: params.code, userName: params.userName },
+      });
+
+      await this.sendPushNotification({
+        userId: partnerUserId,
+        title: 'Offer redeemed',
+        body: `${who} redeemed your offer.`,
+        data: { offerId: params.offerId, type: 'offer_redeemed', url: '/partners/offers' },
+      });
+    } catch (error) {
+      logger.error('❌ Error sending offer redeemed notification:', error);
+    }
+  }
+
+  /**
+   * Notify the partner when a receipt at their venue was flagged for high
+   * fraud score. Distinct from notifyFraudAlert (admins only) — partners
+   * don't see the user identity, only the venue/receipt context so they
+   * can follow up in person if needed.
+   */
+  async notifyPartnerFraudFlag(params: {
+    venueId: string;
+    receiptId: string;
+    fraudScore: number;
+    reasons: string[];
+  }): Promise<void> {
+    try {
+      const venue = await this.getVenuePartnerOwner(params.venueId);
+      if (!venue) return;
+      await this.createNotification({
+        userId: venue.partnerUserId,
+        type: 'FRAUD_ALERT',
+        title: 'Suspicious receipt at your venue',
+        titleBg: 'Подозрителна касова бележка',
+        message: `A receipt at ${venue.venueName} was flagged (score ${params.fraudScore}). Our team will review before cashback is credited.`,
+        messageBg: `Касова бележка в ${venue.venueName} е маркирана (риск ${params.fraudScore}). Екипът ни ще я прегледа преди начисление.`,
+        priority: 'medium',
+        relatedEntityType: 'receipt',
+        relatedEntityId: params.receiptId,
+        data: { venueId: params.venueId, receiptId: params.receiptId, fraudScore: params.fraudScore, reasons: params.reasons },
+      });
+    } catch (error) {
+      logger.error('❌ Error sending partner fraud flag notification:', error);
+    }
+  }
+
+  /**
+   * Welcome a freshly-created partner — covers both self-signup and admin
+   * bulk import. Writes an in-app notification the partner sees the first
+   * time they log in plus an email when we have one.
+   */
+  async notifyPartnerWelcome(params: {
+    partnerUserId: string;
+    businessName: string;
+    temporaryPassword?: string;
+    isBulkImport?: boolean;
+  }): Promise<void> {
+    try {
+      const source = params.isBulkImport ? 'our team' : 'you';
+      await this.createNotification({
+        userId: params.partnerUserId,
+        type: 'SYSTEM',
+        title: 'Welcome to BoomCard',
+        titleBg: 'Добре дошли в BoomCard',
+        message: `${params.businessName} has been set up by ${source}. Complete your profile to start earning from BoomCard members.`,
+        messageBg: `${params.businessName} е добавен. Довършете профила, за да започнете да печелите от BoomCard членове.`,
+        priority: 'high',
+        actionUrl: '/partners/profile',
+        actionText: 'Complete profile',
+        actionTextBg: 'Довърши профила',
+        data: { businessName: params.businessName, isBulkImport: !!params.isBulkImport },
+      });
+
+      // Only email for bulk-imported partners. Self-signups are already receiving
+      // a dedicated verification email (sendPartnerEmailVerification) and their
+      // account is PENDING admin review — a "your account is ready" note here
+      // would be premature and duplicative.
+      if (params.isBulkImport) {
+        const user = await prisma.user.findUnique({
+          where: { id: params.partnerUserId },
+          select: { email: true, firstName: true },
+        });
+        if (user?.email) {
+          emailService.sendEmail({
+            to: user.email,
+            subject: `Welcome to BoomCard, ${params.businessName}`,
+            html: `
+              <p>Hi ${user.firstName || params.businessName},</p>
+              <p>Your BoomCard partner account for <strong>${params.businessName}</strong> has been set up by our team.</p>
+              ${params.temporaryPassword ? `<p>Temporary password: <code>${params.temporaryPassword}</code> — please change it on first login.</p>` : ''}
+              <p>Sign in at <a href="${process.env.PARTNER_DASHBOARD_URL || 'https://partners.boomcard.bg'}">the partner dashboard</a> to complete your profile, upload your menu, and start earning from BoomCard members.</p>
+              <p>— The BoomCard Team</p>
+            `,
+          }).catch((err) => logger.error('Failed to send partner welcome email:', err));
+        }
+      }
+    } catch (error) {
+      logger.error('❌ Error sending partner welcome notification:', error);
+    }
+  }
+
+  /**
+   * Cashback payout threshold reached — fires reactively from wallet credit
+   * whenever availableBalance crosses the plan's payout threshold on that
+   * specific credit (pre-credit below → post-credit at/above). Users who
+   * spend below threshold and re-cross later will be notified again, which
+   * is intentional: each crossing is a distinct "can cash out now" event.
+   */
+  async notifyPayoutReady(params: {
+    userId: string;
+    availableBalance: number;
+    threshold: number;
+  }): Promise<void> {
+    try {
+      await this.createNotification({
+        userId: params.userId,
+        type: 'CASHBACK_CREDITED',
+        title: 'You can cash out',
+        titleBg: 'Можете да изтеглите',
+        message: `Your available balance (${params.availableBalance.toFixed(2)} BGN) is above the payout threshold (${params.threshold.toFixed(2)} BGN). Request your payout anytime.`,
+        messageBg: `Наличният ви баланс (${params.availableBalance.toFixed(2)} лв.) надвишава прага (${params.threshold.toFixed(2)} лв.). Можете да заявите изплащане.`,
+        priority: 'medium',
+        actionUrl: '/wallet',
+        actionText: 'Cash out',
+        actionTextBg: 'Изтегли',
+        data: { availableBalance: params.availableBalance, threshold: params.threshold },
+      });
+      await this.sendPushNotification({
+        userId: params.userId,
+        title: 'You can cash out',
+        body: `${params.availableBalance.toFixed(2)} BGN ready to withdraw.`,
+        data: { type: 'payout_ready', url: '/wallet' },
+      });
+    } catch (error) {
+      logger.error('❌ Error sending payout-ready notification:', error);
+    }
+  }
+
+  /**
+   * Alert the partner that one of their offers is nearly out of capacity
+   * (usageCount / usageLimit). Fires once per offer; partner dashboard
+   * should show it so they can raise the limit or launch a replacement.
+   */
+  async notifyPartnerOfferLowCapacity(params: {
+    partnerUserId: string;
+    offerId: string;
+    offerTitle: string;
+    remaining: number;
+    usageLimit: number;
+  }): Promise<void> {
+    try {
+      await this.createNotification({
+        userId: params.partnerUserId,
+        type: 'OFFER_EXPIRING',
+        title: 'Offer nearly used up',
+        titleBg: 'Офертата почти се изчерпа',
+        message: `"${params.offerTitle}" has ${params.remaining} redemption${params.remaining === 1 ? '' : 's'} left (of ${params.usageLimit}). Consider raising the limit.`,
+        messageBg: `"${params.offerTitle}" има ${params.remaining} оставащи използвания (от ${params.usageLimit}).`,
+        priority: 'medium',
+        actionUrl: '/partners/offers',
+        actionText: 'Edit offer',
+        actionTextBg: 'Редактирай',
+        relatedEntityType: 'offer',
+        relatedEntityId: params.offerId,
+        data: { offerId: params.offerId, remaining: params.remaining, usageLimit: params.usageLimit },
+      });
+    } catch (error) {
+      logger.error('❌ Error sending partner low-capacity notification:', error);
+    }
+  }
+
+  /**
+   * Nudge a partner whose profile is missing critical fields (logo, menu,
+   * description). Scheduled daily; each nudge only fires when at least one
+   * required field is still empty.
+   */
+  async notifyPartnerOnboardingIncomplete(params: {
+    partnerUserId: string;
+    businessName: string;
+    missing: string[];
+  }): Promise<void> {
+    try {
+      if (params.missing.length === 0) return;
+      await this.createNotification({
+        userId: params.partnerUserId,
+        type: 'SYSTEM',
+        title: 'Finish setting up your venue',
+        titleBg: 'Довършете профила на обекта си',
+        message: `${params.businessName} is still missing: ${params.missing.join(', ')}. Complete these to go live on BoomCard.`,
+        messageBg: `${params.businessName} все още няма: ${params.missing.join(', ')}. Довършете ги, за да бъдете активни в BoomCard.`,
+        priority: 'medium',
+        actionUrl: '/partners/profile',
+        actionText: 'Finish setup',
+        actionTextBg: 'Довърши',
+        data: { missing: params.missing, businessName: params.businessName },
+      });
+    } catch (error) {
+      logger.error('❌ Error sending onboarding-incomplete notification:', error);
+    }
+  }
+
+  /**
+   * Daily digest of venue activity for a partner. Non-fatal: skipped
+   * silently when the partner had no activity yesterday.
+   */
+  async notifyPartnerDailyDigest(params: {
+    partnerUserId: string;
+    businessName: string;
+    scans: number;
+    receipts: number;
+    redemptions: number;
+    revenueBGN: number;
+    cashbackOwedBGN: number;
+  }): Promise<void> {
+    try {
+      if (params.scans + params.receipts + params.redemptions === 0) return;
+      await this.createNotification({
+        userId: params.partnerUserId,
+        type: 'SYSTEM',
+        title: `${params.businessName}: yesterday's activity`,
+        titleBg: `${params.businessName}: активност за вчера`,
+        message: `${params.scans} scan${params.scans === 1 ? '' : 's'}, ${params.receipts} receipt${params.receipts === 1 ? '' : 's'}, ${params.redemptions} redemption${params.redemptions === 1 ? '' : 's'} — ${params.revenueBGN.toFixed(2)} BGN tracked, ${params.cashbackOwedBGN.toFixed(2)} BGN cashback.`,
+        messageBg: `${params.scans} сканирания, ${params.receipts} бележки, ${params.redemptions} използвания — ${params.revenueBGN.toFixed(2)} лв. оборот, ${params.cashbackOwedBGN.toFixed(2)} лв. кешбек.`,
+        priority: 'low',
+        actionUrl: '/analytics',
+        actionText: 'View analytics',
+        actionTextBg: 'Виж анализа',
+        data: params,
+      });
+    } catch (error) {
+      logger.error('❌ Error sending partner daily digest:', error);
+    }
+  }
+
+  /**
+   * Monthly statement — fires on the 1st of the month with last month's
+   * totals and the amount owed in cashback. The link takes the partner to
+   * the settlement view where they can mark it paid.
+   */
+  async notifyPartnerMonthlyStatement(params: {
+    partnerUserId: string;
+    businessName: string;
+    month: string; // "YYYY-MM"
+    receipts: number;
+    revenueBGN: number;
+    cashbackOwedBGN: number;
+  }): Promise<void> {
+    try {
+      await this.createNotification({
+        userId: params.partnerUserId,
+        type: 'SYSTEM',
+        title: `${params.month} statement available`,
+        titleBg: `Отчет за ${params.month}`,
+        message: `${params.businessName}: ${params.receipts} receipts, ${params.revenueBGN.toFixed(2)} BGN tracked revenue, ${params.cashbackOwedBGN.toFixed(2)} BGN cashback owed.`,
+        messageBg: `${params.businessName}: ${params.receipts} бележки, ${params.revenueBGN.toFixed(2)} лв. оборот, ${params.cashbackOwedBGN.toFixed(2)} лв. дължим кешбек.`,
+        priority: 'medium',
+        actionUrl: '/partners/billing',
+        actionText: 'View statement',
+        actionTextBg: 'Виж отчета',
+        data: params,
+      });
+
+      const user = await prisma.user.findUnique({
+        where: { id: params.partnerUserId },
+        select: { email: true, firstName: true },
+      });
+      if (user?.email) {
+        emailService.sendEmail({
+          to: user.email,
+          subject: `${params.businessName} — ${params.month} statement`,
+          html: `
+            <p>Hi ${user.firstName || params.businessName},</p>
+            <p>Your BoomCard statement for <strong>${params.month}</strong> is available.</p>
+            <ul>
+              <li>Receipts processed: <strong>${params.receipts}</strong></li>
+              <li>Tracked revenue: <strong>${params.revenueBGN.toFixed(2)} BGN</strong></li>
+              <li>Cashback owed: <strong>${params.cashbackOwedBGN.toFixed(2)} BGN</strong></li>
+            </ul>
+            <p>Open the <a href="${process.env.PARTNER_DASHBOARD_URL || 'https://partners.boomcard.bg'}/partners/billing">billing page</a> to view the breakdown.</p>
+          `,
+        }).catch((err) => logger.error('Failed to send partner monthly statement email:', err));
+      }
+    } catch (error) {
+      logger.error('❌ Error sending partner monthly statement:', error);
+    }
+  }
+
+  /**
+   * Partner subscription renewal reminder — the existing standalone job
+   * fires the email; this wraps the same logic in an in-app notification
+   * so partners who live in the dashboard see it too.
+   */
+  async notifyPartnerRenewalUpcoming(params: {
+    userId: string;
+    planName: string;
+    renewalDate: Date;
+    price: string;
+  }): Promise<void> {
+    try {
+      await this.createNotification({
+        userId: params.userId,
+        type: 'SYSTEM',
+        title: 'Subscription renewing soon',
+        titleBg: 'Абонаментът ви се подновява скоро',
+        message: `Your ${params.planName} subscription renews on ${params.renewalDate.toLocaleDateString('en-GB')} for ${params.price}.`,
+        messageBg: `Абонаментът ${params.planName} се подновява на ${params.renewalDate.toLocaleDateString('bg-BG')} за ${params.price}.`,
+        priority: 'medium',
+        actionUrl: '/dashboard/subscription',
+        actionText: 'Manage',
+        actionTextBg: 'Управлявай',
+        data: { planName: params.planName, price: params.price, renewalDate: params.renewalDate.toISOString() },
+      });
+    } catch (error) {
+      logger.error('❌ Error sending renewal reminder notification:', error);
+    }
+  }
+
+  // ===== Admin-ops notifications =====
+
+  /**
+   * Central admin-ops notification sink. Fans out to:
+   *   1. In-app notification rows for every admin/super-admin user.
+   *   2. Email to each admin for 'critical' severity only.
+   *
+   * Caller passes a *type* key (e.g. 'partner_signup', 'chargeback') so the
+   * frontend can still filter in the bell icon UI even though the DB column
+   * is SYSTEM. Include a concise message + labeled fields to render in the
+   * in-app notification detail view.
+   */
+  async notifyAdminOps(params: {
+    opsType: string;
+    title: string;
+    message: string;
+    severity?: NotificationSeverity;
+    fields?: Array<{ label: string; value: string }>;
+    actionUrl?: string;
+    relatedEntityType?: string;
+    relatedEntityId?: string;
+  }): Promise<void> {
+    const severity = params.severity ?? 'info';
+    // Map severity to notification priority — admin dashboards escalate 'high'/'urgent'.
+    const priority: 'low' | 'medium' | 'high' | 'urgent' =
+      severity === 'critical' ? 'urgent' : severity === 'warning' ? 'high' : 'medium';
+
+    try {
+      const admins = await this.getAdminUsers();
+
+      await Promise.all(
+        admins.map((admin) =>
+          this.createNotification({
+            userId: admin.id,
+            type: 'SYSTEM',
+            title: params.title,
+            message: params.message,
+            priority,
+            actionUrl: params.actionUrl,
+            relatedEntityType: params.relatedEntityType,
+            relatedEntityId: params.relatedEntityId,
+            data: { opsType: params.opsType, severity, fields: params.fields },
+          }).catch((err) => logger.error(`[admin-ops] In-app notify failed for admin ${admin.id}:`, err))
+        )
+      );
+
+      // Email only for critical — floods otherwise. Caller can bump severity
+      // when an event really needs to page someone.
+      if (severity === 'critical') {
+        const fieldLines = (params.fields ?? []).map((f) => `<li><strong>${f.label}:</strong> ${f.value}</li>`).join('');
+        const html = `
+          <p><strong>${params.title}</strong></p>
+          <p>${params.message}</p>
+          ${fieldLines ? `<ul>${fieldLines}</ul>` : ''}
+          ${params.actionUrl ? `<p><a href="${params.actionUrl}">Open in dashboard</a></p>` : ''}
+        `;
+        await Promise.all(
+          admins
+            .filter((a) => a.email)
+            .map((admin) =>
+              emailService
+                .sendEmail({ to: admin.email!, subject: `[BoomCard admin] ${params.title}`, html })
+                .catch((err) => logger.error(`[admin-ops] Email to ${admin.email} failed:`, err))
+            )
+        );
+      }
+    } catch (error) {
+      logger.error('❌ Error in notifyAdminOps:', error);
+    }
+  }
+
+  /** New partner self-signup — admin should verify and activate. */
+  async notifyAdminPartnerSignup(params: {
+    partnerId: string;
+    businessName: string;
+    email: string;
+    category: string;
+  }): Promise<void> {
+    return this.notifyAdminOps({
+      opsType: 'partner_signup',
+      title: 'New partner signup',
+      message: `${params.businessName} (${params.category}) applied to join — waiting for verification.`,
+      severity: 'info',
+      fields: [
+        { label: 'Business', value: params.businessName },
+        { label: 'Email', value: params.email },
+        { label: 'Category', value: params.category },
+      ],
+      actionUrl: `${process.env.PARTNER_DASHBOARD_URL || ''}/admin/partners/${params.partnerId}`,
+      relatedEntityType: 'partner',
+      relatedEntityId: params.partnerId,
+    });
+  }
+
+  /** Bulk import batch completed — summary of created/skipped/errored rows. */
+  async notifyAdminBulkImportComplete(params: {
+    kind: 'partners' | 'offers';
+    created: number;
+    skipped: number;
+    errorCount: number;
+    importedBy: string;
+  }): Promise<void> {
+    const severity: NotificationSeverity = params.errorCount > 0 ? 'warning' : 'info';
+    return this.notifyAdminOps({
+      opsType: 'bulk_import_complete',
+      title: `Bulk ${params.kind} import complete`,
+      message: `${params.created} created, ${params.skipped} skipped, ${params.errorCount} error${params.errorCount === 1 ? '' : 's'}.`,
+      severity,
+      fields: [
+        { label: 'Kind', value: params.kind },
+        { label: 'Created', value: String(params.created) },
+        { label: 'Skipped', value: String(params.skipped) },
+        { label: 'Errors', value: String(params.errorCount) },
+        { label: 'Imported by', value: params.importedBy },
+      ],
+    });
+  }
+
+  /**
+   * Stripe chargeback — urgent. Stripe gives ~7 days to respond; delay
+   * means losing the dispute by default.
+   */
+  async notifyAdminChargeback(params: {
+    chargeId: string;
+    disputeId: string;
+    amountCents: number;
+    currency: string;
+    reason?: string;
+  }): Promise<void> {
+    return this.notifyAdminOps({
+      opsType: 'stripe_chargeback',
+      title: 'Stripe chargeback opened',
+      message: `A customer disputed ${(params.amountCents / 100).toFixed(2)} ${params.currency.toUpperCase()}. Respond via Stripe dashboard within 7 days.`,
+      severity: 'critical',
+      fields: [
+        { label: 'Dispute', value: params.disputeId },
+        { label: 'Charge', value: params.chargeId },
+        { label: 'Amount', value: `${(params.amountCents / 100).toFixed(2)} ${params.currency.toUpperCase()}` },
+        ...(params.reason ? [{ label: 'Reason', value: params.reason }] : []),
+      ],
+      actionUrl: `https://dashboard.stripe.com/disputes/${params.disputeId}`,
+    });
+  }
+
+  /** Scheduler job failed — operational signal so nightly runs can't die silently. */
+  async notifyAdminSchedulerFailure(params: {
+    jobName: string;
+    errorMessage: string;
+  }): Promise<void> {
+    return this.notifyAdminOps({
+      opsType: 'scheduler_failure',
+      title: `Scheduled job failed: ${params.jobName}`,
+      message: `The ${params.jobName} job errored during its scheduled run. Investigate before the next run.`,
+      severity: 'warning',
+      fields: [
+        { label: 'Job', value: params.jobName },
+        { label: 'Error', value: params.errorMessage.slice(0, 500) },
+      ],
+    });
+  }
+
+  /**
+   * Cashback expiry ran bigger than normal — alert if more than X wallets
+   * touched or total deducted exceeds a threshold. Hints at a bug (runaway
+   * expiry) or a legitimate bulk expiry the team should be aware of.
+   */
+  async notifyAdminCashbackExpiryAnomaly(params: {
+    walletsAffected: number;
+    totalExpiredBGN: number;
+  }): Promise<void> {
+    return this.notifyAdminOps({
+      opsType: 'cashback_expiry_anomaly',
+      title: 'Unusually large cashback expiry',
+      message: `Nightly expiry deducted ${params.totalExpiredBGN.toFixed(2)} BGN from ${params.walletsAffected} wallets — above the alert threshold.`,
+      severity: 'warning',
+      fields: [
+        { label: 'Wallets', value: String(params.walletsAffected) },
+        { label: 'Total BGN', value: params.totalExpiredBGN.toFixed(2) },
+      ],
+    });
+  }
+
+  /** Payment-failure rate spike — aggregate alert over a rolling window. */
+  async notifyAdminPaymentFailureSpike(params: {
+    failures: number;
+    successes: number;
+    windowMinutes: number;
+  }): Promise<void> {
+    const total = params.failures + params.successes;
+    const rate = total === 0 ? 0 : (params.failures / total) * 100;
+    return this.notifyAdminOps({
+      opsType: 'payment_failure_spike',
+      title: 'Payment failure rate spike',
+      message: `${params.failures} failures out of ${total} attempts (${rate.toFixed(1)}%) in the last ${params.windowMinutes} minutes.`,
+      severity: 'critical',
+      fields: [
+        { label: 'Failures', value: String(params.failures) },
+        { label: 'Successes', value: String(params.successes) },
+        { label: 'Rate', value: `${rate.toFixed(1)}%` },
+        { label: 'Window', value: `${params.windowMinutes}m` },
+      ],
+    });
+  }
+
+  /** OCR manual-review backlog is growing — alerts when queue exceeds threshold. */
+  async notifyAdminOcrBacklog(params: {
+    pendingCount: number;
+    oldestAgeHours: number;
+  }): Promise<void> {
+    return this.notifyAdminOps({
+      opsType: 'ocr_backlog',
+      title: 'OCR manual-review backlog growing',
+      message: `${params.pendingCount} receipts waiting for review. Oldest is ${params.oldestAgeHours.toFixed(1)}h old.`,
+      severity: params.oldestAgeHours > 48 ? 'warning' : 'info',
+      fields: [
+        { label: 'Pending', value: String(params.pendingCount) },
+        { label: 'Oldest age', value: `${params.oldestAgeHours.toFixed(1)}h` },
+      ],
+      actionUrl: `${process.env.PARTNER_DASHBOARD_URL || ''}/admin/receipts`,
+    });
+  }
+
+  // Auth-lockout spike detection intentionally omitted: there is no LoginAttempt
+  // audit table yet, so the detector would have no data source. Adding one is a
+  // separate, larger piece of work (schema migration + failed-login instrumentation
+  // + spike thresholds + rate-limit interplay). Add the helper back when the
+  // audit model lands.
+
+  // ===== Internal helpers for partner lookup =====
+
+  /**
+   * Look up the partner owner (User.id) and business context for a venueId.
+   * Returns null if the venue has no owning partner — we treat that as a
+   * silent no-op so callers don't need to null-check.
+   */
+  private async getVenuePartnerOwner(venueId: string): Promise<{ partnerUserId: string; venueName: string; businessName: string } | null> {
+    const venue = await prisma.venue.findUnique({
+      where: { id: venueId },
+      select: {
+        name: true,
+        partner: { select: { businessName: true, userId: true } },
+      },
+    });
+    if (!venue?.partner?.userId) return null;
+    return {
+      partnerUserId: venue.partner.userId,
+      venueName: venue.name,
+      businessName: venue.partner.businessName,
+    };
   }
 
   // ===== Internal Methods =====

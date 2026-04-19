@@ -13,6 +13,7 @@ import { asyncHandler } from '../middleware/error.middleware';
 import { prisma } from '../lib/prisma';
 import { logger } from '../utils/logger';
 import { emailService } from '../services/email.service';
+import { notificationService } from '../services/notification.service';
 
 const router = Router();
 
@@ -84,7 +85,7 @@ adminVenueMenuRouter.post(
       where: { id },
       include: {
         partner: {
-          select: { businessName: true, user: { select: { email: true } } },
+          select: { businessName: true, user: { select: { id: true, email: true } } },
         },
       },
     });
@@ -120,6 +121,16 @@ adminVenueMenuRouter.post(
       menuUrl: updated.menuUrl,
       at: new Date().toISOString(),
     });
+
+    const partnerUserId = venue.partner?.user?.id;
+    if (partnerUserId && updated.menuUrl) {
+      notificationService.notifyMenuApproved({
+        partnerUserId,
+        venueId: id,
+        venueName: venue.name,
+        menuUrl: updated.menuUrl,
+      }).catch((err) => logger.error('[menu-audit] Failed to send approval notification:', err));
+    }
 
     const partnerEmail = venue.partner?.user?.email;
     if (partnerEmail) {
@@ -164,7 +175,7 @@ adminVenueMenuRouter.post(
       where: { id },
       include: {
         partner: {
-          select: { businessName: true, user: { select: { email: true } } },
+          select: { businessName: true, user: { select: { id: true, email: true } } },
         },
       },
     });
@@ -192,6 +203,16 @@ adminVenueMenuRouter.post(
       reason,
       at: new Date().toISOString(),
     });
+
+    const partnerUserId = venue.partner?.user?.id;
+    if (partnerUserId) {
+      notificationService.notifyMenuRejected({
+        partnerUserId,
+        venueId: id,
+        venueName: venue.name,
+        reason,
+      }).catch((err) => logger.error('[menu-audit] Failed to send rejection notification:', err));
+    }
 
     const partnerEmail = venue.partner?.user?.email;
     if (partnerEmail) {

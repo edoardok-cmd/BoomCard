@@ -16,8 +16,54 @@ import { WalletTransactionType, WalletTransactionStatus, SubscriptionStatus } fr
 import { prisma } from '../lib/prisma';
 import { logger } from '../utils/logger';
 import { emailService } from '../services/email.service';
+import { notificationService } from '../services/notification.service';
 
 const CASHBACK_EXPIRY_BATCH = 10;
+
+// Alert the admin-ops channel if a nightly cashback expiry run is unusually large.
+// Values reflect our current scale — bump these as steady-state grows so we
+// don't page on normal Black Friday traffic.
+const CASHBACK_EXPIRY_ANOMALY_WALLETS = 500;
+const CASHBACK_EXPIRY_ANOMALY_BGN = 5000;
+
+// ── Sofia-calendar helpers ────────────────────────────────────────────────────
+// Fly.io containers run UTC, so naive `new Date().setHours(0)` gives UTC
+// midnight, which in Sofia terms is 02:00/03:00 of the same calendar day —
+// events in the first 2–3 hours of the Sofia day leak into yesterday's
+// window. Compute boundaries from the Sofia calendar date instead.
+
+/** Return the UTC instant corresponding to 00:00 Europe/Sofia on `sofiaDate`. */
+function sofiaMidnightUtc(sofiaDate: Date): Date {
+  const dayStr = sofiaDate.toLocaleDateString('en-CA', { timeZone: 'Europe/Sofia' });
+  const [y, m, d] = dayStr.split('-').map(Number);
+  // Probe the Sofia offset in effect at 00:00 on the target day. European DST
+  // transitions happen at 03:00 local (forward last Sun of March, back last Sun
+  // of October), so probing at noon of the target day returns the POST-transition
+  // offset — wrong for dates where midnight is still in the prior regime. Instead
+  // probe 22:00 UTC of the previous day, which is 00:00 or 01:00 Sofia on the
+  // target date and always precedes any 03:00-local DST jump.
+  const dateParts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/Sofia',
+    timeZoneName: 'longOffset',
+  }).formatToParts(new Date(Date.UTC(y, m - 1, d - 1, 22)));
+  const offsetPart = dateParts.find((p) => p.type === 'timeZoneName')?.value ?? 'GMT+02:00';
+  const offset = offsetPart.replace(/^GMT/, '') || '+02:00';
+  return new Date(`${dayStr}T00:00:00${offset}`);
+}
+
+/** Start of today in Europe/Sofia as a UTC Date. */
+function todayStartSofia(now: Date): Date {
+  return sofiaMidnightUtc(now);
+}
+
+/** Start of the first day of `monthsAgo` months ago in Europe/Sofia as a UTC Date. */
+function monthStartSofia(now: Date, monthsAgo: number): Date {
+  const dayStr = now.toLocaleDateString('en-CA', { timeZone: 'Europe/Sofia' });
+  const [y, m] = dayStr.split('-').map(Number);
+  const targetY = m - monthsAgo < 1 ? y - 1 : y;
+  const targetM = ((m - monthsAgo - 1 + 12) % 12) + 1;
+  return sofiaMidnightUtc(new Date(Date.UTC(targetY, targetM - 1, 1, 12)));
+}
 
 // ── Cashback expiry ────────────────────────────────────────────────────────────
 
@@ -156,6 +202,21 @@ async function runCashbackExpiry(): Promise<void> {
     `expired ${totalExpiredBGN.toFixed(2)} BGN total` +
     (failedWallets > 0 ? `, ${failedWallets} failed` : '')
   );
+
+  // Anomaly alert: big nightly expiries are either a legitimate one-time
+  // backlog flush (scale-up, seeded data) or a bug. Either way the ops team
+  // should see it the next morning, not discover it weeks later in logs.
+  if (
+    processedWallets >= CASHBACK_EXPIRY_ANOMALY_WALLETS ||
+    totalExpiredBGN >= CASHBACK_EXPIRY_ANOMALY_BGN
+  ) {
+    notificationService
+      .notifyAdminCashbackExpiryAnomaly({
+        walletsAffected: processedWallets,
+        totalExpiredBGN,
+      })
+      .catch((err) => logger.error('[cashback-expiry] Failed to notify admin anomaly:', err));
+  }
 }
 
 // ── Upload token cleanup ──────────────────────────────────────────────────────
@@ -329,7 +390,398 @@ async function expireStaleMenuSubmissions(): Promise<void> {
   );
 }
 
+// ── Partner daily digest ──────────────────────────────────────────────────────
+// Aggregates yesterday's activity per partner/venue and sends one digest
+// notification. Skipped silently when the partner had no events — avoids
+// spamming inactive partners.
+
+async function sendPartnerDailyDigests(): Promise<void> {
+  const now = new Date();
+  // Sofia-calendar window: [yesterday 00:00 Sofia, today 00:00 Sofia). The
+  // server clock runs UTC so naive setHours would off-by-2h in winter / 3h
+  // in summer.
+  const dayStart = todayStartSofia(now);
+  const yesterdayStart = new Date(dayStart.getTime() - 24 * 60 * 60 * 1000);
+
+  logger.info(`[partner-daily-digest] Starting run at ${now.toISOString()} for window ${yesterdayStart.toISOString()} → ${dayStart.toISOString()}`);
+
+  // One partner per row, summarised across all their venues. Stats are pulled
+  // per-source so scans and receipts don't collide even when the underlying
+  // tables are disjoint.
+  const partners = await prisma.partner.findMany({
+    where: { status: 'ACTIVE' },
+    select: {
+      id: true,
+      businessName: true,
+      user: { select: { id: true } },
+      venues: { select: { id: true } },
+    },
+  });
+
+  let sent = 0;
+  for (const partner of partners) {
+    if (!partner.user?.id || partner.venues.length === 0) continue;
+    const venueIds = partner.venues.map((v) => v.id);
+
+    const [scans, receipts, redemptions] = await Promise.all([
+      prisma.stickerScan.findMany({
+        where: {
+          venueId: { in: venueIds },
+          status: 'APPROVED',
+          processedAt: { gte: yesterdayStart, lt: dayStart },
+        },
+        select: { verifiedAmount: true, billAmount: true, cashbackAmount: true },
+      }),
+      prisma.receipt.findMany({
+        where: {
+          venueId: { in: venueIds },
+          status: 'APPROVED',
+          reviewedAt: { gte: yesterdayStart, lt: dayStart },
+        },
+        select: { totalAmount: true, cashbackAmount: true },
+      }),
+      prisma.offerRedemption.count({
+        where: {
+          offer: { partnerId: partner.id },
+          redeemedAt: { gte: yesterdayStart, lt: dayStart },
+        },
+      }),
+    ]);
+
+    const revenueBGN =
+      scans.reduce((sum, s) => sum + (s.verifiedAmount ?? s.billAmount ?? 0), 0) +
+      receipts.reduce((sum, r) => sum + (r.totalAmount ?? 0), 0);
+    const cashbackOwedBGN =
+      scans.reduce((sum, s) => sum + s.cashbackAmount, 0) +
+      receipts.reduce((sum, r) => sum + r.cashbackAmount, 0);
+
+    try {
+      await notificationService.notifyPartnerDailyDigest({
+        partnerUserId: partner.user.id,
+        businessName: partner.businessName,
+        scans: scans.length,
+        receipts: receipts.length,
+        redemptions,
+        revenueBGN,
+        cashbackOwedBGN,
+      });
+      if (scans.length + receipts.length + redemptions > 0) sent++;
+    } catch (err) {
+      logger.error(`[partner-daily-digest] Failed for partner ${partner.id}:`, err);
+    }
+  }
+
+  logger.info(`[partner-daily-digest] Done — sent ${sent}/${partners.length} digest(s)`);
+}
+
+// ── Partner onboarding nudges ─────────────────────────────────────────────────
+// Daily scan: find ACTIVE/PENDING partners missing critical profile fields
+// (logo, description, venue with menu) and nudge them. Each nudge goes to
+// the partner's in-app bell — we don't email daily, too aggressive.
+
+async function sendPartnerOnboardingNudges(): Promise<void> {
+  logger.info(`[partner-onboarding-nudge] Starting run at ${new Date().toISOString()}`);
+
+  const partners = await prisma.partner.findMany({
+    where: { status: { in: ['ACTIVE', 'PENDING'] } },
+    select: {
+      id: true,
+      businessName: true,
+      logo: true,
+      description: true,
+      coverImage: true,
+      userId: true,
+      venues: {
+        select: { id: true, menuStatus: true, menuUrl: true },
+      },
+    },
+  });
+
+  let nudged = 0;
+  for (const partner of partners) {
+    const missing: string[] = [];
+    if (!partner.logo) missing.push('logo');
+    if (!partner.description) missing.push('description');
+    if (partner.venues.length === 0) {
+      missing.push('at least one venue');
+    } else if (partner.venues.every((v) => !v.menuUrl && v.menuStatus !== 'APPROVED')) {
+      missing.push('menu');
+    }
+
+    if (missing.length === 0) continue;
+
+    try {
+      await notificationService.notifyPartnerOnboardingIncomplete({
+        partnerUserId: partner.userId,
+        businessName: partner.businessName,
+        missing,
+      });
+      nudged++;
+    } catch (err) {
+      logger.error(`[partner-onboarding-nudge] Failed for partner ${partner.id}:`, err);
+    }
+  }
+
+  logger.info(`[partner-onboarding-nudge] Done — nudged ${nudged}/${partners.length} partner(s)`);
+}
+
+// ── Partner monthly statement ─────────────────────────────────────────────────
+// 1st of month: aggregates last-month revenue per partner and fires a
+// notification (+email) with the totals. The existing PartnerCashbackPayment
+// model is the long-term settlement record; this is just the heads-up
+// notification so partners know a statement exists.
+
+async function sendPartnerMonthlyStatements(): Promise<void> {
+  const now = new Date();
+  logger.info(`[partner-monthly-statement] Starting run at ${now.toISOString()}`);
+
+  // Compute the month that just ended in Europe/Sofia. Aligning the window to
+  // Sofia midnight (not UTC midnight) is important: events between 00:00 and
+  // 03:00 Sofia on the 1st would otherwise bleed into "last month" because
+  // naive Date math uses the UTC-container's local TZ.
+  const thisMonth = monthStartSofia(now, 0);
+  const lastMonthStart = monthStartSofia(now, 1);
+  // Derive the month label from the Sofia calendar so a run that fires at
+  // 07:00 UTC on April 1 (10:00 Sofia) reports "2026-03", not "2026-04".
+  const lastMonthDayStr = new Date(thisMonth.getTime() - 24 * 60 * 60 * 1000)
+    .toLocaleDateString('en-CA', { timeZone: 'Europe/Sofia' });
+  const monthLabel = lastMonthDayStr.slice(0, 7);
+
+  const partners = await prisma.partner.findMany({
+    where: { status: 'ACTIVE' },
+    select: {
+      id: true,
+      businessName: true,
+      userId: true,
+      venues: { select: { id: true } },
+    },
+  });
+
+  let sent = 0;
+  for (const partner of partners) {
+    if (partner.venues.length === 0) continue;
+    const venueIds = partner.venues.map((v) => v.id);
+
+    const [scans, receipts] = await Promise.all([
+      prisma.stickerScan.findMany({
+        where: {
+          venueId: { in: venueIds },
+          status: 'APPROVED',
+          processedAt: { gte: lastMonthStart, lt: thisMonth },
+        },
+        select: { verifiedAmount: true, billAmount: true, cashbackAmount: true },
+      }),
+      prisma.receipt.findMany({
+        where: {
+          venueId: { in: venueIds },
+          status: 'APPROVED',
+          reviewedAt: { gte: lastMonthStart, lt: thisMonth },
+        },
+        select: { totalAmount: true, cashbackAmount: true },
+      }),
+    ]);
+
+    const receiptCount = scans.length + receipts.length;
+    if (receiptCount === 0) continue;
+
+    const revenueBGN =
+      scans.reduce((sum, s) => sum + (s.verifiedAmount ?? s.billAmount ?? 0), 0) +
+      receipts.reduce((sum, r) => sum + (r.totalAmount ?? 0), 0);
+    const cashbackOwedBGN =
+      scans.reduce((sum, s) => sum + s.cashbackAmount, 0) +
+      receipts.reduce((sum, r) => sum + r.cashbackAmount, 0);
+
+    try {
+      await notificationService.notifyPartnerMonthlyStatement({
+        partnerUserId: partner.userId,
+        businessName: partner.businessName,
+        month: monthLabel,
+        receipts: receiptCount,
+        revenueBGN,
+        cashbackOwedBGN,
+      });
+      sent++;
+    } catch (err) {
+      logger.error(`[partner-monthly-statement] Failed for partner ${partner.id}:`, err);
+    }
+  }
+
+  logger.info(`[partner-monthly-statement] Done — sent ${sent} statement(s) for ${monthLabel}`);
+}
+
+// ── Subscription renewal reminders (cron wrapper) ─────────────────────────────
+// Daily scan for subscriptions renewing in ~7 days. Also fires an in-app
+// notification in addition to the existing renewal email so partners who
+// live in the dashboard see it too. Idempotent via subscription.metadata.renewalReminderSent.
+
+async function runSubscriptionRenewalReminders(): Promise<void> {
+  const now = new Date();
+  logger.info(`[subscription-renewal-reminders] Starting run at ${now.toISOString()}`);
+
+  const sixDaysFromNow = new Date(now.getTime() + 6 * 24 * 60 * 60 * 1000);
+  const eightDaysFromNow = new Date(now.getTime() + 8 * 24 * 60 * 60 * 1000);
+
+  const subscriptions = await prisma.subscription.findMany({
+    where: {
+      status: SubscriptionStatus.ACTIVE,
+      cancelAtPeriodEnd: false,
+      currentPeriodEnd: { gte: sixDaysFromNow, lte: eightDaysFromNow },
+    },
+    include: {
+      user: { select: { id: true, email: true, firstName: true, status: true } },
+      planDetails: true,
+    },
+  });
+
+  logger.info(`[subscription-renewal-reminders] Found ${subscriptions.length} subscription(s) in the 6–8 day window`);
+
+  let reminded = 0;
+  for (const sub of subscriptions) {
+    if (!sub.user || (sub.user.status !== 'ACTIVE' && sub.user.status !== 'PENDING_VERIFICATION')) continue;
+
+    let metadata: Record<string, any> = {};
+    if (sub.metadata) {
+      try { metadata = JSON.parse(sub.metadata); } catch { metadata = {}; }
+    }
+    const periodKey = sub.currentPeriodEnd.toISOString().split('T')[0];
+    if (metadata.renewalReminderSent === periodKey) continue;
+
+    const plan = sub.planDetails;
+    const priceInCents = (() => {
+      if (!plan) return 0;
+      const billingPeriod = (metadata.billingPeriod ?? '').toLowerCase();
+      if (billingPeriod.includes('week') && plan.priceWeeklyEur) return plan.priceWeeklyEur;
+      if (billingPeriod.includes('year')) return plan.priceYearlyEur;
+      return plan.priceMonthlyEur ?? 0;
+    })();
+    const price = `€${(priceInCents / 100).toFixed(2)}`;
+    const planName = plan?.displayName ?? sub.plan;
+
+    // In-app notification (new)
+    await notificationService
+      .notifyPartnerRenewalUpcoming({
+        userId: sub.user.id,
+        planName,
+        renewalDate: sub.currentPeriodEnd,
+        price,
+      })
+      .catch((err) => logger.error(`[subscription-renewal-reminders] In-app notify failed for sub ${sub.id}:`, err));
+
+    // Existing email path
+    if (sub.user.email) {
+      await emailService
+        .sendRenewalReminder(sub.user.email, {
+          customerName: sub.user.firstName || 'Customer',
+          planName,
+          planNameBg: plan?.displayNameBg || planName,
+          price,
+          renewalDate: sub.currentPeriodEnd.toLocaleDateString('en-GB'),
+          manageUrl: 'https://boomcard.bg/dashboard/subscription',
+          language: 'en',
+        })
+        .catch((err) => logger.error(`[subscription-renewal-reminders] Email failed for sub ${sub.id}:`, err));
+    }
+
+    await prisma.subscription.update({
+      where: { id: sub.id },
+      data: {
+        metadata: JSON.stringify({ ...metadata, renewalReminderSent: periodKey }),
+      },
+    });
+    reminded++;
+  }
+
+  logger.info(`[subscription-renewal-reminders] Done — reminded ${reminded} user(s)`);
+}
+
+// ── Payment failure rate spike detection ──────────────────────────────────────
+// Hourly scan over the last 60m of Transaction rows. Alerts admins if the
+// failure rate exceeds 20% with a minimum sample size of 10, so a single
+// failure on a slow hour doesn't page.
+
+const PAYMENT_FAILURE_RATE_WINDOW_MIN = 60;
+const PAYMENT_FAILURE_RATE_MIN_SAMPLES = 10;
+const PAYMENT_FAILURE_RATE_THRESHOLD_PCT = 20;
+
+async function checkPaymentFailureSpike(): Promise<void> {
+  const now = new Date();
+  const windowStart = new Date(now.getTime() - PAYMENT_FAILURE_RATE_WINDOW_MIN * 60 * 1000);
+
+  const [failures, successes] = await Promise.all([
+    prisma.transaction.count({
+      where: { status: 'FAILED', createdAt: { gte: windowStart } },
+    }),
+    prisma.transaction.count({
+      where: { status: 'COMPLETED', createdAt: { gte: windowStart } },
+    }),
+  ]);
+
+  const total = failures + successes;
+  if (total < PAYMENT_FAILURE_RATE_MIN_SAMPLES) {
+    logger.info(`[payment-failure-spike-scan] Below sample threshold (${total}/${PAYMENT_FAILURE_RATE_MIN_SAMPLES}) — skipping`);
+    return;
+  }
+
+  const rate = (failures / total) * 100;
+  if (rate < PAYMENT_FAILURE_RATE_THRESHOLD_PCT) {
+    logger.info(`[payment-failure-spike-scan] Rate ${rate.toFixed(1)}% below threshold`);
+    return;
+  }
+
+  await notificationService.notifyAdminPaymentFailureSpike({
+    failures,
+    successes,
+    windowMinutes: PAYMENT_FAILURE_RATE_WINDOW_MIN,
+  });
+  logger.warn(`[payment-failure-spike-scan] ALERT — ${failures}/${total} (${rate.toFixed(1)}%) failed in last ${PAYMENT_FAILURE_RATE_WINDOW_MIN}m`);
+}
+
+// ── OCR manual-review backlog scan ───────────────────────────────────────────
+// Every 6h: if the queue or oldest-pending age exceeds thresholds, alert.
+// Non-urgent — this is a staffing signal, not an incident.
+
+const OCR_BACKLOG_COUNT_THRESHOLD = 50;
+const OCR_BACKLOG_AGE_HOURS_THRESHOLD = 48;
+
+async function checkOcrBacklog(): Promise<void> {
+  const now = new Date();
+  const [pendingCount, oldest] = await Promise.all([
+    prisma.receipt.count({ where: { status: 'MANUAL_REVIEW' } }),
+    prisma.receipt.findFirst({
+      where: { status: 'MANUAL_REVIEW' },
+      orderBy: { createdAt: 'asc' },
+      select: { createdAt: true },
+    }),
+  ]);
+
+  if (pendingCount === 0) return;
+  const oldestAgeHours = oldest ? (now.getTime() - oldest.createdAt.getTime()) / (60 * 60 * 1000) : 0;
+
+  if (pendingCount < OCR_BACKLOG_COUNT_THRESHOLD && oldestAgeHours < OCR_BACKLOG_AGE_HOURS_THRESHOLD) {
+    return;
+  }
+
+  await notificationService.notifyAdminOcrBacklog({
+    pendingCount,
+    oldestAgeHours,
+  });
+  logger.warn(`[ocr-backlog-scan] ALERT — ${pendingCount} pending, oldest ${oldestAgeHours.toFixed(1)}h`);
+}
+
 // ── Registration ───────────────────────────────────────────────────────────────
+
+/**
+ * Shared wrapper: log, and post an admin-ops alert, when a scheduled job
+ * throws. Keeping this in one place means every cron hooks failure
+ * reporting the same way — no silent 2 AM breakage.
+ */
+function alertSchedulerFailure(jobName: string, err: unknown): void {
+  const message = err instanceof Error ? err.message : String(err);
+  logger.error(`[${jobName}] Unhandled error in scheduled run:`, err);
+  notificationService
+    .notifyAdminSchedulerFailure({ jobName, errorMessage: message })
+    .catch((notifyErr) => logger.error(`[${jobName}] Failed to post scheduler-failure alert:`, notifyErr));
+}
 
 export function registerScheduledJobs(): void {
   // Never register cron jobs in test mode — they keep the process alive and
@@ -341,18 +793,14 @@ export function registerScheduledJobs(): void {
 
   // 2 AM every day — expire CASHBACK_CREDIT transactions past their 60-day window
   cron.schedule('0 2 * * *', () => {
-    runCashbackExpiry().catch((err) =>
-      logger.error('[cashback-expiry] Unhandled error in scheduled run:', err)
-    );
+    runCashbackExpiry().catch((err) => alertSchedulerFailure('cashback-expiry', err));
   }, { timezone: 'Europe/Sofia' });
 
   logger.info('[scheduler] Registered: cashback-expiry (0 2 * * *)');
 
   // 3:30 AM every day — purge expired upload tokens (already past 1h TTL)
   cron.schedule('30 3 * * *', () => {
-    purgeExpiredUploadTokens().catch((err) =>
-      logger.error('[upload-token-cleanup] Unhandled error in scheduled run:', err)
-    );
+    purgeExpiredUploadTokens().catch((err) => alertSchedulerFailure('upload-token-cleanup', err));
   }, { timezone: 'Europe/Sofia' });
 
   logger.info('[scheduler] Registered: upload-token-cleanup (30 3 * * *)');
@@ -360,9 +808,7 @@ export function registerScheduledJobs(): void {
   // 7:15 AM every day — expire SESSION_ACTIVE sticker scans past their deadline
   // Runs after the 6 AM Sofia deadline so all expired sessions are caught.
   cron.schedule('15 7 * * *', () => {
-    expireStaleSessions().catch((err) =>
-      logger.error('[stale-session-cleanup] Unhandled error in scheduled run:', err)
-    );
+    expireStaleSessions().catch((err) => alertSchedulerFailure('stale-session-cleanup', err));
   }, { timezone: 'Europe/Sofia' });
 
   logger.info('[scheduler] Registered: stale-session-cleanup (15 7 * * *)');
@@ -370,19 +816,57 @@ export function registerScheduledJobs(): void {
   // 1:30 AM every day — expire Paysera subscriptions past their billing period
   // that were marked cancelAtPeriodEnd=true but never finalized.
   cron.schedule('30 1 * * *', () => {
-    expireCancelledSubscriptions().catch((err) =>
-      logger.error('[subscription-expiry] Unhandled error in scheduled run:', err)
-    );
+    expireCancelledSubscriptions().catch((err) => alertSchedulerFailure('subscription-expiry', err));
   }, { timezone: 'Europe/Sofia' });
 
   logger.info('[scheduler] Registered: subscription-expiry (30 1 * * *)');
 
   // 5 AM every day — auto-reject menu submissions pending for more than 30 days
   cron.schedule('0 5 * * *', () => {
-    expireStaleMenuSubmissions().catch((err) =>
-      logger.error('[menu-expiry] Unhandled error in scheduled run:', err)
-    );
+    expireStaleMenuSubmissions().catch((err) => alertSchedulerFailure('menu-expiry', err));
   }, { timezone: 'Europe/Sofia' });
 
   logger.info('[scheduler] Registered: menu-expiry (0 5 * * *)');
+
+  // 8 AM every day — partner daily digest of yesterday's activity per venue
+  cron.schedule('0 8 * * *', () => {
+    sendPartnerDailyDigests().catch((err) => alertSchedulerFailure('partner-daily-digest', err));
+  }, { timezone: 'Europe/Sofia' });
+
+  logger.info('[scheduler] Registered: partner-daily-digest (0 8 * * *)');
+
+  // 9 AM every day — onboarding nudges to partners missing profile fields
+  cron.schedule('0 9 * * *', () => {
+    sendPartnerOnboardingNudges().catch((err) => alertSchedulerFailure('partner-onboarding-nudge', err));
+  }, { timezone: 'Europe/Sofia' });
+
+  logger.info('[scheduler] Registered: partner-onboarding-nudge (0 9 * * *)');
+
+  // 1st of month 10 AM — monthly statements for partners
+  cron.schedule('0 10 1 * *', () => {
+    sendPartnerMonthlyStatements().catch((err) => alertSchedulerFailure('partner-monthly-statement', err));
+  }, { timezone: 'Europe/Sofia' });
+
+  logger.info('[scheduler] Registered: partner-monthly-statement (0 10 1 * *)');
+
+  // 3 AM every day — subscription renewal reminders (7 days out)
+  cron.schedule('0 3 * * *', () => {
+    runSubscriptionRenewalReminders().catch((err) => alertSchedulerFailure('subscription-renewal-reminders', err));
+  }, { timezone: 'Europe/Sofia' });
+
+  logger.info('[scheduler] Registered: subscription-renewal-reminders (0 3 * * *)');
+
+  // Every hour — scan for payment failure rate spikes
+  cron.schedule('0 * * * *', () => {
+    checkPaymentFailureSpike().catch((err) => alertSchedulerFailure('payment-failure-spike-scan', err));
+  }, { timezone: 'Europe/Sofia' });
+
+  logger.info('[scheduler] Registered: payment-failure-spike-scan (0 * * * *)');
+
+  // Every 6 hours — OCR manual-review backlog check
+  cron.schedule('0 */6 * * *', () => {
+    checkOcrBacklog().catch((err) => alertSchedulerFailure('ocr-backlog-scan', err));
+  }, { timezone: 'Europe/Sofia' });
+
+  logger.info('[scheduler] Registered: ocr-backlog-scan (0 */6 * * *)');
 }

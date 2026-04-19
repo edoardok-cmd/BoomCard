@@ -10,6 +10,7 @@ import {
   PAYOUT_THRESHOLD_PREMIUM_MONTHLY_EUR,
 } from '../constants/receipt.constants';
 import { payseraService } from './paysera.service';
+import { notificationService } from './notification.service';
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -144,6 +145,33 @@ export class WalletService {
     });
 
     logger.info(`Credited ${amount} BGN to wallet ${wallet.id}. Type: ${type}${cashbackExpiresAt ? `. Expires: ${cashbackExpiresAt.toISOString()}` : ''}`);
+
+    // Payout-ready notification: fire when the credit crosses the threshold
+    // for this user's plan (pre-credit below, post-credit above). Non-fatal —
+    // a notify hiccup must not affect the already-committed credit.
+    try {
+      const preCreditAvailable = updatedWallet.availableBalance - amount;
+      if (updatedWallet.availableBalance > 0 && !updatedWallet.isLocked) {
+        const subscription = await prisma.subscription.findFirst({
+          where: { userId, status: { in: ['ACTIVE', 'TRIALING'] } },
+          orderBy: { createdAt: 'desc' },
+        });
+        const plan: SubscriptionPlan = subscription?.plan ?? 'LIGHT';
+        const subMetadata = subscription?.metadata ? JSON.parse(subscription.metadata as string) : {};
+        const threshold = payoutThresholdBGN(plan, subMetadata.billingPeriod);
+        if (preCreditAvailable < threshold && updatedWallet.availableBalance >= threshold) {
+          notificationService
+            .notifyPayoutReady({
+              userId,
+              availableBalance: updatedWallet.availableBalance,
+              threshold,
+            })
+            .catch((err) => logger.error(`[wallet] payout-ready notify failed for ${userId}:`, err));
+        }
+      }
+    } catch (err) {
+      logger.error(`[wallet] payout-ready check failed for ${userId}:`, err);
+    }
 
     return {
       wallet: updatedWallet,

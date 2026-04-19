@@ -350,6 +350,14 @@ class StripeService {
           await this.handleRefund(event.data.object as Stripe.Charge);
           break;
 
+        case 'charge.dispute.created':
+        case 'charge.dispute.updated':
+        case 'charge.dispute.closed':
+          // Stripe chargebacks need a human response within ~7 days. The
+          // handler posts to admin-ops (in-app + critical email).
+          await this.handleChargebackDispute(event.data.object as Stripe.Dispute, event.type);
+          break;
+
         case 'customer.subscription.created':
         case 'customer.subscription.updated':
           await this.handleSubscriptionUpdated(event.data.object as Stripe.Subscription);
@@ -563,6 +571,46 @@ class StripeService {
       }
     } catch (error) {
       logger.error(`Error handling payment cancel: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Handle Stripe dispute (chargeback) — posts to the admin-ops channel so
+   * someone can respond via the Stripe dashboard within the 7-day window.
+   * Fires for 'created', 'updated', and 'closed' so every dispute-state
+   * transition is visible; 'created' is urgent, later states are info-level.
+   */
+  private async handleChargebackDispute(dispute: Stripe.Dispute, eventType: string): Promise<void> {
+    logger.warn(`Stripe dispute ${eventType}: ${dispute.id} (status: ${dispute.status}, charge: ${dispute.charge})`);
+
+    try {
+      if (eventType === 'charge.dispute.created') {
+        await notificationService.notifyAdminChargeback({
+          chargeId: typeof dispute.charge === 'string' ? dispute.charge : dispute.charge.id,
+          disputeId: dispute.id,
+          amountCents: dispute.amount,
+          currency: dispute.currency,
+          reason: dispute.reason,
+        });
+      } else {
+        // Status-change variants use ops channel directly so admins see the
+        // dispute progressing (won, lost, needs_response) without another
+        // dedicated wrapper.
+        await notificationService.notifyAdminOps({
+          opsType: 'stripe_chargeback_update',
+          title: `Chargeback ${dispute.status}`,
+          message: `Dispute ${dispute.id} is now ${dispute.status}.`,
+          severity: dispute.status === 'lost' ? 'warning' : 'info',
+          fields: [
+            { label: 'Dispute', value: dispute.id },
+            { label: 'Status', value: dispute.status },
+            { label: 'Reason', value: dispute.reason ?? 'unknown' },
+          ],
+          actionUrl: `https://dashboard.stripe.com/disputes/${dispute.id}`,
+        });
+      }
+    } catch (err) {
+      logger.error('Failed to post chargeback admin-ops notification:', err);
     }
   }
 

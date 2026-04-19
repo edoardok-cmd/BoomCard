@@ -722,6 +722,17 @@ class ReceiptService {
           fraudScore: fraudCheck.fraudScore,
           fraudReasons: fraudCheck.fraudReasons,
         });
+        // Also notify the venue's partner owner — they should know a flagged
+        // submission occurred at their venue so they can corroborate in person.
+        // Customer identity is intentionally NOT exposed to the partner here.
+        if (receipt.venueId) {
+          await notificationService.notifyPartnerFraudFlag({
+            venueId: receipt.venueId,
+            receiptId: receipt.id,
+            fraudScore: fraudCheck.fraudScore,
+            reasons: fraudCheck.fraudReasons,
+          }).catch((err) => logger.error('Failed to notify partner of fraud flag:', err));
+        }
       }
 
       logger.info(`Receipt ${receipt.id} submitted: ${status} (fraud score: ${fraudCheck.fraudScore})`);
@@ -1056,6 +1067,22 @@ class ReceiptService {
         }
       } catch (notifyError) {
         logger.error(`Failed to send notification for receipt ${params.receiptId} — review stands:`, notifyError);
+      }
+
+      // Also notify the venue's partner owner on approval — gives partners real-time
+      // visibility into activity at their venue. Guarded by venueId since older
+      // receipts (sticker-less OCR path) may not have a venue linked.
+      if (newStatus === 'APPROVED' && receipt.venueId) {
+        try {
+          await notificationService.notifyPartnerReceiptAtVenue({
+            venueId: receipt.venueId,
+            receiptId: receipt.id,
+            totalAmount: updated.totalAmount || 0,
+            cashbackAmount,
+          });
+        } catch (partnerNotifyError) {
+          logger.error(`Failed to notify partner of receipt ${params.receiptId}:`, partnerNotifyError);
+        }
       }
 
       // Send email notification to user (non-fatal)
