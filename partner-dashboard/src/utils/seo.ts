@@ -88,7 +88,7 @@ export const updateSEO = (config: SEOConfig = {}) => {
 /**
  * Generate structured data for rich snippets
  */
-export const generateStructuredData = (type: 'Organization' | 'WebSite' | 'Person', data: any) => {
+export const generateStructuredData = (type: 'Organization' | 'WebSite' | 'Person', data: Record<string, unknown>) => {
   const structuredData = {
     '@context': 'https://schema.org',
     '@type': type,

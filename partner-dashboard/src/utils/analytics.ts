@@ -8,8 +8,8 @@ import { hasAnalyticsConsent } from '../contexts/CookieConsentContext';
 
 declare global {
   interface Window {
-    gtag?: (...args: any[]) => void;
-    dataLayer?: any[];
+    gtag?: (command: string, ...args: unknown[]) => void;
+    dataLayer?: unknown[];
   }
 }
 
@@ -34,8 +34,8 @@ export function initGA4(measurementId: string) {
 
   // Initialize dataLayer
   window.dataLayer = window.dataLayer || [];
-  window.gtag = function gtag(...args: any[]) {
-    window.dataLayer!.push(args);
+  window.gtag = function gtag(command: string, ...args: unknown[]) {
+    window.dataLayer!.push([command, ...args]);
   };
 
   window.gtag('js', new Date());

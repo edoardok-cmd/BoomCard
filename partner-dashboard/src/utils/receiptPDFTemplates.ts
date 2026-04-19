@@ -4,9 +4,24 @@
  */
 
 import { Receipt } from '../services/receipt.service';
+import type { ReceiptItem } from '../types/receipt.types';
 import { format } from 'date-fns';
 
 export type TemplateType = 'classic' | 'modern' | 'minimal' | 'professional' | 'colorful';
+
+function parseReceiptItems(items: Receipt['items']): ReceiptItem[] {
+  if (!items) return [];
+  if (Array.isArray(items)) return items;
+  if (typeof items === 'string') {
+    try {
+      const parsed = JSON.parse(items);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
 
 export interface TemplateRenderOptions {
   includeLogo?: boolean;
@@ -52,7 +67,7 @@ export function generateReceiptHTML(receipt: Receipt, options: TemplateOptions):
  * Classic Template - Traditional receipt design
  */
 function generateClassicTemplate(receipt: Receipt, options: TemplateRenderOptions): string {
-  const items = receipt.items ? JSON.parse(receipt.items as any) : [];
+  const items = parseReceiptItems(receipt.items);
 
   return `
 <!DOCTYPE html>
@@ -181,7 +196,7 @@ function generateClassicTemplate(receipt: Receipt, options: TemplateRenderOption
     ${options.showItemizedList && items.length > 0 ? `
     <div class="items">
       <h3 style="margin-bottom: 15px;">Items</h3>
-      ${items.map((item: any) => `
+      ${items.map((item: ReceiptItem) => `
         <div class="item">
           <span>${item.quantity || 1}x ${item.name || 'Item'}</span>
           <span>${(item.price || 0).toFixed(2)}</span>
@@ -221,7 +236,7 @@ function generateClassicTemplate(receipt: Receipt, options: TemplateRenderOption
  * Modern Template - Gradient and contemporary design
  */
 function generateModernTemplate(receipt: Receipt, options: TemplateRenderOptions): string {
-  const items = receipt.items ? JSON.parse(receipt.items as any) : [];
+  const items = parseReceiptItems(receipt.items);
 
   return `
 <!DOCTYPE html>
@@ -371,7 +386,7 @@ function generateModernTemplate(receipt: Receipt, options: TemplateRenderOptions
       ${options.showItemizedList && items.length > 0 ? `
       <div class="items">
         <h3>Items Purchased</h3>
-        ${items.map((item: any) => `
+        ${items.map((item: ReceiptItem) => `
           <div class="item">
             <span><strong>${item.quantity || 1}x</strong> ${item.name || 'Item'}</span>
             <span style="font-weight: 600;">${(item.price || 0).toFixed(2)}</span>
@@ -400,7 +415,7 @@ function generateModernTemplate(receipt: Receipt, options: TemplateRenderOptions
  * Minimal Template - Ultra-clean minimalist design
  */
 function generateMinimalTemplate(receipt: Receipt, options: TemplateRenderOptions): string {
-  const items = receipt.items ? JSON.parse(receipt.items as any) : [];
+  const items = parseReceiptItems(receipt.items);
 
   return `
 <!DOCTYPE html>
@@ -496,7 +511,7 @@ function generateMinimalTemplate(receipt: Receipt, options: TemplateRenderOption
 
     ${options.showItemizedList && items.length > 0 ? `
     <div class="items">
-      ${items.map((item: any) => `
+      ${items.map((item: ReceiptItem) => `
         <div class="item">
           <span>${item.name || 'Item'}</span>
           <span style="font-weight: 500;">${(item.price || 0).toFixed(2)}</span>
@@ -530,7 +545,7 @@ function generateMinimalTemplate(receipt: Receipt, options: TemplateRenderOption
  * Professional Template - Corporate business style
  */
 function generateProfessionalTemplate(receipt: Receipt, options: TemplateRenderOptions): string {
-  const items = receipt.items ? JSON.parse(receipt.items as any) : [];
+  const items = parseReceiptItems(receipt.items);
 
   return `
 <!DOCTYPE html>
@@ -681,7 +696,7 @@ function generateProfessionalTemplate(receipt: Receipt, options: TemplateRenderO
           <th style="width: 120px;">Unit Price</th>
           <th style="width: 120px;">Amount</th>
         </tr>
-        ${items.map((item: any) => `
+        ${items.map((item: ReceiptItem) => `
           <tr>
             <td>${item.name || 'Item'}</td>
             <td>${item.quantity || 1}</td>
@@ -725,7 +740,7 @@ function generateProfessionalTemplate(receipt: Receipt, options: TemplateRenderO
  * Colorful Template - Vibrant and fun design
  */
 function generateColorfulTemplate(receipt: Receipt, options: TemplateRenderOptions): string {
-  const items = receipt.items ? JSON.parse(receipt.items as any) : [];
+  const items = parseReceiptItems(receipt.items);
 
   return `
 <!DOCTYPE html>
@@ -876,7 +891,7 @@ function generateColorfulTemplate(receipt: Receipt, options: TemplateRenderOptio
         <div style="text-align: center; font-weight: 900; margin-bottom: 15px; color: #d63031;">
           🛍️ Items 🛍️
         </div>
-        ${items.map((item: any) => `
+        ${items.map((item: ReceiptItem) => `
           <div class="item">
             <span><strong>${item.quantity || 1}x</strong> ${item.name || 'Item'}</span>
             <span style="font-weight: 900; color: #d63031;">${(item.price || 0).toFixed(2)}</span>

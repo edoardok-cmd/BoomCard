@@ -49,25 +49,34 @@ export const validateBulgarianEGN = (egn: string): boolean => {
   return parseInt(egn[9]) === lastDigit;
 };
 
-export const validateForm = (values: Record<string, any>, rules: Record<string, any>): Record<string, string> => {
+export interface FieldRule {
+  required?: boolean;
+  email?: boolean;
+  minLength?: number;
+}
+
+export const validateForm = (
+  values: Record<string, unknown>,
+  rules: Record<string, FieldRule>
+): Record<string, string> => {
   const errors: Record<string, string> = {};
-  
+
   Object.keys(rules).forEach(field => {
     const value = values[field];
     const fieldRules = rules[field];
-    
+
     if (fieldRules.required && !value) {
       errors[field] = `${field} е задължително поле`;
     }
-    
-    if (fieldRules.email && value && !validateEmail(value)) {
+
+    if (fieldRules.email && typeof value === 'string' && !validateEmail(value)) {
       errors[field] = 'Невалиден email адрес';
     }
-    
-    if (fieldRules.minLength && value && value.length < fieldRules.minLength) {
+
+    if (fieldRules.minLength && typeof value === 'string' && value.length < fieldRules.minLength) {
       errors[field] = `Минимална дължина ${fieldRules.minLength} символа`;
     }
   });
-  
+
   return errors;
 };

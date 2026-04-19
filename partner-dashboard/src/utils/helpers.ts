@@ -82,12 +82,12 @@ export const formatDistance = (meters: number): string => {
   return `${(meters / 1000).toFixed(1)} км`;
 };
 
-export const debounce = <T extends (...args: any[]) => any>(
+export const debounce = <T extends (...args: never[]) => unknown>(
   func: T,
   delay: number
 ): ((...args: Parameters<T>) => void) => {
   let timeoutId: NodeJS.Timeout;
-  
+
   return (...args: Parameters<T>) => {
     clearTimeout(timeoutId);
     timeoutId = setTimeout(() => func(...args), delay);
@@ -99,10 +99,10 @@ export const truncateText = (text: string, maxLength: number): string => {
   return text.substring(0, maxLength) + '...';
 };
 
-export const generateQueryString = (params: Record<string, any>): string => {
+export const generateQueryString = (params: Record<string, unknown>): string => {
   const queryString = Object.entries(params)
     .filter(([_, value]) => value !== undefined && value !== null && value !== '')
-    .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`)
+    .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`)
     .join('&');
   
   return queryString ? `?${queryString}` : '';

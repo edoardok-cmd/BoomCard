@@ -1,22 +1,30 @@
 import * as authStorage from '../lib/auth/authStorage';
 
-export const handleApiError = (error: any): string => {
-  if (error.response?.data?.message) {
-    return error.response.data.message;
+interface ApiErrorShape {
+  response?: {
+    status?: number;
+    data?: { message?: string };
+  };
+}
+
+export const handleApiError = (error: unknown): string => {
+  const err = error as ApiErrorShape;
+  if (err.response?.data?.message) {
+    return err.response.data.message;
   }
-  
-  if (error.response?.status === 404) {
+
+  if (err.response?.status === 404) {
     return 'Ресурсът не е намерен';
   }
-  
-  if (error.response?.status === 401) {
+
+  if (err.response?.status === 401) {
     return 'Нямате право на достъп';
   }
-  
-  if (error.response?.status === 500) {
+
+  if (err.response?.status === 500) {
     return 'Сървърна грешка. Моля, опитайте отново';
   }
-  
+
   return 'Възникна неочаквана грешка';
 };
 
@@ -25,7 +33,7 @@ export const getAuthHeaders = (): Record<string, string> => {
   return token ? { Authorization: `Bearer ${token}` } : {};
 };
 
-export const buildApiUrl = (endpoint: string, params?: Record<string, any>): string => {
+export const buildApiUrl = (endpoint: string, params?: Record<string, unknown>): string => {
   const baseUrl = process.env.NEXT_PUBLIC_API_URL || '/api';
   const url = new URL(endpoint, baseUrl);
   
@@ -40,9 +48,9 @@ export const buildApiUrl = (endpoint: string, params?: Record<string, any>): str
   return url.toString();
 };
 
-export const parseApiResponse = <T>(response: any): T => {
-  if (response.data) {
-    return response.data;
+export const parseApiResponse = <T>(response: { data?: T } | T): T => {
+  if (response && typeof response === 'object' && 'data' in response && response.data !== undefined) {
+    return response.data as T;
   }
-  return response;
+  return response as T;
 };

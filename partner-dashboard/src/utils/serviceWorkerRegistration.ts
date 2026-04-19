@@ -168,7 +168,7 @@ export async function precacheUrls(urls: string[]) {
 export function isPWA(): boolean {
   return (
     window.matchMedia('(display-mode: standalone)').matches ||
-    (window.navigator as any).standalone === true ||
+    (window.navigator as Navigator & { standalone?: boolean }).standalone === true ||
     document.referrer.includes('android-app://')
   );
 }
@@ -178,12 +178,17 @@ export function isBrowser(): boolean {
   return !isPWA();
 }
 
+interface BeforeInstallPromptEvent extends Event {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
+}
+
 // Get installation prompt
-export function getInstallPrompt(): Promise<any> {
+export function getInstallPrompt(): Promise<BeforeInstallPromptEvent> {
   return new Promise((resolve) => {
     window.addEventListener('beforeinstallprompt', (e) => {
       e.preventDefault();
-      resolve(e);
+      resolve(e as BeforeInstallPromptEvent);
     });
   });
 }
@@ -210,7 +215,7 @@ export function onOffline(callback: () => void) {
 }
 
 // Service Worker message utilities
-export function sendMessageToSW(message: any): Promise<any> {
+export function sendMessageToSW(message: unknown): Promise<unknown> {
   return new Promise((resolve, reject) => {
     if (!navigator.serviceWorker.controller) {
       reject(new Error('No service worker controller'));

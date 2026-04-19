@@ -3,6 +3,8 @@
  * Tracks performance metrics that affect Google rankings
  */
 
+import type { Metric } from 'web-vitals';
+
 // Core Web Vitals thresholds (Google's standards)
 const WEB_VITALS_THRESHOLDS = {
   LCP: { good: 2500, needsImprovement: 4000 }, // Largest Contentful Paint
@@ -44,8 +46,8 @@ function reportWebVital(metric: WebVitalMetric) {
   });
 
   // Send to Google Analytics 4 if available
-  if (typeof window !== 'undefined' && (window as any).gtag) {
-    (window as any).gtag('event', metric.name, {
+  if (typeof window !== 'undefined' && window.gtag) {
+    window.gtag('event', metric.name, {
       event_category: 'Web Vitals',
       value: Math.round(metric.name === 'CLS' ? metric.value * 1000 : metric.value),
       event_label: metric.id,
@@ -83,43 +85,28 @@ export async function initWebVitals() {
     const { onCLS, onLCP, onFCP, onTTFB, onINP } = await import('web-vitals');
 
     // Monitor Cumulative Layout Shift
-    onCLS((metric: any) => {
-      reportWebVital({
-        ...metric,
-        rating: getRating('CLS', metric.value),
-      });
+    onCLS((metric: Metric) => {
+      reportWebVital({ ...metric, rating: getRating('CLS', metric.value) });
     });
 
     // Monitor Largest Contentful Paint
-    onLCP((metric: any) => {
-      reportWebVital({
-        ...metric,
-        rating: getRating('LCP', metric.value),
-      });
+    onLCP((metric: Metric) => {
+      reportWebVital({ ...metric, rating: getRating('LCP', metric.value) });
     });
 
     // Monitor First Contentful Paint
-    onFCP((metric: any) => {
-      reportWebVital({
-        ...metric,
-        rating: getRating('FCP', metric.value),
-      });
+    onFCP((metric: Metric) => {
+      reportWebVital({ ...metric, rating: getRating('FCP', metric.value) });
     });
 
     // Monitor Time to First Byte
-    onTTFB((metric: any) => {
-      reportWebVital({
-        ...metric,
-        rating: getRating('TTFB', metric.value),
-      });
+    onTTFB((metric: Metric) => {
+      reportWebVital({ ...metric, rating: getRating('TTFB', metric.value) });
     });
 
     // Monitor Interaction to Next Paint (replaces FID in web-vitals v3+)
-    onINP((metric: any) => {
-      reportWebVital({
-        ...metric,
-        rating: getRating('INP', metric.value),
-      });
+    onINP((metric: Metric) => {
+      reportWebVital({ ...metric, rating: getRating('INP', metric.value) });
     });
 
     console.log('✅ Web Vitals monitoring initialized');
