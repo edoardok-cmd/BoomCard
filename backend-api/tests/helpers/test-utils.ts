@@ -41,6 +41,14 @@ export async function createTestUser(overrides: {
     throw new Error(`Failed to create test user: ${res.status} ${JSON.stringify(res.body)}`);
   }
 
+  // Mark user email-verified so subsequent loginTestUser() calls pass the
+  // verification gate added in f53a31b. Registration path still exercises
+  // the real code; only login is short-circuited.
+  await prisma.user.update({
+    where: { id: res.body.data.user.id },
+    data: { emailVerified: true, emailVerifiedAt: new Date(), emailVerificationToken: null },
+  });
+
   return {
     user: res.body.data.user,
     accessToken: res.body.data.accessToken,

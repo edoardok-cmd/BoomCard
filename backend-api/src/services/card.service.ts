@@ -277,8 +277,14 @@ export class CardService {
           status: 'APPROVED',
         },
       }),
-      // TODO: Update this when wallet transactions are implemented
-      Promise.resolve({ _sum: { amount: 0 } }),
+      prisma.walletTransaction.aggregate({
+        _sum: { amount: true },
+        where: {
+          wallet: { userId: card.userId },
+          type: 'CASHBACK_CREDIT',
+          status: 'COMPLETED',
+        },
+      }),
     ]);
 
     return {

@@ -233,8 +233,12 @@ describe('Sticker Scan Flow (F06)', () => {
 
   describe('GET /api/stickers/venue/:venueId/analytics', () => {
     it('should return venue scan analytics', async () => {
-      // Promote test user to PARTNER role (analytics requires PARTNER/ADMIN)
-      await prisma.user.update({ where: { id: userId }, data: { role: 'PARTNER' } });
+      // Promote test user to PARTNER role (analytics requires PARTNER/ADMIN).
+      // Must also set status=ACTIVE since partner login blocks PENDING_VERIFICATION.
+      await prisma.user.update({
+        where: { id: userId },
+        data: { role: 'PARTNER', status: 'ACTIVE' },
+      });
       // Re-login to get a token with the updated role
       const { accessToken: partnerToken } = await loginTestUser(userEmail, userPassword);
 
