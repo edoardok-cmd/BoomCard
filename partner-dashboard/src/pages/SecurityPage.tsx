@@ -1,7 +1,7 @@
 import React from 'react';
 import styled from 'styled-components';
 import { motion } from 'framer-motion';
-import { Shield, Lock, Eye, Server, FileCheck, Users, AlertTriangle, Check } from 'lucide-react';
+import { Shield, Lock, Eye, Server, FileCheck, Users, Check } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 
 const PageContainer = styled.div`

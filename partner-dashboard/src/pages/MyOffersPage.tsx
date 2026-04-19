@@ -118,7 +118,7 @@ const MyOffersPage: React.FC = () => {
   const canEditOffers = user?.role === 'admin';
 
   // Fetch real offers data
-  const { data: offersData, isLoading, refetch } = useOffers({
+  const { data: offersData, refetch } = useOffers({
     partnerId: user?.id,
     limit: 100
   });
@@ -177,7 +177,7 @@ const MyOffersPage: React.FC = () => {
         toast.success(t.deleted);
         setActiveMenu(null);
         refetch(); // Refresh the list
-      } catch (error) {
+      } catch {
         toast.error('Failed to delete offer');
       }
     }
@@ -192,7 +192,7 @@ const MyOffersPage: React.FC = () => {
       toast.success(offer.isActive ? t.deactivated : t.activated);
       setActiveMenu(null);
       refetch(); // Refresh the list
-    } catch (error) {
+    } catch {
       toast.error('Failed to update offer status');
     }
   };

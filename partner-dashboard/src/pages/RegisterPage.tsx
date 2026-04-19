@@ -279,33 +279,6 @@ const SocialButtons = styled.div`
   gap: 0.75rem;
 `;
 
-const SocialButton = styled.button`
-  width: 100%;
-  padding: 0.75rem 1rem;
-  border: 1px solid var(--color-border);
-  border-radius: 0.5rem;
-  background: var(--color-background);
-  font-size: 0.875rem;
-  font-weight: 500;
-  color: var(--color-text-primary);
-  cursor: pointer;
-  transition: all 200ms;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-
-  &:hover {
-    background: var(--color-background-secondary);
-    border-color: var(--color-primary);
-  }
-
-  &:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-`;
-
 const LoginPrompt = styled.p`
   text-align: center;
   margin-top: 2rem;

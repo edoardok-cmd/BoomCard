@@ -7,7 +7,7 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { useNavigate, useLocation, Link } from 'react-router-dom';
+import { useLocation, Link } from 'react-router-dom';
 import styled from 'styled-components';
 import { motion } from 'framer-motion';
 import { CheckCircle, Clock, AlertCircle, Loader2, RefreshCw } from 'lucide-react';
@@ -197,7 +197,6 @@ const MAX_POLLING_TIME = 30000; // 30 seconds before showing warning
 const MAX_TOTAL_TIME = 120000; // 2 minutes before giving up
 
 const SubscriptionSuccessPage: React.FC = () => {
-  const navigate = useNavigate();
   const location = useLocation();
   const { language } = useLanguage();
 

@@ -349,8 +349,8 @@ const LoginPromptText = styled.p`
 
 const CheckoutPage: React.FC = () => {
   const [searchParams] = useSearchParams();
-  const { language, t } = useLanguage();
-  const { user, isAuthenticated } = useAuth();
+  const { language } = useLanguage();
+  const { isAuthenticated } = useAuth();
 
   const planId = searchParams.get('planId');
   const planCode = searchParams.get('planCode');

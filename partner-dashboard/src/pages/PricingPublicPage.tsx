@@ -93,26 +93,6 @@ const ToggleOption = styled.button<{ $active: boolean }>`
   }
 `;
 
-const SaveBadge = styled.div`
-  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-  color: white;
-  padding: 0.75rem 1.5rem;
-  border-radius: 3rem;
-  font-size: 0.9375rem;
-  font-weight: 700;
-  box-shadow: 0 4px 15px rgba(16, 185, 129, 0.3);
-  font-family: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-
-  [data-theme="color"] & {
-    background: linear-gradient(135deg, #10b981 0%, #00d4ff 100%);
-  }
-
-  @media (max-width: 480px) {
-    font-size: 0.875rem;
-    padding: 0.625rem 1.25rem;
-  }
-`;
-
 const SubscriptionCardsContainer = styled.div`
   display: flex;
   justify-content: center;

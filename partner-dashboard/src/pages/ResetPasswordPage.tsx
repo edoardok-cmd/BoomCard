@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, useSearchParams, Link } from 'react-router-dom';
+import { useSearchParams, Link } from 'react-router-dom';
 import styled from 'styled-components';
 import { motion } from 'framer-motion';
 import { Lock, CheckCircle2, AlertCircle } from 'lucide-react';
@@ -235,7 +235,6 @@ interface FormErrors {
 
 const ResetPasswordPage: React.FC = () => {
   const { language } = useLanguage();
-  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const token = searchParams.get('token');
 

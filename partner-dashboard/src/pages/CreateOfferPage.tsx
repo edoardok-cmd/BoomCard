@@ -255,7 +255,7 @@ const CreateOfferPage: React.FC = () => {
       for (const file of formData.images) {
         try {
           await offersService.uploadOfferImage(offer.id, file);
-        } catch (imgErr) {
+        } catch {
           // Non-blocking: offer is created; warn about image failure
           toast.error(language === 'bg' ? 'Снимката не беше качена.' : 'Image upload failed — offer saved without image.');
         }
@@ -832,19 +832,6 @@ const TextArea = styled.textarea<{ error?: boolean }>`
     cursor: not-allowed;
     opacity: 0.6;
   }
-`;
-
-const InputWithSuffix = styled.div`
-  position: relative;
-`;
-
-const Suffix = styled.span`
-  position: absolute;
-  right: 1rem;
-  top: 50%;
-  transform: translateY(-50%);
-  color: var(--text-secondary);
-  font-weight: 600;
 `;
 
 const ErrorText = styled.span`

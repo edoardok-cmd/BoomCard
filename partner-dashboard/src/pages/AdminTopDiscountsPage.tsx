@@ -565,42 +565,6 @@ const TagTextField = styled.input`
   background: transparent;
 `;
 
-const ToggleLabel = styled.label`
-  display: flex;
-  align-items: center;
-  gap: 0.625rem;
-  cursor: pointer;
-  font-size: 0.9375rem;
-  color: var(--color-text-secondary);
-`;
-
-const ToggleBox = styled.input.attrs({ type: 'checkbox' })`
-  width: 2.5rem;
-  height: 1.5rem;
-  appearance: none;
-  background: #e5e7eb;
-  border-radius: 9999px;
-  position: relative;
-  cursor: pointer;
-  transition: background 200ms;
-  flex-shrink: 0;
-
-  &:checked { background: #f59e0b; }
-  &::after {
-    content: '';
-    position: absolute;
-    top: 2px;
-    left: 2px;
-    width: 1.25rem;
-    height: 1.25rem;
-    background: white;
-    border-radius: 50%;
-    transition: transform 200ms;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
-  }
-  &:checked::after { transform: translateX(1rem); }
-`;
-
 const ModalActions = styled.div`
   display: flex;
   gap: 1rem;
@@ -955,7 +919,11 @@ export default function AdminTopDiscountsPage() {
   function toggleSelectOne(id: string) {
     setSelectedIds(prev => {
       const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
       return next;
     });
   }

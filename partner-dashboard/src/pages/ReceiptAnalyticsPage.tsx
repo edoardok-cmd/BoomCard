@@ -16,10 +16,10 @@ import {
   Legend,
   Filler,
 } from 'chart.js';
-import { Line, Bar, Pie, Doughnut } from 'react-chartjs-2';
+import { Line, Bar, Doughnut } from 'react-chartjs-2';
 import { ArrowLeft, Calendar, DollarSign, TrendingUp, PieChart as PieChartIcon, Download } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { format, subMonths, startOfMonth, endOfMonth, eachMonthOfInterval, parseISO } from 'date-fns';
+import { format, subMonths, startOfMonth, endOfMonth, eachMonthOfInterval } from 'date-fns';
 import { exportReceiptsToCSV } from '../utils/receiptExport';
 
 // Register ChartJS components
@@ -205,12 +205,6 @@ const StatValue = styled.div`
   font-size: 2rem;
   font-weight: 700;
   color: var(--color-text-primary);
-`;
-
-const StatChange = styled.div<{ $positive: boolean }>`
-  font-size: 0.875rem;
-  color: ${props => props.$positive ? '#10b981' : '#ef4444'};
-  font-weight: 600;
 `;
 
 const ChartsGrid = styled.div`

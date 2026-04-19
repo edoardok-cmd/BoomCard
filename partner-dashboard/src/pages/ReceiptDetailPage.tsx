@@ -3,7 +3,7 @@ import styled from 'styled-components';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useNavigate, useParams } from 'react-router-dom';
 import { receiptsApiService } from '../services/receipts-api.service';
-import { Receipt, ReceiptStatus, ReceiptItem } from '../types/receipt.types';
+import { Receipt, ReceiptStatus } from '../types/receipt.types';
 import {
   ArrowLeft,
   Save,
@@ -13,8 +13,6 @@ import {
   XCircle,
   Clock,
   Store,
-  Calendar,
-  DollarSign,
   FileText,
   Package,
   Download,
@@ -24,10 +22,8 @@ import {
 import {
   exportReceiptToPDF,
   exportReceiptToJSON,
-  exportReceiptsToCSV,
   shareReceiptViaEmail,
 } from '../utils/receiptExport';
-import { exportReceiptWithTemplate, TemplateType } from '../utils/receiptPDFTemplates';
 
 const PageContainer = styled.div`
   max-width: 1000px;
@@ -268,24 +264,6 @@ const ActionButton = styled.button<{ $variant?: 'primary' | 'secondary' | 'dange
     width: 18px;
     height: 18px;
   }
-`;
-
-const EditForm = styled.form`
-  display: flex;
-  flex-direction: column;
-  gap: 1.5rem;
-`;
-
-const FormGroup = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-`;
-
-const FormLabel = styled.label`
-  font-size: 0.875rem;
-  font-weight: 600;
-  color: #374151;
 `;
 
 const FormInput = styled.input`

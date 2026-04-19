@@ -6,7 +6,6 @@ import SearchAutocomplete from '../components/common/SearchAutocomplete/SearchAu
 import OfferCard from '../components/common/OfferCard/OfferCard';
 import { offerToEntity, type Offer, type Entity } from '../types/entity.types';
 import Button from '../components/common/Button/Button';
-import Badge from '../components/common/Badge/Badge';
 
 const PageContainer = styled.div`
   min-height: 100vh;

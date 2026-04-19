@@ -183,7 +183,7 @@ const StatLabel = styled.div`
 `;
 
 const ProductPage: React.FC = () => {
-  const { t, language } = useLanguage();
+  const { language } = useLanguage();
 
   const features = [
     {

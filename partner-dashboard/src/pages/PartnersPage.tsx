@@ -526,44 +526,6 @@ const Select = styled.select<{ $hasError?: boolean }>`
   }
 `;
 
-const TextArea = styled.textarea`
-  width: 100%;
-  padding: 0.875rem 1rem;
-  border: 1px solid #d1d5db;
-  border-radius: 0.5rem;
-  font-size: 1rem;
-  color: #111827;
-  min-height: 120px;
-  resize: vertical;
-  transition: all 200ms;
-  font-family: inherit;
-
-  [data-theme="dark"] & {
-    background: #374151;
-    border-color: #4b5563;
-    color: #f9fafb;
-  }
-
-  &:focus {
-    outline: none;
-    border-color: #000000;
-    box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.1);
-
-    [data-theme="dark"] & {
-      border-color: #60a5fa;
-      box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.2);
-    }
-  }
-
-  &::placeholder {
-    color: #9ca3af;
-
-    [data-theme="dark"] & {
-      color: #6b7280;
-    }
-  }
-`;
-
 const FormSubSection = styled.div`
   padding: 1.5rem;
   background: #f9fafb;
@@ -841,40 +803,6 @@ const TierFeature = styled.li<{ $accent: string }>`
   }
 `;
 
-const CityFilter = styled.div`
-  display: flex;
-  gap: 1rem;
-  flex-wrap: wrap;
-  margin-bottom: 3rem;
-  justify-content: center;
-`;
-
-const CityChip = styled.button<{ $active: boolean }>`
-  padding: 0.75rem 1.5rem;
-  border: 2px solid ${props => props.$active ? '#000000' : '#e5e7eb'};
-  background: ${props => props.$active ? '#000000' : 'white'};
-  color: ${props => props.$active ? 'white' : '#6b7280'};
-  border-radius: 2rem;
-  font-weight: 600;
-  font-size: 0.875rem;
-  cursor: pointer;
-  transition: all 0.2s;
-
-  [data-theme="dark"] & {
-    border-color: ${props => props.$active ? '#60a5fa' : '#4b5563'};
-    background: ${props => props.$active ? '#60a5fa' : '#374151'};
-    color: ${props => props.$active ? '#000000' : '#d1d5db'};
-  }
-
-  &:hover {
-    border-color: #000000;
-
-    [data-theme="dark"] & {
-      border-color: #60a5fa;
-    }
-  }
-`;
-
 const LocationsGrid = styled.div`
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
@@ -917,18 +845,6 @@ const LocationImage = styled.div<{ $bgImage: string }>`
   position: relative;
 `;
 
-const LocationBadge = styled.span`
-  position: absolute;
-  top: 1rem;
-  right: 1rem;
-  background: #10b981;
-  color: white;
-  padding: 0.25rem 0.75rem;
-  border-radius: 0.5rem;
-  font-size: 0.75rem;
-  font-weight: 600;
-`;
-
 const LocationContent = styled.div`
   padding: 1.5rem;
 `;
@@ -951,43 +867,6 @@ const LocationAddress = styled.p`
   display: flex;
   align-items: center;
   gap: 0.5rem;
-
-  [data-theme="dark"] & {
-    color: #9ca3af;
-  }
-`;
-
-const LocationDescription = styled.p`
-  font-size: 1rem;
-  color: #4b5563;
-  line-height: 1.6;
-  margin-bottom: 1.5rem;
-
-  [data-theme="dark"] & {
-    color: #d1d5db;
-  }
-`;
-
-const LocationFooter = styled.div`
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding-top: 1rem;
-  border-top: 1px solid #e5e7eb;
-
-  [data-theme="dark"] & {
-    border-top-color: #374151;
-  }
-`;
-
-const LocationStats = styled.div`
-  display: flex;
-  gap: 1rem;
-`;
-
-const Stat = styled.div`
-  font-size: 0.875rem;
-  color: #6b7280;
 
   [data-theme="dark"] & {
     color: #9ca3af;

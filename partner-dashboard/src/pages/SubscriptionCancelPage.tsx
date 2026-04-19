@@ -4,7 +4,7 @@
  */
 
 import React from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import styled from 'styled-components';
 import { motion } from 'framer-motion';
 import { XCircle, ArrowLeft, RefreshCw } from 'lucide-react';
@@ -99,11 +99,6 @@ const InfoBox = styled.div`
 
 const SubscriptionCancelPage: React.FC = () => {
   const { language } = useLanguage();
-  const location = useLocation();
-
-  // Get orderId for reference
-  const searchParams = new URLSearchParams(location.search);
-  const orderId = searchParams.get('orderId');
 
   return (
     <PageWrapper>

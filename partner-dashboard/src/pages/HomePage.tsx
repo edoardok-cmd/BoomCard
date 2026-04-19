@@ -1,13 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { motion, useScroll, useTransform, AnimatePresence } from 'framer-motion';
-import { useInView } from 'react-intersection-observer';
+import { motion, AnimatePresence } from 'framer-motion';
 import styled from 'styled-components';
 import { Gem, CheckCircle, Tag } from 'lucide-react';
-import Card from '../components/common/Card/Card';
 import Button from '../components/common/Button/Button';
 import Carousel from '../components/common/Carousel/Carousel';
-import OfferCard from '../components/common/OfferCard/OfferCard';
 import HeroBlast from '../components/common/HeroBlast/HeroBlast';
 import FomoBanner from '../components/common/FomoBanner/FomoBanner';
 import ReviewCard from '../components/reviews/ReviewCard';
@@ -16,9 +13,6 @@ import ClientCTA from '../components/common/ClientCTA/ClientCTA';
 import DownloadAppSection from '../components/common/DownloadAppSection/DownloadAppSection';
 import Tooltip from '../components/common/Tooltip/Tooltip';
 import { useLanguage } from '../contexts/LanguageContext';
-import { useAuth } from '../contexts/AuthContext';
-import { useTopEntities } from '../hooks/useOffers';
-import { offerToEntity, type Offer, type Entity } from '../types/entity.types';
 import { usePartnerReviews } from '../hooks/usePartnerReviews';
 import { updateSEO, addOrganizationSchema, addWebSiteSchema, generateHowToSchema, generateFAQSchema } from '../utils/seo';
 import { convertEURToBGN } from '../utils/helpers';
@@ -38,125 +32,6 @@ const SubsectionTitle = styled.h3`
 const BodyText = styled.p`
   font-family: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
   font-weight: 400 !important;
-`;
-
-// Styled components for category cards
-const CategoryCard = styled(motion.div)`
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  width: 100%;
-  max-width: 100%;
-  margin: 0 auto;
-
-  /* Enhanced category cards in vibrant mode */
-  [data-theme="color"] & {
-    position: relative;
-
-    /* Add vibrant glow effect on hover */
-    &:hover {
-      filter: drop-shadow(0 15px 40px rgba(255, 69, 0, 0.4))
-              drop-shadow(0 10px 35px rgba(255, 0, 110, 0.3))
-              drop-shadow(0 8px 30px rgba(0, 212, 255, 0.2));
-    }
-
-    /* Make the card wrapper vibrant */
-    > a > div {
-      background: linear-gradient(135deg, #fff5e1 0%, #ffe4f1 50%, #e8f4ff 100%) !important;
-      border: 3px solid transparent;
-      position: relative;
-      overflow: visible;
-
-      &::before {
-        content: '';
-        position: absolute;
-        inset: -3px;
-        border-radius: 2rem;
-        padding: 3px;
-        background: linear-gradient(135deg, #ff4500 0%, #ff006e 50%, #00d4ff 100%);
-        -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-        -webkit-mask-composite: xor;
-        mask-composite: exclude;
-        pointer-events: none;
-        z-index: -1;
-      }
-    }
-  }
-
-  @media (max-width: 768px) {
-    max-width: 400px;
-  }
-`;
-
-const CategoryImageContainer = styled.div<{ $imageUrl?: string }>`
-  width: 100%;
-  height: 200px;
-  background: ${props => props.$imageUrl ? `url(${props.$imageUrl})` : 'var(--color-background-secondary)'};
-  background-size: cover;
-  background-position: center;
-  overflow: hidden;
-  transition: all 400ms cubic-bezier(0.4, 0, 0.2, 1);
-  border-radius: 0.75rem 0.75rem 0 0;
-  position: relative;
-
-  /* Vibrant mode overlay */
-  [data-theme="color"] & {
-    &::after {
-      content: '';
-      position: absolute;
-      inset: 0;
-      background: linear-gradient(
-        135deg,
-        rgba(255, 69, 0, 0.15) 0%,
-        rgba(255, 0, 110, 0.15) 50%,
-        rgba(0, 212, 255, 0.15) 100%
-      );
-      opacity: 0;
-      transition: opacity 400ms cubic-bezier(0.4, 0, 0.2, 1);
-      pointer-events: none;
-    }
-  }
-
-  ${CategoryCard}:hover & {
-    transform: scale(1.08);
-
-    [data-theme="color"] &::after {
-      opacity: 1;
-    }
-  }
-`;
-
-const CategoryContent = styled.div`
-  padding: 2rem;
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  text-align: center;
-  position: relative;
-  z-index: 1;
-
-  /* Enhanced text in vibrant mode */
-  [data-theme="color"] & {
-    h3 {
-      color: #1a0a2e !important;
-      font-weight: 700 !important;
-    }
-
-    p {
-      color: #6a0572 !important;
-    }
-
-    /* "XX places" count styling */
-    div {
-      color: #8b2fb8 !important;
-      font-weight: 600 !important;
-      opacity: 1 !important;
-    }
-  }
-
-  @media (max-width: 768px) {
-    padding: 1.5rem;
-  }
 `;
 
 const FAQAccordionItem: React.FC<{ question: string; answer: string }> = ({ question, answer }) => {
@@ -282,57 +157,6 @@ const StepCircle = styled.div`
     box-shadow:
       0 8px 30px -5px rgba(255, 69, 0, 0.5),
       0 6px 25px -5px rgba(255, 0, 110, 0.4);
-  }
-`;
-
-const CTABox = styled(motion.div)`
-  max-width: 64rem;
-  margin: 0 auto;
-  text-align: center;
-  border-radius: 1.5rem;
-  padding: 3rem 4rem;
-  background: var(--color-primary);
-  color: var(--color-secondary);
-
-  /* Light mode - elegant gradient CTA */
-  [data-theme="light"] & {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 25%, #f093fb 50%, #4facfe 75%, #00f2fe 100%);
-    background-size: 200% 200%;
-    animation: ctaGradientShift 8s ease infinite;
-    color: #ffffff;
-    border: 3px solid transparent;
-    border-image: linear-gradient(90deg, #667eea, #764ba2, #4facfe, #00f2fe) 1;
-    box-shadow:
-      0 25px 70px -15px rgba(102, 126, 234, 0.5),
-      0 20px 60px -10px rgba(79, 172, 254, 0.4),
-      0 15px 50px -5px rgba(118, 75, 162, 0.3);
-  }
-
-  /* Vibrant mode - explosive gradient CTA */
-  [data-theme="color"] & {
-    background: linear-gradient(135deg, #1a0a2e 0%, #6a0572 25%, #ab2567 50%, #ff006e 75%, #ff4500 100%);
-    background-size: 200% 200%;
-    animation: ctaGradientShift 8s ease infinite;
-    color: #ffffff;
-    border: 3px solid transparent;
-    border-image: linear-gradient(90deg, #ff4500, #ff006e, #00d4ff, #b24bf3) 1;
-    box-shadow:
-      0 25px 70px -15px rgba(255, 69, 0, 0.6),
-      0 20px 60px -10px rgba(255, 0, 110, 0.5),
-      0 15px 50px -5px rgba(139, 47, 184, 0.4);
-  }
-
-  @keyframes ctaGradientShift {
-    0%, 100% { background-position: 0% 50%; }
-    50% { background-position: 100% 50%; }
-  }
-
-  @media (max-width: 768px) {
-    padding: 2.5rem 2rem;
-  }
-
-  @media (max-width: 640px) {
-    padding: 2rem 1.5rem;
   }
 `;
 
@@ -794,25 +618,6 @@ const ToggleOption = styled.button<{ $active: boolean }>`
   }
 `;
 
-const TopOffersGrid = styled.div`
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 2rem;
-  max-width: 1200px;
-  margin: 0 auto;
-
-  @media (max-width: 1024px) {
-    grid-template-columns: repeat(2, 1fr);
-    gap: 1.5rem;
-  }
-
-  @media (max-width: 640px) {
-    grid-template-columns: 1fr;
-    gap: 1.25rem;
-    max-width: 400px;
-  }
-`;
-
 const SectionDivider = styled.div`
   width: 100%;
   height: 1px;
@@ -831,11 +636,7 @@ const SectionDivider = styled.div`
 
 const HomePage: React.FC = () => {
   const { language, t } = useLanguage();
-  const { user } = useAuth();
   const location = useLocation();
-  const { scrollY } = useScroll();
-  const heroOpacity = useTransform(scrollY, [0, 300], [1, 0]);
-  const heroScale = useTransform(scrollY, [0, 300], [1, 0.95]);
   const [billingPeriod, setBillingPeriod] = useState<'monthly' | 'yearly'>('monthly');
   const [subscriptionPlans, setSubscriptionPlans] = useState<Plan[]>([]);
   const [plansError, setPlansError] = useState<string | null>(null);
@@ -867,10 +668,6 @@ const HomePage: React.FC = () => {
       }, 100);
     }
   }, [location.hash]);
-
-  // Fetch top offers from API
-  const { data: topEntitiesData, isLoading: isLoadingOffers } = useTopEntities(6);
-  const topEntities = topEntitiesData || [];
 
   // Fetch reviews from API with overall stats
   const { reviews: reviewsData, loading: loadingReviews, stats: reviewStats, createReview: createReviewMutation, markHelpful: markHelpfulMutation } = usePartnerReviews({
@@ -964,163 +761,6 @@ const HomePage: React.FC = () => {
       },
     ]);
   }, [language]);
-
-  const categories = [
-    {
-      title: t('home.restaurantsBars'),
-      description: t('home.restaurantsBarsDesc'),
-      icon: 'https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=400&h=400&fit=crop',
-      count: 150,
-      path: '/venues/restaurants'
-    },
-    {
-      title: t('home.hotelsSpa'),
-      description: t('home.hotelsSpaDesc'),
-      icon: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=400&h=400&fit=crop',
-      count: 80,
-      path: '/venues/hotels'
-    },
-    {
-      title: t('home.wineries'),
-      description: t('home.wineriesDesc'),
-      icon: 'https://images.unsplash.com/photo-1506377247377-2a5b3b417ebb?w=400&h=400&fit=crop',
-      count: 45,
-      path: '/venues/wineries'
-    },
-    {
-      title: t('home.experiences'),
-      description: t('home.experiencesDesc'),
-      icon: 'https://images.unsplash.com/photo-1533174072545-7a4b6ad7a6c3?w=400&h=400&fit=crop',
-      count: 120,
-      path: '/venues/experiences'
-    }
-  ];
-
-  // Fallback exclusive offers when API data is unavailable
-  const fallbackExclusiveOffers: Offer[] = [
-    {
-      id: 'exc-1',
-      title: 'Shtastliveca Restaurant',
-      titleBg: 'Ресторант Щастливеца',
-      description: 'Traditional Bulgarian cuisine with a modern twist in the heart of Sofia. Famous for its cozy atmosphere.',
-      descriptionBg: 'Традиционна българска кухня с модерен привкус в сърцето на София. Известен с уютната си атмосфера.',
-      category: 'Restaurants',
-      categoryBg: 'Ресторанти',
-      location: language === 'bg' ? 'София, ул. Витоша 18' : 'Sofia, Vitosha Str. 18',
-      discount: 20,
-      originalPrice: 80,
-      discountedPrice: 64,
-      imageUrl: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=600&h=400&fit=crop',
-      partnerName: 'Shtastliveca',
-      rating: 4.7,
-      reviewCount: 1284,
-      workingHours: '10:00 - 23:00',
-      workingHoursBg: '10:00 - 23:00',
-      path: '/offers/exc-1'
-    },
-    {
-      id: 'exc-2',
-      title: 'Lucky Bansko SPA & Relax',
-      titleBg: 'Lucky Bansko SPA & Relax',
-      description: 'Luxury spa hotel with panoramic mountain views, indoor pools, and premium wellness treatments.',
-      descriptionBg: 'Луксозен спа хотел с панорамна гледка към планината, закрити басейни и премиум уелнес процедури.',
-      category: 'Hotels & SPA',
-      categoryBg: 'Хотели и СПА',
-      location: language === 'bg' ? 'Банско' : 'Bansko',
-      discount: 20,
-      originalPrice: 350,
-      discountedPrice: 280,
-      imageUrl: 'https://images.unsplash.com/photo-1571896349842-33c89424de2d?w=600&h=400&fit=crop',
-      partnerName: 'Lucky Bansko',
-      rating: 4.8,
-      reviewCount: 2156,
-      workingHours: '24/7',
-      workingHoursBg: '24/7',
-      path: '/offers/exc-2'
-    },
-    {
-      id: 'exc-3',
-      title: 'Wine & Dine - Todoroff Winery',
-      titleBg: 'Wine & Dine - Тодорови Изби',
-      description: 'Award-winning winery offering guided wine tastings, gourmet dining, and vineyard tours.',
-      descriptionBg: 'Награждавана изба с дегустации, гурме вечери и обиколки на лозята.',
-      category: 'Wineries',
-      categoryBg: 'Винарни',
-      location: language === 'bg' ? 'Брестовица, Пловдив' : 'Brestovitsa, Plovdiv',
-      discount: 15,
-      originalPrice: 120,
-      discountedPrice: 102,
-      imageUrl: 'https://images.unsplash.com/photo-1506377247377-2a5b3b417ebb?w=600&h=400&fit=crop',
-      partnerName: 'Todoroff',
-      rating: 4.6,
-      reviewCount: 876,
-      workingHours: '10:00 - 20:00',
-      workingHoursBg: '10:00 - 20:00',
-      path: '/offers/exc-3'
-    },
-    {
-      id: 'exc-4',
-      title: 'Escape Rooms Sofia',
-      titleBg: 'Ескейп Стаи София',
-      description: 'Top-rated escape rooms with immersive themes. Team building and birthday parties available.',
-      descriptionBg: 'Топ ескейп стаи с потапящи теми. Тийм билдинг и рождени дни.',
-      category: 'Experiences',
-      categoryBg: 'Изживявания',
-      location: language === 'bg' ? 'София, Младост 1А' : 'Sofia, Mladost 1A',
-      discount: 20,
-      originalPrice: 60,
-      discountedPrice: 48,
-      imageUrl: 'https://images.unsplash.com/photo-1533174072545-7a4b6ad7a6c3?w=600&h=400&fit=crop',
-      partnerName: 'Escape Rooms Sofia',
-      rating: 4.9,
-      reviewCount: 534,
-      workingHours: '12:00 - 22:00',
-      workingHoursBg: '12:00 - 22:00',
-      path: '/offers/exc-4'
-    },
-    {
-      id: 'exc-5',
-      title: 'Sense Hotel Sofia',
-      titleBg: 'Хотел Сенс София',
-      description: 'Boutique hotel in downtown Sofia with rooftop bar, city views, and exclusive member perks.',
-      descriptionBg: 'Бутиков хотел в центъра на София с руфтоп бар, градска гледка и ексклузивни предимства.',
-      category: 'Hotels & SPA',
-      categoryBg: 'Хотели и СПА',
-      location: language === 'bg' ? 'София, ул. Цар Освободител' : 'Sofia, Tsar Osvoboditel Str.',
-      discount: 18,
-      originalPrice: 280,
-      discountedPrice: 230,
-      imageUrl: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=600&h=400&fit=crop',
-      partnerName: 'Sense Hotel',
-      rating: 4.5,
-      reviewCount: 1023,
-      workingHours: '24/7',
-      workingHoursBg: '24/7',
-      path: '/offers/exc-5'
-    },
-    {
-      id: 'exc-6',
-      title: 'Happy Bar & Grill Varna',
-      titleBg: 'Happy Bar & Grill Варна',
-      description: 'Popular seaside restaurant chain with international menu, fresh seafood, and sea views.',
-      descriptionBg: 'Популярна верига крайморски ресторанти с международно меню, пресни морски дарове и морска гледка.',
-      category: 'Restaurants',
-      categoryBg: 'Ресторанти',
-      location: language === 'bg' ? 'Варна, Морска градина' : 'Varna, Sea Garden',
-      discount: 20,
-      originalPrice: 70,
-      discountedPrice: 56,
-      imageUrl: 'https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=600&h=400&fit=crop',
-      partnerName: 'Happy',
-      rating: 4.4,
-      reviewCount: 3412,
-      workingHours: '09:00 - 00:00',
-      workingHoursBg: '09:00 - 00:00',
-      path: '/offers/exc-6'
-    }
-  ];
-
-  const fallbackEntities = fallbackExclusiveOffers.map(offerToEntity);
 
   // Reviews are now fetched from API via usePartnerReviews hook above
 

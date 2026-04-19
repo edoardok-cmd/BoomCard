@@ -1,9 +1,7 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import styled from 'styled-components';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { useLanguage } from '../contexts/LanguageContext';
-import { useAuth } from '../contexts/AuthContext';
 import {
   Gift,
   Award,
@@ -17,7 +15,6 @@ import {
   ArrowRight,
   Calendar,
   ShoppingBag,
-  Coffee,
   Sparkles,
 } from 'lucide-react';
 import Button from '../components/common/Button/Button';
@@ -174,15 +171,13 @@ interface Reward {
 }
 
 const RewardsPage: React.FC = () => {
-  const navigate = useNavigate();
   const { language } = useLanguage();
-  const { user } = useAuth();
   const t = content[language as keyof typeof content];
 
   // Mock data
   const [pointsBalance, setPointsBalance] = useState(1250);
-  const [currentTier, setCurrentTier] = useState<'bronze' | 'silver' | 'gold' | 'platinum'>('silver');
-  const [tierProgress, setTierProgress] = useState(65); // Percentage to next tier
+  const [currentTier] = useState<'bronze' | 'silver' | 'gold' | 'platinum'>('silver');
+  const [tierProgress] = useState(65); // Percentage to next tier
 
   const [pointsHistory, setPointsHistory] = useState<PointsActivity[]>([
     {
@@ -951,11 +946,6 @@ const LockedOverlay = styled.div`
   color: white;
   z-index: 10;
   backdrop-filter: blur(10px);
-`;
-
-const RewardIcon = styled.div`
-  font-size: 3rem;
-  margin-bottom: 1rem;
 `;
 
 const RewardContent = styled.div`

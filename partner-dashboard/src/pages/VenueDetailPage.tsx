@@ -1,9 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, Link, Navigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
 import styled from 'styled-components';
 import { useLanguage } from '../contexts/LanguageContext';
-import { useAuth } from '../contexts/AuthContext';
 import ImageGallery from '../components/common/ImageGallery/ImageGallery';
 import Button from '../components/common/Button/Button';
 import Badge from '../components/common/Badge/Badge';
@@ -12,7 +10,6 @@ import QRCode from '../components/common/QRCode/QRCode';
 import FavoriteButton from '../components/common/FavoriteButton/FavoriteButton';
 import ShareButton from '../components/common/ShareButton/ShareButton';
 import { useOffer } from '../hooks/useOffers';
-import { useUserPlan } from '../hooks/useBilling';
 import { offersService } from '../services/offers.service';
 import toast from 'react-hot-toast';
 import { convertBGNToEUR } from '../utils/helpers';
@@ -667,14 +664,11 @@ const MenuModal: React.FC<MenuModalProps> = ({ images, title, onClose }) => {
 const VenueDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const { language, t } = useLanguage();
-  const { isAuthenticated } = useAuth();
   const [isActivating, setIsActivating] = useState(false);
   const [activationCode, setActivationCode] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
 
   const { data: offerDetails, isLoading, isError } = useOffer(id);
-  const { data: planData } = useUserPlan();
-  const userPlan = planData?.plan ?? null;
 
   if (isLoading) {
     return (

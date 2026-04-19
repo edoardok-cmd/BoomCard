@@ -86,7 +86,7 @@ const AdminMenuApprovalsPage: React.FC = () => {
     try {
       const list = await venuesService.adminListPendingMenus();
       setItems(list);
-    } catch (err) {
+    } catch {
       toast.error(t.loadError);
     } finally {
       setLoading(false);

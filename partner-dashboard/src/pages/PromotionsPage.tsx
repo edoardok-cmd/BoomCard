@@ -175,65 +175,6 @@ const SectionTitle = styled.h2`
   }
 `;
 
-const FilterBar = styled.div`
-  display: flex;
-  gap: 1rem;
-  align-items: center;
-  flex-wrap: wrap;
-`;
-
-const FilterTabs = styled.div`
-  display: flex;
-  gap: 0.5rem;
-  background: white;
-  padding: 0.25rem;
-  border-radius: 0.5rem;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-
-  [data-theme="dark"] & {
-    background: #1f2937;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
-  }
-
-  [data-theme="color"] & {
-    background: white;
-  }
-`;
-
-const TabButton = styled.button<{ $active: boolean }>`
-  padding: 0.5rem 1rem;
-  border: none;
-  border-radius: 0.375rem;
-  background: ${props => props.$active ? '#000000' : 'transparent'};
-  color: ${props => props.$active ? 'white' : '#6b7280'};
-  font-weight: 500;
-  font-size: 0.875rem;
-  cursor: pointer;
-  transition: all 0.2s;
-
-  &:hover {
-    background: ${props => props.$active ? '#000000' : '#f3f4f6'};
-  }
-
-  [data-theme="dark"] & {
-    background: ${props => props.$active ? '#3b82f6' : 'transparent'};
-    color: ${props => props.$active ? 'white' : '#9ca3af'};
-
-    &:hover {
-      background: ${props => props.$active ? '#3b82f6' : '#374151'};
-    }
-  }
-
-  [data-theme="color"] & {
-    background: ${props => props.$active ? '#ff006e' : 'transparent'};
-    color: ${props => props.$active ? 'white' : '#6b7280'};
-
-    &:hover {
-      background: ${props => props.$active ? '#ff006e' : '#f3f4f6'};
-    }
-  }
-`;
-
 const OffersGrid = styled.div`
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));

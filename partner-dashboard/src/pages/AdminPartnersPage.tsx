@@ -10,7 +10,7 @@ import {
   PartnerStatus,
   Partner,
 } from '../services/partners.service';
-import { partnerTypesService, PartnerType } from '../services/partnerTypes.service';
+import { partnerTypesService } from '../services/partnerTypes.service';
 import { toast } from 'react-hot-toast';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getAccessToken } from '../lib/auth/session';
@@ -561,10 +561,6 @@ const DangerButton = styled.button`
 `;
 
 // ─── Autocomplete ─────────────────────────────────────────────────────────────
-
-const AutocompleteWrapper = styled.div`
-  position: relative;
-`;
 
 const AutocompleteDropdown = styled.ul<{ $top: number; $left: number; $width: number }>`
   position: fixed;

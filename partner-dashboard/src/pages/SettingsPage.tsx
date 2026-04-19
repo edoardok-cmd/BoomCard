@@ -1,10 +1,9 @@
 import React, { useState } from 'react';
 import styled from 'styled-components';
 import { motion } from 'framer-motion';
-import { Bell, Mail, Smartphone, Globe, Lock, CreditCard, Trash2, Save } from 'lucide-react';
+import { Bell, Globe, Lock, Trash2 } from 'lucide-react';
 import { Button } from '../components/common/Button/Button';
 import { useLanguage } from '../contexts/LanguageContext';
-import { useAuth } from '../contexts/AuthContext';
 import { apiService } from '../services/api.service';
 import toast from 'react-hot-toast';
 import NotificationPreferences from '../components/common/NotificationPreferences/NotificationPreferences';
@@ -277,7 +276,6 @@ interface PrivacySettings {
 
 const SettingsPage: React.FC = () => {
   const { language } = useLanguage();
-  const { user } = useAuth();
 
   const [notifications, setNotifications] = useState<NotificationSettings>({
     emailNotifications: true,

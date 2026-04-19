@@ -12,11 +12,8 @@ import {
   CreditCard,
   Bell,
   QrCode,
-  Globe,
-  TrendingUp,
   Target,
   MessageSquare,
-  Calendar,
   Settings,
   ArrowRight,
   Check

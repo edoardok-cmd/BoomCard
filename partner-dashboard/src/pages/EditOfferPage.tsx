@@ -159,7 +159,7 @@ const EditOfferPage: React.FC = () => {
         });
 
         setLoading(false);
-      } catch (error) {
+      } catch {
         toast.error(t.error);
         setLoading(false);
       }
@@ -833,20 +833,6 @@ const TextArea = styled.textarea<{ error?: boolean }>`
   &::placeholder {
     color: #9ca3af;
   }
-`;
-
-const InputWithSuffix = styled.div`
-  position: relative;
-`;
-
-const Suffix = styled.span`
-  position: absolute;
-  right: 1rem;
-  top: 50%;
-  transform: translateY(-50%);
-  color: #6b7280;
-  font-weight: 600;
-  pointer-events: none;
 `;
 
 const ErrorText = styled.span`

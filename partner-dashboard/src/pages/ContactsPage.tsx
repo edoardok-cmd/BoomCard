@@ -1,5 +1,5 @@
 import React from 'react';
-import GenericPage, { ContentBlock } from '../components/templates/GenericPage';
+import GenericPage from '../components/templates/GenericPage';
 import { useLanguage } from '../contexts/LanguageContext';
 import styled from 'styled-components';
 

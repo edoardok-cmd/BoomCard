@@ -135,12 +135,6 @@ const ActiveBadge = styled.span<{ $active: boolean }>`
   color: ${({ $active }) => ($active ? '#166534' : '#6b7280')};
 `;
 
-const PartnerCount = styled.span`
-  font-weight: 700;
-  font-size: 1rem;
-  color: var(--color-text-primary);
-`;
-
 const ActionButtons = styled.div`
   display: flex;
   gap: 0.5rem;
@@ -452,7 +446,7 @@ interface AccessState {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function AdminPartnerTypesPage() {
-  const { language } = useLanguage();
+  useLanguage();
   const queryClient = useQueryClient();
 
   const [showModal, setShowModal] = useState(false);

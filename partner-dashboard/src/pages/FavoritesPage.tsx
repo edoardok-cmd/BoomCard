@@ -7,7 +7,6 @@ import { useFavorites } from '../contexts/FavoritesContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import OfferCard from '../components/common/OfferCard/OfferCard';
 import Button from '../components/common/Button/Button';
-import type { Entity } from '../types/entity.types';
 
 const PageContainer = styled.div`
   min-height: 100vh;
@@ -198,7 +197,7 @@ const SortButton = styled.button<{ $active: boolean }>`
 type SortType = 'recent' | 'discount' | 'price-low' | 'price-high';
 
 const FavoritesPage: React.FC = () => {
-  const { language, t } = useLanguage();
+  const { t } = useLanguage();
   const [sortBy, setSortBy] = useState<SortType>('recent');
   const { favorites, clearFavorites } = useFavorites();
 

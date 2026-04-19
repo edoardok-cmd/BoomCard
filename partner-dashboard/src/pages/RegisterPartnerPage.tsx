@@ -49,13 +49,6 @@ const Logo = styled(Link)`
   text-decoration: none;
 `;
 
-const LogoText = styled.span`
-  font-size: 2rem;
-  font-weight: 700;
-  color: var(--color-text-primary);
-  transition: color var(--transition-normal);
-`;
-
 const Title = styled.h1`
   font-size: 1.875rem;
   font-weight: 700;

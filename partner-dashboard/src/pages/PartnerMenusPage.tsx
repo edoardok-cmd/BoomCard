@@ -92,7 +92,7 @@ const PartnerMenusPage: React.FC = () => {
       const partner = await partnersService.getCurrentPartner();
       const v: PartnerVenue[] = Array.isArray((partner as any)?.venues) ? (partner as any).venues : [];
       setVenues(v);
-    } catch (err: any) {
+    } catch {
       toast.error('Failed to load venues');
     } finally {
       setLoading(false);

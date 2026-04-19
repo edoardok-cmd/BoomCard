@@ -640,8 +640,7 @@ const AdminPartnerOnboardingPage: React.FC = () => {
         internalNotes: form.internalNotes || undefined,
       };
 
-      const response = await apiService.post<any>('/partners/onboard', payload);
-      const partner = (response as any).data;
+      await apiService.post<any>('/partners/onboard', payload);
       toast.success(`Партньорът "${form.businessName}" беше създаден успешно!`);
       navigate(`/admin/partners`);
     } catch (err: any) {

@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, useSearchParams, Link } from 'react-router-dom';
+import { useSearchParams, Link } from 'react-router-dom';
 import styled from 'styled-components';
 import { motion } from 'framer-motion';
-import { CheckCircle2, XCircle, Mail, Loader } from 'lucide-react';
+import { CheckCircle2, XCircle, Loader } from 'lucide-react';
 import { Button } from '../components/common/Button/Button';
 import { useLanguage } from '../contexts/LanguageContext';
 import toast from 'react-hot-toast';
@@ -148,7 +148,6 @@ type VerificationStatus = 'loading' | 'success' | 'error' | 'expired';
 
 const VerifyEmailPage: React.FC = () => {
   const { language } = useLanguage();
-  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const token = searchParams.get('token');
   const email = searchParams.get('email');

@@ -1,17 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import styled from 'styled-components';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import Button from '../components/common/Button/Button';
 import Badge from '../components/common/Badge/Badge';
-import { Check, X, Settings, ExternalLink, Loader } from 'lucide-react';
+import { Check, X, ExternalLink, Loader } from 'lucide-react';
 import {
   useIntegrationsOverview,
   useConnectIntegration,
-  useDisconnectIntegration,
-  useTestIntegration,
-  useSyncIntegration,
 } from '../hooks/useIntegrations';
 import type { Integration as ApiIntegration, PartnerIntegration } from '../services/integrations.service';
 
@@ -424,23 +421,6 @@ const Input = styled.input`
   }
 `;
 
-const Select = styled.select`
-  width: 100%;
-  padding: 0.75rem 1rem;
-  border: 2px solid var(--color-border);
-  border-radius: 0.5rem;
-  font-size: 0.9375rem;
-  background: var(--color-background);
-  color: var(--color-text-primary);
-  cursor: pointer;
-  transition: all 0.2s;
-
-  &:focus {
-    outline: none;
-    border-color: var(--color-primary);
-  }
-`;
-
 const HelpText = styled.p`
   font-size: 0.8125rem;
   color: var(--color-text-secondary);
@@ -498,18 +478,6 @@ const WebhookLabel = styled.div`
   margin-bottom: 0.5rem;
 `;
 
-const WebhookUrl = styled.code`
-  display: block;
-  padding: 0.75rem;
-  background: var(--color-background);
-  border: 1px solid var(--color-border);
-  border-radius: 0.375rem;
-  font-size: 0.8125rem;
-  color: var(--color-text-primary);
-  word-break: break-all;
-  font-family: 'Monaco', 'Courier New', monospace;
-`;
-
 // Map API integration to display format with icon
 const getIntegrationIcon = (name: string): string => {
   const iconMap: Record<string, string> = {
@@ -554,8 +522,6 @@ const IntegrationsPage: React.FC = () => {
 
   // Mutations
   const connectMutation = useConnectIntegration();
-  const disconnectMutation = useDisconnectIntegration();
-  const testMutation = useTestIntegration();
 
   // Handle connection with real API
   const handleConnect = async () => {
@@ -577,32 +543,8 @@ const IntegrationsPage: React.FC = () => {
         setIsModalOpen(false);
         setSelectedIntegration(null);
       }, 1500);
-    } catch (error) {
+    } catch {
       setConnectionStatus('disconnected');
-    }
-  };
-
-  // Handle disconnect
-  const handleDisconnect = async (partnerIntegrationId: string) => {
-    if (!window.confirm('Are you sure you want to disconnect this integration?')) {
-      return;
-    }
-
-    try {
-      await disconnectMutation.mutateAsync(partnerIntegrationId);
-      setIsModalOpen(false);
-      setSelectedIntegration(null);
-    } catch (error) {
-      // Error is handled by the mutation
-    }
-  };
-
-  // Handle test connection
-  const handleTest = async (partnerIntegrationId: string) => {
-    try {
-      await testMutation.mutateAsync(partnerIntegrationId);
-    } catch (error) {
-      // Error is handled by the mutation
     }
   };
 
@@ -754,7 +696,6 @@ const IntegrationsPage: React.FC = () => {
             <IntegrationsGrid>
               {filteredIntegrations.map((integration, index) => {
                 const isConnected = isIntegrationConnected(integration, connected);
-                const icon = getIntegrationIcon(integration.name);
 
                 return (
                   <IntegrationCard

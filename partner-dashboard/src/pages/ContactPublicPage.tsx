@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import styled from 'styled-components';
 import { motion } from 'framer-motion';
-import { Mail, MapPin, Phone, Send, CheckCircle } from 'lucide-react';
+import { Mail, MapPin, Phone, Send } from 'lucide-react';
 import axios from 'axios';
 import { useLanguage } from '../contexts/LanguageContext';
 import toast from 'react-hot-toast';

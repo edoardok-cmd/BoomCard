@@ -149,19 +149,6 @@ const FilterSelect = styled.select`
   }
 `;
 
-const FilterInput = styled.input`
-  padding: 0.75rem;
-  border: 2px solid #e5e7eb;
-  border-radius: 0.5rem;
-  font-size: 0.9375rem;
-  color: #111827;
-
-  &:focus {
-    outline: none;
-    border-color: #000000;
-  }
-`;
-
 const ActiveFilters = styled.div`
   display: flex;
   gap: 0.5rem;
