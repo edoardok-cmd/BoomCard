@@ -25,6 +25,25 @@ export interface CashbackDashboardStats {
   activePartners: number;
 }
 
+export interface CashbackRateRow {
+  id: string;
+  discountStep: number;
+  basic: number;
+  premium: number;
+  effectiveFrom: string;
+  createdBy: string | null;
+  notes: string | null;
+  createdAt: string;
+}
+
+export interface CurrentCashbackRate {
+  discountStep: number;
+  basic: number;
+  premium: number;
+  effectiveFrom: string | null;
+  source: 'db' | 'default';
+}
+
 class AdminCashbackService {
   private readonly base = '/admin/cashback';
 
@@ -50,6 +69,24 @@ class AdminCashbackService {
 
   async sendReminder(partnerId: string, month?: string): Promise<void> {
     await apiService.post(`${this.base}/${partnerId}/remind`, { month });
+  }
+
+  async getRates(): Promise<CashbackRateRow[]> {
+    const res = await apiService.get<{ success: boolean; data: CashbackRateRow[] }>(`${this.base}/rates`);
+    return (res as any).data ?? [];
+  }
+
+  async getCurrentRates(): Promise<CurrentCashbackRate[]> {
+    const res = await apiService.get<{ success: boolean; data: CurrentCashbackRate[] }>(`${this.base}/rates/current`);
+    return (res as any).data ?? [];
+  }
+
+  async createRates(params: {
+    rates: Array<{ discountStep: number; basic: number; premium: number }>;
+    effectiveFrom?: string;
+    notes?: string;
+  }): Promise<void> {
+    await apiService.post(`${this.base}/rates`, params);
   }
 }
 

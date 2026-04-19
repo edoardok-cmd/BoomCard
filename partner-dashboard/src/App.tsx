@@ -131,6 +131,7 @@ const AdminPartnerTypesPage = lazy(() => import('./pages/AdminPartnerTypesPage')
 const AdminScanReviewPage = lazy(() => import('./pages/AdminScanReviewPage'));
 const AdminBulkImportPage = lazy(() => import('./pages/AdminBulkImportPage'));
 const AdminCashbackPage = lazy(() => import('./pages/AdminCashbackPage'));
+const AdminCashbackRatesPage = lazy(() => import('./pages/AdminCashbackRatesPage'));
 const AdminTopDiscountsPage = lazy(() => import('./pages/AdminTopDiscountsPage'));
 const AdminPartnerOnboardingPage = lazy(() => import('./pages/AdminPartnerOnboardingPage'));
 
@@ -467,6 +468,14 @@ function App() {
                       element={
                         <ProtectedRoute requiredRole="admin">
                           <AdminCashbackPage />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="admin/cashback/rates"
+                      element={
+                        <ProtectedRoute requiredRole="admin">
+                          <AdminCashbackRatesPage />
                         </ProtectedRoute>
                       }
                     />
