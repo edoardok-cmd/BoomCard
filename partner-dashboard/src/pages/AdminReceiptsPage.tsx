@@ -403,7 +403,7 @@ export const AdminReceiptsPage: React.FC = () => {
         sortBy: 'createdAt',
         sortOrder: 'desc',
       });
-      const data: Receipt[] = (response as any)?.data ?? [];
+      const data: Receipt[] = response?.data ?? [];
       setReceipts(data);
     } catch (err) {
       console.error('Failed to fetch receipts:', err);
@@ -427,8 +427,9 @@ export const AdminReceiptsPage: React.FC = () => {
       notify(`Approved: ${receipt.merchantName || receipt.id}`);
       setSelectedIds(prev => { const next = new Set(prev); next.delete(receipt.id); return next; });
       fetchReceipts();
-    } catch (err: any) {
-      notify(err?.response?.data?.message || err?.message || 'Failed to approve', false);
+    } catch (err) {
+      const axiosErr = err as { response?: { data?: { message?: string } }; message?: string };
+      notify(axiosErr?.response?.data?.message || axiosErr?.message || 'Failed to approve', false);
     } finally {
       setProcessingId(null);
     }
@@ -448,8 +449,9 @@ export const AdminReceiptsPage: React.FC = () => {
       setRejectReason('');
       setRejectNotes('');
       fetchReceipts();
-    } catch (err: any) {
-      notify(err?.response?.data?.message || err?.message || 'Failed to reject', false);
+    } catch (err) {
+      const axiosErr = err as { response?: { data?: { message?: string } }; message?: string };
+      notify(axiosErr?.response?.data?.message || axiosErr?.message || 'Failed to reject', false);
     } finally {
       setProcessingId(null);
     }
@@ -497,8 +499,9 @@ export const AdminReceiptsPage: React.FC = () => {
       notify(`Approved ${ids.length} receipt(s)`);
       setSelectedIds(new Set());
       fetchReceipts();
-    } catch (err: any) {
-      notify(err?.response?.data?.message || 'Bulk approve failed', false);
+    } catch (err) {
+      const axiosErr = err as { response?: { data?: { message?: string } } };
+      notify(axiosErr?.response?.data?.message || 'Bulk approve failed', false);
     } finally {
       setBulkProcessing(false);
     }
@@ -515,8 +518,9 @@ export const AdminReceiptsPage: React.FC = () => {
       setBulkRejectModal(false);
       setBulkRejectReason('');
       fetchReceipts();
-    } catch (err: any) {
-      notify(err?.response?.data?.message || 'Bulk reject failed', false);
+    } catch (err) {
+      const axiosErr = err as { response?: { data?: { message?: string } } };
+      notify(axiosErr?.response?.data?.message || 'Bulk reject failed', false);
     } finally {
       setBulkProcessing(false);
     }
@@ -589,7 +593,7 @@ export const AdminReceiptsPage: React.FC = () => {
           ReceiptStatus.REJECTED,
           ReceiptStatus.EXPIRED,
         ] as FilterType[]).map(s => (
-          <FilterButton key={s} $active={filter === s as any} onClick={() => { setFilter(s as any); setSelectedIds(new Set()); }}>
+          <FilterButton key={s} $active={filter === s} onClick={() => { setFilter(s); setSelectedIds(new Set()); }}>
             {s === 'all' ? c.all
               : s === ReceiptStatus.PENDING ? c.pending
               : s === ReceiptStatus.MANUAL_REVIEW ? c.manualReview

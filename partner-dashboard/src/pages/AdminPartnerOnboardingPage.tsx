@@ -484,11 +484,11 @@ const AdminPartnerOnboardingPage: React.FC = () => {
 
   useEffect(() => {
     apiService.get<{ data: PartnerType[] }>('/admin/partner-types')
-      .then(res => setPartnerTypes((res as any).data ?? []))
+      .then(res => setPartnerTypes(res.data ?? []))
       .catch(() => {/* use fallback labels */});
   }, []);
 
-  const set = (key: keyof FormData, value: any) => {
+  const set = <K extends keyof FormData>(key: K, value: FormData[K]) => {
     setForm(prev => {
       const next = { ...prev, [key]: value };
       if (key === 'partnerTypeId') {
@@ -640,12 +640,13 @@ const AdminPartnerOnboardingPage: React.FC = () => {
         internalNotes: form.internalNotes || undefined,
       };
 
-      await apiService.post<any>('/partners/onboard', payload);
+      await apiService.post('/partners/onboard', payload);
       toast.success(`Партньорът "${form.businessName}" беше създаден успешно!`);
       navigate(`/admin/partners`);
-    } catch (err: any) {
-      const rawErr = err?.response?.data?.error;
-      const msg = (typeof rawErr === 'string' ? rawErr : rawErr?.message) || err?.message || 'Грешка при създаване на партньор';
+    } catch (err) {
+      const axiosErr = err as { response?: { data?: { error?: string | { message?: string } } }; message?: string };
+      const rawErr = axiosErr?.response?.data?.error;
+      const msg = (typeof rawErr === 'string' ? rawErr : rawErr?.message) || axiosErr?.message || 'Грешка при създаване на партньор';
       toast.error(msg);
     } finally {
       setSubmitting(false);

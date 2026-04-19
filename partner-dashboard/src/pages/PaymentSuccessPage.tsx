@@ -5,7 +5,7 @@
 
 import { useEffect, useState } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
-import { paymentService } from '../services/payment.service';
+import { paymentService, type PaymentStatusResponse } from '../services/payment.service';
 import { CheckCircle, XCircle, Loader2 } from 'lucide-react';
 
 type PaymentState = 'loading' | 'success' | 'failed' | 'error';
@@ -15,7 +15,7 @@ export function PaymentSuccessPage() {
   const orderId = searchParams.get('orderId');
 
   const [state, setState] = useState<PaymentState>('loading');
-  const [paymentData, setPaymentData] = useState<any>(null);
+  const [paymentData, setPaymentData] = useState<PaymentStatusResponse['data'] | null>(null);
   const [error, setError] = useState<string>('');
 
   useEffect(() => {
@@ -41,10 +41,10 @@ export function PaymentSuccessPage() {
           setState('error');
           setError('Payment status unclear. Please contact support.');
         }
-      } catch (err: any) {
+      } catch (err) {
         console.error('Payment verification error:', err);
         setState('error');
-        setError(err.message || 'Failed to verify payment. Please contact support.');
+        setError(err instanceof Error ? err.message : 'Failed to verify payment. Please contact support.');
       }
     };
 

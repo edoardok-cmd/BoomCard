@@ -680,9 +680,9 @@ export const AdminScanReviewPage: React.FC = () => {
       setCurrentScan(null);
       setReviewNotes('');
       setVerifiedAmount('');
-    } catch (error: any) {
+    } catch (error) {
       console.error(`Error ${modalMode}ing scan:`, error);
-      alert(error?.message || `Failed to ${modalMode} scan. Please try again.`);
+      alert(error instanceof Error ? error.message : `Failed to ${modalMode} scan. Please try again.`);
     }
   };
 
@@ -714,9 +714,9 @@ export const AdminScanReviewPage: React.FC = () => {
       await fetchScans();
       await fetchStats();
       setSelectedScans(new Set());
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error bulk approving:', error);
-      alert(error?.message || 'Failed to approve scans. Please try again.');
+      alert(error instanceof Error ? error.message : 'Failed to approve scans. Please try again.');
     }
   };
 
@@ -747,9 +747,9 @@ export const AdminScanReviewPage: React.FC = () => {
       await fetchScans();
       await fetchStats();
       setSelectedScans(new Set());
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error bulk rejecting:', error);
-      alert(error?.message || 'Failed to reject scans. Please try again.');
+      alert(error instanceof Error ? error.message : 'Failed to reject scans. Please try again.');
     }
   };
 

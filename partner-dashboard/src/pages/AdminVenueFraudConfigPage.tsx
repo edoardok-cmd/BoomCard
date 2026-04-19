@@ -435,7 +435,7 @@ export const AdminVenueFraudConfigPage: React.FC = () => {
         step={step}
         min={min}
         max={max}
-        value={(formData as any)[field]}
+        value={(formData as Record<string, unknown>)[field] as number}
         onChange={e => handleNumberChange(field, e.target.value)}
       />
     </FormRow>
@@ -450,7 +450,7 @@ export const AdminVenueFraudConfigPage: React.FC = () => {
       <FormLabel>{language === 'bg' ? labelBg : label}</FormLabel>
       <FormCheckbox
         type="checkbox"
-        checked={(formData as any)[field]}
+        checked={(formData as Record<string, unknown>)[field] as boolean}
         onChange={e => handleCheckboxChange(field, e.target.checked)}
       />
     </FormRow>

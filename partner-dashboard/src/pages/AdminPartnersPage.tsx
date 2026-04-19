@@ -1253,7 +1253,7 @@ const AdminPartnersPage: React.FC = () => {
     queryKey: ['admin-partners', search, statusFilter],
     queryFn: () => partnersService.getPartners({
       search: search || undefined,
-      status: statusFilter as any || undefined,
+      status: (statusFilter as 'new' | 'vip' | 'exclusive' | 'regular') || undefined,
       limit: 100,
     }),
   });
@@ -1268,8 +1268,9 @@ const AdminPartnersPage: React.FC = () => {
       setCreateCategories([]);
       setCreateLocations([]);
     },
-    onError: (err: any) => {
-      toast.error(err?.response?.data?.error || (language === 'bg' ? 'Грешка при създаването' : 'Failed to create partner'));
+    onError: (err: unknown) => {
+      const axiosErr = err as { response?: { data?: { error?: string } } };
+      toast.error(axiosErr?.response?.data?.error || (language === 'bg' ? 'Грешка при създаването' : 'Failed to create partner'));
     },
   });
 
@@ -1281,8 +1282,9 @@ const AdminPartnersPage: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ['admin-partners'] });
       setEditingPartner(null);
     },
-    onError: (err: any) => {
-      toast.error(err?.response?.data?.error || (language === 'bg' ? 'Грешка при обновяването' : 'Failed to update partner'));
+    onError: (err: unknown) => {
+      const axiosErr = err as { response?: { data?: { error?: string } } };
+      toast.error(axiosErr?.response?.data?.error || (language === 'bg' ? 'Грешка при обновяването' : 'Failed to update partner'));
     },
   });
 
@@ -1299,8 +1301,9 @@ const AdminPartnersPage: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ['admin-partners'] });
       setReviewPartner(null);
     },
-    onError: (err: any) => {
-      toast.error(err?.response?.data?.error || (language === 'bg' ? 'Грешка при одобряване' : 'Failed to approve changes'));
+    onError: (err: unknown) => {
+      const axiosErr = err as { response?: { data?: { error?: string } } };
+      toast.error(axiosErr?.response?.data?.error || (language === 'bg' ? 'Грешка при одобряване' : 'Failed to approve changes'));
     },
   });
 
@@ -1317,8 +1320,9 @@ const AdminPartnersPage: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ['admin-partners'] });
       setReviewPartner(null);
     },
-    onError: (err: any) => {
-      toast.error(err?.response?.data?.error || (language === 'bg' ? 'Грешка при отхвърляне' : 'Failed to reject changes'));
+    onError: (err: unknown) => {
+      const axiosErr = err as { response?: { data?: { error?: string } } };
+      toast.error(axiosErr?.response?.data?.error || (language === 'bg' ? 'Грешка при отхвърляне' : 'Failed to reject changes'));
     },
   });
 
@@ -1416,7 +1420,7 @@ const AdminPartnersPage: React.FC = () => {
         partnerTypeId: editForm.partnerTypeId || undefined,
         discountRate: isNaN(rate) ? undefined : rate,
         status: editForm.status,
-      } as any,
+      },
     });
   };
 
@@ -1483,8 +1487,8 @@ const AdminPartnersPage: React.FC = () => {
       toast.success(language === 'bg' ? `Обектът "${venueForm.name}" е създаден!` : `Venue "${venueForm.name}" created!`);
       setVenuePartner(null);
       queryClient.invalidateQueries({ queryKey: ['admin-partners'] });
-    } catch (err: any) {
-      toast.error(err?.message || 'Грешка при създаване на обект');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Грешка при създаване на обект');
     } finally {
       setVenueSubmitting(false);
     }
@@ -1550,8 +1554,8 @@ const AdminPartnersPage: React.FC = () => {
       toast.success(language === 'bg' ? `Обектът "${editVenueForm.name}" е обновен!` : `Venue "${editVenueForm.name}" updated!`);
       setEditVenuePartner(null);
       queryClient.invalidateQueries({ queryKey: ['admin-partners'] });
-    } catch (err: any) {
-      toast.error(err?.message || 'Грешка при обновяване на обект');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Грешка при обновяване на обект');
     } finally {
       setEditVenueSubmitting(false);
     }
@@ -1572,8 +1576,8 @@ const AdminPartnersPage: React.FC = () => {
       toast.success(language === 'bg' ? `Обектът "${editVenueForm.name}" е изтрит!` : `Venue "${editVenueForm.name}" deleted!`);
       setEditVenuePartner(null);
       queryClient.invalidateQueries({ queryKey: ['admin-partners'] });
-    } catch (err: any) {
-      toast.error(err?.message || 'Грешка при изтриване на обект');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Грешка при изтриване на обект');
       setDeleteVenueConfirm(false);
     } finally {
       setDeletingVenue(false);
@@ -1617,8 +1621,8 @@ const AdminPartnersPage: React.FC = () => {
         ? `Качени ${result.uploaded} снимки на менюто`
         : `Uploaded ${result.uploaded} menu image(s)`);
       setMenuFiles([]);
-    } catch (err: any) {
-      toast.error(err?.message || (language === 'bg' ? 'Грешка при качване' : 'Upload failed'));
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : (language === 'bg' ? 'Грешка при качване' : 'Upload failed'));
     } finally {
       setMenuUploading(false);
     }
@@ -1633,8 +1637,8 @@ const AdminPartnersPage: React.FC = () => {
     try {
       await bulkImportService.clearVenueMenu(menuVenueId);
       toast.success(language === 'bg' ? 'Менюто е изчистено' : 'Menu cleared');
-    } catch (err: any) {
-      toast.error(err?.message || (language === 'bg' ? 'Грешка при изчистване' : 'Clear failed'));
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : (language === 'bg' ? 'Грешка при изчистване' : 'Clear failed'));
     } finally {
       setMenuUploading(false);
     }
@@ -2361,7 +2365,7 @@ const AdminPartnersPage: React.FC = () => {
                     <tbody>
                       {changedKeys.map(key => {
                         const label = fieldLabels[key] || key;
-                        const currentVal = String((reviewPartner as any)[key] ?? '—');
+                        const currentVal = String((reviewPartner as unknown as Record<string, unknown>)[key] ?? '—');
                         const pendingVal = String(pending[key] ?? '—');
                         return (
                           <tr key={key} style={{ borderBottom: '1px solid var(--color-border)' }}>

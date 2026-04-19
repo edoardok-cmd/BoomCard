@@ -676,7 +676,7 @@ const HomePage: React.FC = () => {
   const [showReviewForm, setShowReviewForm] = useState(false);
 
   // Wrap mutations to match expected signatures
-  const createReview = async (data: any): Promise<void> => {
+  const createReview = async (data: Parameters<typeof createReviewMutation>[0]): Promise<void> => {
     await createReviewMutation(data);
   };
 

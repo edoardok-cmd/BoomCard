@@ -440,8 +440,8 @@ const ForgotPasswordPage: React.FC = () => {
       });
       setStep('done');
       toast.success(t.successTitle);
-    } catch (err: any) {
-      const serverMessage = err?.response?.data?.message;
+    } catch (err) {
+      const serverMessage = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
       toast.error(serverMessage || t.invalidCodeError);
       setErrors({ otp: serverMessage || t.invalidCodeError });
     } finally {

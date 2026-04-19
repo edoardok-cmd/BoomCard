@@ -200,8 +200,8 @@ const ContactPublicPage: React.FC = () => {
         ? 'Съобщението е изпратено успешно. Ще се свържем с вас скоро.'
         : 'Your message has been sent. We\'ll get back to you soon.');
       setFormData({ name: '', email: '', message: '' });
-    } catch (err: any) {
-      const status = err?.response?.status;
+    } catch (err) {
+      const status = (err as { response?: { status?: number } })?.response?.status;
       const msg = status === 429
         ? (language === 'bg' ? 'Твърде много опити. Моля, опитайте по-късно.' : 'Too many attempts. Please try again later.')
         : (language === 'bg' ? 'Грешка при изпращане. Моля, опитайте отново.' : 'Error sending message. Please try again.');

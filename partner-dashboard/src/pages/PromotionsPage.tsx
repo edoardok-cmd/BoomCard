@@ -415,7 +415,7 @@ const PromotionsPage: React.FC = () => {
     if (!isAuthenticated) return false; // unauthenticated users see all (no lock)
     if (user?.role === 'admin') return false; // admins bypass tier restrictions
     if (!userPlan) return false; // no plan data yet → don't lock
-    const partnerTypeName = (entity as any).partnerType?.name as string | undefined;
+    const partnerTypeName = (entity as typeof entity & { partnerType?: { name?: string } }).partnerType?.name;
     if (!partnerTypeName) return false;
     return !PLAN_REDEEMABLE_TIERS[userPlan]?.includes(partnerTypeName);
   };

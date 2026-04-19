@@ -90,7 +90,8 @@ const PartnerMenusPage: React.FC = () => {
     setLoading(true);
     try {
       const partner = await partnersService.getCurrentPartner();
-      const v: PartnerVenue[] = Array.isArray((partner as any)?.venues) ? (partner as any).venues : [];
+      const partnerWithVenues = partner as typeof partner & { venues?: PartnerVenue[] };
+      const v: PartnerVenue[] = Array.isArray(partnerWithVenues?.venues) ? partnerWithVenues.venues : [];
       setVenues(v);
     } catch {
       toast.error('Failed to load venues');
@@ -115,8 +116,8 @@ const PartnerMenusPage: React.FC = () => {
       setVenues(prev => prev.map(v => (v.id === venueId ? { ...v, ...updated } : v)));
       setInputs(prev => ({ ...prev, [venueId]: '' }));
       toast.success(t.submitted);
-    } catch (err: any) {
-      toast.error(err?.response?.data?.error || t.submitError);
+    } catch (err) {
+      toast.error((err as { response?: { data?: { error?: string } } })?.response?.data?.error || t.submitError);
     } finally {
       setSaving(prev => ({ ...prev, [venueId]: false }));
     }
@@ -128,8 +129,8 @@ const PartnerMenusPage: React.FC = () => {
       const updated = await venuesService.withdrawMenuSubmission(venueId);
       setVenues(prev => prev.map(v => (v.id === venueId ? { ...v, ...updated } : v)));
       toast.success(t.withdrawn);
-    } catch (err: any) {
-      toast.error(err?.response?.data?.error || t.withdrawError);
+    } catch (err) {
+      toast.error((err as { response?: { data?: { error?: string } } })?.response?.data?.error || t.withdrawError);
     } finally {
       setSaving(prev => ({ ...prev, [venueId]: false }));
     }

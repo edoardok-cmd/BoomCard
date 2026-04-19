@@ -307,8 +307,8 @@ function PremiumImportTab() {
     try {
       await bulkImportService.downloadTemplate();
       toast.success('Template downloaded');
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to download template');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to download template');
     }
   };
 
@@ -347,8 +347,8 @@ function PremiumImportTab() {
       setResult(res);
       if (res.errors.length === 0) toast.success(`Import complete — ${res.offersCreated} offers created`);
       else toast.error(`Import finished with ${res.errors.length} error(s)`);
-    } catch (err: any) {
-      toast.error(err.message || 'Import failed');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Import failed');
     } finally {
       setLoading(false);
     }
@@ -465,8 +465,8 @@ function PartnersImportTab() {
     try {
       await bulkImportService.downloadPartnersTemplate();
       toast.success('Partners template downloaded');
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to download template');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to download template');
     }
   };
 
@@ -513,8 +513,8 @@ function PartnersImportTab() {
       setResult(res);
       if (res.errors.length === 0) toast.success(`Import complete — ${res.partnersCreated} partners created`);
       else toast.error(`Import finished with ${res.errors.length} error(s)`);
-    } catch (err: any) {
-      toast.error(err.message || 'Import failed');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Import failed');
     } finally {
       setLoading(false);
     }

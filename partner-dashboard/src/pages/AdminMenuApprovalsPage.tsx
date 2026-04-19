@@ -104,14 +104,15 @@ const AdminMenuApprovalsPage: React.FC = () => {
       await venuesService.adminApproveMenu(venue.id, venue.pendingMenuUrl ?? undefined);
       setItems(prev => prev.filter(v => v.id !== venue.id));
       toast.success(t.approved);
-    } catch (err: any) {
-      const status = err?.response?.status;
+    } catch (err) {
+      const axiosErr = err as { response?: { status?: number; data?: { error?: string } } };
+      const status = axiosErr?.response?.status;
       if (status === 409) {
-        toast.error(err?.response?.data?.error || 'Pending URL changed — refreshing');
+        toast.error(axiosErr?.response?.data?.error || 'Pending URL changed — refreshing');
         await load();
         return;
       }
-      toast.error(err?.response?.data?.error || t.approveError);
+      toast.error(axiosErr?.response?.data?.error || t.approveError);
     } finally {
       setBusy(prev => ({ ...prev, [venue.id]: false }));
     }
@@ -130,8 +131,9 @@ const AdminMenuApprovalsPage: React.FC = () => {
       await venuesService.adminRejectMenu(venueId, reason);
       setItems(prev => prev.filter(v => v.id !== venueId));
       toast.success(t.rejected);
-    } catch (err: any) {
-      toast.error(err?.response?.data?.error || t.rejectError);
+    } catch (err) {
+      const axiosErr = err as { response?: { data?: { error?: string } } };
+      toast.error(axiosErr?.response?.data?.error || t.rejectError);
     } finally {
       setBusy(prev => ({ ...prev, [venueId]: false }));
     }

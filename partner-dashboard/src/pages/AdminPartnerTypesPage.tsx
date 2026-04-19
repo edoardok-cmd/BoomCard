@@ -488,7 +488,7 @@ export default function AdminPartnerTypesPage() {
       toast.success('Partner type created');
       closeModal();
     },
-    onError: (err: any) => toast.error(err?.response?.data?.error || 'Failed to create partner type'),
+    onError: (err: unknown) => toast.error((err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Failed to create partner type'),
   });
 
   const updateMutation = useMutation({
@@ -499,7 +499,7 @@ export default function AdminPartnerTypesPage() {
       toast.success('Partner type updated');
       closeModal();
     },
-    onError: (err: any) => toast.error(err?.response?.data?.error || 'Failed to update partner type'),
+    onError: (err: unknown) => toast.error((err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Failed to update partner type'),
   });
 
   const accessMutation = useMutation({
@@ -509,7 +509,7 @@ export default function AdminPartnerTypesPage() {
       queryClient.invalidateQueries({ queryKey: ['admin-partner-types'] });
       toast.success('Access rules saved');
     },
-    onError: (err: any) => toast.error(err?.response?.data?.error || 'Failed to save access rules'),
+    onError: (err: unknown) => toast.error((err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Failed to save access rules'),
   });
 
   const deleteMutation = useMutation({
@@ -518,7 +518,7 @@ export default function AdminPartnerTypesPage() {
       queryClient.invalidateQueries({ queryKey: ['admin-partner-types'] });
       toast.success('Partner type deleted');
     },
-    onError: (err: any) => toast.error(err?.response?.data?.error || 'Failed to delete partner type'),
+    onError: (err: unknown) => toast.error((err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Failed to delete partner type'),
   });
 
   // ─── Helpers ──────────────────────────────────────────────────────────────

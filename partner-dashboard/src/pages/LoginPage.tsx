@@ -376,7 +376,7 @@ const LoginPage: React.FC = () => {
 
       await loginWithOAuth(oauthData);
 
-      const from = (location.state as any)?.from?.pathname || '/dashboard';
+      const from = (location.state as { from?: { pathname?: string } } | null)?.from?.pathname || '/dashboard';
       navigate(from, { replace: true });
     } catch (error) {
       console.error('Google login error:', error);
@@ -387,7 +387,15 @@ const LoginPage: React.FC = () => {
     console.error('Google login failed');
   };
 
-  const handleFacebookSuccess = async (response: any) => {
+  const handleFacebookSuccess = async (response: {
+    accessToken: string;
+    userInfo?: {
+      email?: string;
+      name?: string;
+      id?: string;
+      picture?: { data?: { url?: string } };
+    };
+  }) => {
     try {
       const oauthData: OAuthData = {
         provider: 'facebook',
@@ -400,14 +408,14 @@ const LoginPage: React.FC = () => {
 
       await loginWithOAuth(oauthData);
 
-      const from = (location.state as any)?.from?.pathname || '/dashboard';
+      const from = (location.state as { from?: { pathname?: string } } | null)?.from?.pathname || '/dashboard';
       navigate(from, { replace: true });
     } catch (error) {
       console.error('Facebook login error:', error);
     }
   };
 
-  const handleFacebookError = (error: any) => {
+  const handleFacebookError = (error: Error) => {
     console.error('Facebook login failed:', error);
   };
 

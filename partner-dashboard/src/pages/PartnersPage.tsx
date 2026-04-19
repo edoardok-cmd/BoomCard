@@ -1185,35 +1185,36 @@ const PartnersPage: React.FC = () => {
     return map[loc.id] || 'Business';
   };
 
-  const validateField = (field: string, value: any): string | undefined => {
+  const validateField = (field: string, value: unknown): string | undefined => {
+    const strVal = typeof value === 'string' ? value : '';
     switch (field) {
       case 'firstName':
         if (!value) return t('partnerRegistration.firstNameRequired');
-        if (value.length < 2) return t('partnerRegistration.firstNameMinLength');
+        if (strVal.length < 2) return t('partnerRegistration.firstNameMinLength');
         return undefined;
 
       case 'lastName':
         if (!value) return t('partnerRegistration.lastNameRequired');
-        if (value.length < 2) return t('partnerRegistration.lastNameMinLength');
+        if (strVal.length < 2) return t('partnerRegistration.lastNameMinLength');
         return undefined;
 
       case 'email': {
         if (!value) return t('partnerRegistration.emailRequired');
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        if (!emailRegex.test(value)) return t('partnerRegistration.emailInvalid');
+        if (!emailRegex.test(strVal)) return t('partnerRegistration.emailInvalid');
         return undefined;
       }
 
       case 'phone':
         if (!value) return t('partnerRegistration.phoneRequired');
-        if (!/^(\+359|0)[0-9\s-]{8,}$/.test(value)) {
+        if (!/^(\+359|0)[0-9\s-]{8,}$/.test(strVal)) {
           return t('partnerRegistration.phoneInvalid');
         }
         return undefined;
 
       case 'password':
         if (!value) return t('partnerRegistration.passwordRequired');
-        if (value.length < 8) return t('partnerRegistration.passwordMinLength');
+        if (strVal.length < 8) return t('partnerRegistration.passwordMinLength');
         return undefined;
 
       case 'confirmPassword':
@@ -1223,7 +1224,7 @@ const PartnersPage: React.FC = () => {
 
       case 'businessName':
         if (!value) return t('partnerRegistration.businessNameRequired');
-        if (value.length < 3) return t('partnerRegistration.businessNameMinLength');
+        if (strVal.length < 3) return t('partnerRegistration.businessNameMinLength');
         return undefined;
 
       case 'businessCategory':

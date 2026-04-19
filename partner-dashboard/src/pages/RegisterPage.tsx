@@ -523,39 +523,40 @@ const RegisterPage: React.FC = () => {
     return t('auth.passwordStrong');
   };
 
-  const validateField = (field: string, value: any): string | undefined => {
+  const validateField = (field: string, value: unknown): string | undefined => {
+    const strVal = typeof value === 'string' ? value : '';
     switch (field) {
       case 'firstName':
         if (!value) return t('auth.firstNameRequired');
-        if (value.length < 2) return t('auth.firstNameTooShort');
+        if (strVal.length < 2) return t('auth.firstNameTooShort');
         return undefined;
 
       case 'lastName':
         if (!value) return t('auth.lastNameRequired');
-        if (value.length < 2) return t('auth.lastNameTooShort');
+        if (strVal.length < 2) return t('auth.lastNameTooShort');
         return undefined;
 
       case 'email': {
         if (!value) return t('auth.emailRequired');
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        if (!emailRegex.test(value)) return t('auth.invalidEmail');
+        if (!emailRegex.test(strVal)) return t('auth.invalidEmail');
         return undefined;
       }
 
       case 'phone':
-        if (!value || !value.trim()) return t('auth.phoneRequired');
-        if (!/^(\+359|0)[0-9\s-]{8,}$/.test(value)) {
+        if (!value || !strVal.trim()) return t('auth.phoneRequired');
+        if (!/^(\+359|0)[0-9\s-]{8,}$/.test(strVal)) {
           return t('auth.invalidPhone');
         }
         return undefined;
 
       case 'password':
         if (!value) return t('auth.passwordRequired');
-        if (value.length < 8) return t('auth.passwordMinLength');
-        if (!/[A-Z]/.test(value)) return t('auth.passwordNeedsUppercase');
-        if (!/[a-z]/.test(value)) return t('auth.passwordNeedsLowercase');
-        if (!/[0-9]/.test(value)) return t('auth.passwordNeedsNumber');
-        if (!/[^A-Za-z0-9]/.test(value)) return t('auth.passwordNeedsSpecial');
+        if (strVal.length < 8) return t('auth.passwordMinLength');
+        if (!/[A-Z]/.test(strVal)) return t('auth.passwordNeedsUppercase');
+        if (!/[a-z]/.test(strVal)) return t('auth.passwordNeedsLowercase');
+        if (!/[0-9]/.test(strVal)) return t('auth.passwordNeedsNumber');
+        if (!/[^A-Za-z0-9]/.test(strVal)) return t('auth.passwordNeedsSpecial');
         return undefined;
 
       case 'confirmPassword':
@@ -724,7 +725,7 @@ const RegisterPage: React.FC = () => {
         }
       }
 
-      const from = (location.state as any)?.from?.pathname || '/dashboard';
+      const from = (location.state as { from?: { pathname?: string } } | null)?.from?.pathname || '/dashboard';
       navigate(from, { replace: true });
     } catch (error) {
       console.error('Google signup error:', error);
@@ -735,7 +736,15 @@ const RegisterPage: React.FC = () => {
     console.error('Google signup failed');
   };
 
-  const handleFacebookSuccess = async (response: any) => {
+  const handleFacebookSuccess = async (response: {
+    accessToken: string;
+    userInfo?: {
+      email?: string;
+      name?: string;
+      id?: string;
+      picture?: { data?: { url?: string } };
+    };
+  }) => {
     try {
       const oauthData: OAuthData = {
         provider: 'facebook',
@@ -767,14 +776,14 @@ const RegisterPage: React.FC = () => {
         }
       }
 
-      const from = (location.state as any)?.from?.pathname || '/dashboard';
+      const from = (location.state as { from?: { pathname?: string } } | null)?.from?.pathname || '/dashboard';
       navigate(from, { replace: true });
     } catch (error) {
       console.error('Facebook signup error:', error);
     }
   };
 
-  const handleFacebookError = (error: any) => {
+  const handleFacebookError = (error: Error) => {
     console.error('Facebook signup failed:', error);
   };
 

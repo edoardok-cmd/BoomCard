@@ -631,7 +631,7 @@ function buildEmptyForm() {
     endDate: future.toISOString().slice(0, 10),
     usageLimit: undefined as number | undefined,
     featuredOrder: undefined as number | undefined,
-    status: 'ACTIVE' as const,
+    status: 'ACTIVE' as typeof OFFER_STATUSES[number],
   };
 }
 
@@ -675,14 +675,14 @@ export default function AdminTopDiscountsPage() {
         tags: filterTags.length > 0 ? filterTags : undefined,
         featured: true,
         limit: 100,
-      } as any),
+      }),
   });
 
   const { data: partnersData } = useQuery({
     queryKey: ['admin-partners-select'],
     queryFn: async () => {
-      const res = await partnersService.getPartners({ limit: 300 } as any);
-      return (res as any).data ?? [];
+      const res = await partnersService.getPartners({ limit: 300 });
+      return res.data ?? [];
     },
   });
 
@@ -692,7 +692,7 @@ export default function AdminTopDiscountsPage() {
   });
 
   const allPartners: Partner[] = partnersData ?? [];
-  const offers: OfferDetails[] = (offersData as any)?.data ?? [];
+  const offers: OfferDetails[] = offersData?.data ?? [];
 
   // ─── Mutations ──────────────────────────────────────────────────────────────
 
@@ -715,7 +715,7 @@ export default function AdminTopDiscountsPage() {
       toast.success(language === 'bg' ? 'Топ отстъпката е създадена' : 'Top discount created');
       closeModal();
     },
-    onError: (err: any) => toast.error(err?.response?.data?.error || 'Failed to create top discount'),
+    onError: (err: unknown) => toast.error((err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Failed to create top discount'),
   });
 
   const updateMutation = useMutation({
@@ -737,7 +737,7 @@ export default function AdminTopDiscountsPage() {
       toast.success(language === 'bg' ? 'Топ отстъпката е обновена' : 'Top discount updated');
       closeModal();
     },
-    onError: (err: any) => toast.error(err?.response?.data?.error || 'Failed to update top discount'),
+    onError: (err: unknown) => toast.error((err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Failed to update top discount'),
   });
 
   const deleteMutation = useMutation({
@@ -751,7 +751,7 @@ export default function AdminTopDiscountsPage() {
 
   const bulkDeleteMutation = useMutation({
     mutationFn: (ids: string[]) => offersService.bulkDeleteOffers(ids),
-    onSuccess: (data: any) => {
+    onSuccess: (data: { deleted: number }) => {
       queryClient.invalidateQueries({ queryKey: ['admin-top-discounts'] });
       toast.success(`${data.deleted} offer${data.deleted !== 1 ? 's' : ''} deleted`);
       setSelectedIds(new Set());
@@ -774,7 +774,13 @@ export default function AdminTopDiscountsPage() {
 
   function openEdit(offer: OfferDetails) {
     setEditingOffer(offer);
-    const o = offer as any;
+    const o = offer as OfferDetails & {
+      startDate?: string;
+      endDate?: string;
+      usageLimit?: number;
+      minPurchase?: number;
+      maxDiscount?: number;
+    };
     setForm({
       partnerId: o.partnerId || o.partner?.id || '',
       title: o.title || '',
@@ -792,7 +798,7 @@ export default function AdminTopDiscountsPage() {
       endDate: o.endDate ? new Date(o.endDate).toISOString().slice(0, 10) : '',
       usageLimit: o.usageLimit || undefined,
       featuredOrder: o.featuredOrder || undefined,
-      status: o.status || 'ACTIVE',
+      status: (o.status as typeof OFFER_STATUSES[number] | undefined) || 'ACTIVE',
     });
     setFormErrors({});
     setSelectedTags(o.tags || []);
@@ -1034,7 +1040,7 @@ export default function AdminTopDiscountsPage() {
           </EmptyState>
         ) : (
           offers.map(offer => {
-            const o = offer as any;
+            const o = offer;
             return (
               <TableRow key={offer.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
                 <RowCheckbox
@@ -1292,7 +1298,7 @@ export default function AdminTopDiscountsPage() {
                   <Label>{language === 'bg' ? 'Статус' : 'Status'}</Label>
                   <Select
                     value={form.status}
-                    onChange={e => setForm(f => ({ ...f, status: e.target.value as any }))}
+                    onChange={e => setForm(f => ({ ...f, status: e.target.value as typeof OFFER_STATUSES[number] }))}
                   >
                     {OFFER_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
                   </Select>

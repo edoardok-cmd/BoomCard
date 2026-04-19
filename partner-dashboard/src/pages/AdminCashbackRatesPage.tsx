@@ -262,8 +262,9 @@ const AdminCashbackRatesPage: React.FC = () => {
       setNotes('');
       setEffectiveFrom('');
       await load();
-    } catch (e: any) {
-      setError(e?.response?.data?.error || e?.message || 'Failed to save');
+    } catch (e) {
+      const axiosErr = e as { response?: { data?: { error?: string } }; message?: string };
+      setError(axiosErr?.response?.data?.error || axiosErr?.message || 'Failed to save');
     } finally {
       setSaving(false);
     }

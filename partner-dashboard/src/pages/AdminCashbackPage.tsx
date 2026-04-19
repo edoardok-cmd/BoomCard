@@ -474,7 +474,7 @@ export const AdminCashbackPage: React.FC = () => {
                     )}
                     <Btn
                       $variant="view"
-                      as={Link as any}
+                      as={Link as React.ElementType}
                       to={`/admin/receipts?venueId=${entry.partnerId}`}
                     >
                       <ExternalLink />{c.viewReceipts}

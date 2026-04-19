@@ -394,8 +394,9 @@ export const AdminMerchantWhitelistPage: React.FC = () => {
       setAddStatus('APPROVED');
       setAddReason('');
       fetchMerchants();
-    } catch (err: any) {
-      notify(err?.response?.data?.message || err?.message || 'Failed', false);
+    } catch (err) {
+      const axiosErr = err as { response?: { data?: { message?: string } }; message?: string };
+      notify(axiosErr?.response?.data?.message || axiosErr?.message || 'Failed', false);
     } finally {
       setSubmitting(false);
     }
@@ -419,8 +420,9 @@ export const AdminMerchantWhitelistPage: React.FC = () => {
       notify(t('Status updated', 'Статусът е обновен'));
       setEditModal(null);
       fetchMerchants();
-    } catch (err: any) {
-      notify(err?.response?.data?.message || err?.message || 'Failed', false);
+    } catch (err) {
+      const axiosErr = err as { response?: { data?: { message?: string } }; message?: string };
+      notify(axiosErr?.response?.data?.message || axiosErr?.message || 'Failed', false);
     } finally {
       setSubmitting(false);
     }

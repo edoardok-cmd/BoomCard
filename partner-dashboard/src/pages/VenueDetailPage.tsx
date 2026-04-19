@@ -724,8 +724,8 @@ const VenueDetailPage: React.FC = () => {
       } else {
         toast.error(result.message || (language === 'bg' ? 'Грешка при активиране' : 'Activation failed'));
       }
-    } catch (err: any) {
-      toast.error(err?.message || (language === 'bg' ? 'Грешка при активиране' : 'Activation failed'));
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : (language === 'bg' ? 'Грешка при активиране' : 'Activation failed'));
     } finally {
       setIsActivating(false);
     }
@@ -734,7 +734,11 @@ const VenueDetailPage: React.FC = () => {
   // Parse menu images from offer's partner venue data
   const menuImages: string[] = (() => {
     try {
-      const raw = (offerDetails as any)?.partner?.venue?.menuImages || (offerDetails as any)?.menuImages;
+      const offerWithMenu = offerDetails as (typeof offerDetails & {
+        partner?: { venue?: { menuImages?: string | string[] } };
+        menuImages?: string | string[];
+      }) | null | undefined;
+      const raw = offerWithMenu?.partner?.venue?.menuImages || offerWithMenu?.menuImages;
       if (!raw) return [];
       const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
       return Array.isArray(parsed) ? parsed : [];
