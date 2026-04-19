@@ -4,17 +4,63 @@ import { apiService } from '../services/api.service';
 import { useLanguage } from './LanguageContext';
 import * as authStorage from '../lib/auth/authStorage';
 
+// Shape of errors surfaced from axios/apiService — every field is optional
+// because error.response is only populated for HTTP failures (network drops
+// and thrown Error instances only set message/code).
+type ApiError = {
+  response?: {
+    status?: number;
+    data?: {
+      message?: string;
+      error?: string | { message?: string };
+    };
+  };
+  message?: string;
+  code?: string;
+};
+
+// Backend responses arrive in two shapes across this codebase: the flat
+// payload itself, and an envelope { data: payload }. Callers have to probe
+// both, so typed responses carry an optional `data` wrapper of the same type.
+type Envelope<T> = T & { data?: T };
+
+interface MePayload {
+  id: string;
+  email: string;
+  firstName?: string;
+  lastName?: string;
+  role?: string;
+  createdAt?: string | number;
+  emailVerified?: boolean;
+  avatar?: string;
+  impersonation?: { adminId: string; adminRole: string } | null;
+}
+
+interface AuthSuccessPayload {
+  user?: MePayload;
+  token?: string;
+  accessToken?: string;
+  refreshToken?: string;
+  switchableAccounts?: SwitchableAccount[];
+  impersonation?: ImpersonationMeta;
+  pendingVerification?: boolean;
+}
+
+type SwitchableAccountsResponse = Envelope<SwitchableAccount[]>;
+
 const humanizeError = (
-  error: any,
+  error: unknown,
   t: (key: string) => string,
   fallbackKey: string
 ): string => {
+  const err = error as ApiError;
+  const nestedError = err?.response?.data?.error;
   const backendMessage: string =
-    error?.response?.data?.error?.message ||
-    error?.response?.data?.message ||
-    error?.message ||
+    (typeof nestedError === 'object' ? nestedError?.message : nestedError) ||
+    err?.response?.data?.message ||
+    err?.message ||
     '';
-  const status: number | undefined = error?.response?.status;
+  const status: number | undefined = err?.response?.status;
   const msg = backendMessage.toLowerCase();
 
   if (msg.includes('email already exists') || msg.includes('email is already')) {
@@ -26,13 +72,27 @@ const humanizeError = (
   if (status === 401 && msg.includes('invalid')) {
     return t('errors.invalidCredentials');
   }
-  if (!error?.response && (msg.includes('network') || error?.code === 'ERR_NETWORK')) {
+  if (!err?.response && (msg.includes('network') || err?.code === 'ERR_NETWORK')) {
     return t('errors.networkError');
   }
   if (status && status >= 500) {
     return t('errors.serverError');
   }
   return t(fallbackKey);
+};
+
+// Pull a human-readable message off an axios/apiService error, preferring the
+// structured backend envelope ({ error: { message } } or { message }) before
+// falling back to whatever the Error instance carries.
+const extractErrorMessage = (error: unknown, fallback: string): string => {
+  const err = error as ApiError;
+  const nested = err?.response?.data?.error;
+  return (
+    (typeof nested === 'object' ? nested?.message : nested) ||
+    err?.response?.data?.message ||
+    err?.message ||
+    fallback
+  );
 };
 
 export interface User {
@@ -315,8 +375,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           // Verify token with backend
           try {
             apiService.setAuthToken(storedToken);
-            const meResponse = await apiService.get<any>('/auth/me');
-            const meData = meResponse?.data || meResponse;
+            const meResponse = await apiService.get<Envelope<MePayload>>('/auth/me');
+            const meData: MePayload = meResponse?.data || meResponse;
             const verifiedUser: User = {
               id: meData.id,
               email: meData.email,
@@ -358,8 +418,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             // Non-fatal — an auth surface that can't enumerate siblings is
             // fine to fall back to whatever was persisted.
             try {
-              const switchResp = await apiService.get<any>('/auth/switchable-accounts');
-              const accounts = (switchResp?.data ?? switchResp) as SwitchableAccount[];
+              const switchResp = await apiService.get<SwitchableAccountsResponse>('/auth/switchable-accounts');
+              const accounts = switchResp?.data ?? switchResp;
               if (Array.isArray(accounts)) setSwitchableAccounts(accounts);
             } catch (err) {
               console.warn('Could not refresh switchable accounts:', err);
@@ -418,18 +478,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       // Try real API endpoint first
       try {
-        const rawResponse = await apiService.post<any>('/auth/login', { ...credentials, clientType: 'web' });
+        const rawResponse = await apiService.post<Envelope<AuthSuccessPayload>>('/auth/login', { ...credentials, clientType: 'web' });
 
         // Extract token — handle both flat { token, accessToken } and nested { data: { accessToken } } shapes
-        const responseData = rawResponse?.data || rawResponse;
+        const responseData: AuthSuccessPayload = rawResponse?.data || rawResponse;
         const token = responseData?.token || responseData?.accessToken || rawResponse?.token || rawResponse?.accessToken;
         const refreshToken = responseData?.refreshToken || rawResponse?.refreshToken;
         const userPayload = responseData?.user || rawResponse?.user;
-        const switchable = (responseData?.switchableAccounts || rawResponse?.switchableAccounts) as
-          | SwitchableAccount[]
-          | undefined;
+        const switchable = responseData?.switchableAccounts || rawResponse?.switchableAccounts;
 
-        if (!token) {
+        if (!token || !userPayload) {
           throw new Error('No authentication token received');
         }
 
@@ -467,17 +525,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         toast.success(`Welcome back, ${user.firstName}!`);
         return;
-      } catch (apiError: any) {
-        const apiMessage = apiError?.response?.data?.error?.message
-          || apiError?.response?.data?.message
-          || (typeof apiError?.response?.data?.error === 'string' ? apiError?.response?.data?.error : null);
+      } catch (apiError) {
+        const err = apiError as ApiError;
+        const nested = err?.response?.data?.error;
+        const apiMessage = (typeof nested === 'object' ? nested?.message : nested)
+          || err?.response?.data?.message;
         if (apiMessage) throw new Error(apiMessage);
-        if (apiError?.response) throw new Error('Login failed. Please try again.');
-        console.error('API unavailable:', apiError.message || apiError);
+        if (err?.response) throw new Error('Login failed. Please try again.');
+        console.error('API unavailable:', err?.message || apiError);
         throw new Error('Server is currently unavailable. Please try again later.');
       }
-    } catch (error: any) {
-      const message = error.message || 'Login failed';
+    } catch (error) {
+      const message = (error as Error)?.message || 'Login failed';
       toast.error(message);
       throw error;
     } finally {
@@ -495,10 +554,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       // Call real API endpoint
-      const rawResponse = await apiService.post<any>('/auth/register', data);
+      const rawResponse = await apiService.post<Envelope<AuthSuccessPayload>>('/auth/register', data);
 
       // Extract token — handle both flat { token, accessToken } and nested { data: { accessToken } } shapes
-      const responseData = rawResponse?.data || rawResponse;
+      const responseData: AuthSuccessPayload = rawResponse?.data || rawResponse;
       const token = responseData?.token || responseData?.accessToken || rawResponse?.token || rawResponse?.accessToken;
       const refreshToken = responseData?.refreshToken || rawResponse?.refreshToken;
       const userPayload = responseData?.user || rawResponse?.user;
@@ -513,7 +572,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return;
       }
 
-      if (!token) {
+      if (!token || !userPayload) {
         throw new Error('No authentication token received');
       }
 
@@ -542,7 +601,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUser(normalizedUser);
 
       toast.success('Account created successfully! Welcome to BoomCard!');
-    } catch (error: any) {
+    } catch (error) {
       const message = humanizeError(error, t, 'errors.registrationFailed');
       toast.error(message);
       throw error;
@@ -630,16 +689,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const inheritPersistent = authStorage.isPersistent(TOKEN_KEY);
 
     try {
-      const rawResponse = await apiService.post<any>('/auth/switch-account', {
+      const rawResponse = await apiService.post<Envelope<AuthSuccessPayload>>('/auth/switch-account', {
         targetAccountId,
         refreshToken: existingRefreshToken,
       });
 
-      const responseData = rawResponse?.data || rawResponse;
+      const responseData: AuthSuccessPayload = rawResponse?.data || rawResponse;
       const newToken = responseData?.accessToken || responseData?.token;
       const newRefreshToken = responseData?.refreshToken;
       const userPayload = responseData?.user;
-      const switchable = responseData?.switchableAccounts as SwitchableAccount[] | undefined;
+      const switchable = responseData?.switchableAccounts;
 
       if (!newToken || !userPayload) {
         throw new Error('Invalid switch response');
@@ -670,11 +729,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         ? 'admin account'
         : switchable?.find(s => s.id === nextUser.id)?.businessName || `${nextUser.firstName} ${nextUser.lastName}`.trim() || nextUser.email;
       toast.success(`Switched to ${label}`);
-    } catch (error: any) {
-      const message = error?.response?.data?.error?.message
-        || error?.response?.data?.message
-        || error?.message
-        || 'Failed to switch account';
+    } catch (error) {
+      const message = extractErrorMessage(error, 'Failed to switch account');
       toast.error(message);
       throw error;
     }
@@ -699,15 +755,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const inheritPersistent = authStorage.isPersistent(TOKEN_KEY);
 
     try {
-      const rawResponse = await apiService.post<any>('/auth/impersonate', {
+      const rawResponse = await apiService.post<Envelope<AuthSuccessPayload>>('/auth/impersonate', {
         targetPartnerUserId,
         refreshToken: adminRefreshToken,
       });
-      const responseData = rawResponse?.data || rawResponse;
+      const responseData: AuthSuccessPayload = rawResponse?.data || rawResponse;
       const newToken = responseData?.accessToken || responseData?.token;
       const newRefreshToken = responseData?.refreshToken;
       const userPayload = responseData?.user;
-      const impersonationMeta = responseData?.impersonation as ImpersonationMeta | undefined;
+      const impersonationMeta = responseData?.impersonation;
 
       if (!newToken || !userPayload || !impersonationMeta) {
         throw new Error('Invalid impersonation response');
@@ -736,11 +792,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setImpersonation(impersonationMeta);
 
       toast.success(`Impersonating ${nextUser.firstName} ${nextUser.lastName}`.trim() || `Impersonating ${nextUser.email}`);
-    } catch (error: any) {
-      const message = error?.response?.data?.error?.message
-        || error?.response?.data?.message
-        || error?.message
-        || 'Failed to start impersonation';
+    } catch (error) {
+      const message = extractErrorMessage(error, 'Failed to start impersonation');
       toast.error(message);
       throw error;
     }
@@ -758,14 +811,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const inheritPersistent = authStorage.isPersistent(TOKEN_KEY);
 
     try {
-      const rawResponse = await apiService.post<any>('/auth/stop-impersonate', {
+      const rawResponse = await apiService.post<Envelope<AuthSuccessPayload>>('/auth/stop-impersonate', {
         refreshToken: currentRefreshToken,
       });
-      const responseData = rawResponse?.data || rawResponse;
+      const responseData: AuthSuccessPayload = rawResponse?.data || rawResponse;
       const newToken = responseData?.accessToken || responseData?.token;
       const newRefreshToken = responseData?.refreshToken;
       const userPayload = responseData?.user;
-      const switchable = responseData?.switchableAccounts as SwitchableAccount[] | undefined;
+      const switchable = responseData?.switchableAccounts;
 
       if (!newToken || !userPayload) {
         throw new Error('Invalid stop-impersonate response');
@@ -792,11 +845,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setImpersonation(null);
 
       toast.success('Stopped impersonating');
-    } catch (error: any) {
-      const message = error?.response?.data?.error?.message
-        || error?.response?.data?.message
-        || error?.message
-        || 'Failed to stop impersonation';
+    } catch (error) {
+      const message = extractErrorMessage(error, 'Failed to stop impersonation');
       toast.error(message);
       throw error;
     }
@@ -817,8 +867,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUser(updatedUser);
 
       toast.success('Profile updated successfully');
-    } catch (error: any) {
-      const message = error.response?.data?.error?.message || error.response?.data?.message || error.message || 'Update failed';
+    } catch (error) {
+      const message = extractErrorMessage(error, 'Update failed');
       toast.error(message);
       throw error;
     } finally {
@@ -861,8 +911,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
 
       toast.success('Password changed successfully');
-    } catch (error: any) {
-      const message = error.response?.data?.error?.message || error.response?.data?.message || error.message || 'Password change failed';
+    } catch (error) {
+      const message = extractErrorMessage(error, 'Password change failed');
       toast.error(message);
       throw error;
     } finally {
@@ -910,8 +960,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setSwitchableAccounts(response.switchableAccounts);
         } else {
           try {
-            const switchResp = await apiService.get<any>('/auth/switchable-accounts');
-            const accounts = (switchResp?.data ?? switchResp) as SwitchableAccount[];
+            const switchResp = await apiService.get<SwitchableAccountsResponse>('/auth/switchable-accounts');
+            const accounts = switchResp?.data ?? switchResp;
             if (Array.isArray(accounts)) setSwitchableAccounts(accounts);
           } catch {
             // Non-fatal: session still usable without the switcher.
@@ -920,14 +970,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         toast.success(`Welcome, ${response.user.firstName}!`);
         return;
-      } catch (apiError: any) {
-        const apiMessage = apiError?.response?.data?.message || apiError?.response?.data?.error;
+      } catch (apiError) {
+        const err = apiError as ApiError;
+        const nested = err?.response?.data?.error;
+        const apiMessage = err?.response?.data?.message
+          || (typeof nested === 'object' ? nested?.message : nested);
         if (apiMessage) throw new Error(apiMessage);
-        console.error('OAuth API unavailable:', apiError.message || apiError);
+        console.error('OAuth API unavailable:', err?.message || apiError);
         throw new Error('Server is currently unavailable. Please try again later.');
       }
-    } catch (error: any) {
-      const message = error.message || `${oauthData.provider} login failed`;
+    } catch (error) {
+      const message = (error as Error)?.message || `${oauthData.provider} login failed`;
       toast.error(message);
       throw error;
     } finally {
@@ -943,7 +996,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const formData = new FormData();
       formData.append('avatar', file);
 
-      const response = await apiService.post<any>('/auth/avatar', formData, {
+      const response = await apiService.post<Envelope<{ avatar?: string }>>('/auth/avatar', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
 
@@ -951,8 +1004,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUser(prev => prev ? { ...prev, avatar: updatedUser.avatar } : prev);
 
       toast.success('Profile photo updated');
-    } catch (error: any) {
-      const message = error.response?.data?.error?.message || error.response?.data?.message || error.message || 'Upload failed';
+    } catch (error) {
+      const message = extractErrorMessage(error, 'Upload failed');
       toast.error(message);
       throw error;
     } finally {
@@ -968,8 +1021,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await apiService.delete('/auth/avatar');
       setUser(prev => prev ? { ...prev, avatar: undefined } : prev);
       toast.success('Profile photo removed');
-    } catch (error: any) {
-      const message = error.response?.data?.error?.message || error.response?.data?.message || error.message || 'Remove failed';
+    } catch (error) {
+      const message = extractErrorMessage(error, 'Remove failed');
       toast.error(message);
       throw error;
     } finally {

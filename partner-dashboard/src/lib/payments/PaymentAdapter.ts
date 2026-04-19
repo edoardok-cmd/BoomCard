@@ -232,11 +232,11 @@ export abstract class PaymentAdapter {
   /**
    * Make authenticated API request
    */
-  protected async makeRequest(
+  protected async makeRequest<T = unknown>(
     endpoint: string,
     method: 'GET' | 'POST' | 'PUT' | 'DELETE' = 'GET',
     body?: unknown
-  ): Promise<any> {
+  ): Promise<T> {
     const url = `${this.baseUrl}${endpoint}`;
     const headers = this.getAuthHeaders();
 
@@ -254,7 +254,7 @@ export abstract class PaymentAdapter {
       throw new Error(`Payment API Error: ${response.status} - ${error}`);
     }
 
-    return response.json();
+    return response.json() as Promise<T>;
   }
 
   /**

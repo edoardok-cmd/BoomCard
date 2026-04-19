@@ -6,6 +6,10 @@
 import { POSAdapter, POSTransaction, POSConnectionStatus, POSWebhookPayload } from './POSAdapter';
 import crypto from 'crypto';
 
+interface PosterEnvelope<T> {
+  response?: T;
+}
+
 export class PosterPOS extends POSAdapter {
   protected getBaseUrl(): string {
     return this.credentials.environment === 'production'
@@ -21,7 +25,7 @@ export class PosterPOS extends POSAdapter {
 
   async testConnection(): Promise<POSConnectionStatus> {
     try {
-      const response = await this.makeRequest('/settings.getAllSettings');
+      const response = await this.makeRequest<PosterEnvelope<{ version?: string }>>('/settings.getAllSettings');
       return {
         connected: true,
         lastSync: new Date(),
@@ -40,11 +44,11 @@ export class PosterPOS extends POSAdapter {
       const dateFrom = startDate.toISOString().split('T')[0];
       const dateTo = endDate.toISOString().split('T')[0];
 
-      const response = await this.makeRequest(
+      const response = await this.makeRequest<PosterEnvelope<Array<Record<string, unknown>>>>(
         `/dash.getTransactions?dateFrom=${dateFrom}&dateTo=${dateTo}`
       );
 
-      return response.response?.map((tx: Record<string, unknown>) => this.mapTransaction(tx)) || [];
+      return response.response?.map((tx) => this.mapTransaction(tx)) || [];
     } catch (error) {
       console.error('Error fetching Poster transactions:', error);
       return [];
@@ -57,7 +61,7 @@ export class PosterPOS extends POSAdapter {
     boomCardNumber: string
   ): Promise<POSTransaction> {
     // Poster uses transaction modification endpoint
-    const response = await this.makeRequest(
+    const response = await this.makeRequest<PosterEnvelope<Record<string, unknown>>>(
       `/transactions.changeTransaction`,
       'POST',
       {
@@ -67,13 +71,15 @@ export class PosterPOS extends POSAdapter {
       }
     );
 
-    return this.mapTransaction(response.response);
+    return this.mapTransaction(response.response ?? {});
   }
 
   async getTransaction(transactionId: string): Promise<POSTransaction | null> {
     try {
-      const response = await this.makeRequest(`/transactions.getTransaction?transaction_id=${transactionId}`);
-      return this.mapTransaction(response.response);
+      const response = await this.makeRequest<PosterEnvelope<Record<string, unknown>>>(
+        `/transactions.getTransaction?transaction_id=${transactionId}`
+      );
+      return this.mapTransaction(response.response ?? {});
     } catch (error) {
       console.error('Error getting transaction:', error);
       return null;
@@ -81,7 +87,7 @@ export class PosterPOS extends POSAdapter {
   }
 
   async refundTransaction(transactionId: string, amount?: number): Promise<POSTransaction> {
-    const response = await this.makeRequest(
+    const response = await this.makeRequest<PosterEnvelope<Record<string, unknown>>>(
       `/transactions.removeTransaction`,
       'POST',
       {
@@ -91,7 +97,7 @@ export class PosterPOS extends POSAdapter {
       }
     );
 
-    return this.mapTransaction(response.response);
+    return this.mapTransaction(response.response ?? {});
   }
 
   verifyWebhook(payload: string, signature: string): boolean {

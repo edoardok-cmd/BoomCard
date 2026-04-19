@@ -156,11 +156,11 @@ export abstract class POSAdapter {
   /**
    * Make authenticated API request
    */
-  protected async makeRequest(
+  protected async makeRequest<T = unknown>(
     endpoint: string,
     method: 'GET' | 'POST' | 'PUT' | 'DELETE' = 'GET',
     body?: unknown
-  ): Promise<any> {
+  ): Promise<T> {
     const url = `${this.baseUrl}${endpoint}`;
     const headers = this.getAuthHeaders();
 
@@ -178,7 +178,7 @@ export abstract class POSAdapter {
       throw new Error(`POS API Error: ${response.status} - ${error}`);
     }
 
-    return response.json();
+    return response.json() as Promise<T>;
   }
 
   /**

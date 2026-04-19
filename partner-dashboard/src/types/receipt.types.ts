@@ -66,7 +66,7 @@ export interface Receipt {
   reviewNotes?: string;
 
   // Metadata
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
   createdAt: string;
   updatedAt: string;
 
@@ -101,7 +101,7 @@ export interface CreateReceiptDTO {
   imageData?: string; // Base64 or buffer for hash calculation
 
   // Optional metadata
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
   transactionId?: string;
 }
 
@@ -111,7 +111,7 @@ export interface UpdateReceiptDTO {
   date?: string | Date;
   items?: ReceiptItem[];
   rawText?: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface ReceiptFilters {

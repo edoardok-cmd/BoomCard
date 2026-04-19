@@ -15,6 +15,71 @@ import {
 } from './PaymentAdapter';
 import crypto from 'crypto';
 
+interface StripePaymentIntentResponse {
+  id: string;
+  amount: number;
+  currency: string;
+  status: string;
+  customer?: string;
+  metadata?: Record<string, unknown>;
+  created: number;
+}
+
+interface StripePaymentMethodResponse {
+  id: string;
+  card?: { last4?: string; brand?: string; exp_month?: number; exp_year?: number };
+  metadata?: Record<string, unknown>;
+}
+
+interface StripeSubscriptionResponse {
+  id: string;
+  customer: string;
+  status: Subscription['status'];
+  current_period_start: number;
+  current_period_end: number;
+  canceled_at?: number | null;
+  trial_end?: number | null;
+  items: {
+    data: Array<{
+      price?: {
+        id?: string;
+        unit_amount?: number;
+        recurring?: { interval?: Subscription['interval'] };
+      };
+    }>;
+  };
+  metadata?: Record<string, unknown>;
+}
+
+interface StripeInvoiceResponse {
+  id: string;
+  subscription?: string;
+  customer: string;
+  total: number;
+  currency: string;
+  status: Invoice['status'];
+  due_date?: number | null;
+  status_transitions?: { paid_at?: number | null };
+  number: string;
+  invoice_pdf?: string;
+  hosted_invoice_url?: string;
+  metadata?: Record<string, unknown>;
+}
+
+interface StripeListResponse<T> {
+  data: T[];
+}
+
+interface StripeRefundResponse {
+  id: string;
+  status: string;
+  amount: number;
+}
+
+interface StripeAccountResponse {
+  id?: string;
+}
+
 export class StripePayment extends PaymentAdapter {
   private stripe: unknown; // In production, use: import Stripe from 'stripe'
 
@@ -35,7 +100,7 @@ export class StripePayment extends PaymentAdapter {
     try {
       // In production: this.stripe = new Stripe(this.credentials.secretKey);
       // For now, we'll use fetch API
-      const response = await this.makeRequest('/account');
+      const response = await this.makeRequest<StripeAccountResponse>('/account');
       return response.id !== undefined;
     } catch (error) {
       console.error('Stripe initialization failed:', error);
@@ -49,7 +114,7 @@ export class StripePayment extends PaymentAdapter {
     customerId?: string,
     metadata?: Record<string, unknown>
   ): Promise<PaymentIntent> {
-    const response = await this.makeRequest('/payment_intents', 'POST', {
+    const response = await this.makeRequest<StripePaymentIntentResponse>('/payment_intents', 'POST', {
       amount: this.formatAmount(amount, currency),
       currency: currency.toLowerCase(),
       customer: customerId,
@@ -70,7 +135,7 @@ export class StripePayment extends PaymentAdapter {
     paymentMethodId: string
   ): Promise<PaymentResult> {
     try {
-      const response = await this.makeRequest(
+      const response = await this.makeRequest<StripePaymentIntentResponse>(
         `/payment_intents/${paymentIntentId}/confirm`,
         'POST',
         {
@@ -96,7 +161,7 @@ export class StripePayment extends PaymentAdapter {
     name: string,
     metadata?: Record<string, unknown>
   ): Promise<string> {
-    const response = await this.makeRequest('/customers', 'POST', {
+    const response = await this.makeRequest<{ id: string }>('/customers', 'POST', {
       email,
       name,
       metadata: {
@@ -113,7 +178,7 @@ export class StripePayment extends PaymentAdapter {
     paymentMethodData: Record<string, unknown>
   ): Promise<PaymentMethod> {
     // Create payment method
-    const pmResponse = await this.makeRequest('/payment_methods', 'POST', {
+    const pmResponse = await this.makeRequest<StripePaymentMethodResponse>('/payment_methods', 'POST', {
       type: 'card',
       card: paymentMethodData.card,
       billing_details: paymentMethodData.billingDetails,
@@ -128,11 +193,11 @@ export class StripePayment extends PaymentAdapter {
   }
 
   async getPaymentMethods(customerId: string): Promise<PaymentMethod[]> {
-    const response = await this.makeRequest(
+    const response = await this.makeRequest<StripeListResponse<StripePaymentMethodResponse>>(
       `/payment_methods?customer=${customerId}&type=card`
     );
 
-    return response.data.map((pm: Parameters<typeof this.mapPaymentMethod>[0]) => this.mapPaymentMethod(pm));
+    return response.data.map((pm) => this.mapPaymentMethod(pm));
   }
 
   async setDefaultPaymentMethod(
@@ -171,7 +236,7 @@ export class StripePayment extends PaymentAdapter {
       subscriptionData.trial_period_days = trialDays;
     }
 
-    const response = await this.makeRequest('/subscriptions', 'POST', subscriptionData);
+    const response = await this.makeRequest<StripeSubscriptionResponse>('/subscriptions', 'POST', subscriptionData);
 
     return this.mapSubscription(response);
   }
@@ -195,7 +260,7 @@ export class StripePayment extends PaymentAdapter {
     subscriptionId: string,
     newPlanId: string
   ): Promise<Subscription> {
-    const response = await this.makeRequest(`/subscriptions/${subscriptionId}`, 'POST', {
+    const response = await this.makeRequest<StripeSubscriptionResponse>(`/subscriptions/${subscriptionId}`, 'POST', {
       items: [
         {
           id: subscriptionId,
@@ -210,7 +275,7 @@ export class StripePayment extends PaymentAdapter {
 
   async getSubscription(subscriptionId: string): Promise<Subscription | null> {
     try {
-      const response = await this.makeRequest(`/subscriptions/${subscriptionId}`);
+      const response = await this.makeRequest<StripeSubscriptionResponse>(`/subscriptions/${subscriptionId}`);
       return this.mapSubscription(response);
     } catch (error) {
       console.error('Error getting subscription:', error);
@@ -234,7 +299,7 @@ export class StripePayment extends PaymentAdapter {
     }
 
     // Create and finalize invoice
-    const response = await this.makeRequest('/invoices', 'POST', {
+    const response = await this.makeRequest<StripeInvoiceResponse>('/invoices', 'POST', {
       customer: customerId,
       auto_advance: true,
       metadata: {
@@ -248,7 +313,7 @@ export class StripePayment extends PaymentAdapter {
 
   async getInvoice(invoiceId: string): Promise<Invoice | null> {
     try {
-      const response = await this.makeRequest(`/invoices/${invoiceId}`);
+      const response = await this.makeRequest<StripeInvoiceResponse>(`/invoices/${invoiceId}`);
       return this.mapInvoice(response);
     } catch (error) {
       console.error('Error getting invoice:', error);
@@ -257,11 +322,11 @@ export class StripePayment extends PaymentAdapter {
   }
 
   async listInvoices(customerId: string, limit: number = 10): Promise<Invoice[]> {
-    const response = await this.makeRequest(
+    const response = await this.makeRequest<StripeListResponse<StripeInvoiceResponse>>(
       `/invoices?customer=${customerId}&limit=${limit}`
     );
 
-    return response.data.map((inv: Parameters<typeof this.mapInvoice>[0]) => this.mapInvoice(inv));
+    return response.data.map((inv) => this.mapInvoice(inv));
   }
 
   async refundPayment(
@@ -282,7 +347,7 @@ export class StripePayment extends PaymentAdapter {
         refundData.reason = reason;
       }
 
-      const response = await this.makeRequest('/refunds', 'POST', refundData);
+      const response = await this.makeRequest<StripeRefundResponse>('/refunds', 'POST', refundData);
 
       return {
         success: response.status === 'succeeded',
@@ -344,7 +409,7 @@ export class StripePayment extends PaymentAdapter {
   }
 
   async getPaymentStatus(paymentIntentId: string): Promise<PaymentIntent['status']> {
-    const response = await this.makeRequest(`/payment_intents/${paymentIntentId}`);
+    const response = await this.makeRequest<StripePaymentIntentResponse>(`/payment_intents/${paymentIntentId}`);
     return this.mapStatus(response.status);
   }
 
@@ -380,15 +445,7 @@ export class StripePayment extends PaymentAdapter {
     // Implementation would notify user
   }
 
-  private mapPaymentIntent(data: {
-    id: string;
-    amount: number;
-    currency: string;
-    status: string;
-    customer?: string;
-    metadata?: Record<string, unknown>;
-    created: number;
-  }): PaymentIntent {
+  private mapPaymentIntent(data: StripePaymentIntentResponse): PaymentIntent {
     return {
       id: data.id,
       amount: this.parseAmount(data.amount, data.currency),
@@ -401,11 +458,7 @@ export class StripePayment extends PaymentAdapter {
     };
   }
 
-  private mapPaymentMethod(data: {
-    id: string;
-    card?: { last4?: string; brand?: string; exp_month?: number; exp_year?: number };
-    metadata?: Record<string, unknown>;
-  }): PaymentMethod {
+  private mapPaymentMethod(data: StripePaymentMethodResponse): PaymentMethod {
     return {
       id: data.id,
       type: 'card',
@@ -418,11 +471,11 @@ export class StripePayment extends PaymentAdapter {
     };
   }
 
-  private mapSubscription(data: any): Subscription {
+  private mapSubscription(data: StripeSubscriptionResponse): Subscription {
     return {
       id: data.id,
       customerId: data.customer,
-      planId: data.items.data[0]?.price?.id,
+      planId: data.items.data[0]?.price?.id || '',
       status: data.status,
       currentPeriodStart: new Date(data.current_period_start * 1000),
       currentPeriodEnd: new Date(data.current_period_end * 1000),
@@ -435,20 +488,7 @@ export class StripePayment extends PaymentAdapter {
     };
   }
 
-  private mapInvoice(data: {
-    id: string;
-    subscription?: string;
-    customer: string;
-    total: number;
-    currency: string;
-    status: Invoice['status'];
-    due_date?: number | null;
-    status_transitions?: { paid_at?: number | null };
-    number: string;
-    invoice_pdf?: string;
-    hosted_invoice_url?: string;
-    metadata?: Record<string, unknown>;
-  }): Invoice {
+  private mapInvoice(data: StripeInvoiceResponse): Invoice {
     return {
       id: data.id,
       subscriptionId: data.subscription,

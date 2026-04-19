@@ -23,7 +23,7 @@ export class BarsyPOS extends POSAdapter {
 
   async testConnection(): Promise<POSConnectionStatus> {
     try {
-      const response = await this.makeRequest('/health');
+      const response = await this.makeRequest<{ version?: string }>('/health');
       return {
         connected: true,
         lastSync: new Date(),
@@ -39,11 +39,11 @@ export class BarsyPOS extends POSAdapter {
 
   async fetchTransactions(startDate: Date, endDate: Date): Promise<POSTransaction[]> {
     try {
-      const response = await this.makeRequest(
+      const response = await this.makeRequest<{ transactions: Array<Record<string, unknown>> }>(
         `/transactions?start=${startDate.toISOString()}&end=${endDate.toISOString()}`
       );
 
-      return response.transactions.map((tx: Record<string, unknown>) => this.mapTransaction(tx));
+      return response.transactions.map((tx) => this.mapTransaction(tx));
     } catch (error) {
       console.error('Error fetching Barsy transactions:', error);
       return [];
@@ -55,7 +55,7 @@ export class BarsyPOS extends POSAdapter {
     discountPercentage: number,
     boomCardNumber: string
   ): Promise<POSTransaction> {
-    const response = await this.makeRequest(
+    const response = await this.makeRequest<Record<string, unknown>>(
       `/transactions/${transactionId}/discount`,
       'POST',
       {
@@ -72,7 +72,7 @@ export class BarsyPOS extends POSAdapter {
 
   async getTransaction(transactionId: string): Promise<POSTransaction | null> {
     try {
-      const response = await this.makeRequest(`/transactions/${transactionId}`);
+      const response = await this.makeRequest<Record<string, unknown>>(`/transactions/${transactionId}`);
       return this.mapTransaction(response);
     } catch (error) {
       console.error('Error getting transaction:', error);
@@ -81,7 +81,7 @@ export class BarsyPOS extends POSAdapter {
   }
 
   async refundTransaction(transactionId: string, amount?: number): Promise<POSTransaction> {
-    const response = await this.makeRequest(
+    const response = await this.makeRequest<Record<string, unknown>>(
       `/transactions/${transactionId}/refund`,
       'POST',
       amount ? { amount } : {}

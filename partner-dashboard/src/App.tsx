@@ -157,9 +157,10 @@ const queryClient = new QueryClient({
     queries: {
       staleTime: 5 * 60 * 1000, // 5 minutes
       gcTime: 10 * 60 * 1000, // 10 minutes (formerly cacheTime)
-      retry: (failureCount, error: any) => {
+      retry: (failureCount, error) => {
+        const status = (error as { response?: { status?: number } })?.response?.status;
         // Don't retry on 4xx errors (client errors) except 429 (rate limit)
-        if (error?.response?.status >= 400 && error?.response?.status < 500 && error?.response?.status !== 429) {
+        if (status !== undefined && status >= 400 && status < 500 && status !== 429) {
           return false;
         }
         // Retry up to 2 times for network errors and 5xx errors

@@ -276,8 +276,8 @@ export function offerToEntity(offer: Offer): Entity {
       ? { display: offer.workingHours, displayBg: offer.workingHoursBg }
       : undefined,
     partnerName: { en: offer.partnerName, bg: offer.partnerName },
-    partnerTypeId: (offer as any).partner?.partnerTypeId,
-    partnerType: (offer as any).partner?.partnerType,
+    partnerTypeId: (offer as Offer & { partner?: { partnerTypeId?: string; partnerType?: Entity['partnerType'] } }).partner?.partnerTypeId,
+    partnerType: (offer as Offer & { partner?: { partnerTypeId?: string; partnerType?: Entity['partnerType'] } }).partner?.partnerType,
     path: offer.path,
   };
 }

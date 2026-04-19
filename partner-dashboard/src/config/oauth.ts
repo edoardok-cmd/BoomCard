@@ -32,7 +32,8 @@ export const initFacebookSDK = (): Promise<void> => {
     script.crossOrigin = 'anonymous';
 
     script.onload = () => {
-      (window as any).FB.init({
+      const fb = (window as unknown as { FB?: { init: (opts: Record<string, unknown>) => void } }).FB;
+      fb?.init({
         appId: OAUTH_CONFIG.facebook.appId,
         cookie: true,
         xfbml: true,
