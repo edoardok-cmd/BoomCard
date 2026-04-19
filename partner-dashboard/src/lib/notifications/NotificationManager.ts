@@ -24,7 +24,7 @@ export interface Notification {
   read: boolean;
   actionUrl?: string;
   actionLabel?: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
   expiresAt?: Date;
 }
 

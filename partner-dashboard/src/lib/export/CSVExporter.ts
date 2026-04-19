@@ -15,7 +15,7 @@ export class CSVExporter {
   /**
    * Convert array of objects to CSV string
    */
-  static toCSV<T extends Record<string, any>>(
+  static toCSV<T extends Record<string, unknown>>(
     data: T[],
     options: CSVOptions = {}
   ): string {
@@ -49,14 +49,14 @@ export class CSVExporter {
   /**
    * Format a single row
    */
-  private static formatRow(values: any[], delimiter: string): string {
+  private static formatRow(values: string[], delimiter: string): string {
     return values.join(delimiter);
   }
 
   /**
    * Escape CSV value
    */
-  private static escapeValue(value: any): string {
+  private static escapeValue(value: unknown): string {
     if (value === null || value === undefined) {
       return '';
     }
@@ -83,7 +83,7 @@ export class CSVExporter {
   /**
    * Download CSV file
    */
-  static download<T extends Record<string, any>>(
+  static download<T extends Record<string, unknown>>(
     data: T[],
     options: CSVOptions = {}
   ): void {
@@ -121,7 +121,18 @@ export class CSVExporter {
   /**
    * Export transactions to CSV
    */
-  static exportTransactions(transactions: any[]): void {
+  static exportTransactions(transactions: Array<{
+    id: string;
+    createdAt: string | number | Date;
+    venueName: string;
+    amount: number;
+    discount: number;
+    discountAmount: number;
+    finalAmount: number;
+    currency: string;
+    status: string;
+    cardNumber: string;
+  }>): void {
     const formatted = transactions.map(tx => ({
       'Transaction ID': tx.id,
       'Date': new Date(tx.createdAt).toLocaleString(),
@@ -143,7 +154,18 @@ export class CSVExporter {
   /**
    * Export venues to CSV
    */
-  static exportVenues(venues: any[]): void {
+  static exportVenues(venues: Array<{
+    id: string;
+    name: string;
+    category: string;
+    address: string;
+    city: string;
+    phone?: string | null;
+    email?: string | null;
+    rating?: number | null;
+    reviewCount?: number | null;
+    isActive?: boolean;
+  }>): void {
     const formatted = venues.map(venue => ({
       'ID': venue.id,
       'Name': venue.name,
@@ -165,7 +187,17 @@ export class CSVExporter {
   /**
    * Export offers to CSV
    */
-  static exportOffers(offers: any[]): void {
+  static exportOffers(offers: Array<{
+    id: string;
+    title: string;
+    venueName: string;
+    discount: number;
+    validFrom: string | number | Date;
+    validUntil: string | number | Date;
+    maxRedemptions?: number | null;
+    currentRedemptions: number;
+    isActive?: boolean;
+  }>): void {
     const formatted = offers.map(offer => ({
       'ID': offer.id,
       'Title': offer.title,
@@ -186,7 +218,14 @@ export class CSVExporter {
   /**
    * Export analytics data to CSV
    */
-  static exportAnalytics(analytics: any[]): void {
+  static exportAnalytics(analytics: Array<{
+    date: string | number | Date;
+    totalSales?: number | null;
+    totalDiscount?: number | null;
+    transactionCount?: number | null;
+    avgDiscount?: number | null;
+    uniqueCustomers?: number | null;
+  }>): void {
     const formatted = analytics.map(item => ({
       'Date': new Date(item.date).toLocaleDateString(),
       'Total Sales': item.totalSales?.toFixed(2) || '0.00',
@@ -204,7 +243,17 @@ export class CSVExporter {
   /**
    * Export users to CSV
    */
-  static exportUsers(users: any[]): void {
+  static exportUsers(users: Array<{
+    id: string;
+    email: string;
+    firstName: string;
+    lastName: string;
+    phone?: string | null;
+    role: string;
+    emailVerified?: boolean;
+    isActive?: boolean;
+    createdAt: string | number | Date;
+  }>): void {
     const formatted = users.map(user => ({
       'ID': user.id,
       'Email': user.email,

@@ -11,15 +11,15 @@ export interface ImportOptions {
   encoding?: 'utf-8' | 'utf-8-bom';
 }
 
-export interface ValidationRule<T = any> {
+export interface ValidationRule<T = unknown> {
   field: string;
   required?: boolean;
   type?: 'string' | 'number' | 'boolean' | 'date' | 'email' | 'url';
   min?: number;
   max?: number;
   pattern?: RegExp;
-  enum?: any[];
-  custom?: (value: any, row: T) => string | null; // Return error message or null
+  enum?: unknown[];
+  custom?: (value: unknown, row: T) => string | null; // Return error message or null
 }
 
 export interface ImportResult<T> {
@@ -36,27 +36,27 @@ export interface ImportError {
   row: number;
   field?: string;
   message: string;
-  value?: any;
+  value?: unknown;
 }
 
 export interface ImportWarning {
   row: number;
   field?: string;
   message: string;
-  value?: any;
+  value?: unknown;
 }
 
 export interface FieldMapping {
   csvField: string;
   dataField: string;
-  transform?: (value: string) => any;
+  transform?: (value: string) => unknown;
 }
 
 export class CSVImporter {
   /**
    * Parse CSV file from File object
    */
-  static async parseFile<T = Record<string, any>>(
+  static async parseFile<T = Record<string, unknown>>(
     file: File,
     options: ImportOptions = {}
   ): Promise<T[]> {
@@ -93,7 +93,7 @@ export class CSVImporter {
   /**
    * Parse CSV text into array of objects
    */
-  static parseCSV<T = Record<string, any>>(
+  static parseCSV<T = Record<string, unknown>>(
     text: string,
     options: ImportOptions = {}
   ): T[] {
@@ -130,14 +130,14 @@ export class CSVImporter {
 
       if (hasHeaders) {
         // Create object with headers as keys
-        const row: any = {};
+        const row: Record<string, string> = {};
         headers.forEach((header, index) => {
           row[header] = values[index] || '';
         });
         rows.push(row as T);
       } else {
         // Return as array
-        rows.push(values as any);
+        rows.push(values as unknown as T);
       }
     }
 
@@ -191,7 +191,7 @@ export class CSVImporter {
   /**
    * Validate imported data against rules
    */
-  static validate<T = Record<string, any>>(
+  static validate<T = Record<string, unknown>>(
     data: T[],
     rules: ValidationRule<T>[]
   ): ImportResult<T> {
@@ -204,7 +204,7 @@ export class CSVImporter {
       let rowValid = true;
 
       rules.forEach(rule => {
-        const value = (row as any)[rule.field];
+        const value = (row as Record<string, unknown>)[rule.field];
         const error = this.validateField(value, rule, row);
 
         if (error) {
@@ -238,7 +238,7 @@ export class CSVImporter {
    * Validate a single field against a rule
    */
   private static validateField<T>(
-    value: any,
+    value: unknown,
     rule: ValidationRule<T>,
     row: T
   ): string | null {
@@ -303,7 +303,7 @@ export class CSVImporter {
    * Validate value type
    */
   private static validateType(
-    value: any,
+    value: unknown,
     type: ValidationRule['type'],
     field: string
   ): string | null {
@@ -330,7 +330,7 @@ export class CSVImporter {
         break;
 
       case 'date': {
-        const date = new Date(value);
+        const date = new Date(value as string | number | Date);
         if (isNaN(date.getTime())) {
           return `${field} must be a valid date`;
         }
@@ -360,19 +360,19 @@ export class CSVImporter {
   /**
    * Transform data using field mappings
    */
-  static transform<T = Record<string, any>>(
-    data: Record<string, any>[],
+  static transform<T = Record<string, unknown>>(
+    data: Record<string, unknown>[],
     mappings: FieldMapping[]
   ): T[] {
     return data.map(row => {
-      const transformed: any = {};
+      const transformed: Record<string, unknown> = {};
 
       mappings.forEach(mapping => {
         const value = row[mapping.csvField];
 
         if (value !== undefined) {
           transformed[mapping.dataField] = mapping.transform
-            ? mapping.transform(value)
+            ? mapping.transform(value as string)
             : value;
         }
       });
@@ -384,7 +384,7 @@ export class CSVImporter {
   /**
    * Import venues from CSV
    */
-  static async importVenues(file: File): Promise<ImportResult<any>> {
+  static async importVenues(file: File): Promise<ImportResult<Record<string, unknown>>> {
     const data = await this.parseFile(file);
 
     const rules: ValidationRule[] = [
@@ -404,7 +404,7 @@ export class CSVImporter {
   /**
    * Import offers from CSV
    */
-  static async importOffers(file: File): Promise<ImportResult<any>> {
+  static async importOffers(file: File): Promise<ImportResult<Record<string, unknown>>> {
     const data = await this.parseFile(file);
 
     const rules: ValidationRule[] = [
@@ -416,9 +416,10 @@ export class CSVImporter {
       { field: 'maxRedemptions', required: false, type: 'number', min: 0 },
       {
         field: 'validUntil',
-        custom: (value, row: any) => {
-          const from = new Date(row.validFrom);
-          const until = new Date(value);
+        custom: (value, row) => {
+          const r = row as { validFrom: string | number | Date };
+          const from = new Date(r.validFrom);
+          const until = new Date(value as string | number | Date);
           if (until <= from) {
             return 'validUntil must be after validFrom';
           }
@@ -433,7 +434,7 @@ export class CSVImporter {
   /**
    * Import users from CSV
    */
-  static async importUsers(file: File): Promise<ImportResult<any>> {
+  static async importUsers(file: File): Promise<ImportResult<Record<string, unknown>>> {
     const data = await this.parseFile(file);
 
     const rules: ValidationRule[] = [
@@ -467,7 +468,7 @@ export class CSVImporter {
   /**
    * Import transactions from CSV
    */
-  static async importTransactions(file: File): Promise<ImportResult<any>> {
+  static async importTransactions(file: File): Promise<ImportResult<Record<string, unknown>>> {
     const data = await this.parseFile(file);
 
     const rules: ValidationRule[] = [
@@ -498,7 +499,7 @@ export class CSVImporter {
           finalAmount,
           currency: tx.currency || 'EUR',
           status: tx.status || 'COMPLETED',
-          createdAt: new Date(tx.date),
+          createdAt: new Date(tx.date as string | number | Date),
         };
       });
     }
@@ -559,7 +560,7 @@ export class CSVImporter {
   /**
    * Format import result for display
    */
-  static formatResult(result: ImportResult<any>): string {
+  static formatResult(result: ImportResult<unknown>): string {
     const lines = [
       `Import ${result.success ? 'Successful' : 'Failed'}`,
       `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`,

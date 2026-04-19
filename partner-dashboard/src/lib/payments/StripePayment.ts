@@ -16,7 +16,7 @@ import {
 import crypto from 'crypto';
 
 export class StripePayment extends PaymentAdapter {
-  private stripe: any; // In production, use: import Stripe from 'stripe'
+  private stripe: unknown; // In production, use: import Stripe from 'stripe'
 
   protected getBaseUrl(): string {
     return this.credentials.environment === 'production'
@@ -47,7 +47,7 @@ export class StripePayment extends PaymentAdapter {
     amount: number,
     currency: string,
     customerId?: string,
-    metadata?: Record<string, any>
+    metadata?: Record<string, unknown>
   ): Promise<PaymentIntent> {
     const response = await this.makeRequest('/payment_intents', 'POST', {
       amount: this.formatAmount(amount, currency),
@@ -94,7 +94,7 @@ export class StripePayment extends PaymentAdapter {
   async createCustomer(
     email: string,
     name: string,
-    metadata?: Record<string, any>
+    metadata?: Record<string, unknown>
   ): Promise<string> {
     const response = await this.makeRequest('/customers', 'POST', {
       email,
@@ -110,7 +110,7 @@ export class StripePayment extends PaymentAdapter {
 
   async addPaymentMethod(
     customerId: string,
-    paymentMethodData: any
+    paymentMethodData: Record<string, unknown>
   ): Promise<PaymentMethod> {
     // Create payment method
     const pmResponse = await this.makeRequest('/payment_methods', 'POST', {
@@ -132,7 +132,7 @@ export class StripePayment extends PaymentAdapter {
       `/payment_methods?customer=${customerId}&type=card`
     );
 
-    return response.data.map((pm: any) => this.mapPaymentMethod(pm));
+    return response.data.map((pm: Parameters<typeof this.mapPaymentMethod>[0]) => this.mapPaymentMethod(pm));
   }
 
   async setDefaultPaymentMethod(
@@ -156,9 +156,9 @@ export class StripePayment extends PaymentAdapter {
     customerId: string,
     planId: string,
     trialDays?: number,
-    metadata?: Record<string, any>
+    metadata?: Record<string, unknown>
   ): Promise<Subscription> {
-    const subscriptionData: any = {
+    const subscriptionData: Record<string, unknown> = {
       customer: customerId,
       items: [{ price: planId }],
       metadata: {
@@ -221,7 +221,7 @@ export class StripePayment extends PaymentAdapter {
   async createInvoice(
     customerId: string,
     items: Array<{ description: string; amount: number }>,
-    metadata?: Record<string, any>
+    metadata?: Record<string, unknown>
   ): Promise<Invoice> {
     // Create invoice items
     for (const item of items) {
@@ -261,7 +261,7 @@ export class StripePayment extends PaymentAdapter {
       `/invoices?customer=${customerId}&limit=${limit}`
     );
 
-    return response.data.map((inv: any) => this.mapInvoice(inv));
+    return response.data.map((inv: Parameters<typeof this.mapInvoice>[0]) => this.mapInvoice(inv));
   }
 
   async refundPayment(
@@ -270,7 +270,7 @@ export class StripePayment extends PaymentAdapter {
     reason?: string
   ): Promise<RefundResult> {
     try {
-      const refundData: any = {
+      const refundData: Record<string, unknown> = {
         payment_intent: paymentIntentId,
       };
 
@@ -350,37 +350,45 @@ export class StripePayment extends PaymentAdapter {
 
   // Private helper methods
 
-  private async handlePaymentSuccess(data: any): Promise<void> {
+  private async handlePaymentSuccess(data: Record<string, unknown>): Promise<void> {
     console.log('Payment succeeded:', data.id);
     // Implementation would update database
   }
 
-  private async handlePaymentFailed(data: any): Promise<void> {
+  private async handlePaymentFailed(data: Record<string, unknown>): Promise<void> {
     console.log('Payment failed:', data.id);
     // Implementation would notify user
   }
 
-  private async handleSubscriptionUpdate(data: any): Promise<void> {
+  private async handleSubscriptionUpdate(data: Record<string, unknown>): Promise<void> {
     console.log('Subscription updated:', data.id);
     // Implementation would update database
   }
 
-  private async handleSubscriptionCanceled(data: any): Promise<void> {
+  private async handleSubscriptionCanceled(data: Record<string, unknown>): Promise<void> {
     console.log('Subscription canceled:', data.id);
     // Implementation would update database
   }
 
-  private async handleInvoicePaid(data: any): Promise<void> {
+  private async handleInvoicePaid(data: Record<string, unknown>): Promise<void> {
     console.log('Invoice paid:', data.id);
     // Implementation would update database
   }
 
-  private async handleInvoicePaymentFailed(data: any): Promise<void> {
+  private async handleInvoicePaymentFailed(data: Record<string, unknown>): Promise<void> {
     console.log('Invoice payment failed:', data.id);
     // Implementation would notify user
   }
 
-  private mapPaymentIntent(data: any): PaymentIntent {
+  private mapPaymentIntent(data: {
+    id: string;
+    amount: number;
+    currency: string;
+    status: string;
+    customer?: string;
+    metadata?: Record<string, unknown>;
+    created: number;
+  }): PaymentIntent {
     return {
       id: data.id,
       amount: this.parseAmount(data.amount, data.currency),
@@ -393,7 +401,11 @@ export class StripePayment extends PaymentAdapter {
     };
   }
 
-  private mapPaymentMethod(data: any): PaymentMethod {
+  private mapPaymentMethod(data: {
+    id: string;
+    card?: { last4?: string; brand?: string; exp_month?: number; exp_year?: number };
+    metadata?: Record<string, unknown>;
+  }): PaymentMethod {
     return {
       id: data.id,
       type: 'card',
@@ -423,7 +435,20 @@ export class StripePayment extends PaymentAdapter {
     };
   }
 
-  private mapInvoice(data: any): Invoice {
+  private mapInvoice(data: {
+    id: string;
+    subscription?: string;
+    customer: string;
+    total: number;
+    currency: string;
+    status: Invoice['status'];
+    due_date?: number | null;
+    status_transitions?: { paid_at?: number | null };
+    number: string;
+    invoice_pdf?: string;
+    hosted_invoice_url?: string;
+    metadata?: Record<string, unknown>;
+  }): Invoice {
     return {
       id: data.id,
       subscriptionId: data.subscription,

@@ -13,7 +13,7 @@ export type WebSocketEventType =
   | 'integration.status'
   | 'partner.update';
 
-export interface WebSocketMessage<T = any> {
+export interface WebSocketMessage<T = unknown> {
   event: WebSocketEventType;
   data: T;
   timestamp: number;
@@ -45,7 +45,7 @@ export interface AnalyticsEvent {
   period: string;
 }
 
-type EventHandler<T = any> = (data: T) => void;
+type EventHandler<T = unknown> = (data: T) => void;
 
 export class WebSocketService {
   private ws: WebSocket | null = null;
@@ -125,7 +125,7 @@ export class WebSocketService {
   /**
    * Subscribe to an event type
    */
-  on<T = any>(event: WebSocketEventType, handler: EventHandler<T>): () => void {
+  on<T = unknown>(event: WebSocketEventType, handler: EventHandler<T>): () => void {
     if (!this.eventHandlers.has(event)) {
       this.eventHandlers.set(event, new Set());
     }
@@ -160,7 +160,7 @@ export class WebSocketService {
   /**
    * Send a message to the server
    */
-  send(event: WebSocketEventType, data: any): void {
+  send(event: WebSocketEventType, data: unknown): void {
     if (this.ws?.readyState === WebSocket.OPEN) {
       const message: WebSocketMessage = {
         event,
@@ -202,7 +202,7 @@ export class WebSocketService {
   /**
    * Emit a local event (for internal use)
    */
-  private emit(event: string, data: any): void {
+  private emit(event: string, data: unknown): void {
     // This is for local events, not WebSocket events
     window.dispatchEvent(
       new CustomEvent(event, {

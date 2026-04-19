@@ -111,7 +111,7 @@ export class RKeeperPOS extends POSAdapter {
   /**
    * Make XML-RPC request to R-Keeper
    */
-  private async makeRKeeperRequest(command: string, params: Record<string, any> = {}): Promise<string> {
+  private async makeRKeeperRequest(command: string, params: Record<string, unknown> = {}): Promise<string> {
     const sessionId = await this.authenticate();
 
     let paramsXML = '';
@@ -148,12 +148,12 @@ export class RKeeperPOS extends POSAdapter {
   async createTransaction(
     amount: number,
     discountPercent: number,
-    metadata?: Record<string, any>
+    metadata?: Record<string, unknown>
   ): Promise<POSTransaction> {
     const discountAmount = (amount * discountPercent) / 100;
     const finalAmount = amount - discountAmount;
 
-    const params: Record<string, any> = {
+    const params: Record<string, unknown> = {
       TableId: metadata?.tableId || '0',
       GuestCount: metadata?.guestCount || 1,
     };
@@ -331,7 +331,7 @@ export class RKeeperPOS extends POSAdapter {
    */
   async createOrder(order: Omit<POSOrder, 'id' | 'createdAt'>): Promise<POSOrder> {
     // Create check
-    const params: Record<string, any> = {
+    const params: Record<string, unknown> = {
       TableId: order.customer?.name || '0',
       GuestCount: 1,
     };
@@ -428,8 +428,8 @@ export class RKeeperPOS extends POSAdapter {
   /**
    * Process webhook event
    */
-  async processWebhook(payload: any): Promise<void> {
-    const { eventType, checkId } = payload;
+  async processWebhook(payload: unknown): Promise<void> {
+    const { eventType, checkId } = payload as { eventType?: string; checkId?: string };
 
     switch (eventType) {
       case 'CheckCreated':
@@ -541,7 +541,7 @@ export class RKeeperPOS extends POSAdapter {
   /**
    * Get station info
    */
-  async getStationInfo(): Promise<any> {
+  async getStationInfo(): Promise<{ stationId: string | null; stationName: string | null; isActive: boolean }> {
     const xmlResponse = await this.makeRKeeperRequest('GetStationInfo', {
       StationId: this.config.stationId,
     });

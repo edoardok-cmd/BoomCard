@@ -21,7 +21,7 @@ export interface PaymentMethod {
   expiryMonth?: number;
   expiryYear?: number;
   isDefault: boolean;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface PaymentIntent {
@@ -30,7 +30,7 @@ export interface PaymentIntent {
   currency: string;
   status: 'pending' | 'processing' | 'succeeded' | 'failed' | 'canceled';
   customerId?: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -47,7 +47,7 @@ export interface Subscription {
   amount: number;
   currency: string;
   interval: 'month' | 'year';
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface Invoice {
@@ -62,14 +62,14 @@ export interface Invoice {
   invoiceNumber: string;
   pdfUrl?: string;
   hostedInvoiceUrl?: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface PaymentResult {
   success: boolean;
   paymentIntentId?: string;
   error?: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface RefundResult {
@@ -82,7 +82,7 @@ export interface RefundResult {
 export interface WebhookEvent {
   id: string;
   type: string;
-  data: any;
+  data: Record<string, unknown>;
   createdAt: Date;
 }
 
@@ -114,7 +114,7 @@ export abstract class PaymentAdapter {
     amount: number,
     currency: string,
     customerId?: string,
-    metadata?: Record<string, any>
+    metadata?: Record<string, unknown>
   ): Promise<PaymentIntent>;
 
   /**
@@ -131,7 +131,7 @@ export abstract class PaymentAdapter {
   abstract createCustomer(
     email: string,
     name: string,
-    metadata?: Record<string, any>
+    metadata?: Record<string, unknown>
   ): Promise<string>;
 
   /**
@@ -139,7 +139,7 @@ export abstract class PaymentAdapter {
    */
   abstract addPaymentMethod(
     customerId: string,
-    paymentMethodData: any
+    paymentMethodData: Record<string, unknown>
   ): Promise<PaymentMethod>;
 
   /**
@@ -162,7 +162,7 @@ export abstract class PaymentAdapter {
     customerId: string,
     planId: string,
     trialDays?: number,
-    metadata?: Record<string, any>
+    metadata?: Record<string, unknown>
   ): Promise<Subscription>;
 
   /**
@@ -192,7 +192,7 @@ export abstract class PaymentAdapter {
   abstract createInvoice(
     customerId: string,
     items: Array<{ description: string; amount: number }>,
-    metadata?: Record<string, any>
+    metadata?: Record<string, unknown>
   ): Promise<Invoice>;
 
   /**
@@ -235,7 +235,7 @@ export abstract class PaymentAdapter {
   protected async makeRequest(
     endpoint: string,
     method: 'GET' | 'POST' | 'PUT' | 'DELETE' = 'GET',
-    body?: any
+    body?: unknown
   ): Promise<any> {
     const url = `${this.baseUrl}${endpoint}`;
     const headers = this.getAuthHeaders();

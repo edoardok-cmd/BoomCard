@@ -44,7 +44,7 @@ export class PosterPOS extends POSAdapter {
         `/dash.getTransactions?dateFrom=${dateFrom}&dateTo=${dateTo}`
       );
 
-      return response.response?.map((tx: any) => this.mapTransaction(tx)) || [];
+      return response.response?.map((tx: Record<string, unknown>) => this.mapTransaction(tx)) || [];
     } catch (error) {
       console.error('Error fetching Poster transactions:', error);
       return [];
@@ -135,25 +135,26 @@ export class PosterPOS extends POSAdapter {
     console.log('Handling refund for transaction:', transaction.id);
   }
 
-  private mapTransaction(data: any): POSTransaction {
-    const amount = parseFloat(data.sum || data.total_sum || '0') / 100; // Poster uses kopecks
-    const discountAmount = parseFloat(data.discount_sum || '0') / 100;
+  private mapTransaction(data: Record<string, unknown>): POSTransaction {
+    const amount = parseFloat((data.sum as string) || (data.total_sum as string) || '0') / 100; // Poster uses kopecks
+    const discountAmount = parseFloat((data.discount_sum as string) || '0') / 100;
     const discountPercentage = amount > 0 ? (discountAmount / amount) * 100 : 0;
+    const products = data.products as Array<Record<string, unknown>> | undefined;
 
     return {
-      id: data.transaction_id?.toString() || data.id?.toString(),
+      id: (data.transaction_id as { toString(): string } | undefined)?.toString() || (data.id as { toString(): string } | undefined)?.toString() || '',
       amount,
       currency: 'EUR',
       discount: discountPercentage,
       discountAmount,
-      boomCardNumber: data.loyalty_code || data.client_card_number,
-      timestamp: new Date(data.date_close || data.created_at),
-      status: this.mapStatus(data.status),
-      items: data.products?.map((item: any) => ({
-        name: item.product_name,
-        quantity: item.count,
-        price: parseFloat(item.product_sum) / 100,
-        category: item.category_name,
+      boomCardNumber: (data.loyalty_code || data.client_card_number) as string | undefined,
+      timestamp: new Date((data.date_close || data.created_at) as string),
+      status: this.mapStatus(data.status as string | number),
+      items: products?.map((item) => ({
+        name: item.product_name as string,
+        quantity: item.count as number,
+        price: parseFloat(item.product_sum as string) / 100,
+        category: item.category_name as string | undefined,
       })),
       metadata: {
         tableNumber: data.table_name,

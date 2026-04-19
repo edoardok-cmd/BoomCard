@@ -18,8 +18,9 @@ export interface POSConfig {
   apiSecret?: string;
   apiUrl?: string;
   webhookSecret?: string;
+  webhookUrl?: string;
   environment?: 'production' | 'sandbox';
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 export interface POSMenuItem {
@@ -49,7 +50,7 @@ export interface POSOrder {
   };
   status: 'pending' | 'confirmed' | 'completed' | 'cancelled';
   createdAt: Date;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface POSTransaction {
@@ -63,7 +64,7 @@ export interface POSTransaction {
   timestamp: Date;
   status: 'pending' | 'completed' | 'failed' | 'refunded';
   items?: TransactionItem[];
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface TransactionItem {
@@ -158,7 +159,7 @@ export abstract class POSAdapter {
   protected async makeRequest(
     endpoint: string,
     method: 'GET' | 'POST' | 'PUT' | 'DELETE' = 'GET',
-    body?: any
+    body?: unknown
   ): Promise<any> {
     const url = `${this.baseUrl}${endpoint}`;
     const headers = this.getAuthHeaders();

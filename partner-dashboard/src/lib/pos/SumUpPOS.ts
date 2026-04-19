@@ -121,7 +121,7 @@ export class SumUpPOS extends POSAdapter {
   protected async makeRequest<T>(
     endpoint: string,
     method: 'GET' | 'POST' | 'PUT' | 'DELETE' = 'GET',
-    body?: any
+    body?: unknown
   ): Promise<T> {
     const token = await this.authenticate();
 
@@ -148,7 +148,7 @@ export class SumUpPOS extends POSAdapter {
   async createTransaction(
     amount: number,
     discountPercent: number,
-    metadata?: Record<string, any>
+    metadata?: Record<string, unknown>
   ): Promise<POSTransaction> {
     const discountAmount = (amount * discountPercent) / 100;
     const finalAmount = amount - discountAmount;
@@ -262,24 +262,24 @@ export class SumUpPOS extends POSAdapter {
       order: 'descending',
     });
 
-    const response = await this.makeRequest<{ items: any[] }>(
+    const response = await this.makeRequest<{ items: Array<Record<string, unknown>> }>(
       `/me/transactions/history?${params}`
     );
 
     // Filter by date range
     const filtered = response.items.filter(item => {
-      const txDate = new Date(item.timestamp);
+      const txDate = new Date(item.timestamp as string);
       return txDate >= startDate && txDate <= endDate;
     });
 
     return filtered.map(tx => ({
-      id: tx.id,
-      amount: tx.amount * 100,
+      id: tx.id as string,
+      amount: (tx.amount as number) * 100,
       discount: 0,
       discountAmount: 0,
-      finalAmount: tx.amount * 100,
+      finalAmount: (tx.amount as number) * 100,
       status: tx.status === 'SUCCESSFUL' ? 'completed' : 'failed',
-      timestamp: new Date(tx.timestamp),
+      timestamp: new Date(tx.timestamp as string),
       metadata: {
         transactionCode: tx.transaction_code,
         paymentType: tx.payment_type,
@@ -334,8 +334,8 @@ export class SumUpPOS extends POSAdapter {
   /**
    * Process webhook event
    */
-  async processWebhook(payload: any): Promise<void> {
-    const { event_type, resource_type, resource } = payload;
+  async processWebhook(payload: unknown): Promise<void> {
+    const { event_type, resource_type, resource } = payload as { event_type?: string; resource_type?: string; resource: { id?: string; transaction_code?: string } };
 
     console.log(`SumUp webhook received: ${event_type} for ${resource_type}`);
 
@@ -440,22 +440,22 @@ export class SumUpPOS extends POSAdapter {
   /**
    * Get merchant profile
    */
-  async getMerchantProfile(): Promise<any> {
+  async getMerchantProfile(): Promise<unknown> {
     return this.makeRequest('/me');
   }
 
   /**
    * Get account details
    */
-  async getAccountDetails(): Promise<any> {
+  async getAccountDetails(): Promise<unknown> {
     return this.makeRequest('/me/account');
   }
 
   /**
    * Get merchant receipts
    */
-  async getReceipts(limit: number = 10): Promise<any[]> {
-    const response = await this.makeRequest<{ items: any[] }>(
+  async getReceipts(limit: number = 10): Promise<unknown[]> {
+    const response = await this.makeRequest<{ items: unknown[] }>(
       `/me/transactions/history?limit=${limit}`
     );
     return response.items;
@@ -487,7 +487,7 @@ export class SumUpPOS extends POSAdapter {
   async processCardPayment(
     amount: number,
     currency: string,
-    metadata?: Record<string, any>
+    metadata?: Record<string, unknown>
   ): Promise<POSTransaction> {
     // This would interact with SumUp terminal SDK in a real implementation
     console.log('Processing card payment via SumUp terminal');

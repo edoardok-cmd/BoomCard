@@ -6,10 +6,10 @@
 import { POSAdapter, POSCredentials, POSTransaction } from './POSAdapter';
 import { BarsyPOS } from './BarsyPOS';
 import { PosterPOS } from './PosterPOS';
-import { iikoPOS } from './iikoPOS';
-import { RKeeperPOS } from './RKeeperPOS';
-import { myPOS } from './myPOS';
-import { SumUpPOS } from './SumUpPOS';
+import { iikoPOS, iikoConfig } from './iikoPOS';
+import { RKeeperPOS, RKeeperConfig } from './RKeeperPOS';
+import { myPOS, myPOSConfig } from './myPOS';
+import { SumUpPOS, SumUpConfig } from './SumUpPOS';
 
 export type POSProvider = 'barsy' | 'poster' | 'iiko' | 'rkeeper' | 'epay' | 'borica' | 'mypos' | 'sumup' | 'stripe-terminal' | 'booking-api';
 
@@ -62,13 +62,13 @@ export class POSManager {
       case 'poster':
         return new PosterPOS(credentials, this.partnerId);
       case 'iiko':
-        return new iikoPOS(credentials as any);
+        return new iikoPOS(credentials as unknown as iikoConfig);
       case 'rkeeper':
-        return new RKeeperPOS(credentials as any);
+        return new RKeeperPOS(credentials as unknown as RKeeperConfig);
       case 'mypos':
-        return new myPOS(credentials as any);
+        return new myPOS(credentials as unknown as myPOSConfig);
       case 'sumup':
-        return new SumUpPOS(credentials as any);
+        return new SumUpPOS(credentials as unknown as SumUpConfig);
       default:
         throw new Error(`Unsupported POS provider: ${provider}`);
     }

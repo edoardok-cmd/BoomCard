@@ -3,7 +3,7 @@
  * Manages multiple payment gateways and orchestrates payment operations
  */
 
-import { PaymentAdapter, PaymentCredentials, PaymentIntent, PaymentResult, Subscription, Invoice } from './PaymentAdapter';
+import { PaymentAdapter, PaymentCredentials, PaymentIntent, PaymentResult, Subscription, Invoice, RefundResult } from './PaymentAdapter';
 import { StripePayment } from './StripePayment';
 import { ePayBG } from './ePayBG';
 
@@ -98,7 +98,7 @@ export class PaymentManager {
     currency: string,
     customerId?: string,
     provider?: PaymentProvider,
-    metadata?: Record<string, any>
+    metadata?: Record<string, unknown>
   ): Promise<PaymentIntent> {
     const adapter = this.getAdapter(provider);
     return adapter.createPaymentIntent(amount, currency, customerId, metadata);
@@ -122,7 +122,7 @@ export class PaymentManager {
   async createCustomer(
     email: string,
     name: string,
-    metadata?: Record<string, any>
+    metadata?: Record<string, unknown>
   ): Promise<Record<PaymentProvider, string>> {
     const customerIds: Record<string, string> = {};
 
@@ -146,7 +146,7 @@ export class PaymentManager {
     planId: string,
     provider?: PaymentProvider,
     trialDays?: number,
-    metadata?: Record<string, any>
+    metadata?: Record<string, unknown>
   ): Promise<Subscription> {
     const adapter = this.getAdapter(provider);
     return adapter.createSubscription(customerId, planId, trialDays, metadata);
@@ -194,7 +194,7 @@ export class PaymentManager {
     customerId: string,
     items: Array<{ description: string; amount: number }>,
     provider?: PaymentProvider,
-    metadata?: Record<string, any>
+    metadata?: Record<string, unknown>
   ): Promise<Invoice> {
     const adapter = this.getAdapter(provider);
     return adapter.createInvoice(customerId, items, metadata);
@@ -231,7 +231,7 @@ export class PaymentManager {
     provider?: PaymentProvider,
     amount?: number,
     reason?: string
-  ): Promise<any> {
+  ): Promise<RefundResult> {
     const adapter = this.getAdapter(provider);
     return adapter.refundPayment(paymentIntentId, amount, reason);
   }

@@ -99,7 +99,7 @@ export class iikoPOS extends POSAdapter {
   protected async makeRequest<T>(
     endpoint: string,
     method: 'GET' | 'POST' | 'PUT' | 'DELETE' = 'GET',
-    body?: any
+    body?: unknown
   ): Promise<T> {
     const token = await this.authenticate();
 
@@ -125,10 +125,12 @@ export class iikoPOS extends POSAdapter {
   async createTransaction(
     amount: number,
     discountPercent: number,
-    metadata?: Record<string, any>
+    metadata?: Record<string, unknown>
   ): Promise<POSTransaction> {
     const discountAmount = (amount * discountPercent) / 100;
     const finalAmount = amount - discountAmount;
+
+    const customer = metadata?.customer as { name?: string; phone?: string } | undefined;
 
     // Create order in iiko
     const orderData = {
@@ -136,9 +138,9 @@ export class iikoPOS extends POSAdapter {
       terminalGroupId: this.config.terminalGroupId,
       order: {
         phone: metadata?.phone,
-        customer: metadata?.customer ? {
-          name: metadata.customer.name,
-          phone: metadata.customer.phone,
+        customer: customer ? {
+          name: customer.name,
+          phone: customer.phone,
         } : undefined,
         items: metadata?.items || [],
         discountSum: discountAmount,
@@ -377,8 +379,8 @@ export class iikoPOS extends POSAdapter {
   /**
    * Process webhook event
    */
-  async processWebhook(payload: any): Promise<void> {
-    const { eventType, order } = payload;
+  async processWebhook(payload: unknown): Promise<void> {
+    const { eventType, order } = payload as { eventType?: string; order: { id?: string } };
 
     switch (eventType) {
       case 'OrderCreated':
@@ -489,7 +491,7 @@ export class iikoPOS extends POSAdapter {
   /**
    * Get organization info
    */
-  async getOrganizationInfo(): Promise<any> {
+  async getOrganizationInfo(): Promise<unknown> {
     const response = await this.makeRequest(
       `/api/1/organization/list`
     );
@@ -499,7 +501,7 @@ export class iikoPOS extends POSAdapter {
   /**
    * Get delivery terminals
    */
-  async getTerminalGroups(): Promise<any> {
+  async getTerminalGroups(): Promise<unknown> {
     const response = await this.makeRequest(
       `/api/1/terminal_groups?organization=${this.config.organizationId}`
     );

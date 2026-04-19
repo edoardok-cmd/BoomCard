@@ -15,7 +15,7 @@ export type RealtimeEventType =
 
 export interface RealtimeEvent {
   type: RealtimeEventType;
-  data: any;
+  data: unknown;
   timestamp: Date;
 }
 
@@ -92,7 +92,7 @@ export class RealtimeService {
   /**
    * Send message to server
    */
-  send(type: string, data: any): void {
+  send(type: string, data: unknown): void {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       console.error('[Realtime] Not connected');
       return;

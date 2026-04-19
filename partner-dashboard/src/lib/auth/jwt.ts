@@ -14,7 +14,7 @@ export interface JWTPayload {
   iat: number; // Issued at
   exp: number; // Expiration
   jti?: string; // JWT ID (for revocation)
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 export interface TokenPair {

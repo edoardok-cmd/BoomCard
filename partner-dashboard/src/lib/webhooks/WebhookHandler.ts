@@ -20,7 +20,7 @@ export type WebhookProvider =
 export interface WebhookEvent {
   provider: WebhookProvider;
   eventType: string;
-  payload: any;
+  payload: unknown;
   signature?: string;
   timestamp: Date;
 }
@@ -49,7 +49,7 @@ export class WebhookHandler {
    */
   async processWebhook(
     provider: WebhookProvider,
-    payload: any,
+    payload: unknown,
     signature?: string
   ): Promise<WebhookResult> {
     try {
@@ -101,7 +101,7 @@ export class WebhookHandler {
    */
   private async verifySignature(
     provider: WebhookProvider,
-    payload: any,
+    payload: unknown,
     signature?: string
   ): Promise<boolean> {
     if (!signature) {
@@ -137,7 +137,7 @@ export class WebhookHandler {
   /**
    * Verify Stripe webhook signature
    */
-  private verifyStripeSignature(payload: any, signature: string): boolean {
+  private verifyStripeSignature(payload: unknown, signature: string): boolean {
     // Stripe uses HMAC-SHA256
     const secret = process.env.STRIPE_WEBHOOK_SECRET || '';
 
@@ -151,12 +151,13 @@ export class WebhookHandler {
   /**
    * Verify ePay webhook signature
    */
-  private verifyEPaySignature(payload: any, signature: string): boolean {
+  private verifyEPaySignature(payload: unknown, signature: string): boolean {
     // ePay uses MD5 checksum
     const secret = process.env.EPAY_SECRET_KEY || '';
 
-    const sortedKeys = Object.keys(payload).sort();
-    const values = sortedKeys.map(key => payload[key]).join('');
+    const obj = payload as Record<string, unknown>;
+    const sortedKeys = Object.keys(obj).sort();
+    const values = sortedKeys.map(key => obj[key]).join('');
     const concatenated = values + secret;
 
     const md5 = crypto.createHash('md5').update(concatenated, 'utf8').digest('hex');
@@ -169,14 +170,14 @@ export class WebhookHandler {
    */
   private verifyPOSSignature(
     provider: WebhookProvider,
-    payload: any,
+    payload: unknown,
     signature: string
   ): boolean {
     if (!this.posManager) {
       return false;
     }
 
-    const adapter = this.posManager.getAdapter(provider as any);
+    const adapter = this.posManager.getAdapter(provider as Parameters<POSManager['getAdapter']>[0]);
     if (!adapter) {
       return false;
     }
@@ -187,29 +188,30 @@ export class WebhookHandler {
   /**
    * Extract event type from payload
    */
-  private extractEventType(provider: WebhookProvider, payload: any): string {
+  private extractEventType(provider: WebhookProvider, payload: unknown): string {
+    const p = payload as Record<string, unknown>;
     switch (provider) {
       case 'stripe':
-        return payload.type || 'unknown';
+        return (p.type as string) || 'unknown';
 
       case 'epay':
-        return payload.STATUS || 'unknown';
+        return (p.STATUS as string) || 'unknown';
 
       case 'barsy':
       case 'poster':
-        return payload.event || 'unknown';
+        return (p.event as string) || 'unknown';
 
       case 'iiko':
-        return payload.eventType || 'unknown';
+        return (p.eventType as string) || 'unknown';
 
       case 'rkeeper':
-        return payload.eventType || 'unknown';
+        return (p.eventType as string) || 'unknown';
 
       case 'mypos':
-        return payload.IPCmethod || 'unknown';
+        return (p.IPCmethod as string) || 'unknown';
 
       case 'sumup':
-        return payload.event_type || 'unknown';
+        return (p.event_type as string) || 'unknown';
 
       default:
         return 'unknown';
@@ -244,7 +246,8 @@ export class WebhookHandler {
    * Handle Stripe webhooks
    */
   private async handleStripeWebhook(event: WebhookEvent): Promise<void> {
-    const { eventType, payload } = event;
+    const { eventType } = event;
+    const payload = event.payload as { id?: string };
 
     switch (eventType) {
       case 'payment_intent.succeeded':
@@ -291,7 +294,7 @@ export class WebhookHandler {
    * Handle ePay webhooks
    */
   private async handleEPayWebhook(event: WebhookEvent): Promise<void> {
-    const { payload } = event;
+    const payload = event.payload as { STATUS?: string; INVOICE?: string };
 
     switch (payload.STATUS) {
       case 'PAID':
@@ -322,12 +325,12 @@ export class WebhookHandler {
       return;
     }
 
-    const adapter = this.posManager.getAdapter(event.provider as any);
+    const adapter = this.posManager.getAdapter(event.provider as Parameters<POSManager['getAdapter']>[0]);
     if (!adapter) {
       return;
     }
 
-    await adapter.handleWebhook(event.payload);
+    await adapter.handleWebhook(event.payload as Parameters<typeof adapter.handleWebhook>[0]);
   }
 
   /**
@@ -393,10 +396,14 @@ export class WebhookHandler {
    * Express middleware for handling webhooks
    */
   static expressMiddleware(handler: WebhookHandler) {
-    return async (req: any, res: any) => {
+    return async (
+      req: { params: Record<string, string>; headers: Record<string, string | string[] | undefined>; body: unknown },
+      res: { status: (code: number) => { json: (body: unknown) => void } }
+    ) => {
       try {
         const provider = req.params.provider as WebhookProvider;
-        const signature = req.headers['x-signature'] || req.headers['stripe-signature'];
+        const signatureHeader = req.headers['x-signature'] || req.headers['stripe-signature'];
+        const signature = Array.isArray(signatureHeader) ? signatureHeader[0] : signatureHeader;
 
         const result = await handler.processWebhook(provider, req.body, signature);
 

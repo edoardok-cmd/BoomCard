@@ -49,7 +49,7 @@ export function initSentry(): void {
   console.log('[Sentry] Initialized successfully');
 }
 
-export function captureException(error: Error, context?: Record<string, any>): void {
+export function captureException(error: Error, context?: Record<string, unknown>): void {
   if (import.meta.env.VITE_APP_ENVIRONMENT !== 'production') {
     console.error('[Sentry Debug]', error, context);
     return;

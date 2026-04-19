@@ -63,7 +63,7 @@ export class myPOS extends POSAdapter {
   /**
    * Generate signature for request
    */
-  private generateSignature(params: Record<string, any>): string {
+  private generateSignature(params: Record<string, unknown>): string {
     // Sort parameters alphabetically
     const sortedKeys = Object.keys(params).sort();
 
@@ -87,7 +87,7 @@ export class myPOS extends POSAdapter {
   /**
    * Verify signature from myPOS response
    */
-  private verifySignature(params: Record<string, any>, signature: string): boolean {
+  private verifySignature(params: Record<string, unknown>, signature: string): boolean {
     // Remove signature from params
     const restParams = { ...params };
     delete restParams.Signature;
@@ -117,12 +117,12 @@ export class myPOS extends POSAdapter {
   async createTransaction(
     amount: number,
     discountPercent: number,
-    metadata?: Record<string, any>
+    metadata?: Record<string, unknown>
   ): Promise<POSTransaction> {
     const discountAmount = (amount * discountPercent) / 100;
     const finalAmount = amount - discountAmount;
 
-    const orderId = metadata?.orderId || `ORDER_${Date.now()}`;
+    const orderId = (metadata?.orderId as string | undefined) || `ORDER_${Date.now()}`;
 
     const params: myPOSPaymentRequest = {
       IPCmethod: 'IPCPurchase',
@@ -131,19 +131,19 @@ export class myPOS extends POSAdapter {
       SID: this.config.sid,
       WalletNumber: this.config.walletNumber,
       Amount: (finalAmount / 100).toFixed(2), // Convert cents to currency
-      Currency: metadata?.currency || 'EUR',
+      Currency: (metadata?.currency as string | undefined) || 'EUR',
       OrderID: orderId,
-      URL_OK: metadata?.urlOk,
-      URL_Cancel: metadata?.urlCancel,
+      URL_OK: metadata?.urlOk as string | undefined,
+      URL_Cancel: metadata?.urlCancel as string | undefined,
       URL_Notify: this.config.webhookUrl,
-      Note: metadata?.note,
-      CustomerEmail: metadata?.customerEmail,
-      CustomerPhone: metadata?.customerPhone,
+      Note: metadata?.note as string | undefined,
+      CustomerEmail: metadata?.customerEmail as string | undefined,
+      CustomerPhone: metadata?.customerPhone as string | undefined,
       CardTokenRequest: metadata?.saveCard ? '1' : '0',
     };
 
     // Generate signature
-    const signature = this.generateSignature(params);
+    const signature = this.generateSignature(params as unknown as Record<string, unknown>);
 
     // Create payment request
     const response = await fetch(this.baseURL, {
@@ -152,7 +152,7 @@ export class myPOS extends POSAdapter {
         'Content-Type': 'application/x-www-form-urlencoded',
       },
       body: new URLSearchParams({
-        ...params as any,
+        ...params as unknown as Record<string, string>,
         Signature: signature,
         KeyIndex: this.config.keyIndex.toString(),
       }),
@@ -200,7 +200,7 @@ export class myPOS extends POSAdapter {
         'Content-Type': 'application/x-www-form-urlencoded',
       },
       body: new URLSearchParams({
-        ...params as any,
+        ...params as unknown as Record<string, string>,
         Signature: signature,
         KeyIndex: this.config.keyIndex.toString(),
       }),
@@ -213,7 +213,7 @@ export class myPOS extends POSAdapter {
     const data: myPOSPaymentResponse = await response.json();
 
     // Verify response signature
-    if (!this.verifySignature(data, data.Signature)) {
+    if (!this.verifySignature(data as unknown as Record<string, unknown>, data.Signature)) {
       throw new Error('Invalid signature in myPOS response');
     }
 
@@ -272,7 +272,7 @@ export class myPOS extends POSAdapter {
         'Content-Type': 'application/x-www-form-urlencoded',
       },
       body: new URLSearchParams({
-        ...params as any,
+        ...params as unknown as Record<string, string>,
         Signature: signature,
         KeyIndex: this.config.keyIndex.toString(),
       }),
@@ -336,8 +336,8 @@ export class myPOS extends POSAdapter {
   /**
    * Process webhook event
    */
-  async processWebhook(payload: any): Promise<void> {
-    const { IPCmethod, OrderID, Status, StatusMsg } = payload;
+  async processWebhook(payload: unknown): Promise<void> {
+    const { IPCmethod, OrderID, Status, StatusMsg } = payload as { IPCmethod?: string; OrderID?: string; Status?: string; StatusMsg?: string };
 
     console.log(`myPOS webhook received: ${IPCmethod} for order ${OrderID}`);
     console.log(`Status: ${Status} - ${StatusMsg}`);
@@ -390,7 +390,7 @@ export class myPOS extends POSAdapter {
           'Content-Type': 'application/x-www-form-urlencoded',
         },
         body: new URLSearchParams({
-          ...params as any,
+          ...params as unknown as Record<string, string>,
           Signature: signature,
           KeyIndex: this.config.keyIndex.toString(),
         }),
@@ -468,7 +468,7 @@ export class myPOS extends POSAdapter {
   /**
    * Get available payment methods
    */
-  async getPaymentMethods(): Promise<any[]> {
+  async getPaymentMethods(): Promise<unknown[]> {
     const params = {
       IPCmethod: 'IPCGetPaymentMethods',
       IPCversion: '1.4',
@@ -484,7 +484,7 @@ export class myPOS extends POSAdapter {
         'Content-Type': 'application/x-www-form-urlencoded',
       },
       body: new URLSearchParams({
-        ...params as any,
+        ...params as unknown as Record<string, string>,
         Signature: signature,
         KeyIndex: this.config.keyIndex.toString(),
       }),
@@ -504,8 +504,8 @@ export class myPOS extends POSAdapter {
     amount: number,
     currency: string,
     period: 'day' | 'week' | 'month' | 'year',
-    metadata?: Record<string, any>
-  ): Promise<any> {
+    metadata?: Record<string, unknown>
+  ): Promise<unknown> {
     const params = {
       IPCmethod: 'IPCPurchaseByCardToken',
       IPCversion: '1.4',
@@ -513,7 +513,7 @@ export class myPOS extends POSAdapter {
       WalletNumber: this.config.walletNumber,
       Amount: (amount / 100).toFixed(2),
       Currency: currency,
-      OrderID: metadata?.orderId || `RECURRING_${Date.now()}`,
+      OrderID: (metadata?.orderId as string | undefined) || `RECURRING_${Date.now()}`,
       CardToken: metadata?.cardToken,
       Note: `Recurring payment - ${period}`,
     };
@@ -526,7 +526,7 @@ export class myPOS extends POSAdapter {
         'Content-Type': 'application/x-www-form-urlencoded',
       },
       body: new URLSearchParams({
-        ...params as any,
+        ...params as unknown as Record<string, string>,
         Signature: signature,
         KeyIndex: this.config.keyIndex.toString(),
       }),

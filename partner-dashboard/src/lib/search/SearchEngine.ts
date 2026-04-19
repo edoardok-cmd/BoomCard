@@ -59,8 +59,8 @@ export interface Searchable {
   discount?: number;
   cuisine?: string;
   amenities?: string[];
-  openingHours?: any;
-  [key: string]: any;
+  openingHours?: unknown;
+  [key: string]: unknown;
 }
 
 export class SearchEngine {
@@ -95,14 +95,14 @@ export class SearchEngine {
   /**
    * Check if venue is open now
    */
-  private static isOpenNow(openingHours: any): boolean {
-    if (!openingHours) return false;
+  private static isOpenNow(openingHours: unknown): boolean {
+    if (!openingHours || typeof openingHours !== 'object') return false;
 
     const now = new Date();
     const day = now.toLocaleDateString('en-US', { weekday: 'short' }).toLowerCase(); // mon, tue, etc.
     const currentTime = now.getHours() * 60 + now.getMinutes();
 
-    const todayHours = openingHours[day];
+    const todayHours = (openingHours as Record<string, { closed?: boolean; open: string; close: string } | undefined>)[day];
     if (!todayHours || todayHours.closed) return false;
 
     const [openHour, openMin] = todayHours.open.split(':').map(Number);
@@ -265,7 +265,7 @@ export class SearchEngine {
           break;
 
         case 'newest':
-          comparison = (b.createdAt || 0) - (a.createdAt || 0);
+          comparison = ((b.createdAt as number) || 0) - ((a.createdAt as number) || 0);
           break;
       }
 
@@ -484,7 +484,7 @@ export class SearchEngine {
     // Map results back to Entity[]
     return {
       ...result,
-      items: result.items.map((item: any) => item._entity as Entity),
+      items: result.items.map((item) => (item as { _entity: Entity })._entity),
     };
   }
 }

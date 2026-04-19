@@ -43,7 +43,7 @@ export class ePayBG extends PaymentAdapter {
     amount: number,
     currency: string,
     customerId?: string,
-    metadata?: Record<string, any>
+    metadata?: Record<string, unknown>
   ): Promise<PaymentIntent> {
     // ePay uses a different flow - generate payment URL
     const invoice = `INV-${Date.now()}`;
@@ -102,7 +102,7 @@ export class ePayBG extends PaymentAdapter {
   async createCustomer(
     _email: string,
     _name: string,
-    _metadata?: Record<string, any>
+    _metadata?: Record<string, unknown>
   ): Promise<string> {
     // ePay doesn't have customer objects
     // Generate a unique customer ID
@@ -111,7 +111,7 @@ export class ePayBG extends PaymentAdapter {
 
   async addPaymentMethod(
     _customerId: string,
-    _paymentMethodData: any
+    _paymentMethodData: Record<string, unknown>
   ): Promise<PaymentMethod> {
     // ePay doesn't store payment methods
     // Return a placeholder
@@ -139,7 +139,7 @@ export class ePayBG extends PaymentAdapter {
     customerId: string,
     planId: string,
     trialDays?: number,
-    metadata?: Record<string, any>
+    metadata?: Record<string, unknown>
   ): Promise<Subscription> {
     // ePay doesn't natively support subscriptions
     // This would be handled by creating recurring payment intents
@@ -189,7 +189,7 @@ export class ePayBG extends PaymentAdapter {
   async createInvoice(
     customerId: string,
     items: Array<{ description: string; amount: number }>,
-    metadata?: Record<string, any>
+    metadata?: Record<string, unknown>
   ): Promise<Invoice> {
     const totalAmount = items.reduce((sum, item) => sum + item.amount, 0);
     const invoiceNumber = `INV-${Date.now()}`;
@@ -269,7 +269,7 @@ export class ePayBG extends PaymentAdapter {
     }
 
     // Recreate checksum
-    const data: any = {};
+    const data: Record<string, string> = {};
     for (const [key, value] of params.entries()) {
       if (key !== 'CHECKSUM') {
         data[key] = value;
@@ -330,7 +330,7 @@ export class ePayBG extends PaymentAdapter {
     }
   }
 
-  private generateChecksum(data: Record<string, any>): string {
+  private generateChecksum(data: Record<string, unknown>): string {
     // ePay checksum algorithm
     const sortedKeys = Object.keys(data).sort();
     const values = sortedKeys
@@ -346,23 +346,23 @@ export class ePayBG extends PaymentAdapter {
       .toUpperCase();
   }
 
-  private encodeFormData(data: Record<string, any>): string {
+  private encodeFormData(data: Record<string, unknown>): string {
     return Object.keys(data)
-      .map(key => `${encodeURIComponent(key)}=${encodeURIComponent(data[key])}`)
+      .map(key => `${encodeURIComponent(key)}=${encodeURIComponent(String(data[key]))}`)
       .join('&');
   }
 
-  private async handlePaymentSuccess(data: any): Promise<void> {
+  private async handlePaymentSuccess(data: Record<string, unknown>): Promise<void> {
     console.log('ePay payment succeeded:', data.INVOICE);
     // Implementation would update database
   }
 
-  private async handlePaymentFailed(data: any): Promise<void> {
+  private async handlePaymentFailed(data: Record<string, unknown>): Promise<void> {
     console.log('ePay payment failed:', data.INVOICE);
     // Implementation would notify user
   }
 
-  private async handlePaymentExpired(data: any): Promise<void> {
+  private async handlePaymentExpired(data: Record<string, unknown>): Promise<void> {
     console.log('ePay payment expired:', data.INVOICE);
     // Implementation would update database
   }

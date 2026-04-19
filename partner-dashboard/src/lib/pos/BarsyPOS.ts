@@ -43,7 +43,7 @@ export class BarsyPOS extends POSAdapter {
         `/transactions?start=${startDate.toISOString()}&end=${endDate.toISOString()}`
       );
 
-      return response.transactions.map((tx: any) => this.mapTransaction(tx));
+      return response.transactions.map((tx: Record<string, unknown>) => this.mapTransaction(tx));
     } catch (error) {
       console.error('Error fetching Barsy transactions:', error);
       return [];
@@ -141,23 +141,25 @@ export class BarsyPOS extends POSAdapter {
     console.log('Processing refund:', transaction.id);
   }
 
-  private mapTransaction(data: any): POSTransaction {
+  private mapTransaction(data: Record<string, unknown>): POSTransaction {
+    const metadata = (data.metadata as Record<string, unknown> | undefined);
+    const items = data.items as Array<Record<string, unknown>> | undefined;
     return {
-      id: data.id || data.transaction_id,
-      amount: parseFloat(data.amount),
-      currency: data.currency || 'EUR',
-      discount: parseFloat(data.discount_percentage || '0'),
-      discountAmount: parseFloat(data.discount_amount || '0'),
-      boomCardNumber: data.metadata?.boomCardNumber,
-      timestamp: new Date(data.created_at || data.timestamp),
-      status: this.mapStatus(data.status),
-      items: data.items?.map((item: any) => ({
-        name: item.name,
-        quantity: item.quantity,
-        price: parseFloat(item.price),
-        category: item.category,
+      id: (data.id || data.transaction_id) as string,
+      amount: parseFloat(data.amount as string),
+      currency: (data.currency as string) || 'EUR',
+      discount: parseFloat((data.discount_percentage as string) || '0'),
+      discountAmount: parseFloat((data.discount_amount as string) || '0'),
+      boomCardNumber: metadata?.boomCardNumber as string | undefined,
+      timestamp: new Date((data.created_at || data.timestamp) as string),
+      status: this.mapStatus(data.status as string),
+      items: items?.map((item) => ({
+        name: item.name as string,
+        quantity: item.quantity as number,
+        price: parseFloat(item.price as string),
+        category: item.category as string | undefined,
       })),
-      metadata: data.metadata,
+      metadata,
     };
   }
 

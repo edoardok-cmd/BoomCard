@@ -25,7 +25,7 @@ export interface ReportOptions {
   period: ReportPeriod;
   startDate?: Date;
   endDate?: Date;
-  filters?: Record<string, any>;
+  filters?: Record<string, unknown>;
   groupBy?: 'day' | 'week' | 'month' | 'venue' | 'category';
   includeCharts?: boolean;
   language?: 'en' | 'bg';
@@ -34,7 +34,7 @@ export interface ReportOptions {
 export interface ReportResult {
   success: boolean;
   filename?: string;
-  data?: any;
+  data?: unknown;
   error?: string;
   generatedAt: Date;
 }
@@ -144,12 +144,12 @@ export class ReportEngine {
     type: ReportType,
     startDate: Date,
     endDate: Date,
-    _filters?: Record<string, any>
-  ): Promise<any[]> {
+    _filters?: Record<string, unknown>
+  ): Promise<Record<string, unknown>[]> {
     // This would integrate with your data fetching logic
     // For now, returning mock data structure
 
-    const mockData: Record<ReportType, any[]> = {
+    const mockData: Record<ReportType, Record<string, unknown>[]> = {
       transactions: this.getMockTransactions(startDate, endDate),
       revenue: this.getMockRevenue(startDate, endDate),
       customers: this.getMockCustomers(startDate, endDate),
@@ -165,36 +165,43 @@ export class ReportEngine {
   /**
    * Group data by specified dimension
    */
-  private static groupData(data: any[], groupBy: string): any[] {
-    const grouped = new Map<string, any[]>();
+  private static groupData(data: Record<string, unknown>[], groupBy: string): Record<string, unknown>[] {
+    const grouped = new Map<string, Record<string, unknown>[]>();
 
     data.forEach(item => {
+      const rec = item as {
+        date?: string | number | Date;
+        createdAt?: string | number | Date;
+        venueId?: string;
+        venueName?: string;
+        category?: string;
+      };
       let key: string;
 
       switch (groupBy) {
         case 'day':
-          key = new Date(item.date || item.createdAt).toISOString().split('T')[0];
+          key = new Date((rec.date || rec.createdAt) as string | number | Date).toISOString().split('T')[0];
           break;
 
         case 'week': {
-          const date = new Date(item.date || item.createdAt);
+          const date = new Date((rec.date || rec.createdAt) as string | number | Date);
           const weekStart = new Date(date.getFullYear(), date.getMonth(), date.getDate() - date.getDay());
           key = weekStart.toISOString().split('T')[0];
           break;
         }
 
         case 'month': {
-          const monthDate = new Date(item.date || item.createdAt);
+          const monthDate = new Date((rec.date || rec.createdAt) as string | number | Date);
           key = `${monthDate.getFullYear()}-${String(monthDate.getMonth() + 1).padStart(2, '0')}`;
           break;
         }
 
         case 'venue':
-          key = item.venueId || item.venueName || 'Unknown';
+          key = rec.venueId || rec.venueName || 'Unknown';
           break;
 
         case 'category':
-          key = item.category || 'Uncategorized';
+          key = rec.category || 'Uncategorized';
           break;
 
         default:
@@ -211,8 +218,8 @@ export class ReportEngine {
     return Array.from(grouped.entries()).map(([key, items]) => ({
       group: key,
       count: items.length,
-      totalAmount: items.reduce((sum, item) => sum + (item.amount || 0), 0),
-      totalDiscount: items.reduce((sum, item) => sum + (item.discountAmount || 0), 0),
+      totalAmount: items.reduce((sum, item) => sum + ((item.amount as number) || 0), 0),
+      totalDiscount: items.reduce((sum, item) => sum + ((item.discountAmount as number) || 0), 0),
       items,
     }));
   }
@@ -222,7 +229,7 @@ export class ReportEngine {
    */
   private static generateCSV(
     type: ReportType,
-    data: any[],
+    data: Record<string, unknown>[],
     options: ReportOptions
   ): ReportResult {
     const filename = this.getFilename(type, options.format, options.period);
@@ -244,17 +251,27 @@ export class ReportEngine {
    */
   private static generatePDF(
     type: ReportType,
-    data: any[],
+    data: Record<string, unknown>[],
     options: ReportOptions
   ): ReportResult {
     const filename = this.getFilename(type, options.format, options.period);
 
     if (type === 'transactions') {
       const { startDate, endDate } = this.getDateRange(options.period, options.startDate, options.endDate);
+      const txs = data as Array<{
+        id: string;
+        date: string | number | Date;
+        venueName: string;
+        amount: number;
+        discount: number;
+        discountAmount: number;
+        finalAmount: number;
+        status: string;
+      }>;
       const reportData: TransactionReportData = {
         title: 'Transaction Report',
         dateRange: { from: startDate, to: endDate },
-        transactions: data.map(t => ({
+        transactions: txs.map(t => ({
           id: t.id,
           date: new Date(t.date),
           venueName: t.venueName,
@@ -264,10 +281,10 @@ export class ReportEngine {
           status: t.status,
         })),
         summary: {
-          totalTransactions: data.length,
-          totalAmount: data.reduce((sum, t) => sum + t.amount, 0),
-          totalDiscount: data.reduce((sum, t) => sum + t.discountAmount, 0),
-          totalFinalAmount: data.reduce((sum, t) => sum + t.finalAmount, 0),
+          totalTransactions: txs.length,
+          totalAmount: txs.reduce((sum, t) => sum + t.amount, 0),
+          totalDiscount: txs.reduce((sum, t) => sum + t.discountAmount, 0),
+          totalFinalAmount: txs.reduce((sum, t) => sum + t.finalAmount, 0),
         },
       };
 
@@ -299,7 +316,7 @@ export class ReportEngine {
    */
   private static generateJSON(
     type: ReportType,
-    data: any[],
+    data: Record<string, unknown>[],
     options: ReportOptions
   ): ReportResult {
     const filename = this.getFilename(type, options.format, options.period);
@@ -336,7 +353,7 @@ export class ReportEngine {
    */
   private static generateExcel(
     type: ReportType,
-    data: any[],
+    data: Record<string, unknown>[],
     options: ReportOptions
   ): ReportResult {
     // For Excel, use a library like xlsx
@@ -358,9 +375,9 @@ export class ReportEngine {
   /**
    * Calculate metrics from data
    */
-  private static calculateMetrics(data: any[]): Array<{ label: string; value: string | number; change?: number }> {
-    const totalAmount = data.reduce((sum, item) => sum + (item.amount || 0), 0);
-    const totalDiscount = data.reduce((sum, item) => sum + (item.discountAmount || 0), 0);
+  private static calculateMetrics(data: Record<string, unknown>[]): Array<{ label: string; value: string | number; change?: number }> {
+    const totalAmount = data.reduce((sum, item) => sum + ((item.amount as number) || 0), 0);
+    const totalDiscount = data.reduce((sum, item) => sum + ((item.discountAmount as number) || 0), 0);
     const avgAmount = data.length > 0 ? totalAmount / data.length : 0;
 
     return [
@@ -374,13 +391,13 @@ export class ReportEngine {
   /**
    * Calculate summary statistics
    */
-  private static calculateSummary(data: any[]): Record<string, any> {
+  private static calculateSummary(data: Record<string, unknown>[]): Record<string, unknown> {
     return {
       count: data.length,
-      totalAmount: data.reduce((sum, item) => sum + (item.amount || 0), 0),
-      totalDiscount: data.reduce((sum, item) => sum + (item.discountAmount || 0), 0),
+      totalAmount: data.reduce((sum, item) => sum + ((item.amount as number) || 0), 0),
+      totalDiscount: data.reduce((sum, item) => sum + ((item.discountAmount as number) || 0), 0),
       avgAmount: data.length > 0
-        ? data.reduce((sum, item) => sum + (item.amount || 0), 0) / data.length
+        ? data.reduce((sum, item) => sum + ((item.amount as number) || 0), 0) / data.length
         : 0,
     };
   }
@@ -394,49 +411,49 @@ export class ReportEngine {
   }
 
   // Mock data generators
-  private static getMockTransactions(_startDate: Date, _endDate: Date): any[] {
+  private static getMockTransactions(_startDate: Date, _endDate: Date): Record<string, unknown>[] {
     return [
       { id: '1', date: new Date(), venueName: 'Italian Restaurant', amount: 10000, discount: 20, discountAmount: 2000, finalAmount: 8000, status: 'COMPLETED' },
       { id: '2', date: new Date(), venueName: 'Spa & Wellness', amount: 15000, discount: 30, discountAmount: 4500, finalAmount: 10500, status: 'COMPLETED' },
     ];
   }
 
-  private static getMockRevenue(_startDate: Date, _endDate: Date): any[] {
+  private static getMockRevenue(_startDate: Date, _endDate: Date): Record<string, unknown>[] {
     return [
       { date: new Date(), revenue: 25000, transactions: 45 },
       { date: new Date(Date.now() - 86400000), revenue: 18000, transactions: 32 },
     ];
   }
 
-  private static getMockCustomers(_startDate: Date, _endDate: Date): any[] {
+  private static getMockCustomers(_startDate: Date, _endDate: Date): Record<string, unknown>[] {
     return [
       { id: '1', name: 'John Doe', email: 'john@example.com', totalSpent: 35000, visits: 12 },
       { id: '2', name: 'Jane Smith', email: 'jane@example.com', totalSpent: 28000, visits: 8 },
     ];
   }
 
-  private static getMockOffers(): any[] {
+  private static getMockOffers(): Record<string, unknown>[] {
     return [
       { id: '1', title: '20% Off Dinner', venueName: 'Italian Restaurant', redemptions: 234, active: true },
       { id: '2', title: 'Spa Package', venueName: 'Wellness Center', redemptions: 156, active: true },
     ];
   }
 
-  private static getMockVenues(): any[] {
+  private static getMockVenues(): Record<string, unknown>[] {
     return [
       { id: '1', name: 'Italian Restaurant', category: 'RESTAURANT', totalRevenue: 145000, visits: 450 },
       { id: '2', name: 'Wellness Center', category: 'SPA', totalRevenue: 98000, visits: 280 },
     ];
   }
 
-  private static getMockSubscriptions(): any[] {
+  private static getMockSubscriptions(): Record<string, unknown>[] {
     return [
       { id: '1', planName: 'Professional', status: 'active', amount: 7900, renewalDate: new Date('2024-12-01') },
       { id: '2', planName: 'Starter', status: 'active', amount: 2900, renewalDate: new Date('2024-11-15') },
     ];
   }
 
-  private static getMockAnalytics(_startDate: Date, _endDate: Date): any[] {
+  private static getMockAnalytics(_startDate: Date, _endDate: Date): Record<string, unknown>[] {
     return [
       { metric: 'Revenue', value: 45231, change: 12.5 },
       { metric: 'Transactions', value: 1234, change: 8.2 },
@@ -463,7 +480,7 @@ export class ReportEngine {
   static async emailReport(
     report: ReportResult,
     recipients: string[],
-    emailService: any
+    emailService: { send: (message: { to: { email: string }; subject: string; text: string; html: string }) => Promise<unknown> }
   ): Promise<boolean> {
     if (!report.success || !report.filename) {
       return false;
