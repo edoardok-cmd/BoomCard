@@ -373,13 +373,6 @@ export const PricingPlans: React.FC<PricingPlansProps> = ({
     onSelectPlan?.(planId, isAnnual ? 'annual' : 'monthly');
   };
 
-  const calculateSavings = (monthly: number, annual: number) => {
-    const yearlyCostMonthly = monthly * 12;
-    const savings = yearlyCostMonthly - annual;
-    const percentage = Math.round((savings / yearlyCostMonthly) * 100);
-    return percentage;
-  };
-
   return (
     <PlansContainer>
       <Header>

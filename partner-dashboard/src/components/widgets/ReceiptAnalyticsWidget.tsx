@@ -2,8 +2,8 @@ import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { receiptsApiService } from '../../services/receipts-api.service';
-import { Receipt, ReceiptStatus } from '../../types/receipt.types';
-import { FileText, TrendingUp, DollarSign, CheckCircle, ArrowRight, BarChart3 } from 'lucide-react';
+import { ReceiptStatus } from '../../types/receipt.types';
+import { FileText, DollarSign, ArrowRight, BarChart3 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 const Widget = styled.div`

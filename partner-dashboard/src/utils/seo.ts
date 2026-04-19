@@ -40,8 +40,6 @@ const DEFAULT_SEO_EN: SEOConfig = {
   language: 'en',
 };
 
-const DEFAULT_SEO = DEFAULT_SEO_BG;
-
 /**
  * Update document meta tags for SEO with bilingual support
  */

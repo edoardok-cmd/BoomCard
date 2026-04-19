@@ -117,7 +117,7 @@ export class SearchEngine {
   /**
    * Full-text search in multiple fields
    */
-  private static matchesQuery(item: Searchable, query: string, language: 'en' | 'bg' = 'en'): boolean {
+  private static matchesQuery(item: Searchable, query: string, _language: 'en' | 'bg' = 'en'): boolean {
     if (!query) return true;
 
     const searchText = query.toLowerCase();

@@ -93,7 +93,7 @@ export async function validateStructuredData(): Promise<SEOIssue[]> {
           });
         }
       }
-    } catch (error) {
+    } catch {
       issues.push({
         severity: 'error',
         category: 'Structured Data',

@@ -1,11 +1,10 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { useLanguage } from '../../contexts/LanguageContext';
 import {
   useCurrentSubscription,
   usePaymentMethods,
   useInvoices,
   useDeletePaymentMethod,
-  useSetDefaultPaymentMethod,
   useDownloadInvoice,
 } from '../../hooks/useBilling';
 import styled from 'styled-components';
@@ -333,25 +332,6 @@ interface Subscription {
   interval: 'month' | 'year';
 }
 
-interface PaymentMethod {
-  id: string;
-  type: 'card';
-  brand: string;
-  last4: string;
-  expiryMonth: number;
-  expiryYear: number;
-  isDefault: boolean;
-}
-
-interface Invoice {
-  id: string;
-  number: string;
-  date: Date;
-  amount: number;
-  currency: string;
-  status: 'paid' | 'pending' | 'failed';
-  pdfUrl?: string;
-}
 
 interface BillingDashboardProps {
   onUpdatePlan?: () => void;
@@ -375,7 +355,6 @@ export const BillingDashboard: React.FC<BillingDashboardProps> = ({
 
   // Mutations
   const deletePaymentMutation = useDeletePaymentMethod();
-  const setDefaultPaymentMutation = useSetDefaultPaymentMethod();
   const downloadInvoiceMutation = useDownloadInvoice();
 
   const formatDate = (date: Date) => {
@@ -426,14 +405,6 @@ export const BillingDashboard: React.FC<BillingDashboardProps> = ({
       } catch (error) {
         console.error('Failed to delete payment method:', error);
       }
-    }
-  };
-
-  const handleSetDefaultPaymentMethod = async (id: string) => {
-    try {
-      await setDefaultPaymentMutation.mutateAsync(id);
-    } catch (error) {
-      console.error('Failed to set default payment method:', error);
     }
   };
 

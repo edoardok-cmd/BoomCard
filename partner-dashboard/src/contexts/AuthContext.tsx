@@ -312,8 +312,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const storedToken = authStorage.getItem(TOKEN_KEY);
 
         if (storedAuth && storedToken) {
-          const userData = JSON.parse(storedAuth);
-
           // Verify token with backend
           try {
             apiService.setAuthToken(storedToken);

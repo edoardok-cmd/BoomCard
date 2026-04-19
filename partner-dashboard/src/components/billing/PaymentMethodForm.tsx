@@ -241,7 +241,6 @@ export const PaymentMethodForm: React.FC<PaymentMethodFormProps> = ({
   onSubmit,
   onCancel,
   loading = false,
-  language = 'en',
 }) => {
   const { t } = useLanguage();
   const [formData, setFormData] = useState<PaymentMethodData>({
@@ -381,13 +380,6 @@ export const PaymentMethodForm: React.FC<PaymentMethodFormProps> = ({
     if (validateForm()) {
       onSubmit(formData);
     }
-  };
-
-  const getCardBrand = (cardNumber: string): string => {
-    if (cardNumber.startsWith('4')) return 'Visa';
-    if (cardNumber.startsWith('5')) return 'Mastercard';
-    if (cardNumber.startsWith('3')) return 'Amex';
-    return 'Card';
   };
 
   return (

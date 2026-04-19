@@ -388,24 +388,6 @@ export const ReceiptScanner: React.FC<ReceiptScannerProps> = ({
     handleFiles(e.target.files);
   };
 
-  const simulateProgress = (callback: () => void, duration: number) => {
-    let currentProgress = 0;
-    const steps = 20;
-    const increment = 100 / steps;
-    const interval = duration / steps;
-
-    const timer = setInterval(() => {
-      currentProgress += increment;
-      if (currentProgress >= 100) {
-        setProgress(100);
-        clearInterval(timer);
-        callback();
-      } else {
-        setProgress(currentProgress);
-      }
-    }, interval);
-  };
-
   const handleScan = async () => {
     if (!selectedImage) return;
 

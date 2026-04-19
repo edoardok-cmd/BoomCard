@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { reviewsService, Review, ReviewFilters, CreateReviewData, ReviewEntityType, ReviewResponse } from '../services/reviews.service';
+import { reviewsService, ReviewFilters, CreateReviewData, ReviewEntityType, ReviewResponse } from '../services/reviews.service';
 import toast from 'react-hot-toast';
 
 /**

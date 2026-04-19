@@ -37,7 +37,7 @@ export interface CreatePartnerTypePayload {
   isActive?: boolean;
 }
 
-export interface UpdatePartnerTypePayload extends Partial<CreatePartnerTypePayload> {}
+export type UpdatePartnerTypePayload = Partial<CreatePartnerTypePayload>;
 
 class PartnerTypesService {
   private readonly baseUrl = '/admin/partner-types';

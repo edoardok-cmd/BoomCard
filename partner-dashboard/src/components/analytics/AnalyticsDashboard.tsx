@@ -12,7 +12,6 @@ import {
   Users,
   ShoppingCart,
   Percent,
-  Calendar,
   Download,
   Filter,
 } from 'lucide-react';
@@ -252,9 +251,7 @@ interface MetricData {
   isPositive: boolean;
 }
 
-export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
-  language = 'en',
-}) => {
+export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = () => {
   const { t } = useLanguage();
   const { user } = useAuth();
   const [timeRange, setTimeRange] = useState<TimeRange>('month');
@@ -293,7 +290,7 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
   );
 
   // Fetch top offers for the partner
-  const { data: offersData, isLoading: isLoadingOffers } = useOffers({
+  const { data: offersData } = useOffers({
     partnerId: user?.id,
     sortBy: 'redemptions',
     sortOrder: 'desc',

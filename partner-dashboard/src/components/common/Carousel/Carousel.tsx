@@ -87,26 +87,6 @@ const NavigationButton = styled.button<{ $direction: 'left' | 'right' }>`
   }
 `;
 
-const DotsContainer = styled.div`
-  display: flex;
-  justify-content: center;
-  gap: 0.5rem;
-  margin-top: 2rem;
-`;
-
-const Dot = styled.button<{ $active: boolean }>`
-  width: ${props => props.$active ? '2rem' : '0.5rem'};
-  height: 0.5rem;
-  border-radius: 9999px;
-  background: ${props => props.$active ? '#111827' : '#d1d5db'};
-  border: none;
-  cursor: pointer;
-  transition: all 300ms cubic-bezier(0.4, 0, 0.2, 1);
-
-  &:hover {
-    background: ${props => props.$active ? '#111827' : '#9ca3af'};
-  }
-`;
 
 export const Carousel: React.FC<CarouselProps> = ({
   children,
@@ -168,10 +148,6 @@ export const Carousel: React.FC<CarouselProps> = ({
     if (currentIndex > 0) {
       setCurrentIndex(currentIndex - 1);
     }
-  };
-
-  const goToSlide = (index: number) => {
-    setCurrentIndex(Math.min(index, maxIndex));
   };
 
   const itemWidth = `calc((100% - ${gap * (itemsPerView - 1)}px) / ${itemsPerView})`;

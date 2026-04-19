@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { bookingsService, BookingDetails, BookingFilters, CreateBookingData, BookingStatus } from '../services/bookings.service';
+import { bookingsService, BookingFilters, CreateBookingData, BookingStatus } from '../services/bookings.service';
 import toast from 'react-hot-toast';
 
 /**
@@ -207,7 +207,7 @@ export function useCreateBooking() {
 
   return useMutation({
     mutationFn: (data: CreateBookingData) => bookingsService.createBooking(data),
-    onSuccess: (booking) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['bookings'] });
       queryClient.invalidateQueries({ queryKey: ['availability'] });
       toast.success('Booking created successfully!');

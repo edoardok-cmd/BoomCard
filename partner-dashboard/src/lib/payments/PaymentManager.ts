@@ -324,7 +324,7 @@ export class PaymentManager {
       try {
         const isConnected = await adapter.initialize();
         results[provider] = isConnected;
-      } catch (error) {
+      } catch {
         results[provider] = false;
       }
     }

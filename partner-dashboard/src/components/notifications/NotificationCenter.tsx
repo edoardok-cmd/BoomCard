@@ -10,7 +10,6 @@ import {
   AlertTriangle,
   CreditCard,
   Tag,
-  Settings as SettingsIcon,
   X,
   Check,
   Trash2,
@@ -371,7 +370,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ language
     updateNotifications();
 
     // Subscribe to new notifications
-    const unsubscribe = manager.subscribe((notification: Notification) => {
+    const unsubscribe = manager.subscribe((_notification: Notification) => {
       updateNotifications();
     });
 

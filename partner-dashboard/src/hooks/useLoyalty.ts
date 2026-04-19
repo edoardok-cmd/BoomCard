@@ -1,14 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   loyaltyService,
-  LoyaltyAccount,
-  PointsTransaction,
-  Reward,
   RewardRedemption,
-  Badge,
-  TierBenefits,
-  ReferralProgram,
-  UserReferral,
   CreateRewardData,
   PointsTransactionType,
   LoyaltyTier,

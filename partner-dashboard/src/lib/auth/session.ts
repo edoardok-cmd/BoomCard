@@ -3,7 +3,7 @@
  * Handles user sessions with secure cookie storage
  */
 
-import { JWTPayload, validateToken } from './jwt';
+import { validateToken } from './jwt';
 import * as authStorage from './authStorage';
 
 export interface Session {

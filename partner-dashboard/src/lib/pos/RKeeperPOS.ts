@@ -39,15 +39,6 @@ interface RKeeperCheck {
   resultSum: number;
 }
 
-interface RKeeperDish {
-  dishId: string;
-  name: string;
-  categoryId: string;
-  categoryName: string;
-  price: number;
-  isActive: boolean;
-}
-
 export class RKeeperPOS extends POSAdapter {
   private config: RKeeperConfig;
   private session: RKeeperSession | null = null;

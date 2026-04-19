@@ -3,7 +3,7 @@
  * Popular POS system for restaurants and cafes
  */
 
-import { POSAdapter, POSCredentials, POSTransaction, POSConnectionStatus, POSWebhookPayload } from './POSAdapter';
+import { POSAdapter, POSTransaction, POSConnectionStatus, POSWebhookPayload } from './POSAdapter';
 import crypto from 'crypto';
 
 export class PosterPOS extends POSAdapter {

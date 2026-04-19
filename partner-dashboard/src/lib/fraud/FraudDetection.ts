@@ -316,7 +316,7 @@ export class FraudDetection {
    */
   private checkTimePattern(
     transaction: TransactionData,
-    userBehavior?: UserBehaviorData
+    _userBehavior?: UserBehaviorData
   ): { passed: boolean; reason: string; score: number } {
     const hour = transaction.timestamp.getHours();
 
@@ -424,7 +424,7 @@ export class FraudDetection {
   /**
    * Get fraud statistics
    */
-  async getFraudStatistics(startDate: Date, endDate: Date): Promise<{
+  async getFraudStatistics(_startDate: Date, _endDate: Date): Promise<{
     totalChecks: number;
     flaggedTransactions: number;
     blockedTransactions: number;

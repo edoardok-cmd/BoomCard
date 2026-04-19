@@ -89,7 +89,8 @@ export class myPOS extends POSAdapter {
    */
   private verifySignature(params: Record<string, any>, signature: string): boolean {
     // Remove signature from params
-    const { Signature, ...restParams } = params;
+    const restParams = { ...params };
+    delete restParams.Signature;
 
     // Sort parameters alphabetically
     const sortedKeys = Object.keys(restParams).sort();
@@ -285,7 +286,7 @@ export class myPOS extends POSAdapter {
   /**
    * Get all transactions for a period
    */
-  async getTransactions(startDate: Date, endDate: Date): Promise<POSTransaction[]> {
+  async getTransactions(_startDate: Date, _endDate: Date): Promise<POSTransaction[]> {
     // myPOS doesn't provide a bulk transaction query endpoint
     // This would need to be implemented using a local database of transaction IDs
     console.warn('myPOS does not support bulk transaction queries');
@@ -302,14 +303,14 @@ export class myPOS extends POSAdapter {
   /**
    * Create or update an order - Not applicable for myPOS
    */
-  async createOrder(order: Omit<POSOrder, 'id' | 'createdAt'>): Promise<POSOrder> {
+  async createOrder(_order: Omit<POSOrder, 'id' | 'createdAt'>): Promise<POSOrder> {
     throw new Error('myPOS does not support order management');
   }
 
   /**
    * Get order by ID - Not applicable for myPOS
    */
-  async getOrder(orderId: string): Promise<POSOrder> {
+  async getOrder(_orderId: string): Promise<POSOrder> {
     throw new Error('myPOS does not support order management');
   }
 
@@ -317,8 +318,8 @@ export class myPOS extends POSAdapter {
    * Update order status - Not applicable for myPOS
    */
   async updateOrderStatus(
-    orderId: string,
-    status: POSOrder['status']
+    _orderId: string,
+    _status: POSOrder['status']
   ): Promise<POSOrder> {
     throw new Error('myPOS does not support order management');
   }
@@ -417,7 +418,7 @@ export class myPOS extends POSAdapter {
   /**
    * Fetch transactions (alias for getTransactions)
    */
-  async fetchTransactions(startDate: Date, endDate: Date): Promise<POSTransaction[]> {
+  async fetchTransactions(_startDate: Date, _endDate: Date): Promise<POSTransaction[]> {
     // myPOS doesn't support transaction history queries via API
     // This would need to be implemented via webhook storage
     return [];
@@ -449,7 +450,7 @@ export class myPOS extends POSAdapter {
   /**
    * Refund transaction (required by POSAdapter)
    */
-  async refundTransaction(transactionId: string, amount?: number): Promise<POSTransaction> {
+  async refundTransaction(transactionId: string, _amount?: number): Promise<POSTransaction> {
     await this.cancelTransaction(transactionId);
     const transaction = await this.getTransaction(transactionId);
     return transaction;

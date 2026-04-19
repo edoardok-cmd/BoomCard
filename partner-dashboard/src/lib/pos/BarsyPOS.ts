@@ -4,7 +4,7 @@
  * API Documentation: https://www.barsy.bg/ui/api.html
  */
 
-import { POSAdapter, POSCredentials, POSTransaction, POSConnectionStatus, POSWebhookPayload } from './POSAdapter';
+import { POSAdapter, POSTransaction, POSConnectionStatus, POSWebhookPayload } from './POSAdapter';
 import crypto from 'crypto';
 
 export class BarsyPOS extends POSAdapter {

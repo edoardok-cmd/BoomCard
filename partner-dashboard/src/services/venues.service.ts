@@ -1,5 +1,4 @@
 import { apiService } from './api.service';
-import type { Offer } from '../types/entity.types';
 import { Entity, venueToEntity } from '../types/entity.types';
 import * as authStorage from '../lib/auth/authStorage';
 

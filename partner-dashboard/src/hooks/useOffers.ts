@@ -1,8 +1,6 @@
-import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { offersService, OfferDetails, OfferFilters } from '../services/offers.service';
+import { offersService, OfferFilters } from '../services/offers.service';
 import toast from 'react-hot-toast';
-import type { Entity } from '../types/entity.types';
 
 /**
  * Hook to fetch offers with filters

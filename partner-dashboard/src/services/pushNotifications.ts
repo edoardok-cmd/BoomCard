@@ -217,7 +217,7 @@ class PushNotificationService {
     try {
       const subscription = await this.registration.pushManager.getSubscription();
       return subscription !== null;
-    } catch (error) {
+    } catch {
       return false;
     }
   }

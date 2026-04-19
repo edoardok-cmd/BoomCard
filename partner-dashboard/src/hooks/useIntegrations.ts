@@ -8,11 +8,8 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-hot-toast';
 import integrationsService, {
-  Integration,
-  PartnerIntegration,
   ConnectIntegrationData,
   UpdateIntegrationData,
-  IntegrationStats,
 } from '../services/integrations.service';
 
 /**

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
 import { receiptService } from '../../services/receipt.service';
 import { useLanguage } from '../../contexts/LanguageContext';
-import { TrendingUp, DollarSign, FileText, CheckCircle, XCircle, PieChart } from 'lucide-react';
+import { TrendingUp, DollarSign, FileText, PieChart } from 'lucide-react';
 
 const Container = styled.div`
   padding: 2rem;

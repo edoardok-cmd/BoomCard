@@ -229,7 +229,7 @@ export class SumUpPOS extends POSAdapter {
   /**
    * Cancel a transaction - SumUp doesn't support cancellation, only refunds
    */
-  async cancelTransaction(transactionId: string): Promise<void> {
+  async cancelTransaction(_transactionId: string): Promise<void> {
     console.warn('SumUp does not support checkout cancellation. Use refund instead.');
   }
 
@@ -298,14 +298,14 @@ export class SumUpPOS extends POSAdapter {
   /**
    * Create or update an order - Not applicable for SumUp
    */
-  async createOrder(order: Omit<POSOrder, 'id' | 'createdAt'>): Promise<POSOrder> {
+  async createOrder(_order: Omit<POSOrder, 'id' | 'createdAt'>): Promise<POSOrder> {
     throw new Error('SumUp does not support order management');
   }
 
   /**
    * Get order by ID - Not applicable for SumUp
    */
-  async getOrder(orderId: string): Promise<POSOrder> {
+  async getOrder(_orderId: string): Promise<POSOrder> {
     throw new Error('SumUp does not support order management');
   }
 
@@ -313,8 +313,8 @@ export class SumUpPOS extends POSAdapter {
    * Update order status - Not applicable for SumUp
    */
   async updateOrderStatus(
-    orderId: string,
-    status: POSOrder['status']
+    _orderId: string,
+    _status: POSOrder['status']
   ): Promise<POSOrder> {
     throw new Error('SumUp does not support order management');
   }

@@ -48,7 +48,6 @@ const GoogleButtonContent: React.FC<GoogleLoginButtonProps> = ({
   onSuccess,
   onError,
   text = 'Continue with Google',
-  language = 'en',
 }) => {
   // Use custom button with our translated text instead of Google's built-in text
   // This ensures proper Bulgarian translation

@@ -144,7 +144,7 @@ export class ReportEngine {
     type: ReportType,
     startDate: Date,
     endDate: Date,
-    filters?: Record<string, any>
+    _filters?: Record<string, any>
   ): Promise<any[]> {
     // This would integrate with your data fetching logic
     // For now, returning mock data structure
@@ -394,21 +394,21 @@ export class ReportEngine {
   }
 
   // Mock data generators
-  private static getMockTransactions(startDate: Date, endDate: Date): any[] {
+  private static getMockTransactions(_startDate: Date, _endDate: Date): any[] {
     return [
       { id: '1', date: new Date(), venueName: 'Italian Restaurant', amount: 10000, discount: 20, discountAmount: 2000, finalAmount: 8000, status: 'COMPLETED' },
       { id: '2', date: new Date(), venueName: 'Spa & Wellness', amount: 15000, discount: 30, discountAmount: 4500, finalAmount: 10500, status: 'COMPLETED' },
     ];
   }
 
-  private static getMockRevenue(startDate: Date, endDate: Date): any[] {
+  private static getMockRevenue(_startDate: Date, _endDate: Date): any[] {
     return [
       { date: new Date(), revenue: 25000, transactions: 45 },
       { date: new Date(Date.now() - 86400000), revenue: 18000, transactions: 32 },
     ];
   }
 
-  private static getMockCustomers(startDate: Date, endDate: Date): any[] {
+  private static getMockCustomers(_startDate: Date, _endDate: Date): any[] {
     return [
       { id: '1', name: 'John Doe', email: 'john@example.com', totalSpent: 35000, visits: 12 },
       { id: '2', name: 'Jane Smith', email: 'jane@example.com', totalSpent: 28000, visits: 8 },
@@ -436,7 +436,7 @@ export class ReportEngine {
     ];
   }
 
-  private static getMockAnalytics(startDate: Date, endDate: Date): any[] {
+  private static getMockAnalytics(_startDate: Date, _endDate: Date): any[] {
     return [
       { metric: 'Revenue', value: 45231, change: 12.5 },
       { metric: 'Transactions', value: 1234, change: 8.2 },

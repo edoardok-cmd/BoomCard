@@ -139,7 +139,6 @@ export const FavoriteButton: React.FC<FavoriteButtonProps> = ({
   offerData,
   size = 'medium',
   variant = 'icon',
-  language = 'en'
 }) => {
   const { addToFavorites, removeFromFavorites, isFavorite } = useFavorites();
   const { t } = useLanguage();

@@ -5,7 +5,6 @@
 
 import {
   PaymentAdapter,
-  PaymentCredentials,
   PaymentIntent,
   PaymentMethod,
   Subscription,
@@ -81,7 +80,7 @@ export class ePayBG extends PaymentAdapter {
 
   async confirmPayment(
     paymentIntentId: string,
-    paymentMethodId: string
+    _paymentMethodId: string
   ): Promise<PaymentResult> {
     // ePay confirmation happens via redirect/webhook
     // This method would check payment status
@@ -101,9 +100,9 @@ export class ePayBG extends PaymentAdapter {
   }
 
   async createCustomer(
-    email: string,
-    name: string,
-    metadata?: Record<string, any>
+    _email: string,
+    _name: string,
+    _metadata?: Record<string, any>
   ): Promise<string> {
     // ePay doesn't have customer objects
     // Generate a unique customer ID
@@ -111,8 +110,8 @@ export class ePayBG extends PaymentAdapter {
   }
 
   async addPaymentMethod(
-    customerId: string,
-    paymentMethodData: any
+    _customerId: string,
+    _paymentMethodData: any
   ): Promise<PaymentMethod> {
     // ePay doesn't store payment methods
     // Return a placeholder
@@ -123,14 +122,14 @@ export class ePayBG extends PaymentAdapter {
     };
   }
 
-  async getPaymentMethods(customerId: string): Promise<PaymentMethod[]> {
+  async getPaymentMethods(_customerId: string): Promise<PaymentMethod[]> {
     // ePay doesn't store payment methods
     return [];
   }
 
   async setDefaultPaymentMethod(
-    customerId: string,
-    paymentMethodId: string
+    _customerId: string,
+    _paymentMethodId: string
   ): Promise<boolean> {
     // Not supported by ePay
     return true;
@@ -161,8 +160,8 @@ export class ePayBG extends PaymentAdapter {
   }
 
   async cancelSubscription(
-    subscriptionId: string,
-    immediately: boolean = false
+    _subscriptionId: string,
+    _immediately: boolean = false
   ): Promise<boolean> {
     // Implementation would update subscription status in database
     return true;
@@ -182,7 +181,7 @@ export class ePayBG extends PaymentAdapter {
     throw new Error('Subscription not found');
   }
 
-  async getSubscription(subscriptionId: string): Promise<Subscription | null> {
+  async getSubscription(_subscriptionId: string): Promise<Subscription | null> {
     // Implementation would fetch from database
     return null;
   }
@@ -208,12 +207,12 @@ export class ePayBG extends PaymentAdapter {
     return invoice;
   }
 
-  async getInvoice(invoiceId: string): Promise<Invoice | null> {
+  async getInvoice(_invoiceId: string): Promise<Invoice | null> {
     // Implementation would fetch from database
     return null;
   }
 
-  async listInvoices(customerId: string, limit: number = 10): Promise<Invoice[]> {
+  async listInvoices(_customerId: string, _limit: number = 10): Promise<Invoice[]> {
     // Implementation would fetch from database
     return [];
   }
@@ -221,7 +220,7 @@ export class ePayBG extends PaymentAdapter {
   async refundPayment(
     paymentIntentId: string,
     amount?: number,
-    reason?: string
+    _reason?: string
   ): Promise<RefundResult> {
     try {
       // ePay refund process
@@ -256,7 +255,7 @@ export class ePayBG extends PaymentAdapter {
     }
   }
 
-  verifyWebhook(payload: string, signature: string): boolean {
+  verifyWebhook(payload: string, _signature: string): boolean {
     if (!this.credentials.secretKey) {
       throw new Error('Secret key not configured');
     }

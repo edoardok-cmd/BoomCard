@@ -23,8 +23,6 @@ export interface TokenPair {
   expiresIn: number;
 }
 
-const ACCESS_TOKEN_EXPIRY = 15 * 60; // 15 minutes — used by getTokenExpiry fallback
-
 /**
  * Base64 URL decode — browser-safe (uses atob).
  */
@@ -49,7 +47,7 @@ export function decodeToken(token: string): JWTPayload | null {
     if (parts.length !== 3) return null;
 
     return JSON.parse(base64UrlDecode(parts[1]));
-  } catch (error) {
+  } catch {
     return null;
   }
 }

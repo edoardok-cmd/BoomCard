@@ -2,7 +2,7 @@ import React from 'react';
 import styled from 'styled-components';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { Receipt, ReceiptStatus } from '../../../types/receipt.types';
-import { CheckCircle, XCircle, Clock, DollarSign, Store, Calendar, Eye, Edit2, Trash2 } from 'lucide-react';
+import { CheckCircle, XCircle, Clock, Store, Calendar, Eye, Edit2, Trash2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 interface ReceiptCardProps {

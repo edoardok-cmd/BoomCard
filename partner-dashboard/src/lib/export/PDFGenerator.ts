@@ -727,8 +727,8 @@ export class PDFGenerator {
   private static htmlToPDF(
     html: string,
     filename: string,
-    orientation: 'portrait' | 'landscape' = 'portrait',
-    format: 'a4' | 'letter' = 'a4'
+    _orientation: 'portrait' | 'landscape' = 'portrait',
+    _format: 'a4' | 'letter' = 'a4'
   ): void {
     // Create a hidden iframe to print
     const iframe = document.createElement('iframe');

@@ -5,7 +5,6 @@
 
 import {
   PaymentAdapter,
-  PaymentCredentials,
   PaymentIntent,
   PaymentMethod,
   Subscription,

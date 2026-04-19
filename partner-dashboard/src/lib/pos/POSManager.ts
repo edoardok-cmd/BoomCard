@@ -158,7 +158,7 @@ export class POSManager {
       try {
         const status = await adapter.testConnection();
         results.set(provider, status.connected);
-      } catch (error) {
+      } catch {
         results.set(provider, false);
       }
     }

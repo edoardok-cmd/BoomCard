@@ -1,12 +1,11 @@
 import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import styled from 'styled-components';
-import { X, Calendar, Clock, Users, MapPin, CreditCard, CheckCircle, AlertCircle, ChevronRight, ChevronLeft } from 'lucide-react';
+import { X, Calendar, Clock, Users, MapPin, CheckCircle, AlertCircle, ChevronRight, ChevronLeft } from 'lucide-react';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import Button from '../Button/Button';
-import { useAvailability, useCreateBooking, useCalculatePrice } from '../../../hooks/useBookings';
-import { plansService, type Plan } from '../../../services/plans.service';
-import { paymentsService } from '../../../services/payments.service';
+import { useAvailability, useCreateBooking } from '../../../hooks/useBookings';
+import { plansService } from '../../../services/plans.service';
 import type { Entity, CardEntity } from '../../../types/entity.types';
 import { useQuery } from '@tanstack/react-query';
 
@@ -519,7 +518,6 @@ const BookingModal: React.FC<BookingModalProps> = ({ entity, isOpen, onClose }) 
 
   const exp = entity.experience;
   const venueId = exp?.venueId ?? '';
-  const partnerId = exp?.partnerId ?? '';
 
   const createBooking = useCreateBooking();
 
@@ -639,7 +637,6 @@ const BookingModal: React.FC<BookingModalProps> = ({ entity, isOpen, onClose }) 
   };
 
   const steps: Step[] = ['datetime', 'pricing', 'confirmation'];
-  const stepLabels = [t.selectDateTime, t.pricingDetails, t.confirm];
   const currentStepIndex = steps.indexOf(step);
 
   const canGoNext = () => {

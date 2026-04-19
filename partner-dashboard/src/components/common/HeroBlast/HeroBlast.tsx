@@ -219,49 +219,6 @@ const ContentContainer = styled.div`
   }
 `;
 
-const CardContainer = styled(motion.div)`
-  perspective: 1000px;
-  margin-bottom: 2rem;
-  transition: transform 0.8s cubic-bezier(0.34, 1.56, 0.64, 1);
-  position: relative;
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
-  gap: 15rem;
-
-  @media (max-width: 768px) {
-    gap: 0;
-    flex-direction: row;
-    align-items: center;
-    justify-content: center;
-    width: 100%;
-    max-width: 90vw;
-    margin: 0 auto 1rem;
-  }
-
-  @media (max-width: 480px) {
-    margin: 0 auto 0.5rem;
-  }
-
-`;
-
-const SideCardsContainer = styled.div`
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8rem;
-  position: relative;
-`;
-
-const SideCardWrapper = styled(motion.div)<{ $position?: 'left' | 'right' }>`
-  position: relative;
-  perspective: 1000px;
-
-  @media (max-width: 768px) {
-    display: none;
-  }
-`;
-
 const PhotosContainer = styled(motion.div)`
   position: absolute;
   top: 50%;
@@ -307,41 +264,6 @@ const Photo = styled(motion.div)<{ $index: number; $side: 'left' | 'right' }>`
   /* Disable animations for reduced motion preference */
   @media (prefers-reduced-motion: reduce) {
     will-change: auto;
-  }
-`;
-
-const SideCardPhotosContainer = styled(motion.div)`
-  position: absolute;
-  top: 100%;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 300px;
-  height: 350px;
-  pointer-events: none;
-  margin-top: 2rem;
-
-  @media (max-width: 768px) {
-    display: none;
-  }
-`;
-
-const SidePhoto = styled(motion.div)`
-  position: absolute;
-  width: 80px;
-  height: 110px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  border-radius: 6px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
-  border: 2px solid white;
-  overflow: hidden;
-  left: 50%;
-  top: 0;
-  transform: translateX(-50%);
-
-  img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
   }
 `;
 
@@ -964,27 +886,6 @@ const CTASubtitle = styled(motion.p)`
   }
 `;
 
-const GoldenButtonWrapper = styled.div`
-  a {
-    text-decoration: none;
-  }
-
-  button {
-    background: linear-gradient(135deg, #c9a237 0%, #d4af37 100%) !important;
-    color: #000000 !important;
-    border: 2px solid #c9a237 !important;
-    font-weight: 600 !important;
-    box-shadow: 0 4px 15px rgba(201, 162, 55, 0.4) !important;
-
-    &:hover {
-      background: linear-gradient(135deg, #d4af37 0%, #c9a237 100%) !important;
-      color: #000000 !important;
-      border-color: #d4af37 !important;
-      box-shadow: 0 6px 20px rgba(201, 162, 55, 0.5) !important;
-    }
-  }
-`;
-
 const ButtonContainer = styled(motion.div)`
   display: flex;
   gap: 0.75rem;
@@ -1217,7 +1118,7 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
         setShouldPlayVideo(true);
         localStorage.setItem(STORAGE_KEY, now.toString());
       }
-    } catch (error) {
+    } catch {
       // If localStorage is not available, always play video
       console.warn('localStorage not available, playing video by default');
       setShouldPlayVideo(true);

@@ -3,7 +3,6 @@ import styled from 'styled-components';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useCookieConsent } from '../../../contexts/CookieConsentContext';
 import { useLanguage } from '../../../contexts/LanguageContext';
-import Button from '../Button/Button';
 
 const BannerOverlay = styled(motion.div)`
   position: fixed;

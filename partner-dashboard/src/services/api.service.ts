@@ -69,7 +69,7 @@ class ApiService {
           this.isRefreshing = true;
 
           try {
-            const { getCookie } = await import('../lib/auth/session').then(m => ({
+            const { getCookie } = await import('../lib/auth/session').then(() => ({
               getCookie: () => {
                 const value = `; ${document.cookie}`;
                 const parts = value.split('; boomcard_refresh=');

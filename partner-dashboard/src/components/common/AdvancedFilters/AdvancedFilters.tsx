@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import styled from 'styled-components';
-import { Filter, X, MapPin, DollarSign, Star, TrendingUp, Clock } from 'lucide-react';
+import { Filter, X, DollarSign, Star, TrendingUp, Clock } from 'lucide-react';
 import Button from '../Button/Button';
 import { SearchFilters } from '../../../lib/search/SearchEngine';
 
@@ -79,40 +79,6 @@ const Label = styled.label`
 
     [data-theme="dark"] & {
       color: #9ca3af;
-    }
-  }
-`;
-
-const Select = styled.select`
-  padding: 0.625rem 0.875rem;
-  border: 2px solid #e5e7eb;
-  border-radius: 0.5rem;
-  font-size: 0.9375rem;
-  color: #111827;
-  background: white;
-  cursor: pointer;
-  transition: all 0.2s;
-
-  [data-theme="dark"] & {
-    background: #374151;
-    border-color: #4b5563;
-    color: #f9fafb;
-  }
-
-  &:focus {
-    outline: none;
-    border-color: #000000;
-
-    [data-theme="dark"] & {
-      border-color: #9ca3af;
-    }
-  }
-
-  &:hover {
-    border-color: #d1d5db;
-
-    [data-theme="dark"] & {
-      border-color: #6b7280;
     }
   }
 `;
@@ -366,7 +332,6 @@ interface AdvancedFiltersProps {
 export const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
   filters,
   onChange,
-  language = 'en',
 }) => {
   const { t } = useLanguage();
   const [isExpanded, setIsExpanded] = useState(false);

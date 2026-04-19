@@ -10,10 +10,6 @@ import { useLocation } from 'react-router-dom';
 import analyticsService, {
   EventAction,
   ConversionEvent,
-  PartnerAnalytics,
-  OfferAnalytics,
-  VenueAnalytics,
-  AnalyticsMetrics,
 } from '../services/analytics.service';
 
 /**

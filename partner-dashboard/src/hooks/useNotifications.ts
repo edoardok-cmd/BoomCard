@@ -208,7 +208,7 @@ export function useRequestPushPermission() {
 /**
  * Hook to show toast notifications for real-time updates
  */
-export function useNotificationToasts(userId?: string) {
+export function useNotificationToasts(_userId?: string) {
   const queryClient = useQueryClient();
 
   useNotificationSubscription('*', (notification) => {

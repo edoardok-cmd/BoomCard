@@ -53,13 +53,6 @@ const QRImageWrapper = styled(motion.div)`
   margin-bottom: 1.5rem;
 `;
 
-const QRCanvas = styled.canvas`
-  display: block;
-  width: 100%;
-  height: auto;
-  image-rendering: pixelated;
-`;
-
 const QRImage = styled.img`
   display: block;
   width: 100%;
