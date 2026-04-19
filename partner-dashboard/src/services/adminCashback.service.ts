@@ -49,7 +49,7 @@ class AdminCashbackService {
 
   async getStats(): Promise<CashbackDashboardStats> {
     const res = await apiService.get<{ success: boolean; data: CashbackDashboardStats }>(`${this.base}/stats`);
-    return (res as any).data;
+    return res.data;
   }
 
   async getSummary(params?: {
@@ -60,7 +60,7 @@ class AdminCashbackService {
       `${this.base}/summary`,
       params,
     );
-    return (res as any).data ?? [];
+    return res.data ?? [];
   }
 
   async markPaid(partnerId: string, month: string, notes?: string): Promise<void> {
@@ -73,12 +73,12 @@ class AdminCashbackService {
 
   async getRates(): Promise<CashbackRateRow[]> {
     const res = await apiService.get<{ success: boolean; data: CashbackRateRow[] }>(`${this.base}/rates`);
-    return (res as any).data ?? [];
+    return res.data ?? [];
   }
 
   async getCurrentRates(): Promise<CurrentCashbackRate[]> {
     const res = await apiService.get<{ success: boolean; data: CurrentCashbackRate[] }>(`${this.base}/rates/current`);
-    return (res as any).data ?? [];
+    return res.data ?? [];
   }
 
   async createRates(params: {

@@ -2,11 +2,13 @@ import axios from 'axios';
 
 const API_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3025/api';
 
+type AxiosErrorLike = { response?: { data?: { message?: string } } };
+
 export interface CreatePaymentParams {
   amount: number;
   description: string;
   currency?: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface PaymentResponse {
@@ -30,7 +32,7 @@ export interface PaymentStatusResponse {
     currency: string;
     description: string;
     createdAt: string;
-    metadata: any;
+    metadata: Record<string, unknown>;
   };
 }
 
@@ -60,10 +62,11 @@ class PayseraService {
       );
 
       return response.data;
-    } catch (error: any) {
+    } catch (error) {
       console.error('Paysera payment creation error:', error);
+      const err = error as AxiosErrorLike;
       throw new Error(
-        error.response?.data?.message || 'Failed to create payment'
+        err.response?.data?.message || 'Failed to create payment'
       );
     }
   }
@@ -86,10 +89,11 @@ class PayseraService {
       );
 
       return response.data;
-    } catch (error: any) {
+    } catch (error) {
       console.error('Payment status check error:', error);
+      const err = error as AxiosErrorLike;
       throw new Error(
-        error.response?.data?.message || 'Failed to check payment status'
+        err.response?.data?.message || 'Failed to check payment status'
       );
     }
   }
@@ -101,7 +105,7 @@ class PayseraService {
     token: string,
     limit = 20,
     offset = 0
-  ): Promise<any> {
+  ): Promise<unknown> {
     try {
       const response = await axios.get(
         `${API_URL}/payments/history`,
@@ -114,10 +118,11 @@ class PayseraService {
       );
 
       return response.data;
-    } catch (error: any) {
+    } catch (error) {
       console.error('Payment history fetch error:', error);
+      const err = error as AxiosErrorLike;
       throw new Error(
-        error.response?.data?.message || 'Failed to fetch payment history'
+        err.response?.data?.message || 'Failed to fetch payment history'
       );
     }
   }
@@ -125,14 +130,14 @@ class PayseraService {
   /**
    * Get supported payment methods
    */
-  async getSupportedMethods(): Promise<any> {
+  async getSupportedMethods(): Promise<unknown> {
     try {
       const response = await axios.get(
         `${API_URL}/payments/methods`
       );
 
       return response.data;
-    } catch (error: any) {
+    } catch (error) {
       console.error('Failed to fetch payment methods:', error);
       throw new Error('Failed to fetch payment methods');
     }

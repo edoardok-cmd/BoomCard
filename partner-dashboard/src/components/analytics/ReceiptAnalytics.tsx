@@ -252,7 +252,7 @@ export const ReceiptAnalytics: React.FC = () => {
     setLoading(true);
     try {
       const data = await receiptService.getReceiptAnalytics();
-      setAnalytics(data);
+      setAnalytics(data as ReceiptAnalyticsData);
     } catch (error) {
       console.error('Error loading analytics:', error);
     } finally {

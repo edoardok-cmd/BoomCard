@@ -29,7 +29,7 @@ export interface SubmitReceiptRequest {
   offerId?: string;
   latitude?: number;
   longitude?: number;
-  metadata?: any;
+  metadata?: Record<string, unknown>;
 }
 
 export interface ReceiptSubmissionResult {
@@ -64,6 +64,22 @@ export interface ReceiptListFilters {
   maxAmount?: number;
   minFraudScore?: number;
   maxFraudScore?: number;
+}
+
+interface VenueConfig {
+  gpsVerificationEnabled?: boolean;
+  venueLat: number;
+  venueLon: number;
+  gpsRadiusMeters?: number;
+  maxScansPerDay?: number;
+  discountPercent?: number;
+  maxCashbackPerScan?: number;
+}
+
+interface UserSubmissionStats {
+  submissionsToday: number;
+  submissionsThisMonth: number;
+  cardType: 'BASIC' | 'LIGHT' | 'PREMIUM';
 }
 
 class ReceiptService {
@@ -255,7 +271,7 @@ class ReceiptService {
   /**
    * Get receipt analytics for user
    */
-  async getReceiptAnalytics(userId?: string): Promise<any> {
+  async getReceiptAnalytics(userId?: string): Promise<unknown> {
     return apiService.get('/receipts/analytics', { userId });
   }
 
@@ -277,9 +293,9 @@ class ReceiptService {
   /**
    * Get venue configuration for fraud checks and cashback
    */
-  private async getVenueConfig(venueId: string): Promise<any> {
+  private async getVenueConfig(venueId: string): Promise<VenueConfig | null> {
     try {
-      return await apiService.get(`/venues/${venueId}/config`);
+      return await apiService.get<VenueConfig>(`/venues/${venueId}/config`);
     } catch (error) {
       console.error('Error getting venue config:', error);
       return null;
@@ -289,9 +305,9 @@ class ReceiptService {
   /**
    * Get user submission statistics
    */
-  private async getUserSubmissionStats(): Promise<any> {
+  private async getUserSubmissionStats(): Promise<UserSubmissionStats> {
     try {
-      return await apiService.get('/receipts/stats/user');
+      return await apiService.get<UserSubmissionStats>('/receipts/stats/user');
     } catch (error) {
       console.error('Error getting user stats:', error);
       return {
@@ -321,7 +337,7 @@ class ReceiptService {
    */
   private async getOfferDiscount(offerId: string): Promise<number> {
     try {
-      const offer = await apiService.get<any>(`/offers/${offerId}`);
+      const offer = await apiService.get<{ discount?: number }>(`/offers/${offerId}`);
       return offer.discount || 0;
     } catch (error) {
       console.error('Error getting offer:', error);
@@ -348,7 +364,7 @@ class ReceiptService {
   /**
    * Create receipt record in database
    */
-  private async createReceipt(data: any): Promise<Receipt> {
+  private async createReceipt(data: Record<string, unknown>): Promise<Receipt> {
     return apiService.post<Receipt>('/receipts', data);
   }
 

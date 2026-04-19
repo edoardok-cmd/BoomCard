@@ -69,7 +69,7 @@ export interface PointsTransaction {
   expiresAt?: string;
 
   // Metadata
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 
   createdAt: string;
 }

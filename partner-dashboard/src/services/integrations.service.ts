@@ -51,7 +51,7 @@ export interface PartnerIntegration {
   integration: Integration;
   status: 'active' | 'inactive' | 'error' | 'pending';
   credentials?: Record<string, string>;
-  settings?: Record<string, any>;
+  settings?: Record<string, unknown>;
   lastSyncAt?: Date;
   errorMessage?: string;
   connectedAt: Date;
@@ -61,12 +61,12 @@ export interface PartnerIntegration {
 export interface ConnectIntegrationData {
   integrationId: string;
   credentials?: Record<string, string>;
-  settings?: Record<string, any>;
+  settings?: Record<string, unknown>;
 }
 
 export interface UpdateIntegrationData {
   credentials?: Record<string, string>;
-  settings?: Record<string, any>;
+  settings?: Record<string, unknown>;
   status?: 'active' | 'inactive';
 }
 

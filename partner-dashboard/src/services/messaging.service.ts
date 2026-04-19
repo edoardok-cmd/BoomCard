@@ -61,7 +61,7 @@ export interface Message {
   replyToMessage?: Message;
 
   // Metadata
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 
   createdAt: string;
   updatedAt: string;
@@ -109,7 +109,7 @@ export interface Conversation {
   partnerId?: string;
 
   // Metadata
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 
   createdAt: string;
   updatedAt: string;
@@ -211,7 +211,7 @@ class MessagingService {
   private reconnectDelay = 1000;
   private messageListeners: Map<string, ((message: Message) => void)[]> = new Map();
   private typingListeners: ((typing: TypingIndicator) => void)[] = [];
-  private statusListeners: ((type: string, data: any) => void)[] = [];
+  private statusListeners: ((type: string, data: unknown) => void)[] = [];
 
   /**
    * Connect to WebSocket for real-time messaging
@@ -270,10 +270,18 @@ class MessagingService {
   /**
    * Handle WebSocket message
    */
-  private handleWebSocketMessage(data: any): void {
+  private handleWebSocketMessage(data: {
+    type: string;
+    conversationId?: string;
+    message?: Message;
+    typing?: TypingIndicator;
+    [key: string]: unknown;
+  }): void {
     switch (data.type) {
       case 'new_message':
-        this.notifyMessageListeners(data.conversationId, data.message);
+        if (data.conversationId && data.message) {
+          this.notifyMessageListeners(data.conversationId, data.message);
+        }
         break;
       case 'message_read':
         this.notifyStatusListeners('read', data);
@@ -282,7 +290,9 @@ class MessagingService {
         this.notifyStatusListeners('delivered', data);
         break;
       case 'typing':
-        this.notifyTypingListeners(data.typing);
+        if (data.typing) {
+          this.notifyTypingListeners(data.typing);
+        }
         break;
       case 'user_online':
       case 'user_offline':
@@ -328,7 +338,7 @@ class MessagingService {
   /**
    * Subscribe to status updates
    */
-  onStatusUpdate(callback: (type: string, data: any) => void): () => void {
+  onStatusUpdate(callback: (type: string, data: unknown) => void): () => void {
     this.statusListeners.push(callback);
     return () => {
       const index = this.statusListeners.indexOf(callback);
@@ -356,7 +366,7 @@ class MessagingService {
   /**
    * Notify status listeners
    */
-  private notifyStatusListeners(type: string, data: any): void {
+  private notifyStatusListeners(type: string, data: unknown): void {
     this.statusListeners.forEach((callback) => callback(type, data));
   }
 

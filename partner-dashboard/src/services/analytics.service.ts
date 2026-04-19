@@ -12,6 +12,12 @@
 import { apiService } from './api.service';
 import { hasAnalyticsConsent } from '../contexts/CookieConsentContext';
 
+type GtagFn = (...args: unknown[]) => void;
+interface GtagWindow extends Window {
+  dataLayer?: unknown[];
+  gtag?: GtagFn;
+}
+
 // Analytics event types
 export type EventCategory =
   | 'page_view'
@@ -46,7 +52,7 @@ export interface AnalyticsEvent {
   timestamp?: number;
   userId?: string;
   sessionId?: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface PageViewEvent {
@@ -186,11 +192,12 @@ class AnalyticsService {
     document.head.appendChild(script);
 
     // Initialize gtag
-    (window as any).dataLayer = (window as any).dataLayer || [];
-    function gtag(...args: any[]) {
-      (window as any).dataLayer.push(args);
-    }
-    (window as any).gtag = gtag;
+    const w = window as GtagWindow;
+    w.dataLayer = w.dataLayer || [];
+    const gtag: GtagFn = (...args: unknown[]) => {
+      w.dataLayer!.push(args);
+    };
+    w.gtag = gtag;
 
     gtag('js', new Date());
     gtag('config', GA4_MEASUREMENT_ID, {
@@ -222,8 +229,9 @@ class AnalyticsService {
     this.userId = userId;
 
     // Update GA4 user ID
-    if ((window as any).gtag) {
-      (window as any).gtag('set', { user_id: userId });
+    const w = window as GtagWindow;
+    if (w.gtag) {
+      w.gtag('set', { user_id: userId });
     }
   }
 
@@ -239,8 +247,9 @@ class AnalyticsService {
     }
 
     // Update GA4 consent state
-    if ((window as any).gtag) {
-      (window as any).gtag('consent', 'update', {
+    const w = window as GtagWindow;
+    if (w.gtag) {
+      w.gtag('consent', 'update', {
         analytics_storage: enabled ? 'granted' : 'denied',
       });
     }
@@ -263,8 +272,9 @@ class AnalyticsService {
     this.pageStartTime = Date.now();
 
     // Track in GA4
-    if ((window as any).gtag) {
-      (window as any).gtag('event', 'page_view', {
+    const w = window as GtagWindow;
+    if (w.gtag) {
+      w.gtag('event', 'page_view', {
         page_path: page,
         page_title: title,
         page_referrer: referrer,
@@ -276,7 +286,7 @@ class AnalyticsService {
       category: 'page_view',
       action: 'view',
       label: page,
-      metadata: pageView,
+      metadata: { ...pageView },
     });
   }
 
@@ -295,8 +305,9 @@ class AnalyticsService {
     };
 
     // Track in GA4
-    if ((window as any).gtag) {
-      (window as any).gtag('event', event.action, {
+    const w = window as GtagWindow;
+    if (w.gtag) {
+      w.gtag('event', event.action, {
         event_category: event.category,
         event_label: event.label,
         value: event.value,
@@ -311,7 +322,7 @@ class AnalyticsService {
   /**
    * Track user action
    */
-  trackAction(action: EventAction, label: string, value?: number, metadata?: Record<string, any>): void {
+  trackAction(action: EventAction, label: string, value?: number, metadata?: Record<string, unknown>): void {
     this.trackEvent({
       category: 'user_action',
       action,
@@ -328,8 +339,9 @@ class AnalyticsService {
     if (!this.isEnabled) return;
 
     // Track in GA4
-    if ((window as any).gtag) {
-      (window as any).gtag('event', 'conversion', {
+    const w = window as GtagWindow;
+    if (w.gtag) {
+      w.gtag('event', 'conversion', {
         ...conversion,
         transaction_id: `${conversion.type}-${Date.now()}`,
         currency: conversion.currency || 'BGN',
@@ -342,14 +354,14 @@ class AnalyticsService {
       action: 'book',
       label: conversion.type,
       value: conversion.value,
-      metadata: conversion,
+      metadata: { ...conversion },
     });
   }
 
   /**
    * Track search
    */
-  trackSearch(query: string, resultCount: number, filters?: Record<string, any>): void {
+  trackSearch(query: string, resultCount: number, filters?: Record<string, unknown>): void {
     this.trackAction('search', query, resultCount, { filters });
   }
 
@@ -408,7 +420,7 @@ class AnalyticsService {
   /**
    * Track performance metric
    */
-  trackPerformance(metric: string, value: number, metadata?: Record<string, any>): void {
+  trackPerformance(metric: string, value: number, metadata?: Record<string, unknown>): void {
     this.trackEvent({
       category: 'performance',
       action: 'view',
@@ -477,8 +489,9 @@ class AnalyticsService {
         // First Input Delay (FID)
         const fidObserver = new PerformanceObserver((list) => {
           const entries = list.getEntries();
-          entries.forEach((entry: any) => {
-            this.trackPerformance('fid', entry.processingStart - entry.startTime);
+          entries.forEach((entry: PerformanceEntry) => {
+            const fidEntry = entry as PerformanceEntry & { processingStart: number };
+            this.trackPerformance('fid', fidEntry.processingStart - entry.startTime);
           });
         });
         fidObserver.observe({ entryTypes: ['first-input'] });
@@ -487,8 +500,9 @@ class AnalyticsService {
         let clsValue = 0;
         const clsObserver = new PerformanceObserver((list) => {
           for (const entry of list.getEntries()) {
-            if (!(entry as any).hadRecentInput) {
-              clsValue += (entry as any).value;
+            const clsEntry = entry as PerformanceEntry & { hadRecentInput?: boolean; value?: number };
+            if (!clsEntry.hadRecentInput) {
+              clsValue += clsEntry.value ?? 0;
             }
           }
           this.trackPerformance('cls', clsValue);

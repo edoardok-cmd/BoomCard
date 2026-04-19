@@ -108,7 +108,7 @@ export interface Transaction {
   invoiceId?: string;
 
   // Metadata
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface PaymentIntent {
@@ -119,7 +119,7 @@ export interface PaymentIntent {
   status: PaymentStatus;
   paymentMethod?: PaymentMethod;
   description: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface Refund {
@@ -235,7 +235,7 @@ export interface CreatePaymentData {
   descriptionBg: string;
   bookingId?: string;
   offerId?: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface WalletBalance {
@@ -465,7 +465,7 @@ class PaymentsService {
   /**
    * Export transactions
    */
-  async exportTransactions(filters?: any, format: 'csv' | 'xlsx' | 'pdf' = 'csv'): Promise<Blob> {
+  async exportTransactions(filters?: Record<string, unknown>, format: 'csv' | 'xlsx' | 'pdf' = 'csv'): Promise<Blob> {
     return apiService.get<Blob>(`${this.baseUrl}/transactions/export`, {
       ...filters,
       format,

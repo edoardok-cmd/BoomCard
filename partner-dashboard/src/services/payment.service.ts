@@ -9,7 +9,7 @@ export interface CreatePaymentRequest {
   amount: number;
   currency?: string;
   description?: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface CreatePaymentResponse {
@@ -33,7 +33,7 @@ export interface PaymentStatusResponse {
     currency: string;
     description: string;
     createdAt: string;
-    metadata?: Record<string, any>;
+    metadata?: Record<string, unknown>;
   };
 }
 

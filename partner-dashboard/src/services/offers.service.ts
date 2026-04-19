@@ -90,6 +90,22 @@ export interface CreateOfferData {
   status?: 'DRAFT' | 'ACTIVE' | 'PAUSED' | 'EXPIRED' | 'CANCELLED';
 }
 
+// Raw offer payload shape from backend (pre-normalization)
+type RawOffer = OfferDetails & {
+  image?: string;
+  imageUrl?: string;
+  minPurchase?: number;
+  originalPrice?: number;
+  discountedPrice?: number;
+  discount?: number;
+  discountPercent?: number;
+  category?: string;
+  categoryBg?: string;
+  location?: string;
+  partnerName?: string;
+  path?: string;
+};
+
 class OffersService {
   private readonly baseUrl = '/offers';
 
@@ -98,7 +114,7 @@ class OffersService {
    * Maps 'image' field to 'imageUrl' for consistency
    * Calculates missing price fields from discountPercent and minPurchase
    */
-  private mapOffer(offer: any): OfferDetails {
+  private mapOffer(offer: RawOffer): OfferDetails {
     // Calculate prices if they don't exist
     // Use minPurchase as the base price, or default to 200 BGN
     const basePrice = offer.minPurchase || offer.originalPrice || 200;
@@ -126,7 +142,7 @@ class OffersService {
   /**
    * Map array of offers
    */
-  private mapOffers(offers: any[]): OfferDetails[] {
+  private mapOffers(offers: RawOffer[]): OfferDetails[] {
     return offers.map(offer => this.mapOffer(offer));
   }
 
@@ -142,7 +158,7 @@ class OffersService {
    * Get all offers with optional filters
    */
   async getOffers(filters?: OfferFilters): Promise<PaginatedResponse<OfferDetails>> {
-    const response = await apiService.get<PaginatedResponse<any>>(this.baseUrl, filters);
+    const response = await apiService.get<PaginatedResponse<RawOffer>>(this.baseUrl, filters);
     return {
       ...response,
       data: this.mapOffers(response.data),
@@ -153,8 +169,8 @@ class OffersService {
    * Get a single offer by ID
    */
   async getOfferById(id: string): Promise<OfferDetails> {
-    const response = await apiService.get<any>(`${this.baseUrl}/${id}`);
-    const offer = response?.data || response;
+    const response = await apiService.get<RawOffer | { data: RawOffer }>(`${this.baseUrl}/${id}`);
+    const offer = (response as { data?: RawOffer })?.data || (response as RawOffer);
     return this.mapOffer(offer);
   }
 
@@ -162,7 +178,7 @@ class OffersService {
    * Get offers by category
    */
   async getOffersByCategory(category: string, filters?: OfferFilters): Promise<PaginatedResponse<OfferDetails>> {
-    const response = await apiService.get<PaginatedResponse<any>>(`${this.baseUrl}/category/${category}`, filters);
+    const response = await apiService.get<PaginatedResponse<RawOffer>>(`${this.baseUrl}/category/${category}`, filters);
     return {
       ...response,
       data: this.mapOffers(response.data),
@@ -173,7 +189,7 @@ class OffersService {
    * Get offers by venue
    */
   async getOffersByVenue(venueId: string): Promise<OfferDetails[]> {
-    const offers = await apiService.get<any[]>(`${this.baseUrl}/venue/${venueId}`);
+    const offers = await apiService.get<RawOffer[]>(`${this.baseUrl}/venue/${venueId}`);
     return this.mapOffers(offers);
   }
 
@@ -181,7 +197,7 @@ class OffersService {
    * Get offers by partner
    */
   async getOffersByPartner(partnerId: string, filters?: OfferFilters): Promise<PaginatedResponse<OfferDetails>> {
-    const response = await apiService.get<PaginatedResponse<any>>(`${this.baseUrl}/partner/${partnerId}`, filters);
+    const response = await apiService.get<PaginatedResponse<RawOffer>>(`${this.baseUrl}/partner/${partnerId}`, filters);
     return {
       ...response,
       data: this.mapOffers(response.data),
@@ -192,7 +208,7 @@ class OffersService {
    * Get top offers (highest discounts)
    */
   async getTopOffers(limit: number = 10): Promise<OfferDetails[]> {
-    const response = await apiService.get<{ success: boolean; data: any[] }>(`${this.baseUrl}/top`, { limit });
+    const response = await apiService.get<{ success: boolean; data: RawOffer[] }>(`${this.baseUrl}/top`, { limit });
     return this.mapOffers(response.data);
   }
 
@@ -200,7 +216,7 @@ class OffersService {
    * Get featured offers
    */
   async getFeaturedOffers(limit: number = 10): Promise<OfferDetails[]> {
-    const response = await apiService.get<{ success: boolean; data: any[] }>(`${this.baseUrl}/featured`, { limit });
+    const response = await apiService.get<{ success: boolean; data: RawOffer[] }>(`${this.baseUrl}/featured`, { limit });
     return this.mapOffers(response.data);
   }
 
@@ -208,7 +224,7 @@ class OffersService {
    * Get offers by city
    */
   async getOffersByCity(city: string, filters?: OfferFilters): Promise<PaginatedResponse<OfferDetails>> {
-    const response = await apiService.get<PaginatedResponse<any>>(`${this.baseUrl}/city/${city}`, filters);
+    const response = await apiService.get<PaginatedResponse<RawOffer>>(`${this.baseUrl}/city/${city}`, filters);
     return {
       ...response,
       data: this.mapOffers(response.data),
@@ -219,7 +235,7 @@ class OffersService {
    * Get nearby offers
    */
   async getNearbyOffers(lat: number, lng: number, radius: number = 5000): Promise<OfferDetails[]> {
-    const offers = await apiService.get<any[]>(`${this.baseUrl}/nearby`, { lat, lng, radius });
+    const offers = await apiService.get<RawOffer[]>(`${this.baseUrl}/nearby`, { lat, lng, radius });
     return this.mapOffers(offers);
   }
 
@@ -227,7 +243,7 @@ class OffersService {
    * Search offers
    */
   async searchOffers(query: string, filters?: OfferFilters): Promise<PaginatedResponse<OfferDetails>> {
-    const response = await apiService.get<PaginatedResponse<any>>(`${this.baseUrl}/search`, { q: query, ...filters });
+    const response = await apiService.get<PaginatedResponse<RawOffer>>(`${this.baseUrl}/search`, { q: query, ...filters });
     return {
       ...response,
       data: this.mapOffers(response.data),
@@ -238,8 +254,8 @@ class OffersService {
    * Create a new offer (for partners)
    */
   async createOffer(offer: CreateOfferData): Promise<OfferDetails> {
-    const res = await apiService.post<{ success: boolean; data: OfferDetails }>(this.baseUrl, offer);
-    return res.data ?? (res as any);
+    const res = await apiService.post<{ success: boolean; data: OfferDetails } | OfferDetails>(this.baseUrl, offer);
+    return (res as { data?: OfferDetails }).data ?? (res as OfferDetails);
   }
 
   /**
@@ -311,8 +327,8 @@ class OffersService {
   /**
    * Get redemption history
    */
-  async getRedemptionHistory(offerId: string): Promise<any[]> {
-    return apiService.get<any[]>(`${this.baseUrl}/${offerId}/redemptions`);
+  async getRedemptionHistory(offerId: string): Promise<unknown[]> {
+    return apiService.get<unknown[]>(`${this.baseUrl}/${offerId}/redemptions`);
   }
 
   /**

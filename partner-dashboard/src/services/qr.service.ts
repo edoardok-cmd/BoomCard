@@ -16,7 +16,13 @@ interface QRCodeResponse {
 
 interface ValidationResponse {
   valid: boolean;
-  qrCode?: any;
+  qrCode?: {
+    id: string;
+    code: string;
+    venueId?: string;
+    offerId?: string;
+    expiresAt?: string;
+  };
   message: string;
 }
 

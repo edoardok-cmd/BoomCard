@@ -21,7 +21,7 @@ export interface PushNotificationOptions {
   icon?: string;
   badge?: string;
   image?: string;
-  data?: any;
+  data?: Record<string, unknown>;
   tag?: string;
   requireInteraction?: boolean;
   actions?: NotificationAction[];
@@ -41,7 +41,7 @@ export interface NotificationTemplate {
   body: string;
   icon?: string;
   image?: string;
-  data?: any;
+  data?: Record<string, unknown>;
   actions?: NotificationAction[];
 }
 
@@ -167,7 +167,7 @@ class PushNotificationService {
 
       const subscription = await this.registration.pushManager.subscribe({
         userVisibleOnly: true,
-        applicationServerKey: applicationServerKey as any,
+        applicationServerKey: applicationServerKey as BufferSource,
       });
 
       await this.sendSubscriptionToServer(subscription);
@@ -287,7 +287,7 @@ class PushNotificationService {
    */
   public getTemplate(
     type: NotificationTemplate['type'],
-    data: any
+    data: Record<string, unknown>
   ): NotificationTemplate {
     switch (type) {
       case 'new_offer':
@@ -296,7 +296,7 @@ class PushNotificationService {
           title: '🎉 New Offer Available!',
           body: `${data.venueName} is offering ${data.discount}% off!`,
           icon: '/icons/offer.png',
-          image: data.image,
+          image: data.image as string | undefined,
           data: { offerId: data.offerId, venueId: data.venueId },
           actions: [
             { action: 'view', title: 'View Offer', icon: '/icons/view.png' },

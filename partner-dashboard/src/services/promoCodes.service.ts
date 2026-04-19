@@ -53,7 +53,7 @@ export interface PromoCode {
   createdBy: string;
   createdAt: string;
   updatedAt: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface CreatePromoCodeData {
@@ -225,7 +225,7 @@ class PromoCodesService {
   async applyPromoCode(
     code: string,
     bookingId: string
-  ): Promise<{ booking: any; discount: number }> {
+  ): Promise<{ booking: unknown; discount: number }> {
     return apiService.post(`${this.baseUrl}/apply`, {
       code,
       bookingId,

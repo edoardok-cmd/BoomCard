@@ -11,8 +11,8 @@ class ApiService {
   private api: AxiosInstance;
   private isRefreshing = false;
   private failedQueue: Array<{
-    resolve: (value?: any) => void;
-    reject: (reason?: any) => void;
+    resolve: (value?: string | null) => void;
+    reject: (reason?: unknown) => void;
   }> = [];
 
   constructor() {
@@ -136,7 +136,7 @@ class ApiService {
   /**
    * Process queued requests after token refresh
    */
-  private processQueue(error: any, token: string | null = null) {
+  private processQueue(error: unknown, token: string | null = null) {
     this.failedQueue.forEach((prom) => {
       if (error) {
         prom.reject(error);
@@ -159,7 +159,7 @@ class ApiService {
   /**
    * GET request
    */
-  async get<T>(url: string, params?: any, config?: AxiosRequestConfig): Promise<T> {
+  async get<T>(url: string, params?: unknown, config?: AxiosRequestConfig): Promise<T> {
     const response = await this.api.get<T>(url, { params, ...config });
     return response.data;
   }
@@ -167,7 +167,7 @@ class ApiService {
   /**
    * POST request
    */
-  async post<T>(url: string, data?: any, config?: AxiosRequestConfig): Promise<T> {
+  async post<T>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<T> {
     const response = await this.api.post<T>(url, data, config);
     return response.data;
   }
@@ -175,7 +175,7 @@ class ApiService {
   /**
    * PUT request
    */
-  async put<T>(url: string, data?: any, config?: AxiosRequestConfig): Promise<T> {
+  async put<T>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<T> {
     const response = await this.api.put<T>(url, data, config);
     return response.data;
   }
@@ -183,7 +183,7 @@ class ApiService {
   /**
    * PATCH request
    */
-  async patch<T>(url: string, data?: any, config?: AxiosRequestConfig): Promise<T> {
+  async patch<T>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<T> {
     const response = await this.api.patch<T>(url, data, config);
     return response.data;
   }
