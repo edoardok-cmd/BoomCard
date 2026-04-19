@@ -25,6 +25,12 @@ import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useOffers } from '../hooks/useOffers';
 import { adminCashbackService, CashbackDashboardStats } from '../services/adminCashback.service';
+import { partnersService } from '../services/partners.service';
+import { partnerTypesService } from '../services/partnerTypes.service';
+import { venuesService } from '../services/venues.service';
+import { receiptsApiService } from '../services/receipts-api.service';
+import { fraudAdminService } from '../services/fraudAdmin.service';
+import { apiService } from '../services/api.service';
 
 const PageContainer = styled.div`
   max-width: 80rem;
@@ -303,22 +309,142 @@ const ActionArrow = styled.div.attrs({ className: 'arrow' })`
   }
 `;
 
+const MetricBadge = styled.div<{ $tone?: 'neutral' | 'warning' | 'danger' | 'success' }>`
+  flex-shrink: 0;
+  align-self: center;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.125rem;
+  padding: 0.3125rem 0.625rem;
+  border-radius: 0.5rem;
+  min-width: 3rem;
+  background: ${p =>
+    p.$tone === 'warning'
+      ? '#fffbeb'
+      : p.$tone === 'danger'
+        ? '#fef2f2'
+        : p.$tone === 'success'
+          ? '#ecfdf5'
+          : 'var(--color-background-tertiary, #f1f5f9)'};
+  border: 1px solid
+    ${p =>
+      p.$tone === 'warning'
+        ? '#fde68a'
+        : p.$tone === 'danger'
+          ? '#fecaca'
+          : p.$tone === 'success'
+            ? '#a7f3d0'
+            : 'var(--color-border, #e5e7eb)'};
+`;
+
+const MetricValue = styled.span<{ $tone?: 'neutral' | 'warning' | 'danger' | 'success' }>`
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.01em;
+  font-feature-settings: 'tnum';
+  color: ${p =>
+    p.$tone === 'warning'
+      ? '#b45309'
+      : p.$tone === 'danger'
+        ? '#b91c1c'
+        : p.$tone === 'success'
+          ? '#047857'
+          : 'var(--color-text-primary, #0f172a)'};
+`;
+
+const MetricLabel = styled.span`
+  font-size: 0.6875rem;
+  font-weight: 500;
+  line-height: 1;
+  color: var(--color-text-secondary, #64748b);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+`;
+
+type MetricTone = 'neutral' | 'warning' | 'danger' | 'success';
+
 type ActionDef = {
   to: string;
   title: string;
   description: string;
   icon: React.ComponentType<React.SVGProps<SVGSVGElement>>;
   tint?: string;
+  metric?: { value: number | string; label: string; tone?: MetricTone };
 };
+
+interface AdminMetrics {
+  partnersTotal?: number;
+  partnerTypesCount?: number;
+  pendingMenus?: number;
+  pendingReceipts?: number;
+  cashbackRatesCount?: number;
+  whitelistCount?: number;
+  pendingScans?: number;
+}
 
 const AdminDashboardPage: React.FC = () => {
   const { user } = useAuth();
   const { language } = useLanguage();
   const { data: offersData } = useOffers({ limit: 100 });
   const [cashbackStats, setCashbackStats] = useState<CashbackDashboardStats | null>(null);
+  const [metrics, setMetrics] = useState<AdminMetrics>({});
 
   useEffect(() => {
     adminCashbackService.getStats().then(setCashbackStats).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const patch = (next: Partial<AdminMetrics>) => {
+      if (cancelled) return;
+      setMetrics(prev => ({ ...prev, ...next }));
+    };
+
+    partnersService
+      .getPartners({ limit: 1 })
+      .then(res => patch({ partnersTotal: res.total ?? res.data?.length ?? 0 }))
+      .catch(() => {});
+
+    partnerTypesService
+      .getPartnerTypes()
+      .then(list => patch({ partnerTypesCount: list.length }))
+      .catch(() => {});
+
+    venuesService
+      .adminListPendingMenus()
+      .then(list => patch({ pendingMenus: list.length }))
+      .catch(() => {});
+
+    receiptsApiService
+      .getPendingReviews(100)
+      .then(res => patch({ pendingReceipts: res.data?.length ?? 0 }))
+      .catch(() => {});
+
+    adminCashbackService
+      .getRates()
+      .then(rows => patch({ cashbackRatesCount: rows.length }))
+      .catch(() => {});
+
+    fraudAdminService
+      .getMerchantWhitelist()
+      .then(res => patch({ whitelistCount: res.data?.length ?? 0 }))
+      .catch(() => {});
+
+    apiService
+      .get<unknown>('/stickers/admin/pending-review', { status: 'MANUAL_REVIEW' })
+      .then(body => {
+        const count = Array.isArray(body)
+          ? body.length
+          : ((body as { data?: unknown[] })?.data?.length ?? 0);
+        patch({ pendingScans: count });
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const totalOffers = offersData?.total || 0;
@@ -337,6 +463,15 @@ const AdminDashboardPage: React.FC = () => {
     day: 'numeric',
   });
 
+  const lblTotal = bg ? 'общо' : 'total';
+  const lblTypes = bg ? 'типа' : 'types';
+  const lblPending = bg ? 'чакат' : 'pending';
+  const lblFeatured = bg ? 'топ' : 'featured';
+  const lblOverdue = bg ? 'просрочени' : 'overdue';
+  const lblSteps = bg ? 'стъпки' : 'steps';
+  const lblMerchants = bg ? 'търговци' : 'merchants';
+  const lblFlagged = bg ? 'маркирани' : 'flagged';
+
   const partnerActions: ActionDef[] = [
     {
       to: '/admin/partners',
@@ -346,6 +481,10 @@ const AdminDashboardPage: React.FC = () => {
         : 'Manage partner accounts and approvals',
       icon: BuildingStorefrontIcon,
       tint: '#0f172a',
+      metric:
+        metrics.partnersTotal !== undefined
+          ? { value: metrics.partnersTotal, label: lblTotal }
+          : undefined,
     },
     {
       to: '/admin/partner-types',
@@ -354,6 +493,10 @@ const AdminDashboardPage: React.FC = () => {
         ? 'Лимити за отстъпки и достъп по абонамент'
         : 'Discount rate caps and subscription plan access',
       icon: TagIcon,
+      metric:
+        metrics.partnerTypesCount !== undefined
+          ? { value: metrics.partnerTypesCount, label: lblTypes }
+          : undefined,
     },
     {
       to: '/admin/partner-onboarding',
@@ -382,6 +525,9 @@ const AdminDashboardPage: React.FC = () => {
         : 'Manage featured Top Discounts — images and copy',
       icon: StarIcon,
       tint: '#ea580c',
+      metric: offersData
+        ? { value: featuredOffers, label: lblFeatured, tone: 'neutral' }
+        : undefined,
     },
     {
       to: '/admin/menu-approvals',
@@ -390,6 +536,14 @@ const AdminDashboardPage: React.FC = () => {
         ? 'Преглед и одобряване на URL адреси за менюта'
         : 'Review and approve partner-submitted menu URLs',
       icon: ClipboardDocumentCheckIcon,
+      metric:
+        metrics.pendingMenus !== undefined
+          ? {
+              value: metrics.pendingMenus,
+              label: lblPending,
+              tone: metrics.pendingMenus > 0 ? 'warning' : 'neutral',
+            }
+          : undefined,
     },
   ];
 
@@ -402,6 +556,14 @@ const AdminDashboardPage: React.FC = () => {
         : 'Approve, reject, and manage cashback credits',
       icon: ReceiptPercentIcon,
       tint: '#0891b2',
+      metric:
+        metrics.pendingReceipts !== undefined
+          ? {
+              value: metrics.pendingReceipts,
+              label: lblPending,
+              tone: metrics.pendingReceipts > 0 ? 'warning' : 'neutral',
+            }
+          : undefined,
     },
     {
       to: '/admin/cashback',
@@ -411,6 +573,13 @@ const AdminDashboardPage: React.FC = () => {
         : 'Track monthly cashback owed by partners',
       icon: BanknotesIcon,
       tint: '#059669',
+      metric: cashbackStats
+        ? {
+            value: cashbackStats.overdueCount,
+            label: lblOverdue,
+            tone: cashbackStats.overdueCount > 0 ? 'danger' : 'neutral',
+          }
+        : undefined,
     },
     {
       to: '/admin/cashback/rates',
@@ -419,6 +588,10 @@ const AdminDashboardPage: React.FC = () => {
         ? 'Матрица на ставки по ниво и категория'
         : 'Rate matrix by tier and category',
       icon: CurrencyDollarIcon,
+      metric:
+        metrics.cashbackRatesCount !== undefined
+          ? { value: metrics.cashbackRatesCount, label: lblSteps }
+          : undefined,
     },
   ];
 
@@ -430,6 +603,10 @@ const AdminDashboardPage: React.FC = () => {
         ? 'Одобрени и блокирани търговци за проверка'
         : 'Approved and blocked merchants for verification',
       icon: ShieldCheckIcon,
+      metric:
+        metrics.whitelistCount !== undefined
+          ? { value: metrics.whitelistCount, label: lblMerchants }
+          : undefined,
     },
     {
       to: '/admin/venue-fraud-config',
@@ -454,6 +631,14 @@ const AdminDashboardPage: React.FC = () => {
         ? 'Ръчен преглед на сканирания с възможна измама'
         : 'Manual review of scans flagged as suspicious',
       icon: MagnifyingGlassIcon,
+      metric:
+        metrics.pendingScans !== undefined
+          ? {
+              value: metrics.pendingScans,
+              label: lblFlagged,
+              tone: metrics.pendingScans > 0 ? 'danger' : 'neutral',
+            }
+          : undefined,
     },
   ];
 
@@ -473,6 +658,12 @@ const AdminDashboardPage: React.FC = () => {
               <ActionTitle>{a.title}</ActionTitle>
               <ActionDescription>{a.description}</ActionDescription>
             </ActionBody>
+            {a.metric && (
+              <MetricBadge $tone={a.metric.tone ?? 'neutral'}>
+                <MetricValue $tone={a.metric.tone ?? 'neutral'}>{a.metric.value}</MetricValue>
+                <MetricLabel>{a.metric.label}</MetricLabel>
+              </MetricBadge>
+            )}
             <ActionArrow>
               <ArrowRightIcon />
             </ActionArrow>
