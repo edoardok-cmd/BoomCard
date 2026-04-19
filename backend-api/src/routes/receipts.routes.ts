@@ -163,26 +163,22 @@ router.patch(
 );
 
 /**
- * POST /api/receipts/:id/cashback
- * Apply cashback for a validated receipt - admin only
+ * POST /api/receipts/:id/cashback — RETIRED
+ * Freeform cashback crediting bypassed tier gating, daily/monthly caps, and the
+ * fraud-score-driven cashback recalculation that reviewReceipt performs.
+ * Admins must use PATCH /:id/validate (or the StickerScan approval flow) instead.
  */
 router.post(
   '/:id/cashback',
   authenticate,
   authorize('ADMIN', 'SUPER_ADMIN'),
-  asyncHandler(async (req: Request, res: Response) => {
-    const { cashbackAmount } = req.body;
-
-    if (!cashbackAmount || cashbackAmount <= 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid cashback amount'
-      });
-    }
-
-    const result = await receiptService.applyCashback(req.params.id, cashbackAmount);
-    res.json(result);
-  })
+  (_req: Request, res: Response) => {
+    res.status(410).json({
+      success: false,
+      message: 'Direct cashback crediting has been retired. Approve the receipt via PATCH /api/receipts/:id/validate — cashback is calculated and credited as part of the approval flow.',
+      code: 'ENDPOINT_RETIRED',
+    });
+  }
 );
 
 export default router;

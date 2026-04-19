@@ -21,7 +21,14 @@ const CASHBACK_EXPIRY_BATCH = 10;
 
 // ── Cashback expiry ────────────────────────────────────────────────────────────
 
-async function expireWallet(walletId: string, now: Date): Promise<number> {
+/**
+ * Expire CASHBACK_CREDIT rows past their cashbackExpiresAt for a single wallet.
+ * Returns the amount deducted from availableBalance.
+ *
+ * Exported so ad-hoc flows (e.g. pre-payout pruning in wallet.service.ts) can
+ * guarantee fresh expiry state instead of waiting on the nightly cron.
+ */
+export async function expireWallet(walletId: string, now: Date): Promise<number> {
   let totalExpired = 0;
 
   await prisma.$transaction(async (tx) => {
@@ -45,7 +52,7 @@ async function expireWallet(walletId: string, now: Date): Promise<number> {
     // causing updateMany.count < expired.length and a resulting over-decrement.
     // RETURNING eliminates that race by returning only the rows we actually updated.
     const cancelledRows = await (tx as any).$queryRaw<Array<{ id: string; amount: number }>>`
-      UPDATE "WalletTransaction"
+      UPDATE "wallet_transactions"
       SET status = 'CANCELLED'::"WalletTransactionStatus"
       WHERE id = ANY(${expired.map(t => t.id)})
         AND status = 'COMPLETED'::"WalletTransactionStatus"

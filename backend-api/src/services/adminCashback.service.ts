@@ -1,10 +1,15 @@
 /**
  * Admin Cashback Service
  *
- * Computes per-partner monthly cashback summaries from approved receipts
- * and manages PartnerCashbackPayment records.
+ * Computes per-partner monthly cashback summaries from APPROVED sticker scans
+ * (the live cashback pipeline — direct Receipt submission is retired) and
+ * manages PartnerCashbackPayment records.
+ *
+ * StickerScan.venueId is a FK to Venue.id; liability rolls up to Venue.partnerId
+ * which is the valid FK target of PartnerCashbackPayment.partnerId.
  */
 
+import { ScanStatus } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { logger } from '../utils/logger';
 import { emailService } from './email.service';
@@ -15,8 +20,8 @@ export interface CashbackSummaryEntry {
   partnerName: string;
   partnerEmail: string | null;
   month: string;          // "YYYY-MM"
-  receiptCount: number;
-  totalOwed: number;      // sum of cashbackAmount from APPROVED receipts
+  receiptCount: number;   // count of APPROVED sticker scans (legacy field name kept for frontend compat)
+  totalOwed: number;      // sum of cashbackAmount from APPROVED sticker scans
   paymentStatus: 'PENDING' | 'PAID' | 'OVERDUE';
   paidAt: Date | null;
   paidBy: string | null;
@@ -42,44 +47,60 @@ class AdminCashbackService {
     const monthStart = new Date(year, mon - 1, 1);
     const monthEnd = new Date(year, mon, 1);
 
-    // Aggregate APPROVED receipts: group by venueId, sum cashbackAmount
-    // Note: venueId in Receipt is stored as Partner.id (see receipt.service.ts)
-    const rawGroups = await prisma.receipt.groupBy({
-      by: ['venueId'],
+    // Aggregate APPROVED sticker scans in this month.
+    // StickerScan.venueId → Venue.id → Venue.partnerId gives the FK-valid Partner.id
+    // that PartnerCashbackPayment.partnerId expects.
+    const scans = await prisma.stickerScan.findMany({
       where: {
-        status: 'APPROVED' as any,
+        status: ScanStatus.APPROVED,
         createdAt: { gte: monthStart, lt: monthEnd },
-        venueId: { not: null },
       },
-      _sum: { cashbackAmount: true },
-      _count: { id: true },
+      select: {
+        venueId: true,
+        cashbackAmount: true,
+        venue: { select: { partnerId: true } },
+      },
     });
 
-    if (rawGroups.length === 0) return [];
+    if (scans.length === 0) return [];
 
-    // Fetch partner details for each group
-    const partnerIds = rawGroups.map(g => g.venueId!);
-    const partners = await prisma.partner.findMany({
-      where: { id: { in: partnerIds } },
-      select: { id: true, businessName: true, email: true },
-    });
+    // Roll up per-scan cashback to per-partner totals
+    type Totals = { totalOwed: number; count: number };
+    const partnerTotals = new Map<string, Totals>();
+    for (const scan of scans) {
+      const partnerId = scan.venue?.partnerId;
+      if (!partnerId) continue;
+      const current = partnerTotals.get(partnerId) ?? { totalOwed: 0, count: 0 };
+      current.totalOwed += scan.cashbackAmount;
+      current.count += 1;
+      partnerTotals.set(partnerId, current);
+    }
+
+    if (partnerTotals.size === 0) return [];
+
+    const partnerIds = [...partnerTotals.keys()];
+
+    const [partners, payments] = await Promise.all([
+      prisma.partner.findMany({
+        where: { id: { in: partnerIds } },
+        select: { id: true, businessName: true, email: true },
+      }),
+      prisma.partnerCashbackPayment.findMany({
+        where: { partnerId: { in: partnerIds }, month: targetMonth },
+      }),
+    ]);
 
     const partnerMap = new Map(partners.map(p => [p.id, p]));
-
-    // Fetch existing payment records for this month
-    const payments = await prisma.partnerCashbackPayment.findMany({
-      where: { partnerId: { in: partnerIds }, month: targetMonth },
-    });
     const paymentMap = new Map(payments.map(p => [p.partnerId, p]));
 
     const now = new Date();
     const overdueThreshold = new Date(monthEnd);
     overdueThreshold.setDate(overdueThreshold.getDate() + 30); // overdue after 30 days past end of month
 
-    const results: CashbackSummaryEntry[] = rawGroups.map(group => {
-      const partner = partnerMap.get(group.venueId!);
-      const payment = paymentMap.get(group.venueId!);
-      const totalOwed = group._sum.cashbackAmount ?? 0;
+    const results: CashbackSummaryEntry[] = partnerIds.map(partnerId => {
+      const partner = partnerMap.get(partnerId);
+      const payment = paymentMap.get(partnerId);
+      const totals = partnerTotals.get(partnerId)!;
 
       let paymentStatus: CashbackSummaryEntry['paymentStatus'] = 'PENDING';
       if (payment?.status === 'PAID') {
@@ -89,12 +110,12 @@ class AdminCashbackService {
       }
 
       return {
-        partnerId: group.venueId!,
+        partnerId,
         partnerName: partner?.businessName ?? 'Unknown Partner',
         partnerEmail: partner?.email ?? null,
         month: targetMonth,
-        receiptCount: group._count.id,
-        totalOwed,
+        receiptCount: totals.count,
+        totalOwed: Math.round(totals.totalOwed * 100) / 100,
         paymentStatus,
         paidAt: payment?.paidAt ?? null,
         paidBy: payment?.paidBy ?? null,
@@ -121,17 +142,18 @@ class AdminCashbackService {
     notes?: string;
     totalOwed?: number;
   }): Promise<void> {
-    // Compute totalOwed if not provided
+    // Compute totalOwed if not provided: aggregate APPROVED sticker-scan cashback
+    // for every venue under this partner within the target month.
     let totalOwed = params.totalOwed ?? 0;
     if (!totalOwed) {
       const [year, mon] = params.month.split('-').map(Number);
       const monthStart = new Date(year, mon - 1, 1);
       const monthEnd = new Date(year, mon, 1);
-      const agg = await prisma.receipt.aggregate({
+      const agg = await prisma.stickerScan.aggregate({
         where: {
-          venueId: params.partnerId,
-          status: 'APPROVED' as any,
+          status: ScanStatus.APPROVED,
           createdAt: { gte: monthStart, lt: monthEnd },
+          venue: { partnerId: params.partnerId },
         },
         _sum: { cashbackAmount: true },
       });
@@ -175,15 +197,15 @@ class AdminCashbackService {
     if (!partner) return { sent: false, reason: 'Partner not found' };
     if (!partner.email) return { sent: false, reason: 'Partner has no email address' };
 
-    // Compute outstanding amount
+    // Compute outstanding amount across every venue under this partner
     const [year, mon] = targetMonth.split('-').map(Number);
     const monthStart = new Date(year, mon - 1, 1);
     const monthEnd = new Date(year, mon, 1);
-    const agg = await prisma.receipt.aggregate({
+    const agg = await prisma.stickerScan.aggregate({
       where: {
-        venueId: partnerId,
-        status: 'APPROVED' as any,
+        status: ScanStatus.APPROVED,
         createdAt: { gte: monthStart, lt: monthEnd },
+        venue: { partnerId },
       },
       _sum: { cashbackAmount: true },
     });
@@ -226,9 +248,12 @@ class AdminCashbackService {
   }
 
   /**
-   * List all APPROVED receipts for a given (partnerId, year, month).
-   * Used for reconciliation: confirms exactly which receipts were included in a
+   * List all APPROVED sticker scans for a given (partnerId, year, month).
+   * Used for reconciliation: confirms exactly which scans were included in a
    * partner's cashback payment period.
+   *
+   * Field names (`receipts`, `receiptCount`) are retained for frontend compatibility
+   * but the rows come from StickerScan, not the retired Receipt submission flow.
    */
   async getReceiptsByPartnerMonth(params: {
     partnerId: string;
@@ -251,31 +276,42 @@ class AdminCashbackService {
     const monthStart = new Date(year, mon - 1, 1);
     const monthEnd = new Date(year, mon, 1);
 
-    const receipts = await prisma.receipt.findMany({
+    const scans = await prisma.stickerScan.findMany({
       where: {
-        venueId: params.partnerId,
-        status: 'APPROVED' as any,
+        status: ScanStatus.APPROVED,
         createdAt: { gte: monthStart, lt: monthEnd },
+        venue: { partnerId: params.partnerId },
       },
       select: {
         id: true,
         userId: true,
-        totalAmount: true,
+        billAmount: true,
+        verifiedAmount: true,
         cashbackAmount: true,
-        merchantName: true,
-        receiptDate: true,
-        reviewedAt: true,
-        reviewedBy: true,
+        processedAt: true,
+        createdAt: true,
+        venue: { select: { name: true } },
       },
       orderBy: { createdAt: 'asc' },
     });
+
+    const receipts = scans.map(s => ({
+      id: s.id,
+      userId: s.userId,
+      totalAmount: s.verifiedAmount ?? s.billAmount ?? null,
+      cashbackAmount: s.cashbackAmount,
+      merchantName: s.venue?.name ?? null,
+      receiptDate: s.createdAt,
+      reviewedAt: s.processedAt,
+      reviewedBy: null, // StickerScan doesn't track the approving admin — unlike Receipt.reviewedBy
+    }));
 
     const totalCashbackOwed = receipts.reduce((sum, r) => sum + r.cashbackAmount, 0);
 
     return {
       receipts,
       receiptCount: receipts.length,
-      totalCashbackOwed,
+      totalCashbackOwed: Math.round(totalCashbackOwed * 100) / 100,
     };
   }
 

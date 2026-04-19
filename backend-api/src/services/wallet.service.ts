@@ -46,7 +46,7 @@ export class WalletService {
   /**
    * Get wallet balance.
    * Cashback expiry is intentionally NOT run here — it is handled by a
-   * nightly cron job (see cashbackExpiry.cron.ts) to keep reads lightweight.
+   * nightly cron job (jobs/scheduler.ts, runCashbackExpiry) to keep reads lightweight.
    */
   async getBalance(userId: string) {
     const wallet = await this.getOrCreateWallet(userId);
@@ -239,6 +239,16 @@ export class WalletService {
 
     if (wallet.isLocked) {
       throw new Error(`Wallet is locked: ${wallet.lockedReason}`);
+    }
+
+    // Pre-prune any already-expired cashback before reading availableBalance.
+    // Without this, a payout requested at 01:45 Sofia (before the 02:00 cashback-expiry
+    // cron) would pay out BGN that had legally already expired.
+    try {
+      const { expireWallet } = await import('../jobs/scheduler');
+      await expireWallet(wallet.id, new Date());
+    } catch (pruneError) {
+      logger.error(`[payout] Pre-prune failed for wallet ${wallet.id} — continuing with current balance:`, pruneError);
     }
 
     // Resolve plan and threshold
