@@ -546,6 +546,8 @@ export const AdminScanReviewPage: React.FC = () => {
   const [modalOpen, setModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState<'approve' | 'reject'>('approve');
   const [reviewNotes, setReviewNotes] = useState('');
+  const [verifiedAmount, setVerifiedAmount] = useState('');
+  const [currentScan, setCurrentScan] = useState<StickerScan | null>(null);
   const [currentScanId, setCurrentScanId] = useState<string | null>(null);
 
   // Fetch scans and stats
@@ -621,9 +623,13 @@ export const AdminScanReviewPage: React.FC = () => {
   };
 
   const openReviewModal = (scanId: string, mode: 'approve' | 'reject') => {
+    const scan = scans.find(s => s.id === scanId) || null;
     setCurrentScanId(scanId);
+    setCurrentScan(scan);
     setModalMode(mode);
     setReviewNotes('');
+    // Seed override input with the scan's billAmount so admins edit rather than retype.
+    setVerifiedAmount(scan ? String(scan.billAmount) : '');
     setModalOpen(true);
   };
 
@@ -634,6 +640,21 @@ export const AdminScanReviewPage: React.FC = () => {
       const token = authStorage.getItem('token');
       const endpoint = modalMode === 'approve' ? 'approve' : 'reject';
 
+      // Only send verifiedAmount when approving AND the admin actually changed it
+      // from the scan's original billAmount — otherwise we'd trigger a needless
+      // recompute (and persist the same value as an "override").
+      const body: Record<string, unknown> = { notes: reviewNotes || undefined };
+      if (modalMode === 'approve' && currentScan && verifiedAmount !== '') {
+        const parsed = Number(verifiedAmount);
+        if (!isFinite(parsed) || parsed <= 0) {
+          alert('Verified amount must be a positive number');
+          return;
+        }
+        if (parsed !== currentScan.billAmount) {
+          body.verifiedAmount = parsed;
+        }
+      }
+
       const response = await fetch(
         `${API_CONFIG.baseURL}/api/stickers/admin/${endpoint}/${currentScanId}`,
         {
@@ -642,93 +663,93 @@ export const AdminScanReviewPage: React.FC = () => {
             'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({
-            notes: reviewNotes || undefined,
-          }),
+          body: JSON.stringify(body),
         }
       );
 
-      if (!response.ok) throw new Error(`Failed to ${modalMode} scan`);
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err?.error || `Failed to ${modalMode} scan`);
+      }
 
-      // Refresh data
       await fetchScans();
       await fetchStats();
 
       setModalOpen(false);
       setCurrentScanId(null);
+      setCurrentScan(null);
       setReviewNotes('');
-    } catch (error) {
+      setVerifiedAmount('');
+    } catch (error: any) {
       console.error(`Error ${modalMode}ing scan:`, error);
-      alert(`Failed to ${modalMode} scan. Please try again.`);
+      alert(error?.message || `Failed to ${modalMode} scan. Please try again.`);
     }
   };
 
   const handleBulkApprove = async () => {
     if (selectedScans.size === 0) return;
+    const ids = Array.from(selectedScans);
 
-    if (!confirm(`Are you sure you want to approve ${selectedScans.size} scans?`)) {
+    if (!confirm(`Approve ${ids.length} scan(s)? This credits cashback and cannot be undone.`)) {
       return;
     }
 
     try {
       const token = authStorage.getItem('token');
-
-      await Promise.all(
-        Array.from(selectedScans).map(scanId =>
-          fetch(`${API_CONFIG.baseURL}/api/stickers/admin/approve/${scanId}`, {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${token}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              notes: 'Bulk approved',
-            }),
-          })
-        )
-      );
-
-      // Refresh data
+      const response = await fetch(`${API_CONFIG.baseURL}/api/stickers/admin/bulk-approve`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ scanIds: ids }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data?.success === false) {
+        throw new Error(data?.error || 'Failed to bulk approve scans');
+      }
+      if (data.errorCount > 0) {
+        alert(`${data.successCount} approved, ${data.errorCount} failed. Check logs for details.`);
+      }
       await fetchScans();
       await fetchStats();
       setSelectedScans(new Set());
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error bulk approving:', error);
-      alert('Failed to approve some scans. Please try again.');
+      alert(error?.message || 'Failed to approve scans. Please try again.');
     }
   };
 
   const handleBulkReject = async () => {
     if (selectedScans.size === 0) return;
+    const ids = Array.from(selectedScans);
 
-    const reason = prompt(`Enter rejection reason for ${selectedScans.size} scans:`);
+    const reason = prompt(`Enter rejection reason for ${ids.length} scans:`);
     if (!reason) return;
 
     try {
       const token = authStorage.getItem('token');
-
-      await Promise.all(
-        Array.from(selectedScans).map(scanId =>
-          fetch(`${API_CONFIG.baseURL}/api/stickers/admin/reject/${scanId}`, {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${token}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              notes: reason,
-            }),
-          })
-        )
-      );
-
-      // Refresh data
+      const response = await fetch(`${API_CONFIG.baseURL}/api/stickers/admin/bulk-reject`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ scanIds: ids, reason }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data?.success === false) {
+        throw new Error(data?.error || 'Failed to bulk reject scans');
+      }
+      if (data.errorCount > 0) {
+        alert(`${data.successCount} rejected, ${data.errorCount} failed. Check logs for details.`);
+      }
       await fetchScans();
       await fetchStats();
       setSelectedScans(new Set());
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error bulk rejecting:', error);
-      alert('Failed to reject some scans. Please try again.');
+      alert(error?.message || 'Failed to reject scans. Please try again.');
     }
   };
 
@@ -852,11 +873,11 @@ export const AdminScanReviewPage: React.FC = () => {
                 </DetailItem>
                 <DetailItem>
                   <DetailLabel>Bill Amount</DetailLabel>
-                  <DetailValue>€{scan.billAmount.toFixed(2)}</DetailValue>
+                  <DetailValue>{scan.billAmount.toFixed(2)} лв</DetailValue>
                 </DetailItem>
                 <DetailItem>
                   <DetailLabel>Cashback</DetailLabel>
-                  <DetailValue>€{scan.cashbackAmount.toFixed(2)}</DetailValue>
+                  <DetailValue>{scan.cashbackAmount.toFixed(2)} лв</DetailValue>
                 </DetailItem>
                 <DetailItem>
                   <DetailLabel>Card Type</DetailLabel>
@@ -946,6 +967,27 @@ export const AdminScanReviewPage: React.FC = () => {
               Add notes about your decision (optional)
             </ModalSubtitle>
           </ModalHeader>
+
+          {modalMode === 'approve' && currentScan && (
+            <ModalSection>
+              <SectionTitle>
+                Verified Bill Amount (лв)
+              </SectionTitle>
+              <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginBottom: 8 }}>
+                User submitted <strong>{currentScan.billAmount.toFixed(2)} лв</strong>
+                {currentScan.ocrData?.amount != null ? ` — OCR detected ${currentScan.ocrData.amount.toFixed(2)} лв` : ''}.
+                Edit this to correct the amount before approving; cashback will be recomputed.
+              </div>
+              <Input
+                type="number"
+                min="0.01"
+                step="0.01"
+                value={verifiedAmount}
+                onChange={(e) => setVerifiedAmount(e.target.value)}
+                style={{ width: '100%' }}
+              />
+            </ModalSection>
+          )}
 
           <ModalSection>
             <SectionTitle>Admin Notes</SectionTitle>

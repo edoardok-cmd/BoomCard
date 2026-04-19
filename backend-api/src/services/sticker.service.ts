@@ -1025,9 +1025,16 @@ class StickerService {
   }
 
   /**
-   * Approve a scan and credit cashback
+   * Approve a scan and credit cashback.
+   *
+   * Optional `verifiedAmount`: admin-corrected bill amount used when the
+   * user-entered number is wrong (e.g. OCR confirms a different total).
+   * When set, cashbackPercent / cashbackAmount are recomputed from the
+   * verified amount via `calculateCashback`, and the scan record is updated
+   * to reflect the corrected values before crediting the wallet. Without it,
+   * the pre-computed scan.cashbackAmount is used as-is.
    */
-  async approveScan(scanId: string): Promise<StickerScan> {
+  async approveScan(scanId: string, opts?: { verifiedAmount?: number }): Promise<StickerScan> {
     const scan = await prisma.stickerScan.findUnique({
       where: { id: scanId },
       include: {
@@ -1052,7 +1059,29 @@ class StickerService {
       throw new Error(`Scan cannot be approved: current status is ${scan.status}`);
     }
 
-    if (scan.cashbackAmount <= 0) {
+    // Resolve admin amount override. Null/undefined → use scan as-is; any
+    // numeric value (including 0, to catch admin typos) is validated.
+    let effectiveBillAmount = scan.billAmount;
+    let effectiveCashbackPercent = scan.cashbackPercent;
+    let effectiveCashbackAmount = scan.cashbackAmount;
+
+    if (opts?.verifiedAmount != null) {
+      if (!isFinite(opts.verifiedAmount) || opts.verifiedAmount <= 0) {
+        throw new Error('verifiedAmount must be a positive number');
+      }
+      const cardTier = await this.resolveCashbackTier(scan.userId);
+      const recalc = await fraudDetectionService.calculateCashback({
+        venueId: scan.venueId,
+        amount: opts.verifiedAmount,
+        cardTier: cardTier as any,
+        userId: scan.userId,
+      });
+      effectiveBillAmount = opts.verifiedAmount;
+      effectiveCashbackPercent = recalc.cashbackPercent;
+      effectiveCashbackAmount = recalc.cashbackAmount;
+    }
+
+    if (effectiveCashbackAmount <= 0) {
       throw new Error('Scan cashback amount must be positive');
     }
 
@@ -1064,9 +1093,21 @@ class StickerService {
     // from being approved after the fact (mirrors the rejectScan guard which excludes
     // APPROVED scans to protect already-credited cashback). Narrowing to approvable
     // statuses (not just "not APPROVED") prevents a rejected scan from being re-approved.
+    // When an admin override is in play, the claim also writes the corrected
+    // billAmount/cashback fields so the persisted record matches what gets credited.
+    const claimData: Record<string, unknown> = {
+      status: ScanStatus.APPROVED,
+      processedAt: new Date(),
+    };
+    if (opts?.verifiedAmount != null) {
+      claimData.verifiedAmount = opts.verifiedAmount;
+      claimData.billAmount = effectiveBillAmount;
+      claimData.cashbackPercent = effectiveCashbackPercent;
+      claimData.cashbackAmount = effectiveCashbackAmount;
+    }
     const claimResult = await prisma.stickerScan.updateMany({
       where: { id: scanId, status: { in: approvableStatuses } },
-      data: { status: ScanStatus.APPROVED, processedAt: new Date() },
+      data: claimData as any,
     });
 
     if (claimResult.count === 0) {
@@ -1124,16 +1165,17 @@ class StickerService {
           cardId: scan.cardId,
           type: TransactionType.PURCHASE,
           paymentMethod: PaymentMethod.CARD,
-          amount: scan.billAmount,
-          discount: scan.cashbackPercent,
-          discountAmount: scan.cashbackAmount,
-          finalAmount: scan.billAmount - scan.cashbackAmount,
+          amount: effectiveBillAmount,
+          discount: effectiveCashbackPercent,
+          discountAmount: effectiveCashbackAmount,
+          finalAmount: effectiveBillAmount - effectiveCashbackAmount,
           currency: 'BGN',
           status: TransactionStatus.COMPLETED,
           metadata: JSON.stringify({
             scanId: scan.id,
             stickerId: scan.stickerId,
             source: 'STICKER_SCAN',
+            ...(opts?.verifiedAmount != null ? { adminAmountOverride: { from: scan.billAmount, to: opts.verifiedAmount } } : {}),
           }),
         },
       });
@@ -1160,26 +1202,40 @@ class StickerService {
       const metadataTier = await this.resolveCashbackTier(scan.userId);
       await walletService.credit({
         userId: scan.userId,
-        amount: scan.cashbackAmount,
+        amount: effectiveCashbackAmount,
         type: WalletTransactionType.CASHBACK_CREDIT,
         description: `Cashback from sticker scan at ${locationName}`,
         stickerScanId: scan.id,
         metadata: {
           venueId: scan.venueId,
           locationName,
-          billAmount: scan.billAmount,
+          billAmount: effectiveBillAmount,
           cashbackTier: metadataTier ?? 'NONE',
+          ...(opts?.verifiedAmount != null ? { adminAmountOverride: { from: scan.billAmount, to: opts.verifiedAmount } } : {}),
         },
       });
 
-      logger.info(`Credited ${scan.cashbackAmount} BGN cashback for scan ${scanId}`);
+      logger.info(`Credited ${effectiveCashbackAmount} BGN cashback for scan ${scanId}${opts?.verifiedAmount != null ? ` (admin override: ${scan.billAmount} → ${opts.verifiedAmount})` : ''}`);
     } catch (error) {
       logger.error(`Failed to process scan ${scanId} after claim, rolling back:`, error);
       // Each rollback step is independent so a failure on one doesn't prevent the other.
+      // Also restore the original bill/cashback fields if an admin override rewrote them
+      // during the claim, so a retry starts from the same state as the original scan.
+      const rollbackData: Record<string, unknown> = {
+        status: oldStatus,
+        transactionId: null,
+        processedAt: oldProcessedAt,
+      };
+      if (opts?.verifiedAmount != null) {
+        rollbackData.verifiedAmount = scan.verifiedAmount;
+        rollbackData.billAmount = scan.billAmount;
+        rollbackData.cashbackPercent = scan.cashbackPercent;
+        rollbackData.cashbackAmount = scan.cashbackAmount;
+      }
       try {
         await prisma.stickerScan.update({
           where: { id: scanId },
-          data: { status: oldStatus, transactionId: null, processedAt: oldProcessedAt },
+          data: rollbackData as any,
         });
       } catch (rollbackError) {
         logger.error(`CRITICAL: Failed to restore scan status for ${scanId}. Manual intervention required.`, rollbackError);
@@ -1200,7 +1256,7 @@ class StickerService {
         userId: scan.userId,
         scanId,
         venueName: (scan as any).venue?.name || 'venue',
-        cashbackAmount: scan.cashbackAmount,
+        cashbackAmount: effectiveCashbackAmount,
       });
     } catch (notifyError) {
       logger.error(`Failed to send notification for sticker scan ${scanId}:`, notifyError);
@@ -1226,6 +1282,44 @@ class StickerService {
   }
 
   /**
+   * Bulk approve scans. Sequential to keep cashback crediting deterministic and
+   * avoid hammering the DB; per-scan failures are isolated so one bad row
+   * doesn't kill the batch.
+   */
+  async bulkApprove(scanIds: string[]): Promise<{ successCount: number; errorCount: number; errors: Array<{ scanId: string; error: string }> }> {
+    let successCount = 0;
+    const errors: Array<{ scanId: string; error: string }> = [];
+    for (const scanId of scanIds) {
+      try {
+        await this.approveScan(scanId);
+        successCount++;
+      } catch (error: any) {
+        logger.error(`Bulk approve failed for scan ${scanId}:`, error);
+        errors.push({ scanId, error: error?.message || 'Unknown error' });
+      }
+    }
+    return { successCount, errorCount: errors.length, errors };
+  }
+
+  /**
+   * Bulk reject scans with a shared reason.
+   */
+  async bulkReject(scanIds: string[], reason: string): Promise<{ successCount: number; errorCount: number; errors: Array<{ scanId: string; error: string }> }> {
+    let successCount = 0;
+    const errors: Array<{ scanId: string; error: string }> = [];
+    for (const scanId of scanIds) {
+      try {
+        await this.rejectScan(scanId, reason);
+        successCount++;
+      } catch (error: any) {
+        logger.error(`Bulk reject failed for scan ${scanId}:`, error);
+        errors.push({ scanId, error: error?.message || 'Unknown error' });
+      }
+    }
+    return { successCount, errorCount: errors.length, errors };
+  }
+
+  /**
    * Get or create venue sticker configuration
    */
   async getOrCreateVenueConfig(venueId: string): Promise<VenueStickerConfig> {
@@ -1244,16 +1338,28 @@ class StickerService {
 
   /**
    * Update venue sticker configuration.
-   * Only known config fields are accepted — callers pass req.body, so we must not
-   * spread arbitrary properties into the upsert (prevents id/venueId injection).
+   * Only fields that the sticker engine actually consults are accepted.
+   *
+   * cashbackPercent / premiumBonus / platinumBonus are NOT here: sticker cashback
+   * is matrix-driven (CASHBACK_MATRIX + Partner.discountRate) via
+   * fraudDetectionService.calculateCashback — managed in Admin › Cashback Rates
+   * and Admin › Partners.
+   *
+   * autoApproveThreshold is NOT here: every scan is routed through manual review
+   * or auto-approved by explicit flow, not by a fraud-score threshold on this row.
    */
   async updateVenueConfig(venueId: string, raw: Record<string, unknown>): Promise<VenueStickerConfig> {
     const data: Record<string, unknown> = {};
+    // gpsVerificationEnabled is intentionally NOT writable: proximity verification
+    // is mandatory per product decision and the flag is ignored at runtime.
+    // ocrVerificationEnabled / maxCashbackPerScan are NOT writable either: the
+    // sticker flow has no OCR step, and cashback caps are driven by
+    // VenueFraudConfig.maxCashbackPerScan through fraudDetectionService.calculateCashback.
     const ALLOWED = [
-      'cashbackPercent', 'premiumBonus', 'platinumBonus', 'minBillAmount',
-      'maxCashbackPerScan', 'maxScansPerDay', 'maxScansPerMonth',
-      'gpsVerificationEnabled', 'gpsRadiusMeters', 'ocrVerificationEnabled',
-      'autoApproveThreshold', 'isActive', 'metadata',
+      'minBillAmount',
+      'maxScansPerDay', 'maxScansPerMonth',
+      'gpsRadiusMeters',
+      'isActive', 'metadata',
     ] as const;
     for (const key of ALLOWED) {
       if (key in raw) data[key] = raw[key];

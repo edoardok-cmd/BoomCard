@@ -737,14 +737,27 @@ router.get('/admin/stats', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), asyn
 
 /**
  * POST /api/stickers/admin/approve/:scanId
- * Approve a scan and credit cashback
+ * Approve a scan and credit cashback.
+ * Body (optional): { verifiedAmount?: number } — admin-corrected bill amount.
+ * When provided, cashbackPercent/Amount are recomputed from this value before
+ * crediting. Without it, the pre-computed scan values are used as-is.
  * Requires authentication (Admin role)
  */
 router.post('/admin/approve/:scanId', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), async (req: Request, res: Response) => {
   try {
     const { scanId } = req.params;
+    const { verifiedAmount } = req.body ?? {};
 
-    const scan = await stickerService.approveScan(scanId);
+    let opts: { verifiedAmount?: number } | undefined;
+    if (verifiedAmount !== undefined && verifiedAmount !== null && verifiedAmount !== '') {
+      const parsed = typeof verifiedAmount === 'number' ? verifiedAmount : Number(verifiedAmount);
+      if (!isFinite(parsed) || parsed <= 0) {
+        return res.status(400).json({ success: false, error: 'verifiedAmount must be a positive number' });
+      }
+      opts = { verifiedAmount: parsed };
+    }
+
+    const scan = await stickerService.approveScan(scanId, opts);
 
     res.json({
       success: true,
@@ -784,6 +797,54 @@ router.post('/admin/reject/:scanId', authenticate, authorize('ADMIN', 'SUPER_ADM
       success: false,
       error: error.message || 'Failed to reject scan',
     });
+  }
+});
+
+// Cap admin bulk actions so a buggy/rogue client can't tear through the DB
+// in one request. 500 is generous for a human review workflow.
+const BULK_SCAN_LIMIT = 500;
+
+/**
+ * POST /api/stickers/admin/bulk-approve
+ * Body: { scanIds: string[] }
+ * Replaces N parallel single-approve calls from the admin UI.
+ */
+router.post('/admin/bulk-approve', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), async (req: Request, res: Response) => {
+  try {
+    const { scanIds } = req.body as { scanIds?: unknown };
+    if (!Array.isArray(scanIds) || scanIds.length === 0 || !scanIds.every((id) => typeof id === 'string')) {
+      return res.status(400).json({ success: false, error: 'scanIds must be a non-empty array of strings' });
+    }
+    if (scanIds.length > BULK_SCAN_LIMIT) {
+      return res.status(400).json({ success: false, error: `Cannot process more than ${BULK_SCAN_LIMIT} scans per request` });
+    }
+    const result = await stickerService.bulkApprove(scanIds as string[]);
+    res.json({ success: true, ...result, message: `${result.successCount} scans approved, ${result.errorCount} errors` });
+  } catch (error: any) {
+    res.status(400).json({ success: false, error: error?.message || 'Failed to bulk approve scans' });
+  }
+});
+
+/**
+ * POST /api/stickers/admin/bulk-reject
+ * Body: { scanIds: string[], reason: string }
+ */
+router.post('/admin/bulk-reject', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), async (req: Request, res: Response) => {
+  try {
+    const { scanIds, reason } = req.body as { scanIds?: unknown; reason?: unknown };
+    if (!Array.isArray(scanIds) || scanIds.length === 0 || !scanIds.every((id) => typeof id === 'string')) {
+      return res.status(400).json({ success: false, error: 'scanIds must be a non-empty array of strings' });
+    }
+    if (scanIds.length > BULK_SCAN_LIMIT) {
+      return res.status(400).json({ success: false, error: `Cannot process more than ${BULK_SCAN_LIMIT} scans per request` });
+    }
+    if (typeof reason !== 'string' || !reason.trim()) {
+      return res.status(400).json({ success: false, error: 'reason is required' });
+    }
+    const result = await stickerService.bulkReject(scanIds as string[], reason.trim());
+    res.json({ success: true, ...result, message: `${result.successCount} scans rejected, ${result.errorCount} errors` });
+  } catch (error: any) {
+    res.status(400).json({ success: false, error: error?.message || 'Failed to bulk reject scans' });
   }
 });
 
