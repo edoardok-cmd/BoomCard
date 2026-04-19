@@ -232,7 +232,10 @@ class PartnersService {
    * Get partner statistics
    */
   async getPartnerStats(partnerId: string): Promise<PartnerStats> {
-    return apiService.get<PartnerStats>(`${this.baseUrl}/${partnerId}/stats`);
+    const res = await apiService.get<{ success: boolean; data: PartnerStats } | PartnerStats>(
+      `${this.baseUrl}/${partnerId}/stats`,
+    );
+    return (res as { data?: PartnerStats })?.data ?? (res as PartnerStats);
   }
 
   /**

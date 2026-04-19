@@ -312,6 +312,78 @@ router.get(
 );
 
 // ----------------------------------------------------------------
+// GET /api/partners/:id/stats
+// Owner (PARTNER role + own record) or ADMIN — aggregate KPIs for the partner dashboard.
+// ----------------------------------------------------------------
+router.get(
+  '/:id/stats',
+  authenticate,
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    const partner = await prisma.partner.findUnique({
+      where: { id: req.params.id },
+      select: { id: true, userId: true, rating: true, reviewCount: true },
+    });
+
+    if (!partner) {
+      return res.status(404).json({ success: false, error: 'Partner not found' });
+    }
+
+    const isOwner = partner.userId === req.user!.id;
+    const isAdmin = req.user!.role === 'ADMIN' || req.user!.role === 'SUPER_ADMIN';
+    if (!isOwner && !isAdmin) {
+      return res.status(403).json({ success: false, error: 'Forbidden' });
+    }
+
+    const now = new Date();
+    const monthAgo = new Date(now);
+    monthAgo.setDate(monthAgo.getDate() - 30);
+
+    const [venues, totalOffers, activeOffers, approvedScans, monthScans] = await Promise.all([
+      prisma.venue.findMany({ where: { partnerId: partner.id }, select: { id: true } }),
+      prisma.offer.count({ where: { partnerId: partner.id } }),
+      prisma.offer.count({
+        where: {
+          partnerId: partner.id,
+          status: OfferStatus.ACTIVE,
+          startDate: { lte: now },
+          endDate: { gte: now },
+        },
+      }),
+      prisma.stickerScan.findMany({
+        where: {
+          venue: { partnerId: partner.id },
+          status: ScanStatus.APPROVED,
+        },
+        select: { cashbackAmount: true },
+      }),
+      prisma.stickerScan.count({
+        where: {
+          venue: { partnerId: partner.id },
+          status: ScanStatus.APPROVED,
+          createdAt: { gte: monthAgo },
+        },
+      }),
+    ]);
+
+    const revenue = approvedScans.reduce((sum, s) => sum + s.cashbackAmount, 0);
+
+    res.json({
+      success: true,
+      data: {
+        totalVenues: venues.length,
+        totalOffers,
+        activeOffers,
+        totalRedemptions: approvedScans.length,
+        averageRating: partner.rating,
+        totalReviews: partner.reviewCount,
+        monthlyRedemptions: monthScans,
+        revenue: Math.round(revenue * 100) / 100,
+      },
+    });
+  }),
+);
+
+// ----------------------------------------------------------------
 // GET /api/partners/:id
 // Public — all partners visible to everyone
 // ----------------------------------------------------------------
