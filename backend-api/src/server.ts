@@ -56,13 +56,27 @@ dotenv.config();
 
 // Validate critical env vars early — fail fast rather than at first request
 if (process.env.NODE_ENV === 'production') {
-  const required = ['JWT_SECRET', 'DATABASE_URL', 'API_BASE_URL', 'FRONTEND_URL'];
+  const required = [
+    'JWT_SECRET', 'DATABASE_URL', 'API_BASE_URL', 'FRONTEND_URL',
+    // Stripe (BASIC + PREMIUM are Stripe-billed; LIGHT is Paysera-only)
+    'STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET',
+    'STRIPE_BASIC_PRICE_ID', 'STRIPE_PREMIUM_PRICE_ID',
+    // Cloudflare R2 storage
+    'R2_ACCOUNT_ID', 'R2_ACCESS_KEY_ID', 'R2_SECRET_ACCESS_KEY',
+    'R2_BUCKET_NAME', 'R2_PUBLIC_URL',
+  ];
   const missing = required.filter(k => !process.env[k]);
   if (missing.length) {
     throw new Error(`Missing required environment variables: ${missing.join(', ')}`);
   }
   if ((process.env.JWT_SECRET?.length ?? 0) < 32) {
     throw new Error('JWT_SECRET must be at least 32 characters');
+  }
+  // Catch placeholder Stripe price IDs (defaults like 'price_BASIC' would 400 at Stripe call time)
+  for (const k of ['STRIPE_BASIC_PRICE_ID', 'STRIPE_PREMIUM_PRICE_ID']) {
+    if (!process.env[k]?.startsWith('price_') || process.env[k] === `price_${k.split('_')[1]}`) {
+      throw new Error(`${k} is set to a placeholder value (${process.env[k]}); use the real Stripe price ID`);
+    }
   }
 }
 
