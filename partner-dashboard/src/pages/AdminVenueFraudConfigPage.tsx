@@ -3,8 +3,7 @@ import styled from 'styled-components';
 import { useLanguage } from '../contexts/LanguageContext';
 import { fraudAdminService } from '../services/fraudAdmin.service';
 import { apiService } from '../services/api.service';
-import type { VenueFraudConfig } from '../types/fraud.types';
-import { Shield, ChevronDown, ChevronRight, Save, Search, Loader } from 'lucide-react';
+import { Shield, ChevronDown, ChevronRight, Save, Search, Loader, Info } from 'lucide-react';
 
 // ─────────────────────── Styled Components ───────────────────────
 
@@ -182,6 +181,21 @@ const EmptyState = styled.div`
   color: var(--color-text-secondary);
 `;
 
+const InfoBanner = styled.div`
+  display: flex;
+  gap: 0.75rem;
+  padding: 1rem 1.25rem;
+  margin-bottom: 1.5rem;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 0.75rem;
+  font-size: 0.875rem;
+  color: #1e3a8a;
+  line-height: 1.5;
+  svg { width: 18px; height: 18px; color: #2563eb; flex-shrink: 0; margin-top: 2px; }
+  a { color: #1d4ed8; text-decoration: underline; font-weight: 600; }
+`;
+
 const SpinnerWrapper = styled.div`
   display: flex;
   justify-content: center;
@@ -204,12 +218,28 @@ const Toast = styled.div<{ $ok: boolean }>`
 
 // ─────────────────────── Defaults ───────────────────────
 
-// Must match the Prisma schema defaults for VenueFraudConfig so the admin
-// sees the same values a freshly-created row would contain.
-const DEFAULT_CONFIG: Omit<VenueFraudConfig, 'id' | 'venueId' | 'partnerId' | 'isActive' | 'metadata' | 'createdAt' | 'updatedAt'> = {
-  cashbackPercent: 5,
-  premiumBonus: 2,
-  platinumBonus: 5,
+// Per-venue overrides for fraud & scan limits ONLY. Cashback percentages are
+// matrix-driven (Admin › Cashback Rates) and the partner's discountRate is
+// managed in Admin › Partners — do not duplicate those here.
+// Mirrors the live fields in the Prisma VenueFraudConfig schema defaults.
+type FraudConfigForm = {
+  minBillAmount: number;
+  maxCashbackPerScan: number;
+  maxScansPerDay: number;
+  maxScansPerMonth: number;
+  gpsVerificationEnabled: boolean;
+  gpsRadiusMeters: number;
+  ocrVerificationEnabled: boolean;
+  templateMatchEnabled: boolean;
+  templateVisualWeight: number;
+  templateMerchantWeight: number;
+  templateKeywordWeight: number;
+  templateMinSimilarity: number;
+  templateFraudPoints: number;
+  templateMerchantThreshold: number;
+};
+
+const DEFAULT_CONFIG: FraudConfigForm = {
   minBillAmount: 0,
   maxCashbackPerScan: 0,
   maxScansPerDay: 999999,
@@ -217,8 +247,6 @@ const DEFAULT_CONFIG: Omit<VenueFraudConfig, 'id' | 'venueId' | 'partnerId' | 'i
   gpsVerificationEnabled: true,
   gpsRadiusMeters: 100,
   ocrVerificationEnabled: true,
-  autoApproveThreshold: 30,
-  autoRejectThreshold: 60,
   templateMatchEnabled: false,
   templateVisualWeight: 0.5,
   templateMerchantWeight: 0.3,
@@ -235,7 +263,7 @@ interface Venue {
   businessName: string;
 }
 
-type SectionKey = 'cashback' | 'rateLimit' | 'fraud' | 'template';
+type SectionKey = 'limits' | 'fraud' | 'template';
 
 export const AdminVenueFraudConfigPage: React.FC = () => {
   const { language } = useLanguage();
@@ -253,8 +281,7 @@ export const AdminVenueFraudConfigPage: React.FC = () => {
 
   // UI
   const [expandedSections, setExpandedSections] = useState<Record<SectionKey, boolean>>({
-    cashback: true,
-    rateLimit: true,
+    limits: true,
     fraud: true,
     template: false,
   });
@@ -287,9 +314,6 @@ export const AdminVenueFraudConfigPage: React.FC = () => {
       if (res.success && res.data) {
         const d = res.data;
         setFormData({
-          cashbackPercent: d.cashbackPercent,
-          premiumBonus: d.premiumBonus,
-          platinumBonus: d.platinumBonus,
           minBillAmount: d.minBillAmount,
           maxCashbackPerScan: d.maxCashbackPerScan ?? 0,
           maxScansPerDay: d.maxScansPerDay,
@@ -297,8 +321,6 @@ export const AdminVenueFraudConfigPage: React.FC = () => {
           gpsVerificationEnabled: d.gpsVerificationEnabled,
           gpsRadiusMeters: d.gpsRadiusMeters,
           ocrVerificationEnabled: d.ocrVerificationEnabled,
-          autoApproveThreshold: d.autoApproveThreshold,
-          autoRejectThreshold: d.autoRejectThreshold,
           templateMatchEnabled: d.templateMatchEnabled,
           templateVisualWeight: d.templateVisualWeight,
           templateMerchantWeight: d.templateMerchantWeight,
@@ -307,6 +329,8 @@ export const AdminVenueFraudConfigPage: React.FC = () => {
           templateFraudPoints: d.templateFraudPoints,
           templateMerchantThreshold: d.templateMerchantThreshold,
         });
+      } else {
+        setFormData({ ...DEFAULT_CONFIG });
       }
       setConfigLoaded(true);
     } catch (err) {
@@ -337,6 +361,26 @@ export const AdminVenueFraudConfigPage: React.FC = () => {
 
   const handleSave = async () => {
     if (!selectedVenueId) return;
+
+    // Template scoring is a weighted sum of three signals; if the weights don't
+    // add up to ~1.0 the per-receipt match score becomes meaningless. We allow
+    // a small float-arithmetic tolerance so 0.5+0.3+0.2 still passes.
+    if (formData.templateMatchEnabled) {
+      const weightSum =
+        formData.templateVisualWeight +
+        formData.templateMerchantWeight +
+        formData.templateKeywordWeight;
+      if (Math.abs(weightSum - 1) > 0.01) {
+        notify(
+          language === 'bg'
+            ? `Сборът на теглата (визуално + търговец + ключови думи) трябва да е 1.0 (текущо: ${weightSum.toFixed(2)})`
+            : `Template weights (visual + merchant + keyword) must sum to 1.0 (current: ${weightSum.toFixed(2)})`,
+          false
+        );
+        return;
+      }
+    }
+
     setSaving(true);
     try {
       await fraudAdminService.updateVenueConfig(selectedVenueId, formData);
@@ -470,33 +514,43 @@ export const AdminVenueFraudConfigPage: React.FC = () => {
       {/* ── Config Form ───────────────────────────────────── */}
       {selectedVenueId && !loading && configLoaded && (
         <>
-          {/* Section 1: Cashback Settings */}
-          {renderSection('cashback', 'Cashback Settings', 'Настройки за кешбек', (
-            <>
-              {renderNumberField('cashbackPercent', 'Cashback Percent (%)', 'Процент кешбек (%)', 0.1, 0)}
-              {renderNumberField('premiumBonus', 'Premium Bonus (%)', 'Премиум бонус (%)', 0.1, 0)}
-              {renderNumberField('platinumBonus', 'Platinum Bonus (%)', 'Платинен бонус (%)', 0.1, 0)}
-              {renderNumberField('minBillAmount', 'Min Bill Amount (BGN)', 'Мин. сума на сметка (лв)', 1, 0)}
-              {renderNumberField('maxCashbackPerScan', 'Max Cashback Per Scan (0 = unlimited)', 'Макс. кешбек на скан (0 = неограничен)', 1, 0)}
-            </>
-          ))}
+          <InfoBanner>
+            <Info />
+            <div>
+              {language === 'bg' ? (
+                <>
+                  Тази страница настройва <strong>лимити и проверки за измама</strong> за обекта.
+                  Процентът кешбек се определя от матрицата [5, 10, 15, 20, 25] в{' '}
+                  <a href="/admin/cashback/rates">Админ › Кешбек ставки</a>, а отстъпката на партньора се
+                  управлява в <a href="/admin/partners">Админ › Партньори</a>.
+                </>
+              ) : (
+                <>
+                  This page configures <strong>scan limits and fraud checks</strong> for this venue.
+                  Cashback percentages are set by the matrix [5, 10, 15, 20, 25] in{' '}
+                  <a href="/admin/cashback/rates">Admin › Cashback Rates</a>, and the partner's discount
+                  rate is managed in <a href="/admin/partners">Admin › Partners</a>.
+                </>
+              )}
+            </div>
+          </InfoBanner>
 
-          {/* Section 2: Rate Limiting */}
-          {renderSection('rateLimit', 'Rate Limiting', 'Ограничения', (
+          {/* Section 1: Scan Limits */}
+          {renderSection('limits', 'Scan Limits', 'Лимити за сканиране', (
             <>
+              {renderNumberField('minBillAmount', 'Min Bill Amount (BGN)', 'Мин. сума на сметка (лв)', 1, 0)}
+              {renderNumberField('maxCashbackPerScan', 'Max Cashback Per Scan (BGN, 0 = default cap)', 'Макс. кешбек на скан (лв, 0 = по подразб.)', 1, 0)}
               {renderNumberField('maxScansPerDay', 'Max Scans Per Day', 'Макс. сканирания на ден', 1, 1)}
               {renderNumberField('maxScansPerMonth', 'Max Scans Per Month', 'Макс. сканирания на месец', 1, 1)}
             </>
           ))}
 
-          {/* Section 3: Fraud Detection */}
+          {/* Section 2: Fraud Detection */}
           {renderSection('fraud', 'Fraud Detection', 'Разпознаване на измами', (
             <>
               {renderCheckboxField('gpsVerificationEnabled', 'GPS Verification Enabled', 'GPS верификация')}
               {renderNumberField('gpsRadiusMeters', 'GPS Radius (meters)', 'GPS радиус (метри)', 50, 0)}
               {renderCheckboxField('ocrVerificationEnabled', 'OCR Verification Enabled', 'OCR верификация')}
-              {renderNumberField('autoApproveThreshold', 'Auto-Approve Threshold (0-100)', 'Праг за авто-одобрение (0-100)', 1, 0, 100)}
-              {renderNumberField('autoRejectThreshold', 'Auto-Reject Threshold (0-100)', 'Праг за авто-отхвърляне (0-100)', 1, 0, 100)}
             </>
           ))}
 
