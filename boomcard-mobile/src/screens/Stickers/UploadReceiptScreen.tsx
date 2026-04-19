@@ -63,6 +63,10 @@ export default function UploadReceiptScreen() {
   // User's plan code (BASIC / LIGHT / PREMIUM) — used to compute accurate cashback estimate
   // per the master cashback matrix (§2). Fetched once on mount; null = not yet known.
   const [userPlanCode, setUserPlanCode] = useState<string | null>(null);
+  // True when validateSticker failed (network error or venue lookup returned no data).
+  // Used to render a non-blocking warning banner — submission still works since the
+  // server re-validates sticker + venue when the scan is posted.
+  const [stickerValidationFailed, setStickerValidationFailed] = useState(false);
 
   const ocrService = OCRService.getInstance();
   const s = getStyles(theme, isDarkMode);
@@ -89,9 +93,12 @@ export default function UploadReceiptScreen() {
       if (res.success && res.data) {
         setVenueName(res.data.venueName || '');
         setCashbackPercent(Math.max(0, Math.min(100, res.data.cashbackPercent || 0)));
+      } else {
+        setStickerValidationFailed(true);
       }
     }).catch((err) => {
       if (__DEV__) console.warn('Failed to validate sticker:', err);
+      setStickerValidationFailed(true);
     });
   }, [stickerId]);
 
@@ -340,6 +347,15 @@ export default function UploadReceiptScreen() {
           ) : null}
         </View>
 
+        {stickerValidationFailed && !venueName ? (
+          <View style={s.warningBanner}>
+            <Ionicons name="alert-circle-outline" size={18} color="#b45309" />
+            <Text style={s.warningBannerText}>
+              {t('stickers.venueLookupFailedWarning', "Couldn't load venue details — your submission will still be reviewed by the server.")}
+            </Text>
+          </View>
+        ) : null}
+
         <View style={s.instructionCard}>
           <Ionicons name="receipt-outline" size={40} color={theme.colors.primary} style={{ marginBottom: 12 }} />
           <Text style={s.instructionTitle}>{t('stickers.photoInstructionTitle', 'Take a clear photo of your receipt')}</Text>
@@ -371,6 +387,15 @@ export default function UploadReceiptScreen() {
         </View>
         <Text style={s.stepTitle}>{t('stickers.confirmTitle', 'Confirm & Submit')}</Text>
       </View>
+
+      {stickerValidationFailed && !venueName ? (
+        <View style={s.warningBanner}>
+          <Ionicons name="alert-circle-outline" size={18} color="#b45309" />
+          <Text style={s.warningBannerText}>
+            {t('stickers.venueLookupFailedWarning', "Couldn't load venue details — your submission will still be reviewed by the server.")}
+          </Text>
+        </View>
+      ) : null}
 
       {/* Receipt preview */}
       {imageUri && (
@@ -479,6 +504,26 @@ const getStyles = (theme: any, isDarkMode: boolean) => StyleSheet.create({
     borderRadius: 10,
   },
   cashbackBadgeText: { fontSize: 11, fontWeight: '700', color: '#16a34a' },
+
+  // Non-blocking warning banner shown when sticker lookup fails but submission is still allowed
+  warningBanner: {
+    flexDirection: 'row' as const,
+    alignItems: 'flex-start' as const,
+    gap: 8,
+    backgroundColor: isDarkMode ? 'rgba(245,158,11,0.12)' : 'rgba(245,158,11,0.1)',
+    borderWidth: 1,
+    borderColor: isDarkMode ? 'rgba(245,158,11,0.35)' : 'rgba(245,158,11,0.25)',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 16,
+  },
+  warningBannerText: {
+    flex: 1,
+    fontSize: 12,
+    lineHeight: 17,
+    color: isDarkMode ? '#fcd34d' : '#92400e',
+  },
 
   // Instruction card (photo stage)
   instructionCard: {
