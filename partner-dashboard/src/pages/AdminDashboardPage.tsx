@@ -270,7 +270,7 @@ const SectionHint = styled.span`
 
 const ActionsGrid = styled.div`
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr));
   gap: 0.75rem;
 `;
 
@@ -278,12 +278,13 @@ const ActionCard = styled(Link)`
   position: relative;
   display: flex;
   align-items: center;
-  gap: 0.875rem;
+  gap: 0.75rem;
   background: var(--color-background, #ffffff);
   border: 1px solid var(--color-border, #e5e7eb);
   border-radius: 0.75rem;
-  padding: 1rem 1.125rem;
-  min-height: 4.75rem;
+  padding: 0.875rem 1rem;
+  padding-right: 2.125rem;
+  min-height: 4.5rem;
   text-decoration: none;
   transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease,
     background-color 180ms ease;
@@ -295,15 +296,15 @@ const ActionCard = styled(Link)`
 
     .arrow {
       opacity: 1;
-      transform: translateX(0);
+      transform: translate(0, -50%);
     }
   }
 `;
 
 const ActionIcon = styled.div<{ $tint?: string }>`
   flex-shrink: 0;
-  width: 2.375rem;
-  height: 2.375rem;
+  width: 2.125rem;
+  height: 2.125rem;
   border-radius: 0.5rem;
   display: flex;
   align-items: center;
@@ -313,8 +314,8 @@ const ActionIcon = styled.div<{ $tint?: string }>`
   box-shadow: ${p => (p.$tint ? '0 1px 2px rgba(15, 23, 42, 0.08)' : 'none')};
 
   svg {
-    width: 1.125rem;
-    height: 1.125rem;
+    width: 1rem;
+    height: 1rem;
     stroke-width: 2;
   }
 `;
@@ -334,6 +335,9 @@ const ActionTitle = styled.h3`
   margin: 0;
   line-height: 1.3;
   letter-spacing: -0.005em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 `;
 
 const ActionDescription = styled.p`
@@ -352,17 +356,19 @@ const ActionTrail = styled.div`
   flex-shrink: 0;
   display: flex;
   align-items: center;
-  gap: 0.625rem;
 `;
 
 const ActionArrow = styled.div.attrs({ className: 'arrow' })`
-  flex-shrink: 0;
+  position: absolute;
+  top: 50%;
+  right: 0.75rem;
+  transform: translate(-4px, -50%);
   color: var(--color-text-tertiary, #94a3b8);
   opacity: 0;
-  transform: translateX(-4px);
-  transition: all 180ms ease;
+  transition: opacity 180ms ease, transform 180ms ease;
   display: flex;
   align-items: center;
+  pointer-events: none;
 
   svg {
     width: 1rem;
