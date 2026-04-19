@@ -2,6 +2,7 @@ import request from 'supertest';
 import { app } from '../../src/server';
 import { prisma } from '../../src/lib/prisma';
 import { walletService } from '../../src/services/wallet.service';
+import { createTestUser } from '../helpers/test-utils';
 
 describe('Cashback Flow Integration Tests', () => {
   let authToken: string;
@@ -10,19 +11,9 @@ describe('Cashback Flow Integration Tests', () => {
   let walletId: string;
 
   beforeAll(async () => {
-    // Register user
-    const res = await request(app)
-      .post('/api/auth/register')
-      .send({
-        email: `cashback-test-${Date.now()}@example.com`,
-        password: 'Test123!',
-        firstName: 'Cashback',
-        lastName: 'Test',
-        acceptTerms: true,
-      });
-
-    authToken = res.body.data.accessToken;
-    userId = res.body.data.user.id;
+    const { user, accessToken } = await createTestUser();
+    authToken = accessToken;
+    userId = user.id;
 
     // Get auto-created card
     const cardRes = await request(app)

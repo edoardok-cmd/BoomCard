@@ -1,6 +1,7 @@
 import request from 'supertest';
 import { app } from '../../src/server';
 import { prisma } from '../../src/lib/prisma';
+import { createTestUser } from '../helpers/test-utils';
 
 describe('Card API Integration Tests', () => {
   let authToken: string;
@@ -8,19 +9,9 @@ describe('Card API Integration Tests', () => {
   let cardId: string;
 
   beforeAll(async () => {
-    // Register user
-    const res = await request(app)
-      .post('/api/auth/register')
-      .send({
-        email: `card-test-${Date.now()}@example.com`,
-        password: 'Test123!',
-        firstName: 'Card',
-        lastName: 'Test',
-        acceptTerms: true,
-      });
-
-    authToken = res.body.data.accessToken;
-    userId = res.body.data.user.id;
+    const { user, accessToken } = await createTestUser();
+    authToken = accessToken;
+    userId = user.id;
   });
 
   afterAll(async () => {

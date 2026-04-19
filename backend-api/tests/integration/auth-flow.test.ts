@@ -270,7 +270,7 @@ describe('Authentication Flow (F01)', () => {
       createdUserIds.push(user.id);
       await prisma.user.update({
         where: { id: user.id },
-        data: { role: 'PARTNER' },
+        data: { role: 'PARTNER', status: 'ACTIVE' },
       });
 
       const res = await request(app)
@@ -358,7 +358,7 @@ describe('Authentication Flow (F01)', () => {
       createdUserIds.push(user.id);
       await prisma.user.update({
         where: { id: user.id },
-        data: { role: 'PARTNER' },
+        data: { role: 'PARTNER', status: 'ACTIVE' },
       });
 
       const res = await request(app)
@@ -376,7 +376,7 @@ describe('Authentication Flow (F01)', () => {
       createdUserIds.push(user.id);
       await prisma.user.update({
         where: { id: user.id },
-        data: { role: 'PARTNER' },
+        data: { role: 'PARTNER', status: 'ACTIVE' },
       });
 
       const loginRes = await request(app)
