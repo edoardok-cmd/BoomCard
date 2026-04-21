@@ -1,199 +1,375 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import styled from 'styled-components';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import styled, { keyframes, css } from 'styled-components';
 import { motion } from 'framer-motion';
+import { MapPin, List, Map, Navigation, ImageOff } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
+import { useUserLocation } from '../contexts/LocationContext';
+import { useEntities } from '../hooks/useOffers';
 import MapView, { Venue } from '../components/common/MapView/MapView';
-import { MapPin, List, Map, SlidersHorizontal } from 'lucide-react';
+import BoomPlacesFilters, { BoomPlacesFiltersState } from '../components/common/BoomPlacesFilters';
+import ExperiencesFilters, {
+  defaultExperiencesFilters,
+  type ExperiencesFiltersState,
+} from '../components/common/ExperiencesFilters';
+import { filterEntities, NEAR_ME_RADIUS_KM } from '../utils/filterEntities';
+import { getCategoryName } from '../types/categories.types';
 import Button from '../components/common/Button/Button';
-import Badge from '../components/common/Badge/Badge';
+import type { Entity } from '../types/entity.types';
 
 const content = {
   en: {
-    title: 'Nearby Offers',
+    title: 'Nearby',
     subtitle: 'Discover exclusive deals near you',
-    viewToggle: {
-      map: 'Map View',
-      list: 'List View',
-    },
-    filters: {
-      all: 'All Categories',
-      restaurants: 'Restaurants',
-      hotels: 'Hotels',
-      spas: 'Spas',
-      entertainment: 'Entertainment',
-      sports: 'Sports',
-      beauty: 'Beauty',
-      shopping: 'Shopping',
-      travel: 'Travel',
-    },
-    distance: {
-      nearby: 'Nearby',
-      km: 'km away',
-    },
-    sort: {
-      distance: 'Distance',
-      discount: 'Discount',
-      rating: 'Rating',
-      name: 'Name',
-    },
+    tabs: { places: 'Boom Places', experiences: 'Experiences' },
+    viewToggle: { map: 'Map View', list: 'List View' },
     noOffers: 'No nearby offers found',
-    enableLocation: 'Enable location to find offers near you',
-    openNow: 'Open Now',
-    closed: 'Closed',
+    tryWidening: 'Try clearing some filters or enable location.',
+    enableLocation: 'Enable location',
+    enableLocationPrompt: 'Enable location to see offers near you',
+    yourLocation: 'Using your current location',
+    locationDenied: 'Location denied — showing all results',
+    results: (n: number) => `${n} results`,
+    radiusLabel: (km: number) => `within ${km} km`,
     viewDetails: 'View Details',
   },
   bg: {
-    title: 'Близки Оферти',
+    title: 'На близо',
     subtitle: 'Открийте ексклузивни оферти близо до вас',
-    viewToggle: {
-      map: 'Карта',
-      list: 'Списък',
-    },
-    filters: {
-      all: 'Всички Категории',
-      restaurants: 'Ресторанти',
-      hotels: 'Хотели',
-      spas: 'СПА',
-      entertainment: 'Забавления',
-      sports: 'Спорт',
-      beauty: 'Красота',
-      shopping: 'Пазаруване',
-      travel: 'Пътувания',
-    },
-    distance: {
-      nearby: 'Наблизо',
-      km: 'км разстояние',
-    },
-    sort: {
-      distance: 'Разстояние',
-      discount: 'Отстъпка',
-      rating: 'Рейтинг',
-      name: 'Име',
-    },
+    tabs: { places: 'Boom места', experiences: 'Изживявания' },
+    viewToggle: { map: 'Карта', list: 'Списък' },
     noOffers: 'Няма намерени близки оферти',
-    enableLocation: 'Разрешете местоположение за да намерите оферти',
-    openNow: 'Отворено Сега',
-    closed: 'Затворено',
-    viewDetails: 'Виж Детайли',
+    tryWidening: 'Опитайте да премахнете филтри или разрешете локация.',
+    enableLocation: 'Разреши локация',
+    enableLocationPrompt: 'Разрешете локация, за да видите оферти близо до вас',
+    yourLocation: 'Използва се вашето местоположение',
+    locationDenied: 'Локацията е отказана — показване на всички резултати',
+    results: (n: number) => `${n} резултата`,
+    radiusLabel: (km: number) => `в радиус от ${km} км`,
+    viewDetails: 'Виж детайли',
   },
 };
+
+type Tab = 'places' | 'experiences';
+
+function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLng = ((lng2 - lng1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function entityToVenue(entity: Entity, language: 'en' | 'bg'): Venue | null {
+  const coords = entity.location.coordinates;
+  if (!coords) return null;
+  const address =
+    entity.location.address ||
+    (language === 'bg' ? entity.location.displayBg : entity.location.display) ||
+    entity.location.display;
+  return {
+    id: entity.id,
+    name: entity.name[language] || entity.name.en,
+    category: entity.categoryId,
+    categoryLabel: entity.categoryId ? getCategoryName(entity.categoryId, language) : undefined,
+    lat: coords.lat,
+    lng: coords.lng,
+    address,
+    phone: entity.contact?.phone,
+    rating: entity.rating,
+    image: entity.images.hero && entity.images.hero.length > 0 ? entity.images.hero : undefined,
+    discount: entity.discount?.percent,
+  };
+}
+
+function applyExperiencesFilters(
+  entities: Entity[],
+  filters: ExperiencesFiltersState,
+  language: string
+): Entity[] {
+  let result = [...entities];
+
+  if (filters.search) {
+    const q = filters.search.toLowerCase();
+    result = result.filter(e => {
+      const name = language === 'bg' ? e.name.bg : e.name.en;
+      const desc = language === 'bg' ? e.description.bg : e.description.en;
+      const cat = language === 'bg' ? e.category.bg : e.category.en;
+      const loc = e.location.displayBg || e.location.display;
+      return [name, desc, cat, loc].some(s => s.toLowerCase().includes(q));
+    });
+  }
+
+  if (filters.categories.length > 0) {
+    result = result.filter(
+      e =>
+        filters.categories.includes(e.categoryId) ||
+        e.subcategoryIds?.some(s => filters.categories.includes(s))
+    );
+  }
+
+  if (filters.locations.length > 0) {
+    result = result.filter(
+      e => e.location.city && filters.locations.includes(e.location.city)
+    );
+  }
+
+  if (filters.durations.length > 0) {
+    result = result.filter(
+      e => e.experience && filters.durations.includes(e.experience.duration)
+    );
+  }
+
+  if (filters.types.length > 0) {
+    result = result.filter(
+      e => e.experience && filters.types.includes(e.experience.type)
+    );
+  }
+
+  if (filters.formats.length > 0) {
+    result = result.filter(
+      e => e.experience?.format && filters.formats.includes(e.experience.format)
+    );
+  }
+
+  if (filters.seasons.length > 0) {
+    result = result.filter(
+      e => e.experience?.season && filters.seasons.includes(e.experience.season)
+    );
+  }
+
+  if (filters.participations.length > 0) {
+    result = result.filter(e => {
+      if (!e.experience) return false;
+      if (filters.participations.includes('group') && e.experience.type === 'group') return true;
+      if (
+        filters.participations.includes('individual-private') &&
+        (e.experience.type === 'private' || e.experience.type === 'vip')
+      ) {
+        return true;
+      }
+      return false;
+    });
+  }
+
+  if (filters.availability.length > 0) {
+    result = result.filter(e => {
+      const avail = e.experience?.availability;
+      if (!avail) return false;
+      if (typeof avail === 'string') {
+        return filters.availability.includes(avail) || avail === 'always';
+      }
+      return true;
+    });
+  }
+
+  if (filters.ratingRanges.length > 0) {
+    result = result.filter(e => {
+      if (!e.rating) return false;
+      return filters.ratingRanges.some(range => {
+        const [min, max] = range.split('-').map(Number);
+        return e.rating! >= min && e.rating! <= max;
+      });
+    });
+  }
+
+  if (filters.priceLevels.length > 0) {
+    result = result.filter(e => {
+      const price = e.experience?.price ?? e.discount?.originalPrice ?? 0;
+      return filters.priceLevels.some(level => {
+        if (level === 'budget') return price < 60;
+        if (level === 'mid-range') return price >= 60 && price < 150;
+        if (level === 'high-end') return price >= 150;
+        return false;
+      });
+    });
+  }
+
+  switch (filters.sortBy) {
+    case 'price-asc':
+      result.sort((a, b) => (a.experience?.price ?? 0) - (b.experience?.price ?? 0));
+      break;
+    case 'price-desc':
+      result.sort((a, b) => (b.experience?.price ?? 0) - (a.experience?.price ?? 0));
+      break;
+    case 'rating':
+      result.sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0));
+      break;
+    case 'duration': {
+      const durationOrder: Record<string, number> = {
+        'up-to-2h': 1, '2-4h': 2, 'half-day': 3, 'full-day': 4, 'multi-day': 5,
+      };
+      result.sort(
+        (a, b) =>
+          (durationOrder[a.experience?.duration ?? ''] ?? 0) -
+          (durationOrder[b.experience?.duration ?? ''] ?? 0)
+      );
+      break;
+    }
+    case 'featured':
+    default:
+      result.sort((a, b) => {
+        if (a.isFeatured && !b.isFeatured) return -1;
+        if (!a.isFeatured && b.isFeatured) return 1;
+        return (b.rating ?? 0) - (a.rating ?? 0);
+      });
+  }
+
+  return result;
+}
 
 const NearbyOffersPage: React.FC = () => {
   const navigate = useNavigate();
   const { language } = useLanguage();
   const t = content[language as keyof typeof content];
 
-  const [viewMode, setViewMode] = useState<'map' | 'list'>('map');
-  const [selectedCategory, setSelectedCategory] = useState<string>('all');
-  const [sortBy, setSortBy] = useState<'distance' | 'discount' | 'rating' | 'name'>('distance');
-  const [showFilters, setShowFilters] = useState(false);
+  const { userCoords, permission, permissionChecked, requestLocation } = useUserLocation();
 
-  // Mock venue data - replace with real API
-  const [venues] = useState<Venue[]>([
-    {
-      id: '1',
-      name: 'Sofia Grand Hotel',
-      category: 'hotels',
-      lat: 42.6977,
-      lng: 23.3219,
-      address: '1 Narodno Sabranie Sq, Sofia',
-      phone: '+359 2 811 0811',
-      rating: 4.7,
-      isOpen: true,
-      image: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=400',
-      discount: 25,
-    },
-    {
-      id: '2',
-      name: 'The Capital Grill',
-      category: 'restaurants',
-      lat: 42.6954,
-      lng: 23.3279,
-      address: '12 Vitosha Blvd, Sofia',
-      phone: '+359 2 987 6543',
-      rating: 4.5,
-      isOpen: true,
-      image: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=400',
-      discount: 20,
-    },
-    {
-      id: '3',
-      name: 'Relax SPA Center',
-      category: 'spas',
-      lat: 42.6925,
-      lng: 23.3189,
-      address: '45 Alabin St, Sofia',
-      phone: '+359 2 943 2109',
-      rating: 4.8,
-      isOpen: true,
-      image: 'https://images.unsplash.com/photo-1540555700478-4be289fbecef?w=400',
-      discount: 30,
-    },
-    {
-      id: '4',
-      name: 'Cinema City Sofia',
-      category: 'entertainment',
-      lat: 42.6853,
-      lng: 23.3154,
-      address: '102 Bulgaria Blvd, Sofia',
-      phone: '+359 700 20 888',
-      rating: 4.3,
-      isOpen: true,
-      image: 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=400',
-      discount: 15,
-    },
-    {
-      id: '5',
-      name: 'Fitness Pro Gym',
-      category: 'sports',
-      lat: 42.7042,
-      lng: 23.3145,
-      address: '78 Tzar Boris III Blvd, Sofia',
-      phone: '+359 2 962 1234',
-      rating: 4.6,
-      isOpen: false,
-      image: 'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=400',
-      discount: 40,
-    },
-    {
-      id: '6',
-      name: 'Beauty Lounge Sofia',
-      category: 'beauty',
-      lat: 42.6889,
-      lng: 23.3344,
-      address: '23 Graf Ignatiev St, Sofia',
-      phone: '+359 2 987 3210',
-      rating: 4.9,
-      isOpen: true,
-      image: 'https://images.unsplash.com/photo-1560066984-138dadb4c035?w=400',
-      discount: 35,
-    },
-  ]);
+  // Auto-request location on first page entry, but wait for the async
+  // permissions.query to resolve first — otherwise `permission` is still the
+  // default 'prompt' and we'd fire getCurrentPosition against a truly-denied
+  // browser state. Also gate with a ref so we only auto-request once per
+  // session, even if permissionChecked re-fires.
+  const didAutoRequestRef = useRef(false);
+  useEffect(() => {
+    if (!permissionChecked) return;
+    if (didAutoRequestRef.current) return;
+    if (userCoords) return;
+    if (permission === 'denied') return;
+    didAutoRequestRef.current = true;
+    requestLocation();
+  }, [permissionChecked, permission, userCoords, requestLocation]);
 
-  const filteredVenues = venues.filter((venue) => {
-    if (selectedCategory === 'all') return true;
-    return venue.category === selectedCategory;
-  });
+  const [searchParams, setSearchParams] = useSearchParams();
+  const urlTab = searchParams.get('tab');
+  const urlView = searchParams.get('view');
+  const initialTab: Tab = urlTab === 'experiences' ? 'experiences' : 'places';
+  const initialView: 'map' | 'list' = urlView === 'list' ? 'list' : 'map';
 
-  const sortedVenues = [...filteredVenues].sort((a, b) => {
-    switch (sortBy) {
-      case 'discount':
-        return (b.discount || 0) - (a.discount || 0);
-      case 'rating':
-        return (b.rating || 0) - (a.rating || 0);
-      case 'name':
-        return a.name.localeCompare(b.name);
-      default:
-        return 0; // Distance sorting handled by MapView
+  const [activeTab, setActiveTab] = useState<Tab>(initialTab);
+  const [viewMode, setViewMode] = useState<'map' | 'list'>(initialView);
+
+  // Clean unknown ?tab= / ?view= values from the URL on mount so the state we
+  // chose is consistent with what the address bar shows.
+  const didCleanUrlRef = useRef(false);
+  useEffect(() => {
+    if (didCleanUrlRef.current) return;
+    didCleanUrlRef.current = true;
+    const next = new URLSearchParams(searchParams);
+    let changed = false;
+    if (urlTab && urlTab !== 'places' && urlTab !== 'experiences') {
+      next.delete('tab');
+      changed = true;
     }
-  });
+    if (urlView && urlView !== 'map' && urlView !== 'list') {
+      next.delete('view');
+      changed = true;
+    }
+    if (changed) setSearchParams(next, { replace: true });
+  }, [urlTab, urlView, searchParams, setSearchParams]);
 
-  const handleVenueClick = (venue: Venue) => {
-    navigate(`/offers/${venue.id}`);
+  const updateTab = (tab: Tab) => {
+    setActiveTab(tab);
+    const next = new URLSearchParams(searchParams);
+    if (tab === 'places') next.delete('tab');
+    else next.set('tab', tab);
+    setSearchParams(next, { replace: true });
   };
 
-  const categories = Object.keys(t.filters).filter((key) => key !== 'all');
+  const updateView = (mode: 'map' | 'list') => {
+    setViewMode(mode);
+    const next = new URLSearchParams(searchParams);
+    if (mode === 'map') next.delete('view');
+    else next.set('view', mode);
+    setSearchParams(next, { replace: true });
+  };
+
+  const [placesFilters, setPlacesFilters] = useState<BoomPlacesFiltersState>({
+    categories: [],
+    locations: [],
+    nearMe: true,
+    discountRanges: [],
+    ratingRanges: [],
+    priceLevels: [],
+  });
+
+  const [experiencesFilters, setExperiencesFilters] = useState<ExperiencesFiltersState>(
+    defaultExperiencesFilters
+  );
+
+  const { data, isLoading } = useEntities({ limit: 200 });
+  const entities = useMemo(() => data?.data ?? [], [data]);
+
+  const places = useMemo(
+    () => entities.filter(e => e.kind !== 'experience' && !e.experience),
+    [entities]
+  );
+  const experiences = useMemo(
+    () => entities.filter(e => e.kind === 'experience' || !!e.experience),
+    [entities]
+  );
+
+  // filterEntities already applies the `nearMe` radius filter when coords are present,
+  // so we only add a distance sort on top (not a second radius filter).
+  const filteredPlaces = useMemo(() => {
+    const result = filterEntities(places, placesFilters, userCoords);
+    if (!userCoords) return result;
+    return [...result].sort((a, b) => {
+      const da = a.location.coordinates
+        ? haversineKm(userCoords.lat, userCoords.lng, a.location.coordinates.lat, a.location.coordinates.lng)
+        : Infinity;
+      const db = b.location.coordinates
+        ? haversineKm(userCoords.lat, userCoords.lng, b.location.coordinates.lat, b.location.coordinates.lng)
+        : Infinity;
+      return da - db;
+    });
+  }, [places, placesFilters, userCoords]);
+
+  const filteredExperiences = useMemo(() => {
+    let result = applyExperiencesFilters(experiences, experiencesFilters, language);
+    if (userCoords) {
+      result = result.filter(e => {
+        const c = e.location.coordinates;
+        if (!c) return false;
+        return haversineKm(userCoords.lat, userCoords.lng, c.lat, c.lng) <= NEAR_ME_RADIUS_KM;
+      });
+      result = [...result].sort((a, b) => {
+        const da = a.location.coordinates
+          ? haversineKm(userCoords.lat, userCoords.lng, a.location.coordinates.lat, a.location.coordinates.lng)
+          : Infinity;
+        const db = b.location.coordinates
+          ? haversineKm(userCoords.lat, userCoords.lng, b.location.coordinates.lat, b.location.coordinates.lng)
+          : Infinity;
+        return da - db;
+      });
+    }
+    return result;
+  }, [experiences, experiencesFilters, language, userCoords]);
+
+  const activeEntities = activeTab === 'places' ? filteredPlaces : filteredExperiences;
+
+  const venues = useMemo(
+    () =>
+      activeEntities
+        .map(e => entityToVenue(e, language as 'en' | 'bg'))
+        .filter((v): v is Venue => v !== null),
+    [activeEntities, language]
+  );
+
+  const handleVenueClick = (venue: Venue) => {
+    const entity = activeEntities.find(e => e.id === venue.id);
+    if (entity?.path) {
+      navigate(entity.path);
+    } else {
+      navigate(`/offers/${venue.id}`);
+    }
+  };
+
+  const mapCenter = userCoords ?? undefined;
 
   return (
     <Container>
@@ -205,154 +381,155 @@ const NearbyOffersPage: React.FC = () => {
           </div>
 
           <ViewToggle>
-            <ToggleButton
-              active={viewMode === 'map'}
-              onClick={() => setViewMode('map')}
-            >
+            <ToggleButton $active={viewMode === 'map'} onClick={() => updateView('map')}>
               <Map size={18} />
               {t.viewToggle.map}
             </ToggleButton>
-            <ToggleButton
-              active={viewMode === 'list'}
-              onClick={() => setViewMode('list')}
-            >
+            <ToggleButton $active={viewMode === 'list'} onClick={() => updateView('list')}>
               <List size={18} />
               {t.viewToggle.list}
             </ToggleButton>
           </ViewToggle>
         </HeaderContent>
+
+        {permissionChecked && (userCoords || permission === 'denied' || permission === 'prompt') && (
+          <LocationBanner>
+            <Navigation size={16} />
+            {userCoords ? (
+              <span>{t.yourLocation} · {t.radiusLabel(NEAR_ME_RADIUS_KM)}</span>
+            ) : permission === 'denied' ? (
+              <span>{t.locationDenied}</span>
+            ) : (
+              <>
+                <span>{t.enableLocationPrompt}</span>
+                <Button variant="ghost" size="small" onClick={requestLocation}>
+                  {t.enableLocation}
+                </Button>
+              </>
+            )}
+          </LocationBanner>
+        )}
+
+        <Tabs role="tablist">
+          <TabButton
+            role="tab"
+            aria-selected={activeTab === 'places'}
+            $active={activeTab === 'places'}
+            onClick={() => updateTab('places')}
+          >
+            {t.tabs.places}
+          </TabButton>
+          <TabButton
+            role="tab"
+            aria-selected={activeTab === 'experiences'}
+            $active={activeTab === 'experiences'}
+            onClick={() => updateTab('experiences')}
+          >
+            {t.tabs.experiences}
+          </TabButton>
+        </Tabs>
       </Header>
 
       <FiltersSection>
-        <FiltersToggle onClick={() => setShowFilters(!showFilters)}>
-          <SlidersHorizontal size={18} />
-          Filters
-          {selectedCategory !== 'all' && (
-            <Badge variant="success" size="small">
-              1
-            </Badge>
-          )}
-        </FiltersToggle>
-
-        {showFilters && (
-          <FiltersContent
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
-          >
-            <FilterGroup>
-              <FilterLabel>CATEGORY</FilterLabel>
-              <CategoryFilters>
-                <CategoryButton
-                  active={selectedCategory === 'all'}
-                  onClick={() => setSelectedCategory('all')}
-                >
-                  {t.filters.all}
-                </CategoryButton>
-                {categories.map((category) => (
-                  <CategoryButton
-                    key={category}
-                    active={selectedCategory === category}
-                    onClick={() => setSelectedCategory(selectedCategory === category ? 'all' : category)}
-                  >
-                    {t.filters[category as keyof typeof t.filters]}
-                  </CategoryButton>
-                ))}
-              </CategoryFilters>
-            </FilterGroup>
-
-            <FilterGroup>
-              <FilterLabel>SORT BY</FilterLabel>
-              <SortButtons>
-                <SortButton
-                  active={sortBy === 'distance'}
-                  onClick={() => setSortBy('distance')}
-                >
-                  {t.sort.distance}
-                </SortButton>
-                <SortButton
-                  active={sortBy === 'rating'}
-                  onClick={() => setSortBy('rating')}
-                >
-                  {t.sort.rating}
-                </SortButton>
-                <SortButton
-                  active={sortBy === 'name'}
-                  onClick={() => setSortBy('name')}
-                >
-                  {t.sort.name}
-                </SortButton>
-              </SortButtons>
-            </FilterGroup>
-          </FiltersContent>
+        {activeTab === 'places' ? (
+          <BoomPlacesFilters filters={placesFilters} onChange={setPlacesFilters} />
+        ) : (
+          <ExperiencesFilters filters={experiencesFilters} onChange={setExperiencesFilters} />
         )}
       </FiltersSection>
 
+      <ResultCount>{isLoading ? '…' : t.results(activeEntities.length)}</ResultCount>
+
       {viewMode === 'map' ? (
         <MapView
-          venues={sortedVenues}
+          venues={venues}
           onVenueClick={handleVenueClick}
+          initialCenter={mapCenter}
           height="600px"
         />
       ) : (
         <ListView>
-          {sortedVenues.length === 0 ? (
+          {isLoading ? (
+            <VenuesGrid>
+              {Array.from({ length: 6 }).map((_, i) => (
+                <SkeletonCard key={i}>
+                  <SkeletonImage />
+                  <SkeletonBody>
+                    <SkeletonLine $w="70%" />
+                    <SkeletonLine $w="45%" />
+                    <SkeletonLine $w="30%" />
+                  </SkeletonBody>
+                </SkeletonCard>
+              ))}
+            </VenuesGrid>
+          ) : activeEntities.length === 0 ? (
             <EmptyState>
               <EmptyIcon>
                 <MapPin size={48} />
               </EmptyIcon>
               <EmptyTitle>{t.noOffers}</EmptyTitle>
-              <EmptyText>{t.enableLocation}</EmptyText>
+              <EmptyText>{t.tryWidening}</EmptyText>
             </EmptyState>
           ) : (
             <VenuesGrid>
-              {sortedVenues.map((venue, index) => (
-                <VenueCard
-                  key={venue.id}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: index * 0.1 }}
-                  onClick={() => handleVenueClick(venue)}
-                >
-                  <VenueImageContainer>
-                    <VenueImage src={venue.image} alt={venue.name} />
-                    {venue.discount && (
-                      <DiscountBadge>{venue.discount}% OFF</DiscountBadge>
-                    )}
-                  </VenueImageContainer>
+              {activeEntities.map((entity, index) => {
+                const distKm =
+                  userCoords && entity.location.coordinates
+                    ? haversineKm(
+                        userCoords.lat,
+                        userCoords.lng,
+                        entity.location.coordinates.lat,
+                        entity.location.coordinates.lng
+                      )
+                    : null;
+                return (
+                  <VenueCard
+                    key={entity.id}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: Math.min(index, 12) * 0.05 }}
+                    onClick={() => navigate(entity.path || `/offers/${entity.id}`)}
+                  >
+                    <VenueImageContainer>
+                      <VenueHeroImage
+                        src={entity.images.hero}
+                        alt={entity.name[language] || entity.name.en}
+                      />
+                      {entity.discount?.percent ? (
+                        <DiscountBadge>{entity.discount.percent}% OFF</DiscountBadge>
+                      ) : null}
+                    </VenueImageContainer>
 
-                  <VenueContent>
-                    <VenueHeader>
-                      <VenueName>{venue.name}</VenueName>
-                      {venue.rating && (
-                        <VenueRating>
-                          ⭐ {venue.rating.toFixed(1)}
-                        </VenueRating>
+                    <VenueContent>
+                      <VenueHeader>
+                        <VenueName>{entity.name[language] || entity.name.en}</VenueName>
+                        {entity.rating != null && (
+                          <VenueRating>⭐ {entity.rating.toFixed(1)}</VenueRating>
+                        )}
+                      </VenueHeader>
+
+                      <VenueAddress>
+                        <MapPin size={14} />
+                        {language === 'bg'
+                          ? entity.location.displayBg || entity.location.display
+                          : entity.location.display}
+                      </VenueAddress>
+
+                      {distKm != null && (
+                        <VenueDistance>
+                          {distKm.toFixed(1)} km
+                        </VenueDistance>
                       )}
-                    </VenueHeader>
 
-                    <VenueAddress>
-                      <MapPin size={14} />
-                      {venue.address}
-                    </VenueAddress>
-
-                    <VenueMeta>
-                      <VenueStatus isOpen={venue.isOpen || false}>
-                        {venue.isOpen ? t.openNow : t.closed}
-                      </VenueStatus>
-                      <VenueCategory>
-                        {t.filters[venue.category as keyof typeof t.filters]}
-                      </VenueCategory>
-                    </VenueMeta>
-
-                    <VenueAction>
-                      <Button variant="primary" size="small">
-                        {t.viewDetails}
-                      </Button>
-                    </VenueAction>
-                  </VenueContent>
-                </VenueCard>
-              ))}
+                      <VenueAction>
+                        <Button variant="primary" size="small">
+                          {t.viewDetails}
+                        </Button>
+                      </VenueAction>
+                    </VenueContent>
+                  </VenueCard>
+                );
+              })}
             </VenuesGrid>
           )}
         </ListView>
@@ -376,6 +553,7 @@ const HeaderContent = styled.div`
   justify-content: space-between;
   align-items: center;
   gap: 2rem;
+  margin-bottom: 1rem;
 
   @media (max-width: 768px) {
     flex-direction: column;
@@ -410,159 +588,90 @@ const ViewToggle = styled.div`
   }
 `;
 
-const ToggleButton = styled.button<{ active: boolean }>`
+const ToggleButton = styled.button<{ $active: boolean }>`
   display: flex;
   align-items: center;
   gap: 0.5rem;
   padding: 0.5rem 1rem;
   border: none;
   border-radius: 0.375rem;
-  background: ${props => (props.active ? 'var(--primary)' : 'transparent')};
-  color: ${props => (props.active ? 'white' : 'var(--text-secondary)')};
+  background: ${props => (props.$active ? 'var(--primary)' : 'transparent')};
+  color: ${props => (props.$active ? 'white' : 'var(--text-secondary)')};
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s;
 
   &:hover {
-    background: ${props => (props.active ? 'var(--primary)' : 'var(--gray-100)')};
+    background: ${props => (props.$active ? 'var(--primary)' : 'var(--gray-100)')};
 
     [data-theme="dark"] & {
-      background: ${props => (props.active ? 'var(--primary)' : '#374151')};
+      background: ${props => (props.$active ? 'var(--primary)' : '#374151')};
     }
+  }
+`;
+
+const LocationBanner = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.625rem 0.875rem;
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  color: #065f46;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  margin-bottom: 1rem;
+
+  [data-theme="dark"] & {
+    background: rgba(16, 185, 129, 0.1);
+    border-color: rgba(16, 185, 129, 0.3);
+    color: #6ee7b7;
+  }
+`;
+
+const Tabs = styled.div`
+  display: flex;
+  gap: 0.5rem;
+  border-bottom: 2px solid #e5e7eb;
+
+  [data-theme="dark"] & {
+    border-bottom-color: #374151;
+  }
+`;
+
+const TabButton = styled.button<{ $active: boolean }>`
+  padding: 0.75rem 1.25rem;
+  border: none;
+  background: transparent;
+  color: ${props => (props.$active ? 'var(--text-primary)' : 'var(--text-secondary)')};
+  font-size: 1rem;
+  font-weight: ${props => (props.$active ? 700 : 500)};
+  cursor: pointer;
+  border-bottom: 3px solid ${props => (props.$active ? '#000000' : 'transparent')};
+  margin-bottom: -2px;
+  transition: all 0.2s;
+
+  [data-theme="dark"] & {
+    border-bottom-color: ${props => (props.$active ? '#f9fafb' : 'transparent')};
+  }
+
+  &:hover {
+    color: var(--text-primary);
   }
 `;
 
 const FiltersSection = styled.div`
-  background: white;
-  border-radius: 1rem;
-  padding: 1.5rem;
-  margin-bottom: 2rem;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-
-  [data-theme="dark"] & {
-    background: #1f2937;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
-  }
+  margin-bottom: 1.5rem;
 `;
 
-const FiltersToggle = styled.button`
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  background: none;
-  border: 2px solid var(--primary);
-  font-size: 1rem;
-  font-weight: 600;
-  color: var(--primary);
-  cursor: pointer;
-  padding: 0.625rem 1.25rem;
-  border-radius: 0.5rem;
-  transition: all 0.2s;
-
-  &:hover {
-    background: var(--primary);
-    color: white;
-  }
-
-  svg {
-    flex-shrink: 0;
-  }
-`;
-
-const FiltersContent = styled(motion.div)`
-  padding-top: 1.5rem;
-  margin-top: 1.5rem;
-  border-top: 1px solid var(--gray-200);
-`;
-
-const FilterGroup = styled.div`
-  margin-bottom: 2rem;
-
-  &:last-child {
-    margin-bottom: 0;
-  }
-`;
-
-const FilterLabel = styled.div`
-  font-size: 0.75rem;
-  font-weight: 700;
-  color: var(--text-primary);
+const ResultCount = styled.p`
+  font-size: 0.9375rem;
+  color: var(--text-secondary);
   margin-bottom: 1rem;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  padding-left: 0.25rem;
-`;
-
-const CategoryFilters = styled.div`
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem;
-  align-items: center;
-  margin-left: 0;
-`;
-
-const CategoryButton = styled.button<{ active: boolean }>`
-  padding: 0.5rem 1.125rem;
-  border: none;
-  border-radius: 0.375rem;
-  background: ${props => (props.active ? '#1a1a1a' : '#f5f5f5')};
-  color: ${props => (props.active ? '#ffffff' : '#1a1a1a')};
-  font-size: 0.9375rem;
-  font-weight: 400;
-  cursor: pointer;
-  transition: all 0.2s;
-  white-space: nowrap;
-
-  [data-theme="dark"] & {
-    background: ${props => (props.active ? '#ffffff' : '#374151')};
-    color: ${props => (props.active ? '#1a1a1a' : '#f9fafb')};
-  }
-
-  &:hover {
-    background: ${props => (props.active ? '#1a1a1a' : '#e5e5e5')};
-
-    [data-theme="dark"] & {
-      background: ${props => (props.active ? '#ffffff' : '#4b5563')};
-    }
-  }
-`;
-
-const SortButtons = styled.div`
-  display: flex;
-  gap: 0.75rem;
-  flex-wrap: wrap;
-  align-items: center;
-  margin-left: 0;
-`;
-
-const SortButton = styled.button<{ active: boolean }>`
-  padding: 0.5rem 1.125rem;
-  border: none;
-  border-radius: 0.375rem;
-  background: ${props => (props.active ? '#1a1a1a' : '#f5f5f5')};
-  color: ${props => (props.active ? '#ffffff' : '#1a1a1a')};
-  font-size: 0.9375rem;
-  font-weight: 400;
-  cursor: pointer;
-  transition: all 0.2s;
-  white-space: nowrap;
-
-  [data-theme="dark"] & {
-    background: ${props => (props.active ? '#ffffff' : '#374151')};
-    color: ${props => (props.active ? '#1a1a1a' : '#f9fafb')};
-  }
-
-  &:hover {
-    background: ${props => (props.active ? '#1a1a1a' : '#e5e5e5')};
-
-    [data-theme="dark"] & {
-      background: ${props => (props.active ? '#ffffff' : '#4b5563')};
-    }
-  }
 `;
 
 const ListView = styled.div`
-  margin-top: 2rem;
+  margin-top: 1rem;
 `;
 
 const VenuesGrid = styled.div`
@@ -587,10 +696,6 @@ const VenueCard = styled(motion.div)`
   &:hover {
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
     transform: translateY(-4px);
-
-    [data-theme="dark"] & {
-      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
-    }
   }
 `;
 
@@ -611,6 +716,33 @@ const VenueImage = styled.img`
     transform: scale(1.05);
   }
 `;
+
+const VenueImagePlaceholder = styled.div`
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%);
+  color: #9ca3af;
+
+  [data-theme="dark"] & {
+    background: linear-gradient(135deg, #4b5563 0%, #374151 100%);
+    color: #9ca3af;
+  }
+`;
+
+const VenueHeroImage: React.FC<{ src?: string; alt: string }> = ({ src, alt }) => {
+  const [failed, setFailed] = useState(false);
+  if (!src || failed) {
+    return (
+      <VenueImagePlaceholder role="img" aria-label={alt}>
+        <ImageOff size={32} aria-hidden="true" />
+      </VenueImagePlaceholder>
+    );
+  }
+  return <VenueImage src={src} alt={alt} onError={() => setFailed(true)} />;
+};
 
 const DiscountBadge = styled.div`
   position: absolute;
@@ -658,31 +790,18 @@ const VenueAddress = styled.div`
   gap: 0.5rem;
   font-size: 0.875rem;
   color: var(--text-secondary);
-  margin-bottom: 0.75rem;
+  margin-bottom: 0.5rem;
 
   svg {
     flex-shrink: 0;
   }
 `;
 
-const VenueMeta = styled.div`
-  display: flex;
-  gap: 0.75rem;
-  margin-bottom: 1rem;
-`;
-
-const VenueStatus = styled.div<{ isOpen: boolean }>`
-  font-size: 0.75rem;
+const VenueDistance = styled.div`
+  font-size: 0.8125rem;
   font-weight: 600;
-  color: ${props => (props.isOpen ? 'var(--success)' : 'var(--error)')};
-  text-transform: uppercase;
-`;
-
-const VenueCategory = styled.div`
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: var(--text-secondary);
-  text-transform: uppercase;
+  color: var(--success);
+  margin-bottom: 0.75rem;
 `;
 
 const VenueAction = styled.div`
@@ -710,6 +829,62 @@ const EmptyTitle = styled.h3`
 const EmptyText = styled.p`
   color: var(--text-secondary);
   font-size: 1.125rem;
+`;
+
+const shimmer = keyframes`
+  0% { background-position: -400px 0; }
+  100% { background-position: 400px 0; }
+`;
+
+const shimmerAnimation = css`
+  @media (prefers-reduced-motion: no-preference) {
+    animation: ${shimmer} 1.4s linear infinite;
+  }
+`;
+
+const SkeletonCard = styled.div`
+  background: white;
+  border-radius: 1rem;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+
+  [data-theme="dark"] & {
+    background: #1f2937;
+  }
+`;
+
+const SkeletonImage = styled.div`
+  width: 100%;
+  height: 200px;
+  background: linear-gradient(90deg, #e5e7eb 0%, #f3f4f6 50%, #e5e7eb 100%);
+  background-size: 800px 100%;
+  ${shimmerAnimation}
+
+  [data-theme="dark"] & {
+    background: linear-gradient(90deg, #374151 0%, #4b5563 50%, #374151 100%);
+    background-size: 800px 100%;
+  }
+`;
+
+const SkeletonBody = styled.div`
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+`;
+
+const SkeletonLine = styled.div<{ $w: string }>`
+  height: 0.75rem;
+  width: ${props => props.$w};
+  border-radius: 0.25rem;
+  background: linear-gradient(90deg, #e5e7eb 0%, #f3f4f6 50%, #e5e7eb 100%);
+  background-size: 800px 100%;
+  ${shimmerAnimation}
+
+  [data-theme="dark"] & {
+    background: linear-gradient(90deg, #374151 0%, #4b5563 50%, #374151 100%);
+    background-size: 800px 100%;
+  }
 `;
 
 export default NearbyOffersPage;

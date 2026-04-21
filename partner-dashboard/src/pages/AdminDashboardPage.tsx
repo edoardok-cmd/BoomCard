@@ -19,7 +19,7 @@ import {
   CurrencyDollarIcon,
   ExclamationTriangleIcon,
   CheckCircleIcon,
-  ArrowRightIcon,
+  ArrowUpRightIcon,
 } from '@heroicons/react/24/outline';
 import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -32,143 +32,180 @@ import { receiptsApiService } from '../services/receipts-api.service';
 import { fraudAdminService } from '../services/fraudAdmin.service';
 import { apiService } from '../services/api.service';
 
-const PageContainer = styled.div`
-  max-width: 82rem;
-  margin: 0 auto;
-  padding: 2.25rem 1.75rem 4rem;
+/* Claude-inspired palette — warm neutrals, serif display, orange accent */
+const palette = {
+  bg: '#faf9f5',
+  surface: '#ffffff',
+  surfaceAlt: '#f5f4ee',
+  border: '#e8e5dc',
+  borderStrong: '#d6d2c4',
+  text: '#141413',
+  textMuted: '#605a50',
+  textSubtle: '#8c8678',
+  accent: '#c96442',
+  accentSoft: '#f3e8de',
+  success: '#4a7c59',
+  successSoft: '#e6efe3',
+  warning: '#b5803a',
+  warningSoft: '#f5ead2',
+  danger: '#b54327',
+  dangerSoft: '#f4dcd2',
+};
+
+const PageShell = styled.div`
+  background: ${palette.bg};
   min-height: calc(100vh - 4rem);
+  padding: 4rem 1.5rem 5rem;
+  color: ${palette.text};
+  font-feature-settings: 'ss01', 'cv11';
+
+  [data-theme='dark'] & {
+    background: #1a1917;
+    color: #ece9e0;
+  }
+`;
+
+const PageContainer = styled.div`
+  max-width: 74rem;
+  margin: 0 auto;
 `;
 
 const PageHeader = styled.header`
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
-  gap: 1.5rem;
-  margin-bottom: 2rem;
-  padding-bottom: 1.5rem;
-  border-bottom: 1px solid var(--color-border, #e5e7eb);
+  gap: 2rem;
+  margin-bottom: 4rem;
 
-  @media (max-width: 640px) {
+  @media (max-width: 720px) {
     flex-direction: column;
     align-items: flex-start;
+    gap: 1rem;
+    margin-bottom: 2.75rem;
   }
 `;
 
 const HeaderLeft = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.875rem;
+  max-width: 44rem;
 `;
 
 const Eyebrow = styled.span`
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-size: 0.6875rem;
-  font-weight: 600;
-  letter-spacing: 0.1em;
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--color-text-secondary, #6b7280);
+  color: ${palette.textSubtle};
 
-  &::before {
-    content: '';
-    width: 0.4375rem;
-    height: 0.4375rem;
-    border-radius: 50%;
-    background: #10b981;
-    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.18);
+  [data-theme='dark'] & {
+    color: #9a948a;
   }
 `;
 
 const Title = styled.h1`
-  font-size: 1.75rem;
-  font-weight: 700;
-  color: var(--color-text-primary, #0f172a);
+  font-family: 'Tiempos Headline', 'Copernicus', 'Georgia', 'Times New Roman', serif;
+  font-size: 3rem;
+  font-weight: 400;
+  color: ${palette.text};
   margin: 0;
-  letter-spacing: -0.025em;
-  line-height: 1.15;
+  letter-spacing: -0.02em;
+  line-height: 1.05;
 
-  @media (max-width: 640px) {
-    font-size: 1.5rem;
+  [data-theme='dark'] & {
+    color: #f5f3ec;
+  }
+
+  @media (max-width: 720px) {
+    font-size: 2.25rem;
   }
 `;
 
 const Subtitle = styled.p`
-  font-size: 0.9375rem;
-  color: var(--color-text-secondary, #64748b);
+  font-size: 1rem;
+  color: ${palette.textMuted};
   margin: 0;
+  line-height: 1.55;
+  max-width: 36rem;
+
+  [data-theme='dark'] & {
+    color: #b8b0a3;
+  }
 `;
 
-const HeaderMeta = styled.div`
-  display: flex;
+const DateChip = styled.div`
+  display: inline-flex;
   flex-direction: column;
   align-items: flex-end;
   gap: 0.25rem;
-  font-size: 0.8125rem;
-  color: var(--color-text-secondary, #64748b);
+  padding: 0.625rem 0.875rem;
+  border: 1px solid ${palette.border};
+  border-radius: 0.625rem;
+  background: ${palette.surface};
 
-  @media (max-width: 640px) {
+  [data-theme='dark'] & {
+    background: #252320;
+    border-color: #3a3732;
+  }
+
+  @media (max-width: 720px) {
     align-items: flex-start;
   }
 `;
 
-const MetaLabel = styled.span`
+const DateLabel = styled.span`
   font-size: 0.6875rem;
-  font-weight: 600;
+  font-weight: 500;
   text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: var(--color-text-tertiary, #94a3b8);
+  letter-spacing: 0.12em;
+  color: ${palette.textSubtle};
 `;
 
-const MetaDate = styled.span`
+const DateValue = styled.span`
+  font-size: 0.8125rem;
   font-weight: 500;
-  color: var(--color-text-primary, #0f172a);
+  color: ${palette.text};
+
+  [data-theme='dark'] & {
+    color: #ece9e0;
+  }
 `;
 
 const StatsGrid = styled.div`
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(12.5rem, 1fr));
-  gap: 0.75rem;
-  margin-bottom: 2.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(13.5rem, 1fr));
+  gap: 1rem;
+  margin-bottom: 4.5rem;
+
+  @media (max-width: 720px) {
+    margin-bottom: 3rem;
+  }
 `;
 
-const StatCard = styled(motion.div)<{ $accent?: string }>`
+const StatCard = styled(motion.div)`
   position: relative;
-  background: var(--color-background, #ffffff);
-  border: 1px solid var(--color-border, #e5e7eb);
+  background: ${palette.surface};
+  border: 1px solid ${palette.border};
   border-radius: 0.875rem;
-  padding: 1.125rem 1.25rem 1.25rem;
-  transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
-  overflow: hidden;
-  min-height: 7.5rem;
+  padding: 1.5rem 1.5rem 1.375rem;
+  transition: border-color 220ms ease, box-shadow 220ms ease, transform 220ms ease;
+  min-height: 8.5rem;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
 
-  &::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    border-radius: inherit;
-    padding: 1px;
-    background: linear-gradient(135deg, ${p => p.$accent || '#0f172a'}22, transparent 55%);
-    -webkit-mask:
-      linear-gradient(#000 0 0) content-box,
-      linear-gradient(#000 0 0);
-    -webkit-mask-composite: xor;
-            mask-composite: exclude;
-    pointer-events: none;
-    opacity: 0;
-    transition: opacity 180ms ease;
+  [data-theme='dark'] & {
+    background: #252320;
+    border-color: #3a3732;
   }
 
   &:hover {
-    border-color: var(--color-text-tertiary, #cbd5e1);
-    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 8px 24px -8px rgba(15, 23, 42, 0.08);
-    transform: translateY(-1px);
+    border-color: ${palette.borderStrong};
+    box-shadow: 0 1px 2px rgba(20, 20, 19, 0.04), 0 8px 24px -16px rgba(20, 20, 19, 0.08);
 
-    &::after {
-      opacity: 1;
+    [data-theme='dark'] & {
+      border-color: #4a453e;
     }
   }
 `;
@@ -177,91 +214,114 @@ const StatTop = styled.div`
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 0.875rem;
+  margin-bottom: 1.25rem;
 `;
 
 const StatLabel = styled.p`
-  font-size: 0.6875rem;
-  font-weight: 600;
-  color: var(--color-text-secondary, #64748b);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: ${palette.textMuted};
   margin: 0;
+  letter-spacing: -0.005em;
+
+  [data-theme='dark'] & {
+    color: #b8b0a3;
+  }
 `;
 
-const StatIconBox = styled.div<{ $color?: string; $bg?: string }>`
+const StatIconBox = styled.div<{ $tone?: 'neutral' | 'accent' | 'success' | 'warning' | 'danger' }>`
   width: 1.875rem;
   height: 1.875rem;
-  border-radius: 0.5rem;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: ${p => p.$bg || 'var(--color-background-tertiary, #f1f5f9)'};
-  color: ${p => p.$color || 'var(--color-text-secondary, #475569)'};
+  color: ${p =>
+    p.$tone === 'accent'
+      ? palette.accent
+      : p.$tone === 'success'
+        ? palette.success
+        : p.$tone === 'warning'
+          ? palette.warning
+          : p.$tone === 'danger'
+            ? palette.danger
+            : palette.textSubtle};
 
   svg {
-    width: 1rem;
-    height: 1rem;
-    stroke-width: 2;
+    width: 1.125rem;
+    height: 1.125rem;
+    stroke-width: 1.6;
   }
 `;
 
 const StatValue = styled.h3<{ $danger?: boolean }>`
-  font-size: 1.875rem;
-  font-weight: 700;
-  color: ${p => (p.$danger ? '#dc2626' : 'var(--color-text-primary, #0f172a)')};
-  margin: 0 0 0.25rem 0;
+  font-family: 'Tiempos Headline', 'Copernicus', 'Georgia', serif;
+  font-size: 2.375rem;
+  font-weight: 400;
+  color: ${p => (p.$danger ? palette.danger : palette.text)};
+  margin: 0 0 0.375rem 0;
   letter-spacing: -0.03em;
-  line-height: 1.1;
-  font-feature-settings: 'tnum';
+  line-height: 1;
+  font-feature-settings: 'tnum', 'lnum';
+
+  [data-theme='dark'] & {
+    color: ${p => (p.$danger ? '#e27d5f' : '#f5f3ec')};
+  }
 `;
 
 const StatChange = styled.p<{ $positive?: boolean; $warning?: boolean }>`
   font-size: 0.8125rem;
   color: ${p =>
-    p.$positive ? '#059669' : p.$warning ? '#d97706' : 'var(--color-text-secondary, #64748b)'};
+    p.$positive ? palette.success : p.$warning ? palette.warning : palette.textSubtle};
   font-weight: 500;
   margin: 0;
-  line-height: 1.3;
+  line-height: 1.4;
+
+  [data-theme='dark'] & {
+    color: ${p =>
+      p.$positive ? '#79b090' : p.$warning ? '#d4a165' : '#9a948a'};
+  }
 `;
 
 const SectionGroup = styled.section`
-  margin-bottom: 2rem;
+  margin-bottom: 3.25rem;
+
+  &:last-child {
+    margin-bottom: 0;
+  }
 `;
 
 const SectionHead = styled.div`
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 0.75rem;
-  margin-bottom: 1rem;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid ${palette.border};
+
+  [data-theme='dark'] & {
+    border-color: #3a3732;
+  }
 `;
 
 const SectionTitle = styled.h2`
-  font-size: 0.75rem;
-  font-weight: 700;
-  color: var(--color-text-primary, #0f172a);
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
+  font-family: 'Tiempos Headline', 'Copernicus', 'Georgia', serif;
+  font-size: 1.5rem;
+  font-weight: 400;
+  color: ${palette.text};
   margin: 0;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.625rem;
+  letter-spacing: -0.015em;
 
-  &::before {
-    content: '';
-    width: 0.25rem;
-    height: 0.875rem;
-    border-radius: 1px;
-    background: var(--color-text-primary, #0f172a);
+  [data-theme='dark'] & {
+    color: #f5f3ec;
   }
 `;
 
 const SectionHint = styled.span`
-  font-size: 0.75rem;
-  color: var(--color-text-tertiary, #94a3b8);
+  font-size: 0.8125rem;
+  color: ${palette.textSubtle};
   text-align: right;
-  font-weight: 500;
+  font-weight: 400;
 
   @media (max-width: 640px) {
     display: none;
@@ -270,53 +330,65 @@ const SectionHint = styled.span`
 
 const ActionsGrid = styled.div`
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr));
-  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr));
+  gap: 0.875rem;
 `;
 
-const ActionCard = styled(Link)`
+const ActionCard = styled(motion(Link))`
   position: relative;
   display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  background: var(--color-background, #ffffff);
-  border: 1px solid var(--color-border, #e5e7eb);
-  border-radius: 0.75rem;
-  padding: 0.875rem 1rem;
-  padding-right: 2.125rem;
-  min-height: 4.5rem;
+  align-items: flex-start;
+  gap: 1rem;
+  background: ${palette.surface};
+  border: 1px solid ${palette.border};
+  border-radius: 0.875rem;
+  padding: 1.25rem 1.25rem 1.125rem;
+  min-height: 6.25rem;
   text-decoration: none;
-  transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease,
-    background-color 180ms ease;
+  transition: border-color 220ms ease, box-shadow 220ms ease, transform 220ms ease;
+
+  [data-theme='dark'] & {
+    background: #252320;
+    border-color: #3a3732;
+  }
 
   &:hover {
-    border-color: #94a3b8;
-    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 8px 20px -8px rgba(15, 23, 42, 0.1);
+    border-color: ${palette.borderStrong};
+    box-shadow: 0 1px 2px rgba(20, 20, 19, 0.04), 0 10px 28px -16px rgba(20, 20, 19, 0.1);
     transform: translateY(-1px);
+
+    [data-theme='dark'] & {
+      border-color: #4a453e;
+    }
 
     .arrow {
       opacity: 1;
-      transform: translate(0, -50%);
+      transform: translate(0, 0);
+      color: ${palette.accent};
     }
   }
 `;
 
-const ActionIcon = styled.div<{ $tint?: string }>`
+const ActionIcon = styled.div<{ $accent?: boolean }>`
   flex-shrink: 0;
-  width: 2.125rem;
-  height: 2.125rem;
-  border-radius: 0.5rem;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 0.625rem;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: ${p => p.$tint || 'var(--color-background-tertiary, #f1f5f9)'};
-  color: ${p => (p.$tint ? '#ffffff' : 'var(--color-text-secondary, #475569)')};
-  box-shadow: ${p => (p.$tint ? '0 1px 2px rgba(15, 23, 42, 0.08)' : 'none')};
+  background: ${p => (p.$accent ? palette.accentSoft : palette.surfaceAlt)};
+  color: ${p => (p.$accent ? palette.accent : palette.text)};
+
+  [data-theme='dark'] & {
+    background: ${p => (p.$accent ? 'rgba(201, 100, 66, 0.18)' : '#32302b')};
+    color: ${p => (p.$accent ? '#e08162' : '#ece9e0')};
+  }
 
   svg {
-    width: 1rem;
-    height: 1rem;
-    stroke-width: 2;
+    width: 1.125rem;
+    height: 1.125rem;
+    stroke-width: 1.6;
   }
 `;
 
@@ -325,106 +397,132 @@ const ActionBody = styled.div`
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.1875rem;
+  gap: 0.375rem;
+`;
+
+const ActionTitleRow = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
 `;
 
 const ActionTitle = styled.h3`
   font-size: 0.9375rem;
   font-weight: 600;
-  color: var(--color-text-primary, #0f172a);
+  color: ${palette.text};
   margin: 0;
   line-height: 1.3;
-  letter-spacing: -0.005em;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  letter-spacing: -0.01em;
+
+  [data-theme='dark'] & {
+    color: #f5f3ec;
+  }
 `;
 
 const ActionDescription = styled.p`
   font-size: 0.8125rem;
-  color: var(--color-text-secondary, #64748b);
+  color: ${palette.textMuted};
   margin: 0;
-  line-height: 1.4;
+  line-height: 1.5;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
-  overflow-wrap: break-word;
+
+  [data-theme='dark'] & {
+    color: #b0a89c;
+  }
 `;
 
-const ActionTrail = styled.div`
-  flex-shrink: 0;
+const ActionFooter = styled.div`
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
 `;
 
 const ActionArrow = styled.div.attrs({ className: 'arrow' })`
-  position: absolute;
-  top: 50%;
-  right: 0.75rem;
-  transform: translate(-4px, -50%);
-  color: var(--color-text-tertiary, #94a3b8);
+  color: ${palette.textSubtle};
   opacity: 0;
-  transition: opacity 180ms ease, transform 180ms ease;
+  transform: translate(-4px, 0);
+  transition: opacity 220ms ease, transform 220ms ease, color 220ms ease;
   display: flex;
   align-items: center;
-  pointer-events: none;
 
   svg {
     width: 1rem;
     height: 1rem;
+    stroke-width: 1.8;
   }
 `;
 
 const MetricBadge = styled.div<{ $tone?: 'neutral' | 'warning' | 'danger' | 'success' }>`
-  flex-shrink: 0;
   display: inline-flex;
   align-items: baseline;
-  gap: 0.3125rem;
-  padding: 0.3125rem 0.625rem;
+  gap: 0.375rem;
+  padding: 0.25rem 0.625rem;
   border-radius: 999px;
   background: ${p =>
     p.$tone === 'warning'
-      ? '#fffbeb'
+      ? palette.warningSoft
       : p.$tone === 'danger'
-        ? '#fef2f2'
+        ? palette.dangerSoft
         : p.$tone === 'success'
-          ? '#ecfdf5'
-          : 'var(--color-background-tertiary, #f1f5f9)'};
-  border: 1px solid
-    ${p =>
+          ? palette.successSoft
+          : palette.surfaceAlt};
+
+  [data-theme='dark'] & {
+    background: ${p =>
       p.$tone === 'warning'
-        ? '#fde68a'
+        ? 'rgba(181, 128, 58, 0.2)'
         : p.$tone === 'danger'
-          ? '#fecaca'
+          ? 'rgba(181, 67, 39, 0.2)'
           : p.$tone === 'success'
-            ? '#a7f3d0'
-            : 'var(--color-border, #e5e7eb)'};
+            ? 'rgba(74, 124, 89, 0.2)'
+            : '#32302b'};
+  }
 `;
 
 const MetricValue = styled.span<{ $tone?: 'neutral' | 'warning' | 'danger' | 'success' }>`
-  font-size: 0.875rem;
-  font-weight: 700;
+  font-size: 0.8125rem;
+  font-weight: 600;
   line-height: 1;
   letter-spacing: -0.01em;
   font-feature-settings: 'tnum';
   color: ${p =>
     p.$tone === 'warning'
-      ? '#b45309'
+      ? palette.warning
       : p.$tone === 'danger'
-        ? '#b91c1c'
+        ? palette.danger
         : p.$tone === 'success'
-          ? '#047857'
-          : 'var(--color-text-primary, #0f172a)'};
+          ? palette.success
+          : palette.text};
+
+  [data-theme='dark'] & {
+    color: ${p =>
+      p.$tone === 'warning'
+        ? '#d4a165'
+        : p.$tone === 'danger'
+          ? '#e27d5f'
+          : p.$tone === 'success'
+            ? '#79b090'
+            : '#ece9e0'};
+  }
 `;
 
 const MetricLabel = styled.span`
-  font-size: 0.625rem;
-  font-weight: 600;
+  font-size: 0.6875rem;
+  font-weight: 500;
   line-height: 1;
-  color: var(--color-text-secondary, #64748b);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+  color: ${palette.textMuted};
+  text-transform: lowercase;
+  letter-spacing: 0.02em;
+
+  [data-theme='dark'] & {
+    color: #9a948a;
+  }
 `;
 
 type MetricTone = 'neutral' | 'warning' | 'danger' | 'success';
@@ -434,7 +532,7 @@ type ActionDef = {
   title: string;
   description: string;
   icon: React.ComponentType<React.SVGProps<SVGSVGElement>>;
-  tint?: string;
+  accent?: boolean;
   metric?: { value: number | string; label: string; tone?: MetricTone };
 };
 
@@ -544,7 +642,7 @@ const AdminDashboardPage: React.FC = () => {
         ? 'Управление на партньорски акаунти и одобрения'
         : 'Manage partner accounts and approvals',
       icon: BuildingStorefrontIcon,
-      tint: '#0f172a',
+      accent: true,
       metric:
         metrics.partnersTotal !== undefined
           ? { value: metrics.partnersTotal, label: lblTotal }
@@ -588,7 +686,7 @@ const AdminDashboardPage: React.FC = () => {
         ? 'Управление на featured оферти — снимки и полета'
         : 'Manage featured Top Discounts — images and copy',
       icon: StarIcon,
-      tint: '#ea580c',
+      accent: true,
       metric: offersData
         ? { value: featuredOffers, label: lblFeatured, tone: 'neutral' }
         : undefined,
@@ -619,7 +717,7 @@ const AdminDashboardPage: React.FC = () => {
         ? 'Одобрявайте, отхвърляйте и управлявайте начисления'
         : 'Approve, reject, and manage cashback credits',
       icon: ReceiptPercentIcon,
-      tint: '#0891b2',
+      accent: true,
       metric:
         metrics.pendingReceipts !== undefined
           ? {
@@ -636,7 +734,6 @@ const AdminDashboardPage: React.FC = () => {
         ? 'Месечни кешбек задължения на партньорите'
         : 'Track monthly cashback owed by partners',
       icon: BanknotesIcon,
-      tint: '#059669',
       metric: cashbackStats
         ? {
             value: cashbackStats.overdueCount,
@@ -713,26 +810,34 @@ const AdminDashboardPage: React.FC = () => {
         <SectionHint>{hint}</SectionHint>
       </SectionHead>
       <ActionsGrid>
-        {actions.map(a => (
-          <ActionCard key={a.to} to={a.to}>
-            <ActionIcon $tint={a.tint}>
+        {actions.map((a, idx) => (
+          <ActionCard
+            key={a.to}
+            to={a.to}
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.04 * idx, duration: 0.28 }}
+          >
+            <ActionIcon $accent={a.accent}>
               <a.icon />
             </ActionIcon>
             <ActionBody>
-              <ActionTitle>{a.title}</ActionTitle>
+              <ActionTitleRow>
+                <ActionTitle>{a.title}</ActionTitle>
+                <ActionArrow>
+                  <ArrowUpRightIcon />
+                </ActionArrow>
+              </ActionTitleRow>
               <ActionDescription>{a.description}</ActionDescription>
-            </ActionBody>
-            <ActionTrail>
               {a.metric && (
-                <MetricBadge $tone={a.metric.tone ?? 'neutral'}>
-                  <MetricValue $tone={a.metric.tone ?? 'neutral'}>{a.metric.value}</MetricValue>
-                  <MetricLabel>{a.metric.label}</MetricLabel>
-                </MetricBadge>
+                <ActionFooter>
+                  <MetricBadge $tone={a.metric.tone ?? 'neutral'}>
+                    <MetricValue $tone={a.metric.tone ?? 'neutral'}>{a.metric.value}</MetricValue>
+                    <MetricLabel>{a.metric.label}</MetricLabel>
+                  </MetricBadge>
+                </ActionFooter>
               )}
-              <ActionArrow>
-                <ArrowRightIcon />
-              </ActionArrow>
-            </ActionTrail>
+            </ActionBody>
           </ActionCard>
         ))}
       </ActionsGrid>
@@ -740,146 +845,156 @@ const AdminDashboardPage: React.FC = () => {
   );
 
   return (
-    <PageContainer>
-      <PageHeader>
-        <HeaderLeft>
-          <Eyebrow>{bg ? 'Администрация' : 'Administration'}</Eyebrow>
-          <Title>{bg ? 'Администраторски Панел' : 'Admin Dashboard'}</Title>
-          <Subtitle>
-            {bg
-              ? `Добре дошли обратно, ${user?.firstName || 'Admin'}. Ето обзор на платформата.`
-              : `Welcome back, ${user?.firstName || 'Admin'}. Here's an overview of the platform.`}
-          </Subtitle>
-        </HeaderLeft>
-        <HeaderMeta>
-          <MetaLabel>{bg ? 'Днес' : 'Today'}</MetaLabel>
-          <MetaDate>{today}</MetaDate>
-        </HeaderMeta>
-      </PageHeader>
+    <PageShell>
+      <PageContainer>
+        <PageHeader>
+          <HeaderLeft>
+            <Eyebrow>{bg ? 'Администрация' : 'Administration'}</Eyebrow>
+            <Title>
+              {bg
+                ? `Добре дошли, ${user?.firstName || 'Admin'}`
+                : `Welcome back, ${user?.firstName || 'Admin'}`}
+            </Title>
+            <Subtitle>
+              {bg
+                ? 'Обзор на платформата — оферти, кешбек и проверки за измами.'
+                : 'An overview of the platform — offers, cashback, and fraud review at a glance.'}
+            </Subtitle>
+          </HeaderLeft>
+          <DateChip>
+            <DateLabel>{bg ? 'Днес' : 'Today'}</DateLabel>
+            <DateValue>{today}</DateValue>
+          </DateChip>
+        </PageHeader>
 
-      <StatsGrid>
-        <StatCard
-          $accent="#0f172a"
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.05 }}
-        >
-          <StatTop>
-            <StatLabel>{bg ? 'Общо Оферти' : 'Total Offers'}</StatLabel>
-            <StatIconBox $bg="rgba(15,23,42,0.06)" $color="var(--color-text-primary, #0f172a)">
-              <ChartBarIcon />
-            </StatIconBox>
-          </StatTop>
-          <StatValue>{totalOffers}</StatValue>
-          <StatChange>{bg ? 'Всички оферти' : 'All offers'}</StatChange>
-        </StatCard>
+        <StatsGrid>
+          <StatCard
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.05 }}
+          >
+            <StatTop>
+              <StatLabel>{bg ? 'Общо Оферти' : 'Total Offers'}</StatLabel>
+              <StatIconBox>
+                <ChartBarIcon />
+              </StatIconBox>
+            </StatTop>
+            <div>
+              <StatValue>{totalOffers}</StatValue>
+              <StatChange>{bg ? 'Всички оферти' : 'All offers'}</StatChange>
+            </div>
+          </StatCard>
 
-        <StatCard
-          $accent="#ea580c"
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-        >
-          <StatTop>
-            <StatLabel>{bg ? 'Топ Оферти' : 'Featured'}</StatLabel>
-            <StatIconBox $bg="#fff7ed" $color="#ea580c">
-              <StarIcon />
-            </StatIconBox>
-          </StatTop>
-          <StatValue>{featuredOffers}</StatValue>
-          <StatChange $positive>
-            {bg ? `${featuredRate}% от всички оферти` : `${featuredRate}% of all offers`}
-          </StatChange>
-        </StatCard>
+          <StatCard
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+          >
+            <StatTop>
+              <StatLabel>{bg ? 'Топ Оферти' : 'Featured'}</StatLabel>
+              <StatIconBox $tone="accent">
+                <StarIcon />
+              </StatIconBox>
+            </StatTop>
+            <div>
+              <StatValue>{featuredOffers}</StatValue>
+              <StatChange>
+                {bg ? `${featuredRate}% от всички` : `${featuredRate}% of all offers`}
+              </StatChange>
+            </div>
+          </StatCard>
 
-        <StatCard
-          $accent="#059669"
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.15 }}
-        >
-          <StatTop>
-            <StatLabel>{bg ? 'Активни Оферти' : 'Active Offers'}</StatLabel>
-            <StatIconBox $bg="#ecfdf5" $color="#059669">
-              <CheckCircleIcon />
-            </StatIconBox>
-          </StatTop>
-          <StatValue>{activeOffers}</StatValue>
-          <StatChange $positive>{bg ? 'Видими за клиенти' : 'Visible to customers'}</StatChange>
-        </StatCard>
+          <StatCard
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.15 }}
+          >
+            <StatTop>
+              <StatLabel>{bg ? 'Активни Оферти' : 'Active Offers'}</StatLabel>
+              <StatIconBox $tone="success">
+                <CheckCircleIcon />
+              </StatIconBox>
+            </StatTop>
+            <div>
+              <StatValue>{activeOffers}</StatValue>
+              <StatChange $positive>
+                {bg ? 'Видими за клиенти' : 'Visible to customers'}
+              </StatChange>
+            </div>
+          </StatCard>
 
-        <StatCard
-          $accent="#0891b2"
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-        >
-          <StatTop>
-            <StatLabel>{bg ? 'Очакван Кешбек' : 'Pending Cashback'}</StatLabel>
-            <StatIconBox $bg="#ecfeff" $color="#0891b2">
-              <BanknotesIcon />
-            </StatIconBox>
-          </StatTop>
-          <StatValue>
-            {pendingCashback === '—' ? '—' : `${pendingCashback} ${bg ? 'лв.' : 'BGN'}`}
-          </StatValue>
-          <StatChange>{bg ? 'Неплатен от партньори' : 'Unpaid by partners'}</StatChange>
-        </StatCard>
+          <StatCard
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+          >
+            <StatTop>
+              <StatLabel>{bg ? 'Очакван Кешбек' : 'Pending Cashback'}</StatLabel>
+              <StatIconBox>
+                <BanknotesIcon />
+              </StatIconBox>
+            </StatTop>
+            <div>
+              <StatValue>
+                {pendingCashback === '—' ? '—' : `${pendingCashback} ${bg ? 'лв.' : 'BGN'}`}
+              </StatValue>
+              <StatChange>{bg ? 'Неплатен от партньори' : 'Unpaid by partners'}</StatChange>
+            </div>
+          </StatCard>
 
-        <StatCard
-          $accent={overdueCount && overdueCount > 0 ? '#dc2626' : '#64748b'}
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.25 }}
-        >
-          <StatTop>
-            <StatLabel>{bg ? 'Просрочени Партньори' : 'Overdue Partners'}</StatLabel>
-            <StatIconBox
-              $bg={overdueCount && overdueCount > 0 ? '#fef2f2' : 'var(--color-background-tertiary, #f1f5f9)'}
-              $color={overdueCount && overdueCount > 0 ? '#dc2626' : 'var(--color-text-secondary, #64748b)'}
-            >
-              <ExclamationTriangleIcon />
-            </StatIconBox>
-          </StatTop>
-          <StatValue $danger={!!overdueCount && overdueCount > 0}>
-            {overdueCount !== null ? overdueCount : '—'}
-          </StatValue>
-          <StatChange $warning={!!overdueCount && overdueCount > 0}>
-            {overdueCount && overdueCount > 0
-              ? bg
-                ? 'Нуждаят се от внимание'
-                : 'Require attention'
-              : bg
-                ? 'Всички са актуални'
-                : 'All current'}
-          </StatChange>
-        </StatCard>
-      </StatsGrid>
+          <StatCard
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.25 }}
+          >
+            <StatTop>
+              <StatLabel>{bg ? 'Просрочени' : 'Overdue Partners'}</StatLabel>
+              <StatIconBox $tone={overdueCount && overdueCount > 0 ? 'danger' : 'neutral'}>
+                <ExclamationTriangleIcon />
+              </StatIconBox>
+            </StatTop>
+            <div>
+              <StatValue $danger={!!overdueCount && overdueCount > 0}>
+                {overdueCount !== null ? overdueCount : '—'}
+              </StatValue>
+              <StatChange $warning={!!overdueCount && overdueCount > 0}>
+                {overdueCount && overdueCount > 0
+                  ? bg
+                    ? 'Нуждаят се от внимание'
+                    : 'Require attention'
+                  : bg
+                    ? 'Всички са актуални'
+                    : 'All current'}
+              </StatChange>
+            </div>
+          </StatCard>
+        </StatsGrid>
 
-      {renderSection(
-        bg ? 'Партньори' : 'Partners',
-        bg ? 'Акаунти, типове и въвеждане' : 'Accounts, types, and onboarding',
-        partnerActions,
-      )}
+        {renderSection(
+          bg ? 'Партньори' : 'Partners',
+          bg ? 'Акаунти, типове и въвеждане' : 'Accounts, types, and onboarding',
+          partnerActions,
+        )}
 
-      {renderSection(
-        bg ? 'Съдържание' : 'Content',
-        bg ? 'Оферти и одобрения' : 'Offers and approvals',
-        contentActions,
-      )}
+        {renderSection(
+          bg ? 'Съдържание' : 'Content',
+          bg ? 'Оферти и одобрения' : 'Offers and approvals',
+          contentActions,
+        )}
 
-      {renderSection(
-        bg ? 'Кешбек и Бележки' : 'Cashback & Receipts',
-        bg ? 'Прегледи, плащания и ставки' : 'Reviews, payments, and rates',
-        cashbackActions,
-      )}
+        {renderSection(
+          bg ? 'Кешбек и Бележки' : 'Cashback & Receipts',
+          bg ? 'Прегледи, плащания и ставки' : 'Reviews, payments, and rates',
+          cashbackActions,
+        )}
 
-      {renderSection(
-        bg ? 'Измами и Съответствие' : 'Fraud & Compliance',
-        bg ? 'Търговци, прагове и проверки' : 'Merchants, thresholds, and verification',
-        fraudActions,
-      )}
-    </PageContainer>
+        {renderSection(
+          bg ? 'Измами и Съответствие' : 'Fraud & Compliance',
+          bg ? 'Търговци, прагове и проверки' : 'Merchants, thresholds, and verification',
+          fraudActions,
+        )}
+      </PageContainer>
+    </PageShell>
   );
 };
 

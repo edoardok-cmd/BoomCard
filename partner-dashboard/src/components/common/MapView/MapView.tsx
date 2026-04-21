@@ -3,9 +3,9 @@ import styled from 'styled-components';
 import { motion, AnimatePresence } from 'framer-motion';
 import { MapContainer, TileLayer, Marker, Popup, useMap, Circle } from 'react-leaflet';
 import L from 'leaflet';
-import { MapPin, Navigation, X, Star, Clock, Phone, ExternalLink } from 'lucide-react';
+import { MapPin, X, Star, Clock, Phone, ExternalLink } from 'lucide-react';
 import { useLanguage } from '../../../contexts/LanguageContext';
-import Button from '../Button/Button';
+import { useUserLocation } from '../../../contexts/LocationContext';
 import 'leaflet/dist/leaflet.css';
 
 // Fix Leaflet default marker icon issue with bundlers
@@ -58,7 +58,10 @@ const content = {
 export interface Venue {
   id: string;
   name: string;
+  /** Raw category ID (e.g. "food-drink/restaurants"). Not shown directly. */
   category: string;
+  /** Human-readable, already-translated category label for popups. */
+  categoryLabel?: string;
   lat: number;
   lng: number;
   address: string;
@@ -132,58 +135,19 @@ const MapView: React.FC<MapViewProps> = ({
   const { language } = useLanguage();
   const t = content[language as keyof typeof content];
 
-  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const { userCoords } = useUserLocation();
+  const userLocation = userCoords ?? null;
+
   const [selectedVenue, setSelectedVenue] = useState<Venue | null>(null);
-  const [locationPermission, setLocationPermission] = useState<'granted' | 'denied' | 'prompt'>('prompt');
-  const [isLoading, setIsLoading] = useState(false);
-  const [mapCenter, setMapCenter] = useState<{ lat: number; lng: number }>(initialCenter);
+  const [mapCenter, setMapCenter] = useState<{ lat: number; lng: number }>(
+    userCoords ?? initialCenter
+  );
   const [zoom, setZoom] = useState<number>(initialZoom);
 
+  // Recenter when the shared user location changes (first grant or cross-page reuse)
   useEffect(() => {
-    // Check if geolocation is supported
-    if ('geolocation' in navigator) {
-      // Check permission status
-      if ('permissions' in navigator) {
-        navigator.permissions.query({ name: 'geolocation' }).then((result) => {
-          setLocationPermission(result.state as 'granted' | 'denied' | 'prompt');
-        });
-      }
-    }
-  }, []);
-
-  const requestLocation = () => {
-    if ('geolocation' in navigator) {
-      setIsLoading(true);
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          const location = {
-            lat: position.coords.latitude,
-            lng: position.coords.longitude,
-          };
-          setUserLocation(location);
-          setMapCenter(location);
-          setLocationPermission('granted');
-          setIsLoading(false);
-        },
-        (error) => {
-          console.error('Geolocation error:', error);
-          setLocationPermission('denied');
-          setIsLoading(false);
-
-          if (error.code === error.PERMISSION_DENIED) {
-            alert(t.locationDenied);
-          } else {
-            alert(t.locationError);
-          }
-        },
-        {
-          enableHighAccuracy: true,
-          timeout: 10000,
-          maximumAge: 0,
-        }
-      );
-    }
-  };
+    if (userCoords) setMapCenter(userCoords);
+  }, [userCoords]);
 
   const calculateDistance = (lat1: number, lng1: number, lat2: number, lng2: number): number => {
     const R = 6371; // Radius of the Earth in km
@@ -284,6 +248,9 @@ const MapView: React.FC<MapViewProps> = ({
               <Popup>
                 <PopupContent>
                   <PopupTitle>{venue.name}</PopupTitle>
+                  {venue.categoryLabel && (
+                    <PopupCategory>{venue.categoryLabel}</PopupCategory>
+                  )}
                   {venue.discount && (
                     <PopupDiscount>{venue.discount}% OFF</PopupDiscount>
                   )}
@@ -304,16 +271,6 @@ const MapView: React.FC<MapViewProps> = ({
             </Marker>
           ))}
         </MapContainer>
-
-        {/* Location permission button */}
-        {!userLocation && locationPermission !== 'denied' && (
-          <LocationButton>
-            <Button onClick={requestLocation} disabled={isLoading}>
-              <Navigation size={18} />
-              {isLoading ? t.loading : t.enableLocation}
-            </Button>
-          </LocationButton>
-        )}
 
         {/* Reset view button */}
         {showControls && (userLocation || selectedVenue) && (
@@ -409,36 +366,6 @@ const MapView: React.FC<MapViewProps> = ({
           )}
         </AnimatePresence>
       </StyledMapContainer>
-
-      {/* Nearby venues list */}
-      {userLocation && sortedVenues.length > 0 && (
-        <VenuesList>
-          <VenuesListHeader>
-            {t.findNearby} ({sortedVenues.length})
-          </VenuesListHeader>
-          {sortedVenues.slice(0, 5).map((venue) => (
-            <VenueListItem
-              key={venue.id}
-              onClick={() => handleVenueClick(venue)}
-              isSelected={selectedVenue?.id === venue.id}
-            >
-              <VenueListIcon>
-                <MapPin size={16} />
-              </VenueListIcon>
-              <VenueListInfo>
-                <VenueListName>{venue.name}</VenueListName>
-                <VenueListDistance>
-                  {calculateDistance(userLocation.lat, userLocation.lng, venue.lat, venue.lng)} km •{' '}
-                  {venue.category}
-                </VenueListDistance>
-              </VenueListInfo>
-              {venue.discount && (
-                <VenueListDiscount>{venue.discount}%</VenueListDiscount>
-              )}
-            </VenueListItem>
-          ))}
-        </VenuesList>
-      )}
     </Container>
   );
 };
@@ -492,14 +419,6 @@ const StyledMapContainer = styled.div<{ height: string }>`
   }
 `;
 
-const LocationButton = styled.div`
-  position: absolute;
-  top: 1rem;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 1000;
-`;
-
 const ResetButton = styled.button`
   position: absolute;
   top: 1rem;
@@ -542,6 +461,12 @@ const PopupTitle = styled.div`
   font-weight: 700;
   font-size: 1rem;
   color: var(--text-primary);
+  margin-bottom: 0.5rem;
+`;
+
+const PopupCategory = styled.div`
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
   margin-bottom: 0.5rem;
 `;
 
@@ -710,80 +635,6 @@ const ActionButton = styled.button`
   &:active {
     transform: translateY(0);
   }
-`;
-
-const VenuesList = styled.div`
-  background: white;
-  border-radius: 1rem;
-  padding: 1.5rem;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-`;
-
-const VenuesListHeader = styled.h3`
-  font-size: 1.125rem;
-  font-weight: 700;
-  color: var(--text-primary);
-  margin: 0 0 1rem 0;
-`;
-
-const VenueListItem = styled.div<{ isSelected: boolean }>`
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  padding: 0.75rem;
-  border-radius: 0.5rem;
-  cursor: pointer;
-  transition: all 0.2s;
-  background: ${props => (props.isSelected ? 'var(--gray-100)' : 'transparent')};
-
-  &:hover {
-    background: var(--gray-100);
-  }
-
-  & + & {
-    margin-top: 0.5rem;
-  }
-`;
-
-const VenueListIcon = styled.div`
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  background: var(--gray-100);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  color: var(--text-secondary);
-`;
-
-const VenueListInfo = styled.div`
-  flex: 1;
-  min-width: 0;
-`;
-
-const VenueListName = styled.div`
-  font-weight: 600;
-  color: var(--text-primary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-`;
-
-const VenueListDistance = styled.div`
-  font-size: 0.875rem;
-  color: var(--text-secondary);
-  margin-top: 0.25rem;
-`;
-
-const VenueListDiscount = styled.div`
-  background: var(--success);
-  color: white;
-  padding: 0.25rem 0.5rem;
-  border-radius: 0.25rem;
-  font-size: 0.75rem;
-  font-weight: 700;
-  flex-shrink: 0;
 `;
 
 export default MapView;

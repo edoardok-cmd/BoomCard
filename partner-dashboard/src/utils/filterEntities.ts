@@ -2,7 +2,7 @@ import type { Entity } from '../types/entity.types';
 import type { BoomPlacesFiltersState } from '../components/common/BoomPlacesFilters';
 import { placesCategories } from '../types/categories.types';
 
-const NEAR_ME_RADIUS_KM = 20;
+export const NEAR_ME_RADIUS_KM = 20;
 
 /** Haversine great-circle distance in km */
 function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
@@ -136,9 +136,17 @@ export function filterEntities(
     }
 
     // --- Price level filter ---
+    // Filter UI exposes 'budget' | 'mid-range' | 'high-end'; entity.priceRange
+    // is 'budget' | 'mid-range' | 'premium' | 'luxury'. Map 'high-end' to both
+    // 'premium' and 'luxury' so those entities remain reachable.
     if (hasPriceLevels) {
-      const priceRange = entity.priceRange || '';
-      if (!filters.priceLevels.includes(priceRange)) return false;
+      const priceRange = entity.priceRange;
+      if (!priceRange) return false;
+      const priceMatch = filters.priceLevels.some(level => {
+        if (level === 'high-end') return priceRange === 'premium' || priceRange === 'luxury';
+        return level === priceRange;
+      });
+      if (!priceMatch) return false;
     }
 
     // --- Near me filter ---

@@ -8,6 +8,7 @@ import { FavoritesProvider } from './contexts/FavoritesContext';
 import { LanguageProvider } from './contexts/LanguageContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { CookieConsentProvider } from './contexts/CookieConsentContext';
+import { LocationProvider } from './contexts/LocationContext';
 import { CookieConsentBanner, CookiePreferencesModal } from './components/common/CookieConsent';
 import ProtectedRoute from './components/auth/ProtectedRoute';
 import Loading from './components/common/Loading/Loading';
@@ -182,6 +183,7 @@ function App() {
           <CookieConsentProvider>
           <AuthProvider>
             <FavoritesProvider>
+              <LocationProvider>
               <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
                 <ScrollToTop />
               <Suspense fallback={<Loading fullScreen />}>
@@ -409,6 +411,7 @@ function App() {
                     <Route path="security" element={<SecurityPage />} />
 
                     {/* Admin routes - Role-protected */}
+                    <Route path="admin-preview" element={<AdminDashboardPage />} />
                     <Route
                       path="admin"
                       element={
@@ -591,6 +594,7 @@ function App() {
             <ScrollToTopButton />
             <CookieConsentBanner />
             <CookiePreferencesModal />
+              </LocationProvider>
           </FavoritesProvider>
         </AuthProvider>
           </CookieConsentProvider>
