@@ -340,7 +340,7 @@ const BoomPlacesFilters: React.FC<BoomPlacesFiltersProps> = ({
   categoryOptions = [],
 }) => {
   const { language } = useLanguage();
-  const [isExpanded, setIsExpanded] = useState(true);
+  const [isExpanded, setIsExpanded] = useState(false);
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleSearchChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {

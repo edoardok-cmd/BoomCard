@@ -378,7 +378,7 @@ const ExperiencesFilters: React.FC<ExperiencesFiltersProps> = ({
   sidebar = false,
 }) => {
   const { language } = useLanguage();
-  const [isExpanded, setIsExpanded] = useState(true);
+  const [isExpanded, setIsExpanded] = useState(false);
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Static filter option data
