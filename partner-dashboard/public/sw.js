@@ -2,7 +2,7 @@
 // Service Worker for BoomCard PWA
 // Version 1.0.0
 
-const CACHE_VERSION = 'boomcard-v3';
+const CACHE_VERSION = 'boomcard-v4';
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const DYNAMIC_CACHE = `${CACHE_VERSION}-dynamic`;
 const IMAGE_CACHE = `${CACHE_VERSION}-images`;
@@ -156,7 +156,14 @@ async function networkFirst(request, cacheName) {
       return cached;
     }
 
-    throw error;
+    return new Response(
+      JSON.stringify({ error: 'Network unavailable', offline: true }),
+      {
+        status: 503,
+        statusText: 'Service Unavailable',
+        headers: { 'Content-Type': 'application/json' },
+      }
+    );
   }
 }
 
