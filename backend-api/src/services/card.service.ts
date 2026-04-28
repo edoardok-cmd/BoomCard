@@ -214,9 +214,12 @@ export class CardService {
       return card;
     }
 
+    const qrCodeData = JSON.stringify({ cardNumber: card.cardNumber, type: targetType, issuedAt: new Date().toISOString() });
+    const qrCodeUrl = await QRCode.toDataURL(qrCodeData, { errorCorrectionLevel: 'H', width: 300, margin: 2 });
+
     const updatedCard = await prisma.card.update({
       where: { id: card.id },
-      data: { type: targetType },
+      data: { type: targetType, qrCode: qrCodeUrl },
     });
 
     logger.info(`Synced card ${card.id} from ${card.type} → ${targetType} for user ${userId} (plan: ${plan})`);

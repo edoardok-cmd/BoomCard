@@ -181,7 +181,7 @@ router.post(
         callbackUrl,
         customerEmail: userDetails.email,
         customerName: `${userDetails.firstName || ''} ${userDetails.lastName || ''}`.trim() || userDetails.email,
-        paymentMethod: paymentMethod || 'card',
+        paymentMethod,
         lang: 'BUL',
         country: 'BG',
       });
@@ -871,7 +871,7 @@ router.post(
       callbackUrl,
       customerEmail,
       customerName,
-      paymentMethod: paymentMethod || 'card',
+      paymentMethod,
       lang: 'BUL',
       country: 'BG',
     });
@@ -975,7 +975,6 @@ router.post(
       callbackUrl,
       customerEmail: email,
       customerName,
-      paymentMethod: 'card',
       lang: 'BUL',
       country: 'BG',
     });

@@ -491,31 +491,38 @@ export class SubscriptionService {
           status: 'APPROVED',
           createdAt: { gte: subscription.createdAt },
         },
+        select: { id: true },
       });
 
-      for (const receipt of approvedReceipts) {
-        // Find the wallet cashback_credit entry for this receipt
-        const creditEntry = await prisma.walletTransaction.findFirst({
+      if (approvedReceipts.length > 0) {
+        const receiptIds = approvedReceipts.map(r => r.id);
+
+        // Sum all CASHBACK_CREDIT entries for these receipts in one query
+        const credits = await prisma.walletTransaction.findMany({
           where: {
-            receiptId: receipt.id,
+            receiptId: { in: receiptIds },
             type: WalletTransactionType.CASHBACK_CREDIT,
+            amount: { gt: 0 },
           },
+          select: { amount: true },
         });
 
-        if (creditEntry && creditEntry.amount > 0) {
-          // Debit the wallet to reverse the cashback
+        const totalToVoid = credits.reduce((sum, c) => sum + c.amount, 0);
+
+        if (totalToVoid > 0) {
+          // Single debit — avoids partial-void if wallet runs short mid-loop
           await walletService.debit({
             userId,
-            amount: creditEntry.amount,
+            amount: totalToVoid,
             type: WalletTransactionType.ADJUSTMENT,
             description: 'Trial refund — cashback voided',
-            receiptId: receipt.id,
+            metadata: { receiptIds },
           });
         }
 
-        // Mark the receipt as REJECTED
-        await prisma.receipt.update({
-          where: { id: receipt.id },
+        // Bulk-reject all approved receipts atomically
+        await prisma.receipt.updateMany({
+          where: { id: { in: receiptIds } },
           data: {
             status: 'REJECTED',
             rejectionReason: 'Trial refund — cashback voided',

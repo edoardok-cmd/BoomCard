@@ -11,7 +11,8 @@ import { prisma } from '../lib/prisma';
 import { logger } from '../utils/logger';
 import { authRateLimiter, switchAccountRateLimiter, switchableAccountsRateLimiter, impersonateRateLimiter } from '../middleware/security.middleware';
 import { z } from 'zod';
-import { SubscriptionStatus, SubscriptionPlan, UserStatus } from '@prisma/client';
+import { SubscriptionStatus, SubscriptionPlan, UserStatus, CardType } from '@prisma/client';
+import QRCode from 'qrcode';
 import { cardService } from '../services/card.service';
 import { walletService } from '../services/wallet.service';
 import { emailService } from '../services/email.service';
@@ -735,16 +736,6 @@ function calcPeriodEnd(billingPeriod: string): Date {
   return d;
 }
 
-/**
- * Derive billingPeriod from plan code.
- * LIGHT is weekly, BASIC and PREMIUM are monthly.
- * Extend this when PendingSubscription gains a billingPeriod field.
- */
-function deriveBillingPeriod(planCode: string): 'weekly' | 'monthly' | 'yearly' {
-  if (planCode === 'LIGHT') return 'weekly';
-  return 'monthly';
-}
-
 const completeProfileSchema = z.object({
   token: z.string().min(1),
   password: z.string().min(8),
@@ -753,6 +744,7 @@ const completeProfileSchema = z.object({
   phone: z.string().optional(),
   marketingConsentEmail: z.boolean().optional().default(false),
   marketingConsentPhone: z.boolean().optional().default(false),
+  lang: z.enum(['bg', 'en']).default('bg'),
 });
 
 router.post(
@@ -764,7 +756,7 @@ router.post(
       return res.status(400).json({ success: false, message: 'Invalid request body', errors: parseResult.error.issues });
     }
 
-    const { token, password, firstName, lastName, phone, marketingConsentEmail, marketingConsentPhone } = parseResult.data;
+    const { token, password, firstName, lastName, phone, marketingConsentEmail, marketingConsentPhone, lang } = parseResult.data;
 
     // Look up the PAID PendingSubscription by one-time token
     const pending = await prisma.pendingSubscription.findFirst({
@@ -802,11 +794,31 @@ router.post(
     }
 
     // Derive billingPeriod from plan code (LIGHT = weekly, others = monthly)
-    const billingPeriod = deriveBillingPeriod(pending.plan.planCode);
+    // Use the billingPeriod stored at checkout — fall back to plan-code inference only for
+    // legacy PendingSubscriptions created before the billingPeriod field was added.
+    const billingPeriod: 'weekly' | 'monthly' | 'yearly' =
+      (pending.billingPeriod === 'weekly' || pending.billingPeriod === 'yearly')
+        ? pending.billingPeriod
+        : 'monthly';
     const marketingConsent = !!(marketingConsentEmail || marketingConsentPhone);
     const now = new Date();
 
-    // Atomic transaction: create user + loyalty + subscription, mark PendingSubscription complete
+    // Pre-generate card assets outside the transaction (no DB access needed).
+    const cardNumber = (() => {
+      const part = () => Math.random().toString(36).substring(2, 6).toUpperCase();
+      return `BOOM-${part()}-${part()}-${part()}`;
+    })();
+    const planToCardType: Record<string, CardType> = {
+      LIGHT: CardType.LIGHT,
+      BASIC: CardType.BASIC,
+      PREMIUM: CardType.PREMIUM,
+    };
+    const cardTypeForPlan = planToCardType[subscriptionPlan] ?? CardType.LIGHT;
+    const qrCodeData = JSON.stringify({ cardNumber, type: cardTypeForPlan, issuedAt: now.toISOString() });
+    const qrCodeUrl = await QRCode.toDataURL(qrCodeData, { errorCorrectionLevel: 'H', width: 300, margin: 2 });
+
+    // Atomic transaction: create user + loyalty + subscription + card + wallet,
+    // mark PendingSubscription complete. All-or-nothing — no stranded users.
     const { user } = await prisma.$transaction(async (tx) => {
       const newUser = await tx.user.create({
         data: {
@@ -825,7 +837,7 @@ router.post(
           marketingConsentEmail,
           marketingConsentPhone,
           marketingConsent,
-          preferredLanguage: 'bg',
+          preferredLanguage: lang,
         },
         select: { id: true, email: true, firstName: true, lastName: true, role: true, status: true },
       });
@@ -856,6 +868,24 @@ router.post(
         },
       });
 
+      // Create card inline so it's covered by the transaction
+      await tx.card.create({
+        data: {
+          userId: newUser.id,
+          cardNumber,
+          type: cardTypeForPlan,
+          status: 'ACTIVE',
+          qrCode: qrCodeUrl,
+        },
+      });
+
+      // Create wallet inline so it's covered by the transaction
+      await tx.wallet.upsert({
+        where: { userId: newUser.id },
+        update: {},
+        create: { userId: newUser.id, balance: 0, availableBalance: 0, pendingBalance: 0 },
+      });
+
       // Mark PendingSubscription as COMPLETED and nullify the one-time token
       await tx.pendingSubscription.update({
         where: { id: pending.id },
@@ -864,12 +894,6 @@ router.post(
 
       return { user: newUser };
     });
-
-    // Create card and wallet outside the transaction (they use their own prisma client)
-    await Promise.all([
-      cardService.createCard({ userId: user.id, cardType: 'LIGHT' }),
-      walletService.getOrCreateWallet(user.id),
-    ]);
 
     // Sync card type to match the activated subscription plan
     await cardService.syncCardTypeWithSubscription(user.id, subscriptionPlan).catch((err) => {

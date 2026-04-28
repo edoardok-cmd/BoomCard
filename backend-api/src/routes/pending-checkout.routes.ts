@@ -115,6 +115,7 @@ router.post(
       data: {
         email: email.toLowerCase(),
         planId: plan.id,
+        billingPeriod,
         payseraOrderId: orderId,
         status: 'CREATED',
         expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
@@ -141,7 +142,7 @@ router.post(
       callbackUrl,
       customerEmail: email,
       customerName: email.split('@')[0],
-      paymentMethod: paymentMethod || 'card',
+      paymentMethod,
       lang: 'BUL',
       country: 'BG',
     });
@@ -206,7 +207,7 @@ router.get(
           code: pending.plan.planCode,
           nameBg: pending.plan.displayNameBg,
         },
-        billingPeriod: null, // PendingSubscription has no billingPeriod field; derive from planCode if needed
+        billingPeriod: pending.billingPeriod ?? null,
       },
     });
   })

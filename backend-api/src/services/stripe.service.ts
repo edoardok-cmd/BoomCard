@@ -4,6 +4,7 @@ import { logger } from '../utils/logger';
 import { prisma } from '../lib/prisma';
 import { walletService } from './wallet.service';
 import { notificationService } from './notification.service';
+import { emailService } from './email.service';
 
 /**
  * Stripe Service for Payment Processing
@@ -988,7 +989,10 @@ class StripeService {
 
       const dbSub = await prisma.subscription.findFirst({
         where: { stripeSubscriptionId: subscriptionId },
-        include: { planDetails: { select: { displayName: true, priceMonthlyEur: true } } },
+        include: {
+          planDetails: { select: { displayName: true, displayNameBg: true, priceMonthlyEur: true } },
+          user: { select: { email: true, firstName: true, preferredLanguage: true } },
+        },
       });
 
       if (!dbSub) return;
@@ -996,17 +1000,35 @@ class StripeService {
       // Spec §3.1: don't send reminders when auto-renewal is ON (payment happens automatically)
       if (dbSub.autoRenewal) return;
 
-      const planName = dbSub.planDetails?.displayName ?? dbSub.plan;
+      const lang = (dbSub.user?.preferredLanguage === 'en' ? 'en' : 'bg') as 'bg' | 'en';
+      const planName = lang === 'bg'
+        ? (dbSub.planDetails?.displayNameBg ?? dbSub.planDetails?.displayName ?? dbSub.plan)
+        : (dbSub.planDetails?.displayName ?? dbSub.plan);
       const amountDue = (invoice.amount_due ?? 0) / 100;
       const currency = (invoice.currency ?? 'eur').toUpperCase();
+      const price = `${amountDue.toFixed(2)} ${currency}`;
       const renewalDate = new Date((invoice.period_end ?? 0) * 1000);
 
       await notificationService.notifyPartnerRenewalUpcoming({
         userId: dbSub.userId,
         planName,
         renewalDate,
-        price: `${amountDue.toFixed(2)} ${currency}`,
+        price,
       });
+
+      if (dbSub.user?.email) {
+        emailService
+          .sendRenewalReminder(dbSub.user.email, {
+            customerName: dbSub.user.firstName || 'Customer',
+            planName,
+            planNameBg: dbSub.planDetails?.displayNameBg ?? planName,
+            price,
+            renewalDate: renewalDate.toLocaleDateString(lang === 'bg' ? 'bg-BG' : 'en-GB'),
+            manageUrl: `${process.env.APP_URL || 'https://mobile.boomcard.bg'}/subscription`,
+            language: lang,
+          })
+          .catch((err: unknown) => logger.error(`Failed to send renewal reminder email for sub ${dbSub.id}:`, err));
+      }
 
       logger.info(`Renewal reminder sent to user ${dbSub.userId} for ${planName} renewing ${renewalDate.toISOString()}`);
     } catch (error) {

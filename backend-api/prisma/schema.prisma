@@ -1854,6 +1854,7 @@ model PendingSubscription {
   status         PendingSubscriptionStatus @default(CREATED)
   token          String?                   @unique // one-time profile-completion token (set on PAID)
   tokenExpiresAt DateTime?                 // ~30 min TTL
+  billingPeriod  String?                   // 'weekly' | 'monthly' | 'yearly' — stored at checkout initiation
   paidAt         DateTime?
   completedAt    DateTime?                 // set when POST /auth/complete-profile consumes token
   createdAt      DateTime                  @default(now())
