@@ -1638,3 +1638,15 @@ model AuditLog {
   @@index([objectType, objectId])
   @@index([createdAt])
 }
+
+// ============================================
+// System Settings — key/value store for admin-configurable globals
+// ============================================
+model SystemSetting {
+  key         String   @id   // e.g. "cashback_expiry_days", "min_ios_version"
+  value       String
+  updatedAt   DateTime @updatedAt
+  updatedBy   String?          // admin userId
+
+  @@map("system_settings")
+}

@@ -66,9 +66,85 @@ router.get(
 
 export default router;
 
-// Separate router mounted at /api/admin/venues (for :id-keyed mutations)
+// Separate router mounted at /api/admin/venues (list + :id-keyed mutations)
 export const adminVenueMenuRouter = Router();
 adminVenueMenuRouter.use(authenticate, authorize('ADMIN', 'SUPER_ADMIN'));
+
+/**
+ * GET /api/admin/venues
+ * Paginated list of all venues across all partners.
+ * Query: page, limit, search, city, menuStatus, partnerId
+ */
+adminVenueMenuRouter.get(
+  '/',
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    const page = Math.max(1, parseInt(req.query.page as string) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string) || 25));
+    const skip = (page - 1) * limit;
+    const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
+    const city = typeof req.query.city === 'string' ? req.query.city.trim() : '';
+    const menuStatus = typeof req.query.menuStatus === 'string' ? req.query.menuStatus.trim() : '';
+    const partnerId = typeof req.query.partnerId === 'string' ? req.query.partnerId.trim() : '';
+
+    const where: Parameters<typeof prisma.venue.findMany>[0]['where'] = {};
+
+    if (search) {
+      where.OR = [
+        { name: { contains: search, mode: 'insensitive' } },
+        { address: { contains: search, mode: 'insensitive' } },
+        { city: { contains: search, mode: 'insensitive' } },
+        { partner: { businessName: { contains: search, mode: 'insensitive' } } },
+      ];
+    }
+    if (city) where.city = { contains: city, mode: 'insensitive' };
+    if (menuStatus) where.menuStatus = menuStatus as never;
+    if (partnerId) where.partnerId = partnerId;
+
+    const [venues, total] = await Promise.all([
+      prisma.venue.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          name: true,
+          address: true,
+          city: true,
+          region: true,
+          phone: true,
+          menuStatus: true,
+          menuUrl: true,
+          pendingMenuUrl: true,
+          createdAt: true,
+          partner: {
+            select: {
+              id: true,
+              businessName: true,
+              status: true,
+              partnerType: { select: { name: true, color: true } },
+            },
+          },
+          stickerConfig: {
+            select: {
+              cashbackPercent: true,
+              isActive: true,
+              gpsVerificationEnabled: true,
+              maxScansPerDay: true,
+            },
+          },
+        },
+      }),
+      prisma.venue.count({ where }),
+    ]);
+
+    res.json({
+      success: true,
+      data: venues,
+      meta: { total, page, limit, pages: Math.ceil(total / limit) },
+    });
+  })
+);
 
 /**
  * POST /api/admin/venues/:id/menu/approve

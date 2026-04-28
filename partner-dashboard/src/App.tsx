@@ -147,6 +147,23 @@ const AdminAdminsCreatePage = lazy(() => import('./pages/admin/AdminAdminsCreate
 const AdminAdminsPendingPage = lazy(() => import('./pages/admin/AdminAdminsPendingPage'));
 const AdminAdminsAuditPage = lazy(() => import('./pages/admin/AdminAdminsAuditPage'));
 const AdminAlertsPage = lazy(() => import('./pages/admin/AdminAlertsPage'));
+const AdminPartnerLocationsPage = lazy(() => import('./pages/admin/AdminPartnerLocationsPage'));
+const AdminSettingsThresholdsPage = lazy(() => import('./pages/admin/AdminSettingsThresholdsPage'));
+const AdminSettingsValidityPage = lazy(() => import('./pages/admin/AdminSettingsValidityPage'));
+const AdminSettingsMobilePage = lazy(() => import('./pages/admin/AdminSettingsMobilePage'));
+const AdminSettingsSystemPage = lazy(() => import('./pages/admin/AdminSettingsSystemPage'));
+const AdminFinanceInvoicesPage = lazy(() => import('./pages/admin/AdminFinanceInvoicesPage'));
+const AdminFinancePeriodsPage = lazy(() => import('./pages/admin/AdminFinancePeriodsPage'));
+const AdminFinanceReportsPage = lazy(() => import('./pages/admin/AdminFinanceReportsPage'));
+const AdminControlSecurityPage = lazy(() => import('./pages/admin/AdminControlSecurityPage'));
+const AdminControlDisputesPage = lazy(() => import('./pages/admin/AdminControlDisputesPage'));
+const AdminMarketingCampaignsPage = lazy(() => import('./pages/admin/AdminMarketingCampaignsPage'));
+const AdminMarketingTemplatesPage = lazy(() => import('./pages/admin/AdminMarketingTemplatesPage'));
+const AdminMarketingAutomationsPage = lazy(() => import('./pages/admin/AdminMarketingAutomationsPage'));
+const AdminMarketingListsPage = lazy(() => import('./pages/admin/AdminMarketingListsPage'));
+const AdminHelpNewPage = lazy(() => import('./pages/admin/AdminHelpNewPage'));
+const AdminHelpMinePage = lazy(() => import('./pages/admin/AdminHelpMinePage'));
+const AdminHelpAllPage = lazy(() => import('./pages/admin/AdminHelpAllPage'));
 
 // Receipt pages
 const ReceiptsPage = lazy(() => import('./pages/ReceiptsPage'));
@@ -475,7 +492,7 @@ function App() {
                       <Route path="requests" element={<AdminPartnerRequestsPage />} />
                       <Route path="onboarding" element={<AdminPartnerOnboardingPage />} />
                       <Route path="active" element={<AdminPartnersPage />} />
-                      <Route path="locations" element={<AdminComingSoonPage />} />
+                      <Route path="locations" element={<AdminPartnerLocationsPage />} />
                       <Route path="receipt-profiles" element={<AdminReceiptTemplatesPage />} />
                     </Route>
 
@@ -490,9 +507,9 @@ function App() {
                     >
                       <Route index element={<Navigate to="payouts" replace />} />
                       <Route path="payouts" element={<AdminPayoutsPage />} />
-                      <Route path="invoices" element={<AdminComingSoonPage />} />
-                      <Route path="periods" element={<AdminComingSoonPage />} />
-                      <Route path="reports" element={<AdminComingSoonPage />} />
+                      <Route path="invoices" element={<AdminFinanceInvoicesPage />} />
+                      <Route path="periods" element={<AdminFinancePeriodsPage />} />
+                      <Route path="reports" element={<AdminFinanceReportsPage />} />
                     </Route>
 
                     {/* /admin/control */}
@@ -506,8 +523,8 @@ function App() {
                     >
                       <Route index element={<Navigate to="risk" replace />} />
                       <Route path="risk" element={<AdminScanReviewPage />} />
-                      <Route path="security" element={<AdminComingSoonPage />} />
-                      <Route path="disputes" element={<AdminComingSoonPage />} />
+                      <Route path="security" element={<AdminControlSecurityPage />} />
+                      <Route path="disputes" element={<AdminControlDisputesPage />} />
                       <Route path="rules" element={<AdminVenueFraudConfigPage />} />
                     </Route>
 
@@ -521,10 +538,10 @@ function App() {
                       }
                     >
                       <Route index element={<Navigate to="campaigns" replace />} />
-                      <Route path="campaigns" element={<AdminComingSoonPage />} />
-                      <Route path="templates" element={<AdminComingSoonPage />} />
-                      <Route path="automations" element={<AdminComingSoonPage />} />
-                      <Route path="lists" element={<AdminComingSoonPage />} />
+                      <Route path="campaigns" element={<AdminMarketingCampaignsPage />} />
+                      <Route path="templates" element={<AdminMarketingTemplatesPage />} />
+                      <Route path="automations" element={<AdminMarketingAutomationsPage />} />
+                      <Route path="lists" element={<AdminMarketingListsPage />} />
                     </Route>
 
                     {/* /admin/settings */}
@@ -537,11 +554,11 @@ function App() {
                       }
                     >
                       <Route index element={<Navigate to="thresholds" replace />} />
-                      <Route path="thresholds" element={<AdminComingSoonPage />} />
+                      <Route path="thresholds" element={<AdminSettingsThresholdsPage />} />
                       <Route path="percentages" element={<AdminCashbackRatesPage />} />
-                      <Route path="validity" element={<AdminComingSoonPage />} />
-                      <Route path="mobile" element={<AdminComingSoonPage />} />
-                      <Route path="system" element={<AdminComingSoonPage />} />
+                      <Route path="validity" element={<AdminSettingsValidityPage />} />
+                      <Route path="mobile" element={<AdminSettingsMobilePage />} />
+                      <Route path="system" element={<AdminSettingsSystemPage />} />
                     </Route>
 
                     {/* /admin/admins */}
@@ -570,9 +587,9 @@ function App() {
                       }
                     >
                       <Route index element={<Navigate to="all" replace />} />
-                      <Route path="new" element={<AdminComingSoonPage />} />
-                      <Route path="mine" element={<AdminComingSoonPage />} />
-                      <Route path="all" element={<AdminComingSoonPage />} />
+                      <Route path="new" element={<AdminHelpNewPage />} />
+                      <Route path="mine" element={<AdminHelpMinePage />} />
+                      <Route path="all" element={<AdminHelpAllPage />} />
                     </Route>
 
                     {/* /admin/profile */}

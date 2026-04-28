@@ -749,13 +749,22 @@ class StripeService {
         plan = subscription.metadata.plan as any;
       }
 
+      const mappedStatus = (() => {
+        const s = statusMap[subscription.status];
+        if (!s) {
+          logger.warn(`Unknown Stripe subscription status "${subscription.status}" for sub ${subscription.id} — defaulting to INCOMPLETE`);
+          return 'INCOMPLETE';
+        }
+        return s;
+      })();
+
       // Update or create subscription
       await prisma.subscription.upsert({
         where: { stripeSubscriptionId: subscription.id },
         create: {
           userId,
           plan,
-          status: statusMap[subscription.status] || 'ACTIVE',
+          status: mappedStatus,
           stripeSubscriptionId: subscription.id,
           stripePriceId: priceId,
           stripeCustomerId: subscription.customer as string,
@@ -770,7 +779,7 @@ class StripeService {
         update: {
           plan,
           stripePriceId: priceId,
-          status: statusMap[subscription.status] || 'ACTIVE',
+          status: mappedStatus,
           currentPeriodStart: new Date(subscription.current_period_start * 1000),
           currentPeriodEnd: new Date(subscription.current_period_end * 1000),
           cancelAtPeriodEnd: subscription.cancel_at_period_end,
@@ -782,7 +791,6 @@ class StripeService {
       // Sync card type when subscription becomes active (handles INCOMPLETE→ACTIVE
       // transitions after payment completes). Without this, users who create an
       // incomplete subscription and pay later keep a LIGHT card indefinitely.
-      const mappedStatus = statusMap[subscription.status];
       if (mappedStatus === 'ACTIVE' || mappedStatus === 'TRIALING') {
         const { cardService } = await import('./card.service');
         await cardService.syncCardTypeWithSubscription(userId, plan);
