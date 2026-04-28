@@ -88,11 +88,8 @@ class ReceiptService {
    */
   async submitReceipt(request: SubmitReceiptRequest): Promise<ReceiptSubmissionResult> {
     try {
-      console.log('📄 Starting receipt submission...');
-
       // Step 1: Generate image hash for duplicate detection
       const imageHash = await generateImageHash(request.imageFile);
-      console.log('🔑 Image hash generated:', imageHash.substring(0, 16) + '...');
 
       // Step 2: Check for duplicate
       const isDuplicate = await this.checkDuplicate(imageHash);
@@ -101,10 +98,8 @@ class ReceiptService {
       }
 
       // Step 3: Run OCR
-      console.log('🔍 Running OCR...');
       await ocrService.initialize('bul+eng');
       const ocrData = await ocrService.recognizeText(request.imageFile);
-      console.log('✅ OCR complete. Confidence:', ocrData.confidence);
 
       // Step 4: Validate amount if user provided one
       let amountValidation = { isValid: true, difference: 0 };
@@ -161,8 +156,6 @@ class ReceiptService {
         receiptTooOld: !receiptAge.isValid,
       });
 
-      console.log('🎯 Fraud score:', fraudCheck.fraudScore);
-
       // Step 12: Calculate cashback using fixed lookup table
       const amount = ocrData.totalAmount || request.userAmount || 0;
       const cashback = calculateCashback({
@@ -171,8 +164,6 @@ class ReceiptService {
         cardType: userStats.cardType,
         maxCashbackPerTransaction: venueConfig?.maxCashbackPerScan,
       });
-
-      console.log('💰 Cashback:', cashback.cashbackAmount, 'BGN');
 
       // Step 13: Determine status
       let status: ReceiptStatus;
@@ -329,19 +320,6 @@ class ReceiptService {
     } catch (error) {
       console.error('Error checking merchant:', error);
       return { isWhitelisted: false, isBlacklisted: false };
-    }
-  }
-
-  /**
-   * Get offer discount percentage
-   */
-  private async getOfferDiscount(offerId: string): Promise<number> {
-    try {
-      const offer = await apiService.get<{ discount?: number }>(`/offers/${offerId}`);
-      return offer.discount || 0;
-    } catch (error) {
-      console.error('Error getting offer:', error);
-      return 0;
     }
   }
 

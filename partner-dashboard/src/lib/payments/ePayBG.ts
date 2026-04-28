@@ -138,7 +138,7 @@ export class ePayBG extends PaymentAdapter {
   async createSubscription(
     customerId: string,
     planId: string,
-    trialDays?: number,
+    _trialDays?: number,
     metadata?: Record<string, unknown>
   ): Promise<Subscription> {
     // ePay doesn't natively support subscriptions

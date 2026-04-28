@@ -81,8 +81,6 @@ interface StripeAccountResponse {
 }
 
 export class StripePayment extends PaymentAdapter {
-  private stripe: unknown; // In production, use: import Stripe from 'stripe'
-
   protected getBaseUrl(): string {
     return this.credentials.environment === 'production'
       ? 'https://api.stripe.com/v1'

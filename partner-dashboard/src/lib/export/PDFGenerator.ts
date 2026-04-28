@@ -726,7 +726,7 @@ export class PDFGenerator {
    */
   private static htmlToPDF(
     html: string,
-    filename: string,
+    _filename: string,
     _orientation: 'portrait' | 'landscape' = 'portrait',
     _format: 'a4' | 'letter' = 'a4'
   ): void {

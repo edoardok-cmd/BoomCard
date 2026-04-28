@@ -345,7 +345,7 @@ export class FraudDetection {
   /**
    * Generate recommendations based on flags
    */
-  private generateRecommendations(flags: string[], riskLevel: FraudRiskLevel): string[] {
+  private generateRecommendations(_flags: string[], riskLevel: FraudRiskLevel): string[] {
     const recommendations: string[] = [];
 
     if (riskLevel === 'critical') {

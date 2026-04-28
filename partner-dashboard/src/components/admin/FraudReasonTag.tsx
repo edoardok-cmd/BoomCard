@@ -1,4 +1,3 @@
-import React from 'react';
 import styled from 'styled-components';
 import { FRAUD_REASON_LABELS } from '../../types/fraud.types';
 

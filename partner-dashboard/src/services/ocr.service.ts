@@ -142,17 +142,7 @@ class OCRService {
 
     this.initializationPromise = (async () => {
       try {
-        console.log('🔧 Initializing Tesseract OCR worker...');
-        this.worker = await createWorker(language, 1, {
-          logger: (m) => {
-            // Log progress for debugging
-            if (m.status === 'loading tesseract core' ||
-                m.status === 'initializing tesseract' ||
-                m.status === 'loading language traineddata') {
-              console.log(`📦 ${m.status}: ${Math.round((m.progress || 0) * 100)}%`);
-            }
-          },
-        });
+        this.worker = await createWorker(language, 1);
 
         // Configure for receipt text recognition
         await this.worker.setParameters({
@@ -161,7 +151,6 @@ class OCRService {
         });
 
         this.isInitialized = true;
-        console.log('✅ Tesseract OCR initialized successfully');
       } catch (error) {
         console.error('❌ Failed to initialize Tesseract:', error);
         this.worker = null;
@@ -192,19 +181,13 @@ class OCRService {
     }
 
     try {
-      console.log('🔍 Starting OCR recognition...');
-
-      // Preprocess image if enabled (default: enabled)
       let processedImage: File | Blob | string = image;
       if (options.preprocessImage !== false && (image instanceof File || image instanceof Blob)) {
-        console.log('🎨 Preprocessing image...');
         processedImage = await this.preprocessImage(image);
       }
 
       // Perform OCR
       const result = await this.worker.recognize(processedImage);
-
-      console.log(`✅ OCR completed with ${result.data.confidence.toFixed(2)}% confidence`);
 
       // Parse receipt data from recognized text
       const receiptData = this.parseReceiptData(result.data.text, result.data.confidence);
@@ -293,7 +276,6 @@ class OCRService {
             (blob) => {
               URL.revokeObjectURL(objectUrl);
               if (blob) {
-                console.log('✨ Image preprocessing complete');
                 resolve(blob);
               } else {
                 reject(new Error('Failed to convert canvas to blob'));
@@ -372,7 +354,6 @@ class OCRService {
    */
   async terminate(): Promise<void> {
     if (this.worker) {
-      console.log('🧹 Terminating Tesseract worker...');
       await this.worker.terminate();
       this.worker = null;
       this.isInitialized = false;

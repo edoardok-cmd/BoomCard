@@ -5,7 +5,6 @@
 
 import crypto from 'crypto';
 import { POSManager } from '../pos/POSManager';
-import { PaymentManager } from '../payments/PaymentManager';
 
 export type WebhookProvider =
   | 'stripe'
@@ -37,11 +36,9 @@ type WebhookCallback = (event: WebhookEvent) => Promise<void> | void;
 export class WebhookHandler {
   private callbacks: Map<WebhookProvider, Set<WebhookCallback>> = new Map();
   private posManager?: POSManager;
-  private paymentManager?: PaymentManager;
 
-  constructor(posManager?: POSManager, paymentManager?: PaymentManager) {
+  constructor(posManager?: POSManager) {
     this.posManager = posManager;
-    this.paymentManager = paymentManager;
   }
 
   /**

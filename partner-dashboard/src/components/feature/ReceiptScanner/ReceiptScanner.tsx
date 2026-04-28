@@ -451,7 +451,6 @@ export const ReceiptScanner: React.FC<ReceiptScannerProps> = ({
           onSaveComplete(response.data.id);
         }
 
-        console.log('✅ Receipt saved successfully:', response.data.id);
       }
     } catch (err) {
       console.error('Receipt save error:', err);

@@ -169,29 +169,6 @@ class NotificationsService {
   }
 
   /**
-   * Handle incoming notification
-   */
-  private handleNotification(notification: Notification): void {
-    // Show desktop notification if enabled
-    this.showDesktopNotification(notification);
-
-    // Play sound if enabled
-    this.playNotificationSound(notification);
-
-    // Notify listeners
-    const typeListeners = this.listeners.get(notification.type);
-    const allListeners = this.listeners.get('*');
-
-    if (typeListeners) {
-      typeListeners.forEach(listener => listener(notification));
-    }
-
-    if (allListeners) {
-      allListeners.forEach(listener => listener(notification));
-    }
-  }
-
-  /**
    * Subscribe to notifications
    */
   subscribe(type: NotificationType | '*', callback: (notification: Notification) => void): () => void {
@@ -225,45 +202,6 @@ class NotificationsService {
     this.connectionListeners.forEach(listener => listener(connected));
   }
 
-  /**
-   * Show desktop notification
-   */
-  private async showDesktopNotification(notification: Notification): Promise<void> {
-    if (!('Notification' in window)) return;
-
-    const preferences = await this.getPreferences();
-    if (!preferences.inApp.showDesktopNotifications) return;
-
-    if (Notification.permission === 'granted') {
-      new Notification(notification.title, {
-        body: notification.message,
-        icon: notification.imageUrl || '/logo.png',
-        tag: notification.id,
-        requireInteraction: notification.priority === 'urgent',
-      });
-    } else if (Notification.permission !== 'denied') {
-      const permission = await Notification.requestPermission();
-      if (permission === 'granted') {
-        this.showDesktopNotification(notification);
-      }
-    }
-  }
-
-  /**
-   * Play notification sound
-   */
-  private async playNotificationSound(notification: Notification): Promise<void> {
-    const preferences = await this.getPreferences();
-    if (!preferences.inApp.playSound) return;
-
-    try {
-      const audio = new Audio('/notification-sound.mp3');
-      audio.volume = notification.priority === 'urgent' ? 1.0 : 0.5;
-      await audio.play();
-    } catch (error) {
-      console.error('Failed to play notification sound:', error);
-    }
-  }
 
   /**
    * Get all notifications

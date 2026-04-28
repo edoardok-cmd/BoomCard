@@ -1119,8 +1119,6 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
         localStorage.setItem(STORAGE_KEY, now.toString());
       }
     } catch {
-      // If localStorage is not available, always play video
-      console.warn('localStorage not available, playing video by default');
       setShouldPlayVideo(true);
     }
   }, []);
@@ -1232,7 +1230,6 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
         const isVideoPlaying = !!(video.currentTime > 0 && !video.paused && !video.ended && video.readyState > 2);
 
         if (!isVideoPlaying) {
-          console.log(`[Fallback] Video not playing after ${timeoutDuration}ms - showing hero content`);
           setShowLogo(true);
           setShowCTA(true);
           setShowBlackCard(true);
@@ -1251,14 +1248,10 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
     if (!video) return;
 
     const handleCanPlay = () => {
-      console.log('[Video] canplay event fired');
       setVideoLoaded(true);
-      // Only play once, using ref to survive re-renders and StrictMode
       if (shouldPlayVideo && !videoPlayedRef.current) {
         videoPlayedRef.current = true;
-        console.log('[Video] Video can play, starting playback...');
-        video.play().catch((error) => {
-          console.log('[Video] Playback failed:', error.name, error.message);
+        video.play().catch(() => {
           setShowLogo(true);
           setShowCTA(true);
           setVideoEnded(true);
@@ -1266,18 +1259,14 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
       }
     };
 
-    // Also listen for loadeddata as backup (fires earlier than canplay)
     const handleLoadedData = () => {
-      console.log('[Video] loadeddata event fired, readyState:', video.readyState);
       if (!videoLoaded) {
         setVideoLoaded(true);
       }
       // Try to play if canplay hasn't triggered yet
       if (shouldPlayVideo && !videoPlayedRef.current && video.readyState >= 2) {
         videoPlayedRef.current = true;
-        console.log('[Video] Playing from loadeddata...');
-        video.play().catch((error) => {
-          console.log('[Video] Playback failed from loadeddata:', error.name, error.message);
+        video.play().catch(() => {
           setShowLogo(true);
           setShowCTA(true);
           setVideoEnded(true);
@@ -1286,9 +1275,7 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
     };
 
     const handleEnded = () => {
-      // Only trigger once
       if (!videoEnded) {
-        console.log('[Video] Video ended');
         setVideoEnded(true);
         // Show both logo and CTA immediately (CTA will be invisible initially)
         setShowLogo(true);
@@ -1301,11 +1288,6 @@ const HeroBlast: React.FC<HeroBlastProps> = ({ language = 'en' }) => {
     };
 
     const handleError = () => {
-      console.log('[Video] Error loading or playing video', {
-        error: video.error?.code,
-        message: video.error?.message
-      });
-      // If video fails to load/play, show static content
       setShowLogo(true);
       setShowCTA(true);
       setVideoEnded(true);

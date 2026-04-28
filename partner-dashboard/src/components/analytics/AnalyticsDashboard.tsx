@@ -348,11 +348,11 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = () => {
   }, [offersData]);
 
   const handleExport = () => {
-    console.log('Export analytics report');
+    // TODO: implement export
   };
 
   const handleFilter = () => {
-    console.log('Open filter modal');
+    // TODO: implement filter modal
   };
 
   return (

@@ -634,7 +634,7 @@ const DashboardPage: React.FC = () => {
   // Partner data
   const { data: partnerData, isLoading: isLoadingPartner, isError: isPartnerError } = useCurrentPartner();
   const { data: stats, isLoading: isLoadingStats, isError: isStatsError } = usePartnerStats(partnerData?.id);
-  const { data: offersResponse, isLoading: isLoadingOffers, isError: isOffersError } = useOffers({
+  const { isLoading: isLoadingOffers, isError: isOffersError } = useOffers({
     partnerId: partnerData?.id,
     limit: 10,
     active: true
