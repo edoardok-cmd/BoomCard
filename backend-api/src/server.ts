@@ -47,6 +47,7 @@ import adminHelpRouter from './routes/adminHelp.routes';
 import adminMarketingRouter from './routes/adminMarketing.routes';
 import contactRouter from './routes/contact.routes';
 import dashboardRouter from './routes/dashboard.routes';
+import pendingCheckoutRouter from './routes/pending-checkout.routes';
 
 // Import WebSocket handler
 import { initializeWebSocket } from './websocket/server';
@@ -220,6 +221,7 @@ app.use('/api/webhooks', webhooksRouter); // Webhooks (must be first for raw bod
 app.use('/api/plans', plansRouter); // Public plans API (no auth required)
 app.use('/api/contact', contactRouter); // Public contact form (no auth required)
 app.use('/api/auth', authRouter);
+app.use('/api/checkout', pendingCheckoutRouter); // Payment-first onboarding (no auth required)
 app.use('/api/payments', payseraPaymentsRouter); // Paysera payment routes
 app.use('/api/dashboard', dashboardRouter);
 app.use('/api/wallet', walletRouter);
