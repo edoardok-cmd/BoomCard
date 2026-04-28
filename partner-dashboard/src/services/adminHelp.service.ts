@@ -1,0 +1,102 @@
+import { apiService } from './api.service';
+
+export type TicketStatus = 'NEW' | 'OPEN' | 'WAITING' | 'RESOLVED' | 'CLOSED';
+export type TicketPriority = 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
+export type TicketCategory = 'CASHBACK' | 'ACCOUNT' | 'PAYMENT' | 'TECHNICAL' | 'OTHER';
+
+export interface TicketUser {
+  id: string;
+  firstName: string | null;
+  lastName: string | null;
+  email: string;
+}
+
+export interface HelpTicket {
+  id: string;
+  subject: string;
+  category: TicketCategory;
+  status: TicketStatus;
+  priority: TicketPriority;
+  createdAt: string;
+  updatedAt: string;
+  user: TicketUser;
+  assignee: TicketUser | null;
+}
+
+export interface NewTicket {
+  id: string;
+  subject: string;
+  category: TicketCategory;
+  priority: TicketPriority;
+  createdAt: string;
+  user: TicketUser;
+}
+
+export interface MyTicket {
+  id: string;
+  subject: string;
+  status: TicketStatus;
+  priority: TicketPriority;
+  createdAt: string;
+  updatedAt: string;
+  user: TicketUser;
+}
+
+export interface TicketListResult<T> {
+  tickets: T[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export const adminHelpService = {
+  listAll(params: {
+    page?: number;
+    limit?: number;
+    search?: string;
+    status?: TicketStatus | '';
+    priority?: TicketPriority | '';
+    category?: TicketCategory | '';
+  }): Promise<TicketListResult<HelpTicket>> {
+    const clean: Record<string, unknown> = { page: params.page, limit: params.limit };
+    if (params.search) clean.search = params.search;
+    if (params.status) clean.status = params.status;
+    if (params.priority) clean.priority = params.priority;
+    if (params.category) clean.category = params.category;
+    return apiService.get('/admin/help', clean);
+  },
+
+  listNew(params: {
+    page?: number;
+    limit?: number;
+    search?: string;
+    priority?: TicketPriority | '';
+    category?: TicketCategory | '';
+  }): Promise<TicketListResult<NewTicket>> {
+    const clean: Record<string, unknown> = { page: params.page, limit: params.limit };
+    if (params.search) clean.search = params.search;
+    if (params.priority) clean.priority = params.priority;
+    if (params.category) clean.category = params.category;
+    return apiService.get('/admin/help/new', clean);
+  },
+
+  listMine(params: {
+    page?: number;
+    limit?: number;
+    search?: string;
+    status?: TicketStatus | '';
+  }): Promise<TicketListResult<MyTicket>> {
+    const clean: Record<string, unknown> = { page: params.page, limit: params.limit };
+    if (params.search) clean.search = params.search;
+    if (params.status) clean.status = params.status;
+    return apiService.get('/admin/help/mine', clean);
+  },
+
+  assign(id: string): Promise<{ ok: boolean }> {
+    return apiService.post(`/admin/help/${id}/assign`, {});
+  },
+
+  updateStatus(id: string, status: TicketStatus): Promise<{ ok: boolean }> {
+    return apiService.patch(`/admin/help/${id}`, { status });
+  },
+};

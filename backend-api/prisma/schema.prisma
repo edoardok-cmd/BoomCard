@@ -128,6 +128,9 @@ model User {
   adminRoles          UserAdminRole[]
   grantedAdminRoles   UserAdminRole[] @relation("GrantedRoles")
   auditLogs           AuditLog[]
+  helpTickets         HelpTicket[]    @relation("TicketUser")
+  assignedTickets     HelpTicket[]    @relation("TicketAssignee")
+  ticketReplies       TicketReply[]   @relation("TicketReplies")
 
   @@unique([email, role], map: "User_email_role_key")
   @@index([email])
@@ -1649,4 +1652,65 @@ model SystemSetting {
   updatedBy   String?          // admin userId
 
   @@map("system_settings")
+}
+
+// ============================================
+// Help Tickets — admin support queue
+// ============================================
+
+enum TicketStatus {
+  NEW
+  OPEN
+  WAITING
+  RESOLVED
+  CLOSED
+}
+
+enum TicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum TicketCategory {
+  CASHBACK
+  ACCOUNT
+  PAYMENT
+  TECHNICAL
+  OTHER
+}
+
+model HelpTicket {
+  id         String         @id @default(uuid())
+  subject    String
+  body       String         @default("")
+  category   TicketCategory
+  status     TicketStatus   @default(NEW)
+  priority   TicketPriority @default(MEDIUM)
+  userId     String
+  user       User           @relation("TicketUser", fields: [userId], references: [id])
+  assigneeId String?
+  assignee   User?          @relation("TicketAssignee", fields: [assigneeId], references: [id])
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+  replies    TicketReply[]
+
+  @@index([userId])
+  @@index([assigneeId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model TicketReply {
+  id        String     @id @default(uuid())
+  ticketId  String
+  ticket    HelpTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  authorId  String
+  author    User       @relation("TicketReplies", fields: [authorId], references: [id])
+  body      String
+  isAdmin   Boolean    @default(false)
+  createdAt DateTime   @default(now())
+
+  @@index([ticketId])
 }

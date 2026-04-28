@@ -43,6 +43,7 @@ import adminAdminsRouter from './routes/adminAdmins.routes';
 import adminSettingsRouter from './routes/adminSettings.routes';
 import adminFinanceRouter from './routes/adminFinance.routes';
 import adminControlRouter from './routes/adminControl.routes';
+import adminHelpRouter from './routes/adminHelp.routes';
 import contactRouter from './routes/contact.routes';
 import dashboardRouter from './routes/dashboard.routes';
 
@@ -239,6 +240,7 @@ app.use('/api/admin/admins', adminAdminsRouter);
 app.use('/api/admin/settings', adminSettingsRouter);
 app.use('/api/admin/finance', adminFinanceRouter);
 app.use('/api/admin/control', adminControlRouter);
+app.use('/api/admin/help', adminHelpRouter);
 app.use('/api/admin/partner-types', partnerTypesRouter);
 app.use('/api/admin/bulk-import', bulkImportRouter);
 app.use('/api/admin/menus', adminMenusRouter);

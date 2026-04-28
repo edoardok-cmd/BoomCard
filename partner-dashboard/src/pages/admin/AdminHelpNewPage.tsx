@@ -1,6 +1,15 @@
-import { useState, useMemo } from 'react';
+import { useState } from 'react';
 import styled from 'styled-components';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'react-hot-toast';
 import { DataTable, ColumnDef } from '../../components/admin/DataTable/DataTable';
+import {
+  adminHelpService,
+  NewTicket,
+  TicketPriority,
+  TicketCategory,
+  TicketUser,
+} from '../../services/adminHelp.service';
 
 const palette = {
   bg: '#faf9f5', surface: '#ffffff', border: '#e8e5dc',
@@ -26,10 +35,7 @@ const Select = styled.select`padding: 0.5rem 0.75rem; border: 1px solid ${palett
 const PrimaryLine = styled.div`font-weight: 600; color: ${palette.text};`;
 const MetaLine = styled.div`font-size: 0.75rem; color: ${palette.textSubtle}; margin-top: 0.125rem;`;
 
-type Priority = 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
-type TicketCategory = 'CASHBACK' | 'ACCOUNT' | 'PAYMENT' | 'TECHNICAL' | 'OTHER';
-
-const PriorityBadge = styled.span<{ $priority: Priority }>`
+const PriorityBadge = styled.span<{ $priority: TicketPriority }>`
   display: inline-flex; align-items: center; font-size: 0.7rem; font-weight: 700;
   text-transform: uppercase; letter-spacing: 0.05em; border-radius: 0.375rem; padding: 0.125rem 0.5rem;
   ${({ $priority }) => {
@@ -42,27 +48,6 @@ const PriorityBadge = styled.span<{ $priority: Priority }>`
   }}
 `;
 
-interface Ticket {
-  id: string;
-  subject: string;
-  category: TicketCategory;
-  priority: Priority;
-  user: { name: string; email: string };
-  createdAt: string;
-}
-
-const MOCK: Ticket[] = [
-  { id: '1', subject: 'Cashback not credited after scan', category: 'CASHBACK', priority: 'HIGH', user: { name: 'Ivan Petrov', email: 'ivan.petrov@gmail.com' }, createdAt: '2026-04-28T08:12:00Z' },
-  { id: '2', subject: 'Cannot log in to my account', category: 'ACCOUNT', priority: 'URGENT', user: { name: 'Maria Georgieva', email: 'maria.g@abv.bg' }, createdAt: '2026-04-28T07:45:00Z' },
-  { id: '3', subject: 'Payment declined but scan was accepted', category: 'PAYMENT', priority: 'HIGH', user: { name: 'Georgi Nikolov', email: 'g.nikolov@mail.bg' }, createdAt: '2026-04-28T06:30:00Z' },
-  { id: '4', subject: 'App crashes on receipt scan', category: 'TECHNICAL', priority: 'MEDIUM', user: { name: 'Elena Todorova', email: 'elena.t@gmail.com' }, createdAt: '2026-04-27T21:00:00Z' },
-  { id: '5', subject: 'How do I update my phone number?', category: 'ACCOUNT', priority: 'LOW', user: { name: 'Dimitar Stoyanov', email: 'dstoyanov@gmail.com' }, createdAt: '2026-04-27T18:45:00Z' },
-  { id: '6', subject: 'Subscription not activating after payment', category: 'PAYMENT', priority: 'URGENT', user: { name: 'Kristina Panova', email: 'kpanova@abv.bg' }, createdAt: '2026-04-27T17:20:00Z' },
-  { id: '7', subject: 'QR code not scanning at partner', category: 'TECHNICAL', priority: 'MEDIUM', user: { name: 'Boyko Ivanov', email: 'boyko.i@gmail.com' }, createdAt: '2026-04-27T15:00:00Z' },
-  { id: '8', subject: 'Wrong cashback percentage applied', category: 'CASHBACK', priority: 'MEDIUM', user: { name: 'Svetla Marinova', email: 'svetla.m@gmail.com' }, createdAt: '2026-04-27T13:30:00Z' },
-  { id: '9', subject: 'Other — general question', category: 'OTHER', priority: 'LOW', user: { name: 'Plamen Kostov', email: 'pkostov@mail.bg' }, createdAt: '2026-04-27T11:00:00Z' },
-];
-
 const CATEGORY_COLOR: Record<TicketCategory, string> = {
   CASHBACK: palette.success, ACCOUNT: palette.info, PAYMENT: palette.danger,
   TECHNICAL: palette.warning, OTHER: palette.textMuted,
@@ -70,28 +55,46 @@ const CATEGORY_COLOR: Record<TicketCategory, string> = {
 
 const PAGE_SIZE = 25;
 
+function displayName(u: TicketUser): string {
+  const name = `${u.firstName ?? ''} ${u.lastName ?? ''}`.trim();
+  return name || u.email;
+}
+
 export default function AdminHelpNewPage() {
+  const queryClient = useQueryClient();
+
+  const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
-  const [priorityFilter, setPriorityFilter] = useState<Priority | ''>('');
+  const [priorityFilter, setPriorityFilter] = useState<TicketPriority | ''>('');
   const [categoryFilter, setCategoryFilter] = useState<TicketCategory | ''>('');
   const [page, setPage] = useState(1);
 
-  const filtered = useMemo(() =>
-    MOCK.filter((t) => {
-      if (search && !t.subject.toLowerCase().includes(search.toLowerCase()) && !t.user.email.toLowerCase().includes(search.toLowerCase())) return false;
-      if (priorityFilter && t.priority !== priorityFilter) return false;
-      if (categoryFilter && t.category !== categoryFilter) return false;
-      return true;
+  const { data, isLoading } = useQuery({
+    queryKey: ['admin-help-new', page, search, priorityFilter, categoryFilter],
+    queryFn: () => adminHelpService.listNew({
+      page,
+      limit: PAGE_SIZE,
+      search: search || undefined,
+      priority: priorityFilter || undefined,
+      category: categoryFilter || undefined,
     }),
-    [search, priorityFilter, categoryFilter],
-  );
+  });
 
-  const paged = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const assignMutation = useMutation({
+    mutationFn: (id: string) => adminHelpService.assign(id),
+    onSuccess: () => {
+      toast.success('Ticket assigned to you');
+      queryClient.invalidateQueries({ queryKey: ['admin-help-new'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-help-mine'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-help-all'] });
+    },
+    onError: () => toast.error('Failed to assign ticket'),
+  });
 
   const fmt = (iso: string) =>
     new Date(iso).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
 
-  const columns: ColumnDef<Ticket>[] = [
+  const columns: ColumnDef<NewTicket>[] = [
     {
       key: 'subject',
       header: 'Ticket',
@@ -109,7 +112,7 @@ export default function AdminHelpNewPage() {
       header: 'User',
       render: (row) => (
         <span>
-          <PrimaryLine style={{ fontWeight: 500 }}>{row.user.name}</PrimaryLine>
+          <PrimaryLine style={{ fontWeight: 500 }}>{displayName(row.user)}</PrimaryLine>
           <MetaLine>{row.user.email}</MetaLine>
         </span>
       ),
@@ -135,7 +138,7 @@ export default function AdminHelpNewPage() {
           <Eyebrow>Help</Eyebrow>
           <PageTitle>
             New Tickets
-            {filtered.length > 0 && <TotalBadge>{filtered.length}</TotalBadge>}
+            {data && data.total > 0 && <TotalBadge>{data.total}</TotalBadge>}
           </PageTitle>
           <PageSubtitle>Unassigned support requests awaiting a first response</PageSubtitle>
         </TitleBlock>
@@ -146,10 +149,11 @@ export default function AdminHelpNewPage() {
           <SearchInput
             type="text"
             placeholder="Search subject or email…"
-            value={search}
-            onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') { setSearch(searchInput); setPage(1); } }}
           />
-          <Select value={priorityFilter} onChange={(e) => { setPriorityFilter(e.target.value as Priority | ''); setPage(1); }}>
+          <Select value={priorityFilter} onChange={(e) => { setPriorityFilter(e.target.value as TicketPriority | ''); setPage(1); }}>
             <option value="">All priorities</option>
             <option value="URGENT">Urgent</option>
             <option value="HIGH">High</option>
@@ -168,16 +172,19 @@ export default function AdminHelpNewPage() {
 
         <DataTable
           columns={columns}
-          data={paged}
+          data={data?.tickets ?? []}
           rowKey={(row) => row.id}
-          loading={false}
+          loading={isLoading}
           emptyMessage="No new tickets"
           page={page}
           pageSize={PAGE_SIZE}
-          totalItems={filtered.length}
+          totalItems={data?.total ?? 0}
           onPageChange={setPage}
           rowActions={[
-            { label: 'Assign to me', onClick: () => {} },
+            {
+              label: 'Assign to me',
+              onClick: (row) => assignMutation.mutate(row.id),
+            },
             { label: 'View', onClick: () => {} },
           ]}
         />
