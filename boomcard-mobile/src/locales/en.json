@@ -457,7 +457,32 @@
     "deleteAccountConfirmTitle": "Delete Profile",
     "deleteAccountConfirmMsg": "Are you sure? This action is irreversible. All your data will be permanently deleted.",
     "deleteAccountSuccess": "Your profile has been deleted successfully.",
-    "deleteAccountError": "Failed to delete profile. Please try again."
+    "deleteAccountError": "Failed to delete profile. Please try again.",
+    "deletePasswordRequired": "Please enter your password to confirm deletion.",
+    "deletePasswordPrompt": "Enter your current password to confirm account deletion.",
+    "deletePasswordPlaceholder": "Current password",
+    "marketingConsent": "Marketing Preferences",
+    "marketingEmail": "Email Marketing",
+    "marketingEmailDesc": "Receive promotional emails and offers",
+    "marketingPhone": "SMS / Phone Marketing",
+    "marketingPhoneDesc": "Receive promotional SMS messages"
+  },
+  "help": {
+    "category": "Category",
+    "categoryCashback": "Cashback",
+    "categoryAccount": "Account",
+    "categoryPayment": "Payment",
+    "categoryTechnical": "Technical",
+    "categoryOther": "Other",
+    "subject": "Subject",
+    "subjectPlaceholder": "Brief description of your issue",
+    "subjectTooShort": "Subject must be at least 5 characters.",
+    "message": "Message",
+    "messagePlaceholder": "Describe your issue in detail...",
+    "messageTooShort": "Message must be at least 10 characters.",
+    "submit": "Send Request",
+    "submitSuccess": "Your request has been submitted. We will get back to you shortly.",
+    "submitError": "Failed to submit. Please try again."
   },
   "subscription": {
     "title": "Subscription Plans",

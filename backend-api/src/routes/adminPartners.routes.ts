@@ -237,6 +237,10 @@ router.post(
     if (partner.status === PartnerStatus.ACTIVE) {
       return res.status(400).json({ error: 'Partner is already ACTIVE' });
     }
+    const NON_APPROVABLE_STATUSES: PartnerStatus[] = [PartnerStatus.REJECTED, PartnerStatus.PAUSED, PartnerStatus.SUSPENDED, PartnerStatus.ARCHIVED];
+    if (NON_APPROVABLE_STATUSES.includes(partner.status)) {
+      return res.status(400).json({ error: 'Cannot approve a partner in this state. Use /partner-status to manage post-onboarding partner statuses.' });
+    }
 
     const updated = await prisma.partner.update({
       where: { id: req.params.id },
@@ -338,6 +342,9 @@ router.patch(
 
     const partner = await prisma.partner.findUnique({ where: { id: req.params.id } });
     if (!partner) return res.status(404).json({ error: 'Partner not found' });
+    if (!ACTIVE_PARTNER_STATUSES.includes(partner.status)) {
+      return res.status(400).json({ error: 'This endpoint only manages post-onboarding partners. Use the onboarding pipeline for partners not yet active.' });
+    }
 
     const updated = await prisma.partner.update({
       where: { id: req.params.id },

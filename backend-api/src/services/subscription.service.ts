@@ -724,6 +724,9 @@ export class SubscriptionService {
     if (subscription.status !== 'PAST_DUE') {
       throw new Error('Subscription is not past due');
     }
+    if (subscription.cancelAtPeriodEnd || subscription.canceledAt) {
+      throw new Error('Cannot retry payment on a subscription that has been cancelled');
+    }
 
     if (!subscription.stripeSubscriptionId) {
       throw new Error('Payment retry is not available for this subscription type. Please contact support.');

@@ -1051,7 +1051,7 @@ class StripeService {
 
       if (dbSub.user?.email) {
         emailService
-          .sendRenewalReminder(dbSub.user.email, {
+          .sendExpiryNotice(dbSub.user.email, {
             customerName: dbSub.user.firstName || 'Customer',
             planName,
             planNameBg: dbSub.planDetails?.displayNameBg ?? planName,

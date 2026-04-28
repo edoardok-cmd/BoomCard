@@ -457,7 +457,32 @@
     "deleteAccountConfirmTitle": "Изтриване на профил",
     "deleteAccountConfirmMsg": "Сигурни ли сте? Това действие е необратимо. Всички ваши данни ще бъдат изтрити завинаги.",
     "deleteAccountSuccess": "Профилът ви беше изтрит успешно.",
-    "deleteAccountError": "Неуспешно изтриване на профила. Опитайте отново."
+    "deleteAccountError": "Неуспешно изтриване на профила. Опитайте отново.",
+    "deletePasswordRequired": "Моля, въведете паролата си за потвърждение.",
+    "deletePasswordPrompt": "Въведете текущата си парола за потвърждение на изтриването.",
+    "deletePasswordPlaceholder": "Текуща парола",
+    "marketingConsent": "Маркетингови предпочитания",
+    "marketingEmail": "Имейл маркетинг",
+    "marketingEmailDesc": "Получавайте промоционални имейли и оферти",
+    "marketingPhone": "SMS / Телефонен маркетинг",
+    "marketingPhoneDesc": "Получавайте промоционални SMS съобщения"
+  },
+  "help": {
+    "category": "Категория",
+    "categoryCashback": "Кешбек",
+    "categoryAccount": "Акаунт",
+    "categoryPayment": "Плащане",
+    "categoryTechnical": "Техническо",
+    "categoryOther": "Друго",
+    "subject": "Тема",
+    "subjectPlaceholder": "Кратко описание на проблема",
+    "subjectTooShort": "Темата трябва да е поне 5 символа.",
+    "message": "Съобщение",
+    "messagePlaceholder": "Опишете проблема подробно...",
+    "messageTooShort": "Съобщението трябва да е поне 10 символа.",
+    "submit": "Изпрати запитване",
+    "submitSuccess": "Запитването е изпратено. Ще се свържем с вас скоро.",
+    "submitError": "Неуспешно изпращане. Опитайте отново."
   },
   "subscription": {
     "title": "Абонаментни Планове",

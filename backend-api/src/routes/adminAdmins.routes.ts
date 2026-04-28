@@ -24,8 +24,10 @@ router.get('/audit', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePer
   try {
     const { search, objectType, page = '1', limit = '20' } = req.query as Record<string, string>;
 
-    const skip = (parseInt(page) - 1) * parseInt(limit);
-    const take = parseInt(limit);
+    const pageNum = Math.max(1, parseInt(page) || 1);
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit) || 20));
+    const skip = (pageNum - 1) * limitNum;
+    const take = limitNum;
 
     const where: Parameters<typeof prisma.auditLog.findMany>[0]['where'] = {};
     if (objectType) where.objectType = { equals: objectType, mode: 'insensitive' };
@@ -64,7 +66,7 @@ router.get('/audit', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePer
       prisma.auditLog.count({ where }),
     ]);
 
-    res.json({ logs, total, page: parseInt(page), limit: take });
+    res.json({ logs, total, page: pageNum, limit: take });
   } catch (error) {
     next(error);
   }
@@ -76,8 +78,10 @@ router.get('/pending', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requireP
   try {
     const { search, page = '1', limit = '20' } = req.query as Record<string, string>;
 
-    const skip = (parseInt(page) - 1) * parseInt(limit);
-    const take = parseInt(limit);
+    const pageNum = Math.max(1, parseInt(page) || 1);
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit) || 20));
+    const skip = (pageNum - 1) * limitNum;
+    const take = limitNum;
 
     const where: Parameters<typeof prisma.user.findMany>[0]['where'] = {
       role: 'ADMIN',
@@ -119,7 +123,7 @@ router.get('/pending', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requireP
       prisma.user.count({ where }),
     ]);
 
-    res.json({ users, total, page: parseInt(page), limit: take });
+    res.json({ users, total, page: pageNum, limit: take });
   } catch (error) {
     next(error);
   }
@@ -130,8 +134,10 @@ router.get('/pending', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requireP
 router.get('/pending-super', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('admins.read'), async (req, res, next) => {
   try {
     const { page = '1', limit = '20' } = req.query as Record<string, string>;
-    const skip = (parseInt(page) - 1) * parseInt(limit);
-    const take = parseInt(limit);
+    const pageNum = Math.max(1, parseInt(page) || 1);
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit) || 20));
+    const skip = (pageNum - 1) * limitNum;
+    const take = limitNum;
 
     const [requests, total] = await Promise.all([
       prisma.pendingSuperAdminRequest.findMany({
@@ -151,7 +157,7 @@ router.get('/pending-super', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), re
       prisma.pendingSuperAdminRequest.count(),
     ]);
 
-    res.json({ requests, total, page: parseInt(page), limit: take });
+    res.json({ requests, total, page: pageNum, limit: take });
   } catch (error) {
     next(error);
   }
@@ -319,30 +325,39 @@ router.post('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermiss
 
     const passwordHash = await bcrypt.hash(password, 12);
 
-    const user = await prisma.user.create({
-      data: {
-        email,
-        passwordHash,
-        firstName: firstName ?? null,
-        lastName: lastName ?? null,
-        phone: phone ?? null,
-        role: 'ADMIN',
-        status: 'ACTIVE',
-        emailVerified: true,
-        adminRoles: {
-          create: { roleId: adminRole.id, grantedById: req.user!.id },
+    let user: { id: string; email: string; firstName: string | null; lastName: string | null; role: UserRole; status: UserStatus; createdAt: Date };
+    try {
+      user = await prisma.user.create({
+        data: {
+          email,
+          passwordHash,
+          firstName: firstName ?? null,
+          lastName: lastName ?? null,
+          phone: phone ?? null,
+          role: 'ADMIN',
+          status: 'ACTIVE',
+          emailVerified: true,
+          adminRoles: {
+            create: { roleId: adminRole.id, grantedById: req.user!.id },
+          },
         },
-      },
-      select: {
-        id: true,
-        email: true,
-        firstName: true,
-        lastName: true,
-        role: true,
-        status: true,
-        createdAt: true,
-      },
-    });
+        select: {
+          id: true,
+          email: true,
+          firstName: true,
+          lastName: true,
+          role: true,
+          status: true,
+          createdAt: true,
+        },
+      });
+    } catch (err: unknown) {
+      const isPrismaConflict = typeof err === 'object' && err !== null && (err as { code?: string }).code === 'P2002';
+      if (isPrismaConflict) {
+        return res.status(409).json({ error: 'An admin with this email already exists' });
+      }
+      throw err;
+    }
 
     res.status(201).json({ ok: true, user });
   } catch (error) {
@@ -549,7 +564,10 @@ router.delete('/:id/roles/:roleKey', authenticate, authorize('ADMIN', 'SUPER_ADM
     const adminRole = await prisma.adminRole.findUnique({ where: { key: roleKey as AdminRoleKey } });
     if (!adminRole) return res.status(404).json({ error: 'Role not found' });
 
-    await prisma.userAdminRole.deleteMany({ where: { userId: id, roleId: adminRole.id } });
+    const { count } = await prisma.userAdminRole.deleteMany({ where: { userId: id, roleId: adminRole.id } });
+    if (count === 0) {
+      return res.status(404).json({ error: 'Admin does not have this role' });
+    }
 
     res.json({ ok: true });
   } catch (error) {

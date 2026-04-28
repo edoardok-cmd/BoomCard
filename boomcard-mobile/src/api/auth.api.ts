@@ -173,16 +173,26 @@ export class AuthApi {
   }
 
   /**
-   * Permanently delete the authenticated user's account
+   * Permanently delete the authenticated user's account.
+   * @param password - Current password required by the backend to confirm deletion.
    */
-  static async deleteAccount(): Promise<ApiResponse<void>> {
+  static async deleteAccount(password: string): Promise<ApiResponse<void>> {
     const response = await apiClient.delete<void>(
-      API_CONFIG.ENDPOINTS.AUTH.DELETE_ACCOUNT
+      API_CONFIG.ENDPOINTS.AUTH.DELETE_ACCOUNT,
+      { data: { password } }
     );
     if (response.success) {
       await StorageService.clearAll();
     }
     return response;
+  }
+
+  /**
+   * Record a consent choice (GDPR audit trail).
+   * type: 'email_marketing' | 'phone_marketing' | 'marketing' | 'terms' | 'privacy'
+   */
+  static async recordConsent(type: string, granted: boolean): Promise<ApiResponse<void>> {
+    return apiClient.post<void>(API_CONFIG.ENDPOINTS.AUTH.CONSENT, { type, granted });
   }
 }
 

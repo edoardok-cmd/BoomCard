@@ -127,7 +127,7 @@ export async function processPayseraRenewals(): Promise<void> {
         })();
 
         await emailService
-          .sendRenewalReminder(sub.user.email, {
+          .sendExpiryNotice(sub.user.email, {
             customerName: sub.user.firstName || 'Customer',
             planName,
             planNameBg: sub.planDetails?.displayNameBg || sub.plan,

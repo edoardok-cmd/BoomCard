@@ -42,6 +42,7 @@ import EditProfileScreen from '../screens/Profile/EditProfileScreen';
 import ChangePasswordScreen from '../screens/Profile/ChangePasswordScreen';
 import SettingsScreen from '../screens/Profile/SettingsScreen';
 import SyncAnalysisScreen from '../screens/Profile/SyncAnalysisScreen';
+import HelpScreen from '../screens/Profile/HelpScreen';
 
 // Payment Screens
 import WalletScreen from '../screens/Payments/WalletScreen';
@@ -259,6 +260,14 @@ const MainNavigator = ({ initialRouteName = 'MainTabs', initialParams }: { initi
         options={{
           headerShown: true,
           title: 'Settings'
+        }}
+      />
+      <Stack.Screen
+        name="HelpScreen"
+        component={HelpScreen}
+        options={{
+          headerShown: true,
+          title: 'Support'
         }}
       />
       <Stack.Screen

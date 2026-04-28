@@ -545,6 +545,9 @@ enum SubscriptionStatus {
   CANCELLED
   INCOMPLETE
   INCOMPLETE_EXPIRED
+  // TRIALING is mapped from Stripe's "trialing" status (stripe.service.ts).
+  // Our own 24-hour trial window is tracked via Subscription.trialRefundEligibleUntil
+  // and does NOT use this status — new subscriptions start as ACTIVE.
   TRIALING
   UNPAID
   PAUSED

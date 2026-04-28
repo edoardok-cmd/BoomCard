@@ -247,13 +247,14 @@ router.put(
   validate(updateProfileValidation),
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const userId = req.user!.id;
-    const { firstName, lastName, phone } = req.body;
+    const { firstName, lastName, phone, preferredLanguage } = req.body;
 
     const user = await AuthService.updateProfile(userId, {
       firstName,
       lastName,
       phone,
-    });
+      preferredLanguage,
+    } as any);
 
     res.json({
       success: true,

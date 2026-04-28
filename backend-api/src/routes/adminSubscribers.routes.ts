@@ -280,15 +280,15 @@ router.patch('/:userId/plan', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), r
     }
 
     const subscription = await prisma.subscription.findFirst({
-      where: { userId },
+      where: { userId, status: { not: 'CANCELLED' } },
       orderBy: { createdAt: 'desc' },
     });
     if (!subscription) {
-      res.status(404).json({ error: 'No subscription found for this subscriber' });
+      res.status(404).json({ error: 'No active subscription found for this subscriber' });
       return;
     }
 
-    // #4 fix: cannot change plan on a CANCELLED subscription
+    // Defensive guard — findFirst already excludes CANCELLED, but guard is kept for type narrowing
     if (subscription.status === 'CANCELLED') {
       res.status(400).json({ error: 'Cannot change plan on a cancelled subscription' });
       return;
@@ -379,12 +379,6 @@ router.post('/:userId/refund', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), 
       return;
     }
 
-    if (!subscription.stripeSubscriptionId) {
-      // Paysera or manually-created subscription — no automated refund path
-      res.status(422).json({ error: 'Automated refund is only supported for Stripe subscriptions. Process this refund manually via Paysera.' });
-      return;
-    }
-
     // Retrieve the Stripe subscription with the latest invoice expanded so we
     // can obtain the payment_intent without an extra API round-trip.
     const stripeSub = await stripeService.stripe.subscriptions.retrieve(
@@ -472,14 +466,14 @@ router.delete('/:userId/sessions', authenticate, authorize('ADMIN', 'SUPER_ADMIN
 
 // DELETE /api/admin/subscribers/:userId/account
 // Soft-deletes the user and sets status to DELETED
-router.delete('/:userId/account', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('subscribers.write'), async (req: AuthRequest, res, next) => {
+router.delete('/:userId/account', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('subscribers.delete'), async (req: AuthRequest, res, next) => {
   try {
     const { userId } = req.params;
     const { reason } = req.body as { reason?: string };
 
     const user = await prisma.user.findUnique({ where: { id: userId } });
-    if (!user) {
-      res.status(404).json({ error: 'User not found' });
+    if (!user || user.role !== 'USER') {
+      res.status(404).json({ error: 'Subscriber not found' });
       return;
     }
     if (user.deletedAt) {

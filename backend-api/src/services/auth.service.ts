@@ -648,6 +648,8 @@ export class AuthService {
     if (data.firstName !== undefined) sanitizedData.firstName = data.firstName?.trim() || undefined;
     if (data.lastName !== undefined) sanitizedData.lastName = data.lastName?.trim() || undefined;
     if (data.phone !== undefined) sanitizedData.phone = data.phone && data.phone.trim() !== '' ? data.phone.trim() : null;
+    const preferredLanguage = (data as any).preferredLanguage;
+    if (preferredLanguage === 'bg' || preferredLanguage === 'en') sanitizedData.preferredLanguage = preferredLanguage;
 
     const user = await prisma.user.update({
       where: { id: userId },
@@ -799,7 +801,9 @@ export class AuthService {
 
     const anonymizedEmail = `deleted_${uuid()}@removed.local`;
 
-    // Anonymize PII and set INACTIVE (30-day grace period before hard delete)
+    // Anonymize PII and soft-delete (DELETED + deletedAt for GDPR erasure audit trail).
+    // Background jobs filter status !== 'ACTIVE' so DELETED users are excluded from all
+    // automated emails and processing without requiring a hard delete.
     await prisma.user.update({
       where: { id: userId },
       data: {
@@ -808,7 +812,8 @@ export class AuthService {
         lastName: null,
         phone: null,
         avatar: null,
-        status: 'INACTIVE',
+        status: 'DELETED',
+        deletedAt: new Date(),
         passwordHash: await bcrypt.hash(uuid(), 12), // Invalidate password
         // Stamp so any sibling session's access token (still valid for its
         // 15-min TTL) can't pivot into this now-deleted account.

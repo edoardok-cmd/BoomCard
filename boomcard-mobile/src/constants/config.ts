@@ -22,6 +22,11 @@ export const API_CONFIG = {
       PROFILE: '/api/auth/profile',
       CHANGE_PASSWORD: '/api/auth/change-password',
       DELETE_ACCOUNT: '/api/auth/account',
+      CONSENT: '/api/auth/consent',
+    },
+    HELP: {
+      SUBMIT_TICKET: '/api/help/ticket',
+      MY_TICKETS: '/api/help/tickets',
     },
     // Receipts
     RECEIPTS: {

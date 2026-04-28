@@ -14,6 +14,10 @@ import {
   Switch,
   Linking,
   Platform,
+  Modal,
+  TextInput,
+  ActivityIndicator,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
@@ -34,6 +38,11 @@ const SettingsScreen = ({ navigation }: any) => {
   const { isDarkMode, toggleTheme, theme } = useTheme();
   const { logout } = useAuth();
   const [currentLanguage, setCurrentLanguage] = useState(getCurrentLanguage());
+  const [marketingConsentEmail, setMarketingConsentEmail] = useState(false);
+  const [marketingConsentPhone, setMarketingConsentPhone] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deletePassword, setDeletePassword] = useState('');
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Set translated navigation title
   useEffect(() => {
@@ -79,11 +88,13 @@ const SettingsScreen = ({ navigation }: any) => {
         emailNotifications,
         locationServices,
         biometricAuth,
+        userData,
       ] = await Promise.all([
         StorageService.getPushNotifications(),
         StorageService.getEmailNotifications(),
         StorageService.getLocationServices(),
         StorageService.getBiometricEnabled(),
+        StorageService.getUserData(),
       ]);
 
       setSettings({
@@ -92,6 +103,11 @@ const SettingsScreen = ({ navigation }: any) => {
         locationServices,
         biometricAuth,
       });
+
+      if (userData) {
+        setMarketingConsentEmail(!!(userData as any).marketingConsentEmail);
+        setMarketingConsentPhone(!!(userData as any).marketingConsentPhone);
+      }
     } catch (error) {
       console.error('Failed to load settings:', error);
     } finally {
@@ -411,40 +427,59 @@ const SettingsScreen = ({ navigation }: any) => {
   };
 
   const handleReportProblem = () => {
-    Linking.openURL('mailto:support@boomcard.bg');
+    navigation.navigate('HelpScreen');
   };
 
   const handleDeleteAccount = () => {
-    crossPlatformAlert(
-      t('settings.deleteAccountConfirmTitle'),
-      t('settings.deleteAccountConfirmMsg'),
-      [
-        { text: t('common.cancel'), style: 'cancel' },
-        {
-          text: t('settings.deleteAccount'),
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              const response = await AuthApi.deleteAccount();
-              if (response.success) {
-                await logout();
-                crossPlatformAlert(t('common.success'), t('settings.deleteAccountSuccess'));
-              } else {
-                crossPlatformAlert(t('common.error'), response.error || t('settings.deleteAccountError'));
-              }
-            } catch {
-              crossPlatformAlert(t('common.error'), t('settings.deleteAccountError'));
-            }
-          },
-        },
-      ]
-    );
+    setDeletePassword('');
+    setShowDeleteModal(true);
+  };
+
+  const confirmDeleteAccount = async () => {
+    if (!deletePassword.trim()) {
+      crossPlatformAlert(t('common.error'), t('settings.deletePasswordRequired'));
+      return;
+    }
+    setIsDeleting(true);
+    try {
+      const response = await AuthApi.deleteAccount(deletePassword.trim());
+      if (response.success) {
+        setShowDeleteModal(false);
+        await logout();
+        crossPlatformAlert(t('common.success'), t('settings.deleteAccountSuccess'));
+      } else {
+        crossPlatformAlert(t('common.error'), response.error || t('settings.deleteAccountError'));
+      }
+    } catch {
+      crossPlatformAlert(t('common.error'), t('settings.deleteAccountError'));
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const handleMarketingConsentEmail = async (value: boolean) => {
+    setMarketingConsentEmail(value);
+    try {
+      await AuthApi.recordConsent('email_marketing', value);
+    } catch {
+      setMarketingConsentEmail(!value);
+    }
+  };
+
+  const handleMarketingConsentPhone = async (value: boolean) => {
+    setMarketingConsentPhone(value);
+    try {
+      await AuthApi.recordConsent('phone_marketing', value);
+    } catch {
+      setMarketingConsentPhone(!value);
+    }
   };
 
   const styles = getStyles(theme);
   const chevronColor = theme.colors.onSurfaceVariant;
 
   return (
+    <>
     <ScrollView style={styles.container} contentContainerStyle={{ flexGrow: 1 }}>
       <View style={styles.content}>
         {/* Notifications */}
@@ -606,6 +641,7 @@ const SettingsScreen = ({ navigation }: any) => {
             onPress={async () => {
               await changeLanguage('bg');
               setCurrentLanguage('bg');
+              AuthApi.updateProfile({ preferredLanguage: 'bg' } as any).catch(() => {});
             }}
           >
             <View style={styles.settingInfo}>
@@ -624,6 +660,7 @@ const SettingsScreen = ({ navigation }: any) => {
             onPress={async () => {
               await changeLanguage('en');
               setCurrentLanguage('en');
+              AuthApi.updateProfile({ preferredLanguage: 'en' } as any).catch(() => {});
             }}
           >
             <View style={styles.settingInfo}>
@@ -636,6 +673,41 @@ const SettingsScreen = ({ navigation }: any) => {
               <Ionicons name="checkmark-circle" size={24} color={theme.colors.gold} />
             )}
           </TouchableOpacity>
+        </View>
+
+        {/* Marketing Consent */}
+        <Text style={styles.sectionTitle}>{t('settings.marketingConsent')}</Text>
+        <View style={styles.section}>
+          <View style={styles.settingRow}>
+            <View style={styles.settingInfo}>
+              <Ionicons name="mail" size={24} color={theme.colors.primary} />
+              <View style={styles.settingText}>
+                <Text style={styles.settingLabel}>{t('settings.marketingEmail')}</Text>
+                <Text style={styles.settingDescription}>{t('settings.marketingEmailDesc')}</Text>
+              </View>
+            </View>
+            <Switch
+              value={marketingConsentEmail}
+              onValueChange={handleMarketingConsentEmail}
+              trackColor={{ false: '#CBD5E1', true: '#E6D5A8' }}
+              thumbColor={marketingConsentEmail ? theme.colors.gold : '#F3F4F6'}
+            />
+          </View>
+          <View style={styles.settingRow}>
+            <View style={styles.settingInfo}>
+              <Ionicons name="call" size={24} color={theme.colors.primary} />
+              <View style={styles.settingText}>
+                <Text style={styles.settingLabel}>{t('settings.marketingPhone')}</Text>
+                <Text style={styles.settingDescription}>{t('settings.marketingPhoneDesc')}</Text>
+              </View>
+            </View>
+            <Switch
+              value={marketingConsentPhone}
+              onValueChange={handleMarketingConsentPhone}
+              trackColor={{ false: '#CBD5E1', true: '#E6D5A8' }}
+              thumbColor={marketingConsentPhone ? theme.colors.gold : '#F3F4F6'}
+            />
+          </View>
         </View>
 
         {/* Data & Storage */}
@@ -713,6 +785,58 @@ const SettingsScreen = ({ navigation }: any) => {
         </View>
       </View>
     </ScrollView>
+
+    {/* Delete Account — password confirmation modal */}
+    <Modal
+      visible={showDeleteModal}
+      transparent
+      animationType="fade"
+      onRequestClose={() => !isDeleting && setShowDeleteModal(false)}
+    >
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={styles.modalOverlay}
+      >
+        <View style={[styles.modalCard, { backgroundColor: theme.colors.surface }]}>
+          <Text style={[styles.modalTitle, { color: theme.colors.onSurface }]}>
+            {t('settings.deleteAccountConfirmTitle')}
+          </Text>
+          <Text style={[styles.modalBody, { color: theme.colors.onSurfaceVariant }]}>
+            {t('settings.deletePasswordPrompt')}
+          </Text>
+          <TextInput
+            style={[styles.modalInput, { borderColor: theme.colors.outline, color: theme.colors.onSurface, backgroundColor: theme.colors.surfaceVariant }]}
+            placeholder={t('settings.deletePasswordPlaceholder')}
+            placeholderTextColor={theme.colors.onSurfaceVariant}
+            secureTextEntry
+            value={deletePassword}
+            onChangeText={setDeletePassword}
+            editable={!isDeleting}
+            autoFocus
+          />
+          <View style={styles.modalActions}>
+            <TouchableOpacity
+              style={[styles.modalBtn, { borderColor: theme.colors.outline }]}
+              onPress={() => setShowDeleteModal(false)}
+              disabled={isDeleting}
+            >
+              <Text style={{ color: theme.colors.onSurface }}>{t('common.cancel')}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.modalBtn, { backgroundColor: theme.colors.error, borderColor: theme.colors.error }]}
+              onPress={confirmDeleteAccount}
+              disabled={isDeleting}
+            >
+              {isDeleting
+                ? <ActivityIndicator size="small" color="#fff" />
+                : <Text style={{ color: '#fff' }}>{t('settings.deleteAccount')}</Text>
+              }
+            </TouchableOpacity>
+          </View>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+    </>
   );
 };
 
@@ -806,6 +930,44 @@ const getStyles = (theme: any) => StyleSheet.create({
     fontSize: 12,
     color: theme.colors.onSurfaceVariant,
     marginTop: 4,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  modalCard: {
+    borderRadius: 16,
+    padding: 24,
+    gap: 12,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  modalBody: {
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  modalInput: {
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 4,
+  },
+  modalBtn: {
+    flex: 1,
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });
 
