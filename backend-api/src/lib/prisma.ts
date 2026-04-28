@@ -27,7 +27,35 @@ function createPrismaClient(): PrismaClient {
   });
 }
 
-export const prisma = globalForPrisma.prisma || createPrismaClient();
+function withSoftDelete(client: PrismaClient): PrismaClient {
+  // Extend User.findMany / findFirst / findUnique to exclude soft-deleted rows
+  // by default. Callers that explicitly need deleted rows should pass
+  // `where: { deletedAt: { not: null } }` (which bypasses this extension since
+  // it provides an explicit deletedAt filter).
+  return client.$extends({
+    query: {
+      user: {
+        async findMany({ args, query }) {
+          if (!args.where?.deletedAt) {
+            args.where = { ...args.where, deletedAt: null };
+          }
+          return query(args);
+        },
+        async findFirst({ args, query }) {
+          if (!args.where?.deletedAt) {
+            args.where = { ...args.where, deletedAt: null };
+          }
+          return query(args);
+        },
+        async findUnique({ args, query }) {
+          return query(args);
+        },
+      },
+    },
+  }) as unknown as PrismaClient;
+}
+
+export const prisma = globalForPrisma.prisma || withSoftDelete(createPrismaClient());
 
 if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma;
 

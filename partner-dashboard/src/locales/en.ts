@@ -440,6 +440,14 @@ export const en = {
     statusPending: 'Pending',
     statusRejected: 'Rejected',
     statusReview: 'Under review',
+    subStatusActive: 'Active',
+    subStatusTrialing: 'Trial',
+    subStatusPastDue: 'Past due',
+    subStatusCancelled: 'Cancelled',
+    gracePeriodTitle: 'Payment overdue',
+    gracePeriodDays: 'Your subscription access ends in {days} day(s). Please update your payment method.',
+    gracePeriodExpired: 'Grace period has ended. Please renew to restore access.',
+    gracePeriodCta: 'Update Payment',
   },
 
   // My Offers (Partner)
@@ -568,10 +576,8 @@ export const en = {
     marketingDescription: 'Control how we contact you with promotions and news',
     emailMarketing: 'Email Marketing',
     emailMarketingDesc: 'Receive promotional emails and newsletters',
-    smsMarketing: 'SMS Marketing',
-    smsMarketingDesc: 'Receive promotional text messages',
-    pushMarketing: 'Push Marketing',
-    pushMarketingDesc: 'Receive promotional push notifications',
+    phoneMarketing: 'Phone Marketing',
+    phoneMarketingDesc: 'Receive promotional SMS and phone communications',
     marketingConsentNote: 'You can withdraw consent at any time. Changes take effect within 24 hours.',
     // Privacy
     privacyTitle: 'Privacy',
@@ -1065,6 +1071,42 @@ export const en = {
     addPaymentMethod: 'Add Payment Method',
     invoiceHistory: 'Invoice History',
     noInvoices: 'No invoices yet',
+  },
+
+  // Subscription Management Page
+  subscriptionPage: {
+    title: 'Manage Subscription',
+    subtitle: 'View and control your BoomCard subscription',
+    currentPlan: 'Current Plan',
+    status: 'Status',
+    billingPeriod: 'Billing Period',
+    nextBilling: 'Next billing',
+    loading: 'Loading subscription...',
+    noSubscription: 'No active subscription found.',
+    goToPlans: 'View Plans',
+    gracePeriodAlert: 'Payment Overdue',
+    gracePeriodMsg: 'Your access expires in {days} day(s). Update your payment method to keep your subscription active.',
+    gracePeriodExpired: 'Your grace period has ended. Please update your payment method to restore access.',
+    gracePeriodPayseraMsg: 'Your access expires in {days} day(s). To renew, please contact support for a new payment link.',
+    gracePeriodPayseraExpired: 'Your grace period has ended. Please contact support to reactivate your subscription.',
+    gracePeriodPayseraCta: 'Contact Support',
+    updatePayment: 'Update Payment Method',
+    retryPayment: 'Retry Payment',
+    retryPaymentPending: 'Retrying...',
+    autoRenewal: 'Auto-Renewal',
+    autoRenewalDesc: 'Automatically renew your subscription at the end of each billing period.',
+    autoRenewalOn: 'Auto-renewal is enabled',
+    autoRenewalOff: 'Auto-renewal is disabled. Subscription ends {date}.',
+    autoRenewalOffShort: 'Auto-renewal is disabled.',
+    cancelSubscription: 'Cancel Subscription',
+    cancelDesc: 'Your subscription remains active until the end of the current billing period.',
+    cancelConfirm: 'Cancel your subscription? You will keep access until {date}.',
+    cancelBtn: 'Yes, Cancel',
+    reactivate: 'Reactivate Subscription',
+    reactivateDesc: 'Your subscription is scheduled for cancellation. Reactivate to keep access.',
+    reactivateBtn: 'Reactivate',
+    changePlan: 'Change Plan',
+    to: 'to',
   },
 
   // Pricing Plans
@@ -2040,6 +2082,121 @@ export const en = {
       midRange: '€€ Mid-range',
       highEnd: '€€€ High-end',
     },
+  },
+
+  // ============================================================
+  // Admin module — 10-category IA (Phase 0+)
+  // ============================================================
+  admin: {
+    // Category labels
+    dashboard: 'Dashboard',
+    subscribers: 'Subscribers',
+    partners: 'Partners',
+    finance: 'Finance',
+    control: 'Control',
+    marketing: 'Marketing',
+    settings: 'Settings',
+    admins: 'Admins',
+    help: 'Help',
+    profile: 'Profile',
+
+    // Sub-pages
+    overview: 'Overview',
+    alerts: 'Alerts',
+    allSubscribers: 'All',
+    subscriptions: 'Subscriptions',
+    transactions: 'Transactions',
+    cashback: 'Cashback',
+    requests: 'Requests',
+    onboarding: 'Onboarding',
+    activePartners: 'Active',
+    locationsQr: 'Locations & QR',
+    receiptProfiles: 'Receipt Profiles',
+    payouts: 'Subscriber Payouts',
+    invoices: 'Partner Invoices',
+    periods: 'Reporting Periods',
+    reports: 'Reports',
+    riskReview: 'Risk Review',
+    security: 'Security',
+    disputes: 'Disputes',
+    limitsRules: 'Limits & Rules',
+    campaigns: 'Campaigns',
+    templates: 'Templates',
+    automations: 'Automations',
+    lists: 'Lists',
+    thresholds: 'Thresholds',
+    percentages: 'Percentages',
+    validity: 'Validity',
+    mobileApp: 'Mobile App',
+    system: 'System',
+    allAdmins: 'All Admins',
+    createAdmin: 'Create Admin',
+    pendingApprovals: 'Pending Approvals',
+    auditLog: 'Audit Log',
+    newTicket: 'New Ticket',
+    myTickets: 'My Tickets',
+    allTickets: 'All Tickets',
+    myData: 'My Data',
+
+    // Dashboard overview
+    dashboardEyebrow: 'Administration',
+    dashboardWelcome: 'Welcome back',
+    dashboardSubtitle: 'An overview of the platform — offers, cashback, and fraud review at a glance.',
+    dashboardToday: 'Today',
+
+    // Alert feed
+    alertsActionRequired: 'Action Required',
+    alertsViewAll: 'View all →',
+    alertsAllClear: 'All clear — no items require immediate attention.',
+    alertsRefresh: 'Refresh',
+    alertsUpdatedAt: 'Updated at',
+
+    // Alert types
+    alertPartnerRequests: 'Partner Requests',
+    alertPartnerRequestsDesc: 'New partners waiting for approval',
+    alertReceiptReview: 'Receipt Review',
+    alertReceiptReviewDesc: 'Receipts flagged for manual review',
+    alertCashbackOverdue: 'Overdue Cashback',
+    alertCashbackOverdueDesc: 'Partners with overdue cashback payments',
+    alertMenuApprovals: 'Menu Approvals',
+    alertMenuApprovalsDesc: 'Partner menu URLs pending review',
+
+    // Alert severity labels
+    alertSeverityDanger: 'Critical',
+    alertSeverityWarning: 'Warning',
+    alertSeverityInfo: 'Info',
+
+    // Partner requests
+    requestsSubtitle: 'New partner applications waiting for approval',
+    requestsEmpty: 'No pending partner requests',
+    requestSearchPlaceholder: 'Search by business name, email or city…',
+    requestColBusiness: 'Business',
+    requestColContact: 'Contact',
+    requestColCity: 'City',
+    requestColDiscount: 'Discount',
+    requestColJoined: 'Applied',
+    requestApprove: 'Approve',
+    requestReject: 'Reject',
+    requestApproved: 'Partner approved',
+    requestRejected: 'Partner rejected',
+    requestRejectTitle: 'Reject application',
+    requestRejectSubtitle: 'You are about to reject the application from {name}. This cannot be undone.',
+    requestRejectReasonPlaceholder: 'Reason for rejection (required)…',
+
+    // Common actions
+    comingSoon: 'Coming soon',
+    comingSoonDescription: 'This section is under development. Check back soon.',
+
+    // Audit log
+    auditActor: 'Actor',
+    auditAction: 'Action',
+    auditObject: 'Object',
+    auditTime: 'Time',
+    auditBefore: 'Before',
+    auditAfter: 'After',
+
+    // RBAC
+    noPermission: 'You do not have permission to view this section.',
   },
 };
 

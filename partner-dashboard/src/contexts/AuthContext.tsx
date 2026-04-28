@@ -30,6 +30,7 @@ interface MePayload {
   firstName?: string;
   lastName?: string;
   role?: string;
+  permissions?: string[];
   createdAt?: string | number;
   emailVerified?: boolean;
   avatar?: string;
@@ -103,6 +104,13 @@ export interface User {
   phone?: string;
   avatar?: string;
   role: 'user' | 'partner' | 'admin';
+  // Raw backend role (USER/PARTNER/ADMIN/SUPER_ADMIN). Used by RequirePermission
+  // and CategoryShell to bypass permission checks for SUPER_ADMIN without
+  // conflating it with ADMIN in the rest of the UI.
+  rawRole?: string;
+  // Effective permission keys resolved server-side from the user's AdminRole(s).
+  // Absent for non-admin users; SUPER_ADMIN bypasses checks without needing this set.
+  permissions?: string[];
   createdAt: number;
   emailVerified: boolean;
 }
@@ -383,6 +391,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               firstName: meData.firstName || '',
               lastName: meData.lastName || '',
               role: normalizeRole(meData.role),
+              rawRole: typeof meData.role === 'string' ? meData.role.toUpperCase() : undefined,
+              permissions: meData.permissions,
               createdAt: meData.createdAt ? new Date(meData.createdAt).getTime() : Date.now(),
               emailVerified: meData.emailVerified ?? true,
               avatar: meData.avatar,
@@ -511,6 +521,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           firstName: userPayload.firstName || '',
           lastName: userPayload.lastName || '',
           role: normalizeRole(userPayload.role),
+          rawRole: typeof userPayload.role === 'string' ? userPayload.role.toUpperCase() : undefined,
+          permissions: (userPayload as any).permissions,
           createdAt: userPayload.createdAt ? new Date(userPayload.createdAt).getTime() : Date.now(),
           emailVerified: userPayload.emailVerified ?? true,
           avatar: userPayload.avatar,
@@ -594,6 +606,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         firstName: userPayload.firstName || '',
         lastName: userPayload.lastName || '',
         role: normalizeRole(userPayload.role),
+        rawRole: typeof userPayload.role === 'string' ? userPayload.role.toUpperCase() : undefined,
+        permissions: (userPayload as any).permissions,
         createdAt: userPayload.createdAt ? new Date(userPayload.createdAt).getTime() : Date.now(),
         emailVerified: userPayload.emailVerified ?? false,
         avatar: userPayload.avatar,
@@ -717,6 +731,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         firstName: userPayload.firstName || '',
         lastName: userPayload.lastName || '',
         role: normalizeRole(userPayload.role),
+        rawRole: typeof userPayload.role === 'string' ? userPayload.role.toUpperCase() : undefined,
+        permissions: (userPayload as any).permissions,
         createdAt: userPayload.createdAt ? new Date(userPayload.createdAt).getTime() : Date.now(),
         emailVerified: userPayload.emailVerified ?? true,
         avatar: userPayload.avatar,
@@ -780,6 +796,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         firstName: userPayload.firstName || '',
         lastName: userPayload.lastName || '',
         role: normalizeRole(userPayload.role),
+        rawRole: typeof userPayload.role === 'string' ? userPayload.role.toUpperCase() : undefined,
+        permissions: (userPayload as any).permissions,
         createdAt: userPayload.createdAt ? new Date(userPayload.createdAt).getTime() : Date.now(),
         emailVerified: userPayload.emailVerified ?? true,
         avatar: userPayload.avatar,
@@ -835,6 +853,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         firstName: userPayload.firstName || '',
         lastName: userPayload.lastName || '',
         role: normalizeRole(userPayload.role),
+        rawRole: typeof userPayload.role === 'string' ? userPayload.role.toUpperCase() : undefined,
+        permissions: (userPayload as any).permissions,
         createdAt: userPayload.createdAt ? new Date(userPayload.createdAt).getTime() : Date.now(),
         emailVerified: userPayload.emailVerified ?? true,
         avatar: userPayload.avatar,
@@ -946,11 +966,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         // Set auth token in API service
         apiService.setAuthToken(token);
 
-        // Set user state
-        setUser(response.user);
+        // Set user state — enrich with rawRole/permissions if the OAuth endpoint returns them
+        const oauthUser: User = {
+          ...response.user,
+          rawRole: typeof (response.user as any).rawRole === 'string'
+            ? (response.user as any).rawRole
+            : typeof (response.user as any).role === 'string'
+              ? (response.user as any).role.toUpperCase()
+              : undefined,
+          permissions: (response.user as any).permissions,
+        };
+        setUser(oauthUser);
 
         // Store auth data
-        authStorage.setItem(STORAGE_KEY, JSON.stringify(response.user), true);
+        authStorage.setItem(STORAGE_KEY, JSON.stringify(oauthUser), true);
 
         // Capture sibling accounts if the OAuth response included them. For
         // providers that don't yet return the list, fall back to a fetch so

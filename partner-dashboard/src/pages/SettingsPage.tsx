@@ -339,8 +339,7 @@ interface NotificationSettings {
 
 interface MarketingConsents {
   emailMarketing: boolean;
-  smsMarketing: boolean;
-  pushMarketing: boolean;
+  phoneMarketing: boolean;
 }
 
 interface PrivacySettings {
@@ -377,8 +376,7 @@ const SettingsPage: React.FC = () => {
 
   const [marketing, setMarketing] = useState<MarketingConsents>({
     emailMarketing: false,
-    smsMarketing: false,
-    pushMarketing: false,
+    phoneMarketing: false,
   });
 
   const [privacy, setPrivacy] = useState<PrivacySettings>({
@@ -465,8 +463,7 @@ const SettingsPage: React.FC = () => {
     try {
       await Promise.all([
         apiService.post('/auth/consent', { type: 'email_marketing', granted: marketing.emailMarketing }),
-        apiService.post('/auth/consent', { type: 'sms_marketing', granted: marketing.smsMarketing }),
-        apiService.post('/auth/consent', { type: 'push_marketing', granted: marketing.pushMarketing }),
+        apiService.post('/auth/consent', { type: 'phone_marketing', granted: marketing.phoneMarketing }),
       ]);
       toast.success(t('settings.savedSuccess'));
     } catch (error) {
@@ -593,18 +590,10 @@ const SettingsPage: React.FC = () => {
 
             <SettingRow>
               <SettingInfo>
-                <SettingLabel>{t('settings.smsMarketing')}</SettingLabel>
-                <SettingDesc>{t('settings.smsMarketingDesc')}</SettingDesc>
+                <SettingLabel>{t('settings.phoneMarketing')}</SettingLabel>
+                <SettingDesc>{t('settings.phoneMarketingDesc')}</SettingDesc>
               </SettingInfo>
-              <Toggle $active={marketing.smsMarketing} onClick={() => toggleMarketing('smsMarketing')} />
-            </SettingRow>
-
-            <SettingRow>
-              <SettingInfo>
-                <SettingLabel>{t('settings.pushMarketing')}</SettingLabel>
-                <SettingDesc>{t('settings.pushMarketingDesc')}</SettingDesc>
-              </SettingInfo>
-              <Toggle $active={marketing.pushMarketing} onClick={() => toggleMarketing('pushMarketing')} />
+              <Toggle $active={marketing.phoneMarketing} onClick={() => toggleMarketing('phoneMarketing')} />
             </SettingRow>
 
             <ConsentNote>{t('settings.marketingConsentNote')}</ConsentNote>

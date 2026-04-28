@@ -107,7 +107,7 @@ const CardSubtext = styled.div`
   gap: 0.5rem;
 `;
 
-const StatusBadge = styled.span<{ $status: 'active' | 'past_due' | 'canceled' | 'trialing' }>`
+const StatusBadge = styled.span<{ $status: string }>`
   display: inline-flex;
   align-items: center;
   gap: 0.375rem;
@@ -115,21 +115,19 @@ const StatusBadge = styled.span<{ $status: 'active' | 'past_due' | 'canceled' | 
   border-radius: 9999px;
   font-size: 0.875rem;
   font-weight: 600;
-  background: ${props => {
-    switch (props.$status) {
-      case 'active': return '#d1fae5';
-      case 'trialing': return '#dbeafe';
-      case 'past_due': return '#fef3c7';
-      case 'canceled': return '#fee2e2';
-    }
+  background: ${({ $status }) => {
+    if ($status === 'ACTIVE') return '#d1fae5';
+    if ($status === 'TRIALING') return '#dbeafe';
+    if ($status === 'PAST_DUE') return '#fef3c7';
+    if ($status === 'CANCELLED') return '#fee2e2';
+    return '#f3f4f6';
   }};
-  color: ${props => {
-    switch (props.$status) {
-      case 'active': return '#065f46';
-      case 'trialing': return '#1e40af';
-      case 'past_due': return '#92400e';
-      case 'canceled': return '#991b1b';
-    }
+  color: ${({ $status }) => {
+    if ($status === 'ACTIVE') return '#065f46';
+    if ($status === 'TRIALING') return '#1e40af';
+    if ($status === 'PAST_DUE') return '#92400e';
+    if ($status === 'CANCELLED') return '#991b1b';
+    return '#374151';
   }};
 
   svg {
@@ -324,12 +322,9 @@ const EmptyStateText = styled.p`
 `;
 
 interface Subscription {
-  planName: string;
-  status: 'active' | 'past_due' | 'canceled' | 'trialing';
-  currentPeriodEnd: Date;
-  amount: number;
-  currency: string;
-  interval: 'month' | 'year';
+  plan: string;
+  status: 'ACTIVE' | 'PAST_DUE' | 'TRIALING' | 'CANCELLED';
+  currentPeriodEnd: string;
 }
 
 
@@ -375,27 +370,28 @@ export const BillingDashboard: React.FC<BillingDashboardProps> = ({
 
   const getStatusIcon = (status: Subscription['status']) => {
     switch (status) {
-      case 'active':
-        return <CheckCircle />;
-      case 'trialing':
-        return <Clock />;
-      case 'past_due':
-        return <AlertCircle />;
-      case 'canceled':
-        return <AlertCircle />;
+      case 'ACTIVE':    return <CheckCircle />;
+      case 'TRIALING':  return <Clock />;
+      case 'PAST_DUE':  return <AlertCircle />;
+      case 'CANCELLED': return <AlertCircle />;
     }
   };
 
   const getStatusText = (status: Subscription['status']) => {
     if (language === 'bg') {
       switch (status) {
-        case 'active': return 'Активен';
-        case 'trialing': return 'Пробен';
-        case 'past_due': return 'Просрочен';
-        case 'canceled': return 'Отменен';
+        case 'ACTIVE':    return 'Активен';
+        case 'TRIALING':  return 'Пробен';
+        case 'PAST_DUE':  return 'Просрочен';
+        case 'CANCELLED': return 'Отменен';
       }
     }
-    return status.charAt(0).toUpperCase() + status.slice(1).replace('_', ' ');
+    switch (status) {
+      case 'ACTIVE':    return 'Active';
+      case 'TRIALING':  return 'Trial';
+      case 'PAST_DUE':  return 'Past due';
+      case 'CANCELLED': return 'Cancelled';
+    }
   };
 
   const handleDeletePaymentMethod = async (id: string) => {
@@ -467,7 +463,7 @@ export const BillingDashboard: React.FC<BillingDashboardProps> = ({
               <TrendingUp />
             </CardIcon>
           </CardHeader>
-          <CardValue>{subscription.planName}</CardValue>
+          <CardValue>{subscription.plan}</CardValue>
           <CardSubtext>
             <StatusBadge $status={subscription.status}>
               {getStatusIcon(subscription.status)}
@@ -487,11 +483,9 @@ export const BillingDashboard: React.FC<BillingDashboardProps> = ({
               <Calendar />
             </CardIcon>
           </CardHeader>
-          <CardValue>
-            {formatCurrencyAmount(subscription.amount, subscription.currency)}
-          </CardValue>
+          <CardValue>—</CardValue>
           <CardSubtext>
-            {t('billing.dueOn')} {formatDate(subscription.currentPeriodEnd)}
+            {t('billing.dueOn')} {formatDate(new Date(subscription.currentPeriodEnd))}
           </CardSubtext>
         </Card>
 
@@ -507,7 +501,7 @@ export const BillingDashboard: React.FC<BillingDashboardProps> = ({
             </CardIcon>
           </CardHeader>
           <CardValue>
-            {formatCurrencyAmount(totalSpent, subscription.currency)}
+            {formatCurrencyAmount(totalSpent, 'BGN')}
           </CardValue>
           <CardSubtext>
             {invoices.filter(inv => inv.status === 'paid').length} {t('billing.invoices')}
@@ -531,7 +525,7 @@ export const BillingDashboard: React.FC<BillingDashboardProps> = ({
               {t('billing.currentPeriod')}
             </CardSubtext>
             <CardValue style={{ fontSize: '1.125rem', marginBottom: '1rem' }}>
-              {formatDate(new Date())} - {formatDate(subscription.currentPeriodEnd)}
+              {formatDate(new Date())} - {formatDate(new Date(subscription.currentPeriodEnd))}
             </CardValue>
           </div>
           <div>
@@ -539,9 +533,7 @@ export const BillingDashboard: React.FC<BillingDashboardProps> = ({
               {t('billing.billingCycle')}
             </CardSubtext>
             <CardValue style={{ fontSize: '1.125rem', marginBottom: '1rem' }}>
-              {subscription.interval === 'month'
-                ? t('billing.monthly')
-                : t('billing.annual')}
+              {t('billing.monthly')}
             </CardValue>
           </div>
         </Grid>
@@ -567,7 +559,7 @@ export const BillingDashboard: React.FC<BillingDashboardProps> = ({
                 <PaymentMethodName>
                   {method.brand.charAt(0).toUpperCase() + method.brand.slice(1)} •••• {method.last4}
                   {method.isDefault && (
-                    <StatusBadge $status="active" style={{ marginLeft: '0.5rem', fontSize: '0.75rem' }}>
+                    <StatusBadge $status="ACTIVE" style={{ marginLeft: '0.5rem', fontSize: '0.75rem' }}>
                       {t('billing.default')}
                     </StatusBadge>
                   )}

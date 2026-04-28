@@ -88,6 +88,8 @@ export class SubscriptionService {
         trialEnd: stripeSubscription.trial_end
           ? new Date(stripeSubscription.trial_end * 1000)
           : null,
+        // FR-007: 24-hour trial refund window starts at purchase
+        trialRefundEligibleUntil: new Date(Date.now() + 24 * 60 * 60 * 1000),
       },
     });
 
@@ -350,13 +352,145 @@ export class SubscriptionService {
   }
 
   /**
+   * Toggle auto-renewal for a subscription (FR-004).
+   * For Stripe: mirrors the change to cancel_at_period_end.
+   * For Paysera: DB-only update (no external billing to cancel).
+   */
+  async toggleAutoRenewal(subscriptionId: string, userId: string, autoRenewal: boolean) {
+    const subscription = await prisma.subscription.findUnique({
+      where: { id: subscriptionId },
+    });
+
+    if (!subscription) throw new Error('Subscription not found');
+    if (subscription.userId !== userId) throw new Error('Forbidden');
+
+    if (subscription.stripeSubscriptionId) {
+      await stripeService.stripe.subscriptions.update(subscription.stripeSubscriptionId, {
+        cancel_at_period_end: !autoRenewal,
+      });
+    }
+
+    return prisma.subscription.update({
+      where: { id: subscriptionId },
+      data: {
+        autoRenewal,
+        cancelAtPeriodEnd: !autoRenewal,
+        cancelAt: !autoRenewal ? subscription.currentPeriodEnd : null,
+      },
+    });
+  }
+
+  /**
+   * Request a 24-hour trial refund (FR-007).
+   * Eligibility: trialRefundEligibleUntil is in the future and refund not yet used.
+   * Issues a Stripe refund for Stripe subscriptions; logs for manual action on Paysera.
+   * Immediately cancels the subscription in both cases.
+   */
+  async requestTrialRefund(subscriptionId: string, userId: string) {
+    const subscription = await prisma.subscription.findUnique({
+      where: { id: subscriptionId },
+    });
+
+    if (!subscription) throw new Error('Subscription not found');
+    if (subscription.userId !== userId) throw new Error('Forbidden');
+
+    const now = new Date();
+    if (!subscription.trialRefundEligibleUntil || subscription.trialRefundEligibleUntil < now) {
+      throw new Error('Trial refund window has expired (24 hours from purchase)');
+    }
+    if (subscription.trialRefundUsed) {
+      throw new Error('Trial refund has already been used');
+    }
+
+    // Mark used immediately — prevents duplicate concurrent requests
+    await prisma.subscription.update({
+      where: { id: subscriptionId },
+      data: { trialRefundUsed: true },
+    });
+
+    try {
+      if (subscription.stripeSubscriptionId) {
+        const invoices = await stripeService.stripe.invoices.list({
+          subscription: subscription.stripeSubscriptionId,
+          limit: 1,
+        });
+        const paymentIntentId = invoices.data[0]?.payment_intent as string | null;
+        if (paymentIntentId) {
+          await stripeService.createRefund({
+            paymentIntentId,
+            reason: 'requested_by_customer',
+          });
+        }
+      } else {
+        // Paysera subscriptions — flag for manual refund processing
+        logger.info(
+          `Trial refund requested for Paysera subscription ${subscriptionId} (user ${userId}) — requires manual Paysera refund`
+        );
+      }
+    } catch (err) {
+      // Undo the used flag so the user can retry if the refund API call failed
+      await prisma.subscription.update({
+        where: { id: subscriptionId },
+        data: { trialRefundUsed: false },
+      });
+      throw err;
+    }
+
+    return this.cancelSubscription(subscriptionId, false);
+  }
+
+  /**
+   * Retry payment for a PAST_DUE Stripe subscription.
+   * Finds the latest open invoice and attempts to pay it immediately.
+   * Paysera subscriptions cannot be retried programmatically.
+   */
+  async retryPayment(subscriptionId: string, userId: string) {
+    const subscription = await prisma.subscription.findUnique({
+      where: { id: subscriptionId },
+    });
+
+    if (!subscription) throw new Error('Subscription not found');
+    if (subscription.userId !== userId) throw new Error('Forbidden');
+    if (subscription.status !== 'PAST_DUE') {
+      throw new Error('Subscription is not past due');
+    }
+
+    if (!subscription.stripeSubscriptionId) {
+      throw new Error('Payment retry is not available for this subscription type. Please contact support.');
+    }
+
+    const invoices = await stripeService.stripe.invoices.list({
+      subscription: subscription.stripeSubscriptionId,
+      status: 'open',
+      limit: 1,
+    });
+
+    if (!invoices.data.length) {
+      throw new Error('No open invoice found. Please contact support.');
+    }
+
+    const paid = await stripeService.stripe.invoices.pay(invoices.data[0].id, {
+      forgive: false,
+    });
+
+    if (paid.status === 'paid') {
+      return prisma.subscription.update({
+        where: { id: subscriptionId },
+        data: { status: 'ACTIVE', gracePeriodEndsAt: null },
+      });
+    }
+
+    throw new Error('Payment retry failed. Please update your payment method and try again.');
+  }
+
+  /**
    * Get user's active subscription
    */
   async getActiveSubscription(userId: string) {
     return prisma.subscription.findFirst({
       where: {
         userId,
-        status: { in: ['ACTIVE', 'TRIALING'] },
+        status: { in: ['ACTIVE', 'TRIALING', 'PAST_DUE'] },
       },
       orderBy: { createdAt: 'desc' },
     });

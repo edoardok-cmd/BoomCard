@@ -1,0 +1,863 @@
+import React, { useState, useEffect } from 'react';
+import styled from 'styled-components';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'react-hot-toast';
+import { useLanguage } from '../../contexts/LanguageContext';
+import { DataTable, ColumnDef, RowAction } from '../../components/admin/DataTable/DataTable';
+import {
+  adminSubscribersService,
+  AdminSubscription,
+  SubscriptionPlan,
+  SubscriptionStatus,
+} from '../../services/adminSubscribers.service';
+import { adminTransactionsService, AdminTransaction } from '../../services/adminTransactions.service';
+
+/* ─── Palette ─────────────────────────────────────────────────────────────── */
+const palette = {
+  bg: '#faf9f5',
+  surface: '#ffffff',
+  border: '#e8e5dc',
+  text: '#141413',
+  textMuted: '#605a50',
+  textSubtle: '#8c8678',
+  accent: '#c96442',
+  accentSoft: '#f3e8de',
+  success: '#4a7c59',
+  successSoft: '#e6efe3',
+  warning: '#b5803a',
+  warningSoft: '#f5ead2',
+  danger: '#b54327',
+  dangerSoft: '#f4dcd2',
+  info: '#2563eb',
+  infoSoft: '#dbeafe',
+};
+
+/* ─── Layout ───────────────────────────────────────────────────────────────── */
+const PageShell = styled.div`
+  background: ${palette.bg};
+  min-height: calc(100vh - 4rem);
+  padding: 2rem 2.5rem;
+`;
+
+const PageHeader = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 2rem;
+  gap: 1rem;
+  flex-wrap: wrap;
+`;
+
+const TitleBlock = styled.div``;
+
+const Eyebrow = styled.p`
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: ${palette.textSubtle};
+  margin-bottom: 0.25rem;
+`;
+
+const PageTitle = styled.h1`
+  font-size: 1.75rem;
+  font-weight: 800;
+  color: ${palette.text};
+  margin: 0 0 0.25rem;
+`;
+
+const PageSubtitle = styled.p`
+  font-size: 0.9375rem;
+  color: ${palette.textMuted};
+  margin: 0;
+`;
+
+const TotalBadge = styled.span`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: ${palette.infoSoft};
+  color: ${palette.info};
+  font-size: 0.75rem;
+  font-weight: 700;
+  border-radius: 9999px;
+  padding: 0.125rem 0.6rem;
+  margin-left: 0.5rem;
+`;
+
+const HeaderActions = styled.div`
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+`;
+
+const Card = styled.div`
+  background: ${palette.surface};
+  border: 1px solid ${palette.border};
+  border-radius: 0.75rem;
+  padding: 1.5rem;
+`;
+
+const FilterRow = styled.div`
+  display: flex;
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+  flex-wrap: wrap;
+  align-items: center;
+`;
+
+const SearchInput = styled.input`
+  flex: 1;
+  max-width: 20rem;
+  padding: 0.5rem 0.875rem;
+  border: 1px solid ${palette.border};
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  background: ${palette.bg};
+  color: ${palette.text};
+  outline: none;
+
+  &:focus {
+    border-color: ${palette.accent};
+    box-shadow: 0 0 0 2px ${palette.accentSoft};
+  }
+
+  &::placeholder {
+    color: ${palette.textSubtle};
+  }
+`;
+
+const DateInput = styled.input`
+  padding: 0.5rem 0.75rem;
+  border: 1px solid ${palette.border};
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  background: ${palette.bg};
+  color: ${palette.text};
+  outline: none;
+  cursor: pointer;
+
+  &:focus {
+    border-color: ${palette.accent};
+    box-shadow: 0 0 0 2px ${palette.accentSoft};
+  }
+`;
+
+const Select = styled.select`
+  padding: 0.5rem 0.75rem;
+  border: 1px solid ${palette.border};
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  background: ${palette.bg};
+  color: ${palette.text};
+  outline: none;
+  cursor: pointer;
+
+  &:focus {
+    border-color: ${palette.accent};
+    box-shadow: 0 0 0 2px ${palette.accentSoft};
+  }
+`;
+
+const Btn = styled.button<{ $variant?: 'primary' | 'ghost' | 'danger' }>`
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.5rem 1rem;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: all 100ms;
+
+  ${({ $variant = 'ghost' }) => {
+    if ($variant === 'primary')
+      return `background: ${palette.accent}; color: #fff; border-color: ${palette.accent};
+        &:hover { background: #b55a3b; }`;
+    if ($variant === 'danger')
+      return `background: ${palette.dangerSoft}; color: ${palette.danger}; border-color: ${palette.danger};
+        &:hover { background: #ebb8a8; }`;
+    return `background: ${palette.surface}; color: ${palette.textMuted}; border-color: ${palette.border};
+      &:hover { background: ${palette.bg}; color: ${palette.text}; }`;
+  }}
+`;
+
+/* ─── Cell helpers ─────────────────────────────────────────────────────────── */
+const SubscriberCell = styled.div`
+  font-weight: 600;
+  color: ${palette.text};
+`;
+
+const MetaLine = styled.div`
+  font-size: 0.75rem;
+  color: ${palette.textSubtle};
+  margin-top: 0.125rem;
+`;
+
+const PlanBadge = styled.span<{ $plan: SubscriptionPlan }>`
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  border-radius: 0.375rem;
+  padding: 0.125rem 0.5rem;
+
+  ${({ $plan }) => {
+    if ($plan === 'PREMIUM') return `background: #fef9c3; color: #854d0e;`;
+    if ($plan === 'BASIC') return `background: ${palette.infoSoft}; color: ${palette.info};`;
+    return `background: #f3e8ff; color: #7c3aed;`;
+  }}
+`;
+
+const StatusBadge = styled.span<{ $status: SubscriptionStatus }>`
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-radius: 0.375rem;
+  padding: 0.125rem 0.5rem;
+
+  ${({ $status }) => {
+    switch ($status) {
+      case 'ACTIVE':
+        return `background: ${palette.successSoft}; color: ${palette.success};`;
+      case 'TRIALING':
+        return `background: ${palette.infoSoft}; color: ${palette.info};`;
+      case 'PAST_DUE':
+      case 'UNPAID':
+        return `background: ${palette.warningSoft}; color: ${palette.warning};`;
+      case 'CANCELLED':
+      case 'INCOMPLETE_EXPIRED':
+        return `background: #f3f4f6; color: #6b7280;`;
+      default:
+        return `background: ${palette.dangerSoft}; color: ${palette.danger};`;
+    }
+  }}
+`;
+
+const BalanceCell = styled.div`
+  font-variant-numeric: tabular-nums;
+  font-size: 0.875rem;
+  color: ${palette.textMuted};
+`;
+
+/* ─── Modal ────────────────────────────────────────────────────────────────── */
+const Overlay = styled.div`
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+`;
+
+const Modal = styled.div`
+  background: ${palette.surface};
+  border: 1px solid ${palette.border};
+  border-radius: 0.875rem;
+  padding: 1.75rem;
+  width: 100%;
+  max-width: 28rem;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.15);
+`;
+
+const ModalTitle = styled.h2`
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: ${palette.text};
+  margin: 0 0 0.5rem;
+`;
+
+const ModalBody = styled.p`
+  font-size: 0.9375rem;
+  color: ${palette.textMuted};
+  margin: 0 0 1.5rem;
+  line-height: 1.5;
+`;
+
+const ModalActions = styled.div`
+  display: flex;
+  gap: 0.75rem;
+  justify-content: flex-end;
+`;
+
+const ModalLabel = styled.label`
+  display: block;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: ${palette.textMuted};
+  margin-bottom: 0.375rem;
+`;
+
+const ModalSelect = styled.select`
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid ${palette.border};
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  background: ${palette.bg};
+  color: ${palette.text};
+  outline: none;
+  margin-bottom: 1.5rem;
+
+  &:focus {
+    border-color: ${palette.accent};
+    box-shadow: 0 0 0 2px ${palette.accentSoft};
+  }
+`;
+
+/* ─── History Drawer ───────────────────────────────────────────────────────── */
+const Drawer = styled.div<{ $open: boolean }>`
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 28rem;
+  max-width: 100vw;
+  background: ${palette.surface};
+  border-left: 1px solid ${palette.border};
+  box-shadow: -8px 0 32px rgba(0, 0, 0, 0.1);
+  z-index: 90;
+  transform: ${({ $open }) => ($open ? 'translateX(0)' : 'translateX(100%)')};
+  transition: transform 220ms ease;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+`;
+
+const DrawerBackdrop = styled.div<{ $open: boolean }>`
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.2);
+  z-index: 89;
+  opacity: ${({ $open }) => ($open ? 1 : 0)};
+  pointer-events: ${({ $open }) => ($open ? 'auto' : 'none')};
+  transition: opacity 220ms ease;
+`;
+
+const DrawerHeader = styled.div`
+  padding: 1.5rem;
+  border-bottom: 1px solid ${palette.border};
+`;
+
+const DrawerTitle = styled.h3`
+  font-size: 1rem;
+  font-weight: 700;
+  color: ${palette.text};
+  margin: 0 0 0.25rem;
+`;
+
+const DrawerSubtitle = styled.p`
+  font-size: 0.8125rem;
+  color: ${palette.textSubtle};
+  margin: 0;
+`;
+
+const DrawerClose = styled.button`
+  position: absolute;
+  top: 1.25rem;
+  right: 1.25rem;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1.25rem;
+  color: ${palette.textSubtle};
+  line-height: 1;
+  padding: 0.25rem;
+
+  &:hover { color: ${palette.text}; }
+`;
+
+const DrawerBody = styled.div`
+  padding: 1.25rem 1.5rem;
+  flex: 1;
+`;
+
+const TxRow = styled.div`
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid ${palette.border};
+
+  &:last-child { border-bottom: none; }
+`;
+
+const TxAmount = styled.div<{ $negative?: boolean }>`
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  font-size: 0.9375rem;
+  color: ${({ $negative }) => ($negative ? palette.danger : palette.success)};
+  white-space: nowrap;
+`;
+
+const TxMeta = styled.div`
+  flex: 1;
+`;
+
+const TxType = styled.div`
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: ${palette.text};
+  text-transform: capitalize;
+`;
+
+const TxDate = styled.div`
+  font-size: 0.75rem;
+  color: ${palette.textSubtle};
+  margin-top: 0.125rem;
+`;
+
+const TxNote = styled.div`
+  font-size: 0.75rem;
+  color: ${palette.textSubtle};
+  margin-top: 0.125rem;
+  font-style: italic;
+`;
+
+const EmptyDrawer = styled.p`
+  color: ${palette.textSubtle};
+  font-size: 0.875rem;
+  text-align: center;
+  padding: 2rem 0;
+`;
+
+/* ─── CSV helper ────────────────────────────────────────────────────────────── */
+function downloadCSV(rows: AdminSubscription[], locale: string) {
+  const headers = ['ID', 'First name', 'Last name', 'Email', 'Phone', 'Plan', 'Status', 'Cashback balance', 'Period ends', 'Auto-renew', 'Subscribed'];
+  const fmt = (iso: string) => new Date(iso).toLocaleDateString(locale, { day: '2-digit', month: '2-digit', year: 'numeric' });
+  const lines = [
+    headers.join(','),
+    ...rows.map((r) =>
+      [
+        r.id,
+        r.user.firstName ?? '',
+        r.user.lastName ?? '',
+        r.user.email,
+        r.user.phone ?? '',
+        r.plan,
+        r.status,
+        r.user.wallet?.availableBalance.toFixed(2) ?? '',
+        fmt(r.currentPeriodEnd),
+        r.autoRenewal ? 'Yes' : 'No',
+        fmt(r.createdAt),
+      ]
+        .map((v) => `"${String(v).replace(/"/g, '""')}"`)
+        .join(',')
+    ),
+  ];
+  const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `subscribers-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+/* ─── Component ───────────────────────────────────────────────────────────── */
+const PAGE_SIZE = 20;
+const NEGATIVE_TX_TYPES = ['WITHDRAWAL', 'PURCHASE'];
+
+const PLAN_OPTIONS: Array<{ value: SubscriptionPlan | ''; label: string }> = [
+  { value: '', label: 'All plans' },
+  { value: 'LIGHT', label: 'Light' },
+  { value: 'BASIC', label: 'Basic' },
+  { value: 'PREMIUM', label: 'Premium' },
+];
+
+const STATUS_OPTIONS: Array<{ value: SubscriptionStatus | ''; label: string }> = [
+  { value: '', label: 'All statuses' },
+  { value: 'ACTIVE', label: 'Active' },
+  { value: 'TRIALING', label: 'Trialing' },
+  { value: 'PAST_DUE', label: 'Past due' },
+  { value: 'UNPAID', label: 'Unpaid' },
+  { value: 'PAUSED', label: 'Paused' },
+  { value: 'CANCELLED', label: 'Cancelled' },
+  { value: 'INCOMPLETE', label: 'Incomplete' },
+  { value: 'INCOMPLETE_EXPIRED', label: 'Incomplete expired' },
+];
+
+const PLAN_CHOICES: SubscriptionPlan[] = ['LIGHT', 'BASIC', 'PREMIUM'];
+
+export default function AdminSubscribersAllPage() {
+  const { language } = useLanguage();
+  const queryClient = useQueryClient();
+  const locale = language === 'bg' ? 'bg-BG' : 'en-GB';
+
+  /* ── Filters ── */
+  const [page, setPage] = useState(1);
+  const [searchInput, setSearchInput] = useState('');
+  const [search, setSearch] = useState('');
+  const [plan, setPlan] = useState<SubscriptionPlan | ''>('');
+  const [status, setStatus] = useState<SubscriptionStatus | ''>('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+
+  /* ── Modal state ── */
+  const [confirmCancel, setConfirmCancel] = useState<AdminSubscription | null>(null);
+  const [confirmPlan, setConfirmPlan] = useState<AdminSubscription | null>(null);
+  const [newPlan, setNewPlan] = useState<SubscriptionPlan>('BASIC');
+
+  /* ── Drawer state ── */
+  const [drawerSub, setDrawerSub] = useState<AdminSubscription | null>(null);
+
+  /* ── Data ── */
+  const queryKey = ['admin-subscribers', page, search, plan, status, dateFrom, dateTo];
+
+  const { data, isLoading } = useQuery({
+    queryKey,
+    queryFn: () =>
+      adminSubscribersService.list({
+        page,
+        limit: PAGE_SIZE,
+        search: search || undefined,
+        plan,
+        status,
+        dateFrom: dateFrom || undefined,
+        dateTo: dateTo || undefined,
+      }),
+  });
+
+  const { data: drawerTxData, isLoading: drawerTxLoading } = useQuery({
+    queryKey: ['subscriber-tx-history', drawerSub?.user.id],
+    queryFn: () =>
+      adminTransactionsService.list({ userId: drawerSub!.user.id, limit: 5, page: 1 }),
+    enabled: !!drawerSub,
+  });
+
+  /* ── Mutations ── */
+  const cancelMutation = useMutation({
+    mutationFn: (id: string) => adminSubscribersService.cancelSubscription(id),
+    onSuccess: () => {
+      toast.success('Subscription cancelled');
+      queryClient.invalidateQueries({ queryKey: ['admin-subscribers'] });
+      setConfirmCancel(null);
+    },
+    onError: () => toast.error('Failed to cancel subscription'),
+  });
+
+  const planMutation = useMutation({
+    mutationFn: ({ id, plan }: { id: string; plan: SubscriptionPlan }) =>
+      adminSubscribersService.changePlan(id, plan),
+    onSuccess: () => {
+      toast.success('Plan updated');
+      queryClient.invalidateQueries({ queryKey: ['admin-subscribers'] });
+      setConfirmPlan(null);
+    },
+    onError: () => toast.error('Failed to update plan'),
+  });
+
+  /* ── Escape key close ── */
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      setConfirmCancel(null);
+      setConfirmPlan(null);
+      setDrawerSub(null);
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, []);
+
+  /* ── Handlers ── */
+  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') { setSearch(searchInput); setPage(1); }
+  };
+
+  const fmt = (iso: string) =>
+    new Date(iso).toLocaleDateString(locale, { day: '2-digit', month: 'short', year: 'numeric' });
+
+  const fmtTime = (iso: string) =>
+    new Date(iso).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' });
+
+  /* ── Columns ── */
+  const columns: ColumnDef<AdminSubscription>[] = [
+    {
+      key: 'user',
+      header: 'Subscriber',
+      render: (row) => (
+        <SubscriberCell>
+          {row.user.firstName || row.user.lastName
+            ? `${row.user.firstName ?? ''} ${row.user.lastName ?? ''}`.trim()
+            : '—'}
+          <MetaLine>{row.user.email}</MetaLine>
+          {row.user.phone && <MetaLine>{row.user.phone}</MetaLine>}
+        </SubscriberCell>
+      ),
+    },
+    {
+      key: 'plan',
+      header: 'Plan',
+      render: (row) => <PlanBadge $plan={row.plan}>{row.plan}</PlanBadge>,
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      render: (row) => (
+        <StatusBadge $status={row.status}>{row.status.replace('_', ' ')}</StatusBadge>
+      ),
+    },
+    {
+      key: 'wallet',
+      header: 'Cashback',
+      render: (row) =>
+        row.user.wallet ? (
+          <BalanceCell>
+            {row.user.wallet.availableBalance.toFixed(2)} BGN
+            {row.user.wallet.pendingBalance > 0 && (
+              <MetaLine>+{row.user.wallet.pendingBalance.toFixed(2)} pending</MetaLine>
+            )}
+          </BalanceCell>
+        ) : (
+          <span style={{ color: palette.textSubtle }}>—</span>
+        ),
+    },
+    {
+      key: 'currentPeriodEnd',
+      header: 'Period ends',
+      sortable: true,
+      render: (row) => (
+        <span style={{ color: palette.textMuted, fontSize: '0.8125rem' }}>
+          {fmt(row.currentPeriodEnd)}
+        </span>
+      ),
+    },
+    {
+      key: 'autoRenewal',
+      header: 'Auto-renew',
+      render: (row) => (
+        <span
+          style={{
+            fontSize: '0.8125rem',
+            color: row.autoRenewal ? palette.success : palette.textSubtle,
+            fontWeight: 600,
+          }}
+        >
+          {row.autoRenewal ? 'Yes' : 'No'}
+        </span>
+      ),
+    },
+    {
+      key: 'createdAt',
+      header: 'Subscribed',
+      sortable: true,
+      render: (row) => (
+        <span style={{ color: palette.textMuted, fontSize: '0.8125rem' }}>{fmt(row.createdAt)}</span>
+      ),
+    },
+  ];
+
+  const rowActions: RowAction<AdminSubscription>[] = [
+    {
+      label: 'View history',
+      onClick: (row) => setDrawerSub(row),
+    },
+    {
+      label: 'Change plan',
+      onClick: (row) => {
+        setNewPlan(row.plan);
+        setConfirmPlan(row);
+      },
+      hidden: (row) => row.status === 'CANCELLED',
+    },
+    {
+      label: 'Cancel subscription',
+      danger: true,
+      onClick: (row) => setConfirmCancel(row),
+      hidden: (row) => row.status === 'CANCELLED',
+    },
+  ];
+
+  return (
+    <PageShell>
+      {/* Cancel confirm modal */}
+      {confirmCancel && (
+        <Overlay onClick={() => !cancelMutation.isPending && setConfirmCancel(null)}>
+          <Modal onClick={(e) => e.stopPropagation()}>
+            <ModalTitle>Cancel subscription?</ModalTitle>
+            <ModalBody>
+              The subscription for{' '}
+              <strong>
+                {confirmCancel.user.firstName || confirmCancel.user.lastName
+                  ? `${confirmCancel.user.firstName ?? ''} ${confirmCancel.user.lastName ?? ''}`.trim()
+                  : confirmCancel.user.email}
+              </strong>{' '}
+              will be cancelled at the end of the current billing period. No refund will be issued.
+            </ModalBody>
+            <ModalActions>
+              <Btn onClick={() => setConfirmCancel(null)}>Keep active</Btn>
+              <Btn
+                $variant="danger"
+                onClick={() => cancelMutation.mutate(confirmCancel.id)}
+                disabled={cancelMutation.isPending}
+              >
+                {cancelMutation.isPending ? 'Cancelling…' : 'Yes, cancel'}
+              </Btn>
+            </ModalActions>
+          </Modal>
+        </Overlay>
+      )}
+
+      {/* Change plan modal */}
+      {confirmPlan && (
+        <Overlay onClick={() => setConfirmPlan(null)}>
+          <Modal onClick={(e) => e.stopPropagation()}>
+            <ModalTitle>Change plan</ModalTitle>
+            <ModalBody>
+              Select a new plan for{' '}
+              <strong>
+                {confirmPlan.user.firstName || confirmPlan.user.lastName
+                  ? `${confirmPlan.user.firstName ?? ''} ${confirmPlan.user.lastName ?? ''}`.trim()
+                  : confirmPlan.user.email}
+              </strong>
+              . Current plan: <PlanBadge $plan={confirmPlan.plan}>{confirmPlan.plan}</PlanBadge>
+            </ModalBody>
+            <div>
+              <ModalLabel>New plan</ModalLabel>
+              <ModalSelect
+                value={newPlan}
+                onChange={(e) => setNewPlan(e.target.value as SubscriptionPlan)}
+              >
+                {PLAN_CHOICES.map((p) => (
+                  <option key={p} value={p}>
+                    {p}
+                  </option>
+                ))}
+              </ModalSelect>
+            </div>
+            <ModalActions>
+              <Btn onClick={() => setConfirmPlan(null)}>Cancel</Btn>
+              <Btn
+                $variant="primary"
+                onClick={() => planMutation.mutate({ id: confirmPlan.id, plan: newPlan })}
+                disabled={planMutation.isPending || newPlan === confirmPlan.plan}
+              >
+                {planMutation.isPending ? 'Saving…' : 'Save change'}
+              </Btn>
+            </ModalActions>
+          </Modal>
+        </Overlay>
+      )}
+
+      {/* History drawer */}
+      <DrawerBackdrop $open={!!drawerSub} onClick={() => setDrawerSub(null)} />
+      <Drawer $open={!!drawerSub}>
+        {drawerSub && (
+          <>
+            <DrawerHeader style={{ position: 'relative' }}>
+              <DrawerClose onClick={() => setDrawerSub(null)}>✕</DrawerClose>
+              <DrawerTitle>
+                {drawerSub.user.firstName || drawerSub.user.lastName
+                  ? `${drawerSub.user.firstName ?? ''} ${drawerSub.user.lastName ?? ''}`.trim()
+                  : drawerSub.user.email}
+              </DrawerTitle>
+              <DrawerSubtitle>Last 5 wallet transactions</DrawerSubtitle>
+            </DrawerHeader>
+            <DrawerBody>
+              {drawerTxLoading ? (
+                <EmptyDrawer>Loading…</EmptyDrawer>
+              ) : !drawerTxData?.transactions.length ? (
+                <EmptyDrawer>No transactions found</EmptyDrawer>
+              ) : (
+                drawerTxData.transactions.map((tx: AdminTransaction) => (
+                  <TxRow key={tx.id}>
+                    <TxMeta>
+                      <TxType>{tx.type.replace(/_/g, ' ').toLowerCase()}</TxType>
+                      {tx.description && <TxNote>{tx.description}</TxNote>}
+                      <TxDate>
+                        {fmt(tx.createdAt)} {fmtTime(tx.createdAt)}
+                      </TxDate>
+                    </TxMeta>
+                    <div>
+                      <TxAmount $negative={NEGATIVE_TX_TYPES.includes(tx.type)}>
+                        {NEGATIVE_TX_TYPES.includes(tx.type) ? '−' : '+'}
+                        {tx.amount.toFixed(2)} {tx.currency}
+                      </TxAmount>
+                      <MetaLine style={{ textAlign: 'right' }}>
+                        {tx.balanceBefore.toFixed(2)} → {tx.balanceAfter.toFixed(2)}
+                      </MetaLine>
+                    </div>
+                  </TxRow>
+                ))
+              )}
+            </DrawerBody>
+          </>
+        )}
+      </Drawer>
+
+      <PageHeader>
+        <TitleBlock>
+          <Eyebrow>Subscribers</Eyebrow>
+          <PageTitle>
+            All subscribers
+            {data && <TotalBadge>{data.total.toLocaleString()}</TotalBadge>}
+          </PageTitle>
+          <PageSubtitle>All subscription records across plans and statuses</PageSubtitle>
+        </TitleBlock>
+        <HeaderActions>
+          <Btn
+            onClick={() => data?.subscriptions.length && downloadCSV(data.subscriptions, locale)}
+            disabled={!data?.subscriptions.length}
+          >
+            ↓ Export CSV
+          </Btn>
+        </HeaderActions>
+      </PageHeader>
+
+      <Card>
+        <FilterRow>
+          <SearchInput
+            type="text"
+            placeholder="Search by name, email or phone…"
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            onKeyDown={handleSearchKeyDown}
+          />
+          <Select value={plan} onChange={(e) => { setPlan(e.target.value as SubscriptionPlan | ''); setPage(1); }}>
+            {PLAN_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </Select>
+          <Select value={status} onChange={(e) => { setStatus(e.target.value as SubscriptionStatus | ''); setPage(1); }}>
+            {STATUS_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </Select>
+          <DateInput
+            type="date"
+            value={dateFrom}
+            title="Subscribed from"
+            onChange={(e) => { setDateFrom(e.target.value); setPage(1); }}
+          />
+          <DateInput
+            type="date"
+            value={dateTo}
+            title="Subscribed to"
+            onChange={(e) => { setDateTo(e.target.value); setPage(1); }}
+          />
+        </FilterRow>
+
+        <DataTable
+          columns={columns}
+          data={data?.subscriptions ?? []}
+          rowKey={(row) => row.id}
+          rowActions={rowActions}
+          loading={isLoading}
+          emptyMessage="No subscribers found"
+          page={page}
+          pageSize={PAGE_SIZE}
+          totalItems={data?.total}
+          onPageChange={setPage}
+        />
+      </Card>
+    </PageShell>
+  );
+}

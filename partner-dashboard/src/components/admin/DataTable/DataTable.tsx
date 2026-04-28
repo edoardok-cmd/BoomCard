@@ -1,0 +1,282 @@
+import React, { useState } from 'react';
+import styled from 'styled-components';
+import Pagination from '../../common/Pagination/Pagination';
+
+export interface ColumnDef<T> {
+  key: string;
+  header: string;
+  sortable?: boolean;
+  width?: string;
+  render?: (row: T, index: number) => React.ReactNode;
+}
+
+export interface RowAction<T> {
+  label: string;
+  onClick: (row: T) => void;
+  danger?: boolean;
+  hidden?: (row: T) => boolean;
+}
+
+interface DataTableProps<T> {
+  columns: ColumnDef<T>[];
+  data: T[];
+  rowKey: (row: T) => string;
+  rowActions?: RowAction<T>[];
+  loading?: boolean;
+  emptyMessage?: string;
+  // Pagination — omit both to hide pagination
+  page?: number;
+  pageSize?: number;
+  totalItems?: number;
+  onPageChange?: (page: number) => void;
+  // Sorting — controlled externally when server-side
+  sortKey?: string;
+  sortDir?: 'asc' | 'desc';
+  onSort?: (key: string, dir: 'asc' | 'desc') => void;
+}
+
+export function DataTable<T>({
+  columns,
+  data,
+  rowKey,
+  rowActions,
+  loading,
+  emptyMessage = 'Няма намерени записи',
+  page,
+  pageSize = 20,
+  totalItems,
+  onPageChange,
+  sortKey,
+  sortDir,
+  onSort,
+}: DataTableProps<T>) {
+  const [openActionRow, setOpenActionRow] = useState<string | null>(null);
+
+  const handleSort = (col: ColumnDef<T>) => {
+    if (!col.sortable || !onSort) return;
+    const nextDir = sortKey === col.key && sortDir === 'asc' ? 'desc' : 'asc';
+    onSort(col.key, nextDir);
+  };
+
+  const totalPages = totalItems != null && pageSize ? Math.ceil(totalItems / pageSize) : 0;
+
+  return (
+    <Wrapper>
+      <TableScroll>
+        <Table>
+          <thead>
+            <tr>
+              {columns.map((col) => (
+                <Th
+                  key={col.key}
+                  style={{ width: col.width }}
+                  $sortable={!!col.sortable}
+                  onClick={() => handleSort(col)}
+                >
+                  <ThInner>
+                    {col.header}
+                    {col.sortable && (
+                      <SortIcon $active={sortKey === col.key} $dir={sortDir}>
+                        {sortKey === col.key && sortDir === 'desc' ? '↓' : '↑'}
+                      </SortIcon>
+                    )}
+                  </ThInner>
+                </Th>
+              ))}
+              {rowActions && rowActions.length > 0 && <Th style={{ width: '3rem' }} $sortable={false} />}
+            </tr>
+          </thead>
+          <tbody>
+            {loading ? (
+              <tr>
+                <td colSpan={columns.length + (rowActions ? 1 : 0)}>
+                  <EmptyState>Зареждане…</EmptyState>
+                </td>
+              </tr>
+            ) : data.length === 0 ? (
+              <tr>
+                <td colSpan={columns.length + (rowActions ? 1 : 0)}>
+                  <EmptyState>{emptyMessage}</EmptyState>
+                </td>
+              </tr>
+            ) : (
+              data.map((row, index) => {
+                const key = rowKey(row);
+                const visibleActions = rowActions?.filter((a) => !a.hidden?.(row)) ?? [];
+                return (
+                  <Tr key={key}>
+                    {columns.map((col) => (
+                      <Td key={col.key}>
+                        {col.render ? col.render(row, index) : (row as any)[col.key]}
+                      </Td>
+                    ))}
+                    {rowActions && rowActions.length > 0 && (
+                      <Td>
+                        {visibleActions.length > 0 && (
+                          <ActionMenu>
+                            <ActionToggle
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setOpenActionRow(openActionRow === key ? null : key);
+                              }}
+                            >
+                              ···
+                            </ActionToggle>
+                            {openActionRow === key && (
+                              <ActionDropdown onMouseLeave={() => setOpenActionRow(null)}>
+                                {visibleActions.map((action) => (
+                                  <ActionItem
+                                    key={action.label}
+                                    $danger={!!action.danger}
+                                    onClick={() => {
+                                      setOpenActionRow(null);
+                                      action.onClick(row);
+                                    }}
+                                  >
+                                    {action.label}
+                                  </ActionItem>
+                                ))}
+                              </ActionDropdown>
+                            )}
+                          </ActionMenu>
+                        )}
+                      </Td>
+                    )}
+                  </Tr>
+                );
+              })
+            )}
+          </tbody>
+        </Table>
+      </TableScroll>
+      {totalPages > 1 && onPageChange && page != null && (
+        <Pagination
+          currentPage={page}
+          totalPages={totalPages}
+          totalItems={totalItems!}
+          itemsPerPage={pageSize}
+          onPageChange={onPageChange}
+        />
+      )}
+    </Wrapper>
+  );
+}
+
+const Wrapper = styled.div``;
+
+const TableScroll = styled.div`
+  overflow-x: auto;
+  border: 1px solid #e8e5dc;
+  border-radius: 0.5rem;
+`;
+
+const Table = styled.table`
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+`;
+
+const Th = styled.th<{ $sortable: boolean }>`
+  padding: 0.75rem 1rem;
+  text-align: left;
+  font-weight: 600;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #6b7280;
+  background: #f9fafb;
+  border-bottom: 1px solid #e8e5dc;
+  cursor: ${(p) => (p.$sortable ? 'pointer' : 'default')};
+  user-select: none;
+
+  &:hover {
+    ${(p) => p.$sortable && 'color: #374151;'}
+  }
+`;
+
+const ThInner = styled.span`
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+`;
+
+const SortIcon = styled.span<{ $active: boolean; $dir?: 'asc' | 'desc' }>`
+  opacity: ${(p) => (p.$active ? 1 : 0.3)};
+`;
+
+const Tr = styled.tr`
+  border-bottom: 1px solid #f3f4f6;
+  transition: background 100ms;
+
+  &:last-child {
+    border-bottom: none;
+  }
+
+  &:hover {
+    background: #faf9f5;
+  }
+`;
+
+const Td = styled.td`
+  padding: 0.75rem 1rem;
+  color: #374151;
+  vertical-align: middle;
+`;
+
+const EmptyState = styled.div`
+  padding: 3rem 1rem;
+  text-align: center;
+  color: #9ca3af;
+  font-size: 0.875rem;
+`;
+
+const ActionMenu = styled.div`
+  position: relative;
+  display: inline-block;
+`;
+
+const ActionToggle = styled.button`
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #6b7280;
+  font-size: 1.25rem;
+  line-height: 1;
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.25rem;
+
+  &:hover {
+    background: #f3f4f6;
+    color: #374151;
+  }
+`;
+
+const ActionDropdown = styled.div`
+  position: absolute;
+  right: 0;
+  top: 100%;
+  z-index: 50;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  min-width: 10rem;
+  overflow: hidden;
+`;
+
+const ActionItem = styled.button<{ $danger: boolean }>`
+  display: block;
+  width: 100%;
+  padding: 0.625rem 1rem;
+  text-align: left;
+  background: none;
+  border: none;
+  font-size: 0.875rem;
+  cursor: pointer;
+  color: ${(p) => (p.$danger ? '#ef4444' : '#374151')};
+  transition: background 100ms;
+
+  &:hover {
+    background: ${(p) => (p.$danger ? '#fef2f2' : '#f9fafb')};
+  }
+`;

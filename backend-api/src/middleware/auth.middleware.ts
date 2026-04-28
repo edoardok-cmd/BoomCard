@@ -7,22 +7,16 @@ export interface AuthRequest extends Request {
     id: string;
     email: string;
     role: string;
+    // Effective permission keys for this session (loaded from DB on login,
+    // carried as a plain array in the JWT to avoid extra DB hits per request).
+    permissions?: string[];
     // Sibling-account IDs this session can switch between without re-auth.
-    // Populated from the `ag` claim on the access token; only present when
-    // the login matched more than one account (see AuthService.login).
     ag?: string[];
-    // Client surface the token was minted for. Populated from the `ct`
-    // claim; absent on tokens issued before the claim was added, in which
-    // case callers should fall back to Origin/Referer inference.
+    // Client surface the token was minted for.
     ct?: 'mobile' | 'web';
-    // Standard JWT `iat` (seconds since epoch). Needed by /switch-account
-    // to compare against target.passwordChangedAt and refuse pivots from
-    // tokens issued before the target rotated their credentials.
+    // Standard JWT iat — used by /switch-account to refuse stale pivots.
     iat?: number;
-    // Impersonation claims — present only when this session was minted by
-    // POST /auth/impersonate. `imp` marks the session as an impersonation,
-    // `impBy` is the admin userId who initiated it. /auth/stop-impersonate
-    // uses `impBy` to restore the admin's own session.
+    // Impersonation claims.
     imp?: true;
     impBy?: string;
     impByRole?: string;
@@ -75,6 +69,26 @@ export const authorize = (...roles: string[]) => {
 
     if (!roles.includes(req.user.role)) {
       return next(new AppError('Not authorized', 403));
+    }
+
+    next();
+  };
+};
+
+// Fine-grained permission guard. Falls back to allowing SUPER_ADMIN unconditionally
+// so existing admin routes continue to work before permissions are fully seeded.
+export const requirePermission = (key: string) => {
+  return (req: AuthRequest, res: Response, next: NextFunction) => {
+    if (!req.user) {
+      return next(new AppError('Not authenticated', 401));
+    }
+
+    if (req.user.role === 'SUPER_ADMIN') {
+      return next();
+    }
+
+    if (!req.user.permissions || !req.user.permissions.includes(key)) {
+      return next(new AppError('Insufficient permissions', 403));
     }
 
     next();

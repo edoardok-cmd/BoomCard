@@ -378,10 +378,11 @@ router.post(
     const userId = req.user!.id;
     const { type, version, granted } = req.body;
 
-    if (!type || !['terms', 'privacy', 'marketing'].includes(type)) {
+    const validTypes = ['terms', 'privacy', 'marketing', 'email_marketing', 'phone_marketing'];
+    if (!type || !validTypes.includes(type)) {
       return res.status(400).json({
         error: 'Validation Error',
-        message: 'Consent type must be one of: terms, privacy, marketing',
+        message: 'Consent type must be one of: terms, privacy, marketing, email_marketing, phone_marketing',
       });
     }
 

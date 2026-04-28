@@ -14,6 +14,7 @@ import { useAuth } from '../../../contexts/AuthContext';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { useTheme, ThemeMode } from '../../../contexts/ThemeContext';
 import { apiService } from '../../../services/api.service';
+import { ADMIN_NAV } from '../../admin/AdminNav';
 
 interface ImpersonatablePartner {
   partnerId: string;
@@ -1299,7 +1300,7 @@ export const Header: React.FC<HeaderProps> = ({
                   // new role — admin menu items and partner menu items
                   // don't overlap, so "stay on current route" usually 404s.
                   if (account.role === 'SUPER_ADMIN' || account.role === 'ADMIN') {
-                    navigate('/admin');
+                    navigate('/admin/dashboard');
                   } else if (account.role === 'PARTNER') {
                     navigate('/dashboard');
                   }
@@ -1511,7 +1512,7 @@ export const Header: React.FC<HeaderProps> = ({
                               try {
                                 await stopImpersonating();
                                 setUserMenuOpen(false);
-                                navigate('/admin');
+                                navigate('/admin/dashboard');
                               } catch {
                                 // toast already shown
                               } finally {
@@ -1551,206 +1552,39 @@ export const Header: React.FC<HeaderProps> = ({
                         )}
                         {user.role === 'admin' ? (
                           <>
-                            <UserMenuItem
-                              to="/admin"
-                              onClick={() => setUserMenuOpen(false)}
-                            >
-                              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  strokeWidth={2}
-                                  d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"
-                                />
-                              </svg>
-                              {t('header.adminDashboard')}
-                            </UserMenuItem>
+                            {/* 10-category admin navigation driven by ADMIN_NAV */}
+                            {ADMIN_NAV.map((category) => (
+                              <UserMenuItem
+                                key={category.key}
+                                to={category.path}
+                                onClick={() => setUserMenuOpen(false)}
+                              >
+                                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d={category.icon}
+                                  />
+                                </svg>
+                                {language === 'bg' ? category.labelBg : category.labelEn}
+                              </UserMenuItem>
+                            ))}
 
-                            <UserMenuItem
-                              to="/admin/partners"
-                              onClick={() => setUserMenuOpen(false)}
-                            >
-                              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  strokeWidth={2}
-                                  d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"
-                                />
-                              </svg>
-                              {t('header.managePartners')}
-                            </UserMenuItem>
+                            <UserMenuDivider />
 
-                            <UserMenuItem
-                              to="/admin/top-discounts"
-                              onClick={() => setUserMenuOpen(false)}
-                            >
+                            {/* Logout is the last item under Profile for admin users (spec requirement) */}
+                            <UserMenuButton onClick={handleLogout}>
                               <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path
                                   strokeLinecap="round"
                                   strokeLinejoin="round"
                                   strokeWidth={2}
-                                  d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"
+                                  d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
                                 />
                               </svg>
-                              {t('header.topDiscounts')}
-                            </UserMenuItem>
-
-                            <UserMenuItem
-                              to="/admin/partner-types"
-                              onClick={() => setUserMenuOpen(false)}
-                            >
-                              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  strokeWidth={2}
-                                  d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"
-                                />
-                              </svg>
-                              {t('header.partnerTypes')}
-                            </UserMenuItem>
-
-                            <UserMenuItem
-                              to="/admin/receipts"
-                              onClick={() => setUserMenuOpen(false)}
-                            >
-                              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  strokeWidth={2}
-                                  d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                                />
-                              </svg>
-                              {t('header.adminReceipts')}
-                            </UserMenuItem>
-
-                            <UserMenuItem
-                              to="/admin/scan-review"
-                              onClick={() => setUserMenuOpen(false)}
-                            >
-                              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  strokeWidth={2}
-                                  d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2M15 13l-3 3-1.5-1.5"
-                                />
-                              </svg>
-                              {t('header.scanReview')}
-                            </UserMenuItem>
-
-                            <UserMenuItem
-                              to="/admin/bulk-import"
-                              onClick={() => setUserMenuOpen(false)}
-                            >
-                              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  strokeWidth={2}
-                                  d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"
-                                />
-                              </svg>
-                              {t('header.bulkImport')}
-                            </UserMenuItem>
-
-                            <UserMenuItem
-                              to="/admin/cashback"
-                              onClick={() => setUserMenuOpen(false)}
-                            >
-                              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  strokeWidth={2}
-                                  d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                                />
-                              </svg>
-                              {language === 'bg' ? 'Кешбек Плащания' : 'Cashback Payments'}
-                            </UserMenuItem>
-
-                            <UserMenuItem
-                              to="/admin/cashback/rates"
-                              onClick={() => setUserMenuOpen(false)}
-                            >
-                              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  strokeWidth={2}
-                                  d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"
-                                />
-                              </svg>
-                              {language === 'bg' ? 'Кешбек Ставки' : 'Cashback Rates'}
-                            </UserMenuItem>
-
-                            <UserMenuItem
-                              to="/admin/merchant-whitelist"
-                              onClick={() => setUserMenuOpen(false)}
-                            >
-                              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  strokeWidth={2}
-                                  d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"
-                                />
-                              </svg>
-                              {language === 'bg' ? 'Списък Търговци' : 'Merchant Whitelist'}
-                            </UserMenuItem>
-
-                            <UserMenuItem
-                              to="/admin/venue-fraud-config"
-                              onClick={() => setUserMenuOpen(false)}
-                            >
-                              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  strokeWidth={2}
-                                  d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
-                                />
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  strokeWidth={2}
-                                  d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-                                />
-                              </svg>
-                              {language === 'bg' ? 'Конфиг за Измами' : 'Venue Fraud Config'}
-                            </UserMenuItem>
-
-                            <UserMenuItem
-                              to="/admin/receipt-templates"
-                              onClick={() => setUserMenuOpen(false)}
-                            >
-                              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  strokeWidth={2}
-                                  d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z"
-                                />
-                              </svg>
-                              {language === 'bg' ? 'Шаблони за Бележки' : 'Receipt Templates'}
-                            </UserMenuItem>
-
-                            <UserMenuItem
-                              to="/admin/menu-approvals"
-                              onClick={() => setUserMenuOpen(false)}
-                            >
-                              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  strokeWidth={2}
-                                  d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"
-                                />
-                              </svg>
-                              {language === 'bg' ? 'Одобрения на менюта' : 'Menu Approvals'}
-                            </UserMenuItem>
+                              {t('common.logout')}
+                            </UserMenuButton>
                           </>
                         ) : user.role === 'partner' || isImpersonating ? (
                           <>
@@ -1964,19 +1798,23 @@ export const Header: React.FC<HeaderProps> = ({
                           </>
                         )}
 
-                        <UserMenuDivider />
-
-                        <UserMenuButton onClick={handleLogout}>
-                          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
-                            />
-                          </svg>
-                          {t('common.logout')}
-                        </UserMenuButton>
+                        {/* Logout for non-admin roles — admin logout lives inside the admin block above */}
+                        {user.role !== 'admin' && (
+                          <>
+                            <UserMenuDivider />
+                            <UserMenuButton onClick={handleLogout}>
+                              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
+                                />
+                              </svg>
+                              {t('common.logout')}
+                            </UserMenuButton>
+                          </>
+                        )}
                       </UserMenuItems>
                     </UserMenuDropdown>
                   )}

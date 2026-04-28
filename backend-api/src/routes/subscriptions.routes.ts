@@ -159,6 +159,44 @@ router.post('/:id/cancel', authenticate, asyncHandler(async (req: AuthRequest, r
 }));
 
 /**
+ * PATCH /api/subscriptions/:id/auto-renewal
+ * Enable or disable auto-renewal for a subscription (FR-004)
+ */
+const autoRenewalSchema = z.object({
+  autoRenewal: z.boolean(),
+});
+
+router.patch('/:id/auto-renewal', authenticate, asyncHandler(async (req: AuthRequest, res: Response) => {
+  const { id } = req.params;
+  const { autoRenewal } = autoRenewalSchema.parse(req.body);
+
+  const result = await subscriptionService.toggleAutoRenewal(id, req.user!.id, autoRenewal);
+  res.json(result);
+}));
+
+/**
+ * POST /api/subscriptions/:id/trial-refund
+ * Request a 24-hour trial refund (FR-007)
+ * Eligible within 24h of purchase if trialRefundUsed is false
+ */
+router.post('/:id/trial-refund', authenticate, asyncHandler(async (req: AuthRequest, res: Response) => {
+  const { id } = req.params;
+
+  const result = await subscriptionService.requestTrialRefund(id, req.user!.id);
+  res.json(result);
+}));
+
+/**
+ * POST /api/subscriptions/:id/retry-payment
+ * Retry payment for a PAST_DUE subscription (FR-grace-retry)
+ */
+router.post('/:id/retry-payment', authenticate, asyncHandler(async (req: AuthRequest, res: Response) => {
+  const { id } = req.params;
+  const result = await subscriptionService.retryPayment(id, req.user!.id);
+  res.json(result);
+}));
+
+/**
  * POST /api/subscriptions/:id/update-plan
  * Upgrade or downgrade subscription
  */

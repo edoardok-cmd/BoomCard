@@ -955,6 +955,8 @@ async function handleSubscriptionCallback(req: Request, res: Response) {
           where: { id: subscription.id, status: { not: SubscriptionStatus.ACTIVE } },
           data: {
             status: SubscriptionStatus.ACTIVE,
+            // FR-007: 24-hour trial refund window starts at payment confirmation
+            trialRefundEligibleUntil: new Date(Date.now() + 24 * 60 * 60 * 1000),
             metadata: JSON.stringify({
               ...existingMetadata,
               paymentConfirmedAt: new Date().toISOString(),

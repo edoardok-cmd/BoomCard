@@ -446,6 +446,48 @@ const SubscriptionMetaValue = styled.span`
   }
 `;
 
+const GracePeriodBanner = styled(motion.div)`
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  border-radius: 1rem;
+  padding: 1rem 1.5rem;
+  margin-bottom: 2.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+
+  [data-theme="dark"] & {
+    background: rgba(234, 88, 12, 0.12);
+    border-color: rgba(234, 88, 12, 0.3);
+  }
+`;
+
+const GracePeriodText = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+`;
+
+const GracePeriodTitle = styled.span`
+  font-size: 0.9375rem;
+  font-weight: 700;
+  color: #c2410c;
+
+  [data-theme="dark"] & {
+    color: #fb923c;
+  }
+`;
+
+const GracePeriodDesc = styled.span`
+  font-size: 0.8125rem;
+  color: #92400e;
+
+  [data-theme="dark"] & {
+    color: #fdba74;
+  }
+`;
+
 const PlanBadge = styled.span<{ $plan: string }>`
   display: inline-flex;
   align-items: center;
@@ -470,33 +512,37 @@ const StatusBadge = styled.span<{ $status: string }>`
   font-size: 0.75rem;
   font-weight: 600;
   background: ${({ $status }) => {
-    if ($status === 'APPROVED') return '#d1fae5';
-    if ($status === 'PENDING') return '#fef3c7';
+    if ($status === 'APPROVED' || $status === 'ACTIVE') return '#d1fae5';
+    if ($status === 'PENDING' || $status === 'TRIALING') return '#fef3c7';
     if ($status === 'MANUAL_REVIEW') return '#dbeafe';
-    if ($status === 'REJECTED') return '#fee2e2';
+    if ($status === 'REJECTED' || $status === 'CANCELLED') return '#fee2e2';
+    if ($status === 'PAST_DUE') return '#fff7ed';
     return '#f3f4f6';
   }};
   color: ${({ $status }) => {
-    if ($status === 'APPROVED') return '#065f46';
-    if ($status === 'PENDING') return '#92400e';
+    if ($status === 'APPROVED' || $status === 'ACTIVE') return '#065f46';
+    if ($status === 'PENDING' || $status === 'TRIALING') return '#92400e';
     if ($status === 'MANUAL_REVIEW') return '#1e40af';
-    if ($status === 'REJECTED') return '#991b1b';
+    if ($status === 'REJECTED' || $status === 'CANCELLED') return '#991b1b';
+    if ($status === 'PAST_DUE') return '#c2410c';
     return '#374151';
   }};
 
   [data-theme="dark"] & {
     background: ${({ $status }) => {
-      if ($status === 'APPROVED') return 'rgba(16, 185, 129, 0.2)';
-      if ($status === 'PENDING') return 'rgba(245, 158, 11, 0.2)';
+      if ($status === 'APPROVED' || $status === 'ACTIVE') return 'rgba(16, 185, 129, 0.2)';
+      if ($status === 'PENDING' || $status === 'TRIALING') return 'rgba(245, 158, 11, 0.2)';
       if ($status === 'MANUAL_REVIEW') return 'rgba(59, 130, 246, 0.2)';
-      if ($status === 'REJECTED') return 'rgba(239, 68, 68, 0.2)';
+      if ($status === 'REJECTED' || $status === 'CANCELLED') return 'rgba(239, 68, 68, 0.2)';
+      if ($status === 'PAST_DUE') return 'rgba(234, 88, 12, 0.2)';
       return 'rgba(107, 114, 128, 0.2)';
     }};
     color: ${({ $status }) => {
-      if ($status === 'APPROVED') return '#34d399';
-      if ($status === 'PENDING') return '#fcd34d';
+      if ($status === 'APPROVED' || $status === 'ACTIVE') return '#34d399';
+      if ($status === 'PENDING' || $status === 'TRIALING') return '#fcd34d';
       if ($status === 'MANUAL_REVIEW') return '#93c5fd';
-      if ($status === 'REJECTED') return '#fca5a5';
+      if ($status === 'REJECTED' || $status === 'CANCELLED') return '#fca5a5';
+      if ($status === 'PAST_DUE') return '#fb923c';
       return '#d1d5db';
     }};
   }
@@ -610,6 +656,8 @@ interface DashboardSubscription {
   plan: string;
   status: string;
   currentPeriodEnd?: string;
+  gracePeriodEndsAt?: string | null;
+  retryAttempt?: number;
 }
 
 interface DashboardWallet {
@@ -684,13 +732,24 @@ const DashboardPage: React.FC = () => {
 
   const statusLabel = (status: string) => {
     const map: Record<string, { en: string; bg: string }> = {
-      APPROVED:      { en: t('dashboard.statusApproved'), bg: t('dashboard.statusApproved') },
-      PENDING:       { en: t('dashboard.statusPending'),  bg: t('dashboard.statusPending') },
-      MANUAL_REVIEW: { en: t('dashboard.statusReview'),   bg: t('dashboard.statusReview') },
-      REJECTED:      { en: t('dashboard.statusRejected'), bg: t('dashboard.statusRejected') },
+      APPROVED:      { en: t('dashboard.statusApproved'),     bg: t('dashboard.statusApproved') },
+      PENDING:       { en: t('dashboard.statusPending'),      bg: t('dashboard.statusPending') },
+      MANUAL_REVIEW: { en: t('dashboard.statusReview'),       bg: t('dashboard.statusReview') },
+      REJECTED:      { en: t('dashboard.statusRejected'),     bg: t('dashboard.statusRejected') },
+      ACTIVE:        { en: t('dashboard.subStatusActive'),    bg: t('dashboard.subStatusActive') },
+      TRIALING:      { en: t('dashboard.subStatusTrialing'),  bg: t('dashboard.subStatusTrialing') },
+      PAST_DUE:      { en: t('dashboard.subStatusPastDue'),   bg: t('dashboard.subStatusPastDue') },
+      CANCELLED:     { en: t('dashboard.subStatusCancelled'), bg: t('dashboard.subStatusCancelled') },
     };
     return map[status]?.[language === 'bg' ? 'bg' : 'en'] ?? status;
   };
+
+  const graceDaysLeft = (() => {
+    const ends = dashboardData?.subscription.gracePeriodEndsAt;
+    if (!ends) return null;
+    const diff = new Date(ends).getTime() - Date.now();
+    return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
+  })();
 
   const showUpgradeBanner =
     dashboardData?.subscription.plan === 'LIGHT' ||
@@ -906,7 +965,7 @@ const DashboardPage: React.FC = () => {
                 {isLoadingDashboard ? '...' : (dashboardData?.subscription.plan ?? 'LIGHT')}
               </PlanBadge>
               <StatusBadge $status={dashboardData?.subscription.status ?? 'ACTIVE'}>
-                {isLoadingDashboard ? '...' : (dashboardData?.subscription.status ?? 'ACTIVE')}
+                {isLoadingDashboard ? '...' : statusLabel(dashboardData?.subscription.status ?? 'ACTIVE')}
               </StatusBadge>
             </SubscriptionHeader>
 
@@ -921,6 +980,26 @@ const DashboardPage: React.FC = () => {
               </SubscriptionMeta>
             )}
           </SubscriptionCard>
+
+          {dashboardData?.subscription.status === 'PAST_DUE' && graceDaysLeft !== null && (
+            <GracePeriodBanner
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3 }}
+            >
+              <GracePeriodText>
+                <GracePeriodTitle>⚠ {t('dashboard.gracePeriodTitle')}</GracePeriodTitle>
+                <GracePeriodDesc>
+                  {graceDaysLeft > 0
+                    ? t('dashboard.gracePeriodDays').replace('{days}', String(graceDaysLeft))
+                    : t('dashboard.gracePeriodExpired')}
+                </GracePeriodDesc>
+              </GracePeriodText>
+              <Link to="/subscription">
+                <Button variant="primary" size="small">{t('dashboard.gracePeriodCta')}</Button>
+              </Link>
+            </GracePeriodBanner>
+          )}
 
           {/* Recent Transactions */}
           <SectionHeader>

@@ -20,6 +20,21 @@ enum UserRole {
   SUPER_ADMIN
 }
 
+enum RiskBucket {
+  LOW_0_30
+  REVIEW_31_60
+  HIGH_61_PLUS
+}
+
+enum AdminRoleKey {
+  SUPER_ADMIN
+  ADMIN
+  SUPPORT
+  FINANCE
+  RISK_REVIEW
+  PARTNER_MANAGER
+}
+
 enum UserStatus {
   ACTIVE
   INACTIVE
@@ -56,12 +71,31 @@ model User {
   // individually revocable, so we compare against the token's iat).
   passwordChangedAt    DateTime?
 
+  // Soft-delete
+  deletedAt        DateTime?
+
+  // Risk scoring (rule-sum; riskScore exposed for future ML)
+  riskScore        Int        @default(0)
+  riskBucket       RiskBucket?
+
+  // TOTP 2FA
+  totpSecret       String?
+  totpEnabledAt    DateTime?
+
+  // Finance fields (Phase 4 preview — safe to add now)
+  iban             String?
+  ibanLastChangedAt DateTime?
+
   // GDPR Consent Tracking
   termsAcceptedAt    DateTime?
   privacyAcceptedAt  DateTime?
   termsVersion       String?    // e.g. "2026-02-24"
-  marketingConsent   Boolean    @default(false)
-  marketingConsentAt DateTime?
+  marketingConsent        Boolean   @default(false)
+  marketingConsentAt      DateTime?
+  marketingConsentEmail   Boolean   @default(false)
+  marketingConsentPhone   Boolean   @default(false)
+  marketingConsentEmailAt DateTime?
+  marketingConsentPhoneAt DateTime?
 
   // Notification channel preferences (email/push/inApp/sms toggles + quiet hours).
   // Shape mirrors NotificationPreferences in partner-dashboard's notifications.service.ts.
@@ -91,6 +125,9 @@ model User {
   offerRedemptions    OfferRedemption[]
   savedPaymentMethods SavedPaymentMethod[]
   pushTokens          PushToken[]
+  adminRoles          UserAdminRole[]
+  grantedAdminRoles   UserAdminRole[] @relation("GrantedRoles")
+  auditLogs           AuditLog[]
 
   @@unique([email, role], map: "User_email_role_key")
   @@index([email])
@@ -424,6 +461,8 @@ enum WalletTransactionStatus {
   COMPLETED
   FAILED
   CANCELLED
+  TRIAL_PENDING
+  ANNULLED
 }
 
 enum SubscriptionPlan {
@@ -638,11 +677,18 @@ model Subscription {
   currentPeriodStart DateTime
   currentPeriodEnd   DateTime
 
-  cancelAtPeriodEnd Boolean   @default(false)
-  cancelAt          DateTime?
-  canceledAt        DateTime?
-  trialStart        DateTime?
-  trialEnd          DateTime?
+  cancelAtPeriodEnd        Boolean   @default(false)
+  cancelAt                 DateTime?
+  canceledAt               DateTime?
+  trialStart               DateTime?
+  trialEnd                 DateTime?
+
+  // Spec FR-004, FR-006, FR-007
+  autoRenewal              Boolean   @default(true)
+  trialRefundEligibleUntil DateTime?
+  trialRefundUsed          Boolean   @default(false)
+  retryAttempt             Int       @default(0)
+  gracePeriodEndsAt        DateTime?
 
   metadata String? // JSON
 
@@ -1247,6 +1293,7 @@ enum NotificationType {
   STICKER_SCAN_APPROVED
   FRAUD_ALERT
   SYSTEM
+  MARKETING
 }
 
 model Notification {
@@ -1521,4 +1568,73 @@ model CashbackRate {
   @@index([discountStep])
   @@index([effectiveFrom])
   @@map("cashback_rates")
+}
+
+// ============================================
+// RBAC — Phase 0 Foundations
+// ============================================
+
+model Permission {
+  id       String @id @default(uuid())
+  key      String @unique  // e.g. "subscribers.read", "finance.payouts.write"
+  label    String
+  category String  // e.g. "subscribers", "finance"
+
+  rolePermissions RolePermission[]
+}
+
+model AdminRole {
+  id    String       @id @default(uuid())
+  key   AdminRoleKey @unique
+  label String
+
+  rolePermissions RolePermission[]
+  userRoles       UserAdminRole[]
+}
+
+model RolePermission {
+  id           String @id @default(uuid())
+  roleId       String
+  permissionId String
+  allow        Boolean @default(true)
+
+  role       AdminRole  @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, permissionId])
+  @@index([roleId])
+}
+
+model UserAdminRole {
+  id          String   @id @default(uuid())
+  userId      String
+  roleId      String
+  grantedById String?
+  grantedAt   DateTime @default(now())
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role      AdminRole @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  grantedBy User?     @relation("GrantedRoles", fields: [grantedById], references: [id])
+
+  @@unique([userId, roleId])
+  @@index([userId])
+}
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  actorUserId String?
+  action      String   // e.g. "partner.update", "subscriber.delete"
+  objectType  String   // e.g. "Partner", "User"
+  objectId    String?
+  before      Json?
+  after       Json?
+  ip          String?
+  userAgent   String?
+  createdAt   DateTime @default(now())
+
+  actor User? @relation(fields: [actorUserId], references: [id])
+
+  @@index([actorUserId])
+  @@index([objectType, objectId])
+  @@index([createdAt])
 }

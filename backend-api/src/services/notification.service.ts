@@ -944,6 +944,46 @@ class NotificationService {
     }
   }
 
+  async notifySubscriptionAccessEnded(params: {
+    userId: string;
+    planName: string;
+  }): Promise<void> {
+    try {
+      await this.createNotification({
+        userId: params.userId,
+        type: 'PAYMENT_FAILED',
+        title: 'Subscription ended — payment not received',
+        titleBg: 'Абонаментът е прекратен — плащането не е получено',
+        message: `Your ${params.planName} subscription has ended because we could not collect payment. Reactivate at any time from the billing page.`,
+        messageBg: `Абонаментът ви ${params.planName} е прекратен, тъй като не успяхме да получим плащане. Можете да го активирате отново от страницата за фактуриране.`,
+        priority: 'urgent',
+        actionUrl: '/dashboard/subscription',
+        actionText: 'Reactivate',
+        actionTextBg: 'Активирай отново',
+        data: params,
+      });
+
+      const user = await prisma.user.findUnique({
+        where: { id: params.userId },
+        select: { email: true, firstName: true },
+      });
+      if (user?.email) {
+        emailService.sendEmail({
+          to: user.email,
+          subject: 'Your BoomCard subscription has ended',
+          html: `
+            <p>Hi ${user.firstName || 'there'},</p>
+            <p>Your <strong>${params.planName}</strong> BoomCard subscription has ended because we were unable to collect payment after multiple attempts.</p>
+            <p>You can reactivate your subscription at any time from the <a href="${process.env.PARTNER_DASHBOARD_URL || 'https://partners.boomcard.bg'}/dashboard/subscription">billing page</a>.</p>
+            <p>— The BoomCard Team</p>
+          `,
+        }).catch((err) => logger.error('Failed to send subscription-access-ended email:', err));
+      }
+    } catch (error) {
+      logger.error('❌ Error sending subscription access-ended notification:', error);
+    }
+  }
+
   // ===== Admin-ops notifications =====
 
   /**

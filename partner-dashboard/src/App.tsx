@@ -1,5 +1,5 @@
 import { Suspense } from 'react';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { lazyWithRetry as lazy } from './utils/lazyWithRetry';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'react-hot-toast';
@@ -11,6 +11,8 @@ import { CookieConsentProvider } from './contexts/CookieConsentContext';
 import { LocationProvider } from './contexts/LocationContext';
 import { CookieConsentBanner, CookiePreferencesModal } from './components/common/CookieConsent';
 import ProtectedRoute from './components/auth/ProtectedRoute';
+import { CategoryShell } from './components/admin/CategoryShell';
+import { ADMIN_NAV } from './components/admin/AdminNav';
 import Loading from './components/common/Loading/Loading';
 import ScrollToTop from './components/common/ScrollToTop/ScrollToTop';
 import ScrollToTopButton from './components/common/ScrollToTopButton/ScrollToTopButton';
@@ -39,7 +41,6 @@ const MyOffersPage = lazy(() => import('./pages/MyOffersPage'));
 const CreateOfferPage = lazy(() => import('./pages/CreateOfferPage'));
 const EditOfferPage = lazy(() => import('./pages/EditOfferPage'));
 const PartnerMenusPage = lazy(() => import('./pages/PartnerMenusPage'));
-const AdminMenuApprovalsPage = lazy(() => import('./pages/AdminMenuApprovalsPage'));
 const NearbyOffersPage = lazy(() => import('./pages/NearbyOffersPage'));
 const RewardsPage = lazy(() => import('./pages/RewardsPage'));
 const PromotionsPage = lazy(() => import('./pages/PromotionsPage'));
@@ -47,7 +48,7 @@ const ExperiencesPage = lazy(() => import('./pages/ExperiencesPage'));
 const IntegrationsPage = lazy(() => import('./pages/IntegrationsPage'));
 const LocationsPage = lazy(() => import('./pages/LocationsPage'));
 const UploadReceiptInfoPage = lazy(() => import('./pages/UploadReceiptInfoPage'));
-const ComingSoonPage = lazy(() => import('./pages/ComingSoonPage'));
+const SubscriptionPage = lazy(() => import('./pages/SubscriptionPage'));
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage'));
 
 // Media pages
@@ -129,22 +130,29 @@ const CookiePolicyPage = lazy(() => import('./pages/CookiePolicyPage'));
 const RefundPolicyPage = lazy(() => import('./pages/RefundPolicyPage'));
 
 // Admin pages
-const AdminDashboardPage = lazy(() => import('./pages/AdminDashboardPage'));
+const AdminComingSoonPage = lazy(() => import('./pages/admin/AdminComingSoonPage'));
+const AdminDashboardPage = lazy(() => import('./pages/admin/AdminDashboardPage'));
+const AdminPartnerRequestsPage = lazy(() => import('./pages/admin/AdminPartnerRequestsPage'));
+const AdminSubscribersAllPage = lazy(() => import('./pages/admin/AdminSubscribersAllPage'));
+const AdminPayoutsPage = lazy(() => import('./pages/admin/AdminPayoutsPage'));
+const AdminTransactionsPage = lazy(() => import('./pages/admin/AdminTransactionsPage'));
+const AdminSubscriptionsPage = lazy(() => import('./pages/admin/AdminSubscriptionsPage'));
 const AdminPartnersPage = lazy(() => import('./pages/AdminPartnersPage'));
-const AdminPartnerTypesPage = lazy(() => import('./pages/AdminPartnerTypesPage'));
 const AdminScanReviewPage = lazy(() => import('./pages/AdminScanReviewPage'));
-const AdminBulkImportPage = lazy(() => import('./pages/AdminBulkImportPage'));
-const AdminCashbackPage = lazy(() => import('./pages/AdminCashbackPage'));
+const AdminCashbackPage = lazy(() => import('./pages/admin/AdminCashbackPage'));
 const AdminCashbackRatesPage = lazy(() => import('./pages/AdminCashbackRatesPage'));
-const AdminTopDiscountsPage = lazy(() => import('./pages/AdminTopDiscountsPage'));
 const AdminPartnerOnboardingPage = lazy(() => import('./pages/AdminPartnerOnboardingPage'));
+const AdminAdminsAllPage = lazy(() => import('./pages/admin/AdminAdminsAllPage'));
+const AdminAdminsCreatePage = lazy(() => import('./pages/admin/AdminAdminsCreatePage'));
+const AdminAdminsPendingPage = lazy(() => import('./pages/admin/AdminAdminsPendingPage'));
+const AdminAdminsAuditPage = lazy(() => import('./pages/admin/AdminAdminsAuditPage'));
+const AdminAlertsPage = lazy(() => import('./pages/admin/AdminAlertsPage'));
 
 // Receipt pages
 const ReceiptsPage = lazy(() => import('./pages/ReceiptsPage'));
 const ReceiptDetailPage = lazy(() => import('./pages/ReceiptDetailPage'));
 const ReceiptAnalyticsPage = lazy(() => import('./pages/ReceiptAnalyticsPage'));
 const AdminReceiptsPage = lazy(() => import('./pages/AdminReceiptsPage'));
-const AdminMerchantWhitelistPage = lazy(() => import('./pages/AdminMerchantWhitelistPage'));
 const AdminVenueFraudConfigPage = lazy(() => import('./pages/AdminVenueFraudConfigPage'));
 const AdminReceiptTemplatesPage = lazy(() => import('./pages/AdminReceiptTemplatesPage'));
 
@@ -414,38 +422,7 @@ function App() {
 
                     {/* Admin routes - Role-protected */}
                     <Route path="admin-preview" element={<AdminDashboardPage />} />
-                    <Route
-                      path="admin"
-                      element={
-                        <ProtectedRoute requiredRole="admin">
-                          <AdminDashboardPage />
-                        </ProtectedRoute>
-                      }
-                    />
-                    <Route
-                      path="admin/top-discounts"
-                      element={
-                        <ProtectedRoute requiredRole="admin">
-                          <AdminTopDiscountsPage />
-                        </ProtectedRoute>
-                      }
-                    />
-                    <Route
-                      path="admin/partners"
-                      element={
-                        <ProtectedRoute requiredRole="admin">
-                          <AdminPartnersPage />
-                        </ProtectedRoute>
-                      }
-                    />
-                    <Route
-                      path="admin/partner-types"
-                      element={
-                        <ProtectedRoute requiredRole="admin">
-                          <AdminPartnerTypesPage />
-                        </ProtectedRoute>
-                      }
-                    />
+                    {/* /admin/receipts kept as a real route (not yet mapped to new IA category) */}
                     <Route
                       path="admin/receipts"
                       element={
@@ -454,78 +431,180 @@ function App() {
                         </ProtectedRoute>
                       }
                     />
+
+                    {/* ── New 10-category admin IA (Phase 0) ──────────────────────── */}
+                    {/* /admin/dashboard */}
                     <Route
-                      path="admin/scan-review"
+                      path="admin/dashboard"
                       element={
                         <ProtectedRoute requiredRole="admin">
-                          <AdminScanReviewPage />
+                          <CategoryShell category={ADMIN_NAV[0]} />
                         </ProtectedRoute>
                       }
-                    />
+                    >
+                      <Route index element={<AdminDashboardPage />} />
+                      <Route path="alerts" element={<AdminAlertsPage />} />
+                    </Route>
+
+                    {/* /admin/subscribers */}
                     <Route
-                      path="admin/bulk-import"
+                      path="admin/subscribers"
                       element={
                         <ProtectedRoute requiredRole="admin">
-                          <AdminBulkImportPage />
+                          <CategoryShell category={ADMIN_NAV[1]} />
                         </ProtectedRoute>
                       }
-                    />
+                    >
+                      <Route index element={<Navigate to="all" replace />} />
+                      <Route path="all" element={<AdminSubscribersAllPage />} />
+                      <Route path="subscriptions" element={<AdminSubscriptionsPage />} />
+                      <Route path="transactions" element={<AdminTransactionsPage />} />
+                      <Route path="cashback" element={<AdminCashbackPage />} />
+                    </Route>
+
+                    {/* /admin/partners (new IA) */}
                     <Route
-                      path="admin/cashback"
+                      path="admin/partners/new"
                       element={
                         <ProtectedRoute requiredRole="admin">
-                          <AdminCashbackPage />
+                          <CategoryShell category={ADMIN_NAV[2]} />
                         </ProtectedRoute>
                       }
-                    />
+                    >
+                      <Route index element={<Navigate to="requests" replace />} />
+                      <Route path="requests" element={<AdminPartnerRequestsPage />} />
+                      <Route path="onboarding" element={<AdminPartnerOnboardingPage />} />
+                      <Route path="active" element={<AdminPartnersPage />} />
+                      <Route path="locations" element={<AdminComingSoonPage />} />
+                      <Route path="receipt-profiles" element={<AdminReceiptTemplatesPage />} />
+                    </Route>
+
+                    {/* /admin/finance */}
                     <Route
-                      path="admin/cashback/rates"
+                      path="admin/finance"
                       element={
                         <ProtectedRoute requiredRole="admin">
-                          <AdminCashbackRatesPage />
+                          <CategoryShell category={ADMIN_NAV[3]} />
                         </ProtectedRoute>
                       }
-                    />
+                    >
+                      <Route index element={<Navigate to="payouts" replace />} />
+                      <Route path="payouts" element={<AdminPayoutsPage />} />
+                      <Route path="invoices" element={<AdminComingSoonPage />} />
+                      <Route path="periods" element={<AdminComingSoonPage />} />
+                      <Route path="reports" element={<AdminComingSoonPage />} />
+                    </Route>
+
+                    {/* /admin/control */}
                     <Route
-                      path="admin/partner-onboarding"
+                      path="admin/control"
                       element={
                         <ProtectedRoute requiredRole="admin">
-                          <AdminPartnerOnboardingPage />
+                          <CategoryShell category={ADMIN_NAV[4]} />
                         </ProtectedRoute>
                       }
-                    />
+                    >
+                      <Route index element={<Navigate to="risk" replace />} />
+                      <Route path="risk" element={<AdminScanReviewPage />} />
+                      <Route path="security" element={<AdminComingSoonPage />} />
+                      <Route path="disputes" element={<AdminComingSoonPage />} />
+                      <Route path="rules" element={<AdminVenueFraudConfigPage />} />
+                    </Route>
+
+                    {/* /admin/marketing — placeholder */}
                     <Route
-                      path="admin/menu-approvals"
+                      path="admin/marketing"
                       element={
                         <ProtectedRoute requiredRole="admin">
-                          <AdminMenuApprovalsPage />
+                          <CategoryShell category={ADMIN_NAV[5]} />
                         </ProtectedRoute>
                       }
-                    />
+                    >
+                      <Route index element={<Navigate to="campaigns" replace />} />
+                      <Route path="campaigns" element={<AdminComingSoonPage />} />
+                      <Route path="templates" element={<AdminComingSoonPage />} />
+                      <Route path="automations" element={<AdminComingSoonPage />} />
+                      <Route path="lists" element={<AdminComingSoonPage />} />
+                    </Route>
+
+                    {/* /admin/settings */}
                     <Route
-                      path="admin/merchant-whitelist"
+                      path="admin/settings"
                       element={
                         <ProtectedRoute requiredRole="admin">
-                          <AdminMerchantWhitelistPage />
+                          <CategoryShell category={ADMIN_NAV[6]} />
                         </ProtectedRoute>
                       }
-                    />
+                    >
+                      <Route index element={<Navigate to="thresholds" replace />} />
+                      <Route path="thresholds" element={<AdminComingSoonPage />} />
+                      <Route path="percentages" element={<AdminCashbackRatesPage />} />
+                      <Route path="validity" element={<AdminComingSoonPage />} />
+                      <Route path="mobile" element={<AdminComingSoonPage />} />
+                      <Route path="system" element={<AdminComingSoonPage />} />
+                    </Route>
+
+                    {/* /admin/admins */}
                     <Route
-                      path="admin/venue-fraud-config"
+                      path="admin/admins"
                       element={
                         <ProtectedRoute requiredRole="admin">
-                          <AdminVenueFraudConfigPage />
+                          <CategoryShell category={ADMIN_NAV[7]} />
                         </ProtectedRoute>
                       }
-                    />
+                    >
+                      <Route index element={<Navigate to="all" replace />} />
+                      <Route path="all" element={<AdminAdminsAllPage />} />
+                      <Route path="create" element={<AdminAdminsCreatePage />} />
+                      <Route path="pending" element={<AdminAdminsPendingPage />} />
+                      <Route path="audit" element={<AdminAdminsAuditPage />} />
+                    </Route>
+
+                    {/* /admin/help — placeholder */}
                     <Route
-                      path="admin/receipt-templates"
+                      path="admin/help"
                       element={
                         <ProtectedRoute requiredRole="admin">
-                          <AdminReceiptTemplatesPage />
+                          <CategoryShell category={ADMIN_NAV[8]} />
                         </ProtectedRoute>
                       }
-                    />
+                    >
+                      <Route index element={<Navigate to="all" replace />} />
+                      <Route path="new" element={<AdminComingSoonPage />} />
+                      <Route path="mine" element={<AdminComingSoonPage />} />
+                      <Route path="all" element={<AdminComingSoonPage />} />
+                    </Route>
+
+                    {/* /admin/profile */}
+                    <Route
+                      path="admin/profile"
+                      element={
+                        <ProtectedRoute requiredRole="admin">
+                          <CategoryShell category={ADMIN_NAV[9]} />
+                        </ProtectedRoute>
+                      }
+                    >
+                      <Route index element={<Navigate to="my-data" replace />} />
+                      <Route path="my-data" element={<AdminComingSoonPage />} />
+                      <Route path="security" element={<AdminComingSoonPage />} />
+                    </Route>
+
+                    {/* Legacy deep-link redirects — keep old URLs working */}
+                    <Route path="admin/partners" element={<Navigate to="/admin/partners/new/active" replace />} />
+                    <Route path="admin/cashback" element={<Navigate to="/admin/subscribers/cashback" replace />} />
+                    <Route path="admin/cashback/rates" element={<Navigate to="/admin/settings/percentages" replace />} />
+                    <Route path="admin/partner-onboarding" element={<Navigate to="/admin/partners/new/onboarding" replace />} />
+                    <Route path="admin/scan-review" element={<Navigate to="/admin/control/risk" replace />} />
+                    <Route path="admin/venue-fraud-config" element={<Navigate to="/admin/control/rules" replace />} />
+                    <Route path="admin/receipt-templates" element={<Navigate to="/admin/partners/new/receipt-profiles" replace />} />
+                    <Route path="admin/merchant-whitelist" element={<Navigate to="/admin/control/rules" replace />} />
+                    <Route path="admin/menu-approvals" element={<Navigate to="/admin/partners/new/active" replace />} />
+                    <Route path="admin/bulk-import" element={<Navigate to="/admin/partners/new/active" replace />} />
+                    <Route path="admin/partner-types" element={<Navigate to="/admin/settings/thresholds" replace />} />
+                    <Route path="admin/top-discounts" element={<Navigate to="/admin/control/risk" replace />} />
+
+                    {/* /admin (bare) → /admin/dashboard */}
+                    <Route path="admin" element={<Navigate to="/admin/dashboard" replace />} />
 
                     {/* Checkout route */}
                     <Route path="checkout" element={<CheckoutPage />} />
@@ -539,7 +618,7 @@ function App() {
                     {/* Other routes */}
                     <Route path="favorites" element={<FavoritesPage />} />
                     <Route path="upload-receipt" element={<UploadReceiptInfoPage />} />
-                    <Route path="subscription" element={<ComingSoonPage />} />
+                    <Route path="subscription" element={<SubscriptionPage />} />
                     <Route path="integrations" element={<IntegrationsPage />} />
                     <Route path="*" element={<NotFoundPage />} />
                   </Route>

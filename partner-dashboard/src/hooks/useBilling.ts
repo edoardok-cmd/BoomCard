@@ -271,6 +271,63 @@ export function useDownloadInvoice() {
 }
 
 /**
+ * Hook to toggle auto-renewal
+ */
+export function useToggleAutoRenewal() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ subscriptionId, autoRenewal }: { subscriptionId: string; autoRenewal: boolean }) =>
+      billingService.toggleAutoRenewal(subscriptionId, autoRenewal),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['billing', 'subscription'] });
+      queryClient.invalidateQueries({ queryKey: ['subscriptions', 'current'] });
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || 'Failed to update auto-renewal');
+    },
+  });
+}
+
+/**
+ * Hook to cancel subscription by ID
+ */
+export function useCancelSubscriptionById() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ subscriptionId, cancelAtPeriodEnd = true }: { subscriptionId: string; cancelAtPeriodEnd?: boolean }) =>
+      billingService.cancelSubscriptionById(subscriptionId, cancelAtPeriodEnd),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['billing', 'subscription'] });
+      queryClient.invalidateQueries({ queryKey: ['subscriptions', 'current'] });
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || 'Failed to cancel subscription');
+    },
+  });
+}
+
+/**
+ * Hook to retry payment for a PAST_DUE subscription
+ */
+export function useRetrySubscriptionPayment() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (subscriptionId: string) => billingService.retrySubscriptionPayment(subscriptionId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['billing', 'subscription'] });
+      queryClient.invalidateQueries({ queryKey: ['subscriptions', 'current'] });
+      toast.success('Payment successful! Subscription reactivated.');
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || 'Payment retry failed');
+    },
+  });
+}
+
+/**
  * Hook to retry invoice payment
  */
 export function useRetryInvoicePayment() {
@@ -354,6 +411,8 @@ export default {
   useInvoice,
   useDownloadInvoice,
   useRetryInvoicePayment,
+  useToggleAutoRenewal,
+  useCancelSubscriptionById,
   usePricingPlans,
   usePricingPlan,
   useBillingStats,

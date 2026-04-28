@@ -375,6 +375,10 @@ class StripeService {
           await this.handleInvoicePaymentFailed(event.data.object as Stripe.Invoice);
           break;
 
+        case 'invoice.upcoming':
+          await this.handleInvoiceUpcoming(event.data.object as Stripe.Invoice);
+          break;
+
         default:
           logger.info(`Unhandled webhook event type: ${event.type}`);
       }
@@ -758,6 +762,7 @@ class StripeService {
           currentPeriodStart: new Date(subscription.current_period_start * 1000),
           currentPeriodEnd: new Date(subscription.current_period_end * 1000),
           cancelAtPeriodEnd: subscription.cancel_at_period_end,
+          autoRenewal: !subscription.cancel_at_period_end,
           cancelAt: subscription.cancel_at ? new Date(subscription.cancel_at * 1000) : null,
           trialStart: subscription.trial_start ? new Date(subscription.trial_start * 1000) : null,
           trialEnd: subscription.trial_end ? new Date(subscription.trial_end * 1000) : null,
@@ -769,6 +774,7 @@ class StripeService {
           currentPeriodStart: new Date(subscription.current_period_start * 1000),
           currentPeriodEnd: new Date(subscription.current_period_end * 1000),
           cancelAtPeriodEnd: subscription.cancel_at_period_end,
+          autoRenewal: !subscription.cancel_at_period_end,
           cancelAt: subscription.cancel_at ? new Date(subscription.cancel_at * 1000) : null,
         },
       });
@@ -800,11 +806,15 @@ class StripeService {
       });
 
       if (dbSub) {
+        const wasPaymentFailure = dbSub.status === 'PAST_DUE' || dbSub.retryAttempt > 0;
+
         await prisma.subscription.update({
           where: { id: dbSub.id },
           data: {
             status: 'CANCELLED',
             canceledAt: new Date(),
+            gracePeriodEndsAt: null,
+            retryAttempt: 0,
           },
         });
 
@@ -824,7 +834,13 @@ class StripeService {
         const { cardService } = await import('./card.service');
         await cardService.syncCardTypeWithSubscription(dbSub.userId, targetPlan);
 
-        logger.info(`Subscription ${subscription.id} cancelled for user ${dbSub.userId}, card synced to ${targetPlan}`);
+        if (wasPaymentFailure) {
+          const planName = dbSub.plan;
+          await notificationService.notifySubscriptionAccessEnded({ userId: dbSub.userId, planName })
+            .catch((err: unknown) => logger.error('Failed to send access-ended notification:', err));
+        }
+
+        logger.info(`Subscription ${subscription.id} cancelled for user ${dbSub.userId}, card synced to ${targetPlan} (payment failure: ${wasPaymentFailure})`);
       } else {
         logger.warn(`No DB subscription found for Stripe subscription ${subscription.id}`);
       }
@@ -882,6 +898,21 @@ class StripeService {
         },
       });
 
+      // If this payment clears a previously failed renewal, reset grace period state
+      if (dbSub.retryAttempt > 0 || dbSub.status === 'PAST_DUE') {
+        await prisma.subscription.update({
+          where: { id: dbSub.id },
+          data: {
+            status: 'ACTIVE',
+            retryAttempt: 0,
+            gracePeriodEndsAt: null,
+            currentPeriodStart: invoice.period_start ? new Date(invoice.period_start * 1000) : undefined,
+            currentPeriodEnd: invoice.period_end ? new Date(invoice.period_end * 1000) : undefined,
+          },
+        });
+        logger.info(`Subscription ${dbSub.id} recovered from PAST_DUE — grace period cleared`);
+      }
+
       logger.info(`Invoice payment recorded: ${amount} ${invoice.currency} for user ${dbSub.userId}`);
     } catch (error) {
       logger.error(`Error handling invoice payment: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -904,7 +935,19 @@ class StripeService {
 
       if (!dbSub) return;
 
-      // Notify user so they can update their payment method
+      const newRetryAttempt = dbSub.retryAttempt + 1;
+      const GRACE_PERIOD_DAYS = 7;
+
+      await prisma.subscription.update({
+        where: { id: dbSub.id },
+        data: {
+          status: 'PAST_DUE',
+          retryAttempt: newRetryAttempt,
+          // Only set gracePeriodEndsAt on the first failure — preserve the original deadline on subsequent retries
+          gracePeriodEndsAt: dbSub.gracePeriodEndsAt ?? new Date(Date.now() + GRACE_PERIOD_DAYS * 24 * 60 * 60 * 1000),
+        },
+      });
+
       await notificationService.notifyPaymentFailed({
         userId: dbSub.userId,
         paymentIntentId: invoice.payment_intent as string ?? invoice.id,
@@ -912,9 +955,48 @@ class StripeService {
         currency: (invoice.currency ?? 'bgn').toUpperCase(),
       }).catch((err: unknown) => logger.error('Failed to send invoice-failed notification:', err));
 
-      logger.info(`User ${dbSub.userId} notified of failed invoice ${invoice.id}`);
+      logger.info(`Subscription ${dbSub.id} set to PAST_DUE (attempt ${newRetryAttempt}) for user ${dbSub.userId}`);
     } catch (error) {
       logger.error(`Error handling invoice failure: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Handle upcoming invoice — fires ~7 days before renewal.
+   * Sends a renewal reminder notification to the subscriber.
+   */
+  private async handleInvoiceUpcoming(invoice: Stripe.Invoice): Promise<void> {
+    logger.info(`Upcoming invoice: ${invoice.id}`);
+
+    try {
+      const subscriptionId = invoice.subscription as string | null;
+      if (!subscriptionId) return;
+
+      const dbSub = await prisma.subscription.findFirst({
+        where: { stripeSubscriptionId: subscriptionId },
+        include: { planDetails: { select: { displayName: true, priceMonthlyEur: true } } },
+      });
+
+      if (!dbSub) return;
+
+      // Skip if auto-renewal is off — user already knows it won't renew
+      if (!dbSub.autoRenewal) return;
+
+      const planName = dbSub.planDetails?.displayName ?? dbSub.plan;
+      const amountDue = (invoice.amount_due ?? 0) / 100;
+      const currency = (invoice.currency ?? 'eur').toUpperCase();
+      const renewalDate = new Date((invoice.period_end ?? 0) * 1000);
+
+      await notificationService.notifyPartnerRenewalUpcoming({
+        userId: dbSub.userId,
+        planName,
+        renewalDate,
+        price: `${amountDue.toFixed(2)} ${currency}`,
+      });
+
+      logger.info(`Renewal reminder sent to user ${dbSub.userId} for ${planName} renewing ${renewalDate.toISOString()}`);
+    } catch (error) {
+      logger.error(`Error handling upcoming invoice: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 }

@@ -9,18 +9,20 @@ import { apiService } from './api.service';
 
 export interface Subscription {
   id: string;
-  partnerId: string;
-  planId: string;
-  planName: string;
-  status: 'active' | 'past_due' | 'canceled' | 'trialing';
-  currentPeriodStart: Date;
-  currentPeriodEnd: Date;
+  userId: string;
+  plan: 'LIGHT' | 'BASIC' | 'PREMIUM';
+  status: 'ACTIVE' | 'TRIALING' | 'PAST_DUE' | 'CANCELLED';
+  currentPeriodStart: string;
+  currentPeriodEnd: string;
   cancelAtPeriodEnd: boolean;
-  amount: number;
-  currency: string;
-  interval: 'month' | 'year';
-  createdAt: Date;
-  updatedAt: Date;
+  cancelAt: string | null;
+  autoRenewal: boolean;
+  retryAttempt: number;
+  gracePeriodEndsAt: string | null;
+  stripeSubscriptionId: string | null;
+  payseraOrderId: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface PaymentMethod {
@@ -107,7 +109,7 @@ class BillingService {
    * Get current subscription for partner
    */
   async getCurrentSubscription(): Promise<Subscription> {
-    const response = await apiService.get<Subscription>('/billing/subscription');
+    const response = await apiService.get<Subscription>('/subscriptions/current');
     return response;
   }
 
@@ -252,6 +254,39 @@ class BillingService {
    */
   async getBillingStats(): Promise<BillingStats> {
     const response = await apiService.get<BillingStats>('/billing/stats');
+    return response;
+  }
+
+  /**
+   * Toggle auto-renewal for a subscription
+   */
+  async toggleAutoRenewal(subscriptionId: string, autoRenewal: boolean): Promise<Subscription> {
+    const response = await apiService.patch<Subscription>(
+      `/subscriptions/${subscriptionId}/auto-renewal`,
+      { autoRenewal }
+    );
+    return response;
+  }
+
+  /**
+   * Retry payment for a PAST_DUE subscription
+   */
+  async retrySubscriptionPayment(subscriptionId: string): Promise<Subscription> {
+    const response = await apiService.post<Subscription>(
+      `/subscriptions/${subscriptionId}/retry-payment`,
+      {}
+    );
+    return response;
+  }
+
+  /**
+   * Cancel subscription by ID
+   */
+  async cancelSubscriptionById(subscriptionId: string, cancelAtPeriodEnd: boolean = true): Promise<Subscription> {
+    const response = await apiService.post<Subscription>(
+      `/subscriptions/${subscriptionId}/cancel`,
+      { cancelAtPeriodEnd }
+    );
     return response;
   }
 

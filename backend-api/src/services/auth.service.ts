@@ -903,6 +903,10 @@ export class AuthService {
         privacyAcceptedAt: (user as any).privacyAcceptedAt || null,
         marketingConsent: (user as any).marketingConsent || false,
         marketingConsentAt: (user as any).marketingConsentAt || null,
+        marketingConsentEmail: (user as any).marketingConsentEmail || false,
+        marketingConsentEmailAt: (user as any).marketingConsentEmailAt || null,
+        marketingConsentPhone: (user as any).marketingConsentPhone || false,
+        marketingConsentPhoneAt: (user as any).marketingConsentPhoneAt || null,
       },
       userData,
     };
@@ -917,20 +921,32 @@ export class AuthService {
    */
   static async recordConsent(
     userId: string,
-    type: 'terms' | 'privacy' | 'marketing',
+    type: 'terms' | 'privacy' | 'marketing' | 'email_marketing' | 'phone_marketing',
     version?: string,
     granted: boolean = true
   ) {
+    const now = new Date();
     const data: Record<string, any> = {};
 
     if (type === 'terms') {
-      data.termsAcceptedAt = new Date();
+      data.termsAcceptedAt = now;
       if (version) data.termsVersion = version;
     } else if (type === 'privacy') {
-      data.privacyAcceptedAt = new Date();
+      data.privacyAcceptedAt = now;
+    } else if (type === 'email_marketing') {
+      data.marketingConsentEmail = granted;
+      data.marketingConsentEmailAt = now;
+    } else if (type === 'phone_marketing') {
+      data.marketingConsentPhone = granted;
+      data.marketingConsentPhoneAt = now;
     } else if (type === 'marketing') {
+      // Legacy: maps to both channels for one release cycle
       data.marketingConsent = granted;
-      data.marketingConsentAt = new Date();
+      data.marketingConsentAt = now;
+      data.marketingConsentEmail = granted;
+      data.marketingConsentEmailAt = now;
+      data.marketingConsentPhone = granted;
+      data.marketingConsentPhoneAt = now;
     }
 
     const user = await prisma.user.update({
@@ -943,6 +959,10 @@ export class AuthService {
         termsVersion: true,
         marketingConsent: true,
         marketingConsentAt: true,
+        marketingConsentEmail: true,
+        marketingConsentEmailAt: true,
+        marketingConsentPhone: true,
+        marketingConsentPhoneAt: true,
       },
     });
 

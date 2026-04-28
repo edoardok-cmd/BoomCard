@@ -20,19 +20,21 @@ import {
   ExclamationTriangleIcon,
   CheckCircleIcon,
   ArrowUpRightIcon,
+  BellAlertIcon,
 } from '@heroicons/react/24/outline';
-import { useAuth } from '../contexts/AuthContext';
-import { useLanguage } from '../contexts/LanguageContext';
-import { useOffers } from '../hooks/useOffers';
-import { adminCashbackService, CashbackDashboardStats } from '../services/adminCashback.service';
-import { partnersService } from '../services/partners.service';
-import { partnerTypesService } from '../services/partnerTypes.service';
-import { venuesService } from '../services/venues.service';
-import { receiptsApiService } from '../services/receipts-api.service';
-import { fraudAdminService } from '../services/fraudAdmin.service';
-import { apiService } from '../services/api.service';
+import { useAuth } from '../../contexts/AuthContext';
+import { useLanguage } from '../../contexts/LanguageContext';
+import { useOffers } from '../../hooks/useOffers';
+import { adminCashbackService, CashbackDashboardStats } from '../../services/adminCashback.service';
+import { partnersService } from '../../services/partners.service';
+import { partnerTypesService } from '../../services/partnerTypes.service';
+import { venuesService } from '../../services/venues.service';
+import { receiptsApiService } from '../../services/receipts-api.service';
+import { fraudAdminService } from '../../services/fraudAdmin.service';
+import { apiService } from '../../services/api.service';
+import { adminAlertsService, AdminAlert } from '../../services/adminAlerts.service';
 
-/* Claude-inspired palette — warm neutrals, serif display, orange accent */
+/* ─── Palette ─────────────────────────────────────────────────────────────── */
 const palette = {
   bg: '#faf9f5',
   surface: '#ffffff',
@@ -52,6 +54,7 @@ const palette = {
   dangerSoft: '#f4dcd2',
 };
 
+/* ─── Layout ───────────────────────────────────────────────────────────────── */
 const PageShell = styled.div`
   background: ${palette.bg};
   min-height: calc(100vh - 4rem);
@@ -172,6 +175,221 @@ const DateValue = styled.span`
   }
 `;
 
+/* ─── Alert Feed ───────────────────────────────────────────────────────────── */
+const AlertSection = styled.section`
+  margin-bottom: 3.5rem;
+`;
+
+const AlertSectionHead = styled.div`
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+`;
+
+const AlertSectionTitle = styled.h2`
+  font-family: 'Tiempos Headline', 'Copernicus', 'Georgia', serif;
+  font-size: 1.25rem;
+  font-weight: 400;
+  color: ${palette.text};
+  margin: 0;
+  letter-spacing: -0.01em;
+
+  [data-theme='dark'] & {
+    color: #f5f3ec;
+  }
+`;
+
+const AlertSectionLink = styled(Link)`
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: ${palette.accent};
+  text-decoration: none;
+
+  &:hover {
+    text-decoration: underline;
+  }
+`;
+
+const AlertGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
+  gap: 0.75rem;
+`;
+
+const AlertCard = styled(motion(Link))<{ $severity: 'danger' | 'warning' | 'info' }>`
+  display: flex;
+  align-items: flex-start;
+  gap: 0.875rem;
+  padding: 1rem 1.125rem;
+  background: ${palette.surface};
+  border: 1px solid
+    ${p =>
+      p.$severity === 'danger'
+        ? '#e8b8ad'
+        : p.$severity === 'warning'
+          ? '#e8d8ad'
+          : palette.border};
+  border-left: 3px solid
+    ${p =>
+      p.$severity === 'danger'
+        ? palette.danger
+        : p.$severity === 'warning'
+          ? palette.warning
+          : palette.accent};
+  border-radius: 0.75rem;
+  text-decoration: none;
+  transition: box-shadow 200ms ease, transform 200ms ease;
+
+  [data-theme='dark'] & {
+    background: #252320;
+    border-color: ${p =>
+      p.$severity === 'danger' ? 'rgba(181,67,39,0.4)' : p.$severity === 'warning' ? 'rgba(181,128,58,0.4)' : '#3a3732'};
+    border-left-color: ${p =>
+      p.$severity === 'danger' ? '#e27d5f' : p.$severity === 'warning' ? '#d4a165' : palette.accent};
+  }
+
+  &:hover {
+    box-shadow: 0 4px 16px -8px rgba(20, 20, 19, 0.12);
+    transform: translateY(-1px);
+  }
+`;
+
+const AlertIconBox = styled.div<{ $severity: 'danger' | 'warning' | 'info' }>`
+  flex-shrink: 0;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 0.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: ${p =>
+    p.$severity === 'danger'
+      ? palette.dangerSoft
+      : p.$severity === 'warning'
+        ? palette.warningSoft
+        : palette.accentSoft};
+  color: ${p =>
+    p.$severity === 'danger'
+      ? palette.danger
+      : p.$severity === 'warning'
+        ? palette.warning
+        : palette.accent};
+
+  [data-theme='dark'] & {
+    background: ${p =>
+      p.$severity === 'danger'
+        ? 'rgba(181,67,39,0.2)'
+        : p.$severity === 'warning'
+          ? 'rgba(181,128,58,0.2)'
+          : 'rgba(201,100,66,0.18)'};
+    color: ${p =>
+      p.$severity === 'danger' ? '#e27d5f' : p.$severity === 'warning' ? '#d4a165' : '#e08162'};
+  }
+
+  svg {
+    width: 1rem;
+    height: 1rem;
+    stroke-width: 1.75;
+  }
+`;
+
+const AlertBody = styled.div`
+  flex: 1 1 auto;
+  min-width: 0;
+`;
+
+const AlertTitle = styled.p`
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: ${palette.text};
+  margin: 0 0 0.25rem;
+  line-height: 1.3;
+
+  [data-theme='dark'] & {
+    color: #f5f3ec;
+  }
+`;
+
+const AlertDesc = styled.p`
+  font-size: 0.8125rem;
+  color: ${palette.textMuted};
+  margin: 0;
+  line-height: 1.45;
+
+  [data-theme='dark'] & {
+    color: #b8b0a3;
+  }
+`;
+
+const AlertCount = styled.span<{ $severity: 'danger' | 'warning' | 'info' }>`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.5rem;
+  height: 1.5rem;
+  padding: 0 0.375rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  font-feature-settings: 'tnum';
+  flex-shrink: 0;
+  background: ${p =>
+    p.$severity === 'danger'
+      ? palette.dangerSoft
+      : p.$severity === 'warning'
+        ? palette.warningSoft
+        : palette.accentSoft};
+  color: ${p =>
+    p.$severity === 'danger'
+      ? palette.danger
+      : p.$severity === 'warning'
+        ? palette.warning
+        : palette.accent};
+
+  [data-theme='dark'] & {
+    background: ${p =>
+      p.$severity === 'danger'
+        ? 'rgba(181,67,39,0.25)'
+        : p.$severity === 'warning'
+          ? 'rgba(181,128,58,0.25)'
+          : 'rgba(201,100,66,0.2)'};
+    color: ${p =>
+      p.$severity === 'danger' ? '#e27d5f' : p.$severity === 'warning' ? '#d4a165' : '#e08162'};
+  }
+`;
+
+const AllClearBanner = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.875rem;
+  padding: 1rem 1.25rem;
+  background: ${palette.successSoft};
+  border: 1px solid #b8d8c0;
+  border-radius: 0.75rem;
+  color: ${palette.success};
+
+  [data-theme='dark'] & {
+    background: rgba(74, 124, 89, 0.12);
+    border-color: rgba(74, 124, 89, 0.3);
+    color: #79b090;
+  }
+
+  svg {
+    width: 1.125rem;
+    height: 1.125rem;
+    flex-shrink: 0;
+  }
+`;
+
+const AllClearText = styled.p`
+  font-size: 0.875rem;
+  font-weight: 500;
+  margin: 0;
+`;
+
+/* ─── Stats Grid ───────────────────────────────────────────────────────────── */
 const StatsGrid = styled.div`
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(13.5rem, 1fr));
@@ -189,7 +407,7 @@ const StatCard = styled(motion.div)`
   border: 1px solid ${palette.border};
   border-radius: 0.875rem;
   padding: 1.5rem 1.5rem 1.375rem;
-  transition: border-color 220ms ease, box-shadow 220ms ease, transform 220ms ease;
+  transition: border-color 220ms ease, box-shadow 220ms ease;
   min-height: 8.5rem;
   display: flex;
   flex-direction: column;
@@ -282,6 +500,7 @@ const StatChange = styled.p<{ $positive?: boolean; $warning?: boolean }>`
   }
 `;
 
+/* ─── Action Sections ──────────────────────────────────────────────────────── */
 const SectionGroup = styled.section`
   margin-bottom: 3.25rem;
 
@@ -525,6 +744,7 @@ const MetricLabel = styled.span`
   }
 `;
 
+/* ─── Types ────────────────────────────────────────────────────────────────── */
 type MetricTone = 'neutral' | 'warning' | 'danger' | 'success';
 
 type ActionDef = {
@@ -546,15 +766,58 @@ interface AdminMetrics {
   pendingScans?: number;
 }
 
+/* ─── Alert helpers ────────────────────────────────────────────────────────── */
+interface AlertMeta {
+  title: string;
+  description: string;
+}
+
+function getAlertMeta(type: AdminAlert['type'], bg: boolean): AlertMeta {
+  switch (type) {
+    case 'PARTNER_REQUESTS':
+      return {
+        title: bg ? 'Заявки за партньорство' : 'Partner Requests',
+        description: bg ? 'Нови партньори, чакащи одобрение' : 'New partners waiting for approval',
+      };
+    case 'RECEIPT_REVIEW':
+      return {
+        title: bg ? 'Преглед на бележки' : 'Receipt Review',
+        description: bg
+          ? 'Бележки, маркирани за ръчен преглед'
+          : 'Receipts flagged for manual review',
+      };
+    case 'CASHBACK_OVERDUE':
+      return {
+        title: bg ? 'Просрочен кешбек' : 'Overdue Cashback',
+        description: bg
+          ? 'Партньори с просрочени кешбек плащания'
+          : 'Partners with overdue cashback payments',
+      };
+    case 'MENU_APPROVALS':
+      return {
+        title: bg ? 'Одобрения на менюта' : 'Menu Approvals',
+        description: bg
+          ? 'URL адреси за менюта, изчакващи преглед'
+          : 'Partner menu URLs pending review',
+      };
+  }
+}
+
+/* ─── Component ────────────────────────────────────────────────────────────── */
 const AdminDashboardPage: React.FC = () => {
   const { user } = useAuth();
   const { language } = useLanguage();
   const { data: offersData } = useOffers({ limit: 100 });
   const [cashbackStats, setCashbackStats] = useState<CashbackDashboardStats | null>(null);
   const [metrics, setMetrics] = useState<AdminMetrics>({});
+  const [alerts, setAlerts] = useState<AdminAlert[] | null>(null);
 
   useEffect(() => {
     adminCashbackService.getStats().then(setCashbackStats).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    adminAlertsService.getAlerts().then(r => setAlerts(r.alerts)).catch(() => setAlerts([]));
   }, []);
 
   useEffect(() => {
@@ -636,7 +899,7 @@ const AdminDashboardPage: React.FC = () => {
 
   const partnerActions: ActionDef[] = [
     {
-      to: '/admin/partners',
+      to: '/admin/partners/new/active',
       title: bg ? 'Партньори' : 'Partners',
       description: bg
         ? 'Управление на партньорски акаунти и одобрения'
@@ -649,7 +912,7 @@ const AdminDashboardPage: React.FC = () => {
           : undefined,
     },
     {
-      to: '/admin/partner-types',
+      to: '/admin/partners/new/receipt-profiles',
       title: bg ? 'Типове Партньори' : 'Partner Types',
       description: bg
         ? 'Лимити за отстъпки и достъп по абонамент'
@@ -661,7 +924,7 @@ const AdminDashboardPage: React.FC = () => {
           : undefined,
     },
     {
-      to: '/admin/partner-onboarding',
+      to: '/admin/partners/new/onboarding',
       title: bg ? 'Въвеждане на Партньор' : 'Partner Onboarding',
       description: bg
         ? 'Ръчно въвеждане с бизнес данни, обекти и условия'
@@ -711,7 +974,7 @@ const AdminDashboardPage: React.FC = () => {
 
   const cashbackActions: ActionDef[] = [
     {
-      to: '/admin/receipts',
+      to: '/admin/control/risk',
       title: bg ? 'Преглед на Касови Бележки' : 'Receipt Review',
       description: bg
         ? 'Одобрявайте, отхвърляйте и управлявайте начисления'
@@ -728,7 +991,7 @@ const AdminDashboardPage: React.FC = () => {
           : undefined,
     },
     {
-      to: '/admin/cashback',
+      to: '/admin/subscribers/cashback',
       title: bg ? 'Плащания за Кешбек' : 'Cashback Payments',
       description: bg
         ? 'Месечни кешбек задължения на партньорите'
@@ -743,7 +1006,7 @@ const AdminDashboardPage: React.FC = () => {
         : undefined,
     },
     {
-      to: '/admin/cashback/rates',
+      to: '/admin/settings/percentages',
       title: bg ? 'Ставки за Кешбек' : 'Cashback Rates',
       description: bg
         ? 'Матрица на ставки по ниво и категория'
@@ -770,7 +1033,7 @@ const AdminDashboardPage: React.FC = () => {
           : undefined,
     },
     {
-      to: '/admin/venue-fraud-config',
+      to: '/admin/control/rules',
       title: bg ? 'Конфиг за Измами' : 'Venue Fraud Config',
       description: bg
         ? 'Прагове за измами, GPS и OCR проверки'
@@ -778,7 +1041,7 @@ const AdminDashboardPage: React.FC = () => {
       icon: Cog6ToothIcon,
     },
     {
-      to: '/admin/receipt-templates',
+      to: '/admin/partners/new/receipt-profiles',
       title: bg ? 'Шаблони за Бележки' : 'Receipt Templates',
       description: bg
         ? 'Шаблони за визуално сравнение по обекти'
@@ -786,7 +1049,7 @@ const AdminDashboardPage: React.FC = () => {
       icon: DocumentTextIcon,
     },
     {
-      to: '/admin/scan-review',
+      to: '/admin/control/risk',
       title: bg ? 'Преглед на Сканирания' : 'Scan Review',
       description: bg
         ? 'Ръчен преглед на сканирания с възможна измама'
@@ -812,7 +1075,7 @@ const AdminDashboardPage: React.FC = () => {
       <ActionsGrid>
         {actions.map((a, idx) => (
           <ActionCard
-            key={a.to}
+            key={a.to + a.title}
             to={a.to}
             initial={{ opacity: 0, y: 6 }}
             animate={{ opacity: 1, y: 0 }}
@@ -847,6 +1110,7 @@ const AdminDashboardPage: React.FC = () => {
   return (
     <PageShell>
       <PageContainer>
+        {/* Header */}
         <PageHeader>
           <HeaderLeft>
             <Eyebrow>{bg ? 'Администрация' : 'Administration'}</Eyebrow>
@@ -867,6 +1131,55 @@ const AdminDashboardPage: React.FC = () => {
           </DateChip>
         </PageHeader>
 
+        {/* Alert Feed */}
+        <AlertSection>
+          <AlertSectionHead>
+            <AlertSectionTitle>
+              {bg ? 'Необходими действия' : 'Action Required'}
+            </AlertSectionTitle>
+            <AlertSectionLink to="/admin/dashboard/alerts">
+              {bg ? 'Виж всички →' : 'View all →'}
+            </AlertSectionLink>
+          </AlertSectionHead>
+
+          {alerts === null ? null : alerts.length === 0 ? (
+            <AllClearBanner>
+              <CheckCircleIcon />
+              <AllClearText>
+                {bg
+                  ? 'Всичко е наред — няма елементи, изискващи незабавно внимание.'
+                  : 'All clear — no items require immediate attention.'}
+              </AllClearText>
+            </AllClearBanner>
+          ) : (
+            <AlertGrid>
+              {alerts.map((alert, idx) => {
+                const meta = getAlertMeta(alert.type, bg);
+                return (
+                  <AlertCard
+                    key={alert.type}
+                    to={alert.link}
+                    $severity={alert.severity}
+                    initial={{ opacity: 0, y: 4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.05 * idx, duration: 0.22 }}
+                  >
+                    <AlertIconBox $severity={alert.severity}>
+                      <BellAlertIcon />
+                    </AlertIconBox>
+                    <AlertBody>
+                      <AlertTitle>{meta.title}</AlertTitle>
+                      <AlertDesc>{meta.description}</AlertDesc>
+                    </AlertBody>
+                    <AlertCount $severity={alert.severity}>{alert.count}</AlertCount>
+                  </AlertCard>
+                );
+              })}
+            </AlertGrid>
+          )}
+        </AlertSection>
+
+        {/* KPI Stats */}
         <StatsGrid>
           <StatCard
             initial={{ opacity: 0, y: 8 }}
