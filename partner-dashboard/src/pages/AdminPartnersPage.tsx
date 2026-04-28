@@ -15,6 +15,7 @@ import { toast } from 'react-hot-toast';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getAccessToken } from '../lib/auth/session';
 import { bulkImportService } from '../services/bulkImport.service';
+import { venuesService } from '../services/venues.service';
 import axios from 'axios';
 import { placesCategories, experiencesCategories, getCategoryName } from '../types/categories.types';
 import { DISCOUNT_STEPS, snapToStep } from '../utils/discountSteps';
@@ -343,6 +344,19 @@ const FormGrid = styled.div`
 
 const FormField = styled.div<{ $full?: boolean }>`
   grid-column: ${({ $full }) => ($full ? '1 / -1' : 'auto')};
+`;
+
+const FormDivider = styled.hr`
+  border: none;
+  border-top: 1px solid var(--color-border, #e5e7eb);
+  margin: 1.25rem 0 1rem;
+`;
+
+const HelperText = styled.p`
+  margin: 0.375rem 0 0;
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary, #6b7280);
+  line-height: 1.4;
 `;
 
 const Label = styled.label`
@@ -1241,6 +1255,8 @@ const AdminPartnersPage: React.FC = () => {
   const [editVenueLoading, setEditVenueLoading] = useState(false);
   const [deleteVenueConfirm, setDeleteVenueConfirm] = useState(false);
   const [deletingVenue, setDeletingVenue] = useState(false);
+  const [editVenueMenuUrl, setEditVenueMenuUrl] = useState('');
+  const [editVenueOriginalMenuUrl, setEditVenueOriginalMenuUrl] = useState('');
 
   // ── Data ──────────────────────────────────────────────────────────────────
 
@@ -1523,6 +1539,9 @@ const AdminPartnersPage: React.FC = () => {
         latitude: v.latitude != null ? v.latitude : undefined,
         longitude: v.longitude != null ? v.longitude : undefined,
       });
+      const loadedMenuUrl = v.menuUrl || '';
+      setEditVenueMenuUrl(loadedMenuUrl);
+      setEditVenueOriginalMenuUrl(loadedMenuUrl);
     } catch {
       // form stays empty; user can still fill in fields manually
     } finally {
@@ -1551,6 +1570,14 @@ const AdminPartnersPage: React.FC = () => {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || 'Грешка');
+      const newMenuUrl = editVenueMenuUrl.trim();
+      if (newMenuUrl !== editVenueOriginalMenuUrl) {
+        if (newMenuUrl) {
+          await venuesService.adminSetMenuUrl(editVenueId, newMenuUrl);
+        } else {
+          await venuesService.adminClearMenu(editVenueId);
+        }
+      }
       toast.success(language === 'bg' ? `Обектът "${editVenueForm.name}" е обновен!` : `Venue "${editVenueForm.name}" updated!`);
       setEditVenuePartner(null);
       queryClient.invalidateQueries({ queryKey: ['admin-partners'] });
@@ -2657,6 +2684,22 @@ const AdminPartnersPage: React.FC = () => {
                       />
                     </FormField>
                   </FormGrid>
+                  <FormDivider />
+                  <FormField $full>
+                    <Label>{language === 'bg' ? 'Линк към менюто (директна промяна)' : 'Menu URL (admin override)'}</Label>
+                    <Input
+                      type="url"
+                      value={editVenueMenuUrl}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEditVenueMenuUrl(e.target.value)}
+                      placeholder="https://venue.com/menu.pdf"
+                      disabled={editVenueSubmitting}
+                    />
+                    <HelperText>
+                      {language === 'bg'
+                        ? 'Задава директно живия URL — заобикаля прегледа. Остави празно за да запазиш текущото.'
+                        : 'Directly sets the live menu URL — bypasses review. Leave blank to keep current.'}
+                    </HelperText>
+                  </FormField>
                   <ModalFooter style={{ justifyContent: 'space-between' }}>
                     <div>
                       {!deleteVenueConfirm ? (
