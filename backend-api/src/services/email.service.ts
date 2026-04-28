@@ -1216,9 +1216,11 @@ Questions? Contact us at support@boomcard.bg
   }
 
   /**
-   * Send subscription renewal reminder email (7 days before renewal)
+   * Send subscription expiry notice to users whose auto-renewal is OFF and subscription is about
+   * to expire (or has entered the Paysera grace period). Subject line deliberately says "expires"
+   * rather than "renews" because the charge is NOT automatic.
    */
-  async sendRenewalReminder(
+  async sendExpiryNotice(
     email: string,
     data: RenewalReminderData
   ): Promise<{ success: boolean }> {
@@ -2267,6 +2269,52 @@ ${isBg ? 'Въпроси? Свържете се с нас на' : 'Questions? Co
       html,
       text,
     });
+  }
+  async sendRenewalReminder(email: string, data: RenewalReminderData): Promise<{ success: boolean }> {
+    const isBg = data.language === 'bg';
+    const subject = isBg
+      ? `BoomCard – Предстоящо подновяване на абонамент`
+      : `BoomCard – Upcoming subscription renewal`;
+    const heading = isBg ? 'Предстоящо подновяване' : 'Upcoming Renewal';
+    const planLabel = isBg ? 'План' : 'Plan';
+    const renewalLabel = isBg ? 'Дата на подновяване' : 'Renewal date';
+    const priceLabel = isBg ? 'Сума' : 'Amount';
+    const manageLabel = isBg ? 'Управление на абонамент' : 'Manage subscription';
+    const planName = isBg ? data.planNameBg : data.planName;
+    const bodyText = isBg
+      ? `Здравейте, ${data.customerName}! Вашият абонамент ${planName} ще бъде подновен автоматично на ${data.renewalDate} за ${data.price} BGN.`
+      : `Hi ${data.customerName}, your ${planName} subscription will automatically renew on ${data.renewalDate} for ${data.price}.`;
+    const html = `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
+<body style="margin:0;padding:0;background-color:#f5f5f5;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0">
+    <tr><td align="center" style="padding:40px 20px;">
+      <table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08);">
+        <tr><td style="background:linear-gradient(135deg,#dc2626,#ea580c);padding:32px;text-align:center;">
+          <h1 style="color:#fff;margin:0;font-size:22px;font-weight:700;">${heading}</h1>
+        </td></tr>
+        <tr><td style="padding:32px;">
+          <p style="color:#333;margin-top:0;">${bodyText}</p>
+          <table width="100%" style="background:#f8f9fa;border-radius:8px;padding:20px;margin:20px 0;border-collapse:collapse;">
+            <tr><td style="padding:6px 0;color:#555;">${planLabel}</td><td style="padding:6px 0;text-align:right;font-weight:600;color:#111;">${planName}</td></tr>
+            <tr><td style="padding:6px 0;color:#555;">${renewalLabel}</td><td style="padding:6px 0;text-align:right;font-weight:600;color:#111;">${data.renewalDate}</td></tr>
+            <tr><td style="padding:6px 0;color:#555;">${priceLabel}</td><td style="padding:6px 0;text-align:right;font-weight:700;color:#dc2626;font-size:18px;">${data.price}</td></tr>
+          </table>
+          <p style="text-align:center;margin:28px 0 0;">
+            <a href="${data.manageUrl}" style="background:#dc2626;color:#fff;text-decoration:none;padding:12px 28px;border-radius:6px;font-weight:600;display:inline-block;">${manageLabel}</a>
+          </p>
+        </td></tr>
+        <tr><td style="background:#f8f9fa;padding:20px;text-align:center;">
+          <p style="margin:0;color:#999;font-size:12px;">&copy; ${new Date().getFullYear()} BoomCard. All rights reserved.</p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+    const text = `${bodyText}\n\n${planLabel}: ${planName}\n${renewalLabel}: ${data.renewalDate}\n${priceLabel}: ${data.price}\n\n${manageLabel}: ${data.manageUrl}`;
+    return this.sendEmail({ to: email, subject, html, text });
   }
 }
 
