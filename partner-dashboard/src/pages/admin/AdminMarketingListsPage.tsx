@@ -1,12 +1,18 @@
-import { useState, useMemo } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import styled from 'styled-components';
 import { DataTable, ColumnDef } from '../../components/admin/DataTable/DataTable';
+import {
+  adminMarketingService,
+  MarketingList,
+  MarketingListType,
+} from '../../services/adminMarketing.service';
 
 const palette = {
   bg: '#faf9f5', surface: '#ffffff', border: '#e8e5dc',
   text: '#141413', textMuted: '#605a50', textSubtle: '#8c8678',
   accent: '#c96442', accentSoft: '#f3e8de',
   success: '#4a7c59', successSoft: '#e6efe3',
+  danger: '#b54327', dangerSoft: '#f4dcd2',
   info: '#2563eb', infoSoft: '#dbeafe',
 };
 
@@ -24,9 +30,7 @@ const Select = styled.select`padding: 0.5rem 0.75rem; border: 1px solid ${palett
 const PrimaryLine = styled.div`font-weight: 600; color: ${palette.text};`;
 const MetaLine = styled.div`font-size: 0.75rem; color: ${palette.textSubtle}; margin-top: 0.125rem;`;
 
-type ListType = 'STATIC' | 'DYNAMIC' | 'SEGMENT';
-
-const TypePill = styled.span<{ $type: ListType }>`
+const TypePill = styled.span<{ $type: MarketingListType }>`
   display: inline-flex; font-size: 0.65rem; font-weight: 700;
   text-transform: uppercase; letter-spacing: 0.04em; border-radius: 0.25rem; padding: 0.1rem 0.4rem;
   ${({ $type }) => {
@@ -38,48 +42,118 @@ const TypePill = styled.span<{ $type: ListType }>`
   }}
 `;
 
-interface AudienceList {
-  id: string;
+const PrimaryBtn = styled.button`padding: 0.5rem 1.125rem; background: ${palette.accent}; color: #fff; border: none; border-radius: 0.5rem; font-size: 0.875rem; font-weight: 600; cursor: pointer; &:hover { opacity: 0.9; }`;
+const GhostBtn = styled.button`padding: 0.5rem 1.125rem; background: transparent; color: ${palette.textMuted}; border: 1px solid ${palette.border}; border-radius: 0.5rem; font-size: 0.875rem; font-weight: 600; cursor: pointer; &:hover { border-color: ${palette.textMuted}; }`;
+const DangerBtn = styled.button`padding: 0.5rem 1.125rem; background: ${palette.dangerSoft}; color: ${palette.danger}; border: 1px solid #f1c4b8; border-radius: 0.5rem; font-size: 0.875rem; font-weight: 600; cursor: pointer; &:hover { background: #eebcac; }`;
+
+const Overlay = styled.div`position: fixed; inset: 0; background: rgba(20,20,19,0.45); z-index: 200; display: flex; align-items: center; justify-content: center; padding: 1rem;`;
+const ModalBox = styled.div`background: ${palette.surface}; border-radius: 0.875rem; width: 100%; max-width: 34rem; max-height: 90vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.18);`;
+const ModalHeader = styled.div`display: flex; align-items: center; justify-content: space-between; padding: 1.25rem 1.5rem; border-bottom: 1px solid ${palette.border};`;
+const ModalTitle = styled.h2`font-size: 1.125rem; font-weight: 700; color: ${palette.text}; margin: 0;`;
+const CloseBtn = styled.button`background: none; border: none; font-size: 1.25rem; color: ${palette.textSubtle}; cursor: pointer; padding: 0.25rem; line-height: 1; &:hover { color: ${palette.text}; }`;
+const ModalBody = styled.div`padding: 1.5rem;`;
+const ModalFooter = styled.div`display: flex; gap: 0.75rem; justify-content: flex-end; padding: 1rem 1.5rem; border-top: 1px solid ${palette.border};`;
+const FormGroup = styled.div`display: flex; flex-direction: column; gap: 0.375rem; margin-bottom: 1.125rem;`;
+const Label = styled.label`font-size: 0.8125rem; font-weight: 600; color: ${palette.text};`;
+const Input = styled.input`padding: 0.5rem 0.875rem; border: 1px solid ${palette.border}; border-radius: 0.5rem; font-size: 0.875rem; background: ${palette.bg}; color: ${palette.text}; outline: none; width: 100%; box-sizing: border-box; &:focus { border-color: ${palette.accent}; box-shadow: 0 0 0 2px ${palette.accentSoft}; }`;
+const Textarea = styled.textarea`padding: 0.5rem 0.875rem; border: 1px solid ${palette.border}; border-radius: 0.5rem; font-size: 0.875rem; background: ${palette.bg}; color: ${palette.text}; outline: none; width: 100%; box-sizing: border-box; resize: vertical; &:focus { border-color: ${palette.accent}; box-shadow: 0 0 0 2px ${palette.accentSoft}; }`;
+const ModalSelect = styled.select`padding: 0.5rem 0.875rem; border: 1px solid ${palette.border}; border-radius: 0.5rem; font-size: 0.875rem; background: ${palette.bg}; color: ${palette.text}; outline: none; width: 100%; &:focus { border-color: ${palette.accent}; }`;
+const HintText = styled.p`font-size: 0.75rem; color: ${palette.textSubtle}; margin: 0;`;
+const ConfirmText = styled.p`font-size: 0.9375rem; color: ${palette.text}; margin: 0 0 0.5rem;`;
+const ConfirmSub = styled.p`font-size: 0.8125rem; color: ${palette.textSubtle}; margin: 0;`;
+
+type ModalMode = 'create' | 'edit' | 'delete' | null;
+
+interface FormState {
   name: string;
-  type: ListType;
+  type: MarketingListType;
   description: string;
-  size: number;
-  updatedAt: string;
-  createdAt: string;
+  size: string;
 }
 
-const MOCK: AudienceList[] = [
-  { id: '1', name: 'All Active Subscribers', type: 'DYNAMIC', description: 'Users with an active subscription', size: 18741, updatedAt: '2026-04-28T06:00:00Z', createdAt: '2025-09-01T09:00:00Z' },
-  { id: '2', name: 'Sofia Users', type: 'SEGMENT', description: 'Subscribers registered in Sofia', size: 9340, updatedAt: '2026-04-28T06:00:00Z', createdAt: '2025-11-15T10:00:00Z' },
-  { id: '3', name: 'High Spenders', type: 'DYNAMIC', description: 'Users who scanned 10+ times last 30 days', size: 3120, updatedAt: '2026-04-27T06:00:00Z', createdAt: '2026-01-10T11:00:00Z' },
-  { id: '4', name: 'Inactive 30+ Days', type: 'DYNAMIC', description: 'Users with no scan activity in 30 days', size: 4560, updatedAt: '2026-04-27T06:00:00Z', createdAt: '2026-01-20T10:00:00Z' },
-  { id: '5', name: 'Beta Testers', type: 'STATIC', description: 'Hand-picked early access users', size: 87, updatedAt: '2026-02-01T12:00:00Z', createdAt: '2025-08-15T09:00:00Z' },
-  { id: '6', name: 'Plovdiv & Varna', type: 'SEGMENT', description: 'Subscribers in Plovdiv or Varna', size: 2890, updatedAt: '2026-04-28T06:00:00Z', createdAt: '2026-02-05T10:00:00Z' },
-  { id: '7', name: 'Referral Programme Opt-ins', type: 'STATIC', description: 'Users who opted into referral emails', size: 1240, updatedAt: '2026-04-10T09:00:00Z', createdAt: '2026-02-20T10:00:00Z' },
-];
-
+const DEFAULT_FORM: FormState = { name: '', type: 'STATIC', description: '', size: '0' };
 const PAGE_SIZE = 25;
 
 export default function AdminMarketingListsPage() {
   const [search, setSearch] = useState('');
-  const [typeFilter, setTypeFilter] = useState<ListType | ''>('');
+  const [typeFilter, setTypeFilter] = useState<MarketingListType | ''>('');
   const [page, setPage] = useState(1);
+  const [items, setItems] = useState<MarketingList[]>([]);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(false);
 
-  const filtered = useMemo(() =>
-    MOCK.filter((l) => {
-      if (search && !l.name.toLowerCase().includes(search.toLowerCase())) return false;
-      if (typeFilter && l.type !== typeFilter) return false;
-      return true;
-    }),
-    [search, typeFilter],
-  );
+  const [modal, setModal] = useState<ModalMode>(null);
+  const [selected, setSelected] = useState<MarketingList | null>(null);
+  const [form, setForm] = useState<FormState>(DEFAULT_FORM);
+  const [saving, setSaving] = useState(false);
 
-  const paged = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const load = useCallback(() => {
+    setLoading(true);
+    adminMarketingService
+      .listLists({ page, limit: PAGE_SIZE, search, type: typeFilter })
+      .then((r) => { setItems(r.items); setTotal(r.total); })
+      .finally(() => setLoading(false));
+  }, [page, search, typeFilter]);
+
+  useEffect(() => { load(); }, [load]);
 
   const fmt = (iso: string) =>
     new Date(iso).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
 
-  const columns: ColumnDef<AudienceList>[] = [
+  const openCreate = () => {
+    setSelected(null);
+    setForm(DEFAULT_FORM);
+    setModal('create');
+  };
+
+  const openEdit = (row: MarketingList) => {
+    setSelected(row);
+    setForm({ name: row.name, type: row.type, description: row.description, size: String(row.size) });
+    setModal('edit');
+  };
+
+  const openDelete = (row: MarketingList) => {
+    setSelected(row);
+    setModal('delete');
+  };
+
+  const closeModal = () => { setModal(null); setSelected(null); };
+
+  const handleSave = async () => {
+    if (!form.name.trim()) return;
+    setSaving(true);
+    try {
+      const payload = {
+        name: form.name,
+        type: form.type,
+        description: form.description,
+        size: parseInt(form.size) || 0,
+      };
+      if (modal === 'create') {
+        await adminMarketingService.createList(payload);
+      } else if (modal === 'edit' && selected) {
+        await adminMarketingService.updateList(selected.id, payload);
+      }
+      closeModal();
+      load();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!selected) return;
+    setSaving(true);
+    try {
+      await adminMarketingService.deleteList(selected.id);
+      closeModal();
+      load();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const columns: ColumnDef<MarketingList>[] = [
     {
       key: 'name',
       header: 'List',
@@ -127,10 +201,11 @@ export default function AdminMarketingListsPage() {
           <Eyebrow>Marketing</Eyebrow>
           <PageTitle>
             Audience Lists
-            {filtered.length > 0 && <TotalBadge>{filtered.length}</TotalBadge>}
+            {total > 0 && <TotalBadge>{total}</TotalBadge>}
           </PageTitle>
           <PageSubtitle>Subscriber segments and contact lists used in campaigns</PageSubtitle>
         </TitleBlock>
+        <PrimaryBtn onClick={openCreate}>+ New List</PrimaryBtn>
       </PageHeader>
 
       <Card>
@@ -141,7 +216,7 @@ export default function AdminMarketingListsPage() {
             value={search}
             onChange={(e) => { setSearch(e.target.value); setPage(1); }}
           />
-          <Select value={typeFilter} onChange={(e) => { setTypeFilter(e.target.value as ListType | ''); setPage(1); }}>
+          <Select value={typeFilter} onChange={(e) => { setTypeFilter(e.target.value as MarketingListType | ''); setPage(1); }}>
             <option value="">All types</option>
             <option value="STATIC">Static</option>
             <option value="DYNAMIC">Dynamic</option>
@@ -151,20 +226,100 @@ export default function AdminMarketingListsPage() {
 
         <DataTable
           columns={columns}
-          data={paged}
+          data={items}
           rowKey={(row) => row.id}
-          loading={false}
+          loading={loading}
           emptyMessage="No lists found"
           page={page}
           pageSize={PAGE_SIZE}
-          totalItems={filtered.length}
+          totalItems={total}
           onPageChange={setPage}
           rowActions={[
-            { label: 'View members', onClick: () => {} },
-            { label: 'Edit', onClick: () => {} },
+            { label: 'Edit', onClick: openEdit },
+            { label: 'Delete', onClick: openDelete },
           ]}
         />
       </Card>
+
+      {(modal === 'create' || modal === 'edit') && (
+        <Overlay onClick={closeModal}>
+          <ModalBox onClick={(e) => e.stopPropagation()}>
+            <ModalHeader>
+              <ModalTitle>{modal === 'create' ? 'New Audience List' : 'Edit List'}</ModalTitle>
+              <CloseBtn onClick={closeModal}>×</CloseBtn>
+            </ModalHeader>
+            <ModalBody>
+              <FormGroup>
+                <Label>Name *</Label>
+                <Input
+                  value={form.name}
+                  onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                  placeholder="e.g. Premium Card Holders"
+                  autoFocus
+                />
+              </FormGroup>
+              <FormGroup>
+                <Label>Type *</Label>
+                <ModalSelect
+                  value={form.type}
+                  onChange={(e) => setForm((f) => ({ ...f, type: e.target.value as MarketingListType }))}
+                >
+                  <option value="STATIC">Static — fixed snapshot of contacts</option>
+                  <option value="DYNAMIC">Dynamic — auto-updated by rules</option>
+                  <option value="SEGMENT">Segment — defined by user attributes</option>
+                </ModalSelect>
+              </FormGroup>
+              <FormGroup>
+                <Label>Description</Label>
+                <Textarea
+                  value={form.description}
+                  onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+                  placeholder="Describe who is in this list and how it is maintained…"
+                  rows={3}
+                />
+              </FormGroup>
+              <FormGroup>
+                <Label>Member count</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  value={form.size}
+                  onChange={(e) => setForm((f) => ({ ...f, size: e.target.value }))}
+                  placeholder="0"
+                />
+                <HintText>For Dynamic and Segment lists this will be overwritten by the next sync.</HintText>
+              </FormGroup>
+            </ModalBody>
+            <ModalFooter>
+              <GhostBtn onClick={closeModal} disabled={saving}>Cancel</GhostBtn>
+              <PrimaryBtn onClick={handleSave} disabled={saving || !form.name.trim()}>
+                {saving ? 'Saving…' : modal === 'create' ? 'Create list' : 'Save changes'}
+              </PrimaryBtn>
+            </ModalFooter>
+          </ModalBox>
+        </Overlay>
+      )}
+
+      {modal === 'delete' && selected && (
+        <Overlay onClick={closeModal}>
+          <ModalBox style={{ maxWidth: '26rem' }} onClick={(e) => e.stopPropagation()}>
+            <ModalHeader>
+              <ModalTitle>Delete list?</ModalTitle>
+              <CloseBtn onClick={closeModal}>×</CloseBtn>
+            </ModalHeader>
+            <ModalBody>
+              <ConfirmText>You are about to delete <strong>{selected.name}</strong>.</ConfirmText>
+              <ConfirmSub>This action cannot be undone.</ConfirmSub>
+            </ModalBody>
+            <ModalFooter>
+              <GhostBtn onClick={closeModal} disabled={saving}>Cancel</GhostBtn>
+              <DangerBtn onClick={handleDelete} disabled={saving}>
+                {saving ? 'Deleting…' : 'Delete list'}
+              </DangerBtn>
+            </ModalFooter>
+          </ModalBox>
+        </Overlay>
+      )}
     </PageShell>
   );
 }

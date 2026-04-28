@@ -215,7 +215,8 @@ model Partner {
   reviews          Review[]
   bookings         Booking[]
   transactions     Transaction[]
-  cashbackPayments PartnerCashbackPayment[]
+  cashbackPayments     PartnerCashbackPayment[]
+  marketingListMembers MarketingListMember[]
 
   @@index([category])
   @@index([partnerTypeId])
@@ -1713,4 +1714,116 @@ model TicketReply {
   createdAt DateTime   @default(now())
 
   @@index([ticketId])
+}
+
+// ============================================
+// Marketing — templates, campaigns, lists, automations
+// ============================================
+
+enum MarketingChannel {
+  EMAIL
+  PUSH
+  SMS
+}
+
+enum CampaignStatus {
+  DRAFT
+  SCHEDULED
+  SENT
+  PAUSED
+}
+
+enum AutomationStatus {
+  ACTIVE
+  PAUSED
+  DRAFT
+}
+
+enum MarketingListType {
+  STATIC
+  DYNAMIC
+  SEGMENT
+}
+
+model MarketingTemplate {
+  id          String                @id @default(uuid())
+  name        String
+  type        MarketingChannel
+  subject     String?
+  body        String                @default("")
+  usageCount  Int                   @default(0)
+  lastUsed    DateTime?
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
+  campaigns   MarketingCampaign[]
+  automations MarketingAutomation[]
+
+  @@index([type])
+  @@index([createdAt])
+}
+
+model MarketingList {
+  id          String            @id @default(uuid())
+  name        String
+  type        MarketingListType
+  description String            @default("")
+  size        Int               @default(0)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  campaigns   MarketingCampaign[]
+  members     MarketingListMember[]
+
+  @@index([type])
+  @@index([createdAt])
+}
+
+model MarketingCampaign {
+  id         String             @id @default(uuid())
+  name       String
+  type       MarketingChannel
+  status     CampaignStatus     @default(DRAFT)
+  audience   Int                @default(0)
+  sentAt     DateTime?
+  openRate   Float?
+  clickRate  Float?
+  templateId String?
+  template   MarketingTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  listId     String?
+  list       MarketingList?     @relation(fields: [listId], references: [id], onDelete: SetNull)
+  createdAt  DateTime           @default(now())
+  updatedAt  DateTime           @updatedAt
+
+  @@index([status])
+  @@index([type])
+  @@index([listId])
+  @@index([createdAt])
+}
+
+model MarketingListMember {
+  id        String        @id @default(uuid())
+  listId    String
+  list      MarketingList @relation(fields: [listId], references: [id], onDelete: Cascade)
+  partnerId String
+  partner   Partner       @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  addedAt   DateTime      @default(now())
+
+  @@unique([listId, partnerId])
+  @@index([listId])
+  @@index([partnerId])
+}
+
+model MarketingAutomation {
+  id         String             @id @default(uuid())
+  name       String
+  trigger    String
+  status     AutomationStatus   @default(DRAFT)
+  totalRuns  Int                @default(0)
+  lastRunAt  DateTime?
+  templateId String?
+  template   MarketingTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  createdAt  DateTime           @default(now())
+  updatedAt  DateTime           @updatedAt
+
+  @@index([status])
+  @@index([createdAt])
 }

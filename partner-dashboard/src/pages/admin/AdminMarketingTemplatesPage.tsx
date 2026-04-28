@@ -1,12 +1,18 @@
-import { useState, useMemo } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import styled from 'styled-components';
 import { DataTable, ColumnDef } from '../../components/admin/DataTable/DataTable';
+import {
+  adminMarketingService,
+  MarketingTemplate,
+  MarketingChannel,
+} from '../../services/adminMarketing.service';
 
 const palette = {
   bg: '#faf9f5', surface: '#ffffff', border: '#e8e5dc',
   text: '#141413', textMuted: '#605a50', textSubtle: '#8c8678',
   accent: '#c96442', accentSoft: '#f3e8de',
   success: '#4a7c59', successSoft: '#e6efe3',
+  danger: '#b54327', dangerSoft: '#f4dcd2',
   info: '#2563eb', infoSoft: '#dbeafe',
 };
 
@@ -24,9 +30,7 @@ const Select = styled.select`padding: 0.5rem 0.75rem; border: 1px solid ${palett
 const PrimaryLine = styled.div`font-weight: 600; color: ${palette.text};`;
 const MetaLine = styled.div`font-size: 0.75rem; color: ${palette.textSubtle}; margin-top: 0.125rem;`;
 
-type TemplateType = 'EMAIL' | 'PUSH' | 'SMS';
-
-const TypePill = styled.span<{ $type: TemplateType }>`
+const TypePill = styled.span<{ $type: MarketingChannel }>`
   display: inline-flex; font-size: 0.65rem; font-weight: 700;
   text-transform: uppercase; letter-spacing: 0.04em; border-radius: 0.25rem; padding: 0.1rem 0.4rem;
   ${({ $type }) => {
@@ -38,49 +42,120 @@ const TypePill = styled.span<{ $type: TemplateType }>`
   }}
 `;
 
-interface Template {
-  id: string;
+const PrimaryBtn = styled.button`padding: 0.5rem 1.125rem; background: ${palette.accent}; color: #fff; border: none; border-radius: 0.5rem; font-size: 0.875rem; font-weight: 600; cursor: pointer; &:hover { opacity: 0.9; }`;
+const GhostBtn = styled.button`padding: 0.5rem 1.125rem; background: transparent; color: ${palette.textMuted}; border: 1px solid ${palette.border}; border-radius: 0.5rem; font-size: 0.875rem; font-weight: 600; cursor: pointer; &:hover { border-color: ${palette.textMuted}; }`;
+const DangerBtn = styled.button`padding: 0.5rem 1.125rem; background: ${palette.dangerSoft}; color: ${palette.danger}; border: 1px solid #f1c4b8; border-radius: 0.5rem; font-size: 0.875rem; font-weight: 600; cursor: pointer; &:hover { background: #eebcac; }`;
+
+const Overlay = styled.div`position: fixed; inset: 0; background: rgba(20,20,19,0.45); z-index: 200; display: flex; align-items: center; justify-content: center; padding: 1rem;`;
+const ModalBox = styled.div`background: ${palette.surface}; border-radius: 0.875rem; width: 100%; max-width: 38rem; max-height: 90vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.18);`;
+const ModalHeader = styled.div`display: flex; align-items: center; justify-content: space-between; padding: 1.25rem 1.5rem; border-bottom: 1px solid ${palette.border};`;
+const ModalTitle = styled.h2`font-size: 1.125rem; font-weight: 700; color: ${palette.text}; margin: 0;`;
+const CloseBtn = styled.button`background: none; border: none; font-size: 1.25rem; color: ${palette.textSubtle}; cursor: pointer; padding: 0.25rem; line-height: 1; &:hover { color: ${palette.text}; }`;
+const ModalBody = styled.div`padding: 1.5rem;`;
+const ModalFooter = styled.div`display: flex; gap: 0.75rem; justify-content: flex-end; padding: 1rem 1.5rem; border-top: 1px solid ${palette.border};`;
+const FormGroup = styled.div`display: flex; flex-direction: column; gap: 0.375rem; margin-bottom: 1.125rem;`;
+const Label = styled.label`font-size: 0.8125rem; font-weight: 600; color: ${palette.text};`;
+const Input = styled.input`padding: 0.5rem 0.875rem; border: 1px solid ${palette.border}; border-radius: 0.5rem; font-size: 0.875rem; background: ${palette.bg}; color: ${palette.text}; outline: none; width: 100%; box-sizing: border-box; &:focus { border-color: ${palette.accent}; box-shadow: 0 0 0 2px ${palette.accentSoft}; }`;
+const Textarea = styled.textarea`padding: 0.5rem 0.875rem; border: 1px solid ${palette.border}; border-radius: 0.5rem; font-size: 0.8125rem; font-family: 'SF Mono', 'Fira Code', monospace; background: ${palette.bg}; color: ${palette.text}; outline: none; width: 100%; box-sizing: border-box; resize: vertical; min-height: 8rem; &:focus { border-color: ${palette.accent}; box-shadow: 0 0 0 2px ${palette.accentSoft}; }`;
+const ModalSelect = styled.select`padding: 0.5rem 0.875rem; border: 1px solid ${palette.border}; border-radius: 0.5rem; font-size: 0.875rem; background: ${palette.bg}; color: ${palette.text}; outline: none; width: 100%; &:focus { border-color: ${palette.accent}; }`;
+const HintText = styled.p`font-size: 0.75rem; color: ${palette.textSubtle}; margin: 0;`;
+const ConfirmText = styled.p`font-size: 0.9375rem; color: ${palette.text}; margin: 0 0 0.5rem;`;
+const ConfirmSub = styled.p`font-size: 0.8125rem; color: ${palette.textSubtle}; margin: 0;`;
+
+type ModalMode = 'create' | 'edit' | 'delete' | null;
+
+interface FormState {
   name: string;
-  type: TemplateType;
-  subject: string | null;
-  lastUsed: string | null;
-  usageCount: number;
-  createdAt: string;
+  type: MarketingChannel;
+  subject: string;
+  body: string;
 }
 
-const MOCK: Template[] = [
-  { id: '1', name: 'Monthly Cashback Summary', type: 'EMAIL', subject: 'Your BoomCard cashback this month', lastUsed: '2026-04-10T10:00:00Z', usageCount: 12, createdAt: '2025-12-01T09:00:00Z' },
-  { id: '2', name: 'Welcome — New Subscriber', type: 'EMAIL', subject: 'Welcome to BoomCard!', lastUsed: '2026-04-20T08:00:00Z', usageCount: 890, createdAt: '2025-11-15T10:00:00Z' },
-  { id: '3', name: 'New Partner Nearby', type: 'PUSH', subject: null, lastUsed: '2026-04-15T09:00:00Z', usageCount: 34, createdAt: '2026-01-10T11:00:00Z' },
-  { id: '4', name: 'Cashback Credited', type: 'PUSH', subject: null, lastUsed: '2026-04-28T07:30:00Z', usageCount: 2100, createdAt: '2025-10-05T09:00:00Z' },
-  { id: '5', name: 'OTP Verification', type: 'SMS', subject: null, lastUsed: '2026-04-28T11:00:00Z', usageCount: 15600, createdAt: '2025-09-01T08:00:00Z' },
-  { id: '6', name: 'Referral Reward', type: 'EMAIL', subject: 'You earned a referral bonus!', lastUsed: '2026-04-05T13:00:00Z', usageCount: 67, createdAt: '2026-02-20T10:00:00Z' },
-  { id: '7', name: 'Promo Blast', type: 'EMAIL', subject: null, lastUsed: null, usageCount: 0, createdAt: '2026-04-26T14:00:00Z' },
-  { id: '8', name: 'Re-engagement Nudge', type: 'PUSH', subject: null, lastUsed: '2026-03-15T09:00:00Z', usageCount: 8, createdAt: '2026-03-10T10:00:00Z' },
-];
-
+const DEFAULT_FORM: FormState = { name: '', type: 'EMAIL', subject: '', body: '' };
 const PAGE_SIZE = 25;
 
 export default function AdminMarketingTemplatesPage() {
   const [search, setSearch] = useState('');
-  const [typeFilter, setTypeFilter] = useState<TemplateType | ''>('');
+  const [typeFilter, setTypeFilter] = useState<MarketingChannel | ''>('');
   const [page, setPage] = useState(1);
+  const [items, setItems] = useState<MarketingTemplate[]>([]);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(false);
 
-  const filtered = useMemo(() =>
-    MOCK.filter((t) => {
-      if (search && !t.name.toLowerCase().includes(search.toLowerCase())) return false;
-      if (typeFilter && t.type !== typeFilter) return false;
-      return true;
-    }),
-    [search, typeFilter],
-  );
+  const [modal, setModal] = useState<ModalMode>(null);
+  const [selected, setSelected] = useState<MarketingTemplate | null>(null);
+  const [form, setForm] = useState<FormState>(DEFAULT_FORM);
+  const [saving, setSaving] = useState(false);
 
-  const paged = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const load = useCallback(() => {
+    setLoading(true);
+    adminMarketingService
+      .listTemplates({ page, limit: PAGE_SIZE, search, type: typeFilter })
+      .then((r) => { setItems(r.items); setTotal(r.total); })
+      .finally(() => setLoading(false));
+  }, [page, search, typeFilter]);
+
+  useEffect(() => { load(); }, [load]);
 
   const fmt = (iso: string) =>
     new Date(iso).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
 
-  const columns: ColumnDef<Template>[] = [
+  const openCreate = () => {
+    setSelected(null);
+    setForm(DEFAULT_FORM);
+    setModal('create');
+  };
+
+  const openEdit = async (row: MarketingTemplate) => {
+    setSelected(row);
+    setForm({ name: row.name, type: row.type, subject: row.subject ?? '', body: '' });
+    setModal('edit');
+    const detail = await adminMarketingService.getTemplate(row.id);
+    setForm({ name: detail.name, type: detail.type, subject: detail.subject ?? '', body: detail.body });
+  };
+
+  const openDelete = (row: MarketingTemplate) => {
+    setSelected(row);
+    setModal('delete');
+  };
+
+  const closeModal = () => { setModal(null); setSelected(null); };
+
+  const handleSave = async () => {
+    if (!form.name.trim()) return;
+    setSaving(true);
+    try {
+      const payload = {
+        name: form.name,
+        type: form.type,
+        subject: form.subject || undefined,
+        body: form.body,
+      };
+      if (modal === 'create') {
+        await adminMarketingService.createTemplate(payload);
+      } else if (modal === 'edit' && selected) {
+        await adminMarketingService.updateTemplate(selected.id, payload);
+      }
+      closeModal();
+      load();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!selected) return;
+    setSaving(true);
+    try {
+      await adminMarketingService.deleteTemplate(selected.id);
+      closeModal();
+      load();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const columns: ColumnDef<MarketingTemplate>[] = [
     {
       key: 'name',
       header: 'Template',
@@ -130,10 +205,11 @@ export default function AdminMarketingTemplatesPage() {
           <Eyebrow>Marketing</Eyebrow>
           <PageTitle>
             Templates
-            {filtered.length > 0 && <TotalBadge>{filtered.length}</TotalBadge>}
+            {total > 0 && <TotalBadge>{total}</TotalBadge>}
           </PageTitle>
           <PageSubtitle>Reusable message templates for campaigns and automations</PageSubtitle>
         </TitleBlock>
+        <PrimaryBtn onClick={openCreate}>+ New Template</PrimaryBtn>
       </PageHeader>
 
       <Card>
@@ -144,7 +220,7 @@ export default function AdminMarketingTemplatesPage() {
             value={search}
             onChange={(e) => { setSearch(e.target.value); setPage(1); }}
           />
-          <Select value={typeFilter} onChange={(e) => { setTypeFilter(e.target.value as TemplateType | ''); setPage(1); }}>
+          <Select value={typeFilter} onChange={(e) => { setTypeFilter(e.target.value as MarketingChannel | ''); setPage(1); }}>
             <option value="">All types</option>
             <option value="EMAIL">Email</option>
             <option value="PUSH">Push</option>
@@ -154,20 +230,107 @@ export default function AdminMarketingTemplatesPage() {
 
         <DataTable
           columns={columns}
-          data={paged}
+          data={items}
           rowKey={(row) => row.id}
-          loading={false}
+          loading={loading}
           emptyMessage="No templates found"
           page={page}
           pageSize={PAGE_SIZE}
-          totalItems={filtered.length}
+          totalItems={total}
           onPageChange={setPage}
           rowActions={[
-            { label: 'Edit', onClick: () => {} },
-            { label: 'Duplicate', onClick: () => {} },
+            { label: 'Edit', onClick: openEdit },
+            { label: 'Delete', onClick: openDelete },
           ]}
         />
       </Card>
+
+      {(modal === 'create' || modal === 'edit') && (
+        <Overlay onClick={closeModal}>
+          <ModalBox onClick={(e) => e.stopPropagation()}>
+            <ModalHeader>
+              <ModalTitle>{modal === 'create' ? 'New Template' : 'Edit Template'}</ModalTitle>
+              <CloseBtn onClick={closeModal}>×</CloseBtn>
+            </ModalHeader>
+            <ModalBody>
+              <FormGroup>
+                <Label>Name *</Label>
+                <Input
+                  value={form.name}
+                  onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                  placeholder="e.g. Welcome Email"
+                  autoFocus
+                />
+              </FormGroup>
+              <FormGroup>
+                <Label>Channel *</Label>
+                <ModalSelect
+                  value={form.type}
+                  onChange={(e) => setForm((f) => ({ ...f, type: e.target.value as MarketingChannel }))}
+                >
+                  <option value="EMAIL">Email</option>
+                  <option value="PUSH">Push notification</option>
+                  <option value="SMS">SMS</option>
+                </ModalSelect>
+              </FormGroup>
+              {form.type === 'EMAIL' && (
+                <FormGroup>
+                  <Label>Subject line</Label>
+                  <Input
+                    value={form.subject}
+                    onChange={(e) => setForm((f) => ({ ...f, subject: e.target.value }))}
+                    placeholder="e.g. Your BoomCard is ready to use"
+                  />
+                </FormGroup>
+              )}
+              <FormGroup>
+                <Label>Body *</Label>
+                <Textarea
+                  value={form.body}
+                  onChange={(e) => setForm((f) => ({ ...f, body: e.target.value }))}
+                  placeholder={form.type === 'EMAIL' ? 'HTML or plain text content…' : 'Message content…'}
+                  rows={form.type === 'EMAIL' ? 10 : 4}
+                />
+                {form.type !== 'EMAIL' && (
+                  <HintText>Use {'{{variable}}'} placeholders where needed.</HintText>
+                )}
+              </FormGroup>
+            </ModalBody>
+            <ModalFooter>
+              <GhostBtn onClick={closeModal} disabled={saving}>Cancel</GhostBtn>
+              <PrimaryBtn onClick={handleSave} disabled={saving || !form.name.trim()}>
+                {saving ? 'Saving…' : modal === 'create' ? 'Create template' : 'Save changes'}
+              </PrimaryBtn>
+            </ModalFooter>
+          </ModalBox>
+        </Overlay>
+      )}
+
+      {modal === 'delete' && selected && (
+        <Overlay onClick={closeModal}>
+          <ModalBox style={{ maxWidth: '26rem' }} onClick={(e) => e.stopPropagation()}>
+            <ModalHeader>
+              <ModalTitle>Delete template?</ModalTitle>
+              <CloseBtn onClick={closeModal}>×</CloseBtn>
+            </ModalHeader>
+            <ModalBody>
+              <ConfirmText>
+                You are about to delete <strong>{selected.name}</strong>.
+              </ConfirmText>
+              <ConfirmSub>
+                Any campaigns or automations using this template will have their template reference removed.
+                This action cannot be undone.
+              </ConfirmSub>
+            </ModalBody>
+            <ModalFooter>
+              <GhostBtn onClick={closeModal} disabled={saving}>Cancel</GhostBtn>
+              <DangerBtn onClick={handleDelete} disabled={saving}>
+                {saving ? 'Deleting…' : 'Delete template'}
+              </DangerBtn>
+            </ModalFooter>
+          </ModalBox>
+        </Overlay>
+      )}
     </PageShell>
   );
 }
