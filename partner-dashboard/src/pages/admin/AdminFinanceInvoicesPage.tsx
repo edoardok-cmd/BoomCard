@@ -87,7 +87,10 @@ export default function AdminFinanceInvoicesPage() {
       toast.success('Invoice marked as paid');
       queryClient.invalidateQueries({ queryKey: ['admin-finance-invoices'] });
     },
-    onError: () => toast.error('Failed to mark as paid'),
+    onError: (err: unknown) => {
+      const msg = (err as any)?.response?.data?.error || (err as any)?.response?.data?.message || 'Failed to mark as paid';
+      toast.error(msg);
+    },
   });
 
   const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -162,7 +165,7 @@ export default function AdminFinanceInvoicesPage() {
           <Eyebrow>Finance</Eyebrow>
           <PageTitle>
             Partner Invoices
-            {data && data.meta.total > 0 && <TotalBadge>{data.meta.total.toLocaleString()}</TotalBadge>}
+            {(data?.meta?.total ?? 0) > 0 && <TotalBadge>{data!.meta.total.toLocaleString()}</TotalBadge>}
           </PageTitle>
           <PageSubtitle>Monthly cashback invoices owed to partners</PageSubtitle>
         </TitleBlock>

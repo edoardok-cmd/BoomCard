@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { WalletTransactionType, WalletTransactionStatus } from '@prisma/client';
-import { authenticate, authorize } from '../middleware/auth.middleware';
+import { authenticate, authorize, requirePermission } from '../middleware/auth.middleware';
 import { prisma } from '../lib/prisma';
 
 const router = Router();
@@ -51,7 +51,7 @@ function buildWhere(query: Record<string, string>): TxWhere {
 }
 
 // GET /api/admin/transactions?page=1&limit=20&search=...&type=TOP_UP&status=COMPLETED&dateFrom=...&dateTo=...&userId=...
-router.get('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), async (req, res, next) => {
+router.get('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('transactions.read'), async (req, res, next) => {
   try {
     const { page = '1', limit = '20' } = req.query as Record<string, string>;
     const pageNum = Math.max(1, parseInt(page) || 1);
@@ -103,7 +103,7 @@ router.get('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), async (req, res
 });
 
 // GET /api/admin/transactions/stats?search=...&type=...&status=...&dateFrom=...&dateTo=...&userId=...
-router.get('/stats', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), async (req, res, next) => {
+router.get('/stats', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('transactions.read'), async (req, res, next) => {
   try {
     const baseWhere = buildWhere(req.query as Record<string, string>);
 
@@ -133,7 +133,7 @@ router.get('/stats', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), async (req
 });
 
 // POST /api/admin/transactions/adjust
-router.post('/adjust', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), async (req, res, next) => {
+router.post('/adjust', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('transactions.write'), async (req, res, next) => {
   let validationError: string | null = null;
   try {
     const { userId, amount, reason } = req.body as {

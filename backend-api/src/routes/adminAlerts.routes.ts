@@ -1,10 +1,10 @@
 import { Router } from 'express';
-import { authenticate, authorize } from '../middleware/auth.middleware';
+import { authenticate, authorize, requirePermission } from '../middleware/auth.middleware';
 import { getAlerts } from '../services/adminAlerts.service';
 
 const router = Router();
 
-router.get('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), async (_req, res, next) => {
+router.get('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('dashboard.read'), async (_req, res, next) => {
   try {
     const result = await getAlerts();
     res.json(result);

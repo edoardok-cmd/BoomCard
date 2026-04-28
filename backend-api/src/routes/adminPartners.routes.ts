@@ -1,12 +1,12 @@
 import { Router } from 'express';
 import { PartnerStatus } from '@prisma/client';
-import { authenticate, authorize } from '../middleware/auth.middleware';
+import { authenticate, authorize, requirePermission } from '../middleware/auth.middleware';
 import { prisma } from '../lib/prisma';
 
 const router = Router();
 
 // GET /api/admin/partner-requests?page=1&limit=20&search=...
-router.get('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), async (req, res, next) => {
+router.get('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('partners.requests.read'), async (req, res, next) => {
   try {
     const { search, page = '1', limit = '20' } = req.query as Record<string, string>;
     const pageNum = Math.max(1, parseInt(page) || 1);
@@ -62,7 +62,7 @@ router.get('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), async (req, res
 });
 
 // POST /api/admin/partner-requests/:id/approve
-router.post('/:id/approve', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), async (req, res, next) => {
+router.post('/:id/approve', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('partners.requests.write'), async (req, res, next) => {
   try {
     const { id } = req.params;
 
@@ -86,7 +86,7 @@ router.post('/:id/approve', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), asy
 });
 
 // POST /api/admin/partner-requests/:id/reject
-router.post('/:id/reject', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), async (req, res, next) => {
+router.post('/:id/reject', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('partners.requests.write'), async (req, res, next) => {
   try {
     const { id } = req.params;
     const { reason } = req.body as { reason?: string };

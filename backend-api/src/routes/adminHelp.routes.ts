@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { TicketStatus, TicketPriority, TicketCategory } from '@prisma/client';
-import { authenticate, authorize } from '../middleware/auth.middleware';
+import { authenticate, authorize, requirePermission } from '../middleware/auth.middleware';
 import { prisma } from '../lib/prisma';
 import type { AuthRequest } from '../middleware/auth.middleware';
 
@@ -38,7 +38,7 @@ const TICKET_SELECT_MINE = {
 } as const;
 
 // GET /api/admin/help — all tickets with optional filters
-router.get('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), async (req, res, next) => {
+router.get('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('help.read'), async (req, res, next) => {
   try {
     const { status, priority, category, search, page = '1', limit = '25' } = req.query as Record<string, string>;
     const skip = (parseInt(page) - 1) * parseInt(limit);
@@ -73,7 +73,7 @@ router.get('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), async (req, res
 });
 
 // GET /api/admin/help/new — status=NEW tickets (unassigned queue)
-router.get('/new', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), async (req, res, next) => {
+router.get('/new', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('help.read'), async (req, res, next) => {
   try {
     const { priority, category, search, page = '1', limit = '25' } = req.query as Record<string, string>;
     const skip = (parseInt(page) - 1) * parseInt(limit);
@@ -111,7 +111,7 @@ router.get('/new', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), async (req, 
 });
 
 // GET /api/admin/help/mine — tickets assigned to the current admin
-router.get('/mine', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), async (req: AuthRequest, res, next) => {
+router.get('/mine', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('help.read'), async (req: AuthRequest, res, next) => {
   try {
     const { status, search, page = '1', limit = '25' } = req.query as Record<string, string>;
     const skip = (parseInt(page) - 1) * parseInt(limit);
@@ -148,7 +148,7 @@ router.get('/mine', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), async (req:
 });
 
 // POST /api/admin/help/:id/assign — assign ticket to self; transitions NEW → OPEN
-router.post('/:id/assign', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), async (req: AuthRequest, res, next) => {
+router.post('/:id/assign', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('help.write'), async (req: AuthRequest, res, next) => {
   try {
     const ticket = await prisma.helpTicket.findUnique({ where: { id: req.params.id } });
     if (!ticket) return res.status(404).json({ error: 'Ticket not found' });
@@ -168,7 +168,7 @@ router.post('/:id/assign', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), asyn
 });
 
 // PATCH /api/admin/help/:id — update status and/or priority
-router.patch('/:id', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), async (req, res, next) => {
+router.patch('/:id', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('help.write'), async (req, res, next) => {
   try {
     const { status, priority } = req.body as { status?: string; priority?: string };
 

@@ -302,7 +302,10 @@ export default function AdminPayoutsPage() {
       toast.success('Payout approved — marked as Processing');
       queryClient.invalidateQueries({ queryKey: ['admin-payouts'] });
     },
-    onError: () => toast.error('Failed to approve payout'),
+    onError: (err: unknown) => {
+      const msg = (err as any)?.response?.data?.message || (err as any)?.response?.data?.error || 'Failed to approve payout';
+      toast.error(msg);
+    },
   });
 
   const completeMutation = useMutation({
@@ -311,7 +314,10 @@ export default function AdminPayoutsPage() {
       toast.success('Payout marked as Completed');
       queryClient.invalidateQueries({ queryKey: ['admin-payouts'] });
     },
-    onError: () => toast.error('Failed to mark payout as completed'),
+    onError: (err: unknown) => {
+      const msg = (err as any)?.response?.data?.message || (err as any)?.response?.data?.error || 'Failed to mark payout as completed';
+      toast.error(msg);
+    },
   });
 
   const rejectMutation = useMutation({
@@ -323,7 +329,10 @@ export default function AdminPayoutsPage() {
       setRejectReason('');
       queryClient.invalidateQueries({ queryKey: ['admin-payouts'] });
     },
-    onError: () => toast.error('Failed to reject payout'),
+    onError: (err: unknown) => {
+      const msg = (err as any)?.response?.data?.message || (err as any)?.response?.data?.error || 'Failed to reject payout';
+      toast.error(msg);
+    },
   });
 
   const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {

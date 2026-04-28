@@ -11,7 +11,7 @@
  */
 
 import { Router, Response } from 'express';
-import { authenticate, authorize, AuthRequest } from '../middleware/auth.middleware';
+import { authenticate, authorize, requirePermission, AuthRequest } from '../middleware/auth.middleware';
 import { adminCashbackService } from '../services/adminCashback.service';
 import { logger } from '../utils/logger';
 
@@ -24,7 +24,7 @@ router.use(authenticate, authorize('ADMIN', 'SUPER_ADMIN'));
 // GET /api/admin/cashback/stats
 // Dashboard stat cards: pending total, paid this month, overdue count
 // ------------------------------------------------------------------
-router.get('/stats', async (_req: AuthRequest, res: Response) => {
+router.get('/stats', requirePermission('cashback.read'), async (_req: AuthRequest, res: Response) => {
   try {
     const stats = await adminCashbackService.getDashboardStats();
     res.json({ success: true, data: stats });
@@ -38,7 +38,7 @@ router.get('/stats', async (_req: AuthRequest, res: Response) => {
 // GET /api/admin/cashback/summary?month=YYYY-MM&status=PENDING|PAID|OVERDUE
 // Monthly per-partner cashback summary
 // ------------------------------------------------------------------
-router.get('/summary', async (req: AuthRequest, res: Response) => {
+router.get('/summary', requirePermission('cashback.read'), async (req: AuthRequest, res: Response) => {
   try {
     const month = req.query.month as string | undefined;
     const status = req.query.status as string | undefined;
@@ -67,7 +67,7 @@ router.get('/summary', async (req: AuthRequest, res: Response) => {
 // POST /api/admin/cashback/:partnerId/:month/mark-paid
 // body: { notes?: string }
 // ------------------------------------------------------------------
-router.post('/:partnerId/:month/mark-paid', async (req: AuthRequest, res: Response) => {
+router.post('/:partnerId/:month/mark-paid', requirePermission('cashback.write'), async (req: AuthRequest, res: Response) => {
   try {
     const { partnerId, month } = req.params;
 
@@ -93,7 +93,7 @@ router.post('/:partnerId/:month/mark-paid', async (req: AuthRequest, res: Respon
 // POST /api/admin/cashback/:partnerId/remind
 // body: { month?: string }
 // ------------------------------------------------------------------
-router.post('/:partnerId/remind', async (req: AuthRequest, res: Response) => {
+router.post('/:partnerId/remind', requirePermission('cashback.write'), async (req: AuthRequest, res: Response) => {
   try {
     const { partnerId } = req.params;
     const month = req.body.month as string | undefined;
@@ -115,7 +115,7 @@ router.post('/:partnerId/remind', async (req: AuthRequest, res: Response) => {
 // GET /api/admin/cashback/rates
 // Full history of all cashback rate rows, newest first.
 // ------------------------------------------------------------------
-router.get('/rates', async (_req: AuthRequest, res: Response) => {
+router.get('/rates', requirePermission('cashback.read'), async (_req: AuthRequest, res: Response) => {
   try {
     const rates = await adminCashbackService.getCashbackRates();
     res.json({ success: true, data: rates });
@@ -129,7 +129,7 @@ router.get('/rates', async (_req: AuthRequest, res: Response) => {
 // GET /api/admin/cashback/rates/current
 // Currently effective rate for each discount step (one row per step).
 // ------------------------------------------------------------------
-router.get('/rates/current', async (_req: AuthRequest, res: Response) => {
+router.get('/rates/current', requirePermission('cashback.read'), async (_req: AuthRequest, res: Response) => {
   try {
     const rates = await adminCashbackService.getCurrentRates();
     res.json({ success: true, data: rates });
@@ -144,7 +144,7 @@ router.get('/rates/current', async (_req: AuthRequest, res: Response) => {
 // Create a new versioned rate set.
 // body: { rates: [{ discountStep, basic, premium }], effectiveFrom?, notes? }
 // ------------------------------------------------------------------
-router.post('/rates', async (req: AuthRequest, res: Response) => {
+router.post('/rates', requirePermission('cashback.write'), async (req: AuthRequest, res: Response) => {
   try {
     const { rates, effectiveFrom, notes } = req.body;
 
@@ -183,7 +183,7 @@ router.post('/rates', async (req: AuthRequest, res: Response) => {
 // GET /api/admin/cashback/:partnerId/:month/receipts
 // Returns all APPROVED receipts for reconciliation of a partner-month payment.
 // ------------------------------------------------------------------
-router.get('/:partnerId/:month/receipts', async (req: AuthRequest, res: Response) => {
+router.get('/:partnerId/:month/receipts', requirePermission('cashback.read'), async (req: AuthRequest, res: Response) => {
   try {
     const { partnerId, month } = req.params;
 

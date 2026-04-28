@@ -1,13 +1,13 @@
 import { Router } from 'express';
 import { SubscriptionPlan, SubscriptionStatus } from '@prisma/client';
-import { authenticate, authorize } from '../middleware/auth.middleware';
+import { authenticate, authorize, requirePermission } from '../middleware/auth.middleware';
 import { prisma } from '../lib/prisma';
 import { stripeService } from '../services/stripe.service';
 
 const router = Router();
 
 // GET /api/admin/subscriptions?page=1&limit=20&search=...&plan=BASIC&status=ACTIVE
-router.get('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), async (req, res, next) => {
+router.get('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('subscriptions.read'), async (req, res, next) => {
   try {
     const {
       search,
@@ -80,7 +80,7 @@ router.get('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), async (req, res
 });
 
 // POST /api/admin/subscriptions/:id/cancel — cancel at period end
-router.post('/:id/cancel', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), async (req, res, next) => {
+router.post('/:id/cancel', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('subscriptions.write'), async (req, res, next) => {
   try {
     const subscription = await prisma.subscription.findUnique({ where: { id: req.params.id } });
     if (!subscription) return res.status(404).json({ error: 'Subscription not found' });
@@ -116,7 +116,7 @@ router.post('/:id/cancel', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), asyn
 });
 
 // POST /api/admin/subscriptions/:id/reactivate — remove scheduled cancellation
-router.post('/:id/reactivate', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), async (req, res, next) => {
+router.post('/:id/reactivate', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('subscriptions.write'), async (req, res, next) => {
   try {
     const subscription = await prisma.subscription.findUnique({ where: { id: req.params.id } });
     if (!subscription) return res.status(404).json({ error: 'Subscription not found' });
@@ -141,7 +141,7 @@ router.post('/:id/reactivate', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), 
 });
 
 // PATCH /api/admin/subscriptions/:id/auto-renewal — toggle auto-renewal without ownership check
-router.patch('/:id/auto-renewal', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), async (req, res, next) => {
+router.patch('/:id/auto-renewal', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('subscriptions.write'), async (req, res, next) => {
   try {
     const { autoRenewal } = req.body;
     if (typeof autoRenewal !== 'boolean') {

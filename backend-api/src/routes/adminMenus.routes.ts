@@ -8,7 +8,7 @@
  */
 
 import { Router, Response } from 'express';
-import { authenticate, authorize, AuthRequest } from '../middleware/auth.middleware';
+import { authenticate, authorize, requirePermission, AuthRequest } from '../middleware/auth.middleware';
 import { asyncHandler } from '../middleware/error.middleware';
 import { prisma } from '../lib/prisma';
 import { logger } from '../utils/logger';
@@ -41,6 +41,7 @@ const validateMenuUrl = (raw: unknown): { ok: true; url: string } | { ok: false;
  */
 router.get(
   '/pending',
+  requirePermission('partners.locations.read'),
   asyncHandler(async (_req: AuthRequest, res: Response) => {
     const venues = await prisma.venue.findMany({
       where: { menuStatus: 'PENDING' },
@@ -77,6 +78,7 @@ adminVenueMenuRouter.use(authenticate, authorize('ADMIN', 'SUPER_ADMIN'));
  */
 adminVenueMenuRouter.get(
   '/',
+  requirePermission('partners.locations.read'),
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const page = Math.max(1, parseInt(req.query.page as string) || 1);
     const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string) || 25));
@@ -154,6 +156,7 @@ adminVenueMenuRouter.get(
  */
 adminVenueMenuRouter.post(
   '/:id/menu/approve',
+  requirePermission('partners.locations.write'),
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const { id } = req.params;
     const expectedUrl = typeof req.body?.expectedUrl === 'string' ? req.body.expectedUrl : null;
@@ -237,6 +240,7 @@ adminVenueMenuRouter.post(
  */
 adminVenueMenuRouter.post(
   '/:id/menu/reject',
+  requirePermission('partners.locations.write'),
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const { id } = req.params;
     const reason = typeof req.body?.reason === 'string' ? req.body.reason.trim() : '';
@@ -321,6 +325,7 @@ adminVenueMenuRouter.post(
  */
 adminVenueMenuRouter.put(
   '/:id/menu',
+  requirePermission('partners.locations.write'),
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const { id } = req.params;
     const check = validateMenuUrl(req.body?.url);
@@ -370,6 +375,7 @@ adminVenueMenuRouter.put(
  */
 adminVenueMenuRouter.delete(
   '/:id/menu',
+  requirePermission('partners.locations.write'),
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const { id } = req.params;
     const venue = await prisma.venue.findUnique({ where: { id } });

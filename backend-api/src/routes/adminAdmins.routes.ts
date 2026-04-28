@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import bcrypt from 'bcrypt';
 import { AdminRoleKey } from '@prisma/client';
-import { authenticate, authorize } from '../middleware/auth.middleware';
+import { authenticate, authorize, requirePermission } from '../middleware/auth.middleware';
 import { auditMiddleware } from '../middleware/audit.middleware';
 import { prisma } from '../lib/prisma';
 import type { AuthRequest } from '../middleware/auth.middleware';
@@ -10,7 +10,7 @@ const router = Router();
 router.use(auditMiddleware);
 
 // GET /api/admin/admins/roles — all AdminRole rows (for create / approve forms)
-router.get('/roles', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), async (_req, res, next) => {
+router.get('/roles', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('admins.read'), async (_req, res, next) => {
   try {
     const roles = await prisma.adminRole.findMany({ orderBy: { key: 'asc' } });
     res.json({ roles });
@@ -20,7 +20,7 @@ router.get('/roles', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), async (_re
 });
 
 // GET /api/admin/admins/audit — paginated audit log
-router.get('/audit', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), async (req, res, next) => {
+router.get('/audit', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('admins.audit.read'), async (req, res, next) => {
   try {
     const { search, objectType, page = '1', limit = '20' } = req.query as Record<string, string>;
 
@@ -71,7 +71,7 @@ router.get('/audit', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), async (req
 });
 
 // GET /api/admin/admins/pending — ADMIN-role users with no assigned AdminRole
-router.get('/pending', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), async (req, res, next) => {
+router.get('/pending', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('admins.write'), async (req, res, next) => {
   try {
     const { search, page = '1', limit = '20' } = req.query as Record<string, string>;
 
@@ -125,7 +125,7 @@ router.get('/pending', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), async (r
 });
 
 // GET /api/admin/admins — list all admin users with their roles
-router.get('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), async (req, res, next) => {
+router.get('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('admins.read'), async (req, res, next) => {
   try {
     const { search, roleKey, page = '1', limit = '20' } = req.query as Record<string, string>;
 
@@ -184,7 +184,7 @@ router.get('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), async (req, res
 });
 
 // POST /api/admin/admins — create a new admin user
-router.post('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), async (req: AuthRequest, res, next) => {
+router.post('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('admins.write'), async (req: AuthRequest, res, next) => {
   try {
     const { email, firstName, lastName, phone, password, roleKey } = req.body as {
       email: string;
@@ -239,7 +239,7 @@ router.post('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), async (req: Au
 });
 
 // POST /api/admin/admins/:id/approve — assign a role to a pending admin
-router.post('/:id/approve', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), async (req: AuthRequest, res, next) => {
+router.post('/:id/approve', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('admins.write'), async (req: AuthRequest, res, next) => {
   try {
     const { roleKey } = req.body as { roleKey: AdminRoleKey };
 
@@ -271,7 +271,7 @@ router.post('/:id/approve', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), asy
 });
 
 // DELETE /api/admin/admins/:id/roles/:roleKey — revoke a role from an admin
-router.delete('/:id/roles/:roleKey', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), async (req, res, next) => {
+router.delete('/:id/roles/:roleKey', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('admins.roles.write'), async (req, res, next) => {
   try {
     const { id, roleKey } = req.params;
 

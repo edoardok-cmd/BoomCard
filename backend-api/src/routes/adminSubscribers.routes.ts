@@ -1,13 +1,13 @@
 import { Router } from 'express';
 import { SubscriptionPlan, SubscriptionStatus } from '@prisma/client';
-import { authenticate, authorize } from '../middleware/auth.middleware';
+import { authenticate, authorize, requirePermission } from '../middleware/auth.middleware';
 import { prisma } from '../lib/prisma';
 import { stripeService } from '../services/stripe.service';
 
 const router = Router();
 
 // GET /api/admin/subscribers?page=1&limit=20&search=...&plan=BASIC&status=ACTIVE&dateFrom=...&dateTo=...
-router.get('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), async (req, res, next) => {
+router.get('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('subscribers.read'), async (req, res, next) => {
   try {
     const {
       search,
@@ -98,7 +98,7 @@ router.get('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), async (req, res
 });
 
 // PATCH /api/admin/subscribers/:id/cancel
-router.patch('/:id/cancel', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), async (req, res, next) => {
+router.patch('/:id/cancel', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('subscriptions.write'), async (req, res, next) => {
   try {
     const { id } = req.params;
 
@@ -145,7 +145,7 @@ router.patch('/:id/cancel', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), asy
 });
 
 // PATCH /api/admin/subscribers/:id/plan
-router.patch('/:id/plan', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), async (req, res, next) => {
+router.patch('/:id/plan', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('subscriptions.write'), async (req, res, next) => {
   try {
     const { id } = req.params;
     const { plan } = req.body as { plan: SubscriptionPlan };

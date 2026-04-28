@@ -1,12 +1,12 @@
 import { Router } from 'express';
 import { WalletTransactionStatus } from '@prisma/client';
-import { authenticate, authorize } from '../middleware/auth.middleware';
+import { authenticate, authorize, requirePermission } from '../middleware/auth.middleware';
 import { prisma } from '../lib/prisma';
 
 const router = Router();
 
 // GET /api/admin/payouts?page=1&limit=20&search=...&status=PENDING
-router.get('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), async (req, res, next) => {
+router.get('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('finance.payouts.read'), async (req, res, next) => {
   try {
     const {
       search,
@@ -87,7 +87,7 @@ router.get('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), async (req, res
 });
 
 // PATCH /api/admin/payouts/:id/approve → PROCESSING
-router.patch('/:id/approve', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), async (req, res, next) => {
+router.patch('/:id/approve', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('finance.payouts.write'), async (req, res, next) => {
   try {
     const { id } = req.params;
 
@@ -113,7 +113,7 @@ router.patch('/:id/approve', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), as
 });
 
 // PATCH /api/admin/payouts/:id/reject → FAILED
-router.patch('/:id/reject', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), async (req, res, next) => {
+router.patch('/:id/reject', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('finance.payouts.write'), async (req, res, next) => {
   try {
     const { id } = req.params;
     const { reason } = req.body as { reason?: string };
@@ -158,7 +158,7 @@ router.patch('/:id/reject', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), asy
 });
 
 // PATCH /api/admin/payouts/:id/complete → COMPLETED (bank transfer confirmed)
-router.patch('/:id/complete', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), async (req, res, next) => {
+router.patch('/:id/complete', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('finance.payouts.write'), async (req, res, next) => {
   try {
     const { id } = req.params;
 

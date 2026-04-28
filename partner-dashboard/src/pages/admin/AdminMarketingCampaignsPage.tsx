@@ -238,6 +238,11 @@ export default function AdminMarketingCampaignsPage() {
                 Resume
               </ToggleBtn>
             )}
+            {row.status === 'SENT' && (
+              <ToggleBtn $variant="warn" disabled={busy} onClick={() => handleStatusToggle(row, 'DRAFT')}>
+                Reset to Draft
+              </ToggleBtn>
+            )}
           </span>
         );
       },

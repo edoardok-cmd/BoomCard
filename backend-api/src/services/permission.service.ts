@@ -14,6 +14,7 @@ export const PERMISSION_CATALOG: Array<{ key: string; label: string; category: s
   { key: 'subscriptions.read', label: 'View subscriptions', category: 'subscribers' },
   { key: 'subscriptions.write', label: 'Edit subscriptions', category: 'subscribers' },
   { key: 'transactions.read', label: 'View transactions', category: 'subscribers' },
+  { key: 'transactions.write', label: 'Create balance adjustments', category: 'subscribers' },
   { key: 'cashback.read', label: 'View cashback entries', category: 'subscribers' },
   { key: 'cashback.write', label: 'Manage cashback state', category: 'subscribers' },
 
@@ -70,7 +71,7 @@ export const PERMISSION_CATALOG: Array<{ key: string; label: string; category: s
 const ROLE_DEFAULT_ALLOWS: Record<string, string[]> = {
   ADMIN: PERMISSION_CATALOG.map((p) => p.key),
   SUPPORT: ['dashboard.read', 'subscribers.read', 'partners.read', 'control.disputes.read', 'control.disputes.write', 'help.read', 'help.write'],
-  FINANCE: ['dashboard.read', 'subscribers.read', 'transactions.read', 'cashback.read', 'finance.payouts.read', 'finance.payouts.write', 'finance.invoices.read', 'finance.invoices.write', 'finance.periods.read', 'finance.reports.read'],
+  FINANCE: ['dashboard.read', 'subscribers.read', 'transactions.read', 'transactions.write', 'cashback.read', 'finance.payouts.read', 'finance.payouts.write', 'finance.invoices.read', 'finance.invoices.write', 'finance.periods.read', 'finance.reports.read'],
   RISK_REVIEW: ['dashboard.read', 'subscribers.read', 'transactions.read', 'control.risk.read', 'control.risk.write', 'control.disputes.read', 'control.disputes.write', 'control.rules.read'],
   PARTNER_MANAGER: ['dashboard.read', 'partners.read', 'partners.write', 'partners.requests.read', 'partners.requests.write', 'partners.onboarding.read', 'partners.onboarding.write', 'partners.locations.read', 'partners.receipts.read'],
 };
