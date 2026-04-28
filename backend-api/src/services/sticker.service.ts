@@ -187,7 +187,7 @@ class StickerService {
    */
   private async resolveCashbackTier(userId: string): Promise<'LIGHT' | 'BASIC' | 'PREMIUM' | null> {
     const sub = await prisma.subscription.findFirst({
-      where: { userId, status: SubscriptionStatus.ACTIVE },
+      where: { userId, status: { in: [SubscriptionStatus.ACTIVE, SubscriptionStatus.PAUSED] } },
       orderBy: { currentPeriodEnd: 'desc' },
     });
     if (!sub) return null;
@@ -449,7 +449,7 @@ class StickerService {
 
     if (partner?.partnerTypeId) {
       const userSubscription = await prisma.subscription.findFirst({
-        where: { userId, status: SubscriptionStatus.ACTIVE },
+        where: { userId, status: { in: [SubscriptionStatus.ACTIVE, SubscriptionStatus.PAUSED] } },
         orderBy: { currentPeriodEnd: 'desc' },
       });
       const redeemableTypeIds = await partnerTypeService.getRedeemableTypeIdsForPlan(
@@ -681,7 +681,7 @@ class StickerService {
 
     if (partner && partner.partnerTypeId) {
       const userSubscription = await prisma.subscription.findFirst({
-        where: { userId, status: SubscriptionStatus.ACTIVE },
+        where: { userId, status: { in: [SubscriptionStatus.ACTIVE, SubscriptionStatus.PAUSED] } },
         orderBy: { currentPeriodEnd: 'desc' },
       });
 

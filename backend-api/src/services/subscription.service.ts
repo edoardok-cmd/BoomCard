@@ -1,9 +1,10 @@
-import { SubscriptionPlan, WalletTransactionType } from '@prisma/client';
+import { ScanStatus, SubscriptionPlan, WalletTransactionType } from '@prisma/client';
 import prisma from '../lib/prisma';
 import { stripeService } from './stripe.service';
 import { logger } from '../utils/logger';
 import { cardService } from './card.service';
 import { walletService } from './wallet.service';
+import { emailService } from './email.service';
 import {
   EUR_TO_BGN_RATE,
   UPGRADE_CREDIT_WEEKLY_TO_MONTHLY,
@@ -88,8 +89,13 @@ export class SubscriptionService {
         trialEnd: stripeSubscription.trial_end
           ? new Date(stripeSubscription.trial_end * 1000)
           : null,
-        // FR-007: 24-hour trial refund window starts at purchase
-        trialRefundEligibleUntil: new Date(Date.now() + 24 * 60 * 60 * 1000),
+        // FR-007: 24-hour trial refund window. For immediately-active subscriptions
+        // (saved payment method) the clock starts now. For INCOMPLETE subscriptions
+        // the payment hasn't been confirmed yet — the webhook sets this field when
+        // the subscription transitions INCOMPLETE → ACTIVE.
+        trialRefundEligibleUntil: isImmediatelyActive
+          ? new Date(Date.now() + 24 * 60 * 60 * 1000)
+          : null,
       },
     });
 
@@ -116,60 +122,96 @@ export class SubscriptionService {
   /**
    * Cancel subscription
    */
-  async cancelSubscription(subscriptionId: string, cancelAtPeriodEnd = true) {
+  async cancelSubscription(subscriptionId: string, cancelAtPeriodEnd = true, suppressEmail = false) {
     const subscription = await prisma.subscription.findUnique({
       where: { id: subscriptionId },
+      include: {
+        user: { select: { email: true, firstName: true, preferredLanguage: true } },
+        planDetails: { select: { displayName: true, displayNameBg: true } },
+      },
     });
 
     if (!subscription) {
       throw new Error('Subscription not found');
     }
 
+    let updated: typeof subscription;
+
     if (!subscription.stripeSubscriptionId) {
       // Paysera-based subscription (LIGHT or legacy) — no external billing to cancel.
       // Mark it to expire at the end of the current period so the user keeps access
       // until then, mirroring Stripe's cancel_at_period_end behaviour.
       if (cancelAtPeriodEnd) {
-        return prisma.subscription.update({
+        updated = await prisma.subscription.update({
           where: { id: subscriptionId },
           data: {
             cancelAtPeriodEnd: true,
             cancelAt: subscription.currentPeriodEnd,
             canceledAt: new Date(),
           },
+          include: {
+            user: { select: { email: true, firstName: true, preferredLanguage: true } },
+            planDetails: { select: { displayName: true, displayNameBg: true } },
+          },
+        });
+      } else {
+        // Immediate cancellation — end it now and downgrade the card
+        await cardService.syncCardTypeWithSubscription(subscription.userId, 'LIGHT');
+        updated = await prisma.subscription.update({
+          where: { id: subscriptionId },
+          data: {
+            status: 'CANCELLED',
+            cancelAtPeriodEnd: false,
+            cancelAt: new Date(),
+            canceledAt: new Date(),
+          },
+          include: {
+            user: { select: { email: true, firstName: true, preferredLanguage: true } },
+            planDetails: { select: { displayName: true, displayNameBg: true } },
+          },
         });
       }
+    } else {
+      // Stripe-based subscription — cancel through Stripe
+      const stripeSubscription = await stripeService.stripe.subscriptions.update(
+        subscription.stripeSubscriptionId,
+        { cancel_at_period_end: cancelAtPeriodEnd }
+      );
 
-      // Immediate cancellation — end it now and downgrade the card
-      await cardService.syncCardTypeWithSubscription(subscription.userId, 'LIGHT');
-      return prisma.subscription.update({
+      updated = await prisma.subscription.update({
         where: { id: subscriptionId },
         data: {
-          status: 'CANCELLED',
-          cancelAtPeriodEnd: false,
-          cancelAt: new Date(),
+          cancelAtPeriodEnd,
+          cancelAt: stripeSubscription.cancel_at
+            ? new Date(stripeSubscription.cancel_at * 1000)
+            : null,
           canceledAt: new Date(),
+        },
+        include: {
+          user: { select: { email: true, firstName: true, preferredLanguage: true } },
+          planDetails: { select: { displayName: true, displayNameBg: true } },
         },
       });
     }
 
-    // Stripe-based subscription — cancel through Stripe
-    const stripeSubscription = await stripeService.stripe.subscriptions.update(
-      subscription.stripeSubscriptionId,
-      { cancel_at_period_end: cancelAtPeriodEnd }
-    );
+    // Send cancellation confirmation email (non-fatal).
+    // Suppressed when called internally (e.g. from requestTrialRefund which sends its own email).
+    const userEmail = updated.user?.email;
+    if (userEmail && !suppressEmail) {
+      const lang = (updated.user?.preferredLanguage === 'en' ? 'en' : 'bg') as 'bg' | 'en';
+      emailService
+        .sendSubscriptionCancelledEmail(userEmail, {
+          customerName: updated.user?.firstName || 'Customer',
+          planName: updated.planDetails?.displayName || updated.plan,
+          planNameBg: updated.planDetails?.displayNameBg || updated.plan,
+          accessUntil: updated.cancelAtPeriodEnd ? (updated.cancelAt ?? null) : null,
+          manageUrl: `${process.env.APP_URL || 'https://mobile.boomcard.bg'}/subscription`,
+          language: lang,
+        })
+        .catch((err) => logger.error(`[cancelSubscription] Failed to send cancellation email for sub ${subscriptionId}:`, err));
+    }
 
-    // Update database
-    return prisma.subscription.update({
-      where: { id: subscriptionId },
-      data: {
-        cancelAtPeriodEnd,
-        cancelAt: stripeSubscription.cancel_at
-          ? new Date(stripeSubscription.cancel_at * 1000)
-          : null,
-        canceledAt: new Date(),
-      },
-    });
+    return updated;
   }
 
   /**
@@ -422,10 +464,15 @@ export class SubscriptionService {
   async requestTrialRefund(subscriptionId: string, userId: string) {
     const subscription = await prisma.subscription.findUnique({
       where: { id: subscriptionId },
+      include: {
+        user: { select: { email: true, firstName: true, preferredLanguage: true } },
+        planDetails: { select: { displayName: true, priceWeeklyEur: true, priceMonthlyEur: true, priceYearlyEur: true } },
+      },
     });
 
     if (!subscription) throw new Error('Subscription not found');
     if (subscription.userId !== userId) throw new Error('Forbidden');
+    // payseraOrderId is a top-level field on subscription — no extra include needed
 
     const now = new Date();
     if (!subscription.trialRefundEligibleUntil || subscription.trialRefundEligibleUntil < now) {
@@ -455,10 +502,43 @@ export class SubscriptionService {
           });
         }
       } else {
-        // Paysera subscriptions — flag for manual refund processing
+        // Paysera subscriptions — flag for manual refund processing and notify user + admin
         logger.info(
           `Trial refund requested for Paysera subscription ${subscriptionId} (user ${userId}) — requires manual Paysera refund`
         );
+
+        const lang = (subscription.user?.preferredLanguage === 'en' ? 'en' : 'bg') as 'bg' | 'en';
+        let subMetadata: Record<string, any> = {};
+        try { if (subscription.metadata) subMetadata = JSON.parse(subscription.metadata); } catch { subMetadata = {}; }
+        const billingPeriod = (subMetadata.billingPeriod ?? '').toLowerCase();
+        const priceInCents = (() => {
+          const plan = subscription.planDetails;
+          if (!plan) return 0;
+          if (billingPeriod.includes('week') && plan.priceWeeklyEur) return plan.priceWeeklyEur;
+          if (billingPeriod.includes('year')) return plan.priceYearlyEur;
+          return plan.priceMonthlyEur ?? 0;
+        })();
+        const refundAmountEur = priceInCents / 100;
+        const planName = subscription.planDetails?.displayName || subscription.plan;
+        const refundData = {
+          customerName: subscription.user?.firstName || 'Customer',
+          planName,
+          amount: refundAmountEur,
+          currency: 'EUR',
+          subscriptionId,
+          userId,
+          payseraOrderId: subscription.payseraOrderId ?? undefined,
+          language: lang,
+        };
+
+        if (subscription.user?.email) {
+          emailService
+            .sendTrialRefundPendingEmail(subscription.user.email, refundData)
+            .catch((err) => logger.error(`[requestTrialRefund] User email failed for sub ${subscriptionId}:`, err));
+        }
+        emailService
+          .sendAdminTrialRefundAlert(refundData)
+          .catch((err) => logger.error(`[requestTrialRefund] Admin alert email failed for sub ${subscriptionId}:`, err));
       }
     } catch (err) {
       // Undo the used flag so the user can retry if the refund API call failed
@@ -475,7 +555,7 @@ export class SubscriptionService {
       await prisma.receipt.updateMany({
         where: {
           userId,
-          status: 'PENDING',
+          status: { in: ['PENDING', 'MANUAL_REVIEW'] },
           createdAt: { gte: subscription.createdAt },
         },
         data: {
@@ -497,25 +577,38 @@ export class SubscriptionService {
       if (approvedReceipts.length > 0) {
         const receiptIds = approvedReceipts.map(r => r.id);
 
-        // Sum all CASHBACK_CREDIT entries for these receipts in one query
+        // Sum all CASHBACK_CREDIT entries for these receipts, split by status.
+        // TRIAL_PENDING credits only hit balance (not availableBalance), so they
+        // must be reversed via voidTrialPendingCashback rather than debit().
         const credits = await prisma.walletTransaction.findMany({
           where: {
             receiptId: { in: receiptIds },
             type: WalletTransactionType.CASHBACK_CREDIT,
             amount: { gt: 0 },
           },
-          select: { amount: true },
+          select: { id: true, amount: true, status: true },
         });
 
-        const totalToVoid = credits.reduce((sum, c) => sum + c.amount, 0);
+        const completedTotal = credits
+          .filter(c => c.status !== 'TRIAL_PENDING')
+          .reduce((sum, c) => sum + c.amount, 0);
+        const trialPendingCredits = credits.filter(c => c.status === 'TRIAL_PENDING');
+        const trialPendingTotal = trialPendingCredits.reduce((sum, c) => sum + c.amount, 0);
 
-        if (totalToVoid > 0) {
-          // Single debit — avoids partial-void if wallet runs short mid-loop
+        if (completedTotal > 0) {
           await walletService.debit({
             userId,
-            amount: totalToVoid,
+            amount: completedTotal,
             type: WalletTransactionType.ADJUSTMENT,
             description: 'Trial refund — cashback voided',
+            metadata: { receiptIds },
+          });
+        }
+        if (trialPendingTotal > 0) {
+          await walletService.voidTrialPendingCashback({
+            userId,
+            amount: trialPendingTotal,
+            transactionIds: trialPendingCredits.map(c => c.id),
             metadata: { receiptIds },
           });
         }
@@ -536,7 +629,84 @@ export class SubscriptionService {
       // Do not rethrow — cashback voiding failure must not block the refund
     }
 
-    return this.cancelSubscription(subscriptionId, false);
+    // Void StickerScan cashback earned during the trial period (Spec §2.2)
+    try {
+      // Cancel pre-approval scans — no wallet credit has been issued yet
+      await prisma.stickerScan.updateMany({
+        where: {
+          userId,
+          status: { in: [ScanStatus.PENDING, ScanStatus.VALIDATING, ScanStatus.MANUAL_REVIEW] },
+          createdAt: { gte: subscription.createdAt },
+        },
+        data: {
+          status: ScanStatus.REJECTED,
+          rejectionReason: 'Trial refund — pending cashback cancelled',
+          processedAt: new Date(),
+        },
+      });
+
+      // Find APPROVED scans — their cashback is already in the wallet
+      const approvedScans = await prisma.stickerScan.findMany({
+        where: {
+          userId,
+          status: ScanStatus.APPROVED,
+          createdAt: { gte: subscription.createdAt },
+        },
+        select: { id: true },
+      });
+
+      if (approvedScans.length > 0) {
+        const scanIds = approvedScans.map(s => s.id);
+
+        const stickerCredits = await prisma.walletTransaction.findMany({
+          where: {
+            stickerScanId: { in: scanIds },
+            type: WalletTransactionType.CASHBACK_CREDIT,
+            amount: { gt: 0 },
+          },
+          select: { id: true, amount: true, status: true },
+        });
+
+        const stickerCompletedTotal = stickerCredits
+          .filter(c => c.status !== 'TRIAL_PENDING')
+          .reduce((sum, c) => sum + c.amount, 0);
+        const stickerTrialPendingCredits = stickerCredits.filter(c => c.status === 'TRIAL_PENDING');
+        const stickerTrialPendingTotal = stickerTrialPendingCredits.reduce((sum, c) => sum + c.amount, 0);
+
+        if (stickerCompletedTotal > 0) {
+          await walletService.debit({
+            userId,
+            amount: stickerCompletedTotal,
+            type: WalletTransactionType.ADJUSTMENT,
+            description: 'Trial refund — sticker scan cashback voided',
+            metadata: { scanIds },
+          });
+        }
+        if (stickerTrialPendingTotal > 0) {
+          await walletService.voidTrialPendingCashback({
+            userId,
+            amount: stickerTrialPendingTotal,
+            transactionIds: stickerTrialPendingCredits.map(c => c.id),
+            metadata: { scanIds },
+          });
+        }
+
+        await prisma.stickerScan.updateMany({
+          where: { id: { in: scanIds } },
+          data: {
+            status: ScanStatus.REJECTED,
+            rejectionReason: 'Trial refund — cashback voided',
+            processedAt: new Date(),
+          },
+        });
+      }
+    } catch (stickerCashbackErr) {
+      logger.error(
+        `Failed to void sticker scan cashback for trial refund (subscription ${subscriptionId}, user ${userId}): ${stickerCashbackErr instanceof Error ? stickerCashbackErr.message : stickerCashbackErr}`
+      );
+    }
+
+    return this.cancelSubscription(subscriptionId, false, /* suppressEmail */ true);
   }
 
   /**
@@ -590,7 +760,7 @@ export class SubscriptionService {
     return prisma.subscription.findFirst({
       where: {
         userId,
-        status: { in: ['ACTIVE', 'TRIALING', 'PAST_DUE'] },
+        status: { in: ['ACTIVE', 'TRIALING', 'PAST_DUE', 'PAUSED'] },
       },
       orderBy: { createdAt: 'desc' },
     });

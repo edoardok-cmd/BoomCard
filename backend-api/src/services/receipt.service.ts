@@ -102,7 +102,7 @@ class ReceiptService {
    */
   private async resolveCashbackTier(userId: string): Promise<'LIGHT' | 'BASIC' | 'PREMIUM' | null> {
     const sub = await prisma.subscription.findFirst({
-      where: { userId, status: SubscriptionStatus.ACTIVE },
+      where: { userId, status: { in: [SubscriptionStatus.ACTIVE, SubscriptionStatus.PAUSED] } },
       orderBy: { currentPeriodEnd: 'desc' },
     });
     if (!sub) return null;

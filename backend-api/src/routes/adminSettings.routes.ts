@@ -9,6 +9,7 @@
  */
 
 import { Router, Response } from 'express';
+import { FraudRuleTier } from '@prisma/client';
 import { authenticate, authorize, requirePermission, AuthRequest } from '../middleware/auth.middleware';
 import { auditMiddleware } from '../middleware/audit.middleware';
 import { asyncHandler } from '../middleware/error.middleware';
@@ -130,7 +131,11 @@ const ALLOWED_KEYS = new Set([
   'daily_scan_limit_default',
   'max_cashback_per_month',
   'support_email',
-  'support_phone',
+  // spec §9: системни имейли, език, валута, timezone, reply-to настройки
+  'reply_to_email',
+  'language',
+  'currency',
+  'timezone',
 ]);
 
 /**
@@ -178,6 +183,209 @@ router.put(
     );
 
     res.json({ success: true, message: 'Settings saved' });
+  })
+);
+
+/* ─── Fraud Rules (spec 7.4) ─────────────────────────────────────────────── */
+
+const VALID_TIERS = new Set(Object.values(FraudRuleTier));
+
+/**
+ * GET /api/admin/settings/fraud-rules
+ * Query: tier, targetId, active (true|false)
+ */
+router.get(
+  '/fraud-rules',
+  requirePermission('settings.read'),
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    const { tier, targetId, active } = req.query as Record<string, string>;
+
+    const where: Parameters<typeof prisma.fraudRule.findMany>[0]['where'] = {};
+    if (tier && VALID_TIERS.has(tier as FraudRuleTier)) where.tier = tier as FraudRuleTier;
+    if (targetId) where.targetId = targetId;
+    if (active !== undefined) where.isActive = active !== 'false';
+
+    const rules = await prisma.fraudRule.findMany({
+      where,
+      orderBy: [{ tier: 'asc' }, { createdAt: 'desc' }],
+      include: { _count: { select: { overrides: true } } },
+    });
+
+    res.json({ success: true, data: rules });
+  })
+);
+
+/**
+ * POST /api/admin/settings/fraud-rules
+ * Body: { tier, targetId?, dailyScanLimit?, minTransactionValue?, maxTransactionValue?, autoApproveThreshold?, notes? }
+ */
+router.post(
+  '/fraud-rules',
+  requirePermission('settings.write'),
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    const { tier, targetId, dailyScanLimit, minTransactionValue, maxTransactionValue, autoApproveThreshold, notes } =
+      req.body as {
+        tier?: string;
+        targetId?: string;
+        dailyScanLimit?: number;
+        minTransactionValue?: number;
+        maxTransactionValue?: number;
+        autoApproveThreshold?: number;
+        notes?: string;
+      };
+
+    if (!tier || !VALID_TIERS.has(tier as FraudRuleTier)) {
+      return res.status(400).json({ success: false, error: `tier must be one of: ${[...VALID_TIERS].join(', ')}` });
+    }
+    if (tier !== 'SYSTEM' && !targetId) {
+      return res.status(400).json({ success: false, error: 'targetId is required for non-SYSTEM tier rules' });
+    }
+
+    const rule = await prisma.fraudRule.create({
+      data: {
+        tier: tier as FraudRuleTier,
+        targetId: targetId ?? null,
+        dailyScanLimit: dailyScanLimit ?? null,
+        minTransactionValue: minTransactionValue ?? null,
+        maxTransactionValue: maxTransactionValue ?? null,
+        autoApproveThreshold: autoApproveThreshold ?? null,
+        notes: notes ?? null,
+        createdBy: req.user!.id,
+      },
+    });
+
+    res.status(201).json({ success: true, data: rule });
+  })
+);
+
+/**
+ * PATCH /api/admin/settings/fraud-rules/:id
+ */
+router.patch(
+  '/fraud-rules/:id',
+  requirePermission('settings.write'),
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    const { dailyScanLimit, minTransactionValue, maxTransactionValue, autoApproveThreshold, notes, isActive } =
+      req.body as {
+        dailyScanLimit?: number | null;
+        minTransactionValue?: number | null;
+        maxTransactionValue?: number | null;
+        autoApproveThreshold?: number | null;
+        notes?: string | null;
+        isActive?: boolean;
+      };
+
+    const rule = await prisma.fraudRule.findUnique({ where: { id: req.params.id } });
+    if (!rule) return res.status(404).json({ success: false, error: 'Fraud rule not found' });
+
+    const updated = await prisma.fraudRule.update({
+      where: { id: req.params.id },
+      data: {
+        ...(dailyScanLimit !== undefined && { dailyScanLimit }),
+        ...(minTransactionValue !== undefined && { minTransactionValue }),
+        ...(maxTransactionValue !== undefined && { maxTransactionValue }),
+        ...(autoApproveThreshold !== undefined && { autoApproveThreshold }),
+        ...(notes !== undefined && { notes }),
+        ...(isActive !== undefined && { isActive }),
+      },
+    });
+
+    res.json({ success: true, data: updated });
+  })
+);
+
+/**
+ * DELETE /api/admin/settings/fraud-rules/:id
+ * Soft-deactivates the rule (does not hard-delete to preserve audit trail).
+ */
+router.delete(
+  '/fraud-rules/:id',
+  requirePermission('settings.write'),
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    const rule = await prisma.fraudRule.findUnique({ where: { id: req.params.id } });
+    if (!rule) return res.status(404).json({ success: false, error: 'Fraud rule not found' });
+
+    await prisma.fraudRule.update({ where: { id: req.params.id }, data: { isActive: false } });
+    res.json({ success: true, message: 'Fraud rule deactivated' });
+  })
+);
+
+/**
+ * GET /api/admin/settings/fraud-rules/:id/overrides
+ */
+router.get(
+  '/fraud-rules/:id/overrides',
+  requirePermission('settings.read'),
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    const rule = await prisma.fraudRule.findUnique({ where: { id: req.params.id } });
+    if (!rule) return res.status(404).json({ success: false, error: 'Fraud rule not found' });
+
+    const overrides = await prisma.fraudRuleOverride.findMany({
+      where: { ruleId: req.params.id },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    res.json({ success: true, data: overrides });
+  })
+);
+
+/**
+ * POST /api/admin/settings/fraud-rules/:id/overrides
+ * Body: { targetType: "user"|"partner", targetId, override: {...}, reason?, expiresAt? }
+ */
+router.post(
+  '/fraud-rules/:id/overrides',
+  requirePermission('settings.write'),
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    const { targetType, targetId, override, reason, expiresAt } = req.body as {
+      targetType?: string;
+      targetId?: string;
+      override?: Record<string, unknown>;
+      reason?: string;
+      expiresAt?: string;
+    };
+
+    if (!targetType || !['user', 'partner'].includes(targetType)) {
+      return res.status(400).json({ success: false, error: 'targetType must be "user" or "partner"' });
+    }
+    if (!targetId) return res.status(400).json({ success: false, error: 'targetId is required' });
+    if (!override || typeof override !== 'object') {
+      return res.status(400).json({ success: false, error: 'override object is required' });
+    }
+
+    const rule = await prisma.fraudRule.findUnique({ where: { id: req.params.id } });
+    if (!rule) return res.status(404).json({ success: false, error: 'Fraud rule not found' });
+
+    const created = await prisma.fraudRuleOverride.create({
+      data: {
+        ruleId: req.params.id,
+        targetType,
+        targetId,
+        override: override as Parameters<typeof prisma.fraudRuleOverride.create>[0]['data']['override'],
+        reason: reason ?? null,
+        createdBy: req.user!.id,
+        expiresAt: expiresAt ? new Date(expiresAt) : null,
+      },
+    });
+
+    res.status(201).json({ success: true, data: created });
+  })
+);
+
+/**
+ * DELETE /api/admin/settings/fraud-rules/:id/overrides/:overId
+ */
+router.delete(
+  '/fraud-rules/:id/overrides/:overId',
+  requirePermission('settings.write'),
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    const ov = await prisma.fraudRuleOverride.findFirst({
+      where: { id: req.params.overId, ruleId: req.params.id },
+    });
+    if (!ov) return res.status(404).json({ success: false, error: 'Override not found' });
+
+    await prisma.fraudRuleOverride.delete({ where: { id: req.params.overId } });
+    res.json({ success: true, message: 'Override removed' });
   })
 );
 

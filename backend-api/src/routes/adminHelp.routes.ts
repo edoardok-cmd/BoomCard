@@ -194,4 +194,62 @@ router.patch('/:id', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePer
   }
 });
 
+// POST /api/admin/help/:id/reply — admin sends a reply to the ticket author
+router.post('/:id/reply', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('help.write'), async (req: AuthRequest, res, next) => {
+  try {
+    const { body } = req.body as { body?: string };
+
+    if (!body?.trim()) {
+      return res.status(400).json({ error: 'Reply body is required' });
+    }
+
+    const ticket = await prisma.helpTicket.findUnique({ where: { id: req.params.id } });
+    if (!ticket) return res.status(404).json({ error: 'Ticket not found' });
+    if (ticket.status === 'CLOSED') {
+      return res.status(400).json({ error: 'Cannot reply to a closed ticket' });
+    }
+
+    const reply = await prisma.ticketReply.create({
+      data: {
+        ticketId: req.params.id,
+        authorId: req.user!.id,
+        body: body.trim(),
+        isAdmin: true,
+      },
+      include: {
+        author: { select: { id: true, firstName: true, lastName: true, email: true } },
+      },
+    });
+
+    // Move ticket to WAITING (waiting for the user to respond) if it was OPEN
+    if (ticket.status === 'OPEN' || ticket.status === 'NEW') {
+      await prisma.helpTicket.update({ where: { id: req.params.id }, data: { status: 'WAITING' } });
+    }
+
+    res.status(201).json({ reply });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// GET /api/admin/help/:id/replies — list all replies for a ticket
+router.get('/:id/replies', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('help.read'), async (req, res, next) => {
+  try {
+    const ticket = await prisma.helpTicket.findUnique({ where: { id: req.params.id } });
+    if (!ticket) return res.status(404).json({ error: 'Ticket not found' });
+
+    const replies = await prisma.ticketReply.findMany({
+      where: { ticketId: req.params.id },
+      orderBy: { createdAt: 'asc' },
+      include: {
+        author: { select: { id: true, firstName: true, lastName: true, email: true } },
+      },
+    });
+
+    res.json({ replies });
+  } catch (error) {
+    next(error);
+  }
+});
+
 export default router;

@@ -4,7 +4,10 @@
  * GET  /api/admin/finance/invoices            — list PartnerCashbackPayments
  * POST /api/admin/finance/invoices/:id/pay    — mark invoice as paid
  * GET  /api/admin/finance/periods             — monthly cashback period summary
+ * POST /api/admin/finance/periods             — create/ensure a ReportingPeriod exists
+ * PATCH /api/admin/finance/periods/:month/status — advance ReportingPeriod lifecycle
  * GET  /api/admin/finance/reports             — aggregate financial stats
+ * GET  /api/admin/finance/export              — CSV/xlsx export (spec 6.4)
  */
 
 import { Router, Response } from 'express';
@@ -12,6 +15,8 @@ import { authenticate, authorize, requirePermission, AuthRequest } from '../midd
 import { auditMiddleware } from '../middleware/audit.middleware';
 import { asyncHandler } from '../middleware/error.middleware';
 import { prisma } from '../lib/prisma';
+import * as XLSX from 'xlsx';
+import { ReportingPeriodStatus } from '@prisma/client';
 
 const router = Router();
 
@@ -224,6 +229,244 @@ router.get(
         },
       },
     });
+  })
+);
+
+/* ─── Reporting Period lifecycle (spec 6.3) ───────────────────────────────── */
+
+/**
+ * GET /api/admin/finance/reporting-periods
+ * Lists all ReportingPeriod rows, optional year filter.
+ */
+router.get(
+  '/reporting-periods',
+  requirePermission('finance.periods.read'),
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    const year = req.query.year ? String(req.query.year) : null;
+
+    const where: Parameters<typeof prisma.reportingPeriod.findMany>[0]['where'] = {};
+    if (year) where.month = { startsWith: year };
+
+    const periods = await prisma.reportingPeriod.findMany({
+      where,
+      orderBy: { month: 'desc' },
+    });
+
+    res.json({ success: true, data: periods });
+  })
+);
+
+/**
+ * POST /api/admin/finance/reporting-periods
+ * Ensures a ReportingPeriod exists for the given month (idempotent).
+ * Body: { month: "YYYY-MM", notes?: string }
+ */
+router.post(
+  '/reporting-periods',
+  requirePermission('finance.periods.write'),
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    const { month, notes } = req.body as { month?: string; notes?: string };
+
+    if (!month || !/^\d{4}-\d{2}$/.test(month)) {
+      return res.status(400).json({ success: false, error: 'month must be in YYYY-MM format' });
+    }
+
+    const period = await prisma.reportingPeriod.upsert({
+      where: { month },
+      create: { month, status: 'OPEN', notes: notes ?? null },
+      update: { notes: notes ?? undefined },
+    });
+
+    res.json({ success: true, data: period });
+  })
+);
+
+const PERIOD_STATUS_ORDER: ReportingPeriodStatus[] = ['OPEN', 'FOR_REVIEW', 'LOCKED', 'INVOICED'];
+const ALLOWED_TRANSITIONS: Partial<Record<ReportingPeriodStatus, ReportingPeriodStatus>> = {
+  OPEN: 'FOR_REVIEW',
+  FOR_REVIEW: 'LOCKED',
+  LOCKED: 'INVOICED',
+};
+
+/**
+ * PATCH /api/admin/finance/reporting-periods/:month/status
+ * Advances the period to the next status (or back to OPEN from FOR_REVIEW).
+ * Body: { status: ReportingPeriodStatus }
+ */
+router.patch(
+  '/reporting-periods/:month/status',
+  requirePermission('finance.periods.write'),
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    const { month } = req.params;
+    const { status } = req.body as { status?: string };
+
+    if (!status || !PERIOD_STATUS_ORDER.includes(status as ReportingPeriodStatus)) {
+      return res.status(400).json({ success: false, error: `status must be one of: ${PERIOD_STATUS_ORDER.join(', ')}` });
+    }
+
+    const period = await prisma.reportingPeriod.findUnique({ where: { month } });
+    if (!period) return res.status(404).json({ success: false, error: 'Reporting period not found' });
+
+    const newStatus = status as ReportingPeriodStatus;
+
+    // #15 fix: enforce the allowed transition map — only forward steps are valid.
+    // #14 fix: the previous guard was a no-op (empty body); this one actually rejects.
+    const allowedNext = ALLOWED_TRANSITIONS[period.status];
+    if (newStatus !== allowedNext) {
+      const allowed = allowedNext ? allowedNext : 'none';
+      return res.status(400).json({
+        success: false,
+        error: `Cannot transition from ${period.status} to ${newStatus}. Only ${allowed} is allowed next.`,
+      });
+    }
+
+    const updateData: Record<string, unknown> = { status: newStatus };
+    if (newStatus === 'LOCKED' && period.status !== 'LOCKED') {
+      updateData.lockedAt = new Date();
+      updateData.lockedBy = req.user!.id;
+    }
+    if (newStatus === 'INVOICED' && period.status !== 'INVOICED') {
+      updateData.invoicedAt = new Date();
+      updateData.invoicedBy = req.user!.id;
+    }
+
+    const updated = await prisma.reportingPeriod.update({
+      where: { month },
+      data: updateData,
+    });
+
+    res.json({ success: true, data: updated });
+  })
+);
+
+/* ─── CSV/xlsx export (spec 6.4) ──────────────────────────────────────────── */
+
+/**
+ * GET /api/admin/finance/export
+ * Query: type (invoices|periods|reports), format (csv|xlsx), from, to, month, year
+ */
+router.get(
+  '/export',
+  requirePermission('finance.reports.read'),
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    const {
+      type = 'invoices',
+      format = 'csv',
+      from: fromParam,
+      to: toParam,
+      month,
+      year,
+    } = req.query as Record<string, string>;
+
+    if (!['invoices', 'periods', 'reports'].includes(type)) {
+      return res.status(400).json({ success: false, error: 'type must be invoices, periods, or reports' });
+    }
+    if (!['csv', 'xlsx'].includes(format)) {
+      return res.status(400).json({ success: false, error: 'format must be csv or xlsx' });
+    }
+
+    let rows: Record<string, unknown>[] = [];
+
+    if (type === 'invoices') {
+      const where: Parameters<typeof prisma.partnerCashbackPayment.findMany>[0]['where'] = {};
+      if (month) where.month = month;
+      if (year) where.month = { startsWith: year };
+
+      const invoices = await prisma.partnerCashbackPayment.findMany({
+        where,
+        orderBy: [{ month: 'desc' }, { createdAt: 'desc' }],
+        include: { partner: { select: { businessName: true, city: true } } },
+      });
+
+      rows = invoices.map(i => ({
+        id: i.id,
+        partner: i.partner.businessName,
+        city: i.partner.city ?? '',
+        month: i.month,
+        totalCashbackOwed: i.totalCashbackOwed,
+        marginAmount: i.marginAmount,
+        status: i.status,
+        paidAt: i.paidAt?.toISOString() ?? '',
+        createdAt: i.createdAt.toISOString(),
+      }));
+
+    } else if (type === 'periods') {
+      const where: Parameters<typeof prisma.reportingPeriod.findMany>[0]['where'] = {};
+      if (year) where.month = { startsWith: year };
+
+      const periods = await prisma.reportingPeriod.findMany({ where, orderBy: { month: 'desc' } });
+
+      rows = periods.map(p => ({
+        month: p.month,
+        status: p.status,
+        lockedAt: p.lockedAt?.toISOString() ?? '',
+        invoicedAt: p.invoicedAt?.toISOString() ?? '',
+        notes: p.notes ?? '',
+      }));
+
+    } else {
+      // aggregate report
+      const now = new Date();
+      const from = fromParam ? new Date(fromParam) : new Date(now.getFullYear(), now.getMonth(), 1);
+      const to = toParam ? new Date(toParam) : new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+
+      if (isNaN(from.getTime()) || isNaN(to.getTime())) {
+        return res.status(400).json({ success: false, error: 'Invalid date range' });
+      }
+
+      const [walletStats, invoiceTotals] = await Promise.all([
+        prisma.walletTransaction.groupBy({
+          by: ['type'],
+          where: { createdAt: { gte: from, lte: to }, status: 'COMPLETED' },
+          _sum: { amount: true },
+          _count: { id: true },
+        }),
+        prisma.partnerCashbackPayment.findMany({
+          where: { createdAt: { gte: from, lte: to } },
+          select: { partnerId: true, month: true, totalCashbackOwed: true, marginAmount: true, status: true },
+        }),
+      ]);
+
+      rows = [
+        ...walletStats.map(w => ({ category: 'wallet', type: w.type, total: w._sum.amount ?? 0, count: w._count.id })),
+        ...invoiceTotals.map(i => ({
+          category: 'cashback',
+          partnerId: i.partnerId,
+          month: i.month,
+          cashback: i.totalCashbackOwed,
+          margin: i.marginAmount,
+          status: i.status,
+        })),
+      ];
+    }
+
+    const filename = `boomcard_${type}_${new Date().toISOString().slice(0, 10)}`;
+
+    if (format === 'csv') {
+      if (rows.length === 0) {
+        res.setHeader('Content-Type', 'text/csv');
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}.csv"`);
+        return res.send('');
+      }
+      const headers = Object.keys(rows[0]);
+      const csvLines = [
+        headers.join(','),
+        ...rows.map(r => headers.map(h => JSON.stringify(r[h] ?? '')).join(',')),
+      ];
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}.csv"`);
+      return res.send(csvLines.join('\n'));
+    }
+
+    // xlsx
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, type);
+    const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}.xlsx"`);
+    res.send(buf);
   })
 );
 

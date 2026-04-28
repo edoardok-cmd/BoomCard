@@ -118,6 +118,27 @@ export interface CompleteProfileData {
   completeProfileUrl: string;
 }
 
+export interface SubscriptionCancelledData {
+  customerName: string;
+  planName: string;
+  planNameBg: string;
+  /** Set when cancel_at_period_end — user retains access until this date. Null for immediate. */
+  accessUntil: Date | null;
+  manageUrl: string;
+  language: 'en' | 'bg';
+}
+
+export interface TrialRefundPendingData {
+  customerName: string;
+  planName: string;
+  amount: number;
+  currency: string;
+  subscriptionId: string;
+  userId: string;
+  payseraOrderId?: string | null;
+  language: 'en' | 'bg';
+}
+
 export interface FraudAlertData {
   receiptId: string;
   userId: string;
@@ -226,6 +247,11 @@ export class EmailService {
       expiryReminder: 'Абонаментът ви изтича скоро',
       expiryReminderBody: 'Вашият {plan} абонамент изтича на {date}. Подновете, за да продължите да ползвате BoomCard.',
       renewNow: 'Поднови сега',
+      subCancelled: 'Абонаментът е отменен',
+      subCancelledImmediate: 'Вашият абонамент беше незабавно отменен.',
+      subCancelledPeriodEnd: 'Вашият абонамент ще бъде отменен на {date}. До тогава запазвате пълен достъп.',
+      trialRefundPending: 'Заявката за възстановяване е получена',
+      trialRefundPendingBody: 'Получихме заявката ви за пълно възстановяване на сумата за абонамент {plan}. Тъй като плащането е обработено чрез Paysera, ще бъдете възстановени ръчно в рамките на 3–5 работни дни.',
       copyright: '© {year} BoomCard. Всички права запазени.',
       questions: 'Въпроси? Пишете ни на',
     },
@@ -270,6 +296,11 @@ export class EmailService {
       expiryReminder: 'Your subscription expires soon',
       expiryReminderBody: 'Your {plan} subscription expires on {date}. Renew to continue using BoomCard.',
       renewNow: 'Renew Now',
+      subCancelled: 'Subscription Cancelled',
+      subCancelledImmediate: 'Your subscription has been cancelled immediately.',
+      subCancelledPeriodEnd: 'Your subscription will be cancelled on {date}. You retain full access until then.',
+      trialRefundPending: 'Refund Request Received',
+      trialRefundPendingBody: 'We have received your full refund request for the {plan} subscription. Since the payment was processed via Paysera, the refund will be issued manually within 3–5 business days.',
       copyright: '© {year} BoomCard. All rights reserved.',
       questions: 'Questions? Contact us at',
     },
@@ -1537,6 +1568,61 @@ ${isBg ? 'Въпроси? Свържете се с нас на' : 'Questions? Co
   }
 
   /**
+   * Notify user that their Paysera subscription was cancelled after the 7-day grace period.
+   */
+  async sendSubscriptionExpiredEmail(
+    email: string,
+    data: { customerName: string; planName: string; renewUrl: string },
+    language: 'bg' | 'en' = 'bg'
+  ): Promise<{ success: boolean }> {
+    const hi = language === 'bg' ? 'Здравейте' : 'Hi';
+    const year = new Date().getFullYear();
+    const title = language === 'bg' ? 'Абонаментът е прекратен' : 'Subscription Cancelled';
+    const body = language === 'bg'
+      ? `Вашият <strong>${data.planName}</strong> абонамент беше прекратен след изтичане на 7-дневния гратисен период. Вашият достъп до BoomCard Premium функции е спрян.`
+      : `Your <strong>${data.planName}</strong> subscription has been cancelled after the 7-day grace period expired. Your access to BoomCard Premium features has ended.`;
+    const renewLabel = language === 'bg' ? 'Поднови абонамента' : 'Renew Subscription';
+    const questionsLine = language === 'bg' ? 'Въпроси? Пишете ни на' : 'Questions? Contact us at';
+    const copyright = language === 'bg'
+      ? `© ${year} BoomCard. Всички права запазени.`
+      : `© ${year} BoomCard. All rights reserved.`;
+    const html = `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
+<body style="margin:0;padding:0;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;background:#f5f5f5;">
+  <table width="100%" cellpadding="0" cellspacing="0" border="0">
+    <tr><td align="center" style="padding:40px 20px;">
+      <table width="600" cellpadding="0" cellspacing="0" border="0" style="background:#fff;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,0.1);">
+        <tr><td style="background:linear-gradient(135deg,#6b7280,#374151);padding:40px;text-align:center;border-radius:8px 8px 0 0;">
+          <div style="font-size:48px;margin-bottom:8px;">⚠️</div>
+          <h1 style="margin:0;color:#fff;font-size:28px;">${title}</h1>
+        </td></tr>
+        <tr><td style="padding:40px;">
+          <p style="margin:0 0 20px;color:#333;font-size:16px;">${hi} ${data.customerName},</p>
+          <p style="margin:0 0 30px;color:#666;font-size:16px;line-height:1.6;">${body}</p>
+          <div style="text-align:center;margin-bottom:30px;">
+            <a href="${data.renewUrl}" style="display:inline-block;background:#667eea;color:#fff;text-decoration:none;padding:14px 32px;border-radius:6px;font-size:16px;font-weight:bold;">${renewLabel}</a>
+          </div>
+          <p style="color:#999;font-size:13px;margin:0;">${questionsLine} <a href="mailto:support@boomcard.bg" style="color:#667eea;">support@boomcard.bg</a></p>
+        </td></tr>
+        <tr><td style="background:#f8f9fa;padding:20px;text-align:center;border-radius:0 0 8px 8px;">
+          <p style="margin:0;color:#999;font-size:12px;">${copyright}</p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+    const text = `${hi} ${data.customerName},\n\n${title}\n\n${body.replace(/<[^>]+>/g, '')}\n\n${renewLabel}: ${data.renewUrl}\n\n${questionsLine} support@boomcard.bg`;
+    return this.sendEmail({
+      to: email,
+      subject: `BoomCard – ${title}`,
+      html,
+      text,
+    });
+  }
+
+  /**
    * Send fraud alert email to admin
    */
   async sendFraudAlertEmail(
@@ -2050,6 +2136,134 @@ ${isBg ? 'Въпроси? Свържете се с нас на' : 'Questions? Co
     return this.sendEmail({
       to: email,
       subject: 'Complete your BoomCard account setup',
+      html,
+      text,
+    });
+  }
+
+  async sendSubscriptionCancelledEmail(
+    email: string,
+    data: SubscriptionCancelledData
+  ): Promise<{ success: boolean }> {
+    const isBg = data.language === 'bg';
+    const S = EmailService.STRINGS[data.language];
+    const planName = isBg ? data.planNameBg : data.planName;
+    const hi = isBg ? 'Здравейте' : 'Hi';
+    const accessLine = data.accessUntil
+      ? (isBg
+          ? S.subCancelledPeriodEnd.replace('{date}', data.accessUntil.toLocaleDateString('bg-BG', { day: '2-digit', month: 'long', year: 'numeric' }))
+          : S.subCancelledPeriodEnd.replace('{date}', data.accessUntil.toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' })))
+      : S.subCancelledImmediate;
+    const subject = isBg
+      ? `BoomCard абонамент отменен — ${planName}`
+      : `BoomCard subscription cancelled — ${planName}`;
+
+    const html = `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
+<body style="margin:0;padding:0;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;background:#f5f5f5;">
+  <table width="100%" cellpadding="0" cellspacing="0" border="0">
+    <tr><td align="center" style="padding:40px 20px;">
+      <table width="600" cellpadding="0" cellspacing="0" border="0" style="background:#fff;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,0.1);">
+        <tr><td style="background:linear-gradient(135deg,#6b7280,#374151);padding:30px;text-align:center;border-radius:8px 8px 0 0;">
+          <h1 style="margin:0;color:#fff;font-size:24px;">${S.subCancelled}</h1>
+        </td></tr>
+        <tr><td style="padding:30px;">
+          <p style="margin:0 0 15px;color:#333;font-size:16px;">${hi} ${data.customerName},</p>
+          <p style="margin:0 0 20px;color:#666;font-size:16px;line-height:1.6;">${accessLine}</p>
+          ${data.accessUntil ? `<p style="margin:0 0 20px;color:#666;font-size:16px;line-height:1.6;">${isBg ? 'Ако промените решението си, можете да се абонирате отново по всяко време.' : 'If you change your mind, you can subscribe again at any time.'}</p>` : ''}
+          <div style="text-align:center;margin:24px 0;">
+            <a href="${data.manageUrl}" style="display:inline-block;background:#667eea;color:#fff;text-decoration:none;padding:12px 28px;border-radius:6px;font-size:15px;font-weight:bold;">${isBg ? 'Управление на абонамента' : 'Manage Subscription'}</a>
+          </div>
+          <p style="color:#999;font-size:13px;margin:0;">${S.questions} <a href="mailto:support@boomcard.bg" style="color:#667eea;">support@boomcard.bg</a></p>
+        </td></tr>
+        <tr><td style="background:#f8f9fa;padding:20px;text-align:center;border-radius:0 0 8px 8px;">
+          <p style="margin:0;color:#999;font-size:12px;">&copy; ${new Date().getFullYear()} BoomCard. All rights reserved.</p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+
+    const text = `${hi} ${data.customerName},\n\n${accessLine}\n\n${data.accessUntil ? (isBg ? 'Ако промените решението си, можете да се абонирате отново по всяко време.' : 'If you change your mind, you can subscribe again at any time.') + '\n\n' : ''}${isBg ? 'Управление на абонамента' : 'Manage subscription'}: ${data.manageUrl}\n\n${S.questions} support@boomcard.bg`;
+
+    return this.sendEmail({ to: email, subject, html, text });
+  }
+
+  async sendTrialRefundPendingEmail(
+    email: string,
+    data: TrialRefundPendingData
+  ): Promise<{ success: boolean }> {
+    const isBg = data.language === 'bg';
+    const S = EmailService.STRINGS[data.language];
+    const hi = isBg ? 'Здравейте' : 'Hi';
+    const subject = isBg
+      ? `Заявката ви за възстановяване е получена — ${data.planName}`
+      : `Your refund request has been received — ${data.planName}`;
+    const body = S.trialRefundPendingBody.replace('{plan}', isBg ? data.planName : data.planName);
+
+    const html = `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
+<body style="margin:0;padding:0;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;background:#f5f5f5;">
+  <table width="100%" cellpadding="0" cellspacing="0" border="0">
+    <tr><td align="center" style="padding:40px 20px;">
+      <table width="600" cellpadding="0" cellspacing="0" border="0" style="background:#fff;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,0.1);">
+        <tr><td style="background:linear-gradient(135deg,#f59e0b,#d97706);padding:30px;text-align:center;border-radius:8px 8px 0 0;">
+          <h1 style="margin:0;color:#fff;font-size:24px;">${S.trialRefundPending}</h1>
+        </td></tr>
+        <tr><td style="padding:30px;">
+          <p style="margin:0 0 15px;color:#333;font-size:16px;">${hi} ${data.customerName},</p>
+          <p style="margin:0 0 20px;color:#666;font-size:16px;line-height:1.6;">${body}</p>
+          <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f8f9fa;border-radius:6px;padding:16px;margin-bottom:24px;">
+            <tr>
+              <td style="color:#666;font-size:14px;padding:6px 0;">${isBg ? 'Сума:' : 'Amount:'}</td>
+              <td align="right" style="color:#333;font-size:14px;font-weight:bold;padding:6px 0;">${data.amount.toFixed(2)} ${data.currency}</td>
+            </tr>
+            <tr>
+              <td style="color:#666;font-size:14px;padding:6px 0;border-top:1px solid #dee2e6;">${isBg ? 'Очакван срок:' : 'Expected timeline:'}</td>
+              <td align="right" style="color:#333;font-size:14px;padding:6px 0;border-top:1px solid #dee2e6;">${isBg ? '3–5 работни дни' : '3–5 business days'}</td>
+            </tr>
+          </table>
+          <p style="color:#999;font-size:13px;margin:0;">${S.questions} <a href="mailto:support@boomcard.bg" style="color:#667eea;">support@boomcard.bg</a></p>
+        </td></tr>
+        <tr><td style="background:#f8f9fa;padding:20px;text-align:center;border-radius:0 0 8px 8px;">
+          <p style="margin:0;color:#999;font-size:12px;">&copy; ${new Date().getFullYear()} BoomCard. All rights reserved.</p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+
+    const text = `${hi} ${data.customerName},\n\n${body}\n\n${isBg ? 'Сума' : 'Amount'}: ${data.amount.toFixed(2)} ${data.currency}\n${isBg ? 'Очакван срок' : 'Expected timeline'}: ${isBg ? '3–5 работни дни' : '3–5 business days'}\n\n${S.questions} support@boomcard.bg`;
+
+    return this.sendEmail({ to: email, subject, html, text });
+  }
+
+  async sendAdminTrialRefundAlert(data: TrialRefundPendingData): Promise<{ success: boolean }> {
+    const adminEmail = process.env.ADMIN_EMAIL || 'admin@boomcard.bg';
+    const html = `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:32px;background:#fff;">
+  <h2 style="color:#d97706;margin-bottom:16px;">⚠️ Manual Paysera Refund Required</h2>
+  <p style="color:#555;margin-bottom:20px;">A user has requested a trial refund for a Paysera subscription. This requires a manual refund in the Paysera merchant portal.</p>
+  <table style="width:100%;border-collapse:collapse;margin-bottom:20px;">
+    <tr><td style="padding:8px;background:#f9f9f9;border:1px solid #eee;font-weight:bold;">User ID</td><td style="padding:8px;border:1px solid #eee;font-family:monospace;">${data.userId}</td></tr>
+    <tr><td style="padding:8px;background:#f9f9f9;border:1px solid #eee;font-weight:bold;">Subscription ID</td><td style="padding:8px;border:1px solid #eee;font-family:monospace;">${data.subscriptionId}</td></tr>
+    ${data.payseraOrderId ? `<tr><td style="padding:8px;background:#f9f9f9;border:1px solid #eee;font-weight:bold;">Paysera Order ID</td><td style="padding:8px;border:1px solid #eee;font-family:monospace;">${data.payseraOrderId}</td></tr>` : ''}
+    <tr><td style="padding:8px;background:#f9f9f9;border:1px solid #eee;font-weight:bold;">Plan</td><td style="padding:8px;border:1px solid #eee;">${data.planName}</td></tr>
+    <tr><td style="padding:8px;background:#f9f9f9;border:1px solid #eee;font-weight:bold;">Refund Amount</td><td style="padding:8px;border:1px solid #eee;font-weight:bold;">${data.amount.toFixed(2)} ${data.currency}</td></tr>
+  </table>
+  <p style="color:#d97706;font-size:14px;margin:0;">Action required: Process refund in Paysera dashboard and update the subscription record.</p>
+</body>
+</html>`;
+    const text = `Manual Paysera Refund Required\n\nUser ID: ${data.userId}\nSubscription ID: ${data.subscriptionId}${data.payseraOrderId ? `\nPaysera Order ID: ${data.payseraOrderId}` : ''}\nPlan: ${data.planName}\nAmount: ${data.amount.toFixed(2)} ${data.currency}\n\nProcess the refund in the Paysera merchant portal.`;
+    return this.sendEmail({
+      to: adminEmail,
+      subject: `[Action Required] Paysera trial refund — ${data.amount.toFixed(2)} ${data.currency} — user ${data.userId}`,
       html,
       text,
     });

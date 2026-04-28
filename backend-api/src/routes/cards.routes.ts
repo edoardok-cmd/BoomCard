@@ -37,7 +37,7 @@ router.get('/my-card', asyncHandler(async (req: AuthRequest, res: Response) => {
 
   // Include active subscription expiry
   const subscription = await prisma.subscription.findFirst({
-    where: { userId, status: { in: ['ACTIVE', 'TRIALING'] } },
+    where: { userId, status: { in: ['ACTIVE', 'TRIALING', 'PAUSED'] } },
     orderBy: { currentPeriodEnd: 'desc' },
     select: { currentPeriodStart: true, currentPeriodEnd: true, plan: true },
   });

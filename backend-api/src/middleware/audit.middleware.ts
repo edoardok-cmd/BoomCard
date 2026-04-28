@@ -2,6 +2,22 @@ import { Response, NextFunction } from 'express';
 import { AuthRequest } from './auth.middleware';
 import prisma from '../lib/prisma';
 
+const SENSITIVE_KEYS = new Set([
+  'password', 'passwordHash', 'newPassword', 'currentPassword',
+  'oldPassword', 'confirmPassword', 'totpSecret', 'token',
+  'secret', 'passwordResetToken',
+]);
+
+function redactSensitive(value: unknown): unknown {
+  if (value === null || typeof value !== 'object') return value;
+  if (Array.isArray(value)) return value.map(redactSensitive);
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+    out[k] = SENSITIVE_KEYS.has(k) ? '[REDACTED]' : redactSensitive(v);
+  }
+  return out;
+}
+
 // Writes an AuditLog row for every non-GET request on /api/admin/*.
 // Controllers that need richer before/after diffs should call writeAudit directly.
 export const auditMiddleware = (req: AuthRequest, res: Response, next: NextFunction) => {
@@ -10,7 +26,7 @@ export const auditMiddleware = (req: AuthRequest, res: Response, next: NextFunct
   }
 
   const originalJson = res.json.bind(res);
-  const startBody = req.body ? JSON.parse(JSON.stringify(req.body)) : null;
+  const startBody = req.body ? redactSensitive(JSON.parse(JSON.stringify(req.body))) : null;
 
   res.json = function (body: unknown) {
     const actorId = req.user?.id ?? null;
@@ -28,7 +44,7 @@ export const auditMiddleware = (req: AuthRequest, res: Response, next: NextFunct
         action,
         objectType,
         objectId,
-        before: startBody ?? undefined,
+        before: (startBody as object | null) ?? undefined,
         after: (body && typeof body === 'object') ? (body as object) : undefined,
         ip,
         userAgent,

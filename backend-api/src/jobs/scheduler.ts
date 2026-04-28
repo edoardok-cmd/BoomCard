@@ -1,14 +1,24 @@
 /**
  * Job Scheduler
  *
- * Registers all nightly background jobs using node-cron so they run automatically
+ * Registers all background jobs using node-cron so they run automatically
  * inside the API process. Jobs are also runnable as one-off scripts via npx tsx.
  *
- * Schedule:
- *   subscription-expiry      — 30 1 * * *  (1:30 AM every day)
- *   cashback-expiry          — 0 2 * * *   (2 AM every day)
- *   upload-token-cleanup     — 30 3 * * *  (3:30 AM every day)
- *   stale-session-cleanup    — 15 7 * * *  (7:15 AM every day — after the 6 AM deadline)
+ * Schedule (Europe/Sofia unless noted):
+ *   subscription-expiry              — 30 1 * * *   (1:30 AM daily)
+ *   cashback-expiry                  — 0 2 * * *    (2:00 AM daily)
+ *   subscription-renewal-reminders   — 0 3 * * *    (3:00 AM daily)
+ *   upload-token-cleanup             — 30 3 * * *   (3:30 AM daily)
+ *   pending-subscription-cleanup     — 30 3 * * *   (3:30 AM daily)
+ *   menu-expiry                      — 0 5 * * *    (5:00 AM daily)
+ *   paysera-renewal                  — 0 6 * * *    (6:00 AM UTC daily)
+ *   stale-session-cleanup            — 15 7 * * *   (7:15 AM daily)
+ *   partner-daily-digest             — 0 8 * * *    (8:00 AM daily)
+ *   partner-onboarding-nudge         — 0 9 * * *    (9:00 AM daily)
+ *   partner-monthly-statement        — 0 10 1 * *   (10:00 AM on 1st of month)
+ *   payment-failure-spike-scan       — 0 * * * *    (every hour)
+ *   pending-payment-reminders        — 0 * * * *    (every hour)
+ *   ocr-backlog-scan                 — every 6 hours
  */
 
 import cron from 'node-cron';
@@ -644,11 +654,11 @@ async function runSubscriptionRenewalReminders(): Promise<void> {
   const subscriptions = await prisma.subscription.findMany({
     where: {
       status: SubscriptionStatus.ACTIVE,
-      cancelAtPeriodEnd: false,
+      cancelAtPeriodEnd: true,
       currentPeriodEnd: { gte: sixDaysFromNow, lte: eightDaysFromNow },
     },
     include: {
-      user: { select: { id: true, email: true, firstName: true, status: true } },
+      user: { select: { id: true, email: true, firstName: true, preferredLanguage: true, status: true } },
       planDetails: true,
     },
   });
@@ -667,6 +677,7 @@ async function runSubscriptionRenewalReminders(): Promise<void> {
     if (metadata.renewalReminderSent === periodKey) continue;
 
     const plan = sub.planDetails;
+    const lang = (sub.user.preferredLanguage === 'en' ? 'en' : 'bg') as 'bg' | 'en';
     const priceInCents = (() => {
       if (!plan) return 0;
       const billingPeriod = (metadata.billingPeriod ?? '').toLowerCase();
@@ -675,9 +686,12 @@ async function runSubscriptionRenewalReminders(): Promise<void> {
       return plan.priceMonthlyEur ?? 0;
     })();
     const price = `€${(priceInCents / 100).toFixed(2)}`;
-    const planName = plan?.displayName ?? sub.plan;
+    const planName = lang === 'bg'
+      ? (plan?.displayNameBg ?? plan?.displayName ?? sub.plan)
+      : (plan?.displayName ?? sub.plan);
 
-    // In-app notification (new)
+    // In-app notification only — emails for cancelAtPeriodEnd=true subscriptions
+    // are owned by runPreExpiryReminders (7d + 1d windows) to avoid duplicates.
     await notificationService
       .notifyPartnerRenewalUpcoming({
         userId: sub.user.id,
@@ -686,21 +700,6 @@ async function runSubscriptionRenewalReminders(): Promise<void> {
         price,
       })
       .catch((err) => logger.error(`[subscription-renewal-reminders] In-app notify failed for sub ${sub.id}:`, err));
-
-    // Existing email path
-    if (sub.user.email) {
-      await emailService
-        .sendRenewalReminder(sub.user.email, {
-          customerName: sub.user.firstName || 'Customer',
-          planName,
-          planNameBg: plan?.displayNameBg || planName,
-          price,
-          renewalDate: sub.currentPeriodEnd.toLocaleDateString('en-GB'),
-          manageUrl: 'https://boomcard.bg/dashboard/subscription',
-          language: 'en',
-        })
-        .catch((err) => logger.error(`[subscription-renewal-reminders] Email failed for sub ${sub.id}:`, err));
-    }
 
     await prisma.subscription.update({
       where: { id: sub.id },
@@ -714,6 +713,91 @@ async function runSubscriptionRenewalReminders(): Promise<void> {
   logger.info(`[subscription-renewal-reminders] Done — reminded ${reminded} user(s)`);
 }
 
+// ── Pre-expiry reminders for users who disabled auto-renewal ──────────────────
+// Sends reminder emails at 7 days and 1 day before expiry to subscriptions
+// where cancelAtPeriodEnd=true (user has explicitly turned off auto-renewal).
+// Uses metadata flags to send each reminder exactly once per billing period.
+
+async function runPreExpiryReminders(): Promise<void> {
+  const now = new Date();
+  logger.info(`[pre-expiry-reminders] Starting run at ${now.toISOString()}`);
+
+  const APP_URL = process.env.APP_URL || 'https://mobile.boomcard.bg';
+
+  // Windows: look for subscriptions expiring in [N-1d, N] so the daily job
+  // catches each subscription exactly once per checkpoint.
+  const checkpoints = [
+    { days: 7, metaKey: 'preExpiryReminder7d' },
+    { days: 1, metaKey: 'preExpiryReminder1d' },
+  ];
+
+  for (const { days, metaKey } of checkpoints) {
+    const windowStart = new Date(now.getTime() + (days - 1) * 24 * 60 * 60 * 1000);
+    const windowEnd = new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
+
+    const subscriptions = await prisma.subscription.findMany({
+      where: {
+        status: SubscriptionStatus.ACTIVE,
+        cancelAtPeriodEnd: true,
+        currentPeriodEnd: { gte: windowStart, lte: windowEnd },
+      },
+      include: {
+        user: { select: { id: true, email: true, firstName: true, preferredLanguage: true, status: true } },
+        planDetails: { select: { displayName: true, displayNameBg: true, priceWeeklyEur: true, priceMonthlyEur: true, priceYearlyEur: true } },
+      },
+    });
+
+    logger.info(`[pre-expiry-reminders] Found ${subscriptions.length} subscription(s) in the ${days}d window`);
+
+    for (const sub of subscriptions) {
+      if (!sub.user || (sub.user.status !== 'ACTIVE' && sub.user.status !== 'PENDING_VERIFICATION')) continue;
+      if (!sub.user.email) continue;
+
+      let metadata: Record<string, any> = {};
+      if (sub.metadata) {
+        try { metadata = JSON.parse(sub.metadata); } catch { metadata = {}; }
+      }
+      // Idempotency: only send once per billing period for this checkpoint
+      const periodKey = sub.currentPeriodEnd.toISOString().split('T')[0];
+      if (metadata[metaKey] === periodKey) continue;
+
+      const lang = (sub.user.preferredLanguage === 'en' ? 'en' : 'bg') as 'bg' | 'en';
+      const planName = lang === 'bg'
+        ? (sub.planDetails?.displayNameBg || sub.plan)
+        : (sub.planDetails?.displayName || sub.plan);
+      const billingPeriod = (metadata.billingPeriod ?? '').toLowerCase();
+      const priceInCents = (() => {
+        const plan = sub.planDetails;
+        if (!plan) return 0;
+        if (billingPeriod.includes('week') && plan.priceWeeklyEur) return plan.priceWeeklyEur;
+        if (billingPeriod.includes('year')) return plan.priceYearlyEur;
+        return plan.priceMonthlyEur ?? 0;
+      })();
+
+      await emailService
+        .sendRenewalReminder(sub.user.email, {
+          customerName: sub.user.firstName || 'Customer',
+          planName,
+          planNameBg: sub.planDetails?.displayNameBg || sub.plan,
+          price: `€${(priceInCents / 100).toFixed(2)}`,
+          renewalDate: sub.currentPeriodEnd.toLocaleDateString(lang === 'bg' ? 'bg-BG' : 'en-GB'),
+          manageUrl: `${APP_URL}/subscription`,
+          language: lang,
+        })
+        .catch((err) => logger.error(`[pre-expiry-reminders] Email failed for sub ${sub.id}:`, err));
+
+      await prisma.subscription.update({
+        where: { id: sub.id },
+        data: { metadata: JSON.stringify({ ...metadata, [metaKey]: periodKey }) },
+      });
+
+      logger.info(`[pre-expiry-reminders] Sent ${days}d reminder for sub ${sub.id}`);
+    }
+  }
+
+  logger.info(`[pre-expiry-reminders] Done`);
+}
+
 // ── Payment failure rate spike detection ──────────────────────────────────────
 // Hourly scan over the last 60m of Transaction rows. Alerts admins if the
 // failure rate exceeds 20% with a minimum sample size of 10, so a single
@@ -722,6 +806,106 @@ async function runSubscriptionRenewalReminders(): Promise<void> {
 const PAYMENT_FAILURE_RATE_WINDOW_MIN = 60;
 const PAYMENT_FAILURE_RATE_MIN_SAMPLES = 10;
 const PAYMENT_FAILURE_RATE_THRESHOLD_PCT = 20;
+
+// ── Resolve TRIAL_PENDING cashback after trial window closes ──────────────────
+// Finds TRIAL_PENDING CASHBACK_CREDIT transactions whose owner's subscription
+// trial window (trialRefundEligibleUntil) has now expired, then promotes them
+// to COMPLETED and increments availableBalance — making the funds withdrawable.
+
+async function resolveTrialPendingCashback(): Promise<void> {
+  const now = new Date();
+  logger.info(`[trial-pending-cashback] Starting run at ${now.toISOString()}`);
+
+  // Find all distinct wallets that still hold TRIAL_PENDING cashback
+  const pendingWallets = await prisma.walletTransaction.findMany({
+    where: {
+      status: WalletTransactionStatus.TRIAL_PENDING,
+      type: WalletTransactionType.CASHBACK_CREDIT,
+    },
+    select: { walletId: true },
+    distinct: ['walletId'],
+  });
+
+  if (pendingWallets.length === 0) {
+    logger.info('[trial-pending-cashback] No TRIAL_PENDING transactions found — done');
+    return;
+  }
+
+  // Fetch the userId for each wallet in one query
+  const wallets = await prisma.wallet.findMany({
+    where: { id: { in: pendingWallets.map(t => t.walletId) } },
+    select: { id: true, userId: true },
+  });
+
+  let resolved = 0;
+  let voided = 0;
+  for (const wallet of wallets) {
+    // Still within the 24h trial window — leave as TRIAL_PENDING.
+    const stillOpen = await prisma.subscription.findFirst({
+      where: {
+        userId: wallet.userId,
+        trialRefundEligibleUntil: { gt: now },
+        trialRefundUsed: false,
+      },
+      select: { id: true },
+    });
+    if (stillOpen) continue;
+
+    // Check whether the user actually requested a trial refund.
+    // If they did, the cashback voiding in requestTrialRefund() should have
+    // already cleaned up these transactions, but it is non-fatal and could
+    // have silently failed. Void any survivors here rather than promoting them
+    // — crediting back cashback to a refunded user would be wrong.
+    const refundUsedSub = await prisma.subscription.findFirst({
+      where: { userId: wallet.userId, trialRefundUsed: true },
+      select: { id: true },
+    });
+
+    const txs = await prisma.walletTransaction.findMany({
+      where: {
+        walletId: wallet.id,
+        status: WalletTransactionStatus.TRIAL_PENDING,
+        type: WalletTransactionType.CASHBACK_CREDIT,
+      },
+      select: { id: true, amount: true },
+    });
+
+    const totalAmount = txs.reduce((sum, t) => sum + t.amount, 0);
+    if (totalAmount <= 0) continue;
+
+    if (refundUsedSub) {
+      // Void: trial refund was used but voiding failed earlier — clean up now.
+      await prisma.$transaction(async (tx) => {
+        await tx.walletTransaction.updateMany({
+          where: { id: { in: txs.map(t => t.id) } },
+          data: { status: WalletTransactionStatus.CANCELLED },
+        });
+        await tx.wallet.update({
+          where: { id: wallet.id },
+          data: { balance: { decrement: totalAmount } },
+        });
+      });
+      logger.info(`[trial-pending-cashback] Voided ${totalAmount} BGN (refund used) for wallet ${wallet.id} (user ${wallet.userId})`);
+      voided++;
+    } else {
+      // Promote: trial window expired without a refund — funds are now spendable.
+      await prisma.$transaction(async (tx) => {
+        await tx.walletTransaction.updateMany({
+          where: { id: { in: txs.map(t => t.id) } },
+          data: { status: WalletTransactionStatus.COMPLETED },
+        });
+        await tx.wallet.update({
+          where: { id: wallet.id },
+          data: { availableBalance: { increment: totalAmount } },
+        });
+      });
+      logger.info(`[trial-pending-cashback] Released ${totalAmount} BGN for wallet ${wallet.id} (user ${wallet.userId})`);
+      resolved++;
+    }
+  }
+
+  logger.info(`[trial-pending-cashback] Done — released ${resolved} wallet(s), voided ${voided} (refund-used)`);
+}
 
 async function checkPaymentFailureSpike(): Promise<void> {
   const now = new Date();
@@ -885,6 +1069,20 @@ export function registerScheduledJobs(): void {
   }, { timezone: 'Europe/Sofia' });
 
   logger.info('[scheduler] Registered: subscription-renewal-reminders (0 3 * * *)');
+
+  // 4 AM every day — pre-expiry reminders for users who disabled auto-renewal (7d and 1d windows)
+  cron.schedule('0 4 * * *', () => {
+    runPreExpiryReminders().catch((err) => alertSchedulerFailure('pre-expiry-reminders', err));
+  }, { timezone: 'Europe/Sofia' });
+
+  logger.info('[scheduler] Registered: pre-expiry-reminders (0 4 * * *)');
+
+  // 5:30 AM every day — promote TRIAL_PENDING cashback to COMPLETED once trial window closes
+  cron.schedule('30 5 * * *', () => {
+    resolveTrialPendingCashback().catch((err) => alertSchedulerFailure('trial-pending-cashback', err));
+  }, { timezone: 'Europe/Sofia' });
+
+  logger.info('[scheduler] Registered: trial-pending-cashback (30 5 * * *)');
 
   // Every hour — scan for payment failure rate spikes
   cron.schedule('0 * * * *', () => {

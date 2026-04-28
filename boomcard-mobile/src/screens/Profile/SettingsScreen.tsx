@@ -24,13 +24,15 @@ import BiometricService from '../../services/biometric.service';
 import NotificationService from '../../services/notification.service';
 import notificationsApi from '../../api/notifications.api';
 import { useTheme } from '../../contexts/ThemeContext';
+import { useAuth } from '../../store/AuthContext';
 import { changeLanguage, getCurrentLanguage } from '../../i18n';
+import AuthApi from '../../api/auth.api';
 import queryClient from '../../queryClient';
 
 const SettingsScreen = ({ navigation }: any) => {
   const { t, i18n } = useTranslation();
-  // Get theme state and toggle function from ThemeContext
   const { isDarkMode, toggleTheme, theme } = useTheme();
+  const { logout } = useAuth();
   const [currentLanguage, setCurrentLanguage] = useState(getCurrentLanguage());
 
   // Set translated navigation title
@@ -412,6 +414,33 @@ const SettingsScreen = ({ navigation }: any) => {
     Linking.openURL('mailto:support@boomcard.bg');
   };
 
+  const handleDeleteAccount = () => {
+    crossPlatformAlert(
+      t('settings.deleteAccountConfirmTitle'),
+      t('settings.deleteAccountConfirmMsg'),
+      [
+        { text: t('common.cancel'), style: 'cancel' },
+        {
+          text: t('settings.deleteAccount'),
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const response = await AuthApi.deleteAccount();
+              if (response.success) {
+                await logout();
+                crossPlatformAlert(t('common.success'), t('settings.deleteAccountSuccess'));
+              } else {
+                crossPlatformAlert(t('common.error'), response.error || t('settings.deleteAccountError'));
+              }
+            } catch {
+              crossPlatformAlert(t('common.error'), t('settings.deleteAccountError'));
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const styles = getStyles(theme);
   const chevronColor = theme.colors.onSurfaceVariant;
 
@@ -651,6 +680,25 @@ const SettingsScreen = ({ navigation }: any) => {
                 <Text style={styles.settingLabel}>{t('settings.reportProblem')}</Text>
                 <Text style={styles.settingDescription}>
                   {t('settings.contactSupport')}
+                </Text>
+              </View>
+            </View>
+            <Ionicons name="chevron-forward" size={24} color={chevronColor} />
+          </TouchableOpacity>
+        </View>
+
+        {/* Account */}
+        <Text style={styles.sectionTitle}>{t('settings.account')}</Text>
+        <View style={styles.section}>
+          <TouchableOpacity style={styles.actionRow} onPress={handleDeleteAccount}>
+            <View style={styles.settingInfo}>
+              <Ionicons name="person-remove" size={24} color={theme.colors.error} />
+              <View style={styles.settingText}>
+                <Text style={[styles.settingLabel, { color: theme.colors.error }]}>
+                  {t('settings.deleteAccount')}
+                </Text>
+                <Text style={styles.settingDescription}>
+                  {t('settings.deleteAccountDesc')}
                 </Text>
               </View>
             </View>

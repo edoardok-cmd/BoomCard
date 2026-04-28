@@ -450,7 +450,14 @@
     "contactSupport": "Contact support",
     "reportProblemMessage": "Would you like to send an email to our support team?",
     "sendEmail": "Send Email",
-    "info": "Info"
+    "info": "Info",
+    "account": "Account",
+    "deleteAccount": "Delete Profile",
+    "deleteAccountDesc": "Permanently delete your account and all associated data",
+    "deleteAccountConfirmTitle": "Delete Profile",
+    "deleteAccountConfirmMsg": "Are you sure? This action is irreversible. All your data will be permanently deleted.",
+    "deleteAccountSuccess": "Your profile has been deleted successfully.",
+    "deleteAccountError": "Failed to delete profile. Please try again."
   },
   "subscription": {
     "title": "Subscription Plans",

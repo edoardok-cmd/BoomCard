@@ -1,12 +1,15 @@
 import { Router } from 'express';
 import { SubscriptionPlan, SubscriptionStatus } from '@prisma/client';
-import { authenticate, authorize, requirePermission } from '../middleware/auth.middleware';
+import { authenticate, authorize, requirePermission, AuthRequest } from '../middleware/auth.middleware';
+import { auditMiddleware } from '../middleware/audit.middleware';
 import { prisma } from '../lib/prisma';
 import { stripeService } from '../services/stripe.service';
 
 const router = Router();
+router.use(auditMiddleware);
 
 // GET /api/admin/subscribers?page=1&limit=20&search=...&plan=BASIC&status=ACTIVE&dateFrom=...&dateTo=...
+// "Абонати" = user profile management: user-centric view with subscription summary
 router.get('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('subscribers.read'), async (req, res, next) => {
   try {
     const {
@@ -24,97 +27,210 @@ router.get('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermissi
     const skip = (pageNum - 1) * limitNum;
     const take = limitNum;
 
-    const where: Parameters<typeof prisma.subscription.findMany>[0]['where'] = {};
+    const where: Parameters<typeof prisma.user.findMany>[0]['where'] = {
+      role: 'USER',
+    };
 
+    // Apply subscription filters (plan, status, date range) only when values are
+    // provided so that users with no subscription are still visible without filters.
+    const subFilter: Record<string, unknown> = {};
     if (plan && Object.values(SubscriptionPlan).includes(plan as SubscriptionPlan)) {
-      where.plan = plan as SubscriptionPlan;
+      subFilter.plan = plan as SubscriptionPlan;
     }
     if (status && Object.values(SubscriptionStatus).includes(status as SubscriptionStatus)) {
-      where.status = status as SubscriptionStatus;
-    }
-    if (search) {
-      where.user = {
-        OR: [
-          { email: { contains: search, mode: 'insensitive' } },
-          { firstName: { contains: search, mode: 'insensitive' } },
-          { lastName: { contains: search, mode: 'insensitive' } },
-          { phone: { contains: search, mode: 'insensitive' } },
-        ],
-      };
+      subFilter.status = status as SubscriptionStatus;
     }
     if (dateFrom || dateTo) {
-      where.createdAt = {};
-      if (dateFrom) (where.createdAt as Record<string, Date>).gte = new Date(dateFrom);
+      const createdAt: Record<string, Date> = {};
+      if (dateFrom) createdAt.gte = new Date(dateFrom);
       if (dateTo) {
         const to = new Date(dateTo);
-        to.setUTCHours(23, 59, 59, 999); // date-only strings parse as UTC midnight; keep end-of-day in UTC too
-        (where.createdAt as Record<string, Date>).lte = to;
+        to.setUTCHours(23, 59, 59, 999);
+        createdAt.lte = to;
       }
+      subFilter.createdAt = createdAt;
+    }
+    const hasSubFilter = Object.keys(subFilter).length > 0;
+    if (hasSubFilter) {
+      where.subscriptions = { some: subFilter };
     }
 
-    const [subscriptions, total] = await Promise.all([
-      prisma.subscription.findMany({
+    if (search) {
+      where.OR = [
+        { email: { contains: search, mode: 'insensitive' } },
+        { firstName: { contains: search, mode: 'insensitive' } },
+        { lastName: { contains: search, mode: 'insensitive' } },
+        { phone: { contains: search, mode: 'insensitive' } },
+      ];
+    }
+
+    // Subscription type shorthand for casting the filter into nested where clauses.
+    type SubWhere = Parameters<typeof prisma.subscription.findMany>[0]['where'];
+
+    const [users, total] = await Promise.all([
+      prisma.user.findMany({
         where,
         skip,
         take,
         orderBy: { createdAt: 'desc' },
         select: {
           id: true,
-          plan: true,
+          firstName: true,
+          lastName: true,
+          email: true,
+          phone: true,
           status: true,
-          currentPeriodStart: true,
-          currentPeriodEnd: true,
-          canceledAt: true,
-          trialEnd: true,
-          autoRenewal: true,
+          deletedAt: true,
+          riskScore: true,
           createdAt: true,
-          user: {
+          wallet: {
+            select: {
+              availableBalance: true,
+              balance: true,
+              pendingBalance: true,
+            },
+          },
+          subscriptions: {
+            // Mirror the outer filter so the embedded subscription always matches
+            // what the admin filtered on, not just the chronologically latest one.
+            where: hasSubFilter ? (subFilter as SubWhere) : undefined,
+            orderBy: { createdAt: 'desc' },
+            take: 1,
             select: {
               id: true,
-              firstName: true,
-              lastName: true,
-              email: true,
-              phone: true,
+              plan: true,
               status: true,
-              createdAt: true,
-              wallet: {
-                select: {
-                  availableBalance: true,
-                  balance: true,
-                  pendingBalance: true,
-                },
-              },
+              currentPeriodEnd: true,
+              autoRenewal: true,
             },
           },
         },
       }),
-      prisma.subscription.count({ where }),
+      prisma.user.count({ where }),
     ]);
 
-    res.json({ subscriptions, total, page: pageNum, limit: take });
+    // Flatten the subscription array to a single object for ergonomic frontend consumption
+    const subscribers = users.map(({ subscriptions, ...u }) => ({
+      ...u,
+      subscription: subscriptions[0] ?? null,
+    }));
+
+    res.json({ subscribers, total, page: pageNum, limit: take });
   } catch (error) {
     next(error);
   }
 });
 
-// PATCH /api/admin/subscribers/:id/cancel
-router.patch('/:id/cancel', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('subscriptions.write'), async (req, res, next) => {
+// GET /api/admin/subscribers/:userId — individual subscriber detail (#8)
+router.get('/:userId', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('subscribers.read'), async (req, res, next) => {
   try {
-    const { id } = req.params;
+    const { userId } = req.params;
 
-    const subscription = await prisma.subscription.findUnique({ where: { id } });
-    if (!subscription) {
-      res.status(404).json({ error: 'Subscription not found' });
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        email: true,
+        phone: true,
+        role: true,
+        status: true,
+        deletedAt: true,
+        riskScore: true,
+        riskBucket: true,
+        createdAt: true,
+        lastLoginAt: true,
+        marketingConsent: true,
+        preferredLanguage: true,
+        wallet: {
+          select: {
+            availableBalance: true,
+            balance: true,
+            pendingBalance: true,
+          },
+        },
+        subscriptions: {
+          orderBy: { createdAt: 'desc' },
+          select: {
+            id: true,
+            plan: true,
+            status: true,
+            currentPeriodEnd: true,
+            autoRenewal: true,
+            cancelAtPeriodEnd: true,
+            cancelAt: true,
+            canceledAt: true,
+            createdAt: true,
+          },
+        },
+      },
+    });
+
+    if (!user || user.role !== 'USER') {
+      return res.status(404).json({ error: 'Subscriber not found' });
+    }
+
+    res.json(user);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// PATCH /api/admin/subscribers/:userId/status — suspend or unsuspend a subscriber (#7)
+router.patch('/:userId/status', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('subscribers.write'), async (req, res, next) => {
+  try {
+    const { userId } = req.params;
+    const { status } = req.body as { status?: string };
+
+    if (status !== 'ACTIVE' && status !== 'SUSPENDED') {
+      return res.status(400).json({ error: 'status must be ACTIVE or SUSPENDED' });
+    }
+
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user || user.role !== 'USER') {
+      return res.status(404).json({ error: 'Subscriber not found' });
+    }
+    if (user.deletedAt) {
+      return res.status(400).json({ error: 'Cannot change status of a deleted account' });
+    }
+
+    const updated = await prisma.user.update({
+      where: { id: userId },
+      data: { status },
+      select: { id: true, status: true },
+    });
+
+    res.json({ ok: true, ...updated });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// PATCH /api/admin/subscribers/:userId/cancel
+// #13 fix: :userId is the subscriber (User) ID — find their active subscription
+router.patch('/:userId/cancel', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('subscriptions.write'), async (req, res, next) => {
+  try {
+    const { userId } = req.params;
+
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      res.status(404).json({ error: 'Subscriber not found' });
       return;
     }
-    if (subscription.status === 'CANCELLED') {
-      res.status(400).json({ error: 'Subscription is already cancelled' });
+
+    const subscription = await prisma.subscription.findFirst({
+      where: { userId, status: { not: 'CANCELLED' } },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (!subscription) {
+      res.status(404).json({ error: 'No active subscription found for this subscriber' });
       return;
     }
 
     if (!subscription.stripeSubscriptionId) {
       await prisma.subscription.update({
-        where: { id },
+        where: { id: subscription.id },
         data: {
           cancelAtPeriodEnd: true,
           cancelAt: subscription.currentPeriodEnd,
@@ -128,7 +244,7 @@ router.patch('/:id/cancel', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), req
         { cancel_at_period_end: true },
       );
       await prisma.subscription.update({
-        where: { id },
+        where: { id: subscription.id },
         data: {
           cancelAtPeriodEnd: true,
           cancelAt: stripeSub.cancel_at ? new Date(stripeSub.cancel_at * 1000) : null,
@@ -144,10 +260,12 @@ router.patch('/:id/cancel', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), req
   }
 });
 
-// PATCH /api/admin/subscribers/:id/plan
-router.patch('/:id/plan', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('subscriptions.write'), async (req, res, next) => {
+// PATCH /api/admin/subscribers/:userId/plan
+// #13 companion: /:userId is also the subscriber ID here
+// #4 fix: reject CANCELLED subscriptions
+router.patch('/:userId/plan', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('subscriptions.write'), async (req, res, next) => {
   try {
-    const { id } = req.params;
+    const { userId } = req.params;
     const { plan } = req.body as { plan: SubscriptionPlan };
 
     if (!plan || !Object.values(SubscriptionPlan).includes(plan)) {
@@ -155,13 +273,48 @@ router.patch('/:id/plan', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requi
       return;
     }
 
-    const subscription = await prisma.subscription.findUnique({ where: { id } });
-    if (!subscription) {
-      res.status(404).json({ error: 'Subscription not found' });
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      res.status(404).json({ error: 'Subscriber not found' });
       return;
     }
 
-    if (subscription.stripeSubscriptionId && plan !== 'LIGHT') {
+    const subscription = await prisma.subscription.findFirst({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (!subscription) {
+      res.status(404).json({ error: 'No subscription found for this subscriber' });
+      return;
+    }
+
+    // #4 fix: cannot change plan on a CANCELLED subscription
+    if (subscription.status === 'CANCELLED') {
+      res.status(400).json({ error: 'Cannot change plan on a cancelled subscription' });
+      return;
+    }
+
+    if (subscription.stripeSubscriptionId) {
+      if (plan === 'LIGHT') {
+        // Downgrading to LIGHT exits Stripe billing — cancel at period end to avoid mid-period refund
+        const stripeSub = await stripeService.stripe.subscriptions.update(
+          subscription.stripeSubscriptionId,
+          { cancel_at_period_end: true },
+        );
+        await prisma.subscription.update({
+          where: { id: subscription.id },
+          data: {
+            plan,
+            cancelAtPeriodEnd: true,
+            cancelAt: stripeSub.cancel_at ? new Date(stripeSub.cancel_at * 1000) : subscription.currentPeriodEnd,
+            canceledAt: new Date(),
+            autoRenewal: false,
+          },
+        });
+        res.json({ id: subscription.id, plan, status: subscription.status });
+        return;
+      }
+
       const priceIdMap: Partial<Record<SubscriptionPlan, string | undefined>> = {
         BASIC: process.env.STRIPE_BASIC_PRICE_ID,
         PREMIUM: process.env.STRIPE_PREMIUM_PRICE_ID,
@@ -181,12 +334,168 @@ router.patch('/:id/plan', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requi
     }
 
     const updated = await prisma.subscription.update({
-      where: { id },
+      where: { id: subscription.id },
       data: { plan },
       select: { id: true, plan: true, status: true },
     });
 
     res.json(updated);
+  } catch (error) {
+    next(error);
+  }
+});
+
+const VALID_REFUND_REASONS = ['duplicate', 'fraudulent', 'requested_by_customer'] as const;
+type RefundReason = (typeof VALID_REFUND_REASONS)[number];
+
+// POST /api/admin/subscribers/:userId/refund
+// #13 companion: /:userId is the subscriber ID — find latest Stripe subscription
+router.post('/:userId/refund', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('subscriptions.write'), async (req, res, next) => {
+  try {
+    const { userId } = req.params;
+    const { amount, reason } = req.body as { amount?: unknown; reason?: unknown };
+
+    if (amount !== undefined && (typeof amount !== 'number' || !Number.isFinite(amount) || amount <= 0)) {
+      res.status(400).json({ error: 'amount must be a positive number' });
+      return;
+    }
+    if (reason !== undefined && !VALID_REFUND_REASONS.includes(reason as RefundReason)) {
+      res.status(400).json({ error: `reason must be one of: ${VALID_REFUND_REASONS.join(', ')}` });
+      return;
+    }
+
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      res.status(404).json({ error: 'Subscriber not found' });
+      return;
+    }
+
+    const subscription = await prisma.subscription.findFirst({
+      where: { userId, stripeSubscriptionId: { not: null } },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (!subscription) {
+      res.status(422).json({ error: 'No Stripe subscription found for this subscriber' });
+      return;
+    }
+
+    if (!subscription.stripeSubscriptionId) {
+      // Paysera or manually-created subscription — no automated refund path
+      res.status(422).json({ error: 'Automated refund is only supported for Stripe subscriptions. Process this refund manually via Paysera.' });
+      return;
+    }
+
+    // Retrieve the Stripe subscription with the latest invoice expanded so we
+    // can obtain the payment_intent without an extra API round-trip.
+    const stripeSub = await stripeService.stripe.subscriptions.retrieve(
+      subscription.stripeSubscriptionId,
+      { expand: ['latest_invoice.payment_intent'] },
+    );
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const invoice = stripeSub.latest_invoice as any;
+    const paymentIntentId: string | undefined =
+      typeof invoice?.payment_intent === 'string'
+        ? invoice.payment_intent
+        : invoice?.payment_intent?.id;
+
+    if (!paymentIntentId) {
+      res.status(422).json({ error: 'No payment found for this subscription. Nothing to refund.' });
+      return;
+    }
+
+    const refund = await stripeService.createRefund({
+      paymentIntentId,
+      amount: amount as number | undefined,
+      reason: reason as RefundReason | undefined,
+    });
+
+    res.json({ ok: true, refundId: refund.id, amount: refund.amount / 100, currency: refund.currency });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// GET /api/admin/subscribers/:userId/login-history — paginated login history (#10)
+router.get('/:userId/login-history', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('subscribers.read'), async (req, res, next) => {
+  try {
+    const { userId } = req.params;
+    const page = Math.max(1, parseInt(req.query.page as string) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string) || 50));
+    const skip = (page - 1) * limit;
+
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true, role: true } });
+    if (!user || user.role !== 'USER') {
+      return res.status(404).json({ error: 'Subscriber not found' });
+    }
+
+    const [history, total] = await Promise.all([
+      prisma.loginHistory.findMany({
+        where: { userId },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+        select: {
+          id: true,
+          ip: true,
+          userAgent: true,
+          success: true,
+          failReason: true,
+          createdAt: true,
+        },
+      }),
+      prisma.loginHistory.count({ where: { userId } }),
+    ]);
+
+    res.json({ history, total, page, limit });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// DELETE /api/admin/subscribers/:userId/sessions — force-logout all sessions (#10)
+router.delete('/:userId/sessions', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('subscribers.write'), async (req, res, next) => {
+  try {
+    const { userId } = req.params;
+
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true, role: true } });
+    if (!user || user.role !== 'USER') {
+      return res.status(404).json({ error: 'Subscriber not found' });
+    }
+
+    const { count } = await prisma.refreshToken.deleteMany({ where: { userId } });
+    res.json({ ok: true, revokedCount: count });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// DELETE /api/admin/subscribers/:userId/account
+// Soft-deletes the user and sets status to DELETED
+router.delete('/:userId/account', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('subscribers.write'), async (req: AuthRequest, res, next) => {
+  try {
+    const { userId } = req.params;
+    const { reason } = req.body as { reason?: string };
+
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      res.status(404).json({ error: 'User not found' });
+      return;
+    }
+    if (user.deletedAt) {
+      res.status(400).json({ error: 'User is already deleted' });
+      return;
+    }
+
+    await prisma.user.update({
+      where: { id: userId },
+      data: {
+        deletedAt: new Date(),
+        status: 'DELETED',
+      },
+    });
+
+    res.json({ ok: true, userId, reason: reason ?? null });
   } catch (error) {
     next(error);
   }

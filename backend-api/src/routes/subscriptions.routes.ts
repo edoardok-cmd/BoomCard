@@ -139,8 +139,10 @@ router.get('/current', authenticate, asyncHandler(async (req: AuthRequest, res: 
 
 /**
  * GET /api/subscriptions/history
- * Return last 5 Stripe invoices for the user's active subscription.
- * Returns empty array for Paysera subscriptions.
+ * Returns payment history for the user's active subscription.
+ * Stripe: last 5 invoices. Paysera: Transaction table, falling back to a
+ * synthetic entry from the subscription record for T9 (anonymous checkout)
+ * users who paid before a Transaction row existed.
  */
 router.get('/history', authenticate, asyncHandler(async (req: AuthRequest, res: Response) => {
   const userId = req.user!.id;
@@ -178,6 +180,35 @@ router.get('/history', authenticate, asyncHandler(async (req: AuthRequest, res: 
         orderId: meta.orderId,
       };
     });
+
+    // T9 anonymous-checkout users: payment was captured via PendingSubscription
+    // before a Transaction row was created. If the Transaction table is empty,
+    // synthesize a history entry from the subscription itself.
+    if (history.length === 0 && subscription?.payseraOrderId && subscription.planId) {
+      const plan = await prisma.plan.findUnique({
+        where: { id: subscription.planId },
+        select: { displayName: true, priceWeeklyEur: true, priceMonthlyEur: true, priceYearlyEur: true },
+      });
+      if (plan) {
+        let subMeta: Record<string, any> = {};
+        try { if (subscription.metadata) subMeta = JSON.parse(subscription.metadata); } catch { /* ignore */ }
+        const billingPeriod = (subMeta.billingPeriod ?? '').toLowerCase();
+        const priceInCents = (() => {
+          if (billingPeriod.includes('week') && plan.priceWeeklyEur) return plan.priceWeeklyEur;
+          if (billingPeriod.includes('year')) return plan.priceYearlyEur ?? plan.priceMonthlyEur ?? 0;
+          return plan.priceMonthlyEur ?? 0;
+        })();
+        history.push({
+          id: subscription.payseraOrderId,
+          date: subscription.currentPeriodStart.toISOString(),
+          amount: priceInCents / 100,
+          currency: 'EUR',
+          status: 'completed',
+          description: `Subscription: ${plan.displayName}`,
+          orderId: subscription.payseraOrderId,
+        });
+      }
+    }
 
     return res.json({ history });
   }

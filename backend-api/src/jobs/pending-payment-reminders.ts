@@ -2,9 +2,9 @@
  * Pending Payment Reminders Job
  *
  * Sends reminder emails to users with PENDING_PAYMENT status at specific intervals:
- * - 1 hour after registration
- * - 24 hours after registration
- * - 7 days after registration
+ * - 1 hour after subscription creation
+ * - 24 hours after subscription creation
+ * - 7 days after subscription creation
  *
  * Run with: npx tsx src/jobs/pending-payment-reminders.ts
  * Or scheduled via scheduler.ts: runs hourly (0 * * * *)
@@ -118,7 +118,7 @@ export async function processPendingPaymentReminders(prismaClient?: PrismaClient
           try { metadata = JSON.parse(subscription.metadata); } catch { metadata = {}; }
         }
 
-        const reminderType = getReminderToSend(user.createdAt, metadata.remindersSent);
+        const reminderType = getReminderToSend(subscription.createdAt, metadata.remindersSent);
         if (!reminderType) { skipped++; continue; }
 
         const plan = subscription.planDetails;

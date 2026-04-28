@@ -133,6 +133,12 @@ export const loginValidation = [
     .bail()
     .isIn(['mobile', 'web'])
     .withMessage('clientType must be "mobile" or "web"'),
+
+  body('totpCode')
+    .optional()
+    .isString()
+    .matches(/^\d{6}$/)
+    .withMessage('totpCode must be a 6-digit string'),
 ];
 
 export const updateProfileValidation = [

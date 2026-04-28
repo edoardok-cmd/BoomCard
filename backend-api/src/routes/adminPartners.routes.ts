@@ -1,117 +1,352 @@
+/**
+ * Admin Partner-Requests Routes — spec sections 5.1–5.3
+ *
+ * GET  /api/admin/partner-requests                         — list (PENDING + pipeline)
+ * GET  /api/admin/partner-requests/:id                     — single request detail
+ * PATCH /api/admin/partner-requests/:id/status             — advance pipeline status
+ * PATCH /api/admin/partner-requests/:id/assign             — assign "Отговорник"
+ * POST /api/admin/partner-requests/:id/notes               — add communication note
+ * GET  /api/admin/partner-requests/:id/notes               — list notes for request
+ * POST /api/admin/partner-requests/:id/approve             — final approve (→ ACTIVE)
+ * POST /api/admin/partner-requests/:id/reject              — reject
+ * PATCH /api/admin/partner-requests/:id/visibility         — toggle isVisible
+ * PATCH /api/admin/partner-requests/:id/partner-status     — set active-partner status
+ */
+
 import { Router } from 'express';
-import { PartnerStatus } from '@prisma/client';
-import { authenticate, authorize, requirePermission } from '../middleware/auth.middleware';
+import { PartnerStatus, PartnerRequestStatus } from '@prisma/client';
+import { authenticate, authorize, requirePermission, AuthRequest } from '../middleware/auth.middleware';
+import { asyncHandler } from '../middleware/error.middleware';
+import { auditMiddleware } from '../middleware/audit.middleware';
 import { prisma } from '../lib/prisma';
 
 const router = Router();
+router.use(authenticate, authorize('ADMIN', 'SUPER_ADMIN'));
+router.use(auditMiddleware);
 
-// GET /api/admin/partner-requests?page=1&limit=20&search=...
-router.get('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('partners.requests.read'), async (req, res, next) => {
-  try {
-    const { search, page = '1', limit = '20' } = req.query as Record<string, string>;
+const PARTNER_SELECT = {
+  id: true,
+  businessName: true,
+  category: true,
+  categories: true,
+  email: true,
+  phone: true,
+  city: true,
+  discountRate: true,
+  status: true,
+  requestStatus: true,
+  assignedAdminId: true,
+  isVisible: true,
+  joinedAt: true,
+  verifiedAt: true,
+  partnerType: { select: { id: true, name: true, color: true } },
+  user: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } },
+} as const;
+
+// ─── List partner requests ────────────────────────────────────────────────────
+
+router.get(
+  '/',
+  requirePermission('partners.requests.read'),
+  asyncHandler(async (req, res) => {
+    const { search, status, requestStatus, page = '1', limit = '20' } = req.query as Record<string, string>;
     const pageNum = Math.max(1, parseInt(page) || 1);
     const limitNum = Math.min(Math.max(1, parseInt(limit) || 20), 100);
     const skip = (pageNum - 1) * limitNum;
     const take = limitNum;
 
-    const where: Parameters<typeof prisma.partner.findMany>[0]['where'] = {
-      status: PartnerStatus.PENDING,
-    };
+    const where: Parameters<typeof prisma.partner.findMany>[0]['where'] = {};
+
+    if (status && Object.values(PartnerStatus).includes(status as PartnerStatus)) {
+      where.status = status as PartnerStatus;
+    } else {
+      where.status = PartnerStatus.PENDING;
+    }
+
+    if (requestStatus && Object.values(PartnerRequestStatus).includes(requestStatus as PartnerRequestStatus)) {
+      where.requestStatus = requestStatus as PartnerRequestStatus;
+    }
 
     if (search) {
       where.OR = [
         { businessName: { contains: search, mode: 'insensitive' } },
         { email: { contains: search, mode: 'insensitive' } },
         { city: { contains: search, mode: 'insensitive' } },
+        { user: { firstName: { contains: search, mode: 'insensitive' } } },
+        { user: { lastName: { contains: search, mode: 'insensitive' } } },
       ];
     }
 
     const [partners, total] = await Promise.all([
-      prisma.partner.findMany({
-        where,
-        skip,
-        take,
-        orderBy: { joinedAt: 'asc' },
-        select: {
-          id: true,
-          businessName: true,
-          category: true,
-          email: true,
-          phone: true,
-          city: true,
-          discountRate: true,
-          joinedAt: true,
-          user: {
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
-              email: true,
-              phone: true,
-            },
-          },
-        },
-      }),
+      prisma.partner.findMany({ where, skip, take, orderBy: { joinedAt: 'asc' }, select: PARTNER_SELECT }),
       prisma.partner.count({ where }),
     ]);
 
     res.json({ partners, total, page: pageNum, limit: take });
-  } catch (error) {
-    next(error);
-  }
-});
+  })
+);
 
-// POST /api/admin/partner-requests/:id/approve
-router.post('/:id/approve', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('partners.requests.write'), async (req, res, next) => {
-  try {
-    const { id } = req.params;
+// ─── Single request detail ────────────────────────────────────────────────────
 
-    const partner = await prisma.partner.findUnique({ where: { id } });
-    if (!partner) {
-      return res.status(404).json({ success: false, error: 'Partner not found' });
+router.get(
+  '/:id',
+  requirePermission('partners.requests.read'),
+  asyncHandler(async (req, res) => {
+    const partner = await prisma.partner.findUnique({
+      where: { id: req.params.id },
+      select: {
+        ...PARTNER_SELECT,
+        description: true,
+        website: true,
+        address: true,
+        region: true,
+        pendingChanges: true,
+        pendingChangesAt: true,
+      },
+    });
+    if (!partner) return res.status(404).json({ error: 'Partner not found' });
+    res.json({ partner });
+  })
+);
+
+// ─── Advance pipeline status ──────────────────────────────────────────────────
+
+const VALID_PIPELINE_TRANSITIONS: Partial<Record<PartnerRequestStatus, PartnerRequestStatus[]>> = {
+  NOVA: ['KOMUNIKACIYA', 'OTKAZANA'],
+  KOMUNIKACIYA: ['DOGOVARYANE', 'OTKAZANA'],
+  DOGOVARYANE: ['ONBOARDING', 'OTKAZANA'],
+  ONBOARDING: ['ODOBRENA', 'OTKAZANA'],
+  ODOBRENA: [],
+  OTKAZANA: [],
+};
+
+router.patch(
+  '/:id/status',
+  requirePermission('partners.requests.write'),
+  asyncHandler(async (req: AuthRequest, res) => {
+    const { requestStatus } = req.body as { requestStatus?: string };
+
+    if (!requestStatus || !Object.values(PartnerRequestStatus).includes(requestStatus as PartnerRequestStatus)) {
+      return res.status(400).json({ error: 'Invalid requestStatus' });
     }
-    if (partner.status !== PartnerStatus.PENDING) {
-      return res.status(400).json({ success: false, error: 'Partner is not in PENDING state' });
+
+    const partner = await prisma.partner.findUnique({ where: { id: req.params.id } });
+    if (!partner) return res.status(404).json({ error: 'Partner not found' });
+
+    const current: PartnerRequestStatus = partner.requestStatus ?? 'NOVA';
+    const allowed = VALID_PIPELINE_TRANSITIONS[current] ?? [];
+    if (!allowed.includes(requestStatus as PartnerRequestStatus)) {
+      return res.status(400).json({
+        error: `Cannot transition from ${current} to ${requestStatus}`,
+        allowedTransitions: allowed,
+      });
     }
 
     const updated = await prisma.partner.update({
-      where: { id },
-      data: { status: PartnerStatus.ACTIVE, verifiedAt: new Date() },
+      where: { id: req.params.id },
+      data: { requestStatus: requestStatus as PartnerRequestStatus },
+      select: PARTNER_SELECT,
+    });
+
+    res.json({ partner: updated });
+  })
+);
+
+// ─── Assign "Отговорник" ──────────────────────────────────────────────────────
+
+router.patch(
+  '/:id/assign',
+  requirePermission('partners.requests.write'),
+  asyncHandler(async (req: AuthRequest, res) => {
+    const { adminId } = req.body as { adminId?: string | null };
+
+    const partner = await prisma.partner.findUnique({ where: { id: req.params.id } });
+    if (!partner) return res.status(404).json({ error: 'Partner not found' });
+
+    if (adminId !== null && adminId !== undefined) {
+      const admin = await prisma.user.findFirst({ where: { id: adminId, role: { in: ['ADMIN', 'SUPER_ADMIN'] } } });
+      if (!admin) return res.status(400).json({ error: 'Admin not found' });
+    }
+
+    const updated = await prisma.partner.update({
+      where: { id: req.params.id },
+      data: { assignedAdminId: adminId ?? null },
+      select: PARTNER_SELECT,
+    });
+
+    res.json({ partner: updated });
+  })
+);
+
+// ─── Communication notes ──────────────────────────────────────────────────────
+
+router.post(
+  '/:id/notes',
+  requirePermission('partners.requests.write'),
+  asyncHandler(async (req: AuthRequest, res) => {
+    const { body, isInternal = true } = req.body as { body?: string; isInternal?: boolean };
+
+    if (!body?.trim()) return res.status(400).json({ error: 'Note body is required' });
+
+    const partner = await prisma.partner.findUnique({ where: { id: req.params.id } });
+    if (!partner) return res.status(404).json({ error: 'Partner not found' });
+
+    if (!partner.requestStatus) {
+      await prisma.partner.update({ where: { id: req.params.id }, data: { requestStatus: 'NOVA' } });
+    }
+
+    const note = await prisma.partnerRequestNote.create({
+      data: {
+        partnerId: req.params.id,
+        authorId: req.user!.id,
+        body: body.trim(),
+        isInternal: Boolean(isInternal),
+      },
+      include: { author: { select: { id: true, firstName: true, lastName: true, email: true } } },
+    });
+
+    res.status(201).json({ note });
+  })
+);
+
+router.get(
+  '/:id/notes',
+  requirePermission('partners.requests.read'),
+  asyncHandler(async (req, res) => {
+    const partner = await prisma.partner.findUnique({ where: { id: req.params.id } });
+    if (!partner) return res.status(404).json({ error: 'Partner not found' });
+
+    const notes = await prisma.partnerRequestNote.findMany({
+      where: { partnerId: req.params.id },
+      orderBy: { createdAt: 'asc' },
+      include: { author: { select: { id: true, firstName: true, lastName: true, email: true } } },
+    });
+
+    res.json({ notes });
+  })
+);
+
+// ─── Approve → ACTIVE ─────────────────────────────────────────────────────────
+
+router.post(
+  '/:id/approve',
+  requirePermission('partners.requests.write'),
+  asyncHandler(async (req, res) => {
+    const partner = await prisma.partner.findUnique({ where: { id: req.params.id } });
+    if (!partner) return res.status(404).json({ error: 'Partner not found' });
+    if (partner.status === PartnerStatus.ACTIVE) {
+      return res.status(400).json({ error: 'Partner is already ACTIVE' });
+    }
+
+    const updated = await prisma.partner.update({
+      where: { id: req.params.id },
+      data: {
+        status: PartnerStatus.ACTIVE,
+        requestStatus: PartnerRequestStatus.ODOBRENA,
+        verifiedAt: new Date(),
+      },
+      select: PARTNER_SELECT,
     });
 
     res.json({ success: true, partner: updated });
-  } catch (error) {
-    next(error);
-  }
-});
+  })
+);
 
-// POST /api/admin/partner-requests/:id/reject
-router.post('/:id/reject', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('partners.requests.write'), async (req, res, next) => {
-  try {
-    const { id } = req.params;
+// ─── Reject ───────────────────────────────────────────────────────────────────
+
+router.post(
+  '/:id/reject',
+  requirePermission('partners.requests.write'),
+  asyncHandler(async (req: AuthRequest, res) => {
     const { reason } = req.body as { reason?: string };
+    if (!reason?.trim()) return res.status(400).json({ error: 'Rejection reason is required' });
 
-    if (!reason?.trim()) {
-      return res.status(400).json({ success: false, error: 'Rejection reason is required' });
+    const partner = await prisma.partner.findUnique({ where: { id: req.params.id } });
+    if (!partner) return res.status(404).json({ error: 'Partner not found' });
+    if (partner.status === PartnerStatus.REJECTED) {
+      return res.status(400).json({ error: 'Partner is already rejected' });
+    }
+    const POST_ONBOARDING_STATUSES: PartnerStatus[] = [
+      PartnerStatus.ACTIVE, PartnerStatus.PAUSED, PartnerStatus.SUSPENDED, PartnerStatus.ARCHIVED,
+    ];
+    if (POST_ONBOARDING_STATUSES.includes(partner.status)) {
+      return res.status(400).json({ error: 'Cannot reject an active partner via this endpoint. Use /partner-status to manage active partner statuses.' });
     }
 
-    const partner = await prisma.partner.findUnique({ where: { id } });
-    if (!partner) {
-      return res.status(404).json({ success: false, error: 'Partner not found' });
-    }
-    if (partner.status !== PartnerStatus.PENDING) {
-      return res.status(400).json({ success: false, error: 'Partner is not in PENDING state' });
-    }
-
-    const updated = await prisma.partner.update({
-      where: { id },
-      data: { status: PartnerStatus.INACTIVE },
-    });
+    const [updated] = await prisma.$transaction([
+      prisma.partner.update({
+        where: { id: req.params.id },
+        data: { status: PartnerStatus.REJECTED, requestStatus: PartnerRequestStatus.OTKAZANA },
+        select: PARTNER_SELECT,
+      }),
+      prisma.partnerRequestNote.create({
+        data: {
+          partnerId: req.params.id,
+          authorId: req.user!.id,
+          body: reason.trim(),
+          isInternal: false,
+        },
+      }),
+    ]);
 
     res.json({ success: true, partner: updated, reason });
-  } catch (error) {
-    next(error);
-  }
-});
+  })
+);
+
+// ─── Toggle visibility ────────────────────────────────────────────────────────
+
+router.patch(
+  '/:id/visibility',
+  requirePermission('partners.requests.write'),
+  asyncHandler(async (req, res) => {
+    const { isVisible } = req.body as { isVisible?: boolean };
+    if (typeof isVisible !== 'boolean') return res.status(400).json({ error: 'isVisible (boolean) is required' });
+
+    const partner = await prisma.partner.findUnique({ where: { id: req.params.id } });
+    if (!partner) return res.status(404).json({ error: 'Partner not found' });
+
+    const updated = await prisma.partner.update({
+      where: { id: req.params.id },
+      data: { isVisible },
+      select: { id: true, businessName: true, isVisible: true },
+    });
+
+    res.json({ partner: updated });
+  })
+);
+
+// ─── Active-partner status (spec 5.3) ─────────────────────────────────────────
+
+const ACTIVE_PARTNER_STATUSES: PartnerStatus[] = [
+  PartnerStatus.ACTIVE,
+  PartnerStatus.PAUSED,
+  PartnerStatus.SUSPENDED,
+  PartnerStatus.ARCHIVED,
+];
+
+router.patch(
+  '/:id/partner-status',
+  requirePermission('partners.requests.write'),
+  asyncHandler(async (req, res) => {
+    const { status } = req.body as { status?: string };
+
+    if (!status || !ACTIVE_PARTNER_STATUSES.includes(status as PartnerStatus)) {
+      return res.status(400).json({
+        error: 'status must be one of: ACTIVE, PAUSED, SUSPENDED, ARCHIVED',
+      });
+    }
+
+    const partner = await prisma.partner.findUnique({ where: { id: req.params.id } });
+    if (!partner) return res.status(404).json({ error: 'Partner not found' });
+
+    const updated = await prisma.partner.update({
+      where: { id: req.params.id },
+      data: { status: status as PartnerStatus },
+      select: PARTNER_SELECT,
+    });
+
+    res.json({ partner: updated });
+  })
+);
 
 export default router;

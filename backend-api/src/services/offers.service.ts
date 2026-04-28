@@ -102,7 +102,7 @@ class OffersService {
    */
   async getUserActivePlan(userId: string): Promise<SubscriptionPlan | null> {
     const subscription = await prisma.subscription.findFirst({
-      where: { userId, status: SubscriptionStatus.ACTIVE },
+      where: { userId, status: { in: [SubscriptionStatus.ACTIVE, SubscriptionStatus.PAUSED] } },
       orderBy: { currentPeriodEnd: 'desc' },
     });
     return subscription?.plan ?? null;

@@ -1,5 +1,6 @@
 import bcrypt from 'bcrypt';
 import crypto from 'crypto';
+import * as otplib from 'otplib';
 import jwt from 'jsonwebtoken';
 import { v4 as uuid } from 'uuid';
 import { prisma } from '../lib/prisma';
@@ -62,6 +63,9 @@ export interface LoginInput {
   email: string;
   password: string;
   clientType?: 'mobile' | 'web';
+  ip?: string;
+  userAgent?: string;
+  totpCode?: string;
 }
 
 export interface TokenPayload {
@@ -353,7 +357,7 @@ export class AuthService {
    * Login user
    */
   static async login(input: LoginInput) {
-    const { email, password, clientType } = input;
+    const { email, password, clientType, ip, userAgent, totpCode } = input;
 
     // Email is no longer unique — multiple accounts (user vs partner) may share
     // the same email. Disambiguate by matching the submitted password against
@@ -370,6 +374,8 @@ export class AuthService {
         status: true,
         avatar: true,
         emailVerified: true,
+        totpSecret: true,
+        totpEnabledAt: true,
       },
       // Stable ordering so password-disambiguation picks the same row
       // across replicas/pods if more than one candidate matches.
@@ -388,6 +394,9 @@ export class AuthService {
     }
 
     if (matches.length === 0) {
+      void prisma.loginHistory.createMany({
+        data: candidates.map((c) => ({ userId: c.id, ip, userAgent, success: false, failReason: 'bad_password' })),
+      });
       throw new AppError('Invalid email or password', 401);
     }
 
@@ -401,14 +410,17 @@ export class AuthService {
 
     // Check if user is active
     if (user.status === 'SUSPENDED') {
+      void prisma.loginHistory.create({ data: { userId: user.id, ip, userAgent, success: false, failReason: 'suspended' } });
       throw new AppError('Account has been suspended', 403);
     }
 
     if (user.role === 'PARTNER') {
       if (!user.emailVerified) {
+        void prisma.loginHistory.create({ data: { userId: user.id, ip, userAgent, success: false, failReason: 'email_unverified' } });
         throw new AppError('Please verify your email address before logging in. Check your inbox for the verification link.', 403);
       }
       if (user.status === 'PENDING_VERIFICATION') {
+        void prisma.loginHistory.create({ data: { userId: user.id, ip, userAgent, success: false, failReason: 'pending_verification' } });
         throw new AppError('Your partner application is under review. You will be notified by email once approved.', 403);
       }
     }
@@ -418,7 +430,23 @@ export class AuthService {
     // password so role/existence can't be enumerated from error shape.
     if (clientType === 'mobile' && user.role !== 'USER') {
       logger.warn(`Mobile login rejected for non-USER role: ${user.email} (role=${user.role})`);
+      void prisma.loginHistory.create({ data: { userId: user.id, ip, userAgent, success: false, failReason: 'role_mismatch' } });
       throw new AppError('Invalid email or password', 401);
+    }
+
+    // TOTP enforcement — only admins/partners can have 2FA enabled, but the
+    // check is intentionally unconditional on role so it works if we ever
+    // extend 2FA to other roles without touching this path.
+    if (user.totpEnabledAt) {
+      if (!totpCode) {
+        void prisma.loginHistory.create({ data: { userId: user.id, ip, userAgent, success: false, failReason: 'totp_required' } });
+        throw new AppError('Two-factor authentication required', 403);
+      }
+      const result = otplib.verifySync({ token: totpCode, secret: user.totpSecret! });
+      if (!result.valid) {
+        void prisma.loginHistory.create({ data: { userId: user.id, ip, userAgent, success: false, failReason: 'totp_invalid' } });
+        throw new AppError('Invalid two-factor authentication code', 401);
+      }
     }
 
     // Update last login
@@ -427,6 +455,7 @@ export class AuthService {
       data: { lastLoginAt: new Date() },
     });
 
+    void prisma.loginHistory.create({ data: { userId: user.id, ip, userAgent, success: true } });
     logger.info(`User logged in: ${user.email}`);
 
     // Compute the sibling-account group eligible for switching on this

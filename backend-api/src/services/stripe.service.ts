@@ -716,19 +716,30 @@ class StripeService {
       return;
     }
 
-    try {
-      // Map Stripe status to our status
-      const statusMap: Record<string, any> = {
-        'active': 'ACTIVE',
-        'past_due': 'PAST_DUE',
-        'canceled': 'CANCELLED',
-        'incomplete': 'INCOMPLETE',
-        'incomplete_expired': 'INCOMPLETE_EXPIRED',
-        'trialing': 'TRIALING',
-        'unpaid': 'UNPAID',
-        'paused': 'PAUSED',
-      };
+    // Pure computation — no DB access, cannot throw. Hoisted outside the
+    // swallow-all try/catch so mappedStatus is visible to the trialRefundEligibleUntil
+    // stamp below, which must run outside that catch to allow Stripe retries.
+    const statusMap: Record<string, any> = {
+      'active': 'ACTIVE',
+      'past_due': 'PAST_DUE',
+      'canceled': 'CANCELLED',
+      'incomplete': 'INCOMPLETE',
+      'incomplete_expired': 'INCOMPLETE_EXPIRED',
+      'trialing': 'TRIALING',
+      'unpaid': 'UNPAID',
+      'paused': 'PAUSED',
+    };
 
+    const mappedStatus = (() => {
+      const s = statusMap[subscription.status];
+      if (!s) {
+        logger.warn(`Unknown Stripe subscription status "${subscription.status}" for sub ${subscription.id} — defaulting to INCOMPLETE`);
+        return 'INCOMPLETE';
+      }
+      return s;
+    })();
+
+    try {
       // Determine plan from Stripe price ID, falling back to metadata
       const priceId = subscription.items.data[0]?.price.id;
       let plan: 'LIGHT' | 'BASIC' | 'PREMIUM' = 'LIGHT';
@@ -749,15 +760,6 @@ class StripeService {
       } else if (subscription.metadata.plan) {
         plan = subscription.metadata.plan as any;
       }
-
-      const mappedStatus = (() => {
-        const s = statusMap[subscription.status];
-        if (!s) {
-          logger.warn(`Unknown Stripe subscription status "${subscription.status}" for sub ${subscription.id} — defaulting to INCOMPLETE`);
-          return 'INCOMPLETE';
-        }
-        return s;
-      })();
 
       // Update or create subscription
       await prisma.subscription.upsert({
@@ -800,6 +802,18 @@ class StripeService {
       logger.info(`Subscription updated in database for user ${userId} (plan: ${plan}, status: ${statusMap[subscription.status]})`);
     } catch (error) {
       logger.error(`Error handling subscription update: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+
+    // Stamp the 24-hour trial refund window at payment confirmation (INCOMPLETE→ACTIVE).
+    // This runs OUTSIDE the swallow-all catch above: if the DB update fails here,
+    // the error propagates to handleWebhookEvent which rethrows → the webhook route
+    // returns 500 → Stripe retries the event rather than silently losing the window.
+    // The null filter makes this a no-op on renewals and plan upgrades (window already set).
+    if (mappedStatus === 'ACTIVE') {
+      await prisma.subscription.updateMany({
+        where: { stripeSubscriptionId: subscription.id, trialRefundEligibleUntil: null },
+        data: { trialRefundEligibleUntil: new Date(Date.now() + 24 * 60 * 60 * 1000) },
+      });
     }
   }
 
@@ -871,6 +885,7 @@ class StripeService {
       // Find the subscription to get the userId
       const dbSub = await prisma.subscription.findFirst({
         where: { stripeSubscriptionId: subscriptionId },
+        include: { user: { select: { email: true, firstName: true, preferredLanguage: true } } },
       });
 
       if (!dbSub) {
@@ -906,6 +921,24 @@ class StripeService {
           completedAt: new Date(),
         },
       });
+
+      // Spec §3.1: send renewal confirmation email for recurring payments
+      if (invoice.billing_reason === 'subscription_cycle' && dbSub.user?.email) {
+        const lang = (dbSub.user.preferredLanguage === 'en' ? 'en' : 'bg') as 'bg' | 'en';
+        emailService
+          .sendPaymentConfirmation(
+            dbSub.user.email,
+            {
+              customerName: dbSub.user.firstName || 'Customer',
+              orderId: invoiceStripePaymentId,
+              amount,
+              currency: (invoice.currency ?? 'bgn').toUpperCase(),
+              date: new Date(),
+            },
+            lang,
+          )
+          .catch((err: unknown) => logger.error(`Failed to send renewal confirmation email for sub ${dbSub.id}:`, err));
+      }
 
       // If this payment clears a previously failed renewal, reset grace period state
       if (dbSub.retryAttempt > 0 || dbSub.status === 'PAST_DUE') {

@@ -41,6 +41,7 @@ enum UserStatus {
   SUSPENDED
   PENDING_VERIFICATION
   PENDING_PAYMENT // User registered but payment not yet confirmed
+  DELETED         // Soft-deleted; deletedAt is always set when this status is used
 }
 
 model User {
@@ -135,11 +136,32 @@ model User {
   helpTickets         HelpTicket[]    @relation("TicketUser")
   assignedTickets     HelpTicket[]    @relation("TicketAssignee")
   ticketReplies       TicketReply[]   @relation("TicketReplies")
+  superAdminRequests  PendingSuperAdminRequest[] @relation("SuperAdminRequester")
+  partnerRequestNotes PartnerRequestNote[] @relation("PartnerRequestNoteAuthor")
+  loginHistory        LoginHistory[]
 
   @@unique([email, role], map: "User_email_role_key")
   @@index([email])
   @@index([role])
   @@index([status])
+}
+
+// Pending SUPER_ADMIN creation requests — require a second admin to approve.
+// Stores the hashed password so the actual User is only created on approval.
+model PendingSuperAdminRequest {
+  id           String   @id @default(uuid())
+  email        String
+  firstName    String?
+  lastName     String?
+  phone        String?
+  passwordHash String
+  requestedById String
+  requestedBy  User     @relation("SuperAdminRequester", fields: [requestedById], references: [id])
+  createdAt    DateTime @default(now())
+
+  @@unique([email])
+  @@index([requestedById])
+  @@map("pending_super_admin_requests")
 }
 
 model RefreshToken {
@@ -170,11 +192,25 @@ model RefreshToken {
 // Partner Models
 // ============================================
 
+// Onboarding pipeline statuses — spec 5.1–5.2
+// нова → комуникация → договаряне → онбординг → одобрена / отказана
+enum PartnerRequestStatus {
+  NOVA
+  KOMUNIKACIYA
+  DOGOVARYANE
+  ONBOARDING
+  ODOBRENA
+  OTKAZANA
+}
+
 enum PartnerStatus {
   PENDING
   ACTIVE
-  SUSPENDED
-  INACTIVE
+  PAUSED     // Temporarily hidden/paused — spec 5.3
+  SUSPENDED  // Suspended for policy violation
+  ARCHIVED   // Permanently deactivated — spec 5.3 (replaces INACTIVE semantically)
+  INACTIVE   // Legacy compat; prefer ARCHIVED for new code
+  REJECTED   // Request rejected during onboarding
 }
 
 model Partner {
@@ -211,6 +247,13 @@ model Partner {
   pendingChanges    Json?
   pendingChangesAt  DateTime?
 
+  // Onboarding pipeline — spec 5.1–5.2
+  requestStatus    PartnerRequestStatus?     // null = not yet in pipeline; set on first admin action
+  assignedAdminId  String?                   // "Отговорник" — admin assigned to this partner request
+
+  // Visibility — spec 5.3 "Видим или скрит за абонати"
+  isVisible        Boolean                   @default(true)
+
   // Relations
   user             User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
   partnerType      PartnerType?             @relation(fields: [partnerTypeId], references: [id])
@@ -221,6 +264,7 @@ model Partner {
   transactions     Transaction[]
   cashbackPayments     PartnerCashbackPayment[]
   marketingListMembers MarketingListMember[]
+  requestNotes         PartnerRequestNote[]
 
   @@index([category])
   @@index([partnerTypeId])
@@ -239,6 +283,7 @@ model PartnerCashbackPayment {
   partnerId         String
   month             String                // "YYYY-MM"
   totalCashbackOwed Float                 @default(0) // sum of APPROVED receipt cashbackAmounts
+  marginAmount      Float                 @default(0) // BoomCard margin retained — spec 6.2
   paidAt            DateTime?
   paidBy            String?               // admin userId
   notes             String?
@@ -251,6 +296,21 @@ model PartnerCashbackPayment {
   @@unique([partnerId, month])
   @@index([status])
   @@index([month])
+}
+
+// Communication log for partner onboarding pipeline — spec 5.2
+model PartnerRequestNote {
+  id         String   @id @default(uuid())
+  partnerId  String
+  partner    Partner  @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  authorId   String
+  author     User     @relation("PartnerRequestNoteAuthor", fields: [authorId], references: [id])
+  body       String
+  isInternal Boolean  @default(true) // false = visible to partner in future partner portal
+  createdAt  DateTime @default(now())
+
+  @@index([partnerId])
+  @@index([createdAt])
 }
 
 model Venue {
@@ -1863,4 +1923,99 @@ model PendingSubscription {
   @@index([email])
   @@index([status])
   @@index([expiresAt])
+}
+
+// ============================================
+// Login History — spec section 12 "Профил > Сигурност"
+// ============================================
+
+model LoginHistory {
+  id         String   @id @default(uuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ip         String?
+  userAgent  String?
+  success    Boolean
+  failReason String?  // e.g. "bad_password", "totp_required", "totp_invalid"
+  createdAt  DateTime @default(now())
+
+  @@index([userId])
+  @@index([createdAt])
+}
+
+// ============================================
+// Finance Reporting Period lifecycle — spec 6.3
+// Отворен → За проверка → Заключен → Фактуриран
+// ============================================
+
+enum ReportingPeriodStatus {
+  OPEN       // Default; cashback payments can be created/edited
+  FOR_REVIEW // Submitted for finance team review
+  LOCKED     // No data changes allowed for this month
+  INVOICED   // Invoice issued to partners
+}
+
+model ReportingPeriod {
+  id         String                @id @default(uuid())
+  month      String                @unique // "YYYY-MM"
+  status     ReportingPeriodStatus @default(OPEN)
+  lockedAt   DateTime?
+  lockedBy   String?               // admin userId
+  invoicedAt DateTime?
+  invoicedBy String?               // admin userId
+  notes      String?
+  createdAt  DateTime              @default(now())
+  updatedAt  DateTime              @updatedAt
+
+  @@index([status])
+  @@index([month])
+}
+
+// ============================================
+// Fraud Rules — spec 7.4 per-rule limits management
+// ============================================
+
+enum FraudRuleTier {
+  SYSTEM       // Global default (replaces system settings scalars)
+  PARTNER_TYPE // Applies to all partners of a given type
+  PARTNER      // Applies to one specific partner
+  USER         // Applies to one specific user
+}
+
+model FraudRule {
+  id                   String        @id @default(uuid())
+  tier                 FraudRuleTier
+  targetId             String?       // partnerTypeId / partnerId / userId; null for SYSTEM tier
+  dailyScanLimit       Int?
+  minTransactionValue  Float?
+  maxTransactionValue  Float?
+  autoApproveThreshold Float?        // fraud score below which receipts auto-approve
+  isActive             Boolean       @default(true)
+  notes                String?
+  createdBy            String        // admin userId
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
+
+  overrides FraudRuleOverride[]
+
+  @@index([tier])
+  @@index([targetId])
+  @@index([isActive])
+}
+
+// Manual override applied to a specific user or partner on top of a FraudRule
+model FraudRuleOverride {
+  id         String    @id @default(uuid())
+  ruleId     String
+  rule       FraudRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  targetType String    // "user" | "partner"
+  targetId   String
+  override   Json      // fields being overridden, e.g. { "dailyScanLimit": 5 }
+  reason     String?
+  createdBy  String    // admin userId
+  expiresAt  DateTime? // optional auto-expiry
+  createdAt  DateTime  @default(now())
+
+  @@index([ruleId])
+  @@index([targetType, targetId])
 }

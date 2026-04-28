@@ -23,15 +23,25 @@ export async function processPayseraRenewals(): Promise<void> {
 
   const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
 
-  // 1. Cancel subscriptions that have been PAUSED for 7+ days (grace period elapsed)
+  // 1. Cancel subscriptions that have been PAUSED for 7+ days (grace period elapsed).
+  // Prefer gracePeriodEndsAt (set by this job since the field was added) so the
+  // 7-day window is measured from the actual pause instant rather than from
+  // currentPeriodEnd (which drifts when this job runs late). For legacy rows
+  // that pre-date gracePeriodEndsAt, fall back to the old currentPeriodEnd logic.
   const expired = await prisma.subscription.findMany({
     where: {
       status: SubscriptionStatus.PAUSED,
       stripeSubscriptionId: null,
       autoRenewal: true,
-      currentPeriodEnd: { lte: sevenDaysAgo },
+      OR: [
+        { gracePeriodEndsAt: { lte: now } },
+        { gracePeriodEndsAt: null, currentPeriodEnd: { lte: sevenDaysAgo } },
+      ],
     },
-    include: { user: { select: { email: true, firstName: true } } },
+    include: {
+      user: { select: { email: true, firstName: true, preferredLanguage: true } },
+      planDetails: { select: { displayName: true, displayNameBg: true } },
+    },
   });
 
   for (const sub of expired) {
@@ -41,6 +51,36 @@ export async function processPayseraRenewals(): Promise<void> {
         data: { status: SubscriptionStatus.CANCELLED, canceledAt: now },
       });
       logger.info(`[paysera-renewal] Subscription ${sub.id} cancelled after 7-day grace period`);
+
+      // Sync the BoomCard loyalty card type to match the user's remaining active
+      // BoomCard subscription, or downgrade to LIGHT if none exists. Mirrors the
+      // same pattern in subscription-expiry (scheduler.ts), which handles the
+      // cancelAtPeriodEnd path; this covers the autoRenewal-failure path.
+      const otherActiveSub = await prisma.subscription.findFirst({
+        where: {
+          userId: sub.userId,
+          status: { in: [SubscriptionStatus.ACTIVE, SubscriptionStatus.TRIALING] },
+          id: { not: sub.id },
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+      const targetPlan = otherActiveSub?.plan ?? 'LIGHT';
+      const { cardService } = await import('../services/card.service');
+      await cardService.syncCardTypeWithSubscription(sub.userId, targetPlan);
+
+      if (sub.user?.email) {
+        const lang = (sub.user.preferredLanguage === 'en' ? 'en' : 'bg') as 'bg' | 'en';
+        const planName = lang === 'bg'
+          ? (sub.planDetails?.displayNameBg || sub.plan)
+          : (sub.planDetails?.displayName || sub.plan);
+        await emailService
+          .sendSubscriptionExpiredEmail(
+            sub.user.email,
+            { customerName: sub.user.firstName || 'Customer', planName, renewUrl: `${APP_URL}/subscription` },
+            lang,
+          )
+          .catch((err) => logger.error(`[paysera-renewal] Cancellation email failed for sub ${sub.id}:`, err));
+      }
     } catch (err) {
       logger.error(`[paysera-renewal] Failed to cancel subscription ${sub.id}:`, err);
     }
@@ -64,7 +104,10 @@ export async function processPayseraRenewals(): Promise<void> {
     try {
       await prisma.subscription.update({
         where: { id: sub.id },
-        data: { status: SubscriptionStatus.PAUSED },
+        data: {
+          status: SubscriptionStatus.PAUSED,
+          gracePeriodEndsAt: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000),
+        },
       });
 
       if (sub.user?.email) {

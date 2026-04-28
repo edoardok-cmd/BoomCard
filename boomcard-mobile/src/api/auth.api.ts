@@ -171,6 +171,19 @@ export class AuthApi {
   static async getStoredUser(): Promise<User | null> {
     return await StorageService.getUserData();
   }
+
+  /**
+   * Permanently delete the authenticated user's account
+   */
+  static async deleteAccount(): Promise<ApiResponse<void>> {
+    const response = await apiClient.delete<void>(
+      API_CONFIG.ENDPOINTS.AUTH.DELETE_ACCOUNT
+    );
+    if (response.success) {
+      await StorageService.clearAll();
+    }
+    return response;
+  }
 }
 
 export default AuthApi;

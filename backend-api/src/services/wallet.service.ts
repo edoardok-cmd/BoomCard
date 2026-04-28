@@ -54,7 +54,7 @@ export class WalletService {
 
     // Resolve payout threshold for this user's active plan
     const subscription = await prisma.subscription.findFirst({
-      where: { userId, status: { in: ['ACTIVE', 'TRIALING'] } },
+      where: { userId, status: { in: ['ACTIVE', 'TRIALING', 'PAUSED'] } },
       orderBy: { createdAt: 'desc' },
     });
 
@@ -106,6 +106,28 @@ export class WalletService {
         ? new Date(Date.now() + CASHBACK_VALIDITY_DAYS * 24 * 60 * 60 * 1000)
         : undefined;
 
+    // If the user is within their 24h trial refund window, hold cashback as
+    // TRIAL_PENDING: it shows in balance but is not yet spendable/withdrawable.
+    // The nightly resolveTrialPendingCashback job releases it once the window closes.
+    let txStatus: WalletTransactionStatus = WalletTransactionStatus.COMPLETED;
+    let isTrialPending = false;
+    if (type === WalletTransactionType.CASHBACK_CREDIT) {
+      const activeSub = await prisma.subscription.findFirst({
+        where: {
+          userId,
+          status: { in: ['ACTIVE', 'TRIALING'] },
+          trialRefundEligibleUntil: { gt: new Date() },
+          trialRefundUsed: false,
+        },
+        orderBy: { createdAt: 'desc' },
+        select: { id: true },
+      });
+      if (activeSub) {
+        txStatus = WalletTransactionStatus.TRIAL_PENDING;
+        isTrialPending = true;
+      }
+    }
+
     // Re-read wallet inside interactive transaction so isLocked is checked atomically
     // with the balance update — prevents a race where wallet is locked between our
     // pre-read and the actual write.
@@ -116,12 +138,14 @@ export class WalletService {
         throw new Error(`Wallet is locked: ${currentWallet.lockedReason}`);
       }
 
+      // TRIAL_PENDING: increment only balance (visible to user) — availableBalance
+      // is not incremented until the trial window closes so the funds cannot be
+      // withdrawn or applied to payouts during the refund-eligible period.
       const updated = await tx.wallet.update({
         where: { userId },
-        data: {
-          balance: { increment: amount },
-          availableBalance: { increment: amount },
-        },
+        data: isTrialPending
+          ? { balance: { increment: amount } }
+          : { balance: { increment: amount }, availableBalance: { increment: amount } },
       });
 
       const txRecord = await tx.walletTransaction.create({
@@ -133,7 +157,7 @@ export class WalletService {
           // leave a stale balanceBefore/After on the audit record.
           balanceBefore: updated.balance - amount,
           balanceAfter: updated.balance,
-          status: WalletTransactionStatus.COMPLETED,
+          status: txStatus,
           description,
           metadata: metadata ? JSON.stringify(metadata) : undefined,
           cashbackExpiresAt,
@@ -144,33 +168,36 @@ export class WalletService {
       return [updated, txRecord] as const;
     });
 
-    logger.info(`Credited ${amount} BGN to wallet ${wallet.id}. Type: ${type}${cashbackExpiresAt ? `. Expires: ${cashbackExpiresAt.toISOString()}` : ''}`);
+    logger.info(`Credited ${amount} BGN to wallet ${wallet.id}. Type: ${type}${isTrialPending ? ' [TRIAL_PENDING]' : ''}${cashbackExpiresAt ? `. Expires: ${cashbackExpiresAt.toISOString()}` : ''}`);
 
-    // Payout-ready notification: fire when the credit crosses the threshold
-    // for this user's plan (pre-credit below, post-credit above). Non-fatal —
-    // a notify hiccup must not affect the already-committed credit.
-    try {
-      const preCreditAvailable = updatedWallet.availableBalance - amount;
-      if (updatedWallet.availableBalance > 0 && !updatedWallet.isLocked) {
-        const subscription = await prisma.subscription.findFirst({
-          where: { userId, status: { in: ['ACTIVE', 'TRIALING'] } },
-          orderBy: { createdAt: 'desc' },
-        });
-        const plan: SubscriptionPlan = subscription?.plan ?? 'LIGHT';
-        const subMetadata = subscription?.metadata ? JSON.parse(subscription.metadata as string) : {};
-        const threshold = payoutThresholdBGN(plan, subMetadata.billingPeriod);
-        if (preCreditAvailable < threshold && updatedWallet.availableBalance >= threshold) {
-          notificationService
-            .notifyPayoutReady({
-              userId,
-              availableBalance: updatedWallet.availableBalance,
-              threshold,
-            })
-            .catch((err) => logger.error(`[wallet] payout-ready notify failed for ${userId}:`, err));
+    // Payout-ready notification: fire when the credit crosses the payout threshold
+    // for this user's plan (pre-credit below, post-credit above). Non-fatal.
+    // Skip for TRIAL_PENDING credits — availableBalance was not incremented, so
+    // the pre/post threshold comparison would be meaningless.
+    if (!isTrialPending) {
+      try {
+        const preCreditAvailable = updatedWallet.availableBalance - amount;
+        if (updatedWallet.availableBalance > 0 && !updatedWallet.isLocked) {
+          const subscription = await prisma.subscription.findFirst({
+            where: { userId, status: { in: ['ACTIVE', 'TRIALING', 'PAUSED'] } },
+            orderBy: { createdAt: 'desc' },
+          });
+          const plan: SubscriptionPlan = subscription?.plan ?? 'LIGHT';
+          const subMetadata = subscription?.metadata ? JSON.parse(subscription.metadata as string) : {};
+          const threshold = payoutThresholdBGN(plan, subMetadata.billingPeriod);
+          if (preCreditAvailable < threshold && updatedWallet.availableBalance >= threshold) {
+            notificationService
+              .notifyPayoutReady({
+                userId,
+                availableBalance: updatedWallet.availableBalance,
+                threshold,
+              })
+              .catch((err) => logger.error(`[wallet] payout-ready notify failed for ${userId}:`, err));
+          }
         }
+      } catch (err) {
+        logger.error(`[wallet] payout-ready check failed for ${userId}:`, err);
       }
-    } catch (err) {
-      logger.error(`[wallet] payout-ready check failed for ${userId}:`, err);
     }
 
     return {
@@ -247,6 +274,62 @@ export class WalletService {
   }
 
   /**
+   * Reverse TRIAL_PENDING cashback credits.
+   * Called by requestTrialRefund() to void cashback that was held in balance but
+   * never made available. Only decrements balance (not availableBalance) because
+   * availableBalance was never incremented for TRIAL_PENDING transactions.
+   */
+  async voidTrialPendingCashback(params: {
+    userId: string;
+    amount: number;
+    transactionIds?: string[];
+    metadata?: any;
+  }) {
+    const { userId, amount, transactionIds, metadata } = params;
+
+    if (amount <= 0) return;
+
+    const wallet = await this.getOrCreateWallet(userId);
+
+    await prisma.$transaction(async (tx) => {
+      const currentWallet = await tx.wallet.findUniqueOrThrow({ where: { userId } });
+
+      if (currentWallet.isLocked) {
+        throw new Error(`Wallet is locked: ${currentWallet.lockedReason}`);
+      }
+
+      await tx.wallet.update({
+        where: { userId },
+        data: { balance: { decrement: amount } },
+      });
+
+      // Mark the originating TRIAL_PENDING transactions as CANCELLED so
+      // resolveTrialPendingCashback doesn't find them and double-decrement balance.
+      if (transactionIds && transactionIds.length > 0) {
+        await tx.walletTransaction.updateMany({
+          where: { id: { in: transactionIds } },
+          data: { status: WalletTransactionStatus.CANCELLED },
+        });
+      }
+
+      await tx.walletTransaction.create({
+        data: {
+          walletId: wallet.id,
+          type: WalletTransactionType.ADJUSTMENT,
+          amount: -amount,
+          balanceBefore: currentWallet.balance,
+          balanceAfter: currentWallet.balance - amount,
+          status: WalletTransactionStatus.COMPLETED,
+          description: 'Trial refund — pending cashback voided',
+          metadata: metadata ? JSON.stringify(metadata) : undefined,
+        },
+      });
+    });
+
+    logger.info(`Voided ${amount} BGN of TRIAL_PENDING cashback from wallet ${wallet.id}`);
+  }
+
+  /**
    * Request a cashback payout.
    * Validates:
    *   1. Wallet is not locked
@@ -281,7 +364,7 @@ export class WalletService {
 
     // Resolve plan and threshold
     const subscription = await prisma.subscription.findFirst({
-      where: { userId, status: { in: ['ACTIVE', 'TRIALING'] } },
+      where: { userId, status: { in: ['ACTIVE', 'TRIALING', 'PAUSED'] } },
       orderBy: { createdAt: 'desc' },
     });
 

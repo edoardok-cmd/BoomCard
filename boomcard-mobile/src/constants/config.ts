@@ -21,6 +21,7 @@ export const API_CONFIG = {
       ME: '/api/auth/me',
       PROFILE: '/api/auth/profile',
       CHANGE_PASSWORD: '/api/auth/change-password',
+      DELETE_ACCOUNT: '/api/auth/account',
     },
     // Receipts
     RECEIPTS: {

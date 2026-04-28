@@ -144,9 +144,11 @@ router.post(
   '/login',
   validate(loginValidation),
   asyncHandler(async (req: Request, res: Response) => {
-    const { email, password, clientType } = req.body;
+    const { email, password, clientType, totpCode } = req.body;
 
-    const result = await AuthService.login({ email, password, clientType });
+    const ip = ((req.headers['x-forwarded-for'] as string) ?? '').split(',')[0]?.trim() || req.ip;
+    const userAgent = req.headers['user-agent'];
+    const result = await AuthService.login({ email, password, clientType, ip, userAgent, totpCode });
 
     res.json({
       success: true,
