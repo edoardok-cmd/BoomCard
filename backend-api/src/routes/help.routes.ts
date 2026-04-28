@@ -2,6 +2,8 @@ import { Router, Response } from 'express';
 import { asyncHandler } from '../middleware/error.middleware';
 import { authenticate, AuthRequest } from '../middleware/auth.middleware';
 import { prisma } from '../lib/prisma';
+import { notificationService } from '../services/notification.service';
+import { logger } from '../utils/logger';
 import { z } from 'zod';
 
 const router = Router();
@@ -36,6 +38,20 @@ router.post(
       data: { subject, body, category, userId },
       select: { id: true, subject: true, category: true, status: true, createdAt: true },
     });
+
+    notificationService
+      .notifyAdminOps({
+        opsType: 'help_ticket_created',
+        title: `New support ticket: ${category}`,
+        message: subject,
+        severity: 'info',
+        fields: [
+          { label: 'Category', value: category },
+          { label: 'User', value: userId },
+          { label: 'Ticket ID', value: ticket.id },
+        ],
+      })
+      .catch((err) => logger.error('[help] Failed to notify admin of new ticket:', err));
 
     return res.status(201).json({ success: true, data: ticket });
   })

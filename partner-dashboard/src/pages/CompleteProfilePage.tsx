@@ -74,6 +74,31 @@ const ErrorText = styled.span`
   color: #ef4444;
 `;
 
+const ConsentRow = styled.label`
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  cursor: pointer;
+  margin-bottom: 0.75rem;
+  font-size: 0.85rem;
+  color: var(--color-text-secondary);
+  line-height: 1.4;
+
+  input[type='checkbox'] {
+    margin-top: 0.15rem;
+    flex-shrink: 0;
+    accent-color: var(--color-primary);
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+  }
+`;
+
+const ConsentSection = styled.div`
+  margin-top: 1rem;
+  margin-bottom: 0.5rem;
+`;
+
 const AlertBox = styled.div<{ $variant: 'error' | 'info' }>`
   padding: 1rem;
   border-radius: 0.5rem;
@@ -92,6 +117,8 @@ const CompleteProfilePage: React.FC = () => {
 
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [marketingConsentEmail, setMarketingConsentEmail] = useState(false);
+  const [marketingConsentPhone, setMarketingConsentPhone] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [apiError, setApiError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -135,7 +162,7 @@ const CompleteProfilePage: React.FC = () => {
     setIsSubmitting(true);
 
     try {
-      const response = await axios.post(`${API_BASE_URL}/auth/complete-profile`, { token, password });
+      const response = await axios.post(`${API_BASE_URL}/auth/complete-profile`, { token, password, marketingConsentEmail, marketingConsentPhone });
       const { accessToken, refreshToken } = response.data.data;
 
       // Store tokens using same keys as AuthContext so it picks them up on reload
@@ -191,6 +218,29 @@ const CompleteProfilePage: React.FC = () => {
             />
             {errors.confirmPassword && <ErrorText>{errors.confirmPassword}</ErrorText>}
           </Field>
+
+          <ConsentSection>
+            <ConsentRow>
+              <input
+                type="checkbox"
+                checked={marketingConsentEmail}
+                onChange={e => setMarketingConsentEmail(e.target.checked)}
+              />
+              {language === 'bg'
+                ? 'Съгласявам се да получавам маркетингови имейли от BoomCard (по избор)'
+                : 'I agree to receive marketing emails from BoomCard (optional)'}
+            </ConsentRow>
+            <ConsentRow>
+              <input
+                type="checkbox"
+                checked={marketingConsentPhone}
+                onChange={e => setMarketingConsentPhone(e.target.checked)}
+              />
+              {language === 'bg'
+                ? 'Съгласявам се да получавам маркетингови съобщения по телефон от BoomCard (по избор)'
+                : 'I agree to receive marketing messages by phone from BoomCard (optional)'}
+            </ConsentRow>
+          </ConsentSection>
 
           <div style={{ marginTop: '0.5rem' }}>
           <Button

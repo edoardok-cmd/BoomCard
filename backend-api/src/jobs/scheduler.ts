@@ -694,6 +694,14 @@ async function resolveTrialPendingCashback(): Promise<void> {
   let resolved = 0;
   let voided = 0;
   for (const wallet of wallets) {
+    // Skip deleted (anonymized) users — their wallet funds are orphaned and
+    // should not be promoted or emailed about.
+    const userStatus = await prisma.user.findUnique({
+      where: { id: wallet.userId },
+      select: { status: true },
+    });
+    if (!userStatus || userStatus.status === 'DELETED') continue;
+
     // Still within the 24h trial window — leave as TRIAL_PENDING.
     const stillOpen = await prisma.subscription.findFirst({
       where: {
