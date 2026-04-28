@@ -30,14 +30,29 @@ router.get(
   '/',
   authenticate,
   asyncHandler(async (req: AuthRequest, res: Response) => {
+    // Named period presets — period takes precedence over startDate/endDate when provided
+    const period = req.query.period as string | undefined;
+    let startDate: Date | undefined;
+    let endDate: Date | undefined;
+    if (period === '7d') {
+      startDate = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    } else if (period === '30d') {
+      startDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    } else if (period === 'all') {
+      // no date filter
+    } else {
+      startDate = req.query.startDate ? new Date(req.query.startDate as string) : undefined;
+      endDate = req.query.endDate ? new Date(req.query.endDate as string) : undefined;
+    }
+
     const result = await receiptService.getReceipts({
       userId: req.user!.id,
       status: req.query.status as any,
       merchantName: req.query.merchantName as string,
       minAmount: req.query.minAmount ? parseFloat(req.query.minAmount as string) : undefined,
       maxAmount: req.query.maxAmount ? parseFloat(req.query.maxAmount as string) : undefined,
-      startDate: req.query.startDate ? new Date(req.query.startDate as string) : undefined,
-      endDate: req.query.endDate ? new Date(req.query.endDate as string) : undefined,
+      startDate,
+      endDate,
       page: req.query.page ? parseInt(req.query.page as string) : 1,
       limit: req.query.limit ? parseInt(req.query.limit as string) : 10,
       sortBy: req.query.sortBy as any,

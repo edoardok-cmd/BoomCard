@@ -68,7 +68,7 @@ async function processRenewalReminders(): Promise<void> {
     const subscriptions = await prisma.subscription.findMany({
       where: {
         status: 'ACTIVE',
-        cancelAtPeriodEnd: false, // Don't remind users who already cancelled
+        cancelAtPeriodEnd: true, // Only remind users who turned auto-renewal OFF (they must act before expiry)
         currentPeriodEnd: {
           gte: sixDaysFromNow,
           lte: eightDaysFromNow,
@@ -141,7 +141,7 @@ async function processRenewalReminders(): Promise<void> {
           price: formatPrice(priceInCents, 'EUR'),
           renewalDate: formatDate(subscription.currentPeriodEnd),
           manageUrl: 'https://boomcard.bg/dashboard/subscription',
-          language: 'en',
+          language: 'bg',
         };
 
         logger.info(`Sending renewal reminder to ${subscription.user.email} for ${formatDate(subscription.currentPeriodEnd)}`);

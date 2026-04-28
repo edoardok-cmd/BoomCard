@@ -943,6 +943,12 @@ class StripeService {
 
       if (!dbSub) return;
 
+      // Spec §3.2: stop payment notifications if user manually cancelled
+      if (dbSub.cancelAtPeriodEnd || !dbSub.autoRenewal) {
+        logger.info(`Subscription ${dbSub.id} is manually cancelled — skipping PAST_DUE update and notification`);
+        return;
+      }
+
       const newRetryAttempt = dbSub.retryAttempt + 1;
       const GRACE_PERIOD_DAYS = 7;
 
@@ -987,8 +993,8 @@ class StripeService {
 
       if (!dbSub) return;
 
-      // Skip if auto-renewal is off — user already knows it won't renew
-      if (!dbSub.autoRenewal) return;
+      // Spec §3.1: don't send reminders when auto-renewal is ON (payment happens automatically)
+      if (dbSub.autoRenewal) return;
 
       const planName = dbSub.planDetails?.displayName ?? dbSub.plan;
       const amountDue = (invoice.amount_due ?? 0) / 100;

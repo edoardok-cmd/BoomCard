@@ -469,6 +469,66 @@ export class SubscriptionService {
       throw err;
     }
 
+    // Void cashback earned during the trial period
+    try {
+      // Cancel any PENDING receipts first (they haven't been credited yet)
+      await prisma.receipt.updateMany({
+        where: {
+          userId,
+          status: 'PENDING',
+          createdAt: { gte: subscription.createdAt },
+        },
+        data: {
+          status: 'REJECTED',
+          rejectionReason: 'Trial refund — pending cashback cancelled',
+        },
+      });
+
+      // Find all APPROVED receipts created during the trial period
+      const approvedReceipts = await prisma.receipt.findMany({
+        where: {
+          userId,
+          status: 'APPROVED',
+          createdAt: { gte: subscription.createdAt },
+        },
+      });
+
+      for (const receipt of approvedReceipts) {
+        // Find the wallet cashback_credit entry for this receipt
+        const creditEntry = await prisma.walletTransaction.findFirst({
+          where: {
+            receiptId: receipt.id,
+            type: WalletTransactionType.CASHBACK_CREDIT,
+          },
+        });
+
+        if (creditEntry && creditEntry.amount > 0) {
+          // Debit the wallet to reverse the cashback
+          await walletService.debit({
+            userId,
+            amount: creditEntry.amount,
+            type: WalletTransactionType.ADJUSTMENT,
+            description: 'Trial refund — cashback voided',
+            receiptId: receipt.id,
+          });
+        }
+
+        // Mark the receipt as REJECTED
+        await prisma.receipt.update({
+          where: { id: receipt.id },
+          data: {
+            status: 'REJECTED',
+            rejectionReason: 'Trial refund — cashback voided',
+          },
+        });
+      }
+    } catch (cashbackErr) {
+      logger.error(
+        `Failed to void cashback for trial refund (subscription ${subscriptionId}, user ${userId}): ${cashbackErr instanceof Error ? cashbackErr.message : cashbackErr}`
+      );
+      // Do not rethrow — cashback voiding failure must not block the refund
+    }
+
     return this.cancelSubscription(subscriptionId, false);
   }
 

@@ -83,7 +83,16 @@ router.get(
  * Direct receipt upload has been removed. All receipts must be submitted
  * through the sticker scan flow (POST /api/stickers/scan/:id/receipt).
  */
-router.post('/upload', authenticate, (_req: AuthRequest, res: Response) => {
+router.post('/upload', authenticate, (req: AuthRequest, res: Response) => {
+  // Spec §5.3: receipt upload is mobile-app only for MVP
+  const clientType = (req as AuthRequest).user?.ct;
+  if (clientType === 'web') {
+    return res.status(403).json({
+      success: false,
+      message: 'Receipt upload is only available via the BoomCard mobile app.',
+      code: 'WEB_UPLOAD_DISABLED',
+    });
+  }
   res.status(410).json({
     success: false,
     message: 'Direct receipt upload has been retired. Please scan a venue QR sticker first, then upload your receipt through the sticker scan flow. Update your app for the latest experience.',
@@ -96,7 +105,16 @@ router.post('/upload', authenticate, (_req: AuthRequest, res: Response) => {
  * Direct receipt submission has been removed. All receipts must be submitted
  * through the sticker scan flow (POST /api/stickers/scan/:id/receipt).
  */
-router.post('/submit', authenticate, (_req: AuthRequest, res: Response) => {
+router.post('/submit', authenticate, (req: AuthRequest, res: Response) => {
+  // Spec §5.3: receipt upload is mobile-app only for MVP
+  const clientType = (req as AuthRequest).user?.ct;
+  if (clientType === 'web') {
+    return res.status(403).json({
+      success: false,
+      message: 'Receipt upload is only available via the BoomCard mobile app.',
+      code: 'WEB_UPLOAD_DISABLED',
+    });
+  }
   res.status(410).json({
     success: false,
     message: 'Direct receipt submission has been retired. Please scan a venue QR sticker first, then upload your receipt through the sticker scan flow. Update your app for the latest experience.',
@@ -112,6 +130,21 @@ router.get(
   '/',
   authenticate,
   asyncHandler(async (req: AuthRequest, res: Response) => {
+    // Named period presets — period takes precedence over startDate/endDate when provided
+    const period = req.query.period as string | undefined;
+    let startDate: Date | undefined;
+    let endDate: Date | undefined;
+    if (period === '7d') {
+      startDate = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    } else if (period === '30d') {
+      startDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    } else if (period === 'all') {
+      // no date filter
+    } else {
+      startDate = req.query.startDate ? new Date(req.query.startDate as string) : undefined;
+      endDate = req.query.endDate ? new Date(req.query.endDate as string) : undefined;
+    }
+
     const filters = {
       userId: req.user!.id,
       status: req.query.status as any,
@@ -121,8 +154,8 @@ router.get(
       maxAmount: req.query.maxAmount ? parseFloat(req.query.maxAmount as string) : undefined,
       minFraudScore: req.query.minFraudScore ? parseFloat(req.query.minFraudScore as string) : undefined,
       maxFraudScore: req.query.maxFraudScore ? parseFloat(req.query.maxFraudScore as string) : undefined,
-      startDate: req.query.startDate ? new Date(req.query.startDate as string) : undefined,
-      endDate: req.query.endDate ? new Date(req.query.endDate as string) : undefined,
+      startDate,
+      endDate,
       page: req.query.page ? parseInt(req.query.page as string) : 1,
       limit: req.query.limit ? parseInt(req.query.limit as string) : 20,
       sortBy: (req.query.sortBy as any) || 'createdAt',

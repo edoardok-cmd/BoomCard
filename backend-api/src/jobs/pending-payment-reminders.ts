@@ -197,7 +197,7 @@ async function processPendingPaymentReminders(): Promise<void> {
           billingPeriodBg: getBillingPeriodLabel(billingPeriod, 'bg'),
           reminderType,
           paymentUrl: `https://boomcard.bg/dashboard/subscription?retry=true`,
-          language: 'en', // Default to English, could be determined from user preferences
+          language: 'bg', // Default to Bulgarian per spec; use user preferredLanguage if needed
         };
 
         // Send reminder

@@ -49,6 +49,9 @@ interface EmailParams {
 }
 
 class NotificationService {
+  // NOTE: Any marketing email sends MUST check user.marketingConsentEmail before proceeding.
+  // See Spec §6.3. Use the marketingConsentEmail field on the User model.
+
   /**
    * Send receipt approved notification
    */
