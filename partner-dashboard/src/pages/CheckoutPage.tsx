@@ -334,17 +334,70 @@ const ErrorMessage = styled.div`
   border-radius: 1rem;
 `;
 
-const LoginPrompt = styled.div`
-  text-align: center;
-  padding: 2rem;
-  background: rgba(59, 130, 246, 0.1);
-  border-radius: 0.75rem;
-  margin-bottom: 1.5rem;
-`;
-
 const LoginPromptText = styled.p`
   color: var(--color-text-secondary);
   margin-bottom: 1rem;
+`;
+
+const GuestForm = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+`;
+
+const GuestField = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+`;
+
+const GuestLabel = styled.label`
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+`;
+
+const GuestInput = styled.input<{ $hasError?: boolean }>`
+  padding: 0.75rem 1rem;
+  border-radius: 0.5rem;
+  border: 1px solid ${p => p.$hasError ? '#ef4444' : 'var(--color-border)'};
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  font-size: 1rem;
+  outline: none;
+  transition: border-color 0.2s;
+
+  &:focus {
+    border-color: var(--color-primary);
+  }
+`;
+
+const FieldError = styled.span`
+  font-size: 0.8rem;
+  color: #ef4444;
+`;
+
+const GuestRow = styled.div`
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+`;
+
+const GuestDivider = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+  color: var(--color-text-secondary);
+  font-size: 0.85rem;
+
+  &::before, &::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--color-border);
+  }
 `;
 
 const CheckoutPage: React.FC = () => {
@@ -368,6 +421,13 @@ const CheckoutPage: React.FC = () => {
   // Payment method selection state
   const [selectedMethod, setSelectedMethod] = useState<string | null>(null);
   const [methodsLoading, setMethodsLoading] = useState(true);
+
+  // Guest checkout form state
+  const [guestEmail, setGuestEmail] = useState('');
+  const [guestFirstName, setGuestFirstName] = useState('');
+  const [guestLastName, setGuestLastName] = useState('');
+  const [guestPhone, setGuestPhone] = useState('');
+  const [guestErrors, setGuestErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
     const fetchPlan = async () => {
@@ -455,6 +515,41 @@ const CheckoutPage: React.FC = () => {
     }
   };
 
+  const validateGuestForm = (): boolean => {
+    const errors: Record<string, string> = {};
+    if (!guestEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(guestEmail)) {
+      errors.email = language === 'bg' ? 'Въведете валиден имейл' : 'Enter a valid email';
+    }
+    if (!guestFirstName.trim()) {
+      errors.firstName = language === 'bg' ? 'Задължително поле' : 'Required';
+    }
+    if (!guestLastName.trim()) {
+      errors.lastName = language === 'bg' ? 'Задължително поле' : 'Required';
+    }
+    setGuestErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  const handleGuestPayment = async () => {
+    if (!validateGuestForm() || !resolvedPlanId || !plan) return;
+    setIsProcessing(true);
+    try {
+      const result = await plansService.createAnonymousSubscriptionPayment({
+        planId: resolvedPlanId,
+        billingPeriod,
+        email: guestEmail,
+        firstName: guestFirstName.trim(),
+        lastName: guestLastName.trim(),
+        phone: guestPhone.trim() || undefined,
+      });
+      window.location.href = result.paymentUrl;
+    } catch (err) {
+      console.error('Guest payment error:', err);
+      setError(language === 'bg' ? 'Грешка при обработка на плащането' : 'Error processing payment');
+      setIsProcessing(false);
+    }
+  };
+
   if (loading) {
     return (
       <PageContainer>
@@ -498,22 +593,78 @@ const CheckoutPage: React.FC = () => {
           <PaymentSection>
             {!isAuthenticated ? (
               <>
-                <LoginPrompt>
-                  <LoginPromptText>
-                    {language === 'bg'
-                      ? 'Създайте акаунт, за да завършите покупката.'
-                      : 'Create an account to complete your purchase.'}
-                  </LoginPromptText>
-                </LoginPrompt>
+                <GuestForm>
+                  <GuestRow>
+                    <GuestField>
+                      <GuestLabel>{language === 'bg' ? 'Име' : 'First name'} *</GuestLabel>
+                      <GuestInput
+                        type="text"
+                        value={guestFirstName}
+                        onChange={e => setGuestFirstName(e.target.value)}
+                        $hasError={!!guestErrors.firstName}
+                        placeholder={language === 'bg' ? 'Иван' : 'John'}
+                      />
+                      {guestErrors.firstName && <FieldError>{guestErrors.firstName}</FieldError>}
+                    </GuestField>
+                    <GuestField>
+                      <GuestLabel>{language === 'bg' ? 'Фамилия' : 'Last name'} *</GuestLabel>
+                      <GuestInput
+                        type="text"
+                        value={guestLastName}
+                        onChange={e => setGuestLastName(e.target.value)}
+                        $hasError={!!guestErrors.lastName}
+                        placeholder={language === 'bg' ? 'Иванов' : 'Doe'}
+                      />
+                      {guestErrors.lastName && <FieldError>{guestErrors.lastName}</FieldError>}
+                    </GuestField>
+                  </GuestRow>
 
-                <Link to={`/register?planId=${resolvedPlanId || planId || ''}&billing=${billingPeriod}`} style={{ width: '100%' }}>
-                  <Button variant="primary" size="large" fullWidth>
-                    {language === 'bg' ? 'Създай акаунт и плати' : 'Create Account & Pay'}
-                  </Button>
-                </Link>
+                  <GuestField>
+                    <GuestLabel>{language === 'bg' ? 'Имейл адрес' : 'Email address'} *</GuestLabel>
+                    <GuestInput
+                      type="email"
+                      value={guestEmail}
+                      onChange={e => setGuestEmail(e.target.value)}
+                      $hasError={!!guestErrors.email}
+                      placeholder="you@example.com"
+                    />
+                    {guestErrors.email && <FieldError>{guestErrors.email}</FieldError>}
+                  </GuestField>
 
-                <div style={{ textAlign: 'center', marginTop: '1rem' }}>
-                  <LoginPromptText>
+                  <GuestField>
+                    <GuestLabel>{language === 'bg' ? 'Телефон (по избор)' : 'Phone (optional)'}</GuestLabel>
+                    <GuestInput
+                      type="tel"
+                      value={guestPhone}
+                      onChange={e => setGuestPhone(e.target.value)}
+                      placeholder="+359 88 888 8888"
+                    />
+                  </GuestField>
+                </GuestForm>
+
+                <Button
+                  variant="primary"
+                  size="large"
+                  fullWidth
+                  onClick={handleGuestPayment}
+                  disabled={isProcessing}
+                >
+                  {isProcessing ? (
+                    <>
+                      <LoadingSpinner style={{ width: '1rem', height: '1rem', marginRight: '0.5rem' }} />
+                      {language === 'bg' ? 'Пренасочване...' : 'Redirecting...'}
+                    </>
+                  ) : (
+                    language === 'bg'
+                      ? `Плати €${displayPrice} ${getPeriodLabel()}`
+                      : `Pay €${displayPrice} ${getPeriodLabel()}`
+                  )}
+                </Button>
+
+                <GuestDivider>{language === 'bg' ? 'или' : 'or'}</GuestDivider>
+
+                <div style={{ textAlign: 'center' }}>
+                  <LoginPromptText style={{ marginBottom: 0 }}>
                     {language === 'bg' ? 'Вече имате акаунт?' : 'Already have an account?'}{' '}
                     <Link to={`/login?redirect=/checkout?planId=${planId}&billing=${billingPeriod}`} style={{ color: 'var(--color-primary)', fontWeight: 600 }}>
                       {language === 'bg' ? 'Вход' : 'Log in'}

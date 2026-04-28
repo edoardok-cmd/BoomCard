@@ -40,6 +40,8 @@ router.get('/me', authenticate, asyncHandler(async (req: AuthRequest, res: Respo
     subscription: resolvedSubscription,
     wallet,
     receipts,
+    nextPaymentDate: ('currentPeriodEnd' in resolvedSubscription ? resolvedSubscription.currentPeriodEnd : null) ?? null,
+    showUpgradePrompt: ['LIGHT', 'BASIC'].includes(resolvedSubscription.plan) && resolvedSubscription.status === 'ACTIVE',
   });
 }));
 

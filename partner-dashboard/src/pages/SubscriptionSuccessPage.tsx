@@ -211,6 +211,8 @@ const SubscriptionSuccessPage: React.FC = () => {
   const [elapsedTime, setElapsedTime] = useState(0);
   const [isPolling, setIsPolling] = useState(true);
   const [redirectVerified, setRedirectVerified] = useState(false);
+  const [isAnonymous, setIsAnonymous] = useState(false);
+  const [anonymousEmail, setAnonymousEmail] = useState<string | null>(null);
 
   const verifyRedirectData = useCallback(async () => {
     if (!payseraData || !payseraSs1 || redirectVerified) return false;
@@ -248,6 +250,22 @@ const SubscriptionSuccessPage: React.FC = () => {
     try {
       const result = await plansService.checkSubscriptionStatus(orderId);
       setSubscription(result);
+
+      if (result.type === 'pending') {
+        // Anonymous checkout — payment paid, waiting for user to complete profile
+        if (result.status === 'PAID' || result.status === 'COMPLETED') {
+          setIsAnonymous(true);
+          setAnonymousEmail(result.email || null);
+          setStatus('success');
+          setIsPolling(false);
+        } else if (result.status === 'FAILED') {
+          setStatus('error');
+          setIsPolling(false);
+        } else {
+          setStatus('pending');
+        }
+        return;
+      }
 
       if (result.isActive) {
         setStatus('success');
@@ -427,8 +445,28 @@ const SubscriptionSuccessPage: React.FC = () => {
             </SubscriptionDetails>
           )}
 
+          {isAnonymous && (
+            <div style={{ textAlign: 'center', padding: '1.5rem', background: 'rgba(102,126,234,0.08)', borderRadius: '0.75rem', marginBottom: '1rem' }}>
+              <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>✉️</div>
+              <p style={{ fontWeight: 700, fontSize: '1.05rem', marginBottom: '0.4rem', color: 'var(--color-text-primary)' }}>
+                {language === 'bg' ? 'Провери входящата си поща' : 'Check your inbox'}
+              </p>
+              <p style={{ color: 'var(--color-text-secondary)', fontSize: '0.9rem', lineHeight: 1.5, margin: 0 }}>
+                {anonymousEmail
+                  ? (language === 'bg'
+                    ? `Изпратихме линк до ${anonymousEmail} за завършване на акаунта ти.`
+                    : `We sent a setup link to ${anonymousEmail}.`)
+                  : (language === 'bg'
+                    ? 'Изпратихме ти имейл с линк за завършване на акаунта.'
+                    : 'We sent you an email with a link to complete your account.')}
+                {' '}
+                {language === 'bg' ? 'Линкът е валиден 30 минути.' : 'The link expires in 30 minutes.'}
+              </p>
+            </div>
+          )}
+
           <ButtonContainer>
-            {status === 'success' ? (
+            {status === 'success' && !isAnonymous ? (
               <Link to="/dashboard">
                 <Button variant="primary" size="large" fullWidth>
                   {language === 'bg' ? 'Към Профила' : 'Go to Dashboard'}

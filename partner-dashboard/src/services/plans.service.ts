@@ -62,16 +62,18 @@ export interface PayseraPaymentMethod {
 }
 
 export interface SubscriptionStatus {
-  subscriptionId: string;
+  subscriptionId?: string;
   status: string;
   plan: {
     code: string;
     name: string;
-    nameBg: string | null;
+    nameBg?: string | null;
   };
-  billingPeriod: string;
-  currentPeriodEnd: string;
+  billingPeriod?: string;
+  currentPeriodEnd?: string;
   isActive: boolean;
+  type?: 'pending';
+  email?: string;
 }
 
 class PlansService {
@@ -144,7 +146,8 @@ class PlansService {
     try {
       const response = await axios.get(`${this.baseUrl}/subscriptions/status/${orderId}`);
       if (response.data.success) {
-        return response.data.data;
+        // For pending subscriptions, merge `type` into the data object
+        return { ...response.data.data, type: response.data.type };
       }
       throw new Error('Subscription not found');
     } catch (error) {
@@ -274,6 +277,23 @@ class PlansService {
   /**
    * Format price for display
    */
+  async createAnonymousSubscriptionPayment(params: {
+    planId: string;
+    billingPeriod: 'weekly' | 'monthly' | 'yearly';
+    email: string;
+    firstName: string;
+    lastName: string;
+    phone?: string;
+  }): Promise<{ orderId: string; paymentUrl: string; amount: number; currency: string }> {
+    const response = await axios.post(`${this.baseUrl}/payments/anonymous-subscription`, {
+      ...params,
+      successUrl: `${window.location.origin}/subscription/success`,
+      cancelUrl: `${window.location.origin}/subscription/cancel`,
+    });
+    if (response.data.success) return response.data.data;
+    throw new Error('Failed to create anonymous subscription payment');
+  }
+
   formatPrice(price: number | null, currency: string = 'EUR'): string {
     if (price === null) return 'N/A';
     return new Intl.NumberFormat('en-EU', {

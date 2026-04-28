@@ -307,14 +307,9 @@ export class AuthService {
 
     logger.info(`Created user ${user.email} with card and wallet`);
 
-    // Send welcome email (non-fatal)
-    emailService.sendWelcomeEmail(user.email, {
-      customerName: user.firstName || user.email.split('@')[0],
-      email: user.email,
-      dashboardUrl: process.env.APP_URL || 'https://mobile.boomcard.bg',
-    }).catch((err) => {
-      logger.error('Failed to send welcome email:', err);
-    });
+    // NOTE: Welcome email is intentionally NOT sent here.
+    // It must be sent after payment, from the complete-profile route (POST /api/auth/complete-profile).
+    // Sending it at registration would reach users who have not yet paid.
 
     const tokens = await this.generateTokens(user);
     return { user, ...tokens };
@@ -1562,5 +1557,9 @@ export class AuthService {
       ...tokens,
       ...(switchableAccounts ? { switchableAccounts } : {}),
     };
+  }
+
+  static async createSession(user: { id: string; email: string; role: string }): Promise<AuthTokens> {
+    return AuthService.generateTokens(user);
   }
 }

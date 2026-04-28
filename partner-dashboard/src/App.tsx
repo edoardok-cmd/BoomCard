@@ -123,6 +123,7 @@ const FAQPage = lazy(() => import('./pages/FAQPage'));
 const ProductPage = lazy(() => import('./pages/ProductPage'));
 const FeaturesPage = lazy(() => import('./pages/FeaturesPage'));
 const PricingPublicPage = lazy(() => import('./pages/PricingPublicPage'));
+const CompleteProfilePage = lazy(() => import('./pages/CompleteProfilePage'));
 const ContactPublicPage = lazy(() => import('./pages/ContactPublicPage'));
 // CareersPage temporarily removed
 const SecurityPage = lazy(() => import('./pages/SecurityPage'));
@@ -631,6 +632,7 @@ function App() {
                     <Route path="payments/cancel" element={<PaymentCancelPage />} />
                     <Route path="subscription/success" element={<SubscriptionSuccessPage />} />
                     <Route path="subscription/cancel" element={<SubscriptionCancelPage />} />
+                    <Route path="complete-profile" element={<CompleteProfilePage />} />
 
                     {/* Other routes */}
                     <Route path="favorites" element={<FavoritesPage />} />

@@ -36,9 +36,23 @@ router.get('/status/:orderId', asyncHandler(async (req: Request, res: Response) 
   });
 
   if (!subscription) {
-    return res.status(404).json({
-      success: false,
-      message: 'Subscription not found',
+    // Fallback: check PendingSubscription (anonymous checkout)
+    const pending = await prisma.pendingSubscription.findFirst({
+      where: { payseraOrderId: orderId },
+      include: { plan: { select: { displayName: true, planCode: true } } },
+    });
+    if (!pending) {
+      return res.status(404).json({ success: false, message: 'Subscription not found' });
+    }
+    return res.json({
+      success: true,
+      type: 'pending',
+      data: {
+        status: pending.status,
+        email: pending.email,
+        plan: { code: pending.plan.planCode, name: pending.plan.displayName },
+        isActive: false,
+      },
     });
   }
 
@@ -133,7 +147,39 @@ router.get('/history', authenticate, asyncHandler(async (req: AuthRequest, res: 
   const subscription = await subscriptionService.getActiveSubscription(userId);
 
   if (!subscription?.stripeSubscriptionId) {
-    return res.json({ history: [] });
+    // Paysera subscriptions — use Transaction table
+    const transactions = await prisma.transaction.findMany({
+      where: {
+        userId,
+        type: { in: ['WALLET_TOPUP', 'SUBSCRIPTION'] as any },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 10,
+      select: {
+        id: true,
+        createdAt: true,
+        amount: true,
+        currency: true,
+        status: true,
+        description: true,
+        metadata: true,
+      },
+    });
+
+    const history = transactions.map(t => {
+      const meta = t.metadata ? JSON.parse(t.metadata as string) : {};
+      return {
+        id: t.id,
+        date: t.createdAt.toISOString(),
+        amount: t.amount,
+        currency: t.currency,
+        status: t.status.toLowerCase(),
+        description: t.description,
+        orderId: meta.orderId,
+      };
+    });
+
+    return res.json({ history });
   }
 
   const stripeInvoices = await stripeService.stripe.invoices.list({

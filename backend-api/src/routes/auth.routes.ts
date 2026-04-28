@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import multer from 'multer';
+import bcrypt from 'bcryptjs';
 import { asyncHandler } from '../middleware/error.middleware';
 import { authenticate, authorize, AuthRequest } from '../middleware/auth.middleware';
 import { validate } from '../middleware/validation.middleware';
@@ -9,6 +10,13 @@ import { imageUploadService } from '../services/imageUpload.service';
 import { prisma } from '../lib/prisma';
 import { logger } from '../utils/logger';
 import { authRateLimiter, switchAccountRateLimiter, switchableAccountsRateLimiter, impersonateRateLimiter } from '../middleware/security.middleware';
+import { z } from 'zod';
+import { SubscriptionStatus, SubscriptionPlan, UserStatus } from '@prisma/client';
+import { cardService } from '../services/card.service';
+import { walletService } from '../services/wallet.service';
+import { emailService } from '../services/email.service';
+
+const TERMS_VERSION = process.env.TERMS_VERSION || '2026-02-24';
 
 const avatarUpload = multer({
   storage: multer.memoryStorage(),
@@ -710,6 +718,184 @@ router.post(
       success: true,
       message: 'Impersonation ended',
       data: result,
+    });
+  }),
+);
+
+// ============================================
+// Complete Profile (anonymous checkout post-payment)
+// POST /api/auth/complete-profile — no authentication; uses one-time payment token
+// ============================================
+
+function calcPeriodEnd(billingPeriod: string): Date {
+  const d = new Date();
+  if (billingPeriod === 'weekly') d.setDate(d.getDate() + 7);
+  else if (billingPeriod === 'yearly') d.setFullYear(d.getFullYear() + 1);
+  else d.setMonth(d.getMonth() + 1);
+  return d;
+}
+
+/**
+ * Derive billingPeriod from plan code.
+ * LIGHT is weekly, BASIC and PREMIUM are monthly.
+ * Extend this when PendingSubscription gains a billingPeriod field.
+ */
+function deriveBillingPeriod(planCode: string): 'weekly' | 'monthly' | 'yearly' {
+  if (planCode === 'LIGHT') return 'weekly';
+  return 'monthly';
+}
+
+const completeProfileSchema = z.object({
+  token: z.string().min(1),
+  password: z.string().min(8),
+  firstName: z.string().min(1).max(100).optional(),
+  lastName: z.string().min(1).max(100).optional(),
+  phone: z.string().optional(),
+  marketingConsentEmail: z.boolean().optional().default(false),
+  marketingConsentPhone: z.boolean().optional().default(false),
+});
+
+router.post(
+  '/complete-profile',
+  authRateLimiter,
+  asyncHandler(async (req: Request, res: Response) => {
+    const parseResult = completeProfileSchema.safeParse(req.body);
+    if (!parseResult.success) {
+      return res.status(400).json({ success: false, message: 'Invalid request body', errors: parseResult.error.issues });
+    }
+
+    const { token, password, firstName, lastName, phone, marketingConsentEmail, marketingConsentPhone } = parseResult.data;
+
+    // Look up the PAID PendingSubscription by one-time token
+    const pending = await prisma.pendingSubscription.findFirst({
+      where: { token, status: 'PAID' },
+      include: { plan: true },
+    });
+
+    if (!pending) {
+      return res.status(400).json({ success: false, message: 'Invalid or expired registration token' });
+    }
+
+    if (!pending.tokenExpiresAt || pending.tokenExpiresAt < new Date()) {
+      return res.status(400).json({ success: false, message: 'Registration token has expired' });
+    }
+
+    // Block same-email + same-role duplicate (cross-role coexistence is allowed per project rules)
+    const existing = await prisma.user.findFirst({
+      where: { email: pending.email, role: 'USER' },
+      select: { id: true },
+    });
+    if (existing) {
+      return res.status(409).json({ success: false, message: 'An account with this email already exists. Please log in.' });
+    }
+
+    const passwordHash = await bcrypt.hash(password, 12);
+
+    const planCodeMap: Record<string, SubscriptionPlan> = {
+      LIGHT: SubscriptionPlan.LIGHT,
+      BASIC: SubscriptionPlan.BASIC,
+      PREMIUM: SubscriptionPlan.PREMIUM,
+    };
+    const subscriptionPlan = planCodeMap[pending.plan.planCode];
+    if (!subscriptionPlan) {
+      return res.status(500).json({ success: false, message: 'Invalid plan configuration' });
+    }
+
+    // Derive billingPeriod from plan code (LIGHT = weekly, others = monthly)
+    const billingPeriod = deriveBillingPeriod(pending.plan.planCode);
+    const marketingConsent = !!(marketingConsentEmail || marketingConsentPhone);
+    const now = new Date();
+
+    // Atomic transaction: create user + loyalty + subscription, mark PendingSubscription complete
+    const { user } = await prisma.$transaction(async (tx) => {
+      const newUser = await tx.user.create({
+        data: {
+          email: pending.email,
+          passwordHash,
+          firstName: firstName?.trim() || pending.email.split('@')[0],
+          lastName: lastName?.trim() || '',
+          phone: phone?.trim() || null,
+          role: 'USER',
+          status: UserStatus.ACTIVE,
+          emailVerified: true,
+          emailVerifiedAt: now,
+          termsAcceptedAt: now,
+          privacyAcceptedAt: now,
+          termsVersion: TERMS_VERSION,
+          marketingConsentEmail,
+          marketingConsentPhone,
+          marketingConsent,
+          preferredLanguage: 'bg',
+        },
+        select: { id: true, email: true, firstName: true, lastName: true, role: true, status: true },
+      });
+
+      // Create loyalty account
+      await tx.loyaltyAccount.create({
+        data: {
+          userId: newUser.id,
+          tier: 'BRONZE',
+          points: 0,
+          lifetimePoints: 0,
+        },
+      });
+
+      // Create subscription
+      await tx.subscription.create({
+        data: {
+          userId: newUser.id,
+          plan: subscriptionPlan,
+          status: SubscriptionStatus.ACTIVE,
+          planId: pending.planId,
+          payseraOrderId: pending.payseraOrderId,
+          currentPeriodStart: pending.paidAt || now,
+          currentPeriodEnd: calcPeriodEnd(billingPeriod),
+          trialRefundEligibleUntil: new Date(now.getTime() + 24 * 60 * 60 * 1000),
+          autoRenewal: true,
+          metadata: JSON.stringify({ billingPeriod, source: 'payment_first_onboarding', completedAt: now.toISOString() }),
+        },
+      });
+
+      // Mark PendingSubscription as COMPLETED and nullify the one-time token
+      await tx.pendingSubscription.update({
+        where: { id: pending.id },
+        data: { status: 'COMPLETED', completedAt: now, token: null },
+      });
+
+      return { user: newUser };
+    });
+
+    // Create card and wallet outside the transaction (they use their own prisma client)
+    await Promise.all([
+      cardService.createCard({ userId: user.id, cardType: 'LIGHT' }),
+      walletService.getOrCreateWallet(user.id),
+    ]);
+
+    // Sync card type to match the activated subscription plan
+    await cardService.syncCardTypeWithSubscription(user.id, subscriptionPlan).catch((err) => {
+      logger.error(`Failed to sync card type for user ${user.id}:`, err);
+    });
+
+    // Generate JWT tokens
+    const tokens = await AuthService.createSession({ id: user.id, email: user.email, role: user.role });
+
+    // Send welcome email (fire-and-forget)
+    const customerName = [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email.split('@')[0];
+    emailService.sendWelcomeEmail(user.email, {
+      customerName,
+      email: user.email,
+      dashboardUrl: process.env.APP_URL || 'https://mobile.boomcard.bg',
+    }).catch((err) => logger.error('Failed to send welcome email:', err));
+
+    logger.info(`Payment-first onboarding completed: user ${user.id} created for order ${pending.payseraOrderId}`);
+
+    res.status(201).json({
+      success: true,
+      message: 'Account created successfully',
+      data: {
+        user: { id: user.id, email: user.email, firstName: user.firstName, lastName: user.lastName, role: user.role },
+        ...tokens,
+      },
     });
   }),
 );

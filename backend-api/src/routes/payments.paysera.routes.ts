@@ -897,6 +897,106 @@ router.post(
 );
 
 // ============================================
+// Anonymous Subscription Payment (no account required)
+// ============================================
+
+const anonymousSubscriptionSchema = z.object({
+  planId: z.string().uuid(),
+  billingPeriod: z.enum(['weekly', 'monthly', 'yearly']),
+  email: z.string().email(),
+  firstName: z.string().min(1).max(100),
+  lastName: z.string().min(1).max(100),
+  phone: z.string().optional(),
+  successUrl: z.string().url().optional(),
+  cancelUrl: z.string().url().optional(),
+});
+
+router.post(
+  '/anonymous-subscription',
+  paymentRateLimiter,
+  asyncHandler(async (req: Request, res: Response) => {
+    const parseResult = anonymousSubscriptionSchema.safeParse(req.body);
+    if (!parseResult.success) {
+      return res.status(400).json({ success: false, message: 'Invalid request body', errors: parseResult.error.issues });
+    }
+
+    const { planId, billingPeriod, email, firstName, lastName, phone, successUrl: clientSuccessUrl, cancelUrl: clientCancelUrl } = parseResult.data;
+
+    const plan = await prisma.plan.findUnique({ where: { id: planId } });
+    if (!plan || !plan.isActive) {
+      return res.status(404).json({ success: false, message: 'Plan not found or inactive' });
+    }
+
+    if (billingPeriod === 'weekly' && !plan.hasWeeklyOption) {
+      return res.status(400).json({ success: false, message: 'Weekly billing not available for this plan' });
+    }
+    if (billingPeriod === 'monthly' && !plan.hasMonthlyOption) {
+      return res.status(400).json({ success: false, message: 'Monthly billing not available for this plan' });
+    }
+    if (billingPeriod === 'yearly' && !plan.hasYearlyOption) {
+      return res.status(400).json({ success: false, message: 'Yearly billing not available for this plan' });
+    }
+
+    let priceInCents: number;
+    switch (billingPeriod) {
+      case 'weekly': priceInCents = plan.priceWeeklyEur!; break;
+      case 'monthly': priceInCents = plan.priceMonthlyEur!; break;
+      case 'yearly': priceInCents = plan.priceYearlyEur; break;
+    }
+
+    const orderId = `BOOM-ANON-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
+
+    await prisma.pendingSubscription.create({
+      data: {
+        email: email.toLowerCase(),
+        planId: plan.id,
+        payseraOrderId: orderId,
+        status: 'CREATED',
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+      },
+    });
+
+    const acceptUrl = (clientSuccessUrl && isAllowedRedirectUrl(clientSuccessUrl))
+      ? `${clientSuccessUrl}?orderId=${orderId}`
+      : `${FRONTEND_URL}/subscription/success?orderId=${orderId}`;
+    const cancelUrl = (clientCancelUrl && isAllowedRedirectUrl(clientCancelUrl))
+      ? `${clientCancelUrl}?orderId=${orderId}`
+      : `${FRONTEND_URL}/subscription/cancel?orderId=${orderId}`;
+    const callbackUrl = `${API_BASE_URL}/api/payments/subscription/callback`;
+
+    const customerName = `${firstName} ${lastName}`.trim();
+    const payment = await payseraService.createPayment({
+      orderId,
+      amount: priceInCents,
+      currency: 'EUR',
+      description: `BoomCard ${plan.displayName} - ${billingPeriod}`,
+      acceptUrl,
+      cancelUrl,
+      callbackUrl,
+      customerEmail: email,
+      customerName,
+      paymentMethod: 'card',
+      lang: 'BUL',
+      country: 'BG',
+    });
+
+    logger.info(`Anonymous subscription payment created: ${orderId}, plan ${plan.planCode}, ${priceInCents / 100} EUR`);
+
+    res.status(201).json({
+      success: true,
+      data: {
+        orderId: payment.orderId,
+        paymentUrl: payment.paymentUrl,
+        plan: { code: plan.planCode, name: plan.displayName },
+        amount: priceInCents / 100,
+        currency: 'EUR',
+        billingPeriod,
+      },
+    });
+  })
+);
+
+// ============================================
 // Subscription Payment Callback (Webhook)
 // CRITICAL: This is the ONLY place where subscriptions become ACTIVE
 // Paysera sends callbacks as GET with query params: data, ss1, ss2
@@ -942,7 +1042,45 @@ async function handleSubscriptionCallback(req: Request, res: Response) {
       });
 
       if (!subscription) {
-        logger.warn(`Subscription not found for order: ${result.orderId}`);
+        // Check if this is an anonymous checkout (PendingSubscription)
+        const pending = await prisma.pendingSubscription.findFirst({
+          where: { payseraOrderId: result.orderId },
+          include: { plan: { select: { displayName: true } } },
+        });
+
+        if (!pending) {
+          logger.warn(`Subscription not found for order: ${result.orderId}`);
+          return res.send(payseraService.generateCallbackResponse());
+        }
+
+        if (result.status === 'success') {
+          const token = crypto.randomBytes(32).toString('hex');
+          const updated = await prisma.pendingSubscription.updateMany({
+            where: { id: pending.id, status: { not: 'PAID' } },
+            data: {
+              status: 'PAID',
+              token,
+              tokenExpiresAt: new Date(Date.now() + 30 * 60 * 1000),
+              paidAt: new Date(),
+            },
+          });
+          if (updated.count > 0) {
+            emailService.sendCompleteProfileEmail(pending.email, {
+              planName: pending.plan.displayName,
+              completeProfileUrl: `${FRONTEND_URL}/complete-profile?token=${token}`,
+            }).catch(err => logger.error('Failed to send complete-profile email:', err));
+            logger.info(`PendingSubscription ${pending.id} marked PAID, token issued`);
+          } else {
+            logger.info(`PendingSubscription ${pending.id} already PAID — skipping`);
+          }
+        } else if (result.status === 'failed' || result.status === 'cancelled') {
+          await prisma.pendingSubscription.updateMany({
+            where: { id: pending.id, status: { not: 'FAILED' } },
+            data: { status: 'FAILED' },
+          });
+          logger.warn(`PendingSubscription ${pending.id} marked FAILED (${result.status})`);
+        }
+
         return res.send(payseraService.generateCallbackResponse());
       }
 
@@ -1002,16 +1140,7 @@ async function handleSubscriptionCallback(req: Request, res: Response) {
             logger.error('Failed to send subscription confirmation email:', error);
           });
 
-          emailService.sendSubscriptionActivatedEmail(subscription.user.email, {
-            customerName: fullName || subscription.user.email.split('@')[0],
-            planName: planDisplayName,
-            orderId: result.orderId,
-            amount: result.amount / 100,
-            currency: 'EUR',
-            dashboardUrl: process.env.APP_URL || 'https://mobile.boomcard.bg',
-          }).catch((error) => {
-            logger.error('Failed to send subscription activation email:', error);
-          });
+          // Spec §7.2: only payment confirmation email at payment time; activation email removed to avoid duplicate
         }
       } else if (result.status === 'failed' || result.status === 'cancelled') {
         // Payment failed or cancelled (status 5 = refunded)
