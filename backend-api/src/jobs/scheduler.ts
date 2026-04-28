@@ -261,6 +261,98 @@ async function expireStaleSessions(): Promise<void> {
   logger.info(`[stale-session-cleanup] Expired ${count} stale session(s)`);
 }
 
+// ── Paysera auto-renewal processing ──────────────────────────────────────────
+// Daily Paysera auto-renewal processing (runs at 06:00 UTC).
+// Finds expired Paysera subscriptions with autoRenewal=true and pauses/cancels them.
+// Paysera Checkout does not support automated recurring charges (unlike Stripe),
+// so this job: (1) pauses newly-expired ACTIVE subs and emails the user to renew,
+// (2) cancels PAUSED subs that have been paused for 7+ days (grace period elapsed).
+
+async function runPayseraRenewals(): Promise<void> {
+  const now = new Date();
+  logger.info(`[paysera-renewal] Starting run at ${now.toISOString()}`);
+
+  const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+  // 1. Cancel subscriptions that have been PAUSED for 7+ days
+  const expired = await prisma.subscription.findMany({
+    where: {
+      status: SubscriptionStatus.PAUSED,
+      stripeSubscriptionId: null,
+      autoRenewal: true,
+      currentPeriodEnd: { lte: sevenDaysAgo },
+    },
+    include: { user: { select: { email: true, firstName: true } } },
+  });
+
+  for (const sub of expired) {
+    try {
+      await prisma.subscription.update({
+        where: { id: sub.id },
+        data: { status: SubscriptionStatus.CANCELLED, canceledAt: now },
+      });
+      logger.info(`[paysera-renewal] Subscription ${sub.id} cancelled after 7-day grace period`);
+    } catch (err) {
+      logger.error(`[paysera-renewal] Failed to cancel subscription ${sub.id}:`, err);
+    }
+  }
+
+  // 2. Find subscriptions that expired and are still ACTIVE — begin grace period
+  const expiredToday = await prisma.subscription.findMany({
+    where: {
+      status: SubscriptionStatus.ACTIVE,
+      stripeSubscriptionId: null,
+      autoRenewal: true,
+      currentPeriodEnd: { lte: now },
+    },
+    include: {
+      user: { select: { id: true, email: true, firstName: true, preferredLanguage: true } },
+      planDetails: { select: { displayName: true, displayNameBg: true, priceWeeklyEur: true, priceMonthlyEur: true } },
+    },
+  });
+
+  const APP_URL = process.env.APP_URL || 'https://mobile.boomcard.bg';
+
+  for (const sub of expiredToday) {
+    try {
+      // Pause subscription — starts the 7-day grace period
+      await prisma.subscription.update({
+        where: { id: sub.id },
+        data: { status: SubscriptionStatus.PAUSED },
+      });
+
+      // Email user to renew manually
+      if (sub.user?.email) {
+        const lang = (sub.user.preferredLanguage === 'en' ? 'en' : 'bg') as 'bg' | 'en';
+        const planName = lang === 'bg'
+          ? (sub.planDetails?.displayNameBg || sub.plan)
+          : (sub.planDetails?.displayName || sub.plan);
+        const priceInCents = sub.planDetails?.priceWeeklyEur ?? sub.planDetails?.priceMonthlyEur ?? 0;
+        const price = `€${(priceInCents / 100).toFixed(2)}`;
+        const renewalDate = sub.currentPeriodEnd.toLocaleDateString(lang === 'bg' ? 'bg-BG' : 'en-GB');
+
+        await emailService
+          .sendRenewalReminder(sub.user.email, {
+            customerName: sub.user.firstName || 'Customer',
+            planName,
+            planNameBg: sub.planDetails?.displayNameBg || sub.plan,
+            price,
+            renewalDate,
+            manageUrl: `${APP_URL}/subscription`,
+            language: lang,
+          })
+          .catch((err) => logger.error(`[paysera-renewal] Email failed for sub ${sub.id}:`, err));
+      }
+
+      logger.info(`[paysera-renewal] Subscription ${sub.id} paused — renewal reminder sent`);
+    } catch (err) {
+      logger.error(`[paysera-renewal] Failed to process subscription ${sub.id}:`, err);
+    }
+  }
+
+  logger.info(`[paysera-renewal] Done — paused ${expiredToday.length} subscription(s), cancelled ${expired.length} after grace period`);
+}
+
 // ── Subscription expiry ───────────────────────────────────────────────────────
 // Paysera subscriptions marked with cancelAtPeriodEnd=true have no external
 // webhook to finalize the cancellation. This job checks daily and expires them.
@@ -820,6 +912,14 @@ export function registerScheduledJobs(): void {
   }, { timezone: 'Europe/Sofia' });
 
   logger.info('[scheduler] Registered: subscription-expiry (30 1 * * *)');
+
+  // 6:00 AM UTC every day — Paysera auto-renewal: pause expired active subs,
+  // send renewal reminder email, cancel subs past the 7-day grace period.
+  cron.schedule('0 6 * * *', () => {
+    runPayseraRenewals().catch((err) => alertSchedulerFailure('paysera-renewal', err));
+  });
+
+  logger.info('[scheduler] Registered: paysera-renewal (0 6 * * * UTC)');
 
   // 5 AM every day — auto-reject menu submissions pending for more than 30 days
   cron.schedule('0 5 * * *', () => {

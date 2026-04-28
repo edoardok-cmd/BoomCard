@@ -97,6 +97,10 @@ model User {
   marketingConsentEmailAt DateTime?
   marketingConsentPhoneAt DateTime?
 
+  // Language preference — 'bg' (default) or 'en'.
+  // Emails are sent in Bulgarian unless the user explicitly switched to English.
+  preferredLanguage String @default("bg")
+
   // Notification channel preferences (email/push/inApp/sms toggles + quiet hours).
   // Shape mirrors NotificationPreferences in partner-dashboard's notifications.service.ts.
   // Stored as JSON to avoid a wide column explosion as preference categories grow.
