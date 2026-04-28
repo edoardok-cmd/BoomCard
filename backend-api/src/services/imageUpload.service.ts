@@ -56,7 +56,7 @@ export class ImageUploadService {
     }
 
     // Process image
-    const processedImage = await this.processImage(file);
+    const processedImage = await this.processImage(file, mimeType);
 
     // Generate unique key
     const fileExtension = fileName.split('.').pop();
@@ -101,17 +101,15 @@ export class ImageUploadService {
   /**
    * Process image (resize, optimize, strip metadata)
    */
-  private async processImage(buffer: Buffer): Promise<Buffer> {
-    return sharp(buffer)
-      .resize(2000, 2000, {
-        fit: 'inside',
-        withoutEnlargement: true,
-      })
-      .jpeg({
-        quality: 85,
-        progressive: true,
-      })
-      .toBuffer();
+  private async processImage(buffer: Buffer, mimeType: string): Promise<Buffer> {
+    const image = sharp(buffer).resize(2000, 2000, {
+      fit: 'inside',
+      withoutEnlargement: true,
+    });
+    if (mimeType === 'image/png') {
+      return image.png({ compressionLevel: 8 }).toBuffer();
+    }
+    return image.jpeg({ quality: 85, progressive: true }).toBuffer();
   }
 
   /**
