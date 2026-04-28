@@ -352,6 +352,39 @@ export class SubscriptionService {
   }
 
   /**
+   * Reactivate a subscription that is scheduled for cancellation (cancelAtPeriodEnd=true).
+   * Removes the cancellation schedule and re-enables auto-renewal.
+   */
+  async reactivateSubscription(subscriptionId: string, userId: string) {
+    const subscription = await prisma.subscription.findUnique({
+      where: { id: subscriptionId },
+    });
+
+    if (!subscription) throw new Error('Subscription not found');
+    if (subscription.userId !== userId) throw new Error('Forbidden');
+
+    if (subscription.status === 'CANCELLED') {
+      throw new Error('Subscription is already cancelled and cannot be reactivated this way. Please subscribe to a new plan.');
+    }
+
+    if (subscription.stripeSubscriptionId) {
+      await stripeService.stripe.subscriptions.update(subscription.stripeSubscriptionId, {
+        cancel_at_period_end: false,
+      });
+    }
+
+    return prisma.subscription.update({
+      where: { id: subscriptionId },
+      data: {
+        cancelAtPeriodEnd: false,
+        cancelAt: null,
+        canceledAt: null,
+        autoRenewal: true,
+      },
+    });
+  }
+
+  /**
    * Toggle auto-renewal for a subscription (FR-004).
    * For Stripe: mirrors the change to cancel_at_period_end.
    * For Paysera: DB-only update (no external billing to cancel).

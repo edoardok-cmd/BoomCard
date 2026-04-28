@@ -1,6 +1,7 @@
 import { Router, Response, Request } from 'express';
 import { authenticate, AuthRequest } from '../middleware/auth.middleware';
 import { subscriptionService } from '../services/subscription.service';
+import { stripeService } from '../services/stripe.service';
 import { asyncHandler } from '../utils/asyncHandler';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma';
@@ -82,7 +83,7 @@ router.get('/plans', authenticate, asyncHandler(async (req: AuthRequest, res: Re
 
 /**
  * GET /api/subscriptions/current
- * Get user's current subscription
+ * Get user's current subscription, enriched with paymentMethod from SavedPaymentMethod.
  */
 router.get('/current', authenticate, asyncHandler(async (req: AuthRequest, res: Response) => {
   const userId = req.user!.id;
@@ -96,10 +97,60 @@ router.get('/current', authenticate, asyncHandler(async (req: AuthRequest, res: 
     });
   }
 
+  // Attach default saved payment method (Stripe subs only)
+  let paymentMethod: object | null = null;
+  if (subscription.stripeSubscriptionId) {
+    const saved = await prisma.savedPaymentMethod.findFirst({
+      where: { userId, isDefault: true },
+      select: { brand: true, last4: true, expiryMonth: true, expiryYear: true, type: true },
+    });
+    if (!saved) {
+      // Fall back to first card for this user if no default is set
+      const fallback = await prisma.savedPaymentMethod.findFirst({
+        where: { userId },
+        select: { brand: true, last4: true, expiryMonth: true, expiryYear: true, type: true },
+      });
+      paymentMethod = fallback;
+    } else {
+      paymentMethod = saved;
+    }
+  }
+
   res.json({
     ...subscription,
+    paymentMethod,
     benefits: await subscriptionService.getPlanBenefits(subscription.plan),
   });
+}));
+
+/**
+ * GET /api/subscriptions/history
+ * Return last 5 Stripe invoices for the user's active subscription.
+ * Returns empty array for Paysera subscriptions.
+ */
+router.get('/history', authenticate, asyncHandler(async (req: AuthRequest, res: Response) => {
+  const userId = req.user!.id;
+  const subscription = await subscriptionService.getActiveSubscription(userId);
+
+  if (!subscription?.stripeSubscriptionId) {
+    return res.json({ history: [] });
+  }
+
+  const stripeInvoices = await stripeService.stripe.invoices.list({
+    subscription: subscription.stripeSubscriptionId,
+    limit: 5,
+  });
+
+  const history = stripeInvoices.data.map(inv => ({
+    id: inv.id,
+    date: new Date(inv.created * 1000).toISOString(),
+    amount: (inv.amount_paid ?? inv.amount_due ?? 0) / 100,
+    currency: (inv.currency ?? 'eur').toUpperCase(),
+    status: inv.status ?? 'unknown',
+    pdfUrl: inv.invoice_pdf,
+  }));
+
+  res.json({ history });
 }));
 
 /**
@@ -130,6 +181,16 @@ router.post('/create', authenticate, asyncHandler(async (req: AuthRequest, res: 
     paymentMethodId,
   });
 
+  res.json(result);
+}));
+
+/**
+ * POST /api/subscriptions/:id/reactivate
+ * Remove a pending cancellation (cancelAtPeriodEnd) and re-enable auto-renewal.
+ */
+router.post('/:id/reactivate', authenticate, asyncHandler(async (req: AuthRequest, res: Response) => {
+  const { id } = req.params;
+  const result = await subscriptionService.reactivateSubscription(id, req.user!.id);
   res.json(result);
 }));
 

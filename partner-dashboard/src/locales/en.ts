@@ -574,10 +574,10 @@ export const en = {
     // Marketing consents (GDPR)
     marketingTitle: 'Marketing Preferences',
     marketingDescription: 'Control how we contact you with promotions and news',
-    emailMarketing: 'Email Marketing',
-    emailMarketingDesc: 'Receive promotional emails and newsletters',
-    phoneMarketing: 'Phone Marketing',
-    phoneMarketingDesc: 'Receive promotional SMS and phone communications',
+    emailMarketing: 'Marketing Emails',
+    emailMarketingDesc: 'Top offers, new BOOM places and special promotions',
+    phoneMarketing: 'Marketing SMS / Phone',
+    phoneMarketingDesc: 'Top offers, new BOOM places and special promotions',
     marketingConsentNote: 'You can withdraw consent at any time. Changes take effect within 24 hours.',
     // Privacy
     privacyTitle: 'Privacy',
@@ -1107,6 +1107,11 @@ export const en = {
     reactivateBtn: 'Reactivate',
     changePlan: 'Change Plan',
     to: 'to',
+    paymentMethod: 'Payment Method',
+    paymentMethodCard: 'Charged card',
+    paymentHistory: 'Payment History',
+    historyLoading: 'Loading history...',
+    historyEmpty: 'No payment history yet.',
   },
 
   // Pricing Plans

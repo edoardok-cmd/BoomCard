@@ -7,6 +7,23 @@
 
 import { apiService } from './api.service';
 
+export interface SubscriptionPaymentMethod {
+  brand: string | null;
+  last4: string | null;
+  expiryMonth: number | null;
+  expiryYear: number | null;
+  type: string;
+}
+
+export interface SubscriptionHistoryItem {
+  id: string;
+  date: string;
+  amount: number;
+  currency: string;
+  status: string;
+  pdfUrl: string | null;
+}
+
 export interface Subscription {
   id: string;
   userId: string;
@@ -21,6 +38,7 @@ export interface Subscription {
   gracePeriodEndsAt: string | null;
   stripeSubscriptionId: string | null;
   payseraOrderId: string | null;
+  paymentMethod: SubscriptionPaymentMethod | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -148,11 +166,19 @@ class BillingService {
   }
 
   /**
-   * Reactivate canceled subscription
+   * Reactivate a subscription scheduled for cancellation
    */
-  async reactivateSubscription(): Promise<Subscription> {
-    const response = await apiService.post<Subscription>('/billing/subscription/reactivate');
+  async reactivateSubscription(subscriptionId: string): Promise<Subscription> {
+    const response = await apiService.post<Subscription>(`/subscriptions/${subscriptionId}/reactivate`);
     return response;
+  }
+
+  /**
+   * Get payment history for the current subscription (Stripe invoices)
+   */
+  async getSubscriptionHistory(): Promise<SubscriptionHistoryItem[]> {
+    const response = await apiService.get<{ history: SubscriptionHistoryItem[] }>('/subscriptions/history');
+    return response.history;
   }
 
   /**

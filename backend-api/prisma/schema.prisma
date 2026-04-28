@@ -529,7 +529,8 @@ model Plan {
   updatedAt       DateTime @updatedAt
 
   // Relations
-  subscriptions   Subscription[]
+  subscriptions        Subscription[]
+  pendingSubscriptions PendingSubscription[]
 
   @@index([planCode])
   @@index([isActive])
@@ -1826,4 +1827,35 @@ model MarketingAutomation {
 
   @@index([status])
   @@index([createdAt])
+}
+
+// ============================================
+// Pending Subscription (anonymous checkout — T9 prerequisite)
+// ============================================
+
+enum PendingSubscriptionStatus {
+  CREATED
+  PAID
+  COMPLETED
+  EXPIRED
+  FAILED
+}
+
+model PendingSubscription {
+  id             String                    @id @default(cuid())
+  email          String                    // checkout-captured email for receipt + failure notification
+  planId         String
+  plan           Plan                      @relation(fields: [planId], references: [id])
+  payseraOrderId String?                   @unique
+  status         PendingSubscriptionStatus @default(CREATED)
+  token          String?                   @unique // one-time profile-completion token (set on PAID)
+  tokenExpiresAt DateTime?                 // ~30 min TTL
+  paidAt         DateTime?
+  completedAt    DateTime?                 // set when POST /auth/complete-profile consumes token
+  createdAt      DateTime                  @default(now())
+  expiresAt      DateTime                  // hard expiry for cleanup job (~24h from creation)
+
+  @@index([email])
+  @@index([status])
+  @@index([expiresAt])
 }

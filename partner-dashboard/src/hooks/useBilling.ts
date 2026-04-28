@@ -124,20 +124,33 @@ export function useCancelSubscription() {
 }
 
 /**
- * Hook to reactivate subscription
+ * Hook to reactivate subscription (remove pending cancellation)
  */
 export function useReactivateSubscription() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: () => billingService.reactivateSubscription(),
+    mutationFn: (subscriptionId: string) => billingService.reactivateSubscription(subscriptionId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['billing', 'subscription'] });
+      queryClient.invalidateQueries({ queryKey: ['subscriptions', 'current'] });
       toast.success('Subscription reactivated!');
     },
     onError: (error: Error) => {
       toast.error(error.message || 'Failed to reactivate subscription');
     },
+  });
+}
+
+/**
+ * Hook to fetch payment history (Stripe invoices) for current subscription
+ */
+export function useSubscriptionHistory(enabled: boolean = true) {
+  return useQuery({
+    queryKey: ['billing', 'subscription', 'history'],
+    queryFn: () => billingService.getSubscriptionHistory(),
+    staleTime: 5 * 60 * 1000,
+    enabled,
   });
 }
 

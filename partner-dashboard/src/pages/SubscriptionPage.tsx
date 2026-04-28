@@ -2,9 +2,9 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import styled from 'styled-components';
 import { motion, AnimatePresence } from 'framer-motion';
-import { RefreshCw, AlertTriangle, CheckCircle, XCircle, CreditCard, Calendar } from 'lucide-react';
+import { RefreshCw, AlertTriangle, CheckCircle, XCircle, CreditCard, Calendar, Clock, ExternalLink } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
-import { useCurrentSubscription, useToggleAutoRenewal, useCancelSubscriptionById, useReactivateSubscription, useRetrySubscriptionPayment } from '../hooks/useBilling';
+import { useCurrentSubscription, useToggleAutoRenewal, useCancelSubscriptionById, useReactivateSubscription, useRetrySubscriptionPayment, useSubscriptionHistory } from '../hooks/useBilling';
 import { Button } from '../components/common/Button/Button';
 
 const PageContainer = styled.div`
@@ -286,6 +286,74 @@ const EmptyText = styled.p`
   padding: 2rem 0;
 `;
 
+const CardIcon = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+`;
+
+const CardBrand = styled.span`
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #374151;
+  text-transform: capitalize;
+  [data-theme="dark"] & { color: #d1d5db; }
+`;
+
+const HistoryList = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+`;
+
+const HistoryItem = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+`;
+
+const HistoryLeft = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+`;
+
+const HistoryDate = styled.span`
+  font-size: 0.875rem;
+  color: #374151;
+  font-weight: 500;
+  [data-theme="dark"] & { color: #d1d5db; }
+`;
+
+const HistoryStatus = styled.span<{ $status: string }>`
+  font-size: 0.75rem;
+  color: ${({ $status }) => ($status === 'paid' ? '#059669' : '#dc2626')};
+  [data-theme="dark"] & {
+    color: ${({ $status }) => ($status === 'paid' ? '#34d399' : '#fca5a5')};
+  }
+`;
+
+const HistoryRight = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+`;
+
+const HistoryAmount = styled.span`
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: #111827;
+  [data-theme="dark"] & { color: #f9fafb; }
+`;
+
+const PdfLink = styled.a`
+  color: #7c3aed;
+  display: flex;
+  align-items: center;
+  &:hover { opacity: 0.75; }
+`;
+
 function formatDate(iso: string | null | undefined): string {
   if (!iso) return '—';
   const d = new Date(iso);
@@ -300,6 +368,8 @@ export default function SubscriptionPage() {
   const cancelSubscription = useCancelSubscriptionById();
   const reactivate = useReactivateSubscription();
   const retryPayment = useRetrySubscriptionPayment();
+  const hasStripe = !!subscription?.stripeSubscriptionId;
+  const { data: history = [], isLoading: historyLoading } = useSubscriptionHistory(hasStripe);
 
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
 
@@ -332,7 +402,8 @@ export default function SubscriptionPage() {
   };
 
   const handleReactivate = () => {
-    reactivate.mutate();
+    if (!subscription) return;
+    reactivate.mutate(subscription.id);
   };
 
   const handleRetryPayment = () => {
@@ -515,6 +586,84 @@ export default function SubscriptionPage() {
                   <ToggleThumb $on={subscription.autoRenewal} />
                 </Toggle>
               </ToggleRow>
+            </Card>
+          )}
+
+          {/* Payment method card (Stripe subs only) */}
+          {hasStripe && subscription.paymentMethod && (
+            <Card
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.25, delay: 0.08 }}
+            >
+              <CardTitle>
+                <CreditCard size={14} />
+                {t('subscriptionPage.paymentMethod')}
+              </CardTitle>
+              <Row>
+                <Label>{t('subscriptionPage.paymentMethodCard')}</Label>
+                <CardIcon>
+                  <CardBrand>{subscription.paymentMethod.brand ?? 'card'}</CardBrand>
+                  <Value>•••• {subscription.paymentMethod.last4}</Value>
+                  {subscription.paymentMethod.expiryMonth && subscription.paymentMethod.expiryYear && (
+                    <Label>
+                      {String(subscription.paymentMethod.expiryMonth).padStart(2, '0')}/
+                      {String(subscription.paymentMethod.expiryYear).slice(-2)}
+                    </Label>
+                  )}
+                </CardIcon>
+              </Row>
+              <Divider />
+              <Row>
+                <Link to="/billing">
+                  <Button variant="ghost" size="small">
+                    {t('subscriptionPage.updatePayment')}
+                  </Button>
+                </Link>
+              </Row>
+            </Card>
+          )}
+
+          {/* Payment history card (Stripe subs only) */}
+          {hasStripe && (
+            <Card
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.25, delay: 0.1 }}
+            >
+              <CardTitle>
+                <Clock size={14} />
+                {t('subscriptionPage.paymentHistory')}
+              </CardTitle>
+              {historyLoading ? (
+                <LoadingText style={{ padding: '1rem 0' }}>{t('subscriptionPage.historyLoading')}</LoadingText>
+              ) : history.length === 0 ? (
+                <EmptyText style={{ padding: '0.75rem 0' }}>{t('subscriptionPage.historyEmpty')}</EmptyText>
+              ) : (
+                <HistoryList>
+                  {history.map((item, i) => (
+                    <div key={item.id}>
+                      {i > 0 && <Divider />}
+                      <HistoryItem>
+                        <HistoryLeft>
+                          <HistoryDate>{formatDate(item.date)}</HistoryDate>
+                          <HistoryStatus $status={item.status}>{item.status}</HistoryStatus>
+                        </HistoryLeft>
+                        <HistoryRight>
+                          <HistoryAmount>
+                            {item.amount.toFixed(2)} {item.currency}
+                          </HistoryAmount>
+                          {item.pdfUrl && (
+                            <PdfLink href={item.pdfUrl} target="_blank" rel="noopener noreferrer" title="Download invoice">
+                              <ExternalLink size={14} />
+                            </PdfLink>
+                          )}
+                        </HistoryRight>
+                      </HistoryItem>
+                    </div>
+                  ))}
+                </HistoryList>
+              )}
             </Card>
           )}
 

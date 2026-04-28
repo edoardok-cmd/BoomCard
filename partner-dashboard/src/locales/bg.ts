@@ -576,10 +576,10 @@ export const bg: TranslationKey = {
     // Marketing consents (GDPR)
     marketingTitle: 'Маркетингови Предпочитания',
     marketingDescription: 'Контролирайте как да ви изпращаме промоции и новини',
-    emailMarketing: 'Имейл Маркетинг',
-    emailMarketingDesc: 'Получавайте промоционални имейли и бюлетини',
-    phoneMarketing: 'Телефонен Маркетинг',
-    phoneMarketingDesc: 'Получавайте промоционални SMS и телефонни съобщения',
+    emailMarketing: 'Маркетингови имейли',
+    emailMarketingDesc: 'Най-добрите оферти, нови BOOM места и специални предложения',
+    phoneMarketing: 'Маркетингови SMS / телефон',
+    phoneMarketingDesc: 'Най-добрите оферти, нови BOOM места и специални предложения',
     marketingConsentNote: 'Можете да оттеглите съгласието си по всяко време. Промените влизат в сила в рамките на 24 часа.',
     // Privacy
     privacyTitle: 'Поверителност',
@@ -1109,6 +1109,11 @@ export const bg: TranslationKey = {
     reactivateBtn: 'Подновете',
     changePlan: 'Смени план',
     to: 'до',
+    paymentMethod: 'Метод на плащане',
+    paymentMethodCard: 'Начислена карта',
+    paymentHistory: 'История на плащания',
+    historyLoading: 'Зареждане на история...',
+    historyEmpty: 'Няма история на плащания.',
   },
 
   // Pricing Plans
