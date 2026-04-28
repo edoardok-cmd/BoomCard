@@ -326,7 +326,7 @@ const FavoritesPage: React.FC = () => {
               <EmptyText>
                 {t('favorites.noFavoritesDescription')}
               </EmptyText>
-              <Link to="/categories">
+              <Link to="/partners">
                 <Button variant="primary" size="large">
                   {t('favorites.browseOffers')}
                 </Button>

@@ -46,6 +46,8 @@ const PromotionsPage = lazy(() => import('./pages/PromotionsPage'));
 const ExperiencesPage = lazy(() => import('./pages/ExperiencesPage'));
 const IntegrationsPage = lazy(() => import('./pages/IntegrationsPage'));
 const LocationsPage = lazy(() => import('./pages/LocationsPage'));
+const UploadReceiptInfoPage = lazy(() => import('./pages/UploadReceiptInfoPage'));
+const ComingSoonPage = lazy(() => import('./pages/ComingSoonPage'));
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage'));
 
 // Media pages
@@ -536,6 +538,8 @@ function App() {
 
                     {/* Other routes */}
                     <Route path="favorites" element={<FavoritesPage />} />
+                    <Route path="upload-receipt" element={<UploadReceiptInfoPage />} />
+                    <Route path="subscription" element={<ComingSoonPage />} />
                     <Route path="integrations" element={<IntegrationsPage />} />
                     <Route path="*" element={<NotFoundPage />} />
                   </Route>

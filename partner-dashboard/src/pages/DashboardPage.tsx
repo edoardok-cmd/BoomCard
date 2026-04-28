@@ -1,13 +1,13 @@
-import React, { useState, useMemo } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
+import { motion } from 'framer-motion';
 import styled from 'styled-components';
 import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import Button from '../components/common/Button/Button';
-import QRCode from '../components/common/QRCode/QRCode';
 import { useCurrentPartner, usePartnerStats } from '../hooks/usePartners';
 import { useOffers } from '../hooks/useOffers';
-import { ReceiptAnalyticsWidget } from '../components/widgets';
+import { apiService } from '../services/api.service';
 
 const PageContainer = styled.div`
   max-width: 72rem;
@@ -248,56 +248,27 @@ const BoomCardItem = styled(motion.div)`
   }
 `;
 
-const CardHeader = styled.div`
+const ActionCardImage = styled.div<{ $imageUrl?: string }>`
+  width: 100%;
+  height: 200px;
+  background: ${props => props.$imageUrl ? `url(${props.$imageUrl})` : 'var(--color-background-secondary)'};
+  background-size: cover;
+  background-position: center;
+  overflow: hidden;
+  transition: all 400ms cubic-bezier(0.4, 0, 0.2, 1);
+  border-radius: 0.75rem 0.75rem 0 0;
   position: relative;
-  height: 12rem;
-  background: linear-gradient(135deg, #111827 0%, #374151 100%);
-  padding: 1.5rem;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-`;
 
-const CardLogo = styled.div`
-  width: 3rem;
-  height: 3rem;
-  background: white;
-  border-radius: 0.5rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 700;
-  color: #111827;
-
-  [data-theme="dark"] & {
-    background: #f9fafb;
-    color: #111827;
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.3) 100%);
   }
-`;
 
-const CardType = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-`;
-
-const CardTypeBadge = styled.span`
-  display: inline-flex;
-  align-items: center;
-  padding: 0.25rem 0.75rem;
-  border-radius: 9999px;
-  font-size: 0.75rem;
-  font-weight: 600;
-  background: rgba(255, 255, 255, 0.2);
-  color: white;
-  backdrop-filter: blur(10px);
-`;
-
-const CardNumber = styled.div`
-  font-size: 0.875rem;
-  font-weight: 500;
-  color: rgba(255, 255, 255, 0.8);
-  letter-spacing: 0.1em;
+  [data-theme="dark"] &::after {
+    background: linear-gradient(180deg, rgba(0,0,0,0.2) 0%, rgba(0,0,0,0.5) 100%);
+  }
 `;
 
 const CardBody = styled.div`
@@ -327,114 +298,12 @@ const VenueCategory = styled.p`
   }
 `;
 
-const CardMeta = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-  padding-top: 1rem;
-  border-top: 1px solid #e5e7eb;
-
-  [data-theme="dark"] & {
-    border-top-color: #374151;
-  }
-`;
-
-const MetaRow = styled.div`
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-size: 0.875rem;
-`;
-
-const MetaLabel = styled.span`
-  color: #6b7280;
-
-  [data-theme="dark"] & {
-    color: #9ca3af;
-  }
-`;
-
-const MetaValue = styled.span`
-  font-weight: 600;
-  color: #111827;
-
-  [data-theme="dark"] & {
-    color: #f9fafb;
-  }
-`;
-
-const CardActions = styled.div`
-  display: flex;
-  gap: 0.75rem;
-  margin-top: 1rem;
-`;
-
-const ActionCardImage = styled.div<{ $imageUrl?: string }>`
-  width: 100%;
-  height: 200px;
-  background: ${props => props.$imageUrl ? `url(${props.$imageUrl})` : 'var(--color-background-secondary)'};
-  background-size: cover;
-  background-position: center;
-  overflow: hidden;
-  transition: all 400ms cubic-bezier(0.4, 0, 0.2, 1);
-  border-radius: 0.75rem 0.75rem 0 0;
-  position: relative;
-
-  &::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.3) 100%);
-  }
-
-  [data-theme="dark"] &::after {
-    background: linear-gradient(180deg, rgba(0,0,0,0.2) 0%, rgba(0,0,0,0.5) 100%);
-  }
-`;
-
-const EmptyState = styled.div`
-  text-align: center;
-  padding: 4rem 2rem;
-  background: white;
-  border-radius: 1rem;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-`;
-
-const EmptyIcon = styled.div`
-  width: 5rem;
-  height: 5rem;
-  margin: 0 auto 1.5rem;
-  background: #f3f4f6;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #9ca3af;
-
-  svg {
-    width: 2.5rem;
-    height: 2.5rem;
-  }
-`;
-
-const EmptyTitle = styled.h3`
-  font-size: 1.25rem;
-  font-weight: 600;
-  color: #111827;
-  margin-bottom: 0.5rem;
-`;
-
-const EmptyDescription = styled.p`
-  font-size: 0.9375rem;
-  color: #6b7280;
-  margin-bottom: 1.5rem;
-`;
-
 const ActivityContainer = styled.div`
   background: white;
   border-radius: 1rem;
   padding: 1.5rem;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  margin-bottom: 2.5rem;
 
   [data-theme="dark"] & {
     background: #1f2937;
@@ -482,30 +351,287 @@ const ActivityMeta = styled.div`
   }
 `;
 
-interface BoomCard {
+/* ── Consumer-only styled components ── */
+
+const CtaCard = styled(motion.div)`
+  background: linear-gradient(135deg, #111827 0%, #4f46e5 100%);
+  border-radius: 1.5rem;
+  padding: 2rem 2.5rem;
+  margin-bottom: 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+
+  @media (max-width: 640px) {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+`;
+
+const CtaContent = styled.div``;
+
+const CtaTitle = styled.h2`
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: white;
+  margin-bottom: 0.375rem;
+  letter-spacing: -0.02em;
+`;
+
+const CtaDesc = styled.p`
+  font-size: 0.9375rem;
+  color: rgba(255, 255, 255, 0.75);
+`;
+
+const CashbackGrid = styled.div`
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+  margin-bottom: 2rem;
+
+  @media (max-width: 640px) {
+    grid-template-columns: 1fr;
+  }
+`;
+
+const SubscriptionCard = styled(motion.div)`
+  background: white;
+  border-radius: 1.5rem;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  padding: 1.75rem 2rem;
+  margin-bottom: 2.5rem;
+  box-shadow:
+    0 2px 8px rgba(0, 0, 0, 0.06),
+    0 8px 24px rgba(0, 0, 0, 0.04);
+
+  [data-theme="dark"] & {
+    background: #1f2937;
+    border-color: rgba(255, 255, 255, 0.1);
+  }
+`;
+
+const SubscriptionHeader = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+`;
+
+const SubscriptionMeta = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+`;
+
+const SubscriptionMetaLabel = styled.span`
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+
+  [data-theme="dark"] & {
+    color: #9ca3af;
+  }
+`;
+
+const SubscriptionMetaValue = styled.span`
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: #111827;
+
+  [data-theme="dark"] & {
+    color: #f9fafb;
+  }
+`;
+
+const PlanBadge = styled.span<{ $plan: string }>`
+  display: inline-flex;
+  align-items: center;
+  padding: 0.4rem 1rem;
+  border-radius: 9999px;
+  font-size: 0.875rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  background: ${({ $plan }) => {
+    if ($plan === 'PREMIUM') return 'linear-gradient(135deg, #7c3aed 0%, #a855f7 100%)';
+    if ($plan === 'BASIC') return 'linear-gradient(135deg, #2563eb 0%, #3b82f6 100%)';
+    return 'linear-gradient(135deg, #374151 0%, #6b7280 100%)';
+  }};
+  color: white;
+`;
+
+const StatusBadge = styled.span<{ $status: string }>`
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.75rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: ${({ $status }) => {
+    if ($status === 'APPROVED') return '#d1fae5';
+    if ($status === 'PENDING') return '#fef3c7';
+    if ($status === 'MANUAL_REVIEW') return '#dbeafe';
+    if ($status === 'REJECTED') return '#fee2e2';
+    return '#f3f4f6';
+  }};
+  color: ${({ $status }) => {
+    if ($status === 'APPROVED') return '#065f46';
+    if ($status === 'PENDING') return '#92400e';
+    if ($status === 'MANUAL_REVIEW') return '#1e40af';
+    if ($status === 'REJECTED') return '#991b1b';
+    return '#374151';
+  }};
+
+  [data-theme="dark"] & {
+    background: ${({ $status }) => {
+      if ($status === 'APPROVED') return 'rgba(16, 185, 129, 0.2)';
+      if ($status === 'PENDING') return 'rgba(245, 158, 11, 0.2)';
+      if ($status === 'MANUAL_REVIEW') return 'rgba(59, 130, 246, 0.2)';
+      if ($status === 'REJECTED') return 'rgba(239, 68, 68, 0.2)';
+      return 'rgba(107, 114, 128, 0.2)';
+    }};
+    color: ${({ $status }) => {
+      if ($status === 'APPROVED') return '#34d399';
+      if ($status === 'PENDING') return '#fcd34d';
+      if ($status === 'MANUAL_REVIEW') return '#93c5fd';
+      if ($status === 'REJECTED') return '#fca5a5';
+      return '#d1d5db';
+    }};
+  }
+`;
+
+const TransactionRow = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem;
+  background: #f9fafb;
+  border-radius: 0.5rem;
+  gap: 1rem;
+
+  [data-theme="dark"] & {
+    background: #111827;
+  }
+`;
+
+const TransactionInfo = styled.div`
+  flex: 1;
+  min-width: 0;
+`;
+
+const TransactionMerchant = styled.div`
+  font-weight: 600;
+  color: #111827;
+  margin-bottom: 0.25rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+
+  [data-theme="dark"] & {
+    color: #f9fafb;
+  }
+`;
+
+const TransactionDate = styled.div`
+  font-size: 0.8125rem;
+  color: #6b7280;
+
+  [data-theme="dark"] & {
+    color: #9ca3af;
+  }
+`;
+
+const TransactionAmount = styled.div`
+  font-size: 1rem;
+  font-weight: 700;
+  color: #10b981;
+  white-space: nowrap;
+
+  [data-theme="dark"] & {
+    color: #34d399;
+  }
+`;
+
+const UpgradeBanner = styled(motion.div)`
+  background: linear-gradient(135deg, #7c3aed 0%, #4f46e5 100%);
+  border-radius: 1.5rem;
+  padding: 1.75rem 2rem;
+  margin-top: 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+
+  @media (max-width: 640px) {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+`;
+
+const UpgradeBannerContent = styled.div``;
+
+const UpgradeBannerTitle = styled.h3`
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: white;
+  margin-bottom: 0.25rem;
+`;
+
+const UpgradeBannerDesc = styled.p`
+  font-size: 0.9rem;
+  color: rgba(255, 255, 255, 0.8);
+`;
+
+const EmptyMessage = styled.p`
+  text-align: center;
+  color: #6b7280;
+  font-size: 0.9375rem;
+  padding: 1.5rem 0;
+
+  [data-theme="dark"] & {
+    color: #9ca3af;
+  }
+`;
+
+/* ── Types ── */
+
+interface DashboardReceipt {
   id: string;
-  cardNumber: string;
-  type: 'premium' | 'standard';
-  venueName: string;
-  venueNameBg: string;
-  category: string;
-  categoryBg: string;
-  discount: number;
-  validUntil: number;
-  usageCount: number;
-  usageLimit: number;
-  status: 'active' | 'expired' | 'suspended';
+  merchantName: string;
+  totalAmount: number;
+  cashbackAmount: number;
+  status: string;
+  createdAt: string;
 }
+
+interface DashboardSubscription {
+  plan: string;
+  status: string;
+  currentPeriodEnd?: string;
+}
+
+interface DashboardWallet {
+  availableBalance: number;
+  pendingBalance: number;
+}
+
+interface DashboardData {
+  subscription: DashboardSubscription;
+  wallet: DashboardWallet;
+  receipts: DashboardReceipt[];
+}
+
+/* ── Component ── */
 
 const DashboardPage: React.FC = () => {
   const { user } = useAuth();
   const { language, t } = useLanguage();
-  const [selectedCard, setSelectedCard] = useState<string | null>(null);
 
-  // Check if user is a partner or admin
   const isPartner = user?.role === 'partner' || user?.role === 'admin';
 
-  // Fetch real partner data with error handling
+  // Partner data
   const { data: partnerData, isLoading: isLoadingPartner, isError: isPartnerError } = useCurrentPartner();
   const { data: stats, isLoading: isLoadingStats, isError: isStatsError } = usePartnerStats(partnerData?.id);
   const { data: offersResponse, isLoading: isLoadingOffers, isError: isOffersError } = useOffers({
@@ -514,7 +640,6 @@ const DashboardPage: React.FC = () => {
     active: true
   });
 
-  // Fallback stats when API fails
   const fallbackStats = {
     activeOffers: 0,
     totalOffers: 0,
@@ -526,41 +651,27 @@ const DashboardPage: React.FC = () => {
     totalVenues: 0,
   };
 
-  // Use API data if available, otherwise fallback
   const displayStats = stats || (isStatsError || isPartnerError ? fallbackStats : null);
 
-  // Map API data to BoomCards format
-  const boomCards: BoomCard[] = useMemo(() => {
-    if (!offersResponse?.data) return [];
-
-    const now = new Date().getTime();
-    return offersResponse.data.map((offer, index) => ({
-      id: offer.id,
-      cardNumber: `BC-2024-${String(index + 1).padStart(6, '0')}`,
-      type: offer.isFeatured ? 'premium' : 'standard',
-      venueName: offer.title,
-      venueNameBg: offer.titleBg || offer.title,
-      category: offer.category,
-      categoryBg: offer.categoryBg || offer.category,
-      discount: offer.discount,
-      validUntil: offer.validUntil ? new Date(offer.validUntil).getTime() : now + 90 * 24 * 60 * 60 * 1000,
-      usageCount: offer.currentRedemptions || 0,
-      usageLimit: offer.maxRedemptions || 100,
-      status: (offer.isActive ? 'active' : 'suspended') as 'active' | 'expired' | 'suspended',
-    }));
-  }, [offersResponse]);
-
-  const activeCards = boomCards.filter(card => card.status === 'active');
-  const totalSavings = displayStats?.revenue || 0;
-  const totalUsage = displayStats?.totalRedemptions || 0;
-
-  // Stop loading if we have data or if there was an error (show fallback)
   const isLoading = (isLoadingPartner && !isPartnerError) ||
                     (isLoadingStats && !isStatsError && !!partnerData?.id) ||
                     (isLoadingOffers && !isOffersError && !!partnerData?.id);
 
-  const formatDate = (timestamp: number) => {
-    const date = new Date(timestamp);
+  // Consumer dashboard data
+  const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
+  const [isLoadingDashboard, setIsLoadingDashboard] = useState(false);
+
+  useEffect(() => {
+    if (isPartner) return;
+    setIsLoadingDashboard(true);
+    apiService.get<DashboardData>('/dashboard/me')
+      .then(data => setDashboardData(data))
+      .catch(() => { /* fail silently — show zeros */ })
+      .finally(() => setIsLoadingDashboard(false));
+  }, [isPartner]);
+
+  const formatDate = (iso: string) => {
+    const date = new Date(iso);
     return date.toLocaleDateString(language === 'bg' ? 'bg-BG' : 'en-US', {
       year: 'numeric',
       month: 'short',
@@ -568,20 +679,28 @@ const DashboardPage: React.FC = () => {
     });
   };
 
-  const getDaysRemaining = useMemo(() => {
-    return (timestamp: number) => {
-      const now = Date.now();
-      const diff = timestamp - now;
-      const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-      return days;
+  const formatCurrency = (amount: number) =>
+    `${amount.toFixed(2)} лв`;
+
+  const statusLabel = (status: string) => {
+    const map: Record<string, { en: string; bg: string }> = {
+      APPROVED:      { en: t('dashboard.statusApproved'), bg: t('dashboard.statusApproved') },
+      PENDING:       { en: t('dashboard.statusPending'),  bg: t('dashboard.statusPending') },
+      MANUAL_REVIEW: { en: t('dashboard.statusReview'),   bg: t('dashboard.statusReview') },
+      REJECTED:      { en: t('dashboard.statusRejected'), bg: t('dashboard.statusRejected') },
     };
-  }, []);
+    return map[status]?.[language === 'bg' ? 'bg' : 'en'] ?? status;
+  };
+
+  const showUpgradeBanner =
+    dashboardData?.subscription.plan === 'LIGHT' ||
+    dashboardData?.subscription.plan === 'BASIC';
 
   return (
     <PageContainer>
       <PageHeader>
         <Title>
-          {t('dashboard.greeting')}, {user?.firstName}! 👋
+          {t('dashboard.greeting')}, {user?.firstName}!
         </Title>
         <Subtitle>
           {isPartner ? 'Manage your business and track performance' : t('dashboard.subtitle')}
@@ -591,7 +710,6 @@ const DashboardPage: React.FC = () => {
       {/* Partner Dashboard */}
       {isPartner ? (
         <>
-          {/* Partner Stats */}
           <StatsGrid>
             <StatCard
               initial={{ opacity: 0, y: 20 }}
@@ -642,11 +760,8 @@ const DashboardPage: React.FC = () => {
             </StatCard>
           </StatsGrid>
 
-          {/* Partner Quick Actions */}
           <SectionHeader>
-            <SectionTitle>
-              Quick Actions
-            </SectionTitle>
+            <SectionTitle>Quick Actions</SectionTitle>
           </SectionHeader>
 
           <CardsGrid>
@@ -663,9 +778,7 @@ const DashboardPage: React.FC = () => {
                   <VenueName>Manage Offers</VenueName>
                   <VenueCategory>View, edit, and create new offers</VenueCategory>
                   <div style={{ marginTop: '1rem' }}>
-                    <Button variant="primary" size="medium">
-                      Go to Offers
-                    </Button>
+                    <Button variant="primary" size="medium">Go to Offers</Button>
                   </div>
                 </div>
               </CardBody>
@@ -684,9 +797,7 @@ const DashboardPage: React.FC = () => {
                   <VenueName>View Analytics</VenueName>
                   <VenueCategory>Track performance and insights</VenueCategory>
                   <div style={{ marginTop: '1rem' }}>
-                    <Button variant="primary" size="medium">
-                      View Analytics
-                    </Button>
+                    <Button variant="primary" size="medium">View Analytics</Button>
                   </div>
                 </div>
               </CardBody>
@@ -705,20 +816,15 @@ const DashboardPage: React.FC = () => {
                   <VenueName>Business Profile</VenueName>
                   <VenueCategory>Update your business information</VenueCategory>
                   <div style={{ marginTop: '1rem' }}>
-                    <Button variant="primary" size="medium">
-                      Edit Profile
-                    </Button>
+                    <Button variant="primary" size="medium">Edit Profile</Button>
                   </div>
                 </div>
               </CardBody>
             </BoomCardItem>
           </CardsGrid>
 
-          {/* Recent Activity */}
           <SectionHeader style={{ marginTop: '2rem' }}>
-            <SectionTitle>
-              Recent Offer Activity
-            </SectionTitle>
+            <SectionTitle>Recent Offer Activity</SectionTitle>
           </SectionHeader>
 
           <ActivityContainer>
@@ -733,9 +839,7 @@ const DashboardPage: React.FC = () => {
                     <ActivityTitle>{activity.offer}</ActivityTitle>
                     <ActivityMeta>{activity.redemptions} redemptions • {activity.time}</ActivityMeta>
                   </ActivityContent>
-                  <Button variant="ghost" size="small">
-                    View Details
-                  </Button>
+                  <Button variant="ghost" size="small">View Details</Button>
                 </ActivityItem>
               ))}
             </ActivityList>
@@ -743,237 +847,136 @@ const DashboardPage: React.FC = () => {
         </>
       ) : (
         <>
-          {/* User Dashboard - Original Stats */}
-          <StatsGrid>
-        <StatCard
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3 }}
-        >
-          <StatLabel>{t('dashboard.activeCards')}</StatLabel>
-          <StatValue>{activeCards.length}</StatValue>
-          <StatChange $positive>
-            {t('dashboard.readyToUse')}
-          </StatChange>
-        </StatCard>
+          {/* Upload Receipt CTA */}
+          <CtaCard
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.35 }}
+          >
+            <CtaContent>
+              <CtaTitle>{t('dashboard.uploadReceiptCta')}</CtaTitle>
+              <CtaDesc>{t('dashboard.uploadReceiptCtaDesc')}</CtaDesc>
+            </CtaContent>
+            <Link to="/upload-receipt">
+              <Button variant="secondary" size="large">
+                {t('dashboard.uploadReceiptCta')}
+              </Button>
+            </Link>
+          </CtaCard>
 
-        <StatCard
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3, delay: 0.1 }}
-        >
-          <StatLabel>{t('dashboard.totalSavings')}</StatLabel>
-          <StatValue>{totalSavings} лв</StatValue>
-          <StatChange $positive>
-            {t('dashboard.thisMonth')}
-          </StatChange>
-        </StatCard>
-
-        <StatCard
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3, delay: 0.2 }}
-        >
-          <StatLabel>{t('dashboard.totalUses')}</StatLabel>
-          <StatValue>{totalUsage}</StatValue>
-          <StatChange>
-            {t('dashboard.acrossAllCards')}
-          </StatChange>
-        </StatCard>
-      </StatsGrid>
-
-      {/* Receipt Analytics Widget */}
-      <div style={{ marginBottom: '2.5rem' }}>
-        <ReceiptAnalyticsWidget />
-      </div>
-
-      {/* Cards Section */}
-      <SectionHeader>
-        <SectionTitle>
-          {t('dashboard.myCards')}
-        </SectionTitle>
-        <Button variant="primary" size="medium">
-          {t('dashboard.addCard')}
-        </Button>
-      </SectionHeader>
-
-      {activeCards.length > 0 ? (
-        <CardsGrid>
-          {activeCards.map((card, index) => (
-            <BoomCardItem
-              key={card.id}
+          {/* Cashback Balances */}
+          <CashbackGrid>
+            <StatCard
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.3, delay: index * 0.1 }}
+              transition={{ duration: 0.3, delay: 0.05 }}
             >
-              <CardHeader>
-                <CardType>
-                  <CardLogo>BC</CardLogo>
-                  <CardTypeBadge>
-                    {card.type === 'premium'
-                      ? t('dashboard.premium')
-                      : t('dashboard.standard')}
-                  </CardTypeBadge>
-                </CardType>
-                <CardNumber>{card.cardNumber}</CardNumber>
-              </CardHeader>
+              <StatLabel>{t('dashboard.cashbackAvailable')}</StatLabel>
+              <StatValue>
+                {isLoadingDashboard ? '...' : formatCurrency(dashboardData?.wallet.availableBalance ?? 0)}
+              </StatValue>
+              <StatChange $positive>{t('dashboard.readyToClaim')}</StatChange>
+            </StatCard>
 
-              <CardBody>
-                <VenueName>
-                  {language === 'bg' ? card.venueNameBg : card.venueName}
-                </VenueName>
-                <VenueCategory>
-                  {language === 'bg' ? card.categoryBg : card.category}
-                </VenueCategory>
+            <StatCard
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3, delay: 0.1 }}
+            >
+              <StatLabel>{t('dashboard.cashbackPending')}</StatLabel>
+              <StatValue>
+                {isLoadingDashboard ? '...' : formatCurrency(dashboardData?.wallet.pendingBalance ?? 0)}
+              </StatValue>
+              <StatChange>{t('dashboard.awaitingApproval')}</StatChange>
+            </StatCard>
+          </CashbackGrid>
 
-                <CardMeta>
-                  <MetaRow>
-                    <MetaLabel>
-                      {t('dashboard.discount')}
-                    </MetaLabel>
-                    <MetaValue>{card.discount}%</MetaValue>
-                  </MetaRow>
-                  <MetaRow>
-                    <MetaLabel>
-                      {t('dashboard.uses')}
-                    </MetaLabel>
-                    <MetaValue>
-                      {card.usageCount} / {card.usageLimit}
-                    </MetaValue>
-                  </MetaRow>
-                  <MetaRow>
-                    <MetaLabel>
-                      {t('dashboard.validUntil')}
-                    </MetaLabel>
-                    <MetaValue>{formatDate(card.validUntil)}</MetaValue>
-                  </MetaRow>
-                  <MetaRow>
-                    <MetaLabel>
-                      {t('dashboard.daysLeft')}
-                    </MetaLabel>
-                    <MetaValue
-                      style={{
-                        color: getDaysRemaining(card.validUntil) < 30 ? '#ef4444' : '#10b981'
-                      }}
-                    >
-                      {getDaysRemaining(card.validUntil)}
-                    </MetaValue>
-                  </MetaRow>
-                </CardMeta>
+          {/* Subscription Status */}
+          <SectionHeader>
+            <SectionTitle>{t('dashboard.subscriptionPlan')}</SectionTitle>
+          </SectionHeader>
 
-                <CardActions>
-                  <div style={{ flex: 1 }}>
-                    <Button
-                      variant="primary"
-                      size="small"
-                      onClick={() => setSelectedCard(card.id)}
-                    >
-                      {t('dashboard.showQR')}
-                    </Button>
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <Button variant="ghost" size="small">
-                      {t('dashboard.details')}
-                    </Button>
-                  </div>
-                </CardActions>
-              </CardBody>
-            </BoomCardItem>
-          ))}
-        </CardsGrid>
-      ) : (
-        <EmptyState>
-          <EmptyIcon>
-            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"
-              />
-            </svg>
-          </EmptyIcon>
-          <EmptyTitle>
-            {t('dashboard.noActiveCards')}
-          </EmptyTitle>
-          <EmptyDescription>
-            {t('dashboard.noActiveCardsDescription')}
-          </EmptyDescription>
-          <Button variant="primary" size="large">
-            {t('home.browseOffers')}
-          </Button>
-        </EmptyState>
-      )}
+          <SubscriptionCard
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3, delay: 0.15 }}
+          >
+            <SubscriptionHeader>
+              <PlanBadge $plan={dashboardData?.subscription.plan ?? 'LIGHT'}>
+                {isLoadingDashboard ? '...' : (dashboardData?.subscription.plan ?? 'LIGHT')}
+              </PlanBadge>
+              <StatusBadge $status={dashboardData?.subscription.status ?? 'ACTIVE'}>
+                {isLoadingDashboard ? '...' : (dashboardData?.subscription.status ?? 'ACTIVE')}
+              </StatusBadge>
+            </SubscriptionHeader>
+
+            {dashboardData?.subscription.currentPeriodEnd && (
+              <SubscriptionMeta>
+                <SubscriptionMetaLabel>
+                  {t('dashboard.nextBilling')}
+                </SubscriptionMetaLabel>
+                <SubscriptionMetaValue>
+                  {formatDate(dashboardData.subscription.currentPeriodEnd)}
+                </SubscriptionMetaValue>
+              </SubscriptionMeta>
+            )}
+          </SubscriptionCard>
+
+          {/* Recent Transactions */}
+          <SectionHeader>
+            <SectionTitle>{t('dashboard.recentTransactions')}</SectionTitle>
+            <Link to="/receipts">
+              <Button variant="ghost" size="small">{t('common.viewAll')}</Button>
+            </Link>
+          </SectionHeader>
+
+          <ActivityContainer>
+            {isLoadingDashboard ? (
+              <EmptyMessage>...</EmptyMessage>
+            ) : dashboardData?.receipts.length ? (
+              <ActivityList>
+                {dashboardData.receipts.map((receipt, index) => (
+                  <TransactionRow key={receipt.id}
+                    as={motion.div}
+                    initial={{ opacity: 0, x: -8 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ duration: 0.25, delay: index * 0.06 }}
+                  >
+                    <TransactionInfo>
+                      <TransactionMerchant>{receipt.merchantName}</TransactionMerchant>
+                      <TransactionDate>{formatDate(receipt.createdAt)}</TransactionDate>
+                    </TransactionInfo>
+                    <StatusBadge $status={receipt.status}>
+                      {statusLabel(receipt.status)}
+                    </StatusBadge>
+                    <TransactionAmount>
+                      +{formatCurrency(receipt.cashbackAmount)}
+                    </TransactionAmount>
+                  </TransactionRow>
+                ))}
+              </ActivityList>
+            ) : (
+              <EmptyMessage>{t('dashboard.noTransactions')}</EmptyMessage>
+            )}
+          </ActivityContainer>
+
+          {/* Upgrade Banner */}
+          {showUpgradeBanner && (
+            <UpgradeBanner
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.35, delay: 0.2 }}
+            >
+              <UpgradeBannerContent>
+                <UpgradeBannerTitle>{t('dashboard.upgradeTitle')}</UpgradeBannerTitle>
+                <UpgradeBannerDesc>{t('dashboard.upgradeDesc')}</UpgradeBannerDesc>
+              </UpgradeBannerContent>
+              <Link to="/subscription">
+                <Button variant="secondary" size="medium">{t('dashboard.upgradeBtn')}</Button>
+              </Link>
+            </UpgradeBanner>
+          )}
         </>
-      )}
-
-      {/* QR Code Modal - Only for users, not partners */}
-      {!isPartner && (
-      <AnimatePresence>
-        {selectedCard && (
-          <>
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setSelectedCard(null)}
-              style={{
-                position: 'fixed',
-                top: 0,
-                left: 0,
-                right: 0,
-                bottom: 0,
-                background: 'rgba(0, 0, 0, 0.5)',
-                zIndex: 50,
-              }}
-            />
-            <motion.div
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.9 }}
-              style={{
-                position: 'fixed',
-                top: '50%',
-                left: '50%',
-                transform: 'translate(-50%, -50%)',
-                background: 'white',
-                borderRadius: '1rem',
-                padding: '2rem',
-                zIndex: 51,
-                maxWidth: '90%',
-                width: '24rem',
-              }}
-            >
-              {(() => {
-                const card = activeCards.find(c => c.id === selectedCard);
-                if (!card) return null;
-                return (
-                  <>
-                    <h3 style={{ fontSize: '1.25rem', fontWeight: 600, marginBottom: '1rem', textAlign: 'center' }}>
-                      {language === 'bg' ? card.venueNameBg : card.venueName}
-                    </h3>
-                    <QRCode
-                      data={`https://boomcard.bg/redeem/${card.cardNumber}`}
-                      size={256}
-                      title={t('dashboard.showAtCheckout')}
-                      downloadable
-                    />
-                    <div style={{ marginTop: '1rem', width: '100%' }}>
-                      <Button
-                        variant="ghost"
-                        size="large"
-                        onClick={() => setSelectedCard(null)}
-                      >
-                        {t('common.close')}
-                      </Button>
-                    </div>
-                  </>
-                );
-              })()}
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
       )}
     </PageContainer>
   );

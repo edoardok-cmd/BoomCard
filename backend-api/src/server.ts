@@ -34,6 +34,7 @@ import bulkImportRouter from './routes/bulkImport.routes';
 import adminCashbackRouter from './routes/adminCashback.routes';
 import adminMenusRouter, { adminVenueMenuRouter } from './routes/adminMenus.routes';
 import contactRouter from './routes/contact.routes';
+import dashboardRouter from './routes/dashboard.routes';
 
 // Import WebSocket handler
 import { initializeWebSocket } from './websocket/server';
@@ -208,6 +209,7 @@ app.use('/api/plans', plansRouter); // Public plans API (no auth required)
 app.use('/api/contact', contactRouter); // Public contact form (no auth required)
 app.use('/api/auth', authRouter);
 app.use('/api/payments', payseraPaymentsRouter); // Paysera payment routes
+app.use('/api/dashboard', dashboardRouter);
 app.use('/api/wallet', walletRouter);
 app.use('/api/subscriptions', subscriptionsRouter);
 app.use('/api/loyalty', loyaltyRouter);

@@ -1,15 +1,15 @@
 import React, { useState } from 'react';
 import styled from 'styled-components';
 import { motion } from 'framer-motion';
-import { Bell, Globe, Lock, Trash2 } from 'lucide-react';
+import { Bell, Globe, Lock, Trash2, Megaphone, Eye } from 'lucide-react';
 import { Button } from '../components/common/Button/Button';
 import { useLanguage } from '../contexts/LanguageContext';
+import { useAuth } from '../contexts/AuthContext';
 import { apiService } from '../services/api.service';
 import toast from 'react-hot-toast';
 import NotificationPreferences from '../components/common/NotificationPreferences/NotificationPreferences';
 
 const PageContainer = styled.div`
-
   [data-theme="dark"] & {
     background: #0a0a0a;
   }
@@ -40,7 +40,6 @@ const Title = styled.h1`
 const Subtitle = styled.p`
   color: #6b7280;
   font-size: 1rem;
-
   [data-theme="dark"] & {
     color: #9ca3af;
   }
@@ -54,14 +53,12 @@ const SettingsGrid = styled.div`
 
 const SettingCard = styled(motion.div)`
   background: white;
-
   [data-theme="dark"] & {
     background: #1f2937;
   }
   border-radius: 1rem;
   padding: 2rem;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
-
   @media (max-width: 768px) {
     padding: 1.5rem;
   }
@@ -74,7 +71,6 @@ const CardHeader = styled.div`
   margin-bottom: 1.5rem;
   padding-bottom: 1rem;
   border-bottom: 1px solid #e5e7eb;
-
   [data-theme="dark"] & {
     border-bottom-color: #374151;
   }
@@ -88,7 +84,7 @@ const IconWrapper = styled.div`
   display: flex;
   align-items: center;
   justify-content: center;
-
+  flex-shrink: 0;
   svg {
     width: 24px;
     height: 24px;
@@ -101,7 +97,6 @@ const CardTitle = styled.h2`
   font-weight: 600;
   color: #111827;
   margin: 0;
-
   [data-theme="dark"] & {
     color: #f9fafb;
   }
@@ -111,7 +106,6 @@ const CardDescription = styled.p`
   color: #6b7280;
   font-size: 0.875rem;
   margin: 0;
-
   [data-theme="dark"] & {
     color: #9ca3af;
   }
@@ -123,20 +117,16 @@ const SettingRow = styled.div`
   align-items: center;
   padding: 1rem 0;
   border-bottom: 1px solid #f3f4f6;
-
   [data-theme="dark"] & {
     border-bottom-color: #374151;
   }
-
   &:last-child {
     border-bottom: none;
     padding-bottom: 0;
   }
-
   &:first-child {
     padding-top: 0;
   }
-
   @media (max-width: 640px) {
     flex-direction: column;
     align-items: flex-start;
@@ -152,7 +142,6 @@ const SettingLabel = styled.div`
   font-weight: 600;
   color: #111827;
   margin-bottom: 0.25rem;
-
   [data-theme="dark"] & {
     color: #f9fafb;
   }
@@ -161,7 +150,6 @@ const SettingLabel = styled.div`
 const SettingDesc = styled.div`
   font-size: 0.875rem;
   color: #6b7280;
-
   [data-theme="dark"] & {
     color: #9ca3af;
   }
@@ -176,11 +164,10 @@ const Toggle = styled.button<{ $active: boolean }>`
   cursor: pointer;
   position: relative;
   transition: background 0.2s;
-
+  flex-shrink: 0;
   &:hover {
     background: ${props => props.$active ? '#059669' : '#9ca3af'};
   }
-
   &::after {
     content: '';
     position: absolute;
@@ -190,10 +177,9 @@ const Toggle = styled.button<{ $active: boolean }>`
     height: 24px;
     border-radius: 50%;
     background: white;
-
-  [data-theme="dark"] & {
-    background: #1f2937;
-  }
+    [data-theme="dark"] & {
+      background: #1f2937;
+    }
     transition: left 0.2s;
   }
 `;
@@ -205,7 +191,6 @@ const Select = styled.select`
   font-size: 0.875rem;
   color: #111827;
   background: white;
-
   [data-theme="dark"] & {
     background: #1f2937;
     border-color: #374151;
@@ -213,15 +198,12 @@ const Select = styled.select`
   }
   cursor: pointer;
   transition: all 0.2s;
-
   &:hover {
     border-color: #d1d5db;
-
     [data-theme="dark"] & {
       border-color: #4b5563;
     }
   }
-
   &:focus {
     outline: none;
     border-color: #667eea;
@@ -229,10 +211,21 @@ const Select = styled.select`
   }
 `;
 
+const ConsentNote = styled.p`
+  font-size: 0.8rem;
+  color: #9ca3af;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid #f3f4f6;
+  [data-theme="dark"] & {
+    color: #6b7280;
+    border-top-color: #374151;
+  }
+`;
+
 const DangerZone = styled(SettingCard)`
   border: 2px solid #fee2e2;
   background: #fef2f2;
-
   [data-theme="dark"] & {
     border-color: #7f1d1d;
     background: #3f1f1f;
@@ -241,7 +234,6 @@ const DangerZone = styled(SettingCard)`
 
 const DangerButton = styled(Button)`
   background: #ef4444;
-
   &:hover {
     background: #dc2626;
   }
@@ -251,9 +243,88 @@ const ButtonGroup = styled.div`
   display: flex;
   gap: 1rem;
   margin-top: 1.5rem;
-
   @media (max-width: 640px) {
     flex-direction: column;
+  }
+`;
+
+const PasswordForm = styled.div`
+  margin-top: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+`;
+
+const PasswordField = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+`;
+
+const PasswordLabel = styled.label`
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #374151;
+  [data-theme="dark"] & {
+    color: #d1d5db;
+  }
+`;
+
+const PasswordInput = styled.input`
+  padding: 0.625rem 0.875rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  color: #111827;
+  background: white;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  [data-theme="dark"] & {
+    background: #111827;
+    border-color: #374151;
+    color: #f9fafb;
+  }
+  &:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+  }
+  &.error {
+    border-color: #ef4444;
+  }
+`;
+
+const FieldError = styled.span`
+  font-size: 0.75rem;
+  color: #ef4444;
+`;
+
+const PasswordActions = styled.div`
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+  @media (max-width: 640px) {
+    flex-direction: column;
+  }
+`;
+
+const ShowPasswordBtn = styled.button`
+  background: none;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  color: #667eea;
+  cursor: pointer;
+  transition: all 0.2s;
+  [data-theme="dark"] & {
+    border-color: #374151;
+    color: #818cf8;
+  }
+  &:hover {
+    background: #f3f4f6;
+    [data-theme="dark"] & {
+      background: #374151;
+    }
   }
 `;
 
@@ -262,9 +333,14 @@ interface NotificationSettings {
   smsNotifications: boolean;
   pushNotifications: boolean;
   newOffers: boolean;
-  promotions: boolean;
   weeklyDigest: boolean;
   accountActivity: boolean;
+}
+
+interface MarketingConsents {
+  emailMarketing: boolean;
+  smsMarketing: boolean;
+  pushMarketing: boolean;
 }
 
 interface PrivacySettings {
@@ -274,17 +350,35 @@ interface PrivacySettings {
   activityVisible: boolean;
 }
 
+interface PasswordFormData {
+  currentPassword: string;
+  newPassword: string;
+  confirmPassword: string;
+}
+
+interface PasswordErrors {
+  currentPassword?: string;
+  newPassword?: string;
+  confirmPassword?: string;
+}
+
 const SettingsPage: React.FC = () => {
-  const { language } = useLanguage();
+  const { language, t } = useLanguage();
+  const { changePassword } = useAuth();
 
   const [notifications, setNotifications] = useState<NotificationSettings>({
     emailNotifications: true,
     smsNotifications: false,
     pushNotifications: true,
     newOffers: true,
-    promotions: false,
     weeklyDigest: true,
     accountActivity: true,
+  });
+
+  const [marketing, setMarketing] = useState<MarketingConsents>({
+    emailMarketing: false,
+    smsMarketing: false,
+    pushMarketing: false,
   });
 
   const [privacy, setPrivacy] = useState<PrivacySettings>({
@@ -297,162 +391,96 @@ const SettingsPage: React.FC = () => {
   const [selectedLanguage, setSelectedLanguage] = useState(language);
   const [isSaving, setIsSaving] = useState(false);
 
-  const content = {
-    en: {
-      title: 'Settings',
-      subtitle: 'Manage your account settings and preferences',
-
-      // Notifications
-      notificationsTitle: 'Notifications',
-      notificationsDesc: 'Manage how you receive notifications',
-      emailNotifications: 'Email Notifications',
-      emailNotificationsDesc: 'Receive notifications via email',
-      smsNotifications: 'SMS Notifications',
-      smsNotificationsDesc: 'Receive text message alerts',
-      pushNotifications: 'Push Notifications',
-      pushNotificationsDesc: 'Receive push notifications in browser',
-      newOffers: 'New Offers',
-      newOffersDesc: 'Get notified about new deals and offers',
-      promotions: 'Promotions & Marketing',
-      promotionsDesc: 'Receive promotional content and special offers',
-      weeklyDigest: 'Weekly Digest',
-      weeklyDigestDesc: 'Get a weekly summary of new offers',
-      accountActivity: 'Account Activity',
-      accountActivityDesc: 'Security alerts and account updates',
-
-      // Privacy
-      privacyTitle: 'Privacy',
-      privacyDesc: 'Control your privacy and data sharing',
-      profileVisible: 'Public Profile',
-      profileVisibleDesc: 'Make your profile visible to other users',
-      showEmail: 'Show Email',
-      showEmailDesc: 'Display email on your public profile',
-      showPhone: 'Show Phone',
-      showPhoneDesc: 'Display phone number on your public profile',
-      activityVisible: 'Activity Status',
-      activityVisibleDesc: 'Show when you\'re active on the platform',
-
-      // Preferences
-      preferencesTitle: 'Preferences',
-      preferencesDesc: 'Customize your experience',
-      languageLabel: 'Language',
-      languageDesc: 'Choose your preferred language',
-      languages: {
-        en: 'English',
-        bg: 'Български',
-      },
-
-      // Danger Zone
-      dangerTitle: 'Danger Zone',
-      dangerDesc: 'Irreversible actions',
-      deleteAccount: 'Delete Account',
-      deleteAccountDesc: 'Permanently delete your account and all data',
-      deleteButton: 'Delete My Account',
-
-      // Buttons
-      saveChanges: 'Save Changes',
-      saving: 'Saving...',
-      cancelChanges: 'Cancel',
-
-      // Messages
-      savedSuccess: 'Settings saved successfully!',
-      deleteConfirm: 'Are you sure you want to delete your account? This action cannot be undone.',
-    },
-    bg: {
-      title: 'Настройки',
-      subtitle: 'Управлявайте настройките на акаунта си',
-
-      // Notifications
-      notificationsTitle: 'Известия',
-      notificationsDesc: 'Управлявайте как получавате известия',
-      emailNotifications: 'Имейл Известия',
-      emailNotificationsDesc: 'Получавайте известия по имейл',
-      smsNotifications: 'SMS Известия',
-      smsNotificationsDesc: 'Получавайте съобщения по SMS',
-      pushNotifications: 'Push Известия',
-      pushNotificationsDesc: 'Получавайте push известия в браузъра',
-      newOffers: 'Нови Оферти',
-      newOffersDesc: 'Бъдете уведомявани за нови оферти и предложения',
-      promotions: 'Промоции и Маркетинг',
-      promotionsDesc: 'Получавайте промоционално съдържание',
-      weeklyDigest: 'Седмичен Бюлетин',
-      weeklyDigestDesc: 'Получавайте седмично обобщение на новите оферти',
-      accountActivity: 'Активност в Акаунта',
-      accountActivityDesc: 'Сигурностни предупреждения и актуализации',
-
-      // Privacy
-      privacyTitle: 'Поверителност',
-      privacyDesc: 'Контролирайте поверителността си',
-      profileVisible: 'Публичен Профил',
-      profileVisibleDesc: 'Направете профила си видим за други потребители',
-      showEmail: 'Покажи Имейл',
-      showEmailDesc: 'Показвайте имейла в публичния си профил',
-      showPhone: 'Покажи Телефон',
-      showPhoneDesc: 'Показвайте телефона в публичния си профил',
-      activityVisible: 'Статус на Активност',
-      activityVisibleDesc: 'Покажете кога сте активни в платформата',
-
-      // Preferences
-      preferencesTitle: 'Предпочитания',
-      preferencesDesc: 'Персонализирайте опита си',
-      languageLabel: 'Език',
-      languageDesc: 'Изберете предпочитан език',
-      languages: {
-        en: 'English',
-        bg: 'Български',
-      },
-
-      // Danger Zone
-      dangerTitle: 'Опасна Зона',
-      dangerDesc: 'Необратими действия',
-      deleteAccount: 'Изтриване на Акаунт',
-      deleteAccountDesc: 'Перманентно изтриване на акаунта и всички данни',
-      deleteButton: 'Изтрий Акаунта Ми',
-
-      // Buttons
-      saveChanges: 'Запази Промените',
-      saving: 'Запазване...',
-      cancelChanges: 'Откажи',
-
-      // Messages
-      savedSuccess: 'Настройките са запазени успешно!',
-      deleteConfirm: 'Сигурни ли сте, че искате да изтриете акаунта си? Това действие не може да бъде отменено.',
-    },
-  };
-
-  const t = content[language as keyof typeof content];
+  const [showPasswordForm, setShowPasswordForm] = useState(false);
+  const [passwordData, setPasswordData] = useState<PasswordFormData>({
+    currentPassword: '',
+    newPassword: '',
+    confirmPassword: '',
+  });
+  const [passwordErrors, setPasswordErrors] = useState<PasswordErrors>({});
+  const [isSavingPassword, setIsSavingPassword] = useState(false);
 
   const toggleNotification = (key: keyof NotificationSettings) => {
     setNotifications(prev => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const toggleMarketing = (key: keyof MarketingConsents) => {
+    setMarketing(prev => ({ ...prev, [key]: !prev[key] }));
   };
 
   const togglePrivacy = (key: keyof PrivacySettings) => {
     setPrivacy(prev => ({ ...prev, [key]: !prev[key] }));
   };
 
+  const validatePasswordField = (field: string, value: string): string | undefined => {
+    switch (field) {
+      case 'currentPassword':
+        if (!value) return t('settings.enterCurrentPassword');
+        break;
+      case 'newPassword':
+        if (!value) return t('settings.enterNewPassword');
+        if (value.length < 8) return t('settings.passwordMinLength');
+        break;
+      case 'confirmPassword':
+        if (!value) return t('settings.confirmNewPasswordRequired');
+        if (value !== passwordData.newPassword) return t('settings.passwordsDoNotMatch');
+        break;
+    }
+    return undefined;
+  };
+
+  const handlePasswordFieldChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target;
+    setPasswordData(prev => ({ ...prev, [name]: value }));
+    const error = validatePasswordField(name, value);
+    setPasswordErrors(prev => ({ ...prev, [name]: error }));
+  };
+
+  const handleChangePassword = async () => {
+    const newErrors: PasswordErrors = {};
+    Object.keys(passwordData).forEach(field => {
+      const error = validatePasswordField(field, passwordData[field as keyof PasswordFormData]);
+      if (error) newErrors[field as keyof PasswordErrors] = error;
+    });
+    setPasswordErrors(newErrors);
+    if (Object.keys(newErrors).length > 0) return;
+
+    setIsSavingPassword(true);
+    try {
+      await changePassword(passwordData.currentPassword, passwordData.newPassword);
+      setShowPasswordForm(false);
+      setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
+      setPasswordErrors({});
+      toast.success(t('settings.passwordChangedSuccess'));
+    } catch (error) {
+      console.error('Change password error:', error);
+      toast.error(t('settings.errorSavingSettings'));
+    } finally {
+      setIsSavingPassword(false);
+    }
+  };
+
   const handleSave = async () => {
     setIsSaving(true);
-
     try {
-      // Persist marketing consent to backend (GDPR audit trail)
-      await apiService.post('/auth/consent', {
-        type: 'marketing',
-        granted: notifications.promotions,
-      });
-
-      toast.success(t.savedSuccess);
+      await Promise.all([
+        apiService.post('/auth/consent', { type: 'email_marketing', granted: marketing.emailMarketing }),
+        apiService.post('/auth/consent', { type: 'sms_marketing', granted: marketing.smsMarketing }),
+        apiService.post('/auth/consent', { type: 'push_marketing', granted: marketing.pushMarketing }),
+      ]);
+      toast.success(t('settings.savedSuccess'));
     } catch (error) {
       console.error('Save settings error:', error);
-      toast.error(language === 'bg' ? 'Грешка при запазване на настройките' : 'Error saving settings');
+      toast.error(t('settings.errorSavingSettings'));
     } finally {
       setIsSaving(false);
     }
   };
 
   const handleDeleteAccount = () => {
-    const confirmed = window.confirm(t.deleteConfirm);
+    const confirmed = window.confirm(t('settings.deleteConfirm'));
     if (confirmed) {
-      toast.error(language === 'bg' ? 'Функцията скоро ще бъде налична' : 'Feature coming soon');
+      toast.error(t('settings.featureComingSoon'));
     }
   };
 
@@ -460,8 +488,8 @@ const SettingsPage: React.FC = () => {
     <PageContainer>
       <Container>
         <PageHeader>
-          <Title>{t.title}</Title>
-          <Subtitle>{t.subtitle}</Subtitle>
+          <Title>{t('settings.title')}</Title>
+          <Subtitle>{t('settings.subtitle')}</Subtitle>
         </PageHeader>
 
         <SettingsGrid>
@@ -476,90 +504,61 @@ const SettingsPage: React.FC = () => {
                 <Bell />
               </IconWrapper>
               <div>
-                <CardTitle>{t.notificationsTitle}</CardTitle>
-                <CardDescription>{t.notificationsDesc}</CardDescription>
+                <CardTitle>{t('settings.notifications')}</CardTitle>
+                <CardDescription>{t('settings.notificationsDescription')}</CardDescription>
               </div>
             </CardHeader>
 
             <SettingRow>
               <SettingInfo>
-                <SettingLabel>{t.emailNotifications}</SettingLabel>
-                <SettingDesc>{t.emailNotificationsDesc}</SettingDesc>
+                <SettingLabel>{t('settings.emailNotifications')}</SettingLabel>
+                <SettingDesc>{t('settings.emailNotificationsDesc')}</SettingDesc>
               </SettingInfo>
-              <Toggle
-                $active={notifications.emailNotifications}
-                onClick={() => toggleNotification('emailNotifications')}
-              />
+              <Toggle $active={notifications.emailNotifications} onClick={() => toggleNotification('emailNotifications')} />
             </SettingRow>
 
             <SettingRow>
               <SettingInfo>
-                <SettingLabel>{t.smsNotifications}</SettingLabel>
-                <SettingDesc>{t.smsNotificationsDesc}</SettingDesc>
+                <SettingLabel>{t('settings.smsNotifications')}</SettingLabel>
+                <SettingDesc>{t('settings.smsNotificationsDesc')}</SettingDesc>
               </SettingInfo>
-              <Toggle
-                $active={notifications.smsNotifications}
-                onClick={() => toggleNotification('smsNotifications')}
-              />
+              <Toggle $active={notifications.smsNotifications} onClick={() => toggleNotification('smsNotifications')} />
             </SettingRow>
 
             <SettingRow>
               <SettingInfo>
-                <SettingLabel>{t.pushNotifications}</SettingLabel>
-                <SettingDesc>{t.pushNotificationsDesc}</SettingDesc>
+                <SettingLabel>{t('settings.pushNotifications')}</SettingLabel>
+                <SettingDesc>{t('settings.pushNotificationsDesc')}</SettingDesc>
               </SettingInfo>
-              <Toggle
-                $active={notifications.pushNotifications}
-                onClick={() => toggleNotification('pushNotifications')}
-              />
+              <Toggle $active={notifications.pushNotifications} onClick={() => toggleNotification('pushNotifications')} />
             </SettingRow>
 
             <SettingRow>
               <SettingInfo>
-                <SettingLabel>{t.newOffers}</SettingLabel>
-                <SettingDesc>{t.newOffersDesc}</SettingDesc>
+                <SettingLabel>{t('settings.newOffers')}</SettingLabel>
+                <SettingDesc>{t('settings.newOffersDesc')}</SettingDesc>
               </SettingInfo>
-              <Toggle
-                $active={notifications.newOffers}
-                onClick={() => toggleNotification('newOffers')}
-              />
+              <Toggle $active={notifications.newOffers} onClick={() => toggleNotification('newOffers')} />
             </SettingRow>
 
             <SettingRow>
               <SettingInfo>
-                <SettingLabel>{t.promotions}</SettingLabel>
-                <SettingDesc>{t.promotionsDesc}</SettingDesc>
+                <SettingLabel>{t('settings.weeklyDigest')}</SettingLabel>
+                <SettingDesc>{t('settings.weeklyDigestDesc')}</SettingDesc>
               </SettingInfo>
-              <Toggle
-                $active={notifications.promotions}
-                onClick={() => toggleNotification('promotions')}
-              />
+              <Toggle $active={notifications.weeklyDigest} onClick={() => toggleNotification('weeklyDigest')} />
             </SettingRow>
 
             <SettingRow>
               <SettingInfo>
-                <SettingLabel>{t.weeklyDigest}</SettingLabel>
-                <SettingDesc>{t.weeklyDigestDesc}</SettingDesc>
+                <SettingLabel>{t('settings.accountActivity')}</SettingLabel>
+                <SettingDesc>{t('settings.accountActivityDesc')}</SettingDesc>
               </SettingInfo>
-              <Toggle
-                $active={notifications.weeklyDigest}
-                onClick={() => toggleNotification('weeklyDigest')}
-              />
-            </SettingRow>
-
-            <SettingRow>
-              <SettingInfo>
-                <SettingLabel>{t.accountActivity}</SettingLabel>
-                <SettingDesc>{t.accountActivityDesc}</SettingDesc>
-              </SettingInfo>
-              <Toggle
-                $active={notifications.accountActivity}
-                onClick={() => toggleNotification('accountActivity')}
-              />
+              <Toggle $active={notifications.accountActivity} onClick={() => toggleNotification('accountActivity')} />
             </SettingRow>
           </SettingCard>
 
-          {/* Push Notifications */}
+          {/* Browser Push Notifications */}
           <SettingCard
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -568,68 +567,99 @@ const SettingsPage: React.FC = () => {
             <NotificationPreferences />
           </SettingCard>
 
-          {/* Privacy */}
+          {/* Marketing Consents (GDPR) */}
           <SettingCard
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.2 }}
           >
             <CardHeader>
-              <IconWrapper>
-                <Lock />
+              <IconWrapper style={{ background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)' }}>
+                <Megaphone />
               </IconWrapper>
               <div>
-                <CardTitle>{t.privacyTitle}</CardTitle>
-                <CardDescription>{t.privacyDesc}</CardDescription>
+                <CardTitle>{t('settings.marketingTitle')}</CardTitle>
+                <CardDescription>{t('settings.marketingDescription')}</CardDescription>
               </div>
             </CardHeader>
 
             <SettingRow>
               <SettingInfo>
-                <SettingLabel>{t.profileVisible}</SettingLabel>
-                <SettingDesc>{t.profileVisibleDesc}</SettingDesc>
+                <SettingLabel>{t('settings.emailMarketing')}</SettingLabel>
+                <SettingDesc>{t('settings.emailMarketingDesc')}</SettingDesc>
               </SettingInfo>
-              <Toggle
-                $active={privacy.profileVisible}
-                onClick={() => togglePrivacy('profileVisible')}
-              />
+              <Toggle $active={marketing.emailMarketing} onClick={() => toggleMarketing('emailMarketing')} />
             </SettingRow>
 
             <SettingRow>
               <SettingInfo>
-                <SettingLabel>{t.showEmail}</SettingLabel>
-                <SettingDesc>{t.showEmailDesc}</SettingDesc>
+                <SettingLabel>{t('settings.smsMarketing')}</SettingLabel>
+                <SettingDesc>{t('settings.smsMarketingDesc')}</SettingDesc>
               </SettingInfo>
-              <Toggle
-                $active={privacy.showEmail}
-                onClick={() => togglePrivacy('showEmail')}
-              />
+              <Toggle $active={marketing.smsMarketing} onClick={() => toggleMarketing('smsMarketing')} />
             </SettingRow>
 
             <SettingRow>
               <SettingInfo>
-                <SettingLabel>{t.showPhone}</SettingLabel>
-                <SettingDesc>{t.showPhoneDesc}</SettingDesc>
+                <SettingLabel>{t('settings.pushMarketing')}</SettingLabel>
+                <SettingDesc>{t('settings.pushMarketingDesc')}</SettingDesc>
               </SettingInfo>
-              <Toggle
-                $active={privacy.showPhone}
-                onClick={() => togglePrivacy('showPhone')}
-              />
+              <Toggle $active={marketing.pushMarketing} onClick={() => toggleMarketing('pushMarketing')} />
+            </SettingRow>
+
+            <ConsentNote>{t('settings.marketingConsentNote')}</ConsentNote>
+          </SettingCard>
+
+          {/* Privacy */}
+          <SettingCard
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.25 }}
+          >
+            <CardHeader>
+              <IconWrapper style={{ background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)' }}>
+                <Eye />
+              </IconWrapper>
+              <div>
+                <CardTitle>{t('settings.privacyTitle')}</CardTitle>
+                <CardDescription>{t('settings.privacyDesc')}</CardDescription>
+              </div>
+            </CardHeader>
+
+            <SettingRow>
+              <SettingInfo>
+                <SettingLabel>{t('settings.profileVisible')}</SettingLabel>
+                <SettingDesc>{t('settings.profileVisibleDesc')}</SettingDesc>
+              </SettingInfo>
+              <Toggle $active={privacy.profileVisible} onClick={() => togglePrivacy('profileVisible')} />
             </SettingRow>
 
             <SettingRow>
               <SettingInfo>
-                <SettingLabel>{t.activityVisible}</SettingLabel>
-                <SettingDesc>{t.activityVisibleDesc}</SettingDesc>
+                <SettingLabel>{t('settings.showEmail')}</SettingLabel>
+                <SettingDesc>{t('settings.showEmailDesc')}</SettingDesc>
               </SettingInfo>
-              <Toggle
-                $active={privacy.activityVisible}
-                onClick={() => togglePrivacy('activityVisible')}
-              />
+              <Toggle $active={privacy.showEmail} onClick={() => togglePrivacy('showEmail')} />
+            </SettingRow>
+
+            <SettingRow>
+              <SettingInfo>
+                <SettingLabel>{t('settings.showPhone')}</SettingLabel>
+                <SettingDesc>{t('settings.showPhoneDesc')}</SettingDesc>
+              </SettingInfo>
+              <Toggle $active={privacy.showPhone} onClick={() => togglePrivacy('showPhone')} />
+            </SettingRow>
+
+            <SettingRow>
+              <SettingInfo>
+                <SettingLabel>{t('settings.activityVisible')}</SettingLabel>
+                <SettingDesc>{t('settings.activityVisibleDesc')}</SettingDesc>
+              </SettingInfo>
+              <Toggle $active={privacy.activityVisible} onClick={() => togglePrivacy('activityVisible')} />
             </SettingRow>
           </SettingCard>
 
-          {/* Preferences */}
+          {/* Language */}
           <SettingCard
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -640,24 +670,123 @@ const SettingsPage: React.FC = () => {
                 <Globe />
               </IconWrapper>
               <div>
-                <CardTitle>{t.preferencesTitle}</CardTitle>
-                <CardDescription>{t.preferencesDesc}</CardDescription>
+                <CardTitle>{t('settings.language')}</CardTitle>
+                <CardDescription>{t('settings.languageDescription')}</CardDescription>
               </div>
             </CardHeader>
 
             <SettingRow>
               <SettingInfo>
-                <SettingLabel>{t.languageLabel}</SettingLabel>
-                <SettingDesc>{t.languageDesc}</SettingDesc>
+                <SettingLabel>{t('settings.language')}</SettingLabel>
+                <SettingDesc>{t('settings.languageDescription')}</SettingDesc>
               </SettingInfo>
               <Select
                 value={selectedLanguage}
                 onChange={(e) => setSelectedLanguage(e.target.value as 'en' | 'bg')}
               >
-                <option value="en">{t.languages.en}</option>
-                <option value="bg">{t.languages.bg}</option>
+                <option value="en">English</option>
+                <option value="bg">Български</option>
               </Select>
             </SettingRow>
+          </SettingCard>
+
+          {/* Security / Password Change */}
+          <SettingCard
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.35 }}
+          >
+            <CardHeader>
+              <IconWrapper style={{ background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)' }}>
+                <Lock />
+              </IconWrapper>
+              <div>
+                <CardTitle>{t('settings.security')}</CardTitle>
+                <CardDescription>{t('settings.securityDescription')}</CardDescription>
+              </div>
+            </CardHeader>
+
+            {!showPasswordForm ? (
+              <SettingRow>
+                <SettingInfo>
+                  <SettingLabel>{t('settings.changePassword')}</SettingLabel>
+                  <SettingDesc>{t('settings.securityDescription')}</SettingDesc>
+                </SettingInfo>
+                <ShowPasswordBtn onClick={() => setShowPasswordForm(true)}>
+                  {t('settings.changePassword')}
+                </ShowPasswordBtn>
+              </SettingRow>
+            ) : (
+              <PasswordForm>
+                <PasswordField>
+                  <PasswordLabel>{t('settings.currentPassword')}</PasswordLabel>
+                  <PasswordInput
+                    type="password"
+                    name="currentPassword"
+                    placeholder={t('settings.enterCurrentPassword')}
+                    value={passwordData.currentPassword}
+                    onChange={handlePasswordFieldChange}
+                    className={passwordErrors.currentPassword ? 'error' : ''}
+                  />
+                  {passwordErrors.currentPassword && (
+                    <FieldError>{passwordErrors.currentPassword}</FieldError>
+                  )}
+                </PasswordField>
+
+                <PasswordField>
+                  <PasswordLabel>{t('settings.newPassword')}</PasswordLabel>
+                  <PasswordInput
+                    type="password"
+                    name="newPassword"
+                    placeholder={t('settings.enterNewPassword')}
+                    value={passwordData.newPassword}
+                    onChange={handlePasswordFieldChange}
+                    className={passwordErrors.newPassword ? 'error' : ''}
+                  />
+                  {passwordErrors.newPassword && (
+                    <FieldError>{passwordErrors.newPassword}</FieldError>
+                  )}
+                </PasswordField>
+
+                <PasswordField>
+                  <PasswordLabel>{t('settings.confirmNewPassword')}</PasswordLabel>
+                  <PasswordInput
+                    type="password"
+                    name="confirmPassword"
+                    placeholder={t('settings.confirmNewPassword')}
+                    value={passwordData.confirmPassword}
+                    onChange={handlePasswordFieldChange}
+                    className={passwordErrors.confirmPassword ? 'error' : ''}
+                  />
+                  {passwordErrors.confirmPassword && (
+                    <FieldError>{passwordErrors.confirmPassword}</FieldError>
+                  )}
+                </PasswordField>
+
+                <PasswordActions>
+                  <Button
+                    variant="primary"
+                    size="medium"
+                    onClick={handleChangePassword}
+                    isLoading={isSavingPassword}
+                    disabled={isSavingPassword}
+                  >
+                    {t('settings.savePasswordChanges')}
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="medium"
+                    onClick={() => {
+                      setShowPasswordForm(false);
+                      setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
+                      setPasswordErrors({});
+                    }}
+                  >
+                    {t('settings.cancelChanges')}
+                  </Button>
+                </PasswordActions>
+              </PasswordForm>
+            )}
           </SettingCard>
 
           {/* Danger Zone */}
@@ -671,22 +800,18 @@ const SettingsPage: React.FC = () => {
                 <Trash2 />
               </IconWrapper>
               <div>
-                <CardTitle style={{ color: '#dc2626' }}>{t.dangerTitle}</CardTitle>
-                <CardDescription>{t.dangerDesc}</CardDescription>
+                <CardTitle style={{ color: '#dc2626' }}>{t('settings.dangerZone')}</CardTitle>
+                <CardDescription>{t('settings.dangerZoneDesc')}</CardDescription>
               </div>
             </CardHeader>
 
             <SettingRow>
               <SettingInfo>
-                <SettingLabel style={{ color: '#dc2626' }}>{t.deleteAccount}</SettingLabel>
-                <SettingDesc>{t.deleteAccountDesc}</SettingDesc>
+                <SettingLabel style={{ color: '#dc2626' }}>{t('settings.deleteAccount')}</SettingLabel>
+                <SettingDesc>{t('settings.deleteAccountDescription')}</SettingDesc>
               </SettingInfo>
-              <DangerButton
-                variant="primary"
-                size="medium"
-                onClick={handleDeleteAccount}
-              >
-                {t.deleteButton}
+              <DangerButton variant="primary" size="medium" onClick={handleDeleteAccount}>
+                {t('settings.deleteButton')}
               </DangerButton>
             </SettingRow>
           </DangerZone>
@@ -700,14 +825,14 @@ const SettingsPage: React.FC = () => {
               isLoading={isSaving}
               disabled={isSaving}
             >
-              {isSaving ? t.saving : t.saveChanges}
+              {isSaving ? t('settings.saving') : t('settings.saveChanges')}
             </Button>
             <Button
               variant="secondary"
               size="large"
               onClick={() => window.location.reload()}
             >
-              {t.cancelChanges}
+              {t('settings.cancelChanges')}
             </Button>
           </ButtonGroup>
         </SettingsGrid>
