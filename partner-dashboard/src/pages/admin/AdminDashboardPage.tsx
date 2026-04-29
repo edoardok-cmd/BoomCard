@@ -17,22 +17,21 @@ import {
   HandRaisedIcon,
   ChartBarIcon,
   CurrencyDollarIcon,
-  ExclamationTriangleIcon,
   CheckCircleIcon,
   ArrowUpRightIcon,
   BellAlertIcon,
+  UsersIcon,
 } from '@heroicons/react/24/outline';
 import { useAuth } from '../../contexts/AuthContext';
 import { useLanguage } from '../../contexts/LanguageContext';
-import { useOffers } from '../../hooks/useOffers';
-import { adminCashbackService, CashbackDashboardStats } from '../../services/adminCashback.service';
-import { partnersService } from '../../services/partners.service';
+import { adminCashbackService } from '../../services/adminCashback.service';
+import { adminDashboardService, AdminDashboardStats } from '../../services/adminDashboard.service';
 import { partnerTypesService } from '../../services/partnerTypes.service';
 import { venuesService } from '../../services/venues.service';
 import { receiptsApiService } from '../../services/receipts-api.service';
 import { fraudAdminService } from '../../services/fraudAdmin.service';
 import { apiService } from '../../services/api.service';
-import { adminAlertsService, AdminAlert } from '../../services/adminAlerts.service';
+import { adminAlertsService, AdminAlertsResult, AlertTier } from '../../services/adminAlerts.service';
 
 /* ─── Palette ─────────────────────────────────────────────────────────────── */
 const palette = {
@@ -312,17 +311,6 @@ const AlertTitle = styled.p`
   }
 `;
 
-const AlertDesc = styled.p`
-  font-size: 0.8125rem;
-  color: ${palette.textMuted};
-  margin: 0;
-  line-height: 1.45;
-
-  [data-theme='dark'] & {
-    color: #b8b0a3;
-  }
-`;
-
 const AlertCount = styled.span<{ $severity: 'danger' | 'warning' | 'info' }>`
   display: inline-flex;
   align-items: center;
@@ -486,17 +474,42 @@ const StatValue = styled.h3<{ $danger?: boolean }>`
   }
 `;
 
-const StatChange = styled.p<{ $positive?: boolean; $warning?: boolean }>`
-  font-size: 0.8125rem;
-  color: ${p =>
-    p.$positive ? palette.success : p.$warning ? palette.warning : palette.textSubtle};
-  font-weight: 500;
-  margin: 0;
-  line-height: 1.4;
+const StatSubs = styled.div`
+  display: flex;
+  gap: 0.875rem;
+  flex-wrap: wrap;
+  margin-top: 0.375rem;
+`;
+
+const StatSub = styled.span`
+  font-size: 0.75rem;
+  color: ${palette.textSubtle};
+  font-feature-settings: 'tnum';
 
   [data-theme='dark'] & {
-    color: ${p =>
-      p.$positive ? '#79b090' : p.$warning ? '#d4a165' : '#9a948a'};
+    color: #9a948a;
+  }
+
+  strong {
+    color: ${palette.textMuted};
+    font-weight: 600;
+
+    [data-theme='dark'] & {
+      color: #b8b0a3;
+    }
+  }
+`;
+
+const TierLabel = styled.h3`
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: ${palette.textSubtle};
+  margin: 0 0 0.75rem;
+
+  [data-theme='dark'] & {
+    color: #9a948a;
   }
 `;
 
@@ -757,7 +770,6 @@ type ActionDef = {
 };
 
 interface AdminMetrics {
-  partnersTotal?: number;
   partnerTypesCount?: number;
   pendingMenus?: number;
   pendingReceipts?: number;
@@ -767,57 +779,31 @@ interface AdminMetrics {
 }
 
 /* ─── Alert helpers ────────────────────────────────────────────────────────── */
-interface AlertMeta {
-  title: string;
-  description: string;
-}
-
-function getAlertMeta(type: AdminAlert['type'], bg: boolean): AlertMeta {
-  switch (type) {
-    case 'PARTNER_REQUESTS':
-      return {
-        title: bg ? 'Заявки за партньорство' : 'Partner Requests',
-        description: bg ? 'Нови партньори, чакащи одобрение' : 'New partners waiting for approval',
-      };
-    case 'RECEIPT_REVIEW':
-      return {
-        title: bg ? 'Преглед на бележки' : 'Receipt Review',
-        description: bg
-          ? 'Бележки, маркирани за ръчен преглед'
-          : 'Receipts flagged for manual review',
-      };
-    case 'CASHBACK_OVERDUE':
-      return {
-        title: bg ? 'Просрочен кешбек' : 'Overdue Cashback',
-        description: bg
-          ? 'Партньори с просрочени кешбек плащания'
-          : 'Partners with overdue cashback payments',
-      };
-    case 'MENU_APPROVALS':
-      return {
-        title: bg ? 'Одобрения на менюта' : 'Menu Approvals',
-        description: bg
-          ? 'URL адреси за менюта, изчакващи преглед'
-          : 'Partner menu URLs pending review',
-      };
-  }
+function tierToSeverity(tier: AlertTier): 'danger' | 'warning' | 'info' {
+  if (tier === 'critical') return 'danger';
+  if (tier === 'operational') return 'warning';
+  return 'info';
 }
 
 /* ─── Component ────────────────────────────────────────────────────────────── */
 const AdminDashboardPage: React.FC = () => {
   const { user } = useAuth();
   const { language } = useLanguage();
-  const { data: offersData } = useOffers({ limit: 100 });
-  const [cashbackStats, setCashbackStats] = useState<CashbackDashboardStats | null>(null);
+  const [dashStats, setDashStats] = useState<AdminDashboardStats | null>(null);
   const [metrics, setMetrics] = useState<AdminMetrics>({});
-  const [alerts, setAlerts] = useState<AdminAlert[] | null>(null);
+  const [alerts, setAlerts] = useState<AdminAlertsResult | null>(null);
 
   useEffect(() => {
-    adminCashbackService.getStats().then(setCashbackStats).catch(() => {});
+    adminDashboardService.getStats().then(setDashStats).catch(() => {});
   }, []);
 
   useEffect(() => {
-    adminAlertsService.getAlerts().then(r => setAlerts(r.alerts)).catch(() => setAlerts([]));
+    adminAlertsService
+      .getAlerts()
+      .then(setAlerts)
+      .catch(() =>
+        setAlerts({ critical: [], operational: [], informational: [], totalCount: 0, generatedAt: '' }),
+      );
   }, []);
 
   useEffect(() => {
@@ -827,14 +813,9 @@ const AdminDashboardPage: React.FC = () => {
       setMetrics(prev => ({ ...prev, ...next }));
     };
 
-    partnersService
-      .getPartners({ limit: 1 })
-      .then(res => patch({ partnersTotal: res.total ?? res.data?.length ?? 0 }))
-      .catch(() => {});
-
     partnerTypesService
       .getPartnerTypes()
-      .then(list => patch({ partnerTypesCount: list.length }))
+      .then((list: unknown[]) => patch({ partnerTypesCount: list.length }))
       .catch(() => {});
 
     venuesService
@@ -872,13 +853,6 @@ const AdminDashboardPage: React.FC = () => {
     };
   }, []);
 
-  const totalOffers = offersData?.total || 0;
-  const featuredOffers = offersData?.data?.filter(o => o.isFeatured)?.length || 0;
-  const activeOffers = offersData?.data?.filter(o => o.status === 'ACTIVE')?.length || 0;
-  const featuredRate = totalOffers > 0 ? Math.round((featuredOffers / totalOffers) * 100) : 0;
-  const pendingCashback = cashbackStats ? cashbackStats.pendingTotal.toFixed(2) : '—';
-  const overdueCount = cashbackStats ? cashbackStats.overdueCount : null;
-
   const bg = language === 'bg';
 
   const today = new Date().toLocaleDateString(bg ? 'bg-BG' : 'en-US', {
@@ -891,8 +865,6 @@ const AdminDashboardPage: React.FC = () => {
   const lblTotal = bg ? 'общо' : 'total';
   const lblTypes = bg ? 'типа' : 'types';
   const lblPending = bg ? 'чакат' : 'pending';
-  const lblFeatured = bg ? 'топ' : 'featured';
-  const lblOverdue = bg ? 'просрочени' : 'overdue';
   const lblSteps = bg ? 'стъпки' : 'steps';
   const lblMerchants = bg ? 'търговци' : 'merchants';
   const lblFlagged = bg ? 'маркирани' : 'flagged';
@@ -906,10 +878,7 @@ const AdminDashboardPage: React.FC = () => {
         : 'Manage partner accounts and approvals',
       icon: BuildingStorefrontIcon,
       accent: true,
-      metric:
-        metrics.partnersTotal !== undefined
-          ? { value: metrics.partnersTotal, label: lblTotal }
-          : undefined,
+      metric: dashStats ? { value: dashStats.partners.active, label: lblTotal } : undefined,
     },
     {
       to: '/admin/partners/receipt-profiles',
@@ -950,9 +919,6 @@ const AdminDashboardPage: React.FC = () => {
         : 'Manage featured Top Discounts — images and copy',
       icon: StarIcon,
       accent: true,
-      metric: offersData
-        ? { value: featuredOffers, label: lblFeatured, tone: 'neutral' }
-        : undefined,
     },
     {
       to: '/admin/menu-approvals',
@@ -997,13 +963,6 @@ const AdminDashboardPage: React.FC = () => {
         ? 'Месечни кешбек задължения на партньорите'
         : 'Track monthly cashback owed by partners',
       icon: BanknotesIcon,
-      metric: cashbackStats
-        ? {
-            value: cashbackStats.overdueCount,
-            label: lblOverdue,
-            tone: cashbackStats.overdueCount > 0 ? 'danger' : 'neutral',
-          }
-        : undefined,
     },
     {
       to: '/admin/settings/percentages',
@@ -1142,7 +1101,7 @@ const AdminDashboardPage: React.FC = () => {
             </AlertSectionLink>
           </AlertSectionHead>
 
-          {alerts === null ? null : alerts.length === 0 ? (
+          {alerts === null ? null : (alerts.totalCount ?? 0) === 0 ? (
             <AllClearBanner>
               <CheckCircleIcon />
               <AllClearText>
@@ -1152,34 +1111,96 @@ const AdminDashboardPage: React.FC = () => {
               </AllClearText>
             </AllClearBanner>
           ) : (
-            <AlertGrid>
-              {alerts.map((alert, idx) => {
-                const meta = getAlertMeta(alert.type, bg);
-                return (
-                  <AlertCard
-                    key={alert.type}
-                    to={alert.link}
-                    $severity={alert.severity}
-                    initial={{ opacity: 0, y: 4 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.05 * idx, duration: 0.22 }}
-                  >
-                    <AlertIconBox $severity={alert.severity}>
-                      <BellAlertIcon />
-                    </AlertIconBox>
-                    <AlertBody>
-                      <AlertTitle>{meta.title}</AlertTitle>
-                      <AlertDesc>{meta.description}</AlertDesc>
-                    </AlertBody>
-                    <AlertCount $severity={alert.severity}>{alert.count}</AlertCount>
-                  </AlertCard>
-                );
-              })}
-            </AlertGrid>
+            <>
+              {alerts.critical.length > 0 && (
+                <>
+                  <TierLabel>{bg ? 'Критични' : 'Critical'}</TierLabel>
+                  <AlertGrid style={{ marginBottom: '1.25rem' }}>
+                    {alerts.critical.map((alert, idx) => {
+                      const sev = tierToSeverity(alert.tier);
+                      return (
+                        <AlertCard
+                          key={alert.id}
+                          to={alert.link}
+                          $severity={sev}
+                          initial={{ opacity: 0, y: 4 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: 0.05 * idx, duration: 0.22 }}
+                        >
+                          <AlertIconBox $severity={sev}>
+                            <BellAlertIcon />
+                          </AlertIconBox>
+                          <AlertBody>
+                            <AlertTitle>{alert.title}</AlertTitle>
+                          </AlertBody>
+                          <AlertCount $severity={sev}>{alert.count}</AlertCount>
+                        </AlertCard>
+                      );
+                    })}
+                  </AlertGrid>
+                </>
+              )}
+              {alerts.operational.length > 0 && (
+                <>
+                  <TierLabel>{bg ? 'Оперативни' : 'Operational'}</TierLabel>
+                  <AlertGrid style={{ marginBottom: '1.25rem' }}>
+                    {alerts.operational.map((alert, idx) => {
+                      const sev = tierToSeverity(alert.tier);
+                      return (
+                        <AlertCard
+                          key={alert.id}
+                          to={alert.link}
+                          $severity={sev}
+                          initial={{ opacity: 0, y: 4 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: 0.05 * idx, duration: 0.22 }}
+                        >
+                          <AlertIconBox $severity={sev}>
+                            <BellAlertIcon />
+                          </AlertIconBox>
+                          <AlertBody>
+                            <AlertTitle>{alert.title}</AlertTitle>
+                          </AlertBody>
+                          <AlertCount $severity={sev}>{alert.count}</AlertCount>
+                        </AlertCard>
+                      );
+                    })}
+                  </AlertGrid>
+                </>
+              )}
+              {alerts.informational.length > 0 && (
+                <>
+                  <TierLabel>{bg ? 'Информационни' : 'Informational'}</TierLabel>
+                  <AlertGrid>
+                    {alerts.informational.map((alert, idx) => {
+                      const sev = tierToSeverity(alert.tier);
+                      return (
+                        <AlertCard
+                          key={alert.id}
+                          to={alert.link}
+                          $severity={sev}
+                          initial={{ opacity: 0, y: 4 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: 0.05 * idx, duration: 0.22 }}
+                        >
+                          <AlertIconBox $severity={sev}>
+                            <BellAlertIcon />
+                          </AlertIconBox>
+                          <AlertBody>
+                            <AlertTitle>{alert.title}</AlertTitle>
+                          </AlertBody>
+                          <AlertCount $severity={sev}>{alert.count}</AlertCount>
+                        </AlertCard>
+                      );
+                    })}
+                  </AlertGrid>
+                </>
+              )}
+            </>
           )}
         </AlertSection>
 
-        {/* KPI Stats */}
+        {/* KPI Stats — §3.1 */}
         <StatsGrid>
           <StatCard
             initial={{ opacity: 0, y: 8 }}
@@ -1187,14 +1208,23 @@ const AdminDashboardPage: React.FC = () => {
             transition={{ delay: 0.05 }}
           >
             <StatTop>
-              <StatLabel>{bg ? 'Общо Оферти' : 'Total Offers'}</StatLabel>
-              <StatIconBox>
-                <ChartBarIcon />
+              <StatLabel>{bg ? 'Абонати' : 'Subscribers'}</StatLabel>
+              <StatIconBox $tone="accent">
+                <UsersIcon />
               </StatIconBox>
             </StatTop>
             <div>
-              <StatValue>{totalOffers}</StatValue>
-              <StatChange>{bg ? 'Всички оферти' : 'All offers'}</StatChange>
+              <StatValue>{dashStats ? dashStats.subscribers.active : '—'}</StatValue>
+              <StatSubs>
+                <StatSub>
+                  <strong>{dashStats ? dashStats.subscribers.newLast30Days : '—'}</strong>{' '}
+                  {bg ? 'нови' : 'new'}
+                </StatSub>
+                <StatSub>
+                  <strong>{dashStats ? dashStats.subscribers.expired : '—'}</strong>{' '}
+                  {bg ? 'изтекли' : 'expired'}
+                </StatSub>
+              </StatSubs>
             </div>
           </StatCard>
 
@@ -1204,16 +1234,27 @@ const AdminDashboardPage: React.FC = () => {
             transition={{ delay: 0.1 }}
           >
             <StatTop>
-              <StatLabel>{bg ? 'Топ Оферти' : 'Featured'}</StatLabel>
-              <StatIconBox $tone="accent">
-                <StarIcon />
+              <StatLabel>{bg ? 'Транзакции днес' : 'Transactions Today'}</StatLabel>
+              <StatIconBox>
+                <ChartBarIcon />
               </StatIconBox>
             </StatTop>
             <div>
-              <StatValue>{featuredOffers}</StatValue>
-              <StatChange>
-                {bg ? `${featuredRate}% от всички` : `${featuredRate}% of all offers`}
-              </StatChange>
+              <StatValue>{dashStats ? dashStats.transactions.todayCount : '—'}</StatValue>
+              <StatSubs>
+                <StatSub>
+                  <strong>
+                    {dashStats ? dashStats.transactions.todayVolume.toFixed(2) : '—'}
+                  </strong>{' '}
+                  {bg ? 'лв. оборот' : 'BGN vol.'}
+                </StatSub>
+                <StatSub>
+                  <strong>
+                    {dashStats ? dashStats.transactions.todayAvg.toFixed(2) : '—'}
+                  </strong>{' '}
+                  {bg ? 'средно' : 'avg'}
+                </StatSub>
+              </StatSubs>
             </div>
           </StatCard>
 
@@ -1223,16 +1264,27 @@ const AdminDashboardPage: React.FC = () => {
             transition={{ delay: 0.15 }}
           >
             <StatTop>
-              <StatLabel>{bg ? 'Активни Оферти' : 'Active Offers'}</StatLabel>
-              <StatIconBox $tone="success">
-                <CheckCircleIcon />
+              <StatLabel>{bg ? 'Очакван Кешбек' : 'Pending Cashback'}</StatLabel>
+              <StatIconBox>
+                <BanknotesIcon />
               </StatIconBox>
             </StatTop>
             <div>
-              <StatValue>{activeOffers}</StatValue>
-              <StatChange $positive>
-                {bg ? 'Видими за клиенти' : 'Visible to customers'}
-              </StatChange>
+              <StatValue>
+                {dashStats ? `${dashStats.cashback.pending.toFixed(2)} ${bg ? 'лв.' : 'BGN'}` : '—'}
+              </StatValue>
+              <StatSubs>
+                <StatSub>
+                  <strong>
+                    {dashStats ? dashStats.cashback.totalCredited.toFixed(2) : '—'}
+                  </strong>{' '}
+                  {bg ? 'начислен' : 'credited'}
+                </StatSub>
+                <StatSub>
+                  <strong>{dashStats ? dashStats.cashback.expiringSoon : '—'}</strong>{' '}
+                  {bg ? 'изтичат' : 'expiring'}
+                </StatSub>
+              </StatSubs>
             </div>
           </StatCard>
 
@@ -1242,16 +1294,25 @@ const AdminDashboardPage: React.FC = () => {
             transition={{ delay: 0.2 }}
           >
             <StatTop>
-              <StatLabel>{bg ? 'Очакван Кешбек' : 'Pending Cashback'}</StatLabel>
-              <StatIconBox>
-                <BanknotesIcon />
+              <StatLabel>{bg ? 'Партньори' : 'Partners'}</StatLabel>
+              <StatIconBox $tone="success">
+                <BuildingStorefrontIcon />
               </StatIconBox>
             </StatTop>
             <div>
-              <StatValue>
-                {pendingCashback === '—' ? '—' : `${pendingCashback} ${bg ? 'лв.' : 'BGN'}`}
+              <StatValue $danger={!!(dashStats && dashStats.partners.requests > 0)}>
+                {dashStats ? dashStats.partners.active : '—'}
               </StatValue>
-              <StatChange>{bg ? 'Неплатен от партньори' : 'Unpaid by partners'}</StatChange>
+              <StatSubs>
+                <StatSub>
+                  <strong>{dashStats ? dashStats.partners.requests : '—'}</strong>{' '}
+                  {bg ? 'заявки' : 'requests'}
+                </StatSub>
+                <StatSub>
+                  <strong>{dashStats ? dashStats.partners.locations : '—'}</strong>{' '}
+                  {bg ? 'обекти' : 'locations'}
+                </StatSub>
+              </StatSubs>
             </div>
           </StatCard>
 
@@ -1261,24 +1322,31 @@ const AdminDashboardPage: React.FC = () => {
             transition={{ delay: 0.25 }}
           >
             <StatTop>
-              <StatLabel>{bg ? 'Просрочени' : 'Overdue Partners'}</StatLabel>
-              <StatIconBox $tone={overdueCount && overdueCount > 0 ? 'danger' : 'neutral'}>
-                <ExclamationTriangleIcon />
+              <StatLabel>{bg ? 'Финанси' : 'Finance'}</StatLabel>
+              <StatIconBox $tone={dashStats && dashStats.finance.payoutsDue > 0 ? 'warning' : 'neutral'}>
+                <CurrencyDollarIcon />
               </StatIconBox>
             </StatTop>
             <div>
-              <StatValue $danger={!!overdueCount && overdueCount > 0}>
-                {overdueCount !== null ? overdueCount : '—'}
+              <StatValue>
+                {dashStats
+                  ? `${dashStats.finance.payoutsDue.toFixed(2)} ${bg ? 'лв.' : 'BGN'}`
+                  : '—'}
               </StatValue>
-              <StatChange $warning={!!overdueCount && overdueCount > 0}>
-                {overdueCount && overdueCount > 0
-                  ? bg
-                    ? 'Нуждаят се от внимание'
-                    : 'Require attention'
-                  : bg
-                    ? 'Всички са актуални'
-                    : 'All current'}
-              </StatChange>
+              <StatSubs>
+                <StatSub>
+                  <strong>
+                    {dashStats ? dashStats.finance.partnerReceivables.toFixed(2) : '—'}
+                  </strong>{' '}
+                  {bg ? 'вземания' : 'receivables'}
+                </StatSub>
+                <StatSub>
+                  <strong>
+                    {dashStats ? dashStats.finance.margin.toFixed(2) : '—'}
+                  </strong>{' '}
+                  {bg ? 'марджин' : 'margin'}
+                </StatSub>
+              </StatSubs>
             </div>
           </StatCard>
         </StatsGrid>

@@ -9,7 +9,13 @@ import {
   ArrowPathIcon,
 } from '@heroicons/react/24/outline';
 import { useLanguage } from '../../contexts/LanguageContext';
-import { adminAlertsService, AdminAlert, AdminAlertsResult } from '../../services/adminAlerts.service';
+import {
+  adminAlertsService,
+  AdminAlert,
+  AdminAlertsResult,
+  AlertSeverity,
+  AlertTier,
+} from '../../services/adminAlerts.service';
 
 /* ─── Palette (matches admin dashboard) ───────────────────────────────────── */
 const palette = {
@@ -79,13 +85,32 @@ const Timestamp = styled.span`
   margin-right: 0.75rem;
 `;
 
+const TierSection = styled.div`
+  & + & {
+    margin-top: 2rem;
+  }
+`;
+
+const TierHeading = styled.h3`
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: ${palette.textSubtle};
+  margin: 0 0 0.75rem;
+
+  [data-theme='dark'] & {
+    color: #9a948a;
+  }
+`;
+
 const AlertList = styled.div`
   display: flex;
   flex-direction: column;
   gap: 0.625rem;
 `;
 
-const AlertRow = styled(motion(Link))<{ $severity: AdminAlert['severity'] }>`
+const AlertRow = styled(motion(Link))<{ $severity: AlertSeverity }>`
   display: flex;
   align-items: center;
   gap: 1rem;
@@ -131,7 +156,7 @@ const AlertRow = styled(motion(Link))<{ $severity: AdminAlert['severity'] }>`
   }
 `;
 
-const AlertIconBox = styled.div<{ $severity: AdminAlert['severity'] }>`
+const AlertIconBox = styled.div<{ $severity: AlertSeverity }>`
   flex-shrink: 0;
   width: 2.25rem;
   height: 2.25rem;
@@ -179,22 +204,11 @@ const AlertTitle = styled.p`
   font-size: 0.9375rem;
   font-weight: 600;
   color: ${palette.text};
-  margin: 0 0 0.2rem;
+  margin: 0;
   line-height: 1.3;
 
   [data-theme='dark'] & {
     color: #f5f3ec;
-  }
-`;
-
-const AlertDesc = styled.p`
-  font-size: 0.8125rem;
-  color: ${palette.textMuted};
-  margin: 0;
-  line-height: 1.45;
-
-  [data-theme='dark'] & {
-    color: #b8b0a3;
   }
 `;
 
@@ -205,7 +219,7 @@ const AlertRight = styled.div`
   flex-shrink: 0;
 `;
 
-const CountBadge = styled.span<{ $severity: AdminAlert['severity'] }>`
+const CountBadge = styled.span<{ $severity: AlertSeverity }>`
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -293,78 +307,26 @@ const AllClearBody = styled.p`
   opacity: 0.8;
 `;
 
-const SeverityLabel = styled.span<{ $severity: AdminAlert['severity'] }>`
-  display: inline-flex;
-  align-items: center;
-  padding: 0.1875rem 0.5rem;
-  border-radius: 999px;
-  font-size: 0.6875rem;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  background: ${p =>
-    p.$severity === 'danger'
-      ? palette.dangerSoft
-      : p.$severity === 'warning'
-        ? palette.warningSoft
-        : palette.accentSoft};
-  color: ${p =>
-    p.$severity === 'danger'
-      ? palette.danger
-      : p.$severity === 'warning'
-        ? palette.warning
-        : palette.accent};
-`;
-
-/* ─── Alert metadata ───────────────────────────────────────────────────────── */
-interface AlertMeta {
-  title: string;
-  description: string;
-  severityLabel: string;
+/* ─── Helpers ──────────────────────────────────────────────────────────────── */
+function tierToSeverity(tier: AlertTier): AlertSeverity {
+  if (tier === 'critical') return 'danger';
+  if (tier === 'operational') return 'warning';
+  return 'info';
 }
 
-function getAlertMeta(type: AdminAlert['type'], severity: AdminAlert['severity'], bg: boolean): AlertMeta {
-  const severityLabels: Record<AdminAlert['severity'], string> = {
-    danger: bg ? 'Критично' : 'Critical',
-    warning: bg ? 'Внимание' : 'Warning',
-    info: bg ? 'Информация' : 'Info',
-  };
-
-  switch (type) {
-    case 'PARTNER_REQUESTS':
-      return {
-        title: bg ? 'Заявки за партньорство' : 'Partner Requests',
-        description: bg
-          ? 'Нови партньори, изчакващи одобрение от администратор'
-          : 'New partner accounts waiting for admin approval',
-        severityLabel: severityLabels[severity],
-      };
-    case 'RECEIPT_REVIEW':
-      return {
-        title: bg ? 'Преглед на касови бележки' : 'Receipt Review',
-        description: bg
-          ? 'Касови бележки, автоматично маркирани за ръчна проверка'
-          : 'Receipts automatically flagged for manual review',
-        severityLabel: severityLabels[severity],
-      };
-    case 'CASHBACK_OVERDUE':
-      return {
-        title: bg ? 'Просрочен кешбек' : 'Overdue Cashback',
-        description: bg
-          ? 'Партньори с просрочени кешбек плащания, изискващи внимание'
-          : 'Partners with overdue cashback payments that require attention',
-        severityLabel: severityLabels[severity],
-      };
-    case 'MENU_APPROVALS':
-      return {
-        title: bg ? 'Одобрения на менюта' : 'Menu Approvals',
-        description: bg
-          ? 'Партньорски URL адреси за менюта, чакащи проверка и одобрение'
-          : 'Partner-submitted menu URLs pending review and approval',
-        severityLabel: severityLabels[severity],
-      };
-  }
+function tierLabel(tier: AlertTier, bg: boolean): string {
+  if (tier === 'critical') return bg ? 'Критични' : 'Critical';
+  if (tier === 'operational') return bg ? 'Оперативни' : 'Operational';
+  return bg ? 'Информационни' : 'Informational';
 }
+
+const EMPTY_RESULT: AdminAlertsResult = {
+  critical: [],
+  operational: [],
+  informational: [],
+  totalCount: 0,
+  generatedAt: new Date().toISOString(),
+};
 
 /* ─── Component ────────────────────────────────────────────────────────────── */
 const AdminAlertsPage: React.FC = () => {
@@ -379,7 +341,7 @@ const AdminAlertsPage: React.FC = () => {
     adminAlertsService
       .getAlerts()
       .then(r => setResult(r))
-      .catch(() => setResult({ alerts: [], total: 0, generatedAt: new Date().toISOString() }))
+      .catch(() => setResult({ ...EMPTY_RESULT, generatedAt: new Date().toISOString() }))
       .finally(() => setLoading(false));
   };
 
@@ -394,7 +356,13 @@ const AdminAlertsPage: React.FC = () => {
       })
     : null;
 
-  const alerts = result?.alerts ?? [];
+  const tiers: { tier: AlertTier; items: AdminAlert[] }[] = result
+    ? [
+        { tier: 'critical' as AlertTier, items: result.critical },
+        { tier: 'operational' as AlertTier, items: result.operational },
+        { tier: 'informational' as AlertTier, items: result.informational },
+      ].filter(t => t.items.length > 0)
+    : [];
 
   return (
     <Shell>
@@ -410,7 +378,7 @@ const AdminAlertsPage: React.FC = () => {
         </RefreshBtn>
       </RefreshRow>
 
-      {!loading && alerts.length === 0 && (
+      {!loading && result?.totalCount === 0 && (
         <AllClearCard>
           <CheckCircleIcon />
           <div>
@@ -424,38 +392,39 @@ const AdminAlertsPage: React.FC = () => {
         </AllClearCard>
       )}
 
-      {alerts.length > 0 && (
-        <AlertList>
-          {alerts.map((alert, idx) => {
-            const meta = getAlertMeta(alert.type, alert.severity, bg);
-            return (
-              <AlertRow
-                key={alert.type}
-                to={alert.link}
-                $severity={alert.severity}
-                initial={{ opacity: 0, x: -8 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.05 * idx, duration: 0.25 }}
-              >
-                <AlertIconBox $severity={alert.severity}>
-                  <BellAlertIcon />
-                </AlertIconBox>
-                <AlertContent>
-                  <AlertTitle>{meta.title}</AlertTitle>
-                  <AlertDesc>{meta.description}</AlertDesc>
-                </AlertContent>
-                <AlertRight>
-                  <SeverityLabel $severity={alert.severity}>{meta.severityLabel}</SeverityLabel>
-                  <CountBadge $severity={alert.severity}>{alert.count}</CountBadge>
-                  <ArrowIcon>
-                    <ArrowUpRightIcon />
-                  </ArrowIcon>
-                </AlertRight>
-              </AlertRow>
-            );
-          })}
-        </AlertList>
-      )}
+      {tiers.map(({ tier, items }) => (
+        <TierSection key={tier}>
+          <TierHeading>{tierLabel(tier, bg)}</TierHeading>
+          <AlertList>
+            {items.map((alert, idx) => {
+              const severity = tierToSeverity(alert.tier);
+              return (
+                <AlertRow
+                  key={alert.id}
+                  to={alert.link}
+                  $severity={severity}
+                  initial={{ opacity: 0, x: -8 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 0.05 * idx, duration: 0.25 }}
+                >
+                  <AlertIconBox $severity={severity}>
+                    <BellAlertIcon />
+                  </AlertIconBox>
+                  <AlertContent>
+                    <AlertTitle>{alert.title}</AlertTitle>
+                  </AlertContent>
+                  <AlertRight>
+                    <CountBadge $severity={severity}>{alert.count}</CountBadge>
+                    <ArrowIcon>
+                      <ArrowUpRightIcon />
+                    </ArrowIcon>
+                  </AlertRight>
+                </AlertRow>
+              );
+            })}
+          </AlertList>
+        </TierSection>
+      ))}
 
       <style>{`
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
