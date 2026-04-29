@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import styled from 'styled-components';
+import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-hot-toast';
 import { useLanguage } from '../../contexts/LanguageContext';
@@ -9,6 +10,14 @@ import {
   AdminUser,
   AdminRoleKey,
 } from '../../services/adminAdmins.service';
+
+const ASSIGNABLE_ROLES: Array<{ value: AdminRoleKey; label: string }> = [
+  { value: 'ADMIN', label: 'Admin (full access)' },
+  { value: 'SUPPORT', label: 'Support' },
+  { value: 'FINANCE', label: 'Finance' },
+  { value: 'RISK_REVIEW', label: 'Risk Review' },
+  { value: 'PARTNER_MANAGER', label: 'Partner Manager' },
+];
 
 const palette = {
   bg: '#faf9f5',
@@ -29,6 +38,8 @@ const palette = {
   infoSoft: '#dbeafe',
   purple: '#7c3aed',
   purpleSoft: '#ede9fe',
+  teal: '#0f766e',
+  tealSoft: '#ccfbf1',
 };
 
 const PageShell = styled.div`
@@ -152,8 +163,9 @@ const RoleBadge = styled.span<{ $key: string }>`
       case 'ADMIN':       return `background: ${palette.purpleSoft}; color: ${palette.purple};`;
       case 'FINANCE':     return `background: ${palette.successSoft}; color: ${palette.success};`;
       case 'SUPPORT':     return `background: ${palette.infoSoft}; color: ${palette.info};`;
-      case 'RISK_REVIEW': return `background: ${palette.warningSoft}; color: ${palette.warning};`;
-      default:            return `background: #f3f4f6; color: #374151;`;
+      case 'RISK_REVIEW':     return `background: ${palette.warningSoft}; color: ${palette.warning};`;
+      case 'PARTNER_MANAGER': return `background: ${palette.tealSoft}; color: ${palette.teal};`;
+      default:                return `background: #f3f4f6; color: #374151;`;
     }
   }}
 `;
@@ -168,6 +180,84 @@ const StatusDot = styled.span<{ $status: string }>`
     $status === 'ACTIVE' ? palette.success :
     $status === 'SUSPENDED' ? palette.danger :
     palette.textSubtle};
+`;
+
+const OverlayBackdrop = styled.div`
+  position: fixed;
+  inset: 0;
+  background: rgba(20, 20, 19, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+`;
+
+const OverlayCard = styled.div`
+  background: ${palette.surface};
+  border: 1px solid ${palette.border};
+  border-radius: 0.75rem;
+  padding: 1.75rem;
+  width: 100%;
+  max-width: 26rem;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.15);
+`;
+
+const OverlayTitle = styled.h2`
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: ${palette.text};
+  margin: 0 0 0.5rem;
+`;
+
+const OverlaySubtitle = styled.p`
+  font-size: 0.875rem;
+  color: ${palette.textMuted};
+  margin: 0 0 1.25rem;
+`;
+
+const OverlaySelect = styled.select`
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid ${palette.border};
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  background: ${palette.bg};
+  color: ${palette.text};
+  outline: none;
+  cursor: pointer;
+  margin-bottom: 1.25rem;
+  &:focus { border-color: ${palette.accent}; box-shadow: 0 0 0 2px ${palette.accentSoft}; }
+`;
+
+const OverlayActions = styled.div`
+  display: flex;
+  gap: 0.75rem;
+`;
+
+const PrimaryBtn = styled.button<{ $loading?: boolean }>`
+  flex: 1;
+  padding: 0.625rem;
+  background: ${palette.accent};
+  color: #fff;
+  font-size: 0.9375rem;
+  font-weight: 700;
+  border: none;
+  border-radius: 0.5rem;
+  cursor: ${({ $loading }) => ($loading ? 'not-allowed' : 'pointer')};
+  opacity: ${({ $loading }) => ($loading ? 0.7 : 1)};
+  &:hover:not(:disabled) { opacity: 0.88; }
+`;
+
+const SecondaryBtn = styled.button`
+  padding: 0.625rem 1rem;
+  background: transparent;
+  color: ${palette.textMuted};
+  font-size: 0.875rem;
+  font-weight: 600;
+  border: 1px solid ${palette.border};
+  border-radius: 0.5rem;
+  cursor: pointer;
+  &:hover { border-color: ${palette.text}; color: ${palette.text}; }
 `;
 
 const ROLE_OPTIONS: Array<{ value: AdminRoleKey | ''; label: string }> = [
@@ -190,6 +280,8 @@ export default function AdminAdminsAllPage() {
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
   const [roleKey, setRoleKey] = useState<AdminRoleKey | ''>('');
+  const [addRoleTarget, setAddRoleTarget] = useState<AdminUser | null>(null);
+  const [addRoleKey, setAddRoleKey] = useState<AdminRoleKey>('ADMIN');
 
   const { data, isLoading } = useQuery({
     queryKey: ['admin-admins', page, search, roleKey],
@@ -205,6 +297,34 @@ export default function AdminAdminsAllPage() {
       queryClient.invalidateQueries({ queryKey: ['admin-admins-pending'] });
     },
     onError: () => toast.error('Failed to remove role'),
+  });
+
+  const addRoleMutation = useMutation({
+    mutationFn: ({ id, key }: { id: string; key: AdminRoleKey }) =>
+      adminAdminsService.approve(id, key),
+    onSuccess: () => {
+      toast.success('Role added');
+      setAddRoleTarget(null);
+      queryClient.invalidateQueries({ queryKey: ['admin-admins'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-admins-pending'] });
+    },
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Failed to add role';
+      toast.error(msg);
+    },
+  });
+
+  const statusMutation = useMutation({
+    mutationFn: ({ id, status }: { id: string; status: 'ACTIVE' | 'SUSPENDED' }) =>
+      adminAdminsService.setStatus(id, status),
+    onSuccess: (_, { status }) => {
+      toast.success(status === 'ACTIVE' ? 'Admin activated' : 'Admin suspended');
+      queryClient.invalidateQueries({ queryKey: ['admin-admins'] });
+    },
+    onError: (err: unknown) => {
+      const msg = err instanceof Error ? err.message : 'Failed to update status';
+      toast.error(msg);
+    },
   });
 
   const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -224,9 +344,16 @@ export default function AdminAdminsAllPage() {
       header: 'Admin',
       render: (row) => (
         <UserCell>
-          {row.firstName || row.lastName
-            ? `${row.firstName ?? ''} ${row.lastName ?? ''}`.trim()
-            : '—'}
+          <Link
+            to={`/admin/admins/${row.id}`}
+            style={{ color: 'inherit', textDecoration: 'none' }}
+            onMouseEnter={(e) => (e.currentTarget.style.textDecoration = 'underline')}
+            onMouseLeave={(e) => (e.currentTarget.style.textDecoration = 'none')}
+          >
+            {row.firstName || row.lastName
+              ? `${row.firstName ?? ''} ${row.lastName ?? ''}`.trim()
+              : '—'}
+          </Link>
           <MetaLine>{row.email}</MetaLine>
           {row.phone && <MetaLine>{row.phone}</MetaLine>}
         </UserCell>
@@ -260,6 +387,28 @@ export default function AdminAdminsAllPage() {
         <span style={{ fontSize: '0.8125rem', color: palette.textMuted, display: 'flex', alignItems: 'center' }}>
           <StatusDot $status={row.status} />
           {row.status.replace('_', ' ')}
+        </span>
+      ),
+    },
+    {
+      key: 'twoFactor',
+      header: '2FA',
+      render: (row) => (
+        <span
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            fontSize: '0.7rem',
+            fontWeight: 700,
+            textTransform: 'uppercase' as const,
+            letterSpacing: '0.05em',
+            borderRadius: '0.375rem',
+            padding: '0.125rem 0.5rem',
+            background: row.twoFactorEnabled ? palette.successSoft : '#f3f4f6',
+            color: row.twoFactorEnabled ? palette.success : '#6b7280',
+          }}
+        >
+          {row.twoFactorEnabled ? 'Enabled' : 'Off'}
         </span>
       ),
     },
@@ -321,24 +470,84 @@ export default function AdminAdminsAllPage() {
           pageSize={PAGE_SIZE}
           totalItems={data?.total}
           onPageChange={setPage}
-          rowActions={([
-            { key: 'SUPER_ADMIN', label: 'Super Admin' },
-            { key: 'ADMIN', label: 'Admin' },
-            { key: 'SUPPORT', label: 'Support' },
-            { key: 'FINANCE', label: 'Finance' },
-            { key: 'RISK_REVIEW', label: 'Risk Review' },
-            { key: 'PARTNER_MANAGER', label: 'Partner Manager' },
-          ] as Array<{ key: AdminRoleKey; label: string }>).map(({ key, label }) => ({
-            label: `Remove "${label}" role`,
-            danger: true,
-            hidden: (row: AdminUser) => !row.adminRoles.some((ar) => ar.role.key === key),
-            onClick: (row: AdminUser) => {
-              if (!window.confirm(`Remove role "${label}" from ${row.email}?`)) return;
-              removeRoleMutation.mutate({ id: row.id, key });
+          rowActions={[
+            {
+              label: 'Add role',
+              hidden: (row: AdminUser) =>
+                ASSIGNABLE_ROLES.every((r) => row.adminRoles.some((ar) => ar.role.key === r.value)),
+              onClick: (row: AdminUser) => {
+                setAddRoleTarget(row);
+                const firstUnassigned = ASSIGNABLE_ROLES.find(
+                  (r) => !row.adminRoles.some((ar) => ar.role.key === r.value)
+                );
+                setAddRoleKey(firstUnassigned?.value ?? 'ADMIN');
+              },
             },
-          }))}
+            ...(([
+              { key: 'SUPER_ADMIN', label: 'Super Admin' },
+              { key: 'ADMIN', label: 'Admin' },
+              { key: 'SUPPORT', label: 'Support' },
+              { key: 'FINANCE', label: 'Finance' },
+              { key: 'RISK_REVIEW', label: 'Risk Review' },
+              { key: 'PARTNER_MANAGER', label: 'Partner Manager' },
+            ] as Array<{ key: AdminRoleKey; label: string }>).map(({ key, label }) => ({
+              label: `Remove "${label}" role`,
+              danger: true as const,
+              hidden: (row: AdminUser) => !row.adminRoles.some((ar) => ar.role.key === key),
+              onClick: (row: AdminUser) => {
+                if (!window.confirm(`Remove role "${label}" from ${row.email}?`)) return;
+                removeRoleMutation.mutate({ id: row.id, key });
+              },
+            }))),
+            {
+              label: 'Suspend',
+              danger: true as const,
+              hidden: (row: AdminUser) => row.status !== 'ACTIVE',
+              onClick: (row: AdminUser) => {
+                if (!window.confirm(`Suspend admin ${row.email}?`)) return;
+                statusMutation.mutate({ id: row.id, status: 'SUSPENDED' });
+              },
+            },
+            {
+              label: 'Activate',
+              hidden: (row: AdminUser) => row.status !== 'SUSPENDED',
+              onClick: (row: AdminUser) => {
+                statusMutation.mutate({ id: row.id, status: 'ACTIVE' });
+              },
+            },
+          ]}
         />
       </Card>
+      {addRoleTarget && (
+        <OverlayBackdrop onClick={() => setAddRoleTarget(null)}>
+          <OverlayCard onClick={(e) => e.stopPropagation()}>
+            <OverlayTitle>Add role</OverlayTitle>
+            <OverlaySubtitle>
+              Add a panel role to <strong>{addRoleTarget.email}</strong>
+            </OverlaySubtitle>
+            <OverlaySelect
+              value={addRoleKey}
+              onChange={(e) => setAddRoleKey(e.target.value as AdminRoleKey)}
+            >
+              {ASSIGNABLE_ROLES
+                .filter((r) => !addRoleTarget.adminRoles.some((ar) => ar.role.key === r.value))
+                .map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+            </OverlaySelect>
+            <OverlayActions>
+              <PrimaryBtn
+                $loading={addRoleMutation.isPending}
+                disabled={addRoleMutation.isPending}
+                onClick={() => addRoleMutation.mutate({ id: addRoleTarget.id, key: addRoleKey })}
+              >
+                {addRoleMutation.isPending ? 'Adding…' : 'Add role'}
+              </PrimaryBtn>
+              <SecondaryBtn onClick={() => setAddRoleTarget(null)}>Cancel</SecondaryBtn>
+            </OverlayActions>
+          </OverlayCard>
+        </OverlayBackdrop>
+      )}
     </PageShell>
   );
 }

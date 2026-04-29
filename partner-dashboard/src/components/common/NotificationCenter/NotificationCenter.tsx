@@ -511,7 +511,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ classNam
   };
 
   return (
-    <div ref={containerRef} className={className} style={{ position: 'relative' }}>
+    <div ref={containerRef} className={className} style={{ position: 'relative', zIndex: 60 }}>
       <NotificationButton onClick={() => setIsOpen(prev => !prev)}>
         <Bell />
         {unreadCount > 0 && (

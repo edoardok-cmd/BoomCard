@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import styled from 'styled-components';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-hot-toast';
@@ -6,9 +7,11 @@ import { useLanguage } from '../../contexts/LanguageContext';
 import { DataTable, ColumnDef, RowAction } from '../../components/admin/DataTable/DataTable';
 import {
   adminSubscribersService,
-  AdminSubscription,
+  AdminSubscriber,
+  AdminSubscriberDetail,
   SubscriptionPlan,
   SubscriptionStatus,
+  UserAccountStatus,
 } from '../../services/adminSubscribers.service';
 import { adminTransactionsService, AdminTransaction } from '../../services/adminTransactions.service';
 
@@ -185,11 +188,6 @@ const Btn = styled.button<{ $variant?: 'primary' | 'ghost' | 'danger' }>`
 `;
 
 /* ─── Cell helpers ─────────────────────────────────────────────────────────── */
-const SubscriberCell = styled.div`
-  font-weight: 600;
-  color: ${palette.text};
-`;
-
 const MetaLine = styled.div`
   font-size: 0.75rem;
   color: ${palette.textSubtle};
@@ -429,8 +427,105 @@ const EmptyDrawer = styled.p`
   padding: 2rem 0;
 `;
 
+const IbanRow = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+`;
+
+const IbanValue = styled.span`
+  font-size: 0.8125rem;
+  color: ${palette.text};
+  font-weight: 500;
+  font-family: monospace;
+  letter-spacing: 0.04em;
+`;
+
+const CopyBtn = styled.button`
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.75rem;
+  color: ${palette.textSubtle};
+  padding: 0.125rem 0.375rem;
+  border-radius: 0.25rem;
+  &:hover { background: ${palette.border}; color: ${palette.text}; }
+`;
+
+const SubscriberName = styled(Link)`
+  font-weight: 600;
+  color: ${palette.text};
+  text-decoration: none;
+
+  &:hover {
+    color: ${palette.accent};
+    text-decoration: underline;
+  }
+`;
+
+const MonoId = styled.span`
+  font-family: 'Menlo', 'Consolas', 'Monaco', monospace;
+  font-size: 0.75rem;
+  color: ${palette.textMuted};
+  letter-spacing: 0.03em;
+`;
+
+const UserStatusBadge = styled.span<{ $status: UserAccountStatus | 'DELETED' }>`
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-radius: 0.375rem;
+  padding: 0.125rem 0.5rem;
+
+  ${({ $status }) => {
+    if ($status === 'ACTIVE') return `background: ${palette.successSoft}; color: ${palette.success};`;
+    if ($status === 'SUSPENDED') return `background: ${palette.warningSoft}; color: ${palette.warning};`;
+    return `background: #f3f4f6; color: #6b7280;`;
+  }}
+`;
+
+const RiskPill = styled.span<{ $level: 'low' | 'medium' | 'high' }>`
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-radius: 9999px;
+  padding: 0.125rem 0.5rem;
+
+  ${({ $level }) => {
+    if ($level === 'low') return `background: ${palette.successSoft}; color: ${palette.success};`;
+    if ($level === 'medium') return `background: ${palette.warningSoft}; color: ${palette.warning};`;
+    return `background: ${palette.dangerSoft}; color: ${palette.danger};`;
+  }}
+`;
+
+/* ─── Helpers ────────────────────────────────────────────────────────────── */
+function riskLevel(score: number): 'low' | 'medium' | 'high' {
+  if (score <= 30) return 'low';
+  if (score <= 60) return 'medium';
+  return 'high';
+}
+
+function riskLabel(score: number): string {
+  if (score <= 30) return 'Low';
+  if (score <= 60) return 'Medium';
+  return 'High';
+}
+
+function displayName(row: AdminSubscriber): string {
+  return row.firstName || row.lastName
+    ? `${row.firstName ?? ''} ${row.lastName ?? ''}`.trim()
+    : row.email;
+}
+
 /* ─── CSV helper ────────────────────────────────────────────────────────────── */
-function downloadCSV(rows: AdminSubscription[], locale: string) {
+function downloadCSV(rows: AdminSubscriber[], locale: string) {
   const headers = ['ID', 'First name', 'Last name', 'Email', 'Phone', 'Plan', 'Status', 'Cashback balance', 'Period ends', 'Auto-renew', 'Subscribed'];
   const fmt = (iso: string) => new Date(iso).toLocaleDateString(locale, { day: '2-digit', month: '2-digit', year: 'numeric' });
   const lines = [
@@ -438,16 +533,16 @@ function downloadCSV(rows: AdminSubscription[], locale: string) {
     ...rows.map((r) =>
       [
         r.id,
-        r.user.firstName ?? '',
-        r.user.lastName ?? '',
-        r.user.email,
-        r.user.phone ?? '',
-        r.plan,
-        r.status,
-        r.user.wallet?.availableBalance.toFixed(2) ?? '',
-        fmt(r.currentPeriodEnd),
-        r.autoRenewal ? 'Yes' : 'No',
-        fmt(r.createdAt),
+        r.firstName ?? '',
+        r.lastName ?? '',
+        r.email,
+        r.phone ?? '',
+        r.subscription?.plan ?? '',
+        r.subscription?.status ?? '',
+        r.wallet?.availableBalance.toFixed(2) ?? '',
+        r.subscription?.currentPeriodEnd ? fmt(r.subscription.currentPeriodEnd) : '',
+        r.subscription?.autoRenewal ? 'Yes' : 'No',
+        r.subscription?.createdAt ? fmt(r.subscription.createdAt) : fmt(r.createdAt),
       ]
         .map((v) => `"${String(v).replace(/"/g, '""')}"`)
         .join(',')
@@ -502,12 +597,16 @@ export default function AdminSubscribersAllPage() {
   const [dateTo, setDateTo] = useState('');
 
   /* ── Modal state ── */
-  const [confirmCancel, setConfirmCancel] = useState<AdminSubscription | null>(null);
-  const [confirmPlan, setConfirmPlan] = useState<AdminSubscription | null>(null);
+  const [confirmCancel, setConfirmCancel] = useState<AdminSubscriber | null>(null);
+  const [confirmPlan, setConfirmPlan] = useState<AdminSubscriber | null>(null);
   const [newPlan, setNewPlan] = useState<SubscriptionPlan>('BASIC');
+  const [confirmSuspend, setConfirmSuspend] = useState<{
+    row: AdminSubscriber;
+    targetStatus: 'ACTIVE' | 'SUSPENDED';
+  } | null>(null);
 
   /* ── Drawer state ── */
-  const [drawerSub, setDrawerSub] = useState<AdminSubscription | null>(null);
+  const [drawerSub, setDrawerSub] = useState<AdminSubscriber | null>(null);
 
   /* ── Data ── */
   const queryKey = ['admin-subscribers', page, search, plan, status, dateFrom, dateTo];
@@ -527,9 +626,15 @@ export default function AdminSubscribersAllPage() {
   });
 
   const { data: drawerTxData, isLoading: drawerTxLoading } = useQuery({
-    queryKey: ['subscriber-tx-history', drawerSub?.user.id],
+    queryKey: ['subscriber-tx-history', drawerSub?.id],
     queryFn: () =>
-      adminTransactionsService.list({ userId: drawerSub!.user.id, limit: 5, page: 1 }),
+      adminTransactionsService.list({ userId: drawerSub!.id, limit: 5, page: 1 }),
+    enabled: !!drawerSub,
+  });
+
+  const { data: drawerDetail } = useQuery<AdminSubscriberDetail>({
+    queryKey: ['subscriber-detail', drawerSub?.id],
+    queryFn: () => adminSubscribersService.getSubscriber(drawerSub!.id),
     enabled: !!drawerSub,
   });
 
@@ -555,12 +660,32 @@ export default function AdminSubscribersAllPage() {
     onError: () => toast.error('Failed to update plan'),
   });
 
+  const suspendMutation = useMutation({
+    mutationFn: ({ id, targetStatus }: { id: string; targetStatus: 'ACTIVE' | 'SUSPENDED' }) =>
+      adminSubscribersService.suspendSubscriber(id, targetStatus),
+    onSuccess: (_, vars) => {
+      toast.success(vars.targetStatus === 'SUSPENDED' ? 'Account suspended' : 'Account activated');
+      queryClient.invalidateQueries({ queryKey: ['admin-subscribers'] });
+      setConfirmSuspend(null);
+    },
+    onError: () => toast.error('Failed to update account status'),
+  });
+
+  const forceLogoutMutation = useMutation({
+    mutationFn: (id: string) => adminSubscribersService.forceLogout(id),
+    onSuccess: (res) => {
+      toast.success(`Revoked ${res.revokedCount} session(s)`);
+    },
+    onError: () => toast.error('Failed to revoke sessions'),
+  });
+
   /* ── Escape key close ── */
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
       setConfirmCancel(null);
       setConfirmPlan(null);
+      setConfirmSuspend(null);
       setDrawerSub(null);
     };
     document.addEventListener('keydown', handler);
@@ -572,48 +697,92 @@ export default function AdminSubscribersAllPage() {
     if (e.key === 'Enter') { setSearch(searchInput); setPage(1); }
   };
 
-  const fmt = (iso: string) =>
-    new Date(iso).toLocaleDateString(locale, { day: '2-digit', month: 'short', year: 'numeric' });
+  const fmt = (iso: string | null) =>
+    iso
+      ? new Date(iso).toLocaleDateString(locale, { day: '2-digit', month: 'short', year: 'numeric' })
+      : '—';
 
   const fmtTime = (iso: string) =>
     new Date(iso).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' });
 
   /* ── Columns ── */
-  const columns: ColumnDef<AdminSubscription>[] = [
+  const columns: ColumnDef<AdminSubscriber>[] = [
     {
-      key: 'user',
+      key: 'firstName',
       header: 'Subscriber',
       render: (row) => (
-        <SubscriberCell>
-          {row.user.firstName || row.user.lastName
-            ? `${row.user.firstName ?? ''} ${row.user.lastName ?? ''}`.trim()
-            : '—'}
-          <MetaLine>{row.user.email}</MetaLine>
-          {row.user.phone && <MetaLine>{row.user.phone}</MetaLine>}
-        </SubscriberCell>
+        <div>
+          <SubscriberName to={`/admin/subscribers/${row.id}`}>
+            {displayName(row)}
+          </SubscriberName>
+          <MetaLine>{row.email}</MetaLine>
+          {row.phone && <MetaLine>{row.phone}</MetaLine>}
+        </div>
+      ),
+    },
+    {
+      key: 'userId',
+      header: 'User ID',
+      render: (row) => <MonoId>{row.id.slice(0, 8)}</MonoId>,
+    },
+    {
+      key: 'accountStatus',
+      header: 'User Status',
+      render: (row) => {
+        const s = (row.deletedAt ? 'DELETED' : row.status) as UserAccountStatus | 'DELETED';
+        return <UserStatusBadge $status={s}>{s}</UserStatusBadge>;
+      },
+    },
+    {
+      key: 'risk',
+      header: 'Risk',
+      render: (row) =>
+        row.riskScore == null ? (
+          <span style={{ color: palette.textSubtle }}>—</span>
+        ) : (
+          <RiskPill $level={riskLevel(row.riskScore)}>{riskLabel(row.riskScore)}</RiskPill>
+        ),
+    },
+    {
+      key: 'lastActivity',
+      header: 'Last activity',
+      render: (row) => (
+        <span style={{ color: palette.textMuted, fontSize: '0.8125rem' }}>
+          {row.lastLoginAt ? fmt(row.lastLoginAt) : 'Never'}
+        </span>
       ),
     },
     {
       key: 'plan',
       header: 'Plan',
-      render: (row) => <PlanBadge $plan={row.plan}>{row.plan}</PlanBadge>,
+      render: (row) =>
+        row.subscription ? (
+          <PlanBadge $plan={row.subscription.plan}>{row.subscription.plan}</PlanBadge>
+        ) : (
+          <span style={{ color: palette.textSubtle }}>—</span>
+        ),
     },
     {
-      key: 'status',
-      header: 'Status',
-      render: (row) => (
-        <StatusBadge $status={row.status}>{row.status.replace('_', ' ')}</StatusBadge>
-      ),
+      key: 'subscriptionStatus',
+      header: 'Sub status',
+      render: (row) =>
+        row.subscription ? (
+          <StatusBadge $status={row.subscription.status}>
+            {row.subscription.status.replace('_', ' ')}
+          </StatusBadge>
+        ) : (
+          <span style={{ color: palette.textSubtle }}>—</span>
+        ),
     },
     {
       key: 'wallet',
       header: 'Cashback',
       render: (row) =>
-        row.user.wallet ? (
+        row.wallet ? (
           <BalanceCell>
-            {row.user.wallet.availableBalance.toFixed(2)} BGN
-            {row.user.wallet.pendingBalance > 0 && (
-              <MetaLine>+{row.user.wallet.pendingBalance.toFixed(2)} pending</MetaLine>
+            {row.wallet.availableBalance.toFixed(2)} BGN
+            {row.wallet.pendingBalance > 0 && (
+              <MetaLine>+{row.wallet.pendingBalance.toFixed(2)} pending</MetaLine>
             )}
           </BalanceCell>
         ) : (
@@ -626,7 +795,7 @@ export default function AdminSubscribersAllPage() {
       sortable: true,
       render: (row) => (
         <span style={{ color: palette.textMuted, fontSize: '0.8125rem' }}>
-          {fmt(row.currentPeriodEnd)}
+          {row.subscription?.currentPeriodEnd ? fmt(row.subscription.currentPeriodEnd) : '—'}
         </span>
       ),
     },
@@ -637,11 +806,11 @@ export default function AdminSubscribersAllPage() {
         <span
           style={{
             fontSize: '0.8125rem',
-            color: row.autoRenewal ? palette.success : palette.textSubtle,
+            color: row.subscription?.autoRenewal ? palette.success : palette.textSubtle,
             fontWeight: 600,
           }}
         >
-          {row.autoRenewal ? 'Yes' : 'No'}
+          {row.subscription?.autoRenewal ? 'Yes' : 'No'}
         </span>
       ),
     },
@@ -650,12 +819,14 @@ export default function AdminSubscribersAllPage() {
       header: 'Subscribed',
       sortable: true,
       render: (row) => (
-        <span style={{ color: palette.textMuted, fontSize: '0.8125rem' }}>{fmt(row.createdAt)}</span>
+        <span style={{ color: palette.textMuted, fontSize: '0.8125rem' }}>
+          {row.subscription?.createdAt ? fmt(row.subscription.createdAt) : '—'}
+        </span>
       ),
     },
   ];
 
-  const rowActions: RowAction<AdminSubscription>[] = [
+  const rowActions: RowAction<AdminSubscriber>[] = [
     {
       label: 'View history',
       onClick: (row) => setDrawerSub(row),
@@ -663,16 +834,34 @@ export default function AdminSubscribersAllPage() {
     {
       label: 'Change plan',
       onClick: (row) => {
-        setNewPlan(row.plan);
+        setNewPlan(row.subscription?.plan ?? 'BASIC');
         setConfirmPlan(row);
       },
-      hidden: (row) => row.status === 'CANCELLED',
+      hidden: (row) => !row.subscription || row.subscription.status === 'CANCELLED' || row.status === 'DELETED',
     },
     {
       label: 'Cancel subscription',
       danger: true,
       onClick: (row) => setConfirmCancel(row),
-      hidden: (row) => row.status === 'CANCELLED',
+      hidden: (row) => !row.subscription || row.subscription.status === 'CANCELLED' || row.status === 'DELETED',
+    },
+    {
+      label: 'Suspend account',
+      danger: true,
+      onClick: (row) => setConfirmSuspend({ row, targetStatus: 'SUSPENDED' }),
+      hidden: (row) => row.status === 'SUSPENDED' || !!row.deletedAt,
+    },
+    {
+      label: 'Activate account',
+      onClick: (row) => setConfirmSuspend({ row, targetStatus: 'ACTIVE' }),
+      hidden: (row) => row.status === 'ACTIVE' || !!row.deletedAt,
+    },
+    {
+      label: 'Force logout',
+      onClick: (row) => {
+        if (!window.confirm(`Revoke all sessions for ${displayName(row)}?`)) return;
+        forceLogoutMutation.mutate(row.id);
+      },
     },
   ];
 
@@ -684,13 +873,8 @@ export default function AdminSubscribersAllPage() {
           <Modal onClick={(e) => e.stopPropagation()}>
             <ModalTitle>Cancel subscription?</ModalTitle>
             <ModalBody>
-              The subscription for{' '}
-              <strong>
-                {confirmCancel.user.firstName || confirmCancel.user.lastName
-                  ? `${confirmCancel.user.firstName ?? ''} ${confirmCancel.user.lastName ?? ''}`.trim()
-                  : confirmCancel.user.email}
-              </strong>{' '}
-              will be cancelled at the end of the current billing period. No refund will be issued.
+              The subscription for <strong>{displayName(confirmCancel)}</strong> will be cancelled
+              at the end of the current billing period. No refund will be issued.
             </ModalBody>
             <ModalActions>
               <Btn onClick={() => setConfirmCancel(null)}>Keep active</Btn>
@@ -712,13 +896,14 @@ export default function AdminSubscribersAllPage() {
           <Modal onClick={(e) => e.stopPropagation()}>
             <ModalTitle>Change plan</ModalTitle>
             <ModalBody>
-              Select a new plan for{' '}
-              <strong>
-                {confirmPlan.user.firstName || confirmPlan.user.lastName
-                  ? `${confirmPlan.user.firstName ?? ''} ${confirmPlan.user.lastName ?? ''}`.trim()
-                  : confirmPlan.user.email}
-              </strong>
-              . Current plan: <PlanBadge $plan={confirmPlan.plan}>{confirmPlan.plan}</PlanBadge>
+              Select a new plan for <strong>{displayName(confirmPlan)}</strong>.
+              {confirmPlan.subscription && (
+                <> Current plan:{' '}
+                  <PlanBadge $plan={confirmPlan.subscription.plan}>
+                    {confirmPlan.subscription.plan}
+                  </PlanBadge>
+                </>
+              )}
             </ModalBody>
             <div>
               <ModalLabel>New plan</ModalLabel>
@@ -738,9 +923,52 @@ export default function AdminSubscribersAllPage() {
               <Btn
                 $variant="primary"
                 onClick={() => planMutation.mutate({ id: confirmPlan.id, plan: newPlan })}
-                disabled={planMutation.isPending || newPlan === confirmPlan.plan}
+                disabled={planMutation.isPending || newPlan === confirmPlan.subscription?.plan}
               >
                 {planMutation.isPending ? 'Saving…' : 'Save change'}
+              </Btn>
+            </ModalActions>
+          </Modal>
+        </Overlay>
+      )}
+
+      {/* Suspend / Activate confirm modal */}
+      {confirmSuspend && (
+        <Overlay onClick={() => !suspendMutation.isPending && setConfirmSuspend(null)}>
+          <Modal onClick={(e) => e.stopPropagation()}>
+            <ModalTitle>
+              {confirmSuspend.targetStatus === 'SUSPENDED' ? 'Suspend account?' : 'Activate account?'}
+            </ModalTitle>
+            <ModalBody>
+              {confirmSuspend.targetStatus === 'SUSPENDED' ? (
+                <>
+                  <strong>{displayName(confirmSuspend.row)}</strong> will be suspended and will no
+                  longer be able to log in.
+                </>
+              ) : (
+                <>
+                  <strong>{displayName(confirmSuspend.row)}</strong>&apos;s account will be
+                  reactivated.
+                </>
+              )}
+            </ModalBody>
+            <ModalActions>
+              <Btn onClick={() => setConfirmSuspend(null)}>Cancel</Btn>
+              <Btn
+                $variant={confirmSuspend.targetStatus === 'SUSPENDED' ? 'danger' : 'primary'}
+                onClick={() =>
+                  suspendMutation.mutate({
+                    id: confirmSuspend.row.id,
+                    targetStatus: confirmSuspend.targetStatus,
+                  })
+                }
+                disabled={suspendMutation.isPending}
+              >
+                {suspendMutation.isPending
+                  ? 'Saving…'
+                  : confirmSuspend.targetStatus === 'SUSPENDED'
+                  ? 'Yes, suspend'
+                  : 'Yes, activate'}
               </Btn>
             </ModalActions>
           </Modal>
@@ -754,12 +982,27 @@ export default function AdminSubscribersAllPage() {
           <>
             <DrawerHeader style={{ position: 'relative' }}>
               <DrawerClose onClick={() => setDrawerSub(null)}>✕</DrawerClose>
-              <DrawerTitle>
-                {drawerSub.user.firstName || drawerSub.user.lastName
-                  ? `${drawerSub.user.firstName ?? ''} ${drawerSub.user.lastName ?? ''}`.trim()
-                  : drawerSub.user.email}
-              </DrawerTitle>
+              <DrawerTitle>{displayName(drawerSub)}</DrawerTitle>
               <DrawerSubtitle>Last 5 wallet transactions</DrawerSubtitle>
+              <IbanRow>
+                <span style={{ fontSize: '0.75rem', color: palette.textSubtle }}>IBAN:</span>
+                {drawerDetail?.iban ? (
+                  <>
+                    <IbanValue>{drawerDetail.iban}</IbanValue>
+                    <CopyBtn
+                      title="Copy IBAN"
+                      onClick={() => {
+                        navigator.clipboard.writeText(drawerDetail.iban!);
+                        toast.success('IBAN copied');
+                      }}
+                    >
+                      Copy
+                    </CopyBtn>
+                  </>
+                ) : (
+                  <span style={{ fontSize: '0.8125rem', color: palette.textSubtle }}>Not provided</span>
+                )}
+              </IbanRow>
             </DrawerHeader>
             <DrawerBody>
               {drawerTxLoading ? (
@@ -804,8 +1047,8 @@ export default function AdminSubscribersAllPage() {
         </TitleBlock>
         <HeaderActions>
           <Btn
-            onClick={() => data?.subscriptions.length && downloadCSV(data.subscriptions, locale)}
-            disabled={!data?.subscriptions.length}
+            onClick={() => data?.subscribers?.length && downloadCSV(data.subscribers, locale)}
+            disabled={!data?.subscribers?.length}
           >
             ↓ Export CSV
           </Btn>
@@ -847,7 +1090,7 @@ export default function AdminSubscribersAllPage() {
 
         <DataTable
           columns={columns}
-          data={data?.subscriptions ?? []}
+          data={data?.subscribers ?? []}
           rowKey={(row) => row.id}
           rowActions={rowActions}
           loading={isLoading}

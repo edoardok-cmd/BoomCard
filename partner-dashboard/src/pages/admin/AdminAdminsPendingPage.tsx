@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import styled from 'styled-components';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-hot-toast';
@@ -7,6 +7,7 @@ import { DataTable, ColumnDef } from '../../components/admin/DataTable/DataTable
 import {
   adminAdminsService,
   PendingAdmin,
+  PendingSuperAdminRequest,
   AdminRoleKey,
 } from '../../services/adminAdmins.service';
 
@@ -74,11 +75,25 @@ const TotalBadge = styled.span`
   margin-left: 0.5rem;
 `;
 
+const SectionTitle = styled.h2`
+  font-size: 1rem;
+  font-weight: 700;
+  color: ${palette.text};
+  margin: 0 0 0.375rem;
+`;
+
+const SectionSubtitle = styled.p`
+  font-size: 0.875rem;
+  color: ${palette.textMuted};
+  margin: 0 0 1rem;
+`;
+
 const Card = styled.div`
   background: ${palette.surface};
   border: 1px solid ${palette.border};
   border-radius: 0.75rem;
   padding: 1.5rem;
+  margin-bottom: 1.5rem;
 `;
 
 const FilterRow = styled.div`
@@ -126,6 +141,16 @@ const StatusDot = styled.span<{ $status: string }>`
     palette.textSubtle};
 `;
 
+const DangerBanner = styled.div`
+  background: ${palette.dangerSoft};
+  border: 1px solid #e8bdb4;
+  border-radius: 0.5rem;
+  padding: 0.75rem 1rem;
+  font-size: 0.8125rem;
+  color: ${palette.danger};
+  margin-bottom: 1.25rem;
+`;
+
 const InfoBanner = styled.div`
   background: ${palette.infoSoft};
   border: 1px solid #bfdbfe;
@@ -136,7 +161,6 @@ const InfoBanner = styled.div`
   margin-bottom: 1.25rem;
 `;
 
-/* Inline approve widget shown in the action menu substitute — we use a modal-lite overlay */
 const OverlayBackdrop = styled.div`
   position: fixed;
   inset: 0;
@@ -203,6 +227,7 @@ const PrimaryBtn = styled.button<{ $loading?: boolean }>`
   &:hover:not(:disabled) { opacity: 0.88; }
 `;
 
+
 const SecondaryBtn = styled.button`
   padding: 0.625rem 1rem;
   background: transparent;
@@ -225,43 +250,115 @@ const ROLE_OPTIONS: Array<{ value: AdminRoleKey; label: string }> = [
 
 const PAGE_SIZE = 20;
 
+type ApproveRoleModal = { type: 'role'; admin: PendingAdmin };
+type ApproveSuperModal = { type: 'super'; request: PendingSuperAdminRequest };
+type ActiveModal = ApproveRoleModal | ApproveSuperModal | null;
+
 export default function AdminAdminsPendingPage() {
   const { language } = useLanguage();
   const queryClient = useQueryClient();
 
-  const [page, setPage] = useState(1);
-  const [searchInput, setSearchInput] = useState('');
-  const [search, setSearch] = useState('');
-  const [approving, setApproving] = useState<PendingAdmin | null>(null);
+  // Role-assignment pending state
+  const [rolePage, setRolePage] = useState(1);
+  const [roleSearchInput, setRoleSearchInput] = useState('');
+  const [roleSearch, setRoleSearch] = useState('');
+
+  // Super admin pending state
+  const [superPage, setSuperPage] = useState(1);
+
+  const [modal, setModal] = useState<ActiveModal>(null);
   const [selectedRole, setSelectedRole] = useState<AdminRoleKey>('ADMIN');
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['admin-admins-pending', page, search],
-    queryFn: () => adminAdminsService.listPending({ page, limit: PAGE_SIZE, search: search || undefined }),
+  const { data: roleData, isLoading: roleLoading } = useQuery({
+    queryKey: ['admin-admins-pending', rolePage, roleSearch],
+    queryFn: () => adminAdminsService.listPending({ page: rolePage, limit: PAGE_SIZE, search: roleSearch || undefined }),
+  });
+
+  const { data: superData, isLoading: superLoading } = useQuery({
+    queryKey: ['admin-admins-pending-super', superPage],
+    queryFn: () => adminAdminsService.listPendingSuper({ page: superPage, limit: PAGE_SIZE }),
   });
 
   const approveMutation = useMutation({
     mutationFn: ({ id, roleKey }: { id: string; roleKey: AdminRoleKey }) =>
       adminAdminsService.approve(id, roleKey),
     onSuccess: () => {
-      toast.success(`Role assigned — admin is now active`);
-      setApproving(null);
+      toast.success('Role assigned — admin is now active');
+      setModal(null);
       queryClient.invalidateQueries({ queryKey: ['admin-admins-pending'] });
       queryClient.invalidateQueries({ queryKey: ['admin-admins'] });
     },
     onError: () => toast.error('Failed to assign role'),
   });
 
-  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') { setSearch(searchInput); setPage(1); }
-  };
+  const approveSuperMutation = useMutation({
+    mutationFn: (id: string) => adminAdminsService.approvePendingSuper(id),
+    onSuccess: (data) => {
+      toast.success(`SUPER_ADMIN account created for ${data.user.email}`);
+      setModal(null);
+      queryClient.invalidateQueries({ queryKey: ['admin-admins-pending-super'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-admins'] });
+    },
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Failed to approve request';
+      toast.error(msg);
+    },
+  });
+
+  const rejectSuperMutation = useMutation({
+    mutationFn: (id: string) => adminAdminsService.rejectPendingSuper(id),
+    onSuccess: () => {
+      toast.success('SUPER_ADMIN request rejected');
+      setModal(null);
+      queryClient.invalidateQueries({ queryKey: ['admin-admins-pending-super'] });
+    },
+    onError: () => toast.error('Failed to reject request'),
+  });
 
   const fmt = (iso: string) =>
     new Date(iso).toLocaleDateString(language === 'bg' ? 'bg-BG' : 'en-GB', {
       day: '2-digit', month: 'short', year: 'numeric',
     });
 
-  const columns: ColumnDef<PendingAdmin>[] = [
+  const superColumns: ColumnDef<PendingSuperAdminRequest>[] = [
+    {
+      key: 'user',
+      header: 'Requested account',
+      render: (row) => (
+        <UserCell>
+          {row.firstName || row.lastName
+            ? `${row.firstName ?? ''} ${row.lastName ?? ''}`.trim()
+            : '—'}
+          <MetaLine>{row.email}</MetaLine>
+          {row.phone && <MetaLine>{row.phone}</MetaLine>}
+        </UserCell>
+      ),
+    },
+    {
+      key: 'requestedBy',
+      header: 'Requested by',
+      render: (row) =>
+        row.requestedBy ? (
+          <UserCell>
+            {row.requestedBy.firstName || row.requestedBy.lastName
+              ? `${row.requestedBy.firstName ?? ''} ${row.requestedBy.lastName ?? ''}`.trim()
+              : '—'}
+            <MetaLine>{row.requestedBy.email}</MetaLine>
+          </UserCell>
+        ) : (
+          <span style={{ color: palette.textSubtle, fontSize: '0.8125rem' }}>—</span>
+        ),
+    },
+    {
+      key: 'createdAt',
+      header: 'Requested',
+      render: (row) => (
+        <span style={{ color: palette.textMuted, fontSize: '0.8125rem' }}>{fmt(row.createdAt)}</span>
+      ),
+    },
+  ];
+
+  const roleColumns: ColumnDef<PendingAdmin>[] = [
     {
       key: 'user',
       header: 'Admin',
@@ -294,18 +391,72 @@ export default function AdminAdminsPendingPage() {
     },
   ];
 
+  const totalPending = (roleData?.total ?? 0) + (superData?.total ?? 0);
+
   return (
     <PageShell>
       <PageHeader>
         <Eyebrow>Admins</Eyebrow>
         <PageTitle>
           Pending Approvals
-          {data && data.total > 0 && <TotalBadge>{data.total.toLocaleString()}</TotalBadge>}
+          {totalPending > 0 && <TotalBadge>{totalPending.toLocaleString()}</TotalBadge>}
         </PageTitle>
-        <PageSubtitle>Admin-role accounts awaiting a role assignment</PageSubtitle>
+        <PageSubtitle>SUPER_ADMIN creation requests (dual approval) and admin role assignments</PageSubtitle>
       </PageHeader>
 
+      {/* ── Section 1: Pending SUPER_ADMIN creation requests ── */}
       <Card>
+        <SectionTitle>
+          SUPER_ADMIN Requests
+          {(superData?.total ?? 0) > 0 && (
+            <TotalBadge style={{ marginLeft: '0.5rem' }}>{superData!.total}</TotalBadge>
+          )}
+        </SectionTitle>
+        <SectionSubtitle>New SUPER_ADMIN accounts pending a second SUPER_ADMIN's approval</SectionSubtitle>
+
+        {(superData?.total ?? 0) > 0 && (
+          <DangerBanner>
+            Only a SUPER_ADMIN can approve or reject these requests. Approving creates a full SUPER_ADMIN account.
+          </DangerBanner>
+        )}
+
+        <DataTable
+          columns={superColumns}
+          data={superData?.requests ?? []}
+          rowKey={(row) => row.id}
+          loading={superLoading}
+          emptyMessage="No pending SUPER_ADMIN requests"
+          page={superPage}
+          pageSize={PAGE_SIZE}
+          totalItems={superData?.total}
+          onPageChange={setSuperPage}
+          rowActions={[
+            {
+              label: 'Approve',
+              onClick: (row) => setModal({ type: 'super', request: row }),
+            },
+            {
+              label: 'Reject',
+              danger: true as const,
+              onClick: (row) => {
+                if (!window.confirm(`Reject SUPER_ADMIN request for ${row.email}?`)) return;
+                rejectSuperMutation.mutate(row.id);
+              },
+            },
+          ]}
+        />
+      </Card>
+
+      {/* ── Section 2: Role-assignment pending ── */}
+      <Card>
+        <SectionTitle>
+          Pending Role Assignments
+          {(roleData?.total ?? 0) > 0 && (
+            <TotalBadge style={{ marginLeft: '0.5rem' }}>{roleData!.total}</TotalBadge>
+          )}
+        </SectionTitle>
+        <SectionSubtitle>Admin accounts with no panel role assigned yet</SectionSubtitle>
+
         <InfoBanner>
           These users have the <strong>ADMIN</strong> system role but no panel role assigned yet.
           Assign a role to give them dashboard access.
@@ -315,27 +466,29 @@ export default function AdminAdminsPendingPage() {
           <SearchInput
             type="text"
             placeholder="Search by name, email or phone…"
-            value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
-            onKeyDown={handleSearchKeyDown}
+            value={roleSearchInput}
+            onChange={(e) => setRoleSearchInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') { setRoleSearch(roleSearchInput); setRolePage(1); }
+            }}
           />
         </FilterRow>
 
         <DataTable
-          columns={columns}
-          data={data?.users ?? []}
+          columns={roleColumns}
+          data={roleData?.users ?? []}
           rowKey={(row) => row.id}
-          loading={isLoading}
-          emptyMessage="No pending admin approvals"
-          page={page}
+          loading={roleLoading}
+          emptyMessage="No pending admin role assignments"
+          page={rolePage}
           pageSize={PAGE_SIZE}
-          totalItems={data?.total}
-          onPageChange={setPage}
+          totalItems={roleData?.total}
+          onPageChange={setRolePage}
           rowActions={[
             {
               label: 'Assign role & approve',
               onClick: (row) => {
-                setApproving(row);
+                setModal({ type: 'role', admin: row });
                 setSelectedRole('ADMIN');
               },
             },
@@ -343,12 +496,36 @@ export default function AdminAdminsPendingPage() {
         />
       </Card>
 
-      {approving && (
-        <OverlayBackdrop onClick={() => setApproving(null)}>
+      {/* ── Approve SUPER_ADMIN modal ── */}
+      {modal?.type === 'super' && (
+        <OverlayBackdrop onClick={() => setModal(null)}>
+          <OverlayCard onClick={(e) => e.stopPropagation()}>
+            <OverlayTitle>Approve SUPER_ADMIN request</OverlayTitle>
+            <OverlaySubtitle>
+              This will create a full SUPER_ADMIN account for{' '}
+              <strong>{modal.request.email}</strong>. This action cannot be undone easily.
+            </OverlaySubtitle>
+            <OverlayActions>
+              <PrimaryBtn
+                $loading={approveSuperMutation.isPending}
+                disabled={approveSuperMutation.isPending}
+                onClick={() => approveSuperMutation.mutate(modal.request.id)}
+              >
+                {approveSuperMutation.isPending ? 'Approving…' : 'Approve & create account'}
+              </PrimaryBtn>
+              <SecondaryBtn onClick={() => setModal(null)}>Cancel</SecondaryBtn>
+            </OverlayActions>
+          </OverlayCard>
+        </OverlayBackdrop>
+      )}
+
+      {/* ── Assign role modal ── */}
+      {modal?.type === 'role' && (
+        <OverlayBackdrop onClick={() => setModal(null)}>
           <OverlayCard onClick={(e) => e.stopPropagation()}>
             <OverlayTitle>Assign role</OverlayTitle>
             <OverlaySubtitle>
-              Assign a panel role to <strong>{approving.email}</strong>
+              Assign a panel role to <strong>{modal.admin.email}</strong>
             </OverlaySubtitle>
             <Select
               value={selectedRole}
@@ -362,11 +539,11 @@ export default function AdminAdminsPendingPage() {
               <PrimaryBtn
                 $loading={approveMutation.isPending}
                 disabled={approveMutation.isPending}
-                onClick={() => approveMutation.mutate({ id: approving.id, roleKey: selectedRole })}
+                onClick={() => approveMutation.mutate({ id: modal.admin.id, roleKey: selectedRole })}
               >
                 {approveMutation.isPending ? 'Assigning…' : 'Assign role'}
               </PrimaryBtn>
-              <SecondaryBtn onClick={() => setApproving(null)}>Cancel</SecondaryBtn>
+              <SecondaryBtn onClick={() => setModal(null)}>Cancel</SecondaryBtn>
             </OverlayActions>
           </OverlayCard>
         </OverlayBackdrop>

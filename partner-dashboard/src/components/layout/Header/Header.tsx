@@ -617,6 +617,7 @@ const UserMenuButton = styled.button`
 
 const ThemeMenuContainer = styled.div`
   position: relative;
+  z-index: 60;
 `;
 
 const ThemeButton = styled.button`
@@ -734,6 +735,8 @@ const LanguageButton = styled.button`
   cursor: pointer;
   font-size: 0.75rem;
   font-weight: 600;
+  position: relative;
+  z-index: 60;
 
   [data-theme="dark"] & {
     color: #d1d5db;
@@ -800,6 +803,8 @@ const SearchButton = styled.button`
   color: #374151;
   cursor: pointer;
   transition: all 200ms;
+  position: relative;
+  z-index: 60;
 
   [data-theme="dark"] & {
     color: #d1d5db;

@@ -27,6 +27,21 @@ export interface AdminUser {
   status: UserStatus;
   lastLoginAt: string | null;
   createdAt: string;
+  twoFactorEnabled: boolean;
+  adminRoles: UserAdminRoleEntry[];
+}
+
+export interface AdminUserDetail {
+  id: string;
+  email: string;
+  firstName: string | null;
+  lastName: string | null;
+  phone: string | null;
+  role: UserRole;
+  status: UserStatus;
+  lastLoginAt: string | null;
+  createdAt: string;
+  twoFactorEnabled: boolean;
   adminRoles: UserAdminRoleEntry[];
 }
 
@@ -39,6 +54,27 @@ export interface PendingAdmin {
   status: UserStatus;
   createdAt: string;
 }
+
+export interface PendingSuperAdminRequest {
+  id: string;
+  email: string;
+  firstName: string | null;
+  lastName: string | null;
+  phone: string | null;
+  createdAt: string;
+  requestedBy: { id: string; firstName: string | null; lastName: string | null; email: string } | null;
+}
+
+export interface PendingSuperResult {
+  requests: PendingSuperAdminRequest[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export type CreateAdminResponse =
+  | { ok: boolean; pending?: false; user: Pick<AdminUser, 'id' | 'email'> }
+  | { ok: boolean; pending: true; request: Pick<PendingSuperAdminRequest, 'id' | 'email' | 'firstName' | 'lastName' | 'createdAt'> };
 
 export interface AuditActor {
   id: string;
@@ -100,7 +136,7 @@ export const adminAdminsService = {
     phone?: string;
     password: string;
     roleKey: AdminRoleKey;
-  }): Promise<{ ok: boolean; user: Pick<AdminUser, 'id' | 'email'> }> {
+  }): Promise<CreateAdminResponse> {
     return apiService.post('/admin/admins', data);
   },
 
@@ -116,6 +152,26 @@ export const adminAdminsService = {
 
   removeRole(id: string, roleKey: AdminRoleKey): Promise<{ ok: boolean }> {
     return apiService.delete(`/admin/admins/${id}/roles/${roleKey}`);
+  },
+
+  getById(id: string): Promise<AdminUserDetail> {
+    return apiService.get(`/admin/admins/${id}`);
+  },
+
+  setStatus(id: string, status: 'ACTIVE' | 'SUSPENDED'): Promise<{ ok: boolean }> {
+    return apiService.patch(`/admin/admins/${id}/status`, { status });
+  },
+
+  listPendingSuper(params?: { page?: number; limit?: number }): Promise<PendingSuperResult> {
+    return apiService.get('/admin/admins/pending-super', { page: params?.page, limit: params?.limit });
+  },
+
+  approvePendingSuper(id: string): Promise<{ ok: boolean; user: Pick<AdminUser, 'id' | 'email'> }> {
+    return apiService.post(`/admin/admins/pending-super/${id}/approve`, {});
+  },
+
+  rejectPendingSuper(id: string): Promise<{ ok: boolean }> {
+    return apiService.delete(`/admin/admins/pending-super/${id}`);
   },
 
   listAudit(params: {

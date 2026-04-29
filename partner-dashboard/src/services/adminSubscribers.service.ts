@@ -11,38 +11,79 @@ export type SubscriptionStatus =
   | 'UNPAID'
   | 'PAUSED';
 
+export type UserAccountStatus = 'ACTIVE' | 'SUSPENDED' | 'DELETED';
+
 export interface SubscriberWallet {
   availableBalance: number;
   balance: number;
   pendingBalance: number;
 }
 
-export interface SubscriberUser {
+export interface SubscriberSubscription {
+  id: string;
+  plan: SubscriptionPlan;
+  status: SubscriptionStatus;
+  currentPeriodEnd: string;
+  autoRenewal: boolean;
+  canceledAt: string | null;
+  createdAt: string;
+  planDisplayName?: string;
+}
+
+// User-centric shape returned by GET /api/admin/subscribers
+export interface AdminSubscriber {
+  id: string;               // USER id
+  firstName: string | null;
+  lastName: string | null;
+  email: string;
+  phone: string | null;
+  status: UserAccountStatus; // user account status (ACTIVE / SUSPENDED / DELETED)
+  deletedAt: string | null;
+  riskScore: number | null;
+  lastLoginAt: string | null;
+  createdAt: string;        // user account creation date
+  wallet: SubscriberWallet | null;
+  subscription: SubscriberSubscription | null;
+}
+
+export interface AdminSubscriberDetail {
   id: string;
   firstName: string | null;
   lastName: string | null;
   email: string;
   phone: string | null;
-  status: string;
+  iban: string | null;
+  role: string;
+  status: UserAccountStatus;
+  deletedAt: string | null;
+  riskScore: number | null;
+  riskBucket: string | null;
   createdAt: string;
+  lastLoginAt: string | null;
+  marketingConsent: boolean;
+  preferredLanguage: string | null;
   wallet: SubscriberWallet | null;
+  subscriptions: Array<{
+    id: string;
+    plan: SubscriptionPlan;
+    status: SubscriptionStatus;
+    currentPeriodEnd: string;
+    autoRenewal: boolean;
+    canceledAt: string | null;
+    createdAt: string;
+  }>;
 }
 
-export interface AdminSubscription {
+export interface LoginHistoryEntry {
   id: string;
-  plan: SubscriptionPlan;
-  status: SubscriptionStatus;
-  currentPeriodStart: string;
-  currentPeriodEnd: string;
-  canceledAt: string | null;
-  trialEnd: string | null;
-  autoRenewal: boolean;
+  ip: string | null;
+  userAgent: string | null;
   createdAt: string;
-  user: SubscriberUser;
+  success: boolean;
 }
 
 export interface AdminSubscribersResult {
-  subscriptions: AdminSubscription[];
+  subscribers: AdminSubscriber[];
   total: number;
   page: number;
   limit: number;
@@ -67,11 +108,38 @@ export const adminSubscribersService = {
     return apiService.get<AdminSubscribersResult>('/admin/subscribers', clean);
   },
 
-  cancelSubscription(id: string): Promise<{ ok: boolean }> {
-    return apiService.patch(`/admin/subscribers/${id}/cancel`);
+  cancelSubscription(userId: string): Promise<{ ok: boolean }> {
+    return apiService.patch(`/admin/subscribers/${userId}/cancel`);
   },
 
-  changePlan(id: string, plan: SubscriptionPlan): Promise<{ id: string; plan: SubscriptionPlan; status: SubscriptionStatus }> {
-    return apiService.patch(`/admin/subscribers/${id}/plan`, { plan });
+  changePlan(
+    userId: string,
+    plan: SubscriptionPlan,
+  ): Promise<{ id: string; plan: SubscriptionPlan; status: SubscriptionStatus }> {
+    return apiService.patch(`/admin/subscribers/${userId}/plan`, { plan });
+  },
+
+  getSubscriber(id: string): Promise<AdminSubscriberDetail> {
+    return apiService.get(`/admin/subscribers/${id}`);
+  },
+
+  suspendSubscriber(id: string, status: 'ACTIVE' | 'SUSPENDED'): Promise<{ ok: boolean }> {
+    return apiService.patch(`/admin/subscribers/${id}/status`, { status });
+  },
+
+  deleteSubscriber(id: string): Promise<{ ok: boolean }> {
+    return apiService.delete(`/admin/subscribers/${id}`);
+  },
+
+  forceLogout(id: string): Promise<{ ok: boolean; revokedCount: number }> {
+    return apiService.delete(`/admin/subscribers/${id}/sessions`);
+  },
+
+  getLoginHistory(
+    id: string,
+    page: number,
+    limit: number,
+  ): Promise<{ history: LoginHistoryEntry[]; total: number; page: number; limit: number }> {
+    return apiService.get(`/admin/subscribers/${id}/login-history`, { page, limit });
   },
 };

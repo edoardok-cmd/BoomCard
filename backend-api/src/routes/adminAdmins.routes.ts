@@ -202,8 +202,10 @@ router.get('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermissi
   try {
     const { search, roleKey, page = '1', limit = '20' } = req.query as Record<string, string>;
 
-    const skip = (parseInt(page) - 1) * parseInt(limit);
-    const take = parseInt(limit);
+    const pageNum = Math.max(1, parseInt(page) || 1);
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit) || 20));
+    const skip = (pageNum - 1) * limitNum;
+    const take = limitNum;
 
     const where: Parameters<typeof prisma.user.findMany>[0]['where'] = {
       role: { in: ['ADMIN', 'SUPER_ADMIN'] },
@@ -258,7 +260,7 @@ router.get('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermissi
       twoFactorEnabled: totpEnabledAt !== null,
     }));
 
-    res.json({ admins: result, total, page: parseInt(page), limit: take });
+    res.json({ admins: result, total, page: pageNum, limit: take });
   } catch (error) {
     next(error);
   }
@@ -418,7 +420,8 @@ router.post('/pending-super/:id/approve', authenticate, authorize('SUPER_ADMIN')
 });
 
 // DELETE /api/admin/admins/pending-super/:id — cancel/reject a pending SUPER_ADMIN request
-router.delete('/pending-super/:id', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('admins.write'), async (req, res, next) => {
+// Restricted to SUPER_ADMIN — only the same level that can approve should be able to reject.
+router.delete('/pending-super/:id', authenticate, authorize('SUPER_ADMIN'), requirePermission('admins.write'), async (req, res, next) => {
   try {
     const { id } = req.params;
 
@@ -564,9 +567,22 @@ router.delete('/:id/roles/:roleKey', authenticate, authorize('ADMIN', 'SUPER_ADM
     const adminRole = await prisma.adminRole.findUnique({ where: { key: roleKey as AdminRoleKey } });
     if (!adminRole) return res.status(404).json({ error: 'Role not found' });
 
-    const { count } = await prisma.userAdminRole.deleteMany({ where: { userId: id, roleId: adminRole.id } });
-    if (count === 0) {
-      return res.status(404).json({ error: 'Admin does not have this role' });
+    if (roleKey === AdminRoleKey.SUPER_ADMIN) {
+      // Removing SUPER_ADMIN must also downgrade User.role — authorization middleware
+      // checks user.role directly, not UserAdminRole, so deleting only the junction row
+      // would leave the user with full SUPER_ADMIN access.
+      const [deleteResult] = await prisma.$transaction([
+        prisma.userAdminRole.deleteMany({ where: { userId: id, roleId: adminRole.id } }),
+        prisma.user.update({ where: { id }, data: { role: 'ADMIN' } }),
+      ]);
+      if (deleteResult.count === 0) {
+        return res.status(404).json({ error: 'Admin does not have this role' });
+      }
+    } else {
+      const { count } = await prisma.userAdminRole.deleteMany({ where: { userId: id, roleId: adminRole.id } });
+      if (count === 0) {
+        return res.status(404).json({ error: 'Admin does not have this role' });
+      }
     }
 
     res.json({ ok: true });

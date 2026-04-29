@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import styled from 'styled-components';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-hot-toast';
-import { adminAdminsService, AdminRoleKey } from '../../services/adminAdmins.service';
+import { adminAdminsService, AdminRoleKey, CreateAdminResponse } from '../../services/adminAdmins.service';
 
 const palette = {
   bg: '#faf9f5',
@@ -178,7 +178,7 @@ const EMPTY = { email: '', firstName: '', lastName: '', phone: '', password: '',
 export default function AdminAdminsCreatePage() {
   const queryClient = useQueryClient();
   const [form, setForm] = useState(EMPTY);
-  const [lastCreated, setLastCreated] = useState<string | null>(null);
+  const [lastCreated, setLastCreated] = useState<{ email: string; pending: boolean } | null>(null);
   const [serverError, setServerError] = useState<string | null>(null);
 
   const { data: rolesData } = useQuery({
@@ -198,12 +198,19 @@ export default function AdminAdminsCreatePage() {
         password: form.password,
         roleKey: form.roleKey,
       }),
-    onSuccess: (data) => {
-      setLastCreated(data.user.email);
+    onSuccess: (data: CreateAdminResponse) => {
       setServerError(null);
       setForm(EMPTY);
-      toast.success(`Admin account created for ${data.user.email}`);
-      queryClient.invalidateQueries({ queryKey: ['admin-admins'] });
+      if (data.pending) {
+        setLastCreated({ email: data.request.email, pending: true });
+        toast.success(`SUPER_ADMIN request submitted for ${data.request.email} — a second SUPER_ADMIN must approve`);
+        queryClient.invalidateQueries({ queryKey: ['admin-admins-pending-super'] });
+      } else {
+        setLastCreated({ email: data.user.email, pending: false });
+        toast.success(`Admin account created for ${data.user.email}`);
+        queryClient.invalidateQueries({ queryKey: ['admin-admins'] });
+        queryClient.invalidateQueries({ queryKey: ['admin-admins-pending'] });
+      }
     },
     onError: (err: unknown) => {
       const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Failed to create admin';
@@ -233,7 +240,11 @@ export default function AdminAdminsCreatePage() {
 
       <FormCard>
         {lastCreated && (
-          <SuccessBanner>Admin account created for {lastCreated}</SuccessBanner>
+          <SuccessBanner>
+            {lastCreated.pending
+              ? <>Pending SUPER_ADMIN request created for <strong>{lastCreated.email}</strong> — a second SUPER_ADMIN must approve it from the Pending Approvals page.</>
+              : <>Admin account created for <strong>{lastCreated.email}</strong>.</>}
+          </SuccessBanner>
         )}
         {serverError && (
           <ErrorBanner>{serverError}</ErrorBanner>
@@ -324,7 +335,7 @@ export default function AdminAdminsCreatePage() {
             <SubmitButton type="submit" $loading={createMutation.isPending} disabled={createMutation.isPending}>
               {createMutation.isPending ? 'Creating…' : 'Create admin'}
             </SubmitButton>
-            <ResetButton type="button" onClick={() => { setForm(EMPTY); setServerError(null); setLastCreated(null); }}>
+            <ResetButton type="button" onClick={() => { setForm(EMPTY); setServerError(null); setLastCreated(null); }} >
               Clear
             </ResetButton>
           </ButtonRow>

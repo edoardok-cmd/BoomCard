@@ -135,6 +135,7 @@ const AdminComingSoonPage = lazy(() => import('./pages/admin/AdminComingSoonPage
 const AdminDashboardPage = lazy(() => import('./pages/admin/AdminDashboardPage'));
 const AdminPartnerRequestsPage = lazy(() => import('./pages/admin/AdminPartnerRequestsPage'));
 const AdminSubscribersAllPage = lazy(() => import('./pages/admin/AdminSubscribersAllPage'));
+const AdminSubscriberDetailPage = lazy(() => import('./pages/admin/AdminSubscriberDetailPage'));
 const AdminPayoutsPage = lazy(() => import('./pages/admin/AdminPayoutsPage'));
 const AdminTransactionsPage = lazy(() => import('./pages/admin/AdminTransactionsPage'));
 const AdminSubscriptionsPage = lazy(() => import('./pages/admin/AdminSubscriptionsPage'));
@@ -147,6 +148,7 @@ const AdminAdminsAllPage = lazy(() => import('./pages/admin/AdminAdminsAllPage')
 const AdminAdminsCreatePage = lazy(() => import('./pages/admin/AdminAdminsCreatePage'));
 const AdminAdminsPendingPage = lazy(() => import('./pages/admin/AdminAdminsPendingPage'));
 const AdminAdminsAuditPage = lazy(() => import('./pages/admin/AdminAdminsAuditPage'));
+const AdminAdminDetailPage = lazy(() => import('./pages/admin/AdminAdminDetailPage'));
 const AdminAlertsPage = lazy(() => import('./pages/admin/AdminAlertsPage'));
 const AdminPartnerLocationsPage = lazy(() => import('./pages/admin/AdminPartnerLocationsPage'));
 const AdminSettingsThresholdsPage = lazy(() => import('./pages/admin/AdminSettingsThresholdsPage'));
@@ -478,6 +480,7 @@ function App() {
                       <Route path="subscriptions" element={<AdminSubscriptionsPage />} />
                       <Route path="transactions" element={<AdminTransactionsPage />} />
                       <Route path="cashback" element={<AdminCashbackPage />} />
+                      <Route path=":userId" element={<AdminSubscriberDetailPage />} />
                     </Route>
 
                     {/* /admin/partners (new IA) */}
@@ -576,6 +579,7 @@ function App() {
                       <Route path="create" element={<AdminAdminsCreatePage />} />
                       <Route path="pending" element={<AdminAdminsPendingPage />} />
                       <Route path="audit" element={<AdminAdminsAuditPage />} />
+                      <Route path=":id" element={<AdminAdminDetailPage />} />
                     </Route>
 
                     {/* /admin/help — placeholder */}

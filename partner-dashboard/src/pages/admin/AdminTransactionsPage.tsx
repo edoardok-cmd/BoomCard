@@ -12,7 +12,7 @@ import {
 } from '../../services/adminTransactions.service';
 import {
   adminSubscribersService,
-  AdminSubscription,
+  AdminSubscriber,
 } from '../../services/adminSubscribers.service';
 
 /* ─── Palette ─────────────────────────────────────────────────────────────── */
@@ -469,7 +469,7 @@ export default function AdminTransactionsPage() {
   /* ── Adjustment modal state ── */
   const [showAdjust, setShowAdjust] = useState(false);
   const [adjSearch, setAdjSearch] = useState('');
-  const [adjUser, setAdjUser] = useState<AdminSubscription | null>(null);
+  const [adjUser, setAdjUser] = useState<AdminSubscriber | null>(null);
   const [adjAmount, setAdjAmount] = useState('');
   const [adjReason, setAdjReason] = useState('');
 
@@ -530,7 +530,7 @@ export default function AdminTransactionsPage() {
     const amount = parseFloat(adjAmount);
     if (!amount || amount === 0) { toast.error('Enter a non-zero amount'); return; }
     if (!adjReason.trim()) { toast.error('Reason is required'); return; }
-    adjustMutation.mutate({ userId: adjUser.user.id, amount, reason: adjReason });
+    adjustMutation.mutate({ userId: adjUser.id, amount, reason: adjReason });
   };
 
   const fmt = (iso: string) =>
@@ -601,7 +601,7 @@ export default function AdminTransactionsPage() {
   ];
 
   const adjUserName = adjUser
-    ? `${adjUser.user.firstName ?? ''} ${adjUser.user.lastName ?? ''}`.trim() || adjUser.user.email
+    ? `${adjUser.firstName ?? ''} ${adjUser.lastName ?? ''}`.trim() || adjUser.email
     : '';
 
   return (
@@ -635,24 +635,24 @@ export default function AdminTransactionsPage() {
                     onChange={(e) => setAdjSearch(e.target.value)}
                     autoFocus
                   />
-                  {adjSearch.length >= 2 && adjSearchData && adjSearchData.subscriptions.length > 0 && (
+                  {adjSearch.length >= 2 && adjSearchData && adjSearchData.subscribers.length > 0 && (
                     <UserResultList>
-                      {adjSearchData.subscriptions.map((sub) => (
+                      {adjSearchData.subscribers.map((sub) => (
                         <UserResultItem
-                          key={sub.user.id}
+                          key={sub.id}
                           onClick={() => { setAdjUser(sub); setAdjSearch(''); }}
                         >
                           <strong>
-                            {`${sub.user.firstName ?? ''} ${sub.user.lastName ?? ''}`.trim() || sub.user.email}
+                            {`${sub.firstName ?? ''} ${sub.lastName ?? ''}`.trim() || sub.email}
                           </strong>
                           <span style={{ color: palette.textSubtle, marginLeft: '0.375rem', fontSize: '0.8125rem' }}>
-                            {sub.user.email}
+                            {sub.email}
                           </span>
                         </UserResultItem>
                       ))}
                     </UserResultList>
                   )}
-                  {adjSearch.length >= 2 && adjSearchData?.subscriptions.length === 0 && (
+                  {adjSearch.length >= 2 && adjSearchData?.subscribers.length === 0 && (
                     <HintText>No subscribers found</HintText>
                   )}
                   {adjSearch.length < 2 && (
