@@ -57,8 +57,20 @@ export function startMerchantVerificationWorker(): Worker | null {
     logger[level](`merchant-verification: ${final ? 'final' : 'transient'} failure for scan ${job?.data?.scanId}: ${err.message}`);
   });
 
+  let rateLimitBackoffMs = 10_000;
+  const MAX_RATE_LIMIT_BACKOFF_MS = 10 * 60_000; // 10 min
+
   worker.on('error', (err) => {
     logger.error(`merchant-verification worker error: ${err.message}`);
+    if (err.message.includes('max requests limit exceeded')) {
+      const delay = rateLimitBackoffMs;
+      rateLimitBackoffMs = Math.min(rateLimitBackoffMs * 2, MAX_RATE_LIMIT_BACKOFF_MS);
+      logger.warn(`merchant-verification: Redis rate limit hit — pausing worker for ${delay / 1000}s`);
+      worker.pause(true).catch(() => {});
+      setTimeout(() => {
+        worker.resume().catch(() => {});
+      }, delay);
+    }
   });
 
   logger.info(`merchant-verification worker started (concurrency=${WORKER_CONCURRENCY})`);
