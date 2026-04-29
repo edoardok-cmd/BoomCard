@@ -3,7 +3,8 @@ import { PaginatedResponse } from './venues.service';
 import { PartnerType } from './partnerTypes.service';
 import * as authStorage from '../lib/auth/authStorage';
 
-export type PartnerStatus = 'PENDING' | 'ACTIVE' | 'SUSPENDED' | 'INACTIVE';
+// Spec §5.3 statuses: ACTIVE / PAUSED / SUSPENDED / ARCHIVED. INACTIVE kept for legacy rows.
+export type PartnerStatus = 'PENDING' | 'ACTIVE' | 'PAUSED' | 'SUSPENDED' | 'ARCHIVED' | 'INACTIVE';
 
 export interface Partner {
   id: string;
@@ -54,6 +55,8 @@ export interface Partner {
   updatedAt?: string;
   pendingChanges?: Record<string, unknown> | null;
   pendingChangesAt?: string | null;
+  // Spec §5.3 — Видимост: visible vs. hidden to subscribers
+  isVisible?: boolean;
 }
 
 export interface PartnerLocationInput {

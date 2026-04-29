@@ -119,7 +119,7 @@ export async function getAlerts(): Promise<AdminAlertsResult> {
       tier: 'CRITICAL',
       title: 'Неуспешни плащания',
       count: failedSubscriptions,
-      link: '/admin/subscriptions?status=PAST_DUE',
+      link: '/admin/subscribers/subscriptions?status=PAST_DUE',
     });
   }
   if (riskReceipts > 0) {
@@ -129,7 +129,7 @@ export async function getAlerts(): Promise<AdminAlertsResult> {
       tier: 'CRITICAL',
       title: 'Рискови транзакции (висок риск)',
       count: riskReceipts,
-      link: '/admin/control/risk-queue?tier=HIGH_61_PLUS',
+      link: '/admin/control/risk?tier=HIGH_61_PLUS',
     });
   }
   if (failedTransactions > 0) {
@@ -139,7 +139,7 @@ export async function getAlerts(): Promise<AdminAlertsResult> {
       tier: 'CRITICAL',
       title: 'Системни грешки (последните 24ч)',
       count: failedTransactions,
-      link: '/admin/transactions?status=FAILED',
+      link: '/admin/subscribers/transactions?status=FAILED',
     });
   }
 
@@ -161,7 +161,7 @@ export async function getAlerts(): Promise<AdminAlertsResult> {
       tier: 'OPERATIONAL',
       title: 'Менюта за одобрение',
       count: menuApprovals,
-      link: '/admin/partners/locations',
+      link: '/admin/partners/locations?status=PENDING_MENU',
     });
   }
   if (openPeriods > 0) {
@@ -181,7 +181,7 @@ export async function getAlerts(): Promise<AdminAlertsResult> {
       tier: 'OPERATIONAL',
       title: `Абонати достигнали праг за изплащане (≥${PAYOUT_THRESHOLD} лв)`,
       count: walletsAtThreshold,
-      link: '/admin/subscribers?filter=payout_ready',
+      link: '/admin/subscribers/all?filter=payout_ready',
     });
   }
   if (largePendingTx > 0) {
@@ -191,7 +191,7 @@ export async function getAlerts(): Promise<AdminAlertsResult> {
       tier: 'OPERATIONAL',
       title: `Чакащи транзакции над лимита (≥${LARGE_TX_THRESHOLD} лв)`,
       count: largePendingTx,
-      link: '/admin/transactions?status=PENDING',
+      link: '/admin/subscribers/transactions?status=PENDING',
     });
   }
 
@@ -203,7 +203,7 @@ export async function getAlerts(): Promise<AdminAlertsResult> {
       tier: 'INFORMATIONAL',
       title: 'Изтрити потребители',
       count: deletedUsers,
-      link: '/admin/subscribers?status=DELETED',
+      link: '/admin/subscribers/all?status=DELETED',
     });
   }
   if (newRegistrations > 0) {
@@ -213,7 +213,7 @@ export async function getAlerts(): Promise<AdminAlertsResult> {
       tier: 'INFORMATIONAL',
       title: 'Нови регистрации (последните 24ч)',
       count: newRegistrations,
-      link: '/admin/subscribers?filter=new',
+      link: '/admin/subscribers/all?filter=new',
     });
   }
   if (activatedPartners > 0) {
@@ -223,7 +223,7 @@ export async function getAlerts(): Promise<AdminAlertsResult> {
       tier: 'INFORMATIONAL',
       title: 'Активирани партньори (последните 24ч)',
       count: activatedPartners,
-      link: '/admin/partners?status=ACTIVE&filter=recent',
+      link: '/admin/partners/active?status=ACTIVE&filter=recent',
     });
   }
   if (completedOnboarding > 0) {
@@ -233,7 +233,7 @@ export async function getAlerts(): Promise<AdminAlertsResult> {
       tier: 'INFORMATIONAL',
       title: 'Завършен онбординг (последните 7 дни)',
       count: completedOnboarding,
-      link: '/admin/partners?requestStatus=ODOBRENA&filter=recent',
+      link: '/admin/partners/active?requestStatus=ODOBRENA&filter=recent',
     });
   }
 

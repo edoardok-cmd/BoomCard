@@ -48,7 +48,7 @@ enum UserStatus {
   SUSPENDED
   PENDING_VERIFICATION
   PENDING_PAYMENT // User registered but payment not yet confirmed
-  DELETED         // Soft-deleted; deletedAt is always set when this status is used
+  DELETED // Soft-deleted; deletedAt is always set when this status is used
 }
 
 model User {
@@ -80,24 +80,24 @@ model User {
   passwordChangedAt    DateTime?
 
   // Soft-delete
-  deletedAt        DateTime?
+  deletedAt DateTime?
 
   // Risk scoring (rule-sum; riskScore exposed for future ML)
-  riskScore        Int        @default(0)
-  riskBucket       RiskBucket?
+  riskScore  Int         @default(0)
+  riskBucket RiskBucket?
 
   // TOTP 2FA
-  totpSecret       String?
-  totpEnabledAt    DateTime?
+  totpSecret    String?
+  totpEnabledAt DateTime?
 
   // Finance fields (Phase 4 preview — safe to add now)
-  iban             String?
+  iban              String?
   ibanLastChangedAt DateTime?
 
   // GDPR Consent Tracking
-  termsAcceptedAt    DateTime?
-  privacyAcceptedAt  DateTime?
-  termsVersion       String?    // e.g. "2026-02-24"
+  termsAcceptedAt         DateTime?
+  privacyAcceptedAt       DateTime?
+  termsVersion            String? // e.g. "2026-02-24"
   marketingConsent        Boolean   @default(false)
   marketingConsentAt      DateTime?
   marketingConsentEmail   Boolean   @default(false)
@@ -114,8 +114,8 @@ model User {
   // Stored as JSON to avoid a wide column explosion as preference categories grow.
   notificationPreferences Json?
 
-  createdAt        DateTime   @default(now())
-  updatedAt        DateTime   @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Relations
   refreshTokens       RefreshToken[]
@@ -138,17 +138,17 @@ model User {
   savedPaymentMethods SavedPaymentMethod[]
   pushTokens          PushToken[]
   adminRoles          UserAdminRole[]
-  grantedAdminRoles   UserAdminRole[] @relation("GrantedRoles")
+  grantedAdminRoles   UserAdminRole[]            @relation("GrantedRoles")
   auditLogs           AuditLog[]
-  helpTickets         HelpTicket[]    @relation("TicketUser")
-  assignedTickets     HelpTicket[]    @relation("TicketAssignee")
-  ticketReplies       TicketReply[]   @relation("TicketReplies")
+  helpTickets         HelpTicket[]               @relation("TicketUser")
+  assignedTickets     HelpTicket[]               @relation("TicketAssignee")
+  ticketReplies       TicketReply[]              @relation("TicketReplies")
   superAdminRequests  PendingSuperAdminRequest[] @relation("SuperAdminRequester")
-  partnerRequestNotes PartnerRequestNote[] @relation("PartnerRequestNoteAuthor")
+  partnerRequestNotes PartnerRequestNote[]       @relation("PartnerRequestNoteAuthor")
   loginHistory        LoginHistory[]
-  disputeCases        Dispute[]     @relation("DisputeUser")
-  assignedDisputes    Dispute[]     @relation("DisputeAssignee")
-  disputeNotes        DisputeNote[] @relation("DisputeNoteAuthor")
+  disputeCases        Dispute[]                  @relation("DisputeUser")
+  assignedDisputes    Dispute[]                  @relation("DisputeAssignee")
+  disputeNotes        DisputeNote[]              @relation("DisputeNoteAuthor")
 
   @@unique([email, role], map: "User_email_role_key")
   @@index([email])
@@ -159,15 +159,15 @@ model User {
 // Pending SUPER_ADMIN creation requests — require a second admin to approve.
 // Stores the hashed password so the actual User is only created on approval.
 model PendingSuperAdminRequest {
-  id           String   @id @default(uuid())
-  email        String
-  firstName    String?
-  lastName     String?
-  phone        String?
-  passwordHash String
+  id            String   @id @default(uuid())
+  email         String
+  firstName     String?
+  lastName      String?
+  phone         String?
+  passwordHash  String
   requestedById String
-  requestedBy  User     @relation("SuperAdminRequester", fields: [requestedById], references: [id])
-  createdAt    DateTime @default(now())
+  requestedBy   User     @relation("SuperAdminRequester", fields: [requestedById], references: [id])
+  createdAt     DateTime @default(now())
 
   @@unique([email])
   @@index([requestedById])
@@ -216,62 +216,62 @@ enum PartnerRequestStatus {
 enum PartnerStatus {
   PENDING
   ACTIVE
-  PAUSED     // Temporarily hidden/paused — spec 5.3
-  SUSPENDED  // Suspended for policy violation
-  ARCHIVED   // Permanently deactivated — spec 5.3 (replaces INACTIVE semantically)
-  INACTIVE   // Legacy compat; prefer ARCHIVED for new code
-  REJECTED   // Request rejected during onboarding
+  PAUSED // Temporarily hidden/paused — spec 5.3
+  SUSPENDED // Suspended for policy violation
+  ARCHIVED // Permanently deactivated — spec 5.3 (replaces INACTIVE semantically)
+  INACTIVE // Legacy compat; prefer ARCHIVED for new code
+  REJECTED // Request rejected during onboarding
 }
 
 model Partner {
-  id             String        @id @default(uuid())
-  userId         String        @unique
-  businessName   String
-  businessNameBg String?
-  category       String
-  categories     String[]      // All categories; category holds the primary one
-  description    String?
-  descriptionBg  String?
-  logo           String?
-  coverImage     String?
-  partnerTypeId  String?       // FK → PartnerType (dynamic, replaces hardcoded tier enum)
-  discountRate   Float?        // Effective discount % for cardholders. NULL = use partnerType.maxDiscountRate.
-  status         PartnerStatus @default(PENDING)
-  rating         Float         @default(0)
-  reviewCount    Int           @default(0)
-  website        String?
-  phone          String?
-  email          String?
-  address        String?
-  city           String?
-  region         String?
-  latitude       Float?
-  longitude      Float?
-  openingHours   String? // JSON string
-  features       String? // JSON string
-  amenities      String? // JSON string
-  joinedAt       DateTime      @default(now())
-  verifiedAt     DateTime?
-  createdAt         DateTime      @default(now())
-  updatedAt         DateTime      @updatedAt
-  pendingChanges    Json?
-  pendingChangesAt  DateTime?
+  id               String        @id @default(uuid())
+  userId           String        @unique
+  businessName     String
+  businessNameBg   String?
+  category         String
+  categories       String[] // All categories; category holds the primary one
+  description      String?
+  descriptionBg    String?
+  logo             String?
+  coverImage       String?
+  partnerTypeId    String? // FK → PartnerType (dynamic, replaces hardcoded tier enum)
+  discountRate     Float? // Effective discount % for cardholders. NULL = use partnerType.maxDiscountRate.
+  status           PartnerStatus @default(PENDING)
+  rating           Float         @default(0)
+  reviewCount      Int           @default(0)
+  website          String?
+  phone            String?
+  email            String?
+  address          String?
+  city             String?
+  region           String?
+  latitude         Float?
+  longitude        Float?
+  openingHours     String? // JSON string
+  features         String? // JSON string
+  amenities        String? // JSON string
+  joinedAt         DateTime      @default(now())
+  verifiedAt       DateTime?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  pendingChanges   Json?
+  pendingChangesAt DateTime?
 
   // Onboarding pipeline — spec 5.1–5.2
-  requestStatus    PartnerRequestStatus?     // null = not yet in pipeline; set on first admin action
-  assignedAdminId  String?                   // "Отговорник" — admin assigned to this partner request
+  requestStatus   PartnerRequestStatus? // null = not yet in pipeline; set on first admin action
+  assignedAdminId String? // "Отговорник" — admin assigned to this partner request
 
   // Visibility — spec 5.3 "Видим или скрит за абонати"
-  isVisible        Boolean                   @default(true)
+  isVisible Boolean @default(true)
 
   // Relations
-  user             User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  partnerType      PartnerType?             @relation(fields: [partnerTypeId], references: [id])
-  venues           Venue[]
-  offers           Offer[]
-  reviews          Review[]
-  bookings         Booking[]
-  transactions     Transaction[]
+  user                 User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  partnerType          PartnerType?             @relation(fields: [partnerTypeId], references: [id])
+  venues               Venue[]
+  offers               Offer[]
+  reviews              Review[]
+  bookings             Booking[]
+  transactions         Transaction[]
   cashbackPayments     PartnerCashbackPayment[]
   marketingListMembers MarketingListMember[]
   requestNotes         PartnerRequestNote[]
@@ -291,11 +291,11 @@ enum CashbackPaymentStatus {
 model PartnerCashbackPayment {
   id                String                @id @default(uuid())
   partnerId         String
-  month             String                // "YYYY-MM"
+  month             String // "YYYY-MM"
   totalCashbackOwed Float                 @default(0) // sum of APPROVED receipt cashbackAmounts
   marginAmount      Float                 @default(0) // BoomCard margin retained — spec 6.2
   paidAt            DateTime?
-  paidBy            String?               // admin userId
+  paidBy            String? // admin userId
   notes             String?
   status            CashbackPaymentStatus @default(PENDING)
   createdAt         DateTime              @default(now())
@@ -324,7 +324,7 @@ model PartnerRequestNote {
 }
 
 model Venue {
-  id            String   @id @default(uuid())
+  id            String  @id @default(uuid())
   partnerId     String
   name          String
   nameBg        String?
@@ -351,8 +351,8 @@ model Venue {
   menuReviewedAt      DateTime?
   menuReviewedBy      String?
 
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   partner          Partner             @relation(fields: [partnerId], references: [id], onDelete: Cascade)
   bookings         Booking[]
@@ -380,11 +380,11 @@ enum MenuStatus {
 
 model PartnerType {
   id              String   @id @default(uuid())
-  name            String   @unique        // e.g. "BASIC", "GOLD", "VIP" — admin-defined
+  name            String   @unique // e.g. "BASIC", "GOLD", "VIP" — admin-defined
   nameBg          String?
   description     String?
   descriptionBg   String?
-  maxDiscountRate Float                   // max % discount partners of this type may publish
+  maxDiscountRate Float // max % discount partners of this type may publish
   color           String   @default("#6b7280") // hex color for badges
   sortOrder       Int      @default(0)
   isActive        Boolean  @default(true)
@@ -451,7 +451,7 @@ model Offer {
   termsConditions   String?
   termsConditionsBg String?
   image             String?
-  tags              String?     // JSON array of tag strings, e.g. ["spa","wellness"]
+  tags              String? // JSON array of tag strings, e.g. ["spa","wellness"]
   status            OfferStatus @default(DRAFT)
   isFeatured        Boolean     @default(false)
   featuredOrder     Int?
@@ -544,9 +544,9 @@ enum WalletTransactionStatus {
 }
 
 enum SubscriptionPlan {
-  LIGHT    // Premium Weekly - €6.99/week, up to 20% cashback, min payout €10
-  BASIC    // Basic - €8.99/month, up to 10% cashback, min payout €20
-  PREMIUM  // Premium - €13.99/month, up to 20% cashback, min payout €15
+  LIGHT // Premium Weekly - €6.99/week, up to 20% cashback, min payout €10
+  BASIC // Basic - €8.99/month, up to 10% cashback, min payout €20
+  PREMIUM // Premium - €13.99/month, up to 20% cashback, min payout €15
 }
 
 enum SubscriptionStatus {
@@ -568,30 +568,30 @@ enum SubscriptionStatus {
 // ============================================
 
 model Plan {
-  id              String  @id @default(uuid())
+  id String @id @default(uuid())
 
   // Plan identification
-  planCode        String  @unique // LIGHT, BASIC, PREMIUM
-  displayName     String           // "Premium Weekly", "Basic", "Premium"
-  displayNameBg   String?          // Bulgarian translation
+  planCode      String  @unique // LIGHT, BASIC, PREMIUM
+  displayName   String // "Premium Weekly", "Basic", "Premium"
+  displayNameBg String? // Bulgarian translation
 
   // Pricing (stored in cents to avoid floating point issues)
-  priceWeeklyEur  Int?             // Weekly price in EUR cents (null if not available)
-  priceMonthlyEur Int?             // Monthly price in EUR cents (null if not available)
-  priceYearlyEur  Int              // Yearly price in EUR cents
+  priceWeeklyEur  Int? // Weekly price in EUR cents (null if not available)
+  priceMonthlyEur Int? // Monthly price in EUR cents (null if not available)
+  priceYearlyEur  Int // Yearly price in EUR cents
 
   // Features & Benefits
-  cashbackRate    Float            // e.g., 0.20 for 20%
-  stickerBonus    Float  @default(0) // Additional bonus for sticker scans
-  features        String?          // JSON array of feature strings
-  featuresBg      String?          // JSON array in Bulgarian
+  cashbackRate Float // e.g., 0.20 for 20%
+  stickerBonus Float   @default(0) // Additional bonus for sticker scans
+  features     String? // JSON array of feature strings
+  featuresBg   String? // JSON array in Bulgarian
 
   // Display properties
-  cardType        String  @default("silver") // light, silver, black
-  isFeatured      Boolean @default(false)
-  badgeText       String?          // e.g., "Most Popular", "Best Value"
-  badgeTextBg     String?
-  displayOrder    Int     @default(0)
+  cardType     String  @default("silver") // light, silver, black
+  isFeatured   Boolean @default(false)
+  badgeText    String? // e.g., "Most Popular", "Best Value"
+  badgeTextBg  String?
+  displayOrder Int     @default(0)
 
   // Billing options
   hasWeeklyOption   Boolean @default(false)
@@ -600,10 +600,10 @@ model Plan {
   yearlyDiscountPct Int     @default(20) // Discount percentage for yearly
 
   // Status
-  isActive        Boolean @default(true)
+  isActive Boolean @default(true)
 
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Relations
   subscriptions        Subscription[]
@@ -750,27 +750,28 @@ model Subscription {
   stripeCustomerId     String?
 
   // Paysera integration
-  payseraOrderId       String? @unique // Paysera payment order ID
+  payseraOrderId String? @unique // Paysera payment order ID
 
   // Link to Plan model (source of truth for pricing)
-  planId               String?
-  planDetails          Plan?   @relation(fields: [planId], references: [id])
+  planId      String?
+  planDetails Plan?   @relation(fields: [planId], references: [id])
 
   currentPeriodStart DateTime
   currentPeriodEnd   DateTime
 
-  cancelAtPeriodEnd        Boolean   @default(false)
-  cancelAt                 DateTime?
-  canceledAt               DateTime?
-  trialStart               DateTime?
-  trialEnd                 DateTime?
+  cancelAtPeriodEnd Boolean   @default(false)
+  cancelAt          DateTime?
+  canceledAt        DateTime?
+  trialStart        DateTime?
+  trialEnd          DateTime?
 
   // Spec FR-004, FR-006, FR-007
-  autoRenewal              Boolean   @default(true)
-  trialRefundEligibleUntil DateTime?
-  trialRefundUsed          Boolean   @default(false)
-  retryAttempt             Int       @default(0)
-  gracePeriodEndsAt        DateTime?
+  autoRenewal               Boolean   @default(true)
+  trialRefundEligibleUntil  DateTime?
+  trialRefundUsed           Boolean   @default(false)
+  retryAttempt              Int       @default(0)
+  gracePeriodEndsAt         DateTime?
+  lastRenewalReminderSentAt DateTime?
 
   metadata String? // JSON
 
@@ -844,8 +845,8 @@ model Receipt {
   cardId        String? // Link to user's card
 
   // Receipt Image
-  imageUrl  String? // Optional for test receipts
-  imageKey  String? // Storage key (S3/CloudFlare R2)
+  imageUrl       String? // Optional for test receipts
+  imageKey       String? // Storage key (S3/CloudFlare R2)
   imageHash      String? // SHA-256 for duplicate detection
   perceptualHash String? // 60-char dHash hex for visual similarity
 
@@ -876,8 +877,8 @@ model Receipt {
   // Request Metadata
   ipAddress            String?
   userAgent            String?
-  deviceFingerprint    String?  // SHA-256 of canonical device JSON
-  deviceFingerprintRaw String?  // Raw device JSON for admin inspection
+  deviceFingerprint    String? // SHA-256 of canonical device JSON
+  deviceFingerprintRaw String? // Raw device JSON for admin inspection
   submissionCount      Int     @default(1)
 
   // Validation & Admin Review
@@ -908,7 +909,7 @@ model Receipt {
   @@index([fraudScore])
   @@index([userId, deviceFingerprint])
   @@index([userId, perceptualHash]) // Fraud perceptual-duplicate check
-  @@index([userId, createdAt])      // Rate-limit daily/monthly count queries
+  @@index([userId, createdAt]) // Rate-limit daily/monthly count queries
 }
 
 // ============================================
@@ -924,13 +925,13 @@ model ReceiptUploadToken {
   id             String    @id @default(uuid())
   token          String    @unique
   userId         String
-  imageHash      String    // SHA-256 computed server-side at /upload
-  perceptualHash String?   // dHash, computed server-side
+  imageHash      String // SHA-256 computed server-side at /upload
+  perceptualHash String? // dHash, computed server-side
   livePhotoOk    Boolean   @default(true)
   imageUrl       String
   imageKey       String
   createdAt      DateTime  @default(now())
-  expiresAt      DateTime  // 1 hour after issue
+  expiresAt      DateTime // 1 hour after issue
   consumedAt     DateTime? // single-use guard; set by atomic updateMany at /submit
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -1053,15 +1054,15 @@ model VenueFraudConfig {
 
 model VenueReceiptTemplate {
   id               String  @id @default(uuid())
-  venueId          String  // References Partner.id (no FK — matches VenueFraudConfig pattern)
-  merchantName     String  // Expected merchant name on valid receipts
+  venueId          String // References Partner.id (no FK — matches VenueFraudConfig pattern)
+  merchantName     String // Expected merchant name on valid receipts
   description      String? // Admin note
   expectedKeywords String? // JSON string[] of OCR keywords that should appear
-  imageUrl         String  // S3 URL
-  imageKey         String  // S3 key (used for deletion)
-  perceptualHash   String  // 60-char dHash hex for visual comparison
+  imageUrl         String // S3 URL
+  imageKey         String // S3 key (used for deletion)
+  perceptualHash   String // 60-char dHash hex for visual comparison
   isActive         Boolean @default(true)
-  uploadedBy       String  // Admin user ID
+  uploadedBy       String // Admin user ID
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1086,9 +1087,9 @@ model Dispute {
   createdAt  DateTime      @default(now())
   updatedAt  DateTime      @updatedAt
 
-  receipt  Receipt      @relation(fields: [receiptId], references: [id])
-  user     User         @relation("DisputeUser", fields: [userId], references: [id])
-  assignee User?        @relation("DisputeAssignee", fields: [assignedTo], references: [id])
+  receipt  Receipt       @relation(fields: [receiptId], references: [id])
+  user     User          @relation("DisputeUser", fields: [userId], references: [id])
+  assignee User?         @relation("DisputeAssignee", fields: [assignedTo], references: [id])
   notes    DisputeNote[]
 
   @@index([receiptId])
@@ -1420,19 +1421,19 @@ enum NotificationType {
 }
 
 model Notification {
-  id        String           @id @default(uuid())
-  userId    String
-  type      NotificationType
+  id                String           @id @default(uuid())
+  userId            String
+  type              NotificationType
   // 'low' | 'medium' | 'high' | 'urgent'. Stored as string to keep parity with the
   // frontend service union without forcing a Prisma enum migration.
-  priority  String           @default("medium")
-  title     String
-  titleBg   String?
-  message   String
-  messageBg String?
-  data      String? // JSON string of arbitrary metadata
-  isRead    Boolean          @default(false)
-  readAt    DateTime?
+  priority          String           @default("medium")
+  title             String
+  titleBg           String?
+  message           String
+  messageBg         String?
+  data              String? // JSON string of arbitrary metadata
+  isRead            Boolean          @default(false)
+  readAt            DateTime?
   // Soft-archive — keeps the row but hides it from the default "all" list.
   archivedAt        DateTime?
   // Optional deep-link target (e.g. /partner/offers/123) and action button copy.
@@ -1445,7 +1446,7 @@ model Notification {
   relatedEntityType String?
   relatedEntityId   String?
   expiresAt         DateTime?
-  createdAt DateTime         @default(now())
+  createdAt         DateTime         @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -1460,16 +1461,22 @@ model Notification {
 // ============================================
 
 model Favorite {
-  id        String   @id @default(uuid())
-  userId    String
-  partnerId String?
-  offerId   String?
-  venueId   String?
-  createdAt DateTime @default(now())
+  id         String   @id @default(uuid())
+  userId     String
+  partnerId  String?
+  offerId    String?
+  venueId    String?
+  // Generalised pointer (entity-kind + entity-id) so the user-side favorites
+  // UI can store arbitrary entity types (partner / offer / venue) without
+  // colliding on the legacy (userId, partnerId) unique key.
+  entityKind String?
+  entityId   String?
+  createdAt  DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, partnerId])
+  @@unique([userId, entityKind, entityId])
   @@index([userId])
 }
 
@@ -1523,7 +1530,7 @@ model Card {
   cardNumber String     @unique
   type       CardType   @default(LIGHT)
   status     CardStatus @default(ACTIVE)
-  qrCode     String     // Base64 data URL - too large for unique index
+  qrCode     String // Base64 data URL - too large for unique index
   createdAt  DateTime   @default(now())
   updatedAt  DateTime   @updatedAt
 
@@ -1584,37 +1591,37 @@ model StickerLocation {
 }
 
 model StickerScan {
-  id               String     @id @default(uuid())
-  userId           String
-  stickerId        String
-  venueId          String
-  cardId           String
-  billAmount       Float      @default(0)
-  verifiedAmount   Float?
-  cashbackPercent  Float      @default(0)
-  cashbackAmount   Float      @default(0)
-  sessionStartedAt DateTime?  // Timestamp when the QR was first scanned (session start)
-  status           ScanStatus @default(SESSION_ACTIVE)
-  latitude        Float?
-  longitude       Float?
-  distance        Float?
-  receiptImageUrl String?
-  receiptImageHash String?    @unique  // SHA-256 of the uploaded receipt bytes (Finding #6 — unique-index-enforced dedupe)
-  ocrData         String?
-  fraudScore      Float      @default(0)
+  id                   String     @id @default(uuid())
+  userId               String
+  stickerId            String
+  venueId              String
+  cardId               String
+  billAmount           Float      @default(0)
+  verifiedAmount       Float?
+  cashbackPercent      Float      @default(0)
+  cashbackAmount       Float      @default(0)
+  sessionStartedAt     DateTime? // Timestamp when the QR was first scanned (session start)
+  status               ScanStatus @default(SESSION_ACTIVE)
+  latitude             Float?
+  longitude            Float?
+  distance             Float?
+  receiptImageUrl      String?
+  receiptImageHash     String?    @unique // SHA-256 of the uploaded receipt bytes (Finding #6 — unique-index-enforced dedupe)
+  ocrData              String?
+  fraudScore           Float      @default(0)
   // Native TEXT[] — append with `{ push: 'CODE' }` for atomic array_append.
   // Migration 20260418_fraud_reasons_text_array converted from a JSON-encoded TEXT.
-  fraudReasons    String[]   @default([])
+  fraudReasons         String[]   @default([])
   ipAddress            String?
   userAgent            String?
-  deviceFingerprint    String?  // SHA-256 of canonical device JSON
-  deviceFingerprintRaw String?  // Raw device JSON for admin inspection
-  transactionId   String?    @unique
-  rejectionReason String?
-  processedAt     DateTime?
-  metadata        String?
-  createdAt       DateTime   @default(now())
-  updatedAt       DateTime   @updatedAt
+  deviceFingerprint    String? // SHA-256 of canonical device JSON
+  deviceFingerprintRaw String? // Raw device JSON for admin inspection
+  transactionId        String?    @unique
+  rejectionReason      String?
+  processedAt          DateTime?
+  metadata             String?
+  createdAt            DateTime   @default(now())
+  updatedAt            DateTime   @updatedAt
 
   user               User                @relation(fields: [userId], references: [id])
   sticker            Sticker             @relation(fields: [stickerId], references: [id])
@@ -1660,7 +1667,7 @@ model PushToken {
   id         String   @id @default(uuid())
   userId     String
   token      String   @unique
-  platform   String   // ios, android, web
+  platform   String // ios, android, web
   deviceId   String?
   isActive   Boolean  @default(true)
   lastUsedAt DateTime @default(now())
@@ -1679,14 +1686,14 @@ model PushToken {
 // ============================================
 
 model CashbackRate {
-  id           String   @id @default(uuid())
-  discountStep Int      // Partner discount % step: 5, 10, 15, 20, or 25
-  basic        Float    // User cashback % for BASIC card tier
-  premium      Float    // User cashback % for LIGHT/PREMIUM card tiers
+  id            String   @id @default(uuid())
+  discountStep  Int // Partner discount % step: 5, 10, 15, 20, or 25
+  basic         Float // User cashback % for BASIC card tier
+  premium       Float // User cashback % for LIGHT/PREMIUM card tiers
   effectiveFrom DateTime @default(now()) // Rates take effect from this timestamp
-  createdBy    String?  // Admin user ID who set these rates
-  notes        String?  // Optional note (reason for rate change, etc.)
-  createdAt    DateTime @default(now())
+  createdBy     String? // Admin user ID who set these rates
+  notes         String? // Optional note (reason for rate change, etc.)
+  createdAt     DateTime @default(now())
 
   @@index([discountStep])
   @@index([effectiveFrom])
@@ -1699,9 +1706,9 @@ model CashbackRate {
 
 model Permission {
   id       String @id @default(uuid())
-  key      String @unique  // e.g. "subscribers.read", "finance.payouts.write"
+  key      String @unique // e.g. "subscribers.read", "finance.payouts.write"
   label    String
-  category String  // e.g. "subscribers", "finance"
+  category String // e.g. "subscribers", "finance"
 
   rolePermissions RolePermission[]
 }
@@ -1716,7 +1723,7 @@ model AdminRole {
 }
 
 model RolePermission {
-  id           String @id @default(uuid())
+  id           String  @id @default(uuid())
   roleId       String
   permissionId String
   allow        Boolean @default(true)
@@ -1746,8 +1753,8 @@ model UserAdminRole {
 model AuditLog {
   id          String   @id @default(uuid())
   actorUserId String?
-  action      String   // e.g. "partner.update", "subscriber.delete"
-  objectType  String   // e.g. "Partner", "User"
+  action      String // e.g. "partner.update", "subscriber.delete"
+  objectType  String // e.g. "Partner", "User"
   objectId    String?
   before      Json?
   after       Json?
@@ -1766,10 +1773,10 @@ model AuditLog {
 // System Settings — key/value store for admin-configurable globals
 // ============================================
 model SystemSetting {
-  key         String   @id   // e.g. "cashback_expiry_days", "min_ios_version"
-  value       String
-  updatedAt   DateTime @updatedAt
-  updatedBy   String?          // admin userId
+  key       String   @id // e.g. "cashback_expiry_days", "min_ios_version"
+  value     String
+  updatedAt DateTime @updatedAt
+  updatedBy String? // admin userId
 
   @@map("system_settings")
 }
@@ -1882,13 +1889,13 @@ model MarketingTemplate {
 }
 
 model MarketingList {
-  id          String            @id @default(uuid())
+  id          String                @id @default(uuid())
   name        String
   type        MarketingListType
-  description String            @default("")
-  size        Int               @default(0)
-  createdAt   DateTime          @default(now())
-  updatedAt   DateTime          @updatedAt
+  description String                @default("")
+  size        Int                   @default(0)
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
   campaigns   MarketingCampaign[]
   members     MarketingListMember[]
 
@@ -1961,18 +1968,19 @@ enum PendingSubscriptionStatus {
 
 model PendingSubscription {
   id             String                    @id @default(cuid())
-  email          String                    // checkout-captured email for receipt + failure notification
+  email          String // checkout-captured email for receipt + failure notification
   planId         String
   plan           Plan                      @relation(fields: [planId], references: [id])
   payseraOrderId String?                   @unique
   status         PendingSubscriptionStatus @default(CREATED)
   token          String?                   @unique // one-time profile-completion token (set on PAID)
-  tokenExpiresAt DateTime?                 // ~30 min TTL
-  billingPeriod  String?                   // 'weekly' | 'monthly' | 'yearly' — stored at checkout initiation
+  tokenExpiresAt DateTime? // ~30 min TTL
+  billingPeriod  String? // 'weekly' | 'monthly' | 'yearly' — stored at checkout initiation
+  language       String? // 'bg' | 'en' — captured from the checkout UI so post-payment emails respect spec §7.1
   paidAt         DateTime?
-  completedAt    DateTime?                 // set when POST /auth/complete-profile consumes token
+  completedAt    DateTime? // set when POST /auth/complete-profile consumes token
   createdAt      DateTime                  @default(now())
-  expiresAt      DateTime                  // hard expiry for cleanup job (~24h from creation)
+  expiresAt      DateTime // hard expiry for cleanup job (~24h from creation)
 
   @@index([email])
   @@index([status])
@@ -1990,7 +1998,7 @@ model LoginHistory {
   ip         String?
   userAgent  String?
   success    Boolean
-  failReason String?  // e.g. "bad_password", "totp_required", "totp_invalid"
+  failReason String? // e.g. "bad_password", "totp_required", "totp_invalid"
   createdAt  DateTime @default(now())
 
   @@index([userId])
@@ -2003,10 +2011,10 @@ model LoginHistory {
 // ============================================
 
 enum ReportingPeriodStatus {
-  OPEN       // Default; cashback payments can be created/edited
+  OPEN // Default; cashback payments can be created/edited
   FOR_REVIEW // Submitted for finance team review
-  LOCKED     // No data changes allowed for this month
-  INVOICED   // Invoice issued to partners
+  LOCKED // No data changes allowed for this month
+  INVOICED // Invoice issued to partners
 }
 
 model ReportingPeriod {
@@ -2014,9 +2022,9 @@ model ReportingPeriod {
   month      String                @unique // "YYYY-MM"
   status     ReportingPeriodStatus @default(OPEN)
   lockedAt   DateTime?
-  lockedBy   String?               // admin userId
+  lockedBy   String? // admin userId
   invoicedAt DateTime?
-  invoicedBy String?               // admin userId
+  invoicedBy String? // admin userId
   notes      String?
   createdAt  DateTime              @default(now())
   updatedAt  DateTime              @updatedAt
@@ -2030,23 +2038,23 @@ model ReportingPeriod {
 // ============================================
 
 enum FraudRuleTier {
-  SYSTEM       // Global default (replaces system settings scalars)
+  SYSTEM // Global default (replaces system settings scalars)
   PARTNER_TYPE // Applies to all partners of a given type
-  PARTNER      // Applies to one specific partner
-  USER         // Applies to one specific user
+  PARTNER // Applies to one specific partner
+  USER // Applies to one specific user
 }
 
 model FraudRule {
   id                   String        @id @default(uuid())
   tier                 FraudRuleTier
-  targetId             String?       // partnerTypeId / partnerId / userId; null for SYSTEM tier
+  targetId             String? // partnerTypeId / partnerId / userId; null for SYSTEM tier
   dailyScanLimit       Int?
   minTransactionValue  Float?
   maxTransactionValue  Float?
-  autoApproveThreshold Float?        // fraud score below which receipts auto-approve
+  autoApproveThreshold Float? // fraud score below which receipts auto-approve
   isActive             Boolean       @default(true)
   notes                String?
-  createdBy            String        // admin userId
+  createdBy            String // admin userId
   createdAt            DateTime      @default(now())
   updatedAt            DateTime      @updatedAt
 
@@ -2062,11 +2070,11 @@ model FraudRuleOverride {
   id         String    @id @default(uuid())
   ruleId     String
   rule       FraudRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
-  targetType String    // "user" | "partner"
+  targetType String // "user" | "partner"
   targetId   String
-  override   Json      // fields being overridden, e.g. { "dailyScanLimit": 5 }
+  override   Json // fields being overridden, e.g. { "dailyScanLimit": 5 }
   reason     String?
-  createdBy  String    // admin userId
+  createdBy  String // admin userId
   expiresAt  DateTime? // optional auto-expiry
   createdAt  DateTime  @default(now())
 

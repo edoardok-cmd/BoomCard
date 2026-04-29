@@ -1,11 +1,14 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import styled from 'styled-components';
 import { useQuery } from '@tanstack/react-query';
 import { DataTable, ColumnDef } from '../../components/admin/DataTable/DataTable';
-import {
-  adminControlService,
-  AdminAuditLog,
-} from '../../services/adminControl.service';
+import { adminControlService, FraudSignalReceipt } from '../../services/adminControl.service';
+import FraudReasonTag from '../../components/admin/FraudReasonTag';
+import { useLanguage } from '../../contexts/LanguageContext';
+
+// Spec §7.2 — Контрол > Сигурност
+// Surfaces fraud signals: duplicate detection, QR/receipt mismatch, velocity,
+// IBAN-change anomalies, and per-row User risk / Receipt-match / Location-match.
 
 const palette = {
   bg: '#faf9f5', surface: '#ffffff', border: '#e8e5dc',
@@ -27,131 +30,178 @@ const PageSubtitle = styled.p`font-size: 0.9375rem; color: ${palette.textMuted};
 const TotalBadge = styled.span`display: inline-flex; align-items: center; justify-content: center; background: ${palette.infoSoft}; color: ${palette.info}; font-size: 0.75rem; font-weight: 700; border-radius: 9999px; padding: 0.125rem 0.6rem; margin-left: 0.5rem;`;
 const Card = styled.div`background: ${palette.surface}; border: 1px solid ${palette.border}; border-radius: 0.75rem; padding: 1.5rem;`;
 const FilterRow = styled.div`display: flex; gap: 0.75rem; margin-bottom: 1.25rem; flex-wrap: wrap; align-items: center;`;
-const SearchInput = styled.input`flex: 1; max-width: 18rem; padding: 0.5rem 0.875rem; border: 1px solid ${palette.border}; border-radius: 0.5rem; font-size: 0.875rem; background: ${palette.bg}; color: ${palette.text}; outline: none; &:focus { border-color: ${palette.accent}; box-shadow: 0 0 0 2px ${palette.accentSoft}; } &::placeholder { color: ${palette.textSubtle}; }`;
-const DateInput = styled.input`padding: 0.5rem 0.75rem; border: 1px solid ${palette.border}; border-radius: 0.5rem; font-size: 0.875rem; background: ${palette.bg}; color: ${palette.text}; outline: none; &:focus { border-color: ${palette.accent}; }`;
+const Select = styled.select`padding: 0.5rem 0.75rem; border: 1px solid ${palette.border}; border-radius: 0.5rem; font-size: 0.875rem; background: ${palette.bg}; color: ${palette.text}; outline: none;`;
 const PrimaryLine = styled.div`font-weight: 600; color: ${palette.text};`;
 const MetaLine = styled.div`font-size: 0.75rem; color: ${palette.textSubtle}; margin-top: 0.125rem;`;
-
-const ActionBadge = styled.span`
-  display: inline-flex; font-size: 0.7rem; font-weight: 700;
-  letter-spacing: 0.04em; border-radius: 0.375rem; padding: 0.125rem 0.5rem;
-  background: ${palette.purpleSoft}; color: ${palette.purple};
-  font-family: monospace;
+const ScoreBadge = styled.span<{ $tier: 'low' | 'med' | 'high' }>`
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 0.8125rem; font-weight: 700; padding: 0.125rem 0.5rem;
+  border-radius: 0.375rem; min-width: 2.5rem;
+  background: ${(p) => p.$tier === 'high' ? palette.dangerSoft : p.$tier === 'med' ? palette.warningSoft : palette.successSoft};
+  color: ${(p) => p.$tier === 'high' ? palette.danger : p.$tier === 'med' ? palette.warning : palette.success};
 `;
-
-const ObjectBadge = styled.span`
-  display: inline-flex; font-size: 0.7rem; font-weight: 600;
-  border-radius: 0.375rem; padding: 0.125rem 0.45rem;
-  background: ${palette.infoSoft}; color: ${palette.info};
+const RiskPill = styled.span<{ $level: string }>`
+  display: inline-flex; font-size: 0.75rem; font-weight: 600; padding: 0.125rem 0.5rem;
+  border-radius: 9999px;
+  background: ${(p) =>
+    p.$level === 'HIGH' ? palette.dangerSoft :
+    p.$level === 'MEDIUM' ? palette.warningSoft :
+    p.$level === 'LOW' ? palette.successSoft :
+    palette.bg};
+  color: ${(p) =>
+    p.$level === 'HIGH' ? palette.danger :
+    p.$level === 'MEDIUM' ? palette.warning :
+    p.$level === 'LOW' ? palette.success :
+    palette.textSubtle};
 `;
-
-const DiffCell = styled.div`
-  font-size: 0.75rem;
-  max-width: 16rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: ${palette.textSubtle};
-  font-family: monospace;
+const ReasonStack = styled.div`display: flex; flex-wrap: wrap; gap: 0.25rem; max-width: 22rem;`;
+const StatGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
 `;
+const Stat = styled.div`
+  background: ${palette.surface};
+  border: 1px solid ${palette.border};
+  border-radius: 0.625rem;
+  padding: 0.875rem 1rem;
+`;
+const StatLabel = styled.div`font-size: 0.75rem; color: ${palette.textSubtle}; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 0.25rem;`;
+const StatValue = styled.div`font-size: 1.375rem; font-weight: 700; color: ${palette.text};`;
 
 const PAGE_SIZE = 25;
 
+// Mapping of fraud-reason codes to spec §7.2 signal categories.
+const SIGNAL_CATEGORIES = {
+  duplicate: ['DUPLICATE_RECEIPT', 'EXACT_DUPLICATE', 'PERCEPTUAL_DUPLICATE', 'IMAGE_HASH_DUPLICATE'],
+  qrMismatch: ['QR_MISMATCH', 'QR_VENUE_MISMATCH', 'NO_QR_SESSION'],
+  velocity: ['HIGH_VELOCITY', 'RATE_LIMIT', 'DAILY_LIMIT', 'TOO_MANY_RECEIPTS'],
+  ibanAnomaly: ['IBAN_CHANGE', 'IBAN_RECENTLY_CHANGED', 'PAYOUT_RISK'],
+};
+
+function categorize(reasons: string[]) {
+  return {
+    duplicate: reasons.some((r) => SIGNAL_CATEGORIES.duplicate.includes(r)),
+    qrMismatch: reasons.some((r) => SIGNAL_CATEGORIES.qrMismatch.includes(r)),
+    velocity: reasons.some((r) => SIGNAL_CATEGORIES.velocity.includes(r)),
+    ibanAnomaly: reasons.some((r) => SIGNAL_CATEGORIES.ibanAnomaly.includes(r)),
+  };
+}
+
+function tierFromScore(score: number): 'low' | 'med' | 'high' {
+  if (score >= 61) return 'high';
+  if (score >= 31) return 'med';
+  return 'low';
+}
+
 export default function AdminControlSecurityPage() {
+  const { language } = useLanguage();
   const [page, setPage] = useState(1);
-  const [actionInput, setActionInput] = useState('');
-  const [action, setAction] = useState('');
-  const [from, setFrom] = useState('');
-  const [to, setTo] = useState('');
-  const [queryFrom, setQueryFrom] = useState('');
-  const [queryTo, setQueryTo] = useState('');
+  const [tier, setTier] = useState<'AUTO_0_30' | 'REVIEW_31_60' | 'HIGH_61_PLUS' | 'all'>('all');
 
   const { data, isLoading } = useQuery({
-    queryKey: ['admin-security-logs', page, action, queryFrom, queryTo],
+    queryKey: ['admin-fraud-signals', page, tier],
     queryFn: () =>
-      adminControlService.getSecurityLogs({
-        page, limit: PAGE_SIZE,
-        action: action || undefined,
-        from: queryFrom || undefined,
-        to: queryTo || undefined,
-      }),
+      adminControlService.getFraudSignals({ page, limit: PAGE_SIZE, tier }),
   });
-
-  const handleActionKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') { setAction(actionInput); setPage(1); }
-  };
-
-  const applyDates = () => {
-    setQueryFrom(from);
-    setQueryTo(to);
-    setPage(1);
-  };
 
   const fmt = (iso: string) =>
     new Date(iso).toLocaleString('en-GB', {
-      day: '2-digit', month: 'short', year: 'numeric',
-      hour: '2-digit', minute: '2-digit',
+      day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
     });
 
-  const columns: ColumnDef<AdminAuditLog>[] = [
+  // Aggregate counts on the current page (cheap client-side; spec wants visibility)
+  const aggregates = (data?.data ?? []).reduce(
+    (acc, row) => {
+      const cat = categorize(row.fraudReasons);
+      if (cat.duplicate) acc.duplicate++;
+      if (cat.qrMismatch) acc.qrMismatch++;
+      if (cat.velocity) acc.velocity++;
+      if (cat.ibanAnomaly) acc.ibanAnomaly++;
+      return acc;
+    },
+    { duplicate: 0, qrMismatch: 0, velocity: 0, ibanAnomaly: 0 }
+  );
+
+  const columns: ColumnDef<FraudSignalReceipt>[] = [
     {
-      key: 'action',
-      header: 'Action',
+      key: 'score',
+      header: 'Risk score',
       render: (row) => (
-        <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-          <ActionBadge>{row.action}</ActionBadge>
-          <ObjectBadge>{row.objectType}{row.objectId ? ` #${row.objectId.slice(0, 8)}` : ''}</ObjectBadge>
+        <span>
+          <ScoreBadge $tier={tierFromScore(row.fraudScore)}>{row.fraudScore.toFixed(0)}</ScoreBadge>
+          <MetaLine>{row.status}</MetaLine>
         </span>
       ),
     },
     {
-      key: 'actor',
-      header: 'Actor',
-      render: (row) =>
-        row.actor ? (
-          <span>
-            <PrimaryLine>
-              {row.actor.firstName || row.actor.lastName
-                ? `${row.actor.firstName ?? ''} ${row.actor.lastName ?? ''}`.trim()
-                : '—'}
-            </PrimaryLine>
-            <MetaLine>{row.actor.email}</MetaLine>
-          </span>
-        ) : (
-          <MetaLine>System</MetaLine>
-        ),
-    },
-    {
-      key: 'diff',
-      header: 'Changes',
-      render: (row) => {
-        const before = row.before ? JSON.stringify(row.before).slice(0, 60) : null;
-        const after = row.after ? JSON.stringify(row.after).slice(0, 60) : null;
-        if (!before && !after) return <MetaLine>—</MetaLine>;
-        return (
-          <span>
-            {before && <DiffCell style={{ color: palette.danger }}>− {before}</DiffCell>}
-            {after && <DiffCell style={{ color: palette.success }}>+ {after}</DiffCell>}
-          </span>
-        );
-      },
-    },
-    {
-      key: 'ip',
-      header: 'IP',
+      key: 'subscriber',
+      header: 'Subscriber',
       render: (row) => (
-        <span style={{ fontSize: '0.8125rem', color: palette.textMuted, fontFamily: 'monospace' }}>
-          {row.ip ?? '—'}
+        <span>
+          <PrimaryLine>
+            {row.user.firstName || row.user.lastName
+              ? `${row.user.firstName ?? ''} ${row.user.lastName ?? ''}`.trim()
+              : '—'}
+          </PrimaryLine>
+          <MetaLine>{row.user.email}</MetaLine>
+          <div style={{ marginTop: 4 }}>
+            <RiskPill $level={row.user.riskBucket ?? '—'}>
+              User risk: {row.user.riskBucket ?? 'unknown'}
+            </RiskPill>
+          </div>
         </span>
       ),
     },
     {
-      key: 'createdAt',
-      header: 'When',
+      key: 'partner',
+      header: 'Partner / Location',
       render: (row) => (
-        <span style={{ fontSize: '0.8125rem', color: palette.textMuted, whiteSpace: 'nowrap' }}>
-          {fmt(row.createdAt)}
+        <span>
+          <PrimaryLine>{row.venue?.partner?.businessName ?? '—'}</PrimaryLine>
+          <MetaLine>
+            {row.venue?.name ?? 'No venue'}
+            {row.venue?.id && ` · ${row.venue.id.slice(0, 6)}`}
+          </MetaLine>
+          <div style={{ marginTop: 4 }}>
+            <RiskPill $level={row.venue ? 'LOW' : 'HIGH'}>
+              Location match: {row.venue ? 'matched' : 'missing'}
+            </RiskPill>
+          </div>
         </span>
+      ),
+    },
+    {
+      key: 'receipt',
+      header: 'Receipt',
+      render: (row) => (
+        <span>
+          <PrimaryLine>{row.merchantName ?? '—'}</PrimaryLine>
+          <MetaLine>
+            {row.totalAmount != null ? `${row.totalAmount.toFixed(2)} лв` : '—'}
+            {' · '}
+            {fmt(row.createdAt)}
+          </MetaLine>
+          <div style={{ marginTop: 4 }}>
+            <RiskPill $level={row.fraudReasons.length === 0 ? 'LOW' : 'MEDIUM'}>
+              Receipt match: {row.fraudReasons.length === 0 ? 'clean' : `${row.fraudReasons.length} flag${row.fraudReasons.length === 1 ? '' : 's'}`}
+            </RiskPill>
+          </div>
+        </span>
+      ),
+    },
+    {
+      key: 'reasons',
+      header: 'Signals',
+      render: (row) => (
+        <ReasonStack>
+          {row.fraudReasons.length === 0
+            ? <MetaLine>None</MetaLine>
+            : row.fraudReasons.map((r) => (
+                <FraudReasonTag key={r} reason={r} language={language as 'en' | 'bg'} />
+              ))}
+        </ReasonStack>
       ),
     },
   ];
@@ -162,44 +212,42 @@ export default function AdminControlSecurityPage() {
         <TitleBlock>
           <Eyebrow>Control</Eyebrow>
           <PageTitle>
-            Security Log
+            Security & Fraud Signals
             {data && data.meta.total > 0 && <TotalBadge>{data.meta.total.toLocaleString()}</TotalBadge>}
           </PageTitle>
-          <PageSubtitle>Admin actions, permission changes, and security events</PageSubtitle>
+          <PageSubtitle>
+            Duplicate detection, QR/receipt mismatch, velocity, IBAN anomalies — per spec §7.2
+          </PageSubtitle>
         </TitleBlock>
       </PageHeader>
 
+      <StatGrid>
+        <Stat>
+          <StatLabel>Duplicates (page)</StatLabel>
+          <StatValue>{aggregates.duplicate}</StatValue>
+        </Stat>
+        <Stat>
+          <StatLabel>QR / Receipt mismatch</StatLabel>
+          <StatValue>{aggregates.qrMismatch}</StatValue>
+        </Stat>
+        <Stat>
+          <StatLabel>High velocity</StatLabel>
+          <StatValue>{aggregates.velocity}</StatValue>
+        </Stat>
+        <Stat>
+          <StatLabel>IBAN anomalies</StatLabel>
+          <StatValue>{aggregates.ibanAnomaly}</StatValue>
+        </Stat>
+      </StatGrid>
+
       <Card>
         <FilterRow>
-          <SearchInput
-            type="text"
-            placeholder="Filter by action (e.g. admin.create)…"
-            value={actionInput}
-            onChange={(e) => setActionInput(e.target.value)}
-            onKeyDown={handleActionKeyDown}
-          />
-          <DateInput
-            type="date"
-            value={from}
-            onChange={(e) => setFrom(e.target.value)}
-            title="From date"
-          />
-          <DateInput
-            type="date"
-            value={to}
-            onChange={(e) => setTo(e.target.value)}
-            title="To date"
-          />
-          <button
-            onClick={applyDates}
-            style={{
-              padding: '0.5rem 1rem', background: palette.accent, color: '#fff',
-              border: 'none', borderRadius: '0.5rem', fontSize: '0.875rem',
-              fontWeight: 600, cursor: 'pointer',
-            }}
-          >
-            Apply
-          </button>
+          <Select value={tier} onChange={(e) => { setTier(e.target.value as typeof tier); setPage(1); }}>
+            <option value="all">All tiers</option>
+            <option value="AUTO_0_30">Auto-approve (0–30)</option>
+            <option value="REVIEW_31_60">Review (31–60)</option>
+            <option value="HIGH_61_PLUS">High risk (61+)</option>
+          </Select>
         </FilterRow>
 
         <DataTable
@@ -207,7 +255,7 @@ export default function AdminControlSecurityPage() {
           data={data?.data ?? []}
           rowKey={(row) => row.id}
           loading={isLoading}
-          emptyMessage="No security events found"
+          emptyMessage="No fraud signals at this tier"
           page={page}
           pageSize={PAGE_SIZE}
           totalItems={data?.meta.total}

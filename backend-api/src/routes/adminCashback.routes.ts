@@ -14,7 +14,7 @@
 
 import { Router, Response } from 'express';
 import { authenticate, authorize, requirePermission, AuthRequest } from '../middleware/auth.middleware';
-import { adminCashbackService, getSubscriberCashbackEntries } from '../services/adminCashback.service';
+import { adminCashbackService, getSubscriberCashbackEntries, getAllCashbackEntries, CashbackEntryStatus } from '../services/adminCashback.service';
 import { prisma } from '../lib/prisma';
 import { logger } from '../utils/logger';
 
@@ -179,6 +179,29 @@ router.post('/rates', requirePermission('cashback.write'), async (req: AuthReque
       error.message.includes('must be between')
     );
     res.status(isValidationError ? 400 : 500).json({ success: false, error: error.message || 'Failed to create cashback rates' });
+  }
+});
+
+// ------------------------------------------------------------------
+// GET /api/admin/cashback/entries
+// Spec §4.4 — global per-entry cashback listing with all 5 states
+// (Pending / Cleared / Locked / Paid / Expired). Filter by ?status=...
+// ------------------------------------------------------------------
+router.get('/entries', requirePermission('cashback.read'), async (req: AuthRequest, res: Response) => {
+  try {
+    const page = Math.max(1, parseInt(req.query.page as string) || 1);
+    const limit = Math.min(Math.max(1, parseInt(req.query.limit as string) || 20), 100);
+    const status = typeof req.query.status === 'string' ? req.query.status : undefined;
+    const validStatuses: CashbackEntryStatus[] = ['Pending', 'Cleared', 'Locked', 'Paid', 'Expired'];
+    const statusFilter = status && (validStatuses as string[]).includes(status)
+      ? (status as CashbackEntryStatus)
+      : undefined;
+
+    const result = await getAllCashbackEntries(page, limit, statusFilter);
+    res.json({ success: true, ...result });
+  } catch (error: any) {
+    logger.error('Failed to fetch cashback entries:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch cashback entries' });
   }
 });
 

@@ -131,7 +131,6 @@ const CookiePolicyPage = lazy(() => import('./pages/CookiePolicyPage'));
 const RefundPolicyPage = lazy(() => import('./pages/RefundPolicyPage'));
 
 // Admin pages
-const AdminComingSoonPage = lazy(() => import('./pages/admin/AdminComingSoonPage'));
 const AdminDashboardPage = lazy(() => import('./pages/admin/AdminDashboardPage'));
 const AdminPartnerRequestsPage = lazy(() => import('./pages/admin/AdminPartnerRequestsPage'));
 const AdminSubscribersAllPage = lazy(() => import('./pages/admin/AdminSubscribersAllPage'));
@@ -167,6 +166,9 @@ const AdminMarketingListsPage = lazy(() => import('./pages/admin/AdminMarketingL
 const AdminHelpNewPage = lazy(() => import('./pages/admin/AdminHelpNewPage'));
 const AdminHelpMinePage = lazy(() => import('./pages/admin/AdminHelpMinePage'));
 const AdminHelpAllPage = lazy(() => import('./pages/admin/AdminHelpAllPage'));
+const AdminProfileMyDataPage = lazy(() => import('./pages/admin/AdminProfileMyDataPage'));
+const AdminProfileSecurityPage = lazy(() => import('./pages/admin/AdminProfileSecurityPage'));
+const AdminProfileLogoutPage = lazy(() => import('./pages/admin/AdminProfileLogoutPage'));
 
 // Receipt pages
 const ReceiptsPage = lazy(() => import('./pages/ReceiptsPage'));
@@ -483,9 +485,9 @@ function App() {
                       <Route path=":userId" element={<AdminSubscriberDetailPage />} />
                     </Route>
 
-                    {/* /admin/partners (new IA) */}
+                    {/* /admin/partners */}
                     <Route
-                      path="admin/partners/new"
+                      path="admin/partners"
                       element={
                         <ProtectedRoute requiredRole="admin">
                           <CategoryShell category={ADMIN_NAV[2]} />
@@ -607,23 +609,24 @@ function App() {
                       }
                     >
                       <Route index element={<Navigate to="my-data" replace />} />
-                      <Route path="my-data" element={<AdminComingSoonPage />} />
-                      <Route path="security" element={<AdminComingSoonPage />} />
+                      <Route path="my-data" element={<AdminProfileMyDataPage />} />
+                      <Route path="security" element={<AdminProfileSecurityPage />} />
+                      <Route path="logout" element={<AdminProfileLogoutPage />} />
                     </Route>
 
                     {/* Legacy deep-link redirects — keep old URLs working */}
-                    <Route path="admin/partners" element={<Navigate to="/admin/partners/new/active" replace />} />
                     <Route path="admin/cashback" element={<Navigate to="/admin/subscribers/cashback" replace />} />
                     <Route path="admin/cashback/rates" element={<Navigate to="/admin/settings/percentages" replace />} />
-                    <Route path="admin/partner-onboarding" element={<Navigate to="/admin/partners/new/onboarding" replace />} />
+                    <Route path="admin/partner-onboarding" element={<Navigate to="/admin/partners/onboarding" replace />} />
                     <Route path="admin/scan-review" element={<Navigate to="/admin/control/risk" replace />} />
                     <Route path="admin/venue-fraud-config" element={<Navigate to="/admin/control/rules" replace />} />
-                    <Route path="admin/receipt-templates" element={<Navigate to="/admin/partners/new/receipt-profiles" replace />} />
+                    <Route path="admin/receipt-templates" element={<Navigate to="/admin/partners/receipt-profiles" replace />} />
                     <Route path="admin/merchant-whitelist" element={<Navigate to="/admin/control/rules" replace />} />
-                    <Route path="admin/menu-approvals" element={<Navigate to="/admin/partners/new/active" replace />} />
-                    <Route path="admin/bulk-import" element={<Navigate to="/admin/partners/new/active" replace />} />
+                    <Route path="admin/menu-approvals" element={<Navigate to="/admin/partners/active" replace />} />
+                    <Route path="admin/bulk-import" element={<Navigate to="/admin/partners/active" replace />} />
                     <Route path="admin/partner-types" element={<Navigate to="/admin/settings/thresholds" replace />} />
                     <Route path="admin/top-discounts" element={<Navigate to="/admin/control/risk" replace />} />
+                    <Route path="admin/partners/new/*" element={<Navigate to="/admin/partners/active" replace />} />
 
                     {/* /admin (bare) → /admin/dashboard */}
                     <Route path="admin" element={<Navigate to="/admin/dashboard" replace />} />

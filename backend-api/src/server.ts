@@ -12,6 +12,7 @@ import authRouter from './routes/auth.routes';
 import paymentsRouter from './routes/payments.routes';
 import payseraPaymentsRouter from './routes/payments.paysera.routes';
 import walletRouter from './routes/wallet.routes';
+import favoritesRouter from './routes/favorites.routes';
 import subscriptionsRouter from './routes/subscriptions.routes';
 import loyaltyRouter from './routes/loyalty.routes';
 import messagingRouter from './routes/messaging.routes';
@@ -228,6 +229,7 @@ app.use('/api/checkout', pendingCheckoutRouter); // Payment-first onboarding (no
 app.use('/api/payments', payseraPaymentsRouter); // Paysera payment routes
 app.use('/api/dashboard', dashboardRouter);
 app.use('/api/wallet', walletRouter);
+app.use('/api/favorites', favoritesRouter);
 app.use('/api/subscriptions', subscriptionsRouter);
 app.use('/api/loyalty', loyaltyRouter);
 app.use('/api/messaging', messagingRouter);

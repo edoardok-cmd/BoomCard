@@ -641,17 +641,18 @@ router.put('/venue/:venueId/config', authenticate, authorize('PARTNER', 'ADMIN',
  */
 router.get('/admin/pending-review', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), async (req: Request, res: Response) => {
   try {
-    const limit = parseInt(req.query.limit as string) || 50;
+    const page = Math.max(1, parseInt(req.query.page as string) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string) || 50));
+    const skip = (page - 1) * limit;
     const status = req.query.status as string;
     const riskLevel = req.query.riskLevel as string;
+    const bucket = req.query.bucket as string; // spec §7.1 categorical buckets
 
-    // Build filter
     const where: any = {};
 
     if (status && status !== 'all') {
       where.status = status;
     } else {
-      // Default to manual review if no status specified
       where.status = 'MANUAL_REVIEW';
     }
 
@@ -659,51 +660,36 @@ router.get('/admin/pending-review', authenticate, authorize('ADMIN', 'SUPER_ADMI
       where.riskLevel = riskLevel;
     }
 
-    const scans = await prisma.stickerScan.findMany({
-      where,
-      include: {
-        user: {
-          select: {
-            id: true,
-            email: true,
-            firstName: true,
-            lastName: true,
-          },
-        },
-        sticker: {
-          include: {
-            venue: {
-              select: {
-                id: true,
-                name: true,
-                nameBg: true,
-              },
-            },
-            location: {
-              select: {
-                name: true,
-                nameBg: true,
-                locationType: true,
-              },
-            },
-          },
-        },
-        card: {
-          select: {
-            id: true,
-            type: true,
-            cardNumber: true,
-          },
-        },
-      },
-      orderBy: [
-        { fraudScore: 'desc' },
-        { createdAt: 'asc' },
-      ],
-      take: limit,
-    });
+    // Spec §7.1 categorical buckets pushed down to DB
+    if (bucket === 'AUTO_0_30') where.fraudScore = { lt: 31 };
+    else if (bucket === 'REVIEW_31_60') where.fraudScore = { gte: 31, lt: 61 };
+    else if (bucket === 'HIGH_61_PLUS') where.fraudScore = { gte: 61 };
 
-    res.json({ success: true, data: scans });
+    const [scans, total] = await Promise.all([
+      prisma.stickerScan.findMany({
+        where,
+        include: {
+          user: { select: { id: true, email: true, firstName: true, lastName: true } },
+          sticker: {
+            include: {
+              venue: { select: { id: true, name: true, nameBg: true } },
+              location: { select: { name: true, nameBg: true, locationType: true } },
+            },
+          },
+          card: { select: { id: true, type: true, cardNumber: true } },
+        },
+        orderBy: [{ fraudScore: 'desc' }, { createdAt: 'asc' }],
+        skip,
+        take: limit,
+      }),
+      prisma.stickerScan.count({ where }),
+    ]);
+
+    res.json({
+      success: true,
+      data: scans,
+      meta: { total, page, limit, pages: Math.ceil(total / limit) },
+    });
   } catch (error: any) {
     res.status(500).json({
       success: false,

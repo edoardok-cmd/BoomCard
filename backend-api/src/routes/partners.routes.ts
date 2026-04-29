@@ -742,6 +742,11 @@ router.put(
           updateData.verifiedAt = new Date();
         }
       }
+
+      // Spec §5.3 — Видимост (visible vs. hidden to subscribers)
+      if (req.body.isVisible !== undefined) {
+        updateData.isVisible = !!req.body.isVisible;
+      }
     }
 
     Object.keys(updateData).forEach(k => updateData[k] === undefined && delete updateData[k]);

@@ -59,7 +59,55 @@ export interface AdminDisputesResult {
   meta: { total: number; page: number; limit: number; pages: number };
 }
 
+// Fraud-signal feed for Контрол > Сигурност (spec §7.2).
+// Backed by /admin/control/risk-queue with tier=all so the page can show duplicate
+// detection, QR/receipt mismatch, velocity, IBAN-anomaly signals as fraudReasons.
+export interface FraudSignalReceipt {
+  id: string;
+  fraudScore: number;
+  fraudReasons: string[];
+  status: string;
+  merchantName: string | null;
+  totalAmount: number | null;
+  createdAt: string;
+  latitude: number | null;
+  longitude: number | null;
+  user: {
+    id: string;
+    email: string;
+    firstName: string | null;
+    lastName: string | null;
+    riskBucket: string | null;
+  };
+  venue: {
+    id: string;
+    name: string;
+    partner: { id: string; businessName: string } | null;
+  } | null;
+}
+
+export interface FraudSignalsResult {
+  success: boolean;
+  data: FraudSignalReceipt[];
+  meta: { total: number; page: number; limit: number; pages: number; tier: string };
+}
+
 export const adminControlService = {
+  getFraudSignals(params: {
+    page?: number;
+    limit?: number;
+    tier?: 'AUTO_0_30' | 'REVIEW_31_60' | 'HIGH_61_PLUS' | 'all';
+    venueId?: string;
+  }): Promise<FraudSignalsResult> {
+    const clean: Record<string, unknown> = {
+      page: params.page,
+      limit: params.limit,
+      tier: params.tier ?? 'all',
+    };
+    if (params.venueId) clean.venueId = params.venueId;
+    return apiService.get('/admin/control/risk-queue', clean);
+  },
+
   getSecurityLogs(params: {
     page?: number;
     limit?: number;

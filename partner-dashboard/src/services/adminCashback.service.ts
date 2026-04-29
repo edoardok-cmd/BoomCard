@@ -44,8 +44,39 @@ export interface CurrentCashbackRate {
   source: 'db' | 'default';
 }
 
+// Spec §4.4 — entry-based cashback with 5 states
+export type CashbackEntryStatus = 'Pending' | 'Cleared' | 'Locked' | 'Paid' | 'Expired';
+
+export interface CashbackEntry {
+  id: string;
+  amount: number;
+  status: CashbackEntryStatus;
+  rawStatus: string;
+  cashbackExpiresAt: string | null;
+  daysUntilExpiry: number | null;
+  description: string | null;
+  createdAt: string;
+  receipt: { id: string; totalAmount: number | null; merchantName: string | null } | null;
+  user: { id: string; email: string; firstName: string | null; lastName: string | null };
+}
+
+export interface CashbackEntriesResult {
+  data: CashbackEntry[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
 class AdminCashbackService {
   private readonly base = '/admin/cashback';
+
+  async getEntries(params: { page?: number; limit?: number; status?: CashbackEntryStatus }): Promise<CashbackEntriesResult> {
+    const clean: Record<string, unknown> = { page: params.page, limit: params.limit };
+    if (params.status) clean.status = params.status;
+    const res = await apiService.get<{ success: boolean } & CashbackEntriesResult>(`${this.base}/entries`, clean);
+    return { data: res.data, total: res.total, page: res.page, limit: res.limit };
+  }
+
 
   async getStats(): Promise<CashbackDashboardStats> {
     const res = await apiService.get<{ success: boolean; data: CashbackDashboardStats }>(`${this.base}/stats`);

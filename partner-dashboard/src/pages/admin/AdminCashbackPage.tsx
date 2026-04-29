@@ -7,6 +7,8 @@ import { DataTable, ColumnDef } from '../../components/admin/DataTable/DataTable
 import {
   adminCashbackService,
   CashbackSummaryEntry,
+  CashbackEntry,
+  CashbackEntryStatus,
 } from '../../services/adminCashback.service';
 
 /* ─── Palette ──────────────────────────────────────────────────────────────── */
@@ -186,6 +188,45 @@ const StatusBadge = styled.span<{ $status: PaymentStatus }>`
   }}
 `;
 
+const ViewTab = styled.button<{ $active: boolean }>`
+  background: ${(p) => p.$active ? palette.accent : 'transparent'};
+  color: ${(p) => p.$active ? '#fff' : palette.textMuted};
+  border: 1px solid ${(p) => p.$active ? palette.accent : palette.border};
+  padding: 0.375rem 0.875rem;
+  border-radius: 0.5rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+  &:hover { color: ${(p) => p.$active ? '#fff' : palette.text}; }
+`;
+
+const EntryStatusBadge = styled.span<{ $status: CashbackEntryStatus }>`
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-radius: 0.375rem;
+  padding: 0.125rem 0.5rem;
+
+  ${({ $status }) => {
+    switch ($status) {
+      case 'Cleared':
+        return `background: ${palette.successSoft}; color: ${palette.success};`;
+      case 'Paid':
+        return `background: ${palette.infoSoft}; color: ${palette.info};`;
+      case 'Pending':
+        return `background: ${palette.warningSoft}; color: ${palette.warning};`;
+      case 'Locked':
+        return `background: ${palette.amberSoft}; color: ${palette.amber};`;
+      case 'Expired':
+      default:
+        return `background: ${palette.dangerSoft}; color: ${palette.danger};`;
+    }
+  }}
+`;
+
 /* ─── Helpers ───────────────────────────────────────────────────────────────── */
 function currentMonthStr(): string {
   const now = new Date();
@@ -201,8 +242,11 @@ export default function AdminCashbackPage() {
   const { language } = useLanguage();
   const queryClient = useQueryClient();
 
+  const [view, setView] = useState<'partners' | 'entries'>('entries');
   const [month, setMonth] = useState(currentMonthStr());
   const [statusFilter, setStatusFilter] = useState<PaymentStatus | ''>('');
+  const [entryStatus, setEntryStatus] = useState<CashbackEntryStatus | ''>('');
+  const [entryPage, setEntryPage] = useState(1);
 
   const fmtDate = (iso: string | null) =>
     iso
@@ -225,6 +269,19 @@ export default function AdminCashbackPage() {
         month: month || undefined,
         status: statusFilter || undefined,
       }),
+    enabled: view === 'partners',
+  });
+
+  // Spec §4.4 — entry-based cashback with 5 states
+  const { data: entriesData, isLoading: isEntriesLoading } = useQuery({
+    queryKey: ['admin-cashback-entries', entryPage, entryStatus],
+    queryFn: () =>
+      adminCashbackService.getEntries({
+        page: entryPage,
+        limit: 25,
+        status: entryStatus || undefined,
+      }),
+    enabled: view === 'entries',
   });
 
   const markPaidMutation = useMutation({
@@ -296,6 +353,68 @@ export default function AdminCashbackPage() {
     },
   ];
 
+  const entryColumns: ColumnDef<CashbackEntry>[] = [
+    {
+      key: 'subscriber',
+      header: 'Subscriber',
+      render: (row) => (
+        <PartnerCell>
+          {row.user.firstName || row.user.lastName
+            ? `${row.user.firstName ?? ''} ${row.user.lastName ?? ''}`.trim()
+            : row.user.email}
+          <MetaLine>{row.user.email}</MetaLine>
+        </PartnerCell>
+      ),
+    },
+    {
+      key: 'amount',
+      header: 'Amount',
+      render: (row) => (
+        <span style={{ fontWeight: 700, color: palette.text }}>
+          {fmtMoney(row.amount)} лв.
+        </span>
+      ),
+    },
+    {
+      key: 'state',
+      header: 'State',
+      render: (row) => <EntryStatusBadge $status={row.status}>{row.status}</EntryStatusBadge>,
+    },
+    {
+      key: 'expires',
+      header: 'Expires',
+      render: (row) => (
+        <span style={{ fontSize: '0.8125rem', color: palette.textMuted }}>
+          {row.cashbackExpiresAt ? fmtDate(row.cashbackExpiresAt) : '—'}
+          {row.daysUntilExpiry != null && row.status === 'Cleared' && (
+            <MetaLine>{row.daysUntilExpiry} days left</MetaLine>
+          )}
+        </span>
+      ),
+    },
+    {
+      key: 'receipt',
+      header: 'Receipt',
+      render: (row) => (
+        <span style={{ fontSize: '0.8125rem', color: palette.textMuted }}>
+          {row.receipt?.merchantName ?? row.description ?? '—'}
+          {row.receipt?.totalAmount != null && (
+            <MetaLine>{fmtMoney(row.receipt.totalAmount)} лв.</MetaLine>
+          )}
+        </span>
+      ),
+    },
+    {
+      key: 'createdAt',
+      header: 'Earned',
+      render: (row) => (
+        <span style={{ fontSize: '0.8125rem', color: palette.textMuted }}>
+          {fmtDate(row.createdAt)}
+        </span>
+      ),
+    },
+  ];
+
   const isMutating = markPaidMutation.isPending || reminderMutation.isPending;
 
   return (
@@ -304,7 +423,19 @@ export default function AdminCashbackPage() {
         <TitleBlock>
           <Eyebrow>Subscribers</Eyebrow>
           <PageTitle>Cashback</PageTitle>
-          <PageSubtitle>Monthly cashback owed to partners from subscriber scans</PageSubtitle>
+          <PageSubtitle>
+            {view === 'entries'
+              ? 'Per-entry cashback states (Pending / Cleared / Locked / Paid / Expired) — spec §4.4'
+              : 'Monthly cashback owed to partners from subscriber scans'}
+          </PageSubtitle>
+          <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem' }}>
+            <ViewTab $active={view === 'entries'} onClick={() => setView('entries')}>
+              All entries
+            </ViewTab>
+            <ViewTab $active={view === 'partners'} onClick={() => setView('partners')}>
+              By partner / month
+            </ViewTab>
+          </div>
         </TitleBlock>
       </PageHeader>
 
@@ -335,22 +466,51 @@ export default function AdminCashbackPage() {
 
       <Card>
         <FilterRow>
-          <MonthInput
-            type="month"
-            value={month}
-            onChange={(e) => setMonth(e.target.value)}
-          />
-          <Select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as PaymentStatus | '')}
-          >
-            <option value="">All statuses</option>
-            <option value="PENDING">Pending</option>
-            <option value="PAID">Paid</option>
-            <option value="OVERDUE">Overdue</option>
-          </Select>
+          {view === 'partners' ? (
+            <>
+              <MonthInput
+                type="month"
+                value={month}
+                onChange={(e) => setMonth(e.target.value)}
+              />
+              <Select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value as PaymentStatus | '')}
+              >
+                <option value="">All statuses</option>
+                <option value="PENDING">Pending</option>
+                <option value="PAID">Paid</option>
+                <option value="OVERDUE">Overdue</option>
+              </Select>
+            </>
+          ) : (
+            <Select
+              value={entryStatus}
+              onChange={(e) => { setEntryStatus(e.target.value as CashbackEntryStatus | ''); setEntryPage(1); }}
+            >
+              <option value="">All states</option>
+              <option value="Pending">Pending</option>
+              <option value="Cleared">Cleared</option>
+              <option value="Locked">Locked</option>
+              <option value="Paid">Paid</option>
+              <option value="Expired">Expired</option>
+            </Select>
+          )}
         </FilterRow>
 
+        {view === 'entries' ? (
+          <DataTable
+            columns={entryColumns}
+            data={entriesData?.data ?? []}
+            rowKey={(row) => row.id}
+            loading={isEntriesLoading}
+            emptyMessage="No cashback entries"
+            page={entryPage}
+            pageSize={25}
+            totalItems={entriesData?.total}
+            onPageChange={setEntryPage}
+          />
+        ) : (
         <DataTable
           columns={columns}
           data={summary}
@@ -383,6 +543,7 @@ export default function AdminCashbackPage() {
             },
           ]}
         />
+        )}
 
         {isMutating && (
           <div

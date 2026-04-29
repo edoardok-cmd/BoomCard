@@ -906,13 +906,14 @@ router.post(
     // Generate JWT tokens
     const tokens = await AuthService.createSession({ id: user.id, email: user.email, role: user.role });
 
-    // Send welcome email (fire-and-forget)
+    // Send welcome email (fire-and-forget). Spec §7.1: respect the language
+    // the user explicitly selected at profile creation.
     const customerName = [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email.split('@')[0];
     emailService.sendWelcomeEmail(user.email, {
       customerName,
       email: user.email,
       dashboardUrl: process.env.APP_URL || 'https://mobile.boomcard.bg',
-    }).catch((err) => logger.error('Failed to send welcome email:', err));
+    }, lang).catch((err) => logger.error('Failed to send welcome email:', err));
 
     logger.info(`Payment-first onboarding completed: user ${user.id} created for order ${pending.payseraOrderId}`);
 

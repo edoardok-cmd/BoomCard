@@ -28,11 +28,17 @@ export async function processPayseraRenewals(): Promise<void> {
   // 7-day window is measured from the actual pause instant rather than from
   // currentPeriodEnd (which drifts when this job runs late). For legacy rows
   // that pre-date gracePeriodEndsAt, fall back to the old currentPeriodEnd logic.
+  // Clean up PAUSED rows past the grace period regardless of whether the
+  // user cancelled in the meantime — we still need to flip status to
+  // CANCELLED so the row doesn't sit in PAUSED forever (this happens for
+  // legacy rows from before cancelSubscription started forcing immediate
+  // cancellation on PAUSED subs). The email side enforces spec §3.2: if the
+  // user had already cancelled (`canceledAt` set), skip the expiry email so
+  // we don't notify them about a sub they already chose to end.
   const expired = await prisma.subscription.findMany({
     where: {
       status: SubscriptionStatus.PAUSED,
       stripeSubscriptionId: null,
-      autoRenewal: true,
       OR: [
         { gracePeriodEndsAt: { lte: now } },
         { gracePeriodEndsAt: null, currentPeriodEnd: { lte: sevenDaysAgo } },
@@ -46,11 +52,19 @@ export async function processPayseraRenewals(): Promise<void> {
 
   for (const sub of expired) {
     try {
+      const alreadyCancelled = !!sub.canceledAt;
       await prisma.subscription.update({
         where: { id: sub.id },
-        data: { status: SubscriptionStatus.CANCELLED, canceledAt: now },
+        data: {
+          status: SubscriptionStatus.CANCELLED,
+          // Preserve the original cancellation timestamp if the user explicitly
+          // cancelled before the grace period elapsed; otherwise stamp it now.
+          canceledAt: sub.canceledAt ?? now,
+        },
       });
-      logger.info(`[paysera-renewal] Subscription ${sub.id} cancelled after 7-day grace period`);
+      logger.info(
+        `[paysera-renewal] Subscription ${sub.id} cancelled after 7-day grace period${alreadyCancelled ? ' (legacy row — user had already cancelled, no email)' : ''}`
+      );
 
       // Sync the BoomCard loyalty card type to match the user's remaining active
       // BoomCard subscription, or downgrade to LIGHT if none exists. Mirrors the
@@ -68,7 +82,9 @@ export async function processPayseraRenewals(): Promise<void> {
       const { cardService } = await import('../services/card.service');
       await cardService.syncCardTypeWithSubscription(sub.userId, targetPlan);
 
-      if (sub.user?.email) {
+      // Spec §3.2: skip the expiry email when the user had already cancelled
+      // — they got their cancellation confirmation at cancel time.
+      if (sub.user?.email && !alreadyCancelled) {
         const lang = (sub.user.preferredLanguage === 'en' ? 'en' : 'bg') as 'bg' | 'en';
         const planName = lang === 'bg'
           ? (sub.planDetails?.displayNameBg || sub.plan)
@@ -92,6 +108,8 @@ export async function processPayseraRenewals(): Promise<void> {
       status: SubscriptionStatus.ACTIVE,
       stripeSubscriptionId: null,
       autoRenewal: true,
+      cancelAtPeriodEnd: false,
+      canceledAt: null,
       currentPeriodEnd: { lte: now },
     },
     include: {
@@ -153,9 +171,20 @@ export async function processPayseraRenewals(): Promise<void> {
       status: SubscriptionStatus.ACTIVE,
       stripeSubscriptionId: null,
       autoRenewal: false,
+      // Spec §3.2: don't remind users who explicitly cancelled — they already
+      // know their access is ending. canceledAt is the right discriminator
+      // here: cancelSubscription sets it, toggleAutoRenewal does not. Filtering
+      // on cancelAtPeriodEnd would also drop users who simply turned auto-
+      // renewal off (toggleAutoRenewal sets cancelAtPeriodEnd=true), which
+      // §3.1 says SHOULD receive pre-expiry reminders.
+      canceledAt: null,
       currentPeriodEnd: { gt: now, lte: threeDaysFromNow },
-      // Avoid re-sending by checking no reminder was sent in the last 24h
-      updatedAt: { lte: new Date(now.getTime() - 24 * 60 * 60 * 1000) },
+      // One reminder per period. The previous behaviour ("re-remind every 24h
+      // while in the 3-day window") could send up to three notices per
+      // subscription, which is louder than spec §3.1 implies. We now gate
+      // strictly on never-sent; the timestamp is reset to null elsewhere when
+      // a new period starts (see resetReminderOnRenewal below).
+      lastRenewalReminderSentAt: null,
     },
     include: {
       user: { select: { id: true, email: true, firstName: true, preferredLanguage: true } },
@@ -192,6 +221,11 @@ export async function processPayseraRenewals(): Promise<void> {
           language: lang,
         })
         .catch((err) => logger.error(`[paysera-renewal] Pre-expiry reminder failed for sub ${sub.id}:`, err));
+
+      await prisma.subscription.update({
+        where: { id: sub.id },
+        data: { lastRenewalReminderSentAt: now },
+      });
 
       logger.info(`[paysera-renewal] Pre-expiry reminder sent for sub ${sub.id} (expires ${sub.currentPeriodEnd.toISOString()})`);
     } catch (err) {

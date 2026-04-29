@@ -112,4 +112,50 @@ export const adminTransactionsService = {
   adjust(data: { userId: string; amount: number; reason: string }): Promise<AdjustmentResult> {
     return apiService.post<AdjustmentResult>('/admin/transactions/adjust', data);
   },
+
+  // Spec §4.3: receipt/business transactions with partner / venue / cashback / margin / risk score.
+  listBusiness(params: {
+    page?: number;
+    limit?: number;
+    search?: string;
+    partnerId?: string;
+    type?: string;
+    status?: string;
+    dateFrom?: string;
+    dateTo?: string;
+  }): Promise<BusinessTransactionsResult> {
+    const clean: Record<string, unknown> = { page: params.page, limit: params.limit };
+    if (params.search) clean['search'] = params.search;
+    if (params.partnerId) clean['partnerId'] = params.partnerId;
+    if (params.type) clean['type'] = params.type;
+    if (params.status) clean['status'] = params.status;
+    if (params.dateFrom) clean['dateFrom'] = params.dateFrom;
+    if (params.dateTo) clean['dateTo'] = params.dateTo;
+    return apiService.get<BusinessTransactionsResult>('/admin/transactions/business', clean);
+  },
 };
+
+export interface BusinessTransaction {
+  id: string;
+  type: string;
+  status: string;
+  amount: number;
+  discountAmount: number | null;
+  finalAmount: number | null;
+  cashbackAmount: number | null;
+  netAmount: number | null;
+  margin: number;
+  currency: string;
+  paymentMethod: string;
+  createdAt: string;
+  user: { id: string; firstName: string | null; lastName: string | null; email: string };
+  partner: { id: string; businessName: string; businessNameBg: string | null } | null;
+  venue: { id: string; name: string } | null;
+}
+
+export interface BusinessTransactionsResult {
+  transactions: BusinessTransaction[];
+  total: number;
+  page: number;
+  limit: number;
+}

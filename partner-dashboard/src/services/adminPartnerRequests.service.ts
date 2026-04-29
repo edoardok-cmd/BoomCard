@@ -8,6 +8,8 @@ export interface PendingPartner {
   phone: string | null;
   city: string | null;
   discountRate: number | null;
+  status?: string;
+  requestStatus?: string | null;
   joinedAt: string;
   user: {
     id: string;
@@ -16,6 +18,14 @@ export interface PendingPartner {
     email: string;
     phone: string | null;
   };
+  // Spec §5.1 — "Отговорник" (assigned super admin)
+  assignedAdminId?: string | null;
+  assignedAdmin?: {
+    id: string;
+    firstName: string | null;
+    lastName: string | null;
+    email: string;
+  } | null;
 }
 
 export interface PendingPartnersResult {

@@ -36,6 +36,10 @@ export interface Subscription {
   autoRenewal: boolean;
   retryAttempt: number;
   gracePeriodEndsAt: string | null;
+  // 24h refund window (FR-007 / spec §2.2). Null after the window expires
+  // or after the refund has been used.
+  trialRefundEligibleUntil: string | null;
+  trialRefundUsed: boolean;
   stripeSubscriptionId: string | null;
   payseraOrderId: string | null;
   paymentMethod: SubscriptionPaymentMethod | null;
@@ -312,6 +316,31 @@ class BillingService {
     const response = await apiService.post<Subscription>(
       `/subscriptions/${subscriptionId}/cancel`,
       { cancelAtPeriodEnd }
+    );
+    return response;
+  }
+
+  /**
+   * Request 24-hour trial refund. Cancels the subscription immediately,
+   * issues a refund (Stripe) or flags for manual processing (Paysera),
+   * and voids cashback earned during the trial.
+   */
+  async requestTrialRefund(subscriptionId: string): Promise<Subscription> {
+    const response = await apiService.post<Subscription>(
+      `/subscriptions/${subscriptionId}/trial-refund`,
+      {}
+    );
+    return response;
+  }
+
+  /**
+   * Upgrade or downgrade a subscription plan. Backend applies any pro-rata
+   * upgrade credit to the user's wallet (LIGHT→PREMIUM, BASIC→PREMIUM).
+   */
+  async updateSubscriptionPlan(subscriptionId: string, plan: 'LIGHT' | 'BASIC' | 'PREMIUM'): Promise<Subscription> {
+    const response = await apiService.post<Subscription>(
+      `/subscriptions/${subscriptionId}/update-plan`,
+      { plan }
     );
     return response;
   }

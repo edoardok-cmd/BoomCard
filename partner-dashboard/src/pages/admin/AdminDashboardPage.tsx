@@ -899,7 +899,7 @@ const AdminDashboardPage: React.FC = () => {
 
   const partnerActions: ActionDef[] = [
     {
-      to: '/admin/partners/new/active',
+      to: '/admin/partners/active',
       title: bg ? 'Партньори' : 'Partners',
       description: bg
         ? 'Управление на партньорски акаунти и одобрения'
@@ -912,7 +912,7 @@ const AdminDashboardPage: React.FC = () => {
           : undefined,
     },
     {
-      to: '/admin/partners/new/receipt-profiles',
+      to: '/admin/partners/receipt-profiles',
       title: bg ? 'Типове Партньори' : 'Partner Types',
       description: bg
         ? 'Лимити за отстъпки и достъп по абонамент'
@@ -924,7 +924,7 @@ const AdminDashboardPage: React.FC = () => {
           : undefined,
     },
     {
-      to: '/admin/partners/new/onboarding',
+      to: '/admin/partners/onboarding',
       title: bg ? 'Въвеждане на Партньор' : 'Partner Onboarding',
       description: bg
         ? 'Ръчно въвеждане с бизнес данни, обекти и условия'
@@ -1041,7 +1041,7 @@ const AdminDashboardPage: React.FC = () => {
       icon: Cog6ToothIcon,
     },
     {
-      to: '/admin/partners/new/receipt-profiles',
+      to: '/admin/partners/receipt-profiles',
       title: bg ? 'Шаблони за Бележки' : 'Receipt Templates',
       description: bg
         ? 'Шаблони за визуално сравнение по обекти'

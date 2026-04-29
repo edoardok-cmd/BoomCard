@@ -621,6 +621,10 @@ export class AuthService {
         emailVerified: true,
         createdAt: true,
         lastLoginAt: true,
+        preferredLanguage: true,
+        marketingConsent: true,
+        marketingConsentEmail: true,
+        marketingConsentPhone: true,
         loyaltyAccount: {
           select: {
             tier: true,
@@ -980,6 +984,20 @@ export class AuthService {
       data.marketingConsentEmailAt = now;
       data.marketingConsentPhone = granted;
       data.marketingConsentPhoneAt = now;
+    }
+
+    // Re-derive the legacy combined `marketingConsent` flag whenever a
+    // per-channel toggle changes, so any consumer still reading the legacy
+    // field doesn't drift out of sync with the per-channel values.
+    if (type === 'email_marketing' || type === 'phone_marketing') {
+      const current = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { marketingConsentEmail: true, marketingConsentPhone: true },
+      });
+      const nextEmail = type === 'email_marketing' ? granted : !!current?.marketingConsentEmail;
+      const nextPhone = type === 'phone_marketing' ? granted : !!current?.marketingConsentPhone;
+      data.marketingConsent = nextEmail || nextPhone;
+      data.marketingConsentAt = now;
     }
 
     const user = await prisma.user.update({

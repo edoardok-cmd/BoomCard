@@ -54,7 +54,7 @@ export const ADMIN_NAV: AdminNavCategory[] = [
     permissionKey: 'partners.read',
     subItems: [
       { labelBg: 'Заявки', labelEn: 'Requests', path: '/admin/partners/requests', permissionKey: 'partners.requests.read' },
-      { labelBg: 'Онбординг', labelEn: 'Onboarding', path: '/admin/partners/onboarding', permissionKey: 'partners.onboarding.read' },
+      { labelBg: 'Комуникация и онбординг', labelEn: 'Communication & Onboarding', path: '/admin/partners/onboarding', permissionKey: 'partners.onboarding.read' },
       { labelBg: 'Активни', labelEn: 'Active', path: '/admin/partners/active', permissionKey: 'partners.read' },
       { labelBg: 'Локации & QR', labelEn: 'Locations & QR', path: '/admin/partners/locations', permissionKey: 'partners.locations.read' },
       { labelBg: 'Профили на бележки', labelEn: 'Receipt Profiles', path: '/admin/partners/receipt-profiles', permissionKey: 'partners.receipts.read' },
@@ -154,6 +154,7 @@ export const ADMIN_NAV: AdminNavCategory[] = [
     subItems: [
       { labelBg: 'Моите данни', labelEn: 'My Data', path: '/admin/profile/my-data', permissionKey: 'dashboard.read' },
       { labelBg: 'Сигурност', labelEn: 'Security', path: '/admin/profile/security', permissionKey: 'dashboard.read' },
+      { labelBg: 'Изход', labelEn: 'Logout', path: '/admin/profile/logout', permissionKey: 'dashboard.read' },
     ],
   },
 ];

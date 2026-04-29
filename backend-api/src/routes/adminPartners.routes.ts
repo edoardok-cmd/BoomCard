@@ -82,7 +82,24 @@ router.get(
       prisma.partner.count({ where }),
     ]);
 
-    res.json({ partners, total, page: pageNum, limit: take });
+    // Spec §5.1 "Отговорник" — fetch assigned admin profile for each row.
+    // Done as a follow-up query because Prisma doesn't have a relation defined for assignedAdminId.
+    const adminIds = Array.from(
+      new Set(partners.map((p) => p.assignedAdminId).filter((x): x is string => !!x))
+    );
+    const admins = adminIds.length
+      ? await prisma.user.findMany({
+          where: { id: { in: adminIds } },
+          select: { id: true, firstName: true, lastName: true, email: true },
+        })
+      : [];
+    const adminMap = new Map(admins.map((a) => [a.id, a]));
+    const enriched = partners.map((p) => ({
+      ...p,
+      assignedAdmin: p.assignedAdminId ? adminMap.get(p.assignedAdminId) ?? null : null,
+    }));
+
+    res.json({ partners: enriched, total, page: pageNum, limit: take });
   })
 );
 

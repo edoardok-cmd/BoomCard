@@ -33,6 +33,8 @@ export interface AdminSubscription {
   payseraOrderId: string | null;
   createdAt: string;
   user: SubscriptionUser;
+  // Spec §4.2 — total subscriptions ever created for this user (history indicator)
+  userSubscriptionCount?: number;
 }
 
 export interface AdminSubscriptionsResult {

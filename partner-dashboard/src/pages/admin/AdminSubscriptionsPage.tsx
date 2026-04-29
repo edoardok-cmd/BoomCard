@@ -329,7 +329,16 @@ export default function AdminSubscriptionsPage() {
     {
       key: 'plan',
       header: 'Plan',
-      render: (row) => <PlanBadge $plan={row.plan}>{row.plan}</PlanBadge>,
+      render: (row) => (
+        <span>
+          <PlanBadge $plan={row.plan}>{row.plan}</PlanBadge>
+          {row.userSubscriptionCount && row.userSubscriptionCount > 1 && (
+            <MetaLine title="Spec §4.2 — total subscriptions ever for this user">
+              {row.userSubscriptionCount} plans in history
+            </MetaLine>
+          )}
+        </span>
+      ),
     },
     {
       key: 'status',

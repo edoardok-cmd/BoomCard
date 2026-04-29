@@ -142,13 +142,24 @@ export class SubscriptionService {
       // Paysera-based subscription (LIGHT or legacy) — no external billing to cancel.
       // Mark it to expire at the end of the current period so the user keeps access
       // until then, mirroring Stripe's cancel_at_period_end behaviour.
-      if (cancelAtPeriodEnd) {
+      // PAUSED rows (or rows whose period has already ended) need immediate
+      // cancellation: setting cancelAt to a past currentPeriodEnd would leave
+      // the row stuck in PAUSED forever because the renewal cron now skips
+      // canceled / autoRenewal=false rows.
+      const periodAlreadyEnded = subscription.currentPeriodEnd <= new Date();
+      const forceImmediate = subscription.status === 'PAUSED' || periodAlreadyEnded;
+
+      if (cancelAtPeriodEnd && !forceImmediate) {
         updated = await prisma.subscription.update({
           where: { id: subscriptionId },
           data: {
             cancelAtPeriodEnd: true,
             cancelAt: subscription.currentPeriodEnd,
             canceledAt: new Date(),
+            // Spec §3.2: after manual cancellation, all renewal/expiry/retry
+            // emails must stop. The Paysera renewal cron filters on
+            // autoRenewal=true, so flip this to false to exclude this row.
+            autoRenewal: false,
           },
           include: {
             user: { select: { email: true, firstName: true, preferredLanguage: true } },
@@ -165,6 +176,7 @@ export class SubscriptionService {
             cancelAtPeriodEnd: false,
             cancelAt: new Date(),
             canceledAt: new Date(),
+            autoRenewal: false,
           },
           include: {
             user: { select: { email: true, firstName: true, preferredLanguage: true } },
@@ -187,6 +199,7 @@ export class SubscriptionService {
             ? new Date(stripeSubscription.cancel_at * 1000)
             : null,
           canceledAt: new Date(),
+          autoRenewal: false,
         },
         include: {
           user: { select: { email: true, firstName: true, preferredLanguage: true } },
@@ -253,6 +266,8 @@ export class SubscriptionService {
           plan: 'LIGHT',
           currentPeriodStart: new Date(),
           currentPeriodEnd: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+          // New period → eligible for a fresh pre-expiry reminder.
+          lastRenewalReminderSentAt: null,
         },
       });
     }
@@ -270,6 +285,8 @@ export class SubscriptionService {
           plan: newPlan,
           currentPeriodStart: now,
           currentPeriodEnd: newPeriodEnd,
+          // New period → eligible for a fresh pre-expiry reminder.
+          lastRenewalReminderSentAt: null,
         },
       });
     }

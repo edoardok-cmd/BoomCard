@@ -7,6 +7,7 @@ import { DataTable, ColumnDef } from '../../components/admin/DataTable/DataTable
 import {
   adminTransactionsService,
   AdminTransaction,
+  BusinessTransaction,
   WalletTransactionType,
   WalletTransactionStatus,
 } from '../../services/adminTransactions.service';
@@ -448,6 +449,17 @@ const STATUS_OPTIONS: Array<{ value: WalletTransactionStatus | ''; label: string
   { value: 'ANNULLED', label: 'Annulled' },
 ];
 
+// Business view uses Prisma TransactionStatus enum (no TRIAL_PENDING / ANNULLED + adds REFUNDED)
+const BUSINESS_STATUS_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: '', label: 'All statuses' },
+  { value: 'PENDING', label: 'Pending' },
+  { value: 'PROCESSING', label: 'Processing' },
+  { value: 'COMPLETED', label: 'Completed' },
+  { value: 'FAILED', label: 'Failed' },
+  { value: 'CANCELLED', label: 'Cancelled' },
+  { value: 'REFUNDED', label: 'Refunded' },
+];
+
 const NEGATIVE_TYPES: WalletTransactionType[] = ['WITHDRAWAL', 'PURCHASE'];
 const PAGE_SIZE = 20;
 
@@ -456,6 +468,9 @@ export default function AdminTransactionsPage() {
   const { language } = useLanguage();
   const queryClient = useQueryClient();
   const locale = language === 'bg' ? 'bg-BG' : 'en-GB';
+
+  /* ── View toggle (spec §4.3 default = Business / receipt-based) ── */
+  const [view, setView] = useState<'business' | 'wallet'>('business');
 
   /* ── Filters ── */
   const [page, setPage] = useState(1);
@@ -480,11 +495,28 @@ export default function AdminTransactionsPage() {
     queryKey: ['admin-transactions', page, search, type, status, dateFrom, dateTo],
     queryFn: () =>
       adminTransactionsService.list({ page, limit: PAGE_SIZE, ...filterParams }),
+    enabled: view === 'wallet',
+  });
+
+  // Business / receipt-based transactions (Spec §4.3 — Партньор / Локация / Кешбек / Марджин / Risk score)
+  const { data: businessData, isLoading: isBusinessLoading } = useQuery({
+    queryKey: ['admin-transactions-business', page, search, status, dateFrom, dateTo],
+    queryFn: () =>
+      adminTransactionsService.listBusiness({
+        page,
+        limit: PAGE_SIZE,
+        search: search || undefined,
+        status: status || undefined,
+        dateFrom: dateFrom || undefined,
+        dateTo: dateTo || undefined,
+      }),
+    enabled: view === 'business',
   });
 
   const { data: stats } = useQuery({
     queryKey: ['admin-transactions-stats', search, type, status, dateFrom, dateTo],
     queryFn: () => adminTransactionsService.getStats(filterParams),
+    enabled: view === 'wallet',
   });
 
   const { data: adjSearchData } = useQuery({
@@ -600,6 +632,87 @@ export default function AdminTransactionsPage() {
     },
   ];
 
+  /* ── Business / receipt-based columns (Spec §4.3) ── */
+  const businessColumns: ColumnDef<BusinessTransaction>[] = [
+    {
+      key: 'id',
+      header: 'Tx ID',
+      render: (row) => (
+        <span style={{ fontFamily: 'monospace', fontSize: '0.75rem', color: palette.textMuted }}>
+          {row.id.slice(0, 8)}
+        </span>
+      ),
+    },
+    {
+      key: 'subscriber',
+      header: 'Subscriber',
+      render: (row) => (
+        <UserCell>
+          {row.user.firstName || row.user.lastName
+            ? `${row.user.firstName ?? ''} ${row.user.lastName ?? ''}`.trim()
+            : '—'}
+          <MetaLine>{row.user.email}</MetaLine>
+        </UserCell>
+      ),
+    },
+    {
+      key: 'partner',
+      header: 'Partner / Location',
+      render: (row) => (
+        <UserCell>
+          {row.partner?.businessName ?? '—'}
+          <MetaLine>{row.venue?.name ?? 'No venue'}</MetaLine>
+        </UserCell>
+      ),
+    },
+    {
+      key: 'amount',
+      header: 'Amount',
+      render: (row) => (
+        <AmountCell $negative={false}>
+          {row.amount.toFixed(2)} {row.currency}
+        </AmountCell>
+      ),
+    },
+    {
+      key: 'cashback',
+      header: 'Cashback',
+      render: (row) => (
+        <span style={{ color: palette.teal, fontWeight: 600 }}>
+          {row.cashbackAmount != null ? `${row.cashbackAmount.toFixed(2)} ${row.currency}` : '—'}
+        </span>
+      ),
+    },
+    {
+      key: 'margin',
+      header: 'Margin',
+      render: (row) => (
+        <span style={{ color: row.margin > 0 ? palette.success : palette.textSubtle, fontWeight: 600 }}>
+          {row.margin.toFixed(2)} {row.currency}
+        </span>
+      ),
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      render: (row) => (
+        <StatusBadge $status={row.status as WalletTransactionStatus}>
+          {row.status.replace(/_/g, ' ')}
+        </StatusBadge>
+      ),
+    },
+    {
+      key: 'createdAt',
+      header: 'Date',
+      render: (row) => (
+        <span style={{ color: palette.textMuted, fontSize: '0.8125rem' }}>
+          {fmt(row.createdAt)}
+          <MetaLine>{fmtTime(row.createdAt)}</MetaLine>
+        </span>
+      ),
+    },
+  ];
+
   const adjUserName = adjUser
     ? `${adjUser.firstName ?? ''} ${adjUser.lastName ?? ''}`.trim() || adjUser.email
     : '';
@@ -700,43 +813,68 @@ export default function AdminTransactionsPage() {
         <TitleBlock>
           <Eyebrow>Subscribers</Eyebrow>
           <PageTitle>
-            Wallet Transactions
-            {data && data.total > 0 && <TotalBadge>{data.total.toLocaleString()}</TotalBadge>}
+            {view === 'business' ? 'Transactions' : 'Wallet Transactions'}
+            {view === 'wallet' && data && data.total > 0 && <TotalBadge>{data.total.toLocaleString()}</TotalBadge>}
+            {view === 'business' && businessData && businessData.total > 0 && <TotalBadge>{businessData.total.toLocaleString()}</TotalBadge>}
           </PageTitle>
-          <PageSubtitle>Full audit log of all wallet activity across subscribers</PageSubtitle>
+          <PageSubtitle>
+            {view === 'business'
+              ? 'Receipt-based transactions: partner, location, cashback, margin, risk score (spec §4.3)'
+              : 'Full audit log of all wallet activity across subscribers'}
+          </PageSubtitle>
+          <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem' }}>
+            <ViewTab
+              $active={view === 'business'}
+              onClick={() => { setView('business'); setPage(1); setType(''); setStatus(''); }}
+            >
+              Business
+            </ViewTab>
+            <ViewTab
+              $active={view === 'wallet'}
+              onClick={() => { setView('wallet'); setPage(1); setStatus(''); }}
+            >
+              Wallet ledger
+            </ViewTab>
+          </div>
         </TitleBlock>
         <HeaderActions>
-          <Btn
-            onClick={() => data?.transactions.length && downloadCSV(data.transactions, locale)}
-            disabled={!data?.transactions.length}
-          >
-            ↓ Export CSV
-          </Btn>
-          <Btn $variant="primary" onClick={() => setShowAdjust(true)}>
-            + Adjust wallet
-          </Btn>
+          {view === 'wallet' && (
+            <>
+              <Btn
+                onClick={() => data?.transactions.length && downloadCSV(data.transactions, locale)}
+                disabled={!data?.transactions.length}
+              >
+                ↓ Export CSV
+              </Btn>
+              <Btn $variant="primary" onClick={() => setShowAdjust(true)}>
+                + Adjust wallet
+              </Btn>
+            </>
+          )}
         </HeaderActions>
       </PageHeader>
 
-      {/* Stats bar */}
-      <StatsBar>
-        <StatCard>
-          <StatLabel>Total volume</StatLabel>
-          <StatValue>{stats ? `${stats.totalVolume.toFixed(2)} BGN` : '—'}</StatValue>
-        </StatCard>
-        <StatCard $bg={palette.tealSoft}>
-          <StatLabel>Cashback credited</StatLabel>
-          <StatValue $color={palette.teal}>
-            {stats ? `${stats.totalCashback.toFixed(2)} BGN` : '—'}
-          </StatValue>
-        </StatCard>
-        <StatCard $bg={palette.warningSoft}>
-          <StatLabel>Withdrawals</StatLabel>
-          <StatValue $color={palette.warning}>
-            {stats ? `${stats.totalWithdrawals.toFixed(2)} BGN` : '—'}
-          </StatValue>
-        </StatCard>
-      </StatsBar>
+      {/* Stats bar — wallet ledger only (stats endpoint is wallet-aggregated) */}
+      {view === 'wallet' && (
+        <StatsBar>
+          <StatCard>
+            <StatLabel>Total volume</StatLabel>
+            <StatValue>{stats ? `${stats.totalVolume.toFixed(2)} BGN` : '—'}</StatValue>
+          </StatCard>
+          <StatCard $bg={palette.tealSoft}>
+            <StatLabel>Cashback credited</StatLabel>
+            <StatValue $color={palette.teal}>
+              {stats ? `${stats.totalCashback.toFixed(2)} BGN` : '—'}
+            </StatValue>
+          </StatCard>
+          <StatCard $bg={palette.warningSoft}>
+            <StatLabel>Withdrawals</StatLabel>
+            <StatValue $color={palette.warning}>
+              {stats ? `${stats.totalWithdrawals.toFixed(2)} BGN` : '—'}
+            </StatValue>
+          </StatCard>
+        </StatsBar>
+      )}
 
       <Card>
         <FilterRow>
@@ -747,13 +885,15 @@ export default function AdminTransactionsPage() {
             onChange={(e) => setSearchInput(e.target.value)}
             onKeyDown={handleSearchKeyDown}
           />
-          <Select value={type} onChange={(e) => { setType(e.target.value as WalletTransactionType | ''); setPage(1); }}>
-            {TYPE_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>{o.label}</option>
-            ))}
-          </Select>
+          {view === 'wallet' && (
+            <Select value={type} onChange={(e) => { setType(e.target.value as WalletTransactionType | ''); setPage(1); }}>
+              {TYPE_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </Select>
+          )}
           <Select value={status} onChange={(e) => { setStatus(e.target.value as WalletTransactionStatus | ''); setPage(1); }}>
-            {STATUS_OPTIONS.map((o) => (
+            {(view === 'business' ? BUSINESS_STATUS_OPTIONS : STATUS_OPTIONS).map((o) => (
               <option key={o.value} value={o.value}>{o.label}</option>
             ))}
           </Select>
@@ -771,18 +911,44 @@ export default function AdminTransactionsPage() {
           />
         </FilterRow>
 
-        <DataTable
-          columns={columns}
-          data={data?.transactions ?? []}
-          rowKey={(row) => row.id}
-          loading={isLoading}
-          emptyMessage="No wallet transactions found"
-          page={page}
-          pageSize={PAGE_SIZE}
-          totalItems={data?.total}
-          onPageChange={setPage}
-        />
+        {view === 'business' ? (
+          <DataTable
+            columns={businessColumns}
+            data={businessData?.transactions ?? []}
+            rowKey={(row) => row.id}
+            loading={isBusinessLoading}
+            emptyMessage="No business transactions found"
+            page={page}
+            pageSize={PAGE_SIZE}
+            totalItems={businessData?.total}
+            onPageChange={setPage}
+          />
+        ) : (
+          <DataTable
+            columns={columns}
+            data={data?.transactions ?? []}
+            rowKey={(row) => row.id}
+            loading={isLoading}
+            emptyMessage="No wallet transactions found"
+            page={page}
+            pageSize={PAGE_SIZE}
+            totalItems={data?.total}
+            onPageChange={setPage}
+          />
+        )}
       </Card>
     </PageShell>
   );
 }
+
+const ViewTab = styled.button<{ $active: boolean }>`
+  background: ${(p) => p.$active ? palette.accent : 'transparent'};
+  color: ${(p) => p.$active ? '#fff' : palette.textMuted};
+  border: 1px solid ${(p) => p.$active ? palette.accent : palette.border};
+  padding: 0.375rem 0.875rem;
+  border-radius: 0.5rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+  &:hover { color: ${(p) => p.$active ? '#fff' : palette.text}; }
+`;

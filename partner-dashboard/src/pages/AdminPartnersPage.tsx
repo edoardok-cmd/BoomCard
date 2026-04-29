@@ -187,11 +187,30 @@ const StatusBadge = styled.span<{ $status: string }>`
   background: ${({ $status }) =>
     $status === 'ACTIVE' ? '#dcfce7' :
     $status === 'PENDING' ? '#fef3c7' :
-    $status === 'SUSPENDED' ? '#fee2e2' : '#f3f4f6'};
+    $status === 'PAUSED' ? '#dbeafe' :
+    $status === 'SUSPENDED' ? '#fee2e2' :
+    $status === 'ARCHIVED' ? '#e5e7eb' :
+    '#f3f4f6'};
   color: ${({ $status }) =>
     $status === 'ACTIVE' ? '#166534' :
     $status === 'PENDING' ? '#92400e' :
-    $status === 'SUSPENDED' ? '#991b1b' : '#374151'};
+    $status === 'PAUSED' ? '#1e40af' :
+    $status === 'SUSPENDED' ? '#991b1b' :
+    $status === 'ARCHIVED' ? '#374151' :
+    '#374151'};
+`;
+
+const VisibilityBadge = styled.span<{ $visible: boolean }>`
+  padding: 0.25rem 0.625rem;
+  border-radius: 9999px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  display: inline-block;
+  margin-left: 0.375rem;
+  background: ${({ $visible }) => ($visible ? '#e0f2fe' : '#fee2e2')};
+  color: ${({ $visible }) => ($visible ? '#075985' : '#991b1b')};
 `;
 
 const DiscountBadge = styled.span`
@@ -1203,6 +1222,7 @@ interface EditForm {
   partnerTypeId: string;
   discountRate: string;
   status: PartnerStatus;
+  isVisible: boolean;
 }
 
 // ─── Page Component ───────────────────────────────────────────────────────────
@@ -1228,7 +1248,7 @@ const AdminPartnersPage: React.FC = () => {
   const [editForm, setEditForm] = useState<EditForm>({
     businessName: '', businessNameBg: '', description: '', descriptionBg: '',
     city: '', region: '', address: '', phone: '', email: '', website: '',
-    partnerTypeId: '', discountRate: '', status: 'ACTIVE',
+    partnerTypeId: '', discountRate: '', status: 'ACTIVE', isVisible: true,
   });
 
   // Menu upload modal
@@ -1398,6 +1418,7 @@ const AdminPartnersPage: React.FC = () => {
       partnerTypeId: partner.partnerTypeId || '',
       discountRate: snapToStep(effectiveRate(partner)),
       status: (String(partner.status).toUpperCase() as PartnerStatus) || 'ACTIVE',
+      isVisible: partner.isVisible ?? true,
     });
   };
 
@@ -1436,6 +1457,7 @@ const AdminPartnersPage: React.FC = () => {
         partnerTypeId: editForm.partnerTypeId || undefined,
         discountRate: isNaN(rate) ? undefined : rate,
         status: editForm.status,
+        isVisible: editForm.isVisible,
       },
     });
   };
@@ -1714,7 +1736,9 @@ const AdminPartnersPage: React.FC = () => {
           <option value="">{language === 'bg' ? 'Всички статуси' : 'All statuses'}</option>
           <option value="ACTIVE">{language === 'bg' ? 'Активен' : 'Active'}</option>
           <option value="PENDING">{language === 'bg' ? 'Чакащ' : 'Pending'}</option>
+          <option value="PAUSED">{language === 'bg' ? 'Пауза' : 'Paused'}</option>
           <option value="SUSPENDED">{language === 'bg' ? 'Спрян' : 'Suspended'}</option>
+          <option value="ARCHIVED">{language === 'bg' ? 'Архивиран' : 'Archived'}</option>
         </FilterSelect>
       </FiltersBar>
 
@@ -1782,6 +1806,11 @@ const AdminPartnersPage: React.FC = () => {
                 <StatusBadge $status={String(partner.status).toUpperCase()}>
                   {partner.status}
                 </StatusBadge>
+                {partner.isVisible !== undefined && (
+                  <VisibilityBadge $visible={partner.isVisible}>
+                    {partner.isVisible ? (language === 'bg' ? 'Видим' : 'Visible') : (language === 'bg' ? 'Скрит' : 'Hidden')}
+                  </VisibilityBadge>
+                )}
               </span>
               <ActionCell>
                 <QrButton type="button" onClick={() => downloadQR(partner)} title={language === 'bg' ? 'Изтегли QR код (SVG)' : 'Download QR code (SVG)'}>
@@ -2300,8 +2329,21 @@ const AdminPartnersPage: React.FC = () => {
                     >
                       <option value="ACTIVE">{language === 'bg' ? 'Активен' : 'Active'}</option>
                       <option value="PENDING">{language === 'bg' ? 'Чакащ одобрение' : 'Pending'}</option>
+                      <option value="PAUSED">{language === 'bg' ? 'Пауза' : 'Paused'}</option>
                       <option value="SUSPENDED">{language === 'bg' ? 'Спрян' : 'Suspended'}</option>
-                      <option value="INACTIVE">{language === 'bg' ? 'Неактивен' : 'Inactive'}</option>
+                      <option value="ARCHIVED">{language === 'bg' ? 'Архивиран' : 'Archived'}</option>
+                      <option value="INACTIVE">{language === 'bg' ? 'Неактивен (legacy)' : 'Inactive (legacy)'}</option>
+                    </Select>
+                  </FormField>
+
+                  <FormField $full>
+                    <Label>{language === 'bg' ? 'Видимост за абонати' : 'Visibility to subscribers'}</Label>
+                    <Select
+                      value={(editForm.isVisible ?? true) ? 'true' : 'false'}
+                      onChange={e => setEditForm(prev => ({ ...prev, isVisible: e.target.value === 'true' }))}
+                    >
+                      <option value="true">{language === 'bg' ? 'Видим' : 'Visible'}</option>
+                      <option value="false">{language === 'bg' ? 'Скрит' : 'Hidden'}</option>
                     </Select>
                   </FormField>
                 </FormGrid>

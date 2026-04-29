@@ -542,3 +542,210 @@ export async function getSubscriberCashbackEntries(
 
   return { data, total, page, limit };
 }
+
+// ------------------------------------------------------------------
+// Global cashback entries listing (spec §4.4 — all 5 states across all users).
+// Resolves status per-entry using each user's latest completed withdrawal.
+// ------------------------------------------------------------------
+export interface GlobalCashbackEntry extends SubscriberCashbackEntry {
+  user: {
+    id: string;
+    email: string;
+    firstName: string | null;
+    lastName: string | null;
+  };
+}
+
+type WTWhere = NonNullable<Parameters<typeof prisma.walletTransaction.findMany>[0]>['where'];
+
+// Build a Prisma WHERE clause for the spec §4.4 derived state.
+// For Paid/Cleared we need to know each wallet's most recent completed withdrawal,
+// which is fetched up-front so the result can be expressed as a pure DB filter.
+async function buildStateWhere(
+  state: CashbackEntryStatus,
+  now: Date,
+): Promise<WTWhere> {
+  const PENDING_RAW = ['PENDING', 'TRIAL_PENDING', 'PROCESSING'] as const;
+  const NEVER_PAID_RAW = [...PENDING_RAW, 'ANNULLED', 'FAILED'] as const;
+  const notExpired: WTWhere = {
+    OR: [{ cashbackExpiresAt: null }, { cashbackExpiresAt: { gt: now } }],
+  };
+  const expired: WTWhere = { cashbackExpiresAt: { lte: now } };
+
+  switch (state) {
+    case 'Pending':
+      return { status: { in: [...PENDING_RAW] } };
+
+    case 'Locked':
+      // CANCELLED + not-yet-expired, OR ANNULLED/FAILED (regardless of expiry)
+      return {
+        OR: [
+          { AND: [{ status: 'CANCELLED' as const }, notExpired] },
+          { status: { in: ['ANNULLED', 'FAILED'] as const } },
+        ],
+      };
+
+    case 'Expired':
+      // Anything that's expired, except statuses that the rule above maps elsewhere
+      return {
+        AND: [
+          expired,
+          { status: { notIn: [...PENDING_RAW, 'ANNULLED', 'FAILED'] } },
+        ],
+      };
+
+    case 'Paid':
+    case 'Cleared': {
+      // Paid/Cleared depend on the per-wallet latest completed WITHDRAWAL.
+      // Fetch one row per wallet (newest withdrawal). Walletids without a
+      // completed withdrawal can never be Paid → all their non-expired entries
+      // are Cleared.
+      const lastPayouts = await prisma.walletTransaction.findMany({
+        where: { type: 'WITHDRAWAL', status: 'COMPLETED' },
+        orderBy: { createdAt: 'desc' },
+        distinct: ['walletId'],
+        select: { walletId: true, createdAt: true },
+      });
+
+      if (state === 'Paid') {
+        if (lastPayouts.length === 0) return { id: '__never_match__' } as WTWhere;
+        // Entry is Paid iff its wallet had a completed withdrawal AND
+        // entry.createdAt <= that withdrawal's createdAt.
+        return {
+          AND: [
+            { status: { notIn: [...NEVER_PAID_RAW, 'CANCELLED'] } },
+            notExpired,
+            {
+              OR: lastPayouts.map((p) => ({
+                walletId: p.walletId,
+                createdAt: { lte: p.createdAt },
+              })),
+            },
+          ],
+        };
+      }
+
+      // Cleared
+      const baseCleared: WTWhere = {
+        AND: [
+          { status: { notIn: [...NEVER_PAID_RAW, 'CANCELLED'] } },
+          notExpired,
+        ],
+      };
+      if (lastPayouts.length === 0) return baseCleared;
+      return {
+        AND: [
+          baseCleared,
+          {
+            OR: [
+              { walletId: { notIn: lastPayouts.map((p) => p.walletId) } },
+              ...lastPayouts.map((p) => ({
+                walletId: p.walletId,
+                createdAt: { gt: p.createdAt },
+              })),
+            ],
+          },
+        ],
+      };
+    }
+  }
+}
+
+export async function getAllCashbackEntries(
+  page: number,
+  limit: number,
+  statusFilter?: CashbackEntryStatus,
+): Promise<{ data: GlobalCashbackEntry[]; total: number; page: number; limit: number }> {
+  // Spec §4.4: 5 derived states (Pending / Cleared / Locked / Paid / Expired).
+  // We push the filter to Prisma so true DB pagination + count work for all states,
+  // including Paid/Cleared which need the per-wallet latest completed withdrawal.
+  const now = new Date();
+  const baseWhere: WTWhere = { type: 'CASHBACK_CREDIT' };
+  const where: WTWhere = statusFilter
+    ? { AND: [baseWhere, await buildStateWhere(statusFilter, now)] }
+    : baseWhere;
+
+  const [entries, total] = await Promise.all([
+    prisma.walletTransaction.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      skip: (page - 1) * limit,
+      take: limit,
+      select: {
+        id: true,
+        amount: true,
+        status: true,
+        cashbackExpiresAt: true,
+        description: true,
+        createdAt: true,
+        wallet: {
+          select: {
+            userId: true,
+            user: {
+              select: { id: true, email: true, firstName: true, lastName: true },
+            },
+          },
+        },
+        receipt: {
+          select: { id: true, totalAmount: true, merchantName: true },
+        },
+      },
+    }),
+    prisma.walletTransaction.count({ where }),
+  ]);
+
+  // We still need lastPaidByUser to label each row (Paid vs. Cleared) for the
+  // unfiltered case, since rows of any state can be returned together.
+  const userIds = Array.from(new Set(entries.map((e) => e.wallet.userId)));
+  const latestWithdrawals = userIds.length
+    ? await prisma.walletTransaction.findMany({
+        where: {
+          wallet: { userId: { in: userIds } },
+          type: 'WITHDRAWAL',
+          status: 'COMPLETED',
+        },
+        orderBy: { createdAt: 'desc' },
+        distinct: ['walletId'],
+        select: { wallet: { select: { userId: true } }, createdAt: true },
+      })
+    : [];
+  const lastPaidByUser = new Map<string, Date>();
+  for (const w of latestWithdrawals) {
+    lastPaidByUser.set(w.wallet.userId, w.createdAt);
+  }
+
+  const data: GlobalCashbackEntry[] = entries.map((e) => {
+    let status: CashbackEntryStatus;
+    if (e.status === 'PENDING' || e.status === 'TRIAL_PENDING' || e.status === 'PROCESSING') {
+      status = 'Pending';
+    } else if (e.status === 'CANCELLED') {
+      status = e.cashbackExpiresAt && e.cashbackExpiresAt <= now ? 'Expired' : 'Locked';
+    } else if (e.status === 'ANNULLED' || e.status === 'FAILED') {
+      status = 'Locked';
+    } else if (e.cashbackExpiresAt && e.cashbackExpiresAt <= now) {
+      status = 'Expired';
+    } else {
+      const lastPaid = lastPaidByUser.get(e.wallet.userId);
+      status = lastPaid && e.createdAt <= lastPaid ? 'Paid' : 'Cleared';
+    }
+
+    const daysUntilExpiry = e.cashbackExpiresAt
+      ? Math.max(0, Math.ceil((e.cashbackExpiresAt.getTime() - now.getTime()) / 86_400_000))
+      : null;
+
+    return {
+      id: e.id,
+      amount: e.amount,
+      status,
+      rawStatus: e.status,
+      cashbackExpiresAt: e.cashbackExpiresAt,
+      daysUntilExpiry,
+      description: e.description,
+      createdAt: e.createdAt,
+      receipt: e.receipt ?? null,
+      user: e.wallet.user,
+    };
+  });
+
+  return { data, total, page, limit };
+}

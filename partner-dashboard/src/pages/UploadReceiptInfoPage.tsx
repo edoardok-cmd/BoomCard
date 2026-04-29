@@ -1,7 +1,12 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
+import QRCode from 'qrcode';
 import GenericPage from '../components/templates/GenericPage';
 import { useLanguage } from '../contexts/LanguageContext';
 import styled from 'styled-components';
+
+// Spec §5.3: real QR code linking to the BOOM mobile app. The download
+// landing page is responsible for routing to App Store / Google Play.
+const APP_DOWNLOAD_URL = (import.meta as any).env?.VITE_APP_DOWNLOAD_URL || 'https://mobile.boomcard.bg';
 
 const StepsGrid = styled.div`
   display: grid;
@@ -78,19 +83,13 @@ const AppSection = styled.div`
   }
 `;
 
-const QRPlaceholder = styled.div`
+const QRImage = styled.img`
   width: 120px;
   height: 120px;
   background: white;
   border: 2px solid #e5e7eb;
   border-radius: 0.5rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   flex-shrink: 0;
-  font-size: 0.7rem;
-  color: #9ca3af;
-  text-align: center;
   padding: 0.5rem;
 `;
 
@@ -154,6 +153,13 @@ const WebNote = styled.p`
 const UploadReceiptInfoPage: React.FC = () => {
   const { language } = useLanguage();
   const isBg = language === 'bg';
+  const [qrDataUrl, setQrDataUrl] = useState<string>('');
+
+  useEffect(() => {
+    QRCode.toDataURL(APP_DOWNLOAD_URL, { errorCorrectionLevel: 'M', width: 240, margin: 1 })
+      .then(setQrDataUrl)
+      .catch((err) => console.error('Failed to generate QR code:', err));
+  }, []);
 
   return (
     <GenericPage
@@ -195,9 +201,9 @@ const UploadReceiptInfoPage: React.FC = () => {
       </StepsGrid>
 
       <AppSection>
-        <QRPlaceholder>
-          {isBg ? 'QR код за приложението' : 'App QR code'}
-        </QRPlaceholder>
+        {qrDataUrl && (
+          <QRImage src={qrDataUrl} alt={isBg ? 'QR код за приложението BOOM' : 'BOOM app QR code'} />
+        )}
         <AppText>
           <AppTitle>
             {isBg ? 'Свали приложението BOOM' : 'Download the BOOM App'}

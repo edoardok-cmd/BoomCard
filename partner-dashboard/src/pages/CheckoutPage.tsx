@@ -541,6 +541,8 @@ const CheckoutPage: React.FC = () => {
         firstName: guestFirstName.trim(),
         lastName: guestLastName.trim(),
         phone: guestPhone.trim() || undefined,
+        // Spec §7.1: forward the active interface language so post-payment emails match.
+        language,
       });
       window.location.href = result.paymentUrl;
     } catch (err) {

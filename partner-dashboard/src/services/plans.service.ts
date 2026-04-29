@@ -284,6 +284,7 @@ class PlansService {
     firstName: string;
     lastName: string;
     phone?: string;
+    language?: 'bg' | 'en';
   }): Promise<{ orderId: string; paymentUrl: string; amount: number; currency: string }> {
     const response = await axios.post(`${this.baseUrl}/payments/anonymous-subscription`, {
       ...params,

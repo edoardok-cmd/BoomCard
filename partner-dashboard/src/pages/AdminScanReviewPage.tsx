@@ -72,7 +72,12 @@ interface ReviewStats {
 }
 
 type FilterStatus = 'all' | 'MANUAL_REVIEW' | 'PENDING' | 'APPROVED' | 'REJECTED';
-type FilterRisk = 'all' | 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+// Spec §7.1 buckets: 0-30 auto-approve, 31-60 review, 61+ high risk.
+// Backwards-compatible with riskLevel API; "BUCKET_*" filters apply client-side.
+type FilterRisk =
+  | 'all'
+  | 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL'
+  | 'BUCKET_AUTO_0_30' | 'BUCKET_REVIEW_31_60' | 'BUCKET_HIGH_61_PLUS';
 
 // ============================================
 // Styled Components
@@ -319,6 +324,20 @@ const ScoreBarFill = styled.div<{ $score: number }>`
   transition: width 0.3s ease;
 `;
 
+// Spec §7.1 categorical bucket label rendered next to the score
+const BucketBadge = styled.span<{ $score: number }>`
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-radius: 4px;
+  background: ${props => props.$score < 31 ? '#e6f4ea' : props.$score < 61 ? '#fff4e0' : '#fde7e7'};
+  color: ${props => props.$score < 31 ? '#1e7c3a' : props.$score < 61 ? '#9a5b00' : '#a82424'};
+`;
+
 const FraudReasonsList = styled.ul`
   list-style: none;
   padding: 0;
@@ -419,6 +438,35 @@ const Spinner = styled.div`
       transform: rotate(360deg);
     }
   }
+`;
+
+const Pagination = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  margin-top: 24px;
+  padding: 16px;
+`;
+
+const PageButton = styled.button`
+  background: #fff;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  padding: 8px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #333;
+  cursor: pointer;
+  transition: background 100ms;
+  &:hover:not(:disabled) { background: #f5f5f5; }
+  &:disabled { opacity: 0.4; cursor: not-allowed; }
+`;
+
+const PageInfo = styled.span`
+  font-size: 14px;
+  color: #666;
+  font-weight: 500;
 `;
 
 const BulkActionsBar = styled.div<{ $visible: boolean }>`
@@ -543,6 +591,10 @@ export const AdminScanReviewPage: React.FC = () => {
   const [filterStatus, setFilterStatus] = useState<FilterStatus>('MANUAL_REVIEW');
   const [filterRisk, setFilterRisk] = useState<FilterRisk>('all');
   const [searchQuery, setSearchQuery] = useState('');
+  // Server pagination (spec §7.1 buckets pushed to DB)
+  const [page, setPage] = useState(1);
+  const [pageSize] = useState(25);
+  const [total, setTotal] = useState(0);
   const [modalOpen, setModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState<'approve' | 'reject'>('approve');
   const [reviewNotes, setReviewNotes] = useState('');
@@ -550,10 +602,15 @@ export const AdminScanReviewPage: React.FC = () => {
   const [currentScan, setCurrentScan] = useState<StickerScan | null>(null);
   const [currentScanId, setCurrentScanId] = useState<string | null>(null);
 
-  // Fetch scans and stats
+  // Fetch scans and stats. Filter or page changes refetch.
   useEffect(() => {
     fetchScans();
     fetchStats();
+  }, [filterStatus, filterRisk, page]);
+
+  // Reset to page 1 when filters change.
+  useEffect(() => {
+    setPage(1);
   }, [filterStatus, filterRisk]);
 
   const fetchScans = async () => {
@@ -565,9 +622,16 @@ export const AdminScanReviewPage: React.FC = () => {
       if (filterStatus !== 'all') {
         params.append('status', filterStatus);
       }
+      // Spec §7.1 categorical buckets pushed to backend
       if (filterRisk !== 'all') {
-        params.append('riskLevel', filterRisk);
+        if (filterRisk.startsWith('BUCKET_')) {
+          params.append('bucket', filterRisk.replace('BUCKET_', ''));
+        } else {
+          params.append('riskLevel', filterRisk);
+        }
       }
+      params.append('page', String(page));
+      params.append('limit', String(pageSize));
 
       const response = await fetch(
         `${API_CONFIG.baseURL}/api/stickers/admin/pending-review?${params}`,
@@ -581,8 +645,12 @@ export const AdminScanReviewPage: React.FC = () => {
 
       if (!response.ok) throw new Error('Failed to fetch scans');
 
-      const data = await response.json();
-      setScans(data);
+      const json = await response.json();
+      // Backend returns { success, data, meta: { total, page, limit, pages } }
+      // Older responses returned the array directly — tolerate both.
+      const items: StickerScan[] = Array.isArray(json) ? json : json.data ?? [];
+      setScans(items);
+      setTotal(json?.meta?.total ?? items.length);
     } catch (error) {
       console.error('Error fetching scans:', error);
     } finally {
@@ -604,8 +672,9 @@ export const AdminScanReviewPage: React.FC = () => {
       );
 
       if (response.ok) {
-        const data = await response.json();
-        setStats(data);
+        const json = await response.json();
+        // Backend wraps as { success, data }; tolerate raw shape too.
+        setStats(json?.data ?? json);
       }
     } catch (error) {
       console.error('Error fetching stats:', error);
@@ -753,7 +822,8 @@ export const AdminScanReviewPage: React.FC = () => {
     }
   };
 
-  // Filter scans by search query
+  // Search is still client-side (operates on the current page); status / riskLevel /
+  // bucket filters and pagination are server-side per spec §7.1.
   const filteredScans = scans.filter(scan => {
     if (!searchQuery) return true;
     const query = searchQuery.toLowerCase();
@@ -764,6 +834,7 @@ export const AdminScanReviewPage: React.FC = () => {
       scan.user.email.toLowerCase().includes(query)
     );
   });
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
   return (
     <PageContainer>
@@ -815,6 +886,10 @@ export const AdminScanReviewPage: React.FC = () => {
             onChange={(e) => setFilterRisk(e.target.value as FilterRisk)}
           >
             <option value="all">All Risk Levels</option>
+            <option value="BUCKET_AUTO_0_30">Auto-approve (0–30)</option>
+            <option value="BUCKET_REVIEW_31_60">Review (31–60)</option>
+            <option value="BUCKET_HIGH_61_PLUS">High risk (61+)</option>
+            <option disabled>──────</option>
             <option value="CRITICAL">Critical</option>
             <option value="HIGH">High</option>
             <option value="MEDIUM">Medium</option>
@@ -899,7 +974,16 @@ export const AdminScanReviewPage: React.FC = () => {
 
               <FraudScoreBar>
                 <ScoreLabel>
-                  <span>Fraud Score</span>
+                  <span>
+                    Fraud Score
+                    <BucketBadge $score={scan.fraudScore}>
+                      {scan.fraudScore < 31
+                        ? 'Auto-approve'
+                        : scan.fraudScore < 61
+                          ? 'Review'
+                          : 'High risk'}
+                    </BucketBadge>
+                  </span>
                   <span>{scan.fraudScore.toFixed(1)}/100</span>
                 </ScoreLabel>
                 <ScoreBarContainer>
@@ -942,6 +1026,20 @@ export const AdminScanReviewPage: React.FC = () => {
             </ScanCard>
           ))}
         </ScansGrid>
+      )}
+
+      {!loading && total > pageSize && (
+        <Pagination>
+          <PageButton onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1}>
+            ← Prev
+          </PageButton>
+          <PageInfo>
+            Page {page} of {totalPages} · {total.toLocaleString()} scans
+          </PageInfo>
+          <PageButton onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page >= totalPages}>
+            Next →
+          </PageButton>
+        </Pagination>
       )}
 
       <BulkActionsBar $visible={selectedScans.size > 0}>

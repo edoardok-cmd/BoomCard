@@ -316,6 +316,34 @@ export default function AdminPartnerRequestsPage() {
         ),
     },
     {
+      key: 'requestStatus',
+      header: language === 'bg' ? 'Статус' : 'Status',
+      render: (row) => (
+        <span style={{ fontSize: '0.8125rem', color: palette.textMuted, textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 600 }}>
+          {row.requestStatus ?? row.status ?? 'NOVA'}
+        </span>
+      ),
+    },
+    {
+      key: 'assignedAdmin',
+      header: language === 'bg' ? 'Отговорник' : 'Owner',
+      render: (row) =>
+        row.assignedAdmin ? (
+          <ContactCell>
+            <span>
+              {row.assignedAdmin.firstName || row.assignedAdmin.lastName
+                ? `${row.assignedAdmin.firstName ?? ''} ${row.assignedAdmin.lastName ?? ''}`.trim()
+                : row.assignedAdmin.email}
+            </span>
+            <MetaLine>{row.assignedAdmin.email}</MetaLine>
+          </ContactCell>
+        ) : (
+          <span style={{ color: palette.textSubtle, fontStyle: 'italic', fontSize: '0.8125rem' }}>
+            {language === 'bg' ? 'Не е възложено' : 'Unassigned'}
+          </span>
+        ),
+    },
+    {
       key: 'joinedAt',
       header: t('admin.requestColJoined'),
       sortable: true,

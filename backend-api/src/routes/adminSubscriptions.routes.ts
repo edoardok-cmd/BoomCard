@@ -74,7 +74,22 @@ router.get('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermissi
       prisma.subscription.count({ where }),
     ]);
 
-    const result = subscriptions.map((s) => ({ ...s, planDisplayName: planDisplayName(s.plan) }));
+    // Spec §4.2 — surface "history of past plans per user" on the listing.
+    const userIds = Array.from(new Set(subscriptions.map((s) => s.user.id)));
+    const subscriptionCounts = userIds.length
+      ? await prisma.subscription.groupBy({
+          by: ['userId'],
+          where: { userId: { in: userIds } },
+          _count: { _all: true },
+        })
+      : [];
+    const countByUser = new Map(subscriptionCounts.map((c) => [c.userId, c._count._all]));
+
+    const result = subscriptions.map((s) => ({
+      ...s,
+      planDisplayName: planDisplayName(s.plan),
+      userSubscriptionCount: countByUser.get(s.user.id) ?? 1,
+    }));
     res.json({ subscriptions: result, total, page: pageNum, limit: take });
   } catch (error) {
     next(error);

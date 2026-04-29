@@ -322,6 +322,48 @@ export function useCancelSubscriptionById() {
 }
 
 /**
+ * Hook to request the 24-hour trial refund. Backend cancels the subscription,
+ * voids trial cashback, and issues the refund (Stripe) or flags it for
+ * manual processing (Paysera).
+ */
+export function useRequestTrialRefund() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (subscriptionId: string) => billingService.requestTrialRefund(subscriptionId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['billing', 'subscription'] });
+      queryClient.invalidateQueries({ queryKey: ['subscriptions', 'current'] });
+      queryClient.invalidateQueries({ queryKey: ['wallet'] });
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || 'Failed to request trial refund');
+    },
+  });
+}
+
+/**
+ * Hook to upgrade/downgrade the current subscription plan in place.
+ */
+export function useUpdateSubscriptionPlan() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ subscriptionId, plan }: { subscriptionId: string; plan: 'LIGHT' | 'BASIC' | 'PREMIUM' }) =>
+      billingService.updateSubscriptionPlan(subscriptionId, plan),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['billing', 'subscription'] });
+      queryClient.invalidateQueries({ queryKey: ['subscriptions', 'current'] });
+      queryClient.invalidateQueries({ queryKey: ['wallet'] });
+      toast.success('Subscription updated');
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || 'Failed to update subscription');
+    },
+  });
+}
+
+/**
  * Hook to retry payment for a PAST_DUE subscription
  */
 export function useRetrySubscriptionPayment() {
@@ -426,6 +468,8 @@ export default {
   useRetryInvoicePayment,
   useToggleAutoRenewal,
   useCancelSubscriptionById,
+  useRequestTrialRefund,
+  useUpdateSubscriptionPlan,
   usePricingPlans,
   usePricingPlan,
   useBillingStats,

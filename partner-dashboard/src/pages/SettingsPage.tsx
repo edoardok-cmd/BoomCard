@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import styled from 'styled-components';
 import { motion } from 'framer-motion';
 import { Bell, Globe, Lock, Trash2, Megaphone, Eye } from 'lucide-react';
@@ -362,7 +362,7 @@ interface PasswordErrors {
 }
 
 const SettingsPage: React.FC = () => {
-  const { language, t } = useLanguage();
+  const { language, setLanguage, t } = useLanguage();
   const { changePassword, logout } = useAuth();
 
   const [notifications, setNotifications] = useState<NotificationSettings>({
@@ -378,6 +378,35 @@ const SettingsPage: React.FC = () => {
     emailMarketing: false,
     phoneMarketing: false,
   });
+  const [marketingLoaded, setMarketingLoaded] = useState(false);
+
+  // Spec §2.3 / §5.7: marketing consent must be editable from settings,
+  // which requires showing the persisted state — initialising both toggles
+  // to false would silently revoke consent for any user who saved without
+  // touching them. We only flip `marketingLoaded` on success: if the fetch
+  // fails, Save stays a no-op so we can never write the false-default values
+  // back over real consent rows.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const response = await apiService.get<{ marketingConsentEmail?: boolean; marketingConsentPhone?: boolean }>('/auth/me');
+        // The /auth/me endpoint returns `{ success, data: { …user fields } }`;
+        // apiService unwraps the HTTP body, so the user fields live on
+        // `response.data`. Tolerate the alternate shape during rollout.
+        const data = (response as any)?.data ?? response ?? {};
+        if (cancelled) return;
+        setMarketing({
+          emailMarketing: !!data.marketingConsentEmail,
+          phoneMarketing: !!data.marketingConsentPhone,
+        });
+        setMarketingLoaded(true);
+      } catch (err) {
+        console.error('Failed to load marketing consent state:', err);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   const [privacy, setPrivacy] = useState<PrivacySettings>({
     profileVisible: true,
@@ -462,12 +491,33 @@ const SettingsPage: React.FC = () => {
   };
 
   const handleSave = async () => {
+    if (!marketingLoaded) {
+      // Defensive: don't write the initial all-false defaults back to the
+      // server before the persisted state has loaded.
+      return;
+    }
     setIsSaving(true);
     try {
-      await Promise.all([
+      const tasks: Array<Promise<unknown>> = [
         apiService.post('/auth/consent', { type: 'email_marketing', granted: marketing.emailMarketing }),
         apiService.post('/auth/consent', { type: 'phone_marketing', granted: marketing.phoneMarketing }),
-      ]);
+      ];
+
+      // Spec §7.1: system emails follow the user's selected language. The
+      // language is stored on User.preferredLanguage and only honored at email-
+      // send time, so persist any change made in this dropdown to the server
+      // — otherwise existing users stay on whatever language was set at
+      // registration regardless of how often they switch the UI.
+      if (selectedLanguage !== language) {
+        tasks.push(apiService.put('/auth/profile', { preferredLanguage: selectedLanguage }));
+      }
+
+      await Promise.all(tasks);
+
+      if (selectedLanguage !== language) {
+        setLanguage(selectedLanguage);
+      }
+
       toast.success(t('settings.savedSuccess'));
     } catch (error) {
       console.error('Save settings error:', error);

@@ -268,6 +268,7 @@ async function handlePaymentCallback(req: Request, res: Response) {
               email: true,
               firstName: true,
               lastName: true,
+              preferredLanguage: true,
             },
           },
         },
@@ -335,13 +336,14 @@ async function handlePaymentCallback(req: Request, res: Response) {
         // Send payment confirmation email
         if (transaction.user?.email) {
           const txFullName = `${transaction.user.firstName || ''} ${transaction.user.lastName || ''}`.trim();
+          const txLang: 'bg' | 'en' = transaction.user.preferredLanguage === 'en' ? 'en' : 'bg';
           emailService.sendPaymentConfirmation(transaction.user.email, {
             customerName: txFullName || transaction.user.email.split('@')[0],
             orderId: result.orderId,
             amount: transaction.amount,
             currency: transaction.currency,
             date: new Date(),
-          }).catch((error) => {
+          }, txLang).catch((error) => {
             logger.error('Failed to send payment confirmation email:', error);
           });
 
@@ -353,7 +355,7 @@ async function handlePaymentCallback(req: Request, res: Response) {
             transactionType: 'credit',
             description: `Your wallet has been topped up with ${transaction.amount.toFixed(2)} ${transaction.currency}`,
             date: new Date(),
-          }).catch((error) => {
+          }, txLang).catch((error) => {
             logger.error('Failed to send wallet update email:', error);
           });
         }
@@ -476,13 +478,14 @@ async function handlePaymentCallback(req: Request, res: Response) {
         // Send payment failed email
         if (transaction.user?.email) {
           const txFailedName = `${transaction.user.firstName || ''} ${transaction.user.lastName || ''}`.trim();
+          const txFailedLang: 'bg' | 'en' = transaction.user.preferredLanguage === 'en' ? 'en' : 'bg';
           emailService.sendPaymentFailedEmail(transaction.user.email, {
             customerName: txFailedName || transaction.user.email.split('@')[0],
             orderId: result.orderId,
             amount: transaction.amount,
             currency: transaction.currency,
             reason: result.status as 'failed' | 'cancelled',
-          }).catch((error) => {
+          }, txFailedLang).catch((error) => {
             logger.error('Failed to send payment failed email:', error);
           });
         }
@@ -910,6 +913,9 @@ const anonymousSubscriptionSchema = z.object({
   phone: z.string().optional(),
   successUrl: z.string().url().optional(),
   cancelUrl: z.string().url().optional(),
+  // Spec §7.1: persist the user's chosen interface language so the
+  // post-payment complete-profile email is sent in the right language.
+  language: z.enum(['bg', 'en']).optional(),
 });
 
 router.post(
@@ -921,7 +927,9 @@ router.post(
       return res.status(400).json({ success: false, message: 'Invalid request body', errors: parseResult.error.issues });
     }
 
-    const { planId, billingPeriod, email, firstName, lastName, phone, successUrl: clientSuccessUrl, cancelUrl: clientCancelUrl } = parseResult.data;
+    const { planId, billingPeriod, email, firstName, lastName, phone, successUrl: clientSuccessUrl, cancelUrl: clientCancelUrl, language } = parseResult.data;
+    const headerLang = (req.headers['accept-language'] || '').toString().toLowerCase().startsWith('en') ? 'en' : 'bg';
+    const checkoutLanguage: 'bg' | 'en' = language ?? headerLang as 'bg' | 'en';
 
     const plan = await prisma.plan.findUnique({ where: { id: planId } });
     if (!plan || !plan.isActive) {
@@ -951,6 +959,8 @@ router.post(
       data: {
         email: email.toLowerCase(),
         planId: plan.id,
+        billingPeriod,
+        language: checkoutLanguage,
         payseraOrderId: orderId,
         status: 'CREATED',
         expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
@@ -1035,6 +1045,7 @@ async function handleSubscriptionCallback(req: Request, res: Response) {
               email: true,
               firstName: true,
               lastName: true,
+              preferredLanguage: true,
             },
           },
           planDetails: true,
@@ -1065,11 +1076,12 @@ async function handleSubscriptionCallback(req: Request, res: Response) {
             },
           });
           if (updated.count > 0) {
+            const pendingLanguage: 'bg' | 'en' = pending.language === 'en' ? 'en' : 'bg';
             emailService.sendCompleteProfileEmail(pending.email, {
               planName: pending.plan.displayName,
               planNameBg: pending.plan.displayNameBg ?? undefined,
               completeProfileUrl: `${FRONTEND_URL}/complete-profile?token=${token}`,
-              language: 'bg',
+              language: pendingLanguage,
             }).catch(err => logger.error('Failed to send complete-profile email:', err));
             logger.info(`PendingSubscription ${pending.id} marked PAID, token issued`);
           } else {
@@ -1132,13 +1144,14 @@ async function handleSubscriptionCallback(req: Request, res: Response) {
         if (subscription.user?.email) {
           const planDisplayName = subscription.plan.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
           const fullName = `${subscription.user.firstName || ''} ${subscription.user.lastName || ''}`.trim();
+          const subLang: 'bg' | 'en' = subscription.user.preferredLanguage === 'en' ? 'en' : 'bg';
           emailService.sendPaymentConfirmation(subscription.user.email, {
             customerName: fullName || subscription.user.email.split('@')[0],
             orderId: result.orderId,
             amount: result.amount / 100,
             currency: 'EUR',
             date: new Date(),
-          }).catch((error) => {
+          }, subLang).catch((error) => {
             logger.error('Failed to send subscription confirmation email:', error);
           });
 
@@ -1179,13 +1192,14 @@ async function handleSubscriptionCallback(req: Request, res: Response) {
         // Send payment failed email
         if (subscription.user?.email) {
           const fullNameFailed = `${subscription.user.firstName || ''} ${subscription.user.lastName || ''}`.trim();
+          const subFailedLang: 'bg' | 'en' = subscription.user.preferredLanguage === 'en' ? 'en' : 'bg';
           emailService.sendPaymentFailedEmail(subscription.user.email, {
             customerName: fullNameFailed || subscription.user.email.split('@')[0],
             orderId: result.orderId,
             amount: result.amount / 100,
             currency: 'EUR',
             reason: result.status as 'failed' | 'cancelled',
-          }).catch((error) => {
+          }, subFailedLang).catch((error) => {
             logger.error('Failed to send subscription payment failed email:', error);
           });
         }

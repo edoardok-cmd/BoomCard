@@ -54,6 +54,9 @@ const initiateCheckoutSchema = z.object({
   paymentMethod: z.string().min(1).max(50).optional(),
   successUrl: z.string().url().optional(),
   cancelUrl: z.string().url().optional(),
+  // Spec §7.1: persist the user's chosen interface language so the
+  // post-payment complete-profile email is sent in the right language.
+  language: z.enum(['bg', 'en']).optional(),
 });
 
 router.post(
@@ -69,7 +72,11 @@ router.post(
       });
     }
 
-    const { planId, billingPeriod, email, paymentMethod, successUrl: clientSuccessUrl, cancelUrl: clientCancelUrl } = parseResult.data;
+    const { planId, billingPeriod, email, paymentMethod, successUrl: clientSuccessUrl, cancelUrl: clientCancelUrl, language } = parseResult.data;
+    // Fall back to Accept-Language so the spec §7.1 default works even if the
+    // client forgets to pass `language` explicitly.
+    const headerLang = (req.headers['accept-language'] || '').toString().toLowerCase().startsWith('en') ? 'en' : 'bg';
+    const checkoutLanguage: 'bg' | 'en' = language ?? headerLang as 'bg' | 'en';
 
     // Fetch plan — source of truth for pricing
     const plan = await prisma.plan.findUnique({ where: { id: planId } });
@@ -116,6 +123,7 @@ router.post(
         email: email.toLowerCase(),
         planId: plan.id,
         billingPeriod,
+        language: checkoutLanguage,
         payseraOrderId: orderId,
         status: 'CREATED',
         expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
@@ -271,12 +279,13 @@ async function handleCheckoutCallback(req: Request, res: Response) {
 
       // Send complete-profile email — this is the payment confirmation + account setup
       // invite combined (spec §8.2: two emails total; welcome is sent after profile creation).
+      const pendingLanguage: 'bg' | 'en' = pending.language === 'en' ? 'en' : 'bg';
       emailService.sendCompleteProfileEmail(pending.email, {
         planName: pending.plan.displayName,
         planNameBg: pending.plan.displayNameBg ?? undefined,
         completeProfileUrl: `${FRONTEND_URL}/complete-profile?token=${token}`,
-        // Language unknown before profile creation; default to Bulgarian per spec §8.1
-        language: 'bg',
+        // Spec §7.1: BG default, EN only when the user explicitly used the EN UI at checkout.
+        language: pendingLanguage,
       }).catch(err => logger.error('Failed to send complete-profile email:', err));
 
     } else if (result.status === 'failed' || result.status === 'cancelled') {

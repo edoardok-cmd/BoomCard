@@ -162,7 +162,15 @@ const CompleteProfilePage: React.FC = () => {
     setIsSubmitting(true);
 
     try {
-      const response = await axios.post(`${API_BASE_URL}/auth/complete-profile`, { token, password, marketingConsentEmail, marketingConsentPhone });
+      const response = await axios.post(`${API_BASE_URL}/auth/complete-profile`, {
+        token,
+        password,
+        marketingConsentEmail,
+        marketingConsentPhone,
+        // Spec §7.1: persist the user's selected interface language so future
+        // system emails (welcome, payments, renewals) are sent in it.
+        lang: language,
+      });
       const { accessToken, refreshToken } = response.data.data;
 
       // Store tokens using same keys as AuthContext so it picks them up on reload

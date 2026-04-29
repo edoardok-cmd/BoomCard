@@ -4,7 +4,7 @@ import styled from 'styled-components';
 import { motion, AnimatePresence } from 'framer-motion';
 import { RefreshCw, AlertTriangle, CheckCircle, XCircle, CreditCard, Calendar, Clock, ExternalLink } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
-import { useCurrentSubscription, useToggleAutoRenewal, useCancelSubscriptionById, useReactivateSubscription, useRetrySubscriptionPayment, useSubscriptionHistory } from '../hooks/useBilling';
+import { useCurrentSubscription, useToggleAutoRenewal, useCancelSubscriptionById, useReactivateSubscription, useRetrySubscriptionPayment, useSubscriptionHistory, useRequestTrialRefund, useUpdateSubscriptionPlan } from '../hooks/useBilling';
 import { Button } from '../components/common/Button/Button';
 
 const PageContainer = styled.div`
@@ -368,10 +368,23 @@ export default function SubscriptionPage() {
   const cancelSubscription = useCancelSubscriptionById();
   const reactivate = useReactivateSubscription();
   const retryPayment = useRetrySubscriptionPayment();
+  const trialRefund = useRequestTrialRefund();
+  const updatePlan = useUpdateSubscriptionPlan();
   const hasStripe = !!subscription?.stripeSubscriptionId;
-  const { data: history = [], isLoading: historyLoading } = useSubscriptionHistory(hasStripe);
+  // Backend /subscriptions/history returns synthesized entries for Paysera
+  // users (incl. anonymous checkout), so don't gate the panel on Stripe.
+  const { data: history = [], isLoading: historyLoading } = useSubscriptionHistory(!!subscription);
 
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+
+  // Spec §2.2: cancellation within the 24h trial window must trigger a full
+  // refund and void any cashback earned during the trial. The trial-refund
+  // endpoint encapsulates all of that; the regular cancel endpoint does not.
+  const trialRefundActive = !!(
+    subscription?.trialRefundEligibleUntil &&
+    !subscription.trialRefundUsed &&
+    new Date(subscription.trialRefundEligibleUntil).getTime() > Date.now()
+  );
 
   const graceDaysLeft = (() => {
     const ends = subscription?.gracePeriodEndsAt;
@@ -395,6 +408,13 @@ export default function SubscriptionPage() {
 
   const handleCancel = () => {
     if (!subscription) return;
+    if (trialRefundActive) {
+      // Within the 24h window — cancel + refund + void cashback in one shot.
+      trialRefund.mutate(subscription.id, {
+        onSuccess: () => setShowCancelConfirm(false),
+      });
+      return;
+    }
     cancelSubscription.mutate(
       { subscriptionId: subscription.id, cancelAtPeriodEnd: true },
       { onSuccess: () => setShowCancelConfirm(false) }
@@ -409,6 +429,19 @@ export default function SubscriptionPage() {
   const handleRetryPayment = () => {
     if (!subscription) return;
     retryPayment.mutate(subscription.id);
+  };
+
+  // Spec §5.6: dedicated "upgrade to Premium Monthly" CTA. The backend's
+  // updateSubscriptionPlan applies a pro-rata wallet credit on the
+  // BASIC→PREMIUM and LIGHT→PREMIUM transitions. Premium-Weekly→Premium-
+  // Monthly is also called out by spec §5.1 but the backend rejects same-
+  // plan updates today (subscription.service.ts line ~236), so we hide the
+  // CTA for any PREMIUM user until the endpoint accepts a billingPeriod
+  // switch within the same plan.
+  const isOnPremium = subscription?.plan === 'PREMIUM';
+  const handleUpgradeToPremium = () => {
+    if (!subscription || isOnPremium) return;
+    updatePlan.mutate({ subscriptionId: subscription.id, plan: 'PREMIUM' });
   };
 
   if (isLoading) {
@@ -589,6 +622,34 @@ export default function SubscriptionPage() {
             </Card>
           )}
 
+          {/* Upgrade to Premium Monthly (spec §5.6) — hidden once already on PREMIUM */}
+          {!isCancelled && !isOnPremium && (
+            <Card
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.25, delay: 0.07 }}
+            >
+              <CardTitle>
+                <RefreshCw size={14} />
+                {t('subscriptionPage.upgradeToPremium') || 'Upgrade to Premium Monthly'}
+              </CardTitle>
+              <ToggleDesc>
+                {t('subscriptionPage.upgradeToPremiumDesc')
+                  || 'Switch to Premium Monthly to unlock the full cashback rate and all partner benefits. Any time remaining on your current plan is credited to your wallet.'}
+              </ToggleDesc>
+              <Row>
+                <Button
+                  variant="primary"
+                  size="medium"
+                  onClick={handleUpgradeToPremium}
+                  disabled={updatePlan.isPending}
+                >
+                  {t('subscriptionPage.upgradeBtn') || 'Upgrade now'}
+                </Button>
+              </Row>
+            </Card>
+          )}
+
           {/* Payment method card (Stripe subs only) */}
           {hasStripe && subscription.paymentMethod && (
             <Card
@@ -624,8 +685,9 @@ export default function SubscriptionPage() {
             </Card>
           )}
 
-          {/* Payment history card (Stripe subs only) */}
-          {hasStripe && (
+          {/* Payment history (works for Stripe + Paysera; backend synthesizes
+               entries for anonymous-checkout users that have no Transaction row). */}
+          {!!subscription && (
             <Card
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
@@ -698,15 +760,24 @@ export default function SubscriptionPage() {
             >
               <CardTitle>
                 <XCircle size={14} />
-                {t('subscriptionPage.cancelSubscription')}
+                {trialRefundActive
+                  ? t('subscriptionPage.cancelWithRefund') || 'Cancel & request refund'
+                  : t('subscriptionPage.cancelSubscription')}
               </CardTitle>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                <ToggleDesc>{t('subscriptionPage.cancelDesc')}</ToggleDesc>
+                <ToggleDesc>
+                  {trialRefundActive
+                    ? t('subscriptionPage.trialRefundDesc')
+                      || 'You are still within the 24-hour trial window. Cancelling now refunds your payment in full and voids any cashback earned during the trial.'
+                    : t('subscriptionPage.cancelDesc')}
+                </ToggleDesc>
 
               {!showCancelConfirm ? (
                 <div>
                   <Button variant="ghost" onClick={() => setShowCancelConfirm(true)}>
-                    {t('subscriptionPage.cancelSubscription')}
+                    {trialRefundActive
+                      ? t('subscriptionPage.cancelWithRefund') || 'Cancel & request refund'
+                      : t('subscriptionPage.cancelSubscription')}
                   </Button>
                 </div>
               ) : (
@@ -718,18 +789,23 @@ export default function SubscriptionPage() {
                     transition={{ duration: 0.2 }}
                   >
                     <ConfirmText>
-                      {t('subscriptionPage.cancelConfirm').replace(
-                        '{date}',
-                        formatDate(subscription.currentPeriodEnd)
-                      )}
+                      {trialRefundActive
+                        ? (t('subscriptionPage.trialRefundConfirm')
+                            || 'Cancel your subscription and refund the full amount? Any cashback earned during the trial will be voided. This action cannot be undone.')
+                        : t('subscriptionPage.cancelConfirm').replace(
+                            '{date}',
+                            formatDate(subscription.currentPeriodEnd)
+                          )}
                     </ConfirmText>
                     <ConfirmActions>
                       <Button
                         variant="primary"
                         onClick={handleCancel}
-                        disabled={cancelSubscription.isPending}
+                        disabled={cancelSubscription.isPending || trialRefund.isPending}
                       >
-                        {t('subscriptionPage.cancelBtn')}
+                        {trialRefundActive
+                          ? t('subscriptionPage.refundBtn') || 'Cancel & refund'
+                          : t('subscriptionPage.cancelBtn')}
                       </Button>
                       <Button variant="ghost" onClick={() => setShowCancelConfirm(false)}>
                         {t('common.cancel')}

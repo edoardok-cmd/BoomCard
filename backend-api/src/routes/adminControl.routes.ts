@@ -214,9 +214,12 @@ router.get(
     const tier = typeof req.query.tier === 'string' ? req.query.tier.trim() : 'all';
     const venueId = typeof req.query.venueId === 'string' ? req.query.venueId.trim() : '';
 
+    // Default: review-needed tier (>=31). Spec §7.1 buckets: 0-30 auto-approve, 31-60 review, 61+ high.
     let fraudScoreFilter: { gte?: number; lt?: number } = { gte: 31 };
     if (tier === 'REVIEW_31_60') fraudScoreFilter = { gte: 31, lt: 61 };
     else if (tier === 'HIGH_61_PLUS') fraudScoreFilter = { gte: 61 };
+    else if (tier === 'AUTO_0_30') fraudScoreFilter = { gte: 0, lt: 31 };
+    else if (tier === 'all') fraudScoreFilter = { gte: 0 };
 
     const where: Parameters<typeof prisma.receipt.findMany>[0]['where'] = {
       fraudScore: fraudScoreFilter,
@@ -237,9 +240,30 @@ router.get(
       prisma.receipt.count({ where }),
     ]);
 
+    // Receipt has no Prisma relation to Venue — fetch venues separately so the page
+    // can show partner / location labels (spec §7.2 Location-match signal).
+    const venueIds = Array.from(
+      new Set(receipts.map((r) => r.venueId).filter((x): x is string => !!x))
+    );
+    const venues = venueIds.length
+      ? await prisma.venue.findMany({
+          where: { id: { in: venueIds } },
+          select: {
+            id: true,
+            name: true,
+            partner: { select: { id: true, businessName: true } },
+          },
+        })
+      : [];
+    const venueMap = new Map(venues.map((v) => [v.id, v]));
+    const enriched = receipts.map((r) => ({
+      ...r,
+      venue: r.venueId ? venueMap.get(r.venueId) ?? null : null,
+    }));
+
     res.json({
       success: true,
-      data: receipts,
+      data: enriched,
       meta: { total, page, limit, pages: Math.ceil(total / limit), tier },
     });
   })
