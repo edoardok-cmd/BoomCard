@@ -36,12 +36,20 @@ router.get('/me', authenticate, asyncHandler(async (req: AuthRequest, res: Respo
     ? { ...subscription, benefits: await subscriptionService.getPlanBenefits(subscription.plan) }
     : { plan: 'LIGHT', status: 'ACTIVE', benefits: await subscriptionService.getPlanBenefits('LIGHT') };
 
+  // Show upgrade-to-Premium-Monthly prompt for BASIC or Premium Weekly subscribers only (per spec §6.1)
+  const subMetadata = (() => {
+    try { return (resolvedSubscription as any).metadata ? JSON.parse((resolvedSubscription as any).metadata) : {}; }
+    catch { return {}; }
+  })();
+  const billingPeriod = ((subMetadata.billingPeriod ?? '') as string).toLowerCase();
+  const isPremiumWeekly = resolvedSubscription.plan === 'PREMIUM' && billingPeriod.includes('week');
+
   res.json({
     subscription: resolvedSubscription,
     wallet,
     receipts,
     nextPaymentDate: ('currentPeriodEnd' in resolvedSubscription ? resolvedSubscription.currentPeriodEnd : null) ?? null,
-    showUpgradePrompt: ['LIGHT', 'BASIC'].includes(resolvedSubscription.plan) && resolvedSubscription.status === 'ACTIVE',
+    showUpgradePrompt: (resolvedSubscription.plan === 'BASIC' || isPremiumWeekly) && resolvedSubscription.status === 'ACTIVE',
   });
 }));
 

@@ -57,7 +57,7 @@ export async function getAlerts(): Promise<AdminAlertsResult> {
     prisma.partner.count({ where: { status: 'PENDING' } }),
     prisma.receipt.count({ where: { status: 'MANUAL_REVIEW' } }),
     prisma.partnerCashbackPayment.count({ where: { status: 'OVERDUE' } }),
-    prisma.venue.count({ where: { pendingMenuUrl: { not: null } } }),
+    prisma.venue.count({ where: { menuStatus: 'PENDING' } }),
     prisma.reportingPeriod.count({ where: { status: 'FOR_REVIEW' } }),
     prisma.user.count({ where: { status: 'DELETED' } }),
     prisma.subscription.count({ where: { status: { in: ['PAST_DUE', 'UNPAID'] } } }),

@@ -96,6 +96,7 @@ export class SubscriptionService {
         trialRefundEligibleUntil: isImmediatelyActive
           ? new Date(Date.now() + 24 * 60 * 60 * 1000)
           : null,
+        autoRenewal: true,
       },
     });
 

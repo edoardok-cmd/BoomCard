@@ -168,6 +168,9 @@ router.put(
     }
 
     const entries = Object.entries(settings);
+    if (entries.length === 0) {
+      return res.status(400).json({ success: false, error: 'settings object must contain at least one key' });
+    }
     for (const [key] of entries) {
       if (!ALLOWED_KEYS.has(key)) {
         return res.status(400).json({ success: false, error: `Unknown setting key: ${key}` });
@@ -242,6 +245,9 @@ router.put(
     }
 
     const entries = Object.entries(settings);
+    if (entries.length === 0) {
+      return res.status(400).json({ success: false, error: 'settings object must contain at least one key' });
+    }
     for (const [key] of entries) {
       if (!MOBILE_APP_KEYS.includes(key as MobileAppKey)) {
         return res.status(400).json({

@@ -419,7 +419,11 @@ router.patch(
       }
       data.status = status as DisputeStatus;
       if (status === 'RESOLVED') data.resolvedAt = new Date();
-      if (status === 'CLOSED') data.closedAt = new Date();
+      if (status === 'CLOSED') {
+        // Set resolvedAt if the case jumps directly to CLOSED without passing through RESOLVED
+        if (!disputeCase.resolvedAt) data.resolvedAt = new Date();
+        data.closedAt = new Date();
+      }
     }
 
     if (assignedTo !== undefined) data.assignedTo = assignedTo || null;
@@ -561,6 +565,9 @@ router.post(
     if (!imageUrl?.trim()) return res.status(400).json({ success: false, error: 'imageUrl is required' });
     if (!imageKey?.trim()) return res.status(400).json({ success: false, error: 'imageKey is required' });
     if (!perceptualHash?.trim()) return res.status(400).json({ success: false, error: 'perceptualHash is required' });
+
+    const venueExists = await prisma.venue.findUnique({ where: { id: venueId }, select: { id: true } });
+    if (!venueExists) return res.status(404).json({ success: false, error: 'Venue not found' });
 
     const template = await prisma.venueReceiptTemplate.create({
       data: {

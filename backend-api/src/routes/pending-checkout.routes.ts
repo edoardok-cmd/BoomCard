@@ -239,7 +239,7 @@ async function handleCheckoutCallback(req: Request, res: Response) {
     // Find the PendingSubscription for this order
     const pending = await prisma.pendingSubscription.findFirst({
       where: { payseraOrderId: result.orderId },
-      include: { plan: { select: { displayName: true } } },
+      include: { plan: { select: { displayName: true, displayNameBg: true } } },
     });
 
     if (!pending) {
@@ -269,20 +269,15 @@ async function handleCheckoutCallback(req: Request, res: Response) {
 
       logger.info(`PendingSubscription ${pending.id} marked PAID, registration token issued`);
 
-      // Send complete-profile email with registration link
+      // Send complete-profile email — this is the payment confirmation + account setup
+      // invite combined (spec §8.2: two emails total; welcome is sent after profile creation).
       emailService.sendCompleteProfileEmail(pending.email, {
         planName: pending.plan.displayName,
+        planNameBg: pending.plan.displayNameBg ?? undefined,
         completeProfileUrl: `${FRONTEND_URL}/complete-profile?token=${token}`,
+        // Language unknown before profile creation; default to Bulgarian per spec §8.1
+        language: 'bg',
       }).catch(err => logger.error('Failed to send complete-profile email:', err));
-
-      // Also send payment confirmation
-      emailService.sendPaymentConfirmation(pending.email, {
-        customerName: pending.email.split('@')[0],
-        orderId: result.orderId,
-        amount: result.amount ? result.amount / 100 : 0,
-        currency: 'EUR',
-        date: new Date(),
-      }).catch(err => logger.error('Failed to send checkout payment confirmation email:', err));
 
     } else if (result.status === 'failed' || result.status === 'cancelled') {
       // Only update if not already in a terminal state

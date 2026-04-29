@@ -108,8 +108,10 @@ router.post('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermiss
 router.get('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('help.read'), async (req, res, next) => {
   try {
     const { status, priority, category, search, page = '1', limit = '25' } = req.query as Record<string, string>;
-    const skip = (parseInt(page) - 1) * parseInt(limit);
-    const take = parseInt(limit);
+    const pageNum = Math.max(1, parseInt(page) || 1);
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit) || 25));
+    const skip = (pageNum - 1) * limitNum;
+    const take = limitNum;
 
     const where: Parameters<typeof prisma.helpTicket.findMany>[0]['where'] = {};
     if (status && Object.values(TicketStatus).includes(status as TicketStatus)) {
@@ -133,7 +135,7 @@ router.get('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermissi
       prisma.helpTicket.count({ where }),
     ]);
 
-    res.json({ tickets, total, page: parseInt(page), limit: take });
+    res.json({ tickets, total, page: pageNum, limit: take });
   } catch (error) {
     next(error);
   }
@@ -143,8 +145,10 @@ router.get('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermissi
 router.get('/new', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('help.read'), async (req, res, next) => {
   try {
     const { priority, category, search, page = '1', limit = '25' } = req.query as Record<string, string>;
-    const skip = (parseInt(page) - 1) * parseInt(limit);
-    const take = parseInt(limit);
+    const pageNum = Math.max(1, parseInt(page) || 1);
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit) || 25));
+    const skip = (pageNum - 1) * limitNum;
+    const take = limitNum;
 
     const where: Parameters<typeof prisma.helpTicket.findMany>[0]['where'] = { status: 'NEW' };
     if (priority && Object.values(TicketPriority).includes(priority as TicketPriority)) {
@@ -171,7 +175,7 @@ router.get('/new', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermi
       prisma.helpTicket.count({ where }),
     ]);
 
-    res.json({ tickets, total, page: parseInt(page), limit: take });
+    res.json({ tickets, total, page: pageNum, limit: take });
   } catch (error) {
     next(error);
   }
@@ -181,8 +185,10 @@ router.get('/new', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermi
 router.get('/mine', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('help.read'), async (req: AuthRequest, res, next) => {
   try {
     const { status, search, page = '1', limit = '25' } = req.query as Record<string, string>;
-    const skip = (parseInt(page) - 1) * parseInt(limit);
-    const take = parseInt(limit);
+    const pageNum = Math.max(1, parseInt(page) || 1);
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit) || 25));
+    const skip = (pageNum - 1) * limitNum;
+    const take = limitNum;
 
     const where: Parameters<typeof prisma.helpTicket.findMany>[0]['where'] = {
       assigneeId: req.user!.id,
@@ -208,7 +214,7 @@ router.get('/mine', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePerm
       prisma.helpTicket.count({ where }),
     ]);
 
-    res.json({ tickets, total, page: parseInt(page), limit: take });
+    res.json({ tickets, total, page: pageNum, limit: take });
   } catch (error) {
     next(error);
   }

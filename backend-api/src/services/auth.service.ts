@@ -818,6 +818,10 @@ export class AuthService {
         // Stamp so any sibling session's access token (still valid for its
         // 15-min TTL) can't pivot into this now-deleted account.
         passwordChangedAt: new Date(),
+        // Revoke all marketing consent on deletion so no communication path survives
+        marketingConsent: false,
+        marketingConsentEmail: false,
+        marketingConsentPhone: false,
       },
     });
 
@@ -1043,6 +1047,7 @@ export class AuthService {
         email: user.email,
         otp,
         accountLabel,
+        language: (user as any).preferredLanguage === 'en' ? 'en' : 'bg',
       });
 
       if (!emailResult.success) {

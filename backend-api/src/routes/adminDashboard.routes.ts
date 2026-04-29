@@ -45,8 +45,8 @@ router.get(
       prisma.subscription.count({ where: { createdAt: { gte: thirtyDaysAgo } } }),
       prisma.subscription.count({ where: { status: { in: ['CANCELLED', 'INCOMPLETE_EXPIRED'] } } }),
 
-      // Транзакции (днес)
-      prisma.transaction.count({ where: { createdAt: { gte: todayStart } } }),
+      // Транзакции (днес — само COMPLETED)
+      prisma.transaction.count({ where: { createdAt: { gte: todayStart }, status: 'COMPLETED' } }),
       prisma.transaction.aggregate({
         where: { createdAt: { gte: todayStart }, status: 'COMPLETED' },
         _sum: { finalAmount: true },

@@ -145,7 +145,61 @@ export async function processPayseraRenewals(): Promise<void> {
     }
   }
 
-  logger.info(`[paysera-renewal] Done — paused ${expiredActive.length} subscription(s), cancelled ${expired.length} after grace period`);
+  // 3. Send pre-expiry reminders to autoRenewal=false subscriptions expiring in the next 3 days.
+  // These users get no automatic charge attempt, so they need advance notice to renew manually.
+  const threeDaysFromNow = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000);
+  const preExpiryReminders = await prisma.subscription.findMany({
+    where: {
+      status: SubscriptionStatus.ACTIVE,
+      stripeSubscriptionId: null,
+      autoRenewal: false,
+      currentPeriodEnd: { gt: now, lte: threeDaysFromNow },
+      // Avoid re-sending by checking no reminder was sent in the last 24h
+      updatedAt: { lte: new Date(now.getTime() - 24 * 60 * 60 * 1000) },
+    },
+    include: {
+      user: { select: { id: true, email: true, firstName: true, preferredLanguage: true } },
+      planDetails: { select: { displayName: true, displayNameBg: true, priceWeeklyEur: true, priceMonthlyEur: true, priceYearlyEur: true } },
+    },
+  });
+
+  for (const sub of preExpiryReminders) {
+    try {
+      if (!sub.user?.email) continue;
+      const lang = (sub.user.preferredLanguage === 'en' ? 'en' : 'bg') as 'bg' | 'en';
+      const planName = lang === 'bg'
+        ? (sub.planDetails?.displayNameBg || sub.plan)
+        : (sub.planDetails?.displayName || sub.plan);
+      let subMetadata: Record<string, any> = {};
+      try { if (sub.metadata) subMetadata = JSON.parse(sub.metadata); } catch { subMetadata = {}; }
+      const billingPeriod = (subMetadata.billingPeriod ?? '').toLowerCase();
+      const priceInCents = (() => {
+        const plan = sub.planDetails;
+        if (!plan) return 0;
+        if (billingPeriod.includes('week') && plan.priceWeeklyEur) return plan.priceWeeklyEur;
+        if (billingPeriod.includes('year')) return plan.priceYearlyEur;
+        return plan.priceMonthlyEur ?? 0;
+      })();
+
+      await emailService
+        .sendExpiryNotice(sub.user.email, {
+          customerName: sub.user.firstName || 'Customer',
+          planName,
+          planNameBg: sub.planDetails?.displayNameBg || sub.plan,
+          price: `€${(priceInCents / 100).toFixed(2)}`,
+          renewalDate: sub.currentPeriodEnd.toLocaleDateString(lang === 'bg' ? 'bg-BG' : 'en-GB'),
+          manageUrl: `${APP_URL}/subscription`,
+          language: lang,
+        })
+        .catch((err) => logger.error(`[paysera-renewal] Pre-expiry reminder failed for sub ${sub.id}:`, err));
+
+      logger.info(`[paysera-renewal] Pre-expiry reminder sent for sub ${sub.id} (expires ${sub.currentPeriodEnd.toISOString()})`);
+    } catch (err) {
+      logger.error(`[paysera-renewal] Failed to send pre-expiry reminder for sub ${sub.id}:`, err);
+    }
+  }
+
+  logger.info(`[paysera-renewal] Done — paused ${expiredActive.length} subscription(s), cancelled ${expired.length} after grace period, sent ${preExpiryReminders.length} pre-expiry reminder(s)`);
 }
 
 // Run directly as a script (npx tsx src/jobs/paysera-renewal.ts)

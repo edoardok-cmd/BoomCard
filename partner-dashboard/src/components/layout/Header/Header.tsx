@@ -80,6 +80,7 @@ const MobileFavoritesBadge = styled.span`
 
 const UserMenuContainer = styled.div`
   position: relative;
+  flex-shrink: 0;
 `;
 
 const UserButton = styled.button`
@@ -92,6 +93,8 @@ const UserButton = styled.button`
   background: white;
   cursor: pointer;
   transition: all 200ms;
+  overflow: hidden;
+  min-width: 0;
 
   [data-theme="dark"] & {
     background: #374151;
@@ -139,6 +142,7 @@ const UserName = styled.span`
   font-weight: 500;
   color: #374151;
   max-width: 8rem;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1452,7 +1456,6 @@ export const Header: React.FC<HeaderProps> = ({
 
             {isAuthenticated && user ? (
               <>
-                <NotificationCenter />
                 <UserMenuContainer ref={userMenuRef}>
                 <UserButton onClick={() => setUserMenuOpen(!userMenuOpen)}>
                   <UserAvatar>{getUserInitials()}</UserAvatar>
@@ -1820,6 +1823,7 @@ export const Header: React.FC<HeaderProps> = ({
                   )}
                 </AnimatePresence>
               </UserMenuContainer>
+              <NotificationCenter />
               </>
             ) : (
               <>

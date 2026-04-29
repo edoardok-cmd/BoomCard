@@ -831,6 +831,7 @@ router.post(
         payseraOrderId: orderId,
         currentPeriodStart: new Date(),
         currentPeriodEnd: calculatePeriodEnd(billingPeriod),
+        autoRenewal: true,
         metadata: JSON.stringify({
           billingPeriod,
           priceInCents,
@@ -1044,7 +1045,7 @@ async function handleSubscriptionCallback(req: Request, res: Response) {
         // Check if this is an anonymous checkout (PendingSubscription)
         const pending = await prisma.pendingSubscription.findFirst({
           where: { payseraOrderId: result.orderId },
-          include: { plan: { select: { displayName: true } } },
+          include: { plan: { select: { displayName: true, displayNameBg: true } } },
         });
 
         if (!pending) {
@@ -1066,7 +1067,9 @@ async function handleSubscriptionCallback(req: Request, res: Response) {
           if (updated.count > 0) {
             emailService.sendCompleteProfileEmail(pending.email, {
               planName: pending.plan.displayName,
+              planNameBg: pending.plan.displayNameBg ?? undefined,
               completeProfileUrl: `${FRONTEND_URL}/complete-profile?token=${token}`,
+              language: 'bg',
             }).catch(err => logger.error('Failed to send complete-profile email:', err));
             logger.info(`PendingSubscription ${pending.id} marked PAID, token issued`);
           } else {

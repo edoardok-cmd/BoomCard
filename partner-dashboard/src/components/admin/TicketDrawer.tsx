@@ -131,12 +131,6 @@ export default function TicketDrawer({ ticketId, onClose }: Props) {
     return () => document.removeEventListener('keydown', onKey);
   }, [ticketId, onClose]);
 
-  useEffect(() => {
-    if (threadRef.current) {
-      threadRef.current.scrollTop = threadRef.current.scrollHeight;
-    }
-  }, [replies]);
-
   const { data: ticketData, isLoading: ticketLoading, isError: ticketError } = useQuery({
     queryKey: ['admin-help-ticket', ticketId],
     queryFn: () => adminHelpService.getOne(ticketId!),
@@ -187,10 +181,17 @@ export default function TicketDrawer({ ticketId, onClose }: Props) {
     onError: () => toast.error(t.assignError),
   });
 
-  if (!ticketId) return null;
-
   const ticket = ticketData?.ticket;
   const replies = repliesData?.replies ?? [];
+
+  useEffect(() => {
+    if (threadRef.current) {
+      threadRef.current.scrollTop = threadRef.current.scrollHeight;
+    }
+  }, [replies]);
+
+  if (!ticketId) return null;
+
   const isClosed = ticket?.status === 'CLOSED';
   const busy = replyMutation.isPending;
 

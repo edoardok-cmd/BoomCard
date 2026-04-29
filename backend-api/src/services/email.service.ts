@@ -115,7 +115,9 @@ export interface SubscriptionActivatedData {
 
 export interface CompleteProfileData {
   planName: string;
+  planNameBg?: string;
   completeProfileUrl: string;
+  language?: 'bg' | 'en';
 }
 
 export interface SubscriptionCancelledData {
@@ -442,34 +444,42 @@ export class EmailService {
   /**
    * Send password reset OTP email
    */
-  async sendPasswordResetEmail(data: { customerName: string; email: string; otp: string; accountLabel?: string }): Promise<{ success: boolean }> {
+  async sendPasswordResetEmail(data: { customerName: string; email: string; otp: string; accountLabel?: string; language?: 'bg' | 'en' }): Promise<{ success: boolean }> {
+    const isBg = data.language !== 'en';
     // accountLabel is set only when the same email backs more than one account,
     // so the recipient can tell which OTP belongs to which account.
     const labelHtml = data.accountLabel
-      ? `<p style="color:#1a1a1a;margin-bottom:16px;font-weight:600;">For: ${data.accountLabel}</p>`
+      ? `<p style="color:#1a1a1a;margin-bottom:16px;font-weight:600;">${isBg ? 'За' : 'For'}: ${data.accountLabel}</p>`
       : '';
-    const labelText = data.accountLabel ? `For: ${data.accountLabel}\n\n` : '';
+    const labelText = data.accountLabel ? `${isBg ? 'За' : 'For'}: ${data.accountLabel}\n\n` : '';
     const subject = data.accountLabel
-      ? `Your BoomCard password reset code (${data.accountLabel})`
-      : 'Your BoomCard password reset code';
+      ? (isBg ? `Вашият BoomCard код за смяна на парола (${data.accountLabel})` : `Your BoomCard password reset code (${data.accountLabel})`)
+      : (isBg ? 'Вашият BoomCard код за смяна на парола' : 'Your BoomCard password reset code');
+
+    const heading = isBg ? 'Смяна на парола' : 'Reset your password';
+    const body = isBg
+      ? `Здравейте, ${data.customerName}! Използвайте кода по-долу, за да смените паролата си в BoomCard. Кодът изтича след <strong>15 минути</strong>.`
+      : `Hi ${data.customerName}, use the code below to reset your BoomCard password. It expires in <strong>15 minutes</strong>.`;
+    const ignoreText = isBg
+      ? 'Ако не сте поискали смяна на парола, просто игнорирайте този имейл.'
+      : "If you didn't request this, you can safely ignore this email.";
 
     const html = `
       <div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:32px;background:#fff;">
-        <h2 style="color:#1a1a1a;margin-bottom:8px;">Reset your password</h2>
+        <h2 style="color:#1a1a1a;margin-bottom:8px;">${heading}</h2>
         ${labelHtml}
-        <p style="color:#555;margin-bottom:24px;">Hi ${data.customerName}, use the code below to reset your BoomCard password. It expires in <strong>15 minutes</strong>.</p>
+        <p style="color:#555;margin-bottom:24px;">${body}</p>
         <div style="background:#f5f5f5;border-radius:12px;padding:24px;text-align:center;margin-bottom:24px;">
           <span style="font-size:40px;font-weight:700;letter-spacing:12px;color:#1a1a1a;">${data.otp}</span>
         </div>
-        <p style="color:#999;font-size:13px;">If you didn't request this, you can safely ignore this email.</p>
+        <p style="color:#999;font-size:13px;">${ignoreText}</p>
       </div>`;
 
-    return this.sendEmail({
-      to: data.email,
-      subject,
-      html,
-      text: `${labelText}Your BoomCard password reset code is: ${data.otp}\n\nIt expires in 15 minutes.\n\nIf you didn't request this, ignore this email.`,
-    });
+    const textBody = isBg
+      ? `${labelText}Вашият BoomCard код за смяна на парола е: ${data.otp}\n\nИзтича след 15 минути.\n\n${ignoreText}`
+      : `${labelText}Your BoomCard password reset code is: ${data.otp}\n\nIt expires in 15 minutes.\n\nIf you didn't request this, ignore this email.`;
+
+    return this.sendEmail({ to: data.email, subject, html, text: textBody });
   }
 
   /**
@@ -2103,6 +2113,21 @@ ${isBg ? 'Въпроси? Свържете се с нас на' : 'Questions? Co
     email: string,
     data: CompleteProfileData
   ): Promise<{ success: boolean }> {
+    const isBg = data.language !== 'en';
+    const planName = isBg ? (data.planNameBg || data.planName) : data.planName;
+    const subject = isBg ? 'Завършете настройката на вашия BoomCard акаунт' : 'Complete your BoomCard account setup';
+    const heading = isBg ? 'Плащането е потвърдено!' : 'Payment Confirmed!';
+    const subheading = isBg ? 'Завършете настройката на вашия BoomCard акаунт' : 'Complete your BoomCard account setup';
+    const greeting = isBg ? 'Здравейте,' : 'Hi there,';
+    const body = isBg
+      ? `Вашето плащане за план <strong>${planName}</strong> е успешно. Кликнете на бутона по-долу, за да зададете паролата си и да влезете в своя BoomCard акаунт.`
+      : `Your payment for the <strong>${planName}</strong> plan was successful. Click the button below to set your password and access your BoomCard account.`;
+    const btnLabel = isBg ? 'Завършете настройката' : 'Complete Account Setup';
+    const expiry = isBg
+      ? 'Връзката е валидна <strong>30 минути</strong>. Ако изтече, свържете се с нас за нова.'
+      : "This link expires in <strong>30 minutes</strong>. If it expires, contact us and we'll send a new one.";
+    const questions = isBg ? 'Въпроси?' : 'Questions?';
+
     const html = `<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
@@ -2111,20 +2136,17 @@ ${isBg ? 'Въпроси? Свържете се с нас на' : 'Questions? Co
     <tr><td align="center" style="padding:40px 20px;">
       <table width="600" cellpadding="0" cellspacing="0" border="0" style="background:#fff;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,0.1);">
         <tr><td style="background:linear-gradient(135deg,#667eea,#764ba2);padding:40px;text-align:center;border-radius:8px 8px 0 0;">
-          <div style="font-size:48px;margin-bottom:8px;">🎉</div>
-          <h1 style="margin:0;color:#fff;font-size:28px;">Payment Confirmed!</h1>
-          <p style="margin:12px 0 0;color:rgba(255,255,255,0.85);font-size:16px;">Complete your BoomCard account setup</p>
+          <h1 style="margin:0;color:#fff;font-size:28px;">${heading}</h1>
+          <p style="margin:12px 0 0;color:rgba(255,255,255,0.85);font-size:16px;">${subheading}</p>
         </td></tr>
         <tr><td style="padding:40px;">
-          <p style="margin:0 0 20px;color:#333;font-size:16px;">Hi there,</p>
-          <p style="margin:0 0 20px;color:#666;font-size:16px;line-height:1.6;">
-            Your payment for the <strong>${data.planName}</strong> plan was successful. Click the button below to set your password and access your BoomCard account.
-          </p>
+          <p style="margin:0 0 20px;color:#333;font-size:16px;">${greeting}</p>
+          <p style="margin:0 0 20px;color:#666;font-size:16px;line-height:1.6;">${body}</p>
           <div style="text-align:center;margin:32px 0;">
-            <a href="${data.completeProfileUrl}" style="display:inline-block;background:#667eea;color:#fff;text-decoration:none;padding:16px 40px;border-radius:6px;font-size:16px;font-weight:bold;">Complete Account Setup</a>
+            <a href="${data.completeProfileUrl}" style="display:inline-block;background:#667eea;color:#fff;text-decoration:none;padding:16px 40px;border-radius:6px;font-size:16px;font-weight:bold;">${btnLabel}</a>
           </div>
-          <p style="color:#999;font-size:13px;margin:0 0 8px;">This link expires in <strong>30 minutes</strong>. If it expires, contact us and we'll send a new one.</p>
-          <p style="color:#999;font-size:13px;margin:0;">Questions? <a href="mailto:support@boomcard.bg" style="color:#667eea;">support@boomcard.bg</a></p>
+          <p style="color:#999;font-size:13px;margin:0 0 8px;">${expiry}</p>
+          <p style="color:#999;font-size:13px;margin:0;">${questions} <a href="mailto:support@boomcard.bg" style="color:#667eea;">support@boomcard.bg</a></p>
         </td></tr>
         <tr><td style="background:#f8f9fa;padding:20px;text-align:center;border-radius:0 0 8px 8px;">
           <p style="margin:0;color:#999;font-size:12px;">&copy; ${new Date().getFullYear()} BoomCard. All rights reserved.</p>
@@ -2134,13 +2156,10 @@ ${isBg ? 'Въпроси? Свържете се с нас на' : 'Questions? Co
   </table>
 </body>
 </html>`;
-    const text = `Your BoomCard ${data.planName} payment was confirmed!\n\nComplete your account setup (link expires in 30 min):\n${data.completeProfileUrl}\n\nQuestions? support@boomcard.bg`;
-    return this.sendEmail({
-      to: email,
-      subject: 'Complete your BoomCard account setup',
-      html,
-      text,
-    });
+    const text = isBg
+      ? `Вашето BoomCard плащане за ${planName} е потвърдено!\n\nЗавършете настройката на акаунта (връзката е валидна 30 мин):\n${data.completeProfileUrl}\n\nВъпроси? support@boomcard.bg`
+      : `Your BoomCard ${planName} payment was confirmed!\n\nComplete your account setup (link expires in 30 min):\n${data.completeProfileUrl}\n\nQuestions? support@boomcard.bg`;
+    return this.sendEmail({ to: email, subject, html, text });
   }
 
   async sendSubscriptionCancelledEmail(

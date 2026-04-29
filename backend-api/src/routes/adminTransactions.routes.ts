@@ -142,8 +142,8 @@ router.post('/adjust', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requireP
       reason: string;
     };
 
-    if (!userId || typeof amount !== 'number' || amount === 0) {
-      res.status(400).json({ error: 'userId and non-zero amount are required' });
+    if (!userId || typeof amount !== 'number' || amount === 0 || !isFinite(amount)) {
+      res.status(400).json({ error: 'userId and a finite non-zero amount are required' });
       return;
     }
     if (!reason?.trim()) {

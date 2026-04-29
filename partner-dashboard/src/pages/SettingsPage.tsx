@@ -363,7 +363,7 @@ interface PasswordErrors {
 
 const SettingsPage: React.FC = () => {
   const { language, t } = useLanguage();
-  const { changePassword } = useAuth();
+  const { changePassword, logout } = useAuth();
 
   const [notifications, setNotifications] = useState<NotificationSettings>({
     emailNotifications: true,
@@ -397,6 +397,9 @@ const SettingsPage: React.FC = () => {
   });
   const [passwordErrors, setPasswordErrors] = useState<PasswordErrors>({});
   const [isSavingPassword, setIsSavingPassword] = useState(false);
+  const [deletePassword, setDeletePassword] = useState('');
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false);
 
   const toggleNotification = (key: keyof NotificationSettings) => {
     setNotifications(prev => ({ ...prev, [key]: !prev[key] }));
@@ -475,9 +478,24 @@ const SettingsPage: React.FC = () => {
   };
 
   const handleDeleteAccount = () => {
-    const confirmed = window.confirm(t('settings.deleteConfirm'));
-    if (confirmed) {
-      toast.error(t('settings.featureComingSoon'));
+    setShowDeleteConfirm(true);
+  };
+
+  const confirmDeleteAccount = async () => {
+    if (!deletePassword) {
+      toast.error(t('settings.enterCurrentPassword'));
+      return;
+    }
+    setIsDeletingAccount(true);
+    try {
+      await apiService.delete('/auth/account', { data: { password: deletePassword } });
+      toast.success(t('settings.accountDeleted') || 'Account deleted successfully');
+      logout();
+    } catch (error: any) {
+      const msg = error?.response?.data?.message || t('settings.errorSavingSettings');
+      toast.error(msg);
+    } finally {
+      setIsDeletingAccount(false);
     }
   };
 
@@ -803,6 +821,29 @@ const SettingsPage: React.FC = () => {
                 {t('settings.deleteButton')}
               </DangerButton>
             </SettingRow>
+
+            {showDeleteConfirm && (
+              <div style={{ marginTop: '1rem', padding: '1rem', background: '#fff5f5', border: '1px solid #fecaca', borderRadius: '8px' }}>
+                <p style={{ color: '#dc2626', fontWeight: 600, marginBottom: '0.5rem' }}>
+                  {t('settings.deleteConfirm') || 'This action is permanent and cannot be undone. Enter your password to confirm.'}
+                </p>
+                <input
+                  type="password"
+                  value={deletePassword}
+                  onChange={e => setDeletePassword(e.target.value)}
+                  placeholder={t('settings.enterCurrentPassword') || 'Current password'}
+                  style={{ width: '100%', padding: '0.5rem 0.75rem', borderRadius: '6px', border: '1px solid #fca5a5', marginBottom: '0.75rem', boxSizing: 'border-box' }}
+                />
+                <div style={{ display: 'flex', gap: '0.75rem' }}>
+                  <DangerButton variant="primary" size="medium" onClick={confirmDeleteAccount} disabled={isDeletingAccount}>
+                    {isDeletingAccount ? '...' : (t('settings.deleteButton') || 'Delete Account')}
+                  </DangerButton>
+                  <Button variant="secondary" size="medium" onClick={() => { setShowDeleteConfirm(false); setDeletePassword(''); }}>
+                    {t('settings.cancelChanges') || 'Cancel'}
+                  </Button>
+                </div>
+              </div>
+            )}
           </DangerZone>
 
           {/* Save Buttons */}
