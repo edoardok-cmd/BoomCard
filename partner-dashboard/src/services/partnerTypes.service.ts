@@ -44,7 +44,7 @@ class PartnerTypesService {
 
   async getPartnerTypes(): Promise<PartnerType[]> {
     const res = await apiService.get<{ success: boolean; data: PartnerType[] }>(this.baseUrl);
-    return res.data;
+    return res.data ?? [];
   }
 
   async getPartnerTypeById(id: string): Promise<PartnerType> {

@@ -249,7 +249,7 @@ class VenuesService {
    */
   async adminListPendingMenus(): Promise<PendingMenuVenue[]> {
     const res = await apiService.get<{ data: PendingMenuVenue[] }>(`/admin/menus/pending`);
-    return res.data;
+    return res.data ?? [];
   }
 
   // ============================================================

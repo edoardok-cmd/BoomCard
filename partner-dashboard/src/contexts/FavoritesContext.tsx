@@ -60,26 +60,16 @@ interface FavoritesProviderProps {
 
 export const FavoritesProvider: React.FC<FavoritesProviderProps> = ({ children }) => {
   const { isAuthenticated } = useAuth();
-  const [favorites, setFavorites] = useState<FavoriteItem[]>([]);
+  const [favorites, setFavorites] = useState<FavoriteItem[]>(() => {
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY);
+      return stored ? (JSON.parse(stored) as FavoriteItem[]) : [];
+    } catch {
+      return [];
+    }
+  });
 
-  // Load favorites from localStorage on mount
-  useEffect(() => {
-    const loadFavorites = () => {
-      try {
-        const stored = localStorage.getItem(STORAGE_KEY);
-        if (stored) {
-          const parsed = JSON.parse(stored);
-          setFavorites(parsed);
-        }
-      } catch (error) {
-        console.error('Error loading favorites:', error);
-      }
-    };
-
-    loadFavorites();
-  }, []);
-
-  // Save favorites to localStorage whenever they change
+  // Persist to localStorage whenever favorites change.
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(favorites));
@@ -161,21 +151,19 @@ export const FavoritesProvider: React.FC<FavoritesProviderProps> = ({ children }
   }, [isAuthenticated]);
 
   const addToFavorites = (item: Omit<FavoriteItem, 'addedAt'>) => {
+    if (favorites.some(fav => fav.id === item.id)) {
+      toast.error('Already in favorites');
+      return;
+    }
+
     const newItem: FavoriteItem = {
       ...item,
       addedAt: Date.now(),
       synced: false,
     };
 
-    setFavorites(prev => {
-      // Check if already exists
-      if (prev.some(fav => fav.id === item.id)) {
-        toast.error('Already in favorites');
-        return prev;
-      }
-      toast.success('Added to favorites');
-      return [...prev, newItem];
-    });
+    setFavorites(prev => [...prev, newItem]);
+    toast.success('Added to favorites');
 
     if (isAuthenticated) {
       apiService
@@ -212,15 +200,9 @@ export const FavoritesProvider: React.FC<FavoritesProviderProps> = ({ children }
   };
 
   const removeFromFavorites = (id: string) => {
-    let removed: FavoriteItem | undefined;
-    setFavorites(prev => {
-      removed = prev.find(fav => fav.id === id);
-      const filtered = prev.filter(fav => fav.id !== id);
-      if (filtered.length < prev.length) {
-        toast.success('Removed from favorites');
-      }
-      return filtered;
-    });
+    const removed = favorites.find(fav => fav.id === id);
+    setFavorites(prev => prev.filter(fav => fav.id !== id));
+    if (removed) toast.success('Removed from favorites');
 
     if (isAuthenticated && removed) {
       apiService.delete('/favorites', {
