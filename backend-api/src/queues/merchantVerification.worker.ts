@@ -66,9 +66,9 @@ export function startMerchantVerificationWorker(): Worker | null {
       const delay = rateLimitBackoffMs;
       rateLimitBackoffMs = Math.min(rateLimitBackoffMs * 2, MAX_RATE_LIMIT_BACKOFF_MS);
       logger.warn(`merchant-verification: Redis rate limit hit — pausing worker for ${delay / 1000}s`);
-      worker.pause(true).catch(() => {});
+      void worker.pause(true);
       setTimeout(() => {
-        worker.resume().catch(() => {});
+        void worker.resume();
       }, delay);
     }
   });
