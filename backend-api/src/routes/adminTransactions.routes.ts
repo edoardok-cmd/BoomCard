@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { WalletTransactionType, WalletTransactionStatus } from '@prisma/client';
+import { WalletTransactionType, WalletTransactionStatus, TransactionType, TransactionStatus } from '@prisma/client';
 import { authenticate, authorize, requirePermission } from '../middleware/auth.middleware';
 import { prisma } from '../lib/prisma';
 
@@ -213,6 +213,96 @@ router.post('/adjust', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requireP
       res.status(400).json({ error: validationError });
       return;
     }
+    next(error);
+  }
+});
+
+// GET /api/admin/transactions/business — Spec §4.3 — Transaction model with Партньор / Кешбек / Марджин
+router.get('/business', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('transactions.read'), async (req, res, next) => {
+  try {
+    const {
+      page = '1',
+      limit = '20',
+      partnerId,
+      type,
+      status,
+      dateFrom,
+      dateTo,
+      search,
+    } = req.query as Record<string, string>;
+
+    const pageNum = Math.max(1, parseInt(page) || 1);
+    const limitNum = Math.min(Math.max(1, parseInt(limit) || 20), 100);
+    const skip = (pageNum - 1) * limitNum;
+
+    const where: Parameters<typeof prisma.transaction.findMany>[0]['where'] = {};
+
+    if (partnerId) where.partnerId = partnerId;
+    if (type && Object.values(TransactionType).includes(type as TransactionType)) {
+      where.type = type as TransactionType;
+    }
+    if (status && Object.values(TransactionStatus).includes(status as TransactionStatus)) {
+      where.status = status as TransactionStatus;
+    }
+    if (dateFrom || dateTo) {
+      const dateFilter: Record<string, Date> = {};
+      if (dateFrom) dateFilter['gte'] = new Date(dateFrom);
+      if (dateTo) {
+        const to = new Date(dateTo);
+        to.setUTCHours(23, 59, 59, 999);
+        dateFilter['lte'] = to;
+      }
+      where.createdAt = dateFilter as never;
+    }
+    if (search) {
+      where.OR = [
+        { user: { email: { contains: search, mode: 'insensitive' } } },
+        { user: { firstName: { contains: search, mode: 'insensitive' } } },
+        { user: { lastName: { contains: search, mode: 'insensitive' } } },
+        { partner: { businessName: { contains: search, mode: 'insensitive' } } },
+      ];
+    }
+
+    const [transactions, total] = await Promise.all([
+      prisma.transaction.findMany({
+        where,
+        skip,
+        take: limitNum,
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          type: true,
+          status: true,
+          amount: true,
+          discountAmount: true,
+          finalAmount: true,
+          cashbackAmount: true,
+          netAmount: true,
+          currency: true,
+          paymentMethod: true,
+          createdAt: true,
+          user: {
+            select: { id: true, firstName: true, lastName: true, email: true },
+          },
+          partner: {
+            select: { id: true, businessName: true, businessNameBg: true },
+          },
+          venue: {
+            select: { id: true, name: true },
+          },
+        },
+      }),
+      prisma.transaction.count({ where }),
+    ]);
+
+    // Compute BoomCard margin per row: discountAmount (partner gives) − cashbackAmount (user gets)
+    const rows = transactions.map((tx) => ({
+      ...tx,
+      margin: ((tx.discountAmount ?? 0) - (tx.cashbackAmount ?? 0)),
+    }));
+
+    res.json({ transactions: rows, total, page: pageNum, limit: limitNum });
+  } catch (error) {
     next(error);
   }
 });

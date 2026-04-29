@@ -4,6 +4,8 @@ import { authenticate, authorize, requirePermission, AuthRequest } from '../midd
 import { auditMiddleware } from '../middleware/audit.middleware';
 import { prisma } from '../lib/prisma';
 import { stripeService } from '../services/stripe.service';
+import { getSubscriberCashbackEntries } from '../services/adminCashback.service';
+import { planDisplayName } from '../utils/planDisplayName';
 
 const router = Router();
 router.use(auditMiddleware);
@@ -82,6 +84,7 @@ router.get('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermissi
           status: true,
           deletedAt: true,
           riskScore: true,
+          lastLoginAt: true,
           createdAt: true,
           wallet: {
             select: {
@@ -109,14 +112,40 @@ router.get('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermissi
       prisma.user.count({ where }),
     ]);
 
-    // Flatten the subscription array to a single object for ergonomic frontend consumption
-    const subscribers = users.map(({ subscriptions, ...u }) => ({
-      ...u,
-      subscription: subscriptions[0] ?? null,
-    }));
+    // Flatten the subscription array to a single object for ergonomic frontend consumption.
+    // planDisplayName resolves the counter-intuitive LIGHT enum value to "Premium Weekly".
+    const subscribers = users.map(({ subscriptions, ...u }) => {
+      const sub = subscriptions[0] ?? null;
+      return {
+        ...u,
+        subscription: sub
+          ? { ...sub, planDisplayName: planDisplayName(sub.plan) }
+          : null,
+      };
+    });
 
     res.json({ subscribers, total, page: pageNum, limit: take });
   } catch (error) {
+    next(error);
+  }
+});
+
+// GET /api/admin/subscribers/:userId/cashback — entry-based cashback for a subscriber (spec §4.4)
+// Mirror of GET /api/admin/cashback/subscriber/:userId, placed here so the Абонати
+// section navigation can reach cashback entries without leaving the subscriber domain.
+router.get('/:userId/cashback', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('subscribers.read'), async (req, res, next) => {
+  try {
+    const { userId } = req.params;
+    const page = Math.max(1, parseInt(req.query.page as string) || 1);
+    const limit = Math.min(Math.max(1, parseInt(req.query.limit as string) || 20), 100);
+
+    const result = await getSubscriberCashbackEntries(userId, page, limit);
+    res.json({ success: true, ...result });
+  } catch (error: any) {
+    if (error?.statusCode === 404) {
+      res.status(404).json({ success: false, error: error.message });
+      return;
+    }
     next(error);
   }
 });
@@ -171,7 +200,16 @@ router.get('/:userId', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requireP
       return res.status(404).json({ error: 'Subscriber not found' });
     }
 
-    res.json(user);
+    // Enrich each subscription with a human-readable plan name (LIGHT → "Premium Weekly")
+    const enriched = {
+      ...user,
+      subscriptions: user.subscriptions.map((s) => ({
+        ...s,
+        planDisplayName: planDisplayName(s.plan),
+      })),
+    };
+
+    res.json(enriched);
   } catch (error) {
     next(error);
   }

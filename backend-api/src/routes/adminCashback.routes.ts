@@ -14,7 +14,7 @@
 
 import { Router, Response } from 'express';
 import { authenticate, authorize, requirePermission, AuthRequest } from '../middleware/auth.middleware';
-import { adminCashbackService } from '../services/adminCashback.service';
+import { adminCashbackService, getSubscriberCashbackEntries } from '../services/adminCashback.service';
 import { prisma } from '../lib/prisma';
 import { logger } from '../utils/logger';
 
@@ -184,8 +184,8 @@ router.post('/rates', requirePermission('cashback.write'), async (req: AuthReque
 
 // ------------------------------------------------------------------
 // GET /api/admin/cashback/subscriber/:userId
-// Entry-based cashback entries for a specific subscriber with per-entry status
-// and expiry countdown. Required by spec §4.4 (rolling 60-day expiry per entry).
+// Entry-based cashback entries for a specific subscriber (spec §4.4).
+// Also accessible at GET /api/admin/subscribers/:userId/cashback (spec §4 navigation).
 // ------------------------------------------------------------------
 router.get('/subscriber/:userId', requirePermission('cashback.read'), async (req: AuthRequest, res: Response) => {
   try {
@@ -193,79 +193,12 @@ router.get('/subscriber/:userId', requirePermission('cashback.read'), async (req
     const page = Math.max(1, parseInt(req.query.page as string) || 1);
     const limit = Math.min(Math.max(1, parseInt(req.query.limit as string) || 20), 100);
 
-    const wallet = await prisma.wallet.findUnique({
-      where: { userId },
-      select: { id: true },
-    });
-
-    if (!wallet) {
-      return res.status(404).json({ success: false, error: 'Subscriber wallet not found' });
-    }
-
-    const [entries, total] = await Promise.all([
-      prisma.walletTransaction.findMany({
-        where: { walletId: wallet.id, type: 'CASHBACK_CREDIT' },
-        orderBy: { createdAt: 'desc' },
-        skip: (page - 1) * limit,
-        take: limit,
-        select: {
-          id: true,
-          amount: true,
-          status: true,
-          cashbackExpiresAt: true,
-          description: true,
-          createdAt: true,
-          receiptId: true,
-          receipt: {
-            select: {
-              id: true,
-              totalAmount: true,
-              merchantName: true,
-            },
-          },
-        },
-      }),
-      prisma.walletTransaction.count({ where: { walletId: wallet.id, type: 'CASHBACK_CREDIT' } }),
-    ]);
-
-    const now = new Date();
-
-    const result = entries.map((e) => {
-      let entryStatus: 'Pending' | 'Cleared' | 'Locked' | 'Expired';
-      if (e.status === 'PENDING' || e.status === 'TRIAL_PENDING' || e.status === 'PROCESSING') {
-        entryStatus = 'Pending';
-      } else if (e.status === 'CANCELLED') {
-        // The nightly expiry job marks entries CANCELLED once cashbackExpiresAt passes.
-        // Trial voids also use CANCELLED but do so before the natural expiry date.
-        entryStatus = e.cashbackExpiresAt && e.cashbackExpiresAt <= now ? 'Expired' : 'Locked';
-      } else if (e.status === 'ANNULLED' || e.status === 'FAILED') {
-        entryStatus = 'Locked';
-      } else if (e.cashbackExpiresAt && e.cashbackExpiresAt <= now) {
-        // COMPLETED but the window has since closed (scheduler hasn't run yet)
-        entryStatus = 'Expired';
-      } else {
-        entryStatus = 'Cleared';
-      }
-
-      const daysUntilExpiry = e.cashbackExpiresAt
-        ? Math.max(0, Math.ceil((e.cashbackExpiresAt.getTime() - now.getTime()) / 86_400_000))
-        : null;
-
-      return {
-        id: e.id,
-        amount: e.amount,
-        status: entryStatus,
-        rawStatus: e.status,
-        cashbackExpiresAt: e.cashbackExpiresAt,
-        daysUntilExpiry,
-        description: e.description,
-        createdAt: e.createdAt,
-        receipt: e.receipt ?? null,
-      };
-    });
-
-    res.json({ success: true, data: result, total, page, limit });
+    const result = await getSubscriberCashbackEntries(userId, page, limit);
+    res.json({ success: true, ...result });
   } catch (error: any) {
+    if (error?.statusCode === 404) {
+      return res.status(404).json({ success: false, error: error.message });
+    }
     logger.error('Failed to fetch subscriber cashback entries:', error);
     res.status(500).json({ success: false, error: 'Failed to fetch subscriber cashback entries' });
   }

@@ -23,6 +23,10 @@ export interface HelpTicket {
   assignee: TicketUser | null;
 }
 
+export interface HelpTicketFull extends HelpTicket {
+  body: string;
+}
+
 export interface NewTicket {
   id: string;
   subject: string;
@@ -47,6 +51,14 @@ export interface TicketListResult<T> {
   total: number;
   page: number;
   limit: number;
+}
+
+export interface TicketReply {
+  id: string;
+  body: string;
+  isAdmin: boolean;
+  createdAt: string;
+  author: TicketUser;
 }
 
 export const adminHelpService = {
@@ -92,11 +104,23 @@ export const adminHelpService = {
     return apiService.get('/admin/help/mine', clean);
   },
 
+  getOne(id: string): Promise<{ ticket: HelpTicketFull }> {
+    return apiService.get(`/admin/help/${id}`);
+  },
+
+  getReplies(id: string): Promise<{ replies: TicketReply[] }> {
+    return apiService.get(`/admin/help/${id}/replies`);
+  },
+
+  sendReply(id: string, body: string): Promise<{ reply: TicketReply }> {
+    return apiService.post(`/admin/help/${id}/reply`, { body });
+  },
+
   assign(id: string): Promise<{ ok: boolean }> {
     return apiService.post(`/admin/help/${id}/assign`, {});
   },
 
-  updateStatus(id: string, status: TicketStatus): Promise<{ ok: boolean }> {
-    return apiService.patch(`/admin/help/${id}`, { status });
+  update(id: string, data: { status?: TicketStatus; priority?: TicketPriority }): Promise<{ ok: boolean }> {
+    return apiService.patch(`/admin/help/${id}`, data);
   },
 };

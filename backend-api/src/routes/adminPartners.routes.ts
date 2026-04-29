@@ -330,7 +330,7 @@ const ACTIVE_PARTNER_STATUSES: PartnerStatus[] = [
 
 router.patch(
   '/:id/partner-status',
-  requirePermission('partners.requests.write'),
+  requirePermission('partners.write'),
   asyncHandler(async (req, res) => {
     const { status } = req.body as { status?: string };
 

@@ -3,6 +3,7 @@ import styled from 'styled-components';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-hot-toast';
 import { DataTable, ColumnDef } from '../../components/admin/DataTable/DataTable';
+import TicketDrawer from '../../components/admin/TicketDrawer';
 import {
   adminHelpService,
   NewTicket,
@@ -68,6 +69,7 @@ export default function AdminHelpNewPage() {
   const [priorityFilter, setPriorityFilter] = useState<TicketPriority | ''>('');
   const [categoryFilter, setCategoryFilter] = useState<TicketCategory | ''>('');
   const [page, setPage] = useState(1);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ['admin-help-new', page, search, priorityFilter, categoryFilter],
@@ -132,6 +134,7 @@ export default function AdminHelpNewPage() {
   ];
 
   return (
+    <>
     <PageShell>
       <PageHeader>
         <TitleBlock>
@@ -181,14 +184,16 @@ export default function AdminHelpNewPage() {
           totalItems={data?.total ?? 0}
           onPageChange={setPage}
           rowActions={[
+            { label: 'View', onClick: (row) => setSelectedId(row.id) },
             {
               label: 'Assign to me',
               onClick: (row) => assignMutation.mutate(row.id),
             },
-            { label: 'View', onClick: () => {} },
           ]}
         />
       </Card>
     </PageShell>
+    <TicketDrawer ticketId={selectedId} onClose={() => setSelectedId(null)} />
+    </>
   );
 }

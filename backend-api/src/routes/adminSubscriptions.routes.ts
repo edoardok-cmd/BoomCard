@@ -3,6 +3,7 @@ import { SubscriptionPlan, SubscriptionStatus } from '@prisma/client';
 import { authenticate, authorize, requirePermission } from '../middleware/auth.middleware';
 import { prisma } from '../lib/prisma';
 import { stripeService } from '../services/stripe.service';
+import { planDisplayName } from '../utils/planDisplayName';
 
 const router = Router();
 
@@ -73,7 +74,8 @@ router.get('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermissi
       prisma.subscription.count({ where }),
     ]);
 
-    res.json({ subscriptions, total, page: pageNum, limit: take });
+    const result = subscriptions.map((s) => ({ ...s, planDisplayName: planDisplayName(s.plan) }));
+    res.json({ subscriptions: result, total, page: pageNum, limit: take });
   } catch (error) {
     next(error);
   }

@@ -435,3 +435,110 @@ class AdminCashbackService {
 }
 
 export const adminCashbackService = new AdminCashbackService();
+
+// ─── Subscriber cashback entries (spec §4.4) ─────────────────────────────────
+
+export type CashbackEntryStatus = 'Pending' | 'Cleared' | 'Locked' | 'Paid' | 'Expired';
+
+export interface SubscriberCashbackEntry {
+  id: string;
+  amount: number;
+  status: CashbackEntryStatus;
+  rawStatus: string;
+  cashbackExpiresAt: Date | null;
+  daysUntilExpiry: number | null;
+  description: string | null;
+  createdAt: Date;
+  receipt: { id: string; totalAmount: number | null; merchantName: string | null } | null;
+}
+
+export interface SubscriberCashbackResult {
+  data: SubscriberCashbackEntry[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export async function getSubscriberCashbackEntries(
+  userId: string,
+  page: number,
+  limit: number,
+): Promise<SubscriberCashbackResult> {
+  const wallet = await prisma.wallet.findUnique({
+    where: { userId },
+    select: { id: true },
+  });
+  if (!wallet) {
+    const err = Object.assign(new Error('Subscriber wallet not found'), { statusCode: 404 });
+    throw err;
+  }
+
+  const [entries, total, latestWithdrawal] = await Promise.all([
+    prisma.walletTransaction.findMany({
+      where: { walletId: wallet.id, type: 'CASHBACK_CREDIT' },
+      orderBy: { createdAt: 'desc' },
+      skip: (page - 1) * limit,
+      take: limit,
+      select: {
+        id: true,
+        amount: true,
+        status: true,
+        cashbackExpiresAt: true,
+        description: true,
+        createdAt: true,
+        receiptId: true,
+        receipt: {
+          select: { id: true, totalAmount: true, merchantName: true },
+        },
+      },
+    }),
+    prisma.walletTransaction.count({ where: { walletId: wallet.id, type: 'CASHBACK_CREDIT' } }),
+    // Most recent completed payout — any cleared entry before this date was paid out
+    prisma.walletTransaction.findFirst({
+      where: { walletId: wallet.id, type: 'WITHDRAWAL', status: 'COMPLETED' },
+      orderBy: { createdAt: 'desc' },
+      select: { createdAt: true },
+    }),
+  ]);
+
+  const now = new Date();
+
+  const data: SubscriberCashbackEntry[] = entries.map((e) => {
+    let status: CashbackEntryStatus;
+
+    if (e.status === 'PENDING' || e.status === 'TRIAL_PENDING' || e.status === 'PROCESSING') {
+      status = 'Pending';
+    } else if (e.status === 'CANCELLED') {
+      // Nightly expiry job marks expired entries CANCELLED; trial voids also use CANCELLED.
+      status = e.cashbackExpiresAt && e.cashbackExpiresAt <= now ? 'Expired' : 'Locked';
+    } else if (e.status === 'ANNULLED' || e.status === 'FAILED') {
+      status = 'Locked';
+    } else if (e.cashbackExpiresAt && e.cashbackExpiresAt <= now) {
+      // COMPLETED but expiry window already closed (scheduler may not have run yet)
+      status = 'Expired';
+    } else if (latestWithdrawal && e.createdAt <= latestWithdrawal.createdAt) {
+      // Entry was available before the most recent completed payout — it was paid out
+      status = 'Paid';
+    } else {
+      status = 'Cleared';
+    }
+
+    const daysUntilExpiry = e.cashbackExpiresAt
+      ? Math.max(0, Math.ceil((e.cashbackExpiresAt.getTime() - now.getTime()) / 86_400_000))
+      : null;
+
+    return {
+      id: e.id,
+      amount: e.amount,
+      status,
+      rawStatus: e.status,
+      cashbackExpiresAt: e.cashbackExpiresAt,
+      daysUntilExpiry,
+      description: e.description,
+      createdAt: e.createdAt,
+      receipt: e.receipt ?? null,
+    };
+  });
+
+  return { data, total, page, limit };
+}

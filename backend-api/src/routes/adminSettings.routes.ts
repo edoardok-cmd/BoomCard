@@ -6,6 +6,8 @@
  * GET  /api/admin/settings/cashback-rates/history — recent rate history
  * GET  /api/admin/settings/system                 — all key/value system settings
  * PUT  /api/admin/settings/system                 — upsert one or many settings
+ * GET  /api/admin/settings/mobile-app             — G7: structured mobile app settings
+ * PUT  /api/admin/settings/mobile-app             — G7: update mobile app settings
  */
 
 import { Router, Response } from 'express';
@@ -183,6 +185,83 @@ router.put(
     );
 
     res.json({ success: true, message: 'Settings saved' });
+  })
+);
+
+/* ─── Mobile App Settings (Spec §9) ─────────────────────────────────────── */
+
+// Keys scoped under the "mobile_app." namespace in SystemSetting
+const MOBILE_APP_KEYS = [
+  'mobile_app.min_ios_version',
+  'mobile_app.min_android_version',
+  'mobile_app.ios_status',       // "active" | "maintenance" | "deprecated"
+  'mobile_app.android_status',
+  'mobile_app.feature_receipt_scan',
+  'mobile_app.feature_sticker_scan',
+  'mobile_app.feature_partner_map',
+  'mobile_app.push_notifications_enabled',
+  'mobile_app.push_vapid_topic',
+  'mobile_app.error_log_url',
+] as const;
+
+type MobileAppKey = (typeof MOBILE_APP_KEYS)[number];
+
+/**
+ * GET /api/admin/settings/mobile-app
+ * Returns all mobile-app-scoped SystemSetting rows as a structured object.
+ */
+router.get(
+  '/mobile-app',
+  requirePermission('settings.read'),
+  asyncHandler(async (_req: AuthRequest, res: Response) => {
+    const rows = await prisma.systemSetting.findMany({
+      where: { key: { in: [...MOBILE_APP_KEYS] } },
+    });
+
+    const data: Record<string, string | null> = {};
+    for (const key of MOBILE_APP_KEYS) {
+      data[key] = rows.find((r) => r.key === key)?.value ?? null;
+    }
+
+    res.json({ success: true, data });
+  })
+);
+
+/**
+ * PUT /api/admin/settings/mobile-app
+ * Body: { settings: Record<string, string> }
+ * Only keys in MOBILE_APP_KEYS are accepted.
+ */
+router.put(
+  '/mobile-app',
+  requirePermission('settings.write'),
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    const { settings } = req.body as { settings?: Record<string, string> };
+    if (!settings || typeof settings !== 'object') {
+      return res.status(400).json({ success: false, error: 'settings object is required' });
+    }
+
+    const entries = Object.entries(settings);
+    for (const [key] of entries) {
+      if (!MOBILE_APP_KEYS.includes(key as MobileAppKey)) {
+        return res.status(400).json({
+          success: false,
+          error: `Unknown mobile-app setting key: "${key}". Allowed: ${MOBILE_APP_KEYS.join(', ')}`,
+        });
+      }
+    }
+
+    await prisma.$transaction(
+      entries.map(([key, value]) =>
+        prisma.systemSetting.upsert({
+          where: { key },
+          create: { key, value, updatedBy: req.user!.id },
+          update: { value, updatedBy: req.user!.id },
+        })
+      )
+    );
+
+    res.json({ success: true, message: 'Mobile app settings saved' });
   })
 );
 
