@@ -885,7 +885,7 @@ export default function AdminTransactionsPage() {
   });
 
   const { data: stats } = useQuery({
-    queryKey: ['admin-transactions-stats', search, type, walletStatus, dateFromCommitted, dateToCommitted],
+    queryKey: ['admin-transactions-stats', search, type, walletStatus, dateFromCommitted, dateToCommitted, minAmountClean],
     queryFn: () => adminTransactionsService.getStats(filterParams),
     enabled: view === 'wallet',
   });

@@ -106,7 +106,7 @@ export const adminTransactionsService = {
     return apiService.get<AdminTransactionsResult>('/admin/transactions', cleanWalletParams(params));
   },
 
-  getStats(params: Omit<WalletFilterParams, 'page' | 'limit' | 'minAmount'>): Promise<AdminTransactionStats> {
+  getStats(params: Omit<WalletFilterParams, 'page' | 'limit'>): Promise<AdminTransactionStats> {
     return apiService.get<AdminTransactionStats>('/admin/transactions/stats', cleanWalletParams(params));
   },
 
