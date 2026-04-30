@@ -16,6 +16,9 @@ import { useLanguage } from '../../contexts/LanguageContext';
 import { adminDashboardService, AdminDashboardStats } from '../../services/adminDashboard.service';
 import { adminAlertsService, AdminAlertsResult, AlertTier } from '../../services/adminAlerts.service';
 
+const fmt2 = (n: number | undefined | null): string =>
+  typeof n === 'number' && Number.isFinite(n) ? n.toFixed(2) : '—';
+
 /* ─── Palette ─────────────────────────────────────────────────────────────── */
 const palette = {
   bg: '#faf9f5',
@@ -675,22 +678,22 @@ const AdminDashboardPage: React.FC = () => {
               </StatIconBox>
             </StatTop>
             <div>
-              <StatValue>{dashStats ? dashStats.subscribers.active : '—'}</StatValue>
+              <StatValue>{dashStats?.subscribers.active ?? '—'}</StatValue>
               <StatSubs>
                 <StatSub>
-                  <strong>{dashStats ? dashStats.subscribers.newLast30Days : '—'}</strong>{' '}
+                  <strong>{dashStats?.subscribers.newLast30Days ?? '—'}</strong>{' '}
                   {bg ? 'нови / 30 дни' : 'new / 30d'}
                 </StatSub>
                 <StatSub>
-                  <strong>{dashStats ? dashStats.subscribers.expired : '—'}</strong>{' '}
+                  <strong>{dashStats?.subscribers.expired ?? '—'}</strong>{' '}
                   {bg ? 'изтекли' : 'expired'}
                 </StatSub>
                 <StatSub>
-                  <strong>{dashStats ? dashStats.subscribers.paused : '—'}</strong>{' '}
+                  <strong>{dashStats?.subscribers.paused ?? '—'}</strong>{' '}
                   {bg ? 'спрени' : 'paused'}
                 </StatSub>
                 <StatSub>
-                  <strong>{dashStats ? dashStats.subscribers.failedPayment : '—'}</strong>{' '}
+                  <strong>{dashStats?.subscribers.failedPayment ?? '—'}</strong>{' '}
                   {bg ? 'неуспешно плащане' : 'failed payment'}
                 </StatSub>
               </StatSubs>
@@ -709,18 +712,18 @@ const AdminDashboardPage: React.FC = () => {
               </StatIconBox>
             </StatTop>
             <div>
-              <StatValue>{dashStats ? dashStats.transactions.todayCount : '—'}</StatValue>
+              <StatValue>{dashStats?.transactions.todayCount ?? '—'}</StatValue>
               <StatSubs>
                 <StatSub>
-                  <strong>{dashStats ? dashStats.transactions.todayVolume.toFixed(2) : '—'}</strong>{' '}
+                  <strong>{fmt2(dashStats?.transactions.todayVolume)}</strong>{' '}
                   {bg ? 'лв. днес' : 'BGN today'}
                 </StatSub>
                 <StatSub>
-                  <strong>{dashStats ? dashStats.transactions.todayAvg.toFixed(2) : '—'}</strong>{' '}
+                  <strong>{fmt2(dashStats?.transactions.todayAvg)}</strong>{' '}
                   {bg ? 'средно' : 'avg'}
                 </StatSub>
                 <StatSub>
-                  <strong>{dashStats ? dashStats.transactions.totalVolume.toFixed(2) : '—'}</strong>{' '}
+                  <strong>{fmt2(dashStats?.transactions.totalVolume)}</strong>{' '}
                   {bg ? 'общ оборот' : 'total turnover'}
                 </StatSub>
               </StatSubs>
@@ -740,19 +743,19 @@ const AdminDashboardPage: React.FC = () => {
             </StatTop>
             <div>
               <StatValue>
-                {dashStats ? `${dashStats.cashback.approved.toFixed(2)} ${bg ? 'лв.' : 'BGN'}` : '—'}
+                {`${fmt2(dashStats?.cashback.approved)} ${bg ? 'лв.' : 'BGN'}`}
               </StatValue>
               <StatSubs>
                 <StatSub>
-                  <strong>{dashStats ? dashStats.cashback.accrued.toFixed(2) : '—'}</strong>{' '}
+                  <strong>{fmt2(dashStats?.cashback.accrued)}</strong>{' '}
                   {bg ? 'начислен' : 'accrued'}
                 </StatSub>
                 <StatSub>
-                  <strong>{dashStats ? dashStats.cashback.pending.toFixed(2) : '—'}</strong>{' '}
+                  <strong>{fmt2(dashStats?.cashback.pending)}</strong>{' '}
                   {bg ? 'изчакващ' : 'pending'}
                 </StatSub>
                 <StatSub>
-                  <strong>{dashStats ? dashStats.cashback.expiringSoon.toFixed(2) : '—'}</strong>{' '}
+                  <strong>{fmt2(dashStats?.cashback.expiringSoon)}</strong>{' '}
                   {bg ? 'изтичащ' : 'expiring'}
                 </StatSub>
               </StatSubs>
@@ -771,14 +774,14 @@ const AdminDashboardPage: React.FC = () => {
               </StatIconBox>
             </StatTop>
             <div>
-              <StatValue>{dashStats ? dashStats.partners.active : '—'}</StatValue>
+              <StatValue>{dashStats?.partners.active ?? '—'}</StatValue>
               <StatSubs>
                 <StatSub>
-                  <strong>{dashStats ? dashStats.partners.requests : '—'}</strong>{' '}
+                  <strong>{dashStats?.partners.requests ?? '—'}</strong>{' '}
                   {bg ? 'нови заявки' : 'new requests'}
                 </StatSub>
                 <StatSub>
-                  <strong>{dashStats ? dashStats.partners.locations : '—'}</strong>{' '}
+                  <strong>{dashStats?.partners.locations ?? '—'}</strong>{' '}
                   {bg ? 'обекти на активни' : 'venues of active'}
                 </StatSub>
               </StatSubs>
@@ -798,21 +801,19 @@ const AdminDashboardPage: React.FC = () => {
             </StatTop>
             <div>
               <StatValue>
-                {dashStats
-                  ? `${dashStats.finance.payoutsDue.toFixed(2)} ${bg ? 'лв.' : 'BGN'}`
-                  : '—'}
+                {`${fmt2(dashStats?.finance.payoutsDue)} ${bg ? 'лв.' : 'BGN'}`}
               </StatValue>
               <StatSubs>
                 <StatSub>
-                  <strong>{dashStats ? dashStats.finance.payoutsDueCount : '—'}</strong>{' '}
+                  <strong>{dashStats?.finance.payoutsDueCount ?? '—'}</strong>{' '}
                   {bg ? 'в опашка' : 'in queue'}
                 </StatSub>
                 <StatSub>
-                  <strong>{dashStats ? dashStats.finance.partnerReceivables.toFixed(2) : '—'}</strong>{' '}
+                  <strong>{fmt2(dashStats?.finance.partnerReceivables)}</strong>{' '}
                   {bg ? 'от партньори' : 'from partners'}
                 </StatSub>
                 <StatSub>
-                  <strong>{dashStats ? dashStats.finance.margin.toFixed(2) : '—'}</strong>{' '}
+                  <strong>{fmt2(dashStats?.finance.margin)}</strong>{' '}
                   {bg ? 'марджин' : 'margin'}
                 </StatSub>
               </StatSubs>
