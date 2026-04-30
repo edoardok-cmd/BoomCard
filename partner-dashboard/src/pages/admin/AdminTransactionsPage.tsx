@@ -1667,15 +1667,17 @@ export default function AdminTransactionsPage() {
             value={minAmount}
             onChange={(e) => setMinAmount(e.target.value)}
           />
-          <NumericInput
-            type="number"
-            min="0"
-            step="0.01"
-            placeholder={t('maxAmount', lang)}
-            title={t('maxAmount', lang)}
-            value={maxAmount}
-            onChange={(e) => setMaxAmount(e.target.value)}
-          />
+          {view === 'business' && (
+            <NumericInput
+              type="number"
+              min="0"
+              step="0.01"
+              placeholder={t('maxAmount', lang)}
+              title={t('maxAmount', lang)}
+              value={maxAmount}
+              onChange={(e) => setMaxAmount(e.target.value)}
+            />
+          )}
         </FilterRow>
 
         {view === 'business' ? (
