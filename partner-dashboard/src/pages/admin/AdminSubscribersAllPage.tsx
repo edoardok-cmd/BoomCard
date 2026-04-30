@@ -55,9 +55,6 @@ const I18N = {
   incomplete:     { en: 'Incomplete',      bg: 'Незавършен' },
   incompleteExpired: { en: 'Incomplete expired', bg: 'Незавършен (изтекъл)' },
   expired:        { en: 'Expired',         bg: 'Изтекъл' },
-  riskAuto:       { en: 'Auto',            bg: 'Авто' },
-  riskReview:     { en: 'Review',          bg: 'Преглед' },
-  riskHigh:       { en: 'High',            bg: 'Висок' },
   riskAutoFilter:   { en: 'Auto-approve (0-30)', bg: 'Авто (0-30)' },
   riskReviewFilter: { en: 'Review (31-60)',      bg: 'Преглед (31-60)' },
   riskHighFilter:   { en: 'High risk (61+)',     bg: 'Висок риск (61+)' },
@@ -129,7 +126,10 @@ const I18N = {
   amountLabelCcy: { en: 'Amount ({currency})', bg: 'Сума ({currency})' },
   fullAmountPh:   { en: 'Full amount',     bg: 'Цяла сума' },
   refundMaxHint:  { en: 'Max refundable: {amount} {currency}', bg: 'Максимум за възстановяване: {amount} {currency}' },
-  refundNoCharge: { en: 'No Stripe charge found — nothing to refund.', bg: 'Не е намерено Stripe плащане — няма какво да се възстанови.' },
+  refundNoStripeSub:    { en: 'No Stripe subscription on file — nothing to refund.', bg: 'Няма Stripe абонамент — няма какво да се възстанови.' },
+  refundNoPaymentId:    { en: 'No payment on file for this subscription — nothing to refund.', bg: 'Няма регистрирано плащане за този абонамент — няма какво да се възстанови.' },
+  refundNoCapture:      { en: 'No captured payment found — nothing to refund.', bg: 'Не е намерено осъществено плащане — няма какво да се възстанови.' },
+  refundAlreadyDone:    { en: 'This charge has already been fully refunded.', bg: 'Това плащане вече е напълно възстановено.' },
   amountTooHigh:  { en: 'Amount exceeds the maximum refundable charge', bg: 'Сумата надвишава максимално възстановимата' },
   reasonLabel:    { en: 'Reason',          bg: 'Причина' },
   reasonRequested:{ en: 'Requested by customer', bg: 'По заявка на клиента' },
@@ -1384,7 +1384,14 @@ export default function AdminSubscribersAllPage() {
             <ModalTitle>{T('refundTitle')}</ModalTitle>
             <ModalBody>{withName('refundBody', displayName(refundTarget))}</ModalBody>
             {refundPreview && refundPreview.refundable === false && (
-              <ModalBody style={{ color: palette.danger }}>{T('refundNoCharge')}</ModalBody>
+              <ModalBody style={{ color: palette.danger }}>
+                {T(
+                  refundPreview.reason === 'no_stripe_subscription' ? 'refundNoStripeSub'
+                    : refundPreview.reason === 'no_payment_intent_id' ? 'refundNoPaymentId'
+                    : refundPreview.reason === 'already_refunded' ? 'refundAlreadyDone'
+                    : 'refundNoCapture',
+                )}
+              </ModalBody>
             )}
             <div>
               <ModalLabel>

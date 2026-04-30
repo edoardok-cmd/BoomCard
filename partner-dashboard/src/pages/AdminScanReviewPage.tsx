@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import styled from 'styled-components';
 import { API_CONFIG } from '../config/api.config';
@@ -72,7 +72,7 @@ interface ReviewStats {
   avgFraudScore: number;
 }
 
-type FilterStatus = 'all' | 'active' | 'MANUAL_REVIEW' | 'PENDING' | 'APPROVED' | 'REJECTED';
+export type FilterStatus = 'all' | 'active' | 'MANUAL_REVIEW' | 'PENDING' | 'APPROVED' | 'REJECTED';
 // Spec §7.1 buckets: 0-30 auto-approve, 31-60 review, 61+ high risk.
 // Legacy LOW/MEDIUM/HIGH/CRITICAL labels were dropped — the spec defines
 // only three tiers (Auto / Review / High), and shipping both produced
@@ -80,13 +80,29 @@ type FilterStatus = 'all' | 'active' | 'MANUAL_REVIEW' | 'PENDING' | 'APPROVED' 
 // URL parser at initialFilterRisk hydrates from ?bucket= and also accepts
 // legacy ?riskLevel=HIGH|MEDIUM|LOW deep-links so old bookmarks/emails
 // don't silently land on 'all'.
-type FilterRisk =
+export type FilterRisk =
   | 'all'
   | 'BUCKET_AUTO_0_30' | 'BUCKET_REVIEW_31_60' | 'BUCKET_HIGH_61_PLUS';
 
 const VALID_STATUSES: FilterStatus[] = ['all', 'active', 'MANUAL_REVIEW', 'PENDING', 'APPROVED', 'REJECTED'];
 
-interface HydratedFilters {
+// Wire ↔ state translation for risk buckets. Two explicit maps (rather than a
+// template-literal one direction and a map the other) so the symmetry is
+// checkable at a glance and a future risk value not starting with BUCKET_
+// doesn't silently get mangled by string surgery on either side. Keep both
+// maps in sync — adding a bucket means updating both.
+const BUCKET_TO_PARAM: Record<Exclude<FilterRisk, 'all'>, string> = {
+  BUCKET_AUTO_0_30: 'AUTO_0_30',
+  BUCKET_REVIEW_31_60: 'REVIEW_31_60',
+  BUCKET_HIGH_61_PLUS: 'HIGH_61_PLUS',
+};
+const WIRE_TO_BUCKET: Record<string, Exclude<FilterRisk, 'all'>> = {
+  AUTO_0_30: 'BUCKET_AUTO_0_30',
+  REVIEW_31_60: 'BUCKET_REVIEW_31_60',
+  HIGH_61_PLUS: 'BUCKET_HIGH_61_PLUS',
+};
+
+export interface HydratedFilters {
   filterStatus: FilterStatus;
   filterRisk: FilterRisk;
   filterSuspicious: boolean;
@@ -97,15 +113,18 @@ interface HydratedFilters {
 // Single source of truth for URL → filter state. Used both for the initial
 // useState seeding and the useEffect that resyncs when ?params change after
 // mount (e.g. admin clicks another alert while staying on /admin/control/risk).
-function hydrateFromUrl(searchParams: URLSearchParams): HydratedFilters {
+export function hydrateFromUrl(searchParams: URLSearchParams): HydratedFilters {
   const bucket = searchParams.get('bucket');
   const riskLevel = searchParams.get('riskLevel');
   const status = searchParams.get('status');
   const suspicious = searchParams.get('suspicious') === 'true';
   const reasons = searchParams.get('reasons') || '';
   const rawHours = searchParams.get('dateFromHours');
-  // Number() rejects '24abc' (NaN) but accepts '24.7' → 24.7 → floor to 24.
-  // Empty string Number('') === 0 is rejected by the > 0 guard.
+  // Number() rejects '24abc' (NaN). Integers only — '24.7' is rejected rather
+  // than silently floored, since deep-linked URLs are programmatic and a
+  // fractional value almost certainly indicates a caller bug we'd rather
+  // surface as an empty filter than mask. Empty string ('' → 0) and zero /
+  // negative are rejected by the > 0 guard.
   // Deliberately NOT clamped — the backend is the source of truth for the
   // effective window and echoes it back as meta.appliedDateFromHours. The
   // chip below renders that echoed value, so a hand-crafted ?dateFromHours=99999
@@ -113,25 +132,24 @@ function hydrateFromUrl(searchParams: URLSearchParams): HydratedFilters {
   const dateFromHours = (() => {
     if (!rawHours) return '';
     const parsed = Number(rawHours);
-    if (!Number.isFinite(parsed) || parsed <= 0) return '';
-    return String(Math.floor(parsed));
+    if (!Number.isInteger(parsed) || parsed <= 0) return '';
+    return String(parsed);
   })();
   // A recognised bucket / riskLevel is the only thing that should drive the
   // "active" status default — a malformed ?bucket=garbage shouldn't silently
   // flip the status filter (and dropping it from the truthy-test also stops
   // a garbage bucket from looking like "no bucket present" downstream).
-  const isValidBucket =
-    bucket === 'HIGH_61_PLUS' || bucket === 'REVIEW_31_60' || bucket === 'AUTO_0_30';
+  const mappedBucket = bucket ? WIRE_TO_BUCKET[bucket] : undefined;
+  const isValidBucket = mappedBucket !== undefined;
   const isValidRiskLevel =
     riskLevel === 'HIGH' || riskLevel === 'CRITICAL' ||
     riskLevel === 'MEDIUM' || riskLevel === 'LOW';
   const filterRisk: FilterRisk =
-    isValidBucket
-      ? (`BUCKET_${bucket}` as FilterRisk)
-      : riskLevel === 'HIGH' || riskLevel === 'CRITICAL' ? 'BUCKET_HIGH_61_PLUS'
-      : riskLevel === 'MEDIUM' ? 'BUCKET_REVIEW_31_60'
-      : riskLevel === 'LOW' ? 'BUCKET_AUTO_0_30'
-      : 'all';
+    mappedBucket
+      ?? (riskLevel === 'HIGH' || riskLevel === 'CRITICAL' ? 'BUCKET_HIGH_61_PLUS'
+        : riskLevel === 'MEDIUM' ? 'BUCKET_REVIEW_31_60'
+        : riskLevel === 'LOW' ? 'BUCKET_AUTO_0_30'
+        : 'all');
   const filterStatus: FilterStatus =
     status && VALID_STATUSES.includes(status as FilterStatus)
       ? (status as FilterStatus)
@@ -143,6 +161,32 @@ function hydrateFromUrl(searchParams: URLSearchParams): HydratedFilters {
     filterReasons: reasons,
     filterDateFromHours: dateFromHours,
   };
+}
+
+// Inverse of hydrateFromUrl. Defaults must mirror hydrate's no-param result so
+// every URL-mutating handler can route through this and produce a URL that
+// round-trips exactly back through hydrate. Legacy ?riskLevel= is never
+// re-emitted; hydrate still accepts it for old bookmarks/emails.
+//
+// The status default is *inferred*, not constant: hydrate returns 'active' when
+// any qualifier (bucket / suspicious / reasons) is present and no explicit
+// ?status= is in the URL, otherwise 'MANUAL_REVIEW'. We must compute the same
+// inference here, otherwise picking 'MANUAL_REVIEW' from the dropdown while a
+// qualifier is active would emit an empty status and hydrate would re-infer
+// 'active', overwriting the admin's choice on the next resync. The qualifier
+// set deliberately excludes filterDateFromHours — hydrate doesn't treat a lone
+// time-window deep-link as enough to flip the default, so neither do we.
+export function serializeFilters(state: HydratedFilters): URLSearchParams {
+  const params = new URLSearchParams();
+  const hasInferActiveQualifier =
+    state.filterRisk !== 'all' || state.filterSuspicious || !!state.filterReasons;
+  const inferredStatus: FilterStatus = hasInferActiveQualifier ? 'active' : 'MANUAL_REVIEW';
+  if (state.filterStatus !== inferredStatus) params.set('status', state.filterStatus);
+  if (state.filterRisk !== 'all') params.set('bucket', BUCKET_TO_PARAM[state.filterRisk]);
+  if (state.filterSuspicious) params.set('suspicious', 'true');
+  if (state.filterReasons) params.set('reasons', state.filterReasons);
+  if (state.filterDateFromHours) params.set('dateFromHours', state.filterDateFromHours);
+  return params;
 }
 
 // ============================================
@@ -665,12 +709,20 @@ export const AdminScanReviewPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [truncated, setTruncated] = useState(false);
   const [selectedScans, setSelectedScans] = useState<Set<string>>(new Set());
-  // Single mount-time hydrate via useMemo with empty deps — subsequent URL
-  // changes flow through the resync effect below. Sharing one parse across
-  // the five useStates avoids redundant work without forcing a single
-  // useReducer-style state shape.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const initialFilters = useMemo(() => hydrateFromUrl(searchParams), []);
+  // INVARIANT: the five filter states below are mirrors of the URL. The only
+  // permitted writers are (1) commitFilters() — the user-action path, which
+  // serializes the full post-change state into the URL, and (2) the resync
+  // effect below — the URL → state pump triggered by ?param changes from
+  // outside (alert nav, browser back/forward). Anything else (a raw setFilterX
+  // in a new handler) bypasses URL serialization, breaks the round-trip with
+  // hydrateFromUrl, and reintroduces the qualifier-vs-status drift the
+  // original B-B1 fix closed. Reads (fetch effects, render) use them directly.
+  //
+  // Mount-time hydrate via useState lazy init — runs exactly once and is never
+  // recomputed (subsequent URL changes flow through the resync effect below).
+  // Sharing one parse across the five useStates avoids redundant work without
+  // forcing a single useReducer-style state shape.
+  const [initialFilters] = useState<HydratedFilters>(() => hydrateFromUrl(searchParams));
   const [filterStatus, setFilterStatus] = useState<FilterStatus>(initialFilters.filterStatus);
   const [filterRisk, setFilterRisk] = useState<FilterRisk>(initialFilters.filterRisk);
   const [filterSuspicious, setFilterSuspicious] = useState<boolean>(initialFilters.filterSuspicious);
@@ -692,49 +744,143 @@ export const AdminScanReviewPage: React.FC = () => {
   const [currentScanId, setCurrentScanId] = useState<string | null>(null);
 
   // Resync filters from URL changes (B-B1). The URL is the single source of
-  // truth for all five deep-linkable filters: dropdowns mirror to URL via the
-  // updateFilter* handlers below, chip × buttons remove one param at a time,
-  // and alert links replace the search string. This effect re-derives state
-  // from URL on every change. setState bails on equality so redundant updates
-  // are free.
+  // truth for all five deep-linkable filters: every dropdown / chip handler
+  // below routes through commitFilters() (which serializes the FULL post-change
+  // state via serializeFilters), and alert links replace the search string
+  // outright. This effect re-derives state from URL on every change; setState
+  // bails on equality so redundant updates are free.
   //
   // An earlier asymmetric variant (only update status/risk when the URL had
   // the param) tried to preserve dropdown selections across chip removals,
-  // but it broke cross-alert navigation: clicking from a bucket-filtered alert
-  // to a non-bucket alert would leave the old bucket in state. The dropdown→URL
-  // mirroring below makes full resync safe — the URL always carries what the
-  // user actually selected, so re-deriving never clobbers it.
+  // but it broke cross-alert navigation: clicking from a bucket-filtered
+  // alert to a non-bucket alert would leave the old bucket in state.
+  // Full-state serialization on every mutation makes symmetric resync safe
+  // — the URL carries everything currently selected, including an inferred
+  // 'active' status from a qualifier-only deep-link, so clearing the lone
+  // qualifier no longer demotes status to the no-qualifier default.
+  //
+  // The prevHoursRef inequality check (not the [searchParams] dep alone) is
+  // what gates the applied-window reset — we co-batch setAppliedDateFromHours
+  // with setFilterDateFromHours in a single render. A separate
+  // `[filterDateFromHours]` effect produced a one-frame flash where the chip
+  // rendered the previous post-clamp number against the new filter (effects
+  // run after commit/paint).
+  const prevHoursRef = useRef(initialFilters.filterDateFromHours);
+  // Sequence guards for in-flight fetches. Filter / page changes refetch;
+  // without a guard, a slow earlier response can land *after* a fast later
+  // one and overwrite scans, total, truncated, appliedDateFromHours, and
+  // (worst) flip loading=false while the newer request is still pending.
+  // Each call captures `++ref.current` and only commits state when the
+  // captured value still matches at completion. Stats has its own ref since
+  // it lives on a different request lifecycle (no page/limit dep).
+  const fetchScansSeqRef = useRef(0);
+  const fetchStatsSeqRef = useRef(0);
   useEffect(() => {
     const next = hydrateFromUrl(searchParams);
+    if (next.filterDateFromHours !== prevHoursRef.current) {
+      setAppliedDateFromHours(undefined);
+      prevHoursRef.current = next.filterDateFromHours;
+    }
     setFilterStatus(next.filterStatus);
     setFilterRisk(next.filterRisk);
     setFilterSuspicious(next.filterSuspicious);
     setFilterReasons(next.filterReasons);
     setFilterDateFromHours(next.filterDateFromHours);
+    // Co-batched with setFilterX so external URL navigation produces a single
+    // render with both new filter and page=1 — the fetch effect then fires
+    // once. Without this we had a two-render chain (setFilterX → re-render →
+    // standalone page-reset effect → setPage(1) → re-render → second fetch),
+    // which the fetchScans seq guard masked silently.
+    // Requires React 18+ automatic batching: in React 17 each setState call
+    // inside a useEffect body flushed synchronously, so these six calls would
+    // have produced six renders and six fetches. React ^18.2.0 is pinned in
+    // package.json; do not relax that constraint without re-auditing this.
+    //
+    // Invariant: searchParams changes only via (a) commitFilters — which
+    // already resets page before calling setSearchParams — or (b) external
+    // navigation (alert links, browser back/forward) — which should always
+    // reset to page 1. There is no path where the URL changes for a
+    // non-filter reason (e.g. a future ?sort= param) while the admin holds a
+    // meaningful page > 1. If such a param is ever added, this unconditional
+    // setPage(1) must be made conditional.
+    setPage(1);
   }, [searchParams]);
 
-  // Fetch scans and stats. Filter or page changes refetch.
+  // Single entry point for all dropdown / chip mutations. Updates local state
+  // for tear-free controlled inputs AND serializes the full post-change state
+  // into the URL. The resync effect above then sees the URL change and calls
+  // setFilterX a second time — those land as equality-bail no-ops. Without the
+  // local set, controlled <select> values would lag a frame behind the click
+  // while the URL → state round-trip completes.
+  //
+  // CALLERS: invoke at most once per event handler. Two synchronous calls in a
+  // row would have the second see the first's queued setState as the closure's
+  // (still-stale) value and clobber its URL emission. If you need to change two
+  // fields at once, pass them as a single partial.
+  //
+  // Each field is overridden only when its key is explicitly present on partial
+  // (own-property check rather than `!== undefined`) so that a TS-permissive
+  // `commitFilters({ filterStatus: undefined })` doesn't blank the URL slot.
+  const commitFilters = useCallback((partial: Partial<HydratedFilters>) => {
+    const has = <K extends keyof HydratedFilters>(k: K): boolean =>
+      Object.prototype.hasOwnProperty.call(partial, k) && partial[k] !== undefined;
+    if (has('filterStatus')) setFilterStatus(partial.filterStatus as FilterStatus);
+    if (has('filterRisk')) setFilterRisk(partial.filterRisk as FilterRisk);
+    if (has('filterSuspicious')) setFilterSuspicious(partial.filterSuspicious as boolean);
+    if (has('filterReasons')) setFilterReasons(partial.filterReasons as string);
+    if (has('filterDateFromHours')) setFilterDateFromHours(partial.filterDateFromHours as string);
+    // Co-batch the applied-window reset with the filter set so the user-action
+    // path matches the URL-driven path (the resync effect's prevHoursRef branch).
+    // Without this, chip-removal had a one-frame window where filterDateFromHours
+    // was '' but appliedDateFromHours still held the previous fetch's number;
+    // the chip's truthy-gate hid that gap incidentally, but the invariant is
+    // load-bearing in code now, not in render gating. Bump prevHoursRef in
+    // lockstep so the upcoming resync effect sees an equal value and doesn't
+    // double-clear (which would be harmless but redundant).
+    if (has('filterDateFromHours') && partial.filterDateFromHours !== filterDateFromHours) {
+      setAppliedDateFromHours(undefined);
+      prevHoursRef.current = partial.filterDateFromHours as string;
+    }
+    // Co-batched with setFilterX so an in-page filter mutation produces a
+    // single render with both new filter and page=1 — the fetch effect then
+    // fires once even when the admin was on page > 1 (React 18+ automatic
+    // batching; same version note as the resync effect above). setPage(1)
+    // when already 1 is a no-op because React bails on value equality
+    // (Object.is(1, 1) === true for number primitives), so we don't need an
+    // explicit if (page !== 1) guard.
+    //
+    // Safety against "commitFilters called with unchanged value while page > 1":
+    // all callers use <select onChange>, checkbox, or text-input change
+    // handlers — the browser only fires 'change' when the value actually
+    // differs. There is no UI path that calls commitFilters with the same
+    // filter value while page > 1, so the unconditional setPage(1) cannot
+    // produce a spurious page-reset through current call sites.
+    setPage(1);
+    const merged: HydratedFilters = {
+      filterStatus: has('filterStatus') ? (partial.filterStatus as FilterStatus) : filterStatus,
+      filterRisk: has('filterRisk') ? (partial.filterRisk as FilterRisk) : filterRisk,
+      filterSuspicious: has('filterSuspicious') ? (partial.filterSuspicious as boolean) : filterSuspicious,
+      filterReasons: has('filterReasons') ? (partial.filterReasons as string) : filterReasons,
+      filterDateFromHours: has('filterDateFromHours') ? (partial.filterDateFromHours as string) : filterDateFromHours,
+    };
+    setSearchParams(serializeFilters(merged), { replace: true });
+  }, [filterStatus, filterRisk, filterSuspicious, filterReasons, filterDateFromHours, setSearchParams]);
+
+  // Fetch scans and stats. Filter / page changes refetch.
+  // (pageSize is hardcoded — no setter — so it is a stable dep, never fires.)
+  // Filter changes always come paired with setPage(1) (in commitFilters for
+  // in-page mutations, and in the searchParams resync effect for external URL
+  // navigation), so this effect fires exactly once per user action — no
+  // standalone page-reset effect, no spurious double-fetch that the seq
+  // guard would have to silently swallow.
   useEffect(() => {
     fetchScans();
     fetchStats();
-  }, [filterStatus, filterRisk, filterSuspicious, filterReasons, filterDateFromHours, page]);
-
-  // Reset to page 1 when filters change.
-  useEffect(() => {
-    setPage(1);
-  }, [filterStatus, filterRisk, filterSuspicious, filterReasons, filterDateFromHours]);
-
-  // Clear the server-echoed window when the requested window changes (alert
-  // nav from `?dateFromHours=24` → `?dateFromHours=48` etc.). Without this the
-  // chip would render the previous fetch's appliedDateFromHours during the
-  // in-flight refetch, briefly mislabeling the active filter. After clearing,
-  // the chip falls back to the raw filterDateFromHours until the next response
-  // re-asserts the post-clamp value.
-  useEffect(() => {
-    setAppliedDateFromHours(undefined);
-  }, [filterDateFromHours]);
+  }, [filterStatus, filterRisk, filterSuspicious, filterReasons, filterDateFromHours, page, pageSize]);
 
   const fetchScans = async () => {
+    const seq = ++fetchScansSeqRef.current;
+    const isLatest = () => seq === fetchScansSeqRef.current;
     try {
       setLoading(true);
       const token = authStorage.getItem('token');
@@ -743,9 +889,11 @@ export const AdminScanReviewPage: React.FC = () => {
       if (filterStatus !== 'all') {
         params.append('status', filterStatus);
       }
-      // Spec §7.1 categorical buckets pushed to backend
+      // Spec §7.1 categorical buckets pushed to backend. Uses BUCKET_TO_PARAM
+      // (not string surgery) so the same map governs every BUCKET_* → wire
+      // translation in this file — see serializeFilters above.
       if (filterRisk !== 'all') {
-        params.append('bucket', filterRisk.replace('BUCKET_', ''));
+        params.append('bucket', BUCKET_TO_PARAM[filterRisk]);
       }
       if (filterSuspicious) params.append('suspicious', 'true');
       if (filterReasons) params.append('reasons', filterReasons);
@@ -754,7 +902,7 @@ export const AdminScanReviewPage: React.FC = () => {
       params.append('limit', String(pageSize));
 
       const response = await fetch(
-        `${API_CONFIG.baseURL}/api/stickers/admin/pending-review?${params}`,
+        `${API_CONFIG.baseURL}/stickers/admin/pending-review?${params}`,
         {
           headers: {
             'Authorization': `Bearer ${token}`,
@@ -766,6 +914,10 @@ export const AdminScanReviewPage: React.FC = () => {
       if (!response.ok) throw new Error('Failed to fetch scans');
 
       const json = await response.json();
+      // Stale-response guard: a newer fetch superseded this one, so don't
+      // commit. Bail before parsing-derived state writes to avoid the slow-
+      // wins-over-fast race where filter A's response lands after filter B.
+      if (!isLatest()) return;
       // Backend returns { success, data, meta: { total, page, limit, pages, truncated? } }
       // Older responses returned the array directly — tolerate both.
       const items: StickerScan[] = Array.isArray(json) ? json : json.data ?? [];
@@ -782,16 +934,34 @@ export const AdminScanReviewPage: React.FC = () => {
       setAppliedDateFromHours(typeof applied === 'number' && Number.isFinite(applied) ? applied : undefined);
     } catch (error) {
       console.error('Error fetching scans:', error);
+      // B-B2: a failed fetch must not let the chip keep claiming the *previous*
+      // request's window. Without this, after a successful 24h fetch, switching
+      // to 48h and getting a 5xx leaves the chip showing "Last 24h" against a
+      // filterDateFromHours of "48" — exactly the lie the chip was added to
+      // prevent. Same for the truncated banner: a stale "showing first N matches"
+      // would mislead after the new request failed entirely.
+      // Only the latest call clears these — an older failed call must not
+      // blank out a newer in-flight call's pending result.
+      if (!isLatest()) return;
+      setAppliedDateFromHours(undefined);
+      setTruncated(false);
     } finally {
-      setLoading(false);
+      // Loading is a global "any request in flight" indicator; an older call
+      // landing first must not flip it off while the newer one is still in
+      // flight. The newer call's setLoading(true) at the top has already run
+      // (synchronous), so gating here keeps the spinner visible until the
+      // latest response settles.
+      if (isLatest()) setLoading(false);
     }
   };
 
   const fetchStats = async () => {
+    const seq = ++fetchStatsSeqRef.current;
+    const isLatest = () => seq === fetchStatsSeqRef.current;
     try {
       const token = authStorage.getItem('token');
       const response = await fetch(
-        `${API_CONFIG.baseURL}/api/stickers/admin/stats`,
+        `${API_CONFIG.baseURL}/stickers/admin/stats`,
         {
           headers: {
             'Authorization': `Bearer ${token}`,
@@ -802,10 +972,17 @@ export const AdminScanReviewPage: React.FC = () => {
 
       if (response.ok) {
         const json = await response.json();
+        // Stale-response guard, same shape as fetchScans.
+        if (!isLatest()) return;
         // Backend wraps as { success, data }; tolerate raw shape too.
         setStats(json?.data ?? json);
       }
     } catch (error) {
+      // isLatest() guard: no state is written today, but if error-recovery
+      // state (e.g. setStatsError) is added here it must be gated on this
+      // check — an older failed call must not clobber a newer in-flight
+      // result, mirroring the pattern in fetchScans.
+      if (!isLatest()) return;
       console.error('Error fetching stats:', error);
     }
   };
@@ -854,7 +1031,7 @@ export const AdminScanReviewPage: React.FC = () => {
       }
 
       const response = await fetch(
-        `${API_CONFIG.baseURL}/api/stickers/admin/${endpoint}/${currentScanId}`,
+        `${API_CONFIG.baseURL}/stickers/admin/${endpoint}/${currentScanId}`,
         {
           method: 'POST',
           headers: {
@@ -894,7 +1071,7 @@ export const AdminScanReviewPage: React.FC = () => {
 
     try {
       const token = authStorage.getItem('token');
-      const response = await fetch(`${API_CONFIG.baseURL}/api/stickers/admin/bulk-approve`, {
+      const response = await fetch(`${API_CONFIG.baseURL}/stickers/admin/bulk-approve`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -927,7 +1104,7 @@ export const AdminScanReviewPage: React.FC = () => {
 
     try {
       const token = authStorage.getItem('token');
-      const response = await fetch(`${API_CONFIG.baseURL}/api/stickers/admin/bulk-reject`, {
+      const response = await fetch(`${API_CONFIG.baseURL}/stickers/admin/bulk-reject`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -998,17 +1175,7 @@ export const AdminScanReviewPage: React.FC = () => {
           <FilterLabel>Status</FilterLabel>
           <Select
             value={filterStatus}
-            // Update state immediately for a tear-free controlled input AND
-            // mirror the choice into the URL so it survives chip removals and
-            // round-trips through the resync effect (B-B1). The resync's
-            // setFilterStatus is then a no-op equality bail.
-            onChange={(e) => {
-              const value = e.target.value as FilterStatus;
-              setFilterStatus(value);
-              const next = new URLSearchParams(searchParams);
-              next.set('status', value);
-              setSearchParams(next, { replace: true });
-            }}
+            onChange={(e) => commitFilters({ filterStatus: e.target.value as FilterStatus })}
           >
             <option value="all">All Statuses</option>
             <option value="active">Active (Pending / Validating / Manual Review)</option>
@@ -1023,18 +1190,11 @@ export const AdminScanReviewPage: React.FC = () => {
           <FilterLabel>Risk Level</FilterLabel>
           <Select
             value={filterRisk}
-            // Same URL-mirroring rule as Status. 'all' deletes ?bucket; any
-            // bucket value sets it. We also drop the legacy ?riskLevel= param
-            // if present so the URL doesn't carry both encodings at once.
-            onChange={(e) => {
-              const value = e.target.value as FilterRisk;
-              setFilterRisk(value);
-              const next = new URLSearchParams(searchParams);
-              next.delete('riskLevel');
-              if (value === 'all') next.delete('bucket');
-              else next.set('bucket', value.replace('BUCKET_', ''));
-              setSearchParams(next, { replace: true });
-            }}
+            // 'all' is the Risk default so it's omitted from the URL; any
+            // bucket writes ?bucket=*. Legacy ?riskLevel= is never re-emitted
+            // (hydrate still accepts it on incoming URLs), so a deep-link with
+            // ?riskLevel= is normalized to ?bucket= on the first interaction.
+            onChange={(e) => commitFilters({ filterRisk: e.target.value as FilterRisk })}
           >
             <option value="all">All Risk Levels</option>
             <option value="BUCKET_AUTO_0_30">Auto-approve (0–30)</option>
@@ -1062,13 +1222,7 @@ export const AdminScanReviewPage: React.FC = () => {
               <button
                 type="button"
                 aria-label="Remove suspicious activity filter"
-                onClick={() => {
-                  setFilterSuspicious(false);
-                  // Mirror state into the URL so refresh / back-nav don't re-assert the chip.
-                  const next = new URLSearchParams(searchParams);
-                  next.delete('suspicious');
-                  setSearchParams(next, { replace: true });
-                }}
+                onClick={() => commitFilters({ filterSuspicious: false })}
                 style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 10px', border: '1px solid #f59e0b', borderRadius: 999, background: '#fef3c7', color: '#92400e', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
               >
                 Suspicious activity ×
@@ -1078,12 +1232,7 @@ export const AdminScanReviewPage: React.FC = () => {
               <button
                 type="button"
                 aria-label={`Remove reason filter: ${filterReasons}`}
-                onClick={() => {
-                  setFilterReasons('');
-                  const next = new URLSearchParams(searchParams);
-                  next.delete('reasons');
-                  setSearchParams(next, { replace: true });
-                }}
+                onClick={() => commitFilters({ filterReasons: '' })}
                 style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 10px', border: '1px solid #f59e0b', borderRadius: 999, background: '#fef3c7', color: '#92400e', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
               >
                 Reason: {filterReasons} ×
@@ -1092,23 +1241,32 @@ export const AdminScanReviewPage: React.FC = () => {
             {filterDateFromHours && (
               <button
                 type="button"
-                aria-label={`Remove time-window filter: last ${appliedDateFromHours ?? filterDateFromHours} hours`}
-                onClick={() => {
-                  setFilterDateFromHours('');
-                  setAppliedDateFromHours(undefined);
-                  const next = new URLSearchParams(searchParams);
-                  next.delete('dateFromHours');
-                  setSearchParams(next, { replace: true });
-                }}
+                // Mirrors the visual chip text exactly. B-B2 says "never claim
+                // a window the server didn't apply" — that has to hold for
+                // assistive tech too, so until the server echoes a post-clamp
+                // value we don't surface the raw user input here either. The
+                // visual reads "Time window … ×"; the aria-label reads the
+                // same shape with a clarifying "applying" verb.
+                aria-label={
+                  appliedDateFromHours !== undefined
+                    ? `Remove time-window filter: last ${appliedDateFromHours} hours`
+                    : 'Remove time-window filter (applying)'
+                }
+                // The resync effect's prevHoursRef inequality check clears
+                // appliedDateFromHours; no need to double-bookkeep here.
+                onClick={() => commitFilters({ filterDateFromHours: '' })}
                 style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 10px', border: '1px solid #f59e0b', borderRadius: 999, background: '#fef3c7', color: '#92400e', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
               >
-                {/* Prefer the server-echoed window so the chip shows what was
-                    actually filtered post-clamp (B-B2). Falls back to the raw
-                    filterDateFromHours during the in-flight refetch — the
-                    `[filterDateFromHours]` effect above clears the stale
-                    applied value so transitions don't display the previous
-                    window's number against the new filter. */}
-                Last {appliedDateFromHours ?? filterDateFromHours}h ×
+                {/* Show the server-echoed window only — never the raw user input.
+                    Until the first response lands appliedDateFromHours is
+                    undefined; render an ellipsis rather than the raw value so
+                    we never claim a window the server didn't actually apply
+                    (B-B2). The resync effect co-batches the applied reset with
+                    setFilterDateFromHours so transitions don't paint the
+                    previous window's number against the new filter. */}
+                {appliedDateFromHours !== undefined
+                  ? `Last ${appliedDateFromHours}h ×`
+                  : 'Time window … ×'}
               </button>
             )}
           </div>

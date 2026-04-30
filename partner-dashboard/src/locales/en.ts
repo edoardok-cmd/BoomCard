@@ -396,6 +396,7 @@ export const en = {
   dashboard: {
     greeting: 'Hello',
     subtitle: 'Manage your BOOM Cards and view your savings',
+    partnerSubtitle: 'Manage your business and track performance',
     activeCards: 'Active Cards',
     readyToUse: 'Ready to use',
     totalSavings: 'Total Savings',
@@ -621,6 +622,7 @@ export const en = {
     dangerZoneDesc: 'Irreversible actions',
     deleteButton: 'Delete My Account',
     deleteConfirm: 'Are you sure you want to delete your account? This action cannot be undone.',
+    accountDeleted: 'Account deleted successfully',
     errorSavingSettings: 'Error saving settings',
     featureComingSoon: 'Feature coming soon',
     savedSuccess: 'Settings saved successfully!',
@@ -1114,6 +1116,18 @@ export const en = {
     paymentHistory: 'Payment History',
     historyLoading: 'Loading history...',
     historyEmpty: 'No payment history yet.',
+    // Upgrade-to-Premium CTA (spec §5.6) — pro-rata wallet credit on plan change.
+    upgradeToPremium: 'Upgrade to Premium Monthly',
+    upgradeToPremiumDesc:
+      'Switch to Premium Monthly to unlock the full cashback rate and all partner benefits. Any time remaining on your current plan is credited to your wallet.',
+    upgradeBtn: 'Upgrade now',
+    // 24h trial-refund window (spec §2.2) — full refund + cashback void on cancel.
+    cancelWithRefund: 'Cancel & request refund',
+    trialRefundDesc:
+      'You are still within the 24-hour trial window. Cancelling now refunds your payment in full and voids any cashback earned during the trial.',
+    trialRefundConfirm:
+      'Cancel your subscription and refund the full amount? Any cashback earned during the trial will be voided. This action cannot be undone.',
+    refundBtn: 'Cancel & refund',
   },
 
   // Pricing Plans

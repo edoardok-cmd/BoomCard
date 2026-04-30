@@ -22,6 +22,7 @@ interface DataTableProps<T> {
   data: T[];
   rowKey: (row: T) => string;
   rowActions?: RowAction<T>[];
+  onRowClick?: (row: T) => void;
   loading?: boolean;
   emptyMessage?: string;
   // Pagination — omit both to hide pagination
@@ -40,6 +41,7 @@ export function DataTable<T>({
   data,
   rowKey,
   rowActions,
+  onRowClick,
   loading,
   emptyMessage = 'Няма намерени записи',
   page,
@@ -104,7 +106,11 @@ export function DataTable<T>({
                 const key = rowKey(row);
                 const visibleActions = rowActions?.filter((a) => !a.hidden?.(row)) ?? [];
                 return (
-                  <Tr key={key}>
+                  <Tr
+                    key={key}
+                    $clickable={!!onRowClick}
+                    onClick={onRowClick ? () => onRowClick(row) : undefined}
+                  >
                     {columns.map((col) => (
                       <Td key={col.key}>
                         {col.render ? col.render(row, index) : (row as any)[col.key]}
@@ -128,7 +134,8 @@ export function DataTable<T>({
                                   <ActionItem
                                     key={action.label}
                                     $danger={!!action.danger}
-                                    onClick={() => {
+                                    onClick={(e) => {
+                                      e.stopPropagation();
                                       setOpenActionRow(null);
                                       action.onClick(row);
                                     }}
@@ -204,9 +211,10 @@ const SortIcon = styled.span<{ $active: boolean; $dir?: 'asc' | 'desc' }>`
   opacity: ${(p) => (p.$active ? 1 : 0.3)};
 `;
 
-const Tr = styled.tr`
+const Tr = styled.tr<{ $clickable?: boolean }>`
   border-bottom: 1px solid #f3f4f6;
   transition: background 100ms;
+  cursor: ${(p) => (p.$clickable ? 'pointer' : 'default')};
 
   &:last-child {
     border-bottom: none;

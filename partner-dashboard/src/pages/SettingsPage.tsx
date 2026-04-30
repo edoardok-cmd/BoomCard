@@ -539,7 +539,7 @@ const SettingsPage: React.FC = () => {
     setIsDeletingAccount(true);
     try {
       await apiService.delete('/auth/account', { data: { password: deletePassword } });
-      toast.success(t('settings.accountDeleted') || 'Account deleted successfully');
+      toast.success(t('settings.accountDeleted'));
       logout();
     } catch (error: any) {
       const msg = error?.response?.data?.message || t('settings.errorSavingSettings');
@@ -875,21 +875,21 @@ const SettingsPage: React.FC = () => {
             {showDeleteConfirm && (
               <div style={{ marginTop: '1rem', padding: '1rem', background: '#fff5f5', border: '1px solid #fecaca', borderRadius: '8px' }}>
                 <p style={{ color: '#dc2626', fontWeight: 600, marginBottom: '0.5rem' }}>
-                  {t('settings.deleteConfirm') || 'This action is permanent and cannot be undone. Enter your password to confirm.'}
+                  {t('settings.deleteConfirm')}
                 </p>
                 <input
                   type="password"
                   value={deletePassword}
                   onChange={e => setDeletePassword(e.target.value)}
-                  placeholder={t('settings.enterCurrentPassword') || 'Current password'}
+                  placeholder={t('settings.enterCurrentPassword')}
                   style={{ width: '100%', padding: '0.5rem 0.75rem', borderRadius: '6px', border: '1px solid #fca5a5', marginBottom: '0.75rem', boxSizing: 'border-box' }}
                 />
                 <div style={{ display: 'flex', gap: '0.75rem' }}>
                   <DangerButton variant="primary" size="medium" onClick={confirmDeleteAccount} disabled={isDeletingAccount}>
-                    {isDeletingAccount ? '...' : (t('settings.deleteButton') || 'Delete Account')}
+                    {isDeletingAccount ? '...' : t('settings.deleteButton')}
                   </DangerButton>
                   <Button variant="secondary" size="medium" onClick={() => { setShowDeleteConfirm(false); setDeletePassword(''); }}>
-                    {t('settings.cancelChanges') || 'Cancel'}
+                    {t('settings.cancelChanges')}
                   </Button>
                 </div>
               </div>

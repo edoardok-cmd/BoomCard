@@ -506,7 +506,18 @@
     "upgradeCredit": "{{percent}}% of your subscription fee is credited toward this upgrade — you pay only the difference",
     "upgradeCreditBreakdown": "Credit: €{{credit}} → You pay: €{{net}}",
     "upgradePayButton": "Upgrade Plan — credit will be applied",
-    "minPayout": "Min. payout: €{{amount}}"
+    "minPayout": "Min. payout: €{{amount}}",
+    "status": {
+      "ACTIVE": "Active",
+      "TRIALING": "Trialing",
+      "PAST_DUE": "Past due",
+      "UNPAID": "Unpaid",
+      "CANCELLED": "Cancelled",
+      "EXPIRED": "Expired",
+      "INCOMPLETE": "Incomplete",
+      "INCOMPLETE_EXPIRED": "Incomplete expired",
+      "PAUSED": "Paused"
+    }
   },
   "errors": {
     "networkError": "Network error. Please check your connection.",

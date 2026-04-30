@@ -6,6 +6,12 @@ import { RefreshCw, AlertTriangle, CheckCircle, XCircle, CreditCard, Calendar, C
 import { useLanguage } from '../contexts/LanguageContext';
 import { useCurrentSubscription, useToggleAutoRenewal, useCancelSubscriptionById, useReactivateSubscription, useRetrySubscriptionPayment, useSubscriptionHistory, useRequestTrialRefund, useUpdateSubscriptionPlan } from '../hooks/useBilling';
 import { Button } from '../components/common/Button/Button';
+import {
+  customerSubStatusLabel,
+  customerPlanLabel,
+  customerPaymentStatusLabel,
+  paymentStatusTone,
+} from '../utils/customerLabels';
 
 const PageContainer = styled.div`
   min-height: calc(100vh - 4rem);
@@ -113,6 +119,12 @@ const PlanBadge = styled.span<{ $plan: string }>`
   color: white;
 `;
 
+// Status colour mapping mirrors AdminSubscriberDetailPage SubStatusBadge so a
+// subscription reads the same colour on the customer page and the admin detail.
+// Buckets: success (active/trialing) · warn (PAST_DUE/UNPAID at-risk) ·
+// info (INCOMPLETE in-flight 3DS/SCA) · danger (INCOMPLETE_EXPIRED failed onboarding) ·
+// purple (EXPIRED natural lapse, distinct from CANCELLED — spec §4.2) ·
+// neutral (CANCELLED, PAUSED, anything unknown).
 const StatusBadge = styled.span<{ $status: string }>`
   display: inline-flex;
   align-items: center;
@@ -122,28 +134,38 @@ const StatusBadge = styled.span<{ $status: string }>`
   font-weight: 600;
   background: ${({ $status }) => {
     if ($status === 'ACTIVE' || $status === 'TRIALING') return '#d1fae5';
-    if ($status === 'PAST_DUE') return '#fff7ed';
-    if ($status === 'CANCELLED') return '#fee2e2';
+    if ($status === 'PAST_DUE' || $status === 'UNPAID') return '#fff7ed';
+    if ($status === 'INCOMPLETE') return '#dbeafe';
+    if ($status === 'INCOMPLETE_EXPIRED') return '#fee2e2';
+    if ($status === 'EXPIRED') return '#ede9fe';
     return '#f3f4f6';
   }};
   color: ${({ $status }) => {
     if ($status === 'ACTIVE' || $status === 'TRIALING') return '#065f46';
-    if ($status === 'PAST_DUE') return '#c2410c';
-    if ($status === 'CANCELLED') return '#991b1b';
-    return '#374151';
+    if ($status === 'PAST_DUE' || $status === 'UNPAID') return '#c2410c';
+    if ($status === 'INCOMPLETE') return '#1e40af';
+    if ($status === 'INCOMPLETE_EXPIRED') return '#991b1b';
+    if ($status === 'EXPIRED') return '#6d28d9';
+    if ($status === 'PAUSED') return '#374151';
+    return '#6b7280';
   }};
   [data-theme="dark"] & {
     background: ${({ $status }) => {
       if ($status === 'ACTIVE' || $status === 'TRIALING') return 'rgba(16, 185, 129, 0.2)';
-      if ($status === 'PAST_DUE') return 'rgba(234, 88, 12, 0.2)';
-      if ($status === 'CANCELLED') return 'rgba(239, 68, 68, 0.2)';
+      if ($status === 'PAST_DUE' || $status === 'UNPAID') return 'rgba(234, 88, 12, 0.2)';
+      if ($status === 'INCOMPLETE') return 'rgba(37, 99, 235, 0.2)';
+      if ($status === 'INCOMPLETE_EXPIRED') return 'rgba(239, 68, 68, 0.2)';
+      if ($status === 'EXPIRED') return 'rgba(124, 58, 237, 0.2)';
       return 'rgba(107, 114, 128, 0.2)';
     }};
     color: ${({ $status }) => {
       if ($status === 'ACTIVE' || $status === 'TRIALING') return '#34d399';
-      if ($status === 'PAST_DUE') return '#fb923c';
-      if ($status === 'CANCELLED') return '#fca5a5';
-      return '#d1d5db';
+      if ($status === 'PAST_DUE' || $status === 'UNPAID') return '#fb923c';
+      if ($status === 'INCOMPLETE') return '#93c5fd';
+      if ($status === 'INCOMPLETE_EXPIRED') return '#fca5a5';
+      if ($status === 'EXPIRED') return '#c4b5fd';
+      if ($status === 'PAUSED') return '#d1d5db';
+      return '#9ca3af';
     }};
   }
 `;
@@ -326,11 +348,25 @@ const HistoryDate = styled.span`
   [data-theme="dark"] & { color: #d1d5db; }
 `;
 
-const HistoryStatus = styled.span<{ $status: string }>`
+// Drives off PaymentTone (success / warn / danger / neutral) instead of a
+// hard-coded 'paid' check, so post-Stripe statuses ('completed', 'refunded',
+// 'processing', 'cancelled', etc.) get the right colour instead of all
+// non-'paid' values rendering red.
+const HistoryStatus = styled.span<{ $tone: 'success' | 'warn' | 'danger' | 'neutral' }>`
   font-size: 0.75rem;
-  color: ${({ $status }) => ($status === 'paid' ? '#059669' : '#dc2626')};
+  color: ${({ $tone }) => {
+    if ($tone === 'success') return '#059669';
+    if ($tone === 'warn') return '#c2410c';
+    if ($tone === 'neutral') return '#6b7280';
+    return '#dc2626';
+  }};
   [data-theme="dark"] & {
-    color: ${({ $status }) => ($status === 'paid' ? '#34d399' : '#fca5a5')};
+    color: ${({ $tone }) => {
+      if ($tone === 'success') return '#34d399';
+      if ($tone === 'warn') return '#fb923c';
+      if ($tone === 'neutral') return '#9ca3af';
+      return '#fca5a5';
+    }};
   }
 `;
 
@@ -362,7 +398,7 @@ function formatDate(iso: string | null | undefined): string {
 }
 
 export default function SubscriptionPage() {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const { data: subscription, isLoading } = useCurrentSubscription();
   const toggleAutoRenewal = useToggleAutoRenewal();
   const cancelSubscription = useCancelSubscriptionById();
@@ -547,14 +583,14 @@ export default function SubscriptionPage() {
 
             <Row>
               <Label>{t('subscriptionPage.currentPlan')}</Label>
-              <PlanBadge $plan={subscription.plan}>{subscription.plan}</PlanBadge>
+              <PlanBadge $plan={subscription.plan}>{customerPlanLabel(subscription.plan, language)}</PlanBadge>
             </Row>
 
             <Divider />
 
             <Row>
               <Label>{t('subscriptionPage.status')}</Label>
-              <StatusBadge $status={subscription.status}>{subscription.status}</StatusBadge>
+              <StatusBadge $status={subscription.status}>{customerSubStatusLabel(subscription.status, language)}</StatusBadge>
             </Row>
 
             {subscription.currentPeriodStart && subscription.currentPeriodEnd && (
@@ -631,11 +667,10 @@ export default function SubscriptionPage() {
             >
               <CardTitle>
                 <RefreshCw size={14} />
-                {t('subscriptionPage.upgradeToPremium') || 'Upgrade to Premium Monthly'}
+                {t('subscriptionPage.upgradeToPremium')}
               </CardTitle>
               <ToggleDesc>
-                {t('subscriptionPage.upgradeToPremiumDesc')
-                  || 'Switch to Premium Monthly to unlock the full cashback rate and all partner benefits. Any time remaining on your current plan is credited to your wallet.'}
+                {t('subscriptionPage.upgradeToPremiumDesc')}
               </ToggleDesc>
               <Row>
                 <Button
@@ -644,7 +679,7 @@ export default function SubscriptionPage() {
                   onClick={handleUpgradeToPremium}
                   disabled={updatePlan.isPending}
                 >
-                  {t('subscriptionPage.upgradeBtn') || 'Upgrade now'}
+                  {t('subscriptionPage.upgradeBtn')}
                 </Button>
               </Row>
             </Card>
@@ -709,7 +744,7 @@ export default function SubscriptionPage() {
                       <HistoryItem>
                         <HistoryLeft>
                           <HistoryDate>{formatDate(item.date)}</HistoryDate>
-                          <HistoryStatus $status={item.status}>{item.status}</HistoryStatus>
+                          <HistoryStatus $tone={paymentStatusTone(item.status)}>{customerPaymentStatusLabel(item.status, language)}</HistoryStatus>
                         </HistoryLeft>
                         <HistoryRight>
                           <HistoryAmount>
@@ -761,14 +796,13 @@ export default function SubscriptionPage() {
               <CardTitle>
                 <XCircle size={14} />
                 {trialRefundActive
-                  ? t('subscriptionPage.cancelWithRefund') || 'Cancel & request refund'
+                  ? t('subscriptionPage.cancelWithRefund')
                   : t('subscriptionPage.cancelSubscription')}
               </CardTitle>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                 <ToggleDesc>
                   {trialRefundActive
                     ? t('subscriptionPage.trialRefundDesc')
-                      || 'You are still within the 24-hour trial window. Cancelling now refunds your payment in full and voids any cashback earned during the trial.'
                     : t('subscriptionPage.cancelDesc')}
                 </ToggleDesc>
 
@@ -776,7 +810,7 @@ export default function SubscriptionPage() {
                 <div>
                   <Button variant="ghost" onClick={() => setShowCancelConfirm(true)}>
                     {trialRefundActive
-                      ? t('subscriptionPage.cancelWithRefund') || 'Cancel & request refund'
+                      ? t('subscriptionPage.cancelWithRefund')
                       : t('subscriptionPage.cancelSubscription')}
                   </Button>
                 </div>
@@ -790,8 +824,7 @@ export default function SubscriptionPage() {
                   >
                     <ConfirmText>
                       {trialRefundActive
-                        ? (t('subscriptionPage.trialRefundConfirm')
-                            || 'Cancel your subscription and refund the full amount? Any cashback earned during the trial will be voided. This action cannot be undone.')
+                        ? t('subscriptionPage.trialRefundConfirm')
                         : t('subscriptionPage.cancelConfirm').replace(
                             '{date}',
                             formatDate(subscription.currentPeriodEnd)
@@ -804,7 +837,7 @@ export default function SubscriptionPage() {
                         disabled={cancelSubscription.isPending || trialRefund.isPending}
                       >
                         {trialRefundActive
-                          ? t('subscriptionPage.refundBtn') || 'Cancel & refund'
+                          ? t('subscriptionPage.refundBtn')
                           : t('subscriptionPage.cancelBtn')}
                       </Button>
                       <Button variant="ghost" onClick={() => setShowCancelConfirm(false)}>

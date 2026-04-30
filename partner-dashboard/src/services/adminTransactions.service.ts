@@ -116,43 +116,161 @@ export const adminTransactionsService = {
   },
 
   // Spec §4.3: receipt/business transactions with partner / venue / cashback / margin / risk score.
-  listBusiness(params: {
-    page?: number;
-    limit?: number;
-    search?: string;
-    partnerId?: string;
-    type?: string;
-    status?: string;
-    dateFrom?: string;
-    dateTo?: string;
-  }): Promise<BusinessTransactionsResult> {
-    const clean: Record<string, unknown> = { page: params.page, limit: params.limit };
-    if (params.search) clean['search'] = params.search;
-    if (params.partnerId) clean['partnerId'] = params.partnerId;
-    if (params.type) clean['type'] = params.type;
-    if (params.status) clean['status'] = params.status;
-    if (params.dateFrom) clean['dateFrom'] = params.dateFrom;
-    if (params.dateTo) clean['dateTo'] = params.dateTo;
-    return apiService.get<BusinessTransactionsResult>('/admin/transactions/business', clean);
+  listBusiness(params: BusinessListParams): Promise<BusinessTransactionsResult> {
+    return apiService.get<BusinessTransactionsResult>(
+      '/admin/transactions/business',
+      cleanBusinessParams({ ...params, page: params.page, limit: params.limit }),
+    );
+  },
+
+  getBusinessStats(params: BusinessFilterParams): Promise<BusinessTransactionStats> {
+    return apiService.get<BusinessTransactionStats>(
+      '/admin/transactions/business/stats',
+      cleanBusinessParams(params),
+    );
+  },
+
+  // Spec §6.4 — full-period CSV export. Walks pages of /business until exhausted
+  // so the file reflects the current filter set, not just the visible page.
+  // Returns { rows, truncated, total } — `truncated` is true iff the result set
+  // exceeded the 10 000-row cap so callers can warn the admin that the CSV is
+  // incomplete (rather than silently exporting the first 10 000).
+  async fetchAllBusiness(
+    filters: BusinessFilterParams,
+    pageSize = 200,
+  ): Promise<{ rows: BusinessTransaction[]; truncated: boolean; total: number }> {
+    const all: BusinessTransaction[] = [];
+    let page = 1;
+    let lastTotal = 0;
+    // Hard cap: 50 pages × 200 = 10 000 rows. Beyond that, the export endpoint
+    // should be migrated server-side; until then we surface a truncation flag.
+    const MAX_PAGES = 50;
+    for (let i = 0; i < MAX_PAGES; i++) {
+      const result = await this.listBusiness({ ...filters, page, limit: pageSize });
+      lastTotal = result.total;
+      all.push(...result.transactions);
+      if (all.length >= result.total || result.transactions.length === 0) break;
+      page += 1;
+    }
+    return { rows: all, truncated: all.length < lastTotal, total: lastTotal };
+  },
+
+  async fetchAllWallet(
+    filters: {
+      search?: string;
+      type?: WalletTransactionType | '';
+      status?: WalletTransactionStatus | '';
+      dateFrom?: string;
+      dateTo?: string;
+      userId?: string;
+      minAmount?: number;
+    },
+    pageSize = 200,
+  ): Promise<{ rows: AdminTransaction[]; truncated: boolean; total: number }> {
+    const all: AdminTransaction[] = [];
+    let page = 1;
+    let lastTotal = 0;
+    const MAX_PAGES = 50;
+    for (let i = 0; i < MAX_PAGES; i++) {
+      const result = await this.list({ ...filters, page, limit: pageSize });
+      lastTotal = result.total;
+      all.push(...result.transactions);
+      if (all.length >= result.total || result.transactions.length === 0) break;
+      page += 1;
+    }
+    return { rows: all, truncated: all.length < lastTotal, total: lastTotal };
+  },
+
+  // Spec §7.2 — partner-level fraud signal aggregated across the partner's receipts.
+  // Filters mirror /business so the modal reading matches the visible slice (P1-1).
+  getPartnerRisk(partnerId: string, filters?: BusinessFilterParams): Promise<PartnerRiskAggregate> {
+    return apiService.get<PartnerRiskAggregate>(
+      `/admin/transactions/business/partner-risk/${partnerId}`,
+      filters ? cleanBusinessParams(filters) : undefined,
+    );
   },
 };
+
+// Spec §4.4 — derived 5-state lifecycle, mirrors backend deriveCashbackEntryStatus.
+export type CashbackEntryStatus = 'Pending' | 'Cleared' | 'Locked' | 'Paid' | 'Expired';
+
+export interface BusinessFilterParams {
+  search?: string;
+  partnerId?: string;
+  type?: string;
+  status?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  minAmount?: number;
+  minRisk?: number;
+}
+
+export interface BusinessListParams extends BusinessFilterParams {
+  page?: number;
+  limit?: number;
+}
+
+function cleanBusinessParams(params: BusinessListParams): Record<string, unknown> {
+  const clean: Record<string, unknown> = {};
+  if (params.page != null) clean['page'] = params.page;
+  if (params.limit != null) clean['limit'] = params.limit;
+  if (params.search) clean['search'] = params.search;
+  if (params.partnerId) clean['partnerId'] = params.partnerId;
+  if (params.type) clean['type'] = params.type;
+  if (params.status) clean['status'] = params.status;
+  if (params.dateFrom) clean['dateFrom'] = params.dateFrom;
+  if (params.dateTo) clean['dateTo'] = params.dateTo;
+  if (params.minAmount != null) clean['minAmount'] = params.minAmount;
+  if (params.minRisk != null) clean['minRisk'] = params.minRisk;
+  return clean;
+}
 
 export interface BusinessTransaction {
   id: string;
   type: string;
   status: string;
   amount: number;
+  discount: number | null;
   discountAmount: number | null;
   finalAmount: number | null;
   cashbackAmount: number | null;
   netAmount: number | null;
-  margin: number;
+  // Margin = (partnerDiscountRate × amount) − cashbackAmount.
+  // null when the partner has no discountRate AND no partnerType.maxDiscountRate
+  // configured — render as "—" rather than misleading "+0.00".
+  margin: number | null;
+  partnerDiscountRate: number | null;
+  riskScore: number;
+  userRiskScore: number;
+  cashbackStatus: CashbackEntryStatus | null;
+  receiptUploadedAt: string | null;
+  sessionStartedAt: string | null;
   currency: string;
   paymentMethod: string;
   createdAt: string;
-  user: { id: string; firstName: string | null; lastName: string | null; email: string };
-  partner: { id: string; businessName: string; businessNameBg: string | null } | null;
+  user: { id: string; firstName: string | null; lastName: string | null; email: string; riskScore: number };
+  partner:
+    | {
+        id: string;
+        businessName: string;
+        businessNameBg: string | null;
+        discountRate: number | null;
+        partnerType: { maxDiscountRate: number } | null;
+      }
+    | null;
   venue: { id: string; name: string } | null;
+  receipt: {
+    id: string;
+    imageUrl: string | null;
+    imageKey: string | null;
+    status: string;
+    fraudScore: number;
+    createdAt: string;
+  } | null;
+  stickerScan: {
+    sessionStartedAt: string | null;
+    fraudScore: number;
+  } | null;
 }
 
 export interface BusinessTransactionsResult {
@@ -160,4 +278,19 @@ export interface BusinessTransactionsResult {
   total: number;
   page: number;
   limit: number;
+}
+
+export interface BusinessTransactionStats {
+  count: number;
+  todayCount: number;
+  totalVolume: number;
+  averageValue: number;
+  totalCashback: number;
+}
+
+export interface PartnerRiskAggregate {
+  partnerId: string;
+  receiptCount: number;
+  maxFraudScore: number;
+  avgFraudScore: number;
 }

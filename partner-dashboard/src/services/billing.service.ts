@@ -15,20 +15,47 @@ export interface SubscriptionPaymentMethod {
   type: string;
 }
 
+// Mirrors backend prisma TransactionStatus, lowercased by /subscriptions/history.
+// 'paid' / 'void' are legacy invoice values still emitted by the Stripe-invoice
+// branch of getSubscriptionHistory.
+export type SubscriptionHistoryStatus =
+  | 'pending'
+  | 'processing'
+  | 'completed'
+  | 'failed'
+  | 'cancelled'
+  | 'refunded'
+  | 'paid'
+  | 'void';
+
 export interface SubscriptionHistoryItem {
   id: string;
   date: string;
   amount: number;
   currency: string;
-  status: string;
+  status: SubscriptionHistoryStatus;
   pdfUrl: string | null;
 }
+
+// Mirrors backend prisma SubscriptionStatus enum (9 values). Keep aligned —
+// utils/customerLabels.ts holds a compile-time guard that fails the build if
+// this type ever drops a value.
+export type SubscriptionStatus =
+  | 'ACTIVE'
+  | 'TRIALING'
+  | 'PAST_DUE'
+  | 'CANCELLED'
+  | 'INCOMPLETE'
+  | 'INCOMPLETE_EXPIRED'
+  | 'UNPAID'
+  | 'PAUSED'
+  | 'EXPIRED';
 
 export interface Subscription {
   id: string;
   userId: string;
   plan: 'LIGHT' | 'BASIC' | 'PREMIUM';
-  status: 'ACTIVE' | 'TRIALING' | 'PAST_DUE' | 'CANCELLED';
+  status: SubscriptionStatus;
   currentPeriodStart: string;
   currentPeriodEnd: string;
   cancelAtPeriodEnd: boolean;

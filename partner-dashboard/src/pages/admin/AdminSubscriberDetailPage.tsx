@@ -9,7 +9,67 @@ import {
   SubscriptionStatus,
   UserAccountStatus,
 } from '../../services/adminSubscribers.service';
-import { planLabel, subStatusLabel, riskLabel } from '../../utils/planLabels';
+import { planLabel, subStatusLabel, userStatusLabel, riskLabel, type Lang } from '../../utils/planLabels';
+
+/* ─── i18n ─────────────────────────────────────────────────────────────────── */
+// Localised strings for this page. Mirrors the AdminSubscribersAllPage pattern
+// (local I18N table + tr()) so every string a subscriber-management admin sees
+// has a BG counterpart. Keep keys grouped by surface to make additions easy.
+const I18N = {
+  // Header / states
+  backAll:        { en: '← All subscribers', bg: '← Всички абонати' },
+  loading:        { en: 'Loading…',          bg: 'Зарежда…' },
+  loadFail:       { en: 'Failed to load subscriber.', bg: 'Неуспешно зареждане на абоната.' },
+  // Profile meta
+  joined:         { en: 'Joined',            bg: 'Регистриран' },
+  lastLogin:      { en: 'Last login',        bg: 'Последен вход' },
+  risk:           { en: 'Risk',              bg: 'Риск' },
+  // Action buttons
+  saving:         { en: 'Saving…',           bg: 'Запазва…' },
+  suspendAcct:    { en: 'Suspend account',   bg: 'Спри акаунт' },
+  activateAcct:   { en: 'Activate account',  bg: 'Активирай акаунт' },
+  revoking:       { en: 'Revoking…',         bg: 'Отнема…' },
+  forceLogout:    { en: 'Force logout',      bg: 'Принудителен изход' },
+  // Confirms
+  confirmSuspend: { en: 'Suspend account for {name}?', bg: 'Да спрем акаунта на {name}?' },
+  confirmRevoke:  { en: 'Revoke all sessions for {name}?', bg: 'Да отнемем всички сесии на {name}?' },
+  // Toasts
+  acctSuspended:  { en: 'Account suspended', bg: 'Акаунтът е спрян' },
+  acctActivated:  { en: 'Account activated', bg: 'Акаунтът е активиран' },
+  statusFail:     { en: 'Failed to update account status', bg: 'Неуспешна промяна на статус' },
+  // Decoupled-noun pattern in BG to avoid the singular/plural agreement
+  // (1 сесия vs 2+ сесии) that the trailing "{n} сесии" form gets wrong at n=1.
+  revokedN:       { en: 'Revoked {n} session(s)', bg: 'Отнети сесии: {n}' },
+  // n=0 path: backend returns revokedCount=0 when the user has no active
+  // sessions (e.g. already logged out). A "Revoked 0" success toast is
+  // semantically dishonest — surface a distinct message instead.
+  revokedNone:    { en: 'No active sessions to revoke', bg: 'Няма активни сесии за отнемане' },
+  revokeFail:     { en: 'Failed to revoke sessions', bg: 'Неуспешно отнемане на сесиите' },
+  // Wallet section
+  walletTitle:    { en: 'Wallet',            bg: 'Портфейл' },
+  walletAvailable:{ en: 'Available',         bg: 'Налично' },
+  walletTotal:    { en: 'Total balance',     bg: 'Общ баланс' },
+  walletPending:  { en: 'Pending',           bg: 'Изчаква' },
+  noWallet:       { en: 'No wallet found',   bg: 'Няма намерен портфейл' },
+  // Subscriptions table
+  subsTitle:      { en: 'Subscription history', bg: 'История на абонаменти' },
+  noSubs:         { en: 'No subscriptions found', bg: 'Няма открити абонаменти' },
+  colPlan:        { en: 'Plan',              bg: 'План' },
+  colStatus:      { en: 'Status',            bg: 'Статус' },
+  colPeriodEnds:  { en: 'Period ends',       bg: 'Изтича на' },
+  colAutoRenew:   { en: 'Auto-renew',        bg: 'Подновяване' },
+  colCancelled:   { en: 'Cancelled',         bg: 'Отказан на' },
+  colStarted:     { en: 'Started',           bg: 'Започнат на' },
+  yes:            { en: 'Yes',               bg: 'Да' },
+  no:             { en: 'No',                bg: 'Не' },
+};
+
+type I18NKey = keyof typeof I18N;
+function tr(key: I18NKey, lang: Lang, vars?: Record<string, string | number>): string {
+  let s: string = I18N[key]?.[lang] ?? key;
+  if (vars) for (const [k, v] of Object.entries(vars)) s = s.split(`{${k}}`).join(String(v));
+  return s;
+}
 
 /* ─── Palette ─────────────────────────────────────────────────────────────── */
 const palette = {
@@ -364,27 +424,33 @@ export default function AdminSubscriberDetailPage() {
     enabled: !!userId,
   });
 
+  const T = (key: I18NKey, vars?: Record<string, string | number>) => tr(key, lang, vars);
+
   const suspendMutation = useMutation({
     mutationFn: (status: 'ACTIVE' | 'SUSPENDED') =>
       adminSubscribersService.suspendSubscriber(userId!, status),
     onSuccess: (_, status) => {
-      toast.success(status === 'SUSPENDED' ? 'Account suspended' : 'Account activated');
+      toast.success(T(status === 'SUSPENDED' ? 'acctSuspended' : 'acctActivated'));
       queryClient.invalidateQueries({ queryKey: ['admin-subscriber-detail', userId] });
       queryClient.invalidateQueries({ queryKey: ['admin-subscribers'] });
     },
-    onError: () => toast.error('Failed to update account status'),
+    onError: () => toast.error(T('statusFail')),
   });
 
   const forceLogoutMutation = useMutation({
     mutationFn: () => adminSubscribersService.forceLogout(userId!),
     onSuccess: (res) => {
-      toast.success(`Revoked ${res.revokedCount} session(s)`);
+      if (res.revokedCount === 0) {
+        toast(T('revokedNone'), { icon: 'ℹ️' });
+      } else {
+        toast.success(T('revokedN', { n: res.revokedCount }));
+      }
     },
-    onError: () => toast.error('Failed to revoke sessions'),
+    onError: () => toast.error(T('revokeFail')),
   });
 
-  if (isLoading) return <PageShell><Spinner>Loading…</Spinner></PageShell>;
-  if (isError || !data) return <PageShell><Spinner>Failed to load subscriber.</Spinner></PageShell>;
+  if (isLoading) return <PageShell><Spinner>{T('loading')}</Spinner></PageShell>;
+  if (isError || !data) return <PageShell><Spinner>{T('loadFail')}</Spinner></PageShell>;
 
   const accountStatus = (data.deletedAt ? 'DELETED' : data.status) as UserAccountStatus | 'DELETED';
   const fullName =
@@ -399,7 +465,7 @@ export default function AdminSubscriberDetailPage() {
   return (
     <PageShell>
       <PageHeader>
-        <BackLink to="/admin/subscribers/all">← All subscribers</BackLink>
+        <BackLink to="/admin/subscribers/all">{T('backAll')}</BackLink>
       </PageHeader>
 
       {/* Profile header */}
@@ -410,16 +476,16 @@ export default function AdminSubscriberDetailPage() {
             <ContactLine>{data.email}</ContactLine>
             {data.phone && <ContactLine>{data.phone}</ContactLine>}
             <BadgeRow>
-              <UserStatusBadge $status={accountStatus}>{accountStatus}</UserStatusBadge>
+              <UserStatusBadge $status={accountStatus}>{userStatusLabel(accountStatus, lang)}</UserStatusBadge>
               {data.riskScore != null && (
                 <RiskBadge $level={riskLevel(data.riskScore)}>
-                  {lang === 'bg' ? 'Риск' : 'Risk'}: {riskLabel(data.riskScore, lang)} ({data.riskScore})
+                  {T('risk')}: {riskLabel(data.riskScore, lang)} ({data.riskScore})
                 </RiskBadge>
               )}
             </BadgeRow>
             <MetaRow>
-              Joined {fmt(data.createdAt)}
-              {data.lastLoginAt && <> · Last login {fmt(data.lastLoginAt)}</>}
+              {T('joined')} {fmt(data.createdAt)}
+              {data.lastLoginAt && <> · {T('lastLogin')} {fmt(data.lastLoginAt)}</>}
             </MetaRow>
           </ProfileInfo>
 
@@ -431,11 +497,11 @@ export default function AdminSubscriberDetailPage() {
                     $variant="warning"
                     disabled={suspendMutation.isPending}
                     onClick={() => {
-                      if (window.confirm(`Suspend account for ${fullName}?`))
+                      if (window.confirm(T('confirmSuspend', { name: fullName })))
                         suspendMutation.mutate('SUSPENDED');
                     }}
                   >
-                    {suspendMutation.isPending ? 'Saving…' : 'Suspend account'}
+                    {suspendMutation.isPending ? T('saving') : T('suspendAcct')}
                   </Btn>
                 ) : data.status === 'SUSPENDED' ? (
                   <Btn
@@ -443,7 +509,7 @@ export default function AdminSubscriberDetailPage() {
                     disabled={suspendMutation.isPending}
                     onClick={() => suspendMutation.mutate('ACTIVE')}
                   >
-                    {suspendMutation.isPending ? 'Saving…' : 'Activate account'}
+                    {suspendMutation.isPending ? T('saving') : T('activateAcct')}
                   </Btn>
                 ) : null}
               </>
@@ -452,11 +518,11 @@ export default function AdminSubscriberDetailPage() {
               $variant="ghost"
               disabled={forceLogoutMutation.isPending}
               onClick={() => {
-                if (window.confirm(`Revoke all sessions for ${fullName}?`))
+                if (window.confirm(T('confirmRevoke', { name: fullName })))
                   forceLogoutMutation.mutate();
               }}
             >
-              {forceLogoutMutation.isPending ? 'Revoking…' : 'Force logout'}
+              {forceLogoutMutation.isPending ? T('revoking') : T('forceLogout')}
             </Btn>
           </ActionButtons>
         </ProfileTop>
@@ -464,25 +530,25 @@ export default function AdminSubscriberDetailPage() {
 
       {/* Wallet */}
       <SectionCard>
-        <SectionTitle>Wallet</SectionTitle>
+        <SectionTitle>{T('walletTitle')}</SectionTitle>
         {data.wallet ? (
           <WalletGrid>
             <WalletItem>
-              <WalletLabel>Available</WalletLabel>
+              <WalletLabel>{T('walletAvailable')}</WalletLabel>
               <WalletValue>
                 {data.wallet.availableBalance.toFixed(2)}
                 <WalletUnit>BGN</WalletUnit>
               </WalletValue>
             </WalletItem>
             <WalletItem>
-              <WalletLabel>Total balance</WalletLabel>
+              <WalletLabel>{T('walletTotal')}</WalletLabel>
               <WalletValue>
                 {data.wallet.balance.toFixed(2)}
                 <WalletUnit>BGN</WalletUnit>
               </WalletValue>
             </WalletItem>
             <WalletItem>
-              <WalletLabel>Pending</WalletLabel>
+              <WalletLabel>{T('walletPending')}</WalletLabel>
               <WalletValue>
                 {data.wallet.pendingBalance.toFixed(2)}
                 <WalletUnit>BGN</WalletUnit>
@@ -490,25 +556,25 @@ export default function AdminSubscriberDetailPage() {
             </WalletItem>
           </WalletGrid>
         ) : (
-          <EmptyState>No wallet found</EmptyState>
+          <EmptyState>{T('noWallet')}</EmptyState>
         )}
       </SectionCard>
 
       {/* Subscriptions */}
       <SectionCard>
-        <SectionTitle>Subscription history</SectionTitle>
+        <SectionTitle>{T('subsTitle')}</SectionTitle>
         {sortedSubs.length === 0 ? (
-          <EmptyState>No subscriptions found</EmptyState>
+          <EmptyState>{T('noSubs')}</EmptyState>
         ) : (
           <SubTable>
             <thead>
               <tr>
-                <Th>Plan</Th>
-                <Th>Status</Th>
-                <Th>Period ends</Th>
-                <Th>Auto-renew</Th>
-                <Th>Cancelled</Th>
-                <Th>Started</Th>
+                <Th>{T('colPlan')}</Th>
+                <Th>{T('colStatus')}</Th>
+                <Th>{T('colPeriodEnds')}</Th>
+                <Th>{T('colAutoRenew')}</Th>
+                <Th>{T('colCancelled')}</Th>
+                <Th>{T('colStarted')}</Th>
               </tr>
             </thead>
             <tbody>
@@ -529,7 +595,7 @@ export default function AdminSubscriberDetailPage() {
                       fontWeight: 600,
                     }}
                   >
-                    {sub.autoRenewal ? 'Yes' : 'No'}
+                    {sub.autoRenewal ? T('yes') : T('no')}
                   </Td>
                   <Td>{fmt(sub.canceledAt)}</Td>
                   <Td>{fmt(sub.createdAt)}</Td>

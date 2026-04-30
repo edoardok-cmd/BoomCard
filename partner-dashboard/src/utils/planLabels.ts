@@ -12,6 +12,12 @@
 // the user-account "Спрян" status (§4.1) which appears alongside it on the
 // subscribers table.
 
+import type {
+  SubscriptionPlan as ServiceSubscriptionPlan,
+  SubscriptionStatus as ServiceSubscriptionStatus,
+  UserAccountStatus as ServiceUserAccountStatus,
+} from '../services/adminSubscribers.service';
+
 export type Lang = 'en' | 'bg';
 
 export type SubscriptionPlan = 'LIGHT' | 'BASIC' | 'PREMIUM';
@@ -28,6 +34,16 @@ export type SubscriptionStatus =
   | 'PAUSED';
 
 export type UserAccountStatusLabel = 'ACTIVE' | 'SUSPENDED' | 'DELETED';
+
+// Compile-time guard: if the admin service ever adds, removes, or renames a
+// status/plan, one of these assignments errors and the missing key forces a
+// label entry to be added below. Without this, an unknown enum would silently
+// hit the `String(status).replace('_', ' ')` fallback at runtime.
+type _AssertExact<A, B> = [A] extends [B] ? ([B] extends [A] ? true : never) : never;
+const _planMatch: _AssertExact<SubscriptionPlan, ServiceSubscriptionPlan> = true;
+const _statusMatch: _AssertExact<SubscriptionStatus, ServiceSubscriptionStatus> = true;
+const _userMatch: _AssertExact<UserAccountStatusLabel, ServiceUserAccountStatus> = true;
+void _planMatch; void _statusMatch; void _userMatch;
 
 export const PLAN_LABELS: Record<SubscriptionPlan, Record<Lang, string>> = {
   LIGHT:   { en: 'Premium Weekly',  bg: 'Premium седмичен' },

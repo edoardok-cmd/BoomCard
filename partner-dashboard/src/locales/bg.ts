@@ -398,6 +398,7 @@ export const bg: TranslationKey = {
   dashboard: {
     greeting: 'Здравей',
     subtitle: 'Управлявайте вашите BOOM Card карти и преглеждайте спестяванията си',
+    partnerSubtitle: 'Управлявайте бизнеса си и следете представянето',
     activeCards: 'Активни карти',
     readyToUse: 'Готови за ползване',
     totalSavings: 'Общи спестявания',
@@ -623,6 +624,7 @@ export const bg: TranslationKey = {
     dangerZoneDesc: 'Необратими действия',
     deleteButton: 'Изтрий Акаунта Ми',
     deleteConfirm: 'Сигурни ли сте, че искате да изтриете акаунта си? Това действие не може да бъде отменено.',
+    accountDeleted: 'Акаунтът е изтрит успешно',
     errorSavingSettings: 'Грешка при запазване на настройките',
     featureComingSoon: 'Функцията ще бъде налична скоро',
     savedSuccess: 'Настройките са запазени успешно!',
@@ -1116,6 +1118,18 @@ export const bg: TranslationKey = {
     paymentHistory: 'История на плащания',
     historyLoading: 'Зареждане на история...',
     historyEmpty: 'Няма история на плащания.',
+    // Upgrade-to-Premium CTA (spec §5.6) — pro-rata wallet credit on plan change.
+    upgradeToPremium: 'Надгради до Premium месечен',
+    upgradeToPremiumDesc:
+      'Преминете към Premium месечен, за да отключите пълния кешбек и всички партньорски предимства. Оставащото време от текущия ви план се кредитира към портфейла ви.',
+    upgradeBtn: 'Надгради сега',
+    // 24h trial-refund window (spec §2.2) — full refund + cashback void on cancel.
+    cancelWithRefund: 'Отмяна с възстановяване',
+    trialRefundDesc:
+      'Все още сте в 24-часовия пробен период. Отмяната сега възстановява плащането ви изцяло и анулира всякакъв кешбек, спечелен по време на пробния период.',
+    trialRefundConfirm:
+      'Да отмените абонамента и да Ви бъде възстановена цялата сума? Всякакъв кешбек, спечелен по време на пробния период, ще бъде анулиран. Това действие е необратимо.',
+    refundBtn: 'Отмени и възстанови',
   },
 
   // Pricing Plans

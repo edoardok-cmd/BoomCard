@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { WalletTransactionType, WalletTransactionStatus, TransactionType, TransactionStatus } from '@prisma/client';
 import { authenticate, authorize, requirePermission } from '../middleware/auth.middleware';
 import { prisma } from '../lib/prisma';
+import { deriveCashbackEntryStatus } from '../services/adminCashback.service';
 
 const router = Router();
 
@@ -225,51 +226,78 @@ router.post('/adjust', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requireP
   }
 });
 
-// GET /api/admin/transactions/business — Spec §4.3 — Transaction model with Партньор / Кешбек / Марджин
+// Build a Prisma WHERE clause for the Transaction-list endpoint.
+// Pulled out so the list, total count, stats, and full-period export use the
+// exact same filter semantics. minRisk is pushed into the DB layer (spec §7.1
+// tier ranges) so total / pagination / stats stay in sync with the rendered rows.
+type BusinessTxWhere = NonNullable<Parameters<typeof prisma.transaction.findMany>[0]>['where'];
+
+function buildBusinessWhere(query: Record<string, string>): BusinessTxWhere {
+  const { partnerId, type, status, dateFrom, dateTo, search, minAmount, minRisk } = query;
+  const where: BusinessTxWhere = {};
+  const ands: BusinessTxWhere[] = [];
+
+  if (partnerId) where.partnerId = partnerId;
+  if (type && Object.values(TransactionType).includes(type as TransactionType)) {
+    where.type = type as TransactionType;
+  }
+  if (status && Object.values(TransactionStatus).includes(status as TransactionStatus)) {
+    where.status = status as TransactionStatus;
+  }
+  if (minAmount) {
+    const n = parseFloat(minAmount);
+    if (Number.isFinite(n) && n > 0) {
+      (where as Record<string, unknown>)['amount'] = { gte: n };
+    }
+  }
+  if (dateFrom || dateTo) {
+    const dateFilter: Record<string, Date> = {};
+    if (dateFrom) dateFilter['gte'] = new Date(dateFrom);
+    if (dateTo) {
+      const to = new Date(dateTo);
+      to.setUTCHours(23, 59, 59, 999);
+      dateFilter['lte'] = to;
+    }
+    where.createdAt = dateFilter as never;
+  }
+  if (search) {
+    ands.push({
+      OR: [
+        { user: { email: { contains: search, mode: 'insensitive' } } },
+        { user: { firstName: { contains: search, mode: 'insensitive' } } },
+        { user: { lastName: { contains: search, mode: 'insensitive' } } },
+        { partner: { businessName: { contains: search, mode: 'insensitive' } } },
+      ],
+    });
+  }
+  if (minRisk) {
+    const n = parseFloat(minRisk);
+    if (Number.isFinite(n) && n > 0) {
+      // Risk score = max(receipt.fraudScore, stickerScan.fraudScore). At the DB
+      // level, "row passes" iff EITHER source is at or above the threshold.
+      ands.push({
+        OR: [
+          { receipt: { fraudScore: { gte: n } } },
+          { stickerScan: { fraudScore: { gte: n } } },
+        ],
+      });
+    }
+  }
+  if (ands.length > 0) where.AND = ands;
+  return where;
+}
+
+// GET /api/admin/transactions/business — Spec §4.3 — Transaction model with
+// Партньор / Локация / Кешбек / Марджин / Risk score / Receipt link / dual timestamps.
 router.get('/business', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('transactions.read'), async (req, res, next) => {
   try {
-    const {
-      page = '1',
-      limit = '20',
-      partnerId,
-      type,
-      status,
-      dateFrom,
-      dateTo,
-      search,
-    } = req.query as Record<string, string>;
+    const { page = '1', limit = '20' } = req.query as Record<string, string>;
 
     const pageNum = Math.max(1, parseInt(page) || 1);
     const limitNum = Math.min(Math.max(1, parseInt(limit) || 20), 100);
     const skip = (pageNum - 1) * limitNum;
 
-    const where: Parameters<typeof prisma.transaction.findMany>[0]['where'] = {};
-
-    if (partnerId) where.partnerId = partnerId;
-    if (type && Object.values(TransactionType).includes(type as TransactionType)) {
-      where.type = type as TransactionType;
-    }
-    if (status && Object.values(TransactionStatus).includes(status as TransactionStatus)) {
-      where.status = status as TransactionStatus;
-    }
-    if (dateFrom || dateTo) {
-      const dateFilter: Record<string, Date> = {};
-      if (dateFrom) dateFilter['gte'] = new Date(dateFrom);
-      if (dateTo) {
-        const to = new Date(dateTo);
-        to.setUTCHours(23, 59, 59, 999);
-        dateFilter['lte'] = to;
-      }
-      where.createdAt = dateFilter as never;
-    }
-    if (search) {
-      where.OR = [
-        { user: { email: { contains: search, mode: 'insensitive' } } },
-        { user: { firstName: { contains: search, mode: 'insensitive' } } },
-        { user: { lastName: { contains: search, mode: 'insensitive' } } },
-        { partner: { businessName: { contains: search, mode: 'insensitive' } } },
-      ];
-    }
+    const where = buildBusinessWhere(req.query as Record<string, string>);
 
     const [transactions, total] = await Promise.all([
       prisma.transaction.findMany({
@@ -282,6 +310,7 @@ router.get('/business', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), require
           type: true,
           status: true,
           amount: true,
+          discount: true,
           discountAmount: true,
           finalAmount: true,
           cashbackAmount: true,
@@ -290,26 +319,209 @@ router.get('/business', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), require
           paymentMethod: true,
           createdAt: true,
           user: {
-            select: { id: true, firstName: true, lastName: true, email: true },
+            select: { id: true, firstName: true, lastName: true, email: true, riskScore: true },
           },
+          // Partner discountRate (with partnerType fallback) is the contract rate
+          // BoomCard charges the partner per accepted transaction. margin =
+          // partnerCharge − userCashback; without the rate the formula would
+          // collapse to ~0 since Transaction.discountAmount stores the user
+          // cashback amount (sticker.service.ts:1170), not the partner charge.
           partner: {
-            select: { id: true, businessName: true, businessNameBg: true },
+            select: {
+              id: true,
+              businessName: true,
+              businessNameBg: true,
+              discountRate: true,
+              partnerType: { select: { maxDiscountRate: true } },
+            },
           },
           venue: {
             select: { id: true, name: true },
+          },
+          receipt: {
+            select: {
+              id: true,
+              imageUrl: true,
+              imageKey: true,
+              status: true,
+              fraudScore: true,
+              createdAt: true,
+            },
+          },
+          stickerScan: {
+            select: {
+              sessionStartedAt: true,
+              fraudScore: true,
+            },
+          },
+          // CASHBACK_CREDIT walletTransaction is the source of truth for the
+          // §4.4 lifecycle (Pending/Cleared/Locked/Paid/Expired). Receipt.status
+          // only describes OCR/admin approval — not payout state — so deriving
+          // from WalletTransaction avoids the "approved-but-already-paid-out"
+          // conflation.
+          walletTransaction: {
+            select: {
+              status: true,
+              cashbackExpiresAt: true,
+              createdAt: true,
+              walletId: true,
+            },
           },
         },
       }),
       prisma.transaction.count({ where }),
     ]);
 
-    // Compute BoomCard margin per row: discountAmount (partner gives) − cashbackAmount (user gets)
-    const rows = transactions.map((tx) => ({
-      ...tx,
-      margin: ((tx.discountAmount ?? 0) - (tx.cashbackAmount ?? 0)),
-    }));
+    // Per-user latest completed withdrawal — needed to flip Cleared → Paid for
+    // entries that predate the most recent payout. Batched to avoid N+1.
+    const walletIds = Array.from(
+      new Set(
+        transactions
+          .map((tx) => tx.walletTransaction?.walletId)
+          .filter((id): id is string => !!id),
+      ),
+    );
+    const latestWithdrawals = walletIds.length
+      ? await prisma.walletTransaction.groupBy({
+          by: ['walletId'],
+          where: { walletId: { in: walletIds }, type: 'WITHDRAWAL', status: 'COMPLETED' },
+          _max: { createdAt: true },
+        })
+      : [];
+    const latestWithdrawalByWallet = new Map<string, Date>(
+      latestWithdrawals
+        .map((r) => [r.walletId, r._max.createdAt])
+        .filter((p): p is [string, Date] => !!p[1]),
+    );
+
+    const now = new Date();
+    const rows = transactions.map((tx) => {
+      // Margin = (partnerDiscountRate × amount) − userCashback.
+      // discountRate is the contractual partner charge; fall back to the
+      // partner type's maxDiscountRate, then null (column rendered as "—").
+      const partnerDiscountRate =
+        tx.partner?.discountRate ?? tx.partner?.partnerType?.maxDiscountRate ?? null;
+      const cashback = tx.cashbackAmount ?? 0;
+      const margin =
+        partnerDiscountRate != null
+          ? (partnerDiscountRate / 100) * tx.amount - cashback
+          : null;
+
+      const riskScore = Math.round(
+        tx.receipt?.fraudScore ?? tx.stickerScan?.fraudScore ?? 0,
+      );
+
+      const latestWithdrawalAt = tx.walletTransaction?.walletId
+        ? latestWithdrawalByWallet.get(tx.walletTransaction.walletId) ?? null
+        : null;
+      // Transactions without a CASHBACK_CREDIT (failed scans, refunds) have no
+      // lifecycle — leave cashbackStatus null so the UI renders "—".
+      const cashbackStatus = tx.walletTransaction
+        ? deriveCashbackEntryStatus(
+            {
+              status: tx.walletTransaction.status,
+              cashbackExpiresAt: tx.walletTransaction.cashbackExpiresAt,
+              createdAt: tx.walletTransaction.createdAt,
+            },
+            latestWithdrawalAt,
+            now,
+          )
+        : null;
+
+      // Strip walletTransaction.walletId from the response — it's only needed
+      // server-side for withdrawal lookup; the wire shape stays focused on UI fields.
+      const { walletTransaction: _wt, ...rest } = tx;
+      return {
+        ...rest,
+        margin,
+        partnerDiscountRate,
+        riskScore,
+        cashbackStatus,
+        receiptUploadedAt: tx.receipt?.createdAt ?? null,
+        sessionStartedAt: tx.stickerScan?.sessionStartedAt ?? null,
+        userRiskScore: tx.user.riskScore,
+      };
+    });
 
     res.json({ transactions: rows, total, page: pageNum, limit: limitNum });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// GET /api/admin/transactions/business/stats — Spec §3.1 transactions block:
+// Брой транзакции днес, общ оборот, средна стойност (today / total / avg, scoped by current filters).
+// Accepts the same filter set as /business so the stats bar matches the visible row count.
+router.get('/business/stats', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('transactions.read'), async (req, res, next) => {
+  try {
+    const where = buildBusinessWhere(req.query as Record<string, string>);
+
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+    const endOfToday = new Date();
+    endOfToday.setHours(23, 59, 59, 999);
+
+    const todayWhere: BusinessTxWhere = where.AND
+      ? { ...where, AND: [...(where.AND as BusinessTxWhere[]), { createdAt: { gte: startOfToday, lte: endOfToday } }] }
+      : { ...where, AND: [{ createdAt: { gte: startOfToday, lte: endOfToday } }] };
+
+    const [agg, todayCount] = await Promise.all([
+      prisma.transaction.aggregate({
+        where,
+        _sum: { amount: true, cashbackAmount: true },
+        _avg: { amount: true },
+        _count: { _all: true },
+      }),
+      prisma.transaction.count({ where: todayWhere }),
+    ]);
+
+    res.json({
+      count: agg._count._all,
+      todayCount,
+      totalVolume: agg._sum.amount ?? 0,
+      averageValue: agg._avg.amount ?? 0,
+      totalCashback: agg._sum.cashbackAmount ?? 0,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// GET /api/admin/transactions/business/partner-risk — aggregate fraud signal per partner
+// for the active filter window (Spec §7.2 — partner risk distinct from user risk).
+// Returns max + avg fraudScore across the partner's receipts in scope so the modal can
+// render a partner-level reading without an N+1 join in the list endpoint.
+//
+// Accepts the SAME filter params as /business so the modal's partner-risk reading
+// matches the slice the admin is currently viewing — except minRisk, which is
+// excluded on purpose: filtering receipts by their own fraudScore would make the
+// aggregate self-fulfilling (you'd only see receipts above the threshold, so the
+// "min" and "avg" would always be ≥ threshold).
+router.get('/business/partner-risk/:partnerId', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('transactions.read'), async (req, res, next) => {
+  try {
+    const { partnerId } = req.params;
+    if (!partnerId) {
+      res.status(400).json({ error: 'partnerId is required' });
+      return;
+    }
+    // Build the transaction-side where with the active filters; pin partnerId
+    // (overrides any inherited value from query) and drop minRisk to avoid
+    // self-fulfilling aggregation.
+    const { minRisk: _drop, partnerId: _ignore, ...rest } = req.query as Record<string, string>;
+    const txWhere = buildBusinessWhere({ ...rest, partnerId });
+
+    const agg = await prisma.receipt.aggregate({
+      where: { transaction: txWhere },
+      _max: { fraudScore: true },
+      _avg: { fraudScore: true },
+      _count: { _all: true },
+    });
+    res.json({
+      partnerId,
+      receiptCount: agg._count._all,
+      maxFraudScore: Math.round(agg._max.fraudScore ?? 0),
+      avgFraudScore: Math.round(agg._avg.fraudScore ?? 0),
+    });
   } catch (error) {
     next(error);
   }

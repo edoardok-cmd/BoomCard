@@ -480,8 +480,18 @@ async function sumRefundedMinor(paymentIntentId: string): Promise<number | null>
   let total = 0;
   let startingAfter: string | undefined;
   try {
-    // Bounded loop: 50 pages × 100 refunds = 5000 max. A real-world PI hitting
-    // that count is fraud or a bug — bail and let Stripe gate the create call.
+    // Bounded loop: 50 pages × 100 refunds = 5000 max. Stripe's API contract
+    // bounds refunds by captured amount, so a PI with thousands of refunds
+    // would already be a Stripe contract violation — this is purely defensive
+    // (catches an unexpected has_more=true loop). On loop exhaustion we return
+    // the partial `total` accumulated so far, which is necessarily an
+    // *undercount* of true refunds; the caller's max-refundable computation
+    // would then over-quote refundable amount, and the eventual create call
+    // gets gated by Stripe's own captured-amount cap. The catch arm below is
+    // the strictly more permissive failure mode: it returns null and the
+    // caller treats null as 0 already-refunded, over-quoting by the *full*
+    // refunded amount rather than just the unaccounted pages 51+. Both fail
+    // open and both lean on Stripe's create-call cap as the final guard.
     for (let i = 0; i < 50; i++) {
       const page = await stripeService.stripe.refunds.list({
         payment_intent: paymentIntentId,
@@ -562,14 +572,20 @@ router.get('/:userId/refund-preview', authenticate, authorize('ADMIN', 'SUPER_AD
       }
     }
 
+    // Distinct reason for the no-PI case (trialing sub or zero-amount invoice
+    // — Stripe doesn't create a PaymentIntent for either) so logs / clients
+    // can tell "we never got an id" apart from "we got an id but the PI had
+    // no captured amount".
+    if (!piId) {
+      res.json({ refundable: false, reason: 'no_payment_intent_id' });
+      return;
+    }
     // Refundable is bounded by what was actually captured (amount_received),
     // not by the original authorization (amount). For partial captures the
     // two diverge and a refund > amount_received is rejected by Stripe.
-    // The !piId arm narrows piId to string for the sumRefundedMinor call below
-    // — past this point piId is non-null because paymentIntent only becomes
-    // defined via the expanded object (which carries .id) or via retrieve(piId)
-    // (which requires piId truthy upfront).
-    if (!paymentIntent || !piId || !paymentIntent.currency || !paymentIntent.amount_received) {
+    // (piId is narrowed to string by the early-return above; this guard
+    // covers the missing-PI / not-yet-captured cases.)
+    if (!paymentIntent || !paymentIntent.currency || !paymentIntent.amount_received) {
       res.json({ refundable: false, reason: 'no_payment' });
       return;
     }
@@ -588,7 +604,7 @@ router.get('/:userId/refund-preview', authenticate, authorize('ADMIN', 'SUPER_AD
     const grossMinor = paymentIntent.amount_received;
     const remainingMinor = Math.max(0, grossMinor - alreadyRefundedMinor);
     if (remainingMinor === 0) {
-      res.json({ refundable: false, reason: 'no_payment' });
+      res.json({ refundable: false, reason: 'already_refunded' });
       return;
     }
     res.json({

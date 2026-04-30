@@ -440,6 +440,27 @@ export const adminCashbackService = new AdminCashbackService();
 
 export type CashbackEntryStatus = 'Pending' | 'Cleared' | 'Locked' | 'Paid' | 'Expired';
 
+// Spec §4.4 — derived 5-state lifecycle. Single source of truth: any consumer
+// rendering a cashback entry's lifecycle state must call this helper. Inlining
+// the rules elsewhere will silently drift the moment a status mapping changes.
+export function deriveCashbackEntryStatus(
+  entry: { status: string; cashbackExpiresAt: Date | null; createdAt: Date },
+  latestWithdrawalAt: Date | null,
+  now: Date,
+): CashbackEntryStatus {
+  if (entry.status === 'PENDING' || entry.status === 'TRIAL_PENDING' || entry.status === 'PROCESSING') {
+    return 'Pending';
+  }
+  if (entry.status === 'CANCELLED') {
+    // Nightly expiry job marks expired entries CANCELLED; trial voids also use CANCELLED.
+    return entry.cashbackExpiresAt && entry.cashbackExpiresAt <= now ? 'Expired' : 'Locked';
+  }
+  if (entry.status === 'ANNULLED' || entry.status === 'FAILED') return 'Locked';
+  if (entry.cashbackExpiresAt && entry.cashbackExpiresAt <= now) return 'Expired';
+  if (latestWithdrawalAt && entry.createdAt <= latestWithdrawalAt) return 'Paid';
+  return 'Cleared';
+}
+
 export interface SubscriberCashbackEntry {
   id: string;
   amount: number;
@@ -504,24 +525,7 @@ export async function getSubscriberCashbackEntries(
   const now = new Date();
 
   const data: SubscriberCashbackEntry[] = entries.map((e) => {
-    let status: CashbackEntryStatus;
-
-    if (e.status === 'PENDING' || e.status === 'TRIAL_PENDING' || e.status === 'PROCESSING') {
-      status = 'Pending';
-    } else if (e.status === 'CANCELLED') {
-      // Nightly expiry job marks expired entries CANCELLED; trial voids also use CANCELLED.
-      status = e.cashbackExpiresAt && e.cashbackExpiresAt <= now ? 'Expired' : 'Locked';
-    } else if (e.status === 'ANNULLED' || e.status === 'FAILED') {
-      status = 'Locked';
-    } else if (e.cashbackExpiresAt && e.cashbackExpiresAt <= now) {
-      // COMPLETED but expiry window already closed (scheduler may not have run yet)
-      status = 'Expired';
-    } else if (latestWithdrawal && e.createdAt <= latestWithdrawal.createdAt) {
-      // Entry was available before the most recent completed payout — it was paid out
-      status = 'Paid';
-    } else {
-      status = 'Cleared';
-    }
+    const status = deriveCashbackEntryStatus(e, latestWithdrawal?.createdAt ?? null, now);
 
     const daysUntilExpiry = e.cashbackExpiresAt
       ? Math.max(0, Math.ceil((e.cashbackExpiresAt.getTime() - now.getTime()) / 86_400_000))
@@ -715,19 +719,11 @@ export async function getAllCashbackEntries(
   }
 
   const data: GlobalCashbackEntry[] = entries.map((e) => {
-    let status: CashbackEntryStatus;
-    if (e.status === 'PENDING' || e.status === 'TRIAL_PENDING' || e.status === 'PROCESSING') {
-      status = 'Pending';
-    } else if (e.status === 'CANCELLED') {
-      status = e.cashbackExpiresAt && e.cashbackExpiresAt <= now ? 'Expired' : 'Locked';
-    } else if (e.status === 'ANNULLED' || e.status === 'FAILED') {
-      status = 'Locked';
-    } else if (e.cashbackExpiresAt && e.cashbackExpiresAt <= now) {
-      status = 'Expired';
-    } else {
-      const lastPaid = lastPaidByUser.get(e.wallet.userId);
-      status = lastPaid && e.createdAt <= lastPaid ? 'Paid' : 'Cleared';
-    }
+    const status = deriveCashbackEntryStatus(
+      e,
+      lastPaidByUser.get(e.wallet.userId) ?? null,
+      now,
+    );
 
     const daysUntilExpiry = e.cashbackExpiresAt
       ? Math.max(0, Math.ceil((e.cashbackExpiresAt.getTime() - now.getTime()) / 86_400_000))

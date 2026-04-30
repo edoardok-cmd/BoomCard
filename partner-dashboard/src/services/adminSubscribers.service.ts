@@ -173,7 +173,7 @@ export const adminSubscribersService = {
     id: string,
   ): Promise<
     | { refundable: true; currency: string; amount: number }
-    | { refundable: false; reason: 'no_stripe_subscription' | 'no_payment' }
+    | { refundable: false; reason: 'no_stripe_subscription' | 'no_payment_intent_id' | 'no_payment' | 'already_refunded' }
   > {
     return apiService.get(`/admin/subscribers/${id}/refund-preview`);
   },

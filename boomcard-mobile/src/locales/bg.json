@@ -506,7 +506,18 @@
     "upgradeCredit": "{{percent}}% от абонаментната ви такса се приспада при надграждане — плащате само разликата",
     "upgradeCreditBreakdown": "Кредит: €{{credit}} → Дължимо: €{{net}}",
     "upgradePayButton": "Надградете плана — ще бъде приложен кредит",
-    "minPayout": "Мин. изплащане: €{{amount}}"
+    "minPayout": "Мин. изплащане: €{{amount}}",
+    "status": {
+      "ACTIVE": "Активен",
+      "TRIALING": "Пробен",
+      "PAST_DUE": "Просрочен",
+      "UNPAID": "Неплатен",
+      "CANCELLED": "Отменен",
+      "EXPIRED": "Изтекъл",
+      "INCOMPLETE": "Незавършен",
+      "INCOMPLETE_EXPIRED": "Незавършен (изтекъл)",
+      "PAUSED": "На пауза"
+    }
   },
   "errors": {
     "networkError": "Грешка в мрежата. Моля, проверете връзката си.",

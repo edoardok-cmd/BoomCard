@@ -762,7 +762,7 @@ const DashboardPage: React.FC = () => {
           {t('dashboard.greeting')}, {user?.firstName}!
         </Title>
         <Subtitle>
-          {isPartner ? 'Manage your business and track performance' : t('dashboard.subtitle')}
+          {isPartner ? t('dashboard.partnerSubtitle') : t('dashboard.subtitle')}
         </Subtitle>
       </PageHeader>
 
