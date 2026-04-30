@@ -1,11 +1,14 @@
 import React from 'react';
-import { Outlet } from 'react-router-dom';
+import { Outlet, useLocation } from 'react-router-dom';
 import Header from './layout/Header/Header';
 import Footer from './layout/Footer/Footer';
 import MobileBottomNav from './layout/MobileBottomNav/MobileBottomNav';
 import ImpersonationBanner from './common/ImpersonationBanner/ImpersonationBanner';
 
 const Layout: React.FC = () => {
+  const { pathname } = useLocation();
+  const isAdminRoute = pathname.startsWith('/admin');
+
   return (
     <div className="min-h-screen flex flex-col">
       <ImpersonationBanner />
@@ -23,8 +26,8 @@ const Layout: React.FC = () => {
       >
         <Outlet />
       </main>
-      <Footer />
-      <MobileBottomNav />
+      {!isAdminRoute && <Footer />}
+      {!isAdminRoute && <MobileBottomNav />}
     </div>
   );
 };

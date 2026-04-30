@@ -12,6 +12,8 @@ import {
   SubscriptionPlan,
   SubscriptionStatus,
   UserAccountStatus,
+  AccountStatusFilter,
+  RiskLevelFilter,
 } from '../../services/adminSubscribers.service';
 import { adminTransactionsService, AdminTransaction } from '../../services/adminTransactions.service';
 
@@ -311,6 +313,24 @@ const ModalSelect = styled.select`
   }
 `;
 
+const ModalInput = styled.input`
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid ${palette.border};
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  background: ${palette.bg};
+  color: ${palette.text};
+  outline: none;
+  margin-bottom: 1.5rem;
+  box-sizing: border-box;
+
+  &:focus {
+    border-color: ${palette.accent};
+    box-shadow: 0 0 0 2px ${palette.accentSoft};
+  }
+`;
+
 /* ─── History Drawer ───────────────────────────────────────────────────────── */
 const Drawer = styled.div<{ $open: boolean }>`
   position: fixed;
@@ -506,7 +526,7 @@ const RiskPill = styled.span<{ $level: 'low' | 'medium' | 'high' }>`
 `;
 
 /* ─── Helpers ────────────────────────────────────────────────────────────── */
-function riskLevel(score: number): 'low' | 'medium' | 'high' {
+function riskLevelOf(score: number): 'low' | 'medium' | 'high' {
   if (score <= 30) return 'low';
   if (score <= 60) return 'medium';
   return 'high';
@@ -526,7 +546,7 @@ function displayName(row: AdminSubscriber): string {
 
 /* ─── CSV helper ────────────────────────────────────────────────────────────── */
 function downloadCSV(rows: AdminSubscriber[], locale: string) {
-  const headers = ['ID', 'First name', 'Last name', 'Email', 'Phone', 'Plan', 'Status', 'Cashback balance', 'Period ends', 'Auto-renew', 'Subscribed'];
+  const headers = ['ID', 'First name', 'Last name', 'Email', 'Phone', 'Account status', 'Plan', 'Sub status', 'Cashback balance', 'Period ends', 'Auto-renew', 'Joined'];
   const fmt = (iso: string) => new Date(iso).toLocaleDateString(locale, { day: '2-digit', month: '2-digit', year: 'numeric' });
   const lines = [
     headers.join(','),
@@ -537,12 +557,13 @@ function downloadCSV(rows: AdminSubscriber[], locale: string) {
         r.lastName ?? '',
         r.email,
         r.phone ?? '',
+        r.deletedAt ? 'DELETED' : r.status,
         r.subscription?.plan ?? '',
         r.subscription?.status ?? '',
         r.wallet?.availableBalance.toFixed(2) ?? '',
         r.subscription?.currentPeriodEnd ? fmt(r.subscription.currentPeriodEnd) : '',
         r.subscription?.autoRenewal ? 'Yes' : 'No',
-        r.subscription?.createdAt ? fmt(r.subscription.createdAt) : fmt(r.createdAt),
+        fmt(r.createdAt),
       ]
         .map((v) => `"${String(v).replace(/"/g, '""')}"`)
         .join(',')
@@ -580,7 +601,28 @@ const STATUS_OPTIONS: Array<{ value: SubscriptionStatus | ''; label: string }> =
   { value: 'INCOMPLETE_EXPIRED', label: 'Incomplete expired' },
 ];
 
+const ACCOUNT_STATUS_OPTIONS: Array<{ value: AccountStatusFilter | ''; label: string }> = [
+  { value: '', label: 'All accounts' },
+  { value: 'ACTIVE', label: 'Active' },
+  { value: 'SUSPENDED', label: 'Suspended' },
+  { value: 'DELETED', label: 'Deleted' },
+];
+
+const RISK_OPTIONS: Array<{ value: RiskLevelFilter | ''; label: string }> = [
+  { value: '', label: 'All risk' },
+  { value: 'low', label: 'Low risk' },
+  { value: 'medium', label: 'Medium risk' },
+  { value: 'high', label: 'High risk' },
+];
+
 const PLAN_CHOICES: SubscriptionPlan[] = ['LIGHT', 'BASIC', 'PREMIUM'];
+
+type RefundReason = 'duplicate' | 'fraudulent' | 'requested_by_customer';
+const REFUND_REASONS: Array<{ value: RefundReason; label: string }> = [
+  { value: 'requested_by_customer', label: 'Requested by customer' },
+  { value: 'duplicate', label: 'Duplicate charge' },
+  { value: 'fraudulent', label: 'Fraudulent' },
+];
 
 export default function AdminSubscribersAllPage() {
   const { language } = useLanguage();
@@ -593,6 +635,8 @@ export default function AdminSubscribersAllPage() {
   const [search, setSearch] = useState('');
   const [plan, setPlan] = useState<SubscriptionPlan | ''>('');
   const [status, setStatus] = useState<SubscriptionStatus | ''>('');
+  const [accountStatus, setAccountStatus] = useState<AccountStatusFilter | ''>('');
+  const [riskLevel, setRiskLevel] = useState<RiskLevelFilter | ''>('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
 
@@ -604,25 +648,33 @@ export default function AdminSubscribersAllPage() {
     row: AdminSubscriber;
     targetStatus: 'ACTIVE' | 'SUSPENDED';
   } | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<AdminSubscriber | null>(null);
+  const [deleteReason, setDeleteReason] = useState('');
+  const [confirmRestore, setConfirmRestore] = useState<AdminSubscriber | null>(null);
+  const [confirmForceLogout, setConfirmForceLogout] = useState<AdminSubscriber | null>(null);
+  const [refundTarget, setRefundTarget] = useState<AdminSubscriber | null>(null);
+  const [refundAmount, setRefundAmount] = useState('');
+  const [refundReason, setRefundReason] = useState<RefundReason>('requested_by_customer');
+  const [exporting, setExporting] = useState(false);
 
   /* ── Drawer state ── */
   const [drawerSub, setDrawerSub] = useState<AdminSubscriber | null>(null);
 
   /* ── Data ── */
-  const queryKey = ['admin-subscribers', page, search, plan, status, dateFrom, dateTo];
+  const filters = {
+    search: search || undefined,
+    plan,
+    status,
+    accountStatus,
+    riskLevel,
+    dateFrom: dateFrom || undefined,
+    dateTo: dateTo || undefined,
+  };
+  const queryKey = ['admin-subscribers', page, search, plan, status, accountStatus, riskLevel, dateFrom, dateTo];
 
   const { data, isLoading } = useQuery({
     queryKey,
-    queryFn: () =>
-      adminSubscribersService.list({
-        page,
-        limit: PAGE_SIZE,
-        search: search || undefined,
-        plan,
-        status,
-        dateFrom: dateFrom || undefined,
-        dateTo: dateTo || undefined,
-      }),
+    queryFn: () => adminSubscribersService.list({ page, limit: PAGE_SIZE, ...filters }),
   });
 
   const { data: drawerTxData, isLoading: drawerTxLoading } = useQuery({
@@ -675,8 +727,44 @@ export default function AdminSubscribersAllPage() {
     mutationFn: (id: string) => adminSubscribersService.forceLogout(id),
     onSuccess: (res) => {
       toast.success(`Revoked ${res.revokedCount} session(s)`);
+      setConfirmForceLogout(null);
     },
     onError: () => toast.error('Failed to revoke sessions'),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason?: string }) =>
+      adminSubscribersService.deleteAccount(id, reason),
+    onSuccess: () => {
+      toast.success('Account deleted');
+      queryClient.invalidateQueries({ queryKey: ['admin-subscribers'] });
+      setConfirmDelete(null);
+      setDeleteReason('');
+    },
+    onError: () => toast.error('Failed to delete account'),
+  });
+
+  const restoreMutation = useMutation({
+    mutationFn: (id: string) => adminSubscribersService.restoreAccount(id),
+    onSuccess: () => {
+      toast.success('Account restored');
+      queryClient.invalidateQueries({ queryKey: ['admin-subscribers'] });
+      setConfirmRestore(null);
+    },
+    onError: () => toast.error('Failed to restore account'),
+  });
+
+  const refundMutation = useMutation({
+    mutationFn: ({ id, amount, reason }: { id: string; amount?: number; reason: RefundReason }) =>
+      adminSubscribersService.refund(id, { amount, reason }),
+    onSuccess: (res) => {
+      toast.success(`Refund of ${res.amount.toFixed(2)} ${res.currency.toUpperCase()} issued`);
+      queryClient.invalidateQueries({ queryKey: ['admin-subscribers'] });
+      setRefundTarget(null);
+      setRefundAmount('');
+    },
+    onError: (err: Error & { response?: { data?: { error?: string } } }) =>
+      toast.error(err.response?.data?.error ?? 'Failed to issue refund'),
   });
 
   /* ── Escape key close ── */
@@ -686,11 +774,34 @@ export default function AdminSubscribersAllPage() {
       setConfirmCancel(null);
       setConfirmPlan(null);
       setConfirmSuspend(null);
+      setConfirmDelete(null);
+      setConfirmRestore(null);
+      setConfirmForceLogout(null);
+      setRefundTarget(null);
       setDrawerSub(null);
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
   }, []);
+
+  /* ── CSV export handler ── */
+  const handleExportCSV = async () => {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      const res = await adminSubscribersService.exportAll(filters);
+      if (!res.subscribers.length) {
+        toast.error('No subscribers to export');
+        return;
+      }
+      downloadCSV(res.subscribers, locale);
+      toast.success(`Exported ${res.subscribers.length} subscriber(s)`);
+    } catch {
+      toast.error('Failed to export subscribers');
+    } finally {
+      setExporting(false);
+    }
+  };
 
   /* ── Handlers ── */
   const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -740,12 +851,12 @@ export default function AdminSubscribersAllPage() {
         row.riskScore == null ? (
           <span style={{ color: palette.textSubtle }}>—</span>
         ) : (
-          <RiskPill $level={riskLevel(row.riskScore)}>{riskLabel(row.riskScore)}</RiskPill>
+          <RiskPill $level={riskLevelOf(row.riskScore)}>{riskLabel(row.riskScore)}</RiskPill>
         ),
     },
     {
-      key: 'lastActivity',
-      header: 'Last activity',
+      key: 'lastLogin',
+      header: 'Last login',
       render: (row) => (
         <span style={{ color: palette.textMuted, fontSize: '0.8125rem' }}>
           {row.lastLoginAt ? fmt(row.lastLoginAt) : 'Never'}
@@ -757,7 +868,9 @@ export default function AdminSubscribersAllPage() {
       header: 'Plan',
       render: (row) =>
         row.subscription ? (
-          <PlanBadge $plan={row.subscription.plan}>{row.subscription.plan}</PlanBadge>
+          <PlanBadge $plan={row.subscription.plan}>
+            {row.subscription.planDisplayName ?? row.subscription.plan}
+          </PlanBadge>
         ) : (
           <span style={{ color: palette.textSubtle }}>—</span>
         ),
@@ -816,11 +929,11 @@ export default function AdminSubscribersAllPage() {
     },
     {
       key: 'createdAt',
-      header: 'Subscribed',
+      header: 'Joined',
       sortable: true,
       render: (row) => (
         <span style={{ color: palette.textMuted, fontSize: '0.8125rem' }}>
-          {row.subscription?.createdAt ? fmt(row.subscription.createdAt) : '—'}
+          {fmt(row.createdAt)}
         </span>
       ),
     },
@@ -837,13 +950,23 @@ export default function AdminSubscribersAllPage() {
         setNewPlan(row.subscription?.plan ?? 'BASIC');
         setConfirmPlan(row);
       },
-      hidden: (row) => !row.subscription || row.subscription.status === 'CANCELLED' || row.status === 'DELETED',
+      hidden: (row) => !row.subscription || row.subscription.status === 'CANCELLED' || !!row.deletedAt,
     },
     {
       label: 'Cancel subscription',
       danger: true,
       onClick: (row) => setConfirmCancel(row),
-      hidden: (row) => !row.subscription || row.subscription.status === 'CANCELLED' || row.status === 'DELETED',
+      hidden: (row) => !row.subscription || row.subscription.status === 'CANCELLED' || !!row.deletedAt,
+    },
+    {
+      label: 'Refund',
+      danger: true,
+      onClick: (row) => {
+        setRefundAmount('');
+        setRefundReason('requested_by_customer');
+        setRefundTarget(row);
+      },
+      hidden: (row) => !row.subscription || !!row.deletedAt,
     },
     {
       label: 'Suspend account',
@@ -858,10 +981,22 @@ export default function AdminSubscribersAllPage() {
     },
     {
       label: 'Force logout',
+      onClick: (row) => setConfirmForceLogout(row),
+      hidden: (row) => !!row.deletedAt,
+    },
+    {
+      label: 'Delete account',
+      danger: true,
       onClick: (row) => {
-        if (!window.confirm(`Revoke all sessions for ${displayName(row)}?`)) return;
-        forceLogoutMutation.mutate(row.id);
+        setDeleteReason('');
+        setConfirmDelete(row);
       },
+      hidden: (row) => !!row.deletedAt,
+    },
+    {
+      label: 'Restore account',
+      onClick: (row) => setConfirmRestore(row),
+      hidden: (row) => !row.deletedAt,
     },
   ];
 
@@ -926,6 +1061,142 @@ export default function AdminSubscribersAllPage() {
                 disabled={planMutation.isPending || newPlan === confirmPlan.subscription?.plan}
               >
                 {planMutation.isPending ? 'Saving…' : 'Save change'}
+              </Btn>
+            </ModalActions>
+          </Modal>
+        </Overlay>
+      )}
+
+      {/* Delete confirm modal */}
+      {confirmDelete && (
+        <Overlay onClick={() => !deleteMutation.isPending && setConfirmDelete(null)}>
+          <Modal onClick={(e) => e.stopPropagation()}>
+            <ModalTitle>Delete account?</ModalTitle>
+            <ModalBody>
+              <strong>{displayName(confirmDelete)}</strong> will be soft-deleted. History,
+              payments and transactions are preserved and the account can be restored later.
+            </ModalBody>
+            <div>
+              <ModalLabel>Reason (optional)</ModalLabel>
+              <ModalInput
+                type="text"
+                value={deleteReason}
+                onChange={(e) => setDeleteReason(e.target.value)}
+                placeholder="e.g. user request, fraud"
+              />
+            </div>
+            <ModalActions>
+              <Btn onClick={() => setConfirmDelete(null)}>Cancel</Btn>
+              <Btn
+                $variant="danger"
+                onClick={() =>
+                  deleteMutation.mutate({ id: confirmDelete.id, reason: deleteReason || undefined })
+                }
+                disabled={deleteMutation.isPending}
+              >
+                {deleteMutation.isPending ? 'Deleting…' : 'Yes, delete'}
+              </Btn>
+            </ModalActions>
+          </Modal>
+        </Overlay>
+      )}
+
+      {/* Restore confirm modal */}
+      {confirmRestore && (
+        <Overlay onClick={() => !restoreMutation.isPending && setConfirmRestore(null)}>
+          <Modal onClick={(e) => e.stopPropagation()}>
+            <ModalTitle>Restore account?</ModalTitle>
+            <ModalBody>
+              <strong>{displayName(confirmRestore)}</strong>&apos;s account will be restored
+              and set back to ACTIVE.
+            </ModalBody>
+            <ModalActions>
+              <Btn onClick={() => setConfirmRestore(null)}>Cancel</Btn>
+              <Btn
+                $variant="primary"
+                onClick={() => restoreMutation.mutate(confirmRestore.id)}
+                disabled={restoreMutation.isPending}
+              >
+                {restoreMutation.isPending ? 'Restoring…' : 'Yes, restore'}
+              </Btn>
+            </ModalActions>
+          </Modal>
+        </Overlay>
+      )}
+
+      {/* Force logout confirm modal */}
+      {confirmForceLogout && (
+        <Overlay onClick={() => !forceLogoutMutation.isPending && setConfirmForceLogout(null)}>
+          <Modal onClick={(e) => e.stopPropagation()}>
+            <ModalTitle>Force logout?</ModalTitle>
+            <ModalBody>
+              All active sessions for <strong>{displayName(confirmForceLogout)}</strong> will
+              be revoked. They will need to sign in again on every device.
+            </ModalBody>
+            <ModalActions>
+              <Btn onClick={() => setConfirmForceLogout(null)}>Cancel</Btn>
+              <Btn
+                $variant="danger"
+                onClick={() => forceLogoutMutation.mutate(confirmForceLogout.id)}
+                disabled={forceLogoutMutation.isPending}
+              >
+                {forceLogoutMutation.isPending ? 'Revoking…' : 'Yes, revoke'}
+              </Btn>
+            </ModalActions>
+          </Modal>
+        </Overlay>
+      )}
+
+      {/* Refund modal */}
+      {refundTarget && (
+        <Overlay onClick={() => !refundMutation.isPending && setRefundTarget(null)}>
+          <Modal onClick={(e) => e.stopPropagation()}>
+            <ModalTitle>Issue refund</ModalTitle>
+            <ModalBody>
+              Refund the latest Stripe payment for <strong>{displayName(refundTarget)}</strong>.
+              Leave amount empty to refund the full charge.
+            </ModalBody>
+            <div>
+              <ModalLabel>Amount (BGN)</ModalLabel>
+              <ModalInput
+                type="number"
+                step="0.01"
+                min="0"
+                value={refundAmount}
+                onChange={(e) => setRefundAmount(e.target.value)}
+                placeholder="Full amount"
+              />
+            </div>
+            <div>
+              <ModalLabel>Reason</ModalLabel>
+              <ModalSelect
+                value={refundReason}
+                onChange={(e) => setRefundReason(e.target.value as RefundReason)}
+              >
+                {REFUND_REASONS.map((r) => (
+                  <option key={r.value} value={r.value}>{r.label}</option>
+                ))}
+              </ModalSelect>
+            </div>
+            <ModalActions>
+              <Btn onClick={() => setRefundTarget(null)}>Cancel</Btn>
+              <Btn
+                $variant="danger"
+                onClick={() => {
+                  const parsed = refundAmount ? parseFloat(refundAmount) : undefined;
+                  if (parsed !== undefined && (!Number.isFinite(parsed) || parsed <= 0)) {
+                    toast.error('Amount must be a positive number');
+                    return;
+                  }
+                  refundMutation.mutate({
+                    id: refundTarget.id,
+                    amount: parsed,
+                    reason: refundReason,
+                  });
+                }}
+                disabled={refundMutation.isPending}
+              >
+                {refundMutation.isPending ? 'Refunding…' : 'Issue refund'}
               </Btn>
             </ModalActions>
           </Modal>
@@ -1046,11 +1317,8 @@ export default function AdminSubscribersAllPage() {
           <PageSubtitle>All subscription records across plans and statuses</PageSubtitle>
         </TitleBlock>
         <HeaderActions>
-          <Btn
-            onClick={() => data?.subscribers?.length && downloadCSV(data.subscribers, locale)}
-            disabled={!data?.subscribers?.length}
-          >
-            ↓ Export CSV
+          <Btn onClick={handleExportCSV} disabled={exporting || !data?.total}>
+            {exporting ? 'Exporting…' : '↓ Export CSV'}
           </Btn>
         </HeaderActions>
       </PageHeader>
@@ -1059,11 +1327,16 @@ export default function AdminSubscribersAllPage() {
         <FilterRow>
           <SearchInput
             type="text"
-            placeholder="Search by name, email or phone…"
+            placeholder="Search by name, email, phone or IBAN…"
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
             onKeyDown={handleSearchKeyDown}
           />
+          <Select value={accountStatus} onChange={(e) => { setAccountStatus(e.target.value as AccountStatusFilter | ''); setPage(1); }}>
+            {ACCOUNT_STATUS_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </Select>
           <Select value={plan} onChange={(e) => { setPlan(e.target.value as SubscriptionPlan | ''); setPage(1); }}>
             {PLAN_OPTIONS.map((o) => (
               <option key={o.value} value={o.value}>{o.label}</option>
@@ -1074,16 +1347,21 @@ export default function AdminSubscribersAllPage() {
               <option key={o.value} value={o.value}>{o.label}</option>
             ))}
           </Select>
+          <Select value={riskLevel} onChange={(e) => { setRiskLevel(e.target.value as RiskLevelFilter | ''); setPage(1); }}>
+            {RISK_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </Select>
           <DateInput
             type="date"
             value={dateFrom}
-            title="Subscribed from"
+            title="Joined from"
             onChange={(e) => { setDateFrom(e.target.value); setPage(1); }}
           />
           <DateInput
             type="date"
             value={dateTo}
-            title="Subscribed to"
+            title="Joined to"
             onChange={(e) => { setDateTo(e.target.value); setPage(1); }}
           />
         </FilterRow>

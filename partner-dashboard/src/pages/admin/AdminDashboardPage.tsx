@@ -4,33 +4,16 @@ import styled from 'styled-components';
 import { motion } from 'framer-motion';
 import {
   BuildingStorefrontIcon,
-  TagIcon,
-  StarIcon,
-  ArrowUpTrayIcon,
-  ReceiptPercentIcon,
   BanknotesIcon,
-  ShieldCheckIcon,
-  Cog6ToothIcon,
-  DocumentTextIcon,
-  ClipboardDocumentCheckIcon,
-  MagnifyingGlassIcon,
-  HandRaisedIcon,
   ChartBarIcon,
   CurrencyDollarIcon,
   CheckCircleIcon,
-  ArrowUpRightIcon,
   BellAlertIcon,
   UsersIcon,
 } from '@heroicons/react/24/outline';
 import { useAuth } from '../../contexts/AuthContext';
 import { useLanguage } from '../../contexts/LanguageContext';
-import { adminCashbackService } from '../../services/adminCashback.service';
 import { adminDashboardService, AdminDashboardStats } from '../../services/adminDashboard.service';
-import { partnerTypesService } from '../../services/partnerTypes.service';
-import { venuesService } from '../../services/venues.service';
-import { receiptsApiService } from '../../services/receipts-api.service';
-import { fraudAdminService } from '../../services/fraudAdmin.service';
-import { apiService } from '../../services/api.service';
 import { adminAlertsService, AdminAlertsResult, AlertTier } from '../../services/adminAlerts.service';
 
 /* ─── Palette ─────────────────────────────────────────────────────────────── */
@@ -382,11 +365,6 @@ const StatsGrid = styled.div`
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(13.5rem, 1fr));
   gap: 1rem;
-  margin-bottom: 4.5rem;
-
-  @media (max-width: 720px) {
-    margin-bottom: 3rem;
-  }
 `;
 
 const StatCard = styled(motion.div)`
@@ -459,18 +437,18 @@ const StatIconBox = styled.div<{ $tone?: 'neutral' | 'accent' | 'success' | 'war
   }
 `;
 
-const StatValue = styled.h3<{ $danger?: boolean }>`
+const StatValue = styled.h3`
   font-family: 'Tiempos Headline', 'Copernicus', 'Georgia', serif;
   font-size: 2.375rem;
   font-weight: 400;
-  color: ${p => (p.$danger ? palette.danger : palette.text)};
+  color: ${palette.text};
   margin: 0 0 0.375rem 0;
   letter-spacing: -0.03em;
   line-height: 1;
   font-feature-settings: 'tnum', 'lnum';
 
   [data-theme='dark'] & {
-    color: ${p => (p.$danger ? '#e27d5f' : '#f5f3ec')};
+    color: #f5f3ec;
   }
 `;
 
@@ -513,271 +491,6 @@ const TierLabel = styled.h3`
   }
 `;
 
-/* ─── Action Sections ──────────────────────────────────────────────────────── */
-const SectionGroup = styled.section`
-  margin-bottom: 3.25rem;
-
-  &:last-child {
-    margin-bottom: 0;
-  }
-`;
-
-const SectionHead = styled.div`
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 1rem;
-  margin-bottom: 1.5rem;
-  padding-bottom: 1rem;
-  border-bottom: 1px solid ${palette.border};
-
-  [data-theme='dark'] & {
-    border-color: #3a3732;
-  }
-`;
-
-const SectionTitle = styled.h2`
-  font-family: 'Tiempos Headline', 'Copernicus', 'Georgia', serif;
-  font-size: 1.5rem;
-  font-weight: 400;
-  color: ${palette.text};
-  margin: 0;
-  letter-spacing: -0.015em;
-
-  [data-theme='dark'] & {
-    color: #f5f3ec;
-  }
-`;
-
-const SectionHint = styled.span`
-  font-size: 0.8125rem;
-  color: ${palette.textSubtle};
-  text-align: right;
-  font-weight: 400;
-
-  @media (max-width: 640px) {
-    display: none;
-  }
-`;
-
-const ActionsGrid = styled.div`
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr));
-  gap: 0.875rem;
-`;
-
-const ActionCard = styled(motion(Link))`
-  position: relative;
-  display: flex;
-  align-items: flex-start;
-  gap: 1rem;
-  background: ${palette.surface};
-  border: 1px solid ${palette.border};
-  border-radius: 0.875rem;
-  padding: 1.25rem 1.25rem 1.125rem;
-  min-height: 6.25rem;
-  text-decoration: none;
-  transition: border-color 220ms ease, box-shadow 220ms ease, transform 220ms ease;
-
-  [data-theme='dark'] & {
-    background: #252320;
-    border-color: #3a3732;
-  }
-
-  &:hover {
-    border-color: ${palette.borderStrong};
-    box-shadow: 0 1px 2px rgba(20, 20, 19, 0.04), 0 10px 28px -16px rgba(20, 20, 19, 0.1);
-    transform: translateY(-1px);
-
-    [data-theme='dark'] & {
-      border-color: #4a453e;
-    }
-
-    .arrow {
-      opacity: 1;
-      transform: translate(0, 0);
-      color: ${palette.accent};
-    }
-  }
-`;
-
-const ActionIcon = styled.div<{ $accent?: boolean }>`
-  flex-shrink: 0;
-  width: 2.25rem;
-  height: 2.25rem;
-  border-radius: 0.625rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: ${p => (p.$accent ? palette.accentSoft : palette.surfaceAlt)};
-  color: ${p => (p.$accent ? palette.accent : palette.text)};
-
-  [data-theme='dark'] & {
-    background: ${p => (p.$accent ? 'rgba(201, 100, 66, 0.18)' : '#32302b')};
-    color: ${p => (p.$accent ? '#e08162' : '#ece9e0')};
-  }
-
-  svg {
-    width: 1.125rem;
-    height: 1.125rem;
-    stroke-width: 1.6;
-  }
-`;
-
-const ActionBody = styled.div`
-  flex: 1 1 auto;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.375rem;
-`;
-
-const ActionTitleRow = styled.div`
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-`;
-
-const ActionTitle = styled.h3`
-  font-size: 0.9375rem;
-  font-weight: 600;
-  color: ${palette.text};
-  margin: 0;
-  line-height: 1.3;
-  letter-spacing: -0.01em;
-
-  [data-theme='dark'] & {
-    color: #f5f3ec;
-  }
-`;
-
-const ActionDescription = styled.p`
-  font-size: 0.8125rem;
-  color: ${palette.textMuted};
-  margin: 0;
-  line-height: 1.5;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-
-  [data-theme='dark'] & {
-    color: #b0a89c;
-  }
-`;
-
-const ActionFooter = styled.div`
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-  margin-top: 0.25rem;
-`;
-
-const ActionArrow = styled.div.attrs({ className: 'arrow' })`
-  color: ${palette.textSubtle};
-  opacity: 0;
-  transform: translate(-4px, 0);
-  transition: opacity 220ms ease, transform 220ms ease, color 220ms ease;
-  display: flex;
-  align-items: center;
-
-  svg {
-    width: 1rem;
-    height: 1rem;
-    stroke-width: 1.8;
-  }
-`;
-
-const MetricBadge = styled.div<{ $tone?: 'neutral' | 'warning' | 'danger' | 'success' }>`
-  display: inline-flex;
-  align-items: baseline;
-  gap: 0.375rem;
-  padding: 0.25rem 0.625rem;
-  border-radius: 999px;
-  background: ${p =>
-    p.$tone === 'warning'
-      ? palette.warningSoft
-      : p.$tone === 'danger'
-        ? palette.dangerSoft
-        : p.$tone === 'success'
-          ? palette.successSoft
-          : palette.surfaceAlt};
-
-  [data-theme='dark'] & {
-    background: ${p =>
-      p.$tone === 'warning'
-        ? 'rgba(181, 128, 58, 0.2)'
-        : p.$tone === 'danger'
-          ? 'rgba(181, 67, 39, 0.2)'
-          : p.$tone === 'success'
-            ? 'rgba(74, 124, 89, 0.2)'
-            : '#32302b'};
-  }
-`;
-
-const MetricValue = styled.span<{ $tone?: 'neutral' | 'warning' | 'danger' | 'success' }>`
-  font-size: 0.8125rem;
-  font-weight: 600;
-  line-height: 1;
-  letter-spacing: -0.01em;
-  font-feature-settings: 'tnum';
-  color: ${p =>
-    p.$tone === 'warning'
-      ? palette.warning
-      : p.$tone === 'danger'
-        ? palette.danger
-        : p.$tone === 'success'
-          ? palette.success
-          : palette.text};
-
-  [data-theme='dark'] & {
-    color: ${p =>
-      p.$tone === 'warning'
-        ? '#d4a165'
-        : p.$tone === 'danger'
-          ? '#e27d5f'
-          : p.$tone === 'success'
-            ? '#79b090'
-            : '#ece9e0'};
-  }
-`;
-
-const MetricLabel = styled.span`
-  font-size: 0.6875rem;
-  font-weight: 500;
-  line-height: 1;
-  color: ${palette.textMuted};
-  text-transform: lowercase;
-  letter-spacing: 0.02em;
-
-  [data-theme='dark'] & {
-    color: #9a948a;
-  }
-`;
-
-/* ─── Types ────────────────────────────────────────────────────────────────── */
-type MetricTone = 'neutral' | 'warning' | 'danger' | 'success';
-
-type ActionDef = {
-  to: string;
-  title: string;
-  description: string;
-  icon: React.ComponentType<React.SVGProps<SVGSVGElement>>;
-  accent?: boolean;
-  metric?: { value: number | string; label: string; tone?: MetricTone };
-};
-
-interface AdminMetrics {
-  partnerTypesCount?: number;
-  pendingMenus?: number;
-  pendingReceipts?: number;
-  cashbackRatesCount?: number;
-  whitelistCount?: number;
-  pendingScans?: number;
-}
-
 /* ─── Alert helpers ────────────────────────────────────────────────────────── */
 function tierToSeverity(tier: AlertTier): 'danger' | 'warning' | 'info' {
   if (tier === 'critical') return 'danger';
@@ -790,7 +503,6 @@ const AdminDashboardPage: React.FC = () => {
   const { user } = useAuth();
   const { language } = useLanguage();
   const [dashStats, setDashStats] = useState<AdminDashboardStats | null>(null);
-  const [metrics, setMetrics] = useState<AdminMetrics>({});
   const [alerts, setAlerts] = useState<AdminAlertsResult | null>(null);
 
   useEffect(() => {
@@ -806,53 +518,6 @@ const AdminDashboardPage: React.FC = () => {
       );
   }, []);
 
-  useEffect(() => {
-    let cancelled = false;
-    const patch = (next: Partial<AdminMetrics>) => {
-      if (cancelled) return;
-      setMetrics(prev => ({ ...prev, ...next }));
-    };
-
-    partnerTypesService
-      .getPartnerTypes()
-      .then((list: unknown[]) => patch({ partnerTypesCount: list.length }))
-      .catch(() => {});
-
-    venuesService
-      .adminListPendingMenus()
-      .then(list => patch({ pendingMenus: list.length }))
-      .catch(() => {});
-
-    receiptsApiService
-      .getPendingReviews(100)
-      .then(res => patch({ pendingReceipts: res.data?.length ?? 0 }))
-      .catch(() => {});
-
-    adminCashbackService
-      .getRates()
-      .then(rows => patch({ cashbackRatesCount: rows.length }))
-      .catch(() => {});
-
-    fraudAdminService
-      .getMerchantWhitelist()
-      .then(res => patch({ whitelistCount: res.data?.length ?? 0 }))
-      .catch(() => {});
-
-    apiService
-      .get<unknown>('/stickers/admin/pending-review', { status: 'MANUAL_REVIEW' })
-      .then(body => {
-        const count = Array.isArray(body)
-          ? body.length
-          : ((body as { data?: unknown[] })?.data?.length ?? 0);
-        patch({ pendingScans: count });
-      })
-      .catch(() => {});
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
   const bg = language === 'bg';
 
   const today = new Date().toLocaleDateString(bg ? 'bg-BG' : 'en-US', {
@@ -861,210 +526,6 @@ const AdminDashboardPage: React.FC = () => {
     month: 'long',
     day: 'numeric',
   });
-
-  const lblTotal = bg ? 'общо' : 'total';
-  const lblTypes = bg ? 'типа' : 'types';
-  const lblPending = bg ? 'чакат' : 'pending';
-  const lblSteps = bg ? 'стъпки' : 'steps';
-  const lblMerchants = bg ? 'търговци' : 'merchants';
-  const lblFlagged = bg ? 'маркирани' : 'flagged';
-
-  const partnerActions: ActionDef[] = [
-    {
-      to: '/admin/partners/active',
-      title: bg ? 'Партньори' : 'Partners',
-      description: bg
-        ? 'Управление на партньорски акаунти и одобрения'
-        : 'Manage partner accounts and approvals',
-      icon: BuildingStorefrontIcon,
-      accent: true,
-      metric: dashStats ? { value: dashStats.partners.active, label: lblTotal } : undefined,
-    },
-    {
-      to: '/admin/partners/receipt-profiles',
-      title: bg ? 'Типове Партньори' : 'Partner Types',
-      description: bg
-        ? 'Лимити за отстъпки и достъп по абонамент'
-        : 'Discount rate caps and subscription plan access',
-      icon: TagIcon,
-      metric:
-        metrics.partnerTypesCount !== undefined
-          ? { value: metrics.partnerTypesCount, label: lblTypes }
-          : undefined,
-    },
-    {
-      to: '/admin/partners/onboarding',
-      title: bg ? 'Въвеждане на Партньор' : 'Partner Onboarding',
-      description: bg
-        ? 'Ръчно въвеждане с бизнес данни, обекти и условия'
-        : 'Onboard a partner with business info, venues, and terms',
-      icon: HandRaisedIcon,
-    },
-    {
-      to: '/admin/bulk-import',
-      title: bg ? 'Масов Импорт' : 'Bulk Import',
-      description: bg
-        ? 'Импорт на партньори и оферти от CSV/Excel'
-        : 'Import partners and offers from CSV or Excel',
-      icon: ArrowUpTrayIcon,
-    },
-  ];
-
-  const contentActions: ActionDef[] = [
-    {
-      to: '/admin/top-discounts',
-      title: bg ? 'Топ Отстъпки' : 'Top Discounts',
-      description: bg
-        ? 'Управление на featured оферти — снимки и полета'
-        : 'Manage featured Top Discounts — images and copy',
-      icon: StarIcon,
-      accent: true,
-    },
-    {
-      to: '/admin/menu-approvals',
-      title: bg ? 'Одобрения на Менюта' : 'Menu Approvals',
-      description: bg
-        ? 'Преглед и одобряване на URL адреси за менюта'
-        : 'Review and approve partner-submitted menu URLs',
-      icon: ClipboardDocumentCheckIcon,
-      metric:
-        metrics.pendingMenus !== undefined
-          ? {
-              value: metrics.pendingMenus,
-              label: lblPending,
-              tone: metrics.pendingMenus > 0 ? 'warning' : 'neutral',
-            }
-          : undefined,
-    },
-  ];
-
-  const cashbackActions: ActionDef[] = [
-    {
-      to: '/admin/control/risk',
-      title: bg ? 'Преглед на Касови Бележки' : 'Receipt Review',
-      description: bg
-        ? 'Одобрявайте, отхвърляйте и управлявайте начисления'
-        : 'Approve, reject, and manage cashback credits',
-      icon: ReceiptPercentIcon,
-      accent: true,
-      metric:
-        metrics.pendingReceipts !== undefined
-          ? {
-              value: metrics.pendingReceipts,
-              label: lblPending,
-              tone: metrics.pendingReceipts > 0 ? 'warning' : 'neutral',
-            }
-          : undefined,
-    },
-    {
-      to: '/admin/subscribers/cashback',
-      title: bg ? 'Плащания за Кешбек' : 'Cashback Payments',
-      description: bg
-        ? 'Месечни кешбек задължения на партньорите'
-        : 'Track monthly cashback owed by partners',
-      icon: BanknotesIcon,
-    },
-    {
-      to: '/admin/settings/percentages',
-      title: bg ? 'Ставки за Кешбек' : 'Cashback Rates',
-      description: bg
-        ? 'Матрица на ставки по ниво и категория'
-        : 'Rate matrix by tier and category',
-      icon: CurrencyDollarIcon,
-      metric:
-        metrics.cashbackRatesCount !== undefined
-          ? { value: metrics.cashbackRatesCount, label: lblSteps }
-          : undefined,
-    },
-  ];
-
-  const fraudActions: ActionDef[] = [
-    {
-      to: '/admin/merchant-whitelist',
-      title: bg ? 'Списък Търговци' : 'Merchant Whitelist',
-      description: bg
-        ? 'Одобрени и блокирани търговци за проверка'
-        : 'Approved and blocked merchants for verification',
-      icon: ShieldCheckIcon,
-      metric:
-        metrics.whitelistCount !== undefined
-          ? { value: metrics.whitelistCount, label: lblMerchants }
-          : undefined,
-    },
-    {
-      to: '/admin/control/rules',
-      title: bg ? 'Конфиг за Измами' : 'Venue Fraud Config',
-      description: bg
-        ? 'Прагове за измами, GPS и OCR проверки'
-        : 'Fraud thresholds, GPS and OCR verification',
-      icon: Cog6ToothIcon,
-    },
-    {
-      to: '/admin/partners/receipt-profiles',
-      title: bg ? 'Шаблони за Бележки' : 'Receipt Templates',
-      description: bg
-        ? 'Шаблони за визуално сравнение по обекти'
-        : 'Visual comparison templates per venue',
-      icon: DocumentTextIcon,
-    },
-    {
-      to: '/admin/control/risk',
-      title: bg ? 'Преглед на Сканирания' : 'Scan Review',
-      description: bg
-        ? 'Ръчен преглед на сканирания с възможна измама'
-        : 'Manual review of scans flagged as suspicious',
-      icon: MagnifyingGlassIcon,
-      metric:
-        metrics.pendingScans !== undefined
-          ? {
-              value: metrics.pendingScans,
-              label: lblFlagged,
-              tone: metrics.pendingScans > 0 ? 'danger' : 'neutral',
-            }
-          : undefined,
-    },
-  ];
-
-  const renderSection = (titleText: string, hint: string, actions: ActionDef[]) => (
-    <SectionGroup>
-      <SectionHead>
-        <SectionTitle>{titleText}</SectionTitle>
-        <SectionHint>{hint}</SectionHint>
-      </SectionHead>
-      <ActionsGrid>
-        {actions.map((a, idx) => (
-          <ActionCard
-            key={a.to + a.title}
-            to={a.to}
-            initial={{ opacity: 0, y: 6 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.04 * idx, duration: 0.28 }}
-          >
-            <ActionIcon $accent={a.accent}>
-              <a.icon />
-            </ActionIcon>
-            <ActionBody>
-              <ActionTitleRow>
-                <ActionTitle>{a.title}</ActionTitle>
-                <ActionArrow>
-                  <ArrowUpRightIcon />
-                </ActionArrow>
-              </ActionTitleRow>
-              <ActionDescription>{a.description}</ActionDescription>
-              {a.metric && (
-                <ActionFooter>
-                  <MetricBadge $tone={a.metric.tone ?? 'neutral'}>
-                    <MetricValue $tone={a.metric.tone ?? 'neutral'}>{a.metric.value}</MetricValue>
-                    <MetricLabel>{a.metric.label}</MetricLabel>
-                  </MetricBadge>
-                </ActionFooter>
-              )}
-            </ActionBody>
-          </ActionCard>
-        ))}
-      </ActionsGrid>
-    </SectionGroup>
-  );
 
   return (
     <PageShell>
@@ -1080,8 +541,8 @@ const AdminDashboardPage: React.FC = () => {
             </Title>
             <Subtitle>
               {bg
-                ? 'Обзор на платформата — оферти, кешбек и проверки за измами.'
-                : 'An overview of the platform — offers, cashback, and fraud review at a glance.'}
+                ? 'Контролен център — абонати, транзакции, кешбек, партньори и финанси с един поглед.'
+                : 'Control center — subscribers, transactions, cashback, partners and finance at a glance.'}
             </Subtitle>
           </HeaderLeft>
           <DateChip>
@@ -1090,11 +551,11 @@ const AdminDashboardPage: React.FC = () => {
           </DateChip>
         </PageHeader>
 
-        {/* Alert Feed */}
+        {/* Сигнали и известия — spec §3.2 */}
         <AlertSection>
           <AlertSectionHead>
             <AlertSectionTitle>
-              {bg ? 'Необходими действия' : 'Action Required'}
+              {bg ? 'Сигнали и известия' : 'Alerts & Notices'}
             </AlertSectionTitle>
             <AlertSectionLink to="/admin/dashboard/alerts">
               {bg ? 'Виж всички →' : 'View all →'}
@@ -1200,7 +661,7 @@ const AdminDashboardPage: React.FC = () => {
           )}
         </AlertSection>
 
-        {/* KPI Stats — §3.1 */}
+        {/* Обзор — spec §3.1 */}
         <StatsGrid>
           <StatCard
             initial={{ opacity: 0, y: 8 }}
@@ -1208,7 +669,7 @@ const AdminDashboardPage: React.FC = () => {
             transition={{ delay: 0.05 }}
           >
             <StatTop>
-              <StatLabel>{bg ? 'Абонати' : 'Subscribers'}</StatLabel>
+              <StatLabel>{bg ? 'Абонати — активни' : 'Subscribers — active'}</StatLabel>
               <StatIconBox $tone="accent">
                 <UsersIcon />
               </StatIconBox>
@@ -1218,11 +679,19 @@ const AdminDashboardPage: React.FC = () => {
               <StatSubs>
                 <StatSub>
                   <strong>{dashStats ? dashStats.subscribers.newLast30Days : '—'}</strong>{' '}
-                  {bg ? 'нови' : 'new'}
+                  {bg ? 'нови / 30 дни' : 'new / 30d'}
                 </StatSub>
                 <StatSub>
                   <strong>{dashStats ? dashStats.subscribers.expired : '—'}</strong>{' '}
                   {bg ? 'изтекли' : 'expired'}
+                </StatSub>
+                <StatSub>
+                  <strong>{dashStats ? dashStats.subscribers.paused : '—'}</strong>{' '}
+                  {bg ? 'спрени' : 'paused'}
+                </StatSub>
+                <StatSub>
+                  <strong>{dashStats ? dashStats.subscribers.failedPayment : '—'}</strong>{' '}
+                  {bg ? 'неуспешно плащане' : 'failed payment'}
                 </StatSub>
               </StatSubs>
             </div>
@@ -1243,16 +712,16 @@ const AdminDashboardPage: React.FC = () => {
               <StatValue>{dashStats ? dashStats.transactions.todayCount : '—'}</StatValue>
               <StatSubs>
                 <StatSub>
-                  <strong>
-                    {dashStats ? dashStats.transactions.todayVolume.toFixed(2) : '—'}
-                  </strong>{' '}
-                  {bg ? 'лв. оборот' : 'BGN vol.'}
+                  <strong>{dashStats ? dashStats.transactions.todayVolume.toFixed(2) : '—'}</strong>{' '}
+                  {bg ? 'лв. днес' : 'BGN today'}
                 </StatSub>
                 <StatSub>
-                  <strong>
-                    {dashStats ? dashStats.transactions.todayAvg.toFixed(2) : '—'}
-                  </strong>{' '}
+                  <strong>{dashStats ? dashStats.transactions.todayAvg.toFixed(2) : '—'}</strong>{' '}
                   {bg ? 'средно' : 'avg'}
+                </StatSub>
+                <StatSub>
+                  <strong>{dashStats ? dashStats.transactions.totalVolume.toFixed(2) : '—'}</strong>{' '}
+                  {bg ? 'общ оборот' : 'total turnover'}
                 </StatSub>
               </StatSubs>
             </div>
@@ -1264,25 +733,27 @@ const AdminDashboardPage: React.FC = () => {
             transition={{ delay: 0.15 }}
           >
             <StatTop>
-              <StatLabel>{bg ? 'Очакван Кешбек' : 'Pending Cashback'}</StatLabel>
+              <StatLabel>{bg ? 'Кешбек — одобрен' : 'Cashback — approved'}</StatLabel>
               <StatIconBox>
                 <BanknotesIcon />
               </StatIconBox>
             </StatTop>
             <div>
               <StatValue>
-                {dashStats ? `${dashStats.cashback.pending.toFixed(2)} ${bg ? 'лв.' : 'BGN'}` : '—'}
+                {dashStats ? `${dashStats.cashback.approved.toFixed(2)} ${bg ? 'лв.' : 'BGN'}` : '—'}
               </StatValue>
               <StatSubs>
                 <StatSub>
-                  <strong>
-                    {dashStats ? dashStats.cashback.totalCredited.toFixed(2) : '—'}
-                  </strong>{' '}
-                  {bg ? 'начислен' : 'credited'}
+                  <strong>{dashStats ? dashStats.cashback.accrued.toFixed(2) : '—'}</strong>{' '}
+                  {bg ? 'начислен' : 'accrued'}
                 </StatSub>
                 <StatSub>
-                  <strong>{dashStats ? dashStats.cashback.expiringSoon : '—'}</strong>{' '}
-                  {bg ? 'изтичат' : 'expiring'}
+                  <strong>{dashStats ? dashStats.cashback.pending.toFixed(2) : '—'}</strong>{' '}
+                  {bg ? 'изчакващ' : 'pending'}
+                </StatSub>
+                <StatSub>
+                  <strong>{dashStats ? dashStats.cashback.expiringSoon.toFixed(2) : '—'}</strong>{' '}
+                  {bg ? 'изтичащ' : 'expiring'}
                 </StatSub>
               </StatSubs>
             </div>
@@ -1294,23 +765,21 @@ const AdminDashboardPage: React.FC = () => {
             transition={{ delay: 0.2 }}
           >
             <StatTop>
-              <StatLabel>{bg ? 'Партньори' : 'Partners'}</StatLabel>
+              <StatLabel>{bg ? 'Партньори — активни' : 'Partners — active'}</StatLabel>
               <StatIconBox $tone="success">
                 <BuildingStorefrontIcon />
               </StatIconBox>
             </StatTop>
             <div>
-              <StatValue $danger={!!(dashStats && dashStats.partners.requests > 0)}>
-                {dashStats ? dashStats.partners.active : '—'}
-              </StatValue>
+              <StatValue>{dashStats ? dashStats.partners.active : '—'}</StatValue>
               <StatSubs>
                 <StatSub>
                   <strong>{dashStats ? dashStats.partners.requests : '—'}</strong>{' '}
-                  {bg ? 'заявки' : 'requests'}
+                  {bg ? 'нови заявки' : 'new requests'}
                 </StatSub>
                 <StatSub>
                   <strong>{dashStats ? dashStats.partners.locations : '—'}</strong>{' '}
-                  {bg ? 'обекти' : 'locations'}
+                  {bg ? 'обекти на активни' : 'venues of active'}
                 </StatSub>
               </StatSubs>
             </div>
@@ -1322,7 +791,7 @@ const AdminDashboardPage: React.FC = () => {
             transition={{ delay: 0.25 }}
           >
             <StatTop>
-              <StatLabel>{bg ? 'Финанси' : 'Finance'}</StatLabel>
+              <StatLabel>{bg ? 'Финанси — плащания към абонати' : 'Finance — subscriber payouts'}</StatLabel>
               <StatIconBox $tone={dashStats && dashStats.finance.payoutsDue > 0 ? 'warning' : 'neutral'}>
                 <CurrencyDollarIcon />
               </StatIconBox>
@@ -1335,45 +804,21 @@ const AdminDashboardPage: React.FC = () => {
               </StatValue>
               <StatSubs>
                 <StatSub>
-                  <strong>
-                    {dashStats ? dashStats.finance.partnerReceivables.toFixed(2) : '—'}
-                  </strong>{' '}
-                  {bg ? 'вземания' : 'receivables'}
+                  <strong>{dashStats ? dashStats.finance.payoutsDueCount : '—'}</strong>{' '}
+                  {bg ? 'в опашка' : 'in queue'}
                 </StatSub>
                 <StatSub>
-                  <strong>
-                    {dashStats ? dashStats.finance.margin.toFixed(2) : '—'}
-                  </strong>{' '}
+                  <strong>{dashStats ? dashStats.finance.partnerReceivables.toFixed(2) : '—'}</strong>{' '}
+                  {bg ? 'от партньори' : 'from partners'}
+                </StatSub>
+                <StatSub>
+                  <strong>{dashStats ? dashStats.finance.margin.toFixed(2) : '—'}</strong>{' '}
                   {bg ? 'марджин' : 'margin'}
                 </StatSub>
               </StatSubs>
             </div>
           </StatCard>
         </StatsGrid>
-
-        {renderSection(
-          bg ? 'Партньори' : 'Partners',
-          bg ? 'Акаунти, типове и въвеждане' : 'Accounts, types, and onboarding',
-          partnerActions,
-        )}
-
-        {renderSection(
-          bg ? 'Съдържание' : 'Content',
-          bg ? 'Оферти и одобрения' : 'Offers and approvals',
-          contentActions,
-        )}
-
-        {renderSection(
-          bg ? 'Кешбек и Бележки' : 'Cashback & Receipts',
-          bg ? 'Прегледи, плащания и ставки' : 'Reviews, payments, and rates',
-          cashbackActions,
-        )}
-
-        {renderSection(
-          bg ? 'Измами и Съответствие' : 'Fraud & Compliance',
-          bg ? 'Търговци, прагове и проверки' : 'Merchants, thresholds, and verification',
-          fraudActions,
-        )}
       </PageContainer>
     </PageShell>
   );

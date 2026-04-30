@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -27,17 +27,18 @@ function timeAgo(iso: string): string {
 }
 
 const TYPE_ICON: Record<string, keyof typeof Ionicons.glyphMap> = {
-  RECEIPT_APPROVED:      'document-text',
-  RECEIPT_REJECTED:      'document-text',
-  PAYMENT_SUCCESS:       'card',
-  CASHBACK_CREDITED:     'cash',
-  CASHBACK_EXPIRY:       'time',
-  LOYALTY_POINTS:        'star',
-  THRESHOLD_REACHED:     'trophy',
-  OFFER_AVAILABLE:       'pricetag',
-  BOOKING_CONFIRMED:     'calendar',
-  STICKER_SCAN_APPROVED: 'qr-code',
-  STICKER_SCAN_REJECTED: 'qr-code',
+  receipt_approved:      'document-text',
+  receipt_rejected:      'document-text',
+  payment_success:       'card',
+  cashback_credited:     'cash',
+  cashback_expiry:       'time',
+  loyalty_points:        'star',
+  threshold_reached:     'trophy',
+  offer_available:       'pricetag',
+  booking_confirmed:     'calendar',
+  sticker_scan_approved: 'qr-code',
+  sticker_scan_rejected: 'qr-code',
+  system:                'information-circle',
 };
 
 const PRIORITY_COLOR: Record<string, string> = {
@@ -60,17 +61,15 @@ const NotificationsScreen = ({ navigation }: any) => {
   const load = useCallback(async () => {
     const res = await notificationsApi.getNotifications(1, 50);
     if (res.success && res.data) {
-      const payload = (res.data as any).data ?? res.data;
+      const payload = res.data as any;
       setNotifications(Array.isArray(payload.data) ? payload.data : []);
       setUnreadCount(typeof payload.unreadCount === 'number' ? payload.unreadCount : 0);
     }
   }, []);
 
-  useEffect(() => {
+  useFocusEffect(useCallback(() => {
     load().finally(() => setLoading(false));
-  }, [load]);
-
-  useFocusEffect(useCallback(() => { load(); }, [load]));
+  }, [load]));
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);

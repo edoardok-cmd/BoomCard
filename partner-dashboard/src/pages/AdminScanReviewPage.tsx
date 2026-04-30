@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import styled from 'styled-components';
 import { API_CONFIG } from '../config/api.config';
 import FraudReasonTag from '../components/admin/FraudReasonTag';
@@ -584,12 +585,23 @@ const ModalActions = styled.div`
 // ============================================
 
 export const AdminScanReviewPage: React.FC = () => {
+  // Allow deep-links from the alerts page to preselect a risk bucket.
+  // Accepts ?bucket=HIGH_61_PLUS | REVIEW_31_60 | AUTO_0_30
+  const [searchParams] = useSearchParams();
+  const initialBucket = searchParams.get('bucket');
+  const initialFilterRisk: FilterRisk =
+    initialBucket === 'HIGH_61_PLUS' ||
+    initialBucket === 'REVIEW_31_60' ||
+    initialBucket === 'AUTO_0_30'
+      ? (`BUCKET_${initialBucket}` as FilterRisk)
+      : 'all';
+
   const [scans, setScans] = useState<StickerScan[]>([]);
   const [stats, setStats] = useState<ReviewStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedScans, setSelectedScans] = useState<Set<string>>(new Set());
   const [filterStatus, setFilterStatus] = useState<FilterStatus>('MANUAL_REVIEW');
-  const [filterRisk, setFilterRisk] = useState<FilterRisk>('all');
+  const [filterRisk, setFilterRisk] = useState<FilterRisk>(initialFilterRisk);
   const [searchQuery, setSearchQuery] = useState('');
   // Server pagination (spec §7.1 buckets pushed to DB)
   const [page, setPage] = useState(1);

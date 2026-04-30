@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import styled from 'styled-components';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-hot-toast';
@@ -64,10 +65,21 @@ const PAGE_SIZE = 25;
 
 export default function AdminFinanceInvoicesPage() {
   const queryClient = useQueryClient();
+
+  // Allow deep-links from the alerts page to preselect an invoice status.
+  const [searchParams] = useSearchParams();
+  const initialStatusParam = searchParams.get('status');
+  const initialStatus: InvoiceStatus | '' =
+    initialStatusParam === 'PENDING' ||
+    initialStatusParam === 'PAID' ||
+    initialStatusParam === 'OVERDUE'
+      ? initialStatusParam
+      : '';
+
   const [page, setPage] = useState(1);
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
-  const [status, setStatus] = useState<InvoiceStatus | ''>('');
+  const [status, setStatus] = useState<InvoiceStatus | ''>(initialStatus);
   const [month, setMonth] = useState('');
 
   const { data, isLoading } = useQuery({

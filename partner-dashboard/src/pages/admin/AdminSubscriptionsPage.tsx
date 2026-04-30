@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import styled from 'styled-components';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-hot-toast';
@@ -7,6 +8,7 @@ import { DataTable, ColumnDef } from '../../components/admin/DataTable/DataTable
 import {
   adminSubscriptionsService,
   AdminSubscription,
+  BillingCycle,
   SubscriptionPlan,
   SubscriptionStatus,
 } from '../../services/adminSubscriptions.service';
@@ -35,7 +37,92 @@ const palette = {
   tealSoft: '#ccfbf1',
   amber: '#92400e',
   amberSoft: '#fef3c7',
+  testTagBg: '#f1f5f9',
+  testTagFg: '#475569',
 };
+
+/* ─── i18n ─────────────────────────────────────────────────────────────────── */
+type Lang = 'bg' | 'en';
+
+const T = {
+  eyebrow:           { bg: 'Абонати',                                    en: 'Subscribers' },
+  title:             { bg: 'Абонаменти',                                 en: 'Subscriptions' },
+  subtitle:          { bg: 'Управление на планове, подновявания и анулации.',
+                       en: 'Manage all subscriber plans, renewals, and cancellations' },
+  searchPlaceholder: { bg: 'Търсене по име, имейл или телефон…',         en: 'Search by name, email or phone…' },
+  excludeTest:       { bg: 'Скрий тестови акаунти',                      en: 'Hide test accounts' },
+  exportCsv:         { bg: 'Експорт CSV',                                en: 'Export CSV' },
+  noName:            { bg: '(без име)',                                  en: '(no name)' },
+  emptyMessage:      { bg: 'Не са намерени абонаменти',                  en: 'No subscriptions found' },
+  testTag:           { bg: 'тест',                                       en: 'test' },
+  plansInHistory:    { bg: 'плана в историята',                          en: 'plans in history' },
+  cancelsAt:         { bg: 'Спира',                                      en: 'Cancels' },
+  atPeriodEnd:       { bg: 'в края на периода',                          en: 'at period end' },
+  on:                { bg: 'Вкл.',                                       en: 'On' },
+  off:               { bg: 'Изкл.',                                      en: 'Off' },
+  payments:          { bg: 'Плащания',                                   en: 'Payments' },
+  noValue:           { bg: '—',                                          en: '—' },
+  updating:          { bg: 'Обновяване…',                                en: 'Updating…' },
+  allPlans:          { bg: 'Всички планове',                             en: 'All plans' },
+  allStatuses:       { bg: 'Всички статуси',                             en: 'All statuses' },
+
+  colSubscriber:     { bg: 'Абонат',                                     en: 'Subscriber' },
+  colPlan:           { bg: 'План',                                       en: 'Plan' },
+  colStatus:         { bg: 'Статус',                                     en: 'Status' },
+  colAutoRenewal:    { bg: 'Авт. подновяване',                           en: 'Auto-renewal' },
+  colPeriodEnds:     { bg: 'Край на периода',                            en: 'Period ends' },
+  colProvider:       { bg: 'Доставчик',                                  en: 'Provider' },
+  colCreated:        { bg: 'Създаден',                                   en: 'Created' },
+
+  actCancel:         { bg: 'Анулирай в края на периода',                 en: 'Cancel at period end' },
+  actReactivate:     { bg: 'Възстанови',                                 en: 'Reactivate' },
+  actResume:         { bg: 'Възобнови',                                  en: 'Resume' },
+  actDisableRenewal: { bg: 'Изключи авт. подновяване',                   en: 'Disable auto-renewal' },
+  actEnableRenewal:  { bg: 'Включи авт. подновяване',                    en: 'Enable auto-renewal' },
+
+  toastCancel:       { bg: 'Абонаментът ще бъде анулиран в края на периода.',
+                       en: 'Subscription scheduled for cancellation at period end' },
+  toastReactivate:   { bg: 'Абонаментът е възстановен — анулацията е премахната.',
+                       en: 'Subscription reactivated — cancellation removed' },
+  toastResume:       { bg: 'Абонаментът е възобновен.',                  en: 'Subscription resumed' },
+  toastRenewalOn:    { bg: 'Авт. подновяване включено',                  en: 'Auto-renewal enabled' },
+  toastRenewalOff:   { bg: 'Авт. подновяване изключено',                 en: 'Auto-renewal disabled' },
+  toastErrCancel:    { bg: 'Неуспешна анулация',                         en: 'Failed to cancel subscription' },
+  toastErrReactivate:{ bg: 'Неуспешно възстановяване',                   en: 'Failed to reactivate subscription' },
+  toastErrResume:    { bg: 'Неуспешно възобновяване',                    en: 'Failed to resume subscription' },
+  toastErrRenewal:   { bg: 'Неуспешна промяна на авт. подновяване',      en: 'Failed to update auto-renewal' },
+
+  cycle: {
+    WEEKLY:  { bg: 'седмично',   en: 'weekly' },
+    MONTHLY: { bg: 'месечно',    en: 'monthly' },
+    YEARLY:  { bg: 'годишно',    en: 'yearly' },
+    OTHER:   { bg: '',           en: '' },
+  } as Record<BillingCycle, { bg: string; en: string }>,
+
+  status: {
+    ACTIVE:             { bg: 'Активен',              en: 'Active' },
+    TRIALING:           { bg: 'Пробен',               en: 'Trialing' },
+    PAST_DUE:           { bg: 'Неуспешно плащане',    en: 'Failed payment' },
+    UNPAID:             { bg: 'Неплатен',             en: 'Unpaid' },
+    CANCELLED:          { bg: 'Анулиран',             en: 'Cancelled' },
+    INCOMPLETE:         { bg: 'Незавършен',           en: 'Incomplete' },
+    INCOMPLETE_EXPIRED: { bg: 'Незавършен (изтекъл)', en: 'Incomplete expired' },
+    PAUSED:             { bg: 'Спрян',                en: 'Paused' },
+  } as Record<SubscriptionStatus, { bg: string; en: string }>,
+
+  plan: {
+    LIGHT:   { bg: 'Light',   en: 'Light' },
+    BASIC:   { bg: 'Basic',   en: 'Basic' },
+    PREMIUM: { bg: 'Premium', en: 'Premium' },
+  } as Record<SubscriptionPlan, { bg: string; en: string }>,
+};
+
+const tr = (entry: { bg: string; en: string }, lang: Lang) => entry[lang];
+
+const confirmCancelMessage = (lang: Lang, email: string, date: string) =>
+  lang === 'bg'
+    ? `Анулирай абонамента на ${email}? Достъпът се запазва до ${date}.`
+    : `Cancel subscription for ${email}? They will keep access until ${date}.`;
 
 /* ─── Layout ───────────────────────────────────────────────────────────────── */
 const PageShell = styled.div`
@@ -142,16 +229,68 @@ const Select = styled.select`
   }
 `;
 
+const Toggle = styled.label`
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8125rem;
+  color: ${palette.textMuted};
+  cursor: pointer;
+  user-select: none;
+  input { cursor: pointer; }
+`;
+
+const ExportButton = styled.button`
+  margin-left: auto;
+  padding: 0.5rem 0.875rem;
+  background: ${palette.surface};
+  border: 1px solid ${palette.border};
+  border-radius: 0.5rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: ${palette.text};
+  cursor: pointer;
+  &:hover:not(:disabled) { background: ${palette.bg}; }
+  &:disabled { opacity: 0.5; cursor: not-allowed; }
+`;
+
 /* ─── Cell helpers ─────────────────────────────────────────────────────────── */
 const UserCell = styled.div`
   font-weight: 600;
   color: ${palette.text};
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+`;
+
+const NameRow = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+`;
+
+const NameMissing = styled.span`
+  color: ${palette.textSubtle};
+  font-style: italic;
+  font-weight: 500;
+`;
+
+const TestTag = styled.span`
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-radius: 0.25rem;
+  padding: 0.0625rem 0.375rem;
+  background: ${palette.testTagBg};
+  color: ${palette.testTagFg};
 `;
 
 const MetaLine = styled.div`
   font-size: 0.75rem;
   color: ${palette.textSubtle};
-  margin-top: 0.125rem;
 `;
 
 const PlanBadge = styled.span<{ $plan: SubscriptionPlan }>`
@@ -225,41 +364,89 @@ const ProviderTag = styled.span`
   color: ${palette.textSubtle};
 `;
 
-/* ─── Options ──────────────────────────────────────────────────────────────── */
-const PLAN_OPTIONS: Array<{ value: SubscriptionPlan | ''; label: string }> = [
-  { value: '', label: 'All plans' },
-  { value: 'LIGHT', label: 'Light (weekly)' },
-  { value: 'BASIC', label: 'Basic' },
-  { value: 'PREMIUM', label: 'Premium' },
-];
+const PaymentsCell = styled.span`
+  display: flex;
+  flex-direction: column;
+`;
 
-const STATUS_OPTIONS: Array<{ value: SubscriptionStatus | ''; label: string }> = [
-  { value: '', label: 'All statuses' },
-  { value: 'ACTIVE', label: 'Active' },
-  { value: 'TRIALING', label: 'Trialing' },
-  { value: 'PAST_DUE', label: 'Past due' },
-  { value: 'UNPAID', label: 'Unpaid' },
-  { value: 'CANCELLED', label: 'Cancelled' },
-  { value: 'INCOMPLETE', label: 'Incomplete' },
-  { value: 'INCOMPLETE_EXPIRED', label: 'Incomplete expired' },
-  { value: 'PAUSED', label: 'Paused' },
+const PaymentsTotal = styled.span`
+  color: ${palette.text};
+  font-size: 0.8125rem;
+  font-weight: 600;
+`;
+
+/* ─── Options ──────────────────────────────────────────────────────────────── */
+const PLAN_VALUES: Array<SubscriptionPlan | ''> = ['', 'LIGHT', 'BASIC', 'PREMIUM'];
+const STATUS_VALUES: Array<SubscriptionStatus | ''> = [
+  '',
+  'ACTIVE',
+  'TRIALING',
+  'PAST_DUE',
+  'UNPAID',
+  'CANCELLED',
+  'INCOMPLETE',
+  'INCOMPLETE_EXPIRED',
+  'PAUSED',
 ];
 
 const PAGE_SIZE = 20;
 
+/**
+ * A subscription is "actively renewing" only when autoRenewal is on AND
+ * cancellation isn't scheduled AND the status is a billing one. Without all
+ * three, render Off — otherwise CANCELLED rows misleadingly show "On".
+ */
+const isAutoRenewalEffective = (row: AdminSubscription) => {
+  if (!row.autoRenewal) return false;
+  if (row.cancelAtPeriodEnd) return false;
+  switch (row.status) {
+    case 'CANCELLED':
+    case 'INCOMPLETE':
+    case 'INCOMPLETE_EXPIRED':
+    case 'PAUSED':
+    case 'UNPAID':
+      return false;
+    default:
+      return true;
+  }
+};
+
 /* ─── Component ───────────────────────────────────────────────────────────── */
 export default function AdminSubscriptionsPage() {
   const { language } = useLanguage();
+  const lang = (language === 'bg' ? 'bg' : 'en') as Lang;
   const queryClient = useQueryClient();
+
+  // Allow deep-links from the alerts page to preselect a subscription status.
+  const [searchParams] = useSearchParams();
+  const VALID_STATUSES: SubscriptionStatus[] = [
+    'ACTIVE', 'TRIALING', 'PAST_DUE', 'UNPAID',
+    'PAUSED', 'CANCELLED', 'INCOMPLETE', 'INCOMPLETE_EXPIRED',
+  ];
+  const initialStatusParam = searchParams.get('status');
+  const initialStatus: SubscriptionStatus | '' =
+    initialStatusParam && VALID_STATUSES.includes(initialStatusParam as SubscriptionStatus)
+      ? (initialStatusParam as SubscriptionStatus)
+      : '';
 
   const [page, setPage] = useState(1);
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
   const [plan, setPlan] = useState<SubscriptionPlan | ''>('');
-  const [status, setStatus] = useState<SubscriptionStatus | ''>('');
+  const [status, setStatus] = useState<SubscriptionStatus | ''>(initialStatus);
+  const [excludeTest, setExcludeTest] = useState(true);
+
+  // Debounce search → server, 300ms after user stops typing.
+  useEffect(() => {
+    const handle = setTimeout(() => {
+      setSearch(searchInput.trim());
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(handle);
+  }, [searchInput]);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['admin-subscriptions', page, search, plan, status],
+    queryKey: ['admin-subscriptions', page, search, plan, status, excludeTest],
     queryFn: () =>
       adminSubscriptionsService.list({
         page,
@@ -267,88 +454,147 @@ export default function AdminSubscriptionsPage() {
         search: search || undefined,
         plan: plan || undefined,
         status: status || undefined,
+        excludeTest,
       }),
   });
 
   const cancelMutation = useMutation({
     mutationFn: (id: string) => adminSubscriptionsService.cancel(id),
     onSuccess: () => {
-      toast.success('Subscription scheduled for cancellation at period end');
+      toast.success(tr(T.toastCancel, lang));
       queryClient.invalidateQueries({ queryKey: ['admin-subscriptions'] });
     },
-    onError: () => toast.error('Failed to cancel subscription'),
+    onError: () => toast.error(tr(T.toastErrCancel, lang)),
   });
 
   const reactivateMutation = useMutation({
     mutationFn: (id: string) => adminSubscriptionsService.reactivate(id),
     onSuccess: () => {
-      toast.success('Subscription reactivated — cancellation removed');
+      toast.success(tr(T.toastReactivate, lang));
       queryClient.invalidateQueries({ queryKey: ['admin-subscriptions'] });
     },
-    onError: () => toast.error('Failed to reactivate subscription'),
+    onError: () => toast.error(tr(T.toastErrReactivate, lang)),
+  });
+
+  const resumeMutation = useMutation({
+    mutationFn: (id: string) => adminSubscriptionsService.resume(id),
+    onSuccess: () => {
+      toast.success(tr(T.toastResume, lang));
+      queryClient.invalidateQueries({ queryKey: ['admin-subscriptions'] });
+    },
+    onError: () => toast.error(tr(T.toastErrResume, lang)),
   });
 
   const autoRenewalMutation = useMutation({
     mutationFn: ({ id, autoRenewal }: { id: string; autoRenewal: boolean }) =>
       adminSubscriptionsService.toggleAutoRenewal(id, autoRenewal),
     onSuccess: (_data, vars) => {
-      toast.success(vars.autoRenewal ? 'Auto-renewal enabled' : 'Auto-renewal disabled');
+      toast.success(vars.autoRenewal ? tr(T.toastRenewalOn, lang) : tr(T.toastRenewalOff, lang));
       queryClient.invalidateQueries({ queryKey: ['admin-subscriptions'] });
     },
-    onError: () => toast.error('Failed to update auto-renewal'),
+    onError: () => toast.error(tr(T.toastErrRenewal, lang)),
   });
 
-  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') {
-      setSearch(searchInput);
-      setPage(1);
-    }
-  };
-
-  const fmt = (iso: string) =>
-    new Date(iso).toLocaleDateString(language === 'bg' ? 'bg-BG' : 'en-GB', {
+  const fmtDate = (iso: string) =>
+    new Date(iso).toLocaleDateString(lang === 'bg' ? 'bg-BG' : 'en-GB', {
       day: '2-digit',
       month: 'short',
       year: 'numeric',
     });
 
-  const columns: ColumnDef<AdminSubscription>[] = [
+  const fmtMoney = (amount: number) =>
+    new Intl.NumberFormat(lang === 'bg' ? 'bg-BG' : 'en-GB', {
+      style: 'currency',
+      currency: 'BGN',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(amount);
+
+  const planLabel = (p: SubscriptionPlan) => tr(T.plan[p], lang);
+  const statusLabel = (s: SubscriptionStatus) => tr(T.status[s], lang);
+  const cycleLabel = (c?: BillingCycle) => (c && c !== 'OTHER' ? tr(T.cycle[c], lang) : '');
+
+  const exportCsv = () => {
+    const rows = data?.subscriptions ?? [];
+    if (!rows.length) return;
+    const headers = [
+      'Subscriber', 'Email', 'Phone', 'Plan', 'Cycle', 'Status', 'Auto-renewal',
+      'Period ends', 'Provider', 'Payments', 'Total paid', 'Created',
+    ];
+    const escape = (v: string | number | null | undefined) => {
+      if (v == null) return '';
+      const s = String(v);
+      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const lines = rows.map((r) => {
+      const name = `${r.user.firstName ?? ''} ${r.user.lastName ?? ''}`.trim();
+      const provider = r.stripeSubscriptionId ? 'Stripe' : r.payseraOrderId ? 'Paysera' : '';
+      return [
+        name, r.user.email, r.user.phone ?? '', r.plan, r.billingCycle ?? '', r.status,
+        isAutoRenewalEffective(r) ? 'On' : 'Off',
+        fmtDate(r.currentPeriodEnd), provider,
+        r.paymentCount ?? 0, (r.paymentTotalAmount ?? 0).toFixed(2),
+        fmtDate(r.createdAt),
+      ].map(escape).join(',');
+    });
+    // BOM so Excel detects UTF-8 (Cyrillic names render correctly).
+    const csv = '﻿' + [headers.join(','), ...lines].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `subscriptions-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const columns: ColumnDef<AdminSubscription>[] = useMemo(() => [
     {
       key: 'user',
-      header: 'Subscriber',
-      render: (row) => (
-        <UserCell>
-          {row.user.firstName || row.user.lastName
-            ? `${row.user.firstName ?? ''} ${row.user.lastName ?? ''}`.trim()
-            : '—'}
-          <MetaLine>{row.user.email}</MetaLine>
-          {row.user.phone && <MetaLine>{row.user.phone}</MetaLine>}
-        </UserCell>
-      ),
+      header: tr(T.colSubscriber, lang),
+      render: (row) => {
+        const name = `${row.user.firstName ?? ''} ${row.user.lastName ?? ''}`.trim();
+        return (
+          <UserCell>
+            <NameRow>
+              {name ? <span>{name}</span> : <NameMissing>{tr(T.noName, lang)}</NameMissing>}
+              {row.user.isTest && <TestTag>{tr(T.testTag, lang)}</TestTag>}
+            </NameRow>
+            <MetaLine>{row.user.email}</MetaLine>
+            {row.user.phone && <MetaLine>{row.user.phone}</MetaLine>}
+          </UserCell>
+        );
+      },
     },
     {
       key: 'plan',
-      header: 'Plan',
-      render: (row) => (
-        <span>
-          <PlanBadge $plan={row.plan}>{row.plan}</PlanBadge>
-          {row.userSubscriptionCount && row.userSubscriptionCount > 1 && (
-            <MetaLine title="Spec §4.2 — total subscriptions ever for this user">
-              {row.userSubscriptionCount} plans in history
-            </MetaLine>
-          )}
-        </span>
-      ),
+      header: tr(T.colPlan, lang),
+      render: (row) => {
+        const cycle = cycleLabel(row.billingCycle);
+        return (
+          <span>
+            <PlanBadge $plan={row.plan}>{planLabel(row.plan)}</PlanBadge>
+            {cycle && <MetaLine>{cycle}</MetaLine>}
+            {row.userSubscriptionCount && row.userSubscriptionCount > 1 && (
+              <MetaLine title="Spec §4.2 — total subscriptions ever for this user">
+                {row.userSubscriptionCount} {tr(T.plansInHistory, lang)}
+              </MetaLine>
+            )}
+          </span>
+        );
+      },
     },
     {
       key: 'status',
-      header: 'Status',
+      header: tr(T.colStatus, lang),
       render: (row) => (
         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-          <StatusBadge $status={row.status}>{row.status.replace(/_/g, ' ')}</StatusBadge>
+          <StatusBadge $status={row.status}>{statusLabel(row.status)}</StatusBadge>
           {row.cancelAtPeriodEnd && (
             <MetaLine style={{ color: palette.warning }}>
-              Cancels {row.cancelAt ? fmt(row.cancelAt) : 'at period end'}
+              {tr(T.cancelsAt, lang)} {row.cancelAt ? fmtDate(row.cancelAt) : tr(T.atPeriodEnd, lang)}
             </MetaLine>
           )}
         </span>
@@ -356,56 +602,72 @@ export default function AdminSubscriptionsPage() {
     },
     {
       key: 'renewal',
-      header: 'Auto-renewal',
+      header: tr(T.colAutoRenewal, lang),
       render: (row) => {
-        // cancelSubscription() sets cancelAtPeriodEnd=true without syncing autoRenewal,
-        // so derive the effective state from both fields to avoid conflicting signals.
-        const effective = row.autoRenewal && !row.cancelAtPeriodEnd;
-        return <RenewalPill $on={effective}>{effective ? 'On' : 'Off'}</RenewalPill>;
+        const effective = isAutoRenewalEffective(row);
+        return <RenewalPill $on={effective}>{effective ? tr(T.on, lang) : tr(T.off, lang)}</RenewalPill>;
       },
     },
     {
       key: 'periodEnd',
-      header: 'Period ends',
+      header: tr(T.colPeriodEnds, lang),
       render: (row) => (
         <span style={{ color: palette.textMuted, fontSize: '0.8125rem' }}>
-          {fmt(row.currentPeriodEnd)}
+          {fmtDate(row.currentPeriodEnd)}
         </span>
       ),
     },
     {
+      key: 'payments',
+      header: tr(T.payments, lang),
+      render: (row) => {
+        const count = row.paymentCount ?? 0;
+        const total = row.paymentTotalAmount ?? 0;
+        if (count === 0) return <ProviderTag>{tr(T.noValue, lang)}</ProviderTag>;
+        return (
+          <PaymentsCell>
+            <PaymentsTotal>{fmtMoney(total)}</PaymentsTotal>
+            <MetaLine>{count}×</MetaLine>
+          </PaymentsCell>
+        );
+      },
+    },
+    {
       key: 'provider',
-      header: 'Provider',
+      header: tr(T.colProvider, lang),
       render: (row) => (
         <ProviderTag>
-          {row.stripeSubscriptionId ? 'Stripe' : row.payseraOrderId ? 'Paysera' : '—'}
+          {row.stripeSubscriptionId ? 'Stripe' : row.payseraOrderId ? 'Paysera' : tr(T.noValue, lang)}
         </ProviderTag>
       ),
     },
     {
       key: 'createdAt',
-      header: 'Created',
+      header: tr(T.colCreated, lang),
       render: (row) => (
         <span style={{ color: palette.textMuted, fontSize: '0.8125rem' }}>
-          {fmt(row.createdAt)}
+          {fmtDate(row.createdAt)}
         </span>
       ),
     },
-  ];
+  ], [lang]);
 
   const isMutating =
-    cancelMutation.isPending || reactivateMutation.isPending || autoRenewalMutation.isPending;
+    cancelMutation.isPending ||
+    reactivateMutation.isPending ||
+    resumeMutation.isPending ||
+    autoRenewalMutation.isPending;
 
   return (
     <PageShell>
       <PageHeader>
         <TitleBlock>
-          <Eyebrow>Subscribers</Eyebrow>
+          <Eyebrow>{tr(T.eyebrow, lang)}</Eyebrow>
           <PageTitle>
-            Subscriptions
+            {tr(T.title, lang)}
             {data && data.total > 0 && <TotalBadge>{data.total.toLocaleString()}</TotalBadge>}
           </PageTitle>
-          <PageSubtitle>Manage all subscriber plans, renewals, and cancellations</PageSubtitle>
+          <PageSubtitle>{tr(T.subtitle, lang)}</PageSubtitle>
         </TitleBlock>
       </PageHeader>
 
@@ -413,10 +675,9 @@ export default function AdminSubscriptionsPage() {
         <FilterRow>
           <SearchInput
             type="text"
-            placeholder="Search by name, email or phone…"
+            placeholder={tr(T.searchPlaceholder, lang)}
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
-            onKeyDown={handleSearchKeyDown}
           />
           <Select
             value={plan}
@@ -425,9 +686,9 @@ export default function AdminSubscriptionsPage() {
               setPage(1);
             }}
           >
-            {PLAN_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
+            {PLAN_VALUES.map((v) => (
+              <option key={v || 'all'} value={v}>
+                {v === '' ? tr(T.allPlans, lang) : planLabel(v)}
               </option>
             ))}
           </Select>
@@ -438,12 +699,26 @@ export default function AdminSubscriptionsPage() {
               setPage(1);
             }}
           >
-            {STATUS_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
+            {STATUS_VALUES.map((v) => (
+              <option key={v || 'all'} value={v}>
+                {v === '' ? tr(T.allStatuses, lang) : statusLabel(v)}
               </option>
             ))}
           </Select>
+          <Toggle>
+            <input
+              type="checkbox"
+              checked={excludeTest}
+              onChange={(e) => {
+                setExcludeTest(e.target.checked);
+                setPage(1);
+              }}
+            />
+            {tr(T.excludeTest, lang)}
+          </Toggle>
+          <ExportButton type="button" onClick={exportCsv} disabled={!data?.subscriptions?.length}>
+            {tr(T.exportCsv, lang)}
+          </ExportButton>
         </FilterRow>
 
         <DataTable
@@ -451,53 +726,63 @@ export default function AdminSubscriptionsPage() {
           data={data?.subscriptions ?? []}
           rowKey={(row) => row.id}
           loading={isLoading}
-          emptyMessage="No subscriptions found"
+          emptyMessage={tr(T.emptyMessage, lang)}
           page={page}
           pageSize={PAGE_SIZE}
           totalItems={data?.total}
           onPageChange={setPage}
           rowActions={[
             {
-              label: 'Cancel at period end',
+              label: tr(T.actCancel, lang),
               danger: true,
               hidden: (row) =>
                 row.cancelAtPeriodEnd ||
                 row.status === 'CANCELLED' ||
-                row.status === 'INCOMPLETE_EXPIRED',
+                row.status === 'INCOMPLETE_EXPIRED' ||
+                row.status === 'INCOMPLETE',
               onClick: (row) => {
-                if (!window.confirm(`Cancel subscription for ${row.user.email}? They will keep access until ${fmt(row.currentPeriodEnd)}.`)) return;
+                if (!window.confirm(confirmCancelMessage(lang, row.user.email, fmtDate(row.currentPeriodEnd)))) return;
                 cancelMutation.mutate(row.id);
               },
             },
             {
-              label: 'Reactivate',
+              label: tr(T.actReactivate, lang),
               hidden: (row) => !row.cancelAtPeriodEnd || row.status === 'CANCELLED',
               onClick: (row) => reactivateMutation.mutate(row.id),
             },
             {
-              label: 'Disable auto-renewal',
+              label: tr(T.actResume, lang),
+              hidden: (row) => row.status !== 'PAUSED',
+              onClick: (row) => resumeMutation.mutate(row.id),
+            },
+            {
+              label: tr(T.actDisableRenewal, lang),
               hidden: (row) =>
                 !row.autoRenewal ||
                 row.cancelAtPeriodEnd ||
                 row.status === 'CANCELLED' ||
-                row.status === 'INCOMPLETE_EXPIRED',
+                row.status === 'INCOMPLETE_EXPIRED' ||
+                row.status === 'INCOMPLETE' ||
+                row.status === 'PAUSED',
               onClick: (row) => autoRenewalMutation.mutate({ id: row.id, autoRenewal: false }),
             },
             {
-              label: 'Enable auto-renewal',
+              label: tr(T.actEnableRenewal, lang),
               // Hidden when Reactivate already covers the same intent (cancelAtPeriodEnd=true)
               hidden: (row) =>
                 row.autoRenewal ||
                 row.cancelAtPeriodEnd ||
                 row.status === 'CANCELLED' ||
-                row.status === 'INCOMPLETE_EXPIRED',
+                row.status === 'INCOMPLETE_EXPIRED' ||
+                row.status === 'INCOMPLETE' ||
+                row.status === 'PAUSED',
               onClick: (row) => autoRenewalMutation.mutate({ id: row.id, autoRenewal: true }),
             },
           ]}
         />
         {isMutating && (
           <div style={{ textAlign: 'center', padding: '0.5rem', fontSize: '0.8125rem', color: palette.textSubtle }}>
-            Updating…
+            {tr(T.updating, lang)}
           </div>
         )}
       </Card>

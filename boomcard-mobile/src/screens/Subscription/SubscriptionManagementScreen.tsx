@@ -93,7 +93,7 @@ const SubscriptionManagementScreen = ({ navigation }: any) => {
         return;
       }
 
-      setSubscription(subRes.value.data ?? null);
+      setSubscription((subRes.value.data as any)?.data ?? null);
 
       if (histRes.status === 'fulfilled' && histRes.value.success) {
         setHistory(histRes.value.data?.history || []);

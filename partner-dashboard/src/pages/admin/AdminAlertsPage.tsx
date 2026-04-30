@@ -307,6 +307,47 @@ const AllClearBody = styled.p`
   opacity: 0.8;
 `;
 
+const LoadingCard = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.625rem;
+  padding: 4rem 2rem;
+  color: ${palette.textMuted};
+  font-size: 0.9375rem;
+
+  svg {
+    width: 1.125rem;
+    height: 1.125rem;
+  }
+`;
+
+const ErrorCard = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.875rem;
+  padding: 4rem 2rem;
+  background: ${palette.dangerSoft};
+  border: 1px solid #e8b8ad;
+  border-radius: 1rem;
+  color: ${palette.danger};
+  text-align: center;
+
+  [data-theme='dark'] & {
+    background: rgba(181, 67, 39, 0.1);
+    border-color: rgba(181, 67, 39, 0.3);
+    color: #e27d5f;
+  }
+
+  svg {
+    width: 2.5rem;
+    height: 2.5rem;
+    opacity: 0.7;
+  }
+`;
+
 /* ─── Helpers ──────────────────────────────────────────────────────────────── */
 function tierToSeverity(tier: AlertTier): AlertSeverity {
   if (tier === 'critical') return 'danger';
@@ -320,33 +361,31 @@ function tierLabel(tier: AlertTier, bg: boolean): string {
   return bg ? 'Информационни' : 'Informational';
 }
 
-const EMPTY_RESULT: AdminAlertsResult = {
-  critical: [],
-  operational: [],
-  informational: [],
-  totalCount: 0,
-  generatedAt: new Date().toISOString(),
-};
-
 /* ─── Component ────────────────────────────────────────────────────────────── */
 const AdminAlertsPage: React.FC = () => {
   const { language } = useLanguage();
   const [result, setResult] = useState<AdminAlertsResult | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const bg = language === 'bg';
 
   const load = () => {
     setLoading(true);
+    setError(null);
     adminAlertsService
       .getAlerts()
       .then(r => setResult(r))
-      .catch(() => setResult({ ...EMPTY_RESULT, generatedAt: new Date().toISOString() }))
+      .catch(() => {
+        setResult(null);
+        setError(bg ? 'Неуспешно зареждане на сигналите.' : 'Failed to load alerts.');
+      })
       .finally(() => setLoading(false));
   };
 
   useEffect(() => {
     load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const generatedAt = result?.generatedAt
@@ -378,7 +417,24 @@ const AdminAlertsPage: React.FC = () => {
         </RefreshBtn>
       </RefreshRow>
 
-      {!loading && result?.totalCount === 0 && (
+      {loading && !result && (
+        <LoadingCard>
+          <ArrowPathIcon style={{ animation: 'spin 1s linear infinite' }} />
+          <span>{bg ? 'Зареждане…' : 'Loading…'}</span>
+        </LoadingCard>
+      )}
+
+      {!loading && error && (
+        <ErrorCard>
+          <BellAlertIcon />
+          <div>
+            <AllClearTitle>{bg ? 'Грешка' : 'Error'}</AllClearTitle>
+            <AllClearBody>{error}</AllClearBody>
+          </div>
+        </ErrorCard>
+      )}
+
+      {!loading && !error && result?.totalCount === 0 && (
         <AllClearCard>
           <CheckCircleIcon />
           <div>

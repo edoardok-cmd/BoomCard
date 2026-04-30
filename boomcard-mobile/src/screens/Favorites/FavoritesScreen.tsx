@@ -128,7 +128,7 @@ const FavoritesScreen = ({ navigation }: any) => {
 
   const renderItem = ({ item }: { item: FavoritePartner }) => {
     const p = item.partner;
-    const name = p?.businessName || p?.name || t('favorites.unknownPlace', 'BOOM място');
+    const name = p?.businessName || t('favorites.unknownPlace', 'BOOM място');
     const category = p?.category || '';
     const city = p?.city || '';
 

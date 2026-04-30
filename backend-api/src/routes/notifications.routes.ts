@@ -258,7 +258,7 @@ router.post(
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const userId = req.user!.id;
     const result = await prisma.notification.updateMany({
-      where: { userId, isRead: false, archivedAt: null },
+      where: { userId, isRead: false, archivedAt: null, OR: activeOnly() },
       data: { isRead: true, readAt: new Date() },
     });
     return res.json({ success: true, updated: result.count });
@@ -297,7 +297,7 @@ router.get(
   authenticate,
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const userId = req.user!.id;
-    const where: any = { userId };
+    const where: any = { userId, OR: activeOnly() };
 
     if (req.query.startDate || req.query.endDate) {
       where.createdAt = {};
@@ -308,7 +308,7 @@ router.get(
     const [total, unread, byTypeRaw, byPriorityRaw] = await Promise.all([
       prisma.notification.count({ where }),
       prisma.notification.count({
-        where: { ...where, isRead: false, archivedAt: null, OR: activeOnly() },
+        where: { ...where, isRead: false, archivedAt: null },
       }),
       prisma.notification.groupBy({
         by: ['type'],

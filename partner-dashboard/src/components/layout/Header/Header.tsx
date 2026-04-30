@@ -1156,7 +1156,7 @@ export const Header: React.FC<HeaderProps> = ({
     if (!user) return '?';
     const first = user.firstName?.[0] ?? '';
     const last = user.lastName?.[0] ?? '';
-    return (first + last).toUpperCase() || user.email?.[0]?.toUpperCase() ?? '?';
+    return (first + last).toUpperCase() || (user.email?.[0]?.toUpperCase() ?? '?');
   };
 
   const getThemeIcon = () => {

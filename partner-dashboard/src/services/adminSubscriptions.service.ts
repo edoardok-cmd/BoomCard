@@ -12,18 +12,22 @@ export type SubscriptionStatus =
   | 'UNPAID'
   | 'PAUSED';
 
+export type BillingCycle = 'WEEKLY' | 'MONTHLY' | 'YEARLY' | 'OTHER';
+
 export interface SubscriptionUser {
   id: string;
   firstName: string | null;
   lastName: string | null;
   email: string;
   phone: string | null;
+  isTest?: boolean;
 }
 
 export interface AdminSubscription {
   id: string;
   plan: SubscriptionPlan;
   status: SubscriptionStatus;
+  currentPeriodStart: string;
   currentPeriodEnd: string;
   cancelAtPeriodEnd: boolean;
   cancelAt: string | null;
@@ -35,6 +39,9 @@ export interface AdminSubscription {
   user: SubscriptionUser;
   // Spec §4.2 — total subscriptions ever created for this user (history indicator)
   userSubscriptionCount?: number;
+  billingCycle?: BillingCycle;
+  paymentCount?: number;
+  paymentTotalAmount?: number;
 }
 
 export interface AdminSubscriptionsResult {
@@ -51,11 +58,13 @@ export const adminSubscriptionsService = {
     search?: string;
     plan?: SubscriptionPlan | '';
     status?: SubscriptionStatus | '';
+    excludeTest?: boolean;
   }): Promise<AdminSubscriptionsResult> {
     const clean: Record<string, unknown> = { page: params.page, limit: params.limit };
     if (params.search) clean.search = params.search;
     if (params.plan) clean.plan = params.plan;
     if (params.status) clean.status = params.status;
+    if (params.excludeTest) clean.excludeTest = 'true';
     return apiService.get<AdminSubscriptionsResult>('/admin/subscriptions', clean);
   },
 
@@ -65,6 +74,10 @@ export const adminSubscriptionsService = {
 
   reactivate(id: string): Promise<void> {
     return apiService.post<void>(`/admin/subscriptions/${id}/reactivate`, {});
+  },
+
+  resume(id: string): Promise<void> {
+    return apiService.post<void>(`/admin/subscriptions/${id}/resume`, {});
   },
 
   toggleAutoRenewal(id: string, autoRenewal: boolean): Promise<void> {

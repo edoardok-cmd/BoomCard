@@ -10,123 +10,153 @@ import { planDisplayName } from '../utils/planDisplayName';
 const router = Router();
 router.use(auditMiddleware);
 
-// GET /api/admin/subscribers?page=1&limit=20&search=...&plan=BASIC&status=ACTIVE&dateFrom=...&dateTo=...
+type SubWhere = Parameters<typeof prisma.subscription.findMany>[0]['where'];
+type UserWhere = Parameters<typeof prisma.user.findMany>[0]['where'];
+
+const SUBSCRIBER_SELECT = {
+  id: true,
+  firstName: true,
+  lastName: true,
+  email: true,
+  phone: true,
+  status: true,
+  deletedAt: true,
+  riskScore: true,
+  lastLoginAt: true,
+  createdAt: true,
+  wallet: {
+    select: { availableBalance: true, balance: true, pendingBalance: true },
+  },
+} as const;
+
+function buildSubscriberQuery(q: Record<string, string | undefined>) {
+  const { search, plan, status, accountStatus, riskLevel, dateFrom, dateTo } = q;
+  const where: UserWhere = { role: 'USER' };
+
+  const subFilter: Record<string, unknown> = {};
+  if (plan && Object.values(SubscriptionPlan).includes(plan as SubscriptionPlan)) {
+    subFilter.plan = plan as SubscriptionPlan;
+  }
+  if (status && Object.values(SubscriptionStatus).includes(status as SubscriptionStatus)) {
+    subFilter.status = status as SubscriptionStatus;
+  }
+  const hasSubFilter = Object.keys(subFilter).length > 0;
+  if (hasSubFilter) {
+    where.subscriptions = { some: subFilter as SubWhere };
+  }
+
+  // Date range applies to user.createdAt (account registration) so that
+  // never-subscribed users are not silently dropped from the result.
+  if (dateFrom || dateTo) {
+    const createdAt: Record<string, Date> = {};
+    if (dateFrom) createdAt.gte = new Date(dateFrom);
+    if (dateTo) {
+      const to = new Date(dateTo);
+      to.setUTCHours(23, 59, 59, 999);
+      createdAt.lte = to;
+    }
+    where.createdAt = createdAt;
+  }
+
+  if (accountStatus === 'ACTIVE' || accountStatus === 'SUSPENDED') {
+    where.status = accountStatus;
+    where.deletedAt = null;
+  } else if (accountStatus === 'DELETED') {
+    where.deletedAt = { not: null };
+  }
+
+  if (riskLevel === 'low') where.riskScore = { lte: 30 };
+  else if (riskLevel === 'medium') where.riskScore = { gt: 30, lte: 60 };
+  else if (riskLevel === 'high') where.riskScore = { gt: 60 };
+
+  if (search) {
+    where.OR = [
+      { email: { contains: search, mode: 'insensitive' } },
+      { firstName: { contains: search, mode: 'insensitive' } },
+      { lastName: { contains: search, mode: 'insensitive' } },
+      { phone: { contains: search, mode: 'insensitive' } },
+      { iban: { contains: search, mode: 'insensitive' } },
+    ];
+  }
+
+  return { where, subFilter, hasSubFilter };
+}
+
+// Mirror the outer filter so the embedded subscription matches what the admin
+// filtered on, not just the chronologically latest record.
+function subscriptionInclude(hasSubFilter: boolean, subFilter: Record<string, unknown>) {
+  return {
+    where: hasSubFilter ? (subFilter as SubWhere) : undefined,
+    orderBy: { createdAt: 'desc' as const },
+    take: 1,
+    select: {
+      id: true,
+      plan: true,
+      status: true,
+      currentPeriodEnd: true,
+      autoRenewal: true,
+      canceledAt: true,
+      createdAt: true,
+    },
+  };
+}
+
+function flattenSubscriber<T extends { subscriptions: Array<{ plan: SubscriptionPlan } & Record<string, unknown>> }>(u: T) {
+  const { subscriptions, ...rest } = u;
+  const sub = subscriptions[0] ?? null;
+  return {
+    ...rest,
+    subscription: sub ? { ...sub, planDisplayName: planDisplayName(sub.plan) } : null,
+  };
+}
+
+// GET /api/admin/subscribers?page=1&limit=20&search=...&plan=BASIC&status=ACTIVE&accountStatus=ACTIVE&riskLevel=high&dateFrom=...&dateTo=...
 // "Абонати" = user profile management: user-centric view with subscription summary
 router.get('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('subscribers.read'), async (req, res, next) => {
   try {
-    const {
-      search,
-      plan,
-      status,
-      dateFrom,
-      dateTo,
-      page = '1',
-      limit = '20',
-    } = req.query as Record<string, string>;
-
+    const { page = '1', limit = '20', ...filters } = req.query as Record<string, string>;
     const pageNum = Math.max(1, parseInt(page) || 1);
     const limitNum = Math.min(Math.max(1, parseInt(limit) || 20), 100);
     const skip = (pageNum - 1) * limitNum;
-    const take = limitNum;
 
-    const where: Parameters<typeof prisma.user.findMany>[0]['where'] = {
-      role: 'USER',
-    };
-
-    // Apply subscription filters (plan, status, date range) only when values are
-    // provided so that users with no subscription are still visible without filters.
-    const subFilter: Record<string, unknown> = {};
-    if (plan && Object.values(SubscriptionPlan).includes(plan as SubscriptionPlan)) {
-      subFilter.plan = plan as SubscriptionPlan;
-    }
-    if (status && Object.values(SubscriptionStatus).includes(status as SubscriptionStatus)) {
-      subFilter.status = status as SubscriptionStatus;
-    }
-    if (dateFrom || dateTo) {
-      const createdAt: Record<string, Date> = {};
-      if (dateFrom) createdAt.gte = new Date(dateFrom);
-      if (dateTo) {
-        const to = new Date(dateTo);
-        to.setUTCHours(23, 59, 59, 999);
-        createdAt.lte = to;
-      }
-      subFilter.createdAt = createdAt;
-    }
-    const hasSubFilter = Object.keys(subFilter).length > 0;
-    if (hasSubFilter) {
-      where.subscriptions = { some: subFilter };
-    }
-
-    if (search) {
-      where.OR = [
-        { email: { contains: search, mode: 'insensitive' } },
-        { firstName: { contains: search, mode: 'insensitive' } },
-        { lastName: { contains: search, mode: 'insensitive' } },
-        { phone: { contains: search, mode: 'insensitive' } },
-      ];
-    }
-
-    // Subscription type shorthand for casting the filter into nested where clauses.
-    type SubWhere = Parameters<typeof prisma.subscription.findMany>[0]['where'];
+    const { where, subFilter, hasSubFilter } = buildSubscriberQuery(filters);
 
     const [users, total] = await Promise.all([
       prisma.user.findMany({
         where,
         skip,
-        take,
+        take: limitNum,
         orderBy: { createdAt: 'desc' },
         select: {
-          id: true,
-          firstName: true,
-          lastName: true,
-          email: true,
-          phone: true,
-          status: true,
-          deletedAt: true,
-          riskScore: true,
-          lastLoginAt: true,
-          createdAt: true,
-          wallet: {
-            select: {
-              availableBalance: true,
-              balance: true,
-              pendingBalance: true,
-            },
-          },
-          subscriptions: {
-            // Mirror the outer filter so the embedded subscription always matches
-            // what the admin filtered on, not just the chronologically latest one.
-            where: hasSubFilter ? (subFilter as SubWhere) : undefined,
-            orderBy: { createdAt: 'desc' },
-            take: 1,
-            select: {
-              id: true,
-              plan: true,
-              status: true,
-              currentPeriodEnd: true,
-              autoRenewal: true,
-              canceledAt: true,
-              createdAt: true,
-            },
-          },
+          ...SUBSCRIBER_SELECT,
+          subscriptions: subscriptionInclude(hasSubFilter, subFilter),
         },
       }),
       prisma.user.count({ where }),
     ]);
 
-    // Flatten the subscription array to a single object for ergonomic frontend consumption.
-    // planDisplayName resolves the counter-intuitive LIGHT enum value to "Premium Weekly".
-    const subscribers = users.map(({ subscriptions, ...u }) => {
-      const sub = subscriptions[0] ?? null;
-      return {
-        ...u,
-        subscription: sub
-          ? { ...sub, planDisplayName: planDisplayName(sub.plan) }
-          : null,
-      };
-    });
+    const subscribers = users.map(flattenSubscriber);
+    res.json({ subscribers, total, page: pageNum, limit: limitNum });
+  } catch (error) {
+    next(error);
+  }
+});
 
-    res.json({ subscribers, total, page: pageNum, limit: take });
+// GET /api/admin/subscribers/export — full result set for CSV export, capped at EXPORT_MAX
+const EXPORT_MAX = 10000;
+router.get('/export', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('subscribers.read'), async (req, res, next) => {
+  try {
+    const { where, subFilter, hasSubFilter } = buildSubscriberQuery(req.query as Record<string, string>);
+    const users = await prisma.user.findMany({
+      where,
+      take: EXPORT_MAX,
+      orderBy: { createdAt: 'desc' },
+      select: {
+        ...SUBSCRIBER_SELECT,
+        subscriptions: subscriptionInclude(hasSubFilter, subFilter),
+      },
+    });
+    res.json({ subscribers: users.map(flattenSubscriber), limit: EXPORT_MAX });
   } catch (error) {
     next(error);
   }
@@ -531,6 +561,33 @@ router.delete('/:userId/account', authenticate, authorize('ADMIN', 'SUPER_ADMIN'
     });
 
     res.json({ ok: true, userId, reason: reason ?? null });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// POST /api/admin/subscribers/:userId/restore — undo soft delete (account becomes ACTIVE)
+router.post('/:userId/restore', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('subscribers.delete'), async (req: AuthRequest, res, next) => {
+  try {
+    const { userId } = req.params;
+
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user || user.role !== 'USER') {
+      res.status(404).json({ error: 'Subscriber not found' });
+      return;
+    }
+    if (!user.deletedAt) {
+      res.status(400).json({ error: 'User is not deleted' });
+      return;
+    }
+
+    const updated = await prisma.user.update({
+      where: { id: userId },
+      data: { deletedAt: null, status: 'ACTIVE' },
+      select: { id: true, status: true },
+    });
+
+    res.json({ ok: true, ...updated });
   } catch (error) {
     next(error);
   }

@@ -4,12 +4,12 @@ import { prisma } from '../lib/prisma';
 export type AlertTier = 'CRITICAL' | 'OPERATIONAL' | 'INFORMATIONAL';
 
 export interface AlertItem {
-  id: string;           // stable identifier for front-end routing
-  type: string;         // machine-readable type
+  id: string;
+  type: string;
   tier: AlertTier;
-  title: string;        // human-readable title
+  title: string;
   count: number;
-  link: string;         // front-end route the item links to
+  link: string;
 }
 
 export interface AdminAlertsResult {
@@ -25,50 +25,68 @@ export async function getAlerts(): Promise<AdminAlertsResult> {
   const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
   const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
 
-  // Payout threshold: wallets at ≥50 BGN are actionable for cashback withdrawal
-  const PAYOUT_THRESHOLD = 50;
-  // Large pending tx threshold: wallet transactions ≥500 BGN stuck in PENDING
-  const LARGE_TX_THRESHOLD = 500;
+  // Read thresholds from settings, fall back to safe defaults.
+  // Guard against malformed values: parseFloat can yield NaN, which would
+  // silently break the Prisma `gte` comparisons below.
+  const [payoutThresholdSetting, largeTxThresholdSetting] = await Promise.all([
+    prisma.systemSetting.findUnique({ where: { key: 'payout_threshold' } }),
+    prisma.systemSetting.findUnique({ where: { key: 'large_tx_threshold' } }),
+  ]);
+  const parseSetting = (raw: string | undefined, fallback: number): number => {
+    if (!raw) return fallback;
+    const n = parseFloat(raw);
+    return Number.isFinite(n) ? n : fallback;
+  };
+  const PAYOUT_THRESHOLD = parseSetting(payoutThresholdSetting?.value, 50);
+  const LARGE_TX_THRESHOLD = parseSetting(largeTxThresholdSetting?.value, 500);
 
   const [
     partnerRequests,
     receiptReviews,
-    cashbackOverdue,
-    menuApprovals,
+    partnerInvoicesOverdue,
     openPeriods,
-    deletedUsers,
-    // G2 CRITICAL — неуспешни плащания (failed Stripe charges)
-    failedSubscriptions,
-    // G2 CRITICAL — рискови транзакции (HIGH_61_PLUS bucket)
-    riskReceipts,
-    // G2 CRITICAL — системни грешки (failed transactions last 24h)
+    // Gap #4: open disputes
+    openDisputes,
+    pastDueSubscriptions,
+    unpaidSubscriptions,
+    // Spec risk tiers: 61+ = CRITICAL, 31-60 = OPERATIONAL (Gap #3)
+    highRiskReceipts,
+    mediumRiskReceipts,
     failedTransactions,
-    // G2 OPERATIONAL — абонати достигнали праг за изплащане
+    // Gap #6: suspicious IBAN changes last 24h
+    recentIbanChanges,
     walletsAtThreshold,
-    // G2 OPERATIONAL — pending transactions above limit
     largePendingTx,
-    // G2 INFORMATIONAL — нови регистрации
     newRegistrations,
-    // G2 INFORMATIONAL — активирани партньори
+    // Fix #10: use verifiedAt (set on activation) instead of updatedAt
     activatedPartners,
-    // G2 INFORMATIONAL — завършен онбординг
     completedOnboarding,
   ] = await Promise.all([
     prisma.partner.count({ where: { status: 'PENDING' } }),
     prisma.receipt.count({ where: { status: 'MANUAL_REVIEW' } }),
     prisma.partnerCashbackPayment.count({ where: { status: 'OVERDUE' } }),
-    prisma.venue.count({ where: { menuStatus: 'PENDING' } }),
     prisma.reportingPeriod.count({ where: { status: 'FOR_REVIEW' } }),
-    prisma.user.count({ where: { status: 'DELETED' } }),
-    prisma.subscription.count({ where: { status: { in: ['PAST_DUE', 'UNPAID'] } } }),
+    prisma.dispute.count({ where: { status: { in: ['OPEN', 'IN_REVIEW'] } } }),
+    prisma.subscription.count({ where: { status: 'PAST_DUE' } }),
+    prisma.subscription.count({ where: { status: 'UNPAID' } }),
+    // Exclude MANUAL_REVIEW so these don't double-count with `receipt_review`.
     prisma.receipt.count({
       where: {
         fraudScore: { gte: 61 },
-        status: { notIn: ['APPROVED', 'REJECTED', 'EXPIRED'] },
+        status: { notIn: ['APPROVED', 'REJECTED', 'EXPIRED', 'MANUAL_REVIEW'] },
+      },
+    }),
+    prisma.receipt.count({
+      where: {
+        fraudScore: { gte: 31, lt: 61 },
+        status: { notIn: ['APPROVED', 'REJECTED', 'EXPIRED', 'MANUAL_REVIEW'] },
       },
     }),
     prisma.transaction.count({
       where: { status: 'FAILED', createdAt: { gte: oneDayAgo } },
+    }),
+    prisma.user.count({
+      where: { ibanLastChangedAt: { gte: oneDayAgo } },
     }),
     prisma.wallet.count({
       where: { balance: { gte: PAYOUT_THRESHOLD }, isLocked: false },
@@ -80,7 +98,7 @@ export async function getAlerts(): Promise<AdminAlertsResult> {
       where: { createdAt: { gte: oneDayAgo }, status: { not: 'DELETED' } },
     }),
     prisma.partner.count({
-      where: { status: 'ACTIVE', updatedAt: { gte: oneDayAgo } },
+      where: { status: 'ACTIVE', verifiedAt: { gte: oneDayAgo } },
     }),
     prisma.partner.count({
       where: { requestStatus: 'ODOBRENA', updatedAt: { gte: sevenDaysAgo } },
@@ -102,44 +120,71 @@ export async function getAlerts(): Promise<AdminAlertsResult> {
       link: '/admin/control/risk',
     });
   }
-  if (cashbackOverdue > 0) {
+  if (partnerInvoicesOverdue > 0) {
+    // PartnerCashbackPayment.status = OVERDUE → BoomCard owes the partner
+    // cashback that's now >30 days late. Surfaced as critical per spec §6.2.
     critical.push({
-      id: 'cashback_overdue',
-      type: 'CASHBACK_OVERDUE',
+      id: 'partner_payouts_overdue',
+      type: 'PARTNER_PAYOUTS_OVERDUE',
       tier: 'CRITICAL',
-      title: 'Просрочени кешбек плащания',
-      count: cashbackOverdue,
+      title: 'Просрочени плащания към партньори',
+      count: partnerInvoicesOverdue,
       link: '/admin/finance/invoices?status=OVERDUE',
     });
   }
-  if (failedSubscriptions > 0) {
+  // Split PAST_DUE / UNPAID so each alert's link filter matches its count.
+  if (pastDueSubscriptions > 0) {
     critical.push({
       id: 'failed_payments',
       type: 'FAILED_PAYMENTS',
       tier: 'CRITICAL',
       title: 'Неуспешни плащания',
-      count: failedSubscriptions,
+      count: pastDueSubscriptions,
       link: '/admin/subscribers/subscriptions?status=PAST_DUE',
     });
   }
-  if (riskReceipts > 0) {
+  if (unpaidSubscriptions > 0) {
+    critical.push({
+      id: 'unpaid_subscriptions',
+      type: 'UNPAID_SUBSCRIPTIONS',
+      tier: 'CRITICAL',
+      title: 'Неплатени абонаменти',
+      count: unpaidSubscriptions,
+      link: '/admin/subscribers/subscriptions?status=UNPAID',
+    });
+  }
+  if (highRiskReceipts > 0) {
     critical.push({
       id: 'risk_transactions',
       type: 'RISK_TRANSACTIONS',
       tier: 'CRITICAL',
-      title: 'Рискови транзакции (висок риск)',
-      count: riskReceipts,
-      link: '/admin/control/risk?tier=HIGH_61_PLUS',
+      title: 'Рискови транзакции (висок риск 61+)',
+      count: highRiskReceipts,
+      link: '/admin/control/risk?bucket=HIGH_61_PLUS',
     });
   }
   if (failedTransactions > 0) {
+    // Counts Transaction.status=FAILED in the last 24h — failed payment
+    // transactions (Paysera/wallet/etc.). Surfaced under business-view
+    // transactions, where the alerted rows are actually rendered.
     critical.push({
-      id: 'system_errors',
-      type: 'SYSTEM_ERRORS',
+      id: 'failed_transactions',
+      type: 'FAILED_TRANSACTIONS',
       tier: 'CRITICAL',
-      title: 'Системни грешки (последните 24ч)',
+      title: 'Неуспешни транзакции (последните 24ч)',
       count: failedTransactions,
-      link: '/admin/subscribers/transactions?status=FAILED',
+      link: '/admin/subscribers/transactions?view=business&status=FAILED',
+    });
+  }
+  if (recentIbanChanges > 0) {
+    // Gap #6: suspicious activity — IBAN changes tracked via User.ibanLastChangedAt
+    critical.push({
+      id: 'suspicious_iban_changes',
+      type: 'SUSPICIOUS_IBAN_CHANGES',
+      tier: 'CRITICAL',
+      title: 'Промени на IBAN (последните 24ч)',
+      count: recentIbanChanges,
+      link: '/admin/control/security',
     });
   }
 
@@ -154,14 +199,26 @@ export async function getAlerts(): Promise<AdminAlertsResult> {
       link: '/admin/partners/requests',
     });
   }
-  if (menuApprovals > 0) {
+  if (mediumRiskReceipts > 0) {
+    // Gap #3: spec tier 31-60 = requires review → OPERATIONAL
     operational.push({
-      id: 'menu_approvals',
-      type: 'MENU_APPROVALS',
+      id: 'medium_risk_transactions',
+      type: 'MEDIUM_RISK_TRANSACTIONS',
       tier: 'OPERATIONAL',
-      title: 'Менюта за одобрение',
-      count: menuApprovals,
-      link: '/admin/partners/locations?status=PENDING_MENU',
+      title: 'Транзакции за преглед (среден риск 31–60)',
+      count: mediumRiskReceipts,
+      link: '/admin/control/risk?bucket=REVIEW_31_60',
+    });
+  }
+  if (openDisputes > 0) {
+    // Gap #4: open/in-review disputes
+    operational.push({
+      id: 'open_disputes',
+      type: 'OPEN_DISPUTES',
+      tier: 'OPERATIONAL',
+      title: 'Отворени спорове',
+      count: openDisputes,
+      link: '/admin/control/disputes',
     });
   }
   if (openPeriods > 0) {
@@ -175,37 +232,30 @@ export async function getAlerts(): Promise<AdminAlertsResult> {
     });
   }
   if (walletsAtThreshold > 0) {
+    // Fix #5: threshold now comes from SystemSetting; link to Finance > Payments per spec
     operational.push({
       id: 'payout_threshold',
       type: 'PAYOUT_THRESHOLD',
       tier: 'OPERATIONAL',
       title: `Абонати достигнали праг за изплащане (≥${PAYOUT_THRESHOLD} лв)`,
       count: walletsAtThreshold,
-      link: '/admin/subscribers/all?filter=payout_ready',
+      link: '/admin/finance/payouts',
     });
   }
   if (largePendingTx > 0) {
+    // Fix #5: threshold now comes from SystemSetting
     operational.push({
       id: 'large_pending_transactions',
       type: 'LARGE_PENDING_TRANSACTIONS',
       tier: 'OPERATIONAL',
       title: `Чакащи транзакции над лимита (≥${LARGE_TX_THRESHOLD} лв)`,
       count: largePendingTx,
-      link: '/admin/subscribers/transactions?status=PENDING',
+      link: '/admin/subscribers/transactions?view=wallet&status=PENDING',
     });
   }
 
   // ── Informational ────────────────────────────────────────────────────────────
-  if (deletedUsers > 0) {
-    informational.push({
-      id: 'deleted_users',
-      type: 'DELETED_USERS',
-      tier: 'INFORMATIONAL',
-      title: 'Изтрити потребители',
-      count: deletedUsers,
-      link: '/admin/subscribers/all?status=DELETED',
-    });
-  }
+  // Fix #2: deleted_users removed — cumulative count is not a daily signal per spec
   if (newRegistrations > 0) {
     informational.push({
       id: 'new_registrations',
@@ -213,7 +263,7 @@ export async function getAlerts(): Promise<AdminAlertsResult> {
       tier: 'INFORMATIONAL',
       title: 'Нови регистрации (последните 24ч)',
       count: newRegistrations,
-      link: '/admin/subscribers/all?filter=new',
+      link: '/admin/subscribers/all',
     });
   }
   if (activatedPartners > 0) {
@@ -223,7 +273,7 @@ export async function getAlerts(): Promise<AdminAlertsResult> {
       tier: 'INFORMATIONAL',
       title: 'Активирани партньори (последните 24ч)',
       count: activatedPartners,
-      link: '/admin/partners/active?status=ACTIVE&filter=recent',
+      link: '/admin/partners/active',
     });
   }
   if (completedOnboarding > 0) {
@@ -233,7 +283,7 @@ export async function getAlerts(): Promise<AdminAlertsResult> {
       tier: 'INFORMATIONAL',
       title: 'Завършен онбординг (последните 7 дни)',
       count: completedOnboarding,
-      link: '/admin/partners/active?requestStatus=ODOBRENA&filter=recent',
+      link: '/admin/partners/active',
     });
   }
 

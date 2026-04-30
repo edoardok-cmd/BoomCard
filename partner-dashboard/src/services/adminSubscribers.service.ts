@@ -89,23 +89,42 @@ export interface AdminSubscribersResult {
   limit: number;
 }
 
+export type AccountStatusFilter = 'ACTIVE' | 'SUSPENDED' | 'DELETED';
+export type RiskLevelFilter = 'low' | 'medium' | 'high';
+
+export interface SubscriberFilters {
+  search?: string;
+  plan?: SubscriptionPlan | '';
+  status?: SubscriptionStatus | '';
+  accountStatus?: AccountStatusFilter | '';
+  riskLevel?: RiskLevelFilter | '';
+  dateFrom?: string;
+  dateTo?: string;
+}
+
+function cleanFilters(f: SubscriberFilters): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  if (f.search) out['search'] = f.search;
+  if (f.plan) out['plan'] = f.plan;
+  if (f.status) out['status'] = f.status;
+  if (f.accountStatus) out['accountStatus'] = f.accountStatus;
+  if (f.riskLevel) out['riskLevel'] = f.riskLevel;
+  if (f.dateFrom) out['dateFrom'] = f.dateFrom;
+  if (f.dateTo) out['dateTo'] = f.dateTo;
+  return out;
+}
+
 export const adminSubscribersService = {
-  list(params: {
-    page?: number;
-    limit?: number;
-    search?: string;
-    plan?: SubscriptionPlan | '';
-    status?: SubscriptionStatus | '';
-    dateFrom?: string;
-    dateTo?: string;
-  }): Promise<AdminSubscribersResult> {
-    const clean: Record<string, unknown> = { page: params.page, limit: params.limit };
-    if (params.search) clean['search'] = params.search;
-    if (params.plan) clean['plan'] = params.plan;
-    if (params.status) clean['status'] = params.status;
-    if (params.dateFrom) clean['dateFrom'] = params.dateFrom;
-    if (params.dateTo) clean['dateTo'] = params.dateTo;
-    return apiService.get<AdminSubscribersResult>('/admin/subscribers', clean);
+  list(params: SubscriberFilters & { page?: number; limit?: number }): Promise<AdminSubscribersResult> {
+    return apiService.get<AdminSubscribersResult>('/admin/subscribers', {
+      page: params.page,
+      limit: params.limit,
+      ...cleanFilters(params),
+    });
+  },
+
+  exportAll(params: SubscriberFilters): Promise<{ subscribers: AdminSubscriber[]; limit: number }> {
+    return apiService.get('/admin/subscribers/export', cleanFilters(params));
   },
 
   cancelSubscription(userId: string): Promise<{ ok: boolean }> {
@@ -127,8 +146,19 @@ export const adminSubscribersService = {
     return apiService.patch(`/admin/subscribers/${id}/status`, { status });
   },
 
-  deleteSubscriber(id: string): Promise<{ ok: boolean }> {
-    return apiService.delete(`/admin/subscribers/${id}`);
+  deleteAccount(id: string, reason?: string): Promise<{ ok: boolean; userId: string; reason: string | null }> {
+    return apiService.delete(`/admin/subscribers/${id}/account`, { data: reason ? { reason } : undefined });
+  },
+
+  restoreAccount(id: string): Promise<{ ok: boolean; id: string; status: string }> {
+    return apiService.post(`/admin/subscribers/${id}/restore`);
+  },
+
+  refund(
+    id: string,
+    payload: { amount?: number; reason?: 'duplicate' | 'fraudulent' | 'requested_by_customer' } = {},
+  ): Promise<{ ok: boolean; refundId: string; amount: number; currency: string }> {
+    return apiService.post(`/admin/subscribers/${id}/refund`, payload);
   },
 
   forceLogout(id: string): Promise<{ ok: boolean; revokedCount: number }> {

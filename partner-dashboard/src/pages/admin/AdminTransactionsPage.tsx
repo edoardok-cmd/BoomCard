@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import styled from 'styled-components';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-hot-toast';
@@ -469,15 +470,30 @@ export default function AdminTransactionsPage() {
   const queryClient = useQueryClient();
   const locale = language === 'bg' ? 'bg-BG' : 'en-GB';
 
+  // Allow deep-links from the alerts page to preselect view + wallet status.
+  const [searchParams] = useSearchParams();
+  const initialView: 'business' | 'wallet' =
+    searchParams.get('view') === 'wallet' ? 'wallet' : 'business';
+  const VALID_WALLET_STATUSES: WalletTransactionStatus[] = [
+    'PENDING', 'PROCESSING', 'COMPLETED', 'FAILED',
+    'CANCELLED', 'TRIAL_PENDING', 'ANNULLED',
+  ];
+  const initialStatusParam = searchParams.get('status');
+  const initialStatus: WalletTransactionStatus | '' =
+    initialStatusParam &&
+    VALID_WALLET_STATUSES.includes(initialStatusParam as WalletTransactionStatus)
+      ? (initialStatusParam as WalletTransactionStatus)
+      : '';
+
   /* ── View toggle (spec §4.3 default = Business / receipt-based) ── */
-  const [view, setView] = useState<'business' | 'wallet'>('business');
+  const [view, setView] = useState<'business' | 'wallet'>(initialView);
 
   /* ── Filters ── */
   const [page, setPage] = useState(1);
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
   const [type, setType] = useState<WalletTransactionType | ''>('');
-  const [status, setStatus] = useState<WalletTransactionStatus | ''>('');
+  const [status, setStatus] = useState<WalletTransactionStatus | ''>(initialStatus);
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
 
