@@ -792,9 +792,13 @@ export const AdminScanReviewPage: React.FC = () => {
     // standalone page-reset effect → setPage(1) → re-render → second fetch),
     // which the fetchScans seq guard masked silently.
     // Requires React 18+ automatic batching: in React 17 each setState call
-    // inside a useEffect body flushed synchronously, so these six calls would
-    // have produced six renders and six fetches. React ^18.2.0 is pinned in
-    // package.json; do not relax that constraint without re-auditing this.
+    // inside a useEffect body flushed synchronously. setAppliedDateFromHours
+    // at the top of this effect fires first — conditionally, when
+    // filterDateFromHours changes. The six unconditional calls (the five
+    // setFilterX above plus setPage(1) below) always fire. Under React 17
+    // that gives up to seven renders and seven fetches. React ^18.2.0 is
+    // pinned in package.json; do not relax that constraint without
+    // re-auditing this.
     //
     // Invariant: searchParams changes only via (a) commitFilters — which
     // already resets page before calling setSearchParams — or (b) external
@@ -850,11 +854,15 @@ export const AdminScanReviewPage: React.FC = () => {
     // explicit if (page !== 1) guard.
     //
     // Safety against "commitFilters called with unchanged value while page > 1":
-    // all callers use <select onChange>, checkbox, or text-input change
-    // handlers — the browser only fires 'change' when the value actually
-    // differs. There is no UI path that calls commitFilters with the same
-    // filter value while page > 1, so the unconditional setPage(1) cannot
-    // produce a spurious page-reset through current call sites.
+    // • <select onChange> callers (filterStatus, filterRisk dropdowns): the
+    //   browser only fires 'change' when the selected value actually differs.
+    // • onClick chip-removal callers (filterSuspicious, filterReasons,
+    //   filterDateFromHours chips): each chip is conditionally rendered only
+    //   while its filter is active (non-default), so clicking it always
+    //   transitions active → default — never a same-value call.
+    // Neither path can invoke commitFilters with an unchanged value while
+    // page > 1, so the unconditional setPage(1) cannot produce a spurious
+    // page-reset through current call sites.
     setPage(1);
     const merged: HydratedFilters = {
       filterStatus: has('filterStatus') ? (partial.filterStatus as FilterStatus) : filterStatus,
@@ -978,12 +986,15 @@ export const AdminScanReviewPage: React.FC = () => {
         setStats(json?.data ?? json);
       }
     } catch (error) {
+      // Log unconditionally — mirrors fetchScans, ensures stale-request errors
+      // are never silently dropped. The isLatest() guard below only gates future
+      // error-recovery state (e.g. setStatsError); it must not gate logging.
+      console.error('Error fetching stats:', error);
       // isLatest() guard: no state is written today, but if error-recovery
       // state (e.g. setStatsError) is added here it must be gated on this
       // check — an older failed call must not clobber a newer in-flight
       // result, mirroring the pattern in fetchScans.
       if (!isLatest()) return;
-      console.error('Error fetching stats:', error);
     }
   };
 
@@ -1271,6 +1282,31 @@ export const AdminScanReviewPage: React.FC = () => {
             )}
           </div>
         )}
+        {/* WCAG 4.1.3: announces the applying → applied transition so screen-reader
+            users hear the server-echoed window without navigating back to the chip.
+            Always rendered so aria-live fires on text *changes*, not initial content. */}
+        <span
+          role="status"
+          aria-live="polite"
+          data-testid="tw-live"
+          style={{
+            position: 'absolute',
+            width: 1,
+            height: 1,
+            padding: 0,
+            margin: -1,
+            overflow: 'hidden',
+            clip: 'rect(0,0,0,0)',
+            whiteSpace: 'nowrap',
+            border: 0,
+          }}
+        >
+          {filterDateFromHours
+            ? appliedDateFromHours !== undefined
+              ? `Time window filter applied: last ${appliedDateFromHours} hours`
+              : 'Time window filter applying…'
+            : ''}
+        </span>
       </FiltersBar>
 
       {truncated && !loading && (

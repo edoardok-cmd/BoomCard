@@ -9,7 +9,7 @@ import {
   SubscriptionStatus,
   UserAccountStatus,
 } from '../../services/adminSubscribers.service';
-import { planLabel, subStatusLabel, userStatusLabel, riskLabel, type Lang } from '../../utils/planLabels';
+import { planLabel, subStatusLabel, userStatusLabel, riskLabel, riskBucket, type RiskBucket, type Lang } from '../../utils/planLabels';
 
 /* ─── i18n ─────────────────────────────────────────────────────────────────── */
 // Localised strings for this page. Mirrors the AdminSubscribersAllPage pattern
@@ -312,7 +312,7 @@ const UserStatusBadge = styled.span<{ $status: UserAccountStatus | 'DELETED' }>`
   }}
 `;
 
-const RiskBadge = styled.span<{ $level: 'low' | 'medium' | 'high' }>`
+const RiskBadge = styled.span<{ $level: RiskBucket }>`
   display: inline-flex;
   align-items: center;
   font-size: 0.7rem;
@@ -323,8 +323,8 @@ const RiskBadge = styled.span<{ $level: 'low' | 'medium' | 'high' }>`
   padding: 0.2rem 0.6rem;
 
   ${({ $level }) => {
-    if ($level === 'low') return `background: ${palette.successSoft}; color: ${palette.success};`;
-    if ($level === 'medium') return `background: ${palette.warningSoft}; color: ${palette.warning};`;
+    if ($level === 'auto') return `background: ${palette.successSoft}; color: ${palette.success};`;
+    if ($level === 'review') return `background: ${palette.warningSoft}; color: ${palette.warning};`;
     return `background: ${palette.dangerSoft}; color: ${palette.danger};`;
   }}
 `;
@@ -395,15 +395,6 @@ const SubStatusBadge = styled.span<{ $status: SubscriptionStatus }>`
     }
   }}
 `;
-
-/* ─── Helpers ─────────────────────────────────────────────────────────────── */
-// Local: maps risk score → RiskBadge styling key (low/medium/high drive colors).
-// Label strings come from the shared riskLabel() in utils/planLabels.
-function riskLevel(score: number): 'low' | 'medium' | 'high' {
-  if (score <= 30) return 'low';
-  if (score <= 60) return 'medium';
-  return 'high';
-}
 
 /* ─── Component ───────────────────────────────────────────────────────────── */
 export default function AdminSubscriberDetailPage() {
@@ -478,7 +469,7 @@ export default function AdminSubscriberDetailPage() {
             <BadgeRow>
               <UserStatusBadge $status={accountStatus}>{userStatusLabel(accountStatus, lang)}</UserStatusBadge>
               {data.riskScore != null && (
-                <RiskBadge $level={riskLevel(data.riskScore)}>
+                <RiskBadge $level={riskBucket(data.riskScore)}>
                   {T('risk')}: {riskLabel(data.riskScore, lang)} ({data.riskScore})
                 </RiskBadge>
               )}

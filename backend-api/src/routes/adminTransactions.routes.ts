@@ -6,10 +6,23 @@ import { deriveCashbackEntryStatus } from '../services/adminCashback.service';
 
 const router = Router();
 
+// Reject arrays and nested objects that qs can produce when a param is repeated
+// (?x=a&x=b → ['a','b']) or bracket-notation is used (?x[gt]=1 → {gt:'1'}).
+// Without this, `new Date(['x'])` = Invalid Date crashes and Prisma type errors.
+function qs(v: unknown): string | undefined {
+  return typeof v === 'string' ? v : undefined;
+}
+
 type TxWhere = Parameters<typeof prisma.walletTransaction.findMany>[0]['where'];
 
-function buildWhere(query: Record<string, string>): TxWhere {
-  const { search, type, status, dateFrom, dateTo, userId, minAmount } = query;
+function buildWhere(query: Record<string, unknown>): TxWhere {
+  const search = qs(query.search);
+  const type = qs(query.type);
+  const status = qs(query.status);
+  const dateFrom = qs(query.dateFrom);
+  const dateTo = qs(query.dateTo);
+  const userId = qs(query.userId);
+  const minAmount = qs(query.minAmount);
   const where: TxWhere = {};
 
   if (type && Object.values(WalletTransactionType).includes(type as WalletTransactionType)) {
@@ -62,13 +75,14 @@ function buildWhere(query: Record<string, string>): TxWhere {
 // GET /api/admin/transactions?page=1&limit=20&search=...&type=TOP_UP&status=COMPLETED&dateFrom=...&dateTo=...&userId=...
 router.get('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('transactions.read'), async (req, res, next) => {
   try {
-    const { page = '1', limit = '20' } = req.query as Record<string, string>;
+    const page = qs(req.query.page) ?? '1';
+    const limit = qs(req.query.limit) ?? '20';
     const pageNum = Math.max(1, parseInt(page) || 1);
     const limitNum = Math.min(Math.max(1, parseInt(limit) || 20), 100);
     const skip = (pageNum - 1) * limitNum;
     const take = limitNum;
 
-    const where = buildWhere(req.query as Record<string, string>);
+    const where = buildWhere(req.query);
 
     const [transactions, total] = await Promise.all([
       prisma.walletTransaction.findMany({
@@ -114,7 +128,7 @@ router.get('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermissi
 // GET /api/admin/transactions/stats?search=...&type=...&status=...&dateFrom=...&dateTo=...&userId=...
 router.get('/stats', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('transactions.read'), async (req, res, next) => {
   try {
-    const baseWhere = buildWhere(req.query as Record<string, string>);
+    const baseWhere = buildWhere(req.query);
 
     const [volumeResult, cashbackResult, withdrawalResult] = await Promise.all([
       prisma.walletTransaction.aggregate({
@@ -232,8 +246,15 @@ router.post('/adjust', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requireP
 // tier ranges) so total / pagination / stats stay in sync with the rendered rows.
 type BusinessTxWhere = NonNullable<Parameters<typeof prisma.transaction.findMany>[0]>['where'];
 
-function buildBusinessWhere(query: Record<string, string>): BusinessTxWhere {
-  const { partnerId, type, status, dateFrom, dateTo, search, minAmount, minRisk } = query;
+function buildBusinessWhere(query: Record<string, unknown>): BusinessTxWhere {
+  const partnerId = qs(query.partnerId);
+  const type = qs(query.type);
+  const status = qs(query.status);
+  const dateFrom = qs(query.dateFrom);
+  const dateTo = qs(query.dateTo);
+  const search = qs(query.search);
+  const minAmount = qs(query.minAmount);
+  const minRisk = qs(query.minRisk);
   const where: BusinessTxWhere = {};
   const ands: BusinessTxWhere[] = [];
 
@@ -291,13 +312,13 @@ function buildBusinessWhere(query: Record<string, string>): BusinessTxWhere {
 // Партньор / Локация / Кешбек / Марджин / Risk score / Receipt link / dual timestamps.
 router.get('/business', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('transactions.read'), async (req, res, next) => {
   try {
-    const { page = '1', limit = '20' } = req.query as Record<string, string>;
-
+    const page = qs(req.query.page) ?? '1';
+    const limit = qs(req.query.limit) ?? '20';
     const pageNum = Math.max(1, parseInt(page) || 1);
     const limitNum = Math.min(Math.max(1, parseInt(limit) || 20), 100);
     const skip = (pageNum - 1) * limitNum;
 
-    const where = buildBusinessWhere(req.query as Record<string, string>);
+    const where = buildBusinessWhere(req.query);
 
     const [transactions, total] = await Promise.all([
       prisma.transaction.findMany({
@@ -330,7 +351,6 @@ router.get('/business', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), require
             select: {
               id: true,
               businessName: true,
-              businessNameBg: true,
               discountRate: true,
               partnerType: { select: { maxDiscountRate: true } },
             },
@@ -428,8 +448,10 @@ router.get('/business', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), require
           )
         : null;
 
-      // Strip walletTransaction.walletId from the response — it's only needed
-      // server-side for withdrawal lookup; the wire shape stays focused on UI fields.
+      // Strip the entire walletTransaction sub-object from the wire response — the
+      // walletId was only needed for the withdrawal-lookup Map above, and the rest
+      // of the lifecycle fields are expressed as the derived cashbackStatus. UI
+      // consumers read cashbackStatus rather than the raw WalletTransaction columns.
       const { walletTransaction: _wt, ...rest } = tx;
       return {
         ...rest,
@@ -454,12 +476,15 @@ router.get('/business', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), require
 // Accepts the same filter set as /business so the stats bar matches the visible row count.
 router.get('/business/stats', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('transactions.read'), async (req, res, next) => {
   try {
-    const where = buildBusinessWhere(req.query as Record<string, string>);
+    const where = buildBusinessWhere(req.query);
 
+    // Use UTC boundaries to match the dateTo end-of-day convention used by
+    // buildBusinessWhere (line ~258: setUTCHours). Mixed UTC/local boundaries
+    // produce off-by-one "today" counts on non-UTC servers.
     const startOfToday = new Date();
-    startOfToday.setHours(0, 0, 0, 0);
+    startOfToday.setUTCHours(0, 0, 0, 0);
     const endOfToday = new Date();
-    endOfToday.setHours(23, 59, 59, 999);
+    endOfToday.setUTCHours(23, 59, 59, 999);
 
     const todayWhere: BusinessTxWhere = where.AND
       ? { ...where, AND: [...(where.AND as BusinessTxWhere[]), { createdAt: { gte: startOfToday, lte: endOfToday } }] }
@@ -507,20 +532,54 @@ router.get('/business/partner-risk/:partnerId', authenticate, authorize('ADMIN',
     // Build the transaction-side where with the active filters; pin partnerId
     // (overrides any inherited value from query) and drop minRisk to avoid
     // self-fulfilling aggregation.
-    const { minRisk: _drop, partnerId: _ignore, ...rest } = req.query as Record<string, string>;
-    const txWhere = buildBusinessWhere({ ...rest, partnerId });
+    // _ignore is defense-in-depth: the frontend never passes partnerId in the
+    // query string for this endpoint, but if it ever did the URL param's pin
+    // below would be silently overridden without the destructure.
+    const { minRisk: _drop, partnerId: _ignore, ...rest } = req.query;
+    const txWhere = buildBusinessWhere({ ...(rest as Record<string, unknown>), partnerId });
 
-    const agg = await prisma.receipt.aggregate({
-      where: { transaction: txWhere },
-      _max: { fraudScore: true },
-      _avg: { fraudScore: true },
-      _count: { _all: true },
-    });
+    // Aggregate fraud signals from BOTH Receipt and StickerScan. The live cashback
+    // pipeline is StickerScan-based (Receipt submission is retired — see service
+    // header). Aggregating only Receipt rows would silently return risk=0 for any
+    // partner whose recent transactions have no Receipt rows.
+    const [receiptAgg, stickerAgg] = await Promise.all([
+      prisma.receipt.aggregate({
+        where: { transaction: txWhere },
+        _max: { fraudScore: true },
+        _avg: { fraudScore: true },
+        _count: { _all: true },
+      }),
+      prisma.stickerScan.aggregate({
+        where: { transaction: txWhere },
+        _max: { fraudScore: true },
+        _avg: { fraudScore: true },
+        _count: { _all: true },
+      }),
+    ]);
+
+    const receiptCount = receiptAgg._count._all;
+    const stickerCount = stickerAgg._count._all;
+    // signalCount = sum of rows that contributed a fraud score. A transaction with
+    // both a Receipt and a StickerScan is counted once per source — an acceptable
+    // approximation since the live pipeline is sticker-scan only.
+    const signalCount = receiptCount + stickerCount;
+    const maxFraudScore = Math.round(
+      Math.max(receiptAgg._max.fraudScore ?? 0, stickerAgg._max.fraudScore ?? 0),
+    );
+    const avgFraudScore =
+      signalCount > 0
+        ? Math.round(
+            (receiptCount * (receiptAgg._avg.fraudScore ?? 0) +
+              stickerCount * (stickerAgg._avg.fraudScore ?? 0)) /
+              signalCount,
+          )
+        : 0;
+
     res.json({
       partnerId,
-      receiptCount: agg._count._all,
-      maxFraudScore: Math.round(agg._max.fraudScore ?? 0),
-      avgFraudScore: Math.round(agg._avg.fraudScore ?? 0),
+      signalCount,
+      maxFraudScore,
+      avgFraudScore,
     });
   } catch (error) {
     next(error);

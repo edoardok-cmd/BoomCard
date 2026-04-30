@@ -1,5 +1,10 @@
 import { apiService } from './api.service';
 
+// Maximum rows the client-side export fetches before reporting truncation.
+// Matches MAX_PAGES × default pageSize inside fetchAllBusiness / fetchAllWallet.
+// Imported by the page to interpolate the cap into the truncation toast string.
+export const EXPORT_ROW_CAP = 10_000;
+
 export type WalletTransactionType =
   | 'TOP_UP'
   | 'WITHDRAWAL'
@@ -70,45 +75,39 @@ export interface AdjustmentResult {
   createdAt: string;
 }
 
+interface WalletFilterParams {
+  page?: number;
+  limit?: number;
+  search?: string;
+  type?: WalletTransactionType | '';
+  status?: WalletTransactionStatus | '';
+  dateFrom?: string;
+  dateTo?: string;
+  userId?: string;
+  minAmount?: number;
+}
+
+function cleanWalletParams(params: WalletFilterParams): Record<string, unknown> {
+  const clean: Record<string, unknown> = {};
+  if (params.page != null) clean['page'] = params.page;
+  if (params.limit != null) clean['limit'] = params.limit;
+  if (params.search) clean['search'] = params.search;
+  if (params.type) clean['type'] = params.type;
+  if (params.status) clean['status'] = params.status;
+  if (params.dateFrom) clean['dateFrom'] = params.dateFrom;
+  if (params.dateTo) clean['dateTo'] = params.dateTo;
+  if (params.userId) clean['userId'] = params.userId;
+  if (params.minAmount != null) clean['minAmount'] = params.minAmount;
+  return clean;
+}
+
 export const adminTransactionsService = {
-  list(params: {
-    page?: number;
-    limit?: number;
-    search?: string;
-    type?: WalletTransactionType | '';
-    status?: WalletTransactionStatus | '';
-    dateFrom?: string;
-    dateTo?: string;
-    userId?: string;
-    minAmount?: number;
-  }): Promise<AdminTransactionsResult> {
-    const clean: Record<string, unknown> = { page: params.page, limit: params.limit };
-    if (params.search) clean['search'] = params.search;
-    if (params.type) clean['type'] = params.type;
-    if (params.status) clean['status'] = params.status;
-    if (params.dateFrom) clean['dateFrom'] = params.dateFrom;
-    if (params.dateTo) clean['dateTo'] = params.dateTo;
-    if (params.userId) clean['userId'] = params.userId;
-    if (params.minAmount != null) clean['minAmount'] = params.minAmount;
-    return apiService.get<AdminTransactionsResult>('/admin/transactions', clean);
+  list(params: WalletFilterParams): Promise<AdminTransactionsResult> {
+    return apiService.get<AdminTransactionsResult>('/admin/transactions', cleanWalletParams(params));
   },
 
-  getStats(params: {
-    search?: string;
-    type?: WalletTransactionType | '';
-    status?: WalletTransactionStatus | '';
-    dateFrom?: string;
-    dateTo?: string;
-    userId?: string;
-  }): Promise<AdminTransactionStats> {
-    const clean: Record<string, unknown> = {};
-    if (params.search) clean['search'] = params.search;
-    if (params.type) clean['type'] = params.type;
-    if (params.status) clean['status'] = params.status;
-    if (params.dateFrom) clean['dateFrom'] = params.dateFrom;
-    if (params.dateTo) clean['dateTo'] = params.dateTo;
-    if (params.userId) clean['userId'] = params.userId;
-    return apiService.get<AdminTransactionStats>('/admin/transactions/stats', clean);
+  getStats(params: Omit<WalletFilterParams, 'page' | 'limit' | 'minAmount'>): Promise<AdminTransactionStats> {
+    return apiService.get<AdminTransactionStats>('/admin/transactions/stats', cleanWalletParams(params));
   },
 
   adjust(data: { userId: string; amount: number; reason: string }): Promise<AdjustmentResult> {
@@ -152,6 +151,9 @@ export const adminTransactionsService = {
       if (all.length >= result.total || result.transactions.length === 0) break;
       page += 1;
     }
+    // Rows inserted between page fetches may appear in `all` without being
+    // reflected in an earlier lastTotal; deletions may cause lastTotal > all.length
+    // without hitting MAX_PAGES. Both are acceptable approximations for a CSV export.
     return { rows: all, truncated: all.length < lastTotal, total: lastTotal };
   },
 
@@ -178,6 +180,7 @@ export const adminTransactionsService = {
       if (all.length >= result.total || result.transactions.length === 0) break;
       page += 1;
     }
+    // Same mid-walk race caveat as fetchAllBusiness applies here.
     return { rows: all, truncated: all.length < lastTotal, total: lastTotal };
   },
 
@@ -253,7 +256,6 @@ export interface BusinessTransaction {
     | {
         id: string;
         businessName: string;
-        businessNameBg: string | null;
         discountRate: number | null;
         partnerType: { maxDiscountRate: number } | null;
       }
@@ -290,7 +292,9 @@ export interface BusinessTransactionStats {
 
 export interface PartnerRiskAggregate {
   partnerId: string;
-  receiptCount: number;
+  // Count of rows (receipts + sticker scans) that contributed a fraud signal.
+  // Renamed from receiptCount — the aggregate now covers both sources.
+  signalCount: number;
   maxFraudScore: number;
   avgFraudScore: number;
 }

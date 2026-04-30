@@ -22,6 +22,7 @@ import {
   userStatusLabel as sharedUserStatusLabel,
   riskLabel,
 } from '../../utils/planLabels';
+import { csvEscape, downloadBlob } from '../../utils/csvExport';
 
 /* ─── i18n table (page-local; spec is in BG) ───────────────────────────── */
 type Lang = 'en' | 'bg';
@@ -744,17 +745,11 @@ function downloadCSV(rows: AdminSubscriber[], locale: string) {
         r.lastActivityAt ? fmt(r.lastActivityAt) : '',
         fmt(r.createdAt),
       ]
-        .map((v) => `"${String(v).replace(/"/g, '""')}"`)
+        .map(csvEscape)
         .join(',')
     ),
   ];
-  const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `subscribers-${new Date().toISOString().slice(0, 10)}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
+  downloadBlob(lines.join('\n'), `subscribers-${new Date().toISOString().slice(0, 10)}.csv`);
 }
 
 /* ─── Component ───────────────────────────────────────────────────────────── */

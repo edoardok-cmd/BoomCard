@@ -10,6 +10,7 @@ import {
   AdminTransaction,
   BusinessTransaction,
   CashbackEntryStatus,
+  EXPORT_ROW_CAP,
   PartnerRiskAggregate,
   WalletTransactionType,
   WalletTransactionStatus,
@@ -18,6 +19,8 @@ import {
   adminSubscribersService,
   AdminSubscriber,
 } from '../../services/adminSubscribers.service';
+import { riskBucket, type RiskBucket } from '../../utils/planLabels';
+import { csvEscape, fmtDateTime, downloadBlob } from '../../utils/csvExport';
 
 /* ─── Palette ─────────────────────────────────────────────────────────────── */
 const palette = {
@@ -325,8 +328,7 @@ const StatusBadge = styled.span<{ $status: AnyStatus | string }>`
   }}
 `;
 
-// Spec §7.1 risk tiers: 0–30 auto, 31–60 review, 61+ high.
-const RiskBadge = styled.span<{ $score: number }>`
+const RiskBadge = styled.span<{ $level: RiskBucket }>`
   display: inline-flex;
   align-items: center;
   font-size: 0.75rem;
@@ -337,9 +339,9 @@ const RiskBadge = styled.span<{ $score: number }>`
   min-width: 2.25rem;
   justify-content: center;
 
-  ${({ $score }) => {
-    if ($score >= 61) return `background: ${palette.dangerSoft}; color: ${palette.danger};`;
-    if ($score >= 31) return `background: ${palette.warningSoft}; color: ${palette.warning};`;
+  ${({ $level }) => {
+    if ($level === 'high') return `background: ${palette.dangerSoft}; color: ${palette.danger};`;
+    if ($level === 'review') return `background: ${palette.warningSoft}; color: ${palette.warning};`;
     return `background: ${palette.successSoft}; color: ${palette.success};`;
   }}
 `;
@@ -454,32 +456,6 @@ const HintText = styled.p`
   margin: 0.25rem 0 0;
 `;
 
-/* ─── CSV helpers (Spec §6.4 — export must be available for both views) ───── */
-// Both helpers use ISO timestamp + a separate human-formatted column so spreadsheets
-// can sort numerically while admins still read a familiar date.
-function downloadBlob(content: string, name: string) {
-  const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = name;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
-function csvEscape(v: unknown): string {
-  return `"${String(v ?? '').replace(/"/g, '""')}"`;
-}
-
-function fmtDateTime(iso: string, locale: string): string {
-  return new Date(iso).toLocaleString(locale, {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
 
 function downloadWalletCSV(rows: AdminTransaction[], locale: string) {
   const headers = ['ID', 'User email', 'Type', 'Amount', 'Currency', 'Balance before', 'Balance after', 'Status', 'Note', 'Date (ISO)', 'Date'];
@@ -649,7 +625,7 @@ const T = {
   emptyWallet: { bg: 'Няма намерени портфейлни транзакции', en: 'No wallet transactions found' },
   noLocation: { bg: 'Без локация', en: 'No location' },
   noReceipt: { bg: 'Няма бележка', en: 'No receipt' },
-  viewReceipt: { bg: 'Виж бележка ↗', en: 'View receipt ↗' },
+  viewReceipt: { bg: 'Виж бележка', en: 'View receipt' },
   qrSession: { bg: 'QR сесия', en: 'QR session' },
   receiptUpload: { bg: 'Качване на бележка', en: 'Receipt upload' },
   recordCreated: { bg: 'Запис', en: 'Record' },
@@ -662,7 +638,7 @@ const T = {
   partnerRiskScore: { bg: 'Риск на партньор', en: 'Partner risk' },
   partnerRiskAvg: { bg: 'средно', en: 'avg' },
   partnerRiskMax: { bg: 'макс.', en: 'max' },
-  partnerRiskCount: { bg: 'бележки', en: 'receipts' },
+  partnerRiskCount: { bg: 'транзакции', en: 'transactions' },
   paymentMethod: { bg: 'Метод на плащане', en: 'Payment method' },
   // Toasts
   toastAdjustmentCreated: { bg: 'Корекцията е създадена', en: 'Adjustment created' },
@@ -674,8 +650,8 @@ const T = {
   // Surfaced when the result set exceeded the 10 000-row client-side cap so
   // the admin doesn't trust an incomplete CSV.
   toastExportTruncated: {
-    bg: 'Експортирани са първите 10 000 от {total} реда. Стеснете филтъра.',
-    en: 'Exported first 10,000 of {total} rows. Narrow the filter to see the rest.',
+    bg: 'Експортирани са първите {cap} от {total} реда. Стеснете филтъра.',
+    en: 'Exported first {cap} of {total} rows. Narrow the filter to see the rest.',
   },
   // Modal — adjustment
   adjustTitle: { bg: 'Ръчна корекция в портфейл', en: 'Manual wallet adjustment' },
@@ -938,22 +914,16 @@ export default function AdminTransactionsPage() {
     minAmount: minAmountClean,
   };
   const { data: partnerRiskData } = useQuery<PartnerRiskAggregate>({
-    queryKey: [
-      'admin-transactions-partner-risk',
-      detailTx?.partner?.id,
-      search,
-      status,
-      dateFromCommitted,
-      dateToCommitted,
-      minAmountClean,
-    ],
+    queryKey: ['admin-transactions-partner-risk', detailTx?.partner?.id, partnerRiskFilters],
     queryFn: () => adminTransactionsService.getPartnerRisk(detailTx!.partner!.id, partnerRiskFilters),
     enabled: !!detailTx?.partner?.id,
   });
-  // Defensive: only render the aggregate if it belongs to the partner currently
-  // open in the modal. React Query already drops `data` on key change, but this
-  // belt-and-braces guard makes the invariant obvious to future readers and
-  // forecloses any "previous partner's score flashes" regression (P1-6).
+  // Only serve the aggregate for the partner currently open in the modal.
+  // `partnerRiskData &&` short-circuits when no data exists — without it,
+  // `undefined === undefined` would satisfy the id check when both sides are null
+  // (modal closed) and produce a misleadingly truthy result.
+  // The partnerId equality check guards against React Query briefly serving a
+  // previous partner's cached data while the new key's fetch is in-flight.
   const partnerRisk =
     partnerRiskData && partnerRiskData.partnerId === detailTx?.partner?.id
       ? partnerRiskData
@@ -987,6 +957,9 @@ export default function AdminTransactionsPage() {
       toast.success(t('toastAdjustmentCreated', lang));
       queryClient.invalidateQueries({ queryKey: ['admin-transactions'] });
       queryClient.invalidateQueries({ queryKey: ['admin-transactions-stats'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-transactions-business'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-transactions-business-stats'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-transactions-partner-risk'] });
       closeAdjustModal();
     },
     onError: () => toast.error(t('toastAdjustmentFailed', lang)),
@@ -1010,8 +983,10 @@ export default function AdminTransactionsPage() {
   const warnIfTruncated = (truncated: boolean, total: number) => {
     if (!truncated) return;
     toast(
-      t('toastExportTruncated', lang).replace('{total}', total.toLocaleString(locale)),
-      { icon: '⚠️', duration: 6000 },
+      t('toastExportTruncated', lang)
+        .replace('{cap}', EXPORT_ROW_CAP.toLocaleString(locale))
+        .replace('{total}', total.toLocaleString(locale)),
+      { duration: 6000 },
     );
   };
   const handleBusinessExport = async () => {
@@ -1194,7 +1169,7 @@ export default function AdminTransactionsPage() {
       key: 'cashback',
       header: t('colCashback', lang),
       render: (row) => (
-        <div>
+        <>
           <div style={{ color: palette.teal, fontWeight: 600 }}>
             {row.cashbackAmount != null ? `${row.cashbackAmount.toFixed(2)} ${row.currency}` : '—'}
           </div>
@@ -1205,7 +1180,7 @@ export default function AdminTransactionsPage() {
               </StatusBadge>
             </MetaLine>
           )}
-        </div>
+        </>
       ),
     },
     {
@@ -1234,7 +1209,7 @@ export default function AdminTransactionsPage() {
     {
       key: 'risk',
       header: t('colRisk', lang),
-      render: (row) => <RiskBadge $score={row.riskScore}>{row.riskScore}</RiskBadge>,
+      render: (row) => <RiskBadge $level={riskBucket(row.riskScore)}>{row.riskScore}</RiskBadge>,
     },
     {
       key: 'receipt',
@@ -1285,7 +1260,7 @@ export default function AdminTransactionsPage() {
           )}
           {row.receiptUploadedAt && row.receiptUploadedAt !== row.createdAt && (
             <MetaLine title={t('receiptUpload', lang)}>
-              ✉ {fmtTime(row.receiptUploadedAt)}
+              {fmtTime(row.receiptUploadedAt)}
             </MetaLine>
           )}
         </span>
@@ -1367,7 +1342,7 @@ export default function AdminTransactionsPage() {
                 )}
               </DetailRow>
               <DetailRow label={t('riskScore', lang)}>
-                <RiskBadge $score={detailTx.riskScore}>{detailTx.riskScore}</RiskBadge>
+                <RiskBadge $level={riskBucket(detailTx.riskScore)}>{detailTx.riskScore}</RiskBadge>
                 <MetaLine>
                   {t('userRiskScore', lang)}: {detailTx.userRiskScore ?? 0}
                 </MetaLine>
@@ -1376,7 +1351,7 @@ export default function AdminTransactionsPage() {
                     {t('partnerRiskScore', lang)}: {partnerRisk.maxFraudScore}{' '}
                     <span style={{ color: palette.textSubtle }}>
                       ({t('partnerRiskAvg', lang)} {partnerRisk.avgFraudScore},{' '}
-                      {partnerRisk.receiptCount} {t('partnerRiskCount', lang)})
+                      {partnerRisk.signalCount} {t('partnerRiskCount', lang)})
                     </span>
                   </MetaLine>
                 )}
