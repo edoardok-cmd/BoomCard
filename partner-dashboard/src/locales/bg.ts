@@ -121,7 +121,8 @@ export const bg: TranslationKey = {
   footer: {
     description: 'Ексклузивни отстъпки и специални предложения в ресторанти, хотели, СПА центрове и изживявания в цяла България.',
     product: 'Продукт',
-    howItWorks: 'Как работи / FAQ',
+    howItWorks: 'Как работи',
+    reportProblem: 'Докладвай проблем',
     mobileApp: 'Мобилно приложение',
     subscriptionPlans: 'Абонаментни планове',
     offers: 'Оферти',
@@ -134,6 +135,7 @@ export const bg: TranslationKey = {
     aboutBoomCard: 'За BOOM Card',
     about: 'За нас',
     contact: 'Контакт',
+    support: 'Поддръжка',
     becomePartner: 'Стани партньор',
     careers: 'Кариери',
     legal: 'Правна информация',

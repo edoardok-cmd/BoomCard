@@ -119,7 +119,8 @@ export const en = {
   footer: {
     description: 'Exclusive discounts and special offers at restaurants, hotels, SPA centers, and experiences across Bulgaria.',
     product: 'Product',
-    howItWorks: 'How it works / FAQ',
+    howItWorks: 'How it works',
+    reportProblem: 'Report a problem',
     mobileApp: 'Mobile App',
     subscriptionPlans: 'Subscription plans',
     offers: 'Deals',
@@ -132,6 +133,7 @@ export const en = {
     aboutBoomCard: 'About BOOM Card',
     about: 'About',
     contact: 'Contact',
+    support: 'Support',
     becomePartner: 'Become a partner',
     careers: 'Careers',
     legal: 'Legal Information',

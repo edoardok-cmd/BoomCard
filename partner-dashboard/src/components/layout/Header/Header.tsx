@@ -129,6 +129,8 @@ const UserAvatar = styled.div`
   font-size: 0.875rem;
   font-weight: 600;
   text-transform: uppercase;
+  overflow: hidden;
+  flex-shrink: 0;
 
   @media (max-width: 640px) {
     width: 1.75rem;
@@ -663,62 +665,6 @@ const ThemeButton = styled.button`
   }
 `;
 
-const ThemeMenuDropdown = styled(motion.div)`
-  position: absolute;
-  top: calc(100% + 0.5rem);
-  right: 0;
-  min-width: 12rem;
-  background: white;
-  border-radius: 0.75rem;
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
-  padding: 0.5rem;
-  z-index: 1000;
-  border: 1px solid #e5e7eb;
-
-  [data-theme="dark"] & {
-    background: #1f2937;
-    border-color: #374151;
-    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
-  }
-`;
-
-const ThemeOption = styled.button<{ $active: boolean }>`
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  width: 100%;
-  padding: 0.75rem 1rem;
-  background: ${props => props.$active ? '#f3f4f6' : 'transparent'};
-  border: none;
-  border-radius: 0.5rem;
-  color: ${props => props.$active ? '#111827' : '#374151'};
-  font-size: 0.875rem;
-  font-weight: ${props => props.$active ? '600' : '500'};
-  cursor: pointer;
-  transition: all 200ms;
-  text-align: left;
-
-  [data-theme="dark"] & {
-    background: ${props => props.$active ? '#374151' : 'transparent'};
-    color: ${props => props.$active ? '#f9fafb' : '#d1d5db'};
-  }
-
-  &:hover {
-    background: #f3f4f6;
-    color: #111827;
-
-    [data-theme="dark"] & {
-      background: #374151;
-      color: #f9fafb;
-    }
-  }
-
-  svg, span {
-    width: 1.125rem;
-    height: 1.125rem;
-    flex-shrink: 0;
-  }
-`;
 
 const LanguageButton = styled.button`
   display: flex;
@@ -998,7 +944,6 @@ export const Header: React.FC<HeaderProps> = ({
   const [scrolled, setScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
-  const [themeMenuOpen, setThemeMenuOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const { language, setLanguage, t } = useLanguage();
@@ -1023,7 +968,6 @@ export const Header: React.FC<HeaderProps> = ({
   const [isImpersonateBusy, setIsImpersonateBusy] = useState<string | null>(null);
   const [isStoppingImpersonation, setIsStoppingImpersonation] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
-  const themeMenuRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
@@ -1137,23 +1081,6 @@ export const Header: React.FC<HeaderProps> = ({
     };
   }, [userMenuOpen, isSwitching]);
 
-  // Close theme menu when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (themeMenuRef.current && !themeMenuRef.current.contains(event.target as Node)) {
-        setThemeMenuOpen(false);
-      }
-    };
-
-    if (themeMenuOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-    }
-
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [themeMenuOpen]);
-
   // Close search when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -1226,8 +1153,10 @@ export const Header: React.FC<HeaderProps> = ({
   };
 
   const getUserInitials = () => {
-    if (!user) return '';
-    return `${user.firstName[0]}${user.lastName[0]}`;
+    if (!user) return '?';
+    const first = user.firstName?.[0] ?? '';
+    const last = user.lastName?.[0] ?? '';
+    return (first + last).toUpperCase() || user.email?.[0]?.toUpperCase() ?? '?';
   };
 
   const getThemeIcon = () => {
@@ -1387,58 +1316,16 @@ export const Header: React.FC<HeaderProps> = ({
 
 
             {/* Theme Switcher - Desktop only */}
-            <ThemeMenuContainer ref={themeMenuRef} className="hidden nav:flex">
+            <ThemeMenuContainer className="hidden nav:flex">
               <Tooltip content={language === 'bg' ? 'Промени тема' : 'Change Theme'} position="bottom">
                 <ThemeButton
-                  onClick={() => setThemeMenuOpen(!themeMenuOpen)}
+                  onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
                   aria-label="Change theme"
                   data-testid="theme-picker"
                 >
                   {getThemeIcon()}
                 </ThemeButton>
               </Tooltip>
-
-              <AnimatePresence>
-                {themeMenuOpen && (
-                  <ThemeMenuDropdown
-                    initial={{ opacity: 0, y: -10, scale: 0.95 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    exit={{ opacity: 0, y: -10, scale: 0.95 }}
-                    transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
-                  >
-                    {themeOptions.map((option) => (
-                      <ThemeOption
-                        key={option.mode}
-                        $active={theme === option.mode}
-                        onClick={() => {
-                          setTheme(option.mode);
-                          setThemeMenuOpen(false);
-                        }}
-                      >
-                        <span style={{ fontSize: '1.25rem' }}>{option.icon}</span>
-                        <span style={{ flex: 1 }}>{language === 'bg' ? option.labelBg : option.label}</span>
-                        {theme === option.mode && (
-                          <svg
-                            width="16"
-                            height="16"
-                            viewBox="0 0 16 16"
-                            fill="none"
-                            style={{ flexShrink: 0 }}
-                          >
-                            <path
-                              d="M13.3334 4L6.00002 11.3333L2.66669 8"
-                              stroke={option.color}
-                              strokeWidth="2"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                            />
-                          </svg>
-                        )}
-                      </ThemeOption>
-                    ))}
-                  </ThemeMenuDropdown>
-                )}
-              </AnimatePresence>
             </ThemeMenuContainer>
 
             {/* Language Toggle - Desktop only */}
