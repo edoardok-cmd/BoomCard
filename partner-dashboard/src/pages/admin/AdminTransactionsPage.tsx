@@ -598,6 +598,7 @@ const T = {
   lifecyclePaid: { bg: 'Изплатено', en: 'Paid' },
   lifecycleExpired: { bg: 'Изтекло', en: 'Expired' },
   minAmount: { bg: 'Мин. сума', en: 'Min amount' },
+  maxAmount: { bg: 'Макс. сума', en: 'Max amount' },
   createdFrom: { bg: 'Създадени от', en: 'Created from' },
   createdTo: { bg: 'Създадени до', en: 'Created to' },
   // Stat labels
@@ -807,6 +808,7 @@ export default function AdminTransactionsPage() {
   // <input type="date"> only renders YYYY-MM-DD; slice the ISO for display.
   const dateFromPickerValue = dateFrom.slice(0, 10);
   const [minAmount, setMinAmount] = useState(initialMinAmount);
+  const [maxAmount, setMaxAmount] = useState('');
   const [riskTier, setRiskTier] = useState<'' | '31' | '61'>('');
 
   /* ── Drill-through modal (Spec §4.3 — receipt + cashback + risk) ── */
@@ -828,10 +830,12 @@ export default function AdminTransactionsPage() {
   const dateToCommitted = useDebouncedValue(dateTo, 250);
   useEffect(() => {
     setPage(1);
-  }, [search, type, status, dateFromCommitted, dateToCommitted, minAmount, riskTier, view]);
+  }, [search, type, status, dateFromCommitted, dateToCommitted, minAmount, maxAmount, riskTier, view]);
 
   const minAmountNum = minAmount ? parseFloat(minAmount) : NaN;
   const minAmountClean = Number.isFinite(minAmountNum) && minAmountNum > 0 ? minAmountNum : undefined;
+  const maxAmountNum = maxAmount ? parseFloat(maxAmount) : NaN;
+  const maxAmountClean = Number.isFinite(maxAmountNum) && maxAmountNum > 0 ? maxAmountNum : undefined;
   const minRiskClean = riskTier ? parseInt(riskTier) : undefined;
   // The wallet endpoints accept only WalletTransactionStatus. The view-toggle handlers reset
   // `status` to '' on switch, so at runtime this is a wallet value when view==='wallet'; the
@@ -864,7 +868,7 @@ export default function AdminTransactionsPage() {
   // minRiskClean is part of the cache key — selecting a risk tier must yield a
   // distinct query, since totals/pagination are scoped by it (P0-1 fix).
   const { data: businessData, isLoading: isBusinessLoading } = useQuery({
-    queryKey: ['admin-transactions-business', page, search, status, dateFromCommitted, dateToCommitted, minAmountClean, minRiskClean],
+    queryKey: ['admin-transactions-business', page, search, status, dateFromCommitted, dateToCommitted, minAmountClean, maxAmountClean, minRiskClean],
     queryFn: () =>
       adminTransactionsService.listBusiness({
         page,
@@ -874,6 +878,7 @@ export default function AdminTransactionsPage() {
         dateFrom: dateFromCommitted || undefined,
         dateTo: dateToCommitted || undefined,
         minAmount: minAmountClean,
+        maxAmount: maxAmountClean,
         minRisk: minRiskClean,
       }),
     enabled: view === 'business',
@@ -888,7 +893,7 @@ export default function AdminTransactionsPage() {
   // Spec §3.1: count today / total volume / average value for the business view.
   // Includes minRiskClean so the stats bar tracks the risk-tier filter (P0-2 fix).
   const { data: businessStats } = useQuery({
-    queryKey: ['admin-transactions-business-stats', search, status, dateFromCommitted, dateToCommitted, minAmountClean, minRiskClean],
+    queryKey: ['admin-transactions-business-stats', search, status, dateFromCommitted, dateToCommitted, minAmountClean, maxAmountClean, minRiskClean],
     queryFn: () =>
       adminTransactionsService.getBusinessStats({
         search: search || undefined,
@@ -896,6 +901,7 @@ export default function AdminTransactionsPage() {
         dateFrom: dateFromCommitted || undefined,
         dateTo: dateToCommitted || undefined,
         minAmount: minAmountClean,
+        maxAmount: maxAmountClean,
         minRisk: minRiskClean,
       }),
     enabled: view === 'business',
@@ -912,6 +918,7 @@ export default function AdminTransactionsPage() {
     dateFrom: dateFromCommitted || undefined,
     dateTo: dateToCommitted || undefined,
     minAmount: minAmountClean,
+    maxAmount: maxAmountClean,
   };
   const { data: partnerRiskData } = useQuery<PartnerRiskAggregate>({
     queryKey: ['admin-transactions-partner-risk', detailTx?.partner?.id, partnerRiskFilters],
@@ -1002,6 +1009,7 @@ export default function AdminTransactionsPage() {
         dateFrom: dateFromCommitted || undefined,
         dateTo: dateToCommitted || undefined,
         minAmount: minAmountClean,
+        maxAmount: maxAmountClean,
         minRisk: minRiskClean,
       });
       downloadBusinessCSV(rows, locale);
@@ -1052,6 +1060,7 @@ export default function AdminTransactionsPage() {
     setStatus('');
     setType('');
     setRiskTier('');
+    setMaxAmount('');
   };
 
   /* ── Wallet ledger columns ── */
@@ -1362,22 +1371,22 @@ export default function AdminTransactionsPage() {
                 </StatusBadge>
               </DetailRow>
               <DetailRow label={t('colDate', lang)}>
-                {detailTx.sessionStartedAt && (
-                  <div>
-                    <span style={{ color: palette.textSubtle, fontSize: '0.75rem' }}>
-                      {t('qrSession', lang)}:{' '}
-                    </span>
-                    {fmt(detailTx.sessionStartedAt)} {fmtTime(detailTx.sessionStartedAt)}
-                  </div>
-                )}
-                {detailTx.receiptUploadedAt && (
-                  <div>
-                    <span style={{ color: palette.textSubtle, fontSize: '0.75rem' }}>
-                      {t('receiptUpload', lang)}:{' '}
-                    </span>
-                    {fmt(detailTx.receiptUploadedAt)} {fmtTime(detailTx.receiptUploadedAt)}
-                  </div>
-                )}
+                <div>
+                  <span style={{ color: palette.textSubtle, fontSize: '0.75rem' }}>
+                    {t('qrSession', lang)}:{' '}
+                  </span>
+                  {detailTx.sessionStartedAt
+                    ? `${fmt(detailTx.sessionStartedAt)} ${fmtTime(detailTx.sessionStartedAt)}`
+                    : '—'}
+                </div>
+                <div>
+                  <span style={{ color: palette.textSubtle, fontSize: '0.75rem' }}>
+                    {t('receiptUpload', lang)}:{' '}
+                  </span>
+                  {detailTx.receiptUploadedAt
+                    ? `${fmt(detailTx.receiptUploadedAt)} ${fmtTime(detailTx.receiptUploadedAt)}`
+                    : '—'}
+                </div>
                 <div>
                   <span style={{ color: palette.textSubtle, fontSize: '0.75rem' }}>
                     {t('recordCreated', lang)}:{' '}
@@ -1385,8 +1394,8 @@ export default function AdminTransactionsPage() {
                   {fmt(detailTx.createdAt)} {fmtTime(detailTx.createdAt)}
                 </div>
               </DetailRow>
-              {detailTx.receipt?.imageUrl && (
-                <DetailRow label={t('colReceipt', lang)}>
+              <DetailRow label={t('colReceipt', lang)}>
+                {detailTx.receipt?.imageUrl ? (
                   <a
                     href={detailTx.receipt.imageUrl}
                     target="_blank"
@@ -1395,8 +1404,12 @@ export default function AdminTransactionsPage() {
                   >
                     {t('viewReceipt', lang)}
                   </a>
-                </DetailRow>
-              )}
+                ) : (
+                  <span style={{ fontSize: '0.8125rem', color: palette.textSubtle, fontStyle: 'italic' }}>
+                    {t('noReceipt', lang)}
+                  </span>
+                )}
+              </DetailRow>
             </DetailGrid>
             <ModalActions>
               <Btn onClick={() => setDetailTx(null)}>{t('close', lang)}</Btn>
@@ -1653,6 +1666,15 @@ export default function AdminTransactionsPage() {
             title={t('minAmount', lang)}
             value={minAmount}
             onChange={(e) => setMinAmount(e.target.value)}
+          />
+          <NumericInput
+            type="number"
+            min="0"
+            step="0.01"
+            placeholder={t('maxAmount', lang)}
+            title={t('maxAmount', lang)}
+            value={maxAmount}
+            onChange={(e) => setMaxAmount(e.target.value)}
           />
         </FilterRow>
 

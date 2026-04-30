@@ -205,6 +205,7 @@ export interface BusinessFilterParams {
   dateFrom?: string;
   dateTo?: string;
   minAmount?: number;
+  maxAmount?: number;
   minRisk?: number;
 }
 
@@ -224,6 +225,7 @@ function cleanBusinessParams(params: BusinessListParams): Record<string, unknown
   if (params.dateFrom) clean['dateFrom'] = params.dateFrom;
   if (params.dateTo) clean['dateTo'] = params.dateTo;
   if (params.minAmount != null) clean['minAmount'] = params.minAmount;
+  if (params.maxAmount != null) clean['maxAmount'] = params.maxAmount;
   if (params.minRisk != null) clean['minRisk'] = params.minRisk;
   return clean;
 }

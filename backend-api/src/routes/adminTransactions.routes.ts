@@ -254,6 +254,7 @@ function buildBusinessWhere(query: Record<string, unknown>): BusinessTxWhere {
   const dateTo = qs(query.dateTo);
   const search = qs(query.search);
   const minAmount = qs(query.minAmount);
+  const maxAmount = qs(query.maxAmount);
   const minRisk = qs(query.minRisk);
   const where: BusinessTxWhere = {};
   const ands: BusinessTxWhere[] = [];
@@ -265,10 +266,18 @@ function buildBusinessWhere(query: Record<string, unknown>): BusinessTxWhere {
   if (status && Object.values(TransactionStatus).includes(status as TransactionStatus)) {
     where.status = status as TransactionStatus;
   }
-  if (minAmount) {
-    const n = parseFloat(minAmount);
-    if (Number.isFinite(n) && n > 0) {
-      (where as Record<string, unknown>)['amount'] = { gte: n };
+  if (minAmount || maxAmount) {
+    const amountFilter: Record<string, number> = {};
+    if (minAmount) {
+      const n = parseFloat(minAmount);
+      if (Number.isFinite(n) && n > 0) amountFilter['gte'] = n;
+    }
+    if (maxAmount) {
+      const n = parseFloat(maxAmount);
+      if (Number.isFinite(n) && n > 0) amountFilter['lte'] = n;
+    }
+    if (Object.keys(amountFilter).length > 0) {
+      (where as Record<string, unknown>)['amount'] = amountFilter;
     }
   }
   if (dateFrom || dateTo) {
