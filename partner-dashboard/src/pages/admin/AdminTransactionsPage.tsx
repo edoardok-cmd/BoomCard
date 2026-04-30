@@ -1404,7 +1404,7 @@ export default function AdminTransactionsPage() {
                   </span>
                   {detailTx.receiptUploadedAt
                     ? `${fmt(detailTx.receiptUploadedAt)} ${fmtTime(detailTx.receiptUploadedAt)}`
-                    : '—'}
+                    : <span style={{ fontStyle: 'italic', color: palette.textSubtle }}>{t('noReceipt', lang)}</span>}
                 </div>
                 <div>
                   <span style={{ color: palette.textSubtle, fontSize: '0.75rem' }}>
