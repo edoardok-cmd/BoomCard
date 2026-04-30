@@ -142,13 +142,13 @@ class AdminCashbackService {
     notes?: string;
     totalOwed?: number;
   }): Promise<void> {
-    // Compute totalOwed if not provided: aggregate APPROVED sticker-scan cashback
-    // for every venue under this partner within the target month.
+    const [year, mon] = params.month.split('-').map(Number);
+    const monthStart = new Date(year, mon - 1, 1);
+    const monthEnd = new Date(year, mon, 1);
+
+    // Compute totalOwed (cashback) if not provided.
     let totalOwed = params.totalOwed ?? 0;
     if (!totalOwed) {
-      const [year, mon] = params.month.split('-').map(Number);
-      const monthStart = new Date(year, mon - 1, 1);
-      const monthEnd = new Date(year, mon, 1);
       const agg = await prisma.stickerScan.aggregate({
         where: {
           status: ScanStatus.APPROVED,
@@ -160,12 +160,43 @@ class AdminCashbackService {
       totalOwed = agg._sum.cashbackAmount ?? 0;
     }
 
+    // Compute turnover (gross transaction amounts) — spec 6.2 Оборот.
+    // Per scan: prefer verifiedAmount (staff-verified), fall back to billAmount (customer-submitted).
+    // aggregate._sum can't express per-row coalesce, so we fetch individually.
+    const turnoverScans = await prisma.stickerScan.findMany({
+      where: {
+        status: ScanStatus.APPROVED,
+        createdAt: { gte: monthStart, lt: monthEnd },
+        venue: { partnerId: params.partnerId },
+      },
+      select: { verifiedAmount: true, billAmount: true },
+    });
+    const turnoverAmount = turnoverScans.reduce(
+      (sum, s) => sum + (s.verifiedAmount ?? s.billAmount ?? 0),
+      0,
+    );
+
+    // Snapshot contracted rate — spec 6.2 Процент.
+    const partner = await prisma.partner.findUnique({
+      where: { id: params.partnerId },
+      select: { discountRate: true, partnerType: { select: { maxDiscountRate: true } } },
+    });
+    const contractedRate = partner?.discountRate ?? (partner?.partnerType as { maxDiscountRate?: number } | null)?.maxDiscountRate ?? null;
+
+    // BoomCard margin = what partner owes at contracted rate minus what users received as cashback.
+    const marginAmount = contractedRate != null && turnoverAmount > 0
+      ? Math.round(((contractedRate / 100) * turnoverAmount - totalOwed) * 100) / 100
+      : 0;
+
     await prisma.partnerCashbackPayment.upsert({
       where: { partnerId_month: { partnerId: params.partnerId, month: params.month } },
       create: {
         partnerId: params.partnerId,
         month: params.month,
         totalCashbackOwed: totalOwed,
+        turnoverAmount,
+        contractedRate,
+        marginAmount,
         status: 'PAID',
         paidAt: new Date(),
         paidBy: params.adminUserId,
@@ -177,6 +208,9 @@ class AdminCashbackService {
         paidBy: params.adminUserId,
         notes: params.notes,
         totalCashbackOwed: totalOwed,
+        turnoverAmount,
+        contractedRate,
+        marginAmount,
       },
     });
 
@@ -224,26 +258,73 @@ class AdminCashbackService {
   }
 
   /**
-   * Get summary stats for admin dashboard cards.
+   * Get subscriber-side cashback stats for admin dashboard cards (spec §3.1).
+   * Returns: начислен (total accrued), одобрен (cleared), изчакващ (pending), изтичащ (expiring ≤14 days).
    */
   async getDashboardStats(): Promise<{
-    pendingTotal: number;
-    paidThisMonth: number;
-    overdueCount: number;
-    activePartners: number;
+    totalAccrued: number;
+    totalCleared: number;
+    totalPending: number;
+    expiringTotal: number;
   }> {
-    const currentMon = this.currentMonth();
-    const summary = await this.getSummary({ month: currentMon });
+    const now = new Date();
+    const soonThreshold = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
+
+    const [accruedAgg, pendingAgg, clearedRows, expiringAgg] = await Promise.all([
+      // начислен — all-time sum of COMPLETED cashback credits
+      prisma.walletTransaction.aggregate({
+        _sum: { amount: true },
+        where: { type: 'CASHBACK_CREDIT', status: 'COMPLETED' },
+      }),
+      // изчакващ — sum of entries still pending (not yet cleared)
+      prisma.walletTransaction.aggregate({
+        _sum: { amount: true },
+        where: { type: 'CASHBACK_CREDIT', status: { in: ['PENDING', 'TRIAL_PENDING', 'PROCESSING'] } },
+      }),
+      // одобрен — COMPLETED entries not yet expired; we exclude paid-out ones later
+      prisma.walletTransaction.findMany({
+        where: {
+          type: 'CASHBACK_CREDIT',
+          status: 'COMPLETED',
+          OR: [{ cashbackExpiresAt: null }, { cashbackExpiresAt: { gt: now } }],
+        },
+        select: { amount: true, walletId: true, createdAt: true },
+      }),
+      // изтичащ — cleared entries expiring within 14 days
+      prisma.walletTransaction.aggregate({
+        _sum: { amount: true },
+        where: {
+          type: 'CASHBACK_CREDIT',
+          status: 'COMPLETED',
+          cashbackExpiresAt: { gt: now, lte: soonThreshold },
+        },
+      }),
+    ]);
+
+    // Subtract paid-out amounts from cleared total (entries created before last withdrawal per wallet)
+    const walletIds = [...new Set(clearedRows.map(r => r.walletId))];
+    const latestWithdrawals = walletIds.length
+      ? await prisma.walletTransaction.findMany({
+          where: { walletId: { in: walletIds }, type: 'WITHDRAWAL', status: 'COMPLETED' },
+          orderBy: { createdAt: 'desc' },
+          distinct: ['walletId'],
+          select: { walletId: true, createdAt: true },
+        })
+      : [];
+    const withdrawalMap = new Map(latestWithdrawals.map(w => [w.walletId, w.createdAt]));
+
+    const totalCleared = clearedRows
+      .filter(r => {
+        const lastPaid = withdrawalMap.get(r.walletId);
+        return !lastPaid || r.createdAt > lastPaid;
+      })
+      .reduce((sum, r) => sum + r.amount, 0);
 
     return {
-      pendingTotal: summary
-        .filter(s => s.paymentStatus !== 'PAID')
-        .reduce((acc, s) => acc + s.totalOwed, 0),
-      paidThisMonth: summary
-        .filter(s => s.paymentStatus === 'PAID')
-        .reduce((acc, s) => acc + s.totalOwed, 0),
-      overdueCount: summary.filter(s => s.paymentStatus === 'OVERDUE').length,
-      activePartners: summary.length,
+      totalAccrued: Math.round((accruedAgg._sum.amount ?? 0) * 100) / 100,
+      totalCleared: Math.round(totalCleared * 100) / 100,
+      totalPending: Math.round((pendingAgg._sum.amount ?? 0) * 100) / 100,
+      expiringTotal: Math.round((expiringAgg._sum.amount ?? 0) * 100) / 100,
     };
   }
 
@@ -744,4 +825,110 @@ export async function getAllCashbackEntries(
   });
 
   return { data, total, page, limit };
+}
+
+// ─── Entry-level admin actions (spec §4.4) ────────────────────────────────────
+
+/**
+ * Approve a Pending cashback entry → Cleared (PENDING/TRIAL_PENDING → COMPLETED).
+ */
+export async function approveEntry(entryId: string, adminUserId: string): Promise<void> {
+  const entry = await prisma.walletTransaction.findUnique({
+    where: { id: entryId },
+    select: { id: true, type: true, status: true, cashbackExpiresAt: true, createdAt: true },
+  });
+  if (!entry) throw Object.assign(new Error('Entry not found'), { statusCode: 404 });
+  if (entry.type !== 'CASHBACK_CREDIT') throw Object.assign(new Error('Not a cashback entry'), { statusCode: 400 });
+  if (!['PENDING', 'TRIAL_PENDING', 'PROCESSING'].includes(entry.status)) {
+    throw Object.assign(new Error(`Cannot approve entry with status ${entry.status}`), { statusCode: 400 });
+  }
+  const now = new Date();
+  // Use existing expiry only if it's still in the future; otherwise grant 60 days from now.
+  // Computing from createdAt would produce a past expiry for entries that have been PENDING >60 days,
+  // causing the row to immediately resolve as Expired after approval.
+  const cashbackExpiresAt = entry.cashbackExpiresAt && entry.cashbackExpiresAt > now
+    ? entry.cashbackExpiresAt
+    : new Date(now.getTime() + 60 * 24 * 60 * 60 * 1000);
+  await prisma.walletTransaction.update({
+    where: { id: entryId },
+    data: { status: 'COMPLETED', cashbackExpiresAt },
+  });
+  logger.info(`Admin ${adminUserId} approved cashback entry ${entryId}`);
+}
+
+/**
+ * Lock a Cleared cashback entry (COMPLETED → CANCELLED with future expiresAt → shows as Locked).
+ * Rejects entries in "Paid" derived state (COMPLETED but createdAt ≤ wallet's latest payout).
+ */
+export async function lockEntry(entryId: string, adminUserId: string): Promise<void> {
+  const entry = await prisma.walletTransaction.findUnique({
+    where: { id: entryId },
+    select: { id: true, type: true, status: true, cashbackExpiresAt: true, createdAt: true, walletId: true },
+  });
+  if (!entry) throw Object.assign(new Error('Entry not found'), { statusCode: 404 });
+  if (entry.type !== 'CASHBACK_CREDIT') throw Object.assign(new Error('Not a cashback entry'), { statusCode: 400 });
+  if (entry.status !== 'COMPLETED') {
+    throw Object.assign(new Error(`Cannot lock entry with status ${entry.status}`), { statusCode: 400 });
+  }
+  // Guard against locking a "Paid" entry — one that predates the wallet's latest completed payout.
+  // Only "Cleared" (COMPLETED, not yet covered by a payout) entries may be locked.
+  const latestWithdrawal = await prisma.walletTransaction.findFirst({
+    where: { walletId: entry.walletId, type: 'WITHDRAWAL', status: 'COMPLETED' },
+    orderBy: { createdAt: 'desc' },
+    select: { createdAt: true },
+  });
+  if (latestWithdrawal && entry.createdAt <= latestWithdrawal.createdAt) {
+    throw Object.assign(new Error('Cannot lock a paid-out entry'), { statusCode: 400 });
+  }
+  const now = new Date();
+  const keepExpiresAt = entry.cashbackExpiresAt && entry.cashbackExpiresAt > now
+    ? entry.cashbackExpiresAt
+    : new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000);
+  await prisma.walletTransaction.update({
+    where: { id: entryId },
+    data: { status: 'CANCELLED', cashbackExpiresAt: keepExpiresAt },
+  });
+  logger.info(`Admin ${adminUserId} locked cashback entry ${entryId}`);
+}
+
+/**
+ * Force-expire a cashback entry (cashbackExpiresAt = now, CANCELLED → Expired).
+ */
+export async function expireEntry(entryId: string, adminUserId: string): Promise<void> {
+  const entry = await prisma.walletTransaction.findUnique({
+    where: { id: entryId },
+    select: { id: true, type: true, status: true },
+  });
+  if (!entry) throw Object.assign(new Error('Entry not found'), { statusCode: 404 });
+  if (entry.type !== 'CASHBACK_CREDIT') throw Object.assign(new Error('Not a cashback entry'), { statusCode: 400 });
+  if (['ANNULLED', 'FAILED'].includes(entry.status)) {
+    throw Object.assign(new Error(`Cannot expire entry with status ${entry.status}`), { statusCode: 400 });
+  }
+  await prisma.walletTransaction.update({
+    where: { id: entryId },
+    data: { status: 'CANCELLED', cashbackExpiresAt: new Date() },
+  });
+  logger.info(`Admin ${adminUserId} force-expired cashback entry ${entryId}`);
+}
+
+/**
+ * Backfill cashbackExpiresAt = createdAt + 60 days for pre-migration CASHBACK_CREDIT rows.
+ * Idempotent — only touches rows where cashbackExpiresAt IS NULL.
+ */
+export async function backfillCashbackExpiry(): Promise<number> {
+  const rows = await prisma.walletTransaction.findMany({
+    where: { type: 'CASHBACK_CREDIT', cashbackExpiresAt: null },
+    select: { id: true, createdAt: true },
+  });
+  if (rows.length === 0) return 0;
+  await Promise.all(
+    rows.map(r =>
+      prisma.walletTransaction.update({
+        where: { id: r.id },
+        data: { cashbackExpiresAt: new Date(r.createdAt.getTime() + 60 * 24 * 60 * 60 * 1000) },
+      }),
+    ),
+  );
+  logger.info(`Backfilled cashbackExpiresAt for ${rows.length} CASHBACK_CREDIT entries`);
+  return rows.length;
 }

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import styled from 'styled-components';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -27,12 +27,20 @@ const Eyebrow = styled.p`font-size: 0.75rem; font-weight: 600; letter-spacing: 0
 const PageTitle = styled.h1`font-size: 1.75rem; font-weight: 800; color: ${palette.text}; margin: 0 0 0.25rem;`;
 const PageSubtitle = styled.p`font-size: 0.9375rem; color: ${palette.textMuted}; margin: 0;`;
 const TotalBadge = styled.span`display: inline-flex; align-items: center; justify-content: center; background: ${palette.infoSoft}; color: ${palette.info}; font-size: 0.75rem; font-weight: 700; border-radius: 9999px; padding: 0.125rem 0.6rem; margin-left: 0.5rem;`;
+const HeaderActions = styled.div`display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;`;
 const Card = styled.div`background: ${palette.surface}; border: 1px solid ${palette.border}; border-radius: 0.75rem; padding: 1.5rem;`;
 const FilterRow = styled.div`display: flex; gap: 0.75rem; margin-bottom: 1.25rem; flex-wrap: wrap; align-items: center;`;
 const SearchInput = styled.input`flex: 1; max-width: 18rem; padding: 0.5rem 0.875rem; border: 1px solid ${palette.border}; border-radius: 0.5rem; font-size: 0.875rem; background: ${palette.bg}; color: ${palette.text}; outline: none; &:focus { border-color: ${palette.accent}; box-shadow: 0 0 0 2px ${palette.accentSoft}; } &::placeholder { color: ${palette.textSubtle}; }`;
 const Select = styled.select`padding: 0.5rem 0.75rem; border: 1px solid ${palette.border}; border-radius: 0.5rem; font-size: 0.875rem; background: ${palette.bg}; color: ${palette.text}; outline: none; cursor: pointer; &:focus { border-color: ${palette.accent}; }`;
+const ExportBtn = styled.button`display: inline-flex; align-items: center; gap: 0.375rem; padding: 0.5rem 1rem; border: 1px solid ${palette.border}; border-radius: 0.5rem; font-size: 0.875rem; font-weight: 600; color: ${palette.textMuted}; background: ${palette.surface}; cursor: pointer; white-space: nowrap; &:hover { border-color: ${palette.accent}; color: ${palette.accent}; } &:disabled { opacity: 0.5; cursor: default; }`;
 const PrimaryLine = styled.div`font-weight: 600; color: ${palette.text};`;
 const MetaLine = styled.div`font-size: 0.75rem; color: ${palette.textSubtle}; margin-top: 0.125rem;`;
+
+const STATUS_LABELS: Record<InvoiceStatus, string> = {
+  PENDING: 'Чака',
+  PAID:    'Платено',
+  OVERDUE: 'Просрочено',
+};
 
 const StatusBadge = styled.span<{ $status: InvoiceStatus }>`
   display: inline-flex; align-items: center; font-size: 0.7rem; font-weight: 700;
@@ -54,33 +62,70 @@ const PartnerTypePill = styled.span<{ $color: string }>`
   margin-left: 0.375rem;
 `;
 
+// Modal for editing notes
+const Overlay = styled.div`position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 1000; display: flex; align-items: center; justify-content: center;`;
+const Modal = styled.div`background: ${palette.surface}; border-radius: 0.75rem; padding: 1.5rem; width: 100%; max-width: 28rem; box-shadow: 0 20px 60px rgba(0,0,0,0.15);`;
+const ModalTitle = styled.h3`font-size: 1rem; font-weight: 700; color: ${palette.text}; margin: 0 0 0.25rem;`;
+const ModalSub = styled.p`font-size: 0.8125rem; color: ${palette.textMuted}; margin: 0 0 1rem;`;
+const Textarea = styled.textarea`width: 100%; box-sizing: border-box; padding: 0.625rem 0.875rem; border: 1px solid ${palette.border}; border-radius: 0.5rem; font-size: 0.875rem; background: ${palette.bg}; color: ${palette.text}; resize: vertical; min-height: 5rem; outline: none; &:focus { border-color: ${palette.accent}; box-shadow: 0 0 0 2px ${palette.accentSoft}; }`;
+const ModalActions = styled.div`display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 1rem;`;
+const BtnPrimary = styled.button`padding: 0.5rem 1.125rem; background: ${palette.accent}; color: #fff; border: none; border-radius: 0.5rem; font-size: 0.875rem; font-weight: 600; cursor: pointer; &:disabled { opacity: 0.5; }`;
+const BtnSecondary = styled.button`padding: 0.5rem 1.125rem; background: ${palette.bg}; color: ${palette.textMuted}; border: 1px solid ${palette.border}; border-radius: 0.5rem; font-size: 0.875rem; font-weight: 600; cursor: pointer;`;
+
 const STATUS_OPTIONS: Array<{ value: InvoiceStatus | ''; label: string }> = [
-  { value: '', label: 'All statuses' },
-  { value: 'PENDING', label: 'Pending' },
-  { value: 'PAID', label: 'Paid' },
-  { value: 'OVERDUE', label: 'Overdue' },
+  { value: '',        label: 'Всички статуси' },
+  { value: 'PENDING', label: 'Чака' },
+  { value: 'PAID',    label: 'Платено' },
+  { value: 'OVERDUE', label: 'Просрочено' },
 ];
 
 const PAGE_SIZE = 25;
 
+const bgn = (v: number) =>
+  v.toLocaleString('bg-BG', { style: 'currency', currency: 'BGN', minimumFractionDigits: 2 });
+
+const fmt = (iso: string) =>
+  new Date(iso).toLocaleDateString('bg-BG', { day: '2-digit', month: 'short', year: 'numeric' });
+
 export default function AdminFinanceInvoicesPage() {
   const queryClient = useQueryClient();
 
-  // Allow deep-links from the alerts page to preselect an invoice status.
   const [searchParams] = useSearchParams();
   const initialStatusParam = searchParams.get('status');
   const initialStatus: InvoiceStatus | '' =
-    initialStatusParam === 'PENDING' ||
-    initialStatusParam === 'PAID' ||
-    initialStatusParam === 'OVERDUE'
-      ? initialStatusParam
-      : '';
+    initialStatusParam === 'PENDING' || initialStatusParam === 'PAID' || initialStatusParam === 'OVERDUE'
+      ? initialStatusParam : '';
 
-  const [page, setPage] = useState(1);
+  const [page, setPage]               = useState(1);
   const [searchInput, setSearchInput] = useState('');
-  const [search, setSearch] = useState('');
-  const [status, setStatus] = useState<InvoiceStatus | ''>(initialStatus);
-  const [month, setMonth] = useState('');
+  const [search, setSearch]           = useState('');
+  const [status, setStatus]           = useState<InvoiceStatus | ''>(initialStatus);
+  const [month, setMonth]             = useState('');
+  const [notesModal, setNotesModal]   = useState<{ id: string; partnerName: string; month: string; current: string } | null>(null);
+  const [notesValue, setNotesValue]   = useState('');
+  const [exporting, setExporting]     = useState(false);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      await adminFinanceService.exportInvoices({ status: status || undefined, month: month || undefined, search: search || undefined });
+    } catch {
+      toast.error('Грешка при експорт');
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  // Debounce search input — fires 350 ms after the user stops typing.
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      setSearch(searchInput);
+      setPage(1);
+    }, 350);
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, [searchInput]);
 
   const { data, isLoading } = useQuery({
     queryKey: ['admin-finance-invoices', page, search, status, month],
@@ -93,29 +138,54 @@ export default function AdminFinanceInvoicesPage() {
       }),
   });
 
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['admin-finance-invoices'] });
+
   const payMutation = useMutation({
     mutationFn: (id: string) => adminFinanceService.markInvoicePaid(id),
-    onSuccess: () => {
-      toast.success('Invoice marked as paid');
-      queryClient.invalidateQueries({ queryKey: ['admin-finance-invoices'] });
-    },
+    onSuccess: () => { toast.success('Фактурата е маркирана като платена'); invalidate(); },
     onError: (err: unknown) => {
-      const msg = (err as any)?.response?.data?.error || (err as any)?.response?.data?.message || 'Failed to mark as paid';
+      const msg = (err as any)?.response?.data?.error ?? 'Грешка при маркиране';
       toast.error(msg);
     },
   });
 
-  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') { setSearch(searchInput); setPage(1); }
-  };
+  const overdueMutation = useMutation({
+    mutationFn: (id: string) => adminFinanceService.markInvoiceOverdue(id),
+    onSuccess: () => { toast.success('Фактурата е маркирана като просрочена'); invalidate(); },
+    onError: (err: unknown) => {
+      const msg = (err as any)?.response?.data?.error ?? 'Грешка при маркиране';
+      toast.error(msg);
+    },
+  });
 
-  const fmt = (iso: string) =>
-    new Date(iso).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+  const pendingMutation = useMutation({
+    mutationFn: (id: string) => adminFinanceService.markInvoicePending(id),
+    onSuccess: () => { toast.success('Фактурата е върната към Чака'); invalidate(); },
+    onError: (err: unknown) => {
+      const msg = (err as any)?.response?.data?.error ?? 'Грешка при маркиране';
+      toast.error(msg);
+    },
+  });
+
+  const notesMutation = useMutation({
+    mutationFn: ({ id, notes }: { id: string; notes: string }) =>
+      adminFinanceService.updateInvoiceNotes(id, notes),
+    onSuccess: () => { toast.success('Бележките са запазени'); invalidate(); setNotesModal(null); },
+    onError: (err: unknown) => {
+      const msg = (err as any)?.response?.data?.error ?? 'Грешка при запазване';
+      toast.error(msg);
+    },
+  });
+
+  const openNotesModal = (row: AdminInvoice) => {
+    setNotesValue(row.notes ?? '');
+    setNotesModal({ id: row.id, partnerName: row.partner.businessName, month: row.month, current: row.notes ?? '' });
+  };
 
   const columns: ColumnDef<AdminInvoice>[] = [
     {
       key: 'partner',
-      header: 'Partner',
+      header: 'Партньор',
       render: (row) => (
         <span>
           <PrimaryLine>{row.partner.businessName}</PrimaryLine>
@@ -130,40 +200,67 @@ export default function AdminFinanceInvoicesPage() {
     },
     {
       key: 'month',
-      header: 'Month',
+      header: 'Месец',
       render: (row) => (
         <span style={{ fontSize: '0.875rem', fontWeight: 600, color: palette.text }}>{row.month}</span>
       ),
     },
     {
+      key: 'turnover',
+      header: 'Оборот',
+      render: (row) => (
+        <span style={{ fontSize: '0.875rem', color: row.turnoverAmount ? palette.text : palette.textSubtle }}>
+          {row.turnoverAmount ? bgn(row.turnoverAmount) : '—'}
+        </span>
+      ),
+    },
+    {
+      key: 'rate',
+      header: '%',
+      render: (row) => (
+        <span style={{ fontSize: '0.875rem', color: row.contractedRate != null ? palette.text : palette.textSubtle }}>
+          {row.contractedRate != null ? `${row.contractedRate}%` : '—'}
+        </span>
+      ),
+    },
+    {
       key: 'amount',
-      header: 'Amount owed',
+      header: 'Задължение',
       render: (row) => (
         <span style={{ fontSize: '0.9375rem', fontWeight: 700, color: palette.text }}>
-          {row.totalCashbackOwed.toLocaleString('bg-BG', { style: 'currency', currency: 'BGN', minimumFractionDigits: 2 })}
+          {bgn(row.totalCashbackOwed)}
+        </span>
+      ),
+    },
+    {
+      key: 'margin',
+      header: 'Марджин',
+      render: (row) => (
+        <span style={{ fontSize: '0.875rem', color: row.marginAmount ? palette.text : palette.textSubtle }}>
+          {row.marginAmount ? bgn(row.marginAmount) : '—'}
         </span>
       ),
     },
     {
       key: 'status',
-      header: 'Status',
+      header: 'Статус',
       render: (row) => (
         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-          <StatusBadge $status={row.status}>{row.status}</StatusBadge>
-          {row.paidAt && <MetaLine>Paid {fmt(row.paidAt)}</MetaLine>}
+          <StatusBadge $status={row.status}>{STATUS_LABELS[row.status]}</StatusBadge>
+          {row.paidAt && <MetaLine>Платено {fmt(row.paidAt)}</MetaLine>}
         </span>
       ),
     },
     {
       key: 'notes',
-      header: 'Notes',
+      header: 'Бележки',
       render: (row) => (
         <span style={{ fontSize: '0.8125rem', color: palette.textMuted }}>{row.notes ?? '—'}</span>
       ),
     },
     {
       key: 'createdAt',
-      header: 'Created',
+      header: 'Дата',
       render: (row) => (
         <span style={{ fontSize: '0.8125rem', color: palette.textMuted }}>{fmt(row.createdAt)}</span>
       ),
@@ -174,23 +271,27 @@ export default function AdminFinanceInvoicesPage() {
     <PageShell>
       <PageHeader>
         <TitleBlock>
-          <Eyebrow>Finance</Eyebrow>
+          <Eyebrow>Финанси</Eyebrow>
           <PageTitle>
-            Partner Invoices
+            Фактури партньори
             {(data?.meta?.total ?? 0) > 0 && <TotalBadge>{data!.meta.total.toLocaleString()}</TotalBadge>}
           </PageTitle>
-          <PageSubtitle>Monthly cashback invoices owed to partners</PageSubtitle>
+          <PageSubtitle>Месечни фактури към партньори — оборот, задължение и марджин</PageSubtitle>
         </TitleBlock>
+        <HeaderActions>
+          <ExportBtn onClick={handleExport} disabled={exporting}>
+            {exporting ? 'Експортиране…' : '↓ Експорт XLSX'}
+          </ExportBtn>
+        </HeaderActions>
       </PageHeader>
 
       <Card>
         <FilterRow>
           <SearchInput
             type="text"
-            placeholder="Search partner name…"
+            placeholder="Търсене по партньор…"
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
-            onKeyDown={handleSearchKeyDown}
           />
           <Select value={status} onChange={(e) => { setStatus(e.target.value as InvoiceStatus | ''); setPage(1); }}>
             {STATUS_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
@@ -212,23 +313,68 @@ export default function AdminFinanceInvoicesPage() {
           data={data?.data ?? []}
           rowKey={(row) => row.id}
           loading={isLoading}
-          emptyMessage="No invoices found"
+          emptyMessage="Няма намерени фактури"
           page={page}
           pageSize={PAGE_SIZE}
           totalItems={data?.meta.total}
           onPageChange={setPage}
           rowActions={[
             {
-              label: 'Mark as paid',
+              label: 'Маркирай платено',
               hidden: (row) => row.status === 'PAID',
               onClick: (row) => {
-                if (!window.confirm(`Mark invoice for ${row.partner.businessName} (${row.month}) as paid?`)) return;
+                if (!window.confirm(`Маркирай фактурата за ${row.partner.businessName} (${row.month}) като платена?`)) return;
                 payMutation.mutate(row.id);
               },
+            },
+            {
+              label: 'Маркирай просрочено',
+              hidden: (row) => row.status !== 'PENDING',
+              onClick: (row) => {
+                if (!window.confirm(`Маркирай фактурата за ${row.partner.businessName} (${row.month}) като просрочена?`)) return;
+                overdueMutation.mutate(row.id);
+              },
+            },
+            {
+              label: 'Върни към Чака',
+              hidden: (row) => row.status !== 'OVERDUE',
+              onClick: (row) => {
+                if (!window.confirm(`Върни фактурата за ${row.partner.businessName} (${row.month}) към статус Чака?`)) return;
+                pendingMutation.mutate(row.id);
+              },
+            },
+            {
+              label: 'Редакция бележки',
+              hidden: () => false,
+              onClick: openNotesModal,
             },
           ]}
         />
       </Card>
+
+      {notesModal && (
+        <Overlay onClick={() => setNotesModal(null)}>
+          <Modal onClick={(e) => e.stopPropagation()}>
+            <ModalTitle>Редакция бележки</ModalTitle>
+            <ModalSub>{notesModal.partnerName} — {notesModal.month}</ModalSub>
+            <Textarea
+              value={notesValue}
+              onChange={(e) => setNotesValue(e.target.value)}
+              placeholder="Добавете бележка…"
+              autoFocus
+            />
+            <ModalActions>
+              <BtnSecondary onClick={() => setNotesModal(null)}>Отказ</BtnSecondary>
+              <BtnPrimary
+                disabled={notesMutation.isPending}
+                onClick={() => notesMutation.mutate({ id: notesModal.id, notes: notesValue })}
+              >
+                {notesMutation.isPending ? 'Запазване…' : 'Запази'}
+              </BtnPrimary>
+            </ModalActions>
+          </Modal>
+        </Overlay>
+      )}
     </PageShell>
   );
 }

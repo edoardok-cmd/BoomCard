@@ -6,7 +6,10 @@ export interface AdminInvoice {
   id: string;
   partnerId: string;
   month: string;
+  turnoverAmount: number;
+  contractedRate: number | null;
   totalCashbackOwed: number;
+  marginAmount: number;
   status: InvoiceStatus;
   paidAt: string | null;
   paidBy: string | null;
@@ -62,6 +65,18 @@ export const adminFinanceService = {
     return apiService.post(`/admin/finance/invoices/${id}/pay`, { notes });
   },
 
+  markInvoiceOverdue(id: string): Promise<void> {
+    return apiService.patch(`/admin/finance/invoices/${id}/status`, { status: 'OVERDUE' });
+  },
+
+  markInvoicePending(id: string): Promise<void> {
+    return apiService.patch(`/admin/finance/invoices/${id}/status`, { status: 'PENDING' });
+  },
+
+  updateInvoiceNotes(id: string, notes: string): Promise<void> {
+    return apiService.patch(`/admin/finance/invoices/${id}/notes`, { notes });
+  },
+
   getPeriods(year?: number): Promise<{ data: PeriodRow[]; meta: { year: number } }> {
     const clean: Record<string, unknown> = {};
     if (year) clean.year = year;
@@ -73,5 +88,19 @@ export const adminFinanceService = {
     if (from) clean.from = from;
     if (to) clean.to = to;
     return apiService.get('/admin/finance/reports', clean);
+  },
+
+  async exportInvoices(params: { status?: string; month?: string; search?: string }): Promise<void> {
+    const q: Record<string, unknown> = { type: 'invoices', format: 'xlsx' };
+    if (params.status) q.status = params.status;
+    if (params.month) q.month = params.month;
+    if (params.search) q.search = params.search;
+    const { data, filename } = await apiService.getBlob('/admin/finance/export', q);
+    const url = URL.createObjectURL(data);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
   },
 };

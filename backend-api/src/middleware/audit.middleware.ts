@@ -34,8 +34,13 @@ export const auditMiddleware = (req: AuthRequest, res: Response, next: NextFunct
     const userAgent = req.headers['user-agent'] ?? null;
 
     const parts = req.path.replace(/^\//, '').split('/');
-    const objectType = parts[0] ?? 'unknown';
-    const objectId = parts[1] ?? null;
+    // If parts[0] looks like a UUID the router has no resource-name prefix
+    // (e.g. payouts: /:id/approve). Fall back to the last segment of baseUrl.
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const objectType = UUID_RE.test(parts[0] ?? '')
+      ? (req.baseUrl.split('/').pop() ?? 'unknown')
+      : (parts[0] ?? 'unknown');
+    const objectId = UUID_RE.test(parts[0] ?? '') ? parts[0] : (parts[1] ?? null);
     const action = `${objectType}.${req.method.toLowerCase()}`;
 
     prisma.auditLog.create({

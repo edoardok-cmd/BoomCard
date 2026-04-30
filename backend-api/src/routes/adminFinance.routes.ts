@@ -40,8 +40,13 @@ router.get(
     const month = typeof req.query.month === 'string' ? req.query.month.trim() : '';
     const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
 
+    const VALID_STATUSES = ['PENDING', 'PAID', 'OVERDUE'] as const;
+    if (status && !(VALID_STATUSES as readonly string[]).includes(status)) {
+      return res.status(400).json({ success: false, error: `status must be one of: ${VALID_STATUSES.join(', ')}` });
+    }
+
     const where: Parameters<typeof prisma.partnerCashbackPayment.findMany>[0]['where'] = {};
-    if (status) where.status = status as never;
+    if (status) where.status = status as (typeof VALID_STATUSES)[number];
     if (month) where.month = month;
     if (search) {
       where.partner = { businessName: { contains: search, mode: 'insensitive' } };
@@ -113,6 +118,68 @@ router.post(
     const updated = await prisma.partnerCashbackPayment.findUnique({ where: { id } });
 
     res.json({ success: true, data: updated, message: 'Invoice marked as paid' });
+  })
+);
+
+/**
+ * PATCH /api/admin/finance/invoices/:id/status
+ * Transitions invoice to OVERDUE or back to PENDING. Cannot undo PAID.
+ * Body: { status: 'OVERDUE' | 'PENDING' }
+ */
+router.patch(
+  '/invoices/:id/status',
+  requirePermission('finance.invoices.write'),
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    const { id } = req.params;
+    const { status } = req.body as { status?: string };
+
+    if (status !== 'OVERDUE' && status !== 'PENDING') {
+      return res.status(400).json({ success: false, error: "status must be 'OVERDUE' or 'PENDING'" });
+    }
+
+    const invoice = await prisma.partnerCashbackPayment.findUnique({ where: { id } });
+    if (!invoice) return res.status(404).json({ success: false, error: 'Invoice not found' });
+    if (invoice.status === 'PAID') {
+      return res.status(400).json({ success: false, error: 'Cannot change status of a paid invoice' });
+    }
+
+    // Atomic guard: updateMany with status precondition prevents a concurrent /pay
+    // call from being silently overwritten by this status transition.
+    const result = await prisma.partnerCashbackPayment.updateMany({
+      where: { id, status: { not: 'PAID' } },
+      data: { status: status as 'OVERDUE' | 'PENDING' },
+    });
+
+    if (result.count === 0) {
+      return res.status(400).json({ success: false, error: 'Cannot change status of a paid invoice' });
+    }
+
+    const updated = await prisma.partnerCashbackPayment.findUnique({ where: { id } });
+    res.json({ success: true, data: updated });
+  })
+);
+
+/**
+ * PATCH /api/admin/finance/invoices/:id/notes
+ * Update notes on any invoice regardless of payment status.
+ * Body: { notes: string }
+ */
+router.patch(
+  '/invoices/:id/notes',
+  requirePermission('finance.invoices.write'),
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    const { id } = req.params;
+    const notes = typeof req.body?.notes === 'string' ? req.body.notes.trim() : '';
+
+    const invoice = await prisma.partnerCashbackPayment.findUnique({ where: { id } });
+    if (!invoice) return res.status(404).json({ success: false, error: 'Invoice not found' });
+
+    const updated = await prisma.partnerCashbackPayment.update({
+      where: { id },
+      data: { notes: notes || null },
+    });
+
+    res.json({ success: true, data: updated });
   })
 );
 
@@ -356,6 +423,8 @@ router.get(
       to: toParam,
       month,
       year,
+      search,
+      status: exportStatus,
     } = req.query as Record<string, string>;
 
     if (!['invoices', 'periods', 'reports'].includes(type)) {
@@ -368,9 +437,15 @@ router.get(
     let rows: Record<string, unknown>[] = [];
 
     if (type === 'invoices') {
+      const VALID_STATUSES = ['PENDING', 'PAID', 'OVERDUE'] as const;
       const where: Parameters<typeof prisma.partnerCashbackPayment.findMany>[0]['where'] = {};
+      // month is more specific than year — it wins when both are present.
       if (month) where.month = month;
-      if (year) where.month = { startsWith: year };
+      else if (year) where.month = { startsWith: year };
+      if (exportStatus && (VALID_STATUSES as readonly string[]).includes(exportStatus)) {
+        where.status = exportStatus as (typeof VALID_STATUSES)[number];
+      }
+      if (search) where.partner = { businessName: { contains: search, mode: 'insensitive' } };
 
       const invoices = await prisma.partnerCashbackPayment.findMany({
         where,
@@ -383,10 +458,13 @@ router.get(
         partner: i.partner.businessName,
         city: i.partner.city ?? '',
         month: i.month,
+        turnoverAmount: i.turnoverAmount,
+        contractedRate: i.contractedRate ?? '',
         totalCashbackOwed: i.totalCashbackOwed,
         marginAmount: i.marginAmount,
         status: i.status,
         paidAt: i.paidAt?.toISOString() ?? '',
+        notes: i.notes ?? '',
         createdAt: i.createdAt.toISOString(),
       }));
 
@@ -442,24 +520,30 @@ router.get(
 
     const filename = `boomcard_${type}_${new Date().toISOString().slice(0, 10)}`;
 
+    // Always use the canonical column order, regardless of row shape.
+    // Object.keys(rows[0]) would give wrong results for the 'reports' type
+    // because wallet rows and cashback rows have different keys — the first
+    // row alone does not represent the full schema.
+    const HEADERS: Record<string, string[]> = {
+      invoices: ['id', 'partner', 'city', 'month', 'turnoverAmount', 'contractedRate', 'totalCashbackOwed', 'marginAmount', 'status', 'paidAt', 'notes', 'createdAt'],
+      periods:  ['month', 'status', 'lockedAt', 'invoicedAt', 'notes'],
+      reports:  ['category', 'type', 'total', 'count', 'partnerId', 'month', 'cashback', 'margin', 'status'],
+    };
+
     if (format === 'csv') {
-      if (rows.length === 0) {
-        res.setHeader('Content-Type', 'text/csv');
-        res.setHeader('Content-Disposition', `attachment; filename="${filename}.csv"`);
-        return res.send('');
-      }
-      const headers = Object.keys(rows[0]);
+      const headers = HEADERS[type] ?? [];
       const csvLines = [
         headers.join(','),
         ...rows.map(r => headers.map(h => JSON.stringify(r[h] ?? '')).join(',')),
       ];
-      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
       res.setHeader('Content-Disposition', `attachment; filename="${filename}.csv"`);
       return res.send(csvLines.join('\n'));
     }
 
-    // xlsx
-    const ws = XLSX.utils.json_to_sheet(rows);
+    // xlsx — pass header so column names appear even when rows is empty
+    const xlsxHeaders = HEADERS[type] ?? (rows.length > 0 ? Object.keys(rows[0]) : []);
+    const ws = XLSX.utils.json_to_sheet(rows, { header: xlsxHeaders });
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, type);
     const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });

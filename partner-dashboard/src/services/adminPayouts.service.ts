@@ -7,7 +7,8 @@ export type PayoutStatus =
   | 'FAILED'
   | 'CANCELLED'
   | 'TRIAL_PENDING'
-  | 'ANNULLED';
+  | 'ANNULLED'
+  | 'RISK_HOLD';
 
 export interface PayoutUser {
   id: string;
@@ -36,7 +37,15 @@ export interface AdminPayout {
   status: PayoutStatus;
   description: string | null;
   createdAt: string;
+  metadata: string | null;
   wallet: PayoutWallet;
+}
+
+export interface PayoutsSummary {
+  pendingCount: number;
+  pendingTotal: number;
+  processingCount: number;
+  riskHoldCount: number;
 }
 
 export interface AdminPayoutsResult {
@@ -44,6 +53,7 @@ export interface AdminPayoutsResult {
   total: number;
   page: number;
   limit: number;
+  summary: PayoutsSummary;
 }
 
 export const adminPayoutsService = {
@@ -69,5 +79,17 @@ export const adminPayoutsService = {
 
   complete(id: string): Promise<void> {
     return apiService.patch(`/admin/payouts/${id}/complete`, {});
+  },
+
+  hold(id: string, reason?: string): Promise<void> {
+    return apiService.patch(`/admin/payouts/${id}/hold`, { reason });
+  },
+
+  release(id: string): Promise<void> {
+    return apiService.patch(`/admin/payouts/${id}/release`, {});
+  },
+
+  fail(id: string, reason?: string): Promise<void> {
+    return apiService.patch(`/admin/payouts/${id}/fail`, { reason });
   },
 };

@@ -253,7 +253,7 @@ export interface BusinessTransaction {
   currency: string;
   paymentMethod: string;
   createdAt: string;
-  user: { id: string; firstName: string | null; lastName: string | null; email: string; riskScore: number };
+  user: { id: string; firstName: string | null; lastName: string | null; email: string; phone: string | null; riskScore: number };
   partner:
     | {
         id: string;

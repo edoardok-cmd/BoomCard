@@ -214,6 +214,17 @@ class ApiService {
   }
 
   /**
+   * GET request returning a Blob (for file downloads). Includes auth header.
+   */
+  async getBlob(url: string, params?: unknown): Promise<{ data: Blob; filename: string }> {
+    const response = await this.api.get<Blob>(url, { params, responseType: 'blob' });
+    const disposition: string = response.headers['content-disposition'] ?? '';
+    const match = disposition.match(/filename="([^"]+)"/);
+    const filename = match ? match[1] : 'export';
+    return { data: response.data, filename };
+  }
+
+  /**
    * Get current auth token
    */
   getAuthToken(): string | null {

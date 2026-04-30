@@ -1,188 +1,397 @@
 import { Router } from 'express';
 import { WalletTransactionStatus } from '@prisma/client';
 import { authenticate, authorize, requirePermission } from '../middleware/auth.middleware';
+import { auditMiddleware } from '../middleware/audit.middleware';
 import { prisma } from '../lib/prisma';
+import { emailService } from '../services/email.service';
 
 const router = Router();
+router.use(authenticate, authorize('ADMIN', 'SUPER_ADMIN'));
+router.use(auditMiddleware);
 
-// GET /api/admin/payouts?page=1&limit=20&search=...&status=PENDING
-router.get('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('finance.payouts.read'), async (req, res, next) => {
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
+async function notifySubscriber(
+  payoutId: string,
+  event: 'approved' | 'completed' | 'rejected' | 'held' | 'released' | 'failed',
+  note?: string,
+) {
   try {
-    const {
-      search,
-      status,
-      page = '1',
-      limit = '20',
-    } = req.query as Record<string, string>;
+    const tx = await prisma.walletTransaction.findUnique({
+      where: { id: payoutId },
+      select: {
+        amount: true,
+        currency: true,
+        wallet: { select: { user: { select: { email: true, firstName: true, lastName: true } } } },
+      },
+    });
+    if (!tx) return;
 
-    const pageNum = Math.max(1, parseInt(page) || 1);
-    const limitNum = Math.min(Math.max(1, parseInt(limit) || 20), 100);
-    const skip = (pageNum - 1) * limitNum;
-    const take = limitNum;
+    const name = [tx.wallet.user.firstName, tx.wallet.user.lastName].filter(Boolean).join(' ') || 'Абонат';
+    const amt = Math.abs(tx.amount).toFixed(2);
+    const currency = tx.currency;
 
-    const where: Parameters<typeof prisma.walletTransaction.findMany>[0]['where'] = {
-      type: 'WITHDRAWAL',
+    const subjectMap: Record<typeof event, string> = {
+      approved:  `Плащането ви от ${amt} ${currency} е одобрено`,
+      completed: `Плащането ви от ${amt} ${currency} е изпратено`,
+      rejected:  `Плащането ви от ${amt} ${currency} е отхвърлено`,
+      held:      `Плащането ви от ${amt} ${currency} е задържано за проверка`,
+      released:  `Плащането ви от ${amt} ${currency} е освободено`,
+      failed:    `Плащането ви от ${amt} ${currency} не беше успешно`,
     };
 
-    if (status && Object.values(WalletTransactionStatus).includes(status as WalletTransactionStatus)) {
-      where.status = status as WalletTransactionStatus;
-    }
+    const bodyMap: Record<typeof event, string> = {
+      approved:  'Заявката ви за плащане беше одобрена и е в процес на обработка. Очаквайте превода в рамките на 5 работни дни.',
+      completed: 'Паричният превод беше изпратен успешно. Средствата ще постъпят по сметката ви в рамките на 1–3 работни дни.',
+      rejected:  `Заявката ви за плащане беше отхвърлена и балансът ви е възстановен.${note ? ` Причина: ${note}` : ''}`,
+      held:      'Заявката ви за плащане е задържана за допълнителна проверка съгласно нашата политика за сигурност. Ще се свържем с вас при необходимост.',
+      released:  'Заявката ви за плащане беше освободена от задържане и ще бъде обработена нормално.',
+      failed:    `Плащането не беше успешно поради технически проблем. Балансът ви е възстановен.${note ? ` Причина: ${note}` : ''}`,
+    };
 
-    if (search) {
-      where.wallet = {
-        user: {
-          OR: [
-            { email: { contains: search, mode: 'insensitive' } },
-            { firstName: { contains: search, mode: 'insensitive' } },
-            { lastName: { contains: search, mode: 'insensitive' } },
-            { phone: { contains: search, mode: 'insensitive' } },
-          ],
-        },
+    await emailService.sendEmail({
+      to: tx.wallet.user.email,
+      subject: subjectMap[event],
+      html: `
+        <div style="font-family:sans-serif;max-width:540px;margin:0 auto;padding:2rem;color:#141413">
+          <h2 style="margin-bottom:.5rem">${subjectMap[event]}</h2>
+          <p>Здравейте, ${name},</p>
+          <p>${bodyMap[event]}</p>
+          <p style="color:#8c8678;font-size:.875rem;margin-top:2rem">© ${new Date().getFullYear()} BoomCard. Всички права запазени.</p>
+        </div>
+      `,
+      text: `${subjectMap[event]}\n\n${bodyMap[event]}`,
+    });
+  } catch (err) {
+    // Non-fatal — log and continue
+    console.error('[adminPayouts] email notification failed', err);
+  }
+}
+
+// ─── GET /api/admin/payouts ───────────────────────────────────────────────────
+router.get(
+  '/',
+  requirePermission('finance.payouts.read'),
+  async (req, res, next) => {
+    try {
+      const { search, status, page = '1', limit = '20' } = req.query as Record<string, string>;
+
+      const pageNum   = Math.max(1, parseInt(page) || 1);
+      const limitNum  = Math.min(Math.max(1, parseInt(limit) || 20), 100);
+      const skip      = (pageNum - 1) * limitNum;
+
+      const where: Parameters<typeof prisma.walletTransaction.findMany>[0]['where'] = {
+        type: 'WITHDRAWAL',
       };
-    }
 
-    const [payouts, total] = await Promise.all([
-      prisma.walletTransaction.findMany({
-        where,
-        skip,
-        take,
-        orderBy: { createdAt: 'desc' },
-        select: {
-          id: true,
-          type: true,
-          amount: true,
-          balanceBefore: true,
-          balanceAfter: true,
-          currency: true,
-          status: true,
-          description: true,
-          createdAt: true,
-          wallet: {
-            select: {
-              id: true,
-              availableBalance: true,
-              pendingBalance: true,
-              payoutIban: true,
-              payoutBeneficiaryName: true,
-              user: {
-                select: {
-                  id: true,
-                  firstName: true,
-                  lastName: true,
-                  email: true,
-                  phone: true,
-                },
+      if (status && Object.values(WalletTransactionStatus).includes(status as WalletTransactionStatus)) {
+        where.status = status as WalletTransactionStatus;
+      }
+
+      if (search) {
+        where.wallet = {
+          user: {
+            OR: [
+              { email:     { contains: search, mode: 'insensitive' } },
+              { firstName: { contains: search, mode: 'insensitive' } },
+              { lastName:  { contains: search, mode: 'insensitive' } },
+              { phone:     { contains: search, mode: 'insensitive' } },
+            ],
+          },
+        };
+      }
+
+      // Summary counts for the banner (always over all WITHDRAWAL records, ignoring search/status)
+      const [payouts, total, pendingCount, pendingTotal, processingCount, riskHoldCount] = await Promise.all([
+        prisma.walletTransaction.findMany({
+          where,
+          skip,
+          take: limitNum,
+          orderBy: { createdAt: 'desc' },
+          select: {
+            id: true, type: true, amount: true, balanceBefore: true, balanceAfter: true,
+            currency: true, status: true, description: true, createdAt: true, metadata: true,
+            wallet: {
+              select: {
+                id: true, availableBalance: true, pendingBalance: true,
+                payoutIban: true, payoutBeneficiaryName: true,
+                user: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } },
               },
             },
           },
+        }),
+        prisma.walletTransaction.count({ where }),
+        prisma.walletTransaction.count({ where: { type: 'WITHDRAWAL', status: 'PENDING' } }),
+        prisma.walletTransaction.aggregate({
+          where: { type: 'WITHDRAWAL', status: 'PENDING' },
+          _sum: { amount: true },
+        }),
+        prisma.walletTransaction.count({ where: { type: 'WITHDRAWAL', status: 'PROCESSING' } }),
+        prisma.walletTransaction.count({ where: { type: 'WITHDRAWAL', status: 'RISK_HOLD' } }),
+      ]);
+
+      res.json({
+        payouts,
+        total,
+        page: pageNum,
+        limit: limitNum,
+        summary: {
+          pendingCount,
+          pendingTotal: Math.abs(pendingTotal._sum.amount ?? 0),
+          processingCount,
+          riskHoldCount,
         },
-      }),
-      prisma.walletTransaction.count({ where }),
-    ]);
-
-    res.json({ payouts, total, page: pageNum, limit: take });
-  } catch (error) {
-    next(error);
-  }
-});
-
-// PATCH /api/admin/payouts/:id/approve → PROCESSING
-router.patch('/:id/approve', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('finance.payouts.write'), async (req, res, next) => {
-  try {
-    const { id } = req.params;
-
-    const payout = await prisma.walletTransaction.findUnique({ where: { id } });
-    if (!payout || payout.type !== 'WITHDRAWAL') {
-      res.status(404).json({ message: 'Payout not found' });
-      return;
+      });
+    } catch (error) {
+      next(error);
     }
-    if (payout.status !== 'PENDING') {
-      res.status(400).json({ message: 'Only PENDING payouts can be approved' });
-      return;
+  },
+);
+
+// ─── PATCH /:id/approve  PENDING → PROCESSING ────────────────────────────────
+router.patch(
+  '/:id/approve',
+  requirePermission('finance.payouts.write'),
+  async (req, res, next) => {
+    try {
+      const { id } = req.params;
+      const payout = await prisma.walletTransaction.findFirst({
+        where: { id, type: 'WITHDRAWAL' },
+        include: { wallet: true },
+      });
+
+      if (!payout) {
+        res.status(404).json({ message: 'Payout not found' });
+        return;
+      }
+      if (payout.status !== 'PENDING') {
+        res.status(400).json({ message: 'Only PENDING payouts can be approved' });
+        return;
+      }
+      if (!payout.wallet.payoutIban) {
+        res.status(422).json({ message: 'Не може да се одобри: абонатът няма регистриран IBAN' });
+        return;
+      }
+
+      // Store the exact moment of approval so the frontend can show an accurate SLA countdown
+      const existingMeta = payout.metadata ? JSON.parse(payout.metadata) : {};
+      const newMeta = JSON.stringify({ ...existingMeta, processingStartedAt: new Date().toISOString() });
+
+      const updated = await prisma.walletTransaction.update({
+        where: { id },
+        data: { status: 'PROCESSING', metadata: newMeta },
+      });
+
+      notifySubscriber(id, 'approved');
+      res.json(updated);
+    } catch (error) {
+      next(error);
     }
+  },
+);
 
-    const updated = await prisma.walletTransaction.update({
-      where: { id },
-      data: { status: 'PROCESSING' },
-    });
+// ─── PATCH /:id/reject  PENDING → FAILED (balance restored) ──────────────────
+router.patch(
+  '/:id/reject',
+  requirePermission('finance.payouts.write'),
+  async (req, res, next) => {
+    try {
+      const { id } = req.params;
+      const { reason } = req.body as { reason?: string };
 
-    res.json(updated);
-  } catch (error) {
-    next(error);
-  }
-});
+      const payout = await prisma.walletTransaction.findFirst({
+        where: { id, type: 'WITHDRAWAL' },
+        include: { wallet: true },
+      });
+      if (!payout) {
+        res.status(404).json({ message: 'Payout not found' });
+        return;
+      }
+      if (payout.status !== 'PENDING' && payout.status !== 'RISK_HOLD') {
+        res.status(400).json({ message: 'Only PENDING or RISK_HOLD payouts can be rejected' });
+        return;
+      }
 
-// PATCH /api/admin/payouts/:id/reject → FAILED
-router.patch('/:id/reject', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('finance.payouts.write'), async (req, res, next) => {
-  try {
-    const { id } = req.params;
-    const { reason } = req.body as { reason?: string };
+      const restoreAmount = -payout.amount; // amounts stored as negative debits
 
-    const payout = await prisma.walletTransaction.findFirst({
-      where: { id, type: 'WITHDRAWAL' },
-      include: { wallet: true },
-    });
-    if (!payout) {
-      res.status(404).json({ message: 'Payout not found' });
-      return;
+      await prisma.$transaction([
+        prisma.walletTransaction.update({
+          where: { id },
+          data: {
+            status: 'FAILED',
+            description: reason ? `Отхвърлено от администратор: ${reason}` : 'Отхвърлено от администратор',
+          },
+        }),
+        prisma.wallet.update({
+          where: { id: payout.walletId },
+          data: {
+            balance:          { increment: restoreAmount },
+            availableBalance: { increment: restoreAmount },
+          },
+        }),
+      ]);
+
+      notifySubscriber(id, 'rejected', reason);
+      res.json({ ok: true });
+    } catch (error) {
+      next(error);
     }
-    if (payout.status !== 'PENDING') {
-      res.status(400).json({ message: 'Only PENDING payouts can be rejected' });
-      return;
+  },
+);
+
+// ─── PATCH /:id/complete  PROCESSING → COMPLETED ────────────────────────────
+router.patch(
+  '/:id/complete',
+  requirePermission('finance.payouts.write'),
+  async (req, res, next) => {
+    try {
+      const { id } = req.params;
+      const payout = await prisma.walletTransaction.findFirst({ where: { id, type: 'WITHDRAWAL' } });
+
+      if (!payout) {
+        res.status(404).json({ message: 'Payout not found' });
+        return;
+      }
+      if (payout.status !== 'PROCESSING') {
+        res.status(400).json({ message: 'Only PROCESSING payouts can be marked complete' });
+        return;
+      }
+
+      const updated = await prisma.walletTransaction.update({
+        where: { id },
+        data: { status: 'COMPLETED' },
+      });
+
+      notifySubscriber(id, 'completed');
+      res.json(updated);
+    } catch (error) {
+      next(error);
     }
+  },
+);
 
-    // amounts are stored as negative (debit), so negate to restore
-    const restoreAmount = -payout.amount;
+// ─── PATCH /:id/hold  PENDING → RISK_HOLD ────────────────────────────────────
+router.patch(
+  '/:id/hold',
+  requirePermission('finance.payouts.write'),
+  async (req, res, next) => {
+    try {
+      const { id } = req.params;
+      const { reason } = req.body as { reason?: string };
 
-    await prisma.$transaction([
-      prisma.walletTransaction.update({
+      const payout = await prisma.walletTransaction.findFirst({ where: { id, type: 'WITHDRAWAL' } });
+      if (!payout) {
+        res.status(404).json({ message: 'Payout not found' });
+        return;
+      }
+      if (payout.status !== 'PENDING') {
+        res.status(400).json({ message: 'Only PENDING payouts can be placed on hold' });
+        return;
+      }
+
+      const updated = await prisma.walletTransaction.update({
         where: { id },
         data: {
-          status: 'FAILED',
-          description: reason ? `Rejected by admin: ${reason}` : 'Rejected by admin',
+          status: 'RISK_HOLD',
+          description: reason
+            ? `Задържано за проверка: ${reason}`
+            : 'Задържано за проверка при съмнение',
         },
-      }),
-      prisma.wallet.update({
-        where: { id: payout.walletId },
-        data: {
-          balance: { increment: restoreAmount },
-          availableBalance: { increment: restoreAmount },
-        },
-      }),
-    ]);
+      });
 
-    res.json({ ok: true });
-  } catch (error) {
-    next(error);
-  }
-});
-
-// PATCH /api/admin/payouts/:id/complete → COMPLETED (bank transfer confirmed)
-router.patch('/:id/complete', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('finance.payouts.write'), async (req, res, next) => {
-  try {
-    const { id } = req.params;
-
-    const payout = await prisma.walletTransaction.findFirst({
-      where: { id, type: 'WITHDRAWAL' },
-    });
-    if (!payout) {
-      res.status(404).json({ message: 'Payout not found' });
-      return;
+      notifySubscriber(id, 'held', reason);
+      res.json(updated);
+    } catch (error) {
+      next(error);
     }
-    if (payout.status !== 'PROCESSING') {
-      res.status(400).json({ message: 'Only PROCESSING payouts can be marked complete' });
-      return;
+  },
+);
+
+// ─── PATCH /:id/release  RISK_HOLD → PENDING ─────────────────────────────────
+router.patch(
+  '/:id/release',
+  requirePermission('finance.payouts.write'),
+  async (req, res, next) => {
+    try {
+      const { id } = req.params;
+
+      const payout = await prisma.walletTransaction.findFirst({ where: { id, type: 'WITHDRAWAL' } });
+      if (!payout) {
+        res.status(404).json({ message: 'Payout not found' });
+        return;
+      }
+      if (payout.status !== 'RISK_HOLD') {
+        res.status(400).json({ message: 'Only RISK_HOLD payouts can be released' });
+        return;
+      }
+
+      // Preserve the hold reason for audit trail; prefix it so admins know the hold was lifted
+      const releasedDesc = payout.description
+        ? `[Освободено] ${payout.description}`
+        : null;
+
+      const updated = await prisma.walletTransaction.update({
+        where: { id },
+        data: { status: 'PENDING', description: releasedDesc },
+      });
+
+      notifySubscriber(id, 'released');
+      res.json(updated);
+    } catch (error) {
+      next(error);
     }
+  },
+);
 
-    const updated = await prisma.walletTransaction.update({
-      where: { id },
-      data: { status: 'COMPLETED' },
-    });
+// ─── PATCH /:id/fail  PROCESSING → FAILED (bank-side failure, balance restored) ──
+router.patch(
+  '/:id/fail',
+  requirePermission('finance.payouts.write'),
+  async (req, res, next) => {
+    try {
+      const { id } = req.params;
+      const { reason } = req.body as { reason?: string };
 
-    res.json(updated);
-  } catch (error) {
-    next(error);
-  }
-});
+      const payout = await prisma.walletTransaction.findFirst({
+        where: { id, type: 'WITHDRAWAL' },
+        include: { wallet: true },
+      });
+      if (!payout) {
+        res.status(404).json({ message: 'Payout not found' });
+        return;
+      }
+      if (payout.status !== 'PROCESSING') {
+        res.status(400).json({ message: 'Only PROCESSING payouts can be marked as failed' });
+        return;
+      }
+
+      const restoreAmount = -payout.amount;
+
+      await prisma.$transaction([
+        prisma.walletTransaction.update({
+          where: { id },
+          data: {
+            status: 'FAILED',
+            description: reason
+              ? `Неуспешен банков превод: ${reason}`
+              : 'Неуспешен банков превод',
+          },
+        }),
+        prisma.wallet.update({
+          where: { id: payout.walletId },
+          data: {
+            balance:          { increment: restoreAmount },
+            availableBalance: { increment: restoreAmount },
+          },
+        }),
+      ]);
+
+      notifySubscriber(id, 'failed', reason);
+      res.json({ ok: true });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
 
 export default router;

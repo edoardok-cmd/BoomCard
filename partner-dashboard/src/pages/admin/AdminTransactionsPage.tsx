@@ -641,6 +641,9 @@ const T = {
   partnerRiskMax: { bg: 'макс.', en: 'max' },
   partnerRiskCount: { bg: 'транзакции', en: 'transactions' },
   paymentMethod: { bg: 'Метод на плащане', en: 'Payment method' },
+  // Risk review link (in detail modal for risk > 30)
+  riskReviewLink: { bg: 'Виж в риск преглед →', en: 'View in Risk Review →' },
+  riskReviewLabel: { bg: 'Риск преглед', en: 'Risk review' },
   // Toasts
   toastAdjustmentCreated: { bg: 'Корекцията е създадена', en: 'Adjustment created' },
   toastAdjustmentFailed: { bg: 'Грешка при създаване на корекция', en: 'Failed to create adjustment' },
@@ -1061,6 +1064,8 @@ export default function AdminTransactionsPage() {
     setType('');
     setRiskTier('');
     setMaxAmount('');
+    setPage(1);
+    setDetailTx(null);
   };
 
   /* ── Wallet ledger columns ── */
@@ -1130,8 +1135,11 @@ export default function AdminTransactionsPage() {
       key: 'id',
       header: t('colTxId', lang),
       render: (row) => (
-        <span style={{ fontFamily: 'monospace', fontSize: '0.75rem', color: palette.textMuted }}>
-          {row.id.slice(0, 8)}
+        <span
+          style={{ fontFamily: 'monospace', fontSize: '0.75rem', color: palette.textMuted }}
+          title={row.id}
+        >
+          {row.id.slice(0, 8)}…
         </span>
       ),
     },
@@ -1144,6 +1152,7 @@ export default function AdminTransactionsPage() {
             ? `${row.user.firstName ?? ''} ${row.user.lastName ?? ''}`.trim()
             : '—'}
           <MetaLine>{row.user.email}</MetaLine>
+          {row.user.phone && <MetaLine>{row.user.phone}</MetaLine>}
         </UserCell>
       ),
     },
@@ -1370,6 +1379,16 @@ export default function AdminTransactionsPage() {
                   {detailTx.status.replace(/_/g, ' ')}
                 </StatusBadge>
               </DetailRow>
+              {detailTx.riskScore > 30 && (
+                <DetailRow label={t('riskReviewLabel', lang)}>
+                  <a
+                    href={`/admin/control/risk?bucket=${detailTx.riskScore >= 61 ? 'HIGH_61_PLUS' : 'REVIEW_31_60'}&status=active`}
+                    style={{ color: palette.accent, fontWeight: 600, fontSize: '0.875rem' }}
+                  >
+                    {t('riskReviewLink', lang)}
+                  </a>
+                </DetailRow>
+              )}
               <DetailRow label={t('colDate', lang)}>
                 <div>
                   <span style={{ color: palette.textSubtle, fontSize: '0.75rem' }}>
@@ -1574,16 +1593,17 @@ export default function AdminTransactionsPage() {
         </StatsBar>
       )}
       {view === 'business' && (
-        <StatsBar style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
+        <StatsBar style={{ gridTemplateColumns: 'repeat(5, 1fr)' }}>
+          <StatCard>
+            <StatLabel>{t('todayCount', lang)}</StatLabel>
+            <StatValue>
+              {businessStats ? businessStats.todayCount.toLocaleString(locale) : '—'}
+            </StatValue>
+          </StatCard>
           <StatCard>
             <StatLabel>{t('totalCount', lang)}</StatLabel>
             <StatValue>
               {businessStats ? businessStats.count.toLocaleString(locale) : '—'}
-              {businessStats && (
-                <span style={{ fontSize: '0.75rem', color: palette.textSubtle, fontWeight: 500, marginLeft: '0.5rem' }}>
-                  {t('todayCount', lang)}: {businessStats.todayCount.toLocaleString(locale)}
-                </span>
-              )}
             </StatValue>
           </StatCard>
           <StatCard>

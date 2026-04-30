@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import styled from 'styled-components';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-hot-toast';
@@ -9,6 +9,7 @@ import {
   adminPayoutsService,
   AdminPayout,
   PayoutStatus,
+  PayoutsSummary,
 } from '../../services/adminPayouts.service';
 
 /* ─── Palette ─────────────────────────────────────────────────────────────── */
@@ -29,6 +30,8 @@ const palette = {
   dangerSoft: '#f4dcd2',
   info: '#2563eb',
   infoSoft: '#dbeafe',
+  purple: '#7c3aed',
+  purpleSoft: '#ede9fe',
 };
 
 /* ─── Layout ───────────────────────────────────────────────────────────────── */
@@ -42,7 +45,7 @@ const PageHeader = styled.div`
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  margin-bottom: 2rem;
+  margin-bottom: 1.5rem;
   gap: 1rem;
   flex-wrap: wrap;
 `;
@@ -71,19 +74,50 @@ const PageSubtitle = styled.p`
   margin: 0;
 `;
 
-const TotalBadge = styled.span`
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: ${palette.warningSoft};
-  color: ${palette.warning};
-  font-size: 0.75rem;
-  font-weight: 700;
-  border-radius: 9999px;
-  padding: 0.125rem 0.6rem;
-  margin-left: 0.5rem;
+/* ─── Summary banner ───────────────────────────────────────────────────────── */
+const SummaryRow = styled.div`
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+  flex-wrap: wrap;
 `;
 
+const SummaryCard = styled.div<{ $variant?: 'warning' | 'info' | 'neutral' }>`
+  background: ${p =>
+    p.$variant === 'warning' ? palette.warningSoft :
+    p.$variant === 'info'    ? palette.infoSoft :
+    palette.surface};
+  border: 1px solid ${p =>
+    p.$variant === 'warning' ? '#e5c97a' :
+    p.$variant === 'info'    ? '#bfdbfe' :
+    palette.border};
+  border-radius: 0.75rem;
+  padding: 1rem 1.25rem;
+  min-width: 10rem;
+`;
+
+const SummaryLabel = styled.div`
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: ${palette.textSubtle};
+  margin-bottom: 0.25rem;
+`;
+
+const SummaryValue = styled.div`
+  font-size: 1.375rem;
+  font-weight: 800;
+  color: ${palette.text};
+`;
+
+const SummaryMeta = styled.div`
+  font-size: 0.75rem;
+  color: ${palette.textMuted};
+  margin-top: 0.125rem;
+`;
+
+/* ─── Card / filter ────────────────────────────────────────────────────────── */
 const Card = styled.div`
   background: ${palette.surface};
   border: 1px solid ${palette.border};
@@ -99,25 +133,39 @@ const FilterRow = styled.div`
   align-items: center;
 `;
 
+const SearchWrap = styled.div`
+  position: relative;
+  flex: 1;
+  max-width: 22rem;
+  display: flex;
+`;
+
 const SearchInput = styled.input`
   flex: 1;
-  max-width: 20rem;
-  padding: 0.5rem 0.875rem;
+  padding: 0.5rem 2.5rem 0.5rem 0.875rem;
   border: 1px solid ${palette.border};
-  border-radius: 0.5rem;
+  border-radius: 0.5rem 0 0 0.5rem;
   font-size: 0.875rem;
   background: ${palette.bg};
   color: ${palette.text};
   outline: none;
 
-  &:focus {
-    border-color: ${palette.accent};
-    box-shadow: 0 0 0 2px ${palette.accentSoft};
-  }
+  &:focus { border-color: ${palette.accent}; box-shadow: 0 0 0 2px ${palette.accentSoft}; }
+  &::placeholder { color: ${palette.textSubtle}; }
+`;
 
-  &::placeholder {
-    color: ${palette.textSubtle};
-  }
+const SearchBtn = styled.button`
+  padding: 0.5rem 0.75rem;
+  border: 1px solid ${palette.border};
+  border-left: none;
+  border-radius: 0 0.5rem 0.5rem 0;
+  background: ${palette.accent};
+  color: #fff;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  &:hover { opacity: 0.88; }
 `;
 
 const Select = styled.select`
@@ -129,11 +177,7 @@ const Select = styled.select`
   color: ${palette.text};
   outline: none;
   cursor: pointer;
-
-  &:focus {
-    border-color: ${palette.accent};
-    box-shadow: 0 0 0 2px ${palette.accentSoft};
-  }
+  &:focus { border-color: ${palette.accent}; box-shadow: 0 0 0 2px ${palette.accentSoft}; }
 `;
 
 /* ─── Cell helpers ─────────────────────────────────────────────────────────── */
@@ -161,6 +205,17 @@ const IbanCell = styled.div`
   font-family: monospace;
 `;
 
+const SlaTag = styled.span<{ $overdue: boolean }>`
+  display: inline-block;
+  font-size: 0.7rem;
+  font-weight: 700;
+  border-radius: 0.25rem;
+  padding: 0.1rem 0.4rem;
+  margin-top: 0.25rem;
+  background: ${p => p.$overdue ? palette.dangerSoft : palette.warningSoft};
+  color: ${p => p.$overdue ? palette.danger : palette.warning};
+`;
+
 const StatusBadge = styled.span<{ $status: PayoutStatus }>`
   display: inline-flex;
   align-items: center;
@@ -182,15 +237,17 @@ const StatusBadge = styled.span<{ $status: PayoutStatus }>`
       case 'FAILED':
       case 'CANCELLED':
         return `background: ${palette.dangerSoft}; color: ${palette.danger};`;
+      case 'RISK_HOLD':
+        return `background: ${palette.purpleSoft}; color: ${palette.purple};`;
       case 'ANNULLED':
-        return `background: #f3f4f6; color: #6b7280;`;
+      case 'TRIAL_PENDING':
       default:
         return `background: #f3f4f6; color: #6b7280;`;
     }
   }}
 `;
 
-/* ─── Reject modal ─────────────────────────────────────────────────────────── */
+/* ─── Modal ────────────────────────────────────────────────────────────────── */
 const Overlay = styled.div`
   position: fixed;
   inset: 0;
@@ -236,11 +293,7 @@ const ReasonTextarea = styled.textarea`
   resize: vertical;
   box-sizing: border-box;
   outline: none;
-
-  &:focus {
-    border-color: ${palette.accent};
-    box-shadow: 0 0 0 2px ${palette.accentSoft};
-  }
+  &:focus { border-color: ${palette.accent}; box-shadow: 0 0 0 2px ${palette.accentSoft}; }
 `;
 
 const ModalActions = styled.div`
@@ -250,75 +303,116 @@ const ModalActions = styled.div`
   margin-top: 1.25rem;
 `;
 
-const Btn = styled.button<{ $variant?: 'danger' | 'ghost' }>`
+const Btn = styled.button<{ $variant?: 'danger' | 'ghost' | 'warning' }>`
   padding: 0.5rem 1.125rem;
   border-radius: 0.5rem;
   font-size: 0.875rem;
   font-weight: 600;
   cursor: pointer;
   transition: opacity 150ms;
-
-  background: ${(p) =>
-    p.$variant === 'danger' ? palette.danger : p.$variant === 'ghost' ? 'transparent' : palette.accent};
-  color: ${(p) => (p.$variant === 'ghost' ? palette.textMuted : '#fff')};
-  border: ${(p) => (p.$variant === 'ghost' ? `1px solid ${palette.border}` : 'none')};
-
+  background: ${p =>
+    p.$variant === 'danger'   ? palette.danger :
+    p.$variant === 'warning'  ? palette.warning :
+    p.$variant === 'ghost'    ? 'transparent' :
+    palette.accent};
+  color: ${p => p.$variant === 'ghost' ? palette.textMuted : '#fff'};
+  border: ${p => p.$variant === 'ghost' ? `1px solid ${palette.border}` : 'none'};
   &:hover { opacity: 0.85; }
   &:disabled { opacity: 0.5; cursor: not-allowed; }
 `;
 
-/* ─── Component ───────────────────────────────────────────────────────────── */
-const PAGE_SIZE = 20;
+/* ─── Helpers ──────────────────────────────────────────────────────────────── */
+const ALLOWED_STATUSES: PayoutStatus[] = [
+  'PENDING', 'PROCESSING', 'COMPLETED', 'FAILED', 'CANCELLED',
+  'TRIAL_PENDING', 'ANNULLED', 'RISK_HOLD',
+];
 
 const STATUS_OPTIONS: Array<{ value: PayoutStatus | ''; label: string }> = [
-  { value: '', label: 'All statuses' },
-  { value: 'PENDING', label: 'Pending' },
-  { value: 'PROCESSING', label: 'Processing' },
-  { value: 'COMPLETED', label: 'Completed' },
-  { value: 'FAILED', label: 'Failed' },
-  { value: 'CANCELLED', label: 'Cancelled' },
-  { value: 'ANNULLED', label: 'Annulled' },
+  { value: '',              label: 'Всички статуси' },
+  { value: 'PENDING',       label: 'Чака' },
+  { value: 'RISK_HOLD',     label: 'Задържано (риск)' },
+  { value: 'PROCESSING',    label: 'Обработва се' },
+  { value: 'COMPLETED',     label: 'Платено' },
+  { value: 'FAILED',        label: 'Неуспешно' },
+  { value: 'CANCELLED',     label: 'Отменено' },
+  { value: 'ANNULLED',      label: 'Анулирано' },
+  { value: 'TRIAL_PENDING', label: 'Изчакване (пробен)' },
 ];
+
+const STATUS_LABELS: Record<PayoutStatus, string> = {
+  PENDING:       'Чака',
+  RISK_HOLD:     'Задържано (риск)',
+  PROCESSING:    'Обработва се',
+  COMPLETED:     'Платено',
+  FAILED:        'Неуспешно',
+  CANCELLED:     'Отменено',
+  ANNULLED:      'Анулирано',
+  TRIAL_PENDING: 'Изчакване (пробен)',
+};
+
+const SLA_WORKING_DAYS = 5;
+
+function workingDaysSince(iso: string, metadataJson?: string | null): number {
+  // Prefer the moment the payout was approved (stored by the backend on /approve)
+  // over createdAt so the SLA reflects actual processing time, not queue wait time.
+  let startIso = iso;
+  if (metadataJson) {
+    try {
+      const meta = JSON.parse(metadataJson) as Record<string, unknown>;
+      if (typeof meta.processingStartedAt === 'string') startIso = meta.processingStartedAt;
+    } catch { /* ignore malformed JSON */ }
+  }
+  const start = new Date(startIso);
+  const now   = new Date();
+  let days    = 0;
+  const cur   = new Date(start);
+  while (cur < now) {
+    cur.setDate(cur.getDate() + 1);
+    const dow = cur.getDay();
+    if (dow !== 0 && dow !== 6) days++;
+  }
+  return days;
+}
+
+function displayName(row: AdminPayout): string {
+  const { firstName, lastName } = row.wallet.user;
+  return [firstName, lastName].filter(Boolean).join(' ') || '—';
+}
+
+/* ─── Component ───────────────────────────────────────────────────────────── */
+type ModalMode = 'reject' | 'hold' | 'fail';
+
+interface ModalState {
+  mode: ModalMode;
+  row: AdminPayout;
+  reason: string;
+}
+
+const PAGE_SIZE = 20;
+const SEARCH_DEBOUNCE_MS = 400;
 
 export default function AdminPayoutsPage() {
   const { language } = useLanguage();
   const queryClient = useQueryClient();
-
-  // Deep-link from the failed_payouts_pipeline alert (spec §3.2): ?status=FAILED.
-  // The URL is the source of truth — if the admin clicks a different alert while
-  // already on this page, the dropdown re-syncs (otherwise the URL says FAILED
-  // but the table shows the prior selection).
   const [searchParams] = useSearchParams();
-  const ALLOWED_STATUSES: PayoutStatus[] = [
-    'PENDING', 'PROCESSING', 'COMPLETED', 'FAILED', 'CANCELLED', 'ANNULLED',
-  ];
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const statusFromUrl = (): PayoutStatus | '' => {
     const raw = searchParams.get('status') as PayoutStatus | null;
     return raw && ALLOWED_STATUSES.includes(raw) ? raw : '';
   };
 
-  const [page, setPage] = useState(1);
+  const [page, setPage]               = useState(1);
   const [searchInput, setSearchInput] = useState('');
-  const [search, setSearch] = useState('');
-  const [status, setStatus] = useState<PayoutStatus | ''>(statusFromUrl());
+  const [search, setSearch]           = useState('');
+  const [status, setStatus]           = useState<PayoutStatus | ''>(statusFromUrl());
+  const [modal, setModal]             = useState<ModalState | null>(null);
 
-  // Resync status + reset page when the URL's ?status param changes underneath us
-  // (e.g. admin navigated from one alert to another while staying on this route).
-  // Gate setPage(1) on an actual status change so unrelated URL params (?utm_*,
-  // ?ref=…) don't bounce the user back to page 1.
   useEffect(() => {
     const next = statusFromUrl();
-    if (next !== status) {
-      setStatus(next);
-      setPage(1);
-    }
-    // status intentionally omitted — closure captures the current value, and
-    // we want to react only to URL changes (not state changes that happen via
-    // the dropdown, which already calls setPage(1) directly).
+    if (next !== status) { setStatus(next); setPage(1); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
-  const [rejectTarget, setRejectTarget] = useState<AdminPayout | null>(null);
-  const [rejectReason, setRejectReason] = useState('');
 
   const { data, isLoading } = useQuery({
     queryKey: ['admin-payouts', page, search, status],
@@ -326,79 +420,92 @@ export default function AdminPayoutsPage() {
       adminPayoutsService.list({ page, limit: PAGE_SIZE, search: search || undefined, status }),
   });
 
+  const summary: PayoutsSummary = data?.summary ?? { pendingCount: 0, pendingTotal: 0, processingCount: 0, riskHoldCount: 0 };
+
+  /* ── mutations ── */
   const approveMutation = useMutation({
     mutationFn: (id: string) => adminPayoutsService.approve(id),
-    onSuccess: () => {
-      toast.success('Payout approved — marked as Processing');
-      queryClient.invalidateQueries({ queryKey: ['admin-payouts'] });
-    },
-    onError: (err: unknown) => {
-      const msg = (err as any)?.response?.data?.message || (err as any)?.response?.data?.error || 'Failed to approve payout';
-      toast.error(msg);
-    },
+    onSuccess: () => { toast.success('Плащането е одобрено — преминава в обработка'); queryClient.invalidateQueries({ queryKey: ['admin-payouts'] }); },
+    onError: (err: unknown) => toast.error((err as any)?.response?.data?.message || 'Грешка при одобрение'),
   });
 
   const completeMutation = useMutation({
     mutationFn: (id: string) => adminPayoutsService.complete(id),
-    onSuccess: () => {
-      toast.success('Payout marked as Completed');
-      queryClient.invalidateQueries({ queryKey: ['admin-payouts'] });
-    },
-    onError: (err: unknown) => {
-      const msg = (err as any)?.response?.data?.message || (err as any)?.response?.data?.error || 'Failed to mark payout as completed';
-      toast.error(msg);
-    },
+    onSuccess: () => { toast.success('Плащането е маркирано като изпратено'); queryClient.invalidateQueries({ queryKey: ['admin-payouts'] }); },
+    onError: (err: unknown) => toast.error((err as any)?.response?.data?.message || 'Грешка'),
   });
 
   const rejectMutation = useMutation({
-    mutationFn: ({ id, reason }: { id: string; reason: string }) =>
-      adminPayoutsService.reject(id, reason),
-    onSuccess: () => {
-      toast.success('Payout rejected — balance restored');
-      setRejectTarget(null);
-      setRejectReason('');
-      queryClient.invalidateQueries({ queryKey: ['admin-payouts'] });
-    },
-    onError: (err: unknown) => {
-      const msg = (err as any)?.response?.data?.message || (err as any)?.response?.data?.error || 'Failed to reject payout';
-      toast.error(msg);
-    },
+    mutationFn: ({ id, reason }: { id: string; reason: string }) => adminPayoutsService.reject(id, reason),
+    onSuccess: () => { toast.success('Плащането е отхвърлено — балансът е възстановен'); closeModal(); queryClient.invalidateQueries({ queryKey: ['admin-payouts'] }); },
+    onError: (err: unknown) => toast.error((err as any)?.response?.data?.message || 'Грешка при отхвърляне'),
   });
 
-  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') {
-      setSearch(searchInput);
-      setPage(1);
-    }
+  const holdMutation = useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason: string }) => adminPayoutsService.hold(id, reason || undefined),
+    onSuccess: () => { toast.success('Плащането е задържано за проверка'); closeModal(); queryClient.invalidateQueries({ queryKey: ['admin-payouts'] }); },
+    onError: (err: unknown) => toast.error((err as any)?.response?.data?.message || 'Грешка при задържане'),
+  });
+
+  const releaseMutation = useMutation({
+    mutationFn: (id: string) => adminPayoutsService.release(id),
+    onSuccess: () => { toast.success('Плащането е освободено — обратно в опашката'); queryClient.invalidateQueries({ queryKey: ['admin-payouts'] }); },
+    onError: (err: unknown) => toast.error((err as any)?.response?.data?.message || 'Грешка'),
+  });
+
+  const failMutation = useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason: string }) => adminPayoutsService.fail(id, reason || undefined),
+    onSuccess: () => { toast.success('Плащането е маркирано като неуспешно — балансът е възстановен'); closeModal(); queryClient.invalidateQueries({ queryKey: ['admin-payouts'] }); },
+    onError: (err: unknown) => toast.error((err as any)?.response?.data?.message || 'Грешка'),
+  });
+
+  /* ── search ── */
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    setSearchInput(val);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => { setSearch(val); setPage(1); }, SEARCH_DEBOUNCE_MS);
   };
+
+  const triggerSearch = () => { setSearch(searchInput); setPage(1); };
 
   const handleStatusChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     setStatus(e.target.value as PayoutStatus | '');
     setPage(1);
   };
 
+  /* ── modal ── */
+  const closeModal = () => setModal(null);
+
+  const handleModalConfirm = () => {
+    if (!modal) return;
+    const { mode, row, reason } = modal;
+    if (mode === 'reject') rejectMutation.mutate({ id: row.id, reason });
+    if (mode === 'hold')   holdMutation.mutate({ id: row.id, reason });
+    if (mode === 'fail')   failMutation.mutate({ id: row.id, reason });
+  };
+
+  const isMutating = rejectMutation.isPending || holdMutation.isPending || failMutation.isPending;
+
+  /* ── formatters ── */
   const fmt = (iso: string) =>
     new Date(iso).toLocaleDateString(language === 'bg' ? 'bg-BG' : 'en-GB', {
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric',
+      day: '2-digit', month: 'short', year: 'numeric',
     });
 
   const fmtTime = (iso: string) =>
     new Date(iso).toLocaleTimeString(language === 'bg' ? 'bg-BG' : 'en-GB', {
-      hour: '2-digit',
-      minute: '2-digit',
+      hour: '2-digit', minute: '2-digit',
     });
 
+  /* ── columns ── */
   const columns: ColumnDef<AdminPayout>[] = [
     {
       key: 'user',
-      header: 'Subscriber',
+      header: 'Абонат',
       render: (row) => (
         <UserCell>
-          {row.wallet.user.firstName || row.wallet.user.lastName
-            ? `${row.wallet.user.firstName ?? ''} ${row.wallet.user.lastName ?? ''}`.trim()
-            : '—'}
+          {displayName(row)}
           <MetaLine>{row.wallet.user.email}</MetaLine>
           {row.wallet.user.phone && <MetaLine>{row.wallet.user.phone}</MetaLine>}
         </UserCell>
@@ -406,19 +513,19 @@ export default function AdminPayoutsPage() {
     },
     {
       key: 'amount',
-      header: 'Amount',
+      header: 'Сума',
       render: (row) => (
         <AmountCell>
-          {row.amount.toFixed(2)} {row.currency}
+          {Math.abs(row.amount).toFixed(2)} {row.currency}
           <MetaLine>
-            Balance: {row.balanceBefore.toFixed(2)} → {row.balanceAfter.toFixed(2)}
+            Баланс: {Math.abs(row.balanceBefore).toFixed(2)} → {Math.abs(row.balanceAfter).toFixed(2)}
           </MetaLine>
         </AmountCell>
       ),
     },
     {
       key: 'iban',
-      header: 'Destination',
+      header: 'IBAN',
       render: (row) =>
         row.wallet.payoutIban ? (
           <IbanCell>
@@ -430,19 +537,32 @@ export default function AdminPayoutsPage() {
             {row.wallet.payoutIban}
           </IbanCell>
         ) : (
-          <span style={{ color: palette.textSubtle, fontSize: '0.8125rem' }}>No IBAN set</span>
+          <span style={{ color: palette.textSubtle, fontSize: '0.8125rem' }}>Няма IBAN</span>
         ),
     },
     {
       key: 'status',
-      header: 'Status',
+      header: 'Статус',
       render: (row) => (
-        <StatusBadge $status={row.status}>{row.status.replace('_', ' ')}</StatusBadge>
+        <>
+          <StatusBadge $status={row.status}>{STATUS_LABELS[row.status] ?? row.status}</StatusBadge>
+          {row.status === 'PROCESSING' && (() => {
+            const days = workingDaysSince(row.createdAt, row.metadata);
+            const overdue = days > SLA_WORKING_DAYS;
+            return (
+              <SlaTag $overdue={overdue}>
+                {overdue
+                  ? `⚠ ${days} раб. дни (просрочено)`
+                  : `${days} / ${SLA_WORKING_DAYS} раб. дни`}
+              </SlaTag>
+            );
+          })()}
+        </>
       ),
     },
     {
       key: 'description',
-      header: 'Note',
+      header: 'Бележка',
       render: (row) =>
         row.description ? (
           <span style={{ fontSize: '0.8125rem', color: palette.textSubtle }}>{row.description}</span>
@@ -452,7 +572,7 @@ export default function AdminPayoutsPage() {
     },
     {
       key: 'createdAt',
-      header: 'Requested',
+      header: 'Заявено',
       sortable: true,
       render: (row) => (
         <span style={{ color: palette.textMuted, fontSize: '0.8125rem' }}>
@@ -463,55 +583,119 @@ export default function AdminPayoutsPage() {
     },
   ];
 
+  /* ── row actions ── */
   const rowActions: RowAction<AdminPayout>[] = [
     {
-      label: 'Approve',
+      label: 'Одобри',
       hidden: (row) => row.status !== 'PENDING',
+      disabled: (row) => !row.wallet.payoutIban,
+      disabledTitle: 'Абонатът няма регистриран IBAN',
       onClick: (row) => approveMutation.mutate(row.id),
     },
     {
-      label: 'Mark paid',
+      label: 'Задържи (риск)',
+      hidden: (row) => row.status !== 'PENDING',
+      onClick: (row) => setModal({ mode: 'hold', row, reason: '' }),
+    },
+    {
+      label: 'Освободи',
+      hidden: (row) => row.status !== 'RISK_HOLD',
+      onClick: (row) => releaseMutation.mutate(row.id),
+    },
+    {
+      label: 'Маркирай като платено',
       hidden: (row) => row.status !== 'PROCESSING',
       onClick: (row) => completeMutation.mutate(row.id),
     },
     {
-      label: 'Reject',
+      label: 'Неуспешно (банка)',
       danger: true,
-      hidden: (row) => row.status !== 'PENDING',
-      onClick: (row) => {
-        setRejectTarget(row);
-        setRejectReason('');
-      },
+      hidden: (row) => row.status !== 'PROCESSING',
+      onClick: (row) => setModal({ mode: 'fail', row, reason: '' }),
+    },
+    {
+      label: 'Отхвърли',
+      danger: true,
+      hidden: (row) => row.status !== 'PENDING' && row.status !== 'RISK_HOLD',
+      onClick: (row) => setModal({ mode: 'reject', row, reason: '' }),
     },
   ];
+
+  /* ── modal copy ── */
+  const modalCopy: Record<ModalMode, { title: string; subtitle: (row: AdminPayout) => string; confirm: string; confirmVariant: 'danger' | 'warning' }> = {
+    reject: {
+      title: 'Отхвърляне на плащане',
+      subtitle: (row) => `${Math.abs(row.amount).toFixed(2)} ${row.currency} за ${displayName(row)} — балансът ще бъде възстановен.`,
+      confirm: 'Отхвърли и възстанови',
+      confirmVariant: 'danger',
+    },
+    hold: {
+      title: 'Задържане за проверка',
+      subtitle: (row) => `Плащането от ${Math.abs(row.amount).toFixed(2)} ${row.currency} за ${displayName(row)} ще бъде задържано.`,
+      confirm: 'Задържи',
+      confirmVariant: 'warning',
+    },
+    fail: {
+      title: 'Маркиране като неуспешно',
+      subtitle: (row) => `Банковият превод от ${Math.abs(row.amount).toFixed(2)} ${row.currency} за ${displayName(row)} не е успял. Балансът ще бъде възстановен.`,
+      confirm: 'Маркирай неуспешно',
+      confirmVariant: 'danger',
+    },
+  };
 
   return (
     <PageShell>
       <PageHeader>
         <TitleBlock>
-          <Eyebrow>Finance</Eyebrow>
-          <PageTitle>
-            Subscriber Payouts
-            {data && data.total > 0 && <TotalBadge>{data.total.toLocaleString()}</TotalBadge>}
-          </PageTitle>
-          <PageSubtitle>Wallet withdrawal requests awaiting processing or review</PageSubtitle>
+          <Eyebrow>Финанси</Eyebrow>
+          <PageTitle>Плащания към абонати</PageTitle>
+          <PageSubtitle>Заявки за изтегляне на средства, очакващи обработка или проверка</PageSubtitle>
         </TitleBlock>
       </PageHeader>
 
+      {/* Summary banner */}
+      <SummaryRow>
+        <SummaryCard $variant="warning">
+          <SummaryLabel>Чакащи</SummaryLabel>
+          <SummaryValue>{summary.pendingCount}</SummaryValue>
+          <SummaryMeta>
+            {Math.abs(summary.pendingTotal).toFixed(2)} BGN общо
+          </SummaryMeta>
+        </SummaryCard>
+        <SummaryCard $variant="info">
+          <SummaryLabel>В обработка</SummaryLabel>
+          <SummaryValue>{summary.processingCount}</SummaryValue>
+          <SummaryMeta>в рамките на 5 раб. дни</SummaryMeta>
+        </SummaryCard>
+        {summary.riskHoldCount > 0 && (
+          <SummaryCard style={{ background: palette.purpleSoft, border: `1px solid #c4b5fd` }}>
+            <SummaryLabel style={{ color: palette.purple }}>Задържани (риск)</SummaryLabel>
+            <SummaryValue style={{ color: palette.purple }}>{summary.riskHoldCount}</SummaryValue>
+            <SummaryMeta>изискват преглед</SummaryMeta>
+          </SummaryCard>
+        )}
+        <SummaryCard>
+          <SummaryLabel>Всички</SummaryLabel>
+          <SummaryValue>{data?.total ?? '—'}</SummaryValue>
+          <SummaryMeta>спрямо текущия филтър</SummaryMeta>
+        </SummaryCard>
+      </SummaryRow>
+
       <Card>
         <FilterRow>
-          <SearchInput
-            type="text"
-            placeholder="Search by name, email or phone…"
-            value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
-            onKeyDown={handleSearchKeyDown}
-          />
+          <SearchWrap>
+            <SearchInput
+              type="text"
+              placeholder="Търсене по име, имейл или телефон…"
+              value={searchInput}
+              onChange={handleSearchChange}
+              onKeyDown={(e) => { if (e.key === 'Enter') triggerSearch(); }}
+            />
+            <SearchBtn onClick={triggerSearch}>Търси</SearchBtn>
+          </SearchWrap>
           <Select value={status} onChange={handleStatusChange}>
             {STATUS_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-              </option>
+              <option key={o.value} value={o.value}>{o.label}</option>
             ))}
           </Select>
         </FilterRow>
@@ -522,7 +706,7 @@ export default function AdminPayoutsPage() {
           rowKey={(row) => row.id}
           rowActions={rowActions}
           loading={isLoading}
-          emptyMessage="No payout requests found"
+          emptyMessage="Няма намерени заявки за плащане"
           page={page}
           pageSize={PAGE_SIZE}
           totalItems={data?.total}
@@ -530,30 +714,25 @@ export default function AdminPayoutsPage() {
         />
       </Card>
 
-      {rejectTarget && (
-        <Overlay onClick={() => setRejectTarget(null)}>
+      {/* Reason modal — used for reject, hold, fail */}
+      {modal && (
+        <Overlay onClick={closeModal}>
           <Modal onClick={(e) => e.stopPropagation()}>
-            <ModalTitle>Reject payout</ModalTitle>
-            <ModalSubtitle>
-              {rejectTarget.amount.toFixed(2)} {rejectTarget.currency} for{' '}
-              {rejectTarget.wallet.user.firstName ?? ''} {rejectTarget.wallet.user.lastName ?? ''} —
-              the balance will be restored.
-            </ModalSubtitle>
+            <ModalTitle>{modalCopy[modal.mode].title}</ModalTitle>
+            <ModalSubtitle>{modalCopy[modal.mode].subtitle(modal.row)}</ModalSubtitle>
             <ReasonTextarea
-              placeholder="Reason (optional)…"
-              value={rejectReason}
-              onChange={(e) => setRejectReason(e.target.value)}
+              placeholder="Причина (по желание)…"
+              value={modal.reason}
+              onChange={(e) => setModal((m) => m ? { ...m, reason: e.target.value } : null)}
             />
             <ModalActions>
-              <Btn $variant="ghost" onClick={() => setRejectTarget(null)}>
-                Cancel
-              </Btn>
+              <Btn $variant="ghost" onClick={closeModal}>Отказ</Btn>
               <Btn
-                $variant="danger"
-                disabled={rejectMutation.isPending}
-                onClick={() => rejectMutation.mutate({ id: rejectTarget.id, reason: rejectReason })}
+                $variant={modalCopy[modal.mode].confirmVariant}
+                disabled={isMutating}
+                onClick={handleModalConfirm}
               >
-                {rejectMutation.isPending ? 'Rejecting…' : 'Reject & restore'}
+                {isMutating ? 'Зареждане…' : modalCopy[modal.mode].confirm}
               </Btn>
             </ModalActions>
           </Modal>

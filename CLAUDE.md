@@ -1,5 +1,24 @@
 # Claude Development Guidelines
 
+## 🚨 CRITICAL: Never Kill Browser Processes
+
+**NEVER run `pkill`, `kill`, or any command targeting `chrome`, `chromium`, or `playwright` processes.**
+
+This machine runs multiple Claude agents in parallel. A system-wide `pkill -f chrome` or `pkill -f playwright` will instantly kill every other agent's browser session.
+
+**If you see "Browser is already in use":** just retry the MCP tool. Each agent has its own isolated browser via `--isolated` mode — there is nothing to fix.
+
+Forbidden commands (never run these):
+```
+pkill -f chrome
+pkill -f playwright
+pkill -9 -f chrome
+kill $(lsof ...)   # targeting chrome/playwright
+rm -f .../mcp-chrome*/.lock
+```
+
+---
+
 ## Playwright MCP Usage (Visual Testing)
 
 When working on frontend, design, UI/UX, or visual components, use Playwright MCP tools for visual validation.
@@ -56,7 +75,7 @@ mcp__playwright__browser_console_messages()
 
 - **Video is DISABLED** - This is intentional to prevent hitting Claude's context limits. Don't expect video recordings.
 
-- **Run `npm run playwright:fix`** if you see "Browser is already in use" errors. Wait 2-3 seconds after running the fix, then retry.
+- **"Browser is already in use"** — just retry the MCP tool. Each agent runs an isolated browser via `--isolated` mode; do NOT run `pkill`, `kill`, or any command targeting `chrome` or `playwright` processes — this will destroy other agents' sessions running in parallel.
 
 - **Full-page screenshots are automatically optimized** - The MCP server compresses and resizes large screenshots to stay within limits.
 
@@ -64,7 +83,7 @@ mcp__playwright__browser_console_messages()
 
 | Issue | Solution |
 |-------|----------|
-| "Browser is already in use" | Run `npm run playwright:fix`, wait 2-3 seconds |
+| "Browser is already in use" | Retry the MCP tool — do NOT run pkill or kill commands |
 | Screenshot too large | Automatically handled by optimizer |
 | Tools not responding | Restart Claude Desktop |
 | Dev server not running | Run `npm run dev` first |

@@ -18,11 +18,12 @@ export interface CashbackSummaryEntry {
   notes: string | null;
 }
 
+// Spec §3.1 subscriber-side cashback stats
 export interface CashbackDashboardStats {
-  pendingTotal: number;
-  paidThisMonth: number;
-  overdueCount: number;
-  activePartners: number;
+  totalAccrued: number;    // начислен — all-time sum of cleared credits
+  totalCleared: number;   // одобрен — currently available for payout
+  totalPending: number;   // изчакващ — not yet approved
+  expiringTotal: number;  // изтичащ — cleared but expiring within 14 days
 }
 
 export interface CashbackRateRow {
@@ -100,6 +101,23 @@ class AdminCashbackService {
 
   async sendReminder(partnerId: string, month?: string): Promise<void> {
     await apiService.post(`${this.base}/${partnerId}/remind`, { month });
+  }
+
+  async approveEntry(entryId: string): Promise<void> {
+    await apiService.post(`${this.base}/entries/${entryId}/approve`, {});
+  }
+
+  async lockEntry(entryId: string): Promise<void> {
+    await apiService.post(`${this.base}/entries/${entryId}/lock`, {});
+  }
+
+  async expireEntry(entryId: string): Promise<void> {
+    await apiService.post(`${this.base}/entries/${entryId}/expire`, {});
+  }
+
+  async backfillExpiry(): Promise<{ message: string }> {
+    const res = await apiService.post<{ success: boolean; message: string }>(`${this.base}/backfill-expiry`, {});
+    return { message: res.message };
   }
 
   async getRates(): Promise<CashbackRateRow[]> {

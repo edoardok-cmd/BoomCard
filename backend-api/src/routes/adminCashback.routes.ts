@@ -14,7 +14,8 @@
 
 import { Router, Response } from 'express';
 import { authenticate, authorize, requirePermission, AuthRequest } from '../middleware/auth.middleware';
-import { adminCashbackService, getSubscriberCashbackEntries, getAllCashbackEntries, CashbackEntryStatus } from '../services/adminCashback.service';
+import { auditMiddleware } from '../middleware/audit.middleware';
+import { adminCashbackService, getSubscriberCashbackEntries, getAllCashbackEntries, CashbackEntryStatus, approveEntry, lockEntry, expireEntry, backfillCashbackExpiry } from '../services/adminCashback.service';
 import { prisma } from '../lib/prisma';
 import { logger } from '../utils/logger';
 
@@ -22,6 +23,7 @@ const router = Router();
 
 // All routes require admin auth
 router.use(authenticate, authorize('ADMIN', 'SUPER_ADMIN'));
+router.use(auditMiddleware);
 
 // ------------------------------------------------------------------
 // GET /api/admin/cashback/stats
@@ -244,6 +246,55 @@ router.get('/:partnerId/:month/receipts', requirePermission('cashback.read'), as
   } catch (error: any) {
     logger.error('Failed to fetch partner receipts:', error);
     res.status(500).json({ success: false, error: 'Failed to fetch partner receipts' });
+  }
+});
+
+// ------------------------------------------------------------------
+// POST /api/admin/cashback/entries/:id/approve   — Pending → Cleared
+// POST /api/admin/cashback/entries/:id/lock      — Cleared → Locked
+// POST /api/admin/cashback/entries/:id/expire    — any active → Expired
+// ------------------------------------------------------------------
+router.post('/entries/:id/approve', requirePermission('cashback.write'), async (req: AuthRequest, res: Response) => {
+  try {
+    await approveEntry(req.params.id, req.user!.id);
+    res.json({ success: true, message: 'Entry approved' });
+  } catch (error: any) {
+    const status = error.statusCode ?? 500;
+    res.status(status).json({ success: false, error: error.message });
+  }
+});
+
+router.post('/entries/:id/lock', requirePermission('cashback.write'), async (req: AuthRequest, res: Response) => {
+  try {
+    await lockEntry(req.params.id, req.user!.id);
+    res.json({ success: true, message: 'Entry locked' });
+  } catch (error: any) {
+    const status = error.statusCode ?? 500;
+    res.status(status).json({ success: false, error: error.message });
+  }
+});
+
+router.post('/entries/:id/expire', requirePermission('cashback.write'), async (req: AuthRequest, res: Response) => {
+  try {
+    await expireEntry(req.params.id, req.user!.id);
+    res.json({ success: true, message: 'Entry expired' });
+  } catch (error: any) {
+    const status = error.statusCode ?? 500;
+    res.status(status).json({ success: false, error: error.message });
+  }
+});
+
+// ------------------------------------------------------------------
+// POST /api/admin/cashback/backfill-expiry
+// One-time backfill: set cashbackExpiresAt for legacy entries with null.
+// ------------------------------------------------------------------
+router.post('/backfill-expiry', requirePermission('cashback.write'), async (_req: AuthRequest, res: Response) => {
+  try {
+    const count = await backfillCashbackExpiry();
+    res.json({ success: true, message: `Backfilled ${count} entries` });
+  } catch (error: any) {
+    logger.error('Backfill failed:', error);
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 

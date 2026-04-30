@@ -291,14 +291,20 @@ function buildBusinessWhere(query: Record<string, unknown>): BusinessTxWhere {
     where.createdAt = dateFilter as never;
   }
   if (search) {
-    ands.push({
-      OR: [
-        { user: { email: { contains: search, mode: 'insensitive' } } },
-        { user: { firstName: { contains: search, mode: 'insensitive' } } },
-        { user: { lastName: { contains: search, mode: 'insensitive' } } },
-        { partner: { businessName: { contains: search, mode: 'insensitive' } } },
-      ],
-    });
+    const searchOR: object[] = [
+      { user: { email: { contains: search, mode: 'insensitive' } } },
+      { user: { firstName: { contains: search, mode: 'insensitive' } } },
+      { user: { lastName: { contains: search, mode: 'insensitive' } } },
+      { partner: { businessName: { contains: search, mode: 'insensitive' } } },
+      { venue: { name: { contains: search, mode: 'insensitive' } } },
+    ];
+    // Also match by transaction ID prefix — the UI displays the first 8 chars.
+    // Only attempt when the input is a valid hex/dash string to avoid LIKE
+    // scans on clearly non-ID queries.
+    if (/^[0-9a-f-]+$/i.test(search)) {
+      searchOR.push({ id: { startsWith: search, mode: 'insensitive' } } as object);
+    }
+    ands.push({ OR: searchOR });
   }
   if (minRisk) {
     const n = parseFloat(minRisk);
@@ -349,7 +355,7 @@ router.get('/business', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), require
           paymentMethod: true,
           createdAt: true,
           user: {
-            select: { id: true, firstName: true, lastName: true, email: true, riskScore: true },
+            select: { id: true, firstName: true, lastName: true, email: true, phone: true, riskScore: true },
           },
           // Partner discountRate (with partnerType fallback) is the contract rate
           // BoomCard charges the partner per accepted transaction. margin =
@@ -437,7 +443,7 @@ router.get('/business', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), require
           : null;
 
       const riskScore = Math.round(
-        tx.receipt?.fraudScore ?? tx.stickerScan?.fraudScore ?? 0,
+        Math.max(tx.receipt?.fraudScore ?? 0, tx.stickerScan?.fraudScore ?? 0),
       );
 
       const latestWithdrawalAt = tx.walletTransaction?.walletId
@@ -480,6 +486,29 @@ router.get('/business', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), require
   }
 });
 
+// Returns [startOfDay, endOfDay] in UTC for the current calendar day in
+// Europe/Sofia (UTC+2 winter / UTC+3 summer). Using the server's UTC clock and
+// backing out the Sofia offset means "today" on the stats bar matches the admin's
+// calendar day in Sofia, not the server's UTC day.
+function getTodayBoundariesInSofia(): [Date, Date] {
+  const now = new Date();
+  // formatToParts with hourCycle:'h23' gives hour 0-23 reliably across locales.
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Europe/Sofia',
+    hourCycle: 'h23',
+    hour: 'numeric',
+    minute: 'numeric',
+    second: 'numeric',
+  }).formatToParts(now);
+  const get = (t: string) => Number(parts.find(p => p.type === t)?.value ?? '0');
+  const msFromMidnight =
+    (get('hour') * 3600 + get('minute') * 60 + get('second')) * 1000 +
+    now.getMilliseconds();
+  const startOfToday = new Date(now.getTime() - msFromMidnight);
+  const endOfToday = new Date(startOfToday.getTime() + 86_400_000 - 1);
+  return [startOfToday, endOfToday];
+}
+
 // GET /api/admin/transactions/business/stats — Spec §3.1 transactions block:
 // Брой транзакции днес, общ оборот, средна стойност (today / total / avg, scoped by current filters).
 // Accepts the same filter set as /business so the stats bar matches the visible row count.
@@ -487,13 +516,7 @@ router.get('/business/stats', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), r
   try {
     const where = buildBusinessWhere(req.query);
 
-    // Use UTC boundaries to match the dateTo end-of-day convention used by
-    // buildBusinessWhere (line ~258: setUTCHours). Mixed UTC/local boundaries
-    // produce off-by-one "today" counts on non-UTC servers.
-    const startOfToday = new Date();
-    startOfToday.setUTCHours(0, 0, 0, 0);
-    const endOfToday = new Date();
-    endOfToday.setUTCHours(23, 59, 59, 999);
+    const [startOfToday, endOfToday] = getTodayBoundariesInSofia();
 
     const todayWhere: BusinessTxWhere = where.AND
       ? { ...where, AND: [...(where.AND as BusinessTxWhere[]), { createdAt: { gte: startOfToday, lte: endOfToday } }] }

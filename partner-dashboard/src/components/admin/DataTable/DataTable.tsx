@@ -15,6 +15,8 @@ export interface RowAction<T> {
   onClick: (row: T) => void;
   danger?: boolean;
   hidden?: (row: T) => boolean;
+  disabled?: (row: T) => boolean;
+  disabledTitle?: string;
 }
 
 interface DataTableProps<T> {
@@ -130,19 +132,25 @@ export function DataTable<T>({
                             </ActionToggle>
                             {openActionRow === key && (
                               <ActionDropdown onMouseLeave={() => setOpenActionRow(null)}>
-                                {visibleActions.map((action) => (
-                                  <ActionItem
-                                    key={action.label}
-                                    $danger={!!action.danger}
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setOpenActionRow(null);
-                                      action.onClick(row);
-                                    }}
-                                  >
-                                    {action.label}
-                                  </ActionItem>
-                                ))}
+                                {visibleActions.map((action) => {
+                                  const isDisabled = !!action.disabled?.(row);
+                                  return (
+                                    <ActionItem
+                                      key={action.label}
+                                      $danger={!!action.danger}
+                                      disabled={isDisabled}
+                                      title={isDisabled ? action.disabledTitle : undefined}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        if (isDisabled) return;
+                                        setOpenActionRow(null);
+                                        action.onClick(row);
+                                      }}
+                                    >
+                                      {action.label}
+                                    </ActionItem>
+                                  );
+                                })}
                               </ActionDropdown>
                             )}
                           </ActionMenu>
@@ -286,5 +294,14 @@ const ActionItem = styled.button<{ $danger: boolean }>`
 
   &:hover {
     background: ${(p) => (p.$danger ? '#fef2f2' : '#f9fafb')};
+  }
+
+  &:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  &:disabled:hover {
+    background: none;
   }
 `;

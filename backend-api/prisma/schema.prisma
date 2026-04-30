@@ -298,8 +298,10 @@ model PartnerCashbackPayment {
   id                String                @id @default(uuid())
   partnerId         String
   month             String // "YYYY-MM"
-  totalCashbackOwed Float                 @default(0) // sum of APPROVED receipt cashbackAmounts
+  totalCashbackOwed Float                 @default(0) // sum of APPROVED receipt cashbackAmounts — spec 6.2 Задължение
   marginAmount      Float                 @default(0) // BoomCard margin retained — spec 6.2
+  turnoverAmount    Float                 @default(0) // sum of verifiedAmount/billAmount from APPROVED scans — spec 6.2 Оборот
+  contractedRate    Float?                            // snapshot of partner.discountRate at invoice creation — spec 6.2 Процент
   paidAt            DateTime?
   paidBy            String? // admin userId
   notes             String?
@@ -547,6 +549,7 @@ enum WalletTransactionStatus {
   CANCELLED
   TRIAL_PENDING
   ANNULLED
+  RISK_HOLD
 }
 
 enum SubscriptionPlan {

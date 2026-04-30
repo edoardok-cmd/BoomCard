@@ -796,9 +796,10 @@ export const AdminScanReviewPage: React.FC = () => {
     // at the top of this effect fires first — conditionally, when
     // filterDateFromHours changes. The six unconditional calls (the five
     // setFilterX above plus setPage(1) below) always fire. Under React 17
-    // that gives up to seven renders and seven fetches. React ^18.2.0 is
-    // pinned in package.json; do not relax that constraint without
-    // re-auditing this.
+    // that gives up to seven renders but only six fetches: appliedDateFromHours
+    // is not in the fetch effect's dep array, so its render does not retrigger
+    // a fetch. React ^18.2.0 is pinned in package.json; do not relax that
+    // constraint without re-auditing this.
     //
     // Invariant: searchParams changes only via (a) commitFilters — which
     // already resets page before calling setSearchParams — or (b) external
