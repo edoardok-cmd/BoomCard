@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { AppError } from './error.middleware';
+import { touchUserActivity } from '../services/userActivity.service';
 
 export interface AuthRequest extends Request {
   user?: {
@@ -36,6 +37,10 @@ export const authenticate = (req: AuthRequest, res: Response, next: NextFunction
     const decoded = jwt.verify(token, process.env.JWT_SECRET!) as any;
     req.user = decoded;
 
+    if (decoded?.id && decoded?.role) {
+      touchUserActivity(decoded.id, decoded.role);
+    }
+
     next();
   } catch (error) {
     if (error instanceof jwt.JsonWebTokenError) {
@@ -54,6 +59,9 @@ export const optionalAuthenticate = (req: AuthRequest, res: Response, next: Next
     if (token) {
       const decoded = jwt.verify(token, process.env.JWT_SECRET!) as any;
       req.user = decoded;
+      if (decoded?.id && decoded?.role) {
+        touchUserActivity(decoded.id, decoded.role);
+      }
     }
   } catch (error) {
     // Token invalid or expired - continue as guest

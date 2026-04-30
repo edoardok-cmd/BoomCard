@@ -64,6 +64,9 @@ model User {
   emailVerified    Boolean    @default(false)
   emailVerifiedAt  DateTime?
   lastLoginAt      DateTime?
+  // Spec §4.1 "Последна активност" — last meaningful action in the app, not just login.
+  // Bumped by mobile/auth requests, session refresh, transactions, IBAN change, etc.
+  lastActivityAt   DateTime?
   stripeCustomerId String?    @unique // Stripe customer ID for payments
 
   // Email Verification
@@ -258,8 +261,11 @@ model Partner {
   pendingChangesAt DateTime?
 
   // Onboarding pipeline — spec 5.1–5.2
-  requestStatus   PartnerRequestStatus? // null = not yet in pipeline; set on first admin action
-  assignedAdminId String? // "Отговорник" — admin assigned to this partner request
+  requestStatus          PartnerRequestStatus? // null = not yet in pipeline; set on first admin action
+  assignedAdminId        String? // "Отговорник" — admin assigned to this partner request
+  // Set when requestStatus first transitions to ODOBRENA. Used by spec §3.2
+  // "завършен онбординг" alert; cannot rely on updatedAt (flips on any edit).
+  onboardingCompletedAt  DateTime?
 
   // Visibility — spec 5.3 "Видим или скрит за абонати"
   isVisible Boolean @default(true)
@@ -561,6 +567,10 @@ enum SubscriptionStatus {
   TRIALING
   UNPAID
   PAUSED
+  // Spec §4.2 distinguishes natural lapse (Изтекъл) from user-initiated CANCELLED.
+  // Set by subscription-expiry cron when Paysera billing period ends and
+  // the user did not schedule cancellation.
+  EXPIRED
 }
 
 // ============================================

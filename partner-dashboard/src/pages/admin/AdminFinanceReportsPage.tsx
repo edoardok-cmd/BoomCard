@@ -1,7 +1,16 @@
 import { useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import styled from 'styled-components';
 import { useQuery } from '@tanstack/react-query';
 import { adminFinanceService } from '../../services/adminFinance.service';
+import { adminAlertsService, AdminAlert } from '../../services/adminAlerts.service';
+import { useLanguage } from '../../contexts/LanguageContext';
+
+// Bulgarian + English have a binary one/other plural distinction. Intl.PluralRules
+// formalizes this so we don't drift to "1 things" / "2 thing" if a future translator
+// tries something cute. Reused per render — instantiation is cheap but cached.
+const BG_PLURAL = new Intl.PluralRules('bg');
+const EN_PLURAL = new Intl.PluralRules('en');
 
 const palette = {
   bg: '#faf9f5', surface: '#ffffff', border: '#e8e5dc',
@@ -9,6 +18,7 @@ const palette = {
   accent: '#c96442', accentSoft: '#f3e8de',
   success: '#4a7c59', successSoft: '#e6efe3',
   warning: '#b5803a', warningSoft: '#f5ead2',
+  danger: '#b54327', dangerSoft: '#f4dcd2',
   info: '#2563eb', infoSoft: '#dbeafe',
   purple: '#7c3aed', purpleSoft: '#ede9fe',
   teal: '#0f766e', tealSoft: '#ccfbf1',
@@ -49,6 +59,95 @@ const TypeBadge = styled.span`
   background: ${palette.infoSoft}; color: ${palette.info};
 `;
 
+// Focus banner — surfaced when the page is reached via an alert deep-link
+// (`?focus=...`). Lets us satisfy spec §3.2 (alerts must lead to Финанси)
+// while preserving the drill-down to where the underlying data actually lives.
+const FocusBanner = styled.div`
+  display: flex; align-items: center; gap: 1rem; padding: 1rem 1.25rem;
+  background: ${palette.warningSoft}; border: 1px solid #e8d8ad;
+  border-left: 3px solid ${palette.warning}; border-radius: 0.75rem;
+  margin-bottom: 1.5rem;
+`;
+const FocusContent = styled.div`flex: 1;`;
+const FocusEyebrow = styled.p`font-size: 0.6875rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: ${palette.warning}; margin: 0 0 0.25rem;`;
+const FocusTitle = styled.p`font-size: 1rem; font-weight: 700; color: ${palette.text}; margin: 0;`;
+const FocusCount = styled.span`font-feature-settings: 'tnum'; color: ${palette.danger};`;
+const FocusBtn = styled(Link)`
+  flex-shrink: 0; padding: 0.5rem 0.875rem; background: ${palette.text};
+  color: #fff; border: none; border-radius: 0.5rem; font-size: 0.8125rem;
+  font-weight: 600; text-decoration: none; cursor: pointer;
+  &:hover { opacity: 0.9; }
+`;
+
+interface FocusCopy {
+  eyebrow: string;
+  // Singular / plural body text rendered after the count badge. Receives the
+  // Intl.PluralRules category for the active locale ('one' | 'other').
+  body: (category: Intl.LDMLPluralRule) => string;
+  cta: string;
+}
+interface FocusConfig {
+  alertId: string;
+  bg: FocusCopy;
+  en: FocusCopy;
+  // Function so we can interpolate alert.meta values (e.g. dateFrom from the
+  // failed_transactions 24h window) into the deep-link, keeping the landing
+  // page's row count in lock-step with the alert badge.
+  drillDown: (meta?: Record<string, string | number>) => string;
+}
+
+const FOCUS_CONFIGS: Record<string, FocusConfig> = {
+  failed_payments: {
+    alertId: 'failed_payments',
+    bg: {
+      eyebrow: 'Сигнал',
+      body: (c) => `абонамент${c === 'one' ? '' : 'а'} с неуспешно плащане (PAST_DUE)`,
+      cta: 'Виж в Абонати',
+    },
+    en: {
+      eyebrow: 'Alert',
+      body: (c) => `subscription${c === 'one' ? '' : 's'} with failed payment (PAST_DUE)`,
+      cta: 'Open in Subscriptions',
+    },
+    drillDown: () => '/admin/subscribers/subscriptions?status=PAST_DUE',
+  },
+  unpaid_subscriptions: {
+    alertId: 'unpaid_subscriptions',
+    bg: {
+      eyebrow: 'Сигнал',
+      // "абонамент" is masculine inanimate — count form is "абонамента" after numerals ≥ 2.
+      body: (c) => `неплатен${c === 'one' ? '' : 'и'} абонамент${c === 'one' ? '' : 'а'} (UNPAID)`,
+      cta: 'Виж в Абонати',
+    },
+    en: {
+      eyebrow: 'Alert',
+      body: (c) => `unpaid subscription${c === 'one' ? '' : 's'} (UNPAID)`,
+      cta: 'Open in Subscriptions',
+    },
+    drillDown: () => '/admin/subscribers/subscriptions?status=UNPAID',
+  },
+  failed_transactions: {
+    alertId: 'failed_transactions',
+    bg: {
+      eyebrow: 'Сигнал',
+      // "транзакция" is feminine — plural "транзакции".
+      body: (c) =>
+        `неуспешн${c === 'one' ? 'а' : 'и'} транзакци${c === 'one' ? 'я' : 'и'} (последните 24ч)`,
+      cta: 'Виж в Транзакции',
+    },
+    en: {
+      eyebrow: 'Alert',
+      body: (c) => `failed transaction${c === 'one' ? '' : 's'} (last 24h)`,
+      cta: 'Open in Transactions',
+    },
+    drillDown: (meta) => {
+      const base = '/admin/subscribers/transactions?view=business&status=FAILED';
+      const dateFrom = meta?.['dateFrom'];
+      return typeof dateFrom === 'string' ? `${base}&dateFrom=${encodeURIComponent(dateFrom)}` : base;
+    },
+  },
+};
+
 const now = new Date();
 const defaultFrom = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
 const defaultTo = new Date(now.getFullYear(), now.getMonth() + 1, 0)
@@ -59,6 +158,25 @@ export default function AdminFinanceReportsPage() {
   const [to, setTo] = useState(defaultTo);
   const [queryFrom, setQueryFrom] = useState(defaultFrom);
   const [queryTo, setQueryTo] = useState(defaultTo);
+  const [searchParams] = useSearchParams();
+  const { language } = useLanguage();
+  const focusKey = searchParams.get('focus');
+  const focusConfig = focusKey ? FOCUS_CONFIGS[focusKey] : undefined;
+
+  // Shares the ['admin-alerts'] cache with AdminAlertsPage. If the user
+  // reached this page via "View on Alerts → click an alert", the query is
+  // already warm and we use the cached value; otherwise we fetch on focus.
+  const { data: alertsData } = useQuery({
+    queryKey: ['admin-alerts'],
+    queryFn: adminAlertsService.getAlerts,
+    enabled: !!focusConfig,
+    staleTime: 30_000,
+  });
+  const focusAlert: AdminAlert | undefined = focusConfig && alertsData
+    ? [...alertsData.critical, ...alertsData.operational, ...alertsData.informational]
+        .find((a) => a.id === focusConfig.alertId)
+    : undefined;
+  const focusCount = focusAlert?.count ?? null;
 
   const { data, isLoading } = useQuery({
     queryKey: ['admin-finance-reports', queryFrom, queryTo],
@@ -85,6 +203,23 @@ export default function AdminFinanceReportsPage() {
           <PageSubtitle>Aggregate financial statistics for a given date range</PageSubtitle>
         </TitleBlock>
       </PageHeader>
+
+      {focusConfig && focusCount !== null && focusCount > 0 && (() => {
+        const copy = language === 'bg' ? focusConfig.bg : focusConfig.en;
+        const plural = language === 'bg' ? BG_PLURAL : EN_PLURAL;
+        const category = plural.select(focusCount);
+        return (
+          <FocusBanner>
+            <FocusContent>
+              <FocusEyebrow>{copy.eyebrow}</FocusEyebrow>
+              <FocusTitle>
+                <FocusCount>{focusCount}</FocusCount> {copy.body(category)}
+              </FocusTitle>
+            </FocusContent>
+            <FocusBtn to={focusConfig.drillDown(focusAlert?.meta)}>{copy.cta}</FocusBtn>
+          </FocusBanner>
+        );
+      })()}
 
       <FilterRow>
         <FilterLabel>From</FilterLabel>

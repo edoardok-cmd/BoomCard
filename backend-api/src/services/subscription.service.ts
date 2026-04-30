@@ -423,8 +423,12 @@ export class SubscriptionService {
     if (!subscription) throw new Error('Subscription not found');
     if (subscription.userId !== userId) throw new Error('Forbidden');
 
-    if (subscription.status === 'CANCELLED') {
-      throw new Error('Subscription is already cancelled and cannot be reactivated this way. Please subscribe to a new plan.');
+    if (
+      subscription.status === 'CANCELLED' ||
+      subscription.status === 'EXPIRED' ||
+      subscription.status === 'INCOMPLETE_EXPIRED'
+    ) {
+      throw new Error('Subscription is terminated and cannot be reactivated this way. Please subscribe to a new plan.');
     }
 
     if (subscription.stripeSubscriptionId) {

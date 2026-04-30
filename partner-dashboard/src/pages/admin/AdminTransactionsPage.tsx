@@ -184,6 +184,22 @@ const DateInput = styled.input`
   }
 `;
 
+const NumericInput = styled.input`
+  padding: 0.5rem 0.75rem;
+  border: 1px solid ${palette.border};
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  background: ${palette.bg};
+  color: ${palette.text};
+  outline: none;
+  width: 8rem;
+
+  &:focus {
+    border-color: ${palette.accent};
+    box-shadow: 0 0 0 2px ${palette.accentSoft};
+  }
+`;
+
 const Select = styled.select`
   padding: 0.5rem 0.75rem;
   border: 1px solid ${palette.border};
@@ -450,8 +466,22 @@ const STATUS_OPTIONS: Array<{ value: WalletTransactionStatus | ''; label: string
   { value: 'ANNULLED', label: 'Annulled' },
 ];
 
-// Business view uses Prisma TransactionStatus enum (no TRIAL_PENDING / ANNULLED + adds REFUNDED)
-const BUSINESS_STATUS_OPTIONS: Array<{ value: string; label: string }> = [
+// Business view uses Prisma TransactionStatus enum (no TRIAL_PENDING / ANNULLED + adds REFUNDED).
+// Hand-maintained mirror of `enum TransactionStatus` in backend-api/prisma/schema.prisma:516 —
+// if you add a value to that enum, add it here too (and to BUSINESS_STATUS_OPTIONS below).
+type BusinessTransactionStatus =
+  | 'PENDING'
+  | 'PROCESSING'
+  | 'COMPLETED'
+  | 'FAILED'
+  | 'CANCELLED'
+  | 'REFUNDED';
+
+// Either-view status filter. The single `status` state slot is shared by both Selects, so
+// it must hold any value either dropdown can produce — narrowing to wallet-only would lie
+// about REFUNDED in business view (and vice-versa for TRIAL_PENDING / ANNULLED in wallet).
+type TransactionStatusFilter = WalletTransactionStatus | BusinessTransactionStatus;
+const BUSINESS_STATUS_OPTIONS: Array<{ value: BusinessTransactionStatus | ''; label: string }> = [
   { value: '', label: 'All statuses' },
   { value: 'PENDING', label: 'Pending' },
   { value: 'PROCESSING', label: 'Processing' },
@@ -460,6 +490,16 @@ const BUSINESS_STATUS_OPTIONS: Array<{ value: string; label: string }> = [
   { value: 'CANCELLED', label: 'Cancelled' },
   { value: 'REFUNDED', label: 'Refunded' },
 ];
+
+// Single source of truth for what counts as a "valid" status when validating
+// alert-deep-link query params. Derived from the dropdown options so that any
+// new status added to the dropdown is automatically accepted from the URL.
+const VALID_WALLET_STATUSES = STATUS_OPTIONS
+  .map((o) => o.value)
+  .filter((v): v is WalletTransactionStatus => v !== '');
+const VALID_BUSINESS_STATUSES = BUSINESS_STATUS_OPTIONS
+  .map((o) => o.value)
+  .filter((v): v is BusinessTransactionStatus => v !== '');
 
 const NEGATIVE_TYPES: WalletTransactionType[] = ['WITHDRAWAL', 'PURCHASE'];
 const PAGE_SIZE = 20;
@@ -470,19 +510,36 @@ export default function AdminTransactionsPage() {
   const queryClient = useQueryClient();
   const locale = language === 'bg' ? 'bg-BG' : 'en-GB';
 
-  // Allow deep-links from the alerts page to preselect view + wallet status.
+  // Allow deep-links from the alerts page to preselect view + status.
   const [searchParams] = useSearchParams();
   const initialView: 'business' | 'wallet' =
     searchParams.get('view') === 'wallet' ? 'wallet' : 'business';
-  const VALID_WALLET_STATUSES: WalletTransactionStatus[] = [
-    'PENDING', 'PROCESSING', 'COMPLETED', 'FAILED',
-    'CANCELLED', 'TRIAL_PENDING', 'ANNULLED',
-  ];
-  const initialStatusParam = searchParams.get('status');
-  const initialStatus: WalletTransactionStatus | '' =
-    initialStatusParam &&
-    VALID_WALLET_STATUSES.includes(initialStatusParam as WalletTransactionStatus)
-      ? (initialStatusParam as WalletTransactionStatus)
+  // Validate status against whichever enum the active view uses — business has
+  // REFUNDED but no TRIAL_PENDING/ANNULLED; wallet is the inverse. The valid
+  // lists are module-level and derived from the *_OPTIONS dropdowns so a new
+  // status added there is automatically accepted from URL deep-links.
+  const initialStatusParam = searchParams.get('status') ?? '';
+  const validStatusList: readonly string[] =
+    initialView === 'wallet' ? VALID_WALLET_STATUSES : VALID_BUSINESS_STATUSES;
+  const initialStatus: TransactionStatusFilter | '' =
+    initialStatusParam && validStatusList.includes(initialStatusParam)
+      ? (initialStatusParam as TransactionStatusFilter)
+      : '';
+
+  // dateFrom: ISO timestamp from alerts (e.g. failed_transactions 24h window) OR
+  // a YYYY-MM-DD picker value. We store whichever form arrived, send it to the
+  // backend as-is (Date constructor accepts both), and slice to YYYY-MM-DD only
+  // for the <input type="date"> display value. This keeps the alert badge ↔
+  // page row count in lock-step until the user manually changes the picker —
+  // at which point the state collapses to YYYY-MM-DD with day-boundary semantics.
+  const initialDateFrom = searchParams.get('dateFrom') ?? '';
+  // minAmount: from large_pending_payouts alert link. Validated as a positive number;
+  // garbage input is dropped so the page falls back to "no filter" instead of NaN.
+  const initialMinAmountRaw = searchParams.get('minAmount');
+  const initialMinAmountNum = initialMinAmountRaw ? parseFloat(initialMinAmountRaw) : NaN;
+  const initialMinAmount =
+    Number.isFinite(initialMinAmountNum) && initialMinAmountNum > 0
+      ? String(initialMinAmountNum)
       : '';
 
   /* ── View toggle (spec §4.3 default = Business / receipt-based) ── */
@@ -493,9 +550,12 @@ export default function AdminTransactionsPage() {
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
   const [type, setType] = useState<WalletTransactionType | ''>('');
-  const [status, setStatus] = useState<WalletTransactionStatus | ''>(initialStatus);
-  const [dateFrom, setDateFrom] = useState('');
+  const [status, setStatus] = useState<TransactionStatusFilter | ''>(initialStatus);
+  const [dateFrom, setDateFrom] = useState(initialDateFrom);
   const [dateTo, setDateTo] = useState('');
+  // <input type="date"> only renders YYYY-MM-DD; slice the ISO for display.
+  const dateFromPickerValue = dateFrom.slice(0, 10);
+  const [minAmount, setMinAmount] = useState(initialMinAmount);
 
   /* ── Adjustment modal state ── */
   const [showAdjust, setShowAdjust] = useState(false);
@@ -504,11 +564,30 @@ export default function AdminTransactionsPage() {
   const [adjAmount, setAdjAmount] = useState('');
   const [adjReason, setAdjReason] = useState('');
 
-  const filterParams = { search: search || undefined, type: type || undefined, status: status || undefined, dateFrom: dateFrom || undefined, dateTo: dateTo || undefined };
+  const minAmountNum = minAmount ? parseFloat(minAmount) : NaN;
+  const minAmountClean = Number.isFinite(minAmountNum) && minAmountNum > 0 ? minAmountNum : undefined;
+  // The wallet endpoints accept only WalletTransactionStatus. The view-toggle handlers reset
+  // `status` to '' on switch, so at runtime this is a wallet value when view==='wallet'; the
+  // narrow keeps the API surface honest if that invariant is ever broken.
+  const walletStatus: WalletTransactionStatus | '' = VALID_WALLET_STATUSES.includes(
+    status as WalletTransactionStatus,
+  )
+    ? (status as WalletTransactionStatus)
+    : '';
+  const filterParams = {
+    search: search || undefined,
+    type: type || undefined,
+    status: walletStatus || undefined,
+    dateFrom: dateFrom || undefined,
+    dateTo: dateTo || undefined,
+    minAmount: minAmountClean,
+  };
 
   /* ── Data ── */
+  // Key on the narrowed walletStatus (not raw `status`) so an unexpected
+  // business-only value can't fragment the cache while sending status=undefined.
   const { data, isLoading } = useQuery({
-    queryKey: ['admin-transactions', page, search, type, status, dateFrom, dateTo],
+    queryKey: ['admin-transactions', page, search, type, walletStatus, dateFrom, dateTo, minAmountClean],
     queryFn: () =>
       adminTransactionsService.list({ page, limit: PAGE_SIZE, ...filterParams }),
     enabled: view === 'wallet',
@@ -530,7 +609,7 @@ export default function AdminTransactionsPage() {
   });
 
   const { data: stats } = useQuery({
-    queryKey: ['admin-transactions-stats', search, type, status, dateFrom, dateTo],
+    queryKey: ['admin-transactions-stats', search, type, walletStatus, dateFrom, dateTo],
     queryFn: () => adminTransactionsService.getStats(filterParams),
     enabled: view === 'wallet',
   });
@@ -908,14 +987,14 @@ export default function AdminTransactionsPage() {
               ))}
             </Select>
           )}
-          <Select value={status} onChange={(e) => { setStatus(e.target.value as WalletTransactionStatus | ''); setPage(1); }}>
+          <Select value={status} onChange={(e) => { setStatus(e.target.value as TransactionStatusFilter | ''); setPage(1); }}>
             {(view === 'business' ? BUSINESS_STATUS_OPTIONS : STATUS_OPTIONS).map((o) => (
               <option key={o.value} value={o.value}>{o.label}</option>
             ))}
           </Select>
           <DateInput
             type="date"
-            value={dateFrom}
+            value={dateFromPickerValue}
             title="Created from"
             onChange={(e) => { setDateFrom(e.target.value); setPage(1); }}
           />
@@ -925,6 +1004,17 @@ export default function AdminTransactionsPage() {
             title="Created to"
             onChange={(e) => { setDateTo(e.target.value); setPage(1); }}
           />
+          {view === 'wallet' && (
+            <NumericInput
+              type="number"
+              min="0"
+              step="0.01"
+              placeholder="Min amount"
+              title="Minimum amount (BGN)"
+              value={minAmount}
+              onChange={(e) => { setMinAmount(e.target.value); setPage(1); }}
+            />
+          )}
         </FilterRow>
 
         {view === 'business' ? (

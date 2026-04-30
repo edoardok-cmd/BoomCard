@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import styled from 'styled-components';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-hot-toast';
@@ -8,10 +8,16 @@ import { DataTable, ColumnDef } from '../../components/admin/DataTable/DataTable
 import {
   adminSubscriptionsService,
   AdminSubscription,
+  AdminSubscriptionHistory,
+  AdminSubscriptionHistoryEntry,
   BillingCycle,
   SubscriptionPlan,
   SubscriptionStatus,
 } from '../../services/adminSubscriptions.service';
+import {
+  planLabel as sharedPlanLabel,
+  subStatusLabel as sharedSubStatusLabel,
+} from '../../utils/planLabels';
 
 /* ─── Palette ─────────────────────────────────────────────────────────────── */
 const palette = {
@@ -52,6 +58,9 @@ const T = {
   searchPlaceholder: { bg: 'Търсене по име, имейл или телефон…',         en: 'Search by name, email or phone…' },
   excludeTest:       { bg: 'Скрий тестови акаунти',                      en: 'Hide test accounts' },
   exportCsv:         { bg: 'Експорт CSV',                                en: 'Export CSV' },
+  exporting:         { bg: 'Експортиране…',                              en: 'Exporting…' },
+  exportTruncated:   { bg: 'Експортът е ограничен до 5000 реда. Стесни филтрите за повече.',
+                       en: 'Export capped at 5000 rows. Narrow filters for more.' },
   noName:            { bg: '(без име)',                                  en: '(no name)' },
   emptyMessage:      { bg: 'Не са намерени абонаменти',                  en: 'No subscriptions found' },
   testTag:           { bg: 'тест',                                       en: 'test' },
@@ -65,12 +74,16 @@ const T = {
   updating:          { bg: 'Обновяване…',                                en: 'Updating…' },
   allPlans:          { bg: 'Всички планове',                             en: 'All plans' },
   allStatuses:       { bg: 'Всички статуси',                             en: 'All statuses' },
+  allCycles:         { bg: 'Всички цикли',                               en: 'All cycles' },
+  allCancellation:   { bg: 'Всички (анулация)',                          en: 'All (cancel)' },
+  cancelScheduledOn: { bg: 'Само планирани за анулация',                 en: 'Cancellation scheduled' },
+  cancelScheduledOff:{ bg: 'Без планирана анулация',                     en: 'Not scheduled to cancel' },
 
   colSubscriber:     { bg: 'Абонат',                                     en: 'Subscriber' },
   colPlan:           { bg: 'План',                                       en: 'Plan' },
   colStatus:         { bg: 'Статус',                                     en: 'Status' },
   colAutoRenewal:    { bg: 'Авт. подновяване',                           en: 'Auto-renewal' },
-  colPeriodEnds:     { bg: 'Край на периода',                            en: 'Period ends' },
+  colPeriod:         { bg: 'Текущ период',                               en: 'Current period' },
   colProvider:       { bg: 'Доставчик',                                  en: 'Provider' },
   colCreated:        { bg: 'Създаден',                                   en: 'Created' },
 
@@ -79,6 +92,7 @@ const T = {
   actResume:         { bg: 'Възобнови',                                  en: 'Resume' },
   actDisableRenewal: { bg: 'Изключи авт. подновяване',                   en: 'Disable auto-renewal' },
   actEnableRenewal:  { bg: 'Включи авт. подновяване',                    en: 'Enable auto-renewal' },
+  actViewHistory:    { bg: 'История',                                    en: 'View history' },
 
   toastCancel:       { bg: 'Абонаментът ще бъде анулиран в края на периода.',
                        en: 'Subscription scheduled for cancellation at period end' },
@@ -91,30 +105,30 @@ const T = {
   toastErrReactivate:{ bg: 'Неуспешно възстановяване',                   en: 'Failed to reactivate subscription' },
   toastErrResume:    { bg: 'Неуспешно възобновяване',                    en: 'Failed to resume subscription' },
   toastErrRenewal:   { bg: 'Неуспешна промяна на авт. подновяване',      en: 'Failed to update auto-renewal' },
+  toastErrExport:    { bg: 'Експортът се провали',                       en: 'Export failed' },
+  toastErrHistory:   { bg: 'Историята не може да бъде заредена',         en: 'Failed to load history' },
+
+  drawerHistory:     { bg: 'История на абонаментите',                    en: 'Subscription history' },
+  drawerClose:       { bg: 'Затвори',                                    en: 'Close' },
+  drawerNoHistory:   { bg: 'Няма абонаменти за този потребител.',        en: 'No subscriptions on record.' },
+  drawerLoading:     { bg: 'Зареждане…',                                 en: 'Loading…' },
+  drawerPaymentsLabel:{ bg: 'Общо плащания',                             en: 'Total payments' },
+  drawerLastPayment: { bg: 'Последно плащане',                           en: 'Last payment' },
+  drawerOpenProfile: { bg: 'Отвори профила →',                           en: 'Open profile →' },
+  drawerStartedAt:   { bg: 'Старт',                                      en: 'Started' },
+  drawerEndedAt:     { bg: 'Край',                                       en: 'Ended' },
+  drawerPeriod:      { bg: 'Период',                                     en: 'Period' },
 
   cycle: {
     WEEKLY:  { bg: 'седмично',   en: 'weekly' },
     MONTHLY: { bg: 'месечно',    en: 'monthly' },
     YEARLY:  { bg: 'годишно',    en: 'yearly' },
-    OTHER:   { bg: '',           en: '' },
+    OTHER:   { bg: 'друго',      en: 'other' },
   } as Record<BillingCycle, { bg: string; en: string }>,
 
-  status: {
-    ACTIVE:             { bg: 'Активен',              en: 'Active' },
-    TRIALING:           { bg: 'Пробен',               en: 'Trialing' },
-    PAST_DUE:           { bg: 'Неуспешно плащане',    en: 'Failed payment' },
-    UNPAID:             { bg: 'Неплатен',             en: 'Unpaid' },
-    CANCELLED:          { bg: 'Анулиран',             en: 'Cancelled' },
-    INCOMPLETE:         { bg: 'Незавършен',           en: 'Incomplete' },
-    INCOMPLETE_EXPIRED: { bg: 'Незавършен (изтекъл)', en: 'Incomplete expired' },
-    PAUSED:             { bg: 'Спрян',                en: 'Paused' },
-  } as Record<SubscriptionStatus, { bg: string; en: string }>,
-
-  plan: {
-    LIGHT:   { bg: 'Light',   en: 'Light' },
-    BASIC:   { bg: 'Basic',   en: 'Basic' },
-    PREMIUM: { bg: 'Premium', en: 'Premium' },
-  } as Record<SubscriptionPlan, { bg: string; en: string }>,
+  // Plan and status label tables now live in src/utils/planLabels.ts so all
+  // three admin screens share a single source of truth. Use sharedPlanLabel /
+  // sharedSubStatusLabel below.
 };
 
 const tr = (entry: { bg: string; en: string }, lang: Lang) => entry[lang];
@@ -269,6 +283,17 @@ const NameRow = styled.div`
   gap: 0.375rem;
 `;
 
+const SubscriberLink = styled(Link)`
+  color: ${palette.text};
+  text-decoration: none;
+  font-weight: 600;
+
+  &:hover {
+    color: ${palette.accent};
+    text-decoration: underline;
+  }
+`;
+
 const NameMissing = styled.span`
   color: ${palette.textSubtle};
   font-style: italic;
@@ -293,6 +318,20 @@ const MetaLine = styled.div`
   color: ${palette.textSubtle};
 `;
 
+const HistoryLink = styled.button`
+  background: none;
+  border: none;
+  padding: 0;
+  color: ${palette.info};
+  cursor: pointer;
+  font-size: 0.75rem;
+  text-align: left;
+  text-decoration: underline;
+  text-decoration-style: dotted;
+
+  &:hover { color: ${palette.accent}; }
+`;
+
 const PlanBadge = styled.span<{ $plan: SubscriptionPlan }>`
   display: inline-flex;
   align-items: center;
@@ -302,6 +341,7 @@ const PlanBadge = styled.span<{ $plan: SubscriptionPlan }>`
   letter-spacing: 0.05em;
   border-radius: 0.375rem;
   padding: 0.125rem 0.5rem;
+  white-space: nowrap;
 
   ${({ $plan }) => {
     switch ($plan) {
@@ -317,6 +357,11 @@ const PlanBadge = styled.span<{ $plan: SubscriptionPlan }>`
   }}
 `;
 
+// Spec §4.2 distinguishes EXPIRED (natural lapse) from CANCELLED (user-initiated):
+// CANCELLED is terminal-but-not-error → neutral grey; EXPIRED gets a distinct
+// purple. INCOMPLETE_EXPIRED is danger (failed onboarding). Mirrors
+// AdminSubscriberDetailPage SubStatusBadge so the same record reads the same
+// color on both screens.
 const StatusBadge = styled.span<{ $status: SubscriptionStatus }>`
   display: inline-flex;
   align-items: center;
@@ -326,6 +371,7 @@ const StatusBadge = styled.span<{ $status: SubscriptionStatus }>`
   letter-spacing: 0.05em;
   border-radius: 0.375rem;
   padding: 0.125rem 0.5rem;
+  white-space: nowrap;
 
   ${({ $status }) => {
     switch ($status) {
@@ -335,13 +381,15 @@ const StatusBadge = styled.span<{ $status: SubscriptionStatus }>`
       case 'PAST_DUE':
       case 'UNPAID':
         return `background: ${palette.warningSoft}; color: ${palette.warning};`;
-      case 'CANCELLED':
-      case 'INCOMPLETE_EXPIRED':
-        return `background: ${palette.dangerSoft}; color: ${palette.danger};`;
       case 'INCOMPLETE':
         return `background: ${palette.infoSoft}; color: ${palette.info};`;
+      case 'INCOMPLETE_EXPIRED':
+        return `background: ${palette.dangerSoft}; color: ${palette.danger};`;
+      case 'EXPIRED':
+        return `background: ${palette.purpleSoft}; color: ${palette.purple};`;
       case 'PAUSED':
         return `background: #f3f4f6; color: #374151;`;
+      case 'CANCELLED':
       default:
         return `background: #f3f4f6; color: #6b7280;`;
     }
@@ -375,6 +423,132 @@ const PaymentsTotal = styled.span`
   font-weight: 600;
 `;
 
+/* ─── Drawer ───────────────────────────────────────────────────────────────── */
+const DrawerBackdrop = styled.div<{ $open: boolean }>`
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.2);
+  z-index: 89;
+  opacity: ${({ $open }) => ($open ? 1 : 0)};
+  pointer-events: ${({ $open }) => ($open ? 'auto' : 'none')};
+  transition: opacity 220ms ease;
+`;
+
+const Drawer = styled.div<{ $open: boolean }>`
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 32rem;
+  max-width: 100vw;
+  background: ${palette.surface};
+  border-left: 1px solid ${palette.border};
+  box-shadow: -8px 0 32px rgba(0, 0, 0, 0.1);
+  z-index: 90;
+  transform: ${({ $open }) => ($open ? 'translateX(0)' : 'translateX(100%)')};
+  transition: transform 220ms ease;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+`;
+
+const DrawerHeader = styled.div`
+  padding: 1.5rem;
+  border-bottom: 1px solid ${palette.border};
+  position: relative;
+`;
+
+const DrawerClose = styled.button`
+  position: absolute;
+  top: 1.25rem;
+  right: 1.25rem;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1.25rem;
+  color: ${palette.textSubtle};
+  line-height: 1;
+  padding: 0.25rem;
+  &:hover { color: ${palette.text}; }
+`;
+
+const DrawerTitle = styled.h3`
+  font-size: 1rem;
+  font-weight: 700;
+  color: ${palette.text};
+  margin: 0 0 0.25rem;
+`;
+
+const DrawerSubtitle = styled.p`
+  font-size: 0.8125rem;
+  color: ${palette.textSubtle};
+  margin: 0;
+`;
+
+const DrawerStat = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 0.75rem;
+  font-size: 0.8125rem;
+`;
+
+const DrawerStatLabel = styled.span`
+  color: ${palette.textSubtle};
+`;
+
+const DrawerStatValue = styled.span`
+  color: ${palette.text};
+  font-weight: 600;
+`;
+
+const DrawerProfileLink = styled(Link)`
+  display: inline-block;
+  margin-top: 0.75rem;
+  font-size: 0.8125rem;
+  color: ${palette.accent};
+  text-decoration: none;
+  font-weight: 600;
+  &:hover { text-decoration: underline; }
+`;
+
+const DrawerBody = styled.div`
+  padding: 1rem 1.5rem 1.5rem;
+  flex: 1;
+`;
+
+const HistoryEntry = styled.div`
+  border: 1px solid ${palette.border};
+  border-radius: 0.5rem;
+  padding: 0.875rem 1rem;
+  margin-bottom: 0.75rem;
+  background: ${palette.bg};
+`;
+
+const HistoryEntryHeader = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+`;
+
+const HistoryEntryMeta = styled.div`
+  font-size: 0.75rem;
+  color: ${palette.textSubtle};
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+`;
+
+const EmptyDrawer = styled.p`
+  color: ${palette.textSubtle};
+  font-size: 0.875rem;
+  text-align: center;
+  padding: 2rem 0;
+`;
+
 /* ─── Options ──────────────────────────────────────────────────────────────── */
 const PLAN_VALUES: Array<SubscriptionPlan | ''> = ['', 'LIGHT', 'BASIC', 'PREMIUM'];
 const STATUS_VALUES: Array<SubscriptionStatus | ''> = [
@@ -384,10 +558,13 @@ const STATUS_VALUES: Array<SubscriptionStatus | ''> = [
   'PAST_DUE',
   'UNPAID',
   'CANCELLED',
+  'EXPIRED',
   'INCOMPLETE',
   'INCOMPLETE_EXPIRED',
   'PAUSED',
 ];
+const CYCLE_VALUES: Array<BillingCycle | ''> = ['', 'WEEKLY', 'MONTHLY', 'YEARLY'];
+const CANCEL_VALUES: Array<'' | 'true' | 'false'> = ['', 'true', 'false'];
 
 const PAGE_SIZE = 20;
 
@@ -396,11 +573,12 @@ const PAGE_SIZE = 20;
  * cancellation isn't scheduled AND the status is a billing one. Without all
  * three, render Off — otherwise CANCELLED rows misleadingly show "On".
  */
-const isAutoRenewalEffective = (row: AdminSubscription) => {
+const isAutoRenewalEffective = (row: { autoRenewal: boolean; cancelAtPeriodEnd: boolean; status: SubscriptionStatus }) => {
   if (!row.autoRenewal) return false;
   if (row.cancelAtPeriodEnd) return false;
   switch (row.status) {
     case 'CANCELLED':
+    case 'EXPIRED':
     case 'INCOMPLETE':
     case 'INCOMPLETE_EXPIRED':
     case 'PAUSED':
@@ -421,7 +599,7 @@ export default function AdminSubscriptionsPage() {
   const [searchParams] = useSearchParams();
   const VALID_STATUSES: SubscriptionStatus[] = [
     'ACTIVE', 'TRIALING', 'PAST_DUE', 'UNPAID',
-    'PAUSED', 'CANCELLED', 'INCOMPLETE', 'INCOMPLETE_EXPIRED',
+    'PAUSED', 'CANCELLED', 'EXPIRED', 'INCOMPLETE', 'INCOMPLETE_EXPIRED',
   ];
   const initialStatusParam = searchParams.get('status');
   const initialStatus: SubscriptionStatus | '' =
@@ -434,7 +612,11 @@ export default function AdminSubscriptionsPage() {
   const [search, setSearch] = useState('');
   const [plan, setPlan] = useState<SubscriptionPlan | ''>('');
   const [status, setStatus] = useState<SubscriptionStatus | ''>(initialStatus);
+  const [cycle, setCycle] = useState<BillingCycle | ''>('');
+  const [cancelScheduled, setCancelScheduled] = useState<'' | 'true' | 'false'>('');
   const [excludeTest, setExcludeTest] = useState(true);
+  const [exporting, setExporting] = useState(false);
+  const [historyUserId, setHistoryUserId] = useState<string | null>(null);
 
   // Debounce search → server, 300ms after user stops typing.
   useEffect(() => {
@@ -445,16 +627,22 @@ export default function AdminSubscriptionsPage() {
     return () => clearTimeout(handle);
   }, [searchInput]);
 
+  const filterParams = {
+    search: search || undefined,
+    plan: plan || undefined,
+    status: status || undefined,
+    billingCycle: cycle || undefined,
+    cancelScheduled: cancelScheduled || undefined,
+    excludeTest,
+  } as const;
+
   const { data, isLoading } = useQuery({
-    queryKey: ['admin-subscriptions', page, search, plan, status, excludeTest],
+    queryKey: ['admin-subscriptions', page, search, plan, status, cycle, cancelScheduled, excludeTest],
     queryFn: () =>
       adminSubscriptionsService.list({
         page,
         limit: PAGE_SIZE,
-        search: search || undefined,
-        plan: plan || undefined,
-        status: status || undefined,
-        excludeTest,
+        ...filterParams,
       }),
   });
 
@@ -495,7 +683,68 @@ export default function AdminSubscriptionsPage() {
     onError: () => toast.error(tr(T.toastErrRenewal, lang)),
   });
 
-  const fmtDate = (iso: string) =>
+  const { data: historyData, isLoading: historyLoading } = useQuery<AdminSubscriptionHistory>({
+    queryKey: ['admin-subscription-history', historyUserId],
+    queryFn: () => adminSubscriptionsService.getUserHistory(historyUserId!),
+    enabled: !!historyUserId,
+  });
+
+  // Drawer a11y: ESC to close, focus trap inside the drawer, restore focus to
+  // the element that opened the drawer when it closes.
+  const drawerRef = useRef<HTMLDivElement | null>(null);
+  const drawerCloseRef = useRef<HTMLButtonElement | null>(null);
+  const drawerOpenerRef = useRef<HTMLElement | null>(null);
+  const drawerTitleId = 'admin-subscription-history-title';
+
+  useEffect(() => {
+    if (!historyUserId) return;
+
+    // Stash the element that had focus when the drawer opened so we can put
+    // focus back on close (WCAG 2.4.3).
+    drawerOpenerRef.current = (document.activeElement as HTMLElement | null) ?? null;
+    // Move focus to the close button so screen readers announce the dialog
+    // and Tab navigation starts inside the drawer.
+    drawerCloseRef.current?.focus();
+
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        setHistoryUserId(null);
+        return;
+      }
+      if (e.key !== 'Tab') return;
+      const root = drawerRef.current;
+      if (!root) return;
+      const focusables = root.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"]), input:not([disabled]), select:not([disabled]), textarea:not([disabled])',
+      );
+      if (focusables.length === 0) return;
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      const active = document.activeElement as HTMLElement | null;
+      if (e.shiftKey && (active === first || !root.contains(active))) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && active === last) {
+        e.preventDefault();
+        first.focus();
+      } else if (active && !root.contains(active)) {
+        // Focus had escaped to the underlying page — pull it back.
+        e.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener('keydown', handler);
+    return () => {
+      document.removeEventListener('keydown', handler);
+      // Restore focus on close. Skip if the opener was unmounted.
+      const opener = drawerOpenerRef.current;
+      if (opener && document.contains(opener)) opener.focus();
+      drawerOpenerRef.current = null;
+    };
+  }, [historyUserId]);
+
+  const fmtDate = (iso: string | Date) =>
     new Date(iso).toLocaleDateString(lang === 'bg' ? 'bg-BG' : 'en-GB', {
       day: '2-digit',
       month: 'short',
@@ -510,44 +759,67 @@ export default function AdminSubscriptionsPage() {
       maximumFractionDigits: 2,
     }).format(amount);
 
-  const planLabel = (p: SubscriptionPlan) => tr(T.plan[p], lang);
-  const statusLabel = (s: SubscriptionStatus) => tr(T.status[s], lang);
-  const cycleLabel = (c?: BillingCycle) => (c && c !== 'OTHER' ? tr(T.cycle[c], lang) : '');
+  const planLabel = (p: SubscriptionPlan) => sharedPlanLabel(p, lang);
+  const statusLabel = (s: SubscriptionStatus) => sharedSubStatusLabel(s, lang);
+  const cycleLabel = (c?: BillingCycle) => (c ? tr(T.cycle[c], lang) : '');
 
-  const exportCsv = () => {
-    const rows = data?.subscriptions ?? [];
-    if (!rows.length) return;
-    const headers = [
-      'Subscriber', 'Email', 'Phone', 'Plan', 'Cycle', 'Status', 'Auto-renewal',
-      'Period ends', 'Provider', 'Payments', 'Total paid', 'Created',
-    ];
-    const escape = (v: string | number | null | undefined) => {
-      if (v == null) return '';
-      const s = String(v);
-      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-    };
-    const lines = rows.map((r) => {
-      const name = `${r.user.firstName ?? ''} ${r.user.lastName ?? ''}`.trim();
-      const provider = r.stripeSubscriptionId ? 'Stripe' : r.payseraOrderId ? 'Paysera' : '';
-      return [
-        name, r.user.email, r.user.phone ?? '', r.plan, r.billingCycle ?? '', r.status,
-        isAutoRenewalEffective(r) ? 'On' : 'Off',
-        fmtDate(r.currentPeriodEnd), provider,
-        r.paymentCount ?? 0, (r.paymentTotalAmount ?? 0).toFixed(2),
-        fmtDate(r.createdAt),
-      ].map(escape).join(',');
-    });
-    // BOM so Excel detects UTF-8 (Cyrillic names render correctly).
-    const csv = '﻿' + [headers.join(','), ...lines].join('\n');
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `subscriptions-${new Date().toISOString().slice(0, 10)}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+  const handleExportCsv = async () => {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      const res = await adminSubscriptionsService.exportAll(filterParams);
+      const rows = res.subscriptions ?? [];
+      if (!rows.length) {
+        toast.error(tr(T.emptyMessage, lang));
+        return;
+      }
+      const headers = [
+        'Subscriber', 'Email', 'Phone', 'Plan', 'Cycle', 'Status', 'Auto-renewal',
+        'Period start', 'Period ends', 'Cancel scheduled', 'Provider',
+        'Payments (count)', 'Payments (total BGN)', 'Last payment', 'Created',
+      ];
+      const escape = (v: string | number | null | undefined) => {
+        if (v == null) return '';
+        const s = String(v);
+        return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+      };
+      const lines = rows.map((r) => {
+        const name = `${r.user.firstName ?? ''} ${r.user.lastName ?? ''}`.trim();
+        const provider = r.stripeSubscriptionId ? 'Stripe' : r.payseraOrderId ? 'Paysera' : '';
+        return [
+          name, r.user.email, r.user.phone ?? '', r.plan, r.billingCycle ?? '', r.status,
+          isAutoRenewalEffective(r) ? 'On' : 'Off',
+          fmtDate(r.currentPeriodStart),
+          fmtDate(r.currentPeriodEnd),
+          r.cancelAtPeriodEnd ? 'Yes' : 'No',
+          provider,
+          r.paymentCount ?? 0,
+          (r.paymentTotalAmount ?? 0).toFixed(2),
+          r.lastPaymentAt ? fmtDate(r.lastPaymentAt) : '',
+          fmtDate(r.createdAt),
+        ].map(escape).join(',');
+      });
+      // BOM so Excel detects UTF-8 (Cyrillic names render correctly).
+      const csv = '﻿' + [headers.join(','), ...lines].join('\n');
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `subscriptions-${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      toast.success(`${rows.length} row(s) exported`);
+      if (res.truncated) {
+        toast(tr(T.exportTruncated, lang), { icon: '⚠️', duration: 6000 });
+      }
+    } catch {
+      toast.error(tr(T.toastErrExport, lang));
+    } finally {
+      setExporting(false);
+    }
   };
 
   const columns: ColumnDef<AdminSubscription>[] = useMemo(() => [
@@ -559,7 +831,13 @@ export default function AdminSubscriptionsPage() {
         return (
           <UserCell>
             <NameRow>
-              {name ? <span>{name}</span> : <NameMissing>{tr(T.noName, lang)}</NameMissing>}
+              {name ? (
+                <SubscriberLink to={`/admin/subscribers/${row.user.id}`}>{name}</SubscriberLink>
+              ) : (
+                <SubscriberLink to={`/admin/subscribers/${row.user.id}`}>
+                  <NameMissing>{tr(T.noName, lang)}</NameMissing>
+                </SubscriberLink>
+              )}
               {row.user.isTest && <TestTag>{tr(T.testTag, lang)}</TestTag>}
             </NameRow>
             <MetaLine>{row.user.email}</MetaLine>
@@ -572,15 +850,19 @@ export default function AdminSubscriptionsPage() {
       key: 'plan',
       header: tr(T.colPlan, lang),
       render: (row) => {
-        const cycle = cycleLabel(row.billingCycle);
+        const c = cycleLabel(row.billingCycle);
         return (
           <span>
             <PlanBadge $plan={row.plan}>{planLabel(row.plan)}</PlanBadge>
-            {cycle && <MetaLine>{cycle}</MetaLine>}
+            {c && <MetaLine>{c}</MetaLine>}
             {row.userSubscriptionCount && row.userSubscriptionCount > 1 && (
-              <MetaLine title="Spec §4.2 — total subscriptions ever for this user">
+              <HistoryLink
+                type="button"
+                onClick={() => setHistoryUserId(row.user.id)}
+                title="Spec §4.2 — view full subscription history for this user"
+              >
                 {row.userSubscriptionCount} {tr(T.plansInHistory, lang)}
-              </MetaLine>
+              </HistoryLink>
             )}
           </span>
         );
@@ -609,11 +891,11 @@ export default function AdminSubscriptionsPage() {
       },
     },
     {
-      key: 'periodEnd',
-      header: tr(T.colPeriodEnds, lang),
+      key: 'period',
+      header: tr(T.colPeriod, lang),
       render: (row) => (
-        <span style={{ color: palette.textMuted, fontSize: '0.8125rem' }}>
-          {fmtDate(row.currentPeriodEnd)}
+        <span style={{ color: palette.textMuted, fontSize: '0.8125rem', display: 'flex', flexDirection: 'column' }}>
+          <span>{fmtDate(row.currentPeriodStart)} → {fmtDate(row.currentPeriodEnd)}</span>
         </span>
       ),
     },
@@ -628,6 +910,7 @@ export default function AdminSubscriptionsPage() {
           <PaymentsCell>
             <PaymentsTotal>{fmtMoney(total)}</PaymentsTotal>
             <MetaLine>{count}×</MetaLine>
+            {row.lastPaymentAt && <MetaLine title="Last successful payment">{fmtDate(row.lastPaymentAt)}</MetaLine>}
           </PaymentsCell>
         );
       },
@@ -657,6 +940,9 @@ export default function AdminSubscriptionsPage() {
     reactivateMutation.isPending ||
     resumeMutation.isPending ||
     autoRenewalMutation.isPending;
+
+  const isTerminal = (s: SubscriptionStatus) =>
+    s === 'CANCELLED' || s === 'EXPIRED' || s === 'INCOMPLETE_EXPIRED' || s === 'INCOMPLETE';
 
   return (
     <PageShell>
@@ -693,6 +979,19 @@ export default function AdminSubscriptionsPage() {
             ))}
           </Select>
           <Select
+            value={cycle}
+            onChange={(e) => {
+              setCycle(e.target.value as BillingCycle | '');
+              setPage(1);
+            }}
+          >
+            {CYCLE_VALUES.map((v) => (
+              <option key={v || 'all-cycles'} value={v}>
+                {v === '' ? tr(T.allCycles, lang) : tr(T.cycle[v], lang)}
+              </option>
+            ))}
+          </Select>
+          <Select
             value={status}
             onChange={(e) => {
               setStatus(e.target.value as SubscriptionStatus | '');
@@ -702,6 +1001,21 @@ export default function AdminSubscriptionsPage() {
             {STATUS_VALUES.map((v) => (
               <option key={v || 'all'} value={v}>
                 {v === '' ? tr(T.allStatuses, lang) : statusLabel(v)}
+              </option>
+            ))}
+          </Select>
+          <Select
+            value={cancelScheduled}
+            onChange={(e) => {
+              setCancelScheduled(e.target.value as '' | 'true' | 'false');
+              setPage(1);
+            }}
+          >
+            {CANCEL_VALUES.map((v) => (
+              <option key={v || 'all-cancel'} value={v}>
+                {v === '' ? tr(T.allCancellation, lang)
+                  : v === 'true' ? tr(T.cancelScheduledOn, lang)
+                  : tr(T.cancelScheduledOff, lang)}
               </option>
             ))}
           </Select>
@@ -716,8 +1030,8 @@ export default function AdminSubscriptionsPage() {
             />
             {tr(T.excludeTest, lang)}
           </Toggle>
-          <ExportButton type="button" onClick={exportCsv} disabled={!data?.subscriptions?.length}>
-            {tr(T.exportCsv, lang)}
+          <ExportButton type="button" onClick={handleExportCsv} disabled={exporting || !data?.total}>
+            {exporting ? tr(T.exporting, lang) : tr(T.exportCsv, lang)}
           </ExportButton>
         </FilterRow>
 
@@ -733,13 +1047,13 @@ export default function AdminSubscriptionsPage() {
           onPageChange={setPage}
           rowActions={[
             {
+              label: tr(T.actViewHistory, lang),
+              onClick: (row) => setHistoryUserId(row.user.id),
+            },
+            {
               label: tr(T.actCancel, lang),
               danger: true,
-              hidden: (row) =>
-                row.cancelAtPeriodEnd ||
-                row.status === 'CANCELLED' ||
-                row.status === 'INCOMPLETE_EXPIRED' ||
-                row.status === 'INCOMPLETE',
+              hidden: (row) => row.cancelAtPeriodEnd || isTerminal(row.status),
               onClick: (row) => {
                 if (!window.confirm(confirmCancelMessage(lang, row.user.email, fmtDate(row.currentPeriodEnd)))) return;
                 cancelMutation.mutate(row.id);
@@ -747,7 +1061,7 @@ export default function AdminSubscriptionsPage() {
             },
             {
               label: tr(T.actReactivate, lang),
-              hidden: (row) => !row.cancelAtPeriodEnd || row.status === 'CANCELLED',
+              hidden: (row) => !row.cancelAtPeriodEnd || row.status === 'CANCELLED' || row.status === 'EXPIRED',
               onClick: (row) => reactivateMutation.mutate(row.id),
             },
             {
@@ -757,25 +1071,14 @@ export default function AdminSubscriptionsPage() {
             },
             {
               label: tr(T.actDisableRenewal, lang),
-              hidden: (row) =>
-                !row.autoRenewal ||
-                row.cancelAtPeriodEnd ||
-                row.status === 'CANCELLED' ||
-                row.status === 'INCOMPLETE_EXPIRED' ||
-                row.status === 'INCOMPLETE' ||
-                row.status === 'PAUSED',
+              // Auto-renewal is now a pure preference toggle (does not schedule
+              // cancellation), so it stays togglable on any non-terminal sub.
+              hidden: (row) => !row.autoRenewal || isTerminal(row.status) || row.status === 'PAUSED',
               onClick: (row) => autoRenewalMutation.mutate({ id: row.id, autoRenewal: false }),
             },
             {
               label: tr(T.actEnableRenewal, lang),
-              // Hidden when Reactivate already covers the same intent (cancelAtPeriodEnd=true)
-              hidden: (row) =>
-                row.autoRenewal ||
-                row.cancelAtPeriodEnd ||
-                row.status === 'CANCELLED' ||
-                row.status === 'INCOMPLETE_EXPIRED' ||
-                row.status === 'INCOMPLETE' ||
-                row.status === 'PAUSED',
+              hidden: (row) => row.autoRenewal || isTerminal(row.status) || row.status === 'PAUSED',
               onClick: (row) => autoRenewalMutation.mutate({ id: row.id, autoRenewal: true }),
             },
           ]}
@@ -786,6 +1089,101 @@ export default function AdminSubscriptionsPage() {
           </div>
         )}
       </Card>
+
+      {/* History drawer */}
+      <DrawerBackdrop $open={!!historyUserId} onClick={() => setHistoryUserId(null)} />
+      <Drawer
+        $open={!!historyUserId}
+        ref={drawerRef}
+        role="dialog"
+        aria-modal="true"
+        aria-hidden={!historyUserId}
+        aria-labelledby={drawerTitleId}
+      >
+        {historyUserId && (
+          <>
+            <DrawerHeader>
+              <DrawerClose
+                onClick={() => setHistoryUserId(null)}
+                ref={drawerCloseRef}
+                aria-label={tr(T.drawerClose, lang)}
+              >
+                ✕
+              </DrawerClose>
+              <DrawerTitle id={drawerTitleId}>{tr(T.drawerHistory, lang)}</DrawerTitle>
+              {historyData && (
+                <>
+                  <DrawerSubtitle>
+                    {`${historyData.user.firstName ?? ''} ${historyData.user.lastName ?? ''}`.trim() || historyData.user.email}
+                    {' · '}
+                    {historyData.user.email}
+                  </DrawerSubtitle>
+                  <DrawerStat>
+                    <DrawerStatLabel>{tr(T.drawerPaymentsLabel, lang)}</DrawerStatLabel>
+                    <DrawerStatValue>
+                      {fmtMoney(historyData.paymentSummary.totalAmount)} ({historyData.paymentSummary.count})
+                    </DrawerStatValue>
+                  </DrawerStat>
+                  {historyData.paymentSummary.lastPaymentAt && (
+                    <DrawerStat>
+                      <DrawerStatLabel>{tr(T.drawerLastPayment, lang)}</DrawerStatLabel>
+                      <DrawerStatValue>{fmtDate(historyData.paymentSummary.lastPaymentAt)}</DrawerStatValue>
+                    </DrawerStat>
+                  )}
+                  <DrawerProfileLink to={`/admin/subscribers/${historyData.user.id}`} onClick={() => setHistoryUserId(null)}>
+                    {tr(T.drawerOpenProfile, lang)}
+                  </DrawerProfileLink>
+                </>
+              )}
+            </DrawerHeader>
+            <DrawerBody>
+              {historyLoading ? (
+                <EmptyDrawer>{tr(T.drawerLoading, lang)}</EmptyDrawer>
+              ) : !historyData?.subscriptions.length ? (
+                <EmptyDrawer>{tr(T.drawerNoHistory, lang)}</EmptyDrawer>
+              ) : (
+                historyData.subscriptions.map((entry: AdminSubscriptionHistoryEntry) => (
+                  <HistoryEntry key={entry.id}>
+                    <HistoryEntryHeader>
+                      <span style={{ display: 'flex', gap: '0.375rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                        <PlanBadge $plan={entry.plan}>{planLabel(entry.plan)}</PlanBadge>
+                        <StatusBadge $status={entry.status}>{statusLabel(entry.status)}</StatusBadge>
+                        {entry.billingCycle && entry.billingCycle !== 'OTHER' && (
+                          <MetaLine>{cycleLabel(entry.billingCycle)}</MetaLine>
+                        )}
+                      </span>
+                      <RenewalPill $on={isAutoRenewalEffective(entry)}>
+                        {isAutoRenewalEffective(entry) ? tr(T.on, lang) : tr(T.off, lang)}
+                      </RenewalPill>
+                    </HistoryEntryHeader>
+                    <HistoryEntryMeta>
+                      <span>
+                        {tr(T.drawerPeriod, lang)}: {fmtDate(entry.currentPeriodStart)} → {fmtDate(entry.currentPeriodEnd)}
+                      </span>
+                      <span>
+                        {tr(T.drawerStartedAt, lang)}: {fmtDate(entry.createdAt)}
+                      </span>
+                      {entry.canceledAt && (
+                        <span>
+                          {tr(T.drawerEndedAt, lang)}: {fmtDate(entry.canceledAt)}
+                        </span>
+                      )}
+                      {entry.cancelAtPeriodEnd && entry.cancelAt && (
+                        <span style={{ color: palette.warning }}>
+                          {tr(T.cancelsAt, lang)} {fmtDate(entry.cancelAt)}
+                        </span>
+                      )}
+                      <span style={{ color: palette.textSubtle }}>
+                        {entry.stripeSubscriptionId ? 'Stripe' : entry.payseraOrderId ? 'Paysera' : '—'}
+                      </span>
+                    </HistoryEntryMeta>
+                  </HistoryEntry>
+                ))
+              )}
+            </DrawerBody>
+          </>
+        )}
+      </Drawer>
     </PageShell>
   );
 }

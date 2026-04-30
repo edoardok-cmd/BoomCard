@@ -16,6 +16,156 @@ import {
   RiskLevelFilter,
 } from '../../services/adminSubscribers.service';
 import { adminTransactionsService, AdminTransaction } from '../../services/adminTransactions.service';
+import {
+  planLabel,
+  subStatusLabel as sharedSubStatusLabel,
+  userStatusLabel as sharedUserStatusLabel,
+  riskLabel,
+} from '../../utils/planLabels';
+
+/* ─── i18n table (page-local; spec is in BG) ───────────────────────────── */
+type Lang = 'en' | 'bg';
+const I18N = {
+  eyebrow:        { en: 'Subscribers',     bg: 'Абонати' },
+  pageTitle:      { en: 'All subscribers', bg: 'Всички абонати' },
+  pageSubtitle:   { en: 'All subscriber profiles, including soft-deleted accounts', bg: 'Всички профили на абонати, включително меко изтритите' },
+  exportCsv:      { en: '↓ Export CSV',    bg: '↓ Изтегли CSV' },
+  exporting:      { en: 'Exporting…',      bg: 'Изтегляне…' },
+  noToExport:     { en: 'No subscribers to export', bg: 'Няма абонати за изтегляне' },
+  exportFail:     { en: 'Failed to export subscribers', bg: 'Неуспешно изтегляне' },
+  // Bulgarian has three plural forms (one / few / other). Rather than
+  // pick between "абонат / абоната / абонати", use a count-neutral phrasing
+  // ("subscribers exported: N") that reads correctly for any N.
+  exportedN:      { en: 'Exported {n} subscriber(s)', bg: 'Изтеглени абонати: {n}' },
+  searchPh:       { en: 'Search by name, email, phone or IBAN…', bg: 'Търси по име, имейл, телефон или IBAN…' },
+  allAccounts:    { en: 'All accounts',    bg: 'Всички акаунти' },
+  allPlans:       { en: 'All plans',       bg: 'Всички планове' },
+  allStatuses:    { en: 'All statuses',    bg: 'Всички статуси' },
+  allRisk:        { en: 'All risk',        bg: 'Всички рискове' },
+  active:         { en: 'Active',          bg: 'Активен' },
+  suspended:      { en: 'Suspended',       bg: 'Спрян' },
+  deleted:        { en: 'Deleted',         bg: 'Изтрит' },
+  trialing:       { en: 'Trialing',        bg: 'Пробен' },
+  pastDue:        { en: 'Failed payment',  bg: 'Неуспешно плащане' },
+  unpaid:         { en: 'Unpaid',          bg: 'Неплатен' },
+  paused:         { en: 'Paused',          bg: 'На пауза' },
+  // CANCELLED uses 'Отказан' (not spec's "спрян") to disambiguate from user
+  // account status 'Спрян' (§4.1) which appears in the same table.
+  cancelled:      { en: 'Cancelled',       bg: 'Отказан' },
+  incomplete:     { en: 'Incomplete',      bg: 'Незавършен' },
+  incompleteExpired: { en: 'Incomplete expired', bg: 'Незавършен (изтекъл)' },
+  expired:        { en: 'Expired',         bg: 'Изтекъл' },
+  riskAuto:       { en: 'Auto',            bg: 'Авто' },
+  riskReview:     { en: 'Review',          bg: 'Преглед' },
+  riskHigh:       { en: 'High',            bg: 'Висок' },
+  riskAutoFilter:   { en: 'Auto-approve (0-30)', bg: 'Авто (0-30)' },
+  riskReviewFilter: { en: 'Review (31-60)',      bg: 'Преглед (31-60)' },
+  riskHighFilter:   { en: 'High risk (61+)',     bg: 'Висок риск (61+)' },
+  colSubscriber:  { en: 'Subscriber',      bg: 'Абонат' },
+  colUserId:      { en: 'User ID',         bg: 'User ID' },
+  colUserStatus:  { en: 'User status',     bg: 'Статус' },
+  colRisk:        { en: 'Risk',            bg: 'Риск' },
+  colLastActivity:{ en: 'Last activity',   bg: 'Последна активност' },
+  colPlan:        { en: 'Plan',            bg: 'План' },
+  colSubStatus:   { en: 'Sub status',      bg: 'Статус абонамент' },
+  colCashback:    { en: 'Cashback',        bg: 'Кешбек' },
+  colPeriodEnds:  { en: 'Period ends',     bg: 'Изтича на' },
+  colAutoRenew:   { en: 'Auto-renew',      bg: 'Подновяване' },
+  colJoined:      { en: 'Joined',          bg: 'Регистриран' },
+  yes:            { en: 'Yes',             bg: 'Да' },
+  no:             { en: 'No',              bg: 'Не' },
+  never:          { en: 'Never',           bg: 'Никога' },
+  noSubsFound:    { en: 'No subscribers found', bg: 'Няма открити абонати' },
+  pendingShort:   { en: 'pending',         bg: 'изчакващи' },
+  viewHistory:    { en: 'View history',    bg: 'История' },
+  changePlan:     { en: 'Change plan',     bg: 'Смени плана' },
+  cancelSub:      { en: 'Cancel subscription', bg: 'Отказ на абонамент' },
+  refund:         { en: 'Refund',          bg: 'Възстановяване' },
+  suspendAcct:    { en: 'Suspend account', bg: 'Спри акаунт' },
+  activateAcct:   { en: 'Activate account', bg: 'Активирай акаунт' },
+  forceLogout:    { en: 'Force logout',    bg: 'Принудителен изход' },
+  deleteAcct:     { en: 'Delete account',  bg: 'Изтрий акаунт' },
+  restoreAcct:    { en: 'Restore account', bg: 'Възстанови акаунт' },
+  cancelTitle:    { en: 'Cancel subscription?', bg: 'Отказ на абонамент?' },
+  cancelBody:     { en: 'The subscription for {name} will be cancelled at the end of the current billing period. No refund will be issued.', bg: 'Абонаментът на {name} ще бъде отказан в края на текущия период. Сума няма да бъде възстановена.' },
+  keepActive:     { en: 'Keep active',     bg: 'Запази' },
+  yesCancel:      { en: 'Yes, cancel',     bg: 'Да, откажи' },
+  cancelling:     { en: 'Cancelling…',     bg: 'Отказване…' },
+  cancelledToast: { en: 'Subscription cancelled', bg: 'Абонаментът е отказан' },
+  cancelFail:     { en: 'Failed to cancel subscription', bg: 'Неуспешен отказ' },
+  changePlanTitle:{ en: 'Change plan',     bg: 'Смяна на план' },
+  changePlanBody: { en: 'Select a new plan for {name}.', bg: 'Избери нов план за {name}.' },
+  currentPlan:    { en: 'Current plan:',   bg: 'Текущ план:' },
+  newPlanLabel:   { en: 'New plan',        bg: 'Нов план' },
+  saveChange:     { en: 'Save change',     bg: 'Запази' },
+  saving:         { en: 'Saving…',         bg: 'Запазване…' },
+  cancelBtn:      { en: 'Cancel',          bg: 'Отказ' },
+  planUpdated:    { en: 'Plan updated',    bg: 'Планът е обновен' },
+  planFail:       { en: 'Failed to update plan', bg: 'Неуспешно обновяване' },
+  deleteTitle:    { en: 'Delete account?', bg: 'Изтриване на акаунт?' },
+  deleteBody:     { en: '{name} will be soft-deleted. History, payments and transactions are preserved and the account can be restored later.', bg: '{name} ще бъде меко изтрит. Историята, плащанията и транзакциите се запазват и акаунтът може да бъде възстановен.' },
+  reasonOpt:      { en: 'Reason (optional)', bg: 'Причина (опционално)' },
+  reasonPh:       { en: 'e.g. user request, fraud', bg: 'напр. заявка от потребителя, измама' },
+  yesDelete:      { en: 'Yes, delete',     bg: 'Да, изтрий' },
+  deleting:       { en: 'Deleting…',       bg: 'Изтриване…' },
+  acctDeleted:    { en: 'Account deleted', bg: 'Акаунтът е изтрит' },
+  deleteFail:     { en: 'Failed to delete account', bg: 'Неуспешно изтриване' },
+  restoreTitle:   { en: 'Restore account?', bg: 'Възстановяване на акаунт?' },
+  restoreBody:    { en: "{name}'s account will be restored and set back to ACTIVE.", bg: 'Акаунтът на {name} ще бъде възстановен и активиран.' },
+  yesRestore:     { en: 'Yes, restore',    bg: 'Да, възстанови' },
+  restoring:      { en: 'Restoring…',      bg: 'Възстановяване…' },
+  acctRestored:   { en: 'Account restored', bg: 'Акаунтът е възстановен' },
+  restoreFail:    { en: 'Failed to restore account', bg: 'Неуспешно възстановяване' },
+  forceLogoutTitle:{ en: 'Force logout?', bg: 'Принудителен изход?' },
+  forceLogoutBody: { en: 'All active sessions for {name} will be revoked. They will need to sign in again on every device.', bg: 'Всички активни сесии на {name} ще бъдат прекратени. Ще трябва да влезе отново от всяко устройство.' },
+  yesRevoke:      { en: 'Yes, revoke',     bg: 'Да, прекрати' },
+  revoking:       { en: 'Revoking…',       bg: 'Прекратяване…' },
+  // Same plural-form issue as exportedN — count-neutral form ("sessions revoked: N").
+  revokedN:       { en: 'Revoked {n} session(s)', bg: 'Прекратени сесии: {n}' },
+  revokeFail:     { en: 'Failed to revoke sessions', bg: 'Неуспешно прекратяване' },
+  refundTitle:    { en: 'Issue refund',    bg: 'Възстанови сума' },
+  refundBody:     { en: 'Refund the latest Stripe payment for {name}. Leave amount empty to refund the full charge.', bg: 'Възстанови последното Stripe плащане на {name}. Остави сумата празна, за да възстановиш цялата.' },
+  amountLabel:    { en: 'Amount',          bg: 'Сума' },
+  amountLabelCcy: { en: 'Amount ({currency})', bg: 'Сума ({currency})' },
+  fullAmountPh:   { en: 'Full amount',     bg: 'Цяла сума' },
+  refundMaxHint:  { en: 'Max refundable: {amount} {currency}', bg: 'Максимум за възстановяване: {amount} {currency}' },
+  refundNoCharge: { en: 'No Stripe charge found — nothing to refund.', bg: 'Не е намерено Stripe плащане — няма какво да се възстанови.' },
+  amountTooHigh:  { en: 'Amount exceeds the maximum refundable charge', bg: 'Сумата надвишава максимално възстановимата' },
+  reasonLabel:    { en: 'Reason',          bg: 'Причина' },
+  reasonRequested:{ en: 'Requested by customer', bg: 'По заявка на клиента' },
+  reasonDuplicate:{ en: 'Duplicate charge', bg: 'Дублирано плащане' },
+  reasonFraud:    { en: 'Fraudulent',      bg: 'Измама' },
+  refundCta:      { en: 'Issue refund',    bg: 'Възстанови' },
+  refunding:      { en: 'Refunding…',      bg: 'Възстановяване…' },
+  refundedN:      { en: 'Refund of {amount} {currency} issued', bg: 'Възстановена сума {amount} {currency}' },
+  refundFail:     { en: 'Failed to issue refund', bg: 'Неуспешно възстановяване' },
+  amountPositive: { en: 'Amount must be a positive number', bg: 'Сумата трябва да е положителна' },
+  suspendTitle:   { en: 'Suspend account?', bg: 'Спиране на акаунт?' },
+  activateTitle:  { en: 'Activate account?', bg: 'Активиране на акаунт?' },
+  suspendBody:    { en: '{name} will be suspended and will no longer be able to log in.', bg: '{name} ще бъде спрян и няма да може повече да влиза.' },
+  activateBody:   { en: "{name}'s account will be reactivated.", bg: 'Акаунтът на {name} ще бъде активиран.' },
+  yesSuspend:     { en: 'Yes, suspend',    bg: 'Да, спри' },
+  yesActivate:    { en: 'Yes, activate',   bg: 'Да, активирай' },
+  acctSuspended:  { en: 'Account suspended', bg: 'Акаунтът е спрян' },
+  acctActivated:  { en: 'Account activated', bg: 'Акаунтът е активиран' },
+  statusFail:     { en: 'Failed to update account status', bg: 'Неуспешно обновяване на статус' },
+  ibanLabel:      { en: 'IBAN:',           bg: 'IBAN:' },
+  ibanCopied:     { en: 'IBAN copied',     bg: 'IBAN копиран' },
+  ibanCopy:       { en: 'Copy',            bg: 'Копирай' },
+  ibanNone:       { en: 'Not provided',    bg: 'Липсва' },
+  drawerSubtitle: { en: 'Last 5 wallet transactions', bg: 'Последни 5 транзакции' },
+  drawerSubsTitle:{ en: 'Subscription history', bg: 'История на абонаменти' },
+  drawerEmpty:    { en: 'No transactions found', bg: 'Няма транзакции' },
+  drawerLoading:  { en: 'Loading…',        bg: 'Зареждане…' },
+  drawerNoSubs:   { en: 'No subscriptions yet', bg: 'Няма абонаменти' },
+} as const;
+
+type I18NKey = keyof typeof I18N;
+function tr(key: I18NKey, lang: Lang, vars?: Record<string, string | number>): string {
+  let s: string = I18N[key]?.[lang] ?? key;
+  if (vars) for (const [k, v] of Object.entries(vars)) s = s.split(`{${k}}`).join(String(v));
+  return s;
+}
 
 /* ─── Palette ─────────────────────────────────────────────────────────────── */
 const palette = {
@@ -35,6 +185,12 @@ const palette = {
   dangerSoft: '#f4dcd2',
   info: '#2563eb',
   infoSoft: '#dbeafe',
+  purple: '#7c3aed',
+  purpleSoft: '#ede9fe',
+  teal: '#0f766e',
+  tealSoft: '#ccfbf1',
+  amber: '#92400e',
+  amberSoft: '#fef3c7',
 };
 
 /* ─── Layout ───────────────────────────────────────────────────────────────── */
@@ -196,23 +352,39 @@ const MetaLine = styled.div`
   margin-top: 0.125rem;
 `;
 
+// Mirrors AdminSubscriptionsPage PlanBadge so the same plan renders the same
+// colour across all three admin screens. Amber = Premium Monthly,
+// teal = Premium Weekly (LIGHT), info-blue = Basic.
 const PlanBadge = styled.span<{ $plan: SubscriptionPlan }>`
   display: inline-flex;
   align-items: center;
   font-size: 0.7rem;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.05em;
   border-radius: 0.375rem;
   padding: 0.125rem 0.5rem;
+  white-space: nowrap;
 
   ${({ $plan }) => {
-    if ($plan === 'PREMIUM') return `background: #fef9c3; color: #854d0e;`;
-    if ($plan === 'BASIC') return `background: ${palette.infoSoft}; color: ${palette.info};`;
-    return `background: #f3e8ff; color: #7c3aed;`;
+    switch ($plan) {
+      case 'PREMIUM':
+        return `background: ${palette.amberSoft}; color: ${palette.amber};`;
+      case 'BASIC':
+        return `background: ${palette.infoSoft}; color: ${palette.info};`;
+      case 'LIGHT':
+        return `background: ${palette.tealSoft}; color: ${palette.teal};`;
+      default:
+        return `background: #f3f4f6; color: #6b7280;`;
+    }
   }}
 `;
 
+// Mirrors StatusBadge in AdminSubscriptionsPage and SubStatusBadge in
+// AdminSubscriberDetailPage so the same record reads the same color across all
+// three admin screens. CANCELLED → grey (terminal user-initiated, not error);
+// EXPIRED → purple (natural lapse per spec §4.2); INCOMPLETE_EXPIRED → danger
+// (failed onboarding).
 const StatusBadge = styled.span<{ $status: SubscriptionStatus }>`
   display: inline-flex;
   align-items: center;
@@ -222,21 +394,27 @@ const StatusBadge = styled.span<{ $status: SubscriptionStatus }>`
   letter-spacing: 0.05em;
   border-radius: 0.375rem;
   padding: 0.125rem 0.5rem;
+  white-space: nowrap;
 
   ${({ $status }) => {
     switch ($status) {
       case 'ACTIVE':
-        return `background: ${palette.successSoft}; color: ${palette.success};`;
       case 'TRIALING':
-        return `background: ${palette.infoSoft}; color: ${palette.info};`;
+        return `background: ${palette.successSoft}; color: ${palette.success};`;
       case 'PAST_DUE':
       case 'UNPAID':
         return `background: ${palette.warningSoft}; color: ${palette.warning};`;
-      case 'CANCELLED':
+      case 'INCOMPLETE':
+        return `background: ${palette.infoSoft}; color: ${palette.info};`;
       case 'INCOMPLETE_EXPIRED':
-        return `background: #f3f4f6; color: #6b7280;`;
-      default:
         return `background: ${palette.dangerSoft}; color: ${palette.danger};`;
+      case 'EXPIRED':
+        return `background: ${palette.purpleSoft}; color: ${palette.purple};`;
+      case 'PAUSED':
+        return `background: #f3f4f6; color: #374151;`;
+      case 'CANCELLED':
+      default:
+        return `background: #f3f4f6; color: #6b7280;`;
     }
   }}
 `;
@@ -532,12 +710,6 @@ function riskLevelOf(score: number): 'low' | 'medium' | 'high' {
   return 'high';
 }
 
-function riskLabel(score: number): string {
-  if (score <= 30) return 'Low';
-  if (score <= 60) return 'Medium';
-  return 'High';
-}
-
 function displayName(row: AdminSubscriber): string {
   return row.firstName || row.lastName
     ? `${row.firstName ?? ''} ${row.lastName ?? ''}`.trim()
@@ -546,7 +718,10 @@ function displayName(row: AdminSubscriber): string {
 
 /* ─── CSV helper ────────────────────────────────────────────────────────────── */
 function downloadCSV(rows: AdminSubscriber[], locale: string) {
-  const headers = ['ID', 'First name', 'Last name', 'Email', 'Phone', 'Account status', 'Plan', 'Sub status', 'Cashback balance', 'Period ends', 'Auto-renew', 'Joined'];
+  // Spec §4.4 — cashback is entry-based with five buckets. Available is one
+  // axis only; rename so the column header doesn't claim to be the full
+  // cashback picture (Locked/Expired/etc. live in Кешбек screen).
+  const headers = ['ID', 'First name', 'Last name', 'Email', 'Phone', 'Account status', 'Plan', 'Sub status', 'Available cashback (BGN)', 'Pending cashback (BGN)', 'Period ends', 'Auto-renew', 'Last activity', 'Joined'];
   const fmt = (iso: string) => new Date(iso).toLocaleDateString(locale, { day: '2-digit', month: '2-digit', year: 'numeric' });
   const lines = [
     headers.join(','),
@@ -561,8 +736,12 @@ function downloadCSV(rows: AdminSubscriber[], locale: string) {
         r.subscription?.plan ?? '',
         r.subscription?.status ?? '',
         r.wallet?.availableBalance.toFixed(2) ?? '',
+        r.wallet?.pendingBalance.toFixed(2) ?? '',
         r.subscription?.currentPeriodEnd ? fmt(r.subscription.currentPeriodEnd) : '',
-        r.subscription?.autoRenewal ? 'Yes' : 'No',
+        // Spec §4.1 — auto-renew is meaningless without a subscription.
+        // Emit empty rather than misleading "No" when subscription is null.
+        r.subscription ? (r.subscription.autoRenewal ? 'Yes' : 'No') : '',
+        r.lastActivityAt ? fmt(r.lastActivityAt) : '',
         fmt(r.createdAt),
       ]
         .map((v) => `"${String(v).replace(/"/g, '""')}"`)
@@ -582,52 +761,73 @@ function downloadCSV(rows: AdminSubscriber[], locale: string) {
 const PAGE_SIZE = 20;
 const NEGATIVE_TX_TYPES = ['WITHDRAWAL', 'PURCHASE'];
 
-const PLAN_OPTIONS: Array<{ value: SubscriptionPlan | ''; label: string }> = [
-  { value: '', label: 'All plans' },
-  { value: 'LIGHT', label: 'Light' },
-  { value: 'BASIC', label: 'Basic' },
-  { value: 'PREMIUM', label: 'Premium' },
+const STATUS_OPTIONS: Array<{ value: SubscriptionStatus | ''; key: I18NKey }> = [
+  { value: '', key: 'allStatuses' },
+  { value: 'ACTIVE', key: 'active' },
+  { value: 'TRIALING', key: 'trialing' },
+  { value: 'PAST_DUE', key: 'pastDue' },
+  { value: 'UNPAID', key: 'unpaid' },
+  { value: 'PAUSED', key: 'paused' },
+  { value: 'CANCELLED', key: 'cancelled' },
+  { value: 'EXPIRED', key: 'expired' },
+  { value: 'INCOMPLETE', key: 'incomplete' },
+  { value: 'INCOMPLETE_EXPIRED', key: 'incompleteExpired' },
 ];
 
-const STATUS_OPTIONS: Array<{ value: SubscriptionStatus | ''; label: string }> = [
-  { value: '', label: 'All statuses' },
-  { value: 'ACTIVE', label: 'Active' },
-  { value: 'TRIALING', label: 'Trialing' },
-  { value: 'PAST_DUE', label: 'Past due' },
-  { value: 'UNPAID', label: 'Unpaid' },
-  { value: 'PAUSED', label: 'Paused' },
-  { value: 'CANCELLED', label: 'Cancelled' },
-  { value: 'INCOMPLETE', label: 'Incomplete' },
-  { value: 'INCOMPLETE_EXPIRED', label: 'Incomplete expired' },
+const ACCOUNT_STATUS_OPTIONS: Array<{ value: AccountStatusFilter | ''; key: I18NKey }> = [
+  { value: '', key: 'allAccounts' },
+  { value: 'ACTIVE', key: 'active' },
+  { value: 'SUSPENDED', key: 'suspended' },
+  { value: 'DELETED', key: 'deleted' },
 ];
 
-const ACCOUNT_STATUS_OPTIONS: Array<{ value: AccountStatusFilter | ''; label: string }> = [
-  { value: '', label: 'All accounts' },
-  { value: 'ACTIVE', label: 'Active' },
-  { value: 'SUSPENDED', label: 'Suspended' },
-  { value: 'DELETED', label: 'Deleted' },
-];
-
-const RISK_OPTIONS: Array<{ value: RiskLevelFilter | ''; label: string }> = [
-  { value: '', label: 'All risk' },
-  { value: 'low', label: 'Low risk' },
-  { value: 'medium', label: 'Medium risk' },
-  { value: 'high', label: 'High risk' },
+// Spec §7.1 — three risk tiers framed as "auto / review / high".
+const RISK_OPTIONS: Array<{ value: RiskLevelFilter | ''; key: I18NKey }> = [
+  { value: '', key: 'allRisk' },
+  { value: 'low', key: 'riskAutoFilter' },
+  { value: 'medium', key: 'riskReviewFilter' },
+  { value: 'high', key: 'riskHighFilter' },
 ];
 
 const PLAN_CHOICES: SubscriptionPlan[] = ['LIGHT', 'BASIC', 'PREMIUM'];
 
 type RefundReason = 'duplicate' | 'fraudulent' | 'requested_by_customer';
-const REFUND_REASONS: Array<{ value: RefundReason; label: string }> = [
-  { value: 'requested_by_customer', label: 'Requested by customer' },
-  { value: 'duplicate', label: 'Duplicate charge' },
-  { value: 'fraudulent', label: 'Fraudulent' },
+const REFUND_REASONS: Array<{ value: RefundReason; key: I18NKey }> = [
+  { value: 'requested_by_customer', key: 'reasonRequested' },
+  { value: 'duplicate', key: 'reasonDuplicate' },
+  { value: 'fraudulent', key: 'reasonFraud' },
 ];
 
 export default function AdminSubscribersAllPage() {
   const { language } = useLanguage();
   const queryClient = useQueryClient();
   const locale = language === 'bg' ? 'bg-BG' : 'en-GB';
+  const lang: Lang = language === 'bg' ? 'bg' : 'en';
+  const T = (key: I18NKey, vars?: Record<string, string | number>) => tr(key, lang, vars);
+  // Render a translated string with literal "{name}" replaced by <strong>{name}</strong>.
+  // Helper only knows about {name} — if a translation grows another placeholder
+  // ({count}, {plan}) it would render as literal text. Dev-mode warning surfaces
+  // that loudly instead of silently shipping broken UI.
+  const withName = (key: I18NKey, name: string): React.ReactNode => {
+    const raw = I18N[key]?.[lang] ?? key;
+    const parts = raw.split('{name}');
+    if (process.env.NODE_ENV !== 'production') {
+      const stray = parts.join('').match(/\{[a-zA-Z]+\}/);
+      if (stray) {
+        // eslint-disable-next-line no-console
+        console.warn(
+          `[withName] i18n key '${key}' contains placeholder ${stray[0]} that withName cannot substitute — use tr() instead`,
+        );
+      }
+    }
+    return (
+      <>
+        {parts[0]}
+        <strong>{name}</strong>
+        {parts.slice(1).join('{name}')}
+      </>
+    );
+  };
 
   /* ── Filters ── */
   const [page, setPage] = useState(1);
@@ -690,81 +890,91 @@ export default function AdminSubscribersAllPage() {
     enabled: !!drawerSub,
   });
 
+  // Pre-fetch the latest Stripe charge so the refund modal shows the actual
+  // currency and refundable max instead of letting the admin type a number
+  // blind. Cached by user id; invalidated when the modal opens for a new user.
+  const { data: refundPreview, isLoading: refundPreviewLoading } = useQuery({
+    queryKey: ['subscriber-refund-preview', refundTarget?.id],
+    queryFn: () => adminSubscribersService.refundPreview(refundTarget!.id),
+    enabled: !!refundTarget,
+    staleTime: 60_000,
+  });
+
   /* ── Mutations ── */
   const cancelMutation = useMutation({
     mutationFn: (id: string) => adminSubscribersService.cancelSubscription(id),
     onSuccess: () => {
-      toast.success('Subscription cancelled');
+      toast.success(T('cancelledToast'));
       queryClient.invalidateQueries({ queryKey: ['admin-subscribers'] });
       setConfirmCancel(null);
     },
-    onError: () => toast.error('Failed to cancel subscription'),
+    onError: () => toast.error(T('cancelFail')),
   });
 
   const planMutation = useMutation({
     mutationFn: ({ id, plan }: { id: string; plan: SubscriptionPlan }) =>
       adminSubscribersService.changePlan(id, plan),
     onSuccess: () => {
-      toast.success('Plan updated');
+      toast.success(T('planUpdated'));
       queryClient.invalidateQueries({ queryKey: ['admin-subscribers'] });
       setConfirmPlan(null);
     },
-    onError: () => toast.error('Failed to update plan'),
+    onError: () => toast.error(T('planFail')),
   });
 
   const suspendMutation = useMutation({
     mutationFn: ({ id, targetStatus }: { id: string; targetStatus: 'ACTIVE' | 'SUSPENDED' }) =>
       adminSubscribersService.suspendSubscriber(id, targetStatus),
     onSuccess: (_, vars) => {
-      toast.success(vars.targetStatus === 'SUSPENDED' ? 'Account suspended' : 'Account activated');
+      toast.success(T(vars.targetStatus === 'SUSPENDED' ? 'acctSuspended' : 'acctActivated'));
       queryClient.invalidateQueries({ queryKey: ['admin-subscribers'] });
       setConfirmSuspend(null);
     },
-    onError: () => toast.error('Failed to update account status'),
+    onError: () => toast.error(T('statusFail')),
   });
 
   const forceLogoutMutation = useMutation({
     mutationFn: (id: string) => adminSubscribersService.forceLogout(id),
     onSuccess: (res) => {
-      toast.success(`Revoked ${res.revokedCount} session(s)`);
+      toast.success(T('revokedN', { n: res.revokedCount }));
       setConfirmForceLogout(null);
     },
-    onError: () => toast.error('Failed to revoke sessions'),
+    onError: () => toast.error(T('revokeFail')),
   });
 
   const deleteMutation = useMutation({
     mutationFn: ({ id, reason }: { id: string; reason?: string }) =>
       adminSubscribersService.deleteAccount(id, reason),
     onSuccess: () => {
-      toast.success('Account deleted');
+      toast.success(T('acctDeleted'));
       queryClient.invalidateQueries({ queryKey: ['admin-subscribers'] });
       setConfirmDelete(null);
       setDeleteReason('');
     },
-    onError: () => toast.error('Failed to delete account'),
+    onError: () => toast.error(T('deleteFail')),
   });
 
   const restoreMutation = useMutation({
     mutationFn: (id: string) => adminSubscribersService.restoreAccount(id),
     onSuccess: () => {
-      toast.success('Account restored');
+      toast.success(T('acctRestored'));
       queryClient.invalidateQueries({ queryKey: ['admin-subscribers'] });
       setConfirmRestore(null);
     },
-    onError: () => toast.error('Failed to restore account'),
+    onError: () => toast.error(T('restoreFail')),
   });
 
   const refundMutation = useMutation({
     mutationFn: ({ id, amount, reason }: { id: string; amount?: number; reason: RefundReason }) =>
       adminSubscribersService.refund(id, { amount, reason }),
     onSuccess: (res) => {
-      toast.success(`Refund of ${res.amount.toFixed(2)} ${res.currency.toUpperCase()} issued`);
+      toast.success(T('refundedN', { amount: res.amount.toFixed(2), currency: res.currency.toUpperCase() }));
       queryClient.invalidateQueries({ queryKey: ['admin-subscribers'] });
       setRefundTarget(null);
       setRefundAmount('');
     },
     onError: (err: Error & { response?: { data?: { error?: string } } }) =>
-      toast.error(err.response?.data?.error ?? 'Failed to issue refund'),
+      toast.error(err.response?.data?.error ?? T('refundFail')),
   });
 
   /* ── Escape key close ── */
@@ -791,13 +1001,13 @@ export default function AdminSubscribersAllPage() {
     try {
       const res = await adminSubscribersService.exportAll(filters);
       if (!res.subscribers.length) {
-        toast.error('No subscribers to export');
+        toast.error(T('noToExport'));
         return;
       }
       downloadCSV(res.subscribers, locale);
-      toast.success(`Exported ${res.subscribers.length} subscriber(s)`);
+      toast.success(T('exportedN', { n: res.subscribers.length }));
     } catch {
-      toast.error('Failed to export subscribers');
+      toast.error(T('exportFail'));
     } finally {
       setExporting(false);
     }
@@ -816,11 +1026,17 @@ export default function AdminSubscribersAllPage() {
   const fmtTime = (iso: string) =>
     new Date(iso).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' });
 
+  const userStatusLabel = (s: UserAccountStatus | 'DELETED'): string =>
+    sharedUserStatusLabel(s, lang);
+
+  const subStatusLabel = (s: SubscriptionStatus): string =>
+    sharedSubStatusLabel(s, lang);
+
   /* ── Columns ── */
   const columns: ColumnDef<AdminSubscriber>[] = [
     {
       key: 'firstName',
-      header: 'Subscriber',
+      header: T('colSubscriber'),
       render: (row) => (
         <div>
           <SubscriberName to={`/admin/subscribers/${row.id}`}>
@@ -833,43 +1049,49 @@ export default function AdminSubscribersAllPage() {
     },
     {
       key: 'userId',
-      header: 'User ID',
+      header: T('colUserId'),
       render: (row) => <MonoId>{row.id.slice(0, 8)}</MonoId>,
     },
     {
       key: 'accountStatus',
-      header: 'User Status',
+      header: T('colUserStatus'),
       render: (row) => {
         const s = (row.deletedAt ? 'DELETED' : row.status) as UserAccountStatus | 'DELETED';
-        return <UserStatusBadge $status={s}>{s}</UserStatusBadge>;
+        return <UserStatusBadge $status={s}>{userStatusLabel(s)}</UserStatusBadge>;
       },
     },
     {
       key: 'risk',
-      header: 'Risk',
+      header: T('colRisk'),
       render: (row) =>
         row.riskScore == null ? (
           <span style={{ color: palette.textSubtle }}>—</span>
         ) : (
-          <RiskPill $level={riskLevelOf(row.riskScore)}>{riskLabel(row.riskScore)}</RiskPill>
+          <RiskPill $level={riskLevelOf(row.riskScore)}>{riskLabel(row.riskScore, lang)}</RiskPill>
         ),
     },
     {
-      key: 'lastLogin',
-      header: 'Last login',
-      render: (row) => (
-        <span style={{ color: palette.textMuted, fontSize: '0.8125rem' }}>
-          {row.lastLoginAt ? fmt(row.lastLoginAt) : 'Never'}
-        </span>
-      ),
+      key: 'lastActivity',
+      header: T('colLastActivity'),
+      render: (row) => {
+        // Spec §4.1 — fall back to lastLoginAt only when no richer activity
+        // signal exists yet (legacy users). Once the auth middleware has
+        // touched lastActivityAt, that becomes the source of truth.
+        const ts = row.lastActivityAt ?? row.lastLoginAt;
+        return (
+          <span style={{ color: palette.textMuted, fontSize: '0.8125rem' }}>
+            {ts ? fmt(ts) : T('never')}
+          </span>
+        );
+      },
     },
     {
       key: 'plan',
-      header: 'Plan',
+      header: T('colPlan'),
       render: (row) =>
         row.subscription ? (
           <PlanBadge $plan={row.subscription.plan}>
-            {row.subscription.planDisplayName ?? row.subscription.plan}
+            {planLabel(row.subscription.plan, lang)}
           </PlanBadge>
         ) : (
           <span style={{ color: palette.textSubtle }}>—</span>
@@ -877,11 +1099,11 @@ export default function AdminSubscribersAllPage() {
     },
     {
       key: 'subscriptionStatus',
-      header: 'Sub status',
+      header: T('colSubStatus'),
       render: (row) =>
         row.subscription ? (
           <StatusBadge $status={row.subscription.status}>
-            {row.subscription.status.replace('_', ' ')}
+            {subStatusLabel(row.subscription.status)}
           </StatusBadge>
         ) : (
           <span style={{ color: palette.textSubtle }}>—</span>
@@ -889,13 +1111,13 @@ export default function AdminSubscribersAllPage() {
     },
     {
       key: 'wallet',
-      header: 'Cashback',
+      header: T('colCashback'),
       render: (row) =>
         row.wallet ? (
           <BalanceCell>
             {row.wallet.availableBalance.toFixed(2)} BGN
             {row.wallet.pendingBalance > 0 && (
-              <MetaLine>+{row.wallet.pendingBalance.toFixed(2)} pending</MetaLine>
+              <MetaLine>+{row.wallet.pendingBalance.toFixed(2)} {T('pendingShort')}</MetaLine>
             )}
           </BalanceCell>
         ) : (
@@ -904,7 +1126,7 @@ export default function AdminSubscribersAllPage() {
     },
     {
       key: 'currentPeriodEnd',
-      header: 'Period ends',
+      header: T('colPeriodEnds'),
       sortable: true,
       render: (row) => (
         <span style={{ color: palette.textMuted, fontSize: '0.8125rem' }}>
@@ -914,22 +1136,30 @@ export default function AdminSubscribersAllPage() {
     },
     {
       key: 'autoRenewal',
-      header: 'Auto-renew',
-      render: (row) => (
-        <span
-          style={{
-            fontSize: '0.8125rem',
-            color: row.subscription?.autoRenewal ? palette.success : palette.textSubtle,
-            fontWeight: 600,
-          }}
-        >
-          {row.subscription?.autoRenewal ? 'Yes' : 'No'}
-        </span>
-      ),
+      header: T('colAutoRenew'),
+      // Spec §4.1 — auto-renew is an attribute of a subscription. With no
+      // subscription the previous render produced "No", which incorrectly
+      // implied a cancelled renewal. Show '—' instead.
+      render: (row) => {
+        if (!row.subscription) {
+          return <span style={{ color: palette.textSubtle }}>—</span>;
+        }
+        return (
+          <span
+            style={{
+              fontSize: '0.8125rem',
+              color: row.subscription.autoRenewal ? palette.success : palette.textSubtle,
+              fontWeight: 600,
+            }}
+          >
+            {row.subscription.autoRenewal ? T('yes') : T('no')}
+          </span>
+        );
+      },
     },
     {
       key: 'createdAt',
-      header: 'Joined',
+      header: T('colJoined'),
       sortable: true,
       render: (row) => (
         <span style={{ color: palette.textMuted, fontSize: '0.8125rem' }}>
@@ -941,25 +1171,35 @@ export default function AdminSubscribersAllPage() {
 
   const rowActions: RowAction<AdminSubscriber>[] = [
     {
-      label: 'View history',
+      label: T('viewHistory'),
       onClick: (row) => setDrawerSub(row),
     },
     {
-      label: 'Change plan',
+      label: T('changePlan'),
       onClick: (row) => {
         setNewPlan(row.subscription?.plan ?? 'BASIC');
         setConfirmPlan(row);
       },
-      hidden: (row) => !row.subscription || row.subscription.status === 'CANCELLED' || !!row.deletedAt,
+      hidden: (row) =>
+        !row.subscription ||
+        row.subscription.status === 'CANCELLED' ||
+        row.subscription.status === 'EXPIRED' ||
+        row.subscription.status === 'INCOMPLETE_EXPIRED' ||
+        !!row.deletedAt,
     },
     {
-      label: 'Cancel subscription',
+      label: T('cancelSub'),
       danger: true,
       onClick: (row) => setConfirmCancel(row),
-      hidden: (row) => !row.subscription || row.subscription.status === 'CANCELLED' || !!row.deletedAt,
+      hidden: (row) =>
+        !row.subscription ||
+        row.subscription.status === 'CANCELLED' ||
+        row.subscription.status === 'EXPIRED' ||
+        row.subscription.status === 'INCOMPLETE_EXPIRED' ||
+        !!row.deletedAt,
     },
     {
-      label: 'Refund',
+      label: T('refund'),
       danger: true,
       onClick: (row) => {
         setRefundAmount('');
@@ -969,23 +1209,23 @@ export default function AdminSubscribersAllPage() {
       hidden: (row) => !row.subscription || !!row.deletedAt,
     },
     {
-      label: 'Suspend account',
+      label: T('suspendAcct'),
       danger: true,
       onClick: (row) => setConfirmSuspend({ row, targetStatus: 'SUSPENDED' }),
       hidden: (row) => row.status === 'SUSPENDED' || !!row.deletedAt,
     },
     {
-      label: 'Activate account',
+      label: T('activateAcct'),
       onClick: (row) => setConfirmSuspend({ row, targetStatus: 'ACTIVE' }),
       hidden: (row) => row.status === 'ACTIVE' || !!row.deletedAt,
     },
     {
-      label: 'Force logout',
+      label: T('forceLogout'),
       onClick: (row) => setConfirmForceLogout(row),
       hidden: (row) => !!row.deletedAt,
     },
     {
-      label: 'Delete account',
+      label: T('deleteAcct'),
       danger: true,
       onClick: (row) => {
         setDeleteReason('');
@@ -994,7 +1234,7 @@ export default function AdminSubscribersAllPage() {
       hidden: (row) => !!row.deletedAt,
     },
     {
-      label: 'Restore account',
+      label: T('restoreAcct'),
       onClick: (row) => setConfirmRestore(row),
       hidden: (row) => !row.deletedAt,
     },
@@ -1006,19 +1246,18 @@ export default function AdminSubscribersAllPage() {
       {confirmCancel && (
         <Overlay onClick={() => !cancelMutation.isPending && setConfirmCancel(null)}>
           <Modal onClick={(e) => e.stopPropagation()}>
-            <ModalTitle>Cancel subscription?</ModalTitle>
+            <ModalTitle>{T('cancelTitle')}</ModalTitle>
             <ModalBody>
-              The subscription for <strong>{displayName(confirmCancel)}</strong> will be cancelled
-              at the end of the current billing period. No refund will be issued.
+              {withName('cancelBody', displayName(confirmCancel))}
             </ModalBody>
             <ModalActions>
-              <Btn onClick={() => setConfirmCancel(null)}>Keep active</Btn>
+              <Btn onClick={() => setConfirmCancel(null)}>{T('keepActive')}</Btn>
               <Btn
                 $variant="danger"
                 onClick={() => cancelMutation.mutate(confirmCancel.id)}
                 disabled={cancelMutation.isPending}
               >
-                {cancelMutation.isPending ? 'Cancelling…' : 'Yes, cancel'}
+                {cancelMutation.isPending ? T('cancelling') : T('yesCancel')}
               </Btn>
             </ModalActions>
           </Modal>
@@ -1029,38 +1268,38 @@ export default function AdminSubscribersAllPage() {
       {confirmPlan && (
         <Overlay onClick={() => setConfirmPlan(null)}>
           <Modal onClick={(e) => e.stopPropagation()}>
-            <ModalTitle>Change plan</ModalTitle>
+            <ModalTitle>{T('changePlanTitle')}</ModalTitle>
             <ModalBody>
-              Select a new plan for <strong>{displayName(confirmPlan)}</strong>.
+              {withName('changePlanBody', displayName(confirmPlan))}
               {confirmPlan.subscription && (
-                <> Current plan:{' '}
+                <> {T('currentPlan')}{' '}
                   <PlanBadge $plan={confirmPlan.subscription.plan}>
-                    {confirmPlan.subscription.plan}
+                    {planLabel(confirmPlan.subscription.plan, lang)}
                   </PlanBadge>
                 </>
               )}
             </ModalBody>
             <div>
-              <ModalLabel>New plan</ModalLabel>
+              <ModalLabel>{T('newPlanLabel')}</ModalLabel>
               <ModalSelect
                 value={newPlan}
                 onChange={(e) => setNewPlan(e.target.value as SubscriptionPlan)}
               >
                 {PLAN_CHOICES.map((p) => (
                   <option key={p} value={p}>
-                    {p}
+                    {planLabel(p, lang)}
                   </option>
                 ))}
               </ModalSelect>
             </div>
             <ModalActions>
-              <Btn onClick={() => setConfirmPlan(null)}>Cancel</Btn>
+              <Btn onClick={() => setConfirmPlan(null)}>{T('cancelBtn')}</Btn>
               <Btn
                 $variant="primary"
                 onClick={() => planMutation.mutate({ id: confirmPlan.id, plan: newPlan })}
                 disabled={planMutation.isPending || newPlan === confirmPlan.subscription?.plan}
               >
-                {planMutation.isPending ? 'Saving…' : 'Save change'}
+                {planMutation.isPending ? T('saving') : T('saveChange')}
               </Btn>
             </ModalActions>
           </Modal>
@@ -1071,22 +1310,19 @@ export default function AdminSubscribersAllPage() {
       {confirmDelete && (
         <Overlay onClick={() => !deleteMutation.isPending && setConfirmDelete(null)}>
           <Modal onClick={(e) => e.stopPropagation()}>
-            <ModalTitle>Delete account?</ModalTitle>
-            <ModalBody>
-              <strong>{displayName(confirmDelete)}</strong> will be soft-deleted. History,
-              payments and transactions are preserved and the account can be restored later.
-            </ModalBody>
+            <ModalTitle>{T('deleteTitle')}</ModalTitle>
+            <ModalBody>{withName('deleteBody', displayName(confirmDelete))}</ModalBody>
             <div>
-              <ModalLabel>Reason (optional)</ModalLabel>
+              <ModalLabel>{T('reasonOpt')}</ModalLabel>
               <ModalInput
                 type="text"
                 value={deleteReason}
                 onChange={(e) => setDeleteReason(e.target.value)}
-                placeholder="e.g. user request, fraud"
+                placeholder={T('reasonPh')}
               />
             </div>
             <ModalActions>
-              <Btn onClick={() => setConfirmDelete(null)}>Cancel</Btn>
+              <Btn onClick={() => setConfirmDelete(null)}>{T('cancelBtn')}</Btn>
               <Btn
                 $variant="danger"
                 onClick={() =>
@@ -1094,7 +1330,7 @@ export default function AdminSubscribersAllPage() {
                 }
                 disabled={deleteMutation.isPending}
               >
-                {deleteMutation.isPending ? 'Deleting…' : 'Yes, delete'}
+                {deleteMutation.isPending ? T('deleting') : T('yesDelete')}
               </Btn>
             </ModalActions>
           </Modal>
@@ -1105,19 +1341,16 @@ export default function AdminSubscribersAllPage() {
       {confirmRestore && (
         <Overlay onClick={() => !restoreMutation.isPending && setConfirmRestore(null)}>
           <Modal onClick={(e) => e.stopPropagation()}>
-            <ModalTitle>Restore account?</ModalTitle>
-            <ModalBody>
-              <strong>{displayName(confirmRestore)}</strong>&apos;s account will be restored
-              and set back to ACTIVE.
-            </ModalBody>
+            <ModalTitle>{T('restoreTitle')}</ModalTitle>
+            <ModalBody>{withName('restoreBody', displayName(confirmRestore))}</ModalBody>
             <ModalActions>
-              <Btn onClick={() => setConfirmRestore(null)}>Cancel</Btn>
+              <Btn onClick={() => setConfirmRestore(null)}>{T('cancelBtn')}</Btn>
               <Btn
                 $variant="primary"
                 onClick={() => restoreMutation.mutate(confirmRestore.id)}
                 disabled={restoreMutation.isPending}
               >
-                {restoreMutation.isPending ? 'Restoring…' : 'Yes, restore'}
+                {restoreMutation.isPending ? T('restoring') : T('yesRestore')}
               </Btn>
             </ModalActions>
           </Modal>
@@ -1128,19 +1361,16 @@ export default function AdminSubscribersAllPage() {
       {confirmForceLogout && (
         <Overlay onClick={() => !forceLogoutMutation.isPending && setConfirmForceLogout(null)}>
           <Modal onClick={(e) => e.stopPropagation()}>
-            <ModalTitle>Force logout?</ModalTitle>
-            <ModalBody>
-              All active sessions for <strong>{displayName(confirmForceLogout)}</strong> will
-              be revoked. They will need to sign in again on every device.
-            </ModalBody>
+            <ModalTitle>{T('forceLogoutTitle')}</ModalTitle>
+            <ModalBody>{withName('forceLogoutBody', displayName(confirmForceLogout))}</ModalBody>
             <ModalActions>
-              <Btn onClick={() => setConfirmForceLogout(null)}>Cancel</Btn>
+              <Btn onClick={() => setConfirmForceLogout(null)}>{T('cancelBtn')}</Btn>
               <Btn
                 $variant="danger"
                 onClick={() => forceLogoutMutation.mutate(confirmForceLogout.id)}
                 disabled={forceLogoutMutation.isPending}
               >
-                {forceLogoutMutation.isPending ? 'Revoking…' : 'Yes, revoke'}
+                {forceLogoutMutation.isPending ? T('revoking') : T('yesRevoke')}
               </Btn>
             </ModalActions>
           </Modal>
@@ -1151,41 +1381,60 @@ export default function AdminSubscribersAllPage() {
       {refundTarget && (
         <Overlay onClick={() => !refundMutation.isPending && setRefundTarget(null)}>
           <Modal onClick={(e) => e.stopPropagation()}>
-            <ModalTitle>Issue refund</ModalTitle>
-            <ModalBody>
-              Refund the latest Stripe payment for <strong>{displayName(refundTarget)}</strong>.
-              Leave amount empty to refund the full charge.
-            </ModalBody>
+            <ModalTitle>{T('refundTitle')}</ModalTitle>
+            <ModalBody>{withName('refundBody', displayName(refundTarget))}</ModalBody>
+            {refundPreview && refundPreview.refundable === false && (
+              <ModalBody style={{ color: palette.danger }}>{T('refundNoCharge')}</ModalBody>
+            )}
             <div>
-              <ModalLabel>Amount (BGN)</ModalLabel>
+              <ModalLabel>
+                {refundPreview && refundPreview.refundable
+                  ? T('amountLabelCcy', { currency: refundPreview.currency })
+                  : T('amountLabel')}
+              </ModalLabel>
               <ModalInput
                 type="number"
                 step="0.01"
                 min="0"
+                max={refundPreview && refundPreview.refundable ? refundPreview.amount : undefined}
                 value={refundAmount}
                 onChange={(e) => setRefundAmount(e.target.value)}
-                placeholder="Full amount"
+                placeholder={T('fullAmountPh')}
+                disabled={refundPreviewLoading || (refundPreview?.refundable === false)}
               />
+              {refundPreview && refundPreview.refundable && (
+                <div style={{ fontSize: '0.75rem', color: palette.textSubtle, marginTop: '-1.25rem', marginBottom: '1.5rem' }}>
+                  {T('refundMaxHint', { amount: refundPreview.amount.toFixed(2), currency: refundPreview.currency })}
+                </div>
+              )}
             </div>
             <div>
-              <ModalLabel>Reason</ModalLabel>
+              <ModalLabel>{T('reasonLabel')}</ModalLabel>
               <ModalSelect
                 value={refundReason}
                 onChange={(e) => setRefundReason(e.target.value as RefundReason)}
               >
                 {REFUND_REASONS.map((r) => (
-                  <option key={r.value} value={r.value}>{r.label}</option>
+                  <option key={r.value} value={r.value}>{T(r.key)}</option>
                 ))}
               </ModalSelect>
             </div>
             <ModalActions>
-              <Btn onClick={() => setRefundTarget(null)}>Cancel</Btn>
+              <Btn onClick={() => setRefundTarget(null)}>{T('cancelBtn')}</Btn>
               <Btn
                 $variant="danger"
                 onClick={() => {
                   const parsed = refundAmount ? parseFloat(refundAmount) : undefined;
                   if (parsed !== undefined && (!Number.isFinite(parsed) || parsed <= 0)) {
-                    toast.error('Amount must be a positive number');
+                    toast.error(T('amountPositive'));
+                    return;
+                  }
+                  if (
+                    parsed !== undefined &&
+                    refundPreview?.refundable &&
+                    parsed > refundPreview.amount
+                  ) {
+                    toast.error(T('amountTooHigh'));
                     return;
                   }
                   refundMutation.mutate({
@@ -1194,9 +1443,9 @@ export default function AdminSubscribersAllPage() {
                     reason: refundReason,
                   });
                 }}
-                disabled={refundMutation.isPending}
+                disabled={refundMutation.isPending || refundPreview?.refundable === false}
               >
-                {refundMutation.isPending ? 'Refunding…' : 'Issue refund'}
+                {refundMutation.isPending ? T('refunding') : T('refundCta')}
               </Btn>
             </ModalActions>
           </Modal>
@@ -1208,23 +1457,16 @@ export default function AdminSubscribersAllPage() {
         <Overlay onClick={() => !suspendMutation.isPending && setConfirmSuspend(null)}>
           <Modal onClick={(e) => e.stopPropagation()}>
             <ModalTitle>
-              {confirmSuspend.targetStatus === 'SUSPENDED' ? 'Suspend account?' : 'Activate account?'}
+              {T(confirmSuspend.targetStatus === 'SUSPENDED' ? 'suspendTitle' : 'activateTitle')}
             </ModalTitle>
             <ModalBody>
-              {confirmSuspend.targetStatus === 'SUSPENDED' ? (
-                <>
-                  <strong>{displayName(confirmSuspend.row)}</strong> will be suspended and will no
-                  longer be able to log in.
-                </>
-              ) : (
-                <>
-                  <strong>{displayName(confirmSuspend.row)}</strong>&apos;s account will be
-                  reactivated.
-                </>
+              {withName(
+                confirmSuspend.targetStatus === 'SUSPENDED' ? 'suspendBody' : 'activateBody',
+                displayName(confirmSuspend.row),
               )}
             </ModalBody>
             <ModalActions>
-              <Btn onClick={() => setConfirmSuspend(null)}>Cancel</Btn>
+              <Btn onClick={() => setConfirmSuspend(null)}>{T('cancelBtn')}</Btn>
               <Btn
                 $variant={confirmSuspend.targetStatus === 'SUSPENDED' ? 'danger' : 'primary'}
                 onClick={() =>
@@ -1236,10 +1478,8 @@ export default function AdminSubscribersAllPage() {
                 disabled={suspendMutation.isPending}
               >
                 {suspendMutation.isPending
-                  ? 'Saving…'
-                  : confirmSuspend.targetStatus === 'SUSPENDED'
-                  ? 'Yes, suspend'
-                  : 'Yes, activate'}
+                  ? T('saving')
+                  : T(confirmSuspend.targetStatus === 'SUSPENDED' ? 'yesSuspend' : 'yesActivate')}
               </Btn>
             </ModalActions>
           </Modal>
@@ -1254,32 +1494,32 @@ export default function AdminSubscribersAllPage() {
             <DrawerHeader style={{ position: 'relative' }}>
               <DrawerClose onClick={() => setDrawerSub(null)}>✕</DrawerClose>
               <DrawerTitle>{displayName(drawerSub)}</DrawerTitle>
-              <DrawerSubtitle>Last 5 wallet transactions</DrawerSubtitle>
+              <DrawerSubtitle>{T('drawerSubtitle')}</DrawerSubtitle>
               <IbanRow>
-                <span style={{ fontSize: '0.75rem', color: palette.textSubtle }}>IBAN:</span>
+                <span style={{ fontSize: '0.75rem', color: palette.textSubtle }}>{T('ibanLabel')}</span>
                 {drawerDetail?.iban ? (
                   <>
                     <IbanValue>{drawerDetail.iban}</IbanValue>
                     <CopyBtn
-                      title="Copy IBAN"
+                      title={T('ibanCopy')}
                       onClick={() => {
                         navigator.clipboard.writeText(drawerDetail.iban!);
-                        toast.success('IBAN copied');
+                        toast.success(T('ibanCopied'));
                       }}
                     >
-                      Copy
+                      {T('ibanCopy')}
                     </CopyBtn>
                   </>
                 ) : (
-                  <span style={{ fontSize: '0.8125rem', color: palette.textSubtle }}>Not provided</span>
+                  <span style={{ fontSize: '0.8125rem', color: palette.textSubtle }}>{T('ibanNone')}</span>
                 )}
               </IbanRow>
             </DrawerHeader>
             <DrawerBody>
               {drawerTxLoading ? (
-                <EmptyDrawer>Loading…</EmptyDrawer>
+                <EmptyDrawer>{T('drawerLoading')}</EmptyDrawer>
               ) : !drawerTxData?.transactions.length ? (
-                <EmptyDrawer>No transactions found</EmptyDrawer>
+                <EmptyDrawer>{T('drawerEmpty')}</EmptyDrawer>
               ) : (
                 drawerTxData.transactions.map((tx: AdminTransaction) => (
                   <TxRow key={tx.id}>
@@ -1302,6 +1542,43 @@ export default function AdminSubscribersAllPage() {
                   </TxRow>
                 ))
               )}
+
+              {/* Spec §4.2 — profile and subscription are separate layers and
+                  the user can have history of multiple subscriptions over
+                  time. Surface that history right next to the wallet log. */}
+              {drawerDetail && (
+                <div style={{ marginTop: '1.5rem' }}>
+                  <h4 style={{
+                    fontSize: '0.8125rem',
+                    fontWeight: 700,
+                    color: palette.textMuted,
+                    margin: '0 0 0.5rem',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.06em',
+                  }}>
+                    {T('drawerSubsTitle')}
+                  </h4>
+                  {drawerDetail.subscriptions.length === 0 ? (
+                    <EmptyDrawer>{T('drawerNoSubs')}</EmptyDrawer>
+                  ) : (
+                    drawerDetail.subscriptions.map((s) => (
+                      <TxRow key={s.id}>
+                        <TxMeta>
+                          <TxType style={{ textTransform: 'none' }}>
+                            <PlanBadge $plan={s.plan}>{planLabel(s.plan, lang)}</PlanBadge>
+                            {' '}
+                            <StatusBadge $status={s.status}>{subStatusLabel(s.status)}</StatusBadge>
+                          </TxType>
+                          <TxDate>
+                            {fmt(s.createdAt)}
+                            {s.canceledAt ? ` → ${fmt(s.canceledAt)}` : s.currentPeriodEnd ? ` → ${fmt(s.currentPeriodEnd)}` : ''}
+                          </TxDate>
+                        </TxMeta>
+                      </TxRow>
+                    ))
+                  )}
+                </div>
+              )}
             </DrawerBody>
           </>
         )}
@@ -1309,16 +1586,16 @@ export default function AdminSubscribersAllPage() {
 
       <PageHeader>
         <TitleBlock>
-          <Eyebrow>Subscribers</Eyebrow>
+          <Eyebrow>{T('eyebrow')}</Eyebrow>
           <PageTitle>
-            All subscribers
+            {T('pageTitle')}
             {data && <TotalBadge>{data.total.toLocaleString()}</TotalBadge>}
           </PageTitle>
-          <PageSubtitle>All subscription records across plans and statuses</PageSubtitle>
+          <PageSubtitle>{T('pageSubtitle')}</PageSubtitle>
         </TitleBlock>
         <HeaderActions>
           <Btn onClick={handleExportCSV} disabled={exporting || !data?.total}>
-            {exporting ? 'Exporting…' : '↓ Export CSV'}
+            {exporting ? T('exporting') : T('exportCsv')}
           </Btn>
         </HeaderActions>
       </PageHeader>
@@ -1327,41 +1604,42 @@ export default function AdminSubscribersAllPage() {
         <FilterRow>
           <SearchInput
             type="text"
-            placeholder="Search by name, email, phone or IBAN…"
+            placeholder={T('searchPh')}
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
             onKeyDown={handleSearchKeyDown}
           />
           <Select value={accountStatus} onChange={(e) => { setAccountStatus(e.target.value as AccountStatusFilter | ''); setPage(1); }}>
             {ACCOUNT_STATUS_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>{o.label}</option>
+              <option key={o.value} value={o.value}>{T(o.key)}</option>
             ))}
           </Select>
           <Select value={plan} onChange={(e) => { setPlan(e.target.value as SubscriptionPlan | ''); setPage(1); }}>
-            {PLAN_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>{o.label}</option>
+            <option value="">{T('allPlans')}</option>
+            {PLAN_CHOICES.map((p) => (
+              <option key={p} value={p}>{planLabel(p, lang)}</option>
             ))}
           </Select>
           <Select value={status} onChange={(e) => { setStatus(e.target.value as SubscriptionStatus | ''); setPage(1); }}>
             {STATUS_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>{o.label}</option>
+              <option key={o.value} value={o.value}>{T(o.key)}</option>
             ))}
           </Select>
           <Select value={riskLevel} onChange={(e) => { setRiskLevel(e.target.value as RiskLevelFilter | ''); setPage(1); }}>
             {RISK_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>{o.label}</option>
+              <option key={o.value} value={o.value}>{T(o.key)}</option>
             ))}
           </Select>
           <DateInput
             type="date"
             value={dateFrom}
-            title="Joined from"
+            title={T('colJoined')}
             onChange={(e) => { setDateFrom(e.target.value); setPage(1); }}
           />
           <DateInput
             type="date"
             value={dateTo}
-            title="Joined to"
+            title={T('colJoined')}
             onChange={(e) => { setDateTo(e.target.value); setPage(1); }}
           />
         </FilterRow>
@@ -1372,7 +1650,7 @@ export default function AdminSubscribersAllPage() {
           rowKey={(row) => row.id}
           rowActions={rowActions}
           loading={isLoading}
-          emptyMessage="No subscribers found"
+          emptyMessage={T('noSubsFound')}
           page={page}
           pageSize={PAGE_SIZE}
           totalItems={data?.total}

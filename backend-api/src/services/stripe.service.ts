@@ -786,7 +786,12 @@ class StripeService {
           currentPeriodStart: new Date(subscription.current_period_start * 1000),
           currentPeriodEnd: new Date(subscription.current_period_end * 1000),
           cancelAtPeriodEnd: subscription.cancel_at_period_end,
-          autoRenewal: !subscription.cancel_at_period_end,
+          // Spec §4.2: autoRenewal is a user/admin preference (set by the
+          // /auto-renewal toggle), NOT derived from Stripe state. Re-deriving
+          // it here would silently overwrite the admin's choice on every
+          // unrelated webhook (price update, trial-end, invoice paid, …).
+          // The "effective" renewal state is computed in the UI from
+          // (autoRenewal && !cancelAtPeriodEnd).
           cancelAt: subscription.cancel_at ? new Date(subscription.cancel_at * 1000) : null,
         },
       });
@@ -829,13 +834,29 @@ class StripeService {
       });
 
       if (dbSub) {
-        const wasPaymentFailure = dbSub.status === 'PAST_DUE' || dbSub.retryAttempt > 0;
+        // Spec §4.2: distinguish natural billing-period lapse (EXPIRED) from
+        // user-initiated cancel (CANCELLED). Stripe doesn't tell us *why* the
+        // subscription was deleted on this event, so we infer:
+        //   - retry exhaustion / past_due: Stripe gave up after final retry → EXPIRED
+        //   - cancellation_details.reason === 'payment_failed': same → EXPIRED
+        //   - everything else (user click, admin /cancel, plan migration): CANCELLED
+        const reason = subscription.cancellation_details?.reason;
+        const wasPaymentFailure =
+          dbSub.status === 'PAST_DUE' ||
+          dbSub.retryAttempt > 0 ||
+          reason === 'payment_failed';
+        const finalStatus = wasPaymentFailure ? 'EXPIRED' : 'CANCELLED';
 
         await prisma.subscription.update({
           where: { id: dbSub.id },
           data: {
-            status: 'CANCELLED',
-            canceledAt: new Date(),
+            status: finalStatus,
+            // Preserve any explicit cancellation timestamp; only stamp one for
+            // user-initiated cancels so the EXPIRED-vs-CANCELLED discriminator
+            // (canceledAt presence) stays consistent with the Paysera path.
+            canceledAt: finalStatus === 'CANCELLED'
+              ? (dbSub.canceledAt ?? new Date())
+              : dbSub.canceledAt,
             gracePeriodEndsAt: null,
             retryAttempt: 0,
           },
@@ -863,7 +884,7 @@ class StripeService {
             .catch((err: unknown) => logger.error('Failed to send access-ended notification:', err));
         }
 
-        logger.info(`Subscription ${subscription.id} cancelled for user ${dbSub.userId}, card synced to ${targetPlan} (payment failure: ${wasPaymentFailure})`);
+        logger.info(`Subscription ${subscription.id} ${finalStatus.toLowerCase()} for user ${dbSub.userId}, card synced to ${targetPlan} (payment failure: ${wasPaymentFailure})`);
       } else {
         logger.warn(`No DB subscription found for Stripe subscription ${subscription.id}`);
       }

@@ -40,19 +40,42 @@ const ScoreBadge = styled.span<{ $tier: 'low' | 'med' | 'high' }>`
   background: ${(p) => p.$tier === 'high' ? palette.dangerSoft : p.$tier === 'med' ? palette.warningSoft : palette.successSoft};
   color: ${(p) => p.$tier === 'high' ? palette.danger : p.$tier === 'med' ? palette.warning : palette.success};
 `;
-const RiskPill = styled.span<{ $level: string }>`
+// Accepts either the legacy LOW/MEDIUM/HIGH literals (used for venue / receipt
+// match pills) or the spec §7.1 RiskBucket strings (used for the user-risk pill,
+// since the API returns user.riskBucket directly). The em-dash literal is the
+// fallback rendered when riskBucket is null on a freshly-migrated user row.
+type PillLevel = 'LOW' | 'MEDIUM' | 'HIGH' | 'LOW_0_30' | 'REVIEW_31_60' | 'HIGH_61_PLUS' | '—';
+const VALID_PILL_LEVELS = new Set<PillLevel>([
+  'LOW', 'MEDIUM', 'HIGH', 'LOW_0_30', 'REVIEW_31_60', 'HIGH_61_PLUS', '—',
+]);
+// Coerce an API-shaped string|null into the PillLevel union. Unknown values
+// fall back to '—' so future backend additions don't crash the page silently.
+function toPillLevel(value: string | null | undefined): PillLevel {
+  return value && VALID_PILL_LEVELS.has(value as PillLevel) ? (value as PillLevel) : '—';
+}
+function pillTone(level: PillLevel): 'success' | 'warning' | 'danger' | 'neutral' {
+  if (level === 'HIGH' || level === 'HIGH_61_PLUS') return 'danger';
+  if (level === 'MEDIUM' || level === 'REVIEW_31_60') return 'warning';
+  if (level === 'LOW' || level === 'LOW_0_30') return 'success';
+  return 'neutral';
+}
+const RiskPill = styled.span<{ $level: PillLevel }>`
   display: inline-flex; font-size: 0.75rem; font-weight: 600; padding: 0.125rem 0.5rem;
   border-radius: 9999px;
-  background: ${(p) =>
-    p.$level === 'HIGH' ? palette.dangerSoft :
-    p.$level === 'MEDIUM' ? palette.warningSoft :
-    p.$level === 'LOW' ? palette.successSoft :
-    palette.bg};
-  color: ${(p) =>
-    p.$level === 'HIGH' ? palette.danger :
-    p.$level === 'MEDIUM' ? palette.warning :
-    p.$level === 'LOW' ? palette.success :
-    palette.textSubtle};
+  background: ${(p) => {
+    const tone = pillTone(p.$level);
+    return tone === 'danger' ? palette.dangerSoft :
+           tone === 'warning' ? palette.warningSoft :
+           tone === 'success' ? palette.successSoft :
+           palette.bg;
+  }};
+  color: ${(p) => {
+    const tone = pillTone(p.$level);
+    return tone === 'danger' ? palette.danger :
+           tone === 'warning' ? palette.warning :
+           tone === 'success' ? palette.success :
+           palette.textSubtle;
+  }};
 `;
 const ReasonStack = styled.div`display: flex; flex-wrap: wrap; gap: 0.25rem; max-width: 22rem;`;
 const StatGrid = styled.div`
@@ -95,10 +118,19 @@ function tierFromScore(score: number): 'low' | 'med' | 'high' {
   return 'low';
 }
 
+// Spec §7.1 — three-tier framing (Auto / Review / High), bilingual.
+function bucketLabel(bucket: string | null | undefined, lang: 'en' | 'bg'): string {
+  if (bucket === 'LOW_0_30')      return lang === 'bg' ? 'Авто (0–30)'      : 'Auto (0–30)';
+  if (bucket === 'REVIEW_31_60')  return lang === 'bg' ? 'Преглед (31–60)'  : 'Review (31–60)';
+  if (bucket === 'HIGH_61_PLUS')  return lang === 'bg' ? 'Висок риск (61+)' : 'High risk (61+)';
+  return lang === 'bg' ? 'неизвестен' : 'unknown';
+}
+
 export default function AdminControlSecurityPage() {
   const { language } = useLanguage();
   const [page, setPage] = useState(1);
   const [tier, setTier] = useState<'AUTO_0_30' | 'REVIEW_31_60' | 'HIGH_61_PLUS' | 'all'>('all');
+  const lang: 'en' | 'bg' = language === 'bg' ? 'bg' : 'en';
 
   const { data, isLoading } = useQuery({
     queryKey: ['admin-fraud-signals', page, tier],
@@ -147,8 +179,8 @@ export default function AdminControlSecurityPage() {
           </PrimaryLine>
           <MetaLine>{row.user.email}</MetaLine>
           <div style={{ marginTop: 4 }}>
-            <RiskPill $level={row.user.riskBucket ?? '—'}>
-              User risk: {row.user.riskBucket ?? 'unknown'}
+            <RiskPill $level={toPillLevel(row.user.riskBucket)}>
+              {lang === 'bg' ? 'Риск на абонат' : 'User risk'}: {bucketLabel(row.user.riskBucket, lang)}
             </RiskPill>
           </div>
         </span>
@@ -243,10 +275,10 @@ export default function AdminControlSecurityPage() {
       <Card>
         <FilterRow>
           <Select value={tier} onChange={(e) => { setTier(e.target.value as typeof tier); setPage(1); }}>
-            <option value="all">All tiers</option>
-            <option value="AUTO_0_30">Auto-approve (0–30)</option>
-            <option value="REVIEW_31_60">Review (31–60)</option>
-            <option value="HIGH_61_PLUS">High risk (61+)</option>
+            <option value="all">{lang === 'bg' ? 'Всички нива' : 'All tiers'}</option>
+            <option value="AUTO_0_30">{lang === 'bg' ? 'Авто (0–30)' : 'Auto-approve (0–30)'}</option>
+            <option value="REVIEW_31_60">{lang === 'bg' ? 'Преглед (31–60)' : 'Review (31–60)'}</option>
+            <option value="HIGH_61_PLUS">{lang === 'bg' ? 'Висок риск (61+)' : 'High risk (61+)'}</option>
           </Select>
         </FilterRow>
 

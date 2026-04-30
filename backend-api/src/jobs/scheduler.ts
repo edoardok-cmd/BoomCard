@@ -19,6 +19,7 @@
  *   payment-failure-spike-scan       — 0 * * * *    (every hour)
  *   pending-payment-reminders        — 0 * * * *    (every hour)
  *   ocr-backlog-scan                 — every 6 hours
+ *   user-risk-sweep                  — 0 4 * * *    (4:00 AM daily)
  */
 
 import cron from 'node-cron';
@@ -29,6 +30,7 @@ import { emailService } from '../services/email.service';
 import { notificationService } from '../services/notification.service';
 import { processPayseraRenewals } from './paysera-renewal';
 import { processPendingPaymentReminders, cleanupExpiredPendingPayments } from './pending-payment-reminders';
+import { runUserRiskSweep } from './user-risk-sweep';
 import {
   EUR_TO_BGN_RATE,
   PAYOUT_THRESHOLD_BASIC_EUR,
@@ -976,4 +978,13 @@ export function registerScheduledJobs(): void {
   }, { timezone: 'Europe/Sofia' });
 
   logger.info('[scheduler] Registered: ocr-backlog-scan (0 */6 * * *)');
+
+  // 4 AM every day — recompute User.riskScore/riskBucket for every subscriber
+  // so the SQL risk-level filter on the admin list converges to fresh values.
+  // Lazy on-read covers users who get paginated to; this catches everyone else.
+  cron.schedule('0 4 * * *', () => {
+    runUserRiskSweep().catch((err) => alertSchedulerFailure('user-risk-sweep', err));
+  }, { timezone: 'Europe/Sofia' });
+
+  logger.info('[scheduler] Registered: user-risk-sweep (0 4 * * *)');
 }

@@ -9,6 +9,7 @@ import {
   SubscriptionStatus,
   UserAccountStatus,
 } from '../../services/adminSubscribers.service';
+import { planLabel, subStatusLabel, riskLabel } from '../../utils/planLabels';
 
 /* ─── Palette ─────────────────────────────────────────────────────────────── */
 const palette = {
@@ -28,6 +29,12 @@ const palette = {
   dangerSoft: '#f4dcd2',
   info: '#2563eb',
   infoSoft: '#dbeafe',
+  purple: '#7c3aed',
+  purpleSoft: '#ede9fe',
+  teal: '#0f766e',
+  tealSoft: '#ccfbf1',
+  amber: '#92400e',
+  amberSoft: '#fef3c7',
 };
 
 /* ─── Layout ───────────────────────────────────────────────────────────────── */
@@ -262,23 +269,39 @@ const RiskBadge = styled.span<{ $level: 'low' | 'medium' | 'high' }>`
   }}
 `;
 
+// Mirrors AdminSubscriptionsPage PlanBadge so the same plan renders the same
+// colour across all three admin screens. Amber = Premium Monthly,
+// teal = Premium Weekly (LIGHT), info-blue = Basic.
 const PlanBadge = styled.span<{ $plan: SubscriptionPlan }>`
   display: inline-flex;
   align-items: center;
   font-size: 0.7rem;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.05em;
   border-radius: 0.375rem;
   padding: 0.2rem 0.6rem;
+  white-space: nowrap;
 
   ${({ $plan }) => {
-    if ($plan === 'PREMIUM') return `background: #fef9c3; color: #854d0e;`;
-    if ($plan === 'BASIC') return `background: ${palette.infoSoft}; color: ${palette.info};`;
-    return `background: #f3e8ff; color: #7c3aed;`;
+    switch ($plan) {
+      case 'PREMIUM':
+        return `background: ${palette.amberSoft}; color: ${palette.amber};`;
+      case 'BASIC':
+        return `background: ${palette.infoSoft}; color: ${palette.info};`;
+      case 'LIGHT':
+        return `background: ${palette.tealSoft}; color: ${palette.teal};`;
+      default:
+        return `background: #f3f4f6; color: #6b7280;`;
+    }
   }}
 `;
 
+// Palette mirrors AdminSubscriptionsPage StatusBadge so the same record reads the
+// same color on list and detail. CANCELLED stays neutral grey (terminal,
+// user-initiated — not an error); EXPIRED is purple to distinguish natural
+// lapse from cancellation per spec §4.2; INCOMPLETE_EXPIRED is danger (failed
+// onboarding, not the same as a healthy cancel).
 const SubStatusBadge = styled.span<{ $status: SubscriptionStatus }>`
   display: inline-flex;
   align-items: center;
@@ -288,31 +311,38 @@ const SubStatusBadge = styled.span<{ $status: SubscriptionStatus }>`
   letter-spacing: 0.05em;
   border-radius: 0.375rem;
   padding: 0.2rem 0.6rem;
+  white-space: nowrap;
 
   ${({ $status }) => {
     switch ($status) {
-      case 'ACTIVE': return `background: ${palette.successSoft}; color: ${palette.success};`;
-      case 'TRIALING': return `background: ${palette.infoSoft}; color: ${palette.info};`;
+      case 'ACTIVE':
+      case 'TRIALING':
+        return `background: ${palette.successSoft}; color: ${palette.success};`;
       case 'PAST_DUE':
-      case 'UNPAID': return `background: ${palette.warningSoft}; color: ${palette.warning};`;
+      case 'UNPAID':
+        return `background: ${palette.warningSoft}; color: ${palette.warning};`;
+      case 'INCOMPLETE':
+        return `background: ${palette.infoSoft}; color: ${palette.info};`;
+      case 'INCOMPLETE_EXPIRED':
+        return `background: ${palette.dangerSoft}; color: ${palette.danger};`;
+      case 'EXPIRED':
+        return `background: ${palette.purpleSoft}; color: ${palette.purple};`;
+      case 'PAUSED':
+        return `background: #f3f4f6; color: #374151;`;
       case 'CANCELLED':
-      case 'INCOMPLETE_EXPIRED': return `background: #f3f4f6; color: #6b7280;`;
-      default: return `background: ${palette.dangerSoft}; color: ${palette.danger};`;
+      default:
+        return `background: #f3f4f6; color: #6b7280;`;
     }
   }}
 `;
 
 /* ─── Helpers ─────────────────────────────────────────────────────────────── */
+// Local: maps risk score → RiskBadge styling key (low/medium/high drive colors).
+// Label strings come from the shared riskLabel() in utils/planLabels.
 function riskLevel(score: number): 'low' | 'medium' | 'high' {
   if (score <= 30) return 'low';
   if (score <= 60) return 'medium';
   return 'high';
-}
-
-function riskLabel(score: number): string {
-  if (score <= 30) return 'Low';
-  if (score <= 60) return 'Medium';
-  return 'High';
 }
 
 /* ─── Component ───────────────────────────────────────────────────────────── */
@@ -321,6 +351,7 @@ export default function AdminSubscriberDetailPage() {
   const { language } = useLanguage();
   const queryClient = useQueryClient();
   const locale = language === 'bg' ? 'bg-BG' : 'en-GB';
+  const lang: 'en' | 'bg' = language === 'bg' ? 'bg' : 'en';
 
   const fmt = (iso: string | null) =>
     iso
@@ -382,7 +413,7 @@ export default function AdminSubscriberDetailPage() {
               <UserStatusBadge $status={accountStatus}>{accountStatus}</UserStatusBadge>
               {data.riskScore != null && (
                 <RiskBadge $level={riskLevel(data.riskScore)}>
-                  Risk: {riskLabel(data.riskScore)} ({data.riskScore})
+                  {lang === 'bg' ? 'Риск' : 'Risk'}: {riskLabel(data.riskScore, lang)} ({data.riskScore})
                 </RiskBadge>
               )}
             </BadgeRow>
@@ -484,11 +515,11 @@ export default function AdminSubscriberDetailPage() {
               {sortedSubs.map((sub) => (
                 <tr key={sub.id}>
                   <Td>
-                    <PlanBadge $plan={sub.plan}>{sub.plan}</PlanBadge>
+                    <PlanBadge $plan={sub.plan}>{planLabel(sub.plan, lang)}</PlanBadge>
                   </Td>
                   <Td>
                     <SubStatusBadge $status={sub.status}>
-                      {sub.status.replace('_', ' ')}
+                      {subStatusLabel(sub.status, lang)}
                     </SubStatusBadge>
                   </Td>
                   <Td>{fmt(sub.currentPeriodEnd)}</Td>

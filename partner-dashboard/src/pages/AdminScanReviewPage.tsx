@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import styled from 'styled-components';
 import { API_CONFIG } from '../config/api.config';
@@ -72,13 +72,78 @@ interface ReviewStats {
   avgFraudScore: number;
 }
 
-type FilterStatus = 'all' | 'MANUAL_REVIEW' | 'PENDING' | 'APPROVED' | 'REJECTED';
+type FilterStatus = 'all' | 'active' | 'MANUAL_REVIEW' | 'PENDING' | 'APPROVED' | 'REJECTED';
 // Spec §7.1 buckets: 0-30 auto-approve, 31-60 review, 61+ high risk.
-// Backwards-compatible with riskLevel API; "BUCKET_*" filters apply client-side.
+// Legacy LOW/MEDIUM/HIGH/CRITICAL labels were dropped — the spec defines
+// only three tiers (Auto / Review / High), and shipping both produced
+// confusing dropdowns. The dropdown surfaces the bucket scale only; the
+// URL parser at initialFilterRisk hydrates from ?bucket= and also accepts
+// legacy ?riskLevel=HIGH|MEDIUM|LOW deep-links so old bookmarks/emails
+// don't silently land on 'all'.
 type FilterRisk =
   | 'all'
-  | 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL'
   | 'BUCKET_AUTO_0_30' | 'BUCKET_REVIEW_31_60' | 'BUCKET_HIGH_61_PLUS';
+
+const VALID_STATUSES: FilterStatus[] = ['all', 'active', 'MANUAL_REVIEW', 'PENDING', 'APPROVED', 'REJECTED'];
+
+interface HydratedFilters {
+  filterStatus: FilterStatus;
+  filterRisk: FilterRisk;
+  filterSuspicious: boolean;
+  filterReasons: string;
+  filterDateFromHours: string;
+}
+
+// Single source of truth for URL → filter state. Used both for the initial
+// useState seeding and the useEffect that resyncs when ?params change after
+// mount (e.g. admin clicks another alert while staying on /admin/control/risk).
+function hydrateFromUrl(searchParams: URLSearchParams): HydratedFilters {
+  const bucket = searchParams.get('bucket');
+  const riskLevel = searchParams.get('riskLevel');
+  const status = searchParams.get('status');
+  const suspicious = searchParams.get('suspicious') === 'true';
+  const reasons = searchParams.get('reasons') || '';
+  const rawHours = searchParams.get('dateFromHours');
+  // Number() rejects '24abc' (NaN) but accepts '24.7' → 24.7 → floor to 24.
+  // Empty string Number('') === 0 is rejected by the > 0 guard.
+  // Deliberately NOT clamped — the backend is the source of truth for the
+  // effective window and echoes it back as meta.appliedDateFromHours. The
+  // chip below renders that echoed value, so a hand-crafted ?dateFromHours=99999
+  // shows the *server-applied* number rather than a frontend-clamped lie (B-B2).
+  const dateFromHours = (() => {
+    if (!rawHours) return '';
+    const parsed = Number(rawHours);
+    if (!Number.isFinite(parsed) || parsed <= 0) return '';
+    return String(Math.floor(parsed));
+  })();
+  // A recognised bucket / riskLevel is the only thing that should drive the
+  // "active" status default — a malformed ?bucket=garbage shouldn't silently
+  // flip the status filter (and dropping it from the truthy-test also stops
+  // a garbage bucket from looking like "no bucket present" downstream).
+  const isValidBucket =
+    bucket === 'HIGH_61_PLUS' || bucket === 'REVIEW_31_60' || bucket === 'AUTO_0_30';
+  const isValidRiskLevel =
+    riskLevel === 'HIGH' || riskLevel === 'CRITICAL' ||
+    riskLevel === 'MEDIUM' || riskLevel === 'LOW';
+  const filterRisk: FilterRisk =
+    isValidBucket
+      ? (`BUCKET_${bucket}` as FilterRisk)
+      : riskLevel === 'HIGH' || riskLevel === 'CRITICAL' ? 'BUCKET_HIGH_61_PLUS'
+      : riskLevel === 'MEDIUM' ? 'BUCKET_REVIEW_31_60'
+      : riskLevel === 'LOW' ? 'BUCKET_AUTO_0_30'
+      : 'all';
+  const filterStatus: FilterStatus =
+    status && VALID_STATUSES.includes(status as FilterStatus)
+      ? (status as FilterStatus)
+      : (isValidBucket || isValidRiskLevel || suspicious || reasons) ? 'active' : 'MANUAL_REVIEW';
+  return {
+    filterStatus,
+    filterRisk,
+    filterSuspicious: suspicious,
+    filterReasons: reasons,
+    filterDateFromHours: dateFromHours,
+  };
+}
 
 // ============================================
 // Styled Components
@@ -585,23 +650,35 @@ const ModalActions = styled.div`
 // ============================================
 
 export const AdminScanReviewPage: React.FC = () => {
-  // Allow deep-links from the alerts page to preselect a risk bucket.
-  // Accepts ?bucket=HIGH_61_PLUS | REVIEW_31_60 | AUTO_0_30
-  const [searchParams] = useSearchParams();
-  const initialBucket = searchParams.get('bucket');
-  const initialFilterRisk: FilterRisk =
-    initialBucket === 'HIGH_61_PLUS' ||
-    initialBucket === 'REVIEW_31_60' ||
-    initialBucket === 'AUTO_0_30'
-      ? (`BUCKET_${initialBucket}` as FilterRisk)
-      : 'all';
+  // Allow deep-links from the alerts page (spec §3.2) to preselect filters.
+  //   ?bucket=HIGH_61_PLUS | REVIEW_31_60 | AUTO_0_30  → risk-tier filter
+  //   ?status=active | MANUAL_REVIEW | PENDING | APPROVED | REJECTED | all → status filter
+  //   ?suspicious=true                                  → suspicious-reasons filter
+  //   ?reasons=CODE1,CODE2                              → exact-match reason filter
+  // status=active is the canonical alias for "still requires admin attention"
+  // (PENDING / VALIDATING / MANUAL_REVIEW); risk-tier alerts deep-link with it
+  // so the page count matches what the alert counted.
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const [scans, setScans] = useState<StickerScan[]>([]);
   const [stats, setStats] = useState<ReviewStats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [truncated, setTruncated] = useState(false);
   const [selectedScans, setSelectedScans] = useState<Set<string>>(new Set());
-  const [filterStatus, setFilterStatus] = useState<FilterStatus>('MANUAL_REVIEW');
-  const [filterRisk, setFilterRisk] = useState<FilterRisk>(initialFilterRisk);
+  // Single mount-time hydrate via useMemo with empty deps — subsequent URL
+  // changes flow through the resync effect below. Sharing one parse across
+  // the five useStates avoids redundant work without forcing a single
+  // useReducer-style state shape.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const initialFilters = useMemo(() => hydrateFromUrl(searchParams), []);
+  const [filterStatus, setFilterStatus] = useState<FilterStatus>(initialFilters.filterStatus);
+  const [filterRisk, setFilterRisk] = useState<FilterRisk>(initialFilters.filterRisk);
+  const [filterSuspicious, setFilterSuspicious] = useState<boolean>(initialFilters.filterSuspicious);
+  const [filterReasons, setFilterReasons] = useState<string>(initialFilters.filterReasons);
+  const [filterDateFromHours, setFilterDateFromHours] = useState<string>(initialFilters.filterDateFromHours);
+  // Server echoes the post-clamp window so the chip never claims a window the
+  // server didn't actually apply (B-B2). Undefined until the first response.
+  const [appliedDateFromHours, setAppliedDateFromHours] = useState<number | undefined>(undefined);
   const [searchQuery, setSearchQuery] = useState('');
   // Server pagination (spec §7.1 buckets pushed to DB)
   const [page, setPage] = useState(1);
@@ -614,16 +691,48 @@ export const AdminScanReviewPage: React.FC = () => {
   const [currentScan, setCurrentScan] = useState<StickerScan | null>(null);
   const [currentScanId, setCurrentScanId] = useState<string | null>(null);
 
+  // Resync filters from URL changes (B-B1). The URL is the single source of
+  // truth for all five deep-linkable filters: dropdowns mirror to URL via the
+  // updateFilter* handlers below, chip × buttons remove one param at a time,
+  // and alert links replace the search string. This effect re-derives state
+  // from URL on every change. setState bails on equality so redundant updates
+  // are free.
+  //
+  // An earlier asymmetric variant (only update status/risk when the URL had
+  // the param) tried to preserve dropdown selections across chip removals,
+  // but it broke cross-alert navigation: clicking from a bucket-filtered alert
+  // to a non-bucket alert would leave the old bucket in state. The dropdown→URL
+  // mirroring below makes full resync safe — the URL always carries what the
+  // user actually selected, so re-deriving never clobbers it.
+  useEffect(() => {
+    const next = hydrateFromUrl(searchParams);
+    setFilterStatus(next.filterStatus);
+    setFilterRisk(next.filterRisk);
+    setFilterSuspicious(next.filterSuspicious);
+    setFilterReasons(next.filterReasons);
+    setFilterDateFromHours(next.filterDateFromHours);
+  }, [searchParams]);
+
   // Fetch scans and stats. Filter or page changes refetch.
   useEffect(() => {
     fetchScans();
     fetchStats();
-  }, [filterStatus, filterRisk, page]);
+  }, [filterStatus, filterRisk, filterSuspicious, filterReasons, filterDateFromHours, page]);
 
   // Reset to page 1 when filters change.
   useEffect(() => {
     setPage(1);
-  }, [filterStatus, filterRisk]);
+  }, [filterStatus, filterRisk, filterSuspicious, filterReasons, filterDateFromHours]);
+
+  // Clear the server-echoed window when the requested window changes (alert
+  // nav from `?dateFromHours=24` → `?dateFromHours=48` etc.). Without this the
+  // chip would render the previous fetch's appliedDateFromHours during the
+  // in-flight refetch, briefly mislabeling the active filter. After clearing,
+  // the chip falls back to the raw filterDateFromHours until the next response
+  // re-asserts the post-clamp value.
+  useEffect(() => {
+    setAppliedDateFromHours(undefined);
+  }, [filterDateFromHours]);
 
   const fetchScans = async () => {
     try {
@@ -636,12 +745,11 @@ export const AdminScanReviewPage: React.FC = () => {
       }
       // Spec §7.1 categorical buckets pushed to backend
       if (filterRisk !== 'all') {
-        if (filterRisk.startsWith('BUCKET_')) {
-          params.append('bucket', filterRisk.replace('BUCKET_', ''));
-        } else {
-          params.append('riskLevel', filterRisk);
-        }
+        params.append('bucket', filterRisk.replace('BUCKET_', ''));
       }
+      if (filterSuspicious) params.append('suspicious', 'true');
+      if (filterReasons) params.append('reasons', filterReasons);
+      if (filterDateFromHours) params.append('dateFromHours', filterDateFromHours);
       params.append('page', String(page));
       params.append('limit', String(pageSize));
 
@@ -658,11 +766,20 @@ export const AdminScanReviewPage: React.FC = () => {
       if (!response.ok) throw new Error('Failed to fetch scans');
 
       const json = await response.json();
-      // Backend returns { success, data, meta: { total, page, limit, pages } }
+      // Backend returns { success, data, meta: { total, page, limit, pages, truncated? } }
       // Older responses returned the array directly — tolerate both.
       const items: StickerScan[] = Array.isArray(json) ? json : json.data ?? [];
       setScans(items);
       setTotal(json?.meta?.total ?? items.length);
+      // truncated=true indicates the suspicious raw-id list hit
+      // SUSPICIOUS_ID_LIMIT (5000) and the visible set is a strict subset
+      // (S-B1). Surface to the user so they don't trust the badge over the page.
+      setTruncated(Boolean(json?.meta?.truncated));
+      // Server-applied window — the chip below renders this rather than the
+      // raw filterDateFromHours so the user sees what actually filtered the
+      // page (B-B2). Coerce non-numeric values to undefined.
+      const applied = json?.meta?.appliedDateFromHours;
+      setAppliedDateFromHours(typeof applied === 'number' && Number.isFinite(applied) ? applied : undefined);
     } catch (error) {
       console.error('Error fetching scans:', error);
     } finally {
@@ -881,9 +998,20 @@ export const AdminScanReviewPage: React.FC = () => {
           <FilterLabel>Status</FilterLabel>
           <Select
             value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value as FilterStatus)}
+            // Update state immediately for a tear-free controlled input AND
+            // mirror the choice into the URL so it survives chip removals and
+            // round-trips through the resync effect (B-B1). The resync's
+            // setFilterStatus is then a no-op equality bail.
+            onChange={(e) => {
+              const value = e.target.value as FilterStatus;
+              setFilterStatus(value);
+              const next = new URLSearchParams(searchParams);
+              next.set('status', value);
+              setSearchParams(next, { replace: true });
+            }}
           >
             <option value="all">All Statuses</option>
+            <option value="active">Active (Pending / Validating / Manual Review)</option>
             <option value="MANUAL_REVIEW">Manual Review</option>
             <option value="PENDING">Pending</option>
             <option value="APPROVED">Approved</option>
@@ -895,17 +1023,23 @@ export const AdminScanReviewPage: React.FC = () => {
           <FilterLabel>Risk Level</FilterLabel>
           <Select
             value={filterRisk}
-            onChange={(e) => setFilterRisk(e.target.value as FilterRisk)}
+            // Same URL-mirroring rule as Status. 'all' deletes ?bucket; any
+            // bucket value sets it. We also drop the legacy ?riskLevel= param
+            // if present so the URL doesn't carry both encodings at once.
+            onChange={(e) => {
+              const value = e.target.value as FilterRisk;
+              setFilterRisk(value);
+              const next = new URLSearchParams(searchParams);
+              next.delete('riskLevel');
+              if (value === 'all') next.delete('bucket');
+              else next.set('bucket', value.replace('BUCKET_', ''));
+              setSearchParams(next, { replace: true });
+            }}
           >
             <option value="all">All Risk Levels</option>
             <option value="BUCKET_AUTO_0_30">Auto-approve (0–30)</option>
             <option value="BUCKET_REVIEW_31_60">Review (31–60)</option>
             <option value="BUCKET_HIGH_61_PLUS">High risk (61+)</option>
-            <option disabled>──────</option>
-            <option value="CRITICAL">Critical</option>
-            <option value="HIGH">High</option>
-            <option value="MEDIUM">Medium</option>
-            <option value="LOW">Low</option>
           </Select>
         </FilterGroup>
 
@@ -918,7 +1052,88 @@ export const AdminScanReviewPage: React.FC = () => {
             onChange={(e) => setSearchQuery(e.target.value)}
           />
         </FilterGroup>
+
+        {(filterSuspicious || filterReasons || filterDateFromHours) && (
+          <div style={{ flexBasis: '100%', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+            <span style={{ fontSize: 12, color: 'var(--color-text-secondary)', textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: 600 }}>
+              Active filter:
+            </span>
+            {filterSuspicious && (
+              <button
+                type="button"
+                aria-label="Remove suspicious activity filter"
+                onClick={() => {
+                  setFilterSuspicious(false);
+                  // Mirror state into the URL so refresh / back-nav don't re-assert the chip.
+                  const next = new URLSearchParams(searchParams);
+                  next.delete('suspicious');
+                  setSearchParams(next, { replace: true });
+                }}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 10px', border: '1px solid #f59e0b', borderRadius: 999, background: '#fef3c7', color: '#92400e', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+              >
+                Suspicious activity ×
+              </button>
+            )}
+            {filterReasons && (
+              <button
+                type="button"
+                aria-label={`Remove reason filter: ${filterReasons}`}
+                onClick={() => {
+                  setFilterReasons('');
+                  const next = new URLSearchParams(searchParams);
+                  next.delete('reasons');
+                  setSearchParams(next, { replace: true });
+                }}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 10px', border: '1px solid #f59e0b', borderRadius: 999, background: '#fef3c7', color: '#92400e', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+              >
+                Reason: {filterReasons} ×
+              </button>
+            )}
+            {filterDateFromHours && (
+              <button
+                type="button"
+                aria-label={`Remove time-window filter: last ${appliedDateFromHours ?? filterDateFromHours} hours`}
+                onClick={() => {
+                  setFilterDateFromHours('');
+                  setAppliedDateFromHours(undefined);
+                  const next = new URLSearchParams(searchParams);
+                  next.delete('dateFromHours');
+                  setSearchParams(next, { replace: true });
+                }}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 10px', border: '1px solid #f59e0b', borderRadius: 999, background: '#fef3c7', color: '#92400e', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+              >
+                {/* Prefer the server-echoed window so the chip shows what was
+                    actually filtered post-clamp (B-B2). Falls back to the raw
+                    filterDateFromHours during the in-flight refetch — the
+                    `[filterDateFromHours]` effect above clears the stale
+                    applied value so transitions don't display the previous
+                    window's number against the new filter. */}
+                Last {appliedDateFromHours ?? filterDateFromHours}h ×
+              </button>
+            )}
+          </div>
+        )}
       </FiltersBar>
+
+      {truncated && !loading && (
+        <div
+          role="status"
+          style={{
+            background: '#fef3c7',
+            border: '1px solid #f59e0b',
+            color: '#92400e',
+            borderRadius: 8,
+            padding: '12px 16px',
+            marginBottom: 16,
+            fontSize: 14,
+            fontWeight: 500,
+          }}
+        >
+          Showing the first {total.toLocaleString()} matches — the suspicious-scan list
+          hit the safety cap. Narrow the filters (status, bucket, time window) to see
+          the exact set.
+        </div>
+      )}
 
       {loading ? (
         <LoadingSpinner>

@@ -5,6 +5,7 @@ export type SubscriptionStatus =
   | 'ACTIVE'
   | 'PAST_DUE'
   | 'CANCELLED'
+  | 'EXPIRED'
   | 'INCOMPLETE'
   | 'INCOMPLETE_EXPIRED'
   | 'TRIALING'
@@ -12,6 +13,7 @@ export type SubscriptionStatus =
   | 'PAUSED';
 
 export type UserAccountStatus = 'ACTIVE' | 'SUSPENDED' | 'DELETED';
+export type RiskBucket = 'LOW_0_30' | 'REVIEW_31_60' | 'HIGH_61_PLUS';
 
 export interface SubscriberWallet {
   availableBalance: number;
@@ -40,7 +42,10 @@ export interface AdminSubscriber {
   status: UserAccountStatus; // user account status (ACTIVE / SUSPENDED / DELETED)
   deletedAt: string | null;
   riskScore: number | null;
+  riskBucket: RiskBucket | null;
   lastLoginAt: string | null;
+  // Spec §4.1 — last meaningful action in the app, not just sign-in.
+  lastActivityAt: string | null;
   createdAt: string;        // user account creation date
   wallet: SubscriberWallet | null;
   subscription: SubscriberSubscription | null;
@@ -57,9 +62,10 @@ export interface AdminSubscriberDetail {
   status: UserAccountStatus;
   deletedAt: string | null;
   riskScore: number | null;
-  riskBucket: string | null;
+  riskBucket: RiskBucket | null;
   createdAt: string;
   lastLoginAt: string | null;
+  lastActivityAt: string | null;
   marketingConsent: boolean;
   preferredLanguage: string | null;
   wallet: SubscriberWallet | null;
@@ -159,6 +165,17 @@ export const adminSubscribersService = {
     payload: { amount?: number; reason?: 'duplicate' | 'fraudulent' | 'requested_by_customer' } = {},
   ): Promise<{ ok: boolean; refundId: string; amount: number; currency: string }> {
     return apiService.post(`/admin/subscribers/${id}/refund`, payload);
+  },
+
+  // Preview the latest Stripe charge so the refund modal can show the actual
+  // currency and refundable amount before the admin commits.
+  refundPreview(
+    id: string,
+  ): Promise<
+    | { refundable: true; currency: string; amount: number }
+    | { refundable: false; reason: 'no_stripe_subscription' | 'no_payment' }
+  > {
+    return apiService.get(`/admin/subscribers/${id}/refund-preview`);
   },
 
   forceLogout(id: string): Promise<{ ok: boolean; revokedCount: number }> {

@@ -8,7 +8,7 @@ const router = Router();
 type TxWhere = Parameters<typeof prisma.walletTransaction.findMany>[0]['where'];
 
 function buildWhere(query: Record<string, string>): TxWhere {
-  const { search, type, status, dateFrom, dateTo, userId } = query;
+  const { search, type, status, dateFrom, dateTo, userId, minAmount } = query;
   const where: TxWhere = {};
 
   if (type && Object.values(WalletTransactionType).includes(type as WalletTransactionType)) {
@@ -16,6 +16,14 @@ function buildWhere(query: Record<string, string>): TxWhere {
   }
   if (status && Object.values(WalletTransactionStatus).includes(status as WalletTransactionStatus)) {
     where!.status = status as WalletTransactionStatus;
+  }
+  // minAmount: drives the deep-link from the "large pending payouts" alert. Guarded
+  // against NaN — invalid input means "no filter" rather than crashing the query.
+  if (minAmount) {
+    const n = parseFloat(minAmount);
+    if (Number.isFinite(n) && n > 0) {
+      (where as Record<string, unknown>)['amount'] = { gte: n };
+    }
   }
 
   const walletWhere: Record<string, unknown> = {};

@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import styled from 'styled-components';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-hot-toast';
+import { useSearchParams } from 'react-router-dom';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { DataTable, ColumnDef, RowAction } from '../../components/admin/DataTable/DataTable';
 import {
@@ -283,10 +284,39 @@ export default function AdminPayoutsPage() {
   const { language } = useLanguage();
   const queryClient = useQueryClient();
 
+  // Deep-link from the failed_payouts_pipeline alert (spec §3.2): ?status=FAILED.
+  // The URL is the source of truth — if the admin clicks a different alert while
+  // already on this page, the dropdown re-syncs (otherwise the URL says FAILED
+  // but the table shows the prior selection).
+  const [searchParams] = useSearchParams();
+  const ALLOWED_STATUSES: PayoutStatus[] = [
+    'PENDING', 'PROCESSING', 'COMPLETED', 'FAILED', 'CANCELLED', 'ANNULLED',
+  ];
+  const statusFromUrl = (): PayoutStatus | '' => {
+    const raw = searchParams.get('status') as PayoutStatus | null;
+    return raw && ALLOWED_STATUSES.includes(raw) ? raw : '';
+  };
+
   const [page, setPage] = useState(1);
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
-  const [status, setStatus] = useState<PayoutStatus | ''>('');
+  const [status, setStatus] = useState<PayoutStatus | ''>(statusFromUrl());
+
+  // Resync status + reset page when the URL's ?status param changes underneath us
+  // (e.g. admin navigated from one alert to another while staying on this route).
+  // Gate setPage(1) on an actual status change so unrelated URL params (?utm_*,
+  // ?ref=…) don't bounce the user back to page 1.
+  useEffect(() => {
+    const next = statusFromUrl();
+    if (next !== status) {
+      setStatus(next);
+      setPage(1);
+    }
+    // status intentionally omitted — closure captures the current value, and
+    // we want to react only to URL changes (not state changes that happen via
+    // the dropdown, which already calls setPage(1) directly).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
   const [rejectTarget, setRejectTarget] = useState<AdminPayout | null>(null);
   const [rejectReason, setRejectReason] = useState('');
 

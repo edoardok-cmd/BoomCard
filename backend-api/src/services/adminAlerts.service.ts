@@ -1,3 +1,4 @@
+import { ScanStatus } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 
 // Spec 3.2: Критични / Оперативни / Информационни
@@ -10,6 +11,11 @@ export interface AlertItem {
   title: string;
   count: number;
   link: string;
+  // Drill-down filter values that the backend computed (thresholds, time windows, etc.).
+  // The frontend uses these to (a) interpolate display strings — e.g. "(≥50 лв)" — without
+  // baking them into the i18n title, and (b) preserve the alert's exact filter when
+  // a focus banner forwards the user to a deep-linked page.
+  meta?: Record<string, string | number>;
 }
 
 export interface AdminAlertsResult {
@@ -20,10 +26,81 @@ export interface AdminAlertsResult {
   generatedAt: string;
 }
 
+// Suspicious-activity reason codes (spec §3.2 / §7.2). The live cashback pipeline
+// is StickerScan (per adminCashback.service.ts comment — direct Receipt submission
+// is retired), but StickerScan.fraudReasons is populated from two sources:
+//
+//   1. fraudDetection.service.ts — exact-match codes (DUPLICATE_IMAGE, etc.).
+//      Also written to Receipt rows for the legacy flow.
+//   2. sticker.service.ts validateScan / merchant-mismatch enrichment — codes
+//      with payload suffixes ("MERCHANT_MISMATCH: receipt=… vs venue=…",
+//      "RAPID_SCANNING: 5 scans in 30 minutes", "MAX_SCANS_PER_DAY: 12/10").
+//      hasSome cannot match these — they need a prefix probe via raw SQL.
+//
+// Spec §7.2 explicitly cites: duplicate detection, QR/receipt mismatch,
+// "много транзакции за кратко време" (rapid velocity), странни IBAN промени,
+// подозрително поведение. The exact-match list mirrors that mapping.
+//
+// These constants are also imported by the admin sticker-review route to
+// power the ?suspicious=true page filter — same reason-code set on both sides.
+// The 24h window is forwarded separately via ?dateFromHours so the page count
+// matches the alert (see SUSPICIOUS_ACTIVITY_WINDOW_HOURS below).
+export const SUSPICIOUS_EXACT_CODES = [
+  // duplicate detection
+  'DUPLICATE_IMAGE',
+  'DUPLICATE_IMAGE_HASH',
+  'DUPLICATE_IMAGE_HASH_RACE',
+  'PERCEPTUAL_DUPLICATE_CLOSE',
+  'PERCEPTUAL_DUPLICATE_MODERATE',
+  // QR / receipt / location mismatch
+  'TEMPLATE_MISMATCH',
+  'AMOUNT_MISMATCH',
+  'LARGE_AMOUNT_MISMATCH',
+  'GPS_FAR_FROM_VENUE',
+  // velocity (fraudDetection)
+  'RAPID_SUBMISSIONS',
+  'DAILY_LIMIT_EXCEEDED',
+  'MONTHLY_LIMIT_EXCEEDED',
+  // merchant trust
+  'MERCHANT_BLACKLISTED',
+  // device anomalies (multi-device only — single NEW_DEVICE is too noisy)
+  'NEW_DEVICE_MULTI_DEVICE_USER',
+  'RARE_DEVICE_MULTI_DEVICE_USER',
+] as const;
+
+// Sticker-flow codes that include payload suffixes — matched via prefix in raw SQL.
+// HIGH_BILL_AMOUNT (sticker.service.ts:1463, 15 fraud points) is the canonical
+// "подозрително поведение" lone signal from spec §7.2: 15 pts on its own places
+// the scan in AUTO_0_30, so it would otherwise never surface in any alert.
+export const SUSPICIOUS_PREFIX_CODES = [
+  'MERCHANT_MISMATCH',
+  'RAPID_SCANNING',
+  'MAX_SCANS_PER_DAY',
+  'MAX_SCANS_PER_MONTH',
+  'HIGH_BILL_AMOUNT',
+] as const;
+
+// Statuses that mean "still requires admin attention" — used by every risk-tier
+// count so the alert doesn't include APPROVED/REJECTED rows that are already resolved.
+// Exported and consumed by the admin sticker-review route as the ?status=active
+// alias, so alert counts and page contents stay in lock-step. Typed as ScanStatus[]
+// so callers can pass it straight to Prisma's `in:` without unsafe casts.
+export const ACTIVE_SCAN_STATUSES: ScanStatus[] = [
+  ScanStatus.PENDING,
+  ScanStatus.VALIDATING,
+  ScanStatus.MANUAL_REVIEW,
+];
+
+// Time window (hours) for the suspicious-activity alert. The deep-link forwards
+// this value to the page so the page filter mirrors the alert count exactly.
+export const SUSPICIOUS_ACTIVITY_WINDOW_HOURS = 24;
+
 export async function getAlerts(): Promise<AdminAlertsResult> {
   const now = new Date();
   const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-  const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const suspiciousWindowStart = new Date(
+    now.getTime() - SUSPICIOUS_ACTIVITY_WINDOW_HOURS * 60 * 60 * 1000,
+  );
 
   // Read thresholds from settings, fall back to safe defaults.
   // Guard against malformed values: parseFloat can yield NaN, which would
@@ -40,46 +117,67 @@ export async function getAlerts(): Promise<AdminAlertsResult> {
   const PAYOUT_THRESHOLD = parseSetting(payoutThresholdSetting?.value, 50);
   const LARGE_TX_THRESHOLD = parseSetting(largeTxThresholdSetting?.value, 500);
 
+  // Suspicious activity probe runs against StickerScan with mixed exact-match
+  // and prefix-match codes. Prisma's hasSome can't do prefix matching on TEXT[]
+  // elements, so we use a raw query. Single round-trip; status filter pushed down.
+  const exactCodes: readonly string[] = SUSPICIOUS_EXACT_CODES;
+  const prefixPatterns = SUSPICIOUS_PREFIX_CODES.map(p => `${p}:%`);
+  const suspiciousQuery = prisma.$queryRaw<Array<{ count: bigint }>>`
+    SELECT COUNT(*)::bigint AS count
+    FROM "StickerScan" s
+    WHERE s."createdAt" >= ${suspiciousWindowStart}
+      AND s.status::text IN ('PENDING', 'VALIDATING', 'MANUAL_REVIEW')
+      AND EXISTS (
+        SELECT 1 FROM unnest(s."fraudReasons") AS r
+        WHERE r = ANY(${exactCodes}::text[])
+           OR r LIKE ANY(${prefixPatterns}::text[])
+      )
+  `;
+
   const [
     partnerRequests,
     receiptReviews,
     partnerInvoicesOverdue,
     openPeriods,
-    // Gap #4: open disputes
     openDisputes,
     pastDueSubscriptions,
     unpaidSubscriptions,
-    // Spec risk tiers: 61+ = CRITICAL, 31-60 = OPERATIONAL (Gap #3)
-    highRiskReceipts,
-    mediumRiskReceipts,
+    // Spec risk tiers: 61+ = CRITICAL, 31-60 = OPERATIONAL.
+    // Both queries hit StickerScan (the live pipeline that AdminScanReviewPage
+    // shows) — counting Receipt rows produced an alert ↔ landing-page mismatch.
+    highRiskScans,
+    mediumRiskScans,
     failedTransactions,
-    // Gap #6: suspicious IBAN changes last 24h
+    // Suspicious activity (spec §3.2 / §7.2): IBAN changes
     recentIbanChanges,
+    suspiciousScanRows,
+    // System errors split into payout pipeline vs. fraud-check pipeline so each
+    // links somewhere useful (see usage below).
+    failedWalletPayouts,
+    fraudCheckErrorScans,
     walletsAtThreshold,
     largePendingTx,
     newRegistrations,
-    // Fix #10: use verifiedAt (set on activation) instead of updatedAt
     activatedPartners,
     completedOnboarding,
   ] = await Promise.all([
     prisma.partner.count({ where: { status: 'PENDING' } }),
-    prisma.receipt.count({ where: { status: 'MANUAL_REVIEW' } }),
+    prisma.stickerScan.count({ where: { status: 'MANUAL_REVIEW' } }),
     prisma.partnerCashbackPayment.count({ where: { status: 'OVERDUE' } }),
     prisma.reportingPeriod.count({ where: { status: 'FOR_REVIEW' } }),
     prisma.dispute.count({ where: { status: { in: ['OPEN', 'IN_REVIEW'] } } }),
     prisma.subscription.count({ where: { status: 'PAST_DUE' } }),
     prisma.subscription.count({ where: { status: 'UNPAID' } }),
-    // Exclude MANUAL_REVIEW so these don't double-count with `receipt_review`.
-    prisma.receipt.count({
+    prisma.stickerScan.count({
       where: {
         fraudScore: { gte: 61 },
-        status: { notIn: ['APPROVED', 'REJECTED', 'EXPIRED', 'MANUAL_REVIEW'] },
+        status: { in: ACTIVE_SCAN_STATUSES },
       },
     }),
-    prisma.receipt.count({
+    prisma.stickerScan.count({
       where: {
         fraudScore: { gte: 31, lt: 61 },
-        status: { notIn: ['APPROVED', 'REJECTED', 'EXPIRED', 'MANUAL_REVIEW'] },
+        status: { in: ACTIVE_SCAN_STATUSES },
       },
     }),
     prisma.transaction.count({
@@ -87,6 +185,30 @@ export async function getAlerts(): Promise<AdminAlertsResult> {
     }),
     prisma.user.count({
       where: { ibanLastChangedAt: { gte: oneDayAgo } },
+    }),
+    suspiciousQuery,
+    // System-error probe A: WITHDRAWAL/payout failures from the wallet ledger.
+    // A healthy system has near-zero of these — every one means a user payout
+    // failed (Paysera webhook, IBAN issue, etc.). Restricted to type=WITHDRAWAL
+    // so the count matches the title ("Неуспешни изплащания") even if other
+    // wallet-tx flows ever start producing FAILED rows.
+    prisma.walletTransaction.count({
+      where: {
+        type: 'WITHDRAWAL',
+        status: 'FAILED',
+        createdAt: { gte: oneDayAgo },
+      },
+    }),
+    // System-error probe B: fraud-check pipeline errors. fraudDetection.service.ts
+    // tags affected scans with FRAUD_CHECK_ERROR (exact-match) when the engine throws.
+    // Restricted to active statuses so the alert and the linked page show the
+    // same set — admin-resolved scans (APPROVED/REJECTED) drop off the alert.
+    prisma.stickerScan.count({
+      where: {
+        createdAt: { gte: oneDayAgo },
+        fraudReasons: { has: 'FRAUD_CHECK_ERROR' },
+        status: { in: ACTIVE_SCAN_STATUSES },
+      },
     }),
     prisma.wallet.count({
       where: { balance: { gte: PAYOUT_THRESHOLD }, isLocked: false },
@@ -101,9 +223,11 @@ export async function getAlerts(): Promise<AdminAlertsResult> {
       where: { status: 'ACTIVE', verifiedAt: { gte: oneDayAgo } },
     }),
     prisma.partner.count({
-      where: { requestStatus: 'ODOBRENA', updatedAt: { gte: sevenDaysAgo } },
+      where: { onboardingCompletedAt: { gte: oneDayAgo } },
     }),
   ]);
+
+  const suspiciousScans = Number(suspiciousScanRows[0]?.count ?? 0n);
 
   const critical: AlertItem[] = [];
   const operational: AlertItem[] = [];
@@ -115,24 +239,28 @@ export async function getAlerts(): Promise<AdminAlertsResult> {
       id: 'receipt_review',
       type: 'RECEIPT_REVIEW',
       tier: 'CRITICAL',
-      title: 'Касови бележки за проверка',
+      title: 'Касови бележки за ръчен преглед',
       count: receiptReviews,
-      link: '/admin/control/risk',
+      link: '/admin/control/risk?status=MANUAL_REVIEW',
     });
   }
   if (partnerInvoicesOverdue > 0) {
-    // PartnerCashbackPayment.status = OVERDUE → BoomCard owes the partner
-    // cashback that's now >30 days late. Surfaced as critical per spec §6.2.
+    // Per spec §6.2, partners are invoiced by BoomCard for cashback owed to
+    // subscribers (totalCashbackOwed = partner→BoomCard receivable).
+    // PartnerCashbackPayment.OVERDUE = partner hasn't paid BoomCard.
     critical.push({
-      id: 'partner_payouts_overdue',
-      type: 'PARTNER_PAYOUTS_OVERDUE',
+      id: 'partner_invoices_overdue',
+      type: 'PARTNER_INVOICES_OVERDUE',
       tier: 'CRITICAL',
-      title: 'Просрочени плащания към партньори',
+      title: 'Просрочени фактури от партньори',
       count: partnerInvoicesOverdue,
       link: '/admin/finance/invoices?status=OVERDUE',
     });
   }
-  // Split PAST_DUE / UNPAID so each alert's link filter matches its count.
+  // Spec §3.2: critical alerts must lead to Контрол or Финанси. Subscription
+  // billing data lives under Абонати > Subscriptions, so we route the alert to
+  // Финанси > Справки with a focus param; the reports page renders a banner
+  // with the count + a deep-link to the subscription list for drill-down.
   if (pastDueSubscriptions > 0) {
     critical.push({
       id: 'failed_payments',
@@ -140,7 +268,7 @@ export async function getAlerts(): Promise<AdminAlertsResult> {
       tier: 'CRITICAL',
       title: 'Неуспешни плащания',
       count: pastDueSubscriptions,
-      link: '/admin/subscribers/subscriptions?status=PAST_DUE',
+      link: '/admin/finance/reports?focus=failed_payments',
     });
   }
   if (unpaidSubscriptions > 0) {
@@ -150,34 +278,86 @@ export async function getAlerts(): Promise<AdminAlertsResult> {
       tier: 'CRITICAL',
       title: 'Неплатени абонаменти',
       count: unpaidSubscriptions,
-      link: '/admin/subscribers/subscriptions?status=UNPAID',
+      link: '/admin/finance/reports?focus=unpaid_subscriptions',
     });
   }
-  if (highRiskReceipts > 0) {
+  // Spec §3.2 lists "рискови транзакции" as a single critical category. We
+  // intentionally split into three emitters (receipt_review, risk_transactions,
+  // medium_risk_transactions) because the action surfaces are distinct
+  // (manual-review queue vs. fraud-score buckets) and admins benefit from
+  // seeing them broken out — see /admin/control/risk for the unified queue.
+  if (highRiskScans > 0) {
     critical.push({
       id: 'risk_transactions',
       type: 'RISK_TRANSACTIONS',
       tier: 'CRITICAL',
       title: 'Рискови транзакции (висок риск 61+)',
-      count: highRiskReceipts,
-      link: '/admin/control/risk?bucket=HIGH_61_PLUS',
+      count: highRiskScans,
+      link: '/admin/control/risk?bucket=HIGH_61_PLUS&status=active',
+    });
+  }
+  // Spec §3.2 also lists medium-risk under "рискови транзакции"; bucketed as
+  // critical so the destination rule (Контрол/Финанси) holds.
+  if (mediumRiskScans > 0) {
+    critical.push({
+      id: 'medium_risk_transactions',
+      type: 'MEDIUM_RISK_TRANSACTIONS',
+      tier: 'CRITICAL',
+      title: 'Транзакции за преглед (31–60)',
+      count: mediumRiskScans,
+      link: '/admin/control/risk?bucket=REVIEW_31_60&status=active',
     });
   }
   if (failedTransactions > 0) {
-    // Counts Transaction.status=FAILED in the last 24h — failed payment
-    // transactions (Paysera/wallet/etc.). Surfaced under business-view
-    // transactions, where the alerted rows are actually rendered.
     critical.push({
       id: 'failed_transactions',
       type: 'FAILED_TRANSACTIONS',
       tier: 'CRITICAL',
       title: 'Неуспешни транзакции (последните 24ч)',
       count: failedTransactions,
-      link: '/admin/subscribers/transactions?view=business&status=FAILED',
+      link: '/admin/finance/reports?focus=failed_transactions',
+      // Carries the alert's 24h window so the focus-banner drill-down filters
+      // the business transactions list to the same set the alert counted.
+      meta: { dateFrom: oneDayAgo.toISOString() },
+    });
+  }
+  // Spec §3.2: спорове fall under control. Categorised as critical so the
+  // tier→destination rule (Контрол/Финанси) holds.
+  if (openDisputes > 0) {
+    critical.push({
+      id: 'open_disputes',
+      type: 'OPEN_DISPUTES',
+      tier: 'CRITICAL',
+      title: 'Отворени спорове',
+      count: openDisputes,
+      link: '/admin/control/disputes',
+    });
+  }
+  // System errors split — combining both sources into one alert would have to
+  // link to a heterogeneous "system errors" view we don't have.
+  if (failedWalletPayouts > 0) {
+    // Spec §3.2: critical alerts route to Контрол or Финанси. Payouts live under
+    // Финанси > Плащания абонати — AdminPayoutsPage reads ?status from the URL.
+    critical.push({
+      id: 'failed_payouts_pipeline',
+      type: 'FAILED_PAYOUTS_PIPELINE',
+      tier: 'CRITICAL',
+      title: 'Неуспешни изплащания (последните 24ч)',
+      count: failedWalletPayouts,
+      link: '/admin/finance/payouts?status=FAILED',
+    });
+  }
+  if (fraudCheckErrorScans > 0) {
+    critical.push({
+      id: 'fraud_check_errors',
+      type: 'FRAUD_CHECK_ERRORS',
+      tier: 'CRITICAL',
+      title: 'Грешки в проверката за измами (последните 24ч)',
+      count: fraudCheckErrorScans,
+      link: '/admin/control/risk?reasons=FRAUD_CHECK_ERROR&status=active',
     });
   }
   if (recentIbanChanges > 0) {
-    // Gap #6: suspicious activity — IBAN changes tracked via User.ibanLastChangedAt
     critical.push({
       id: 'suspicious_iban_changes',
       type: 'SUSPICIOUS_IBAN_CHANGES',
@@ -185,6 +365,21 @@ export async function getAlerts(): Promise<AdminAlertsResult> {
       title: 'Промени на IBAN (последните 24ч)',
       count: recentIbanChanges,
       link: '/admin/control/security',
+    });
+  }
+  if (suspiciousScans > 0) {
+    // The deep-link must carry the same time window the alert counted, otherwise
+    // the page (which has no implicit window) shows lifetime suspicious scans
+    // and the count won't match the badge. dateFromHours is honoured by the
+    // sticker-review route's ?suspicious=true branch.
+    critical.push({
+      id: 'suspicious_activity',
+      type: 'SUSPICIOUS_ACTIVITY',
+      tier: 'CRITICAL',
+      title: 'Подозрителна активност (последните 24ч)',
+      count: suspiciousScans,
+      link: `/admin/control/risk?suspicious=true&status=active&dateFromHours=${SUSPICIOUS_ACTIVITY_WINDOW_HOURS}`,
+      meta: { windowHours: SUSPICIOUS_ACTIVITY_WINDOW_HOURS, dateFrom: suspiciousWindowStart.toISOString() },
     });
   }
 
@@ -199,28 +394,6 @@ export async function getAlerts(): Promise<AdminAlertsResult> {
       link: '/admin/partners/requests',
     });
   }
-  if (mediumRiskReceipts > 0) {
-    // Gap #3: spec tier 31-60 = requires review → OPERATIONAL
-    operational.push({
-      id: 'medium_risk_transactions',
-      type: 'MEDIUM_RISK_TRANSACTIONS',
-      tier: 'OPERATIONAL',
-      title: 'Транзакции за преглед (среден риск 31–60)',
-      count: mediumRiskReceipts,
-      link: '/admin/control/risk?bucket=REVIEW_31_60',
-    });
-  }
-  if (openDisputes > 0) {
-    // Gap #4: open/in-review disputes
-    operational.push({
-      id: 'open_disputes',
-      type: 'OPEN_DISPUTES',
-      tier: 'OPERATIONAL',
-      title: 'Отворени спорове',
-      count: openDisputes,
-      link: '/admin/control/disputes',
-    });
-  }
   if (openPeriods > 0) {
     operational.push({
       id: 'periods_for_review',
@@ -232,30 +405,33 @@ export async function getAlerts(): Promise<AdminAlertsResult> {
     });
   }
   if (walletsAtThreshold > 0) {
-    // Fix #5: threshold now comes from SystemSetting; link to Finance > Payments per spec
     operational.push({
       id: 'payout_threshold',
       type: 'PAYOUT_THRESHOLD',
       tier: 'OPERATIONAL',
-      title: `Абонати достигнали праг за изплащане (≥${PAYOUT_THRESHOLD} лв)`,
+      // Static title — threshold value is rendered by the frontend from meta.threshold
+      // so EN and BG see the same number and the strings live next to their translations.
+      title: 'Абонати достигнали праг за изплащане',
       count: walletsAtThreshold,
       link: '/admin/finance/payouts',
+      meta: { threshold: PAYOUT_THRESHOLD },
     });
   }
   if (largePendingTx > 0) {
-    // Fix #5: threshold now comes from SystemSetting
     operational.push({
-      id: 'large_pending_transactions',
-      type: 'LARGE_PENDING_TRANSACTIONS',
+      id: 'large_pending_payouts',
+      type: 'LARGE_PENDING_PAYOUTS',
       tier: 'OPERATIONAL',
-      title: `Чакащи транзакции над лимита (≥${LARGE_TX_THRESHOLD} лв)`,
+      title: 'Чакащи изплащания над лимита',
       count: largePendingTx,
-      link: '/admin/subscribers/transactions?view=wallet&status=PENDING',
+      // minAmount mirrors the alert's amount filter so the landing page row count
+      // matches the badge — without it the user lands on ALL pending wallet TXs.
+      link: `/admin/subscribers/transactions?view=wallet&status=PENDING&minAmount=${LARGE_TX_THRESHOLD}`,
+      meta: { threshold: LARGE_TX_THRESHOLD },
     });
   }
 
   // ── Informational ────────────────────────────────────────────────────────────
-  // Fix #2: deleted_users removed — cumulative count is not a daily signal per spec
   if (newRegistrations > 0) {
     informational.push({
       id: 'new_registrations',
@@ -281,7 +457,7 @@ export async function getAlerts(): Promise<AdminAlertsResult> {
       id: 'completed_onboarding',
       type: 'COMPLETED_ONBOARDING',
       tier: 'INFORMATIONAL',
-      title: 'Завършен онбординг (последните 7 дни)',
+      title: 'Завършен онбординг (последните 24ч)',
       count: completedOnboarding,
       link: '/admin/partners/active',
     });

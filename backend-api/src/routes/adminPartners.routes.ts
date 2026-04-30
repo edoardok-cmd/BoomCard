@@ -39,6 +39,7 @@ const PARTNER_SELECT = {
   isVisible: true,
   joinedAt: true,
   verifiedAt: true,
+  onboardingCompletedAt: true,
   partnerType: { select: { id: true, name: true, color: true } },
   user: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } },
 } as const;
@@ -159,9 +160,19 @@ router.patch(
       });
     }
 
+    const isOdobrenaTransition =
+      requestStatus === PartnerRequestStatus.ODOBRENA && current !== PartnerRequestStatus.ODOBRENA;
+
     const updated = await prisma.partner.update({
       where: { id: req.params.id },
-      data: { requestStatus: requestStatus as PartnerRequestStatus },
+      data: {
+        requestStatus: requestStatus as PartnerRequestStatus,
+        // Spec §3.2 informational alert needs an explicit completion timestamp.
+        // Stamp once on the first ODOBRENA transition; later edits don't reset it.
+        ...(isOdobrenaTransition && !partner.onboardingCompletedAt
+          ? { onboardingCompletedAt: new Date() }
+          : {}),
+      },
       select: PARTNER_SELECT,
     });
 
@@ -265,6 +276,9 @@ router.post(
         status: PartnerStatus.ACTIVE,
         requestStatus: PartnerRequestStatus.ODOBRENA,
         verifiedAt: new Date(),
+        // Spec §3.2 — stamp onboarding completion the first time the partner
+        // gets approved; later approvals (re-activation) don't bump it.
+        ...(partner.onboardingCompletedAt ? {} : { onboardingCompletedAt: new Date() }),
       },
       select: PARTNER_SELECT,
     });

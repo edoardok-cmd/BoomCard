@@ -5,7 +5,9 @@ import { auditMiddleware } from '../middleware/audit.middleware';
 import { prisma } from '../lib/prisma';
 import { stripeService } from '../services/stripe.service';
 import { getSubscriberCashbackEntries } from '../services/adminCashback.service';
+import { computeRiskForUsers, persistRiskAssessments } from '../services/userRisk.service';
 import { planDisplayName } from '../utils/planDisplayName';
+import { logger } from '../utils/logger';
 
 const router = Router();
 router.use(auditMiddleware);
@@ -22,7 +24,10 @@ const SUBSCRIBER_SELECT = {
   status: true,
   deletedAt: true,
   riskScore: true,
+  riskBucket: true,
   lastLoginAt: true,
+  lastActivityAt: true,
+  ibanLastChangedAt: true,
   createdAt: true,
   wallet: {
     select: { availableBalance: true, balance: true, pendingBalance: true },
@@ -135,7 +140,29 @@ router.get('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermissi
       prisma.user.count({ where }),
     ]);
 
-    const subscribers = users.map(flattenSubscriber);
+    // Spec §4.1 — Risk column must reflect a behaviour-based score, not the
+    // never-updated DB default. Recompute for the visible page only (cheap; one
+    // groupBy per rule across ≤ limit users) and persist so filters converge.
+    let subscribers = users.map(flattenSubscriber);
+    try {
+      const assessments = await computeRiskForUsers(
+        users.map((u) => ({ id: u.id, createdAt: u.createdAt, ibanLastChangedAt: u.ibanLastChangedAt })),
+      );
+      subscribers = subscribers.map((s) => {
+        const a = assessments.get(s.id);
+        return a ? { ...s, riskScore: a.score, riskBucket: a.bucket } : s;
+      });
+      // Persist asynchronously so the response isn't blocked on writes.
+      // Fire-and-forget is acceptable here: persistence runs sequentially
+      // across PERSIST_CONCURRENCY chunks and may be cut short by a worker
+      // restart between chunks. The next admin GET (or the daily sweep in
+      // jobs/user-risk-sweep.ts) recomputes the same assessments and writes
+      // any users that were missed, so the failure mode self-heals.
+      void persistRiskAssessments(Array.from(assessments.values())).catch(() => {});
+    } catch {
+      // Computation failure must not break the list — fall back to stored values.
+    }
+
     res.json({ subscribers, total, page: pageNum, limit: limitNum });
   } catch (error) {
     next(error);
@@ -203,6 +230,7 @@ router.get('/:userId', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requireP
         riskBucket: true,
         createdAt: true,
         lastLoginAt: true,
+        lastActivityAt: true,
         marketingConsent: true,
         preferredLanguage: true,
         wallet: {
@@ -290,8 +318,16 @@ router.patch('/:userId/cancel', authenticate, authorize('ADMIN', 'SUPER_ADMIN'),
       return;
     }
 
+    // Pick the latest non-terminal subscription. EXPIRED and INCOMPLETE_EXPIRED
+    // are also terminal states (spec §4.2 distinguishes natural lapse from
+    // user-initiated cancel) so we exclude them too — otherwise we'd stamp
+    // canceledAt onto a row whose lapse was natural and silently flip its
+    // recorded reason from "Изтекъл" to "Спрян/Отказан".
     const subscription = await prisma.subscription.findFirst({
-      where: { userId, status: { not: 'CANCELLED' } },
+      where: {
+        userId,
+        status: { notIn: ['CANCELLED', 'EXPIRED', 'INCOMPLETE_EXPIRED'] },
+      },
       orderBy: { createdAt: 'desc' },
     });
     if (!subscription) {
@@ -359,9 +395,15 @@ router.patch('/:userId/plan', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), r
       return;
     }
 
-    // Defensive guard — findFirst already excludes CANCELLED, but guard is kept for type narrowing
-    if (subscription.status === 'CANCELLED') {
-      res.status(400).json({ error: 'Cannot change plan on a cancelled subscription' });
+    // Defensive guard — findFirst already excludes terminated states, but
+    // guard is kept for type narrowing. EXPIRED rows are also unmodifiable
+    // (natural-lapse end state introduced for spec §4.2).
+    if (
+      subscription.status === 'CANCELLED' ||
+      subscription.status === 'EXPIRED' ||
+      subscription.status === 'INCOMPLETE_EXPIRED'
+    ) {
+      res.status(400).json({ error: 'Cannot change plan on a terminated subscription' });
       return;
     }
 
@@ -419,6 +461,146 @@ router.patch('/:userId/plan', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), r
 const VALID_REFUND_REASONS = ['duplicate', 'fraudulent', 'requested_by_customer'] as const;
 type RefundReason = (typeof VALID_REFUND_REASONS)[number];
 
+// Defensive String() for catch-block values that may not be Errors. A Proxy
+// or class with a throwing toString() would crash inside the logger call and
+// surface a TypeError instead of the original failure.
+function safeStringify(v: unknown): string {
+  try {
+    return String(v);
+  } catch {
+    return '<unprintable error value>';
+  }
+}
+
+// Sum of refunds already issued against a PI, in minor units. Paginates via
+// has_more so a charge with >100 refunds isn't silently truncated (Stripe's
+// page size cap is 100). Returns null on lookup failure so the caller can
+// decide between failing closed (refuse refund) or open (let Stripe enforce).
+async function sumRefundedMinor(paymentIntentId: string): Promise<number | null> {
+  let total = 0;
+  let startingAfter: string | undefined;
+  try {
+    // Bounded loop: 50 pages × 100 refunds = 5000 max. A real-world PI hitting
+    // that count is fraud or a bug — bail and let Stripe gate the create call.
+    for (let i = 0; i < 50; i++) {
+      const page = await stripeService.stripe.refunds.list({
+        payment_intent: paymentIntentId,
+        limit: 100,
+        ...(startingAfter ? { starting_after: startingAfter } : {}),
+      });
+      // Stripe.Refund.amount is typed `number` (non-nullable) in SDK v14.25 —
+      // no need to nullish-coalesce.
+      for (const r of page.data) total += r.amount;
+      if (!page.has_more || page.data.length === 0) return total;
+      startingAfter = page.data[page.data.length - 1].id;
+    }
+    return total;
+  } catch (err) {
+    // Surface the swallowed Stripe error so observability shows it. Callers
+    // treat null as "fail-open" — Stripe still enforces over-refund on create.
+    // Manual Error → POJO: winston's format.errors() only walks the top-level
+    // info object for Error instances, not nested metadata fields, so passing
+    // a bare `err` would JSON-serialize to `{}` (Error props are non-enumerable)
+    // and lose both message and stack.
+    logger.warn(`[admin-refund] sumRefundedMinor lookup failed for PI ${paymentIntentId}`, {
+      paymentIntentId,
+      err: err instanceof Error ? { name: err.name, message: err.message, stack: err.stack } : safeStringify(err),
+    });
+    return null;
+  }
+}
+
+// GET /api/admin/subscribers/:userId/refund-preview — return the currency and
+// max refundable amount of the latest Stripe charge so the admin UI can stamp
+// the input with the right currency *before* the refund is issued.
+router.get('/:userId/refund-preview', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('subscriptions.write'), async (req, res, next) => {
+  try {
+    const { userId } = req.params;
+
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user || user.role !== 'USER') {
+      res.status(404).json({ error: 'Subscriber not found' });
+      return;
+    }
+
+    const subscription = await prisma.subscription.findFirst({
+      where: { userId, stripeSubscriptionId: { not: null } },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (!subscription) {
+      res.json({ refundable: false, reason: 'no_stripe_subscription' });
+      return;
+    }
+
+    const stripeSub = await stripeService.stripe.subscriptions.retrieve(
+      subscription.stripeSubscriptionId!,
+      { expand: ['latest_invoice.payment_intent'] },
+    );
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const invoice = stripeSub.latest_invoice as any;
+    let paymentIntent: { id?: string; amount?: number; currency?: string; amount_received?: number } | undefined =
+      typeof invoice?.payment_intent === 'object' && invoice?.payment_intent !== null
+        ? invoice.payment_intent
+        : undefined;
+    // Bare-string fallback — mirrors the POST /refund cap so preview and POST
+    // agree on what's refundable when expand silently returned just an ID.
+    // Without this, the admin sees "no_payment" while POST /refund would
+    // actually accept the refund.
+    const piId: string | undefined =
+      typeof invoice?.payment_intent === 'string'
+        ? invoice.payment_intent
+        : paymentIntent?.id;
+    if (!paymentIntent && piId) {
+      try {
+        paymentIntent = await stripeService.stripe.paymentIntents.retrieve(piId);
+      } catch (err) {
+        // See sumRefundedMinor catch for why err is serialized into a POJO.
+        logger.warn(`[admin-refund-preview] PI retrieve fallback failed for ${piId}`, {
+          piId,
+          err: err instanceof Error ? { name: err.name, message: err.message, stack: err.stack } : safeStringify(err),
+        });
+      }
+    }
+
+    // Refundable is bounded by what was actually captured (amount_received),
+    // not by the original authorization (amount). For partial captures the
+    // two diverge and a refund > amount_received is rejected by Stripe.
+    // The !piId arm narrows piId to string for the sumRefundedMinor call below
+    // — past this point piId is non-null because paymentIntent only becomes
+    // defined via the expanded object (which carries .id) or via retrieve(piId)
+    // (which requires piId truthy upfront).
+    if (!paymentIntent || !piId || !paymentIntent.currency || !paymentIntent.amount_received) {
+      res.json({ refundable: false, reason: 'no_payment' });
+      return;
+    }
+
+    // Subtract any refunds already issued so the form's max reflects what's
+    // actually still refundable. Without this, a previously partially-refunded
+    // charge would mislead the admin and the resulting refund call would 400
+    // (caught by the POST cap). Lookup failure → null → fail-open 0 (admin
+    // form shows the full PI; POST cap also fails open; Stripe ultimately
+    // gates the create call).
+    const refundedMinor = await sumRefundedMinor(piId);
+    const alreadyRefundedMinor = refundedMinor ?? 0;
+
+    // Stripe amount is in the smallest currency unit (e.g. cents/stotinki) —
+    // convert to major units for the admin form.
+    const grossMinor = paymentIntent.amount_received;
+    const remainingMinor = Math.max(0, grossMinor - alreadyRefundedMinor);
+    if (remainingMinor === 0) {
+      res.json({ refundable: false, reason: 'no_payment' });
+      return;
+    }
+    res.json({
+      refundable: true,
+      currency: paymentIntent.currency.toUpperCase(),
+      amount: remainingMinor / 100,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 // POST /api/admin/subscribers/:userId/refund
 // #13 companion: /:userId is the subscriber ID — find latest Stripe subscription
 router.post('/:userId/refund', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('subscriptions.write'), async (req, res, next) => {
@@ -459,14 +641,68 @@ router.post('/:userId/refund', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), 
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const invoice = stripeSub.latest_invoice as any;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const paymentIntentObj: any =
+      typeof invoice?.payment_intent === 'object' && invoice?.payment_intent !== null
+        ? invoice.payment_intent
+        : null;
     const paymentIntentId: string | undefined =
       typeof invoice?.payment_intent === 'string'
         ? invoice.payment_intent
-        : invoice?.payment_intent?.id;
+        : paymentIntentObj?.id;
 
     if (!paymentIntentId) {
       res.status(422).json({ error: 'No payment found for this subscription. Nothing to refund.' });
       return;
+    }
+
+    // Server-side amount cap. The frontend already disables the submit button
+    // when amount > preview.amount, but a stale modal cache or a JS-disabled
+    // browser can still send an oversized amount. Stripe rejects with a generic
+    // "amount too large" error; a clear 400 here is friendlier and avoids
+    // burning a Stripe round-trip. We compute the live refundable max from the
+    // PI amount minus refunds that have already been issued — so partial-refund
+    // races between preview and submit are caught too.
+    if (amount !== undefined) {
+      // Defensive: when Stripe returned the PI as a bare id string instead of
+      // expanding it (rare — expand directive failed silently), fetch the PI
+      // explicitly so the cap path doesn't no-op and let Stripe handle it.
+      let piForCap: { amount_received?: number; currency?: string } | null = paymentIntentObj;
+      if (!piForCap) {
+        try {
+          piForCap = await stripeService.stripe.paymentIntents.retrieve(paymentIntentId);
+        } catch (err) {
+          // Swallow + log: cap silently no-ops and Stripe still rejects an
+          // over-refund on create. We log so observability can distinguish a
+          // transient Stripe outage from "valid amount, refund accepted".
+          // See sumRefundedMinor catch for why err is serialized into a POJO.
+          logger.warn(`[admin-refund] PI retrieve for cap failed for ${paymentIntentId}; falling through to Stripe enforcement`, {
+            paymentIntentId,
+            err: err instanceof Error ? { name: err.name, message: err.message, stack: err.stack } : safeStringify(err),
+          });
+          piForCap = null;
+        }
+      }
+      if (piForCap && typeof piForCap.amount_received === 'number') {
+        // Refundable is bounded by what was captured (amount_received), not
+        // by the original authorization (amount). For partial captures the two
+        // diverge and a refund > amount_received would be rejected by Stripe.
+        const piAmountMajor = piForCap.amount_received / 100;
+        const refundedMinor = await sumRefundedMinor(paymentIntentId);
+        const alreadyRefundedMajor = (refundedMinor ?? 0) / 100;
+        const refundableMajor = Math.max(0, piAmountMajor - alreadyRefundedMajor);
+        // Tolerate one minor-unit (1 stotinka in BGN, 1 cent in EUR/USD) of
+        // float drift from .toFixed(2) round-trips. Assumes a 2-decimal
+        // currency — BoomCard charges in BGN/EUR; zero-decimal currencies
+        // (JPY, KRW) would need a currency-aware tolerance and a different
+        // /100 conversion. Re-evaluate this if the platform expands.
+        if ((amount as number) - refundableMajor > 0.01) {
+          res.status(400).json({
+            error: `Amount exceeds the refundable charge (max ${refundableMajor.toFixed(2)} ${(piForCap.currency ?? '').toString().toUpperCase()})`,
+          });
+          return;
+        }
+      }
     }
 
     const refund = await stripeService.createRefund({

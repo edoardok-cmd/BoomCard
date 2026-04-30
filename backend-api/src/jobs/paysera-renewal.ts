@@ -53,17 +53,24 @@ export async function processPayseraRenewals(): Promise<void> {
   for (const sub of expired) {
     try {
       const alreadyCancelled = !!sub.canceledAt;
+      // Spec §4.2: distinguish user-initiated cancellation (CANCELLED) from
+      // natural billing-period lapse (EXPIRED). canceledAt is the discriminator
+      // because cancelSubscription sets it but toggleAutoRenewal does not.
+      const finalStatus = alreadyCancelled
+        ? SubscriptionStatus.CANCELLED
+        : SubscriptionStatus.EXPIRED;
       await prisma.subscription.update({
         where: { id: sub.id },
         data: {
-          status: SubscriptionStatus.CANCELLED,
+          status: finalStatus,
           // Preserve the original cancellation timestamp if the user explicitly
-          // cancelled before the grace period elapsed; otherwise stamp it now.
-          canceledAt: sub.canceledAt ?? now,
+          // cancelled before the grace period elapsed; otherwise leave null
+          // (EXPIRED rows did not have an explicit cancellation event).
+          canceledAt: sub.canceledAt,
         },
       });
       logger.info(
-        `[paysera-renewal] Subscription ${sub.id} cancelled after 7-day grace period${alreadyCancelled ? ' (legacy row — user had already cancelled, no email)' : ''}`
+        `[paysera-renewal] Subscription ${sub.id} ${finalStatus.toLowerCase()} after 7-day grace period${alreadyCancelled ? ' (user had already cancelled, no email)' : ''}`
       );
 
       // Sync the BoomCard loyalty card type to match the user's remaining active
@@ -102,12 +109,22 @@ export async function processPayseraRenewals(): Promise<void> {
     }
   }
 
-  // 2. Find subscriptions that expired and are still ACTIVE — begin 7-day grace period
+  // 2. Find subscriptions that expired and are still ACTIVE — begin 7-day grace period.
+  //
+  // Spec §4.2: any Paysera sub past currentPeriodEnd needs a terminal-state
+  // transition. Previously we filtered on autoRenewal=true, which left
+  // autoRenewal=false subs ACTIVE forever past their period (now reachable
+  // since the admin /auto-renewal toggle decoupled autoRenewal from
+  // cancelAtPeriodEnd). The filter now includes them; the canceledAt-null
+  // discriminator at step 1 still distinguishes EXPIRED (natural lapse) from
+  // CANCELLED (user-initiated) when the grace period elapses.
   const expiredActive = await prisma.subscription.findMany({
     where: {
       status: SubscriptionStatus.ACTIVE,
       stripeSubscriptionId: null,
-      autoRenewal: true,
+      // cancelAtPeriodEnd=true rows are handled by scheduler.expireCancelledSubscriptions
+      // (which goes straight to CANCELLED, no grace). canceledAt=null filters
+      // those out too — both filters belt-and-braces.
       cancelAtPeriodEnd: false,
       canceledAt: null,
       currentPeriodEnd: { lte: now },

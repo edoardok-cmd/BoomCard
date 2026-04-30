@@ -10,6 +10,10 @@ export interface AdminAlert {
   title: string;
   count: number;
   link: string;
+  // Server-computed drill-down values (e.g. { threshold: 50 } or
+  // { dateFrom: '2026-04-29T...' }). The page renders these into titles and
+  // forwards them to focus-banner deep links so badge ↔ landing-page counts agree.
+  meta?: Record<string, string | number>;
 }
 
 export interface AdminAlertsResult {

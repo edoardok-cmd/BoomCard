@@ -80,6 +80,7 @@ export const adminTransactionsService = {
     dateFrom?: string;
     dateTo?: string;
     userId?: string;
+    minAmount?: number;
   }): Promise<AdminTransactionsResult> {
     const clean: Record<string, unknown> = { page: params.page, limit: params.limit };
     if (params.search) clean['search'] = params.search;
@@ -88,6 +89,7 @@ export const adminTransactionsService = {
     if (params.dateFrom) clean['dateFrom'] = params.dateFrom;
     if (params.dateTo) clean['dateTo'] = params.dateTo;
     if (params.userId) clean['userId'] = params.userId;
+    if (params.minAmount != null) clean['minAmount'] = params.minAmount;
     return apiService.get<AdminTransactionsResult>('/admin/transactions', clean);
   },
 

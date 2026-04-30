@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { Link } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import styled from 'styled-components';
 import { motion } from 'framer-motion';
 import {
@@ -7,15 +8,138 @@ import {
   CheckCircleIcon,
   ArrowUpRightIcon,
   ArrowPathIcon,
+  UserPlusIcon,
+  BanknotesIcon,
+  CalendarDaysIcon,
+  UserGroupIcon,
+  BuildingStorefrontIcon,
+  CheckBadgeIcon,
+  DocumentMagnifyingGlassIcon,
+  ReceiptPercentIcon,
+  CreditCardIcon,
+  ExclamationTriangleIcon,
+  XCircleIcon,
+  CommandLineIcon,
+  KeyIcon,
+  ChatBubbleBottomCenterTextIcon,
 } from '@heroicons/react/24/outline';
 import { useLanguage } from '../../contexts/LanguageContext';
 import {
   adminAlertsService,
   AdminAlert,
-  AdminAlertsResult,
   AlertSeverity,
   AlertTier,
 } from '../../services/adminAlerts.service';
+
+// Spec §3.2: alert titles displayed by id. Backend ships canonical Bulgarian
+// strings; frontend overrides per language. Falls back to backend `title`
+// (BG) for any unknown id, so a new backend signal still renders.
+const TITLE_I18N: Record<string, { bg: string; en: string }> = {
+  receipt_review: {
+    bg: 'Касови бележки за ръчен преглед',
+    en: 'Receipts pending manual review',
+  },
+  partner_invoices_overdue: {
+    bg: 'Просрочени фактури от партньори',
+    en: 'Overdue partner invoices',
+  },
+  failed_payments: {
+    bg: 'Неуспешни плащания',
+    en: 'Failed subscription payments',
+  },
+  unpaid_subscriptions: {
+    bg: 'Неплатени абонаменти',
+    en: 'Unpaid subscriptions',
+  },
+  risk_transactions: {
+    bg: 'Рискови транзакции (Висок риск 61+)',
+    en: 'High-risk transactions (61+)',
+  },
+  medium_risk_transactions: {
+    bg: 'Транзакции за преглед (31–60)',
+    en: 'Transactions for review (31–60)',
+  },
+  failed_transactions: {
+    bg: 'Неуспешни транзакции (последните 24ч)',
+    en: 'Failed transactions (last 24h)',
+  },
+  failed_payouts_pipeline: {
+    bg: 'Неуспешни изплащания (последните 24ч)',
+    en: 'Failed payouts (last 24h)',
+  },
+  fraud_check_errors: {
+    bg: 'Грешки в проверката за измами (последните 24ч)',
+    en: 'Fraud-check errors (last 24h)',
+  },
+  suspicious_iban_changes: {
+    bg: 'Промени на IBAN (последните 24ч)',
+    en: 'IBAN changes (last 24h)',
+  },
+  suspicious_activity: {
+    bg: 'Подозрителна активност (последните 24ч)',
+    en: 'Suspicious activity (last 24h)',
+  },
+  open_disputes: {
+    bg: 'Отворени спорове',
+    en: 'Open disputes',
+  },
+  partner_requests: {
+    bg: 'Нови партньорски заявки',
+    en: 'New partner requests',
+  },
+  periods_for_review: {
+    bg: 'Периоди за проверка',
+    en: 'Periods for review',
+  },
+  payout_threshold: {
+    bg: 'Абонати достигнали праг за изплащане',
+    en: 'Subscribers reached payout threshold',
+  },
+  large_pending_payouts: {
+    bg: 'Чакащи изплащания над лимита',
+    en: 'Pending payouts above limit',
+  },
+  new_registrations: {
+    bg: 'Нови регистрации (последните 24ч)',
+    en: 'New registrations (last 24h)',
+  },
+  activated_partners: {
+    bg: 'Активирани партньори (последните 24ч)',
+    en: 'Activated partners (last 24h)',
+  },
+  completed_onboarding: {
+    bg: 'Завършен онбординг (последните 24ч)',
+    en: 'Onboarding completed (last 24h)',
+  },
+};
+
+// Per-id icon mapping. Falls back to BellAlertIcon for unknown ids.
+const ICON_BY_ID: Record<string, React.ComponentType<React.SVGProps<SVGSVGElement>>> = {
+  receipt_review: DocumentMagnifyingGlassIcon,
+  partner_invoices_overdue: ReceiptPercentIcon,
+  failed_payments: CreditCardIcon,
+  unpaid_subscriptions: CreditCardIcon,
+  risk_transactions: ExclamationTriangleIcon,
+  medium_risk_transactions: ExclamationTriangleIcon,
+  failed_transactions: XCircleIcon,
+  failed_payouts_pipeline: BanknotesIcon,
+  fraud_check_errors: CommandLineIcon,
+  suspicious_iban_changes: KeyIcon,
+  suspicious_activity: BellAlertIcon,
+  open_disputes: ChatBubbleBottomCenterTextIcon,
+  partner_requests: UserPlusIcon,
+  periods_for_review: CalendarDaysIcon,
+  payout_threshold: BanknotesIcon,
+  large_pending_payouts: BanknotesIcon,
+  new_registrations: UserGroupIcon,
+  activated_partners: BuildingStorefrontIcon,
+  completed_onboarding: CheckBadgeIcon,
+};
+
+// Auto-refresh interval (spec §3.2 framing: dashboard exists for at-a-glance
+// situational awareness — staleness should be minimal). 60s balances signal
+// freshness with backend load (the alerts query runs ~18 parallel counts).
+const REFRESH_INTERVAL_MS = 60_000;
 
 /* ─── Palette (matches admin dashboard) ───────────────────────────────────── */
 const palette = {
@@ -219,6 +343,8 @@ const AlertRight = styled.div`
   flex-shrink: 0;
 `;
 
+// Informational counts get a quieter treatment so the eye is drawn to
+// action-required tiers first (spec §3.2 — daily-orientation framing).
 const CountBadge = styled.span<{ $severity: AlertSeverity }>`
   display: inline-flex;
   align-items: center;
@@ -227,21 +353,23 @@ const CountBadge = styled.span<{ $severity: AlertSeverity }>`
   height: 2rem;
   padding: 0 0.5rem;
   border-radius: 999px;
-  font-size: 0.875rem;
-  font-weight: 700;
   font-feature-settings: 'tnum';
+  font-size: ${p => (p.$severity === 'info' ? '0.8125rem' : '0.875rem')};
+  font-weight: ${p => (p.$severity === 'info' ? 500 : 700)};
   background: ${p =>
     p.$severity === 'danger'
       ? palette.dangerSoft
       : p.$severity === 'warning'
         ? palette.warningSoft
-        : palette.accentSoft};
+        : 'transparent'};
+  border: ${p =>
+    p.$severity === 'info' ? `1px solid ${palette.border}` : 'none'};
   color: ${p =>
     p.$severity === 'danger'
       ? palette.danger
       : p.$severity === 'warning'
         ? palette.warning
-        : palette.accent};
+        : palette.textMuted};
 
   [data-theme='dark'] & {
     background: ${p =>
@@ -249,9 +377,10 @@ const CountBadge = styled.span<{ $severity: AlertSeverity }>`
         ? 'rgba(181,67,39,0.25)'
         : p.$severity === 'warning'
           ? 'rgba(181,128,58,0.25)'
-          : 'rgba(201,100,66,0.2)'};
+          : 'transparent'};
+    border-color: ${p => (p.$severity === 'info' ? '#3a3732' : 'transparent')};
     color: ${p =>
-      p.$severity === 'danger' ? '#e27d5f' : p.$severity === 'warning' ? '#d4a165' : '#e08162'};
+      p.$severity === 'danger' ? '#e27d5f' : p.$severity === 'warning' ? '#d4a165' : '#a8a297'};
   }
 `;
 
@@ -364,29 +493,25 @@ function tierLabel(tier: AlertTier, bg: boolean): string {
 /* ─── Component ────────────────────────────────────────────────────────────── */
 const AdminAlertsPage: React.FC = () => {
   const { language } = useLanguage();
-  const [result, setResult] = useState<AdminAlertsResult | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
   const bg = language === 'bg';
 
-  const load = () => {
-    setLoading(true);
-    setError(null);
-    adminAlertsService
-      .getAlerts()
-      .then(r => setResult(r))
-      .catch(() => {
-        setResult(null);
-        setError(bg ? 'Неуспешно зареждане на сигналите.' : 'Failed to load alerts.');
-      })
-      .finally(() => setLoading(false));
-  };
+  // Shared cache key: AdminFinanceReportsPage reads the same key for its focus
+  // banner, and AdminPartnerRequestsPage invalidates it on approve/reject so
+  // the badge updates without waiting for the 60s poll.
+  //
+  // refetchIntervalInBackground=false is deliberate: this query fires ~18
+  // parallel counts and a raw $queryRaw on every poll, so we don't burn that
+  // budget when the tab is hidden. react-query's default refetchOnWindowFocus
+  // covers staleness on re-foregrounding, so the worst-case freshness gap is
+  // "until the admin tabs back in", not "until the next 60s tick".
+  const { data: result, isLoading, isError, refetch, isFetching } = useQuery({
+    queryKey: ['admin-alerts'],
+    queryFn: adminAlertsService.getAlerts,
+    refetchInterval: REFRESH_INTERVAL_MS,
+    refetchIntervalInBackground: false,
+  });
 
-  useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const error = isError ? (bg ? 'Неуспешно зареждане на сигналите.' : 'Failed to load alerts.') : null;
 
   const generatedAt = result?.generatedAt
     ? new Date(result.generatedAt).toLocaleTimeString(bg ? 'bg-BG' : 'en-US', {
@@ -395,7 +520,10 @@ const AdminAlertsPage: React.FC = () => {
       })
     : null;
 
-  const tiers: { tier: AlertTier; items: AdminAlert[] }[] = result
+  // Skip building tiers when the latest fetch errored — the JSX is gated on
+  // `!error` anyway, but doing the work would read from a stale `result` and
+  // is wasted compute on every error render.
+  const tiers: { tier: AlertTier; items: AdminAlert[] }[] = !error && result
     ? [
         { tier: 'critical' as AlertTier, items: result.critical },
         { tier: 'operational' as AlertTier, items: result.operational },
@@ -406,25 +534,27 @@ const AdminAlertsPage: React.FC = () => {
   return (
     <Shell>
       <RefreshRow>
-        {generatedAt && (
+        {/* Hide the timestamp when the latest fetch errored — it would otherwise read from
+            a stale `result?.generatedAt` and falsely imply the counts below are fresh. */}
+        {!error && generatedAt && (
           <Timestamp>
             {bg ? `Обновено в ${generatedAt}` : `Updated at ${generatedAt}`}
           </Timestamp>
         )}
-        <RefreshBtn onClick={load} disabled={loading}>
-          <ArrowPathIcon style={loading ? { animation: 'spin 1s linear infinite' } : undefined} />
+        <RefreshBtn onClick={() => refetch()} disabled={isFetching}>
+          <ArrowPathIcon style={isFetching ? { animation: 'spin 1s linear infinite' } : undefined} />
           {bg ? 'Обнови' : 'Refresh'}
         </RefreshBtn>
       </RefreshRow>
 
-      {loading && !result && (
+      {isLoading && (
         <LoadingCard>
           <ArrowPathIcon style={{ animation: 'spin 1s linear infinite' }} />
           <span>{bg ? 'Зареждане…' : 'Loading…'}</span>
         </LoadingCard>
       )}
 
-      {!loading && error && (
+      {error && (
         <ErrorCard>
           <BellAlertIcon />
           <div>
@@ -434,7 +564,7 @@ const AdminAlertsPage: React.FC = () => {
         </ErrorCard>
       )}
 
-      {!loading && !error && result?.totalCount === 0 && (
+      {!isLoading && !error && result && result.totalCount === 0 && (
         <AllClearCard>
           <CheckCircleIcon />
           <div>
@@ -448,12 +578,25 @@ const AdminAlertsPage: React.FC = () => {
         </AllClearCard>
       )}
 
-      {tiers.map(({ tier, items }) => (
+      {/* Hide stale data when the latest fetch errored — a populated `result`
+          can hang around from the previous successful poll, and rendering it
+          alongside the ErrorCard would imply the counts are still trustworthy. */}
+      {!error && tiers.map(({ tier, items }) => (
         <TierSection key={tier}>
           <TierHeading>{tierLabel(tier, bg)}</TierHeading>
           <AlertList>
             {items.map((alert, idx) => {
               const severity = tierToSeverity(alert.tier);
+              const i18n = TITLE_I18N[alert.id];
+              const baseTitle = i18n ? (bg ? i18n.bg : i18n.en) : alert.title;
+              // Append "(≥X лв/BGN)" when the backend supplied a threshold via meta —
+              // keeps EN titles in parity with BG instead of dropping the number.
+              const threshold = alert.meta?.['threshold'];
+              const title =
+                typeof threshold === 'number' || typeof threshold === 'string'
+                  ? `${baseTitle} (≥${threshold} ${bg ? 'лв' : 'BGN'})`
+                  : baseTitle;
+              const Icon = ICON_BY_ID[alert.id] ?? BellAlertIcon;
               return (
                 <AlertRow
                   key={alert.id}
@@ -464,10 +607,10 @@ const AdminAlertsPage: React.FC = () => {
                   transition={{ delay: 0.05 * idx, duration: 0.25 }}
                 >
                   <AlertIconBox $severity={severity}>
-                    <BellAlertIcon />
+                    <Icon />
                   </AlertIconBox>
                   <AlertContent>
-                    <AlertTitle>{alert.title}</AlertTitle>
+                    <AlertTitle>{title}</AlertTitle>
                   </AlertContent>
                   <AlertRight>
                     <CountBadge $severity={severity}>{alert.count}</CountBadge>

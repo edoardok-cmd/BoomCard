@@ -1,10 +1,15 @@
 import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
 import { stickerService } from '../services/sticker.service';
+import {
+  ACTIVE_SCAN_STATUSES,
+  SUSPICIOUS_EXACT_CODES,
+  SUSPICIOUS_PREFIX_CODES,
+} from '../services/adminAlerts.service';
 import { authenticate, authorize, AuthRequest } from '../middleware/auth.middleware';
 import { uploadSingle, validateMagicBytes } from '../middleware/upload.middleware';
 import { imageUploadService } from '../services/imageUpload.service';
-import { LocationType } from '@prisma/client';
+import { LocationType, ScanStatus } from '@prisma/client';
 import prisma from '../lib/prisma';
 import { validateAmount, validateGPSCoordinates, ValidationError } from '../utils/validation';
 import { checkLivePhoto } from '../utils/exifLivePhoto';
@@ -647,13 +652,59 @@ router.get('/admin/pending-review', authenticate, authorize('ADMIN', 'SUPER_ADMI
     const status = req.query.status as string;
     const riskLevel = req.query.riskLevel as string;
     const bucket = req.query.bucket as string; // spec §7.1 categorical buckets
+    const suspicious = req.query.suspicious === 'true';
+    const reasonsParam = req.query.reasons as string | undefined;
+
+    // dateFromHours: time-window filter forwarded by alert deep-links so the
+    // page count matches the alert badge. Capped at 30 days (720h) so a
+    // hand-crafted URL can't turn this into an unbounded scan, and rejected
+    // for non-positive values.
+    //
+    // 30-day cap is a defensive policy (spec §3.2 doesn't address it) — long
+    // windows turn into table scans on a hot table; alerts only ever pass 24h
+    // today. The applied (post-clamp) value is echoed in meta.appliedDateFromHours
+    // so the frontend chip can display the value the server actually used; the
+    // frontend deliberately does NOT clamp, to avoid drift if this constant
+    // moves and the chip starts lying about what it asked for.
+    //
+    // Number() (not parseInt): rejects '24abc' → NaN while still accepting
+    // '24.7' → 24.7 → floor to 24. Empty string Number('') === 0 falls
+    // through the > 0 guard.
+    const MAX_WINDOW_HOURS = 720;
+    let dateFromHours: number | undefined;
+    if (req.query.dateFromHours !== undefined) {
+      const parsed = Number(req.query.dateFromHours);
+      if (Number.isFinite(parsed) && parsed > 0) {
+        dateFromHours = Math.min(Math.floor(parsed), MAX_WINDOW_HOURS);
+      }
+    }
+    const dateFrom = dateFromHours
+      ? new Date(Date.now() - dateFromHours * 60 * 60 * 1000)
+      : undefined;
 
     const where: any = {};
 
-    if (status && status !== 'all') {
-      where.status = status;
-    } else {
-      where.status = 'MANUAL_REVIEW';
+    // Status handling — five recognised forms:
+    //   status=all       → no filter
+    //   status=active    → IN (PENDING, VALIDATING, MANUAL_REVIEW); shared alias
+    //                      with adminAlerts.service so risk-tier alert counts and
+    //                      page contents stay in lock-step.
+    //   status=<enum>    → filter to that exact ScanStatus
+    //   (omitted)+bucket → no filter (alert deep-links pass bucket; expect every
+    //                      status to be visible)
+    //   (omitted)        → default to MANUAL_REVIEW (legacy behaviour)
+    if (status === 'all') {
+      // explicitly no status filter
+    } else if (status === 'active') {
+      where.status = { in: ACTIVE_SCAN_STATUSES };
+    } else if (status) {
+      where.status = status as ScanStatus;
+    } else if (!req.query.bucket) {
+      where.status = ScanStatus.MANUAL_REVIEW;
+    }
+
+    if (dateFrom) {
+      where.createdAt = { gte: dateFrom };
     }
 
     if (riskLevel && riskLevel !== 'all') {
@@ -664,6 +715,73 @@ router.get('/admin/pending-review', authenticate, authorize('ADMIN', 'SUPER_ADMI
     if (bucket === 'AUTO_0_30') where.fraudScore = { lt: 31 };
     else if (bucket === 'REVIEW_31_60') where.fraudScore = { gte: 31, lt: 61 };
     else if (bucket === 'HIGH_61_PLUS') where.fraudScore = { gte: 61 };
+
+    // Reason filter — exact-match codes via Prisma's hasSome on TEXT[].
+    // Used by the fraud_check_errors alert (?reasons=FRAUD_CHECK_ERROR).
+    if (reasonsParam) {
+      const codes = reasonsParam
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
+      if (codes.length > 0) {
+        where.fraudReasons = { hasSome: codes };
+      }
+    }
+
+    // Suspicious filter — uses the same SUSPICIOUS_EXACT_CODES + SUSPICIOUS_PREFIX_CODES
+    // set the alert counts. The alert restricts to a time window (default 24h via
+    // dateFromHours) so this subquery does the same; without that, this returns
+    // the lifetime suspicious-scan ID set and the IN-list to findMany blows up
+    // for any non-trivial volume.
+    //
+    // Safety LIMIT clamps the worst case even when no window is supplied — if a
+    // legitimate query needs more rows, the page is already filtering further by
+    // status / bucket so the user can narrow the search.
+    //
+    // Probe SELECTs LIMIT+1 rows so we can distinguish "exactly LIMIT matches"
+    // (no truncation) from ">LIMIT matches" (truncation). With a flat LIMIT,
+    // a row count of exactly LIMIT is ambiguous and the UI banner would lie at
+    // the boundary.
+    const SUSPICIOUS_ID_LIMIT = 5000;
+    const SUSPICIOUS_PROBE_LIMIT = SUSPICIOUS_ID_LIMIT + 1;
+    let suspiciousTruncated = false;
+    if (suspicious) {
+      const exactCodes: readonly string[] = SUSPICIOUS_EXACT_CODES;
+      const prefixPatterns = SUSPICIOUS_PREFIX_CODES.map((p) => `${p}:%`);
+      // Build the WHERE so the time bound is pushed into Postgres rather than
+      // applied in JS. dateFrom is undefined → no createdAt clause.
+      const probeRows = dateFrom
+        ? await prisma.$queryRaw<Array<{ id: string }>>`
+            SELECT s.id
+            FROM "StickerScan" s
+            WHERE s."createdAt" >= ${dateFrom}
+              AND EXISTS (
+                SELECT 1 FROM unnest(s."fraudReasons") AS r
+                WHERE r = ANY(${exactCodes}::text[])
+                   OR r LIKE ANY(${prefixPatterns}::text[])
+              )
+            LIMIT ${SUSPICIOUS_PROBE_LIMIT}
+          `
+        : await prisma.$queryRaw<Array<{ id: string }>>`
+            SELECT s.id
+            FROM "StickerScan" s
+            WHERE EXISTS (
+              SELECT 1 FROM unnest(s."fraudReasons") AS r
+              WHERE r = ANY(${exactCodes}::text[])
+                 OR r LIKE ANY(${prefixPatterns}::text[])
+            )
+            LIMIT ${SUSPICIOUS_PROBE_LIMIT}
+          `;
+      // truncated=true means the visible set is a strict subset of the real
+      // suspicious population. We probed for LIMIT+1 rows, so >LIMIT rows means
+      // truncation; ≤LIMIT means we got the full set.
+      suspiciousTruncated = probeRows.length > SUSPICIOUS_ID_LIMIT;
+      const idRows = suspiciousTruncated
+        ? probeRows.slice(0, SUSPICIOUS_ID_LIMIT)
+        : probeRows;
+      // Empty ids list correctly produces zero rows (Prisma's `in: []` matches nothing).
+      where.id = { in: idRows.map((r) => r.id) };
+    }
 
     const [scans, total] = await Promise.all([
       prisma.stickerScan.findMany({
@@ -688,7 +806,21 @@ router.get('/admin/pending-review', authenticate, authorize('ADMIN', 'SUPER_ADMI
     res.json({
       success: true,
       data: scans,
-      meta: { total, page, limit, pages: Math.ceil(total / limit) },
+      meta: {
+        total,
+        page,
+        limit,
+        pages: Math.ceil(total / limit),
+        // truncated: only meaningful when suspicious=true; signals the raw-id
+        // subquery hit SUSPICIOUS_ID_LIMIT and the visible set is a subset.
+        truncated: suspiciousTruncated,
+        // appliedDateFromHours: the value the server actually used after parsing
+        // and clamping. The frontend chip reads this on each fetch response so a
+        // hand-crafted ?dateFromHours=99999 displays as 720 once the post-clamp
+        // value lands. Between fetches (mount, filter changes) the chip falls
+        // back to the raw URL value briefly — see the chip's fallback comment.
+        appliedDateFromHours: dateFromHours,
+      },
     });
   } catch (error: any) {
     res.status(500).json({

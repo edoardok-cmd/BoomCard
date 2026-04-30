@@ -64,11 +64,15 @@ router.get(
       prisma.user.count({
         where: { createdAt: { gte: thirtyDaysAgo }, deletedAt: null },
       }),
-      // Expired = no ACTIVE subscription, but has a CANCELLED/INCOMPLETE_EXPIRED one
+      // Expired (изтекъл per spec §4.2) = no ACTIVE subscription, but has a
+      // CANCELLED / EXPIRED / INCOMPLETE_EXPIRED one. EXPIRED is the natural
+      // billing-period lapse path (Paysera renewal cron); CANCELLED is the
+      // user-initiated path. Both count toward "expired subscribers" on the
+      // dashboard since the user has no live access.
       prisma.user.count({
         where: {
           subscriptions: {
-            some: { status: { in: ['CANCELLED', 'INCOMPLETE_EXPIRED'] } },
+            some: { status: { in: ['CANCELLED', 'EXPIRED', 'INCOMPLETE_EXPIRED'] } },
             none: { status: 'ACTIVE' },
           },
         },
