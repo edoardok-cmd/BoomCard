@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   Image,
   Platform,
+  ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
@@ -38,6 +39,26 @@ const withTimeout = <T,>(promise: Promise<T>, ms: number): Promise<T> =>
     ),
   ]);
 
+type PeriodFilter = 'all' | '7d' | '30d';
+type StatusFilter = 'all' | 'pending' | 'approved' | 'rejected';
+
+const PERIOD_OPTIONS: { key: PeriodFilter; labelKey: string }[] = [
+  { key: 'all',  labelKey: 'receipts.filterAll' },
+  { key: '7d',   labelKey: 'receipts.filter7d' },
+  { key: '30d',  labelKey: 'receipts.filter30d' },
+];
+
+const STATUS_OPTIONS: { key: StatusFilter; labelKey: string }[] = [
+  { key: 'all',      labelKey: 'receipts.filterAll' },
+  { key: 'pending',  labelKey: 'receipts.filterPending' },
+  { key: 'approved', labelKey: 'receipts.filterApproved' },
+  { key: 'rejected', labelKey: 'receipts.filterRejected' },
+];
+
+const PENDING_STATUSES = new Set(['PENDING', 'PENDING_CONFIRMATION', 'PROCESSING', 'VALIDATING', 'MANUAL_REVIEW']);
+const APPROVED_STATUSES = new Set(['APPROVED']);
+const REJECTED_STATUSES = new Set(['REJECTED', 'EXPIRED']);
+
 const ReceiptsScreen = ({ navigation }: any) => {
   const { t } = useTranslation();
   const { theme, isDarkMode } = useTheme();
@@ -49,6 +70,8 @@ const ReceiptsScreen = ({ navigation }: any) => {
   const [receipts, setReceipts] = useState<Receipt[]>([]);
   const [stats, setStats] = useState<ReceiptStats | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [periodFilter, setPeriodFilter] = useState<PeriodFilter>('all');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
 
   const loadData = async () => {
     try {
@@ -102,6 +125,28 @@ const ReceiptsScreen = ({ navigation }: any) => {
     setRefreshing(true);
     loadData();
   };
+
+  // §5.2: Client-side filtering by period and status
+  const filteredReceipts = useMemo(() => {
+    let result = receipts;
+
+    if (periodFilter !== 'all') {
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - (periodFilter === '7d' ? 7 : 30));
+      result = result.filter(r => new Date(r.createdAt) >= cutoff);
+    }
+
+    if (statusFilter !== 'all') {
+      result = result.filter(r => {
+        if (statusFilter === 'pending')  return PENDING_STATUSES.has(r.status);
+        if (statusFilter === 'approved') return APPROVED_STATUSES.has(r.status);
+        if (statusFilter === 'rejected') return REJECTED_STATUSES.has(r.status);
+        return true;
+      });
+    }
+
+    return result;
+  }, [receipts, periodFilter, statusFilter]);
 
   const formatDate = (dateString: string | undefined) => {
     if (!dateString) return t('common.noData');
@@ -234,29 +279,80 @@ const ReceiptsScreen = ({ navigation }: any) => {
     );
   };
 
-  const renderEmpty = () => (
-    <View style={s.empty}>
-      <View style={s.emptyIconCircle}>
-        <Ionicons name="document-text-outline" size={40} color={isDarkMode ? '#475569' : '#CBD5E1'} />
+  const renderEmpty = () => {
+    const isFilteredEmpty = receipts.length > 0 && filteredReceipts.length === 0;
+    return (
+      <View style={s.empty}>
+        <View style={s.emptyIconCircle}>
+          <Ionicons
+            name={isFilteredEmpty ? 'filter-outline' : 'document-text-outline'}
+            size={40}
+            color={isDarkMode ? '#475569' : '#CBD5E1'}
+          />
+        </View>
+        <Text style={s.emptyTitle}>
+          {isFilteredEmpty
+            ? t('receipts.noFilterResults', 'Няма резултати')
+            : t('receipts.noReceipts')}
+        </Text>
+        <Text style={s.emptyText}>
+          {isFilteredEmpty
+            ? t('receipts.noFilterResultsDesc', 'Няма бележки за избрания филтър. Опитайте с различен период или статус.')
+            : t('receipts.startScanning')}
+        </Text>
+        {!isFilteredEmpty && (
+          <TouchableOpacity
+            style={s.scanButton}
+            activeOpacity={0.8}
+            onPress={() => navigation.navigate('Scan')}
+          >
+            <Ionicons name="qr-code-outline" size={20} color="#FFFFFF" />
+            <Text style={s.scanButtonText}>{t('dashboard.scanSticker')}</Text>
+          </TouchableOpacity>
+        )}
       </View>
-      <Text style={s.emptyTitle}>{t('receipts.noReceipts')}</Text>
-      <Text style={s.emptyText}>
-        {t('receipts.startScanning')}
-      </Text>
-      <TouchableOpacity
-        style={s.scanButton}
-        activeOpacity={0.8}
-        onPress={() => navigation.navigate('Scan')}
-      >
-        <Ionicons name="qr-code-outline" size={20} color="#FFFFFF" />
-        <Text style={s.scanButtonText}>{t('dashboard.scanSticker')}</Text>
-      </TouchableOpacity>
+    );
+  };
+
+  const renderFilters = () => (
+    <View style={s.filtersContainer}>
+      {/* Period filter */}
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.filterRow} contentContainerStyle={s.filterRowContent}>
+        {PERIOD_OPTIONS.map(opt => (
+          <TouchableOpacity
+            key={opt.key}
+            style={[s.filterChip, periodFilter === opt.key && s.filterChipActive]}
+            onPress={() => setPeriodFilter(opt.key)}
+            activeOpacity={0.7}
+          >
+            <Text style={[s.filterChipText, periodFilter === opt.key && s.filterChipTextActive]}>
+              {t(opt.labelKey, opt.key === 'all' ? 'Всички' : opt.key === '7d' ? 'Последни 7 дни' : 'Последни 30 дни')}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+      {/* Status filter */}
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.filterRow} contentContainerStyle={s.filterRowContent}>
+        {STATUS_OPTIONS.map(opt => (
+          <TouchableOpacity
+            key={opt.key}
+            style={[s.filterChip, statusFilter === opt.key && s.filterChipActive]}
+            onPress={() => setStatusFilter(opt.key)}
+            activeOpacity={0.7}
+          >
+            <Text style={[s.filterChipText, statusFilter === opt.key && s.filterChipTextActive]}>
+              {t(opt.labelKey, opt.key === 'all' ? 'Всички' : opt.key === 'pending' ? 'Чакащи' : opt.key === 'approved' ? 'Одобрени' : 'Отхвърлени')}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
     </View>
   );
 
   const renderHeader = () => (
     <View>
       {renderStats()}
+      {renderFilters()}
       {/* Scan CTA above list */}
       {receipts.length > 0 && (
         <TouchableOpacity
@@ -315,7 +411,7 @@ const ReceiptsScreen = ({ navigation }: any) => {
   return (
     <View style={s.container}>
       <FlatList
-        data={receipts}
+        data={filteredReceipts}
         renderItem={renderReceiptItem}
         keyExtractor={(item) => item.id}
         ListHeaderComponent={renderHeader}
@@ -324,7 +420,7 @@ const ReceiptsScreen = ({ navigation }: any) => {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
         contentContainerStyle={
-          receipts.length === 0 ? s.emptyContainer : s.listContent
+          filteredReceipts.length === 0 ? s.emptyContainer : s.listContent
         }
       />
     </View>
@@ -459,6 +555,41 @@ const getStyles = (theme: any, isDarkMode: boolean) => StyleSheet.create({
     fontSize: 11,
     color: theme.colors.onSurfaceVariant,
     textAlign: 'center',
+  },
+
+  // Filters (§5.2)
+  filtersContainer: {
+    paddingHorizontal: 16,
+    marginBottom: 8,
+    gap: 8,
+  },
+  filterRow: {
+    flexShrink: 0,
+  },
+  filterRowContent: {
+    gap: 8,
+    paddingVertical: 2,
+  },
+  filterChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 20,
+    backgroundColor: isDarkMode ? theme.colors.surface : '#F3F4F6',
+    borderWidth: 1,
+    borderColor: isDarkMode ? theme.colors.outline : '#E5E7EB',
+  },
+  filterChipActive: {
+    backgroundColor: isDarkMode ? '#3B82F6' : '#000000',
+    borderColor: 'transparent',
+  },
+  filterChipText: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: theme.colors.onSurfaceVariant,
+  },
+  filterChipTextActive: {
+    color: '#FFFFFF',
+    fontWeight: '600',
   },
 
   // Scan CTA

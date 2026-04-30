@@ -1077,6 +1077,14 @@ async function handleSubscriptionCallback(req: Request, res: Response) {
           });
           if (updated.count > 0) {
             const pendingLanguage: 'bg' | 'en' = pending.language === 'en' ? 'en' : 'bg';
+            // §7.2: payment receipt first, then profile-setup invite
+            emailService.sendPaymentReceiptEmail(pending.email, {
+              planName: pending.plan.displayName,
+              planNameBg: pending.plan.displayNameBg ?? undefined,
+              orderId: result.orderId,
+              amount: result.amount ? result.amount / 100 : undefined,
+              currency: 'EUR',
+            }, pendingLanguage).catch(err => logger.error('Failed to send payment receipt email:', err));
             emailService.sendCompleteProfileEmail(pending.email, {
               planName: pending.plan.displayName,
               planNameBg: pending.plan.displayNameBg ?? undefined,

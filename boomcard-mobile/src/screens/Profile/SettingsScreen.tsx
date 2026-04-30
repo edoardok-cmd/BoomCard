@@ -427,7 +427,7 @@ const SettingsScreen = ({ navigation }: any) => {
   };
 
   const handleReportProblem = () => {
-    navigation.navigate('HelpScreen');
+    Linking.openURL('https://boomcard.bg/contact');
   };
 
   const handleDeleteAccount = () => {

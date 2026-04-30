@@ -128,9 +128,7 @@ export const loginValidation = [
     .withMessage('Password is required'),
 
   body('clientType')
-    .notEmpty()
-    .withMessage('clientType is required')
-    .bail()
+    .optional()
     .isIn(['mobile', 'web'])
     .withMessage('clientType must be "mobile" or "web"'),
 

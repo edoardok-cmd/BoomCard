@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -16,24 +16,31 @@ import { useTheme } from '../../contexts/ThemeContext';
 import { ReceiptsApi } from '../../api/receipts.api';
 import { cardApi } from '../../api/card.api';
 import apiClient from '../../api/client';
+import { useFocusEffect } from '@react-navigation/native';
+import { notificationsApi } from '../../api/notifications.api';
 import { formatDualCurrency } from '../../utils/format';
 import { DashboardSkeleton, AnimatedCounter, FadeInView } from '../../components/loading';
 import type { ReceiptStats, Receipt } from '../../types';
 
-interface VenueVisit {
-  venueId: string;
+// §5.1: last 3 individual transactions with merchant, date, status, cashback
+interface RecentTransaction {
+  id: string;
   merchantName: string;
-  visitCount: number;
-  totalSpent: number;
-  totalCashback: number;
-  lastVisit: string;
+  date: string;
+  status: string;
+  cashbackAmount: number;
+  totalAmount: number;
 }
 
-const RANK_COLORS = [
-  { bg: 'rgba(212,168,67,0.15)', text: '#D4A843' },   // #1 gold
-  { bg: 'rgba(156,163,175,0.15)', text: '#9CA3AF' },   // #2 silver
-  { bg: 'rgba(205,127,50,0.15)', text: '#CD7F32' },    // #3 bronze
-];
+const STATUS_COLORS: Record<string, { bg: string; text: string }> = {
+  APPROVED:      { bg: 'rgba(16,185,129,0.12)',  text: '#10B981' },
+  PENDING:       { bg: 'rgba(245,158,11,0.12)',   text: '#D97706' },
+  PENDING_CONFIRMATION: { bg: 'rgba(59,130,246,0.12)', text: '#3B82F6' },
+  VALIDATING:    { bg: 'rgba(139,92,246,0.12)',   text: '#8B5CF6' },
+  PROCESSING:    { bg: 'rgba(59,130,246,0.12)',   text: '#3B82F6' },
+  MANUAL_REVIEW: { bg: 'rgba(139,92,246,0.12)',   text: '#8B5CF6' },
+  REJECTED:      { bg: 'rgba(239,68,68,0.12)',    text: '#EF4444' },
+};
 
 const DashboardScreen = ({ navigation }: any) => {
   const { t } = useTranslation();
@@ -42,6 +49,7 @@ const DashboardScreen = ({ navigation }: any) => {
   const mountedRef = useRef(true);
   useEffect(() => { return () => { mountedRef.current = false; }; }, []);
 
+  const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState(false);
@@ -49,7 +57,16 @@ const DashboardScreen = ({ navigation }: any) => {
   const [cardStats, setCardStats] = useState<any>(null);
   const [subscription, setSubscription] = useState<any>(null);
   const [cardMissing, setCardMissing] = useState(false);
-  const [recentVisits, setRecentVisits] = useState<VenueVisit[]>([]);
+  const [recentTransactions, setRecentTransactions] = useState<RecentTransaction[]>([]);
+
+  useFocusEffect(useCallback(() => {
+    notificationsApi.getUnreadCount().then(res => {
+      if (res.success && res.data) {
+        const payload = (res.data as any).count ?? (res.data as any).data?.count ?? 0;
+        setUnreadCount(typeof payload === 'number' ? payload : 0);
+      }
+    });
+  }, []));
 
   const loadData = async () => {
     // Leave subscription null until the API responds — no hardcoded values
@@ -96,40 +113,24 @@ const DashboardScreen = ({ navigation }: any) => {
         });
       }).catch((err) => { if (__DEV__) console.warn('Dashboard: card stats fetch failed', err); anyFailed = true; });
 
+      // §5.1: fetch most recent 3 individual transactions (sorted by date desc)
+      // Fetch 50 and sort client-side — backend sort order is not guaranteed
       const receiptsPromise = ReceiptsApi.getReceipts({ limit: 50 }).then((response) => {
         if (!mountedRef.current) return;
         if (response.success && response.data) {
-          const receipts = response.data.data || [];
-          const venueMap = new Map<string, VenueVisit>();
-
-          receipts.forEach((receipt: Receipt) => {
-            const key = receipt.venueId || receipt.merchantName || 'unknown';
-            const existing = venueMap.get(key);
-
-            if (existing) {
-              existing.visitCount++;
-              existing.totalSpent += receipt.totalAmount || 0;
-              existing.totalCashback += receipt.cashbackAmount || 0;
-              if (receipt.receiptDate && receipt.receiptDate > existing.lastVisit) {
-                existing.lastVisit = receipt.receiptDate;
-              }
-            } else {
-              venueMap.set(key, {
-                venueId: receipt.venueId || key,
-                merchantName: receipt.merchantName || 'Unknown Venue',
-                visitCount: 1,
-                totalSpent: receipt.totalAmount || 0,
-                totalCashback: receipt.cashbackAmount || 0,
-                lastVisit: receipt.receiptDate || new Date().toISOString(),
-              });
-            }
-          });
-
-          const visits = Array.from(venueMap.values())
-            .sort((a, b) => b.visitCount - a.visitCount)
-            .slice(0, 5);
-
-          setRecentVisits(visits);
+          const receipts: Receipt[] = response.data.data || [];
+          const transactions: RecentTransaction[] = receipts
+            .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+            .slice(0, 3)
+            .map(r => ({
+              id: r.id,
+              merchantName: r.merchantName || t('receipts.unknownMerchant', 'Непознат търговец'),
+              date: r.receiptDate || r.createdAt,
+              status: r.status,
+              cashbackAmount: r.cashbackAmount || 0,
+              totalAmount: r.totalAmount || 0,
+            }));
+          setRecentTransactions(transactions);
           anySucceeded = true;
         }
       }).catch((err) => { if (__DEV__) console.warn('Dashboard: receipts fetch failed', err); anyFailed = true; });
@@ -218,8 +219,13 @@ const DashboardScreen = ({ navigation }: any) => {
       >
         <View style={s.heroBrandRow}>
           <Text style={s.brandLogo}>BOOM Card</Text>
-          <TouchableOpacity style={s.notificationBtn}>
+          <TouchableOpacity style={s.notificationBtn} onPress={() => navigation.navigate('Notifications')}>
             <Ionicons name="notifications-outline" size={24} color="rgba(255,255,255,0.9)" />
+            {unreadCount > 0 && (
+              <View style={s.notificationBadge}>
+                <Text style={s.notificationBadgeText}>{unreadCount > 99 ? '99+' : unreadCount}</Text>
+              </View>
+            )}
           </TouchableOpacity>
         </View>
         <View style={s.heroContent}>
@@ -393,13 +399,13 @@ const DashboardScreen = ({ navigation }: any) => {
         <TouchableOpacity
           style={s.actionCard}
           activeOpacity={0.7}
-          onPress={() => navigation.navigate('Wallet')}
+          onPress={() => navigation.navigate('Scan')}
         >
-          <View style={[s.actionIconCircle, { backgroundColor: isDarkMode ? 'rgba(212,168,67,0.15)' : 'rgba(212,168,67,0.1)' }]}>
-            <Ionicons name="wallet-outline" size={22} color="#D4A843" />
+          <View style={[s.actionIconCircle, { backgroundColor: isDarkMode ? 'rgba(16,185,129,0.15)' : 'rgba(16,185,129,0.1)' }]}>
+            <Ionicons name="cloud-upload-outline" size={22} color="#10B981" />
           </View>
-          <Text style={s.actionTitle}>{t('wallet.title')}</Text>
-          <Text style={s.actionSubtitle}>{t('wallet.balance')}</Text>
+          <Text style={s.actionTitle}>{t('dashboard.uploadReceipt', 'Качи бележка')}</Text>
+          <Text style={s.actionSubtitle}>{t('dashboard.uploadReceiptSub', 'Спечели кешбек')}</Text>
         </TouchableOpacity>
       </View>
       </FadeInView>
@@ -439,10 +445,10 @@ const DashboardScreen = ({ navigation }: any) => {
             <Ionicons name="storefront-outline" size={18} color="#8B5CF6" />
           </View>
           <AnimatedCounter
-            targetValue={recentVisits.length}
+            targetValue={stats?.approvedReceipts || 0}
             style={s.statValue}
           />
-          <Text style={s.statLabel}>{t('dashboard.venues')}</Text>
+          <Text style={s.statLabel}>{t('receipts.approved', 'Approved')}</Text>
         </View>
       </View>
       </FadeInView>
@@ -474,46 +480,40 @@ const DashboardScreen = ({ navigation }: any) => {
         </FadeInView>
       )}
 
-      {/* Recent Venues */}
-      {recentVisits.length > 0 && (
+      {/* §5.1 Last 3 Transactions */}
+      {recentTransactions.length > 0 && (
         <FadeInView delay={300}>
         <View style={s.section}>
           <View style={s.sectionHeader}>
-            <Text style={s.sectionTitle}>{t('dashboard.recentVenues')}</Text>
+            <Text style={s.sectionTitle}>{t('dashboard.recentTransactions', 'Последни транзакции')}</Text>
             <TouchableOpacity onPress={() => navigation.navigate('Receipts')}>
               <Text style={s.seeAll}>{t('dashboard.seeAll')}</Text>
             </TouchableOpacity>
           </View>
 
-          {recentVisits.map((visit, index) => {
-            const rankColor = index < 3
-              ? RANK_COLORS[index]
-              : { bg: isDarkMode ? 'rgba(59,130,246,0.12)' : 'rgba(59,130,246,0.08)', text: theme.colors.primary };
-
+          {recentTransactions.map((tx) => {
+            const sc = STATUS_COLORS[tx.status] || STATUS_COLORS.PENDING;
             return (
-              <View key={index} style={s.venueCard}>
-                <View style={[s.venueRankBadge, { backgroundColor: rankColor.bg }]}>
-                  <Text style={[s.venueRankText, { color: rankColor.text }]}>
-                    {index + 1}
-                  </Text>
+              <View key={tx.id} style={s.txCard}>
+                <View style={[s.txIconCircle, { backgroundColor: isDarkMode ? 'rgba(139,92,246,0.15)' : 'rgba(139,92,246,0.08)' }]}>
+                  <Ionicons name="storefront" size={18} color="#8B5CF6" />
                 </View>
-                <View style={s.venueInfo}>
-                  <Text style={s.venueName} numberOfLines={1}>
-                    {visit.merchantName}
-                  </Text>
-                  <Text style={s.venueDetails}>
-                    {visit.visitCount} {visit.visitCount > 1 ? t('dashboard.visits') : t('dashboard.visit')} • {t('dashboard.lastVisit')}:{' '}
-                    {formatDate(visit.lastVisit)}
-                  </Text>
+                <View style={s.txInfo}>
+                  <Text style={s.txMerchant} numberOfLines={1}>{tx.merchantName}</Text>
+                  <Text style={s.txDate}>{formatDate(tx.date)}</Text>
                 </View>
-                <View style={s.venueStats}>
-                  <Text style={s.venueAmount}>{formatDualCurrency(visit.totalSpent)}</Text>
-                  <View style={s.venueCashbackRow}>
-                    <Ionicons name="trending-up" size={14} color="#10B981" />
-                    <Text style={s.venueCashback}>
-                      {formatDualCurrency(visit.totalCashback)}
+                <View style={s.txRight}>
+                  <View style={[s.txStatusBadge, { backgroundColor: isDarkMode ? `${sc.bg}` : sc.bg }]}>
+                    <Text style={[s.txStatusText, { color: sc.text }]}>
+                      {t(`receipts.status.${tx.status}`, tx.status)}
                     </Text>
                   </View>
+                  {tx.cashbackAmount > 0 && (
+                    <View style={s.txCashbackRow}>
+                      <Ionicons name="trending-up" size={12} color="#10B981" />
+                      <Text style={s.txCashback}>{formatDualCurrency(tx.cashbackAmount)}</Text>
+                    </View>
+                  )}
                 </View>
               </View>
             );
@@ -614,6 +614,26 @@ const getStyles = (theme: any, isDarkMode: boolean) => StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.1)',
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  notificationBadge: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: '#EF4444',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 3,
+    borderWidth: 1.5,
+    borderColor: 'transparent',
+  },
+  notificationBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '700',
+    lineHeight: 13,
   },
 
   // Hero Cashback Card
@@ -918,12 +938,12 @@ const getStyles = (theme: any, isDarkMode: boolean) => StyleSheet.create({
     fontWeight: '600',
   },
 
-  // Venue Cards
-  venueCard: {
+  // Transaction Cards (§5.1 last 3 transactions)
+  txCard: {
     flexDirection: 'row',
     backgroundColor: theme.colors.surface,
-    padding: 16,
-    borderRadius: 20,
+    padding: 14,
+    borderRadius: 18,
     marginBottom: 10,
     alignItems: 'center',
     borderWidth: 1,
@@ -935,12 +955,10 @@ const getStyles = (theme: any, isDarkMode: boolean) => StyleSheet.create({
         shadowOpacity: isDarkMode ? 0.15 : 0.04,
         shadowRadius: 8,
       },
-      android: {
-        elevation: 2,
-      },
+      android: { elevation: 2 },
     }),
   },
-  venueRankBadge: {
+  txIconCircle: {
     width: 36,
     height: 36,
     borderRadius: 18,
@@ -948,39 +966,33 @@ const getStyles = (theme: any, isDarkMode: boolean) => StyleSheet.create({
     alignItems: 'center',
     marginRight: 12,
   },
-  venueRankText: {
-    fontSize: 14,
-    fontWeight: '800',
-  },
-  venueInfo: {
-    flex: 1,
-  },
-  venueName: {
+  txInfo: { flex: 1 },
+  txMerchant: {
     fontSize: 15,
     fontWeight: '700',
     color: theme.colors.onSurface,
-    marginBottom: 4,
+    marginBottom: 3,
   },
-  venueDetails: {
+  txDate: {
     fontSize: 12,
     color: theme.colors.onSurfaceVariant,
   },
-  venueStats: {
-    alignItems: 'flex-end',
-    marginLeft: 8,
+  txRight: { alignItems: 'flex-end', gap: 4 },
+  txStatusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
   },
-  venueAmount: {
-    fontSize: 13,
+  txStatusText: {
+    fontSize: 11,
     fontWeight: '600',
-    color: theme.colors.onSurface,
-    marginBottom: 3,
   },
-  venueCashbackRow: {
+  txCashbackRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 3,
   },
-  venueCashback: {
+  txCashback: {
     fontSize: 12,
     color: '#10B981',
     fontWeight: '500',

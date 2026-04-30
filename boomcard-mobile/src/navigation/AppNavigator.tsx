@@ -52,7 +52,12 @@ import TransactionHistoryScreen from '../screens/Payments/TransactionHistoryScre
 // Subscription Screens
 import ProcessPaymentScreen from '../screens/Subscription/ProcessPaymentScreen';
 import SubscriptionSuccessScreen from '../screens/Subscription/SubscriptionSuccessScreen';
-import SubscriptionCancelScreen from '../screens/Subscription/SubscriptionCancelScreen';
+import PaymentCancelledScreen from '../screens/Subscription/PaymentCancelledScreen';
+import SubscriptionManagementScreen from '../screens/Subscription/SubscriptionManagementScreen';
+
+import FavoritesScreen from '../screens/Favorites/FavoritesScreen';
+import NearbyScreen from '../screens/Nearby/NearbyScreen';
+import NotificationsScreen from '../screens/Notifications/NotificationsScreen';
 
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -112,17 +117,6 @@ const TabNavigator = () => {
         }}
       />
       <Tab.Screen
-        name="Offers"
-        component={OffersScreen}
-        options={{
-          title: t('offers.title'),
-          tabBarLabel: t('navigation.offers'),
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="pricetag" size={size} color={color} />
-          ),
-        }}
-      />
-      <Tab.Screen
         name="Receipts"
         component={ReceiptsScreen}
         options={{
@@ -130,6 +124,17 @@ const TabNavigator = () => {
           tabBarLabel: t('navigation.receipts'),
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="document-text" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="Nearby"
+        component={NearbyScreen}
+        options={{
+          title: t('nearby.title', 'Наблизо'),
+          tabBarLabel: t('nearby.title', 'Наблизо'),
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="location" size={size} color={color} />
           ),
         }}
       />
@@ -145,13 +150,13 @@ const TabNavigator = () => {
         }}
       />
       <Tab.Screen
-        name="Card"
-        component={MyCardScreen}
+        name="Favorites"
+        component={FavoritesScreen}
         options={{
-          title: t('card.title'),
-          tabBarLabel: t('navigation.card'),
+          title: t('favorites.title', 'Любими'),
+          tabBarLabel: t('favorites.title', 'Любими'),
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="card" size={size} color={color} />
+            <Ionicons name="heart" size={size} color={color} />
           ),
         }}
       />
@@ -335,9 +340,26 @@ const MainNavigator = ({ initialRouteName = 'MainTabs', initialParams }: { initi
       />
       <Stack.Screen
         name="SubscriptionCancel"
-        component={SubscriptionCancelScreen}
+        component={PaymentCancelledScreen}
         options={{ headerShown: false }}
         initialParams={initialRouteName === 'SubscriptionCancel' ? initialParams : undefined}
+      />
+      <Stack.Screen
+        name="SubscriptionManagement"
+        component={SubscriptionManagementScreen}
+        options={{ headerShown: true, title: t('subscription.management', 'Абонамент и плащания') }}
+      />
+
+      {/* Offers — accessible via deep-link from Nearby/Favorites */}
+      <Stack.Screen
+        name="Offers"
+        component={OffersScreen}
+        options={{ headerShown: true, title: t('offers.title') }}
+      />
+      <Stack.Screen
+        name="Notifications"
+        component={NotificationsScreen}
+        options={{ headerShown: false }}
       />
     </Stack.Navigator>
   );

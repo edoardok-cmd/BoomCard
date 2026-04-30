@@ -58,11 +58,26 @@ const ProfileScreen = ({ navigation }: any) => {
           <Text style={styles.menuItemText}>{t('profile.changePassword')}</Text>
           <Text style={styles.menuItemIcon}>›</Text>
         </TouchableOpacity>
+        {/* §5.6 Subscription & Payments */}
+        <TouchableOpacity
+          style={styles.menuItem}
+          onPress={() => navigation.navigate('SubscriptionManagement')}
+        >
+          <Text style={styles.menuItemText}>{t('subscription.management', 'Абонамент и плащания')}</Text>
+          <Text style={styles.menuItemIcon}>›</Text>
+        </TouchableOpacity>
         <TouchableOpacity
           style={styles.menuItem}
           onPress={() => navigation.navigate('Settings')}
         >
           <Text style={styles.menuItemText}>{t('profile.settings')}</Text>
+          <Text style={styles.menuItemIcon}>›</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.menuItem}
+          onPress={() => navigation.navigate('HelpScreen')}
+        >
+          <Text style={styles.menuItemText}>{t('help.title', 'Помощ')}</Text>
           <Text style={styles.menuItemIcon}>›</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.menuItem} onPress={handleLogout}>

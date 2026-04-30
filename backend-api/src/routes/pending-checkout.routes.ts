@@ -277,9 +277,16 @@ async function handleCheckoutCallback(req: Request, res: Response) {
 
       logger.info(`PendingSubscription ${pending.id} marked PAID, registration token issued`);
 
-      // Send complete-profile email — this is the payment confirmation + account setup
-      // invite combined (spec §8.2: two emails total; welcome is sent after profile creation).
+      // §7.2: Send two separate emails — payment receipt first, then profile-setup invite.
       const pendingLanguage: 'bg' | 'en' = pending.language === 'en' ? 'en' : 'bg';
+      emailService.sendPaymentReceiptEmail(pending.email, {
+        planName: pending.plan.displayName,
+        planNameBg: pending.plan.displayNameBg ?? undefined,
+        orderId: result.orderId,
+        amount: result.amount ? result.amount / 100 : undefined,
+        currency: 'EUR',
+      }, pendingLanguage).catch(err => logger.error('Failed to send payment receipt email:', err));
+
       emailService.sendCompleteProfileEmail(pending.email, {
         planName: pending.plan.displayName,
         planNameBg: pending.plan.displayNameBg ?? undefined,

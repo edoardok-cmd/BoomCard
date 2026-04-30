@@ -144,7 +144,10 @@ router.post(
   '/login',
   validate(loginValidation),
   asyncHandler(async (req: Request, res: Response) => {
-    const { email, password, clientType, totpCode } = req.body;
+    const { email, password, totpCode } = req.body;
+    const origin = req.get('origin') || req.get('referer') || '';
+    const clientType: 'mobile' | 'web' = req.body.clientType
+      ?? (origin.includes('mobile.boomcard') ? 'mobile' : 'web');
 
     const ip = ((req.headers['x-forwarded-for'] as string) ?? '').split(',')[0]?.trim() || req.ip;
     const userAgent = req.headers['user-agent'];

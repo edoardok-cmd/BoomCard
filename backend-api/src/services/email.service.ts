@@ -2109,6 +2109,48 @@ ${isBg ? 'Въпроси? Свържете се с нас на' : 'Questions? Co
   }
 
 
+  /**
+   * §7.2: Standalone payment receipt email — sent at payment time only.
+   * A separate welcome/complete-profile email follows after profile creation.
+   */
+  async sendPaymentReceiptEmail(
+    email: string,
+    data: { planName: string; planNameBg?: string; orderId?: string; amount?: number; currency?: string },
+    language: 'bg' | 'en' = 'bg'
+  ): Promise<{ success: boolean }> {
+    const isBg = language !== 'en';
+    const planName = isBg ? (data.planNameBg || data.planName) : data.planName;
+    const subject = isBg
+      ? `Плащането е потвърдено — план ${planName}`
+      : `Payment confirmed — ${planName} plan`;
+    const heading = isBg ? 'Плащането е потвърдено!' : 'Payment Confirmed!';
+    const body = isBg
+      ? `Получихме вашето плащане за план <strong>${planName}</strong>. Ще получите отделен имейл с инструкции за завършване на профила ви.`
+      : `We received your payment for the <strong>${planName}</strong> plan. You will receive a separate email with instructions to complete your profile.`;
+    const amountLine = data.amount
+      ? (isBg ? `<p style="color:#555;margin-bottom:8px;"><strong>Сума:</strong> ${data.amount.toFixed(2)} ${data.currency || 'EUR'}</p>` : `<p style="color:#555;margin-bottom:8px;"><strong>Amount:</strong> ${data.amount.toFixed(2)} ${data.currency || 'EUR'}</p>`)
+      : '';
+    const orderLine = data.orderId
+      ? (isBg ? `<p style="color:#555;margin-bottom:16px;"><strong>Поръчка №:</strong> ${data.orderId}</p>` : `<p style="color:#555;margin-bottom:16px;"><strong>Order #:</strong> ${data.orderId}</p>`)
+      : '';
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head>
+<body style="margin:0;padding:0;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;background:#f5f5f5;">
+  <table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:40px 20px;">
+    <table width="600" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,0.1);">
+      <tr><td style="background:linear-gradient(135deg,#10B981,#059669);padding:32px;text-align:center;border-radius:8px 8px 0 0;">
+        <h1 style="margin:0;color:#fff;font-size:26px;">${heading}</h1>
+      </td></tr>
+      <tr><td style="padding:32px;">
+        <p style="color:#1a1a1a;margin-bottom:16px;">${body}</p>
+        ${amountLine}${orderLine}
+        <p style="color:#888;font-size:13px;">${isBg ? 'Благодарим, че избрахте BOOM Card!' : 'Thank you for choosing BOOM Card!'}</p>
+      </td></tr>
+    </table>
+  </td></tr></table>
+</body></html>`;
+    return this.sendEmail({ to: email, subject, html, text: `${heading}\n\n${body.replace(/<[^>]+>/g, '')}` });
+  }
+
   async sendCompleteProfileEmail(
     email: string,
     data: CompleteProfileData
@@ -2116,12 +2158,12 @@ ${isBg ? 'Въпроси? Свържете се с нас на' : 'Questions? Co
     const isBg = data.language !== 'en';
     const planName = isBg ? (data.planNameBg || data.planName) : data.planName;
     const subject = isBg ? 'Завършете настройката на вашия BoomCard акаунт' : 'Complete your BoomCard account setup';
-    const heading = isBg ? 'Плащането е потвърдено!' : 'Payment Confirmed!';
-    const subheading = isBg ? 'Завършете настройката на вашия BoomCard акаунт' : 'Complete your BoomCard account setup';
+    const heading = isBg ? 'Завършете настройката на акаунта си' : 'Complete Your Account Setup';
+    const subheading = isBg ? 'Плащането беше успешно — направете последната стъпка' : 'Payment successful — one last step';
     const greeting = isBg ? 'Здравейте,' : 'Hi there,';
     const body = isBg
-      ? `Вашето плащане за план <strong>${planName}</strong> е успешно. Кликнете на бутона по-долу, за да зададете паролата си и да влезете в своя BoomCard акаунт.`
-      : `Your payment for the <strong>${planName}</strong> plan was successful. Click the button below to set your password and access your BoomCard account.`;
+      ? `Абонаментът ви за план <strong>${planName}</strong> е активен. Кликнете на бутона по-долу, за да зададете паролата си и да влезете в своя BoomCard акаунт.`
+      : `Your <strong>${planName}</strong> subscription is active. Click the button below to set your password and access your BoomCard account.`;
     const btnLabel = isBg ? 'Завършете настройката' : 'Complete Account Setup';
     const expiry = isBg
       ? 'Връзката е валидна <strong>30 минути</strong>. Ако изтече, свържете се с нас за нова.'
@@ -2157,8 +2199,8 @@ ${isBg ? 'Въпроси? Свържете се с нас на' : 'Questions? Co
 </body>
 </html>`;
     const text = isBg
-      ? `Вашето BoomCard плащане за ${planName} е потвърдено!\n\nЗавършете настройката на акаунта (връзката е валидна 30 мин):\n${data.completeProfileUrl}\n\nВъпроси? support@boomcard.bg`
-      : `Your BoomCard ${planName} payment was confirmed!\n\nComplete your account setup (link expires in 30 min):\n${data.completeProfileUrl}\n\nQuestions? support@boomcard.bg`;
+      ? `Завършете настройката на акаунта си за план ${planName} (връзката е валидна 30 мин):\n${data.completeProfileUrl}\n\nВъпроси? support@boomcard.bg`
+      : `Complete your ${planName} account setup (link expires in 30 min):\n${data.completeProfileUrl}\n\nQuestions? support@boomcard.bg`;
     return this.sendEmail({ to: email, subject, html, text });
   }
 

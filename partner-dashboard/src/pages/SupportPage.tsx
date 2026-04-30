@@ -1,4 +1,5 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 import GenericPage from '../components/templates/GenericPage';
 import { useLanguage } from '../contexts/LanguageContext';
 import styled from 'styled-components';
@@ -15,6 +16,36 @@ const SupportCard = styled.div`
   border-radius: 1rem;
   border: 2px solid #e5e7eb;
   transition: border-color 0.2s;
+
+  &:hover {
+    border-color: #000000;
+  }
+`;
+
+const LinkedCard = styled(Link)`
+  display: block;
+  background: white;
+  padding: 2rem;
+  border-radius: 1rem;
+  border: 2px solid #e5e7eb;
+  transition: border-color 0.2s;
+  text-decoration: none;
+  cursor: pointer;
+
+  &:hover {
+    border-color: #000000;
+  }
+`;
+
+const ExternalLinkedCard = styled.a`
+  display: block;
+  background: white;
+  padding: 2rem;
+  border-radius: 1rem;
+  border: 2px solid #e5e7eb;
+  transition: border-color 0.2s;
+  text-decoration: none;
+  cursor: pointer;
 
   &:hover {
     border-color: #000000;
@@ -44,14 +75,14 @@ const SupportPage: React.FC = () => {
       subtitleBg="Намерете отговори и получете помощ с BoomCard"
     >
       <SupportGrid>
-        <SupportCard>
+        <ExternalLinkedCard href="/#faq">
           <CardTitle>{language === 'bg' ? 'Често Задавани Въпроси' : 'Frequently Asked Questions'}</CardTitle>
           <CardText>
             {language === 'bg'
               ? 'Намерете бързи отговори на най-често задаваните въпроси.'
               : 'Find quick answers to the most common questions.'}
           </CardText>
-        </SupportCard>
+        </ExternalLinkedCard>
 
         <SupportCard>
           <CardTitle>{language === 'bg' ? 'Имейл Поддръжка' : 'Email Support'}</CardTitle>
@@ -62,23 +93,14 @@ const SupportPage: React.FC = () => {
           </CardText>
         </SupportCard>
 
-        <SupportCard>
-          <CardTitle>{language === 'bg' ? 'Телефонна Поддръжка' : 'Phone Support'}</CardTitle>
-          <CardText>
-            {language === 'bg'
-              ? 'Обадете ни се на +359 2 123 4567 (Пон-Пет 9:00-18:00)'
-              : 'Call us at +359 2 123 4567 (Mon-Fri 9:00-18:00)'}
-          </CardText>
-        </SupportCard>
-
-        <SupportCard>
+        <LinkedCard to="/contact">
           <CardTitle>{language === 'bg' ? 'Чат Поддръжка' : 'Live Chat'}</CardTitle>
           <CardText>
             {language === 'bg'
               ? 'Използвайте нашия чат за незабавна помощ (налична в работно време).'
               : 'Use our live chat for instant help (available during business hours).'}
           </CardText>
-        </SupportCard>
+        </LinkedCard>
       </SupportGrid>
     </GenericPage>
   );

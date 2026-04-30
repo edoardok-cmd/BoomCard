@@ -336,6 +336,22 @@ export class ApiClient {
     }
   }
 
+  async patch<T = any>(
+    url: string,
+    data?: any,
+    config?: AxiosRequestConfig
+  ): Promise<ApiResponse<T>> {
+    try {
+      const response: AxiosResponse<T> = await this.retryRequest(() =>
+        this.axiosInstance.patch(url, data, config)
+      );
+      return { success: true, data: response.data };
+    } catch (error) {
+      const apiError = error as ApiError;
+      return { success: false, error: apiError.message };
+    }
+  }
+
   /**
    * DELETE request
    */

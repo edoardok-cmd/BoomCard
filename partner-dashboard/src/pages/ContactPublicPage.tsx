@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import styled from 'styled-components';
 import { motion } from 'framer-motion';
-import { Mail, MapPin, Phone, Send } from 'lucide-react';
+import { Mail, MapPin, Send } from 'lucide-react';
 import axios from 'axios';
 import { useLanguage } from '../contexts/LanguageContext';
 import toast from 'react-hot-toast';
@@ -245,16 +245,6 @@ const ContactPublicPage: React.FC = () => {
                 <InfoTitle>{language === 'bg' ? 'Имейл' : 'Email'}</InfoTitle>
                 <InfoText>support@boomcard.bg</InfoText>
                 <InfoText>sales@boomcard.bg</InfoText>
-              </InfoContent>
-            </InfoItem>
-
-            <InfoItem>
-              <IconWrapper>
-                <Phone size={24} />
-              </IconWrapper>
-              <InfoContent>
-                <InfoTitle>{language === 'bg' ? 'Телефон' : 'Phone'}</InfoTitle>
-                <InfoText><a href="tel:+35929530000" style={{ color: 'inherit', textDecoration: 'none' }}>+359 2 953 0000</a></InfoText>
               </InfoContent>
             </InfoItem>
 
