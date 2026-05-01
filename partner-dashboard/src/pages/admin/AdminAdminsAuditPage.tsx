@@ -124,6 +124,7 @@ const ACTION_LABEL: Record<string, string> = {
   'pending-super.post':            'Заявка за Супер администратор',
   'pending-super.delete':          'Изтрита заявка за Супер администратор',
   'rates.post':                    'Нов набор от кешбек ставки',
+  'rates.create':                  'Нов набор от кешбек ставки',
   'rates.delete':                  'Изтрит кешбек набор',
   'cashback.post':                 'Кешбек операция',
   'mark-paid.post':                'Отбелязан като платен',
