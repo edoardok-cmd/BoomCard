@@ -350,6 +350,17 @@ router.put(
       }
     }
 
+    const ALLOWED_CURRENCIES = new Set(['BGN', 'EUR']);
+    const ALLOWED_LANGUAGES = new Set(['bg', 'en']);
+    for (const [key, value] of entries) {
+      if (key === 'currency' && !ALLOWED_CURRENCIES.has(value)) {
+        return res.status(400).json({ success: false, error: `currency must be one of: ${[...ALLOWED_CURRENCIES].join(', ')}` });
+      }
+      if (key === 'language' && !ALLOWED_LANGUAGES.has(value)) {
+        return res.status(400).json({ success: false, error: `language must be one of: ${[...ALLOWED_LANGUAGES].join(', ')}` });
+      }
+    }
+
     const INTEGER_RANGE_KEYS: Record<string, { min: number; max: number }> = {
       cashback_expiry_days:    { min: 1,   max: 3650 },
       offer_validity_days:     { min: 1,   max: 3650 },

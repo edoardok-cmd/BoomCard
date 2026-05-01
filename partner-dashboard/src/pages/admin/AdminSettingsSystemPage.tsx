@@ -161,7 +161,6 @@ const LANGUAGES = [
 const CURRENCIES = [
   { value: 'BGN', label: 'BGN — Български лев' },
   { value: 'EUR', label: 'EUR — Евро' },
-  { value: 'USD', label: 'USD — Щатски долар' },
 ];
 
 export default function AdminSettingsSystemPage() {
@@ -257,7 +256,7 @@ export default function AdminSettingsSystemPage() {
     if (maxCashback) {
       const mc = parseFloat(maxCashback);
       if (!Number.isFinite(mc) || mc < 0) {
-        toast.error('Макс. кешбек на месец трябва да е число ≥ 0');
+        toast.error('Макс. кешбек за 30 дни трябва да е число ≥ 0');
         return;
       }
     }
@@ -317,7 +316,7 @@ export default function AdminSettingsSystemPage() {
                 <FieldHint>Макс. брой касови бележки на потребител на ден (глобално, не на обект). Оставете празно за без лимит.</FieldHint>
               </div>
               <div>
-                <FieldLabel>Макс. кешбек на месец (лв.)</FieldLabel>
+                <FieldLabel>Макс. кешбек за 30 дни (лв.)</FieldLabel>
                 <NumberInput
                   type="number" min="0"
                   value={maxCashback}
@@ -360,24 +359,24 @@ export default function AdminSettingsSystemPage() {
                 <FieldLabel>Email за отговор (Reply-To)</FieldLabel>
                 <TextInput
                   type="email"
-                  placeholder="noreply@boomcard.bg"
+                  placeholder=""
                   value={replyToEmail}
                   onChange={(e) => setReplyToEmail(e.target.value)}
                 />
                 <FieldHint>
-                  Използва се като Reply-To заглавка на всички системни имейли. Оставете празно за email за поддръжка.
+                  Reply-To заглавка на системните имейли. При липса заглавката се пропуска — отговорите отиват към изпращащия адрес (From).
                 </FieldHint>
               </div>
               <div>
                 <FieldLabel>Изпращащ имейл (From)</FieldLabel>
                 <TextInput
                   type="email"
-                  placeholder="noreply@boomcard.bg"
+                  placeholder=""
                   value={fromEmail}
                   onChange={(e) => setFromEmail(e.target.value)}
                 />
                 <FieldHint>
-                  Адресът в полето „От:" на всички системни имейли. Оставете празно за стойността от конфигурацията на сървъра.
+                  Адресът в полето „От:" на всички системни имейли. При липса се използва адресът от SMTP конфигурацията на сървъра.
                 </FieldHint>
               </div>
               <div>
