@@ -253,4 +253,8 @@ export const adminMarketingService = {
   deleteAutomation(id: string): Promise<void> {
     return apiService.delete(`/admin/marketing/automations/${id}`);
   },
+
+  ensureDefaultAutomations(): Promise<{ results: { trigger: string; action: string }[]; milestoneTriggerFixed: number }> {
+    return apiService.post('/admin/marketing/automations/ensure-defaults', {});
+  },
 };

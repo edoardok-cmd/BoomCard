@@ -140,6 +140,12 @@ export default function AdminMarketingAutomationsPage() {
     adminMarketingService.listTemplates({ limit: 100 }).then((r) => setTemplates(r.items));
   }, []);
 
+  // On mount: ensure spec §8 defaults exist and reload so they appear immediately
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    adminMarketingService.ensureDefaultAutomations().catch(() => {}).finally(() => load());
+  }, []);
+
   // Escape key closes any open modal
   useEffect(() => {
     if (!modal) return;

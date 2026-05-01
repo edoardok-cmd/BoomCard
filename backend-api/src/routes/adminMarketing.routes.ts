@@ -480,14 +480,15 @@ router.get('/partners/search', ...READ, async (req, res, next) => {
 const DEFAULT_LISTS: Array<{
   syncKey: string;
   name: string;
+  legacyNames?: string[];
   type: MarketingListType;
   description: string;
 }> = [
-  { syncKey: 'all_active_subscribers', name: 'Всички активни абонати', type: 'SEGMENT', description: 'Потребители с активен абонамент, дали съгласие за маркетинг имейли.' },
-  { syncKey: 'premium_holders',        name: 'Premium абонати',        type: 'SEGMENT', description: 'Абонати с план Premium или Light (Weekly).' },
+  { syncKey: 'all_active_subscribers', name: 'Всички активни абонати', legacyNames: ['All Active Subscribers'],       type: 'SEGMENT', description: 'Потребители с активен абонамент, дали съгласие за маркетинг имейли.' },
+  { syncKey: 'premium_holders',        name: 'Premium абонати',        legacyNames: ['Premium Card Holders'],         type: 'SEGMENT', description: 'Абонати с план Premium или Light (Weekly).' },
   { syncKey: 'basic_holders',          name: 'Basic абонати',          type: 'SEGMENT', description: 'Абонати с план Basic.' },
-  { syncKey: 'inactive_users_90d',     name: 'Неактивни абонати (90+ дни)', type: 'DYNAMIC', description: 'Потребители без активност повече от 90 дни. Обновява се нощем.' },
-  { syncKey: 'email_consent_active',   name: 'Имейл съгласие — активно', type: 'DYNAMIC', description: 'Всички потребители с marketingConsentEmail = true. Обновява се нощем.' },
+  { syncKey: 'inactive_users_90d',     name: 'Неактивни абонати (90+ дни)', legacyNames: ['Inactive Users — 90+ Days'], type: 'DYNAMIC', description: 'Потребители без активност повече от 90 дни. Обновява се нощем.' },
+  { syncKey: 'email_consent_active',   name: 'Имейл съгласие — активно', legacyNames: ['Email Consent — Active'],    type: 'DYNAMIC', description: 'Всички потребители с marketingConsentEmail = true. Обновява се нощем.' },
   { syncKey: 'active_partners',        name: 'Активни партньори',      type: 'SEGMENT', description: 'Партньори със статус ACTIVE.' },
   { syncKey: 'potential_partners',     name: 'Потенциални партньори',   type: 'SEGMENT', description: 'Партньори в процес на одобрение (статус PENDING).' },
 ];
@@ -497,10 +498,16 @@ router.post('/lists/ensure-defaults', ...WRITE, async (req, res, next) => {
     const results: { syncKey: string; action: 'created' | 'updated' | 'ok' }[] = [];
 
     for (const def of DEFAULT_LISTS) {
-      // Try to find by syncKey first, then by legacy name (for lists created before syncKey was added)
+      // 1. Canonical syncKey lookup
       let existing = await prisma.marketingList.findUnique({ where: { syncKey: def.syncKey } });
-      if (!existing) {
-        existing = await prisma.marketingList.findFirst({ where: { name: def.name } });
+      // 2. Current BG name
+      if (!existing) existing = await prisma.marketingList.findFirst({ where: { name: def.name } });
+      // 3. Legacy English names (pre-i18n seed data)
+      if (!existing && def.legacyNames) {
+        for (const legacyName of def.legacyNames) {
+          existing = await prisma.marketingList.findFirst({ where: { name: legacyName } });
+          if (existing) break;
+        }
       }
 
       if (!existing) {
@@ -716,6 +723,119 @@ router.delete('/lists/:id/members/:memberId', ...WRITE, async (req, res, next) =
 });
 
 // ─── Automations ──────────────────────────────────────────────────────────────
+
+// Spec §8 required: ensure the 4 mandatory automations exist in the DB.
+// Idempotent — safe to call on every page load. Also fixes wrong trigger strings.
+router.post('/automations/ensure-defaults', ...WRITE, async (req, res, next) => {
+  try {
+    // Fix any automations still using the retired cashback.milestone trigger
+    const milestoneFix = await prisma.marketingAutomation.updateMany({
+      where: { trigger: 'cashback.milestone' },
+      data: { trigger: 'cashback.threshold_reached' },
+    });
+
+    // Find or create the required templates
+    const findOrCreateTpl = async (
+      name: string,
+      data: { type: MarketingChannel; subject?: string; body: string },
+    ) => {
+      const existing = await prisma.marketingTemplate.findFirst({ where: { name } });
+      if (existing) return existing;
+      return prisma.marketingTemplate.create({ data: { name, ...data } });
+    };
+
+    const [tplCashbackEarned, tplCashbackExpiring, tplPartnerWelcome, tplPartnerApproved] =
+      await Promise.all([
+        prisma.marketingTemplate.findFirst({ where: { name: 'Cashback Earned Notification' } }),
+        findOrCreateTpl('Cashback Expiring Soon', {
+          type: 'EMAIL',
+          subject: "Your BoomCard cashback is expiring soon — use it before it's gone",
+          body: `<h2>Your cashback is about to expire!</h2>
+<p>You have cashback credit on your BoomCard that is due to expire shortly. Make sure to spend it at any participating partner before it's lost.</p>
+<p><strong>How to use it:</strong> Simply present your BoomCard at checkout at any partner location — your cashback will be applied automatically.</p>
+<p>Find the nearest partner in the BoomCard app and start saving today.</p>
+<p>The BoomCard Team</p>`,
+        }),
+        findOrCreateTpl('Partner Welcome Email', {
+          type: 'EMAIL',
+          subject: 'Welcome to the BoomCard Partner Network!',
+          body: `<h2>Welcome aboard, partner!</h2>
+<p>Thank you for joining the BoomCard Partner Network. Your application has been received and is currently under review.</p>
+<p>Here's what happens next:</p>
+<ul>
+  <li>Our team will review your application within 1–2 business days</li>
+  <li>You'll receive a confirmation email once your account is approved</li>
+  <li>After approval, BoomCard members will start earning cashback at your location</li>
+</ul>
+<p>If you have any questions, reach out to <a href="mailto:office@boomcard.bg">office@boomcard.bg</a>.</p>
+<p>The BoomCard Team</p>`,
+        }),
+        findOrCreateTpl('Partner Approved', {
+          type: 'EMAIL',
+          subject: 'Congratulations — your BoomCard partner account is live!',
+          body: `<h2>You're live on BoomCard!</h2>
+<p>Great news — your partner account has been approved. BoomCard members can now earn cashback at your location.</p>
+<p><strong>What this means for you:</strong></p>
+<ul>
+  <li>Your business is now visible to all BoomCard members in your area</li>
+  <li>Members will earn cashback on every purchase they make at your location</li>
+  <li>You can track visits and cashback activity in the BoomCard Partner Portal</li>
+</ul>
+<p>Log in to the Partner Portal to complete your profile and attract more customers.</p>
+<p>Welcome to the network!</p>
+<p>The BoomCard Team</p>`,
+        }),
+      ]);
+
+    // Ensure each of the 4 spec-required automations exists (find by trigger)
+    const specDefaults: Array<{
+      trigger: string;
+      name: string;
+      templateId: string | null;
+      status: AutomationStatus;
+    }> = [
+      {
+        trigger: 'cashback.threshold_reached',
+        name: 'Cashback Threshold Alert',
+        templateId: tplCashbackEarned?.id ?? null,
+        status: tplCashbackEarned ? 'ACTIVE' : 'DRAFT',
+      },
+      {
+        trigger: 'cashback.expiring',
+        name: 'Expiring Cashback Warning',
+        templateId: tplCashbackExpiring?.id ?? null,
+        status: 'ACTIVE',
+      },
+      {
+        trigger: 'partner.created',
+        name: 'New Partner Welcome',
+        templateId: tplPartnerWelcome?.id ?? null,
+        status: 'ACTIVE',
+      },
+      {
+        trigger: 'partner.approved',
+        name: 'Partner Approved Notification',
+        templateId: tplPartnerApproved?.id ?? null,
+        status: 'ACTIVE',
+      },
+    ];
+
+    const results: { trigger: string; action: 'created' | 'ok' }[] = [];
+    for (const def of specDefaults) {
+      const existing = await prisma.marketingAutomation.findFirst({ where: { trigger: def.trigger } });
+      if (!existing) {
+        await prisma.marketingAutomation.create({ data: def });
+        results.push({ trigger: def.trigger, action: 'created' });
+      } else {
+        results.push({ trigger: def.trigger, action: 'ok' });
+      }
+    }
+
+    res.json({ results, milestoneTriggerFixed: milestoneFix.count });
+  } catch (error) {
+    next(error);
+  }
+});
 
 router.get('/automations', ...READ, async (req, res, next) => {
   try {

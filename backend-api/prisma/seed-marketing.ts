@@ -5,7 +5,7 @@ async function main() {
 
   // ─── Templates ──────────────────────────────────────────────────────────────
 
-  const [tplWelcome, tplCashback, tplPush, tplSms, tplMonthly, tplReengagement] = await Promise.all([
+  const [tplWelcome, tplCashback, tplPush, tplSms, tplMonthly, tplReengagement, tplCashbackExpiring, tplPartnerWelcome, tplPartnerApproved] = await Promise.all([
     prisma.marketingTemplate.create({
       data: {
         name: 'Welcome to BoomCard',
@@ -85,9 +85,63 @@ async function main() {
         lastUsed: new Date('2026-03-15'),
       },
     }),
+    // Spec §8 required templates ────────────────────────────────────────────────
+    prisma.marketingTemplate.create({
+      data: {
+        name: 'Cashback Expiring Soon',
+        type: 'EMAIL',
+        subject: 'Your BoomCard cashback is expiring soon — use it before it\'s gone',
+        body: `<h2>Your cashback is about to expire!</h2>
+<p>You have cashback credit on your BoomCard that is due to expire shortly. Make sure to spend it at any participating partner before it's lost.</p>
+<p><strong>How to use it:</strong> Simply present your BoomCard at checkout at any partner location — your cashback will be applied automatically.</p>
+<p>Find the nearest partner in the BoomCard app and start saving today.</p>
+<p>The BoomCard Team</p>`,
+        usageCount: 0,
+        lastUsed: null,
+      },
+    }),
+    prisma.marketingTemplate.create({
+      data: {
+        name: 'Partner Welcome Email',
+        type: 'EMAIL',
+        subject: 'Welcome to the BoomCard Partner Network!',
+        body: `<h2>Welcome aboard, partner!</h2>
+<p>Thank you for joining the BoomCard Partner Network. Your application has been received and is currently under review.</p>
+<p>Here's what happens next:</p>
+<ul>
+  <li>Our team will review your application within 1–2 business days</li>
+  <li>You'll receive a confirmation email once your account is approved</li>
+  <li>After approval, BoomCard members will start earning cashback at your location</li>
+</ul>
+<p>If you have any questions, don't hesitate to reach out to us at <a href="mailto:office@boomcard.bg">office@boomcard.bg</a>.</p>
+<p>The BoomCard Team</p>`,
+        usageCount: 0,
+        lastUsed: null,
+      },
+    }),
+    prisma.marketingTemplate.create({
+      data: {
+        name: 'Partner Approved',
+        type: 'EMAIL',
+        subject: 'Congratulations — your BoomCard partner account is live!',
+        body: `<h2>You're live on BoomCard!</h2>
+<p>Great news — your partner account has been approved. BoomCard members can now earn cashback at your location.</p>
+<p><strong>What this means for you:</strong></p>
+<ul>
+  <li>Your business is now visible to all BoomCard members in your area</li>
+  <li>Members will earn cashback on every purchase they make at your location</li>
+  <li>You can track visits and cashback activity in the BoomCard Partner Portal</li>
+</ul>
+<p>Log in to the Partner Portal to complete your profile, add photos, and set your opening hours to attract more customers.</p>
+<p>Welcome to the network — we're excited to have you on board!</p>
+<p>The BoomCard Team</p>`,
+        usageCount: 0,
+        lastUsed: null,
+      },
+    }),
   ]);
 
-  console.log('  ✓ 6 templates created');
+  console.log('  ✓ 9 templates created');
 
   // ─── Audience Lists ──────────────────────────────────────────────────────────
 
@@ -248,9 +302,9 @@ async function main() {
     }),
     prisma.marketingAutomation.create({
       data: {
-        name: 'Cashback Milestone Alert',
-        trigger: 'cashback.milestone',
-        status: 'PAUSED',
+        name: 'Cashback Threshold Alert',
+        trigger: 'cashback.threshold_reached',
+        status: 'ACTIVE',
         totalRuns: 2341,
         lastRunAt: new Date('2026-03-30'),
         templateId: tplCashback.id,
@@ -286,9 +340,40 @@ async function main() {
         templateId: tplMonthly.id,
       },
     }),
+    // Spec §8 required automations ─────────────────────────────────────────────
+    prisma.marketingAutomation.create({
+      data: {
+        name: 'Expiring Cashback Warning',
+        trigger: 'cashback.expiring',
+        status: 'ACTIVE',
+        totalRuns: 0,
+        lastRunAt: null,
+        templateId: tplCashbackExpiring.id,
+      },
+    }),
+    prisma.marketingAutomation.create({
+      data: {
+        name: 'New Partner Welcome',
+        trigger: 'partner.created',
+        status: 'ACTIVE',
+        totalRuns: 0,
+        lastRunAt: null,
+        templateId: tplPartnerWelcome.id,
+      },
+    }),
+    prisma.marketingAutomation.create({
+      data: {
+        name: 'Partner Approved Notification',
+        trigger: 'partner.approved',
+        status: 'ACTIVE',
+        totalRuns: 0,
+        lastRunAt: null,
+        templateId: tplPartnerApproved.id,
+      },
+    }),
   ]);
 
-  console.log('  ✓ 6 automations created');
+  console.log('  ✓ 9 automations created (6 general + 3 spec §8 required)');
   console.log('Done.');
 }
 
