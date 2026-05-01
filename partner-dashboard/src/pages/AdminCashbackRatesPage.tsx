@@ -259,7 +259,6 @@ const HistoryNotes = styled.span`
   color: var(--color-text-secondary);
   margin-left: 0.75rem;
   font-size: 0.78rem;
-  &::before { content: 'Бележки: '; font-style: normal; font-weight: 600; }
 `;
 
 const ShowMoreRow = styled.div`
@@ -858,9 +857,8 @@ const AdminCashbackRatesPage: React.FC = () => {
                                   {rows[0].createdByName ?? rows[0].createdByEmail}
                                 </span>
                               : <span style={{ marginLeft: '0.75rem', opacity: 0.4 }}>—</span>}
-                            {/* Fix #6: notes are explicitly labeled with "Бележки:" prefix */}
                             {rows[0].notes
-                              ? <HistoryNotes>{rows[0].notes}</HistoryNotes>
+                              ? <HistoryNotes><strong style={{ fontStyle: 'normal', fontWeight: 600 }}>{tr.notesLabel}:</strong>{' '}{rows[0].notes}</HistoryNotes>
                               : null}
                             {future && (
                               <DeleteSnapshotBtn onClick={() => handleDeleteSnapshot(key)}>
