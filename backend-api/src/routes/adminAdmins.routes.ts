@@ -585,10 +585,28 @@ router.post('/:id/approve', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), req
     }
     if (!adminRole) return res.status(400).json({ error: 'Role not found — run seed-permissions first' });
 
+    const existingRoles = await prisma.userAdminRole.findMany({
+      where: { userId: user.id },
+      select: { role: { select: { key: true } } },
+    });
+    const beforeRoles = existingRoles.map((r) => r.role.key);
+
     await prisma.userAdminRole.upsert({
       where: { userId_roleId: { userId: user.id, roleId: adminRole.id } },
       create: { userId: user.id, roleId: adminRole.id, grantedById: req.user!.id },
       update: { grantedById: req.user!.id, grantedAt: new Date() },
+    });
+
+    req.skipAudit = true;
+    await writeAudit({
+      actorUserId: req.user!.id,
+      action: 'admin.approve',
+      objectType: 'admin',
+      objectId: user.id,
+      before: { roles: beforeRoles },
+      after: { addedRole: roleKey },
+      ip: (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ?? req.socket.remoteAddress ?? null,
+      userAgent: req.headers['user-agent'] ?? null,
     });
 
     res.json({ ok: true });
