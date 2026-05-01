@@ -43,6 +43,25 @@ export interface CashbackRate {
   createdAt: string;
 }
 
+export type SubscriptionPlan = 'BASIC' | 'LIGHT' | 'PREMIUM';
+
+export interface PayoutThresholdEntry {
+  minAmount: number;
+  notes: string | null;
+  updatedAt: string | null;
+}
+
+export interface PayoutThresholdHistoryRow {
+  id: string;
+  plan: SubscriptionPlan;
+  minAmount: number;
+  notes: string | null;
+  createdBy: string | null;
+  createdByEmail: string | null;
+  createdByName: string | null;
+  createdAt: string;
+}
+
 export type SystemSettings = Record<string, string>;
 
 export interface MobileAppSettings {
@@ -92,18 +111,19 @@ export const adminSettingsService = {
 
   // ── Payout Thresholds ────────────────────────────────────────────────────────
 
-  getPayoutThresholds(): Promise<{
-    success: boolean;
-    data: Record<'BASIC' | 'LIGHT' | 'PREMIUM', { minAmount: number; notes: string | null; updatedAt: string | null }>;
-  }> {
+  getPayoutThresholds(): Promise<{ success: boolean; data: Record<SubscriptionPlan, PayoutThresholdEntry> }> {
     return apiService.get('/admin/settings/payout-thresholds');
   },
 
   savePayoutThresholds(
-    thresholds: Partial<Record<'BASIC' | 'LIGHT' | 'PREMIUM', number>>,
+    thresholds: Partial<Record<SubscriptionPlan, number>>,
     notes?: string,
   ): Promise<void> {
     return apiService.put('/admin/settings/payout-thresholds', { thresholds, notes });
+  },
+
+  getPayoutThresholdsHistory(): Promise<{ success: boolean; data: PayoutThresholdHistoryRow[] }> {
+    return apiService.get('/admin/settings/payout-thresholds/history');
   },
 
   // ── Fraud Rules ──────────────────────────────────────────────────────────────

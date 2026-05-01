@@ -243,6 +243,11 @@ export default function AdminMarketingAutomationsPage() {
   // Warn in form when status is ACTIVE but no template picked
   const formWantsActiveWithoutTemplate = form.status === 'ACTIVE' && !form.templateId;
 
+  // Best-effort client-side duplicate trigger check (advisory — server enforces with 409)
+  const formTriggerConflict = form.trigger.trim()
+    ? items.some((a) => a.trigger === form.trigger.trim() && a.id !== selected?.id)
+    : false;
+
   const columns: ColumnDef<MarketingAutomation>[] = [
     {
       key: 'name',
@@ -394,6 +399,11 @@ export default function AdminMarketingAutomationsPage() {
                   {TRIGGER_SUGGESTIONS.map((t) => <option key={t} value={t} />)}
                 </datalist>
                 <HintText>Use dot-notation event identifiers. Pick from suggestions or type a custom event.</HintText>
+                {formTriggerConflict && (
+                  <WarnBanner>
+                    Trigger <code style={{ fontSize: '0.75rem' }}>{form.trigger}</code> is already used by another automation — each trigger can only have one automation.
+                  </WarnBanner>
+                )}
               </FormGroup>
               <FormGroup>
                 <Label>Template</Label>
@@ -447,6 +457,13 @@ export default function AdminMarketingAutomationsPage() {
             <ModalBody>
               <ConfirmText>You are about to delete <strong>{selected.name}</strong>.</ConfirmText>
               <ConfirmSub>This automation will stop firing immediately. This action cannot be undone.</ConfirmSub>
+              {selected.status === 'ACTIVE' && (
+                <WarnBanner style={{ marginTop: '0.75rem', background: palette.dangerSoft, color: palette.danger, borderColor: '#f1c4b8' }}>
+                  <strong>This automation is currently ACTIVE</strong>
+                  {selected.totalRuns > 0 && ` and has run ${selected.totalRuns.toLocaleString()} time${selected.totalRuns === 1 ? '' : 's'}`}.
+                  {' '}Deleting it will permanently stop all future sends.
+                </WarnBanner>
+              )}
               {!selected.templateId && (
                 <WarnBanner style={{ marginTop: '0.75rem' }}>
                   This automation has no template and was never able to send messages.

@@ -5,25 +5,26 @@
  * hardcoded in receipt.constants.ts (PAYOUT_THRESHOLD_*_EUR × EUR_TO_BGN_RATE).
  *
  * Run once after adding the PayoutThreshold model:
- *   npx tsx prisma/seed-payout-thresholds.ts
+ *   npx ts-node prisma/seed-payout-thresholds.ts
  *
  * Safe to run again — skips seeding if rows already exist.
  */
 
 import { PrismaClient } from '@prisma/client';
-import { PrismaNeon } from '@prisma/adapter-neon';
+import { PrismaPg } from '@prisma/adapter-pg';
+import { Pool } from 'pg';
 import dotenv from 'dotenv';
 import path from 'path';
 
 dotenv.config({ path: path.join(__dirname, '../.env') });
 
-const databaseUrl = process.env.DATABASE_URL;
-if (!databaseUrl) {
-  console.error('DATABASE_URL not found');
+if (!process.env.DATABASE_URL) {
+  console.error('DATABASE_URL not set');
   process.exit(1);
 }
 
-const adapter = new PrismaNeon({ connectionString: databaseUrl });
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const adapter = new PrismaPg(pool);
 const prisma = new PrismaClient({ adapter } as any);
 
 // Source of truth: receipt.constants.ts — PAYOUT_THRESHOLD_*_EUR × EUR_TO_BGN_RATE (1.95583)
@@ -47,9 +48,9 @@ async function seed(): Promise<void> {
     })),
   });
 
-  console.log(`Seeded ${INITIAL_THRESHOLDS.length} payout threshold rows`);
+  console.log(`✅ Seeded ${INITIAL_THRESHOLDS.length} payout threshold rows`);
   for (const t of INITIAL_THRESHOLDS) {
-    console.log(`  ${t.plan}: ${t.minAmount} BGN`);
+    console.log(`   ${t.plan}: ${t.minAmount} BGN`);
   }
 }
 

@@ -880,6 +880,7 @@ async function syncMarketingListSizes(): Promise<void> {
     basic_holders: () =>
       prisma.user.count({
         where: {
+          marketingConsentEmail: true,
           status: { not: 'DELETED' as any },
           subscriptions: { some: { status: { in: ['ACTIVE', 'TRIALING'] }, plan: 'BASIC' } },
         },
@@ -887,6 +888,7 @@ async function syncMarketingListSizes(): Promise<void> {
     inactive_users_90d: () =>
       prisma.user.count({
         where: {
+          marketingConsentEmail: true,
           status: { not: 'DELETED' as any },
           subscriptions: { some: { status: { in: ['ACTIVE', 'TRIALING', 'PAST_DUE'] } } },
           OR: [

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import styled from 'styled-components';
 import { DataTable, ColumnDef } from '../../components/admin/DataTable/DataTable';
 import {
@@ -108,17 +108,21 @@ const PAGE_SIZE = 25;
 
 export default function AdminMarketingListsPage() {
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [typeFilter, setTypeFilter] = useState<MarketingListType | ''>('');
   const [page, setPage] = useState(1);
   const [items, setItems] = useState<MarketingList[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const [initializingDefaults, setInitializingDefaults] = useState(false);
+  const [saveError, setSaveError] = useState('');
 
   const [modal, setModal] = useState<ModalMode>(null);
   const [selected, setSelected] = useState<MarketingList | null>(null);
   const [form, setForm] = useState<FormState>(DEFAULT_FORM);
   const [saving, setSaving] = useState(false);
+  const [removeMemberError, setRemoveMemberError] = useState('');
 
   // Member management state
   const [members, setMembers] = useState<MarketingListMember[]>([]);
@@ -135,12 +139,19 @@ export default function AdminMarketingListsPage() {
   const load = useCallback(() => {
     setLoading(true);
     adminMarketingService
-      .listLists({ page, limit: PAGE_SIZE, search, type: typeFilter })
+      .listLists({ page, limit: PAGE_SIZE, search: debouncedSearch, type: typeFilter })
       .then((r) => { setItems(r.items); setTotal(r.total); })
       .finally(() => setLoading(false));
-  }, [page, search, typeFilter]);
+  }, [page, debouncedSearch, typeFilter]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Debounce the list search so we don't fire an API call on every keystroke
+  useEffect(() => {
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    searchDebounceRef.current = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => { if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current); };
+  }, [search]);
 
   // Escape key closes any open modal
   useEffect(() => {
@@ -212,6 +223,8 @@ export default function AdminMarketingListsPage() {
   const closeModal = () => {
     setModal(null);
     setSelected(null);
+    setSaveError('');
+    setRemoveMemberError('');
     setMemberSearchQuery('');
     setMemberSearchResults([]);
     setSelectedMemberPayload(null);
@@ -220,6 +233,7 @@ export default function AdminMarketingListsPage() {
   const handleSave = async () => {
     if (!form.name.trim()) return;
     setSaving(true);
+    setSaveError('');
     try {
       const payload = {
         name: form.name,
@@ -234,6 +248,8 @@ export default function AdminMarketingListsPage() {
       }
       closeModal();
       load();
+    } catch (err: unknown) {
+      setSaveError((err as any)?.response?.data?.error ?? (err as { message?: string })?.message ?? 'Неуспешно запазване. Опитайте отново.');
     } finally {
       setSaving(false);
     }
@@ -287,10 +303,13 @@ export default function AdminMarketingListsPage() {
   const handleRemoveMember = async (memberId: string) => {
     if (!selected) return;
     setRemovingId(memberId);
+    setRemoveMemberError('');
     try {
       await adminMarketingService.removeListMember(selected.id, memberId);
       setMembers((prev) => prev.filter((m) => m.id !== memberId));
       load();
+    } catch (err: unknown) {
+      setRemoveMemberError((err as any)?.response?.data?.error ?? (err as { message?: string })?.message ?? 'Неуспешно премахване. Опитайте отново.');
     } finally {
       setRemovingId(null);
     }
@@ -426,6 +445,7 @@ export default function AdminMarketingListsPage() {
               <CloseBtn onClick={closeModal}>×</CloseBtn>
             </ModalHeader>
             <ModalBody>
+              {saveError && <ErrorBanner>{saveError}</ErrorBanner>}
               <FormGroup>
                 <Label>Наименование *</Label>
                 <Input
@@ -595,6 +615,7 @@ export default function AdminMarketingListsPage() {
 
               {/* ── Текущи членове ── */}
               <SectionTitle style={{ marginTop: '1.5rem' }}>Текущи членове</SectionTitle>
+              {removeMemberError && <ErrorBanner style={{ marginBottom: '0.75rem' }}>{removeMemberError}</ErrorBanner>}
               {membersLoading ? (
                 <EmptyNote>Зарежда се…</EmptyNote>
               ) : members.length === 0 ? (

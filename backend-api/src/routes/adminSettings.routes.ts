@@ -34,9 +34,28 @@ router.use(auditMiddleware);
 
 /* ─── Cashback Rates ─────────────────────────────────────────────────────── */
 
+/** Resolve admin name/email for a list of user IDs from createdBy fields. */
+async function resolveAdminNames(ids: (string | null | undefined)[]) {
+  const uniqueIds = [...new Set(ids.filter(Boolean))] as string[];
+  if (uniqueIds.length === 0) return new Map<string, { name: string | null; email: string | null }>();
+  const users = await prisma.user.findMany({
+    where: { id: { in: uniqueIds } },
+    select: { id: true, email: true, firstName: true, lastName: true },
+  });
+  return new Map(
+    users.map((u) => [
+      u.id,
+      {
+        name: [u.firstName, u.lastName].filter(Boolean).join(' ') || u.email,
+        email: u.email,
+      },
+    ])
+  );
+}
+
 /**
  * GET /api/admin/settings/cashback-rates
- * Returns the latest effective row for each discount step.
+ * Returns the latest effective row for each discount step, with author names resolved.
  */
 router.get(
   '/cashback-rates',
@@ -53,7 +72,14 @@ router.get(
       if (!byStep.has(r.discountStep)) byStep.set(r.discountStep, r);
     }
 
-    const current = [5, 10, 15, 20, 25].map((step) => byStep.get(step) ?? null);
+    const rows = [5, 10, 15, 20, 25].map((step) => byStep.get(step) ?? null);
+    const adminMap = await resolveAdminNames(rows.map((r) => r?.createdBy));
+
+    const current = rows.map((r) => {
+      if (!r) return null;
+      const admin = r.createdBy ? adminMap.get(r.createdBy) : undefined;
+      return { ...r, createdByName: admin?.name ?? null, createdByEmail: admin?.email ?? null };
+    });
 
     res.json({ success: true, data: current });
   })
@@ -61,7 +87,7 @@ router.get(
 
 /**
  * GET /api/admin/settings/cashback-rates/history
- * Last 20 saved rate snapshots across all steps.
+ * Last 20 saved rate snapshots across all steps, with author names resolved.
  */
 router.get(
   '/cashback-rates/history',
@@ -71,26 +97,44 @@ router.get(
       orderBy: { createdAt: 'desc' },
       take: 20,
     });
-    res.json({ success: true, data: history });
+
+    const adminMap = await resolveAdminNames(history.map((r) => r.createdBy));
+    const data = history.map((r) => {
+      const admin = r.createdBy ? adminMap.get(r.createdBy) : undefined;
+      return { ...r, createdByName: admin?.name ?? null, createdByEmail: admin?.email ?? null };
+    });
+
+    res.json({ success: true, data });
   })
 );
 
 /**
  * POST /api/admin/settings/cashback-rates
- * Body: { rates: Array<{ discountStep: number; basic: number; premium: number }>, notes?: string }
+ * Body: { rates: Array<{ discountStep: number; basic: number; premium: number }>, effectiveFrom?: string, notes?: string }
  * Saves a new version of the full rate matrix.
  */
 router.post(
   '/cashback-rates',
   requirePermission('settings.write'),
   asyncHandler(async (req: AuthRequest, res: Response) => {
-    const { rates, notes } = req.body as {
+    const { rates, notes, effectiveFrom } = req.body as {
       rates?: Array<{ discountStep: number; basic: number; premium: number }>;
       notes?: string;
+      effectiveFrom?: string;
     };
 
     if (!Array.isArray(rates) || rates.length === 0) {
       return res.status(400).json({ success: false, error: 'rates array is required' });
+    }
+
+    let effectiveDate: Date;
+    if (effectiveFrom) {
+      effectiveDate = new Date(effectiveFrom);
+      if (isNaN(effectiveDate.getTime())) {
+        return res.status(400).json({ success: false, error: 'effectiveFrom must be a valid ISO date string' });
+      }
+    } else {
+      effectiveDate = new Date();
     }
 
     const VALID_STEPS = new Set([5, 10, 15, 20, 25]);
@@ -107,9 +151,20 @@ router.post(
       if (typeof r.premium !== 'number' || r.premium < 0 || r.premium > 100) {
         return res.status(400).json({ success: false, error: 'premium must be 0–100' });
       }
+      if (r.basic > r.discountStep) {
+        return res.status(400).json({
+          success: false,
+          error: `Step ${r.discountStep}%: basic cashback (${r.basic}%) cannot exceed the partner discount — margin would be negative`,
+        });
+      }
+      if (r.premium > r.discountStep) {
+        return res.status(400).json({
+          success: false,
+          error: `Step ${r.discountStep}%: premium cashback (${r.premium}%) cannot exceed the partner discount — margin would be negative`,
+        });
+      }
     }
 
-    const now = new Date();
     const created = await prisma.$transaction(
       rates.map((r) =>
         prisma.cashbackRate.create({
@@ -117,7 +172,7 @@ router.post(
             discountStep: r.discountStep,
             basic: r.basic,
             premium: r.premium,
-            effectiveFrom: now,
+            effectiveFrom: effectiveDate,
             createdBy: req.user!.id,
             notes: notes ?? null,
           },
@@ -168,7 +223,7 @@ router.get(
 
 /**
  * GET /api/admin/settings/payout-thresholds/history
- * Last 30 threshold change records, newest first.
+ * Last 30 threshold change records, newest first, with creator email resolved.
  */
 router.get(
   '/payout-thresholds/history',
@@ -178,7 +233,24 @@ router.get(
       orderBy: { createdAt: 'desc' },
       take: 30,
     });
-    res.json({ success: true, data: history });
+
+    // Resolve admin email for each row (createdBy is a plain user ID string, no Prisma relation)
+    const adminIds = [...new Set(history.map((r) => r.createdBy).filter(Boolean))] as string[];
+    const admins = adminIds.length
+      ? await prisma.user.findMany({ where: { id: { in: adminIds } }, select: { id: true, email: true, firstName: true, lastName: true } })
+      : [];
+    const adminMap = new Map(admins.map((u) => [u.id, u]));
+
+    const data = history.map((r) => {
+      const admin = r.createdBy ? adminMap.get(r.createdBy) : undefined;
+      return {
+        ...r,
+        createdByEmail: admin?.email ?? null,
+        createdByName: admin ? [admin.firstName, admin.lastName].filter(Boolean).join(' ') || admin.email : null,
+      };
+    });
+
+    res.json({ success: true, data });
   })
 );
 

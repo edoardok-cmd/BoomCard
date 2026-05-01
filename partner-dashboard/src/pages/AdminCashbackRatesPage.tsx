@@ -193,7 +193,6 @@ const t = (lang: 'en' | 'bg') => ({
   premium:        lang === 'bg' ? 'Premium (%)' : 'Premium (%)',
   marginBasic:    lang === 'bg' ? 'Марж BASIC (%)' : 'Margin BASIC (%)',
   marginPremium:  lang === 'bg' ? 'Марж Premium (%)' : 'Margin Premium (%)',
-  rangeHint:      '0–100',
   effectiveFrom:  lang === 'bg' ? 'В сила от' : 'Effective from',
   effectiveHint:  lang === 'bg' ? '(по подразбиране: сега)' : '(defaults to now)',
   notes:          lang === 'bg' ? 'Бележки (незадължително)' : 'Notes (optional)',
@@ -202,6 +201,18 @@ const t = (lang: 'en' | 'bg') => ({
   thEffective:    lang === 'bg' ? 'В сила от' : 'Effective from',
   thBy:           lang === 'bg' ? 'Автор' : 'By',
   thNotes:        lang === 'bg' ? 'Бележки' : 'Notes',
+  mustBeNumbers:  (step: number) =>
+    lang === 'bg'
+      ? `Стъпка ${step}%: BASIC и Premium трябва да са числа`
+      : `Step ${step}%: basic and premium must be numbers`,
+  outOfRange:     (step: number) =>
+    lang === 'bg'
+      ? `Стъпка ${step}%: стойностите трябва да са между 0 и ${step}`
+      : `Step ${step}%: values must be between 0 and ${step}`,
+  marginNegative: (step: number) =>
+    lang === 'bg'
+      ? `Стъпка ${step}%: кешбекът не може да надвишава партньорската отстъпка (${step}%) — маржът би бил отрицателен`
+      : `Step ${step}%: cashback cannot exceed the partner discount (${step}%) — margin would be negative`,
 });
 
 // ── Helpers ───────────────────────────────────────────────────────────
@@ -272,15 +283,15 @@ const AdminCashbackRatesPage: React.FC = () => {
       const basic = parseFloat(row.basic);
       const premium = parseFloat(row.premium);
       if (!isFinite(basic) || !isFinite(premium)) {
-        setError(`Step ${step}%: basic and premium must be numbers`);
+        setError(tr.mustBeNumbers(step));
         return;
       }
-      if (basic < 0 || premium < 0 || basic > 100 || premium > 100) {
-        setError(`Step ${step}%: values must be between 0 and 100`);
+      if (basic < 0 || premium < 0 || basic > step || premium > step) {
+        setError(tr.outOfRange(step));
         return;
       }
       if (basic > step || premium > step) {
-        setError(`Step ${step}%: cashback cannot exceed the partner discount (${step}%) — margin would be negative`);
+        setError(tr.marginNegative(step));
         return;
       }
       rates.push({ discountStep: step, basic, premium });
@@ -346,8 +357,8 @@ const AdminCashbackRatesPage: React.FC = () => {
                 <Cell $muted>{row != null ? computeMargin(step, row.basic) : '—'}</Cell>
                 <Cell $muted>{row != null ? computeMargin(step, row.premium) : '—'}</Cell>
                 <Cell $muted style={{ fontSize: '0.8rem' }}>{fmtDate(row?.effectiveFrom ?? null)}</Cell>
-                <Cell $muted style={{ fontSize: '0.75rem', fontFamily: 'monospace' }}>
-                  {row?.createdBy?.slice(0, 8) ?? '—'}
+                <Cell $muted style={{ fontSize: '0.75rem' }}>
+                  {row?.createdByName ?? row?.createdByEmail ?? (row?.createdBy ? row.createdBy.slice(0, 8) : '—')}
                 </Cell>
               </React.Fragment>
             );
@@ -360,19 +371,9 @@ const AdminCashbackRatesPage: React.FC = () => {
         <SectionTitle>{tr.newTitle}</SectionTitle>
         <Matrix $cols={editCols}>
           <Cell $header>{tr.step}</Cell>
-          <Cell $header>
-            {tr.basic}
-            <span style={{ fontWeight: 400, fontSize: '0.7rem', marginLeft: '0.25rem' }}>
-              ({tr.rangeHint})
-            </span>
-          </Cell>
+          <Cell $header>{tr.basic}</Cell>
           <Cell $header>{tr.marginBasic}</Cell>
-          <Cell $header>
-            {tr.premium}
-            <span style={{ fontWeight: 400, fontSize: '0.7rem', marginLeft: '0.25rem' }}>
-              ({tr.rangeHint})
-            </span>
-          </Cell>
+          <Cell $header>{tr.premium}</Cell>
           <Cell $header>{tr.marginPremium}</Cell>
           {STEPS.map(step => (
             <React.Fragment key={step}>
@@ -437,28 +438,45 @@ const AdminCashbackRatesPage: React.FC = () => {
               <th>{tr.premium}</th>
               <th>{tr.marginBasic}</th>
               <th>{tr.marginPremium}</th>
-              <th>{tr.thBy}</th>
               <th>{tr.thNotes}</th>
             </tr>
           </thead>
           <tbody>
             {history.length === 0 && (
               <tr>
-                <td colSpan={8} style={{ textAlign: 'center', padding: '2rem', color: 'var(--color-text-secondary)' }}>—</td>
+                <td colSpan={7} style={{ textAlign: 'center', padding: '2rem', color: 'var(--color-text-secondary)' }}>—</td>
               </tr>
             )}
-            {history.map(row => (
-              <tr key={row.id}>
-                <td>{fmtDate(row.effectiveFrom)}</td>
-                <td>{row.discountStep}%</td>
-                <td>{row.basic}%</td>
-                <td>{row.premium}%</td>
-                <td className="muted">{computeMargin(row.discountStep, row.basic)}</td>
-                <td className="muted">{computeMargin(row.discountStep, row.premium)}</td>
-                <td style={{ fontFamily: 'monospace', fontSize: '0.75rem' }}>{row.createdBy?.slice(0, 8) ?? '—'}</td>
-                <td>{row.notes ?? ''}</td>
-              </tr>
-            ))}
+            {(() => {
+              // Group rows by effectiveFrom — all rows in one save share the same timestamp.
+              const groups = new Map<string, typeof history>();
+              for (const row of history) {
+                const key = row.effectiveFrom ?? row.createdAt;
+                if (!groups.has(key)) groups.set(key, []);
+                groups.get(key)!.push(row);
+              }
+              return [...groups.entries()].map(([key, rows]) => (
+                <React.Fragment key={key}>
+                  <tr style={{ background: 'var(--color-background-secondary)' }}>
+                    <td colSpan={7} style={{ fontWeight: 700, fontSize: '0.8rem', color: 'var(--color-text-secondary)', padding: '0.5rem 0.875rem' }}>
+                      {fmtDate(key)}
+                      {rows[0].notes ? <span style={{ fontWeight: 400, marginLeft: '0.75rem' }}>{rows[0].notes}</span> : null}
+                    </td>
+                  </tr>
+                  {rows.map(row => (
+                    <tr key={row.id}>
+                      <td style={{ paddingLeft: '1.5rem', color: 'var(--color-text-secondary)', fontSize: '0.8rem' }}>↳</td>
+                      <td>{row.discountStep}%</td>
+                      <td>{row.basic}%</td>
+                      <td>{row.premium}%</td>
+                      <td className="muted">{computeMargin(row.discountStep, row.basic)}</td>
+                      <td className="muted">{computeMargin(row.discountStep, row.premium)}</td>
+                      <td></td>
+                    </tr>
+                  ))}
+                </React.Fragment>
+              ));
+            })()}
           </tbody>
         </HistoryTable>
       </Section>

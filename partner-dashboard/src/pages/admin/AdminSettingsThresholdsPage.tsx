@@ -17,6 +17,8 @@ const palette = {
   infoSoft: '#dbeafe',
   amber: '#92400e',
   amberSoft: '#fef3c7',
+  danger: '#dc2626',
+  dangerSoft: '#fee2e2',
 };
 
 const PageShell = styled.div`
@@ -39,6 +41,16 @@ const InfoBox = styled.div`
   border-radius: 0.5rem;
   font-size: 0.8125rem;
   margin-bottom: 1.5rem;
+  max-width: 50rem;
+`;
+
+const WarnBox = styled.div`
+  padding: 0.75rem 1rem;
+  background: ${palette.dangerSoft};
+  color: ${palette.danger};
+  border-radius: 0.5rem;
+  font-size: 0.8125rem;
+  margin-top: 0.75rem;
   max-width: 50rem;
 `;
 
@@ -86,10 +98,10 @@ const PlanName = styled.span<{ $color: string }>`
 `;
 const PlanHint = styled.span`font-size: 0.75rem; color: ${palette.textSubtle};`;
 const InputRow = styled.div`display: flex; align-items: center; gap: 0.375rem;`;
-const AmtInput = styled.input`
+const AmtInput = styled.input<{ $warn?: boolean }>`
   width: 5.5rem;
   padding: 0.4375rem 0.625rem;
-  border: 1px solid ${palette.border};
+  border: 1px solid ${({ $warn }) => ($warn ? palette.danger : palette.border)};
   border-radius: 0.5rem;
   font-size: 0.9375rem;
   font-weight: 700;
@@ -164,30 +176,78 @@ const PlanBadge = styled.span<{ $color: string }>`
 `;
 const HistoryDate = styled.span`font-size: 0.75rem; color: ${palette.textSubtle}; white-space: nowrap;`;
 
+// Overlay for low-threshold confirmation
+const OverlayBackdrop = styled.div`
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.35);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 1000;
+`;
+const DialogBox = styled.div`
+  background: ${palette.surface};
+  border-radius: 0.75rem;
+  padding: 1.5rem;
+  max-width: 26rem;
+  width: 90%;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+`;
+const DialogTitle = styled.h3`font-size: 1rem; font-weight: 700; color: ${palette.danger}; margin: 0 0 0.5rem;`;
+const DialogBody = styled.p`font-size: 0.875rem; color: ${palette.textMuted}; margin: 0 0 1.25rem;`;
+const DialogActions = styled.div`display: flex; gap: 0.75rem; justify-content: flex-end;`;
+const CancelBtn = styled.button`
+  padding: 0.5rem 1rem;
+  border: 1px solid ${palette.border};
+  border-radius: 0.5rem;
+  background: ${palette.surface};
+  font-size: 0.875rem; cursor: pointer;
+  &:hover { background: ${palette.bg}; }
+`;
+const ConfirmBtn = styled.button`
+  padding: 0.5rem 1rem;
+  border: none;
+  border-radius: 0.5rem;
+  background: ${palette.danger};
+  color: #fff;
+  font-size: 0.875rem; font-weight: 600; cursor: pointer;
+  &:hover { opacity: 0.9; }
+`;
+
 const PLANS = [
-  { key: 'BASIC'   as const, name: 'Basic',   hint: 'Basic plan subscribers', accent: '#2563eb', color: '#2563eb' },
+  { key: 'BASIC'   as const, name: 'Basic',   hint: 'Basic plan subscribers',   accent: '#2563eb', color: '#2563eb' },
   { key: 'PREMIUM' as const, name: 'Premium', hint: 'Premium (monthly/weekly)', accent: '#c96442', color: '#c96442' },
-  { key: 'LIGHT'   as const, name: 'Light',   hint: 'Light (Paysera weekly)', accent: '#4a7c59', color: '#4a7c59' },
+  { key: 'LIGHT'   as const, name: 'Light',   hint: 'Light (Paysera weekly)',   accent: '#4a7c59', color: '#4a7c59' },
 ] as const;
 
 type Plan = 'BASIC' | 'PREMIUM' | 'LIGHT';
 
+// Correct seed values: BASIC 20 EUR, PREMIUM 15 EUR, LIGHT 10 EUR × 1.95583 BGN/EUR
+const SEED_DEFAULTS: Record<Plan, string> = { BASIC: '39.12', PREMIUM: '29.34', LIGHT: '19.56' };
+
+// Warn and require confirmation when any threshold drops below this floor
+const LOW_THRESHOLD_FLOOR = 5;
+
 export default function AdminSettingsThresholdsPage() {
   const queryClient = useQueryClient();
-  const [amounts, setAmounts] = useState<Record<Plan, string>>({ BASIC: '39.10', PREMIUM: '19.56', LIGHT: '29.34' });
+  const [amounts, setAmounts] = useState<Record<Plan, string>>(SEED_DEFAULTS);
   const [notes, setNotes] = useState('');
+  const [pendingSave, setPendingSave] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ['admin-payout-thresholds'],
     queryFn: () => adminSettingsService.getPayoutThresholds(),
   });
 
+  const { data: historyData, isLoading: historyLoading } = useQuery({
+    queryKey: ['admin-payout-thresholds-history'],
+    queryFn: () => adminSettingsService.getPayoutThresholdsHistory(),
+  });
+
   useEffect(() => {
     if (!data?.data) return;
     setAmounts({
-      BASIC:   String(data.data.BASIC?.minAmount   ?? ''),
-      PREMIUM: String(data.data.PREMIUM?.minAmount ?? ''),
-      LIGHT:   String(data.data.LIGHT?.minAmount   ?? ''),
+      BASIC:   String(data.data.BASIC?.minAmount   ?? SEED_DEFAULTS.BASIC),
+      PREMIUM: String(data.data.PREMIUM?.minAmount ?? SEED_DEFAULTS.PREMIUM),
+      LIGHT:   String(data.data.LIGHT?.minAmount   ?? SEED_DEFAULTS.LIGHT),
     });
   }, [data]);
 
@@ -202,109 +262,169 @@ export default function AdminSettingsThresholdsPage() {
         notes || undefined,
       ),
     onSuccess: () => {
-      toast.success('Payout thresholds saved');
+      toast.success('Прагове за изплащане запазени');
       setNotes('');
       queryClient.invalidateQueries({ queryKey: ['admin-payout-thresholds'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-payout-thresholds-history'] });
     },
-    onError: () => toast.error('Failed to save'),
+    onError: (err: unknown) => {
+      const msg =
+        (err as { response?: { data?: { error?: string } } })?.response?.data?.error
+        ?? 'Неуспешно запазване';
+      toast.error(msg);
+    },
   });
+
+  const handleSaveClick = () => {
+    const hasLow = PLANS.some((p) => {
+      const val = parseFloat(amounts[p.key]);
+      return !isNaN(val) && val < LOW_THRESHOLD_FLOOR;
+    });
+    if (hasLow) {
+      setPendingSave(true);
+    } else {
+      saveMutation.mutate();
+    }
+  };
+
+  const doSave = () => {
+    saveMutation.mutate();
+    setPendingSave(false);
+  };
 
   const fmt = (iso: string | null) =>
     iso
-      ? new Date(iso).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+      ? new Date(iso).toLocaleString('bg-BG', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
       : '—';
 
-  // Flatten history from the response (each plan has its own updatedAt — build a simple audit list)
-  const historyRows = data?.data
-    ? PLANS.flatMap((p) => {
-        const entry = data.data[p.key];
-        if (!entry?.updatedAt) return [];
-        return [{ plan: p.key, color: p.color, amount: entry.minAmount, notes: entry.notes, updatedAt: entry.updatedAt }];
-      }).sort((a, b) => (b.updatedAt ?? '').localeCompare(a.updatedAt ?? ''))
-    : [];
+  const historyRows = historyData?.data ?? [];
+
+  const lowPlans = PLANS.filter((p) => {
+    const val = parseFloat(amounts[p.key]);
+    return !isNaN(val) && val < LOW_THRESHOLD_FLOOR;
+  });
 
   return (
     <PageShell>
+      {pendingSave && (
+        <OverlayBackdrop>
+          <DialogBox>
+            <DialogTitle>Много нисък праг</DialogTitle>
+            <DialogBody>
+              {lowPlans.map((p) => p.name).join(', ')} е зададен под {LOW_THRESHOLD_FLOOR} лв.
+              Това ще позволи на абонатите да поискат изплащане почти веднага. Сигурни ли сте?
+            </DialogBody>
+            <DialogActions>
+              <CancelBtn onClick={() => setPendingSave(false)}>Откажи</CancelBtn>
+              <ConfirmBtn onClick={doSave}>Запази въпреки това</ConfirmBtn>
+            </DialogActions>
+          </DialogBox>
+        </OverlayBackdrop>
+      )}
+
       <PageHeader>
-        <Eyebrow>Settings</Eyebrow>
-        <PageTitle>Payout Thresholds</PageTitle>
+        <Eyebrow>Настройки</Eyebrow>
+        <PageTitle>Прагове за изплащане</PageTitle>
         <PageSubtitle>
-          Minimum cashback balance (BGN) a subscriber must reach before requesting a payout, per plan.
+          Минимален изчистен кешбек баланс (лв.), необходим за изплащане, по абонаментен план.
         </PageSubtitle>
       </PageHeader>
 
       <InfoBox>
-        Thresholds are enforced at payout-request time. Subscribers whose cleared balance is below
-        their plan's threshold cannot submit an IBAN for payment until it is met. Changes take
-        effect immediately for new payout requests.
+        Праговете се прилагат при подаване на заявка за изплащане. Абонати с изчистен баланс под
+        прага на плана си не могат да въведат IBAN за плащане, докато не го достигнат. Промените
+        влизат в сила незабавно за нови заявки.
       </InfoBox>
 
       <Grid>
         <Card>
-          <CardTitle>Current thresholds</CardTitle>
-          <CardSubtitle>Edit amounts and save. Each save is versioned.</CardSubtitle>
+          <CardTitle>Текущи прагове</CardTitle>
+          <CardSubtitle>Редактирайте сумите и запазете. Всяко запазване е версионирано.</CardSubtitle>
 
           {isLoading ? (
-            <p style={{ color: palette.textSubtle, fontSize: '0.875rem' }}>Loading…</p>
+            <p style={{ color: palette.textSubtle, fontSize: '0.875rem' }}>Зареждане…</p>
           ) : (
             <PlanGrid>
-              {PLANS.map((plan) => (
-                <PlanRow key={plan.key} $accent={plan.accent}>
-                  <PlanLabel>
-                    <PlanName $color={plan.color}>{plan.name}</PlanName>
-                    <PlanHint>{plan.hint}</PlanHint>
-                  </PlanLabel>
-                  <InputRow>
-                    <AmtInput
-                      type="number"
-                      min="0"
-                      max="10000"
-                      step="0.01"
-                      value={amounts[plan.key]}
-                      onChange={(e) =>
-                        setAmounts((prev) => ({ ...prev, [plan.key]: e.target.value }))
-                      }
-                    />
-                    <Currency>BGN</Currency>
-                  </InputRow>
-                </PlanRow>
-              ))}
+              {PLANS.map((plan) => {
+                const val = parseFloat(amounts[plan.key]);
+                const isLow = !isNaN(val) && val < LOW_THRESHOLD_FLOOR;
+                return (
+                  <PlanRow key={plan.key} $accent={plan.accent}>
+                    <PlanLabel>
+                      <PlanName $color={plan.color}>{plan.name}</PlanName>
+                      <PlanHint>{plan.hint}</PlanHint>
+                    </PlanLabel>
+                    <InputRow>
+                      <AmtInput
+                        type="number"
+                        min="0"
+                        max="10000"
+                        step="0.01"
+                        $warn={isLow}
+                        value={amounts[plan.key]}
+                        onChange={(e) =>
+                          setAmounts((prev) => ({ ...prev, [plan.key]: e.target.value }))
+                        }
+                      />
+                      <Currency>лв.</Currency>
+                    </InputRow>
+                  </PlanRow>
+                );
+              })}
             </PlanGrid>
+          )}
+
+          {lowPlans.length > 0 && (
+            <WarnBox>
+              Внимание: {lowPlans.map((p) => p.name).join(', ')} е под препоръчителния минимум
+              от {LOW_THRESHOLD_FLOOR} лв. Абонатите ще могат да поискат изплащане почти веднага.
+            </WarnBox>
           )}
 
           <NotesRow>
             <NotesInput
-              placeholder="Optional: reason for this change…"
+              placeholder="По желание: причина за промяната…"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
             />
-            <SaveBtn onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending || isLoading}>
-              {saveMutation.isPending ? 'Saving…' : 'Save'}
+            <SaveBtn onClick={handleSaveClick} disabled={saveMutation.isPending || isLoading}>
+              {saveMutation.isPending ? 'Запазване…' : 'Запази'}
             </SaveBtn>
           </NotesRow>
         </Card>
 
         <Card>
-          <CardTitle>Recent changes</CardTitle>
-          <CardSubtitle>Last saved threshold values per plan.</CardSubtitle>
+          <CardTitle>Скорошни промени</CardTitle>
+          <CardSubtitle>Пълна история на промените по план, от най-новото.</CardSubtitle>
           <HistoryList>
-            {historyRows.length === 0 && (
-              <p style={{ color: palette.textSubtle, fontSize: '0.875rem' }}>No history yet.</p>
+            {historyLoading && (
+              <p style={{ color: palette.textSubtle, fontSize: '0.875rem' }}>Зареждане…</p>
             )}
-            {historyRows.map((row, i) => (
-              <HistoryItem key={i}>
-                <PlanBadge $color={row.color}>{row.plan}</PlanBadge>
-                <div style={{ color: palette.textMuted }}>
-                  <strong style={{ color: palette.text }}>{row.amount} BGN</strong>
-                  {row.notes && (
-                    <div style={{ fontSize: '0.75rem', color: palette.textSubtle, marginTop: '0.125rem' }}>
-                      {row.notes}
-                    </div>
-                  )}
-                </div>
-                <HistoryDate>{fmt(row.updatedAt)}</HistoryDate>
-              </HistoryItem>
-            ))}
+            {!historyLoading && historyRows.length === 0 && (
+              <p style={{ color: palette.textSubtle, fontSize: '0.875rem' }}>Няма история.</p>
+            )}
+            {historyRows.map((row) => {
+              const plan = PLANS.find((p) => p.key === row.plan);
+              return (
+                <HistoryItem key={row.id}>
+                  <PlanBadge $color={plan?.color ?? palette.textMuted}>{row.plan}</PlanBadge>
+                  <div style={{ color: palette.textMuted }}>
+                    <strong style={{ color: palette.text }}>{row.minAmount} лв.</strong>
+                    {row.notes && (
+                      <div style={{ fontSize: '0.75rem', color: palette.textSubtle, marginTop: '0.125rem' }}>
+                        {row.notes}
+                      </div>
+                    )}
+                    {(row.createdByName || row.createdByEmail) && (
+                      <div style={{ fontSize: '0.72rem', color: palette.textSubtle, marginTop: '0.1rem' }}>
+                        от {row.createdByName || row.createdByEmail}
+                      </div>
+                    )}
+                  </div>
+                  <HistoryDate>{fmt(row.createdAt)}</HistoryDate>
+                </HistoryItem>
+              );
+            })}
           </HistoryList>
         </Card>
       </Grid>

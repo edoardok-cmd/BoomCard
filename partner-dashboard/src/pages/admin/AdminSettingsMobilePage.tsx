@@ -230,7 +230,8 @@ export default function AdminSettingsMobilePage() {
     onError: () => toast.error('Failed to save'),
   });
 
-  const anyMaintenance = state.iosStatus === 'maintenance' || state.androidStatus === 'maintenance';
+  const anyMaintenance =
+    state.iosStatus !== 'active' || state.androidStatus !== 'active';
 
   return (
     <PageShell>

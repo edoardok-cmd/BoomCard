@@ -7,21 +7,28 @@ import {
   PAYOUT_THRESHOLD_PREMIUM_MONTHLY_EUR,
 } from '../constants/receipt.constants';
 
+const r2 = (n: number) => Math.round(n * 100) / 100;
 const FALLBACK_BGN: Record<SubscriptionPlan, number> = {
-  BASIC:   PAYOUT_THRESHOLD_BASIC_EUR * EUR_TO_BGN_RATE,
-  LIGHT:   PAYOUT_THRESHOLD_PREMIUM_WEEKLY_EUR * EUR_TO_BGN_RATE,
-  PREMIUM: PAYOUT_THRESHOLD_PREMIUM_MONTHLY_EUR * EUR_TO_BGN_RATE,
+  BASIC:   r2(PAYOUT_THRESHOLD_BASIC_EUR * EUR_TO_BGN_RATE),
+  LIGHT:   r2(PAYOUT_THRESHOLD_PREMIUM_WEEKLY_EUR * EUR_TO_BGN_RATE),
+  PREMIUM: r2(PAYOUT_THRESHOLD_PREMIUM_MONTHLY_EUR * EUR_TO_BGN_RATE),
 };
 
 // 5-minute in-process cache — avoids a DB hit per subscriber during nightly sweeps.
 let _cache: { data: Record<SubscriptionPlan, number>; expiresAt: number } | null = null;
 
 async function loadFromDb(): Promise<Record<SubscriptionPlan, number>> {
-  const rows = await prisma.payoutThreshold.findMany({ orderBy: { createdAt: 'desc' }, take: 100 });
+  const plans = ['BASIC', 'LIGHT', 'PREMIUM'] as SubscriptionPlan[];
+  // Query latest row per plan individually so table growth never causes a plan to be missed
+  const rows = await Promise.all(
+    plans.map((plan) =>
+      prisma.payoutThreshold.findFirst({ where: { plan }, orderBy: { createdAt: 'desc' } })
+    )
+  );
   const resolved = { ...FALLBACK_BGN };
-  for (const plan of ['BASIC', 'LIGHT', 'PREMIUM'] as SubscriptionPlan[]) {
-    const row = rows.find((r) => r.plan === plan);
-    if (row) resolved[plan] = row.minAmount;
+  for (let i = 0; i < plans.length; i++) {
+    const row = rows[i];
+    if (row) resolved[plans[i]] = row.minAmount;
   }
   return resolved;
 }

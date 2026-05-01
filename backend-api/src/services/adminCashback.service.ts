@@ -401,6 +401,24 @@ class AdminCashbackService {
 
   // ── Cashback Rate Matrix Management ──────────────────────────────────────────
 
+  private async resolveAdminNames(ids: (string | null | undefined)[]) {
+    const uniqueIds = [...new Set(ids.filter(Boolean))] as string[];
+    if (uniqueIds.length === 0) return new Map<string, { name: string | null; email: string | null }>();
+    const users = await prisma.user.findMany({
+      where: { id: { in: uniqueIds } },
+      select: { id: true, email: true, firstName: true, lastName: true },
+    });
+    return new Map(
+      users.map((u) => [
+        u.id,
+        {
+          name: [u.firstName, u.lastName].filter(Boolean).join(' ') || u.email,
+          email: u.email,
+        },
+      ])
+    );
+  }
+
   /**
    * Get all cashback rate rows, newest first. Each row covers one discount step.
    */
@@ -411,12 +429,19 @@ class AdminCashbackService {
     premium: number;
     effectiveFrom: Date;
     createdBy: string | null;
+    createdByName: string | null;
+    createdByEmail: string | null;
     notes: string | null;
     createdAt: Date;
   }>> {
-    return prisma.cashbackRate.findMany({
+    const rows = await prisma.cashbackRate.findMany({
       where: { discountStep: { in: [...CASHBACK_MATRIX_STEPS] } },
       orderBy: [{ effectiveFrom: 'desc' }, { discountStep: 'asc' }],
+    });
+    const adminMap = await this.resolveAdminNames(rows.map((r) => r.createdBy));
+    return rows.map((r) => {
+      const admin = r.createdBy ? adminMap.get(r.createdBy) : undefined;
+      return { ...r, createdByName: admin?.name ?? null, createdByEmail: admin?.email ?? null };
     });
   }
 
@@ -430,6 +455,8 @@ class AdminCashbackService {
     premium: number;
     effectiveFrom: Date | null;
     createdBy: string | null;
+    createdByName: string | null;
+    createdByEmail: string | null;
     source: 'db' | 'default';
   }>> {
     const now = new Date();
@@ -450,13 +477,35 @@ class AdminCashbackService {
       }
     }
 
+    const allCreatedBy = [...rateMap.values()].map((v) => v.createdBy);
+    const adminMap = await this.resolveAdminNames(allCreatedBy);
+
     return CASHBACK_MATRIX_STEPS.map(step => {
       const db = rateMap.get(step);
       if (db) {
-        return { discountStep: step, basic: db.basic, premium: db.premium, effectiveFrom: db.effectiveFrom, createdBy: db.createdBy, source: 'db' as const };
+        const admin = db.createdBy ? adminMap.get(db.createdBy) : undefined;
+        return {
+          discountStep: step,
+          basic: db.basic,
+          premium: db.premium,
+          effectiveFrom: db.effectiveFrom,
+          createdBy: db.createdBy,
+          createdByName: admin?.name ?? null,
+          createdByEmail: admin?.email ?? null,
+          source: 'db' as const,
+        };
       }
       const defaults = CASHBACK_MATRIX[step];
-      return { discountStep: step, basic: defaults.basic, premium: defaults.premium, effectiveFrom: null, createdBy: null, source: 'default' as const };
+      return {
+        discountStep: step,
+        basic: defaults.basic,
+        premium: defaults.premium,
+        effectiveFrom: null,
+        createdBy: null,
+        createdByName: null,
+        createdByEmail: null,
+        source: 'default' as const,
+      };
     });
   }
 
@@ -488,6 +537,9 @@ class AdminCashbackService {
       seenSteps.add(r.discountStep);
       if (r.basic < 0 || r.premium < 0 || r.basic > 100 || r.premium > 100) {
         throw new Error(`Cashback percentages must be between 0 and 100`);
+      }
+      if (r.basic > r.discountStep || r.premium > r.discountStep) {
+        throw new Error(`Step ${r.discountStep}%: cashback cannot exceed the partner discount — margin would be negative`);
       }
     }
 

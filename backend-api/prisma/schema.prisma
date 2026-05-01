@@ -1998,7 +1998,7 @@ model MarketingListMember {
 model MarketingAutomation {
   id         String             @id @default(uuid())
   name       String
-  trigger    String
+  trigger    String             @unique
   status     AutomationStatus   @default(DRAFT)
   totalRuns  Int                @default(0)
   lastRunAt  DateTime?
