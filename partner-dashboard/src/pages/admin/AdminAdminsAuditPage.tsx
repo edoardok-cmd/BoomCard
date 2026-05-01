@@ -119,6 +119,23 @@ const ACTION_LABEL: Record<string, string> = {
   'campaign.update':               'Промяна на кампания',
   'template.create':               'Създаден шаблон',
   'template.update':               'Промяна на шаблон',
+  // Legacy codes from old middleware (method-based: ${objectType}.${req.method})
+  '.post':                         'Създаден администратор',      // POST / on admins router
+  'pending-super.post':            'Заявка за Супер администратор',
+  'pending-super.delete':          'Изтрита заявка за Супер администратор',
+  'rates.post':                    'Нов набор от кешбек ставки',
+  'rates.delete':                  'Изтрит кешбек набор',
+  'cashback.post':                 'Кешбек операция',
+  'mark-paid.post':                'Отбелязан като платен',
+  'admin.post':                    'Създаден администратор',
+  'admin.patch':                   'Промяна на администратор',
+  'admin.delete':                  'Изтрит администратор',
+  'partner.post':                  'Създаден партньор',
+  'partner.patch':                 'Промяна на партньор',
+  'system.post':                   'Промяна на системна настройка',
+  'system.patch':                  'Промяна на системна настройка',
+  'settings.post':                 'Промяна на настройки',
+  'settings.patch':                'Промяна на настройки',
 };
 
 function labelForAction(action: string): string {
