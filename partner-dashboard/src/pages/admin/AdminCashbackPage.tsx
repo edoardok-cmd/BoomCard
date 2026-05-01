@@ -251,6 +251,8 @@ function exportCsv(rows: CashbackEntry[]): void {
 export default function AdminCashbackPage() {
   const { language } = useLanguage();
   const queryClient = useQueryClient();
+  const bg = language === 'bg';
+  const msg = (bgStr: string, enStr: string) => (bg ? bgStr : enStr);
 
   const [entryStatus, setEntryStatus] = useState<CashbackEntryStatus | ''>('');
   const [entryPage, setEntryPage] = useState(1);
@@ -304,41 +306,41 @@ export default function AdminCashbackPage() {
   const approveMutation = useMutation({
     mutationFn: (entryId: string) => adminCashbackService.approveEntry(entryId),
     onSuccess: () => {
-      toast.success('Записът е одобрен');
+      toast.success(msg('Записът е одобрен', 'Entry approved'));
       queryClient.invalidateQueries({ queryKey: ['admin-cashback-entries'] });
       queryClient.invalidateQueries({ queryKey: ['admin-cashback-stats'] });
     },
-    onError: () => toast.error('Грешка при одобряване'),
+    onError: () => toast.error(msg('Грешка при одобряване', 'Error approving entry')),
   });
 
   const lockMutation = useMutation({
     mutationFn: (entryId: string) => adminCashbackService.lockEntry(entryId),
     onSuccess: () => {
-      toast.success('Записът е заключен');
+      toast.success(msg('Записът е заключен', 'Entry locked'));
       queryClient.invalidateQueries({ queryKey: ['admin-cashback-entries'] });
       queryClient.invalidateQueries({ queryKey: ['admin-cashback-stats'] });
     },
-    onError: () => toast.error('Грешка при заключване'),
+    onError: () => toast.error(msg('Грешка при заключване', 'Error locking entry')),
   });
 
   const payMutation = useMutation({
     mutationFn: (entryId: string) => adminCashbackService.payEntry(entryId),
     onSuccess: () => {
-      toast.success('Записът е маркиран като платен');
+      toast.success(msg('Записът е маркиран като платен', 'Entry marked as paid'));
       queryClient.invalidateQueries({ queryKey: ['admin-cashback-entries'] });
       queryClient.invalidateQueries({ queryKey: ['admin-cashback-stats'] });
     },
-    onError: (err: any) => toast.error(err?.response?.data?.error ?? 'Грешка при маркиране като платен'),
+    onError: (err: any) => toast.error(err?.response?.data?.error ?? msg('Грешка при маркиране като платен', 'Error marking entry as paid')),
   });
 
   const expireMutation = useMutation({
     mutationFn: (entryId: string) => adminCashbackService.expireEntry(entryId),
     onSuccess: () => {
-      toast.success('Записът е изтекъл');
+      toast.success(msg('Записът е изтекъл', 'Entry expired'));
       queryClient.invalidateQueries({ queryKey: ['admin-cashback-entries'] });
       queryClient.invalidateQueries({ queryKey: ['admin-cashback-stats'] });
     },
-    onError: () => toast.error('Грешка при изтичане'),
+    onError: () => toast.error(msg('Грешка при изтичане', 'Error expiring entry')),
   });
 
   const handleExport = async () => {
@@ -353,11 +355,17 @@ export default function AdminCashbackPage() {
         dateTo: dateTo || undefined,
       });
       if (result.total > result.data.length) {
-        toast(`Внимание: експортирани са ${result.data.length} от ${result.total} записа. Приложи по-тесен филтър за пълен извлечен файл.`, { icon: '⚠️' });
+        toast(
+          msg(
+            `Внимание: експортирани са ${result.data.length} от ${result.total} записа. Приложи по-тесен филтър за пълен извлечен файл.`,
+            `Warning: exported ${result.data.length} of ${result.total} entries. Narrow the filter for a complete file.`,
+          ),
+          { icon: '⚠️' },
+        );
       }
       exportCsv(result.data);
     } catch {
-      toast.error('Грешка при експорт');
+      toast.error(msg('Грешка при експорт', 'Export failed'));
     } finally {
       setExporting(false);
     }
@@ -525,7 +533,7 @@ export default function AdminCashbackPage() {
             title="До дата"
           />
           <ExportBtn onClick={handleExport} disabled={exporting}>
-            {exporting ? 'Зарежда…' : '↓ CSV'}
+            {exporting ? msg('Зарежда…', 'Loading…') : '↓ CSV'}
           </ExportBtn>
         </FilterRow>
 

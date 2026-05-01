@@ -86,6 +86,7 @@ const ACTION_LABEL: Record<string, string> = {
   'transaction.update':            'Промяна на транзакция',
   'transaction.approve':           'Одобрена транзакция',
   'transaction.reject':            'Отхвърлена транзакция',
+  'transaction.wallet-adjust':     'Ръчна корекция в портфейл',
   // Receipt
   'receipt.create':                'Качена касова бележка',
   'receipt.update':                'Промяна на касова бележка',
@@ -97,7 +98,11 @@ const ACTION_LABEL: Record<string, string> = {
   'cashback.expire':               'Изтекъл кешбек запис',
   'cashback.pay':                  'Изплатен кешбек запис',
   'cashback.rate.update':          'Промяна на кешбек процент',
+  'cashback.rate.delete':          'Изтрита бъдеща кешбек ставка',
+  'cashback.rates.create':         'Нов набор от кешбек ставки',
   'cashback.mark-paid':            'Отбелязан като платен',
+  'cashback.remind':               'Изпратен напомнителен имейл',
+  'cashback.backfill-expiry':      'Попълване на изтичания',
   // Payout
   'payout.create':                 'Създадено плащане',
   'payout.update':                 'Промяна на плащане',

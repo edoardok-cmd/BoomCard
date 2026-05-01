@@ -179,6 +179,8 @@ router.post('/rates', requirePermission('cashback.write'), async (req: AuthReque
       notes,
     });
 
+    req.auditAction = 'cashback.rates.create';
+    req.auditObjectType = 'cashback';
     res.status(201).json({ success: true, message: 'Cashback rates created' });
   } catch (error: any) {
     logger.error('Failed to create cashback rates:', error);
@@ -223,6 +225,8 @@ router.delete('/rates/snapshot/:iso', requirePermission('cashback.write'), async
     }
 
     logger.info(`Admin ${req.user!.id} cancelled future snapshot ${targetDate.toISOString()} (${count} rows deleted)`);
+    req.auditAction = 'cashback.rate.delete';
+    req.auditObjectType = 'cashback';
     res.json({ success: true, message: `Cancelled future snapshot — ${count} rate rows removed` });
   } catch (error: any) {
     logger.error('Failed to delete snapshot:', error);
@@ -385,9 +389,11 @@ router.post('/entries/:id/pay', requirePermission('cashback.write'), async (req:
 // POST /api/admin/cashback/backfill-expiry
 // One-time backfill: set cashbackExpiresAt for legacy entries with null.
 // ------------------------------------------------------------------
-router.post('/backfill-expiry', requirePermission('cashback.write'), async (_req: AuthRequest, res: Response) => {
+router.post('/backfill-expiry', requirePermission('cashback.write'), async (req: AuthRequest, res: Response) => {
   try {
     const count = await backfillCashbackExpiry();
+    req.auditAction = 'cashback.backfill-expiry';
+    req.auditObjectType = 'cashback';
     res.json({ success: true, message: `Backfilled ${count} entries` });
   } catch (error: any) {
     logger.error('Backfill failed:', error);
