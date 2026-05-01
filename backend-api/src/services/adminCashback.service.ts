@@ -271,10 +271,10 @@ class AdminCashbackService {
     const soonThreshold = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
 
     const [accruedAgg, pendingAgg, clearedRows, expiringAgg] = await Promise.all([
-      // начислен — all-time sum of COMPLETED cashback credits
+      // начислен — all-time sum of ALL cashback entries regardless of current status
       prisma.walletTransaction.aggregate({
         _sum: { amount: true },
-        where: { type: 'CASHBACK_CREDIT', status: 'COMPLETED' },
+        where: { type: 'CASHBACK_CREDIT' },
       }),
       // изчакващ — sum of entries still pending (not yet cleared)
       prisma.walletTransaction.aggregate({
@@ -525,10 +525,12 @@ export type CashbackEntryStatus = 'Pending' | 'Cleared' | 'Locked' | 'Paid' | 'E
 // rendering a cashback entry's lifecycle state must call this helper. Inlining
 // the rules elsewhere will silently drift the moment a status mapping changes.
 export function deriveCashbackEntryStatus(
-  entry: { status: string; cashbackExpiresAt: Date | null; createdAt: Date },
+  entry: { status: string; cashbackExpiresAt: Date | null; createdAt: Date; cashbackPaidAt?: Date | null },
   latestWithdrawalAt: Date | null,
   now: Date,
 ): CashbackEntryStatus {
+  // Explicitly marked as paid by admin (individual entry Locked→Paid action)
+  if (entry.cashbackPaidAt) return 'Paid';
   if (entry.status === 'PENDING' || entry.status === 'TRIAL_PENDING' || entry.status === 'PROCESSING') {
     return 'Pending';
   }
@@ -586,6 +588,7 @@ export async function getSubscriberCashbackEntries(
         amount: true,
         status: true,
         cashbackExpiresAt: true,
+        cashbackPaidAt: true,
         description: true,
         createdAt: true,
         receiptId: true,
@@ -681,10 +684,8 @@ async function buildStateWhere(
 
     case 'Paid':
     case 'Cleared': {
-      // Paid/Cleared depend on the per-wallet latest completed WITHDRAWAL.
-      // Fetch one row per wallet (newest withdrawal). Walletids without a
-      // completed withdrawal can never be Paid → all their non-expired entries
-      // are Cleared.
+      // Paid/Cleared depend on the per-wallet latest completed WITHDRAWAL,
+      // OR on the explicit cashbackPaidAt admin mark (spec §4.4 Locked→Paid).
       const lastPayouts = await prisma.walletTransaction.findMany({
         where: { type: 'WITHDRAWAL', status: 'COMPLETED' },
         orderBy: { createdAt: 'desc' },
@@ -693,26 +694,30 @@ async function buildStateWhere(
       });
 
       if (state === 'Paid') {
-        if (lastPayouts.length === 0) return { id: '__never_match__' } as WTWhere;
-        // Entry is Paid iff its wallet had a completed withdrawal AND
-        // entry.createdAt <= that withdrawal's createdAt.
-        return {
-          AND: [
-            { status: { notIn: [...NEVER_PAID_RAW, 'CANCELLED'] } },
-            notExpired,
-            {
-              OR: lastPayouts.map((p) => ({
-                walletId: p.walletId,
-                createdAt: { lte: p.createdAt },
-              })),
-            },
-          ],
-        };
+        // Entry is Paid if explicitly marked (cashbackPaidAt != null)
+        // OR if its wallet had a completed withdrawal and entry predates it.
+        const payoutOr: WTWhere[] = [{ cashbackPaidAt: { not: null } }];
+        if (lastPayouts.length > 0) {
+          payoutOr.push({
+            AND: [
+              { status: { notIn: [...NEVER_PAID_RAW, 'CANCELLED'] } },
+              notExpired,
+              {
+                OR: lastPayouts.map((p) => ({
+                  walletId: p.walletId,
+                  createdAt: { lte: p.createdAt },
+                })),
+              },
+            ],
+          });
+        }
+        return { OR: payoutOr };
       }
 
-      // Cleared
+      // Cleared — not explicitly paid and not covered by a wallet withdrawal
       const baseCleared: WTWhere = {
         AND: [
+          { cashbackPaidAt: null },
           { status: { notIn: [...NEVER_PAID_RAW, 'CANCELLED'] } },
           notExpired,
         ],
@@ -740,12 +745,43 @@ export async function getAllCashbackEntries(
   page: number,
   limit: number,
   statusFilter?: CashbackEntryStatus,
+  search?: string,
+  dateFrom?: Date,
+  dateTo?: Date,
 ): Promise<{ data: GlobalCashbackEntry[]; total: number; page: number; limit: number }> {
   // Spec §4.4: 5 derived states (Pending / Cleared / Locked / Paid / Expired).
   // We push the filter to Prisma so true DB pagination + count work for all states,
   // including Paid/Cleared which need the per-wallet latest completed withdrawal.
   const now = new Date();
-  const baseWhere: WTWhere = { type: 'CASHBACK_CREDIT' };
+
+  // Build user search sub-filter (join on wallet → user)
+  const userWhere = search
+    ? {
+        wallet: {
+          user: {
+            OR: [
+              { email: { contains: search, mode: 'insensitive' as const } },
+              { firstName: { contains: search, mode: 'insensitive' as const } },
+              { lastName: { contains: search, mode: 'insensitive' as const } },
+            ],
+          },
+        },
+      }
+    : undefined;
+
+  const dateWhere: WTWhere = {};
+  if (dateFrom || dateTo) {
+    dateWhere.createdAt = {
+      ...(dateFrom ? { gte: dateFrom } : {}),
+      ...(dateTo ? { lte: dateTo } : {}),
+    };
+  }
+
+  const baseWhere: WTWhere = {
+    type: 'CASHBACK_CREDIT',
+    ...userWhere,
+    ...dateWhere,
+  };
   const where: WTWhere = statusFilter
     ? { AND: [baseWhere, await buildStateWhere(statusFilter, now)] }
     : baseWhere;
@@ -761,6 +797,7 @@ export async function getAllCashbackEntries(
         amount: true,
         status: true,
         cashbackExpiresAt: true,
+        cashbackPaidAt: true,
         description: true,
         createdAt: true,
         wallet: {
@@ -801,7 +838,7 @@ export async function getAllCashbackEntries(
 
   const data: GlobalCashbackEntry[] = entries.map((e) => {
     const status = deriveCashbackEntryStatus(
-      e,
+      { ...e, cashbackPaidAt: (e as any).cashbackPaidAt ?? null },
       lastPaidByUser.get(e.wallet.userId) ?? null,
       now,
     );
@@ -909,6 +946,33 @@ export async function expireEntry(entryId: string, adminUserId: string): Promise
     data: { status: 'CANCELLED', cashbackExpiresAt: new Date() },
   });
   logger.info(`Admin ${adminUserId} force-expired cashback entry ${entryId}`);
+}
+
+/**
+ * Mark a Locked cashback entry as Paid (spec §4.4 Locked → Paid admin action).
+ * Sets cashbackPaidAt = now so deriveCashbackEntryStatus returns 'Paid'.
+ */
+export async function payEntry(entryId: string, adminUserId: string): Promise<void> {
+  const entry = await prisma.walletTransaction.findUnique({
+    where: { id: entryId },
+    select: { id: true, type: true, status: true, cashbackExpiresAt: true, cashbackPaidAt: true },
+  });
+  if (!entry) throw Object.assign(new Error('Entry not found'), { statusCode: 404 });
+  if (entry.type !== 'CASHBACK_CREDIT') throw Object.assign(new Error('Not a cashback entry'), { statusCode: 400 });
+  if (entry.cashbackPaidAt) throw Object.assign(new Error('Entry is already marked as paid'), { statusCode: 400 });
+  const now = new Date();
+  // Must be Locked: CANCELLED with a future expiresAt
+  if (entry.status !== 'CANCELLED') {
+    throw Object.assign(new Error(`Only Locked entries can be marked as paid (current status: ${entry.status})`), { statusCode: 400 });
+  }
+  if (!entry.cashbackExpiresAt || entry.cashbackExpiresAt <= now) {
+    throw Object.assign(new Error('Entry has already expired and cannot be marked as paid'), { statusCode: 400 });
+  }
+  await prisma.walletTransaction.update({
+    where: { id: entryId },
+    data: { cashbackPaidAt: now },
+  });
+  logger.info(`Admin ${adminUserId} marked cashback entry ${entryId} as paid`);
 }
 
 /**

@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { Link } from 'react-router-dom';
 import styled from 'styled-components';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-hot-toast';
@@ -6,7 +7,6 @@ import { useLanguage } from '../../contexts/LanguageContext';
 import { DataTable, ColumnDef } from '../../components/admin/DataTable/DataTable';
 import {
   adminCashbackService,
-  CashbackSummaryEntry,
   CashbackEntry,
   CashbackEntryStatus,
 } from '../../services/adminCashback.service';
@@ -157,10 +157,30 @@ const Select = styled.select`
   &:focus { border-color: ${palette.accent}; box-shadow: 0 0 0 2px ${palette.accentSoft}; }
 `;
 
+const ExportBtn = styled.button`
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.5rem 1rem;
+  border: 1px solid ${palette.border};
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: ${palette.textMuted};
+  background: ${palette.surface};
+  cursor: pointer;
+  white-space: nowrap;
+  &:hover { border-color: ${palette.accent}; color: ${palette.accent}; }
+  &:disabled { opacity: 0.5; cursor: default; }
+`;
+
 /* ─── Cell helpers ──────────────────────────────────────────────────────────── */
-const PartnerCell = styled.div`
+const SubscriberCell = styled(Link)`
+  display: block;
   font-weight: 600;
   color: ${palette.text};
+  text-decoration: none;
+  &:hover { color: ${palette.accent}; text-decoration: underline; }
 `;
 
 const MetaLine = styled.div`
@@ -173,38 +193,6 @@ const ExpiryWarning = styled.span`
   font-size: 0.7rem;
   font-weight: 700;
   color: ${palette.danger};
-`;
-
-type PaymentStatus = CashbackSummaryEntry['paymentStatus'];
-
-const StatusBadge = styled.span<{ $status: PaymentStatus }>`
-  display: inline-flex;
-  align-items: center;
-  font-size: 0.7rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  border-radius: 0.375rem;
-  padding: 0.125rem 0.5rem;
-  ${({ $status }) => {
-    switch ($status) {
-      case 'PAID':    return `background: ${palette.successSoft}; color: ${palette.success};`;
-      case 'OVERDUE': return `background: ${palette.dangerSoft}; color: ${palette.danger};`;
-      default:        return `background: ${palette.warningSoft}; color: ${palette.warning};`;
-    }
-  }}
-`;
-
-const ViewTab = styled.button<{ $active: boolean }>`
-  background: ${(p) => p.$active ? palette.accent : 'transparent'};
-  color: ${(p) => p.$active ? '#fff' : palette.textMuted};
-  border: 1px solid ${(p) => p.$active ? palette.accent : palette.border};
-  padding: 0.375rem 0.875rem;
-  border-radius: 0.5rem;
-  font-size: 0.8125rem;
-  font-weight: 600;
-  cursor: pointer;
-  &:hover { color: ${(p) => p.$active ? '#fff' : palette.text}; }
 `;
 
 const EntryStatusBadge = styled.span<{ $status: CashbackEntryStatus }>`
@@ -228,21 +216,34 @@ const EntryStatusBadge = styled.span<{ $status: CashbackEntryStatus }>`
   }}
 `;
 
-// Payout thresholds per plan (BGN; mirror of backend constants × 1.95583)
-const PAYOUT_THRESHOLDS: Record<string, number> = {
-  BASIC:   Math.round(20 * 1.95583 * 100) / 100,   // ~39.12 лв.
-  LIGHT:   Math.round(10 * 1.95583 * 100) / 100,   // ~19.56 лв. (weekly)
-  PREMIUM: Math.round(15 * 1.95583 * 100) / 100,   // ~29.34 лв. (monthly)
-};
-
 /* ─── Helpers ───────────────────────────────────────────────────────────────── */
-function currentMonthStr(): string {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-}
-
 function fmtMoney(n: number): string {
   return n.toLocaleString('bg-BG', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function exportCsv(rows: CashbackEntry[]): void {
+  const header = ['ID', 'Абонат', 'Имейл', 'Сума (лв.)', 'Статус', 'Изтича', 'Бележка', 'Начислен'];
+  const escape = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+  const lines = [
+    header.join(','),
+    ...rows.map(r => [
+      escape(r.id),
+      escape(`${r.user.firstName ?? ''} ${r.user.lastName ?? ''}`.trim() || r.user.email),
+      escape(r.user.email),
+      escape(fmtMoney(r.amount)),
+      escape(r.status),
+      escape(r.cashbackExpiresAt ? new Date(r.cashbackExpiresAt).toLocaleDateString('bg-BG') : ''),
+      escape(r.receipt?.merchantName ?? r.description ?? ''),
+      escape(new Date(r.createdAt).toLocaleDateString('bg-BG')),
+    ].join(',')),
+  ];
+  const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `cashback-entries-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 /* ─── Component ─────────────────────────────────────────────────────────────── */
@@ -250,14 +251,24 @@ export default function AdminCashbackPage() {
   const { language } = useLanguage();
   const queryClient = useQueryClient();
 
-  const [view, setView] = useState<'partners' | 'entries'>('entries');
-  const [month, setMonth] = useState(currentMonthStr());
-  const [statusFilter, setStatusFilter] = useState<PaymentStatus | ''>('');
   const [entryStatus, setEntryStatus] = useState<CashbackEntryStatus | ''>('');
   const [entryPage, setEntryPage] = useState(1);
-  const [subscriberSearch, setSubscriberSearch] = useState('');
+  const [searchInput, setSearchInput] = useState('');
+  const [search, setSearch] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  const [exporting, setExporting] = useState(false);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Debounce subscriber search — server-side across all pages
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      setSearch(searchInput);
+      setEntryPage(1);
+    }, 350);
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, [searchInput]);
 
   const fmtDate = (iso: string | null) =>
     iso
@@ -271,33 +282,22 @@ export default function AdminCashbackPage() {
     queryFn: () => adminCashbackService.getStats(),
   });
 
-  const { data: summary = [], isLoading } = useQuery({
-    queryKey: ['admin-cashback-summary', month, statusFilter],
-    queryFn: () => adminCashbackService.getSummary({ month: month || undefined, status: statusFilter || undefined }),
-    enabled: view === 'partners',
+  const { data: thresholds } = useQuery({
+    queryKey: ['admin-cashback-payout-thresholds'],
+    queryFn: () => adminCashbackService.getPayoutThresholds(),
+    staleTime: 5 * 60 * 1000,
   });
 
   const { data: entriesData, isLoading: isEntriesLoading } = useQuery({
-    queryKey: ['admin-cashback-entries', entryPage, entryStatus],
-    queryFn: () => adminCashbackService.getEntries({ page: entryPage, limit: 25, status: entryStatus || undefined }),
-    enabled: view === 'entries',
-  });
-
-  const markPaidMutation = useMutation({
-    mutationFn: ({ partnerId, notes }: { partnerId: string; notes?: string }) =>
-      adminCashbackService.markPaid(partnerId, month, notes),
-    onSuccess: () => {
-      toast.success('Кешбекът е отбелязан като платен');
-      queryClient.invalidateQueries({ queryKey: ['admin-cashback-summary'] });
-      queryClient.invalidateQueries({ queryKey: ['admin-cashback-stats'] });
-    },
-    onError: () => toast.error('Грешка при маркиране като платен'),
-  });
-
-  const reminderMutation = useMutation({
-    mutationFn: (partnerId: string) => adminCashbackService.sendReminder(partnerId, month || undefined),
-    onSuccess: () => toast.success('Напомнянето е изпратено'),
-    onError: () => toast.error('Грешка при изпращане на напомняне'),
+    queryKey: ['admin-cashback-entries', entryPage, entryStatus, search, dateFrom, dateTo],
+    queryFn: () => adminCashbackService.getEntries({
+      page: entryPage,
+      limit: 25,
+      status: entryStatus || undefined,
+      search: search || undefined,
+      dateFrom: dateFrom || undefined,
+      dateTo: dateTo || undefined,
+    }),
   });
 
   const approveMutation = useMutation({
@@ -320,6 +320,16 @@ export default function AdminCashbackPage() {
     onError: () => toast.error('Грешка при заключване'),
   });
 
+  const payMutation = useMutation({
+    mutationFn: (entryId: string) => adminCashbackService.payEntry(entryId),
+    onSuccess: () => {
+      toast.success('Записът е маркиран като платен');
+      queryClient.invalidateQueries({ queryKey: ['admin-cashback-entries'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-cashback-stats'] });
+    },
+    onError: (err: any) => toast.error(err?.response?.data?.error ?? 'Грешка при маркиране като платен'),
+  });
+
   const expireMutation = useMutation({
     mutationFn: (entryId: string) => adminCashbackService.expireEntry(entryId),
     onSuccess: () => {
@@ -330,83 +340,43 @@ export default function AdminCashbackPage() {
     onError: () => toast.error('Грешка при изтичане'),
   });
 
-  const backfillMutation = useMutation({
-    mutationFn: () => adminCashbackService.backfillExpiry(),
-    onSuccess: (res) => toast.success(res.message),
-    onError: () => toast.error('Грешка при backfill'),
-  });
-
-  // Client-side filters — apply only to the currently loaded page (25 rows).
-  // Entries across other pages are NOT searched. Use the status dropdown for
-  // server-side filtering across the full dataset.
-  const filteredEntries = (entriesData?.data ?? []).filter(row => {
-    if (!subscriberSearch) return true;
-    const q = subscriberSearch.toLowerCase();
-    const name = `${row.user.firstName ?? ''} ${row.user.lastName ?? ''}`.trim().toLowerCase();
-    return name.includes(q) || row.user.email.toLowerCase().includes(q);
-  }).filter(row => {
-    if (!dateFrom && !dateTo) return true;
-    const created = new Date(row.createdAt).getTime();
-    if (dateFrom && created < new Date(dateFrom).getTime()) return false;
-    if (dateTo && created > new Date(dateTo + 'T23:59:59').getTime()) return false;
-    return true;
-  });
-
-  const partnerColumns: ColumnDef<CashbackSummaryEntry>[] = [
-    {
-      key: 'partner',
-      header: 'Партньор',
-      render: (row) => (
-        <PartnerCell>
-          {row.partnerName}
-          {row.partnerEmail && <MetaLine>{row.partnerEmail}</MetaLine>}
-        </PartnerCell>
-      ),
-    },
-    {
-      key: 'month',
-      header: 'Месец',
-      render: (row) => <span style={{ color: palette.textMuted, fontSize: '0.8125rem' }}>{row.month}</span>,
-    },
-    {
-      key: 'receiptCount',
-      header: 'Сканирания',
-      render: (row) => <span style={{ color: palette.textMuted, fontSize: '0.875rem' }}>{row.receiptCount.toLocaleString('bg-BG')}</span>,
-    },
-    {
-      key: 'totalOwed',
-      header: 'Дължимо',
-      sortable: true,
-      render: (row) => <span style={{ fontWeight: 700, color: palette.text }}>{fmtMoney(row.totalOwed)} лв.</span>,
-    },
-    {
-      key: 'status',
-      header: 'Статус',
-      render: (row) => (
-        <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-          <StatusBadge $status={row.paymentStatus}>
-            {row.paymentStatus === 'PAID' ? 'Платено' : row.paymentStatus === 'OVERDUE' ? 'Просрочено' : 'Изчакващо'}
-          </StatusBadge>
-          {row.paidAt && <MetaLine>Платено {fmtDate(row.paidAt)}</MetaLine>}
-          {row.paidBy && <MetaLine>от {row.paidBy}</MetaLine>}
-          {row.notes && <MetaLine style={{ fontStyle: 'italic' }}>{row.notes}</MetaLine>}
-        </span>
-      ),
-    },
-  ];
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      // Fetch all matching entries (up to 10 000) for a complete export
+      const result = await adminCashbackService.getEntries({
+        page: 1,
+        limit: 10000,
+        status: entryStatus || undefined,
+        search: search || undefined,
+        dateFrom: dateFrom || undefined,
+        dateTo: dateTo || undefined,
+      });
+      exportCsv(result.data);
+    } catch {
+      toast.error('Грешка при експорт');
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const entryColumns: ColumnDef<CashbackEntry>[] = [
     {
       key: 'subscriber',
       header: 'Абонат',
-      render: (row) => (
-        <PartnerCell>
-          {row.user.firstName || row.user.lastName
-            ? `${row.user.firstName ?? ''} ${row.user.lastName ?? ''}`.trim()
-            : row.user.email}
-          <MetaLine>{row.user.email}</MetaLine>
-        </PartnerCell>
-      ),
+      render: (row) => {
+        const name = row.user.firstName || row.user.lastName
+          ? `${row.user.firstName ?? ''} ${row.user.lastName ?? ''}`.trim()
+          : row.user.email;
+        return (
+          <div>
+            <SubscriberCell to={`/admin/subscribers/all?user=${row.user.id}`}>
+              {name}
+            </SubscriberCell>
+            <MetaLine>{row.user.email}</MetaLine>
+          </div>
+        );
+      },
     },
     {
       key: 'amount',
@@ -429,7 +399,8 @@ export default function AdminCashbackPage() {
       render: (row) => (
         <span style={{ fontSize: '0.8125rem', color: palette.textMuted }}>
           {row.cashbackExpiresAt ? fmtDate(row.cashbackExpiresAt) : '—'}
-          {row.daysUntilExpiry != null && row.status === 'Cleared' && (
+          {/* Show countdown for both Pending and Cleared — both have rolling expiry */}
+          {row.daysUntilExpiry != null && (row.status === 'Cleared' || row.status === 'Pending') && (
             <MetaLine>
               {row.daysUntilExpiry <= 7
                 ? <ExpiryWarning>⚠ {row.daysUntilExpiry} дни</ExpiryWarning>
@@ -457,8 +428,15 @@ export default function AdminCashbackPage() {
   ];
 
   const isMutating =
-    markPaidMutation.isPending || reminderMutation.isPending ||
-    approveMutation.isPending || lockMutation.isPending || expireMutation.isPending;
+    approveMutation.isPending || lockMutation.isPending ||
+    payMutation.isPending || expireMutation.isPending;
+
+  // Build threshold hint from backend data; fall back to em-dashes if not yet loaded
+  const thresholdHint = thresholds
+    ? Object.entries({ 'Basic': thresholds.BASIC, 'Premium седм.': thresholds.LIGHT, 'Premium мес.': thresholds.PREMIUM })
+        .map(([label, val]) => `${label} ${fmtMoney(val)} лв.`)
+        .join(' · ')
+    : '…';
 
   return (
     <PageShell>
@@ -466,19 +444,7 @@ export default function AdminCashbackPage() {
         <TitleBlock>
           <Eyebrow>Абонати</Eyebrow>
           <PageTitle>Кешбек</PageTitle>
-          <PageSubtitle>
-            {view === 'entries'
-              ? 'Записи по статус (Изчакващ / Одобрен / Заключен / Платен / Изтекъл) — спец. §4.4'
-              : 'Месечни задължения на партньори от транзакции на абонати'}
-          </PageSubtitle>
-          <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem' }}>
-            <ViewTab $active={view === 'entries'} onClick={() => setView('entries')}>
-              Всички записи
-            </ViewTab>
-            <ViewTab $active={view === 'partners'} onClick={() => setView('partners')}>
-              По партньор / месец
-            </ViewTab>
-          </div>
+          <PageSubtitle>Записи по статус (Изчакващ / Одобрен / Заключен / Платен / Изтекъл) — спец. §4.4</PageSubtitle>
         </TitleBlock>
       </PageHeader>
 
@@ -510,135 +476,92 @@ export default function AdminCashbackPage() {
         </StatCard>
       </StatsRow>
 
-      {/* Payout threshold reference */}
+      {/* Payout threshold reference — fetched from backend (spec §9 Настройки) */}
       <div style={{ fontSize: '0.8rem', color: palette.textSubtle, marginBottom: '1rem' }}>
-        Прагове за изплащане (само одобрен кешбек се брои — спец. §4.4):
-        {' '}Basic {fmtMoney(PAYOUT_THRESHOLDS.BASIC)} лв. ·
-        {' '}Light {fmtMoney(PAYOUT_THRESHOLDS.LIGHT)} лв. ·
-        {' '}Premium {fmtMoney(PAYOUT_THRESHOLDS.PREMIUM)} лв.
+        Прагове за изплащане (само одобрен кешбек се брои — спец. §4.4): {thresholdHint}
       </div>
 
       <Card>
         <FilterRow>
-          {view === 'partners' ? (
-            <>
-              <MonthInput type="month" value={month} onChange={(e) => setMonth(e.target.value)} />
-              <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as PaymentStatus | '')}>
-                <option value="">Всички статуси</option>
-                <option value="PENDING">Изчакващо</option>
-                <option value="PAID">Платено</option>
-                <option value="OVERDUE">Просрочено</option>
-              </Select>
-            </>
-          ) : (
-            <>
-              <Select
-                value={entryStatus}
-                onChange={(e) => { setEntryStatus(e.target.value as CashbackEntryStatus | ''); setEntryPage(1); }}
-              >
-                <option value="">Всички статуси</option>
-                <option value="Pending">Изчакващ</option>
-                <option value="Cleared">Одобрен</option>
-                <option value="Locked">Заключен</option>
-                <option value="Paid">Платен</option>
-                <option value="Expired">Изтекъл</option>
-              </Select>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                <SearchInput
-                  type="text"
-                  placeholder="Търси абонат (имe / имейл)…"
-                  value={subscriberSearch}
-                  onChange={(e) => setSubscriberSearch(e.target.value)}
-                  title="Търсенето важи само за текущата страница (25 реда)"
-                />
-                {subscriberSearch && (
-                  <span style={{ fontSize: '0.7rem', color: palette.textSubtle }}>
-                    Само текуща страница — сменете статус за глобален филтър
-                  </span>
-                )}
-              </div>
-              <MonthInput
-                type="date"
-                value={dateFrom}
-                onChange={(e) => setDateFrom(e.target.value)}
-                title="От дата"
-              />
-              <MonthInput
-                type="date"
-                value={dateTo}
-                onChange={(e) => setDateTo(e.target.value)}
-                title="До дата"
-              />
-            </>
-          )}
+          <Select
+            value={entryStatus}
+            onChange={(e) => { setEntryStatus(e.target.value as CashbackEntryStatus | ''); setEntryPage(1); }}
+          >
+            <option value="">Всички статуси</option>
+            <option value="Pending">Изчакващ</option>
+            <option value="Cleared">Одобрен</option>
+            <option value="Locked">Заключен</option>
+            <option value="Paid">Платен</option>
+            <option value="Expired">Изтекъл</option>
+          </Select>
+          <SearchInput
+            type="text"
+            placeholder="Търси абонат (име / имейл)…"
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+          />
+          <MonthInput
+            type="date"
+            value={dateFrom}
+            onChange={(e) => { setDateFrom(e.target.value); setEntryPage(1); }}
+            title="От дата"
+          />
+          <MonthInput
+            type="date"
+            value={dateTo}
+            onChange={(e) => { setDateTo(e.target.value); setEntryPage(1); }}
+            title="До дата"
+          />
+          <ExportBtn onClick={handleExport} disabled={exporting}>
+            {exporting ? 'Зарежда…' : '↓ CSV'}
+          </ExportBtn>
         </FilterRow>
 
-        {view === 'entries' ? (
-          <DataTable
-            columns={entryColumns}
-            data={filteredEntries}
-            rowKey={(row) => row.id}
-            loading={isEntriesLoading}
-            emptyMessage="Няма кешбек записи"
-            page={entryPage}
-            pageSize={25}
-            totalItems={entriesData?.total}
-            onPageChange={setEntryPage}
-            rowActions={[
-              {
-                label: 'Одобри',
-                hidden: (row) => row.status !== 'Pending',
-                onClick: (row) => {
-                  if (!window.confirm(`Одобри кешбек записа за ${row.user.email}?\nСума: ${fmtMoney(row.amount)} лв.`)) return;
-                  approveMutation.mutate(row.id);
-                },
+        <DataTable
+          columns={entryColumns}
+          data={entriesData?.data ?? []}
+          rowKey={(row) => row.id}
+          loading={isEntriesLoading}
+          emptyMessage="Няма кешбек записи"
+          page={entryPage}
+          pageSize={25}
+          totalItems={entriesData?.total}
+          onPageChange={setEntryPage}
+          rowActions={[
+            {
+              label: 'Одобри',
+              hidden: (row) => row.status !== 'Pending',
+              onClick: (row) => {
+                if (!window.confirm(`Одобри кешбек записа за ${row.user.email}?\nСума: ${fmtMoney(row.amount)} лв.`)) return;
+                approveMutation.mutate(row.id);
               },
-              {
-                label: 'Заключи',
-                hidden: (row) => row.status !== 'Cleared',
-                onClick: (row) => {
-                  if (!window.confirm(`Заключи кешбек записа за ${row.user.email}?\nСума: ${fmtMoney(row.amount)} лв.`)) return;
-                  lockMutation.mutate(row.id);
-                },
+            },
+            {
+              label: 'Заключи',
+              hidden: (row) => row.status !== 'Cleared',
+              onClick: (row) => {
+                if (!window.confirm(`Заключи кешбек записа за ${row.user.email}?\nСума: ${fmtMoney(row.amount)} лв.`)) return;
+                lockMutation.mutate(row.id);
               },
-              {
-                label: 'Изтечи',
-                hidden: (row) => ['Paid', 'Expired', 'Locked'].includes(row.status),
-                onClick: (row) => {
-                  if (!window.confirm(`Принудително изтичане на кешбек за ${row.user.email}?\nТова действие не може да се отмени.`)) return;
-                  expireMutation.mutate(row.id);
-                },
+            },
+            {
+              label: 'Маркирай платен',
+              hidden: (row) => row.status !== 'Locked',
+              onClick: (row) => {
+                if (!window.confirm(`Маркирай като платен кешбек за ${row.user.email}?\nСума: ${fmtMoney(row.amount)} лв.\nТова действие не може да се отмени.`)) return;
+                payMutation.mutate(row.id);
               },
-            ]}
-          />
-        ) : (
-          <DataTable
-            columns={partnerColumns}
-            data={summary}
-            rowKey={(row) => `${row.partnerId}-${row.month}`}
-            loading={isLoading}
-            emptyMessage="Няма записи за периода"
-            rowActions={[
-              {
-                label: 'Маркирай като платено',
-                hidden: (row) => row.paymentStatus === 'PAID',
-                onClick: (row) => {
-                  if (!window.confirm(`Маркирай кешбек за ${row.partnerName} (${row.month}) като платен?\nСума: ${fmtMoney(row.totalOwed)} лв.`)) return;
-                  const notes = window.prompt('Бележки (референция за плащане и др.):') ?? undefined;
-                  markPaidMutation.mutate({ partnerId: row.partnerId, notes: notes || undefined });
-                },
+            },
+            {
+              label: 'Изтечи',
+              hidden: (row) => ['Paid', 'Expired', 'Locked'].includes(row.status),
+              onClick: (row) => {
+                if (!window.confirm(`Принудително изтичане на кешбек за ${row.user.email}?\nТова действие не може да се отмени.`)) return;
+                expireMutation.mutate(row.id);
               },
-              {
-                label: 'Изпрати напомняне',
-                hidden: (row) => row.paymentStatus === 'PAID',
-                onClick: (row) => {
-                  if (!window.confirm(`Изпрати имейл напомняне до ${row.partnerEmail ?? row.partnerName}?`)) return;
-                  reminderMutation.mutate(row.partnerId);
-                },
-              },
-            ]}
-          />
-        )}
+            },
+          ]}
+        />
 
         {isMutating && (
           <div style={{ textAlign: 'center', padding: '0.5rem', fontSize: '0.8125rem', color: palette.textSubtle }}>
@@ -646,21 +569,6 @@ export default function AdminCashbackPage() {
           </div>
         )}
       </Card>
-
-      {/* Backfill action for legacy entries */}
-      <div style={{ marginTop: '1.5rem', display: 'flex', justifyContent: 'flex-end' }}>
-        <ViewTab
-          $active={false}
-          disabled={backfillMutation.isPending}
-          onClick={() => {
-            if (!window.confirm('Попълни дата на изтичане за всички записи без такава (legacy данни)?\nТова е еднократна операция.')) return;
-            backfillMutation.mutate();
-          }}
-          style={{ fontSize: '0.75rem', opacity: backfillMutation.isPending ? 0.6 : 1, cursor: backfillMutation.isPending ? 'not-allowed' : 'pointer' }}
-        >
-          {backfillMutation.isPending ? 'Обработва се…' : 'Backfill дати на изтичане'}
-        </ViewTab>
-      </div>
     </PageShell>
   );
 }

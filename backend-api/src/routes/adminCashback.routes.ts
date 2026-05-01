@@ -15,7 +15,16 @@
 import { Router, Response } from 'express';
 import { authenticate, authorize, requirePermission, AuthRequest } from '../middleware/auth.middleware';
 import { auditMiddleware } from '../middleware/audit.middleware';
-import { adminCashbackService, getSubscriberCashbackEntries, getAllCashbackEntries, CashbackEntryStatus, approveEntry, lockEntry, expireEntry, backfillCashbackExpiry } from '../services/adminCashback.service';
+import {
+  adminCashbackService, getSubscriberCashbackEntries, getAllCashbackEntries,
+  CashbackEntryStatus, approveEntry, lockEntry, expireEntry, payEntry, backfillCashbackExpiry,
+} from '../services/adminCashback.service';
+import {
+  PAYOUT_THRESHOLD_BASIC_EUR,
+  PAYOUT_THRESHOLD_PREMIUM_WEEKLY_EUR,
+  PAYOUT_THRESHOLD_PREMIUM_MONTHLY_EUR,
+  EUR_TO_BGN_RATE,
+} from '../constants/receipt.constants';
 import { prisma } from '../lib/prisma';
 import { logger } from '../utils/logger';
 
@@ -185,9 +194,25 @@ router.post('/rates', requirePermission('cashback.write'), async (req: AuthReque
 });
 
 // ------------------------------------------------------------------
+// GET /api/admin/cashback/payout-thresholds
+// Returns per-plan payout thresholds so the frontend doesn't hardcode them.
+// ------------------------------------------------------------------
+router.get('/payout-thresholds', requirePermission('cashback.read'), (_req: AuthRequest, res: Response) => {
+  res.json({
+    success: true,
+    data: {
+      BASIC:   Math.round(PAYOUT_THRESHOLD_BASIC_EUR * EUR_TO_BGN_RATE * 100) / 100,
+      LIGHT:   Math.round(PAYOUT_THRESHOLD_PREMIUM_WEEKLY_EUR * EUR_TO_BGN_RATE * 100) / 100,
+      PREMIUM: Math.round(PAYOUT_THRESHOLD_PREMIUM_MONTHLY_EUR * EUR_TO_BGN_RATE * 100) / 100,
+    },
+  });
+});
+
+// ------------------------------------------------------------------
 // GET /api/admin/cashback/entries
 // Spec §4.4 — global per-entry cashback listing with all 5 states
 // (Pending / Cleared / Locked / Paid / Expired). Filter by ?status=...
+// Optional: ?search=, ?dateFrom=, ?dateTo= for server-side filtering.
 // ------------------------------------------------------------------
 router.get('/entries', requirePermission('cashback.read'), async (req: AuthRequest, res: Response) => {
   try {
@@ -199,7 +224,18 @@ router.get('/entries', requirePermission('cashback.read'), async (req: AuthReque
       ? (status as CashbackEntryStatus)
       : undefined;
 
-    const result = await getAllCashbackEntries(page, limit, statusFilter);
+    const search = typeof req.query.search === 'string' && req.query.search.trim()
+      ? req.query.search.trim()
+      : undefined;
+
+    const dateFrom = typeof req.query.dateFrom === 'string' && req.query.dateFrom
+      ? new Date(req.query.dateFrom)
+      : undefined;
+    const dateTo = typeof req.query.dateTo === 'string' && req.query.dateTo
+      ? new Date(req.query.dateTo + 'T23:59:59.999Z')
+      : undefined;
+
+    const result = await getAllCashbackEntries(page, limit, statusFilter, search, dateFrom, dateTo);
     res.json({ success: true, ...result });
   } catch (error: any) {
     logger.error('Failed to fetch cashback entries:', error);
@@ -278,6 +314,17 @@ router.post('/entries/:id/expire', requirePermission('cashback.write'), async (r
   try {
     await expireEntry(req.params.id, req.user!.id);
     res.json({ success: true, message: 'Entry expired' });
+  } catch (error: any) {
+    const status = error.statusCode ?? 500;
+    res.status(status).json({ success: false, error: error.message });
+  }
+});
+
+// POST /api/admin/cashback/entries/:id/pay  — Locked → Paid (spec §4.4)
+router.post('/entries/:id/pay', requirePermission('cashback.write'), async (req: AuthRequest, res: Response) => {
+  try {
+    await payEntry(req.params.id, req.user!.id);
+    res.json({ success: true, message: 'Entry marked as paid' });
   } catch (error: any) {
     const status = error.statusCode ?? 500;
     res.status(status).json({ success: false, error: error.message });

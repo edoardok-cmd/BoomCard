@@ -724,6 +724,8 @@ model WalletTransaction {
 
   // Cashback expiry: each CASHBACK_CREDIT expires 60 days after approval (cascading)
   cashbackExpiresAt DateTime? // null = non-cashback transaction; non-null = expiry date
+  // Explicit admin-level payout mark for individual entries (Locked → Paid transition, spec §4.4)
+  cashbackPaidAt    DateTime?
 
   // Link to related records
   transactionId         String?      @unique

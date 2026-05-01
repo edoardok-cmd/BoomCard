@@ -71,11 +71,26 @@ export interface CashbackEntriesResult {
 class AdminCashbackService {
   private readonly base = '/admin/cashback';
 
-  async getEntries(params: { page?: number; limit?: number; status?: CashbackEntryStatus }): Promise<CashbackEntriesResult> {
+  async getEntries(params: {
+    page?: number;
+    limit?: number;
+    status?: CashbackEntryStatus;
+    search?: string;
+    dateFrom?: string;
+    dateTo?: string;
+  }): Promise<CashbackEntriesResult> {
     const clean: Record<string, unknown> = { page: params.page, limit: params.limit };
     if (params.status) clean.status = params.status;
+    if (params.search) clean.search = params.search;
+    if (params.dateFrom) clean.dateFrom = params.dateFrom;
+    if (params.dateTo) clean.dateTo = params.dateTo;
     const res = await apiService.get<{ success: boolean } & CashbackEntriesResult>(`${this.base}/entries`, clean);
     return { data: res.data, total: res.total, page: res.page, limit: res.limit };
+  }
+
+  async getPayoutThresholds(): Promise<Record<string, number>> {
+    const res = await apiService.get<{ success: boolean; data: Record<string, number> }>(`${this.base}/payout-thresholds`);
+    return res.data ?? {};
   }
 
 
@@ -113,6 +128,10 @@ class AdminCashbackService {
 
   async expireEntry(entryId: string): Promise<void> {
     await apiService.post(`${this.base}/entries/${entryId}/expire`, {});
+  }
+
+  async payEntry(entryId: string): Promise<void> {
+    await apiService.post(`${this.base}/entries/${entryId}/pay`, {});
   }
 
   async backfillExpiry(): Promise<{ message: string }> {

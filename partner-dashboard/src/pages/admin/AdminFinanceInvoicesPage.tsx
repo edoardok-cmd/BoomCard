@@ -8,7 +8,12 @@ import {
   adminFinanceService,
   AdminInvoice,
   InvoiceStatus,
+  ReportingPeriodStatus,
 } from '../../services/adminFinance.service';
+import {
+  adminCashbackService,
+  CashbackSummaryEntry,
+} from '../../services/adminCashback.service';
 
 const palette = {
   bg: '#faf9f5', surface: '#ffffff', border: '#e8e5dc',
@@ -18,6 +23,7 @@ const palette = {
   warning: '#b5803a', warningSoft: '#f5ead2',
   danger: '#b54327', dangerSoft: '#f4dcd2',
   info: '#2563eb', infoSoft: '#dbeafe',
+  purple: '#7c3aed', purpleSoft: '#ede9fe',
 };
 
 const PageShell = styled.div`background: ${palette.bg}; min-height: calc(100vh - 4rem); padding: 2rem 2.5rem;`;
@@ -29,10 +35,14 @@ const PageSubtitle = styled.p`font-size: 0.9375rem; color: ${palette.textMuted};
 const TotalBadge = styled.span`display: inline-flex; align-items: center; justify-content: center; background: ${palette.infoSoft}; color: ${palette.info}; font-size: 0.75rem; font-weight: 700; border-radius: 9999px; padding: 0.125rem 0.6rem; margin-left: 0.5rem;`;
 const HeaderActions = styled.div`display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;`;
 const Card = styled.div`background: ${palette.surface}; border: 1px solid ${palette.border}; border-radius: 0.75rem; padding: 1.5rem;`;
-const FilterRow = styled.div`display: flex; gap: 0.75rem; margin-bottom: 1.25rem; flex-wrap: wrap; align-items: center;`;
+const FilterRow = styled.div`display: flex; gap: 0.75rem; margin-bottom: 1.25rem; flex-wrap: wrap; align-items: flex-end;`;
+const FilterField = styled.div`display: flex; flex-direction: column; gap: 0.25rem;`;
+const FilterLabel = styled.label`font-size: 0.75rem; font-weight: 600; color: ${palette.textSubtle}; text-transform: uppercase; letter-spacing: 0.05em;`;
 const SearchInput = styled.input`flex: 1; max-width: 18rem; padding: 0.5rem 0.875rem; border: 1px solid ${palette.border}; border-radius: 0.5rem; font-size: 0.875rem; background: ${palette.bg}; color: ${palette.text}; outline: none; &:focus { border-color: ${palette.accent}; box-shadow: 0 0 0 2px ${palette.accentSoft}; } &::placeholder { color: ${palette.textSubtle}; }`;
 const Select = styled.select`padding: 0.5rem 0.75rem; border: 1px solid ${palette.border}; border-radius: 0.5rem; font-size: 0.875rem; background: ${palette.bg}; color: ${palette.text}; outline: none; cursor: pointer; &:focus { border-color: ${palette.accent}; }`;
+const MonthInput = styled.input`padding: 0.5rem 0.75rem; border: 1px solid ${palette.border}; border-radius: 0.5rem; font-size: 0.875rem; background: ${palette.bg}; color: ${palette.text}; outline: none; &:focus { border-color: ${palette.accent}; }`;
 const ExportBtn = styled.button`display: inline-flex; align-items: center; gap: 0.375rem; padding: 0.5rem 1rem; border: 1px solid ${palette.border}; border-radius: 0.5rem; font-size: 0.875rem; font-weight: 600; color: ${palette.textMuted}; background: ${palette.surface}; cursor: pointer; white-space: nowrap; &:hover { border-color: ${palette.accent}; color: ${palette.accent}; } &:disabled { opacity: 0.5; cursor: default; }`;
+const GenerateBtn = styled.button`display: inline-flex; align-items: center; gap: 0.375rem; padding: 0.5rem 1rem; border: none; border-radius: 0.5rem; font-size: 0.875rem; font-weight: 600; color: #fff; background: ${palette.accent}; cursor: pointer; white-space: nowrap; &:hover { opacity: 0.88; } &:disabled { opacity: 0.5; cursor: default; }`;
 const PrimaryLine = styled.div`font-weight: 600; color: ${palette.text};`;
 const MetaLine = styled.div`font-size: 0.75rem; color: ${palette.textSubtle}; margin-top: 0.125rem;`;
 
@@ -40,6 +50,13 @@ const STATUS_LABELS: Record<InvoiceStatus, string> = {
   PENDING: 'Чака',
   PAID:    'Платено',
   OVERDUE: 'Просрочено',
+};
+
+const PERIOD_STATUS_LABELS: Record<ReportingPeriodStatus, string> = {
+  OPEN:       'Отворен',
+  FOR_REVIEW: 'За проверка',
+  LOCKED:     'Заключен',
+  INVOICED:   'Фактуриран',
 };
 
 const StatusBadge = styled.span<{ $status: InvoiceStatus }>`
@@ -50,6 +67,20 @@ const StatusBadge = styled.span<{ $status: InvoiceStatus }>`
       case 'PAID':    return `background: ${palette.successSoft}; color: ${palette.success};`;
       case 'OVERDUE': return `background: ${palette.dangerSoft}; color: ${palette.danger};`;
       default:        return `background: ${palette.warningSoft}; color: ${palette.warning};`;
+    }
+  }}
+`;
+
+const PeriodBadge = styled.span<{ $status: ReportingPeriodStatus | null }>`
+  display: inline-flex; align-items: center; font-size: 0.65rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.04em; border-radius: 0.25rem; padding: 0.1rem 0.4rem; margin-top: 0.25rem;
+  ${({ $status }) => {
+    switch ($status) {
+      case 'LOCKED':     return `background: ${palette.dangerSoft}; color: ${palette.danger};`;
+      case 'INVOICED':   return `background: ${palette.successSoft}; color: ${palette.success};`;
+      case 'FOR_REVIEW': return `background: ${palette.warningSoft}; color: ${palette.warning};`;
+      case 'OPEN':       return `background: ${palette.infoSoft}; color: ${palette.info};`;
+      default:           return `background: ${palette.border}; color: ${palette.textSubtle};`;
     }
   }}
 `;
@@ -72,6 +103,43 @@ const ModalActions = styled.div`display: flex; gap: 0.5rem; justify-content: fle
 const BtnPrimary = styled.button`padding: 0.5rem 1.125rem; background: ${palette.accent}; color: #fff; border: none; border-radius: 0.5rem; font-size: 0.875rem; font-weight: 600; cursor: pointer; &:disabled { opacity: 0.5; }`;
 const BtnSecondary = styled.button`padding: 0.5rem 1.125rem; background: ${palette.bg}; color: ${palette.textMuted}; border: 1px solid ${palette.border}; border-radius: 0.5rem; font-size: 0.875rem; font-weight: 600; cursor: pointer;`;
 
+// Generate modal
+const GenModalBody = styled.div`display: flex; flex-direction: column; gap: 0.75rem; margin-bottom: 1rem;`;
+const GenInput = styled.input`padding: 0.5rem 0.875rem; border: 1px solid ${palette.border}; border-radius: 0.5rem; font-size: 0.9rem; background: ${palette.bg}; color: ${palette.text}; outline: none; &:focus { border-color: ${palette.accent}; }`;
+
+const ViewTab = styled.button<{ $active: boolean }>`
+  background: ${(p) => p.$active ? palette.accent : 'transparent'};
+  color: ${(p) => p.$active ? '#fff' : palette.textMuted};
+  border: 1px solid ${(p) => p.$active ? palette.accent : palette.border};
+  padding: 0.375rem 0.875rem;
+  border-radius: 0.5rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+  &:hover { color: ${(p) => p.$active ? '#fff' : palette.text}; }
+`;
+
+type CbPaymentStatus = CashbackSummaryEntry['paymentStatus'];
+const CbStatusBadge = styled.span<{ $status: CbPaymentStatus }>`
+  display: inline-flex; align-items: center; font-size: 0.7rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.05em; border-radius: 0.375rem; padding: 0.125rem 0.5rem;
+  ${({ $status }) => {
+    switch ($status) {
+      case 'PAID':    return `background: ${palette.successSoft}; color: ${palette.success};`;
+      case 'OVERDUE': return `background: ${palette.dangerSoft}; color: ${palette.danger};`;
+      default:        return `background: ${palette.warningSoft}; color: ${palette.warning};`;
+    }
+  }}
+`;
+
+const CbMetaLine = styled.div`font-size: 0.75rem; color: ${palette.textSubtle}; margin-top: 0.125rem;`;
+const CbPartnerCell = styled.div`font-weight: 600; color: ${palette.text};`;
+
+function currentMonthStr(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+}
+
 const STATUS_OPTIONS: Array<{ value: InvoiceStatus | ''; label: string }> = [
   { value: '',        label: 'Всички статуси' },
   { value: 'PENDING', label: 'Чака' },
@@ -90,6 +158,81 @@ const fmt = (iso: string) =>
 export default function AdminFinanceInvoicesPage() {
   const queryClient = useQueryClient();
 
+  const [view, setView] = useState<'invoices' | 'cashback'>('invoices');
+
+  // ── Cashback partner/month billing state (spec §6.2) ──────────────────────
+  const [cbMonth, setCbMonth] = useState(currentMonthStr());
+  const [cbStatusFilter, setCbStatusFilter] = useState<CbPaymentStatus | ''>('');
+
+  const { data: cbSummary = [], isLoading: isCbLoading } = useQuery({
+    queryKey: ['admin-cashback-summary', cbMonth, cbStatusFilter],
+    queryFn: () => adminCashbackService.getSummary({
+      month: cbMonth || undefined,
+      status: cbStatusFilter || undefined,
+    }),
+    enabled: view === 'cashback',
+  });
+
+  const cbMarkPaidMutation = useMutation({
+    mutationFn: ({ partnerId, notes }: { partnerId: string; notes?: string }) =>
+      adminCashbackService.markPaid(partnerId, cbMonth, notes),
+    onSuccess: () => {
+      toast.success('Кешбекът е отбелязан като платен');
+      queryClient.invalidateQueries({ queryKey: ['admin-cashback-summary'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-cashback-stats'] });
+    },
+    onError: () => toast.error('Грешка при маркиране като платен'),
+  });
+
+  const cbReminderMutation = useMutation({
+    mutationFn: (partnerId: string) => adminCashbackService.sendReminder(partnerId, cbMonth || undefined),
+    onSuccess: () => toast.success('Напомнянето е изпратено'),
+    onError: () => toast.error('Грешка при изпращане на напомняне'),
+  });
+
+  const cbColumns: ColumnDef<CashbackSummaryEntry>[] = [
+    {
+      key: 'partner',
+      header: 'Партньор',
+      render: (row) => (
+        <CbPartnerCell>
+          {row.partnerName}
+          {row.partnerEmail && <CbMetaLine>{row.partnerEmail}</CbMetaLine>}
+        </CbPartnerCell>
+      ),
+    },
+    {
+      key: 'month',
+      header: 'Месец',
+      render: (row) => <span style={{ color: palette.textMuted, fontSize: '0.8125rem' }}>{row.month}</span>,
+    },
+    {
+      key: 'receiptCount',
+      header: 'Сканирания',
+      render: (row) => <span style={{ color: palette.textMuted, fontSize: '0.875rem' }}>{row.receiptCount.toLocaleString('bg-BG')}</span>,
+    },
+    {
+      key: 'totalOwed',
+      header: 'Дължимо',
+      sortable: true,
+      render: (row) => <span style={{ fontWeight: 700, color: palette.text }}>{row.totalOwed.toLocaleString('bg-BG', { minimumFractionDigits: 2 })} лв.</span>,
+    },
+    {
+      key: 'status',
+      header: 'Статус',
+      render: (row) => (
+        <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+          <CbStatusBadge $status={row.paymentStatus}>
+            {row.paymentStatus === 'PAID' ? 'Платено' : row.paymentStatus === 'OVERDUE' ? 'Просрочено' : 'Изчакващо'}
+          </CbStatusBadge>
+          {row.paidAt && <CbMetaLine>Платено {new Date(row.paidAt).toLocaleDateString('bg-BG')}</CbMetaLine>}
+          {row.notes && <CbMetaLine style={{ fontStyle: 'italic' }}>{row.notes}</CbMetaLine>}
+        </span>
+      ),
+    },
+  ];
+  // ─────────────────────────────────────────────────────────────────────────────
+
   const [searchParams] = useSearchParams();
   const initialStatusParam = searchParams.get('status');
   const initialStatus: InvoiceStatus | '' =
@@ -104,6 +247,11 @@ export default function AdminFinanceInvoicesPage() {
   const [notesModal, setNotesModal]   = useState<{ id: string; partnerName: string; month: string; current: string } | null>(null);
   const [notesValue, setNotesValue]   = useState('');
   const [exporting, setExporting]     = useState(false);
+  const [generateModal, setGenerateModal] = useState(false);
+  const [generateMonth, setGenerateMonth] = useState(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  });
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleExport = async () => {
@@ -177,6 +325,19 @@ export default function AdminFinanceInvoicesPage() {
     },
   });
 
+  const generateMutation = useMutation({
+    mutationFn: (m: string) => adminFinanceService.generateInvoices(m),
+    onSuccess: (res) => {
+      toast.success(res.message);
+      invalidate();
+      setGenerateModal(false);
+    },
+    onError: (err: unknown) => {
+      const msg = (err as any)?.response?.data?.error ?? 'Грешка при генериране';
+      toast.error(msg);
+    },
+  });
+
   const openNotesModal = (row: AdminInvoice) => {
     setNotesValue(row.notes ?? '');
     setNotesModal({ id: row.id, partnerName: row.partner.businessName, month: row.month, current: row.notes ?? '' });
@@ -202,7 +363,14 @@ export default function AdminFinanceInvoicesPage() {
       key: 'month',
       header: 'Месец',
       render: (row) => (
-        <span style={{ fontSize: '0.875rem', fontWeight: 600, color: palette.text }}>{row.month}</span>
+        <span style={{ display: 'flex', flexDirection: 'column' }}>
+          <span style={{ fontSize: '0.875rem', fontWeight: 600, color: palette.text }}>{row.month}</span>
+          {row.reportingPeriodStatus && (
+            <PeriodBadge $status={row.reportingPeriodStatus}>
+              {PERIOD_STATUS_LABELS[row.reportingPeriodStatus]}
+            </PeriodBadge>
+          )}
+        </span>
       ),
     },
     {
@@ -226,20 +394,22 @@ export default function AdminFinanceInvoicesPage() {
     {
       key: 'amount',
       header: 'Задължение',
-      render: (row) => (
-        <span style={{ fontSize: '0.9375rem', fontWeight: 700, color: palette.text }}>
-          {bgn(row.totalCashbackOwed)}
-        </span>
-      ),
-    },
-    {
-      key: 'margin',
-      header: 'Марджин',
-      render: (row) => (
-        <span style={{ fontSize: '0.875rem', color: row.marginAmount ? palette.text : palette.textSubtle }}>
-          {row.marginAmount ? bgn(row.marginAmount) : '—'}
-        </span>
-      ),
+      render: (row) => {
+        // Spec 6.2: Obligation = full amount invoiced to partner = cashback + margin
+        const obligation = row.totalCashbackOwed + row.marginAmount;
+        return (
+          <span>
+            <span style={{ fontSize: '0.9375rem', fontWeight: 700, color: palette.text }}>
+              {bgn(obligation)}
+            </span>
+            {row.marginAmount > 0 && (
+              <MetaLine title="Вътрешен разбивка: кешбек + марджин">
+                {bgn(row.totalCashbackOwed)} кешбек + {bgn(row.marginAmount)} марджин
+              </MetaLine>
+            )}
+          </span>
+        );
+      },
     },
     {
       key: 'status',
@@ -274,38 +444,101 @@ export default function AdminFinanceInvoicesPage() {
           <Eyebrow>Финанси</Eyebrow>
           <PageTitle>
             Фактури партньори
-            {(data?.meta?.total ?? 0) > 0 && <TotalBadge>{data!.meta.total.toLocaleString()}</TotalBadge>}
+            {view === 'invoices' && (data?.meta?.total ?? 0) > 0 && <TotalBadge>{data!.meta.total.toLocaleString()}</TotalBadge>}
           </PageTitle>
-          <PageSubtitle>Месечни фактури към партньори — оборот, задължение и марджин</PageSubtitle>
+          <PageSubtitle>
+            {view === 'invoices'
+              ? 'Месечни фактури към партньори — оборот и задължение'
+              : 'Месечни задължения на партньори от транзакции на абонати (спец. §6.2)'}
+          </PageSubtitle>
+          <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem' }}>
+            <ViewTab $active={view === 'invoices'} onClick={() => setView('invoices')}>Фактури</ViewTab>
+            <ViewTab $active={view === 'cashback'} onClick={() => setView('cashback')}>Кешбек по партньор</ViewTab>
+          </div>
         </TitleBlock>
-        <HeaderActions>
-          <ExportBtn onClick={handleExport} disabled={exporting}>
-            {exporting ? 'Експортиране…' : '↓ Експорт XLSX'}
-          </ExportBtn>
-        </HeaderActions>
+        {view === 'invoices' && (
+          <HeaderActions>
+            <GenerateBtn onClick={() => setGenerateModal(true)}>
+              + Генерирай фактури
+            </GenerateBtn>
+            <ExportBtn onClick={handleExport} disabled={exporting}>
+              {exporting ? 'Експортиране…' : '↓ Експорт XLSX'}
+            </ExportBtn>
+          </HeaderActions>
+        )}
       </PageHeader>
 
-      <Card>
+      {view === 'cashback' && (
+        <Card>
+          <FilterRow>
+            <MonthInput type="month" value={cbMonth} onChange={(e) => setCbMonth(e.target.value)} />
+            <Select value={cbStatusFilter} onChange={(e) => setCbStatusFilter(e.target.value as CbPaymentStatus | '')}>
+              <option value="">Всички статуси</option>
+              <option value="PENDING">Изчакващо</option>
+              <option value="PAID">Платено</option>
+              <option value="OVERDUE">Просрочено</option>
+            </Select>
+          </FilterRow>
+          <DataTable
+            columns={cbColumns}
+            data={cbSummary}
+            rowKey={(row) => `${row.partnerId}-${row.month}`}
+            loading={isCbLoading}
+            emptyMessage="Няма записи за периода"
+            rowActions={[
+              {
+                label: 'Маркирай като платено',
+                hidden: (row) => row.paymentStatus === 'PAID',
+                onClick: (row) => {
+                  if (!window.confirm(`Маркирай кешбек за ${row.partnerName} (${row.month}) като платен?\nСума: ${row.totalOwed.toFixed(2)} лв.`)) return;
+                  const notes = window.prompt('Бележки (референция за плащане и др.):') ?? undefined;
+                  cbMarkPaidMutation.mutate({ partnerId: row.partnerId, notes: notes || undefined });
+                },
+              },
+              {
+                label: 'Изпрати напомняне',
+                hidden: (row) => row.paymentStatus === 'PAID',
+                onClick: (row) => {
+                  if (!window.confirm(`Изпрати имейл напомняне до ${row.partnerEmail ?? row.partnerName}?`)) return;
+                  cbReminderMutation.mutate(row.partnerId);
+                },
+              },
+            ]}
+          />
+        </Card>
+      )}
+
+      {view === 'invoices' && <Card>
         <FilterRow>
-          <SearchInput
-            type="text"
-            placeholder="Търсене по партньор…"
-            value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
-          />
-          <Select value={status} onChange={(e) => { setStatus(e.target.value as InvoiceStatus | ''); setPage(1); }}>
-            {STATUS_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-          </Select>
-          <input
-            type="month"
-            value={month}
-            onChange={(e) => { setMonth(e.target.value); setPage(1); }}
-            style={{
-              padding: '0.5rem 0.75rem', border: `1px solid ${palette.border}`,
-              borderRadius: '0.5rem', fontSize: '0.875rem', background: palette.bg,
-              color: palette.text, outline: 'none',
-            }}
-          />
+          <FilterField style={{ flex: 1, maxWidth: '18rem' }}>
+            <FilterLabel htmlFor="inv-search">Партньор</FilterLabel>
+            <SearchInput
+              id="inv-search"
+              type="text"
+              placeholder="Търсене по партньор…"
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+            />
+          </FilterField>
+          <FilterField>
+            <FilterLabel htmlFor="inv-status">Статус</FilterLabel>
+            <Select
+              id="inv-status"
+              value={status}
+              onChange={(e) => { setStatus(e.target.value as InvoiceStatus | ''); setPage(1); }}
+            >
+              {STATUS_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </Select>
+          </FilterField>
+          <FilterField>
+            <FilterLabel htmlFor="inv-month">Месец</FilterLabel>
+            <MonthInput
+              id="inv-month"
+              type="month"
+              value={month}
+              onChange={(e) => { setMonth(e.target.value); setPage(1); }}
+            />
+          </FilterField>
         </FilterRow>
 
         <DataTable
@@ -350,7 +583,7 @@ export default function AdminFinanceInvoicesPage() {
             },
           ]}
         />
-      </Card>
+      </Card>}
 
       {notesModal && (
         <Overlay onClick={() => setNotesModal(null)}>
@@ -370,6 +603,36 @@ export default function AdminFinanceInvoicesPage() {
                 onClick={() => notesMutation.mutate({ id: notesModal.id, notes: notesValue })}
               >
                 {notesMutation.isPending ? 'Запазване…' : 'Запази'}
+              </BtnPrimary>
+            </ModalActions>
+          </Modal>
+        </Overlay>
+      )}
+
+      {generateModal && (
+        <Overlay onClick={() => setGenerateModal(false)}>
+          <Modal onClick={(e) => e.stopPropagation()}>
+            <ModalTitle>Генерирай фактури за месец</ModalTitle>
+            <ModalSub>
+              Създава PENDING фактури за всички партньори с одобрени сканирания.
+              Съществуващи записи се обновяват с новите суми.
+            </ModalSub>
+            <GenModalBody>
+              <FilterLabel htmlFor="gen-month">Месец</FilterLabel>
+              <GenInput
+                id="gen-month"
+                type="month"
+                value={generateMonth}
+                onChange={(e) => setGenerateMonth(e.target.value)}
+              />
+            </GenModalBody>
+            <ModalActions>
+              <BtnSecondary onClick={() => setGenerateModal(false)}>Отказ</BtnSecondary>
+              <BtnPrimary
+                disabled={generateMutation.isPending || !generateMonth}
+                onClick={() => generateMutation.mutate(generateMonth)}
+              >
+                {generateMutation.isPending ? 'Генериране…' : 'Генерирай'}
               </BtnPrimary>
             </ModalActions>
           </Modal>
