@@ -450,10 +450,11 @@ router.get(
           ? new Date(fromParam + 'T00:00:00.000+02:00')
           : new Date(fromParam))
       : new Date(now.getFullYear(), now.getMonth(), 1);
-    // Same issue at the upper bound: treat date-only strings as end-of-Sofia-day.
+    // Anchor to Sofia winter end-of-day (+02:00) to avoid bleeding 2-3h of the next Sofia
+    // calendar day into the report.  Symmetric with the +02:00 anchor used for `from`.
     const to = toParam
       ? (/^\d{4}-\d{2}-\d{2}$/.test(toParam)
-          ? new Date(toParam + 'T23:59:59.999Z')
+          ? new Date(toParam + 'T23:59:59.999+02:00')
           : new Date(toParam))
       : new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
 
@@ -957,7 +958,7 @@ router.get(
         : new Date(now.getFullYear(), now.getMonth(), 1);
       const to = toParam
         ? (/^\d{4}-\d{2}-\d{2}$/.test(toParam)
-            ? new Date(toParam + 'T23:59:59.999Z')
+            ? new Date(toParam + 'T23:59:59.999+02:00')
             : new Date(toParam))
         : new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
 
