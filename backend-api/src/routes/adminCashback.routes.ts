@@ -201,7 +201,7 @@ router.post('/rates', requirePermission('cashback.write'), async (req: AuthReque
 // ------------------------------------------------------------------
 router.delete('/rates/snapshot/:iso', requirePermission('cashback.write'), async (req: AuthRequest, res: Response) => {
   try {
-    const targetDate = new Date(decodeURIComponent(req.params.iso));
+    const targetDate = new Date(req.params.iso);
     if (isNaN(targetDate.getTime())) {
       return res.status(400).json({ success: false, error: 'Invalid ISO date in path' });
     }

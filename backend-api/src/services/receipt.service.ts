@@ -17,7 +17,7 @@ import {
   DEFAULT_MONTHLY_SUBMISSION_LIMIT,
   FRAUD_ALERT_SCORE_THRESHOLD,
 } from '../constants/receipt.constants';
-import { getSystemSettingInt } from '../utils/systemSettings';
+import { getSystemSettingInt, getSystemSettingFloat } from '../utils/systemSettings';
 
 /**
  * Receipt Item structure (parsed from OCR)
@@ -938,7 +938,7 @@ class ReceiptService {
               excludeReceiptId: params.receiptId,
             });
             updatedFraudScore = recomputedFraud.fraudScore;
-            const autoApproveThreshold = await getSystemSettingInt('auto_approve_threshold', DEFAULT_AUTO_APPROVE_THRESHOLD);
+            const autoApproveThreshold = await getSystemSettingFloat('auto_approve_threshold', DEFAULT_AUTO_APPROVE_THRESHOLD);
             if (recomputedFraud.fraudScore > autoApproveThreshold) {
               logger.warn(
                 `Receipt ${params.receiptId} corrected to ${params.verifiedAmount} BGN — recomputed fraud score ${recomputedFraud.fraudScore} exceeds auto-approve threshold (admin override applied)`

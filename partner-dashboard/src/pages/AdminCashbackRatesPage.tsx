@@ -407,12 +407,12 @@ const AdminCashbackRatesPage: React.FC = () => {
     setPendingPayload(null);
   };
 
-  // Per-cell validity: value entered and exceeds the step cap
+  // Per-cell validity: value entered is negative or exceeds the step cap
   const isCellInvalid = (step: number, field: 'basic' | 'premium'): boolean => {
     const raw = draft[step]?.[field] ?? '';
     if (raw === '') return false;
     const v = parseFloat(raw);
-    return isFinite(v) && v > step;
+    return isFinite(v) && (v < 0 || v > step);
   };
 
   // Step 1: validate → show confirm panel
@@ -438,15 +438,16 @@ const AdminCashbackRatesPage: React.FC = () => {
       rates.push({ discountStep: step, basic, premium });
     }
 
-    const displayDate = effectiveFrom
-      ? new Date(effectiveFrom).toLocaleString()
-      : new Date().toLocaleString();
+    const parsedEffective = effectiveFrom ? new Date(effectiveFrom) : null;
+    const effectiveDate = parsedEffective && isFinite(parsedEffective.getTime())
+      ? parsedEffective
+      : new Date();
 
     setPendingPayload({
       rates,
-      effectiveFrom: effectiveFrom ? new Date(effectiveFrom).toISOString() : new Date().toISOString(),
+      effectiveFrom: effectiveDate.toISOString(),
       notes,
-      displayDate,
+      displayDate: effectiveDate.toLocaleString(),
     });
   };
 
@@ -468,7 +469,7 @@ const AdminCashbackRatesPage: React.FC = () => {
     } catch (e) {
       const axiosErr = e as { response?: { data?: { error?: string } }; message?: string };
       setError(axiosErr?.response?.data?.error || axiosErr?.message || 'Failed to save');
-      setPendingPayload(null);
+      // keep pendingPayload so the confirm panel stays open and user can retry
     } finally {
       setSaving(false);
     }

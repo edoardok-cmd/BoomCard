@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import styled from 'styled-components';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-hot-toast';
 import { adminAdminsService, AdminRoleKey, CreateAdminResponse } from '../../services/adminAdmins.service';
 
@@ -17,6 +17,9 @@ const palette = {
   successSoft: '#e6efe3',
   danger: '#b54327',
   dangerSoft: '#f4dcd2',
+  warning: '#7a5c1e',
+  warningSoft: '#fdf3dc',
+  warningBorder: '#e8d5a3',
 };
 
 const PageShell = styled.div`
@@ -164,13 +167,27 @@ const ErrorBanner = styled.div`
   margin-bottom: 1.25rem;
 `;
 
+const WarningBanner = styled.div`
+  background: ${palette.warningSoft};
+  border: 1px solid ${palette.warningBorder};
+  border-radius: 0.5rem;
+  padding: 0.875rem 1.125rem;
+  font-size: 0.8125rem;
+  color: ${palette.warning};
+  font-weight: 500;
+  margin-top: 0.5rem;
+`;
+
+// Roles are statically defined so SUPER_ADMIN is always available regardless of
+// what the /roles API returns. Without this, the double-approval flow can never
+// be triggered from the UI.
 const ROLE_OPTIONS: Array<{ value: AdminRoleKey; label: string }> = [
-  { value: 'ADMIN', label: 'Admin (full access)' },
-  { value: 'SUPPORT', label: 'Support' },
-  { value: 'FINANCE', label: 'Finance' },
-  { value: 'RISK_REVIEW', label: 'Risk Review' },
-  { value: 'PARTNER_MANAGER', label: 'Partner Manager' },
-  { value: 'SUPER_ADMIN', label: 'Super Admin' },
+  { value: 'ADMIN',           label: 'Администратор (пълен достъп)' },
+  { value: 'SUPPORT',         label: 'Поддръжка' },
+  { value: 'FINANCE',         label: 'Финанси' },
+  { value: 'RISK_REVIEW',     label: 'Преглед на риск' },
+  { value: 'PARTNER_MANAGER', label: 'Мениджър партньори' },
+  { value: 'SUPER_ADMIN',     label: 'Супер администратор' },
 ];
 
 const EMPTY = { email: '', firstName: '', lastName: '', phone: '', password: '', roleKey: 'ADMIN' as AdminRoleKey };
@@ -181,19 +198,12 @@ export default function AdminAdminsCreatePage() {
   const [lastCreated, setLastCreated] = useState<{ email: string; pending: boolean } | null>(null);
   const [serverError, setServerError] = useState<string | null>(null);
 
-  const { data: rolesData } = useQuery({
-    queryKey: ['admin-admins-roles'],
-    queryFn: () => adminAdminsService.listRoles(),
-  });
-
-  const availableRoles = rolesData?.roles ?? [];
-
   const createMutation = useMutation({
     mutationFn: () =>
       adminAdminsService.create({
         email: form.email.trim(),
-        firstName: form.firstName.trim() || undefined,
-        lastName: form.lastName.trim() || undefined,
+        firstName: form.firstName.trim(),
+        lastName: form.lastName.trim(),
         phone: form.phone.trim() || undefined,
         password: form.password,
         roleKey: form.roleKey,
@@ -203,17 +213,17 @@ export default function AdminAdminsCreatePage() {
       setForm(EMPTY);
       if (data.pending) {
         setLastCreated({ email: data.request.email, pending: true });
-        toast.success(`SUPER_ADMIN request submitted for ${data.request.email} — a second SUPER_ADMIN must approve`);
+        toast.success(`Заявка за Супер администратор подадена за ${data.request.email}`);
         queryClient.invalidateQueries({ queryKey: ['admin-admins-pending-super'] });
       } else {
         setLastCreated({ email: data.user.email, pending: false });
-        toast.success(`Admin account created for ${data.user.email}`);
+        toast.success(`Администраторски акаунт създаден за ${data.user.email}`);
         queryClient.invalidateQueries({ queryKey: ['admin-admins'] });
         queryClient.invalidateQueries({ queryKey: ['admin-admins-pending'] });
       }
     },
     onError: (err: unknown) => {
-      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Failed to create admin';
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Неуспешно създаване на администратор';
       setServerError(msg);
       toast.error(msg);
     },
@@ -221,8 +231,12 @@ export default function AdminAdminsCreatePage() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.email.trim() || !form.password || !form.roleKey) {
-      toast.error('Email, password, and role are required');
+    if (!form.email.trim() || !form.firstName.trim() || !form.lastName.trim() || !form.password || !form.roleKey) {
+      toast.error('Имейл, име, фамилия, парола и роля са задължителни');
+      return;
+    }
+    if (form.password.length < 8) {
+      toast.error('Паролата трябва да е поне 8 символа');
       return;
     }
     setServerError(null);
@@ -232,18 +246,20 @@ export default function AdminAdminsCreatePage() {
   const set = (field: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
     setForm((prev) => ({ ...prev, [field]: e.target.value }));
 
+  const isSuperAdmin = form.roleKey === 'SUPER_ADMIN';
+
   return (
     <PageShell>
-      <Eyebrow>Admins</Eyebrow>
-      <PageTitle>Create Admin</PageTitle>
-      <PageSubtitle>Create a new admin account and assign it an initial role.</PageSubtitle>
+      <Eyebrow>Администратори</Eyebrow>
+      <PageTitle>Създай администратор</PageTitle>
+      <PageSubtitle>Създай нов администраторски акаунт и му задай начална роля.</PageSubtitle>
 
       <FormCard>
         {lastCreated && (
           <SuccessBanner>
             {lastCreated.pending
-              ? <>Pending SUPER_ADMIN request created for <strong>{lastCreated.email}</strong> — a second SUPER_ADMIN must approve it from the Pending Approvals page.</>
-              : <>Admin account created for <strong>{lastCreated.email}</strong>.</>}
+              ? <>Заявката за Супер администратор за <strong>{lastCreated.email}</strong> е изпратена — втори Супер администратор трябва да я одобри от страницата Очакващи одобрение.</>
+              : <>Администраторският акаунт за <strong>{lastCreated.email}</strong> е създаден успешно.</>}
           </SuccessBanner>
         )}
         {serverError && (
@@ -253,7 +269,7 @@ export default function AdminAdminsCreatePage() {
         <form onSubmit={handleSubmit} autoComplete="off">
           <FieldGroup>
             <Field>
-              <Label htmlFor="email">Email *</Label>
+              <Label htmlFor="email">Имейл адрес *</Label>
               <Input
                 id="email"
                 type="email"
@@ -266,29 +282,33 @@ export default function AdminAdminsCreatePage() {
             </Field>
 
             <Field>
-              <Label htmlFor="firstName">First name</Label>
+              <Label htmlFor="firstName">Иme *</Label>
               <Input
                 id="firstName"
                 type="text"
-                placeholder="First name"
+                placeholder="Иван"
                 value={form.firstName}
                 onChange={set('firstName')}
+                required
+                minLength={2}
               />
             </Field>
 
             <Field>
-              <Label htmlFor="lastName">Last name</Label>
+              <Label htmlFor="lastName">Фамилия *</Label>
               <Input
                 id="lastName"
                 type="text"
-                placeholder="Last name"
+                placeholder="Петров"
                 value={form.lastName}
                 onChange={set('lastName')}
+                required
+                minLength={2}
               />
             </Field>
 
             <Field>
-              <Label htmlFor="phone">Phone</Label>
+              <Label htmlFor="phone">Телефон</Label>
               <Input
                 id="phone"
                 type="text"
@@ -303,40 +323,48 @@ export default function AdminAdminsCreatePage() {
 
           <FieldGroup>
             <Field>
-              <Label htmlFor="password">Temporary password *</Label>
+              <Label htmlFor="password">Временна парола *</Label>
               <Input
                 id="password"
                 type="password"
-                placeholder="Min 8 characters"
+                placeholder="Мин. 8 символа"
                 value={form.password}
                 onChange={set('password')}
                 minLength={8}
                 required
                 autoComplete="new-password"
               />
-              <FieldHint>The admin must change this after first login.</FieldHint>
+              <FieldHint>Администраторът трябва да смени паролата при първо влизане.</FieldHint>
             </Field>
 
             <Field>
-              <Label htmlFor="roleKey">Initial role *</Label>
+              <Label htmlFor="roleKey">Начална роля *</Label>
               <Select id="roleKey" value={form.roleKey} onChange={set('roleKey')}>
-                {(availableRoles.length > 0
-                  ? availableRoles.map((r) => ({ value: r.key, label: r.label }))
-                  : ROLE_OPTIONS
-                ).map((o) => (
+                {ROLE_OPTIONS.map((o) => (
                   <option key={o.value} value={o.value}>{o.label}</option>
                 ))}
               </Select>
-              <FieldHint>Additional roles can be assigned from the All Admins list.</FieldHint>
+              <FieldHint>Допълнителни роли могат да се добавят от списъка Всички администратори.</FieldHint>
+              {isSuperAdmin && (
+                <WarningBanner>
+                  ⚠️ Заявката за Супер администратор не се одобрява автоматично. Тя ще бъде изпратена за одобрение от втори Супер администратор в страницата Очакващи одобрение. Заявителят не може да одобри собствената си заявка.
+                </WarningBanner>
+              )}
+            </Field>
+
+            <Field>
+              <FieldHint>
+                🔐 Двуфакторното удостоверяване (2FA) трябва да се настрои при първо влизане. Администраторите без активно 2FA са видими в списъка.
+              </FieldHint>
             </Field>
           </FieldGroup>
 
           <ButtonRow>
             <SubmitButton type="submit" $loading={createMutation.isPending} disabled={createMutation.isPending}>
-              {createMutation.isPending ? 'Creating…' : 'Create admin'}
+              {createMutation.isPending ? 'Създаване…' : 'Създай администратор'}
             </SubmitButton>
-            <ResetButton type="button" onClick={() => { setForm(EMPTY); setServerError(null); setLastCreated(null); }} >
-              Clear
+            <ResetButton type="button" onClick={() => { setForm(EMPTY); setServerError(null); setLastCreated(null); }}>
+              Изчисти
             </ResetButton>
           </ButtonRow>
         </form>

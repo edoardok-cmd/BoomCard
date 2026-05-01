@@ -22,7 +22,7 @@ export async function getSystemSettingInt(key: string, fallback: number): Promis
 
   const row = await prisma.systemSetting.findUnique({ where: { key } });
   const parsed = row ? parseInt(row.value, 10) : NaN;
-  const result = Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+  const result = Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
   _numCache.set(key, { value: result, expiresAt: now + TTL_MS });
   return result;
 }

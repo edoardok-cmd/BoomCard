@@ -17,10 +17,12 @@ import { useTranslation } from 'react-i18next';
 import notificationService from '../../services/notification.service';
 import { getDeviceFingerprint } from '../../services/deviceFingerprint.service';
 import StickersApi from '../../api/stickers.api';
+import { useFeatureFlags } from '../../store/MobileConfigContext';
 
 export default function StickerScannerScreen() {
   const navigation = useNavigation();
   const { t } = useTranslation();
+  const { stickerScan: stickerScanEnabled } = useFeatureFlags();
   const isFocused = useIsFocused();
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const [cameraPermanentlyDenied, setCameraPermanentlyDenied] = useState(false);
@@ -209,6 +211,16 @@ export default function StickerScannerScreen() {
             {t('stickers.grantPermissions')}
           </Button>
         )}
+      </View>
+    );
+  }
+
+  if (!stickerScanEnabled) {
+    return (
+      <View style={[styles.container, { alignItems: 'center', justifyContent: 'center', padding: 32 }]}>
+        <Text style={{ fontSize: 16, fontWeight: '600', color: '#605a50', textAlign: 'center' }}>
+          {t('common.featureUnavailable', 'Тази функция временно не е налична.')}
+        </Text>
       </View>
     );
   }

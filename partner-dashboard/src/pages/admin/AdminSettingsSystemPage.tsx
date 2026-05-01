@@ -307,14 +307,14 @@ export default function AdminSettingsSystemPage() {
                 <FieldHint>Бонове под тази сума се одобряват автоматично независимо от оценката. По подразбиране: 10.</FieldHint>
               </div>
               <div>
-                <FieldLabel>Дневен лимит за сканиране (на обект)</FieldLabel>
+                <FieldLabel>Дневен лимит за сканиране (на потребител)</FieldLabel>
                 <NumberInput
                   type="number" min="1"
                   value={dailyLimit}
                   onChange={(e) => setDailyLimit(e.target.value)}
                   placeholder="без лимит"
                 />
-                <FieldHint>Макс. брой сканирания на потребител на обект на ден. Оставете празно за без лимит.</FieldHint>
+                <FieldHint>Макс. брой касови бележки на потребител на ден (глобално, не на обект). Оставете празно за без лимит.</FieldHint>
               </div>
               <div>
                 <FieldLabel>Макс. кешбек на месец (лв.)</FieldLabel>
@@ -324,7 +324,7 @@ export default function AdminSettingsSystemPage() {
                   onChange={(e) => setMaxCashback(e.target.value)}
                   placeholder="без таван"
                 />
-                <FieldHint>Таван на кешбек, който абонат може да спечели за календарен месец. Оставете празно за без таван.</FieldHint>
+                <FieldHint>Таван на кешбек, който абонат може да спечели за последните 30 дни (плъзгащ прозорец). Оставете празно за без таван.</FieldHint>
               </div>
             </FieldGroup>
           )}

@@ -15,6 +15,8 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import * as SecureStore from './src/utils/secureStore';
 import { ThemeProvider } from './src/contexts/ThemeContext';
 import { AuthProvider } from './src/store/AuthContext';
+import { MobileConfigProvider } from './src/store/MobileConfigContext';
+import { GlobalErrorBoundary } from './src/components/GlobalErrorBoundary';
 import AppNavigator from './src/navigation/AppNavigator';
 import LanguageSelectionScreen from './src/screens/LanguageSelectionScreen';
 import BrandSplash from './src/components/brand/BrandSplash';
@@ -23,6 +25,7 @@ import { STORAGE_KEYS } from './src/constants/config';
 import StorageService from './src/services/storage.service';
 import './src/i18n'; // Initialize i18n
 import { warmupApi } from './src/utils/apiWarmup';
+import { reportError } from './src/utils/errorReporter';
 import queryClient from './src/queryClient';
 
 export default function App() {
@@ -38,7 +41,7 @@ export default function App() {
       .catch(() => {});
 
     prepareApp();
-    // Warm up the API server in the background (helps with Render cold starts)
+    // Warm up the API server in the background (helps with cold starts)
     warmupApi().catch(err => console.log('API warmup failed:', err));
   }, []);
 
@@ -55,6 +58,7 @@ export default function App() {
       setLanguageSelected(hasSelected === 'true');
     } catch (error) {
       console.error('Error preparing app:', error);
+      reportError(error, 'unknown');
       // Still allow the app to proceed even if font loading fails
       try {
         const hasSelected = await SecureStore.getItemAsync('language_selected');
@@ -72,6 +76,7 @@ export default function App() {
   };
 
   return (
+    <GlobalErrorBoundary>
     <View style={{ flex: 1 }}>
       {/* Render underlying content (loads behind splash overlay) */}
       {languageSelected === false ? (
@@ -80,13 +85,15 @@ export default function App() {
         </ThemeProvider>
       ) : languageSelected === true ? (
         <QueryClientProvider client={queryClient}>
-          <ThemeProvider>
-            <AuthProvider>
-              <StatusBar style="auto" />
-              <AppNavigator />
-              <Toast />
-            </AuthProvider>
-          </ThemeProvider>
+          <MobileConfigProvider>
+            <ThemeProvider>
+              <AuthProvider>
+                <StatusBar style="auto" />
+                <AppNavigator />
+                <Toast />
+              </AuthProvider>
+            </ThemeProvider>
+          </MobileConfigProvider>
         </QueryClientProvider>
       ) : (
         // While language check is pending, render nothing (splash covers it)
@@ -103,5 +110,6 @@ export default function App() {
         />
       )}
     </View>
+    </GlobalErrorBoundary>
   );
 }

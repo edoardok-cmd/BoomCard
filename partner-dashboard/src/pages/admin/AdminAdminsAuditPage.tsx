@@ -24,6 +24,57 @@ const palette = {
   dangerSoft: '#f4dcd2',
 };
 
+// Maps technical action codes to human-readable Bulgarian labels.
+// Falls back to a cleaned-up version of the raw code.
+const ACTION_LABEL: Record<string, string> = {
+  'auth.login':                'Вход',
+  'auth.logout':               'Изход',
+  'auth.login.failed':         'Неуспешен вход',
+  'auth.password.reset':       'Смяна на парола',
+  'auth.2fa.enable':           'Активиране на 2FA',
+  'auth.2fa.disable':          'Деактивиране на 2FA',
+  'user.create':               'Създаден потребител',
+  'user.update':               'Промяна на потребител',
+  'user.delete':               'Изтрит потребител',
+  'user.status.update':        'Промяна на статус на потребител',
+  'admin.create':              'Създаден администратор',
+  'admin.update':              'Промяна на администратор',
+  'admin.delete':              'Изтрит администратор',
+  'admin.role.add':            'Добавена роля',
+  'admin.role.remove':         'Премахната роля',
+  'admin.status.update':       'Промяна на статус на администратор',
+  'admin.super.request':       'Заявка за Супер администратор',
+  'admin.super.approve':       'Одобрена заявка за Супер администратор',
+  'admin.super.reject':        'Отхвърлена заявка за Супер администратор',
+  'partner.create':            'Създаден партньор',
+  'partner.update':            'Промяна на партньор',
+  'partner.approve':           'Одобрен партньор',
+  'partner.reject':            'Отхвърлен партньор',
+  'partner.status.update':     'Промяна на статус на партньор',
+  'system.put':                'Промяна на системна настройка',
+  'system.update':             'Обновяване на системни настройки',
+  'settings.update':           'Промяна на настройки',
+  'cashback.rate.update':      'Промяна на кешбек процент',
+  'payout.create':             'Създадено плащане',
+  'payout.update':             'Промяна на плащане',
+  'payout.approve':            'Одобрено плащане',
+  'dispute.create':            'Открит спор',
+  'dispute.resolve':           'Разрешен спор',
+  'marketing.campaign.create': 'Създадена кампания',
+  'marketing.campaign.update': 'Промяна на кампания',
+  'marketing.template.create': 'Създаден шаблон',
+  'marketing.template.update': 'Промяна на шаблон',
+};
+
+function labelForAction(action: string): string {
+  if (ACTION_LABEL[action]) return ACTION_LABEL[action];
+  // Generic fallback: replace dots with spaces and capitalise first letter
+  return action
+    .split('.')
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' → ');
+}
+
 const PageShell = styled.div`
   background: ${palette.bg};
   min-height: calc(100vh - 4rem);
@@ -122,13 +173,18 @@ const MetaLine = styled.div`
   margin-top: 0.125rem;
 `;
 
-const ActionTag = styled.code`
-  font-size: 0.75rem;
-  font-family: ui-monospace, 'Cascadia Code', monospace;
-  background: #f1f0ec;
+const ActionTag = styled.span`
+  font-size: 0.8125rem;
+  font-weight: 500;
   color: ${palette.text};
-  border-radius: 0.25rem;
-  padding: 0.1rem 0.4rem;
+`;
+
+const ActionRaw = styled.code`
+  display: block;
+  font-size: 0.7rem;
+  font-family: ui-monospace, 'Cascadia Code', monospace;
+  color: ${palette.textSubtle};
+  margin-top: 0.15rem;
 `;
 
 const ObjectCell = styled.div`
@@ -144,7 +200,6 @@ const ObjectId = styled.span`
   margin-top: 0.125rem;
 `;
 
-/* Expandable detail overlay */
 const OverlayBackdrop = styled.div`
   position: fixed;
   inset: 0;
@@ -219,6 +274,18 @@ const CloseBtn = styled.button`
   &:hover { border-color: ${palette.text}; color: ${palette.text}; }
 `;
 
+const OBJECT_TYPE_LABEL: Record<string, string> = {
+  user: 'Потребител',
+  partner: 'Партньор',
+  system: 'Система',
+  admin: 'Администратор',
+  payout: 'Плащане',
+  cashback: 'Кешбек',
+  dispute: 'Спор',
+  marketing: 'Маркетинг',
+  settings: 'Настройки',
+};
+
 const PAGE_SIZE = 20;
 
 export default function AdminAdminsAuditPage() {
@@ -254,7 +321,7 @@ export default function AdminAdminsAuditPage() {
   const columns: ColumnDef<AuditLogEntry>[] = [
     {
       key: 'actor',
-      header: 'Actor',
+      header: 'Извършено от',
       render: (row) =>
         row.actor ? (
           <ActorCell>
@@ -264,27 +331,32 @@ export default function AdminAdminsAuditPage() {
             <MetaLine>{row.actor.email}</MetaLine>
           </ActorCell>
         ) : (
-          <span style={{ color: palette.textSubtle, fontSize: '0.8125rem' }}>System</span>
+          <span style={{ color: palette.textSubtle, fontSize: '0.8125rem' }}>Система</span>
         ),
     },
     {
       key: 'action',
-      header: 'Action',
-      render: (row) => <ActionTag>{row.action}</ActionTag>,
+      header: 'Действие',
+      render: (row) => (
+        <div>
+          <ActionTag>{labelForAction(row.action)}</ActionTag>
+          <ActionRaw>{row.action}</ActionRaw>
+        </div>
+      ),
     },
     {
       key: 'object',
-      header: 'Object',
+      header: 'Обект',
       render: (row) => (
         <ObjectCell>
-          {row.objectType}
+          {OBJECT_TYPE_LABEL[row.objectType] ?? row.objectType}
           {row.objectId && <ObjectId>{row.objectId}</ObjectId>}
         </ObjectCell>
       ),
     },
     {
       key: 'ip',
-      header: 'IP',
+      header: 'IP адрес',
       render: (row) => (
         <span style={{ color: palette.textSubtle, fontSize: '0.75rem', fontFamily: 'ui-monospace, monospace' }}>
           {row.ip ?? '—'}
@@ -293,7 +365,7 @@ export default function AdminAdminsAuditPage() {
     },
     {
       key: 'createdAt',
-      header: 'Date',
+      header: 'Дата и час',
       render: (row) => (
         <span style={{ color: palette.textMuted, fontSize: '0.8125rem', whiteSpace: 'nowrap' }}>
           {fmt(row.createdAt)}
@@ -305,26 +377,26 @@ export default function AdminAdminsAuditPage() {
   return (
     <PageShell>
       <PageHeader>
-        <Eyebrow>Admins</Eyebrow>
+        <Eyebrow>Администратори</Eyebrow>
         <PageTitle>
-          Audit Log
+          История на действията
           {data && data.total > 0 && <TotalBadge>{data.total.toLocaleString()}</TotalBadge>}
         </PageTitle>
-        <PageSubtitle>All admin-panel mutation events — who did what and when</PageSubtitle>
+        <PageSubtitle>Всички действия в администраторския панел — кой, какво и кога</PageSubtitle>
       </PageHeader>
 
       <Card>
         <FilterRow>
           <SearchInput
             type="text"
-            placeholder="Search by action, object type or actor…"
+            placeholder="Търси по действие, тип обект или изпълнител…"
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
             onKeyDown={handleSearchKeyDown}
           />
           <Input
             type="text"
-            placeholder="Filter by object type…"
+            placeholder="Филтър по тип обект…"
             value={objectType}
             style={{ width: '13rem' }}
             onChange={(e) => { setObjectType(e.target.value); setPage(1); }}
@@ -336,14 +408,14 @@ export default function AdminAdminsAuditPage() {
           data={data?.logs ?? []}
           rowKey={(row) => row.id}
           loading={isLoading}
-          emptyMessage="No audit log entries found"
+          emptyMessage="Няма намерени записи"
           page={page}
           pageSize={PAGE_SIZE}
           totalItems={data?.total}
           onPageChange={setPage}
           rowActions={[
             {
-              label: 'View diff',
+              label: 'Виж промените',
               hidden: (row) => row.before == null && row.after == null,
               onClick: (row) => setDetail(row),
             },
@@ -355,7 +427,7 @@ export default function AdminAdminsAuditPage() {
         <OverlayBackdrop onClick={() => setDetail(null)}>
           <OverlayCard onClick={(e) => e.stopPropagation()}>
             <OverlayTitle>
-              Diff — <code style={{ fontSize: '0.9em' }}>{detail.action}</code>
+              Промени — {labelForAction(detail.action)}
               {detail.objectId && (
                 <span style={{ fontSize: '0.75rem', color: palette.textSubtle, marginLeft: '0.5rem' }}>
                   #{detail.objectId.slice(0, 8)}
@@ -365,20 +437,20 @@ export default function AdminAdminsAuditPage() {
 
             <DiffGrid>
               <DiffPanel>
-                <DiffLabel>Before</DiffLabel>
+                <DiffLabel>Преди</DiffLabel>
                 <DiffCode>{detail.before != null ? JSON.stringify(detail.before, null, 2) : '—'}</DiffCode>
               </DiffPanel>
               <DiffPanel>
-                <DiffLabel>After</DiffLabel>
+                <DiffLabel>След</DiffLabel>
                 <DiffCode>{detail.after != null ? JSON.stringify(detail.after, null, 2) : '—'}</DiffCode>
               </DiffPanel>
             </DiffGrid>
 
             <div style={{ fontSize: '0.75rem', color: palette.textSubtle }}>
-              Actor: {detail.actor?.email ?? 'System'} · IP: {detail.ip ?? '—'} · {fmt(detail.createdAt)}
+              Изпълнено от: {detail.actor?.email ?? 'Система'} · IP: {detail.ip ?? '—'} · {fmt(detail.createdAt)}
             </div>
 
-            <CloseBtn onClick={() => setDetail(null)}>Close</CloseBtn>
+            <CloseBtn onClick={() => setDetail(null)}>Затвори</CloseBtn>
           </OverlayCard>
         </OverlayBackdrop>
       )}

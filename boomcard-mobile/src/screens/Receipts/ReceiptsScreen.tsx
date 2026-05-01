@@ -18,6 +18,7 @@ import { ReceiptsApi } from '../../api/receipts.api';
 import { useTheme } from '../../contexts/ThemeContext';
 import type { Receipt, ReceiptStats, ReceiptStatus } from '../../types';
 import { APP_CONFIG } from '../../constants/config';
+import { useFeatureFlags } from '../../store/MobileConfigContext';
 
 // Soft status badge colors matching website design (light bg + dark text)
 const STATUS_CONFIG: Record<string, { bg: string; text: string; icon: keyof typeof Ionicons.glyphMap }> = {
@@ -62,6 +63,7 @@ const REJECTED_STATUSES = new Set(['REJECTED', 'EXPIRED']);
 const ReceiptsScreen = ({ navigation }: any) => {
   const { t } = useTranslation();
   const { theme, isDarkMode } = useTheme();
+  const { receiptScan: receiptScanEnabled } = useFeatureFlags();
   const mountedRef = useRef(true);
   useEffect(() => { return () => { mountedRef.current = false; }; }, []);
 
@@ -404,6 +406,16 @@ const ReceiptsScreen = ({ navigation }: any) => {
           <Ionicons name="refresh" size={16} color="#FFFFFF" />
           <Text style={s.retryButtonText}>{t('common.retry')}</Text>
         </TouchableOpacity>
+      </View>
+    );
+  }
+
+  if (!receiptScanEnabled) {
+    return (
+      <View style={[s.container, { alignItems: 'center', justifyContent: 'center', padding: 32 }]}>
+        <Text style={{ fontSize: 16, fontWeight: '600', color: theme.colors.onSurfaceVariant, textAlign: 'center' }}>
+          {t('common.featureUnavailable', 'Тази функция временно не е налична.')}
+        </Text>
       </View>
     );
   }

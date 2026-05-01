@@ -227,7 +227,6 @@ const PrimaryBtn = styled.button<{ $loading?: boolean }>`
   &:hover:not(:disabled) { opacity: 0.88; }
 `;
 
-
 const SecondaryBtn = styled.button`
   padding: 0.625rem 1rem;
   background: transparent;
@@ -241,12 +240,20 @@ const SecondaryBtn = styled.button`
 `;
 
 const ROLE_OPTIONS: Array<{ value: AdminRoleKey; label: string }> = [
-  { value: 'ADMIN', label: 'Admin (full access)' },
-  { value: 'SUPPORT', label: 'Support' },
-  { value: 'FINANCE', label: 'Finance' },
-  { value: 'RISK_REVIEW', label: 'Risk Review' },
-  { value: 'PARTNER_MANAGER', label: 'Partner Manager' },
+  { value: 'ADMIN', label: 'Администратор (пълен достъп)' },
+  { value: 'SUPPORT', label: 'Поддръжка' },
+  { value: 'FINANCE', label: 'Финанси' },
+  { value: 'RISK_REVIEW', label: 'Преглед на риск' },
+  { value: 'PARTNER_MANAGER', label: 'Мениджър партньори' },
 ];
+
+const STATUS_LABEL: Record<string, string> = {
+  ACTIVE: 'Активен',
+  SUSPENDED: 'Спрян',
+  INACTIVE: 'Неактивен',
+  PENDING_VERIFICATION: 'Чака верификация',
+  PENDING_PAYMENT: 'Чака плащане',
+};
 
 const PAGE_SIZE = 20;
 
@@ -258,12 +265,10 @@ export default function AdminAdminsPendingPage() {
   const { language } = useLanguage();
   const queryClient = useQueryClient();
 
-  // Role-assignment pending state
   const [rolePage, setRolePage] = useState(1);
   const [roleSearchInput, setRoleSearchInput] = useState('');
   const [roleSearch, setRoleSearch] = useState('');
 
-  // Super admin pending state
   const [superPage, setSuperPage] = useState(1);
 
   const [modal, setModal] = useState<ActiveModal>(null);
@@ -283,24 +288,24 @@ export default function AdminAdminsPendingPage() {
     mutationFn: ({ id, roleKey }: { id: string; roleKey: AdminRoleKey }) =>
       adminAdminsService.approve(id, roleKey),
     onSuccess: () => {
-      toast.success('Role assigned — admin is now active');
+      toast.success('Ролята е назначена — администраторът е активен');
       setModal(null);
       queryClient.invalidateQueries({ queryKey: ['admin-admins-pending'] });
       queryClient.invalidateQueries({ queryKey: ['admin-admins'] });
     },
-    onError: () => toast.error('Failed to assign role'),
+    onError: () => toast.error('Грешка при назначаване на роля'),
   });
 
   const approveSuperMutation = useMutation({
     mutationFn: (id: string) => adminAdminsService.approvePendingSuper(id),
     onSuccess: (data) => {
-      toast.success(`SUPER_ADMIN account created for ${data.user.email}`);
+      toast.success(`Акаунтът на Супер администратор е създаден за ${data.user.email}`);
       setModal(null);
       queryClient.invalidateQueries({ queryKey: ['admin-admins-pending-super'] });
       queryClient.invalidateQueries({ queryKey: ['admin-admins'] });
     },
     onError: (err: unknown) => {
-      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Failed to approve request';
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Грешка при одобрение на заявката';
       toast.error(msg);
     },
   });
@@ -308,11 +313,11 @@ export default function AdminAdminsPendingPage() {
   const rejectSuperMutation = useMutation({
     mutationFn: (id: string) => adminAdminsService.rejectPendingSuper(id),
     onSuccess: () => {
-      toast.success('SUPER_ADMIN request rejected');
+      toast.success('Заявката за Супер администратор е отхвърлена');
       setModal(null);
       queryClient.invalidateQueries({ queryKey: ['admin-admins-pending-super'] });
     },
-    onError: () => toast.error('Failed to reject request'),
+    onError: () => toast.error('Грешка при отхвърляне на заявката'),
   });
 
   const fmt = (iso: string) =>
@@ -323,7 +328,7 @@ export default function AdminAdminsPendingPage() {
   const superColumns: ColumnDef<PendingSuperAdminRequest>[] = [
     {
       key: 'user',
-      header: 'Requested account',
+      header: 'Заявен акаунт',
       render: (row) => (
         <UserCell>
           {row.firstName || row.lastName
@@ -336,7 +341,7 @@ export default function AdminAdminsPendingPage() {
     },
     {
       key: 'requestedBy',
-      header: 'Requested by',
+      header: 'Заявено от',
       render: (row) =>
         row.requestedBy ? (
           <UserCell>
@@ -351,7 +356,7 @@ export default function AdminAdminsPendingPage() {
     },
     {
       key: 'createdAt',
-      header: 'Requested',
+      header: 'Дата на заявката',
       render: (row) => (
         <span style={{ color: palette.textMuted, fontSize: '0.8125rem' }}>{fmt(row.createdAt)}</span>
       ),
@@ -361,7 +366,7 @@ export default function AdminAdminsPendingPage() {
   const roleColumns: ColumnDef<PendingAdmin>[] = [
     {
       key: 'user',
-      header: 'Admin',
+      header: 'Администратор',
       render: (row) => (
         <UserCell>
           {row.firstName || row.lastName
@@ -374,17 +379,17 @@ export default function AdminAdminsPendingPage() {
     },
     {
       key: 'status',
-      header: 'Status',
+      header: 'Статус',
       render: (row) => (
         <span style={{ fontSize: '0.8125rem', color: palette.textMuted, display: 'flex', alignItems: 'center' }}>
           <StatusDot $status={row.status} />
-          {row.status.replace('_', ' ')}
+          {STATUS_LABEL[row.status] ?? row.status}
         </span>
       ),
     },
     {
       key: 'createdAt',
-      header: 'Created',
+      header: 'Създаден',
       render: (row) => (
         <span style={{ color: palette.textMuted, fontSize: '0.8125rem' }}>{fmt(row.createdAt)}</span>
       ),
@@ -396,27 +401,27 @@ export default function AdminAdminsPendingPage() {
   return (
     <PageShell>
       <PageHeader>
-        <Eyebrow>Admins</Eyebrow>
+        <Eyebrow>Администратори</Eyebrow>
         <PageTitle>
-          Pending Approvals
+          Чакащи одобрения
           {totalPending > 0 && <TotalBadge>{totalPending.toLocaleString()}</TotalBadge>}
         </PageTitle>
-        <PageSubtitle>SUPER_ADMIN creation requests (dual approval) and admin role assignments</PageSubtitle>
+        <PageSubtitle>Заявки за Супер администратор (двойно одобрение) и критични действия, изискващи потвърждение</PageSubtitle>
       </PageHeader>
 
-      {/* ── Section 1: Pending SUPER_ADMIN creation requests ── */}
+      {/* ── Раздел 1: Заявки за Супер администратор ── */}
       <Card>
         <SectionTitle>
-          SUPER_ADMIN Requests
+          Заявки за Супер администратор
           {(superData?.total ?? 0) > 0 && (
             <TotalBadge style={{ marginLeft: '0.5rem' }}>{superData!.total}</TotalBadge>
           )}
         </SectionTitle>
-        <SectionSubtitle>New SUPER_ADMIN accounts pending a second SUPER_ADMIN's approval</SectionSubtitle>
+        <SectionSubtitle>Нови акаунти на Супер администратор, чакащи одобрение от втори Супер администратор</SectionSubtitle>
 
         {(superData?.total ?? 0) > 0 && (
           <DangerBanner>
-            Only a SUPER_ADMIN can approve or reject these requests. Approving creates a full SUPER_ADMIN account.
+            Само Супер администратор може да одобри или отхвърли тези заявки. Одобряването създава пълен акаунт на Супер администратор.
           </DangerBanner>
         )}
 
@@ -425,21 +430,21 @@ export default function AdminAdminsPendingPage() {
           data={superData?.requests ?? []}
           rowKey={(row) => row.id}
           loading={superLoading}
-          emptyMessage="No pending SUPER_ADMIN requests"
+          emptyMessage="Няма чакащи заявки за Супер администратор"
           page={superPage}
           pageSize={PAGE_SIZE}
           totalItems={superData?.total}
           onPageChange={setSuperPage}
           rowActions={[
             {
-              label: 'Approve',
+              label: 'Одобри',
               onClick: (row) => setModal({ type: 'super', request: row }),
             },
             {
-              label: 'Reject',
+              label: 'Отхвърли',
               danger: true as const,
               onClick: (row) => {
-                if (!window.confirm(`Reject SUPER_ADMIN request for ${row.email}?`)) return;
+                if (!window.confirm(`Да се отхвърли заявката за Супер администратор за ${row.email}?`)) return;
                 rejectSuperMutation.mutate(row.id);
               },
             },
@@ -447,25 +452,24 @@ export default function AdminAdminsPendingPage() {
         />
       </Card>
 
-      {/* ── Section 2: Role-assignment pending ── */}
+      {/* ── Раздел 2: Администратори без назначена роля ── */}
       <Card>
         <SectionTitle>
-          Pending Role Assignments
+          Администратори без назначена роля
           {(roleData?.total ?? 0) > 0 && (
             <TotalBadge style={{ marginLeft: '0.5rem' }}>{roleData!.total}</TotalBadge>
           )}
         </SectionTitle>
-        <SectionSubtitle>Admin accounts with no panel role assigned yet</SectionSubtitle>
+        <SectionSubtitle>Акаунти с администраторски достъп, на които предстои назначаване на панелна роля</SectionSubtitle>
 
         <InfoBanner>
-          These users have the <strong>ADMIN</strong> system role but no panel role assigned yet.
-          Assign a role to give them dashboard access.
+          Тези потребители имат системна роля <strong>Администратор</strong>, но все още нямат назначена панелна роля. Назначи роля, за да получат достъп до таблото.
         </InfoBanner>
 
         <FilterRow>
           <SearchInput
             type="text"
-            placeholder="Search by name, email or phone…"
+            placeholder="Търси по име, имейл или телефон…"
             value={roleSearchInput}
             onChange={(e) => setRoleSearchInput(e.target.value)}
             onKeyDown={(e) => {
@@ -479,14 +483,14 @@ export default function AdminAdminsPendingPage() {
           data={roleData?.users ?? []}
           rowKey={(row) => row.id}
           loading={roleLoading}
-          emptyMessage="No pending admin role assignments"
+          emptyMessage="Няма администратори без назначена роля"
           page={rolePage}
           pageSize={PAGE_SIZE}
           totalItems={roleData?.total}
           onPageChange={setRolePage}
           rowActions={[
             {
-              label: 'Assign role & approve',
+              label: 'Назначи роля',
               onClick: (row) => {
                 setModal({ type: 'role', admin: row });
                 setSelectedRole('ADMIN');
@@ -496,14 +500,14 @@ export default function AdminAdminsPendingPage() {
         />
       </Card>
 
-      {/* ── Approve SUPER_ADMIN modal ── */}
+      {/* ── Модал: Одобри заявка за Супер администратор ── */}
       {modal?.type === 'super' && (
         <OverlayBackdrop onClick={() => setModal(null)}>
           <OverlayCard onClick={(e) => e.stopPropagation()}>
-            <OverlayTitle>Approve SUPER_ADMIN request</OverlayTitle>
+            <OverlayTitle>Одобри заявка за Супер администратор</OverlayTitle>
             <OverlaySubtitle>
-              This will create a full SUPER_ADMIN account for{' '}
-              <strong>{modal.request.email}</strong>. This action cannot be undone easily.
+              Ще бъде създаден пълен акаунт на Супер администратор за{' '}
+              <strong>{modal.request.email}</strong>. Това действие трудно се отменя.
             </OverlaySubtitle>
             <OverlayActions>
               <PrimaryBtn
@@ -511,21 +515,21 @@ export default function AdminAdminsPendingPage() {
                 disabled={approveSuperMutation.isPending}
                 onClick={() => approveSuperMutation.mutate(modal.request.id)}
               >
-                {approveSuperMutation.isPending ? 'Approving…' : 'Approve & create account'}
+                {approveSuperMutation.isPending ? 'Одобряване…' : 'Одобри и създай акаунт'}
               </PrimaryBtn>
-              <SecondaryBtn onClick={() => setModal(null)}>Cancel</SecondaryBtn>
+              <SecondaryBtn onClick={() => setModal(null)}>Отказ</SecondaryBtn>
             </OverlayActions>
           </OverlayCard>
         </OverlayBackdrop>
       )}
 
-      {/* ── Assign role modal ── */}
+      {/* ── Модал: Назначи роля ── */}
       {modal?.type === 'role' && (
         <OverlayBackdrop onClick={() => setModal(null)}>
           <OverlayCard onClick={(e) => e.stopPropagation()}>
-            <OverlayTitle>Assign role</OverlayTitle>
+            <OverlayTitle>Назначи роля</OverlayTitle>
             <OverlaySubtitle>
-              Assign a panel role to <strong>{modal.admin.email}</strong>
+              Назначи панелна роля на <strong>{modal.admin.email}</strong>
             </OverlaySubtitle>
             <Select
               value={selectedRole}
@@ -541,9 +545,9 @@ export default function AdminAdminsPendingPage() {
                 disabled={approveMutation.isPending}
                 onClick={() => approveMutation.mutate({ id: modal.admin.id, roleKey: selectedRole })}
               >
-                {approveMutation.isPending ? 'Assigning…' : 'Assign role'}
+                {approveMutation.isPending ? 'Назначаване…' : 'Назначи роля'}
               </PrimaryBtn>
-              <SecondaryBtn onClick={() => setModal(null)}>Cancel</SecondaryBtn>
+              <SecondaryBtn onClick={() => setModal(null)}>Отказ</SecondaryBtn>
             </OverlayActions>
           </OverlayCard>
         </OverlayBackdrop>

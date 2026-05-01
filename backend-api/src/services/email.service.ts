@@ -333,6 +333,7 @@ export class EmailService {
 
       const fromEmail = await getSystemSettingStr('from_email', this.fromEmail);
       const fromName = await getSystemSettingStr('sender_name', this.fromName);
+      const dbReplyTo = await getSystemSettingStr('reply_to_email', '');
       const { data, error } = await this.resend.emails.send({
         from: `${fromName} <${fromEmail}>`,
         to: Array.isArray(options.to) ? options.to : [options.to],
@@ -341,7 +342,7 @@ export class EmailService {
         text: options.text,
         cc: options.cc,
         bcc: options.bcc,
-        replyTo: options.replyTo,
+        replyTo: options.replyTo ?? (dbReplyTo || undefined),
       });
 
       if (error) {

@@ -27,11 +27,13 @@ import { useTranslation } from 'react-i18next';
 import { useFocusEffect } from '@react-navigation/native';
 import { useTheme } from '../../contexts/ThemeContext';
 import { PartnersApi } from '../../api/partners.api';
+import { useFeatureFlags } from '../../store/MobileConfigContext';
 import type { Partner } from '../../types';
 
 const NearbyScreen = ({ navigation }: any) => {
   const { t } = useTranslation();
   const { theme, isDarkMode } = useTheme();
+  const { partnerMap: partnerMapEnabled } = useFeatureFlags();
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -91,6 +93,16 @@ const NearbyScreen = ({ navigation }: any) => {
       </TouchableOpacity>
     );
   };
+
+  if (!partnerMapEnabled) {
+    return (
+      <View style={[s.container, { alignItems: 'center', justifyContent: 'center', padding: 32 }]}>
+        <Text style={{ fontSize: 16, fontWeight: '600', color: theme.colors.onSurfaceVariant, textAlign: 'center' }}>
+          {t('common.featureUnavailable', 'Тази функция временно не е налична.')}
+        </Text>
+      </View>
+    );
+  }
 
   return (
     <View style={s.container}>

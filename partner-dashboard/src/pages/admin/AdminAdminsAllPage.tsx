@@ -12,11 +12,11 @@ import {
 } from '../../services/adminAdmins.service';
 
 const ASSIGNABLE_ROLES: Array<{ value: AdminRoleKey; label: string }> = [
-  { value: 'ADMIN', label: 'Admin (full access)' },
-  { value: 'SUPPORT', label: 'Support' },
-  { value: 'FINANCE', label: 'Finance' },
-  { value: 'RISK_REVIEW', label: 'Risk Review' },
-  { value: 'PARTNER_MANAGER', label: 'Partner Manager' },
+  { value: 'ADMIN', label: 'Администратор (пълен достъп)' },
+  { value: 'SUPPORT', label: 'Поддръжка' },
+  { value: 'FINANCE', label: 'Финанси' },
+  { value: 'RISK_REVIEW', label: 'Преглед на риск' },
+  { value: 'PARTNER_MANAGER', label: 'Мениджър партньори' },
 ];
 
 const palette = {
@@ -260,15 +260,33 @@ const SecondaryBtn = styled.button`
   &:hover { border-color: ${palette.text}; color: ${palette.text}; }
 `;
 
-const ROLE_OPTIONS: Array<{ value: AdminRoleKey | ''; label: string }> = [
-  { value: '', label: 'All roles' },
-  { value: 'SUPER_ADMIN', label: 'Super Admin' },
-  { value: 'ADMIN', label: 'Admin' },
-  { value: 'SUPPORT', label: 'Support' },
-  { value: 'FINANCE', label: 'Finance' },
-  { value: 'RISK_REVIEW', label: 'Risk Review' },
-  { value: 'PARTNER_MANAGER', label: 'Partner Manager' },
+// Panel roles only — SUPER_ADMIN is an accountRole, not a panel role, so it
+// is excluded to prevent a filter that always returns zero results.
+const ROLE_FILTER_OPTIONS: Array<{ value: AdminRoleKey | ''; label: string }> = [
+  { value: '', label: 'Всички роли' },
+  { value: 'ADMIN', label: 'Администратор' },
+  { value: 'SUPPORT', label: 'Поддръжка' },
+  { value: 'FINANCE', label: 'Финанси' },
+  { value: 'RISK_REVIEW', label: 'Преглед на риск' },
+  { value: 'PARTNER_MANAGER', label: 'Мениджър партньори' },
 ];
+
+const ROLE_LABEL: Record<string, string> = {
+  ADMIN: 'Администратор',
+  SUPPORT: 'Поддръжка',
+  FINANCE: 'Финанси',
+  RISK_REVIEW: 'Преглед на риск',
+  PARTNER_MANAGER: 'Мениджър партньори',
+  SUPER_ADMIN: 'Супер администратор',
+};
+
+const STATUS_LABEL: Record<string, string> = {
+  ACTIVE: 'Активен',
+  SUSPENDED: 'Спрян',
+  INACTIVE: 'Неактивен',
+  PENDING_VERIFICATION: 'Чака верификация',
+  PENDING_PAYMENT: 'Чака плащане',
+};
 
 const PAGE_SIZE = 20;
 
@@ -292,24 +310,24 @@ export default function AdminAdminsAllPage() {
     mutationFn: ({ id, key }: { id: string; key: AdminRoleKey }) =>
       adminAdminsService.removeRole(id, key),
     onSuccess: () => {
-      toast.success('Role removed');
+      toast.success('Ролята е премахната');
       queryClient.invalidateQueries({ queryKey: ['admin-admins'] });
       queryClient.invalidateQueries({ queryKey: ['admin-admins-pending'] });
     },
-    onError: () => toast.error('Failed to remove role'),
+    onError: () => toast.error('Грешка при премахване на роля'),
   });
 
   const addRoleMutation = useMutation({
     mutationFn: ({ id, key }: { id: string; key: AdminRoleKey }) =>
       adminAdminsService.approve(id, key),
     onSuccess: () => {
-      toast.success('Role added');
+      toast.success('Ролята е добавена');
       setAddRoleTarget(null);
       queryClient.invalidateQueries({ queryKey: ['admin-admins'] });
       queryClient.invalidateQueries({ queryKey: ['admin-admins-pending'] });
     },
     onError: (err: unknown) => {
-      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Failed to add role';
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Грешка при добавяне на роля';
       toast.error(msg);
     },
   });
@@ -318,11 +336,11 @@ export default function AdminAdminsAllPage() {
     mutationFn: ({ id, status }: { id: string; status: 'ACTIVE' | 'SUSPENDED' }) =>
       adminAdminsService.setStatus(id, status),
     onSuccess: (_, { status }) => {
-      toast.success(status === 'ACTIVE' ? 'Admin activated' : 'Admin suspended');
+      toast.success(status === 'ACTIVE' ? 'Администраторът е активиран' : 'Администраторът е спрян');
       queryClient.invalidateQueries({ queryKey: ['admin-admins'] });
     },
     onError: (err: unknown) => {
-      const msg = err instanceof Error ? err.message : 'Failed to update status';
+      const msg = err instanceof Error ? err.message : 'Грешка при промяна на статус';
       toast.error(msg);
     },
   });
@@ -341,7 +359,7 @@ export default function AdminAdminsAllPage() {
   const columns: ColumnDef<AdminUser>[] = [
     {
       key: 'user',
-      header: 'Admin',
+      header: 'Администратор',
       render: (row) => (
         <UserCell>
           <Link
@@ -361,32 +379,27 @@ export default function AdminAdminsAllPage() {
     },
     {
       key: 'roles',
-      header: 'Roles',
+      header: 'Роля',
       render: (row) =>
         row.adminRoles.length > 0 ? (
           <div style={{ display: 'flex', flexWrap: 'wrap' }}>
             {row.adminRoles.map((ar) => (
-              <RoleBadge key={ar.id} $key={ar.role.key}>{ar.role.label}</RoleBadge>
+              <RoleBadge key={ar.id} $key={ar.role.key}>
+                {ROLE_LABEL[ar.role.key] ?? ar.role.label}
+              </RoleBadge>
             ))}
           </div>
         ) : (
-          <span style={{ color: palette.textSubtle, fontSize: '0.8125rem' }}>No role</span>
+          <span style={{ color: palette.textSubtle, fontSize: '0.8125rem' }}>Без роля</span>
         ),
     },
     {
-      key: 'userRole',
-      header: 'Account role',
-      render: (row) => (
-        <RoleBadge $key={row.role}>{row.role.replace('_', ' ')}</RoleBadge>
-      ),
-    },
-    {
       key: 'status',
-      header: 'Status',
+      header: 'Статус',
       render: (row) => (
         <span style={{ fontSize: '0.8125rem', color: palette.textMuted, display: 'flex', alignItems: 'center' }}>
           <StatusDot $status={row.status} />
-          {row.status.replace('_', ' ')}
+          {STATUS_LABEL[row.status] ?? row.status}
         </span>
       ),
     },
@@ -408,20 +421,20 @@ export default function AdminAdminsAllPage() {
             color: row.twoFactorEnabled ? palette.success : '#6b7280',
           }}
         >
-          {row.twoFactorEnabled ? 'Enabled' : 'Off'}
+          {row.twoFactorEnabled ? 'Активна' : 'Изкл.'}
         </span>
       ),
     },
     {
       key: 'lastLogin',
-      header: 'Last login',
+      header: 'Последно влизане',
       render: (row) => (
         <span style={{ color: palette.textMuted, fontSize: '0.8125rem' }}>{fmt(row.lastLoginAt)}</span>
       ),
     },
     {
       key: 'createdAt',
-      header: 'Created',
+      header: 'Създаден',
       render: (row) => (
         <span style={{ color: palette.textMuted, fontSize: '0.8125rem' }}>{fmt(row.createdAt)}</span>
       ),
@@ -432,12 +445,12 @@ export default function AdminAdminsAllPage() {
     <PageShell>
       <PageHeader>
         <TitleBlock>
-          <Eyebrow>Admins</Eyebrow>
+          <Eyebrow>Администратори</Eyebrow>
           <PageTitle>
-            All Admins
+            Всички администратори
             {data && data.total > 0 && <TotalBadge>{data.total.toLocaleString()}</TotalBadge>}
           </PageTitle>
-          <PageSubtitle>All admin and super-admin accounts with their assigned roles</PageSubtitle>
+          <PageSubtitle>Всички администраторски акаунти с назначените им роли</PageSubtitle>
         </TitleBlock>
       </PageHeader>
 
@@ -445,7 +458,7 @@ export default function AdminAdminsAllPage() {
         <FilterRow>
           <SearchInput
             type="text"
-            placeholder="Search by name, email or phone…"
+            placeholder="Търси по име, имейл или телефон…"
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
             onKeyDown={handleSearchKeyDown}
@@ -454,7 +467,7 @@ export default function AdminAdminsAllPage() {
             value={roleKey}
             onChange={(e) => { setRoleKey(e.target.value as AdminRoleKey | ''); setPage(1); }}
           >
-            {ROLE_OPTIONS.map((o) => (
+            {ROLE_FILTER_OPTIONS.map((o) => (
               <option key={o.value} value={o.value}>{o.label}</option>
             ))}
           </Select>
@@ -465,14 +478,14 @@ export default function AdminAdminsAllPage() {
           data={data?.admins ?? []}
           rowKey={(row) => row.id}
           loading={isLoading}
-          emptyMessage="No admin users found"
+          emptyMessage="Няма намерени администратори"
           page={page}
           pageSize={PAGE_SIZE}
           totalItems={data?.total}
           onPageChange={setPage}
           rowActions={[
             {
-              label: 'Add role',
+              label: 'Добави роля',
               hidden: (row: AdminUser) =>
                 ASSIGNABLE_ROLES.every((r) => row.adminRoles.some((ar) => ar.role.key === r.value)),
               onClick: (row: AdminUser) => {
@@ -484,32 +497,31 @@ export default function AdminAdminsAllPage() {
               },
             },
             ...(([
-              { key: 'SUPER_ADMIN', label: 'Super Admin' },
-              { key: 'ADMIN', label: 'Admin' },
-              { key: 'SUPPORT', label: 'Support' },
-              { key: 'FINANCE', label: 'Finance' },
-              { key: 'RISK_REVIEW', label: 'Risk Review' },
-              { key: 'PARTNER_MANAGER', label: 'Partner Manager' },
+              { key: 'ADMIN', label: 'Администратор' },
+              { key: 'SUPPORT', label: 'Поддръжка' },
+              { key: 'FINANCE', label: 'Финанси' },
+              { key: 'RISK_REVIEW', label: 'Преглед на риск' },
+              { key: 'PARTNER_MANAGER', label: 'Мениджър партньори' },
             ] as Array<{ key: AdminRoleKey; label: string }>).map(({ key, label }) => ({
-              label: `Remove "${label}" role`,
+              label: `Премахни роля "${label}"`,
               danger: true as const,
               hidden: (row: AdminUser) => !row.adminRoles.some((ar) => ar.role.key === key),
               onClick: (row: AdminUser) => {
-                if (!window.confirm(`Remove role "${label}" from ${row.email}?`)) return;
+                if (!window.confirm(`Да се премахне роля "${label}" от ${row.email}?`)) return;
                 removeRoleMutation.mutate({ id: row.id, key });
               },
             }))),
             {
-              label: 'Suspend',
+              label: 'Спри',
               danger: true as const,
               hidden: (row: AdminUser) => row.status !== 'ACTIVE',
               onClick: (row: AdminUser) => {
-                if (!window.confirm(`Suspend admin ${row.email}?`)) return;
+                if (!window.confirm(`Да се спре администратор ${row.email}?`)) return;
                 statusMutation.mutate({ id: row.id, status: 'SUSPENDED' });
               },
             },
             {
-              label: 'Activate',
+              label: 'Активирай',
               hidden: (row: AdminUser) => row.status !== 'SUSPENDED',
               onClick: (row: AdminUser) => {
                 statusMutation.mutate({ id: row.id, status: 'ACTIVE' });
@@ -521,9 +533,9 @@ export default function AdminAdminsAllPage() {
       {addRoleTarget && (
         <OverlayBackdrop onClick={() => setAddRoleTarget(null)}>
           <OverlayCard onClick={(e) => e.stopPropagation()}>
-            <OverlayTitle>Add role</OverlayTitle>
+            <OverlayTitle>Добави роля</OverlayTitle>
             <OverlaySubtitle>
-              Add a panel role to <strong>{addRoleTarget.email}</strong>
+              Добави панелна роля към <strong>{addRoleTarget.email}</strong>
             </OverlaySubtitle>
             <OverlaySelect
               value={addRoleKey}
@@ -541,9 +553,9 @@ export default function AdminAdminsAllPage() {
                 disabled={addRoleMutation.isPending}
                 onClick={() => addRoleMutation.mutate({ id: addRoleTarget.id, key: addRoleKey })}
               >
-                {addRoleMutation.isPending ? 'Adding…' : 'Add role'}
+                {addRoleMutation.isPending ? 'Добавяне…' : 'Добави роля'}
               </PrimaryBtn>
-              <SecondaryBtn onClick={() => setAddRoleTarget(null)}>Cancel</SecondaryBtn>
+              <SecondaryBtn onClick={() => setAddRoleTarget(null)}>Отказ</SecondaryBtn>
             </OverlayActions>
           </OverlayCard>
         </OverlayBackdrop>

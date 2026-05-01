@@ -551,7 +551,7 @@ export default function AdminSettingsMobilePage() {
             </CardSubtitle>
             <FieldGroup>
               <div>
-                <FieldLabel>URL за лог на грешки (zewnętrzna услуга)</FieldLabel>
+                <FieldLabel>URL за лог на грешки (външна услуга)</FieldLabel>
                 <UrlInput
                   type="url"
                   placeholder="https://errors.example.com/ingest"
