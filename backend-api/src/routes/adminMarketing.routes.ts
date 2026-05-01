@@ -163,6 +163,7 @@ type DispatchRecipient =
       firstName: string | null;
       lastName: string | null;
       marketingConsentEmail: boolean;
+      preferredLanguage: string;
     }
   | {
       kind: 'PARTNER';
@@ -178,9 +179,9 @@ type DispatchRecipient =
 async function buildRecipientsFromSyncKey(syncKey: string): Promise<DispatchRecipient[]> {
   const cutoff90d = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
 
-  const userSel = { id: true, email: true, firstName: true, lastName: true, marketingConsentEmail: true } as const;
-  const toUser = (u: { id: string; email: string; firstName: string | null; lastName: string | null; marketingConsentEmail: boolean }): DispatchRecipient => ({
-    kind: 'USER', userId: u.id, email: u.email, firstName: u.firstName, lastName: u.lastName, marketingConsentEmail: u.marketingConsentEmail,
+  const userSel = { id: true, email: true, firstName: true, lastName: true, marketingConsentEmail: true, language: true } as const;
+  const toUser = (u: { id: string; email: string; firstName: string | null; lastName: string | null; marketingConsentEmail: boolean; language: string | null }): DispatchRecipient => ({
+    kind: 'USER', userId: u.id, email: u.email, firstName: u.firstName, lastName: u.lastName, marketingConsentEmail: u.marketingConsentEmail, language: u.language,
   });
 
   const partnerSel = { id: true, email: true, businessName: true, user: { select: { id: true, marketingConsentEmail: true } } } as const;
@@ -257,7 +258,7 @@ async function dispatchCampaign(campaignId: string): Promise<number> {
               partner: {
                 select: { id: true, email: true, businessName: true, user: { select: { id: true, marketingConsentEmail: true } } },
               },
-              user: { select: { id: true, email: true, firstName: true, lastName: true, marketingConsentEmail: true } },
+              user: { select: { id: true, email: true, firstName: true, lastName: true, marketingConsentEmail: true, language: true } },
             },
           },
         },
@@ -275,7 +276,7 @@ async function dispatchCampaign(campaignId: string): Promise<number> {
     ? await buildRecipientsFromSyncKey(list.syncKey)
     : list.members.map((m): DispatchRecipient => {
         if (m.memberType === 'USER' && m.user) {
-          return { kind: 'USER', userId: m.user.id, email: m.user.email, firstName: m.user.firstName, lastName: m.user.lastName, marketingConsentEmail: m.user.marketingConsentEmail };
+          return { kind: 'USER', userId: m.user.id, email: m.user.email, firstName: m.user.firstName, lastName: m.user.lastName, marketingConsentEmail: m.user.marketingConsentEmail, language: m.user.language };
         }
         return {
           kind: 'PARTNER',
@@ -307,7 +308,10 @@ async function dispatchCampaign(campaignId: string): Promise<number> {
         }
 
         if (email) {
-          await emailService.sendEmail({ to: email, subject: template.subject ?? template.name, html: template.body || `<p>${template.name}</p>` });
+          const useEn = recipient.kind === 'USER' && recipient.language === 'en';
+          const subject = (useEn && template.subjectEn) ? template.subjectEn : (template.subject ?? template.name);
+          const html = (useEn && template.bodyEn) ? template.bodyEn : (template.body || `<p>${template.name}</p>`);
+          await emailService.sendEmail({ to: email, subject, html });
           dispatched++;
         }
       } else if (campaign.type === 'PUSH') {
@@ -1073,8 +1077,8 @@ router.post('/automations', ...WRITE, async (req, res, next) => {
     });
     res.status(201).json(item);
   } catch (error: any) {
-    // Unique constraint violation on trigger — surface a human-readable 409
-    if (error?.code === 'P2002' && error?.meta?.target?.includes('trigger')) {
+    // P2002 = unique constraint violation; trigger is the only @unique field on this model
+    if (error?.code === 'P2002') {
       return res.status(409).json({
         error: `Trigger '${req.body?.trigger}' is already assigned to another automation. Each trigger can only have one automation.`,
       });

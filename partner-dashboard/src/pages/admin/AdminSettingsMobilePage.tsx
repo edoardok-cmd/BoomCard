@@ -224,10 +224,10 @@ export default function AdminSettingsMobilePage() {
   const saveMutation = useMutation({
     mutationFn: () => adminSettingsService.saveMobileAppSettings(stateToSettings(state)),
     onSuccess: () => {
-      toast.success('Mobile app settings saved');
+      toast.success('Настройките на мобилното приложение са запазени');
       queryClient.invalidateQueries({ queryKey: ['admin-mobile-app-settings'] });
     },
-    onError: () => toast.error('Failed to save'),
+    onError: () => toast.error('Грешка при запазване'),
   });
 
   const anyMaintenance =
@@ -236,62 +236,62 @@ export default function AdminSettingsMobilePage() {
   return (
     <PageShell>
       <PageHeader>
-        <Eyebrow>Settings</Eyebrow>
-        <PageTitle>Mobile App</PageTitle>
+        <Eyebrow>Настройки</Eyebrow>
+        <PageTitle>Мобилно приложение</PageTitle>
         <PageSubtitle>
-          Version requirements, platform status, feature toggles, push notifications, and error logging.
+          Изисквания за версия, статус на платформата, превключватели на функции, push известия и лог на грешки.
         </PageSubtitle>
       </PageHeader>
 
       <WarningBox $visible={anyMaintenance}>
-        One or more platforms are in maintenance or deprecated status — users on those platforms will see a maintenance screen.
+        Една или повече платформи са в режим на поддръжка или са остарели — потребителите им виждат екран за поддръжка.
       </WarningBox>
 
       {isLoading ? (
-        <p style={{ color: palette.textSubtle, fontSize: '0.875rem' }}>Loading…</p>
+        <p style={{ color: palette.textSubtle, fontSize: '0.875rem' }}>Зареждане…</p>
       ) : (
         <Grid>
-          {/* ── Versions & Status ── */}
+          {/* ── Версии и статус ── */}
           <Card>
-            <CardTitle>Versions & Status</CardTitle>
-            <CardSubtitle>Minimum required versions and platform availability.</CardSubtitle>
+            <CardTitle>Версии и статус</CardTitle>
+            <CardSubtitle>Минимални изисквани версии и достъпност на платформата.</CardSubtitle>
             <FieldGroup>
               <div>
-                <FieldLabel>Minimum iOS version</FieldLabel>
+                <FieldLabel>Минимална iOS версия</FieldLabel>
                 <TextInput
-                  placeholder="e.g. 2.1.0"
+                  placeholder="напр. 2.1.0"
                   value={state.minIos}
                   onChange={(e) => set('minIos', e.target.value)}
                 />
-                <FieldHint>Users below this version are prompted to update before using the app.</FieldHint>
+                <FieldHint>Потребителите под тази версия се подканват да актуализират преди използване на приложението.</FieldHint>
               </div>
               <div>
-                <FieldLabel>iOS status</FieldLabel>
+                <FieldLabel>iOS статус</FieldLabel>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                   <Select value={state.iosStatus} onChange={(e) => set('iosStatus', e.target.value)}>
-                    <option value="active">Active</option>
-                    <option value="maintenance">Maintenance</option>
-                    <option value="deprecated">Deprecated</option>
+                    <option value="active">Активен</option>
+                    <option value="maintenance">Поддръжка</option>
+                    <option value="deprecated">Остарял</option>
                   </Select>
                   <StatusBadge $status={state.iosStatus}>{state.iosStatus}</StatusBadge>
                 </div>
               </div>
               <div>
-                <FieldLabel>Minimum Android version</FieldLabel>
+                <FieldLabel>Минимална Android версия</FieldLabel>
                 <TextInput
-                  placeholder="e.g. 2.1.0"
+                  placeholder="напр. 2.1.0"
                   value={state.minAndroid}
                   onChange={(e) => set('minAndroid', e.target.value)}
                 />
-                <FieldHint>Leave blank to allow any version.</FieldHint>
+                <FieldHint>Оставете празно за всякакви версии.</FieldHint>
               </div>
               <div>
-                <FieldLabel>Android status</FieldLabel>
+                <FieldLabel>Android статус</FieldLabel>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                   <Select value={state.androidStatus} onChange={(e) => set('androidStatus', e.target.value)}>
-                    <option value="active">Active</option>
-                    <option value="maintenance">Maintenance</option>
-                    <option value="deprecated">Deprecated</option>
+                    <option value="active">Активен</option>
+                    <option value="maintenance">Поддръжка</option>
+                    <option value="deprecated">Остарял</option>
                   </Select>
                   <StatusBadge $status={state.androidStatus}>{state.androidStatus}</StatusBadge>
                 </div>
@@ -299,14 +299,14 @@ export default function AdminSettingsMobilePage() {
             </FieldGroup>
           </Card>
 
-          {/* ── Feature Toggles ── */}
+          {/* ── Превключватели на функции ── */}
           <Card>
-            <CardTitle>Feature Toggles</CardTitle>
-            <CardSubtitle>Enable or disable individual features in the mobile app.</CardSubtitle>
+            <CardTitle>Превключватели на функции</CardTitle>
+            <CardSubtitle>Включете или изключете отделни функции в мобилното приложение.</CardSubtitle>
             <ToggleRow>
               <ToggleLabel>
-                <ToggleName>Receipt scan</ToggleName>
-                <ToggleDesc>Allow users to scan and upload receipts for cashback.</ToggleDesc>
+                <ToggleName>Сканиране на касов бон</ToggleName>
+                <ToggleDesc>Позволете на потребителите да сканират и качват касови бонове за кешбек.</ToggleDesc>
               </ToggleLabel>
               <ToggleSwitch>
                 <ToggleInput
@@ -318,8 +318,8 @@ export default function AdminSettingsMobilePage() {
             </ToggleRow>
             <ToggleRow>
               <ToggleLabel>
-                <ToggleName>Sticker scan</ToggleName>
-                <ToggleDesc>Allow users to scan QR stickers at partner locations.</ToggleDesc>
+                <ToggleName>Сканиране на стикер</ToggleName>
+                <ToggleDesc>Позволете на потребителите да сканират QR стикери на партньорски обекти.</ToggleDesc>
               </ToggleLabel>
               <ToggleSwitch>
                 <ToggleInput
@@ -331,8 +331,8 @@ export default function AdminSettingsMobilePage() {
             </ToggleRow>
             <ToggleRow>
               <ToggleLabel>
-                <ToggleName>Partner map</ToggleName>
-                <ToggleDesc>Show the map of nearby BoomCard partner locations.</ToggleDesc>
+                <ToggleName>Карта на партньори</ToggleName>
+                <ToggleDesc>Показвайте картата с близки партньорски обекти на BoomCard.</ToggleDesc>
               </ToggleLabel>
               <ToggleSwitch>
                 <ToggleInput
@@ -344,17 +344,17 @@ export default function AdminSettingsMobilePage() {
             </ToggleRow>
           </Card>
 
-          {/* ── Push Notifications ── */}
+          {/* ── Push известия ── */}
           <Card>
-            <CardTitle>Push Notifications</CardTitle>
-            <CardSubtitle>Global push toggle and VAPID configuration.</CardSubtitle>
+            <CardTitle>Push известия</CardTitle>
+            <CardSubtitle>Глобален превключвател за push и VAPID конфигурация.</CardSubtitle>
             <FieldGroup>
               <div>
-                <FieldLabel>Push notifications</FieldLabel>
+                <FieldLabel>Push известия</FieldLabel>
                 <ToggleRow style={{ padding: 0, border: 'none' }}>
                   <ToggleLabel>
                     <ToggleName style={{ fontSize: '0.8125rem' }}>
-                      {state.pushEnabled ? 'Enabled — push is active' : 'Disabled — no push will be sent'}
+                      {state.pushEnabled ? 'Активирани — push е включен' : 'Деактивирани — няма да се изпращат push'}
                     </ToggleName>
                   </ToggleLabel>
                   <ToggleSwitch>
@@ -365,27 +365,27 @@ export default function AdminSettingsMobilePage() {
                     <ToggleSlider />
                   </ToggleSwitch>
                 </ToggleRow>
-                <FieldHint>Disabling stops all outbound push notifications system-wide.</FieldHint>
+                <FieldHint>Деактивирането спира всички изходящи push известия в системата.</FieldHint>
               </div>
               <div>
-                <FieldLabel>VAPID topic</FieldLabel>
+                <FieldLabel>VAPID тема</FieldLabel>
                 <TextInput
-                  placeholder="e.g. boomcard-notifications"
+                  placeholder="напр. boomcard-notifications"
                   value={state.pushVapidTopic}
                   onChange={(e) => set('pushVapidTopic', e.target.value)}
                 />
-                <FieldHint>Topic name used for web-push VAPID headers. Leave blank for default.</FieldHint>
+                <FieldHint>Тема за web-push VAPID заглавки. Оставете празно за стандартното.</FieldHint>
               </div>
             </FieldGroup>
           </Card>
 
-          {/* ── Error Logging ── */}
+          {/* ── Лог на грешки ── */}
           <Card>
-            <CardTitle>Error Logging</CardTitle>
-            <CardSubtitle>Endpoint where the mobile app ships client-side errors.</CardSubtitle>
+            <CardTitle>Лог на грешки</CardTitle>
+            <CardSubtitle>Адрес, на който мобилното приложение изпраща клиентски грешки.</CardSubtitle>
             <FieldGroup>
               <div>
-                <FieldLabel>Error log URL</FieldLabel>
+                <FieldLabel>URL за лог на грешки</FieldLabel>
                 <UrlInput
                   type="url"
                   placeholder="https://errors.example.com/ingest"
@@ -393,8 +393,7 @@ export default function AdminSettingsMobilePage() {
                   onChange={(e) => set('errorLogUrl', e.target.value)}
                 />
                 <FieldHint>
-                  The app POSTs JSON error payloads to this URL. Leave blank to disable remote error
-                  logging.
+                  Приложението изпраща JSON грешки на този URL. Оставете празно за деактивиране на отдалечения лог.
                 </FieldHint>
               </div>
             </FieldGroup>
@@ -404,7 +403,7 @@ export default function AdminSettingsMobilePage() {
 
       <div style={{ marginTop: '1.5rem', maxWidth: '60rem' }}>
         <SaveBtn onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending || isLoading}>
-          {saveMutation.isPending ? 'Saving…' : 'Save all changes'}
+          {saveMutation.isPending ? 'Запазване…' : 'Запази всички'}
         </SaveBtn>
       </div>
     </PageShell>

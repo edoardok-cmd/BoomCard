@@ -7,6 +7,7 @@ import { getPayoutThresholdBGN } from '../utils/payoutThreshold';
 import { payseraService } from './paysera.service';
 import { notificationService } from './notification.service';
 import { fireAutomation } from '../lib/automationDispatcher';
+import { getSystemSettingInt } from '../utils/systemSettings';
 
 // ── Service ────────────────────────────────────────────────────────────────────
 
@@ -82,10 +83,10 @@ export class WalletService {
 
     const wallet = await this.getOrCreateWallet(userId);
 
-    // Cashback transactions expire 60 days from crediting
+    const cashbackValidityDays = await getSystemSettingInt('cashback_expiry_days', CASHBACK_VALIDITY_DAYS);
     const cashbackExpiresAt =
       type === WalletTransactionType.CASHBACK_CREDIT
-        ? new Date(Date.now() + CASHBACK_VALIDITY_DAYS * 24 * 60 * 60 * 1000)
+        ? new Date(Date.now() + cashbackValidityDays * 24 * 60 * 60 * 1000)
         : undefined;
 
     // If the user is within their 24h trial refund window, hold cashback as

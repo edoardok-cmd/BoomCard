@@ -76,31 +76,31 @@ export default function AdminSettingsValidityPage() {
         offer_validity_days: offerDays,
       }),
     onSuccess: () => {
-      toast.success('Validity settings saved');
+      toast.success('Настройките за валидност са запазени');
       queryClient.invalidateQueries({ queryKey: ['admin-system-settings'] });
     },
-    onError: () => toast.error('Failed to save'),
+    onError: () => toast.error('Грешка при запазване'),
   });
 
   return (
     <PageShell>
       <PageHeader>
-        <Eyebrow>Settings</Eyebrow>
-        <PageTitle>Validity Periods</PageTitle>
-        <PageSubtitle>Configure how long cashback and offers remain valid.</PageSubtitle>
+        <Eyebrow>Настройки</Eyebrow>
+        <PageTitle>Валидност</PageTitle>
+        <PageSubtitle>Конфигурирайте колко дни кешбекът и офертите остават валидни.</PageSubtitle>
       </PageHeader>
 
       <Card>
         <InfoBox>
-          Changes apply to newly earned cashback and new offers only — existing records are not retroactively affected.
+          Промените важат само за новоспечелен кешбек и нови оферти — съществуващите записи не се влияят с обратна сила.
         </InfoBox>
-        <CardTitle>Expiry Settings</CardTitle>
+        <CardTitle>Настройки за изтичане</CardTitle>
         {isLoading ? (
-          <p style={{ color: palette.textSubtle, fontSize: '0.875rem' }}>Loading…</p>
+          <p style={{ color: palette.textSubtle, fontSize: '0.875rem' }}>Зареждане…</p>
         ) : (
           <FieldGroup>
             <div>
-              <FieldLabel>Cashback expiry (days)</FieldLabel>
+              <FieldLabel>Изтичане на кешбек (дни)</FieldLabel>
               <NumberInput
                 type="number"
                 min="1"
@@ -108,10 +108,10 @@ export default function AdminSettingsValidityPage() {
                 value={cashbackDays}
                 onChange={(e) => setCashbackDays(e.target.value)}
               />
-              <FieldHint>How many days after earning cashback the balance expires. Default: 60.</FieldHint>
+              <FieldHint>Колко дни след спечелване балансът изтича. По подразбиране: 60.</FieldHint>
             </div>
             <div>
-              <FieldLabel>Offer validity (days)</FieldLabel>
+              <FieldLabel>Валидност на оферта (дни)</FieldLabel>
               <NumberInput
                 type="number"
                 min="1"
@@ -119,12 +119,12 @@ export default function AdminSettingsValidityPage() {
                 value={offerDays}
                 onChange={(e) => setOfferDays(e.target.value)}
               />
-              <FieldHint>Default validity window for new partner offers. Default: 90.</FieldHint>
+              <FieldHint>Стандартен прозорец на валидност за нови партньорски оферти. По подразбиране: 90.</FieldHint>
             </div>
           </FieldGroup>
         )}
         <SaveBtn onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending || isLoading}>
-          {saveMutation.isPending ? 'Saving…' : 'Save changes'}
+          {saveMutation.isPending ? 'Запазване…' : 'Запази'}
         </SaveBtn>
       </Card>
     </PageShell>

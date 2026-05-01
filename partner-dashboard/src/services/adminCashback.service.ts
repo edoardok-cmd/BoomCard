@@ -33,6 +33,8 @@ export interface CashbackRateRow {
   premium: number;
   effectiveFrom: string;
   createdBy: string | null;
+  createdByName: string | null;
+  createdByEmail: string | null;
   notes: string | null;
   createdAt: string;
 }
@@ -43,6 +45,8 @@ export interface CurrentCashbackRate {
   premium: number;
   effectiveFrom: string | null;
   createdBy: string | null;
+  createdByName: string | null;
+  createdByEmail: string | null;
   source: 'db' | 'default';
 }
 

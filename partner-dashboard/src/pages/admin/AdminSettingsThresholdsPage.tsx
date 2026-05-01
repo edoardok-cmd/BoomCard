@@ -213,9 +213,9 @@ const ConfirmBtn = styled.button`
 `;
 
 const PLANS = [
-  { key: 'BASIC'   as const, name: 'Basic',   hint: 'Basic plan subscribers',   accent: '#2563eb', color: '#2563eb' },
-  { key: 'PREMIUM' as const, name: 'Premium', hint: 'Premium (monthly/weekly)', accent: '#c96442', color: '#c96442' },
-  { key: 'LIGHT'   as const, name: 'Light',   hint: 'Light (Paysera weekly)',   accent: '#4a7c59', color: '#4a7c59' },
+  { key: 'BASIC'   as const, name: 'Basic',   hint: 'Абонати с Basic план',      accent: '#2563eb', color: '#2563eb' },
+  { key: 'PREMIUM' as const, name: 'Premium', hint: 'Premium (месечен план)',    accent: '#c96442', color: '#c96442' },
+  { key: 'LIGHT'   as const, name: 'Light',   hint: 'Light (седмичен план)',     accent: '#4a7c59', color: '#4a7c59' },
 ] as const;
 
 type Plan = 'BASIC' | 'PREMIUM' | 'LIGHT';
@@ -276,10 +276,15 @@ export default function AdminSettingsThresholdsPage() {
   });
 
   const handleSaveClick = () => {
-    const hasLow = PLANS.some((p) => {
+    const hasInvalid = PLANS.some((p) => {
       const val = parseFloat(amounts[p.key]);
-      return !isNaN(val) && val < LOW_THRESHOLD_FLOOR;
+      return isNaN(val) || val < 0;
     });
+    if (hasInvalid) {
+      toast.error('Всички прагове трябва да са валидни числа ≥ 0');
+      return;
+    }
+    const hasLow = PLANS.some((p) => parseFloat(amounts[p.key]) < LOW_THRESHOLD_FLOOR);
     if (hasLow) {
       setPendingSave(true);
     } else {
@@ -311,7 +316,7 @@ export default function AdminSettingsThresholdsPage() {
           <DialogBox>
             <DialogTitle>Много нисък праг</DialogTitle>
             <DialogBody>
-              {lowPlans.map((p) => p.name).join(', ')} е зададен под {LOW_THRESHOLD_FLOOR} лв.
+              {lowPlans.map((p) => p.name).join(', ')} {lowPlans.length > 1 ? 'са зададени' : 'е зададен'} под {LOW_THRESHOLD_FLOOR} лв.
               Това ще позволи на абонатите да поискат изплащане почти веднага. Сигурни ли сте?
             </DialogBody>
             <DialogActions>
@@ -376,7 +381,7 @@ export default function AdminSettingsThresholdsPage() {
 
           {lowPlans.length > 0 && (
             <WarnBox>
-              Внимание: {lowPlans.map((p) => p.name).join(', ')} е под препоръчителния минимум
+              Внимание: {lowPlans.map((p) => p.name).join(', ')} {lowPlans.length > 1 ? 'са под' : 'е под'} препоръчителния минимум
               от {LOW_THRESHOLD_FLOOR} лв. Абонатите ще могат да поискат изплащане почти веднага.
             </WarnBox>
           )}

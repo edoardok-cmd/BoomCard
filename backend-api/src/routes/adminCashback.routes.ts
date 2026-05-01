@@ -204,11 +204,16 @@ router.get('/payout-thresholds', requirePermission('cashback.read'), async (_req
     PREMIUM: Math.round(PAYOUT_THRESHOLD_PREMIUM_MONTHLY_EUR * EUR_TO_BGN_RATE * 100) / 100,
   };
   try {
-    const rows = await prisma.payoutThreshold.findMany({ orderBy: { createdAt: 'desc' }, take: 100 });
+    const plans = ['BASIC', 'LIGHT', 'PREMIUM'] as const;
+    const rows = await Promise.all(
+      plans.map((plan) =>
+        prisma.payoutThreshold.findFirst({ where: { plan }, orderBy: { createdAt: 'desc' } })
+      )
+    );
     const data: Record<string, number> = { ...fallback };
-    for (const plan of ['BASIC', 'LIGHT', 'PREMIUM'] as const) {
-      const row = rows.find((r) => r.plan === plan);
-      if (row) data[plan] = row.minAmount;
+    for (let i = 0; i < plans.length; i++) {
+      const row = rows[i];
+      if (row) data[plans[i]] = row.minAmount;
     }
     res.json({ success: true, data });
   } catch {

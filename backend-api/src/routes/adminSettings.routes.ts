@@ -202,14 +202,16 @@ router.get(
   requirePermission('settings.read'),
   asyncHandler(async (_req: AuthRequest, res: Response) => {
     const plans: SubscriptionPlan[] = ['BASIC', 'LIGHT', 'PREMIUM'];
-    const rows = await prisma.payoutThreshold.findMany({
-      orderBy: { createdAt: 'desc' },
-      take: 100,
-    });
+    const rows = await Promise.all(
+      plans.map((plan) =>
+        prisma.payoutThreshold.findFirst({ where: { plan }, orderBy: { createdAt: 'desc' } })
+      )
+    );
 
     const current: Record<string, { minAmount: number; notes: string | null; updatedAt: string | null }> = {};
-    for (const plan of plans) {
-      const row = rows.find((r) => r.plan === plan);
+    for (let i = 0; i < plans.length; i++) {
+      const plan = plans[i];
+      const row = rows[i];
       current[plan] = {
         minAmount: row ? row.minAmount : PLAN_FALLBACK_BGN[plan],
         notes: row?.notes ?? null,
@@ -278,7 +280,7 @@ router.put(
       if (!validPlans.has(plan)) {
         return res.status(400).json({ success: false, error: `Invalid plan: ${plan}. Must be BASIC, LIGHT, or PREMIUM.` });
       }
-      if (typeof amount !== 'number' || amount < 0 || amount > 10000) {
+      if (typeof amount !== 'number' || isNaN(amount) || amount < 0 || amount > 10000) {
         return res.status(400).json({ success: false, error: `minAmount for ${plan} must be a number between 0 and 10000` });
       }
     }
@@ -357,6 +359,23 @@ router.put(
     for (const [key] of entries) {
       if (!ALLOWED_KEYS.has(key)) {
         return res.status(400).json({ success: false, error: `Unknown setting key: ${key}` });
+      }
+    }
+
+    const INTEGER_RANGE_KEYS: Record<string, { min: number; max: number }> = {
+      cashback_expiry_days: { min: 1, max: 3650 },
+      offer_validity_days: { min: 1, max: 3650 },
+    };
+    for (const [key, value] of entries) {
+      const range = INTEGER_RANGE_KEYS[key];
+      if (range) {
+        const parsed = parseInt(value, 10);
+        if (!Number.isFinite(parsed) || parsed < range.min || parsed > range.max) {
+          return res.status(400).json({
+            success: false,
+            error: `${key} must be an integer between ${range.min} and ${range.max}`,
+          });
+        }
       }
     }
 

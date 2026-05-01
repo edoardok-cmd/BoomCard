@@ -438,13 +438,14 @@ const AdminCashbackRatesPage: React.FC = () => {
               <th>{tr.premium}</th>
               <th>{tr.marginBasic}</th>
               <th>{tr.marginPremium}</th>
+              <th>{tr.thBy}</th>
               <th>{tr.thNotes}</th>
             </tr>
           </thead>
           <tbody>
             {history.length === 0 && (
               <tr>
-                <td colSpan={7} style={{ textAlign: 'center', padding: '2rem', color: 'var(--color-text-secondary)' }}>—</td>
+                <td colSpan={8} style={{ textAlign: 'center', padding: '2rem', color: 'var(--color-text-secondary)' }}>—</td>
               </tr>
             )}
             {(() => {
@@ -458,8 +459,13 @@ const AdminCashbackRatesPage: React.FC = () => {
               return [...groups.entries()].map(([key, rows]) => (
                 <React.Fragment key={key}>
                   <tr style={{ background: 'var(--color-background-secondary)' }}>
-                    <td colSpan={7} style={{ fontWeight: 700, fontSize: '0.8rem', color: 'var(--color-text-secondary)', padding: '0.5rem 0.875rem' }}>
+                    <td colSpan={8} style={{ fontWeight: 700, fontSize: '0.8rem', color: 'var(--color-text-secondary)', padding: '0.5rem 0.875rem' }}>
                       {fmtDate(key)}
+                      {rows[0].createdByName || rows[0].createdByEmail
+                        ? <span style={{ fontWeight: 600, marginLeft: '0.75rem', color: 'var(--color-text-primary)' }}>
+                            {rows[0].createdByName ?? rows[0].createdByEmail}
+                          </span>
+                        : null}
                       {rows[0].notes ? <span style={{ fontWeight: 400, marginLeft: '0.75rem' }}>{rows[0].notes}</span> : null}
                     </td>
                   </tr>
@@ -471,6 +477,7 @@ const AdminCashbackRatesPage: React.FC = () => {
                       <td>{row.premium}%</td>
                       <td className="muted">{computeMargin(row.discountStep, row.basic)}</td>
                       <td className="muted">{computeMargin(row.discountStep, row.premium)}</td>
+                      <td></td>
                       <td></td>
                     </tr>
                   ))}

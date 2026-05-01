@@ -82,14 +82,14 @@ const TIMEZONES = [
 ];
 
 const LANGUAGES = [
-  { value: 'bg', label: 'Bulgarian (BG)' },
+  { value: 'bg', label: 'Български (BG)' },
   { value: 'en', label: 'English (EN)' },
 ];
 
 const CURRENCIES = [
-  { value: 'BGN', label: 'BGN — Bulgarian Lev' },
-  { value: 'EUR', label: 'EUR — Euro' },
-  { value: 'USD', label: 'USD — US Dollar' },
+  { value: 'BGN', label: 'BGN — Български лев' },
+  { value: 'EUR', label: 'EUR — Евро' },
+  { value: 'USD', label: 'USD — Щатски долар' },
 ];
 
 export default function AdminSettingsSystemPage() {
@@ -141,99 +141,99 @@ export default function AdminSettingsSystemPage() {
       return adminSettingsService.saveSystemSettings(settings);
     },
     onSuccess: () => {
-      toast.success('System settings saved');
+      toast.success('Системните настройки са запазени');
       queryClient.invalidateQueries({ queryKey: ['admin-system-settings'] });
     },
-    onError: () => toast.error('Failed to save'),
+    onError: () => toast.error('Грешка при запазване'),
   });
 
   return (
     <PageShell>
       <PageHeader>
-        <Eyebrow>Settings</Eyebrow>
-        <PageTitle>System</PageTitle>
+        <Eyebrow>Настройки</Eyebrow>
+        <PageTitle>Система</PageTitle>
         <PageSubtitle>
-          Global fraud thresholds, scan limits, support contacts, and localisation.
+          Глобални прагове за измами, лимити за сканиране, контакти за поддръжка и локализация.
         </PageSubtitle>
       </PageHeader>
 
       <Grid>
         <Card>
-          <CardTitle>Fraud & Scan Limits</CardTitle>
+          <CardTitle>Лимити за измами и сканиране</CardTitle>
           {isLoading ? (
-            <p style={{ color: palette.textSubtle, fontSize: '0.875rem' }}>Loading…</p>
+            <p style={{ color: palette.textSubtle, fontSize: '0.875rem' }}>Зареждане…</p>
           ) : (
             <FieldGroup>
               <div>
-                <FieldLabel>Max fraud score (0–100)</FieldLabel>
+                <FieldLabel>Макс. оценка за измама (0–100)</FieldLabel>
                 <NumberInput
                   type="number" min="0" max="100"
                   value={maxFraud}
                   onChange={(e) => setMaxFraud(e.target.value)}
                 />
-                <FieldHint>Receipts scoring above this are sent to MANUAL_REVIEW. Default: 80.</FieldHint>
+                <FieldHint>Бонове с по-висока оценка се изпращат за РЪЧЕН ПРЕГЛЕД. По подразбиране: 80.</FieldHint>
               </div>
               <div>
-                <FieldLabel>Auto-approve threshold (BGN)</FieldLabel>
+                <FieldLabel>Праг за автоматично одобрение (лв.)</FieldLabel>
                 <NumberInput
                   type="number" min="0"
                   value={autoApprove}
                   onChange={(e) => setAutoApprove(e.target.value)}
                 />
-                <FieldHint>Receipts below this amount are auto-approved regardless of fraud score. Default: 10.</FieldHint>
+                <FieldHint>Бонове под тази сума се одобряват автоматично независимо от оценката. По подразбиране: 10.</FieldHint>
               </div>
               <div>
-                <FieldLabel>Daily scan limit (per venue)</FieldLabel>
+                <FieldLabel>Дневен лимит за сканиране (на обект)</FieldLabel>
                 <NumberInput
                   type="number" min="1"
                   value={dailyLimit}
                   onChange={(e) => setDailyLimit(e.target.value)}
-                  placeholder="unlimited"
+                  placeholder="без лимит"
                 />
-                <FieldHint>Default max scans per user per venue per day. Leave blank for no limit.</FieldHint>
+                <FieldHint>Макс. брой сканирания на потребител на обект на ден. Оставете празно за без лимит.</FieldHint>
               </div>
               <div>
-                <FieldLabel>Max cashback per month (BGN)</FieldLabel>
+                <FieldLabel>Макс. кешбек на месец (лв.)</FieldLabel>
                 <NumberInput
                   type="number" min="0"
                   value={maxCashback}
                   onChange={(e) => setMaxCashback(e.target.value)}
-                  placeholder="unlimited"
+                  placeholder="без таван"
                 />
-                <FieldHint>Cap on cashback a subscriber can earn in a calendar month. Leave blank for no limit.</FieldHint>
+                <FieldHint>Таван на кешбек, който абонат може да спечели за календарен месец. Оставете празно за без таван.</FieldHint>
               </div>
             </FieldGroup>
           )}
         </Card>
 
         <Card>
-          <CardTitle>Support Contact</CardTitle>
+          <CardTitle>Контакт за поддръжка</CardTitle>
           {isLoading ? (
-            <p style={{ color: palette.textSubtle, fontSize: '0.875rem' }}>Loading…</p>
+            <p style={{ color: palette.textSubtle, fontSize: '0.875rem' }}>Зареждане…</p>
           ) : (
             <FieldGroup>
               <div>
-                <FieldLabel>Support email</FieldLabel>
+                <FieldLabel>Email за поддръжка</FieldLabel>
                 <TextInput
                   type="email"
                   placeholder="support@boomcard.bg"
                   value={supportEmail}
                   onChange={(e) => setSupportEmail(e.target.value)}
                 />
-                <FieldHint>Shown in mobile app and email footers.</FieldHint>
+                <FieldHint>Показва се в мобилното приложение и футъри на имейли.</FieldHint>
               </div>
               <div>
-                <FieldLabel>Support phone</FieldLabel>
+                <FieldLabel>Телефон за поддръжка</FieldLabel>
                 <TextInput
                   type="tel"
                   placeholder="+359 2 …"
                   value={supportPhone}
                   onChange={(e) => setSupportPhone(e.target.value)}
                 />
-                <FieldHint>Shown on the contact screen in the app.</FieldHint>
+                <FieldHint>Показва се на екрана за контакти в приложението.</FieldHint>
               </div>
               <div>
-                <FieldLabel>Reply-to email</FieldLabel>
+                <FieldLabel>Email за отговор (Reply-To)</FieldLabel>
                 <TextInput
                   type="email"
                   placeholder="noreply@boomcard.bg"
@@ -241,8 +241,7 @@ export default function AdminSettingsSystemPage() {
                   onChange={(e) => setReplyToEmail(e.target.value)}
                 />
                 <FieldHint>
-                  Used as the Reply-To header on all system emails. Leave blank to use the support
-                  email.
+                  Използва се като Reply-To заглавка на всички системни имейли. Оставете празно за email за поддръжка.
                 </FieldHint>
               </div>
             </FieldGroup>
@@ -250,41 +249,40 @@ export default function AdminSettingsSystemPage() {
         </Card>
 
         <Card>
-          <CardTitle>Localisation</CardTitle>
+          <CardTitle>Локализация</CardTitle>
           {isLoading ? (
-            <p style={{ color: palette.textSubtle, fontSize: '0.875rem' }}>Loading…</p>
+            <p style={{ color: palette.textSubtle, fontSize: '0.875rem' }}>Зареждане…</p>
           ) : (
             <FieldGroup>
               <div>
-                <FieldLabel>Default language</FieldLabel>
+                <FieldLabel>Език по подразбиране</FieldLabel>
                 <SelectInput value={language} onChange={(e) => setLanguage(e.target.value)}>
                   {LANGUAGES.map((l) => (
                     <option key={l.value} value={l.value}>{l.label}</option>
                   ))}
                 </SelectInput>
                 <FieldHint>
-                  Default language for system emails and admin UI when no user preference is set.
+                  Език по подразбиране за системни имейли и администраторски интерфейс при липса на потребителски предпочитания.
                 </FieldHint>
               </div>
               <div>
-                <FieldLabel>Currency</FieldLabel>
+                <FieldLabel>Валута</FieldLabel>
                 <SelectInput value={currency} onChange={(e) => setCurrency(e.target.value)}>
                   {CURRENCIES.map((c) => (
                     <option key={c.value} value={c.value}>{c.label}</option>
                   ))}
                 </SelectInput>
-                <FieldHint>Currency shown in payout amounts, receipts, and financial reports.</FieldHint>
+                <FieldHint>Валута, показана в суми за изплащане, бонове и финансови отчети.</FieldHint>
               </div>
               <div>
-                <FieldLabel>Timezone</FieldLabel>
+                <FieldLabel>Часова зона</FieldLabel>
                 <SelectInput value={timezone} onChange={(e) => setTimezone(e.target.value)}>
                   {TIMEZONES.map((tz) => (
                     <option key={tz} value={tz}>{tz}</option>
                   ))}
                 </SelectInput>
                 <FieldHint>
-                  Used for date display in the admin UI and for scheduling nightly jobs (e.g. dynamic
-                  list refresh).
+                  Използва се за показване на дати в администраторския интерфейс и за планиране на нощни задачи (напр. обновяване на динамичен списък).
                 </FieldHint>
               </div>
             </FieldGroup>
@@ -294,7 +292,7 @@ export default function AdminSettingsSystemPage() {
 
       <div style={{ marginTop: '1.5rem' }}>
         <SaveBtn onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending || isLoading}>
-          {saveMutation.isPending ? 'Saving…' : 'Save all changes'}
+          {saveMutation.isPending ? 'Запазване…' : 'Запази всички'}
         </SaveBtn>
       </div>
     </PageShell>

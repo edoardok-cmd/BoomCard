@@ -6,6 +6,9 @@ import { imageUploadService } from './imageUpload.service';
 import { notificationService } from './notification.service';
 import { logger } from '../utils/logger';
 import { CASHBACK_MATRIX_STEPS } from '../constants/receipt.constants';
+import { getSystemSettingInt } from '../utils/systemSettings';
+
+const DEFAULT_OFFER_VALIDITY_DAYS = 90;
 
 function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371000;
@@ -55,7 +58,7 @@ export interface CreateOfferData {
   image?: string;
   tags?: string[];
   startDate: Date;
-  endDate: Date;
+  endDate?: Date;
   usageLimit?: number;
   isFeatured?: boolean;
   featuredOrder?: number;
@@ -391,10 +394,18 @@ class OffersService {
 
     await this.validateDiscountBounds(data.discountPercent, data.cashbackPercent, partner.partnerTypeId, isAdmin);
 
-    const { tags, status, ...rest } = data;
+    let endDate = data.endDate;
+    if (!endDate) {
+      const validityDays = await getSystemSettingInt('offer_validity_days', DEFAULT_OFFER_VALIDITY_DAYS);
+      const start = data.startDate ?? new Date();
+      endDate = new Date(start.getTime() + validityDays * 24 * 60 * 60 * 1000);
+    }
+
+    const { tags, status, endDate: _ignored, ...rest } = data as any;
     const offer = await prisma.offer.create({
       data: {
         ...rest,
+        endDate,
         tags: this.serializeTags(tags),
         status: status ?? OfferStatus.DRAFT,
       },
