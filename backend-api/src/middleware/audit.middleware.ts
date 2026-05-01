@@ -49,6 +49,10 @@ const OBJECT_TYPE_NORMALIZE: Record<string, string> = {
   'pending-super': 'admin',
   // cashback sub-resource: POST /cashback/entries/:id/approve → objectType "cashback"
   entries: 'cashback',
+  // control router sub-resources → normalised object types
+  'dispute-cases':    'dispute',
+  'receipt-templates': 'receipt-template',
+  'risk-queue':       'risk',
 };
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

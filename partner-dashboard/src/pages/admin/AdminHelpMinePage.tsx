@@ -49,10 +49,11 @@ const StatusBadge = styled.span<{ $status: TicketStatus }>`
   text-transform: uppercase; letter-spacing: 0.05em; border-radius: 0.375rem; padding: 0.125rem 0.5rem;
   ${({ $status }) => {
     switch ($status) {
-      case 'RESOLVED': return `background: ${palette.successSoft}; color: ${palette.success};`;
-      case 'WAITING':  return `background: ${palette.warningSoft}; color: ${palette.warning};`;
       case 'NEW':      return `background: ${palette.dangerSoft}; color: ${palette.danger};`;
-      default:         return `background: ${palette.infoSoft}; color: ${palette.info};`;
+      case 'OPEN':     return `background: ${palette.infoSoft}; color: ${palette.info};`;
+      case 'WAITING':  return `background: ${palette.warningSoft}; color: ${palette.warning};`;
+      case 'RESOLVED': return `background: ${palette.successSoft}; color: ${palette.success};`;
+      default:         return `background: ${palette.border}; color: ${palette.textMuted};`;
     }
   }}
 `;

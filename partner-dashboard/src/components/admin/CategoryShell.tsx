@@ -14,7 +14,7 @@ export const CategoryShell: React.FC<CategoryShellProps> = ({ category }) => {
   const { language } = useLanguage();
 
   const permissions: string[] = (user as any)?.permissions ?? [];
-  const isSuperAdmin = (user as any)?.rawRole === 'SUPER_ADMIN' || user?.role === 'admin';
+  const isSuperAdmin = (user as any)?.rawRole === 'SUPER_ADMIN';
 
   const visibleTabs = category.subItems.filter(
     (sub) => !sub.permissionKey || isSuperAdmin || permissions.includes(sub.permissionKey)

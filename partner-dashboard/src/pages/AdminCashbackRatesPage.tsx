@@ -749,7 +749,12 @@ const AdminCashbackRatesPage: React.FC = () => {
 
         {pendingPayload && (
           <ConfirmPanel>
-            <ConfirmTitle>{tr.confirmTitle}</ConfirmTitle>
+            <ConfirmTitle>
+              {tr.confirmTitle}
+              {isFuture(pendingPayload.effectiveFrom) && (
+                <ScheduledBadge>{tr.scheduled}</ScheduledBadge>
+              )}
+            </ConfirmTitle>
             <ConfirmMeta>{tr.confirmMsg(pendingPayload.displayDate)}</ConfirmMeta>
             {/* Fix #2+#3: confirm panel uses same column order and includes LIGHT/PREMIUM ColHint */}
             <Matrix $cols={stepCols} style={{ marginBottom: '0.25rem' }}>
@@ -769,9 +774,9 @@ const AdminCashbackRatesPage: React.FC = () => {
                 <React.Fragment key={r.discountStep}>
                   <Cell>{r.discountStep}%</Cell>
                   <Cell>{r.basic}%</Cell>
-                  <Cell $muted>{computeMargin(r.discountStep, r.basic)}</Cell>
+                  <Cell $muted $invalid={r.basic > r.discountStep}>{computeMargin(r.discountStep, r.basic)}</Cell>
                   <Cell>{r.premium}%</Cell>
-                  <Cell $muted>{computeMargin(r.discountStep, r.premium)}</Cell>
+                  <Cell $muted $invalid={r.premium > r.discountStep}>{computeMargin(r.discountStep, r.premium)}</Cell>
                 </React.Fragment>
               ))}
             </Matrix>
@@ -802,7 +807,8 @@ const AdminCashbackRatesPage: React.FC = () => {
             <tr>
               {/* Fix #2: column order in history thead matches Current and Edit views */}
               <th>{tr.thEffective}</th>
-              <th>{tr.step}</th>
+              {/* Fix #4: Стъпка hint propagated to history table header, completing all three matrices */}
+              <th>{tr.step}<ColHint>{tr.stepHint}</ColHint></th>
               <th>{tr.basic}</th>
               <th>{tr.marginBasic}</th>
               <th>{tr.premium}</th>

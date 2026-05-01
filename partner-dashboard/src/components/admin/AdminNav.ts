@@ -142,7 +142,7 @@ export const ADMIN_NAV: AdminNavCategory[] = [
     subItems: [
       { labelBg: 'Нова заявка', labelEn: 'New Request', path: '/admin/help/new', permissionKey: 'help.read' },
       { labelBg: 'Моите заявки', labelEn: 'My Requests', path: '/admin/help/mine', permissionKey: 'help.read' },
-      { labelBg: 'Всички заявки', labelEn: 'All Requests', path: '/admin/help/all', permissionKey: 'help.read' },
+      { labelBg: 'Всички заявки', labelEn: 'All Requests', path: '/admin/help/all', permissionKey: 'help.read.all' },
     ],
   },
   {

@@ -118,7 +118,6 @@ export default function AdminHelpAllPage() {
       toast.success('Заявката е назначена на вас');
       queryClient.invalidateQueries({ queryKey: ['admin-help-all'] });
       queryClient.invalidateQueries({ queryKey: ['admin-help-mine'] });
-      queryClient.invalidateQueries({ queryKey: ['admin-help-new'] });
     },
     onError: () => toast.error('Грешка при назначаване'),
   });

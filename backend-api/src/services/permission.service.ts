@@ -62,7 +62,8 @@ export const PERMISSION_CATALOG: Array<{ key: string; label: string; category: s
   { key: 'admins.roles.write', label: 'Assign roles & permissions', category: 'admins' },
 
   // Help
-  { key: 'help.read', label: 'View support tickets', category: 'help' },
+  { key: 'help.read', label: 'View own support tickets', category: 'help' },
+  { key: 'help.read.all', label: 'View all support tickets', category: 'help' },
   { key: 'help.write', label: 'Manage support tickets', category: 'help' },
 ];
 

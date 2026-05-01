@@ -57,8 +57,14 @@ router.post('/', requirePermission('help.write'), async (req: AuthRequest, res, 
     if (!subject?.trim() || subject.trim().length < 5) {
       return res.status(400).json({ error: 'subject is required (min 5 chars)' });
     }
+    if (subject.trim().length > 200) {
+      return res.status(400).json({ error: 'subject is too long (max 200 chars)' });
+    }
     if (!body?.trim() || body.trim().length < 10) {
       return res.status(400).json({ error: 'body is required (min 10 chars)' });
+    }
+    if (body.trim().length > 5000) {
+      return res.status(400).json({ error: 'body is too long (max 5000 chars)' });
     }
     if (!category || !Object.values(TicketCategory).includes(category as TicketCategory)) {
       return res.status(400).json({ error: `category must be one of: ${Object.values(TicketCategory).join(', ')}` });
@@ -76,8 +82,7 @@ router.post('/', requirePermission('help.write'), async (req: AuthRequest, res, 
         category: category as TicketCategory,
         priority: resolvedPriority,
         userId: req.user!.id,
-        assigneeId: req.user!.id,
-        status: 'OPEN',
+        status: 'NEW',
       },
       select: {
         id: true,
@@ -97,7 +102,7 @@ router.post('/', requirePermission('help.write'), async (req: AuthRequest, res, 
         severity: 'info',
         fields: [
           { label: 'Category', value: category },
-          { label: 'Admin', value: req.user!.id },
+          { label: 'Admin', value: req.user!.email },
           { label: 'Ticket ID', value: ticket.id },
         ],
       })
@@ -135,8 +140,8 @@ router.post('/', requirePermission('help.write'), async (req: AuthRequest, res, 
   }
 });
 
-// GET /api/admin/help — all tickets with optional filters
-router.get('/', requirePermission('help.read'), async (req, res, next) => {
+// GET /api/admin/help — all tickets with optional filters (SUPER_ADMIN only per spec §11)
+router.get('/', requirePermission('help.read.all'), async (req, res, next) => {
   try {
     const { status, priority, category, search, page = '1', limit = '25' } = req.query as Record<string, string>;
     const pageNum = Math.max(1, parseInt(page) || 1);
@@ -327,8 +332,11 @@ router.post('/:id/reply', requirePermission('help.write'), async (req: AuthReque
   try {
     const { body } = req.body as { body?: string };
 
-    if (!body?.trim()) {
-      return res.status(400).json({ error: 'Reply body is required' });
+    if (!body?.trim() || body.trim().length < 10) {
+      return res.status(400).json({ error: 'Reply body is required (min 10 chars)' });
+    }
+    if (body.trim().length > 5000) {
+      return res.status(400).json({ error: 'Reply body is too long (max 5000 chars)' });
     }
 
     const ticket = await prisma.helpTicket.findUnique({ where: { id: req.params.id } });

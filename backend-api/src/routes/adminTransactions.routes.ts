@@ -233,6 +233,9 @@ router.post('/adjust', requirePermission('transactions.write'), async (req, res,
       return created;
     });
 
+    req.auditAction = 'transaction.wallet-adjust';
+    req.auditObjectType = 'transaction';
+    req.auditObjectId = userId;
     res.status(201).json(transaction);
   } catch (error) {
     if (validationError) {

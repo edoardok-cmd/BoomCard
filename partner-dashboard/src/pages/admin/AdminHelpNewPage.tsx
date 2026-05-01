@@ -27,12 +27,22 @@ const Row = styled.div`display: grid; grid-template-columns: 1fr 1fr; gap: 1.25r
 const FieldGroup = styled.div`display: flex; flex-direction: column; gap: 0.375rem;`;
 const Label = styled.label`font-size: 0.875rem; font-weight: 600; color: ${palette.text};`;
 const Required = styled.span`color: ${palette.danger}; margin-left: 0.15rem;`;
-const Hint = styled.p`font-size: 0.75rem; color: ${palette.textSubtle}; margin: 0;`;
+const HintRow = styled.div`display: flex; justify-content: space-between; align-items: center;`;
+const Hint = styled.p<{ $error?: boolean }>`
+  font-size: 0.75rem;
+  color: ${p => p.$error ? palette.danger : palette.textSubtle};
+  margin: 0;
+`;
+const Counter = styled.span<{ $warn?: boolean }>`
+  font-size: 0.75rem;
+  color: ${p => p.$warn ? palette.danger : palette.textSubtle};
+  white-space: nowrap;
+`;
 
-const Input = styled.input`
-  padding: 0.5rem 0.875rem; border: 1px solid ${palette.border}; border-radius: 0.5rem;
+const Input = styled.input<{ $invalid?: boolean }>`
+  padding: 0.5rem 0.875rem; border: 1px solid ${p => p.$invalid ? palette.danger : palette.border}; border-radius: 0.5rem;
   font-size: 0.9375rem; background: ${palette.bg}; color: ${palette.text}; outline: none;
-  &:focus { border-color: ${palette.accent}; box-shadow: 0 0 0 2px ${palette.accentSoft}; }
+  &:focus { border-color: ${p => p.$invalid ? palette.danger : palette.accent}; box-shadow: 0 0 0 2px ${p => p.$invalid ? '#f3ddd8' : palette.accentSoft}; }
   &::placeholder { color: ${palette.textSubtle}; }
 `;
 
@@ -42,11 +52,11 @@ const Select = styled.select`
   &:focus { border-color: ${palette.accent}; }
 `;
 
-const Textarea = styled.textarea`
-  padding: 0.625rem 0.875rem; border: 1px solid ${palette.border}; border-radius: 0.5rem;
+const Textarea = styled.textarea<{ $invalid?: boolean }>`
+  padding: 0.625rem 0.875rem; border: 1px solid ${p => p.$invalid ? palette.danger : palette.border}; border-radius: 0.5rem;
   font-size: 0.9375rem; font-family: inherit; background: ${palette.bg}; color: ${palette.text};
   outline: none; resize: vertical; min-height: 8rem;
-  &:focus { border-color: ${palette.accent}; box-shadow: 0 0 0 2px ${palette.accentSoft}; }
+  &:focus { border-color: ${p => p.$invalid ? palette.danger : palette.accent}; box-shadow: 0 0 0 2px ${p => p.$invalid ? '#f3ddd8' : palette.accentSoft}; }
   &::placeholder { color: ${palette.textSubtle}; }
   &:disabled { opacity: 0.6; }
 `;
@@ -59,6 +69,9 @@ const SubmitBtn = styled.button`
   &:disabled { opacity: 0.5; cursor: not-allowed; }
 `;
 
+const SUBJECT_MAX = 200;
+const BODY_MAX = 5000;
+
 export default function AdminHelpNewPage() {
   const navigate = useNavigate();
   const qc = useQueryClient();
@@ -67,10 +80,31 @@ export default function AdminHelpNewPage() {
   const [body, setBody] = useState('');
   const [category, setCategory] = useState<TicketCategory | ''>('');
   const [priority, setPriority] = useState<TicketPriority>('MEDIUM');
+  const [touched, setTouched] = useState({ subject: false, body: false, category: false });
+
+  const subjectTrimmed = subject.trim();
+  const bodyTrimmed = body.trim();
+
+  const subjectError =
+    touched.subject && subjectTrimmed.length < 5 ? 'Минимум 5 символа.' :
+    touched.subject && subjectTrimmed.length > SUBJECT_MAX ? `Максимум ${SUBJECT_MAX} символа.` : null;
+
+  const bodyError =
+    touched.body && bodyTrimmed.length < 10 ? 'Минимум 10 символа.' :
+    touched.body && bodyTrimmed.length > BODY_MAX ? `Максимум ${BODY_MAX} символа.` : null;
+
+  const categoryError = touched.category && category === '' ? 'Изберете категория.' : null;
+
+  const canSubmit =
+    subjectTrimmed.length >= 5 &&
+    subjectTrimmed.length <= SUBJECT_MAX &&
+    bodyTrimmed.length >= 10 &&
+    bodyTrimmed.length <= BODY_MAX &&
+    category !== '';
 
   const createMutation = useMutation({
     mutationFn: () =>
-      adminHelpService.create({ subject: subject.trim(), body: body.trim(), category: category as TicketCategory, priority }),
+      adminHelpService.create({ subject: subjectTrimmed, body: bodyTrimmed, category: category as TicketCategory, priority }),
     onSuccess: () => {
       toast.success('Заявката е изпратена успешно');
       qc.invalidateQueries({ queryKey: ['admin-help-mine'] });
@@ -79,8 +113,6 @@ export default function AdminHelpNewPage() {
     },
     onError: () => toast.error('Грешка при изпращане на заявката'),
   });
-
-  const canSubmit = subject.trim().length >= 5 && body.trim().length >= 10 && category !== '';
 
   return (
     <PageShell>
@@ -91,7 +123,11 @@ export default function AdminHelpNewPage() {
       </PageHeader>
 
       <Card>
-        <Form onSubmit={(e) => { e.preventDefault(); if (canSubmit && !createMutation.isPending) createMutation.mutate(); }}>
+        <Form onSubmit={(e) => {
+          e.preventDefault();
+          setTouched({ subject: true, body: true, category: true });
+          if (canSubmit && !createMutation.isPending) createMutation.mutate();
+        }}>
           <FieldGroup>
             <Label htmlFor="subject">Тема <Required>*</Required></Label>
             <Input
@@ -100,10 +136,20 @@ export default function AdminHelpNewPage() {
               placeholder="Кратко описание на проблема…"
               value={subject}
               onChange={(e) => setSubject(e.target.value)}
-              maxLength={200}
+              onBlur={() => setTouched(t => ({ ...t, subject: true }))}
+              maxLength={SUBJECT_MAX}
               disabled={createMutation.isPending}
+              $invalid={!!subjectError}
             />
-            <Hint>Минимум 5 символа.</Hint>
+            <HintRow>
+              {subjectError
+                ? <Hint $error>{subjectError}</Hint>
+                : <Hint>Минимум 5 символа.</Hint>
+              }
+              <Counter $warn={subjectTrimmed.length > SUBJECT_MAX * 0.9}>
+                {subjectTrimmed.length}/{SUBJECT_MAX}
+              </Counter>
+            </HintRow>
           </FieldGroup>
 
           <Row>
@@ -113,7 +159,9 @@ export default function AdminHelpNewPage() {
                 id="category"
                 value={category}
                 onChange={(e) => setCategory(e.target.value as TicketCategory | '')}
+                onBlur={() => setTouched(t => ({ ...t, category: true }))}
                 disabled={createMutation.isPending}
+                style={categoryError ? { borderColor: palette.danger } : undefined}
               >
                 <option value="">— Изберете категория —</option>
                 <option value="CASHBACK">Кешбек</option>
@@ -122,6 +170,7 @@ export default function AdminHelpNewPage() {
                 <option value="TECHNICAL">Техническо</option>
                 <option value="OTHER">Друго</option>
               </Select>
+              {categoryError && <Hint $error>{categoryError}</Hint>}
             </FieldGroup>
             <FieldGroup>
               <Label htmlFor="priority">Приоритет</Label>
@@ -146,11 +195,21 @@ export default function AdminHelpNewPage() {
               placeholder="Опишете подробно проблема…"
               value={body}
               onChange={(e) => setBody(e.target.value)}
+              onBlur={() => setTouched(t => ({ ...t, body: true }))}
               rows={7}
-              maxLength={5000}
+              maxLength={BODY_MAX}
               disabled={createMutation.isPending}
+              $invalid={!!bodyError}
             />
-            <Hint>Минимум 10 символа.</Hint>
+            <HintRow>
+              {bodyError
+                ? <Hint $error>{bodyError}</Hint>
+                : <Hint>Минимум 10 символа.</Hint>
+              }
+              <Counter $warn={bodyTrimmed.length > BODY_MAX * 0.9}>
+                {bodyTrimmed.length}/{BODY_MAX}
+              </Counter>
+            </HintRow>
           </FieldGroup>
 
           <SubmitBtn type="submit" disabled={!canSubmit || createMutation.isPending}>

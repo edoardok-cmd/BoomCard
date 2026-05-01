@@ -27,15 +27,6 @@ export interface HelpTicketFull extends HelpTicket {
   body: string;
 }
 
-export interface NewTicket {
-  id: string;
-  subject: string;
-  category: TicketCategory;
-  priority: TicketPriority;
-  createdAt: string;
-  user: TicketUser;
-}
-
 export interface MyTicket {
   id: string;
   subject: string;
@@ -86,20 +77,6 @@ export const adminHelpService = {
     if (params.priority) clean.priority = params.priority;
     if (params.category) clean.category = params.category;
     return apiService.get('/admin/help', clean);
-  },
-
-  listNew(params: {
-    page?: number;
-    limit?: number;
-    search?: string;
-    priority?: TicketPriority | '';
-    category?: TicketCategory | '';
-  }): Promise<TicketListResult<NewTicket>> {
-    const clean: Record<string, unknown> = { page: params.page, limit: params.limit };
-    if (params.search) clean.search = params.search;
-    if (params.priority) clean.priority = params.priority;
-    if (params.category) clean.category = params.category;
-    return apiService.get('/admin/help/new', clean);
   },
 
   listMine(params: {

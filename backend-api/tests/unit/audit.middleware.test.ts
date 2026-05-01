@@ -1,12 +1,15 @@
 /**
  * Unit tests for deriveActionAndObject() in audit.middleware.ts
  *
- * Verifies that action strings and objectTypes are correctly derived for
- * every route shape in the admin API, including the edge cases fixed in
+ * Covers every route shape in the admin API, including the edge cases fixed in
  * the §10 audit:
- *   - DELETE /:id/roles/:roleKey  → admin.roles.delete (not admin.SUPER_ADMIN)
- *   - POST /entries/:id/approve   → cashback.approve  (not entries.approve)
- *   - POST /:partnerId/:month/mark-paid → cashback.mark-paid
+ *   - DELETE /:id/roles/:roleKey         → admin.roles.delete  (not admin.SUPER_ADMIN)
+ *   - POST /entries/:id/approve          → cashback.approve    (not entries.approve)
+ *   - POST /:partnerId/:month/mark-paid  → cashback.mark-paid
+ *   - POST /dispute-cases                → dispute.create      (not dispute-cases.create)
+ *   - POST /risk-queue/:id/approve       → risk.approve        (not risk-queue.approve)
+ *   - POST /receipt-templates            → receipt-template.create
+ *   - POST /help/:id/assign              → help.assign
  */
 
 import { deriveActionAndObject } from '../../src/middleware/audit.middleware';
@@ -146,6 +149,121 @@ describe('deriveActionAndObject()', () => {
       const r = deriveActionAndObject(makeReq('PATCH', base, `/${UUID}`));
       expect(r.action).toBe('subscriber.update');
       expect(r.objectType).toBe('subscriber');
+    });
+  });
+
+  // ─── Control router — dispute-cases (/api/admin/control) ─────────────────
+
+  describe('control: dispute-cases routes', () => {
+    const base = '/api/admin/control';
+
+    it('POST /dispute-cases → dispute.create (not dispute-cases.create)', () => {
+      const r = deriveActionAndObject(makeReq('POST', base, '/dispute-cases'));
+      expect(r.action).toBe('dispute.create');
+      expect(r.objectType).toBe('dispute');
+      expect(r.objectId).toBeNull();
+    });
+
+    it('PATCH /dispute-cases/:id → dispute.update', () => {
+      const r = deriveActionAndObject(makeReq('PATCH', base, `/dispute-cases/${UUID}`));
+      expect(r.action).toBe('dispute.update');
+      expect(r.objectType).toBe('dispute');
+      expect(r.objectId).toBe(UUID);
+    });
+
+    it('POST /dispute-cases/:id/notes → dispute.notes', () => {
+      const r = deriveActionAndObject(makeReq('POST', base, `/dispute-cases/${UUID}/notes`));
+      expect(r.action).toBe('dispute.notes');
+      expect(r.objectType).toBe('dispute');
+      expect(r.objectId).toBe(UUID);
+    });
+
+    it('POST /disputes/:id/approve → dispute.approve', () => {
+      const r = deriveActionAndObject(makeReq('POST', base, `/disputes/${UUID}/approve`));
+      expect(r.action).toBe('dispute.approve');
+      expect(r.objectType).toBe('dispute');
+      expect(r.objectId).toBe(UUID);
+    });
+
+    it('POST /disputes/:id/reject → dispute.reject', () => {
+      const r = deriveActionAndObject(makeReq('POST', base, `/disputes/${UUID}/reject`));
+      expect(r.action).toBe('dispute.reject');
+    });
+  });
+
+  // ─── Control router — risk-queue (/api/admin/control) ────────────────────
+
+  describe('control: risk-queue routes', () => {
+    const base = '/api/admin/control';
+
+    it('POST /risk-queue/:id/approve → risk.approve (not risk-queue.approve)', () => {
+      const r = deriveActionAndObject(makeReq('POST', base, `/risk-queue/${UUID}/approve`));
+      expect(r.action).toBe('risk.approve');
+      expect(r.objectType).toBe('risk');
+      expect(r.objectId).toBe(UUID);
+    });
+
+    it('POST /risk-queue/:id/reject → risk.reject', () => {
+      const r = deriveActionAndObject(makeReq('POST', base, `/risk-queue/${UUID}/reject`));
+      expect(r.action).toBe('risk.reject');
+    });
+  });
+
+  // ─── Control router — receipt-templates (/api/admin/control) ─────────────
+
+  describe('control: receipt-templates routes', () => {
+    const base = '/api/admin/control';
+
+    it('POST /receipt-templates → receipt-template.create', () => {
+      const r = deriveActionAndObject(makeReq('POST', base, '/receipt-templates'));
+      expect(r.action).toBe('receipt-template.create');
+      expect(r.objectType).toBe('receipt-template');
+      expect(r.objectId).toBeNull();
+    });
+
+    it('PATCH /receipt-templates/:id → receipt-template.update', () => {
+      const r = deriveActionAndObject(makeReq('PATCH', base, `/receipt-templates/${UUID}`));
+      expect(r.action).toBe('receipt-template.update');
+      expect(r.objectId).toBe(UUID);
+    });
+
+    it('DELETE /receipt-templates/:id → receipt-template.delete', () => {
+      const r = deriveActionAndObject(makeReq('DELETE', base, `/receipt-templates/${UUID}`));
+      expect(r.action).toBe('receipt-template.delete');
+    });
+  });
+
+  // ─── Help-ticket routes (/api/admin/help) ─────────────────────────────────
+
+  describe('help routes', () => {
+    const base = '/api/admin/help';
+
+    it('POST / → help.create', () => {
+      const r = deriveActionAndObject(makeReq('POST', base, '/'));
+      expect(r.action).toBe('help.create');
+      expect(r.objectType).toBe('help');
+      expect(r.objectId).toBeNull();
+    });
+
+    it('POST /:id/assign → help.assign', () => {
+      const r = deriveActionAndObject(makeReq('POST', base, `/${UUID}/assign`));
+      expect(r.action).toBe('help.assign');
+      expect(r.objectType).toBe('help');
+      expect(r.objectId).toBe(UUID);
+    });
+
+    it('PATCH /:id → help.update', () => {
+      const r = deriveActionAndObject(makeReq('PATCH', base, `/${UUID}`));
+      expect(r.action).toBe('help.update');
+      expect(r.objectType).toBe('help');
+      expect(r.objectId).toBe(UUID);
+    });
+
+    it('POST /:id/reply → help.reply', () => {
+      const r = deriveActionAndObject(makeReq('POST', base, `/${UUID}/reply`));
+      expect(r.action).toBe('help.reply');
+      expect(r.objectType).toBe('help');
+      expect(r.objectId).toBe(UUID);
     });
   });
 });

@@ -64,8 +64,8 @@ const copy = {
     loadError: 'Грешка при зареждане',
     status: 'Статус',
     priority: 'Приоритет',
-    assignedTo: 'Назначен на',
-    unassigned: 'Неназначен',
+    assignedTo: 'Назначена на',
+    unassigned: 'Неназначена',
     assignToMe: 'Вземи заявката',
     originalMessage: 'Оригинално съобщение',
     noReplies: 'Няма отговори — бъдете първи.',
@@ -84,9 +84,9 @@ const copy = {
     user: 'Потребител',
     close: '✕',
     ticketClosed: 'Заявката е затворена — отговорите са забранени.',
-    opened: 'Отворен',
+    opened: 'Подадена',
     statuses: {
-      NEW: 'Нов', OPEN: 'Отворен', WAITING: 'Изчакване', RESOLVED: 'Решен', CLOSED: 'Затворен',
+      NEW: 'Нова', OPEN: 'Отворена', WAITING: 'Изчакване', RESOLVED: 'Решена', CLOSED: 'Затворена',
     } as Record<TicketStatus, string>,
     priorities: {
       LOW: 'Нисък', MEDIUM: 'Среден', HIGH: 'Висок', URGENT: 'Спешен',
@@ -148,7 +148,6 @@ export default function TicketDrawer({ ticketId, onClose }: Props) {
     qc.invalidateQueries({ queryKey: ['admin-help-replies', ticketId] });
     qc.invalidateQueries({ queryKey: ['admin-help-all'] });
     qc.invalidateQueries({ queryKey: ['admin-help-mine'] });
-    qc.invalidateQueries({ queryKey: ['admin-help-new'] });
   };
 
   const replyMutation = useMutation({
