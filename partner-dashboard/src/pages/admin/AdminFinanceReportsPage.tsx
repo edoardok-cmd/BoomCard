@@ -430,6 +430,7 @@ export default function AdminFinanceReportsPage() {
               <StatLabel>Оборот при партньори</StatLabel>
               <StatValue>{fmt(report.cashbackInvoices.turnoverTotal)}</StatValue>
               <StatSub>{report.cashbackInvoices.count} фактури</StatSub>
+              {queryPlan && <StatSub style={{ color: palette.textSubtle, fontStyle: 'italic' }}>всички планове</StatSub>}
             </StatCard>
 
             <StatCard $soft={palette.accentSoft}>
@@ -438,6 +439,7 @@ export default function AdminFinanceReportsPage() {
               <StatSub>
                 + {fmt(report.cashbackInvoices.marginTotal)} марджин
               </StatSub>
+              {queryPlan && <StatSub style={{ color: palette.textSubtle, fontStyle: 'italic' }}>всички планове</StatSub>}
             </StatCard>
 
             <StatCard>
@@ -448,6 +450,7 @@ export default function AdminFinanceReportsPage() {
                   ? `${((report.cashbackInvoices.marginTotal / report.cashbackInvoices.turnoverTotal) * 100).toFixed(1)}% от оборота`
                   : '—'}
               </StatSub>
+              {queryPlan && <StatSub style={{ color: palette.textSubtle, fontStyle: 'italic' }}>всички планове</StatSub>}
             </StatCard>
           </StatsGrid>
 
@@ -486,7 +489,14 @@ export default function AdminFinanceReportsPage() {
             );
             return (
               <Card>
-                <SectionTitle>Разбивка по партньор</SectionTitle>
+                <SectionTitle>
+                  Разбивка по партньор
+                  {queryPlan && (
+                    <span style={{ fontWeight: 400, fontSize: '0.8rem', color: palette.textSubtle, marginLeft: '0.5rem', fontStyle: 'italic' }}>
+                      (фактурите по партньор не са филтрирани по план)
+                    </span>
+                  )}
+                </SectionTitle>
                 <Table>
                   <thead>
                     <tr>
@@ -538,7 +548,7 @@ export default function AdminFinanceReportsPage() {
           })()}
 
           {/* Subscription plan breakdown (spec §6.4: абонатен план dimension) */}
-          {report.planBreakdown.length > 0 && (
+          {(report.planBreakdown.length > 0 || queryPlan) && (
             <Card>
               <SectionTitle>
                 Разбивка по абонатен план
@@ -548,26 +558,32 @@ export default function AdminFinanceReportsPage() {
                   </span>
                 )}
               </SectionTitle>
-              <Table>
-                <thead>
-                  <tr>
-                    <Th>План</Th>
-                    <ThRight>Брой сканирания</ThRight>
-                    <ThRight>Кешбек</ThRight>
-                    <ThRight>Оборот</ThRight>
-                  </tr>
-                </thead>
-                <tbody>
-                  {report.planBreakdown.map((row: PlanBreakdownRow) => (
-                    <tr key={row.plan}>
-                      <TdBold>{PLAN_LABELS[row.plan] ?? row.plan}</TdBold>
-                      <TdRight>{row.scanCount.toLocaleString()}</TdRight>
-                      <TdRight>{fmt(row.cashback)}</TdRight>
-                      <TdRight>{fmt(row.turnover)}</TdRight>
+              {report.planBreakdown.length === 0 ? (
+                <p style={{ fontSize: '0.875rem', color: palette.textSubtle, margin: 0 }}>
+                  Няма сканирания за план „{PLAN_LABELS[queryPlan] ?? queryPlan}" в избрания период.
+                </p>
+              ) : (
+                <Table>
+                  <thead>
+                    <tr>
+                      <Th>План</Th>
+                      <ThRight>Брой сканирания</ThRight>
+                      <ThRight>Кешбек</ThRight>
+                      <ThRight>Оборот</ThRight>
                     </tr>
-                  ))}
-                </tbody>
-              </Table>
+                  </thead>
+                  <tbody>
+                    {report.planBreakdown.map((row: PlanBreakdownRow) => (
+                      <tr key={row.plan}>
+                        <TdBold>{PLAN_LABELS[row.plan] ?? row.plan}</TdBold>
+                        <TdRight>{row.scanCount.toLocaleString()}</TdRight>
+                        <TdRight>{fmt(row.cashback)}</TdRight>
+                        <TdRight>{fmt(row.turnover)}</TdRight>
+                      </tr>
+                    ))}
+                  </tbody>
+                </Table>
+              )}
             </Card>
           )}
 
@@ -575,9 +591,9 @@ export default function AdminFinanceReportsPage() {
           <Card>
             <SectionTitle>
               Разбивка на портфейлни транзакции
-              {queryPartnerId && (
+              {(queryPartnerId || queryPlan) && (
                 <span style={{ fontWeight: 400, fontSize: '0.8rem', color: palette.textSubtle, marginLeft: '0.5rem', fontStyle: 'italic' }}>
-                  (за цялата платформа — портфейлните транзакции не са филтрирани по партньор)
+                  (за цялата платформа —{queryPartnerId ? ' не са филтрирани по партньор' : ''}{queryPartnerId && queryPlan ? ',' : ''}{queryPlan ? ' не са филтрирани по план' : ''})
                 </span>
               )}
             </SectionTitle>
