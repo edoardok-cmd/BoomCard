@@ -329,8 +329,10 @@ router.post('/:id/reply', requirePermission('help.write'), async (req: AuthReque
     });
 
     // Author-aware status transition:
-    //   support replies  → WAITING (waiting for the ticket creator to respond)
-    //   creator responds → OPEN    (back to support to act)
+    //   support replies on OPEN/NEW → WAITING (waiting for creator to respond)
+    //   creator replies on WAITING  → OPEN    (back to support to act)
+    //   creator replies on NEW      → no change: only assignment (POST /:id/assign) moves NEW→OPEN
+    //   support replies on WAITING  → no change: ticket is already awaiting the creator
     const isCreator = req.user!.id === ticket.userId;
     let newStatus: TicketStatus | null = null;
     if (!isCreator && (ticket.status === 'OPEN' || ticket.status === 'NEW')) {

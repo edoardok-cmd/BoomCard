@@ -580,7 +580,7 @@ export default function AdminMarketingListsPage() {
                       <Input
                         value={memberSearchQuery}
                         onChange={(e) => { setMemberSearchQuery(e.target.value); setSelectedMemberPayload(null); setAddMemberError(''); }}
-                        placeholder={addMemberType === 'PARTNER' ? 'Търси по бизнес име или имейл…' : 'Търси по имейл, ime или фамилия…'}
+                        placeholder={addMemberType === 'PARTNER' ? 'Търси по бизнес име или имейл…' : 'Търси по имейл, име или фамилия…'}
                         onKeyDown={(e) => { if (e.key === 'Enter' && selectedMemberPayload) handleAddMember(); }}
                       />
                       {memberSearchResults.length > 0 && (

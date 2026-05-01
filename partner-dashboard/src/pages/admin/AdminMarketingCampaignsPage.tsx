@@ -43,6 +43,13 @@ const SortableHeader = styled.button<{ $active: boolean }>`
   &:hover { color: ${palette.accent}; }
 `;
 
+const CAMPAIGN_STATUS_LABELS: Record<CampaignStatus, string> = {
+  DRAFT:     'Чернова',
+  SCHEDULED: 'Планирана',
+  SENT:      'Изпратена',
+  PAUSED:    'Спряна',
+};
+
 const StatusBadge = styled.span<{ $status: CampaignStatus }>`
   display: inline-flex; align-items: center; font-size: 0.7rem; font-weight: 700;
   text-transform: uppercase; letter-spacing: 0.05em; border-radius: 0.375rem; padding: 0.125rem 0.5rem;
@@ -125,12 +132,12 @@ function toLocalDatetimeInput(iso: string | null | undefined): string {
 
 function fmtDate(iso: string | null | undefined): string {
   if (!iso) return '—';
-  return new Date(iso).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+  return new Date(iso).toLocaleDateString('bg-BG', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
 function fmtDatetime(iso: string | null | undefined): string {
   if (!iso) return '—';
-  return new Date(iso).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  return new Date(iso).toLocaleString('bg-BG', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
 type SortField = 'name' | 'status' | 'sentAt' | 'scheduledAt' | 'createdAt';
@@ -237,7 +244,7 @@ export default function AdminMarketingCampaignsPage() {
       setConfirmTarget(null);
       load();
     } catch (err: unknown) {
-      const msg = (err as { message?: string })?.message ?? 'An error occurred. Please try again.';
+      const msg = (err as { message?: string })?.message ?? 'Грешка. Опитайте отново.';
       setConfirmError(msg);
     } finally {
       setSaving(false);
@@ -338,10 +345,10 @@ export default function AdminMarketingCampaignsPage() {
   // Send-now pre-flight warnings for confirm dialog
   const sendNowWarnings: string[] = [];
   if (confirmTarget && confirmMode === 'send-now') {
-    if (!confirmTarget.templateId) sendNowWarnings.push('No template assigned — the campaign has no content to send.');
-    if (!confirmTarget.listId)     sendNowWarnings.push('No audience list selected — no recipients will receive this campaign.');
-    else if (confirmTarget.audience === 0) sendNowWarnings.push('The audience list appears to have 0 members.');
-    if (confirmTarget.type === 'SMS') sendNowWarnings.push('SMS delivery is not yet enabled — marking this campaign as sent will not dispatch any messages to recipients.');
+    if (!confirmTarget.templateId) sendNowWarnings.push('Без шаблон — кампанията няма съдържание за изпращане.');
+    if (!confirmTarget.listId)     sendNowWarnings.push('Без списък с аудитория — кампанията няма получатели.');
+    else if (confirmTarget.audience === 0) sendNowWarnings.push('Списъкът с аудитория изглежда е празен (0 членове).');
+    if (confirmTarget.type === 'SMS') sendNowWarnings.push('SMS доставката не е активирана — маркирането като изпратена няма да изпрати съобщения.');
   }
 
   // ── Columns ───────────────────────────────────────────────────────────────
@@ -351,7 +358,7 @@ export default function AdminMarketingCampaignsPage() {
       key: 'name',
       header: (
         <SortableHeader $active={sortBy === 'name'} onClick={() => handleSort('name')}>
-          Campaign{sortIcon('name')}
+          Кампания{sortIcon('name')}
         </SortableHeader>
       ) as unknown as string,
       render: (row) => (
@@ -359,7 +366,7 @@ export default function AdminMarketingCampaignsPage() {
           <PrimaryLine>{row.name}</PrimaryLine>
           <MetaLine>
             <span style={{ color: TYPE_COLOR[row.type], fontWeight: 700, fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{row.type}</span>
-            <span style={{ marginLeft: '0.5rem', color: palette.textSubtle }}>Created {fmtDate(row.createdAt)}</span>
+            <span style={{ marginLeft: '0.5rem', color: palette.textSubtle }}>Създадена {fmtDate(row.createdAt)}</span>
           </MetaLine>
         </span>
       ),
@@ -368,34 +375,34 @@ export default function AdminMarketingCampaignsPage() {
       key: 'status',
       header: (
         <SortableHeader $active={sortBy === 'status'} onClick={() => handleSort('status')}>
-          Status{sortIcon('status')}
+          Статус{sortIcon('status')}
         </SortableHeader>
       ) as unknown as string,
       render: (row) => {
         const busy = togglingId === row.id;
         return (
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem', flexWrap: 'wrap' }}>
-            <StatusBadge $status={row.status}>{row.status}</StatusBadge>
+            <StatusBadge $status={row.status}>{CAMPAIGN_STATUS_LABELS[row.status]}</StatusBadge>
             {row.status === 'DRAFT' && (
               <>
-                <ToggleBtn $variant="info" disabled={busy} onClick={() => handleStatusToggle(row, 'SCHEDULED')}>Schedule</ToggleBtn>
-                <ToggleBtn $variant="success" disabled={busy} onClick={() => openSendConfirm(row)}>Send now</ToggleBtn>
+                <ToggleBtn $variant="info" disabled={busy} onClick={() => handleStatusToggle(row, 'SCHEDULED')}>Планирай</ToggleBtn>
+                <ToggleBtn $variant="success" disabled={busy} onClick={() => openSendConfirm(row)}>Изпрати сега</ToggleBtn>
               </>
             )}
             {row.status === 'SCHEDULED' && (
               <>
-                <ToggleBtn $variant="warn" disabled={busy} onClick={() => handleStatusToggle(row, 'PAUSED')}>Pause</ToggleBtn>
-                <ToggleBtn $variant="success" disabled={busy} onClick={() => openSendConfirm(row)}>Send now</ToggleBtn>
+                <ToggleBtn $variant="warn" disabled={busy} onClick={() => handleStatusToggle(row, 'PAUSED')}>Спри</ToggleBtn>
+                <ToggleBtn $variant="success" disabled={busy} onClick={() => openSendConfirm(row)}>Изпрати сега</ToggleBtn>
               </>
             )}
             {row.status === 'PAUSED' && (
               <>
-                <ToggleBtn $variant="info" disabled={busy} onClick={() => handleStatusToggle(row, 'SCHEDULED')}>Resume</ToggleBtn>
-                <ToggleBtn $variant="success" disabled={busy} onClick={() => openSendConfirm(row)}>Send now</ToggleBtn>
+                <ToggleBtn $variant="info" disabled={busy} onClick={() => handleStatusToggle(row, 'SCHEDULED')}>Продължи</ToggleBtn>
+                <ToggleBtn $variant="success" disabled={busy} onClick={() => openSendConfirm(row)}>Изпрати сега</ToggleBtn>
               </>
             )}
             {row.status === 'SENT' && (
-              <ToggleBtn $variant="danger" disabled={busy} onClick={() => openResetConfirm(row)}>Reset to Draft</ToggleBtn>
+              <ToggleBtn $variant="danger" disabled={busy} onClick={() => openResetConfirm(row)}>Върни в чернова</ToggleBtn>
             )}
           </span>
         );
@@ -403,10 +410,10 @@ export default function AdminMarketingCampaignsPage() {
     },
     {
       key: 'audience',
-      header: 'Audience',
+      header: 'Аудитория',
       render: (row) => (
         <span style={{ fontSize: '0.9375rem', fontWeight: 700, color: palette.text }}>
-          {row.audience > 0 ? row.audience.toLocaleString() : '—'}
+          {row.audience > 0 ? row.audience.toLocaleString('bg-BG') : '—'}
         </span>
       ),
     },
@@ -414,7 +421,7 @@ export default function AdminMarketingCampaignsPage() {
       key: 'scheduledAt',
       header: (
         <SortableHeader $active={sortBy === 'scheduledAt'} onClick={() => handleSort('scheduledAt')}>
-          Scheduled{sortIcon('scheduledAt')}
+          Планирана{sortIcon('scheduledAt')}
         </SortableHeader>
       ) as unknown as string,
       render: (row) => (
@@ -427,7 +434,7 @@ export default function AdminMarketingCampaignsPage() {
       key: 'sentAt',
       header: (
         <SortableHeader $active={sortBy === 'sentAt'} onClick={() => handleSort('sentAt')}>
-          Sent{sortIcon('sentAt')}
+          Изпратена{sortIcon('sentAt')}
         </SortableHeader>
       ) as unknown as string,
       render: (row) => (
@@ -438,7 +445,7 @@ export default function AdminMarketingCampaignsPage() {
     },
     {
       key: 'openRate',
-      header: 'Open / Click',
+      header: 'Отваряния / Кликове',
       render: (row) => (
         <span style={{ fontSize: '0.875rem', color: palette.text }}>
           {row.openRate != null ? (
@@ -458,44 +465,44 @@ export default function AdminMarketingCampaignsPage() {
     <PageShell>
       <PageHeader>
         <TitleBlock>
-          <Eyebrow>Marketing</Eyebrow>
+          <Eyebrow>Маркетинг</Eyebrow>
           <PageTitle>
-            Campaigns
+            Кампании
             {total > 0 && <TotalBadge>{total}</TotalBadge>}
           </PageTitle>
-          <PageSubtitle>Email, push, and SMS campaigns to subscribers and partners</PageSubtitle>
+          <PageSubtitle>Email, push и SMS кампании до абонати и партньори</PageSubtitle>
         </TitleBlock>
-        <PrimaryBtn onClick={openCreate}>+ New Campaign</PrimaryBtn>
+        <PrimaryBtn onClick={openCreate}>+ Нова кампания</PrimaryBtn>
       </PageHeader>
 
       <Card>
         <FilterRow>
           <SearchInput
             type="text"
-            placeholder="Search campaigns…"
+            placeholder="Търси кампании…"
             value={search}
             onChange={(e) => { setSearch(e.target.value); setPage(1); }}
           />
           <Select value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value as CampaignStatus | ''); setPage(1); }}>
-            <option value="">All statuses</option>
-            <option value="DRAFT">Draft</option>
-            <option value="SCHEDULED">Scheduled</option>
-            <option value="SENT">Sent</option>
-            <option value="PAUSED">Paused</option>
+            <option value="">Всички статуси</option>
+            <option value="DRAFT">Чернова</option>
+            <option value="SCHEDULED">Планирана</option>
+            <option value="SENT">Изпратена</option>
+            <option value="PAUSED">Спряна</option>
           </Select>
           <Select value={channelFilter} onChange={(e) => { setChannelFilter(e.target.value as MarketingChannel | ''); setPage(1); }}>
-            <option value="">All channels</option>
+            <option value="">Всички канали</option>
             <option value="EMAIL">Email</option>
             <option value="PUSH">Push</option>
             <option value="SMS">SMS</option>
           </Select>
-          <FilterLabel>Scheduled from</FilterLabel>
+          <FilterLabel>Планирана от</FilterLabel>
           <DateInput
             type="date"
             value={dateFrom}
             onChange={(e) => { setDateFrom(e.target.value); setPage(1); }}
           />
-          <FilterLabel>to</FilterLabel>
+          <FilterLabel>до</FilterLabel>
           <DateInput
             type="date"
             value={dateTo}
@@ -503,7 +510,7 @@ export default function AdminMarketingCampaignsPage() {
           />
           {(dateFrom || dateTo) && (
             <GhostBtn style={{ padding: '0.35rem 0.75rem', fontSize: '0.8rem' }} onClick={() => { setDateFrom(''); setDateTo(''); setPage(1); }}>
-              Clear dates
+              Изчисти датите
             </GhostBtn>
           )}
         </FilterRow>
@@ -513,15 +520,15 @@ export default function AdminMarketingCampaignsPage() {
           data={items}
           rowKey={(row) => row.id}
           loading={loading}
-          emptyMessage="No campaigns found"
+          emptyMessage="Няма намерени кампании"
           page={page}
           pageSize={PAGE_SIZE}
           totalItems={total}
           onPageChange={setPage}
           rowActions={[
-            { label: 'View', onClick: openView },
-            { label: 'Edit', onClick: openEdit },
-            { label: 'Delete', onClick: openDelete },
+            { label: 'Детайли', onClick: openView },
+            { label: 'Редактирай', onClick: openEdit },
+            { label: 'Изтрий', onClick: openDelete },
           ]}
         />
       </Card>
@@ -531,94 +538,94 @@ export default function AdminMarketingCampaignsPage() {
         <Overlay onClick={closeModal}>
           <ModalBox onClick={(e) => e.stopPropagation()}>
             <ModalHeader>
-              <ModalTitle>{modal === 'create' ? 'New Campaign' : 'Edit Campaign'}</ModalTitle>
+              <ModalTitle>{modal === 'create' ? 'Нова кампания' : 'Редактирай кампания'}</ModalTitle>
               <CloseBtn onClick={closeModal}>×</CloseBtn>
             </ModalHeader>
             <ModalBody>
               {noTemplateWarning && (
-                <WarnBanner>No template selected — a scheduled campaign needs a template to define its content.</WarnBanner>
+                <WarnBanner>Без шаблон — планираната кампания се нуждае от шаблон за съдържание.</WarnBanner>
               )}
               <FormGroup>
-                <Label>Name *</Label>
+                <Label>Наименование *</Label>
                 <Input
                   value={form.name}
                   onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-                  placeholder="e.g. Spring 2026 Newsletter"
+                  placeholder="напр. Пролет 2026 — бюлетин"
                   autoFocus
                 />
               </FormGroup>
               <FormGroup>
-                <Label>Channel *</Label>
+                <Label>Канал *</Label>
                 <ModalSelect
                   value={form.type}
                   onChange={(e) => setForm((f) => ({ ...f, type: e.target.value as MarketingChannel }))}
                 >
                   <option value="EMAIL">Email</option>
-                  <option value="PUSH">Push notification</option>
+                  <option value="PUSH">Push известие</option>
                   <option value="SMS">SMS</option>
                 </ModalSelect>
               </FormGroup>
               <FormGroup>
-                <Label>Status</Label>
+                <Label>Статус</Label>
                 <ModalSelect
                   value={form.status}
                   onChange={(e) => setForm((f) => ({ ...f, status: e.target.value as FormState['status'] }))}
                 >
-                  <option value="DRAFT">Draft</option>
-                  <option value="SCHEDULED">Scheduled</option>
-                  {modal === 'edit' && <option value="PAUSED">Paused</option>}
+                  <option value="DRAFT">Чернова</option>
+                  <option value="SCHEDULED">Планирана</option>
+                  {modal === 'edit' && <option value="PAUSED">Спряна</option>}
                 </ModalSelect>
               </FormGroup>
               {form.status === 'SCHEDULED' && (
                 <FormGroup>
-                  <Label>Scheduled send date</Label>
+                  <Label>Дата и час за изпращане</Label>
                   <Input
                     type="datetime-local"
                     value={form.scheduledAt}
                     onChange={(e) => setForm((f) => ({ ...f, scheduledAt: e.target.value }))}
                   />
-                  <HintText>When this campaign should be dispatched.</HintText>
+                  <HintText>Кога ще бъде изпратена кампанията.</HintText>
                 </FormGroup>
               )}
               <FormGroup>
-                <Label>Audience list</Label>
+                <Label>Списък с аудитория</Label>
                 <ModalSelect
                   value={form.listId}
                   onChange={(e) => setForm((f) => ({ ...f, listId: e.target.value }))}
                 >
-                  <option value="">— None —</option>
+                  <option value="">— Без —</option>
                   {lists.map((l) => (
                     <option key={l.id} value={l.id}>{l.name} ({l.type})</option>
                   ))}
                 </ModalSelect>
                 {computedAudience !== null && (
-                  <HintText>Audience size: {computedAudience.toLocaleString()} contacts (from selected list)</HintText>
+                  <HintText>Размер на аудиторията: {computedAudience.toLocaleString('bg-BG')} контакта (от избрания списък)</HintText>
                 )}
               </FormGroup>
               <FormGroup>
-                <Label>Template</Label>
+                <Label>Шаблон</Label>
                 <ModalSelect
                   value={form.templateId}
                   onChange={(e) => setForm((f) => ({ ...f, templateId: e.target.value }))}
                 >
-                  <option value="">— None —</option>
+                  <option value="">— Без —</option>
                   {templates.map((t) => (
                     <option key={t.id} value={t.id}>{t.name} ({t.type})</option>
                   ))}
                 </ModalSelect>
-                <HintText>The template defines subject and message body for this campaign.</HintText>
+                <HintText>Шаблонът определя темата и съдържанието на съобщението.</HintText>
               </FormGroup>
               {form.type === 'SMS' && (
-                <WarnBanner>SMS delivery is not yet enabled. This campaign can be saved but will not dispatch messages when sent.</WarnBanner>
+                <WarnBanner>SMS доставката не е активирана. Кампанията може да бъде записана, но няма да изпрати съобщения.</WarnBanner>
               )}
               {modal === 'edit' && selected?.status === 'SENT' && (
-                <InfoBox>This campaign has already been sent. Editing will save metadata only — the sent messages are not affected.</InfoBox>
+                <InfoBox>Тази кампания вече е изпратена. Редакцията записва само метаданни — изпратените съобщения не се засягат.</InfoBox>
               )}
             </ModalBody>
             <ModalFooter>
-              <GhostBtn onClick={closeModal} disabled={saving}>Cancel</GhostBtn>
+              <GhostBtn onClick={closeModal} disabled={saving}>Отказ</GhostBtn>
               <PrimaryBtn onClick={handleSave} disabled={saving || !form.name.trim()}>
-                {saving ? 'Saving…' : modal === 'create' ? 'Create campaign' : 'Save changes'}
+                {saving ? 'Запазване…' : modal === 'create' ? 'Създай кампания' : 'Запази промените'}
               </PrimaryBtn>
             </ModalFooter>
           </ModalBox>
@@ -630,17 +637,17 @@ export default function AdminMarketingCampaignsPage() {
         <Overlay onClick={closeModal}>
           <ModalBox style={{ maxWidth: '26rem' }} onClick={(e) => e.stopPropagation()}>
             <ModalHeader>
-              <ModalTitle>Delete campaign?</ModalTitle>
+              <ModalTitle>Изтриване на кампания?</ModalTitle>
               <CloseBtn onClick={closeModal}>×</CloseBtn>
             </ModalHeader>
             <ModalBody>
-              <ConfirmText>You are about to delete <strong>{selected.name}</strong>.</ConfirmText>
-              <ConfirmSub>This action cannot be undone.</ConfirmSub>
+              <ConfirmText>Предстои изтриване на <strong>{selected.name}</strong>.</ConfirmText>
+              <ConfirmSub>Действието е необратимо.</ConfirmSub>
             </ModalBody>
             <ModalFooter>
-              <GhostBtn onClick={closeModal} disabled={saving}>Cancel</GhostBtn>
+              <GhostBtn onClick={closeModal} disabled={saving}>Отказ</GhostBtn>
               <DangerBtn onClick={handleDelete} disabled={saving}>
-                {saving ? 'Deleting…' : 'Delete campaign'}
+                {saving ? 'Изтриване…' : 'Изтрий кампанията'}
               </DangerBtn>
             </ModalFooter>
           </ModalBox>
@@ -656,56 +663,56 @@ export default function AdminMarketingCampaignsPage() {
                 <ModalTitle>{selected.name}</ModalTitle>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.35rem' }}>
                   <span style={{ color: TYPE_COLOR[selected.type], fontWeight: 700, fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{selected.type}</span>
-                  <StatusBadge $status={selected.status}>{selected.status}</StatusBadge>
+                  <StatusBadge $status={selected.status}>{CAMPAIGN_STATUS_LABELS[selected.status]}</StatusBadge>
                 </div>
               </div>
               <CloseBtn onClick={closeModal}>×</CloseBtn>
             </ModalHeader>
             <ModalBody>
               {detailLoading ? (
-                <div style={{ textAlign: 'center', padding: '2rem', color: palette.textSubtle }}>Loading…</div>
+                <div style={{ textAlign: 'center', padding: '2rem', color: palette.textSubtle }}>Зареждане…</div>
               ) : detailData ? (
                 <>
                   <DetailGrid style={{ marginBottom: '1.5rem' }}>
                     <DetailItem>
-                      <DetailLabel>Audience</DetailLabel>
-                      <DetailValue>{detailData.audience > 0 ? detailData.audience.toLocaleString() + ' contacts' : '—'}</DetailValue>
+                      <DetailLabel>Аудитория</DetailLabel>
+                      <DetailValue>{detailData.audience > 0 ? detailData.audience.toLocaleString('bg-BG') + ' контакта' : '—'}</DetailValue>
                     </DetailItem>
                     <DetailItem>
-                      <DetailLabel>Audience List</DetailLabel>
+                      <DetailLabel>Списък</DetailLabel>
                       <DetailValue>{detailData.list ? detailData.list.name : '—'}</DetailValue>
                     </DetailItem>
                     <DetailItem>
-                      <DetailLabel>Template</DetailLabel>
+                      <DetailLabel>Шаблон</DetailLabel>
                       <DetailValue>{detailData.template ? detailData.template.name : '—'}</DetailValue>
                     </DetailItem>
                     <DetailItem>
-                      <DetailLabel>Created</DetailLabel>
+                      <DetailLabel>Създадена</DetailLabel>
                       <DetailValue>{fmtDate(detailData.createdAt)}</DetailValue>
                     </DetailItem>
                     {detailData.scheduledAt && (
                       <DetailItem>
-                        <DetailLabel>Scheduled for</DetailLabel>
+                        <DetailLabel>Планирана за</DetailLabel>
                         <DetailValue>{fmtDatetime(detailData.scheduledAt)}</DetailValue>
                       </DetailItem>
                     )}
                     {detailData.sentAt && (
                       <DetailItem>
-                        <DetailLabel>Sent at</DetailLabel>
+                        <DetailLabel>Изпратена в</DetailLabel>
                         <DetailValue>{fmtDatetime(detailData.sentAt)}</DetailValue>
                       </DetailItem>
                     )}
                   </DetailGrid>
                   {(detailData.openRate != null || detailData.clickRate != null) && (
                     <>
-                      <div style={{ borderTop: `1px solid ${palette.border}`, paddingTop: '1rem', marginBottom: '1rem', fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: palette.textSubtle }}>Analytics</div>
+                      <div style={{ borderTop: `1px solid ${palette.border}`, paddingTop: '1rem', marginBottom: '1rem', fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: palette.textSubtle }}>Анализ</div>
                       <DetailGrid>
                         <DetailItem>
-                          <DetailLabel>Open rate</DetailLabel>
+                          <DetailLabel>Отваряния</DetailLabel>
                           <DetailValue style={{ fontSize: '1.25rem', fontWeight: 700 }}>{detailData.openRate != null ? `${detailData.openRate}%` : '—'}</DetailValue>
                         </DetailItem>
                         <DetailItem>
-                          <DetailLabel>Click rate</DetailLabel>
+                          <DetailLabel>Кликове</DetailLabel>
                           <DetailValue style={{ fontSize: '1.25rem', fontWeight: 700 }}>{detailData.clickRate != null ? `${detailData.clickRate}%` : '—'}</DetailValue>
                         </DetailItem>
                       </DetailGrid>
@@ -715,8 +722,8 @@ export default function AdminMarketingCampaignsPage() {
               ) : null}
             </ModalBody>
             <ModalFooter>
-              <GhostBtn onClick={closeModal}>Close</GhostBtn>
-              <PrimaryBtn onClick={() => { closeModal(); if (selected) setTimeout(() => openEdit(selected), 50); }}>Edit campaign</PrimaryBtn>
+              <GhostBtn onClick={closeModal}>Затвори</GhostBtn>
+              <PrimaryBtn onClick={() => { closeModal(); if (selected) setTimeout(() => openEdit(selected), 50); }}>Редактирай кампанията</PrimaryBtn>
             </ModalFooter>
           </ModalBox>
         </Overlay>
@@ -727,7 +734,7 @@ export default function AdminMarketingCampaignsPage() {
         <Overlay onClick={() => { setConfirmMode(null); setConfirmTarget(null); }}>
           <ModalBox style={{ maxWidth: '28rem' }} onClick={(e) => e.stopPropagation()}>
             <ModalHeader>
-              <ModalTitle>Send campaign now?</ModalTitle>
+              <ModalTitle>Изпрати кампания сега?</ModalTitle>
               <CloseBtn onClick={() => { setConfirmMode(null); setConfirmTarget(null); }}>×</CloseBtn>
             </ModalHeader>
             <ModalBody>
@@ -736,18 +743,18 @@ export default function AdminMarketingCampaignsPage() {
               ))}
               {confirmError && <ErrorBanner>{confirmError}</ErrorBanner>}
               <ConfirmText>
-                You are about to send <strong>{confirmTarget.name}</strong>
-                {confirmTarget.audience > 0 ? ` to ${confirmTarget.audience.toLocaleString()} recipients` : ''}.
+                Предстои изпращане на <strong>{confirmTarget.name}</strong>
+                {confirmTarget.audience > 0 ? ` до ${confirmTarget.audience.toLocaleString('bg-BG')} получателя` : ''}.
               </ConfirmText>
               <ConfirmSub>
-                This will dispatch messages to all list members and record the send timestamp.
-                {sendNowWarnings.length > 0 ? ' Fix the warnings above before sending for best results.' : ''}
+                Ще се изпратят съобщения до всички членове на списъка и ще се запише времеви печат.
+                {sendNowWarnings.length > 0 ? ' Коригирайте предупрежденията по-горе преди изпращане за по-добри резултати.' : ''}
               </ConfirmSub>
             </ModalBody>
             <ModalFooter>
-              <GhostBtn onClick={() => { setConfirmMode(null); setConfirmTarget(null); }} disabled={saving}>Cancel</GhostBtn>
+              <GhostBtn onClick={() => { setConfirmMode(null); setConfirmTarget(null); }} disabled={saving}>Отказ</GhostBtn>
               <PrimaryBtn onClick={handleConfirmAction} disabled={saving}>
-                {saving ? 'Sending…' : 'Send now'}
+                {saving ? 'Изпращане…' : 'Изпрати сега'}
               </PrimaryBtn>
             </ModalFooter>
           </ModalBox>
@@ -759,17 +766,17 @@ export default function AdminMarketingCampaignsPage() {
         <Overlay onClick={() => { setConfirmMode(null); setConfirmTarget(null); }}>
           <ModalBox style={{ maxWidth: '28rem' }} onClick={(e) => e.stopPropagation()}>
             <ModalHeader>
-              <ModalTitle>Reset to Draft?</ModalTitle>
+              <ModalTitle>Върни в чернова?</ModalTitle>
               <CloseBtn onClick={() => { setConfirmMode(null); setConfirmTarget(null); }}>×</CloseBtn>
             </ModalHeader>
             <ModalBody>
-              <ConfirmText><strong>{confirmTarget.name}</strong> has already been sent.</ConfirmText>
-              <ConfirmSub>Resetting to Draft will clear the sent timestamp and allow re-editing. The messages already delivered to recipients are not affected.</ConfirmSub>
+              <ConfirmText><strong>{confirmTarget.name}</strong> вече е изпратена.</ConfirmText>
+              <ConfirmSub>Връщането в чернова ще изчисти времето на изпращане и ще позволи повторно редактиране. Вече доставените съобщения не се засягат.</ConfirmSub>
             </ModalBody>
             <ModalFooter>
-              <GhostBtn onClick={() => { setConfirmMode(null); setConfirmTarget(null); }} disabled={saving}>Cancel</GhostBtn>
+              <GhostBtn onClick={() => { setConfirmMode(null); setConfirmTarget(null); }} disabled={saving}>Отказ</GhostBtn>
               <DangerBtn onClick={handleConfirmAction} disabled={saving}>
-                {saving ? 'Resetting…' : 'Reset to Draft'}
+                {saving ? 'Нулиране…' : 'Върни в чернова'}
               </DangerBtn>
             </ModalFooter>
           </ModalBox>

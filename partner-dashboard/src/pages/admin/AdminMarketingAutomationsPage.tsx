@@ -32,6 +32,12 @@ const SearchInput = styled.input`padding: 0.5rem 0.75rem; border: 1px solid ${pa
 const PrimaryLine = styled.div`font-weight: 600; color: ${palette.text};`;
 const MetaLine = styled.div`font-size: 0.75rem; color: ${palette.textSubtle}; margin-top: 0.125rem;`;
 
+const STATUS_LABELS: Record<AutomationStatus, string> = {
+  ACTIVE: 'Активна',
+  PAUSED: 'Спряна',
+  DRAFT:  'Чернова',
+};
+
 const StatusBadge = styled.span<{ $status: AutomationStatus }>`
   display: inline-flex; align-items: center; font-size: 0.7rem; font-weight: 700;
   text-transform: uppercase; letter-spacing: 0.05em; border-radius: 0.375rem; padding: 0.125rem 0.5rem;
@@ -130,7 +136,7 @@ export default function AdminMarketingAutomationsPage() {
         trigger: triggerFilter || undefined,
       })
       .then((r) => { setItems(r.items); setTotal(r.total); setApiError(null); })
-      .catch((err: any) => setApiError(err?.response?.data?.error ?? err?.message ?? 'Failed to load automations'))
+      .catch((err: any) => setApiError(err?.response?.data?.error ?? err?.message ?? 'Грешка при зареждане'))
       .finally(() => setLoading(false));
   }, [page, statusFilter, search, triggerFilter]);
 
@@ -156,7 +162,7 @@ export default function AdminMarketingAutomationsPage() {
   }, [modal]);
 
   const fmt = (iso: string) =>
-    new Date(iso).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+    new Date(iso).toLocaleDateString('bg-BG', { day: '2-digit', month: 'short', year: 'numeric' });
 
   const openCreate = () => {
     setSelected(null);
@@ -204,7 +210,7 @@ export default function AdminMarketingAutomationsPage() {
       closeModal();
       load();
     } catch (err: any) {
-      setApiError(err?.response?.data?.error ?? err?.message ?? 'Save failed');
+      setApiError(err?.response?.data?.error ?? err?.message ?? 'Грешка при запис');
     } finally {
       setSaving(false);
     }
@@ -219,7 +225,7 @@ export default function AdminMarketingAutomationsPage() {
       closeModal();
       load();
     } catch (err: any) {
-      setApiError(err?.response?.data?.error ?? err?.message ?? 'Delete failed');
+      setApiError(err?.response?.data?.error ?? err?.message ?? 'Грешка при изтриване');
     } finally {
       setSaving(false);
     }
@@ -234,7 +240,7 @@ export default function AdminMarketingAutomationsPage() {
       await adminMarketingService.patchAutomationStatus(row.id, next);
       load();
     } catch (err: any) {
-      setApiError(err?.response?.data?.error ?? err?.message ?? 'Status update failed');
+      setApiError(err?.response?.data?.error ?? err?.message ?? 'Грешка при смяна на статус');
     } finally {
       setTogglingId(null);
     }
@@ -251,49 +257,49 @@ export default function AdminMarketingAutomationsPage() {
   const columns: ColumnDef<MarketingAutomation>[] = [
     {
       key: 'name',
-      header: 'Automation',
+      header: 'Автоматизация',
       render: (row) => (
         <span>
           <PrimaryLine>{row.name}</PrimaryLine>
-          <MetaLine>Trigger: <code style={{ fontSize: '0.72rem', background: palette.bg, padding: '0.05rem 0.3rem', borderRadius: '0.2rem' }}>{row.trigger}</code></MetaLine>
+          <MetaLine>Събитие: <code style={{ fontSize: '0.72rem', background: palette.bg, padding: '0.05rem 0.3rem', borderRadius: '0.2rem' }}>{row.trigger}</code></MetaLine>
         </span>
       ),
     },
     {
       key: 'template',
-      header: 'Template',
+      header: 'Шаблон',
       render: (row) => (
         <span style={{ fontSize: '0.875rem', color: row.template ? palette.textMuted : palette.danger }}>
-          {row.template?.name ?? <em>None — cannot activate</em>}
+          {row.template?.name ?? <em>Без шаблон — не може да се активира</em>}
         </span>
       ),
     },
     {
       key: 'status',
-      header: 'Status',
-      render: (row) => <StatusBadge $status={row.status}>{row.status}</StatusBadge>,
+      header: 'Статус',
+      render: (row) => <StatusBadge $status={row.status}>{STATUS_LABELS[row.status]}</StatusBadge>,
     },
     {
       key: 'totalRuns',
-      header: 'Total runs',
+      header: 'Общо изпращания',
       render: (row) => (
         <span style={{ fontSize: '0.9375rem', fontWeight: 700, color: palette.text }}>
-          {row.totalRuns > 0 ? row.totalRuns.toLocaleString() : '—'}
+          {row.totalRuns > 0 ? row.totalRuns.toLocaleString('bg-BG') : '—'}
         </span>
       ),
     },
     {
       key: 'lastRunAt',
-      header: 'Last run',
+      header: 'Последно изпращане',
       render: (row) => (
         <span style={{ fontSize: '0.8125rem', color: palette.textMuted }}>
-          {row.lastRunAt ? fmt(row.lastRunAt) : 'Never'}
+          {row.lastRunAt ? fmt(row.lastRunAt) : 'Никога'}
         </span>
       ),
     },
     {
       key: 'createdAt',
-      header: 'Created',
+      header: 'Създадена',
       render: (row) => (
         <span style={{ fontSize: '0.8125rem', color: palette.textMuted }}>{fmt(row.createdAt)}</span>
       ),
@@ -304,14 +310,14 @@ export default function AdminMarketingAutomationsPage() {
     <PageShell>
       <PageHeader>
         <TitleBlock>
-          <Eyebrow>Marketing</Eyebrow>
+          <Eyebrow>Маркетинг</Eyebrow>
           <PageTitle>
-            Automations
+            Автоматизации
             {total > 0 && <TotalBadge>{total}</TotalBadge>}
           </PageTitle>
-          <PageSubtitle>Event-triggered message flows sent automatically to users</PageSubtitle>
+          <PageSubtitle>Автоматични потоци от съобщения, задействани от системни събития</PageSubtitle>
         </TitleBlock>
-        <PrimaryBtn onClick={openCreate}>+ New Automation</PrimaryBtn>
+        <PrimaryBtn onClick={openCreate}>+ Нова автоматизация</PrimaryBtn>
       </PageHeader>
 
       {apiError && !modal && (
@@ -324,14 +330,14 @@ export default function AdminMarketingAutomationsPage() {
         <FilterRow>
           <SearchInput
             type="search"
-            placeholder="Search by name…"
+            placeholder="Търси по наименование…"
             value={search}
             onChange={(e) => { setSearch(e.target.value); setPage(1); }}
           />
           <SearchInput
             list="trigger-filter-suggestions"
             type="search"
-            placeholder="Filter by trigger…"
+            placeholder="Филтрирай по събитие…"
             value={triggerFilter}
             onChange={(e) => { setTriggerFilter(e.target.value); setPage(1); }}
           />
@@ -339,10 +345,10 @@ export default function AdminMarketingAutomationsPage() {
             {TRIGGER_SUGGESTIONS.map((t) => <option key={t} value={t} />)}
           </datalist>
           <Select value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value as AutomationStatus | ''); setPage(1); }}>
-            <option value="">All statuses</option>
-            <option value="ACTIVE">Active</option>
-            <option value="PAUSED">Paused</option>
-            <option value="DRAFT">Draft</option>
+            <option value="">Всички статуси</option>
+            <option value="ACTIVE">Активна</option>
+            <option value="PAUSED">Спряна</option>
+            <option value="DRAFT">Чернова</option>
           </Select>
         </FilterRow>
 
@@ -351,16 +357,16 @@ export default function AdminMarketingAutomationsPage() {
           data={items}
           rowKey={(row) => row.id}
           loading={loading}
-          emptyMessage="No automations found"
+          emptyMessage="Няма намерени автоматизации"
           page={page}
           pageSize={PAGE_SIZE}
           totalItems={total}
           onPageChange={setPage}
           rowActions={[
-            { label: 'Edit', onClick: openEdit },
-            { label: 'Pause', hidden: (row) => row.status !== 'ACTIVE', disabled: (row) => togglingId === row.id, onClick: toggleStatus },
-            { label: 'Activate', hidden: (row) => row.status === 'ACTIVE', disabled: (row) => togglingId === row.id, onClick: toggleStatus },
-            { label: 'Delete', onClick: openDelete },
+            { label: 'Редактирай', onClick: openEdit },
+            { label: 'Спри', hidden: (row) => row.status !== 'ACTIVE', disabled: (row) => togglingId === row.id, onClick: toggleStatus },
+            { label: 'Активирай', hidden: (row) => row.status === 'ACTIVE', disabled: (row) => togglingId === row.id, onClick: toggleStatus },
+            { label: 'Изтрий', onClick: openDelete },
           ]}
         />
       </Card>
@@ -369,7 +375,7 @@ export default function AdminMarketingAutomationsPage() {
         <Overlay onClick={closeModal}>
           <ModalBox onClick={(e) => e.stopPropagation()}>
             <ModalHeader>
-              <ModalTitle>{modal === 'create' ? 'New Automation' : 'Edit Automation'}</ModalTitle>
+              <ModalTitle>{modal === 'create' ? 'Нова автоматизация' : 'Редактирай автоматизация'}</ModalTitle>
               <CloseBtn onClick={closeModal}>×</CloseBtn>
             </ModalHeader>
             <ModalBody>
@@ -379,68 +385,68 @@ export default function AdminMarketingAutomationsPage() {
                 </div>
               )}
               <FormGroup>
-                <Label>Name *</Label>
+                <Label>Наименование *</Label>
                 <Input
                   value={form.name}
                   onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-                  placeholder="e.g. Welcome Email on Signup"
+                  placeholder="напр. Добре дошли при регистрация"
                   autoFocus
                 />
               </FormGroup>
               <FormGroup>
-                <Label>Trigger event *</Label>
+                <Label>Събитие *</Label>
                 <Input
                   list="trigger-suggestions"
                   value={form.trigger}
                   onChange={(e) => setForm((f) => ({ ...f, trigger: e.target.value }))}
-                  placeholder="e.g. user.signup"
+                  placeholder="напр. user.signup"
                 />
                 <datalist id="trigger-suggestions">
                   {TRIGGER_SUGGESTIONS.map((t) => <option key={t} value={t} />)}
                 </datalist>
-                <HintText>Use dot-notation event identifiers. Pick from suggestions or type a custom event.</HintText>
+                <HintText>Използвайте идентификатори с точкова нотация. Изберете от предложенията или въведете персонализирано събитие.</HintText>
                 {formTriggerConflict && (
                   <WarnBanner>
-                    Trigger <code style={{ fontSize: '0.75rem' }}>{form.trigger}</code> is already used by another automation — each trigger can only have one automation.
+                    Събитие <code style={{ fontSize: '0.75rem' }}>{form.trigger}</code> вече се използва от друга автоматизация — само едно правило на събитие е позволено.
                   </WarnBanner>
                 )}
               </FormGroup>
               <FormGroup>
-                <Label>Template</Label>
+                <Label>Шаблон</Label>
                 <ModalSelect
                   value={form.templateId}
                   onChange={(e) => setForm((f) => ({ ...f, templateId: e.target.value }))}
                 >
-                  <option value="">— None —</option>
+                  <option value="">— Без шаблон —</option>
                   {templates.map((t) => (
                     <option key={t.id} value={t.id}>{t.name} ({t.type})</option>
                   ))}
                 </ModalSelect>
               </FormGroup>
               <FormGroup>
-                <Label>Status *</Label>
+                <Label>Статус *</Label>
                 <ModalSelect
                   value={form.status}
                   onChange={(e) => setForm((f) => ({ ...f, status: e.target.value as AutomationStatus }))}
                 >
-                  <option value="DRAFT">Draft — not running yet</option>
-                  <option value="ACTIVE">Active — running</option>
-                  <option value="PAUSED">Paused — temporarily disabled</option>
+                  <option value="DRAFT">Чернова — не е активна</option>
+                  <option value="ACTIVE">Активна — изпраща</option>
+                  <option value="PAUSED">Спряна — временно деактивирана</option>
                 </ModalSelect>
                 {formWantsActiveWithoutTemplate && (
                   <WarnBanner>
-                    No template selected — you cannot activate an automation without a template. Select one above.
+                    Без шаблон — не може да активирате автоматизация без шаблон. Изберете шаблон по-горе.
                   </WarnBanner>
                 )}
               </FormGroup>
             </ModalBody>
             <ModalFooter>
-              <GhostBtn onClick={closeModal} disabled={saving}>Cancel</GhostBtn>
+              <GhostBtn onClick={closeModal} disabled={saving}>Отказ</GhostBtn>
               <PrimaryBtn
                 onClick={handleSave}
                 disabled={saving || !form.name.trim() || !form.trigger.trim() || formWantsActiveWithoutTemplate}
               >
-                {saving ? 'Saving…' : modal === 'create' ? 'Create automation' : 'Save changes'}
+                {saving ? 'Запазване…' : modal === 'create' ? 'Създай автоматизация' : 'Запази промените'}
               </PrimaryBtn>
             </ModalFooter>
           </ModalBox>
@@ -451,22 +457,22 @@ export default function AdminMarketingAutomationsPage() {
         <Overlay onClick={closeModal}>
           <ModalBox style={{ maxWidth: '26rem' }} onClick={(e) => e.stopPropagation()}>
             <ModalHeader>
-              <ModalTitle>Delete automation?</ModalTitle>
+              <ModalTitle>Изтриване на автоматизация?</ModalTitle>
               <CloseBtn onClick={closeModal}>×</CloseBtn>
             </ModalHeader>
             <ModalBody>
-              <ConfirmText>You are about to delete <strong>{selected.name}</strong>.</ConfirmText>
-              <ConfirmSub>This automation will stop firing immediately. This action cannot be undone.</ConfirmSub>
+              <ConfirmText>Предстои изтриване на <strong>{selected.name}</strong>.</ConfirmText>
+              <ConfirmSub>Автоматизацията ще спре незабавно. Действието е необратимо.</ConfirmSub>
               {selected.status === 'ACTIVE' && (
                 <WarnBanner style={{ marginTop: '0.75rem', background: palette.dangerSoft, color: palette.danger, borderColor: '#f1c4b8' }}>
-                  <strong>This automation is currently ACTIVE</strong>
-                  {selected.totalRuns > 0 && ` and has run ${selected.totalRuns.toLocaleString()} time${selected.totalRuns === 1 ? '' : 's'}`}.
-                  {' '}Deleting it will permanently stop all future sends.
+                  <strong>Автоматизацията е АКТИВНА</strong>
+                  {selected.totalRuns > 0 && ` и е изпращала ${selected.totalRuns.toLocaleString('bg-BG')} пъти`}.
+                  {' '}Изтриването й ще спре всички бъдещи изпращания.
                 </WarnBanner>
               )}
               {!selected.templateId && (
                 <WarnBanner style={{ marginTop: '0.75rem' }}>
-                  This automation has no template and was never able to send messages.
+                  Автоматизацията няма шаблон и не е изпращала съобщения.
                 </WarnBanner>
               )}
               {apiError && (
@@ -476,9 +482,9 @@ export default function AdminMarketingAutomationsPage() {
               )}
             </ModalBody>
             <ModalFooter>
-              <GhostBtn onClick={closeModal} disabled={saving}>Cancel</GhostBtn>
+              <GhostBtn onClick={closeModal} disabled={saving}>Отказ</GhostBtn>
               <DangerBtn onClick={handleDelete} disabled={saving}>
-                {saving ? 'Deleting…' : 'Delete automation'}
+                {saving ? 'Изтриване…' : 'Изтрий автоматизацията'}
               </DangerBtn>
             </ModalFooter>
           </ModalBox>

@@ -72,7 +72,7 @@ export const PERMISSION_CATALOG: Array<{ key: string; label: string; category: s
 // Default allow-sets per role (deny rows are explicit RolePermission rows with allow=false).
 // SUPER_ADMIN is bypassed in requirePermission; no seeding needed for it.
 const ROLE_DEFAULT_ALLOWS: Record<string, string[]> = {
-  ADMIN: PERMISSION_CATALOG.map((p) => p.key).filter((k) => k !== 'help.read.all'),
+  ADMIN: PERMISSION_CATALOG.map((p) => p.key),
   SUPPORT: ['dashboard.read', 'subscribers.read', 'partners.read', 'control.disputes.read', 'control.disputes.write', 'help.read', 'help.write'],
   FINANCE: ['dashboard.read', 'subscribers.read', 'transactions.read', 'transactions.write', 'cashback.read', 'finance.payouts.read', 'finance.payouts.write', 'finance.invoices.read', 'finance.invoices.write', 'finance.periods.read', 'finance.periods.write', 'finance.reports.read'],
   RISK_REVIEW: ['dashboard.read', 'subscribers.read', 'transactions.read', 'control.risk.read', 'control.risk.write', 'control.disputes.read', 'control.disputes.write', 'control.rules.read'],

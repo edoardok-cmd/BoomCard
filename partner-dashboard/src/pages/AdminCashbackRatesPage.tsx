@@ -177,7 +177,7 @@ const ConfirmPanel = styled.div`
   background: #f0fdf4;
 `;
 
-const ConfirmTitle = styled.p`
+const ConfirmTitle = styled.h3`
   margin: 0 0 0.75rem 0;
   font-weight: 700;
   font-size: 0.9rem;
@@ -390,6 +390,7 @@ const t = (lang: 'en' | 'bg') => ({
   showMore:         lang === 'bg' ? 'Покажи повече' : 'Show more',
   showingCount:     (shown: number, total: number) =>
     lang === 'bg' ? `${shown} от ${total} снимки` : `${shown} of ${total} snapshots`,
+  notesLabel:       lang === 'bg' ? 'Бележки' : 'Notes',
 });
 
 // ── Helpers ───────────────────────────────────────────────────────────
@@ -410,7 +411,13 @@ const computeMargin = (step: number, cashback: string | number): string => {
   return m >= 0 ? `${m}%` : `-${Math.abs(m)}%`;
 };
 
-const isFuture = (iso: string) => new Date(iso) > new Date();
+const isFuture = (iso: string) => {
+  const t = new Date(iso);
+  t.setSeconds(0, 0);
+  const now = new Date();
+  now.setSeconds(0, 0);
+  return t > now;
+};
 
 // ── Component ─────────────────────────────────────────────────────────
 
@@ -782,7 +789,7 @@ const AdminCashbackRatesPage: React.FC = () => {
             </Matrix>
             {pendingPayload.notes && (
               <ConfirmMeta style={{ marginTop: '0.5rem', fontStyle: 'italic' }}>
-                {pendingPayload.notes}
+                <strong style={{ fontStyle: 'normal' }}>{tr.notesLabel}:</strong>{' '}{pendingPayload.notes}
               </ConfirmMeta>
             )}
             <ConfirmActions>

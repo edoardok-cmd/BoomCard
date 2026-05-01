@@ -89,12 +89,12 @@ const DetailValue = styled.div`font-size: 0.9375rem; color: ${palette.text}; fon
 type ModalMode = 'create' | 'edit' | 'delete' | 'view' | null;
 
 const TEMPLATE_CATEGORIES = [
-  { value: 'registration',    label: 'Registration' },
-  { value: 'threshold',       label: 'Threshold reached' },
-  { value: 'cashback',        label: 'Cashback' },
-  { value: 'partner_request', label: 'Partner request' },
-  { value: 'onboarding',      label: 'Onboarding' },
-  { value: 'support',         label: 'Support' },
+  { value: 'registration',    label: 'Регистрация' },
+  { value: 'threshold',       label: 'Достигнат праг' },
+  { value: 'cashback',        label: 'Кешбек' },
+  { value: 'partner_request', label: 'Заявка от партньор' },
+  { value: 'onboarding',      label: 'Въвеждане' },
+  { value: 'support',         label: 'Поддръжка' },
 ];
 
 interface FormState {
@@ -143,7 +143,7 @@ export default function AdminMarketingTemplatesPage() {
   useEffect(() => { load(); }, [load]);
 
   const fmt = (iso: string) =>
-    new Date(iso).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+    new Date(iso).toLocaleDateString('bg-BG', { day: '2-digit', month: 'short', year: 'numeric' });
 
   const openCreate = () => {
     setSelected(null);
@@ -222,7 +222,7 @@ export default function AdminMarketingTemplatesPage() {
       closeModal();
       load();
     } catch (err: unknown) {
-      setDeleteError((err as any)?.response?.data?.error ?? (err as { message?: string })?.message ?? 'Delete failed. Please try again.');
+      setDeleteError((err as any)?.response?.data?.error ?? (err as { message?: string })?.message ?? 'Грешка при изтриване. Опитайте отново.');
     } finally {
       setSaving(false);
     }
@@ -231,7 +231,7 @@ export default function AdminMarketingTemplatesPage() {
   const columns: ColumnDef<MarketingTemplate>[] = [
     {
       key: 'name',
-      header: 'Template',
+      header: 'Шаблон',
       render: (row) => (
         <span>
           <PrimaryLine>{row.name}</PrimaryLine>
@@ -241,17 +241,17 @@ export default function AdminMarketingTemplatesPage() {
     },
     {
       key: 'type',
-      header: 'Type',
+      header: 'Тип',
       render: (row) => (
         <span>
           <TypePill $type={row.type}>{row.type}</TypePill>
-          {row.type === 'SMS' && <SmsBadge title="SMS delivery is not yet enabled — campaigns using this template will not send messages">no delivery</SmsBadge>}
+          {row.type === 'SMS' && <SmsBadge title="SMS доставката не е активирана — кампании с този шаблон няма да изпращат съобщения">без доставка</SmsBadge>}
         </span>
       ),
     },
     {
       key: 'category',
-      header: 'Category',
+      header: 'Категория',
       render: (row) => (
         <span style={{ fontSize: '0.8125rem', color: palette.textMuted }}>
           {row.category ? TEMPLATE_CATEGORIES.find((c) => c.value === row.category)?.label ?? row.category : '—'}
@@ -260,7 +260,7 @@ export default function AdminMarketingTemplatesPage() {
     },
     {
       key: 'usageCount',
-      header: 'Times used',
+      header: 'Употреби',
       render: (row) => (
         <span style={{ fontSize: '0.9375rem', fontWeight: 700, color: palette.text }}>
           {row.usageCount > 0 ? row.usageCount.toLocaleString() : '—'}
@@ -269,16 +269,16 @@ export default function AdminMarketingTemplatesPage() {
     },
     {
       key: 'lastUsed',
-      header: 'Last used',
+      header: 'Последна употреба',
       render: (row) => (
         <span style={{ fontSize: '0.8125rem', color: palette.textMuted }}>
-          {row.lastUsed ? fmt(row.lastUsed) : 'Never'}
+          {row.lastUsed ? fmt(row.lastUsed) : 'Никога'}
         </span>
       ),
     },
     {
       key: 'createdAt',
-      header: 'Created',
+      header: 'Създаден',
       render: (row) => (
         <span style={{ fontSize: '0.8125rem', color: palette.textMuted }}>{fmt(row.createdAt)}</span>
       ),
@@ -289,32 +289,32 @@ export default function AdminMarketingTemplatesPage() {
     <PageShell>
       <PageHeader>
         <TitleBlock>
-          <Eyebrow>Marketing</Eyebrow>
+          <Eyebrow>Маркетинг</Eyebrow>
           <PageTitle>
-            Templates
+            Шаблони
             {total > 0 && <TotalBadge>{total}</TotalBadge>}
           </PageTitle>
-          <PageSubtitle>Reusable message templates for campaigns and automations</PageSubtitle>
+          <PageSubtitle>Шаблони за кампании и автоматизации</PageSubtitle>
         </TitleBlock>
-        <PrimaryBtn onClick={openCreate}>+ New Template</PrimaryBtn>
+        <PrimaryBtn onClick={openCreate}>+ Нов шаблон</PrimaryBtn>
       </PageHeader>
 
       <Card>
         <FilterRow>
           <SearchInput
             type="text"
-            placeholder="Search templates…"
+            placeholder="Търси шаблони…"
             value={search}
             onChange={(e) => { setSearch(e.target.value); setPage(1); }}
           />
           <Select value={typeFilter} onChange={(e) => { setTypeFilter(e.target.value as MarketingChannel | ''); setPage(1); }}>
-            <option value="">All types</option>
-            <option value="EMAIL">Email</option>
+            <option value="">Всички типове</option>
+            <option value="EMAIL">Имейл</option>
             <option value="PUSH">Push</option>
             <option value="SMS">SMS</option>
           </Select>
           <Select value={categoryFilter} onChange={(e) => { setCategoryFilter(e.target.value); setPage(1); }}>
-            <option value="">All categories</option>
+            <option value="">Всички категории</option>
             {TEMPLATE_CATEGORIES.map((c) => (
               <option key={c.value} value={c.value}>{c.label}</option>
             ))}
@@ -326,15 +326,15 @@ export default function AdminMarketingTemplatesPage() {
           data={items}
           rowKey={(row) => row.id}
           loading={loading}
-          emptyMessage="No templates found"
+          emptyMessage="Няма намерени шаблони"
           page={page}
           pageSize={PAGE_SIZE}
           totalItems={total}
           onPageChange={setPage}
           rowActions={[
-            { label: 'Preview', onClick: openView },
-            { label: 'Edit', onClick: openEdit },
-            { label: 'Delete', onClick: openDelete },
+            { label: 'Преглед', onClick: openView },
+            { label: 'Редактирай', onClick: openEdit },
+            { label: 'Изтрий', onClick: openDelete },
           ]}
         />
       </Card>
@@ -344,106 +344,106 @@ export default function AdminMarketingTemplatesPage() {
         <Overlay onClick={closeModal}>
           <ModalBox onClick={(e) => e.stopPropagation()}>
             <ModalHeader>
-              <ModalTitle>{modal === 'create' ? 'New Template' : 'Edit Template'}</ModalTitle>
+              <ModalTitle>{modal === 'create' ? 'Нов шаблон' : 'Редактирай шаблон'}</ModalTitle>
               <CloseBtn onClick={closeModal}>×</CloseBtn>
             </ModalHeader>
             <ModalBody>
               <FormGroup>
-                <Label>Name *</Label>
+                <Label>Наименование *</Label>
                 <Input
                   value={form.name}
                   onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-                  placeholder="e.g. Welcome Email"
+                  placeholder="напр. Добре дошъл"
                   autoFocus
                 />
               </FormGroup>
               <FormGroup>
-                <Label>Channel *</Label>
+                <Label>Канал *</Label>
                 <ModalSelect
                   value={form.type}
                   onChange={(e) => setForm((f) => ({ ...f, type: e.target.value as MarketingChannel }))}
                 >
-                  <option value="EMAIL">Email</option>
-                  <option value="PUSH">Push notification</option>
+                  <option value="EMAIL">Имейл</option>
+                  <option value="PUSH">Push известие</option>
                   <option value="SMS">SMS</option>
                 </ModalSelect>
                 {form.type === 'SMS' && (
-                  <WarnBanner>SMS delivery is not yet enabled. Templates with this channel can be created but campaigns using them will not dispatch any messages.</WarnBanner>
+                  <WarnBanner>SMS доставката не е активирана. Шаблони с този канал могат да се създават, но кампаниите, използващи ги, няма да изпращат съобщения.</WarnBanner>
                 )}
               </FormGroup>
               <FormGroup>
-                <Label>Category</Label>
+                <Label>Категория</Label>
                 <ModalSelect
                   value={form.category}
                   onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}
                 >
-                  <option value="">— None —</option>
+                  <option value="">— Без —</option>
                   {TEMPLATE_CATEGORIES.map((c) => (
                     <option key={c.value} value={c.value}>{c.label}</option>
                   ))}
                 </ModalSelect>
-                <HintText>Categorise by use case to keep templates organised and filterable.</HintText>
+                <HintText>Категоризирайте по случай на употреба за по-лесно намиране.</HintText>
               </FormGroup>
               {form.type === 'EMAIL' && (
                 <FormGroup>
-                  <Label>Subject line (BG)</Label>
+                  <Label>Тема (BG)</Label>
                   <Input
                     value={form.subject}
                     onChange={(e) => setForm((f) => ({ ...f, subject: e.target.value }))}
-                    placeholder="e.g. Вашата BoomCard карта е готова"
+                    placeholder="напр. Вашата BoomCard карта е готова"
                   />
                 </FormGroup>
               )}
               {form.type === 'EMAIL' && (
                 <FormGroup>
-                  <Label>Subject line (EN) <span style={{ fontWeight: 400, color: palette.textSubtle }}>— sent to users with preferredLanguage = en</span></Label>
+                  <Label>Тема (EN) <span style={{ fontWeight: 400, color: palette.textSubtle }}>— изпращана на потребители с preferredLanguage = en</span></Label>
                   <Input
                     value={form.subjectEn}
                     onChange={(e) => setForm((f) => ({ ...f, subjectEn: e.target.value }))}
-                    placeholder="e.g. Your BoomCard is ready to use"
+                    placeholder="напр. Your BoomCard is ready to use"
                   />
                 </FormGroup>
               )}
               <FormGroup>
-                <Label>Body * {form.type === 'EMAIL' ? '(BG)' : ''}</Label>
+                <Label>Текст * {form.type === 'EMAIL' ? '(BG)' : ''}</Label>
                 {form.type === 'EMAIL' && (
                   <TabRow>
-                    <Tab $active={previewTab === 'edit'} onClick={() => setPreviewTab('edit')}>Edit</Tab>
-                    <Tab $active={previewTab === 'preview'} onClick={() => setPreviewTab('preview')}>Preview</Tab>
+                    <Tab $active={previewTab === 'edit'} onClick={() => setPreviewTab('edit')}>Редактирай</Tab>
+                    <Tab $active={previewTab === 'preview'} onClick={() => setPreviewTab('preview')}>Преглед</Tab>
                   </TabRow>
                 )}
                 {bodyLoading ? (
-                  <div style={{ padding: '1rem', color: palette.textSubtle, fontSize: '0.875rem' }}>Loading body…</div>
+                  <div style={{ padding: '1rem', color: palette.textSubtle, fontSize: '0.875rem' }}>Зарежда се…</div>
                 ) : previewTab === 'preview' && form.type === 'EMAIL' ? (
-                  <PreviewFrame dangerouslySetInnerHTML={{ __html: form.body || '<em style="color:#8c8678">No content yet.</em>' }} />
+                  <PreviewFrame dangerouslySetInnerHTML={{ __html: form.body || '<em style="color:#8c8678">Без съдържание.</em>' }} />
                 ) : (
                   <Textarea
                     value={form.body}
                     onChange={(e) => setForm((f) => ({ ...f, body: e.target.value }))}
-                    placeholder={form.type === 'EMAIL' ? 'HTML or plain text content…' : 'Message content…'}
+                    placeholder={form.type === 'EMAIL' ? 'HTML или обикновен текст…' : 'Съдържание на съобщението…'}
                     rows={form.type === 'EMAIL' ? 10 : 4}
                   />
                 )}
                 {form.type !== 'EMAIL' && !bodyLoading && (
-                  <HintText>Use {'{{variable}}'} placeholders where needed.</HintText>
+                  <HintText>Използвайте {'{{variable}}'} за динамични стойности.</HintText>
                 )}
               </FormGroup>
               {form.type === 'EMAIL' && (
                 <FormGroup>
-                  <Label>Body (EN) <span style={{ fontWeight: 400, color: palette.textSubtle }}>— sent to users with preferredLanguage = en</span></Label>
+                  <Label>Текст (EN) <span style={{ fontWeight: 400, color: palette.textSubtle }}>— изпращан на потребители с preferredLanguage = en</span></Label>
                   <Textarea
                     value={form.bodyEn}
                     onChange={(e) => setForm((f) => ({ ...f, bodyEn: e.target.value }))}
-                    placeholder="HTML or plain text content in English…"
+                    placeholder="HTML или обикновен текст на английски…"
                     rows={8}
                   />
                 </FormGroup>
               )}
             </ModalBody>
             <ModalFooter>
-              <GhostBtn onClick={closeModal} disabled={saving}>Cancel</GhostBtn>
+              <GhostBtn onClick={closeModal} disabled={saving}>Откажи</GhostBtn>
               <PrimaryBtn onClick={handleSave} disabled={saving || bodyLoading || !form.name.trim()}>
-                {saving ? 'Saving…' : bodyLoading ? 'Loading…' : modal === 'create' ? 'Create template' : 'Save changes'}
+                {saving ? 'Запазва…' : bodyLoading ? 'Зарежда…' : modal === 'create' ? 'Създай шаблон' : 'Запази промените'}
               </PrimaryBtn>
             </ModalFooter>
           </ModalBox>
@@ -459,7 +459,7 @@ export default function AdminMarketingTemplatesPage() {
                 <ModalTitle>{selected.name}</ModalTitle>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.35rem' }}>
                   <TypePill $type={selected.type}>{selected.type}</TypePill>
-                  {selected.type === 'SMS' && <SmsBadge>no delivery</SmsBadge>}
+                  {selected.type === 'SMS' && <SmsBadge>без доставка</SmsBadge>}
                   {selected.category && (
                     <span style={{
                       fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase',
@@ -476,28 +476,28 @@ export default function AdminMarketingTemplatesPage() {
             <ModalBody>
               {selected.subject && (
                 <>
-                  <DetailLabel>Subject (BG)</DetailLabel>
+                  <DetailLabel>Тема (BG)</DetailLabel>
                   <DetailValue>{selected.subject}</DetailValue>
                 </>
               )}
               {!viewLoading && viewDetail?.subjectEn && (
                 <>
-                  <DetailLabel>Subject (EN)</DetailLabel>
+                  <DetailLabel>Тема (EN)</DetailLabel>
                   <DetailValue>{viewDetail.subjectEn}</DetailValue>
                 </>
               )}
-              <DetailLabel>Body {selected.type === 'EMAIL' ? '(BG)' : ''}</DetailLabel>
+              <DetailLabel>Текст {selected.type === 'EMAIL' ? '(BG)' : ''}</DetailLabel>
               {selected.type === 'EMAIL' && (
                 <TabRow style={{ marginBottom: '0.75rem' }}>
-                  <Tab $active={viewTab === 'body'} onClick={() => setViewTab('body')}>Source</Tab>
-                  <Tab $active={viewTab === 'preview'} onClick={() => setViewTab('preview')}>Preview</Tab>
+                  <Tab $active={viewTab === 'body'} onClick={() => setViewTab('body')}>Код</Tab>
+                  <Tab $active={viewTab === 'preview'} onClick={() => setViewTab('preview')}>Преглед</Tab>
                 </TabRow>
               )}
               {viewLoading ? (
-                <div style={{ padding: '1rem', color: palette.textSubtle, fontSize: '0.875rem' }}>Loading…</div>
+                <div style={{ padding: '1rem', color: palette.textSubtle, fontSize: '0.875rem' }}>Зарежда се…</div>
               ) : viewDetail ? (
                 viewTab === 'preview' && selected.type === 'EMAIL' ? (
-                  <PreviewFrame dangerouslySetInnerHTML={{ __html: viewDetail.body || '<em style="color:#8c8678">No content.</em>' }} />
+                  <PreviewFrame dangerouslySetInnerHTML={{ __html: viewDetail.body || '<em style="color:#8c8678">Без съдържание.</em>' }} />
                 ) : (
                   <Textarea
                     value={viewDetail.body}
@@ -509,7 +509,7 @@ export default function AdminMarketingTemplatesPage() {
               ) : null}
               {!viewLoading && viewDetail?.bodyEn && selected.type === 'EMAIL' && (
                 <>
-                  <DetailLabel style={{ marginTop: '1rem' }}>Body (EN)</DetailLabel>
+                  <DetailLabel style={{ marginTop: '1rem' }}>Текст (EN)</DetailLabel>
                   {viewTab === 'preview' ? (
                     <PreviewFrame dangerouslySetInnerHTML={{ __html: viewDetail.bodyEn }} />
                   ) : (
@@ -524,15 +524,15 @@ export default function AdminMarketingTemplatesPage() {
               )}
               {!viewLoading && (
                 <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem', fontSize: '0.8125rem', color: palette.textSubtle }}>
-                  <span>Used {selected.usageCount > 0 ? selected.usageCount.toLocaleString() + ' times' : 'never'}</span>
-                  {selected.lastUsed && <span>Last used {fmt(selected.lastUsed)}</span>}
-                  <span>Created {fmt(selected.createdAt)}</span>
+                  <span>Употребен {selected.usageCount > 0 ? selected.usageCount.toLocaleString() + ' пъти' : 'никога'}</span>
+                  {selected.lastUsed && <span>Последна употреба {fmt(selected.lastUsed)}</span>}
+                  <span>Създаден {fmt(selected.createdAt)}</span>
                 </div>
               )}
             </ModalBody>
             <ModalFooter>
-              <GhostBtn onClick={closeModal}>Close</GhostBtn>
-              <PrimaryBtn onClick={() => { closeModal(); setTimeout(() => openEdit(selected!), 50); }}>Edit</PrimaryBtn>
+              <GhostBtn onClick={closeModal}>Затвори</GhostBtn>
+              <PrimaryBtn onClick={() => { closeModal(); setTimeout(() => openEdit(selected!), 50); }}>Редактирай</PrimaryBtn>
             </ModalFooter>
           </ModalBox>
         </Overlay>
@@ -543,24 +543,24 @@ export default function AdminMarketingTemplatesPage() {
         <Overlay onClick={closeModal}>
           <ModalBox style={{ maxWidth: '26rem' }} onClick={(e) => e.stopPropagation()}>
             <ModalHeader>
-              <ModalTitle>Delete template?</ModalTitle>
+              <ModalTitle>Изтриване на шаблон?</ModalTitle>
               <CloseBtn onClick={closeModal}>×</CloseBtn>
             </ModalHeader>
             <ModalBody>
               {deleteError && <ErrorBanner>{deleteError}</ErrorBanner>}
               <ConfirmText>
-                You are about to delete <strong>{selected.name}</strong>.
+                Предстои изтриване на <strong>{selected.name}</strong>.
               </ConfirmText>
               <ConfirmSub>
-                Any campaigns using this template will have their template reference cleared.
-                <strong style={{ color: '#b54327' }}> Active automations referencing this template cannot be deleted — pause them first.</strong>
-                {' '}This action cannot be undone.
+                Кампаниите, използващи този шаблон, ще загубят препратката към него.
+                <strong style={{ color: '#b54327' }}> Активни автоматизации, свързани с шаблона, не могат да бъдат изтрити — спрете ги първо.</strong>
+                {' '}Действието не може да бъде отменено.
               </ConfirmSub>
             </ModalBody>
             <ModalFooter>
-              <GhostBtn onClick={closeModal} disabled={saving}>Cancel</GhostBtn>
+              <GhostBtn onClick={closeModal} disabled={saving}>Откажи</GhostBtn>
               <DangerBtn onClick={handleDelete} disabled={saving}>
-                {saving ? 'Deleting…' : 'Delete template'}
+                {saving ? 'Изтрива се…' : 'Изтрий шаблон'}
               </DangerBtn>
             </ModalFooter>
           </ModalBox>
