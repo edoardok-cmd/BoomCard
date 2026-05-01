@@ -217,7 +217,7 @@ router.get('/payout-thresholds', requirePermission('cashback.read'), (_req: Auth
 router.get('/entries', requirePermission('cashback.read'), async (req: AuthRequest, res: Response) => {
   try {
     const page = Math.max(1, parseInt(req.query.page as string) || 1);
-    const limit = Math.min(Math.max(1, parseInt(req.query.limit as string) || 20), 100);
+    const limit = Math.min(Math.max(1, parseInt(req.query.limit as string) || 20), 5000);
     const status = typeof req.query.status === 'string' ? req.query.status : undefined;
     const validStatuses: CashbackEntryStatus[] = ['Pending', 'Cleared', 'Locked', 'Paid', 'Expired'];
     const statusFilter = status && (validStatuses as string[]).includes(status)

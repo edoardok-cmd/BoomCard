@@ -10,12 +10,18 @@ export type PayoutStatus =
   | 'ANNULLED'
   | 'RISK_HOLD';
 
+export interface PayoutSubscription {
+  plan: string;
+  status: string;
+}
+
 export interface PayoutUser {
   id: string;
   firstName: string | null;
   lastName: string | null;
   email: string;
   phone: string | null;
+  subscriptions: PayoutSubscription[];
 }
 
 export interface PayoutWallet {
@@ -45,7 +51,27 @@ export interface PayoutsSummary {
   pendingCount: number;
   pendingTotal: number;
   processingCount: number;
+  processingTotal: number;
+  completedCount: number;
+  completedTotal: number;
   riskHoldCount: number;
+  failedCount: number;
+  failedTotal: number;
+  totalCount: number;
+}
+
+export interface PayoutsFilteredSummary {
+  pendingCount: number;
+  pendingTotal: number;
+  processingCount: number;
+  processingTotal: number;
+  completedCount: number;
+  completedTotal: number;
+  riskHoldCount: number;
+  failedCount: number;
+  failedTotal: number;
+  cancelledCount: number;
+  totalCount: number;
 }
 
 export interface AdminPayoutsResult {
@@ -54,6 +80,7 @@ export interface AdminPayoutsResult {
   page: number;
   limit: number;
   summary: PayoutsSummary;
+  filteredSummary: PayoutsFilteredSummary;
 }
 
 export const adminPayoutsService = {
@@ -62,15 +89,23 @@ export const adminPayoutsService = {
     limit?: number;
     search?: string;
     status?: PayoutStatus | '';
+    dateFrom?: string;
+    dateTo?: string;
   }): Promise<AdminPayoutsResult> {
     const clean: Record<string, unknown> = { page: params.page, limit: params.limit };
-    if (params.search) clean.search = params.search;
-    if (params.status) clean.status = params.status;
+    if (params.search)   clean.search   = params.search;
+    if (params.status)   clean.status   = params.status;
+    if (params.dateFrom) clean.dateFrom = params.dateFrom;
+    if (params.dateTo)   clean.dateTo   = params.dateTo;
     return apiService.get<AdminPayoutsResult>('/admin/payouts', clean);
   },
 
   approve(id: string): Promise<void> {
     return apiService.patch(`/admin/payouts/${id}/approve`, {});
+  },
+
+  bulkApprove(): Promise<{ approved: number; skipped: number; total: number }> {
+    return apiService.patch('/admin/payouts/bulk-approve', {});
   },
 
   reject(id: string, reason: string): Promise<void> {

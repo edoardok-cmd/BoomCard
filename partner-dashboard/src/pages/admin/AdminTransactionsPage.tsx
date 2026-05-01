@@ -566,8 +566,8 @@ const T = {
   exportCsv: { bg: '↓ Експорт CSV', en: '↓ Export CSV' },
   adjustWallet: { bg: '+ Корекция в портфейл', en: '+ Adjust wallet' },
   searchPh: {
-    bg: 'Търсене по име, имейл, телефон или партньор…',
-    en: 'Search by name, email, phone or partner…',
+    bg: 'Търсене по абонат, партньор, локация или ID…',
+    en: 'Search by subscriber, partner, venue or ID…',
   },
   allTypes: { bg: 'Всички типове', en: 'All types' },
   allStatuses: { bg: 'Всички статуси', en: 'All statuses' },
@@ -1304,6 +1304,7 @@ export default function AdminTransactionsPage() {
               <DetailRow label={t('colSubscriber', lang)}>
                 {`${detailTx.user.firstName ?? ''} ${detailTx.user.lastName ?? ''}`.trim() || '—'}
                 <MetaLine>{detailTx.user.email}</MetaLine>
+                {detailTx.user.phone && <MetaLine>{detailTx.user.phone}</MetaLine>}
               </DetailRow>
               <DetailRow label={t('colPartner', lang)}>
                 {detailTx.partner?.businessName ?? '—'}

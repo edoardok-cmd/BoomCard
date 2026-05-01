@@ -10,6 +10,7 @@ import {
   AdminPayout,
   PayoutStatus,
   PayoutsSummary,
+  PayoutsFilteredSummary,
 } from '../../services/adminPayouts.service';
 
 /* ─── Palette ─────────────────────────────────────────────────────────────── */
@@ -82,14 +83,16 @@ const SummaryRow = styled.div`
   flex-wrap: wrap;
 `;
 
-const SummaryCard = styled.div<{ $variant?: 'warning' | 'info' | 'neutral' }>`
+const SummaryCard = styled.div<{ $variant?: 'warning' | 'info' | 'danger' | 'neutral' }>`
   background: ${p =>
     p.$variant === 'warning' ? palette.warningSoft :
     p.$variant === 'info'    ? palette.infoSoft :
+    p.$variant === 'danger'  ? palette.dangerSoft :
     palette.surface};
   border: 1px solid ${p =>
     p.$variant === 'warning' ? '#e5c97a' :
     p.$variant === 'info'    ? '#bfdbfe' :
+    p.$variant === 'danger'  ? '#f5b7aa' :
     palette.border};
   border-radius: 0.75rem;
   padding: 1rem 1.25rem;
@@ -180,6 +183,69 @@ const Select = styled.select`
   &:focus { border-color: ${palette.accent}; box-shadow: 0 0 0 2px ${palette.accentSoft}; }
 `;
 
+const DateInput = styled.input`
+  padding: 0.5rem 0.75rem;
+  border: 1px solid ${palette.border};
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  background: ${palette.bg};
+  color: ${palette.text};
+  outline: none;
+  cursor: pointer;
+  &:focus { border-color: ${palette.accent}; box-shadow: 0 0 0 2px ${palette.accentSoft}; }
+`;
+
+const DateLabel = styled.label`
+  font-size: 0.8125rem;
+  color: ${palette.textSubtle};
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+`;
+
+const ClearBtn = styled.button`
+  padding: 0.5rem 0.75rem;
+  border: 1px solid ${palette.border};
+  border-radius: 0.5rem;
+  font-size: 0.8125rem;
+  background: transparent;
+  color: ${palette.textMuted};
+  cursor: pointer;
+  &:hover { background: ${palette.dangerSoft}; color: ${palette.danger}; border-color: #f5b7aa; }
+`;
+
+/* ─── Bulk action bar ──────────────────────────────────────────────────────── */
+const BulkBar = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+  background: ${palette.infoSoft};
+  border: 1px solid #bfdbfe;
+  border-radius: 0.5rem;
+  margin-bottom: 1rem;
+`;
+
+const BulkBarText = styled.span`
+  font-size: 0.875rem;
+  color: ${palette.info};
+  font-weight: 600;
+  flex: 1;
+`;
+
+const BulkBtn = styled.button`
+  padding: 0.375rem 0.875rem;
+  border-radius: 0.375rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+  background: ${palette.info};
+  color: #fff;
+  border: none;
+  &:hover { opacity: 0.88; }
+  &:disabled { opacity: 0.5; cursor: not-allowed; }
+`;
+
 /* ─── Cell helpers ─────────────────────────────────────────────────────────── */
 const UserCell = styled.div`
   font-weight: 600;
@@ -216,6 +282,25 @@ const SlaTag = styled.span<{ $overdue: boolean }>`
   color: ${p => p.$overdue ? palette.danger : palette.warning};
 `;
 
+const PlanBadge = styled.span<{ $plan: string }>`
+  display: inline-block;
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-radius: 0.25rem;
+  padding: 0.075rem 0.375rem;
+  margin-left: 0.375rem;
+  vertical-align: middle;
+  ${({ $plan }) => {
+    switch ($plan) {
+      case 'PREMIUM': return `background: ${palette.purpleSoft}; color: ${palette.purple};`;
+      case 'BASIC':   return `background: ${palette.infoSoft}; color: ${palette.info};`;
+      default:        return `background: #f3f4f6; color: #6b7280;`;
+    }
+  }}
+`;
+
 const StatusBadge = styled.span<{ $status: PayoutStatus }>`
   display: inline-flex;
   align-items: center;
@@ -235,8 +320,9 @@ const StatusBadge = styled.span<{ $status: PayoutStatus }>`
       case 'COMPLETED':
         return `background: ${palette.successSoft}; color: ${palette.success};`;
       case 'FAILED':
-      case 'CANCELLED':
         return `background: ${palette.dangerSoft}; color: ${palette.danger};`;
+      case 'CANCELLED':
+        return `background: #f3f4f6; color: #374151;`;
       case 'RISK_HOLD':
         return `background: ${palette.purpleSoft}; color: ${palette.purple};`;
       case 'ANNULLED':
@@ -352,26 +438,47 @@ const STATUS_LABELS: Record<PayoutStatus, string> = {
 
 const SLA_WORKING_DAYS = 5;
 
-function workingDaysSince(iso: string, metadataJson?: string | null): number {
-  // Prefer the moment the payout was approved (stored by the backend on /approve)
-  // over createdAt so the SLA reflects actual processing time, not queue wait time.
-  let startIso = iso;
-  if (metadataJson) {
-    try {
-      const meta = JSON.parse(metadataJson) as Record<string, unknown>;
-      if (typeof meta.processingStartedAt === 'string') startIso = meta.processingStartedAt;
-    } catch { /* ignore malformed JSON */ }
+const PLAN_LABELS: Record<string, string> = {
+  LIGHT:   'Light',
+  BASIC:   'Basic',
+  PREMIUM: 'Premium',
+};
+
+// Bug 2 fix: subtitle is context-aware based on the active status filter
+function subtitleForStatus(status: PayoutStatus | ''): string {
+  switch (status) {
+    case 'PENDING':       return 'Чакащи заявки за одобрение';
+    case 'PROCESSING':    return 'Заявки в процес на банков превод (до 5 раб. дни)';
+    case 'COMPLETED':     return 'Изплатени суми към абонати';
+    case 'FAILED':        return 'Неуспешни или отхвърлени заявки';
+    case 'CANCELLED':     return 'Отменени заявки';
+    case 'ANNULLED':      return 'Анулирани заявки';
+    case 'RISK_HOLD':     return 'Задържани заявки за риск-проверка';
+    case 'TRIAL_PENDING': return 'Заявки в изчакване (пробен период)';
+    default:              return 'Всички заявки за изтегляне на средства';
   }
-  const start = new Date(startIso);
-  const now   = new Date();
-  let days    = 0;
-  const cur   = new Date(start);
-  while (cur < now) {
-    cur.setDate(cur.getDate() + 1);
-    const dow = cur.getDay();
-    if (dow !== 0 && dow !== 6) days++;
+}
+
+// Returns null when processingStartedAt is absent — SLA tag is hidden for legacy records
+// rather than showing an inflated count from the original request timestamp.
+function workingDaysSince(metadataJson?: string | null): number | null {
+  if (!metadataJson) return null;
+  try {
+    const meta = JSON.parse(metadataJson) as Record<string, unknown>;
+    if (typeof meta.processingStartedAt !== 'string') return null;
+    const start = new Date(meta.processingStartedAt);
+    const now   = new Date();
+    let days    = 0;
+    const cur   = new Date(start);
+    while (cur < now) {
+      cur.setDate(cur.getDate() + 1);
+      const dow = cur.getDay();
+      if (dow !== 0 && dow !== 6) days++;
+    }
+    return days;
+  } catch {
+    return null;
   }
-  return days;
 }
 
 function displayName(row: AdminPayout): string {
@@ -380,16 +487,36 @@ function displayName(row: AdminPayout): string {
 }
 
 /* ─── Component ───────────────────────────────────────────────────────────── */
-type ModalMode = 'reject' | 'hold' | 'fail';
+type ModalMode = 'reject' | 'hold' | 'fail' | 'bulkApprove';
 
 interface ModalState {
   mode: ModalMode;
-  row: AdminPayout;
+  row?: AdminPayout;
   reason: string;
+  bulkCount?: number;
 }
 
 const PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 400;
+
+const EMPTY_SUMMARY: PayoutsSummary = {
+  pendingCount: 0, pendingTotal: 0,
+  processingCount: 0, processingTotal: 0,
+  completedCount: 0, completedTotal: 0,
+  riskHoldCount: 0,
+  failedCount: 0, failedTotal: 0,
+  totalCount: 0,
+};
+
+const EMPTY_FILTERED_SUMMARY: PayoutsFilteredSummary = {
+  pendingCount: 0, pendingTotal: 0,
+  processingCount: 0, processingTotal: 0,
+  completedCount: 0, completedTotal: 0,
+  riskHoldCount: 0,
+  failedCount: 0, failedTotal: 0,
+  cancelledCount: 0,
+  totalCount: 0,
+};
 
 export default function AdminPayoutsPage() {
   const { language } = useLanguage();
@@ -406,6 +533,8 @@ export default function AdminPayoutsPage() {
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch]           = useState('');
   const [status, setStatus]           = useState<PayoutStatus | ''>(statusFromUrl());
+  const [dateFrom, setDateFrom]       = useState('');
+  const [dateTo, setDateTo]           = useState('');
   const [modal, setModal]             = useState<ModalState | null>(null);
 
   useEffect(() => {
@@ -415,12 +544,19 @@ export default function AdminPayoutsPage() {
   }, [searchParams]);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['admin-payouts', page, search, status],
+    queryKey: ['admin-payouts', page, search, status, dateFrom, dateTo],
     queryFn: () =>
-      adminPayoutsService.list({ page, limit: PAGE_SIZE, search: search || undefined, status }),
+      adminPayoutsService.list({
+        page, limit: PAGE_SIZE,
+        search: search || undefined,
+        status,
+        dateFrom: dateFrom || undefined,
+        dateTo:   dateTo   || undefined,
+      }),
   });
 
-  const summary: PayoutsSummary = data?.summary ?? { pendingCount: 0, pendingTotal: 0, processingCount: 0, riskHoldCount: 0 };
+  const summary: PayoutsSummary = data?.summary ?? EMPTY_SUMMARY;
+  const filteredSummary = data?.filteredSummary ?? EMPTY_FILTERED_SUMMARY;
 
   /* ── mutations ── */
   const approveMutation = useMutation({
@@ -459,6 +595,23 @@ export default function AdminPayoutsPage() {
     onError: (err: unknown) => toast.error((err as any)?.response?.data?.message || 'Грешка'),
   });
 
+  /* ── bulk approve (system-wide — all pages) ── */
+  const handleBulkApprove = async () => {
+    // Show confirmation using the global pending count, not just the current page
+    setModal({ mode: 'bulkApprove', reason: '', bulkCount: summary.pendingCount });
+  };
+
+  const executeBulkApprove = async () => {
+    closeModal();
+    try {
+      const result = await adminPayoutsService.bulkApprove();
+      toast.success(`${result.approved} от ${result.total} плащания одобрени`);
+    } catch {
+      toast.error('Грешка при масово одобрение');
+    }
+    queryClient.invalidateQueries({ queryKey: ['admin-payouts'] });
+  };
+
   /* ── search ── */
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
@@ -474,15 +627,28 @@ export default function AdminPayoutsPage() {
     setPage(1);
   };
 
+  const hasDateFilter = dateFrom !== '' || dateTo !== '';
+  const hasAnyFilter  = search !== '' || status !== '' || hasDateFilter;
+  // Use filter-aware counts when search or date is active; global summary otherwise
+  const displaySummary = (search !== '' || hasDateFilter) ? filteredSummary : summary;
+
+  const clearFilters = () => {
+    setSearchInput(''); setSearch('');
+    setStatus('');
+    setDateFrom(''); setDateTo('');
+    setPage(1);
+  };
+
   /* ── modal ── */
   const closeModal = () => setModal(null);
 
   const handleModalConfirm = () => {
     if (!modal) return;
     const { mode, row, reason } = modal;
-    if (mode === 'reject') rejectMutation.mutate({ id: row.id, reason });
-    if (mode === 'hold')   holdMutation.mutate({ id: row.id, reason });
-    if (mode === 'fail')   failMutation.mutate({ id: row.id, reason });
+    if (mode === 'reject' && row) rejectMutation.mutate({ id: row.id, reason });
+    if (mode === 'hold'   && row) holdMutation.mutate({ id: row.id, reason });
+    if (mode === 'fail'   && row) failMutation.mutate({ id: row.id, reason });
+    if (mode === 'bulkApprove') executeBulkApprove();
   };
 
   const isMutating = rejectMutation.isPending || holdMutation.isPending || failMutation.isPending;
@@ -498,18 +664,28 @@ export default function AdminPayoutsPage() {
       hour: '2-digit', minute: '2-digit',
     });
 
+  const fmtBgn = (n: number) => `${n.toFixed(2)} BGN`;
+
   /* ── columns ── */
   const columns: ColumnDef<AdminPayout>[] = [
     {
       key: 'user',
       header: 'Абонат',
-      render: (row) => (
-        <UserCell>
-          {displayName(row)}
-          <MetaLine>{row.wallet.user.email}</MetaLine>
-          {row.wallet.user.phone && <MetaLine>{row.wallet.user.phone}</MetaLine>}
-        </UserCell>
-      ),
+      render: (row) => {
+        const activeSub = row.wallet.user.subscriptions?.[0];
+        return (
+          <UserCell>
+            {displayName(row)}
+            {activeSub && (
+              <PlanBadge $plan={activeSub.plan}>
+                {PLAN_LABELS[activeSub.plan] ?? activeSub.plan}
+              </PlanBadge>
+            )}
+            <MetaLine>{row.wallet.user.email}</MetaLine>
+            {row.wallet.user.phone && <MetaLine>{row.wallet.user.phone}</MetaLine>}
+          </UserCell>
+        );
+      },
     },
     {
       key: 'amount',
@@ -547,7 +723,8 @@ export default function AdminPayoutsPage() {
         <>
           <StatusBadge $status={row.status}>{STATUS_LABELS[row.status] ?? row.status}</StatusBadge>
           {row.status === 'PROCESSING' && (() => {
-            const days = workingDaysSince(row.createdAt, row.metadata);
+            const days = workingDaysSince(row.metadata);
+            if (days === null) return null;
             const overdue = days > SLA_WORKING_DAYS;
             return (
               <SlaTag $overdue={overdue}>
@@ -622,7 +799,7 @@ export default function AdminPayoutsPage() {
   ];
 
   /* ── modal copy ── */
-  const modalCopy: Record<ModalMode, { title: string; subtitle: (row: AdminPayout) => string; confirm: string; confirmVariant: 'danger' | 'warning' }> = {
+  const modalCopy: Record<'reject' | 'hold' | 'fail', { title: string; subtitle: (row: AdminPayout) => string; confirm: string; confirmVariant: 'danger' | 'warning' }> = {
     reject: {
       title: 'Отхвърляне на плащане',
       subtitle: (row) => `${Math.abs(row.amount).toFixed(2)} ${row.currency} за ${displayName(row)} — балансът ще бъде възстановен.`,
@@ -643,45 +820,69 @@ export default function AdminPayoutsPage() {
     },
   };
 
+  /* ── bulk approve availability — driven by global pending count ── */
+  const showBulkBar = (status === '' || status === 'PENDING') && summary.pendingCount > 1;
+
   return (
     <PageShell>
       <PageHeader>
         <TitleBlock>
           <Eyebrow>Финанси</Eyebrow>
           <PageTitle>Плащания към абонати</PageTitle>
-          <PageSubtitle>Заявки за изтегляне на средства, очакващи обработка или проверка</PageSubtitle>
+          {/* Bug 2 fix: subtitle reflects the active filter */}
+          <PageSubtitle>{subtitleForStatus(status)}</PageSubtitle>
         </TitleBlock>
       </PageHeader>
 
-      {/* Summary banner */}
+      {/* Summary banner — filter-aware when search/date filters active */}
       <SummaryRow>
         <SummaryCard $variant="warning">
           <SummaryLabel>Чакащи</SummaryLabel>
-          <SummaryValue>{summary.pendingCount}</SummaryValue>
-          <SummaryMeta>
-            {Math.abs(summary.pendingTotal).toFixed(2)} BGN общо
-          </SummaryMeta>
+          <SummaryValue>{displaySummary.pendingCount}</SummaryValue>
+          <SummaryMeta>{fmtBgn(displaySummary.pendingTotal)} общо</SummaryMeta>
         </SummaryCard>
+
         <SummaryCard $variant="info">
           <SummaryLabel>В обработка</SummaryLabel>
-          <SummaryValue>{summary.processingCount}</SummaryValue>
-          <SummaryMeta>в рамките на 5 раб. дни</SummaryMeta>
+          <SummaryValue>{displaySummary.processingCount}</SummaryValue>
+          <SummaryMeta>{fmtBgn(displaySummary.processingTotal)} общо</SummaryMeta>
         </SummaryCard>
-        {summary.riskHoldCount > 0 && (
+
+        {displaySummary.riskHoldCount > 0 && (
           <SummaryCard style={{ background: palette.purpleSoft, border: `1px solid #c4b5fd` }}>
             <SummaryLabel style={{ color: palette.purple }}>Задържани (риск)</SummaryLabel>
-            <SummaryValue style={{ color: palette.purple }}>{summary.riskHoldCount}</SummaryValue>
+            <SummaryValue style={{ color: palette.purple }}>{displaySummary.riskHoldCount}</SummaryValue>
             <SummaryMeta>изискват преглед</SummaryMeta>
           </SummaryCard>
         )}
+
+        {displaySummary.completedCount > 0 && (
+          <SummaryCard $variant="neutral">
+            <SummaryLabel style={{ color: palette.success }}>Платено</SummaryLabel>
+            <SummaryValue style={{ color: palette.success }}>{displaySummary.completedCount}</SummaryValue>
+            <SummaryMeta>{fmtBgn(displaySummary.completedTotal)} изплатено</SummaryMeta>
+          </SummaryCard>
+        )}
+
+        {displaySummary.failedCount > 0 && (
+          <SummaryCard $variant="danger">
+            <SummaryLabel style={{ color: palette.danger }}>Неуспешни</SummaryLabel>
+            <SummaryValue style={{ color: palette.danger }}>{displaySummary.failedCount}</SummaryValue>
+            <SummaryMeta>{fmtBgn(displaySummary.failedTotal)} общо</SummaryMeta>
+          </SummaryCard>
+        )}
+
         <SummaryCard>
           <SummaryLabel>Всички</SummaryLabel>
-          <SummaryValue>{data?.total ?? '—'}</SummaryValue>
-          <SummaryMeta>спрямо текущия филтър</SummaryMeta>
+          <SummaryValue>{displaySummary.totalCount}</SummaryValue>
+          <SummaryMeta>
+            {(search !== '' || hasDateFilter) ? 'в текущия филтър' : 'заявки в системата'}
+          </SummaryMeta>
         </SummaryCard>
       </SummaryRow>
 
       <Card>
+        {/* Gap 5 fix: date range filter row */}
         <FilterRow>
           <SearchWrap>
             <SearchInput
@@ -693,12 +894,49 @@ export default function AdminPayoutsPage() {
             />
             <SearchBtn onClick={triggerSearch}>Търси</SearchBtn>
           </SearchWrap>
+
           <Select value={status} onChange={handleStatusChange}>
             {STATUS_OPTIONS.map((o) => (
               <option key={o.value} value={o.value}>{o.label}</option>
             ))}
           </Select>
+
+          <DateLabel>
+            От
+            <DateInput
+              type="date"
+              value={dateFrom}
+              max={dateTo || undefined}
+              onChange={(e) => { setDateFrom(e.target.value); setPage(1); }}
+            />
+          </DateLabel>
+
+          <DateLabel>
+            До
+            <DateInput
+              type="date"
+              value={dateTo}
+              min={dateFrom || undefined}
+              onChange={(e) => { setDateTo(e.target.value); setPage(1); }}
+            />
+          </DateLabel>
+
+          {hasAnyFilter && (
+            <ClearBtn onClick={clearFilters}>Изчисти филтри</ClearBtn>
+          )}
         </FilterRow>
+
+        {/* Gap 6 fix: bulk approve bar */}
+        {showBulkBar && (
+          <BulkBar>
+            <BulkBarText>
+              {summary.pendingCount} чакащи заявки с регистриран IBAN в системата
+            </BulkBarText>
+            <BulkBtn onClick={handleBulkApprove}>
+              Одобри всички {summary.pendingCount}
+            </BulkBtn>
+          </BulkBar>
+        )}
 
         <DataTable
           columns={columns}
@@ -715,11 +953,11 @@ export default function AdminPayoutsPage() {
       </Card>
 
       {/* Reason modal — used for reject, hold, fail */}
-      {modal && (
+      {modal && modal.mode !== 'bulkApprove' && modal.row && (
         <Overlay onClick={closeModal}>
           <Modal onClick={(e) => e.stopPropagation()}>
-            <ModalTitle>{modalCopy[modal.mode].title}</ModalTitle>
-            <ModalSubtitle>{modalCopy[modal.mode].subtitle(modal.row)}</ModalSubtitle>
+            <ModalTitle>{modalCopy[modal.mode as 'reject' | 'hold' | 'fail'].title}</ModalTitle>
+            <ModalSubtitle>{modalCopy[modal.mode as 'reject' | 'hold' | 'fail'].subtitle(modal.row)}</ModalSubtitle>
             <ReasonTextarea
               placeholder="Причина (по желание)…"
               value={modal.reason}
@@ -728,11 +966,30 @@ export default function AdminPayoutsPage() {
             <ModalActions>
               <Btn $variant="ghost" onClick={closeModal}>Отказ</Btn>
               <Btn
-                $variant={modalCopy[modal.mode].confirmVariant}
+                $variant={modalCopy[modal.mode as 'reject' | 'hold' | 'fail'].confirmVariant}
                 disabled={isMutating}
                 onClick={handleModalConfirm}
               >
-                {isMutating ? 'Зареждане…' : modalCopy[modal.mode].confirm}
+                {isMutating ? 'Зареждане…' : modalCopy[modal.mode as 'reject' | 'hold' | 'fail'].confirm}
+              </Btn>
+            </ModalActions>
+          </Modal>
+        </Overlay>
+      )}
+
+      {/* Bulk approve confirmation modal */}
+      {modal?.mode === 'bulkApprove' && (
+        <Overlay onClick={closeModal}>
+          <Modal onClick={(e) => e.stopPropagation()}>
+            <ModalTitle>Масово одобрение</ModalTitle>
+            <ModalSubtitle>
+              Ще бъдат одобрени всички {modal.bulkCount} чакащи заявки с регистриран IBAN в системата (всички страници).
+              Всяка преминава в статус „Обработва се" и абонатът получава имейл.
+            </ModalSubtitle>
+            <ModalActions>
+              <Btn $variant="ghost" onClick={closeModal}>Отказ</Btn>
+              <Btn onClick={handleModalConfirm}>
+                Одобри {modal.bulkCount}
               </Btn>
             </ModalActions>
           </Modal>

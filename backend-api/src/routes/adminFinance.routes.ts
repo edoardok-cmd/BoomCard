@@ -188,9 +188,18 @@ router.post(
       const contractedRate = partnerRateMap.get(partnerId) ?? null;
       const totalCashbackOwed = Math.round(totals.cashback * 100) / 100;
       const turnoverAmount    = Math.round(totals.turnover * 100) / 100;
-      const marginAmount = contractedRate != null && turnoverAmount > 0
+      // Margin is what BoomCard retains above the cashback payout.
+      const rawMargin = contractedRate != null && turnoverAmount > 0
         ? Math.round(((contractedRate / 100) * turnoverAmount - totalCashbackOwed) * 100) / 100
         : 0;
+      if (rawMargin < 0) {
+        console.warn(
+          `[finance/generate] Negative margin for partner ${partnerId} month ${month}: ` +
+          `raw=${rawMargin} BGN (cashback=${totalCashbackOwed}, contracted=${contractedRate}%, turnover=${turnoverAmount}). ` +
+          `Clamping to 0 — verify contracted rate was not reduced after scan approval.`
+        );
+      }
+      const marginAmount = Math.max(0, rawMargin);
 
       const existing = await prisma.partnerCashbackPayment.findUnique({
         where: { partnerId_month: { partnerId, month } },
@@ -350,7 +359,7 @@ router.get(
 
     const payments = await prisma.partnerCashbackPayment.findMany({
       where: { month: { startsWith: String(year) } },
-      select: { month: true, totalCashbackOwed: true, marginAmount: true, status: true },
+      select: { month: true, totalCashbackOwed: true, marginAmount: true, status: true, partnerId: true },
     });
 
     // Group by month; total = full partner obligation (cashback + margin), matching spec 6.2.
@@ -377,22 +386,36 @@ router.get(
       monthMap.set(p.month, existing);
     }
 
-    // Find months with APPROVED scans that have no invoice rows yet (spec §4 gap fix).
+    // Build a per-month set of partner IDs that already have invoices.
+    const monthInvoicedPartners = new Map<string, Set<string>>();
+    for (const p of payments) {
+      if (!monthInvoicedPartners.has(p.month)) monthInvoicedPartners.set(p.month, new Set());
+      monthInvoicedPartners.get(p.month)!.add(p.partnerId);
+    }
+
+    // Find APPROVED scans for the year; flag months where a partner has scans but no invoice.
     const yearStart = new Date(year, 0, 1);
     const yearEnd   = new Date(year + 1, 0, 1);
     const scans = await prisma.stickerScan.findMany({
       where: { status: ScanStatus.APPROVED, createdAt: { gte: yearStart, lt: yearEnd } },
-      select: { createdAt: true },
+      select: { createdAt: true, venue: { select: { partnerId: true } } },
     });
 
     for (const scan of scans) {
+      const pid = scan.venue?.partnerId;
+      if (!pid) continue;
       const d = scan.createdAt;
       const monthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-      if (!monthMap.has(monthKey)) {
+      // Skip if this partner already has an invoice for this month.
+      if (monthInvoicedPartners.get(monthKey)?.has(pid)) continue;
+      const existing = monthMap.get(monthKey);
+      if (!existing) {
         monthMap.set(monthKey, {
           month: monthKey, total: 0, pending: 0, paid: 0, overdue: 0, count: 0,
           hasUnbilledScans: true,
         });
+      } else {
+        existing.hasUnbilledScans = true;
       }
     }
 
@@ -407,7 +430,7 @@ router.get(
 /**
  * GET /api/admin/finance/reports
  * Aggregate financial statistics.
- * Query: from (ISO date), to (ISO date) — defaults to current month
+ * Query: from (ISO date), to (ISO date), partnerId, invoiceStatus — defaults to current month
  */
 router.get(
   '/reports',
@@ -416,6 +439,8 @@ router.get(
     const now = new Date();
     const fromParam = req.query.from as string;
     const toParam = req.query.to as string;
+    const partnerIdParam = typeof req.query.partnerId === 'string' ? req.query.partnerId.trim() : '';
+    const invoiceStatusParam = typeof req.query.invoiceStatus === 'string' ? req.query.invoiceStatus.trim() : '';
 
     const from = fromParam ? new Date(fromParam) : new Date(now.getFullYear(), now.getMonth(), 1);
     const to = toParam ? new Date(toParam) : new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
@@ -424,47 +449,165 @@ router.get(
       return res.status(400).json({ success: false, error: 'Invalid date range' });
     }
 
-    const [walletStats, cashbackPaymentStats, invoiceTotals] = await Promise.all([
-      // Wallet transaction aggregates
+    const VALID_INVOICE_STATUSES = ['PENDING', 'PAID', 'OVERDUE'] as const;
+    if (invoiceStatusParam && !(VALID_INVOICE_STATUSES as readonly string[]).includes(invoiceStatusParam)) {
+      return res.status(400).json({ success: false, error: `invoiceStatus must be one of: ${VALID_INVOICE_STATUSES.join(', ')}` });
+    }
+
+    // Compute month strings that fall within the date range (used for both invoice and period filters)
+    const months: string[] = [];
+    const cursor = new Date(from.getFullYear(), from.getMonth(), 1);
+    const toMonthStart = new Date(to.getFullYear(), to.getMonth(), 1);
+    while (cursor <= toMonthStart) {
+      months.push(`${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}`);
+      cursor.setMonth(cursor.getMonth() + 1);
+    }
+
+    // Invoice filter: filter by billing month (not createdAt) so a report for "May" always
+    // shows May's invoices regardless of when the invoice record was generated.
+    const invoiceWhere: Parameters<typeof prisma.partnerCashbackPayment.findMany>[0]['where'] = {
+      month: { in: months },
+    };
+    if (partnerIdParam) invoiceWhere.partnerId = partnerIdParam;
+    if (invoiceStatusParam) invoiceWhere.status = invoiceStatusParam as (typeof VALID_INVOICE_STATUSES)[number];
+
+    const [walletStats, invoiceTotals, partnerInvoices, periodRows, scansInRange] = await Promise.all([
+      // Wallet transaction aggregates — subscriber-side; not filtered by partner/status
       prisma.walletTransaction.groupBy({
         by: ['type'],
-        where: {
-          createdAt: { gte: from, lte: to },
-          status: 'COMPLETED',
-        },
+        where: { createdAt: { gte: from, lte: to }, status: 'COMPLETED' },
         _sum: { amount: true },
         _count: { id: true },
       }),
-      // Subscription revenue: active subscriptions count
-      prisma.subscription.groupBy({
-        by: ['plan', 'status'],
+      // Invoice totals: cashback + margin + turnover
+      prisma.partnerCashbackPayment.aggregate({
+        where: invoiceWhere,
+        _sum: { totalCashbackOwed: true, marginAmount: true, turnoverAmount: true },
         _count: { id: true },
       }),
-      // Cashback payments in period
-      prisma.partnerCashbackPayment.aggregate({
-        where: { createdAt: { gte: from, lte: to } },
-        _sum: { totalCashbackOwed: true },
-        _count: { id: true },
+      // Per-partner detail rows for the breakdown table
+      prisma.partnerCashbackPayment.findMany({
+        where: invoiceWhere,
+        include: { partner: { select: { id: true, businessName: true, city: true } } },
+        orderBy: [{ totalCashbackOwed: 'desc' }],
+      }),
+      // Lifecycle status of each reporting period that overlaps the range
+      months.length > 0
+        ? prisma.reportingPeriod.findMany({
+            where: { month: { in: months } },
+            select: { month: true, status: true },
+          })
+        : Promise.resolve([]),
+      // Raw scans for subscription-plan breakdown (spec §6.4 "абонатен план" dimension)
+      prisma.stickerScan.findMany({
+        where: {
+          status: ScanStatus.APPROVED,
+          createdAt: { gte: from, lte: to },
+          ...(partnerIdParam ? { venue: { partnerId: partnerIdParam } } : {}),
+        },
+        select: { userId: true, cashbackAmount: true, verifiedAmount: true, billAmount: true },
       }),
     ]);
 
+    // Wallet tx map: always include core types so the UI can show 0 placeholders
+    const CORE_WALLET_TYPES = ['CASHBACK_CREDIT', 'WITHDRAWAL', 'TOP_UP'] as const;
     const txByType: Record<string, { total: number; count: number }> = {};
+    for (const t of CORE_WALLET_TYPES) txByType[t] = { total: 0, count: 0 };
     for (const row of walletStats) {
       txByType[row.type] = { total: row._sum.amount ?? 0, count: row._count.id };
     }
+
+    // Aggregate per-partner breakdown
+    const partnerMap = new Map<string, {
+      partnerId: string;
+      partnerName: string;
+      partnerCity: string | null;
+      cashback: number;
+      margin: number;
+      turnover: number;
+      contractedRate: number | null;
+      invoiceCount: number;
+      statuses: Record<string, number>;
+    }>();
+    for (const inv of partnerInvoices) {
+      const cur = partnerMap.get(inv.partnerId) ?? {
+        partnerId: inv.partnerId,
+        partnerName: inv.partner.businessName,
+        partnerCity: inv.partner.city,
+        cashback: 0,
+        margin: 0,
+        turnover: 0,
+        contractedRate: inv.contractedRate,
+        invoiceCount: 0,
+        statuses: {},
+      };
+      cur.cashback += inv.totalCashbackOwed;
+      cur.margin += inv.marginAmount;
+      cur.turnover += inv.turnoverAmount;
+      cur.invoiceCount += 1;
+      cur.statuses[inv.status] = (cur.statuses[inv.status] ?? 0) + 1;
+      partnerMap.set(inv.partnerId, cur);
+    }
+
+    // Plan breakdown: resolve each scan's user → most-recent active subscription → plan
+    const scanUserIds = [...new Set(scansInRange.map(s => s.userId))];
+    const userSubs = scanUserIds.length > 0
+      ? await prisma.subscription.findMany({
+          where: { userId: { in: scanUserIds } },
+          select: { userId: true, plan: true },
+          orderBy: { createdAt: 'desc' },
+          distinct: ['userId'],
+        })
+      : [];
+    const planByUser = new Map(userSubs.map(s => [s.userId, s.plan as string]));
+
+    const planAccum: Record<string, { scanCount: number; cashback: number; turnover: number }> = {};
+    for (const scan of scansInRange) {
+      const plan = planByUser.get(scan.userId) ?? 'UNKNOWN';
+      const cur = planAccum[plan] ?? { scanCount: 0, cashback: 0, turnover: 0 };
+      cur.scanCount += 1;
+      cur.cashback += scan.cashbackAmount;
+      cur.turnover += scan.verifiedAmount ?? scan.billAmount ?? 0;
+      planAccum[plan] = cur;
+    }
+    const planBreakdown = Object.entries(planAccum)
+      .map(([plan, stats]) => ({ plan, ...stats }))
+      .sort((a, b) => b.cashback - a.cashback);
 
     res.json({
       success: true,
       data: {
         period: { from: from.toISOString(), to: to.toISOString() },
         walletTransactions: txByType,
-        subscriptionBreakdown: cashbackPaymentStats,
         cashbackInvoices: {
           total: invoiceTotals._sum.totalCashbackOwed ?? 0,
+          marginTotal: invoiceTotals._sum.marginAmount ?? 0,
+          turnoverTotal: invoiceTotals._sum.turnoverAmount ?? 0,
           count: invoiceTotals._count.id,
         },
+        partnerBreakdown: Array.from(partnerMap.values()),
+        periodStatuses: periodRows,
+        planBreakdown,
       },
     });
+  })
+);
+
+/**
+ * GET /api/admin/finance/report-partners
+ * Returns a lightweight list of partners that have at least one invoice,
+ * used to populate the partner filter dropdown on the reports page.
+ */
+router.get(
+  '/report-partners',
+  requirePermission('finance.reports.read'),
+  asyncHandler(async (_req: AuthRequest, res: Response) => {
+    const partners = await prisma.partner.findMany({
+      where: { cashbackPayments: { some: {} } },
+      select: { id: true, businessName: true },
+      orderBy: { businessName: 'asc' },
+    });
+    res.json({ success: true, data: partners });
   })
 );
 
@@ -697,7 +840,8 @@ router.get(
       });
 
     } else {
-      // aggregate report
+      // Aggregate report export — covers all spec §6.4 dimensions:
+      // period, partner, subscription plan, cashback, margin, invoices, payments
       const now = new Date();
       const from = fromParam ? new Date(fromParam) : new Date(now.getFullYear(), now.getMonth(), 1);
       const to = toParam ? new Date(toParam) : new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
@@ -706,30 +850,128 @@ router.get(
         return res.status(400).json({ success: false, error: 'Invalid date range' });
       }
 
-      const [walletStats, invoiceTotals] = await Promise.all([
+      // Derive months in range for invoice filter (same logic as reports endpoint)
+      const expMonths: string[] = [];
+      const expCursor = new Date(from.getFullYear(), from.getMonth(), 1);
+      const expToMonthStart = new Date(to.getFullYear(), to.getMonth(), 1);
+      while (expCursor <= expToMonthStart) {
+        expMonths.push(`${expCursor.getFullYear()}-${String(expCursor.getMonth() + 1).padStart(2, '0')}`);
+        expCursor.setMonth(expCursor.getMonth() + 1);
+      }
+
+      // Partner and status filters — mirror the reports endpoint so exports match what you see
+      const expPartnerId = typeof req.query.partnerId === 'string' ? req.query.partnerId.trim() : '';
+      const expInvoiceStatus = typeof req.query.invoiceStatus === 'string' ? req.query.invoiceStatus.trim() : '';
+      const EXP_VALID_STATUSES = ['PENDING', 'PAID', 'OVERDUE'] as const;
+      const expInvoiceWhere: Parameters<typeof prisma.partnerCashbackPayment.findMany>[0]['where'] = {
+        month: { in: expMonths },
+      };
+      if (expPartnerId) expInvoiceWhere.partnerId = expPartnerId;
+      if (expInvoiceStatus && (EXP_VALID_STATUSES as readonly string[]).includes(expInvoiceStatus)) {
+        expInvoiceWhere.status = expInvoiceStatus as (typeof EXP_VALID_STATUSES)[number];
+      }
+
+      const [walletStats, invoiceRows, expScans] = await Promise.all([
         prisma.walletTransaction.groupBy({
           by: ['type'],
           where: { createdAt: { gte: from, lte: to }, status: 'COMPLETED' },
           _sum: { amount: true },
           _count: { id: true },
         }),
+        // Invoice rows with partner name and all financial columns
         prisma.partnerCashbackPayment.findMany({
-          where: { createdAt: { gte: from, lte: to } },
-          select: { partnerId: true, month: true, totalCashbackOwed: true, marginAmount: true, status: true },
+          where: expInvoiceWhere,
+          include: { partner: { select: { businessName: true } } },
+          orderBy: [{ month: 'asc' }, { totalCashbackOwed: 'desc' }],
+        }),
+        // Scans for plan-dimension breakdown
+        prisma.stickerScan.findMany({
+          where: {
+            status: ScanStatus.APPROVED,
+            createdAt: { gte: from, lte: to },
+            ...(expPartnerId ? { venue: { partnerId: expPartnerId } } : {}),
+          },
+          select: { userId: true, cashbackAmount: true, verifiedAmount: true, billAmount: true },
         }),
       ]);
 
-      rows = [
-        ...walletStats.map(w => ({ category: 'wallet', type: w.type, total: w._sum.amount ?? 0, count: w._count.id })),
-        ...invoiceTotals.map(i => ({
-          category: 'cashback',
-          partnerId: i.partnerId,
-          month: i.month,
-          cashback: i.totalCashbackOwed,
-          margin: i.marginAmount,
-          status: i.status,
-        })),
-      ];
+      // Resolve scan userId → subscription plan (most recent subscription per user)
+      const expScanUserIds = [...new Set(expScans.map(s => s.userId))];
+      const expUserSubs = expScanUserIds.length > 0
+        ? await prisma.subscription.findMany({
+            where: { userId: { in: expScanUserIds } },
+            select: { userId: true, plan: true },
+            orderBy: { createdAt: 'desc' },
+            distinct: ['userId'],
+          })
+        : [];
+      const expPlanByUser = new Map(expUserSubs.map(s => [s.userId, s.plan as string]));
+
+      // Aggregate scans by plan
+      const expPlanAccum: Record<string, { scanCount: number; cashback: number; turnover: number }> = {};
+      for (const scan of expScans) {
+        const plan = expPlanByUser.get(scan.userId) ?? 'UNKNOWN';
+        const cur = expPlanAccum[plan] ?? { scanCount: 0, cashback: 0, turnover: 0 };
+        cur.scanCount += 1;
+        cur.cashback += scan.cashbackAmount;
+        cur.turnover += scan.verifiedAmount ?? scan.billAmount ?? 0;
+        expPlanAccum[plan] = cur;
+      }
+
+      // Section 1 — invoice rows: one row per partner-month (period + partner + cashback + margin + invoice status)
+      const invoiceSection = invoiceRows.map(i => ({
+        section: 'invoice',
+        period: i.month,
+        partnerName: i.partner.businessName,
+        partnerId: i.partnerId,
+        plan: '',
+        scanCount: '',
+        cashback: i.totalCashbackOwed,
+        margin: i.marginAmount,
+        turnover: i.turnoverAmount,
+        invoiceStatus: i.status,
+        walletType: '',
+        walletTotal: '',
+        walletCount: '',
+      }));
+
+      // Section 2 — plan breakdown rows: one row per subscription plan (plan + cashback + turnover)
+      const planSection = Object.entries(expPlanAccum)
+        .sort((a, b) => b[1].cashback - a[1].cashback)
+        .map(([plan, stats]) => ({
+          section: 'plan_breakdown',
+          period: '',
+          partnerName: '',
+          partnerId: '',
+          plan,
+          scanCount: stats.scanCount,
+          cashback: stats.cashback,
+          margin: '',
+          turnover: stats.turnover,
+          invoiceStatus: '',
+          walletType: '',
+          walletTotal: '',
+          walletCount: '',
+        }));
+
+      // Section 3 — wallet summary rows: one row per transaction type (payments dimension)
+      const walletSection = walletStats.map(w => ({
+        section: 'wallet',
+        period: '',
+        partnerName: '',
+        partnerId: '',
+        plan: '',
+        scanCount: '',
+        cashback: '',
+        margin: '',
+        turnover: '',
+        invoiceStatus: '',
+        walletType: w.type,
+        walletTotal: w._sum.amount ?? 0,
+        walletCount: w._count.id,
+      }));
+
+      rows = [...invoiceSection, ...planSection, ...walletSection];
     }
 
     const filename = `boomcard_${type}_${new Date().toISOString().slice(0, 10)}`;
@@ -741,7 +983,7 @@ router.get(
     const HEADERS: Record<string, string[]> = {
       invoices: ['id', 'partner', 'city', 'month', 'turnoverAmount', 'contractedRate', 'totalCashbackOwed', 'marginAmount', 'status', 'paidAt', 'notes', 'createdAt'],
       periods:  ['month', 'status', 'partners', 'cashback', 'margin', 'total', 'paid', 'pending', 'overdue', 'lockedAt', 'lockedBy', 'invoicedAt', 'invoicedBy', 'notes'],
-      reports:  ['category', 'type', 'total', 'count', 'partnerId', 'month', 'cashback', 'margin', 'status'],
+      reports:  ['section', 'period', 'partnerName', 'partnerId', 'plan', 'scanCount', 'cashback', 'margin', 'turnover', 'invoiceStatus', 'walletType', 'walletTotal', 'walletCount'],
     };
 
     if (format === 'csv') {

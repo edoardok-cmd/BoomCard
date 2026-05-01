@@ -24,11 +24,13 @@ import * as otplib from 'otplib';
 import QRCode from 'qrcode';
 import bcrypt from 'bcrypt';
 import { authenticate, authorize, AuthRequest } from '../middleware/auth.middleware';
+import { auditMiddleware } from '../middleware/audit.middleware';
 import { asyncHandler } from '../middleware/error.middleware';
 import { prisma } from '../lib/prisma';
 
 const router = Router();
 router.use(authenticate, authorize('ADMIN', 'SUPER_ADMIN'));
+router.use(auditMiddleware);
 
 /* ─── Profile ────────────────────────────────────────────────────────────────*/
 

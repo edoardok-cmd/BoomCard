@@ -1,12 +1,15 @@
 import { Router } from 'express';
 import { MarketingChannel, CampaignStatus, AutomationStatus, MarketingListType } from '@prisma/client';
 import { authenticate, authorize, requirePermission } from '../middleware/auth.middleware';
+import { auditMiddleware } from '../middleware/audit.middleware';
 import { prisma } from '../lib/prisma';
 
 const router = Router();
+router.use(authenticate, authorize('ADMIN', 'SUPER_ADMIN'));
+router.use(auditMiddleware);
 
-const READ  = [authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('marketing.read')];
-const WRITE = [authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('marketing.write')];
+const READ  = [requirePermission('marketing.read')];
+const WRITE = [requirePermission('marketing.write')];
 
 // ─── Templates ────────────────────────────────────────────────────────────────
 

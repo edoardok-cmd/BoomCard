@@ -554,7 +554,11 @@ export default function AdminFinanceInvoicesPage() {
           rowActions={[
             {
               label: 'Маркирай платено',
-              hidden: (row) => row.status === 'PAID',
+              // Hidden when already paid OR when the billing period is locked/invoiced
+              hidden: (row) =>
+                row.status === 'PAID' ||
+                row.reportingPeriodStatus === 'LOCKED' ||
+                row.reportingPeriodStatus === 'INVOICED',
               onClick: (row) => {
                 if (!window.confirm(`Маркирай фактурата за ${row.partner.businessName} (${row.month}) като платена?`)) return;
                 payMutation.mutate(row.id);
@@ -562,7 +566,10 @@ export default function AdminFinanceInvoicesPage() {
             },
             {
               label: 'Маркирай просрочено',
-              hidden: (row) => row.status !== 'PENDING',
+              hidden: (row) =>
+                row.status !== 'PENDING' ||
+                row.reportingPeriodStatus === 'LOCKED' ||
+                row.reportingPeriodStatus === 'INVOICED',
               onClick: (row) => {
                 if (!window.confirm(`Маркирай фактурата за ${row.partner.businessName} (${row.month}) като просрочена?`)) return;
                 overdueMutation.mutate(row.id);
@@ -570,13 +577,17 @@ export default function AdminFinanceInvoicesPage() {
             },
             {
               label: 'Върни към Чака',
-              hidden: (row) => row.status !== 'OVERDUE',
+              hidden: (row) =>
+                row.status !== 'OVERDUE' ||
+                row.reportingPeriodStatus === 'LOCKED' ||
+                row.reportingPeriodStatus === 'INVOICED',
               onClick: (row) => {
                 if (!window.confirm(`Върни фактурата за ${row.partner.businessName} (${row.month}) към статус Чака?`)) return;
                 pendingMutation.mutate(row.id);
               },
             },
             {
+              // Notes are allowed on any period status — see PATCH /invoices/:id/notes
               label: 'Редакция бележки',
               hidden: () => false,
               onClick: openNotesModal,

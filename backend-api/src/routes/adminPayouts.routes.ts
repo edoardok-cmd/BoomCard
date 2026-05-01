@@ -74,22 +74,19 @@ router.get(
   requirePermission('finance.payouts.read'),
   async (req, res, next) => {
     try {
-      const { search, status, page = '1', limit = '20' } = req.query as Record<string, string>;
+      const { search, status, page = '1', limit = '20', dateFrom, dateTo } = req.query as Record<string, string>;
 
       const pageNum   = Math.max(1, parseInt(page) || 1);
       const limitNum  = Math.min(Math.max(1, parseInt(limit) || 20), 100);
       const skip      = (pageNum - 1) * limitNum;
 
-      const where: Parameters<typeof prisma.walletTransaction.findMany>[0]['where'] = {
+      // Base filter (search + date only) — used for filter-aware summary cards
+      const whereBase: Parameters<typeof prisma.walletTransaction.findMany>[0]['where'] = {
         type: 'WITHDRAWAL',
       };
 
-      if (status && Object.values(WalletTransactionStatus).includes(status as WalletTransactionStatus)) {
-        where.status = status as WalletTransactionStatus;
-      }
-
       if (search) {
-        where.wallet = {
+        whereBase.wallet = {
           user: {
             OR: [
               { email:     { contains: search, mode: 'insensitive' } },
@@ -101,8 +98,30 @@ router.get(
         };
       }
 
-      // Summary counts for the banner (always over all WITHDRAWAL records, ignoring search/status)
-      const [payouts, total, pendingCount, pendingTotal, processingCount, riskHoldCount] = await Promise.all([
+      if (dateFrom || dateTo) {
+        whereBase.createdAt = {
+          ...(dateFrom ? { gte: new Date(dateFrom) } : {}),
+          ...(dateTo   ? { lte: new Date(new Date(dateTo).setHours(23, 59, 59, 999)) } : {}),
+        };
+      }
+
+      // Full filter — adds status on top of base
+      const where: typeof whereBase = { ...whereBase };
+      if (status && Object.values(WalletTransactionStatus).includes(status as WalletTransactionStatus)) {
+        where.status = status as WalletTransactionStatus;
+      }
+
+      // Global summary counts (always system-wide) + filter-aware groupBy in parallel
+      const [
+        payouts, total,
+        pendingCount, pendingTotal,
+        processingCount, processingTotal,
+        completedCount, completedTotal,
+        riskHoldCount,
+        failedCount, failedTotal,
+        totalCount,
+        filteredGroupBy,
+      ] = await Promise.all([
         prisma.walletTransaction.findMany({
           where,
           skip,
@@ -115,20 +134,55 @@ router.get(
               select: {
                 id: true, availableBalance: true, pendingBalance: true,
                 payoutIban: true, payoutBeneficiaryName: true,
-                user: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } },
+                user: {
+                  select: {
+                    id: true, firstName: true, lastName: true, email: true, phone: true,
+                    subscriptions: {
+                      where: { status: { in: ['ACTIVE', 'TRIALING'] } },
+                      select: { plan: true, status: true },
+                      take: 1,
+                      orderBy: { createdAt: 'desc' },
+                    },
+                  },
+                },
               },
             },
           },
         }),
         prisma.walletTransaction.count({ where }),
         prisma.walletTransaction.count({ where: { type: 'WITHDRAWAL', status: 'PENDING' } }),
-        prisma.walletTransaction.aggregate({
-          where: { type: 'WITHDRAWAL', status: 'PENDING' },
+        prisma.walletTransaction.aggregate({ where: { type: 'WITHDRAWAL', status: 'PENDING' }, _sum: { amount: true } }),
+        prisma.walletTransaction.count({ where: { type: 'WITHDRAWAL', status: 'PROCESSING' } }),
+        prisma.walletTransaction.aggregate({ where: { type: 'WITHDRAWAL', status: 'PROCESSING' }, _sum: { amount: true } }),
+        prisma.walletTransaction.count({ where: { type: 'WITHDRAWAL', status: 'COMPLETED' } }),
+        prisma.walletTransaction.aggregate({ where: { type: 'WITHDRAWAL', status: 'COMPLETED' }, _sum: { amount: true } }),
+        prisma.walletTransaction.count({ where: { type: 'WITHDRAWAL', status: 'RISK_HOLD' } }),
+        prisma.walletTransaction.count({ where: { type: 'WITHDRAWAL', status: 'FAILED' } }),
+        prisma.walletTransaction.aggregate({ where: { type: 'WITHDRAWAL', status: 'FAILED' }, _sum: { amount: true } }),
+        prisma.walletTransaction.count({ where: { type: 'WITHDRAWAL' } }),
+        // Filter-aware breakdown (respects search + date but not status)
+        prisma.walletTransaction.groupBy({
+          by: ['status'],
+          where: whereBase,
+          _count: { _all: true },
           _sum: { amount: true },
         }),
-        prisma.walletTransaction.count({ where: { type: 'WITHDRAWAL', status: 'PROCESSING' } }),
-        prisma.walletTransaction.count({ where: { type: 'WITHDRAWAL', status: 'RISK_HOLD' } }),
       ]);
+
+      const fgb = (s: string) => filteredGroupBy.find(g => g.status === s);
+      const filteredSummary = {
+        pendingCount:    fgb('PENDING')?._count._all    ?? 0,
+        pendingTotal:    Math.abs(fgb('PENDING')?._sum.amount    ?? 0),
+        processingCount: fgb('PROCESSING')?._count._all ?? 0,
+        processingTotal: Math.abs(fgb('PROCESSING')?._sum.amount ?? 0),
+        completedCount:  fgb('COMPLETED')?._count._all  ?? 0,
+        completedTotal:  Math.abs(fgb('COMPLETED')?._sum.amount  ?? 0),
+        riskHoldCount:   fgb('RISK_HOLD')?._count._all  ?? 0,
+        failedCount:     fgb('FAILED')?._count._all     ?? 0,
+        failedTotal:     Math.abs(fgb('FAILED')?._sum.amount     ?? 0),
+        cancelledCount:  fgb('CANCELLED')?._count._all  ?? 0,
+        totalCount:      filteredGroupBy.reduce((acc, g) => acc + g._count._all, 0),
+      };
 
       res.json({
         payouts,
@@ -137,11 +191,58 @@ router.get(
         limit: limitNum,
         summary: {
           pendingCount,
-          pendingTotal: Math.abs(pendingTotal._sum.amount ?? 0),
+          pendingTotal:    Math.abs(pendingTotal._sum.amount    ?? 0),
           processingCount,
+          processingTotal: Math.abs(processingTotal._sum.amount ?? 0),
+          completedCount,
+          completedTotal:  Math.abs(completedTotal._sum.amount  ?? 0),
           riskHoldCount,
+          failedCount,
+          failedTotal:     Math.abs(failedTotal._sum.amount     ?? 0),
+          totalCount,
         },
+        filteredSummary,
       });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+// ─── PATCH /bulk-approve  ALL PENDING with IBAN → PROCESSING ─────────────────
+router.patch(
+  '/bulk-approve',
+  requirePermission('finance.payouts.write'),
+  async (req, res, next) => {
+    try {
+      const pending = await prisma.walletTransaction.findMany({
+        where: { type: 'WITHDRAWAL', status: 'PENDING' },
+        include: { wallet: true },
+      });
+
+      const withIban = pending.filter(p => p.wallet.payoutIban);
+      const processingStartedAt = new Date().toISOString();
+      let approved = 0;
+      let skipped  = 0;
+
+      for (const payout of withIban) {
+        try {
+          const existingMeta = payout.metadata ? JSON.parse(payout.metadata) : {};
+          await prisma.walletTransaction.update({
+            where: { id: payout.id },
+            data: {
+              status: 'PROCESSING',
+              metadata: JSON.stringify({ ...existingMeta, processingStartedAt }),
+            },
+          });
+          notifySubscriber(payout.id, 'approved');
+          approved++;
+        } catch {
+          skipped++;
+        }
+      }
+
+      res.json({ approved, skipped, total: withIban.length });
     } catch (error) {
       next(error);
     }
@@ -218,7 +319,7 @@ router.patch(
         prisma.walletTransaction.update({
           where: { id },
           data: {
-            status: 'FAILED',
+            status: 'CANCELLED',
             description: reason ? `Отхвърлено от администратор: ${reason}` : 'Отхвърлено от администратор',
           },
         }),

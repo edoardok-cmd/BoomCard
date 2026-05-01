@@ -1,12 +1,15 @@
 import { Router } from 'express';
 import { TicketStatus, TicketPriority, TicketCategory } from '@prisma/client';
 import { authenticate, authorize, requirePermission } from '../middleware/auth.middleware';
+import { auditMiddleware } from '../middleware/audit.middleware';
 import { prisma } from '../lib/prisma';
 import { notificationService } from '../services/notification.service';
 import { logger } from '../utils/logger';
 import type { AuthRequest } from '../middleware/auth.middleware';
 
 const router = Router();
+router.use(authenticate, authorize('ADMIN', 'SUPER_ADMIN'));
+router.use(auditMiddleware);
 
 const TICKET_SELECT_ALL = {
   id: true,
@@ -40,7 +43,7 @@ const TICKET_SELECT_MINE = {
 } as const;
 
 // POST /api/admin/help — G8: admin creates a new help ticket (Spec §11 "Нова заявка")
-router.post('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('help.write'), async (req: AuthRequest, res, next) => {
+router.post('/', requirePermission('help.write'), async (req: AuthRequest, res, next) => {
   try {
     const { subject, body, category, priority } = req.body as {
       subject?: string;
@@ -105,7 +108,7 @@ router.post('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermiss
 });
 
 // GET /api/admin/help — all tickets with optional filters
-router.get('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('help.read'), async (req, res, next) => {
+router.get('/', requirePermission('help.read'), async (req, res, next) => {
   try {
     const { status, priority, category, search, page = '1', limit = '25' } = req.query as Record<string, string>;
     const pageNum = Math.max(1, parseInt(page) || 1);
@@ -142,7 +145,7 @@ router.get('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermissi
 });
 
 // GET /api/admin/help/new — status=NEW tickets (unassigned queue)
-router.get('/new', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('help.read'), async (req, res, next) => {
+router.get('/new', requirePermission('help.read'), async (req, res, next) => {
   try {
     const { priority, category, search, page = '1', limit = '25' } = req.query as Record<string, string>;
     const pageNum = Math.max(1, parseInt(page) || 1);
@@ -182,7 +185,7 @@ router.get('/new', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermi
 });
 
 // GET /api/admin/help/mine — tickets assigned to the current admin
-router.get('/mine', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('help.read'), async (req: AuthRequest, res, next) => {
+router.get('/mine', requirePermission('help.read'), async (req: AuthRequest, res, next) => {
   try {
     const { status, search, page = '1', limit = '25' } = req.query as Record<string, string>;
     const pageNum = Math.max(1, parseInt(page) || 1);
@@ -221,7 +224,7 @@ router.get('/mine', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePerm
 });
 
 // GET /api/admin/help/:id — full ticket detail including body
-router.get('/:id', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('help.read'), async (req, res, next) => {
+router.get('/:id', requirePermission('help.read'), async (req, res, next) => {
   try {
     const ticket = await prisma.helpTicket.findUnique({
       where: { id: req.params.id },
@@ -246,7 +249,7 @@ router.get('/:id', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermi
 });
 
 // POST /api/admin/help/:id/assign — assign ticket to self; transitions NEW → OPEN
-router.post('/:id/assign', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('help.write'), async (req: AuthRequest, res, next) => {
+router.post('/:id/assign', requirePermission('help.write'), async (req: AuthRequest, res, next) => {
   try {
     const ticket = await prisma.helpTicket.findUnique({ where: { id: req.params.id } });
     if (!ticket) return res.status(404).json({ error: 'Ticket not found' });
@@ -266,7 +269,7 @@ router.post('/:id/assign', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requ
 });
 
 // PATCH /api/admin/help/:id — update status and/or priority
-router.patch('/:id', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('help.write'), async (req, res, next) => {
+router.patch('/:id', requirePermission('help.write'), async (req, res, next) => {
   try {
     const { status, priority } = req.body as { status?: string; priority?: string };
 
@@ -293,7 +296,7 @@ router.patch('/:id', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePer
 });
 
 // POST /api/admin/help/:id/reply — admin sends a reply to the ticket author
-router.post('/:id/reply', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('help.write'), async (req: AuthRequest, res, next) => {
+router.post('/:id/reply', requirePermission('help.write'), async (req: AuthRequest, res, next) => {
   try {
     const { body } = req.body as { body?: string };
 
@@ -331,7 +334,7 @@ router.post('/:id/reply', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requi
 });
 
 // GET /api/admin/help/:id/replies — list all replies for a ticket
-router.get('/:id/replies', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('help.read'), async (req, res, next) => {
+router.get('/:id/replies', requirePermission('help.read'), async (req, res, next) => {
   try {
     const ticket = await prisma.helpTicket.findUnique({ where: { id: req.params.id } });
     if (!ticket) return res.status(404).json({ error: 'Ticket not found' });

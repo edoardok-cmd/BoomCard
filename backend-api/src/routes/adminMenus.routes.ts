@@ -9,6 +9,7 @@
 
 import { Router, Response } from 'express';
 import { authenticate, authorize, requirePermission, AuthRequest } from '../middleware/auth.middleware';
+import { auditMiddleware } from '../middleware/audit.middleware';
 import { asyncHandler } from '../middleware/error.middleware';
 import { prisma } from '../lib/prisma';
 import { logger } from '../utils/logger';
@@ -18,6 +19,7 @@ import { notificationService } from '../services/notification.service';
 const router = Router();
 
 router.use(authenticate, authorize('ADMIN', 'SUPER_ADMIN'));
+router.use(auditMiddleware);
 
 const validateMenuUrl = (raw: unknown): { ok: true; url: string } | { ok: false; error: string } => {
   if (typeof raw !== 'string') return { ok: false, error: 'Menu URL is required' };
@@ -70,6 +72,7 @@ export default router;
 // Separate router mounted at /api/admin/venues (list + :id-keyed mutations)
 export const adminVenueMenuRouter = Router();
 adminVenueMenuRouter.use(authenticate, authorize('ADMIN', 'SUPER_ADMIN'));
+adminVenueMenuRouter.use(auditMiddleware);
 
 /**
  * GET /api/admin/venues

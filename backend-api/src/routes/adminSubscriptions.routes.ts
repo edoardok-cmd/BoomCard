@@ -1,11 +1,14 @@
 import { Router } from 'express';
 import { SubscriptionPlan, SubscriptionStatus, TransactionType, TransactionStatus, Prisma } from '@prisma/client';
 import { authenticate, authorize, requirePermission } from '../middleware/auth.middleware';
+import { auditMiddleware } from '../middleware/audit.middleware';
 import { prisma } from '../lib/prisma';
 import { stripeService } from '../services/stripe.service';
 import { planDisplayName } from '../utils/planDisplayName';
 
 const router = Router();
+router.use(authenticate, authorize('ADMIN', 'SUPER_ADMIN'));
+router.use(auditMiddleware);
 
 // Email patterns that mark seed/test accounts. Kept here (not config) because
 // the admin list explicitly filters them out by default per ops feedback.
@@ -232,7 +235,7 @@ function parseFilters(query: Record<string, string | undefined>): ListFilters {
 }
 
 // GET /api/admin/subscriptions
-router.get('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('subscriptions.read'), async (req, res, next) => {
+router.get('/', requirePermission('subscriptions.read'), async (req, res, next) => {
   try {
     const { page = '1', limit = '20', ...rest } = req.query as Record<string, string>;
     const pageNum = Math.max(1, parseInt(page) || 1);
@@ -263,7 +266,7 @@ router.get('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermissi
 // GET /api/admin/subscriptions/export — same filters, no pagination, no payment
 // aggregation per row to keep the query light. Used by the CSV button so the
 // admin gets the full filtered set rather than just the visible page.
-router.get('/export', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('subscriptions.read'), async (req, res, next) => {
+router.get('/export', requirePermission('subscriptions.read'), async (req, res, next) => {
   try {
     const filters = parseFilters(req.query as Record<string, string>);
     const where = await buildSubscriptionWhere(filters);
@@ -297,7 +300,7 @@ router.get('/export', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePe
 // subscription ever held by one user, oldest first. Powers the "history"
 // drawer per spec §4.2 ("Един потребител може да има история от различни
 // абонаменти във времето").
-router.get('/user/:userId/history', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('subscriptions.read'), async (req, res, next) => {
+router.get('/user/:userId/history', requirePermission('subscriptions.read'), async (req, res, next) => {
   try {
     const user = await prisma.user.findUnique({
       where: { id: req.params.userId },
@@ -359,7 +362,7 @@ router.get('/user/:userId/history', authenticate, authorize('ADMIN', 'SUPER_ADMI
 });
 
 // POST /api/admin/subscriptions/:id/cancel — cancel at period end
-router.post('/:id/cancel', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('subscriptions.write'), async (req, res, next) => {
+router.post('/:id/cancel', requirePermission('subscriptions.write'), async (req, res, next) => {
   try {
     const subscription = await prisma.subscription.findUnique({ where: { id: req.params.id } });
     if (!subscription) return res.status(404).json({ error: 'Subscription not found' });
@@ -378,25 +381,51 @@ router.post('/:id/cancel', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requ
     // the Paysera grace-period job uses canceledAt as the EXPIRED-vs-CANCELLED
     // discriminator and we want the original cancellation moment to win.
     const canceledAt = subscription.canceledAt ?? new Date();
-    if (!subscription.stripeSubscriptionId) {
-      await prisma.subscription.update({
-        where: { id: req.params.id },
-        data: { cancelAtPeriodEnd: true, cancelAt: subscription.currentPeriodEnd, canceledAt },
-      });
-    } else {
-      const stripeSub = await stripeService.stripe.subscriptions.update(
-        subscription.stripeSubscriptionId,
-        { cancel_at_period_end: true },
-      );
-      await prisma.subscription.update({
-        where: { id: req.params.id },
-        data: {
-          cancelAtPeriodEnd: true,
-          cancelAt: stripeSub.cancel_at ? new Date(stripeSub.cancel_at * 1000) : null,
-          canceledAt,
-        },
-      });
+
+    // DB-first: commit the TOCTOU guard before touching any external system.
+    // For Stripe rows, currentPeriodEnd is used as the initial cancelAt estimate
+    // (Stripe agrees in the vast majority of cases); we patch below only if Stripe
+    // returns a materially different date (e.g. custom billing anchor).
+    const result = await prisma.subscription.updateMany({
+      where: {
+        id: req.params.id,
+        cancelAtPeriodEnd: false,
+        status: { notIn: ['CANCELLED', 'EXPIRED', 'INCOMPLETE_EXPIRED'] },
+      },
+      data: {
+        cancelAtPeriodEnd: true,
+        cancelAt: subscription.currentPeriodEnd,
+        canceledAt,
+      },
+    });
+    if (result.count === 0) {
+      return res.status(409).json({ error: 'Subscription state changed concurrently — please refresh' });
     }
+
+    if (subscription.stripeSubscriptionId) {
+      try {
+        const stripeSub = await stripeService.stripe.subscriptions.update(
+          subscription.stripeSubscriptionId,
+          { cancel_at_period_end: true },
+        );
+        // Patch cancelAt only when Stripe returns a meaningfully different date.
+        const stripeDate = stripeSub.cancel_at ? new Date(stripeSub.cancel_at * 1000) : null;
+        if (stripeDate && Math.abs(stripeDate.getTime() - subscription.currentPeriodEnd.getTime()) > 60_000) {
+          await prisma.subscription.update({
+            where: { id: req.params.id },
+            data: { cancelAt: stripeDate },
+          });
+        }
+      } catch (stripeErr) {
+        // Stripe was not touched before this block — roll back DB to keep both in sync.
+        await prisma.subscription.updateMany({
+          where: { id: req.params.id, cancelAtPeriodEnd: true },
+          data: { cancelAtPeriodEnd: false, cancelAt: null, canceledAt: subscription.canceledAt },
+        });
+        throw stripeErr;
+      }
+    }
+
     res.json({ ok: true });
   } catch (error) {
     next(error);
@@ -408,7 +437,7 @@ router.post('/:id/cancel', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requ
 // It does NOT unpause a PAUSED row (which means "the period already lapsed");
 // admins who want to bring a PAUSED row back to ACTIVE must use /resume, which
 // also rolls the billing period forward.
-router.post('/:id/reactivate', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('subscriptions.write'), async (req, res, next) => {
+router.post('/:id/reactivate', requirePermission('subscriptions.write'), async (req, res, next) => {
   try {
     const subscription = await prisma.subscription.findUnique({ where: { id: req.params.id } });
     if (!subscription) return res.status(404).json({ error: 'Subscription not found' });
@@ -426,24 +455,47 @@ router.post('/:id/reactivate', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), 
       });
     }
 
-    if (subscription.stripeSubscriptionId) {
-      await stripeService.stripe.subscriptions.update(subscription.stripeSubscriptionId, {
-        cancel_at_period_end: false,
-      });
-    }
-
+    // DB-first: commit the TOCTOU guard before calling Stripe so a concurrent-
+    // conflict miss returns 409 without touching any external system.
     // Reactivate clears the cancellation but preserves the user's stored
     // autoRenewal preference. Forcing autoRenewal=true here was a regression:
     // a user who turned auto-off and was then cancelled would be re-enrolled
     // by a reactivation, contradicting their original intent.
-    await prisma.subscription.update({
-      where: { id: req.params.id },
+    const result = await prisma.subscription.updateMany({
+      where: {
+        id: req.params.id,
+        cancelAtPeriodEnd: true,
+        status: { notIn: ['CANCELLED', 'EXPIRED', 'INCOMPLETE_EXPIRED', 'PAUSED'] },
+      },
       data: {
         cancelAtPeriodEnd: false,
         cancelAt: null,
         canceledAt: null,
       },
     });
+    if (result.count === 0) {
+      return res.status(409).json({ error: 'Subscription state changed concurrently — please refresh' });
+    }
+
+    if (subscription.stripeSubscriptionId) {
+      try {
+        await stripeService.stripe.subscriptions.update(subscription.stripeSubscriptionId, {
+          cancel_at_period_end: false,
+        });
+      } catch (stripeErr) {
+        // Stripe was not reached before this block — roll back DB to keep both in sync.
+        await prisma.subscription.updateMany({
+          where: { id: req.params.id, cancelAtPeriodEnd: false },
+          data: {
+            cancelAtPeriodEnd: true,
+            cancelAt: subscription.cancelAt,
+            canceledAt: subscription.canceledAt,
+          },
+        });
+        throw stripeErr;
+      }
+    }
+
     res.json({ ok: true });
   } catch (error) {
     next(error);
@@ -460,7 +512,7 @@ router.post('/:id/reactivate', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), 
 //   (b) clear gracePeriodEndsAt and any stale canceledAt so the
 //       canceledAt-as-EXPIRED-vs-CANCELLED discriminator stays correct on
 //       the next natural lapse.
-router.post('/:id/resume', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('subscriptions.write'), async (req, res, next) => {
+router.post('/:id/resume', requirePermission('subscriptions.write'), async (req, res, next) => {
   try {
     const subscription = await prisma.subscription.findUnique({ where: { id: req.params.id } });
     if (!subscription) return res.status(404).json({ error: 'Subscription not found' });
@@ -468,27 +520,72 @@ router.post('/:id/resume', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requ
       return res.status(400).json({ error: 'Subscription is not paused' });
     }
 
-    let nextStatus: SubscriptionStatus = SubscriptionStatus.ACTIVE;
-    let nextPeriodStart: Date | null = null;
-    let nextPeriodEnd: Date | null = null;
-
     if (subscription.stripeSubscriptionId) {
-      const resumed = await stripeService.stripe.subscriptions.resume(subscription.stripeSubscriptionId);
-      // Map Stripe's returned status — resume can land on past_due/unpaid if a
-      // delinquent invoice surfaces, in which case our DB row should reflect
-      // that, not optimistically claim ACTIVE.
-      const map: Record<string, SubscriptionStatus | undefined> = {
-        active: SubscriptionStatus.ACTIVE,
-        trialing: SubscriptionStatus.TRIALING,
-        past_due: SubscriptionStatus.PAST_DUE,
-        unpaid: SubscriptionStatus.UNPAID,
-        canceled: SubscriptionStatus.CANCELLED,
-      };
-      nextStatus = map[resumed.status] ?? SubscriptionStatus.ACTIVE;
-      // Mirror Stripe's authoritative period back to the DB so currentPeriodEnd
-      // doesn't stay in the past.
-      if (resumed.current_period_start) nextPeriodStart = new Date(resumed.current_period_start * 1000);
-      if (resumed.current_period_end) nextPeriodEnd = new Date(resumed.current_period_end * 1000);
+      // DB-first: write optimistic ACTIVE before calling Stripe. Stripe's resume is
+      // NOT idempotent — a second call on an already-active sub throws — so the TOCTOU
+      // guard must prevent the concurrent caller from reaching the Stripe API at all.
+      const result = await prisma.subscription.updateMany({
+        where: { id: req.params.id, status: 'PAUSED' },
+        data: {
+          status: SubscriptionStatus.ACTIVE,
+          gracePeriodEndsAt: null,
+          canceledAt: null,
+          cancelAtPeriodEnd: false,
+          cancelAt: null,
+          retryAttempt: 0,
+        },
+      });
+      if (result.count === 0) {
+        return res.status(409).json({ error: 'Subscription state changed concurrently — please refresh' });
+      }
+
+      let nextStatus: SubscriptionStatus = SubscriptionStatus.ACTIVE;
+      let patchPeriodStart: Date | undefined;
+      let patchPeriodEnd: Date | undefined;
+
+      try {
+        const resumed = await stripeService.stripe.subscriptions.resume(subscription.stripeSubscriptionId);
+        // Map Stripe's returned status — resume can land on past_due/unpaid if a
+        // delinquent invoice surfaces, in which case our DB row should reflect
+        // that, not optimistically claim ACTIVE.
+        const map: Record<string, SubscriptionStatus | undefined> = {
+          active: SubscriptionStatus.ACTIVE,
+          trialing: SubscriptionStatus.TRIALING,
+          past_due: SubscriptionStatus.PAST_DUE,
+          unpaid: SubscriptionStatus.UNPAID,
+          canceled: SubscriptionStatus.CANCELLED,
+        };
+        nextStatus = map[resumed.status] ?? SubscriptionStatus.ACTIVE;
+        if (resumed.current_period_start) patchPeriodStart = new Date(resumed.current_period_start * 1000);
+        if (resumed.current_period_end) patchPeriodEnd = new Date(resumed.current_period_end * 1000);
+      } catch (stripeErr) {
+        // Stripe call failed — the sub is still paused in Stripe. Roll back DB.
+        await prisma.subscription.updateMany({
+          where: { id: req.params.id, status: SubscriptionStatus.ACTIVE },
+          data: {
+            status: 'PAUSED',
+            gracePeriodEndsAt: subscription.gracePeriodEndsAt,
+            canceledAt: subscription.canceledAt,
+            cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
+            cancelAt: subscription.cancelAt,
+            retryAttempt: subscription.retryAttempt,
+          },
+        });
+        throw stripeErr;
+      }
+
+      // Mirror Stripe's authoritative period + status back. Also corrects status when
+      // Stripe lands on past_due/unpaid rather than the optimistic ACTIVE we wrote above.
+      await prisma.subscription.update({
+        where: { id: req.params.id },
+        data: {
+          status: nextStatus,
+          ...(patchPeriodStart && { currentPeriodStart: patchPeriodStart }),
+          ...(patchPeriodEnd && { currentPeriodEnd: patchPeriodEnd }),
+        },
+      });
+
+      return res.json({ ok: true, status: nextStatus });
     } else {
       // Paysera resume — manual roll forward. We don't have a payment event to
       // anchor on, so use now() as the new period start and add one billing
@@ -504,24 +601,28 @@ router.post('/:id/resume', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requ
       } catch {
         // ignore, keep monthly default
       }
-      nextPeriodStart = start;
-      nextPeriodEnd = new Date(start.getTime() + weeks * 7 * 24 * 60 * 60 * 1000);
-    }
+      const nextPeriodStart = start;
+      const nextPeriodEnd = new Date(start.getTime() + weeks * 7 * 24 * 60 * 60 * 1000);
 
-    await prisma.subscription.update({
-      where: { id: req.params.id },
-      data: {
-        status: nextStatus,
-        gracePeriodEndsAt: null,
-        canceledAt: null,
-        cancelAtPeriodEnd: false,
-        cancelAt: null,
-        retryAttempt: 0,
-        ...(nextPeriodStart && { currentPeriodStart: nextPeriodStart }),
-        ...(nextPeriodEnd && { currentPeriodEnd: nextPeriodEnd }),
-      },
-    });
-    res.json({ ok: true, status: nextStatus });
+      const result = await prisma.subscription.updateMany({
+        where: { id: req.params.id, status: 'PAUSED' },
+        data: {
+          status: SubscriptionStatus.ACTIVE,
+          gracePeriodEndsAt: null,
+          canceledAt: null,
+          cancelAtPeriodEnd: false,
+          cancelAt: null,
+          retryAttempt: 0,
+          currentPeriodStart: nextPeriodStart,
+          currentPeriodEnd: nextPeriodEnd,
+        },
+      });
+      if (result.count === 0) {
+        return res.status(409).json({ error: 'Subscription state changed concurrently — please refresh' });
+      }
+
+      return res.json({ ok: true, status: SubscriptionStatus.ACTIVE });
+    }
   } catch (error) {
     next(error);
   }
@@ -533,7 +634,7 @@ router.post('/:id/resume', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requ
 // cancelAtPeriodEnd=true on disable) collapsed two distinct actions into one
 // and made the row's auto-renewal pill effectively read-only after the first
 // disable, since "Reactivate" was the only way back.
-router.patch('/:id/auto-renewal', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('subscriptions.write'), async (req, res, next) => {
+router.patch('/:id/auto-renewal', requirePermission('subscriptions.write'), async (req, res, next) => {
   try {
     const { autoRenewal } = req.body;
     if (typeof autoRenewal !== 'boolean') {

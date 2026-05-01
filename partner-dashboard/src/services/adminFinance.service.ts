@@ -41,7 +41,7 @@ export interface PeriodRow {
   overdue: number;
   count: number;
   /** True when the month has APPROVED scans but no invoices have been generated yet. */
-  hasUnbilledScans?: boolean;
+  hasUnbilledScans: boolean;
 }
 
 export interface ReportingPeriodRow {
@@ -57,11 +57,37 @@ export interface ReportingPeriodRow {
   updatedAt: string;
 }
 
+export interface ReportPartnerBreakdown {
+  partnerId: string;
+  partnerName: string;
+  partnerCity: string | null;
+  cashback: number;
+  margin: number;
+  turnover: number;
+  contractedRate: number | null;
+  invoiceCount: number;
+  statuses: Record<string, number>;
+}
+
+export interface PlanBreakdownRow {
+  plan: string;
+  scanCount: number;
+  cashback: number;
+  turnover: number;
+}
+
 export interface ReportData {
   period: { from: string; to: string };
   walletTransactions: Record<string, { total: number; count: number }>;
-  subscriptionBreakdown: Array<{ plan: string; status: string; _count: { id: number } }>;
-  cashbackInvoices: { total: number; count: number };
+  cashbackInvoices: {
+    total: number;
+    marginTotal: number;
+    turnoverTotal: number;
+    count: number;
+  };
+  partnerBreakdown: ReportPartnerBreakdown[];
+  periodStatuses: Array<{ month: string; status: string }>;
+  planBreakdown: PlanBreakdownRow[];
 }
 
 export const adminFinanceService = {
@@ -119,11 +145,37 @@ export const adminFinanceService = {
     return apiService.patch(`/admin/finance/reporting-periods/${month}/status`, { status });
   },
 
-  getReports(from?: string, to?: string): Promise<{ data: ReportData }> {
+  getReports(params?: {
+    from?: string;
+    to?: string;
+    partnerId?: string;
+    invoiceStatus?: string;
+  }): Promise<{ data: ReportData }> {
     const clean: Record<string, unknown> = {};
-    if (from) clean.from = from;
-    if (to) clean.to = to;
+    if (params?.from) clean.from = params.from;
+    if (params?.to) clean.to = params.to;
+    if (params?.partnerId) clean.partnerId = params.partnerId;
+    if (params?.invoiceStatus) clean.invoiceStatus = params.invoiceStatus;
     return apiService.get('/admin/finance/reports', clean);
+  },
+
+  getReportPartners(): Promise<{ data: Array<{ id: string; businessName: string }> }> {
+    return apiService.get('/admin/finance/report-partners', {});
+  },
+
+  async exportReports(params: { from?: string; to?: string; format?: 'csv' | 'xlsx'; partnerId?: string; invoiceStatus?: string }): Promise<void> {
+    const q: Record<string, unknown> = { type: 'reports', format: params.format ?? 'xlsx' };
+    if (params.from) q.from = params.from;
+    if (params.to) q.to = params.to;
+    if (params.partnerId) q.partnerId = params.partnerId;
+    if (params.invoiceStatus) q.invoiceStatus = params.invoiceStatus;
+    const { data, filename } = await apiService.getBlob('/admin/finance/export', q);
+    const url = URL.createObjectURL(data);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
   },
 
   async exportPeriods(params: { year?: number }): Promise<void> {

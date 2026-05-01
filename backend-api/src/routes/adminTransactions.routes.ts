@@ -1,10 +1,13 @@
 import { Router } from 'express';
 import { WalletTransactionType, WalletTransactionStatus, TransactionType, TransactionStatus } from '@prisma/client';
 import { authenticate, authorize, requirePermission } from '../middleware/auth.middleware';
+import { auditMiddleware } from '../middleware/audit.middleware';
 import { prisma } from '../lib/prisma';
 import { deriveCashbackEntryStatus } from '../services/adminCashback.service';
 
 const router = Router();
+router.use(authenticate, authorize('ADMIN', 'SUPER_ADMIN'));
+router.use(auditMiddleware);
 
 // Reject arrays and nested objects that qs can produce when a param is repeated
 // (?x=a&x=b → ['a','b']) or bracket-notation is used (?x[gt]=1 → {gt:'1'}).
@@ -73,7 +76,7 @@ function buildWhere(query: Record<string, unknown>): TxWhere {
 }
 
 // GET /api/admin/transactions?page=1&limit=20&search=...&type=TOP_UP&status=COMPLETED&dateFrom=...&dateTo=...&userId=...
-router.get('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('transactions.read'), async (req, res, next) => {
+router.get('/', requirePermission('transactions.read'), async (req, res, next) => {
   try {
     const page = qs(req.query.page) ?? '1';
     const limit = qs(req.query.limit) ?? '20';
@@ -126,7 +129,7 @@ router.get('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermissi
 });
 
 // GET /api/admin/transactions/stats?search=...&type=...&status=...&dateFrom=...&dateTo=...&userId=...
-router.get('/stats', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('transactions.read'), async (req, res, next) => {
+router.get('/stats', requirePermission('transactions.read'), async (req, res, next) => {
   try {
     const baseWhere = buildWhere(req.query);
 
@@ -156,7 +159,7 @@ router.get('/stats', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePer
 });
 
 // POST /api/admin/transactions/adjust
-router.post('/adjust', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('transactions.write'), async (req, res, next) => {
+router.post('/adjust', requirePermission('transactions.write'), async (req, res, next) => {
   let validationError: string | null = null;
   try {
     const { userId, amount, reason } = req.body as {
@@ -325,7 +328,7 @@ function buildBusinessWhere(query: Record<string, unknown>): BusinessTxWhere {
 
 // GET /api/admin/transactions/business — Spec §4.3 — Transaction model with
 // Партньор / Локация / Кешбек / Марджин / Risk score / Receipt link / dual timestamps.
-router.get('/business', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('transactions.read'), async (req, res, next) => {
+router.get('/business', requirePermission('transactions.read'), async (req, res, next) => {
   try {
     const page = qs(req.query.page) ?? '1';
     const limit = qs(req.query.limit) ?? '20';
@@ -512,7 +515,7 @@ function getTodayBoundariesInSofia(): [Date, Date] {
 // GET /api/admin/transactions/business/stats — Spec §3.1 transactions block:
 // Брой транзакции днес, общ оборот, средна стойност (today / total / avg, scoped by current filters).
 // Accepts the same filter set as /business so the stats bar matches the visible row count.
-router.get('/business/stats', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('transactions.read'), async (req, res, next) => {
+router.get('/business/stats', requirePermission('transactions.read'), async (req, res, next) => {
   try {
     const where = buildBusinessWhere(req.query);
 
@@ -554,7 +557,7 @@ router.get('/business/stats', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), r
 // excluded on purpose: filtering receipts by their own fraudScore would make the
 // aggregate self-fulfilling (you'd only see receipts above the threshold, so the
 // "min" and "avg" would always be ≥ threshold).
-router.get('/business/partner-risk/:partnerId', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('transactions.read'), async (req, res, next) => {
+router.get('/business/partner-risk/:partnerId', requirePermission('transactions.read'), async (req, res, next) => {
   try {
     const { partnerId } = req.params;
     if (!partnerId) {

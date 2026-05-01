@@ -531,7 +531,7 @@ export function deriveCashbackEntryStatus(
 ): CashbackEntryStatus {
   // Explicitly marked as paid by admin (individual entry Locked→Paid action)
   if (entry.cashbackPaidAt) return 'Paid';
-  if (entry.status === 'PENDING' || entry.status === 'TRIAL_PENDING' || entry.status === 'PROCESSING') {
+  if (entry.status === 'PENDING' || entry.status === 'TRIAL_PENDING' || entry.status === 'PROCESSING' || entry.status === 'RISK_HOLD') {
     return 'Pending';
   }
   if (entry.status === 'CANCELLED') {
@@ -653,7 +653,7 @@ async function buildStateWhere(
   state: CashbackEntryStatus,
   now: Date,
 ): Promise<WTWhere> {
-  const PENDING_RAW = ['PENDING', 'TRIAL_PENDING', 'PROCESSING'] as const;
+  const PENDING_RAW = ['PENDING', 'TRIAL_PENDING', 'PROCESSING', 'RISK_HOLD'] as const;
   const NEVER_PAID_RAW = [...PENDING_RAW, 'ANNULLED', 'FAILED'] as const;
   const notExpired: WTWhere = {
     OR: [{ cashbackExpiresAt: null }, { cashbackExpiresAt: { gt: now } }],
@@ -876,7 +876,7 @@ export async function approveEntry(entryId: string, adminUserId: string): Promis
   });
   if (!entry) throw Object.assign(new Error('Entry not found'), { statusCode: 404 });
   if (entry.type !== 'CASHBACK_CREDIT') throw Object.assign(new Error('Not a cashback entry'), { statusCode: 400 });
-  if (!['PENDING', 'TRIAL_PENDING', 'PROCESSING'].includes(entry.status)) {
+  if (!['PENDING', 'TRIAL_PENDING', 'PROCESSING', 'RISK_HOLD'].includes(entry.status)) {
     throw Object.assign(new Error(`Cannot approve entry with status ${entry.status}`), { statusCode: 400 });
   }
   const now = new Date();
@@ -961,11 +961,14 @@ export async function payEntry(entryId: string, adminUserId: string): Promise<vo
   if (entry.type !== 'CASHBACK_CREDIT') throw Object.assign(new Error('Not a cashback entry'), { statusCode: 400 });
   if (entry.cashbackPaidAt) throw Object.assign(new Error('Entry is already marked as paid'), { statusCode: 400 });
   const now = new Date();
-  // Must be Locked: CANCELLED with a future expiresAt
-  if (entry.status !== 'CANCELLED') {
+  // Must be derived-Locked: CANCELLED (with future expiresAt), ANNULLED, or FAILED.
+  // ANNULLED/FAILED are permanently Locked (no expiry check needed).
+  const LOCKED_STATUSES = ['CANCELLED', 'ANNULLED', 'FAILED'] as const;
+  if (!(LOCKED_STATUSES as readonly string[]).includes(entry.status)) {
     throw Object.assign(new Error(`Only Locked entries can be marked as paid (current status: ${entry.status})`), { statusCode: 400 });
   }
-  if (!entry.cashbackExpiresAt || entry.cashbackExpiresAt <= now) {
+  // For CANCELLED: verify it hasn't already expired (expired CANCELLED = Expired, not Locked)
+  if (entry.status === 'CANCELLED' && (!entry.cashbackExpiresAt || entry.cashbackExpiresAt <= now)) {
     throw Object.assign(new Error('Entry has already expired and cannot be marked as paid'), { statusCode: 400 });
   }
   await prisma.walletTransaction.update({
