@@ -109,8 +109,6 @@ export default function AdminHelpMinePage() {
   const fmt = (iso: string) =>
     new Date(iso).toLocaleString('bg-BG', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
 
-  const openCount = data?.tickets.filter((t) => t.status !== 'RESOLVED' && t.status !== 'CLOSED').length ?? 0;
-
   const columns: ColumnDef<MyTicket>[] = [
     {
       key: 'subject',
@@ -156,7 +154,7 @@ export default function AdminHelpMinePage() {
           <Eyebrow>Помощ</Eyebrow>
           <PageTitle>
             Моите заявки
-            {openCount > 0 && <TotalBadge>{openCount} отворени</TotalBadge>}
+            {data && data.total > 0 && <TotalBadge>{data.total}</TotalBadge>}
           </PageTitle>
           <PageSubtitle>Заявки, създадени от мен</PageSubtitle>
         </TitleBlock>

@@ -146,7 +146,7 @@ export default function AdminHelpAllPage() {
       render: (row) => (
         <span>
           <PrimaryLine style={{ fontWeight: 500 }}>{displayName(row.user)}</PrimaryLine>
-          <MetaLine>{row.user.email}</MetaLine>
+          <MetaLine>{row.user?.email}</MetaLine>
         </span>
       ),
     },

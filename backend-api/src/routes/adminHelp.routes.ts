@@ -104,6 +104,7 @@ router.post('/', requirePermission('help.write'), async (req: AuthRequest, res, 
       .catch((err) => logger.error('[adminHelp] Failed to notify on admin ticket creation:', err));
 
     const adminEmail = req.user!.email;
+    const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     const CATEGORY_BG: Record<string, string> = {
       CASHBACK: 'Кешбек', ACCOUNT: 'Акаунт', PAYMENT: 'Плащане', TECHNICAL: 'Техническо', OTHER: 'Друго',
     };
@@ -116,13 +117,13 @@ router.post('/', requirePermission('help.write'), async (req: AuthRequest, res, 
         subject: `[Admin заявка] ${CATEGORY_BG[category] ?? category}: ${subject.trim()}`,
         html: `<p><strong>Нова вътрешна заявка от администратор</strong></p>
 <table cellpadding="4">
-  <tr><td><strong>Администратор:</strong></td><td>${adminEmail}</td></tr>
+  <tr><td><strong>Администратор:</strong></td><td>${esc(adminEmail)}</td></tr>
   <tr><td><strong>Категория:</strong></td><td>${CATEGORY_BG[category] ?? category}</td></tr>
   <tr><td><strong>Приоритет:</strong></td><td>${PRIORITY_BG[resolvedPriority] ?? resolvedPriority}</td></tr>
-  <tr><td><strong>Тема:</strong></td><td>${subject.trim()}</td></tr>
+  <tr><td><strong>Тема:</strong></td><td>${esc(subject.trim())}</td></tr>
 </table>
 <hr/>
-<p>${body.trim().replace(/\n/g, '<br/>')}</p>
+<p>${esc(body.trim()).replace(/\n/g, '<br/>')}</p>
 <p style="color:#999;font-size:12px;">Ticket ID: ${ticket.id}</p>`,
         text: `Нова вътрешна заявка от администратор\n\nАдминистратор: ${adminEmail}\nКатегория: ${CATEGORY_BG[category] ?? category}\nПриоритет: ${PRIORITY_BG[resolvedPriority] ?? resolvedPriority}\nТема: ${subject.trim()}\n\n${body.trim()}\n\nTicket ID: ${ticket.id}`,
       })

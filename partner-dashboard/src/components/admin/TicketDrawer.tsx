@@ -49,7 +49,6 @@ const copy = {
     close: '✕',
     ticketClosed: 'This ticket is closed — replies are disabled.',
     opened: 'Opened',
-    updated: 'Updated',
     statuses: {
       NEW: 'New', OPEN: 'Open', WAITING: 'Waiting', RESOLVED: 'Resolved', CLOSED: 'Closed',
     } as Record<TicketStatus, string>,
@@ -86,7 +85,6 @@ const copy = {
     close: '✕',
     ticketClosed: 'Заявката е затворена — отговорите са забранени.',
     opened: 'Отворен',
-    updated: 'Обновен',
     statuses: {
       NEW: 'Нов', OPEN: 'Отворен', WAITING: 'Изчакване', RESOLVED: 'Решен', CLOSED: 'Затворен',
     } as Record<TicketStatus, string>,
@@ -105,8 +103,8 @@ function displayName(u: TicketUser | null | undefined): string {
   return name || u.email;
 }
 
-function fmtDate(iso: string): string {
-  return new Date(iso).toLocaleString('en-GB', {
+function fmtDate(iso: string, locale = 'bg-BG'): string {
+  return new Date(iso).toLocaleString(locale, {
     day: '2-digit', month: 'short', year: 'numeric',
     hour: '2-digit', minute: '2-digit',
   });

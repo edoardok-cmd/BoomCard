@@ -147,6 +147,7 @@ export default function AdminHelpNewPage() {
               value={body}
               onChange={(e) => setBody(e.target.value)}
               rows={7}
+              maxLength={5000}
               disabled={createMutation.isPending}
             />
             <Hint>Минимум 10 символа.</Hint>
