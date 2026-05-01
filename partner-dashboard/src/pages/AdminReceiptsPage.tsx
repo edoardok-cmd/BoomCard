@@ -341,7 +341,7 @@ export const AdminReceiptsPage: React.FC = () => {
   const [rejectReason, setRejectReason] = useState('');
   const [rejectNotes, setRejectNotes] = useState('');
   const [processingId, setProcessingId] = useState<string | null>(null);
-  const [notification, setNotification] = useState<{ msg: string; ok: boolean } | null>(null);
+  const [notification, setNotification] = useState<{ msg: string; ok: boolean | 'warn' } | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkRejectModal, setBulkRejectModal] = useState(false);
   const [bulkRejectReason, setBulkRejectReason] = useState('');
@@ -414,19 +414,23 @@ export const AdminReceiptsPage: React.FC = () => {
 
   useEffect(() => { fetchReceipts(); }, [fetchReceipts]);
 
-  const notify = (msg: string, ok = true) => {
+  const notify = (msg: string, ok: boolean | 'warn' = true) => {
     setNotification({ msg, ok });
-    setTimeout(() => setNotification(null), 3500);
+    setTimeout(() => setNotification(null), ok === 'warn' ? 6000 : 3500);
   };
 
   const handleApprove = async (receipt: Receipt) => {
     setProcessingId(receipt.id);
     try {
       const opts = { verifiedAmount: receipt.verifiedAmount ?? receipt.totalAmount };
-      await receiptsApiService.reviewReceipt(receipt.id, 'APPROVE', opts);
-      notify(`Approved: ${receipt.merchantName || receipt.id}`);
+      const result = await receiptsApiService.reviewReceipt(receipt.id, 'APPROVE', opts);
       setSelectedIds(prev => { const next = new Set(prev); next.delete(receipt.id); return next; });
       fetchReceipts();
+      if (result?.fraudWarning) {
+        notify(`⚠ Approved with fraud warning: ${result.fraudWarning}`, 'warn');
+      } else {
+        notify(`Approved: ${receipt.merchantName || receipt.id}`);
+      }
     } catch (err) {
       const axiosErr = err as { response?: { data?: { message?: string } }; message?: string };
       notify(axiosErr?.response?.data?.message || axiosErr?.message || 'Failed to approve', false);
@@ -546,9 +550,10 @@ export const AdminReceiptsPage: React.FC = () => {
       {notification && (
         <div style={{
           position: 'fixed', top: '1.5rem', right: '1.5rem', zIndex: 2000,
-          background: notification.ok ? '#10b981' : '#dc2626',
+          background: notification.ok === 'warn' ? '#d97706' : notification.ok ? '#10b981' : '#dc2626',
           color: '#fff', padding: '0.75rem 1.5rem', borderRadius: '0.75rem',
           fontWeight: 600, boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
+          maxWidth: '28rem', lineHeight: 1.4,
         }}>
           {notification.msg}
         </div>

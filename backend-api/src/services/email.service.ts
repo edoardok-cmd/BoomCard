@@ -342,7 +342,7 @@ export class EmailService {
         text: options.text,
         cc: options.cc,
         bcc: options.bcc,
-        replyTo: options.replyTo ?? (dbReplyTo || undefined),
+        replyTo: options.replyTo || (dbReplyTo || undefined),
       });
 
       if (error) {

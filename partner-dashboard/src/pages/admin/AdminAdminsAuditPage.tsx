@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState, useCallback } from 'react';
 import styled from 'styled-components';
 import { useQuery } from '@tanstack/react-query';
 import { useLanguage } from '../../contexts/LanguageContext';
@@ -24,56 +24,163 @@ const palette = {
   dangerSoft: '#f4dcd2',
 };
 
-// Maps technical action codes to human-readable Bulgarian labels.
-// Falls back to a cleaned-up version of the raw code.
+// ─── Label maps ──────────────────────────────────────────────────────────────
+
 const ACTION_LABEL: Record<string, string> = {
-  'auth.login':                'Вход',
-  'auth.logout':               'Изход',
-  'auth.login.failed':         'Неуспешен вход',
-  'auth.password.reset':       'Смяна на парола',
-  'auth.2fa.enable':           'Активиране на 2FA',
-  'auth.2fa.disable':          'Деактивиране на 2FA',
-  'user.create':               'Създаден потребител',
-  'user.update':               'Промяна на потребител',
-  'user.delete':               'Изтрит потребител',
-  'user.status.update':        'Промяна на статус на потребител',
-  'admin.create':              'Създаден администратор',
-  'admin.update':              'Промяна на администратор',
-  'admin.delete':              'Изтрит администратор',
-  'admin.role.add':            'Добавена роля',
-  'admin.role.remove':         'Премахната роля',
-  'admin.status.update':       'Промяна на статус на администратор',
-  'admin.super.request':       'Заявка за Супер администратор',
-  'admin.super.approve':       'Одобрена заявка за Супер администратор',
-  'admin.super.reject':        'Отхвърлена заявка за Супер администратор',
-  'partner.create':            'Създаден партньор',
-  'partner.update':            'Промяна на партньор',
-  'partner.approve':           'Одобрен партньор',
-  'partner.reject':            'Отхвърлен партньор',
-  'partner.status.update':     'Промяна на статус на партньор',
-  'system.put':                'Промяна на системна настройка',
-  'system.update':             'Обновяване на системни настройки',
-  'settings.update':           'Промяна на настройки',
-  'cashback.rate.update':      'Промяна на кешбек процент',
-  'payout.create':             'Създадено плащане',
-  'payout.update':             'Промяна на плащане',
-  'payout.approve':            'Одобрено плащане',
-  'dispute.create':            'Открит спор',
-  'dispute.resolve':           'Разрешен спор',
-  'marketing.campaign.create': 'Създадена кампания',
-  'marketing.campaign.update': 'Промяна на кампания',
-  'marketing.template.create': 'Създаден шаблон',
-  'marketing.template.update': 'Промяна на шаблон',
+  // Auth
+  'auth.login':                    'Вход',
+  'auth.logout':                   'Изход',
+  'auth.login.failed':             'Неуспешен вход',
+  'auth.password.reset':           'Смяна на парола',
+  'auth.2fa.enable':               'Активиране на 2FA',
+  'auth.2fa.disable':              'Деактивиране на 2FA',
+  // User / Subscriber
+  'user.create':                   'Създаден потребител',
+  'user.update':                   'Промяна на потребител',
+  'user.delete':                   'Изтрит потребител',
+  'user.status.update':            'Промяна на статус на потребител',
+  'subscriber.view':               'Преглед на абонат',
+  'subscriber.create':             'Създаден абонат',
+  'subscriber.update':             'Промяна на абонат',
+  'subscriber.delete':             'Изтрит абонат',
+  'subscriber.cashback.view':      'Преглед на кешбек на абонат',
+  // Admin
+  'admin.create':                  'Създаден администратор',
+  'admin.update':                  'Промяна на администратор',
+  'admin.delete':                  'Изтрит администратор',
+  'admin.approve':                 'Одобрен администратор',
+  'admin.status':                  'Промяна на статус на администратор',
+  'admin.role.add':                'Добавена роля',
+  'admin.role.remove':             'Премахната роля',
+  'admin.status.update':           'Промяна на статус на администратор',
+  'admin.super.request':           'Заявка за Супер администратор',
+  'admin.super.approve':           'Одобрена заявка за Супер администратор',
+  'admin.super.reject':            'Отхвърлена заявка за Супер администратор',
+  // Partner
+  'partner.create':                'Създаден партньор',
+  'partner.update':                'Промяна на партньор',
+  'partner.approve':               'Одобрен партньор',
+  'partner.reject':                'Отхвърлен партньор',
+  'partner.status':                'Промяна на статус на партньор',
+  'partner.status.update':         'Промяна на статус на партньор',
+  // Location / QR
+  'location.create':               'Създадена локация',
+  'location.update':               'Промяна на локация',
+  'location.delete':               'Изтрита локация',
+  // Subscription
+  'subscription.create':           'Създаден абонамент',
+  'subscription.update':           'Промяна на абонамент',
+  'subscription.cancel':           'Отменен абонамент',
+  // Transaction
+  'transaction.create':            'Създадена транзакция',
+  'transaction.update':            'Промяна на транзакция',
+  'transaction.approve':           'Одобрена транзакция',
+  'transaction.reject':            'Отхвърлена транзакция',
+  // Receipt
+  'receipt.create':                'Качена касова бележка',
+  'receipt.update':                'Промяна на касова бележка',
+  'receipt.approve':               'Одобрена касова бележка',
+  'receipt.reject':                'Отхвърлена касова бележка',
+  // Cashback
+  'cashback.approve':              'Одобрен кешбек запис',
+  'cashback.lock':                 'Заключен кешбек запис',
+  'cashback.expire':               'Изтекъл кешбек запис',
+  'cashback.pay':                  'Изплатен кешбек запис',
+  'cashback.rate.update':          'Промяна на кешбек процент',
+  'cashback.mark-paid':            'Отбелязан като платен',
+  // Payout
+  'payout.create':                 'Създадено плащане',
+  'payout.update':                 'Промяна на плащане',
+  'payout.approve':                'Одобрено плащане',
+  'payout.reject':                 'Отхвърлено плащане',
+  // Dispute
+  'dispute.create':                'Открит спор',
+  'dispute.resolve':               'Разрешен спор',
+  'dispute.close':                 'Затворен спор',
+  // Risk / Control
+  'risk.update':                   'Промяна на риск',
+  'risk.flag':                     'Маркиран риск',
+  'limit.create':                  'Нов лимит',
+  'limit.update':                  'Промяна на лимит',
+  'limit.delete':                  'Изтрит лимит',
+  // Reporting periods
+  'period.lock':                   'Заключен отчетен период',
+  'period.create':                 'Нов отчетен период',
+  // System / Settings
+  'system.put':                    'Промяна на системна настройка',
+  'system.update':                 'Обновяване на системни настройки',
+  'settings.update':               'Промяна на настройки',
+  // Marketing
+  'marketing.campaign.create':     'Създадена кампания',
+  'marketing.campaign.update':     'Промяна на кампания',
+  'marketing.template.create':     'Създаден шаблон',
+  'marketing.template.update':     'Промяна на шаблон',
+  'campaign.create':               'Създадена кампания',
+  'campaign.update':               'Промяна на кампания',
+  'template.create':               'Създаден шаблон',
+  'template.update':               'Промяна на шаблон',
 };
 
 function labelForAction(action: string): string {
   if (ACTION_LABEL[action]) return ACTION_LABEL[action];
-  // Generic fallback: replace dots with spaces and capitalise first letter
+  // Generic fallback: "admin.create" → "Admin → Create"
   return action
     .split('.')
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(' → ');
 }
+
+const OBJECT_TYPE_OPTIONS: { value: string; label: string }[] = [
+  { value: '',             label: 'Всички обекти' },
+  { value: 'admin',        label: 'Администратор' },
+  { value: 'user',         label: 'Потребител' },
+  { value: 'subscriber',   label: 'Абонат' },
+  { value: 'partner',      label: 'Партньор' },
+  { value: 'location',     label: 'Локация' },
+  { value: 'subscription', label: 'Абонамент' },
+  { value: 'transaction',  label: 'Транзакция' },
+  { value: 'receipt',      label: 'Касова бележка' },
+  { value: 'cashback',     label: 'Кешбек' },
+  { value: 'payout',       label: 'Плащане' },
+  { value: 'dispute',      label: 'Спор' },
+  { value: 'campaign',     label: 'Кампания' },
+  { value: 'template',     label: 'Шаблон' },
+  { value: 'marketing',    label: 'Маркетинг' },
+  { value: 'settings',     label: 'Настройки' },
+  { value: 'system',       label: 'Система' },
+  { value: 'period',       label: 'Отчетен период' },
+  { value: 'risk',         label: 'Риск' },
+  { value: 'limit',        label: 'Лимит' },
+];
+
+const ACTION_CATEGORY_OPTIONS: { value: string; label: string }[] = [
+  { value: '',            label: 'Всички действия' },
+  { value: 'auth',        label: 'Автентикация' },
+  { value: 'admin',       label: 'Администратори' },
+  { value: 'subscriber',  label: 'Абонати' },
+  { value: 'user',        label: 'Потребители' },
+  { value: 'partner',     label: 'Партньори' },
+  { value: 'location',    label: 'Локации' },
+  { value: 'subscription','label': 'Абонаменти' },
+  { value: 'transaction', label: 'Транзакции' },
+  { value: 'receipt',     label: 'Касови бележки' },
+  { value: 'cashback',    label: 'Кешбек' },
+  { value: 'payout',      label: 'Плащания' },
+  { value: 'dispute',     label: 'Спорове' },
+  { value: 'marketing',   label: 'Маркетинг' },
+  { value: 'campaign',    label: 'Кампании' },
+  { value: 'settings',    label: 'Настройки' },
+  { value: 'system',      label: 'Система' },
+  { value: 'period',      label: 'Отчетни периоди' },
+  { value: 'risk',        label: 'Риск' },
+  { value: 'limit',       label: 'Лимити' },
+];
+
+const OBJECT_TYPE_LABEL: Record<string, string> = Object.fromEntries(
+  OBJECT_TYPE_OPTIONS.filter((o) => o.value).map((o) => [o.value, o.label])
+);
+
+// ─── Styled components ────────────────────────────────────────────────────────
 
 const PageShell = styled.div`
   background: ${palette.bg};
@@ -130,6 +237,14 @@ const Card = styled.div`
 const FilterRow = styled.div`
   display: flex;
   gap: 0.75rem;
+  margin-bottom: 0.75rem;
+  flex-wrap: wrap;
+  align-items: center;
+`;
+
+const FilterRowSecond = styled.div`
+  display: flex;
+  gap: 0.75rem;
   margin-bottom: 1.25rem;
   flex-wrap: wrap;
   align-items: center;
@@ -137,7 +252,8 @@ const FilterRow = styled.div`
 
 const SearchInput = styled.input`
   flex: 1;
-  max-width: 20rem;
+  min-width: 14rem;
+  max-width: 22rem;
   padding: 0.5rem 0.875rem;
   border: 1px solid ${palette.border};
   border-radius: 0.5rem;
@@ -149,7 +265,7 @@ const SearchInput = styled.input`
   &::placeholder { color: ${palette.textSubtle}; }
 `;
 
-const Input = styled.input`
+const DateInput = styled.input`
   padding: 0.5rem 0.875rem;
   border: 1px solid ${palette.border};
   border-radius: 0.5rem;
@@ -158,7 +274,65 @@ const Input = styled.input`
   color: ${palette.text};
   outline: none;
   &:focus { border-color: ${palette.accent}; box-shadow: 0 0 0 2px ${palette.accentSoft}; }
-  &::placeholder { color: ${palette.textSubtle}; }
+`;
+
+const SelectFilter = styled.select`
+  padding: 0.5rem 0.875rem;
+  border: 1px solid ${palette.border};
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  background: ${palette.bg};
+  color: ${palette.text};
+  outline: none;
+  cursor: pointer;
+  &:focus { border-color: ${palette.accent}; box-shadow: 0 0 0 2px ${palette.accentSoft}; }
+`;
+
+const SearchBtn = styled.button`
+  padding: 0.5rem 1rem;
+  background: ${palette.accent};
+  color: #fff;
+  font-size: 0.875rem;
+  font-weight: 600;
+  border: none;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  white-space: nowrap;
+  &:hover { opacity: 0.9; }
+`;
+
+const ClearBtn = styled.button`
+  padding: 0.5rem 0.875rem;
+  background: transparent;
+  color: ${palette.textMuted};
+  font-size: 0.875rem;
+  font-weight: 500;
+  border: 1px solid ${palette.border};
+  border-radius: 0.5rem;
+  cursor: pointer;
+  white-space: nowrap;
+  &:hover { border-color: ${palette.text}; color: ${palette.text}; }
+`;
+
+const ExportBtn = styled.button`
+  padding: 0.5rem 1rem;
+  background: transparent;
+  color: ${palette.info};
+  font-size: 0.875rem;
+  font-weight: 600;
+  border: 1px solid ${palette.info};
+  border-radius: 0.5rem;
+  cursor: pointer;
+  white-space: nowrap;
+  margin-left: auto;
+  &:hover { background: ${palette.infoSoft}; }
+  &:disabled { opacity: 0.5; cursor: not-allowed; }
+`;
+
+const DateLabel = styled.span`
+  font-size: 0.8125rem;
+  color: ${palette.textSubtle};
+  white-space: nowrap;
 `;
 
 const ActorCell = styled.div`
@@ -216,7 +390,7 @@ const OverlayCard = styled.div`
   border-radius: 0.75rem;
   padding: 1.75rem;
   width: 100%;
-  max-width: 42rem;
+  max-width: 46rem;
   max-height: 80vh;
   overflow-y: auto;
   box-shadow: 0 12px 40px rgba(0,0,0,0.15);
@@ -261,6 +435,36 @@ const DiffCode = styled.pre`
   margin: 0;
 `;
 
+const MetaRow = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.5rem;
+  font-size: 0.75rem;
+  color: ${palette.textSubtle};
+  margin-bottom: 1rem;
+`;
+
+const MetaItem = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+`;
+
+const MetaItemLabel = styled.span`
+  font-size: 0.625rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: ${palette.textSubtle};
+`;
+
+const MetaItemValue = styled.span`
+  font-size: 0.8125rem;
+  color: ${palette.textMuted};
+  font-family: ui-monospace, monospace;
+  word-break: break-all;
+`;
+
 const CloseBtn = styled.button`
   margin-top: 1rem;
   padding: 0.5rem 1.25rem;
@@ -274,42 +478,111 @@ const CloseBtn = styled.button`
   &:hover { border-color: ${palette.text}; color: ${palette.text}; }
 `;
 
-const OBJECT_TYPE_LABEL: Record<string, string> = {
-  user: 'Потребител',
-  partner: 'Партньор',
-  system: 'Система',
-  admin: 'Администратор',
-  payout: 'Плащане',
-  cashback: 'Кешбек',
-  dispute: 'Спор',
-  marketing: 'Маркетинг',
-  settings: 'Настройки',
-};
+// ─── CSV export ───────────────────────────────────────────────────────────────
+
+function escapeCsv(value: unknown): string {
+  const str = value == null ? '' : String(value);
+  if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+    return `"${str.replace(/"/g, '""')}"`;
+  }
+  return str;
+}
+
+function downloadCsv(rows: AuditLogEntry[]) {
+  const headers = ['ID', 'Дата', 'Действие', 'Тип обект', 'Обект ID', 'Извършено от', 'Имейл', 'IP адрес', 'User Agent'];
+  const lines = [
+    headers.join(','),
+    ...rows.map((r) => [
+      r.id,
+      r.createdAt,
+      r.action,
+      r.objectType,
+      r.objectId ?? '',
+      r.actor ? `${r.actor.firstName ?? ''} ${r.actor.lastName ?? ''}`.trim() : 'Система',
+      r.actor?.email ?? '',
+      r.ip ?? '',
+      r.userAgent ?? '',
+    ].map(escapeCsv).join(',')),
+  ];
+  const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `audit-log-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ─── Constants ────────────────────────────────────────────────────────────────
 
 const PAGE_SIZE = 20;
+
+// ─── Component ───────────────────────────────────────────────────────────────
 
 export default function AdminAdminsAuditPage() {
   const { language } = useLanguage();
 
-  const [page, setPage] = useState(1);
-  const [searchInput, setSearchInput] = useState('');
-  const [search, setSearch] = useState('');
-  const [objectType, setObjectType] = useState('');
-  const [detail, setDetail] = useState<AuditLogEntry | null>(null);
+  // Committed filter state (drives the query)
+  const [page, setPage]               = useState(1);
+  const [search, setSearch]           = useState('');
+  const [objectType, setObjectType]   = useState('');
+  const [actionCat, setActionCat]     = useState('');
+  const [dateFrom, setDateFrom]       = useState('');
+  const [dateTo, setDateTo]           = useState('');
+
+  // Pending input state for the search box (committed on button click or Enter)
+  const [searchDraft, setSearchDraft] = useState('');
+
+  const [detail, setDetail]           = useState<AuditLogEntry | null>(null);
+  const [exporting, setExporting]     = useState(false);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['admin-audit', page, search, objectType],
+    queryKey: ['admin-audit', page, search, objectType, actionCat, dateFrom, dateTo],
     queryFn: () =>
       adminAdminsService.listAudit({
         page,
         limit: PAGE_SIZE,
-        search: search || undefined,
-        objectType: objectType.trim() || undefined,
+        search:     search     || undefined,
+        objectType: objectType || undefined,
+        action:     actionCat  || undefined,
+        dateFrom:   dateFrom   || undefined,
+        dateTo:     dateTo     || undefined,
       }),
   });
 
-  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') { setSearch(searchInput); setPage(1); }
+  const commitSearch = useCallback(() => {
+    setSearch(searchDraft);
+    setPage(1);
+  }, [searchDraft]);
+
+  const clearFilters = useCallback(() => {
+    setSearchDraft('');
+    setSearch('');
+    setObjectType('');
+    setActionCat('');
+    setDateFrom('');
+    setDateTo('');
+    setPage(1);
+  }, []);
+
+  const hasActiveFilters = search || objectType || actionCat || dateFrom || dateTo;
+
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const result = await adminAdminsService.listAudit({
+        page:       1,
+        limit:      10000,
+        search:     search     || undefined,
+        objectType: objectType || undefined,
+        action:     actionCat  || undefined,
+        dateFrom:   dateFrom   || undefined,
+        dateTo:     dateTo     || undefined,
+      });
+      downloadCsv(result.logs);
+    } finally {
+      setExporting(false);
+    }
   };
 
   const fmt = (iso: string) =>
@@ -380,28 +653,65 @@ export default function AdminAdminsAuditPage() {
         <Eyebrow>Администратори</Eyebrow>
         <PageTitle>
           История на действията
-          {data && data.total > 0 && <TotalBadge>{data.total.toLocaleString()}</TotalBadge>}
+          {data && <TotalBadge>{(data.total ?? 0).toLocaleString()}</TotalBadge>}
         </PageTitle>
         <PageSubtitle>Всички действия в администраторския панел — кой, какво и кога</PageSubtitle>
       </PageHeader>
 
       <Card>
+        {/* Row 1: text search + object type + action category */}
         <FilterRow>
           <SearchInput
             type="text"
-            placeholder="Търси по действие, тип обект или изпълнител…"
-            value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
-            onKeyDown={handleSearchKeyDown}
+            placeholder="Търси по действие, тип обект, ID или извършител…"
+            value={searchDraft}
+            onChange={(e) => setSearchDraft(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') commitSearch(); }}
           />
-          <Input
-            type="text"
-            placeholder="Филтър по тип обект…"
+          <SearchBtn onClick={commitSearch}>Търси</SearchBtn>
+
+          <SelectFilter
             value={objectType}
-            style={{ width: '13rem' }}
             onChange={(e) => { setObjectType(e.target.value); setPage(1); }}
-          />
+          >
+            {OBJECT_TYPE_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </SelectFilter>
+
+          <SelectFilter
+            value={actionCat}
+            onChange={(e) => { setActionCat(e.target.value); setPage(1); }}
+          >
+            {ACTION_CATEGORY_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </SelectFilter>
+
+          {hasActiveFilters && (
+            <ClearBtn onClick={clearFilters}>Изчисти</ClearBtn>
+          )}
+
+          <ExportBtn onClick={handleExport} disabled={exporting}>
+            {exporting ? 'Експортира…' : 'Експорт CSV'}
+          </ExportBtn>
         </FilterRow>
+
+        {/* Row 2: date range */}
+        <FilterRowSecond>
+          <DateLabel>От:</DateLabel>
+          <DateInput
+            type="date"
+            value={dateFrom}
+            onChange={(e) => { setDateFrom(e.target.value); setPage(1); }}
+          />
+          <DateLabel>До:</DateLabel>
+          <DateInput
+            type="date"
+            value={dateTo}
+            onChange={(e) => { setDateTo(e.target.value); setPage(1); }}
+          />
+        </FilterRowSecond>
 
         <DataTable
           columns={columns}
@@ -415,8 +725,7 @@ export default function AdminAdminsAuditPage() {
           onPageChange={setPage}
           rowActions={[
             {
-              label: 'Виж промените',
-              hidden: (row) => row.before == null && row.after == null,
+              label: 'Виж детайли',
               onClick: (row) => setDetail(row),
             },
           ]}
@@ -427,28 +736,63 @@ export default function AdminAdminsAuditPage() {
         <OverlayBackdrop onClick={() => setDetail(null)}>
           <OverlayCard onClick={(e) => e.stopPropagation()}>
             <OverlayTitle>
-              Промени — {labelForAction(detail.action)}
+              {labelForAction(detail.action)}
               {detail.objectId && (
-                <span style={{ fontSize: '0.75rem', color: palette.textSubtle, marginLeft: '0.5rem' }}>
+                <span style={{ fontSize: '0.75rem', color: palette.textSubtle, marginLeft: '0.5rem', fontWeight: 400 }}>
                   #{detail.objectId.slice(0, 8)}
                 </span>
               )}
             </OverlayTitle>
 
+            {/* Meta row: actor, IP, user agent, timestamp */}
+            <MetaRow>
+              <MetaItem>
+                <MetaItemLabel>Извършено от</MetaItemLabel>
+                <MetaItemValue>{detail.actor?.email ?? 'Система'}</MetaItemValue>
+              </MetaItem>
+              <MetaItem>
+                <MetaItemLabel>IP адрес</MetaItemLabel>
+                <MetaItemValue>{detail.ip ?? '—'}</MetaItemValue>
+              </MetaItem>
+              <MetaItem>
+                <MetaItemLabel>Дата и час</MetaItemLabel>
+                <MetaItemValue>{fmt(detail.createdAt)}</MetaItemValue>
+              </MetaItem>
+              <MetaItem>
+                <MetaItemLabel>Тип обект</MetaItemLabel>
+                <MetaItemValue>{OBJECT_TYPE_LABEL[detail.objectType] ?? detail.objectType}</MetaItemValue>
+              </MetaItem>
+              {detail.objectId && (
+                <MetaItem>
+                  <MetaItemLabel>Обект ID</MetaItemLabel>
+                  <MetaItemValue>{detail.objectId}</MetaItemValue>
+                </MetaItem>
+              )}
+              {detail.userAgent && (
+                <MetaItem>
+                  <MetaItemLabel>User Agent</MetaItemLabel>
+                  <MetaItemValue style={{ fontFamily: 'ui-sans-serif, sans-serif', fontSize: '0.75rem' }}>
+                    {detail.userAgent}
+                  </MetaItemValue>
+                </MetaItem>
+              )}
+            </MetaRow>
+
+            {/* Before / After diff */}
             <DiffGrid>
               <DiffPanel>
                 <DiffLabel>Преди</DiffLabel>
-                <DiffCode>{detail.before != null ? JSON.stringify(detail.before, null, 2) : '—'}</DiffCode>
+                <DiffCode>
+                  {detail.before != null ? JSON.stringify(detail.before, null, 2) : '—'}
+                </DiffCode>
               </DiffPanel>
               <DiffPanel>
-                <DiffLabel>След</DiffLabel>
-                <DiffCode>{detail.after != null ? JSON.stringify(detail.after, null, 2) : '—'}</DiffCode>
+                <DiffLabel>След / Заявка</DiffLabel>
+                <DiffCode>
+                  {detail.after != null ? JSON.stringify(detail.after, null, 2) : '—'}
+                </DiffCode>
               </DiffPanel>
             </DiffGrid>
-
-            <div style={{ fontSize: '0.75rem', color: palette.textSubtle }}>
-              Изпълнено от: {detail.actor?.email ?? 'Система'} · IP: {detail.ip ?? '—'} · {fmt(detail.createdAt)}
-            </div>
 
             <CloseBtn onClick={() => setDetail(null)}>Затвори</CloseBtn>
           </OverlayCard>

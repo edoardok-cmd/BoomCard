@@ -102,6 +102,7 @@ const NumberInput = styled.input<{ $invalid?: boolean }>`
   font-size: 0.875rem;
   font-weight: 600;
   &:focus { outline: none; border-color: ${p => p.$invalid ? '#dc2626' : '#000'}; }
+  &:disabled { opacity: 0.5; cursor: not-allowed; background: ${p => p.$invalid ? '#fff1f2' : 'var(--color-background-secondary)'}; }
 `;
 
 const InvalidHint = styled.div`
@@ -142,6 +143,7 @@ const TextInput = styled.input`
   color: var(--color-text-primary);
   font-size: 0.875rem;
   &:focus { outline: none; border-color: #000; }
+  &:disabled { opacity: 0.5; cursor: not-allowed; background: var(--color-background-secondary); }
 `;
 
 const SaveBtn = styled.button`
@@ -404,7 +406,6 @@ const AdminCashbackRatesPage: React.FC = () => {
   const updateCell = (step: number, field: 'basic' | 'premium', value: string) => {
     setDraft(prev => ({ ...prev, [step]: { ...prev[step], [field]: value } }));
     setError(null);
-    setPendingPayload(null);
   };
 
   // Per-cell validity: value entered is negative or exceeds the step cap
@@ -455,23 +456,27 @@ const AdminCashbackRatesPage: React.FC = () => {
   const confirmSave = async () => {
     if (!pendingPayload) return;
     setSaving(true);
+    let saved = false;
     try {
       await adminCashbackService.createRates({
         rates: pendingPayload.rates,
         effectiveFrom: pendingPayload.effectiveFrom,
         notes: pendingPayload.notes || undefined,
       });
-      setToast({ ok: true, msg: tr.saved });
-      setNotes('');
-      setEffectiveFrom(nowLocal());
-      setPendingPayload(null);
-      await load();
+      saved = true;
     } catch (e) {
       const axiosErr = e as { response?: { data?: { error?: string } }; message?: string };
       setError(axiosErr?.response?.data?.error || axiosErr?.message || 'Failed to save');
       // keep pendingPayload so the confirm panel stays open and user can retry
     } finally {
       setSaving(false);
+    }
+    if (saved) {
+      setToast({ ok: true, msg: tr.saved });
+      setNotes('');
+      setEffectiveFrom(nowLocal());
+      setPendingPayload(null);
+      await load().catch(() => console.warn('[CashbackRates] post-save reload failed — table may be stale'));
     }
   };
 
@@ -484,12 +489,13 @@ const AdminCashbackRatesPage: React.FC = () => {
     if (!window.confirm(tr.confirmDelete)) return;
     try {
       await adminCashbackService.deleteSnapshot(effectiveFromISO);
-      setToast({ ok: true, msg: tr.snapshotDeleted });
-      await load();
     } catch (e) {
       const axiosErr = e as { response?: { data?: { error?: string } }; message?: string };
       setToast({ ok: false, msg: axiosErr?.response?.data?.error || axiosErr?.message || 'Failed to cancel snapshot' });
+      return;
     }
+    setToast({ ok: true, msg: tr.snapshotDeleted });
+    await load().catch(() => console.warn('[CashbackRates] post-delete reload failed — table may be stale'));
   };
 
   useEffect(() => {
@@ -569,6 +575,7 @@ const AdminCashbackRatesPage: React.FC = () => {
                     $invalid={basicInvalid}
                     value={draft[step]?.basic ?? ''}
                     onChange={e => updateCell(step, 'basic', e.target.value)}
+                    disabled={!!pendingPayload}
                   />
                   {basicInvalid && (
                     <InvalidHint>{tr.exceedsCapInline(step)}</InvalidHint>
@@ -583,6 +590,7 @@ const AdminCashbackRatesPage: React.FC = () => {
                     $invalid={premiumInvalid}
                     value={draft[step]?.premium ?? ''}
                     onChange={e => updateCell(step, 'premium', e.target.value)}
+                    disabled={!!pendingPayload}
                   />
                   {premiumInvalid && (
                     <InvalidHint>{tr.exceedsCapInline(step)}</InvalidHint>
@@ -606,6 +614,7 @@ const AdminCashbackRatesPage: React.FC = () => {
               type="datetime-local"
               value={effectiveFrom}
               onChange={e => { setEffectiveFrom(e.target.value); setPendingPayload(null); }}
+              disabled={!!pendingPayload}
             />
           </Field>
           <Field style={{ flex: 2 }}>
@@ -614,6 +623,7 @@ const AdminCashbackRatesPage: React.FC = () => {
               value={notes}
               onChange={e => { setNotes(e.target.value); setPendingPayload(null); }}
               placeholder={language === 'bg' ? 'напр. Q2 ревизия' : 'e.g. Q2 revision'}
+              disabled={!!pendingPayload}
             />
           </Field>
           {!pendingPayload && (
@@ -652,7 +662,7 @@ const AdminCashbackRatesPage: React.FC = () => {
               <ConfirmBtn onClick={confirmSave} disabled={saving}>
                 <Check /> {tr.confirmBtn}
               </ConfirmBtn>
-              <CancelBtn onClick={cancelPreview}>
+              <CancelBtn onClick={cancelPreview} disabled={saving}>
                 <X /> {tr.cancelConfirm}
               </CancelBtn>
             </ConfirmActions>

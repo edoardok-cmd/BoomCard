@@ -17,11 +17,13 @@ export function MobileConfigProvider({ children }: { children: ReactNode }) {
   const [isLoaded, setIsLoaded] = useState(false);
 
   useEffect(() => {
-    fetchMobileConfig().then((cfg) => {
-      setConfig(cfg);
-      setExternalErrorLogUrl(cfg.errorLogUrl);
-      setIsLoaded(true);
-    });
+    fetchMobileConfig()
+      .then((cfg) => {
+        setConfig(cfg);
+        setExternalErrorLogUrl(cfg.errorLogUrl);
+        setIsLoaded(true);
+      })
+      .catch(() => setIsLoaded(true));
   }, []);
 
   return (

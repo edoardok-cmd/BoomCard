@@ -12,6 +12,7 @@ import {
   ReceiptListResponse,
   ReceiptResponse,
   ReceiptStatsResponse,
+  ReviewReceiptResponse,
   UpdateReceiptDTO,
 } from '../types/receipt.types';
 
@@ -97,8 +98,8 @@ class ReceiptsApiService {
     id: string,
     action: 'APPROVE' | 'REJECT',
     opts?: { verifiedAmount?: number; notes?: string; rejectionReason?: string }
-  ): Promise<ReceiptResponse> {
-    return apiService.post<ReceiptResponse>(`${this.baseUrl}/${id}/review`, {
+  ): Promise<ReviewReceiptResponse> {
+    return apiService.post<ReviewReceiptResponse>(`${this.baseUrl}/${id}/review`, {
       action,
       ...opts,
     });

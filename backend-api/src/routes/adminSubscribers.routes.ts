@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { SubscriptionPlan, SubscriptionStatus } from '@prisma/client';
 import { authenticate, authorize, requirePermission, AuthRequest } from '../middleware/auth.middleware';
-import { auditMiddleware } from '../middleware/audit.middleware';
+import { auditMiddleware, writeAudit } from '../middleware/audit.middleware';
 import { prisma } from '../lib/prisma';
 import { stripeService } from '../services/stripe.service';
 import { getSubscriberCashbackEntries } from '../services/adminCashback.service';
@@ -199,6 +199,16 @@ router.get('/:userId/cashback', authenticate, authorize('ADMIN', 'SUPER_ADMIN'),
     const limit = Math.min(Math.max(1, parseInt(req.query.limit as string) || 20), 100);
 
     const result = await getSubscriberCashbackEntries(userId, page, limit);
+
+    writeAudit({
+      actorUserId: (req as AuthRequest).user?.id ?? null,
+      action: 'subscriber.cashback.view',
+      objectType: 'cashback',
+      objectId: userId,
+      ip: (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ?? req.socket.remoteAddress ?? null,
+      userAgent: req.headers['user-agent'] ?? null,
+    }).catch(() => {});
+
     res.json({ success: true, ...result });
   } catch (error: any) {
     if (error?.statusCode === 404) {
@@ -269,6 +279,16 @@ router.get('/:userId', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requireP
         planDisplayName: planDisplayName(s.plan),
       })),
     };
+
+    const actorReq = req as AuthRequest;
+    writeAudit({
+      actorUserId: actorReq.user?.id ?? null,
+      action: 'subscriber.view',
+      objectType: 'subscriber',
+      objectId: userId,
+      ip: (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ?? req.socket.remoteAddress ?? null,
+      userAgent: req.headers['user-agent'] ?? null,
+    }).catch(() => {});
 
     res.json(enriched);
   } catch (error) {

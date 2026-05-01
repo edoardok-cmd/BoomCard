@@ -179,10 +179,18 @@ export const adminAdminsService = {
     limit?: number;
     search?: string;
     objectType?: string;
+    action?: string;
+    actorId?: string;
+    dateFrom?: string;
+    dateTo?: string;
   }): Promise<AuditResult> {
     const clean: Record<string, unknown> = { page: params.page, limit: params.limit };
-    if (params.search) clean.search = params.search;
+    if (params.search)     clean.search     = params.search;
     if (params.objectType) clean.objectType = params.objectType;
+    if (params.action)     clean.action     = params.action;
+    if (params.actorId)    clean.actorId    = params.actorId;
+    if (params.dateFrom)   clean.dateFrom   = params.dateFrom;
+    if (params.dateTo)     clean.dateTo     = params.dateTo;
     return apiService.get('/admin/admins/audit', clean);
   },
 };

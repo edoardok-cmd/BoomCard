@@ -910,6 +910,7 @@ class ReceiptService {
       // totalAmount. Recalculate when the admin provides a corrected verifiedAmount.
       let cashbackAmount = 0;
       let updatedFraudScore: number | undefined;
+      let fraudWarning: string | undefined;
       if (params.action === 'APPROVE') {
         if (params.verifiedAmount) {
           // Admin corrected the amount — recalculate cashback AND recompute fraud score
@@ -940,9 +941,8 @@ class ReceiptService {
             updatedFraudScore = recomputedFraud.fraudScore;
             const autoApproveThreshold = await getSystemSettingFloat('auto_approve_threshold', DEFAULT_AUTO_APPROVE_THRESHOLD);
             if (recomputedFraud.fraudScore > autoApproveThreshold) {
-              logger.warn(
-                `Receipt ${params.receiptId} corrected to ${params.verifiedAmount} BGN — recomputed fraud score ${recomputedFraud.fraudScore} exceeds auto-approve threshold (admin override applied)`
-              );
+              fraudWarning = `Recomputed fraud score (${recomputedFraud.fraudScore}) exceeds the auto-approve threshold (${autoApproveThreshold}). Admin override applied.`;
+              logger.warn(`Receipt ${params.receiptId} corrected to ${params.verifiedAmount} BGN — ${fraudWarning}`);
             }
           } catch (fraudRecomputeError) {
             logger.error(`Failed to recompute fraud score for receipt ${params.receiptId}:`, fraudRecomputeError);
@@ -1129,6 +1129,7 @@ class ReceiptService {
         success: true,
         receipt: this.formatReceipt(updated, { includeInternal: true }),
         message: `Receipt ${params.action.toLowerCase()}d successfully`,
+        ...(fraudWarning && { fraudWarning }),
       };
     } catch (error) {
       if (error instanceof AppError) throw error;
@@ -1146,6 +1147,10 @@ class ReceiptService {
 
     for (const receiptId of receiptIds) {
       try {
+        // No verifiedAmount → reviewReceipt uses the receipt's original amount and skips
+        // fraud recomputation, so fraudWarning is never set. Bulk approve is intentionally
+        // silent on fraud warnings — admins are expected to triage high-risk receipts
+        // individually before including them in a bulk action.
         await this.reviewReceipt({
           receiptId,
           action: 'APPROVE',

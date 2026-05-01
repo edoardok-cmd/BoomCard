@@ -206,7 +206,7 @@ export const adminControlService = {
     return apiService.get('/admin/control/risk-queue/summary');
   },
 
-  approveRiskSignal(id: string, notes?: string): Promise<{ success: boolean }> {
+  approveRiskSignal(id: string, notes?: string): Promise<{ success: boolean; fraudWarning?: string }> {
     return apiService.post(`/admin/control/risk-queue/${id}/approve`, notes ? { notes } : {});
   },
 
@@ -242,7 +242,7 @@ export const adminControlService = {
     return apiService.get('/admin/control/disputes', clean);
   },
 
-  approveDispute(id: string, notes?: string): Promise<void> {
+  approveDispute(id: string, notes?: string): Promise<{ success: boolean; fraudWarning?: string }> {
     return apiService.post(`/admin/control/disputes/${id}/approve`, notes ? { notes } : {});
   },
 

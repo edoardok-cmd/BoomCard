@@ -152,6 +152,13 @@ export interface ReceiptResponse {
   data: Receipt;
 }
 
+export interface ReviewReceiptResponse {
+  success: boolean;
+  receipt: Receipt;
+  message: string;
+  fraudWarning?: string;
+}
+
 export interface ReceiptStatsResponse {
   success: boolean;
   data: ReceiptStats;

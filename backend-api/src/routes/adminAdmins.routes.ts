@@ -20,9 +20,26 @@ router.get('/roles', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePer
 });
 
 // GET /api/admin/admins/audit — paginated audit log
+// Query params:
+//   search      – free-text across action, objectType, objectId, actor name/email
+//   objectType  – exact match on objectType (case-insensitive)
+//   action      – prefix match on action (e.g. "admin" matches "admin.create")
+//   actorId     – filter to a specific actor User ID
+//   dateFrom    – ISO date string, inclusive lower bound on createdAt
+//   dateTo      – ISO date string, inclusive upper bound on createdAt (end of day)
+//   page / limit
 router.get('/audit', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('admins.audit.read'), async (req, res, next) => {
   try {
-    const { search, objectType, page = '1', limit = '20' } = req.query as Record<string, string>;
+    const {
+      search,
+      objectType,
+      action: actionFilter,
+      actorId,
+      dateFrom,
+      dateTo,
+      page = '1',
+      limit = '20',
+    } = req.query as Record<string, string>;
 
     const pageNum = Math.max(1, parseInt(page) || 1);
     const limitNum = Math.min(100, Math.max(1, parseInt(limit) || 20));
@@ -30,7 +47,22 @@ router.get('/audit', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePer
     const take = limitNum;
 
     const where: Parameters<typeof prisma.auditLog.findMany>[0]['where'] = {};
+
     if (objectType) where.objectType = { equals: objectType, mode: 'insensitive' };
+
+    if (actionFilter) where.action = { startsWith: actionFilter, mode: 'insensitive' };
+
+    if (actorId) where.actorUserId = actorId;
+
+    if (dateFrom || dateTo) {
+      const from = dateFrom ? new Date(dateFrom) : undefined;
+      const to = dateTo ? new Date(dateTo + 'T23:59:59.999Z') : undefined;
+      if ((from && isNaN(from.getTime())) || (to && isNaN(to.getTime()))) {
+        return res.status(400).json({ error: 'Invalid dateFrom or dateTo — use ISO date strings (YYYY-MM-DD)' });
+      }
+      where.createdAt = { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) };
+    }
+
     if (search) {
       where.OR = [
         { action: { contains: search, mode: 'insensitive' } },

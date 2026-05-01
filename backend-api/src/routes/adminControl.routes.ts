@@ -171,15 +171,16 @@ router.post(
     const verifiedAmount = typeof req.body?.verifiedAmount === 'number' ? req.body.verifiedAmount : undefined;
     const notes = typeof req.body?.notes === 'string' ? req.body.notes.trim() : undefined;
 
-    const updated = await receiptService.reviewReceipt({
+    const result = await receiptService.reviewReceipt({
       receiptId: id,
       action: 'APPROVE',
       reviewedBy: req.user!.id,
       verifiedAmount,
       notes,
     });
+    const { fraudWarning, ...rest } = result;
 
-    res.json({ success: true, data: updated, message: 'Receipt approved' });
+    res.json({ success: true, data: rest, message: 'Receipt approved', ...(fraudWarning && { fraudWarning }) });
   })
 );
 
@@ -416,13 +417,14 @@ router.post(
   '/risk-queue/:id/approve',
   requirePermission('control.risk.write'),
   asyncHandler(async (req: AuthRequest, res: Response) => {
-    const updated = await receiptService.reviewReceipt({
+    const result = await receiptService.reviewReceipt({
       receiptId: req.params.id,
       action: 'APPROVE',
       reviewedBy: req.user!.id,
       notes: typeof req.body?.notes === 'string' ? req.body.notes.trim() : undefined,
     });
-    res.json({ success: true, data: updated, message: 'Signal approved' });
+    const { fraudWarning, ...rest } = result;
+    res.json({ success: true, data: rest, message: 'Signal approved', ...(fraudWarning && { fraudWarning }) });
   })
 );
 

@@ -303,8 +303,15 @@ function DisputeDetailPanel({
   const receiptApproveMutation = useMutation({
     mutationFn: ({ receiptId, notes }: { receiptId: string; notes?: string }) =>
       adminControlService.approveDispute(receiptId, notes),
-    onSuccess: () => {
-      toast.success('Бележката е одобрена');
+    onSuccess: (result) => {
+      if (result?.fraudWarning) {
+        toast(`⚠ ${result.fraudWarning}`, {
+          style: { background: '#d97706', color: '#fff', fontWeight: 600 },
+          duration: 6000,
+        });
+      } else {
+        toast.success('Бележката е одобрена');
+      }
       qc.invalidateQueries({ queryKey: ['dispute-case', id] });
       qc.invalidateQueries({ queryKey: ['dispute-cases'] });
     },

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import styled from 'styled-components';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-hot-toast';
@@ -324,7 +325,7 @@ function ErrorRow({ e }: { e: MobileErrorLogEntry }) {
         </MessageCell>
         <ETd style={{ whiteSpace: 'nowrap', color: palette.textSubtle }}>{formatDate(e.createdAt)}</ETd>
       </tr>
-      {modal && (
+      {modal && createPortal(
         <ModalOverlay onClick={() => setModal(null)}>
           <ModalBox onClick={ev => ev.stopPropagation()}>
             <ModalTitle>Stack Trace</ModalTitle>
@@ -332,7 +333,8 @@ function ErrorRow({ e }: { e: MobileErrorLogEntry }) {
             <StackPre>{modal.stack}</StackPre>
             <CloseBtn onClick={() => setModal(null)}>Затвори</CloseBtn>
           </ModalBox>
-        </ModalOverlay>
+        </ModalOverlay>,
+        document.body
       )}
     </>
   );
