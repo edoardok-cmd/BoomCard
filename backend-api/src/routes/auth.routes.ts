@@ -16,6 +16,7 @@ import QRCode from 'qrcode';
 import { cardService } from '../services/card.service';
 import { walletService } from '../services/wallet.service';
 import { emailService } from '../services/email.service';
+import { writeAudit } from '../middleware/audit.middleware';
 
 const TERMS_VERSION = process.env.TERMS_VERSION || '2026-02-24';
 
@@ -153,6 +154,15 @@ router.post(
     const userAgent = req.headers['user-agent'];
     const result = await AuthService.login({ email, password, clientType, ip, userAgent, totpCode });
 
+    writeAudit({
+      actorUserId: result.user?.id ?? null,
+      action: 'auth.login',
+      objectType: 'user',
+      objectId: result.user?.id ?? null,
+      ip: ip ?? null,
+      userAgent: userAgent ?? null,
+    }).catch(() => undefined);
+
     res.json({
       success: true,
       message: 'Login successful',
@@ -195,9 +205,27 @@ router.post(
   '/logout',
   asyncHandler(async (req: Request, res: Response) => {
     const { refreshToken } = req.body;
+    const ip = ((req.headers['x-forwarded-for'] as string) ?? '').split(',')[0]?.trim() || req.ip;
+    const userAgent = req.headers['user-agent'];
 
     if (refreshToken) {
+      const storedToken = await prisma.refreshToken.findUnique({
+        where: { token: refreshToken },
+        select: { userId: true },
+      }).catch(() => null);
+
       await AuthService.logout(refreshToken);
+
+      if (storedToken?.userId) {
+        writeAudit({
+          actorUserId: storedToken.userId,
+          action: 'auth.logout',
+          objectType: 'user',
+          objectId: storedToken.userId,
+          ip: ip ?? null,
+          userAgent: userAgent ?? null,
+        }).catch(() => undefined);
+      }
     }
 
     res.json({

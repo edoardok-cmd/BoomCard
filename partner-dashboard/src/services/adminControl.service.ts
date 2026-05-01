@@ -189,6 +189,7 @@ export const adminControlService = {
     limit?: number;
     tier?: 'REVIEW_31_60' | 'HIGH_61_PLUS' | 'all';
     venueId?: string;
+    signalCategory?: string;
   }): Promise<FraudSignalsResult> {
     const clean: Record<string, unknown> = {
       page: params.page,
@@ -196,6 +197,7 @@ export const adminControlService = {
       tier: params.tier ?? 'all',
     };
     if (params.venueId) clean.venueId = params.venueId;
+    if (params.signalCategory) clean.signalCategory = params.signalCategory;
     return apiService.get('/admin/control/risk-queue', clean);
   },
 
@@ -211,7 +213,7 @@ export const adminControlService = {
     return apiService.post(`/admin/control/risk-queue/${id}/reject`, reason ? { reason } : {});
   },
 
-  // Security audit log (§7.2)
+  // Security audit log (§10 Administrators > Audit History)
   getSecurityLogs(params: {
     page?: number;
     limit?: number;

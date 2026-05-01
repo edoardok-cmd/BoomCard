@@ -885,9 +885,14 @@ class ReceiptService {
       }
 
       // Top-level guard: prevent re-processing a receipt that has already been
-      // admin-reviewed.
+      // admin-reviewed. Explicit terminal-status checks guard against edge cases
+      // where reviewedBy is null but the receipt reached a terminal state via an
+      // automated path (e.g. fraud-engine auto-reject or expiry job).
       const alreadyAdminReviewed = receipt.reviewedBy !== null;
-      if (alreadyAdminReviewed || receipt.status === 'REJECTED' as any) {
+      const terminalStatus = (receipt.status as string) === 'REJECTED'
+        || (receipt.status as string) === 'APPROVED'
+        || (receipt.status as string) === 'EXPIRED';
+      if (alreadyAdminReviewed || terminalStatus) {
         throw new AppError(
           `Receipt has already been reviewed by an admin and cannot be reviewed again`,
           409

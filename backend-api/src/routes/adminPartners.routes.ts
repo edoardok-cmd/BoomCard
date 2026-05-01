@@ -19,6 +19,8 @@ import { authenticate, authorize, requirePermission, AuthRequest } from '../midd
 import { asyncHandler } from '../middleware/error.middleware';
 import { auditMiddleware } from '../middleware/audit.middleware';
 import { prisma } from '../lib/prisma';
+import { logger } from '../utils/logger';
+import { fireAutomation } from '../lib/automationDispatcher';
 
 const router = Router();
 router.use(authenticate, authorize('ADMIN', 'SUPER_ADMIN'));
@@ -282,6 +284,12 @@ router.post(
       },
       select: PARTNER_SELECT,
     });
+
+    fireAutomation('partner.approved', {
+      partnerId: updated.id,
+      recipientEmail: updated.email ?? undefined,
+      recipientName: updated.businessName,
+    }).catch((err) => logger.error('[automation] partner.approved fire failed:', err));
 
     res.json({ success: true, partner: updated });
   })

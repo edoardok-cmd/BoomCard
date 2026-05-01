@@ -1041,6 +1041,7 @@ model VenueFraudConfig {
   premiumBonus       Float  @default(2.0)
   platinumBonus      Float  @default(5.0)
   minBillAmount      Float  @default(0)
+  maxBillAmount      Float? // Optional upper cap on eligible bill amount (null = no cap)
   maxCashbackPerScan Float?
 
   // Rate Limiting
@@ -1924,6 +1925,7 @@ model MarketingList {
   type        MarketingListType
   description String                @default("")
   size        Int                   @default(0)
+  syncKey     String?               @unique
   createdAt   DateTime              @default(now())
   updatedAt   DateTime              @updatedAt
   campaigns   MarketingCampaign[]

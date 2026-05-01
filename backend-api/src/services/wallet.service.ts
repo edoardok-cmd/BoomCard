@@ -11,6 +11,7 @@ import {
 } from '../constants/receipt.constants';
 import { payseraService } from './paysera.service';
 import { notificationService } from './notification.service';
+import { fireAutomation } from '../lib/automationDispatcher';
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -193,6 +194,8 @@ export class WalletService {
                 threshold,
               })
               .catch((err) => logger.error(`[wallet] payout-ready notify failed for ${userId}:`, err));
+            fireAutomation('cashback.threshold_reached', { userId })
+              .catch((err) => logger.error(`[wallet] cashback.threshold_reached automation failed for ${userId}:`, err));
           }
         }
       } catch (err) {

@@ -160,6 +160,7 @@ const AdminFinanceReportsPage = lazy(() => import('./pages/admin/AdminFinanceRep
 const AdminControlSecurityPage = lazy(() => import('./pages/admin/AdminControlSecurityPage'));
 const AdminControlAuditLogPage = lazy(() => import('./pages/admin/AdminControlAuditLogPage'));
 const AdminControlDisputesPage = lazy(() => import('./pages/admin/AdminControlDisputesPage'));
+const AdminControlRulesPage = lazy(() => import('./pages/admin/AdminControlRulesPage'));
 const AdminMarketingCampaignsPage = lazy(() => import('./pages/admin/AdminMarketingCampaignsPage'));
 const AdminMarketingTemplatesPage = lazy(() => import('./pages/admin/AdminMarketingTemplatesPage'));
 const AdminMarketingAutomationsPage = lazy(() => import('./pages/admin/AdminMarketingAutomationsPage'));
@@ -176,7 +177,6 @@ const ReceiptsPage = lazy(() => import('./pages/ReceiptsPage'));
 const ReceiptDetailPage = lazy(() => import('./pages/ReceiptDetailPage'));
 const ReceiptAnalyticsPage = lazy(() => import('./pages/ReceiptAnalyticsPage'));
 const AdminReceiptsPage = lazy(() => import('./pages/AdminReceiptsPage'));
-const AdminVenueFraudConfigPage = lazy(() => import('./pages/AdminVenueFraudConfigPage'));
 const AdminReceiptTemplatesPage = lazy(() => import('./pages/AdminReceiptTemplatesPage'));
 
 // Payment pages
@@ -532,7 +532,7 @@ function App() {
                       <Route path="risk" element={<AdminControlSecurityPage />} />
                       <Route path="security" element={<AdminControlAuditLogPage />} />
                       <Route path="disputes" element={<AdminControlDisputesPage />} />
-                      <Route path="rules" element={<AdminVenueFraudConfigPage />} />
+                      <Route path="rules" element={<AdminControlRulesPage />} />
                     </Route>
 
                     {/* /admin/marketing — placeholder */}

@@ -37,6 +37,7 @@ router.use(auditMiddleware);
 // is the first URL segment (or the baseUrl tail for UUID-led paths). These prefixes match
 // every write operation on security-relevant admin resources.
 const SECURITY_ACTION_PREFIXES = [
+  'auth.',              // login / logout events (written by writeAudit in auth.routes.ts)
   'admins.',            // admin-user create / update / promote / delete
   'partner-requests.',  // partner approve / reject / suspend (PATCH)
   'subscribers.',       // subscriber update / delete
@@ -53,7 +54,7 @@ const SECURITY_ACTION_PREFIXES = [
  */
 router.get(
   '/security',
-  requirePermission('control.risk.read'),
+  requirePermission('admins.audit.read'),
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const page = Math.max(1, parseInt(req.query.page as string) || 1);
     const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string) || 25));
@@ -80,7 +81,7 @@ router.get(
       if (!isNaN(d.getTime())) where.createdAt = { ...((where.createdAt as object) ?? {}), gte: d };
     }
     if (toParam) {
-      const d = new Date(toParam);
+      const d = new Date(toParam + 'T23:59:59.999Z');
       if (!isNaN(d.getTime())) where.createdAt = { ...((where.createdAt as object) ?? {}), lte: d };
     }
 
@@ -214,11 +215,11 @@ router.post(
 // MERCHANT_MISMATCH:..., RAPID_SCANNING:..., MAX_SCANS_PER_DAY:...) go to
 // StickerScan.fraudReasons and are intentionally excluded — Receipt queries won't find them.
 const RISK_SIGNAL_GROUPS = {
-  duplicate:    ['DUPLICATE_IMAGE', 'PERCEPTUAL_DUPLICATE_CLOSE', 'PERCEPTUAL_DUPLICATE_MODERATE'],
+  duplicate:    ['DUPLICATE_IMAGE', 'DUPLICATE_RECEIPT', 'PERCEPTUAL_DUPLICATE_CLOSE', 'PERCEPTUAL_DUPLICATE_MODERATE'],
   qrMismatch:   ['GPS_FAR_FROM_VENUE', 'GPS_OUTSIDE_RANGE'],
   velocity:     ['RAPID_SUBMISSIONS', 'DAILY_LIMIT_EXCEEDED', 'MONTHLY_LIMIT_EXCEEDED'],
   receiptMatch: ['LOW_OCR_CONFIDENCE', 'MODERATE_OCR_CONFIDENCE', 'TEMPLATE_MISMATCH',
-                 'AMOUNT_MISMATCH', 'LARGE_AMOUNT_MISMATCH'],
+                 'AMOUNT_MISMATCH', 'LARGE_AMOUNT_MISMATCH', 'AMOUNT_TOO_LOW', 'AMOUNT_EXCEEDS_VENUE_MAX'],
   // Spec §7.2 "подозрително поведение" — device anomalies, blacklisted merchants, etc.
   suspicious:   ['MERCHANT_BLACKLISTED', 'NEW_DEVICE_MULTI_DEVICE_USER',
                  'RARE_DEVICE_MULTI_DEVICE_USER', 'UNUSUAL_TIME', 'NEW_DEVICE', 'FRAUD_CHECK_ERROR'],
@@ -304,6 +305,7 @@ router.get(
     const skip = (page - 1) * limit;
     const tier = typeof req.query.tier === 'string' ? req.query.tier.trim() : 'all';
     const venueId = typeof req.query.venueId === 'string' ? req.query.venueId.trim() : '';
+    const signalCategory = typeof req.query.signalCategory === 'string' ? req.query.signalCategory.trim() : '';
 
     // Spec §7.1 buckets: 0-30 auto-approve (not surfaced for review), 31-60 review, 61+ high.
     // AUTO_0_30 is intentionally excluded from the risk queue — those receipts auto-approve.
@@ -312,8 +314,16 @@ router.get(
     if (tier === 'REVIEW_31_60') fraudScoreFilter = { gte: 31, lt: 61 };
     else if (tier === 'HIGH_61_PLUS') fraudScoreFilter = { gte: 61 };
 
+    // When a signal category is provided, restrict to receipts that carry at least one
+    // signal from that category (hasSome implicitly means isEmpty: false).
+    const fraudReasonsFilter =
+      signalCategory && signalCategory in RISK_SIGNAL_GROUPS
+        ? { hasSome: [...RISK_SIGNAL_GROUPS[signalCategory as keyof typeof RISK_SIGNAL_GROUPS]] }
+        : { isEmpty: false };
+
     const where: Parameters<typeof prisma.receipt.findMany>[0]['where'] = {
       fraudScore: fraudScoreFilter,
+      fraudReasons: fraudReasonsFilter,
       status: { notIn: ['APPROVED', 'REJECTED', 'EXPIRED'] },
     };
     if (venueId) where.venueId = venueId;
@@ -393,7 +403,7 @@ router.get(
     res.json({
       success: true,
       data: enriched,
-      meta: { total, page, limit, pages: Math.ceil(total / limit), tier },
+      meta: { total, page, limit, pages: Math.ceil(total / limit), tier, signalCategory: signalCategory || null },
     });
   })
 );

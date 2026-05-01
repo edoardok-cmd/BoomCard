@@ -27,6 +27,7 @@ export interface VenueFraudConfig {
   premiumBonus: number;
   platinumBonus: number;
   minBillAmount: number;
+  maxBillAmount?: number | null;
   maxCashbackPerScan?: number;
   maxScansPerDay: number;
   maxScansPerMonth: number;

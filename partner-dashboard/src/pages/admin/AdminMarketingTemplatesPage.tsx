@@ -69,6 +69,7 @@ const HintText = styled.p`font-size: 0.75rem; color: ${palette.textSubtle}; marg
 const ConfirmText = styled.p`font-size: 0.9375rem; color: ${palette.text}; margin: 0 0 0.5rem;`;
 const ConfirmSub = styled.p`font-size: 0.8125rem; color: ${palette.textSubtle}; margin: 0;`;
 const WarnBanner = styled.div`padding: 0.5rem 0.875rem; border: 1px solid #fbbf24; border-radius: 0.5rem; font-size: 0.8125rem; background: ${palette.warningSoft}; color: ${palette.warning}; margin-bottom: 1rem;`;
+const ErrorBanner = styled.div`padding: 0.5rem 0.875rem; border: 1px solid #f1c4b8; border-radius: 0.5rem; font-size: 0.8125rem; background: ${palette.dangerSoft}; color: ${palette.danger}; margin-bottom: 1rem;`;
 
 const TabRow = styled.div`display: flex; gap: 0; border-bottom: 1px solid ${palette.border}; margin-bottom: 1rem;`;
 const Tab = styled.button<{ $active: boolean }>`
@@ -121,6 +122,7 @@ export default function AdminMarketingTemplatesPage() {
   const [form, setForm] = useState<FormState>(DEFAULT_FORM);
   const [bodyLoading, setBodyLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
   const [previewTab, setPreviewTab] = useState<'edit' | 'preview'>('edit');
 
   // View modal state
@@ -178,10 +180,11 @@ export default function AdminMarketingTemplatesPage() {
 
   const openDelete = (row: MarketingTemplate) => {
     setSelected(row);
+    setDeleteError('');
     setModal('delete');
   };
 
-  const closeModal = () => { setModal(null); setSelected(null); setViewDetail(null); };
+  const closeModal = () => { setModal(null); setSelected(null); setViewDetail(null); setDeleteError(''); };
 
   const handleSave = async () => {
     if (!form.name.trim() || bodyLoading) return;
@@ -209,10 +212,13 @@ export default function AdminMarketingTemplatesPage() {
   const handleDelete = async () => {
     if (!selected) return;
     setSaving(true);
+    setDeleteError('');
     try {
       await adminMarketingService.deleteTemplate(selected.id);
       closeModal();
       load();
+    } catch (err: unknown) {
+      setDeleteError((err as any)?.response?.data?.error ?? (err as { message?: string })?.message ?? 'Delete failed. Please try again.');
     } finally {
       setSaving(false);
     }
@@ -493,6 +499,7 @@ export default function AdminMarketingTemplatesPage() {
               <CloseBtn onClick={closeModal}>×</CloseBtn>
             </ModalHeader>
             <ModalBody>
+              {deleteError && <ErrorBanner>{deleteError}</ErrorBanner>}
               <ConfirmText>
                 You are about to delete <strong>{selected.name}</strong>.
               </ConfirmText>

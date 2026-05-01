@@ -6,16 +6,13 @@ import { DataTable, ColumnDef } from '../../components/admin/DataTable/DataTable
 import {
   adminControlService,
   FraudSignalReceipt,
-  AdminAuditLog,
 } from '../../services/adminControl.service';
 import FraudReasonTag from '../../components/admin/FraudReasonTag';
 import { useLanguage } from '../../contexts/LanguageContext';
 
-// Spec §7.2 — Контрол > Сигурност
-// Two tabs:
-//   1. Fraud Signals — risk queue (§7.1/§7.2): duplicate, QR/location, velocity,
-//      receipt quality, suspicious behaviour. Signal codes match fraudDetection.service.ts.
-//   2. Audit Log     — admin security event history (§7.2 admin action trail).
+// Spec §7.1/§7.2 — Контрол > Преглед на рискови транзакции / Риск и сигурност
+// Fraud signals queue: duplicate, QR/location, velocity, receipt quality, suspicious behaviour.
+// Audit log moved to its own dedicated page at /admin/control/security.
 
 const palette = {
   bg: '#faf9f5', surface: '#ffffff', border: '#e8e5dc',
@@ -87,11 +84,14 @@ const StatGrid = styled.div`
   gap: 0.75rem;
   margin-bottom: 0.5rem;
 `;
-const Stat = styled.div`
-  background: ${palette.surface};
-  border: 1px solid ${palette.border};
+const Stat = styled.div<{ $active?: boolean }>`
+  background: ${(p) => p.$active ? palette.accentSoft : palette.surface};
+  border: 1px solid ${(p) => p.$active ? palette.accent : palette.border};
   border-radius: 0.625rem;
   padding: 0.875rem 1rem;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  &:hover { border-color: ${palette.accent}; }
 `;
 const StatLabel = styled.div`font-size: 0.75rem; color: ${palette.textSubtle}; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 0.25rem;`;
 const StatValue = styled.div`font-size: 1.375rem; font-weight: 700; color: ${palette.text};`;
@@ -109,6 +109,7 @@ const ActionBtn = styled.button<{ $variant: 'approve' | 'reject' | 'dispute' }>`
 const PAGE_SIZE = 25;
 
 type ActionDraft = { id: string; type: 'approve' | 'reject'; text: string };
+type DisputeDraft = { receiptId: string; merchantName: string | null };
 
 const Overlay = styled.div`
   position: fixed; inset: 0; background: rgba(0,0,0,0.45);
@@ -143,25 +144,6 @@ const ConfirmBtn = styled.button<{ $variant: 'approve' | 'reject' }>`
   border-color: ${(p) => p.$variant === 'approve' ? palette.success : palette.danger};
 `;
 
-// Tab switcher
-const TabBar = styled.div`display: flex; gap: 0; border-bottom: 2px solid ${palette.border}; margin-bottom: 1.5rem;`;
-const Tab = styled.button<{ $active: boolean }>`
-  padding: 0.6rem 1.25rem; font-size: 0.875rem; font-weight: 600; border: none;
-  background: none; cursor: pointer; border-bottom: 2px solid transparent;
-  margin-bottom: -2px; transition: color 0.15s, border-color 0.15s;
-  color: ${(p) => p.$active ? palette.accent : palette.textMuted};
-  border-bottom-color: ${(p) => p.$active ? palette.accent : 'transparent'};
-  &:hover { color: ${(p) => p.$active ? palette.accent : palette.text}; }
-`;
-
-// Audit log action badge
-const ActionBadge = styled.span`
-  display: inline-flex; padding: 0.15rem 0.5rem; border-radius: 0.25rem;
-  font-size: 0.75rem; font-weight: 600; font-family: monospace;
-  background: ${palette.infoSoft}; color: ${palette.info};
-  word-break: break-all; max-width: 18rem;
-`;
-
 // Real signal codes from fraudDetection.service.ts — must stay in sync with
 // RISK_SIGNAL_GROUPS in backend adminControl.routes.ts.
 const LOCATION_MISMATCH_SIGNALS = new Set([
@@ -188,10 +170,8 @@ function bucketLabel(bucket: string | null | undefined, lang: 'en' | 'bg'): stri
 
 const T = {
   eyebrow:         { en: 'Control',                                             bg: 'Контрол' },
-  title:           { en: 'Security & Fraud Signals',                            bg: 'Сигурност и Измамни сигнали' },
-  subtitle:        { en: 'Duplicate detection, QR/location mismatch, velocity, receipt quality, suspicious behaviour', bg: 'Дублиране, несъответствие QR/локация, честота, качество на бележка, подозрително поведение' },
-  tabFraud:        { en: 'Fraud Signals',                                       bg: 'Измамни сигнали' },
-  tabAudit:        { en: 'Security Audit Log',                                  bg: 'История на действията' },
+  title:           { en: 'Risk & Security',                                      bg: 'Риск и сигурност' },
+  subtitle:        { en: 'Duplicate detection, QR/location mismatch, velocity, receipt quality, suspicious behaviour (§7.1 / §7.2)', bg: 'Дублиране, несъответствие QR/локация, честота, качество на бележка, подозрително поведение (§7.1 / §7.2)' },
   allTiers:        { en: 'All tiers (≥31)',                                     bg: 'Всички нива (≥31)' },
   reviewTier:      { en: 'Review (31–60)',                                      bg: 'Преглед (31–60)' },
   highTier:        { en: 'High risk (61+)',                                     bg: 'Висок риск (61+)' },
@@ -201,7 +181,7 @@ const T = {
   statVelocity:    { en: 'Velocity',                                            bg: 'Честота' },
   statReceipt:     { en: 'Receipt quality',                                     bg: 'Качество на бележка' },
   statSuspicious:  { en: 'Suspicious behaviour',                                bg: 'Подозрително поведение' },
-  statIban:        { en: 'IBAN changes (7d)',                                   bg: 'Промени на IBAN (7д)' },
+  statIban:        { en: 'Users: IBAN changed (7d)',                             bg: 'Потребители: IBAN промяна (7д)' },
   statOther:       { en: 'Other signals',                                       bg: 'Други сигнали' },
   colScore:        { en: 'Risk score',                                          bg: 'Риск оценка' },
   colSubscriber:   { en: 'Subscriber',                                          bg: 'Абонат' },
@@ -209,10 +189,6 @@ const T = {
   colReceipt:      { en: 'Receipt',                                             bg: 'Бележка' },
   colSignals:      { en: 'Signals',                                             bg: 'Сигнали' },
   colActions:      { en: 'Actions',                                             bg: 'Действия' },
-  colTime:         { en: 'Time',                                                bg: 'Час' },
-  colAction:       { en: 'Action',                                              bg: 'Действие' },
-  colActor:        { en: 'Actor',                                               bg: 'Актор' },
-  colObject:       { en: 'Object',                                              bg: 'Обект' },
   userRisk:        { en: 'User risk',                                           bg: 'Риск на абонат' },
   partnerRisk:     { en: 'Partner risk',                                        bg: 'Риск при партньор' },
   locationMatched: { en: 'Location: matched',                                   bg: 'Локация: съвпада' },
@@ -223,7 +199,6 @@ const T = {
   noVenue:         { en: 'No venue',                                            bg: 'Без обект' },
   noneSignals:     { en: 'None',                                                bg: 'Няма' },
   emptyMsg:        { en: 'No fraud signals at this tier',                      bg: 'Няма измамни сигнали за това ниво' },
-  emptyAudit:      { en: 'No security events found',                           bg: 'Няма намерени сигурностни събития' },
   approve:         { en: 'Approve',                                             bg: 'Одобри' },
   reject:          { en: 'Reject',                                              bg: 'Откажи' },
   riskHigh:        { en: 'High',                                                bg: 'Висок' },
@@ -237,7 +212,6 @@ const T = {
   openDispute:     { en: 'Open Dispute',                                        bg: 'Отвори спор' },
   disputeOpened:   { en: 'Dispute case opened',                                 bg: 'Спорът е открит' },
   disputeExists:   { en: 'Dispute already exists for this receipt',             bg: 'Спор за тази бележка вече съществува' },
-  system:          { en: 'system',                                              bg: 'система' },
 } as const;
 
 export default function AdminControlSecurityPage() {
@@ -246,34 +220,33 @@ export default function AdminControlSecurityPage() {
   const t = (key: keyof typeof T) => T[key][lang];
   const queryClient = useQueryClient();
 
-  // ── Tab state ──
-  const [activeTab, setActiveTab] = useState<'fraud' | 'audit'>('fraud');
-
-  // ── Fraud signals tab state ──
   const [page, setPage] = useState(1);
   const [tier, setTier] = useState<'REVIEW_31_60' | 'HIGH_61_PLUS' | 'all'>('all');
   const [venueIdInput, setVenueIdInput] = useState('');
   const [venueId, setVenueId] = useState('');
+  const [signalCategory, setSignalCategory] = useState('');
   const [actionDraft, setActionDraft] = useState<ActionDraft | null>(null);
+  const [disputeDraft, setDisputeDraft] = useState<DisputeDraft | null>(null);
+  const [disputeNote, setDisputeNote] = useState('');
 
-  // ── Audit log tab state ──
-  const [auditPage, setAuditPage] = useState(1);
+  const toggleCategory = (cat: string) => {
+    setSignalCategory((prev) => (prev === cat ? '' : cat));
+    setPage(1);
+  };
 
   const { data, isLoading } = useQuery({
-    queryKey: ['admin-fraud-signals', page, tier, venueId],
-    queryFn: () => adminControlService.getFraudSignals({ page, limit: PAGE_SIZE, tier, venueId: venueId || undefined }),
+    queryKey: ['admin-fraud-signals', page, tier, venueId, signalCategory],
+    queryFn: () => adminControlService.getFraudSignals({
+      page, limit: PAGE_SIZE, tier,
+      venueId: venueId || undefined,
+      signalCategory: signalCategory || undefined,
+    }),
   });
 
   const { data: summaryData } = useQuery({
     queryKey: ['admin-risk-queue-summary'],
     queryFn: () => adminControlService.getRiskQueueSummary(),
     staleTime: 60_000,
-  });
-
-  const { data: auditData, isLoading: auditLoading } = useQuery({
-    queryKey: ['admin-security-logs', auditPage],
-    queryFn: () => adminControlService.getSecurityLogs({ page: auditPage, limit: PAGE_SIZE }),
-    enabled: activeTab === 'audit',
   });
 
   const approveMutation = useMutation({
@@ -297,10 +270,12 @@ export default function AdminControlSecurityPage() {
   });
 
   const openDisputeMutation = useMutation({
-    mutationFn: (receiptId: string) =>
-      adminControlService.createDisputeCase({ subjectType: 'RECEIPT', receiptId }),
+    mutationFn: ({ receiptId, notes }: { receiptId: string; notes?: string }) =>
+      adminControlService.createDisputeCase({ subjectType: 'RECEIPT', receiptId, notes }),
     onSuccess: () => {
       toast.success(t('disputeOpened'));
+      setDisputeDraft(null);
+      setDisputeNote('');
       queryClient.invalidateQueries({ queryKey: ['dispute-cases'] });
     },
     onError: (err: unknown) => {
@@ -315,13 +290,15 @@ export default function AdminControlSecurityPage() {
 
   const isRowMutating = (id: string) =>
     (approveMutation.isPending && approveMutation.variables?.id === id) ||
-    (rejectMutation.isPending && rejectMutation.variables?.id === id);
-  const isAnyMutating = approveMutation.isPending || rejectMutation.isPending;
+    (rejectMutation.isPending && rejectMutation.variables?.id === id) ||
+    (openDisputeMutation.isPending && openDisputeMutation.variables?.receiptId === id);
+  const isAnyMutating = approveMutation.isPending || rejectMutation.isPending || openDisputeMutation.isPending;
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key !== 'Escape' || isAnyMutating) return;
       setActionDraft(null);
+      setDisputeDraft(null);
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
@@ -454,57 +431,15 @@ export default function AdminControlSecurityPage() {
           </ActionBtn>
           <ActionBtn
             $variant="dispute"
-            disabled={isRowMutating(row.id) || openDisputeMutation.isPending}
-            onClick={() => openDisputeMutation.mutate(row.id)}
+            disabled={isRowMutating(row.id)}
+            onClick={() => {
+              setDisputeDraft({ receiptId: row.id, merchantName: row.merchantName });
+              setDisputeNote('');
+            }}
           >
             {t('openDispute')}
           </ActionBtn>
         </ActionRow>
-      ),
-    },
-  ];
-
-  const auditColumns: ColumnDef<AdminAuditLog>[] = [
-    {
-      key: 'time',
-      header: t('colTime'),
-      render: (row) => (
-        <MetaLine style={{ whiteSpace: 'nowrap' }}>{fmt(row.createdAt)}</MetaLine>
-      ),
-    },
-    {
-      key: 'action',
-      header: t('colAction'),
-      render: (row) => <ActionBadge title={row.action}>{row.action}</ActionBadge>,
-    },
-    {
-      key: 'actor',
-      header: t('colActor'),
-      render: (row) => (
-        <span>
-          {row.actor ? (
-            <>
-              <PrimaryLine>
-                {row.actor.firstName || row.actor.lastName
-                  ? `${row.actor.firstName ?? ''} ${row.actor.lastName ?? ''}`.trim()
-                  : row.actor.email}
-              </PrimaryLine>
-              <MetaLine>{row.actor.email}</MetaLine>
-            </>
-          ) : (
-            <MetaLine>{t('system')}</MetaLine>
-          )}
-        </span>
-      ),
-    },
-    {
-      key: 'object',
-      header: t('colObject'),
-      render: (row) => (
-        <span>
-          <PrimaryLine>{row.objectType || '—'}</PrimaryLine>
-          {row.objectId && <MetaLine>{row.objectId.slice(0, 12)}…</MetaLine>}
-        </span>
       ),
     },
   ];
@@ -518,56 +453,42 @@ export default function AdminControlSecurityPage() {
           <Eyebrow>{t('eyebrow')}</Eyebrow>
           <PageTitle>
             {t('title')}
-            {activeTab === 'fraud' && data && data.meta.total > 0 && (
+            {data && data.meta.total > 0 && (
               <TotalBadge>{data.meta.total.toLocaleString()}</TotalBadge>
-            )}
-            {activeTab === 'audit' && auditData && auditData.meta.total > 0 && (
-              <TotalBadge>{auditData.meta.total.toLocaleString()}</TotalBadge>
             )}
           </PageTitle>
           <PageSubtitle>{t('subtitle')}</PageSubtitle>
         </TitleBlock>
       </PageHeader>
 
-      <TabBar>
-        <Tab $active={activeTab === 'fraud'} onClick={() => setActiveTab('fraud')}>
-          {t('tabFraud')}
-        </Tab>
-        <Tab $active={activeTab === 'audit'} onClick={() => setActiveTab('audit')}>
-          {t('tabAudit')}
-        </Tab>
-      </TabBar>
-
-      {activeTab === 'fraud' && (
-        <>
-          {/* 6 stat tiles — global counts for fraudScore ≥31 from summary endpoint.
-              Categories can overlap: one receipt may trigger multiple signal groups. */}
-          <StatGrid>
-            <Stat>
+      {/* stat tiles — global counts for fraudScore ≥31. Click to filter table by category.
+          Categories can overlap: one receipt may trigger multiple signal groups. */}
+      <StatGrid>
+            <Stat $active={signalCategory === 'duplicate'} onClick={() => toggleCategory('duplicate')} title={lang === 'bg' ? 'Филтрирай по дублиране' : 'Filter by duplicates'}>
               <StatLabel>{t('statDuplicate')}</StatLabel>
               <StatValue>{s?.duplicate ?? '—'}</StatValue>
             </Stat>
-            <Stat>
+            <Stat $active={signalCategory === 'qrMismatch'} onClick={() => toggleCategory('qrMismatch')} title={lang === 'bg' ? 'Филтрирай по QR / Локация' : 'Filter by QR/Location'}>
               <StatLabel>{t('statQr')}</StatLabel>
               <StatValue>{s?.qrMismatch ?? '—'}</StatValue>
             </Stat>
-            <Stat>
+            <Stat $active={signalCategory === 'velocity'} onClick={() => toggleCategory('velocity')} title={lang === 'bg' ? 'Филтрирай по честота' : 'Filter by velocity'}>
               <StatLabel>{t('statVelocity')}</StatLabel>
               <StatValue>{s?.velocity ?? '—'}</StatValue>
             </Stat>
-            <Stat>
+            <Stat $active={signalCategory === 'receiptMatch'} onClick={() => toggleCategory('receiptMatch')} title={lang === 'bg' ? 'Филтрирай по качество на бележка' : 'Filter by receipt quality'}>
               <StatLabel>{t('statReceipt')}</StatLabel>
               <StatValue>{s?.receiptMatch ?? '—'}</StatValue>
             </Stat>
-            <Stat>
+            <Stat $active={signalCategory === 'suspicious'} onClick={() => toggleCategory('suspicious')} title={lang === 'bg' ? 'Филтрирай по подозрително поведение' : 'Filter by suspicious behaviour'}>
               <StatLabel>{t('statSuspicious')}</StatLabel>
               <StatValue>{s?.suspicious ?? '—'}</StatValue>
             </Stat>
-            <Stat>
+            <Stat title={lang === 'bg' ? 'Без филтър — системен показател' : 'No filter — system metric'}>
               <StatLabel>{t('statIban')}</StatLabel>
               <StatValue>{s?.ibanAnomaly ?? '—'}</StatValue>
             </Stat>
-            <Stat>
+            <Stat title={lang === 'bg' ? 'Без филтър — неразпознати сигнали' : 'No filter — unrecognised signals'}>
               <StatLabel>{t('statOther')}</StatLabel>
               <StatValue>{s?.other ?? '—'}</StatValue>
             </Stat>
@@ -596,6 +517,14 @@ export default function AdminControlSecurityPage() {
                   }
                 }}
               />
+              {signalCategory && (
+                <CancelBtn
+                  style={{ fontSize: '.8125rem' }}
+                  onClick={() => { setSignalCategory(''); setPage(1); }}
+                >
+                  {lang === 'bg' ? '✕ Изчисти категорията' : '✕ Clear category'}
+                </CancelBtn>
+              )}
             </FilterRow>
 
             <DataTable
@@ -610,24 +539,6 @@ export default function AdminControlSecurityPage() {
               onPageChange={setPage}
             />
           </Card>
-        </>
-      )}
-
-      {activeTab === 'audit' && (
-        <Card>
-          <DataTable
-            columns={auditColumns}
-            data={auditData?.data ?? []}
-            rowKey={(row) => row.id}
-            loading={auditLoading}
-            emptyMessage={t('emptyAudit')}
-            page={auditPage}
-            pageSize={PAGE_SIZE}
-            totalItems={auditData?.meta.total}
-            onPageChange={setAuditPage}
-          />
-        </Card>
-      )}
 
       {actionDraft && (
         <Overlay onClick={() => !isAnyMutating && setActionDraft(null)}>
@@ -658,6 +569,42 @@ export default function AdminControlSecurityPage() {
                 }}
               >
                 {t('confirm')}
+              </ConfirmBtn>
+            </DialogFooter>
+          </Dialog>
+        </Overlay>
+      )}
+
+      {disputeDraft && (
+        <Overlay onClick={() => !isAnyMutating && setDisputeDraft(null)}>
+          <Dialog onClick={(e) => e.stopPropagation()}>
+            <DialogTitle>{t('openDispute')}</DialogTitle>
+            {disputeDraft.merchantName && (
+              <div style={{ fontSize: '.8125rem', color: palette.textMuted, marginBottom: '.75rem' }}>
+                {disputeDraft.merchantName}
+              </div>
+            )}
+            <DialogTextarea
+              placeholder={t('notesLabel')}
+              value={disputeNote}
+              onChange={(e) => setDisputeNote(e.target.value)}
+              autoFocus
+            />
+            <DialogFooter>
+              <CancelBtn disabled={isAnyMutating} onClick={() => setDisputeDraft(null)}>
+                {t('cancel')}
+              </CancelBtn>
+              <ConfirmBtn
+                $variant="approve"
+                disabled={isAnyMutating}
+                onClick={() =>
+                  openDisputeMutation.mutate({
+                    receiptId: disputeDraft.receiptId,
+                    notes: disputeNote.trim() || undefined,
+                  })
+                }
+              >
+                {openDisputeMutation.isPending ? '…' : t('confirm')}
               </ConfirmBtn>
             </DialogFooter>
           </Dialog>

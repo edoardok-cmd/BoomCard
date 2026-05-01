@@ -254,13 +254,18 @@ class FraudDetectionService {
         }
       }
 
-      // 8. Amount threshold check (10 points)
+      // 8. Amount threshold checks (10 points each)
       if (params.userAmount) {
         const minAmount = config?.minBillAmount || DEFAULT_MIN_BILL_AMOUNT;
         if (params.userAmount < minAmount) {
           score += 10;
           reasons.push('AMOUNT_TOO_LOW');
           recommendations.push(`Receipt amount ${params.userAmount} BGN is below minimum ${minAmount} BGN`);
+        }
+        if (config?.maxBillAmount && params.userAmount > config.maxBillAmount) {
+          score += 20;
+          reasons.push('AMOUNT_EXCEEDS_VENUE_MAX');
+          recommendations.push(`Receipt amount ${params.userAmount} BGN exceeds venue maximum ${config.maxBillAmount} BGN`);
         }
       }
 
@@ -889,7 +894,7 @@ class FraudDetectionService {
     // autoApproveThreshold / autoRejectThreshold are NOT here either: every
     // receipt is sent to manual review regardless of score (see checkReceipt).
     const ALLOWED = [
-      'minBillAmount', 'maxCashbackPerScan',
+      'minBillAmount', 'maxBillAmount', 'maxCashbackPerScan',
       'maxScansPerDay', 'maxScansPerMonth',
       'gpsVerificationEnabled', 'gpsRadiusMeters', 'ocrVerificationEnabled',
       'templateMatchEnabled', 'templateVisualWeight', 'templateMerchantWeight',

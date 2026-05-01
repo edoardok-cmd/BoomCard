@@ -48,6 +48,17 @@ export interface MarketingList {
   createdAt: string;
 }
 
+export interface MarketingListMember {
+  id: string;
+  listId: string;
+  memberType: string;
+  partnerId: string | null;
+  partner: { id: string; businessName: string; email: string | null } | null;
+  userId: string | null;
+  user: { id: string; email: string; firstName: string | null; lastName: string | null } | null;
+  addedAt: string;
+}
+
 export interface MarketingAutomation {
   id: string;
   name: string;
@@ -172,13 +183,27 @@ export const adminMarketingService = {
     return apiService.delete(`/admin/marketing/lists/${id}`);
   },
 
+  getListMembers(listId: string): Promise<MarketingListMember[]> {
+    return apiService.get(`/admin/marketing/lists/${listId}/members`);
+  },
+
+  addListMember(listId: string, data: { partnerId?: string; userId?: string }): Promise<MarketingListMember> {
+    return apiService.post(`/admin/marketing/lists/${listId}/members`, data);
+  },
+
+  removeListMember(listId: string, memberId: string): Promise<void> {
+    return apiService.delete(`/admin/marketing/lists/${listId}/members/${memberId}`);
+  },
+
   // ─── Automations ────────────────────────────────────────────────────────────
 
   listAutomations(params: {
-    page?: number; limit?: number; status?: AutomationStatus | '';
+    page?: number; limit?: number; status?: AutomationStatus | ''; search?: string; trigger?: string;
   }): Promise<PagedResult<MarketingAutomation>> {
     const clean: Record<string, unknown> = { page: params.page, limit: params.limit };
-    if (params.status) clean.status = params.status;
+    if (params.status)  clean.status  = params.status;
+    if (params.search)  clean.search  = params.search;
+    if (params.trigger) clean.trigger = params.trigger;
     return apiService.get('/admin/marketing/automations', clean);
   },
 

@@ -20,6 +20,7 @@ import { partnerTypeService } from '../services/partnerType.service';
 import { CASHBACK_MATRIX_STEPS } from '../constants/receipt.constants';
 import { emailService } from '../services/email.service';
 import { logger } from '../utils/logger';
+import { fireAutomation } from '../lib/automationDispatcher';
 
 const PARTNER_TYPE_SELECT = {
   id: true,
@@ -563,6 +564,12 @@ router.post(
         })),
       });
     }
+
+    fireAutomation('partner.created', {
+      partnerId: partner.id,
+      recipientEmail: partner.email ?? undefined,
+      recipientName: partner.businessName,
+    }).catch((err) => logger.error('[automation] partner.created fire failed:', err));
 
     const typeMax = partner.partnerType?.maxDiscountRate ?? null;
     const effectiveRate = partner.discountRate ?? typeMax;
@@ -1160,6 +1167,21 @@ router.post(
     if (venuesToCreate.length > 0) {
       await prisma.venue.createMany({ data: venuesToCreate });
     }
+
+    // Fire partner.created for all wizard-created partners.
+    // Wizard partners are born ACTIVE (no separate approval step), so also fire
+    // partner.approved immediately so both welcome and approval automations run.
+    fireAutomation('partner.created', {
+      partnerId: result.partner.id,
+      recipientEmail: result.partner.email ?? undefined,
+      recipientName: result.partner.businessName,
+    }).catch((err) => logger.error('[automation] partner.created fire failed (onboard):', err));
+
+    fireAutomation('partner.approved', {
+      partnerId: result.partner.id,
+      recipientEmail: result.partner.email ?? undefined,
+      recipientName: result.partner.businessName,
+    }).catch((err) => logger.error('[automation] partner.approved fire failed (onboard):', err));
 
     const typeMax = result.partner.partnerType?.maxDiscountRate ?? null;
     res.status(201).json({

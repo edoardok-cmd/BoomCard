@@ -7,6 +7,7 @@
  * Schedule (Europe/Sofia unless noted):
  *   subscription-expiry              — 30 1 * * *   (1:30 AM daily)
  *   cashback-expiry                  — 0 2 * * *    (2:00 AM daily)
+ *   cashback-expiring-warning        — 0 3 * * *    (3:00 AM daily — warn users 7 days before expiry)
  *   upload-token-cleanup             — 30 3 * * *   (3:30 AM daily)
  *   pending-subscription-cleanup     — 30 3 * * *   (3:30 AM daily)
  *   menu-expiry                      — 0 5 * * *    (5:00 AM daily)
@@ -31,6 +32,7 @@ import { notificationService } from '../services/notification.service';
 import { processPayseraRenewals } from './paysera-renewal';
 import { processPendingPaymentReminders, cleanupExpiredPendingPayments } from './pending-payment-reminders';
 import { runUserRiskSweep } from './user-risk-sweep';
+import { fireAutomation } from '../lib/automationDispatcher';
 import {
   EUR_TO_BGN_RATE,
   PAYOUT_THRESHOLD_BASIC_EUR,
@@ -105,13 +107,12 @@ export async function expireWallet(walletId: string, now: Date): Promise<number>
 
   await prisma.$transaction(async (tx) => {
     const expired = await tx.walletTransaction.findMany({
-      // cashbackExpiresAt not yet in generated Prisma types — run `prisma generate` to fix
       where: {
         walletId,
         type: WalletTransactionType.CASHBACK_CREDIT,
         status: WalletTransactionStatus.COMPLETED,
         cashbackExpiresAt: { lt: now },
-      } as any,
+      },
     });
 
     if (expired.length === 0) return;
@@ -186,12 +187,11 @@ async function runCashbackExpiry(): Promise<void> {
   logger.info(`[cashback-expiry] Starting run at ${now.toISOString()}`);
 
   const affectedWallets = await prisma.walletTransaction.findMany({
-    // cashbackExpiresAt not yet in generated Prisma types — run `prisma generate` to fix
     where: {
       type: WalletTransactionType.CASHBACK_CREDIT,
       status: WalletTransactionStatus.COMPLETED,
       cashbackExpiresAt: { lt: now },
-    } as any,
+    },
     select: { walletId: true },
     distinct: ['walletId'],
   });
@@ -780,6 +780,8 @@ async function resolveTrialPendingCashback(): Promise<void> {
           notificationService
             .notifyPayoutReady({ userId: wallet.userId, availableBalance: updatedWallet.availableBalance, threshold })
             .catch((err) => logger.error(`[trial-pending-cashback] payout-ready notify failed for ${wallet.userId}:`, err));
+          fireAutomation('cashback.threshold_reached', { userId: wallet.userId })
+            .catch((err) => logger.error(`[trial-pending-cashback] cashback.threshold_reached automation failed for ${wallet.userId}:`, err));
         }
       } catch (err) {
         logger.error(`[trial-pending-cashback] payout threshold check failed for ${wallet.userId}:`, err);
@@ -872,6 +874,59 @@ function alertSchedulerFailure(jobName: string, err: unknown): void {
     .catch((notifyErr) => logger.error(`[${jobName}] Failed to post scheduler-failure alert:`, notifyErr));
 }
 
+// ── Cashback expiry warning ────────────────────────────────────────────────────
+// Fires the cashback.expiring automation for users who have CASHBACK_CREDIT
+// transactions expiring within the next 7 days. Runs at 3 AM daily, after the
+// 2 AM expiry job, so we never warn about cashback that already expired tonight.
+
+const CASHBACK_EXPIRY_WARN_DAYS = 7;
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+async function notifyCashbackExpiring(): Promise<void> {
+  const now = new Date();
+  // Narrow the window to exactly one cron-interval (24 h) centred on the
+  // CASHBACK_EXPIRY_WARN_DAYS mark. Running at 3 AM daily, this catches
+  // wallets whose cashback expires between 6 d and 7 d from now — exactly
+  // once per wallet per expiry cycle, preventing the 7-email/push daily spam
+  // that a full [now, now+7d] window would produce.
+  const warnFrom = new Date(now.getTime() + (CASHBACK_EXPIRY_WARN_DAYS - 1) * MS_PER_DAY);
+  const warnUntil = new Date(now.getTime() + CASHBACK_EXPIRY_WARN_DAYS * MS_PER_DAY);
+
+  logger.info(`[cashback-expiring-warning] Checking for cashback expiring between ${warnFrom.toISOString()} and ${warnUntil.toISOString()}`);
+
+  // Find distinct wallets with cashback expiring in the warning window
+  const expiringRows = await prisma.walletTransaction.findMany({
+    where: {
+      type: WalletTransactionType.CASHBACK_CREDIT,
+      status: WalletTransactionStatus.COMPLETED,
+      cashbackExpiresAt: { gte: warnFrom, lte: warnUntil },
+    },
+    select: { walletId: true },
+    distinct: ['walletId'],
+  });
+
+  if (expiringRows.length === 0) {
+    logger.info('[cashback-expiring-warning] No wallets with expiring cashback found');
+    return;
+  }
+
+  logger.info(`[cashback-expiring-warning] ${expiringRows.length} wallet(s) have cashback expiring within ${CASHBACK_EXPIRY_WARN_DAYS} days`);
+
+  let fired = 0;
+  for (const { walletId } of expiringRows) {
+    try {
+      const wallet = await prisma.wallet.findUnique({ where: { id: walletId }, select: { userId: true } });
+      if (!wallet) continue;
+      await fireAutomation('cashback.expiring', { userId: wallet.userId });
+      fired++;
+    } catch (err) {
+      logger.error(`[cashback-expiring-warning] Failed for walletId ${walletId}:`, err);
+    }
+  }
+
+  logger.info(`[cashback-expiring-warning] Done — fired automation for ${fired} user(s)`);
+}
+
 export function registerScheduledJobs(): void {
   // Never register cron jobs in test mode — they keep the process alive and
   // can corrupt test fixtures with async DB mutations.
@@ -886,6 +941,13 @@ export function registerScheduledJobs(): void {
   }, { timezone: 'Europe/Sofia' });
 
   logger.info('[scheduler] Registered: cashback-expiry (0 2 * * *)');
+
+  // 3 AM every day — warn users whose cashback expires within the next 7 days
+  cron.schedule('0 3 * * *', () => {
+    notifyCashbackExpiring().catch((err) => alertSchedulerFailure('cashback-expiring-warning', err));
+  }, { timezone: 'Europe/Sofia' });
+
+  logger.info('[scheduler] Registered: cashback-expiring-warning (0 3 * * *)');
 
   // 3:30 AM every day — purge expired upload tokens + expired PendingSubscription rows
   cron.schedule('30 3 * * *', () => {

@@ -279,10 +279,10 @@ class AdminCashbackService {
           OR: [{ cashbackExpiresAt: null }, { cashbackExpiresAt: { gt: now } }],
         },
       }),
-      // изчакващ — sum of entries still pending (not yet cleared)
+      // изчакващ — sum of entries still pending (matches deriveCashbackEntryStatus: PENDING|TRIAL_PENDING|PROCESSING|RISK_HOLD)
       prisma.walletTransaction.aggregate({
         _sum: { amount: true },
-        where: { type: 'CASHBACK_CREDIT', status: { in: ['PENDING', 'TRIAL_PENDING', 'PROCESSING'] } },
+        where: { type: 'CASHBACK_CREDIT', status: { in: ['PENDING', 'TRIAL_PENDING', 'PROCESSING', 'RISK_HOLD'] } },
       }),
       // одобрен — COMPLETED entries not yet expired; we exclude paid-out ones later
       prisma.walletTransaction.findMany({
@@ -668,18 +668,26 @@ async function buildStateWhere(
       return { status: { in: [...PENDING_RAW] } };
 
     case 'Locked':
-      // CANCELLED + not-yet-expired, OR ANNULLED/FAILED (regardless of expiry)
+      // CANCELLED + not-yet-expired, OR ANNULLED/FAILED (regardless of expiry).
+      // Exclude cashbackPaidAt-marked entries — deriveCashbackEntryStatus returns 'Paid' for those first.
       return {
-        OR: [
-          { AND: [{ status: 'CANCELLED' as const }, notExpired] },
-          { status: { in: ['ANNULLED', 'FAILED'] as const } },
+        AND: [
+          { cashbackPaidAt: null },
+          {
+            OR: [
+              { AND: [{ status: 'CANCELLED' as const }, notExpired] },
+              { status: { in: ['ANNULLED', 'FAILED'] as const } },
+            ],
+          },
         ],
       };
 
     case 'Expired':
-      // Anything that's expired, except statuses that the rule above maps elsewhere
+      // Anything expired, except statuses that map elsewhere (Pending/Locked-by-status).
+      // Exclude cashbackPaidAt-marked entries — deriveCashbackEntryStatus returns 'Paid' for those first.
       return {
         AND: [
+          { cashbackPaidAt: null },
           expired,
           { status: { notIn: [...PENDING_RAW, 'ANNULLED', 'FAILED'] } },
         ],

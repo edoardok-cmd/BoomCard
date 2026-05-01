@@ -209,12 +209,11 @@ async function dispatchCampaign(campaignId: string): Promise<number> {
           dispatched++;
         }
       } else if (campaign.type === 'SMS') {
-        // SMS provider not implemented — log and skip
+        // SMS provider not implemented — log only; do NOT count as dispatched
         const targetEmail = member.memberType === 'USER'
           ? member.user?.email
           : member.partner?.email ?? member.partner?.user?.email;
         logger.info(`[marketing] SMS dispatch skipped (no provider) for ${targetEmail ?? 'unknown'}`);
-        dispatched++;
       }
 
       // For user members: also create an in-app notification
@@ -264,7 +263,7 @@ router.get('/campaigns', ...READ, async (req, res, next) => {
     if (dateFrom || dateTo) {
       where.scheduledAt = {};
       if (dateFrom) (where.scheduledAt as Record<string, unknown>).gte = new Date(dateFrom);
-      if (dateTo)   (where.scheduledAt as Record<string, unknown>).lte = new Date(dateTo);
+      if (dateTo)   (where.scheduledAt as Record<string, unknown>).lte = new Date(dateTo + 'T23:59:59.999Z');
     }
 
     const SORT_FIELDS: Record<string, string> = { name: 'name', status: 'status', sentAt: 'sentAt', scheduledAt: 'scheduledAt', createdAt: 'createdAt' };
@@ -613,13 +612,19 @@ router.delete('/lists/:id/members/:memberId', ...WRITE, async (req, res, next) =
 
 router.get('/automations', ...READ, async (req, res, next) => {
   try {
-    const { status, page = '1', limit = '25' } = req.query as Record<string, string>;
+    const { status, search, trigger, page = '1', limit = '25' } = req.query as Record<string, string>;
     const skip = (parseInt(page) - 1) * parseInt(limit);
     const take = parseInt(limit);
 
     const where: Parameters<typeof prisma.marketingAutomation.findMany>[0]['where'] = {};
     if (status && Object.values(AutomationStatus).includes(status as AutomationStatus)) {
       where.status = status as AutomationStatus;
+    }
+    if (search) {
+      where.name = { contains: search, mode: 'insensitive' };
+    }
+    if (trigger) {
+      where.trigger = { contains: trigger, mode: 'insensitive' };
     }
 
     const [items, total] = await Promise.all([
@@ -689,6 +694,13 @@ router.put('/automations/:id', ...WRITE, async (req, res, next) => {
     if (!trigger?.trim()) return res.status(400).json({ error: 'trigger is required' });
     if (!Object.values(AutomationStatus).includes(status)) return res.status(400).json({ error: 'invalid status' });
 
+    // Mirror the PATCH guard: cannot activate without a template
+    if (status === 'ACTIVE' && !templateId) {
+      return res.status(422).json({
+        error: 'Cannot activate: automation has no template. Assign a template first.',
+      });
+    }
+
     const item = await prisma.marketingAutomation.update({
       where: { id: req.params.id },
       data: {
@@ -713,6 +725,13 @@ router.patch('/automations/:id/status', ...WRITE, async (req, res, next) => {
 
     const { status } = req.body as { status: AutomationStatus };
     if (!Object.values(AutomationStatus).includes(status)) return res.status(400).json({ error: 'invalid status' });
+
+    // Guard: cannot activate an automation that has no template — it would fire but send nothing
+    if (status === 'ACTIVE' && !existing.templateId) {
+      return res.status(422).json({
+        error: 'Cannot activate: automation has no template. Assign a template first.',
+      });
+    }
 
     const item = await prisma.marketingAutomation.update({
       where: { id: req.params.id },

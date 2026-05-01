@@ -288,6 +288,7 @@ const Toast = styled.div<{ $ok: boolean }>`
 // Mirrors the live fields in the Prisma VenueFraudConfig schema defaults.
 type FraudConfigForm = {
   minBillAmount: number;
+  maxBillAmount: number;
   maxCashbackPerScan: number;
   maxScansPerDay: number;
   maxScansPerMonth: number;
@@ -305,6 +306,7 @@ type FraudConfigForm = {
 
 const DEFAULT_CONFIG: FraudConfigForm = {
   minBillAmount: 0,
+  maxBillAmount: 0,
   maxCashbackPerScan: 0,
   maxScansPerDay: 999999,
   maxScansPerMonth: 999999,
@@ -379,6 +381,7 @@ export const AdminVenueFraudConfigPage: React.FC = () => {
         const d = res.data;
         setFormData({
           minBillAmount: d.minBillAmount,
+          maxBillAmount: d.maxBillAmount ?? 0,
           maxCashbackPerScan: d.maxCashbackPerScan ?? 0,
           maxScansPerDay: d.maxScansPerDay,
           maxScansPerMonth: d.maxScansPerMonth,
@@ -664,6 +667,7 @@ export const AdminVenueFraudConfigPage: React.FC = () => {
           {renderSection('limits', 'Scan Limits', 'Лимити за сканиране', (
             <>
               {renderNumberField('minBillAmount', 'Min Bill Amount (BGN)', 'Мин. сума на сметка (лв)', 1, 0)}
+              {renderNumberField('maxBillAmount', 'Max Bill Amount (BGN, 0 = no cap)', 'Макс. сума на сметка (лв, 0 = без ограничение)', 1, 0)}
               {renderNumberField('maxCashbackPerScan', 'Max Cashback Per Scan (BGN, 0 = default cap)', 'Макс. кешбек на скан (лв, 0 = по подразб.)', 1, 0)}
               {renderNumberField('maxScansPerDay', 'Max Scans Per Day', 'Макс. сканирания на ден', 1, 1)}
               {renderNumberField('maxScansPerMonth', 'Max Scans Per Month', 'Макс. сканирания на месец', 1, 1)}

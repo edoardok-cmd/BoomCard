@@ -82,8 +82,8 @@ export const ADMIN_NAV: AdminNavCategory[] = [
     icon: 'M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z',
     permissionKey: 'control.risk.read',
     subItems: [
-      { labelBg: 'Преглед на рискови транзакции', labelEn: 'Risk Transaction Review', path: '/admin/control/risk', permissionKey: 'control.risk.read' },
-      { labelBg: 'Сигурност и одит', labelEn: 'Security & Audit', path: '/admin/control/security', permissionKey: 'control.risk.read' },
+      { labelBg: 'Риск и сигурност', labelEn: 'Risk & Security', path: '/admin/control/risk', permissionKey: 'control.risk.read' },
+      { labelBg: 'Одит лог', labelEn: 'Audit Log', path: '/admin/control/security', permissionKey: 'admins.audit.read' },
       { labelBg: 'Спорове', labelEn: 'Disputes', path: '/admin/control/disputes', permissionKey: 'control.disputes.read' },
       { labelBg: 'Лимити и правила', labelEn: 'Limits & Rules', path: '/admin/control/rules', permissionKey: 'control.rules.read' },
     ],

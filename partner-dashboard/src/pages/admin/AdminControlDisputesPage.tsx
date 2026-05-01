@@ -242,6 +242,7 @@ function DisputeDetailPanel({
   const [confirmAdvance, setConfirmAdvance] = useState<DisputeStatus | null>(null);
   const [pendingAssignee, setPendingAssignee] = useState<string>('');
   const [assigneeDirty, setAssigneeDirty] = useState(false);
+  const [imgBroken, setImgBroken] = useState(false);
 
   // Escape key dismissal
   const handleClose = useCallback(() => onClose(), [onClose]);
@@ -297,6 +298,28 @@ function DisputeDetailPanel({
       setNoteText('');
     },
     onError: () => toast.error('Грешка при запис на бележка'),
+  });
+
+  const receiptApproveMutation = useMutation({
+    mutationFn: ({ receiptId, notes }: { receiptId: string; notes?: string }) =>
+      adminControlService.approveDispute(receiptId, notes),
+    onSuccess: () => {
+      toast.success('Бележката е одобрена');
+      qc.invalidateQueries({ queryKey: ['dispute-case', id] });
+      qc.invalidateQueries({ queryKey: ['dispute-cases'] });
+    },
+    onError: () => toast.error('Грешка при одобряване на бележката'),
+  });
+
+  const receiptRejectMutation = useMutation({
+    mutationFn: ({ receiptId, reason }: { receiptId: string; reason?: string }) =>
+      adminControlService.rejectDispute(receiptId, reason),
+    onSuccess: () => {
+      toast.success('Бележката е отхвърлена');
+      qc.invalidateQueries({ queryKey: ['dispute-case', id] });
+      qc.invalidateQueries({ queryKey: ['dispute-cases'] });
+    },
+    onError: () => toast.error('Грешка при отхвърляне на бележката'),
   });
 
   const fmt = (iso: string) =>
@@ -385,10 +408,33 @@ function DisputeDetailPanel({
                     <KV><KLabel>Подадена</KLabel><KVal>{fmt(dc.receipt.createdAt)}</KVal></KV>
                   </SectionCard>
 
-                  {dc.receipt.imageUrl && (
+                  {!['APPROVED', 'REJECTED', 'EXPIRED'].includes(dc.receipt.status) && (
+                    <BtnRow style={{ marginTop: '.75rem' }}>
+                      <Btn
+                        $variant="danger"
+                        disabled={receiptApproveMutation.isPending || receiptRejectMutation.isPending}
+                        onClick={() => receiptRejectMutation.mutate({ receiptId: dc.receipt!.id })}
+                      >
+                        {receiptRejectMutation.isPending ? 'Обработва се…' : 'Откажи бележката'}
+                      </Btn>
+                      <Btn
+                        $variant="primary"
+                        disabled={receiptApproveMutation.isPending || receiptRejectMutation.isPending}
+                        onClick={() => receiptApproveMutation.mutate({ receiptId: dc.receipt!.id })}
+                      >
+                        {receiptApproveMutation.isPending ? 'Обработва се…' : 'Одобри бележката'}
+                      </Btn>
+                    </BtnRow>
+                  )}
+
+                  {dc.receipt.imageUrl && !imgBroken && (
                     <div style={{ marginTop: '.75rem' }}>
                       <a href={dc.receipt.imageUrl} target="_blank" rel="noopener noreferrer">
-                        <ReceiptImg src={dc.receipt.imageUrl} alt="Снимка на касова бележка" />
+                        <ReceiptImg
+                          src={dc.receipt.imageUrl}
+                          alt="Снимка на касова бележка"
+                          onError={() => setImgBroken(true)}
+                        />
                       </a>
                       <MetaLine style={{ marginTop: '.3rem', textAlign: 'center' }}>
                         Клик за пълен размер

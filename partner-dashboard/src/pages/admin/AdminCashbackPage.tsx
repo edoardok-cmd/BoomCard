@@ -222,7 +222,7 @@ function fmtMoney(n: number): string {
 }
 
 function exportCsv(rows: CashbackEntry[]): void {
-  const header = ['ID', 'Абонат', 'Имейл', 'Сума (лв.)', 'Статус', 'Партньор', 'Изтича', 'Бележка', 'Начислен'];
+  const header = ['ID', 'Абонат', 'Имейл', 'Сума (лв.)', 'Статус', 'Изтича', 'Партньор', 'Бележка', 'Начислен'];
   const escape = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
   const lines = [
     header.join(','),
@@ -232,8 +232,8 @@ function exportCsv(rows: CashbackEntry[]): void {
       escape(r.user.email),
       escape(fmtMoney(r.amount)),
       escape(r.status),
-      escape(r.receipt?.merchantName ?? ''),
       escape(r.cashbackExpiresAt ? new Date(r.cashbackExpiresAt).toLocaleDateString('bg-BG') : ''),
+      escape(r.receipt?.merchantName ?? ''),
       escape(r.description ?? ''),
       escape(new Date(r.createdAt).toLocaleDateString('bg-BG')),
     ].join(',')),

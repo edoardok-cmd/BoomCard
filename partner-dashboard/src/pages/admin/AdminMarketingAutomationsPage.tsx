@@ -28,6 +28,7 @@ const TotalBadge = styled.span`display: inline-flex; align-items: center; justif
 const Card = styled.div`background: ${palette.surface}; border: 1px solid ${palette.border}; border-radius: 0.75rem; padding: 1.5rem;`;
 const FilterRow = styled.div`display: flex; gap: 0.75rem; margin-bottom: 1.25rem; flex-wrap: wrap; align-items: center;`;
 const Select = styled.select`padding: 0.5rem 0.75rem; border: 1px solid ${palette.border}; border-radius: 0.5rem; font-size: 0.875rem; background: ${palette.bg}; color: ${palette.text}; outline: none; cursor: pointer; &:focus { border-color: ${palette.accent}; }`;
+const SearchInput = styled.input`padding: 0.5rem 0.75rem; border: 1px solid ${palette.border}; border-radius: 0.5rem; font-size: 0.875rem; background: ${palette.bg}; color: ${palette.text}; outline: none; min-width: 14rem; &:focus { border-color: ${palette.accent}; box-shadow: 0 0 0 2px ${palette.accentSoft}; }`;
 const PrimaryLine = styled.div`font-weight: 600; color: ${palette.text};`;
 const MetaLine = styled.div`font-size: 0.75rem; color: ${palette.textSubtle}; margin-top: 0.125rem;`;
 
@@ -43,7 +44,13 @@ const StatusBadge = styled.span<{ $status: AutomationStatus }>`
   }}
 `;
 
-const PrimaryBtn = styled.button`padding: 0.5rem 1.125rem; background: ${palette.accent}; color: #fff; border: none; border-radius: 0.5rem; font-size: 0.875rem; font-weight: 600; cursor: pointer; &:hover { opacity: 0.9; }`;
+const WarnBanner = styled.div`
+  background: ${palette.warningSoft}; color: ${palette.warning};
+  border: 1px solid #e8c97a; border-radius: 0.5rem;
+  padding: 0.625rem 0.875rem; font-size: 0.8125rem; margin-top: 0.5rem;
+`;
+
+const PrimaryBtn = styled.button`padding: 0.5rem 1.125rem; background: ${palette.accent}; color: #fff; border: none; border-radius: 0.5rem; font-size: 0.875rem; font-weight: 600; cursor: pointer; &:hover { opacity: 0.9; } &:disabled { opacity: 0.5; cursor: not-allowed; }`;
 const GhostBtn = styled.button`padding: 0.5rem 1.125rem; background: transparent; color: ${palette.textMuted}; border: 1px solid ${palette.border}; border-radius: 0.5rem; font-size: 0.875rem; font-weight: 600; cursor: pointer; &:hover { border-color: ${palette.textMuted}; }`;
 const DangerBtn = styled.button`padding: 0.5rem 1.125rem; background: ${palette.dangerSoft}; color: ${palette.danger}; border: 1px solid #f1c4b8; border-radius: 0.5rem; font-size: 0.875rem; font-weight: 600; cursor: pointer; &:hover { background: #eebcac; }`;
 
@@ -99,24 +106,33 @@ const PAGE_SIZE = 25;
 
 export default function AdminMarketingAutomationsPage() {
   const [statusFilter, setStatusFilter] = useState<AutomationStatus | ''>('');
+  const [triggerFilter, setTriggerFilter] = useState('');
+  const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [items, setItems] = useState<MarketingAutomation[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const [templates, setTemplates] = useState<MarketingTemplate[]>([]);
+  const [apiError, setApiError] = useState<string | null>(null);
 
   const [modal, setModal] = useState<ModalMode>(null);
   const [selected, setSelected] = useState<MarketingAutomation | null>(null);
   const [form, setForm] = useState<FormState>(DEFAULT_FORM);
   const [saving, setSaving] = useState(false);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
 
   const load = useCallback(() => {
     setLoading(true);
     adminMarketingService
-      .listAutomations({ page, limit: PAGE_SIZE, status: statusFilter })
-      .then((r) => { setItems(r.items); setTotal(r.total); })
+      .listAutomations({
+        page, limit: PAGE_SIZE, status: statusFilter,
+        search: search || undefined,
+        trigger: triggerFilter || undefined,
+      })
+      .then((r) => { setItems(r.items); setTotal(r.total); setApiError(null); })
+      .catch((err: any) => setApiError(err?.response?.data?.error ?? err?.message ?? 'Failed to load automations'))
       .finally(() => setLoading(false));
-  }, [page, statusFilter]);
+  }, [page, statusFilter, search, triggerFilter]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -124,12 +140,22 @@ export default function AdminMarketingAutomationsPage() {
     adminMarketingService.listTemplates({ limit: 100 }).then((r) => setTemplates(r.items));
   }, []);
 
+  // Escape key closes any open modal
+  useEffect(() => {
+    if (!modal) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') closeModal(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modal]);
+
   const fmt = (iso: string) =>
     new Date(iso).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
 
   const openCreate = () => {
     setSelected(null);
     setForm(DEFAULT_FORM);
+    setApiError(null);
     setModal('create');
   };
 
@@ -141,6 +167,7 @@ export default function AdminMarketingAutomationsPage() {
       status: row.status,
       templateId: row.templateId ?? '',
     });
+    setApiError(null);
     setModal('edit');
   };
 
@@ -149,11 +176,12 @@ export default function AdminMarketingAutomationsPage() {
     setModal('delete');
   };
 
-  const closeModal = () => { setModal(null); setSelected(null); };
+  const closeModal = () => { setModal(null); setSelected(null); setApiError(null); };
 
   const handleSave = async () => {
     if (!form.name.trim() || !form.trigger.trim()) return;
     setSaving(true);
+    setApiError(null);
     try {
       const payload = {
         name: form.name,
@@ -168,6 +196,8 @@ export default function AdminMarketingAutomationsPage() {
       }
       closeModal();
       load();
+    } catch (err: any) {
+      setApiError(err?.response?.data?.error ?? err?.message ?? 'Save failed');
     } finally {
       setSaving(false);
     }
@@ -186,10 +216,22 @@ export default function AdminMarketingAutomationsPage() {
   };
 
   const toggleStatus = async (row: MarketingAutomation) => {
+    if (togglingId === row.id) return;
     const next: AutomationStatus = row.status === 'ACTIVE' ? 'PAUSED' : 'ACTIVE';
-    await adminMarketingService.patchAutomationStatus(row.id, next);
-    load();
+    setTogglingId(row.id);
+    try {
+      await adminMarketingService.patchAutomationStatus(row.id, next);
+      load();
+    } catch (err: any) {
+      const msg = err?.response?.data?.error ?? err?.message ?? 'Status update failed';
+      alert(msg);
+    } finally {
+      setTogglingId(null);
+    }
   };
+
+  // Warn in form when status is ACTIVE but no template picked
+  const formWantsActiveWithoutTemplate = form.status === 'ACTIVE' && !form.templateId;
 
   const columns: ColumnDef<MarketingAutomation>[] = [
     {
@@ -206,8 +248,8 @@ export default function AdminMarketingAutomationsPage() {
       key: 'template',
       header: 'Template',
       render: (row) => (
-        <span style={{ fontSize: '0.875rem', color: palette.textMuted }}>
-          {row.template?.name ?? '—'}
+        <span style={{ fontSize: '0.875rem', color: row.template ? palette.textMuted : palette.danger }}>
+          {row.template?.name ?? <em>None — cannot activate</em>}
         </span>
       ),
     },
@@ -257,8 +299,30 @@ export default function AdminMarketingAutomationsPage() {
         <PrimaryBtn onClick={openCreate}>+ New Automation</PrimaryBtn>
       </PageHeader>
 
+      {apiError && !modal && (
+        <WarnBanner style={{ marginBottom: '1rem', background: palette.dangerSoft, color: palette.danger, borderColor: '#f1c4b8' }}>
+          {apiError}
+        </WarnBanner>
+      )}
+
       <Card>
         <FilterRow>
+          <SearchInput
+            type="search"
+            placeholder="Search by name…"
+            value={search}
+            onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+          />
+          <SearchInput
+            list="trigger-filter-suggestions"
+            type="search"
+            placeholder="Filter by trigger…"
+            value={triggerFilter}
+            onChange={(e) => { setTriggerFilter(e.target.value); setPage(1); }}
+          />
+          <datalist id="trigger-filter-suggestions">
+            {TRIGGER_SUGGESTIONS.map((t) => <option key={t} value={t} />)}
+          </datalist>
           <Select value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value as AutomationStatus | ''); setPage(1); }}>
             <option value="">All statuses</option>
             <option value="ACTIVE">Active</option>
@@ -279,8 +343,8 @@ export default function AdminMarketingAutomationsPage() {
           onPageChange={setPage}
           rowActions={[
             { label: 'Edit', onClick: openEdit },
-            { label: 'Pause', hidden: (row) => row.status !== 'ACTIVE', onClick: toggleStatus },
-            { label: 'Activate', hidden: (row) => row.status === 'ACTIVE', onClick: toggleStatus },
+            { label: 'Pause', hidden: (row) => row.status !== 'ACTIVE', disabled: (row) => togglingId === row.id, onClick: toggleStatus },
+            { label: 'Activate', hidden: (row) => row.status === 'ACTIVE', disabled: (row) => togglingId === row.id, onClick: toggleStatus },
             { label: 'Delete', onClick: openDelete },
           ]}
         />
@@ -294,6 +358,11 @@ export default function AdminMarketingAutomationsPage() {
               <CloseBtn onClick={closeModal}>×</CloseBtn>
             </ModalHeader>
             <ModalBody>
+              {apiError && (
+                <div style={{ background: palette.dangerSoft, color: palette.danger, border: '1px solid #f1c4b8', borderRadius: '0.5rem', padding: '0.625rem 0.875rem', fontSize: '0.8125rem', marginBottom: '1rem' }}>
+                  {apiError}
+                </div>
+              )}
               <FormGroup>
                 <Label>Name *</Label>
                 <Input
@@ -317,17 +386,6 @@ export default function AdminMarketingAutomationsPage() {
                 <HintText>Use dot-notation event identifiers. Pick from suggestions or type a custom event.</HintText>
               </FormGroup>
               <FormGroup>
-                <Label>Status *</Label>
-                <ModalSelect
-                  value={form.status}
-                  onChange={(e) => setForm((f) => ({ ...f, status: e.target.value as AutomationStatus }))}
-                >
-                  <option value="DRAFT">Draft — not running yet</option>
-                  <option value="ACTIVE">Active — running</option>
-                  <option value="PAUSED">Paused — temporarily disabled</option>
-                </ModalSelect>
-              </FormGroup>
-              <FormGroup>
                 <Label>Template</Label>
                 <ModalSelect
                   value={form.templateId}
@@ -339,12 +397,28 @@ export default function AdminMarketingAutomationsPage() {
                   ))}
                 </ModalSelect>
               </FormGroup>
+              <FormGroup>
+                <Label>Status *</Label>
+                <ModalSelect
+                  value={form.status}
+                  onChange={(e) => setForm((f) => ({ ...f, status: e.target.value as AutomationStatus }))}
+                >
+                  <option value="DRAFT">Draft — not running yet</option>
+                  <option value="ACTIVE">Active — running</option>
+                  <option value="PAUSED">Paused — temporarily disabled</option>
+                </ModalSelect>
+                {formWantsActiveWithoutTemplate && (
+                  <WarnBanner>
+                    No template selected — you cannot activate an automation without a template. Select one above.
+                  </WarnBanner>
+                )}
+              </FormGroup>
             </ModalBody>
             <ModalFooter>
               <GhostBtn onClick={closeModal} disabled={saving}>Cancel</GhostBtn>
               <PrimaryBtn
                 onClick={handleSave}
-                disabled={saving || !form.name.trim() || !form.trigger.trim()}
+                disabled={saving || !form.name.trim() || !form.trigger.trim() || formWantsActiveWithoutTemplate}
               >
                 {saving ? 'Saving…' : modal === 'create' ? 'Create automation' : 'Save changes'}
               </PrimaryBtn>
@@ -363,6 +437,11 @@ export default function AdminMarketingAutomationsPage() {
             <ModalBody>
               <ConfirmText>You are about to delete <strong>{selected.name}</strong>.</ConfirmText>
               <ConfirmSub>This automation will stop firing immediately. This action cannot be undone.</ConfirmSub>
+              {!selected.templateId && (
+                <WarnBanner style={{ marginTop: '0.75rem' }}>
+                  This automation has no template and was never able to send messages.
+                </WarnBanner>
+              )}
             </ModalBody>
             <ModalFooter>
               <GhostBtn onClick={closeModal} disabled={saving}>Cancel</GhostBtn>
