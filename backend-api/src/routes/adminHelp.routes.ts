@@ -306,7 +306,10 @@ router.post('/:id/reply', requirePermission('help.write'), async (req: AuthReque
 
     const ticket = await prisma.helpTicket.findUnique({
       where: { id: req.params.id },
-      include: { user: { select: { email: true, firstName: true } } },
+      include: {
+        user: { select: { email: true, firstName: true } },
+        assignee: { select: { email: true, firstName: true } },
+      },
     });
     if (!ticket) return res.status(404).json({ error: 'Ticket not found' });
     if (!hasFullAccess(req) && ticket.userId !== req.user!.id && ticket.assigneeId !== req.user!.id) {
@@ -346,28 +349,50 @@ router.post('/:id/reply', requirePermission('help.write'), async (req: AuthReque
       await prisma.helpTicket.update({ where: { id: req.params.id }, data: { status: newStatus } });
     }
 
+    // Shared helpers for reply notification emails
+    const CATEGORY_BG: Record<string, string> = {
+      CASHBACK: 'Кешбек', ACCOUNT: 'Акаунт', PAYMENT: 'Плащане', TECHNICAL: 'Техническо', OTHER: 'Друго',
+    };
+    const escR = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
     // Notify the ticket creator by email when support (non-creator) replies
     if (!isCreator && ticket.user?.email) {
-      const CATEGORY_BG: Record<string, string> = {
-        CASHBACK: 'Кешбек', ACCOUNT: 'Акаунт', PAYMENT: 'Плащане', TECHNICAL: 'Техническо', OTHER: 'Друго',
-      };
-      const esc2 = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
       emailService
         .sendEmail({
           to: ticket.user.email,
           subject: `[Отговор на заявка] ${ticket.subject}`,
-          html: `<p><strong>Здравей, ${esc2(ticket.user.firstName || ticket.user.email)},</strong></p>
+          html: `<p><strong>Здравей, ${escR(ticket.user.firstName || ticket.user.email)},</strong></p>
 <p>Получихте отговор на вашата вътрешна заявка.</p>
 <table cellpadding="4">
-  <tr><td><strong>Тема:</strong></td><td>${esc2(ticket.subject)}</td></tr>
+  <tr><td><strong>Тема:</strong></td><td>${escR(ticket.subject)}</td></tr>
   <tr><td><strong>Категория:</strong></td><td>${CATEGORY_BG[ticket.category] ?? ticket.category}</td></tr>
 </table>
 <hr/>
-<p>${esc2(body.trim()).replace(/\n/g, '<br/>')}</p>
+<p>${escR(body.trim()).replace(/\n/g, '<br/>')}</p>
 <p style="color:#999;font-size:12px;">Ticket ID: ${ticket.id} &middot; <a href="https://boomcard.bg/admin/help/mine">Моите заявки</a></p>`,
           text: `Здравей, ${ticket.user.firstName || ticket.user.email},\n\nПолучихте отговор на вашата вътрешна заявка.\n\nТема: ${ticket.subject}\nКатегория: ${CATEGORY_BG[ticket.category] ?? ticket.category}\n\n${body.trim()}\n\nTicket ID: ${ticket.id}`,
         })
         .catch((err) => logger.error('[adminHelp] Failed to send reply notification email:', err));
+    }
+
+    // Notify the assigned admin by email when the ticket creator replies
+    if (isCreator && ticket.assignee?.email) {
+      emailService
+        .sendEmail({
+          to: ticket.assignee.email,
+          subject: `[Отговор от заявител] ${ticket.subject}`,
+          html: `<p><strong>Здравей, ${escR(ticket.assignee.firstName || ticket.assignee.email)},</strong></p>
+<p>Заявителят изпрати отговор на заявка, назначена на вас.</p>
+<table cellpadding="4">
+  <tr><td><strong>Тема:</strong></td><td>${escR(ticket.subject)}</td></tr>
+  <tr><td><strong>Категория:</strong></td><td>${CATEGORY_BG[ticket.category] ?? ticket.category}</td></tr>
+</table>
+<hr/>
+<p>${escR(body.trim()).replace(/\n/g, '<br/>')}</p>
+<p style="color:#999;font-size:12px;">Ticket ID: ${ticket.id} &middot; <a href="https://boomcard.bg/admin/help/${ticket.id}">Отвори заявката</a></p>`,
+          text: `Здравей, ${ticket.assignee.firstName || ticket.assignee.email},\n\nЗаявителят изпрати отговор на заявка, назначена на вас.\n\nТема: ${ticket.subject}\nКатегория: ${CATEGORY_BG[ticket.category] ?? ticket.category}\n\n${body.trim()}\n\nTicket ID: ${ticket.id}`,
+        })
+        .catch((err) => logger.error('[adminHelp] Failed to send creator-reply notification to assignee:', err));
     }
 
     res.status(201).json({ reply });

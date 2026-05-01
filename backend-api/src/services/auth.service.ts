@@ -1153,7 +1153,11 @@ export class AuthService {
     let permissions: string[] | undefined;
     if (user.role === 'ADMIN') {
       const perms = await resolveUserPermissions(user.id);
-      if (perms.length > 0) permissions = perms;
+      if (perms.length > 0) {
+        permissions = perms;
+      } else {
+        logger.warn(`[auth] ADMIN ${user.id} (${user.email}) has no assigned sub-roles — requirePermission() will deny all requests`);
+      }
     }
 
     const payload: TokenPayload = {
