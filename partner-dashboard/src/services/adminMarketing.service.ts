@@ -19,6 +19,8 @@ export interface MarketingTemplate {
 
 export interface MarketingTemplateDetail extends MarketingTemplate {
   body: string;
+  subjectEn: string | null;
+  bodyEn: string | null;
 }
 
 export interface MarketingCampaign {
@@ -111,13 +113,15 @@ export const adminMarketingService = {
   },
 
   createTemplate(data: {
-    name: string; type: MarketingChannel; category?: string; subject?: string; body?: string;
+    name: string; type: MarketingChannel; category?: string;
+    subject?: string; subjectEn?: string; body?: string; bodyEn?: string;
   }): Promise<MarketingTemplateDetail> {
     return apiService.post('/admin/marketing/templates', data);
   },
 
   updateTemplate(id: string, data: {
-    name: string; type: MarketingChannel; category?: string; subject?: string; body?: string;
+    name: string; type: MarketingChannel; category?: string;
+    subject?: string; subjectEn?: string; body?: string; bodyEn?: string;
   }): Promise<MarketingTemplateDetail> {
     return apiService.put(`/admin/marketing/templates/${id}`, data);
   },

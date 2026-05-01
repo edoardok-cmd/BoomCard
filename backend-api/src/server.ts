@@ -52,6 +52,7 @@ import adminMarketingRouter from './routes/adminMarketing.routes';
 import contactRouter from './routes/contact.routes';
 import dashboardRouter from './routes/dashboard.routes';
 import pendingCheckoutRouter from './routes/pending-checkout.routes';
+import { mobileConfigRouter, mobileErrorsRouter } from './routes/mobileConfig.routes';
 
 // Import WebSocket handler
 import { initializeWebSocket } from './websocket/server';
@@ -224,6 +225,8 @@ app.use('/api/health', healthRouter); // Health checks (monitoring)
 app.use('/api/webhooks', webhooksRouter); // Webhooks (must be first for raw body)
 app.use('/api/plans', plansRouter); // Public plans API (no auth required)
 app.use('/api/contact', contactRouter); // Public contact form (no auth required)
+app.use('/api/config/mobile', mobileConfigRouter); // Public mobile app config (feature flags, versions, status)
+app.use('/api/mobile/errors', mobileErrorsRouter); // Mobile error ingest (public, rate-limited)
 app.use('/api/auth', authRouter);
 app.use('/api/checkout', pendingCheckoutRouter); // Payment-first onboarding (no auth required)
 app.use('/api/payments', payseraPaymentsRouter); // Paysera payment routes

@@ -7,6 +7,7 @@
 import { Resend } from 'resend';
 import { logger } from '../utils/logger';
 import { prisma } from '../lib/prisma';
+import { getSystemSettingStr } from '../utils/systemSettings';
 
 // ============================================
 // Types & Interfaces
@@ -330,8 +331,10 @@ export class EmailService {
         return { success: true, id: 'disabled-mode' };
       }
 
+      const fromEmail = await getSystemSettingStr('from_email', this.fromEmail);
+      const fromName = await getSystemSettingStr('sender_name', this.fromName);
       const { data, error } = await this.resend.emails.send({
-        from: `${this.fromName} <${this.fromEmail}>`,
+        from: `${fromName} <${fromEmail}>`,
         to: Array.isArray(options.to) ? options.to : [options.to],
         subject: options.subject,
         html: options.html,

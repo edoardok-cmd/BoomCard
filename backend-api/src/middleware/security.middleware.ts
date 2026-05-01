@@ -528,6 +528,11 @@ export const csrfProtection = (skipPaths: string[] = []) => {
         'https://boomcard.vercel.app',
         'http://localhost:5173', 'http://localhost:5174', 'http://localhost:5175',
         'http://localhost:5176', 'http://localhost:5177', 'http://localhost:5178',
+        'http://localhost:5179', 'http://localhost:5180', 'http://localhost:5181',
+        'http://localhost:5182', 'http://localhost:5183', 'http://localhost:5184',
+        // Partner dashboard dev server (vite starts at 3021, overflows to 3025+)
+        'http://localhost:3021', 'http://localhost:3022', 'http://localhost:3023',
+        'http://localhost:3024', 'http://localhost:3025', 'http://localhost:3026',
       ];
 
   const stateMutatingMethods = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);

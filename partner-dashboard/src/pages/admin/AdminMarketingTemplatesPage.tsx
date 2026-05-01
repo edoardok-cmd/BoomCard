@@ -102,10 +102,12 @@ interface FormState {
   type: MarketingChannel;
   category: string;
   subject: string;
+  subjectEn: string;
   body: string;
+  bodyEn: string;
 }
 
-const DEFAULT_FORM: FormState = { name: '', type: 'EMAIL', category: '', subject: '', body: '' };
+const DEFAULT_FORM: FormState = { name: '', type: 'EMAIL', category: '', subject: '', subjectEn: '', body: '', bodyEn: '' };
 const PAGE_SIZE = 25;
 
 export default function AdminMarketingTemplatesPage() {
@@ -126,7 +128,7 @@ export default function AdminMarketingTemplatesPage() {
   const [previewTab, setPreviewTab] = useState<'edit' | 'preview'>('edit');
 
   // View modal state
-  const [viewDetail, setViewDetail] = useState<{ body: string } | null>(null);
+  const [viewDetail, setViewDetail] = useState<{ body: string; subjectEn: string | null; bodyEn: string | null } | null>(null);
   const [viewLoading, setViewLoading] = useState(false);
   const [viewTab, setViewTab] = useState<'body' | 'preview'>('body');
 
@@ -152,13 +154,13 @@ export default function AdminMarketingTemplatesPage() {
 
   const openEdit = async (row: MarketingTemplate) => {
     setSelected(row);
-    setForm({ name: row.name, type: row.type, category: row.category ?? '', subject: row.subject ?? '', body: '' });
+    setForm({ name: row.name, type: row.type, category: row.category ?? '', subject: row.subject ?? '', subjectEn: '', body: '', bodyEn: '' });
     setPreviewTab('edit');
     setBodyLoading(true);
     setModal('edit');
     try {
       const detail = await adminMarketingService.getTemplate(row.id);
-      setForm({ name: detail.name, type: detail.type, category: detail.category ?? '', subject: detail.subject ?? '', body: detail.body });
+      setForm({ name: detail.name, type: detail.type, category: detail.category ?? '', subject: detail.subject ?? '', subjectEn: detail.subjectEn ?? '', body: detail.body, bodyEn: detail.bodyEn ?? '' });
     } finally {
       setBodyLoading(false);
     }
@@ -172,7 +174,7 @@ export default function AdminMarketingTemplatesPage() {
     setModal('view');
     try {
       const detail = await adminMarketingService.getTemplate(row.id);
-      setViewDetail({ body: detail.body });
+      setViewDetail({ body: detail.body, subjectEn: detail.subjectEn ?? null, bodyEn: detail.bodyEn ?? null });
     } finally {
       setViewLoading(false);
     }
@@ -195,7 +197,9 @@ export default function AdminMarketingTemplatesPage() {
         type: form.type,
         category: form.category || undefined,
         subject: form.subject || undefined,
+        subjectEn: form.subjectEn || undefined,
         body: form.body,
+        bodyEn: form.bodyEn || undefined,
       };
       if (modal === 'create') {
         await adminMarketingService.createTemplate(payload);
@@ -382,16 +386,26 @@ export default function AdminMarketingTemplatesPage() {
               </FormGroup>
               {form.type === 'EMAIL' && (
                 <FormGroup>
-                  <Label>Subject line</Label>
+                  <Label>Subject line (BG)</Label>
                   <Input
                     value={form.subject}
                     onChange={(e) => setForm((f) => ({ ...f, subject: e.target.value }))}
+                    placeholder="e.g. Вашата BoomCard карта е готова"
+                  />
+                </FormGroup>
+              )}
+              {form.type === 'EMAIL' && (
+                <FormGroup>
+                  <Label>Subject line (EN) <span style={{ fontWeight: 400, color: palette.textSubtle }}>— sent to users with preferredLanguage = en</span></Label>
+                  <Input
+                    value={form.subjectEn}
+                    onChange={(e) => setForm((f) => ({ ...f, subjectEn: e.target.value }))}
                     placeholder="e.g. Your BoomCard is ready to use"
                   />
                 </FormGroup>
               )}
               <FormGroup>
-                <Label>Body *</Label>
+                <Label>Body * {form.type === 'EMAIL' ? '(BG)' : ''}</Label>
                 {form.type === 'EMAIL' && (
                   <TabRow>
                     <Tab $active={previewTab === 'edit'} onClick={() => setPreviewTab('edit')}>Edit</Tab>
@@ -414,6 +428,17 @@ export default function AdminMarketingTemplatesPage() {
                   <HintText>Use {'{{variable}}'} placeholders where needed.</HintText>
                 )}
               </FormGroup>
+              {form.type === 'EMAIL' && (
+                <FormGroup>
+                  <Label>Body (EN) <span style={{ fontWeight: 400, color: palette.textSubtle }}>— sent to users with preferredLanguage = en</span></Label>
+                  <Textarea
+                    value={form.bodyEn}
+                    onChange={(e) => setForm((f) => ({ ...f, bodyEn: e.target.value }))}
+                    placeholder="HTML or plain text content in English…"
+                    rows={8}
+                  />
+                </FormGroup>
+              )}
             </ModalBody>
             <ModalFooter>
               <GhostBtn onClick={closeModal} disabled={saving}>Cancel</GhostBtn>
@@ -451,11 +476,17 @@ export default function AdminMarketingTemplatesPage() {
             <ModalBody>
               {selected.subject && (
                 <>
-                  <DetailLabel>Subject</DetailLabel>
+                  <DetailLabel>Subject (BG)</DetailLabel>
                   <DetailValue>{selected.subject}</DetailValue>
                 </>
               )}
-              <DetailLabel>Body</DetailLabel>
+              {!viewLoading && viewDetail?.subjectEn && (
+                <>
+                  <DetailLabel>Subject (EN)</DetailLabel>
+                  <DetailValue>{viewDetail.subjectEn}</DetailValue>
+                </>
+              )}
+              <DetailLabel>Body {selected.type === 'EMAIL' ? '(BG)' : ''}</DetailLabel>
               {selected.type === 'EMAIL' && (
                 <TabRow style={{ marginBottom: '0.75rem' }}>
                   <Tab $active={viewTab === 'body'} onClick={() => setViewTab('body')}>Source</Tab>
@@ -476,6 +507,21 @@ export default function AdminMarketingTemplatesPage() {
                   />
                 )
               ) : null}
+              {!viewLoading && viewDetail?.bodyEn && selected.type === 'EMAIL' && (
+                <>
+                  <DetailLabel style={{ marginTop: '1rem' }}>Body (EN)</DetailLabel>
+                  {viewTab === 'preview' ? (
+                    <PreviewFrame dangerouslySetInnerHTML={{ __html: viewDetail.bodyEn }} />
+                  ) : (
+                    <Textarea
+                      value={viewDetail.bodyEn}
+                      readOnly
+                      rows={8}
+                      style={{ cursor: 'default', background: palette.bg }}
+                    />
+                  )}
+                </>
+              )}
               {!viewLoading && (
                 <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem', fontSize: '0.8125rem', color: palette.textSubtle }}>
                   <span>Used {selected.usageCount > 0 ? selected.usageCount.toLocaleString() + ' times' : 'never'}</span>

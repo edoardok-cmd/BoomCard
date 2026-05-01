@@ -2,7 +2,11 @@ import { useState, useEffect } from 'react';
 import styled from 'styled-components';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-hot-toast';
-import { adminSettingsService, MobileAppSettings } from '../../services/adminSettings.service';
+import {
+  adminSettingsService,
+  MobileAppSettings,
+  MobileErrorLogEntry,
+} from '../../services/adminSettings.service';
 
 const palette = {
   bg: '#faf9f5', surface: '#ffffff', border: '#e8e5dc',
@@ -28,6 +32,7 @@ const Grid = styled.div`
   @media (max-width: 900px) { grid-template-columns: 1fr; }
 `;
 const Card = styled.div`background: ${palette.surface}; border: 1px solid ${palette.border}; border-radius: 0.75rem; padding: 1.5rem;`;
+const WideCard = styled(Card)`grid-column: 1 / -1;`;
 const CardTitle = styled.h2`font-size: 1rem; font-weight: 700; color: ${palette.text}; margin: 0 0 0.25rem;`;
 const CardSubtitle = styled.p`font-size: 0.8125rem; color: ${palette.textMuted}; margin: 0 0 1.25rem;`;
 const FieldGroup = styled.div`display: flex; flex-direction: column; gap: 1.25rem; margin-bottom: 1.5rem;`;
@@ -132,6 +137,19 @@ const SaveBtn = styled.button`
   &:disabled { opacity: 0.5; cursor: default; }
 `;
 
+const DangerBtn = styled.button`
+  padding: 0.5rem 1rem;
+  background: transparent;
+  color: ${palette.danger};
+  border: 1px solid ${palette.danger};
+  border-radius: 0.5rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+  &:hover { background: ${palette.dangerSoft}; }
+  &:disabled { opacity: 0.5; cursor: default; }
+`;
+
 const StatusBadge = styled.span<{ $status: string }>`
   display: inline-block;
   padding: 0.125rem 0.625rem;
@@ -146,6 +164,74 @@ const StatusBadge = styled.span<{ $status: string }>`
   color: ${({ $status }) =>
     $status === 'active' ? palette.success :
     $status === 'maintenance' ? palette.warning : palette.danger};
+`;
+
+const STATUS_LABEL: Record<string, string> = {
+  active:      'Активен',
+  maintenance: 'Поддръжка',
+  deprecated:  'Остарял',
+};
+
+// Error log table styles
+const ErrorTable = styled.table`width: 100%; border-collapse: collapse; font-size: 0.8125rem;`;
+const ETh = styled.th`
+  text-align: left; padding: 0.5rem 0.75rem;
+  border-bottom: 2px solid ${palette.border};
+  color: ${palette.textMuted}; font-weight: 600; white-space: nowrap;
+`;
+const ETd = styled.td`
+  padding: 0.5rem 0.75rem; border-bottom: 1px solid ${palette.border};
+  color: ${palette.text}; vertical-align: top;
+`;
+const MessageCell = styled.td`
+  padding: 0.5rem 0.75rem; border-bottom: 1px solid ${palette.border};
+  color: ${palette.text}; vertical-align: top;
+  max-width: 22rem;
+`;
+const MessageText = styled.span<{ $expanded: boolean }>`
+  display: block;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: ${({ $expanded }) => ($expanded ? 'unset' : '2')};
+  word-break: break-word;
+`;
+const ExpandBtn = styled.button`
+  background: none; border: none; padding: 0; margin-top: 0.2rem;
+  font-size: 0.75rem; color: ${palette.accent}; cursor: pointer;
+  &:hover { text-decoration: underline; }
+`;
+
+const PlatformChip = styled.span<{ $p: string }>`
+  display: inline-block; padding: 0.1rem 0.5rem; border-radius: 999px;
+  font-size: 0.7rem; font-weight: 700; text-transform: uppercase;
+  background: ${({ $p }) => $p === 'ios' ? palette.infoSoft : $p === 'android' ? palette.successSoft : palette.warningSoft};
+  color: ${({ $p }) => $p === 'ios' ? palette.info : $p === 'android' ? palette.success : palette.warning};
+`;
+const EmptyState = styled.p`color: ${palette.textSubtle}; font-size: 0.875rem; text-align: center; padding: 2rem 0; margin: 0;`;
+
+// Modal for stack trace
+const ModalOverlay = styled.div`
+  position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 1000;
+  display: flex; align-items: center; justify-content: center; padding: 1rem;
+`;
+const ModalBox = styled.div`
+  background: ${palette.surface}; border-radius: 0.75rem; padding: 1.5rem;
+  max-width: 50rem; width: 100%; max-height: 80vh; overflow: auto;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+`;
+const ModalTitle = styled.h3`font-size: 0.9375rem; font-weight: 700; color: ${palette.text}; margin: 0 0 0.75rem;`;
+const StackPre = styled.pre`
+  font-size: 0.75rem; background: ${palette.bg}; padding: 1rem; border-radius: 0.5rem;
+  overflow: auto; white-space: pre-wrap; word-break: break-word;
+  color: ${palette.text}; border: 1px solid ${palette.border}; margin: 0 0 1rem;
+  max-height: 50vh;
+`;
+const CloseBtn = styled.button`
+  padding: 0.5rem 1rem; background: ${palette.border}; border: none;
+  border-radius: 0.5rem; font-size: 0.875rem; font-weight: 600;
+  cursor: pointer; color: ${palette.textMuted};
+  &:hover { background: #ddd; }
 `;
 
 type MobileState = {
@@ -204,6 +290,54 @@ function stateToSettings(s: MobileState): Partial<Record<keyof MobileAppSettings
   };
 }
 
+function formatDate(iso: string) {
+  return new Date(iso).toLocaleString('bg-BG', {
+    day: '2-digit', month: '2-digit', year: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+  });
+}
+
+type StackModal = { message: string; stack: string } | null;
+
+function ErrorRow({ e }: { e: MobileErrorLogEntry }) {
+  const [expanded, setExpanded] = useState(false);
+  const [modal, setModal] = useState<StackModal>(null);
+
+  return (
+    <>
+      <tr>
+        <ETd><PlatformChip $p={e.platform}>{e.platform}</PlatformChip></ETd>
+        <ETd>{e.appVersion ?? '—'}</ETd>
+        <ETd style={{ color: palette.textMuted }}>{e.errorType}</ETd>
+        <MessageCell>
+          <MessageText $expanded={expanded}>{e.message}</MessageText>
+          {e.message.length > 120 && (
+            <ExpandBtn onClick={() => setExpanded(x => !x)}>
+              {expanded ? 'Скрий' : 'Покажи всичко'}
+            </ExpandBtn>
+          )}
+          {e.stack && (
+            <ExpandBtn onClick={() => setModal({ message: e.message, stack: e.stack! })} style={{ marginLeft: expanded ? '0.5rem' : '0' }}>
+              Stack →
+            </ExpandBtn>
+          )}
+        </MessageCell>
+        <ETd style={{ whiteSpace: 'nowrap', color: palette.textSubtle }}>{formatDate(e.createdAt)}</ETd>
+      </tr>
+      {modal && (
+        <ModalOverlay onClick={() => setModal(null)}>
+          <ModalBox onClick={ev => ev.stopPropagation()}>
+            <ModalTitle>Stack Trace</ModalTitle>
+            <p style={{ fontSize: '0.8125rem', color: palette.textMuted, marginBottom: '0.75rem' }}>{modal.message}</p>
+            <StackPre>{modal.stack}</StackPre>
+            <CloseBtn onClick={() => setModal(null)}>Затвори</CloseBtn>
+          </ModalBox>
+        </ModalOverlay>
+      )}
+    </>
+  );
+}
+
 export default function AdminSettingsMobilePage() {
   const queryClient = useQueryClient();
   const [state, setState] = useState<MobileState>(DEFAULT_STATE);
@@ -211,6 +345,12 @@ export default function AdminSettingsMobilePage() {
   const { data, isLoading } = useQuery({
     queryKey: ['admin-mobile-app-settings'],
     queryFn: () => adminSettingsService.getMobileAppSettings(),
+  });
+
+  const { data: errorsData, isLoading: errorsLoading } = useQuery({
+    queryKey: ['admin-mobile-error-logs'],
+    queryFn: () => adminSettingsService.getMobileErrorLogs(),
+    refetchInterval: 60_000,
   });
 
   useEffect(() => {
@@ -227,11 +367,27 @@ export default function AdminSettingsMobilePage() {
       toast.success('Настройките на мобилното приложение са запазени');
       queryClient.invalidateQueries({ queryKey: ['admin-mobile-app-settings'] });
     },
-    onError: () => toast.error('Грешка при запазване'),
+    onError: (err: unknown) => {
+      const msg =
+        (err as { response?: { data?: { error?: string } } })?.response?.data?.error
+        ?? 'Грешка при запазване';
+      toast.error(msg);
+    },
+  });
+
+  const clearErrorsMutation = useMutation({
+    mutationFn: () => adminSettingsService.clearMobileErrorLogs(),
+    onSuccess: (res) => {
+      toast.success(res.message);
+      queryClient.invalidateQueries({ queryKey: ['admin-mobile-error-logs'] });
+    },
+    onError: () => toast.error('Грешка при изчистване на лога'),
   });
 
   const anyMaintenance =
     state.iosStatus !== 'active' || state.androidStatus !== 'active';
+
+  const errors: MobileErrorLogEntry[] = errorsData?.data ?? [];
 
   return (
     <PageShell>
@@ -263,7 +419,7 @@ export default function AdminSettingsMobilePage() {
                   value={state.minIos}
                   onChange={(e) => set('minIos', e.target.value)}
                 />
-                <FieldHint>Потребителите под тази версия се подканват да актуализират преди използване на приложението.</FieldHint>
+                <FieldHint>Потребителите под тази версия се подканват да актуализират. Оставете празно за всякакви версии.</FieldHint>
               </div>
               <div>
                 <FieldLabel>iOS статус</FieldLabel>
@@ -273,7 +429,9 @@ export default function AdminSettingsMobilePage() {
                     <option value="maintenance">Поддръжка</option>
                     <option value="deprecated">Остарял</option>
                   </Select>
-                  <StatusBadge $status={state.iosStatus}>{state.iosStatus}</StatusBadge>
+                  <StatusBadge $status={state.iosStatus}>
+                    {STATUS_LABEL[state.iosStatus] ?? state.iosStatus}
+                  </StatusBadge>
                 </div>
               </div>
               <div>
@@ -283,7 +441,7 @@ export default function AdminSettingsMobilePage() {
                   value={state.minAndroid}
                   onChange={(e) => set('minAndroid', e.target.value)}
                 />
-                <FieldHint>Оставете празно за всякакви версии.</FieldHint>
+                <FieldHint>Потребителите под тази версия се подканват да актуализират. Оставете празно за всякакви версии.</FieldHint>
               </div>
               <div>
                 <FieldLabel>Android статус</FieldLabel>
@@ -293,7 +451,9 @@ export default function AdminSettingsMobilePage() {
                     <option value="maintenance">Поддръжка</option>
                     <option value="deprecated">Остарял</option>
                   </Select>
-                  <StatusBadge $status={state.androidStatus}>{state.androidStatus}</StatusBadge>
+                  <StatusBadge $status={state.androidStatus}>
+                    {STATUS_LABEL[state.androidStatus] ?? state.androidStatus}
+                  </StatusBadge>
                 </div>
               </div>
             </FieldGroup>
@@ -347,7 +507,7 @@ export default function AdminSettingsMobilePage() {
           {/* ── Push известия ── */}
           <Card>
             <CardTitle>Push известия</CardTitle>
-            <CardSubtitle>Глобален превключвател за push и VAPID конфигурация.</CardSubtitle>
+            <CardSubtitle>Глобален превключвател за push известия.</CardSubtitle>
             <FieldGroup>
               <div>
                 <FieldLabel>Push известия</FieldLabel>
@@ -368,24 +528,30 @@ export default function AdminSettingsMobilePage() {
                 <FieldHint>Деактивирането спира всички изходящи push известия в системата.</FieldHint>
               </div>
               <div>
-                <FieldLabel>VAPID тема</FieldLabel>
+                <FieldLabel>Web-push тема (VAPID)</FieldLabel>
                 <TextInput
                   placeholder="напр. boomcard-notifications"
                   value={state.pushVapidTopic}
                   onChange={(e) => set('pushVapidTopic', e.target.value)}
                 />
-                <FieldHint>Тема за web-push VAPID заглавки. Оставете празно за стандартното.</FieldHint>
+                <FieldHint>
+                  Тема за VAPID заглавки при web-push известия (PWA / браузър). Не важи за нативни iOS/Android push — те използват APNS и FCM. Оставете празно за стандартното.
+                </FieldHint>
               </div>
             </FieldGroup>
           </Card>
 
-          {/* ── Лог на грешки ── */}
+          {/* ── Лог на грешки — конфигурация ── */}
           <Card>
-            <CardTitle>Лог на грешки</CardTitle>
-            <CardSubtitle>Адрес, на който мобилното приложение изпраща клиентски грешки.</CardSubtitle>
+            <CardTitle>Лог на грешки — конфигурация</CardTitle>
+            <CardSubtitle>
+              При зададен URL приложението изпраща копие на всяка грешка и към посочената
+              външна услуга (напр. Sentry, Datadog), допълнително към вградения лог по-долу.
+              Оставете празно за само вграден лог.
+            </CardSubtitle>
             <FieldGroup>
               <div>
-                <FieldLabel>URL за лог на грешки</FieldLabel>
+                <FieldLabel>URL за лог на грешки (zewnętrzna услуга)</FieldLabel>
                 <UrlInput
                   type="url"
                   placeholder="https://errors.example.com/ingest"
@@ -393,11 +559,58 @@ export default function AdminSettingsMobilePage() {
                   onChange={(e) => set('errorLogUrl', e.target.value)}
                 />
                 <FieldHint>
-                  Приложението изпраща JSON грешки на този URL. Оставете празно за деактивиране на отдалечения лог.
+                  Приложението прочита този URL при стартиране и го използва за дублиращо препращане на грешки. Промяната влиза в сила при следващото стартиране на приложението.
                 </FieldHint>
               </div>
             </FieldGroup>
           </Card>
+
+          {/* ── Основни грешки — реален лог ── */}
+          <WideCard>
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
+              <div>
+                <CardTitle style={{ marginBottom: '0.25rem' }}>Последни грешки от приложението</CardTitle>
+                <CardSubtitle style={{ marginBottom: 0 }}>
+                  Последните 50 грешки, докладвани директно от мобилното приложение. Обновява се автоматично на всяка минута.
+                </CardSubtitle>
+              </div>
+              {errors.length > 0 && (
+                <DangerBtn
+                  onClick={() => {
+                    if (confirm('Изчисти всички регистрирани грешки? Действието е необратимо.')) {
+                      clearErrorsMutation.mutate();
+                    }
+                  }}
+                  disabled={clearErrorsMutation.isPending}
+                  style={{ flexShrink: 0, marginLeft: '1rem' }}
+                >
+                  {clearErrorsMutation.isPending ? 'Изчистване…' : 'Изчисти всички'}
+                </DangerBtn>
+              )}
+            </div>
+            {errorsLoading ? (
+              <p style={{ color: palette.textSubtle, fontSize: '0.875rem' }}>Зареждане…</p>
+            ) : errors.length === 0 ? (
+              <EmptyState>Няма регистрирани грешки.</EmptyState>
+            ) : (
+              <div style={{ overflowX: 'auto' }}>
+                <ErrorTable>
+                  <thead>
+                    <tr>
+                      <ETh>Платформа</ETh>
+                      <ETh>Версия</ETh>
+                      <ETh>Тип</ETh>
+                      <ETh>Съобщение</ETh>
+                      <ETh>Дата/час</ETh>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {errors.map((e) => <ErrorRow key={e.id} e={e} />)}
+                  </tbody>
+                </ErrorTable>
+              </div>
+            )}
+          </WideCard>
         </Grid>
       )}
 

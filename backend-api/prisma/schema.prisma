@@ -2142,3 +2142,21 @@ model FraudRuleOverride {
   @@index([ruleId])
   @@index([targetType, targetId])
 }
+
+// ============================================
+// Mobile Error Logs — spec §9 "основни грешки"
+// ============================================
+
+model MobileErrorLog {
+  id         String   @id @default(uuid())
+  platform   String   // "ios" | "android" | "web"
+  appVersion String?
+  errorType  String   // e.g. "crash", "api_error", "render_error"
+  message    String
+  stack      String?
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([platform])
+  @@map("mobile_error_logs")
+}

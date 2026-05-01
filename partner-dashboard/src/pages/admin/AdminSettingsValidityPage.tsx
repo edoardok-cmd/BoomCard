@@ -70,17 +70,33 @@ export default function AdminSettingsValidityPage() {
   }, [data]);
 
   const saveMutation = useMutation({
-    mutationFn: () =>
-      adminSettingsService.saveSystemSettings({
-        cashback_expiry_days: cashbackDays,
-        offer_validity_days: offerDays,
-      }),
+    mutationFn: (values: { cashback_expiry_days: string; offer_validity_days: string }) =>
+      adminSettingsService.saveSystemSettings(values),
     onSuccess: () => {
       toast.success('Настройките за валидност са запазени');
       queryClient.invalidateQueries({ queryKey: ['admin-system-settings'] });
     },
-    onError: () => toast.error('Грешка при запазване'),
+    onError: (err: unknown) => {
+      const msg =
+        (err as { response?: { data?: { error?: string } } })?.response?.data?.error
+        ?? 'Грешка при запазване';
+      toast.error(msg);
+    },
   });
+
+  const handleSave = () => {
+    const cb = Number(cashbackDays);
+    const of = Number(offerDays);
+    if (!Number.isInteger(cb) || cb < 1 || cb > 3650) {
+      toast.error('Изтичане на кешбек трябва да е цяло число между 1 и 3650');
+      return;
+    }
+    if (!Number.isInteger(of) || of < 1 || of > 3650) {
+      toast.error('Валидност на оферта трябва да е цяло число между 1 и 3650');
+      return;
+    }
+    saveMutation.mutate({ cashback_expiry_days: String(cb), offer_validity_days: String(of) });
+  };
 
   return (
     <PageShell>
@@ -123,7 +139,7 @@ export default function AdminSettingsValidityPage() {
             </div>
           </FieldGroup>
         )}
-        <SaveBtn onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending || isLoading}>
+        <SaveBtn onClick={handleSave} disabled={saveMutation.isPending || isLoading}>
           {saveMutation.isPending ? 'Запазване…' : 'Запази'}
         </SaveBtn>
       </Card>

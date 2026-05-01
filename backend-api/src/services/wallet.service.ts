@@ -62,7 +62,8 @@ export class WalletService {
 
   /**
    * Credit wallet (add funds)
-   * CASHBACK_CREDIT transactions automatically receive a 60-day expiry window.
+   * CASHBACK_CREDIT transactions automatically receive a dynamic expiry window
+   * (default 60 days, configurable via the cashback_expiry_days system setting).
    */
   async credit(params: {
     userId: string;

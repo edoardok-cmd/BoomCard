@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import styled from 'styled-components';
-import { Percent, History, Save, AlertCircle } from 'lucide-react';
+import { Percent, History, Save, AlertCircle, Trash2, Check, X } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import {
   adminCashbackService,
@@ -63,7 +63,7 @@ const Matrix = styled.div<{ $cols: string }>`
   overflow: hidden;
 `;
 
-const Cell = styled.div<{ $header?: boolean; $muted?: boolean }>`
+const Cell = styled.div<{ $header?: boolean; $muted?: boolean; $invalid?: boolean }>`
   background: ${p =>
     p.$header
       ? 'var(--color-background-secondary)'
@@ -74,21 +74,41 @@ const Cell = styled.div<{ $header?: boolean; $muted?: boolean }>`
   font-size: 0.875rem;
   font-weight: ${p => p.$header ? 700 : 500};
   color: ${p =>
-    p.$header || p.$muted
-      ? 'var(--color-text-secondary)'
-      : 'var(--color-text-primary)'};
+    p.$invalid
+      ? '#dc2626'
+      : p.$header || p.$muted
+        ? 'var(--color-text-secondary)'
+        : 'var(--color-text-primary)'};
+  border: ${p => p.$invalid ? '2px solid #fca5a5' : 'none'};
+  position: relative;
 `;
 
-const NumberInput = styled.input`
+const ColHint = styled.span`
+  font-size: 0.65rem;
+  font-weight: 400;
+  color: var(--color-text-secondary);
+  display: block;
+  margin-top: 0.1rem;
+  line-height: 1.2;
+`;
+
+const NumberInput = styled.input<{ $invalid?: boolean }>`
   width: 100%;
   padding: 0.375rem 0.5rem;
-  border: 1.5px solid var(--color-border);
+  border: 1.5px solid ${p => p.$invalid ? '#dc2626' : 'var(--color-border)'};
   border-radius: 0.375rem;
-  background: var(--color-background);
-  color: var(--color-text-primary);
+  background: ${p => p.$invalid ? '#fff1f2' : 'var(--color-background)'};
+  color: ${p => p.$invalid ? '#dc2626' : 'var(--color-text-primary)'};
   font-size: 0.875rem;
   font-weight: 600;
-  &:focus { outline: none; border-color: #000; }
+  &:focus { outline: none; border-color: ${p => p.$invalid ? '#dc2626' : '#000'}; }
+`;
+
+const InvalidHint = styled.div`
+  font-size: 0.65rem;
+  color: #dc2626;
+  margin-top: 0.2rem;
+  font-weight: 600;
 `;
 
 const FormRow = styled.div`
@@ -139,6 +159,60 @@ const SaveBtn = styled.button`
   svg { width: 14px; height: 14px; }
 `;
 
+const ConfirmPanel = styled.div`
+  margin-top: 1rem;
+  border: 2px solid #10b981;
+  border-radius: 0.75rem;
+  padding: 1rem 1.25rem;
+  background: #f0fdf4;
+`;
+
+const ConfirmTitle = styled.p`
+  margin: 0 0 0.75rem 0;
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: #065f46;
+`;
+
+const ConfirmMeta = styled.p`
+  margin: 0 0 0.75rem 0;
+  font-size: 0.8rem;
+  color: #065f46;
+`;
+
+const ConfirmActions = styled.div`
+  display: flex; gap: 0.5rem; margin-top: 0.75rem;
+`;
+
+const ConfirmBtn = styled.button`
+  padding: 0.5rem 1rem;
+  background: #10b981;
+  color: #fff;
+  border: none;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex; align-items: center; gap: 0.4rem;
+  &:hover:not(:disabled) { filter: brightness(1.1); }
+  &:disabled { opacity: 0.5; cursor: not-allowed; }
+  svg { width: 14px; height: 14px; }
+`;
+
+const CancelBtn = styled.button`
+  padding: 0.5rem 1rem;
+  background: transparent;
+  color: #374151;
+  border: 1.5px solid var(--color-border);
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex; align-items: center; gap: 0.4rem;
+  &:hover { background: var(--color-background-secondary); }
+  svg { width: 14px; height: 14px; }
+`;
+
 const Error = styled.div`
   background: #fee2e2; color: #991b1b;
   padding: 0.625rem 0.875rem; border-radius: 0.5rem;
@@ -169,6 +243,37 @@ const HistoryTable = styled.table`
   .muted { color: var(--color-text-secondary); }
 `;
 
+const ScheduledBadge = styled.span`
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  background: #fef3c7;
+  color: #92400e;
+  border: 1px solid #fcd34d;
+  border-radius: 0.375rem;
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 0.15rem 0.5rem;
+  margin-left: 0.5rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+`;
+
+const DeleteSnapshotBtn = styled.button`
+  margin-left: 0.75rem;
+  padding: 0.15rem 0.5rem;
+  background: transparent;
+  color: #dc2626;
+  border: 1px solid #fca5a5;
+  border-radius: 0.375rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex; align-items: center; gap: 0.25rem;
+  &:hover { background: #fee2e2; }
+  svg { width: 11px; height: 11px; }
+`;
+
 const Toast = styled.div<{ $ok: boolean }>`
   position: fixed; top: 1.5rem; right: 1.5rem; z-index: 2000;
   background: ${p => p.$ok ? '#10b981' : '#dc2626'};
@@ -181,38 +286,54 @@ const Toast = styled.div<{ $ok: boolean }>`
 
 // ── i18n ──────────────────────────────────────────────────────────────
 const t = (lang: 'en' | 'bg') => ({
-  title:          lang === 'bg' ? 'Кешбек ставки' : 'Cashback Rates',
-  subtitle:       lang === 'bg'
-    ? 'Управлявайте матрицата кешбек % на стъпка отстъпка. Всяка нова версия е самостоятелен снимък — всичките 5 стъпки са задължителни.'
-    : 'Manage the cashback % matrix per discount step. Every new version is a self-contained snapshot — all 5 steps are required.',
-  currentTitle:   lang === 'bg' ? 'Текущи действащи ставки' : 'Currently effective rates',
-  newTitle:       lang === 'bg' ? 'Нов снимък на ставките' : 'New rate snapshot',
-  historyTitle:   lang === 'bg' ? 'История' : 'History',
-  step:           lang === 'bg' ? 'Стъпка' : 'Discount step',
-  basic:          'BASIC (%)',
-  premium:        lang === 'bg' ? 'Premium (%)' : 'Premium (%)',
-  marginBasic:    lang === 'bg' ? 'Марж BASIC (%)' : 'Margin BASIC (%)',
-  marginPremium:  lang === 'bg' ? 'Марж Premium (%)' : 'Margin Premium (%)',
-  effectiveFrom:  lang === 'bg' ? 'В сила от' : 'Effective from',
-  effectiveHint:  lang === 'bg' ? '(по подразбиране: сега)' : '(defaults to now)',
-  notes:          lang === 'bg' ? 'Бележки (незадължително)' : 'Notes (optional)',
-  save:           lang === 'bg' ? 'Запази нова версия' : 'Save new snapshot',
-  saved:          lang === 'bg' ? 'Ставките са записани' : 'Rates saved',
-  thEffective:    lang === 'bg' ? 'В сила от' : 'Effective from',
-  thBy:           lang === 'bg' ? 'Автор' : 'By',
-  thNotes:        lang === 'bg' ? 'Бележки' : 'Notes',
-  mustBeNumbers:  (step: number) =>
+  title:            lang === 'bg' ? 'Кешбек ставки' : 'Cashback Rates',
+  subtitle:         lang === 'bg'
+    ? 'Управлявайте матрицата кешбек % на стъпка отстъпка. Всяка нова версия е самостоятелен снимък — всичките 5 стъпки са задължителни. Стойностите не могат да надвишават % на партньорската отстъпка за съответната стъпка.'
+    : 'Manage the cashback % matrix per discount step. Every new version is a self-contained snapshot — all 5 steps are required. Values cannot exceed the partner discount % for that step.',
+  currentTitle:     lang === 'bg' ? 'Текущи действащи ставки' : 'Currently effective rates',
+  newTitle:         lang === 'bg' ? 'Нов снимък на ставките' : 'New rate snapshot',
+  historyTitle:     lang === 'bg' ? 'История' : 'History',
+  step:             lang === 'bg' ? 'Стъпка' : 'Discount step',
+  basic:            'BASIC (%)',
+  premium:          lang === 'bg' ? 'LIGHT / PREMIUM (%)' : 'LIGHT / PREMIUM (%)',
+  premiumHint:      lang === 'bg' ? 'важи за абонати с LIGHT и PREMIUM план' : 'applies to subscribers on LIGHT and PREMIUM plans',
+  marginBasic:      lang === 'bg' ? 'Марж BASIC (%)' : 'Margin BASIC (%)',
+  marginPremium:    lang === 'bg' ? 'Марж LIGHT/PREMIUM (%)' : 'Margin LIGHT/PREMIUM (%)',
+  effectiveFrom:    lang === 'bg' ? 'В сила от' : 'Effective from',
+  effectiveHint:    lang === 'bg' ? '(по подразбиране: сега)' : '(defaults to now)',
+  notes:            lang === 'bg' ? 'Бележки (незадължително)' : 'Notes (optional)',
+  preview:          lang === 'bg' ? 'Преглед преди запис' : 'Preview before saving',
+  confirmTitle:     lang === 'bg' ? 'Потвърждение на промяната' : 'Confirm change',
+  confirmMsg:       (dt: string) =>
     lang === 'bg'
-      ? `Стъпка ${step}%: BASIC и Premium трябва да са числа`
-      : `Step ${step}%: basic and premium must be numbers`,
-  outOfRange:     (step: number) =>
+      ? `Ще запишете нов снимък на ставките в сила от ${dt}. Тази операция е необратима.`
+      : `You are about to save a new rate snapshot effective from ${dt}. This action cannot be undone.`,
+  confirmBtn:       lang === 'bg' ? 'Потвърди и запиши' : 'Confirm & save',
+  cancelConfirm:    lang === 'bg' ? 'Назад' : 'Back',
+  saved:            lang === 'bg' ? 'Ставките са записани' : 'Rates saved',
+  scheduled:        lang === 'bg' ? 'Планирано' : 'Scheduled',
+  cancelSnapshot:   lang === 'bg' ? 'Отмени' : 'Cancel',
+  confirmDelete:    lang === 'bg'
+    ? 'Сигурни ли сте, че искате да отмените този планиран снимък?'
+    : 'Are you sure you want to cancel this scheduled snapshot?',
+  snapshotDeleted:  lang === 'bg' ? 'Планираният снимък е отменен' : 'Scheduled snapshot cancelled',
+  thEffective:      lang === 'bg' ? 'В сила от' : 'Effective from',
+  thBy:             lang === 'bg' ? 'Автор' : 'By',
+  thNotes:          lang === 'bg' ? 'Бележки' : 'Notes',
+  mustBeNumbers:    (step: number) =>
     lang === 'bg'
-      ? `Стъпка ${step}%: стойностите трябва да са между 0 и ${step}`
-      : `Step ${step}%: values must be between 0 and ${step}`,
-  marginNegative: (step: number) =>
+      ? `Стъпка ${step}%: BASIC и LIGHT/PREMIUM трябва да са числа`
+      : `Step ${step}%: BASIC and LIGHT/PREMIUM must be numbers`,
+  outOfRange:       (step: number) =>
+    lang === 'bg'
+      ? `Стъпка ${step}%: стойностите не могат да са отрицателни`
+      : `Step ${step}%: values must not be negative`,
+  marginNegative:   (step: number) =>
     lang === 'bg'
       ? `Стъпка ${step}%: кешбекът не може да надвишава партньорската отстъпка (${step}%) — маржът би бил отрицателен`
       : `Step ${step}%: cashback cannot exceed the partner discount (${step}%) — margin would be negative`,
+  exceedsCapInline: (step: number) =>
+    lang === 'bg' ? `Макс. ${step}%` : `Max ${step}%`,
 });
 
 // ── Helpers ───────────────────────────────────────────────────────────
@@ -233,6 +354,8 @@ const computeMargin = (step: number, cashback: string | number): string => {
   return m >= 0 ? `${m}%` : `−${Math.abs(m)}%`;
 };
 
+const isFuture = (iso: string) => new Date(iso) > new Date();
+
 // ── Component ─────────────────────────────────────────────────────────
 
 const AdminCashbackRatesPage: React.FC = () => {
@@ -247,6 +370,14 @@ const AdminCashbackRatesPage: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<{ ok: boolean; msg: string } | null>(null);
+
+  // Two-step save
+  const [pendingPayload, setPendingPayload] = useState<{
+    rates: Array<{ discountStep: number; basic: number; premium: number }>;
+    effectiveFrom: string;
+    notes: string;
+    displayDate: string;
+  } | null>(null);
 
   const load = useCallback(async () => {
     const [cur, hist] = await Promise.all([
@@ -273,9 +404,19 @@ const AdminCashbackRatesPage: React.FC = () => {
   const updateCell = (step: number, field: 'basic' | 'premium', value: string) => {
     setDraft(prev => ({ ...prev, [step]: { ...prev[step], [field]: value } }));
     setError(null);
+    setPendingPayload(null);
   };
 
-  const submit = async () => {
+  // Per-cell validity: value entered and exceeds the step cap
+  const isCellInvalid = (step: number, field: 'basic' | 'premium'): boolean => {
+    const raw = draft[step]?.[field] ?? '';
+    if (raw === '') return false;
+    const v = parseFloat(raw);
+    return isFinite(v) && v > step;
+  };
+
+  // Step 1: validate → show confirm panel
+  const handlePreview = () => {
     setError(null);
     const rates: Array<{ discountStep: number; basic: number; premium: number }> = [];
     for (const step of STEPS) {
@@ -286,7 +427,7 @@ const AdminCashbackRatesPage: React.FC = () => {
         setError(tr.mustBeNumbers(step));
         return;
       }
-      if (basic < 0 || premium < 0 || basic > step || premium > step) {
+      if (basic < 0 || premium < 0) {
         setError(tr.outOfRange(step));
         return;
       }
@@ -297,22 +438,56 @@ const AdminCashbackRatesPage: React.FC = () => {
       rates.push({ discountStep: step, basic, premium });
     }
 
+    const displayDate = effectiveFrom
+      ? new Date(effectiveFrom).toLocaleString()
+      : new Date().toLocaleString();
+
+    setPendingPayload({
+      rates,
+      effectiveFrom: effectiveFrom ? new Date(effectiveFrom).toISOString() : new Date().toISOString(),
+      notes,
+      displayDate,
+    });
+  };
+
+  // Step 2: actually save
+  const confirmSave = async () => {
+    if (!pendingPayload) return;
     setSaving(true);
     try {
       await adminCashbackService.createRates({
-        rates,
-        effectiveFrom: effectiveFrom || undefined,
-        notes: notes || undefined,
+        rates: pendingPayload.rates,
+        effectiveFrom: pendingPayload.effectiveFrom,
+        notes: pendingPayload.notes || undefined,
       });
       setToast({ ok: true, msg: tr.saved });
       setNotes('');
       setEffectiveFrom(nowLocal());
+      setPendingPayload(null);
       await load();
     } catch (e) {
       const axiosErr = e as { response?: { data?: { error?: string } }; message?: string };
       setError(axiosErr?.response?.data?.error || axiosErr?.message || 'Failed to save');
+      setPendingPayload(null);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const cancelPreview = () => {
+    setPendingPayload(null);
+    setError(null);
+  };
+
+  const handleDeleteSnapshot = async (effectiveFromISO: string) => {
+    if (!window.confirm(tr.confirmDelete)) return;
+    try {
+      await adminCashbackService.deleteSnapshot(effectiveFromISO);
+      setToast({ ok: true, msg: tr.snapshotDeleted });
+      await load();
+    } catch (e) {
+      const axiosErr = e as { response?: { data?: { error?: string } }; message?: string };
+      setToast({ ok: false, msg: axiosErr?.response?.data?.error || axiosErr?.message || 'Failed to cancel snapshot' });
     }
   };
 
@@ -325,9 +500,9 @@ const AdminCashbackRatesPage: React.FC = () => {
   const fmtDate = (iso: string | null) => (iso ? new Date(iso).toLocaleString() : '—');
 
   // 7-col grid: step | basic | premium | margin-basic | margin-premium | effective-from | author
-  const currentCols = '0.7fr 0.9fr 0.9fr 1fr 1fr 1.8fr 1.2fr';
+  const currentCols = '0.7fr 0.9fr 1.1fr 1fr 1.1fr 1.8fr 1.2fr';
   // 5-col grid: step | basic input | margin-basic | premium input | margin-premium
-  const editCols = '0.7fr 1fr 0.9fr 1fr 0.9fr';
+  const editCols = '0.7fr 1fr 0.9fr 1.1fr 0.9fr';
 
   return (
     <Page>
@@ -342,7 +517,10 @@ const AdminCashbackRatesPage: React.FC = () => {
         <Matrix $cols={currentCols}>
           <Cell $header>{tr.step}</Cell>
           <Cell $header>{tr.basic}</Cell>
-          <Cell $header>{tr.premium}</Cell>
+          <Cell $header>
+            {tr.premium}
+            <ColHint>{tr.premiumHint}</ColHint>
+          </Cell>
           <Cell $header>{tr.marginBasic}</Cell>
           <Cell $header>{tr.marginPremium}</Cell>
           <Cell $header>{tr.effectiveFrom}</Cell>
@@ -373,29 +551,48 @@ const AdminCashbackRatesPage: React.FC = () => {
           <Cell $header>{tr.step}</Cell>
           <Cell $header>{tr.basic}</Cell>
           <Cell $header>{tr.marginBasic}</Cell>
-          <Cell $header>{tr.premium}</Cell>
+          <Cell $header>
+            {tr.premium}
+            <ColHint>{tr.premiumHint}</ColHint>
+          </Cell>
           <Cell $header>{tr.marginPremium}</Cell>
-          {STEPS.map(step => (
-            <React.Fragment key={step}>
-              <Cell>{step}%</Cell>
-              <Cell>
-                <NumberInput
-                  type="number" min={0} max={step} step={0.5}
-                  value={draft[step]?.basic ?? ''}
-                  onChange={e => updateCell(step, 'basic', e.target.value)}
-                />
-              </Cell>
-              <Cell $muted>{computeMargin(step, draft[step]?.basic ?? '')}</Cell>
-              <Cell>
-                <NumberInput
-                  type="number" min={0} max={step} step={0.5}
-                  value={draft[step]?.premium ?? ''}
-                  onChange={e => updateCell(step, 'premium', e.target.value)}
-                />
-              </Cell>
-              <Cell $muted>{computeMargin(step, draft[step]?.premium ?? '')}</Cell>
-            </React.Fragment>
-          ))}
+          {STEPS.map(step => {
+            const basicInvalid = isCellInvalid(step, 'basic');
+            const premiumInvalid = isCellInvalid(step, 'premium');
+            return (
+              <React.Fragment key={step}>
+                <Cell>{step}%</Cell>
+                <Cell>
+                  <NumberInput
+                    type="number" min={0} max={step} step={0.5}
+                    $invalid={basicInvalid}
+                    value={draft[step]?.basic ?? ''}
+                    onChange={e => updateCell(step, 'basic', e.target.value)}
+                  />
+                  {basicInvalid && (
+                    <InvalidHint>{tr.exceedsCapInline(step)}</InvalidHint>
+                  )}
+                </Cell>
+                <Cell $muted $invalid={basicInvalid}>
+                  {computeMargin(step, draft[step]?.basic ?? '')}
+                </Cell>
+                <Cell>
+                  <NumberInput
+                    type="number" min={0} max={step} step={0.5}
+                    $invalid={premiumInvalid}
+                    value={draft[step]?.premium ?? ''}
+                    onChange={e => updateCell(step, 'premium', e.target.value)}
+                  />
+                  {premiumInvalid && (
+                    <InvalidHint>{tr.exceedsCapInline(step)}</InvalidHint>
+                  )}
+                </Cell>
+                <Cell $muted $invalid={premiumInvalid}>
+                  {computeMargin(step, draft[step]?.premium ?? '')}
+                </Cell>
+              </React.Fragment>
+            );
+          })}
         </Matrix>
 
         <FormRow>
@@ -407,21 +604,59 @@ const AdminCashbackRatesPage: React.FC = () => {
             <TextInput
               type="datetime-local"
               value={effectiveFrom}
-              onChange={e => setEffectiveFrom(e.target.value)}
+              onChange={e => { setEffectiveFrom(e.target.value); setPendingPayload(null); }}
             />
           </Field>
           <Field style={{ flex: 2 }}>
             <Label>{tr.notes}</Label>
             <TextInput
               value={notes}
-              onChange={e => setNotes(e.target.value)}
+              onChange={e => { setNotes(e.target.value); setPendingPayload(null); }}
               placeholder={language === 'bg' ? 'напр. Q2 ревизия' : 'e.g. Q2 revision'}
             />
           </Field>
-          <SaveBtn onClick={submit} disabled={saving}>
-            <Save /> {tr.save}
-          </SaveBtn>
+          {!pendingPayload && (
+            <SaveBtn onClick={handlePreview} disabled={saving}>
+              <Save /> {tr.preview}
+            </SaveBtn>
+          )}
         </FormRow>
+
+        {pendingPayload && (
+          <ConfirmPanel>
+            <ConfirmTitle>{tr.confirmTitle}</ConfirmTitle>
+            <ConfirmMeta>{tr.confirmMsg(pendingPayload.displayDate)}</ConfirmMeta>
+            <Matrix $cols={editCols} style={{ marginBottom: '0.25rem' }}>
+              <Cell $header>{tr.step}</Cell>
+              <Cell $header>{tr.basic}</Cell>
+              <Cell $header>{tr.marginBasic}</Cell>
+              <Cell $header>{tr.premium}</Cell>
+              <Cell $header>{tr.marginPremium}</Cell>
+              {pendingPayload.rates.map(r => (
+                <React.Fragment key={r.discountStep}>
+                  <Cell>{r.discountStep}%</Cell>
+                  <Cell>{r.basic}%</Cell>
+                  <Cell $muted>{computeMargin(r.discountStep, r.basic)}</Cell>
+                  <Cell>{r.premium}%</Cell>
+                  <Cell $muted>{computeMargin(r.discountStep, r.premium)}</Cell>
+                </React.Fragment>
+              ))}
+            </Matrix>
+            {pendingPayload.notes && (
+              <ConfirmMeta style={{ marginTop: '0.5rem', fontStyle: 'italic' }}>
+                {pendingPayload.notes}
+              </ConfirmMeta>
+            )}
+            <ConfirmActions>
+              <ConfirmBtn onClick={confirmSave} disabled={saving}>
+                <Check /> {tr.confirmBtn}
+              </ConfirmBtn>
+              <CancelBtn onClick={cancelPreview}>
+                <X /> {tr.cancelConfirm}
+              </CancelBtn>
+            </ConfirmActions>
+          </ConfirmPanel>
+        )}
 
         {error && <Error><AlertCircle /> {error}</Error>}
       </Section>
@@ -432,20 +667,19 @@ const AdminCashbackRatesPage: React.FC = () => {
         <HistoryTable>
           <thead>
             <tr>
+              {/* Author and Notes live in the group header row — not repeated per step */}
               <th>{tr.thEffective}</th>
               <th>{tr.step}</th>
               <th>{tr.basic}</th>
               <th>{tr.premium}</th>
               <th>{tr.marginBasic}</th>
               <th>{tr.marginPremium}</th>
-              <th>{tr.thBy}</th>
-              <th>{tr.thNotes}</th>
             </tr>
           </thead>
           <tbody>
             {history.length === 0 && (
               <tr>
-                <td colSpan={8} style={{ textAlign: 'center', padding: '2rem', color: 'var(--color-text-secondary)' }}>—</td>
+                <td colSpan={6} style={{ textAlign: 'center', padding: '2rem', color: 'var(--color-text-secondary)' }}>—</td>
               </tr>
             )}
             {(() => {
@@ -456,33 +690,42 @@ const AdminCashbackRatesPage: React.FC = () => {
                 if (!groups.has(key)) groups.set(key, []);
                 groups.get(key)!.push(row);
               }
-              return [...groups.entries()].map(([key, rows]) => (
-                <React.Fragment key={key}>
-                  <tr style={{ background: 'var(--color-background-secondary)' }}>
-                    <td colSpan={8} style={{ fontWeight: 700, fontSize: '0.8rem', color: 'var(--color-text-secondary)', padding: '0.5rem 0.875rem' }}>
-                      {fmtDate(key)}
-                      {rows[0].createdByName || rows[0].createdByEmail
-                        ? <span style={{ fontWeight: 600, marginLeft: '0.75rem', color: 'var(--color-text-primary)' }}>
-                            {rows[0].createdByName ?? rows[0].createdByEmail}
-                          </span>
-                        : null}
-                      {rows[0].notes ? <span style={{ fontWeight: 400, marginLeft: '0.75rem' }}>{rows[0].notes}</span> : null}
-                    </td>
-                  </tr>
-                  {rows.map(row => (
-                    <tr key={row.id}>
-                      <td style={{ paddingLeft: '1.5rem', color: 'var(--color-text-secondary)', fontSize: '0.8rem' }}>↳</td>
-                      <td>{row.discountStep}%</td>
-                      <td>{row.basic}%</td>
-                      <td>{row.premium}%</td>
-                      <td className="muted">{computeMargin(row.discountStep, row.basic)}</td>
-                      <td className="muted">{computeMargin(row.discountStep, row.premium)}</td>
-                      <td></td>
-                      <td></td>
+              return [...groups.entries()].map(([key, rows]) => {
+                const future = isFuture(key);
+                return (
+                  <React.Fragment key={key}>
+                    <tr style={{ background: 'var(--color-background-secondary)' }}>
+                      <td colSpan={6} style={{ fontWeight: 700, fontSize: '0.8rem', color: 'var(--color-text-secondary)', padding: '0.5rem 0.875rem' }}>
+                        {fmtDate(key)}
+                        {future && (
+                          <ScheduledBadge>{tr.scheduled}</ScheduledBadge>
+                        )}
+                        {rows[0].createdByName || rows[0].createdByEmail
+                          ? <span style={{ fontWeight: 600, marginLeft: '0.75rem', color: 'var(--color-text-primary)' }}>
+                              {rows[0].createdByName ?? rows[0].createdByEmail}
+                            </span>
+                          : <span style={{ marginLeft: '0.75rem', opacity: 0.4 }}>—</span>}
+                        {rows[0].notes ? <span style={{ fontWeight: 400, marginLeft: '0.75rem' }}>{rows[0].notes}</span> : null}
+                        {future && (
+                          <DeleteSnapshotBtn onClick={() => handleDeleteSnapshot(key)}>
+                            <Trash2 /> {tr.cancelSnapshot}
+                          </DeleteSnapshotBtn>
+                        )}
+                      </td>
                     </tr>
-                  ))}
-                </React.Fragment>
-              ));
+                    {rows.map(row => (
+                      <tr key={row.id}>
+                        <td style={{ paddingLeft: '1.5rem', color: 'var(--color-text-secondary)', fontSize: '0.8rem' }}>↳</td>
+                        <td>{row.discountStep}%</td>
+                        <td>{row.basic}%</td>
+                        <td>{row.premium}%</td>
+                        <td className="muted">{computeMargin(row.discountStep, row.basic)}</td>
+                        <td className="muted">{computeMargin(row.discountStep, row.premium)}</td>
+                      </tr>
+                    ))}
+                  </React.Fragment>
+                );
+              });
             })()}
           </tbody>
         </HistoryTable>

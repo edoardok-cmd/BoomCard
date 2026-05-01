@@ -60,7 +60,9 @@ export async function fireAutomation(trigger: string, context: AutomationContext
   let emailConsentGranted = true;
   let pushConsentGranted = true;
 
-  if (context.userId && (!email || !context.recipientName)) {
+  let preferredLanguage: string | null = null;
+
+  if (context.userId) {
     try {
       const user = await prisma.user.findUnique({
         where: { id: context.userId },
@@ -70,6 +72,7 @@ export async function fireAutomation(trigger: string, context: AutomationContext
           lastName: true,
           marketingConsentEmail: true,
           marketingConsent: true,
+          preferredLanguage: true,
         },
       });
       if (user) {
@@ -77,6 +80,7 @@ export async function fireAutomation(trigger: string, context: AutomationContext
         name = [user.firstName, user.lastName].filter(Boolean).join(' ') || name;
         emailConsentGranted = user.marketingConsentEmail ?? false;
         pushConsentGranted = user.marketingConsent ?? false;
+        preferredLanguage = user.preferredLanguage;
       }
     } catch (err) {
       logger.error(`[automation] Failed to resolve user ${context.userId}:`, err);
@@ -96,6 +100,7 @@ export async function fireAutomation(trigger: string, context: AutomationContext
               email: true,
               marketingConsentEmail: true,
               marketingConsent: true,
+              preferredLanguage: true,
             },
           },
         },
@@ -108,6 +113,7 @@ export async function fireAutomation(trigger: string, context: AutomationContext
         // (transactional-style messages), matching the campaign dispatcher.
         if (partner.user?.marketingConsentEmail === false) emailConsentGranted = false;
         if (partner.user?.marketingConsent === false) pushConsentGranted = false;
+        preferredLanguage ??= partner.user?.preferredLanguage ?? null;
       }
     } catch (err) {
       logger.error(`[automation] Failed to resolve partner ${context.partnerId}:`, err);
@@ -127,8 +133,9 @@ export async function fireAutomation(trigger: string, context: AutomationContext
 
       if (template.type === 'EMAIL') {
         if (email && emailConsentGranted) {
-          const subject = template.subject ?? template.name;
-          const html = template.body?.trim() || `<p>${template.name}</p>`;
+          const useEn = preferredLanguage === 'en';
+          const subject = (useEn && template.subjectEn) ? template.subjectEn : (template.subject ?? template.name);
+          const html = (useEn && template.bodyEn) ? template.bodyEn : (template.body?.trim() || `<p>${template.name}</p>`);
           await emailService.sendEmail({ to: email, subject, html });
           dispatched = true;
         } else if (!emailConsentGranted) {

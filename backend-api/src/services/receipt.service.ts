@@ -17,6 +17,7 @@ import {
   DEFAULT_MONTHLY_SUBMISSION_LIMIT,
   FRAUD_ALERT_SCORE_THRESHOLD,
 } from '../constants/receipt.constants';
+import { getSystemSettingInt } from '../utils/systemSettings';
 
 /**
  * Receipt Item structure (parsed from OCR)
@@ -714,8 +715,9 @@ class ReceiptService {
         merchantName: request.ocrData?.merchantName || 'Unknown Merchant',
       });
 
-      // Send fraud alert to admins if high score
-      if (fraudCheck.fraudScore >= FRAUD_ALERT_SCORE_THRESHOLD) {
+      // Send fraud alert to admins if high score (threshold is DB-configurable via max_fraud_score)
+      const fraudAlertThreshold = await getSystemSettingInt('max_fraud_score', FRAUD_ALERT_SCORE_THRESHOLD);
+      if (fraudCheck.fraudScore >= fraudAlertThreshold) {
         await notificationService.notifyFraudAlert({
           receiptId: receipt.id,
           userId: request.userId,
@@ -828,14 +830,15 @@ class ReceiptService {
       }),
     ]);
 
+    const dailyLimit = await getSystemSettingInt('daily_scan_limit_default', DEFAULT_DAILY_SUBMISSION_LIMIT);
     return {
       submissionsToday: today,
       submissionsThisMonth: thisMonth,
       totalSubmissions: total,
-      dailyLimit: isFinite(DEFAULT_DAILY_SUBMISSION_LIMIT) ? DEFAULT_DAILY_SUBMISSION_LIMIT : null,
-      monthlyLimit: isFinite(DEFAULT_MONTHLY_SUBMISSION_LIMIT) ? DEFAULT_MONTHLY_SUBMISSION_LIMIT : null,
-      remainingToday: isFinite(DEFAULT_DAILY_SUBMISSION_LIMIT) ? Math.max(0, DEFAULT_DAILY_SUBMISSION_LIMIT - today) : null,
-      remainingThisMonth: isFinite(DEFAULT_MONTHLY_SUBMISSION_LIMIT) ? Math.max(0, DEFAULT_MONTHLY_SUBMISSION_LIMIT - thisMonth) : null,
+      dailyLimit,
+      monthlyLimit: DEFAULT_MONTHLY_SUBMISSION_LIMIT,
+      remainingToday: Math.max(0, dailyLimit - today),
+      remainingThisMonth: Math.max(0, DEFAULT_MONTHLY_SUBMISSION_LIMIT - thisMonth),
     };
   }
 
@@ -935,7 +938,8 @@ class ReceiptService {
               excludeReceiptId: params.receiptId,
             });
             updatedFraudScore = recomputedFraud.fraudScore;
-            if (recomputedFraud.fraudScore > DEFAULT_AUTO_APPROVE_THRESHOLD) {
+            const autoApproveThreshold = await getSystemSettingInt('auto_approve_threshold', DEFAULT_AUTO_APPROVE_THRESHOLD);
+            if (recomputedFraud.fraudScore > autoApproveThreshold) {
               logger.warn(
                 `Receipt ${params.receiptId} corrected to ${params.verifiedAmount} BGN — recomputed fraud score ${recomputedFraud.fraudScore} exceeds auto-approve threshold (admin override applied)`
               );

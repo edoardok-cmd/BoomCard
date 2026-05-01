@@ -161,6 +161,11 @@ class AdminCashbackService {
   }): Promise<void> {
     await apiService.post(`${this.base}/rates`, params);
   }
+
+  /** Cancel a future-scheduled snapshot by its effectiveFrom ISO string. */
+  async deleteSnapshot(effectiveFromISO: string): Promise<void> {
+    await apiService.delete(`${this.base}/rates/snapshot/${encodeURIComponent(effectiveFromISO)}`);
+  }
 }
 
 export const adminCashbackService = new AdminCashbackService();

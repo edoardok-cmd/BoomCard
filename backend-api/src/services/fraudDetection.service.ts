@@ -1,6 +1,7 @@
 import { WalletTransactionType, WalletTransactionStatus } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { logger } from '../utils/logger';
+import { getSystemSettingInt, getSystemSettingFloat } from '../utils/systemSettings';
 import {
   DEFAULT_DAILY_SUBMISSION_LIMIT,
   DEFAULT_MAX_CASHBACK_PER_SCAN,
@@ -191,7 +192,8 @@ class FraudDetectionService {
       // 5. Rate limiting check (30 points)
       const userStats = await this.getUserStats(params.userId);
 
-      const maxDaily = config?.maxScansPerDay || DEFAULT_DAILY_SUBMISSION_LIMIT;
+      const systemDailyLimit = await getSystemSettingInt('daily_scan_limit_default', DEFAULT_DAILY_SUBMISSION_LIMIT);
+      const maxDaily = config?.maxScansPerDay || systemDailyLimit;
       const maxMonthly = config?.maxScansPerMonth || DEFAULT_MONTHLY_SUBMISSION_LIMIT;
 
       if (userStats.submissionsToday >= maxDaily) {
@@ -827,8 +829,9 @@ class FraudDetectionService {
           + (monthlyPendingReceiptAgg._sum.cashbackAmount ?? 0)
           + ((monthlyPendingStickerAgg as any)?._sum?.cashbackAmount ?? 0);
 
+        const systemMonthlyMax = await getSystemSettingFloat('max_cashback_per_month', DEFAULT_MAX_CASHBACK_PER_MONTH);
         const remainingDaily = Math.max(0, DEFAULT_MAX_CASHBACK_PER_DAY - earnedToday);
-        const remainingMonthly = Math.max(0, DEFAULT_MAX_CASHBACK_PER_MONTH - earnedThisMonth);
+        const remainingMonthly = Math.max(0, systemMonthlyMax - earnedThisMonth);
         cashbackAmount = Math.min(cashbackAmount, remainingDaily, remainingMonthly);
         cashbackAmount = parseFloat(cashbackAmount.toFixed(2));
       } catch (capError) {

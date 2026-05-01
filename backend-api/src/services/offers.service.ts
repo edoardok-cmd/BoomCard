@@ -397,7 +397,8 @@ class OffersService {
     let endDate = data.endDate;
     if (!endDate) {
       const validityDays = await getSystemSettingInt('offer_validity_days', DEFAULT_OFFER_VALIDITY_DAYS);
-      const start = data.startDate ?? new Date();
+      // data.startDate arrives from req.body as a JSON string at runtime — coerce explicitly
+      const start = data.startDate ? new Date(data.startDate as unknown as string) : new Date();
       endDate = new Date(start.getTime() + validityDays * 24 * 60 * 60 * 1000);
     }
 

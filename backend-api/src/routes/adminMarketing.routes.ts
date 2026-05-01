@@ -63,8 +63,8 @@ router.get('/templates/:id', ...READ, async (req, res, next) => {
 
 router.post('/templates', ...WRITE, async (req, res, next) => {
   try {
-    const { name, type, category, subject, body } = req.body as {
-      name: string; type: MarketingChannel; category?: string; subject?: string; body?: string;
+    const { name, type, category, subject, subjectEn, body, bodyEn } = req.body as {
+      name: string; type: MarketingChannel; category?: string; subject?: string; subjectEn?: string; body?: string; bodyEn?: string;
     };
     if (!name?.trim()) return res.status(400).json({ error: 'name is required' });
     if (!Object.values(MarketingChannel).includes(type)) return res.status(400).json({ error: 'invalid type' });
@@ -75,7 +75,9 @@ router.post('/templates', ...WRITE, async (req, res, next) => {
         type,
         category: category?.trim() || null,
         subject: subject?.trim() || null,
+        subjectEn: subjectEn?.trim() || null,
         body: body?.trim() ?? '',
+        bodyEn: bodyEn?.trim() || null,
       },
     });
     res.status(201).json(item);
@@ -89,8 +91,8 @@ router.put('/templates/:id', ...WRITE, async (req, res, next) => {
     const existing = await prisma.marketingTemplate.findUnique({ where: { id: req.params.id } });
     if (!existing) return res.status(404).json({ error: 'Not found' });
 
-    const { name, type, category, subject, body } = req.body as {
-      name: string; type: MarketingChannel; category?: string; subject?: string; body?: string;
+    const { name, type, category, subject, subjectEn, body, bodyEn } = req.body as {
+      name: string; type: MarketingChannel; category?: string; subject?: string; subjectEn?: string; body?: string; bodyEn?: string;
     };
     if (!name?.trim()) return res.status(400).json({ error: 'name is required' });
     if (!Object.values(MarketingChannel).includes(type)) return res.status(400).json({ error: 'invalid type' });
@@ -102,7 +104,9 @@ router.put('/templates/:id', ...WRITE, async (req, res, next) => {
         type,
         category: category?.trim() || null,
         subject: subject?.trim() || null,
+        subjectEn: subjectEn?.trim() || null,
         body: body?.trim() ?? '',
+        bodyEn: bodyEn?.trim() || null,
       },
     });
     res.json(item);
@@ -893,7 +897,7 @@ router.post('/automations/ensure-defaults', ...WRITE, async (req, res, next) => 
     // Using find+update instead of upsert because template name has no unique DB constraint.
     const syncTpl = async (
       name: string,
-      data: { type: MarketingChannel; subject?: string; body: string },
+      data: { type: MarketingChannel; subject?: string; subjectEn?: string; body: string; bodyEn?: string },
     ) => {
       const existing = await prisma.marketingTemplate.findFirst({ where: { name } });
       if (existing) {
@@ -907,23 +911,35 @@ router.post('/automations/ensure-defaults', ...WRITE, async (req, res, next) => 
         syncTpl('Cashback Earned Notification', {
           type: 'EMAIL',
           subject: 'Достигнахте ниво — вашият кешбек е начислен!',
+          subjectEn: 'You reached a cashback milestone — your cashback has been credited!',
           body: `<h2>Достигнахте ниво за кешбек!</h2>
 <p>Поздравления — натрупахте достатъчно покупки и кешбек е начислен по вашия BoomCard акаунт.</p>
 <p>Продължете да пазарувате при партньорите ни и печелете още.</p>
 <p>Екипът на BoomCard</p>`,
+          bodyEn: `<h2>You reached a cashback milestone!</h2>
+<p>Congratulations — you've made enough purchases and cashback has been credited to your BoomCard account.</p>
+<p>Keep shopping at our partners and earn even more.</p>
+<p>The BoomCard Team</p>`,
         }),
         syncTpl('Cashback Expiring Soon', {
           type: 'EMAIL',
           subject: 'Вашият кешбек в BoomCard изтича скоро — използвайте го навреме',
+          subjectEn: 'Your BoomCard cashback is expiring soon — use it before it\'s gone',
           body: `<h2>Кешбекът ви предстои да изтече!</h2>
 <p>Имате натрупан кешбек в BoomCard акаунта ви, който предстои да изтече. Не забравяйте да го използвате при някой от партньорите ни.</p>
 <p><strong>Как да го използвате:</strong> Просто покажете вашата BoomCard карта при плащане в партньорски обект — кешбекът ще бъде приложен автоматично.</p>
 <p>Намерете най-близкия партньор в приложението BoomCard и започнете да спестявате днес.</p>
 <p>Екипът на BoomCard</p>`,
+          bodyEn: `<h2>Your cashback is about to expire!</h2>
+<p>You have accumulated cashback in your BoomCard account that is about to expire. Don't forget to use it at one of our partners.</p>
+<p><strong>How to use it:</strong> Simply show your BoomCard card when paying at a partner location — your cashback will be applied automatically.</p>
+<p>Find the nearest partner in the BoomCard app and start saving today.</p>
+<p>The BoomCard Team</p>`,
         }),
         syncTpl('Partner Welcome Email', {
           type: 'EMAIL',
           subject: 'Добре дошли в мрежата на партньорите на BoomCard!',
+          subjectEn: 'Welcome to the BoomCard partner network!',
           body: `<h2>Добре дошли на борда, партньор!</h2>
 <p>Благодарим ви, че се присъединихте към мрежата на партньорите на BoomCard. Вашата заявка е получена и в момента се разглежда.</p>
 <p>Ето какво предстои:</p>
@@ -934,10 +950,21 @@ router.post('/automations/ensure-defaults', ...WRITE, async (req, res, next) => 
 </ul>
 <p>При въпроси се свържете с нас на <a href="mailto:office@boomcard.bg">office@boomcard.bg</a>.</p>
 <p>Екипът на BoomCard</p>`,
+          bodyEn: `<h2>Welcome aboard, partner!</h2>
+<p>Thank you for joining the BoomCard partner network. Your application has been received and is currently under review.</p>
+<p>Here's what happens next:</p>
+<ul>
+  <li>Our team will review your application within 1–2 business days</li>
+  <li>You'll receive an email confirmation once your account is approved</li>
+  <li>After approval, BoomCard customers will be able to earn cashback at your location</li>
+</ul>
+<p>If you have any questions, contact us at <a href="mailto:office@boomcard.bg">office@boomcard.bg</a>.</p>
+<p>The BoomCard Team</p>`,
         }),
         syncTpl('Partner Approved', {
           type: 'EMAIL',
           subject: 'Поздравления — вашият партньорски акаунт в BoomCard е активен!',
+          subjectEn: 'Congratulations — your BoomCard partner account is now active!',
           body: `<h2>Вие сте активни в BoomCard!</h2>
 <p>Страхотна новина — вашият партньорски акаунт е одобрен. Клиентите на BoomCard вече могат да натрупват кешбек при вас.</p>
 <p><strong>Какво означава това за вас:</strong></p>
@@ -949,6 +976,17 @@ router.post('/automations/ensure-defaults', ...WRITE, async (req, res, next) => 
 <p>Влезте в партньорския портал, за да попълните профила си и да привлечете повече клиенти.</p>
 <p>Добре дошли в мрежата!</p>
 <p>Екипът на BoomCard</p>`,
+          bodyEn: `<h2>You're live on BoomCard!</h2>
+<p>Great news — your partner account has been approved. BoomCard customers can now earn cashback at your location.</p>
+<p><strong>What this means for you:</strong></p>
+<ul>
+  <li>Your business is now visible to all BoomCard users in the area</li>
+  <li>Customers will earn cashback on every purchase they make with you</li>
+  <li>You can track visits and cashback activity in the BoomCard partner portal</li>
+</ul>
+<p>Log in to the partner portal to complete your profile and attract more customers.</p>
+<p>Welcome to the network!</p>
+<p>The BoomCard Team</p>`,
         }),
       ]);
 

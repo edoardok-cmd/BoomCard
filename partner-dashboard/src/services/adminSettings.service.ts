@@ -32,17 +32,6 @@ export interface FraudRuleOverride {
   createdAt: string;
 }
 
-export interface CashbackRate {
-  id: string;
-  discountStep: number;
-  basic: number;
-  premium: number;
-  effectiveFrom: string;
-  createdBy: string | null;
-  notes: string | null;
-  createdAt: string;
-}
-
 export type SubscriptionPlan = 'BASIC' | 'LIGHT' | 'PREMIUM';
 
 export interface PayoutThresholdEntry {
@@ -77,22 +66,17 @@ export interface MobileAppSettings {
   'mobile_app.error_log_url': string | null;
 }
 
+export interface MobileErrorLogEntry {
+  id: string;
+  platform: string;
+  appVersion: string | null;
+  errorType: string;
+  message: string;
+  stack: string | null;
+  createdAt: string;
+}
+
 export const adminSettingsService = {
-  getCashbackRates(): Promise<{ data: (CashbackRate | null)[] }> {
-    return apiService.get('/admin/settings/cashback-rates');
-  },
-
-  getCashbackRateHistory(): Promise<{ data: CashbackRate[] }> {
-    return apiService.get('/admin/settings/cashback-rates/history');
-  },
-
-  saveCashbackRates(
-    rates: Array<{ discountStep: number; basic: number; premium: number }>,
-    notes?: string
-  ): Promise<void> {
-    return apiService.post('/admin/settings/cashback-rates', { rates, notes });
-  },
-
   getSystemSettings(): Promise<{ data: SystemSettings }> {
     return apiService.get('/admin/settings/system');
   },
@@ -107,6 +91,14 @@ export const adminSettingsService = {
 
   saveMobileAppSettings(settings: Partial<Record<keyof MobileAppSettings, string>>): Promise<void> {
     return apiService.put('/admin/settings/mobile-app', { settings });
+  },
+
+  getMobileErrorLogs(): Promise<{ success: boolean; data: MobileErrorLogEntry[] }> {
+    return apiService.get('/admin/settings/mobile-errors');
+  },
+
+  clearMobileErrorLogs(): Promise<{ success: boolean; message: string }> {
+    return apiService.delete('/admin/settings/mobile-errors');
   },
 
   // ── Payout Thresholds ────────────────────────────────────────────────────────

@@ -4,9 +4,10 @@
  * GET  /api/admin/cashback/summary                   — monthly per-partner cashback totals
  * GET  /api/admin/cashback/stats                     — dashboard stat cards
  * GET  /api/admin/cashback/subscriber/:userId        — per-entry cashback for a subscriber (spec §4.4)
- * GET  /api/admin/cashback/rates                     — full cashback rate history
- * GET  /api/admin/cashback/rates/current             — currently effective rate per step
- * POST /api/admin/cashback/rates                     — create new versioned rate set
+ * GET    /api/admin/cashback/rates                          — full cashback rate history
+ * GET    /api/admin/cashback/rates/current                  — currently effective rate per step
+ * POST   /api/admin/cashback/rates                          — create new versioned rate set
+ * DELETE /api/admin/cashback/rates/snapshot/:iso            — cancel a future-scheduled snapshot
  * POST /api/admin/cashback/:partnerId/:month/mark-paid — mark a partner month as paid
  * POST /api/admin/cashback/:partnerId/remind         — send email reminder to partner
  * GET  /api/admin/cashback/:partnerId/:month/receipts — receipts for reconciliation
@@ -190,6 +191,42 @@ router.post('/rates', requirePermission('cashback.write'), async (req: AuthReque
       error.message.includes('must be between')
     );
     res.status(isValidationError ? 400 : 500).json({ success: false, error: error.message || 'Failed to create cashback rates' });
+  }
+});
+
+// ------------------------------------------------------------------
+// DELETE /api/admin/cashback/rates/snapshot/:iso
+// Cancels a future-scheduled rate snapshot by its effectiveFrom timestamp.
+// Returns 409 if the snapshot is already past/current (active rates cannot be deleted).
+// ------------------------------------------------------------------
+router.delete('/rates/snapshot/:iso', requirePermission('cashback.write'), async (req: AuthRequest, res: Response) => {
+  try {
+    const targetDate = new Date(decodeURIComponent(req.params.iso));
+    if (isNaN(targetDate.getTime())) {
+      return res.status(400).json({ success: false, error: 'Invalid ISO date in path' });
+    }
+
+    const now = new Date();
+    if (targetDate <= now) {
+      return res.status(409).json({
+        success: false,
+        error: 'Cannot delete a past or currently active snapshot — only future-scheduled snapshots may be cancelled',
+      });
+    }
+
+    const { count } = await prisma.cashbackRate.deleteMany({
+      where: { effectiveFrom: targetDate },
+    });
+
+    if (count === 0) {
+      return res.status(404).json({ success: false, error: 'No snapshot found for this date' });
+    }
+
+    logger.info(`Admin ${req.user!.id} cancelled future snapshot ${targetDate.toISOString()} (${count} rows deleted)`);
+    res.json({ success: true, message: `Cancelled future snapshot — ${count} rate rows removed` });
+  } catch (error: any) {
+    logger.error('Failed to delete snapshot:', error);
+    res.status(500).json({ success: false, error: error.message || 'Failed to delete snapshot' });
   }
 });
 

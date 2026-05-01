@@ -9,6 +9,9 @@ const palette = {
   text: '#141413', textMuted: '#605a50', textSubtle: '#8c8678',
   accent: '#c96442', accentSoft: '#f3e8de',
   info: '#2563eb', infoSoft: '#dbeafe',
+  danger: '#dc2626', dangerSoft: '#fee2e2',
+  warning: '#b45309', warningSoft: '#fef3c7',
+  success: '#4a7c59',
 };
 
 const PageShell = styled.div`background: ${palette.bg}; min-height: calc(100vh - 4rem); padding: 2rem 2.5rem;`;
@@ -58,6 +61,75 @@ const SaveBtn = styled.button`
   &:disabled { opacity: 0.5; cursor: default; }
 `;
 
+const TextArea = styled.textarea`
+  width: 100%;
+  padding: 0.5rem 0.875rem;
+  border: 1px solid ${palette.border};
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  background: ${palette.bg};
+  color: ${palette.text};
+  box-sizing: border-box;
+  outline: none;
+  resize: vertical;
+  min-height: 5rem;
+  font-family: inherit;
+  &:focus { border-color: ${palette.accent}; box-shadow: 0 0 0 2px ${palette.accentSoft}; }
+  &::placeholder { color: ${palette.textSubtle}; }
+`;
+
+const ToggleRow = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.625rem 0;
+`;
+const ToggleLabel = styled.div``;
+const ToggleName = styled.span`font-size: 0.875rem; font-weight: 600; color: ${palette.text}; display: block;`;
+const ToggleDesc = styled.span`font-size: 0.75rem; color: ${palette.textSubtle};`;
+
+const ToggleSwitch = styled.label`
+  position: relative;
+  display: inline-block;
+  width: 2.5rem;
+  height: 1.375rem;
+  flex-shrink: 0;
+`;
+const ToggleInput = styled.input.attrs({ type: 'checkbox' })`
+  opacity: 0; width: 0; height: 0;
+  &:checked + span { background: ${palette.warning}; }
+  &:checked + span::before { transform: translateX(1.125rem); }
+`;
+const ToggleSlider = styled.span`
+  position: absolute;
+  cursor: pointer;
+  inset: 0;
+  background: ${palette.border};
+  border-radius: 999px;
+  transition: background 0.2s;
+  &::before {
+    content: '';
+    position: absolute;
+    height: 1rem; width: 1rem;
+    left: 0.1875rem; bottom: 0.1875rem;
+    background: white;
+    border-radius: 50%;
+    transition: transform 0.2s;
+  }
+`;
+
+const MaintenanceBanner = styled.div<{ $visible: boolean }>`
+  display: ${({ $visible }) => ($visible ? 'block' : 'none')};
+  padding: 0.875rem 1.25rem;
+  background: ${palette.warningSoft};
+  color: ${palette.warning};
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  margin-bottom: 1.5rem;
+  max-width: 100%;
+`;
+
 const SelectInput = styled.select`
   padding: 0.5rem 0.875rem;
   border: 1px solid ${palette.border};
@@ -101,9 +173,13 @@ export default function AdminSettingsSystemPage() {
   const [supportEmail, setSupportEmail] = useState('');
   const [supportPhone, setSupportPhone] = useState('');
   const [replyToEmail, setReplyToEmail] = useState('');
+  const [fromEmail, setFromEmail] = useState('');
+  const [senderName, setSenderName] = useState('');
   const [language, setLanguage] = useState('bg');
   const [currency, setCurrency] = useState('BGN');
   const [timezone, setTimezone] = useState('Europe/Sofia');
+  const [maintenanceMode, setMaintenanceMode] = useState(false);
+  const [maintenanceMessage, setMaintenanceMessage] = useState('');
 
   const { data, isLoading } = useQuery({
     queryKey: ['admin-system-settings'],
@@ -119,9 +195,13 @@ export default function AdminSettingsSystemPage() {
     if (data.data.support_email)          setSupportEmail(data.data.support_email);
     if (data.data.support_phone)          setSupportPhone(data.data.support_phone);
     if (data.data.reply_to_email)         setReplyToEmail(data.data.reply_to_email);
+    if (data.data.from_email)             setFromEmail(data.data.from_email);
+    if (data.data.sender_name)            setSenderName(data.data.sender_name);
     if (data.data.language)               setLanguage(data.data.language);
     if (data.data.currency)               setCurrency(data.data.currency);
     if (data.data.timezone)               setTimezone(data.data.timezone);
+    setMaintenanceMode(data.data.maintenance_mode === 'true');
+    setMaintenanceMessage(data.data.maintenance_message ?? '');
   }, [data]);
 
   const saveMutation = useMutation({
@@ -132,9 +212,13 @@ export default function AdminSettingsSystemPage() {
         support_email: supportEmail,
         support_phone: supportPhone,
         reply_to_email: replyToEmail,
+        from_email: fromEmail,
+        sender_name: senderName,
         language,
         currency,
         timezone,
+        maintenance_mode: String(maintenanceMode),
+        maintenance_message: maintenanceMessage,
       };
       if (dailyLimit) settings.daily_scan_limit_default = dailyLimit;
       if (maxCashback) settings.max_cashback_per_month = maxCashback;
@@ -144,8 +228,41 @@ export default function AdminSettingsSystemPage() {
       toast.success('Системните настройки са запазени');
       queryClient.invalidateQueries({ queryKey: ['admin-system-settings'] });
     },
-    onError: () => toast.error('Грешка при запазване'),
+    onError: (err: unknown) => {
+      const msg =
+        (err as { response?: { data?: { error?: string } } })?.response?.data?.error
+        ?? 'Грешка при запазване';
+      toast.error(msg);
+    },
   });
+
+  const handleSave = () => {
+    const fraud = parseInt(maxFraud, 10);
+    if (!Number.isFinite(fraud) || !Number.isInteger(fraud) || fraud < 0 || fraud > 100) {
+      toast.error('Макс. оценка за измама трябва да е цяло число между 0 и 100');
+      return;
+    }
+    const approve = parseFloat(autoApprove);
+    if (!Number.isFinite(approve) || approve < 0 || approve > 100000) {
+      toast.error('Прагът за автоматично одобрение трябва да е число между 0 и 100 000');
+      return;
+    }
+    if (dailyLimit) {
+      const dl = parseInt(dailyLimit, 10);
+      if (!Number.isFinite(dl) || dl < 1) {
+        toast.error('Дневният лимит за сканиране трябва да е цяло число ≥ 1');
+        return;
+      }
+    }
+    if (maxCashback) {
+      const mc = parseFloat(maxCashback);
+      if (!Number.isFinite(mc) || mc < 0) {
+        toast.error('Макс. кешбек на месец трябва да е число ≥ 0');
+        return;
+      }
+    }
+    saveMutation.mutate();
+  };
 
   return (
     <PageShell>
@@ -157,9 +274,16 @@ export default function AdminSettingsSystemPage() {
         </PageSubtitle>
       </PageHeader>
 
+      <MaintenanceBanner $visible={maintenanceMode}>
+        Системата е в режим на поддръжка — потребителите виждат съобщение за поддръжка и не могат да използват приложението.
+      </MaintenanceBanner>
+
       <Grid>
         <Card>
           <CardTitle>Лимити за измами и сканиране</CardTitle>
+          <p style={{ fontSize: '0.8rem', color: palette.textSubtle, margin: '0 0 1.25rem', lineHeight: 1.5 }}>
+            Глобални стойности по подразбиране. За правила на ниво партньор или потребител вижте <strong>Контрол → Лимити и правила</strong>.
+          </p>
           {isLoading ? (
             <p style={{ color: palette.textSubtle, fontSize: '0.875rem' }}>Зареждане…</p>
           ) : (
@@ -167,7 +291,7 @@ export default function AdminSettingsSystemPage() {
               <div>
                 <FieldLabel>Макс. оценка за измама (0–100)</FieldLabel>
                 <NumberInput
-                  type="number" min="0" max="100"
+                  type="number" min="0" max="100" step="1"
                   value={maxFraud}
                   onChange={(e) => setMaxFraud(e.target.value)}
                 />
@@ -176,7 +300,7 @@ export default function AdminSettingsSystemPage() {
               <div>
                 <FieldLabel>Праг за автоматично одобрение (лв.)</FieldLabel>
                 <NumberInput
-                  type="number" min="0"
+                  type="number" min="0" max="100000" step="0.01"
                   value={autoApprove}
                   onChange={(e) => setAutoApprove(e.target.value)}
                 />
@@ -244,6 +368,30 @@ export default function AdminSettingsSystemPage() {
                   Използва се като Reply-To заглавка на всички системни имейли. Оставете празно за email за поддръжка.
                 </FieldHint>
               </div>
+              <div>
+                <FieldLabel>Изпращащ имейл (From)</FieldLabel>
+                <TextInput
+                  type="email"
+                  placeholder="noreply@boomcard.bg"
+                  value={fromEmail}
+                  onChange={(e) => setFromEmail(e.target.value)}
+                />
+                <FieldHint>
+                  Адресът в полето „От:" на всички системни имейли. Оставете празно за стойността от конфигурацията на сървъра.
+                </FieldHint>
+              </div>
+              <div>
+                <FieldLabel>Изпращащо име (From Name)</FieldLabel>
+                <TextInput
+                  type="text"
+                  placeholder="BoomCard"
+                  value={senderName}
+                  onChange={(e) => setSenderName(e.target.value)}
+                />
+                <FieldHint>
+                  Показваното име до имейл адреса, напр. „BoomCard &lt;noreply@boomcard.bg&gt;".
+                </FieldHint>
+              </div>
             </FieldGroup>
           )}
         </Card>
@@ -288,10 +436,47 @@ export default function AdminSettingsSystemPage() {
             </FieldGroup>
           )}
         </Card>
+        <Card style={{ borderColor: maintenanceMode ? palette.warning : palette.border }}>
+          <CardTitle style={{ color: maintenanceMode ? palette.warning : palette.text }}>
+            Режим на поддръжка
+          </CardTitle>
+          {isLoading ? (
+            <p style={{ color: palette.textSubtle, fontSize: '0.875rem' }}>Зареждане…</p>
+          ) : (
+            <FieldGroup>
+              <div>
+                <ToggleRow>
+                  <ToggleLabel>
+                    <ToggleName style={{ color: maintenanceMode ? palette.warning : palette.text }}>
+                      {maintenanceMode ? 'Активиран — потребителите виждат екран за поддръжка' : 'Деактивиран — системата работи нормално'}
+                    </ToggleName>
+                    <ToggleDesc>Спира достъпа до мобилното приложение и показва съобщение за поддръжка.</ToggleDesc>
+                  </ToggleLabel>
+                  <ToggleSwitch>
+                    <ToggleInput
+                      checked={maintenanceMode}
+                      onChange={(e) => setMaintenanceMode(e.target.checked)}
+                    />
+                    <ToggleSlider />
+                  </ToggleSwitch>
+                </ToggleRow>
+              </div>
+              <div>
+                <FieldLabel>Съобщение за поддръжка</FieldLabel>
+                <TextArea
+                  placeholder="напр. Системата се обновява. Очаквайте ни отново до 30 минути."
+                  value={maintenanceMessage}
+                  onChange={(e) => setMaintenanceMessage(e.target.value)}
+                />
+                <FieldHint>Показва се на потребителите, докато режимът на поддръжка е активен. Оставете празно за съобщение по подразбиране.</FieldHint>
+              </div>
+            </FieldGroup>
+          )}
+        </Card>
       </Grid>
 
       <div style={{ marginTop: '1.5rem' }}>
-        <SaveBtn onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending || isLoading}>
+        <SaveBtn onClick={handleSave} disabled={saveMutation.isPending || isLoading}>
           {saveMutation.isPending ? 'Запазване…' : 'Запази всички'}
         </SaveBtn>
       </div>

@@ -1,16 +1,24 @@
 /**
  * Admin Settings Routes
  *
- * GET  /api/admin/settings/cashback-rates             — current effective rate matrix
- * POST /api/admin/settings/cashback-rates             — save new rate set (versioned)
- * GET  /api/admin/settings/cashback-rates/history     — recent rate history
- * GET  /api/admin/settings/payout-thresholds          — current payout threshold per plan
- * PUT  /api/admin/settings/payout-thresholds          — update thresholds (versioned)
- * GET  /api/admin/settings/payout-thresholds/history  — recent threshold history
- * GET  /api/admin/settings/system                     — all key/value system settings
- * PUT  /api/admin/settings/system                     — upsert one or many settings
- * GET  /api/admin/settings/mobile-app                 — G7: structured mobile app settings
- * PUT  /api/admin/settings/mobile-app                 — G7: update mobile app settings
+ * GET    /api/admin/settings/cashback-rates                          — current effective rate matrix
+ * POST   /api/admin/settings/cashback-rates                          — save new rate set (versioned)
+ * GET    /api/admin/settings/payout-thresholds                       — current payout threshold per plan
+ * PUT    /api/admin/settings/payout-thresholds                       — update thresholds (versioned)
+ * GET    /api/admin/settings/payout-thresholds/history               — recent threshold history
+ * GET    /api/admin/settings/system                                  — all key/value system settings
+ * PUT    /api/admin/settings/system                                  — upsert one or many settings
+ * GET    /api/admin/settings/mobile-app                              — structured mobile app settings
+ * PUT    /api/admin/settings/mobile-app                              — update mobile app settings
+ * GET    /api/admin/settings/mobile-errors                           — last 50 mobile error log entries
+ * DELETE /api/admin/settings/mobile-errors                           — clear all mobile error log entries
+ * GET    /api/admin/settings/fraud-rules                             — list fraud rules (filterable)
+ * POST   /api/admin/settings/fraud-rules                             — create fraud rule
+ * PATCH  /api/admin/settings/fraud-rules/:id                         — update fraud rule
+ * DELETE /api/admin/settings/fraud-rules/:id                         — soft-deactivate fraud rule
+ * GET    /api/admin/settings/fraud-rules/:id/overrides               — list overrides for a rule
+ * POST   /api/admin/settings/fraud-rules/:id/overrides               — add override to a rule
+ * DELETE /api/admin/settings/fraud-rules/:id/overrides/:overId       — remove an override
  */
 
 import { Router, Response } from 'express';
@@ -22,6 +30,7 @@ import {
   EUR_TO_BGN_RATE,
 } from '../constants/receipt.constants';
 import { invalidatePayoutThresholdCache } from '../utils/payoutThreshold';
+import { invalidateSystemSettingCache } from '../utils/systemSettings';
 import { authenticate, authorize, requirePermission, AuthRequest } from '../middleware/auth.middleware';
 import { auditMiddleware } from '../middleware/audit.middleware';
 import { asyncHandler } from '../middleware/error.middleware';
@@ -61,12 +70,14 @@ router.get(
   '/cashback-rates',
   requirePermission('settings.read'),
   asyncHandler(async (_req: AuthRequest, res: Response) => {
+    const now = new Date();
     const allRates = await prisma.cashbackRate.findMany({
+      where: { effectiveFrom: { lte: now } },
       orderBy: { effectiveFrom: 'desc' },
       take: 50,
     });
 
-    // Latest rate per discount step
+    // Latest effective rate per discount step (past/present only — excludes future-scheduled rows)
     const byStep = new Map<number, (typeof allRates)[0]>();
     for (const r of allRates) {
       if (!byStep.has(r.discountStep)) byStep.set(r.discountStep, r);
@@ -82,29 +93,6 @@ router.get(
     });
 
     res.json({ success: true, data: current });
-  })
-);
-
-/**
- * GET /api/admin/settings/cashback-rates/history
- * Last 20 saved rate snapshots across all steps, with author names resolved.
- */
-router.get(
-  '/cashback-rates/history',
-  requirePermission('settings.read'),
-  asyncHandler(async (_req: AuthRequest, res: Response) => {
-    const history = await prisma.cashbackRate.findMany({
-      orderBy: { createdAt: 'desc' },
-      take: 20,
-    });
-
-    const adminMap = await resolveAdminNames(history.map((r) => r.createdBy));
-    const data = history.map((r) => {
-      const admin = r.createdBy ? adminMap.get(r.createdBy) : undefined;
-      return { ...r, createdByName: admin?.name ?? null, createdByEmail: admin?.email ?? null };
-    });
-
-    res.json({ success: true, data });
   })
 );
 
@@ -308,8 +296,6 @@ router.put(
 const ALLOWED_KEYS = new Set([
   'cashback_expiry_days',
   'offer_validity_days',
-  'min_ios_version',
-  'min_android_version',
   'maintenance_mode',
   'maintenance_message',
   'max_fraud_score',
@@ -320,6 +306,8 @@ const ALLOWED_KEYS = new Set([
   'support_phone',
   // spec §9: системни имейли, език, валута, timezone, reply-to настройки
   'reply_to_email',
+  'from_email',
+  'sender_name',
   'language',
   'currency',
   'timezone',
@@ -363,17 +351,37 @@ router.put(
     }
 
     const INTEGER_RANGE_KEYS: Record<string, { min: number; max: number }> = {
-      cashback_expiry_days: { min: 1, max: 3650 },
-      offer_validity_days: { min: 1, max: 3650 },
+      cashback_expiry_days:    { min: 1,   max: 3650 },
+      offer_validity_days:     { min: 1,   max: 3650 },
+      max_fraud_score:         { min: 0,   max: 100  },
+      auto_approve_threshold:  { min: 0,   max: 100000 },
+      daily_scan_limit_default:{ min: 1,   max: 10000 },
+      max_cashback_per_month:  { min: 0,   max: 100000 },
     };
+    // These keys must be whole numbers (counts, days, or integer scores).
+    const INTEGER_ONLY_KEYS = new Set([
+      'cashback_expiry_days',
+      'offer_validity_days',
+      'daily_scan_limit_default',
+      'max_fraud_score',
+    ]);
     for (const [key, value] of entries) {
+      if (key === 'maintenance_mode' && value !== 'true' && value !== 'false') {
+        return res.status(400).json({ success: false, error: 'maintenance_mode must be "true" or "false"' });
+      }
       const range = INTEGER_RANGE_KEYS[key];
       if (range) {
-        const parsed = parseInt(value, 10);
+        const parsed = parseFloat(value);
         if (!Number.isFinite(parsed) || parsed < range.min || parsed > range.max) {
           return res.status(400).json({
             success: false,
-            error: `${key} must be an integer between ${range.min} and ${range.max}`,
+            error: `${key} must be a number between ${range.min} and ${range.max}`,
+          });
+        }
+        if (INTEGER_ONLY_KEYS.has(key) && !Number.isInteger(parsed)) {
+          return res.status(400).json({
+            success: false,
+            error: `${key} must be a whole number`,
           });
         }
       }
@@ -388,6 +396,8 @@ router.put(
         })
       )
     );
+
+    for (const [key] of entries) invalidateSystemSettingCache(key);
 
     res.json({ success: true, message: 'Settings saved' });
   })
@@ -437,6 +447,17 @@ router.get(
  * Body: { settings: Record<string, string> }
  * Only keys in MOBILE_APP_KEYS are accepted.
  */
+const SEMVER_RE = /^\d+\.\d+(\.\d+)?$/;
+const VERSION_MOBILE_KEYS = new Set(['mobile_app.min_ios_version', 'mobile_app.min_android_version']);
+const PLATFORM_STATUS_VALUES = new Set(['active', 'maintenance', 'deprecated']);
+const PLATFORM_STATUS_KEYS = new Set(['mobile_app.ios_status', 'mobile_app.android_status']);
+const BOOL_MOBILE_KEYS = new Set([
+  'mobile_app.feature_receipt_scan',
+  'mobile_app.feature_sticker_scan',
+  'mobile_app.feature_partner_map',
+  'mobile_app.push_notifications_enabled',
+]);
+
 router.put(
   '/mobile-app',
   requirePermission('settings.write'),
@@ -450,11 +471,29 @@ router.put(
     if (entries.length === 0) {
       return res.status(400).json({ success: false, error: 'settings object must contain at least one key' });
     }
-    for (const [key] of entries) {
+    for (const [key, value] of entries) {
       if (!MOBILE_APP_KEYS.includes(key as MobileAppKey)) {
         return res.status(400).json({
           success: false,
           error: `Unknown mobile-app setting key: "${key}". Allowed: ${MOBILE_APP_KEYS.join(', ')}`,
+        });
+      }
+      if (VERSION_MOBILE_KEYS.has(key) && value !== '' && !SEMVER_RE.test(value)) {
+        return res.status(400).json({
+          success: false,
+          error: `${key} must be a version string like "2.1.0" or empty (no minimum)`,
+        });
+      }
+      if (PLATFORM_STATUS_KEYS.has(key) && !PLATFORM_STATUS_VALUES.has(value)) {
+        return res.status(400).json({
+          success: false,
+          error: `${key} must be one of: ${[...PLATFORM_STATUS_VALUES].join(', ')}`,
+        });
+      }
+      if (BOOL_MOBILE_KEYS.has(key) && value !== 'true' && value !== 'false') {
+        return res.status(400).json({
+          success: false,
+          error: `${key} must be "true" or "false"`,
         });
       }
     }
@@ -469,7 +508,50 @@ router.put(
       )
     );
 
+    for (const [key] of entries) invalidateSystemSettingCache(key);
+
     res.json({ success: true, message: 'Mobile app settings saved' });
+  })
+);
+
+/* ─── Mobile Error Logs (spec §9 "основни грешки") ─────────────────────── */
+
+/**
+ * GET /api/admin/settings/mobile-errors
+ * Returns the 50 most recent mobile error log entries for admin review.
+ */
+router.get(
+  '/mobile-errors',
+  requirePermission('settings.read'),
+  asyncHandler(async (_req: AuthRequest, res: Response) => {
+    const errors = await prisma.mobileErrorLog.findMany({
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+      select: {
+        id: true,
+        platform: true,
+        appVersion: true,
+        errorType: true,
+        message: true,
+        stack: true,
+        createdAt: true,
+      },
+    });
+
+    res.json({ success: true, data: errors });
+  })
+);
+
+/**
+ * DELETE /api/admin/settings/mobile-errors
+ * Clears all mobile error log entries (truncate).
+ */
+router.delete(
+  '/mobile-errors',
+  requirePermission('settings.write'),
+  asyncHandler(async (_req: AuthRequest, res: Response) => {
+    const { count } = await prisma.mobileErrorLog.deleteMany({});
+    res.json({ success: true, message: `Cleared ${count} error log entries` });
   })
 );
 
