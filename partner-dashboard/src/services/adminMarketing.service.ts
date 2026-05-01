@@ -9,6 +9,7 @@ export interface MarketingTemplate {
   id: string;
   name: string;
   type: MarketingChannel;
+  category: string | null;
   subject: string | null;
   usageCount: number;
   lastUsed: string | null;
@@ -26,12 +27,14 @@ export interface MarketingCampaign {
   type: MarketingChannel;
   status: CampaignStatus;
   audience: number;
+  scheduledAt: string | null;
   sentAt: string | null;
   openRate: number | null;
   clickRate: number | null;
   templateId: string | null;
   listId: string | null;
-  list: { id: string; name: string } | null;
+  template: { id: string; name: string } | null;
+  list: { id: string; name: string; size: number } | null;
   createdAt: string;
 }
 
@@ -68,11 +71,12 @@ export const adminMarketingService = {
   // ─── Templates ──────────────────────────────────────────────────────────────
 
   listTemplates(params: {
-    page?: number; limit?: number; search?: string; type?: MarketingChannel | '';
+    page?: number; limit?: number; search?: string; type?: MarketingChannel | ''; category?: string;
   }): Promise<PagedResult<MarketingTemplate>> {
     const clean: Record<string, unknown> = { page: params.page, limit: params.limit };
-    if (params.search) clean.search = params.search;
-    if (params.type) clean.type = params.type;
+    if (params.search)   clean.search   = params.search;
+    if (params.type)     clean.type     = params.type;
+    if (params.category) clean.category = params.category;
     return apiService.get('/admin/marketing/templates', clean);
   },
 
@@ -81,13 +85,13 @@ export const adminMarketingService = {
   },
 
   createTemplate(data: {
-    name: string; type: MarketingChannel; subject?: string; body?: string;
+    name: string; type: MarketingChannel; category?: string; subject?: string; body?: string;
   }): Promise<MarketingTemplateDetail> {
     return apiService.post('/admin/marketing/templates', data);
   },
 
   updateTemplate(id: string, data: {
-    name: string; type: MarketingChannel; subject?: string; body?: string;
+    name: string; type: MarketingChannel; category?: string; subject?: string; body?: string;
   }): Promise<MarketingTemplateDetail> {
     return apiService.put(`/admin/marketing/templates/${id}`, data);
   },
@@ -99,24 +103,36 @@ export const adminMarketingService = {
   // ─── Campaigns ──────────────────────────────────────────────────────────────
 
   listCampaigns(params: {
-    page?: number; limit?: number; search?: string; status?: CampaignStatus | '';
+    page?: number; limit?: number; search?: string;
+    status?: CampaignStatus | ''; type?: MarketingChannel | '';
+    dateFrom?: string; dateTo?: string;
+    sortBy?: string; sortDir?: 'asc' | 'desc';
   }): Promise<PagedResult<MarketingCampaign>> {
     const clean: Record<string, unknown> = { page: params.page, limit: params.limit };
-    if (params.search) clean.search = params.search;
-    if (params.status) clean.status = params.status;
+    if (params.search)   clean.search   = params.search;
+    if (params.status)   clean.status   = params.status;
+    if (params.type)     clean.type     = params.type;
+    if (params.dateFrom) clean.dateFrom = params.dateFrom;
+    if (params.dateTo)   clean.dateTo   = params.dateTo;
+    if (params.sortBy)   clean.sortBy   = params.sortBy;
+    if (params.sortDir)  clean.sortDir  = params.sortDir;
     return apiService.get('/admin/marketing/campaigns', clean);
+  },
+
+  getCampaign(id: string): Promise<MarketingCampaign> {
+    return apiService.get(`/admin/marketing/campaigns/${id}`);
   },
 
   createCampaign(data: {
     name: string; type: MarketingChannel; status?: CampaignStatus;
-    audience?: number; templateId?: string; listId?: string;
+    scheduledAt?: string; templateId?: string; listId?: string;
   }): Promise<MarketingCampaign> {
     return apiService.post('/admin/marketing/campaigns', data);
   },
 
   updateCampaign(id: string, data: {
     name: string; type: MarketingChannel; status: CampaignStatus;
-    audience?: number; templateId?: string; listId?: string;
+    scheduledAt?: string; templateId?: string; listId?: string;
   }): Promise<MarketingCampaign> {
     return apiService.put(`/admin/marketing/campaigns/${id}`, data);
   },
@@ -136,7 +152,7 @@ export const adminMarketingService = {
   }): Promise<PagedResult<MarketingList>> {
     const clean: Record<string, unknown> = { page: params.page, limit: params.limit };
     if (params.search) clean.search = params.search;
-    if (params.type) clean.type = params.type;
+    if (params.type)   clean.type   = params.type;
     return apiService.get('/admin/marketing/lists', clean);
   },
 
@@ -176,6 +192,10 @@ export const adminMarketingService = {
     name: string; trigger: string; status: AutomationStatus; templateId?: string;
   }): Promise<MarketingAutomation> {
     return apiService.put(`/admin/marketing/automations/${id}`, data);
+  },
+
+  patchAutomationStatus(id: string, status: AutomationStatus): Promise<MarketingAutomation> {
+    return apiService.patch(`/admin/marketing/automations/${id}/status`, { status });
   },
 
   deleteAutomation(id: string): Promise<void> {

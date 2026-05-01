@@ -139,7 +139,7 @@ const AdminPayoutsPage = lazy(() => import('./pages/admin/AdminPayoutsPage'));
 const AdminTransactionsPage = lazy(() => import('./pages/admin/AdminTransactionsPage'));
 const AdminSubscriptionsPage = lazy(() => import('./pages/admin/AdminSubscriptionsPage'));
 const AdminPartnersPage = lazy(() => import('./pages/AdminPartnersPage'));
-const AdminScanReviewPage = lazy(() => import('./pages/AdminScanReviewPage'));
+// AdminScanReviewPage retired — /admin/control/risk now uses AdminControlSecurityPage (spec §7.1)
 const AdminCashbackPage = lazy(() => import('./pages/admin/AdminCashbackPage'));
 const AdminCashbackRatesPage = lazy(() => import('./pages/AdminCashbackRatesPage'));
 const AdminPartnerOnboardingPage = lazy(() => import('./pages/AdminPartnerOnboardingPage'));
@@ -158,6 +158,7 @@ const AdminFinanceInvoicesPage = lazy(() => import('./pages/admin/AdminFinanceIn
 const AdminFinancePeriodsPage = lazy(() => import('./pages/admin/AdminFinancePeriodsPage'));
 const AdminFinanceReportsPage = lazy(() => import('./pages/admin/AdminFinanceReportsPage'));
 const AdminControlSecurityPage = lazy(() => import('./pages/admin/AdminControlSecurityPage'));
+const AdminControlAuditLogPage = lazy(() => import('./pages/admin/AdminControlAuditLogPage'));
 const AdminControlDisputesPage = lazy(() => import('./pages/admin/AdminControlDisputesPage'));
 const AdminMarketingCampaignsPage = lazy(() => import('./pages/admin/AdminMarketingCampaignsPage'));
 const AdminMarketingTemplatesPage = lazy(() => import('./pages/admin/AdminMarketingTemplatesPage'));
@@ -528,8 +529,8 @@ function App() {
                       }
                     >
                       <Route index element={<Navigate to="risk" replace />} />
-                      <Route path="risk" element={<AdminScanReviewPage />} />
-                      <Route path="security" element={<AdminControlSecurityPage />} />
+                      <Route path="risk" element={<AdminControlSecurityPage />} />
+                      <Route path="security" element={<AdminControlAuditLogPage />} />
                       <Route path="disputes" element={<AdminControlDisputesPage />} />
                       <Route path="rules" element={<AdminVenueFraudConfigPage />} />
                     </Route>

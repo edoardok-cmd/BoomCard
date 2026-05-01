@@ -33,6 +33,13 @@ enum DisputeStatus {
   CLOSED
 }
 
+enum DisputeSubjectType {
+  RECEIPT
+  CASHBACK
+  PAYOUT
+  INVOICE
+}
+
 enum AdminRoleKey {
   SUPER_ADMIN
   ADMIN
@@ -152,6 +159,7 @@ model User {
   disputeCases        Dispute[]                  @relation("DisputeUser")
   assignedDisputes    Dispute[]                  @relation("DisputeAssignee")
   disputeNotes        DisputeNote[]              @relation("DisputeNoteAuthor")
+  marketingListMembers MarketingListMember[]
 
   @@unique([email, role], map: "User_email_role_key")
   @@index([email])
@@ -1093,18 +1101,20 @@ model VenueReceiptTemplate {
 // ============================================
 
 model Dispute {
-  id         String        @id @default(uuid())
-  receiptId  String
-  userId     String
-  assignedTo String?
-  status     DisputeStatus @default(OPEN)
-  decision   String?
-  resolvedAt DateTime?
-  closedAt   DateTime?
-  createdAt  DateTime      @default(now())
-  updatedAt  DateTime      @updatedAt
+  id          String             @id @default(uuid())
+  subjectType DisputeSubjectType @default(RECEIPT)
+  receiptId   String?            // populated when subjectType == RECEIPT
+  subjectId   String?            // populated when subjectType != RECEIPT (generic reference)
+  userId      String
+  assignedTo  String?
+  status      DisputeStatus      @default(OPEN)
+  decision    String?
+  resolvedAt  DateTime?
+  closedAt    DateTime?
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
 
-  receipt  Receipt       @relation(fields: [receiptId], references: [id])
+  receipt  Receipt?      @relation(fields: [receiptId], references: [id])
   user     User          @relation("DisputeUser", fields: [userId], references: [id])
   assignee User?         @relation("DisputeAssignee", fields: [assignedTo], references: [id])
   notes    DisputeNote[]
@@ -1112,6 +1122,7 @@ model Dispute {
   @@index([receiptId])
   @@index([userId])
   @@index([status])
+  @@index([subjectType])
 }
 
 model DisputeNote {
@@ -1892,6 +1903,8 @@ model MarketingTemplate {
   id          String                @id @default(uuid())
   name        String
   type        MarketingChannel
+  // Spec §8 named categories: registration, threshold, cashback, onboarding, partner_request, support
+  category    String?
   subject     String?
   body        String                @default("")
   usageCount  Int                   @default(0)
@@ -1925,8 +1938,9 @@ model MarketingCampaign {
   name       String
   type       MarketingChannel
   status     CampaignStatus     @default(DRAFT)
-  audience   Int                @default(0)
-  sentAt     DateTime?
+  audience    Int                @default(0)
+  scheduledAt DateTime?
+  sentAt      DateTime?
   openRate   Float?
   clickRate  Float?
   templateId String?
@@ -1942,17 +1956,23 @@ model MarketingCampaign {
   @@index([createdAt])
 }
 
+// memberType: "PARTNER" | "USER" — exactly one of partnerId/userId must be set
 model MarketingListMember {
-  id        String        @id @default(uuid())
-  listId    String
-  list      MarketingList @relation(fields: [listId], references: [id], onDelete: Cascade)
-  partnerId String
-  partner   Partner       @relation(fields: [partnerId], references: [id], onDelete: Cascade)
-  addedAt   DateTime      @default(now())
+  id         String        @id @default(uuid())
+  listId     String
+  list       MarketingList @relation(fields: [listId], references: [id], onDelete: Cascade)
+  memberType String        @default("PARTNER")
+  partnerId  String?
+  partner    Partner?      @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  userId     String?
+  user       User?         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  addedAt    DateTime      @default(now())
 
   @@unique([listId, partnerId])
+  @@unique([listId, userId])
   @@index([listId])
   @@index([partnerId])
+  @@index([userId])
 }
 
 model MarketingAutomation {

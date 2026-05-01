@@ -62,14 +62,20 @@ const HintText = styled.p`font-size: 0.75rem; color: ${palette.textSubtle}; marg
 const ConfirmText = styled.p`font-size: 0.9375rem; color: ${palette.text}; margin: 0 0 0.5rem;`;
 const ConfirmSub = styled.p`font-size: 0.8125rem; color: ${palette.textSubtle}; margin: 0;`;
 
+// Spec §8 required triggers first, then common extras
 const TRIGGER_SUGGESTIONS = [
+  // Spec §8 required: достигнат праг, изтичащ кешбек, нов партньор, одобрен партньор
+  'cashback.threshold_reached',
+  'cashback.expiring',
+  'partner.created',
+  'partner.approved',
+  // Additional useful triggers
   'user.signup',
   'user.inactive_30d',
   'user.inactive_90d',
   'card.issued',
   'card.first_use',
   'cashback.earned',
-  'cashback.milestone',
   'subscription.created',
   'subscription.renewed',
   'subscription.renew_due',
@@ -181,12 +187,7 @@ export default function AdminMarketingAutomationsPage() {
 
   const toggleStatus = async (row: MarketingAutomation) => {
     const next: AutomationStatus = row.status === 'ACTIVE' ? 'PAUSED' : 'ACTIVE';
-    await adminMarketingService.updateAutomation(row.id, {
-      name: row.name,
-      trigger: row.trigger,
-      status: next,
-      templateId: row.templateId ?? undefined,
-    });
+    await adminMarketingService.patchAutomationStatus(row.id, next);
     load();
   };
 

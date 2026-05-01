@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import styled from 'styled-components';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-hot-toast';
@@ -9,6 +9,7 @@ import {
   DisputeCaseDetail,
   DisputeNoteItem,
   DisputeStatus,
+  DisputeSubjectType,
 } from '../../services/adminControl.service';
 
 // ── Palette ──────────────────────────────────────────────────────────────────
@@ -47,11 +48,26 @@ const NEXT_LABEL: Partial<Record<DisputeStatus, string>> = {
 const ALL_FILTER = '' as DisputeStatus;
 
 const FILTER_OPTIONS: { value: DisputeStatus | ''; label: string }[] = [
-  { value: ALL_FILTER,   label: 'Всички' },
+  { value: ALL_FILTER,   label: 'Всички статуси' },
   { value: 'OPEN',       label: 'Отворен' },
   { value: 'IN_REVIEW',  label: 'В преглед' },
   { value: 'RESOLVED',   label: 'Решен' },
   { value: 'CLOSED',     label: 'Затворен' },
+];
+
+const SUBJECT_TYPE_LABELS: Record<DisputeSubjectType, string> = {
+  RECEIPT:  'Транзакция',
+  CASHBACK: 'Кешбек',
+  PAYOUT:   'Плащане',
+  INVOICE:  'Фактуриране',
+};
+
+const SUBJECT_TYPE_FILTER_OPTIONS: { value: DisputeSubjectType | ''; label: string }[] = [
+  { value: '',         label: 'Всички типове' },
+  { value: 'RECEIPT',  label: 'Транзакция' },
+  { value: 'CASHBACK', label: 'Кешбек' },
+  { value: 'PAYOUT',   label: 'Плащане' },
+  { value: 'INVOICE',  label: 'Фактуриране' },
 ];
 
 // ── Styled components ─────────────────────────────────────────────────────────
@@ -141,6 +157,8 @@ const DecisionArea = styled.textarea`
   outline:none;&:focus{border-color:${P.accent};}
 `;
 
+const FieldError = styled.p`font-size:.75rem;color:${P.danger};margin:.25rem 0 0;`;
+
 const NoteItem = styled.div`
   padding:.75rem .875rem;background:${P.bg};border-radius:.5rem;
   border:1px solid ${P.border};
@@ -167,6 +185,48 @@ const BtnRow = styled.div`display:flex;gap:.625rem;justify-content:flex-end;marg
 
 const Divider = styled.hr`border:none;border-top:1px solid ${P.border};margin:0;`;
 
+const AssigneeRow = styled.div`display:flex;gap:.5rem;align-items:center;margin-top:.625rem;`;
+const AssigneeSelect = styled.select`
+  flex:1;padding:.4rem .6rem;border:1px solid ${P.border};border-radius:.5rem;
+  font-size:.8125rem;background:${P.surface};color:${P.text};outline:none;
+  cursor:pointer;&:focus{border-color:${P.accent};}
+`;
+const SmallBtn = styled.button`
+  padding:.4rem .8rem;border:none;border-radius:.5rem;font-size:.8125rem;font-weight:700;
+  cursor:pointer;background:${P.accent};color:#fff;white-space:nowrap;
+  &:disabled{opacity:.5;cursor:not-allowed;}
+`;
+
+const ReceiptImg = styled.img`
+  width:100%;border-radius:.5rem;border:1px solid ${P.border};
+  display:block;object-fit:contain;max-height:22rem;background:#f5f4f0;
+`;
+
+// ── Modal ─────────────────────────────────────────────────────────────────────
+
+const ModalOverlay = styled.div`
+  position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1040;
+  display:flex;align-items:center;justify-content:center;padding:1rem;
+`;
+
+const ModalCard = styled.div`
+  background:${P.surface};border-radius:.875rem;padding:1.75rem;
+  width:100%;max-width:480px;box-shadow:0 16px 48px rgba(0,0,0,.18);
+`;
+
+const ModalTitle = styled.h2`font-size:1.125rem;font-weight:800;color:${P.text};margin:0 0 1.25rem;`;
+
+const FieldLabel = styled.label`
+  display:block;font-size:.8125rem;font-weight:600;color:${P.muted};margin-bottom:.375rem;
+`;
+
+const TextInput = styled.input`
+  width:100%;box-sizing:border-box;padding:.6rem .75rem;
+  border:1px solid ${P.border};border-radius:.5rem;font-size:.875rem;
+  background:${P.bg};color:${P.text};outline:none;
+  &:focus{border-color:${P.accent};}
+`;
+
 // ── Detail panel component ────────────────────────────────────────────────────
 
 function DisputeDetailPanel({
@@ -180,6 +240,16 @@ function DisputeDetailPanel({
   const [noteText, setNoteText] = useState('');
   const [decision, setDecision] = useState('');
   const [confirmAdvance, setConfirmAdvance] = useState<DisputeStatus | null>(null);
+  const [pendingAssignee, setPendingAssignee] = useState<string>('');
+  const [assigneeDirty, setAssigneeDirty] = useState(false);
+
+  // Escape key dismissal
+  const handleClose = useCallback(() => onClose(), [onClose]);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') handleClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [handleClose]);
 
   const { data, isLoading } = useQuery({
     queryKey: ['dispute-case', id],
@@ -187,19 +257,36 @@ function DisputeDetailPanel({
     enabled: !!id,
   });
 
+  const { data: adminsData } = useQuery({
+    queryKey: ['admin-users-list'],
+    queryFn: () => adminControlService.getAdminUsers(),
+    staleTime: 5 * 60 * 1000,
+  });
+
   const dc: DisputeCaseDetail | undefined = data?.data;
+  const adminUsers = adminsData?.admins ?? [];
+
+  // Sync assignee dropdown when case loads / changes
+  useEffect(() => {
+    if (dc) {
+      setPendingAssignee(dc.assignedTo ?? '');
+      setAssigneeDirty(false);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dc?.assignedTo]);
 
   const patchMutation = useMutation({
-    mutationFn: (patch: { status?: DisputeStatus; decision?: string | null }) =>
+    mutationFn: (patch: { status?: DisputeStatus; decision?: string | null; assignedTo?: string | null }) =>
       adminControlService.patchDisputeCase(id, patch),
     onSuccess: () => {
-      toast.success('Статусът е обновен');
+      toast.success('Случаят е обновен');
       qc.invalidateQueries({ queryKey: ['dispute-cases'] });
       qc.invalidateQueries({ queryKey: ['dispute-case', id] });
       setConfirmAdvance(null);
       setDecision('');
+      setAssigneeDirty(false);
     },
-    onError: () => toast.error('Грешка при обновяване на статус'),
+    onError: () => toast.error('Грешка при обновяване'),
   });
 
   const noteMutation = useMutation({
@@ -224,17 +311,22 @@ function DisputeDetailPanel({
   const fullName = (u: { firstName: string | null; lastName: string | null; email: string }) =>
     (u.firstName || u.lastName) ? `${u.firstName ?? ''} ${u.lastName ?? ''}`.trim() : u.email;
 
+  const nextStatus = dc ? NEXT_STATUS[dc.status] : undefined;
+
+  // Decision is required when advancing to RESOLVED; CLOSED reuses the already-saved decision.
+  const decisionMissing = confirmAdvance === 'RESOLVED' && !decision.trim();
+
   const handleAdvance = () => {
-    if (!confirmAdvance || !dc) return;
-    const needsDecision = confirmAdvance === 'RESOLVED' || confirmAdvance === 'CLOSED';
+    if (!confirmAdvance || !dc || decisionMissing) return;
     patchMutation.mutate({
       status: confirmAdvance,
-      ...(needsDecision ? { decision: decision.trim() || null } : {}),
+      ...(confirmAdvance === 'RESOLVED' ? { decision: decision.trim() || null } : {}),
     });
   };
 
-  const nextStatus = dc ? NEXT_STATUS[dc.status] : undefined;
-  const needsDecision = confirmAdvance === 'RESOLVED' || confirmAdvance === 'CLOSED';
+  const handleReassign = () => {
+    patchMutation.mutate({ assignedTo: pendingAssignee || null });
+  };
 
   return (
     <>
@@ -247,7 +339,7 @@ function DisputeDetailPanel({
             </StatusPill>
           )}
         </div>
-        <CloseBtn onClick={onClose} aria-label="Затвори">✕</CloseBtn>
+        <CloseBtn onClick={handleClose} aria-label="Затвори">✕</CloseBtn>
       </PanelHeader>
 
       <PanelBody>
@@ -264,32 +356,51 @@ function DisputeDetailPanel({
               </SectionCard>
             </div>
 
-            {/* Receipt */}
+            {/* Subject section — receipt details or generic reference */}
             <div>
-              <SectionLabel>Касова бележка</SectionLabel>
-              <SectionCard>
-                <KV><KLabel>Търговец</KLabel><KVal>{dc.receipt.merchantName ?? '—'}</KVal></KV>
-                <KV><KLabel>Сума</KLabel><KVal>{fmtBgn(dc.receipt.totalAmount)}</KVal></KV>
-                <KV><KLabel>Верифицирана сума</KLabel><KVal>{fmtBgn(dc.receipt.verifiedAmount)}</KVal></KV>
-                {dc.receipt.fraudScore != null && (
-                  <KV>
-                    <KLabel>Fraud score</KLabel>
-                    <KVal style={{ color: dc.receipt.fraudScore >= 61 ? P.danger : dc.receipt.fraudScore >= 31 ? P.warn : P.success }}>
-                      {dc.receipt.fraudScore}
-                    </KVal>
-                  </KV>
-                )}
-                {dc.receipt.fraudReasons && dc.receipt.fraudReasons.length > 0 && (
-                  <KV>
-                    <KLabel>Сигнали</KLabel>
-                    <KVal style={{ color: P.danger, fontSize: '.75rem' }}>
-                      {dc.receipt.fraudReasons.join(', ')}
-                    </KVal>
-                  </KV>
-                )}
-                <KV><KLabel>Статус на бележка</KLabel><KVal>{dc.receipt.status}</KVal></KV>
-                <KV><KLabel>Подадена</KLabel><KVal>{fmt(dc.receipt.createdAt)}</KVal></KV>
-              </SectionCard>
+              <SectionLabel>{SUBJECT_TYPE_LABELS[dc.subjectType]}</SectionLabel>
+              {dc.receipt ? (
+                <>
+                  <SectionCard>
+                    <KV><KLabel>Търговец</KLabel><KVal>{dc.receipt.merchantName ?? '—'}</KVal></KV>
+                    <KV><KLabel>Сума</KLabel><KVal>{fmtBgn(dc.receipt.totalAmount)}</KVal></KV>
+                    <KV><KLabel>Верифицирана сума</KLabel><KVal>{fmtBgn(dc.receipt.verifiedAmount)}</KVal></KV>
+                    {dc.receipt.fraudScore != null && (
+                      <KV>
+                        <KLabel>Fraud score</KLabel>
+                        <KVal style={{ color: dc.receipt.fraudScore >= 61 ? P.danger : dc.receipt.fraudScore >= 31 ? P.warn : P.success }}>
+                          {dc.receipt.fraudScore}
+                        </KVal>
+                      </KV>
+                    )}
+                    {dc.receipt.fraudReasons && dc.receipt.fraudReasons.length > 0 && (
+                      <KV>
+                        <KLabel>Сигнали</KLabel>
+                        <KVal style={{ color: P.danger, fontSize: '.75rem' }}>
+                          {dc.receipt.fraudReasons.join(', ')}
+                        </KVal>
+                      </KV>
+                    )}
+                    <KV><KLabel>Статус на бележка</KLabel><KVal>{dc.receipt.status}</KVal></KV>
+                    <KV><KLabel>Подадена</KLabel><KVal>{fmt(dc.receipt.createdAt)}</KVal></KV>
+                  </SectionCard>
+
+                  {dc.receipt.imageUrl && (
+                    <div style={{ marginTop: '.75rem' }}>
+                      <a href={dc.receipt.imageUrl} target="_blank" rel="noopener noreferrer">
+                        <ReceiptImg src={dc.receipt.imageUrl} alt="Снимка на касова бележка" />
+                      </a>
+                      <MetaLine style={{ marginTop: '.3rem', textAlign: 'center' }}>
+                        Клик за пълен размер
+                      </MetaLine>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <SectionCard>
+                  <KV><KLabel>ID на обект</KLabel><KVal style={{ fontFamily: 'monospace', fontSize: '.8rem' }}>{dc.subjectId ?? '—'}</KVal></KV>
+                </SectionCard>
+              )}
             </div>
 
             {/* Assignee */}
@@ -303,6 +414,33 @@ function DisputeDetailPanel({
                 <KV><KLabel>Отворен</KLabel><KVal>{fmt(dc.createdAt)}</KVal></KV>
                 {dc.resolvedAt && <KV><KLabel>Решен на</KLabel><KVal>{fmt(dc.resolvedAt)}</KVal></KV>}
                 {dc.closedAt   && <KV><KLabel>Затворен на</KLabel><KVal>{fmt(dc.closedAt)}</KVal></KV>}
+
+                {dc.status !== 'CLOSED' && (
+                  <AssigneeRow>
+                    <AssigneeSelect
+                      value={pendingAssignee}
+                      onChange={e => {
+                        setPendingAssignee(e.target.value);
+                        setAssigneeDirty(e.target.value !== (dc.assignedTo ?? ''));
+                      }}
+                    >
+                      <option value="">— Без отговорник —</option>
+                      {adminUsers.map(u => (
+                        <option key={u.id} value={u.id}>
+                          {(u.firstName || u.lastName)
+                            ? `${u.firstName ?? ''} ${u.lastName ?? ''}`.trim()
+                            : u.email}
+                        </option>
+                      ))}
+                    </AssigneeSelect>
+                    <SmallBtn
+                      onClick={handleReassign}
+                      disabled={!assigneeDirty || patchMutation.isPending}
+                    >
+                      Запази
+                    </SmallBtn>
+                  </AssigneeRow>
+                )}
               </SectionCard>
             </div>
 
@@ -330,14 +468,21 @@ function DisputeDetailPanel({
 
                   {confirmAdvance === nextStatus ? (
                     <>
-                      {needsDecision && (
+                      {confirmAdvance === 'RESOLVED' && (
                         <>
-                          <SectionLabel style={{ marginTop: 0 }}>Финално решение (текст)</SectionLabel>
+                          <SectionLabel style={{ marginTop: 0 }}>
+                            Финално решение (текст) <span style={{ color: P.danger }}>*</span>
+                          </SectionLabel>
                           <DecisionArea
                             placeholder="Опишете финалното решение по спора…"
                             value={decision}
                             onChange={e => setDecision(e.target.value)}
                           />
+                          {decisionMissing && (
+                            <FieldError>
+                              Финалното решение е задължително при преход към „Решен".
+                            </FieldError>
+                          )}
                         </>
                       )}
                       <BtnRow>
@@ -347,7 +492,7 @@ function DisputeDetailPanel({
                         <AdvanceBtn
                           $variant={nextStatus === 'RESOLVED' ? 'resolve' : nextStatus === 'CLOSED' ? 'close' : 'next'}
                           onClick={handleAdvance}
-                          disabled={patchMutation.isPending}
+                          disabled={patchMutation.isPending || decisionMissing}
                         >
                           {patchMutation.isPending ? 'Запазване…' : `Потвърди → ${STATUS_META[nextStatus].label}`}
                         </AdvanceBtn>
@@ -413,19 +558,165 @@ function DisputeDetailPanel({
   );
 }
 
+// ── Create dispute modal ──────────────────────────────────────────────────────
+
+function CreateDisputeModal({
+  onClose,
+  onCreated,
+}: {
+  onClose: () => void;
+  onCreated: (id: string) => void;
+}) {
+  const [subjectType, setSubjectType] = useState<DisputeSubjectType>('RECEIPT');
+  const [receiptId, setReceiptId] = useState('');
+  const [subjectId, setSubjectId] = useState('');
+  const [userId, setUserId] = useState('');
+  const [notes, setNotes] = useState('');
+
+  const isReceiptType = subjectType === 'RECEIPT';
+  const canSubmit = isReceiptType ? !!receiptId.trim() : (!!subjectId.trim() && !!userId.trim());
+
+  // Escape key
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  const createMutation = useMutation({
+    mutationFn: () => {
+      if (isReceiptType) {
+        return adminControlService.createDisputeCase({
+          subjectType: 'RECEIPT',
+          receiptId: receiptId.trim(),
+          notes: notes.trim() || undefined,
+        });
+      }
+      return adminControlService.createDisputeCase({
+        subjectType: subjectType as 'CASHBACK' | 'PAYOUT' | 'INVOICE',
+        subjectId: subjectId.trim(),
+        userId: userId.trim(),
+        notes: notes.trim() || undefined,
+      });
+    },
+    onSuccess: (res) => {
+      toast.success('Спорът е открит');
+      onCreated(res.data.id);
+    },
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error;
+      toast.error(msg ?? 'Грешка при отваряне на спор');
+    },
+  });
+
+  return (
+    <ModalOverlay onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <ModalCard>
+        <ModalTitle>Отвори нов спор</ModalTitle>
+
+        <div style={{ marginBottom: '1rem' }}>
+          <FieldLabel htmlFor="create-subject-type">Тип на спора *</FieldLabel>
+          <Select
+            id="create-subject-type"
+            value={subjectType}
+            onChange={e => {
+              setSubjectType(e.target.value as DisputeSubjectType);
+              setReceiptId('');
+              setSubjectId('');
+              setUserId('');
+            }}
+            style={{ width: '100%' }}
+          >
+            {SUBJECT_TYPE_FILTER_OPTIONS.filter(o => o.value !== '').map(o => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </Select>
+        </div>
+
+        {isReceiptType ? (
+          <div style={{ marginBottom: '1rem' }}>
+            <FieldLabel htmlFor="create-receipt-id">ID на касова бележка *</FieldLabel>
+            <TextInput
+              id="create-receipt-id"
+              placeholder="uuid на Receipt…"
+              value={receiptId}
+              onChange={e => setReceiptId(e.target.value)}
+              autoFocus
+            />
+          </div>
+        ) : (
+          <>
+            <div style={{ marginBottom: '1rem' }}>
+              <FieldLabel htmlFor="create-subject-id">ID на обекта *</FieldLabel>
+              <TextInput
+                id="create-subject-id"
+                placeholder={`uuid на ${SUBJECT_TYPE_LABELS[subjectType]}…`}
+                value={subjectId}
+                onChange={e => setSubjectId(e.target.value)}
+                autoFocus
+              />
+            </div>
+            <div style={{ marginBottom: '1rem' }}>
+              <FieldLabel htmlFor="create-user-id">ID на потребителя *</FieldLabel>
+              <TextInput
+                id="create-user-id"
+                placeholder="uuid на User…"
+                value={userId}
+                onChange={e => setUserId(e.target.value)}
+              />
+            </div>
+          </>
+        )}
+
+        <div style={{ marginBottom: '1.25rem' }}>
+          <FieldLabel htmlFor="create-notes">Начална бележка (по избор)</FieldLabel>
+          <NoteInput
+            id="create-notes"
+            placeholder="Защо се отваря спорът…"
+            value={notes}
+            onChange={e => setNotes(e.target.value)}
+          />
+        </div>
+
+        <BtnRow style={{ marginTop: 0 }}>
+          <Btn $variant="neutral" onClick={onClose}>Откажи</Btn>
+          <Btn
+            $variant="primary"
+            onClick={() => createMutation.mutate()}
+            disabled={!canSubmit || createMutation.isPending}
+          >
+            {createMutation.isPending ? 'Отваряне…' : 'Отвори спор'}
+          </Btn>
+        </BtnRow>
+      </ModalCard>
+    </ModalOverlay>
+  );
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 const PAGE_SIZE = 25;
 
 export default function AdminControlDisputesPage() {
-  const [page, setPage]           = useState(1);
-  const [status, setStatus]       = useState<DisputeStatus | ''>('OPEN');
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const qc = useQueryClient();
+  const [page, setPage]                   = useState(1);
+  const [status, setStatus]               = useState<DisputeStatus | ''>('OPEN');
+  const [subjectType, setSubjectType]     = useState<DisputeSubjectType | ''>('');
+  const [assignedTo, setAssignedTo]       = useState<string>('');
+  const [selectedId, setSelectedId]       = useState<string | null>(null);
+  const [showCreate, setShowCreate]       = useState(false);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['dispute-cases', page, status],
-    queryFn: () => adminControlService.getDisputeCases({ page, limit: PAGE_SIZE, status }),
+    queryKey: ['dispute-cases', page, status, subjectType, assignedTo],
+    queryFn: () => adminControlService.getDisputeCases({ page, limit: PAGE_SIZE, status, subjectType, assignedTo: assignedTo || undefined }),
   });
+
+  const { data: adminsData } = useQuery({
+    queryKey: ['admin-users-list'],
+    queryFn: () => adminControlService.getAdminUsers(),
+    staleTime: 5 * 60 * 1000,
+  });
+  const adminUsers = adminsData?.admins ?? [];
 
   const fmt = (iso: string) =>
     new Date(iso).toLocaleString('bg-BG', {
@@ -436,8 +727,8 @@ export default function AdminControlDisputesPage() {
   const fmtBgn = (n: number | null | undefined) =>
     n == null ? '—' : n.toLocaleString('bg-BG', { style: 'currency', currency: 'BGN', minimumFractionDigits: 2 });
 
-  const fullName = (u: { firstName: string | null; lastName: string | null }) =>
-    (u.firstName || u.lastName) ? `${u.firstName ?? ''} ${u.lastName ?? ''}`.trim() : null;
+  const fullName = (u: { firstName: string | null; lastName: string | null; email: string }) =>
+    (u.firstName || u.lastName) ? `${u.firstName ?? ''} ${u.lastName ?? ''}`.trim() : u.email;
 
   const columns: ColumnDef<DisputeCase>[] = [
     {
@@ -445,7 +736,7 @@ export default function AdminControlDisputesPage() {
       header: 'Потребител',
       render: (row) => (
         <span>
-          <PrimaryLine>{fullName(row.user) ?? '—'}</PrimaryLine>
+          <PrimaryLine>{fullName(row.user)}</PrimaryLine>
           <MetaLine>{row.user.email}</MetaLine>
           <div style={{ marginTop: 4 }}>
             <StatusPill $status={row.status}>{STATUS_META[row.status].label}</StatusPill>
@@ -454,19 +745,30 @@ export default function AdminControlDisputesPage() {
       ),
     },
     {
-      key: 'receipt',
-      header: 'Касова бележка',
+      key: 'subject',
+      header: 'Обект',
       render: (row) => (
         <span>
-          <PrimaryLine style={{ fontWeight: 500 }}>{row.receipt.merchantName ?? '—'}</PrimaryLine>
-          <MetaLine>{fmtBgn(row.receipt.totalAmount)}</MetaLine>
-          {row.receipt.fraudScore != null && (
-            <MetaLine style={{
-              color: row.receipt.fraudScore >= 61 ? P.danger
-                   : row.receipt.fraudScore >= 31 ? P.warn : P.success,
-              fontWeight: 700,
-            }}>
-              Fraud: {row.receipt.fraudScore}
+          <MetaLine style={{ fontWeight: 600, color: P.muted, marginBottom: '.1rem' }}>
+            {SUBJECT_TYPE_LABELS[row.subjectType]}
+          </MetaLine>
+          {row.receipt ? (
+            <>
+              <PrimaryLine style={{ fontWeight: 500 }}>{row.receipt.merchantName ?? '—'}</PrimaryLine>
+              <MetaLine>{fmtBgn(row.receipt.totalAmount)}</MetaLine>
+              {row.receipt.fraudScore != null && (
+                <MetaLine style={{
+                  color: row.receipt.fraudScore >= 61 ? P.danger
+                       : row.receipt.fraudScore >= 31 ? P.warn : P.success,
+                  fontWeight: 700,
+                }}>
+                  Fraud: {row.receipt.fraudScore}
+                </MetaLine>
+              )}
+            </>
+          ) : (
+            <MetaLine style={{ fontFamily: 'monospace', fontSize: '.75rem' }}>
+              {row.subjectId ? row.subjectId.slice(-12) : '—'}
             </MetaLine>
           )}
         </span>
@@ -476,7 +778,7 @@ export default function AdminControlDisputesPage() {
       key: 'assignee',
       header: 'Отговорник',
       render: (row) => (
-        <MetaLine>{row.assignee ? (fullName(row.assignee) ?? row.assignee.email) : '—'}</MetaLine>
+        <MetaLine>{row.assignee ? fullName(row.assignee) : '—'}</MetaLine>
       ),
     },
     {
@@ -510,6 +812,18 @@ export default function AdminControlDisputesPage() {
 
   return (
     <Shell>
+      {/* Create dispute modal */}
+      {showCreate && (
+        <CreateDisputeModal
+          onClose={() => setShowCreate(false)}
+          onCreated={(id) => {
+            setShowCreate(false);
+            qc.invalidateQueries({ queryKey: ['dispute-cases'] });
+            setSelectedId(id);
+          }}
+        />
+      )}
+
       {/* Slide-over backdrop + panel */}
       <Backdrop $open={panelOpen} onClick={() => setSelectedId(null)} />
       <Panel $open={panelOpen}>
@@ -533,6 +847,9 @@ export default function AdminControlDisputesPage() {
             Официални случаи по транзакции, кешбек, изплащания или фактуриране — изисква преглед и финално решение
           </Subtitle>
         </div>
+        <Btn $variant="primary" onClick={() => setShowCreate(true)}>
+          + Отвори спор
+        </Btn>
       </Header>
 
       <Card>
@@ -545,6 +862,27 @@ export default function AdminControlDisputesPage() {
               <option key={o.value} value={o.value}>{o.label}</option>
             ))}
           </Select>
+          <Select
+            value={subjectType}
+            onChange={e => { setSubjectType(e.target.value as DisputeSubjectType | ''); setPage(1); }}
+          >
+            {SUBJECT_TYPE_FILTER_OPTIONS.map(o => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </Select>
+          <Select
+            value={assignedTo}
+            onChange={e => { setAssignedTo(e.target.value); setPage(1); }}
+          >
+            <option value="">Всички отговорници</option>
+            {adminUsers.map(u => (
+              <option key={u.id} value={u.id}>
+                {(u.firstName || u.lastName)
+                  ? `${u.firstName ?? ''} ${u.lastName ?? ''}`.trim()
+                  : u.email}
+              </option>
+            ))}
+          </Select>
         </FilterRow>
 
         <DataTable
@@ -552,7 +890,7 @@ export default function AdminControlDisputesPage() {
           data={data?.data ?? []}
           rowKey={row => row.id}
           loading={isLoading}
-          emptyMessage="Няма спорове за избрания статус"
+          emptyMessage="Няма спорове за избраните филтри"
           page={page}
           pageSize={PAGE_SIZE}
           totalItems={data?.meta.total}

@@ -506,7 +506,7 @@ router.get(
     if (partnerIdParam) invoiceWhere.partnerId = partnerIdParam;
     if (invoiceStatusParam) invoiceWhere.status = invoiceStatusParam as (typeof VALID_INVOICE_STATUSES)[number];
 
-    const [walletStats, invoiceTotals, partnerInvoices, periodRows, scansInRange] = await Promise.all([
+    const [walletStats, invoiceTotals, partnerInvoices, periodRows, scansInRange, periodInvoiceStatusCounts] = await Promise.all([
       // Wallet transaction aggregates — subscriber-side; not filtered by partner/status
       prisma.walletTransaction.groupBy({
         by: ['type'],
@@ -543,6 +543,18 @@ router.get(
         },
         select: { userId: true, cashbackAmount: true, verifiedAmount: true, billAmount: true, createdAt: true },
       }),
+      // Per-period invoice status counts (unfiltered by invoiceStatus so INVOICED periods
+      // still correctly show pending/overdue counts regardless of the active status filter).
+      months.length > 0
+        ? prisma.partnerCashbackPayment.groupBy({
+            by: ['month', 'status'],
+            where: {
+              month: { in: months },
+              ...(partnerIdParam ? { partnerId: partnerIdParam } : {}),
+            },
+            _count: { id: true },
+          })
+        : Promise.resolve([]),
     ]);
 
     // Wallet tx map: always include core types so the UI can show 0 placeholders
@@ -553,8 +565,11 @@ router.get(
       txByType[row.type] = { total: row._sum.amount ?? 0, count: row._count.id };
     }
 
-    // Aggregate per-partner breakdown
-    const partnerMap = new Map<string, {
+    // Aggregate per-partner breakdown.
+    // contractedRate: show the value when all invoices for the partner share the same rate;
+    // set to null when rates differ across invoices so the UI can display "varies" instead of a
+    // misleading single number.
+    type PartnerAccum = {
       partnerId: string;
       partnerName: string;
       partnerCity: string | null;
@@ -562,11 +577,14 @@ router.get(
       margin: number;
       turnover: number;
       contractedRate: number | null;
+      ratesVary: boolean;
+      _seenRates: Set<number | null>;
       invoiceCount: number;
       statuses: Record<string, number>;
-    }>();
+    };
+    const partnerMap = new Map<string, PartnerAccum>();
     for (const inv of partnerInvoices) {
-      const cur = partnerMap.get(inv.partnerId) ?? {
+      const cur: PartnerAccum = partnerMap.get(inv.partnerId) ?? {
         partnerId: inv.partnerId,
         partnerName: inv.partner.businessName,
         partnerCity: inv.partner.city,
@@ -574,6 +592,8 @@ router.get(
         margin: 0,
         turnover: 0,
         contractedRate: inv.contractedRate,
+        ratesVary: false,
+        _seenRates: new Set(),
         invoiceCount: 0,
         statuses: {},
       };
@@ -582,6 +602,11 @@ router.get(
       cur.turnover += inv.turnoverAmount;
       cur.invoiceCount += 1;
       cur.statuses[inv.status] = (cur.statuses[inv.status] ?? 0) + 1;
+      cur._seenRates.add(inv.contractedRate);
+      // ratesVary is true only when invoices genuinely disagree on rate (size > 1 means at least two
+      // distinct values, e.g. {null, 5} or {3, 7}).  All-null invoices produce {null} (size 1) and
+      // should NOT trigger a "varies" label — the rate is uniformly absent, not mixed.
+      if (cur._seenRates.size > 1) { cur.contractedRate = null; cur.ratesVary = true; }
       partnerMap.set(inv.partnerId, cur);
     }
 
@@ -625,6 +650,33 @@ router.get(
       .map(([plan, stats]) => ({ plan, ...stats }))
       .sort((a, b) => b.cashback - a.cashback);
 
+    // Merge period rows with the full months list so the frontend always receives an entry for
+    // every month in range — status is null for months that have no ReportingPeriod record yet.
+    const periodStatusMap = new Map(periodRows.map(p => [p.month, p.status]));
+
+    // Build per-period counts of PENDING and OVERDUE invoices so the frontend can warn
+    // when an INVOICED period still has unpaid partner obligations.
+    type PeriodInvoiceCounts = { pendingCount: number; overdueCount: number };
+    const periodCountMap = new Map<string, PeriodInvoiceCounts>();
+    for (const row of periodInvoiceStatusCounts) {
+      const cur = periodCountMap.get(row.month) ?? { pendingCount: 0, overdueCount: 0 };
+      if (row.status === 'PENDING') cur.pendingCount += row._count.id;
+      if (row.status === 'OVERDUE') cur.overdueCount += row._count.id;
+      periodCountMap.set(row.month, cur);
+    }
+
+    const allPeriodStatuses = months.map(m => ({
+      month: m,
+      status: periodStatusMap.get(m) ?? null,
+      pendingCount: periodCountMap.get(m)?.pendingCount ?? 0,
+      overdueCount: periodCountMap.get(m)?.overdueCount ?? 0,
+    }));
+
+    // Strip internal accumulator field before sending
+    const partnerBreakdown = Array.from(partnerMap.values()).map(
+      ({ _seenRates: _ignored, ...rest }) => rest,
+    );
+
     res.json({
       success: true,
       data: {
@@ -636,8 +688,8 @@ router.get(
           turnoverTotal: invoiceTotals._sum.turnoverAmount ?? 0,
           count: invoiceTotals._count.id,
         },
-        partnerBreakdown: Array.from(partnerMap.values()),
-        periodStatuses: periodRows,
+        partnerBreakdown,
+        periodStatuses: allPeriodStatuses,
         planBreakdown,
       },
     });
@@ -846,6 +898,18 @@ router.delete(
       });
     }
 
+    // Guard: refuse deletion when invoices already exist for the month.
+    // Deleting the period record would orphan those invoices (they'd appear
+    // as "no record" months in reports). Admin must delete invoices first or
+    // advance the period to LOCKED/INVOICED to protect the data.
+    const invoiceCount = await prisma.partnerCashbackPayment.count({ where: { month } });
+    if (invoiceCount > 0) {
+      return res.status(409).json({
+        success: false,
+        error: `Cannot delete period ${month} — ${invoiceCount} invoice(s) already exist for this month. Delete the invoices first, or advance the period to LOCKED/INVOICED to protect the data.`,
+      });
+    }
+
     await prisma.reportingPeriod.delete({ where: { month } });
     res.json({ success: true, message: `Period ${month} deleted.` });
   })
@@ -898,6 +962,9 @@ router.get(
         include: { partner: { select: { businessName: true, city: true } } },
       });
 
+      // Resolve paidBy UUIDs → admin display names for accounting readability.
+      const invoiceNameMap = await resolveAdminNames(invoices.map(i => i.paidBy));
+
       rows = invoices.map(i => ({
         id: i.id,
         partner: i.partner.businessName,
@@ -909,6 +976,7 @@ router.get(
         marginAmount: i.marginAmount,
         status: i.status,
         paidAt: i.paidAt?.toISOString() ?? '',
+        paidBy: i.paidBy ? (invoiceNameMap.get(i.paidBy) ?? i.paidBy) : '',
         notes: i.notes ?? '',
         createdAt: i.createdAt.toISOString(),
       }));
@@ -1106,7 +1174,7 @@ router.get(
 
       // Section 2 — plan breakdown rows: one row per subscription plan (plan + cashback + turnover)
       const PLAN_LABELS_BG: Record<string, string> = {
-        LIGHT: 'Light (Седмичен Premium)', BASIC: 'Basic', PREMIUM: 'Premium', UNKNOWN: 'Без абонамент',
+        LIGHT: 'Light', BASIC: 'Basic', PREMIUM: 'Premium', UNKNOWN: 'Без абонамент',
       };
       const planSection = Object.entries(expPlanAccum)
         .sort((a, b) => b[1].cashback - a[1].cashback)
@@ -1162,7 +1230,7 @@ router.get(
     // row alone does not represent the full schema.
     // Internal field keys are mapped to Bulgarian display headers for accounting use.
     const HEADERS: Record<string, string[]> = {
-      invoices: ['id', 'partner', 'city', 'month', 'turnoverAmount', 'contractedRate', 'totalCashbackOwed', 'marginAmount', 'status', 'paidAt', 'notes', 'createdAt'],
+      invoices: ['id', 'partner', 'city', 'month', 'turnoverAmount', 'contractedRate', 'totalCashbackOwed', 'marginAmount', 'status', 'paidAt', 'paidBy', 'notes', 'createdAt'],
       periods:  ['month', 'status', 'partners', 'cashback', 'margin', 'total', 'paid', 'pending', 'overdue', 'reviewedAt', 'reviewedBy', 'lockedAt', 'lockedBy', 'invoicedAt', 'invoicedBy', 'notes'],
       reports:  ['section', 'period', 'partnerName', 'partnerId', 'plan', 'scanCount', 'cashback', 'margin', 'turnover', 'invoiceStatus', 'walletType', 'walletTotal', 'walletCount'],
     };

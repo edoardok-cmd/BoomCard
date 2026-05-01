@@ -19,7 +19,7 @@
  */
 
 import { Router, Response } from 'express';
-import { DisputeStatus } from '@prisma/client';
+import { DisputeStatus, DisputeSubjectType } from '@prisma/client';
 import { authenticate, authorize, requirePermission, AuthRequest } from '../middleware/auth.middleware';
 import { auditMiddleware } from '../middleware/audit.middleware';
 import { asyncHandler } from '../middleware/error.middleware';
@@ -33,17 +33,18 @@ router.use(auditMiddleware);
 
 /* ─── Security Audit Log ─────────────────────────────────────────────────── */
 
+// audit.middleware.ts generates actions as "{objectType}.{httpMethod}" where objectType
+// is the first URL segment (or the baseUrl tail for UUID-led paths). These prefixes match
+// every write operation on security-relevant admin resources.
 const SECURITY_ACTION_PREFIXES = [
-  'admin.',
-  'auth.',
-  'permission.',
-  'role.',
-  'user.delete',
-  'user.suspend',
-  'user.ban',
-  'partner.approve',
-  'partner.reject',
-  'partner.suspend',
+  'admins.',            // admin-user create / update / promote / delete
+  'partner-requests.',  // partner approve / reject / suspend (PATCH)
+  'subscribers.',       // subscriber update / delete
+  'risk-queue.',        // risk-queue approve / reject (POST)
+  'disputes.',          // manual-review receipt approve / reject (POST)
+  'dispute-cases.',     // dispute case lifecycle (POST / PATCH)
+  'receipt-templates.', // template create / update / deactivate
+  'payouts.',           // payout process / hold / release
 ];
 
 /**
@@ -208,20 +209,27 @@ router.post(
 /* ─── G4: Risk Queue (Spec §7.1 / §7.2) ─────────────────────────────────── */
 
 // Signal codes grouped by spec §7.2 category — shared by list and summary endpoints.
+// All codes are from fraudDetection.service.ts and land in Receipt.fraudReasons.
+// Sticker-service-only codes (DUPLICATE_IMAGE_HASH, DUPLICATE_IMAGE_HASH_RACE,
+// MERCHANT_MISMATCH:..., RAPID_SCANNING:..., MAX_SCANS_PER_DAY:...) go to
+// StickerScan.fraudReasons and are intentionally excluded — Receipt queries won't find them.
 const RISK_SIGNAL_GROUPS = {
-  duplicate:   ['DUPLICATE_RECEIPT', 'EXACT_DUPLICATE', 'PERCEPTUAL_DUPLICATE', 'IMAGE_HASH_DUPLICATE'],
-  qrMismatch:  ['QR_MISMATCH', 'QR_VENUE_MISMATCH', 'NO_QR_SESSION'],
-  velocity:    ['HIGH_VELOCITY', 'RATE_LIMIT', 'DAILY_LIMIT', 'TOO_MANY_RECEIPTS'],
-  ibanAnomaly: ['IBAN_CHANGE', 'IBAN_RECENTLY_CHANGED', 'PAYOUT_RISK'],
-  receiptMatch:['LOW_OCR_CONFIDENCE', 'RECEIPT_TEMPLATE_MISMATCH'],
+  duplicate:    ['DUPLICATE_IMAGE', 'PERCEPTUAL_DUPLICATE_CLOSE', 'PERCEPTUAL_DUPLICATE_MODERATE'],
+  qrMismatch:   ['GPS_FAR_FROM_VENUE', 'GPS_OUTSIDE_RANGE'],
+  velocity:     ['RAPID_SUBMISSIONS', 'DAILY_LIMIT_EXCEEDED', 'MONTHLY_LIMIT_EXCEEDED'],
+  receiptMatch: ['LOW_OCR_CONFIDENCE', 'MODERATE_OCR_CONFIDENCE', 'TEMPLATE_MISMATCH',
+                 'AMOUNT_MISMATCH', 'LARGE_AMOUNT_MISMATCH'],
+  // Spec §7.2 "подозрително поведение" — device anomalies, blacklisted merchants, etc.
+  suspicious:   ['MERCHANT_BLACKLISTED', 'NEW_DEVICE_MULTI_DEVICE_USER',
+                 'RARE_DEVICE_MULTI_DEVICE_USER', 'UNUSUAL_TIME', 'NEW_DEVICE', 'FRAUD_CHECK_ERROR'],
 } as const;
 
 const ALL_KNOWN_SIGNALS = [
   ...RISK_SIGNAL_GROUPS.duplicate,
   ...RISK_SIGNAL_GROUPS.qrMismatch,
   ...RISK_SIGNAL_GROUPS.velocity,
-  ...RISK_SIGNAL_GROUPS.ibanAnomaly,
   ...RISK_SIGNAL_GROUPS.receiptMatch,
+  ...RISK_SIGNAL_GROUPS.suspicious,
 ];
 
 function partnerRiskBucket(riskReceiptCount: number): 'LOW' | 'MEDIUM' | 'HIGH' {
@@ -239,22 +247,30 @@ router.get(
   '/risk-queue/summary',
   requirePermission('control.risk.read'),
   asyncHandler(async (_req: AuthRequest, res: Response) => {
-    // Require at least one fraud signal so clean receipts (empty fraudReasons) don't
-    // inflate `total` and therefore the `other` bucket (other = total − knownCount).
+    // Mirror the list endpoint: only count receipts with fraudScore >= 31 so the
+    // tile totals match what's actionable in the queue (0-30 items auto-approve and
+    // don't appear in the list, so they should not inflate the summary tiles either).
     const baseWhere = {
+      fraudScore: { gte: 31 },
       status: { notIn: ['APPROVED', 'REJECTED', 'EXPIRED'] as never[] },
       fraudReasons: { isEmpty: false },
     };
 
-    const [total, duplicate, qrMismatch, velocity, ibanAnomaly, receiptMatch, knownCount] =
+    // Spec §7.2 "странни IBAN промени": count users who changed IBAN within the last 7 days.
+    // userRisk.service.ts applies RECENT_IBAN_CHANGE (+10) for changes within 7 days;
+    // we use the same 7-day window here so the tile tracks the same cohort.
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+
+    const [total, duplicate, qrMismatch, velocity, receiptMatch, suspicious, knownCount, ibanAnomaly] =
       await Promise.all([
         prisma.receipt.count({ where: baseWhere }),
         prisma.receipt.count({ where: { ...baseWhere, fraudReasons: { hasSome: [...RISK_SIGNAL_GROUPS.duplicate] } } }),
         prisma.receipt.count({ where: { ...baseWhere, fraudReasons: { hasSome: [...RISK_SIGNAL_GROUPS.qrMismatch] } } }),
         prisma.receipt.count({ where: { ...baseWhere, fraudReasons: { hasSome: [...RISK_SIGNAL_GROUPS.velocity] } } }),
-        prisma.receipt.count({ where: { ...baseWhere, fraudReasons: { hasSome: [...RISK_SIGNAL_GROUPS.ibanAnomaly] } } }),
         prisma.receipt.count({ where: { ...baseWhere, fraudReasons: { hasSome: [...RISK_SIGNAL_GROUPS.receiptMatch] } } }),
+        prisma.receipt.count({ where: { ...baseWhere, fraudReasons: { hasSome: [...RISK_SIGNAL_GROUPS.suspicious] } } }),
         prisma.receipt.count({ where: { ...baseWhere, fraudReasons: { hasSome: ALL_KNOWN_SIGNALS } } }),
+        prisma.user.count({ where: { ibanLastChangedAt: { gte: sevenDaysAgo } } }),
       ]);
 
     res.json({
@@ -264,9 +280,10 @@ router.get(
         duplicate,
         qrMismatch,
         velocity,
-        ibanAnomaly,
         receiptMatch,
+        suspicious,
         other: total - knownCount,
+        ibanAnomaly,
       },
     });
   })
@@ -387,7 +404,7 @@ router.get(
  */
 router.post(
   '/risk-queue/:id/approve',
-  requirePermission('control.disputes.write'),
+  requirePermission('control.risk.write'),
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const updated = await receiptService.reviewReceipt({
       receiptId: req.params.id,
@@ -405,7 +422,7 @@ router.post(
  */
 router.post(
   '/risk-queue/:id/reject',
-  requirePermission('control.disputes.write'),
+  requirePermission('control.risk.write'),
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const updated = await receiptService.reviewReceipt({
       receiptId: req.params.id,
@@ -434,12 +451,16 @@ router.get(
     const skip = (page - 1) * limit;
     const status = typeof req.query.status === 'string' ? req.query.status.trim() : '';
     const assignedTo = typeof req.query.assignedTo === 'string' ? req.query.assignedTo.trim() : '';
+    const subjectType = typeof req.query.subjectType === 'string' ? req.query.subjectType.trim() : '';
 
     const where: Parameters<typeof prisma.dispute.findMany>[0]['where'] = {};
     if (status && Object.values(DisputeStatus).includes(status as DisputeStatus)) {
       where.status = status as DisputeStatus;
     }
     if (assignedTo) where.assignedTo = assignedTo;
+    if (subjectType && Object.values(DisputeSubjectType).includes(subjectType as DisputeSubjectType)) {
+      where.subjectType = subjectType as DisputeSubjectType;
+    }
 
     const [cases, total] = await Promise.all([
       prisma.dispute.findMany({
@@ -467,43 +488,103 @@ router.get(
 
 /**
  * POST /api/admin/control/dispute-cases
- * Body: { receiptId, notes? }
- * Opens a new dispute case for a receipt; receipt must belong to a user.
+ * Body: { subjectType?, receiptId?, subjectId?, userId?, notes? }
+ *
+ * subjectType defaults to RECEIPT. When RECEIPT, receiptId is required and userId
+ * is resolved from the receipt. For CASHBACK / PAYOUT / INVOICE, both subjectId
+ * and userId are required (no DB FK validation — those models may not exist yet).
  */
 router.post(
   '/dispute-cases',
   requirePermission('control.disputes.write'),
   asyncHandler(async (req: AuthRequest, res: Response) => {
-    const { receiptId, notes } = req.body as { receiptId?: string; notes?: string };
+    const {
+      subjectType: rawSubjectType,
+      receiptId,
+      subjectId,
+      userId: bodyUserId,
+      notes,
+    } = req.body as {
+      subjectType?: string;
+      receiptId?: string;
+      subjectId?: string;
+      userId?: string;
+      notes?: string;
+    };
 
-    if (!receiptId) {
-      return res.status(400).json({ success: false, error: 'receiptId is required' });
-    }
+    const subjectType: DisputeSubjectType =
+      rawSubjectType && Object.values(DisputeSubjectType).includes(rawSubjectType as DisputeSubjectType)
+        ? (rawSubjectType as DisputeSubjectType)
+        : 'RECEIPT';
 
-    const receipt = await prisma.receipt.findUnique({
-      where: { id: receiptId },
-      select: { id: true, userId: true, status: true },
-    });
-    if (!receipt) return res.status(404).json({ success: false, error: 'Receipt not found' });
+    let resolvedUserId: string;
+    let resolvedReceiptId: string | undefined;
 
-    const existing = await prisma.dispute.findFirst({
-      where: { receiptId, status: { notIn: ['CLOSED'] } },
-    });
-    if (existing) {
-      return res.status(409).json({ success: false, error: 'An open dispute case already exists for this receipt', disputeId: existing.id });
+    if (subjectType === 'RECEIPT') {
+      if (!receiptId) {
+        return res.status(400).json({ success: false, error: 'receiptId is required for RECEIPT disputes' });
+      }
+      const receipt = await prisma.receipt.findUnique({
+        where: { id: receiptId },
+        select: { id: true, userId: true },
+      });
+      if (!receipt) return res.status(404).json({ success: false, error: 'Receipt not found' });
+
+      const existing = await prisma.dispute.findFirst({
+        where: { receiptId, status: { notIn: ['CLOSED'] } },
+      });
+      if (existing) {
+        return res.status(409).json({
+          success: false,
+          error: 'An open dispute case already exists for this receipt',
+          disputeId: existing.id,
+        });
+      }
+
+      resolvedUserId = receipt.userId;
+      resolvedReceiptId = receiptId;
+    } else {
+      if (!subjectId?.trim()) {
+        return res.status(400).json({ success: false, error: 'subjectId is required for non-receipt disputes' });
+      }
+      if (!bodyUserId?.trim()) {
+        return res.status(400).json({ success: false, error: 'userId is required for non-receipt disputes' });
+      }
+
+      const [userRecord, existing] = await Promise.all([
+        prisma.user.findUnique({ where: { id: bodyUserId.trim() }, select: { id: true } }),
+        prisma.dispute.findFirst({
+          where: { subjectType, subjectId: subjectId.trim(), status: { notIn: ['CLOSED'] } },
+        }),
+      ]);
+
+      if (!userRecord) {
+        return res.status(404).json({ success: false, error: 'User not found' });
+      }
+      if (existing) {
+        return res.status(409).json({
+          success: false,
+          error: `An open dispute case already exists for this ${subjectType.toLowerCase()}`,
+          disputeId: existing.id,
+        });
+      }
+
+      resolvedUserId = bodyUserId.trim();
     }
 
     const disputeCase = await prisma.$transaction(async (tx) => {
       const created = await tx.dispute.create({
         data: {
-          receiptId,
-          userId: receipt.userId,
+          subjectType,
+          receiptId: resolvedReceiptId ?? null,
+          subjectId: subjectType !== 'RECEIPT' ? subjectId!.trim() : null,
+          userId: resolvedUserId,
           assignedTo: req.user!.id,
           status: 'OPEN',
         },
         include: {
           user: { select: { id: true, email: true, firstName: true, lastName: true } },
-          receipt: { select: { id: true, merchantName: true, totalAmount: true, fraudScore: true } },
+          receipt: { select: { id: true, merchantName: true, totalAmount: true, fraudScore: true, status: true } },
         },
       });
 
@@ -568,8 +649,8 @@ router.patch(
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const { status, assignedTo, decision } = req.body as {
       status?: string;
-      assignedTo?: string;
-      decision?: string;
+      assignedTo?: string | null;
+      decision?: string | null;
     };
 
     const disputeCase = await prisma.dispute.findUnique({ where: { id: req.params.id } });
@@ -586,16 +667,12 @@ router.patch(
       }
       const currentIdx = DISPUTE_STATUS_ORDER.indexOf(disputeCase.status);
       const newIdx = DISPUTE_STATUS_ORDER.indexOf(status as DisputeStatus);
-      if (newIdx <= currentIdx) {
-        return res.status(400).json({ success: false, error: `Status can only advance forward (current: ${disputeCase.status})` });
+      if (newIdx !== currentIdx + 1) {
+        return res.status(400).json({ success: false, error: `Status must advance one step at a time: ${disputeCase.status} → ${DISPUTE_STATUS_ORDER[currentIdx + 1] ?? '(none)'}` });
       }
       data.status = status as DisputeStatus;
       if (status === 'RESOLVED') data.resolvedAt = new Date();
-      if (status === 'CLOSED') {
-        // Set resolvedAt if the case jumps directly to CLOSED without passing through RESOLVED
-        if (!disputeCase.resolvedAt) data.resolvedAt = new Date();
-        data.closedAt = new Date();
-      }
+      if (status === 'CLOSED') data.closedAt = new Date();
     }
 
     if (assignedTo !== undefined) data.assignedTo = assignedTo || null;

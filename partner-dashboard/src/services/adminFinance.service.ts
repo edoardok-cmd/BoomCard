@@ -70,6 +70,8 @@ export interface ReportPartnerBreakdown {
   margin: number;
   turnover: number;
   contractedRate: number | null;
+  /** True when invoices for this partner have genuinely different contracted rates (not just all-null). */
+  ratesVary: boolean;
   invoiceCount: number;
   statuses: Record<string, number>;
 }
@@ -91,7 +93,8 @@ export interface ReportData {
     count: number;
   };
   partnerBreakdown: ReportPartnerBreakdown[];
-  periodStatuses: Array<{ month: string; status: string }>;
+  /** status is null for months that have no ReportingPeriod record yet */
+  periodStatuses: Array<{ month: string; status: string | null; pendingCount: number; overdueCount: number }>;
   planBreakdown: PlanBreakdownRow[];
 }
 

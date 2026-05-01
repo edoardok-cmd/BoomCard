@@ -64,6 +64,7 @@ export interface AdminDisputesResult {
 // ── Dispute Cases (spec §7.3) ────────────────────────────────────────────────
 
 export type DisputeStatus = 'OPEN' | 'IN_REVIEW' | 'RESOLVED' | 'CLOSED';
+export type DisputeSubjectType = 'RECEIPT' | 'CASHBACK' | 'PAYOUT' | 'INVOICE';
 
 export interface DisputeCaseUser {
   id: string;
@@ -98,7 +99,9 @@ export interface DisputeNoteItem {
 /** Lightweight shape returned by the list endpoint */
 export interface DisputeCase {
   id: string;
-  receiptId: string;
+  subjectType: DisputeSubjectType;
+  receiptId: string | null;
+  subjectId: string | null;
   userId: string;
   assignedTo: string | null;
   status: DisputeStatus;
@@ -109,13 +112,13 @@ export interface DisputeCase {
   updatedAt: string;
   user: DisputeCaseUser;
   assignee: DisputeCaseUser | null;
-  receipt: Pick<DisputeCaseReceipt, 'id' | 'merchantName' | 'totalAmount' | 'fraudScore' | 'status'>;
+  receipt: Pick<DisputeCaseReceipt, 'id' | 'merchantName' | 'totalAmount' | 'fraudScore' | 'status'> | null;
   _count: { notes: number };
 }
 
 /** Full shape returned by the detail endpoint */
 export interface DisputeCaseDetail extends Omit<DisputeCase, 'receipt' | '_count'> {
-  receipt: DisputeCaseReceipt;
+  receipt: DisputeCaseReceipt | null;
   notes: DisputeNoteItem[];
 }
 
@@ -164,9 +167,12 @@ export interface RiskQueueSummary {
   duplicate: number;
   qrMismatch: number;
   velocity: number;
-  ibanAnomaly: number;
   receiptMatch: number;
+  /** Spec §7.2 "подозрително поведение" — device anomalies, blacklisted merchants, etc. */
+  suspicious: number;
   other: number;
+  /** Spec §7.2 "странни IBAN промени" — users who changed IBAN within the last 7 days. */
+  ibanAnomaly: number;
 }
 
 export interface RiskQueueSummaryResult {
@@ -247,10 +253,12 @@ export const adminControlService = {
     page?: number;
     limit?: number;
     status?: DisputeStatus | '';
+    subjectType?: DisputeSubjectType | '';
     assignedTo?: string;
   }): Promise<DisputeCasesResult> {
     const clean: Record<string, unknown> = { page: params.page, limit: params.limit };
     if (params.status) clean.status = params.status;
+    if (params.subjectType) clean.subjectType = params.subjectType;
     if (params.assignedTo) clean.assignedTo = params.assignedTo;
     return apiService.get('/admin/control/dispute-cases', clean);
   },
@@ -259,14 +267,18 @@ export const adminControlService = {
     return apiService.get(`/admin/control/dispute-cases/${id}`);
   },
 
-  createDisputeCase(receiptId: string, notes?: string): Promise<{ success: boolean; data: DisputeCase }> {
-    return apiService.post('/admin/control/dispute-cases', notes ? { receiptId, notes } : { receiptId });
+  createDisputeCase(
+    params:
+      | { subjectType?: 'RECEIPT'; receiptId: string; notes?: string }
+      | { subjectType: 'CASHBACK' | 'PAYOUT' | 'INVOICE'; subjectId: string; userId: string; notes?: string },
+  ): Promise<{ success: boolean; data: Omit<DisputeCase, 'assignee' | '_count'> }> {
+    return apiService.post('/admin/control/dispute-cases', params);
   },
 
   patchDisputeCase(
     id: string,
     patch: { status?: DisputeStatus; assignedTo?: string | null; decision?: string | null },
-  ): Promise<{ success: boolean; data: DisputeCase }> {
+  ): Promise<{ success: boolean; data: Omit<DisputeCase, 'receipt' | '_count'> }> {
     return apiService.patch(`/admin/control/dispute-cases/${id}`, patch);
   },
 
@@ -274,7 +286,8 @@ export const adminControlService = {
     return apiService.post(`/admin/control/dispute-cases/${id}/notes`, { body });
   },
 
-  getDisputeNotes(id: string): Promise<{ success: boolean; data: DisputeNoteItem[] }> {
-    return apiService.get(`/admin/control/dispute-cases/${id}/notes`);
+  /** List admin users for the assignee dropdown */
+  getAdminUsers(): Promise<{ admins: { id: string; email: string; firstName: string | null; lastName: string | null }[]; total: number }> {
+    return apiService.get('/admin/admins', { limit: 100 });
   },
 };

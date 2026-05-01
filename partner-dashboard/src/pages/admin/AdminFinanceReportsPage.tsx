@@ -74,14 +74,16 @@ const PeriodStatusBadge = styled.span<{ $status: string }>`
   display: inline-flex; font-size: 0.7rem; font-weight: 700; text-transform: uppercase;
   letter-spacing: 0.04em; border-radius: 0.375rem; padding: 0.125rem 0.45rem;
   background: ${({ $status }) =>
-    $status === 'INVOICED' ? palette.successSoft :
-    $status === 'LOCKED' ? palette.infoSoft :
+    $status === 'INVOICED'   ? palette.successSoft :
+    $status === 'LOCKED'     ? palette.infoSoft :
     $status === 'FOR_REVIEW' ? palette.warningSoft :
+    $status === 'NO_RECORD'  ? '#f3f4f6' :
     palette.accentSoft};
   color: ${({ $status }) =>
-    $status === 'INVOICED' ? palette.success :
-    $status === 'LOCKED' ? palette.info :
+    $status === 'INVOICED'   ? palette.success :
+    $status === 'LOCKED'     ? palette.info :
     $status === 'FOR_REVIEW' ? palette.warning :
+    $status === 'NO_RECORD'  ? '#6b7280' :
     palette.accent};
 `;
 
@@ -94,6 +96,7 @@ const FocusCount = styled.span`font-feature-settings: 'tnum'; color: ${palette.d
 const FocusBtn = styled(Link)`flex-shrink: 0; padding: 0.5rem 0.875rem; background: ${palette.text}; color: #fff; border: none; border-radius: 0.5rem; font-size: 0.8125rem; font-weight: 600; text-decoration: none; cursor: pointer; &:hover { opacity: 0.9; }`;
 
 const WarningBanner = styled.div`display: flex; align-items: flex-start; gap: 0.75rem; padding: 1rem 1.25rem; background: ${palette.warningSoft}; border: 1px solid #e8d8ad; border-left: 3px solid ${palette.warning}; border-radius: 0.75rem; margin-bottom: 1.5rem;`;
+const PlanScopeBanner = styled.div`display: flex; align-items: flex-start; gap: 0.75rem; padding: 0.875rem 1.125rem; background: ${palette.infoSoft}; border: 1px solid #bfdbfe; border-left: 3px solid ${palette.info}; border-radius: 0.75rem; margin-bottom: 1.5rem; font-size: 0.875rem; color: ${palette.text};`;
 const WarningText = styled.div`font-size: 0.875rem; color: ${palette.text};`;
 const WarningTitle = styled.p`font-weight: 700; margin: 0 0 0.25rem;`;
 const WarningDesc = styled.p`margin: 0; color: ${palette.textMuted};`;
@@ -191,7 +194,7 @@ const PERIOD_STATUS_LABELS: Record<string, string> = {
 
 /* ─── Subscription plan labels ───────────────────────────────────────────────── */
 const PLAN_LABELS: Record<string, string> = {
-  LIGHT:   'Light (Седмичен Premium)',
+  LIGHT:   'Light',
   BASIC:   'Basic',
   PREMIUM: 'Premium',
   UNKNOWN: 'Без абонамент',
@@ -293,9 +296,10 @@ export default function AdminFinanceReportsPage() {
     }
   };
 
-  // Open/FOR_REVIEW periods within the queried range produce a data-integrity warning
+  // Periods that are open/in-review warn that data may still change.
+  // Periods with null status have no ReportingPeriod record at all — equally uncontrolled.
   const openPeriods = (report?.periodStatuses ?? []).filter(
-    (p) => p.status === 'OPEN' || p.status === 'FOR_REVIEW'
+    (p) => p.status === 'OPEN' || p.status === 'FOR_REVIEW' || p.status === null
   );
 
   return (
@@ -334,7 +338,7 @@ export default function AdminFinanceReportsPage() {
         );
       })()}
 
-      {/* Open/FOR_REVIEW period warning — data may still change */}
+      {/* Warning when periods are open, in-review, or have no record at all */}
       {openPeriods.length > 0 && (
         <WarningBanner>
           <span style={{ fontSize: '1.1rem' }}>⚠</span>
@@ -346,7 +350,10 @@ export default function AdminFinanceReportsPage() {
                 <span key={p.month}>
                   {i > 0 && ', '}
                   <strong>{p.month}</strong>{' '}
-                  <PeriodStatusBadge $status={p.status}>{PERIOD_STATUS_LABELS[p.status] ?? p.status}</PeriodStatusBadge>
+                  {p.status === null
+                    ? <PeriodStatusBadge $status="NO_RECORD">Без запис</PeriodStatusBadge>
+                    : <PeriodStatusBadge $status={p.status}>{PERIOD_STATUS_LABELS[p.status] ?? p.status}</PeriodStatusBadge>
+                  }
                 </span>
               ))}{' '}
               все още не са заключени — данните може да се променят.{' '}
@@ -378,7 +385,7 @@ export default function AdminFinanceReportsPage() {
         </FilterSelect>
         <FilterSelect value={plan} onChange={(e) => setPlan(e.target.value)}>
           <option value="">Всички планове</option>
-          <option value="LIGHT">Light (Седмичен Premium)</option>
+          <option value="LIGHT">Light</option>
           <option value="BASIC">Basic</option>
           <option value="PREMIUM">Premium</option>
           <option value="UNKNOWN">Без абонамент</option>
@@ -390,40 +397,51 @@ export default function AdminFinanceReportsPage() {
           <option value="OVERDUE">Просрочени</option>
         </FilterSelect>
         <RunBtn disabled={isLoading} onClick={handleRun}>
-          {isLoading ? 'Зареждане…' : 'Генерирай справка'}
+          {isLoading ? 'Зареждане…' : 'Приложи филтри'}
         </RunBtn>
       </FilterRow>
 
       {report && (
         <>
+          {/* Plan filter scope banner — wallet/invoice stats are not plan-filterable */}
+          {queryPlan && (
+            <PlanScopeBanner>
+              <span style={{ fontSize: '1rem', flexShrink: 0 }}>ℹ</span>
+              <span>
+                <strong>Планът филтрира само разбивката по план.</strong>{' '}
+                Статистиките на портфейла (кешбек, плащания, зареждания) и фактурните карти показват данни за всички планове — тези агрегати не са обвързани с конкретен абонатен план.
+              </span>
+            </PlanScopeBanner>
+          )}
+
           {/* Stats grid */}
           <StatsGrid>
             <StatCard $soft={palette.infoSoft}>
               <StatLabel>Общ обем (портфейл)</StatLabel>
               <StatValue $color={palette.info}>{fmt(totalVolume)}</StatValue>
               <StatSub>{totalCount.toLocaleString()} транзакции</StatSub>
-              {queryPartnerId && <StatSub style={{ color: palette.textSubtle, fontStyle: 'italic' }}>за цялата платформа</StatSub>}
+              {(queryPartnerId || queryPlan) && <StatSub style={{ color: palette.textSubtle, fontStyle: 'italic' }}>за цялата платформа</StatSub>}
             </StatCard>
 
             <StatCard $soft={palette.successSoft}>
               <StatLabel>Кешбек кредитиран</StatLabel>
               <StatValue $color={palette.success}>{fmt(cashback?.total ?? 0)}</StatValue>
               <StatSub>{(cashback?.count ?? 0).toLocaleString()} транзакции</StatSub>
-              {queryPartnerId && <StatSub style={{ color: palette.textSubtle, fontStyle: 'italic' }}>за цялата платформа</StatSub>}
+              {(queryPartnerId || queryPlan) && <StatSub style={{ color: palette.textSubtle, fontStyle: 'italic' }}>за цялата платформа</StatSub>}
             </StatCard>
 
             <StatCard $soft={palette.purpleSoft}>
               <StatLabel>Плащания към абонати</StatLabel>
               <StatValue $color={palette.purple}>{fmt(withdrawals?.total ?? 0)}</StatValue>
               <StatSub>{(withdrawals?.count ?? 0).toLocaleString()} транзакции</StatSub>
-              {queryPartnerId && <StatSub style={{ color: palette.textSubtle, fontStyle: 'italic' }}>за цялата платформа</StatSub>}
+              {(queryPartnerId || queryPlan) && <StatSub style={{ color: palette.textSubtle, fontStyle: 'italic' }}>за цялата платформа</StatSub>}
             </StatCard>
 
             <StatCard $soft={palette.tealSoft}>
               <StatLabel>Зареждания</StatLabel>
               <StatValue $color={palette.teal}>{fmt(topUps?.total ?? 0)}</StatValue>
               <StatSub>{(topUps?.count ?? 0).toLocaleString()} транзакции</StatSub>
-              {queryPartnerId && <StatSub style={{ color: palette.textSubtle, fontStyle: 'italic' }}>за цялата платформа</StatSub>}
+              {(queryPartnerId || queryPlan) && <StatSub style={{ color: palette.textSubtle, fontStyle: 'italic' }}>за цялата платформа</StatSub>}
             </StatCard>
 
             <StatCard>
@@ -434,11 +452,9 @@ export default function AdminFinanceReportsPage() {
             </StatCard>
 
             <StatCard $soft={palette.accentSoft}>
-              <StatLabel>Кешбек дължим към партньори</StatLabel>
+              <StatLabel>Кешбек за фактуриране</StatLabel>
               <StatValue $color={palette.accent}>{fmt(report.cashbackInvoices.total)}</StatValue>
-              <StatSub>
-                + {fmt(report.cashbackInvoices.marginTotal)} марджин
-              </StatSub>
+              <StatSub>{report.cashbackInvoices.count} {BG_PLURAL.select(report.cashbackInvoices.count) === 'one' ? 'фактура' : 'фактури'}</StatSub>
               {queryPlan && <StatSub style={{ color: palette.textSubtle, fontStyle: 'italic' }}>всички планове</StatSub>}
             </StatCard>
 
@@ -457,12 +473,18 @@ export default function AdminFinanceReportsPage() {
           {/* Period status summary — quick reference for which months are in range */}
           {report.periodStatuses.length > 0 && (
             <Card>
-              <SectionTitle>Отчетни периоди в диапазона</SectionTitle>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                <SectionTitle style={{ margin: 0 }}>Отчетни периоди в диапазона</SectionTitle>
+                <Link to="/admin/finance/periods" style={{ fontSize: '0.8125rem', color: palette.accent, textDecoration: 'none', fontWeight: 600 }}>
+                  Управление на периоди →
+                </Link>
+              </div>
               <Table>
                 <thead>
                   <tr>
                     <Th>Период</Th>
                     <Th>Статус</Th>
+                    <Th>Неплатени фактури</Th>
                   </tr>
                 </thead>
                 <tbody>
@@ -470,9 +492,25 @@ export default function AdminFinanceReportsPage() {
                     <tr key={p.month}>
                       <Td style={{ fontWeight: 600, color: palette.text }}>{p.month}</Td>
                       <Td>
-                        <PeriodStatusBadge $status={p.status}>
-                          {PERIOD_STATUS_LABELS[p.status] ?? p.status}
-                        </PeriodStatusBadge>
+                        {p.status === null
+                          ? <PeriodStatusBadge $status="NO_RECORD">Без запис</PeriodStatusBadge>
+                          : <PeriodStatusBadge $status={p.status}>{PERIOD_STATUS_LABELS[p.status] ?? p.status}</PeriodStatusBadge>
+                        }
+                      </Td>
+                      <Td>
+                        {p.pendingCount > 0 && (
+                          <InvoiceStatusBadge $status="PENDING" style={{ marginRight: '0.375rem' }}>
+                            Чакащи ×{p.pendingCount}
+                          </InvoiceStatusBadge>
+                        )}
+                        {p.overdueCount > 0 && (
+                          <InvoiceStatusBadge $status="OVERDUE">
+                            Просрочени ×{p.overdueCount}
+                          </InvoiceStatusBadge>
+                        )}
+                        {p.pendingCount === 0 && p.overdueCount === 0 && (
+                          <span style={{ color: palette.textSubtle, fontSize: '0.8125rem' }}>—</span>
+                        )}
                       </Td>
                     </tr>
                   ))}
@@ -482,21 +520,27 @@ export default function AdminFinanceReportsPage() {
           )}
 
           {/* Per-partner breakdown (spec §6.4: partner dimension) */}
-          {report.partnerBreakdown.length > 0 && (() => {
-            const totals = report.partnerBreakdown.reduce(
-              (acc, r) => ({ turnover: acc.turnover + r.turnover, cashback: acc.cashback + r.cashback, margin: acc.margin + r.margin }),
-              { turnover: 0, cashback: 0, margin: 0 },
-            );
-            return (
-              <Card>
-                <SectionTitle>
-                  Разбивка по партньор
-                  {queryPlan && (
-                    <span style={{ fontWeight: 400, fontSize: '0.8rem', color: palette.textSubtle, marginLeft: '0.5rem', fontStyle: 'italic' }}>
-                      (фактурите по партньор не са филтрирани по план)
-                    </span>
-                  )}
-                </SectionTitle>
+          <Card>
+            <SectionTitle>
+              Разбивка по партньор
+              {queryPlan && (
+                <span style={{ fontWeight: 400, fontSize: '0.8rem', color: palette.textSubtle, marginLeft: '0.5rem', fontStyle: 'italic' }}>
+                  (фактурите по партньор не са филтрирани по план)
+                </span>
+              )}
+            </SectionTitle>
+            {report.partnerBreakdown.length === 0 ? (
+              <p style={{ fontSize: '0.875rem', color: palette.textSubtle, margin: 0 }}>
+                {queryPartnerId
+                  ? 'Няма фактури или сканирания за избрания партньор в избрания период.'
+                  : 'Няма партньорски данни за избрания период.'}
+              </p>
+            ) : (() => {
+              const totals = report.partnerBreakdown.reduce(
+                (acc, r) => ({ turnover: acc.turnover + r.turnover, cashback: acc.cashback + r.cashback, margin: acc.margin + r.margin }),
+                { turnover: 0, cashback: 0, margin: 0 },
+              );
+              return (
                 <Table>
                   <thead>
                     <tr>
@@ -506,6 +550,7 @@ export default function AdminFinanceReportsPage() {
                       <ThRight>Договорен %</ThRight>
                       <ThRight>Кешбек</ThRight>
                       <ThRight>Марджин</ThRight>
+                      <ThRight>Фактури</ThRight>
                       <Th>Статус на фактури</Th>
                     </tr>
                   </thead>
@@ -515,9 +560,17 @@ export default function AdminFinanceReportsPage() {
                         <TdBold>{row.partnerName}</TdBold>
                         <Td>{row.partnerCity ?? '—'}</Td>
                         <TdRight style={{ fontWeight: 600, color: palette.text }}>{fmt(row.turnover)}</TdRight>
-                        <TdRight>{row.contractedRate != null ? `${row.contractedRate}%` : '—'}</TdRight>
+                        <TdRight>
+                          {row.contractedRate != null ? `${row.contractedRate}%` : '—'}
+                          {row.ratesVary && (
+                            <span style={{ fontSize: '0.65rem', color: palette.textSubtle, marginLeft: '0.25rem' }}>
+                              (различни)
+                            </span>
+                          )}
+                        </TdRight>
                         <TdRight>{fmt(row.cashback)}</TdRight>
                         <TdRight>{fmt(row.margin)}</TdRight>
+                        <TdRight>{row.invoiceCount}</TdRight>
                         <Td>
                           {Object.entries(row.statuses).map(([st, count]) => (
                             <span key={st} style={{ marginRight: '0.375rem' }}>
@@ -538,14 +591,17 @@ export default function AdminFinanceReportsPage() {
                         <TdRight>—</TdRight>
                         <TdRight style={{ fontWeight: 700, color: palette.text }}>{fmt(totals.cashback)}</TdRight>
                         <TdRight style={{ fontWeight: 700, color: palette.text }}>{fmt(totals.margin)}</TdRight>
+                        <TdRight style={{ fontWeight: 700, color: palette.text }}>
+                          {report.partnerBreakdown.reduce((s, r) => s + r.invoiceCount, 0)}
+                        </TdRight>
                         <td style={{ padding: '0.625rem 0.75rem' }} />
                       </tr>
                     </tfoot>
                   )}
                 </Table>
-              </Card>
-            );
-          })()}
+              );
+            })()}
+          </Card>
 
           {/* Subscription plan breakdown (spec §6.4: абонатен план dimension) */}
           {(report.planBreakdown.length > 0 || queryPlan) && (
@@ -630,7 +686,7 @@ export default function AdminFinanceReportsPage() {
       )}
 
       {error && !isLoading && (
-        <div style={{ color: palette.danger, fontSize: '0.9375rem', textAlign: 'center', paddingTop: '3rem', background: palette.dangerSoft, border: `1px solid ${palette.danger}`, borderRadius: '0.75rem', padding: '1.25rem' }}>
+        <div style={{ color: palette.danger, fontSize: '0.9375rem', textAlign: 'center', background: palette.dangerSoft, border: `1px solid ${palette.danger}`, borderRadius: '0.75rem', padding: '1.25rem' }}>
           Грешка при зареждане на справката. Проверете връзката и опитайте отново.
         </div>
       )}

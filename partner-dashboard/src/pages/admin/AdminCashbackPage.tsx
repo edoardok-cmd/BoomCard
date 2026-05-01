@@ -222,7 +222,7 @@ function fmtMoney(n: number): string {
 }
 
 function exportCsv(rows: CashbackEntry[]): void {
-  const header = ['ID', 'Абонат', 'Имейл', 'Сума (лв.)', 'Статус', 'Изтича', 'Бележка', 'Начислен'];
+  const header = ['ID', 'Абонат', 'Имейл', 'Сума (лв.)', 'Статус', 'Партньор', 'Изтича', 'Бележка', 'Начислен'];
   const escape = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
   const lines = [
     header.join(','),
@@ -232,8 +232,9 @@ function exportCsv(rows: CashbackEntry[]): void {
       escape(r.user.email),
       escape(fmtMoney(r.amount)),
       escape(r.status),
+      escape(r.receipt?.merchantName ?? ''),
       escape(r.cashbackExpiresAt ? new Date(r.cashbackExpiresAt).toLocaleDateString('bg-BG') : ''),
-      escape(r.receipt?.merchantName ?? r.description ?? ''),
+      escape(r.description ?? ''),
       escape(new Date(r.createdAt).toLocaleDateString('bg-BG')),
     ].join(',')),
   ];
@@ -343,7 +344,6 @@ export default function AdminCashbackPage() {
   const handleExport = async () => {
     setExporting(true);
     try {
-      // Fetch all matching entries (up to 10 000) for a complete export
       const result = await adminCashbackService.getEntries({
         page: 1,
         limit: 10000,
@@ -352,6 +352,9 @@ export default function AdminCashbackPage() {
         dateFrom: dateFrom || undefined,
         dateTo: dateTo || undefined,
       });
+      if (result.total > result.data.length) {
+        toast(`Внимание: експортирани са ${result.data.length} от ${result.total} записа. Приложи по-тесен филтър за пълен извлечен файл.`, { icon: '⚠️' });
+      }
       exportCsv(result.data);
     } catch {
       toast.error('Грешка при експорт');
@@ -411,12 +414,21 @@ export default function AdminCashbackPage() {
       ),
     },
     {
+      key: 'partner',
+      header: 'Партньор',
+      render: (row) => (
+        <span style={{ fontSize: '0.8125rem', color: palette.textMuted }}>
+          {row.receipt?.merchantName ?? '—'}
+          {row.receipt?.totalAmount != null && <MetaLine>{fmtMoney(row.receipt.totalAmount)} лв.</MetaLine>}
+        </span>
+      ),
+    },
+    {
       key: 'receipt',
       header: 'Бележка',
       render: (row) => (
         <span style={{ fontSize: '0.8125rem', color: palette.textMuted }}>
-          {row.receipt?.merchantName ?? row.description ?? '—'}
-          {row.receipt?.totalAmount != null && <MetaLine>{fmtMoney(row.receipt.totalAmount)} лв.</MetaLine>}
+          {row.description ?? '—'}
         </span>
       ),
     },
@@ -556,15 +568,11 @@ export default function AdminCashbackPage() {
               label: 'Изтечи',
               hidden: (row) => ['Paid', 'Expired'].includes(row.status) || ['ANNULLED', 'FAILED'].includes(row.rawStatus),
               onClick: (row) => {
-                if (!window.confirm(`Принудително изтичане на кешбек за ${row.user.email}?\nТова действие не може да се отмени.`)) return;
+                const lockedWarning = row.status === 'Locked'
+                  ? '\n⚠ Записът е ЗАКЛЮЧЕН — сумата НЯМА да бъде платена.'
+                  : '';
+                if (!window.confirm(`Принудително изтичане на кешбек за ${row.user.email}?\nСума: ${fmtMoney(row.amount)} лв.${lockedWarning}\nТова действие не може да се отмени.`)) return;
                 expireMutation.mutate(row.id);
-              },
-            },
-            {
-              label: 'Виж профила',
-              hidden: (row) => row.status !== 'Expired',
-              onClick: (row) => {
-                window.open(`/admin/subscribers/all?user=${row.user.id}`, '_blank');
               },
             },
           ]}
