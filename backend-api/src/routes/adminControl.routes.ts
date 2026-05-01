@@ -135,6 +135,12 @@ router.get(
         orderBy: { createdAt: 'asc' },
         include: {
           user: { select: { id: true, email: true, firstName: true, lastName: true } },
+          venue: {
+            select: {
+              id: true, name: true, city: true,
+              partner: { select: { id: true, businessName: true } },
+            },
+          },
         },
       }),
       prisma.receipt.count({ where }),
@@ -177,14 +183,16 @@ router.post(
 
 /**
  * POST /api/admin/control/disputes/:id/reject
- * Body: { reason?: string }
+ * Body: { reason?: string; notes?: string } — accepts either key
  */
 router.post(
   '/disputes/:id/reject',
   requirePermission('control.disputes.write'),
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const { id } = req.params;
-    const rejectionReason = typeof req.body?.reason === 'string' ? req.body.reason.trim() : undefined;
+    const rejectionReason =
+      typeof req.body?.reason === 'string' ? req.body.reason.trim() :
+      typeof req.body?.notes  === 'string' ? req.body.notes.trim()  : undefined;
 
     const updated = await receiptService.reviewReceipt({
       receiptId: id,
@@ -231,7 +239,12 @@ router.get(
   '/risk-queue/summary',
   requirePermission('control.risk.read'),
   asyncHandler(async (_req: AuthRequest, res: Response) => {
-    const baseWhere = { status: { notIn: ['APPROVED', 'REJECTED', 'EXPIRED'] as never[] } };
+    // Require at least one fraud signal so clean receipts (empty fraudReasons) don't
+    // inflate `total` and therefore the `other` bucket (other = total − knownCount).
+    const baseWhere = {
+      status: { notIn: ['APPROVED', 'REJECTED', 'EXPIRED'] as never[] },
+      fraudReasons: { isEmpty: false },
+    };
 
     const [total, duplicate, qrMismatch, velocity, ibanAnomaly, receiptMatch, knownCount] =
       await Promise.all([
@@ -275,12 +288,12 @@ router.get(
     const tier = typeof req.query.tier === 'string' ? req.query.tier.trim() : 'all';
     const venueId = typeof req.query.venueId === 'string' ? req.query.venueId.trim() : '';
 
-    // Spec §7.1 buckets: 0-30 auto-approve, 31-60 review, 61+ high.
+    // Spec §7.1 buckets: 0-30 auto-approve (not surfaced for review), 31-60 review, 61+ high.
+    // AUTO_0_30 is intentionally excluded from the risk queue — those receipts auto-approve.
+    // 'all' and any unknown tier value default to all review-relevant items (≥31).
     let fraudScoreFilter: { gte?: number; lt?: number } = { gte: 31 };
     if (tier === 'REVIEW_31_60') fraudScoreFilter = { gte: 31, lt: 61 };
     else if (tier === 'HIGH_61_PLUS') fraudScoreFilter = { gte: 61 };
-    else if (tier === 'AUTO_0_30') fraudScoreFilter = { gte: 0, lt: 31 };
-    else if (tier === 'all') fraudScoreFilter = { gte: 0 };
 
     const where: Parameters<typeof prisma.receipt.findMany>[0]['where'] = {
       fraudScore: fraudScoreFilter,

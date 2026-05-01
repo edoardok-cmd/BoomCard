@@ -369,7 +369,6 @@ const RiskBadge = styled.div<{ $level: string }>`
     switch (props.$level) {
       case 'CRITICAL': return '#f44336';
       case 'HIGH': return '#ff9800';
-      case 'MEDIUM': return '#ffc107';
       case 'LOW': return '#4caf50';
       default: return '#9e9e9e';
     }
@@ -426,9 +425,8 @@ const ScoreBarFill = styled.div<{ $score: number }>`
   height: 100%;
   width: ${props => props.$score}%;
   background: ${props => {
-    if (props.$score < 10) return '#4caf50';
-    if (props.$score < 30) return '#ffc107';
-    if (props.$score < 60) return '#ff9800';
+    if (props.$score < 31) return '#4caf50';
+    if (props.$score < 61) return '#ff9800';
     return '#f44336';
   }};
   transition: width 0.3s ease;
@@ -921,6 +919,14 @@ export const AdminScanReviewPage: React.FC = () => {
     fetchScans();
     fetchStats();
   }, [filterStatus, filterRisk, filterSuspicious, filterReasons, filterDateFromHours, page, pageSize]);
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setModalOpen(false);
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, []);
 
   const fetchScans = async () => {
     const seq = ++fetchScansSeqRef.current;

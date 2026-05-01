@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import styled from 'styled-components';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { DataTable, ColumnDef } from '../../components/admin/DataTable/DataTable';
@@ -103,9 +103,45 @@ const ActionBtn = styled.button<{ $variant: 'approve' | 'reject' }>`
 
 const PAGE_SIZE = 25;
 
+type ActionDraft = { id: string; type: 'approve' | 'reject'; text: string };
+
+const Overlay = styled.div`
+  position: fixed; inset: 0; background: rgba(0,0,0,0.45);
+  display: flex; align-items: center; justify-content: center; z-index: 1000;
+`;
+const Dialog = styled.div`
+  background: ${palette.surface}; border: 1px solid ${palette.border};
+  border-radius: 0.75rem; padding: 1.5rem; width: 100%; max-width: 28rem;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+`;
+const DialogTitle = styled.h3`font-size: 1rem; font-weight: 700; color: ${palette.text}; margin: 0 0 0.75rem;`;
+const DialogTextarea = styled.textarea`
+  width: 100%; min-height: 5rem; padding: 0.5rem 0.75rem;
+  border: 1px solid ${palette.border}; border-radius: 0.5rem;
+  font-size: 0.875rem; color: ${palette.text}; background: ${palette.bg};
+  resize: vertical; outline: none; box-sizing: border-box; font-family: inherit;
+  &:focus { border-color: ${palette.accent}; }
+`;
+const DialogFooter = styled.div`display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 1rem;`;
+const CancelBtn = styled.button`
+  padding: 0.4rem 1rem; border-radius: 0.375rem; border: 1px solid ${palette.border};
+  font-size: 0.875rem; font-weight: 600; cursor: pointer;
+  background: ${palette.surface}; color: ${palette.text};
+  &:disabled { opacity: 0.5; cursor: not-allowed; }
+`;
+const ConfirmBtn = styled.button<{ $variant: 'approve' | 'reject' }>`
+  padding: 0.4rem 1rem; border-radius: 0.375rem; border: 1px solid;
+  font-size: 0.875rem; font-weight: 600; cursor: pointer;
+  &:disabled { opacity: 0.5; cursor: not-allowed; }
+  background: ${(p) => p.$variant === 'approve' ? palette.successSoft : palette.dangerSoft};
+  color: ${(p) => p.$variant === 'approve' ? palette.success : palette.danger};
+  border-color: ${(p) => p.$variant === 'approve' ? palette.success : palette.danger};
+`;
+
 // Signal codes that indicate a receipt template / OCR match failure (spec §7.2 "Съвпадение с шаблон").
+// Duplicate-category codes (DUPLICATE_RECEIPT, EXACT_DUPLICATE, etc.) belong to a separate spec
+// category and must NOT be included here — see backend RISK_SIGNAL_GROUPS.receiptMatch.
 const RECEIPT_MATCH_SIGNALS = new Set([
-  'DUPLICATE_RECEIPT', 'EXACT_DUPLICATE', 'PERCEPTUAL_DUPLICATE', 'IMAGE_HASH_DUPLICATE',
   'LOW_OCR_CONFIDENCE', 'RECEIPT_TEMPLATE_MISMATCH',
 ]);
 
@@ -131,8 +167,7 @@ const T = {
   eyebrow:         { en: 'Control',                                          bg: 'Контрол' },
   title:           { en: 'Security & Fraud Signals',                         bg: 'Сигурност и Измамни сигнали' },
   subtitle:        { en: 'Duplicate detection, QR/receipt mismatch, velocity, IBAN anomalies', bg: 'Дублирани записи, несъответствие QR/бележка, честота, IBAN аномалии' },
-  allTiers:        { en: 'All tiers',                                        bg: 'Всички нива' },
-  autoTier:        { en: 'Auto-approve (0–30)',                              bg: 'Авто (0–30)' },
+  allTiers:        { en: 'All tiers (≥31)',                                  bg: 'Всички нива (≥31)' },
   reviewTier:      { en: 'Review (31–60)',                                   bg: 'Преглед (31–60)' },
   highTier:        { en: 'High risk (61+)',                                   bg: 'Висок риск (61+)' },
   statDuplicate:   { en: 'Duplicates',                                        bg: 'Дублиране' },
@@ -163,12 +198,17 @@ const T = {
   riskMed:         { en: 'Medium',                                            bg: 'Среден' },
   riskLow:         { en: 'Low',                                               bg: 'Нисък' },
   globalNote:      { en: 'Global totals across all pages',                   bg: 'Глобални броячи за всички страници' },
+  reasonLabel:     { en: 'Reason for rejection (optional)',                  bg: 'Причина за отказ (незадължително)' },
+  notesLabel:      { en: 'Notes (optional)',                                  bg: 'Бележки (незадължително)' },
+  cancel:          { en: 'Cancel',                                            bg: 'Отказ' },
+  confirm:         { en: 'Confirm',                                           bg: 'Потвърди' },
 } as const;
 
 export default function AdminControlSecurityPage() {
   const { language } = useLanguage();
   const [page, setPage] = useState(1);
-  const [tier, setTier] = useState<'AUTO_0_30' | 'REVIEW_31_60' | 'HIGH_61_PLUS' | 'all'>('all');
+  const [tier, setTier] = useState<'REVIEW_31_60' | 'HIGH_61_PLUS' | 'all'>('all');
+  const [actionDraft, setActionDraft] = useState<ActionDraft | null>(null);
   const lang: 'en' | 'bg' = language === 'bg' ? 'bg' : 'en';
   const t = (key: keyof typeof T) => T[key][lang];
   const queryClient = useQueryClient();
@@ -185,24 +225,41 @@ export default function AdminControlSecurityPage() {
     staleTime: 60_000,
   });
 
-  // Gap 6: approve / reject mutations that refresh both queries on success.
+  // Row-scoped mutations: each carries { id, notes|reason } so isPending can be checked per row.
   const approveMutation = useMutation({
-    mutationFn: (id: string) => adminControlService.approveRiskSignal(id),
+    mutationFn: ({ id, notes }: { id: string; notes?: string }) =>
+      adminControlService.approveRiskSignal(id, notes),
     onSuccess: () => {
+      setActionDraft(null);
       queryClient.invalidateQueries({ queryKey: ['admin-fraud-signals'] });
       queryClient.invalidateQueries({ queryKey: ['admin-risk-queue-summary'] });
     },
   });
 
   const rejectMutation = useMutation({
-    mutationFn: (id: string) => adminControlService.rejectRiskSignal(id),
+    mutationFn: ({ id, reason }: { id: string; reason?: string }) =>
+      adminControlService.rejectRiskSignal(id, reason),
     onSuccess: () => {
+      setActionDraft(null);
       queryClient.invalidateQueries({ queryKey: ['admin-fraud-signals'] });
       queryClient.invalidateQueries({ queryKey: ['admin-risk-queue-summary'] });
     },
   });
 
-  const isMutating = approveMutation.isPending || rejectMutation.isPending;
+  // Row-scoped: only the row being processed shows a disabled state.
+  const isRowMutating = (id: string) =>
+    (approveMutation.isPending && approveMutation.variables?.id === id) ||
+    (rejectMutation.isPending && rejectMutation.variables?.id === id);
+  const isAnyMutating = approveMutation.isPending || rejectMutation.isPending;
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || isAnyMutating) return;
+      setActionDraft(null);
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [isAnyMutating]);
 
   const fmt = (iso: string) =>
     new Date(iso).toLocaleString('en-GB', {
@@ -312,22 +369,21 @@ export default function AdminControlSecurityPage() {
       ),
     },
     {
-      // Gap 6: approve / reject actions per row.
       key: 'actions',
       header: t('colActions'),
       render: (row) => (
         <ActionRow>
           <ActionBtn
             $variant="approve"
-            disabled={isMutating}
-            onClick={() => approveMutation.mutate(row.id)}
+            disabled={isRowMutating(row.id)}
+            onClick={() => setActionDraft({ id: row.id, type: 'approve', text: '' })}
           >
             {t('approve')}
           </ActionBtn>
           <ActionBtn
             $variant="reject"
-            disabled={isMutating}
-            onClick={() => rejectMutation.mutate(row.id)}
+            disabled={isRowMutating(row.id)}
+            onClick={() => setActionDraft({ id: row.id, type: 'reject', text: '' })}
           >
             {t('reject')}
           </ActionBtn>
@@ -385,7 +441,6 @@ export default function AdminControlSecurityPage() {
         <FilterRow>
           <Select value={tier} onChange={(e) => { setTier(e.target.value as typeof tier); setPage(1); }}>
             <option value="all">{t('allTiers')}</option>
-            <option value="AUTO_0_30">{t('autoTier')}</option>
             <option value="REVIEW_31_60">{t('reviewTier')}</option>
             <option value="HIGH_61_PLUS">{t('highTier')}</option>
           </Select>
@@ -403,6 +458,40 @@ export default function AdminControlSecurityPage() {
           onPageChange={setPage}
         />
       </Card>
+      {actionDraft && (
+        <Overlay onClick={() => !isAnyMutating && setActionDraft(null)}>
+          <Dialog onClick={(e) => e.stopPropagation()}>
+            <DialogTitle>
+              {actionDraft.type === 'approve' ? t('approve') : t('reject')}
+            </DialogTitle>
+            <DialogTextarea
+              placeholder={actionDraft.type === 'reject' ? t('reasonLabel') : t('notesLabel')}
+              value={actionDraft.text}
+              onChange={(e) => setActionDraft({ ...actionDraft, text: e.target.value })}
+              autoFocus
+            />
+            <DialogFooter>
+              <CancelBtn disabled={isAnyMutating} onClick={() => setActionDraft(null)}>
+                {t('cancel')}
+              </CancelBtn>
+              <ConfirmBtn
+                $variant={actionDraft.type}
+                disabled={isAnyMutating}
+                onClick={() => {
+                  const txt = actionDraft.text.trim() || undefined;
+                  if (actionDraft.type === 'approve') {
+                    approveMutation.mutate({ id: actionDraft.id, notes: txt });
+                  } else {
+                    rejectMutation.mutate({ id: actionDraft.id, reason: txt });
+                  }
+                }}
+              >
+                {t('confirm')}
+              </ConfirmBtn>
+            </DialogFooter>
+          </Dialog>
+        </Overlay>
+      )}
     </PageShell>
   );
 }
