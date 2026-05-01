@@ -24,15 +24,6 @@ const TICKET_SELECT_ALL = {
   assignee: { select: { id: true, firstName: true, lastName: true, email: true } },
 } as const;
 
-const TICKET_SELECT_NEW = {
-  id: true,
-  subject: true,
-  category: true,
-  priority: true,
-  createdAt: true,
-  user: { select: { id: true, firstName: true, lastName: true, email: true } },
-} as const;
-
 const TICKET_SELECT_MINE = {
   id: true,
   subject: true,
@@ -43,6 +34,11 @@ const TICKET_SELECT_MINE = {
   user: { select: { id: true, firstName: true, lastName: true, email: true } },
   assignee: { select: { id: true, firstName: true, lastName: true, email: true } },
 } as const;
+
+// Returns true when the caller may access any ticket (not just their own).
+function hasFullAccess(req: AuthRequest): boolean {
+  return req.user!.role === 'SUPER_ADMIN';
+}
 
 // POST /api/admin/help — G8: admin creates a new help ticket (Spec §11 "Нова заявка")
 router.post('/', requirePermission('help.write'), async (req: AuthRequest, res, next) => {
@@ -118,7 +114,7 @@ router.post('/', requirePermission('help.write'), async (req: AuthRequest, res, 
     };
     emailService
       .sendEmail({
-        to: 'support@boomcard.bg',
+        to: 'office@boomcard.bg',
         subject: `[Admin заявка] ${CATEGORY_BG[category] ?? category}: ${subject.trim()}`,
         html: `<p><strong>Нова вътрешна заявка от администратор</strong></p>
 <table cellpadding="4">
@@ -132,7 +128,7 @@ router.post('/', requirePermission('help.write'), async (req: AuthRequest, res, 
 <p style="color:#999;font-size:12px;">Ticket ID: ${ticket.id}</p>`,
         text: `Нова вътрешна заявка от администратор\n\nАдминистратор: ${adminEmail}\nКатегория: ${CATEGORY_BG[category] ?? category}\nПриоритет: ${PRIORITY_BG[resolvedPriority] ?? resolvedPriority}\nТема: ${subject.trim()}\n\n${body.trim()}\n\nTicket ID: ${ticket.id}`,
       })
-      .catch((err) => logger.error('[adminHelp] Failed to send email to support@boomcard.bg:', err));
+      .catch((err) => logger.error('[adminHelp] Failed to send email to office@boomcard.bg:', err));
 
     res.status(201).json({ ticket });
   } catch (error) {
@@ -141,7 +137,7 @@ router.post('/', requirePermission('help.write'), async (req: AuthRequest, res, 
 });
 
 // GET /api/admin/help — all tickets with optional filters (SUPER_ADMIN only per spec §11)
-router.get('/', requirePermission('help.read.all'), async (req, res, next) => {
+router.get('/', authorize('SUPER_ADMIN'), async (req, res, next) => {
   try {
     const { status, priority, category, search, page = '1', limit = '25' } = req.query as Record<string, string>;
     const pageNum = Math.max(1, parseInt(page) || 1);
@@ -168,46 +164,6 @@ router.get('/', requirePermission('help.read.all'), async (req, res, next) => {
 
     const [tickets, total] = await Promise.all([
       prisma.helpTicket.findMany({ where, skip, take, orderBy: { createdAt: 'desc' }, select: TICKET_SELECT_ALL }),
-      prisma.helpTicket.count({ where }),
-    ]);
-
-    res.json({ tickets, total, page: pageNum, limit: take });
-  } catch (error) {
-    next(error);
-  }
-});
-
-// GET /api/admin/help/new — status=NEW tickets (unassigned queue)
-router.get('/new', requirePermission('help.read'), async (req, res, next) => {
-  try {
-    const { priority, category, search, page = '1', limit = '25' } = req.query as Record<string, string>;
-    const pageNum = Math.max(1, parseInt(page) || 1);
-    const limitNum = Math.min(100, Math.max(1, parseInt(limit) || 25));
-    const skip = (pageNum - 1) * limitNum;
-    const take = limitNum;
-
-    const where: Parameters<typeof prisma.helpTicket.findMany>[0]['where'] = { status: 'NEW' };
-    if (priority && Object.values(TicketPriority).includes(priority as TicketPriority)) {
-      where.priority = priority as TicketPriority;
-    }
-    if (category && Object.values(TicketCategory).includes(category as TicketCategory)) {
-      where.category = category as TicketCategory;
-    }
-    if (search) {
-      where.AND = [
-        { status: 'NEW' },
-        {
-          OR: [
-            { subject: { contains: search, mode: 'insensitive' } },
-            { user: { email: { contains: search, mode: 'insensitive' } } },
-          ],
-        },
-      ];
-      delete where.status;
-    }
-
-    const [tickets, total] = await Promise.all([
-      prisma.helpTicket.findMany({ where, skip, take, orderBy: { createdAt: 'desc' }, select: TICKET_SELECT_NEW }),
       prisma.helpTicket.count({ where }),
     ]);
 
@@ -256,7 +212,7 @@ router.get('/mine', requirePermission('help.read'), async (req: AuthRequest, res
 });
 
 // GET /api/admin/help/:id — full ticket detail including body
-router.get('/:id', requirePermission('help.read'), async (req, res, next) => {
+router.get('/:id', requirePermission('help.read'), async (req: AuthRequest, res, next) => {
   try {
     const ticket = await prisma.helpTicket.findUnique({
       where: { id: req.params.id },
@@ -274,6 +230,9 @@ router.get('/:id', requirePermission('help.read'), async (req, res, next) => {
       },
     });
     if (!ticket) return res.status(404).json({ error: 'Ticket not found' });
+    if (!hasFullAccess(req) && ticket.user.id !== req.user!.id && ticket.assignee?.id !== req.user!.id) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
     res.json({ ticket });
   } catch (error) {
     next(error);
@@ -285,6 +244,9 @@ router.post('/:id/assign', requirePermission('help.write'), async (req: AuthRequ
   try {
     const ticket = await prisma.helpTicket.findUnique({ where: { id: req.params.id } });
     if (!ticket) return res.status(404).json({ error: 'Ticket not found' });
+    if (!hasFullAccess(req) && ticket.userId !== req.user!.id && ticket.assigneeId !== req.user!.id) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
 
     await prisma.helpTicket.update({
       where: { id: req.params.id },
@@ -301,12 +263,15 @@ router.post('/:id/assign', requirePermission('help.write'), async (req: AuthRequ
 });
 
 // PATCH /api/admin/help/:id — update status and/or priority
-router.patch('/:id', requirePermission('help.write'), async (req, res, next) => {
+router.patch('/:id', requirePermission('help.write'), async (req: AuthRequest, res, next) => {
   try {
     const { status, priority } = req.body as { status?: string; priority?: string };
 
     const ticket = await prisma.helpTicket.findUnique({ where: { id: req.params.id } });
     if (!ticket) return res.status(404).json({ error: 'Ticket not found' });
+    if (!hasFullAccess(req) && ticket.userId !== req.user!.id && ticket.assigneeId !== req.user!.id) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
 
     const data: { status?: TicketStatus; priority?: TicketPriority } = {};
     if (status && Object.values(TicketStatus).includes(status as TicketStatus)) {
@@ -339,8 +304,14 @@ router.post('/:id/reply', requirePermission('help.write'), async (req: AuthReque
       return res.status(400).json({ error: 'Reply body is too long (max 5000 chars)' });
     }
 
-    const ticket = await prisma.helpTicket.findUnique({ where: { id: req.params.id } });
+    const ticket = await prisma.helpTicket.findUnique({
+      where: { id: req.params.id },
+      include: { user: { select: { email: true, firstName: true } } },
+    });
     if (!ticket) return res.status(404).json({ error: 'Ticket not found' });
+    if (!hasFullAccess(req) && ticket.userId !== req.user!.id && ticket.assigneeId !== req.user!.id) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
     if (ticket.status === 'CLOSED') {
       return res.status(400).json({ error: 'Cannot reply to a closed ticket' });
     }
@@ -357,9 +328,41 @@ router.post('/:id/reply', requirePermission('help.write'), async (req: AuthReque
       },
     });
 
-    // Move ticket to WAITING (waiting for the user to respond) if it was OPEN
-    if (ticket.status === 'OPEN' || ticket.status === 'NEW') {
-      await prisma.helpTicket.update({ where: { id: req.params.id }, data: { status: 'WAITING' } });
+    // Author-aware status transition:
+    //   support replies  → WAITING (waiting for the ticket creator to respond)
+    //   creator responds → OPEN    (back to support to act)
+    const isCreator = req.user!.id === ticket.userId;
+    let newStatus: TicketStatus | null = null;
+    if (!isCreator && (ticket.status === 'OPEN' || ticket.status === 'NEW')) {
+      newStatus = 'WAITING';
+    } else if (isCreator && ticket.status === 'WAITING') {
+      newStatus = 'OPEN';
+    }
+    if (newStatus) {
+      await prisma.helpTicket.update({ where: { id: req.params.id }, data: { status: newStatus } });
+    }
+
+    // Notify the ticket creator by email when support (non-creator) replies
+    if (!isCreator && ticket.user?.email) {
+      const CATEGORY_BG: Record<string, string> = {
+        CASHBACK: 'Кешбек', ACCOUNT: 'Акаунт', PAYMENT: 'Плащане', TECHNICAL: 'Техническо', OTHER: 'Друго',
+      };
+      const esc2 = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      emailService
+        .sendEmail({
+          to: ticket.user.email,
+          subject: `[Отговор на заявка] ${ticket.subject}`,
+          html: `<p><strong>Получихте отговор на вашата вътрешна заявка</strong></p>
+<table cellpadding="4">
+  <tr><td><strong>Тема:</strong></td><td>${esc2(ticket.subject)}</td></tr>
+  <tr><td><strong>Категория:</strong></td><td>${CATEGORY_BG[ticket.category] ?? ticket.category}</td></tr>
+</table>
+<hr/>
+<p>${esc2(body.trim()).replace(/\n/g, '<br/>')}</p>
+<p style="color:#999;font-size:12px;">Ticket ID: ${ticket.id} &middot; <a href="https://boomcard.bg/admin/help/mine">Моите заявки</a></p>`,
+          text: `Получихте отговор на вашата вътрешна заявка\n\nТема: ${ticket.subject}\nКатегория: ${CATEGORY_BG[ticket.category] ?? ticket.category}\n\n${body.trim()}\n\nTicket ID: ${ticket.id}`,
+        })
+        .catch((err) => logger.error('[adminHelp] Failed to send reply notification email:', err));
     }
 
     res.status(201).json({ reply });
@@ -369,10 +372,13 @@ router.post('/:id/reply', requirePermission('help.write'), async (req: AuthReque
 });
 
 // GET /api/admin/help/:id/replies — list all replies for a ticket
-router.get('/:id/replies', requirePermission('help.read'), async (req, res, next) => {
+router.get('/:id/replies', requirePermission('help.read'), async (req: AuthRequest, res, next) => {
   try {
     const ticket = await prisma.helpTicket.findUnique({ where: { id: req.params.id } });
     if (!ticket) return res.status(404).json({ error: 'Ticket not found' });
+    if (!hasFullAccess(req) && ticket.userId !== req.user!.id && ticket.assigneeId !== req.user!.id) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
 
     const replies = await prisma.ticketReply.findMany({
       where: { ticketId: req.params.id },

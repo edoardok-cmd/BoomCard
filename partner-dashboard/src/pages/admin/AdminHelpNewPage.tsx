@@ -146,8 +146,8 @@ export default function AdminHelpNewPage() {
                 ? <Hint $error>{subjectError}</Hint>
                 : <Hint>Минимум 5 символа.</Hint>
               }
-              <Counter $warn={subjectTrimmed.length > SUBJECT_MAX * 0.9}>
-                {subjectTrimmed.length}/{SUBJECT_MAX}
+              <Counter $warn={subject.length > SUBJECT_MAX * 0.9}>
+                {subject.length}/{SUBJECT_MAX}
               </Counter>
             </HintRow>
           </FieldGroup>
@@ -206,8 +206,8 @@ export default function AdminHelpNewPage() {
                 ? <Hint $error>{bodyError}</Hint>
                 : <Hint>Минимум 10 символа.</Hint>
               }
-              <Counter $warn={bodyTrimmed.length > BODY_MAX * 0.9}>
-                {bodyTrimmed.length}/{BODY_MAX}
+              <Counter $warn={body.length > BODY_MAX * 0.9}>
+                {body.length}/{BODY_MAX}
               </Counter>
             </HintRow>
           </FieldGroup>

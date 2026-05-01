@@ -596,7 +596,7 @@ function App() {
                         </ProtectedRoute>
                       }
                     >
-                      <Route index element={<Navigate to="all" replace />} />
+                      <Route index element={<Navigate to="mine" replace />} />
                       <Route path="new" element={<AdminHelpNewPage />} />
                       <Route path="mine" element={<AdminHelpMinePage />} />
                       <Route path="all" element={<AdminHelpAllPage />} />
