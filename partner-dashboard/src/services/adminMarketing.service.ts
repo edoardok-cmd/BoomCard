@@ -44,8 +44,23 @@ export interface MarketingList {
   type: MarketingListType;
   description: string;
   size: number;
+  syncKey: string | null;
   updatedAt: string;
   createdAt: string;
+}
+
+export interface UserSearchResult {
+  id: string;
+  email: string;
+  firstName: string | null;
+  lastName: string | null;
+}
+
+export interface PartnerSearchResult {
+  id: string;
+  businessName: string;
+  email: string | null;
+  status: string;
 }
 
 export interface MarketingListMember {
@@ -181,6 +196,18 @@ export const adminMarketingService = {
 
   deleteList(id: string): Promise<void> {
     return apiService.delete(`/admin/marketing/lists/${id}`);
+  },
+
+  ensureDefaultLists(): Promise<{ results: { syncKey: string; action: string }[] }> {
+    return apiService.post('/admin/marketing/lists/ensure-defaults', {});
+  },
+
+  searchUsers(q: string): Promise<UserSearchResult[]> {
+    return apiService.get('/admin/marketing/users/search', { q });
+  },
+
+  searchPartners(q: string): Promise<PartnerSearchResult[]> {
+    return apiService.get('/admin/marketing/partners/search', { q });
   },
 
   getListMembers(listId: string): Promise<MarketingListMember[]> {

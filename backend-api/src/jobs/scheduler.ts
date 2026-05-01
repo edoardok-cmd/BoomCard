@@ -21,6 +21,7 @@
  *   pending-payment-reminders        — 0 * * * *    (every hour)
  *   ocr-backlog-scan                 — every 6 hours
  *   user-risk-sweep                  — 0 4 * * *    (4:00 AM daily)
+ *   marketing-list-sync              — 30 2 * * *   (2:30 AM daily — after cashback-expiry)
  */
 
 import cron from 'node-cron';
@@ -859,6 +860,84 @@ async function checkOcrBacklog(): Promise<void> {
   logger.warn(`[ocr-backlog-scan] ALERT — ${pendingCount} pending, oldest ${oldestAgeHours.toFixed(1)}h`);
 }
 
+// ── Marketing list size sync ──────────────────────────────────────────────────
+// Recomputes the `size` column for DYNAMIC and SEGMENT marketing lists that
+// have a known syncKey. Static lists are kept accurate by member add/remove.
+
+async function syncMarketingListSizes(): Promise<void> {
+  const now = new Date();
+  logger.info(`[marketing-list-sync] Starting run at ${now.toISOString()}`);
+
+  const cutoff90d = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+
+  // Map of syncKey → count query. Each entry must be independently safe to run.
+  type SizeQuery = () => Promise<number>;
+  const queries: Record<string, SizeQuery> = {
+    all_active_subscribers: () =>
+      prisma.user.count({
+        where: {
+          marketingConsentEmail: true,
+          status: { not: 'DELETED' as any },
+          subscriptions: { some: { status: { in: ['ACTIVE', 'TRIALING'] } } },
+        },
+      }),
+    premium_holders: () =>
+      prisma.user.count({
+        where: {
+          status: { not: 'DELETED' as any },
+          subscriptions: { some: { status: { in: ['ACTIVE', 'TRIALING'] }, plan: { in: ['PREMIUM', 'LIGHT'] } } },
+        },
+      }),
+    basic_holders: () =>
+      prisma.user.count({
+        where: {
+          status: { not: 'DELETED' as any },
+          subscriptions: { some: { status: { in: ['ACTIVE', 'TRIALING'] }, plan: 'BASIC' } },
+        },
+      }),
+    inactive_users_90d: () =>
+      prisma.user.count({
+        where: {
+          status: { not: 'DELETED' as any },
+          subscriptions: { some: {} },
+          OR: [
+            { lastActivityAt: { lt: cutoff90d } },
+            { lastActivityAt: null, createdAt: { lt: cutoff90d } },
+          ],
+        },
+      }),
+    email_consent_active: () =>
+      prisma.user.count({
+        where: { marketingConsentEmail: true, status: { not: 'DELETED' as any } },
+      }),
+    active_partners: () =>
+      prisma.partner.count({ where: { status: 'ACTIVE' } }),
+    potential_partners: () =>
+      prisma.partner.count({ where: { status: 'PENDING' } }),
+  };
+
+  const lists = await prisma.marketingList.findMany({
+    where: { syncKey: { in: Object.keys(queries) } },
+    select: { id: true, syncKey: true, name: true },
+  });
+
+  let updated = 0;
+  for (const list of lists) {
+    const query = queries[list.syncKey!];
+    if (!query) continue;
+    try {
+      const count = await query();
+      await prisma.marketingList.update({ where: { id: list.id }, data: { size: count } });
+      updated++;
+      logger.info(`[marketing-list-sync] ${list.syncKey} (${list.name}): ${count}`);
+    } catch (err) {
+      logger.error(`[marketing-list-sync] Failed for ${list.syncKey}:`, err);
+    }
+  }
+
+  logger.info(`[marketing-list-sync] Done — updated ${updated}/${lists.length} list(s)`);
+}
+
 // ── Registration ───────────────────────────────────────────────────────────────
 
 /**
@@ -1049,4 +1128,12 @@ export function registerScheduledJobs(): void {
   }, { timezone: 'Europe/Sofia' });
 
   logger.info('[scheduler] Registered: user-risk-sweep (0 4 * * *)');
+
+  // 2:30 AM every day — recompute sizes for DYNAMIC/SEGMENT marketing lists
+  // (STATIC list sizes are kept accurate by member add/remove events).
+  cron.schedule('30 2 * * *', () => {
+    syncMarketingListSizes().catch((err) => alertSchedulerFailure('marketing-list-sync', err));
+  }, { timezone: 'Europe/Sofia' });
+
+  logger.info('[scheduler] Registered: marketing-list-sync (30 2 * * *)');
 }

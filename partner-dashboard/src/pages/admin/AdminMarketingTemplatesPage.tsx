@@ -436,7 +436,11 @@ export default function AdminMarketingTemplatesPage() {
                   <TypePill $type={selected.type}>{selected.type}</TypePill>
                   {selected.type === 'SMS' && <SmsBadge>no delivery</SmsBadge>}
                   {selected.category && (
-                    <span style={{ fontSize: '0.75rem', color: palette.textMuted }}>
+                    <span style={{
+                      fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase',
+                      letterSpacing: '0.04em', borderRadius: '0.25rem', padding: '0.1rem 0.4rem',
+                      background: palette.border, color: palette.textMuted,
+                    }}>
                       {TEMPLATE_CATEGORIES.find((c) => c.value === selected.category)?.label ?? selected.category}
                     </span>
                   )}
@@ -451,15 +455,13 @@ export default function AdminMarketingTemplatesPage() {
                   <DetailValue>{selected.subject}</DetailValue>
                 </>
               )}
-              <DetailLabel>
-                Body
-                {selected.type === 'EMAIL' && (
-                  <TabRow style={{ marginTop: '0.5rem', marginBottom: 0 }}>
-                    <Tab $active={viewTab === 'body'} onClick={() => setViewTab('body')}>Source</Tab>
-                    <Tab $active={viewTab === 'preview'} onClick={() => setViewTab('preview')}>Preview</Tab>
-                  </TabRow>
-                )}
-              </DetailLabel>
+              <DetailLabel>Body</DetailLabel>
+              {selected.type === 'EMAIL' && (
+                <TabRow style={{ marginBottom: '0.75rem' }}>
+                  <Tab $active={viewTab === 'body'} onClick={() => setViewTab('body')}>Source</Tab>
+                  <Tab $active={viewTab === 'preview'} onClick={() => setViewTab('preview')}>Preview</Tab>
+                </TabRow>
+              )}
               {viewLoading ? (
                 <div style={{ padding: '1rem', color: palette.textSubtle, fontSize: '0.875rem' }}>Loading…</div>
               ) : viewDetail ? (

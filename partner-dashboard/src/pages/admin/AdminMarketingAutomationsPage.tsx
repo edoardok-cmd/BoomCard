@@ -173,6 +173,7 @@ export default function AdminMarketingAutomationsPage() {
 
   const openDelete = (row: MarketingAutomation) => {
     setSelected(row);
+    setApiError(null);
     setModal('delete');
   };
 
@@ -206,10 +207,13 @@ export default function AdminMarketingAutomationsPage() {
   const handleDelete = async () => {
     if (!selected) return;
     setSaving(true);
+    setApiError(null);
     try {
       await adminMarketingService.deleteAutomation(selected.id);
       closeModal();
       load();
+    } catch (err: any) {
+      setApiError(err?.response?.data?.error ?? err?.message ?? 'Delete failed');
     } finally {
       setSaving(false);
     }
@@ -219,12 +223,12 @@ export default function AdminMarketingAutomationsPage() {
     if (togglingId === row.id) return;
     const next: AutomationStatus = row.status === 'ACTIVE' ? 'PAUSED' : 'ACTIVE';
     setTogglingId(row.id);
+    setApiError(null);
     try {
       await adminMarketingService.patchAutomationStatus(row.id, next);
       load();
     } catch (err: any) {
-      const msg = err?.response?.data?.error ?? err?.message ?? 'Status update failed';
-      alert(msg);
+      setApiError(err?.response?.data?.error ?? err?.message ?? 'Status update failed');
     } finally {
       setTogglingId(null);
     }
@@ -441,6 +445,11 @@ export default function AdminMarketingAutomationsPage() {
                 <WarnBanner style={{ marginTop: '0.75rem' }}>
                   This automation has no template and was never able to send messages.
                 </WarnBanner>
+              )}
+              {apiError && (
+                <div style={{ background: palette.dangerSoft, color: palette.danger, border: '1px solid #f1c4b8', borderRadius: '0.5rem', padding: '0.625rem 0.875rem', fontSize: '0.8125rem', marginTop: '0.75rem' }}>
+                  {apiError}
+                </div>
               )}
             </ModalBody>
             <ModalFooter>

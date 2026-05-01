@@ -423,7 +423,104 @@ router.delete('/campaigns/:id', ...WRITE, async (req, res, next) => {
   }
 });
 
+// ─── Member search helpers ────────────────────────────────────────────────────
+
+router.get('/users/search', ...READ, async (req, res, next) => {
+  try {
+    const { q = '' } = req.query as { q?: string };
+    const term = q.trim();
+    if (!term) return res.json([]);
+
+    const users = await prisma.user.findMany({
+      where: {
+        status: { not: 'DELETED' as any },
+        OR: [
+          { email: { contains: term, mode: 'insensitive' } },
+          { firstName: { contains: term, mode: 'insensitive' } },
+          { lastName: { contains: term, mode: 'insensitive' } },
+        ],
+      },
+      select: { id: true, email: true, firstName: true, lastName: true },
+      take: 10,
+      orderBy: { createdAt: 'desc' },
+    });
+    res.json(users);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get('/partners/search', ...READ, async (req, res, next) => {
+  try {
+    const { q = '' } = req.query as { q?: string };
+    const term = q.trim();
+    if (!term) return res.json([]);
+
+    const partners = await prisma.partner.findMany({
+      where: {
+        OR: [
+          { businessName: { contains: term, mode: 'insensitive' } },
+          { email: { contains: term, mode: 'insensitive' } },
+        ],
+      },
+      select: { id: true, businessName: true, email: true, status: true },
+      take: 10,
+      orderBy: { createdAt: 'desc' },
+    });
+    res.json(partners);
+  } catch (error) {
+    next(error);
+  }
+});
+
 // ─── Lists ────────────────────────────────────────────────────────────────────
+
+// Default lists that spec §8 requires to exist. Called by the frontend
+// "Инициализирай списъци" button and also at app startup.
+const DEFAULT_LISTS: Array<{
+  syncKey: string;
+  name: string;
+  type: MarketingListType;
+  description: string;
+}> = [
+  { syncKey: 'all_active_subscribers', name: 'Всички активни абонати', type: 'SEGMENT', description: 'Потребители с активен абонамент, дали съгласие за маркетинг имейли.' },
+  { syncKey: 'premium_holders',        name: 'Premium абонати',        type: 'SEGMENT', description: 'Абонати с план Premium или Light (Weekly).' },
+  { syncKey: 'basic_holders',          name: 'Basic абонати',          type: 'SEGMENT', description: 'Абонати с план Basic.' },
+  { syncKey: 'inactive_users_90d',     name: 'Неактивни абонати (90+ дни)', type: 'DYNAMIC', description: 'Потребители без активност повече от 90 дни. Обновява се нощем.' },
+  { syncKey: 'email_consent_active',   name: 'Имейл съгласие — активно', type: 'DYNAMIC', description: 'Всички потребители с marketingConsentEmail = true. Обновява се нощем.' },
+  { syncKey: 'active_partners',        name: 'Активни партньори',      type: 'SEGMENT', description: 'Партньори със статус ACTIVE.' },
+  { syncKey: 'potential_partners',     name: 'Потенциални партньори',   type: 'SEGMENT', description: 'Партньори в процес на одобрение (статус PENDING).' },
+];
+
+router.post('/lists/ensure-defaults', ...WRITE, async (req, res, next) => {
+  try {
+    const results: { syncKey: string; action: 'created' | 'updated' | 'ok' }[] = [];
+
+    for (const def of DEFAULT_LISTS) {
+      // Try to find by syncKey first, then by legacy name (for lists created before syncKey was added)
+      let existing = await prisma.marketingList.findUnique({ where: { syncKey: def.syncKey } });
+      if (!existing) {
+        existing = await prisma.marketingList.findFirst({ where: { name: def.name } });
+      }
+
+      if (!existing) {
+        await prisma.marketingList.create({
+          data: { syncKey: def.syncKey, name: def.name, type: def.type, description: def.description, size: 0 },
+        });
+        results.push({ syncKey: def.syncKey, action: 'created' });
+      } else if (!existing.syncKey) {
+        await prisma.marketingList.update({ where: { id: existing.id }, data: { syncKey: def.syncKey } });
+        results.push({ syncKey: def.syncKey, action: 'updated' });
+      } else {
+        results.push({ syncKey: def.syncKey, action: 'ok' });
+      }
+    }
+
+    res.json({ results });
+  } catch (error) {
+    next(error);
+  }
+});
 
 router.get('/lists', ...READ, async (req, res, next) => {
   try {
@@ -519,6 +616,16 @@ router.delete('/lists/:id', ...WRITE, async (req, res, next) => {
   try {
     const existing = await prisma.marketingList.findUnique({ where: { id: req.params.id } });
     if (!existing) return res.status(404).json({ error: 'Not found' });
+
+    // Guard: block deletion if any non-DRAFT campaign references this list
+    const activeCampaignCount = await prisma.marketingCampaign.count({
+      where: { listId: req.params.id, status: { not: 'DRAFT' } },
+    });
+    if (activeCampaignCount > 0) {
+      return res.status(409).json({
+        error: `Списъкът се използва от ${activeCampaignCount} активна кампания(и). Архивирайте или изтрийте кампаниите първо.`,
+      });
+    }
 
     await prisma.marketingList.delete({ where: { id: req.params.id } });
     res.status(204).end();

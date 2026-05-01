@@ -6,6 +6,8 @@ import {
   MarketingList,
   MarketingListType,
   MarketingListMember,
+  UserSearchResult,
+  PartnerSearchResult,
 } from '../../services/adminMarketing.service';
 
 const palette = {
@@ -15,6 +17,7 @@ const palette = {
   success: '#4a7c59', successSoft: '#e6efe3',
   danger: '#b54327', dangerSoft: '#f4dcd2',
   info: '#2563eb', infoSoft: '#dbeafe',
+  warning: '#92400e', warningSoft: '#fef3c7',
 };
 
 const PageShell = styled.div`background: ${palette.bg}; min-height: calc(100vh - 4rem); padding: 2rem 2.5rem;`;
@@ -53,6 +56,7 @@ const MemberTypePill = styled.span<{ $type: string }>`
 `;
 
 const PrimaryBtn = styled.button`padding: 0.5rem 1.125rem; background: ${palette.accent}; color: #fff; border: none; border-radius: 0.5rem; font-size: 0.875rem; font-weight: 600; cursor: pointer; &:hover { opacity: 0.9; } &:disabled { opacity: 0.5; cursor: default; }`;
+const SecondaryBtn = styled.button`padding: 0.5rem 1.125rem; background: ${palette.infoSoft}; color: ${palette.info}; border: 1px solid #93c5fd; border-radius: 0.5rem; font-size: 0.875rem; font-weight: 600; cursor: pointer; &:hover { opacity: 0.9; } &:disabled { opacity: 0.5; cursor: default; }`;
 const GhostBtn = styled.button`padding: 0.5rem 1.125rem; background: transparent; color: ${palette.textMuted}; border: 1px solid ${palette.border}; border-radius: 0.5rem; font-size: 0.875rem; font-weight: 600; cursor: pointer; &:hover { border-color: ${palette.textMuted}; }`;
 const DangerBtn = styled.button`padding: 0.5rem 1.125rem; background: ${palette.dangerSoft}; color: ${palette.danger}; border: 1px solid #f1c4b8; border-radius: 0.5rem; font-size: 0.875rem; font-weight: 600; cursor: pointer; &:hover { background: #eebcac; }`;
 const SmIconBtn = styled.button`padding: 0.2rem 0.5rem; background: ${palette.dangerSoft}; color: ${palette.danger}; border: 1px solid #f1c4b8; border-radius: 0.25rem; font-size: 0.7rem; font-weight: 600; cursor: pointer; &:hover { background: #eebcac; } &:disabled { opacity: 0.4; cursor: default; }`;
@@ -67,13 +71,14 @@ const ModalBody = styled.div`padding: 1.5rem;`;
 const ModalFooter = styled.div`display: flex; gap: 0.75rem; justify-content: flex-end; padding: 1rem 1.5rem; border-top: 1px solid ${palette.border};`;
 const FormGroup = styled.div`display: flex; flex-direction: column; gap: 0.375rem; margin-bottom: 1.125rem;`;
 const Label = styled.label`font-size: 0.8125rem; font-weight: 600; color: ${palette.text};`;
-const Input = styled.input`padding: 0.5rem 0.875rem; border: 1px solid ${palette.border}; border-radius: 0.5rem; font-size: 0.875rem; background: ${palette.bg}; color: ${palette.text}; outline: none; width: 100%; box-sizing: border-box; &:focus { border-color: ${palette.accent}; box-shadow: 0 0 0 2px ${palette.accentSoft}; }`;
+const Input = styled.input`padding: 0.5rem 0.875rem; border: 1px solid ${palette.border}; border-radius: 0.5rem; font-size: 0.875rem; background: ${palette.bg}; color: ${palette.text}; outline: none; width: 100%; box-sizing: border-box; &:focus { border-color: ${palette.accent}; box-shadow: 0 0 0 2px ${palette.accentSoft}; } &:disabled { background: #f0ede6; color: ${palette.textSubtle}; cursor: not-allowed; }`;
 const Textarea = styled.textarea`padding: 0.5rem 0.875rem; border: 1px solid ${palette.border}; border-radius: 0.5rem; font-size: 0.875rem; background: ${palette.bg}; color: ${palette.text}; outline: none; width: 100%; box-sizing: border-box; resize: vertical; &:focus { border-color: ${palette.accent}; box-shadow: 0 0 0 2px ${palette.accentSoft}; }`;
 const ModalSelect = styled.select`padding: 0.5rem 0.875rem; border: 1px solid ${palette.border}; border-radius: 0.5rem; font-size: 0.875rem; background: ${palette.bg}; color: ${palette.text}; outline: none; width: 100%; &:focus { border-color: ${palette.accent}; }`;
 const HintText = styled.p`font-size: 0.75rem; color: ${palette.textSubtle}; margin: 0;`;
 const ConfirmText = styled.p`font-size: 0.9375rem; color: ${palette.text}; margin: 0 0 0.5rem;`;
 const ConfirmSub = styled.p`font-size: 0.8125rem; color: ${palette.textSubtle}; margin: 0;`;
 const ErrorBanner = styled.div`padding: 0.5rem 0.875rem; border: 1px solid #f1c4b8; border-radius: 0.5rem; font-size: 0.8125rem; background: ${palette.dangerSoft}; color: ${palette.danger}; margin-bottom: 1rem;`;
+const WarnBanner = styled.div`padding: 0.625rem 0.875rem; border: 1px solid #fcd34d; border-radius: 0.5rem; font-size: 0.8125rem; background: ${palette.warningSoft}; color: ${palette.warning}; margin-bottom: 1rem;`;
 
 const SectionTitle = styled.div`font-size: 0.8125rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: ${palette.textSubtle}; margin-bottom: 0.75rem;`;
 const MemberRow = styled.div`display: flex; align-items: center; justify-content: space-between; padding: 0.625rem 0; border-bottom: 1px solid ${palette.border}; &:last-child { border-bottom: none; }`;
@@ -85,6 +90,9 @@ const AddMemberBox = styled.div`background: ${palette.bg}; border: 1px solid ${p
 const RadioRow = styled.div`display: flex; gap: 1.25rem; margin-bottom: 0.75rem;`;
 const RadioLabel = styled.label`display: flex; align-items: center; gap: 0.375rem; font-size: 0.875rem; font-weight: 600; color: ${palette.text}; cursor: pointer;`;
 const InlineRow = styled.div`display: flex; gap: 0.5rem; align-items: flex-end;`;
+const SearchResultsDropdown = styled.div`background: ${palette.surface}; border: 1px solid ${palette.border}; border-radius: 0.5rem; box-shadow: 0 4px 12px rgba(0,0,0,0.1); margin-top: 0.25rem; max-height: 12rem; overflow-y: auto;`;
+const SearchResultItem = styled.button`width: 100%; text-align: left; padding: 0.5rem 0.875rem; border: none; background: transparent; cursor: pointer; font-size: 0.875rem; color: ${palette.text}; &:hover { background: ${palette.bg}; }`;
+const SearchResultMeta = styled.div`font-size: 0.75rem; color: ${palette.textSubtle};`;
 
 type ModalMode = 'create' | 'edit' | 'delete' | 'members' | null;
 
@@ -105,6 +113,7 @@ export default function AdminMarketingListsPage() {
   const [items, setItems] = useState<MarketingList[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [initializingDefaults, setInitializingDefaults] = useState(false);
 
   const [modal, setModal] = useState<ModalMode>(null);
   const [selected, setSelected] = useState<MarketingList | null>(null);
@@ -115,7 +124,10 @@ export default function AdminMarketingListsPage() {
   const [members, setMembers] = useState<MarketingListMember[]>([]);
   const [membersLoading, setMembersLoading] = useState(false);
   const [addMemberType, setAddMemberType] = useState<'PARTNER' | 'USER'>('PARTNER');
-  const [addMemberId, setAddMemberId] = useState('');
+  const [memberSearchQuery, setMemberSearchQuery] = useState('');
+  const [memberSearchResults, setMemberSearchResults] = useState<(UserSearchResult | PartnerSearchResult)[]>([]);
+  const [memberSearching, setMemberSearching] = useState(false);
+  const [selectedMemberPayload, setSelectedMemberPayload] = useState<{ userId?: string; partnerId?: string } | null>(null);
   const [addMemberError, setAddMemberError] = useState('');
   const [addMemberSaving, setAddMemberSaving] = useState(false);
   const [removingId, setRemovingId] = useState<string | null>(null);
@@ -130,8 +142,37 @@ export default function AdminMarketingListsPage() {
 
   useEffect(() => { load(); }, [load]);
 
+  // Escape key closes any open modal
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && modal) closeModal();
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [modal]);
+
+  // Debounced member search
+  useEffect(() => {
+    if (!memberSearchQuery.trim()) {
+      setMemberSearchResults([]);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      setMemberSearching(true);
+      try {
+        const results = addMemberType === 'USER'
+          ? await adminMarketingService.searchUsers(memberSearchQuery)
+          : await adminMarketingService.searchPartners(memberSearchQuery);
+        setMemberSearchResults(results);
+      } finally {
+        setMemberSearching(false);
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [memberSearchQuery, addMemberType]);
+
   const fmt = (iso: string) =>
-    new Date(iso).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+    new Date(iso).toLocaleDateString('bg-BG', { day: '2-digit', month: 'short', year: 'numeric' });
 
   const openCreate = () => {
     setSelected(null);
@@ -153,7 +194,9 @@ export default function AdminMarketingListsPage() {
   const openMembers = async (row: MarketingList) => {
     setSelected(row);
     setMembers([]);
-    setAddMemberId('');
+    setMemberSearchQuery('');
+    setMemberSearchResults([]);
+    setSelectedMemberPayload(null);
     setAddMemberType('PARTNER');
     setAddMemberError('');
     setModal('members');
@@ -166,7 +209,13 @@ export default function AdminMarketingListsPage() {
     }
   };
 
-  const closeModal = () => { setModal(null); setSelected(null); };
+  const closeModal = () => {
+    setModal(null);
+    setSelected(null);
+    setMemberSearchQuery('');
+    setMemberSearchResults([]);
+    setSelectedMemberPayload(null);
+  };
 
   const handleSave = async () => {
     if (!form.name.trim()) return;
@@ -176,7 +225,7 @@ export default function AdminMarketingListsPage() {
         name: form.name,
         type: form.type,
         description: form.description,
-        size: parseInt(form.size) || 0,
+        size: form.type === 'STATIC' ? (parseInt(form.size) || 0) : 0,
       };
       if (modal === 'create') {
         await adminMarketingService.createList(payload);
@@ -197,26 +246,39 @@ export default function AdminMarketingListsPage() {
       await adminMarketingService.deleteList(selected.id);
       closeModal();
       load();
+    } catch (err: unknown) {
+      const msg = (err as any)?.response?.data?.error ?? (err as { message?: string })?.message ?? 'Неуспешно изтриване.';
+      alert(msg);
     } finally {
       setSaving(false);
     }
   };
 
+  const handleSelectMemberSuggestion = (result: UserSearchResult | PartnerSearchResult) => {
+    if (addMemberType === 'USER') {
+      const u = result as UserSearchResult;
+      setSelectedMemberPayload({ userId: u.id });
+      setMemberSearchQuery([u.firstName, u.lastName].filter(Boolean).join(' ') || u.email);
+    } else {
+      const p = result as PartnerSearchResult;
+      setSelectedMemberPayload({ partnerId: p.id });
+      setMemberSearchQuery(p.businessName);
+    }
+    setMemberSearchResults([]);
+  };
+
   const handleAddMember = async () => {
-    if (!selected || !addMemberId.trim()) return;
+    if (!selected || !selectedMemberPayload) return;
     setAddMemberSaving(true);
     setAddMemberError('');
     try {
-      const data = addMemberType === 'USER'
-        ? { userId: addMemberId.trim() }
-        : { partnerId: addMemberId.trim() };
-      const member = await adminMarketingService.addListMember(selected.id, data);
+      const member = await adminMarketingService.addListMember(selected.id, selectedMemberPayload);
       setMembers((prev) => [member, ...prev]);
-      setAddMemberId('');
-      // Refresh the list table so the size counter updates
+      setMemberSearchQuery('');
+      setSelectedMemberPayload(null);
       load();
     } catch (err: unknown) {
-      setAddMemberError((err as any)?.response?.data?.error ?? (err as { message?: string })?.message ?? 'Could not add member. Check the ID and try again.');
+      setAddMemberError((err as any)?.response?.data?.error ?? (err as { message?: string })?.message ?? 'Неуспешно добавяне. Проверете данните.');
     } finally {
       setAddMemberSaving(false);
     }
@@ -231,6 +293,16 @@ export default function AdminMarketingListsPage() {
       load();
     } finally {
       setRemovingId(null);
+    }
+  };
+
+  const handleInitializeDefaults = async () => {
+    setInitializingDefaults(true);
+    try {
+      await adminMarketingService.ensureDefaultLists();
+      load();
+    } finally {
+      setInitializingDefaults(false);
     }
   };
 
@@ -252,7 +324,7 @@ export default function AdminMarketingListsPage() {
   const columns: ColumnDef<MarketingList>[] = [
     {
       key: 'name',
-      header: 'List',
+      header: 'Списък',
       render: (row) => (
         <span>
           <PrimaryLine>{row.name}</PrimaryLine>
@@ -262,61 +334,68 @@ export default function AdminMarketingListsPage() {
     },
     {
       key: 'type',
-      header: 'Type',
+      header: 'Тип',
       render: (row) => <TypePill $type={row.type}>{row.type}</TypePill>,
     },
     {
       key: 'size',
-      header: 'Members',
+      header: 'Членове',
       render: (row) => (
         <span style={{ fontSize: '0.9375rem', fontWeight: 700, color: palette.text }}>
-          {row.size.toLocaleString()}
+          {row.size.toLocaleString('bg-BG')}
         </span>
       ),
     },
     {
       key: 'updatedAt',
-      header: 'Last updated',
+      header: 'Последна промяна',
       render: (row) => (
         <span style={{ fontSize: '0.8125rem', color: palette.textMuted }}>{fmt(row.updatedAt)}</span>
       ),
     },
     {
       key: 'createdAt',
-      header: 'Created',
+      header: 'Създаден',
       render: (row) => (
         <span style={{ fontSize: '0.8125rem', color: palette.textMuted }}>{fmt(row.createdAt)}</span>
       ),
     },
   ];
 
+  const isDynamicOrSegment = selected?.type === 'DYNAMIC' || selected?.type === 'SEGMENT';
+
   return (
     <PageShell>
       <PageHeader>
         <TitleBlock>
-          <Eyebrow>Marketing</Eyebrow>
+          <Eyebrow>Маркетинг</Eyebrow>
           <PageTitle>
-            Audience Lists
+            Аудитория — Списъци
             {total > 0 && <TotalBadge>{total}</TotalBadge>}
           </PageTitle>
-          <PageSubtitle>Subscriber segments and contact lists used in campaigns</PageSubtitle>
+          <PageSubtitle>Сегменти и списъци с контакти, използвани в кампаниите</PageSubtitle>
         </TitleBlock>
-        <PrimaryBtn onClick={openCreate}>+ New List</PrimaryBtn>
+        <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+          <SecondaryBtn onClick={handleInitializeDefaults} disabled={initializingDefaults}>
+            {initializingDefaults ? 'Инициализира се…' : 'Инициализирай списъци'}
+          </SecondaryBtn>
+          <PrimaryBtn onClick={openCreate}>+ Нов списък</PrimaryBtn>
+        </div>
       </PageHeader>
 
       <Card>
         <FilterRow>
           <SearchInput
             type="text"
-            placeholder="Search lists…"
+            placeholder="Търси списъци…"
             value={search}
             onChange={(e) => { setSearch(e.target.value); setPage(1); }}
           />
           <Select value={typeFilter} onChange={(e) => { setTypeFilter(e.target.value as MarketingListType | ''); setPage(1); }}>
-            <option value="">All types</option>
-            <option value="STATIC">Static</option>
-            <option value="DYNAMIC">Dynamic</option>
-            <option value="SEGMENT">Segment</option>
+            <option value="">Всички типове</option>
+            <option value="STATIC">Статичен</option>
+            <option value="DYNAMIC">Динамичен</option>
+            <option value="SEGMENT">Сегмент</option>
           </Select>
         </FilterRow>
 
@@ -325,110 +404,117 @@ export default function AdminMarketingListsPage() {
           data={items}
           rowKey={(row) => row.id}
           loading={loading}
-          emptyMessage="No lists found"
+          emptyMessage="Няма намерени списъци"
           page={page}
           pageSize={PAGE_SIZE}
           totalItems={total}
           onPageChange={setPage}
           rowActions={[
-            { label: 'Members', onClick: openMembers },
-            { label: 'Edit', onClick: openEdit },
-            { label: 'Delete', onClick: openDelete },
+            { label: 'Членове', onClick: openMembers },
+            { label: 'Редактирай', onClick: openEdit },
+            { label: 'Изтрий', onClick: openDelete },
           ]}
         />
       </Card>
 
-      {/* ── Create / Edit modal ──────────────────────────────────────────── */}
+      {/* ── Създай / Редактирай ──────────────────────────────────────────── */}
       {(modal === 'create' || modal === 'edit') && (
         <Overlay onClick={closeModal}>
           <ModalBox onClick={(e) => e.stopPropagation()}>
             <ModalHeader>
-              <ModalTitle>{modal === 'create' ? 'New Audience List' : 'Edit List'}</ModalTitle>
+              <ModalTitle>{modal === 'create' ? 'Нов аудитория списък' : 'Редактирай списък'}</ModalTitle>
               <CloseBtn onClick={closeModal}>×</CloseBtn>
             </ModalHeader>
             <ModalBody>
               <FormGroup>
-                <Label>Name *</Label>
+                <Label>Наименование *</Label>
                 <Input
                   value={form.name}
                   onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-                  placeholder="e.g. Premium Card Holders"
+                  placeholder="напр. Premium абонати"
                   autoFocus
                 />
               </FormGroup>
               <FormGroup>
-                <Label>Type *</Label>
+                <Label>Тип *</Label>
                 <ModalSelect
                   value={form.type}
                   onChange={(e) => setForm((f) => ({ ...f, type: e.target.value as MarketingListType }))}
                 >
-                  <option value="STATIC">Static — fixed snapshot of contacts</option>
-                  <option value="DYNAMIC">Dynamic — auto-updated by rules</option>
-                  <option value="SEGMENT">Segment — defined by user attributes</option>
+                  <option value="STATIC">Статичен — фиксирана снимка на контакти</option>
+                  <option value="DYNAMIC">Динамичен — автоматично обновяване по правила</option>
+                  <option value="SEGMENT">Сегмент — дефиниран по атрибути на потребителите</option>
                 </ModalSelect>
               </FormGroup>
               <FormGroup>
-                <Label>Description</Label>
+                <Label>Описание</Label>
                 <Textarea
                   value={form.description}
                   onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
-                  placeholder="Describe who is in this list and how it is maintained…"
+                  placeholder="Опишете кои са в списъка и как се поддържа…"
                   rows={3}
                 />
               </FormGroup>
-              <FormGroup>
-                <Label>Member count</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  value={form.size}
-                  onChange={(e) => setForm((f) => ({ ...f, size: e.target.value }))}
-                  placeholder="0"
-                />
-                <HintText>For Dynamic and Segment lists this will be overwritten by the next sync.</HintText>
-              </FormGroup>
+              {form.type === 'STATIC' && (
+                <FormGroup>
+                  <Label>Брой членове</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    value={form.size}
+                    onChange={(e) => setForm((f) => ({ ...f, size: e.target.value }))}
+                    placeholder="0"
+                  />
+                  <HintText>Бройката се поддържа автоматично при добавяне/премахване на членове.</HintText>
+                </FormGroup>
+              )}
+              {(form.type === 'DYNAMIC' || form.type === 'SEGMENT') && (
+                <WarnBanner>
+                  Бройката на членовете за <strong>{form.type}</strong> списъци се изчислява автоматично нощем от планировчика. Не е необходимо да я въвеждате ръчно.
+                </WarnBanner>
+              )}
             </ModalBody>
             <ModalFooter>
-              <GhostBtn onClick={closeModal} disabled={saving}>Cancel</GhostBtn>
+              <GhostBtn onClick={closeModal} disabled={saving}>Отказ</GhostBtn>
               <PrimaryBtn onClick={handleSave} disabled={saving || !form.name.trim()}>
-                {saving ? 'Saving…' : modal === 'create' ? 'Create list' : 'Save changes'}
+                {saving ? 'Запазва се…' : modal === 'create' ? 'Създай списък' : 'Запази промените'}
               </PrimaryBtn>
             </ModalFooter>
           </ModalBox>
         </Overlay>
       )}
 
-      {/* ── Delete confirm ───────────────────────────────────────────────── */}
+      {/* ── Потвърждение за изтриване ────────────────────────────────────── */}
       {modal === 'delete' && selected && (
         <Overlay onClick={closeModal}>
           <ModalBox style={{ maxWidth: '26rem' }} onClick={(e) => e.stopPropagation()}>
             <ModalHeader>
-              <ModalTitle>Delete list?</ModalTitle>
+              <ModalTitle>Изтрий списък?</ModalTitle>
               <CloseBtn onClick={closeModal}>×</CloseBtn>
             </ModalHeader>
             <ModalBody>
-              <ConfirmText>You are about to delete <strong>{selected.name}</strong>.</ConfirmText>
-              <ConfirmSub>All member associations will also be deleted. This action cannot be undone.</ConfirmSub>
+              <ConfirmText>Ще изтриете <strong>{selected.name}</strong>.</ConfirmText>
+              <ConfirmSub>Всички членове ще бъдат премахнати. Списъкът не може да се изтрие, ако се използва в активна кампания. Действието е необратимо.</ConfirmSub>
             </ModalBody>
             <ModalFooter>
-              <GhostBtn onClick={closeModal} disabled={saving}>Cancel</GhostBtn>
+              <GhostBtn onClick={closeModal} disabled={saving}>Отказ</GhostBtn>
               <DangerBtn onClick={handleDelete} disabled={saving}>
-                {saving ? 'Deleting…' : 'Delete list'}
+                {saving ? 'Изтрива се…' : 'Изтрий списък'}
               </DangerBtn>
             </ModalFooter>
           </ModalBox>
         </Overlay>
       )}
 
-      {/* ── Member management modal ──────────────────────────────────────── */}
+      {/* ── Управление на членове ────────────────────────────────────────── */}
       {modal === 'members' && selected && (
         <Overlay onClick={closeModal}>
           <WideModalBox onClick={(e) => e.stopPropagation()}>
             <ModalHeader>
               <div>
-                <ModalTitle>Members — {selected.name}</ModalTitle>
+                <ModalTitle>Членове — {selected.name}</ModalTitle>
                 <div style={{ fontSize: '0.8125rem', color: palette.textSubtle, marginTop: '0.2rem' }}>
-                  {members.length} member{members.length !== 1 ? 's' : ''}
+                  {members.length} член{members.length !== 1 ? 'а' : ''}
                   <TypePill $type={selected.type} style={{ marginLeft: '0.5rem' }}>{selected.type}</TypePill>
                 </div>
               </div>
@@ -436,8 +522,14 @@ export default function AdminMarketingListsPage() {
             </ModalHeader>
             <ModalBody>
 
-              {/* ── Add member form ── */}
-              <SectionTitle>Add member</SectionTitle>
+              {isDynamicOrSegment && (
+                <WarnBanner>
+                  Това е <strong>{selected.type}</strong> списък. Членовете се управляват автоматично по правила — ръчното добавяне е само за изключения и може да бъде презаписано при следващата синхронизация.
+                </WarnBanner>
+              )}
+
+              {/* ── Добавяне на член ── */}
+              <SectionTitle>Добавяне на член</SectionTitle>
               <AddMemberBox>
                 <RadioRow>
                   <RadioLabel>
@@ -446,9 +538,9 @@ export default function AdminMarketingListsPage() {
                       name="addMemberType"
                       value="PARTNER"
                       checked={addMemberType === 'PARTNER'}
-                      onChange={() => { setAddMemberType('PARTNER'); setAddMemberId(''); setAddMemberError(''); }}
+                      onChange={() => { setAddMemberType('PARTNER'); setMemberSearchQuery(''); setMemberSearchResults([]); setSelectedMemberPayload(null); setAddMemberError(''); }}
                     />
-                    Partner
+                    Партньор
                   </RadioLabel>
                   <RadioLabel>
                     <input
@@ -456,39 +548,57 @@ export default function AdminMarketingListsPage() {
                       name="addMemberType"
                       value="USER"
                       checked={addMemberType === 'USER'}
-                      onChange={() => { setAddMemberType('USER'); setAddMemberId(''); setAddMemberError(''); }}
+                      onChange={() => { setAddMemberType('USER'); setMemberSearchQuery(''); setMemberSearchResults([]); setSelectedMemberPayload(null); setAddMemberError(''); }}
                     />
-                    User (subscriber)
+                    Абонат
                   </RadioLabel>
                 </RadioRow>
                 {addMemberError && <ErrorBanner>{addMemberError}</ErrorBanner>}
-                <InlineRow>
-                  <Input
-                    value={addMemberId}
-                    onChange={(e) => { setAddMemberId(e.target.value); setAddMemberError(''); }}
-                    placeholder={addMemberType === 'PARTNER' ? 'Partner ID (UUID)' : 'User ID (UUID)'}
-                    style={{ flex: 1 }}
-                    onKeyDown={(e) => { if (e.key === 'Enter') handleAddMember(); }}
-                  />
-                  <PrimaryBtn
-                    onClick={handleAddMember}
-                    disabled={addMemberSaving || !addMemberId.trim()}
-                    style={{ whiteSpace: 'nowrap' }}
-                  >
-                    {addMemberSaving ? 'Adding…' : 'Add'}
-                  </PrimaryBtn>
-                </InlineRow>
+                <div style={{ position: 'relative' }}>
+                  <InlineRow>
+                    <div style={{ flex: 1, position: 'relative' }}>
+                      <Input
+                        value={memberSearchQuery}
+                        onChange={(e) => { setMemberSearchQuery(e.target.value); setSelectedMemberPayload(null); setAddMemberError(''); }}
+                        placeholder={addMemberType === 'PARTNER' ? 'Търси по бизнес име или имейл…' : 'Търси по имейл, ime или фамилия…'}
+                        onKeyDown={(e) => { if (e.key === 'Enter' && selectedMemberPayload) handleAddMember(); }}
+                      />
+                      {memberSearchResults.length > 0 && (
+                        <SearchResultsDropdown style={{ position: 'absolute', width: '100%', zIndex: 10 }}>
+                          {memberSearchResults.map((r) => (
+                            <SearchResultItem key={r.id} onClick={() => handleSelectMemberSuggestion(r)}>
+                              {addMemberType === 'USER'
+                                ? (() => { const u = r as UserSearchResult; return (<><div>{[u.firstName, u.lastName].filter(Boolean).join(' ') || u.email}</div><SearchResultMeta>{u.email}</SearchResultMeta></>); })()
+                                : (() => { const p = r as PartnerSearchResult; return (<><div>{p.businessName}</div><SearchResultMeta>{p.email ?? ''} — {p.status}</SearchResultMeta></>); })()
+                              }
+                            </SearchResultItem>
+                          ))}
+                          {memberSearching && <SearchResultItem as="div" style={{ cursor: 'default', color: palette.textSubtle }}>Търси се…</SearchResultItem>}
+                        </SearchResultsDropdown>
+                      )}
+                    </div>
+                    <PrimaryBtn
+                      onClick={handleAddMember}
+                      disabled={addMemberSaving || !selectedMemberPayload}
+                      style={{ whiteSpace: 'nowrap' }}
+                    >
+                      {addMemberSaving ? 'Добавя се…' : 'Добави'}
+                    </PrimaryBtn>
+                  </InlineRow>
+                </div>
                 <HintText style={{ marginTop: '0.375rem' }}>
-                  Paste the UUID of the {addMemberType === 'PARTNER' ? 'partner' : 'user'} to add to this list.
+                  {selectedMemberPayload
+                    ? '✓ Избран — натиснете Добави, за да потвърдите.'
+                    : `Потърсете ${addMemberType === 'PARTNER' ? 'партньор' : 'абонат'} по име или имейл, след което го изберете от падащото меню.`}
                 </HintText>
               </AddMemberBox>
 
-              {/* ── Member list ── */}
-              <SectionTitle style={{ marginTop: '1.5rem' }}>Current members</SectionTitle>
+              {/* ── Текущи членове ── */}
+              <SectionTitle style={{ marginTop: '1.5rem' }}>Текущи членове</SectionTitle>
               {membersLoading ? (
-                <EmptyNote>Loading members…</EmptyNote>
+                <EmptyNote>Зарежда се…</EmptyNote>
               ) : members.length === 0 ? (
-                <EmptyNote>No members yet. Add partners or users above.</EmptyNote>
+                <EmptyNote>Няма членове. Добавете партньори или абонати по-горе.</EmptyNote>
               ) : (
                 <div style={{ maxHeight: '22rem', overflowY: 'auto' }}>
                   {members.map((m) => (
@@ -499,14 +609,14 @@ export default function AdminMarketingListsPage() {
                           <MemberTypePill $type={m.memberType}>{m.memberType}</MemberTypePill>
                         </div>
                         {memberSubline(m) && <MemberMeta>{memberSubline(m)}</MemberMeta>}
-                        <MemberMeta>Added {new Date(m.addedAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</MemberMeta>
+                        <MemberMeta>Добавен {new Date(m.addedAt).toLocaleDateString('bg-BG', { day: '2-digit', month: 'short', year: 'numeric' })}</MemberMeta>
                       </MemberInfo>
                       <SmIconBtn
                         onClick={() => handleRemoveMember(m.id)}
                         disabled={removingId === m.id}
-                        title="Remove from list"
+                        title="Премахни от списъка"
                       >
-                        {removingId === m.id ? '…' : 'Remove'}
+                        {removingId === m.id ? '…' : 'Премахни'}
                       </SmIconBtn>
                     </MemberRow>
                   ))}
@@ -514,7 +624,7 @@ export default function AdminMarketingListsPage() {
               )}
             </ModalBody>
             <ModalFooter>
-              <GhostBtn onClick={closeModal}>Close</GhostBtn>
+              <GhostBtn onClick={closeModal}>Затвори</GhostBtn>
             </ModalFooter>
           </WideModalBox>
         </Overlay>
