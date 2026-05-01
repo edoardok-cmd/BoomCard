@@ -86,6 +86,7 @@ export const ADMIN_NAV: AdminNavCategory[] = [
       { labelBg: 'Одит лог', labelEn: 'Audit Log', path: '/admin/control/security', permissionKey: 'admins.audit.read' },
       { labelBg: 'Спорове', labelEn: 'Disputes', path: '/admin/control/disputes', permissionKey: 'control.disputes.read' },
       { labelBg: 'Лимити и правила', labelEn: 'Limits & Rules', path: '/admin/control/rules', permissionKey: 'control.rules.read' },
+      { labelBg: 'Конфигурация по обект', labelEn: 'Venue Config', path: '/admin/control/venue-config', permissionKey: 'control.rules.read' },
     ],
   },
   {

@@ -5,6 +5,7 @@ export interface AuditLogActor {
   email: string;
   firstName: string | null;
   lastName: string | null;
+  role: string | null;
 }
 
 export interface AdminAuditLog {

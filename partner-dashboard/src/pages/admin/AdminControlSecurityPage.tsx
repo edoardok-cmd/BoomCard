@@ -305,7 +305,7 @@ export default function AdminControlSecurityPage() {
   }, [isAnyMutating]);
 
   const fmt = (iso: string) =>
-    new Date(iso).toLocaleString('en-GB', {
+    new Date(iso).toLocaleString(lang === 'bg' ? 'bg-BG' : 'en-GB', {
       day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
     });
 

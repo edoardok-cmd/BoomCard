@@ -133,6 +133,7 @@ const ALLOWED_KEYS = new Set([
   'daily_scan_limit_default',
   'max_cashback_per_month',
   'support_email',
+  'support_phone',
   // spec §9: системни имейли, език, валута, timezone, reply-to настройки
   'reply_to_email',
   'language',

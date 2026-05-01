@@ -161,6 +161,7 @@ const AdminControlSecurityPage = lazy(() => import('./pages/admin/AdminControlSe
 const AdminControlAuditLogPage = lazy(() => import('./pages/admin/AdminControlAuditLogPage'));
 const AdminControlDisputesPage = lazy(() => import('./pages/admin/AdminControlDisputesPage'));
 const AdminControlRulesPage = lazy(() => import('./pages/admin/AdminControlRulesPage'));
+const AdminVenueFraudConfigPage = lazy(() => import('./pages/AdminVenueFraudConfigPage'));
 const AdminMarketingCampaignsPage = lazy(() => import('./pages/admin/AdminMarketingCampaignsPage'));
 const AdminMarketingTemplatesPage = lazy(() => import('./pages/admin/AdminMarketingTemplatesPage'));
 const AdminMarketingAutomationsPage = lazy(() => import('./pages/admin/AdminMarketingAutomationsPage'));
@@ -533,6 +534,7 @@ function App() {
                       <Route path="security" element={<AdminControlAuditLogPage />} />
                       <Route path="disputes" element={<AdminControlDisputesPage />} />
                       <Route path="rules" element={<AdminControlRulesPage />} />
+                      <Route path="venue-config" element={<AdminVenueFraudConfigPage />} />
                     </Route>
 
                     {/* /admin/marketing — placeholder */}
@@ -620,7 +622,7 @@ function App() {
                     <Route path="admin/cashback/rates" element={<Navigate to="/admin/settings/percentages" replace />} />
                     <Route path="admin/partner-onboarding" element={<Navigate to="/admin/partners/onboarding" replace />} />
                     <Route path="admin/scan-review" element={<Navigate to="/admin/control/risk" replace />} />
-                    <Route path="admin/venue-fraud-config" element={<Navigate to="/admin/control/rules" replace />} />
+                    <Route path="admin/venue-fraud-config" element={<Navigate to="/admin/control/venue-config" replace />} />
                     <Route path="admin/receipt-templates" element={<Navigate to="/admin/partners/receipt-profiles" replace />} />
                     <Route path="admin/merchant-whitelist" element={<Navigate to="/admin/control/rules" replace />} />
                     <Route path="admin/menu-approvals" element={<Navigate to="/admin/partners/active" replace />} />

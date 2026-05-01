@@ -48,6 +48,12 @@ const ActionTag = styled.span`
   font-family:monospace;background:${palette.infoSoft};color:${palette.info};max-width:18rem;
   word-break:break-all;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
 `;
+const RoleBadge = styled.span<{ $super?: boolean }>`
+  display:inline-block;padding:.1rem .45rem;border-radius:.25rem;font-size:.68rem;font-weight:700;
+  margin-left:.35rem;vertical-align:middle;
+  background:${p => p.$super ? palette.dangerSoft : palette.warningSoft};
+  color:${p => p.$super ? palette.danger : palette.warning};
+`;
 const ObjectTag = styled.span`
   display:inline-block;padding:.15rem .5rem;border-radius:.25rem;font-size:.72rem;font-weight:600;
   font-family:monospace;background:${palette.warningSoft};color:${palette.warning};max-width:12rem;
@@ -145,7 +151,14 @@ export default function AdminControlAuditLogPage() {
       header: 'Извършено от',
       render: (row) => (
         <span>
-          <PrimaryLine>{fullName(row.actor)}</PrimaryLine>
+          <PrimaryLine>
+            {fullName(row.actor)}
+            {row.actor?.role && (
+              <RoleBadge $super={row.actor.role === 'SUPER_ADMIN'}>
+                {row.actor.role === 'SUPER_ADMIN' ? 'СУПЕР' : 'ADMIN'}
+              </RoleBadge>
+            )}
+          </PrimaryLine>
           {row.actor && <MetaLine>{row.actor.email}</MetaLine>}
           {row.ip && <MetaLine>IP: {row.ip}</MetaLine>}
         </span>

@@ -93,7 +93,7 @@ router.get(
         orderBy: { createdAt: 'desc' },
         include: {
           actor: {
-            select: { id: true, email: true, firstName: true, lastName: true },
+            select: { id: true, email: true, firstName: true, lastName: true, role: true },
           },
         },
       }),
