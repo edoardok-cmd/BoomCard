@@ -365,6 +365,7 @@ model Venue {
   partner          Partner             @relation(fields: [partnerId], references: [id], onDelete: Cascade)
   bookings         Booking[]
   transactions     Transaction[]
+  receipts         Receipt[]
   stickers         Sticker[]
   stickerLocations StickerLocation[]
   stickerScans     StickerScan[]
@@ -911,6 +912,7 @@ model Receipt {
   // Relations
   user               User                @relation(fields: [userId], references: [id], onDelete: Cascade)
   transaction        Transaction?        @relation(fields: [transactionId], references: [id])
+  venue              Venue?              @relation(fields: [venueId], references: [id])
   walletTransactions WalletTransaction[]
   disputeCases       Dispute[]
 

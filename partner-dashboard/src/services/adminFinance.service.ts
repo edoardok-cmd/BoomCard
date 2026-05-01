@@ -159,12 +159,14 @@ export const adminFinanceService = {
     to?: string;
     partnerId?: string;
     invoiceStatus?: string;
+    plan?: string;
   }): Promise<{ data: ReportData }> {
     const clean: Record<string, unknown> = {};
     if (params?.from) clean.from = params.from;
     if (params?.to) clean.to = params.to;
     if (params?.partnerId) clean.partnerId = params.partnerId;
     if (params?.invoiceStatus) clean.invoiceStatus = params.invoiceStatus;
+    if (params?.plan) clean.plan = params.plan;
     return apiService.get('/admin/finance/reports', clean);
   },
 
@@ -172,12 +174,13 @@ export const adminFinanceService = {
     return apiService.get('/admin/finance/report-partners', {});
   },
 
-  async exportReports(params: { from?: string; to?: string; format?: 'csv' | 'xlsx'; partnerId?: string; invoiceStatus?: string }): Promise<void> {
+  async exportReports(params: { from?: string; to?: string; format?: 'csv' | 'xlsx'; partnerId?: string; invoiceStatus?: string; plan?: string }): Promise<void> {
     const q: Record<string, unknown> = { type: 'reports', format: params.format ?? 'xlsx' };
     if (params.from) q.from = params.from;
     if (params.to) q.to = params.to;
     if (params.partnerId) q.partnerId = params.partnerId;
     if (params.invoiceStatus) q.invoiceStatus = params.invoiceStatus;
+    if (params.plan) q.plan = params.plan;
     const { data, filename } = await apiService.getBlob('/admin/finance/export', q);
     const url = URL.createObjectURL(data);
     const a = document.createElement('a');

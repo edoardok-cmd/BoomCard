@@ -26,6 +26,8 @@ export interface AdminSecurityResult {
   meta: { total: number; page: number; limit: number; pages: number };
 }
 
+// ── Legacy Manual-Review Receipt Queue (spec §7.1 risk queue) ───────────────
+
 export interface DisputeUser {
   id: string;
   email: string;
@@ -59,7 +61,72 @@ export interface AdminDisputesResult {
   meta: { total: number; page: number; limit: number; pages: number };
 }
 
-// Fraud-signal feed for Контрол > Сигурност (spec §7.2).
+// ── Dispute Cases (spec §7.3) ────────────────────────────────────────────────
+
+export type DisputeStatus = 'OPEN' | 'IN_REVIEW' | 'RESOLVED' | 'CLOSED';
+
+export interface DisputeCaseUser {
+  id: string;
+  email: string;
+  firstName: string | null;
+  lastName: string | null;
+}
+
+export interface DisputeCaseReceipt {
+  id: string;
+  merchantName: string | null;
+  totalAmount: number | null;
+  verifiedAmount: number | null;
+  fraudScore: number | null;
+  fraudReasons: string[] | null;
+  status: string;
+  imageUrl: string | null;
+  ocrData: unknown | null;
+  createdAt: string;
+}
+
+export interface DisputeNoteItem {
+  id: string;
+  disputeId: string;
+  authorId: string;
+  body: string;
+  isAdmin: boolean;
+  createdAt: string;
+  author: DisputeCaseUser;
+}
+
+/** Lightweight shape returned by the list endpoint */
+export interface DisputeCase {
+  id: string;
+  receiptId: string;
+  userId: string;
+  assignedTo: string | null;
+  status: DisputeStatus;
+  decision: string | null;
+  resolvedAt: string | null;
+  closedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  user: DisputeCaseUser;
+  assignee: DisputeCaseUser | null;
+  receipt: Pick<DisputeCaseReceipt, 'id' | 'merchantName' | 'totalAmount' | 'fraudScore' | 'status'>;
+  _count: { notes: number };
+}
+
+/** Full shape returned by the detail endpoint */
+export interface DisputeCaseDetail extends Omit<DisputeCase, 'receipt' | '_count'> {
+  receipt: DisputeCaseReceipt;
+  notes: DisputeNoteItem[];
+}
+
+export interface DisputeCasesResult {
+  success: boolean;
+  data: DisputeCase[];
+  meta: { total: number; page: number; limit: number; pages: number };
+}
+
+// ── Fraud signals ────────────────────────────────────────────────────────────
+
 export interface FraudSignalReceipt {
   id: string;
   fraudScore: number;
@@ -82,7 +149,6 @@ export interface FraudSignalReceipt {
     name: string;
     partnerId: string;
     partner: { id: string; businessName: string } | null;
-    // Spec §7.2 "Риск при партньор": derived from risk-receipt count across all partner venues.
     partnerRiskBucket: 'LOW' | 'MEDIUM' | 'HIGH' | null;
   } | null;
 }
@@ -93,7 +159,6 @@ export interface FraudSignalsResult {
   meta: { total: number; page: number; limit: number; pages: number; tier: string };
 }
 
-// Global signal counts (not page-scoped) from /risk-queue/summary.
 export interface RiskQueueSummary {
   total: number;
   duplicate: number;
@@ -109,11 +174,14 @@ export interface RiskQueueSummaryResult {
   data: RiskQueueSummary;
 }
 
+// ── Service ──────────────────────────────────────────────────────────────────
+
 export const adminControlService = {
+  // Fraud signal queue (§7.1 / §7.2)
   getFraudSignals(params: {
     page?: number;
     limit?: number;
-    tier?: 'AUTO_0_30' | 'REVIEW_31_60' | 'HIGH_61_PLUS' | 'all';
+    tier?: 'REVIEW_31_60' | 'HIGH_61_PLUS' | 'all';
     venueId?: string;
   }): Promise<FraudSignalsResult> {
     const clean: Record<string, unknown> = {
@@ -137,6 +205,7 @@ export const adminControlService = {
     return apiService.post(`/admin/control/risk-queue/${id}/reject`, reason ? { reason } : {});
   },
 
+  // Security audit log (§7.2)
   getSecurityLogs(params: {
     page?: number;
     limit?: number;
@@ -153,6 +222,7 @@ export const adminControlService = {
     return apiService.get('/admin/control/security', clean);
   },
 
+  // Legacy manual-review receipt queue — kept for backward compat; use dispute-cases for §7.3
   getDisputes(params: {
     page?: number;
     limit?: number;
@@ -169,5 +239,42 @@ export const adminControlService = {
 
   rejectDispute(id: string, notes?: string): Promise<void> {
     return apiService.post(`/admin/control/disputes/${id}/reject`, notes ? { notes } : {});
+  },
+
+  // ── Dispute Cases (spec §7.3) ──────────────────────────────────────────────
+
+  getDisputeCases(params: {
+    page?: number;
+    limit?: number;
+    status?: DisputeStatus | '';
+    assignedTo?: string;
+  }): Promise<DisputeCasesResult> {
+    const clean: Record<string, unknown> = { page: params.page, limit: params.limit };
+    if (params.status) clean.status = params.status;
+    if (params.assignedTo) clean.assignedTo = params.assignedTo;
+    return apiService.get('/admin/control/dispute-cases', clean);
+  },
+
+  getDisputeCase(id: string): Promise<{ success: boolean; data: DisputeCaseDetail }> {
+    return apiService.get(`/admin/control/dispute-cases/${id}`);
+  },
+
+  createDisputeCase(receiptId: string, notes?: string): Promise<{ success: boolean; data: DisputeCase }> {
+    return apiService.post('/admin/control/dispute-cases', notes ? { receiptId, notes } : { receiptId });
+  },
+
+  patchDisputeCase(
+    id: string,
+    patch: { status?: DisputeStatus; assignedTo?: string | null; decision?: string | null },
+  ): Promise<{ success: boolean; data: DisputeCase }> {
+    return apiService.patch(`/admin/control/dispute-cases/${id}`, patch);
+  },
+
+  addDisputeNote(id: string, body: string): Promise<{ success: boolean; data: DisputeNoteItem }> {
+    return apiService.post(`/admin/control/dispute-cases/${id}/notes`, { body });
+  },
+
+  getDisputeNotes(id: string): Promise<{ success: boolean; data: DisputeNoteItem[] }> {
+    return apiService.get(`/admin/control/dispute-cases/${id}/notes`);
   },
 };

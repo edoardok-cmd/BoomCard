@@ -213,8 +213,10 @@ export default function AdminFinanceReportsPage() {
   const [queryTo, setQueryTo] = useState(monthToTo(defaultMonth));
   const [partnerId, setPartnerId] = useState('');
   const [invoiceStatus, setInvoiceStatus] = useState('');
+  const [plan, setPlan] = useState('');
   const [queryPartnerId, setQueryPartnerId] = useState('');
   const [queryInvoiceStatus, setQueryInvoiceStatus] = useState('');
+  const [queryPlan, setQueryPlan] = useState('');
   const [exporting, setExporting] = useState(false);
   const runCount = useRef(0);
   const [searchParams] = useSearchParams();
@@ -243,13 +245,14 @@ export default function AdminFinanceReportsPage() {
 
   // runKey forces a refetch even when all params are unchanged (Run button clicked
   // while dates/filters haven't changed — the previous behaviour silently no-oped)
-  const { data, isLoading } = useQuery({
-    queryKey: ['admin-finance-reports', queryFrom, queryTo, queryPartnerId, queryInvoiceStatus, runCount.current],
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['admin-finance-reports', queryFrom, queryTo, queryPartnerId, queryInvoiceStatus, queryPlan, runCount.current],
     queryFn: () => adminFinanceService.getReports({
       from: queryFrom,
       to: queryTo,
       partnerId: queryPartnerId || undefined,
       invoiceStatus: queryInvoiceStatus || undefined,
+      plan: queryPlan || undefined,
     }),
   });
 
@@ -271,6 +274,7 @@ export default function AdminFinanceReportsPage() {
     setQueryTo(monthToTo(toMonth));
     setQueryPartnerId(partnerId);
     setQueryInvoiceStatus(invoiceStatus);
+    setQueryPlan(plan);
   };
 
   const handleExport = async (format: 'csv' | 'xlsx') => {
@@ -282,6 +286,7 @@ export default function AdminFinanceReportsPage() {
         format,
         partnerId: queryPartnerId || undefined,
         invoiceStatus: queryInvoiceStatus || undefined,
+        plan: queryPlan || undefined,
       });
     } finally {
       setExporting(false);
@@ -351,7 +356,7 @@ export default function AdminFinanceReportsPage() {
         </WarningBanner>
       )}
 
-      {/* Filters — period picker (spec §6.4: Период, партньор, статус) */}
+      {/* Filters — period picker (spec §6.4: Период, партньор, абонатен план, статус на фактура) */}
       <FilterRow>
         <FilterLabel>От период</FilterLabel>
         <DateInput type="month" value={fromMonth} onChange={(e) => {
@@ -371,8 +376,15 @@ export default function AdminFinanceReportsPage() {
             <option key={p.id} value={p.id}>{p.businessName}</option>
           ))}
         </FilterSelect>
+        <FilterSelect value={plan} onChange={(e) => setPlan(e.target.value)}>
+          <option value="">Всички планове</option>
+          <option value="LIGHT">Light (Седмичен Premium)</option>
+          <option value="BASIC">Basic</option>
+          <option value="PREMIUM">Premium</option>
+          <option value="UNKNOWN">Без абонамент</option>
+        </FilterSelect>
         <FilterSelect value={invoiceStatus} onChange={(e) => setInvoiceStatus(e.target.value)}>
-          <option value="">Всички статуси</option>
+          <option value="">Статус на фактура (всички)</option>
           <option value="PENDING">Чакащи</option>
           <option value="PAID">Платени</option>
           <option value="OVERDUE">Просрочени</option>
@@ -528,7 +540,14 @@ export default function AdminFinanceReportsPage() {
           {/* Subscription plan breakdown (spec §6.4: абонатен план dimension) */}
           {report.planBreakdown.length > 0 && (
             <Card>
-              <SectionTitle>Разбивка по абонатен план</SectionTitle>
+              <SectionTitle>
+                Разбивка по абонатен план
+                {queryPlan && (
+                  <span style={{ fontWeight: 400, fontSize: '0.8rem', color: palette.textSubtle, marginLeft: '0.5rem', fontStyle: 'italic' }}>
+                    (филтрирано по план — фактурите и портфейлът показват всички планове)
+                  </span>
+                )}
+              </SectionTitle>
               <Table>
                 <thead>
                   <tr>
@@ -594,9 +613,9 @@ export default function AdminFinanceReportsPage() {
         </div>
       )}
 
-      {!report && !isLoading && (
-        <div style={{ color: palette.textSubtle, fontSize: '0.9375rem', textAlign: 'center', paddingTop: '3rem' }}>
-          Изберете диапазон и натиснете „Генерирай справка".
+      {error && !isLoading && (
+        <div style={{ color: palette.danger, fontSize: '0.9375rem', textAlign: 'center', paddingTop: '3rem', background: palette.dangerSoft, border: `1px solid ${palette.danger}`, borderRadius: '0.75rem', padding: '1.25rem' }}>
+          Грешка при зареждане на справката. Проверете връзката и опитайте отново.
         </div>
       )}
     </PageShell>

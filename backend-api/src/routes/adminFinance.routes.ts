@@ -441,6 +441,7 @@ router.get(
     const toParam = req.query.to as string;
     const partnerIdParam = typeof req.query.partnerId === 'string' ? req.query.partnerId.trim() : '';
     const invoiceStatusParam = typeof req.query.invoiceStatus === 'string' ? req.query.invoiceStatus.trim() : '';
+    const planParam = typeof req.query.plan === 'string' ? req.query.plan.trim() : '';
 
     // Date-only strings (YYYY-MM-DD) are parsed as UTC midnight by new Date(), which on a Sofia
     // server (UTC+2/+3) means the first 2–3h of that calendar day are missed.  Anchor to Sofia
@@ -468,6 +469,10 @@ router.get(
     const VALID_INVOICE_STATUSES = ['PENDING', 'PAID', 'OVERDUE'] as const;
     if (invoiceStatusParam && !(VALID_INVOICE_STATUSES as readonly string[]).includes(invoiceStatusParam)) {
       return res.status(400).json({ success: false, error: `invoiceStatus must be one of: ${VALID_INVOICE_STATUSES.join(', ')}` });
+    }
+    const VALID_PLANS = ['LIGHT', 'BASIC', 'PREMIUM', 'UNKNOWN'] as const;
+    if (planParam && !(VALID_PLANS as readonly string[]).includes(planParam)) {
+      return res.status(400).json({ success: false, error: `plan must be one of: ${VALID_PLANS.join(', ')}` });
     }
 
     // Compute month strings that fall within the date range (used for both invoice and period filters).
@@ -529,13 +534,14 @@ router.get(
           })
         : Promise.resolve([]),
       // Raw scans for subscription-plan breakdown (spec §6.4 "абонатен план" dimension)
+      // createdAt is included so we can resolve the plan the user had AT scan time (not today's plan).
       prisma.stickerScan.findMany({
         where: {
           status: ScanStatus.APPROVED,
           createdAt: { gte: from, lte: to },
           ...(partnerIdParam ? { venue: { partnerId: partnerIdParam } } : {}),
         },
-        select: { userId: true, cashbackAmount: true, verifiedAmount: true, billAmount: true },
+        select: { userId: true, cashbackAmount: true, verifiedAmount: true, billAmount: true, createdAt: true },
       }),
     ]);
 
@@ -579,21 +585,36 @@ router.get(
       partnerMap.set(inv.partnerId, cur);
     }
 
-    // Plan breakdown: resolve each scan's user → most-recent active subscription → plan
+    // Plan breakdown: resolve each scan's user → the subscription active AT scan time.
+    // Fetching all subscriptions per user (ascending) lets us find the latest one created
+    // before or at the scan timestamp — correct even when a user changed plans mid-period.
     const scanUserIds = [...new Set(scansInRange.map(s => s.userId))];
-    const userSubs = scanUserIds.length > 0
+    const allUserSubs = scanUserIds.length > 0
       ? await prisma.subscription.findMany({
           where: { userId: { in: scanUserIds } },
-          select: { userId: true, plan: true },
-          orderBy: { createdAt: 'desc' },
-          distinct: ['userId'],
+          select: { userId: true, plan: true, createdAt: true },
+          orderBy: { createdAt: 'asc' },
         })
       : [];
-    const planByUser = new Map(userSubs.map(s => [s.userId, s.plan as string]));
+    const subsByUser = new Map<string, Array<{ plan: string; createdAt: Date }>>();
+    for (const sub of allUserSubs) {
+      const arr = subsByUser.get(sub.userId) ?? [];
+      arr.push({ plan: sub.plan as string, createdAt: sub.createdAt });
+      subsByUser.set(sub.userId, arr);
+    }
+    const getPlanAtTime = (userId: string, at: Date): string => {
+      const subs = subsByUser.get(userId) ?? [];
+      let plan = 'UNKNOWN';
+      for (const s of subs) {
+        if (s.createdAt <= at) plan = s.plan;
+      }
+      return plan;
+    };
 
     const planAccum: Record<string, { scanCount: number; cashback: number; turnover: number }> = {};
     for (const scan of scansInRange) {
-      const plan = planByUser.get(scan.userId) ?? 'UNKNOWN';
+      const plan = getPlanAtTime(scan.userId, scan.createdAt);
+      if (planParam && plan !== planParam) continue; // plan filter
       const cur = planAccum[plan] ?? { scanCount: 0, cashback: 0, turnover: 0 };
       cur.scanCount += 1;
       cur.cashback += scan.cashbackAmount;
@@ -633,7 +654,12 @@ router.get(
   requirePermission('finance.reports.read'),
   asyncHandler(async (_req: AuthRequest, res: Response) => {
     const partners = await prisma.partner.findMany({
-      where: { cashbackPayments: { some: {} } },
+      where: {
+        OR: [
+          { cashbackPayments: { some: {} } },
+          { venues: { some: { stickerScans: { some: { status: ScanStatus.APPROVED } } } } },
+        ],
+      },
       select: { id: true, businessName: true },
       orderBy: { businessName: 'asc' },
     });
@@ -987,9 +1013,10 @@ router.get(
         expCursor.setUTCMonth(expCursor.getUTCMonth() + 1);
       }
 
-      // Partner and status filters — mirror the reports endpoint so exports match what you see
+      // Partner, status, and plan filters — mirror the reports endpoint so exports match what you see
       const expPartnerId = typeof req.query.partnerId === 'string' ? req.query.partnerId.trim() : '';
       const expInvoiceStatus = typeof req.query.invoiceStatus === 'string' ? req.query.invoiceStatus.trim() : '';
+      const expPlanFilter = typeof req.query.plan === 'string' ? req.query.plan.trim() : '';
       const EXP_VALID_STATUSES = ['PENDING', 'PAID', 'OVERDUE'] as const;
       const expInvoiceWhere: Parameters<typeof prisma.partnerCashbackPayment.findMany>[0]['where'] = {
         month: { in: expMonths },
@@ -1012,33 +1039,46 @@ router.get(
           include: { partner: { select: { businessName: true } } },
           orderBy: [{ month: 'asc' }, { totalCashbackOwed: 'desc' }],
         }),
-        // Scans for plan-dimension breakdown
+        // Scans for plan-dimension breakdown; createdAt needed for scan-time plan attribution.
         prisma.stickerScan.findMany({
           where: {
             status: ScanStatus.APPROVED,
             createdAt: { gte: from, lte: to },
             ...(expPartnerId ? { venue: { partnerId: expPartnerId } } : {}),
           },
-          select: { userId: true, cashbackAmount: true, verifiedAmount: true, billAmount: true },
+          select: { userId: true, cashbackAmount: true, verifiedAmount: true, billAmount: true, createdAt: true },
         }),
       ]);
 
-      // Resolve scan userId → subscription plan (most recent subscription per user)
+      // Resolve scan userId → the subscription active AT scan time (not today's plan).
       const expScanUserIds = [...new Set(expScans.map(s => s.userId))];
-      const expUserSubs = expScanUserIds.length > 0
+      const expAllUserSubs = expScanUserIds.length > 0
         ? await prisma.subscription.findMany({
             where: { userId: { in: expScanUserIds } },
-            select: { userId: true, plan: true },
-            orderBy: { createdAt: 'desc' },
-            distinct: ['userId'],
+            select: { userId: true, plan: true, createdAt: true },
+            orderBy: { createdAt: 'asc' },
           })
         : [];
-      const expPlanByUser = new Map(expUserSubs.map(s => [s.userId, s.plan as string]));
+      const expSubsByUser = new Map<string, Array<{ plan: string; createdAt: Date }>>();
+      for (const sub of expAllUserSubs) {
+        const arr = expSubsByUser.get(sub.userId) ?? [];
+        arr.push({ plan: sub.plan as string, createdAt: sub.createdAt });
+        expSubsByUser.set(sub.userId, arr);
+      }
+      const getExpPlanAtTime = (userId: string, at: Date): string => {
+        const subs = expSubsByUser.get(userId) ?? [];
+        let plan = 'UNKNOWN';
+        for (const s of subs) {
+          if (s.createdAt <= at) plan = s.plan;
+        }
+        return plan;
+      };
 
-      // Aggregate scans by plan
+      // Aggregate scans by plan, applying optional plan filter
       const expPlanAccum: Record<string, { scanCount: number; cashback: number; turnover: number }> = {};
       for (const scan of expScans) {
-        const plan = expPlanByUser.get(scan.userId) ?? 'UNKNOWN';
+        const plan = getExpPlanAtTime(scan.userId, scan.createdAt);
+        if (expPlanFilter && plan !== expPlanFilter) continue;
         const cur = expPlanAccum[plan] ?? { scanCount: 0, cashback: 0, turnover: 0 };
         cur.scanCount += 1;
         cur.cashback += scan.cashbackAmount;
@@ -1047,8 +1087,9 @@ router.get(
       }
 
       // Section 1 — invoice rows: one row per partner-month (period + partner + cashback + margin + invoice status)
+      const INVOICE_STATUS_BG: Record<string, string> = { PENDING: 'Чакащ', PAID: 'Платен', OVERDUE: 'Просрочен' };
       const invoiceSection = invoiceRows.map(i => ({
-        section: 'invoice',
+        section: 'Фактура',
         period: i.month,
         partnerName: i.partner.businessName,
         partnerId: i.partnerId,
@@ -1057,21 +1098,24 @@ router.get(
         cashback: i.totalCashbackOwed,
         margin: i.marginAmount,
         turnover: i.turnoverAmount,
-        invoiceStatus: i.status,
+        invoiceStatus: INVOICE_STATUS_BG[i.status] ?? i.status,
         walletType: '',
         walletTotal: '',
         walletCount: '',
       }));
 
       // Section 2 — plan breakdown rows: one row per subscription plan (plan + cashback + turnover)
+      const PLAN_LABELS_BG: Record<string, string> = {
+        LIGHT: 'Light (Седмичен Premium)', BASIC: 'Basic', PREMIUM: 'Premium', UNKNOWN: 'Без абонамент',
+      };
       const planSection = Object.entries(expPlanAccum)
         .sort((a, b) => b[1].cashback - a[1].cashback)
         .map(([plan, stats]) => ({
-          section: 'plan_breakdown',
+          section: 'Разбивка по план',
           period: '',
           partnerName: '',
           partnerId: '',
-          plan: plan === 'UNKNOWN' ? 'Без абонамент' : plan,
+          plan: PLAN_LABELS_BG[plan] ?? plan,
           scanCount: stats.scanCount,
           cashback: stats.cashback,
           margin: '',
@@ -1085,8 +1129,14 @@ router.get(
       // Section 3 — wallet summary rows: one row per transaction type (payments dimension)
       // Wallet transactions are subscriber-side and cannot be filtered by partner — these
       // totals always reflect platform-wide activity for the date range.
+      const WALLET_TYPE_BG: Record<string, string> = {
+        CASHBACK_CREDIT: 'Кешбек кредит', WITHDRAWAL: 'Плащане към абонат', TOP_UP: 'Зареждане',
+      };
+      const walletSectionLabel = expPartnerId
+        ? 'Портфейл (цяла платформа, без филтър партньор)'
+        : 'Портфейл';
       const walletSection = walletStats.map(w => ({
-        section: expPartnerId ? 'wallet (platform-wide, not filtered by partner)' : 'wallet',
+        section: walletSectionLabel,
         period: '',
         partnerName: '',
         partnerId: '',
@@ -1096,7 +1146,7 @@ router.get(
         margin: '',
         turnover: '',
         invoiceStatus: '',
-        walletType: w.type,
+        walletType: WALLET_TYPE_BG[w.type] ?? w.type,
         walletTotal: w._sum.amount ?? 0,
         walletCount: w._count.id,
       }));
@@ -1110,26 +1160,52 @@ router.get(
     // Object.keys(rows[0]) would give wrong results for the 'reports' type
     // because wallet rows and cashback rows have different keys — the first
     // row alone does not represent the full schema.
+    // Internal field keys are mapped to Bulgarian display headers for accounting use.
     const HEADERS: Record<string, string[]> = {
       invoices: ['id', 'partner', 'city', 'month', 'turnoverAmount', 'contractedRate', 'totalCashbackOwed', 'marginAmount', 'status', 'paidAt', 'notes', 'createdAt'],
       periods:  ['month', 'status', 'partners', 'cashback', 'margin', 'total', 'paid', 'pending', 'overdue', 'reviewedAt', 'reviewedBy', 'lockedAt', 'lockedBy', 'invoicedAt', 'invoicedBy', 'notes'],
       reports:  ['section', 'period', 'partnerName', 'partnerId', 'plan', 'scanCount', 'cashback', 'margin', 'turnover', 'invoiceStatus', 'walletType', 'walletTotal', 'walletCount'],
     };
+    // Bulgarian column header labels for the 'reports' export (accounting-friendly)
+    const REPORTS_DISPLAY_HEADERS: Record<string, string> = {
+      section: 'Секция',
+      period: 'Период',
+      partnerName: 'Партньор',
+      partnerId: 'ID на партньор',
+      plan: 'Абонатен план',
+      scanCount: 'Брой сканирания',
+      cashback: 'Кешбек (лв.)',
+      margin: 'Марджин (лв.)',
+      turnover: 'Оборот (лв.)',
+      invoiceStatus: 'Статус на фактура',
+      walletType: 'Тип транзакция',
+      walletTotal: 'Общо портфейл (лв.)',
+      walletCount: 'Брой транзакции',
+    };
+
+    const fieldKeys = HEADERS[type] ?? [];
+    // For the 'reports' type use Bulgarian display header labels; other types keep field names.
+    const displayHeaders = type === 'reports'
+      ? fieldKeys.map(k => REPORTS_DISPLAY_HEADERS[k] ?? k)
+      : fieldKeys;
 
     if (format === 'csv') {
-      const headers = HEADERS[type] ?? [];
       const csvLines = [
-        headers.join(','),
-        ...rows.map(r => headers.map(h => JSON.stringify(r[h] ?? '')).join(',')),
+        displayHeaders.join(','),
+        ...rows.map(r => fieldKeys.map(h => JSON.stringify(r[h] ?? '')).join(',')),
       ];
       res.setHeader('Content-Type', 'text/csv; charset=utf-8');
       res.setHeader('Content-Disposition', `attachment; filename="${filename}.csv"`);
       return res.send(csvLines.join('\n'));
     }
 
-    // xlsx — pass header so column names appear even when rows is empty
-    const xlsxHeaders = HEADERS[type] ?? (rows.length > 0 ? Object.keys(rows[0]) : []);
-    const ws = XLSX.utils.json_to_sheet(rows, { header: xlsxHeaders });
+    // xlsx — rename columns to Bulgarian display headers then write sheet
+    const wsRows = rows.map(r => {
+      const out: Record<string, unknown> = {};
+      fieldKeys.forEach((k, i) => { out[displayHeaders[i]] = r[k] ?? ''; });
+      return out;
+    });
+    const ws = XLSX.utils.json_to_sheet(wsRows, { header: displayHeaders });
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, type);
     const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
