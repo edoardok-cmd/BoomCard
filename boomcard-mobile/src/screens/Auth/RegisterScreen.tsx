@@ -86,7 +86,7 @@ const RegisterScreen = ({ navigation, route }: any) => {
           setSelectedPlan(null);
         }
       } catch (err) {
-        console.warn('Plan fetch failed:', planId);
+        if (__DEV__) console.warn('Plan fetch failed:', planId);
         setPlanError(t('subscription.planLoadError'));
         setSelectedPlan(null);
       } finally {
