@@ -210,6 +210,7 @@ const T = {
   cancel:          { en: 'Cancel',                                              bg: 'Отказ' },
   confirm:         { en: 'Confirm',                                             bg: 'Потвърди' },
   openDispute:     { en: 'Open Dispute',                                        bg: 'Отвори спор' },
+  approved:        { en: 'Signal approved',                                      bg: 'Сигналът е одобрен' },
   disputeOpened:   { en: 'Dispute case opened',                                 bg: 'Спорът е открит' },
   disputeExists:   { en: 'Dispute already exists for this receipt',             bg: 'Спор за тази бележка вече съществува' },
 } as const;
@@ -252,7 +253,15 @@ export default function AdminControlSecurityPage() {
   const approveMutation = useMutation({
     mutationFn: ({ id, notes }: { id: string; notes?: string }) =>
       adminControlService.approveRiskSignal(id, notes),
-    onSuccess: () => {
+    onSuccess: (result) => {
+      if (result?.fraudWarning) {
+        toast(`⚠ ${result.fraudWarning}`, {
+          style: { background: '#d97706', color: '#fff', fontWeight: 600 },
+          duration: 6000,
+        });
+      } else {
+        toast.success(t('approved'));
+      }
       setActionDraft(null);
       queryClient.invalidateQueries({ queryKey: ['admin-fraud-signals'] });
       queryClient.invalidateQueries({ queryKey: ['admin-risk-queue-summary'] });

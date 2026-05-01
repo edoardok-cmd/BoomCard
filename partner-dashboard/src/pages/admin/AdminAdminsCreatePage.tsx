@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import styled from 'styled-components';
+import { Link } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-hot-toast';
 import { adminAdminsService, AdminRoleKey, CreateAdminResponse } from '../../services/adminAdmins.service';
@@ -211,6 +212,7 @@ export default function AdminAdminsCreatePage() {
     onSuccess: (data: CreateAdminResponse) => {
       setServerError(null);
       setForm(EMPTY);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
       if (data.pending) {
         setLastCreated({ email: data.request.email, pending: true });
         toast.success(`Заявка за Супер администратор подадена за ${data.request.email}`);
@@ -258,7 +260,7 @@ export default function AdminAdminsCreatePage() {
         {lastCreated && (
           <SuccessBanner>
             {lastCreated.pending
-              ? <>Заявката за Супер администратор за <strong>{lastCreated.email}</strong> е изпратена — втори Супер администратор трябва да я одобри от страницата Очакващи одобрение.</>
+              ? <>Заявката за Супер администратор за <strong>{lastCreated.email}</strong> е изпратена — втори Супер администратор трябва да я одобри от страницата <Link to="/admin/admins/pending" style={{ color: 'inherit', textDecoration: 'underline' }}>Очакващи одобрение</Link>.</>
               : <>Администраторският акаунт за <strong>{lastCreated.email}</strong> е създаден успешно.</>}
           </SuccessBanner>
         )}
@@ -282,13 +284,14 @@ export default function AdminAdminsCreatePage() {
             </Field>
 
             <Field>
-              <Label htmlFor="firstName">Иme *</Label>
+              <Label htmlFor="firstName">Име *</Label>
               <Input
                 id="firstName"
                 type="text"
                 placeholder="Иван"
                 value={form.firstName}
-                onChange={set('firstName')}
+                onChange={(e) => { e.target.setCustomValidity(''); set('firstName')(e); }}
+                onInvalid={(e) => (e.target as HTMLInputElement).setCustomValidity('Полето трябва да съдържа поне 2 символа')}
                 required
                 minLength={2}
               />
@@ -301,7 +304,8 @@ export default function AdminAdminsCreatePage() {
                 type="text"
                 placeholder="Петров"
                 value={form.lastName}
-                onChange={set('lastName')}
+                onChange={(e) => { e.target.setCustomValidity(''); set('lastName')(e); }}
+                onInvalid={(e) => (e.target as HTMLInputElement).setCustomValidity('Полето трябва да съдържа поне 2 символа')}
                 required
                 minLength={2}
               />
@@ -329,7 +333,8 @@ export default function AdminAdminsCreatePage() {
                 type="password"
                 placeholder="Мин. 8 символа"
                 value={form.password}
-                onChange={set('password')}
+                onChange={(e) => { e.target.setCustomValidity(''); set('password')(e); }}
+                onInvalid={(e) => (e.target as HTMLInputElement).setCustomValidity('Паролата трябва да е поне 8 символа')}
                 minLength={8}
                 required
                 autoComplete="new-password"
