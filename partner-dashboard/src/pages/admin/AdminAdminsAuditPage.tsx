@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import styled from 'styled-components';
 import { useQuery } from '@tanstack/react-query';
+import { toast } from 'react-hot-toast';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { DataTable, ColumnDef } from '../../components/admin/DataTable/DataTable';
 import { adminAdminsService, AuditLogEntry } from '../../services/adminAdmins.service';
@@ -654,6 +655,8 @@ export default function AdminAdminsAuditPage() {
         actorId:    actorId    || undefined,
       });
       downloadCsv(result.logs);
+    } catch {
+      toast.error('Грешка при експорт на одит лог');
     } finally {
       setExporting(false);
     }

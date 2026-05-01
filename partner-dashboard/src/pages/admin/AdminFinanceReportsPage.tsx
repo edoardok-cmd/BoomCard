@@ -2,6 +2,7 @@ import { useState, useRef } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import styled from 'styled-components';
 import { useQuery } from '@tanstack/react-query';
+import { toast } from 'react-hot-toast';
 import { adminFinanceService, PlanBreakdownRow } from '../../services/adminFinance.service';
 import { adminAlertsService, AdminAlert } from '../../services/adminAlerts.service';
 import { useLanguage } from '../../contexts/LanguageContext';
@@ -291,6 +292,8 @@ export default function AdminFinanceReportsPage() {
         invoiceStatus: queryInvoiceStatus || undefined,
         plan: queryPlan || undefined,
       });
+    } catch {
+      toast.error('Грешка при експорт на отчет');
     } finally {
       setExporting(false);
     }
