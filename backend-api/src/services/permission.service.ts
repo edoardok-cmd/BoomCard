@@ -62,8 +62,10 @@ export const PERMISSION_CATALOG: Array<{ key: string; label: string; category: s
   { key: 'admins.roles.write', label: 'Assign roles & permissions', category: 'admins' },
 
   // Help
+  // help.read.all is intentionally absent from this catalog: it is a SUPER_ADMIN-only synthetic key.
+  // SUPER_ADMIN bypasses requirePermission unconditionally; the nav uses rawRole === 'SUPER_ADMIN'.
+  // Keeping it out of the catalog ensures ADMIN role (which inherits every catalog key) never receives it.
   { key: 'help.read', label: 'View own support tickets', category: 'help' },
-  { key: 'help.read.all', label: 'View all support tickets', category: 'help' },
   { key: 'help.write', label: 'Manage support tickets', category: 'help' },
 ];
 
