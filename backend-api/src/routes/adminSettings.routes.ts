@@ -361,13 +361,31 @@ router.put(
       }
     }
 
+    // Simple RFC 5321-compatible email check (not exhaustive, but catches common mistakes).
+    const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    for (const [key, value] of entries) {
+      if ((key === 'from_email' || key === 'reply_to_email') && value !== '') {
+        if (!EMAIL_RE.test(value)) {
+          return res.status(400).json({
+            success: false,
+            error: `${key} must be a valid email address`,
+          });
+        }
+      }
+    }
+
     const INTEGER_RANGE_KEYS: Record<string, { min: number; max: number }> = {
       cashback_expiry_days:    { min: 1,   max: 3650 },
       offer_validity_days:     { min: 1,   max: 3650 },
       max_fraud_score:         { min: 0,   max: 100  },
-      auto_approve_threshold:  { min: 0,   max: 100000 },
+      // auto_approve_threshold is a fraud-score warning threshold (0–100), not a monetary amount.
+      // receipt.service.ts emits a warning when recomputed fraud score exceeds this value after
+      // an admin corrects a receipt amount.
+      auto_approve_threshold:  { min: 0,   max: 100  },
       daily_scan_limit_default:{ min: 1,   max: 10000 },
-      max_cashback_per_month:  { min: 0,   max: 100000 },
+      // min: 1 intentionally excludes 0 — storing 0 would zero-cap all cashback for every user.
+      // To remove the cap entirely, omit this key from the PUT body (leave the field empty in UI).
+      max_cashback_per_month:  { min: 1,   max: 100000 },
     };
     // These keys must be whole numbers (counts, days, or integer scores).
     const INTEGER_ONLY_KEYS = new Set([
@@ -375,6 +393,7 @@ router.put(
       'offer_validity_days',
       'daily_scan_limit_default',
       'max_fraud_score',
+      'auto_approve_threshold',
     ]);
     for (const [key, value] of entries) {
       if (key === 'maintenance_mode' && value !== 'true' && value !== 'false') {
