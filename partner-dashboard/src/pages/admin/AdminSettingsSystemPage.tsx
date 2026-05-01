@@ -201,11 +201,11 @@ export default function AdminSettingsSystemPage() {
     if (data.data.auto_approve_threshold)   setAutoApprove(data.data.auto_approve_threshold);
     setDailyLimit(data.data.daily_scan_limit_default ?? '');
     setMaxCashback(data.data.max_cashback_per_month ?? '');
-    if (data.data.support_email)            setSupportEmail(data.data.support_email);
-    if (data.data.support_phone)            setSupportPhone(data.data.support_phone);
-    if (data.data.reply_to_email)           setReplyToEmail(data.data.reply_to_email);
-    if (data.data.from_email)               setFromEmail(data.data.from_email);
-    if (data.data.sender_name)              setSenderName(data.data.sender_name);
+    setSupportEmail(data.data.support_email ?? '');
+    setSupportPhone(data.data.support_phone ?? '');
+    setReplyToEmail(data.data.reply_to_email ?? '');
+    setFromEmail(data.data.from_email ?? '');
+    setSenderName(data.data.sender_name ?? '');
     if (data.data.language)                 setLanguage(data.data.language);
     if (data.data.currency)                 setCurrency(data.data.currency);
     if (data.data.timezone)                 setTimezone(data.data.timezone);
@@ -320,7 +320,7 @@ export default function AdminSettingsSystemPage() {
                   value={maxFraud}
                   onChange={(e) => setMaxFraud(e.target.value)}
                 />
-                <FieldHint>Бонове с оценка ≥ тази стойност задействат известие за измама до администраторите. Всички бонове отиват за ръчен преглед независимо от оценката. По подразбиране: 60.</FieldHint>
+                <FieldHint>Бонове с оценка ≥ тази стойност задействат известие за измама до администраторите и собственика на партньора. Всички бонове отиват за ръчен преглед независимо от оценката. По подразбиране: 60.</FieldHint>
               </div>
               <div>
                 <FieldLabel>Праг за предупреждение при корекция (0–100)</FieldLabel>
