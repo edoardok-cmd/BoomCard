@@ -1,13 +1,17 @@
 /**
  * Admin Finance Routes
  *
- * GET  /api/admin/finance/invoices            — list PartnerCashbackPayments
- * POST /api/admin/finance/invoices/:id/pay    — mark invoice as paid
- * GET  /api/admin/finance/periods             — monthly cashback period summary
- * POST /api/admin/finance/periods             — create/ensure a ReportingPeriod exists
- * PATCH /api/admin/finance/periods/:month/status — advance ReportingPeriod lifecycle
- * GET  /api/admin/finance/reports             — aggregate financial stats
- * GET  /api/admin/finance/export              — CSV/xlsx export (spec 6.4)
+ * GET  /api/admin/finance/invoices                     — list PartnerCashbackPayments, enriched with reportingPeriodStatus
+ * POST /api/admin/finance/invoices/generate            — create PENDING invoice records for all partners in a month
+ * POST /api/admin/finance/invoices/:id/pay             — mark invoice as paid (blocked on LOCKED/INVOICED period)
+ * PATCH /api/admin/finance/invoices/:id/status         — change invoice status (blocked on LOCKED/INVOICED period)
+ * PATCH /api/admin/finance/invoices/:id/notes          — update notes (allowed on any period status)
+ * GET  /api/admin/finance/periods                      — monthly cashback period summary
+ * GET  /api/admin/finance/reporting-periods            — ReportingPeriod lifecycle rows
+ * POST /api/admin/finance/reporting-periods            — create/ensure a ReportingPeriod exists
+ * PATCH /api/admin/finance/reporting-periods/:month/status — advance ReportingPeriod lifecycle
+ * GET  /api/admin/finance/reports                      — aggregate financial stats
+ * GET  /api/admin/finance/export                       — CSV/xlsx export (spec 6.4)
  */
 
 import { Router, Response } from 'express';
@@ -16,7 +20,7 @@ import { auditMiddleware } from '../middleware/audit.middleware';
 import { asyncHandler } from '../middleware/error.middleware';
 import { prisma } from '../lib/prisma';
 import * as XLSX from 'xlsx';
-import { ReportingPeriodStatus } from '@prisma/client';
+import { ReportingPeriodStatus, ScanStatus } from '@prisma/client';
 
 const router = Router();
 
@@ -73,10 +77,145 @@ router.get(
       prisma.partnerCashbackPayment.count({ where }),
     ]);
 
+    // Enrich each invoice with its billing period lifecycle status.
+    const uniqueMonths = [...new Set(invoices.map(i => i.month))];
+    const reportingPeriods = uniqueMonths.length > 0
+      ? await prisma.reportingPeriod.findMany({
+          where: { month: { in: uniqueMonths } },
+          select: { month: true, status: true },
+        })
+      : [];
+    const periodStatusByMonth = new Map(reportingPeriods.map(p => [p.month, p.status]));
+
+    const enriched = invoices.map(inv => ({
+      ...inv,
+      reportingPeriodStatus: periodStatusByMonth.get(inv.month) ?? null,
+    }));
+
     res.json({
       success: true,
-      data: invoices,
+      data: enriched,
       meta: { total, page, limit, pages: Math.ceil(total / limit) },
+    });
+  })
+);
+
+/**
+ * Returns true when the given month's ReportingPeriod is LOCKED or INVOICED,
+ * meaning data changes are not allowed.
+ */
+async function isPeriodLocked(month: string): Promise<boolean> {
+  const period = await prisma.reportingPeriod.findUnique({
+    where: { month },
+    select: { status: true },
+  });
+  return period?.status === 'LOCKED' || period?.status === 'INVOICED';
+}
+
+/**
+ * POST /api/admin/finance/invoices/generate
+ * Creates PENDING PartnerCashbackPayment records for every partner that has
+ * at least one APPROVED sticker scan in the given month.  Existing records for
+ * the same partner+month are updated with fresh totals (idempotent).
+ * Body: { month: "YYYY-MM" }
+ */
+router.post(
+  '/invoices/generate',
+  requirePermission('finance.invoices.write'),
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    const { month } = req.body as { month?: string };
+
+    if (!month || !/^\d{4}-\d{2}$/.test(month)) {
+      return res.status(400).json({ success: false, error: 'month must be in YYYY-MM format' });
+    }
+
+    if (await isPeriodLocked(month)) {
+      return res.status(409).json({ success: false, error: `Billing period ${month} is locked or invoiced — no changes allowed.` });
+    }
+
+    const [year, mon] = month.split('-').map(Number);
+    const monthStart = new Date(year, mon - 1, 1);
+    const monthEnd   = new Date(year, mon, 1);
+
+    // Aggregate APPROVED sticker scans → per-partner cashback and turnover totals.
+    const scans = await prisma.stickerScan.findMany({
+      where: {
+        status: ScanStatus.APPROVED,
+        createdAt: { gte: monthStart, lt: monthEnd },
+      },
+      select: {
+        cashbackAmount: true,
+        verifiedAmount: true,
+        billAmount: true,
+        venue: { select: { partnerId: true } },
+      },
+    });
+
+    type Totals = { cashback: number; turnover: number };
+    const byPartner = new Map<string, Totals>();
+    for (const s of scans) {
+      const pid = s.venue?.partnerId;
+      if (!pid) continue;
+      const cur = byPartner.get(pid) ?? { cashback: 0, turnover: 0 };
+      cur.cashback  += s.cashbackAmount;
+      cur.turnover  += s.verifiedAmount ?? s.billAmount ?? 0;
+      byPartner.set(pid, cur);
+    }
+
+    if (byPartner.size === 0) {
+      return res.json({ success: true, data: { created: 0, updated: 0, total: 0 },
+        message: 'No approved scans found for this month.' });
+    }
+
+    const partnerIds = [...byPartner.keys()];
+    const partners = await prisma.partner.findMany({
+      where: { id: { in: partnerIds } },
+      select: {
+        id: true,
+        discountRate: true,
+        partnerType: { select: { maxDiscountRate: true } },
+      },
+    });
+    const partnerRateMap = new Map(partners.map(p => [
+      p.id,
+      p.discountRate ?? (p.partnerType as { maxDiscountRate?: number } | null)?.maxDiscountRate ?? null,
+    ]));
+
+    let created = 0;
+    let updated = 0;
+
+    for (const [partnerId, totals] of byPartner) {
+      const contractedRate = partnerRateMap.get(partnerId) ?? null;
+      const totalCashbackOwed = Math.round(totals.cashback * 100) / 100;
+      const turnoverAmount    = Math.round(totals.turnover * 100) / 100;
+      const marginAmount = contractedRate != null && turnoverAmount > 0
+        ? Math.round(((contractedRate / 100) * turnoverAmount - totalCashbackOwed) * 100) / 100
+        : 0;
+
+      const existing = await prisma.partnerCashbackPayment.findUnique({
+        where: { partnerId_month: { partnerId, month } },
+      });
+
+      await prisma.partnerCashbackPayment.upsert({
+        where: { partnerId_month: { partnerId, month } },
+        create: {
+          partnerId, month,
+          totalCashbackOwed, turnoverAmount, contractedRate, marginAmount,
+          status: 'PENDING',
+        },
+        update: {
+          totalCashbackOwed, turnoverAmount, contractedRate, marginAmount,
+          // Keep existing status/paidAt/paidBy so we don't overwrite a PAID record.
+        },
+      });
+
+      if (existing) updated++; else created++;
+    }
+
+    return res.json({
+      success: true,
+      data: { created, updated, total: created + updated },
+      message: `Generated ${created + updated} invoice(s) for ${month}.`,
     });
   })
 );
@@ -96,6 +235,10 @@ router.post(
     const invoice = await prisma.partnerCashbackPayment.findUnique({ where: { id } });
     if (!invoice) {
       return res.status(404).json({ success: false, error: 'Invoice not found' });
+    }
+
+    if (await isPeriodLocked(invoice.month)) {
+      return res.status(409).json({ success: false, error: `Billing period ${invoice.month} is locked or invoiced — no changes allowed.` });
     }
 
     // Atomic guard: updateMany with status precondition prevents a TOCTOU race
@@ -143,6 +286,10 @@ router.patch(
       return res.status(400).json({ success: false, error: 'Cannot change status of a paid invoice' });
     }
 
+    if (await isPeriodLocked(invoice.month)) {
+      return res.status(409).json({ success: false, error: `Billing period ${invoice.month} is locked or invoiced — no changes allowed.` });
+    }
+
     // Atomic guard: updateMany with status precondition prevents a concurrent /pay
     // call from being silently overwritten by this status transition.
     const result = await prisma.partnerCashbackPayment.updateMany({
@@ -188,6 +335,8 @@ router.patch(
 /**
  * GET /api/admin/finance/periods
  * Monthly aggregation of cashback payments.
+ * Also surfaces months that have APPROVED sticker scans but no generated invoices yet
+ * (hasUnbilledScans: true) so the admin knows to run invoice generation.
  * Query: year (defaults to current year)
  */
 router.get(
@@ -201,13 +350,13 @@ router.get(
 
     const payments = await prisma.partnerCashbackPayment.findMany({
       where: { month: { startsWith: String(year) } },
-      select: { month: true, totalCashbackOwed: true, status: true },
+      select: { month: true, totalCashbackOwed: true, marginAmount: true, status: true },
     });
 
-    // Group by month
+    // Group by month; total = full partner obligation (cashback + margin), matching spec 6.2.
     const monthMap = new Map<
       string,
-      { month: string; total: number; pending: number; paid: number; overdue: number; count: number }
+      { month: string; total: number; pending: number; paid: number; overdue: number; count: number; hasUnbilledScans: boolean }
     >();
 
     for (const p of payments) {
@@ -218,13 +367,33 @@ router.get(
         paid: 0,
         overdue: 0,
         count: 0,
+        hasUnbilledScans: false,
       };
-      existing.total += p.totalCashbackOwed;
+      existing.total += p.totalCashbackOwed + p.marginAmount;
       existing.count += 1;
       if (p.status === 'PENDING') existing.pending += 1;
       else if (p.status === 'PAID') existing.paid += 1;
       else if (p.status === 'OVERDUE') existing.overdue += 1;
       monthMap.set(p.month, existing);
+    }
+
+    // Find months with APPROVED scans that have no invoice rows yet (spec §4 gap fix).
+    const yearStart = new Date(year, 0, 1);
+    const yearEnd   = new Date(year + 1, 0, 1);
+    const scans = await prisma.stickerScan.findMany({
+      where: { status: ScanStatus.APPROVED, createdAt: { gte: yearStart, lt: yearEnd } },
+      select: { createdAt: true },
+    });
+
+    for (const scan of scans) {
+      const d = scan.createdAt;
+      const monthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      if (!monthMap.has(monthKey)) {
+        monthMap.set(monthKey, {
+          month: monthKey, total: 0, pending: 0, paid: 0, overdue: 0, count: 0,
+          hasUnbilledScans: true,
+        });
+      }
     }
 
     const periods = Array.from(monthMap.values()).sort((a, b) => b.month.localeCompare(a.month));
@@ -357,7 +526,7 @@ const ALLOWED_TRANSITIONS: Partial<Record<ReportingPeriodStatus, ReportingPeriod
 
 /**
  * PATCH /api/admin/finance/reporting-periods/:month/status
- * Advances the period to the next status (or back to OPEN from FOR_REVIEW).
+ * Advances the period to the next lifecycle status (strictly forward: OPEN → FOR_REVIEW → LOCKED → INVOICED).
  * Body: { status: ReportingPeriodStatus }
  */
 router.patch(
@@ -376,8 +545,7 @@ router.patch(
 
     const newStatus = status as ReportingPeriodStatus;
 
-    // #15 fix: enforce the allowed transition map — only forward steps are valid.
-    // #14 fix: the previous guard was a no-op (empty body); this one actually rejects.
+    // Enforce the allowed transition map — only forward steps are valid.
     const allowedNext = ALLOWED_TRANSITIONS[period.status];
     if (newStatus !== allowedNext) {
       const allowed = allowedNext ? allowedNext : 'none';
@@ -385,6 +553,17 @@ router.patch(
         success: false,
         error: `Cannot transition from ${period.status} to ${newStatus}. Only ${allowed} is allowed next.`,
       });
+    }
+
+    // Guard: require at least one generated invoice before sending to review (spec §6.3).
+    if (period.status === 'OPEN' && newStatus === 'FOR_REVIEW') {
+      const invoiceCount = await prisma.partnerCashbackPayment.count({ where: { month } });
+      if (invoiceCount === 0) {
+        return res.status(409).json({
+          success: false,
+          error: `Cannot advance period ${month} to review: no partner invoices have been generated yet. Generate invoices first.`,
+        });
+      }
     }
 
     const updateData: Record<string, unknown> = { status: newStatus };
@@ -474,13 +653,48 @@ router.get(
 
       const periods = await prisma.reportingPeriod.findMany({ where, orderBy: { month: 'desc' } });
 
-      rows = periods.map(p => ({
-        month: p.month,
-        status: p.status,
-        lockedAt: p.lockedAt?.toISOString() ?? '',
-        invoicedAt: p.invoicedAt?.toISOString() ?? '',
-        notes: p.notes ?? '',
-      }));
+      // Join financial totals so the export matches spec §6.4 (cashback, margin, invoices, payments).
+      const periodMonths = periods.map(p => p.month);
+      const finRows = periodMonths.length > 0
+        ? await prisma.partnerCashbackPayment.findMany({
+            where: { month: { in: periodMonths } },
+            select: { month: true, totalCashbackOwed: true, marginAmount: true, status: true },
+          })
+        : [];
+
+      type FinTotals = { cashback: number; margin: number; total: number; count: number; paid: number; pending: number; overdue: number };
+      const finByMonth = new Map<string, FinTotals>();
+      for (const p of finRows) {
+        const cur = finByMonth.get(p.month) ?? { cashback: 0, margin: 0, total: 0, count: 0, paid: 0, pending: 0, overdue: 0 };
+        cur.cashback  += p.totalCashbackOwed;
+        cur.margin    += p.marginAmount;
+        cur.total     += p.totalCashbackOwed + p.marginAmount;
+        cur.count     += 1;
+        if (p.status === 'PAID')    cur.paid++;
+        if (p.status === 'PENDING') cur.pending++;
+        if (p.status === 'OVERDUE') cur.overdue++;
+        finByMonth.set(p.month, cur);
+      }
+
+      rows = periods.map(p => {
+        const fin = finByMonth.get(p.month);
+        return {
+          month: p.month,
+          status: p.status,
+          partners: fin?.count ?? 0,
+          cashback: fin?.cashback ?? 0,
+          margin: fin?.margin ?? 0,
+          total: fin?.total ?? 0,
+          paid: fin?.paid ?? 0,
+          pending: fin?.pending ?? 0,
+          overdue: fin?.overdue ?? 0,
+          lockedAt: p.lockedAt?.toISOString() ?? '',
+          lockedBy: p.lockedBy ?? '',
+          invoicedAt: p.invoicedAt?.toISOString() ?? '',
+          invoicedBy: p.invoicedBy ?? '',
+          notes: p.notes ?? '',
+        };
+      });
 
     } else {
       // aggregate report
@@ -526,7 +740,7 @@ router.get(
     // row alone does not represent the full schema.
     const HEADERS: Record<string, string[]> = {
       invoices: ['id', 'partner', 'city', 'month', 'turnoverAmount', 'contractedRate', 'totalCashbackOwed', 'marginAmount', 'status', 'paidAt', 'notes', 'createdAt'],
-      periods:  ['month', 'status', 'lockedAt', 'invoicedAt', 'notes'],
+      periods:  ['month', 'status', 'partners', 'cashback', 'margin', 'total', 'paid', 'pending', 'overdue', 'lockedAt', 'lockedBy', 'invoicedAt', 'invoicedBy', 'notes'],
       reports:  ['category', 'type', 'total', 'count', 'partnerId', 'month', 'cashback', 'margin', 'status'],
     };
 
