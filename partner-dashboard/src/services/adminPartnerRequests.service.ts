@@ -36,7 +36,7 @@ export interface PendingPartnersResult {
 }
 
 export const adminPartnerRequestsService = {
-  list(params: { page?: number; limit?: number; search?: string }): Promise<PendingPartnersResult> {
+  list(params: { page?: number; limit?: number; search?: string; requestStatus?: string }): Promise<PendingPartnersResult> {
     return apiService.get<PendingPartnersResult>('/admin/partner-requests', params);
   },
 
@@ -46,5 +46,13 @@ export const adminPartnerRequestsService = {
 
   reject(id: string, reason: string): Promise<{ success: boolean }> {
     return apiService.post<{ success: boolean }>(`/admin/partner-requests/${id}/reject`, { reason });
+  },
+
+  advancePipeline(id: string, requestStatus: string): Promise<{ partner: PendingPartner }> {
+    return apiService.patch<{ partner: PendingPartner }>(`/admin/partner-requests/${id}/status`, { requestStatus });
+  },
+
+  assign(id: string, adminId: string | null): Promise<{ partner: PendingPartner }> {
+    return apiService.patch<{ partner: PendingPartner }>(`/admin/partner-requests/${id}/assign`, { adminId });
   },
 };

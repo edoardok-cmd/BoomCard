@@ -384,7 +384,7 @@ router.put(
       auto_approve_threshold:  { min: 0,   max: 100  },
       daily_scan_limit_default:{ min: 1,   max: 10000 },
       // min: 1 intentionally excludes 0 — storing 0 would zero-cap all cashback for every user.
-      // To remove the cap entirely, omit this key from the PUT body (leave the field empty in UI).
+      // Send '' to remove the cap (delete the row) — the service falls back to DEFAULT_MAX_CASHBACK_PER_MONTH.
       max_cashback_per_month:  { min: 1,   max: 100000 },
     };
     // These keys must be whole numbers (counts, days, or integer scores).
@@ -395,10 +395,19 @@ router.put(
       'max_fraud_score',
       'auto_approve_threshold',
     ]);
+    // Sending '' for these keys deletes the DB row so services fall back to hardcoded defaults.
+    const CLEARABLE_KEYS = new Set([
+      'cashback_expiry_days',
+      'offer_validity_days',
+      'daily_scan_limit_default',
+      'max_cashback_per_month',
+    ]);
     for (const [key, value] of entries) {
       if (key === 'maintenance_mode' && value !== 'true' && value !== 'false') {
         return res.status(400).json({ success: false, error: 'maintenance_mode must be "true" or "false"' });
       }
+      // Empty string on a clearable key means "delete the row" — skip numeric validation.
+      if (CLEARABLE_KEYS.has(key) && value === '') continue;
       const range = INTEGER_RANGE_KEYS[key];
       if (range) {
         const parsed = parseFloat(value);
@@ -417,15 +426,20 @@ router.put(
       }
     }
 
-    await prisma.$transaction(
-      entries.map(([key, value]) =>
+    // Split entries: clearable keys with '' value are deleted; everything else is upserted.
+    const toDelete = entries.filter(([k, v]) => CLEARABLE_KEYS.has(k) && v === '').map(([k]) => k);
+    const toUpsert = entries.filter(([k, v]) => !(CLEARABLE_KEYS.has(k) && v === ''));
+
+    await prisma.$transaction([
+      ...(toDelete.length ? [prisma.systemSetting.deleteMany({ where: { key: { in: toDelete } } })] : []),
+      ...toUpsert.map(([key, value]) =>
         prisma.systemSetting.upsert({
           where: { key },
           create: { key, value, updatedBy: req.user!.id },
           update: { value, updatedBy: req.user!.id },
         })
-      )
-    );
+      ),
+    ]);
 
     for (const [key] of entries) invalidateSystemSettingCache(key);
 

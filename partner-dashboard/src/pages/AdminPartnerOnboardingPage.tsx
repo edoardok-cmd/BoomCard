@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import styled from 'styled-components';
 import { motion } from 'framer-motion';
 import Button from '../components/common/Button/Button';
-import Header from '../components/layout/Header/Header';
 import { apiService } from '../services/api.service';
 import { PartnerType } from '../services/partnerTypes.service';
 import toast from 'react-hot-toast';
@@ -152,8 +151,8 @@ const PageWrapper = styled.div`
 const PageContainer = styled.div`
   max-width: 56rem;
   margin: 0 auto;
-  padding: 6rem 1.5rem 4rem;
-  @media (max-width: 768px) { padding: 5rem 1rem 3rem; }
+  padding: 2rem 1.5rem 4rem;
+  @media (max-width: 768px) { padding: 1.5rem 1rem 3rem; }
 `;
 
 const PageHeader = styled.div`
@@ -642,7 +641,7 @@ const AdminPartnerOnboardingPage: React.FC = () => {
 
       await apiService.post('/partners/onboard', payload);
       toast.success(`Партньорът "${form.businessName}" беше създаден успешно!`);
-      navigate(`/admin/partners`);
+      navigate(`/admin/partners/active`);
     } catch (err) {
       const axiosErr = err as { response?: { data?: { error?: string | { message?: string } } }; message?: string };
       const rawErr = axiosErr?.response?.data?.error;
@@ -1317,7 +1316,6 @@ const AdminPartnerOnboardingPage: React.FC = () => {
 
   return (
     <PageWrapper>
-      <Header />
       <PageContainer>
         <PageHeader>
           <PageTitle>🚀 Onboarding на партньор</PageTitle>

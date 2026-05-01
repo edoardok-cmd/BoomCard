@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import styled from 'styled-components';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-hot-toast';
+import { useLanguage } from '../../contexts/LanguageContext';
 import { DataTable, ColumnDef } from '../../components/admin/DataTable/DataTable';
 import {
   adminLocationsService,
@@ -242,19 +243,11 @@ const Btn = styled.button<{ $variant?: 'danger' | 'primary' | 'ghost' }>`
   }}
 `;
 
-/* ─── Options ──────────────────────────────────────────────────────────────── */
-const MENU_STATUS_OPTIONS: Array<{ value: MenuStatus | ''; label: string }> = [
-  { value: '', label: 'All menu statuses' },
-  { value: 'NONE', label: 'No menu' },
-  { value: 'PENDING', label: 'Pending review' },
-  { value: 'APPROVED', label: 'Approved' },
-  { value: 'REJECTED', label: 'Rejected' },
-];
-
 const PAGE_SIZE = 25;
 
 /* ─── Component ───────────────────────────────────────────────────────────── */
 export default function AdminPartnerLocationsPage() {
+  const { t, language } = useLanguage();
   const queryClient = useQueryClient();
 
   const [page, setPage] = useState(1);
@@ -280,22 +273,22 @@ export default function AdminPartnerLocationsPage() {
     mutationFn: ({ id, url }: { id: string; url: string }) =>
       adminLocationsService.approveMenu(id, url),
     onSuccess: () => {
-      toast.success('Menu approved');
+      toast.success(t('admin.locationsMenuApproved'));
       queryClient.invalidateQueries({ queryKey: ['admin-venues'] });
     },
-    onError: () => toast.error('Failed to approve menu'),
+    onError: () => toast.error(t('admin.locationsMenuApproveFailed')),
   });
 
   const rejectMutation = useMutation({
     mutationFn: ({ id, reason }: { id: string; reason: string }) =>
       adminLocationsService.rejectMenu(id, reason),
     onSuccess: () => {
-      toast.success('Menu rejected');
+      toast.success(t('admin.locationsMenuRejected'));
       setRejectTarget(null);
       setRejectReason('');
       queryClient.invalidateQueries({ queryKey: ['admin-venues'] });
     },
-    onError: () => toast.error('Failed to reject menu'),
+    onError: () => toast.error(t('admin.locationsMenuRejectFailed')),
   });
 
   const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -303,12 +296,22 @@ export default function AdminPartnerLocationsPage() {
   };
 
   const fmt = (iso: string) =>
-    new Date(iso).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+    new Date(iso).toLocaleDateString(language === 'bg' ? 'bg-BG' : 'en-GB', {
+      day: '2-digit', month: 'short', year: 'numeric',
+    });
+
+  const menuStatusOptions: Array<{ value: MenuStatus | ''; label: string }> = [
+    { value: '', label: t('admin.locationsMenuStatusAll') },
+    { value: 'NONE', label: t('admin.locationsMenuStatusNone') },
+    { value: 'PENDING', label: t('admin.locationsMenuStatusPending') },
+    { value: 'APPROVED', label: t('admin.locationsMenuStatusApproved') },
+    { value: 'REJECTED', label: t('admin.locationsMenuStatusRejected') },
+  ];
 
   const columns: ColumnDef<AdminVenue>[] = [
     {
       key: 'venue',
-      header: 'Venue',
+      header: t('admin.locationsColVenue'),
       render: (row) => (
         <PrimaryLine>
           {row.name}
@@ -319,7 +322,7 @@ export default function AdminPartnerLocationsPage() {
     },
     {
       key: 'partner',
-      header: 'Partner',
+      header: t('admin.locationsColPartner'),
       render: (row) => (
         <span>
           <PrimaryLine style={{ fontWeight: 500 }}>{row.partner.businessName}</PrimaryLine>
@@ -333,10 +336,17 @@ export default function AdminPartnerLocationsPage() {
     },
     {
       key: 'menu',
-      header: 'Menu',
-      render: (row) => (
+      header: t('admin.locationsColMenu'),
+      render: (row) => {
+        const menuStatusLabel: Record<string, string> = {
+          NONE:     t('admin.locationsMenuStatusNone'),
+          PENDING:  t('admin.locationsMenuStatusPending'),
+          APPROVED: t('admin.locationsMenuStatusApproved'),
+          REJECTED: t('admin.locationsMenuStatusRejected'),
+        };
+        return (
         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-          <MenuStatusBadge $status={row.menuStatus}>{row.menuStatus}</MenuStatusBadge>
+          <MenuStatusBadge $status={row.menuStatus}>{menuStatusLabel[row.menuStatus] ?? row.menuStatus}</MenuStatusBadge>
           {row.pendingMenuUrl && (
             <a
               href={row.pendingMenuUrl}
@@ -344,7 +354,7 @@ export default function AdminPartnerLocationsPage() {
               rel="noreferrer"
               style={{ fontSize: '0.75rem', color: palette.warning }}
             >
-              Pending ↗
+              {t('admin.locationsMenuPending')}
             </a>
           )}
           {row.menuUrl && row.menuStatus === 'APPROVED' && (
@@ -354,18 +364,19 @@ export default function AdminPartnerLocationsPage() {
               rel="noreferrer"
               style={{ fontSize: '0.75rem', color: palette.teal }}
             >
-              Live ↗
+              {t('admin.locationsMenuLive')}
             </a>
           )}
         </span>
-      ),
+        );
+      },
     },
     {
       key: 'sticker',
-      header: 'Sticker',
+      header: t('admin.locationsColSticker'),
       render: (row) => {
         if (!row.stickerConfig) {
-          return <MetaLine>Not configured</MetaLine>;
+          return <MetaLine>{t('admin.locationsStickerNotConfigured')}</MetaLine>;
         }
         return (
           <span>
@@ -373,14 +384,18 @@ export default function AdminPartnerLocationsPage() {
               <StickerDot $active={row.stickerConfig.isActive} />
               {row.stickerConfig.cashbackPercent}% cashback
             </span>
-            <MetaLine>GPS {row.stickerConfig.gpsVerificationEnabled ? 'on' : 'off'}</MetaLine>
+            <MetaLine>
+              {row.stickerConfig.gpsVerificationEnabled
+                ? t('admin.locationsStickerGpsOn')
+                : t('admin.locationsStickerGpsOff')}
+            </MetaLine>
           </span>
         );
       },
     },
     {
       key: 'createdAt',
-      header: 'Created',
+      header: t('admin.locationsColCreated'),
       render: (row) => (
         <span style={{ color: palette.textMuted, fontSize: '0.8125rem' }}>{fmt(row.createdAt)}</span>
       ),
@@ -391,14 +406,14 @@ export default function AdminPartnerLocationsPage() {
     <PageShell>
       <PageHeader>
         <TitleBlock>
-          <Eyebrow>Partners</Eyebrow>
+          <Eyebrow>{t('admin.partners')}</Eyebrow>
           <PageTitle>
-            Locations
+            {t('admin.locationsPageTitle')}
             {data && data.meta.total > 0 && (
               <TotalBadge>{data.meta.total.toLocaleString()}</TotalBadge>
             )}
           </PageTitle>
-          <PageSubtitle>All partner venues — menus, sticker configs, and locations</PageSubtitle>
+          <PageSubtitle>{t('admin.locationsPageSubtitle')}</PageSubtitle>
         </TitleBlock>
       </PageHeader>
 
@@ -406,7 +421,7 @@ export default function AdminPartnerLocationsPage() {
         <FilterRow>
           <SearchInput
             type="text"
-            placeholder="Search venue name, partner, city…"
+            placeholder={t('admin.locationsSearchPlaceholder')}
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
             onKeyDown={handleSearchKeyDown}
@@ -415,7 +430,7 @@ export default function AdminPartnerLocationsPage() {
             value={menuStatus}
             onChange={(e) => { setMenuStatus(e.target.value as MenuStatus | ''); setPage(1); }}
           >
-            {MENU_STATUS_OPTIONS.map((o) => (
+            {menuStatusOptions.map((o) => (
               <option key={o.value} value={o.value}>{o.label}</option>
             ))}
           </Select>
@@ -426,14 +441,14 @@ export default function AdminPartnerLocationsPage() {
           data={data?.data ?? []}
           rowKey={(row) => row.id}
           loading={isLoading}
-          emptyMessage="No venues found"
+          emptyMessage={t('admin.locationsEmpty')}
           page={page}
           pageSize={PAGE_SIZE}
           totalItems={data?.meta.total}
           onPageChange={setPage}
           rowActions={[
             {
-              label: 'Approve menu',
+              label: t('admin.locationsApproveMenu'),
               hidden: (row) => row.menuStatus !== 'PENDING',
               onClick: (row) => {
                 if (!row.pendingMenuUrl) return;
@@ -441,7 +456,7 @@ export default function AdminPartnerLocationsPage() {
               },
             },
             {
-              label: 'Reject menu',
+              label: t('admin.locationsRejectMenu'),
               danger: true,
               hidden: (row) => row.menuStatus !== 'PENDING',
               onClick: (row) => { setRejectTarget(row); setRejectReason(''); },
@@ -453,16 +468,18 @@ export default function AdminPartnerLocationsPage() {
       {rejectTarget && (
         <Overlay onClick={() => setRejectTarget(null)}>
           <ModalBox onClick={(e) => e.stopPropagation()}>
-            <ModalTitle>Reject menu — {rejectTarget.name}</ModalTitle>
-            <ModalLabel>Reason for rejection</ModalLabel>
+            <ModalTitle>
+              {t('admin.locationsRejectMenuTitle').replace('{name}', rejectTarget.name)}
+            </ModalTitle>
+            <ModalLabel>{t('admin.locationsRejectMenuLabel')}</ModalLabel>
             <ModalTextarea
               value={rejectReason}
               onChange={(e) => setRejectReason(e.target.value)}
-              placeholder="Explain why this menu URL was rejected…"
+              placeholder={t('admin.locationsRejectMenuPlaceholder')}
             />
             <ModalActions>
               <Btn $variant="ghost" onClick={() => setRejectTarget(null)}>
-                Cancel
+                {t('common.cancel')}
               </Btn>
               <Btn
                 $variant="danger"
@@ -471,7 +488,7 @@ export default function AdminPartnerLocationsPage() {
                   rejectMutation.mutate({ id: rejectTarget.id, reason: rejectReason.trim() })
                 }
               >
-                {rejectMutation.isPending ? 'Rejecting…' : 'Reject'}
+                {rejectMutation.isPending ? '…' : t('admin.locationsRejectMenu')}
               </Btn>
             </ModalActions>
           </ModalBox>

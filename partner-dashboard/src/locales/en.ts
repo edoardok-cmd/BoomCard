@@ -2187,6 +2187,36 @@ export const en = {
     alertSeverityWarning: 'Warning',
     alertSeverityInfo: 'Info',
 
+    // Locations & QR
+    locationsPageTitle: 'Locations',
+    locationsPageSubtitle: 'All partner venues — menus, sticker configs, and locations',
+    locationsSearchPlaceholder: 'Search venue name, partner, city…',
+    locationsColVenue: 'Venue',
+    locationsColPartner: 'Partner',
+    locationsColMenu: 'Menu',
+    locationsColSticker: 'Sticker',
+    locationsColCreated: 'Created',
+    locationsEmpty: 'No venues found',
+    locationsStickerNotConfigured: 'Not configured',
+    locationsStickerGpsOn: 'GPS on',
+    locationsStickerGpsOff: 'GPS off',
+    locationsMenuStatusAll: 'All menu statuses',
+    locationsMenuStatusNone: 'No menu',
+    locationsMenuStatusPending: 'Pending review',
+    locationsMenuStatusApproved: 'Approved',
+    locationsMenuStatusRejected: 'Rejected',
+    locationsMenuPending: 'Pending ↗',
+    locationsMenuLive: 'Live ↗',
+    locationsApproveMenu: 'Approve menu',
+    locationsRejectMenu: 'Reject menu',
+    locationsRejectMenuTitle: 'Reject menu — {name}',
+    locationsRejectMenuLabel: 'Reason for rejection',
+    locationsRejectMenuPlaceholder: 'Explain why this menu URL was rejected…',
+    locationsMenuApproved: 'Menu approved',
+    locationsMenuRejected: 'Menu rejected',
+    locationsMenuApproveFailed: 'Failed to approve menu',
+    locationsMenuRejectFailed: 'Failed to reject menu',
+
     // Partner requests
     requestsSubtitle: 'New partner applications waiting for approval',
     requestsEmpty: 'No pending partner requests',
@@ -2218,6 +2248,7 @@ export const en = {
 
     // RBAC
     noPermission: 'You do not have permission to view this section.',
+
   },
 };
 

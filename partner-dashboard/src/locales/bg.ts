@@ -2187,6 +2187,36 @@ export const bg: TranslationKey = {
     alertSeverityWarning: 'Внимание',
     alertSeverityInfo: 'Информация',
 
+    // Locations & QR
+    locationsPageTitle: 'Локации',
+    locationsPageSubtitle: 'Всички обекти на партньори — менюта, конфигурация на стикери и локации',
+    locationsSearchPlaceholder: 'Търсене по обект, партньор, град…',
+    locationsColVenue: 'Обект',
+    locationsColPartner: 'Партньор',
+    locationsColMenu: 'Меню',
+    locationsColSticker: 'Стикер',
+    locationsColCreated: 'Създаден',
+    locationsEmpty: 'Няма намерени обекти',
+    locationsStickerNotConfigured: 'Не е конфигуриран',
+    locationsStickerGpsOn: 'GPS вкл.',
+    locationsStickerGpsOff: 'GPS изкл.',
+    locationsMenuStatusAll: 'Всички статуси на менюта',
+    locationsMenuStatusNone: 'Без меню',
+    locationsMenuStatusPending: 'Чака преглед',
+    locationsMenuStatusApproved: 'Одобрено',
+    locationsMenuStatusRejected: 'Отказано',
+    locationsMenuPending: 'Чакащо ↗',
+    locationsMenuLive: 'Активно ↗',
+    locationsApproveMenu: 'Одобри меню',
+    locationsRejectMenu: 'Откажи меню',
+    locationsRejectMenuTitle: 'Откажи меню — {name}',
+    locationsRejectMenuLabel: 'Причина за отказ',
+    locationsRejectMenuPlaceholder: 'Обяснете защо URL адресът на менюто е отказан…',
+    locationsMenuApproved: 'Менюто е одобрено',
+    locationsMenuRejected: 'Менюто е отказано',
+    locationsMenuApproveFailed: 'Неуспешно одобряване на меню',
+    locationsMenuRejectFailed: 'Неуспешен отказ на меню',
+
     // Partner requests
     requestsSubtitle: 'Нови заявки за партньорство, чакащи одобрение',
     requestsEmpty: 'Няма чакащи заявки за партньорство',
@@ -2215,5 +2245,6 @@ export const bg: TranslationKey = {
     auditAfter: 'След',
 
     noPermission: 'Нямате права да преглеждате тази секция.',
+
   },
 };

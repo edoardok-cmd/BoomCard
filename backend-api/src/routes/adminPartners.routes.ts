@@ -375,7 +375,7 @@ router.patch(
 
     if (!status || !ACTIVE_PARTNER_STATUSES.includes(status as PartnerStatus)) {
       return res.status(400).json({
-        error: 'status must be one of: ACTIVE, PAUSED, SUSPENDED, ARCHIVED',
+        error: 'status must be one of: ACTIVE, PAUSED, SUSPENDED, ARCHIVED (use ARCHIVED instead of INACTIVE)',
       });
     }
 

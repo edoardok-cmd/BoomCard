@@ -15,8 +15,8 @@ const AdminProfileLogoutPage: React.FC = () => {
   return (
     <Wrapper>
       <Spinner />
-      <Title>Signing out…</Title>
-      <Body>You are being signed out of the admin panel.</Body>
+      <Title>Излизане…</Title>
+      <Body>Излизате от администраторския панел.</Body>
     </Wrapper>
   );
 };

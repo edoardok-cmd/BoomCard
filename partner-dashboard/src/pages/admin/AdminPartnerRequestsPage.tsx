@@ -3,6 +3,7 @@ import styled from 'styled-components';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-hot-toast';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { useAuth } from '../../contexts/AuthContext';
 import { DataTable, ColumnDef, RowAction } from '../../components/admin/DataTable/DataTable';
 import {
   adminPartnerRequestsService,
@@ -93,6 +94,22 @@ const SearchRow = styled.div`
   gap: 0.75rem;
   margin-bottom: 1.25rem;
   align-items: center;
+  flex-wrap: wrap;
+`;
+
+const FilterSelect = styled.select`
+  padding: 0.5rem 0.875rem;
+  border: 1px solid ${palette.border};
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  background: ${palette.bg};
+  color: ${palette.text};
+  outline: none;
+  cursor: pointer;
+  &:focus {
+    border-color: ${palette.accent};
+    box-shadow: 0 0 0 2px ${palette.accentSoft};
+  }
 `;
 
 const SearchInput = styled.input`
@@ -233,19 +250,46 @@ const DiscountBadge = styled.span`
 /* ─── Component ───────────────────────────────────────────────────────────── */
 const PAGE_SIZE = 20;
 
+// Human-readable labels for PartnerRequestStatus values
+const REQUEST_STATUS_LABELS: Record<string, { bg: string; en: string }> = {
+  NOVA:         { bg: 'Нова',         en: 'New' },
+  KOMUNIKACIYA: { bg: 'Комуникация',  en: 'Communication' },
+  DOGOVARYANE:  { bg: 'Договаряне',   en: 'Negotiation' },
+  ONBOARDING:   { bg: 'Онбординг',    en: 'Onboarding' },
+  ODOBRENA:     { bg: 'Одобрена',     en: 'Approved' },
+  OTKAZANA:     { bg: 'Отказана',     en: 'Rejected' },
+};
+
+// Next pipeline step for each current status
+const NEXT_PIPELINE_STEP: Record<string, string> = {
+  NOVA:         'KOMUNIKACIYA',
+  KOMUNIKACIYA: 'DOGOVARYANE',
+  DOGOVARYANE:  'ONBOARDING',
+  ONBOARDING:   'ODOBRENA',
+};
+
 export default function AdminPartnerRequestsPage() {
   const { t, language } = useLanguage();
+  const { user } = useAuth();
   const queryClient = useQueryClient();
+
+  const canWrite = user?.rawRole === 'SUPER_ADMIN' || user?.permissions?.includes('partners.requests.write');
 
   const [page, setPage] = useState(1);
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
+  const [requestStatusFilter, setRequestStatusFilter] = useState('');
   const [rejectTarget, setRejectTarget] = useState<PendingPartner | null>(null);
   const [rejectReason, setRejectReason] = useState('');
 
   const { data, isLoading } = useQuery({
-    queryKey: ['admin-partner-requests', page, search],
-    queryFn: () => adminPartnerRequestsService.list({ page, limit: PAGE_SIZE, search: search || undefined }),
+    queryKey: ['admin-partner-requests', page, search, requestStatusFilter],
+    queryFn: () => adminPartnerRequestsService.list({
+      page,
+      limit: PAGE_SIZE,
+      search: search || undefined,
+      requestStatus: requestStatusFilter || undefined,
+    }),
   });
 
   const approveMutation = useMutation({
@@ -267,6 +311,26 @@ export default function AdminPartnerRequestsPage() {
       setRejectReason('');
       queryClient.invalidateQueries({ queryKey: ['admin-partner-requests'] });
       queryClient.invalidateQueries({ queryKey: ['admin-alerts'] });
+    },
+    onError: () => toast.error(t('common.error')),
+  });
+
+  const advanceMutation = useMutation({
+    mutationFn: ({ id, requestStatus }: { id: string; requestStatus: string }) =>
+      adminPartnerRequestsService.advancePipeline(id, requestStatus),
+    onSuccess: () => {
+      toast.success(language === 'bg' ? 'Статусът е обновен' : 'Status updated');
+      queryClient.invalidateQueries({ queryKey: ['admin-partner-requests'] });
+    },
+    onError: () => toast.error(t('common.error')),
+  });
+
+  const assignMutation = useMutation({
+    mutationFn: ({ id, adminId }: { id: string; adminId: string | null }) =>
+      adminPartnerRequestsService.assign(id, adminId),
+    onSuccess: () => {
+      toast.success(language === 'bg' ? 'Отговорникът е обновен' : 'Owner updated');
+      queryClient.invalidateQueries({ queryKey: ['admin-partner-requests'] });
     },
     onError: () => toast.error(t('common.error')),
   });
@@ -318,11 +382,15 @@ export default function AdminPartnerRequestsPage() {
     {
       key: 'requestStatus',
       header: language === 'bg' ? 'Статус' : 'Status',
-      render: (row) => (
-        <span style={{ fontSize: '0.8125rem', color: palette.textMuted, textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 600 }}>
-          {row.requestStatus ?? row.status ?? 'NOVA'}
-        </span>
-      ),
+      render: (row) => {
+        const rawStatus = row.requestStatus ?? 'NOVA';
+        const label = REQUEST_STATUS_LABELS[rawStatus];
+        return (
+          <span style={{ fontSize: '0.8125rem', color: palette.textMuted, fontWeight: 600 }}>
+            {label ? (language === 'bg' ? label.bg : label.en) : rawStatus}
+          </span>
+        );
+      },
     },
     {
       key: 'assignedAdmin',
@@ -360,18 +428,43 @@ export default function AdminPartnerRequestsPage() {
   ];
 
   const rowActions: RowAction<PendingPartner>[] = [
-    {
-      label: t('admin.requestApprove'),
-      onClick: (row) => approveMutation.mutate(row.id),
-    },
-    {
-      label: t('admin.requestReject'),
-      danger: true,
-      onClick: (row) => {
-        setRejectTarget(row);
-        setRejectReason('');
+    ...(canWrite ? [
+      {
+        label: t('admin.requestApprove'),
+        onClick: (row: PendingPartner) => approveMutation.mutate(row.id),
       },
-    },
+      {
+        label: t('admin.requestReject'),
+        danger: true,
+        onClick: (row: PendingPartner) => {
+          setRejectTarget(row);
+          setRejectReason('');
+        },
+      },
+      {
+        label: language === 'bg' ? 'Напред в процеса' : 'Advance stage',
+        onClick: (row: PendingPartner) => {
+          const current = row.requestStatus ?? 'NOVA';
+          const next = NEXT_PIPELINE_STEP[current];
+          if (!next) return;
+          advanceMutation.mutate({ id: row.id, requestStatus: next });
+        },
+        hidden: (row: PendingPartner) => !NEXT_PIPELINE_STEP[row.requestStatus ?? 'NOVA'],
+      },
+      {
+        label: language === 'bg' ? 'Задай на мен' : 'Assign to me',
+        onClick: (row: PendingPartner) => {
+          if (!user?.id) return;
+          assignMutation.mutate({ id: row.id, adminId: user.id });
+        },
+        hidden: (row: PendingPartner) => !!row.assignedAdminId,
+      },
+      {
+        label: language === 'bg' ? 'Освободи' : 'Unassign',
+        onClick: (row: PendingPartner) => assignMutation.mutate({ id: row.id, adminId: null }),
+        hidden: (row: PendingPartner) => !row.assignedAdminId,
+      },
+    ] : []),
   ];
 
   return (
@@ -396,6 +489,15 @@ export default function AdminPartnerRequestsPage() {
             onChange={(e) => setSearchInput(e.target.value)}
             onKeyDown={handleSearchKeyDown}
           />
+          <FilterSelect
+            value={requestStatusFilter}
+            onChange={(e) => { setRequestStatusFilter(e.target.value); setPage(1); }}
+          >
+            <option value="">{language === 'bg' ? 'Всички статуси' : 'All statuses'}</option>
+            {Object.entries(REQUEST_STATUS_LABELS).map(([key, lbl]) => (
+              <option key={key} value={key}>{language === 'bg' ? lbl.bg : lbl.en}</option>
+            ))}
+          </FilterSelect>
         </SearchRow>
 
         <DataTable

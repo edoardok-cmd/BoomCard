@@ -238,10 +238,12 @@ export default function AdminSettingsSystemPage() {
         maintenance_mode: String(maintenanceMode),
         maintenance_message: maintenanceMessage,
       };
-      if (dailyLimit)          settings.daily_scan_limit_default = dailyLimit;
-      if (maxCashback)         settings.max_cashback_per_month = maxCashback;
-      if (cashbackExpiryDays)  settings.cashback_expiry_days = cashbackExpiryDays;
-      if (offerValidityDays)   settings.offer_validity_days = offerValidityDays;
+      // Always include optional numeric keys — empty string tells the backend to delete the row
+      // (reverts to application default). This allows clearing a previously saved value.
+      settings.daily_scan_limit_default = dailyLimit;
+      settings.max_cashback_per_month = maxCashback;
+      settings.cashback_expiry_days = cashbackExpiryDays;
+      settings.offer_validity_days = offerValidityDays;
       return adminSettingsService.saveSystemSettings(settings);
     },
     onSuccess: () => {

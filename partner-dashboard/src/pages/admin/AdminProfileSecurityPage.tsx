@@ -34,12 +34,12 @@ const AdminProfileSecurityPage: React.FC = () => {
   const passwordMutation = useMutation({
     mutationFn: () => adminProfileService.changePassword(currentPwd, newPwd),
     onSuccess: () => {
-      toast.success('Password changed');
+      toast.success('Паролата е сменена');
       setCurrentPwd('');
       setNewPwd('');
     },
     onError: (err: { response?: { data?: { error?: string } } }) => {
-      toast.error(err?.response?.data?.error ?? 'Password change failed');
+      toast.error(err?.response?.data?.error ?? 'Грешка при смяна на парола');
     },
   });
 
@@ -47,39 +47,39 @@ const AdminProfileSecurityPage: React.FC = () => {
     mutationFn: () => adminProfileService.setupTwoFactor(),
     onSuccess: (data) => setTwoFaSetup({ qrCodeDataUrl: data.qrCodeDataUrl }),
     onError: (err: { response?: { data?: { error?: string } } }) => {
-      toast.error(err?.response?.data?.error ?? 'Failed to start 2FA setup');
+      toast.error(err?.response?.data?.error ?? 'Грешка при стартиране на 2FA');
     },
   });
 
   const twoFaEnableMutation = useMutation({
     mutationFn: () => adminProfileService.enableTwoFactor(twoFaToken),
     onSuccess: () => {
-      toast.success('2FA enabled');
+      toast.success('2FA е активиран');
       setTwoFaSetup(null);
       setTwoFaToken('');
       queryClient.invalidateQueries({ queryKey: ['admin-profile-me'] });
     },
     onError: (err: { response?: { data?: { error?: string } } }) => {
-      toast.error(err?.response?.data?.error ?? 'Invalid token');
+      toast.error(err?.response?.data?.error ?? 'Невалиден код');
     },
   });
 
   const twoFaDisableMutation = useMutation({
     mutationFn: () => adminProfileService.disableTwoFactor(disablePwd),
     onSuccess: () => {
-      toast.success('2FA disabled');
+      toast.success('2FA е деактивиран');
       setDisablePwd('');
       queryClient.invalidateQueries({ queryKey: ['admin-profile-me'] });
     },
     onError: (err: { response?: { data?: { error?: string } } }) => {
-      toast.error(err?.response?.data?.error ?? 'Failed to disable 2FA');
+      toast.error(err?.response?.data?.error ?? 'Грешка при деактивиране на 2FA');
     },
   });
 
   const revokeSessionMutation = useMutation({
     mutationFn: (id: string) => adminProfileService.revokeSession(id),
     onSuccess: () => {
-      toast.success('Session revoked');
+      toast.success('Сесията е анулирана');
       queryClient.invalidateQueries({ queryKey: ['admin-profile-sessions'] });
     },
   });
@@ -87,7 +87,7 @@ const AdminProfileSecurityPage: React.FC = () => {
   const revokeAllMutation = useMutation({
     mutationFn: () => adminProfileService.revokeAllSessions(),
     onSuccess: () => {
-      toast.success('All sessions revoked');
+      toast.success('Всички сесии са анулирани');
       queryClient.invalidateQueries({ queryKey: ['admin-profile-sessions'] });
     },
   });
@@ -96,16 +96,16 @@ const AdminProfileSecurityPage: React.FC = () => {
 
   return (
     <Wrapper>
-      {/* Password */}
+      {/* Парола */}
       <Card>
-        <SectionTitle>Password</SectionTitle>
+        <SectionTitle>Парола</SectionTitle>
         <Row>
           <Field>
-            <Label>Current password</Label>
+            <Label>Текуща парола</Label>
             <Input type="password" value={currentPwd} onChange={(e) => setCurrentPwd(e.target.value)} />
           </Field>
           <Field>
-            <Label>New password (min 8 chars)</Label>
+            <Label>Нова парола (мин. 8 символа)</Label>
             <Input type="password" value={newPwd} onChange={(e) => setNewPwd(e.target.value)} />
           </Field>
         </Row>
@@ -114,7 +114,7 @@ const AdminProfileSecurityPage: React.FC = () => {
             onClick={() => passwordMutation.mutate()}
             disabled={!currentPwd || newPwd.length < 8 || passwordMutation.isPending}
           >
-            {passwordMutation.isPending ? 'Changing…' : 'Change password'}
+            {passwordMutation.isPending ? 'Смяна…' : 'Смени парола'}
           </Button>
         </Actions>
       </Card>
@@ -122,26 +122,26 @@ const AdminProfileSecurityPage: React.FC = () => {
       {/* 2FA */}
       <Card>
         <SectionTitle>
-          Two-factor authentication
-          {twoFaEnabled ? <StatusOk>Enabled</StatusOk> : <StatusOff>Disabled</StatusOff>}
+          Двуфакторно удостоверяване
+          {twoFaEnabled ? <StatusOk>Активирано</StatusOk> : <StatusOff>Деактивирано</StatusOff>}
         </SectionTitle>
         {!twoFaEnabled && !twoFaSetup && (
           <>
-            <Hint>Add a TOTP authenticator app for an extra sign-in step.</Hint>
+            <Hint>Добавете TOTP приложение за допълнителна стъпка при влизане.</Hint>
             <Actions>
               <Button onClick={() => twoFaSetupMutation.mutate()} disabled={twoFaSetupMutation.isPending}>
-                {twoFaSetupMutation.isPending ? 'Generating…' : 'Set up 2FA'}
+                {twoFaSetupMutation.isPending ? 'Генериране…' : 'Настрой 2FA'}
               </Button>
             </Actions>
           </>
         )}
         {!twoFaEnabled && twoFaSetup && (
           <>
-            <Hint>Scan the QR code with your authenticator app, then enter the 6-digit code.</Hint>
+            <Hint>Сканирайте QR кода с вашето приложение, след което въведете 6-цифрения код.</Hint>
             <QrImg src={twoFaSetup.qrCodeDataUrl} alt="TOTP QR" />
             <Row>
               <Field>
-                <Label>Code from app</Label>
+                <Label>Код от приложението</Label>
                 <Input value={twoFaToken} onChange={(e) => setTwoFaToken(e.target.value)} placeholder="123456" />
               </Field>
             </Row>
@@ -150,20 +150,20 @@ const AdminProfileSecurityPage: React.FC = () => {
                 onClick={() => twoFaEnableMutation.mutate()}
                 disabled={twoFaToken.length < 6 || twoFaEnableMutation.isPending}
               >
-                {twoFaEnableMutation.isPending ? 'Verifying…' : 'Enable 2FA'}
+                {twoFaEnableMutation.isPending ? 'Проверка…' : 'Активирай 2FA'}
               </Button>
               <SecondaryButton onClick={() => { setTwoFaSetup(null); setTwoFaToken(''); }}>
-                Cancel
+                Отказ
               </SecondaryButton>
             </Actions>
           </>
         )}
         {twoFaEnabled && (
           <>
-            <Hint>To disable 2FA, confirm your current password.</Hint>
+            <Hint>За да деактивирате 2FA, потвърдете текущата си парола.</Hint>
             <Row>
               <Field>
-                <Label>Current password</Label>
+                <Label>Текуща парола</Label>
                 <Input type="password" value={disablePwd} onChange={(e) => setDisablePwd(e.target.value)} />
               </Field>
             </Row>
@@ -172,42 +172,42 @@ const AdminProfileSecurityPage: React.FC = () => {
                 onClick={() => twoFaDisableMutation.mutate()}
                 disabled={!disablePwd || twoFaDisableMutation.isPending}
               >
-                {twoFaDisableMutation.isPending ? 'Disabling…' : 'Disable 2FA'}
+                {twoFaDisableMutation.isPending ? 'Деактивиране…' : 'Деактивирай 2FA'}
               </DangerButton>
             </Actions>
           </>
         )}
       </Card>
 
-      {/* Active sessions */}
+      {/* Активни сесии */}
       <Card>
         <SectionTitle>
-          Active sessions
+          Активни сесии
           <SmallSecondary onClick={() => revokeAllMutation.mutate()} disabled={revokeAllMutation.isPending}>
-            Sign out everywhere
+            Изход от всички устройства
           </SmallSecondary>
         </SectionTitle>
         {sessions.isLoading ? (
-          <Hint>Loading…</Hint>
+          <Hint>Зареждане…</Hint>
         ) : sessions.data?.sessions.length === 0 ? (
-          <Hint>No other active sessions.</Hint>
+          <Hint>Няма други активни сесии.</Hint>
         ) : (
           <Table>
             <thead>
-              <tr><Th>Client</Th><Th>Started</Th><Th>Expires</Th><Th></Th></tr>
+              <tr><Th>Клиент</Th><Th>Начало</Th><Th>Изтича</Th><Th></Th></tr>
             </thead>
             <tbody>
               {sessions.data?.sessions.map((s) => (
                 <tr key={s.id}>
                   <Td>{s.clientType ?? '—'}</Td>
-                  <Td>{new Date(s.createdAt).toLocaleString()}</Td>
-                  <Td>{new Date(s.expiresAt).toLocaleString()}</Td>
+                  <Td>{new Date(s.createdAt).toLocaleString('bg-BG')}</Td>
+                  <Td>{new Date(s.expiresAt).toLocaleString('bg-BG')}</Td>
                   <Td>
                     <SmallDanger
                       onClick={() => revokeSessionMutation.mutate(s.id)}
                       disabled={revokeSessionMutation.isPending}
                     >
-                      Revoke
+                      Анулирай
                     </SmallDanger>
                   </Td>
                 </tr>
@@ -217,26 +217,26 @@ const AdminProfileSecurityPage: React.FC = () => {
         )}
       </Card>
 
-      {/* Login history */}
+      {/* История на влизанията */}
       <Card>
-        <SectionTitle>Login history (last 50)</SectionTitle>
+        <SectionTitle>История на влизанията (последните 50)</SectionTitle>
         {history.isLoading ? (
-          <Hint>Loading…</Hint>
+          <Hint>Зареждане…</Hint>
         ) : history.data?.history.length === 0 ? (
-          <Hint>No login history yet.</Hint>
+          <Hint>Няма история на влизания.</Hint>
         ) : (
           <Table>
             <thead>
-              <tr><Th>When</Th><Th>Result</Th><Th>IP</Th><Th>User-agent</Th></tr>
+              <tr><Th>Кога</Th><Th>Резултат</Th><Th>IP</Th><Th>Устройство</Th></tr>
             </thead>
             <tbody>
               {history.data?.history.map((e) => (
                 <tr key={e.id}>
-                  <Td>{new Date(e.createdAt).toLocaleString()}</Td>
+                  <Td>{new Date(e.createdAt).toLocaleString('bg-BG')}</Td>
                   <Td>
                     {e.success
-                      ? <StatusOk>Success</StatusOk>
-                      : <StatusOff>{e.failReason ?? 'Failed'}</StatusOff>}
+                      ? <StatusOk>Успех</StatusOk>
+                      : <StatusOff>{e.failReason ?? 'Неуспешен'}</StatusOff>}
                   </Td>
                   <Td>{e.ip ?? '—'}</Td>
                   <Td title={e.userAgent ?? ''} style={{ maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>

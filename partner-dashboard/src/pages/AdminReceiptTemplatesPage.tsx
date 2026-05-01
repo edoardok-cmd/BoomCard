@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import styled from 'styled-components';
+import { toast } from 'react-hot-toast';
 import { useLanguage } from '../contexts/LanguageContext';
 import { fraudAdminService } from '../services/fraudAdmin.service';
 import { apiService } from '../services/api.service';
@@ -10,7 +11,9 @@ import { Upload, Trash2, ToggleLeft, ToggleRight, Image, X } from 'lucide-react'
 
 interface Venue {
   id: string;
-  businessName: string;
+  name: string;
+  city?: string | null;
+  partner?: { id: string; businessName: string } | null;
 }
 
 // ─────────────────────── Styled Components ───────────────────────
@@ -367,7 +370,7 @@ const LoadingBox = styled.div`
 // ─────────────────────── Component ───────────────────────
 
 export const AdminReceiptTemplatesPage: React.FC = () => {
-  const { language } = useLanguage();
+  const { language, t } = useLanguage();
 
   // Venues
   const [venues, setVenues] = useState<Venue[]>([]);
@@ -395,10 +398,11 @@ export const AdminReceiptTemplatesPage: React.FC = () => {
   useEffect(() => {
     const fetchVenues = async () => {
       try {
-        const res = await apiService.get<{ success: boolean; data: Venue[] }>('/partners');
-        if (res.success) setVenues(res.data);
+        const res = await apiService.get<{ data: Venue[] }>('/admin/venues', { limit: 200 });
+        setVenues(res.data ?? []);
       } catch (err) {
         console.error('Failed to load venues:', err);
+        toast.error(t('common.error'));
       }
     };
     fetchVenues();
@@ -436,6 +440,7 @@ export const AdminReceiptTemplatesPage: React.FC = () => {
       }
     } catch (err) {
       console.error('Failed to toggle template:', err);
+      toast.error(t('common.error'));
     }
   };
 
@@ -449,6 +454,7 @@ export const AdminReceiptTemplatesPage: React.FC = () => {
       setSelectedTemplate(null);
     } catch (err) {
       console.error('Failed to delete template:', err);
+      toast.error(t('common.error'));
     }
   };
 
@@ -520,7 +526,7 @@ export const AdminReceiptTemplatesPage: React.FC = () => {
               {language === 'bg' ? '-- Изберете обект --' : '-- Select venue --'}
             </option>
             {venues.map(v => (
-              <option key={v.id} value={v.id}>{v.businessName}</option>
+              <option key={v.id} value={v.id}>{v.partner?.businessName ? `${v.partner.businessName} — ${v.name}` : v.name}{v.city ? `, ${v.city}` : ''}</option>
             ))}
           </VenueSelector>
           <UploadButton

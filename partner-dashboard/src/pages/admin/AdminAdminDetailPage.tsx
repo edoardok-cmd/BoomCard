@@ -11,12 +11,29 @@ import {
 } from '../../services/adminAdmins.service';
 
 const ASSIGNABLE_ROLES: Array<{ value: AdminRoleKey; label: string }> = [
-  { value: 'ADMIN', label: 'Admin (full access)' },
-  { value: 'SUPPORT', label: 'Support' },
-  { value: 'FINANCE', label: 'Finance' },
-  { value: 'RISK_REVIEW', label: 'Risk Review' },
-  { value: 'PARTNER_MANAGER', label: 'Partner Manager' },
+  { value: 'ADMIN',           label: 'Администратор (пълен достъп)' },
+  { value: 'SUPPORT',         label: 'Поддръжка' },
+  { value: 'FINANCE',         label: 'Финанси' },
+  { value: 'RISK_REVIEW',     label: 'Преглед на риск' },
+  { value: 'PARTNER_MANAGER', label: 'Мениджър партньори' },
 ];
+
+const ROLE_LABEL: Record<string, string> = {
+  ADMIN:           'Администратор',
+  SUPPORT:         'Поддръжка',
+  FINANCE:         'Финанси',
+  RISK_REVIEW:     'Преглед на риск',
+  PARTNER_MANAGER: 'Мениджър партньори',
+  SUPER_ADMIN:     'Супер администратор',
+};
+
+const STATUS_LABEL: Record<string, string> = {
+  ACTIVE:               'Активен',
+  SUSPENDED:            'Спрян',
+  INACTIVE:             'Неактивен',
+  PENDING_VERIFICATION: 'Чака верификация',
+  PENDING_PAYMENT:      'Чака плащане',
+};
 
 const palette = {
   bg: '#faf9f5',
@@ -344,13 +361,13 @@ export default function AdminAdminDetailPage() {
   const addRoleMutation = useMutation({
     mutationFn: (key: AdminRoleKey) => adminAdminsService.approve(id!, key),
     onSuccess: () => {
-      toast.success('Role added');
+      toast.success('Ролята е добавена');
       setShowAddRole(false);
       queryClient.invalidateQueries({ queryKey: ['admin-admin-detail', id] });
       queryClient.invalidateQueries({ queryKey: ['admin-admins'] });
     },
     onError: (err: unknown) => {
-      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Failed to add role';
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Грешка при добавяне на роля';
       toast.error(msg);
     },
   });
@@ -358,12 +375,12 @@ export default function AdminAdminDetailPage() {
   const removeRoleMutation = useMutation({
     mutationFn: (key: AdminRoleKey) => adminAdminsService.removeRole(id!, key),
     onSuccess: () => {
-      toast.success('Role removed');
+      toast.success('Ролята е премахната');
       queryClient.invalidateQueries({ queryKey: ['admin-admin-detail', id] });
       queryClient.invalidateQueries({ queryKey: ['admin-admins'] });
     },
     onError: (err: unknown) => {
-      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Failed to remove role';
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Грешка при премахване на роля';
       toast.error(msg);
     },
   });
@@ -372,12 +389,12 @@ export default function AdminAdminDetailPage() {
     mutationFn: (status: 'ACTIVE' | 'SUSPENDED') =>
       adminAdminsService.setStatus(id!, status),
     onSuccess: (_, status) => {
-      toast.success(status === 'SUSPENDED' ? 'Admin suspended' : 'Admin activated');
+      toast.success(status === 'SUSPENDED' ? 'Администраторът е спрян' : 'Администраторът е активиран');
       queryClient.invalidateQueries({ queryKey: ['admin-admin-detail', id] });
       queryClient.invalidateQueries({ queryKey: ['admin-admins'] });
     },
     onError: (err: unknown) => {
-      const msg = err instanceof Error ? err.message : 'Failed to update status';
+      const msg = err instanceof Error ? err.message : 'Грешка при промяна на статус';
       toast.error(msg);
     },
   });
@@ -392,7 +409,7 @@ export default function AdminAdminDetailPage() {
   if (isLoading) {
     return (
       <PageShell>
-        <p style={{ color: palette.textMuted }}>Loading…</p>
+        <p style={{ color: palette.textMuted }}>Зареждане…</p>
       </PageShell>
     );
   }
@@ -400,8 +417,8 @@ export default function AdminAdminDetailPage() {
   if (error || !data) {
     return (
       <PageShell>
-        <BackBtn onClick={() => navigate(-1)}>← Back</BackBtn>
-        <ErrorMsg>Admin not found.</ErrorMsg>
+        <BackBtn onClick={() => navigate(-1)}>← Назад</BackBtn>
+        <ErrorMsg>Администраторът не е намерен.</ErrorMsg>
       </PageShell>
     );
   }
@@ -413,52 +430,52 @@ export default function AdminAdminDetailPage() {
 
   return (
     <PageShell>
-      <BackBtn onClick={() => navigate(-1)}>← All Admins</BackBtn>
-      <Eyebrow>Admin Detail</Eyebrow>
+      <BackBtn onClick={() => navigate(-1)}>← Всички администратори</BackBtn>
+      <Eyebrow>Администратори</Eyebrow>
       <PageTitle>{displayName}</PageTitle>
 
       <Grid>
         {/* Profile card */}
         <Card>
-          <CardTitle>Profile</CardTitle>
+          <CardTitle>Профил</CardTitle>
           <FieldRow>
-            <FieldLabel>Name</FieldLabel>
+            <FieldLabel>Имe</FieldLabel>
             <FieldValue>{displayName}</FieldValue>
           </FieldRow>
           <FieldRow>
-            <FieldLabel>Email</FieldLabel>
+            <FieldLabel>Имейл</FieldLabel>
             <FieldValue>{data.email}</FieldValue>
           </FieldRow>
           <FieldRow>
-            <FieldLabel>Phone</FieldLabel>
+            <FieldLabel>Телефон</FieldLabel>
             <FieldValue>{data.phone ?? '—'}</FieldValue>
           </FieldRow>
           <FieldRow>
-            <FieldLabel>Account role</FieldLabel>
+            <FieldLabel>Системна роля</FieldLabel>
             <FieldValue>
-              <RoleBadge $key={data.role}>{data.role.replace('_', ' ')}</RoleBadge>
+              <RoleBadge $key={data.role}>{ROLE_LABEL[data.role] ?? data.role}</RoleBadge>
             </FieldValue>
           </FieldRow>
           <FieldRow>
-            <FieldLabel>Status</FieldLabel>
+            <FieldLabel>Статус</FieldLabel>
             <FieldValue>
-              <StatusBadge $status={data.status}>{data.status}</StatusBadge>
+              <StatusBadge $status={data.status}>{STATUS_LABEL[data.status] ?? data.status}</StatusBadge>
             </FieldValue>
           </FieldRow>
           <FieldRow>
             <FieldLabel>2FA</FieldLabel>
             <FieldValue>
               <TfaBadge $enabled={data.twoFactorEnabled}>
-                {data.twoFactorEnabled ? 'Enabled' : 'Disabled'}
+                {data.twoFactorEnabled ? 'Активна' : 'Изкл.'}
               </TfaBadge>
             </FieldValue>
           </FieldRow>
           <FieldRow>
-            <FieldLabel>Last login</FieldLabel>
+            <FieldLabel>Последно влизане</FieldLabel>
             <FieldValue>{fmt(data.lastLoginAt)}</FieldValue>
           </FieldRow>
           <FieldRow>
-            <FieldLabel>Created</FieldLabel>
+            <FieldLabel>Създаден</FieldLabel>
             <FieldValue>{fmt(data.createdAt)}</FieldValue>
           </FieldRow>
 
@@ -468,11 +485,11 @@ export default function AdminAdminDetailPage() {
                 $variant="danger"
                 disabled={statusMutation.isPending}
                 onClick={() => {
-                  if (!window.confirm(`Suspend admin ${data.email}?`)) return;
+                  if (!window.confirm(`Да се спре администратор ${data.email}?`)) return;
                   statusMutation.mutate('SUSPENDED');
                 }}
               >
-                Suspend
+                Спри
               </Btn>
             )}
             {data.status === 'SUSPENDED' && (
@@ -481,7 +498,7 @@ export default function AdminAdminDetailPage() {
                 disabled={statusMutation.isPending}
                 onClick={() => statusMutation.mutate('ACTIVE')}
               >
-                Activate
+                Активирай
               </Btn>
             )}
           </ActionRow>
@@ -489,19 +506,19 @@ export default function AdminAdminDetailPage() {
 
         {/* Roles card */}
         <Card>
-          <CardTitle>Assigned Roles</CardTitle>
+          <CardTitle>Назначени роли</CardTitle>
           {data.adminRoles.length === 0 ? (
-            <p style={{ color: palette.textSubtle, fontSize: '0.875rem' }}>No roles assigned.</p>
+            <p style={{ color: palette.textSubtle, fontSize: '0.875rem' }}>Няма назначени роли.</p>
           ) : (
             data.adminRoles.map((ar) => (
               <RoleRow key={ar.id}>
                 <RoleRowActions>
                   <div>
-                    <RoleBadge $key={ar.role.key as AdminRoleKey}>{ar.role.label}</RoleBadge>
+                    <RoleBadge $key={ar.role.key as AdminRoleKey}>{ROLE_LABEL[ar.role.key] ?? ar.role.label}</RoleBadge>
                     <RoleMeta>
-                      Granted {fmt(ar.grantedAt)}
+                      Назначена {fmt(ar.grantedAt)}
                       {ar.grantedBy && (
-                        <> by {ar.grantedBy.firstName || ar.grantedBy.lastName
+                        <> от {ar.grantedBy.firstName || ar.grantedBy.lastName
                           ? `${ar.grantedBy.firstName ?? ''} ${ar.grantedBy.lastName ?? ''}`.trim()
                           : ar.grantedBy.email}
                         </>
@@ -511,11 +528,11 @@ export default function AdminAdminDetailPage() {
                   <RemoveRoleBtn
                     disabled={removeRoleMutation.isPending}
                     onClick={() => {
-                      if (!window.confirm(`Remove role "${ar.role.label}" from ${data.email}?`)) return;
+                      if (!window.confirm(`Да се премахне роля "${ROLE_LABEL[ar.role.key] ?? ar.role.label}" от ${data.email}?`)) return;
                       removeRoleMutation.mutate(ar.role.key as AdminRoleKey);
                     }}
                   >
-                    Remove
+                    Премахни
                   </RemoveRoleBtn>
                 </RoleRowActions>
               </RoleRow>
@@ -530,21 +547,21 @@ export default function AdminAdminDetailPage() {
               setAddRoleKey(firstUnassigned?.value ?? 'ADMIN');
               setShowAddRole(true);
             }}>
-              + Add role
+              + Добави роля
             </AddRoleBtn>
           )}
 
           <AuditLink to="/admin/admins/audit">
-            View audit log →
+            Виж одит лог →
           </AuditLink>
         </Card>
       </Grid>
       {showAddRole && (
         <OverlayBackdrop onClick={() => setShowAddRole(false)}>
           <OverlayCard onClick={(e) => e.stopPropagation()}>
-            <OverlayTitle>Add role</OverlayTitle>
+            <OverlayTitle>Добави роля</OverlayTitle>
             <OverlaySubtitle>
-              Add a panel role to <strong>{data.email}</strong>
+              Добави панелна роля към <strong>{data.email}</strong>
             </OverlaySubtitle>
             <OverlaySelect
               value={addRoleKey}
@@ -562,9 +579,9 @@ export default function AdminAdminDetailPage() {
                 disabled={addRoleMutation.isPending}
                 onClick={() => addRoleMutation.mutate(addRoleKey)}
               >
-                {addRoleMutation.isPending ? 'Adding…' : 'Add role'}
+                {addRoleMutation.isPending ? 'Добавяне…' : 'Добави роля'}
               </PrimaryBtn2>
-              <SecondaryBtn2 onClick={() => setShowAddRole(false)}>Cancel</SecondaryBtn2>
+              <SecondaryBtn2 onClick={() => setShowAddRole(false)}>Отказ</SecondaryBtn2>
             </OverlayActions>
           </OverlayCard>
         </OverlayBackdrop>

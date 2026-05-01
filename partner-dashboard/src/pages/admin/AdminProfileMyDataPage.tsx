@@ -35,63 +35,72 @@ const AdminProfileMyDataPage: React.FC = () => {
     }
   }, [data]);
 
+  const ROLE_LABEL: Record<string, string> = {
+    ADMIN:           'Администратор',
+    SUPPORT:         'Поддръжка',
+    FINANCE:         'Финанси',
+    RISK_REVIEW:     'Преглед на риск',
+    PARTNER_MANAGER: 'Мениджър партньори',
+    SUPER_ADMIN:     'Супер администратор',
+  };
+
   const updateMutation = useMutation({
     mutationFn: () => adminProfileService.updateMe({ firstName, lastName, phone }),
     onSuccess: () => {
-      toast.success('Profile updated');
+      toast.success('Профилът е обновен');
       queryClient.invalidateQueries({ queryKey: ['admin-profile-me'] });
     },
     onError: (err: { response?: { data?: { error?: string } } }) => {
-      toast.error(err?.response?.data?.error ?? 'Update failed');
+      toast.error(err?.response?.data?.error ?? 'Грешка при запазване');
     },
   });
 
-  if (isLoading) return <Loading>Loading…</Loading>;
-  if (!data) return <Loading>Profile not found</Loading>;
+  if (isLoading) return <Loading>Зареждане…</Loading>;
+  if (!data) return <Loading>Профилът не е намерен</Loading>;
 
   return (
     <Wrapper>
       <Card>
-        <SectionTitle>My data</SectionTitle>
+        <SectionTitle>Моите данни</SectionTitle>
         <Row>
           <Field>
-            <Label>First name</Label>
+            <Label>Име</Label>
             <Input value={firstName} onChange={(e) => setFirstName(e.target.value)} />
           </Field>
           <Field>
-            <Label>Last name</Label>
+            <Label>Фамилия</Label>
             <Input value={lastName} onChange={(e) => setLastName(e.target.value)} />
           </Field>
         </Row>
         <Row>
           <Field>
-            <Label>Email</Label>
+            <Label>Имейл</Label>
             <Input value={data.email} disabled />
-            <Hint>Email changes require a verification flow — contact a SUPER_ADMIN.</Hint>
+            <Hint>Промяната на имейл изисква верификация — свържете се с Супер администратор.</Hint>
           </Field>
           <Field>
-            <Label>Phone</Label>
+            <Label>Телефон</Label>
             <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+359…" />
           </Field>
         </Row>
 
         <Footer>
           <Meta>
-            <span>Role: <strong>{data.role}</strong></span>
+            <span>Роля: <strong>{ROLE_LABEL[data.role] ?? data.role}</strong></span>
             {data.adminRoles.length > 0 && (
               <span>
-                Admin roles: {data.adminRoles.map((r) => r.role.label).join(', ')}
+                Панелни роли: {data.adminRoles.map((r) => ROLE_LABEL[r.role.key] ?? r.role.label).join(', ')}
               </span>
             )}
             {data.lastLoginAt && (
-              <span>Last login: {new Date(data.lastLoginAt).toLocaleString()}</span>
+              <span>Последно влизане: {new Date(data.lastLoginAt).toLocaleString('bg-BG')}</span>
             )}
           </Meta>
           <Button
             onClick={() => updateMutation.mutate()}
             disabled={updateMutation.isPending}
           >
-            {updateMutation.isPending ? 'Saving…' : 'Save changes'}
+            {updateMutation.isPending ? 'Запазване…' : 'Запази промените'}
           </Button>
         </Footer>
       </Card>
