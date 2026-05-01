@@ -1,17 +1,27 @@
 /**
  * Admin Settings Routes
  *
- * GET  /api/admin/settings/cashback-rates         — current effective rate matrix
- * POST /api/admin/settings/cashback-rates         — save new rate set (versioned)
- * GET  /api/admin/settings/cashback-rates/history — recent rate history
- * GET  /api/admin/settings/system                 — all key/value system settings
- * PUT  /api/admin/settings/system                 — upsert one or many settings
- * GET  /api/admin/settings/mobile-app             — G7: structured mobile app settings
- * PUT  /api/admin/settings/mobile-app             — G7: update mobile app settings
+ * GET  /api/admin/settings/cashback-rates             — current effective rate matrix
+ * POST /api/admin/settings/cashback-rates             — save new rate set (versioned)
+ * GET  /api/admin/settings/cashback-rates/history     — recent rate history
+ * GET  /api/admin/settings/payout-thresholds          — current payout threshold per plan
+ * PUT  /api/admin/settings/payout-thresholds          — update thresholds (versioned)
+ * GET  /api/admin/settings/payout-thresholds/history  — recent threshold history
+ * GET  /api/admin/settings/system                     — all key/value system settings
+ * PUT  /api/admin/settings/system                     — upsert one or many settings
+ * GET  /api/admin/settings/mobile-app                 — G7: structured mobile app settings
+ * PUT  /api/admin/settings/mobile-app                 — G7: update mobile app settings
  */
 
 import { Router, Response } from 'express';
-import { FraudRuleTier } from '@prisma/client';
+import { FraudRuleTier, SubscriptionPlan } from '@prisma/client';
+import {
+  PAYOUT_THRESHOLD_BASIC_EUR,
+  PAYOUT_THRESHOLD_PREMIUM_WEEKLY_EUR,
+  PAYOUT_THRESHOLD_PREMIUM_MONTHLY_EUR,
+  EUR_TO_BGN_RATE,
+} from '../constants/receipt.constants';
+import { invalidatePayoutThresholdCache } from '../utils/payoutThreshold';
 import { authenticate, authorize, requirePermission, AuthRequest } from '../middleware/auth.middleware';
 import { auditMiddleware } from '../middleware/audit.middleware';
 import { asyncHandler } from '../middleware/error.middleware';
@@ -116,6 +126,106 @@ router.post(
     );
 
     res.json({ success: true, data: created, message: 'Cashback rates saved' });
+  })
+);
+
+/* ─── Payout Thresholds ───────────────────────────────────────────────────── */
+
+const PLAN_FALLBACK_BGN: Record<SubscriptionPlan, number> = {
+  BASIC:   Math.round(PAYOUT_THRESHOLD_BASIC_EUR * EUR_TO_BGN_RATE * 100) / 100,
+  LIGHT:   Math.round(PAYOUT_THRESHOLD_PREMIUM_WEEKLY_EUR * EUR_TO_BGN_RATE * 100) / 100,
+  PREMIUM: Math.round(PAYOUT_THRESHOLD_PREMIUM_MONTHLY_EUR * EUR_TO_BGN_RATE * 100) / 100,
+};
+
+/**
+ * GET /api/admin/settings/payout-thresholds
+ * Returns the latest payout threshold for each plan.
+ * Falls back to the hardcoded constants if no DB record exists.
+ */
+router.get(
+  '/payout-thresholds',
+  requirePermission('settings.read'),
+  asyncHandler(async (_req: AuthRequest, res: Response) => {
+    const plans: SubscriptionPlan[] = ['BASIC', 'LIGHT', 'PREMIUM'];
+    const rows = await prisma.payoutThreshold.findMany({
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+    });
+
+    const current: Record<string, { minAmount: number; notes: string | null; updatedAt: string | null }> = {};
+    for (const plan of plans) {
+      const row = rows.find((r) => r.plan === plan);
+      current[plan] = {
+        minAmount: row ? row.minAmount : PLAN_FALLBACK_BGN[plan],
+        notes: row?.notes ?? null,
+        updatedAt: row?.createdAt?.toISOString() ?? null,
+      };
+    }
+
+    res.json({ success: true, data: current });
+  })
+);
+
+/**
+ * GET /api/admin/settings/payout-thresholds/history
+ * Last 30 threshold change records, newest first.
+ */
+router.get(
+  '/payout-thresholds/history',
+  requirePermission('settings.read'),
+  asyncHandler(async (_req: AuthRequest, res: Response) => {
+    const history = await prisma.payoutThreshold.findMany({
+      orderBy: { createdAt: 'desc' },
+      take: 30,
+    });
+    res.json({ success: true, data: history });
+  })
+);
+
+/**
+ * PUT /api/admin/settings/payout-thresholds
+ * Body: { thresholds: { BASIC?: number; LIGHT?: number; PREMIUM?: number }, notes?: string }
+ * Creates versioned rows for each plan supplied.
+ */
+router.put(
+  '/payout-thresholds',
+  requirePermission('settings.write'),
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    const { thresholds, notes } = req.body as {
+      thresholds?: Partial<Record<SubscriptionPlan, number>>;
+      notes?: string;
+    };
+
+    if (!thresholds || typeof thresholds !== 'object' || Object.keys(thresholds).length === 0) {
+      return res.status(400).json({ success: false, error: 'thresholds object with at least one plan is required' });
+    }
+
+    const validPlans = new Set<string>(['BASIC', 'LIGHT', 'PREMIUM']);
+    const entries = Object.entries(thresholds) as [SubscriptionPlan, number][];
+    for (const [plan, amount] of entries) {
+      if (!validPlans.has(plan)) {
+        return res.status(400).json({ success: false, error: `Invalid plan: ${plan}. Must be BASIC, LIGHT, or PREMIUM.` });
+      }
+      if (typeof amount !== 'number' || amount < 0 || amount > 10000) {
+        return res.status(400).json({ success: false, error: `minAmount for ${plan} must be a number between 0 and 10000` });
+      }
+    }
+
+    const created = await prisma.$transaction(
+      entries.map(([plan, amount]) =>
+        prisma.payoutThreshold.create({
+          data: {
+            plan,
+            minAmount: Math.round(amount * 100) / 100,
+            createdBy: req.user!.id,
+            notes: notes ?? null,
+          },
+        })
+      )
+    );
+
+    invalidatePayoutThresholdCache();
+    res.json({ success: true, data: created, message: 'Payout thresholds saved' });
   })
 );
 

@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { MarketingChannel, CampaignStatus, AutomationStatus, MarketingListType } from '@prisma/client';
+import { MarketingChannel, CampaignStatus, AutomationStatus, MarketingListType, UserStatus } from '@prisma/client';
 import { authenticate, authorize, requirePermission } from '../middleware/auth.middleware';
 import { auditMiddleware } from '../middleware/audit.middleware';
 import { prisma } from '../lib/prisma';
@@ -549,7 +549,7 @@ router.get('/lists', ...READ, async (req, res, next) => {
         orderBy: { createdAt: 'desc' },
         select: {
           id: true, name: true, type: true, description: true,
-          size: true, updatedAt: true, createdAt: true,
+          size: true, syncKey: true, updatedAt: true, createdAt: true,
         },
       }),
       prisma.marketingList.count({ where }),
@@ -610,7 +610,10 @@ router.put('/lists/:id', ...WRITE, async (req, res, next) => {
         name: name.trim(),
         type,
         description: description?.trim() ?? '',
-        size: size ?? 0,
+        // Only allow manual size updates for STATIC lists; preserve the
+        // cron-computed value for DYNAMIC/SEGMENT lists so a metadata edit
+        // (rename, description update) never resets the nightly count to 0.
+        size: type === 'STATIC' ? (size ?? existing.size) : existing.size,
       },
     });
     res.json(item);

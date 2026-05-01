@@ -45,6 +45,19 @@ export interface CashbackRate {
 
 export type SystemSettings = Record<string, string>;
 
+export interface MobileAppSettings {
+  'mobile_app.min_ios_version': string | null;
+  'mobile_app.min_android_version': string | null;
+  'mobile_app.ios_status': string | null;
+  'mobile_app.android_status': string | null;
+  'mobile_app.feature_receipt_scan': string | null;
+  'mobile_app.feature_sticker_scan': string | null;
+  'mobile_app.feature_partner_map': string | null;
+  'mobile_app.push_notifications_enabled': string | null;
+  'mobile_app.push_vapid_topic': string | null;
+  'mobile_app.error_log_url': string | null;
+}
+
 export const adminSettingsService = {
   getCashbackRates(): Promise<{ data: (CashbackRate | null)[] }> {
     return apiService.get('/admin/settings/cashback-rates');
@@ -67,6 +80,30 @@ export const adminSettingsService = {
 
   saveSystemSettings(settings: SystemSettings): Promise<void> {
     return apiService.put('/admin/settings/system', { settings });
+  },
+
+  getMobileAppSettings(): Promise<{ success: boolean; data: MobileAppSettings }> {
+    return apiService.get('/admin/settings/mobile-app');
+  },
+
+  saveMobileAppSettings(settings: Partial<Record<keyof MobileAppSettings, string>>): Promise<void> {
+    return apiService.put('/admin/settings/mobile-app', { settings });
+  },
+
+  // ── Payout Thresholds ────────────────────────────────────────────────────────
+
+  getPayoutThresholds(): Promise<{
+    success: boolean;
+    data: Record<'BASIC' | 'LIGHT' | 'PREMIUM', { minAmount: number; notes: string | null; updatedAt: string | null }>;
+  }> {
+    return apiService.get('/admin/settings/payout-thresholds');
+  },
+
+  savePayoutThresholds(
+    thresholds: Partial<Record<'BASIC' | 'LIGHT' | 'PREMIUM', number>>,
+    notes?: string,
+  ): Promise<void> {
+    return apiService.put('/admin/settings/payout-thresholds', { thresholds, notes });
   },
 
   // ── Fraud Rules ──────────────────────────────────────────────────────────────

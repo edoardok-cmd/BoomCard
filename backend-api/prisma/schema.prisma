@@ -1730,6 +1730,24 @@ model CashbackRate {
 }
 
 // ============================================
+// Payout Thresholds — DB-backed, versioned
+// Min cleared-cashback balance (BGN) before a subscriber may request payout.
+// Spec §9 Прагове, §6.1 Плащания към абонати.
+// ============================================
+model PayoutThreshold {
+  id        String           @id @default(uuid())
+  plan      SubscriptionPlan // LIGHT | BASIC | PREMIUM
+  minAmount Float            // Minimum cleared cashback balance in BGN
+  createdBy String? // Admin user ID
+  notes     String?
+  createdAt DateTime         @default(now())
+
+  @@index([plan])
+  @@index([createdAt])
+  @@map("payout_thresholds")
+}
+
+// ============================================
 // RBAC — Phase 0 Foundations
 // ============================================
 

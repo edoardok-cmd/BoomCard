@@ -415,6 +415,7 @@ class AdminCashbackService {
     createdAt: Date;
   }>> {
     return prisma.cashbackRate.findMany({
+      where: { discountStep: { in: [...CASHBACK_MATRIX_STEPS] } },
       orderBy: [{ effectiveFrom: 'desc' }, { discountStep: 'asc' }],
     });
   }
@@ -428,6 +429,7 @@ class AdminCashbackService {
     basic: number;
     premium: number;
     effectiveFrom: Date | null;
+    createdBy: string | null;
     source: 'db' | 'default';
   }>> {
     const now = new Date();
@@ -436,13 +438,14 @@ class AdminCashbackService {
       orderBy: { effectiveFrom: 'desc' },
     });
 
-    const rateMap = new Map<number, { basic: number; premium: number; effectiveFrom: Date }>();
+    const rateMap = new Map<number, { basic: number; premium: number; effectiveFrom: Date; createdBy: string | null }>();
     for (const rate of dbRates) {
       if (!rateMap.has(rate.discountStep)) {
         rateMap.set(rate.discountStep, {
           basic: rate.basic,
           premium: rate.premium,
           effectiveFrom: rate.effectiveFrom,
+          createdBy: rate.createdBy,
         });
       }
     }
@@ -450,10 +453,10 @@ class AdminCashbackService {
     return CASHBACK_MATRIX_STEPS.map(step => {
       const db = rateMap.get(step);
       if (db) {
-        return { discountStep: step, basic: db.basic, premium: db.premium, effectiveFrom: db.effectiveFrom, source: 'db' as const };
+        return { discountStep: step, basic: db.basic, premium: db.premium, effectiveFrom: db.effectiveFrom, createdBy: db.createdBy, source: 'db' as const };
       }
       const defaults = CASHBACK_MATRIX[step];
-      return { discountStep: step, basic: defaults.basic, premium: defaults.premium, effectiveFrom: null, source: 'default' as const };
+      return { discountStep: step, basic: defaults.basic, premium: defaults.premium, effectiveFrom: null, createdBy: null, source: 'default' as const };
     });
   }
 

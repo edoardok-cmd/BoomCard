@@ -195,17 +195,25 @@ router.post('/rates', requirePermission('cashback.write'), async (req: AuthReque
 
 // ------------------------------------------------------------------
 // GET /api/admin/cashback/payout-thresholds
-// Returns per-plan payout thresholds so the frontend doesn't hardcode them.
+// Returns per-plan payout thresholds from DB; falls back to constants.
 // ------------------------------------------------------------------
-router.get('/payout-thresholds', requirePermission('cashback.read'), (_req: AuthRequest, res: Response) => {
-  res.json({
-    success: true,
-    data: {
-      BASIC:   Math.round(PAYOUT_THRESHOLD_BASIC_EUR * EUR_TO_BGN_RATE * 100) / 100,
-      LIGHT:   Math.round(PAYOUT_THRESHOLD_PREMIUM_WEEKLY_EUR * EUR_TO_BGN_RATE * 100) / 100,
-      PREMIUM: Math.round(PAYOUT_THRESHOLD_PREMIUM_MONTHLY_EUR * EUR_TO_BGN_RATE * 100) / 100,
-    },
-  });
+router.get('/payout-thresholds', requirePermission('cashback.read'), async (_req: AuthRequest, res: Response) => {
+  const fallback = {
+    BASIC:   Math.round(PAYOUT_THRESHOLD_BASIC_EUR * EUR_TO_BGN_RATE * 100) / 100,
+    LIGHT:   Math.round(PAYOUT_THRESHOLD_PREMIUM_WEEKLY_EUR * EUR_TO_BGN_RATE * 100) / 100,
+    PREMIUM: Math.round(PAYOUT_THRESHOLD_PREMIUM_MONTHLY_EUR * EUR_TO_BGN_RATE * 100) / 100,
+  };
+  try {
+    const rows = await prisma.payoutThreshold.findMany({ orderBy: { createdAt: 'desc' }, take: 100 });
+    const data: Record<string, number> = { ...fallback };
+    for (const plan of ['BASIC', 'LIGHT', 'PREMIUM'] as const) {
+      const row = rows.find((r) => r.plan === plan);
+      if (row) data[plan] = row.minAmount;
+    }
+    res.json({ success: true, data });
+  } catch {
+    res.json({ success: true, data: fallback });
+  }
 });
 
 // ------------------------------------------------------------------

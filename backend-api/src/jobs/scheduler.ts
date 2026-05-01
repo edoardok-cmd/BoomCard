@@ -34,18 +34,7 @@ import { processPayseraRenewals } from './paysera-renewal';
 import { processPendingPaymentReminders, cleanupExpiredPendingPayments } from './pending-payment-reminders';
 import { runUserRiskSweep } from './user-risk-sweep';
 import { fireAutomation } from '../lib/automationDispatcher';
-import {
-  EUR_TO_BGN_RATE,
-  PAYOUT_THRESHOLD_BASIC_EUR,
-  PAYOUT_THRESHOLD_PREMIUM_WEEKLY_EUR,
-  PAYOUT_THRESHOLD_PREMIUM_MONTHLY_EUR,
-} from '../constants/receipt.constants';
-
-function payoutThresholdBGN(plan: SubscriptionPlan, billingPeriod?: string | null): number {
-  if (plan === 'BASIC') return PAYOUT_THRESHOLD_BASIC_EUR * EUR_TO_BGN_RATE;
-  if (plan === 'LIGHT' || billingPeriod === 'weekly') return PAYOUT_THRESHOLD_PREMIUM_WEEKLY_EUR * EUR_TO_BGN_RATE;
-  return PAYOUT_THRESHOLD_PREMIUM_MONTHLY_EUR * EUR_TO_BGN_RATE;
-}
+import { getPayoutThresholdBGN } from '../utils/payoutThreshold';
 
 const CASHBACK_EXPIRY_BATCH = 10;
 
@@ -774,8 +763,7 @@ async function resolveTrialPendingCashback(): Promise<void> {
           select: { plan: true, metadata: true },
         });
         const plan: SubscriptionPlan = sub?.plan ?? 'LIGHT';
-        const subMeta = sub?.metadata ? JSON.parse(sub.metadata as string) : {};
-        const threshold = payoutThresholdBGN(plan, subMeta.billingPeriod);
+        const threshold = await getPayoutThresholdBGN(plan);
         const preBal = updatedWallet.availableBalance - totalAmount;
         if (preBal < threshold && updatedWallet.availableBalance >= threshold) {
           notificationService
@@ -884,6 +872,7 @@ async function syncMarketingListSizes(): Promise<void> {
     premium_holders: () =>
       prisma.user.count({
         where: {
+          marketingConsentEmail: true,
           status: { not: 'DELETED' as any },
           subscriptions: { some: { status: { in: ['ACTIVE', 'TRIALING'] }, plan: { in: ['PREMIUM', 'LIGHT'] } } },
         },
@@ -899,7 +888,7 @@ async function syncMarketingListSizes(): Promise<void> {
       prisma.user.count({
         where: {
           status: { not: 'DELETED' as any },
-          subscriptions: { some: {} },
+          subscriptions: { some: { status: { in: ['ACTIVE', 'TRIALING', 'PAST_DUE'] } } },
           OR: [
             { lastActivityAt: { lt: cutoff90d } },
             { lastActivityAt: null, createdAt: { lt: cutoff90d } },

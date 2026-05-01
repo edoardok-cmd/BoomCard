@@ -42,6 +42,7 @@ export interface CurrentCashbackRate {
   basic: number;
   premium: number;
   effectiveFrom: string | null;
+  createdBy: string | null;
   source: 'db' | 'default';
 }
 

@@ -9,8 +9,6 @@ import {
 } from '../services/adminCashback.service';
 import { DISCOUNT_STEPS } from '../utils/discountSteps';
 
-// Every rate snapshot must cover exactly these five discount steps; the
-// backend rejects partial snapshots (see adminCashback.service.ts).
 const STEPS = DISCOUNT_STEPS;
 
 // ── Styled ───────────────────────────────────────────────────────────
@@ -56,21 +54,29 @@ const SectionTitle = styled.h2`
   svg { width: 18px; height: 18px; color: var(--color-text-secondary); }
 `;
 
-const Matrix = styled.div`
+const Matrix = styled.div<{ $cols: string }>`
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr 1fr;
+  grid-template-columns: ${p => p.$cols};
   gap: 1px;
   background: var(--color-border);
   border-radius: 0.5rem;
   overflow: hidden;
 `;
 
-const Cell = styled.div<{ $header?: boolean }>`
-  background: ${p => p.$header ? 'var(--color-background-secondary)' : 'var(--color-background)'};
+const Cell = styled.div<{ $header?: boolean; $muted?: boolean }>`
+  background: ${p =>
+    p.$header
+      ? 'var(--color-background-secondary)'
+      : p.$muted
+        ? 'var(--color-background-secondary)'
+        : 'var(--color-background)'};
   padding: 0.75rem 1rem;
   font-size: 0.875rem;
   font-weight: ${p => p.$header ? 700 : 500};
-  color: ${p => p.$header ? 'var(--color-text-secondary)' : 'var(--color-text-primary)'};
+  color: ${p =>
+    p.$header || p.$muted
+      ? 'var(--color-text-secondary)'
+      : 'var(--color-text-primary)'};
 `;
 
 const NumberInput = styled.input`
@@ -83,17 +89,6 @@ const NumberInput = styled.input`
   font-size: 0.875rem;
   font-weight: 600;
   &:focus { outline: none; border-color: #000; }
-`;
-
-const SourceTag = styled.span<{ $db: boolean }>`
-  display: inline-block;
-  padding: 0.125rem 0.5rem;
-  border-radius: 999px;
-  font-size: 0.7rem;
-  font-weight: 700;
-  margin-left: 0.5rem;
-  background: ${p => p.$db ? '#dbeafe' : '#fef3c7'};
-  color: ${p => p.$db ? '#1e40af' : '#92400e'};
 `;
 
 const FormRow = styled.div`
@@ -110,6 +105,13 @@ const Field = styled.div`
 const Label = styled.label`
   font-size: 0.75rem; font-weight: 600;
   color: var(--color-text-secondary);
+`;
+
+const FieldHint = styled.span`
+  font-size: 0.7rem;
+  color: var(--color-text-secondary);
+  font-weight: 400;
+  margin-left: 0.3rem;
 `;
 
 const TextInput = styled.input`
@@ -150,9 +152,21 @@ const HistoryTable = styled.table`
   width: 100%;
   border-collapse: collapse;
   font-size: 0.85rem;
-  th, td { padding: 0.625rem 0.875rem; text-align: left; border-bottom: 1px solid var(--color-border); }
-  th { font-weight: 700; color: var(--color-text-secondary); text-transform: uppercase; font-size: 0.7rem; letter-spacing: 0.05em; background: var(--color-background-secondary); }
+  th, td {
+    padding: 0.625rem 0.875rem;
+    text-align: left;
+    border-bottom: 1px solid var(--color-border);
+  }
+  th {
+    font-weight: 700;
+    color: var(--color-text-secondary);
+    text-transform: uppercase;
+    font-size: 0.7rem;
+    letter-spacing: 0.05em;
+    background: var(--color-background-secondary);
+  }
   td { color: var(--color-text-primary); }
+  .muted { color: var(--color-text-secondary); }
 `;
 
 const Toast = styled.div<{ $ok: boolean }>`
@@ -167,32 +181,48 @@ const Toast = styled.div<{ $ok: boolean }>`
 
 // ── i18n ──────────────────────────────────────────────────────────────
 const t = (lang: 'en' | 'bg') => ({
-  title:        lang === 'bg' ? 'Кешбек ставки' : 'Cashback Rates',
-  subtitle:     lang === 'bg'
+  title:          lang === 'bg' ? 'Кешбек ставки' : 'Cashback Rates',
+  subtitle:       lang === 'bg'
     ? 'Управлявайте матрицата кешбек % на стъпка отстъпка. Всяка нова версия е самостоятелен снимък — всичките 5 стъпки са задължителни.'
     : 'Manage the cashback % matrix per discount step. Every new version is a self-contained snapshot — all 5 steps are required.',
-  currentTitle: lang === 'bg' ? 'Текущи действащи ставки' : 'Currently effective rates',
-  newTitle:     lang === 'bg' ? 'Нов снимък на ставките' : 'New rate snapshot',
-  historyTitle: lang === 'bg' ? 'История' : 'History',
-  step:         lang === 'bg' ? 'Стъпка' : 'Discount step',
-  basic:        lang === 'bg' ? 'BASIC (%)' : 'BASIC (%)',
-  premium:      lang === 'bg' ? 'LIGHT/PREMIUM (%)' : 'LIGHT/PREMIUM (%)',
-  source:       lang === 'bg' ? 'Източник' : 'Source',
-  effectiveFrom: lang === 'bg' ? 'В сила от' : 'Effective from',
-  notes:        lang === 'bg' ? 'Бележки (незадължително)' : 'Notes (optional)',
-  save:         lang === 'bg' ? 'Запази нова версия' : 'Save new snapshot',
-  saved:        lang === 'bg' ? 'Ставките са записани' : 'Rates saved',
-  tagDb:        lang === 'bg' ? 'БД' : 'DB',
-  tagDefault:   lang === 'bg' ? 'по подразб.' : 'default',
-  thDate:       lang === 'bg' ? 'Дата' : 'Date',
-  thBy:         lang === 'bg' ? 'Автор' : 'By',
-  thNotes:      lang === 'bg' ? 'Бележки' : 'Notes',
+  currentTitle:   lang === 'bg' ? 'Текущи действащи ставки' : 'Currently effective rates',
+  newTitle:       lang === 'bg' ? 'Нов снимък на ставките' : 'New rate snapshot',
+  historyTitle:   lang === 'bg' ? 'История' : 'History',
+  step:           lang === 'bg' ? 'Стъпка' : 'Discount step',
+  basic:          'BASIC (%)',
+  premium:        lang === 'bg' ? 'Premium (%)' : 'Premium (%)',
+  marginBasic:    lang === 'bg' ? 'Марж BASIC (%)' : 'Margin BASIC (%)',
+  marginPremium:  lang === 'bg' ? 'Марж Premium (%)' : 'Margin Premium (%)',
+  rangeHint:      '0–100',
+  effectiveFrom:  lang === 'bg' ? 'В сила от' : 'Effective from',
+  effectiveHint:  lang === 'bg' ? '(по подразбиране: сега)' : '(defaults to now)',
+  notes:          lang === 'bg' ? 'Бележки (незадължително)' : 'Notes (optional)',
+  save:           lang === 'bg' ? 'Запази нова версия' : 'Save new snapshot',
+  saved:          lang === 'bg' ? 'Ставките са записани' : 'Rates saved',
+  thEffective:    lang === 'bg' ? 'В сила от' : 'Effective from',
+  thBy:           lang === 'bg' ? 'Автор' : 'By',
+  thNotes:        lang === 'bg' ? 'Бележки' : 'Notes',
 });
 
-// ── Component ─────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────
+
+const nowLocal = () => {
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+};
 
 const emptyDraft = (): Record<number, { basic: string; premium: string }> =>
   Object.fromEntries(STEPS.map(s => [s, { basic: '', premium: '' }]));
+
+const computeMargin = (step: number, cashback: string | number): string => {
+  const cb = typeof cashback === 'string' ? parseFloat(cashback) : cashback;
+  if (!isFinite(cb)) return '—';
+  const m = Math.round((step - cb) * 10) / 10;
+  return m >= 0 ? `${m}%` : `−${Math.abs(m)}%`;
+};
+
+// ── Component ─────────────────────────────────────────────────────────
 
 const AdminCashbackRatesPage: React.FC = () => {
   const { language } = useLanguage();
@@ -201,7 +231,7 @@ const AdminCashbackRatesPage: React.FC = () => {
   const [current, setCurrent] = useState<CurrentCashbackRate[]>([]);
   const [history, setHistory] = useState<CashbackRateRow[]>([]);
   const [draft, setDraft] = useState(emptyDraft());
-  const [effectiveFrom, setEffectiveFrom] = useState('');
+  const [effectiveFrom, setEffectiveFrom] = useState(nowLocal);
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -214,7 +244,6 @@ const AdminCashbackRatesPage: React.FC = () => {
     ]);
     setCurrent(cur);
     setHistory(hist);
-    // Seed the draft with the current effective values so admins edit, not retype.
     const seeded: Record<number, { basic: string; premium: string }> = {};
     for (const step of STEPS) {
       const row = cur.find(r => r.discountStep === step);
@@ -226,7 +255,9 @@ const AdminCashbackRatesPage: React.FC = () => {
     setDraft(seeded);
   }, []);
 
-  useEffect(() => { load().catch(e => setToast({ ok: false, msg: String(e?.message || e) })); }, [load]);
+  useEffect(() => {
+    load().catch(e => setToast({ ok: false, msg: String(e?.message || e) }));
+  }, [load]);
 
   const updateCell = (step: number, field: 'basic' | 'premium', value: string) => {
     setDraft(prev => ({ ...prev, [step]: { ...prev[step], [field]: value } }));
@@ -248,6 +279,10 @@ const AdminCashbackRatesPage: React.FC = () => {
         setError(`Step ${step}%: values must be between 0 and 100`);
         return;
       }
+      if (basic > step || premium > step) {
+        setError(`Step ${step}%: cashback cannot exceed the partner discount (${step}%) — margin would be negative`);
+        return;
+      }
       rates.push({ discountStep: step, basic, premium });
     }
 
@@ -260,7 +295,7 @@ const AdminCashbackRatesPage: React.FC = () => {
       });
       setToast({ ok: true, msg: tr.saved });
       setNotes('');
-      setEffectiveFrom('');
+      setEffectiveFrom(nowLocal());
       await load();
     } catch (e) {
       const axiosErr = e as { response?: { data?: { error?: string } }; message?: string };
@@ -276,7 +311,12 @@ const AdminCashbackRatesPage: React.FC = () => {
     return () => clearTimeout(id);
   }, [toast]);
 
-  const fmtDate = (iso: string | null) => iso ? new Date(iso).toLocaleString() : '—';
+  const fmtDate = (iso: string | null) => (iso ? new Date(iso).toLocaleString() : '—');
+
+  // 7-col grid: step | basic | premium | margin-basic | margin-premium | effective-from | author
+  const currentCols = '0.7fr 0.9fr 0.9fr 1fr 1fr 1.8fr 1.2fr';
+  // 5-col grid: step | basic input | margin-basic | premium input | margin-premium
+  const editCols = '0.7fr 1fr 0.9fr 1fr 0.9fr';
 
   return (
     <Page>
@@ -285,24 +325,29 @@ const AdminCashbackRatesPage: React.FC = () => {
         <Subtitle>{tr.subtitle}</Subtitle>
       </Header>
 
+      {/* ── Current effective rates ── */}
       <Section>
         <SectionTitle>{tr.currentTitle}</SectionTitle>
-        <Matrix>
+        <Matrix $cols={currentCols}>
           <Cell $header>{tr.step}</Cell>
           <Cell $header>{tr.basic}</Cell>
           <Cell $header>{tr.premium}</Cell>
-          <Cell $header>{tr.source}</Cell>
+          <Cell $header>{tr.marginBasic}</Cell>
+          <Cell $header>{tr.marginPremium}</Cell>
+          <Cell $header>{tr.effectiveFrom}</Cell>
+          <Cell $header>{tr.thBy}</Cell>
           {STEPS.map(step => {
             const row = current.find(r => r.discountStep === step);
-            const isDb = row?.source === 'db';
             return (
               <React.Fragment key={step}>
                 <Cell>{step}%</Cell>
-                <Cell>{row?.basic ?? '—'}%</Cell>
-                <Cell>{row?.premium ?? '—'}%</Cell>
-                <Cell>
-                  <SourceTag $db={isDb}>{isDb ? tr.tagDb : tr.tagDefault}</SourceTag>
-                  {row?.effectiveFrom ? <span style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)', marginLeft: '0.5rem' }}>{fmtDate(row.effectiveFrom)}</span> : null}
+                <Cell>{row != null ? `${row.basic}%` : '—'}</Cell>
+                <Cell>{row != null ? `${row.premium}%` : '—'}</Cell>
+                <Cell $muted>{row != null ? computeMargin(step, row.basic) : '—'}</Cell>
+                <Cell $muted>{row != null ? computeMargin(step, row.premium) : '—'}</Cell>
+                <Cell $muted style={{ fontSize: '0.8rem' }}>{fmtDate(row?.effectiveFrom ?? null)}</Cell>
+                <Cell $muted style={{ fontSize: '0.75rem', fontFamily: 'monospace' }}>
+                  {row?.createdBy?.slice(0, 8) ?? '—'}
                 </Cell>
               </React.Fragment>
             );
@@ -310,38 +355,54 @@ const AdminCashbackRatesPage: React.FC = () => {
         </Matrix>
       </Section>
 
+      {/* ── New rate snapshot form ── */}
       <Section>
         <SectionTitle>{tr.newTitle}</SectionTitle>
-        <Matrix>
+        <Matrix $cols={editCols}>
           <Cell $header>{tr.step}</Cell>
-          <Cell $header>{tr.basic}</Cell>
-          <Cell $header>{tr.premium}</Cell>
-          <Cell $header>&nbsp;</Cell>
+          <Cell $header>
+            {tr.basic}
+            <span style={{ fontWeight: 400, fontSize: '0.7rem', marginLeft: '0.25rem' }}>
+              ({tr.rangeHint})
+            </span>
+          </Cell>
+          <Cell $header>{tr.marginBasic}</Cell>
+          <Cell $header>
+            {tr.premium}
+            <span style={{ fontWeight: 400, fontSize: '0.7rem', marginLeft: '0.25rem' }}>
+              ({tr.rangeHint})
+            </span>
+          </Cell>
+          <Cell $header>{tr.marginPremium}</Cell>
           {STEPS.map(step => (
             <React.Fragment key={step}>
               <Cell>{step}%</Cell>
               <Cell>
                 <NumberInput
-                  type="number" min={0} max={100} step={0.5}
+                  type="number" min={0} max={step} step={0.5}
                   value={draft[step]?.basic ?? ''}
                   onChange={e => updateCell(step, 'basic', e.target.value)}
                 />
               </Cell>
+              <Cell $muted>{computeMargin(step, draft[step]?.basic ?? '')}</Cell>
               <Cell>
                 <NumberInput
-                  type="number" min={0} max={100} step={0.5}
+                  type="number" min={0} max={step} step={0.5}
                   value={draft[step]?.premium ?? ''}
                   onChange={e => updateCell(step, 'premium', e.target.value)}
                 />
               </Cell>
-              <Cell>&nbsp;</Cell>
+              <Cell $muted>{computeMargin(step, draft[step]?.premium ?? '')}</Cell>
             </React.Fragment>
           ))}
         </Matrix>
 
         <FormRow>
           <Field>
-            <Label>{tr.effectiveFrom}</Label>
+            <Label>
+              {tr.effectiveFrom}
+              <FieldHint>{tr.effectiveHint}</FieldHint>
+            </Label>
             <TextInput
               type="datetime-local"
               value={effectiveFrom}
@@ -364,22 +425,27 @@ const AdminCashbackRatesPage: React.FC = () => {
         {error && <Error><AlertCircle /> {error}</Error>}
       </Section>
 
+      {/* ── History ── */}
       <Section>
         <SectionTitle><History /> {tr.historyTitle}</SectionTitle>
         <HistoryTable>
           <thead>
             <tr>
-              <th>{tr.thDate}</th>
+              <th>{tr.thEffective}</th>
               <th>{tr.step}</th>
               <th>{tr.basic}</th>
               <th>{tr.premium}</th>
+              <th>{tr.marginBasic}</th>
+              <th>{tr.marginPremium}</th>
               <th>{tr.thBy}</th>
               <th>{tr.thNotes}</th>
             </tr>
           </thead>
           <tbody>
             {history.length === 0 && (
-              <tr><td colSpan={6} style={{ textAlign: 'center', padding: '2rem', color: 'var(--color-text-secondary)' }}>—</td></tr>
+              <tr>
+                <td colSpan={8} style={{ textAlign: 'center', padding: '2rem', color: 'var(--color-text-secondary)' }}>—</td>
+              </tr>
             )}
             {history.map(row => (
               <tr key={row.id}>
@@ -387,6 +453,8 @@ const AdminCashbackRatesPage: React.FC = () => {
                 <td>{row.discountStep}%</td>
                 <td>{row.basic}%</td>
                 <td>{row.premium}%</td>
+                <td className="muted">{computeMargin(row.discountStep, row.basic)}</td>
+                <td className="muted">{computeMargin(row.discountStep, row.premium)}</td>
                 <td style={{ fontFamily: 'monospace', fontSize: '0.75rem' }}>{row.createdBy?.slice(0, 8) ?? '—'}</td>
                 <td>{row.notes ?? ''}</td>
               </tr>

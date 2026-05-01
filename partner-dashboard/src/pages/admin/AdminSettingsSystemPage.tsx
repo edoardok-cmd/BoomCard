@@ -58,6 +58,40 @@ const SaveBtn = styled.button`
   &:disabled { opacity: 0.5; cursor: default; }
 `;
 
+const SelectInput = styled.select`
+  padding: 0.5rem 0.875rem;
+  border: 1px solid ${palette.border};
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  background: ${palette.bg};
+  color: ${palette.text};
+  outline: none;
+  cursor: pointer;
+  &:focus { border-color: ${palette.accent}; box-shadow: 0 0 0 2px ${palette.accentSoft}; }
+`;
+
+const TIMEZONES = [
+  'Europe/Sofia',
+  'Europe/London',
+  'Europe/Paris',
+  'Europe/Berlin',
+  'Europe/Athens',
+  'UTC',
+  'America/New_York',
+  'America/Los_Angeles',
+];
+
+const LANGUAGES = [
+  { value: 'bg', label: 'Bulgarian (BG)' },
+  { value: 'en', label: 'English (EN)' },
+];
+
+const CURRENCIES = [
+  { value: 'BGN', label: 'BGN — Bulgarian Lev' },
+  { value: 'EUR', label: 'EUR — Euro' },
+  { value: 'USD', label: 'USD — US Dollar' },
+];
+
 export default function AdminSettingsSystemPage() {
   const queryClient = useQueryClient();
   const [maxFraud, setMaxFraud] = useState('80');
@@ -66,6 +100,10 @@ export default function AdminSettingsSystemPage() {
   const [maxCashback, setMaxCashback] = useState('');
   const [supportEmail, setSupportEmail] = useState('');
   const [supportPhone, setSupportPhone] = useState('');
+  const [replyToEmail, setReplyToEmail] = useState('');
+  const [language, setLanguage] = useState('bg');
+  const [currency, setCurrency] = useState('BGN');
+  const [timezone, setTimezone] = useState('Europe/Sofia');
 
   const { data, isLoading } = useQuery({
     queryKey: ['admin-system-settings'],
@@ -74,12 +112,16 @@ export default function AdminSettingsSystemPage() {
 
   useEffect(() => {
     if (!data?.data) return;
-    if (data.data.max_fraud_score) setMaxFraud(data.data.max_fraud_score);
+    if (data.data.max_fraud_score)        setMaxFraud(data.data.max_fraud_score);
     if (data.data.auto_approve_threshold) setAutoApprove(data.data.auto_approve_threshold);
     if (data.data.daily_scan_limit_default) setDailyLimit(data.data.daily_scan_limit_default);
     if (data.data.max_cashback_per_month) setMaxCashback(data.data.max_cashback_per_month);
-    if (data.data.support_email) setSupportEmail(data.data.support_email);
-    if (data.data.support_phone) setSupportPhone(data.data.support_phone);
+    if (data.data.support_email)          setSupportEmail(data.data.support_email);
+    if (data.data.support_phone)          setSupportPhone(data.data.support_phone);
+    if (data.data.reply_to_email)         setReplyToEmail(data.data.reply_to_email);
+    if (data.data.language)               setLanguage(data.data.language);
+    if (data.data.currency)               setCurrency(data.data.currency);
+    if (data.data.timezone)               setTimezone(data.data.timezone);
   }, [data]);
 
   const saveMutation = useMutation({
@@ -89,6 +131,10 @@ export default function AdminSettingsSystemPage() {
         auto_approve_threshold: autoApprove,
         support_email: supportEmail,
         support_phone: supportPhone,
+        reply_to_email: replyToEmail,
+        language,
+        currency,
+        timezone,
       };
       if (dailyLimit) settings.daily_scan_limit_default = dailyLimit;
       if (maxCashback) settings.max_cashback_per_month = maxCashback;
@@ -106,7 +152,9 @@ export default function AdminSettingsSystemPage() {
       <PageHeader>
         <Eyebrow>Settings</Eyebrow>
         <PageTitle>System</PageTitle>
-        <PageSubtitle>Global fraud thresholds, scan limits, and support contact details.</PageSubtitle>
+        <PageSubtitle>
+          Global fraud thresholds, scan limits, support contacts, and localisation.
+        </PageSubtitle>
       </PageHeader>
 
       <Grid>
@@ -183,6 +231,61 @@ export default function AdminSettingsSystemPage() {
                   onChange={(e) => setSupportPhone(e.target.value)}
                 />
                 <FieldHint>Shown on the contact screen in the app.</FieldHint>
+              </div>
+              <div>
+                <FieldLabel>Reply-to email</FieldLabel>
+                <TextInput
+                  type="email"
+                  placeholder="noreply@boomcard.bg"
+                  value={replyToEmail}
+                  onChange={(e) => setReplyToEmail(e.target.value)}
+                />
+                <FieldHint>
+                  Used as the Reply-To header on all system emails. Leave blank to use the support
+                  email.
+                </FieldHint>
+              </div>
+            </FieldGroup>
+          )}
+        </Card>
+
+        <Card>
+          <CardTitle>Localisation</CardTitle>
+          {isLoading ? (
+            <p style={{ color: palette.textSubtle, fontSize: '0.875rem' }}>Loading…</p>
+          ) : (
+            <FieldGroup>
+              <div>
+                <FieldLabel>Default language</FieldLabel>
+                <SelectInput value={language} onChange={(e) => setLanguage(e.target.value)}>
+                  {LANGUAGES.map((l) => (
+                    <option key={l.value} value={l.value}>{l.label}</option>
+                  ))}
+                </SelectInput>
+                <FieldHint>
+                  Default language for system emails and admin UI when no user preference is set.
+                </FieldHint>
+              </div>
+              <div>
+                <FieldLabel>Currency</FieldLabel>
+                <SelectInput value={currency} onChange={(e) => setCurrency(e.target.value)}>
+                  {CURRENCIES.map((c) => (
+                    <option key={c.value} value={c.value}>{c.label}</option>
+                  ))}
+                </SelectInput>
+                <FieldHint>Currency shown in payout amounts, receipts, and financial reports.</FieldHint>
+              </div>
+              <div>
+                <FieldLabel>Timezone</FieldLabel>
+                <SelectInput value={timezone} onChange={(e) => setTimezone(e.target.value)}>
+                  {TIMEZONES.map((tz) => (
+                    <option key={tz} value={tz}>{tz}</option>
+                  ))}
+                </SelectInput>
+                <FieldHint>
+                  Used for date display in the admin UI and for scheduling nightly jobs (e.g. dynamic
+                  list refresh).
+                </FieldHint>
               </div>
             </FieldGroup>
           )}

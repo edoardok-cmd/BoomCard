@@ -2,29 +2,11 @@ import crypto from 'crypto';
 import { SubscriptionPlan, WalletTransactionType, WalletTransactionStatus } from '@prisma/client';
 import prisma from '../lib/prisma';
 import { logger } from '../utils/logger';
-import {
-  CASHBACK_VALIDITY_DAYS,
-  EUR_TO_BGN_RATE,
-  PAYOUT_THRESHOLD_BASIC_EUR,
-  PAYOUT_THRESHOLD_PREMIUM_WEEKLY_EUR,
-  PAYOUT_THRESHOLD_PREMIUM_MONTHLY_EUR,
-} from '../constants/receipt.constants';
+import { CASHBACK_VALIDITY_DAYS, EUR_TO_BGN_RATE } from '../constants/receipt.constants';
+import { getPayoutThresholdBGN } from '../utils/payoutThreshold';
 import { payseraService } from './paysera.service';
 import { notificationService } from './notification.service';
 import { fireAutomation } from '../lib/automationDispatcher';
-
-// ── Helpers ────────────────────────────────────────────────────────────────────
-
-function payoutThresholdBGN(plan: SubscriptionPlan, billingPeriod?: string | null): number {
-  if (plan === 'BASIC') {
-    return PAYOUT_THRESHOLD_BASIC_EUR * EUR_TO_BGN_RATE;
-  }
-  // LIGHT = Premium Weekly; PREMIUM may be monthly or weekly billing period stored in metadata
-  if (plan === 'LIGHT' || billingPeriod === 'weekly') {
-    return PAYOUT_THRESHOLD_PREMIUM_WEEKLY_EUR * EUR_TO_BGN_RATE;
-  }
-  return PAYOUT_THRESHOLD_PREMIUM_MONTHLY_EUR * EUR_TO_BGN_RATE;
-}
 
 // ── Service ────────────────────────────────────────────────────────────────────
 
@@ -60,8 +42,7 @@ export class WalletService {
     });
 
     const plan: SubscriptionPlan = subscription?.plan ?? 'LIGHT';
-    const metadata = subscription?.metadata ? JSON.parse(subscription.metadata as string) : {};
-    const threshold = payoutThresholdBGN(plan, metadata.billingPeriod);
+    const threshold = await getPayoutThresholdBGN(plan);
 
     return {
       balance: wallet.balance,
@@ -184,8 +165,7 @@ export class WalletService {
             orderBy: { createdAt: 'desc' },
           });
           const plan: SubscriptionPlan = subscription?.plan ?? 'LIGHT';
-          const subMetadata = subscription?.metadata ? JSON.parse(subscription.metadata as string) : {};
-          const threshold = payoutThresholdBGN(plan, subMetadata.billingPeriod);
+          const threshold = await getPayoutThresholdBGN(plan);
           if (preCreditAvailable < threshold && updatedWallet.availableBalance >= threshold) {
             notificationService
               .notifyPayoutReady({
@@ -372,8 +352,7 @@ export class WalletService {
     });
 
     const plan: SubscriptionPlan = subscription?.plan ?? 'LIGHT';
-    const subMetadata = subscription?.metadata ? JSON.parse(subscription.metadata as string) : {};
-    const threshold = payoutThresholdBGN(plan, subMetadata.billingPeriod);
+    const threshold = await getPayoutThresholdBGN(plan);
 
     // Resolve IBAN — prefer caller-supplied value, fall back to stored wallet value
     const ibanRaw = opts.iban?.replace(/\s+/g, '').toUpperCase() || wallet.payoutIban || '';
