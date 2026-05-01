@@ -36,6 +36,7 @@ const FilterRow = styled.div`display: flex; gap: 0.75rem; margin-bottom: 2rem; f
 const DateInput = styled.input`padding: 0.5rem 0.875rem; border: 1px solid ${palette.border}; border-radius: 0.5rem; font-size: 0.875rem; background: ${palette.surface}; color: ${palette.text}; outline: none; &:focus { border-color: ${palette.accent}; }`;
 const FilterLabel = styled.span`font-size: 0.8125rem; color: ${palette.textMuted}; font-weight: 600;`;
 const FilterSelect = styled.select`padding: 0.5rem 0.875rem; border: 1px solid ${palette.border}; border-radius: 0.5rem; font-size: 0.875rem; background: ${palette.surface}; color: ${palette.text}; outline: none; cursor: pointer; min-width: 10rem; &:focus { border-color: ${palette.accent}; }`;
+const PartnerSearchInput = styled.input`padding: 0.5rem 0.875rem; border: 1px solid ${palette.border}; border-radius: 0.5rem; font-size: 0.875rem; background: ${palette.surface}; color: ${palette.text}; outline: none; min-width: 14rem; &:focus { border-color: ${palette.accent}; } &::placeholder { color: ${palette.textSubtle}; }`;
 const RunBtn = styled.button`padding: 0.5rem 1.125rem; background: ${palette.accent}; color: #fff; border: none; border-radius: 0.5rem; font-size: 0.875rem; font-weight: 600; cursor: pointer; &:hover { opacity: 0.9; } &:disabled { opacity: 0.5; cursor: default; }`;
 const ExportBtn = styled.button`padding: 0.5rem 0.875rem; background: ${palette.surface}; color: ${palette.text}; border: 1px solid ${palette.border}; border-radius: 0.5rem; font-size: 0.8125rem; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 0.375rem; &:hover { background: ${palette.bg}; } &:disabled { opacity: 0.5; cursor: default; }`;
 
@@ -216,6 +217,7 @@ export default function AdminFinanceReportsPage() {
   const [queryFrom, setQueryFrom] = useState(monthToFrom(defaultMonth));
   const [queryTo, setQueryTo] = useState(monthToTo(defaultMonth));
   const [partnerId, setPartnerId] = useState('');
+  const [partnerInput, setPartnerInput] = useState('');
   const [invoiceStatus, setInvoiceStatus] = useState('');
   const [plan, setPlan] = useState('');
   const [queryPartnerId, setQueryPartnerId] = useState('');
@@ -380,12 +382,25 @@ export default function AdminFinanceReportsPage() {
           setToMonth(v);
           if (v < fromMonth) setFromMonth(v);
         }} />
-        <FilterSelect value={partnerId} onChange={(e) => setPartnerId(e.target.value)}>
-          <option value="">Всички партньори</option>
+        <PartnerSearchInput
+          type="text"
+          list="report-partners-list"
+          placeholder="Търси партньор…"
+          value={partnerInput}
+          onChange={(e) => {
+            const val = e.target.value;
+            setPartnerInput(val);
+            const found = (partnersData?.data ?? []).find(
+              (p) => p.businessName.toLowerCase() === val.toLowerCase()
+            );
+            setPartnerId(found?.id ?? '');
+          }}
+        />
+        <datalist id="report-partners-list">
           {(partnersData?.data ?? []).map((p) => (
-            <option key={p.id} value={p.id}>{p.businessName}</option>
+            <option key={p.id} value={p.businessName} />
           ))}
-        </FilterSelect>
+        </datalist>
         <FilterSelect value={plan} onChange={(e) => setPlan(e.target.value)}>
           <option value="">Всички планове</option>
           <option value="LIGHT">Light</option>

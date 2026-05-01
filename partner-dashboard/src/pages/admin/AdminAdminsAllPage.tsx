@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import styled from 'styled-components';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-hot-toast';
 import { useLanguage } from '../../contexts/LanguageContext';
@@ -292,6 +292,7 @@ const PAGE_SIZE = 20;
 
 export default function AdminAdminsAllPage() {
   const { language } = useLanguage();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
 
   const [page, setPage] = useState(1);
@@ -340,7 +341,7 @@ export default function AdminAdminsAllPage() {
       queryClient.invalidateQueries({ queryKey: ['admin-admins'] });
     },
     onError: (err: unknown) => {
-      const msg = err instanceof Error ? err.message : 'Грешка при промяна на статус';
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Грешка при промяна на статус';
       toast.error(msg);
     },
   });
@@ -389,6 +390,8 @@ export default function AdminAdminsAllPage() {
               </RoleBadge>
             ))}
           </div>
+        ) : row.role === 'SUPER_ADMIN' ? (
+          <RoleBadge $key="SUPER_ADMIN">Супер администратор</RoleBadge>
         ) : (
           <span style={{ color: palette.textSubtle, fontSize: '0.8125rem' }}>Без роля</span>
         ),
@@ -484,6 +487,10 @@ export default function AdminAdminsAllPage() {
           totalItems={data?.total}
           onPageChange={setPage}
           rowActions={[
+            {
+              label: 'Виж детайли',
+              onClick: (row: AdminUser) => navigate(`/admin/admins/${row.id}`),
+            },
             {
               label: 'Добави роля',
               hidden: (row: AdminUser) =>

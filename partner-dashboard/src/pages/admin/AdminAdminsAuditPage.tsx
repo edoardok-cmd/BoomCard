@@ -732,7 +732,7 @@ export default function AdminAdminsAuditPage() {
           История на действията
           {data && <TotalBadge>{(data.total ?? 0).toLocaleString()}</TotalBadge>}
         </PageTitle>
-        <PageSubtitle>Всички действия в администраторския панел — кой, какво и кога</PageSubtitle>
+        <PageSubtitle>Всички действия в администраторския панел — кой, какво, кога, върху кой обект, преди и след</PageSubtitle>
       </PageHeader>
 
       <Card>

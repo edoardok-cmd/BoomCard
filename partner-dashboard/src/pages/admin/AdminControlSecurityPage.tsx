@@ -213,6 +213,10 @@ const T = {
   confirm:         { en: 'Confirm',                                             bg: 'Потвърди' },
   openDispute:     { en: 'Open Dispute',                                        bg: 'Отвори спор' },
   approved:        { en: 'Signal approved',                                      bg: 'Сигналът е одобрен' },
+  rejected:        { en: 'Signal rejected',                                      bg: 'Сигналът е отхвърлен' },
+  errorApprove:    { en: 'Error approving signal',                               bg: 'Грешка при одобряване на сигнала' },
+  errorReject:     { en: 'Error rejecting signal',                               bg: 'Грешка при отхвърляне на сигнала' },
+  errorDispute:    { en: 'Error opening dispute',                                bg: 'Грешка при отваряне на спор' },
   disputeOpened:   { en: 'Dispute case opened',                                 bg: 'Спорът е открит' },
   disputeExists:   { en: 'Dispute already exists for this receipt',             bg: 'Спор за тази бележка вече съществува' },
 } as const;
@@ -268,16 +272,19 @@ export default function AdminControlSecurityPage() {
       queryClient.invalidateQueries({ queryKey: ['admin-fraud-signals'] });
       queryClient.invalidateQueries({ queryKey: ['admin-risk-queue-summary'] });
     },
+    onError: () => toast.error(t('errorApprove')),
   });
 
   const rejectMutation = useMutation({
     mutationFn: ({ id, reason }: { id: string; reason?: string }) =>
       adminControlService.rejectRiskSignal(id, reason),
     onSuccess: () => {
+      toast.success(t('rejected'));
       setActionDraft(null);
       queryClient.invalidateQueries({ queryKey: ['admin-fraud-signals'] });
       queryClient.invalidateQueries({ queryKey: ['admin-risk-queue-summary'] });
     },
+    onError: () => toast.error(t('errorReject')),
   });
 
   const openDisputeMutation = useMutation({
@@ -294,7 +301,7 @@ export default function AdminControlSecurityPage() {
       if (msg?.includes('already exists')) {
         toast.error(t('disputeExists'));
       } else {
-        toast.error(msg ?? 'Грешка при отваряне на спор');
+        toast.error(msg ?? t('errorDispute'));
       }
     },
   });
@@ -566,7 +573,7 @@ export default function AdminControlSecurityPage() {
                   placeholder={t('verifiedAmountLabel')}
                   value={actionDraft.verifiedAmount}
                   onChange={(e) => setActionDraft({ ...actionDraft, verifiedAmount: e.target.value })}
-                  style={{ marginBottom: '0.5rem' }}
+                  style={{ width: '100%', boxSizing: 'border-box', marginBottom: '0.5rem' }}
                   autoFocus
                 />
                 <div style={{ fontSize: '0.75rem', color: palette.textSubtle, marginBottom: '0.5rem' }}>

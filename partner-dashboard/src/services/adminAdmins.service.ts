@@ -51,6 +51,7 @@ export interface PendingAdmin {
   firstName: string | null;
   lastName: string | null;
   phone: string | null;
+  role: UserRole;
   status: UserStatus;
   createdAt: string;
 }

@@ -227,12 +227,14 @@ export default function AdminControlAuditLogPage() {
             title="От дата"
             value={draftFrom}
             onChange={e => setDraftFrom(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && applyFilters()}
           />
           <DateInput
             type="date"
             title="До дата"
             value={draftTo}
             onChange={e => setDraftTo(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && applyFilters()}
           />
           <Btn onClick={applyFilters}>Търси</Btn>
           {hasActiveFilter && (

@@ -364,7 +364,7 @@ router.put(
     // Simple RFC 5321-compatible email check (not exhaustive, but catches common mistakes).
     const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     for (const [key, value] of entries) {
-      if ((key === 'from_email' || key === 'reply_to_email') && value !== '') {
+      if ((key === 'from_email' || key === 'reply_to_email' || key === 'support_email') && value !== '') {
         if (!EMAIL_RE.test(value)) {
           return res.status(400).json({
             success: false,

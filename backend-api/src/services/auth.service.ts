@@ -12,6 +12,7 @@ import { PartnerStatus, Prisma, UserStatus } from '@prisma/client';
 import { emailService } from './email.service';
 import { notificationService } from './notification.service';
 import { SECURITY_CONFIG } from '../config/security.config';
+import { resolveUserPermissions } from './permission.service';
 
 // Translate a Prisma P2002 (unique violation) on the (email, role) index
 // into a user-facing 409. Two concurrent register POSTs with the same
@@ -72,6 +73,11 @@ export interface TokenPayload {
   id: string;
   email: string;
   role: string;
+  // Effective permission keys — loaded from DB at token issuance for ADMIN
+  // sub-roles so requirePermission() works without a per-request DB hit.
+  // SUPER_ADMIN bypasses requirePermission unconditionally; USER/PARTNER never
+  // call admin routes, so neither needs this field.
+  permissions?: string[];
   // IDs of sibling accounts that share the same email+password. Present when
   // login matched more than one account on the chosen surface (web or mobile).
   // Used by /auth/switch-account to authorize switching without re-auth.
@@ -1140,10 +1146,21 @@ export class AuthService {
     accountGroup?: string[],
     impersonation?: ImpersonationClaims
   ): Promise<AuthTokens> {
+    // Embed permission keys for ADMIN sub-roles so requirePermission() can
+    // evaluate them from the JWT without a DB hit on every request.
+    // SUPER_ADMIN bypasses requirePermission unconditionally — no query needed.
+    // USER/PARTNER never call admin routes — no query needed.
+    let permissions: string[] | undefined;
+    if (user.role === 'ADMIN') {
+      const perms = await resolveUserPermissions(user.id);
+      if (perms.length > 0) permissions = perms;
+    }
+
     const payload: TokenPayload = {
       id: user.id,
       email: user.email,
       role: user.role,
+      ...(permissions ? { permissions } : {}),
       ...(accountGroup && accountGroup.length > 1 ? { ag: accountGroup } : {}),
       ...(clientType ? { ct: clientType } : {}),
       ...(impersonation

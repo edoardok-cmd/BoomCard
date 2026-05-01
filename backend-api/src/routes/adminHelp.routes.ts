@@ -316,24 +316,26 @@ router.post('/:id/reply', requirePermission('help.write'), async (req: AuthReque
       return res.status(400).json({ error: 'Cannot reply to a closed ticket' });
     }
 
-    const reply = await prisma.ticketReply.create({
-      data: {
-        ticketId: req.params.id,
-        authorId: req.user!.id,
-        body: body.trim(),
-        isAdmin: true,
-      },
-      include: {
-        author: { select: { id: true, firstName: true, lastName: true, email: true } },
-      },
-    });
-
     // Author-aware status transition:
     //   support replies on OPEN/NEW → WAITING (waiting for creator to respond)
     //   creator replies on WAITING  → OPEN    (back to support to act)
     //   creator replies on NEW      → no change: only assignment (POST /:id/assign) moves NEW→OPEN
     //   support replies on WAITING  → no change: ticket is already awaiting the creator
     const isCreator = req.user!.id === ticket.userId;
+
+    const reply = await prisma.ticketReply.create({
+      data: {
+        ticketId: req.params.id,
+        authorId: req.user!.id,
+        body: body.trim(),
+        // Creator's follow-ups appear on the "user" side of the chat;
+        // support replies appear on the "admin" side.
+        isAdmin: !isCreator,
+      },
+      include: {
+        author: { select: { id: true, firstName: true, lastName: true, email: true } },
+      },
+    });
     let newStatus: TicketStatus | null = null;
     if (!isCreator && (ticket.status === 'OPEN' || ticket.status === 'NEW')) {
       newStatus = 'WAITING';
@@ -354,7 +356,8 @@ router.post('/:id/reply', requirePermission('help.write'), async (req: AuthReque
         .sendEmail({
           to: ticket.user.email,
           subject: `[Отговор на заявка] ${ticket.subject}`,
-          html: `<p><strong>Получихте отговор на вашата вътрешна заявка</strong></p>
+          html: `<p><strong>Здравей, ${esc2(ticket.user.firstName || ticket.user.email)},</strong></p>
+<p>Получихте отговор на вашата вътрешна заявка.</p>
 <table cellpadding="4">
   <tr><td><strong>Тема:</strong></td><td>${esc2(ticket.subject)}</td></tr>
   <tr><td><strong>Категория:</strong></td><td>${CATEGORY_BG[ticket.category] ?? ticket.category}</td></tr>
@@ -362,7 +365,7 @@ router.post('/:id/reply', requirePermission('help.write'), async (req: AuthReque
 <hr/>
 <p>${esc2(body.trim()).replace(/\n/g, '<br/>')}</p>
 <p style="color:#999;font-size:12px;">Ticket ID: ${ticket.id} &middot; <a href="https://boomcard.bg/admin/help/mine">Моите заявки</a></p>`,
-          text: `Получихте отговор на вашата вътрешна заявка\n\nТема: ${ticket.subject}\nКатегория: ${CATEGORY_BG[ticket.category] ?? ticket.category}\n\n${body.trim()}\n\nTicket ID: ${ticket.id}`,
+          text: `Здравей, ${ticket.user.firstName || ticket.user.email},\n\nПолучихте отговор на вашата вътрешна заявка.\n\nТема: ${ticket.subject}\nКатегория: ${CATEGORY_BG[ticket.category] ?? ticket.category}\n\n${body.trim()}\n\nTicket ID: ${ticket.id}`,
         })
         .catch((err) => logger.error('[adminHelp] Failed to send reply notification email:', err));
     }

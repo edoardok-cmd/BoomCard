@@ -275,7 +275,7 @@ export default function AdminAdminsCreatePage() {
               <Input
                 id="email"
                 type="email"
-                placeholder="admin@example.com"
+                placeholder="admin@boomcard.bg"
                 value={form.email}
                 onChange={set('email')}
                 required

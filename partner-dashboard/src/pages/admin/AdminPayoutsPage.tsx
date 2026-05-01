@@ -930,10 +930,10 @@ export default function AdminPayoutsPage() {
         {showBulkBar && (
           <BulkBar>
             <BulkBarText>
-              {summary.pendingCount} чакащи заявки с регистриран IBAN в системата
+              {summary.pendingCount} чакащи заявки в системата
             </BulkBarText>
             <BulkBtn onClick={handleBulkApprove}>
-              Одобри всички {summary.pendingCount}
+              Одобри всички с IBAN
             </BulkBtn>
           </BulkBar>
         )}
@@ -983,8 +983,8 @@ export default function AdminPayoutsPage() {
           <Modal onClick={(e) => e.stopPropagation()}>
             <ModalTitle>Масово одобрение</ModalTitle>
             <ModalSubtitle>
-              Ще бъдат одобрени всички {modal.bulkCount} чакащи заявки с регистриран IBAN в системата (всички страници).
-              Всяка преминава в статус „Обработва се" и абонатът получава имейл.
+              Ще бъдат одобрени всички чакащи заявки с регистриран IBAN (от общо {modal.bulkCount} чакащи в системата).
+              Заявките без IBAN се пропускат. Одобрените преминават в статус „Обработва се" и абонатът получава имейл.
             </ModalSubtitle>
             <ModalActions>
               <Btn $variant="ghost" onClick={closeModal}>Отказ</Btn>

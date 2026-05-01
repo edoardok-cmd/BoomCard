@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import styled from 'styled-components';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-hot-toast';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { useAuth } from '../../contexts/AuthContext';
 import { DataTable, ColumnDef } from '../../components/admin/DataTable/DataTable';
 import {
   adminAdminsService,
@@ -263,6 +264,8 @@ type ActiveModal = ApproveRoleModal | ApproveSuperModal | null;
 
 export default function AdminAdminsPendingPage() {
   const { language } = useLanguage();
+  const { user } = useAuth();
+  const isSuperAdmin = user?.rawRole === 'SUPER_ADMIN';
   const queryClient = useQueryClient();
 
   const [rolePage, setRolePage] = useState(1);
@@ -363,6 +366,20 @@ export default function AdminAdminsPendingPage() {
     },
   ];
 
+  const ROLE_LABEL: Record<string, string> = {
+    ADMIN: 'Администратор',
+    SUPER_ADMIN: 'Супер администратор',
+    SUPPORT: 'Поддръжка',
+    FINANCE: 'Финанси',
+    RISK_REVIEW: 'Преглед на риск',
+    PARTNER_MANAGER: 'Мениджър партньори',
+  };
+
+  const ROLE_BADGE_STYLE: Record<string, React.CSSProperties> = {
+    SUPER_ADMIN:     { background: palette.dangerSoft, color: palette.danger },
+    ADMIN:           { background: palette.infoSoft, color: palette.info },
+  };
+
   const roleColumns: ColumnDef<PendingAdmin>[] = [
     {
       key: 'user',
@@ -375,6 +392,20 @@ export default function AdminAdminsPendingPage() {
           <MetaLine>{row.email}</MetaLine>
           {row.phone && <MetaLine>{row.phone}</MetaLine>}
         </UserCell>
+      ),
+    },
+    {
+      key: 'systemRole',
+      header: 'Системна роля',
+      render: (row) => (
+        <span style={{
+          display: 'inline-flex', alignItems: 'center',
+          fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase' as const,
+          letterSpacing: '0.05em', borderRadius: '0.375rem', padding: '0.125rem 0.5rem',
+          ...( ROLE_BADGE_STYLE[row.role] ?? { background: '#f3f4f6', color: '#374151' }),
+        }}>
+          {ROLE_LABEL[row.role] ?? row.role}
+        </span>
       ),
     },
     {
@@ -420,9 +451,15 @@ export default function AdminAdminsPendingPage() {
         <SectionSubtitle>Нови акаунти на Супер администратор, чакащи одобрение от втори Супер администратор</SectionSubtitle>
 
         {(superData?.total ?? 0) > 0 && (
-          <DangerBanner>
-            Само Супер администратор може да одобри или отхвърли тези заявки. Одобряването създава пълен акаунт на Супер администратор.
-          </DangerBanner>
+          isSuperAdmin ? (
+            <DangerBanner>
+              Само Супер администратор може да одобри или отхвърли тези заявки. Одобряването създава пълен акаунт на Супер администратор.
+            </DangerBanner>
+          ) : (
+            <InfoBanner>
+              🔒 Нямате права да одобрявате или отхвърляте заявки за Супер администратор. Свържете се с друг Супер администратор.
+            </InfoBanner>
+          )
         )}
 
         <DataTable
@@ -436,14 +473,18 @@ export default function AdminAdminsPendingPage() {
           totalItems={superData?.total}
           onPageChange={setSuperPage}
           rowActions={[
-            {
+            ...(isSuperAdmin ? [{
               label: 'Одобри',
-              onClick: (row) => setModal({ type: 'super', request: row }),
-            },
+              onClick: (row: PendingSuperAdminRequest) => setModal({ type: 'super', request: row }),
+            }] : []),
             {
-              label: 'Отхвърли',
-              danger: true as const,
-              onClick: (row) => {
+              label: isSuperAdmin ? 'Отхвърли' : 'Виж заявката',
+              danger: isSuperAdmin ? true as const : false,
+              onClick: (row: PendingSuperAdminRequest) => {
+                if (!isSuperAdmin) {
+                  toast('Само Супер администратор може да одобри или отхвърли тази заявка.', { icon: '🔒' });
+                  return;
+                }
                 if (!window.confirm(`Да се отхвърли заявката за Супер администратор за ${row.email}?`)) return;
                 rejectSuperMutation.mutate(row.id);
               },
@@ -491,6 +532,7 @@ export default function AdminAdminsPendingPage() {
           rowActions={[
             {
               label: 'Назначи роля',
+              hidden: (row: PendingAdmin) => row.role === 'SUPER_ADMIN',
               onClick: (row) => {
                 setModal({ type: 'role', admin: row });
                 setSelectedRole('ADMIN');

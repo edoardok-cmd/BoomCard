@@ -41,6 +41,7 @@ const FilterLabel = styled.label`font-size: 0.75rem; font-weight: 600; color: ${
 const SearchInput = styled.input`flex: 1; max-width: 18rem; padding: 0.5rem 0.875rem; border: 1px solid ${palette.border}; border-radius: 0.5rem; font-size: 0.875rem; background: ${palette.bg}; color: ${palette.text}; outline: none; &:focus { border-color: ${palette.accent}; box-shadow: 0 0 0 2px ${palette.accentSoft}; } &::placeholder { color: ${palette.textSubtle}; }`;
 const Select = styled.select`padding: 0.5rem 0.75rem; border: 1px solid ${palette.border}; border-radius: 0.5rem; font-size: 0.875rem; background: ${palette.bg}; color: ${palette.text}; outline: none; cursor: pointer; &:focus { border-color: ${palette.accent}; }`;
 const MonthInput = styled.input`padding: 0.5rem 0.75rem; border: 1px solid ${palette.border}; border-radius: 0.5rem; font-size: 0.875rem; background: ${palette.bg}; color: ${palette.text}; outline: none; &:focus { border-color: ${palette.accent}; }`;
+const ClearMonthBtn = styled.button`padding: 0.4rem 0.6rem; border: 1px solid ${palette.border}; border-radius: 0.5rem; font-size: 0.875rem; line-height: 1; color: ${palette.textSubtle}; background: ${palette.bg}; cursor: pointer; &:hover { border-color: ${palette.danger}; color: ${palette.danger}; }`;
 const ExportBtn = styled.button`display: inline-flex; align-items: center; gap: 0.375rem; padding: 0.5rem 1rem; border: 1px solid ${palette.border}; border-radius: 0.5rem; font-size: 0.875rem; font-weight: 600; color: ${palette.textMuted}; background: ${palette.surface}; cursor: pointer; white-space: nowrap; &:hover { border-color: ${palette.accent}; color: ${palette.accent}; } &:disabled { opacity: 0.5; cursor: default; }`;
 const GenerateBtn = styled.button`display: inline-flex; align-items: center; gap: 0.375rem; padding: 0.5rem 1rem; border: none; border-radius: 0.5rem; font-size: 0.875rem; font-weight: 600; color: #fff; background: ${palette.accent}; cursor: pointer; white-space: nowrap; &:hover { opacity: 0.88; } &:disabled { opacity: 0.5; cursor: default; }`;
 const PrimaryLine = styled.div`font-weight: 600; color: ${palette.text};`;
@@ -533,12 +534,17 @@ export default function AdminFinanceInvoicesPage() {
           </FilterField>
           <FilterField>
             <FilterLabel htmlFor="inv-month">Месец</FilterLabel>
-            <MonthInput
-              id="inv-month"
-              type="month"
-              value={month}
-              onChange={(e) => { setMonth(e.target.value); setPage(1); }}
-            />
+            <div style={{ display: 'flex', gap: '0.375rem', alignItems: 'center' }}>
+              <MonthInput
+                id="inv-month"
+                type="month"
+                value={month}
+                onChange={(e) => { setMonth(e.target.value); setPage(1); }}
+              />
+              {month && (
+                <ClearMonthBtn title="Покажи всички месеци" onClick={() => { setMonth(''); setPage(1); }}>×</ClearMonthBtn>
+              )}
+            </div>
           </FilterField>
         </FilterRow>
 

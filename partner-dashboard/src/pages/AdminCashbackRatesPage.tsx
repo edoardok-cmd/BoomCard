@@ -343,7 +343,7 @@ const t = (lang: 'en' | 'bg') => ({
   step:             lang === 'bg' ? 'Стъпка' : 'Discount step',
   stepHint:         lang === 'bg' ? 'договорен % отстъпка на партньора' : "partner's contracted discount %",
   basic:            'BASIC (%)',
-  premium:          lang === 'bg' ? 'LIGHT / PREMIUM (%)' : 'LIGHT / PREMIUM (%)',
+  premium:          'LIGHT / PREMIUM (%)',
   premiumHint:      lang === 'bg' ? 'важи за абонати с LIGHT и PREMIUM план' : 'applies to subscribers on LIGHT and PREMIUM plans',
   marginBasic:      lang === 'bg' ? 'Марж BASIC (%)' : 'Margin BASIC (%)',
   marginPremium:    lang === 'bg' ? 'Марж LIGHT/PREMIUM (%)' : 'Margin LIGHT/PREMIUM (%)',
@@ -366,7 +366,6 @@ const t = (lang: 'en' | 'bg') => ({
     : 'Are you sure you want to cancel this scheduled snapshot?',
   snapshotDeleted:  lang === 'bg' ? 'Планираният снимък е отменен' : 'Scheduled snapshot cancelled',
   thEffective:      lang === 'bg' ? 'В сила от' : 'Effective from',
-  thBy:             lang === 'bg' ? 'Автор' : 'By',
   mustBeNumbers:    (step: number) =>
     lang === 'bg'
       ? `Стъпка ${step}%: BASIC и LIGHT/PREMIUM трябва да са числа`
@@ -390,6 +389,8 @@ const t = (lang: 'en' | 'bg') => ({
   showingCount:     (shown: number, total: number) =>
     lang === 'bg' ? `${shown} от ${total} снимки` : `${shown} of ${total} snapshots`,
   notesLabel:       lang === 'bg' ? 'Бележки' : 'Notes',
+  notesPlaceholder: lang === 'bg' ? 'напр. Q2 ревизия' : 'e.g. Q2 revision',
+  mixedSnapshots:   lang === 'bg' ? '(стъпките са от различни снимки)' : '(steps are from different snapshots)',
 });
 
 // ── Helpers ───────────────────────────────────────────────────────────
@@ -626,7 +627,7 @@ const AdminCashbackRatesPage: React.FC = () => {
               <> · <strong>{currentSnapshotInfo.author}</strong></>
             )}
             {currentSnapshotInfo.mixed && (
-              <> · <em>(стъпките са от различни снимки)</em></>
+              <> · <em>{tr.mixedSnapshots}</em></>
             )}
           </SnapshotMeta>
         )}
@@ -742,7 +743,7 @@ const AdminCashbackRatesPage: React.FC = () => {
             <TextInput
               value={notes}
               onChange={e => { setNotes(e.target.value); setPendingPayload(null); }}
-              placeholder={language === 'bg' ? 'напр. Q2 ревизия' : 'e.g. Q2 revision'}
+              placeholder={tr.notesPlaceholder}
               disabled={!!pendingPayload}
             />
           </Field>

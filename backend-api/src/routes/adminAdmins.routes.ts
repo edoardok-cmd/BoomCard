@@ -2,7 +2,7 @@ import { Router } from 'express';
 import bcrypt from 'bcrypt';
 import { AdminRoleKey, UserRole, UserStatus } from '@prisma/client';
 import { authenticate, authorize, requirePermission } from '../middleware/auth.middleware';
-import { auditMiddleware } from '../middleware/audit.middleware';
+import { auditMiddleware, writeAudit } from '../middleware/audit.middleware';
 import { prisma } from '../lib/prisma';
 import type { AuthRequest } from '../middleware/auth.middleware';
 
@@ -115,26 +115,26 @@ router.get('/pending', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requireP
     const skip = (pageNum - 1) * limitNum;
     const take = limitNum;
 
-    const where: Parameters<typeof prisma.user.findMany>[0]['where'] = {
-      role: 'ADMIN',
+    const baseCondition = {
+      role: { in: ['ADMIN', 'SUPER_ADMIN'] as UserRole[] },
       adminRoles: { none: {} },
     };
 
-    if (search) {
-      where.AND = [
-        { role: 'ADMIN', adminRoles: { none: {} } },
-        {
-          OR: [
-            { email: { contains: search, mode: 'insensitive' } },
-            { firstName: { contains: search, mode: 'insensitive' } },
-            { lastName: { contains: search, mode: 'insensitive' } },
-            { phone: { contains: search, mode: 'insensitive' } },
+    const where: Parameters<typeof prisma.user.findMany>[0]['where'] = search
+      ? {
+          AND: [
+            baseCondition,
+            {
+              OR: [
+                { email: { contains: search, mode: 'insensitive' } },
+                { firstName: { contains: search, mode: 'insensitive' } },
+                { lastName: { contains: search, mode: 'insensitive' } },
+                { phone: { contains: search, mode: 'insensitive' } },
+              ],
+            },
           ],
-        },
-      ];
-      delete where.role;
-      delete where.adminRoles;
-    }
+        }
+      : baseCondition;
 
     const [users, total] = await Promise.all([
       prisma.user.findMany({
@@ -148,6 +148,7 @@ router.get('/pending', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requireP
           firstName: true,
           lastName: true,
           phone: true,
+          role: true,
           status: true,
           createdAt: true,
         },
@@ -202,7 +203,7 @@ router.get('/pending-all', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requ
   try {
     const [pendingRoleAssignments, pendingSuperAdmins] = await Promise.all([
       prisma.user.findMany({
-        where: { role: 'ADMIN', adminRoles: { none: {} } },
+        where: { role: { in: ['ADMIN', 'SUPER_ADMIN'] as UserRole[] }, adminRoles: { none: {} } },
         orderBy: { createdAt: 'desc' },
         select: { id: true, email: true, firstName: true, lastName: true, status: true, createdAt: true },
       }),
@@ -240,7 +241,7 @@ router.get('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermissi
     const take = limitNum;
 
     const where: Parameters<typeof prisma.user.findMany>[0]['where'] = {
-      role: { in: ['ADMIN', 'SUPER_ADMIN'] },
+      role: { in: ['ADMIN', 'SUPER_ADMIN'] as UserRole[] },
     };
 
     if (roleKey && Object.values(AdminRoleKey).includes(roleKey as AdminRoleKey)) {
@@ -538,10 +539,24 @@ router.patch('/:id/status', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), req
       }
     }
 
+    const beforeStatus = target.status;
+
     const updated = await prisma.user.update({
       where: { id },
       data: { status },
       select: { id: true, status: true },
+    });
+
+    req.skipAudit = true;
+    await writeAudit({
+      actorUserId: req.user!.id,
+      action: 'admin.status',
+      objectType: 'admin',
+      objectId: id,
+      before: { status: beforeStatus },
+      after: { status },
+      ip: (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ?? req.socket.remoteAddress ?? null,
+      userAgent: req.headers['user-agent'] ?? null,
     });
 
     res.json({ ok: true, ...updated });
@@ -602,6 +617,12 @@ router.delete('/:id/roles/:roleKey', authenticate, authorize('ADMIN', 'SUPER_ADM
     const adminRole = await prisma.adminRole.findUnique({ where: { key: roleKey as AdminRoleKey } });
     if (!adminRole) return res.status(404).json({ error: 'Role not found' });
 
+    const existingRoles = await prisma.userAdminRole.findMany({
+      where: { userId: id },
+      select: { role: { select: { key: true } } },
+    });
+    const beforeRoles = existingRoles.map((r) => r.role.key);
+
     if (roleKey === AdminRoleKey.SUPER_ADMIN) {
       // Removing SUPER_ADMIN must also downgrade User.role — authorization middleware
       // checks user.role directly, not UserAdminRole, so deleting only the junction row
@@ -619,6 +640,18 @@ router.delete('/:id/roles/:roleKey', authenticate, authorize('ADMIN', 'SUPER_ADM
         return res.status(404).json({ error: 'Admin does not have this role' });
       }
     }
+
+    req.skipAudit = true;
+    await writeAudit({
+      actorUserId: (req as AuthRequest).user!.id,
+      action: 'admin.roles.delete',
+      objectType: 'admin',
+      objectId: id,
+      before: { roles: beforeRoles },
+      after: { removedRole: roleKey },
+      ip: (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ?? req.socket.remoteAddress ?? null,
+      userAgent: req.headers['user-agent'] ?? null,
+    });
 
     res.json({ ok: true });
   } catch (error) {

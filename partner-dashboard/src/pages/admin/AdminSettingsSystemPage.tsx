@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import styled from 'styled-components';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-hot-toast';
@@ -142,12 +143,6 @@ const SelectInput = styled.select`
   &:focus { border-color: ${palette.accent}; box-shadow: 0 0 0 2px ${palette.accentSoft}; }
 `;
 
-const Divider = styled.hr`
-  border: none;
-  border-top: 1px solid ${palette.border};
-  margin: 0.25rem 0 0.5rem;
-`;
-
 const SubLabel = styled.p`
   font-size: 0.75rem;
   font-weight: 600;
@@ -180,12 +175,10 @@ const CURRENCIES = [
 
 export default function AdminSettingsSystemPage() {
   const queryClient = useQueryClient();
-  const [maxFraud, setMaxFraud] = useState('80');
+  const [maxFraud, setMaxFraud] = useState('60');
   const [autoApprove, setAutoApprove] = useState('30');
   const [dailyLimit, setDailyLimit] = useState('');
   const [maxCashback, setMaxCashback] = useState('');
-  const [cashbackExpiryDays, setCashbackExpiryDays] = useState('');
-  const [offerValidityDays, setOfferValidityDays] = useState('');
   const [supportEmail, setSupportEmail] = useState('');
   const [supportPhone, setSupportPhone] = useState('');
   const [replyToEmail, setReplyToEmail] = useState('');
@@ -206,10 +199,8 @@ export default function AdminSettingsSystemPage() {
     if (!data?.data) return;
     if (data.data.max_fraud_score)          setMaxFraud(data.data.max_fraud_score);
     if (data.data.auto_approve_threshold)   setAutoApprove(data.data.auto_approve_threshold);
-    if (data.data.daily_scan_limit_default) setDailyLimit(data.data.daily_scan_limit_default);
-    if (data.data.max_cashback_per_month)   setMaxCashback(data.data.max_cashback_per_month);
-    if (data.data.cashback_expiry_days)     setCashbackExpiryDays(data.data.cashback_expiry_days);
-    if (data.data.offer_validity_days)      setOfferValidityDays(data.data.offer_validity_days);
+    setDailyLimit(data.data.daily_scan_limit_default ?? '');
+    setMaxCashback(data.data.max_cashback_per_month ?? '');
     if (data.data.support_email)            setSupportEmail(data.data.support_email);
     if (data.data.support_phone)            setSupportPhone(data.data.support_phone);
     if (data.data.reply_to_email)           setReplyToEmail(data.data.reply_to_email);
@@ -238,12 +229,9 @@ export default function AdminSettingsSystemPage() {
         maintenance_mode: String(maintenanceMode),
         maintenance_message: maintenanceMessage,
       };
-      // Always include optional numeric keys — empty string tells the backend to delete the row
-      // (reverts to application default). This allows clearing a previously saved value.
+      // Empty string tells the backend to delete the row (reverts to application default).
       settings.daily_scan_limit_default = dailyLimit;
       settings.max_cashback_per_month = maxCashback;
-      settings.cashback_expiry_days = cashbackExpiryDays;
-      settings.offer_validity_days = offerValidityDays;
       return adminSettingsService.saveSystemSettings(settings);
     },
     onSuccess: () => {
@@ -285,26 +273,16 @@ export default function AdminSettingsSystemPage() {
         return;
       }
     }
-    if (cashbackExpiryDays) {
-      const ced = parseInt(cashbackExpiryDays, 10);
-      if (!Number.isFinite(ced) || !Number.isInteger(ced) || ced < 1 || ced > 3650) {
-        toast.error('Валидност на кешбека трябва да е цяло число между 1 и 3650');
-        return;
-      }
-    }
-    if (offerValidityDays) {
-      const ovd = parseInt(offerValidityDays, 10);
-      if (!Number.isFinite(ovd) || !Number.isInteger(ovd) || ovd < 1 || ovd > 3650) {
-        toast.error('Валидност на офертите трябва да е цяло число между 1 и 3650');
-        return;
-      }
-    }
-    if (fromEmail && !EMAIL_RE.test(fromEmail)) {
-      toast.error('Изпращащият имейл трябва да е валиден адрес');
+    if (supportEmail && !EMAIL_RE.test(supportEmail)) {
+      toast.error('Имейлът за поддръжка трябва да е валиден адрес');
       return;
     }
     if (replyToEmail && !EMAIL_RE.test(replyToEmail)) {
       toast.error('Reply-To имейлът трябва да е валиден адрес');
+      return;
+    }
+    if (fromEmail && !EMAIL_RE.test(fromEmail)) {
+      toast.error('Изпращащият имейл трябва да е валиден адрес');
       return;
     }
     saveMutation.mutate();
@@ -316,7 +294,7 @@ export default function AdminSettingsSystemPage() {
         <Eyebrow>Настройки</Eyebrow>
         <PageTitle>Система</PageTitle>
         <PageSubtitle>
-          Глобални прагове за измами, лимити за сканиране, контакти за поддръжка и локализация.
+          Глобални прагове за измами, лимити за сканиране, контакти за поддръжка, локализация и режим на поддръжка.
         </PageSubtitle>
       </PageHeader>
 
@@ -328,7 +306,7 @@ export default function AdminSettingsSystemPage() {
         <Card>
           <CardTitle>Лимити и прагове</CardTitle>
           <p style={{ fontSize: '0.8rem', color: palette.textSubtle, margin: '0 0 1.25rem', lineHeight: 1.5 }}>
-            Глобални стойности по подразбиране. За правила на ниво партньор или потребител вижте <strong>Контрол → Лимити и правила</strong>.
+            Глобални стойности по подразбиране. За правила на ниво партньор или потребител вижте <strong>Контрол → Лимити и правила</strong>. За валидност на кешбек и оферти вижте <Link to="/admin/settings/validity" style={{ color: palette.accent }}>Настройки → Валидност</Link>.
           </p>
           {isLoading ? (
             <p style={{ color: palette.textSubtle, fontSize: '0.875rem' }}>Зареждане…</p>
@@ -336,13 +314,13 @@ export default function AdminSettingsSystemPage() {
             <FieldGroup>
               <SubLabel>Измами и сканиране</SubLabel>
               <div>
-                <FieldLabel>Макс. оценка за измама (0–100)</FieldLabel>
+                <FieldLabel>Праг за оповестяване на измама (0–100)</FieldLabel>
                 <NumberInput
                   type="number" min="0" max="100" step="1"
                   value={maxFraud}
                   onChange={(e) => setMaxFraud(e.target.value)}
                 />
-                <FieldHint>Бонове с по-висока оценка се изпращат за РЪЧЕН ПРЕГЛЕД. По подразбиране: 80.</FieldHint>
+                <FieldHint>Бонове с оценка ≥ тази стойност задействат известие за измама до администраторите. Всички бонове отиват за ръчен преглед независимо от оценката. По подразбиране: 60.</FieldHint>
               </div>
               <div>
                 <FieldLabel>Праг за предупреждение при корекция (0–100)</FieldLabel>
@@ -366,7 +344,7 @@ export default function AdminSettingsSystemPage() {
                 <FieldHint>Макс. брой касови бележки на потребител на ден (глобално, не на обект). Оставете празно за без лимит.</FieldHint>
               </div>
               <div>
-                <FieldLabel>Макс. кешбек за 30 дни (лв.)</FieldLabel>
+                <FieldLabel>Макс. кешбек за 30 дни ({currency === 'BGN' ? 'лв.' : '€'})</FieldLabel>
                 <NumberInput
                   type="number" min="1"
                   value={maxCashback}
@@ -374,37 +352,10 @@ export default function AdminSettingsSystemPage() {
                   placeholder="без таван"
                 />
                 <FieldHint>
-                  Таван на кешбек, който абонат може да спечели за последните 30 дни (плъзгащ прозорец). Оставете празно за без таван. Минимална стойност: 1 лв. — стойност 0 не е позволена и ще блокира целия кешбек.
+                  Таван на кешбек, който абонат може да спечели за последните 30 дни (плъзгащ прозорец). Оставете празно за без таван. Минимална стойност: 1 — стойност 0 не е позволена и ще блокира целия кешбек.
                 </FieldHint>
               </div>
 
-              <Divider />
-              <SubLabel>Валидност</SubLabel>
-
-              <div>
-                <FieldLabel>Валидност на кешбека (дни)</FieldLabel>
-                <NumberInput
-                  type="number" min="1" max="3650"
-                  value={cashbackExpiryDays}
-                  onChange={(e) => setCashbackExpiryDays(e.target.value)}
-                  placeholder="60"
-                />
-                <FieldHint>
-                  Брой дни, след които неизползван кешбек в портфейла изтича. По подразбиране: 60 дни. Оставете празно за стойността по подразбиране.
-                </FieldHint>
-              </div>
-              <div>
-                <FieldLabel>Валидност на офертите (дни)</FieldLabel>
-                <NumberInput
-                  type="number" min="1" max="3650"
-                  value={offerValidityDays}
-                  onChange={(e) => setOfferValidityDays(e.target.value)}
-                  placeholder="90"
-                />
-                <FieldHint>
-                  Брой дни, за които новосъздадена партньорска оферта е активна по подразбиране. По подразбиране: 90 дни. Оставете празно за стойността по подразбиране.
-                </FieldHint>
-              </div>
             </FieldGroup>
           )}
         </Card>
