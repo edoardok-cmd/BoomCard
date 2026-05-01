@@ -60,8 +60,6 @@ export interface AdminDisputesResult {
 }
 
 // Fraud-signal feed for Контрол > Сигурност (spec §7.2).
-// Backed by /admin/control/risk-queue with tier=all so the page can show duplicate
-// detection, QR/receipt mismatch, velocity, IBAN-anomaly signals as fraudReasons.
 export interface FraudSignalReceipt {
   id: string;
   fraudScore: number;
@@ -82,7 +80,10 @@ export interface FraudSignalReceipt {
   venue: {
     id: string;
     name: string;
+    partnerId: string;
     partner: { id: string; businessName: string } | null;
+    // Spec §7.2 "Риск при партньор": derived from risk-receipt count across all partner venues.
+    partnerRiskBucket: 'LOW' | 'MEDIUM' | 'HIGH' | null;
   } | null;
 }
 
@@ -90,6 +91,22 @@ export interface FraudSignalsResult {
   success: boolean;
   data: FraudSignalReceipt[];
   meta: { total: number; page: number; limit: number; pages: number; tier: string };
+}
+
+// Global signal counts (not page-scoped) from /risk-queue/summary.
+export interface RiskQueueSummary {
+  total: number;
+  duplicate: number;
+  qrMismatch: number;
+  velocity: number;
+  ibanAnomaly: number;
+  receiptMatch: number;
+  other: number;
+}
+
+export interface RiskQueueSummaryResult {
+  success: boolean;
+  data: RiskQueueSummary;
 }
 
 export const adminControlService = {
@@ -106,6 +123,18 @@ export const adminControlService = {
     };
     if (params.venueId) clean.venueId = params.venueId;
     return apiService.get('/admin/control/risk-queue', clean);
+  },
+
+  getRiskQueueSummary(): Promise<RiskQueueSummaryResult> {
+    return apiService.get('/admin/control/risk-queue/summary');
+  },
+
+  approveRiskSignal(id: string, notes?: string): Promise<{ success: boolean }> {
+    return apiService.post(`/admin/control/risk-queue/${id}/approve`, notes ? { notes } : {});
+  },
+
+  rejectRiskSignal(id: string, reason?: string): Promise<{ success: boolean }> {
+    return apiService.post(`/admin/control/risk-queue/${id}/reject`, reason ? { reason } : {});
   },
 
   getSecurityLogs(params: {
@@ -134,11 +163,11 @@ export const adminControlService = {
     return apiService.get('/admin/control/disputes', clean);
   },
 
-  approveDispute(id: string): Promise<void> {
-    return apiService.post(`/admin/control/disputes/${id}/approve`, {});
+  approveDispute(id: string, notes?: string): Promise<void> {
+    return apiService.post(`/admin/control/disputes/${id}/approve`, notes ? { notes } : {});
   },
 
-  rejectDispute(id: string): Promise<void> {
-    return apiService.post(`/admin/control/disputes/${id}/reject`, {});
+  rejectDispute(id: string, notes?: string): Promise<void> {
+    return apiService.post(`/admin/control/disputes/${id}/reject`, notes ? { notes } : {});
   },
 };

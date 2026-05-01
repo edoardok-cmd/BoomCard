@@ -1001,7 +1001,7 @@ class ReceiptService {
             userId: receipt.userId,
             amount: cashbackAmount,
             type: WalletTransactionType.CASHBACK_CREDIT,
-            description: `Cashback from receipt at ${receipt.merchantName || 'merchant'}`,
+            description: `Кешбек от бележка в ${receipt.merchantName || 'търговец'}`,
             receiptId: receipt.id,
             metadata: {
               merchantName: receipt.merchantName,

@@ -40,7 +40,7 @@ export interface PeriodRow {
   paid: number;
   overdue: number;
   count: number;
-  /** True when the month has APPROVED scans but no invoices have been generated yet. */
+  /** True when the month has APPROVED scans not yet fully covered by generated invoices. */
   hasUnbilledScans: boolean;
 }
 
@@ -48,10 +48,15 @@ export interface ReportingPeriodRow {
   id: string;
   month: string;
   status: ReportingPeriodStatus;
+  reviewedAt: string | null;
+  reviewedBy: string | null;
+  reviewedByName: string | null;
   lockedAt: string | null;
   lockedBy: string | null;
+  lockedByName: string | null;
   invoicedAt: string | null;
   invoicedBy: string | null;
+  invoicedByName: string | null;
   notes: string | null;
   createdAt: string;
   updatedAt: string;
@@ -145,6 +150,10 @@ export const adminFinanceService = {
     return apiService.patch(`/admin/finance/reporting-periods/${month}/status`, { status });
   },
 
+  deleteReportingPeriod(month: string): Promise<void> {
+    return apiService.delete(`/admin/finance/reporting-periods/${month}`);
+  },
+
   getReports(params?: {
     from?: string;
     to?: string;
@@ -178,8 +187,8 @@ export const adminFinanceService = {
     URL.revokeObjectURL(url);
   },
 
-  async exportPeriods(params: { year?: number }): Promise<void> {
-    const q: Record<string, unknown> = { type: 'periods', format: 'xlsx' };
+  async exportPeriods(params: { year?: number; format?: 'csv' | 'xlsx' }): Promise<void> {
+    const q: Record<string, unknown> = { type: 'periods', format: params.format ?? 'xlsx' };
     if (params.year) q.year = String(params.year);
     const { data, filename } = await apiService.getBlob('/admin/finance/export', q);
     const url = URL.createObjectURL(data);
@@ -190,8 +199,8 @@ export const adminFinanceService = {
     URL.revokeObjectURL(url);
   },
 
-  async exportInvoices(params: { status?: string; month?: string; search?: string }): Promise<void> {
-    const q: Record<string, unknown> = { type: 'invoices', format: 'xlsx' };
+  async exportInvoices(params: { status?: string; month?: string; search?: string; format?: 'csv' | 'xlsx' }): Promise<void> {
+    const q: Record<string, unknown> = { type: 'invoices', format: params.format ?? 'xlsx' };
     if (params.status) q.status = params.status;
     if (params.month) q.month = params.month;
     if (params.search) q.search = params.search;

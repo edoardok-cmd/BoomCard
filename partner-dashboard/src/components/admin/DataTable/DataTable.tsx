@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
 import Pagination from '../../common/Pagination/Pagination';
 
@@ -55,6 +55,18 @@ export function DataTable<T>({
   onSort,
 }: DataTableProps<T>) {
   const [openActionRow, setOpenActionRow] = useState<string | null>(null);
+
+  // Close the open action menu when the user clicks anywhere outside it
+  useEffect(() => {
+    if (!openActionRow) return;
+    const handler = (e: MouseEvent) => {
+      if (!(e.target as Element).closest('[data-action-menu]')) {
+        setOpenActionRow(null);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [openActionRow]);
 
   const handleSort = (col: ColumnDef<T>) => {
     if (!col.sortable || !onSort) return;
@@ -121,7 +133,7 @@ export function DataTable<T>({
                     {rowActions && rowActions.length > 0 && (
                       <Td>
                         {visibleActions.length > 0 && (
-                          <ActionMenu>
+                          <ActionMenu data-action-menu="true">
                             <ActionToggle
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -131,7 +143,7 @@ export function DataTable<T>({
                               ···
                             </ActionToggle>
                             {openActionRow === key && (
-                              <ActionDropdown onMouseLeave={() => setOpenActionRow(null)}>
+                              <ActionDropdown>
                                 {visibleActions.map((action) => {
                                   const isDisabled = !!action.disabled?.(row);
                                   return (

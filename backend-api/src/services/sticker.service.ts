@@ -1204,7 +1204,7 @@ class StickerService {
         userId: scan.userId,
         amount: effectiveCashbackAmount,
         type: WalletTransactionType.CASHBACK_CREDIT,
-        description: `Cashback from sticker scan at ${locationName}`,
+        description: `Кешбек от сканиране на стикер в ${locationName}`,
         stickerScanId: scan.id,
         metadata: {
           venueId: scan.venueId,

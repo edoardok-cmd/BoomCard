@@ -152,6 +152,16 @@ const NEXT_STATUS: Partial<Record<ReportingPeriodStatus, ReportingPeriodStatus>>
 
 const IRREVERSIBLE_STATUSES = new Set<ReportingPeriodStatus>(['LOCKED', 'INVOICED']);
 
+const IRREVERSIBLE_WARN: Partial<Record<ReportingPeriodStatus, string>> = {
+  LOCKED:   'След заключване данните за фактуриране не могат да се променят свободно. Тази операция не може да бъде отменена.',
+  INVOICED: 'След фактуриране периодът е окончателно приключен. Тази операция не може да бъде отменена.',
+};
+
+/** A period row that may originate from payment aggregation, reporting-periods, or both. */
+interface MergedRow extends PeriodRow {
+  lifecycleOnly: boolean;
+}
+
 function monthLabel(m: string) {
   const [year, month] = m.split('-');
   return `${MONTH_NAMES[month] ?? month} ${year}`;
@@ -168,14 +178,16 @@ function fmtDateTime(iso: string | null | undefined) {
 interface ConfirmState {
   month: string;
   nextStatus: ReportingPeriodStatus;
-  row: PeriodRow;
+  row: MergedRow;
   rp: ReportingPeriodRow;
 }
 
 export default function AdminFinancePeriodsPage() {
   const queryClient = useQueryClient();
   const [year, setYear] = useState(CURRENT_YEAR);
+  const [exportFormat, setExportFormat] = useState<'xlsx' | 'csv'>('xlsx');
   const [confirmState, setConfirmState] = useState<ConfirmState | null>(null);
+  const [deleteMonth, setDeleteMonth] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
 
   const { data: periodsData, isLoading: periodsLoading } = useQuery({
@@ -221,10 +233,24 @@ export default function AdminFinancePeriodsPage() {
     },
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: (month: string) => adminFinanceService.deleteReportingPeriod(month),
+    onSuccess: (_, month) => {
+      toast.success(`Период ${month} е изтрит`);
+      setDeleteMonth(null);
+      invalidate();
+    },
+    onError: (err: unknown) => {
+      const msg = (err as any)?.response?.data?.error ?? 'Грешка при изтриване';
+      toast.error(msg);
+      setDeleteMonth(null);
+    },
+  });
+
   const handleExport = async () => {
     setExporting(true);
     try {
-      await adminFinanceService.exportPeriods({ year });
+      await adminFinanceService.exportPeriods({ year, format: exportFormat });
     } catch {
       toast.error('Грешка при експорт');
     } finally {
@@ -232,9 +258,23 @@ export default function AdminFinancePeriodsPage() {
     }
   };
 
-  const rows = periodsData?.data ?? [];
-  const rpByMonth = new Map((rpData?.data ?? []).map((r: ReportingPeriodRow) => [r.month, r]));
+  const paymentRows: PeriodRow[] = periodsData?.data ?? [];
+  const rpRows: ReportingPeriodRow[] = rpData?.data ?? [];
+  const rpByMonth = new Map(rpRows.map((r) => [r.month, r]));
   const isLoading = periodsLoading || rpLoading;
+
+  // Merge: payment rows + any lifecycle-only periods (no payments/scans for that month).
+  const paymentMonths = new Set(paymentRows.map(r => r.month));
+  const lifecycleOnlyRows: MergedRow[] = rpRows
+    .filter(rp => !paymentMonths.has(rp.month))
+    .map(rp => ({
+      month: rp.month, total: 0, pending: 0, paid: 0, overdue: 0, count: 0,
+      hasUnbilledScans: false, lifecycleOnly: true,
+    }));
+  const rows: MergedRow[] = [
+    ...paymentRows.map(r => ({ ...r, lifecycleOnly: false })),
+    ...lifecycleOnlyRows,
+  ].sort((a, b) => b.month.localeCompare(a.month));
 
   return (
     <PageShell>
@@ -245,8 +285,18 @@ export default function AdminFinancePeriodsPage() {
           <PageSubtitle>Месечни суми по партньори и жизнен цикъл на периодите</PageSubtitle>
         </TitleBlock>
         <Controls>
+          <div style={{ display: 'flex', gap: 0 }}>
+            <ExportBtn
+              style={{ borderRadius: '0.5rem 0 0 0.5rem', background: exportFormat === 'xlsx' ? palette.accent : palette.surface, color: exportFormat === 'xlsx' ? '#fff' : palette.textMuted, borderRight: 'none' }}
+              onClick={() => setExportFormat('xlsx')} disabled={exporting}
+            >XLSX</ExportBtn>
+            <ExportBtn
+              style={{ borderRadius: '0 0.5rem 0.5rem 0', background: exportFormat === 'csv' ? palette.accent : palette.surface, color: exportFormat === 'csv' ? '#fff' : palette.textMuted }}
+              onClick={() => setExportFormat('csv')} disabled={exporting}
+            >CSV</ExportBtn>
+          </div>
           <ExportBtn onClick={handleExport} disabled={exporting || isLoading || rows.length === 0}>
-            {exporting ? 'Експортиране…' : '↓ Експорт XLSX'}
+            {exporting ? 'Експортиране…' : '↓ Експорт'}
           </ExportBtn>
           <YearPicker value={year} onChange={(e) => setYear(Number(e.target.value))}>
             {YEAR_OPTIONS.map((y) => <option key={y} value={y}>{y}</option>)}
@@ -272,7 +322,7 @@ export default function AdminFinancePeriodsPage() {
               </tr>
             </thead>
             <tbody>
-              {rows.map((row: PeriodRow) => {
+              {rows.map((row: MergedRow) => {
                 const paidPct = row.count > 0 ? (row.paid / row.count) * 100 : 0;
                 const rp = rpByMonth.get(row.month);
                 const nextStatus = rp ? NEXT_STATUS[rp.status] : undefined;
@@ -288,7 +338,7 @@ export default function AdminFinancePeriodsPage() {
 
                     {/* Total obligation */}
                     <Td>
-                      {row.hasUnbilledScans && row.count === 0 ? (
+                      {row.lifecycleOnly || (row.hasUnbilledScans && row.count === 0) ? (
                         <span style={{ fontSize: '0.8125rem', color: palette.textSubtle, fontStyle: 'italic' }}>
                           Няма фактури
                         </span>
@@ -304,9 +354,11 @@ export default function AdminFinancePeriodsPage() {
                       {row.count > 0 ? row.count : '—'}
                     </Td>
 
-                    {/* Payment status pills + progress */}
+                    {/* Payment status pills + partial-coverage warning */}
                     <Td>
-                      {row.hasUnbilledScans && row.count === 0 ? (
+                      {row.lifecycleOnly ? (
+                        <span style={{ fontSize: '0.8125rem', color: palette.textSubtle }}>—</span>
+                      ) : row.hasUnbilledScans && row.count === 0 ? (
                         <UnbilledBadge>Сканирания без фактури</UnbilledBadge>
                       ) : (
                         <div>
@@ -319,28 +371,40 @@ export default function AdminFinancePeriodsPage() {
                           {row.overdue > 0 && (
                             <StatusPill $color={palette.danger} $bg={palette.dangerSoft}>{row.overdue} просрочено</StatusPill>
                           )}
+                          {/* Partial-coverage: newer approved scans are not yet invoiced */}
+                          {row.hasUnbilledScans && row.count > 0 && (
+                            <UnbilledBadge style={{ marginTop: '0.25rem', display: 'block' }}>
+                              ⚠ Нови сканирания без фактури
+                            </UnbilledBadge>
+                          )}
                           {row.count > 0 && <ProgressBar $pct={paidPct} />}
                         </div>
                       )}
                     </Td>
 
-                    {/* Lifecycle badge + audit trail */}
+                    {/* Lifecycle badge + 4-state audit trail with resolved admin names */}
                     <Td>
                       {rp ? (
                         <>
                           <LifecycleBadge $status={rp.status}>
                             {LIFECYCLE_LABELS[rp.status]}
                           </LifecycleBadge>
+                          {rp.reviewedAt && (
+                            <AuditLine>
+                              За проверка: {fmtDateTime(rp.reviewedAt)}
+                              {rp.reviewedByName && ` · ${rp.reviewedByName}`}
+                            </AuditLine>
+                          )}
                           {rp.lockedAt && (
                             <AuditLine>
                               Заключен: {fmtDateTime(rp.lockedAt)}
-                              {rp.lockedBy && ` · ${rp.lockedBy.slice(0, 8)}…`}
+                              {rp.lockedByName && ` · ${rp.lockedByName}`}
                             </AuditLine>
                           )}
                           {rp.invoicedAt && (
                             <AuditLine>
                               Фактуриран: {fmtDateTime(rp.invoicedAt)}
-                              {rp.invoicedBy && ` · ${rp.invoicedBy.slice(0, 8)}…`}
+                              {rp.invoicedByName && ` · ${rp.invoicedByName}`}
                             </AuditLine>
                           )}
                         </>
@@ -351,28 +415,50 @@ export default function AdminFinancePeriodsPage() {
 
                     {/* Action */}
                     <Td>
-                      {row.hasUnbilledScans && row.count === 0 && !rp ? (
-                        /* Month has scan activity but no invoices generated yet */
-                        <GenerateLink to={`/admin/finance/invoices?month=${row.month}`}>
-                          Генерирай фактури →
-                        </GenerateLink>
-                      ) : !rp ? (
-                        <AdvanceBtn
-                          disabled={ensureMutation.isPending}
-                          onClick={() => ensureMutation.mutate(row.month)}
-                        >
-                          Отвори период
-                        </AdvanceBtn>
-                      ) : nextStatus ? (
-                        <AdvanceBtn
-                          disabled={advanceMutation.isPending}
-                          onClick={() => setConfirmState({ month: row.month, nextStatus, row, rp })}
-                        >
-                          → {LIFECYCLE_LABELS[nextStatus]}
-                        </AdvanceBtn>
-                      ) : (
-                        <span style={{ fontSize: '0.8125rem', color: palette.textSubtle }}>Финализиран</span>
-                      )}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem', alignItems: 'flex-start' }}>
+                        {row.hasUnbilledScans && row.count === 0 && !rp ? (
+                          <GenerateLink to={`/admin/finance/invoices?month=${row.month}`}>
+                            Генерирай фактури →
+                          </GenerateLink>
+                        ) : !rp ? (
+                          <AdvanceBtn
+                            disabled={ensureMutation.isPending}
+                            onClick={() => ensureMutation.mutate(row.month)}
+                          >
+                            Отвори период
+                          </AdvanceBtn>
+                        ) : nextStatus ? (
+                          <>
+                            {/* Hide for lifecycle-only OPEN periods — backend rejects FOR_REVIEW without invoices */}
+                            {!(row.lifecycleOnly && nextStatus === 'FOR_REVIEW') && (
+                              <AdvanceBtn
+                                disabled={advanceMutation.isPending}
+                                onClick={() => setConfirmState({ month: row.month, nextStatus, row, rp })}
+                              >
+                                → {LIFECYCLE_LABELS[nextStatus]}
+                              </AdvanceBtn>
+                            )}
+                            {/* Partial-coverage: show generate link alongside advance */}
+                            {row.hasUnbilledScans && row.count > 0 && (
+                              <GenerateLink to={`/admin/finance/invoices?month=${row.month}`}>
+                                Генерирай фактури →
+                              </GenerateLink>
+                            )}
+                          </>
+                        ) : (
+                          <span style={{ fontSize: '0.8125rem', color: palette.textSubtle }}>Финализиран</span>
+                        )}
+                        {/* Delete — only lifecycle-only OPEN/FOR_REVIEW periods */}
+                        {rp && row.lifecycleOnly && (rp.status === 'OPEN' || rp.status === 'FOR_REVIEW') && (
+                          <button
+                            style={{ padding: '0.3rem 0.7rem', borderRadius: '0.375rem', fontSize: '0.75rem', fontWeight: 600, border: `1px solid ${palette.danger}`, background: 'transparent', color: palette.danger, cursor: 'pointer', whiteSpace: 'nowrap' }}
+                            disabled={deleteMutation.isPending}
+                            onClick={() => setDeleteMonth(row.month)}
+                          >
+                            Изтрий период
+                          </button>
+                        )}
+                      </div>
                     </Td>
                   </tr>
                 );
@@ -402,8 +488,7 @@ export default function AdminFinancePeriodsPage() {
             )}
             {IRREVERSIBLE_STATUSES.has(confirmState.nextStatus) && (
               <ModalWarn>
-                ⚠ След заключване данните за фактуриране не могат да се променят свободно.
-                Тази операция не може да бъде отменена.
+                ⚠ {IRREVERSIBLE_WARN[confirmState.nextStatus]}
               </ModalWarn>
             )}
             <ModalActions>
@@ -418,6 +503,30 @@ export default function AdminFinancePeriodsPage() {
                 }
               >
                 {advanceMutation.isPending ? 'Запазване…' : 'Потвърди'}
+              </ModalConfirm>
+            </ModalActions>
+          </Modal>
+        </Overlay>
+      )}
+
+      {/* Confirmation modal — delete lifecycle-only period */}
+      {deleteMonth && (
+        <Overlay onClick={() => !deleteMutation.isPending && setDeleteMonth(null)}>
+          <Modal onClick={(e) => e.stopPropagation()}>
+            <ModalTitle>Изтриване на период</ModalTitle>
+            <ModalBody>
+              Сигурни ли сте, че искате да изтриете период{' '}
+              <strong>{monthLabel(deleteMonth)}</strong>?
+            </ModalBody>
+            <ModalWarn>
+              ⚠ Периодът ще бъде премахнат от системата. Действието е необратимо.
+            </ModalWarn>
+            <ModalActions>
+              <ModalCancel onClick={() => setDeleteMonth(null)} disabled={deleteMutation.isPending}>
+                Отказ
+              </ModalCancel>
+              <ModalConfirm $danger disabled={deleteMutation.isPending} onClick={() => deleteMutation.mutate(deleteMonth)}>
+                {deleteMutation.isPending ? 'Изтриване…' : 'Изтрий'}
               </ModalConfirm>
             </ModalActions>
           </Modal>

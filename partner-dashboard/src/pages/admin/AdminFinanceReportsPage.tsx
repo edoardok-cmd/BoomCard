@@ -164,11 +164,14 @@ const FOCUS_CONFIGS: Record<string, FocusConfig> = {
 const now = new Date();
 // Default selection: current calendar month as YYYY-MM
 const defaultMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-// Convert a YYYY-MM month string to the first and last day date strings
+// Convert a YYYY-MM month string to the first and last day date strings.
+// Use local date components directly to avoid UTC conversion shifting the day
+// in timezones east of UTC (e.g. Sofia UTC+2/+3 would shift last-day back by 1).
 const monthToFrom = (m: string) => `${m}-01`;
 const monthToTo = (m: string) => {
   const [y, mo] = m.split('-').map(Number);
-  return new Date(y, mo, 0).toISOString().split('T')[0];
+  const lastDay = new Date(y, mo, 0).getDate();
+  return `${y}-${m.slice(5, 7)}-${String(lastDay).padStart(2, '0')}`;
 };
 
 /* ─── Invoice status labels ──────────────────────────────────────────────────── */
@@ -184,6 +187,14 @@ const PERIOD_STATUS_LABELS: Record<string, string> = {
   FOR_REVIEW: 'За проверка',
   LOCKED: 'Заключен',
   INVOICED: 'Фактуриран',
+};
+
+/* ─── Subscription plan labels ───────────────────────────────────────────────── */
+const PLAN_LABELS: Record<string, string> = {
+  LIGHT:   'Light (Седмичен Premium)',
+  BASIC:   'Basic',
+  PREMIUM: 'Premium',
+  UNKNOWN: 'Без абонамент',
 };
 
 /* ─── Wallet type labels ─────────────────────────────────────────────────────── */
@@ -343,7 +354,11 @@ export default function AdminFinanceReportsPage() {
       {/* Filters — period picker (spec §6.4: Период, партньор, статус) */}
       <FilterRow>
         <FilterLabel>От период</FilterLabel>
-        <DateInput type="month" value={fromMonth} onChange={(e) => setFromMonth(e.target.value)} />
+        <DateInput type="month" value={fromMonth} onChange={(e) => {
+          const v = e.target.value;
+          setFromMonth(v);
+          if (v > toMonth) setToMonth(v);
+        }} />
         <FilterLabel>До период</FilterLabel>
         <DateInput type="month" value={toMonth} onChange={(e) => {
           const v = e.target.value;
@@ -375,24 +390,28 @@ export default function AdminFinanceReportsPage() {
               <StatLabel>Общ обем (портфейл)</StatLabel>
               <StatValue $color={palette.info}>{fmt(totalVolume)}</StatValue>
               <StatSub>{totalCount.toLocaleString()} транзакции</StatSub>
+              {queryPartnerId && <StatSub style={{ color: palette.textSubtle, fontStyle: 'italic' }}>за цялата платформа</StatSub>}
             </StatCard>
 
             <StatCard $soft={palette.successSoft}>
               <StatLabel>Кешбек кредитиран</StatLabel>
               <StatValue $color={palette.success}>{fmt(cashback?.total ?? 0)}</StatValue>
               <StatSub>{(cashback?.count ?? 0).toLocaleString()} транзакции</StatSub>
+              {queryPartnerId && <StatSub style={{ color: palette.textSubtle, fontStyle: 'italic' }}>за цялата платформа</StatSub>}
             </StatCard>
 
             <StatCard $soft={palette.purpleSoft}>
               <StatLabel>Плащания към абонати</StatLabel>
               <StatValue $color={palette.purple}>{fmt(withdrawals?.total ?? 0)}</StatValue>
               <StatSub>{(withdrawals?.count ?? 0).toLocaleString()} транзакции</StatSub>
+              {queryPartnerId && <StatSub style={{ color: palette.textSubtle, fontStyle: 'italic' }}>за цялата платформа</StatSub>}
             </StatCard>
 
             <StatCard $soft={palette.tealSoft}>
               <StatLabel>Зареждания</StatLabel>
               <StatValue $color={palette.teal}>{fmt(topUps?.total ?? 0)}</StatValue>
               <StatSub>{(topUps?.count ?? 0).toLocaleString()} транзакции</StatSub>
+              {queryPartnerId && <StatSub style={{ color: palette.textSubtle, fontStyle: 'italic' }}>за цялата платформа</StatSub>}
             </StatCard>
 
             <StatCard>
@@ -448,45 +467,63 @@ export default function AdminFinanceReportsPage() {
           )}
 
           {/* Per-partner breakdown (spec §6.4: partner dimension) */}
-          {report.partnerBreakdown.length > 0 && (
-            <Card>
-              <SectionTitle>Разбивка по партньор</SectionTitle>
-              <Table>
-                <thead>
-                  <tr>
-                    <Th>Партньор</Th>
-                    <Th>Град</Th>
-                    <ThRight>Оборот</ThRight>
-                    <ThRight>Договорен %</ThRight>
-                    <ThRight>Кешбек</ThRight>
-                    <ThRight>Марджин</ThRight>
-                    <Th>Статус на фактури</Th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {report.partnerBreakdown.map((row) => (
-                    <tr key={row.partnerId}>
-                      <TdBold>{row.partnerName}</TdBold>
-                      <Td>{row.partnerCity ?? '—'}</Td>
-                      <TdRight style={{ fontWeight: 600, color: palette.text }}>{fmt(row.turnover)}</TdRight>
-                      <TdRight>{row.contractedRate != null ? `${row.contractedRate}%` : '—'}</TdRight>
-                      <TdRight>{fmt(row.cashback)}</TdRight>
-                      <TdRight>{fmt(row.margin)}</TdRight>
-                      <Td>
-                        {Object.entries(row.statuses).map(([st, count]) => (
-                          <span key={st} style={{ marginRight: '0.375rem' }}>
-                            <InvoiceStatusBadge $status={st}>
-                              {INVOICE_STATUS_LABELS[st] ?? st} ×{count}
-                            </InvoiceStatusBadge>
-                          </span>
-                        ))}
-                      </Td>
+          {report.partnerBreakdown.length > 0 && (() => {
+            const totals = report.partnerBreakdown.reduce(
+              (acc, r) => ({ turnover: acc.turnover + r.turnover, cashback: acc.cashback + r.cashback, margin: acc.margin + r.margin }),
+              { turnover: 0, cashback: 0, margin: 0 },
+            );
+            return (
+              <Card>
+                <SectionTitle>Разбивка по партньор</SectionTitle>
+                <Table>
+                  <thead>
+                    <tr>
+                      <Th>Партньор</Th>
+                      <Th>Град</Th>
+                      <ThRight>Оборот</ThRight>
+                      <ThRight>Договорен %</ThRight>
+                      <ThRight>Кешбек</ThRight>
+                      <ThRight>Марджин</ThRight>
+                      <Th>Статус на фактури</Th>
                     </tr>
-                  ))}
-                </tbody>
-              </Table>
-            </Card>
-          )}
+                  </thead>
+                  <tbody>
+                    {report.partnerBreakdown.map((row) => (
+                      <tr key={row.partnerId}>
+                        <TdBold>{row.partnerName}</TdBold>
+                        <Td>{row.partnerCity ?? '—'}</Td>
+                        <TdRight style={{ fontWeight: 600, color: palette.text }}>{fmt(row.turnover)}</TdRight>
+                        <TdRight>{row.contractedRate != null ? `${row.contractedRate}%` : '—'}</TdRight>
+                        <TdRight>{fmt(row.cashback)}</TdRight>
+                        <TdRight>{fmt(row.margin)}</TdRight>
+                        <Td>
+                          {Object.entries(row.statuses).map(([st, count]) => (
+                            <span key={st} style={{ marginRight: '0.375rem' }}>
+                              <InvoiceStatusBadge $status={st}>
+                                {INVOICE_STATUS_LABELS[st] ?? st} ×{count}
+                              </InvoiceStatusBadge>
+                            </span>
+                          ))}
+                        </Td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  {report.partnerBreakdown.length > 1 && (
+                    <tfoot>
+                      <tr style={{ borderTop: `2px solid ${palette.border}` }}>
+                        <td colSpan={2} style={{ padding: '0.625rem 0.75rem', fontWeight: 700, fontSize: '0.8125rem', color: palette.textSubtle, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Общо</td>
+                        <TdRight style={{ fontWeight: 700, color: palette.text }}>{fmt(totals.turnover)}</TdRight>
+                        <TdRight>—</TdRight>
+                        <TdRight style={{ fontWeight: 700, color: palette.text }}>{fmt(totals.cashback)}</TdRight>
+                        <TdRight style={{ fontWeight: 700, color: palette.text }}>{fmt(totals.margin)}</TdRight>
+                        <td style={{ padding: '0.625rem 0.75rem' }} />
+                      </tr>
+                    </tfoot>
+                  )}
+                </Table>
+              </Card>
+            );
+          })()}
 
           {/* Subscription plan breakdown (spec §6.4: абонатен план dimension) */}
           {report.planBreakdown.length > 0 && (
@@ -504,7 +541,7 @@ export default function AdminFinanceReportsPage() {
                 <tbody>
                   {report.planBreakdown.map((row: PlanBreakdownRow) => (
                     <tr key={row.plan}>
-                      <TdBold>{row.plan}</TdBold>
+                      <TdBold>{PLAN_LABELS[row.plan] ?? row.plan}</TdBold>
                       <TdRight>{row.scanCount.toLocaleString()}</TdRight>
                       <TdRight>{fmt(row.cashback)}</TdRight>
                       <TdRight>{fmt(row.turnover)}</TdRight>
@@ -517,7 +554,14 @@ export default function AdminFinanceReportsPage() {
 
           {/* Wallet transaction breakdown (spec §6.4: payments dimension) */}
           <Card>
-            <SectionTitle>Разбивка на портфейлни транзакции</SectionTitle>
+            <SectionTitle>
+              Разбивка на портфейлни транзакции
+              {queryPartnerId && (
+                <span style={{ fontWeight: 400, fontSize: '0.8rem', color: palette.textSubtle, marginLeft: '0.5rem', fontStyle: 'italic' }}>
+                  (за цялата платформа — портфейлните транзакции не са филтрирани по партньор)
+                </span>
+              )}
+            </SectionTitle>
             <Table>
               <thead>
                 <tr>
@@ -542,6 +586,12 @@ export default function AdminFinanceReportsPage() {
             </Table>
           </Card>
         </>
+      )}
+
+      {isLoading && !report && (
+        <div style={{ color: palette.textSubtle, fontSize: '0.9375rem', textAlign: 'center', paddingTop: '3rem' }}>
+          Зареждане…
+        </div>
       )}
 
       {!report && !isLoading && (

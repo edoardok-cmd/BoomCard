@@ -2033,16 +2033,18 @@ enum ReportingPeriodStatus {
 }
 
 model ReportingPeriod {
-  id         String                @id @default(uuid())
-  month      String                @unique // "YYYY-MM"
-  status     ReportingPeriodStatus @default(OPEN)
-  lockedAt   DateTime?
-  lockedBy   String? // admin userId
-  invoicedAt DateTime?
-  invoicedBy String? // admin userId
-  notes      String?
-  createdAt  DateTime              @default(now())
-  updatedAt  DateTime              @updatedAt
+  id           String                @id @default(uuid())
+  month        String                @unique // "YYYY-MM"
+  status       ReportingPeriodStatus @default(OPEN)
+  reviewedAt   DateTime?
+  reviewedBy   String? // admin userId
+  lockedAt     DateTime?
+  lockedBy     String? // admin userId
+  invoicedAt   DateTime?
+  invoicedBy   String? // admin userId
+  notes        String?
+  createdAt    DateTime              @default(now())
+  updatedAt    DateTime              @updatedAt
 
   @@index([status])
   @@index([month])

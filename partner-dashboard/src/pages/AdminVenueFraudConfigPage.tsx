@@ -196,6 +196,70 @@ const InfoBanner = styled.div`
   a { color: #1d4ed8; text-decoration: underline; font-weight: 600; }
 `;
 
+// Global system rules panel — spec §7.4
+const GlobalRulesPanel = styled.div`
+  margin-bottom: 2rem;
+  background: var(--color-background);
+  border: 2px solid var(--color-border);
+  border-radius: 1rem;
+  overflow: hidden;
+`;
+
+const GlobalRulesHeader = styled.div`
+  padding: 1rem 1.25rem;
+  background: rgba(0,0,0,0.02);
+  border-bottom: 1px solid var(--color-border);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+`;
+
+const GlobalRulesTitle = styled.h2`
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--color-text-primary);
+  margin: 0;
+`;
+
+const GlobalRulesGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: 0;
+`;
+
+const GlobalRuleItem = styled.div<{ $accent: string }>`
+  padding: 1rem 1.25rem;
+  border-right: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--color-border);
+  &:last-child { border-right: none; }
+`;
+
+const GlobalRuleRange = styled.div<{ $color: string }>`
+  font-size: 1.375rem;
+  font-weight: 800;
+  color: ${p => p.$color};
+  margin-bottom: 0.2rem;
+`;
+
+const GlobalRuleLabel = styled.div`
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: var(--color-text-primary);
+`;
+
+const GlobalRuleDesc = styled.div`
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+  margin-top: 0.15rem;
+`;
+
+const GlobalRulesNote = styled.div`
+  padding: 0.75rem 1.25rem;
+  border-top: 1px solid var(--color-border);
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+`;
+
 const SpinnerWrapper = styled.div`
   display: flex;
   justify-content: center;
@@ -468,6 +532,67 @@ export const AdminVenueFraudConfigPage: React.FC = () => {
           {language === 'bg' ? 'Конфигурация за Измами' : 'Venue Fraud Configuration'}
         </Title>
       </PageHeader>
+
+      {/* ── Global System Rules — spec §7.4 ──────────────── */}
+      <GlobalRulesPanel>
+        <GlobalRulesHeader>
+          <Shield size={16} />
+          <GlobalRulesTitle>
+            {language === 'bg' ? 'Глобални правила на системата' : 'Global System Rules'}
+          </GlobalRulesTitle>
+        </GlobalRulesHeader>
+        <GlobalRulesGrid>
+          <GlobalRuleItem $accent="#4caf50">
+            <GlobalRuleRange $color="#4caf50">0 – 30</GlobalRuleRange>
+            <GlobalRuleLabel>
+              {language === 'bg' ? 'Автоматично одобрение' : 'Auto-approve'}
+            </GlobalRuleLabel>
+            <GlobalRuleDesc>
+              {language === 'bg'
+                ? 'Транзакциите се одобряват без ръчна намеса'
+                : 'Transactions approved without manual review'}
+            </GlobalRuleDesc>
+          </GlobalRuleItem>
+          <GlobalRuleItem $accent="#ff9800">
+            <GlobalRuleRange $color="#ff9800">31 – 60</GlobalRuleRange>
+            <GlobalRuleLabel>
+              {language === 'bg' ? 'Изисква преглед' : 'Manual review required'}
+            </GlobalRuleLabel>
+            <GlobalRuleDesc>
+              {language === 'bg'
+                ? 'Администраторът трябва да прегледа и одобри'
+                : 'Admin must review and approve'}
+            </GlobalRuleDesc>
+          </GlobalRuleItem>
+          <GlobalRuleItem $accent="#f44336">
+            <GlobalRuleRange $color="#f44336">61+</GlobalRuleRange>
+            <GlobalRuleLabel>
+              {language === 'bg' ? 'Висок риск' : 'High risk'}
+            </GlobalRuleLabel>
+            <GlobalRuleDesc>
+              {language === 'bg'
+                ? 'Вероятна измама — задължителен ръчен преглед'
+                : 'Probable fraud — mandatory manual review'}
+            </GlobalRuleDesc>
+          </GlobalRuleItem>
+          <GlobalRuleItem $accent="#667eea">
+            <GlobalRuleRange $color="#667eea">—</GlobalRuleRange>
+            <GlobalRuleLabel>
+              {language === 'bg' ? 'Ръчна намеса (супер-админ)' : 'Manual override (super-admin)'}
+            </GlobalRuleLabel>
+            <GlobalRuleDesc>
+              {language === 'bg'
+                ? 'Одобри/отхвърли директно от Преглед на рискови транзакции'
+                : 'Approve/reject directly from Risk Review tab'}
+            </GlobalRuleDesc>
+          </GlobalRuleItem>
+        </GlobalRulesGrid>
+        <GlobalRulesNote>
+          {language === 'bg'
+            ? 'Праговете (0–30, 31–60, 61+) са системни константи. Конфигурацията по-долу задава лимити на ниво обект.'
+            : 'Thresholds (0–30, 31–60, 61+) are system constants. The configuration below sets per-venue limits.'}
+        </GlobalRulesNote>
+      </GlobalRulesPanel>
 
       {/* ── Venue Selector ────────────────────────────────── */}
       <VenueSelector>

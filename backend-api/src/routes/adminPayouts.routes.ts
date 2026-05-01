@@ -291,7 +291,7 @@ router.patch(
   },
 );
 
-// ─── PATCH /:id/reject  PENDING → FAILED (balance restored) ──────────────────
+// ─── PATCH /:id/reject  PENDING|RISK_HOLD → CANCELLED (balance restored) ──────
 router.patch(
   '/:id/reject',
   requirePermission('finance.payouts.write'),

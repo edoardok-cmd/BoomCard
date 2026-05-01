@@ -271,10 +271,13 @@ class AdminCashbackService {
     const soonThreshold = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
 
     const [accruedAgg, pendingAgg, clearedRows, expiringAgg] = await Promise.all([
-      // начислен — all-time sum of ALL cashback entries regardless of current status
+      // начислен — sum of non-expired cashback entries (expired = forfeited, not a future liability)
       prisma.walletTransaction.aggregate({
         _sum: { amount: true },
-        where: { type: 'CASHBACK_CREDIT' },
+        where: {
+          type: 'CASHBACK_CREDIT',
+          OR: [{ cashbackExpiresAt: null }, { cashbackExpiresAt: { gt: now } }],
+        },
       }),
       // изчакващ — sum of entries still pending (not yet cleared)
       prisma.walletTransaction.aggregate({

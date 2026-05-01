@@ -1,14 +1,17 @@
 import { useState } from 'react';
 import styled from 'styled-components';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { DataTable, ColumnDef } from '../../components/admin/DataTable/DataTable';
-import { adminControlService, FraudSignalReceipt } from '../../services/adminControl.service';
+import {
+  adminControlService,
+  FraudSignalReceipt,
+} from '../../services/adminControl.service';
 import FraudReasonTag from '../../components/admin/FraudReasonTag';
 import { useLanguage } from '../../contexts/LanguageContext';
 
 // Spec §7.2 — Контрол > Сигурност
-// Surfaces fraud signals: duplicate detection, QR/receipt mismatch, velocity,
-// IBAN-change anomalies, and per-row User risk / Receipt-match / Location-match.
+// Surfaces fraud signals per spec §7.2: duplicate detection, QR/receipt mismatch,
+// velocity, IBAN anomalies, receipt template match, and partner risk.
 
 const palette = {
   bg: '#faf9f5', surface: '#ffffff', border: '#e8e5dc',
@@ -40,16 +43,11 @@ const ScoreBadge = styled.span<{ $tier: 'low' | 'med' | 'high' }>`
   background: ${(p) => p.$tier === 'high' ? palette.dangerSoft : p.$tier === 'med' ? palette.warningSoft : palette.successSoft};
   color: ${(p) => p.$tier === 'high' ? palette.danger : p.$tier === 'med' ? palette.warning : palette.success};
 `;
-// Accepts either the legacy LOW/MEDIUM/HIGH literals (used for venue / receipt
-// match pills) or the spec §7.1 RiskBucket strings (used for the user-risk pill,
-// since the API returns user.riskBucket directly). The em-dash literal is the
-// fallback rendered when riskBucket is null on a freshly-migrated user row.
+
 type PillLevel = 'LOW' | 'MEDIUM' | 'HIGH' | 'LOW_0_30' | 'REVIEW_31_60' | 'HIGH_61_PLUS' | '—';
 const VALID_PILL_LEVELS = new Set<PillLevel>([
   'LOW', 'MEDIUM', 'HIGH', 'LOW_0_30', 'REVIEW_31_60', 'HIGH_61_PLUS', '—',
 ]);
-// Coerce an API-shaped string|null into the PillLevel union. Unknown values
-// fall back to '—' so future backend additions don't crash the page silently.
 function toPillLevel(value: string | null | undefined): PillLevel {
   return value && VALID_PILL_LEVELS.has(value as PillLevel) ? (value as PillLevel) : '—';
 }
@@ -80,9 +78,9 @@ const RiskPill = styled.span<{ $level: PillLevel }>`
 const ReasonStack = styled.div`display: flex; flex-wrap: wrap; gap: 0.25rem; max-width: 22rem;`;
 const StatGrid = styled.div`
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
   gap: 0.75rem;
-  margin-bottom: 1.25rem;
+  margin-bottom: 0.5rem;
 `;
 const Stat = styled.div`
   background: ${palette.surface};
@@ -92,25 +90,29 @@ const Stat = styled.div`
 `;
 const StatLabel = styled.div`font-size: 0.75rem; color: ${palette.textSubtle}; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 0.25rem;`;
 const StatValue = styled.div`font-size: 1.375rem; font-weight: 700; color: ${palette.text};`;
+const ActionRow = styled.div`display: flex; gap: 0.375rem; margin-top: 0.375rem; flex-wrap: wrap;`;
+const ActionBtn = styled.button<{ $variant: 'approve' | 'reject' }>`
+  font-size: 0.75rem; font-weight: 600; padding: 0.2rem 0.6rem;
+  border-radius: 0.375rem; border: 1px solid;
+  cursor: pointer; transition: opacity 0.15s;
+  &:disabled { opacity: 0.5; cursor: not-allowed; }
+  background: ${(p) => p.$variant === 'approve' ? palette.successSoft : palette.dangerSoft};
+  color: ${(p) => p.$variant === 'approve' ? palette.success : palette.danger};
+  border-color: ${(p) => p.$variant === 'approve' ? palette.success : palette.danger};
+`;
 
 const PAGE_SIZE = 25;
 
-// Mapping of fraud-reason codes to spec §7.2 signal categories.
-const SIGNAL_CATEGORIES = {
-  duplicate: ['DUPLICATE_RECEIPT', 'EXACT_DUPLICATE', 'PERCEPTUAL_DUPLICATE', 'IMAGE_HASH_DUPLICATE'],
-  qrMismatch: ['QR_MISMATCH', 'QR_VENUE_MISMATCH', 'NO_QR_SESSION'],
-  velocity: ['HIGH_VELOCITY', 'RATE_LIMIT', 'DAILY_LIMIT', 'TOO_MANY_RECEIPTS'],
-  ibanAnomaly: ['IBAN_CHANGE', 'IBAN_RECENTLY_CHANGED', 'PAYOUT_RISK'],
-};
+// Signal codes that indicate a receipt template / OCR match failure (spec §7.2 "Съвпадение с шаблон").
+const RECEIPT_MATCH_SIGNALS = new Set([
+  'DUPLICATE_RECEIPT', 'EXACT_DUPLICATE', 'PERCEPTUAL_DUPLICATE', 'IMAGE_HASH_DUPLICATE',
+  'LOW_OCR_CONFIDENCE', 'RECEIPT_TEMPLATE_MISMATCH',
+]);
 
-function categorize(reasons: string[]) {
-  return {
-    duplicate: reasons.some((r) => SIGNAL_CATEGORIES.duplicate.includes(r)),
-    qrMismatch: reasons.some((r) => SIGNAL_CATEGORIES.qrMismatch.includes(r)),
-    velocity: reasons.some((r) => SIGNAL_CATEGORIES.velocity.includes(r)),
-    ibanAnomaly: reasons.some((r) => SIGNAL_CATEGORIES.ibanAnomaly.includes(r)),
-  };
-}
+// Signal codes that indicate a QR/location mismatch (spec §7.2 "Съвпадение с QR локация").
+const LOCATION_MISMATCH_SIGNALS = new Set([
+  'QR_MISMATCH', 'QR_VENUE_MISMATCH', 'NO_QR_SESSION',
+]);
 
 function tierFromScore(score: number): 'low' | 'med' | 'high' {
   if (score >= 61) return 'high';
@@ -118,7 +120,6 @@ function tierFromScore(score: number): 'low' | 'med' | 'high' {
   return 'low';
 }
 
-// Spec §7.1 — three-tier framing (Auto / Review / High), bilingual.
 function bucketLabel(bucket: string | null | undefined, lang: 'en' | 'bg'): string {
   if (bucket === 'LOW_0_30')      return lang === 'bg' ? 'Авто (0–30)'      : 'Auto (0–30)';
   if (bucket === 'REVIEW_31_60')  return lang === 'bg' ? 'Преглед (31–60)'  : 'Review (31–60)';
@@ -126,40 +127,92 @@ function bucketLabel(bucket: string | null | undefined, lang: 'en' | 'bg'): stri
   return lang === 'bg' ? 'неизвестен' : 'unknown';
 }
 
+const T = {
+  eyebrow:         { en: 'Control',                                          bg: 'Контрол' },
+  title:           { en: 'Security & Fraud Signals',                         bg: 'Сигурност и Измамни сигнали' },
+  subtitle:        { en: 'Duplicate detection, QR/receipt mismatch, velocity, IBAN anomalies', bg: 'Дублирани записи, несъответствие QR/бележка, честота, IBAN аномалии' },
+  allTiers:        { en: 'All tiers',                                        bg: 'Всички нива' },
+  autoTier:        { en: 'Auto-approve (0–30)',                              bg: 'Авто (0–30)' },
+  reviewTier:      { en: 'Review (31–60)',                                   bg: 'Преглед (31–60)' },
+  highTier:        { en: 'High risk (61+)',                                   bg: 'Висок риск (61+)' },
+  statDuplicate:   { en: 'Duplicates',                                        bg: 'Дублиране' },
+  statQr:          { en: 'QR / Mismatch',                                    bg: 'QR / Несъответствие' },
+  statVelocity:    { en: 'High velocity',                                     bg: 'Висока честота' },
+  statIban:        { en: 'IBAN anomalies',                                    bg: 'IBAN аномалии' },
+  statReceipt:     { en: 'Receipt match',                                     bg: 'Съвпадение с шаблон' },
+  statOther:       { en: 'Other signals',                                     bg: 'Други сигнали' },
+  colScore:        { en: 'Risk score',                                        bg: 'Риск оценка' },
+  colSubscriber:   { en: 'Subscriber',                                        bg: 'Абонат' },
+  colPartner:      { en: 'Partner / Location',                               bg: 'Партньор / Локация' },
+  colReceipt:      { en: 'Receipt',                                           bg: 'Бележка' },
+  colSignals:      { en: 'Signals',                                           bg: 'Сигнали' },
+  colActions:      { en: 'Actions',                                           bg: 'Действия' },
+  userRisk:        { en: 'User risk',                                         bg: 'Риск на абонат' },
+  partnerRisk:     { en: 'Partner risk',                                      bg: 'Риск при партньор' },
+  locationMatched: { en: 'Location: matched',                                 bg: 'Локация: съвпада' },
+  locationMismatch:{ en: 'Location: mismatch',                               bg: 'Локация: несъответствие' },
+  locationNoVenue: { en: 'Location: no venue',                               bg: 'Локация: без обект' },
+  receiptClean:    { en: 'Receipt: clean',                                    bg: 'Бележка: чиста' },
+  receiptFlag:     { en: 'Receipt: flagged',                                  bg: 'Бележка: маркирана' },
+  noVenue:         { en: 'No venue',                                          bg: 'Без обект' },
+  noneSignals:     { en: 'None',                                              bg: 'Няма' },
+  emptyMsg:        { en: 'No fraud signals at this tier',                    bg: 'Няма измамни сигнали за това ниво' },
+  approve:         { en: 'Approve',                                           bg: 'Одобри' },
+  reject:          { en: 'Reject',                                            bg: 'Откажи' },
+  riskHigh:        { en: 'High',                                              bg: 'Висок' },
+  riskMed:         { en: 'Medium',                                            bg: 'Среден' },
+  riskLow:         { en: 'Low',                                               bg: 'Нисък' },
+  globalNote:      { en: 'Global totals across all pages',                   bg: 'Глобални броячи за всички страници' },
+} as const;
+
 export default function AdminControlSecurityPage() {
   const { language } = useLanguage();
   const [page, setPage] = useState(1);
   const [tier, setTier] = useState<'AUTO_0_30' | 'REVIEW_31_60' | 'HIGH_61_PLUS' | 'all'>('all');
   const lang: 'en' | 'bg' = language === 'bg' ? 'bg' : 'en';
+  const t = (key: keyof typeof T) => T[key][lang];
+  const queryClient = useQueryClient();
 
   const { data, isLoading } = useQuery({
     queryKey: ['admin-fraud-signals', page, tier],
-    queryFn: () =>
-      adminControlService.getFraudSignals({ page, limit: PAGE_SIZE, tier }),
+    queryFn: () => adminControlService.getFraudSignals({ page, limit: PAGE_SIZE, tier }),
   });
+
+  // Gap 5: global signal counts from dedicated summary endpoint — not page-scoped.
+  const { data: summaryData } = useQuery({
+    queryKey: ['admin-risk-queue-summary'],
+    queryFn: () => adminControlService.getRiskQueueSummary(),
+    staleTime: 60_000,
+  });
+
+  // Gap 6: approve / reject mutations that refresh both queries on success.
+  const approveMutation = useMutation({
+    mutationFn: (id: string) => adminControlService.approveRiskSignal(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-fraud-signals'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-risk-queue-summary'] });
+    },
+  });
+
+  const rejectMutation = useMutation({
+    mutationFn: (id: string) => adminControlService.rejectRiskSignal(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-fraud-signals'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-risk-queue-summary'] });
+    },
+  });
+
+  const isMutating = approveMutation.isPending || rejectMutation.isPending;
 
   const fmt = (iso: string) =>
     new Date(iso).toLocaleString('en-GB', {
       day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
     });
 
-  // Aggregate counts on the current page (cheap client-side; spec wants visibility)
-  const aggregates = (data?.data ?? []).reduce(
-    (acc, row) => {
-      const cat = categorize(row.fraudReasons);
-      if (cat.duplicate) acc.duplicate++;
-      if (cat.qrMismatch) acc.qrMismatch++;
-      if (cat.velocity) acc.velocity++;
-      if (cat.ibanAnomaly) acc.ibanAnomaly++;
-      return acc;
-    },
-    { duplicate: 0, qrMismatch: 0, velocity: 0, ibanAnomaly: 0 }
-  );
-
   const columns: ColumnDef<FraudSignalReceipt>[] = [
     {
       key: 'score',
-      header: 'Risk score',
+      header: t('colScore'),
       render: (row) => (
         <span>
           <ScoreBadge $tier={tierFromScore(row.fraudScore)}>{row.fraudScore.toFixed(0)}</ScoreBadge>
@@ -169,7 +222,7 @@ export default function AdminControlSecurityPage() {
     },
     {
       key: 'subscriber',
-      header: 'Subscriber',
+      header: t('colSubscriber'),
       render: (row) => (
         <span>
           <PrimaryLine>
@@ -180,7 +233,7 @@ export default function AdminControlSecurityPage() {
           <MetaLine>{row.user.email}</MetaLine>
           <div style={{ marginTop: 4 }}>
             <RiskPill $level={toPillLevel(row.user.riskBucket)}>
-              {lang === 'bg' ? 'Риск на абонат' : 'User risk'}: {bucketLabel(row.user.riskBucket, lang)}
+              {t('userRisk')}: {bucketLabel(row.user.riskBucket, lang)}
             </RiskPill>
           </div>
         </span>
@@ -188,97 +241,153 @@ export default function AdminControlSecurityPage() {
     },
     {
       key: 'partner',
-      header: 'Partner / Location',
-      render: (row) => (
-        <span>
-          <PrimaryLine>{row.venue?.partner?.businessName ?? '—'}</PrimaryLine>
-          <MetaLine>
-            {row.venue?.name ?? 'No venue'}
-            {row.venue?.id && ` · ${row.venue.id.slice(0, 6)}`}
-          </MetaLine>
-          <div style={{ marginTop: 4 }}>
-            <RiskPill $level={row.venue ? 'LOW' : 'HIGH'}>
-              Location match: {row.venue ? 'matched' : 'missing'}
-            </RiskPill>
-          </div>
-        </span>
-      ),
+      header: t('colPartner'),
+      render: (row) => {
+        // Bug 3 fix: location match based on QR mismatch signal codes, not venue presence.
+        const hasLocationMismatch = row.fraudReasons.some((r) => LOCATION_MISMATCH_SIGNALS.has(r));
+        const locationLevel: PillLevel = !row.venue ? 'HIGH' : hasLocationMismatch ? 'MEDIUM' : 'LOW';
+        const locationLabel = !row.venue
+          ? t('locationNoVenue')
+          : hasLocationMismatch
+            ? t('locationMismatch')
+            : t('locationMatched');
+
+        // Gap 4: partner risk bucket derived by backend from all-venue receipt counts.
+        const pRisk = row.venue?.partnerRiskBucket;
+        const pRiskLabel = pRisk === 'HIGH' ? t('riskHigh') : pRisk === 'MEDIUM' ? t('riskMed') : t('riskLow');
+
+        return (
+          <span>
+            <PrimaryLine>{row.venue?.partner?.businessName ?? '—'}</PrimaryLine>
+            <MetaLine>
+              {row.venue?.name ?? t('noVenue')}
+              {row.venue?.id && ` · ${row.venue.id.slice(0, 6)}`}
+            </MetaLine>
+            <div style={{ marginTop: 4, display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+              <RiskPill $level={locationLevel}>{locationLabel}</RiskPill>
+              {pRisk && (
+                <RiskPill $level={toPillLevel(pRisk)}>
+                  {t('partnerRisk')}: {pRiskLabel}
+                </RiskPill>
+              )}
+            </div>
+          </span>
+        );
+      },
     },
     {
       key: 'receipt',
-      header: 'Receipt',
-      render: (row) => (
-        <span>
-          <PrimaryLine>{row.merchantName ?? '—'}</PrimaryLine>
-          <MetaLine>
-            {row.totalAmount != null ? `${row.totalAmount.toFixed(2)} лв` : '—'}
-            {' · '}
-            {fmt(row.createdAt)}
-          </MetaLine>
-          <div style={{ marginTop: 4 }}>
-            <RiskPill $level={row.fraudReasons.length === 0 ? 'LOW' : 'MEDIUM'}>
-              Receipt match: {row.fraudReasons.length === 0 ? 'clean' : `${row.fraudReasons.length} flag${row.fraudReasons.length === 1 ? '' : 's'}`}
-            </RiskPill>
-          </div>
-        </span>
-      ),
+      header: t('colReceipt'),
+      render: (row) => {
+        // Bug 2 fix: receipt match uses OCR/template signal codes only, not all fraud reasons.
+        const hasReceiptIssue = row.fraudReasons.some((r) => RECEIPT_MATCH_SIGNALS.has(r));
+        return (
+          <span>
+            <PrimaryLine>{row.merchantName ?? '—'}</PrimaryLine>
+            <MetaLine>
+              {row.totalAmount != null ? `${row.totalAmount.toFixed(2)} лв` : '—'}
+              {' · '}
+              {fmt(row.createdAt)}
+            </MetaLine>
+            <div style={{ marginTop: 4 }}>
+              <RiskPill $level={hasReceiptIssue ? 'MEDIUM' : 'LOW'}>
+                {hasReceiptIssue ? t('receiptFlag') : t('receiptClean')}
+              </RiskPill>
+            </div>
+          </span>
+        );
+      },
     },
     {
       key: 'reasons',
-      header: 'Signals',
+      header: t('colSignals'),
       render: (row) => (
         <ReasonStack>
           {row.fraudReasons.length === 0
-            ? <MetaLine>None</MetaLine>
+            ? <MetaLine>{t('noneSignals')}</MetaLine>
             : row.fraudReasons.map((r) => (
                 <FraudReasonTag key={r} reason={r} language={language as 'en' | 'bg'} />
               ))}
         </ReasonStack>
       ),
     },
+    {
+      // Gap 6: approve / reject actions per row.
+      key: 'actions',
+      header: t('colActions'),
+      render: (row) => (
+        <ActionRow>
+          <ActionBtn
+            $variant="approve"
+            disabled={isMutating}
+            onClick={() => approveMutation.mutate(row.id)}
+          >
+            {t('approve')}
+          </ActionBtn>
+          <ActionBtn
+            $variant="reject"
+            disabled={isMutating}
+            onClick={() => rejectMutation.mutate(row.id)}
+          >
+            {t('reject')}
+          </ActionBtn>
+        </ActionRow>
+      ),
+    },
   ];
+
+  const s = summaryData?.data;
 
   return (
     <PageShell>
       <PageHeader>
         <TitleBlock>
-          <Eyebrow>Control</Eyebrow>
+          <Eyebrow>{t('eyebrow')}</Eyebrow>
           <PageTitle>
-            Security & Fraud Signals
+            {t('title')}
             {data && data.meta.total > 0 && <TotalBadge>{data.meta.total.toLocaleString()}</TotalBadge>}
           </PageTitle>
-          <PageSubtitle>
-            Duplicate detection, QR/receipt mismatch, velocity, IBAN anomalies — per spec §7.2
-          </PageSubtitle>
+          <PageSubtitle>{t('subtitle')}</PageSubtitle>
         </TitleBlock>
       </PageHeader>
 
+      {/* Gap 5 fix: 6 stat tiles fed from the summary endpoint (global, not page-scoped).
+          Bug 1 fix: "other signals" tile catches any signal code outside the 4 main categories. */}
       <StatGrid>
         <Stat>
-          <StatLabel>Duplicates (page)</StatLabel>
-          <StatValue>{aggregates.duplicate}</StatValue>
+          <StatLabel>{t('statDuplicate')}</StatLabel>
+          <StatValue>{s?.duplicate ?? '—'}</StatValue>
         </Stat>
         <Stat>
-          <StatLabel>QR / Receipt mismatch</StatLabel>
-          <StatValue>{aggregates.qrMismatch}</StatValue>
+          <StatLabel>{t('statQr')}</StatLabel>
+          <StatValue>{s?.qrMismatch ?? '—'}</StatValue>
         </Stat>
         <Stat>
-          <StatLabel>High velocity</StatLabel>
-          <StatValue>{aggregates.velocity}</StatValue>
+          <StatLabel>{t('statVelocity')}</StatLabel>
+          <StatValue>{s?.velocity ?? '—'}</StatValue>
         </Stat>
         <Stat>
-          <StatLabel>IBAN anomalies</StatLabel>
-          <StatValue>{aggregates.ibanAnomaly}</StatValue>
+          <StatLabel>{t('statIban')}</StatLabel>
+          <StatValue>{s?.ibanAnomaly ?? '—'}</StatValue>
+        </Stat>
+        <Stat>
+          <StatLabel>{t('statReceipt')}</StatLabel>
+          <StatValue>{s?.receiptMatch ?? '—'}</StatValue>
+        </Stat>
+        <Stat>
+          <StatLabel>{t('statOther')}</StatLabel>
+          <StatValue>{s?.other ?? '—'}</StatValue>
         </Stat>
       </StatGrid>
+      <MetaLine style={{ marginBottom: '1.25rem' }}>{t('globalNote')}</MetaLine>
 
       <Card>
         <FilterRow>
           <Select value={tier} onChange={(e) => { setTier(e.target.value as typeof tier); setPage(1); }}>
-            <option value="all">{lang === 'bg' ? 'Всички нива' : 'All tiers'}</option>
-            <option value="AUTO_0_30">{lang === 'bg' ? 'Авто (0–30)' : 'Auto-approve (0–30)'}</option>
-            <option value="REVIEW_31_60">{lang === 'bg' ? 'Преглед (31–60)' : 'Review (31–60)'}</option>
-            <option value="HIGH_61_PLUS">{lang === 'bg' ? 'Висок риск (61+)' : 'High risk (61+)'}</option>
+            <option value="all">{t('allTiers')}</option>
+            <option value="AUTO_0_30">{t('autoTier')}</option>
+            <option value="REVIEW_31_60">{t('reviewTier')}</option>
+            <option value="HIGH_61_PLUS">{t('highTier')}</option>
           </Select>
         </FilterRow>
 
@@ -287,7 +396,7 @@ export default function AdminControlSecurityPage() {
           data={data?.data ?? []}
           rowKey={(row) => row.id}
           loading={isLoading}
-          emptyMessage="No fraud signals at this tier"
+          emptyMessage={t('emptyMsg')}
           page={page}
           pageSize={PAGE_SIZE}
           totalItems={data?.meta.total}

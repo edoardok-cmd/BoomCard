@@ -399,8 +399,8 @@ export default function AdminCashbackPage() {
       render: (row) => (
         <span style={{ fontSize: '0.8125rem', color: palette.textMuted }}>
           {row.cashbackExpiresAt ? fmtDate(row.cashbackExpiresAt) : '—'}
-          {/* Show countdown for both Pending and Cleared — both have rolling expiry */}
-          {row.daysUntilExpiry != null && (row.status === 'Cleared' || row.status === 'Pending') && (
+          {/* Show countdown for Pending, Cleared, and Locked — all have rolling 60-day expiry (spec §4.4) */}
+          {row.daysUntilExpiry != null && (row.status === 'Cleared' || row.status === 'Pending' || row.status === 'Locked') && (
             <MetaLine>
               {row.daysUntilExpiry <= 7
                 ? <ExpiryWarning>⚠ {row.daysUntilExpiry} дни</ExpiryWarning>
@@ -554,10 +554,17 @@ export default function AdminCashbackPage() {
             },
             {
               label: 'Изтечи',
-              hidden: (row) => ['Paid', 'Expired', 'Locked'].includes(row.status),
+              hidden: (row) => ['Paid', 'Expired'].includes(row.status) || ['ANNULLED', 'FAILED'].includes(row.rawStatus),
               onClick: (row) => {
                 if (!window.confirm(`Принудително изтичане на кешбек за ${row.user.email}?\nТова действие не може да се отмени.`)) return;
                 expireMutation.mutate(row.id);
+              },
+            },
+            {
+              label: 'Виж профила',
+              hidden: (row) => row.status !== 'Expired',
+              onClick: (row) => {
+                window.open(`/admin/subscribers/all?user=${row.user.id}`, '_blank');
               },
             },
           ]}

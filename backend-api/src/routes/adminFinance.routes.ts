@@ -442,11 +442,26 @@ router.get(
     const partnerIdParam = typeof req.query.partnerId === 'string' ? req.query.partnerId.trim() : '';
     const invoiceStatusParam = typeof req.query.invoiceStatus === 'string' ? req.query.invoiceStatus.trim() : '';
 
-    const from = fromParam ? new Date(fromParam) : new Date(now.getFullYear(), now.getMonth(), 1);
-    const to = toParam ? new Date(toParam) : new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+    // Date-only strings (YYYY-MM-DD) are parsed as UTC midnight by new Date(), which on a Sofia
+    // server (UTC+2/+3) means the first 2–3h of that calendar day are missed.  Anchor to Sofia
+    // local midnight using the winter offset (+02:00) — this is conservative and safe.
+    const from = fromParam
+      ? (/^\d{4}-\d{2}-\d{2}$/.test(fromParam)
+          ? new Date(fromParam + 'T00:00:00.000+02:00')
+          : new Date(fromParam))
+      : new Date(now.getFullYear(), now.getMonth(), 1);
+    // Same issue at the upper bound: treat date-only strings as end-of-Sofia-day.
+    const to = toParam
+      ? (/^\d{4}-\d{2}-\d{2}$/.test(toParam)
+          ? new Date(toParam + 'T23:59:59.999Z')
+          : new Date(toParam))
+      : new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
 
     if (isNaN(from.getTime()) || isNaN(to.getTime())) {
       return res.status(400).json({ success: false, error: 'Invalid date range' });
+    }
+    if (from > to) {
+      return res.status(400).json({ success: false, error: 'from date must be before or equal to to date' });
     }
 
     const VALID_INVOICE_STATUSES = ['PENDING', 'PAID', 'OVERDUE'] as const;
@@ -454,13 +469,27 @@ router.get(
       return res.status(400).json({ success: false, error: `invoiceStatus must be one of: ${VALID_INVOICE_STATUSES.join(', ')}` });
     }
 
-    // Compute month strings that fall within the date range (used for both invoice and period filters)
+    // Compute month strings that fall within the date range (used for both invoice and period filters).
+    // IMPORTANT: extract YYYY-MM directly from the original date-string params rather than from the
+    // parsed `from`/`to` Date objects.  The +02:00 Sofia anchor applied to date-only from= strings
+    // pushes the UTC representation into the previous calendar day
+    // (e.g. 2026-05-01T00:00:00+02:00 → 2026-04-30T22:00Z), so from.getUTCMonth() returns April
+    // and the invoice/period filter would incorrectly include the prior month.
+    // The `to` side is unaffected (T23:59:59.999Z stays in the correct UTC month).
+    const fromYM = fromParam && /^\d{4}-\d{2}-\d{2}$/.test(fromParam)
+      ? fromParam.slice(0, 7)
+      : `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const toYM = toParam && /^\d{4}-\d{2}-\d{2}$/.test(toParam)
+      ? toParam.slice(0, 7)
+      : `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const [fromY, fromM] = fromYM.split('-').map(Number);
+    const [toY, toM] = toYM.split('-').map(Number);
     const months: string[] = [];
-    const cursor = new Date(from.getFullYear(), from.getMonth(), 1);
-    const toMonthStart = new Date(to.getFullYear(), to.getMonth(), 1);
+    const cursor = new Date(Date.UTC(fromY, fromM - 1, 1));
+    const toMonthStart = new Date(Date.UTC(toY, toM - 1, 1));
     while (cursor <= toMonthStart) {
-      months.push(`${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}`);
-      cursor.setMonth(cursor.getMonth() + 1);
+      months.push(`${cursor.getUTCFullYear()}-${String(cursor.getUTCMonth() + 1).padStart(2, '0')}`);
+      cursor.setUTCMonth(cursor.getUTCMonth() + 1);
     }
 
     // Invoice filter: filter by billing month (not createdAt) so a report for "May" always
@@ -613,9 +642,24 @@ router.get(
 
 /* ─── Reporting Period lifecycle (spec 6.3) ───────────────────────────────── */
 
+/** Resolve a set of nullable user IDs to a display name map (email fallback). */
+async function resolveAdminNames(ids: (string | null)[]): Promise<Map<string, string>> {
+  const unique = [...new Set(ids.filter((id): id is string => !!id))];
+  if (unique.length === 0) return new Map();
+  const users = await prisma.user.findMany({
+    where: { id: { in: unique } },
+    select: { id: true, firstName: true, lastName: true, email: true },
+  });
+  return new Map(users.map(u => [
+    u.id,
+    [u.firstName, u.lastName].filter(Boolean).join(' ').trim() || u.email,
+  ]));
+}
+
 /**
  * GET /api/admin/finance/reporting-periods
  * Lists all ReportingPeriod rows, optional year filter.
+ * lockedBy / reviewedBy / invoicedBy are resolved to admin display names.
  */
 router.get(
   '/reporting-periods',
@@ -631,7 +675,20 @@ router.get(
       orderBy: { month: 'desc' },
     });
 
-    res.json({ success: true, data: periods });
+    const nameMap = await resolveAdminNames([
+      ...periods.map(p => p.reviewedBy),
+      ...periods.map(p => p.lockedBy),
+      ...periods.map(p => p.invoicedBy),
+    ]);
+
+    const data = periods.map(p => ({
+      ...p,
+      reviewedByName: p.reviewedBy ? (nameMap.get(p.reviewedBy) ?? p.reviewedBy) : null,
+      lockedByName:   p.lockedBy   ? (nameMap.get(p.lockedBy)   ?? p.lockedBy)   : null,
+      invoicedByName: p.invoicedBy ? (nameMap.get(p.invoicedBy) ?? p.invoicedBy) : null,
+    }));
+
+    res.json({ success: true, data });
   })
 );
 
@@ -709,13 +766,18 @@ router.patch(
       }
     }
 
+    const now = new Date();
     const updateData: Record<string, unknown> = { status: newStatus };
-    if (newStatus === 'LOCKED' && period.status !== 'LOCKED') {
-      updateData.lockedAt = new Date();
+    if (newStatus === 'FOR_REVIEW') {
+      updateData.reviewedAt = now;
+      updateData.reviewedBy = req.user!.id;
+    }
+    if (newStatus === 'LOCKED') {
+      updateData.lockedAt = now;
       updateData.lockedBy = req.user!.id;
     }
-    if (newStatus === 'INVOICED' && period.status !== 'INVOICED') {
-      updateData.invoicedAt = new Date();
+    if (newStatus === 'INVOICED') {
+      updateData.invoicedAt = now;
       updateData.invoicedBy = req.user!.id;
     }
 
@@ -724,7 +786,41 @@ router.patch(
       data: updateData,
     });
 
-    res.json({ success: true, data: updated });
+    // Enrich with resolved admin names so the response is consistent with the GET endpoint.
+    const nameMap = await resolveAdminNames([updated.reviewedBy, updated.lockedBy, updated.invoicedBy]);
+    const enriched = {
+      ...updated,
+      reviewedByName: updated.reviewedBy ? (nameMap.get(updated.reviewedBy) ?? updated.reviewedBy) : null,
+      lockedByName:   updated.lockedBy   ? (nameMap.get(updated.lockedBy)   ?? updated.lockedBy)   : null,
+      invoicedByName: updated.invoicedBy ? (nameMap.get(updated.invoicedBy) ?? updated.invoicedBy) : null,
+    };
+
+    res.json({ success: true, data: enriched });
+  })
+);
+
+/**
+ * DELETE /api/admin/finance/reporting-periods/:month
+ * Removes an erroneously created period. Blocked when status is LOCKED or INVOICED.
+ */
+router.delete(
+  '/reporting-periods/:month',
+  requirePermission('finance.periods.write'),
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    const { month } = req.params;
+
+    const period = await prisma.reportingPeriod.findUnique({ where: { month } });
+    if (!period) return res.status(404).json({ success: false, error: 'Reporting period not found' });
+
+    if (period.status === 'LOCKED' || period.status === 'INVOICED') {
+      return res.status(409).json({
+        success: false,
+        error: `Cannot delete a ${period.status} period — data integrity must be preserved.`,
+      });
+    }
+
+    await prisma.reportingPeriod.delete({ where: { month } });
+    res.json({ success: true, message: `Period ${month} deleted.` });
   })
 );
 
@@ -819,6 +915,15 @@ router.get(
         finByMonth.set(p.month, cur);
       }
 
+      // Resolve admin UUIDs → display names for human-readable export.
+      const expNameMap = await resolveAdminNames([
+        ...periods.map(p => p.reviewedBy),
+        ...periods.map(p => p.lockedBy),
+        ...periods.map(p => p.invoicedBy),
+      ]);
+      const resolveName = (id: string | null) =>
+        id ? (expNameMap.get(id) ?? id) : '';
+
       rows = periods.map(p => {
         const fin = finByMonth.get(p.month);
         return {
@@ -831,10 +936,12 @@ router.get(
           paid: fin?.paid ?? 0,
           pending: fin?.pending ?? 0,
           overdue: fin?.overdue ?? 0,
+          reviewedAt: p.reviewedAt?.toISOString() ?? '',
+          reviewedBy: resolveName(p.reviewedBy),
           lockedAt: p.lockedAt?.toISOString() ?? '',
-          lockedBy: p.lockedBy ?? '',
+          lockedBy: resolveName(p.lockedBy),
           invoicedAt: p.invoicedAt?.toISOString() ?? '',
-          invoicedBy: p.invoicedBy ?? '',
+          invoicedBy: resolveName(p.invoicedBy),
           notes: p.notes ?? '',
         };
       });
@@ -843,20 +950,40 @@ router.get(
       // Aggregate report export — covers all spec §6.4 dimensions:
       // period, partner, subscription plan, cashback, margin, invoices, payments
       const now = new Date();
-      const from = fromParam ? new Date(fromParam) : new Date(now.getFullYear(), now.getMonth(), 1);
-      const to = toParam ? new Date(toParam) : new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+      const from = fromParam
+        ? (/^\d{4}-\d{2}-\d{2}$/.test(fromParam)
+            ? new Date(fromParam + 'T00:00:00.000+02:00')
+            : new Date(fromParam))
+        : new Date(now.getFullYear(), now.getMonth(), 1);
+      const to = toParam
+        ? (/^\d{4}-\d{2}-\d{2}$/.test(toParam)
+            ? new Date(toParam + 'T23:59:59.999Z')
+            : new Date(toParam))
+        : new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
 
       if (isNaN(from.getTime()) || isNaN(to.getTime())) {
         return res.status(400).json({ success: false, error: 'Invalid date range' });
       }
+      if (from > to) {
+        return res.status(400).json({ success: false, error: 'from date must be before or equal to to date' });
+      }
 
-      // Derive months in range for invoice filter (same logic as reports endpoint)
+      // Derive months in range for invoice filter — extract from original param strings to avoid
+      // the same UTC-month shift that affects the /reports endpoint (see comment there).
+      const expFromYM = fromParam && /^\d{4}-\d{2}-\d{2}$/.test(fromParam)
+        ? fromParam.slice(0, 7)
+        : `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+      const expToYM = toParam && /^\d{4}-\d{2}-\d{2}$/.test(toParam)
+        ? toParam.slice(0, 7)
+        : `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+      const [expFromY, expFromM] = expFromYM.split('-').map(Number);
+      const [expToY, expToM] = expToYM.split('-').map(Number);
       const expMonths: string[] = [];
-      const expCursor = new Date(from.getFullYear(), from.getMonth(), 1);
-      const expToMonthStart = new Date(to.getFullYear(), to.getMonth(), 1);
+      const expCursor = new Date(Date.UTC(expFromY, expFromM - 1, 1));
+      const expToMonthStart = new Date(Date.UTC(expToY, expToM - 1, 1));
       while (expCursor <= expToMonthStart) {
-        expMonths.push(`${expCursor.getFullYear()}-${String(expCursor.getMonth() + 1).padStart(2, '0')}`);
-        expCursor.setMonth(expCursor.getMonth() + 1);
+        expMonths.push(`${expCursor.getUTCFullYear()}-${String(expCursor.getUTCMonth() + 1).padStart(2, '0')}`);
+        expCursor.setUTCMonth(expCursor.getUTCMonth() + 1);
       }
 
       // Partner and status filters — mirror the reports endpoint so exports match what you see
@@ -943,7 +1070,7 @@ router.get(
           period: '',
           partnerName: '',
           partnerId: '',
-          plan,
+          plan: plan === 'UNKNOWN' ? 'Без абонамент' : plan,
           scanCount: stats.scanCount,
           cashback: stats.cashback,
           margin: '',
@@ -955,8 +1082,10 @@ router.get(
         }));
 
       // Section 3 — wallet summary rows: one row per transaction type (payments dimension)
+      // Wallet transactions are subscriber-side and cannot be filtered by partner — these
+      // totals always reflect platform-wide activity for the date range.
       const walletSection = walletStats.map(w => ({
-        section: 'wallet',
+        section: expPartnerId ? 'wallet (platform-wide, not filtered by partner)' : 'wallet',
         period: '',
         partnerName: '',
         partnerId: '',
@@ -982,7 +1111,7 @@ router.get(
     // row alone does not represent the full schema.
     const HEADERS: Record<string, string[]> = {
       invoices: ['id', 'partner', 'city', 'month', 'turnoverAmount', 'contractedRate', 'totalCashbackOwed', 'marginAmount', 'status', 'paidAt', 'notes', 'createdAt'],
-      periods:  ['month', 'status', 'partners', 'cashback', 'margin', 'total', 'paid', 'pending', 'overdue', 'lockedAt', 'lockedBy', 'invoicedAt', 'invoicedBy', 'notes'],
+      periods:  ['month', 'status', 'partners', 'cashback', 'margin', 'total', 'paid', 'pending', 'overdue', 'reviewedAt', 'reviewedBy', 'lockedAt', 'lockedBy', 'invoicedAt', 'invoicedBy', 'notes'],
       reports:  ['section', 'period', 'partnerName', 'partnerId', 'plan', 'scanCount', 'cashback', 'margin', 'turnover', 'invoiceStatus', 'walletType', 'walletTotal', 'walletCount'],
     };
 

@@ -197,12 +197,73 @@ router.post(
   })
 );
 
-/* ─── G4: Risk Queue (Spec §7.1) ─────────────────────────────────────────── */
+/* ─── G4: Risk Queue (Spec §7.1 / §7.2) ─────────────────────────────────── */
+
+// Signal codes grouped by spec §7.2 category — shared by list and summary endpoints.
+const RISK_SIGNAL_GROUPS = {
+  duplicate:   ['DUPLICATE_RECEIPT', 'EXACT_DUPLICATE', 'PERCEPTUAL_DUPLICATE', 'IMAGE_HASH_DUPLICATE'],
+  qrMismatch:  ['QR_MISMATCH', 'QR_VENUE_MISMATCH', 'NO_QR_SESSION'],
+  velocity:    ['HIGH_VELOCITY', 'RATE_LIMIT', 'DAILY_LIMIT', 'TOO_MANY_RECEIPTS'],
+  ibanAnomaly: ['IBAN_CHANGE', 'IBAN_RECENTLY_CHANGED', 'PAYOUT_RISK'],
+  receiptMatch:['LOW_OCR_CONFIDENCE', 'RECEIPT_TEMPLATE_MISMATCH'],
+} as const;
+
+const ALL_KNOWN_SIGNALS = [
+  ...RISK_SIGNAL_GROUPS.duplicate,
+  ...RISK_SIGNAL_GROUPS.qrMismatch,
+  ...RISK_SIGNAL_GROUPS.velocity,
+  ...RISK_SIGNAL_GROUPS.ibanAnomaly,
+  ...RISK_SIGNAL_GROUPS.receiptMatch,
+];
+
+function partnerRiskBucket(riskReceiptCount: number): 'LOW' | 'MEDIUM' | 'HIGH' {
+  if (riskReceiptCount >= 5) return 'HIGH';
+  if (riskReceiptCount >= 2) return 'MEDIUM';
+  return 'LOW';
+}
+
+/**
+ * GET /api/admin/control/risk-queue/summary
+ * Returns global signal counts across all non-resolved receipts (not page-scoped).
+ * Must be registered before /risk-queue/:id routes to avoid param capture.
+ */
+router.get(
+  '/risk-queue/summary',
+  requirePermission('control.risk.read'),
+  asyncHandler(async (_req: AuthRequest, res: Response) => {
+    const baseWhere = { status: { notIn: ['APPROVED', 'REJECTED', 'EXPIRED'] as never[] } };
+
+    const [total, duplicate, qrMismatch, velocity, ibanAnomaly, receiptMatch, knownCount] =
+      await Promise.all([
+        prisma.receipt.count({ where: baseWhere }),
+        prisma.receipt.count({ where: { ...baseWhere, fraudReasons: { hasSome: [...RISK_SIGNAL_GROUPS.duplicate] } } }),
+        prisma.receipt.count({ where: { ...baseWhere, fraudReasons: { hasSome: [...RISK_SIGNAL_GROUPS.qrMismatch] } } }),
+        prisma.receipt.count({ where: { ...baseWhere, fraudReasons: { hasSome: [...RISK_SIGNAL_GROUPS.velocity] } } }),
+        prisma.receipt.count({ where: { ...baseWhere, fraudReasons: { hasSome: [...RISK_SIGNAL_GROUPS.ibanAnomaly] } } }),
+        prisma.receipt.count({ where: { ...baseWhere, fraudReasons: { hasSome: [...RISK_SIGNAL_GROUPS.receiptMatch] } } }),
+        prisma.receipt.count({ where: { ...baseWhere, fraudReasons: { hasSome: ALL_KNOWN_SIGNALS } } }),
+      ]);
+
+    res.json({
+      success: true,
+      data: {
+        total,
+        duplicate,
+        qrMismatch,
+        velocity,
+        ibanAnomaly,
+        receiptMatch,
+        other: total - knownCount,
+      },
+    });
+  })
+);
 
 /**
  * GET /api/admin/control/risk-queue
  * Query: tier (REVIEW_31_60 | HIGH_61_PLUS | all), page, limit, venueId
  * Returns receipts filtered by fraudScore risk tier for the twice-weekly review queue.
+ * Each row includes partnerRiskBucket derived from risk-receipt count across all partner venues.
  */
 router.get(
   '/risk-queue',
@@ -214,7 +275,7 @@ router.get(
     const tier = typeof req.query.tier === 'string' ? req.query.tier.trim() : 'all';
     const venueId = typeof req.query.venueId === 'string' ? req.query.venueId.trim() : '';
 
-    // Default: review-needed tier (>=31). Spec §7.1 buckets: 0-30 auto-approve, 31-60 review, 61+ high.
+    // Spec §7.1 buckets: 0-30 auto-approve, 31-60 review, 61+ high.
     let fraudScoreFilter: { gte?: number; lt?: number } = { gte: 31 };
     if (tier === 'REVIEW_31_60') fraudScoreFilter = { gte: 31, lt: 61 };
     else if (tier === 'HIGH_61_PLUS') fraudScoreFilter = { gte: 61 };
@@ -240,8 +301,7 @@ router.get(
       prisma.receipt.count({ where }),
     ]);
 
-    // Receipt has no Prisma relation to Venue — fetch venues separately so the page
-    // can show partner / location labels (spec §7.2 Location-match signal).
+    // Receipt has no Prisma relation to Venue — fetch venues separately.
     const venueIds = Array.from(
       new Set(receipts.map((r) => r.venueId).filter((x): x is string => !!x))
     );
@@ -250,22 +310,97 @@ router.get(
           where: { id: { in: venueIds } },
           select: {
             id: true,
+            partnerId: true,
             name: true,
             partner: { select: { id: true, businessName: true } },
           },
         })
       : [];
     const venueMap = new Map(venues.map((v) => [v.id, v]));
-    const enriched = receipts.map((r) => ({
-      ...r,
-      venue: r.venueId ? venueMap.get(r.venueId) ?? null : null,
-    }));
+
+    // Spec §7.2 "Риск при партньор": derive partner risk from count of risk-queue receipts
+    // across ALL venues of each partner (not just the ones visible on this page).
+    const partnerIds = Array.from(
+      new Set(venues.map((v) => v.partner?.id).filter((x): x is string => !!x))
+    );
+    const partnerRiskMap = new Map<string, 'LOW' | 'MEDIUM' | 'HIGH'>();
+    if (partnerIds.length) {
+      const allPartnerVenues = await prisma.venue.findMany({
+        where: { partnerId: { in: partnerIds } },
+        select: { id: true, partnerId: true },
+      });
+      const allPartnerVenueIds = allPartnerVenues.map((v) => v.id);
+      const venueToPartner = new Map(allPartnerVenues.map((v) => [v.id, v.partnerId]));
+
+      const riskCountsByVenue = await prisma.receipt.groupBy({
+        by: ['venueId'],
+        where: {
+          venueId: { in: allPartnerVenueIds },
+          fraudScore: { gte: 31 },
+          status: { notIn: ['APPROVED', 'REJECTED', 'EXPIRED'] },
+        },
+        _count: { _all: true },
+      });
+
+      const partnerCountMap = new Map<string, number>();
+      for (const row of riskCountsByVenue) {
+        if (!row.venueId) continue;
+        const pid = venueToPartner.get(row.venueId);
+        if (!pid) continue;
+        partnerCountMap.set(pid, (partnerCountMap.get(pid) ?? 0) + row._count._all);
+      }
+      for (const pid of partnerIds) {
+        partnerRiskMap.set(pid, partnerRiskBucket(partnerCountMap.get(pid) ?? 0));
+      }
+    }
+
+    const enriched = receipts.map((r) => {
+      const venue = r.venueId ? (venueMap.get(r.venueId) ?? null) : null;
+      const pRisk = venue?.partner?.id ? (partnerRiskMap.get(venue.partner.id) ?? 'LOW') : null;
+      return { ...r, venue: venue ? { ...venue, partnerRiskBucket: pRisk } : null };
+    });
 
     res.json({
       success: true,
       data: enriched,
       meta: { total, page, limit, pages: Math.ceil(total / limit), tier },
     });
+  })
+);
+
+/**
+ * POST /api/admin/control/risk-queue/:id/approve
+ * Approve a flagged receipt from the risk queue (calculates cashback, credits wallet).
+ */
+router.post(
+  '/risk-queue/:id/approve',
+  requirePermission('control.disputes.write'),
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    const updated = await receiptService.reviewReceipt({
+      receiptId: req.params.id,
+      action: 'APPROVE',
+      reviewedBy: req.user!.id,
+      notes: typeof req.body?.notes === 'string' ? req.body.notes.trim() : undefined,
+    });
+    res.json({ success: true, data: updated, message: 'Signal approved' });
+  })
+);
+
+/**
+ * POST /api/admin/control/risk-queue/:id/reject
+ * Reject a flagged receipt from the risk queue.
+ */
+router.post(
+  '/risk-queue/:id/reject',
+  requirePermission('control.disputes.write'),
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    const updated = await receiptService.reviewReceipt({
+      receiptId: req.params.id,
+      action: 'REJECT',
+      reviewedBy: req.user!.id,
+      rejectionReason: typeof req.body?.reason === 'string' ? req.body.reason.trim() : undefined,
+    });
+    res.json({ success: true, data: updated, message: 'Signal rejected' });
   })
 );
 

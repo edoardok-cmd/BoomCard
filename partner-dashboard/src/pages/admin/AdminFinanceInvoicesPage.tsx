@@ -238,12 +238,13 @@ export default function AdminFinanceInvoicesPage() {
   const initialStatus: InvoiceStatus | '' =
     initialStatusParam === 'PENDING' || initialStatusParam === 'PAID' || initialStatusParam === 'OVERDUE'
       ? initialStatusParam : '';
+  const initialMonth = searchParams.get('month') ?? '';
 
   const [page, setPage]               = useState(1);
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch]           = useState('');
   const [status, setStatus]           = useState<InvoiceStatus | ''>(initialStatus);
-  const [month, setMonth]             = useState('');
+  const [month, setMonth]             = useState(initialMonth);
   const [notesModal, setNotesModal]   = useState<{ id: string; partnerName: string; month: string; current: string } | null>(null);
   const [notesValue, setNotesValue]   = useState('');
   const [exporting, setExporting]     = useState(false);

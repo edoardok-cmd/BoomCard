@@ -595,6 +595,41 @@ const BulkActionsBar = styled.div<{ $visible: boolean }>`
   z-index: 1000;
 `;
 
+// Risk threshold legend panel (spec §7.1: 0–30 auto, 31–60 review, 61+ high)
+const RiskLegend = styled.div`
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-bottom: 24px;
+`;
+
+const LegendItem = styled.div<{ $color: string; $bg: string }>`
+  background: var(--color-background);
+  border-radius: 10px;
+  padding: 14px 18px;
+  border-left: 4px solid ${p => p.$color};
+  box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+`;
+
+const LegendRange = styled.div<{ $color: string }>`
+  font-size: 18px;
+  font-weight: 800;
+  color: ${p => p.$color};
+  margin-bottom: 2px;
+`;
+
+const LegendLabel = styled.div`
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-text-primary);
+`;
+
+const LegendDesc = styled.div`
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  margin-top: 2px;
+`;
+
 const BulkInfo = styled.div`
   font-size: 14px;
   font-weight: 600;
@@ -1034,7 +1069,7 @@ export const AdminScanReviewPage: React.FC = () => {
       if (modalMode === 'approve' && currentScan && verifiedAmount !== '') {
         const parsed = Number(verifiedAmount);
         if (!isFinite(parsed) || parsed <= 0) {
-          alert('Verified amount must be a positive number');
+          alert('Верифицираната сума трябва да е положително число');
           return;
         }
         if (parsed !== currentScan.billAmount) {
@@ -1069,7 +1104,7 @@ export const AdminScanReviewPage: React.FC = () => {
       setVerifiedAmount('');
     } catch (error) {
       console.error(`Error ${modalMode}ing scan:`, error);
-      alert(error instanceof Error ? error.message : `Failed to ${modalMode} scan. Please try again.`);
+      alert(error instanceof Error ? error.message : `Грешка при ${modalMode === 'approve' ? 'одобрение' : 'отхвърляне'}. Опитайте отново.`);
     }
   };
 
@@ -1077,7 +1112,7 @@ export const AdminScanReviewPage: React.FC = () => {
     if (selectedScans.size === 0) return;
     const ids = Array.from(selectedScans);
 
-    if (!confirm(`Approve ${ids.length} scan(s)? This credits cashback and cannot be undone.`)) {
+    if (!confirm(`Одобряване на ${ids.length} транзакции? Кешбекът ще бъде начислен и действието е необратимо.`)) {
       return;
     }
 
@@ -1096,14 +1131,14 @@ export const AdminScanReviewPage: React.FC = () => {
         throw new Error(data?.error || 'Failed to bulk approve scans');
       }
       if (data.errorCount > 0) {
-        alert(`${data.successCount} approved, ${data.errorCount} failed. Check logs for details.`);
+        alert(`${data.successCount} одобрени, ${data.errorCount} грешки. Проверете логовете.`);
       }
       await fetchScans();
       await fetchStats();
       setSelectedScans(new Set());
     } catch (error) {
       console.error('Error bulk approving:', error);
-      alert(error instanceof Error ? error.message : 'Failed to approve scans. Please try again.');
+      alert(error instanceof Error ? error.message : 'Грешка при групово одобрение. Опитайте отново.');
     }
   };
 
@@ -1111,7 +1146,7 @@ export const AdminScanReviewPage: React.FC = () => {
     if (selectedScans.size === 0) return;
     const ids = Array.from(selectedScans);
 
-    const reason = prompt(`Enter rejection reason for ${ids.length} scans:`);
+    const reason = prompt(`Въведете причина за отхвърляне на ${ids.length} транзакции:`);
     if (!reason) return;
 
     try {
@@ -1129,14 +1164,14 @@ export const AdminScanReviewPage: React.FC = () => {
         throw new Error(data?.error || 'Failed to bulk reject scans');
       }
       if (data.errorCount > 0) {
-        alert(`${data.successCount} rejected, ${data.errorCount} failed. Check logs for details.`);
+        alert(`${data.successCount} отхвърлени, ${data.errorCount} грешки. Проверете логовете.`);
       }
       await fetchScans();
       await fetchStats();
       setSelectedScans(new Set());
     } catch (error) {
       console.error('Error bulk rejecting:', error);
-      alert(error instanceof Error ? error.message : 'Failed to reject scans. Please try again.');
+      alert(error instanceof Error ? error.message : 'Грешка при групово отхвърляне. Опитайте отново.');
     }
   };
 
@@ -1157,49 +1192,68 @@ export const AdminScanReviewPage: React.FC = () => {
   return (
     <PageContainer>
       <Header>
-        <Title>Admin Scan Review</Title>
-        <Subtitle>Review and approve flagged sticker scans</Subtitle>
+        <Title>Преглед на рискови транзакции</Title>
+        <Subtitle>Транзакции, изискващи преглед и одобрение от администратор</Subtitle>
       </Header>
 
       {stats && (
         <StatsGrid>
           <StatCard $color="#ff9800">
-            <StatLabel>Pending Review</StatLabel>
+            <StatLabel>Изчакват преглед</StatLabel>
             <StatValue>{stats.pending}</StatValue>
           </StatCard>
           <StatCard $color="#4caf50">
-            <StatLabel>Approved Today</StatLabel>
+            <StatLabel>Одобрени днес</StatLabel>
             <StatValue>{stats.approved}</StatValue>
           </StatCard>
           <StatCard $color="#f44336">
-            <StatLabel>Rejected Today</StatLabel>
+            <StatLabel>Отхвърлени днес</StatLabel>
             <StatValue>{stats.rejected}</StatValue>
           </StatCard>
           <StatCard $color="#667eea">
-            <StatLabel>Avg Fraud Score</StatLabel>
+            <StatLabel>Среден рисков бал</StatLabel>
             <StatValue>{stats.avgFraudScore.toFixed(1)}</StatValue>
           </StatCard>
         </StatsGrid>
       )}
 
+      {/* Risk threshold legend — spec §7.1 */}
+      <RiskLegend>
+        <LegendItem $color="#4caf50" $bg="#e8f5e9">
+          <LegendRange $color="#4caf50">0 – 30</LegendRange>
+          <LegendLabel>Автоматично одобрение</LegendLabel>
+          <LegendDesc>Системата одобрява без преглед</LegendDesc>
+        </LegendItem>
+        <LegendItem $color="#ff9800" $bg="#fff3e0">
+          <LegendRange $color="#ff9800">31 – 60</LegendRange>
+          <LegendLabel>Изисква преглед</LegendLabel>
+          <LegendDesc>Администраторът трябва да провери</LegendDesc>
+        </LegendItem>
+        <LegendItem $color="#f44336" $bg="#fdecea">
+          <LegendRange $color="#f44336">61+</LegendRange>
+          <LegendLabel>Висок риск</LegendLabel>
+          <LegendDesc>Вероятна измама — задължителен преглед</LegendDesc>
+        </LegendItem>
+      </RiskLegend>
+
       <FiltersBar>
         <FilterGroup>
-          <FilterLabel>Status</FilterLabel>
+          <FilterLabel>Статус</FilterLabel>
           <Select
             value={filterStatus}
             onChange={(e) => commitFilters({ filterStatus: e.target.value as FilterStatus })}
           >
-            <option value="all">All Statuses</option>
-            <option value="active">Active (Pending / Validating / Manual Review)</option>
-            <option value="MANUAL_REVIEW">Manual Review</option>
-            <option value="PENDING">Pending</option>
-            <option value="APPROVED">Approved</option>
-            <option value="REJECTED">Rejected</option>
+            <option value="all">Всички статуси</option>
+            <option value="active">Активни (Чакащи / Проверяващи / Ръчен преглед)</option>
+            <option value="MANUAL_REVIEW">Ръчен преглед</option>
+            <option value="PENDING">Чакащи</option>
+            <option value="APPROVED">Одобрени</option>
+            <option value="REJECTED">Отхвърлени</option>
           </Select>
         </FilterGroup>
 
         <FilterGroup>
-          <FilterLabel>Risk Level</FilterLabel>
+          <FilterLabel>Рисково ниво</FilterLabel>
           <Select
             value={filterRisk}
             // 'all' is the Risk default so it's omitted from the URL; any
@@ -1208,18 +1262,18 @@ export const AdminScanReviewPage: React.FC = () => {
             // ?riskLevel= is normalized to ?bucket= on the first interaction.
             onChange={(e) => commitFilters({ filterRisk: e.target.value as FilterRisk })}
           >
-            <option value="all">All Risk Levels</option>
-            <option value="BUCKET_AUTO_0_30">Auto-approve (0–30)</option>
-            <option value="BUCKET_REVIEW_31_60">Review (31–60)</option>
-            <option value="BUCKET_HIGH_61_PLUS">High risk (61+)</option>
+            <option value="all">Всички нива</option>
+            <option value="BUCKET_AUTO_0_30">Автоодобрение (0–30)</option>
+            <option value="BUCKET_REVIEW_31_60">Преглед (31–60)</option>
+            <option value="BUCKET_HIGH_61_PLUS">Висок риск (61+)</option>
           </Select>
         </FilterGroup>
 
         <FilterGroup style={{ flex: 1 }}>
-          <FilterLabel>Search</FilterLabel>
+          <FilterLabel>Търсене</FilterLabel>
           <Input
             type="text"
-            placeholder="Search by ID, venue, or email..."
+            placeholder="Търсене по ID, обект или имейл..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
@@ -1228,26 +1282,26 @@ export const AdminScanReviewPage: React.FC = () => {
         {(filterSuspicious || filterReasons || filterDateFromHours) && (
           <div style={{ flexBasis: '100%', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
             <span style={{ fontSize: 12, color: 'var(--color-text-secondary)', textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: 600 }}>
-              Active filter:
+              Активен филтър:
             </span>
             {filterSuspicious && (
               <button
                 type="button"
-                aria-label="Remove suspicious activity filter"
+                aria-label="Премахни филтъра за подозрителна активност"
                 onClick={() => commitFilters({ filterSuspicious: false })}
                 style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 10px', border: '1px solid #f59e0b', borderRadius: 999, background: '#fef3c7', color: '#92400e', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
               >
-                Suspicious activity ×
+                Подозрителна активност ×
               </button>
             )}
             {filterReasons && (
               <button
                 type="button"
-                aria-label={`Remove reason filter: ${filterReasons}`}
+                aria-label={`Премахни филтъра по причина: ${filterReasons}`}
                 onClick={() => commitFilters({ filterReasons: '' })}
                 style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 10px', border: '1px solid #f59e0b', borderRadius: 999, background: '#fef3c7', color: '#92400e', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
               >
-                Reason: {filterReasons} ×
+                Причина: {filterReasons} ×
               </button>
             )}
             {filterDateFromHours && (
@@ -1261,8 +1315,8 @@ export const AdminScanReviewPage: React.FC = () => {
                 // same shape with a clarifying "applying" verb.
                 aria-label={
                   appliedDateFromHours !== undefined
-                    ? `Remove time-window filter: last ${appliedDateFromHours} hours`
-                    : 'Remove time-window filter (applying)'
+                    ? `Премахни времевия прозорец: последните ${appliedDateFromHours} часа`
+                    : 'Премахни времевия прозорец (прилагане…)'
                 }
                 // The resync effect's prevHoursRef inequality check clears
                 // appliedDateFromHours; no need to double-bookkeep here.
@@ -1277,8 +1331,8 @@ export const AdminScanReviewPage: React.FC = () => {
                     setFilterDateFromHours so transitions don't paint the
                     previous window's number against the new filter. */}
                 {appliedDateFromHours !== undefined
-                  ? `Last ${appliedDateFromHours}h ×`
-                  : 'Time window … ×'}
+                  ? `Последните ${appliedDateFromHours}ч ×`
+                  : 'Времеви прозорец … ×'}
               </button>
             )}
           </div>
@@ -1304,8 +1358,8 @@ export const AdminScanReviewPage: React.FC = () => {
         >
           {filterDateFromHours
             ? appliedDateFromHours !== undefined
-              ? `Time window filter applied: last ${appliedDateFromHours} hours`
-              : 'Time window filter applying…'
+              ? `Времеви прозорец приложен: последните ${appliedDateFromHours} часа`
+              : 'Времеви прозорец се прилага…'
             : ''}
         </span>
       </FiltersBar>
@@ -1324,9 +1378,8 @@ export const AdminScanReviewPage: React.FC = () => {
             fontWeight: 500,
           }}
         >
-          Showing the first {total.toLocaleString()} matches — the suspicious-scan list
-          hit the safety cap. Narrow the filters (status, bucket, time window) to see
-          the exact set.
+          Показват се първите {total.toLocaleString()} съвпадения — списъкът с подозрителни транзакции
+          достигна предела. Стеснете филтрите (статус, ниво, времеви прозорец), за да видите точния набор.
         </div>
       )}
 
@@ -1337,8 +1390,8 @@ export const AdminScanReviewPage: React.FC = () => {
       ) : filteredScans.length === 0 ? (
         <EmptyState>
           <EmptyIcon>✅</EmptyIcon>
-          <EmptyTitle>All Clear!</EmptyTitle>
-          <EmptyText>No scans matching your filters. Great job!</EmptyText>
+          <EmptyTitle>Всичко е наред!</EmptyTitle>
+          <EmptyText>Няма транзакции, отговарящи на вашите филтри.</EmptyText>
         </EmptyState>
       ) : (
         <ScansGrid>
@@ -1363,33 +1416,33 @@ export const AdminScanReviewPage: React.FC = () => {
 
               <ScanDetails>
                 <DetailItem>
-                  <DetailLabel>Customer</DetailLabel>
+                  <DetailLabel>Клиент</DetailLabel>
                   <DetailValue>
                     {scan.user.firstName} {scan.user.lastName}
                   </DetailValue>
                 </DetailItem>
                 <DetailItem>
-                  <DetailLabel>Bill Amount</DetailLabel>
+                  <DetailLabel>Сума на сметка</DetailLabel>
                   <DetailValue>{scan.billAmount.toFixed(2)} лв</DetailValue>
                 </DetailItem>
                 <DetailItem>
-                  <DetailLabel>Cashback</DetailLabel>
+                  <DetailLabel>Кешбек</DetailLabel>
                   <DetailValue>{scan.cashbackAmount.toFixed(2)} лв</DetailValue>
                 </DetailItem>
                 <DetailItem>
-                  <DetailLabel>Card Type</DetailLabel>
+                  <DetailLabel>Тип карта</DetailLabel>
                   <DetailValue>{scan.card.cardType}</DetailValue>
                 </DetailItem>
                 <DetailItem>
-                  <DetailLabel>Distance</DetailLabel>
+                  <DetailLabel>Разстояние</DetailLabel>
                   <DetailValue>
-                    {scan.distance !== null ? `${scan.distance.toFixed(0)}m` : 'N/A'}
+                    {scan.distance !== null ? `${scan.distance.toFixed(0)}м` : 'Н/П'}
                   </DetailValue>
                 </DetailItem>
                 <DetailItem>
-                  <DetailLabel>Scan Time</DetailLabel>
+                  <DetailLabel>Дата/час</DetailLabel>
                   <DetailValue>
-                    {new Date(scan.createdAt).toLocaleString()}
+                    {new Date(scan.createdAt).toLocaleString('bg-BG')}
                   </DetailValue>
                 </DetailItem>
               </ScanDetails>
@@ -1397,13 +1450,13 @@ export const AdminScanReviewPage: React.FC = () => {
               <FraudScoreBar>
                 <ScoreLabel>
                   <span>
-                    Fraud Score
+                    Рисков бал
                     <BucketBadge $score={scan.fraudScore}>
                       {scan.fraudScore < 31
-                        ? 'Auto-approve'
+                        ? 'Автоодобрение'
                         : scan.fraudScore < 61
-                          ? 'Review'
-                          : 'High risk'}
+                          ? 'Преглед'
+                          : 'Висок риск'}
                     </BucketBadge>
                   </span>
                   <span>{scan.fraudScore.toFixed(1)}/100</span>
@@ -1428,20 +1481,20 @@ export const AdminScanReviewPage: React.FC = () => {
                   $variant="approve"
                   onClick={() => openReviewModal(scan.id, 'approve')}
                 >
-                  ✓ Approve
+                  ✓ Одобри
                 </Button>
                 <Button
                   $variant="reject"
                   onClick={() => openReviewModal(scan.id, 'reject')}
                 >
-                  ✗ Reject
+                  ✗ Отхвърли
                 </Button>
                 {scan.receiptImageUrl && (
                   <Button
                     $variant="view"
                     onClick={() => window.open(scan.receiptImageUrl!, '_blank')}
                   >
-                    🖼️ View Receipt
+                    🖼️ Виж бележка
                   </Button>
                 )}
               </ActionButtons>
@@ -1453,27 +1506,27 @@ export const AdminScanReviewPage: React.FC = () => {
       {!loading && total > pageSize && (
         <Pagination>
           <PageButton onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1}>
-            ← Prev
+            ← Предишна
           </PageButton>
           <PageInfo>
-            Page {page} of {totalPages} · {total.toLocaleString()} scans
+            Страница {page} от {totalPages} · {total.toLocaleString()} транзакции
           </PageInfo>
           <PageButton onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page >= totalPages}>
-            Next →
+            Следваща →
           </PageButton>
         </Pagination>
       )}
 
       <BulkActionsBar $visible={selectedScans.size > 0}>
-        <BulkInfo>{selectedScans.size} scans selected</BulkInfo>
+        <BulkInfo>{selectedScans.size} транзакции избрани</BulkInfo>
         <BulkButton $variant="approve" onClick={handleBulkApprove}>
-          Approve All
+          Одобри всички
         </BulkButton>
         <BulkButton $variant="reject" onClick={handleBulkReject}>
-          Reject All
+          Отхвърли всички
         </BulkButton>
         <BulkButton onClick={() => setSelectedScans(new Set())}>
-          Clear
+          Изчисти
         </BulkButton>
       </BulkActionsBar>
 
@@ -1481,22 +1534,22 @@ export const AdminScanReviewPage: React.FC = () => {
         <ModalContent onClick={(e) => e.stopPropagation()}>
           <ModalHeader>
             <ModalTitle>
-              {modalMode === 'approve' ? '✓ Approve' : '✗ Reject'} Scan
+              {modalMode === 'approve' ? '✓ Одобри' : '✗ Отхвърли'} транзакция
             </ModalTitle>
             <ModalSubtitle>
-              Add notes about your decision (optional)
+              Добавете бележки към вашето решение (по желание)
             </ModalSubtitle>
           </ModalHeader>
 
           {modalMode === 'approve' && currentScan && (
             <ModalSection>
               <SectionTitle>
-                Verified Bill Amount (лв)
+                Верифицирана сума (лв)
               </SectionTitle>
               <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginBottom: 8 }}>
-                User submitted <strong>{currentScan.billAmount.toFixed(2)} лв</strong>
-                {currentScan.ocrData?.amount != null ? ` — OCR detected ${currentScan.ocrData.amount.toFixed(2)} лв` : ''}.
-                Edit this to correct the amount before approving; cashback will be recomputed.
+                Потребителят е въвел <strong>{currentScan.billAmount.toFixed(2)} лв</strong>
+                {currentScan.ocrData?.amount != null ? ` — OCR разпознал ${currentScan.ocrData.amount.toFixed(2)} лв` : ''}.
+                Коригирайте сумата преди одобрение; кешбекът ще бъде преизчислен.
               </div>
               <Input
                 type="number"
@@ -1510,9 +1563,9 @@ export const AdminScanReviewPage: React.FC = () => {
           )}
 
           <ModalSection>
-            <SectionTitle>Admin Notes</SectionTitle>
+            <SectionTitle>Бележки на администратора</SectionTitle>
             <TextArea
-              placeholder="Enter any notes about this decision..."
+              placeholder="Въведете бележки към решението..."
               value={reviewNotes}
               onChange={(e) => setReviewNotes(e.target.value)}
             />
@@ -1523,10 +1576,10 @@ export const AdminScanReviewPage: React.FC = () => {
               $variant={modalMode}
               onClick={handleReview}
             >
-              Confirm {modalMode === 'approve' ? 'Approval' : 'Rejection'}
+              {modalMode === 'approve' ? 'Потвърди одобрение' : 'Потвърди отхвърляне'}
             </Button>
             <Button onClick={() => setModalOpen(false)}>
-              Cancel
+              Откажи
             </Button>
           </ModalActions>
         </ModalContent>
