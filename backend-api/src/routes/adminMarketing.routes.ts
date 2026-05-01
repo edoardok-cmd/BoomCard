@@ -179,9 +179,9 @@ type DispatchRecipient =
 async function buildRecipientsFromSyncKey(syncKey: string): Promise<DispatchRecipient[]> {
   const cutoff90d = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
 
-  const userSel = { id: true, email: true, firstName: true, lastName: true, marketingConsentEmail: true, language: true } as const;
-  const toUser = (u: { id: string; email: string; firstName: string | null; lastName: string | null; marketingConsentEmail: boolean; language: string | null }): DispatchRecipient => ({
-    kind: 'USER', userId: u.id, email: u.email, firstName: u.firstName, lastName: u.lastName, marketingConsentEmail: u.marketingConsentEmail, language: u.language,
+  const userSel = { id: true, email: true, firstName: true, lastName: true, marketingConsentEmail: true, preferredLanguage: true } as const;
+  const toUser = (u: { id: string; email: string; firstName: string | null; lastName: string | null; marketingConsentEmail: boolean; preferredLanguage: string }): DispatchRecipient => ({
+    kind: 'USER', userId: u.id, email: u.email, firstName: u.firstName, lastName: u.lastName, marketingConsentEmail: u.marketingConsentEmail, preferredLanguage: u.preferredLanguage,
   });
 
   const partnerSel = { id: true, email: true, businessName: true, user: { select: { id: true, marketingConsentEmail: true } } } as const;
@@ -258,7 +258,7 @@ async function dispatchCampaign(campaignId: string): Promise<number> {
               partner: {
                 select: { id: true, email: true, businessName: true, user: { select: { id: true, marketingConsentEmail: true } } },
               },
-              user: { select: { id: true, email: true, firstName: true, lastName: true, marketingConsentEmail: true, language: true } },
+              user: { select: { id: true, email: true, firstName: true, lastName: true, marketingConsentEmail: true, preferredLanguage: true } },
             },
           },
         },
@@ -276,7 +276,7 @@ async function dispatchCampaign(campaignId: string): Promise<number> {
     ? await buildRecipientsFromSyncKey(list.syncKey)
     : list.members.map((m): DispatchRecipient => {
         if (m.memberType === 'USER' && m.user) {
-          return { kind: 'USER', userId: m.user.id, email: m.user.email, firstName: m.user.firstName, lastName: m.user.lastName, marketingConsentEmail: m.user.marketingConsentEmail, language: m.user.language };
+          return { kind: 'USER', userId: m.user.id, email: m.user.email, firstName: m.user.firstName, lastName: m.user.lastName, marketingConsentEmail: m.user.marketingConsentEmail, preferredLanguage: m.user.preferredLanguage };
         }
         return {
           kind: 'PARTNER',
@@ -308,7 +308,7 @@ async function dispatchCampaign(campaignId: string): Promise<number> {
         }
 
         if (email) {
-          const useEn = recipient.kind === 'USER' && recipient.language === 'en';
+          const useEn = recipient.kind === 'USER' && recipient.preferredLanguage === 'en';
           const subject = (useEn && template.subjectEn) ? template.subjectEn : (template.subject ?? template.name);
           const html = (useEn && template.bodyEn) ? template.bodyEn : (template.body || `<p>${template.name}</p>`);
           await emailService.sendEmail({ to: email, subject, html });
