@@ -304,6 +304,13 @@ function ErrorRow({ e }: { e: MobileErrorLogEntry }) {
   const [expanded, setExpanded] = useState(false);
   const [modal, setModal] = useState<StackModal>(null);
 
+  useEffect(() => {
+    if (!modal) return;
+    const onKey = (ev: KeyboardEvent) => { if (ev.key === 'Escape') setModal(null); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [modal]);
+
   return (
     <>
       <tr>
@@ -617,7 +624,18 @@ export default function AdminSettingsMobilePage() {
       )}
 
       <div style={{ marginTop: '1.5rem', maxWidth: '60rem' }}>
-        <SaveBtn onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending || isLoading}>
+        <SaveBtn
+          onClick={() => {
+            if (state.errorLogUrl) {
+              try { new URL(state.errorLogUrl); } catch {
+                toast.error('Невалиден URL за лог на грешки');
+                return;
+              }
+            }
+            saveMutation.mutate();
+          }}
+          disabled={saveMutation.isPending || isLoading}
+        >
           {saveMutation.isPending ? 'Запазване…' : 'Запази всички'}
         </SaveBtn>
       </div>

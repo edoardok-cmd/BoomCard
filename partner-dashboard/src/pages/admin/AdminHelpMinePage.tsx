@@ -36,6 +36,14 @@ const Select = styled.select`padding: 0.5rem 0.75rem; border: 1px solid ${palett
 const PrimaryLine = styled.div`font-weight: 600; color: ${palette.text};`;
 const MetaLine = styled.div`font-size: 0.75rem; color: ${palette.textSubtle}; margin-top: 0.125rem;`;
 
+const STATUS_BG_LABELS: Record<TicketStatus, string> = {
+  NEW: 'Нова', OPEN: 'Отворена', WAITING: 'Изчакване', RESOLVED: 'Решена', CLOSED: 'Затворена',
+};
+
+const PRIORITY_BG_LABELS: Record<TicketPriority, string> = {
+  LOW: 'Нисък', MEDIUM: 'Среден', HIGH: 'Висок', URGENT: 'Спешен',
+};
+
 const StatusBadge = styled.span<{ $status: TicketStatus }>`
   display: inline-flex; align-items: center; font-size: 0.7rem; font-weight: 700;
   text-transform: uppercase; letter-spacing: 0.05em; border-radius: 0.375rem; padding: 0.125rem 0.5rem;
@@ -43,6 +51,7 @@ const StatusBadge = styled.span<{ $status: TicketStatus }>`
     switch ($status) {
       case 'RESOLVED': return `background: ${palette.successSoft}; color: ${palette.success};`;
       case 'WAITING':  return `background: ${palette.warningSoft}; color: ${palette.warning};`;
+      case 'NEW':      return `background: ${palette.dangerSoft}; color: ${palette.danger};`;
       default:         return `background: ${palette.infoSoft}; color: ${palette.info};`;
     }
   }}
@@ -62,7 +71,8 @@ const PriorityDot = styled.span<{ $priority: TicketPriority }>`
 
 const PAGE_SIZE = 25;
 
-function displayName(u: TicketUser): string {
+function displayName(u: TicketUser | null | undefined): string {
+  if (!u) return '—';
   const name = `${u.firstName ?? ''} ${u.lastName ?? ''}`.trim();
   return name || u.email;
 }
@@ -89,50 +99,49 @@ export default function AdminHelpMinePage() {
   const resolveMutation = useMutation({
     mutationFn: (id: string) => adminHelpService.update(id, { status: 'RESOLVED' }),
     onSuccess: () => {
-      toast.success('Ticket resolved');
+      toast.success('Заявката е маркирана като решена');
       queryClient.invalidateQueries({ queryKey: ['admin-help-mine'] });
       queryClient.invalidateQueries({ queryKey: ['admin-help-all'] });
     },
-    onError: () => toast.error('Failed to resolve ticket'),
+    onError: () => toast.error('Грешка при обновяване'),
   });
 
   const fmt = (iso: string) =>
-    new Date(iso).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+    new Date(iso).toLocaleString('bg-BG', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
 
-  const openCount = data?.tickets.filter((t) => t.status !== 'RESOLVED').length ?? 0;
+  const openCount = data?.tickets.filter((t) => t.status !== 'RESOLVED' && t.status !== 'CLOSED').length ?? 0;
 
   const columns: ColumnDef<MyTicket>[] = [
     {
       key: 'subject',
-      header: 'Ticket',
+      header: 'Заявка',
       render: (row) => (
         <span>
           <PrimaryLine>
-            <PriorityDot $priority={row.priority} />
+            <PriorityDot $priority={row.priority} title={PRIORITY_BG_LABELS[row.priority]} />
             {row.subject}
           </PrimaryLine>
-          <MetaLine>Opened {fmt(row.createdAt)}</MetaLine>
+          <MetaLine>Подадена {fmt(row.createdAt)}</MetaLine>
         </span>
       ),
     },
     {
-      key: 'user',
-      header: 'User',
+      key: 'assignee',
+      header: 'Назначена на',
       render: (row) => (
-        <span>
-          <PrimaryLine style={{ fontWeight: 500 }}>{displayName(row.user)}</PrimaryLine>
-          <MetaLine>{row.user.email}</MetaLine>
+        <span style={{ fontSize: '0.8125rem', color: row.assignee ? palette.textMuted : palette.danger }}>
+          {row.assignee ? displayName(row.assignee) : 'Неназначена'}
         </span>
       ),
     },
     {
       key: 'status',
-      header: 'Status',
-      render: (row) => <StatusBadge $status={row.status}>{row.status}</StatusBadge>,
+      header: 'Статус',
+      render: (row) => <StatusBadge $status={row.status}>{STATUS_BG_LABELS[row.status]}</StatusBadge>,
     },
     {
       key: 'updatedAt',
-      header: 'Last activity',
+      header: 'Последна промяна',
       render: (row) => (
         <span style={{ fontSize: '0.8125rem', color: palette.textMuted }}>{fmt(row.updatedAt)}</span>
       ),
@@ -144,12 +153,12 @@ export default function AdminHelpMinePage() {
     <PageShell>
       <PageHeader>
         <TitleBlock>
-          <Eyebrow>Help</Eyebrow>
+          <Eyebrow>Помощ</Eyebrow>
           <PageTitle>
-            My Tickets
-            {openCount > 0 && <TotalBadge>{openCount} open</TotalBadge>}
+            Моите заявки
+            {openCount > 0 && <TotalBadge>{openCount} отворени</TotalBadge>}
           </PageTitle>
-          <PageSubtitle>Tickets currently assigned to you</PageSubtitle>
+          <PageSubtitle>Заявки, създадени от мен</PageSubtitle>
         </TitleBlock>
       </PageHeader>
 
@@ -157,16 +166,18 @@ export default function AdminHelpMinePage() {
         <FilterRow>
           <SearchInput
             type="text"
-            placeholder="Search subject or email…"
+            placeholder="Търсене по тема…"
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') { setSearch(searchInput); setPage(1); } }}
           />
           <Select value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value as TicketStatus | ''); setPage(1); }}>
-            <option value="">All statuses</option>
-            <option value="OPEN">Open</option>
-            <option value="WAITING">Waiting</option>
-            <option value="RESOLVED">Resolved</option>
+            <option value="">Всички статуси</option>
+            <option value="NEW">Нова</option>
+            <option value="OPEN">Отворена</option>
+            <option value="WAITING">Изчакване</option>
+            <option value="RESOLVED">Решена</option>
+            <option value="CLOSED">Затворена</option>
           </Select>
         </FilterRow>
 
@@ -175,16 +186,16 @@ export default function AdminHelpMinePage() {
           data={data?.tickets ?? []}
           rowKey={(row) => row.id}
           loading={isLoading}
-          emptyMessage="No tickets assigned to you"
+          emptyMessage="Нямате подадени заявки"
           page={page}
           pageSize={PAGE_SIZE}
           totalItems={data?.total ?? 0}
           onPageChange={setPage}
           rowActions={[
-            { label: 'Reply', onClick: (row) => setSelectedId(row.id) },
+            { label: 'Преглед', onClick: (row) => setSelectedId(row.id) },
             {
-              label: 'Resolve',
-              hidden: (row) => row.status === 'RESOLVED',
+              label: 'Маркирай като решена',
+              hidden: (row) => row.status === 'RESOLVED' || row.status === 'CLOSED',
               onClick: (row) => resolveMutation.mutate(row.id),
             },
           ]}

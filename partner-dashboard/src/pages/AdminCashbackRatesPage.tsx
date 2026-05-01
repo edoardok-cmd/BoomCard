@@ -102,7 +102,7 @@ const NumberInput = styled.input<{ $invalid?: boolean }>`
   font-size: 0.875rem;
   font-weight: 600;
   &:focus { outline: none; border-color: ${p => p.$invalid ? '#dc2626' : '#000'}; }
-  &:disabled { opacity: 0.5; cursor: not-allowed; background: ${p => p.$invalid ? '#fff1f2' : 'var(--color-background-secondary)'}; }
+  &:disabled { opacity: 0.5; cursor: not-allowed; background: var(--color-background-secondary); color: var(--color-text-primary); border-color: var(--color-border); }
 `;
 
 const InvalidHint = styled.div`
@@ -494,6 +494,7 @@ const AdminCashbackRatesPage: React.FC = () => {
       setToast({ ok: false, msg: axiosErr?.response?.data?.error || axiosErr?.message || 'Failed to cancel snapshot' });
       return;
     }
+    setHistory(prev => prev.filter(r => (r.effectiveFrom ?? r.createdAt) !== effectiveFromISO));
     setToast({ ok: true, msg: tr.snapshotDeleted });
     await load().catch(() => console.warn('[CashbackRates] post-delete reload failed — table may be stale'));
   };

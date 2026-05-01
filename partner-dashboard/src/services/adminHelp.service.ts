@@ -44,6 +44,7 @@ export interface MyTicket {
   createdAt: string;
   updatedAt: string;
   user: TicketUser;
+  assignee: TicketUser | null;
 }
 
 export interface TicketListResult<T> {
@@ -62,6 +63,15 @@ export interface TicketReply {
 }
 
 export const adminHelpService = {
+  create(data: {
+    subject: string;
+    body: string;
+    category: TicketCategory;
+    priority?: TicketPriority;
+  }): Promise<{ ticket: { id: string; subject: string; category: TicketCategory; priority: TicketPriority; status: TicketStatus; createdAt: string } }> {
+    return apiService.post('/admin/help', data);
+  },
+
   listAll(params: {
     page?: number;
     limit?: number;

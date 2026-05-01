@@ -206,8 +206,11 @@ export const adminControlService = {
     return apiService.get('/admin/control/risk-queue/summary');
   },
 
-  approveRiskSignal(id: string, notes?: string): Promise<{ success: boolean; fraudWarning?: string }> {
-    return apiService.post(`/admin/control/risk-queue/${id}/approve`, notes ? { notes } : {});
+  approveRiskSignal(id: string, opts?: { notes?: string; verifiedAmount?: number }): Promise<{ success: boolean; fraudWarning?: string }> {
+    const body: Record<string, unknown> = {};
+    if (opts?.notes) body.notes = opts.notes;
+    if (opts?.verifiedAmount !== undefined) body.verifiedAmount = opts.verifiedAmount;
+    return apiService.post(`/admin/control/risk-queue/${id}/approve`, body);
   },
 
   rejectRiskSignal(id: string, reason?: string): Promise<{ success: boolean }> {

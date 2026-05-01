@@ -417,10 +417,12 @@ router.post(
   '/risk-queue/:id/approve',
   requirePermission('control.risk.write'),
   asyncHandler(async (req: AuthRequest, res: Response) => {
+    const verifiedAmount = typeof req.body?.verifiedAmount === 'number' ? req.body.verifiedAmount : undefined;
     const result = await receiptService.reviewReceipt({
       receiptId: req.params.id,
       action: 'APPROVE',
       reviewedBy: req.user!.id,
+      verifiedAmount,
       notes: typeof req.body?.notes === 'string' ? req.body.notes.trim() : undefined,
     });
     const { fraudWarning, ...rest } = result;

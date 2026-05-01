@@ -108,7 +108,7 @@ const ActionBtn = styled.button<{ $variant: 'approve' | 'reject' | 'dispute' }>`
 
 const PAGE_SIZE = 25;
 
-type ActionDraft = { id: string; type: 'approve' | 'reject'; text: string };
+type ActionDraft = { id: string; type: 'approve' | 'reject'; text: string; verifiedAmount: string };
 type DisputeDraft = { receiptId: string; merchantName: string | null };
 
 const Overlay = styled.div`
@@ -207,6 +207,8 @@ const T = {
   globalNote:      { en: 'Global totals for fraudScore ≥31; categories can overlap (one receipt may trigger multiple)', bg: 'Глобални броячи за fraudScore ≥31; категориите могат да се припокриват (една бележка може да попадне в няколко)' },
   reasonLabel:     { en: 'Reason for rejection (optional)',                    bg: 'Причина за отказ (незадължително)' },
   notesLabel:      { en: 'Notes (optional)',                                    bg: 'Бележки (незадължително)' },
+  verifiedAmountLabel: { en: 'Override amount (BGN, optional)',                bg: 'Коригирана сума (лв., незадължително)' },
+  verifiedAmountHint:  { en: 'If set, recalculates cashback and fraud score — shows a warning if score exceeds threshold', bg: 'Ако е зададено, преизчислява кешбек и fraud score — показва предупреждение ако score надвишава прага' },
   cancel:          { en: 'Cancel',                                              bg: 'Отказ' },
   confirm:         { en: 'Confirm',                                             bg: 'Потвърди' },
   openDispute:     { en: 'Open Dispute',                                        bg: 'Отвори спор' },
@@ -251,8 +253,8 @@ export default function AdminControlSecurityPage() {
   });
 
   const approveMutation = useMutation({
-    mutationFn: ({ id, notes }: { id: string; notes?: string }) =>
-      adminControlService.approveRiskSignal(id, notes),
+    mutationFn: ({ id, opts }: { id: string; opts?: { notes?: string; verifiedAmount?: number } }) =>
+      adminControlService.approveRiskSignal(id, opts),
     onSuccess: (result) => {
       if (result?.fraudWarning) {
         toast(`⚠ ${result.fraudWarning}`, {
@@ -427,14 +429,14 @@ export default function AdminControlSecurityPage() {
           <ActionBtn
             $variant="approve"
             disabled={isRowMutating(row.id)}
-            onClick={() => setActionDraft({ id: row.id, type: 'approve', text: '' })}
+            onClick={() => setActionDraft({ id: row.id, type: 'approve', text: '', verifiedAmount: '' })}
           >
             {t('approve')}
           </ActionBtn>
           <ActionBtn
             $variant="reject"
             disabled={isRowMutating(row.id)}
-            onClick={() => setActionDraft({ id: row.id, type: 'reject', text: '' })}
+            onClick={() => setActionDraft({ id: row.id, type: 'reject', text: '', verifiedAmount: '' })}
           >
             {t('reject')}
           </ActionBtn>
@@ -555,11 +557,28 @@ export default function AdminControlSecurityPage() {
             <DialogTitle>
               {actionDraft.type === 'approve' ? t('approve') : t('reject')}
             </DialogTitle>
+            {actionDraft.type === 'approve' && (
+              <>
+                <TextInput
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  placeholder={t('verifiedAmountLabel')}
+                  value={actionDraft.verifiedAmount}
+                  onChange={(e) => setActionDraft({ ...actionDraft, verifiedAmount: e.target.value })}
+                  style={{ marginBottom: '0.5rem' }}
+                  autoFocus
+                />
+                <div style={{ fontSize: '0.75rem', color: palette.textSubtle, marginBottom: '0.5rem' }}>
+                  {t('verifiedAmountHint')}
+                </div>
+              </>
+            )}
             <DialogTextarea
               placeholder={actionDraft.type === 'reject' ? t('reasonLabel') : t('notesLabel')}
               value={actionDraft.text}
               onChange={(e) => setActionDraft({ ...actionDraft, text: e.target.value })}
-              autoFocus
+              autoFocus={actionDraft.type === 'reject'}
             />
             <DialogFooter>
               <CancelBtn disabled={isAnyMutating} onClick={() => setActionDraft(null)}>
@@ -571,7 +590,14 @@ export default function AdminControlSecurityPage() {
                 onClick={() => {
                   const txt = actionDraft.text.trim() || undefined;
                   if (actionDraft.type === 'approve') {
-                    approveMutation.mutate({ id: actionDraft.id, notes: txt });
+                    const amount = parseFloat(actionDraft.verifiedAmount);
+                    approveMutation.mutate({
+                      id: actionDraft.id,
+                      opts: {
+                        notes: txt,
+                        verifiedAmount: !isNaN(amount) && amount > 0 ? amount : undefined,
+                      },
+                    });
                   } else {
                     rejectMutation.mutate({ id: actionDraft.id, reason: txt });
                   }

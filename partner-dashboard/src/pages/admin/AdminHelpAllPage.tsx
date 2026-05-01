@@ -37,6 +37,23 @@ const Select = styled.select`padding: 0.5rem 0.75rem; border: 1px solid ${palett
 const PrimaryLine = styled.div`font-weight: 600; color: ${palette.text};`;
 const MetaLine = styled.div`font-size: 0.75rem; color: ${palette.textSubtle}; margin-top: 0.125rem;`;
 
+const STATUS_BG_LABELS: Record<TicketStatus, string> = {
+  NEW: 'Нова', OPEN: 'Отворена', WAITING: 'Изчакване', RESOLVED: 'Решена', CLOSED: 'Затворена',
+};
+
+const PRIORITY_BG_LABELS: Record<TicketPriority, string> = {
+  LOW: 'Нисък', MEDIUM: 'Среден', HIGH: 'Висок', URGENT: 'Спешен',
+};
+
+const CATEGORY_BG_LABELS: Record<TicketCategory, string> = {
+  CASHBACK: 'Кешбек', ACCOUNT: 'Акаунт', PAYMENT: 'Плащане', TECHNICAL: 'Техническо', OTHER: 'Друго',
+};
+
+const CATEGORY_COLOR: Record<TicketCategory, string> = {
+  CASHBACK: palette.success, ACCOUNT: palette.info, PAYMENT: palette.danger,
+  TECHNICAL: palette.warning, OTHER: palette.textMuted,
+};
+
 const StatusBadge = styled.span<{ $status: TicketStatus }>`
   display: inline-flex; align-items: center; font-size: 0.7rem; font-weight: 700;
   text-transform: uppercase; letter-spacing: 0.05em; border-radius: 0.375rem; padding: 0.125rem 0.5rem;
@@ -64,14 +81,10 @@ const PriorityBadge = styled.span<{ $priority: TicketPriority }>`
   }}
 `;
 
-const CATEGORY_COLOR: Record<TicketCategory, string> = {
-  CASHBACK: palette.success, ACCOUNT: palette.info, PAYMENT: palette.danger,
-  TECHNICAL: palette.warning, OTHER: palette.textMuted,
-};
-
 const PAGE_SIZE = 25;
 
-function displayName(u: TicketUser): string {
+function displayName(u: TicketUser | null | undefined): string {
+  if (!u) return '—';
   const name = `${u.firstName ?? ''} ${u.lastName ?? ''}`.trim();
   return name || u.email;
 }
@@ -102,26 +115,26 @@ export default function AdminHelpAllPage() {
   const assignMutation = useMutation({
     mutationFn: (id: string) => adminHelpService.assign(id),
     onSuccess: () => {
-      toast.success('Ticket assigned to you');
+      toast.success('Заявката е назначена на вас');
       queryClient.invalidateQueries({ queryKey: ['admin-help-all'] });
       queryClient.invalidateQueries({ queryKey: ['admin-help-mine'] });
       queryClient.invalidateQueries({ queryKey: ['admin-help-new'] });
     },
-    onError: () => toast.error('Failed to assign ticket'),
+    onError: () => toast.error('Грешка при назначаване'),
   });
 
   const fmt = (iso: string) =>
-    new Date(iso).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+    new Date(iso).toLocaleDateString('bg-BG', { day: '2-digit', month: 'short', year: 'numeric' });
 
   const columns: ColumnDef<HelpTicket>[] = [
     {
       key: 'subject',
-      header: 'Ticket',
+      header: 'Заявка',
       render: (row) => (
         <span>
           <PrimaryLine>{row.subject}</PrimaryLine>
           <MetaLine>
-            <span style={{ color: CATEGORY_COLOR[row.category], fontWeight: 700, fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{row.category}</span>
+            <span style={{ color: CATEGORY_COLOR[row.category], fontWeight: 700, fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{CATEGORY_BG_LABELS[row.category]}</span>
             <span style={{ marginLeft: '0.5rem', color: palette.textSubtle }}>{fmt(row.createdAt)}</span>
           </MetaLine>
         </span>
@@ -129,7 +142,7 @@ export default function AdminHelpAllPage() {
     },
     {
       key: 'user',
-      header: 'User',
+      header: 'Потребител',
       render: (row) => (
         <span>
           <PrimaryLine style={{ fontWeight: 500 }}>{displayName(row.user)}</PrimaryLine>
@@ -139,26 +152,26 @@ export default function AdminHelpAllPage() {
     },
     {
       key: 'priority',
-      header: 'Priority',
-      render: (row) => <PriorityBadge $priority={row.priority}>{row.priority}</PriorityBadge>,
+      header: 'Приоритет',
+      render: (row) => <PriorityBadge $priority={row.priority}>{PRIORITY_BG_LABELS[row.priority]}</PriorityBadge>,
     },
     {
       key: 'status',
-      header: 'Status',
-      render: (row) => <StatusBadge $status={row.status}>{row.status}</StatusBadge>,
+      header: 'Статус',
+      render: (row) => <StatusBadge $status={row.status}>{STATUS_BG_LABELS[row.status]}</StatusBadge>,
     },
     {
       key: 'assignee',
-      header: 'Assigned to',
+      header: 'Назначена на',
       render: (row) => (
         <span style={{ fontSize: '0.8125rem', color: row.assignee ? palette.textMuted : palette.danger }}>
-          {row.assignee ? displayName(row.assignee) : 'Unassigned'}
+          {row.assignee ? displayName(row.assignee) : 'Неназначена'}
         </span>
       ),
     },
     {
       key: 'updatedAt',
-      header: 'Last updated',
+      header: 'Последна промяна',
       render: (row) => (
         <span style={{ fontSize: '0.8125rem', color: palette.textMuted }}>{fmt(row.updatedAt)}</span>
       ),
@@ -170,12 +183,12 @@ export default function AdminHelpAllPage() {
     <PageShell>
       <PageHeader>
         <TitleBlock>
-          <Eyebrow>Help</Eyebrow>
+          <Eyebrow>Помощ</Eyebrow>
           <PageTitle>
-            All Tickets
+            Всички заявки
             {data && data.total > 0 && <TotalBadge>{data.total}</TotalBadge>}
           </PageTitle>
-          <PageSubtitle>Complete view of all support tickets across the team</PageSubtitle>
+          <PageSubtitle>Пълен преглед на всички заявки в системата</PageSubtitle>
         </TitleBlock>
       </PageHeader>
 
@@ -183,33 +196,33 @@ export default function AdminHelpAllPage() {
         <FilterRow>
           <SearchInput
             type="text"
-            placeholder="Search subject or email…"
+            placeholder="Търсене по тема или имейл…"
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') { setSearch(searchInput); setPage(1); } }}
           />
           <Select value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value as TicketStatus | ''); setPage(1); }}>
-            <option value="">All statuses</option>
-            <option value="NEW">New</option>
-            <option value="OPEN">Open</option>
-            <option value="WAITING">Waiting</option>
-            <option value="RESOLVED">Resolved</option>
-            <option value="CLOSED">Closed</option>
+            <option value="">Всички статуси</option>
+            <option value="NEW">Нова</option>
+            <option value="OPEN">Отворена</option>
+            <option value="WAITING">Изчакване</option>
+            <option value="RESOLVED">Решена</option>
+            <option value="CLOSED">Затворена</option>
           </Select>
           <Select value={priorityFilter} onChange={(e) => { setPriorityFilter(e.target.value as TicketPriority | ''); setPage(1); }}>
-            <option value="">All priorities</option>
-            <option value="URGENT">Urgent</option>
-            <option value="HIGH">High</option>
-            <option value="MEDIUM">Medium</option>
-            <option value="LOW">Low</option>
+            <option value="">Всички приоритети</option>
+            <option value="URGENT">Спешен</option>
+            <option value="HIGH">Висок</option>
+            <option value="MEDIUM">Среден</option>
+            <option value="LOW">Нисък</option>
           </Select>
           <Select value={categoryFilter} onChange={(e) => { setCategoryFilter(e.target.value as TicketCategory | ''); setPage(1); }}>
-            <option value="">All categories</option>
-            <option value="CASHBACK">Cashback</option>
-            <option value="ACCOUNT">Account</option>
-            <option value="PAYMENT">Payment</option>
-            <option value="TECHNICAL">Technical</option>
-            <option value="OTHER">Other</option>
+            <option value="">Всички категории</option>
+            <option value="CASHBACK">Кешбек</option>
+            <option value="ACCOUNT">Акаунт</option>
+            <option value="PAYMENT">Плащане</option>
+            <option value="TECHNICAL">Техническо</option>
+            <option value="OTHER">Друго</option>
           </Select>
         </FilterRow>
 
@@ -218,15 +231,15 @@ export default function AdminHelpAllPage() {
           data={data?.tickets ?? []}
           rowKey={(row) => row.id}
           loading={isLoading}
-          emptyMessage="No tickets found"
+          emptyMessage="Няма намерени заявки"
           page={page}
           pageSize={PAGE_SIZE}
           totalItems={data?.total ?? 0}
           onPageChange={setPage}
           rowActions={[
-            { label: 'View', onClick: (row) => setSelectedId(row.id) },
+            { label: 'Преглед', onClick: (row) => setSelectedId(row.id) },
             {
-              label: 'Assign to me',
+              label: 'Вземи заявката',
               hidden: (row) => !!row.assignee,
               onClick: (row) => assignMutation.mutate(row.id),
             },

@@ -351,6 +351,7 @@ router.post('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermiss
         }
         throw err;
       }
+      req.auditAction = 'admin.super.request';
       return res.status(202).json({ ok: true, pending: true, request });
     }
 
@@ -445,6 +446,7 @@ router.post('/pending-super/:id/approve', authenticate, authorize('SUPER_ADMIN')
       throw err;
     }
 
+    req.auditAction = 'admin.super.approve';
     res.status(201).json({ ok: true, user });
   } catch (error) {
     next(error);
@@ -461,6 +463,7 @@ router.delete('/pending-super/:id', authenticate, authorize('SUPER_ADMIN'), requ
     if (!request) return res.status(404).json({ error: 'Pending request not found' });
 
     await prisma.pendingSuperAdminRequest.delete({ where: { id } });
+    req.auditAction = 'admin.super.reject';
     res.json({ ok: true });
   } catch (error) {
     next(error);

@@ -40,6 +40,7 @@ const TICKET_SELECT_MINE = {
   createdAt: true,
   updatedAt: true,
   user: { select: { id: true, firstName: true, lastName: true, email: true } },
+  assignee: { select: { id: true, firstName: true, lastName: true, email: true } },
 } as const;
 
 // POST /api/admin/help — G8: admin creates a new help ticket (Spec §11 "Нова заявка")
@@ -184,7 +185,7 @@ router.get('/new', requirePermission('help.read'), async (req, res, next) => {
   }
 });
 
-// GET /api/admin/help/mine — tickets assigned to the current admin
+// GET /api/admin/help/mine — tickets created by the current admin (Spec §11 "Моите заявки")
 router.get('/mine', requirePermission('help.read'), async (req: AuthRequest, res, next) => {
   try {
     const { status, search, page = '1', limit = '25' } = req.query as Record<string, string>;
@@ -194,22 +195,21 @@ router.get('/mine', requirePermission('help.read'), async (req: AuthRequest, res
     const take = limitNum;
 
     const where: Parameters<typeof prisma.helpTicket.findMany>[0]['where'] = {
-      assigneeId: req.user!.id,
+      userId: req.user!.id,
     };
     if (status && Object.values(TicketStatus).includes(status as TicketStatus)) {
       where.status = status as TicketStatus;
     }
     if (search) {
       where.AND = [
-        { assigneeId: req.user!.id },
+        { userId: req.user!.id },
         {
           OR: [
             { subject: { contains: search, mode: 'insensitive' } },
-            { user: { email: { contains: search, mode: 'insensitive' } } },
           ],
         },
       ];
-      delete where.assigneeId;
+      delete where.userId;
     }
 
     const [tickets, total] = await Promise.all([

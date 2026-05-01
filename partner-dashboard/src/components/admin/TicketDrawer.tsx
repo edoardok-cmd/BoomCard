@@ -67,7 +67,7 @@ const copy = {
     priority: 'Приоритет',
     assignedTo: 'Назначен на',
     unassigned: 'Неназначен',
-    assignToMe: 'Вземи тикета',
+    assignToMe: 'Вземи заявката',
     originalMessage: 'Оригинално съобщение',
     noReplies: 'Няма отговори — бъдете първи.',
     replyPlaceholder: 'Напишете отговор…',
@@ -75,7 +75,7 @@ const copy = {
     sending: 'Изпращане…',
     replied: 'Отговорът е изпратен',
     replyError: 'Грешка при изпращане',
-    assignedOk: 'Тикетът е назначен на вас',
+    assignedOk: 'Заявката е назначена на вас',
     assignError: 'Грешка при назначаване',
     statusUpdated: 'Статусът е обновен',
     statusError: 'Грешка при обновяване на статуса',
@@ -84,7 +84,7 @@ const copy = {
     admin: 'Администратор',
     user: 'Потребител',
     close: '✕',
-    ticketClosed: 'Тикетът е затворен — отговорите са забранени.',
+    ticketClosed: 'Заявката е затворена — отговорите са забранени.',
     opened: 'Отворен',
     updated: 'Обновен',
     statuses: {
@@ -238,7 +238,7 @@ export default function TicketDrawer({ ticketId, onClose }: Props) {
                   </MetaValue>
                 </MetaItem>
                 <MetaItem>
-                  <MetaLabel>User</MetaLabel>
+                  <MetaLabel>{t.user}</MetaLabel>
                   <MetaValue>{displayName(ticket.user)}</MetaValue>
                   <MetaEmail>{ticket.user.email}</MetaEmail>
                 </MetaItem>
@@ -330,7 +330,7 @@ export default function TicketDrawer({ ticketId, onClose }: Props) {
                 }}
               />
               <ReplyFooter>
-                <ReplyHint>⌘↵ to send</ReplyHint>
+                <ReplyHint>⌘↵ {language === 'bg' ? 'за изпращане' : 'to send'}</ReplyHint>
                 <SendBtn
                   onClick={() => { if (replyBody.trim()) replyMutation.mutate(replyBody.trim()); }}
                   disabled={busy || !replyBody.trim()}

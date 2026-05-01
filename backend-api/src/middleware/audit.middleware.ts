@@ -47,12 +47,19 @@ const OBJECT_TYPE_NORMALIZE: Record<string, string> = {
   locations: 'location',
   settings: 'settings',
   'pending-super': 'admin',
-  'mark-paid': 'cashback',
+  // cashback sub-resource: POST /cashback/entries/:id/approve → objectType "cashback"
+  entries: 'cashback',
 };
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-function deriveActionAndObject(req: AuthRequest): { action: string; objectType: string; objectId: string | null } {
+// Uppercase-only identifiers (e.g. SUPER_ADMIN, FINANCE) are path parameters (enum values),
+// not verbs. Matching this pattern lets us fall back to the HTTP method verb and include
+// the preceding collection segment in the action (e.g. DELETE /:id/roles/SUPER_ADMIN →
+// "admin.roles.delete" rather than the nonsensical "admin.SUPER_ADMIN").
+const IDENTIFIER_RE = /^[A-Z][A-Z0-9_]*$/;
+
+export function deriveActionAndObject(req: AuthRequest): { action: string; objectType: string; objectId: string | null } {
   const parts = req.path.replace(/^\//, '').split('/').filter(Boolean);
 
   // Determine base object type from the router's mount point (e.g. /api/admin/admins → "admins")
@@ -63,14 +70,29 @@ function deriveActionAndObject(req: AuthRequest): { action: string; objectType: 
   // Extract objectId: first UUID in path
   const objectId = parts.find((p) => UUID_RE.test(p)) ?? null;
 
-  // Determine action verb: prefer the last non-UUID, non-resource path segment (e.g. "approve", "status")
-  // over the generic HTTP method verb.
-  const actionSuffix = parts
-    .filter((p) => !UUID_RE.test(p) && p !== parts[0])
-    .pop();
+  // Candidates: non-UUID segments that are not the primary resource segment.
+  const candidates = parts.filter((p) => !UUID_RE.test(p) && p !== parts[0]);
+  const lastCandidate = candidates[candidates.length - 1];
 
-  const verb = actionSuffix ?? METHOD_VERB[req.method.toLowerCase()] ?? req.method.toLowerCase();
-  const action = `${objectType}.${verb}`;
+  let verb: string;
+  let subResource: string | undefined;
+
+  if (!lastCandidate) {
+    // Root resource operation (e.g. POST / → create, DELETE / → delete)
+    verb = METHOD_VERB[req.method.toLowerCase()] ?? req.method.toLowerCase();
+  } else if (IDENTIFIER_RE.test(lastCandidate)) {
+    // Last segment is an enum identifier, not a verb — use the HTTP method verb.
+    // Include the preceding collection segment (if any) to produce e.g. "admin.roles.delete".
+    verb = METHOD_VERB[req.method.toLowerCase()] ?? req.method.toLowerCase();
+    subResource = candidates[candidates.length - 2];
+  } else {
+    // Last segment is a semantic verb (e.g. "approve", "mark-paid", "status")
+    verb = lastCandidate;
+  }
+
+  const action = subResource
+    ? `${objectType}.${subResource}.${verb}`
+    : `${objectType}.${verb}`;
 
   return { action, objectType, objectId };
 }
@@ -82,16 +104,30 @@ function deriveActionAndObject(req: AuthRequest): { action: string; objectType: 
 // after:  the redacted request body (what the caller sent to trigger the change).
 //         The response body is intentionally NOT stored here: it often contains
 //         the full re-fetched record and would double the storage for every mutation.
+//
+// Route handlers can override derived values by setting fields on req before calling
+// res.json:  req.auditAction, req.auditObjectType, req.auditObjectId, req.skipAudit
+declare module 'express-serve-static-core' {
+  interface Request {
+    auditAction?: string;
+    auditObjectType?: string;
+    auditObjectId?: string | null;
+    skipAudit?: boolean;
+  }
+}
+
 export const auditMiddleware = (req: AuthRequest, res: Response, next: NextFunction) => {
   if (req.method === 'GET') {
     return next();
   }
 
   const originalJson = res.json.bind(res);
-  const { action, objectType, objectId } = deriveActionAndObject(req);
+  const derived = deriveActionAndObject(req);
   const requestBody = req.body ? redactSensitive(JSON.parse(JSON.stringify(req.body))) : null;
 
   res.json = function (body: unknown) {
+    if (req.skipAudit) return originalJson(body);
+
     const actorId = req.user?.id ?? null;
     const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim()
       ?? req.socket.remoteAddress
@@ -101,9 +137,9 @@ export const auditMiddleware = (req: AuthRequest, res: Response, next: NextFunct
     prisma.auditLog.create({
       data: {
         actorUserId: actorId,
-        action,
-        objectType,
-        objectId,
+        action:     req.auditAction     ?? derived.action,
+        objectType: req.auditObjectType ?? derived.objectType,
+        objectId:   req.auditObjectId !== undefined ? req.auditObjectId : derived.objectId,
         before: null,             // unknown at middleware level — use writeAudit for real diffs
         after: (requestBody as object | null) ?? undefined,
         ip,

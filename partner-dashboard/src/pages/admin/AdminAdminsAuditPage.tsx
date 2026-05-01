@@ -50,9 +50,10 @@ const ACTION_LABEL: Record<string, string> = {
   'admin.delete':                  'Изтрит администратор',
   'admin.approve':                 'Одобрен администратор',
   'admin.status':                  'Промяна на статус на администратор',
-  'admin.role.add':                'Добавена роля',
-  'admin.role.remove':             'Премахната роля',
-  'admin.status.update':           'Промяна на статус на администратор',
+  'admin.roles.delete':            'Премахната роля',
+  'admin.roles.create':            'Добавена роля',
+  'admin.role.add':                'Добавена роля',       // legacy: kept for existing log entries
+  'admin.role.remove':             'Премахната роля',     // legacy: kept for existing log entries
   'admin.super.request':           'Заявка за Супер администратор',
   'admin.super.approve':           'Одобрена заявка за Супер администратор',
   'admin.super.reject':            'Отхвърлена заявка за Супер администратор',
@@ -62,7 +63,6 @@ const ACTION_LABEL: Record<string, string> = {
   'partner.approve':               'Одобрен партньор',
   'partner.reject':                'Отхвърлен партньор',
   'partner.status':                'Промяна на статус на партньор',
-  'partner.status.update':         'Промяна на статус на партньор',
   // Location / QR
   'location.create':               'Създадена локация',
   'location.update':               'Промяна на локация',
@@ -130,7 +130,6 @@ const ACTION_LABEL: Record<string, string> = {
   'mark-paid.post':                'Отбелязан като платен',
   'admin.post':                    'Създаден администратор',
   'admin.patch':                   'Промяна на администратор',
-  'admin.delete':                  'Изтрит администратор',
   'partner.post':                  'Създаден партньор',
   'partner.patch':                 'Промяна на партньор',
   'system.post':                   'Промяна на системна настройка',
@@ -547,6 +546,7 @@ export default function AdminAdminsAuditPage() {
   const [actionCat, setActionCat]     = useState('');
   const [dateFrom, setDateFrom]       = useState('');
   const [dateTo, setDateTo]           = useState('');
+  const [actorId, setActorId]         = useState('');
 
   // Pending input state for the search box (committed on button click or Enter)
   const [searchDraft, setSearchDraft] = useState('');
@@ -555,7 +555,7 @@ export default function AdminAdminsAuditPage() {
   const [exporting, setExporting]     = useState(false);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['admin-audit', page, search, objectType, actionCat, dateFrom, dateTo],
+    queryKey: ['admin-audit', page, search, objectType, actionCat, dateFrom, dateTo, actorId],
     queryFn: () =>
       adminAdminsService.listAudit({
         page,
@@ -565,6 +565,7 @@ export default function AdminAdminsAuditPage() {
         action:     actionCat  || undefined,
         dateFrom:   dateFrom   || undefined,
         dateTo:     dateTo     || undefined,
+        actorId:    actorId    || undefined,
       }),
   });
 
@@ -580,10 +581,11 @@ export default function AdminAdminsAuditPage() {
     setActionCat('');
     setDateFrom('');
     setDateTo('');
+    setActorId('');
     setPage(1);
   }, []);
 
-  const hasActiveFilters = search || objectType || actionCat || dateFrom || dateTo;
+  const hasActiveFilters = search || objectType || actionCat || dateFrom || dateTo || actorId;
 
   const handleExport = async () => {
     setExporting(true);
@@ -596,6 +598,7 @@ export default function AdminAdminsAuditPage() {
         action:     actionCat  || undefined,
         dateFrom:   dateFrom   || undefined,
         dateTo:     dateTo     || undefined,
+        actorId:    actorId    || undefined,
       });
       downloadCsv(result.logs);
     } finally {
@@ -715,7 +718,7 @@ export default function AdminAdminsAuditPage() {
           </ExportBtn>
         </FilterRow>
 
-        {/* Row 2: date range */}
+        {/* Row 2: date range + actor ID filter */}
         <FilterRowSecond>
           <DateLabel>От:</DateLabel>
           <DateInput
@@ -728,6 +731,14 @@ export default function AdminAdminsAuditPage() {
             type="date"
             value={dateTo}
             onChange={(e) => { setDateTo(e.target.value); setPage(1); }}
+          />
+          <DateLabel>Администратор ID:</DateLabel>
+          <SearchInput
+            type="text"
+            placeholder="UUID на администратора…"
+            value={actorId}
+            onChange={(e) => { setActorId(e.target.value); setPage(1); }}
+            style={{ flex: '0 1 18rem', minWidth: '12rem' }}
           />
         </FilterRowSecond>
 

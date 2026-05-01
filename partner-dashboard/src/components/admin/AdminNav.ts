@@ -128,7 +128,7 @@ export const ADMIN_NAV: AdminNavCategory[] = [
     subItems: [
       { labelBg: 'Всички', labelEn: 'All Admins', path: '/admin/admins/all', permissionKey: 'admins.read' },
       { labelBg: 'Нов администратор', labelEn: 'Create Admin', path: '/admin/admins/create', permissionKey: 'admins.write' },
-      { labelBg: 'Очакващи одобрение', labelEn: 'Pending Approvals', path: '/admin/admins/pending', permissionKey: 'admins.write' },
+      { labelBg: 'Чакащи одобрения', labelEn: 'Pending Approvals', path: '/admin/admins/pending', permissionKey: 'admins.write' },
       { labelBg: 'История на действията', labelEn: 'Action History', path: '/admin/admins/audit', permissionKey: 'admins.audit.read' },
     ],
   },
@@ -140,9 +140,9 @@ export const ADMIN_NAV: AdminNavCategory[] = [
     icon: 'M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z',
     permissionKey: 'help.read',
     subItems: [
-      { labelBg: 'Нов тикет', labelEn: 'New Ticket', path: '/admin/help/new', permissionKey: 'help.read' },
-      { labelBg: 'Моите тикети', labelEn: 'My Tickets', path: '/admin/help/mine', permissionKey: 'help.read' },
-      { labelBg: 'Всички тикети', labelEn: 'All Tickets', path: '/admin/help/all', permissionKey: 'help.read' },
+      { labelBg: 'Нова заявка', labelEn: 'New Request', path: '/admin/help/new', permissionKey: 'help.read' },
+      { labelBg: 'Моите заявки', labelEn: 'My Requests', path: '/admin/help/mine', permissionKey: 'help.read' },
+      { labelBg: 'Всички заявки', labelEn: 'All Requests', path: '/admin/help/all', permissionKey: 'help.read' },
     ],
   },
   {
