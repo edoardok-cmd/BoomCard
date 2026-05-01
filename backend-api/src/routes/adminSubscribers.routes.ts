@@ -314,11 +314,18 @@ router.patch('/:userId/status', authenticate, authorize('ADMIN', 'SUPER_ADMIN'),
       return res.status(400).json({ error: 'Cannot change status of a deleted account' });
     }
 
-    const updated = await prisma.user.update({
-      where: { id: userId },
-      data: { status },
-      select: { id: true, status: true },
-    });
+    const [updated] = await Promise.all([
+      prisma.user.update({
+        where: { id: userId },
+        data: { status },
+        select: { id: true, status: true },
+      }),
+      // Revoke all active sessions when suspending so the user is locked out
+      // immediately rather than remaining active until their JWT expires.
+      status === 'SUSPENDED'
+        ? prisma.refreshToken.deleteMany({ where: { userId } })
+        : Promise.resolve(),
+    ]);
 
     res.json({ ok: true, ...updated });
   } catch (error) {
@@ -824,13 +831,15 @@ router.delete('/:userId/account', authenticate, authorize('ADMIN', 'SUPER_ADMIN'
       return;
     }
 
-    await prisma.user.update({
-      where: { id: userId },
-      data: {
-        deletedAt: new Date(),
-        status: 'DELETED',
-      },
-    });
+    await Promise.all([
+      prisma.user.update({
+        where: { id: userId },
+        data: { deletedAt: new Date(), status: 'DELETED' },
+      }),
+      // Revoke all active sessions immediately so a deleted user cannot
+      // continue making API requests with their existing refresh tokens.
+      prisma.refreshToken.deleteMany({ where: { userId } }),
+    ]);
 
     res.json({ ok: true, userId, reason: reason ?? null });
   } catch (error) {

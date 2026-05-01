@@ -503,18 +503,18 @@ export default function AdminSubscriberDetailPage() {
                     {suspendMutation.isPending ? T('saving') : T('activateAcct')}
                   </Btn>
                 ) : null}
+                <Btn
+                  $variant="ghost"
+                  disabled={forceLogoutMutation.isPending}
+                  onClick={() => {
+                    if (window.confirm(T('confirmRevoke', { name: fullName })))
+                      forceLogoutMutation.mutate();
+                  }}
+                >
+                  {forceLogoutMutation.isPending ? T('revoking') : T('forceLogout')}
+                </Btn>
               </>
             )}
-            <Btn
-              $variant="ghost"
-              disabled={forceLogoutMutation.isPending}
-              onClick={() => {
-                if (window.confirm(T('confirmRevoke', { name: fullName })))
-                  forceLogoutMutation.mutate();
-              }}
-            >
-              {forceLogoutMutation.isPending ? T('revoking') : T('forceLogout')}
-            </Btn>
           </ActionButtons>
         </ProfileTop>
       </ProfileCard>

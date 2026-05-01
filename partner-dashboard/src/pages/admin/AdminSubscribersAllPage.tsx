@@ -1179,6 +1179,7 @@ export default function AdminSubscribersAllPage() {
         !row.subscription ||
         row.subscription.status === 'CANCELLED' ||
         row.subscription.status === 'EXPIRED' ||
+        row.subscription.status === 'INCOMPLETE' ||
         row.subscription.status === 'INCOMPLETE_EXPIRED' ||
         !!row.deletedAt,
     },
@@ -1190,6 +1191,7 @@ export default function AdminSubscribersAllPage() {
         !row.subscription ||
         row.subscription.status === 'CANCELLED' ||
         row.subscription.status === 'EXPIRED' ||
+        row.subscription.status === 'INCOMPLETE' ||
         row.subscription.status === 'INCOMPLETE_EXPIRED' ||
         !!row.deletedAt,
     },

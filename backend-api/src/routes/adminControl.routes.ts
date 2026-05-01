@@ -33,19 +33,21 @@ router.use(auditMiddleware);
 
 /* ─── Security Audit Log ─────────────────────────────────────────────────── */
 
-// audit.middleware.ts generates actions as "{objectType}.{httpMethod}" where objectType
-// is the first URL segment (or the baseUrl tail for UUID-led paths). These prefixes match
-// every write operation on security-relevant admin resources.
+// Prefixes must match the objectType strings that deriveActionAndObject() actually writes to
+// the DB — i.e. post-normalisation values from OBJECT_TYPE_NORMALIZE in audit.middleware.ts.
+// Plurals ('admins', 'disputes', …) and hyphenated keys ('dispute-cases', 'risk-queue', …)
+// are all normalised before the action string is persisted, so the prefixes here use the
+// normalised forms.
 const SECURITY_ACTION_PREFIXES = [
-  'auth.',              // login / logout events (written by writeAudit in auth.routes.ts)
-  'admins.',            // admin-user create / update / promote / delete
-  'partner-requests.',  // partner approve / reject / suspend (PATCH)
-  'subscribers.',       // subscriber update / delete
-  'risk-queue.',        // risk-queue approve / reject (POST)
-  'disputes.',          // manual-review receipt approve / reject (POST)
-  'dispute-cases.',     // dispute case lifecycle (POST / PATCH)
-  'receipt-templates.', // template create / update / deactivate
-  'payouts.',           // payout process / hold / release
+  'auth.',             // login / logout / 2FA events (written by writeAudit in auth.routes.ts)
+  'admin.',            // admin create / update / approve / delete  ('admins' → 'admin')
+  'partner.',          // partner approve / reject / suspend        ('partners' → 'partner')
+  'subscriber.',       // subscriber update / delete                ('subscribers' → 'subscriber')
+  'subscription.',     // subscription cancel / reactivate / resume / auto-renewal
+  'risk.',             // risk-queue approve / reject               ('risk-queue' → 'risk')
+  'dispute.',          // disputes + dispute-cases lifecycle        ('disputes'/'dispute-cases' → 'dispute')
+  'receipt-template.', // template create / update / deactivate    ('receipt-templates' → 'receipt-template')
+  'payout.',           // payout process / hold / release           ('payouts' → 'payout')
 ];
 
 /**
@@ -685,8 +687,8 @@ router.patch(
         return res.status(400).json({ success: false, error: `Status must advance one step at a time: ${disputeCase.status} → ${DISPUTE_STATUS_ORDER[currentIdx + 1] ?? '(none)'}` });
       }
       data.status = status as DisputeStatus;
-      if (status === 'RESOLVED') data.resolvedAt = new Date();
-      if (status === 'CLOSED') data.closedAt = new Date();
+      if (status === 'RESOLVED') { data.resolvedAt = new Date(); req.auditAction = 'dispute.resolve'; }
+      if (status === 'CLOSED')   { data.closedAt   = new Date(); req.auditAction = 'dispute.close';   }
     }
 
     if (assignedTo !== undefined) data.assignedTo = assignedTo || null;

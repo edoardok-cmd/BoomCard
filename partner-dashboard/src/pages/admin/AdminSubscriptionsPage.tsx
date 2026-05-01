@@ -106,6 +106,7 @@ const T = {
   toastErrResume:    { bg: 'Неуспешно възобновяване',                    en: 'Failed to resume subscription' },
   toastErrRenewal:   { bg: 'Неуспешна промяна на авт. подновяване',      en: 'Failed to update auto-renewal' },
   toastErrExport:    { bg: 'Експортът се провали',                       en: 'Export failed' },
+  exportedN:         { bg: 'Изтеглени редове: {n}',                     en: '{n} row(s) exported' },
   toastErrHistory:   { bg: 'Историята не може да бъде заредена',         en: 'Failed to load history' },
 
   drawerHistory:     { bg: 'История на абонаментите',                    en: 'Subscription history' },
@@ -811,7 +812,7 @@ export default function AdminSubscriptionsPage() {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
 
-      toast.success(`${rows.length} row(s) exported`);
+      toast.success(tr(T.exportedN, lang).replace('{n}', String(rows.length)));
       if (res.truncated) {
         toast(tr(T.exportTruncated, lang), { icon: '⚠️', duration: 6000 });
       }

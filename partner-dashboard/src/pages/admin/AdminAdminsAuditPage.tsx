@@ -66,10 +66,21 @@ const ACTION_LABEL: Record<string, string> = {
   'location.create':               'Създадена локация',
   'location.update':               'Промяна на локация',
   'location.delete':               'Изтрита локация',
-  // Subscription
+  // Subscriber mutations (adminSubscribers router — subscriber-ID-based actions)
+  'subscriber.cancel':             'Отменен абонамент',
+  'subscriber.plan':               'Смяна на план',
+  'subscriber.status':             'Промяна на статус на абонат',
+  'subscriber.refund':             'Издадено възстановяване',
+  'subscriber.sessions':           'Принудителен изход',
+  'subscriber.account':            'Изтрит акаунт',
+  'subscriber.restore':            'Възстановен акаунт',
+  // Subscription mutations (adminSubscriptions router — subscription-ID-based actions)
   'subscription.create':           'Създаден абонамент',
   'subscription.update':           'Промяна на абонамент',
   'subscription.cancel':           'Отменен абонамент',
+  'subscription.reactivate':       'Реактивиран абонамент',
+  'subscription.resume':           'Подновен абонамент',
+  'subscription.auto-renewal':     'Промяна на авт. подновяване',
   // Transaction
   'transaction.create':            'Създадена транзакция',
   'transaction.update':            'Промяна на транзакция',
@@ -92,10 +103,27 @@ const ACTION_LABEL: Record<string, string> = {
   'payout.update':                 'Промяна на плащане',
   'payout.approve':                'Одобрено плащане',
   'payout.reject':                 'Отхвърлено плащане',
-  // Dispute
+  // Dispute (manual-review receipts: /disputes/... routes)
+  'dispute.approve':               'Одобрен спор',
+  'dispute.reject':                'Отхвърлен спор',
+  // Dispute cases (/dispute-cases/... routes)
   'dispute.create':                'Открит спор',
+  'dispute.update':                'Промяна на спор',
   'dispute.resolve':               'Разрешен спор',
   'dispute.close':                 'Затворен спор',
+  'dispute.notes':                 'Бележка към спор',
+  // Risk queue (/risk-queue/... routes)
+  'risk.approve':                  'Одобрено от риск опашка',
+  'risk.reject':                   'Отхвърлено от риск опашка',
+  // Receipt templates (/receipt-templates/... routes)
+  'receipt-template.create':       'Нов шаблон на касова бележка',
+  'receipt-template.update':       'Промяна на шаблон на касова бележка',
+  'receipt-template.delete':       'Деактивиран шаблон на касова бележка',
+  // Help tickets (/help routes)
+  'help.create':                   'Нова вътрешна заявка',
+  'help.assign':                   'Присвоена вътрешна заявка',
+  'help.update':                   'Промяна на вътрешна заявка',
+  'help.reply':                    'Отговор на вътрешна заявка',
   // Risk / Control
   'risk.update':                   'Промяна на риск',
   'risk.flag':                     'Маркиран риск',
@@ -118,6 +146,15 @@ const ACTION_LABEL: Record<string, string> = {
   'campaign.update':               'Промяна на кампания',
   'template.create':               'Създаден шаблон',
   'template.update':               'Промяна на шаблон',
+  // Legacy: pre-normalisation action strings (before dispute-cases/risk-queue/receipt-templates were added to OBJECT_TYPE_NORMALIZE)
+  'dispute-cases.create':          'Открит спор',
+  'dispute-cases.update':          'Промяна на спор',
+  'dispute-cases.notes':           'Бележка към спор',
+  'risk-queue.approve':            'Одобрено от риск опашка',
+  'risk-queue.reject':             'Отхвърлено от риск опашка',
+  'receipt-templates.create':      'Нов шаблон на касова бележка',
+  'receipt-templates.update':      'Промяна на шаблон на касова бележка',
+  'receipt-templates.delete':      'Деактивиран шаблон на касова бележка',
   // Legacy codes from old middleware (method-based: ${objectType}.${req.method})
   '.post':                         'Създаден администратор',      // POST / on admins router
   'pending-super.post':            'Заявка за Супер администратор',
@@ -165,8 +202,10 @@ const OBJECT_TYPE_OPTIONS: { value: string; label: string }[] = [
   { value: 'settings',     label: 'Настройки' },
   { value: 'system',       label: 'Система' },
   { value: 'period',       label: 'Отчетен период' },
-  { value: 'risk',         label: 'Риск' },
-  { value: 'limit',        label: 'Лимит' },
+  { value: 'risk',             label: 'Риск' },
+  { value: 'limit',            label: 'Лимит' },
+  { value: 'receipt-template', label: 'Шаблон касова бележка' },
+  { value: 'help',             label: 'Вътрешна заявка' },
 ];
 
 const ACTION_CATEGORY_OPTIONS: { value: string; label: string }[] = [
@@ -188,8 +227,10 @@ const ACTION_CATEGORY_OPTIONS: { value: string; label: string }[] = [
   { value: 'settings',    label: 'Настройки' },
   { value: 'system',      label: 'Система' },
   { value: 'period',      label: 'Отчетни периоди' },
-  { value: 'risk',        label: 'Риск' },
-  { value: 'limit',       label: 'Лимити' },
+  { value: 'risk',             label: 'Риск' },
+  { value: 'limit',            label: 'Лимити' },
+  { value: 'receipt-template', label: 'Шаблони касови бележки' },
+  { value: 'help',             label: 'Вътрешни заявки' },
 ];
 
 const OBJECT_TYPE_LABEL: Record<string, string> = Object.fromEntries(
