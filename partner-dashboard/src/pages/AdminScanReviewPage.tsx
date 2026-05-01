@@ -1409,8 +1409,8 @@ export const AdminScanReviewPage: React.FC = () => {
                     {scan.sticker.stickerId} • {scan.sticker.location.name}
                   </StickerInfo>
                 </ScanInfo>
-                <RiskBadge $level={scan.riskLevel}>
-                  {scan.riskLevel}
+                <RiskBadge $level={scan.fraudScore >= 61 ? 'CRITICAL' : scan.fraudScore >= 31 ? 'HIGH' : 'LOW'}>
+                  {scan.fraudScore >= 61 ? 'Висок риск' : scan.fraudScore >= 31 ? 'Преглед' : 'Авто'}
                 </RiskBadge>
               </ScanHeader>
 
