@@ -546,7 +546,7 @@ export default function AdminCashbackPage() {
             },
             {
               label: 'Маркирай платен',
-              hidden: (row) => row.status !== 'Locked',
+              hidden: (row) => row.status !== 'Locked' || ['ANNULLED', 'FAILED'].includes(row.rawStatus),
               onClick: (row) => {
                 if (!window.confirm(`Маркирай като платен кешбек за ${row.user.email}?\nСума: ${fmtMoney(row.amount)} лв.\nТова действие не може да се отмени.`)) return;
                 payMutation.mutate(row.id);

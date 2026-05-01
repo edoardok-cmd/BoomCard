@@ -56,16 +56,23 @@ export function DataTable<T>({
 }: DataTableProps<T>) {
   const [openActionRow, setOpenActionRow] = useState<string | null>(null);
 
-  // Close the open action menu when the user clicks anywhere outside it
+  // Close the open action menu when the user clicks anywhere outside it or presses Escape
   useEffect(() => {
     if (!openActionRow) return;
-    const handler = (e: MouseEvent) => {
+    const mouseHandler = (e: MouseEvent) => {
       if (!(e.target as Element).closest('[data-action-menu]')) {
         setOpenActionRow(null);
       }
     };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
+    const keyHandler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpenActionRow(null);
+    };
+    document.addEventListener('mousedown', mouseHandler);
+    document.addEventListener('keydown', keyHandler);
+    return () => {
+      document.removeEventListener('mousedown', mouseHandler);
+      document.removeEventListener('keydown', keyHandler);
+    };
   }, [openActionRow]);
 
   const handleSort = (col: ColumnDef<T>) => {
