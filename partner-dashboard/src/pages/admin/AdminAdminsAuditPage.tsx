@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import styled from 'styled-components';
 import { useQuery } from '@tanstack/react-query';
 import { useLanguage } from '../../contexts/LanguageContext';
@@ -51,7 +51,6 @@ const ACTION_LABEL: Record<string, string> = {
   'admin.approve':                 'Одобрен администратор',
   'admin.status':                  'Промяна на статус на администратор',
   'admin.roles.delete':            'Премахната роля',
-  'admin.roles.create':            'Добавена роля',
   'admin.role.add':                'Добавена роля',       // legacy: kept for existing log entries
   'admin.role.remove':             'Премахната роля',     // legacy: kept for existing log entries
   'admin.super.request':           'Заявка за Супер администратор',
@@ -550,6 +549,13 @@ export default function AdminAdminsAuditPage() {
 
   // Pending input state for the search box (committed on button click or Enter)
   const [searchDraft, setSearchDraft] = useState('');
+  // Draft for actor ID — debounced to avoid one query per keystroke when typing a UUID
+  const [actorIdDraft, setActorIdDraft] = useState('');
+
+  useEffect(() => {
+    const t = setTimeout(() => { setActorId(actorIdDraft); setPage(1); }, 500);
+    return () => clearTimeout(t);
+  }, [actorIdDraft]);
 
   const [detail, setDetail]           = useState<AuditLogEntry | null>(null);
   const [exporting, setExporting]     = useState(false);
@@ -581,6 +587,7 @@ export default function AdminAdminsAuditPage() {
     setActionCat('');
     setDateFrom('');
     setDateTo('');
+    setActorIdDraft('');
     setActorId('');
     setPage(1);
   }, []);
@@ -736,8 +743,8 @@ export default function AdminAdminsAuditPage() {
           <SearchInput
             type="text"
             placeholder="UUID на администратора…"
-            value={actorId}
-            onChange={(e) => { setActorId(e.target.value); setPage(1); }}
+            value={actorIdDraft}
+            onChange={(e) => setActorIdDraft(e.target.value)}
             style={{ flex: '0 1 18rem', minWidth: '12rem' }}
           />
         </FilterRowSecond>

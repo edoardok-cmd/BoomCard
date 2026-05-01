@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import styled from 'styled-components';
 import { Percent, History, Save, AlertCircle, Trash2, Check, X } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -10,6 +10,7 @@ import {
 import { DISCOUNT_STEPS } from '../utils/discountSteps';
 
 const STEPS = DISCOUNT_STEPS;
+const HISTORY_PAGE_SIZE = 5;
 
 // ── Styled ───────────────────────────────────────────────────────────
 const Page = styled.div`
@@ -52,6 +53,13 @@ const SectionTitle = styled.h2`
   margin: 0 0 1rem 0;
   display: flex; align-items: center; gap: 0.5rem;
   svg { width: 18px; height: 18px; color: var(--color-text-secondary); }
+`;
+
+// Snapshot metadata line shown above the Current rates matrix
+const SnapshotMeta = styled.p`
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+  margin: -0.25rem 0 0.75rem 0;
 `;
 
 const Matrix = styled.div<{ $cols: string }>`
@@ -245,6 +253,40 @@ const HistoryTable = styled.table`
   .muted { color: var(--color-text-secondary); }
 `;
 
+const HistoryNotes = styled.span`
+  font-weight: 400;
+  font-style: italic;
+  color: var(--color-text-secondary);
+  margin-left: 0.75rem;
+  font-size: 0.78rem;
+  &::before { content: 'Бележки: '; font-style: normal; font-weight: 600; }
+`;
+
+const ShowMoreRow = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 1rem;
+  gap: 1rem;
+`;
+
+const ShowMoreBtn = styled.button`
+  padding: 0.4rem 0.875rem;
+  background: transparent;
+  color: var(--color-text-secondary);
+  border: 1.5px solid var(--color-border);
+  border-radius: 0.5rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  &:hover { background: var(--color-background-secondary); }
+`;
+
+const HistoryCount = styled.span`
+  font-size: 0.78rem;
+  color: var(--color-text-secondary);
+`;
+
 const ScheduledBadge = styled.span`
   display: inline-flex;
   align-items: center;
@@ -288,14 +330,19 @@ const Toast = styled.div<{ $ok: boolean }>`
 
 // ── i18n ──────────────────────────────────────────────────────────────
 const t = (lang: 'en' | 'bg') => ({
-  title:            lang === 'bg' ? 'Кешбек ставки' : 'Cashback Rates',
-  subtitle:         lang === 'bg'
-    ? 'Управлявайте матрицата кешбек % на стъпка отстъпка. Всяка нова версия е самостоятелен снимък — всичките 5 стъпки са задължителни. Стойностите не могат да надвишават % на партньорската отстъпка за съответната стъпка.'
-    : 'Manage the cashback % matrix per discount step. Every new version is a self-contained snapshot — all 5 steps are required. Values cannot exceed the partner discount % for that step.',
+  // Fix #9: title matches nav/spec label "Проценти"
+  title:            lang === 'bg' ? 'Проценти' : 'Percentages',
+  // Fix #10: subtitle is a function so step count is dynamic, not hardcoded
+  subtitle:         (n: number) =>
+    lang === 'bg'
+      ? `Разпределение на кешбек % и марджин по стъпка на партньорска отстъпка. Всяка нова версия е самостоятелен снимък — всичките ${n} стъпки са задължителни. Стойностите не могат да надвишават % на партньорската отстъпка за съответната стъпка.`
+      : `Distribution of cashback % and margin by partner discount step. Every new version is a self-contained snapshot — all ${n} steps are required. Values cannot exceed the partner discount % for that step.`,
   currentTitle:     lang === 'bg' ? 'Текущи действащи ставки' : 'Currently effective rates',
   newTitle:         lang === 'bg' ? 'Нов снимък на ставките' : 'New rate snapshot',
   historyTitle:     lang === 'bg' ? 'История' : 'History',
+  // Fix #4: stepHint clarifies that Step = partner's contracted discount %
   step:             lang === 'bg' ? 'Стъпка' : 'Discount step',
+  stepHint:         lang === 'bg' ? 'договорен % отстъпка на партньора' : "partner's contracted discount %",
   basic:            'BASIC (%)',
   premium:          lang === 'bg' ? 'LIGHT / PREMIUM (%)' : 'LIGHT / PREMIUM (%)',
   premiumHint:      lang === 'bg' ? 'важи за абонати с LIGHT и PREMIUM план' : 'applies to subscribers on LIGHT and PREMIUM plans',
@@ -321,7 +368,6 @@ const t = (lang: 'en' | 'bg') => ({
   snapshotDeleted:  lang === 'bg' ? 'Планираният снимък е отменен' : 'Scheduled snapshot cancelled',
   thEffective:      lang === 'bg' ? 'В сила от' : 'Effective from',
   thBy:             lang === 'bg' ? 'Автор' : 'By',
-  thNotes:          lang === 'bg' ? 'Бележки' : 'Notes',
   mustBeNumbers:    (step: number) =>
     lang === 'bg'
       ? `Стъпка ${step}%: BASIC и LIGHT/PREMIUM трябва да са числа`
@@ -336,6 +382,14 @@ const t = (lang: 'en' | 'bg') => ({
       : `Step ${step}%: cashback cannot exceed the partner discount (${step}%) — margin would be negative`,
   exceedsCapInline: (step: number) =>
     lang === 'bg' ? `Макс. ${step}%` : `Max ${step}%`,
+  // Fix #8: no-change error message
+  noChanges:        lang === 'bg'
+    ? 'Ставките не са променени — стойностите са идентични с текущите действащи ставки'
+    : 'No changes — values are identical to the currently effective rates',
+  // Fix #7: history pagination
+  showMore:         lang === 'bg' ? 'Покажи повече' : 'Show more',
+  showingCount:     (shown: number, total: number) =>
+    lang === 'bg' ? `${shown} от ${total} снимки` : `${shown} of ${total} snapshots`,
 });
 
 // ── Helpers ───────────────────────────────────────────────────────────
@@ -353,7 +407,7 @@ const computeMargin = (step: number, cashback: string | number): string => {
   const cb = typeof cashback === 'string' ? parseFloat(cashback) : cashback;
   if (!isFinite(cb)) return '—';
   const m = Math.round((step - cb) * 10) / 10;
-  return m >= 0 ? `${m}%` : `−${Math.abs(m)}%`;
+  return m >= 0 ? `${m}%` : `-${Math.abs(m)}%`;
 };
 
 const isFuture = (iso: string) => new Date(iso) > new Date();
@@ -372,6 +426,8 @@ const AdminCashbackRatesPage: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<{ ok: boolean; msg: string } | null>(null);
+  // Fix #7: history pagination state
+  const [historySnapshotsShown, setHistorySnapshotsShown] = useState(HISTORY_PAGE_SIZE);
 
   // Two-step save
   const [pendingPayload, setPendingPayload] = useState<{
@@ -403,12 +459,29 @@ const AdminCashbackRatesPage: React.FC = () => {
     load().catch(e => setToast({ ok: false, msg: String(e?.message || e) }));
   }, [load]);
 
+  // Fix #1: derive snapshot metadata from current rates (all steps share the same snapshot)
+  const currentSnapshotInfo = useMemo(() => {
+    const withDate = current.filter(r => r.effectiveFrom != null);
+    if (withDate.length === 0) return null;
+    const sorted = [...withDate].sort(
+      (a, b) => new Date(b.effectiveFrom!).getTime() - new Date(a.effectiveFrom!).getTime(),
+    );
+    const newest = sorted[0];
+    // Detect if steps come from different snapshots (edge case with legacy pre-snapshot data)
+    const uniqueDates = new Set(withDate.map(r => r.effectiveFrom));
+    return {
+      date: new Date(newest.effectiveFrom!).toLocaleString(),
+      author: newest.createdByName ?? newest.createdByEmail ?? null,
+      mixed: uniqueDates.size > 1,
+    };
+  }, [current]);
+
   const updateCell = (step: number, field: 'basic' | 'premium', value: string) => {
     setDraft(prev => ({ ...prev, [step]: { ...prev[step], [field]: value } }));
     setError(null);
   };
 
-  // Per-cell validity: value entered is negative or exceeds the step cap
+  // Per-cell validity: value is negative or exceeds the step cap
   const isCellInvalid = (step: number, field: 'basic' | 'premium'): boolean => {
     const raw = draft[step]?.[field] ?? '';
     if (raw === '') return false;
@@ -419,6 +492,23 @@ const AdminCashbackRatesPage: React.FC = () => {
   // Step 1: validate → show confirm panel
   const handlePreview = () => {
     setError(null);
+
+    // Fix #8: detect no-change — block if draft is identical to current effective rates
+    const allStepsHaveCurrent = STEPS.every(step => current.find(r => r.discountStep === step));
+    if (allStepsHaveCurrent) {
+      const isUnchanged = STEPS.every(step => {
+        const row = current.find(r => r.discountStep === step);
+        if (!row) return false;
+        const draftBasic = parseFloat(draft[step]?.basic ?? '');
+        const draftPremium = parseFloat(draft[step]?.premium ?? '');
+        return draftBasic === row.basic && draftPremium === row.premium;
+      });
+      if (isUnchanged) {
+        setError(tr.noChanges);
+        return;
+      }
+    }
+
     const rates: Array<{ discountStep: number; basic: number; premium: number }> = [];
     for (const step of STEPS) {
       const row = draft[step];
@@ -467,7 +557,6 @@ const AdminCashbackRatesPage: React.FC = () => {
     } catch (e) {
       const axiosErr = e as { response?: { data?: { error?: string } }; message?: string };
       setError(axiosErr?.response?.data?.error || axiosErr?.message || 'Failed to save');
-      // keep pendingPayload so the confirm panel stays open and user can retry
     } finally {
       setSaving(false);
     }
@@ -507,44 +596,63 @@ const AdminCashbackRatesPage: React.FC = () => {
 
   const fmtDate = (iso: string | null) => (iso ? new Date(iso).toLocaleString() : '—');
 
-  // 7-col grid: step | basic | premium | margin-basic | margin-premium | effective-from | author
-  const currentCols = '0.7fr 0.9fr 1.1fr 1fr 1.1fr 1.8fr 1.2fr';
-  // 5-col grid: step | basic input | margin-basic | premium input | margin-premium
-  const editCols = '0.7fr 1fr 0.9fr 1.1fr 0.9fr';
+  // Fix #2: unified 5-col layout used by Current, Edit, and Confirm panel
+  // Order: Стъпка | BASIC (%) | Марж BASIC (%) | LIGHT/PREMIUM (%) | Марж LIGHT/PREMIUM (%)
+  const stepCols = '0.7fr 1fr 0.9fr 1.1fr 0.9fr';
 
   return (
     <Page>
       <Header>
+        {/* Fix #9: title is "Проценти" to match nav label and spec §9 */}
         <Title><Percent size={24} /> {tr.title}</Title>
-        <Subtitle>{tr.subtitle}</Subtitle>
+        {/* Fix #10: subtitle uses STEPS.length instead of hardcoded "5" */}
+        <Subtitle>{tr.subtitle(STEPS.length)}</Subtitle>
       </Header>
 
       {/* ── Current effective rates ── */}
       <Section>
         <SectionTitle>{tr.currentTitle}</SectionTitle>
-        <Matrix $cols={currentCols}>
-          <Cell $header>{tr.step}</Cell>
+        {/* Fix #1: snapshot metadata shown once above the matrix, not repeated per row */}
+        {currentSnapshotInfo && (
+          <SnapshotMeta>
+            {tr.effectiveFrom}: {currentSnapshotInfo.date}
+            {currentSnapshotInfo.author && (
+              <> · <strong>{currentSnapshotInfo.author}</strong></>
+            )}
+            {currentSnapshotInfo.mixed && (
+              <> · <em>(стъпките са от различни снимки)</em></>
+            )}
+          </SnapshotMeta>
+        )}
+        {/* Fix #2: column order matches edit form — BASIC | Margin BASIC | LIGHT/PREMIUM | Margin LIGHT/PREMIUM */}
+        <Matrix $cols={stepCols}>
+          {/* Fix #4: Стъпка header explains it represents the partner's contracted discount % */}
+          <Cell $header>
+            {tr.step}
+            <ColHint>{tr.stepHint}</ColHint>
+          </Cell>
           <Cell $header>{tr.basic}</Cell>
+          <Cell $header>{tr.marginBasic}</Cell>
           <Cell $header>
             {tr.premium}
             <ColHint>{tr.premiumHint}</ColHint>
           </Cell>
-          <Cell $header>{tr.marginBasic}</Cell>
           <Cell $header>{tr.marginPremium}</Cell>
-          <Cell $header>{tr.effectiveFrom}</Cell>
-          <Cell $header>{tr.thBy}</Cell>
           {STEPS.map(step => {
             const row = current.find(r => r.discountStep === step);
+            // Fix #11: highlight negative margins in red (possible with legacy pre-validation data)
+            const basicMarginNeg  = row != null && (step - row.basic)   < 0;
+            const premiumMarginNeg = row != null && (step - row.premium) < 0;
             return (
               <React.Fragment key={step}>
                 <Cell>{step}%</Cell>
                 <Cell>{row != null ? `${row.basic}%` : '—'}</Cell>
+                <Cell $muted $invalid={basicMarginNeg}>
+                  {row != null ? computeMargin(step, row.basic) : '—'}
+                </Cell>
                 <Cell>{row != null ? `${row.premium}%` : '—'}</Cell>
-                <Cell $muted>{row != null ? computeMargin(step, row.basic) : '—'}</Cell>
-                <Cell $muted>{row != null ? computeMargin(step, row.premium) : '—'}</Cell>
-                <Cell $muted style={{ fontSize: '0.8rem' }}>{fmtDate(row?.effectiveFrom ?? null)}</Cell>
-                <Cell $muted style={{ fontSize: '0.75rem' }}>
-                  {row?.createdByName ?? row?.createdByEmail ?? (row?.createdBy ? row.createdBy.slice(0, 8) : '—')}
+                <Cell $muted $invalid={premiumMarginNeg}>
+                  {row != null ? computeMargin(step, row.premium) : '—'}
                 </Cell>
               </React.Fragment>
             );
@@ -555,8 +663,13 @@ const AdminCashbackRatesPage: React.FC = () => {
       {/* ── New rate snapshot form ── */}
       <Section>
         <SectionTitle>{tr.newTitle}</SectionTitle>
-        <Matrix $cols={editCols}>
-          <Cell $header>{tr.step}</Cell>
+        {/* Fix #2: edit form uses same stepCols and column order as Current section */}
+        <Matrix $cols={stepCols}>
+          {/* Fix #4: Стъпка header with partner discount hint */}
+          <Cell $header>
+            {tr.step}
+            <ColHint>{tr.stepHint}</ColHint>
+          </Cell>
           <Cell $header>{tr.basic}</Cell>
           <Cell $header>{tr.marginBasic}</Cell>
           <Cell $header>
@@ -565,7 +678,7 @@ const AdminCashbackRatesPage: React.FC = () => {
           </Cell>
           <Cell $header>{tr.marginPremium}</Cell>
           {STEPS.map(step => {
-            const basicInvalid = isCellInvalid(step, 'basic');
+            const basicInvalid   = isCellInvalid(step, 'basic');
             const premiumInvalid = isCellInvalid(step, 'premium');
             return (
               <React.Fragment key={step}>
@@ -638,11 +751,19 @@ const AdminCashbackRatesPage: React.FC = () => {
           <ConfirmPanel>
             <ConfirmTitle>{tr.confirmTitle}</ConfirmTitle>
             <ConfirmMeta>{tr.confirmMsg(pendingPayload.displayDate)}</ConfirmMeta>
-            <Matrix $cols={editCols} style={{ marginBottom: '0.25rem' }}>
-              <Cell $header>{tr.step}</Cell>
+            {/* Fix #2+#3: confirm panel uses same column order and includes LIGHT/PREMIUM ColHint */}
+            <Matrix $cols={stepCols} style={{ marginBottom: '0.25rem' }}>
+              <Cell $header>
+                {tr.step}
+                <ColHint>{tr.stepHint}</ColHint>
+              </Cell>
               <Cell $header>{tr.basic}</Cell>
               <Cell $header>{tr.marginBasic}</Cell>
-              <Cell $header>{tr.premium}</Cell>
+              {/* Fix #3: ColHint was missing from the confirm panel */}
+              <Cell $header>
+                {tr.premium}
+                <ColHint>{tr.premiumHint}</ColHint>
+              </Cell>
               <Cell $header>{tr.marginPremium}</Cell>
               {pendingPayload.rates.map(r => (
                 <React.Fragment key={r.discountStep}>
@@ -679,12 +800,12 @@ const AdminCashbackRatesPage: React.FC = () => {
         <HistoryTable>
           <thead>
             <tr>
-              {/* Author and Notes live in the group header row — not repeated per step */}
+              {/* Fix #2: column order in history thead matches Current and Edit views */}
               <th>{tr.thEffective}</th>
               <th>{tr.step}</th>
               <th>{tr.basic}</th>
-              <th>{tr.premium}</th>
               <th>{tr.marginBasic}</th>
+              <th>{tr.premium}</th>
               <th>{tr.marginPremium}</th>
             </tr>
           </thead>
@@ -695,49 +816,77 @@ const AdminCashbackRatesPage: React.FC = () => {
               </tr>
             )}
             {(() => {
-              // Group rows by effectiveFrom — all rows in one save share the same timestamp.
+              // Group rows by effectiveFrom — all rows in one save share the same timestamp
               const groups = new Map<string, typeof history>();
               for (const row of history) {
                 const key = row.effectiveFrom ?? row.createdAt;
                 if (!groups.has(key)) groups.set(key, []);
                 groups.get(key)!.push(row);
               }
-              return [...groups.entries()].map(([key, rows]) => {
-                const future = isFuture(key);
-                return (
-                  <React.Fragment key={key}>
-                    <tr style={{ background: 'var(--color-background-secondary)' }}>
-                      <td colSpan={6} style={{ fontWeight: 700, fontSize: '0.8rem', color: 'var(--color-text-secondary)', padding: '0.5rem 0.875rem' }}>
-                        {fmtDate(key)}
-                        {future && (
-                          <ScheduledBadge>{tr.scheduled}</ScheduledBadge>
-                        )}
-                        {rows[0].createdByName || rows[0].createdByEmail
-                          ? <span style={{ fontWeight: 600, marginLeft: '0.75rem', color: 'var(--color-text-primary)' }}>
-                              {rows[0].createdByName ?? rows[0].createdByEmail}
-                            </span>
-                          : <span style={{ marginLeft: '0.75rem', opacity: 0.4 }}>—</span>}
-                        {rows[0].notes ? <span style={{ fontWeight: 400, marginLeft: '0.75rem' }}>{rows[0].notes}</span> : null}
-                        {future && (
-                          <DeleteSnapshotBtn onClick={() => handleDeleteSnapshot(key)}>
-                            <Trash2 /> {tr.cancelSnapshot}
-                          </DeleteSnapshotBtn>
-                        )}
+              const allGroups = [...groups.entries()];
+              const totalSnapshots = allGroups.length;
+              // Fix #7: paginate — only show historySnapshotsShown groups
+              const visibleGroups = allGroups.slice(0, historySnapshotsShown);
+
+              return (
+                <>
+                  {visibleGroups.map(([key, rows]) => {
+                    const future = isFuture(key);
+                    return (
+                      <React.Fragment key={key}>
+                        <tr style={{ background: 'var(--color-background-secondary)' }}>
+                          <td colSpan={6} style={{ fontWeight: 700, fontSize: '0.8rem', color: 'var(--color-text-secondary)', padding: '0.5rem 0.875rem' }}>
+                            {fmtDate(key)}
+                            {future && (
+                              <ScheduledBadge>{tr.scheduled}</ScheduledBadge>
+                            )}
+                            {rows[0].createdByName || rows[0].createdByEmail
+                              ? <span style={{ fontWeight: 600, marginLeft: '0.75rem', color: 'var(--color-text-primary)' }}>
+                                  {rows[0].createdByName ?? rows[0].createdByEmail}
+                                </span>
+                              : <span style={{ marginLeft: '0.75rem', opacity: 0.4 }}>—</span>}
+                            {/* Fix #6: notes are explicitly labeled with "Бележки:" prefix */}
+                            {rows[0].notes
+                              ? <HistoryNotes>{rows[0].notes}</HistoryNotes>
+                              : null}
+                            {future && (
+                              <DeleteSnapshotBtn onClick={() => handleDeleteSnapshot(key)}>
+                                <Trash2 /> {tr.cancelSnapshot}
+                              </DeleteSnapshotBtn>
+                            )}
+                          </td>
+                        </tr>
+                        {rows.map(row => (
+                          <tr key={row.id}>
+                            <td style={{ paddingLeft: '1.5rem', color: 'var(--color-text-secondary)', fontSize: '0.8rem' }}>↳</td>
+                            <td>{row.discountStep}%</td>
+                            <td>{row.basic}%</td>
+                            {/* Fix #2: margin columns interleaved with value columns, matching edit form order */}
+                            <td className="muted">{computeMargin(row.discountStep, row.basic)}</td>
+                            <td>{row.premium}%</td>
+                            <td className="muted">{computeMargin(row.discountStep, row.premium)}</td>
+                          </tr>
+                        ))}
+                      </React.Fragment>
+                    );
+                  })}
+                  {/* Fix #7: show pagination controls when there are more snapshots */}
+                  {totalSnapshots > HISTORY_PAGE_SIZE && (
+                    <tr>
+                      <td colSpan={6} style={{ padding: '0.75rem 0.875rem', borderBottom: 'none' }}>
+                        <ShowMoreRow>
+                          <HistoryCount>{tr.showingCount(Math.min(historySnapshotsShown, totalSnapshots), totalSnapshots)}</HistoryCount>
+                          {historySnapshotsShown < totalSnapshots && (
+                            <ShowMoreBtn onClick={() => setHistorySnapshotsShown(n => n + HISTORY_PAGE_SIZE)}>
+                              {tr.showMore}
+                            </ShowMoreBtn>
+                          )}
+                        </ShowMoreRow>
                       </td>
                     </tr>
-                    {rows.map(row => (
-                      <tr key={row.id}>
-                        <td style={{ paddingLeft: '1.5rem', color: 'var(--color-text-secondary)', fontSize: '0.8rem' }}>↳</td>
-                        <td>{row.discountStep}%</td>
-                        <td>{row.basic}%</td>
-                        <td>{row.premium}%</td>
-                        <td className="muted">{computeMargin(row.discountStep, row.basic)}</td>
-                        <td className="muted">{computeMargin(row.discountStep, row.premium)}</td>
-                      </tr>
-                    ))}
-                  </React.Fragment>
-                );
-              });
+                  )}
+                </>
+              );
             })()}
           </tbody>
         </HistoryTable>
