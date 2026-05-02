@@ -450,6 +450,12 @@ export default function AdminFinancePeriodsPage() {
                           <LifecycleBadge $status={rp.status}>
                             {LIFECYCLE_LABELS[rp.status]}
                           </LifecycleBadge>
+                          {rp.openedAt && (
+                            <AuditLine>
+                              Отворен: {fmtDateTime(rp.openedAt)}
+                              {rp.openedByName && ` · ${rp.openedByName}`}
+                            </AuditLine>
+                          )}
                           {rp.reviewedAt && (
                             <AuditLine>
                               За проверка: {fmtDateTime(rp.reviewedAt)}
@@ -490,8 +496,16 @@ export default function AdminFinancePeriodsPage() {
                           </AdvanceBtn>
                         ) : nextStatus ? (
                           <>
-                            {/* Hide for lifecycle-only OPEN periods — backend rejects FOR_REVIEW without invoices */}
-                            {!(row.lifecycleOnly && nextStatus === 'FOR_REVIEW') && (() => {
+                            {/* OPEN periods with no invoices: show disabled button with tooltip instead of hiding */}
+                            {(row.lifecycleOnly && nextStatus === 'FOR_REVIEW') ? (
+                              <AdvanceBtn
+                                disabled
+                                title="Генерирайте фактури за периода, преди да го изпратите за преглед"
+                                style={{ opacity: 0.45, cursor: 'not-allowed' }}
+                              >
+                                → {LIFECYCLE_LABELS[nextStatus]}
+                              </AdvanceBtn>
+                            ) : (() => {
                               const allPaid = rp.status === 'LOCKED' && row.count > 0 && row.paid === row.count;
                               const Btn = allPaid ? AccentAdvanceBtn : AdvanceBtn;
                               return (

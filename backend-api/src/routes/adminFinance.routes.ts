@@ -793,6 +793,7 @@ router.get(
     });
 
     const nameMap = await resolveAdminNames([
+      ...periods.map(p => p.openedBy),
       ...periods.map(p => p.reviewedBy),
       ...periods.map(p => p.lockedBy),
       ...periods.map(p => p.invoicedBy),
@@ -800,6 +801,7 @@ router.get(
 
     const data = periods.map(p => ({
       ...p,
+      openedByName:   p.openedBy   ? (nameMap.get(p.openedBy)   ?? p.openedBy)   : null,
       reviewedByName: p.reviewedBy ? (nameMap.get(p.reviewedBy) ?? p.reviewedBy) : null,
       lockedByName:   p.lockedBy   ? (nameMap.get(p.lockedBy)   ?? p.lockedBy)   : null,
       invoicedByName: p.invoicedBy ? (nameMap.get(p.invoicedBy) ?? p.invoicedBy) : null,
@@ -826,7 +828,7 @@ router.post(
 
     const period = await prisma.reportingPeriod.upsert({
       where: { month },
-      create: { month, status: 'OPEN', notes: notes ?? null },
+      create: { month, status: 'OPEN', openedAt: new Date(), openedBy: req.user!.id, notes: notes ?? null },
       update: { notes: notes ?? undefined },
     });
 
@@ -904,9 +906,10 @@ router.patch(
     });
 
     // Enrich with resolved admin names so the response is consistent with the GET endpoint.
-    const nameMap = await resolveAdminNames([updated.reviewedBy, updated.lockedBy, updated.invoicedBy]);
+    const nameMap = await resolveAdminNames([updated.openedBy, updated.reviewedBy, updated.lockedBy, updated.invoicedBy]);
     const enriched = {
       ...updated,
+      openedByName:   updated.openedBy   ? (nameMap.get(updated.openedBy)   ?? updated.openedBy)   : null,
       reviewedByName: updated.reviewedBy ? (nameMap.get(updated.reviewedBy) ?? updated.reviewedBy) : null,
       lockedByName:   updated.lockedBy   ? (nameMap.get(updated.lockedBy)   ?? updated.lockedBy)   : null,
       invoicedByName: updated.invoicedBy ? (nameMap.get(updated.invoicedBy) ?? updated.invoicedBy) : null,
@@ -1067,6 +1070,7 @@ router.get(
 
       // Resolve admin UUIDs → display names for human-readable export.
       const expNameMap = await resolveAdminNames([
+        ...periods.map(p => p.openedBy),
         ...periods.map(p => p.reviewedBy),
         ...periods.map(p => p.lockedBy),
         ...periods.map(p => p.invoicedBy),
@@ -1086,6 +1090,8 @@ router.get(
           paid: fin?.paid ?? 0,
           pending: fin?.pending ?? 0,
           overdue: fin?.overdue ?? 0,
+          openedAt: p.openedAt?.toISOString() ?? '',
+          openedBy: resolveName(p.openedBy),
           reviewedAt: p.reviewedAt?.toISOString() ?? '',
           reviewedBy: resolveName(p.reviewedBy),
           lockedAt: p.lockedAt?.toISOString() ?? '',
@@ -1333,7 +1339,7 @@ router.get(
     // row alone does not represent the full schema.
     const HEADERS: Record<string, string[]> = {
       invoices: ['id', 'partner', 'city', 'month', 'turnoverAmount', 'contractedRate', 'totalCashbackOwed', 'marginAmount', 'obligation', 'status', 'paidAt', 'paidBy', 'notes', 'createdAt'],
-      periods:  ['month', 'status', 'partners', 'cashback', 'margin', 'total', 'paid', 'pending', 'overdue', 'reviewedAt', 'reviewedBy', 'lockedAt', 'lockedBy', 'invoicedAt', 'invoicedBy', 'notes'],
+      periods:  ['month', 'status', 'partners', 'cashback', 'margin', 'total', 'paid', 'pending', 'overdue', 'openedAt', 'openedBy', 'reviewedAt', 'reviewedBy', 'lockedAt', 'lockedBy', 'invoicedAt', 'invoicedBy', 'notes'],
       reports:  ['section', 'period', 'partnerName', 'partnerId', 'plan', 'scanCount', 'cashback', 'margin', 'turnover', 'invoiceStatus', 'walletType', 'walletTotal', 'walletCount'],
       payouts:  ['id', 'subscriberName', 'email', 'phone', 'iban', 'beneficiaryName', 'amount', 'currency', 'status', 'description', 'requestedAt'],
     };
@@ -1364,6 +1370,8 @@ router.get(
       paid: 'Платено',
       pending: 'Чакащи',
       overdue: 'Просрочени',
+      openedAt: 'Дата на отваряне',
+      openedBy: 'Отворено от',
       reviewedAt: 'Дата за преглед',
       reviewedBy: 'Прегледано от',
       lockedAt: 'Дата на заключване',

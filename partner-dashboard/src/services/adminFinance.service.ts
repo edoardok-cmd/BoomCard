@@ -48,6 +48,9 @@ export interface ReportingPeriodRow {
   id: string;
   month: string;
   status: ReportingPeriodStatus;
+  openedAt: string | null;
+  openedBy: string | null;
+  openedByName: string | null;
   reviewedAt: string | null;
   reviewedBy: string | null;
   reviewedByName: string | null;

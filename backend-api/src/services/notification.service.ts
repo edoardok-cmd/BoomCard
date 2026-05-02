@@ -72,7 +72,7 @@ class NotificationService {
         title: 'Receipt Approved!',
         titleBg: 'Касовата бележка е одобрена!',
         message: `Your receipt from ${merchantName} was approved. You earned ${cashbackAmount.toFixed(2)} BGN cashback!`,
-        messageBg: `Вашата касова бележка от ${merchantName} е одобрена. Спечелихте ${cashbackAmount.toFixed(2)} лв. кешбек!`,
+        messageBg: `Вашата касова бележка от ${merchantName} е одобрена. Спечелихте ${cashbackAmount.toFixed(2).replace('.', ',')} лв. кешбек!`,
         data: {
           receiptId,
           merchantName,
@@ -115,7 +115,7 @@ class NotificationService {
         title: 'Cashback Earned!',
         titleBg: 'Спечелихте кешбек!',
         message: `Your visit to ${venueName} was confirmed. You earned ${cashbackAmount.toFixed(2)} BGN cashback!`,
-        messageBg: `Посещението ви в ${venueName} е потвърдено. Спечелихте ${cashbackAmount.toFixed(2)} лв. кешбек!`,
+        messageBg: `Посещението ви в ${venueName} е потвърдено. Спечелихте ${cashbackAmount.toFixed(2).replace('.', ',')} лв. кешбек!`,
         data: {
           scanId,
           venueName,
@@ -224,7 +224,7 @@ class NotificationService {
         title: 'Cashback Credited',
         titleBg: 'Кешбек е кредитиран',
         message: `${amount.toFixed(2)} BGN has been added to your account. New balance: ${newBalance.toFixed(2)} BGN`,
-        messageBg: `${amount.toFixed(2)} лв. са добавени към акаунта ви. Нов баланс: ${newBalance.toFixed(2)} лв.`,
+        messageBg: `${amount.toFixed(2).replace('.', ',')} лв. са добавени към акаунта ви. Нов баланс: ${newBalance.toFixed(2).replace('.', ',')} лв.`,
         data: {
           amount,
           newBalance,
@@ -751,7 +751,7 @@ class NotificationService {
         title: 'You can cash out',
         titleBg: 'Можете да изтеглите',
         message: `Your available balance (${params.availableBalance.toFixed(2)} BGN) is above the payout threshold (${params.threshold.toFixed(2)} BGN). Request your payout anytime.`,
-        messageBg: `Наличният ви баланс (${params.availableBalance.toFixed(2)} лв.) надвишава прага (${params.threshold.toFixed(2)} лв.). Можете да заявите изплащане.`,
+        messageBg: `Наличният ви баланс (${params.availableBalance.toFixed(2).replace('.', ',')} лв.) надвишава прага (${params.threshold.toFixed(2).replace('.', ',')} лв.). Можете да заявите изплащане.`,
         priority: 'medium',
         actionUrl: '/wallet',
         actionText: 'Cash out',
@@ -1009,7 +1009,23 @@ class NotificationService {
     actionUrl?: string;
     relatedEntityType?: string;
     relatedEntityId?: string;
+    /** Skip creating a new notification if one with the same opsType was already
+     *  created within the last N hours. Prevents cron-driven alerts from flooding
+     *  the bell when the underlying condition persists across multiple runs. */
+    cooldownHours?: number;
   }): Promise<void> {
+    if (params.cooldownHours) {
+      const since = new Date(Date.now() - params.cooldownHours * 3_600_000);
+      const recent = await prisma.notification.findFirst({
+        where: { data: { contains: `"opsType":"${params.opsType}"` }, createdAt: { gte: since } },
+        select: { id: true },
+      });
+      if (recent) {
+        logger.info(`[admin-ops] Cooldown active for opsType=${params.opsType} — skipping duplicate notification.`);
+        return;
+      }
+    }
+
     const severity = params.severity ?? 'info';
     // Map severity to notification priority — admin dashboards escalate 'high'/'urgent'.
     const priority: 'low' | 'medium' | 'high' | 'urgent' =
@@ -1207,6 +1223,7 @@ class NotificationService {
         { label: 'Oldest age', value: `${params.oldestAgeHours.toFixed(1)}h` },
       ],
       actionUrl: `${process.env.PARTNER_DASHBOARD_URL || ''}/admin/receipts`,
+      cooldownHours: 24,
     });
   }
 

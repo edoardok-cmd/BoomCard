@@ -2103,6 +2103,8 @@ model ReportingPeriod {
   id           String                @id @default(uuid())
   month        String                @unique // "YYYY-MM"
   status       ReportingPeriodStatus @default(OPEN)
+  openedAt     DateTime?
+  openedBy     String? // admin userId
   reviewedAt   DateTime?
   reviewedBy   String? // admin userId
   lockedAt     DateTime?

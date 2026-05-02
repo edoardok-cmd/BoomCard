@@ -567,6 +567,7 @@ export default function AdminPayoutsPage() {
   const [dateTo, setDateTo]           = useState('');
   const [modal, setModal]             = useState<ModalState | null>(null);
   const [exporting, setExporting]     = useState(false);
+  const [exportFormat, setExportFormat] = useState<'xlsx' | 'csv'>('xlsx');
 
   const { data: thresholdsData } = useQuery({
     queryKey: ['payout-thresholds'],
@@ -717,7 +718,7 @@ export default function AdminPayoutsPage() {
         dateFrom: dateFrom || undefined,
         dateTo: dateTo || undefined,
         status: status || undefined,
-        format: 'xlsx',
+        format: exportFormat,
       });
     } catch {
       toast.error('Грешка при експорт');
@@ -910,8 +911,20 @@ export default function AdminPayoutsPage() {
           {/* Bug 2 fix: subtitle reflects the active filter */}
           <PageSubtitle>{subtitleForStatus(status)}</PageSubtitle>
         </TitleBlock>
+        <div style={{ display: 'flex', gap: 0 }}>
+          <ExportBtn
+            style={{ borderRadius: '0.5rem 0 0 0.5rem', borderRight: 'none', background: exportFormat === 'xlsx' ? '#c96442' : undefined, color: exportFormat === 'xlsx' ? '#fff' : undefined, borderColor: exportFormat === 'xlsx' ? '#c96442' : undefined }}
+            onClick={() => setExportFormat('xlsx')}
+            disabled={exporting}
+          >XLSX</ExportBtn>
+          <ExportBtn
+            style={{ borderRadius: '0 0.5rem 0.5rem 0', background: exportFormat === 'csv' ? '#c96442' : undefined, color: exportFormat === 'csv' ? '#fff' : undefined, borderColor: exportFormat === 'csv' ? '#c96442' : undefined }}
+            onClick={() => setExportFormat('csv')}
+            disabled={exporting}
+          >CSV</ExportBtn>
+        </div>
         <ExportBtn onClick={handleExport} disabled={exporting}>
-          {exporting ? 'Експортиране…' : '↓ Експорт XLSX'}
+          {exporting ? 'Експортиране…' : '↓ Експорт'}
         </ExportBtn>
       </PageHeader>
 
