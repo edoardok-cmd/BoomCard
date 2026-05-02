@@ -483,6 +483,9 @@ export default function SubscriptionPage() {
   const isCancelled = subscription?.status === 'CANCELLED';
   const isScheduledForCancel = subscription?.cancelAtPeriodEnd && !isCancelled;
   const isPaysera = !!subscription?.payseraOrderId;
+  // Mirrors getActiveSubscription() status whitelist so the change-card CTA is
+  // only shown when the backend can actually act on the subscription.
+  const isActionableSub = ['ACTIVE', 'TRIALING', 'PAST_DUE', 'PAUSED'].includes(subscription?.status ?? '');
 
   const handleToggleAutoRenewal = () => {
     if (!subscription) return;
@@ -545,11 +548,18 @@ export default function SubscriptionPage() {
       <PageContainer>
         <Container>
           <EmptyText>{t('subscriptionPage.noSubscription')}</EmptyText>
-          <div style={{ textAlign: 'center' }}>
+          <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
             <Link to="/subscriptions">
               <Button variant="primary">{t('subscriptionPage.goToPlans')}</Button>
             </Link>
           </div>
+          <DeleteAccountCard>
+            <DeleteAccountTitle>{t('subscriptionPage.deleteAccountTitle')}</DeleteAccountTitle>
+            <DeleteAccountDesc>{t('subscriptionPage.deleteAccountDesc')}</DeleteAccountDesc>
+            <Link to="/settings">
+              <Button variant="ghost" size="small">{t('subscriptionPage.deleteAccountLink')}</Button>
+            </Link>
+          </DeleteAccountCard>
         </Container>
       </PageContainer>
     );
@@ -772,7 +782,7 @@ export default function SubscriptionPage() {
 
           {/* Payment method card — Paysera (§3.4 action 2: manage payment method).
                Shown for Paysera subscriptions that have no Stripe card on file. */}
-          {!hasStripe && isPaysera && !isCancelled && (
+          {!hasStripe && isPaysera && isActionableSub && (
             <Card
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}

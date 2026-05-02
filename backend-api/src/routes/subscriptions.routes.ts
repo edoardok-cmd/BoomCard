@@ -404,6 +404,13 @@ router.post('/:id/change-card', authenticate, asyncHandler(async (req: AuthReque
     return res.status(400).json({ error: 'Cannot determine subscription renewal price' });
   }
 
+  // Guard against double-initiation: if the user opens two tabs and clicks the
+  // button twice, the second request would overwrite pendingCardUpdateOrderId and
+  // the first payment's callback would be silently dropped (money lost, no renewal).
+  if (meta.pendingCardUpdateOrderId) {
+    return res.status(409).json({ error: 'A card update is already in progress. Please complete or cancel the current payment before starting a new one.' });
+  }
+
   const user = await prisma.user.findUnique({
     where: { id: req.user!.id },
     select: { email: true, firstName: true, lastName: true },

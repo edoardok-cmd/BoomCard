@@ -541,7 +541,7 @@ function App() {
                       <Route path="risk" element={<AdminControlSecurityPage />} />
                       <Route path="risk-signals" element={<AdminControlSecurityPage />} />
                       <Route path="audit" element={<Navigate to="/admin/admins/audit" replace />} />
-                      <Route path="security" element={<Navigate to="/admin/admins/audit" replace />} />
+                      <Route path="security" element={<Navigate to="/admin/control/risk-signals" replace />} />
                       <Route path="disputes" element={<AdminControlDisputesPage />} />
                       <Route path="rules" element={<AdminControlRulesPage />} />
                       <Route path="limits" element={<Navigate to="/admin/control/rules" replace />} />
