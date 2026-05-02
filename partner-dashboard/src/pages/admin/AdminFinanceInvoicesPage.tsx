@@ -249,6 +249,7 @@ export default function AdminFinanceInvoicesPage() {
   const [notesModal, setNotesModal]   = useState<{ id: string; partnerName: string; month: string; current: string } | null>(null);
   const [notesValue, setNotesValue]   = useState('');
   const [exporting, setExporting]     = useState(false);
+  const [exportFormat, setExportFormat] = useState<'xlsx' | 'csv'>('xlsx');
   const [generateModal, setGenerateModal] = useState(false);
   const [generateMonth, setGenerateMonth] = useState(() => {
     const now = new Date();
@@ -259,7 +260,7 @@ export default function AdminFinanceInvoicesPage() {
   const handleExport = async () => {
     setExporting(true);
     try {
-      await adminFinanceService.exportInvoices({ status: status || undefined, month: month || undefined, search: search || undefined });
+      await adminFinanceService.exportInvoices({ status: status || undefined, month: month || undefined, search: search || undefined, format: exportFormat });
     } catch {
       toast.error('Грешка при експорт');
     } finally {
@@ -463,8 +464,18 @@ export default function AdminFinanceInvoicesPage() {
             <GenerateBtn onClick={() => setGenerateModal(true)}>
               + Генерирай фактури
             </GenerateBtn>
+            <div style={{ display: 'flex', gap: 0 }}>
+              <ExportBtn
+                style={{ borderRadius: '0.5rem 0 0 0.5rem', borderRight: 'none', background: exportFormat === 'xlsx' ? palette.accent : palette.surface, color: exportFormat === 'xlsx' ? '#fff' : palette.textMuted }}
+                onClick={() => setExportFormat('xlsx')} disabled={exporting}
+              >XLSX</ExportBtn>
+              <ExportBtn
+                style={{ borderRadius: '0 0.5rem 0.5rem 0', background: exportFormat === 'csv' ? palette.accent : palette.surface, color: exportFormat === 'csv' ? '#fff' : palette.textMuted }}
+                onClick={() => setExportFormat('csv')} disabled={exporting}
+              >CSV</ExportBtn>
+            </div>
             <ExportBtn onClick={handleExport} disabled={exporting}>
-              {exporting ? 'Експортиране…' : '↓ Експорт XLSX'}
+              {exporting ? 'Експортиране…' : '↓ Експорт'}
             </ExportBtn>
           </HeaderActions>
         )}
@@ -561,11 +572,7 @@ export default function AdminFinanceInvoicesPage() {
           rowActions={[
             {
               label: 'Маркирай платено',
-              // Hidden when already paid OR when the billing period is locked/invoiced
-              hidden: (row) =>
-                row.status === 'PAID' ||
-                row.reportingPeriodStatus === 'LOCKED' ||
-                row.reportingPeriodStatus === 'INVOICED',
+              hidden: (row) => row.status === 'PAID',
               onClick: (row) => {
                 if (!window.confirm(`Маркирай фактурата за ${row.partner.businessName} (${row.month}) като платена?`)) return;
                 payMutation.mutate(row.id);

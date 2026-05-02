@@ -3,8 +3,8 @@
  *
  * GET  /api/admin/finance/invoices                     — list PartnerCashbackPayments, enriched with reportingPeriodStatus
  * POST /api/admin/finance/invoices/generate            — create PENDING invoice records for all partners in a month
- * POST /api/admin/finance/invoices/:id/pay             — mark invoice as paid (blocked on LOCKED/INVOICED period)
- * PATCH /api/admin/finance/invoices/:id/status         — change invoice status (blocked on LOCKED/INVOICED period)
+ * POST /api/admin/finance/invoices/:id/pay             — mark invoice as paid (always allowed — payment tracking is separate from billing data)
+ * PATCH /api/admin/finance/invoices/:id/status         — change invoice status to OVERDUE/PENDING (blocked on LOCKED/INVOICED period)
  * PATCH /api/admin/finance/invoices/:id/notes          — update notes (allowed on any period status)
  * GET  /api/admin/finance/periods                      — monthly cashback period summary
  * GET  /api/admin/finance/reporting-periods            — ReportingPeriod lifecycle rows
@@ -244,10 +244,6 @@ router.post(
     const invoice = await prisma.partnerCashbackPayment.findUnique({ where: { id } });
     if (!invoice) {
       return res.status(404).json({ success: false, error: 'Invoice not found' });
-    }
-
-    if (await isPeriodLocked(invoice.month)) {
-      return res.status(409).json({ success: false, error: `Billing period ${invoice.month} is locked or invoiced — no changes allowed.` });
     }
 
     // Atomic guard: updateMany with status precondition prevents a TOCTOU race
@@ -974,6 +970,7 @@ router.get(
         contractedRate: i.contractedRate ?? '',
         totalCashbackOwed: i.totalCashbackOwed,
         marginAmount: i.marginAmount,
+        obligation: Math.round((i.totalCashbackOwed + i.marginAmount) * 100) / 100,
         status: i.status,
         paidAt: i.paidAt?.toISOString() ?? '',
         paidBy: i.paidBy ? (invoiceNameMap.get(i.paidBy) ?? i.paidBy) : '',
@@ -1228,13 +1225,46 @@ router.get(
     // Object.keys(rows[0]) would give wrong results for the 'reports' type
     // because wallet rows and cashback rows have different keys — the first
     // row alone does not represent the full schema.
-    // Internal field keys are mapped to Bulgarian display headers for accounting use.
     const HEADERS: Record<string, string[]> = {
-      invoices: ['id', 'partner', 'city', 'month', 'turnoverAmount', 'contractedRate', 'totalCashbackOwed', 'marginAmount', 'status', 'paidAt', 'paidBy', 'notes', 'createdAt'],
+      invoices: ['id', 'partner', 'city', 'month', 'turnoverAmount', 'contractedRate', 'totalCashbackOwed', 'marginAmount', 'obligation', 'status', 'paidAt', 'paidBy', 'notes', 'createdAt'],
       periods:  ['month', 'status', 'partners', 'cashback', 'margin', 'total', 'paid', 'pending', 'overdue', 'reviewedAt', 'reviewedBy', 'lockedAt', 'lockedBy', 'invoicedAt', 'invoicedBy', 'notes'],
       reports:  ['section', 'period', 'partnerName', 'partnerId', 'plan', 'scanCount', 'cashback', 'margin', 'turnover', 'invoiceStatus', 'walletType', 'walletTotal', 'walletCount'],
     };
-    // Bulgarian column header labels for the 'reports' export (accounting-friendly)
+    // Bulgarian column header labels for all export types (accounting-friendly)
+    const INVOICES_DISPLAY_HEADERS: Record<string, string> = {
+      id: 'ID',
+      partner: 'Партньор',
+      city: 'Град',
+      month: 'Месец',
+      turnoverAmount: 'Оборот (лв.)',
+      contractedRate: 'Договорена ставка (%)',
+      totalCashbackOwed: 'Кешбек (лв.)',
+      marginAmount: 'Марджин (лв.)',
+      obligation: 'Задължение общо (лв.)',
+      status: 'Статус',
+      paidAt: 'Платено на',
+      paidBy: 'Платено от',
+      notes: 'Бележки',
+      createdAt: 'Дата на създаване',
+    };
+    const PERIODS_DISPLAY_HEADERS: Record<string, string> = {
+      month: 'Месец',
+      status: 'Статус',
+      partners: 'Партньори',
+      cashback: 'Кешбек (лв.)',
+      margin: 'Марджин (лв.)',
+      total: 'Общо задължение (лв.)',
+      paid: 'Платено',
+      pending: 'Чакащи',
+      overdue: 'Просрочени',
+      reviewedAt: 'Дата за преглед',
+      reviewedBy: 'Прегледано от',
+      lockedAt: 'Дата на заключване',
+      lockedBy: 'Заключено от',
+      invoicedAt: 'Дата на фактуриране',
+      invoicedBy: 'Фактурирано от',
+      notes: 'Бележки',
+    };
     const REPORTS_DISPLAY_HEADERS: Record<string, string> = {
       section: 'Секция',
       period: 'Период',
@@ -1250,12 +1280,15 @@ router.get(
       walletTotal: 'Общо портфейл (лв.)',
       walletCount: 'Брой транзакции',
     };
+    const DISPLAY_HEADERS_MAP: Record<string, Record<string, string>> = {
+      invoices: INVOICES_DISPLAY_HEADERS,
+      periods:  PERIODS_DISPLAY_HEADERS,
+      reports:  REPORTS_DISPLAY_HEADERS,
+    };
 
     const fieldKeys = HEADERS[type] ?? [];
-    // For the 'reports' type use Bulgarian display header labels; other types keep field names.
-    const displayHeaders = type === 'reports'
-      ? fieldKeys.map(k => REPORTS_DISPLAY_HEADERS[k] ?? k)
-      : fieldKeys;
+    const labelMap = DISPLAY_HEADERS_MAP[type] ?? {};
+    const displayHeaders = fieldKeys.map(k => labelMap[k] ?? k);
 
     if (format === 'csv') {
       const csvLines = [

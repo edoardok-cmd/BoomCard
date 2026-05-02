@@ -271,9 +271,26 @@ export default function AdminFinancePeriodsPage() {
       month: rp.month, total: 0, pending: 0, paid: 0, overdue: 0, count: 0,
       hasUnbilledScans: false, lifecycleOnly: true,
     }));
+
+  // For the current year, inject every month from January through the current
+  // calendar month that has no payment row and no reporting-period row, so the
+  // admin always sees the full Jan–now grid and can open any period immediately.
+  const allMonths = new Set([...paymentMonths, ...rpRows.map(r => r.month)]);
+  const injectedRows: MergedRow[] = [];
+  if (year === CURRENT_YEAR) {
+    const currentMonthNum = new Date().getMonth() + 1;
+    for (let m = 1; m <= currentMonthNum; m++) {
+      const monthStr = `${CURRENT_YEAR}-${String(m).padStart(2, '0')}`;
+      if (!allMonths.has(monthStr)) {
+        injectedRows.push({ month: monthStr, total: 0, pending: 0, paid: 0, overdue: 0, count: 0, hasUnbilledScans: false, lifecycleOnly: true });
+      }
+    }
+  }
+
   const rows: MergedRow[] = [
     ...paymentRows.map(r => ({ ...r, lifecycleOnly: false })),
     ...lifecycleOnlyRows,
+    ...injectedRows,
   ].sort((a, b) => b.month.localeCompare(a.month));
 
   return (
