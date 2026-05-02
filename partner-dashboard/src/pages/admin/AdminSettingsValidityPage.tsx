@@ -65,8 +65,8 @@ export default function AdminSettingsValidityPage() {
 
   useEffect(() => {
     if (!data?.data) return;
-    if (data.data.cashback_expiry_days) setCashbackDays(data.data.cashback_expiry_days);
-    if (data.data.offer_validity_days) setOfferDays(data.data.offer_validity_days);
+    if (data.data.cashback_expiry_days !== undefined) setCashbackDays(data.data.cashback_expiry_days);
+    if (data.data.offer_validity_days !== undefined) setOfferDays(data.data.offer_validity_days);
   }, [data]);
 
   const saveMutation = useMutation({

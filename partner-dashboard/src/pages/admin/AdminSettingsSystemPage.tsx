@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import styled from 'styled-components';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-hot-toast';
-import { adminSettingsService } from '../../services/adminSettings.service';
+import { adminSettingsService, SystemSettingMeta } from '../../services/adminSettings.service';
 
 const palette = {
   bg: '#faf9f5', surface: '#ffffff', border: '#e8e5dc',
@@ -152,6 +152,90 @@ const SubLabel = styled.p`
   margin: 0 0 0.75rem;
 `;
 
+const CardFooter = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid ${palette.border};
+`;
+
+const AuditStamp = styled.p`
+  font-size: 0.75rem;
+  color: ${palette.textSubtle};
+  margin: 0;
+`;
+
+// ── Confirmation modal for maintenance mode ──────────────────────────────────
+
+const Overlay = styled.div`
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+`;
+
+const ModalBox = styled.div`
+  background: ${palette.surface};
+  border-radius: 0.75rem;
+  padding: 2rem;
+  max-width: 28rem;
+  width: 90%;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+`;
+
+const ModalTitle = styled.h3`
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: ${palette.warning};
+  margin: 0 0 0.75rem;
+`;
+
+const ModalBody = styled.p`
+  font-size: 0.9rem;
+  color: ${palette.textMuted};
+  line-height: 1.6;
+  margin: 0 0 1.5rem;
+`;
+
+const ModalActions = styled.div`
+  display: flex;
+  gap: 0.75rem;
+  justify-content: flex-end;
+`;
+
+const CancelBtn = styled.button`
+  padding: 0.5625rem 1.25rem;
+  background: transparent;
+  color: ${palette.textMuted};
+  border: 1px solid ${palette.border};
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  &:hover { background: ${palette.bg}; }
+`;
+
+const DangerBtn = styled.button`
+  padding: 0.5625rem 1.25rem;
+  background: ${palette.warning};
+  color: #fff;
+  border: none;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  &:hover { opacity: 0.9; }
+`;
+
+// ── Constants ────────────────────────────────────────────────────────────────
+
 const TIMEZONES = [
   'Europe/Sofia',
   'Europe/London',
@@ -173,69 +257,41 @@ const CURRENCIES = [
   { value: 'EUR', label: 'EUR — Евро' },
 ];
 
-export default function AdminSettingsSystemPage() {
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function latestMeta(
+  keys: string[],
+  meta: Record<string, SystemSettingMeta>,
+): SystemSettingMeta | null {
+  let latest: SystemSettingMeta | null = null;
+  for (const k of keys) {
+    const m = meta[k];
+    if (!m) continue;
+    if (!latest || m.updatedAt > latest.updatedAt) latest = m;
+  }
+  return latest;
+}
+
+function formatAuditStamp(m: SystemSettingMeta | null): string {
+  if (!m) return '';
+  const d = new Date(m.updatedAt);
+  const date = d.toLocaleDateString('bg-BG', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  const time = d.toLocaleTimeString('bg-BG', { hour: '2-digit', minute: '2-digit' });
+  const by = m.updatedByName ? ` от ${m.updatedByName}` : '';
+  return `Последно обновено: ${date} ${time}${by}`;
+}
+
+// ── Shared mutation hook ──────────────────────────────────────────────────────
+
+function useSystemSettingsMutation(successMsg: string) {
   const queryClient = useQueryClient();
-  const [maxFraud, setMaxFraud] = useState('60');
-  const [autoApprove, setAutoApprove] = useState('30');
-  const [dailyLimit, setDailyLimit] = useState('');
-  const [maxCashback, setMaxCashback] = useState('');
-  const [supportEmail, setSupportEmail] = useState('');
-  const [supportPhone, setSupportPhone] = useState('');
-  const [replyToEmail, setReplyToEmail] = useState('');
-  const [fromEmail, setFromEmail] = useState('');
-  const [senderName, setSenderName] = useState('');
-  const [language, setLanguage] = useState('bg');
-  const [currency, setCurrency] = useState('BGN');
-  const [timezone, setTimezone] = useState('Europe/Sofia');
-  const [maintenanceMode, setMaintenanceMode] = useState(false);
-  const [maintenanceMessage, setMaintenanceMessage] = useState('');
-
-  const { data, isLoading } = useQuery({
-    queryKey: ['admin-system-settings'],
-    queryFn: () => adminSettingsService.getSystemSettings(),
-  });
-
-  useEffect(() => {
-    if (!data?.data) return;
-    if (data.data.max_fraud_score)          setMaxFraud(data.data.max_fraud_score);
-    if (data.data.auto_approve_threshold)   setAutoApprove(data.data.auto_approve_threshold);
-    setDailyLimit(data.data.daily_scan_limit_default ?? '');
-    setMaxCashback(data.data.max_cashback_per_month ?? '');
-    setSupportEmail(data.data.support_email ?? '');
-    setSupportPhone(data.data.support_phone ?? '');
-    setReplyToEmail(data.data.reply_to_email ?? '');
-    setFromEmail(data.data.from_email ?? '');
-    setSenderName(data.data.sender_name ?? '');
-    if (data.data.language)                 setLanguage(data.data.language);
-    if (data.data.currency)                 setCurrency(data.data.currency);
-    if (data.data.timezone)                 setTimezone(data.data.timezone);
-    setMaintenanceMode(data.data.maintenance_mode === 'true');
-    setMaintenanceMessage(data.data.maintenance_message ?? '');
-  }, [data]);
-
-  const saveMutation = useMutation({
-    mutationFn: () => {
-      const settings: Record<string, string> = {
-        max_fraud_score: maxFraud,
-        auto_approve_threshold: autoApprove,
-        support_email: supportEmail,
-        support_phone: supportPhone,
-        reply_to_email: replyToEmail,
-        from_email: fromEmail,
-        sender_name: senderName,
-        language,
-        currency,
-        timezone,
-        maintenance_mode: String(maintenanceMode),
-        maintenance_message: maintenanceMessage,
-      };
-      // Empty string tells the backend to delete the row (reverts to application default).
-      settings.daily_scan_limit_default = dailyLimit;
-      settings.max_cashback_per_month = maxCashback;
-      return adminSettingsService.saveSystemSettings(settings);
-    },
+  return useMutation({
+    mutationFn: (settings: Record<string, string>) =>
+      adminSettingsService.saveSystemSettings(settings),
     onSuccess: () => {
-      toast.success('Системните настройки са запазени');
+      toast.success(successMsg);
       queryClient.invalidateQueries({ queryKey: ['admin-system-settings'] });
     },
     onError: (err: unknown) => {
@@ -245,17 +301,78 @@ export default function AdminSettingsSystemPage() {
       toast.error(msg);
     },
   });
+}
 
-  const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+// ── Component ─────────────────────────────────────────────────────────────────
 
-  const handleSave = () => {
+export default function AdminSettingsSystemPage() {
+  // ── Card 1: Лимити и прагове ─────────────────────────────────────────────
+  const [maxFraud, setMaxFraud] = useState('60');
+  const [corrWarn, setCorrWarn] = useState('30');
+  const [dailyLimit, setDailyLimit] = useState('');
+  const [maxCashback, setMaxCashback] = useState('');
+
+  // ── Card 2: Контакт за поддръжка ─────────────────────────────────────────
+  const [supportEmail, setSupportEmail] = useState('');
+  const [supportPhone, setSupportPhone] = useState('');
+  const [replyToEmail, setReplyToEmail] = useState('');
+  const [fromEmail, setFromEmail] = useState('');
+  const [senderName, setSenderName] = useState('');
+
+  // ── Card 3: Локализация ──────────────────────────────────────────────────
+  const [language, setLanguage] = useState('bg');
+  const [currency, setCurrency] = useState('BGN');
+  const [timezone, setTimezone] = useState('Europe/Sofia');
+
+  // ── Card 4: Режим на поддръжка ───────────────────────────────────────────
+  const [maintenanceMode, setMaintenanceMode] = useState(false);
+  const [maintenanceMessage, setMaintenanceMessage] = useState('');
+
+  // Pending toggle value while awaiting confirmation
+  const [pendingMaintenance, setPendingMaintenance] = useState<boolean | null>(null);
+
+  const { data, isLoading, isFetching } = useQuery({
+    queryKey: ['admin-system-settings'],
+    queryFn: () => adminSettingsService.getSystemSettings(),
+  });
+
+  const meta = data?.meta ?? {};
+
+  useEffect(() => {
+    if (!data?.data) return;
+    if (data.data.max_fraud_score !== undefined)            setMaxFraud(data.data.max_fraud_score);
+    if (data.data.correction_warning_threshold !== undefined) setCorrWarn(data.data.correction_warning_threshold);
+    setDailyLimit(data.data.daily_scan_limit_default ?? '');
+    setMaxCashback(data.data.max_cashback_per_month ?? '');
+    setSupportEmail(data.data.support_email ?? '');
+    setSupportPhone(data.data.support_phone ?? '');
+    setReplyToEmail(data.data.reply_to_email ?? '');
+    setFromEmail(data.data.from_email ?? '');
+    setSenderName(data.data.sender_name ?? '');
+    if (data.data.language !== undefined)  setLanguage(data.data.language);
+    if (data.data.currency !== undefined)  setCurrency(data.data.currency);
+    if (data.data.timezone !== undefined)  setTimezone(data.data.timezone);
+    setMaintenanceMode(data.data.maintenance_mode === 'true');
+    setMaintenanceMessage(data.data.maintenance_message ?? '');
+  }, [data]);
+
+  // ── Per-card mutations ────────────────────────────────────────────────────
+
+  const limitsMutation       = useSystemSettingsMutation('Лимитите са запазени');
+  const contactMutation      = useSystemSettingsMutation('Контактите са запазени');
+  const localizationMutation = useSystemSettingsMutation('Локализацията е запазена');
+  const maintenanceMutation  = useSystemSettingsMutation('Режимът на поддръжка е обновен');
+
+  // ── Per-card save handlers ────────────────────────────────────────────────
+
+  const saveLimits = () => {
     const fraud = parseInt(maxFraud, 10);
     if (!Number.isFinite(fraud) || !Number.isInteger(fraud) || fraud < 0 || fraud > 100) {
       toast.error('Макс. оценка за измама трябва да е цяло число между 0 и 100');
       return;
     }
-    const approve = parseInt(autoApprove, 10);
-    if (!Number.isFinite(approve) || !Number.isInteger(approve) || approve < 0 || approve > 100) {
+    const warn = parseInt(corrWarn, 10);
+    if (!Number.isFinite(warn) || !Number.isInteger(warn) || warn < 0 || warn > 100) {
       toast.error('Прагът за предупреждение трябва да е цяло число между 0 и 100');
       return;
     }
@@ -273,6 +390,15 @@ export default function AdminSettingsSystemPage() {
         return;
       }
     }
+    limitsMutation.mutate({
+      max_fraud_score: maxFraud,
+      correction_warning_threshold: corrWarn,
+      daily_scan_limit_default: dailyLimit,
+      max_cashback_per_month: maxCashback,
+    });
+  };
+
+  const saveContact = () => {
     if (supportEmail && !EMAIL_RE.test(supportEmail)) {
       toast.error('Имейлът за поддръжка трябва да е валиден адрес');
       return;
@@ -285,14 +411,94 @@ export default function AdminSettingsSystemPage() {
       toast.error('Изпращащият имейл трябва да е валиден адрес');
       return;
     }
-    saveMutation.mutate();
+    contactMutation.mutate({
+      support_email: supportEmail,
+      support_phone: supportPhone,
+      reply_to_email: replyToEmail,
+      from_email: fromEmail,
+      sender_name: senderName,
+    });
+  };
+
+  const saveLocalization = () => {
+    localizationMutation.mutate({ language, currency, timezone });
+  };
+
+  // Maintenance save — called after confirmation
+  const commitMaintenance = () => {
+    maintenanceMutation.mutate({
+      maintenance_mode: String(maintenanceMode),
+      maintenance_message: maintenanceMessage,
+    });
+  };
+
+  const serverMaintenanceEnabled = data?.data?.maintenance_mode === 'true';
+
+  // Toggle: enabling requires confirmation only when the server is currently OFF.
+  // If the server is already ON and the user toggled OFF then back ON (local-only
+  // revert), skip the modal — no server state change is happening.
+  const handleMaintenanceToggle = (checked: boolean) => {
+    if (checked) {
+      if (!serverMaintenanceEnabled) {
+        setPendingMaintenance(true);
+      } else {
+        setMaintenanceMode(true);
+      }
+    } else {
+      setMaintenanceMode(false);
+    }
+  };
+
+  const cancelMaintenance = () => {
+    setPendingMaintenance(null);
+  };
+
+  // Save: show confirmation only when enabling for the first time (OFF→ON vs server).
+  const saveMaintenance = () => {
+    if (maintenanceMode && !serverMaintenanceEnabled) {
+      setPendingMaintenance(true);
+    } else {
+      commitMaintenance();
+    }
+  };
+
+  // Confirmed from modal: enable + persist in one step.
+  const confirmAndSave = () => {
+    setMaintenanceMode(true);
+    setPendingMaintenance(null);
+    maintenanceMutation.mutate({
+      maintenance_mode: 'true',
+      maintenance_message: maintenanceMessage,
+    });
   };
 
   return (
     <PageShell>
+      {/* Maintenance mode confirmation modal */}
+      {pendingMaintenance !== null && (
+        <Overlay>
+          <ModalBox>
+            <ModalTitle>⚠ Активиране на режим на поддръжка</ModalTitle>
+            <ModalBody>
+              Режимът на поддръжка ще блокира достъпа на <strong>всички потребители</strong> до
+              мобилното приложение. Те ще видят съобщение за поддръжка и няма да могат да сканират
+              бонове или да извършват транзакции.
+              <br /><br />
+              Сигурни ли сте, че искате да продължите?
+            </ModalBody>
+            <ModalActions>
+              <CancelBtn onClick={cancelMaintenance}>Отказ</CancelBtn>
+              <DangerBtn onClick={confirmAndSave} disabled={maintenanceMutation.isPending}>
+                {maintenanceMutation.isPending ? 'Запазване…' : 'Да, активирай'}
+              </DangerBtn>
+            </ModalActions>
+          </ModalBox>
+        </Overlay>
+      )}
+
       <PageHeader>
         <Eyebrow>Настройки</Eyebrow>
-        <PageTitle>Система</PageTitle>
+        <PageTitle>Системни настройки</PageTitle>
         <PageSubtitle>
           Глобални прагове за измами, лимити за сканиране, контакти за поддръжка, локализация и режим на поддръжка.
         </PageSubtitle>
@@ -303,10 +509,15 @@ export default function AdminSettingsSystemPage() {
       </MaintenanceBanner>
 
       <Grid>
+        {/* ── Card 1: Лимити и прагове ──────────────────────────────────── */}
         <Card>
           <CardTitle>Лимити и прагове</CardTitle>
           <p style={{ fontSize: '0.8rem', color: palette.textSubtle, margin: '0 0 1.25rem', lineHeight: 1.5 }}>
-            Глобални стойности по подразбиране. За правила на ниво партньор или потребител вижте <strong>Контрол → Лимити и правила</strong>. За валидност на кешбек и оферти вижте <Link to="/admin/settings/validity" style={{ color: palette.accent }}>Настройки → Валидност</Link>.
+            Глобални стойности по подразбиране. За правила на ниво партньор или потребител вижте{' '}
+            <strong>Контрол → Лимити и правила</strong>. За изплащания вижте{' '}
+            <Link to="/admin/settings/thresholds" style={{ color: palette.accent }}>Настройки → Прагове</Link>.{' '}
+            За валидност на кешбек и оферти вижте{' '}
+            <Link to="/admin/settings/validity" style={{ color: palette.accent }}>Настройки → Валидност</Link>.
           </p>
           {isLoading ? (
             <p style={{ color: palette.textSubtle, fontSize: '0.875rem' }}>Зареждане…</p>
@@ -326,8 +537,8 @@ export default function AdminSettingsSystemPage() {
                 <FieldLabel>Праг за предупреждение при корекция (0–100)</FieldLabel>
                 <NumberInput
                   type="number" min="0" max="100" step="1"
-                  value={autoApprove}
-                  onChange={(e) => setAutoApprove(e.target.value)}
+                  value={corrWarn}
+                  onChange={(e) => setCorrWarn(e.target.value)}
                 />
                 <FieldHint>
                   Ако преизчислената оценка за измама надвиши тази стойност след ръчна корекция на сума от администратор, се показва предупреждение. По подразбиране: 30.
@@ -355,11 +566,17 @@ export default function AdminSettingsSystemPage() {
                   Таван на кешбек, който абонат може да спечели за последните 30 дни (плъзгащ прозорец). Оставете празно за без таван. Минимална стойност: 1 — стойност 0 не е позволена и ще блокира целия кешбек.
                 </FieldHint>
               </div>
-
             </FieldGroup>
           )}
+          <CardFooter>
+            <AuditStamp>{formatAuditStamp(latestMeta(['max_fraud_score', 'correction_warning_threshold', 'daily_scan_limit_default', 'max_cashback_per_month'], meta))}</AuditStamp>
+            <SaveBtn onClick={saveLimits} disabled={limitsMutation.isPending || isLoading}>
+              {limitsMutation.isPending ? 'Запазване…' : 'Запази'}
+            </SaveBtn>
+          </CardFooter>
         </Card>
 
+        {/* ── Card 2: Контакт за поддръжка ──────────────────────────────── */}
         <Card>
           <CardTitle>Контакт за поддръжка</CardTitle>
           {isLoading ? (
@@ -424,8 +641,15 @@ export default function AdminSettingsSystemPage() {
               </div>
             </FieldGroup>
           )}
+          <CardFooter>
+            <AuditStamp>{formatAuditStamp(latestMeta(['support_email', 'support_phone', 'reply_to_email', 'from_email', 'sender_name'], meta))}</AuditStamp>
+            <SaveBtn onClick={saveContact} disabled={contactMutation.isPending || isLoading}>
+              {contactMutation.isPending ? 'Запазване…' : 'Запази'}
+            </SaveBtn>
+          </CardFooter>
         </Card>
 
+        {/* ── Card 3: Локализация ───────────────────────────────────────── */}
         <Card>
           <CardTitle>Локализация</CardTitle>
           {isLoading ? (
@@ -465,8 +689,15 @@ export default function AdminSettingsSystemPage() {
               </div>
             </FieldGroup>
           )}
+          <CardFooter>
+            <AuditStamp>{formatAuditStamp(latestMeta(['language', 'currency', 'timezone'], meta))}</AuditStamp>
+            <SaveBtn onClick={saveLocalization} disabled={localizationMutation.isPending || isLoading}>
+              {localizationMutation.isPending ? 'Запазване…' : 'Запази'}
+            </SaveBtn>
+          </CardFooter>
         </Card>
 
+        {/* ── Card 4: Режим на поддръжка ───────────────────────────────── */}
         <Card style={{ borderColor: maintenanceMode ? palette.warning : palette.border }}>
           <CardTitle style={{ color: maintenanceMode ? palette.warning : palette.text }}>
             Режим на поддръжка
@@ -486,7 +717,7 @@ export default function AdminSettingsSystemPage() {
                   <ToggleSwitch>
                     <ToggleInput
                       checked={maintenanceMode}
-                      onChange={(e) => setMaintenanceMode(e.target.checked)}
+                      onChange={(e) => handleMaintenanceToggle(e.target.checked)}
                     />
                     <ToggleSlider />
                   </ToggleSwitch>
@@ -503,14 +734,17 @@ export default function AdminSettingsSystemPage() {
               </div>
             </FieldGroup>
           )}
+          <CardFooter>
+            <AuditStamp>{formatAuditStamp(latestMeta(['maintenance_mode', 'maintenance_message'], meta))}</AuditStamp>
+            <SaveBtn
+              onClick={saveMaintenance}
+              disabled={maintenanceMutation.isPending || isFetching}
+            >
+              {maintenanceMutation.isPending ? 'Запазване…' : 'Запази'}
+            </SaveBtn>
+          </CardFooter>
         </Card>
       </Grid>
-
-      <div style={{ marginTop: '1.5rem' }}>
-        <SaveBtn onClick={handleSave} disabled={saveMutation.isPending || isLoading}>
-          {saveMutation.isPending ? 'Запазване…' : 'Запази всички'}
-        </SaveBtn>
-      </div>
     </PageShell>
   );
 }

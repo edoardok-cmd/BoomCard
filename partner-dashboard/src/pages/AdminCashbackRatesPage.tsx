@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import styled from 'styled-components';
-import { Percent, History, Save, AlertCircle, Trash2, Check, X } from 'lucide-react';
+import { Percent, History, Save, AlertCircle, Trash2, Check, X, Calendar, AlertTriangle } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import {
   adminCashbackService,
@@ -55,7 +55,6 @@ const SectionTitle = styled.h2`
   svg { width: 18px; height: 18px; color: var(--color-text-secondary); }
 `;
 
-// Snapshot metadata line shown above the Current rates matrix
 const SnapshotMeta = styled.p`
   font-size: 0.8rem;
   color: var(--color-text-secondary);
@@ -223,6 +222,43 @@ const CancelBtn = styled.button`
   svg { width: 14px; height: 14px; }
 `;
 
+// Fix #4: styled delete-confirm panel (replaces window.confirm)
+const DeleteConfirmPanel = styled.div`
+  margin-top: 0.5rem;
+  border: 2px solid #dc2626;
+  border-radius: 0.75rem;
+  padding: 0.875rem 1.25rem;
+  background: #fff1f2;
+`;
+
+const DeleteConfirmTitle = styled.h3`
+  margin: 0 0 0.5rem 0;
+  font-weight: 700;
+  font-size: 0.875rem;
+  color: #991b1b;
+  display: flex; align-items: center; gap: 0.4rem;
+  svg { width: 15px; height: 15px; }
+`;
+
+const DeleteConfirmActions = styled.div`
+  display: flex; gap: 0.5rem; margin-top: 0.75rem;
+`;
+
+const DeleteConfirmBtn = styled.button`
+  padding: 0.4rem 0.875rem;
+  background: #dc2626;
+  color: #fff;
+  border: none;
+  border-radius: 0.5rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex; align-items: center; gap: 0.35rem;
+  &:hover:not(:disabled) { filter: brightness(1.1); }
+  &:disabled { opacity: 0.5; cursor: not-allowed; }
+  svg { width: 13px; height: 13px; }
+`;
+
 const Error = styled.div`
   background: #fee2e2; color: #991b1b;
   padding: 0.625rem 0.875rem; border-radius: 0.5rem;
@@ -230,6 +266,20 @@ const Error = styled.div`
   display: flex; align-items: center; gap: 0.5rem;
   margin-top: 0.75rem;
   svg { width: 15px; height: 15px; }
+`;
+
+// Fix #2 & #3: shared warning banner style
+const WarningBanner = styled.div`
+  background: #fffbeb;
+  border: 1.5px solid #fbbf24;
+  border-radius: 0.625rem;
+  padding: 0.625rem 0.875rem;
+  font-size: 0.825rem;
+  font-weight: 500;
+  color: #92400e;
+  display: flex; align-items: flex-start; gap: 0.5rem;
+  margin-bottom: 0.75rem;
+  svg { width: 15px; height: 15px; flex-shrink: 0; margin-top: 0.1rem; }
 `;
 
 const HistoryTable = styled.table`
@@ -329,9 +379,7 @@ const Toast = styled.div<{ $ok: boolean }>`
 
 // ── i18n ──────────────────────────────────────────────────────────────
 const t = (lang: 'en' | 'bg') => ({
-  // Fix #9: title matches nav/spec label "Проценти"
   title:            lang === 'bg' ? 'Проценти' : 'Percentages',
-  // Fix #10: subtitle is a function so step count is dynamic, not hardcoded
   subtitle:         (n: number) =>
     lang === 'bg'
       ? `Разпределение на кешбек % и марджин по стъпка на партньорска отстъпка. Всяка нова версия е самостоятелен снимък — всичките ${n} стъпки са задължителни. Стойностите не могат да надвишават % на партньорската отстъпка за съответната стъпка.`
@@ -339,12 +387,14 @@ const t = (lang: 'en' | 'bg') => ({
   currentTitle:     lang === 'bg' ? 'Текущи действащи ставки' : 'Currently effective rates',
   newTitle:         lang === 'bg' ? 'Нов снимък на ставките' : 'New rate snapshot',
   historyTitle:     lang === 'bg' ? 'История' : 'History',
-  // Fix #4: stepHint clarifies that Step = partner's contracted discount %
   step:             lang === 'bg' ? 'Стъпка' : 'Discount step',
   stepHint:         lang === 'bg' ? 'договорен % отстъпка на партньора' : "partner's contracted discount %",
   basic:            'BASIC (%)',
-  premium:          'LIGHT / PREMIUM (%)',
-  premiumHint:      lang === 'bg' ? 'важи за абонати с LIGHT и PREMIUM план' : 'applies to subscribers on LIGHT and PREMIUM plans',
+  // Fix #1: label now references the spec plan names (Premium седмичен / месечен)
+  premium:          lang === 'bg' ? 'LIGHT / PREMIUM (%)' : 'LIGHT / PREMIUM (%)',
+  premiumHint:      lang === 'bg'
+    ? 'Premium седмичен (LIGHT) + Premium месечен (PREMIUM)'
+    : 'Premium Weekly (LIGHT) + Premium Monthly (PREMIUM)',
   marginBasic:      lang === 'bg' ? 'Марж BASIC (%)' : 'Margin BASIC (%)',
   marginPremium:    lang === 'bg' ? 'Марж LIGHT/PREMIUM (%)' : 'Margin LIGHT/PREMIUM (%)',
   effectiveFrom:    lang === 'bg' ? 'В сила от' : 'Effective from',
@@ -361,9 +411,15 @@ const t = (lang: 'en' | 'bg') => ({
   saved:            lang === 'bg' ? 'Ставките са записани' : 'Rates saved',
   scheduled:        lang === 'bg' ? 'Планирано' : 'Scheduled',
   cancelSnapshot:   lang === 'bg' ? 'Отмени' : 'Cancel',
-  confirmDelete:    lang === 'bg'
-    ? 'Сигурни ли сте, че искате да отмените този планиран снимък?'
-    : 'Are you sure you want to cancel this scheduled snapshot?',
+  // Fix #4: delete confirmation strings for inline panel
+  deleteConfirmTitle: lang === 'bg'
+    ? 'Отмяна на планиран снимък'
+    : 'Cancel scheduled snapshot',
+  deleteConfirmMsg: (dt: string) =>
+    lang === 'bg'
+      ? `Сигурни ли сте, че искате да отмените снимъка, планиран за ${dt}?`
+      : `Are you sure you want to cancel the snapshot scheduled for ${dt}?`,
+  deleteConfirmBtn: lang === 'bg' ? 'Да, отмени' : 'Yes, cancel it',
   snapshotDeleted:  lang === 'bg' ? 'Планираният снимък е отменен' : 'Scheduled snapshot cancelled',
   thEffective:      lang === 'bg' ? 'В сила от' : 'Effective from',
   mustBeNumbers:    (step: number) =>
@@ -380,17 +436,24 @@ const t = (lang: 'en' | 'bg') => ({
       : `Step ${step}%: cashback cannot exceed the partner discount (${step}%) — margin would be negative`,
   exceedsCapInline: (step: number) =>
     lang === 'bg' ? `Макс. ${step}%` : `Max ${step}%`,
-  // Fix #8: no-change error message
   noChanges:        lang === 'bg'
     ? 'Ставките не са променени — стойностите са идентични с текущите действащи ставки'
     : 'No changes — values are identical to the currently effective rates',
-  // Fix #7: history pagination
   showMore:         lang === 'bg' ? 'Покажи повече' : 'Show more',
   showingCount:     (shown: number, total: number) =>
     lang === 'bg' ? `${shown} от ${total} снимки` : `${shown} of ${total} snapshots`,
   notesLabel:       lang === 'bg' ? 'Бележки' : 'Notes',
   notesPlaceholder: lang === 'bg' ? 'напр. Q2 ревизия' : 'e.g. Q2 revision',
   mixedSnapshots:   lang === 'bg' ? '(стъпките са от различни снимки)' : '(steps are from different snapshots)',
+  // Fix #2: past-date warning
+  backdatedWarning: lang === 'bg'
+    ? 'Избраната дата е в миналото. Новият снимък ще бъде вмъкнат като backdated и ще стане текущ, ако е по-нов от всички съществуващи ставки. Уверете се, че това е желаното действие.'
+    : 'The selected date is in the past. The new snapshot will be inserted as backdated and will become current if it is newer than all existing rates. Make sure this is intentional.',
+  // Fix #3: upcoming scheduled change alert
+  upcomingChangeAlert: (dt: string) =>
+    lang === 'bg'
+      ? `Предстояща промяна на ставките, планирана за ${dt}`
+      : `Upcoming rate change scheduled for ${dt}`,
 });
 
 // ── Helpers ───────────────────────────────────────────────────────────
@@ -419,6 +482,18 @@ const isFuture = (iso: string) => {
   return t > now;
 };
 
+// Fix #2: true when the datetime-local value represents a time in the past.
+// Round current time down to the minute to match the minute-precision of nowLocal(),
+// so the default "now" value doesn't trigger a false-positive warning on page load.
+const isPast = (localDatetimeValue: string): boolean => {
+  if (!localDatetimeValue) return false;
+  const d = new Date(localDatetimeValue);
+  if (!isFinite(d.getTime())) return false;
+  const now = new Date();
+  now.setSeconds(0, 0);
+  return d < now;
+};
+
 // ── Component ─────────────────────────────────────────────────────────
 
 const AdminCashbackRatesPage: React.FC = () => {
@@ -433,7 +508,6 @@ const AdminCashbackRatesPage: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<{ ok: boolean; msg: string } | null>(null);
-  // Fix #7: history pagination state
   const [historySnapshotsShown, setHistorySnapshotsShown] = useState(HISTORY_PAGE_SIZE);
 
   // Two-step save
@@ -443,6 +517,9 @@ const AdminCashbackRatesPage: React.FC = () => {
     notes: string;
     displayDate: string;
   } | null>(null);
+
+  // Fix #4: inline delete-confirm state (replaces window.confirm)
+  const [deletePending, setDeletePending] = useState<{ iso: string; displayDate: string } | null>(null);
 
   const load = useCallback(async () => {
     const [cur, hist] = await Promise.all([
@@ -466,7 +543,6 @@ const AdminCashbackRatesPage: React.FC = () => {
     load().catch(e => setToast({ ok: false, msg: String(e?.message || e) }));
   }, [load]);
 
-  // Fix #1: derive snapshot metadata from current rates (all steps share the same snapshot)
   const currentSnapshotInfo = useMemo(() => {
     const withDate = current.filter(r => r.effectiveFrom != null);
     if (withDate.length === 0) return null;
@@ -474,7 +550,6 @@ const AdminCashbackRatesPage: React.FC = () => {
       (a, b) => new Date(b.effectiveFrom!).getTime() - new Date(a.effectiveFrom!).getTime(),
     );
     const newest = sorted[0];
-    // Detect if steps come from different snapshots (edge case with legacy pre-snapshot data)
     const uniqueDates = new Set(withDate.map(r => r.effectiveFrom));
     return {
       date: new Date(newest.effectiveFrom!).toLocaleString(),
@@ -483,12 +558,24 @@ const AdminCashbackRatesPage: React.FC = () => {
     };
   }, [current]);
 
+  // Fix #3: derive future scheduled snapshots from history to show alert in Current Rates section
+  const futureSnapshots = useMemo(() => {
+    const groups = new Map<string, CashbackRateRow[]>();
+    for (const row of history) {
+      const key = row.effectiveFrom ?? row.createdAt;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(row);
+    }
+    return [...groups.entries()]
+      .filter(([key]) => isFuture(key))
+      .sort(([a], [b]) => new Date(a).getTime() - new Date(b).getTime());
+  }, [history]);
+
   const updateCell = (step: number, field: 'basic' | 'premium', value: string) => {
     setDraft(prev => ({ ...prev, [step]: { ...prev[step], [field]: value } }));
     setError(null);
   };
 
-  // Per-cell validity: value is negative or exceeds the step cap
   const isCellInvalid = (step: number, field: 'basic' | 'premium'): boolean => {
     const raw = draft[step]?.[field] ?? '';
     if (raw === '') return false;
@@ -496,11 +583,9 @@ const AdminCashbackRatesPage: React.FC = () => {
     return isFinite(v) && (v < 0 || v > step);
   };
 
-  // Step 1: validate → show confirm panel
   const handlePreview = () => {
     setError(null);
 
-    // Fix #8: detect no-change — block if draft is identical to current effective rates
     const allStepsHaveCurrent = STEPS.every(step => current.find(r => r.discountStep === step));
     if (allStepsHaveCurrent) {
       const isUnchanged = STEPS.every(step => {
@@ -549,7 +634,6 @@ const AdminCashbackRatesPage: React.FC = () => {
     });
   };
 
-  // Step 2: actually save
   const confirmSave = async () => {
     if (!pendingPayload) return;
     setSaving(true);
@@ -581,16 +665,23 @@ const AdminCashbackRatesPage: React.FC = () => {
     setError(null);
   };
 
-  const handleDeleteSnapshot = async (effectiveFromISO: string) => {
-    if (!window.confirm(tr.confirmDelete)) return;
+  // Fix #4: two-step delete — first call sets deletePending, second (confirmDelete) does the API call
+  const requestDeleteSnapshot = (effectiveFromISO: string) => {
+    setDeletePending({ iso: effectiveFromISO, displayDate: new Date(effectiveFromISO).toLocaleString() });
+  };
+
+  const confirmDelete = async () => {
+    if (!deletePending) return;
+    const { iso } = deletePending;
+    setDeletePending(null);
     try {
-      await adminCashbackService.deleteSnapshot(effectiveFromISO);
+      await adminCashbackService.deleteSnapshot(iso);
     } catch (e) {
       const axiosErr = e as { response?: { data?: { error?: string } }; message?: string };
       setToast({ ok: false, msg: axiosErr?.response?.data?.error || axiosErr?.message || 'Failed to cancel snapshot' });
       return;
     }
-    setHistory(prev => prev.filter(r => (r.effectiveFrom ?? r.createdAt) !== effectiveFromISO));
+    setHistory(prev => prev.filter(r => (r.effectiveFrom ?? r.createdAt) !== iso));
     setToast({ ok: true, msg: tr.snapshotDeleted });
     await load().catch(() => console.warn('[CashbackRates] post-delete reload failed — table may be stale'));
   };
@@ -603,23 +694,27 @@ const AdminCashbackRatesPage: React.FC = () => {
 
   const fmtDate = (iso: string | null) => (iso ? new Date(iso).toLocaleString() : '—');
 
-  // Fix #2: unified 5-col layout used by Current, Edit, and Confirm panel
-  // Order: Стъпка | BASIC (%) | Марж BASIC (%) | LIGHT/PREMIUM (%) | Марж LIGHT/PREMIUM (%)
   const stepCols = '0.7fr 1fr 0.9fr 1.1fr 0.9fr';
 
   return (
     <Page>
       <Header>
-        {/* Fix #9: title is "Проценти" to match nav label and spec §9 */}
         <Title><Percent size={24} /> {tr.title}</Title>
-        {/* Fix #10: subtitle uses STEPS.length instead of hardcoded "5" */}
         <Subtitle>{tr.subtitle(STEPS.length)}</Subtitle>
       </Header>
 
       {/* ── Current effective rates ── */}
       <Section>
         <SectionTitle>{tr.currentTitle}</SectionTitle>
-        {/* Fix #1: snapshot metadata shown once above the matrix, not repeated per row */}
+
+        {/* Fix #3: upcoming scheduled change alert */}
+        {futureSnapshots.map(([key]) => (
+          <WarningBanner key={key}>
+            <Calendar />
+            {tr.upcomingChangeAlert(new Date(key).toLocaleString())}
+          </WarningBanner>
+        ))}
+
         {currentSnapshotInfo && (
           <SnapshotMeta>
             {tr.effectiveFrom}: {currentSnapshotInfo.date}
@@ -631,9 +726,7 @@ const AdminCashbackRatesPage: React.FC = () => {
             )}
           </SnapshotMeta>
         )}
-        {/* Fix #2: column order matches edit form — BASIC | Margin BASIC | LIGHT/PREMIUM | Margin LIGHT/PREMIUM */}
         <Matrix $cols={stepCols}>
-          {/* Fix #4: Стъпка header explains it represents the partner's contracted discount % */}
           <Cell $header>
             {tr.step}
             <ColHint>{tr.stepHint}</ColHint>
@@ -642,12 +735,12 @@ const AdminCashbackRatesPage: React.FC = () => {
           <Cell $header>{tr.marginBasic}</Cell>
           <Cell $header>
             {tr.premium}
+            {/* Fix #1: hint now references spec plan names */}
             <ColHint>{tr.premiumHint}</ColHint>
           </Cell>
           <Cell $header>{tr.marginPremium}</Cell>
           {STEPS.map(step => {
             const row = current.find(r => r.discountStep === step);
-            // Fix #11: highlight negative margins in red (possible with legacy pre-validation data)
             const basicMarginNeg  = row != null && (step - row.basic)   < 0;
             const premiumMarginNeg = row != null && (step - row.premium) < 0;
             return (
@@ -670,9 +763,7 @@ const AdminCashbackRatesPage: React.FC = () => {
       {/* ── New rate snapshot form ── */}
       <Section>
         <SectionTitle>{tr.newTitle}</SectionTitle>
-        {/* Fix #2: edit form uses same stepCols and column order as Current section */}
         <Matrix $cols={stepCols}>
-          {/* Fix #4: Стъпка header with partner discount hint */}
           <Cell $header>
             {tr.step}
             <ColHint>{tr.stepHint}</ColHint>
@@ -754,6 +845,14 @@ const AdminCashbackRatesPage: React.FC = () => {
           )}
         </FormRow>
 
+        {/* Fix #2: backdated warning shown below the date input */}
+        {!pendingPayload && isPast(effectiveFrom) && (
+          <WarningBanner style={{ marginTop: '0.75rem', marginBottom: 0 }}>
+            <AlertTriangle />
+            {tr.backdatedWarning}
+          </WarningBanner>
+        )}
+
         {pendingPayload && (
           <ConfirmPanel>
             <ConfirmTitle>
@@ -763,7 +862,6 @@ const AdminCashbackRatesPage: React.FC = () => {
               )}
             </ConfirmTitle>
             <ConfirmMeta>{tr.confirmMsg(pendingPayload.displayDate)}</ConfirmMeta>
-            {/* Fix #2+#3: confirm panel uses same column order and includes LIGHT/PREMIUM ColHint */}
             <Matrix $cols={stepCols} style={{ marginBottom: '0.25rem' }}>
               <Cell $header>
                 {tr.step}
@@ -771,7 +869,6 @@ const AdminCashbackRatesPage: React.FC = () => {
               </Cell>
               <Cell $header>{tr.basic}</Cell>
               <Cell $header>{tr.marginBasic}</Cell>
-              {/* Fix #3: ColHint was missing from the confirm panel */}
               <Cell $header>
                 {tr.premium}
                 <ColHint>{tr.premiumHint}</ColHint>
@@ -809,12 +906,29 @@ const AdminCashbackRatesPage: React.FC = () => {
       {/* ── History ── */}
       <Section>
         <SectionTitle><History /> {tr.historyTitle}</SectionTitle>
+
+        {/* Fix #4: inline delete-confirm panel rendered inside History section */}
+        {deletePending && (
+          <DeleteConfirmPanel>
+            <DeleteConfirmTitle><AlertTriangle /> {tr.deleteConfirmTitle}</DeleteConfirmTitle>
+            <p style={{ margin: '0 0 0.25rem', fontSize: '0.825rem', color: '#991b1b' }}>
+              {tr.deleteConfirmMsg(deletePending.displayDate)}
+            </p>
+            <DeleteConfirmActions>
+              <DeleteConfirmBtn onClick={confirmDelete}>
+                <Trash2 /> {tr.deleteConfirmBtn}
+              </DeleteConfirmBtn>
+              <CancelBtn onClick={() => setDeletePending(null)}>
+                <X /> {tr.cancelConfirm}
+              </CancelBtn>
+            </DeleteConfirmActions>
+          </DeleteConfirmPanel>
+        )}
+
         <HistoryTable>
           <thead>
             <tr>
-              {/* Fix #2: column order in history thead matches Current and Edit views */}
               <th>{tr.thEffective}</th>
-              {/* Fix #4: Стъпка hint propagated to history table header, completing all three matrices */}
               <th>{tr.step}<ColHint>{tr.stepHint}</ColHint></th>
               <th>{tr.basic}</th>
               <th>{tr.marginBasic}</th>
@@ -829,7 +943,6 @@ const AdminCashbackRatesPage: React.FC = () => {
               </tr>
             )}
             {(() => {
-              // Group rows by effectiveFrom — all rows in one save share the same timestamp
               const groups = new Map<string, typeof history>();
               for (const row of history) {
                 const key = row.effectiveFrom ?? row.createdAt;
@@ -838,7 +951,6 @@ const AdminCashbackRatesPage: React.FC = () => {
               }
               const allGroups = [...groups.entries()];
               const totalSnapshots = allGroups.length;
-              // Fix #7: paginate — only show historySnapshotsShown groups
               const visibleGroups = allGroups.slice(0, historySnapshotsShown);
 
               return (
@@ -853,16 +965,18 @@ const AdminCashbackRatesPage: React.FC = () => {
                             {future && (
                               <ScheduledBadge>{tr.scheduled}</ScheduledBadge>
                             )}
-                            {rows[0].createdByName || rows[0].createdByEmail
-                              ? <span style={{ fontWeight: 600, marginLeft: '0.75rem', color: 'var(--color-text-primary)' }}>
+                            {/* Fix #6: · separator between date and author */}
+                            {(rows[0].createdByName || rows[0].createdByEmail)
+                              ? <><span style={{ margin: '0 0.35rem', opacity: 0.4 }}>·</span><span style={{ fontWeight: 600, color: 'var(--color-text-primary)' }}>
                                   {rows[0].createdByName ?? rows[0].createdByEmail}
-                                </span>
+                                </span></>
                               : <span style={{ marginLeft: '0.75rem', opacity: 0.4 }}>—</span>}
                             {rows[0].notes
                               ? <HistoryNotes><strong style={{ fontStyle: 'normal', fontWeight: 600 }}>{tr.notesLabel}:</strong>{' '}{rows[0].notes}</HistoryNotes>
                               : null}
+                            {/* Fix #4: use requestDeleteSnapshot instead of window.confirm */}
                             {future && (
-                              <DeleteSnapshotBtn onClick={() => handleDeleteSnapshot(key)}>
+                              <DeleteSnapshotBtn onClick={() => requestDeleteSnapshot(key)}>
                                 <Trash2 /> {tr.cancelSnapshot}
                               </DeleteSnapshotBtn>
                             )}
@@ -873,7 +987,6 @@ const AdminCashbackRatesPage: React.FC = () => {
                             <td style={{ paddingLeft: '1.5rem', color: 'var(--color-text-secondary)', fontSize: '0.8rem' }}>↳</td>
                             <td>{row.discountStep}%</td>
                             <td>{row.basic}%</td>
-                            {/* Fix #2: margin columns interleaved with value columns, matching edit form order */}
                             <td className="muted">{computeMargin(row.discountStep, row.basic)}</td>
                             <td>{row.premium}%</td>
                             <td className="muted">{computeMargin(row.discountStep, row.premium)}</td>
@@ -882,7 +995,6 @@ const AdminCashbackRatesPage: React.FC = () => {
                       </React.Fragment>
                     );
                   })}
-                  {/* Fix #7: show pagination controls when there are more snapshots */}
                   {totalSnapshots > HISTORY_PAGE_SIZE && (
                     <tr>
                       <td colSpan={6} style={{ padding: '0.75rem 0.875rem', borderBottom: 'none' }}>

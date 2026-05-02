@@ -1,8 +1,7 @@
 /**
  * Admin Settings Routes
  *
- * GET    /api/admin/settings/cashback-rates                          — current effective rate matrix
- * POST   /api/admin/settings/cashback-rates                          — save new rate set (versioned)
+ * Cashback rates are managed via /api/admin/cashback/rates — see adminCashback.routes.ts
  * GET    /api/admin/settings/payout-thresholds                       — current payout threshold per plan
  * PUT    /api/admin/settings/payout-thresholds                       — update thresholds (versioned)
  * GET    /api/admin/settings/payout-thresholds/history               — recent threshold history
@@ -40,137 +39,6 @@ const router = Router();
 
 router.use(authenticate, authorize('ADMIN', 'SUPER_ADMIN'));
 router.use(auditMiddleware);
-
-/* ─── Cashback Rates ─────────────────────────────────────────────────────── */
-
-/** Resolve admin name/email for a list of user IDs from createdBy fields. */
-async function resolveAdminNames(ids: (string | null | undefined)[]) {
-  const uniqueIds = [...new Set(ids.filter(Boolean))] as string[];
-  if (uniqueIds.length === 0) return new Map<string, { name: string | null; email: string | null }>();
-  const users = await prisma.user.findMany({
-    where: { id: { in: uniqueIds } },
-    select: { id: true, email: true, firstName: true, lastName: true },
-  });
-  return new Map(
-    users.map((u) => [
-      u.id,
-      {
-        name: [u.firstName, u.lastName].filter(Boolean).join(' ') || u.email,
-        email: u.email,
-      },
-    ])
-  );
-}
-
-/**
- * GET /api/admin/settings/cashback-rates
- * Returns the latest effective row for each discount step, with author names resolved.
- */
-router.get(
-  '/cashback-rates',
-  requirePermission('settings.read'),
-  asyncHandler(async (_req: AuthRequest, res: Response) => {
-    const now = new Date();
-    const allRates = await prisma.cashbackRate.findMany({
-      where: { effectiveFrom: { lte: now } },
-      orderBy: { effectiveFrom: 'desc' },
-      take: 50,
-    });
-
-    // Latest effective rate per discount step (past/present only — excludes future-scheduled rows)
-    const byStep = new Map<number, (typeof allRates)[0]>();
-    for (const r of allRates) {
-      if (!byStep.has(r.discountStep)) byStep.set(r.discountStep, r);
-    }
-
-    const rows = [5, 10, 15, 20, 25].map((step) => byStep.get(step) ?? null);
-    const adminMap = await resolveAdminNames(rows.map((r) => r?.createdBy));
-
-    const current = rows.map((r) => {
-      if (!r) return null;
-      const admin = r.createdBy ? adminMap.get(r.createdBy) : undefined;
-      return { ...r, createdByName: admin?.name ?? null, createdByEmail: admin?.email ?? null };
-    });
-
-    res.json({ success: true, data: current });
-  })
-);
-
-/**
- * POST /api/admin/settings/cashback-rates
- * Body: { rates: Array<{ discountStep: number; basic: number; premium: number }>, effectiveFrom?: string, notes?: string }
- * Saves a new version of the full rate matrix.
- */
-router.post(
-  '/cashback-rates',
-  requirePermission('settings.write'),
-  asyncHandler(async (req: AuthRequest, res: Response) => {
-    const { rates, notes, effectiveFrom } = req.body as {
-      rates?: Array<{ discountStep: number; basic: number; premium: number }>;
-      notes?: string;
-      effectiveFrom?: string;
-    };
-
-    if (!Array.isArray(rates) || rates.length === 0) {
-      return res.status(400).json({ success: false, error: 'rates array is required' });
-    }
-
-    let effectiveDate: Date;
-    if (effectiveFrom) {
-      effectiveDate = new Date(effectiveFrom);
-      if (isNaN(effectiveDate.getTime())) {
-        return res.status(400).json({ success: false, error: 'effectiveFrom must be a valid ISO date string' });
-      }
-    } else {
-      effectiveDate = new Date();
-    }
-
-    const VALID_STEPS = new Set([5, 10, 15, 20, 25]);
-    for (const r of rates) {
-      if (!VALID_STEPS.has(r.discountStep)) {
-        return res.status(400).json({
-          success: false,
-          error: `Invalid discount step: ${r.discountStep}. Must be 5, 10, 15, 20 or 25.`,
-        });
-      }
-      if (typeof r.basic !== 'number' || r.basic < 0 || r.basic > 100) {
-        return res.status(400).json({ success: false, error: 'basic must be 0–100' });
-      }
-      if (typeof r.premium !== 'number' || r.premium < 0 || r.premium > 100) {
-        return res.status(400).json({ success: false, error: 'premium must be 0–100' });
-      }
-      if (r.basic > r.discountStep) {
-        return res.status(400).json({
-          success: false,
-          error: `Step ${r.discountStep}%: basic cashback (${r.basic}%) cannot exceed the partner discount — margin would be negative`,
-        });
-      }
-      if (r.premium > r.discountStep) {
-        return res.status(400).json({
-          success: false,
-          error: `Step ${r.discountStep}%: premium cashback (${r.premium}%) cannot exceed the partner discount — margin would be negative`,
-        });
-      }
-    }
-
-    const created = await prisma.$transaction(
-      rates.map((r) =>
-        prisma.cashbackRate.create({
-          data: {
-            discountStep: r.discountStep,
-            basic: r.basic,
-            premium: r.premium,
-            effectiveFrom: effectiveDate,
-            createdBy: req.user!.id,
-            notes: notes ?? null,
-          },
-        })
-      )
-    );
-
-    res.json({ success: true, data: created, message: 'Cashback rates saved' });
-  })
-);
 
 /* ─── Payout Thresholds ───────────────────────────────────────────────────── */
 
@@ -299,7 +167,7 @@ const ALLOWED_KEYS = new Set([
   'maintenance_mode',
   'maintenance_message',
   'max_fraud_score',
-  'auto_approve_threshold',
+  'correction_warning_threshold',
   'daily_scan_limit_default',
   'max_cashback_per_month',
   'support_email',
@@ -315,15 +183,40 @@ const ALLOWED_KEYS = new Set([
 
 /**
  * GET /api/admin/settings/system
+ * Returns only the keys managed by this page (ALLOWED_KEYS), plus per-key
+ * audit metadata (updatedAt, updatedByName) for the UI audit trail.
  */
 router.get(
   '/system',
   requirePermission('settings.read'),
   asyncHandler(async (_req: AuthRequest, res: Response) => {
-    const settings = await prisma.systemSetting.findMany({ orderBy: { key: 'asc' } });
-    const map: Record<string, string> = {};
-    for (const s of settings) map[s.key] = s.value;
-    res.json({ success: true, data: map });
+    const rows = await prisma.systemSetting.findMany({
+      where: { key: { in: Array.from(ALLOWED_KEYS) } },
+      orderBy: { key: 'asc' },
+    });
+
+    // Resolve updater display names in one query.
+    const updaterIds = [...new Set(rows.map(r => r.updatedBy).filter(Boolean))] as string[];
+    const updaters = updaterIds.length
+      ? await prisma.user.findMany({
+          where: { id: { in: updaterIds } },
+          select: { id: true, firstName: true, lastName: true },
+        })
+      : [];
+    const nameOf: Record<string, string> = {};
+    for (const u of updaters) nameOf[u.id] = `${u.firstName} ${u.lastName}`.trim();
+
+    const data: Record<string, string> = {};
+    const meta: Record<string, { updatedAt: string; updatedByName: string | null }> = {};
+    for (const s of rows) {
+      data[s.key] = s.value;
+      meta[s.key] = {
+        updatedAt: s.updatedAt.toISOString(),
+        updatedByName: s.updatedBy ? (nameOf[s.updatedBy] ?? null) : null,
+      };
+    }
+
+    res.json({ success: true, data, meta });
   })
 );
 
@@ -378,10 +271,9 @@ router.put(
       cashback_expiry_days:    { min: 1,   max: 3650 },
       offer_validity_days:     { min: 1,   max: 3650 },
       max_fraud_score:         { min: 0,   max: 100  },
-      // auto_approve_threshold is a fraud-score warning threshold (0–100), not a monetary amount.
-      // receipt.service.ts emits a warning when recomputed fraud score exceeds this value after
-      // an admin corrects a receipt amount.
-      auto_approve_threshold:  { min: 0,   max: 100  },
+      // correction_warning_threshold: fraud-score warning (0–100) shown when a recomputed
+      // fraud score exceeds this value after an admin manually corrects a receipt amount.
+      correction_warning_threshold: { min: 0,   max: 100  },
       daily_scan_limit_default:{ min: 1,   max: 10000 },
       // min: 1 intentionally excludes 0 — storing 0 would zero-cap all cashback for every user.
       // Send '' to remove the cap (delete the row) — the service falls back to DEFAULT_MAX_CASHBACK_PER_MONTH.
@@ -393,7 +285,7 @@ router.put(
       'offer_validity_days',
       'daily_scan_limit_default',
       'max_fraud_score',
-      'auto_approve_threshold',
+      'correction_warning_threshold',
     ]);
     // Sending '' for these keys deletes the DB row so services fall back to hardcoded defaults.
     const CLEARABLE_KEYS = new Set([

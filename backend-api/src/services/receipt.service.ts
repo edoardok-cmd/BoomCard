@@ -11,7 +11,7 @@ import { prisma } from '../lib/prisma';
 import { emailService } from './email.service';
 import {
   CASHBACK_ESTIMATED_CREDIT_DAYS,
-  DEFAULT_AUTO_APPROVE_THRESHOLD,
+  DEFAULT_CORRECTION_WARNING_THRESHOLD,
   DEFAULT_CARD_TIER,
   DEFAULT_DAILY_SUBMISSION_LIMIT,
   DEFAULT_MONTHLY_SUBMISSION_LIMIT,
@@ -939,9 +939,9 @@ class ReceiptService {
               excludeReceiptId: params.receiptId,
             });
             updatedFraudScore = recomputedFraud.fraudScore;
-            const autoApproveThreshold = await getSystemSettingFloat('auto_approve_threshold', DEFAULT_AUTO_APPROVE_THRESHOLD);
-            if (recomputedFraud.fraudScore > autoApproveThreshold) {
-              fraudWarning = `Recomputed fraud score (${recomputedFraud.fraudScore}) exceeds the auto-approve threshold (${autoApproveThreshold}). Admin override applied.`;
+            const correctionWarnThreshold = await getSystemSettingFloat('correction_warning_threshold', DEFAULT_CORRECTION_WARNING_THRESHOLD);
+            if (recomputedFraud.fraudScore > correctionWarnThreshold) {
+              fraudWarning = `Recomputed fraud score (${recomputedFraud.fraudScore}) exceeds the correction warning threshold (${correctionWarnThreshold}). Manual correction applied.`;
               logger.warn(`Receipt ${params.receiptId} corrected to ${params.verifiedAmount} BGN — ${fraudWarning}`);
             }
           } catch (fraudRecomputeError) {

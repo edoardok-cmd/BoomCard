@@ -29,7 +29,7 @@ export async function getSystemSettingInt(key: string, fallback: number): Promis
 
 /**
  * Read a SystemSetting as a float with a fallback default.
- * Suitable for monetary amounts (e.g. max_cashback_per_month, auto_approve_threshold).
+ * Suitable for monetary amounts (e.g. max_cashback_per_month) and non-integer score thresholds.
  */
 export async function getSystemSettingFloat(key: string, fallback: number): Promise<number> {
   const now = Date.now();

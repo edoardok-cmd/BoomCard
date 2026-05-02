@@ -53,6 +53,11 @@ export interface PayoutThresholdHistoryRow {
 
 export type SystemSettings = Record<string, string>;
 
+export interface SystemSettingMeta {
+  updatedAt: string;
+  updatedByName: string | null;
+}
+
 export interface MobileAppSettings {
   'mobile_app.min_ios_version': string | null;
   'mobile_app.min_android_version': string | null;
@@ -77,7 +82,7 @@ export interface MobileErrorLogEntry {
 }
 
 export const adminSettingsService = {
-  getSystemSettings(): Promise<{ data: SystemSettings }> {
+  getSystemSettings(): Promise<{ success: boolean; data: SystemSettings; meta: Record<string, SystemSettingMeta> }> {
     return apiService.get('/admin/settings/system');
   },
 

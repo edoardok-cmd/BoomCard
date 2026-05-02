@@ -353,6 +353,7 @@ router.post('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermiss
         throw err;
       }
       req.auditAction = 'admin.super.request';
+      req.auditObjectId = request.id;
       return res.status(202).json({ ok: true, pending: true, request });
     }
 
@@ -395,6 +396,7 @@ router.post('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermiss
       throw err;
     }
 
+    req.auditObjectId = user.id;
     res.status(201).json({ ok: true, user });
   } catch (error) {
     next(error);
@@ -447,7 +449,17 @@ router.post('/pending-super/:id/approve', authenticate, authorize('SUPER_ADMIN')
       throw err;
     }
 
-    req.auditAction = 'admin.super.approve';
+    req.skipAudit = true;
+    await writeAudit({
+      actorUserId: req.user!.id,
+      action: 'admin.super.approve',
+      objectType: 'admin',
+      objectId: user.id,
+      before: { pendingRequestId: id, email: request.email, requestedById: request.requestedById },
+      after: { userId: user.id, email: user.email, role: user.role },
+      ip: (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ?? req.socket.remoteAddress ?? null,
+      userAgent: req.headers['user-agent'] ?? null,
+    });
     res.status(201).json({ ok: true, user });
   } catch (error) {
     next(error);
@@ -464,7 +476,17 @@ router.delete('/pending-super/:id', authenticate, authorize('SUPER_ADMIN'), requ
     if (!request) return res.status(404).json({ error: 'Pending request not found' });
 
     await prisma.pendingSuperAdminRequest.delete({ where: { id } });
-    req.auditAction = 'admin.super.reject';
+    req.skipAudit = true;
+    await writeAudit({
+      actorUserId: (req as AuthRequest).user!.id,
+      action: 'admin.super.reject',
+      objectType: 'admin',
+      objectId: id,
+      before: { pendingRequestId: id, email: request.email, requestedById: request.requestedById },
+      after: null,
+      ip: (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ?? req.socket.remoteAddress ?? null,
+      userAgent: req.headers['user-agent'] ?? null,
+    });
     res.json({ ok: true });
   } catch (error) {
     next(error);

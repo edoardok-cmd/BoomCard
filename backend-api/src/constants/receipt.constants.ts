@@ -18,7 +18,9 @@ export const DEFAULT_MONTHLY_SUBMISSION_LIMIT = 100;
 // ── Fraud Score Thresholds ─────────────────────────────────────────────────────
 // All receipts require admin manual review — these thresholds are retained
 // only for admin-facing risk-level labels and fraud alert notifications.
-export const DEFAULT_AUTO_APPROVE_THRESHOLD = 30;
+/** Fraud score (from `correction_warning_threshold` SystemSetting) above which
+ *  a warning is shown when an admin manually corrects a receipt amount. */
+export const DEFAULT_CORRECTION_WARNING_THRESHOLD = 30;
 export const DEFAULT_AUTO_REJECT_THRESHOLD = 60;
 /** Fraud score at which admin fraud-alert notifications are sent. */
 export const FRAUD_ALERT_SCORE_THRESHOLD = 60;

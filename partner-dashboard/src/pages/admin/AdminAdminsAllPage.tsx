@@ -381,20 +381,25 @@ export default function AdminAdminsAllPage() {
     {
       key: 'roles',
       header: 'Роля',
-      render: (row) =>
-        row.adminRoles.length > 0 ? (
+      render: (row) => {
+        const hasPanelRoles = row.adminRoles.length > 0;
+        const isSuperAdmin = row.role === 'SUPER_ADMIN';
+        if (!hasPanelRoles && !isSuperAdmin) {
+          return <span style={{ color: palette.textSubtle, fontSize: '0.8125rem' }}>Без роля</span>;
+        }
+        return (
           <div style={{ display: 'flex', flexWrap: 'wrap' }}>
+            {isSuperAdmin && (
+              <RoleBadge $key="SUPER_ADMIN">Супер администратор</RoleBadge>
+            )}
             {row.adminRoles.map((ar) => (
               <RoleBadge key={ar.id} $key={ar.role.key}>
                 {ROLE_LABEL[ar.role.key] ?? ar.role.label}
               </RoleBadge>
             ))}
           </div>
-        ) : row.role === 'SUPER_ADMIN' ? (
-          <RoleBadge $key="SUPER_ADMIN">Супер администратор</RoleBadge>
-        ) : (
-          <span style={{ color: palette.textSubtle, fontSize: '0.8125rem' }}>Без роля</span>
-        ),
+        );
+      },
     },
     {
       key: 'status',
