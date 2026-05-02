@@ -80,8 +80,8 @@ const TITLE_I18N: Record<string, { bg: string; en: string }> = {
     en: 'Suspicious activity (last 24h)',
   },
   open_disputes: {
-    bg: 'Отворени спорове',
-    en: 'Open disputes',
+    bg: 'Активни спорове',
+    en: 'Active disputes',
   },
   partner_requests: {
     bg: 'Нови партньорски заявки',
@@ -527,8 +527,10 @@ const AdminAlertsPage: React.FC = () => {
     ? [
         { tier: 'critical' as AlertTier, items: result.critical },
         { tier: 'operational' as AlertTier, items: result.operational },
+        // Informational is always rendered (even when empty) — spec §3.2 requires
+        // it as a daily orientation reference so the admin sees "nothing new today".
         { tier: 'informational' as AlertTier, items: result.informational },
-      ].filter(t => t.items.length > 0)
+      ].filter(t => t.tier === 'informational' || t.items.length > 0)
     : [];
 
   return (
@@ -585,6 +587,19 @@ const AdminAlertsPage: React.FC = () => {
         <TierSection key={tier}>
           <TierHeading>{tierLabel(tier, bg)}</TierHeading>
           <AlertList>
+            {tier === 'informational' && items.length === 0 && (
+              <li style={{
+                padding: '0.75rem 1rem',
+                color: '#8c8678',
+                fontSize: '0.875rem',
+                listStyle: 'none',
+                fontStyle: 'italic',
+              }}>
+                {bg
+                  ? 'Няма нови сигнали за последните 24 часа'
+                  : 'No new signals in the last 24 hours'}
+              </li>
+            )}
             {items.map((alert, idx) => {
               const severity = tierToSeverity(alert.tier);
               const i18n = TITLE_I18N[alert.id];

@@ -3,6 +3,8 @@ import styled from 'styled-components';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-hot-toast';
 import { DataTable, ColumnDef } from '../../components/admin/DataTable/DataTable';
+import FraudReasonTag from '../../components/admin/FraudReasonTag';
+import { useLanguage } from '../../contexts/LanguageContext';
 import {
   adminControlService,
   DisputeCase,
@@ -11,6 +13,16 @@ import {
   DisputeStatus,
   DisputeSubjectType,
 } from '../../services/adminControl.service';
+
+const RECEIPT_STATUS_BG: Record<string, string> = {
+  PENDING: 'Чакаща',
+  PROCESSING: 'Обработва се',
+  VALIDATING: 'Проверява се',
+  APPROVED: 'Одобрена',
+  REJECTED: 'Отказана',
+  MANUAL_REVIEW: 'Ръчен преглед',
+  EXPIRED: 'Изтекла',
+};
 
 // ── Palette ──────────────────────────────────────────────────────────────────
 
@@ -237,6 +249,8 @@ function DisputeDetailPanel({
   onClose: () => void;
 }) {
   const qc = useQueryClient();
+  const { language } = useLanguage();
+  const lang: 'en' | 'bg' = language === 'bg' ? 'bg' : 'en';
   const [noteText, setNoteText] = useState('');
   const [decision, setDecision] = useState('');
   const [confirmAdvance, setConfirmAdvance] = useState<DisputeStatus | null>(null);
@@ -352,13 +366,13 @@ function DisputeDetailPanel({
   });
 
   const fmt = (iso: string) =>
-    new Date(iso).toLocaleString('bg-BG', {
+    new Date(iso).toLocaleString(lang === 'bg' ? 'bg-BG' : 'en-GB', {
       day: '2-digit', month: 'short', year: 'numeric',
       hour: '2-digit', minute: '2-digit',
     });
 
   const fmtBgn = (n: number | null | undefined) =>
-    n == null ? '—' : n.toLocaleString('bg-BG', { style: 'currency', currency: 'BGN', minimumFractionDigits: 2 });
+    n == null ? '—' : n.toLocaleString(lang === 'bg' ? 'bg-BG' : 'en-GB', { style: 'currency', currency: 'BGN', minimumFractionDigits: 2 });
 
   const fullName = (u: { firstName: string | null; lastName: string | null; email: string }) =>
     (u.firstName || u.lastName) ? `${u.firstName ?? ''} ${u.lastName ?? ''}`.trim() : u.email;
@@ -428,16 +442,21 @@ function DisputeDetailPanel({
                     {dc.receipt.fraudReasons && dc.receipt.fraudReasons.length > 0 && (
                       <KV>
                         <KLabel>Сигнали</KLabel>
-                        <KVal style={{ color: P.danger, fontSize: '.75rem' }}>
-                          {dc.receipt.fraudReasons.join(', ')}
+                        <KVal style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem' }}>
+                          {dc.receipt.fraudReasons.map((r) => (
+                            <FraudReasonTag key={r} reason={r} language={lang} />
+                          ))}
                         </KVal>
                       </KV>
                     )}
-                    <KV><KLabel>Статус на бележка</KLabel><KVal>{dc.receipt.status}</KVal></KV>
+                    <KV>
+                      <KLabel>Статус на бележка</KLabel>
+                      <KVal>{lang === 'bg' ? (RECEIPT_STATUS_BG[dc.receipt.status] ?? dc.receipt.status) : dc.receipt.status}</KVal>
+                    </KV>
                     <KV><KLabel>Подадена</KLabel><KVal>{fmt(dc.receipt.createdAt)}</KVal></KV>
                   </SectionCard>
 
-                  {!['APPROVED', 'REJECTED', 'EXPIRED'].includes(dc.receipt.status) && (
+                  {dc.status !== 'CLOSED' && !['APPROVED', 'REJECTED', 'EXPIRED'].includes(dc.receipt.status) && (
                     <BtnRow style={{ marginTop: '.75rem' }}>
                       <Btn
                         $variant="danger"
@@ -833,6 +852,8 @@ const PAGE_SIZE = 25;
 
 export default function AdminControlDisputesPage() {
   const qc = useQueryClient();
+  const { language } = useLanguage();
+  const lang: 'en' | 'bg' = language === 'bg' ? 'bg' : 'en';
   const [page, setPage]                   = useState(1);
   const [status, setStatus]               = useState<DisputeStatus | ''>('');
   const [subjectType, setSubjectType]     = useState<DisputeSubjectType | ''>('');
@@ -853,13 +874,13 @@ export default function AdminControlDisputesPage() {
   const adminUsers = adminsData?.admins ?? [];
 
   const fmt = (iso: string) =>
-    new Date(iso).toLocaleString('bg-BG', {
+    new Date(iso).toLocaleString(lang === 'bg' ? 'bg-BG' : 'en-GB', {
       day: '2-digit', month: 'short', year: 'numeric',
       hour: '2-digit', minute: '2-digit',
     });
 
   const fmtBgn = (n: number | null | undefined) =>
-    n == null ? '—' : n.toLocaleString('bg-BG', { style: 'currency', currency: 'BGN', minimumFractionDigits: 2 });
+    n == null ? '—' : n.toLocaleString(lang === 'bg' ? 'bg-BG' : 'en-GB', { style: 'currency', currency: 'BGN', minimumFractionDigits: 2 });
 
   const fullName = (u: { firstName: string | null; lastName: string | null; email: string }) =>
     (u.firstName || u.lastName) ? `${u.firstName ?? ''} ${u.lastName ?? ''}`.trim() : u.email;

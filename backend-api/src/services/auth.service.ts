@@ -681,6 +681,8 @@ export class AuthService {
         avatar: true,
         role: true,
         status: true,
+        emailVerified: true,
+        createdAt: true,
       },
     });
 

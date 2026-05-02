@@ -1,0 +1,6 @@
+.playwright-mcp/
+backend-api/
+node_modules/
+.git/
+tasks/
+*.log

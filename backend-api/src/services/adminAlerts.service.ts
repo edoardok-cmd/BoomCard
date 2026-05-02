@@ -340,7 +340,7 @@ export async function getAlerts(): Promise<AdminAlertsResult> {
       id: 'open_disputes',
       type: 'OPEN_DISPUTES',
       tier: 'CRITICAL',
-      title: 'Отворени спорове',
+      title: 'Активни спорове',
       count: openDisputes,
       link: '/admin/control/disputes',
     });

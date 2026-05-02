@@ -4,6 +4,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-hot-toast';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { useAuth } from '../../contexts/AuthContext';
 import { DataTable, ColumnDef } from '../../components/admin/DataTable/DataTable';
 import {
   adminAdminsService,
@@ -79,6 +80,24 @@ const PageSubtitle = styled.p`
   font-size: 0.9375rem;
   color: ${palette.textMuted};
   margin: 0;
+`;
+
+const TwoFaBanner = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  background: ${palette.warningSoft};
+  border: 1px solid ${palette.warning};
+  border-radius: 0.5rem;
+  padding: 0.875rem 1.125rem;
+  margin-bottom: 1.5rem;
+  font-size: 0.9375rem;
+  color: ${palette.warning};
+  a {
+    color: ${palette.warning};
+    font-weight: 600;
+    text-decoration: underline;
+  }
 `;
 
 const TotalBadge = styled.span`
@@ -292,6 +311,7 @@ const PAGE_SIZE = 20;
 
 export default function AdminAdminsAllPage() {
   const { language } = useLanguage();
+  const { user: authUser } = useAuth();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
@@ -461,6 +481,17 @@ export default function AdminAdminsAllPage() {
           <PageSubtitle>Всички администраторски акаунти с назначените им роли</PageSubtitle>
         </TitleBlock>
       </PageHeader>
+
+      {/* Warn when the currently logged-in admin has not enabled 2FA */}
+      {data && authUser && (() => {
+        const me = data.admins.find(a => a.id === authUser.id);
+        return me && !me.twoFactorEnabled;
+      })() && (
+        <TwoFaBanner>
+          ⚠&nbsp;Нямате активирана двуфакторна автентикация.{' '}
+          <Link to="/admin/profile/security">Активирайте я от Профил → Сигурност.</Link>
+        </TwoFaBanner>
+      )}
 
       <Card>
         <FilterRow>

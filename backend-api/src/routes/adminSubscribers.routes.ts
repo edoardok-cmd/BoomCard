@@ -47,9 +47,11 @@ function buildSubscriberQuery(q: Record<string, string | undefined>) {
     subFilter.status = status as SubscriptionStatus;
   }
   const hasSubFilter = Object.keys(subFilter).length > 0;
-  if (hasSubFilter) {
-    where.subscriptions = { some: subFilter as SubWhere };
-  }
+  // NOTE: subscription filtering is intentionally NOT applied to `where` here.
+  // The route handlers call resolveLatestSubUserIds() instead, which restricts
+  // results to users whose *current* (most recent) subscription matches — not
+  // any historical subscription. This prevents e.g. a user who once had BASIC
+  // and now has PREMIUM from appearing in the BASIC plan filter.
 
   // Date range applies to user.createdAt (account registration) so that
   // never-subscribed users are not silently dropped from the result.
@@ -100,6 +102,38 @@ function buildSubscriberQuery(q: Record<string, string | undefined>) {
   return { where, subFilter, hasSubFilter };
 }
 
+// Returns user IDs whose LATEST (most recent) subscription matches subFilter.
+// Two-query strategy:
+//   1. Cheap indexed scan to find candidates with any matching subscription.
+//   2. Fetch the absolute latest subscription per candidate and JS-filter so
+//      only users whose *current* plan/status matches are included.
+// This is correct for plan-change scenarios: a user who had BASIC then upgraded
+// to PREMIUM should not appear in the BASIC plan filter.
+async function resolveLatestSubUserIds(subFilter: Record<string, unknown>): Promise<string[]> {
+  const candidates = await prisma.subscription.findMany({
+    where: subFilter as SubWhere,
+    select: { userId: true },
+    distinct: ['userId'],
+  });
+  if (candidates.length === 0) return [];
+  const candidateIds = candidates.map((s) => s.userId);
+
+  const latestSubs = await prisma.subscription.findMany({
+    where: { userId: { in: candidateIds } },
+    orderBy: { createdAt: 'desc' },
+    distinct: ['userId'],
+    select: { userId: true, plan: true, status: true },
+  });
+
+  return latestSubs
+    .filter((s) => {
+      if (subFilter.plan && s.plan !== subFilter.plan) return false;
+      if (subFilter.status && s.status !== subFilter.status) return false;
+      return true;
+    })
+    .map((s) => s.userId);
+}
+
 // Mirror the outer filter so the embedded subscription matches what the admin
 // filtered on, not just the chronologically latest record.
 function subscriptionInclude(hasSubFilter: boolean, subFilter: Record<string, unknown>) {
@@ -139,6 +173,14 @@ router.get('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermissi
 
     const { where, subFilter, hasSubFilter } = buildSubscriberQuery(filters);
 
+    // Subscription plan/status filter: restrict to users whose LATEST subscription
+    // matches — not any historical one. resolveLatestSubUserIds() handles this via
+    // a two-query strategy; we then fold the result into where.id.
+    if (hasSubFilter) {
+      const matchedIds = await resolveLatestSubUserIds(subFilter);
+      where.id = { in: matchedIds };
+    }
+
     // Null-last ordering for lastActivityAt: rows where the field is NULL sink to
     // the bottom regardless of sort direction, so "most recently active" always
     // surfaces real activity at the top and unverified/never-active accounts at
@@ -149,6 +191,8 @@ router.get('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermissi
         ? [{ lastActivityAt: { sort: dir, nulls: 'last' } }, { createdAt: 'desc' }]
         : { createdAt: dir };
 
+    // When the sub filter was resolved into where.id we pass hasSubFilter=false so
+    // subscriptionInclude shows the absolute latest subscription (not filtered by plan/status).
     const [users, total] = await Promise.all([
       prisma.user.findMany({
         where,
@@ -157,7 +201,7 @@ router.get('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermissi
         orderBy,
         select: {
           ...SUBSCRIBER_SELECT,
-          subscriptions: subscriptionInclude(hasSubFilter, subFilter),
+          subscriptions: subscriptionInclude(false, {}),
         },
       }),
       prisma.user.count({ where }),
@@ -197,13 +241,17 @@ const EXPORT_MAX = 10000;
 router.get('/export', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('subscribers.read'), async (req, res, next) => {
   try {
     const { where, subFilter, hasSubFilter } = buildSubscriberQuery(req.query as Record<string, string>);
+    if (hasSubFilter) {
+      const matchedIds = await resolveLatestSubUserIds(subFilter);
+      where.id = { in: matchedIds };
+    }
     const users = await prisma.user.findMany({
       where,
       take: EXPORT_MAX,
       orderBy: { createdAt: 'desc' },
       select: {
         ...SUBSCRIBER_SELECT,
-        subscriptions: subscriptionInclude(hasSubFilter, subFilter),
+        subscriptions: subscriptionInclude(false, {}),
       },
     });
     res.json({ subscribers: users.map(flattenSubscriber), limit: EXPORT_MAX });

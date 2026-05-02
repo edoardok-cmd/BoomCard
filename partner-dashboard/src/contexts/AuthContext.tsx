@@ -891,11 +891,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsLoading(true);
 
     try {
-      // Call real API endpoint
-      const updatedUser = await apiService.put<User>('/auth/profile', data);
+      const rawResponse = await apiService.put<any>('/auth/profile', data);
+      const payload = rawResponse?.data || rawResponse;
 
-      // Update user state
-      setUser(updatedUser);
+      setUser({
+        ...user,
+        ...payload,
+        role: normalizeRole(payload.role),
+        createdAt: payload.createdAt ? new Date(payload.createdAt).getTime() : user.createdAt,
+      });
 
       toast.success('Profile updated successfully');
     } catch (error) {

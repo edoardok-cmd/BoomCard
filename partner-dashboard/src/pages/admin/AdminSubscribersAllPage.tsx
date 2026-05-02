@@ -1246,12 +1246,19 @@ export default function AdminSubscribersAllPage() {
       label: T('suspendAcct'),
       danger: true,
       onClick: (row) => setConfirmSuspend({ row, targetStatus: 'SUSPENDED' }),
-      hidden: (row) => row.status === 'SUSPENDED' || !!row.deletedAt,
+      // Only ACTIVE accounts can be suspended. PENDING_* accounts are mid-flow
+      // and must not be force-suspended (use delete if intervention is needed).
+      hidden: (row) =>
+        row.status !== 'ACTIVE' || !!row.deletedAt,
     },
     {
       label: T('activateAcct'),
       onClick: (row) => setConfirmSuspend({ row, targetStatus: 'ACTIVE' }),
-      hidden: (row) => row.status === 'ACTIVE' || !!row.deletedAt,
+      // Only SUSPENDED accounts can be re-activated. PENDING_* accounts must
+      // complete their own flow; bypassing it would skip email verification or
+      // first-payment requirements.
+      hidden: (row) =>
+        row.status !== 'SUSPENDED' || !!row.deletedAt,
     },
     {
       label: T('forceLogout'),
@@ -1681,18 +1688,22 @@ export default function AdminSubscribersAllPage() {
               <option key={o.value} value={o.value}>{T(o.key)}</option>
             ))}
           </Select>
-          <DateInput
-            type="date"
-            value={dateFrom}
-            title={T('colJoined')}
-            onChange={(e) => { setDateFrom(e.target.value); setPage(1); }}
-          />
-          <DateInput
-            type="date"
-            value={dateTo}
-            title={T('colJoined')}
-            onChange={(e) => { setDateTo(e.target.value); setPage(1); }}
-          />
+          <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8125rem', color: palette.textSubtle, whiteSpace: 'nowrap' }}>
+            {T('colJoined')}:
+            <DateInput
+              type="date"
+              value={dateFrom}
+              onChange={(e) => { setDateFrom(e.target.value); setPage(1); }}
+            />
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8125rem', color: palette.textSubtle, whiteSpace: 'nowrap' }}>
+            —
+            <DateInput
+              type="date"
+              value={dateTo}
+              onChange={(e) => { setDateTo(e.target.value); setPage(1); }}
+            />
+          </label>
         </FilterRow>
 
         <DataTable

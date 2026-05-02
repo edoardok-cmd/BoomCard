@@ -555,23 +555,43 @@ export default function AdminControlSecurityPage() {
         <SectionLine />
       </SectionDivider>
       <StatGrid>
-            <Stat $active={signalCategory === 'duplicate'} onClick={() => toggleCategory('duplicate')} title={lang === 'bg' ? 'Филтрирай по дублиране' : 'Filter by duplicates'}>
+            <Stat
+              $active={isRiskReviewRoute && signalCategory === 'duplicate'}
+              onClick={() => isRiskReviewRoute ? toggleCategory('duplicate') : navigate('/admin/control/risk?signalCategory=duplicate')}
+              title={lang === 'bg' ? 'Филтрирай по дублиране' : 'Filter by duplicates'}
+            >
               <StatLabel>{t('statDuplicate')}</StatLabel>
               <StatValue>{s?.duplicate ?? '—'}</StatValue>
             </Stat>
-            <Stat $active={signalCategory === 'qrMismatch'} onClick={() => toggleCategory('qrMismatch')} title={lang === 'bg' ? 'Филтрирай по QR / Локация' : 'Filter by QR/Location'}>
+            <Stat
+              $active={isRiskReviewRoute && signalCategory === 'qrMismatch'}
+              onClick={() => isRiskReviewRoute ? toggleCategory('qrMismatch') : navigate('/admin/control/risk?signalCategory=qrMismatch')}
+              title={lang === 'bg' ? 'Филтрирай по QR / Локация' : 'Filter by QR/Location'}
+            >
               <StatLabel>{t('statQr')}</StatLabel>
               <StatValue>{s?.qrMismatch ?? '—'}</StatValue>
             </Stat>
-            <Stat $active={signalCategory === 'velocity'} onClick={() => toggleCategory('velocity')} title={lang === 'bg' ? 'Филтрирай по честота' : 'Filter by velocity'}>
+            <Stat
+              $active={isRiskReviewRoute && signalCategory === 'velocity'}
+              onClick={() => isRiskReviewRoute ? toggleCategory('velocity') : navigate('/admin/control/risk?signalCategory=velocity')}
+              title={lang === 'bg' ? 'Филтрирай по честота' : 'Filter by velocity'}
+            >
               <StatLabel>{t('statVelocity')}</StatLabel>
               <StatValue>{s?.velocity ?? '—'}</StatValue>
             </Stat>
-            <Stat $active={signalCategory === 'receiptMatch'} onClick={() => toggleCategory('receiptMatch')} title={lang === 'bg' ? 'Филтрирай по качество на бележка' : 'Filter by receipt quality'}>
+            <Stat
+              $active={isRiskReviewRoute && signalCategory === 'receiptMatch'}
+              onClick={() => isRiskReviewRoute ? toggleCategory('receiptMatch') : navigate('/admin/control/risk?signalCategory=receiptMatch')}
+              title={lang === 'bg' ? 'Филтрирай по качество на бележка' : 'Filter by receipt quality'}
+            >
               <StatLabel>{t('statReceipt')}</StatLabel>
               <StatValue>{s?.receiptMatch ?? '—'}</StatValue>
             </Stat>
-            <Stat $active={signalCategory === 'suspicious'} onClick={() => toggleCategory('suspicious')} title={lang === 'bg' ? 'Филтрирай по подозрително поведение' : 'Filter by suspicious behaviour'}>
+            <Stat
+              $active={isRiskReviewRoute && signalCategory === 'suspicious'}
+              onClick={() => isRiskReviewRoute ? toggleCategory('suspicious') : navigate('/admin/control/risk?signalCategory=suspicious')}
+              title={lang === 'bg' ? 'Филтрирай по подозрително поведение' : 'Filter by suspicious behaviour'}
+            >
               <StatLabel>{t('statSuspicious')}</StatLabel>
               <StatValue>{s?.suspicious ?? '—'}</StatValue>
             </Stat>
@@ -595,56 +615,74 @@ export default function AdminControlSecurityPage() {
           </StatGrid>
           <MetaLine style={{ marginBottom: '0' }}>{t('globalNote')}</MetaLine>
 
-          {/* §7.1 — Review queue */}
-          <SectionDivider>
-            <SectionLabel>{lang === 'bg' ? 'Преглед на рискови транзакции' : 'Risk transaction review'}</SectionLabel>
-            <SectionLine />
-          </SectionDivider>
+          {/* §7.2 monitoring view: prompt to open the queue */}
+          {!isRiskReviewRoute && (
+            <div style={{ marginTop: '1rem', padding: '.75rem 1rem', background: palette.surface, border: `1px solid ${palette.border}`, borderRadius: '.625rem', fontSize: '.875rem', color: palette.textMuted, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem' }}>
+              <span>
+                {lang === 'bg'
+                  ? 'Щракнете върху сигнал по-горе, за да отворите опашката за преглед, филтрирана по категория.'
+                  : 'Click a signal above to open the review queue filtered by that category.'}
+              </span>
+              <CancelBtn style={{ fontSize: '.8125rem', whiteSpace: 'nowrap' }} onClick={() => navigate('/admin/control/risk')}>
+                {lang === 'bg' ? '→ Опашка за преглед' : '→ Review queue'}
+              </CancelBtn>
+            </div>
+          )}
 
-          <Card>
-            <FilterRow>
-              <Select value={tier} onChange={(e) => { setTier(e.target.value as typeof tier); setPage(1); }}>
-                <option value="all">{t('allTiers')}</option>
-                <option value="REVIEW_31_60">{t('reviewTier')}</option>
-                <option value="HIGH_61_PLUS">{t('highTier')}</option>
-              </Select>
-              <TextInput
-                placeholder={t('venueFilter')}
-                value={venueIdInput}
-                onChange={(e) => setVenueIdInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') { setVenueId(venueIdInput.trim()); setPage(1); }
-                  if (e.key === 'Escape') { setVenueIdInput(''); setVenueId(''); setPage(1); }
-                }}
-                onBlur={() => {
-                  if (venueIdInput.trim() !== venueId) {
-                    setVenueId(venueIdInput.trim());
-                    setPage(1);
-                  }
-                }}
-              />
-              {signalCategory && (
-                <CancelBtn
-                  style={{ fontSize: '.8125rem' }}
-                  onClick={() => { setSignalCategory(''); setPage(1); }}
-                >
-                  {lang === 'bg' ? '✕ Изчисти категорията' : '✕ Clear category'}
-                </CancelBtn>
-              )}
-            </FilterRow>
+          {/* §7.1 — Review queue (shown only on /risk route) */}
+          {isRiskReviewRoute && (
+            <>
+              <SectionDivider>
+                <SectionLabel>{lang === 'bg' ? 'Преглед на рискови транзакции' : 'Risk transaction review'}</SectionLabel>
+                <SectionLine />
+              </SectionDivider>
 
-            <DataTable
-              columns={fraudColumns}
-              data={data?.data ?? []}
-              rowKey={(row) => row.id}
-              loading={isLoading}
-              emptyMessage={t('emptyMsg')}
-              page={page}
-              pageSize={PAGE_SIZE}
-              totalItems={data?.meta.total}
-              onPageChange={setPage}
-            />
-          </Card>
+              <Card>
+                <FilterRow>
+                  <Select value={tier} onChange={(e) => { setTier(e.target.value as typeof tier); setPage(1); }}>
+                    <option value="all">{t('allTiers')}</option>
+                    <option value="REVIEW_31_60">{t('reviewTier')}</option>
+                    <option value="HIGH_61_PLUS">{t('highTier')}</option>
+                  </Select>
+                  <TextInput
+                    placeholder={t('venueFilter')}
+                    value={venueIdInput}
+                    onChange={(e) => setVenueIdInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') { setVenueId(venueIdInput.trim()); setPage(1); }
+                      if (e.key === 'Escape') { setVenueIdInput(''); setVenueId(''); setPage(1); }
+                    }}
+                    onBlur={() => {
+                      if (venueIdInput.trim() !== venueId) {
+                        setVenueId(venueIdInput.trim());
+                        setPage(1);
+                      }
+                    }}
+                  />
+                  {signalCategory && (
+                    <CancelBtn
+                      style={{ fontSize: '.8125rem' }}
+                      onClick={() => { setSignalCategory(''); setPage(1); }}
+                    >
+                      {lang === 'bg' ? '✕ Изчисти категорията' : '✕ Clear category'}
+                    </CancelBtn>
+                  )}
+                </FilterRow>
+
+                <DataTable
+                  columns={fraudColumns}
+                  data={data?.data ?? []}
+                  rowKey={(row) => row.id}
+                  loading={isLoading}
+                  emptyMessage={t('emptyMsg')}
+                  page={page}
+                  pageSize={PAGE_SIZE}
+                  totalItems={data?.meta.total}
+                  onPageChange={setPage}
+                />
+              </Card>
+            </>
+          )}
 
       {actionDraft && (
         <Overlay onClick={() => !isAnyMutating && setActionDraft(null)}>
