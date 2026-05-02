@@ -359,12 +359,14 @@ export default function AdminMarketingListsPage() {
     if (!kind || kind === 'EMPTY') {
       return <span style={{ fontSize: '0.7rem', color: palette.textSubtle, fontStyle: 'italic' }}>празен</span>;
     }
-    const config: Record<Exclude<NonNullable<MarketingList['audienceKind']>, 'EMPTY'>, { label: string; bg: string; fg: string }> = {
+    const config: Record<string, { label: string; bg: string; fg: string }> = {
       SUBSCRIBERS: { label: 'абонати',    bg: palette.infoSoft,    fg: palette.info },
       PARTNERS:    { label: 'партньори',  bg: '#f3e8de',           fg: '#c96442' },
       MIXED:       { label: 'смесена',    bg: palette.warningSoft, fg: palette.warning },
     };
-    const c = config[kind];
+    // Fallback for any future audienceKind the backend may add — render as a
+    // neutral pill instead of crashing on `c.label`.
+    const c = config[kind] ?? { label: String(kind).toLowerCase(), bg: palette.border, fg: palette.textMuted };
     return (
       <span style={{
         display: 'inline-flex', fontSize: '0.65rem', fontWeight: 700,

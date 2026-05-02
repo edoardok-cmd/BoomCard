@@ -356,16 +356,44 @@ async function dispatchCampaign(campaignId: string): Promise<number> {
   return dispatched;
 }
 
+// Self-heal legacy SCHEDULED-without-scheduledAt rows. Runs at most once per
+// process: the POST/PUT guards ensure no fresh rows can hit this state, so we
+// don't need to re-check on every campaigns GET (was a side-effect on read).
+const SCHEDULED_BACKFILL_FLAG = 'marketing.scheduled_backfill_v1';
+let scheduledBackfillPromise: Promise<void> | null = null;
+async function selfHealLegacyScheduled(): Promise<void> {
+  if (scheduledBackfillPromise) return scheduledBackfillPromise;
+  scheduledBackfillPromise = (async () => {
+    const flag = await prisma.systemSetting.findUnique({ where: { key: SCHEDULED_BACKFILL_FLAG } });
+    if (flag) return;
+    const broken = await prisma.marketingCampaign.count({
+      where: { status: 'SCHEDULED', scheduledAt: null },
+    });
+    if (broken > 0) {
+      await prisma.marketingCampaign.updateMany({
+        where: { status: 'SCHEDULED', scheduledAt: null },
+        data: { status: 'DRAFT' },
+      });
+      logger.info(`[marketing] one-shot self-heal: reset ${broken} SCHEDULED rows with no scheduledAt to DRAFT`);
+    }
+    await prisma.systemSetting.upsert({
+      where: { key: SCHEDULED_BACKFILL_FLAG },
+      create: { key: SCHEDULED_BACKFILL_FLAG, value: new Date().toISOString() },
+      update: { value: new Date().toISOString() },
+    });
+  })().catch((err) => {
+    logger.error('[marketing] self-heal failed; will retry on next request', err);
+    scheduledBackfillPromise = null;
+  });
+  return scheduledBackfillPromise;
+}
+
 router.get('/campaigns', ...READ, async (req, res, next) => {
   try {
-    // Self-heal legacy data: repair any campaign with SCHEDULED status but no
-    // scheduledAt (or a past scheduledAt that was never sent). Once the new POST/PUT
-    // guards land, this can never re-occur — but pre-fix rows are still in prod.
-    // Cheap (one updateMany per request) and bounded (only writes when broken rows exist).
-    await prisma.marketingCampaign.updateMany({
-      where: { status: 'SCHEDULED', scheduledAt: null },
-      data: { status: 'DRAFT' },
-    });
+    // Fire-and-await the one-shot legacy fix. After the first successful run
+    // a SystemSetting flag short-circuits this on every subsequent request,
+    // and the in-process promise prevents duplicate work mid-startup.
+    await selfHealLegacyScheduled();
 
     const { status, type, search, dateFrom, dateTo, sortBy, sortDir, page = '1', limit = '25' } = req.query as Record<string, string>;
     const skip = (parseInt(page) - 1) * parseInt(limit);
@@ -692,7 +720,7 @@ router.post('/lists/ensure-defaults', ...WRITE, async (req, res, next) => {
 
     res.json({
       results,
-      note: 'Sizes recomputed live; nightly cron at 02:30 keeps them up to date.',
+      note: 'Размерите са преизчислени на момента; нощен крон в 02:30 ги поддържа актуални.',
     });
   } catch (error) {
     next(error);
@@ -711,21 +739,51 @@ const PARTNER_SYNC_KEYS = new Set(['active_partners', 'potential_partners']);
 
 type AudienceKind = 'SUBSCRIBERS' | 'PARTNERS' | 'MIXED' | 'EMPTY';
 
-async function deriveAudienceKind(list: { id: string; syncKey: string | null }): Promise<AudienceKind> {
-  if (list.syncKey) {
-    if (SUBSCRIBER_SYNC_KEYS.has(list.syncKey)) return 'SUBSCRIBERS';
-    if (PARTNER_SYNC_KEYS.has(list.syncKey)) return 'PARTNERS';
+// Resolve audienceKind for a batch of lists in a single SQL roundtrip
+// (was N+1: 2 count() queries per list). For SEGMENT/DYNAMIC lists the
+// member table is empty (size lives in MarketingList.size), so we fall
+// back on `size > 0` → MIXED to avoid the prior bug where a 5670-member
+// segment was labelled "празен".
+async function deriveAudienceKindMap(
+  lists: Array<{ id: string; syncKey: string | null; size: number; type: string }>,
+): Promise<Record<string, AudienceKind>> {
+  const out: Record<string, AudienceKind> = {};
+  const needsMemberCount: string[] = [];
+
+  for (const l of lists) {
+    if (l.syncKey && SUBSCRIBER_SYNC_KEYS.has(l.syncKey)) { out[l.id] = 'SUBSCRIBERS'; continue; }
+    if (l.syncKey && PARTNER_SYNC_KEYS.has(l.syncKey))    { out[l.id] = 'PARTNERS';    continue; }
+    needsMemberCount.push(l.id);
   }
-  // For STATIC custom lists, inspect actual member rows. Cheap counts —
-  // typical list sizes are < 1k.
-  const [userCount, partnerCount] = await Promise.all([
-    prisma.marketingListMember.count({ where: { listId: list.id, memberType: 'USER' } }),
-    prisma.marketingListMember.count({ where: { listId: list.id, memberType: 'PARTNER' } }),
-  ]);
-  if (userCount > 0 && partnerCount > 0) return 'MIXED';
-  if (userCount > 0) return 'SUBSCRIBERS';
-  if (partnerCount > 0) return 'PARTNERS';
-  return 'EMPTY';
+
+  if (needsMemberCount.length > 0) {
+    const grouped = await prisma.marketingListMember.groupBy({
+      by: ['listId', 'memberType'],
+      where: { listId: { in: needsMemberCount } },
+      _count: { _all: true },
+    });
+    const perList = new Map<string, { user: number; partner: number }>();
+    for (const id of needsMemberCount) perList.set(id, { user: 0, partner: 0 });
+    for (const g of grouped) {
+      const bucket = perList.get(g.listId)!;
+      if (g.memberType === 'USER')    bucket.user    += g._count._all;
+      if (g.memberType === 'PARTNER') bucket.partner += g._count._all;
+    }
+    for (const l of lists) {
+      if (out[l.id]) continue;
+      const c = perList.get(l.id)!;
+      if (c.user > 0 && c.partner > 0) out[l.id] = 'MIXED';
+      else if (c.user > 0)             out[l.id] = 'SUBSCRIBERS';
+      else if (c.partner > 0)          out[l.id] = 'PARTNERS';
+      // SEGMENT/DYNAMIC custom lists materialise no member rows but
+      // carry a size from the nightly cron — treat as MIXED rather than
+      // the misleading EMPTY label.
+      else if (l.size > 0)             out[l.id] = 'MIXED';
+      else                             out[l.id] = 'EMPTY';
+    }
+  }
+
+  return out;
 }
 
 router.get('/lists', ...READ, async (req, res, next) => {
@@ -754,9 +812,8 @@ router.get('/lists', ...READ, async (req, res, next) => {
       prisma.marketingList.count({ where }),
     ]);
 
-    const itemsWithAudience = await Promise.all(
-      items.map(async (l) => ({ ...l, audienceKind: await deriveAudienceKind(l) }))
-    );
+    const audienceMap = await deriveAudienceKindMap(items);
+    const itemsWithAudience = items.map((l) => ({ ...l, audienceKind: audienceMap[l.id] ?? 'EMPTY' }));
 
     res.json({ items: itemsWithAudience, total, page: parseInt(page), limit: take });
   } catch (error) {
@@ -976,11 +1033,24 @@ router.post('/automations/ensure-defaults', ...WRITE, async (req, res, next) => 
     // BUG 5: SMS templates inherited a usageCount from before the dispatcher
     // counted only successful sends. Since the SMS provider has never been
     // wired up, none of those "uses" produced a delivery — reset to 0 so the
-    // column matches reality and stops contradicting the "БЕЗ ДОСТАВКА" badge.
-    const smsUsageReset = await prisma.marketingTemplate.updateMany({
-      where: { type: 'SMS', usageCount: { gt: 0 } },
-      data: { usageCount: 0, lastUsed: null },
-    });
+    // column matches reality and stops contradicting the "провайдър липсва" badge.
+    // Gated behind a one-shot SystemSetting flag so future legitimate dispatch
+    // counts (once a provider lands) are not wiped on every admin click.
+    const SMS_RESET_FLAG = 'marketing.sms_usage_reset_v1';
+    const smsResetFlag = await prisma.systemSetting.findUnique({ where: { key: SMS_RESET_FLAG } });
+    const smsUsageReset = !smsResetFlag
+      ? await prisma.marketingTemplate.updateMany({
+          where: { type: 'SMS', usageCount: { gt: 0 } },
+          data: { usageCount: 0, lastUsed: null },
+        })
+      : { count: 0 };
+    if (!smsResetFlag) {
+      await prisma.systemSetting.upsert({
+        where: { key: SMS_RESET_FLAG },
+        create: { key: SMS_RESET_FLAG, value: new Date().toISOString() },
+        update: { value: new Date().toISOString() },
+      });
+    }
 
     // Sync required templates — always update content so code is the source of truth.
     // Using find+update instead of upsert because template name has no unique DB constraint.

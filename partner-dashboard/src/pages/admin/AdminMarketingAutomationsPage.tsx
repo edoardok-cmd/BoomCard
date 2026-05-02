@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import styled from 'styled-components';
 import { DataTable, ColumnDef } from '../../components/admin/DataTable/DataTable';
+import { useAuth } from '../../contexts/AuthContext';
 import {
   adminMarketingService,
   MarketingAutomation,
@@ -113,8 +114,17 @@ const PAGE_SIZE = 25;
 // Module-level guard: ensure-defaults fires at most once per browser session.
 // Without this, every tab navigation back into Автоматизации re-fired the POST
 // alongside the list GET, racing the 100 req/min limiter (BUG 1).
+//
+// Keyed by user id so a logout/login (SPA, no page reload) or switchAccount
+// flow doesn't inherit the previous session's cached promise — a different
+// admin would otherwise skip ensure-defaults entirely.
 let ensureDefaultsPromise: Promise<unknown> | null = null;
-function ensureDefaultsOnce(): Promise<unknown> {
+let ensureDefaultsUserId: string | null = null;
+function ensureDefaultsOnce(userId: string | null): Promise<unknown> {
+  if (ensureDefaultsUserId !== userId) {
+    ensureDefaultsPromise = null;
+    ensureDefaultsUserId = userId;
+  }
   if (!ensureDefaultsPromise) {
     ensureDefaultsPromise = adminMarketingService.ensureDefaultAutomations().catch(() => {
       // On failure clear the cache so a future navigation can retry once
@@ -125,6 +135,7 @@ function ensureDefaultsOnce(): Promise<unknown> {
 }
 
 export default function AdminMarketingAutomationsPage() {
+  const { user } = useAuth();
   const [statusFilter, setStatusFilter] = useState<AutomationStatus | ''>('');
   const [triggerFilter, setTriggerFilter] = useState('');
   const [search, setSearch] = useState('');
@@ -161,7 +172,7 @@ export default function AdminMarketingAutomationsPage() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      await ensureDefaultsOnce();
+      await ensureDefaultsOnce(user?.id ?? null);
       if (cancelled) return;
       try {
         const r = await adminMarketingService.listTemplates({ limit: 100 });
@@ -169,7 +180,7 @@ export default function AdminMarketingAutomationsPage() {
       } catch { /* templates are optional for the list view */ }
     })();
     return () => { cancelled = true; };
-  }, []);
+  }, [user?.id]);
 
   // Filter/search/page changes trigger reloads on their own (load is memoised on those deps)
   useEffect(() => { load(); }, [load]);
