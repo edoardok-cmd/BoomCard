@@ -302,9 +302,11 @@ export default function AdminFinanceReportsPage() {
   };
 
   // Periods that are open/in-review warn that data may still change.
-  // Periods with null status have no ReportingPeriod record at all — equally uncontrolled.
+  // Null-status months only warn when they already have invoices (pending/overdue) —
+  // a completely empty "Без запис" month has nothing to lock and the warning is misleading.
   const openPeriods = (report?.periodStatuses ?? []).filter(
-    (p) => p.status === 'OPEN' || p.status === 'FOR_REVIEW' || p.status === null
+    (p) => p.status === 'OPEN' || p.status === 'FOR_REVIEW' ||
+           (p.status === null && (p.pendingCount > 0 || p.overdueCount > 0))
   );
 
   return (

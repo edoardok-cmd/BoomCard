@@ -97,6 +97,18 @@ const ProgressBar = styled.div<{ $pct: number }>`
 
 const EmptyState = styled.div`padding: 3rem; text-align: center; color: ${palette.textSubtle}; font-size: 0.9375rem;`;
 
+const NoBadge = styled.span`
+  display: inline-flex; align-items: center; font-size: 0.7rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.05em; border-radius: 0.375rem; padding: 0.125rem 0.5rem;
+  background: #f3f4f6; color: #6b7280;
+`;
+
+const AccentAdvanceBtn = styled(AdvanceBtn)`
+  border-color: ${palette.success}; color: ${palette.success}; background: ${palette.successSoft};
+  &:hover { background: ${palette.success}; color: #fff; }
+  &:disabled { opacity: 0.5; cursor: default; }
+`;
+
 /* ── Confirmation modal ─────────────────────────────────────────────────────── */
 const Overlay = styled.div`
   position: fixed; inset: 0; background: rgba(0,0,0,0.35); z-index: 1000;
@@ -426,7 +438,7 @@ export default function AdminFinancePeriodsPage() {
                           )}
                         </>
                       ) : (
-                        <span style={{ fontSize: '0.8125rem', color: palette.textSubtle }}>—</span>
+                        <NoBadge>Без запис</NoBadge>
                       )}
                     </Td>
 
@@ -447,14 +459,19 @@ export default function AdminFinancePeriodsPage() {
                         ) : nextStatus ? (
                           <>
                             {/* Hide for lifecycle-only OPEN periods — backend rejects FOR_REVIEW without invoices */}
-                            {!(row.lifecycleOnly && nextStatus === 'FOR_REVIEW') && (
-                              <AdvanceBtn
-                                disabled={advanceMutation.isPending}
-                                onClick={() => setConfirmState({ month: row.month, nextStatus, row, rp })}
-                              >
-                                → {LIFECYCLE_LABELS[nextStatus]}
-                              </AdvanceBtn>
-                            )}
+                            {!(row.lifecycleOnly && nextStatus === 'FOR_REVIEW') && (() => {
+                              const allPaid = rp.status === 'LOCKED' && row.count > 0 && row.paid === row.count;
+                              const Btn = allPaid ? AccentAdvanceBtn : AdvanceBtn;
+                              return (
+                                <Btn
+                                  disabled={advanceMutation.isPending}
+                                  onClick={() => setConfirmState({ month: row.month, nextStatus, row, rp })}
+                                  title={allPaid ? 'Всички фактури са платени — финализирай периода' : undefined}
+                                >
+                                  → {LIFECYCLE_LABELS[nextStatus]}
+                                </Btn>
+                              );
+                            })()}
                             {/* Partial-coverage: show generate link alongside advance */}
                             {row.hasUnbilledScans && row.count > 0 && (
                               <GenerateLink to={`/admin/finance/invoices?month=${row.month}`}>

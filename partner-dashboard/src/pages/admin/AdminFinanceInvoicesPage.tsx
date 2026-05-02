@@ -239,7 +239,7 @@ export default function AdminFinanceInvoicesPage() {
   const initialStatus: InvoiceStatus | '' =
     initialStatusParam === 'PENDING' || initialStatusParam === 'PAID' || initialStatusParam === 'OVERDUE'
       ? initialStatusParam : '';
-  const initialMonth = searchParams.get('month') ?? '';
+  const initialMonth = searchParams.get('month') ?? currentMonthStr();
 
   const [page, setPage]               = useState(1);
   const [searchInput, setSearchInput] = useState('');
