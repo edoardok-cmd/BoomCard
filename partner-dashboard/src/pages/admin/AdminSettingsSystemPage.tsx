@@ -736,7 +736,7 @@ export default function AdminSettingsSystemPage() {
             <AuditStamp>{formatAuditStamp(latestMeta(['maintenance_mode', 'maintenance_message'], meta))}</AuditStamp>
             <SaveBtn
               onClick={saveMaintenance}
-              disabled={maintenanceMutation.isPending}
+              disabled={maintenanceMutation.isPending || isLoading}
             >
               {maintenanceMutation.isPending ? 'Запазване…' : 'Запази'}
             </SaveBtn>

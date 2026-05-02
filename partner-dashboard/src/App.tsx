@@ -3,7 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { lazyWithRetry as lazy } from './utils/lazyWithRetry';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'react-hot-toast';
-import { AuthProvider } from './contexts/AuthContext';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { FavoritesProvider } from './contexts/FavoritesContext';
 import { LanguageProvider } from './contexts/LanguageContext';
 import { ThemeProvider } from './contexts/ThemeContext';
@@ -186,6 +186,12 @@ const PaymentCancelPage = lazy(() => import('./pages/PaymentCancelPage'));
 const SubscriptionSuccessPage = lazy(() => import('./pages/SubscriptionSuccessPage'));
 const SubscriptionCancelPage = lazy(() => import('./pages/SubscriptionCancelPage'));
 const CheckoutPage = lazy(() => import('./pages/CheckoutPage'));
+
+function HelpIndexRedirect() {
+  const { user } = useAuth();
+  if (!user) return null;
+  return <Navigate to={user.rawRole === 'SUPER_ADMIN' ? 'all' : 'mine'} replace />;
+}
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -596,7 +602,7 @@ function App() {
                         </ProtectedRoute>
                       }
                     >
-                      <Route index element={<Navigate to="mine" replace />} />
+                      <Route index element={<HelpIndexRedirect />} />
                       <Route path="new" element={<AdminHelpNewPage />} />
                       <Route path="mine" element={<AdminHelpMinePage />} />
                       <Route path="all" element={<AdminHelpAllPage />} />

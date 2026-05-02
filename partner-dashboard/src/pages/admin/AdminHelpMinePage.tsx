@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import styled from 'styled-components';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -97,6 +97,13 @@ const EmptyLink = styled(Link)`
   color: ${palette.accent}; font-weight: 600; text-decoration: none;
   &:hover { text-decoration: underline; }
 `;
+const NewTicketBtn = styled(Link)`
+  display: inline-flex; align-items: center; gap: 0.375rem;
+  padding: 0.5625rem 1.125rem; border: none; border-radius: 0.5rem;
+  background: ${palette.accent}; color: #fff; font-size: 0.875rem; font-weight: 600;
+  text-decoration: none; white-space: nowrap; align-self: flex-start;
+  &:hover { background: #b5522e; }
+`;
 
 const PAGE_SIZE = 25;
 
@@ -113,6 +120,12 @@ export default function AdminHelpMinePage() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<TicketStatus | ''>('');
   const [page, setPage] = useState(1);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    debounceRef.current = setTimeout(() => { setSearch(searchInput); setPage(1); }, 400);
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, [searchInput]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const { data, isLoading } = useQuery({
@@ -198,6 +211,7 @@ export default function AdminHelpMinePage() {
           </PageTitle>
           <PageSubtitle>Заявки, създадени от мен</PageSubtitle>
         </TitleBlock>
+        <NewTicketBtn to="/admin/help/new">+ Нова заявка</NewTicketBtn>
       </PageHeader>
 
       <Card>
@@ -207,7 +221,7 @@ export default function AdminHelpMinePage() {
             placeholder="Търсене по тема…"
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') { setSearch(searchInput); setPage(1); } }}
+            onKeyDown={(e) => { if (e.key === 'Enter') { if (debounceRef.current) clearTimeout(debounceRef.current); setSearch(searchInput); setPage(1); } }}
           />
           <Select value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value as TicketStatus | ''); setPage(1); }}>
             <option value="">Всички статуси</option>

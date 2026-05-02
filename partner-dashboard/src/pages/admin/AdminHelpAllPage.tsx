@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useRef, useState } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
 import styled from 'styled-components';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-hot-toast';
@@ -38,6 +38,13 @@ const SearchInput = styled.input`flex: 1; max-width: 18rem; padding: 0.5rem 0.87
 const Select = styled.select`padding: 0.5rem 0.75rem; border: 1px solid ${palette.border}; border-radius: 0.5rem; font-size: 0.875rem; background: ${palette.bg}; color: ${palette.text}; outline: none; cursor: pointer; &:focus { border-color: ${palette.accent}; }`;
 const PrimaryLine = styled.div`font-weight: 600; color: ${palette.text};`;
 const MetaLine = styled.div`font-size: 0.75rem; color: ${palette.textSubtle}; margin-top: 0.125rem;`;
+const NewTicketBtn = styled(Link)`
+  display: inline-flex; align-items: center; gap: 0.375rem;
+  padding: 0.5625rem 1.125rem; border: none; border-radius: 0.5rem;
+  background: ${palette.accent}; color: #fff; font-size: 0.875rem; font-weight: 600;
+  text-decoration: none; white-space: nowrap; align-self: flex-start;
+  &:hover { background: #b5522e; }
+`;
 
 const STATUS_BG_LABELS: Record<TicketStatus, string> = {
   NEW: 'Нова', OPEN: 'Отворена', WAITING: 'Изчакване', RESOLVED: 'Решена', CLOSED: 'Затворена',
@@ -106,7 +113,7 @@ export default function AdminHelpAllPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
-  const isSuperAdmin = (user as any)?.rawRole === 'SUPER_ADMIN';
+  const isSuperAdmin = user?.rawRole === 'SUPER_ADMIN';
 
   useEffect(() => {
     if (user && !isSuperAdmin) {
@@ -120,6 +127,12 @@ export default function AdminHelpAllPage() {
   const [priorityFilter, setPriorityFilter] = useState<TicketPriority | ''>('');
   const [categoryFilter, setCategoryFilter] = useState<TicketCategory | ''>('');
   const [page, setPage] = useState(1);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    debounceRef.current = setTimeout(() => { setSearch(searchInput); setPage(1); }, 400);
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, [searchInput]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const { data, isLoading } = useQuery({
@@ -211,6 +224,7 @@ export default function AdminHelpAllPage() {
           </PageTitle>
           <PageSubtitle>Пълен преглед на всички заявки в системата</PageSubtitle>
         </TitleBlock>
+        <NewTicketBtn to="/admin/help/new">+ Нова заявка</NewTicketBtn>
       </PageHeader>
 
       <Card>
@@ -220,7 +234,7 @@ export default function AdminHelpAllPage() {
             placeholder="Търсене по тема или имейл…"
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') { setSearch(searchInput); setPage(1); } }}
+            onKeyDown={(e) => { if (e.key === 'Enter') { if (debounceRef.current) clearTimeout(debounceRef.current); setSearch(searchInput); setPage(1); } }}
           />
           <Select value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value as TicketStatus | ''); setPage(1); }}>
             <option value="">Всички статуси</option>
