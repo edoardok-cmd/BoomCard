@@ -523,14 +523,21 @@ const AdminAlertsPage: React.FC = () => {
   // Skip building tiers when the latest fetch errored — the JSX is gated on
   // `!error` anyway, but doing the work would read from a stale `result` and
   // is wasted compute on every error render.
+  //
+  // Informational tier visibility rule (spec §3.2 — "кратка дневна ориентация"):
+  // Show it when there are critical/operational items (daily orientation alongside
+  // active work), or when it has its own items. Suppress it — and show only the
+  // all-clear card — when everything is empty, to avoid the dual-render of
+  // "All Clear" + "No new signals in the last 24 hours".
+  const hasActionItems = !error && result
+    ? result.critical.length > 0 || result.operational.length > 0
+    : false;
   const tiers: { tier: AlertTier; items: AdminAlert[] }[] = !error && result
     ? [
         { tier: 'critical' as AlertTier, items: result.critical },
         { tier: 'operational' as AlertTier, items: result.operational },
-        // Informational is always rendered (even when empty) — spec §3.2 requires
-        // it as a daily orientation reference so the admin sees "nothing new today".
         { tier: 'informational' as AlertTier, items: result.informational },
-      ].filter(t => t.tier === 'informational' || t.items.length > 0)
+      ].filter(t => t.items.length > 0 || (t.tier === 'informational' && hasActionItems))
     : [];
 
   return (

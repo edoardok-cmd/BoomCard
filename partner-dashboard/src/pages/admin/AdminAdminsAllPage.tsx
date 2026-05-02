@@ -327,6 +327,16 @@ export default function AdminAdminsAllPage() {
     queryFn: () => adminAdminsService.list({ page, limit: PAGE_SIZE, search: search || undefined, roleKey: roleKey || undefined }),
   });
 
+  // Fetch the logged-in admin's own record directly so the 2FA banner is
+  // independent of pagination — data.admins only contains the current page
+  // and could miss the current user when filtered/paginated away.
+  const { data: selfRecord } = useQuery({
+    queryKey: ['admin-self', authUser?.id],
+    queryFn: () => adminAdminsService.getById(authUser!.id),
+    enabled: !!authUser?.id,
+    staleTime: 60_000,
+  });
+
   const removeRoleMutation = useMutation({
     mutationFn: ({ id, key }: { id: string; key: AdminRoleKey }) =>
       adminAdminsService.removeRole(id, key),
@@ -482,11 +492,10 @@ export default function AdminAdminsAllPage() {
         </TitleBlock>
       </PageHeader>
 
-      {/* Warn when the currently logged-in admin has not enabled 2FA */}
-      {data && authUser && (() => {
-        const me = data.admins.find(a => a.id === authUser.id);
-        return me && !me.twoFactorEnabled;
-      })() && (
+      {/* Warn when the currently logged-in admin has not enabled 2FA.
+          Uses a dedicated query for the current user so the banner shows
+          regardless of which page or filter is active in the table below. */}
+      {selfRecord && !selfRecord.twoFactorEnabled && (
         <TwoFaBanner>
           ⚠&nbsp;Нямате активирана двуфакторна автентикация.{' '}
           <Link to="/admin/profile/security">Активирайте я от Профил → Сигурност.</Link>
