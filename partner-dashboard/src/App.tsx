@@ -160,7 +160,6 @@ const AdminFinanceInvoicesPage = lazy(() => import('./pages/admin/AdminFinanceIn
 const AdminFinancePeriodsPage = lazy(() => import('./pages/admin/AdminFinancePeriodsPage'));
 const AdminFinanceReportsPage = lazy(() => import('./pages/admin/AdminFinanceReportsPage'));
 const AdminControlSecurityPage = lazy(() => import('./pages/admin/AdminControlSecurityPage'));
-const AdminControlAuditLogPage = lazy(() => import('./pages/admin/AdminControlAuditLogPage'));
 const AdminControlDisputesPage = lazy(() => import('./pages/admin/AdminControlDisputesPage'));
 const AdminControlRulesPage = lazy(() => import('./pages/admin/AdminControlRulesPage'));
 const AdminVenueFraudConfigPage = lazy(() => import('./pages/AdminVenueFraudConfigPage'));
@@ -541,8 +540,8 @@ function App() {
                       <Route index element={<Navigate to="risk" replace />} />
                       <Route path="risk" element={<AdminControlSecurityPage />} />
                       <Route path="risk-signals" element={<AdminControlSecurityPage />} />
-                      <Route path="audit" element={<AdminControlAuditLogPage />} />
-                      <Route path="security" element={<Navigate to="/admin/control/audit" replace />} />
+                      <Route path="audit" element={<Navigate to="/admin/admins/audit" replace />} />
+                      <Route path="security" element={<Navigate to="/admin/admins/audit" replace />} />
                       <Route path="disputes" element={<AdminControlDisputesPage />} />
                       <Route path="rules" element={<AdminControlRulesPage />} />
                       <Route path="limits" element={<Navigate to="/admin/control/rules" replace />} />

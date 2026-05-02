@@ -450,6 +450,28 @@ export function useGetBillingPortalUrl() {
   });
 }
 
+/**
+ * Hook to initiate a card / payment-method update.
+ *
+ * Stripe: redirects to Stripe billing portal.
+ * Paysera: redirects to a Paysera early-renewal payment that lets the user
+ * choose any available payment method.
+ */
+export function useInitiateCardUpdate() {
+  return useMutation({
+    mutationFn: (subscriptionId: string) => billingService.initiateCardUpdate(subscriptionId),
+    onSuccess: (data) => {
+      const url = data.url ?? data.paymentUrl;
+      if (url) {
+        window.location.href = url;
+      }
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || 'Failed to initiate card update');
+    },
+  });
+}
+
 export default {
   useCurrentSubscription,
   useSubscription,
@@ -474,4 +496,5 @@ export default {
   usePricingPlan,
   useBillingStats,
   useGetBillingPortalUrl,
+  useInitiateCardUpdate,
 };

@@ -1128,8 +1128,8 @@ export const en = {
     autoRenewalOff: 'Auto-renewal is disabled. Subscription ends {date}.',
     autoRenewalOffShort: 'Auto-renewal is disabled.',
     cancelSubscription: 'Cancel Subscription',
-    cancelDesc: 'Your subscription remains active until the end of the current billing period.',
-    cancelConfirm: 'Cancel your subscription? You will keep access until {date}.',
+    cancelDesc: 'Your subscription remains active until the end of the current billing period. Your profile will NOT be deleted.',
+    cancelConfirm: 'Cancel your subscription? You will keep access until {date}. Marketing emails continue if you have given consent. Your profile will NOT be deleted.',
     cancelBtn: 'Yes, Cancel',
     reactivate: 'Reactivate Subscription',
     reactivateDesc: 'Your subscription is scheduled for cancellation. Reactivate to keep access.',
@@ -1138,6 +1138,11 @@ export const en = {
     to: 'to',
     paymentMethod: 'Payment Method',
     paymentMethodCard: 'Charged card',
+    paymentMethodPaysera: 'Paysera',
+    changeCard: 'Change Card',
+    changeCardPayseraInfo: 'You pay via Paysera. At the next renewal you can choose any available payment method. To renew early with a new card, use the button below.',
+    changeCardPayseraBtn: 'Renew with new card',
+    changeCardPayseraPending: 'Redirecting to Paysera...',
     paymentHistory: 'Payment History',
     historyLoading: 'Loading history...',
     historyEmpty: 'No payment history yet.',
@@ -1153,6 +1158,10 @@ export const en = {
     trialRefundConfirm:
       'Cancel your subscription and refund the full amount? Any cashback earned during the trial will be voided. This action cannot be undone.',
     refundBtn: 'Cancel & refund',
+    // §3.4 action (4): link to profile deletion danger zone in Settings.
+    deleteAccountTitle: 'Delete Account',
+    deleteAccountDesc: 'To delete your profile and stop all communications, go to Settings.',
+    deleteAccountLink: 'Go to Settings',
   },
 
   // Pricing Plans

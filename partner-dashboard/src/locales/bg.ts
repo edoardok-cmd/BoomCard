@@ -1130,8 +1130,8 @@ export const bg: TranslationKey = {
     autoRenewalOff: 'Автоматичното подновяване е изключено. Абонаментът изтича на {date}.',
     autoRenewalOffShort: 'Автоматичното подновяване е изключено.',
     cancelSubscription: 'Отмени абонамент',
-    cancelDesc: 'Абонаментът остава активен до края на текущия период.',
-    cancelConfirm: 'Да отмените абонамента? Ще запазите достъп до {date}.',
+    cancelDesc: 'Абонаментът остава активен до края на текущия период. Профилът ви НЕ се изтрива.',
+    cancelConfirm: 'Да отмените абонамента? Ще запазите достъп до {date}. Маркетинговите имейли продължават, ако сте дали съгласие. Профилът ви НЕ се изтрива.',
     cancelBtn: 'Да, отмени',
     reactivate: 'Подновете абонамента',
     reactivateDesc: 'Абонаментът е насрочен за отмяна. Подновете го за да запазите достъп.',
@@ -1140,6 +1140,11 @@ export const bg: TranslationKey = {
     to: 'до',
     paymentMethod: 'Метод на плащане',
     paymentMethodCard: 'Начислена карта',
+    paymentMethodPaysera: 'Paysera',
+    changeCard: 'Смяна на карта',
+    changeCardPayseraInfo: 'Плащате чрез Paysera. При следващото подновяване можете да изберете всеки наличен метод на плащане. За подновяване преди срока с нова карта, използвайте бутона по-долу.',
+    changeCardPayseraBtn: 'Поднови с нова карта',
+    changeCardPayseraPending: 'Пренасочване към Paysera...',
     paymentHistory: 'История на плащания',
     historyLoading: 'Зареждане на история...',
     historyEmpty: 'Няма история на плащания.',
@@ -1155,6 +1160,10 @@ export const bg: TranslationKey = {
     trialRefundConfirm:
       'Да отмените абонамента и да Ви бъде възстановена цялата сума? Всякакъв кешбек, спечелен по време на пробния период, ще бъде анулиран. Това действие е необратимо.',
     refundBtn: 'Отмени и възстанови',
+    // §3.4 action (4): link to profile deletion danger zone in Settings.
+    deleteAccountTitle: 'Изтриване на профил',
+    deleteAccountDesc: 'За да изтриете профила си и да спрете всички комуникации, отидете в Настройки.',
+    deleteAccountLink: 'Отиди в Настройки',
   },
 
   // Pricing Plans
@@ -2157,7 +2166,7 @@ export const bg: TranslationKey = {
     onboarding: 'Онбординг',
     activePartners: 'Активни',
     locationsQr: 'Локации & QR',
-    receiptProfiles: 'Профили на бележки',
+    receiptProfiles: 'Касови бележки',
     payouts: 'Плащания абонати',
     invoices: 'Фактури партньори',
     periods: 'Периоди',

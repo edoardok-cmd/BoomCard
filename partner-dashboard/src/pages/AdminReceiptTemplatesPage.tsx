@@ -515,7 +515,7 @@ export const AdminReceiptTemplatesPage: React.FC = () => {
       <PageHeader>
         <Title>
           <Image size={28} />
-          {language === 'bg' ? 'Шаблони за Бележки' : 'Receipt Templates'}
+          {language === 'bg' ? 'Касови бележки' : 'Receipt Profiles'}
         </Title>
         <HeaderActions>
           <VenueSelector
@@ -566,8 +566,20 @@ export const AdminReceiptTemplatesPage: React.FC = () => {
                 <img src={tpl.imageUrl} alt={tpl.merchantName} />
               </CardImage>
               <CardBody>
-                <MerchantName>{tpl.merchantName}</MerchantName>
-                {tpl.description && <Description title={tpl.description}>{tpl.description}</Description>}
+                <MerchantName>
+                  <span style={{ fontSize: '0.7rem', fontWeight: 600, textTransform: 'uppercase', color: 'var(--color-text-secondary)', letterSpacing: '0.05em', display: 'block', marginBottom: '0.15rem' }}>
+                    {language === 'bg' ? 'Имe на търговеца' : 'Merchant name'}
+                  </span>
+                  {tpl.merchantName}
+                </MerchantName>
+                {tpl.description && (
+                  <Description title={tpl.description}>
+                    <span style={{ fontSize: '0.7rem', fontWeight: 600, textTransform: 'uppercase', color: 'var(--color-text-secondary)', letterSpacing: '0.05em', display: 'block', marginBottom: '0.1rem' }}>
+                      {language === 'bg' ? 'Вариации' : 'Variations'}
+                    </span>
+                    {tpl.description}
+                  </Description>
+                )}
                 {tpl.expectedKeywords.length > 0 && (
                   <KeywordsRow>
                     {tpl.expectedKeywords.map((kw, i) => (

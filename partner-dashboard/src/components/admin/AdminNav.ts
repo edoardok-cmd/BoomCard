@@ -57,7 +57,7 @@ export const ADMIN_NAV: AdminNavCategory[] = [
       { labelBg: 'Комуникация и онбординг', labelEn: 'Communication & Onboarding', path: '/admin/partners/onboarding', permissionKey: 'partners.onboarding.read' },
       { labelBg: 'Активни', labelEn: 'Active', path: '/admin/partners/active', permissionKey: 'partners.read' },
       { labelBg: 'Локации & QR', labelEn: 'Locations & QR', path: '/admin/partners/locations', permissionKey: 'partners.locations.read' },
-      { labelBg: 'Профили на бележки', labelEn: 'Receipt Profiles', path: '/admin/partners/receipt-profiles', permissionKey: 'partners.receipts.read' },
+      { labelBg: 'Касови бележки', labelEn: 'Receipt Profiles', path: '/admin/partners/receipt-profiles', permissionKey: 'partners.receipts.read' },
     ],
   },
   {
@@ -86,7 +86,6 @@ export const ADMIN_NAV: AdminNavCategory[] = [
       { labelBg: 'Риск и сигурност', labelEn: 'Risk & Security', path: '/admin/control/risk-signals', permissionKey: 'control.risk.read' },
       { labelBg: 'Спорове', labelEn: 'Disputes', path: '/admin/control/disputes', permissionKey: 'control.disputes.read' },
       { labelBg: 'Лимити и правила', labelEn: 'Limits & Rules', path: '/admin/control/rules', permissionKey: 'control.rules.read' },
-      { labelBg: 'Одит лог', labelEn: 'Audit Log', path: '/admin/control/audit', permissionKey: 'control.risk.read' },
     ],
   },
   {

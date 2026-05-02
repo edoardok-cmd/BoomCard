@@ -160,6 +160,8 @@ export interface RegisterData {
     businessSubcategory?: string;
     taxId?: string;
     website?: string;
+    city?: string;
+    address?: string;
   };
 }
 

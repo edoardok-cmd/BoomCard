@@ -369,17 +369,22 @@ export default function PartnerRequestDrawer({ partnerId, onClose, canWrite, onA
                   <FieldValue>{partner.phone}</FieldValue>
                 </Field>
               )}
-              {(partner.address || partner.city) && (
-                <Field>
-                  <FieldLabel>{isEn ? 'Address' : 'Адрес'}</FieldLabel>
-                  <FieldValue>
-                    {partner.address}
-                    {partner.address && partner.city && ', '}
-                    {partner.city}
-                    {partner.region && ` (${partner.region})`}
-                  </FieldValue>
-                </Field>
-              )}
+              <Field>
+                <FieldLabel>{isEn ? 'Address' : 'Адрес'}</FieldLabel>
+                <FieldValue>
+                  {(partner.address || partner.city)
+                    ? <>
+                        {partner.address}
+                        {partner.address && partner.city && ', '}
+                        {partner.city}
+                        {partner.region && ` (${partner.region})`}
+                      </>
+                    : <span style={{ color: 'var(--color-text-muted, #8c8678)', fontStyle: 'italic' }}>
+                        {isEn ? 'Not provided' : 'Не е предоставен'}
+                      </span>
+                  }
+                </FieldValue>
+              </Field>
               {partner.website && (
                 <Field>
                   <FieldLabel>{isEn ? 'Website' : 'Уебсайт'}</FieldLabel>

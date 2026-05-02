@@ -4,7 +4,7 @@ import styled from 'styled-components';
 import { motion, AnimatePresence } from 'framer-motion';
 import { RefreshCw, AlertTriangle, CheckCircle, XCircle, CreditCard, Calendar, Clock, ExternalLink } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
-import { useCurrentSubscription, useToggleAutoRenewal, useCancelSubscriptionById, useReactivateSubscription, useRetrySubscriptionPayment, useSubscriptionHistory, useRequestTrialRefund, useUpdateSubscriptionPlan } from '../hooks/useBilling';
+import { useCurrentSubscription, useToggleAutoRenewal, useCancelSubscriptionById, useReactivateSubscription, useRetrySubscriptionPayment, useSubscriptionHistory, useRequestTrialRefund, useUpdateSubscriptionPlan, useInitiateCardUpdate } from '../hooks/useBilling';
 import { Button } from '../components/common/Button/Button';
 import {
   customerSubStatusLabel,
@@ -390,6 +390,55 @@ const PdfLink = styled.a`
   &:hover { opacity: 0.75; }
 `;
 
+const PayseraMethodRow = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+`;
+
+const PayseraLogo = styled.span`
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: #e03d00;
+  letter-spacing: 0.02em;
+`;
+
+const InfoText = styled.p`
+  font-size: 0.8125rem;
+  color: #6b7280;
+  margin-bottom: 1rem;
+  line-height: 1.5;
+  [data-theme="dark"] & { color: #9ca3af; }
+`;
+
+const DeleteAccountCard = styled.div`
+  border-radius: 1rem;
+  padding: 1.25rem 1.75rem;
+  border: 1px solid #e5e7eb;
+  background: white;
+  [data-theme="dark"] & {
+    background: #1f2937;
+    border-color: #374151;
+  }
+`;
+
+const DeleteAccountTitle = styled.p`
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.5rem;
+  [data-theme="dark"] & { color: #9ca3af; }
+`;
+
+const DeleteAccountDesc = styled.p`
+  font-size: 0.8125rem;
+  color: #6b7280;
+  margin-bottom: 0.875rem;
+  [data-theme="dark"] & { color: #9ca3af; }
+`;
+
 function formatDate(iso: string | null | undefined): string {
   if (!iso) return '—';
   const d = new Date(iso);
@@ -406,6 +455,7 @@ export default function SubscriptionPage() {
   const retryPayment = useRetrySubscriptionPayment();
   const trialRefund = useRequestTrialRefund();
   const updatePlan = useUpdateSubscriptionPlan();
+  const initiateCardUpdate = useInitiateCardUpdate();
   const hasStripe = !!subscription?.stripeSubscriptionId;
   // Backend /subscriptions/history returns synthesized entries for Paysera
   // users (incl. anonymous checkout), so don't gate the panel on Stripe.
@@ -685,7 +735,7 @@ export default function SubscriptionPage() {
             </Card>
           )}
 
-          {/* Payment method card (Stripe subs only) */}
+          {/* Payment method card — Stripe (card details) */}
           {hasStripe && subscription.paymentMethod && (
             <Card
               initial={{ opacity: 0, y: 12 }}
@@ -713,10 +763,44 @@ export default function SubscriptionPage() {
               <Row>
                 <Link to="/billing">
                   <Button variant="ghost" size="small">
-                    {t('subscriptionPage.updatePayment')}
+                    {t('subscriptionPage.changeCard')}
                   </Button>
                 </Link>
               </Row>
+            </Card>
+          )}
+
+          {/* Payment method card — Paysera (§3.4 action 2: manage payment method).
+               Shown for Paysera subscriptions that have no Stripe card on file. */}
+          {!hasStripe && isPaysera && !isCancelled && (
+            <Card
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.25, delay: 0.08 }}
+            >
+              <CardTitle>
+                <CreditCard size={14} />
+                {t('subscriptionPage.paymentMethod')}
+              </CardTitle>
+              <PayseraMethodRow>
+                <Label>{t('subscriptionPage.paymentMethodCard')}</Label>
+                <PayseraLogo>{t('subscriptionPage.paymentMethodPaysera')}</PayseraLogo>
+              </PayseraMethodRow>
+              <Divider />
+              <InfoText>{t('subscriptionPage.changeCardPayseraInfo')}</InfoText>
+              <div>
+                <Button
+                  variant="ghost"
+                  size="small"
+                  onClick={() => initiateCardUpdate.mutate(subscription.id)}
+                  disabled={initiateCardUpdate.isPending}
+                >
+                  <CreditCard size={14} style={{ marginRight: 6 }} />
+                  {initiateCardUpdate.isPending
+                    ? t('subscriptionPage.changeCardPayseraPending')
+                    : t('subscriptionPage.changeCardPayseraBtn')}
+                </Button>
+              </div>
             </Card>
           )}
 
@@ -850,6 +934,15 @@ export default function SubscriptionPage() {
               </div>
             </DangerCard>
           )}
+
+          {/* §3.4 action (4): navigate to profile deletion (Settings danger zone). */}
+          <DeleteAccountCard>
+            <DeleteAccountTitle>{t('subscriptionPage.deleteAccountTitle')}</DeleteAccountTitle>
+            <DeleteAccountDesc>{t('subscriptionPage.deleteAccountDesc')}</DeleteAccountDesc>
+            <Link to="/settings">
+              <Button variant="ghost" size="small">{t('subscriptionPage.deleteAccountLink')}</Button>
+            </Link>
+          </DeleteAccountCard>
         </Stack>
       </Container>
     </PageContainer>

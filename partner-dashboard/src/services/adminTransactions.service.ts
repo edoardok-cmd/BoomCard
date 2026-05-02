@@ -200,6 +200,7 @@ export type CashbackEntryStatus = 'Pending' | 'Cleared' | 'Locked' | 'Paid' | 'E
 export interface BusinessFilterParams {
   search?: string;
   partnerId?: string;
+  userId?: string;
   type?: string;
   status?: string;
   dateFrom?: string;
@@ -220,6 +221,7 @@ function cleanBusinessParams(params: BusinessListParams): Record<string, unknown
   if (params.limit != null) clean['limit'] = params.limit;
   if (params.search) clean['search'] = params.search;
   if (params.partnerId) clean['partnerId'] = params.partnerId;
+  if (params.userId) clean['userId'] = params.userId;
   if (params.type) clean['type'] = params.type;
   if (params.status) clean['status'] = params.status;
   if (params.dateFrom) clean['dateFrom'] = params.dateFrom;

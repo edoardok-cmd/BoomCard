@@ -1723,8 +1723,8 @@ export const Header: React.FC<HeaderProps> = ({
             )}
           </div>
 
-          {/* Mobile Menu Button - Show when menu is hidden */}
-          <button
+          {/* Mobile Menu Button - hidden on admin routes (admin nav lives in the EK dropdown) */}
+          {!location.pathname.startsWith('/admin') && <button
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
             className="nav:hidden z-[10000] p-1.5 sm:p-2 transition-colors ml-1.5 sm:ml-2 flex-shrink-0"
             style={{
@@ -1747,7 +1747,7 @@ export const Header: React.FC<HeaderProps> = ({
                 <path d="M4 6h16M4 12h16M4 18h16" />
               )}
             </svg>
-          </button>
+          </button>}
         </div>
       </div>
 
@@ -2006,6 +2006,20 @@ export const Header: React.FC<HeaderProps> = ({
                 <ImpersonateModalSubtitle>
                   {t('impersonation.modalSubtitle')}
                 </ImpersonateModalSubtitle>
+                {/* Security warning — spec: impersonation is not in MVP spec; log the action prominently */}
+                <div style={{
+                  margin: '0.625rem 0',
+                  padding: '0.5rem 0.75rem',
+                  background: '#fef3c7',
+                  border: '1px solid #d97706',
+                  borderRadius: '0.375rem',
+                  fontSize: '0.75rem',
+                  color: '#92400e',
+                  fontWeight: 600,
+                  lineHeight: 1.5,
+                }}>
+                  ⚠ Внимание: Тази сесия ще бъде записана в одит лога. Използвайте само за оторизирана поддръжка или дебъгване.
+                </div>
                 <ImpersonateSearchInput
                   autoFocus
                   type="text"

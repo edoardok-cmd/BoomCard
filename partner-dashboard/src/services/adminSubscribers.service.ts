@@ -84,6 +84,7 @@ export interface LoginHistoryEntry {
   id: string;
   ip: string | null;
   userAgent: string | null;
+  failReason: string | null;
   createdAt: string;
   success: boolean;
 }

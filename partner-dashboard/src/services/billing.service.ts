@@ -373,6 +373,23 @@ class BillingService {
   }
 
   /**
+   * Initiate a card / payment-method update for a subscription.
+   *
+   * Stripe subscriptions: returns a Stripe billing-portal session URL.
+   * Paysera subscriptions: returns a Paysera payment URL for an early renewal
+   * that lets the user choose a new payment method. On success the
+   * subscription period is extended by one billing cycle.
+   */
+  async initiateCardUpdate(subscriptionId: string): Promise<{
+    type: 'stripe' | 'paysera';
+    url?: string;
+    paymentUrl?: string;
+    orderId?: string;
+  }> {
+    return apiService.post(`/subscriptions/${subscriptionId}/change-card`, {});
+  }
+
+  /**
    * Generate billing portal URL (for Stripe-like providers)
    */
   async getBillingPortalUrl(returnUrl?: string): Promise<{ url: string }> {

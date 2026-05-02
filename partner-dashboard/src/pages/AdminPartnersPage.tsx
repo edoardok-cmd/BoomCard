@@ -19,7 +19,6 @@ import { bulkImportService } from '../services/bulkImport.service';
 import { venuesService } from '../services/venues.service';
 import axios from 'axios';
 import { placesCategories, experiencesCategories, getCategoryName } from '../types/categories.types';
-import { DISCOUNT_STEPS, snapToStep } from '../utils/discountSteps';
 import { adminPartnerRequestsService, AuditEntry } from '../services/adminPartnerRequests.service';
 
 // ─── Styled Components ────────────────────────────────────────────────────────
@@ -1396,10 +1395,10 @@ const AdminPartnersPage: React.FC = () => {
   const handleCreateField = (field: keyof typeof createForm, value: string) => {
     setCreateForm(prev => {
       const next = { ...prev, [field]: value };
-      // Auto-fill discountRate when partnerTypeId changes — snap to nearest valid step
+      // Auto-fill discountRate when partnerTypeId changes (default to tier max)
       if (field === 'partnerTypeId') {
         const type = partnerTypes.find(t => t.id === value);
-        if (type) next.discountRate = snapToStep(type.maxDiscountRate);
+        if (type) next.discountRate = String(type.maxDiscountRate);
       }
       return next;
     });
@@ -1418,6 +1417,10 @@ const AdminPartnersPage: React.FC = () => {
       }
     }
     const rate = parseFloat(createForm.discountRate);
+    if (!isNaN(rate) && rate > createTypeMax) {
+      toast.error(language === 'bg' ? `Отстъпката не може да надвишава ${createTypeMax}% за избрания тип` : `Discount cannot exceed ${createTypeMax}% for the selected type`);
+      return;
+    }
     createMutation.mutate({
       ...createForm,
       category: createCategories[0],
@@ -1445,7 +1448,7 @@ const AdminPartnersPage: React.FC = () => {
       email: partner.email || '',
       website: partner.website || '',
       partnerTypeId: partner.partnerTypeId || partner.partnerType?.id || '',
-      discountRate: snapToStep(effectiveRate(partner)),
+      discountRate: effectiveRate(partner) > 0 ? String(effectiveRate(partner)) : '',
       status: (String(partner.status).toUpperCase() as PartnerStatus) || 'ACTIVE',
       isVisible: partner.isVisible ?? true,
       internalNotes: (() => {
@@ -1462,7 +1465,7 @@ const AdminPartnersPage: React.FC = () => {
     setEditForm(prev => ({
       ...prev,
       partnerTypeId,
-      discountRate: type ? snapToStep(type.maxDiscountRate) : prev.discountRate,
+      discountRate: type ? String(type.maxDiscountRate) : prev.discountRate,
     }));
   };
 
@@ -1474,6 +1477,10 @@ const AdminPartnersPage: React.FC = () => {
       return;
     }
     const rate = parseFloat(editForm.discountRate);
+    if (!isNaN(rate) && rate > editTypeMax) {
+      toast.error(language === 'bg' ? `Отстъпката не може да надвишава ${editTypeMax}% за избрания тип` : `Discount cannot exceed ${editTypeMax}% for the selected type`);
+      return;
+    }
     updateMutation.mutate({
       id: editingPartner.id,
       data: {
@@ -1764,11 +1771,11 @@ const AdminPartnersPage: React.FC = () => {
     <PageContainer>
       <PageHeader>
         <div>
-          <Title>{language === 'bg' ? 'Управление на Партньори' : 'Manage Partners'}</Title>
+          <Title>{language === 'bg' ? 'Активни Партньори' : 'Active Partners'}</Title>
           <Subtitle>
             {language === 'bg'
-              ? 'Създавайте и управлявайте партньорски профили и техните нива'
-              : 'Create and manage partner profiles and their discount tiers'}
+              ? 'Преглед, редакция и управление на всички активни партньори'
+              : 'View, edit and manage all active partners'}
           </Subtitle>
         </div>
       </PageHeader>
@@ -2157,19 +2164,20 @@ const AdminPartnersPage: React.FC = () => {
                     <Label>
                       {language === 'bg' ? 'Отстъпка (%)' : 'Discount Rate (%)'} <Required>*</Required>
                     </Label>
-                    <Select
+                    <Input
+                      type="number"
+                      min={0}
+                      max={createTypeMax}
+                      step={1}
                       value={createForm.discountRate}
                       onChange={e => handleCreateField('discountRate', e.target.value)}
+                      placeholder={language === 'bg' ? 'напр. 12' : 'e.g. 12'}
                       required
-                    >
-                      <option value="">{language === 'bg' ? 'Изберете отстъпка' : 'Select discount'}</option>
-                      {DISCOUNT_STEPS.filter(s => s <= createTypeMax).map(s => (
-                        <option key={s} value={String(s)}>{s}%</option>
-                      ))}
-                    </Select>
+                      disabled={!createForm.partnerTypeId}
+                    />
                     <FieldHint>
                       {createForm.partnerTypeId
-                        ? (language === 'bg' ? `Макс. за избрания тип: ${createTypeMax}%` : `Max for selected type: ${createTypeMax}%`)
+                        ? (language === 'bg' ? `Договорен %. Макс. за избрания тип: ${createTypeMax}%` : `Negotiated %. Max for selected type: ${createTypeMax}%`)
                         : (language === 'bg' ? 'Изберете тип партньор първо' : 'Select a partner type first')}
                     </FieldHint>
                   </FormField>
@@ -2381,18 +2389,18 @@ const AdminPartnersPage: React.FC = () => {
 
                   <FormField>
                     <Label>{language === 'bg' ? 'Отстъпка (%)' : 'Discount Rate (%)'}</Label>
-                    <Select
+                    <Input
+                      type="number"
+                      min={0}
+                      max={editTypeMax}
+                      step={1}
                       value={editForm.discountRate}
                       onChange={e => setEditForm(prev => ({ ...prev, discountRate: e.target.value }))}
-                    >
-                      <option value="">{language === 'bg' ? 'Изберете отстъпка' : 'Select discount'}</option>
-                      {DISCOUNT_STEPS.filter(s => s <= editTypeMax).map(s => (
-                        <option key={s} value={String(s)}>{s}%</option>
-                      ))}
-                    </Select>
+                      placeholder={language === 'bg' ? 'напр. 12' : 'e.g. 12'}
+                    />
                     <FieldHint>
                       {editForm.partnerTypeId
-                        ? (language === 'bg' ? `Макс. за избрания тип: ${editTypeMax}%` : `Max for selected type: ${editTypeMax}%`)
+                        ? (language === 'bg' ? `Договорен %. Макс. за избрания тип: ${editTypeMax}%` : `Negotiated %. Max for selected type: ${editTypeMax}%`)
                         : (language === 'bg' ? 'Изберете тип партньор първо' : 'Select a partner type first')}
                     </FieldHint>
                   </FormField>

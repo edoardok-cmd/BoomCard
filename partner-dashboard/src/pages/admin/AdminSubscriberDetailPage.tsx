@@ -11,6 +11,7 @@ import {
   UserAccountStatus,
 } from '../../services/adminSubscribers.service';
 import { adminSubscriptionsService } from '../../services/adminSubscriptions.service';
+import { adminTransactionsService, type BusinessTransaction } from '../../services/adminTransactions.service';
 import { apiService } from '../../services/api.service';
 import { planLabel, subStatusLabel, userStatusLabel, riskLabel, riskBucket, type RiskBucket, type Lang } from '../../utils/planLabels';
 
@@ -29,7 +30,6 @@ const I18N = {
   saving:           { en: 'Saving…',                    bg: 'Запазва…' },
   suspendAcct:      { en: 'Suspend account',             bg: 'Спри акаунт' },
   activateAcct:     { en: 'Activate account',            bg: 'Активирай акаунт' },
-  revoking:         { en: 'Revoking…',                  bg: 'Отнема…' },
   forceLogout:      { en: 'Force logout',                bg: 'Принудителен изход' },
   deleteAcct:       { en: 'Delete account',              bg: 'Изтрий акаунт' },
   restoreAcct:      { en: 'Restore account',             bg: 'Възстанови акаунт' },
@@ -37,9 +37,20 @@ const I18N = {
   cancelSub:        { en: 'Cancel subscription',         bg: 'Откажи абонамент' },
   changePlan:       { en: 'Change plan',                 bg: 'Смени план' },
   refund:           { en: 'Refund',                      bg: 'Възстанови' },
-  // Confirm strings
-  confirmSuspend:   { en: 'Suspend account for {name}?', bg: 'Да спрем акаунта на {name}?' },
-  confirmRevoke:    { en: 'Revoke all sessions for {name}?', bg: 'Да отнемем всички сесии на {name}?' },
+  // Modal — suspend / activate
+  suspendTitle:     { en: 'Suspend account?',           bg: 'Спиране на акаунт?' },
+  suspendBody:      { en: '{name} will be suspended and will no longer be able to log in.', bg: '{name} ще бъде спрян и няма да може повече да влиза.' },
+  yesSuspend:       { en: 'Yes, suspend',               bg: 'Да, спри' },
+  suspending:       { en: 'Suspending…',                bg: 'Спиране…' },
+  activateTitle:    { en: 'Activate account?',          bg: 'Активиране на акаунт?' },
+  activateBody:     { en: "{name}'s account will be reactivated.", bg: 'Акаунтът на {name} ще бъде активиран.' },
+  yesActivate:      { en: 'Yes, activate',              bg: 'Да, активирай' },
+  activating:       { en: 'Activating…',                bg: 'Активиране…' },
+  // Modal — force logout
+  forceLogoutTitle: { en: 'Force logout?',              bg: 'Принудителен изход?' },
+  forceLogoutBody:  { en: 'All active sessions for {name} will be revoked. They will need to sign in again on every device.', bg: 'Всички активни сесии на {name} ще бъдат прекратени. Ще трябва да влезе отново от всяко устройство.' },
+  yesRevoke:        { en: 'Yes, revoke',                bg: 'Да, прекрати' },
+  revoking2:        { en: 'Revoking…',                  bg: 'Прекратяване…' },
   // Toasts
   acctSuspended:    { en: 'Account suspended',           bg: 'Акаунтът е спрян' },
   acctActivated:    { en: 'Account activated',           bg: 'Акаунтът е активиран' },
@@ -89,9 +100,10 @@ const I18N = {
   amountLabelCcy:   { en: 'Amount ({currency})',         bg: 'Сума ({currency})' },
   fullAmountPh:     { en: 'Full amount',                 bg: 'Цяла сума' },
   refundMaxHint:    { en: 'Max: {amount} {currency}',    bg: 'Макс: {amount} {currency}' },
-  refundNoStripeSub:{ en: 'No Stripe subscription — nothing to refund.', bg: 'Няма Stripe абонамент — няма какво да се възстанови.' },
-  refundNoPayment:  { en: 'No captured payment found.',  bg: 'Не е намерено осъществено плащане.' },
-  refundAlreadyDone:{ en: 'Already fully refunded.',     bg: 'Вече е напълно възстановено.' },
+  refundNoStripeSub:   { en: 'No Stripe subscription — nothing to refund.', bg: 'Няма Stripe абонамент — няма какво да се възстанови.' },
+  refundNoPaymentId:   { en: 'No payment on file for this subscription — nothing to refund.', bg: 'Няма регистрирано плащане за този абонамент — няма какво да се възстанови.' },
+  refundNoPayment:     { en: 'No captured payment found.', bg: 'Не е намерено осъществено плащане.' },
+  refundAlreadyDone:   { en: 'Already fully refunded.',    bg: 'Вече е напълно възстановено.' },
   amountTooHigh:    { en: 'Amount exceeds the refundable maximum', bg: 'Сумата надвишава максимума' },
   amountPositive:   { en: 'Amount must be a positive number', bg: 'Сумата трябва да е положителна' },
   reasonLabel:      { en: 'Reason',                      bg: 'Причина' },
@@ -151,6 +163,18 @@ const I18N = {
   loginFail:        { en: 'Failed',                      bg: 'Неуспешно' },
   noHistory:        { en: 'No login records',            bg: 'Няма записи за влизания' },
   historyShowMore:  { en: 'Show more',                   bg: 'Покажи още' },
+  colFailReason:    { en: 'Fail reason',                 bg: 'Причина за грешка' },
+  loginHistoryCount:{ en: '{n} records',                 bg: '{n} записа' },
+  // Transactions section (§4.3)
+  txTitle:          { en: 'Transactions',                 bg: 'Транзакции' },
+  txViewAll:        { en: 'View all transactions →',      bg: 'Виж всички транзакции →' },
+  noTx:             { en: 'No transactions found',        bg: 'Няма открити транзакции' },
+  colTxId:          { en: 'ID',                           bg: 'ID' },
+  colPartner:       { en: 'Partner / Location',           bg: 'Партньор / Локация' },
+  colCashback:      { en: 'Cashback',                     bg: 'Кешбек' },
+  colMargin:        { en: 'Margin',                       bg: 'Марджин' },
+  colRisk:          { en: 'Risk',                         bg: 'Риск' },
+  colDateTime:      { en: 'Date / Time',                  bg: 'Дата / Час' },
 } as const;
 
 type I18NKey = keyof typeof I18N;
@@ -590,16 +614,19 @@ export default function AdminSubscriberDetailPage() {
     new Date(iso).toLocaleString(locale, { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 
   /* ── Modal state ── */
-  const [showCancelSub, setShowCancelSub]     = useState(false);
-  const [showChangePlan, setShowChangePlan]   = useState(false);
-  const [newPlan, setNewPlan]                 = useState<SubscriptionPlan>('BASIC');
-  const [showDelete, setShowDelete]           = useState(false);
-  const [deleteReason, setDeleteReason]       = useState('');
-  const [showRestore, setShowRestore]         = useState(false);
-  const [showRefund, setShowRefund]           = useState(false);
-  const [refundAmount, setRefundAmount]       = useState('');
-  const [refundReason, setRefundReason]       = useState<RefundReason>('requested_by_customer');
-  const [loginHistoryLimit, setLoginHistoryLimit] = useState(10);
+  const [showCancelSub, setShowCancelSub]         = useState(false);
+  const [showChangePlan, setShowChangePlan]       = useState(false);
+  const [newPlan, setNewPlan]                     = useState<SubscriptionPlan>('BASIC');
+  const [showDelete, setShowDelete]               = useState(false);
+  const [deleteReason, setDeleteReason]           = useState('');
+  const [showRestore, setShowRestore]             = useState(false);
+  const [showRefund, setShowRefund]               = useState(false);
+  const [refundAmount, setRefundAmount]           = useState('');
+  const [refundReason, setRefundReason]           = useState<RefundReason>('requested_by_customer');
+  const [showSuspend, setShowSuspend]             = useState(false);
+  const [showActivate, setShowActivate]           = useState(false);
+  const [showForceLogout, setShowForceLogout]     = useState(false);
+  const [loginHistoryLimit, setLoginHistoryLimit] = useState(20);
 
   /* ── Data queries ── */
   const { data, isLoading, isError } = useQuery({
@@ -627,6 +654,13 @@ export default function AdminSubscriberDetailPage() {
     enabled: !!userId,
   });
 
+  // Fetch the latest business transactions for this subscriber (§4.3).
+  const { data: subscriberTx } = useQuery({
+    queryKey: ['subscriber-transactions', userId],
+    queryFn: () => adminTransactionsService.listBusiness({ userId: userId!, limit: 5, page: 1 }),
+    enabled: !!userId,
+  });
+
   // Fetch cashback entries for this subscriber via the dedicated endpoint.
   const { data: cashbackEntries } = useQuery({
     queryKey: ['subscriber-cashback-entries', userId],
@@ -646,6 +680,8 @@ export default function AdminSubscriberDetailPage() {
       adminSubscribersService.suspendSubscriber(userId!, status),
     onSuccess: (_, status) => {
       toast.success(T(status === 'SUSPENDED' ? 'acctSuspended' : 'acctActivated'));
+      setShowSuspend(false);
+      setShowActivate(false);
       queryClient.invalidateQueries({ queryKey: ['admin-subscriber-detail', userId] });
       queryClient.invalidateQueries({ queryKey: ['admin-subscribers'] });
     },
@@ -655,6 +691,7 @@ export default function AdminSubscriberDetailPage() {
   const forceLogoutMutation = useMutation({
     mutationFn: () => adminSubscribersService.forceLogout(userId!),
     onSuccess: (res) => {
+      setShowForceLogout(false);
       if (res.revokedCount === 0) {
         toast(T('revokedNone'), { icon: 'ℹ️' });
       } else {
@@ -867,6 +904,7 @@ export default function AdminSubscriberDetailPage() {
               <ModalBody style={{ color: palette.danger, marginTop: '-1rem' }}>
                 {T(
                   refundPreview.reason === 'no_stripe_subscription' ? 'refundNoStripeSub'
+                    : refundPreview.reason === 'no_payment_intent_id' ? 'refundNoPaymentId'
                     : refundPreview.reason === 'already_refunded' ? 'refundAlreadyDone'
                     : 'refundNoPayment',
                 )}
@@ -921,6 +959,66 @@ export default function AdminSubscriberDetailPage() {
                 disabled={refundMutation.isPending || refundPreview?.refundable === false}
               >
                 {refundMutation.isPending ? T('refunding') : T('refundCta')}
+              </Btn>
+            </ModalActions>
+          </Modal>
+        </Overlay>
+      )}
+
+      {/* ── Suspend account modal ── */}
+      {showSuspend && (
+        <Overlay onClick={() => !suspendMutation.isPending && setShowSuspend(false)}>
+          <Modal onClick={(e) => e.stopPropagation()}>
+            <ModalTitle>{T('suspendTitle')}</ModalTitle>
+            <ModalBody>{T('suspendBody', { name: fullName })}</ModalBody>
+            <ModalActions>
+              <Btn onClick={() => setShowSuspend(false)}>{T('cancelBtn')}</Btn>
+              <Btn
+                $variant="warning"
+                disabled={suspendMutation.isPending}
+                onClick={() => suspendMutation.mutate('SUSPENDED')}
+              >
+                {suspendMutation.isPending ? T('suspending') : T('yesSuspend')}
+              </Btn>
+            </ModalActions>
+          </Modal>
+        </Overlay>
+      )}
+
+      {/* ── Activate account modal ── */}
+      {showActivate && (
+        <Overlay onClick={() => !suspendMutation.isPending && setShowActivate(false)}>
+          <Modal onClick={(e) => e.stopPropagation()}>
+            <ModalTitle>{T('activateTitle')}</ModalTitle>
+            <ModalBody>{T('activateBody', { name: fullName })}</ModalBody>
+            <ModalActions>
+              <Btn onClick={() => setShowActivate(false)}>{T('cancelBtn')}</Btn>
+              <Btn
+                $variant="primary"
+                disabled={suspendMutation.isPending}
+                onClick={() => suspendMutation.mutate('ACTIVE')}
+              >
+                {suspendMutation.isPending ? T('activating') : T('yesActivate')}
+              </Btn>
+            </ModalActions>
+          </Modal>
+        </Overlay>
+      )}
+
+      {/* ── Force logout modal ── */}
+      {showForceLogout && (
+        <Overlay onClick={() => !forceLogoutMutation.isPending && setShowForceLogout(false)}>
+          <Modal onClick={(e) => e.stopPropagation()}>
+            <ModalTitle>{T('forceLogoutTitle')}</ModalTitle>
+            <ModalBody>{T('forceLogoutBody', { name: fullName })}</ModalBody>
+            <ModalActions>
+              <Btn onClick={() => setShowForceLogout(false)}>{T('cancelBtn')}</Btn>
+              <Btn
+                $variant="danger"
+                disabled={forceLogoutMutation.isPending}
+                onClick={() => forceLogoutMutation.mutate()}
+              >
+                {forceLogoutMutation.isPending ? T('revoking2') : T('yesRevoke')}
               </Btn>
             </ModalActions>
           </Modal>
@@ -990,30 +1088,16 @@ export default function AdminSubscriberDetailPage() {
                 )}
                 {/* Account status toggle — only for ACTIVE or SUSPENDED */}
                 {data.status === 'ACTIVE' ? (
-                  <Btn
-                    $variant="warning"
-                    disabled={suspendMutation.isPending}
-                    onClick={() => {
-                      if (window.confirm(T('confirmSuspend', { name: fullName })))
-                        suspendMutation.mutate('SUSPENDED');
-                    }}
-                  >
-                    {suspendMutation.isPending ? T('saving') : T('suspendAcct')}
+                  <Btn $variant="warning" disabled={suspendMutation.isPending} onClick={() => setShowSuspend(true)}>
+                    {T('suspendAcct')}
                   </Btn>
                 ) : data.status === 'SUSPENDED' ? (
-                  <Btn $variant="primary" disabled={suspendMutation.isPending} onClick={() => suspendMutation.mutate('ACTIVE')}>
-                    {suspendMutation.isPending ? T('saving') : T('activateAcct')}
+                  <Btn $variant="primary" disabled={suspendMutation.isPending} onClick={() => setShowActivate(true)}>
+                    {T('activateAcct')}
                   </Btn>
                 ) : null}
-                <Btn
-                  $variant="ghost"
-                  disabled={forceLogoutMutation.isPending}
-                  onClick={() => {
-                    if (window.confirm(T('confirmRevoke', { name: fullName })))
-                      forceLogoutMutation.mutate();
-                  }}
-                >
-                  {forceLogoutMutation.isPending ? T('revoking') : T('forceLogout')}
+                <Btn $variant="ghost" disabled={forceLogoutMutation.isPending} onClick={() => setShowForceLogout(true)}>
+                  {T('forceLogout')}
                 </Btn>
                 <Btn $variant="danger" onClick={() => setShowDelete(true)}>
                   {T('deleteAcct')}
@@ -1051,9 +1135,8 @@ export default function AdminSubscriberDetailPage() {
             </WalletItem>
             <WalletItem>
               <WalletLabel>{T('walletTotal')}</WalletLabel>
-              {/* balance = cleared total (available + locked); add pending for full picture */}
               <WalletValue>
-                {(data.wallet.balance + data.wallet.pendingBalance).toFixed(2)}<WalletUnit>BGN</WalletUnit>
+                {(Math.max(data.wallet.balance, data.wallet.availableBalance) + data.wallet.pendingBalance).toFixed(2)}<WalletUnit>BGN</WalletUnit>
               </WalletValue>
             </WalletItem>
           </WalletGrid>
@@ -1086,6 +1169,84 @@ export default function AdminSubscriberDetailPage() {
           </WalletGrid>
         ) : (
           <EmptyState>{T('payNone')}</EmptyState>
+        )}
+      </SectionCard>
+
+      {/* ── Transactions (§4.3) ── */}
+      <SectionCard>
+        <SectionTitle>{T('txTitle')}</SectionTitle>
+        {!subscriberTx ? (
+          <EmptyState>…</EmptyState>
+        ) : subscriberTx.transactions.length === 0 ? (
+          <EmptyState>{T('noTx')}</EmptyState>
+        ) : (
+          <>
+            <SubTable>
+              <thead>
+                <tr>
+                  <Th>{T('colTxId')}</Th>
+                  <Th>{T('colPartner')}</Th>
+                  <Th style={{ textAlign: 'right' }}>{T('colAmount')}</Th>
+                  <Th style={{ textAlign: 'right' }}>{T('colCashback')}</Th>
+                  <Th style={{ textAlign: 'right' }}>{T('colMargin')}</Th>
+                  <Th style={{ textAlign: 'center' }}>{T('colRisk')}</Th>
+                  <Th>{T('colDateTime')}</Th>
+                </tr>
+              </thead>
+              <tbody>
+                {subscriberTx.transactions.map((tx: BusinessTransaction) => (
+                  <tr key={tx.id}>
+                    <Td style={{ fontFamily: 'monospace', fontSize: '0.8125rem' }}>
+                      {tx.id.slice(0, 8)}…
+                    </Td>
+                    <Td>
+                      {tx.partner ? (
+                        <>
+                          <div style={{ fontWeight: 600, fontSize: '0.875rem', color: palette.text }}>{tx.partner.businessName}</div>
+                          {tx.venue && <div style={{ fontSize: '0.75rem', color: palette.textSubtle }}>{tx.venue.name}</div>}
+                        </>
+                      ) : '—'}
+                    </Td>
+                    <Td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600, color: palette.text }}>
+                      {tx.amount.toFixed(2)} {tx.currency}
+                    </Td>
+                    <Td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: tx.cashbackAmount ? palette.success : palette.textSubtle }}>
+                      {tx.cashbackAmount != null ? `${tx.cashbackAmount.toFixed(2)} ${tx.currency}` : '—'}
+                    </Td>
+                    <Td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: palette.textMuted }}>
+                      {tx.margin != null ? `${tx.margin.toFixed(2)} ${tx.currency}` : '—'}
+                    </Td>
+                    <Td style={{ textAlign: 'center' }}>
+                      <span style={{
+                        display: 'inline-flex',
+                        fontSize: '0.7rem',
+                        fontWeight: 700,
+                        borderRadius: '9999px',
+                        padding: '0.15rem 0.5rem',
+                        background: tx.riskScore <= 30 ? palette.successSoft : tx.riskScore <= 60 ? palette.warningSoft : palette.dangerSoft,
+                        color: tx.riskScore <= 30 ? palette.success : tx.riskScore <= 60 ? palette.warning : palette.danger,
+                      }}>
+                        {tx.riskScore}
+                      </span>
+                    </Td>
+                    <Td style={{ fontSize: '0.8125rem', whiteSpace: 'nowrap' }}>
+                      {fmtDateTime(tx.createdAt)}
+                    </Td>
+                  </tr>
+                ))}
+              </tbody>
+            </SubTable>
+            {subscriberTx.total > 5 && (
+              <div style={{ marginTop: '1rem' }}>
+                <Link
+                  to={`/admin/subscribers/transactions?search=${encodeURIComponent(data.email)}`}
+                  style={{ color: palette.accent, fontWeight: 600, fontSize: '0.9rem' }}
+                >
+                  {T('txViewAll')}
+                </Link>
+              </div>
+            )}
+          </>
         )}
       </SectionCard>
 
@@ -1201,7 +1362,7 @@ export default function AdminSubscriberDetailPage() {
       <SectionCard>
         <SectionTitle>{T('loginHistoryTitle')}</SectionTitle>
         <SectionSubtitle>
-          {loginHistory ? `${loginHistory.total} records` : ''}
+          {loginHistory ? T('loginHistoryCount', { n: loginHistory.total }) : ''}
         </SectionSubtitle>
         {!loginHistory || loginHistory.history.length === 0 ? (
           <EmptyState>{T('noHistory')}</EmptyState>
@@ -1234,6 +1395,11 @@ export default function AdminSubscriberDetailPage() {
                       }}>
                         {entry.success ? T('loginSuccess') : T('loginFail')}
                       </span>
+                      {!entry.success && entry.failReason && (
+                        <span style={{ display: 'block', fontSize: '0.7rem', color: palette.textSubtle, marginTop: '0.2rem', fontStyle: 'italic' }}>
+                          {entry.failReason}
+                        </span>
+                      )}
                     </Td>
                     <Td style={{ fontFamily: 'monospace', fontSize: '0.8125rem' }}>{entry.ip ?? '—'}</Td>
                     <Td style={{ fontSize: '0.8125rem', maxWidth: '14rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>

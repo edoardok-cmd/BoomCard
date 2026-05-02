@@ -1102,6 +1102,8 @@ const PartnersPage: React.FC = () => {
     businessSubcategory: '',
     taxId: '',
     website: '',
+    city: '',
+    address: '',
     acceptTerms: false,
     confirmBusiness: false,
   });
@@ -1322,6 +1324,8 @@ const PartnersPage: React.FC = () => {
           businessSubcategory: formData.businessSubcategory || undefined,
           taxId: formData.taxId || undefined,
           website: formData.website || undefined,
+          city: formData.city || undefined,
+          address: formData.address || undefined,
         },
       });
 
@@ -1855,6 +1859,38 @@ const PartnersPage: React.FC = () => {
                       value={formData.website}
                       onChange={handleChange}
                       placeholder={t('partnerRegistration.websitePlaceholder')}
+                      disabled={isLoading}
+                    />
+                  </FormGroup>
+                </FormRow>
+
+                <FormRow>
+                  <FormGroup>
+                    <Label htmlFor="city">
+                      {language === 'bg' ? 'Град' : 'City'}
+                    </Label>
+                    <Input
+                      id="city"
+                      type="text"
+                      name="city"
+                      value={formData.city}
+                      onChange={handleChange}
+                      placeholder={language === 'bg' ? 'напр. София' : 'e.g. Sofia'}
+                      disabled={isLoading}
+                    />
+                  </FormGroup>
+
+                  <FormGroup>
+                    <Label htmlFor="address">
+                      {language === 'bg' ? 'Адрес' : 'Address'}
+                    </Label>
+                    <Input
+                      id="address"
+                      type="text"
+                      name="address"
+                      value={formData.address}
+                      onChange={handleChange}
+                      placeholder={language === 'bg' ? 'напр. бул. Витоша 1' : 'e.g. Vitosha Blvd 1'}
                       disabled={isLoading}
                     />
                   </FormGroup>

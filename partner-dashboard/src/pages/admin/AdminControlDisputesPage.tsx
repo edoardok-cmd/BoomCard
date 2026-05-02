@@ -457,22 +457,33 @@ function DisputeDetailPanel({
                   </SectionCard>
 
                   {dc.status !== 'CLOSED' && !['APPROVED', 'REJECTED', 'EXPIRED'].includes(dc.receipt.status) && (
-                    <BtnRow style={{ marginTop: '.75rem' }}>
-                      <Btn
-                        $variant="danger"
-                        disabled={receiptApproveMutation.isPending || receiptRejectMutation.isPending}
-                        onClick={() => setConfirmReceiptAction('reject')}
-                      >
-                        Откажи бележката
-                      </Btn>
-                      <Btn
-                        $variant="primary"
-                        disabled={receiptApproveMutation.isPending || receiptRejectMutation.isPending}
-                        onClick={() => setConfirmReceiptAction('approve')}
-                      >
-                        Одобри бележката
-                      </Btn>
-                    </BtnRow>
+                    <>
+                      {dc.status === 'RESOLVED' && (
+                        <div style={{
+                          marginTop: '.75rem', padding: '.625rem .875rem',
+                          background: P.warnSoft, border: `1px solid ${P.warn}40`,
+                          borderRadius: '.5rem', fontSize: '.8125rem', color: P.warn, fontWeight: 600,
+                        }}>
+                          ⚠ Спорът е маркиран като решен, но бележката е все още в статус „{RECEIPT_STATUS_BG[dc.receipt.status] ?? dc.receipt.status}". Одобрете или откажете бележката, за да завършите случая.
+                        </div>
+                      )}
+                      <BtnRow style={{ marginTop: '.75rem' }}>
+                        <Btn
+                          $variant="danger"
+                          disabled={receiptApproveMutation.isPending || receiptRejectMutation.isPending}
+                          onClick={() => setConfirmReceiptAction('reject')}
+                        >
+                          Откажи бележката
+                        </Btn>
+                        <Btn
+                          $variant="primary"
+                          disabled={receiptApproveMutation.isPending || receiptRejectMutation.isPending}
+                          onClick={() => setConfirmReceiptAction('approve')}
+                        >
+                          Одобри бележката
+                        </Btn>
+                      </BtnRow>
+                    </>
                   )}
 
                   {/* Receipt action confirm modal */}
@@ -578,13 +589,16 @@ function DisputeDetailPanel({
                       }}
                     >
                       <option value="">— Без отговорник —</option>
-                      {adminUsers.map(u => (
-                        <option key={u.id} value={u.id}>
-                          {(u.firstName || u.lastName)
-                            ? `${u.firstName ?? ''} ${u.lastName ?? ''}`.trim()
-                            : u.email}
-                        </option>
-                      ))}
+                      {adminUsers.map(u => {
+                        const name = (u.firstName || u.lastName)
+                          ? `${u.firstName ?? ''} ${u.lastName ?? ''}`.trim()
+                          : null;
+                        return (
+                          <option key={u.id} value={u.id}>
+                            {name ? `${name} (${u.email})` : u.email}
+                          </option>
+                        );
+                      })}
                     </AssigneeSelect>
                     <SmallBtn
                       onClick={handleReassign}
@@ -1034,13 +1048,16 @@ export default function AdminControlDisputesPage() {
             onChange={e => { setAssignedTo(e.target.value); setPage(1); }}
           >
             <option value="">Всички отговорници</option>
-            {adminUsers.map(u => (
-              <option key={u.id} value={u.id}>
-                {(u.firstName || u.lastName)
-                  ? `${u.firstName ?? ''} ${u.lastName ?? ''}`.trim()
-                  : u.email}
-              </option>
-            ))}
+            {adminUsers.map(u => {
+              const name = (u.firstName || u.lastName)
+                ? `${u.firstName ?? ''} ${u.lastName ?? ''}`.trim()
+                : null;
+              return (
+                <option key={u.id} value={u.id}>
+                  {name ? `${name} (${u.email})` : u.email}
+                </option>
+              );
+            })}
           </Select>
         </FilterRow>
 

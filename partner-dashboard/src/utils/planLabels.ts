@@ -64,7 +64,7 @@ export const SUB_STATUS_LABELS: Record<SubscriptionStatus, Record<Lang, string>>
   EXPIRED:            { en: 'Expired',            bg: 'Изтекъл' },
   INCOMPLETE:         { en: 'Incomplete',         bg: 'Незавършен' },
   INCOMPLETE_EXPIRED: { en: 'Incomplete expired', bg: 'Незавършен (изтекъл)' },
-  PAUSED:             { en: 'Paused',             bg: 'На пауза' },
+  PAUSED:             { en: 'Paused',             bg: 'Спрян' },
 };
 
 export function subStatusLabel(status: SubscriptionStatus | string, lang: Lang): string {

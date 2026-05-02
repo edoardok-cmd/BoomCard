@@ -11,6 +11,7 @@ import {
   PendingPartner,
 } from '../../services/adminPartnerRequests.service';
 import { getCategoryName } from '../../types/categories.types';
+import PartnerRequestDrawer from '../../components/admin/PartnerRequestDrawer';
 
 const LEGACY_CATEGORY_MAP: Record<string, string> = {
   'RESTAURANTS_FOOD': 'restaurants', 'ACCOMMODATION': 'accommodation',
@@ -224,6 +225,7 @@ export default function AdminPartnerPipelinePage() {
   const [search, setSearch] = useState('');
   const [rejectTarget, setRejectTarget] = useState<PendingPartner | null>(null);
   const [rejectReason, setRejectReason] = useState('');
+  const [drawerPartnerId, setDrawerPartnerId] = useState<string | null>(null);
 
   const navigate = useNavigate();
 
@@ -496,10 +498,20 @@ export default function AdminPartnerPipelinePage() {
               rowActions={buildRowActions(stage.next)}
               loading={isStageLoading}
               emptyMessage={language === 'bg' ? 'Няма партньори в тази фаза' : 'No partners in this stage'}
+              onRowClick={(row) => setDrawerPartnerId(row.id)}
             />
           </Card>
         );
       })}
+
+      {/* Request detail drawer — row click opens same drawer as §5.1 */}
+      <PartnerRequestDrawer
+        partnerId={drawerPartnerId}
+        onClose={() => setDrawerPartnerId(null)}
+        canWrite={!!canWrite}
+        onApproved={() => { setDrawerPartnerId(null); queryClient.invalidateQueries({ queryKey: ['pipeline'] }); }}
+        onRejected={() => { setDrawerPartnerId(null); queryClient.invalidateQueries({ queryKey: ['pipeline'] }); }}
+      />
 
       {/* Reject modal */}
       {rejectTarget && (

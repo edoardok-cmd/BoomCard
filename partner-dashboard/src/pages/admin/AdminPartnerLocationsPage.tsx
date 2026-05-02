@@ -852,7 +852,11 @@ export default function AdminPartnerLocationsPage() {
                     </DrawerRow>
                     <DrawerRow>
                       <DrawerLabel>{language === 'bg' ? 'Макс. скана/ден' : 'Max scans/day'}</DrawerLabel>
-                      <DrawerValue>{drawerVenue.stickerConfig.maxScansPerDay}</DrawerValue>
+                      <DrawerValue>
+                        {drawerVenue.stickerConfig.maxScansPerDay >= 999999
+                          ? (language === 'bg' ? 'Неограничен' : 'Unlimited')
+                          : drawerVenue.stickerConfig.maxScansPerDay}
+                      </DrawerValue>
                     </DrawerRow>
                   </>
                 )}
