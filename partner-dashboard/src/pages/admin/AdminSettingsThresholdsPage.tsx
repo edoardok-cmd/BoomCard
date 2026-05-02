@@ -321,7 +321,7 @@ export default function AdminSettingsThresholdsPage() {
             </DialogBody>
             <DialogActions>
               <CancelBtn onClick={() => setPendingSave(false)}>Откажи</CancelBtn>
-              <ConfirmBtn onClick={doSave}>Запази въпреки това</ConfirmBtn>
+              <ConfirmBtn onClick={doSave} disabled={saveMutation.isPending}>Запази въпреки това</ConfirmBtn>
             </DialogActions>
           </DialogBox>
         </OverlayBackdrop>

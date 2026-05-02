@@ -342,7 +342,7 @@ export class AuthService {
       return { alreadyVerified: true };
     }
     if (user.emailVerificationExpiry && user.emailVerificationExpiry < new Date()) {
-      throw new AppError('Verification link has expired. Please contact support@boomcard.bg', 400);
+      throw new AppError('Verification link has expired. Please contact office@boomcard.bg', 400);
     }
 
     await prisma.user.update({
@@ -864,8 +864,8 @@ export class AuthService {
     const hasWalletFunds = walletBalance > 0 || cashbackBalance > 0;
 
     const walletNotice = hasWalletFunds
-      ? `<p><strong>Wallet funds:</strong> You have a remaining balance of ${(walletBalance / 100).toFixed(2)} EUR (top-up) and ${(cashbackBalance / 100).toFixed(2)} EUR (cashback). Top-up funds can be refunded within 30 days by contacting <a href="mailto:support@boomcard.bg">support@boomcard.bg</a>. Cashback balances are non-refundable per our Terms.</p>
-         <p><strong>Средства в портфейла:</strong> Имате остатъчен баланс от ${(walletBalance / 100).toFixed(2)} EUR (депозит) и ${(cashbackBalance / 100).toFixed(2)} EUR (кешбек). Депозитните средства могат да бъдат възстановени в рамките на 30 дни, като се свържете с <a href="mailto:support@boomcard.bg">support@boomcard.bg</a>. Кешбек балансите не подлежат на възстановяване съгласно Общите условия.</p>`
+      ? `<p><strong>Wallet funds:</strong> You have a remaining balance of ${(walletBalance / 100).toFixed(2)} EUR (top-up) and ${(cashbackBalance / 100).toFixed(2)} EUR (cashback). Top-up funds can be refunded within 30 days by contacting <a href="mailto:office@boomcard.bg">office@boomcard.bg</a>. Cashback balances are non-refundable per our Terms.</p>
+         <p><strong>Средства в портфейла:</strong> Имате остатъчен баланс от ${(walletBalance / 100).toFixed(2)} EUR (депозит) и ${(cashbackBalance / 100).toFixed(2)} EUR (кешбек). Депозитните средства могат да бъдат възстановени в рамките на 30 дни, като се свържете с <a href="mailto:office@boomcard.bg">office@boomcard.bg</a>. Кешбек балансите не подлежат на възстановяване съгласно Общите условия.</p>`
       : '';
 
     // Send confirmation email to original address
@@ -877,7 +877,7 @@ export class AuthService {
           <p>Your BoomCard account has been successfully deleted. Your personal data will be fully removed within 30 days.</p>
           <p>Вашият BoomCard акаунт беше успешно изтрит. Личните ви данни ще бъдат напълно премахнати в рамките на 30 дни.</p>
           ${walletNotice}
-          <p>If you did not request this, contact us immediately at <a href="mailto:support@boomcard.bg">support@boomcard.bg</a></p>
+          <p>If you did not request this, contact us immediately at <a href="mailto:office@boomcard.bg">office@boomcard.bg</a></p>
         `,
       });
     } catch {
@@ -891,7 +891,7 @@ export class AuthService {
     };
 
     if (hasWalletFunds) {
-      response.walletNotice = `You have remaining wallet funds (${(walletBalance / 100).toFixed(2)} EUR top-up, ${(cashbackBalance / 100).toFixed(2)} EUR cashback). Contact support@boomcard.bg within 30 days to request a refund for top-up funds.`;
+      response.walletNotice = `You have remaining wallet funds (${(walletBalance / 100).toFixed(2)} EUR top-up, ${(cashbackBalance / 100).toFixed(2)} EUR cashback). Contact office@boomcard.bg within 30 days to request a refund for top-up funds.`;
     }
 
     return response;

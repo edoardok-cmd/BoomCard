@@ -1,7 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import styled from 'styled-components';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-hot-toast';
+import { useAuth } from '../../contexts/AuthContext';
 import { DataTable, ColumnDef } from '../../components/admin/DataTable/DataTable';
 import TicketDrawer from '../../components/admin/TicketDrawer';
 import {
@@ -100,7 +102,17 @@ function displayName(u: TicketUser | null | undefined): string {
 }
 
 export default function AdminHelpAllPage() {
+  const { user } = useAuth();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
+
+  const isSuperAdmin = (user as any)?.rawRole === 'SUPER_ADMIN';
+
+  useEffect(() => {
+    if (user && !isSuperAdmin) {
+      navigate('/admin/help/mine', { replace: true });
+    }
+  }, [user, isSuperAdmin, navigate]);
 
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
@@ -239,6 +251,7 @@ export default function AdminHelpAllPage() {
           columns={columns}
           data={data?.tickets ?? []}
           rowKey={(row) => row.id}
+          onRowClick={(row) => setSelectedId(row.id)}
           loading={isLoading}
           emptyMessage="Няма намерени заявки"
           page={page}

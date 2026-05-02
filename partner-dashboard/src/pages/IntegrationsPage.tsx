@@ -899,7 +899,7 @@ const IntegrationsPage: React.FC = () => {
                       <Button
                         variant="primary"
                         size="large"
-                        onClick={() => window.open('mailto:support@boomcard.bg', '_blank')}
+                        onClick={() => window.open('mailto:office@boomcard.bg', '_blank')}
                       >
                         {content.contactUs}
                       </Button>

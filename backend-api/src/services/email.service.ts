@@ -597,7 +597,7 @@ export class EmailService {
               </table>
 
               <p style="margin: 30px 0 0; color: #999999; font-size: 14px; line-height: 1.6;">
-                ${S.questions} <a href="mailto:support@boomcard.bg" style="color: #667eea; text-decoration: none;">support@boomcard.bg</a>
+                ${S.questions} <a href="mailto:office@boomcard.bg" style="color: #667eea; text-decoration: none;">office@boomcard.bg</a>
               </p>
             </td>
           </tr>
@@ -882,7 +882,7 @@ export class EmailService {
               </table>
 
               <p style="margin: 30px 0 0; color: #999999; font-size: 14px; line-height: 1.6; text-align: center;">
-                ${needHelp} <a href="mailto:support@boomcard.bg" style="color: #667eea; text-decoration: none;">support@boomcard.bg</a>
+                ${needHelp} <a href="mailto:office@boomcard.bg" style="color: #667eea; text-decoration: none;">office@boomcard.bg</a>
               </p>
             </td>
           </tr>
@@ -1041,7 +1041,7 @@ export class EmailService {
 
               <p style="margin: 30px 0 0; color: #999999; font-size: 14px; line-height: 1.6; text-align: center;">
                 ${isBg ? 'Въпроси? Свържете се с нас на' : 'Questions? Contact us at'}
-                <a href="mailto:support@boomcard.bg" style="color: #667eea; text-decoration: none;">support@boomcard.bg</a>
+                <a href="mailto:office@boomcard.bg" style="color: #667eea; text-decoration: none;">office@boomcard.bg</a>
               </p>
             </td>
           </tr>
@@ -1089,7 +1089,7 @@ ${sectionHeader}
 
 ${S.viewWallet}: https://boomcard.bg/wallet
 
-${S.questions} support@boomcard.bg
+${S.questions} office@boomcard.bg
 
 ${S.copyright.replace('{year}', String(year))}
     `.trim();
@@ -1153,8 +1153,8 @@ ${S.copyright.replace('{year}', String(year))}
       ? '📸 Сканирайте бележки - Просто снимайте бележката си и спечелете незабавен кешбек\n💳 Дигитален портфейл - Следете спестяванията си и използвайте баланса си в партньорски обекти\n🎁 Ексклузивни оферти - Получавайте персонализирани оферти от любимите си места'
       : '📸 Scan Receipts - Simply snap a photo of your receipt and earn instant cashback\n💳 Digital Wallet - Track your savings and use your balance at partner venues\n🎁 Exclusive Offers - Get personalized deals from your favorite places';
     const needHelp = language === 'bg'
-      ? 'Нужна помощ? Свържете се с нас на support@boomcard.bg'
-      : "Need help? We're here for you at support@boomcard.bg";
+      ? 'Нужна помощ? Свържете се с нас на office@boomcard.bg'
+      : "Need help? We're here for you at office@boomcard.bg";
     return `
 ${S.welcome} 🎉
 
@@ -1205,7 +1205,7 @@ ${content[data.reminderType].bg}
 
 Завършете плащането: ${data.paymentUrl}
 
-Въпроси? Свържете се с нас на support@boomcard.bg
+Въпроси? Свържете се с нас на office@boomcard.bg
 
 © ${new Date().getFullYear()} BoomCard. Всички права запазени.
       `.trim();
@@ -1223,7 +1223,7 @@ SUBSCRIPTION DETAILS:
 
 Complete your payment: ${data.paymentUrl}
 
-Questions? Contact us at support@boomcard.bg
+Questions? Contact us at office@boomcard.bg
 
 © ${new Date().getFullYear()} BoomCard. All rights reserved.
     `.trim();
@@ -1300,7 +1300,7 @@ ${isBg
 
 ${isBg ? 'Управление на абонамента' : 'Manage your subscription'}: ${data.manageUrl}
 
-${isBg ? 'Въпроси? Свържете се с нас на' : 'Questions? Contact us at'} support@boomcard.bg`;
+${isBg ? 'Въпроси? Свържете се с нас на' : 'Questions? Contact us at'} office@boomcard.bg`;
 
     return this.sendEmail({ to: email, subject, html, text });
   }
@@ -1353,7 +1353,7 @@ ${isBg ? 'Въпроси? Свържете се с нас на' : 'Questions? Co
             </tr>
           </table>
           ${data.walletUrl ? `<div style="text-align:center;margin-bottom:30px;"><a href="${data.walletUrl}" style="display:inline-block;background:#22c55e;color:#fff;text-decoration:none;padding:14px 32px;border-radius:6px;font-size:16px;font-weight:bold;">${viewWalletLabel}</a></div>` : ''}
-          <p style="color:#999;font-size:13px;margin:0;">${S.questions} <a href="mailto:support@boomcard.bg" style="color:#667eea;">support@boomcard.bg</a></p>
+          <p style="color:#999;font-size:13px;margin:0;">${S.questions} <a href="mailto:office@boomcard.bg" style="color:#667eea;">office@boomcard.bg</a></p>
         </td></tr>
         <tr><td style="background:#f8f9fa;padding:20px;text-align:center;border-radius:0 0 8px 8px;">
           <p style="margin:0;color:#999;font-size:12px;">${S.copyright.replace('{year}', String(year))}</p>
@@ -1363,7 +1363,7 @@ ${isBg ? 'Въпроси? Свържете се с нас на' : 'Questions? Co
   </table>
 </body>
 </html>`;
-    const text = `${hi} ${data.customerName},\n\n${S.receiptApprovedBody.replace('{merchant}', data.merchantName)}\n\n${receiptAmountLabel} ${data.amount.toFixed(2)} BGN\n${cashbackEarnedLabel} +${data.cashbackAmount.toFixed(2)} BGN\n\n${S.cashbackCredited}\n\n${S.questions} support@boomcard.bg`;
+    const text = `${hi} ${data.customerName},\n\n${S.receiptApprovedBody.replace('{merchant}', data.merchantName)}\n\n${receiptAmountLabel} ${data.amount.toFixed(2)} BGN\n${cashbackEarnedLabel} +${data.cashbackAmount.toFixed(2)} BGN\n\n${S.cashbackCredited}\n\n${S.questions} office@boomcard.bg`;
     return this.sendEmail({
       to: email,
       subject,
@@ -1423,7 +1423,7 @@ ${isBg ? 'Въпроси? Свържете се с нас на' : 'Questions? Co
           </table>
           <p style="color:#666;font-size:14px;line-height:1.6;">${mistakeNote}</p>
           ${data.supportUrl ? `<div style="text-align:center;margin-bottom:30px;"><a href="${data.supportUrl}" style="display:inline-block;background:#ef4444;color:#fff;text-decoration:none;padding:14px 32px;border-radius:6px;font-size:16px;font-weight:bold;">${S.contactSupport}</a></div>` : ''}
-          <p style="color:#999;font-size:13px;margin:0;">${S.questions} <a href="mailto:support@boomcard.bg" style="color:#667eea;">support@boomcard.bg</a></p>
+          <p style="color:#999;font-size:13px;margin:0;">${S.questions} <a href="mailto:office@boomcard.bg" style="color:#667eea;">office@boomcard.bg</a></p>
         </td></tr>
         <tr><td style="background:#f8f9fa;padding:20px;text-align:center;border-radius:0 0 8px 8px;">
           <p style="margin:0;color:#999;font-size:12px;">${S.copyright.replace('{year}', String(year))}</p>
@@ -1433,7 +1433,7 @@ ${isBg ? 'Въпроси? Свържете се с нас на' : 'Questions? Co
   </table>
 </body>
 </html>`;
-    const text = `${hi} ${data.customerName},\n\n${S.receiptRejectedBody.replace('{merchant}', data.merchantName)}\n\n${amountLabel} ${data.amount.toFixed(2)} BGN\n${S.reason} ${data.reason}\n\n${mistakeNote}\n${S.questions} support@boomcard.bg`;
+    const text = `${hi} ${data.customerName},\n\n${S.receiptRejectedBody.replace('{merchant}', data.merchantName)}\n\n${amountLabel} ${data.amount.toFixed(2)} BGN\n${S.reason} ${data.reason}\n\n${mistakeNote}\n${S.questions} office@boomcard.bg`;
     return this.sendEmail({
       to: email,
       subject,
@@ -1492,7 +1492,7 @@ ${isBg ? 'Въпроси? Свържете се с нас на' : 'Questions? Co
             </tr>
           </table>
           ${data.retryUrl ? `<div style="text-align:center;margin-bottom:30px;"><a href="${data.retryUrl}" style="display:inline-block;background:#667eea;color:#fff;text-decoration:none;padding:14px 32px;border-radius:6px;font-size:16px;font-weight:bold;">${retryLabel}</a></div>` : ''}
-          <p style="color:#999;font-size:13px;margin:0;">${S.questions} <a href="mailto:support@boomcard.bg" style="color:#667eea;">support@boomcard.bg</a></p>
+          <p style="color:#999;font-size:13px;margin:0;">${S.questions} <a href="mailto:office@boomcard.bg" style="color:#667eea;">office@boomcard.bg</a></p>
         </td></tr>
         <tr><td style="background:#f8f9fa;padding:20px;text-align:center;border-radius:0 0 8px 8px;">
           <p style="margin:0;color:#999;font-size:12px;">${S.copyright.replace('{year}', String(year))}</p>
@@ -1502,7 +1502,7 @@ ${isBg ? 'Въпроси? Свържете се с нас на' : 'Questions? Co
   </table>
 </body>
 </html>`;
-    const text = `${hi} ${data.customerName},\n\n${body}\n\n${S.orderId} ${data.orderId}\n${amountLabel} ${data.amount.toFixed(2)} ${data.currency}\n\n${data.retryUrl ? `${retryLabel}: ${data.retryUrl}\n\n` : ''}${S.questions} support@boomcard.bg`;
+    const text = `${hi} ${data.customerName},\n\n${body}\n\n${S.orderId} ${data.orderId}\n${amountLabel} ${data.amount.toFixed(2)} ${data.currency}\n\n${data.retryUrl ? `${retryLabel}: ${data.retryUrl}\n\n` : ''}${S.questions} office@boomcard.bg`;
     return this.sendEmail({
       to: email,
       subject: `BoomCard – ${title}`,
@@ -1564,7 +1564,7 @@ ${isBg ? 'Въпроси? Свържете се с нас на' : 'Questions? Co
             </tr>` : ''}
           </table>
           ${data.dashboardUrl ? `<div style="text-align:center;margin-bottom:30px;"><a href="${data.dashboardUrl}" style="display:inline-block;background:#667eea;color:#fff;text-decoration:none;padding:14px 32px;border-radius:6px;font-size:16px;font-weight:bold;">${S.viewDashboard}</a></div>` : ''}
-          <p style="color:#999;font-size:13px;margin:0;">${S.questions} <a href="mailto:support@boomcard.bg" style="color:#667eea;">support@boomcard.bg</a></p>
+          <p style="color:#999;font-size:13px;margin:0;">${S.questions} <a href="mailto:office@boomcard.bg" style="color:#667eea;">office@boomcard.bg</a></p>
         </td></tr>
         <tr><td style="background:#f8f9fa;padding:20px;text-align:center;border-radius:0 0 8px 8px;">
           <p style="margin:0;color:#999;font-size:12px;">${S.copyright.replace('{year}', String(year))}</p>
@@ -1574,7 +1574,7 @@ ${isBg ? 'Въпроси? Свържете се с нас на' : 'Questions? Co
   </table>
 </body>
 </html>`;
-    const text = `${hi} ${data.customerName},\n\n${S.subActivated}\n\n${planLabel} ${data.planName}\n${S.orderId} ${data.orderId}\n${S.amountPaid} ${data.amount.toFixed(2)} ${data.currency}${data.nextBillingDate ? `\n${nextBillingLabel} ${data.nextBillingDate.toLocaleDateString(language === 'bg' ? 'bg-BG' : 'en-GB')}` : ''}\n\n${S.questions} support@boomcard.bg`;
+    const text = `${hi} ${data.customerName},\n\n${S.subActivated}\n\n${planLabel} ${data.planName}\n${S.orderId} ${data.orderId}\n${S.amountPaid} ${data.amount.toFixed(2)} ${data.currency}${data.nextBillingDate ? `\n${nextBillingLabel} ${data.nextBillingDate.toLocaleDateString(language === 'bg' ? 'bg-BG' : 'en-GB')}` : ''}\n\n${S.questions} office@boomcard.bg`;
     return this.sendEmail({
       to: email,
       subject,
@@ -1619,7 +1619,7 @@ ${isBg ? 'Въпроси? Свържете се с нас на' : 'Questions? Co
           <div style="text-align:center;margin-bottom:30px;">
             <a href="${data.renewUrl}" style="display:inline-block;background:#667eea;color:#fff;text-decoration:none;padding:14px 32px;border-radius:6px;font-size:16px;font-weight:bold;">${renewLabel}</a>
           </div>
-          <p style="color:#999;font-size:13px;margin:0;">${questionsLine} <a href="mailto:support@boomcard.bg" style="color:#667eea;">support@boomcard.bg</a></p>
+          <p style="color:#999;font-size:13px;margin:0;">${questionsLine} <a href="mailto:office@boomcard.bg" style="color:#667eea;">office@boomcard.bg</a></p>
         </td></tr>
         <tr><td style="background:#f8f9fa;padding:20px;text-align:center;border-radius:0 0 8px 8px;">
           <p style="margin:0;color:#999;font-size:12px;">${copyright}</p>
@@ -1629,7 +1629,7 @@ ${isBg ? 'Въпроси? Свържете се с нас на' : 'Questions? Co
   </table>
 </body>
 </html>`;
-    const text = `${hi} ${data.customerName},\n\n${title}\n\n${body.replace(/<[^>]+>/g, '')}\n\n${renewLabel}: ${data.renewUrl}\n\n${questionsLine} support@boomcard.bg`;
+    const text = `${hi} ${data.customerName},\n\n${title}\n\n${body.replace(/<[^>]+>/g, '')}\n\n${renewLabel}: ${data.renewUrl}\n\n${questionsLine} office@boomcard.bg`;
     return this.sendEmail({
       to: email,
       subject: `BoomCard – ${title}`,
@@ -1749,7 +1749,7 @@ ${isBg ? 'Въпроси? Свържете се с нас на' : 'Questions? Co
               </tr>
             </tfoot>
           </table>
-          <p style="color:#999;font-size:13px;margin:0;">Questions? Contact us at <a href="mailto:support@boomcard.bg" style="color:#667eea;">support@boomcard.bg</a></p>
+          <p style="color:#999;font-size:13px;margin:0;">Questions? Contact us at <a href="mailto:office@boomcard.bg" style="color:#667eea;">office@boomcard.bg</a></p>
         </td></tr>
         <tr><td style="background:#f8f9fa;padding:20px;text-align:center;border-radius:0 0 8px 8px;">
           <p style="margin:0;color:#999;font-size:12px;">&copy; ${new Date().getFullYear()} BoomCard. All rights reserved.</p>
@@ -1759,7 +1759,7 @@ ${isBg ? 'Въпроси? Свържете се с нас на' : 'Questions? Co
   </table>
 </body>
 </html>`;
-    const text = `Hi ${data.customerName},\n\nYour receipt export (${data.receipts.length} receipts):\n\n${data.receipts.map(r => `${r.merchantName} | ${r.date} | ${Number(r.amount).toFixed(2)} BGN | Cashback: +${Number(r.cashbackAmount).toFixed(2)} BGN | ${r.status}`).join('\n')}\n\nTotal Cashback: +${data.totalCashback.toFixed(2)} BGN\n\nQuestions? Contact support@boomcard.bg`;
+    const text = `Hi ${data.customerName},\n\nYour receipt export (${data.receipts.length} receipts):\n\n${data.receipts.map(r => `${r.merchantName} | ${r.date} | ${Number(r.amount).toFixed(2)} BGN | Cashback: +${Number(r.cashbackAmount).toFixed(2)} BGN | ${r.status}`).join('\n')}\n\nTotal Cashback: +${data.totalCashback.toFixed(2)} BGN\n\nQuestions? Contact office@boomcard.bg`;
     return this.sendEmail({
       to: email,
       subject: `Your BoomCard Receipt Export – ${data.receipts.length} receipt${data.receipts.length !== 1 ? 's' : ''}`,
@@ -1793,7 +1793,7 @@ ${isBg ? 'Въпроси? Свържете се с нас на' : 'Questions? Co
             <tr><td><strong>Amount Owed:</strong></td><td style="text-align:right;color:#dc2626;font-size:20px;font-weight:bold;">${data.amount.toFixed(2)} BGN</td></tr>
           </table>
           <p style="color:#555;">Please arrange payment at your earliest convenience. If you have already made this payment, please disregard this email.</p>
-          <p style="color:#555;">For questions, contact us at <a href="mailto:support@boomcard.bg">support@boomcard.bg</a>.</p>
+          <p style="color:#555;">For questions, contact us at <a href="mailto:office@boomcard.bg">office@boomcard.bg</a>.</p>
         </td></tr>
         <tr><td style="background:#f8f9fa;padding:20px;text-align:center;">
           <p style="margin:0;color:#999;font-size:12px;">&copy; ${new Date().getFullYear()} BoomCard. All rights reserved.</p>
@@ -1803,7 +1803,7 @@ ${isBg ? 'Въпроси? Свържете се с нас на' : 'Questions? Co
   </table>
 </body>
 </html>`;
-    const text = `Dear ${data.partnerName},\n\nYour cashback payment for ${data.month} of ${data.amount.toFixed(2)} BGN is outstanding.\n\nPlease contact support@boomcard.bg for questions.`;
+    const text = `Dear ${data.partnerName},\n\nYour cashback payment for ${data.month} of ${data.amount.toFixed(2)} BGN is outstanding.\n\nPlease contact office@boomcard.bg for questions.`;
     return this.sendEmail({ to: email, subject, html, text });
   }
 
@@ -1839,7 +1839,7 @@ ${isBg ? 'Въпроси? Свържете се с нас на' : 'Questions? Co
             </tr>
           </table>
           <div style="text-align:center;margin-bottom:30px;"><a href="${dashboardLink}" style="display:inline-block;background:#22c55e;color:#fff;text-decoration:none;padding:14px 32px;border-radius:6px;font-size:16px;font-weight:bold;">View Partner Dashboard</a></div>
-          <p style="color:#999;font-size:13px;margin:0;">Questions? Contact us at <a href="mailto:support@boomcard.bg" style="color:#667eea;">support@boomcard.bg</a></p>
+          <p style="color:#999;font-size:13px;margin:0;">Questions? Contact us at <a href="mailto:office@boomcard.bg" style="color:#667eea;">office@boomcard.bg</a></p>
         </td></tr>
         <tr><td style="background:#f8f9fa;padding:20px;text-align:center;border-radius:0 0 8px 8px;">
           <p style="margin:0;color:#999;font-size:12px;">&copy; ${new Date().getFullYear()} BoomCard. All rights reserved.</p>
@@ -1849,7 +1849,7 @@ ${isBg ? 'Въпроси? Свържете се с нас на' : 'Questions? Co
   </table>
 </body>
 </html>`;
-    const text = `Hi ${data.partnerName},\n\nYour menu for ${data.venueName} has been approved and is now live for BoomCard users.\n\nMenu URL: ${data.menuUrl}\n\nView your dashboard: ${dashboardLink}\n\nQuestions? Contact support@boomcard.bg`;
+    const text = `Hi ${data.partnerName},\n\nYour menu for ${data.venueName} has been approved and is now live for BoomCard users.\n\nMenu URL: ${data.menuUrl}\n\nView your dashboard: ${dashboardLink}\n\nQuestions? Contact office@boomcard.bg`;
     return this.sendEmail({
       to: email,
       subject: `Menu Approved – ${data.venueName} is now live`,
@@ -1895,7 +1895,7 @@ ${isBg ? 'Въпроси? Свържете се с нас на' : 'Questions? Co
           </table>
           <p style="color:#666;font-size:14px;line-height:1.6;">You can update your submission and resubmit from your partner dashboard.</p>
           <div style="text-align:center;margin-bottom:30px;"><a href="${dashboardLink}" style="display:inline-block;background:#ef4444;color:#fff;text-decoration:none;padding:14px 32px;border-radius:6px;font-size:16px;font-weight:bold;">Resubmit Menu</a></div>
-          <p style="color:#999;font-size:13px;margin:0;">Questions? Contact us at <a href="mailto:support@boomcard.bg" style="color:#667eea;">support@boomcard.bg</a></p>
+          <p style="color:#999;font-size:13px;margin:0;">Questions? Contact us at <a href="mailto:office@boomcard.bg" style="color:#667eea;">office@boomcard.bg</a></p>
         </td></tr>
         <tr><td style="background:#f8f9fa;padding:20px;text-align:center;border-radius:0 0 8px 8px;">
           <p style="margin:0;color:#999;font-size:12px;">&copy; ${new Date().getFullYear()} BoomCard. All rights reserved.</p>
@@ -1905,7 +1905,7 @@ ${isBg ? 'Въпроси? Свържете се с нас на' : 'Questions? Co
   </table>
 </body>
 </html>`;
-    const text = `Hi ${data.partnerName},\n\nYour menu for ${data.venueName} was not approved.\n\nSubmitted URL: ${data.rejectedUrl}\nReason: ${data.reason}\n\nYou can resubmit from your partner dashboard: ${dashboardLink}\n\nQuestions? Contact support@boomcard.bg`;
+    const text = `Hi ${data.partnerName},\n\nYour menu for ${data.venueName} was not approved.\n\nSubmitted URL: ${data.rejectedUrl}\nReason: ${data.reason}\n\nYou can resubmit from your partner dashboard: ${dashboardLink}\n\nQuestions? Contact office@boomcard.bg`;
     return this.sendEmail({
       to: email,
       subject: `Menu Update – ${data.venueName}`,
@@ -1937,7 +1937,7 @@ ${isBg ? 'Въпроси? Свържете се с нас на' : 'Questions? Co
           <p style="margin:0 0 30px;color:#666;font-size:16px;line-height:1.6;">
             Once approved, you'll receive another email with instructions to log in to your partner dashboard and start managing your discounts and offers.
           </p>
-          <p style="color:#999;font-size:13px;margin:0;">Questions? Reach us at <a href="mailto:support@boomcard.bg" style="color:#f5a623;">support@boomcard.bg</a></p>
+          <p style="color:#999;font-size:13px;margin:0;">Questions? Reach us at <a href="mailto:office@boomcard.bg" style="color:#f5a623;">office@boomcard.bg</a></p>
         </td></tr>
         <tr><td style="background:#f8f9fa;padding:20px;text-align:center;border-radius:0 0 8px 8px;">
           <p style="margin:0;color:#999;font-size:12px;">&copy; ${new Date().getFullYear()} BoomCard. All rights reserved.</p>
@@ -1947,7 +1947,7 @@ ${isBg ? 'Въпроси? Свържете се с нас на' : 'Questions? Co
   </table>
 </body>
 </html>`;
-    const text = `Hi ${data.firstName},\n\nThank you for applying to join the BOOM Card partner network. We've received your application for ${data.businessName} and our team will review it shortly.\n\nOnce approved, you'll receive another email with login instructions.\n\nQuestions? Contact support@boomcard.bg`;
+    const text = `Hi ${data.firstName},\n\nThank you for applying to join the BOOM Card partner network. We've received your application for ${data.businessName} and our team will review it shortly.\n\nOnce approved, you'll receive another email with login instructions.\n\nQuestions? Contact office@boomcard.bg`;
     return this.sendEmail({
       to: email,
       subject: 'We received your BoomCard partner application',
@@ -1985,7 +1985,7 @@ ${isBg ? 'Въпроси? Свържете се с нас на' : 'Questions? Co
           <p style="margin:0 0 20px;color:#666;font-size:14px;line-height:1.6;">
             Once your email is confirmed, our team will review your application and get back to you within 24 hours.
           </p>
-          <p style="color:#999;font-size:12px;margin:0;">If you did not apply for a BOOM Card partner account, you can safely ignore this email.<br>Questions? <a href="mailto:support@boomcard.bg" style="color:#f5a623;">support@boomcard.bg</a></p>
+          <p style="color:#999;font-size:12px;margin:0;">If you did not apply for a BOOM Card partner account, you can safely ignore this email.<br>Questions? <a href="mailto:office@boomcard.bg" style="color:#f5a623;">office@boomcard.bg</a></p>
         </td></tr>
         <tr><td style="background:#f8f9fa;padding:20px;text-align:center;border-radius:0 0 8px 8px;">
           <p style="margin:0;color:#999;font-size:12px;">&copy; ${new Date().getFullYear()} BoomCard. All rights reserved.</p>
@@ -1995,7 +1995,7 @@ ${isBg ? 'Въпроси? Свържете се с нас на' : 'Questions? Co
   </table>
 </body>
 </html>`;
-    const text = `Hi ${data.firstName},\n\nThank you for applying to the BOOM Card partner network with ${data.businessName}.\n\nPlease verify your email address by visiting:\n${data.verificationUrl}\n\nThis link expires in 24 hours.\n\nOnce confirmed, our team will review your application.\n\nQuestions? Contact support@boomcard.bg`;
+    const text = `Hi ${data.firstName},\n\nThank you for applying to the BOOM Card partner network with ${data.businessName}.\n\nPlease verify your email address by visiting:\n${data.verificationUrl}\n\nThis link expires in 24 hours.\n\nOnce confirmed, our team will review your application.\n\nQuestions? Contact office@boomcard.bg`;
     return this.sendEmail({
       to: email,
       subject: 'Verify your email – BOOM Card partner application',
@@ -2093,7 +2093,7 @@ ${isBg ? 'Въпроси? Свържете се с нас на' : 'Questions? Co
           <div style="text-align:center;margin-bottom:30px;">
             <a href="${loginUrl}" style="display:inline-block;background:#22c55e;color:#fff;text-decoration:none;padding:14px 32px;border-radius:6px;font-size:16px;font-weight:bold;">Log In to Dashboard</a>
           </div>
-          <p style="color:#999;font-size:13px;margin:0;">Questions? Reach us at <a href="mailto:support@boomcard.bg" style="color:#22c55e;">support@boomcard.bg</a></p>
+          <p style="color:#999;font-size:13px;margin:0;">Questions? Reach us at <a href="mailto:office@boomcard.bg" style="color:#22c55e;">office@boomcard.bg</a></p>
         </td></tr>
         <tr><td style="background:#f8f9fa;padding:20px;text-align:center;border-radius:0 0 8px 8px;">
           <p style="margin:0;color:#999;font-size:12px;">&copy; ${new Date().getFullYear()} BoomCard. All rights reserved.</p>
@@ -2103,7 +2103,7 @@ ${isBg ? 'Въпроси? Свържете се с нас на' : 'Questions? Co
   </table>
 </body>
 </html>`;
-    const text = `Hi ${data.firstName},\n\nGreat news! Your BoomCard partner application for ${data.businessName} has been approved.\n\nLog in to your partner dashboard: ${loginUrl}\n\nQuestions? Contact support@boomcard.bg`;
+    const text = `Hi ${data.firstName},\n\nGreat news! Your BoomCard partner application for ${data.businessName} has been approved.\n\nLog in to your partner dashboard: ${loginUrl}\n\nQuestions? Contact office@boomcard.bg`;
     return this.sendEmail({
       to: email,
       subject: `Your BoomCard partner application is approved – ${data.businessName}`,
@@ -2192,7 +2192,7 @@ ${isBg ? 'Въпроси? Свържете се с нас на' : 'Questions? Co
             <a href="${data.completeProfileUrl}" style="display:inline-block;background:#667eea;color:#fff;text-decoration:none;padding:16px 40px;border-radius:6px;font-size:16px;font-weight:bold;">${btnLabel}</a>
           </div>
           <p style="color:#999;font-size:13px;margin:0 0 8px;">${expiry}</p>
-          <p style="color:#999;font-size:13px;margin:0;">${questions} <a href="mailto:support@boomcard.bg" style="color:#667eea;">support@boomcard.bg</a></p>
+          <p style="color:#999;font-size:13px;margin:0;">${questions} <a href="mailto:office@boomcard.bg" style="color:#667eea;">office@boomcard.bg</a></p>
         </td></tr>
         <tr><td style="background:#f8f9fa;padding:20px;text-align:center;border-radius:0 0 8px 8px;">
           <p style="margin:0;color:#999;font-size:12px;">&copy; ${new Date().getFullYear()} BoomCard. All rights reserved.</p>
@@ -2203,8 +2203,8 @@ ${isBg ? 'Въпроси? Свържете се с нас на' : 'Questions? Co
 </body>
 </html>`;
     const text = isBg
-      ? `Завършете настройката на акаунта си за план ${planName} (връзката е валидна 30 мин):\n${data.completeProfileUrl}\n\nВъпроси? support@boomcard.bg`
-      : `Complete your ${planName} account setup (link expires in 30 min):\n${data.completeProfileUrl}\n\nQuestions? support@boomcard.bg`;
+      ? `Завършете настройката на акаунта си за план ${planName} (връзката е валидна 30 мин):\n${data.completeProfileUrl}\n\nВъпроси? office@boomcard.bg`
+      : `Complete your ${planName} account setup (link expires in 30 min):\n${data.completeProfileUrl}\n\nQuestions? office@boomcard.bg`;
     return this.sendEmail({ to: email, subject, html, text });
   }
 
@@ -2242,7 +2242,7 @@ ${isBg ? 'Въпроси? Свържете се с нас на' : 'Questions? Co
           <div style="text-align:center;margin:24px 0;">
             <a href="${data.manageUrl}" style="display:inline-block;background:#667eea;color:#fff;text-decoration:none;padding:12px 28px;border-radius:6px;font-size:15px;font-weight:bold;">${isBg ? 'Управление на абонамента' : 'Manage Subscription'}</a>
           </div>
-          <p style="color:#999;font-size:13px;margin:0;">${S.questions} <a href="mailto:support@boomcard.bg" style="color:#667eea;">support@boomcard.bg</a></p>
+          <p style="color:#999;font-size:13px;margin:0;">${S.questions} <a href="mailto:office@boomcard.bg" style="color:#667eea;">office@boomcard.bg</a></p>
         </td></tr>
         <tr><td style="background:#f8f9fa;padding:20px;text-align:center;border-radius:0 0 8px 8px;">
           <p style="margin:0;color:#999;font-size:12px;">&copy; ${new Date().getFullYear()} BoomCard. All rights reserved.</p>
@@ -2253,7 +2253,7 @@ ${isBg ? 'Въпроси? Свържете се с нас на' : 'Questions? Co
 </body>
 </html>`;
 
-    const text = `${hi} ${data.customerName},\n\n${accessLine}\n\n${data.accessUntil ? (isBg ? 'Ако промените решението си, можете да се абонирате отново по всяко време.' : 'If you change your mind, you can subscribe again at any time.') + '\n\n' : ''}${isBg ? 'Управление на абонамента' : 'Manage subscription'}: ${data.manageUrl}\n\n${S.questions} support@boomcard.bg`;
+    const text = `${hi} ${data.customerName},\n\n${accessLine}\n\n${data.accessUntil ? (isBg ? 'Ако промените решението си, можете да се абонирате отново по всяко време.' : 'If you change your mind, you can subscribe again at any time.') + '\n\n' : ''}${isBg ? 'Управление на абонамента' : 'Manage subscription'}: ${data.manageUrl}\n\n${S.questions} office@boomcard.bg`;
 
     return this.sendEmail({ to: email, subject, html, text });
   }
@@ -2293,7 +2293,7 @@ ${isBg ? 'Въпроси? Свържете се с нас на' : 'Questions? Co
               <td align="right" style="color:#333;font-size:14px;padding:6px 0;border-top:1px solid #dee2e6;">${isBg ? '3–5 работни дни' : '3–5 business days'}</td>
             </tr>
           </table>
-          <p style="color:#999;font-size:13px;margin:0;">${S.questions} <a href="mailto:support@boomcard.bg" style="color:#667eea;">support@boomcard.bg</a></p>
+          <p style="color:#999;font-size:13px;margin:0;">${S.questions} <a href="mailto:office@boomcard.bg" style="color:#667eea;">office@boomcard.bg</a></p>
         </td></tr>
         <tr><td style="background:#f8f9fa;padding:20px;text-align:center;border-radius:0 0 8px 8px;">
           <p style="margin:0;color:#999;font-size:12px;">&copy; ${new Date().getFullYear()} BoomCard. All rights reserved.</p>
@@ -2304,7 +2304,7 @@ ${isBg ? 'Въпроси? Свържете се с нас на' : 'Questions? Co
 </body>
 </html>`;
 
-    const text = `${hi} ${data.customerName},\n\n${body}\n\n${isBg ? 'Сума' : 'Amount'}: ${data.amount.toFixed(2)} ${data.currency}\n${isBg ? 'Очакван срок' : 'Expected timeline'}: ${isBg ? '3–5 работни дни' : '3–5 business days'}\n\n${S.questions} support@boomcard.bg`;
+    const text = `${hi} ${data.customerName},\n\n${body}\n\n${isBg ? 'Сума' : 'Amount'}: ${data.amount.toFixed(2)} ${data.currency}\n${isBg ? 'Очакван срок' : 'Expected timeline'}: ${isBg ? '3–5 работни дни' : '3–5 business days'}\n\n${S.questions} office@boomcard.bg`;
 
     return this.sendEmail({ to: email, subject, html, text });
   }

@@ -236,8 +236,11 @@ router.post('/:id/assign', requirePermission('help.write'), async (req: AuthRequ
     if (!hasFullAccess(req) && ticket.userId !== req.user!.id && ticket.assigneeId !== req.user!.id) {
       return res.status(403).json({ error: 'Access denied' });
     }
-    if (!hasFullAccess(req) && ticket.userId === req.user!.id) {
+    if (ticket.userId === req.user!.id) {
       return res.status(400).json({ error: 'Cannot assign yourself as the handler for your own ticket' });
+    }
+    if (ticket.assigneeId === req.user!.id) {
+      return res.json({ ok: true });
     }
 
     await prisma.helpTicket.update({
@@ -263,6 +266,9 @@ router.patch('/:id', requirePermission('help.write'), async (req: AuthRequest, r
     if (!ticket) return res.status(404).json({ error: 'Ticket not found' });
     if (!hasFullAccess(req) && ticket.userId !== req.user!.id && ticket.assigneeId !== req.user!.id) {
       return res.status(403).json({ error: 'Access denied' });
+    }
+    if (ticket.status === 'CLOSED' && !hasFullAccess(req)) {
+      return res.status(400).json({ error: 'Cannot modify a closed ticket' });
     }
 
     // Creators who are not also the assignee may only mark their own ticket as RESOLVED;

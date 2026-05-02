@@ -49,7 +49,7 @@ const ContactsPage: React.FC = () => {
           <ContactTitle>{language === 'bg' ? 'Имейл' : 'Email'}</ContactTitle>
           <ContactInfo>
             info@boomcard.bg<br />
-            support@boomcard.bg
+            office@boomcard.bg
           </ContactInfo>
         </ContactCard>
 

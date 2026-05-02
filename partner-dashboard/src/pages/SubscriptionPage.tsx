@@ -537,7 +537,7 @@ export default function SubscriptionPage() {
                   </GraceDesc>
                   <div style={{ display: 'flex', gap: '0.625rem', flexWrap: 'wrap' }}>
                     {isPaysera ? (
-                      <a href="mailto:support@boomcard.bg">
+                      <a href="mailto:office@boomcard.bg">
                         <Button variant="primary" size="small">
                           <CreditCard size={14} style={{ marginRight: 6 }} />
                           {t('subscriptionPage.gracePeriodPayseraCta')}

@@ -349,7 +349,7 @@ const VerifyEmailPage: React.FC = () => {
             </ButtonGroup>
             <HelpText>
               {t.needHelp}{' '}
-              <a href="mailto:support@boomcard.bg">{t.contactSupport}</a>
+              <a href="mailto:office@boomcard.bg">{t.contactSupport}</a>
             </HelpText>
           </>
         );

@@ -208,7 +208,7 @@ const TermsPage: React.FC = () => {
 
               <h2>10. Прекратяване</h2>
               <ul>
-                <li><strong>От Потребителя:</strong> Можете да изтриете акаунта си по всяко време от настройките на профила или чрез заявка до support@boomcard.bg.</li>
+                <li><strong>От Потребителя:</strong> Можете да изтриете акаунта си по всяко време от настройките на профила или чрез заявка до office@boomcard.bg.</li>
                 <li><strong>От BoomCard:</strong> BoomCard може да спре или прекрати акаунта ви при нарушение на тези условия, подозрение за измама, неактивност над 12 месеца или по искане на компетентен орган.</li>
                 <li><strong>Последици:</strong> При прекратяване губите достъп до Платформата. Средствата от заредения портфейл (без кешбек) могат да бъдат изтеглени в рамките на 30 дни. Кешбек средствата не подлежат на възстановяване.</li>
               </ul>
@@ -233,7 +233,7 @@ const TermsPage: React.FC = () => {
               <h2>Контакти</h2>
               <p>
                 За въпроси относно тези Общи условия:<br />
-                <strong>Имейл:</strong> <a href="mailto:support@boomcard.bg">support@boomcard.bg</a><br />
+                <strong>Имейл:</strong> <a href="mailto:office@boomcard.bg">office@boomcard.bg</a><br />
                 <strong>Уебсайт:</strong> <a href="https://boomcard.bg">boomcard.bg</a>
               </p>
             </>
@@ -361,7 +361,7 @@ const TermsPage: React.FC = () => {
 
               <h2>10. Termination</h2>
               <ul>
-                <li><strong>By User:</strong> You may delete your account at any time from profile settings or by contacting support@boomcard.bg.</li>
+                <li><strong>By User:</strong> You may delete your account at any time from profile settings or by contacting office@boomcard.bg.</li>
                 <li><strong>By BoomCard:</strong> BoomCard may suspend or terminate your account for violation of these terms, suspected fraud, inactivity exceeding 12 months, or upon request from a competent authority.</li>
                 <li><strong>Consequences:</strong> Upon termination, you lose access to the Platform. Loaded wallet funds (excluding cashback) may be withdrawn within 30 days. Cashback funds are non-refundable.</li>
               </ul>
@@ -386,7 +386,7 @@ const TermsPage: React.FC = () => {
               <h2>Contact</h2>
               <p>
                 For questions about these Terms & Conditions:<br />
-                <strong>Email:</strong> <a href="mailto:support@boomcard.bg">support@boomcard.bg</a><br />
+                <strong>Email:</strong> <a href="mailto:office@boomcard.bg">office@boomcard.bg</a><br />
                 <strong>Website:</strong> <a href="https://boomcard.bg">boomcard.bg</a>
               </p>
             </>

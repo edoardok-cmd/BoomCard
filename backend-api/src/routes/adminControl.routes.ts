@@ -79,11 +79,11 @@ router.get(
 
     if (actorId) where.actorUserId = actorId;
     if (fromParam) {
-      const d = new Date(fromParam);
+      const d = new Date(fromParam + 'T00:00:00+02:00');
       if (!isNaN(d.getTime())) where.createdAt = { ...((where.createdAt as object) ?? {}), gte: d };
     }
     if (toParam) {
-      const d = new Date(toParam + 'T23:59:59.999Z');
+      const d = new Date(toParam + 'T23:59:59.999+02:00');
       if (!isNaN(d.getTime())) where.createdAt = { ...((where.createdAt as object) ?? {}), lte: d };
     }
 

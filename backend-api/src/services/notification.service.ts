@@ -2,6 +2,7 @@ import { prisma } from '../lib/prisma';
 import { emailService } from './email.service';
 import { emitNotification } from '../lib/socket';
 import { sendWebPushToUser } from '../lib/webPush';
+import { sendExpoPushToUser } from '../lib/expoPush';
 import { logger } from '../utils/logger';
 
 type NotificationSeverity = 'info' | 'warning' | 'critical';
@@ -1295,13 +1296,12 @@ class NotificationService {
   }
 
   /**
-   * Send push notification. Currently delivers via Web Push (VAPID) to any
-   * active browser subscriptions the user has registered.
+   * Send push notification to all active channels for a user:
+   *   1. Web Push (VAPID) for browser subscriptions
+   *   2. Expo Push (FCM/APNs) for iOS/Android native tokens
    *
-   * Native/Expo tokens (platform='ios'|'android') are tracked in the same
-   * PushToken table but need an FCM/APNS integration to actually deliver —
-   * that remains a TODO. Failures here never throw: push is a best-effort
-   * side channel on top of the in-app notification that already got written.
+   * Failures never throw — push is a best-effort side channel on top of the
+   * in-app notification record that has already been written to the DB.
    */
   private async sendPushNotification(params: {
     userId: string;
@@ -1309,16 +1309,20 @@ class NotificationService {
     body: string;
     data?: Record<string, any>;
   }): Promise<void> {
-    try {
-      await sendWebPushToUser(params.userId, {
+    await Promise.allSettled([
+      sendWebPushToUser(params.userId, {
         title: params.title,
         body: params.body,
         data: params.data,
         url: typeof params.data?.url === 'string' ? params.data.url : undefined,
-      });
-    } catch (err) {
-      console.error('[notification.service] sendWebPushToUser failed', err);
-    }
+      }).catch((err) => console.error('[notification.service] sendWebPushToUser failed', err)),
+
+      sendExpoPushToUser(params.userId, {
+        title: params.title,
+        body: params.body,
+        data: params.data as Record<string, unknown> | undefined,
+      }).catch((err) => console.error('[notification.service] sendExpoPushToUser failed', err)),
+    ]);
   }
 
   /**

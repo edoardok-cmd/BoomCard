@@ -253,7 +253,10 @@ export class NotificationService {
         return null;
       }
 
-      const tokenData = await Notifications.getExpoPushTokenAsync();
+      const projectId =
+        Constants.expoConfig?.extra?.eas?.projectId ??
+        '77543a0c-e238-4616-9fc4-22dcc565080b';
+      const tokenData = await Notifications.getExpoPushTokenAsync({ projectId });
       this.pushToken = tokenData.data;
 
       if (!this.pushToken) return null;

@@ -527,6 +527,7 @@ export default function AdminAdminsAllPage() {
               label: 'Спри',
               danger: true as const,
               hidden: (row: AdminUser) => row.status !== 'ACTIVE',
+              disabled: () => statusMutation.isPending,
               onClick: (row: AdminUser) => {
                 if (!window.confirm(`Да се спре администратор ${row.email}?`)) return;
                 statusMutation.mutate({ id: row.id, status: 'SUSPENDED' });
@@ -535,7 +536,9 @@ export default function AdminAdminsAllPage() {
             {
               label: 'Активирай',
               hidden: (row: AdminUser) => row.status !== 'SUSPENDED',
+              disabled: () => statusMutation.isPending,
               onClick: (row: AdminUser) => {
+                if (!window.confirm(`Да се активира администратор ${row.email}?`)) return;
                 statusMutation.mutate({ id: row.id, status: 'ACTIVE' });
               },
             },

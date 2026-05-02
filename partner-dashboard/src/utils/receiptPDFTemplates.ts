@@ -728,7 +728,7 @@ function generateProfessionalTemplate(receipt: Receipt, options: TemplateRenderO
     <div class="footer">
       <p><strong>${options.companyName}</strong></p>
       <p style="margin-top: 10px;">This is a digitally generated receipt and is valid without signature.</p>
-      <p style="margin-top: 5px;">For inquiries, please contact support@boomcard.bg</p>
+      <p style="margin-top: 5px;">For inquiries, please contact office@boomcard.bg</p>
     </div>
   </div>
 </body>

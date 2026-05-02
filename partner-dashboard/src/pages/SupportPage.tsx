@@ -88,8 +88,8 @@ const SupportPage: React.FC = () => {
           <CardTitle>{language === 'bg' ? 'Имейл Поддръжка' : 'Email Support'}</CardTitle>
           <CardText>
             {language === 'bg'
-              ? 'Изпратете ни имейл на support@boomcard.bg и ние ще отговорим в рамките на 24 часа.'
-              : 'Send us an email at support@boomcard.bg and we\'ll respond within 24 hours.'}
+              ? 'Изпратете ни имейл на office@boomcard.bg и ние ще отговорим в рамките на 24 часа.'
+              : 'Send us an email at office@boomcard.bg and we\'ll respond within 24 hours.'}
           </CardText>
         </SupportCard>
 

@@ -243,6 +243,8 @@ function DisputeDetailPanel({
   const [pendingAssignee, setPendingAssignee] = useState<string>('');
   const [assigneeDirty, setAssigneeDirty] = useState(false);
   const [imgBroken, setImgBroken] = useState(false);
+  const [confirmReceiptAction, setConfirmReceiptAction] = useState<null | 'approve' | 'reject'>(null);
+  const [rejectReason, setRejectReason] = useState('');
 
   // Escape key dismissal
   const handleClose = useCallback(() => onClose(), [onClose]);
@@ -251,6 +253,16 @@ function DisputeDetailPanel({
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [handleClose]);
+
+  // Escape key dismissal for receipt confirm modal
+  useEffect(() => {
+    if (!confirmReceiptAction) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setConfirmReceiptAction(null); setRejectReason(''); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [confirmReceiptAction]);
 
   const { data, isLoading } = useQuery({
     queryKey: ['dispute-case', id],
@@ -314,8 +326,12 @@ function DisputeDetailPanel({
       }
       qc.invalidateQueries({ queryKey: ['dispute-case', id] });
       qc.invalidateQueries({ queryKey: ['dispute-cases'] });
+      setConfirmReceiptAction(null);
     },
-    onError: () => toast.error('Грешка при одобряване на бележката'),
+    onError: () => {
+      toast.error('Грешка при одобряване на бележката');
+      setConfirmReceiptAction(null);
+    },
   });
 
   const receiptRejectMutation = useMutation({
@@ -325,8 +341,14 @@ function DisputeDetailPanel({
       toast.success('Бележката е отхвърлена');
       qc.invalidateQueries({ queryKey: ['dispute-case', id] });
       qc.invalidateQueries({ queryKey: ['dispute-cases'] });
+      setConfirmReceiptAction(null);
+      setRejectReason('');
     },
-    onError: () => toast.error('Грешка при отхвърляне на бележката'),
+    onError: () => {
+      toast.error('Грешка при отхвърляне на бележката');
+      setConfirmReceiptAction(null);
+      setRejectReason('');
+    },
   });
 
   const fmt = (iso: string) =>
@@ -420,18 +442,77 @@ function DisputeDetailPanel({
                       <Btn
                         $variant="danger"
                         disabled={receiptApproveMutation.isPending || receiptRejectMutation.isPending}
-                        onClick={() => receiptRejectMutation.mutate({ receiptId: dc.receipt!.id })}
+                        onClick={() => setConfirmReceiptAction('reject')}
                       >
-                        {receiptRejectMutation.isPending ? 'Обработва се…' : 'Откажи бележката'}
+                        Откажи бележката
                       </Btn>
                       <Btn
                         $variant="primary"
                         disabled={receiptApproveMutation.isPending || receiptRejectMutation.isPending}
-                        onClick={() => receiptApproveMutation.mutate({ receiptId: dc.receipt!.id })}
+                        onClick={() => setConfirmReceiptAction('approve')}
                       >
-                        {receiptApproveMutation.isPending ? 'Обработва се…' : 'Одобри бележката'}
+                        Одобри бележката
                       </Btn>
                     </BtnRow>
+                  )}
+
+                  {/* Receipt action confirm modal */}
+                  {confirmReceiptAction && dc.receipt && (
+                    <ModalOverlay>
+                      <ModalCard>
+                        <ModalTitle>
+                          {confirmReceiptAction === 'approve' ? 'Одобри бележката' : 'Откажи бележката'}
+                        </ModalTitle>
+
+                        {confirmReceiptAction === 'approve' && (
+                          <p style={{ fontSize: '.875rem', color: P.muted, margin: '0 0 1.25rem' }}>
+                            Действието е необратимо.
+                          </p>
+                        )}
+
+                        {confirmReceiptAction === 'reject' && (
+                          <div style={{ marginBottom: '1.25rem' }}>
+                            <FieldLabel htmlFor="receipt-reject-reason">
+                              Причина (незадължително)
+                            </FieldLabel>
+                            <DecisionArea
+                              id="receipt-reject-reason"
+                              placeholder="Опишете причината за отказ…"
+                              value={rejectReason}
+                              onChange={e => setRejectReason(e.target.value)}
+                            />
+                          </div>
+                        )}
+
+                        <BtnRow>
+                          <Btn
+                            $variant="neutral"
+                            onClick={() => { setConfirmReceiptAction(null); setRejectReason(''); }}
+                            disabled={receiptApproveMutation.isPending || receiptRejectMutation.isPending}
+                          >
+                            Откажи
+                          </Btn>
+                          <Btn
+                            $variant={confirmReceiptAction === 'approve' ? 'primary' : 'danger'}
+                            disabled={receiptApproveMutation.isPending || receiptRejectMutation.isPending}
+                            onClick={() => {
+                              if (confirmReceiptAction === 'approve') {
+                                receiptApproveMutation.mutate({ receiptId: dc.receipt!.id });
+                              } else {
+                                receiptRejectMutation.mutate({
+                                  receiptId: dc.receipt!.id,
+                                  reason: rejectReason.trim() || undefined,
+                                });
+                              }
+                            }}
+                          >
+                            {(receiptApproveMutation.isPending || receiptRejectMutation.isPending)
+                              ? 'Обработва се…'
+                              : 'Потвърди'}
+                          </Btn>
+                        </BtnRow>
+                      </ModalCard>
+                    </ModalOverlay>
                   )}
 
                   {dc.receipt.imageUrl && !imgBroken && (

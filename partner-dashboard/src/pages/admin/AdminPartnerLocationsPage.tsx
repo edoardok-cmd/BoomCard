@@ -449,7 +449,7 @@ export default function AdminPartnerLocationsPage() {
           rowActions={[
             {
               label: t('admin.locationsApproveMenu'),
-              hidden: (row) => row.menuStatus !== 'PENDING',
+              hidden: (row) => row.menuStatus !== 'PENDING' || !row.pendingMenuUrl,
               onClick: (row) => {
                 if (!row.pendingMenuUrl) return;
                 approveMutation.mutate({ id: row.id, url: row.pendingMenuUrl });

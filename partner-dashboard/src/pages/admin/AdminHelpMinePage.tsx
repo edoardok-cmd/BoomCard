@@ -79,16 +79,18 @@ const CategoryBadge = styled.span<{ $cat: TicketCategory }>`
   color: ${({ $cat }) => CATEGORY_COLOR[$cat]?.text ?? palette.textMuted};
 `;
 
-const PriorityDot = styled.span<{ $priority: TicketPriority }>`
-  display: inline-block; width: 0.5rem; height: 0.5rem; border-radius: 9999px; margin-right: 0.375rem;
-  background: ${({ $priority }) => {
+
+const PriorityBadge = styled.span<{ $priority: TicketPriority }>`
+  display: inline-flex; align-items: center; font-size: 0.7rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.05em; border-radius: 0.375rem; padding: 0.125rem 0.5rem;
+  ${({ $priority }) => {
     switch ($priority) {
-      case 'URGENT': return palette.danger;
-      case 'HIGH':   return palette.warning;
-      case 'MEDIUM': return palette.info;
-      default:       return palette.textSubtle;
+      case 'URGENT': return `background: ${palette.dangerSoft}; color: ${palette.danger};`;
+      case 'HIGH':   return `background: ${palette.warningSoft}; color: ${palette.warning};`;
+      case 'MEDIUM': return `background: ${palette.infoSoft}; color: ${palette.info};`;
+      default:       return `background: ${palette.border}; color: ${palette.textMuted};`;
     }
-  }};
+  }}
 `;
 
 const EmptyLink = styled(Link)`
@@ -125,10 +127,12 @@ export default function AdminHelpMinePage() {
 
   const resolveMutation = useMutation({
     mutationFn: (id: string) => adminHelpService.update(id, { status: 'RESOLVED' }),
-    onSuccess: () => {
+    onSuccess: (_data, id) => {
       toast.success('Заявката е маркирана като решена');
       queryClient.invalidateQueries({ queryKey: ['admin-help-mine'] });
       queryClient.invalidateQueries({ queryKey: ['admin-help-all'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-help-ticket', id] });
+      queryClient.invalidateQueries({ queryKey: ['admin-help-replies', id] });
     },
     onError: () => toast.error('Грешка при обновяване'),
   });
@@ -142,10 +146,7 @@ export default function AdminHelpMinePage() {
       header: 'Заявка',
       render: (row) => (
         <span>
-          <PrimaryLine>
-            <PriorityDot $priority={row.priority} title={PRIORITY_BG_LABELS[row.priority]} />
-            {row.subject}
-          </PrimaryLine>
+          <PrimaryLine>{row.subject}</PrimaryLine>
           <MetaLine>Подадена {fmt(row.createdAt)}</MetaLine>
         </span>
       ),
@@ -156,6 +157,11 @@ export default function AdminHelpMinePage() {
       render: (row) => (
         <CategoryBadge $cat={row.category}>{CATEGORY_BG_LABELS[row.category]}</CategoryBadge>
       ),
+    },
+    {
+      key: 'priority',
+      header: 'Приоритет',
+      render: (row) => <PriorityBadge $priority={row.priority}>{PRIORITY_BG_LABELS[row.priority]}</PriorityBadge>,
     },
     {
       key: 'assignee',
@@ -217,6 +223,7 @@ export default function AdminHelpMinePage() {
           columns={columns}
           data={data?.tickets ?? []}
           rowKey={(row) => row.id}
+          onRowClick={(row) => setSelectedId(row.id)}
           loading={isLoading}
           emptyMessage={
             !search && !statusFilter

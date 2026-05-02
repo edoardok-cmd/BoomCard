@@ -196,6 +196,10 @@ export default function TicketDrawer({ ticketId, onClose }: Props) {
   const isClosed = ticket?.status === 'CLOSED';
   const busy = replyMutation.isPending;
   const isSuperAdmin = currentUser?.rawRole === 'SUPER_ADMIN';
+  // isCreator: true when the current user submitted this ticket, regardless of role.
+  // Used exclusively to hide the "Assign to me" button — the backend blocks self-assign
+  // for all roles (no SUPER_ADMIN carve-out).
+  const isCreator = !!ticket && ticket.user.id === currentUser?.id;
   // Creator-only: submitted the ticket but is not the current assignee (and not SUPER_ADMIN).
   // This mirrors the backend isCreatorOnly guard and determines which controls to restrict.
   const isCreatorOnly = !!ticket && !isSuperAdmin
@@ -234,7 +238,7 @@ export default function TicketDrawer({ ticketId, onClose }: Props) {
                     {ticket.assignee ? displayName(ticket.assignee) : (
                       <span style={{ color: palette.danger }}>{t.unassigned}</span>
                     )}
-                    {!ticket.assignee && !isCreatorOnly && (
+                    {!ticket.assignee && !isCreator && (
                       <AssignBtn
                         onClick={() => assignMutation.mutate()}
                         disabled={assignMutation.isPending}
@@ -344,9 +348,11 @@ export default function TicketDrawer({ ticketId, onClose }: Props) {
               />
               <ReplyFooter>
                 <ReplyHint>
-                  {replyBody.trim().length > 0 && replyBody.trim().length < 10
-                    ? (language === 'bg' ? `Минимум 10 символа (${replyBody.trim().length}/10)` : `Min 10 chars (${replyBody.trim().length}/10)`)
-                    : `${isMac ? '⌘' : 'Ctrl+'}↵ ${language === 'bg' ? 'за изпращане' : 'to send'}`}
+                  {replyBody.trim().length === 0
+                    ? (language === 'bg' ? 'Минимум 10 символа' : 'Min 10 chars')
+                    : replyBody.trim().length < 10
+                      ? (language === 'bg' ? `Минимум 10 символа (${replyBody.trim().length}/10)` : `Min 10 chars (${replyBody.trim().length}/10)`)
+                      : `${isMac ? '⌘' : 'Ctrl+'}↵ ${language === 'bg' ? 'за изпращане' : 'to send'}`}
                 </ReplyHint>
                 <SendBtn
                   onClick={() => { if (replyBody.trim().length >= 10) replyMutation.mutate(replyBody.trim()); }}
@@ -375,7 +381,7 @@ const Overlay = styled.div`
 `;
 
 const Panel = styled.div`
-  position: fixed; top: 0; right: 0; bottom: 0;
+  position: fixed; top: calc(var(--imp-banner-h, 0px) + 4rem); right: 0; bottom: 0;
   width: min(560px, 100vw);
   background: ${palette.surface};
   border-left: 1px solid ${palette.border};

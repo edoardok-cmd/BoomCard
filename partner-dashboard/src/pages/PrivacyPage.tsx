@@ -297,7 +297,7 @@ const PrivacyPage: React.FC = () => {
               <p>
                 За въпроси относно тази Политика за поверителност:<br />
                 <strong>DPO имейл:</strong> <a href="mailto:privacy@boomcard.bg">privacy@boomcard.bg</a><br />
-                <strong>Поддръжка:</strong> <a href="mailto:support@boomcard.bg">support@boomcard.bg</a><br />
+                <strong>Поддръжка:</strong> <a href="mailto:office@boomcard.bg">office@boomcard.bg</a><br />
                 <strong>Уебсайт:</strong> <a href="https://boomcard.bg">boomcard.bg</a>
               </p>
             </>
@@ -514,7 +514,7 @@ const PrivacyPage: React.FC = () => {
               <p>
                 For questions about this Privacy Policy:<br />
                 <strong>DPO Email:</strong> <a href="mailto:privacy@boomcard.bg">privacy@boomcard.bg</a><br />
-                <strong>Support:</strong> <a href="mailto:support@boomcard.bg">support@boomcard.bg</a><br />
+                <strong>Support:</strong> <a href="mailto:office@boomcard.bg">office@boomcard.bg</a><br />
                 <strong>Website:</strong> <a href="https://boomcard.bg">boomcard.bg</a>
               </p>
             </>

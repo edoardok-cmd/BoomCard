@@ -147,7 +147,7 @@ const RefundPolicyPage: React.FC = () => {
               </p>
               <ul>
                 <li><strong>Срок:</strong> 14 календарни дни от датата на покупка на абонамент.</li>
-                <li><strong>Как:</strong> Изпратете заявка за отказ чрез настройките на профила си или по имейл до <a href="mailto:support@boomcard.bg">support@boomcard.bg</a>.</li>
+                <li><strong>Как:</strong> Изпратете заявка за отказ чрез настройките на профила си или по имейл до <a href="mailto:office@boomcard.bg">office@boomcard.bg</a>.</li>
                 <li><strong>Възстановяване:</strong> Пълно възстановяване на заплатената сума по оригиналния метод на плащане.</li>
                 <li><strong>Условие:</strong> Ако сте използвали услуги с добавена стойност (кешбек, оферти на Партньори) през 14-те дни, може да бъде приспаднат пропорционален размер на стойността на използваните услуги.</li>
                 <li>Не е необходимо да посочвате причина за отказа.</li>
@@ -155,7 +155,7 @@ const RefundPolicyPage: React.FC = () => {
 
               <h2>5. Отказ След 14-Дневния Период</h2>
               <ul>
-                <li>Можете да отмените абонамента си по всяко време от настройките на профила или чрез <a href="mailto:support@boomcard.bg">support@boomcard.bg</a>.</li>
+                <li>Можете да отмените абонамента си по всяко време от настройките на профила или чрез <a href="mailto:office@boomcard.bg">office@boomcard.bg</a>.</li>
                 <li>Достъпът ви до Premium функциите ще продължи до края на текущия период на фактуриране.</li>
                 <li>Не се предоставя пропорционално възстановяване на средства за оставащия период.</li>
                 <li>След изтичане на периода абонаментът приключва и достъпът до платените функции се прекратява.</li>
@@ -163,7 +163,7 @@ const RefundPolicyPage: React.FC = () => {
 
               <h2>6. Процес на Възстановяване на Средства</h2>
               <ol>
-                <li><strong>Подаване на заявка:</strong> Чрез настройки на профила или имейл до <a href="mailto:support@boomcard.bg">support@boomcard.bg</a>.</li>
+                <li><strong>Подаване на заявка:</strong> Чрез настройки на профила или имейл до <a href="mailto:office@boomcard.bg">office@boomcard.bg</a>.</li>
                 <li><strong>Обработка:</strong> Заявката се разглежда в рамките на 5 работни дни.</li>
                 <li><strong>Възстановяване:</strong> Средствата се връщат по оригиналния метод на плащане в рамките на 5-10 банкови дни след одобрение.</li>
                 <li><strong>Потвърждение:</strong> Ще получите имейл потвърждение за обработеното възстановяване.</li>
@@ -209,7 +209,7 @@ const RefundPolicyPage: React.FC = () => {
               <h2>8. Спорове и Жалби</h2>
               <p>Ако имате спор относно плащане или възстановяване:</p>
               <ol>
-                <li><strong>Стъпка 1:</strong> Свържете се с нашия екип за поддръжка: <a href="mailto:support@boomcard.bg">support@boomcard.bg</a></li>
+                <li><strong>Стъпка 1:</strong> Свържете се с нашия екип за поддръжка: <a href="mailto:office@boomcard.bg">office@boomcard.bg</a></li>
                 <li><strong>Стъпка 2:</strong> Ако не получите задоволителен отговор в рамките на 14 дни, можете да подадете жалба до:
                   <ul>
                     <li><strong>Комисия за защита на потребителите (КЗП):</strong> <a href="https://kzp.bg" target="_blank" rel="noopener noreferrer">kzp.bg</a></li>
@@ -225,7 +225,7 @@ const RefundPolicyPage: React.FC = () => {
               <h2>Контакти</h2>
               <p>
                 За въпроси относно плащания и възстановявания:<br />
-                <strong>Имейл:</strong> <a href="mailto:support@boomcard.bg">support@boomcard.bg</a><br />
+                <strong>Имейл:</strong> <a href="mailto:office@boomcard.bg">office@boomcard.bg</a><br />
                 <strong>Уебсайт:</strong> <a href="https://boomcard.bg">boomcard.bg</a>
               </p>
             </>
@@ -292,7 +292,7 @@ const RefundPolicyPage: React.FC = () => {
               </p>
               <ul>
                 <li><strong>Period:</strong> 14 calendar days from the date of subscription purchase.</li>
-                <li><strong>How:</strong> Submit a withdrawal request through your profile settings or by email to <a href="mailto:support@boomcard.bg">support@boomcard.bg</a>.</li>
+                <li><strong>How:</strong> Submit a withdrawal request through your profile settings or by email to <a href="mailto:office@boomcard.bg">office@boomcard.bg</a>.</li>
                 <li><strong>Refund:</strong> Full refund of the amount paid to the original payment method.</li>
                 <li><strong>Condition:</strong> If you used value-added services (cashback, Partner offers) during the 14 days, a proportional amount for the services used may be deducted.</li>
                 <li>You do not need to provide a reason for withdrawal.</li>
@@ -300,7 +300,7 @@ const RefundPolicyPage: React.FC = () => {
 
               <h2>5. Cancellation After the 14-Day Period</h2>
               <ul>
-                <li>You may cancel your subscription at any time from your profile settings or via <a href="mailto:support@boomcard.bg">support@boomcard.bg</a>.</li>
+                <li>You may cancel your subscription at any time from your profile settings or via <a href="mailto:office@boomcard.bg">office@boomcard.bg</a>.</li>
                 <li>Your access to Premium features will continue until the end of the current billing period.</li>
                 <li>No prorated refund is provided for the remaining period.</li>
                 <li>After the period expires, the subscription ends and access to paid features is discontinued.</li>
@@ -308,7 +308,7 @@ const RefundPolicyPage: React.FC = () => {
 
               <h2>6. Refund Process</h2>
               <ol>
-                <li><strong>Submit request:</strong> Through profile settings or email to <a href="mailto:support@boomcard.bg">support@boomcard.bg</a>.</li>
+                <li><strong>Submit request:</strong> Through profile settings or email to <a href="mailto:office@boomcard.bg">office@boomcard.bg</a>.</li>
                 <li><strong>Processing:</strong> The request is reviewed within 5 business days.</li>
                 <li><strong>Refund:</strong> Funds are returned to the original payment method within 5-10 banking days after approval.</li>
                 <li><strong>Confirmation:</strong> You will receive an email confirmation for the processed refund.</li>
@@ -354,7 +354,7 @@ const RefundPolicyPage: React.FC = () => {
               <h2>8. Disputes & Complaints</h2>
               <p>If you have a dispute regarding a payment or refund:</p>
               <ol>
-                <li><strong>Step 1:</strong> Contact our support team: <a href="mailto:support@boomcard.bg">support@boomcard.bg</a></li>
+                <li><strong>Step 1:</strong> Contact our support team: <a href="mailto:office@boomcard.bg">office@boomcard.bg</a></li>
                 <li><strong>Step 2:</strong> If you do not receive a satisfactory response within 14 days, you may file a complaint with:
                   <ul>
                     <li><strong>Commission for Consumer Protection (KZP):</strong> <a href="https://kzp.bg" target="_blank" rel="noopener noreferrer">kzp.bg</a></li>
@@ -370,7 +370,7 @@ const RefundPolicyPage: React.FC = () => {
               <h2>Contact</h2>
               <p>
                 For questions about payments and refunds:<br />
-                <strong>Email:</strong> <a href="mailto:support@boomcard.bg">support@boomcard.bg</a><br />
+                <strong>Email:</strong> <a href="mailto:office@boomcard.bg">office@boomcard.bg</a><br />
                 <strong>Website:</strong> <a href="https://boomcard.bg">boomcard.bg</a>
               </p>
             </>

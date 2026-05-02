@@ -331,7 +331,7 @@ export default function AdminSettingsSystemPage() {
   // Pending toggle value while awaiting confirmation
   const [pendingMaintenance, setPendingMaintenance] = useState<boolean | null>(null);
 
-  const { data, isLoading, isFetching } = useQuery({
+  const { data, isLoading } = useQuery({
     queryKey: ['admin-system-settings'],
     queryFn: () => adminSettingsService.getSystemSettings(),
   });
@@ -424,10 +424,11 @@ export default function AdminSettingsSystemPage() {
     localizationMutation.mutate({ language, currency, timezone });
   };
 
-  // Maintenance save — called after confirmation
-  const commitMaintenance = () => {
+  // Maintenance save — explicit `enabled` avoids relying on stale maintenanceMode
+  // closure value (React state updates are async; callers must pass the intended value).
+  const commitMaintenance = (enabled: boolean) => {
     maintenanceMutation.mutate({
-      maintenance_mode: String(maintenanceMode),
+      maintenance_mode: String(enabled),
       maintenance_message: maintenanceMessage,
     });
   };
@@ -458,7 +459,7 @@ export default function AdminSettingsSystemPage() {
     if (maintenanceMode && !serverMaintenanceEnabled) {
       setPendingMaintenance(true);
     } else {
-      commitMaintenance();
+      commitMaintenance(maintenanceMode);
     }
   };
 
@@ -466,10 +467,7 @@ export default function AdminSettingsSystemPage() {
   const confirmAndSave = () => {
     setMaintenanceMode(true);
     setPendingMaintenance(null);
-    maintenanceMutation.mutate({
-      maintenance_mode: 'true',
-      maintenance_message: maintenanceMessage,
-    });
+    commitMaintenance(true);
   };
 
   return (
@@ -587,7 +585,7 @@ export default function AdminSettingsSystemPage() {
                 <FieldLabel>Email за поддръжка</FieldLabel>
                 <TextInput
                   type="email"
-                  placeholder="support@boomcard.bg"
+                  placeholder="office@boomcard.bg"
                   value={supportEmail}
                   onChange={(e) => setSupportEmail(e.target.value)}
                 />
@@ -738,7 +736,7 @@ export default function AdminSettingsSystemPage() {
             <AuditStamp>{formatAuditStamp(latestMeta(['maintenance_mode', 'maintenance_message'], meta))}</AuditStamp>
             <SaveBtn
               onClick={saveMaintenance}
-              disabled={maintenanceMutation.isPending || isFetching}
+              disabled={maintenanceMutation.isPending}
             >
               {maintenanceMutation.isPending ? 'Запазване…' : 'Запази'}
             </SaveBtn>

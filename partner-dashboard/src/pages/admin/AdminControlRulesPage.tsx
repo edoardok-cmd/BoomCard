@@ -165,7 +165,7 @@ function OverrideFormSection({ systemRuleId }: { systemRuleId: string }) {
       <Divider />
       <SectionTitle>Ръчни изключения (Manual override)</SectionTitle>
       <SectionSubtitle>
-        Позволява на супер-администратор да наложи различни прагове за конкретен потребител или партньор.
+        Позволява на администратор да наложи различни прагове за конкретен потребител или партньор.
       </SectionSubtitle>
 
       {isLoading ? (
@@ -557,6 +557,7 @@ export default function AdminControlRulesPage() {
         <Card>
           <SectionTitle>Правила по партньор / потребител</SectionTitle>
           <SectionSubtitle>Специфични правила за отделни партньори или потребители.</SectionSubtitle>
+          <SectionSubtitle>Тези правила са създадени директно чрез API. Управлението им не се поддържа от потребителския интерфейс.</SectionSubtitle>
           {otherRules.map(rule => (
             <OverrideRow key={rule.id}>
               <OverrideMeta>

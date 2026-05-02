@@ -49,7 +49,7 @@ const swaggerOptions: swaggerJsdoc.Options = {
       `,
       contact: {
         name: 'BoomCard Support',
-        email: 'support@boomcard.bg',
+        email: 'office@boomcard.bg',
         url: 'https://boomcard.bg',
       },
       license: {

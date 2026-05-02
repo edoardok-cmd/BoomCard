@@ -544,7 +544,7 @@ export default function AdminAdminsPendingPage() {
 
       {/* ── Модал: Одобри заявка за Супер администратор ── */}
       {modal?.type === 'super' && (
-        <OverlayBackdrop onClick={() => setModal(null)}>
+        <OverlayBackdrop onClick={() => !approveSuperMutation.isPending && setModal(null)}>
           <OverlayCard onClick={(e) => e.stopPropagation()}>
             <OverlayTitle>Одобри заявка за Супер администратор</OverlayTitle>
             <OverlaySubtitle>
@@ -559,7 +559,7 @@ export default function AdminAdminsPendingPage() {
               >
                 {approveSuperMutation.isPending ? 'Одобряване…' : 'Одобри и създай акаунт'}
               </PrimaryBtn>
-              <SecondaryBtn onClick={() => setModal(null)}>Отказ</SecondaryBtn>
+              <SecondaryBtn onClick={() => setModal(null)} disabled={approveSuperMutation.isPending}>Отказ</SecondaryBtn>
             </OverlayActions>
           </OverlayCard>
         </OverlayBackdrop>
@@ -567,7 +567,7 @@ export default function AdminAdminsPendingPage() {
 
       {/* ── Модал: Назначи роля ── */}
       {modal?.type === 'role' && (
-        <OverlayBackdrop onClick={() => setModal(null)}>
+        <OverlayBackdrop onClick={() => !approveMutation.isPending && setModal(null)}>
           <OverlayCard onClick={(e) => e.stopPropagation()}>
             <OverlayTitle>Назначи роля</OverlayTitle>
             <OverlaySubtitle>
@@ -589,7 +589,7 @@ export default function AdminAdminsPendingPage() {
               >
                 {approveMutation.isPending ? 'Назначаване…' : 'Назначи роля'}
               </PrimaryBtn>
-              <SecondaryBtn onClick={() => setModal(null)}>Отказ</SecondaryBtn>
+              <SecondaryBtn onClick={() => setModal(null)} disabled={approveMutation.isPending}>Отказ</SecondaryBtn>
             </OverlayActions>
           </OverlayCard>
         </OverlayBackdrop>

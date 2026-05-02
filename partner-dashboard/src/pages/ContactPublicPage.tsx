@@ -243,7 +243,7 @@ const ContactPublicPage: React.FC = () => {
               </IconWrapper>
               <InfoContent>
                 <InfoTitle>{language === 'bg' ? 'Имейл' : 'Email'}</InfoTitle>
-                <InfoText>support@boomcard.bg</InfoText>
+                <InfoText>office@boomcard.bg</InfoText>
                 <InfoText>sales@boomcard.bg</InfoText>
               </InfoContent>
             </InfoItem>

@@ -4,13 +4,16 @@
  * Manages user authentication state and provides auth methods throughout the app
  */
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
+import { Platform } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import AuthApi from '../api/auth.api';
 import StorageService from '../services/storage.service';
 import { authLogoutEmitter } from '../api/client';
 import SyncService from '../services/sync.service';
 import type { User, LoginRequest, RegisterRequest, AuthResponse } from '../types';
+import NotificationService from '../services/notification.service';
+import { notificationsApi } from '../api/notifications.api';
 
 interface AuthContextType {
   user: User | null;
@@ -126,6 +129,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       SyncService.clear();
     },
   });
+
+  // Silently refresh the Expo push token with the backend whenever a user
+  // session becomes active (login, register, or restored from storage).
+  // We only attempt once per session: if it fails we don't retry and the
+  // user can always re-enable from Settings → Notifications.
+  const pushRegisteredForRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!user) return;
+    if (pushRegisteredForRef.current === user.id) return;
+    if (Platform.OS === 'web') return;
+
+    pushRegisteredForRef.current = user.id;
+
+    (async () => {
+      try {
+        const perms = await NotificationService.checkPermissions();
+        if (!perms.granted) return;
+
+        const tokenResult = await NotificationService.registerForPushNotifications();
+        if (!tokenResult) return;
+
+        await notificationsApi.registerPushToken(tokenResult.token, Platform.OS);
+      } catch {
+        // Push registration is best-effort — never block auth flow
+      }
+    })();
+  }, [user]);
 
   // Update profile mutation
   const updateProfileMutation = useMutation({
