@@ -24,17 +24,6 @@ const TICKET_SELECT_ALL = {
   assignee: { select: { id: true, firstName: true, lastName: true, email: true } },
 } as const;
 
-const TICKET_SELECT_MINE = {
-  id: true,
-  subject: true,
-  status: true,
-  priority: true,
-  createdAt: true,
-  updatedAt: true,
-  user: { select: { id: true, firstName: true, lastName: true, email: true } },
-  assignee: { select: { id: true, firstName: true, lastName: true, email: true } },
-} as const;
-
 // Returns true when the caller may access any ticket (not just their own).
 function hasFullAccess(req: AuthRequest): boolean {
   return req.user!.role === 'SUPER_ADMIN';
@@ -201,7 +190,7 @@ router.get('/mine', requirePermission('help.read'), async (req: AuthRequest, res
     }
 
     const [tickets, total] = await Promise.all([
-      prisma.helpTicket.findMany({ where, skip, take, orderBy: { updatedAt: 'desc' }, select: TICKET_SELECT_MINE }),
+      prisma.helpTicket.findMany({ where, skip, take, orderBy: { updatedAt: 'desc' }, select: TICKET_SELECT_ALL }),
       prisma.helpTicket.count({ where }),
     ]);
 
@@ -247,6 +236,9 @@ router.post('/:id/assign', requirePermission('help.write'), async (req: AuthRequ
     if (!hasFullAccess(req) && ticket.userId !== req.user!.id && ticket.assigneeId !== req.user!.id) {
       return res.status(403).json({ error: 'Access denied' });
     }
+    if (!hasFullAccess(req) && ticket.userId === req.user!.id) {
+      return res.status(400).json({ error: 'Cannot assign yourself as the handler for your own ticket' });
+    }
 
     await prisma.helpTicket.update({
       where: { id: req.params.id },
@@ -271,6 +263,20 @@ router.patch('/:id', requirePermission('help.write'), async (req: AuthRequest, r
     if (!ticket) return res.status(404).json({ error: 'Ticket not found' });
     if (!hasFullAccess(req) && ticket.userId !== req.user!.id && ticket.assigneeId !== req.user!.id) {
       return res.status(403).json({ error: 'Access denied' });
+    }
+
+    // Creators who are not also the assignee may only mark their own ticket as RESOLVED;
+    // they may not change priority. Assignees and SUPER_ADMINs have no such restriction.
+    const isCreatorOnly = !hasFullAccess(req)
+      && ticket.userId === req.user!.id
+      && ticket.assigneeId !== req.user!.id;
+    if (isCreatorOnly) {
+      if (priority) {
+        return res.status(403).json({ error: 'Ticket creators may not change the priority' });
+      }
+      if (status && Object.values(TicketStatus).includes(status as TicketStatus) && status !== 'RESOLVED') {
+        return res.status(403).json({ error: 'Ticket creators may only mark a ticket as resolved' });
+      }
     }
 
     const data: { status?: TicketStatus; priority?: TicketPriority } = {};
@@ -375,8 +381,10 @@ router.post('/:id/reply', requirePermission('help.write'), async (req: AuthReque
         .catch((err) => logger.error('[adminHelp] Failed to send reply notification email:', err));
     }
 
-    // Notify the assigned admin by email when the ticket creator replies
-    if (isCreator && ticket.assignee?.email) {
+    // Notify the assigned admin by email when the ticket creator replies.
+    // Skip when the ticket is self-assigned (assigneeId === userId) — the
+    // creator would otherwise receive an email telling themselves they replied.
+    if (isCreator && ticket.assignee?.email && ticket.assigneeId !== ticket.userId) {
       emailService
         .sendEmail({
           to: ticket.assignee.email,

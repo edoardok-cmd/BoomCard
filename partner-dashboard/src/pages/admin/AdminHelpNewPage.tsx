@@ -119,7 +119,7 @@ export default function AdminHelpNewPage() {
       <PageHeader>
         <Eyebrow>Помощ</Eyebrow>
         <PageTitle>Нова заявка</PageTitle>
-        <PageSubtitle>Подайте вътрешна заявка към support@boomcard.bg</PageSubtitle>
+        <PageSubtitle>Подайте вътрешна заявка към office@boomcard.bg</PageSubtitle>
       </PageHeader>
 
       <Card>

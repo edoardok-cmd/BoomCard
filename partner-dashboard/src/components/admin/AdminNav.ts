@@ -115,7 +115,7 @@ export const ADMIN_NAV: AdminNavCategory[] = [
       { labelBg: 'Проценти', labelEn: 'Percentages', path: '/admin/settings/percentages', permissionKey: 'settings.read' },
       { labelBg: 'Валидност', labelEn: 'Validity', path: '/admin/settings/validity', permissionKey: 'settings.read' },
       { labelBg: 'Мобилно приложение', labelEn: 'Mobile App', path: '/admin/settings/mobile', permissionKey: 'settings.read' },
-      { labelBg: 'Система', labelEn: 'System', path: '/admin/settings/system', permissionKey: 'settings.write' },
+      { labelBg: 'Системни настройки', labelEn: 'System Settings', path: '/admin/settings/system', permissionKey: 'settings.write' },
     ],
   },
   {

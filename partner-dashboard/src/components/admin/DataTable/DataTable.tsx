@@ -26,7 +26,7 @@ interface DataTableProps<T> {
   rowActions?: RowAction<T>[];
   onRowClick?: (row: T) => void;
   loading?: boolean;
-  emptyMessage?: string;
+  emptyMessage?: React.ReactNode;
   // Pagination — omit both to hide pagination
   page?: number;
   pageSize?: number;

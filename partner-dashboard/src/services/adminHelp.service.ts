@@ -27,17 +27,6 @@ export interface HelpTicketFull extends HelpTicket {
   body: string;
 }
 
-export interface MyTicket {
-  id: string;
-  subject: string;
-  status: TicketStatus;
-  priority: TicketPriority;
-  createdAt: string;
-  updatedAt: string;
-  user: TicketUser;
-  assignee: TicketUser | null;
-}
-
 export interface TicketListResult<T> {
   tickets: T[];
   total: number;
@@ -84,7 +73,7 @@ export const adminHelpService = {
     limit?: number;
     search?: string;
     status?: TicketStatus | '';
-  }): Promise<TicketListResult<MyTicket>> {
+  }): Promise<TicketListResult<HelpTicket>> {
     const clean: Record<string, unknown> = { page: params.page, limit: params.limit };
     if (params.search) clean.search = params.search;
     if (params.status) clean.status = params.status;

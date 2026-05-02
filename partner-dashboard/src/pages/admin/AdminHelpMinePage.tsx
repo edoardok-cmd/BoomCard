@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import styled from 'styled-components';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-hot-toast';
@@ -6,9 +7,10 @@ import { DataTable, ColumnDef } from '../../components/admin/DataTable/DataTable
 import TicketDrawer from '../../components/admin/TicketDrawer';
 import {
   adminHelpService,
-  MyTicket,
+  HelpTicket,
   TicketStatus,
   TicketPriority,
+  TicketCategory,
   TicketUser,
 } from '../../services/adminHelp.service';
 
@@ -44,6 +46,18 @@ const PRIORITY_BG_LABELS: Record<TicketPriority, string> = {
   LOW: 'Нисък', MEDIUM: 'Среден', HIGH: 'Висок', URGENT: 'Спешен',
 };
 
+const CATEGORY_BG_LABELS: Record<TicketCategory, string> = {
+  CASHBACK: 'Кешбек', ACCOUNT: 'Акаунт', PAYMENT: 'Плащане', TECHNICAL: 'Техническо', OTHER: 'Друго',
+};
+
+const CATEGORY_COLOR: Record<TicketCategory, { bg: string; text: string }> = {
+  CASHBACK:  { bg: palette.successSoft, text: palette.success },
+  ACCOUNT:   { bg: palette.infoSoft,    text: palette.info },
+  PAYMENT:   { bg: palette.dangerSoft,  text: palette.danger },
+  TECHNICAL: { bg: palette.warningSoft, text: palette.warning },
+  OTHER:     { bg: palette.border,      text: palette.textMuted },
+};
+
 const StatusBadge = styled.span<{ $status: TicketStatus }>`
   display: inline-flex; align-items: center; font-size: 0.7rem; font-weight: 700;
   text-transform: uppercase; letter-spacing: 0.05em; border-radius: 0.375rem; padding: 0.125rem 0.5rem;
@@ -58,6 +72,13 @@ const StatusBadge = styled.span<{ $status: TicketStatus }>`
   }}
 `;
 
+const CategoryBadge = styled.span<{ $cat: TicketCategory }>`
+  display: inline-flex; align-items: center; font-size: 0.7rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.05em; border-radius: 0.375rem; padding: 0.125rem 0.5rem;
+  background: ${({ $cat }) => CATEGORY_COLOR[$cat]?.bg ?? palette.border};
+  color: ${({ $cat }) => CATEGORY_COLOR[$cat]?.text ?? palette.textMuted};
+`;
+
 const PriorityDot = styled.span<{ $priority: TicketPriority }>`
   display: inline-block; width: 0.5rem; height: 0.5rem; border-radius: 9999px; margin-right: 0.375rem;
   background: ${({ $priority }) => {
@@ -68,6 +89,11 @@ const PriorityDot = styled.span<{ $priority: TicketPriority }>`
       default:       return palette.textSubtle;
     }
   }};
+`;
+
+const EmptyLink = styled(Link)`
+  color: ${palette.accent}; font-weight: 600; text-decoration: none;
+  &:hover { text-decoration: underline; }
 `;
 
 const PAGE_SIZE = 25;
@@ -110,7 +136,7 @@ export default function AdminHelpMinePage() {
   const fmt = (iso: string) =>
     new Date(iso).toLocaleString('bg-BG', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
 
-  const columns: ColumnDef<MyTicket>[] = [
+  const columns: ColumnDef<HelpTicket>[] = [
     {
       key: 'subject',
       header: 'Заявка',
@@ -122,6 +148,13 @@ export default function AdminHelpMinePage() {
           </PrimaryLine>
           <MetaLine>Подадена {fmt(row.createdAt)}</MetaLine>
         </span>
+      ),
+    },
+    {
+      key: 'category',
+      header: 'Категория',
+      render: (row) => (
+        <CategoryBadge $cat={row.category}>{CATEGORY_BG_LABELS[row.category]}</CategoryBadge>
       ),
     },
     {
@@ -185,7 +218,11 @@ export default function AdminHelpMinePage() {
           data={data?.tickets ?? []}
           rowKey={(row) => row.id}
           loading={isLoading}
-          emptyMessage="Нямате подадени заявки"
+          emptyMessage={
+            !search && !statusFilter
+              ? <span>Нямате подадени заявки. <EmptyLink to="/admin/help/new">Подайте нова заявка →</EmptyLink></span>
+              : 'Няма заявки, отговарящи на критериите'
+          }
           page={page}
           pageSize={PAGE_SIZE}
           totalItems={data?.total ?? 0}

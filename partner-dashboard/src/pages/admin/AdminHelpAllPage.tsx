@@ -49,9 +49,12 @@ const CATEGORY_BG_LABELS: Record<TicketCategory, string> = {
   CASHBACK: 'Кешбек', ACCOUNT: 'Акаунт', PAYMENT: 'Плащане', TECHNICAL: 'Техническо', OTHER: 'Друго',
 };
 
-const CATEGORY_COLOR: Record<TicketCategory, string> = {
-  CASHBACK: palette.success, ACCOUNT: palette.info, PAYMENT: palette.danger,
-  TECHNICAL: palette.warning, OTHER: palette.textMuted,
+const CATEGORY_COLOR: Record<TicketCategory, { bg: string; text: string }> = {
+  CASHBACK:  { bg: palette.successSoft, text: palette.success },
+  ACCOUNT:   { bg: palette.infoSoft,    text: palette.info },
+  PAYMENT:   { bg: palette.dangerSoft,  text: palette.danger },
+  TECHNICAL: { bg: palette.warningSoft, text: palette.warning },
+  OTHER:     { bg: palette.border,      text: palette.textMuted },
 };
 
 const StatusBadge = styled.span<{ $status: TicketStatus }>`
@@ -79,6 +82,13 @@ const PriorityBadge = styled.span<{ $priority: TicketPriority }>`
       default:       return `background: ${palette.border}; color: ${palette.textMuted};`;
     }
   }}
+`;
+
+const CategoryBadge = styled.span<{ $cat: TicketCategory }>`
+  display: inline-flex; align-items: center; font-size: 0.65rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.05em; border-radius: 0.375rem; padding: 0.15rem 0.45rem;
+  background: ${({ $cat }) => CATEGORY_COLOR[$cat]?.bg ?? palette.border};
+  color: ${({ $cat }) => CATEGORY_COLOR[$cat]?.text ?? palette.textMuted};
 `;
 
 const PAGE_SIZE = 25;
@@ -133,7 +143,7 @@ export default function AdminHelpAllPage() {
         <span>
           <PrimaryLine>{row.subject}</PrimaryLine>
           <MetaLine>
-            <span style={{ color: CATEGORY_COLOR[row.category], fontWeight: 700, fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{CATEGORY_BG_LABELS[row.category]}</span>
+            <CategoryBadge $cat={row.category}>{CATEGORY_BG_LABELS[row.category]}</CategoryBadge>
             <span style={{ marginLeft: '0.5rem', color: palette.textSubtle }}>{fmt(row.createdAt)}</span>
           </MetaLine>
         </span>

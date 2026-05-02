@@ -3,6 +3,7 @@ import styled, { keyframes } from 'styled-components';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-hot-toast';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { useAuth } from '../../contexts/AuthContext';
 import {
   adminHelpService,
   TicketStatus,
@@ -45,7 +46,7 @@ const copy = {
     priorityUpdated: 'Priority updated',
     priorityError: 'Failed to update priority',
     admin: 'Admin',
-    user: 'User',
+    user: 'Submitter',
     close: '✕',
     ticketClosed: 'This ticket is closed — replies are disabled.',
     opened: 'Opened',
@@ -81,7 +82,7 @@ const copy = {
     priorityUpdated: 'Приоритетът е обновен',
     priorityError: 'Грешка при обновяване на приоритета',
     admin: 'Администратор',
-    user: 'Потребител',
+    user: 'Подател',
     close: '✕',
     ticketClosed: 'Заявката е затворена — отговорите са забранени.',
     opened: 'Подадена',
@@ -115,8 +116,11 @@ interface Props {
   onClose: () => void;
 }
 
+const isMac = typeof navigator !== 'undefined' && /mac/i.test(navigator.platform);
+
 export default function TicketDrawer({ ticketId, onClose }: Props) {
   const { language } = useLanguage();
+  const { user: currentUser } = useAuth();
   const t = copy[language as keyof typeof copy] ?? copy.en;
   const qc = useQueryClient();
   const [replyBody, setReplyBody] = useState('');
@@ -191,6 +195,12 @@ export default function TicketDrawer({ ticketId, onClose }: Props) {
 
   const isClosed = ticket?.status === 'CLOSED';
   const busy = replyMutation.isPending;
+  const isSuperAdmin = currentUser?.rawRole === 'SUPER_ADMIN';
+  // Creator-only: submitted the ticket but is not the current assignee (and not SUPER_ADMIN).
+  // This mirrors the backend isCreatorOnly guard and determines which controls to restrict.
+  const isCreatorOnly = !!ticket && !isSuperAdmin
+    && ticket.user.id === currentUser?.id
+    && ticket.assignee?.id !== currentUser?.id;
 
   return (
     <>
@@ -224,7 +234,7 @@ export default function TicketDrawer({ ticketId, onClose }: Props) {
                     {ticket.assignee ? displayName(ticket.assignee) : (
                       <span style={{ color: palette.danger }}>{t.unassigned}</span>
                     )}
-                    {!ticket.assignee && (
+                    {!ticket.assignee && !isCreatorOnly && (
                       <AssignBtn
                         onClick={() => assignMutation.mutate()}
                         disabled={assignMutation.isPending}
@@ -252,19 +262,25 @@ export default function TicketDrawer({ ticketId, onClose }: Props) {
                   <ControlSelect
                     value={ticket.status}
                     onChange={(e) => statusMutation.mutate(e.target.value as TicketStatus)}
-                    disabled={statusMutation.isPending}
+                    disabled={statusMutation.isPending || isClosed}
                   >
-                    {(['NEW', 'OPEN', 'WAITING', 'RESOLVED', 'CLOSED'] as TicketStatus[]).map((s) => (
+                    {((['NEW', 'OPEN', 'WAITING', 'RESOLVED', 'CLOSED'] as TicketStatus[])
+                      .filter((s) => !isCreatorOnly || s === ticket.status || s === 'RESOLVED')
+                    ).map((s) => (
                       <option key={s} value={s}>{t.statuses[s]}</option>
                     ))}
                   </ControlSelect>
+                  {isCreatorOnly && ticket.status !== 'RESOLVED' && ticket.status !== 'CLOSED' && (
+                    <ControlHint>{language === 'bg' ? 'Можете само да маркирате като решена' : 'You may only mark as resolved'}</ControlHint>
+                  )}
                 </ControlGroup>
                 <ControlGroup>
                   <ControlLabel>{t.priority}</ControlLabel>
                   <ControlSelect
                     value={ticket.priority}
                     onChange={(e) => priorityMutation.mutate(e.target.value as TicketPriority)}
-                    disabled={priorityMutation.isPending}
+                    disabled={priorityMutation.isPending || isCreatorOnly || isClosed}
+                    title={isCreatorOnly ? (language === 'bg' ? 'Само отговорникът може да променя приоритета' : 'Only the assignee can change the priority') : undefined}
                   >
                     {(['URGENT', 'HIGH', 'MEDIUM', 'LOW'] as TicketPriority[]).map((p) => (
                       <option key={p} value={p}>{t.priorities[p]}</option>
@@ -280,7 +296,7 @@ export default function TicketDrawer({ ticketId, onClose }: Props) {
         <Thread ref={threadRef}>
           {ticket && (
             <Bubble $isAdmin={false}>
-              <BubbleLabel>{t.user} · {fmtDate(ticket.createdAt)}</BubbleLabel>
+              <BubbleLabel>{t.user} · {displayName(ticket.user)} · {fmtDate(ticket.createdAt)}</BubbleLabel>
               <BubbleBody>{ticket.body}</BubbleBody>
             </Bubble>
           )}
@@ -320,17 +336,21 @@ export default function TicketDrawer({ ticketId, onClose }: Props) {
                 disabled={busy}
                 rows={3}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && replyBody.trim()) {
+                  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && replyBody.trim().length >= 10) {
                     e.preventDefault();
                     replyMutation.mutate(replyBody.trim());
                   }
                 }}
               />
               <ReplyFooter>
-                <ReplyHint>⌘↵ {language === 'bg' ? 'за изпращане' : 'to send'}</ReplyHint>
+                <ReplyHint>
+                  {replyBody.trim().length > 0 && replyBody.trim().length < 10
+                    ? (language === 'bg' ? `Минимум 10 символа (${replyBody.trim().length}/10)` : `Min 10 chars (${replyBody.trim().length}/10)`)
+                    : `${isMac ? '⌘' : 'Ctrl+'}↵ ${language === 'bg' ? 'за изпращане' : 'to send'}`}
+                </ReplyHint>
                 <SendBtn
-                  onClick={() => { if (replyBody.trim()) replyMutation.mutate(replyBody.trim()); }}
-                  disabled={busy || !replyBody.trim()}
+                  onClick={() => { if (replyBody.trim().length >= 10) replyMutation.mutate(replyBody.trim()); }}
+                  disabled={busy || replyBody.trim().length < 10}
                 >
                   {busy ? t.sending : t.send}
                 </SendBtn>
@@ -441,9 +461,10 @@ const AssignBtn = styled.button`
   &:disabled { opacity: 0.5; cursor: not-allowed; }
 `;
 
-const ControlsRow = styled.div`display: flex; gap: 0.75rem;`;
-const ControlGroup = styled.div`display: flex; align-items: center; gap: 0.4rem;`;
+const ControlsRow = styled.div`display: flex; gap: 0.75rem; flex-wrap: wrap;`;
+const ControlGroup = styled.div`display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap;`;
 const ControlLabel = styled.label`font-size: 0.75rem; font-weight: 600; color: ${palette.textSubtle};`;
+const ControlHint = styled.span`font-size: 0.65rem; color: ${palette.textSubtle}; font-style: italic;`;
 const ControlSelect = styled.select`
   padding: 0.3rem 0.5rem; border: 1px solid ${palette.border}; border-radius: 0.375rem;
   font-size: 0.8125rem; background: ${palette.surface}; color: ${palette.text};
