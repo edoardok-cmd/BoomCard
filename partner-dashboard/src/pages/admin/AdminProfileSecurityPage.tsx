@@ -19,6 +19,28 @@ const palette = {
   dangerSoft: '#f4dcd2',
 };
 
+/** Condenses a userAgent string to just the browser + OS tokens */
+function parseUserAgent(ua: string | null): string {
+  if (!ua) return '—';
+  // Match common browsers
+  const browser =
+    /Edg\/[\d.]+/.test(ua) ? 'Edge' :
+    /OPR\/[\d.]+/.test(ua) ? 'Opera' :
+    /Chrome\/[\d.]+/.test(ua) ? 'Chrome' :
+    /Firefox\/[\d.]+/.test(ua) ? 'Firefox' :
+    /Safari\/[\d.]+/.test(ua) ? 'Safari' :
+    'Браузър';
+  // Match OS
+  const os =
+    /Windows NT/.test(ua) ? 'Windows' :
+    /Mac OS X/.test(ua) ? 'macOS' :
+    /Linux/.test(ua) ? 'Linux' :
+    /Android/.test(ua) ? 'Android' :
+    /iPhone|iPad/.test(ua) ? 'iOS' :
+    '';
+  return os ? `${browser} / ${os}` : browser;
+}
+
 const AdminProfileSecurityPage: React.FC = () => {
   const queryClient = useQueryClient();
   const profile = useQuery({ queryKey: ['admin-profile-me'], queryFn: () => adminProfileService.getMe() });
@@ -27,6 +49,7 @@ const AdminProfileSecurityPage: React.FC = () => {
 
   const [currentPwd, setCurrentPwd] = useState('');
   const [newPwd, setNewPwd] = useState('');
+  const [confirmPwd, setConfirmPwd] = useState('');
   const [twoFaToken, setTwoFaToken] = useState('');
   const [twoFaSetup, setTwoFaSetup] = useState<{ qrCodeDataUrl: string } | null>(null);
   const [disablePwd, setDisablePwd] = useState('');
@@ -37,6 +60,7 @@ const AdminProfileSecurityPage: React.FC = () => {
       toast.success('Паролата е сменена');
       setCurrentPwd('');
       setNewPwd('');
+      setConfirmPwd('');
     },
     onError: (err: { response?: { data?: { error?: string } } }) => {
       toast.error(err?.response?.data?.error ?? 'Грешка при смяна на парола');
@@ -94,6 +118,9 @@ const AdminProfileSecurityPage: React.FC = () => {
 
   const twoFaEnabled = profile.data?.twoFactorEnabled ?? false;
 
+  const pwdMismatch = confirmPwd.length > 0 && newPwd !== confirmPwd;
+  const pwdReady = currentPwd.length > 0 && newPwd.length >= 8 && newPwd === confirmPwd;
+
   return (
     <Wrapper>
       {/* Парола */}
@@ -109,10 +136,23 @@ const AdminProfileSecurityPage: React.FC = () => {
             <Input type="password" value={newPwd} onChange={(e) => setNewPwd(e.target.value)} />
           </Field>
         </Row>
+        <Row>
+          <Field>
+            <Label>Потвърди нова парола</Label>
+            <Input
+              type="password"
+              value={confirmPwd}
+              onChange={(e) => setConfirmPwd(e.target.value)}
+              style={pwdMismatch ? { borderColor: palette.danger } : undefined}
+            />
+            {pwdMismatch && <ErrorHint>Паролите не съвпадат</ErrorHint>}
+          </Field>
+          <Field />
+        </Row>
         <Actions>
           <Button
             onClick={() => passwordMutation.mutate()}
-            disabled={!currentPwd || newPwd.length < 8 || passwordMutation.isPending}
+            disabled={!pwdReady || passwordMutation.isPending}
           >
             {passwordMutation.isPending ? 'Смяна…' : 'Смени парола'}
           </Button>
@@ -190,16 +230,18 @@ const AdminProfileSecurityPage: React.FC = () => {
         {sessions.isLoading ? (
           <Hint>Зареждане…</Hint>
         ) : sessions.data?.sessions.length === 0 ? (
-          <Hint>Няма други активни сесии.</Hint>
+          <Hint>Няма активни сесии.</Hint>
         ) : (
           <Table>
             <thead>
-              <tr><Th>Клиент</Th><Th>Начало</Th><Th>Изтича</Th><Th></Th></tr>
+              <tr><Th>Клиент</Th><Th>Устройство</Th><Th>IP адрес</Th><Th>Начало</Th><Th>Изтича</Th><Th></Th></tr>
             </thead>
             <tbody>
               {sessions.data?.sessions.map((s) => (
                 <tr key={s.id}>
                   <Td>{s.clientType ?? '—'}</Td>
+                  <Td title={s.userAgent ?? ''}>{parseUserAgent(s.userAgent)}</Td>
+                  <Td>{s.ip ?? '—'}</Td>
                   <Td>{new Date(s.createdAt).toLocaleString('bg-BG')}</Td>
                   <Td>{new Date(s.expiresAt).toLocaleString('bg-BG')}</Td>
                   <Td>
@@ -239,9 +281,7 @@ const AdminProfileSecurityPage: React.FC = () => {
                       : <StatusOff>{e.failReason ?? 'Неуспешен'}</StatusOff>}
                   </Td>
                   <Td>{e.ip ?? '—'}</Td>
-                  <Td title={e.userAgent ?? ''} style={{ maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {e.userAgent ?? '—'}
-                  </Td>
+                  <Td title={e.userAgent ?? ''}>{parseUserAgent(e.userAgent)}</Td>
                 </tr>
               ))}
             </tbody>
@@ -292,6 +332,7 @@ const Input = styled.input`
   &:focus { border-color: ${palette.accent}; box-shadow: 0 0 0 2px ${palette.accentSoft}; }
 `;
 const Hint = styled.p`font-size: 0.8125rem; color: ${palette.textSubtle}; margin: 0 0 1rem;`;
+const ErrorHint = styled.p`font-size: 0.75rem; color: ${palette.danger}; margin: 0.25rem 0 0;`;
 const Actions = styled.div`display: flex; gap: 0.5rem;`;
 const Button = styled.button`
   background: ${palette.accent};

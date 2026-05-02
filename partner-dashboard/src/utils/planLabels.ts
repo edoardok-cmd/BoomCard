@@ -33,7 +33,7 @@ export type SubscriptionStatus =
   | 'INCOMPLETE_EXPIRED'
   | 'PAUSED';
 
-export type UserAccountStatusLabel = 'ACTIVE' | 'SUSPENDED' | 'DELETED';
+export type UserAccountStatusLabel = 'ACTIVE' | 'SUSPENDED' | 'DELETED' | 'PENDING_VERIFICATION' | 'PENDING_PAYMENT' | 'INACTIVE';
 
 // Compile-time guard: if the admin service ever adds, removes, or renames a
 // status/plan, one of these assignments errors and the missing key forces a
@@ -72,9 +72,12 @@ export function subStatusLabel(status: SubscriptionStatus | string, lang: Lang):
 }
 
 export const USER_STATUS_LABELS: Record<UserAccountStatusLabel, Record<Lang, string>> = {
-  ACTIVE:    { en: 'Active',    bg: 'Активен' },
-  SUSPENDED: { en: 'Suspended', bg: 'Спрян' },
-  DELETED:   { en: 'Deleted',   bg: 'Изтрит' },
+  ACTIVE:               { en: 'Active',               bg: 'Активен' },
+  SUSPENDED:            { en: 'Suspended',             bg: 'Спрян' },
+  DELETED:              { en: 'Deleted',               bg: 'Изтрит' },
+  PENDING_VERIFICATION: { en: 'Pending verification',  bg: 'Изчаква верификация' },
+  PENDING_PAYMENT:      { en: 'Pending payment',       bg: 'Изчаква плащане' },
+  INACTIVE:             { en: 'Inactive',              bg: 'Неактивен' },
 };
 
 export function userStatusLabel(status: UserAccountStatusLabel | string, lang: Lang): string {

@@ -10,6 +10,24 @@ import {
   PendingPartner,
 } from '../../services/adminPartnerRequests.service';
 import { getCategoryName } from '../../types/categories.types';
+import PartnerRequestDrawer from '../../components/admin/PartnerRequestDrawer';
+
+// Maps legacy SCREAMING_SNAKE_CASE and old display-name values to canonical category IDs
+const LEGACY_CATEGORY_MAP: Record<string, string> = {
+  'RESTAURANTS_FOOD': 'restaurants', 'ACCOMMODATION': 'accommodation',
+  'SPA_WELLNESS': 'spa', 'PANORAMIC_PLACES': 'panoramic',
+  'CLUBS_NIGHTLIFE': 'clubs', 'CAFES_BAKERIES': 'cafes',
+  'GASTRONOMIC': 'gastronomic', 'HISTORICAL_CULTURAL': 'historical-cultural',
+  'ACTIVE_ADVENTURE': 'active-adventure', 'EXTREME': 'extreme',
+  'EDUCATIONAL_CREATIVE': 'educational-creative', 'RELAX_WELLNESS': 'relax-wellness',
+  'RESTAURANT': 'restaurants', 'HOTEL': 'accommodation', 'SPA': 'spa',
+  'WINERY': 'restaurants', 'Wineries': 'restaurants',
+  'Spa': 'spa', 'Hotels': 'accommodation',
+  'Experiences': 'gastronomic', 'Restaurants': 'restaurants', 'Wellness': 'spa',
+};
+function migrateCategoryId(id: string): string {
+  return LEGACY_CATEGORY_MAP[id] ?? id;
+}
 
 /* ─── Palette ─────────────────────────────────────────────────────────────── */
 const palette = {
@@ -236,17 +254,6 @@ const ContactCell = styled.div`
   gap: 0.125rem;
 `;
 
-const DiscountBadge = styled.span`
-  display: inline-flex;
-  align-items: center;
-  background: ${palette.accentSoft};
-  color: ${palette.accent};
-  font-size: 0.75rem;
-  font-weight: 700;
-  border-radius: 0.375rem;
-  padding: 0.125rem 0.5rem;
-`;
-
 /* ─── Component ───────────────────────────────────────────────────────────── */
 const PAGE_SIZE = 20;
 
@@ -281,6 +288,7 @@ export default function AdminPartnerRequestsPage() {
   const [requestStatusFilter, setRequestStatusFilter] = useState('');
   const [rejectTarget, setRejectTarget] = useState<PendingPartner | null>(null);
   const [rejectReason, setRejectReason] = useState('');
+  const [drawerPartnerId, setDrawerPartnerId] = useState<string | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ['admin-partner-requests', page, search, requestStatusFilter],
@@ -321,6 +329,8 @@ export default function AdminPartnerRequestsPage() {
     onSuccess: () => {
       toast.success(language === 'bg' ? 'Статусът е обновен' : 'Status updated');
       queryClient.invalidateQueries({ queryKey: ['admin-partner-requests'] });
+      queryClient.invalidateQueries({ queryKey: ['pipeline'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-alerts'] });
     },
     onError: () => toast.error(t('common.error')),
   });
@@ -331,6 +341,7 @@ export default function AdminPartnerRequestsPage() {
     onSuccess: () => {
       toast.success(language === 'bg' ? 'Отговорникът е обновен' : 'Owner updated');
       queryClient.invalidateQueries({ queryKey: ['admin-partner-requests'] });
+      queryClient.invalidateQueries({ queryKey: ['pipeline'] });
     },
     onError: () => toast.error(t('common.error')),
   });
@@ -349,7 +360,7 @@ export default function AdminPartnerRequestsPage() {
       render: (row) => (
         <BusinessCell>
           {row.businessName}
-          <MetaLine>{getCategoryName(row.category, language as 'en' | 'bg')}</MetaLine>
+          <MetaLine>{getCategoryName(migrateCategoryId(row.category), language as 'en' | 'bg')}</MetaLine>
         </BusinessCell>
       ),
     },
@@ -365,19 +376,16 @@ export default function AdminPartnerRequestsPage() {
       ),
     },
     {
-      key: 'city',
-      header: t('admin.requestColCity'),
-      render: (row) => <span style={{ color: palette.textMuted }}>{row.city ?? '—'}</span>,
-    },
-    {
-      key: 'discountRate',
-      header: t('admin.requestColDiscount'),
-      render: (row) =>
-        row.discountRate != null ? (
-          <DiscountBadge>{row.discountRate}%</DiscountBadge>
-        ) : (
-          <span style={{ color: palette.textSubtle }}>—</span>
-        ),
+      key: 'address',
+      header: language === 'bg' ? 'Адрес' : 'Address',
+      render: (row) => (
+        <span style={{ color: palette.textMuted, fontSize: '0.8125rem' }}>
+          {row.address
+            ? <>{row.address}{row.city ? <><br /><span style={{ color: palette.textSubtle }}>{row.city}</span></> : null}</>
+            : (row.city ?? <span style={{ color: palette.textSubtle }}>—</span>)
+          }
+        </span>
+      ),
     },
     {
       key: 'requestStatus',
@@ -511,6 +519,7 @@ export default function AdminPartnerRequestsPage() {
           pageSize={PAGE_SIZE}
           totalItems={data?.total}
           onPageChange={setPage}
+          onRowClick={(row) => setDrawerPartnerId(row.id)}
         />
       </Card>
 
@@ -544,6 +553,14 @@ export default function AdminPartnerRequestsPage() {
           </Modal>
         </Overlay>
       )}
+
+      <PartnerRequestDrawer
+        partnerId={drawerPartnerId}
+        onClose={() => setDrawerPartnerId(null)}
+        canWrite={!!canWrite}
+        onApproved={() => queryClient.invalidateQueries({ queryKey: ['admin-partner-requests'] })}
+        onRejected={() => queryClient.invalidateQueries({ queryKey: ['admin-partner-requests'] })}
+      />
     </PageShell>
   );
 }

@@ -40,7 +40,8 @@ router.get(
   '/',
   optionalAuthenticate,
   asyncHandler(async (req: AuthRequest, res: Response) => {
-    const { category, city, status, search, partnerTypeId, page = '1', limit = '20' } = req.query as Record<string, string>;
+    const { category, city, status, search, partnerTypeId, page = '1', limit = '20',
+            verifiedAfter, onboardingCompletedAfter } = req.query as Record<string, string>;
 
     const where: any = {
       status: status ?? PartnerStatus.ACTIVE,
@@ -57,6 +58,14 @@ router.get(
         { businessName: { contains: search, mode: 'insensitive' } },
         { businessNameBg: { contains: search, mode: 'insensitive' } },
       ];
+    }
+    if (verifiedAfter) {
+      const from = new Date(verifiedAfter);
+      if (!isNaN(from.getTime())) where.verifiedAt = { gte: from };
+    }
+    if (onboardingCompletedAfter) {
+      const from = new Date(onboardingCompletedAfter);
+      if (!isNaN(from.getTime())) where.onboardingCompletedAt = { gte: from };
     }
 
     const pageNum = Math.max(1, parseInt(page));
@@ -83,6 +92,7 @@ router.get(
           website: true,
           joinedAt: true,
           verifiedAt: true,
+          onboardingCompletedAt: true,
           pendingChanges: true,
           pendingChangesAt: true,
         },
@@ -757,6 +767,14 @@ router.put(
     }
 
     Object.keys(updateData).forEach(k => updateData[k] === undefined && delete updateData[k]);
+
+    // Ensure features/amenities are stored as JSON strings (DB column is String)
+    if (updateData.features !== undefined && typeof updateData.features !== 'string') {
+      updateData.features = JSON.stringify(updateData.features);
+    }
+    if (updateData.amenities !== undefined && typeof updateData.amenities !== 'string') {
+      updateData.amenities = JSON.stringify(updateData.amenities);
+    }
 
     const updated = await prisma.partner.update({
       where: { id: req.params.id },

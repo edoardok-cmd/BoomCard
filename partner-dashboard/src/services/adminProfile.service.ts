@@ -21,6 +21,8 @@ export interface AdminProfile {
 export interface AdminSession {
   id: string;
   clientType: string | null;
+  ip: string | null;
+  userAgent: string | null;
   createdAt: string;
   expiresAt: string;
 }
@@ -49,6 +51,13 @@ export const adminProfileService = {
     return apiService.patch<{ id: string; firstName: string; lastName: string; phone: string | null; email: string }>(
       '/admin/me',
       data
+    );
+  },
+
+  changeEmail(email: string, currentPassword: string) {
+    return apiService.patch<{ id: string; email: string }>(
+      '/admin/me',
+      { email, currentPassword }
     );
   },
 

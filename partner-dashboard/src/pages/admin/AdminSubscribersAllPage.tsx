@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import styled from 'styled-components';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-hot-toast';
@@ -43,9 +43,12 @@ const I18N = {
   allPlans:       { en: 'All plans',       bg: 'Всички планове' },
   allStatuses:    { en: 'All statuses',    bg: 'Всички статуси' },
   allRisk:        { en: 'All risk',        bg: 'Всички рискове' },
-  active:         { en: 'Active',          bg: 'Активен' },
-  suspended:      { en: 'Suspended',       bg: 'Спрян' },
-  deleted:        { en: 'Deleted',         bg: 'Изтрит' },
+  active:              { en: 'Active',               bg: 'Активен' },
+  suspended:           { en: 'Suspended',             bg: 'Спрян' },
+  deleted:             { en: 'Deleted',               bg: 'Изтрит' },
+  pendingVerification: { en: 'Pending verification',  bg: 'Изчаква верификация' },
+  pendingPayment:      { en: 'Pending payment',       bg: 'Изчаква плащане' },
+  inactive:            { en: 'Inactive',              bg: 'Неактивен' },
   trialing:       { en: 'Trialing',        bg: 'Пробен' },
   pastDue:        { en: 'Failed payment',  bg: 'Неуспешно плащане' },
   unpaid:         { en: 'Unpaid',          bg: 'Неплатен' },
@@ -150,6 +153,8 @@ const I18N = {
   acctSuspended:  { en: 'Account suspended', bg: 'Акаунтът е спрян' },
   acctActivated:  { en: 'Account activated', bg: 'Акаунтът е активиран' },
   statusFail:     { en: 'Failed to update account status', bg: 'Неуспешно обновяване на статус' },
+  ibanFocusLabel: { en: 'Showing subscribers who changed IBAN after', bg: 'Показват се абонати, сменили IBAN след' },
+  clearFilter:    { en: '✕ Clear filter', bg: '✕ Изчисти филтъра' },
   ibanLabel:      { en: 'IBAN:',           bg: 'IBAN:' },
   ibanCopied:     { en: 'IBAN copied',     bg: 'IBAN копиран' },
   ibanCopy:       { en: 'Copy',            bg: 'Копирай' },
@@ -683,6 +688,8 @@ const UserStatusBadge = styled.span<{ $status: UserAccountStatus | 'DELETED' }>`
   ${({ $status }) => {
     if ($status === 'ACTIVE') return `background: ${palette.successSoft}; color: ${palette.success};`;
     if ($status === 'SUSPENDED') return `background: ${palette.warningSoft}; color: ${palette.warning};`;
+    if ($status === 'DELETED') return `background: #fee2e2; color: #991b1b;`;
+    if ($status === 'PENDING_VERIFICATION' || $status === 'PENDING_PAYMENT') return `background: #eff6ff; color: #1d4ed8;`;
     return `background: #f3f4f6; color: #6b7280;`;
   }}
 `;
@@ -774,6 +781,9 @@ const ACCOUNT_STATUS_OPTIONS: Array<{ value: AccountStatusFilter | ''; key: I18N
   { value: 'ACTIVE', key: 'active' },
   { value: 'SUSPENDED', key: 'suspended' },
   { value: 'DELETED', key: 'deleted' },
+  { value: 'PENDING_VERIFICATION', key: 'pendingVerification' },
+  { value: 'PENDING_PAYMENT', key: 'pendingPayment' },
+  { value: 'INACTIVE', key: 'inactive' },
 ];
 
 // Spec §7.1 — three risk tiers framed as "auto / review / high".
@@ -796,6 +806,7 @@ const REFUND_REASONS: Array<{ value: RefundReason; key: I18NKey }> = [
 export default function AdminSubscribersAllPage() {
   const { language } = useLanguage();
   const queryClient = useQueryClient();
+  const [searchParams] = useSearchParams();
   const locale = language === 'bg' ? 'bg-BG' : 'en-GB';
   const lang: Lang = language === 'bg' ? 'bg' : 'en';
   const T = (key: I18NKey, vars?: Record<string, string | number>) => tr(key, lang, vars);
@@ -834,6 +845,18 @@ export default function AdminSubscribersAllPage() {
   const [riskLevel, setRiskLevel] = useState<RiskLevelFilter | ''>('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  const [ibanChangedAfter, setIbanChangedAfter] = useState('');
+
+  // Hydrate filters from alert deep-link URL params (spec §3.2).
+  // dateFrom        → new_registrations alert (filters by account createdAt)
+  // ibanChangedAfter → suspicious_iban_changes alert (filters by ibanLastChangedAt)
+  useEffect(() => {
+    const df = searchParams.get('dateFrom');
+    if (df) { const d = new Date(df); if (!isNaN(d.getTime())) setDateFrom(d.toISOString().split('T')[0]); }
+    const iba = searchParams.get('ibanChangedAfter');
+    if (iba) { const d = new Date(iba); if (!isNaN(d.getTime())) setIbanChangedAfter(iba); }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   /* ── Modal state ── */
   const [confirmCancel, setConfirmCancel] = useState<AdminSubscriber | null>(null);
@@ -864,8 +887,9 @@ export default function AdminSubscribersAllPage() {
     riskLevel,
     dateFrom: dateFrom || undefined,
     dateTo: dateTo || undefined,
+    ibanChangedAfter: ibanChangedAfter || undefined,
   };
-  const queryKey = ['admin-subscribers', page, search, plan, status, accountStatus, riskLevel, dateFrom, dateTo];
+  const queryKey = ['admin-subscribers', page, search, plan, status, accountStatus, riskLevel, dateFrom, dateTo, ibanChangedAfter];
 
   const { data, isLoading } = useQuery({
     queryKey,
@@ -1095,6 +1119,7 @@ export default function AdminSubscribersAllPage() {
     {
       key: 'subscriptionStatus',
       header: T('colSubStatus'),
+      minWidth: '200px',
       render: (row) =>
         row.subscription ? (
           <StatusBadge $status={row.subscription.status}>
@@ -1604,6 +1629,16 @@ export default function AdminSubscribersAllPage() {
         </HeaderActions>
       </PageHeader>
 
+      {ibanChangedAfter && (() => {
+        const d = new Date(ibanChangedAfter);
+        return (
+          <div style={{ marginBottom: '1rem', padding: '0.75rem 1rem', background: '#f5ead2', border: '1px solid #e8d8ad', borderRadius: '0.625rem', fontSize: '0.875rem', color: '#7a5a22', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span>{T('ibanFocusLabel')} {d.toLocaleString(lang === 'bg' ? 'bg-BG' : 'en-US', { dateStyle: 'medium', timeStyle: 'short' })} — {data?.total ?? '…'} {T('colSubscriber').toLowerCase()}</span>
+            <button onClick={() => { setIbanChangedAfter(''); setPage(1); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#7a5a22', fontWeight: 600, fontSize: '0.875rem' }}>{T('clearFilter')}</button>
+          </div>
+        );
+      })()}
+
       <Card>
         <FilterRow>
           <SearchInput
@@ -1659,6 +1694,7 @@ export default function AdminSubscribersAllPage() {
           pageSize={PAGE_SIZE}
           totalItems={data?.total}
           onPageChange={setPage}
+          rowStyle={(row) => row.deletedAt ? { opacity: 0.5 } : undefined}
         />
       </Card>
     </PageShell>

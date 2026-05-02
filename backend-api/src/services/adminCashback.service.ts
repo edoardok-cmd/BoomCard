@@ -612,6 +612,7 @@ export interface SubscriberCashbackEntry {
   description: string | null;
   createdAt: Date;
   receipt: { id: string; totalAmount: number | null; merchantName: string | null } | null;
+  partner: { id: string; businessName: string } | null;
 }
 
 export interface SubscriberCashbackResult {
@@ -649,9 +650,18 @@ export async function getSubscriberCashbackEntries(
         cashbackPaidAt: true,
         description: true,
         createdAt: true,
-        receiptId: true,
         receipt: {
-          select: { id: true, totalAmount: true, merchantName: true },
+          select: {
+            id: true,
+            totalAmount: true,
+            merchantName: true,
+            venue: { select: { partner: { select: { id: true, businessName: true } } } },
+          },
+        },
+        stickerScan: {
+          select: {
+            venue: { select: { partner: { select: { id: true, businessName: true } } } },
+          },
         },
       },
     }),
@@ -682,7 +692,10 @@ export async function getSubscriberCashbackEntries(
       daysUntilExpiry,
       description: e.description,
       createdAt: e.createdAt,
-      receipt: e.receipt ?? null,
+      receipt: e.receipt
+        ? { id: e.receipt.id, totalAmount: e.receipt.totalAmount, merchantName: e.receipt.merchantName }
+        : null,
+      partner: e.receipt?.venue?.partner ?? e.stickerScan?.venue?.partner ?? null,
     };
   });
 
@@ -875,7 +888,25 @@ export async function getAllCashbackEntries(
           },
         },
         receipt: {
-          select: { id: true, totalAmount: true, merchantName: true },
+          select: {
+            id: true,
+            totalAmount: true,
+            merchantName: true,
+            venue: {
+              select: {
+                partner: { select: { id: true, businessName: true } },
+              },
+            },
+          },
+        },
+        stickerScan: {
+          select: {
+            venue: {
+              select: {
+                partner: { select: { id: true, businessName: true } },
+              },
+            },
+          },
         },
       },
     }),
@@ -922,7 +953,10 @@ export async function getAllCashbackEntries(
       daysUntilExpiry,
       description: e.description,
       createdAt: e.createdAt,
-      receipt: e.receipt ?? null,
+      receipt: e.receipt
+        ? { id: e.receipt.id, totalAmount: e.receipt.totalAmount, merchantName: e.receipt.merchantName }
+        : null,
+      partner: e.receipt?.venue?.partner ?? e.stickerScan?.venue?.partner ?? null,
       user: e.wallet.user,
     };
   });

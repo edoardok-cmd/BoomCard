@@ -93,6 +93,4 @@ const Tab = styled(NavLink)`
   }
 `;
 
-const ShellBody = styled.div`
-  padding: 1.5rem;
-`;
+const ShellBody = styled.div``;

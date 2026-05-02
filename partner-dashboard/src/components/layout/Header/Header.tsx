@@ -983,6 +983,13 @@ export const Header: React.FC<HeaderProps> = ({
     return () => window.removeEventListener('scroll', handleScroll);
   }, [scrolled]);
 
+  // Admin portal is BG-only — force language back to 'bg' on any admin route
+  useEffect(() => {
+    if (location.pathname.startsWith('/admin') && language !== 'bg') {
+      setLanguage('bg');
+    }
+  }, [location.pathname, language, setLanguage]);
+
   // Fetch impersonatable partners lazily when the modal opens. Refetch each
   // open so admins see newly-onboarded partners without a full reload. If the
   // admin types in the search box, debouncing lives on the input itself —
@@ -1328,8 +1335,8 @@ export const Header: React.FC<HeaderProps> = ({
               </Tooltip>
             </ThemeMenuContainer>
 
-            {/* Language Toggle - Desktop only */}
-            <Tooltip content={language === 'en' ? 'Switch to Bulgarian' : 'Превключи на английски'} position="bottom">
+            {/* Language Toggle - Desktop only, hidden on admin routes */}
+            {!location.pathname.startsWith('/admin') && <Tooltip content={language === 'en' ? 'Switch to Bulgarian' : 'Превключи на английски'} position="bottom">
               <LanguageButton
                 className="hidden nav:flex"
                 onClick={() => setLanguage(language === 'en' ? 'bg' : 'en')}
@@ -1344,7 +1351,7 @@ export const Header: React.FC<HeaderProps> = ({
                   />
                 </svg>
               </LanguageButton>
-            </Tooltip>
+            </Tooltip>}
 
             {isAuthenticated && user ? (
               <>
@@ -1387,7 +1394,9 @@ export const Header: React.FC<HeaderProps> = ({
                           {isImpersonating
                             ? t('header.role.impersonating')
                             : user.role === 'admin'
-                              ? t('header.role.admin')
+                              ? user.rawRole === 'SUPER_ADMIN'
+                                ? t('header.role.superAdmin')
+                                : t('header.role.admin')
                               : user.role === 'partner'
                                 ? t('header.role.partner')
                                 : t('header.role.user')}
@@ -1830,7 +1839,8 @@ export const Header: React.FC<HeaderProps> = ({
               transition={{ type: 'tween', duration: 0.3 }}
             >
               <div className="p-6 pt-20">
-                {/* Language Toggle Mobile */}
+                {/* Language Toggle Mobile - hidden on admin routes */}
+                {!location.pathname.startsWith('/admin') && (
                 <button
                   onClick={() => setLanguage(language === 'en' ? 'bg' : 'en')}
                   className="mb-4 flex items-center justify-center gap-3 px-4 py-3 rounded-lg transition-all"
@@ -1850,6 +1860,7 @@ export const Header: React.FC<HeaderProps> = ({
                   </svg>
                   <span className="font-semibold">{language === 'en' ? 'Switch to Bulgarian' : 'Превключи на английски'}</span>
                 </button>
+                )}
 
                 {/* Theme Switcher Mobile */}
                 <div className="mb-6 flex gap-2">

@@ -4,7 +4,7 @@ import { PartnerType } from './partnerTypes.service';
 import * as authStorage from '../lib/auth/authStorage';
 
 // Spec §5.3 statuses: ACTIVE / PAUSED / SUSPENDED / ARCHIVED. INACTIVE kept for legacy rows.
-export type PartnerStatus = 'PENDING' | 'ACTIVE' | 'PAUSED' | 'SUSPENDED' | 'ARCHIVED' | 'INACTIVE';
+export type PartnerStatus = 'PENDING' | 'ACTIVE' | 'PAUSED' | 'SUSPENDED' | 'ARCHIVED' | 'INACTIVE' | 'REJECTED';
 
 export interface Partner {
   id: string;
@@ -49,6 +49,7 @@ export interface Partner {
   joinedAt?: string;
   joinedDate?: string;
   verifiedAt?: string;
+  onboardingCompletedAt?: string;
   isVerified?: boolean;
   features?: Record<string, unknown>;
   createdAt?: string;
@@ -152,6 +153,8 @@ export interface PartnerFilters {
   limit?: number;
   sortBy?: 'name' | 'rating' | 'joinedDate' | 'offerCount';
   sortOrder?: 'asc' | 'desc';
+  verifiedAfter?: string;
+  onboardingCompletedAfter?: string;
 }
 
 export interface PartnerStats {

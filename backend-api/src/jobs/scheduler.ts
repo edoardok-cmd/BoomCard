@@ -151,7 +151,7 @@ export async function expireWallet(walletId: string, now: Date): Promise<number>
           balanceBefore: currentWallet.balance,
           balanceAfter: currentWallet.balance - effectiveDecrement,
           status: WalletTransactionStatus.COMPLETED,
-          description: `Cashback expired (${cancelledCount} transaction${cancelledCount > 1 ? 's' : ''})`,
+          description: `Кешбек изтекъл (${cancelledCount} транзакци${cancelledCount > 1 ? 'и' : 'я'})`,
           metadata: JSON.stringify({
             expiredTransactionIds: cancelledRows.map(r => r.id),
             nominalExpiredBGN: nominalExpired,

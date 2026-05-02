@@ -9,6 +9,7 @@ import {
   SubscriptionStatus,
   UserAccountStatus,
 } from '../../services/adminSubscribers.service';
+import { adminSubscriptionsService } from '../../services/adminSubscriptions.service';
 import { planLabel, subStatusLabel, userStatusLabel, riskLabel, riskBucket, type RiskBucket, type Lang } from '../../utils/planLabels';
 
 /* ─── i18n ─────────────────────────────────────────────────────────────────── */
@@ -23,6 +24,7 @@ const I18N = {
   // Profile meta
   joined:         { en: 'Joined',            bg: 'Регистриран' },
   lastLogin:      { en: 'Last login',        bg: 'Последен вход' },
+  lastActivity:   { en: 'Last activity',     bg: 'Последна активност' },
   risk:           { en: 'Risk',              bg: 'Риск' },
   // Action buttons
   saving:         { en: 'Saving…',           bg: 'Запазва…' },
@@ -48,9 +50,13 @@ const I18N = {
   // Wallet section
   walletTitle:    { en: 'Wallet',            bg: 'Портфейл' },
   walletAvailable:{ en: 'Available',         bg: 'Налично' },
+  walletLocked:   { en: 'Locked for payout', bg: 'Заключен за изплащане' },
   walletTotal:    { en: 'Total balance',     bg: 'Общ баланс' },
   walletPending:  { en: 'Pending',           bg: 'Изчаква' },
   noWallet:       { en: 'No wallet found',   bg: 'Няма намерен портфейл' },
+  // Contact / identity
+  ibanLabel:      { en: 'IBAN:',             bg: 'IBAN:' },
+  ibanNone:       { en: 'Not provided',      bg: 'Липсва' },
   // Subscriptions table
   subsTitle:      { en: 'Subscription history', bg: 'История на абонаменти' },
   noSubs:         { en: 'No subscriptions found', bg: 'Няма открити абонаменти' },
@@ -62,6 +68,15 @@ const I18N = {
   colStarted:     { en: 'Started',           bg: 'Започнат на' },
   yes:            { en: 'Yes',               bg: 'Да' },
   no:             { en: 'No',                bg: 'Не' },
+  // Payment summary
+  paymentsTitle:  { en: 'Payments',          bg: 'Плащания' },
+  payTotal:       { en: 'Total paid',        bg: 'Общо платено' },
+  payCount:       { en: 'Payment count',     bg: 'Брой плащания' },
+  payLast:        { en: 'Last payment',      bg: 'Последно плащане' },
+  payNone:        { en: 'No subscription payments on record', bg: 'Няма записани плащания' },
+  // Cashback link section
+  cashbackTitle:  { en: 'Cashback entries',   bg: 'Кешбек записи' },
+  cashbackView:   { en: 'View cashback entries →', bg: 'Виж кешбек записи →' },
 };
 
 type I18NKey = keyof typeof I18N;
@@ -295,7 +310,7 @@ const Spinner = styled.div`
 `;
 
 /* ─── Badges ───────────────────────────────────────────────────────────────── */
-const UserStatusBadge = styled.span<{ $status: UserAccountStatus | 'DELETED' }>`
+const UserStatusBadge = styled.span<{ $status: UserAccountStatus }>`
   display: inline-flex;
   align-items: center;
   font-size: 0.7rem;
@@ -308,6 +323,9 @@ const UserStatusBadge = styled.span<{ $status: UserAccountStatus | 'DELETED' }>`
   ${({ $status }) => {
     if ($status === 'ACTIVE') return `background: ${palette.successSoft}; color: ${palette.success};`;
     if ($status === 'SUSPENDED') return `background: ${palette.warningSoft}; color: ${palette.warning};`;
+    if ($status === 'DELETED') return `background: ${palette.dangerSoft}; color: ${palette.danger};`;
+    if ($status === 'PENDING_PAYMENT') return `background: ${palette.infoSoft}; color: ${palette.info};`;
+    if ($status === 'PENDING_VERIFICATION') return `background: ${palette.infoSoft}; color: ${palette.info};`;
     return `background: #f3f4f6; color: #6b7280;`;
   }}
 `;
@@ -415,6 +433,12 @@ export default function AdminSubscriberDetailPage() {
     enabled: !!userId,
   });
 
+  const { data: historyData } = useQuery({
+    queryKey: ['admin-subscription-history', userId],
+    queryFn: () => adminSubscriptionsService.getUserHistory(userId!),
+    enabled: !!userId,
+  });
+
   const T = (key: I18NKey, vars?: Record<string, string | number>) => tr(key, lang, vars);
 
   const suspendMutation = useMutation({
@@ -443,7 +467,7 @@ export default function AdminSubscriberDetailPage() {
   if (isLoading) return <PageShell><Spinner>{T('loading')}</Spinner></PageShell>;
   if (isError || !data) return <PageShell><Spinner>{T('loadFail')}</Spinner></PageShell>;
 
-  const accountStatus = (data.deletedAt ? 'DELETED' : data.status) as UserAccountStatus | 'DELETED';
+  const accountStatus: UserAccountStatus = data.deletedAt ? 'DELETED' : data.status;
   const fullName =
     data.firstName || data.lastName
       ? `${data.firstName ?? ''} ${data.lastName ?? ''}`.trim()
@@ -466,6 +490,14 @@ export default function AdminSubscriberDetailPage() {
             <FullName>{fullName}</FullName>
             <ContactLine>{data.email}</ContactLine>
             {data.phone && <ContactLine>{data.phone}</ContactLine>}
+            <ContactLine>
+              <span style={{ color: palette.textSubtle, fontSize: '0.8125rem', fontWeight: 600 }}>{T('ibanLabel')}</span>{' '}
+              {data.iban ? (
+                <span style={{ fontFamily: 'monospace', fontSize: '0.875rem' }}>{data.iban}</span>
+              ) : (
+                <span style={{ color: palette.textSubtle, fontSize: '0.875rem', fontStyle: 'italic' }}>{T('ibanNone')}</span>
+              )}
+            </ContactLine>
             <BadgeRow>
               <UserStatusBadge $status={accountStatus}>{userStatusLabel(accountStatus, lang)}</UserStatusBadge>
               {data.riskScore != null && (
@@ -476,6 +508,7 @@ export default function AdminSubscriberDetailPage() {
             </BadgeRow>
             <MetaRow>
               {T('joined')} {fmt(data.createdAt)}
+              {data.lastActivityAt && <> · {T('lastActivity')} {fmt(data.lastActivityAt)}</>}
               {data.lastLoginAt && <> · {T('lastLogin')} {fmt(data.lastLoginAt)}</>}
             </MetaRow>
           </ProfileInfo>
@@ -531,13 +564,15 @@ export default function AdminSubscriberDetailPage() {
                 <WalletUnit>BGN</WalletUnit>
               </WalletValue>
             </WalletItem>
-            <WalletItem>
-              <WalletLabel>{T('walletTotal')}</WalletLabel>
-              <WalletValue>
-                {data.wallet.balance.toFixed(2)}
-                <WalletUnit>BGN</WalletUnit>
-              </WalletValue>
-            </WalletItem>
+            {(data.wallet.balance - data.wallet.availableBalance) > 0 && (
+              <WalletItem>
+                <WalletLabel>{T('walletLocked')}</WalletLabel>
+                <WalletValue>
+                  {(data.wallet.balance - data.wallet.availableBalance).toFixed(2)}
+                  <WalletUnit>BGN</WalletUnit>
+                </WalletValue>
+              </WalletItem>
+            )}
             <WalletItem>
               <WalletLabel>{T('walletPending')}</WalletLabel>
               <WalletValue>
@@ -545,10 +580,56 @@ export default function AdminSubscriberDetailPage() {
                 <WalletUnit>BGN</WalletUnit>
               </WalletValue>
             </WalletItem>
+            <WalletItem>
+              <WalletLabel>{T('walletTotal')}</WalletLabel>
+              <WalletValue>
+                {(data.wallet.balance + data.wallet.pendingBalance).toFixed(2)}
+                <WalletUnit>BGN</WalletUnit>
+              </WalletValue>
+            </WalletItem>
           </WalletGrid>
         ) : (
           <EmptyState>{T('noWallet')}</EmptyState>
         )}
+      </SectionCard>
+
+      {/* Payment summary (§4.2 — плащания per user) */}
+      <SectionCard>
+        <SectionTitle>{T('paymentsTitle')}</SectionTitle>
+        {historyData?.paymentSummary && historyData.paymentSummary.count > 0 ? (
+          <WalletGrid>
+            <WalletItem>
+              <WalletLabel>{T('payTotal')}</WalletLabel>
+              <WalletValue>
+                {historyData.paymentSummary.totalAmount.toFixed(2)}
+                <WalletUnit>BGN</WalletUnit>
+              </WalletValue>
+            </WalletItem>
+            <WalletItem>
+              <WalletLabel>{T('payCount')}</WalletLabel>
+              <WalletValue>{historyData.paymentSummary.count}</WalletValue>
+            </WalletItem>
+            {historyData.paymentSummary.lastPaymentAt && (
+              <WalletItem>
+                <WalletLabel>{T('payLast')}</WalletLabel>
+                <WalletValue style={{ fontSize: '1rem' }}>{fmt(historyData.paymentSummary.lastPaymentAt)}</WalletValue>
+              </WalletItem>
+            )}
+          </WalletGrid>
+        ) : (
+          <EmptyState>{T('payNone')}</EmptyState>
+        )}
+      </SectionCard>
+
+      {/* Cashback entries link (spec §4.4) */}
+      <SectionCard>
+        <SectionTitle>{T('cashbackTitle')}</SectionTitle>
+        <Link
+          to={`/admin/subscribers/cashback?search=${encodeURIComponent(data.email)}`}
+          style={{ color: '#c96442', fontWeight: 600, fontSize: '0.9rem' }}
+        >
+          {T('cashbackView')}
+        </Link>
       </SectionCard>
 
       {/* Subscriptions */}

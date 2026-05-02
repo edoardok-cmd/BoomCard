@@ -433,7 +433,7 @@ export class PaymentService {
                   userId: transaction.userId,
                   amount: reversalAmount,
                   type: WalletTransactionType.ADJUSTMENT,
-                  description: `Cashback reversal for refund on transaction ${transactionId}`,
+                  description: `Сторниране на кешбек при възстановяване на транзакция ${transactionId}`,
                   transactionId: refund.id,
                   metadata: { refundId: refund.id, receiptId: linkedReceipt.id, originalTransactionId: transactionId },
                 });

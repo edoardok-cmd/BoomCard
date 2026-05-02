@@ -622,7 +622,7 @@ export class SubscriptionService {
             userId,
             amount: completedTotal,
             type: WalletTransactionType.ADJUSTMENT,
-            description: 'Trial refund — cashback voided',
+            description: 'Анулиран кешбек при пробен период',
             metadata: { receiptIds },
           });
         }
@@ -700,7 +700,7 @@ export class SubscriptionService {
             userId,
             amount: stickerCompletedTotal,
             type: WalletTransactionType.ADJUSTMENT,
-            description: 'Trial refund — sticker scan cashback voided',
+            description: 'Анулиран кешбек от стикер при пробен период',
             metadata: { scanIds },
           });
         }

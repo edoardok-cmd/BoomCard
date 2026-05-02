@@ -88,6 +88,7 @@ export const bg: TranslationKey = {
     impersonatePartner: 'Представи се като партньор',
     role: {
       admin: 'Администратор',
+      superAdmin: 'Супер Администратор',
       partner: 'Партньор',
       user: 'Потребител',
       impersonating: 'Представяне като партньор',

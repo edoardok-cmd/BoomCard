@@ -29,7 +29,9 @@ const Tag = styled.span<{ $severity: 'low' | 'medium' | 'high' }>`
 `;
 
 export default function FraudReasonTag({ reason, language = 'en' }: FraudReasonTagProps) {
-  const info = FRAUD_REASON_LABELS[reason];
+  // Exact match first; fall back to prefix match for codes with payload suffixes
+  // (e.g. "RAPID_SCANNING: 5 scans in 30 minutes" → looks up "RAPID_SCANNING").
+  const info = FRAUD_REASON_LABELS[reason] ?? FRAUD_REASON_LABELS[reason.split(':')[0].trim()];
 
   if (!info) {
     return (
@@ -40,9 +42,11 @@ export default function FraudReasonTag({ reason, language = 'en' }: FraudReasonT
   }
 
   const label = language === 'bg' ? info.labelBg : info.label;
+  // For prefix codes, append the payload part so admins still see the detail.
+  const suffix = !FRAUD_REASON_LABELS[reason] ? reason.split(':').slice(1).join(':').trim() : '';
   return (
     <Tag $severity={info.severity} title={reason}>
-      {label}
+      {label}{suffix ? `: ${suffix}` : ''}
     </Tag>
   );
 }

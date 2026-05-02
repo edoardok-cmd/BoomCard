@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import ReactDOM from 'react-dom';
 import styled from 'styled-components';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useSearchParams } from 'react-router-dom';
 import { useLanguage } from '../contexts/LanguageContext';
 import {
   partnersService,
@@ -19,6 +20,7 @@ import { venuesService } from '../services/venues.service';
 import axios from 'axios';
 import { placesCategories, experiencesCategories, getCategoryName } from '../types/categories.types';
 import { DISCOUNT_STEPS, snapToStep } from '../utils/discountSteps';
+import { adminPartnerRequestsService, AuditEntry } from '../services/adminPartnerRequests.service';
 
 // ─── Styled Components ────────────────────────────────────────────────────────
 
@@ -53,24 +55,6 @@ const Subtitle = styled.p`
   color: var(--color-text-secondary);
 `;
 
-const CreateButton = styled.button`
-  padding: 0.875rem 1.75rem;
-  background: linear-gradient(135deg, #dc2626 0%, #ea580c 100%);
-  color: white;
-  border: none;
-  border-radius: 0.875rem;
-  font-size: 1rem;
-  font-weight: 700;
-  cursor: pointer;
-  transition: all 200ms;
-  white-space: nowrap;
-
-  &:hover {
-    opacity: 0.9;
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(220, 38, 38, 0.3);
-  }
-`;
 
 const FiltersBar = styled.div`
   display: flex;
@@ -123,7 +107,7 @@ const Table = styled.div`
 
 const TableHeader = styled.div`
   display: grid;
-  grid-template-columns: 3fr 1.5fr 1fr 1fr 1.5fr auto;
+  grid-template-columns: 3fr 1.5fr 1fr 1fr 1fr 1fr auto;
   gap: 1rem;
   padding: 1.25rem 1.5rem;
   background: var(--color-background-secondary);
@@ -137,7 +121,7 @@ const TableHeader = styled.div`
 
 const TableRow = styled(motion.div)`
   display: grid;
-  grid-template-columns: 3fr 1.5fr 1fr 1fr 1.5fr auto;
+  grid-template-columns: 3fr 1.5fr 1fr 1fr 1fr 1fr auto;
   gap: 1rem;
   padding: 1.25rem 1.5rem;
   border-bottom: 1px solid var(--color-border);
@@ -190,6 +174,7 @@ const StatusBadge = styled.span<{ $status: string }>`
     $status === 'PAUSED' ? '#dbeafe' :
     $status === 'SUSPENDED' ? '#fee2e2' :
     $status === 'ARCHIVED' ? '#e5e7eb' :
+    $status === 'REJECTED' ? '#fee2e2' :
     '#f3f4f6'};
   color: ${({ $status }) =>
     $status === 'ACTIVE' ? '#166534' :
@@ -197,6 +182,7 @@ const StatusBadge = styled.span<{ $status: string }>`
     $status === 'PAUSED' ? '#1e40af' :
     $status === 'SUSPENDED' ? '#991b1b' :
     $status === 'ARCHIVED' ? '#374151' :
+    $status === 'REJECTED' ? '#991b1b' :
     '#374151'};
 `;
 
@@ -787,6 +773,15 @@ const PARTNER_CATEGORIES = [
   })),
 }));
 
+// ─── Partner status labels ────────────────────────────────────────────────────
+const PARTNER_STATUS_LABELS: Record<string, { en: string; bg: string }> = {
+  ACTIVE:    { en: 'Active',    bg: 'Активен' },
+  PAUSED:    { en: 'Paused',    bg: 'На пауза' },
+  SUSPENDED: { en: 'Suspended', bg: 'Спрян' },
+  ARCHIVED:  { en: 'Archived',  bg: 'Архивиран' },
+  REJECTED:  { en: 'Rejected',  bg: 'Отхвърлен' },
+};
+
 // ─── Legacy category migration ────────────────────────────────────────────────
 // Maps old display-name strings (EN and BG) that were stored before canonical IDs
 // were introduced, so the edit modal pre-populates correctly for existing partners.
@@ -833,6 +828,17 @@ const LEGACY_CATEGORY_MAP: Record<string, string> = {
   'BEAUTY': 'spa',
   'SHOPPING': 'cafes',
   'TRAVEL': 'accommodation',
+  // English display names from partnerType.name stored as category (live data)
+  'Wineries': 'restaurants',
+  'Spa': 'spa',
+  'Hotels': 'accommodation',
+  'Experiences': 'gastronomic',
+  'Restaurants': 'restaurants',
+  'Wellness': 'spa',
+  'Wine': 'restaurants',
+  'Bakeries': 'cafes',
+  'Cafes': 'cafes',
+  'Clubs': 'clubs',
 };
 
 function migrateCategoryId(id: string): string {
@@ -1223,6 +1229,7 @@ interface EditForm {
   discountRate: string;
   status: PartnerStatus;
   isVisible: boolean;
+  internalNotes: string;
 }
 
 // ─── Page Component ───────────────────────────────────────────────────────────
@@ -1230,6 +1237,21 @@ interface EditForm {
 const AdminPartnersPage: React.FC = () => {
   const { language } = useLanguage();
   const queryClient = useQueryClient();
+  const [searchParams] = useSearchParams();
+
+  // URL-param hydration from alert deep-links (spec §3.2 informational alerts).
+  // verifiedAfter    → activated_partners alert
+  // onboardingCompletedAfter → completed_onboarding alert
+  const [verifiedAfter, setVerifiedAfter] = useState('');
+  const [onboardingCompletedAfter, setOnboardingCompletedAfter] = useState('');
+
+  useEffect(() => {
+    const va = searchParams.get('verifiedAfter');
+    const oa = searchParams.get('onboardingCompletedAfter');
+    if (va && !isNaN(new Date(va).getTime())) setVerifiedAfter(va);
+    if (oa && !isNaN(new Date(oa).getTime())) setOnboardingCompletedAfter(oa);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Table filters
   const [search, setSearch] = useState('');
@@ -1249,6 +1271,7 @@ const AdminPartnersPage: React.FC = () => {
     businessName: '', businessNameBg: '', description: '', descriptionBg: '',
     city: '', region: '', address: '', phone: '', email: '', website: '',
     partnerTypeId: '', discountRate: '', status: 'ACTIVE', isVisible: true,
+    internalNotes: '',
   });
 
   // Menu upload modal
@@ -1286,13 +1309,22 @@ const AdminPartnersPage: React.FC = () => {
   });
 
   const { data: partnersData, isLoading } = useQuery({
-    queryKey: ['admin-partners', search, statusFilter],
+    queryKey: ['admin-partners', search, statusFilter, verifiedAfter, onboardingCompletedAfter],
     queryFn: () => partnersService.getPartners({
       search: search || undefined,
       status: (statusFilter as 'new' | 'vip' | 'exclusive' | 'regular') || undefined,
       limit: 100,
+      verifiedAfter: verifiedAfter || undefined,
+      onboardingCompletedAfter: onboardingCompletedAfter || undefined,
     }),
   });
+
+  const { data: auditData } = useQuery({
+    queryKey: ['partner-audit', editingPartner?.id],
+    queryFn: () => adminPartnerRequestsService.getAuditLog(editingPartner!.id),
+    enabled: !!editingPartner,
+  });
+  const auditEntries: AuditEntry[] = auditData?.entries ?? [];
 
   const createMutation = useMutation({
     mutationFn: (data: OnboardPartnerPayload) => partnersService.onboardPartner(data),
@@ -1419,6 +1451,12 @@ const AdminPartnersPage: React.FC = () => {
       discountRate: snapToStep(effectiveRate(partner)),
       status: (String(partner.status).toUpperCase() as PartnerStatus) || 'ACTIVE',
       isVisible: partner.isVisible ?? true,
+      internalNotes: (() => {
+        try {
+          const f = typeof partner.features === 'string' ? JSON.parse(partner.features) : partner.features;
+          return (f as Record<string, unknown>)?.internalNotes as string ?? '';
+        } catch { return ''; }
+      })(),
     });
   };
 
@@ -1458,6 +1496,14 @@ const AdminPartnersPage: React.FC = () => {
         discountRate: isNaN(rate) ? undefined : rate,
         status: editForm.status,
         isVisible: editForm.isVisible,
+        features: (() => {
+          try {
+            const existing = typeof editingPartner!.features === 'string'
+              ? JSON.parse(editingPartner!.features as unknown as string)
+              : (editingPartner!.features ?? {});
+            return { ...(existing as Record<string, unknown>), internalNotes: editForm.internalNotes } as Record<string, unknown>;
+          } catch { return { internalNotes: editForm.internalNotes } as Record<string, unknown>; }
+        })(),
       },
     });
   };
@@ -1695,9 +1741,22 @@ const AdminPartnersPage: React.FC = () => {
 
   // ── Filtered data ──────────────────────────────────────────────────────────
 
-  const partners = (partnersData?.data ?? []).filter(p =>
-    !typeFilter || p.partnerTypeId === typeFilter,
-  );
+  const partners = (partnersData?.data ?? []).filter(p => {
+    if (typeFilter && p.partnerTypeId !== typeFilter) return false;
+    // Status filter is applied client-side: the public /partners API understands
+    // tier-based status values ('new'|'vip'|'exclusive'|'regular'), not internal
+    // PartnerStatus enum values. The page fetches limit:100 so all records are in memory.
+    if (statusFilter && String(p.status).toUpperCase() !== statusFilter) return false;
+    // verifiedAfter / onboardingCompletedAfter are now DB-level filters passed to the API.
+    return true;
+  });
+
+  const alertFocusDate = verifiedAfter || onboardingCompletedAfter;
+  const alertFocusLabel = verifiedAfter
+    ? (language === 'bg' ? 'Показват се партньори активирани след' : 'Showing partners activated after')
+    : onboardingCompletedAfter
+      ? (language === 'bg' ? 'Показват се партньори завършили онбординг след' : 'Showing partners with onboarding completed after')
+      : null;
 
   const editTypeMax = partnerTypes.find(t => t.id === editForm.partnerTypeId)?.maxDiscountRate ?? 100;
   const createTypeMax = partnerTypes.find(t => t.id === createForm.partnerTypeId)?.maxDiscountRate ?? 100;
@@ -1715,11 +1774,14 @@ const AdminPartnersPage: React.FC = () => {
               : 'Create and manage partner profiles and their discount tiers'}
           </Subtitle>
         </div>
-        <CreateButton onClick={() => setShowCreate(true)}>
-          + {language === 'bg' ? 'Нов Партньор' : 'New Partner'}
-        </CreateButton>
       </PageHeader>
 
+      {alertFocusLabel && alertFocusDate && (
+        <div style={{ marginBottom: '1rem', padding: '0.75rem 1rem', background: '#f5ead2', border: '1px solid #e8d8ad', borderRadius: '0.625rem', fontSize: '0.875rem', color: '#7a5a22', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span>{alertFocusLabel} {new Date(alertFocusDate).toLocaleString(language === 'bg' ? 'bg-BG' : 'en-US', { dateStyle: 'medium', timeStyle: 'short' })} — {partnersData?.total ?? partners.length} {language === 'bg' ? 'резултата' : 'results'}</span>
+          <button onClick={() => { setVerifiedAfter(''); setOnboardingCompletedAfter(''); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#7a5a22', fontWeight: 600, fontSize: '0.875rem' }}>✕</button>
+        </div>
+      )}
       <FiltersBar>
         <SearchInput
           placeholder={language === 'bg' ? 'Търсене по име...' : 'Search by name...'}
@@ -1735,10 +1797,10 @@ const AdminPartnersPage: React.FC = () => {
         <FilterSelect value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
           <option value="">{language === 'bg' ? 'Всички статуси' : 'All statuses'}</option>
           <option value="ACTIVE">{language === 'bg' ? 'Активен' : 'Active'}</option>
-          <option value="PENDING">{language === 'bg' ? 'Чакащ' : 'Pending'}</option>
           <option value="PAUSED">{language === 'bg' ? 'Пауза' : 'Paused'}</option>
           <option value="SUSPENDED">{language === 'bg' ? 'Спрян' : 'Suspended'}</option>
           <option value="ARCHIVED">{language === 'bg' ? 'Архивиран' : 'Archived'}</option>
+          <option value="REJECTED">{language === 'bg' ? 'Отхвърлен' : 'Rejected'}</option>
         </FilterSelect>
       </FiltersBar>
 
@@ -1749,6 +1811,7 @@ const AdminPartnersPage: React.FC = () => {
           <span>{language === 'bg' ? 'Ниво' : 'Tier'}</span>
           <span>{language === 'bg' ? 'Отстъпка' : 'Discount'}</span>
           <span>{language === 'bg' ? 'Статус' : 'Status'}</span>
+          <span>{language === 'bg' ? 'Видимост' : 'Visibility'}</span>
           <span></span>
         </TableHeader>
 
@@ -1787,6 +1850,17 @@ const AdminPartnersPage: React.FC = () => {
                   <PartnerMeta>{partner.businessNameBg || partner.nameBg}</PartnerMeta>
                 )}
                 {partner.city && <PartnerMeta>{partner.city}</PartnerMeta>}
+                <PartnerMeta style={{ fontFamily: 'monospace', fontSize: '0.7rem', color: 'var(--color-text-tertiary, #9ca3af)' }}>
+                  ID: {partner.id.slice(0, 8)}…
+                </PartnerMeta>
+                {(() => {
+                  const notes = (partner.features as Record<string, unknown> | undefined)?.internalNotes as string | undefined;
+                  return notes ? (
+                    <PartnerMeta title={notes} style={{ cursor: 'help', color: '#b5803a' }}>
+                      📝 {notes.length > 40 ? notes.slice(0, 40) + '…' : notes}
+                    </PartnerMeta>
+                  ) : null;
+                })()}
               </div>
               <span>{(() => {
                 const catId = partner.categories?.length ? partner.categories[0] : partner.category;
@@ -1804,11 +1878,17 @@ const AdminPartnersPage: React.FC = () => {
               <DiscountBadge>{effectiveRate(partner)}%</DiscountBadge>
               <span>
                 <StatusBadge $status={String(partner.status).toUpperCase()}>
-                  {partner.status}
+                  {PARTNER_STATUS_LABELS[String(partner.status).toUpperCase()]?.[language as 'en' | 'bg'] ?? String(partner.status)}
                 </StatusBadge>
-                {partner.isVisible !== undefined && (
+              </span>
+              <span>
+                {partner.isVisible !== undefined ? (
                   <VisibilityBadge $visible={partner.isVisible}>
                     {partner.isVisible ? (language === 'bg' ? 'Видим' : 'Visible') : (language === 'bg' ? 'Скрит' : 'Hidden')}
+                  </VisibilityBadge>
+                ) : (
+                  <VisibilityBadge $visible={true}>
+                    {language === 'bg' ? 'Видим' : 'Visible'}
                   </VisibilityBadge>
                 )}
               </span>
@@ -2328,11 +2408,9 @@ const AdminPartnersPage: React.FC = () => {
                       onChange={e => setEditForm(prev => ({ ...prev, status: e.target.value as PartnerStatus }))}
                     >
                       <option value="ACTIVE">{language === 'bg' ? 'Активен' : 'Active'}</option>
-                      <option value="PENDING">{language === 'bg' ? 'Чакащ одобрение' : 'Pending'}</option>
                       <option value="PAUSED">{language === 'bg' ? 'Пауза' : 'Paused'}</option>
                       <option value="SUSPENDED">{language === 'bg' ? 'Спрян' : 'Suspended'}</option>
                       <option value="ARCHIVED">{language === 'bg' ? 'Архивиран' : 'Archived'}</option>
-                      <option value="INACTIVE">{language === 'bg' ? 'Неактивен (legacy)' : 'Inactive (legacy)'}</option>
                     </Select>
                   </FormField>
 
@@ -2345,6 +2423,16 @@ const AdminPartnersPage: React.FC = () => {
                       <option value="true">{language === 'bg' ? 'Видим' : 'Visible'}</option>
                       <option value="false">{language === 'bg' ? 'Скрит' : 'Hidden'}</option>
                     </Select>
+                  </FormField>
+
+                  <FormField $full>
+                    <Label>{language === 'bg' ? 'Вътрешни бележки' : 'Internal Notes'}</Label>
+                    <Textarea
+                      rows={3}
+                      placeholder={language === 'bg' ? 'Бележки видими само за администратори…' : 'Notes visible to admins only…'}
+                      value={editForm.internalNotes}
+                      onChange={e => setEditForm(prev => ({ ...prev, internalNotes: e.target.value }))}
+                    />
                   </FormField>
                 </FormGrid>
 
@@ -2361,6 +2449,31 @@ const AdminPartnersPage: React.FC = () => {
                     {language === 'bg' ? '↓ Изтегли QR (SVG)' : '↓ Download QR (SVG)'}
                   </QrButton>
                 </div>
+
+                {auditEntries.length > 0 && (
+                  <div style={{ marginTop: '1.5rem' }}>
+                    <div style={{ fontWeight: 700, fontSize: '0.875rem', color: 'var(--color-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.75rem' }}>
+                      {language === 'bg' ? 'История на промени' : 'Change History'}
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '14rem', overflowY: 'auto' }}>
+                      {auditEntries.map((entry) => (
+                        <div key={entry.id} style={{ display: 'flex', gap: '0.75rem', fontSize: '0.8125rem', padding: '0.5rem 0.75rem', background: 'var(--color-background-secondary)', borderRadius: '0.5rem' }}>
+                          <span style={{ color: 'var(--color-text-secondary)', whiteSpace: 'nowrap' }}>
+                            {new Date(entry.createdAt).toLocaleString(language === 'bg' ? 'bg-BG' : 'en-GB', { dateStyle: 'short', timeStyle: 'short' })}
+                          </span>
+                          <span style={{ fontWeight: 600, color: 'var(--color-text-primary)' }}>{entry.action}</span>
+                          {entry.actor && (
+                            <span style={{ color: 'var(--color-text-secondary)' }}>
+                              {entry.actor.firstName || entry.actor.lastName
+                                ? `${entry.actor.firstName ?? ''} ${entry.actor.lastName ?? ''}`.trim()
+                                : entry.actor.email}
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 <ModalFooter>
                   <CancelButton type="button" onClick={() => setEditingPartner(null)}>

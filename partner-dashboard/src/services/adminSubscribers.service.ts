@@ -12,7 +12,7 @@ export type SubscriptionStatus =
   | 'UNPAID'
   | 'PAUSED';
 
-export type UserAccountStatus = 'ACTIVE' | 'SUSPENDED' | 'DELETED';
+export type UserAccountStatus = 'ACTIVE' | 'SUSPENDED' | 'DELETED' | 'PENDING_VERIFICATION' | 'PENDING_PAYMENT' | 'INACTIVE';
 export type RiskBucket = 'LOW_0_30' | 'REVIEW_31_60' | 'HIGH_61_PLUS';
 
 export interface SubscriberWallet {
@@ -95,7 +95,7 @@ export interface AdminSubscribersResult {
   limit: number;
 }
 
-export type AccountStatusFilter = 'ACTIVE' | 'SUSPENDED' | 'DELETED';
+export type AccountStatusFilter = 'ACTIVE' | 'SUSPENDED' | 'DELETED' | 'PENDING_VERIFICATION' | 'PENDING_PAYMENT' | 'INACTIVE';
 export type RiskLevelFilter = 'low' | 'medium' | 'high';
 
 export interface SubscriberFilters {
@@ -106,6 +106,7 @@ export interface SubscriberFilters {
   riskLevel?: RiskLevelFilter | '';
   dateFrom?: string;
   dateTo?: string;
+  ibanChangedAfter?: string;
 }
 
 function cleanFilters(f: SubscriberFilters): Record<string, unknown> {
@@ -117,6 +118,7 @@ function cleanFilters(f: SubscriberFilters): Record<string, unknown> {
   if (f.riskLevel) out['riskLevel'] = f.riskLevel;
   if (f.dateFrom) out['dateFrom'] = f.dateFrom;
   if (f.dateTo) out['dateTo'] = f.dateTo;
+  if (f.ibanChangedAfter) out['ibanChangedAfter'] = f.ibanChangedAfter;
   return out;
 }
 

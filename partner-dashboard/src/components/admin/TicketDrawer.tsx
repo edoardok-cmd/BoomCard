@@ -98,6 +98,12 @@ const copy = {
   },
 };
 
+function extractApiError(err: unknown, fallback: string): string {
+  return (
+    (err as { response?: { data?: { error?: string } } })?.response?.data?.error ?? fallback
+  );
+}
+
 function displayName(u: TicketUser | null | undefined): string {
   if (!u) return '—';
   const name = `${u.firstName ?? ''} ${u.lastName ?? ''}`.trim();
@@ -161,25 +167,25 @@ export default function TicketDrawer({ ticketId, onClose }: Props) {
       setReplyBody('');
       invalidateAll();
     },
-    onError: () => toast.error(t.replyError),
+    onError: (err) => toast.error(extractApiError(err, t.replyError)),
   });
 
   const statusMutation = useMutation({
     mutationFn: (status: TicketStatus) => adminHelpService.update(ticketId!, { status }),
     onSuccess: () => { toast.success(t.statusUpdated); invalidateAll(); },
-    onError: () => toast.error(t.statusError),
+    onError: (err) => toast.error(extractApiError(err, t.statusError)),
   });
 
   const priorityMutation = useMutation({
     mutationFn: (priority: TicketPriority) => adminHelpService.update(ticketId!, { priority }),
     onSuccess: () => { toast.success(t.priorityUpdated); invalidateAll(); },
-    onError: () => toast.error(t.priorityError),
+    onError: (err) => toast.error(extractApiError(err, t.priorityError)),
   });
 
   const assignMutation = useMutation({
     mutationFn: () => adminHelpService.assign(ticketId!),
     onSuccess: () => { toast.success(t.assignedOk); invalidateAll(); },
-    onError: () => toast.error(t.assignError),
+    onError: (err) => toast.error(extractApiError(err, t.assignError)),
   });
 
   const ticket = ticketData?.ticket;

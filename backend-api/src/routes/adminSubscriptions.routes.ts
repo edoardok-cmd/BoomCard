@@ -38,7 +38,7 @@ const userIdsByTestEmailRegex = async (negate: boolean): Promise<string[]> => {
   // forcing every list query through a raw SQL execution path.
   const op = negate ? '!~*' : '~*';
   const rows = await prisma.$queryRawUnsafe<Array<{ id: string }>>(
-    `SELECT id FROM users WHERE email ${op} $1`,
+    `SELECT id FROM "User" WHERE email ${op} $1`,
     TEST_EMAIL_REGEX_PG,
   );
   return rows.map((r) => r.id);

@@ -743,6 +743,21 @@ const lifecycleLabel = (s: CashbackEntryStatus | null | undefined, lang: Lang): 
   return t(map[s], lang);
 };
 
+const txTypeLabel = (type: WalletTransactionType | string, lang: Lang): string => {
+  const opt = TYPE_OPTIONS.find((o) => o.value === type);
+  return opt ? t(opt.labelKey, lang) : String(type).replace(/_/g, ' ');
+};
+
+const txStatusLabel = (
+  status: WalletTransactionStatus | BusinessTransactionStatus | string,
+  lang: Lang,
+): string => {
+  const opt =
+    STATUS_OPTIONS.find((o) => o.value === status) ??
+    BUSINESS_STATUS_OPTIONS.find((o) => o.value === status);
+  return opt ? t(opt.labelKey, lang) : String(status).replace(/_/g, ' ');
+};
+
 // Single source of truth for what counts as a "valid" status when validating
 // alert-deep-link query params. Derived from the dropdown options so that any
 // new status added to the dropdown is automatically accepted from the URL.
@@ -1075,9 +1090,8 @@ export default function AdminTransactionsPage() {
       header: t('colSubscriber', lang),
       render: (row) => (
         <UserCell>
-          {row.wallet.user.firstName || row.wallet.user.lastName
-            ? `${row.wallet.user.firstName ?? ''} ${row.wallet.user.lastName ?? ''}`.trim()
-            : '—'}
+          {`${row.wallet.user.firstName ?? ''} ${row.wallet.user.lastName ?? ''}`.trim()
+            || row.wallet.user.email}
           <MetaLine>{row.wallet.user.email}</MetaLine>
           {row.wallet.user.phone && <MetaLine>{row.wallet.user.phone}</MetaLine>}
         </UserCell>
@@ -1086,7 +1100,7 @@ export default function AdminTransactionsPage() {
     {
       key: 'type',
       header: t('colType', lang),
-      render: (row) => <TypeBadge $type={row.type}>{row.type.replace(/_/g, ' ')}</TypeBadge>,
+      render: (row) => <TypeBadge $type={row.type}>{txTypeLabel(row.type, lang)}</TypeBadge>,
     },
     {
       key: 'amount',
@@ -1104,7 +1118,7 @@ export default function AdminTransactionsPage() {
     {
       key: 'status',
       header: t('colStatus', lang),
-      render: (row) => <StatusBadge $status={row.status}>{row.status.replace(/_/g, ' ')}</StatusBadge>,
+      render: (row) => <StatusBadge $status={row.status}>{txStatusLabel(row.status, lang)}</StatusBadge>,
     },
     {
       key: 'description',
@@ -1259,7 +1273,7 @@ export default function AdminTransactionsPage() {
       header: t('colStatus', lang),
       render: (row) => (
         <StatusBadge $status={row.status}>
-          {row.status.replace(/_/g, ' ')}
+          {txStatusLabel(row.status, lang)}
         </StatusBadge>
       ),
     },
@@ -1302,12 +1316,24 @@ export default function AdminTransactionsPage() {
                 <code style={{ fontSize: '0.8125rem' }}>{detailTx.id}</code>
               </DetailRow>
               <DetailRow label={t('colSubscriber', lang)}>
-                {`${detailTx.user.firstName ?? ''} ${detailTx.user.lastName ?? ''}`.trim() || '—'}
+                <a
+                  href={`/admin/subscribers/${detailTx.user.id}`}
+                  style={{ color: palette.accent, fontWeight: 600, textDecoration: 'none' }}
+                >
+                  {`${detailTx.user.firstName ?? ''} ${detailTx.user.lastName ?? ''}`.trim() || detailTx.user.email}
+                </a>
                 <MetaLine>{detailTx.user.email}</MetaLine>
                 {detailTx.user.phone && <MetaLine>{detailTx.user.phone}</MetaLine>}
               </DetailRow>
               <DetailRow label={t('colPartner', lang)}>
-                {detailTx.partner?.businessName ?? '—'}
+                {detailTx.partner ? (
+                  <a
+                    href={`/admin/partners/${detailTx.partner.id}`}
+                    style={{ color: palette.accent, fontWeight: 600, textDecoration: 'none' }}
+                  >
+                    {detailTx.partner.businessName}
+                  </a>
+                ) : '—'}
                 <MetaLine>
                   {detailTx.venue?.name ?? (
                     <em style={{ color: palette.textSubtle }}>{t('noLocation', lang)}</em>
@@ -1377,7 +1403,7 @@ export default function AdminTransactionsPage() {
               </DetailRow>
               <DetailRow label={t('colStatus', lang)}>
                 <StatusBadge $status={detailTx.status}>
-                  {detailTx.status.replace(/_/g, ' ')}
+                  {txStatusLabel(detailTx.status, lang)}
                 </StatusBadge>
               </DetailRow>
               {detailTx.riskScore > 30 && (

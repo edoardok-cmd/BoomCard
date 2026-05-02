@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import styled from 'styled-components';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import { DataTable, ColumnDef } from '../../components/admin/DataTable/DataTable';
 import {
@@ -109,7 +110,7 @@ const ActionBtn = styled.button<{ $variant: 'approve' | 'reject' | 'dispute' }>`
 const PAGE_SIZE = 25;
 
 type ActionDraft = { id: string; type: 'approve' | 'reject'; text: string; verifiedAmount: string };
-type DisputeDraft = { receiptId: string; merchantName: string | null };
+type DisputeDraft = { scanId: string; userId: string; merchantName: string | null };
 
 const Overlay = styled.div`
   position: fixed; inset: 0; background: rgba(0,0,0,0.45);
@@ -227,11 +228,33 @@ export default function AdminControlSecurityPage() {
   const t = (key: keyof typeof T) => T[key][lang];
   const queryClient = useQueryClient();
 
+  const [searchParams] = useSearchParams();
+
   const [page, setPage] = useState(1);
   const [tier, setTier] = useState<'REVIEW_31_60' | 'HIGH_61_PLUS' | 'all'>('all');
   const [venueIdInput, setVenueIdInput] = useState('');
   const [venueId, setVenueId] = useState('');
   const [signalCategory, setSignalCategory] = useState('');
+
+  // Hydrate filters from alert deep-link URL params (spec §3.2 → §7.1).
+  // bucket=HIGH_61_PLUS|REVIEW_31_60 → tier  (risk_transactions / medium_risk_transactions alerts)
+  // signalCategory=suspicious         → signalCategory (suspicious_activity / fraud_check_errors alerts)
+  // suspicious=true                   → signalCategory (legacy param kept for back-compat)
+  // dateFromHours=N                   → dateFrom (suspicious_activity alert time window)
+  const [dateFrom, setDateFrom] = useState('');
+  useEffect(() => {
+    const bucket = searchParams.get('bucket');
+    if (bucket === 'HIGH_61_PLUS' || bucket === 'REVIEW_31_60') setTier(bucket);
+    const cat = searchParams.get('signalCategory');
+    const validCategories = ['duplicate', 'qrMismatch', 'velocity', 'receiptMatch', 'suspicious'];
+    if (cat && validCategories.includes(cat)) setSignalCategory(cat);
+    else if (searchParams.get('suspicious') === 'true') setSignalCategory('suspicious');
+    const hours = parseInt(searchParams.get('dateFromHours') ?? '', 10);
+    if (!isNaN(hours) && hours > 0) {
+      setDateFrom(new Date(Date.now() - hours * 60 * 60 * 1000).toISOString());
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [actionDraft, setActionDraft] = useState<ActionDraft | null>(null);
   const [disputeDraft, setDisputeDraft] = useState<DisputeDraft | null>(null);
   const [disputeNote, setDisputeNote] = useState('');
@@ -242,11 +265,12 @@ export default function AdminControlSecurityPage() {
   };
 
   const { data, isLoading } = useQuery({
-    queryKey: ['admin-fraud-signals', page, tier, venueId, signalCategory],
+    queryKey: ['admin-fraud-signals', page, tier, venueId, signalCategory, dateFrom],
     queryFn: () => adminControlService.getFraudSignals({
       page, limit: PAGE_SIZE, tier,
       venueId: venueId || undefined,
       signalCategory: signalCategory || undefined,
+      dateFrom: dateFrom || undefined,
     }),
   });
 
@@ -288,8 +312,8 @@ export default function AdminControlSecurityPage() {
   });
 
   const openDisputeMutation = useMutation({
-    mutationFn: ({ receiptId, notes }: { receiptId: string; notes?: string }) =>
-      adminControlService.createDisputeCase({ subjectType: 'RECEIPT', receiptId, notes }),
+    mutationFn: ({ scanId, userId, notes }: { scanId: string; userId: string; notes?: string }) =>
+      adminControlService.createDisputeCase({ subjectType: 'CASHBACK', subjectId: scanId, userId, notes }),
     onSuccess: () => {
       toast.success(t('disputeOpened'));
       setDisputeDraft(null);
@@ -309,7 +333,7 @@ export default function AdminControlSecurityPage() {
   const isRowMutating = (id: string) =>
     (approveMutation.isPending && approveMutation.variables?.id === id) ||
     (rejectMutation.isPending && rejectMutation.variables?.id === id) ||
-    (openDisputeMutation.isPending && openDisputeMutation.variables?.receiptId === id);
+    (openDisputeMutation.isPending && openDisputeMutation.variables?.scanId === id);
   const isAnyMutating = approveMutation.isPending || rejectMutation.isPending || openDisputeMutation.isPending;
 
   useEffect(() => {
@@ -451,7 +475,7 @@ export default function AdminControlSecurityPage() {
             $variant="dispute"
             disabled={isRowMutating(row.id)}
             onClick={() => {
-              setDisputeDraft({ receiptId: row.id, merchantName: row.merchantName });
+              setDisputeDraft({ scanId: row.id, userId: row.user.id, merchantName: row.merchantName });
               setDisputeNote('');
             }}
           >
@@ -479,8 +503,26 @@ export default function AdminControlSecurityPage() {
         </TitleBlock>
       </PageHeader>
 
+      {/* Alert deep-link time-window banner: shown when navigating from suspicious_activity alert */}
+      {dateFrom && (() => {
+        const d = new Date(dateFrom);
+        return (
+          <div style={{ marginBottom: '1rem', padding: '0.75rem 1rem', background: palette.warningSoft, border: `1px solid ${palette.warning}40`, borderRadius: '0.625rem', fontSize: '0.875rem', color: palette.warning, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span>
+              {lang === 'bg' ? 'Показват се сигнали от' : 'Showing signals from'}
+              {' '}{d.toLocaleString(lang === 'bg' ? 'bg-BG' : 'en-US', { dateStyle: 'medium', timeStyle: 'short' })}
+              {lang === 'bg' ? ' насам' : ' onwards'}
+              {data && ` — ${data.meta.total.toLocaleString()} ${lang === 'bg' ? 'резултата' : 'results'}`}
+            </span>
+            <button onClick={() => setDateFrom('')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: palette.warning, fontWeight: 600, fontSize: '0.875rem' }}>
+              {lang === 'bg' ? '✕ Покажи всички' : '✕ Show all'}
+            </button>
+          </div>
+        );
+      })()}
+
       {/* stat tiles — global counts for fraudScore ≥31. Click to filter table by category.
-          Categories can overlap: one receipt may trigger multiple signal groups. */}
+          Categories can overlap: one scan may trigger multiple signal groups. */}
       <StatGrid>
             <Stat $active={signalCategory === 'duplicate'} onClick={() => toggleCategory('duplicate')} title={lang === 'bg' ? 'Филтрирай по дублиране' : 'Filter by duplicates'}>
               <StatLabel>{t('statDuplicate')}</StatLabel>
@@ -641,7 +683,8 @@ export default function AdminControlSecurityPage() {
                 disabled={isAnyMutating}
                 onClick={() =>
                   openDisputeMutation.mutate({
-                    receiptId: disputeDraft.receiptId,
+                    scanId: disputeDraft.scanId,
+                    userId: disputeDraft.userId,
                     notes: disputeNote.trim() || undefined,
                   })
                 }

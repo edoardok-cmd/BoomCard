@@ -213,9 +213,9 @@ const ConfirmBtn = styled.button`
 `;
 
 const PLANS = [
-  { key: 'BASIC'   as const, name: 'Basic',   hint: 'Абонати с Basic план',      accent: '#2563eb', color: '#2563eb' },
-  { key: 'PREMIUM' as const, name: 'Premium', hint: 'Premium (месечен план)',    accent: '#c96442', color: '#c96442' },
-  { key: 'LIGHT'   as const, name: 'Light',   hint: 'Light (седмичен план)',     accent: '#4a7c59', color: '#4a7c59' },
+  { key: 'BASIC'   as const, name: 'Basic',              hint: 'Абонати с Basic план',              accent: '#2563eb', color: '#2563eb' },
+  { key: 'PREMIUM' as const, name: 'Premium месечен',    hint: 'Premium месечен абонамент',          accent: '#c96442', color: '#c96442' },
+  { key: 'LIGHT'   as const, name: 'Premium седмичен',   hint: 'Premium седмичен абонамент',         accent: '#4a7c59', color: '#4a7c59' },
 ] as const;
 
 type Plan = 'BASIC' | 'PREMIUM' | 'LIGHT';
@@ -412,7 +412,7 @@ export default function AdminSettingsThresholdsPage() {
               const plan = PLANS.find((p) => p.key === row.plan);
               return (
                 <HistoryItem key={row.id}>
-                  <PlanBadge $color={plan?.color ?? palette.textMuted}>{row.plan}</PlanBadge>
+                  <PlanBadge $color={plan?.color ?? palette.textMuted}>{plan?.name ?? row.plan}</PlanBadge>
                   <div style={{ color: palette.textMuted }}>
                     <strong style={{ color: palette.text }}>{row.minAmount} лв.</strong>
                     {row.notes && (

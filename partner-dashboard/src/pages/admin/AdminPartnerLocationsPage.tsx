@@ -3,11 +3,13 @@ import styled from 'styled-components';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-hot-toast';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { useAuth } from '../../contexts/AuthContext';
 import { DataTable, ColumnDef } from '../../components/admin/DataTable/DataTable';
 import {
   adminLocationsService,
   AdminVenue,
   MenuStatus,
+  VenueStatus,
 } from '../../services/adminLocations.service';
 
 /* ─── Palette ─────────────────────────────────────────────────────────────── */
@@ -152,6 +154,25 @@ const MenuStatusBadge = styled.span<{ $status: MenuStatus }>`
   }}
 `;
 
+const VenueStatusBadge = styled.span<{ $status: VenueStatus }>`
+  display: inline-flex; align-items: center;
+  font-size: 0.7rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.05em; border-radius: 0.375rem; padding: 0.125rem 0.5rem;
+  ${({ $status }) => {
+    switch ($status) {
+      case 'ACTIVE':    return `background: ${palette.successSoft}; color: ${palette.success};`;
+      case 'SUSPENDED': return `background: ${palette.dangerSoft}; color: ${palette.danger};`;
+      case 'REPLACED':  return `background: #f3f4f6; color: #6b7280;`;
+      default:          return `background: #f3f4f6; color: #6b7280;`;
+    }
+  }}
+`;
+
+const IdText = styled.span`
+  font-family: monospace; font-size: 0.7rem;
+  color: ${palette.textSubtle}; display: block; margin-top: 0.125rem;
+`;
+
 const StickerDot = styled.span<{ $active: boolean }>`
   display: inline-block;
   width: 0.5rem;
@@ -248,24 +269,32 @@ const PAGE_SIZE = 25;
 /* ─── Component ───────────────────────────────────────────────────────────── */
 export default function AdminPartnerLocationsPage() {
   const { t, language } = useLanguage();
+  const { user } = useAuth();
   const queryClient = useQueryClient();
+
+  const canWrite = user?.rawRole === 'SUPER_ADMIN' || (user?.permissions ?? []).includes('partners.locations.write');
 
   const [page, setPage] = useState(1);
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
   const [menuStatus, setMenuStatus] = useState<MenuStatus | ''>('');
+  const [venueStatus, setVenueStatus] = useState<VenueStatus | ''>('');
 
   const [rejectTarget, setRejectTarget] = useState<AdminVenue | null>(null);
   const [rejectReason, setRejectReason] = useState('');
+  const [statusTarget, setStatusTarget] = useState<AdminVenue | null>(null);
+  const [statusNote, setStatusNote] = useState('');
+  const [statusValue, setStatusValue] = useState<VenueStatus>('ACTIVE');
 
   const { data, isLoading } = useQuery({
-    queryKey: ['admin-venues', page, search, menuStatus],
+    queryKey: ['admin-venues', page, search, menuStatus, venueStatus],
     queryFn: () =>
       adminLocationsService.list({
         page,
         limit: PAGE_SIZE,
         search: search || undefined,
         menuStatus: menuStatus || undefined,
+        venueStatus: venueStatus || undefined,
       }),
   });
 
@@ -291,6 +320,18 @@ export default function AdminPartnerLocationsPage() {
     onError: () => toast.error(t('admin.locationsMenuRejectFailed')),
   });
 
+  const statusMutation = useMutation({
+    mutationFn: ({ id, vs, note }: { id: string; vs: VenueStatus; note: string }) =>
+      adminLocationsService.updateStatus(id, vs, note || undefined),
+    onSuccess: () => {
+      toast.success(language === 'bg' ? 'Статусът на локацията е обновен' : 'Location status updated');
+      setStatusTarget(null);
+      setStatusNote('');
+      queryClient.invalidateQueries({ queryKey: ['admin-venues'] });
+    },
+    onError: () => toast.error(t('common.error')),
+  });
+
   const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') { setSearch(searchInput); setPage(1); }
   };
@@ -308,6 +349,19 @@ export default function AdminPartnerLocationsPage() {
     { value: 'REJECTED', label: t('admin.locationsMenuStatusRejected') },
   ];
 
+  const venueStatusOptions: Array<{ value: VenueStatus | ''; label: string }> = [
+    { value: '', label: language === 'bg' ? 'Всички локации' : 'All locations' },
+    { value: 'ACTIVE',    label: language === 'bg' ? 'Активна' : 'Active' },
+    { value: 'SUSPENDED', label: language === 'bg' ? 'Спряна' : 'Suspended' },
+    { value: 'REPLACED',  label: language === 'bg' ? 'Заменена' : 'Replaced' },
+  ];
+
+  const venueStatusLabels: Record<VenueStatus, { bg: string; en: string }> = {
+    ACTIVE:    { bg: 'Активна',  en: 'Active' },
+    SUSPENDED: { bg: 'Спряна',   en: 'Suspended' },
+    REPLACED:  { bg: 'Заменена', en: 'Replaced' },
+  };
+
   const columns: ColumnDef<AdminVenue>[] = [
     {
       key: 'venue',
@@ -317,6 +371,7 @@ export default function AdminPartnerLocationsPage() {
           {row.name}
           <MetaLine>{row.address}, {row.city}{row.region ? `, ${row.region}` : ''}</MetaLine>
           {row.phone && <MetaLine>{row.phone}</MetaLine>}
+          <IdText>ID: {row.id.slice(0, 8)}…</IdText>
         </PrimaryLine>
       ),
     },
@@ -335,6 +390,54 @@ export default function AdminPartnerLocationsPage() {
       ),
     },
     {
+      key: 'venueStatus',
+      header: language === 'bg' ? 'Статус' : 'Status',
+      render: (row) => {
+        const vs: VenueStatus = (row.venueStatus as VenueStatus) ?? 'ACTIVE';
+        const lbl = venueStatusLabels[vs];
+        return (
+          <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+            <VenueStatusBadge $status={vs}>{language === 'bg' ? lbl.bg : lbl.en}</VenueStatusBadge>
+            {row.venueStatusAt && (
+              <MetaLine>
+                {new Date(row.venueStatusAt).toLocaleDateString(language === 'bg' ? 'bg-BG' : 'en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
+              </MetaLine>
+            )}
+            {row.venueStatusNote && (
+              <MetaLine title={row.venueStatusNote}>
+                {row.venueStatusNote.length > 30 ? row.venueStatusNote.slice(0, 30) + '…' : row.venueStatusNote}
+              </MetaLine>
+            )}
+          </span>
+        );
+      },
+    },
+    {
+      key: 'qr',
+      header: language === 'bg' ? 'QR / Стикери' : 'QR / Stickers',
+      render: (row) => {
+        const count = row._count?.stickers ?? 0;
+        const cfg = row.stickerConfig;
+        return (
+          <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+            <span style={{ fontSize: '0.8125rem', color: palette.textMuted }}>
+              {count > 0 ? (
+                <>{count} QR {language === 'bg' ? 'кода' : 'codes'}</>
+              ) : (
+                <span style={{ color: palette.textSubtle }}>{language === 'bg' ? 'Без QR' : 'No QR'}</span>
+              )}
+            </span>
+            {cfg && (
+              <MetaLine>
+                <StickerDot $active={cfg.isActive} />
+                {cfg.cashbackPercent}% cashback
+              </MetaLine>
+            )}
+          </span>
+        );
+      },
+    },
+    {
       key: 'menu',
       header: t('admin.locationsColMenu'),
       render: (row) => {
@@ -348,48 +451,18 @@ export default function AdminPartnerLocationsPage() {
         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
           <MenuStatusBadge $status={row.menuStatus}>{menuStatusLabel[row.menuStatus] ?? row.menuStatus}</MenuStatusBadge>
           {row.pendingMenuUrl && (
-            <a
-              href={row.pendingMenuUrl}
-              target="_blank"
-              rel="noreferrer"
-              style={{ fontSize: '0.75rem', color: palette.warning }}
-            >
+            <a href={row.pendingMenuUrl} target="_blank" rel="noreferrer"
+              style={{ fontSize: '0.75rem', color: palette.warning }}>
               {t('admin.locationsMenuPending')}
             </a>
           )}
           {row.menuUrl && row.menuStatus === 'APPROVED' && (
-            <a
-              href={row.menuUrl}
-              target="_blank"
-              rel="noreferrer"
-              style={{ fontSize: '0.75rem', color: palette.teal }}
-            >
+            <a href={row.menuUrl} target="_blank" rel="noreferrer"
+              style={{ fontSize: '0.75rem', color: palette.teal }}>
               {t('admin.locationsMenuLive')}
             </a>
           )}
         </span>
-        );
-      },
-    },
-    {
-      key: 'sticker',
-      header: t('admin.locationsColSticker'),
-      render: (row) => {
-        if (!row.stickerConfig) {
-          return <MetaLine>{t('admin.locationsStickerNotConfigured')}</MetaLine>;
-        }
-        return (
-          <span>
-            <span style={{ fontSize: '0.8125rem', color: palette.textMuted }}>
-              <StickerDot $active={row.stickerConfig.isActive} />
-              {row.stickerConfig.cashbackPercent}% cashback
-            </span>
-            <MetaLine>
-              {row.stickerConfig.gpsVerificationEnabled
-                ? t('admin.locationsStickerGpsOn')
-                : t('admin.locationsStickerGpsOff')}
-            </MetaLine>
-          </span>
         );
       },
     },
@@ -427,6 +500,14 @@ export default function AdminPartnerLocationsPage() {
             onKeyDown={handleSearchKeyDown}
           />
           <Select
+            value={venueStatus}
+            onChange={(e) => { setVenueStatus(e.target.value as VenueStatus | ''); setPage(1); }}
+          >
+            {venueStatusOptions.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </Select>
+          <Select
             value={menuStatus}
             onChange={(e) => { setMenuStatus(e.target.value as MenuStatus | ''); setPage(1); }}
           >
@@ -447,10 +528,18 @@ export default function AdminPartnerLocationsPage() {
           totalItems={data?.meta.total}
           onPageChange={setPage}
           rowActions={[
+            ...(canWrite ? [{
+              label: language === 'bg' ? 'Промени статус' : 'Change Status',
+              onClick: (row: AdminVenue) => {
+                setStatusTarget(row);
+                setStatusValue((row.venueStatus as VenueStatus) ?? 'ACTIVE');
+                setStatusNote(row.venueStatusNote ?? '');
+              },
+            }] : []),
             {
               label: t('admin.locationsApproveMenu'),
-              hidden: (row) => row.menuStatus !== 'PENDING' || !row.pendingMenuUrl,
-              onClick: (row) => {
+              hidden: (row: AdminVenue) => row.menuStatus !== 'PENDING' || !row.pendingMenuUrl,
+              onClick: (row: AdminVenue) => {
                 if (!row.pendingMenuUrl) return;
                 approveMutation.mutate({ id: row.id, url: row.pendingMenuUrl });
               },
@@ -458,8 +547,8 @@ export default function AdminPartnerLocationsPage() {
             {
               label: t('admin.locationsRejectMenu'),
               danger: true,
-              hidden: (row) => row.menuStatus !== 'PENDING',
-              onClick: (row) => { setRejectTarget(row); setRejectReason(''); },
+              hidden: (row: AdminVenue) => row.menuStatus !== 'PENDING',
+              onClick: (row: AdminVenue) => { setRejectTarget(row); setRejectReason(''); },
             },
           ]}
         />
@@ -489,6 +578,46 @@ export default function AdminPartnerLocationsPage() {
                 }
               >
                 {rejectMutation.isPending ? '…' : t('admin.locationsRejectMenu')}
+              </Btn>
+            </ModalActions>
+          </ModalBox>
+        </Overlay>
+      )}
+
+      {statusTarget && (
+        <Overlay onClick={() => setStatusTarget(null)}>
+          <ModalBox onClick={(e) => e.stopPropagation()}>
+            <ModalTitle>
+              {language === 'bg' ? `Статус — ${statusTarget.name}` : `Status — ${statusTarget.name}`}
+            </ModalTitle>
+            <ModalLabel>{language === 'bg' ? 'Нов статус' : 'New status'}</ModalLabel>
+            <Select
+              value={statusValue}
+              onChange={(e) => setStatusValue(e.target.value as VenueStatus)}
+              style={{ width: '100%', marginBottom: '0.75rem' }}
+            >
+              {venueStatusOptions.filter((o) => o.value !== '').map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </Select>
+            <ModalLabel>{language === 'bg' ? 'Бележка (незадължително)' : 'Note (optional)'}</ModalLabel>
+            <ModalTextarea
+              value={statusNote}
+              onChange={(e) => setStatusNote(e.target.value)}
+              placeholder={language === 'bg' ? 'Причина или вътрешна бележка…' : 'Reason or internal note…'}
+            />
+            <ModalActions>
+              <Btn $variant="ghost" onClick={() => setStatusTarget(null)}>
+                {t('common.cancel')}
+              </Btn>
+              <Btn
+                $variant="primary"
+                disabled={statusMutation.isPending}
+                onClick={() =>
+                  statusMutation.mutate({ id: statusTarget.id, vs: statusValue, note: statusNote })
+                }
+              >
+                {statusMutation.isPending ? '…' : (language === 'bg' ? 'Запази' : 'Save')}
               </Btn>
             </ModalActions>
           </ModalBox>

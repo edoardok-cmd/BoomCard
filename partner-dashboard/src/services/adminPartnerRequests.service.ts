@@ -7,6 +7,7 @@ export interface PendingPartner {
   email: string | null;
   phone: string | null;
   city: string | null;
+  address: string | null;
   discountRate: number | null;
   status?: string;
   requestStatus?: string | null;
@@ -28,11 +29,38 @@ export interface PendingPartner {
   } | null;
 }
 
+export interface PartnerDetail extends PendingPartner {
+  description: string | null;
+  website: string | null;
+  region: string | null;
+  pendingChanges: Record<string, unknown> | null;
+  pendingChangesAt: string | null;
+}
+
 export interface PendingPartnersResult {
   partners: PendingPartner[];
   total: number;
   page: number;
   limit: number;
+}
+
+export interface PartnerNote {
+  id: string;
+  body: string;
+  isInternal: boolean;
+  createdAt: string;
+  author: { id: string; firstName: string | null; lastName: string | null; email: string };
+}
+
+export interface AuditEntry {
+  id: string;
+  action: string;
+  objectType: string;
+  objectId: string;
+  before: Record<string, unknown> | null;
+  after: Record<string, unknown> | null;
+  createdAt: string;
+  actor: { id: string; firstName: string | null; lastName: string | null; email: string } | null;
 }
 
 export const adminPartnerRequestsService = {
@@ -54,5 +82,21 @@ export const adminPartnerRequestsService = {
 
   assign(id: string, adminId: string | null): Promise<{ partner: PendingPartner }> {
     return apiService.patch<{ partner: PendingPartner }>(`/admin/partner-requests/${id}/assign`, { adminId });
+  },
+
+  getNotes(id: string): Promise<{ notes: PartnerNote[] }> {
+    return apiService.get<{ notes: PartnerNote[] }>(`/admin/partner-requests/${id}/notes`);
+  },
+
+  addNote(id: string, body: string, isInternal: boolean): Promise<{ note: PartnerNote }> {
+    return apiService.post<{ note: PartnerNote }>(`/admin/partner-requests/${id}/notes`, { body, isInternal });
+  },
+
+  getDetail(id: string): Promise<{ partner: PartnerDetail }> {
+    return apiService.get<{ partner: PartnerDetail }>(`/admin/partner-requests/${id}`);
+  },
+
+  getAuditLog(id: string): Promise<{ entries: AuditEntry[] }> {
+    return apiService.get<{ entries: AuditEntry[] }>(`/admin/partner-requests/${id}/audit`);
   },
 };

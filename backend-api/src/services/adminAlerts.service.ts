@@ -183,8 +183,15 @@ export async function getAlerts(): Promise<AdminAlertsResult> {
     prisma.transaction.count({
       where: { status: 'FAILED', createdAt: { gte: oneDayAgo } },
     }),
+    // Spec §7.2 "странни IBAN промени": only users with a non-zero wallet balance
+    // are operationally interesting — a user switching banks with no cashback to
+    // collect is not a fraud signal. The wallet balance filter drops legitimate
+    // bank-account changes and prevents alert fatigue.
     prisma.user.count({
-      where: { ibanLastChangedAt: { gte: oneDayAgo } },
+      where: {
+        ibanLastChangedAt: { gte: oneDayAgo },
+        wallet: { balance: { gt: 0 } },
+      },
     }),
     suspiciousQuery,
     // System-error probe A: WITHDRAWAL/payout failures from the wallet ledger.
@@ -213,11 +220,15 @@ export async function getAlerts(): Promise<AdminAlertsResult> {
     prisma.wallet.count({
       where: { balance: { gte: PAYOUT_THRESHOLD }, isLocked: false },
     }),
+    // Restrict to type=WITHDRAWAL so the alert specifically targets large pending
+    // payout requests (not CASHBACK_CREDIT or ADJUSTMENT rows that happen to be
+    // large). Matches the link destination (/admin/finance/payouts) and the alert
+    // title "Чакащи изплащания над лимита".
     prisma.walletTransaction.count({
-      where: { status: 'PENDING', amount: { gte: LARGE_TX_THRESHOLD } },
+      where: { type: 'WITHDRAWAL', status: 'PENDING', amount: { gte: LARGE_TX_THRESHOLD } },
     }),
     prisma.user.count({
-      where: { createdAt: { gte: oneDayAgo }, status: { not: 'DELETED' } },
+      where: { createdAt: { gte: oneDayAgo }, status: { not: 'DELETED' }, role: 'USER' },
     }),
     prisma.partner.count({
       where: { status: 'ACTIVE', verifiedAt: { gte: oneDayAgo } },
@@ -296,13 +307,14 @@ export async function getAlerts(): Promise<AdminAlertsResult> {
       link: '/admin/control/risk?bucket=HIGH_61_PLUS&status=active',
     });
   }
-  // Spec §3.2 also lists medium-risk under "рискови транзакции"; bucketed as
-  // critical so the destination rule (Контрол/Финанси) holds.
+  // Spec §7.1: fraud score 31–60 = "Изисква преглед" (review required) which maps
+  // to the OPERATIONAL tier (spec §3.2). Only 61+ = CRITICAL. Moving this to
+  // operational so the admin sees it as a "needs review" signal, not an emergency.
   if (mediumRiskScans > 0) {
-    critical.push({
+    operational.push({
       id: 'medium_risk_transactions',
       type: 'MEDIUM_RISK_TRANSACTIONS',
-      tier: 'CRITICAL',
+      tier: 'OPERATIONAL',
       title: 'Транзакции за преглед (31–60)',
       count: mediumRiskScans,
       link: '/admin/control/risk?bucket=REVIEW_31_60&status=active',
@@ -354,7 +366,10 @@ export async function getAlerts(): Promise<AdminAlertsResult> {
       tier: 'CRITICAL',
       title: 'Грешки в проверката за измами (последните 24ч)',
       count: fraudCheckErrorScans,
-      link: '/admin/control/risk?reasons=FRAUD_CHECK_ERROR&status=active',
+      // FRAUD_CHECK_ERROR is in the 'suspicious' signal group (adminControl.routes.ts
+      // RISK_SIGNAL_GROUPS). Using signalCategory=suspicious so the risk page can
+      // honour this param once URL-param hydration is in place.
+      link: '/admin/control/risk?signalCategory=suspicious',
     });
   }
   if (recentIbanChanges > 0) {
@@ -364,7 +379,11 @@ export async function getAlerts(): Promise<AdminAlertsResult> {
       tier: 'CRITICAL',
       title: 'Промени на IBAN (последните 24ч)',
       count: recentIbanChanges,
-      link: '/admin/control/security',
+      // Deep-link to subscriber list pre-filtered to users who changed IBAN in
+      // the counted window. ibanChangedAfter is handled by the subscribers route
+      // and by AdminSubscribersAllPage's URL-param hydration.
+      link: `/admin/subscribers/all?ibanChangedAfter=${oneDayAgo.toISOString()}`,
+      meta: { dateFrom: oneDayAgo.toISOString() },
     });
   }
   if (suspiciousScans > 0) {
@@ -378,7 +397,11 @@ export async function getAlerts(): Promise<AdminAlertsResult> {
       tier: 'CRITICAL',
       title: 'Подозрителна активност (последните 24ч)',
       count: suspiciousScans,
-      link: `/admin/control/risk?suspicious=true&status=active&dateFromHours=${SUSPICIOUS_ACTIVITY_WINDOW_HOURS}`,
+        // signalCategory intentionally omitted — the alert SQL counts scans across
+      // all fraud-signal categories, so linking to only the 'suspicious' subcategory
+      // would show far fewer items than the badge. Landing on the full risk queue
+      // filtered by the same 24h window is the closest match to the alert count.
+      link: `/admin/control/risk?dateFromHours=${SUSPICIOUS_ACTIVITY_WINDOW_HOURS}`,
       meta: { windowHours: SUSPICIOUS_ACTIVITY_WINDOW_HOURS, dateFrom: suspiciousWindowStart.toISOString() },
     });
   }
@@ -439,7 +462,10 @@ export async function getAlerts(): Promise<AdminAlertsResult> {
       tier: 'INFORMATIONAL',
       title: 'Нови регистрации (последните 24ч)',
       count: newRegistrations,
-      link: '/admin/subscribers/all',
+      // dateFrom param pre-filters the subscriber list to the 24h window so the
+      // landing page count matches the badge. Handled by AdminSubscribersAllPage
+      // URL-param hydration (dateFrom → account creation date filter).
+      link: `/admin/subscribers/all?dateFrom=${oneDayAgo.toISOString()}`,
     });
   }
   if (activatedPartners > 0) {
@@ -449,7 +475,9 @@ export async function getAlerts(): Promise<AdminAlertsResult> {
       tier: 'INFORMATIONAL',
       title: 'Активирани партньори (последните 24ч)',
       count: activatedPartners,
-      link: '/admin/partners/active',
+      // verifiedAfter pre-filters the active partners list to partners activated
+      // within the counted window. Handled by AdminPartnersPage URL-param hydration.
+      link: `/admin/partners/active?verifiedAfter=${oneDayAgo.toISOString()}`,
     });
   }
   if (completedOnboarding > 0) {
@@ -459,7 +487,9 @@ export async function getAlerts(): Promise<AdminAlertsResult> {
       tier: 'INFORMATIONAL',
       title: 'Завършен онбординг (последните 24ч)',
       count: completedOnboarding,
-      link: '/admin/partners/active',
+      // Distinct destination from activated_partners. onboardingCompletedAfter
+      // filters the active partners list to the counted window.
+      link: `/admin/partners/active?onboardingCompletedAfter=${oneDayAgo.toISOString()}`,
     });
   }
 

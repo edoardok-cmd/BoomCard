@@ -81,16 +81,37 @@ router.get(
 router.patch(
   '/',
   asyncHandler(async (req: AuthRequest, res: Response) => {
-    const { firstName, lastName, phone } = req.body as {
+    const { firstName, lastName, phone, email, currentPassword } = req.body as {
       firstName?: string;
       lastName?: string;
       phone?: string;
+      email?: string;
+      currentPassword?: string;
     };
 
-    const data: { firstName?: string; lastName?: string; phone?: string | null } = {};
+    const data: { firstName?: string; lastName?: string; phone?: string | null; email?: string } = {};
     if (firstName !== undefined) data.firstName = firstName.trim() || undefined;
     if (lastName !== undefined) data.lastName = lastName.trim() || undefined;
     if (phone !== undefined) data.phone = phone.trim() || null;
+
+    // Email change is only allowed for SUPER_ADMIN with password confirmation.
+    if (email !== undefined) {
+      if (req.user!.role !== 'SUPER_ADMIN') {
+        return res.status(403).json({ error: 'Only Super Admins can change their own email. Contact a Super Admin to update yours.' });
+      }
+      if (!currentPassword) {
+        return res.status(400).json({ error: 'currentPassword is required for email changes' });
+      }
+      const trimmedEmail = email.trim().toLowerCase();
+      if (!trimmedEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+        return res.status(400).json({ error: 'Invalid email address' });
+      }
+      const user = await prisma.user.findUnique({ where: { id: req.user!.id } });
+      if (!user) return res.status(404).json({ error: 'Admin not found' });
+      const valid = await bcrypt.compare(currentPassword, user.passwordHash);
+      if (!valid) return res.status(400).json({ error: 'Current password is incorrect' });
+      data.email = trimmedEmail;
+    }
 
     if (Object.keys(data).length === 0) {
       return res.status(400).json({ error: 'No updatable fields provided' });
@@ -254,6 +275,8 @@ router.get(
       select: {
         id: true,
         clientType: true,
+        ip: true,
+        userAgent: true,
         createdAt: true,
         expiresAt: true,
       },

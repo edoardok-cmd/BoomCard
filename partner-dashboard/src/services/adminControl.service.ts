@@ -191,6 +191,8 @@ export const adminControlService = {
     tier?: 'REVIEW_31_60' | 'HIGH_61_PLUS' | 'all';
     venueId?: string;
     signalCategory?: string;
+    /** ISO timestamp — narrows results to scans created at or after this time (used by suspicious_activity deep-link) */
+    dateFrom?: string;
   }): Promise<FraudSignalsResult> {
     const clean: Record<string, unknown> = {
       page: params.page,
@@ -199,6 +201,7 @@ export const adminControlService = {
     };
     if (params.venueId) clean.venueId = params.venueId;
     if (params.signalCategory) clean.signalCategory = params.signalCategory;
+    if (params.dateFrom) clean.dateFrom = params.dateFrom;
     return apiService.get('/admin/control/risk-queue', clean);
   },
 

@@ -32,7 +32,7 @@ const CATEGORIES_WITH_SUBS = [
 const PARTNERSHIP_TYPES_FALLBACK = ['BASIC', 'STANDARD', 'GOLD', 'VIP', 'PREMIUM', 'EXCLUSIVE'];
 const MARKETING_VISIBILITY = ['Публична', 'Ограничена', 'Скрита'];
 const CONTRACT_DURATIONS = ['6 месеца', '12 месеца', '24 месеца', 'Безсрочен'];
-const PARTNER_STATUSES = ['PENDING', 'ACTIVE', 'SUSPENDED', 'INACTIVE'];
+const PARTNER_STATUSES = ['PENDING', 'ACTIVE', 'SUSPENDED', 'INACTIVE', 'PAUSED'];
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 

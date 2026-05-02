@@ -646,12 +646,12 @@ export const AdminReceiptTemplatesPage: React.FC = () => {
 
             <FormGroup>
               <FormLabel>
-                {language === 'bg' ? 'Описание' : 'Description'}
+                {language === 'bg' ? 'Вариации' : 'Variations'}
               </FormLabel>
               <FormTextArea
                 value={uploadDescription}
                 onChange={e => setUploadDescription(e.target.value)}
-                placeholder={language === 'bg' ? 'Незадължително описание...' : 'Optional description...'}
+                placeholder={language === 'bg' ? 'Незадължителни вариации...' : 'Optional variations...'}
               />
             </FormGroup>
 

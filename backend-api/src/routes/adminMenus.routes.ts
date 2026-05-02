@@ -89,6 +89,7 @@ adminVenueMenuRouter.get(
     const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
     const city = typeof req.query.city === 'string' ? req.query.city.trim() : '';
     const menuStatus = typeof req.query.menuStatus === 'string' ? req.query.menuStatus.trim() : '';
+    const venueStatus = typeof req.query.venueStatus === 'string' ? req.query.venueStatus.trim() : '';
     const partnerId = typeof req.query.partnerId === 'string' ? req.query.partnerId.trim() : '';
 
     const where: Parameters<typeof prisma.venue.findMany>[0]['where'] = {};
@@ -103,6 +104,7 @@ adminVenueMenuRouter.get(
     }
     if (city) where.city = { contains: city, mode: 'insensitive' };
     if (menuStatus) where.menuStatus = menuStatus as never;
+    if (venueStatus) where.venueStatus = venueStatus as never;
     if (partnerId) where.partnerId = partnerId;
 
     const [venues, total] = await Promise.all([
@@ -121,7 +123,11 @@ adminVenueMenuRouter.get(
           menuStatus: true,
           menuUrl: true,
           pendingMenuUrl: true,
+          venueStatus: true,
+          venueStatusNote: true,
+          venueStatusAt: true,
           createdAt: true,
+          updatedAt: true,
           partner: {
             select: {
               id: true,
@@ -137,6 +143,9 @@ adminVenueMenuRouter.get(
               gpsVerificationEnabled: true,
               maxScansPerDay: true,
             },
+          },
+          _count: {
+            select: { stickers: true },
           },
         },
       }),
@@ -406,5 +415,38 @@ adminVenueMenuRouter.delete(
     });
 
     res.json({ success: true, message: 'Menu cleared' });
+  })
+);
+
+/**
+ * PATCH /api/admin/venues/:id/status
+ * Update location status (ACTIVE / SUSPENDED / REPLACED) — spec §5.4
+ */
+adminVenueMenuRouter.patch(
+  '/:id/status',
+  requirePermission('partners.locations.write'),
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    const { id } = req.params;
+    const { venueStatus, note } = req.body as { venueStatus?: string; note?: string };
+
+    const VALID = ['ACTIVE', 'SUSPENDED', 'REPLACED'];
+    if (!venueStatus || !VALID.includes(venueStatus)) {
+      return res.status(400).json({ success: false, error: 'venueStatus must be ACTIVE, SUSPENDED, or REPLACED' });
+    }
+
+    const venue = await prisma.venue.findUnique({ where: { id } });
+    if (!venue) return res.status(404).json({ success: false, error: 'Venue not found' });
+
+    const updated = await prisma.venue.update({
+      where: { id },
+      data: {
+        venueStatus: venueStatus as never,
+        venueStatusNote: note?.trim() || null,
+        venueStatusAt: new Date(),
+      },
+      select: { id: true, venueStatus: true, venueStatusNote: true, venueStatusAt: true },
+    });
+
+    res.json({ success: true, data: updated });
   })
 );

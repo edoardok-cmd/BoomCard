@@ -86,6 +86,7 @@ export const en = {
     impersonatePartner: 'Impersonate partner',
     role: {
       admin: 'Administrator',
+      superAdmin: 'Super Administrator',
       partner: 'Partner',
       user: 'User',
       impersonating: 'Impersonating partner',

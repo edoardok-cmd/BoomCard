@@ -187,7 +187,9 @@ router.post(
       });
     }
 
-    const tokens = await AuthService.refreshToken(refreshToken);
+    const ip = ((req.headers['x-forwarded-for'] as string) ?? '').split(',')[0]?.trim() || req.ip;
+    const userAgent = req.headers['user-agent'];
+    const tokens = await AuthService.refreshToken(refreshToken, { ip, userAgent });
 
     res.json({
       success: true,

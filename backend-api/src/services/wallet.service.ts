@@ -305,7 +305,7 @@ export class WalletService {
           balanceBefore: currentWallet.balance,
           balanceAfter: currentWallet.balance - amount,
           status: WalletTransactionStatus.COMPLETED,
-          description: 'Trial refund — pending cashback voided',
+          description: 'Анулиран кешбек при пробен период',
           metadata: metadata ? JSON.stringify(metadata) : undefined,
         },
       });
@@ -421,7 +421,7 @@ export class WalletService {
           balanceBefore: currentWallet.balance,
           balanceAfter: newBalance,
           status: WalletTransactionStatus.PROCESSING,
-          description: 'Cashback payout initiated (3–5 business days)',
+          description: 'Изплащане на кешбек (3–5 работни дни)',
           metadata: JSON.stringify({
             plan,
             thresholdBGN: threshold,
@@ -504,7 +504,7 @@ export class WalletService {
             where: { id: withdrawalTxId },
             data: {
               status: WalletTransactionStatus.FAILED,
-              description: `Payout failed: ${transferError.message}`,
+              description: `Неуспешно изплащане: ${transferError.message}`,
             },
           });
 
@@ -517,7 +517,7 @@ export class WalletService {
               balanceBefore: currentWallet.balance - amount, // post-increment minus amount = pre-increment
               balanceAfter: currentWallet.balance,
               status: WalletTransactionStatus.COMPLETED,
-              description: `Payout reversal: Transfer API error — balance restored`,
+              description: `Сторниране на изплащане — балансът е възстановен`,
               metadata: JSON.stringify({ reversedWithdrawalId: withdrawalTxId, reason: transferError.message }),
             },
           });

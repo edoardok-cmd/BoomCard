@@ -121,8 +121,10 @@ export default function AdminHelpMinePage() {
   const [statusFilter, setStatusFilter] = useState<TicketStatus | ''>('');
   const [page, setPage] = useState(1);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isFirstSearch = useRef(true);
 
   useEffect(() => {
+    if (isFirstSearch.current) { isFirstSearch.current = false; return; }
     debounceRef.current = setTimeout(() => { setSearch(searchInput); setPage(1); }, 400);
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, [searchInput]);

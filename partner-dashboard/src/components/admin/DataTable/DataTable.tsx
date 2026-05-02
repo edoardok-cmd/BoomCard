@@ -7,6 +7,7 @@ export interface ColumnDef<T> {
   header: string;
   sortable?: boolean;
   width?: string;
+  minWidth?: string;
   render?: (row: T, index: number) => React.ReactNode;
 }
 
@@ -25,6 +26,7 @@ interface DataTableProps<T> {
   rowKey: (row: T) => string;
   rowActions?: RowAction<T>[];
   onRowClick?: (row: T) => void;
+  rowStyle?: (row: T) => React.CSSProperties | undefined;
   loading?: boolean;
   emptyMessage?: React.ReactNode;
   // Pagination — omit both to hide pagination
@@ -44,6 +46,7 @@ export function DataTable<T>({
   rowKey,
   rowActions,
   onRowClick,
+  rowStyle,
   loading,
   emptyMessage = 'Няма намерени записи',
   page,
@@ -92,7 +95,7 @@ export function DataTable<T>({
               {columns.map((col) => (
                 <Th
                   key={col.key}
-                  style={{ width: col.width }}
+                  style={{ width: col.width, minWidth: col.minWidth }}
                   $sortable={!!col.sortable}
                   onClick={() => handleSort(col)}
                 >
@@ -131,9 +134,10 @@ export function DataTable<T>({
                     key={key}
                     $clickable={!!onRowClick}
                     onClick={onRowClick ? () => onRowClick(row) : undefined}
+                    style={rowStyle?.(row)}
                   >
                     {columns.map((col) => (
-                      <Td key={col.key}>
+                      <Td key={col.key} style={{ minWidth: col.minWidth }}>
                         {col.render ? col.render(row, index) : (row as any)[col.key]}
                       </Td>
                     ))}

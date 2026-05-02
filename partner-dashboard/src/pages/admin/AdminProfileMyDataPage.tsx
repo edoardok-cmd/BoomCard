@@ -14,6 +14,18 @@ const palette = {
   accent: '#c96442',
   accentSoft: '#f3e8de',
   success: '#4a7c59',
+  successSoft: '#e6efe3',
+  danger: '#b54327',
+  dangerSoft: '#f4dcd2',
+};
+
+const ROLE_LABEL: Record<string, string> = {
+  ADMIN:           'Администратор',
+  SUPPORT:         'Поддръжка',
+  FINANCE:         'Финанси',
+  RISK_REVIEW:     'Преглед на риск',
+  PARTNER_MANAGER: 'Мениджър партньори',
+  SUPER_ADMIN:     'Супер администратор',
 };
 
 const AdminProfileMyDataPage: React.FC = () => {
@@ -27,6 +39,11 @@ const AdminProfileMyDataPage: React.FC = () => {
   const [lastName, setLastName] = useState('');
   const [phone, setPhone] = useState('');
 
+  // Email change state
+  const [showEmailModal, setShowEmailModal] = useState(false);
+  const [newEmail, setNewEmail] = useState('');
+  const [emailPassword, setEmailPassword] = useState('');
+
   useEffect(() => {
     if (data) {
       setFirstName(data.firstName ?? '');
@@ -34,15 +51,6 @@ const AdminProfileMyDataPage: React.FC = () => {
       setPhone(data.phone ?? '');
     }
   }, [data]);
-
-  const ROLE_LABEL: Record<string, string> = {
-    ADMIN:           'Администратор',
-    SUPPORT:         'Поддръжка',
-    FINANCE:         'Финанси',
-    RISK_REVIEW:     'Преглед на риск',
-    PARTNER_MANAGER: 'Мениджър партньори',
-    SUPER_ADMIN:     'Супер администратор',
-  };
 
   const updateMutation = useMutation({
     mutationFn: () => adminProfileService.updateMe({ firstName, lastName, phone }),
@@ -54,6 +62,29 @@ const AdminProfileMyDataPage: React.FC = () => {
       toast.error(err?.response?.data?.error ?? 'Грешка при запазване');
     },
   });
+
+  const emailMutation = useMutation({
+    mutationFn: () => adminProfileService.changeEmail(newEmail, emailPassword),
+    onSuccess: () => {
+      toast.success('Имейлът е обновен');
+      setShowEmailModal(false);
+      setNewEmail('');
+      setEmailPassword('');
+      queryClient.invalidateQueries({ queryKey: ['admin-profile-me'] });
+    },
+    onError: (err: { response?: { data?: { error?: string } } }) => {
+      toast.error(err?.response?.data?.error ?? 'Грешка при промяна на имейл');
+    },
+  });
+
+  const isSuperAdmin = data?.role === 'SUPER_ADMIN';
+
+  // For SUPER_ADMIN: never show panel roles — they bypass all permission checks,
+  // so any extra entries are redundant and confusing.
+  // For other roles: show only those that differ from the main role.
+  const relevantPanelRoles = data?.role === 'SUPER_ADMIN'
+    ? []
+    : (data?.adminRoles ?? []).filter((r) => r.role.key !== data?.role);
 
   if (isLoading) return <Loading>Зареждане…</Loading>;
   if (!data) return <Loading>Профилът не е намерен</Loading>;
@@ -75,8 +106,17 @@ const AdminProfileMyDataPage: React.FC = () => {
         <Row>
           <Field>
             <Label>Имейл</Label>
-            <Input value={data.email} disabled />
-            <Hint>Промяната на имейл изисква верификация — свържете се с Супер администратор.</Hint>
+            <EmailRow>
+              <Input value={data.email} disabled style={{ flex: 1 }} />
+              {isSuperAdmin && (
+                <EditEmailBtn type="button" onClick={() => { setNewEmail(data.email); setShowEmailModal(true); }}>
+                  Промени
+                </EditEmailBtn>
+              )}
+            </EmailRow>
+            {!isSuperAdmin && (
+              <Hint>Промяната на имейл изисква верификация — свържете се с Супер администратор.</Hint>
+            )}
           </Field>
           <Field>
             <Label>Телефон</Label>
@@ -87,9 +127,9 @@ const AdminProfileMyDataPage: React.FC = () => {
         <Footer>
           <Meta>
             <span>Роля: <strong>{ROLE_LABEL[data.role] ?? data.role}</strong></span>
-            {data.adminRoles.length > 0 && (
+            {relevantPanelRoles.length > 0 && (
               <span>
-                Панелни роли: {data.adminRoles.map((r) => ROLE_LABEL[r.role.key] ?? r.role.label).join(', ')}
+                Допълнителни права: {relevantPanelRoles.map((r) => ROLE_LABEL[r.role.key] ?? r.role.label).join(', ')}
               </span>
             )}
             {data.lastLoginAt && (
@@ -104,6 +144,44 @@ const AdminProfileMyDataPage: React.FC = () => {
           </Button>
         </Footer>
       </Card>
+
+      {showEmailModal && (
+        <ModalOverlay onClick={() => setShowEmailModal(false)}>
+          <ModalBox onClick={(e) => e.stopPropagation()}>
+            <ModalTitle>Промяна на имейл адрес</ModalTitle>
+            <ModalField>
+              <Label>Нов имейл адрес</Label>
+              <Input
+                type="email"
+                value={newEmail}
+                onChange={(e) => setNewEmail(e.target.value)}
+                placeholder="нов@имейл.com"
+                autoFocus
+              />
+            </ModalField>
+            <ModalField>
+              <Label>Текуща парола (за потвърждение)</Label>
+              <Input
+                type="password"
+                value={emailPassword}
+                onChange={(e) => setEmailPassword(e.target.value)}
+                placeholder="••••••••"
+              />
+            </ModalField>
+            <ModalActions>
+              <Button
+                onClick={() => emailMutation.mutate()}
+                disabled={!newEmail || !emailPassword || emailMutation.isPending}
+              >
+                {emailMutation.isPending ? 'Запазване…' : 'Запази'}
+              </Button>
+              <SecondaryButton type="button" onClick={() => setShowEmailModal(false)}>
+                Отказ
+              </SecondaryButton>
+            </ModalActions>
+          </ModalBox>
+        </ModalOverlay>
+      )}
     </Wrapper>
   );
 };
@@ -131,6 +209,7 @@ const Row = styled.div`
   @media (max-width: 640px) { grid-template-columns: 1fr; }
 `;
 const Field = styled.div`display: flex; flex-direction: column;`;
+const EmailRow = styled.div`display: flex; gap: 0.5rem; align-items: center;`;
 const Label = styled.label`
   font-size: 0.8125rem;
   font-weight: 600;
@@ -147,6 +226,18 @@ const Input = styled.input`
   outline: none;
   &:focus { border-color: ${palette.accent}; box-shadow: 0 0 0 2px ${palette.accentSoft}; }
   &:disabled { opacity: 0.6; cursor: not-allowed; }
+`;
+const EditEmailBtn = styled.button`
+  white-space: nowrap;
+  padding: 0.5rem 0.875rem;
+  background: ${palette.bg};
+  border: 1px solid ${palette.border};
+  border-radius: 0.5rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: ${palette.accent};
+  cursor: pointer;
+  &:hover { background: ${palette.accentSoft}; border-color: ${palette.accent}; }
 `;
 const Hint = styled.p`font-size: 0.75rem; color: ${palette.textSubtle}; margin: 0.375rem 0 0;`;
 const Footer = styled.div`
@@ -169,5 +260,33 @@ const Button = styled.button`
   &:hover:not(:disabled) { background: #b65a3a; }
   &:disabled { opacity: 0.5; cursor: not-allowed; }
 `;
+const SecondaryButton = styled(Button)`
+  background: ${palette.surface};
+  color: ${palette.text};
+  border: 1px solid ${palette.border};
+  &:hover:not(:disabled) { background: ${palette.bg}; }
+`;
+
+/* ── Email change modal ─────────────────────────────────────── */
+const ModalOverlay = styled.div`
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.35);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 1000;
+`;
+const ModalBox = styled.div`
+  background: ${palette.surface};
+  border: 1px solid ${palette.border};
+  border-radius: 0.875rem;
+  padding: 2rem;
+  width: 100%; max-width: 26rem;
+  display: flex; flex-direction: column; gap: 1rem;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.12);
+`;
+const ModalTitle = styled.h3`
+  font-size: 1rem; font-weight: 700; color: ${palette.text}; margin: 0;
+`;
+const ModalField = styled.div`display: flex; flex-direction: column;`;
+const ModalActions = styled.div`display: flex; gap: 0.5rem; margin-top: 0.25rem;`;
 
 export default AdminProfileMyDataPage;

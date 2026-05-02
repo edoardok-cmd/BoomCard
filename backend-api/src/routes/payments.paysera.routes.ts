@@ -450,7 +450,7 @@ async function handlePaymentCallback(req: Request, res: Response) {
                     userId: linkedReceipt.userId,
                     amount: cashbackTx.amount,
                     type: WalletTransactionType.ADJUSTMENT,
-                    description: `Cashback reversal — payment ${result.status} for order ${result.orderId}`,
+                    description: `Сторниране на кешбек — плащане ${result.status} за поръчка ${result.orderId}`,
                     transactionId: cashbackReversalId,
                     metadata: { orderId: result.orderId, receiptId: linkedReceipt.id, reason: result.status },
                   });
@@ -1334,7 +1334,7 @@ router.post('/transfer-callback', asyncHandler(async (req: Request, res: Respons
       where: { id: walletTx.id },
       data: {
         status: WalletTransactionStatus.COMPLETED,
-        description: 'Cashback payout completed — funds sent to bank account',
+        description: 'Изплащане завършено — средствата са изпратени по банкова сметка',
         metadata: JSON.stringify({ ...metadata, completedAt: new Date().toISOString() }),
       },
     });

@@ -190,6 +190,8 @@ model RefreshToken {
   token        String   @unique
   userId       String
   clientType   String?
+  ip           String?
+  userAgent    String?
   // IDs of sibling accounts the same login (same email + same password) also
   // opened. Lets the user freely switch between them without re-auth. Empty
   // array means "no siblings" — the common single-account case.
@@ -361,11 +363,16 @@ model Venue {
 
   menuUrl             String?
   pendingMenuUrl      String?
-  menuStatus          MenuStatus @default(NONE)
+  menuStatus          MenuStatus  @default(NONE)
   menuRejectionReason String?
   menuSubmittedAt     DateTime?
   menuReviewedAt      DateTime?
   menuReviewedBy      String?
+
+  // Spec §5.4 — Location status (Active / Suspended / Replaced)
+  venueStatus         VenueStatus @default(ACTIVE)
+  venueStatusNote     String?     // reason when suspended or replaced
+  venueStatusAt       DateTime?   // when the status last changed
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -382,6 +389,7 @@ model Venue {
   @@index([partnerId])
   @@index([city])
   @@index([menuStatus])
+  @@index([venueStatus])
 }
 
 enum MenuStatus {
@@ -389,6 +397,12 @@ enum MenuStatus {
   PENDING
   APPROVED
   REJECTED
+}
+
+enum VenueStatus {
+  ACTIVE    // Operational
+  SUSPENDED // Temporarily suspended from receiving transactions
+  REPLACED  // QR replaced; old venue record kept for history
 }
 
 // ============================================

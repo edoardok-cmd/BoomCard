@@ -86,6 +86,7 @@ export const FRAUD_REASON_LABELS: Record<string, FraudReasonInfo> = {
   RAPID_SUBMISSIONS:             { label: 'Rapid successive submissions detected', labelBg: 'Бързи последователни подавания', severity: 'medium' },
   UNUSUAL_TIME:                  { label: 'Submitted at unusual hour', labelBg: 'Подадена в необичайно време', severity: 'low' },
   AMOUNT_TOO_LOW:                { label: 'Receipt amount below minimum', labelBg: 'Сумата е под минимума', severity: 'low' },
+  AMOUNT_EXCEEDS_VENUE_MAX:      { label: 'Amount exceeds venue maximum', labelBg: 'Сумата надвишава максимума за обекта', severity: 'medium' },
   TEMPLATE_MISMATCH:             { label: 'Receipt does not match venue templates', labelBg: 'Бележката не отговаря на шаблоните', severity: 'medium' },
   FRAUD_CHECK_ERROR:             { label: 'Fraud check failed — manual review required', labelBg: 'Грешка при проверка за измама', severity: 'medium' },
   NEW_DEVICE:                    { label: 'First submission from this device', labelBg: 'Първо подаване от това устройство', severity: 'low' },
@@ -94,4 +95,10 @@ export const FRAUD_REASON_LABELS: Record<string, FraudReasonInfo> = {
   MERCHANT_MISMATCH:             { label: 'Receipt merchant does not match venue', labelBg: 'Търговецът не съвпада с обекта', severity: 'medium' },
   DUPLICATE_IMAGE_HASH:          { label: 'Duplicate receipt image (exact SHA-256 match)', labelBg: 'Дублирано изображение (точно съвпадение)', severity: 'high' },
   DUPLICATE_IMAGE_HASH_RACE:     { label: 'Duplicate receipt caught by unique constraint', labelBg: 'Дублирано изображение (уникално ограничение)', severity: 'high' },
+  HIGH_VELOCITY:                 { label: 'High transaction velocity', labelBg: 'Висока честота на транзакции', severity: 'high' },
+  DUPLICATE_RECEIPT:             { label: 'Duplicate receipt', labelBg: 'Дублирана бележка', severity: 'high' },
+  HIGH_BILL_AMOUNT:              { label: 'Unusually high bill amount', labelBg: 'Необичайно висока сума', severity: 'medium' },
+  RAPID_SCANNING:                { label: 'Rapid QR scanning detected', labelBg: 'Открито бързо сканиране', severity: 'medium' },
+  MAX_SCANS_PER_DAY:             { label: 'Daily scan limit reached', labelBg: 'Достигнат дневен лимит', severity: 'high' },
+  MAX_SCANS_PER_MONTH:           { label: 'Monthly scan limit reached', labelBg: 'Достигнат месечен лимит', severity: 'high' },
 };

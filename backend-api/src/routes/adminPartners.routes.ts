@@ -34,6 +34,7 @@ const PARTNER_SELECT = {
   email: true,
   phone: true,
   city: true,
+  address: true,
   discountRate: true,
   status: true,
   requestStatus: true,
@@ -392,6 +393,26 @@ router.patch(
     });
 
     res.json({ partner: updated });
+  })
+);
+
+// ─── Partner audit log ────────────────────────────────────────────────────────
+
+router.get(
+  '/:id/audit',
+  requirePermission('partners.requests.read'),
+  asyncHandler(async (req, res) => {
+    const partner = await prisma.partner.findUnique({ where: { id: req.params.id } });
+    if (!partner) return res.status(404).json({ error: 'Partner not found' });
+
+    const entries = await prisma.auditLog.findMany({
+      where: { objectType: 'Partner', objectId: req.params.id },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+      include: { actor: { select: { id: true, firstName: true, lastName: true, email: true } } },
+    });
+
+    res.json({ entries });
   })
 );
 

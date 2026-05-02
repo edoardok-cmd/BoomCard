@@ -400,9 +400,9 @@ export class AuthService {
     }
 
     if (matches.length === 0) {
-      void prisma.loginHistory.createMany({
+      prisma.loginHistory.createMany({
         data: candidates.map((c) => ({ userId: c.id, ip, userAgent, success: false, failReason: 'bad_password' })),
-      });
+      }).catch((err) => logger.error('loginHistory.createMany failed', { err }));
       throw new AppError('Invalid email or password', 401);
     }
 
@@ -416,17 +416,17 @@ export class AuthService {
 
     // Check if user is active
     if (user.status === 'SUSPENDED') {
-      void prisma.loginHistory.create({ data: { userId: user.id, ip, userAgent, success: false, failReason: 'suspended' } });
+      prisma.loginHistory.create({ data: { userId: user.id, ip, userAgent, success: false, failReason: 'suspended' } }).catch((err) => logger.error('loginHistory.create failed', { err }));
       throw new AppError('Account has been suspended', 403);
     }
 
     if (user.role === 'PARTNER') {
       if (!user.emailVerified) {
-        void prisma.loginHistory.create({ data: { userId: user.id, ip, userAgent, success: false, failReason: 'email_unverified' } });
+        prisma.loginHistory.create({ data: { userId: user.id, ip, userAgent, success: false, failReason: 'email_unverified' } }).catch((err) => logger.error('loginHistory.create failed', { err }));
         throw new AppError('Please verify your email address before logging in. Check your inbox for the verification link.', 403);
       }
       if (user.status === 'PENDING_VERIFICATION') {
-        void prisma.loginHistory.create({ data: { userId: user.id, ip, userAgent, success: false, failReason: 'pending_verification' } });
+        prisma.loginHistory.create({ data: { userId: user.id, ip, userAgent, success: false, failReason: 'pending_verification' } }).catch((err) => logger.error('loginHistory.create failed', { err }));
         throw new AppError('Your partner application is under review. You will be notified by email once approved.', 403);
       }
     }
@@ -436,7 +436,7 @@ export class AuthService {
     // password so role/existence can't be enumerated from error shape.
     if (clientType === 'mobile' && user.role !== 'USER') {
       logger.warn(`Mobile login rejected for non-USER role: ${user.email} (role=${user.role})`);
-      void prisma.loginHistory.create({ data: { userId: user.id, ip, userAgent, success: false, failReason: 'role_mismatch' } });
+      prisma.loginHistory.create({ data: { userId: user.id, ip, userAgent, success: false, failReason: 'role_mismatch' } }).catch((err) => logger.error('loginHistory.create failed', { err }));
       throw new AppError('Invalid email or password', 401);
     }
 
@@ -445,12 +445,12 @@ export class AuthService {
     // extend 2FA to other roles without touching this path.
     if (user.totpEnabledAt) {
       if (!totpCode) {
-        void prisma.loginHistory.create({ data: { userId: user.id, ip, userAgent, success: false, failReason: 'totp_required' } });
+        prisma.loginHistory.create({ data: { userId: user.id, ip, userAgent, success: false, failReason: 'totp_required' } }).catch((err) => logger.error('loginHistory.create failed', { err }));
         throw new AppError('Two-factor authentication required', 403);
       }
       const result = otplib.verifySync({ token: totpCode, secret: user.totpSecret! });
       if (!result.valid) {
-        void prisma.loginHistory.create({ data: { userId: user.id, ip, userAgent, success: false, failReason: 'totp_invalid' } });
+        prisma.loginHistory.create({ data: { userId: user.id, ip, userAgent, success: false, failReason: 'totp_invalid' } }).catch((err) => logger.error('loginHistory.create failed', { err }));
         throw new AppError('Invalid two-factor authentication code', 401);
       }
     }
@@ -461,7 +461,7 @@ export class AuthService {
       data: { lastLoginAt: new Date() },
     });
 
-    void prisma.loginHistory.create({ data: { userId: user.id, ip, userAgent, success: true } });
+    prisma.loginHistory.create({ data: { userId: user.id, ip, userAgent, success: true } }).catch((err) => logger.error('loginHistory.create failed', { err }));
     logger.info(`User logged in: ${user.email}`);
 
     // Compute the sibling-account group eligible for switching on this
@@ -472,7 +472,7 @@ export class AuthService {
     );
     const accountGroup = eligible.length > 1 ? eligible.map((m) => m.id) : undefined;
 
-    const tokens = await this.generateTokens(user, clientType, accountGroup);
+    const tokens = await this.generateTokens(user, clientType, accountGroup, undefined, { ip, userAgent });
 
     // Expose sibling accounts so the client can render a switcher. Only
     // included when there's more than one — avoids an extra DB hit and a
@@ -500,7 +500,7 @@ export class AuthService {
   /**
    * Refresh access token
    */
-  static async refreshToken(refreshToken: string) {
+  static async refreshToken(refreshToken: string, meta?: { ip?: string; userAgent?: string }) {
     try {
       // Verify refresh token
       const decoded = jwt.verify(refreshToken, JWT_REFRESH_SECRET) as TokenPayload;
@@ -578,7 +578,7 @@ export class AuthService {
               impAg: decoded.impAg,
             }
           : undefined;
-      const tokens = await this.generateTokens(storedToken.user, clientType, ag, impersonation);
+      const tokens = await this.generateTokens(storedToken.user, clientType, ag, impersonation, meta);
 
       // Delete old refresh token
       await prisma.refreshToken.delete({
@@ -1144,7 +1144,8 @@ export class AuthService {
     },
     clientType?: 'mobile' | 'web',
     accountGroup?: string[],
-    impersonation?: ImpersonationClaims
+    impersonation?: ImpersonationClaims,
+    meta?: { ip?: string; userAgent?: string }
   ): Promise<AuthTokens> {
     // Embed permission keys for ADMIN sub-roles so requirePermission() can
     // evaluate them from the JWT without a DB hit on every request.
@@ -1206,6 +1207,8 @@ export class AuthService {
         token: refreshTokenString,
         userId: user.id,
         clientType: clientType ?? null,
+        ip: meta?.ip ?? null,
+        userAgent: meta?.userAgent ?? null,
         accountGroup: accountGroup ?? [],
         expiresAt,
       },

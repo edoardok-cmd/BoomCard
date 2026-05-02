@@ -133,6 +133,7 @@ const RefundPolicyPage = lazy(() => import('./pages/RefundPolicyPage'));
 // Admin pages
 const AdminDashboardPage = lazy(() => import('./pages/admin/AdminDashboardPage'));
 const AdminPartnerRequestsPage = lazy(() => import('./pages/admin/AdminPartnerRequestsPage'));
+const AdminPartnerPipelinePage = lazy(() => import('./pages/admin/AdminPartnerPipelinePage'));
 const AdminSubscribersAllPage = lazy(() => import('./pages/admin/AdminSubscribersAllPage'));
 const AdminSubscriberDetailPage = lazy(() => import('./pages/admin/AdminSubscriberDetailPage'));
 const AdminPayoutsPage = lazy(() => import('./pages/admin/AdminPayoutsPage'));
@@ -151,6 +152,7 @@ const AdminAdminDetailPage = lazy(() => import('./pages/admin/AdminAdminDetailPa
 const AdminAlertsPage = lazy(() => import('./pages/admin/AdminAlertsPage'));
 const AdminPartnerLocationsPage = lazy(() => import('./pages/admin/AdminPartnerLocationsPage'));
 const AdminSettingsThresholdsPage = lazy(() => import('./pages/admin/AdminSettingsThresholdsPage'));
+const AdminPartnerTypesPage = lazy(() => import('./pages/AdminPartnerTypesPage'));
 const AdminSettingsValidityPage = lazy(() => import('./pages/admin/AdminSettingsValidityPage'));
 const AdminSettingsMobilePage = lazy(() => import('./pages/admin/AdminSettingsMobilePage'));
 const AdminSettingsSystemPage = lazy(() => import('./pages/admin/AdminSettingsSystemPage'));
@@ -504,7 +506,8 @@ function App() {
                     >
                       <Route index element={<Navigate to="requests" replace />} />
                       <Route path="requests" element={<AdminPartnerRequestsPage />} />
-                      <Route path="onboarding" element={<AdminPartnerOnboardingPage />} />
+                      <Route path="onboarding" element={<AdminPartnerPipelinePage />} />
+                      <Route path="onboarding/new" element={<AdminPartnerOnboardingPage />} />
                       <Route path="active" element={<AdminPartnersPage />} />
                       <Route path="locations" element={<AdminPartnerLocationsPage />} />
                       <Route path="receipt-profiles" element={<AdminReceiptTemplatesPage />} />
@@ -633,9 +636,11 @@ function App() {
                     <Route path="admin/merchant-whitelist" element={<Navigate to="/admin/control/rules" replace />} />
                     <Route path="admin/menu-approvals" element={<Navigate to="/admin/partners/active" replace />} />
                     <Route path="admin/bulk-import" element={<Navigate to="/admin/partners/active" replace />} />
-                    <Route path="admin/partner-types" element={<Navigate to="/admin/settings/thresholds" replace />} />
+                    <Route path="admin/partner-types" element={<AdminPartnerTypesPage />} />
                     <Route path="admin/top-discounts" element={<Navigate to="/admin/control/risk" replace />} />
                     <Route path="admin/partners/new/*" element={<Navigate to="/admin/partners/active" replace />} />
+                    <Route path="admin/administrators" element={<Navigate to="/admin/admins/all" replace />} />
+                    <Route path="admin/administrators/*" element={<Navigate to="/admin/admins/all" replace />} />
 
                     {/* /admin (bare) → /admin/dashboard */}
                     <Route path="admin" element={<Navigate to="/admin/dashboard" replace />} />

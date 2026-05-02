@@ -35,7 +35,7 @@ const SUBSCRIBER_SELECT = {
 } as const;
 
 function buildSubscriberQuery(q: Record<string, string | undefined>) {
-  const { search, plan, status, accountStatus, riskLevel, dateFrom, dateTo } = q;
+  const { search, plan, status, accountStatus, riskLevel, dateFrom, dateTo, ibanChangedAfter } = q;
   const where: UserWhere = { role: 'USER' };
 
   const subFilter: Record<string, unknown> = {};
@@ -63,8 +63,8 @@ function buildSubscriberQuery(q: Record<string, string | undefined>) {
     where.createdAt = createdAt;
   }
 
-  if (accountStatus === 'ACTIVE' || accountStatus === 'SUSPENDED') {
-    where.status = accountStatus;
+  if (accountStatus === 'ACTIVE' || accountStatus === 'SUSPENDED' || accountStatus === 'PENDING_VERIFICATION' || accountStatus === 'PENDING_PAYMENT' || accountStatus === 'INACTIVE') {
+    where.status = accountStatus as any;
     where.deletedAt = null;
   } else if (accountStatus === 'DELETED') {
     where.deletedAt = { not: null };
@@ -73,6 +73,18 @@ function buildSubscriberQuery(q: Record<string, string | undefined>) {
   if (riskLevel === 'low') where.riskScore = { lte: 30 };
   else if (riskLevel === 'medium') where.riskScore = { gt: 30, lte: 60 };
   else if (riskLevel === 'high') where.riskScore = { gt: 60 };
+
+  // ibanChangedAfter: used by the suspicious_iban_changes alert deep-link to
+  // filter the subscriber list to users who changed IBAN within the alert window.
+  // The alert counts only users with wallet.balance > 0 (operationally interesting);
+  // we mirror that guard here so page row count matches the alert badge.
+  if (ibanChangedAfter) {
+    const from = new Date(ibanChangedAfter);
+    if (!isNaN(from.getTime())) {
+      where.ibanLastChangedAt = { gte: from };
+      where.wallet = { balance: { gt: 0 } };
+    }
+  }
 
   if (search) {
     where.OR = [

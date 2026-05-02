@@ -19,12 +19,16 @@
  */
 
 import { Router, Response } from 'express';
-import { DisputeStatus, DisputeSubjectType } from '@prisma/client';
+import { DisputeStatus, DisputeSubjectType, ScanStatus } from '@prisma/client';
 import { authenticate, authorize, requirePermission, AuthRequest } from '../middleware/auth.middleware';
 import { auditMiddleware } from '../middleware/audit.middleware';
 import { asyncHandler } from '../middleware/error.middleware';
 import { prisma } from '../lib/prisma';
 import { receiptService } from '../services/receipt.service';
+import { stickerService } from '../services/sticker.service';
+import { ACTIVE_SCAN_STATUSES } from '../services/adminAlerts.service';
+import { DEFAULT_CORRECTION_WARNING_THRESHOLD } from '../constants/receipt.constants';
+import { getSystemSettingFloat } from '../utils/systemSettings';
 
 const router = Router();
 
@@ -213,12 +217,14 @@ router.post(
 /* ─── G4: Risk Queue (Spec §7.1 / §7.2) ─────────────────────────────────── */
 
 // Signal codes grouped by spec §7.2 category — shared by list and summary endpoints.
-// All codes are from fraudDetection.service.ts and land in Receipt.fraudReasons.
-// Sticker-service-only codes (DUPLICATE_IMAGE_HASH, DUPLICATE_IMAGE_HASH_RACE,
-// MERCHANT_MISMATCH:..., RAPID_SCANNING:..., MAX_SCANS_PER_DAY:...) go to
-// StickerScan.fraudReasons and are intentionally excluded — Receipt queries won't find them.
+// Both exact-match codes (from fraudDetection.service.ts → Receipt.fraudReasons) and
+// sticker-service codes (DUPLICATE_IMAGE_HASH, DUPLICATE_IMAGE_HASH_RACE from
+// sticker.service.ts → StickerScan.fraudReasons) are included. Prefix-payload codes
+// (MERCHANT_MISMATCH:..., RAPID_SCANNING:...) cannot be matched with Prisma hasSome
+// and are therefore captured in the 'other' bucket via the knownCount diff.
 const RISK_SIGNAL_GROUPS = {
-  duplicate:    ['DUPLICATE_IMAGE', 'DUPLICATE_RECEIPT', 'PERCEPTUAL_DUPLICATE_CLOSE', 'PERCEPTUAL_DUPLICATE_MODERATE'],
+  duplicate:    ['DUPLICATE_IMAGE', 'DUPLICATE_RECEIPT', 'DUPLICATE_IMAGE_HASH',
+                 'DUPLICATE_IMAGE_HASH_RACE', 'PERCEPTUAL_DUPLICATE_CLOSE', 'PERCEPTUAL_DUPLICATE_MODERATE'],
   qrMismatch:   ['GPS_FAR_FROM_VENUE', 'GPS_OUTSIDE_RANGE'],
   velocity:     ['RAPID_SUBMISSIONS', 'DAILY_LIMIT_EXCEEDED', 'MONTHLY_LIMIT_EXCEEDED'],
   receiptMatch: ['LOW_OCR_CONFIDENCE', 'MODERATE_OCR_CONFIDENCE', 'TEMPLATE_MISMATCH',
@@ -236,27 +242,31 @@ const ALL_KNOWN_SIGNALS = [
   ...RISK_SIGNAL_GROUPS.suspicious,
 ];
 
-function partnerRiskBucket(riskReceiptCount: number): 'LOW' | 'MEDIUM' | 'HIGH' {
-  if (riskReceiptCount >= 5) return 'HIGH';
-  if (riskReceiptCount >= 2) return 'MEDIUM';
+// Active statuses that require admin attention — scans already resolved drop off the queue.
+// Mirrors ACTIVE_SCAN_STATUSES from adminAlerts.service.ts so alert badges and queue counts match.
+const QUEUE_ACTIVE_STATUSES = ACTIVE_SCAN_STATUSES;
+
+function partnerRiskBucket(riskScanCount: number): 'LOW' | 'MEDIUM' | 'HIGH' {
+  if (riskScanCount >= 5) return 'HIGH';
+  if (riskScanCount >= 2) return 'MEDIUM';
   return 'LOW';
 }
 
 /**
  * GET /api/admin/control/risk-queue/summary
- * Returns global signal counts across all non-resolved receipts (not page-scoped).
+ * Returns global signal counts across all non-resolved sticker scans (not page-scoped).
  * Must be registered before /risk-queue/:id routes to avoid param capture.
  */
 router.get(
   '/risk-queue/summary',
   requirePermission('control.risk.read'),
   asyncHandler(async (_req: AuthRequest, res: Response) => {
-    // Mirror the list endpoint: only count receipts with fraudScore >= 31 so the
+    // Mirror the list endpoint: only count scans with fraudScore >= 31 so the
     // tile totals match what's actionable in the queue (0-30 items auto-approve and
     // don't appear in the list, so they should not inflate the summary tiles either).
     const baseWhere = {
       fraudScore: { gte: 31 },
-      status: { notIn: ['APPROVED', 'REJECTED', 'EXPIRED'] as never[] },
+      status: { in: QUEUE_ACTIVE_STATUSES },
       fraudReasons: { isEmpty: false },
     };
 
@@ -267,13 +277,13 @@ router.get(
 
     const [total, duplicate, qrMismatch, velocity, receiptMatch, suspicious, knownCount, ibanAnomaly] =
       await Promise.all([
-        prisma.receipt.count({ where: baseWhere }),
-        prisma.receipt.count({ where: { ...baseWhere, fraudReasons: { hasSome: [...RISK_SIGNAL_GROUPS.duplicate] } } }),
-        prisma.receipt.count({ where: { ...baseWhere, fraudReasons: { hasSome: [...RISK_SIGNAL_GROUPS.qrMismatch] } } }),
-        prisma.receipt.count({ where: { ...baseWhere, fraudReasons: { hasSome: [...RISK_SIGNAL_GROUPS.velocity] } } }),
-        prisma.receipt.count({ where: { ...baseWhere, fraudReasons: { hasSome: [...RISK_SIGNAL_GROUPS.receiptMatch] } } }),
-        prisma.receipt.count({ where: { ...baseWhere, fraudReasons: { hasSome: [...RISK_SIGNAL_GROUPS.suspicious] } } }),
-        prisma.receipt.count({ where: { ...baseWhere, fraudReasons: { hasSome: ALL_KNOWN_SIGNALS } } }),
+        prisma.stickerScan.count({ where: baseWhere }),
+        prisma.stickerScan.count({ where: { ...baseWhere, fraudReasons: { hasSome: [...RISK_SIGNAL_GROUPS.duplicate] } } }),
+        prisma.stickerScan.count({ where: { ...baseWhere, fraudReasons: { hasSome: [...RISK_SIGNAL_GROUPS.qrMismatch] } } }),
+        prisma.stickerScan.count({ where: { ...baseWhere, fraudReasons: { hasSome: [...RISK_SIGNAL_GROUPS.velocity] } } }),
+        prisma.stickerScan.count({ where: { ...baseWhere, fraudReasons: { hasSome: [...RISK_SIGNAL_GROUPS.receiptMatch] } } }),
+        prisma.stickerScan.count({ where: { ...baseWhere, fraudReasons: { hasSome: [...RISK_SIGNAL_GROUPS.suspicious] } } }),
+        prisma.stickerScan.count({ where: { ...baseWhere, fraudReasons: { hasSome: ALL_KNOWN_SIGNALS } } }),
         prisma.user.count({ where: { ibanLastChangedAt: { gte: sevenDaysAgo } } }),
       ]);
 
@@ -295,9 +305,11 @@ router.get(
 
 /**
  * GET /api/admin/control/risk-queue
- * Query: tier (REVIEW_31_60 | HIGH_61_PLUS | all), page, limit, venueId
- * Returns receipts filtered by fraudScore risk tier for the twice-weekly review queue.
- * Each row includes partnerRiskBucket derived from risk-receipt count across all partner venues.
+ * Query: tier (REVIEW_31_60 | HIGH_61_PLUS | all), page, limit, venueId, signalCategory, dateFrom
+ * Returns sticker scans filtered by fraudScore risk tier for the review queue.
+ * Each row includes partnerRiskBucket derived from active risk-scan count across all partner venues.
+ * dateFrom (ISO string) narrows results to scans created at or after that timestamp — used by
+ * the suspicious_activity alert deep-link so the page count matches the 24h badge count.
  */
 router.get(
   '/risk-queue',
@@ -309,62 +321,58 @@ router.get(
     const tier = typeof req.query.tier === 'string' ? req.query.tier.trim() : 'all';
     const venueId = typeof req.query.venueId === 'string' ? req.query.venueId.trim() : '';
     const signalCategory = typeof req.query.signalCategory === 'string' ? req.query.signalCategory.trim() : '';
+    const dateFromRaw = typeof req.query.dateFrom === 'string' ? req.query.dateFrom.trim() : '';
 
     // Spec §7.1 buckets: 0-30 auto-approve (not surfaced for review), 31-60 review, 61+ high.
-    // AUTO_0_30 is intentionally excluded from the risk queue — those receipts auto-approve.
+    // AUTO_0_30 is intentionally excluded — those scans auto-approve.
     // 'all' and any unknown tier value default to all review-relevant items (≥31).
     let fraudScoreFilter: { gte?: number; lt?: number } = { gte: 31 };
     if (tier === 'REVIEW_31_60') fraudScoreFilter = { gte: 31, lt: 61 };
     else if (tier === 'HIGH_61_PLUS') fraudScoreFilter = { gte: 61 };
 
-    // When a signal category is provided, restrict to receipts that carry at least one
-    // signal from that category (hasSome implicitly means isEmpty: false).
+    // When a signal category is provided, restrict to scans carrying at least one signal
+    // from that category (hasSome implicitly means isEmpty: false).
     const fraudReasonsFilter =
       signalCategory && signalCategory in RISK_SIGNAL_GROUPS
         ? { hasSome: [...RISK_SIGNAL_GROUPS[signalCategory as keyof typeof RISK_SIGNAL_GROUPS]] }
         : { isEmpty: false };
 
-    const where: Parameters<typeof prisma.receipt.findMany>[0]['where'] = {
+    const where: Parameters<typeof prisma.stickerScan.findMany>[0]['where'] = {
       fraudScore: fraudScoreFilter,
       fraudReasons: fraudReasonsFilter,
-      status: { notIn: ['APPROVED', 'REJECTED', 'EXPIRED'] },
+      status: { in: QUEUE_ACTIVE_STATUSES },
     };
     if (venueId) where.venueId = venueId;
+    if (dateFromRaw) {
+      const dateFrom = new Date(dateFromRaw);
+      if (!isNaN(dateFrom.getTime())) where.createdAt = { gte: dateFrom };
+    }
 
-    const [receipts, total] = await Promise.all([
-      prisma.receipt.findMany({
+    const [scans, total] = await Promise.all([
+      prisma.stickerScan.findMany({
         where,
         skip,
         take: limit,
         orderBy: [{ fraudScore: 'desc' }, { createdAt: 'asc' }],
         include: {
           user: { select: { id: true, email: true, firstName: true, lastName: true, riskBucket: true } },
+          venue: {
+            select: {
+              id: true,
+              name: true,
+              partnerId: true,
+              partner: { select: { id: true, businessName: true } },
+            },
+          },
         },
       }),
-      prisma.receipt.count({ where }),
+      prisma.stickerScan.count({ where }),
     ]);
 
-    // Receipt has no Prisma relation to Venue — fetch venues separately.
-    const venueIds = Array.from(
-      new Set(receipts.map((r) => r.venueId).filter((x): x is string => !!x))
-    );
-    const venues = venueIds.length
-      ? await prisma.venue.findMany({
-          where: { id: { in: venueIds } },
-          select: {
-            id: true,
-            partnerId: true,
-            name: true,
-            partner: { select: { id: true, businessName: true } },
-          },
-        })
-      : [];
-    const venueMap = new Map(venues.map((v) => [v.id, v]));
-
-    // Spec §7.2 "Риск при партньор": derive partner risk from count of risk-queue receipts
+    // Spec §7.2 "Риск при партньор": derive partner risk from count of active risk scans
     // across ALL venues of each partner (not just the ones visible on this page).
     const partnerIds = Array.from(
-      new Set(venues.map((v) => v.partner?.id).filter((x): x is string => !!x))
+      new Set(scans.map((s) => s.venue?.partner?.id).filter((x): x is string => !!x))
     );
     const partnerRiskMap = new Map<string, 'LOW' | 'MEDIUM' | 'HIGH'>();
     if (partnerIds.length) {
@@ -375,19 +383,18 @@ router.get(
       const allPartnerVenueIds = allPartnerVenues.map((v) => v.id);
       const venueToPartner = new Map(allPartnerVenues.map((v) => [v.id, v.partnerId]));
 
-      const riskCountsByVenue = await prisma.receipt.groupBy({
+      const riskCountsByVenue = await prisma.stickerScan.groupBy({
         by: ['venueId'],
         where: {
           venueId: { in: allPartnerVenueIds },
           fraudScore: { gte: 31 },
-          status: { notIn: ['APPROVED', 'REJECTED', 'EXPIRED'] },
+          status: { in: QUEUE_ACTIVE_STATUSES },
         },
         _count: { _all: true },
       });
 
       const partnerCountMap = new Map<string, number>();
       for (const row of riskCountsByVenue) {
-        if (!row.venueId) continue;
         const pid = venueToPartner.get(row.venueId);
         if (!pid) continue;
         partnerCountMap.set(pid, (partnerCountMap.get(pid) ?? 0) + row._count._all);
@@ -397,10 +404,16 @@ router.get(
       }
     }
 
-    const enriched = receipts.map((r) => {
-      const venue = r.venueId ? (venueMap.get(r.venueId) ?? null) : null;
-      const pRisk = venue?.partner?.id ? (partnerRiskMap.get(venue.partner.id) ?? 'LOW') : null;
-      return { ...r, venue: venue ? { ...venue, partnerRiskBucket: pRisk } : null };
+    // Map StickerScan shape to the FraudSignalReceipt contract the frontend expects.
+    // billAmount → totalAmount; merchantName derived from venue.partner.businessName.
+    const enriched = scans.map((s) => {
+      const pRisk = s.venue?.partner?.id ? (partnerRiskMap.get(s.venue.partner.id) ?? 'LOW') : null;
+      return {
+        ...s,
+        totalAmount: s.billAmount,
+        merchantName: s.venue?.partner?.businessName ?? null,
+        venue: s.venue ? { ...s.venue, partnerRiskBucket: pRisk } : null,
+      };
     });
 
     res.json({
@@ -413,40 +426,38 @@ router.get(
 
 /**
  * POST /api/admin/control/risk-queue/:id/approve
- * Approve a flagged receipt from the risk queue (calculates cashback, credits wallet).
+ * Approve a flagged sticker scan from the risk queue (calculates cashback, credits wallet).
  */
 router.post(
   '/risk-queue/:id/approve',
   requirePermission('control.risk.write'),
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const verifiedAmount = typeof req.body?.verifiedAmount === 'number' ? req.body.verifiedAmount : undefined;
-    const result = await receiptService.reviewReceipt({
-      receiptId: req.params.id,
-      action: 'APPROVE',
-      reviewedBy: req.user!.id,
-      verifiedAmount,
-      notes: typeof req.body?.notes === 'string' ? req.body.notes.trim() : undefined,
-    });
-    const { fraudWarning, ...rest } = result;
-    res.json({ success: true, data: rest, message: 'Signal approved', ...(fraudWarning && { fraudWarning }) });
+    const scan = await stickerService.approveScan(req.params.id, verifiedAmount !== undefined ? { verifiedAmount } : undefined);
+
+    let fraudWarning: string | undefined;
+    if (verifiedAmount !== undefined) {
+      const threshold = await getSystemSettingFloat('correction_warning_threshold', DEFAULT_CORRECTION_WARNING_THRESHOLD);
+      if (scan.fraudScore >= threshold) {
+        fraudWarning = `Fraud score (${scan.fraudScore.toFixed(0)}) exceeds the correction warning threshold (${threshold}). Amount override applied.`;
+      }
+    }
+
+    res.json({ success: true, data: scan, message: 'Signal approved', ...(fraudWarning && { fraudWarning }) });
   })
 );
 
 /**
  * POST /api/admin/control/risk-queue/:id/reject
- * Reject a flagged receipt from the risk queue.
+ * Reject a flagged sticker scan from the risk queue.
  */
 router.post(
   '/risk-queue/:id/reject',
   requirePermission('control.risk.write'),
   asyncHandler(async (req: AuthRequest, res: Response) => {
-    const updated = await receiptService.reviewReceipt({
-      receiptId: req.params.id,
-      action: 'REJECT',
-      reviewedBy: req.user!.id,
-      rejectionReason: typeof req.body?.reason === 'string' ? req.body.reason.trim() : undefined,
-    });
-    res.json({ success: true, data: updated, message: 'Signal rejected' });
+    const reason = typeof req.body?.reason === 'string' ? req.body.reason.trim() : 'Rejected by admin';
+    const scan = await stickerService.rejectScan(req.params.id, reason);
+    res.json({ success: true, data: scan, message: 'Signal rejected' });
   })
 );
 

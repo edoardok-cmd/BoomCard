@@ -1,4 +1,5 @@
 import { prisma } from './prisma';
+import { logger } from '../utils/logger';
 
 /**
  * Expo Push (FCM/APNs via Expo's push service) helper.
@@ -62,57 +63,64 @@ export async function sendExpoPushToUser(
     ...message,
   }));
 
-  let resp: Response;
-  try {
-    resp = await fetch(EXPO_PUSH_URL, {
-      method: 'POST',
-      headers: {
-        Accept: 'application/json',
-        'Accept-Encoding': 'gzip, deflate',
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(messages),
-    });
-  } catch (err) {
-    console.error('[expoPush] Network error sending push notifications', err);
-    return { sent: 0, invalidated: 0 };
-  }
-
-  if (!resp.ok) {
-    console.error('[expoPush] HTTP error', resp.status, await resp.text());
-    return { sent: 0, invalidated: 0 };
-  }
-
-  let tickets: ExpoTicket[] = [];
-  try {
-    const result = (await resp.json()) as { data: ExpoTicket[] };
-    tickets = result.data ?? [];
-  } catch (err) {
-    console.error('[expoPush] Failed to parse Expo response', err);
-    return { sent: 0, invalidated: 0 };
-  }
-
+  // Expo Push API accepts at most 100 messages per request.
+  const CHUNK_SIZE = 100;
   let sent = 0;
   const invalidTokenIds: string[] = [];
 
-  tickets.forEach((ticket, i) => {
-    if (ticket.status === 'ok') {
-      sent++;
-    } else if (
-      ticket.status === 'error' &&
-      ticket.details?.error === 'DeviceNotRegistered' &&
-      valid[i]
-    ) {
-      invalidTokenIds.push(valid[i].id);
-    } else if (ticket.status === 'error') {
-      console.warn('[expoPush] ticket error', {
-        userId,
-        tokenId: valid[i]?.id,
-        message: ticket.message,
-        details: ticket.details,
+  for (let offset = 0; offset < messages.length; offset += CHUNK_SIZE) {
+    const chunkMessages = messages.slice(offset, offset + CHUNK_SIZE);
+    const chunkValid = valid.slice(offset, offset + CHUNK_SIZE);
+
+    let resp: Response;
+    try {
+      resp = await fetch(EXPO_PUSH_URL, {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          'Accept-Encoding': 'gzip, deflate',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(chunkMessages),
       });
+    } catch (err) {
+      logger.error('[expoPush] Network error sending push notifications', { err: err instanceof Error ? err.message : String(err), stack: err instanceof Error ? err.stack : undefined, offset });
+      continue;
     }
-  });
+
+    if (!resp.ok) {
+      logger.error('[expoPush] HTTP error from Expo push API', { status: resp.status, body: await resp.text(), offset });
+      continue;
+    }
+
+    let tickets: ExpoTicket[] = [];
+    try {
+      const result = (await resp.json()) as { data: ExpoTicket[] };
+      tickets = result.data ?? [];
+    } catch (err) {
+      logger.error('[expoPush] Failed to parse Expo response', { err: err instanceof Error ? err.message : String(err), stack: err instanceof Error ? err.stack : undefined, offset });
+      continue;
+    }
+
+    tickets.forEach((ticket, i) => {
+      if (ticket.status === 'ok') {
+        sent++;
+      } else if (
+        ticket.status === 'error' &&
+        ticket.details?.error === 'DeviceNotRegistered' &&
+        chunkValid[i]
+      ) {
+        invalidTokenIds.push(chunkValid[i].id);
+      } else if (ticket.status === 'error') {
+        logger.warn('[expoPush] ticket error', {
+          userId,
+          tokenId: chunkValid[i]?.id,
+          message: ticket.message,
+          details: ticket.details,
+        });
+      }
+    });
+  }
 
   if (invalidTokenIds.length > 0) {
     await prisma.pushToken.updateMany({

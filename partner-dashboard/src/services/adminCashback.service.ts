@@ -63,6 +63,7 @@ export interface CashbackEntry {
   description: string | null;
   createdAt: string;
   receipt: { id: string; totalAmount: number | null; merchantName: string | null } | null;
+  partner: { id: string; businessName: string } | null;
   user: { id: string; email: string; firstName: string | null; lastName: string | null };
 }
 
