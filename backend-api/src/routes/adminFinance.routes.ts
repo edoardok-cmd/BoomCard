@@ -20,7 +20,7 @@ import { auditMiddleware } from '../middleware/audit.middleware';
 import { asyncHandler } from '../middleware/error.middleware';
 import { prisma } from '../lib/prisma';
 import * as XLSX from 'xlsx';
-import { ReportingPeriodStatus, ScanStatus } from '@prisma/client';
+import { Prisma, ReportingPeriodStatus, ScanStatus } from '@prisma/client';
 
 const router = Router();
 
@@ -516,7 +516,7 @@ router.get(
       planUserIds = planSubs.map(s => s.userId);
     }
 
-    const walletWhere: Parameters<typeof prisma.walletTransaction.groupBy>[0]['where'] = {
+    const walletWhere: Prisma.WalletTransactionWhereInput = {
       createdAt: { gte: from, lte: to },
       status: 'COMPLETED',
     };
@@ -1096,7 +1096,7 @@ router.get(
         };
       });
 
-    } else {
+    } else if (type === 'reports') {
       // Aggregate report export — covers all spec §6.4 dimensions:
       // period, partner, subscription plan, cashback, margin, invoices, payments
       const now = new Date();
@@ -1275,6 +1275,54 @@ router.get(
       }));
 
       rows = [...invoiceSection, ...planSection, ...walletSection];
+
+    } else if (type === 'payouts') {
+      // Payout export — spec §6.4 "плащания" dimension: all WITHDRAWAL transactions
+      const expFrom = fromParam
+        ? (/^\d{4}-\d{2}-\d{2}$/.test(fromParam) ? new Date(fromParam + 'T00:00:00.000+02:00') : new Date(fromParam))
+        : new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+      const expTo = toParam
+        ? (/^\d{4}-\d{2}-\d{2}$/.test(toParam) ? new Date(toParam + 'T23:59:59.999+02:00') : new Date(toParam))
+        : new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0, 23, 59, 59);
+
+      const payoutsExp = await prisma.walletTransaction.findMany({
+        where: {
+          type: 'WITHDRAWAL',
+          createdAt: { gte: expFrom, lte: expTo },
+          ...(exportStatus ? { status: exportStatus as 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED' | 'CANCELLED' | 'RISK_HOLD' | 'ANNULLED' | 'TRIAL_PENDING' } : {}),
+        },
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true, amount: true, currency: true, status: true,
+          description: true, createdAt: true,
+          wallet: {
+            select: {
+              payoutIban: true, payoutBeneficiaryName: true,
+              user: { select: { firstName: true, lastName: true, email: true, phone: true } },
+            },
+          },
+        },
+      });
+
+      const PAYOUT_STATUS_BG: Record<string, string> = {
+        PENDING: 'Чака', RISK_HOLD: 'Задържано (риск)', PROCESSING: 'Обработва се',
+        COMPLETED: 'Платено', FAILED: 'Неуспешно', CANCELLED: 'Отменено',
+        ANNULLED: 'Анулирано', TRIAL_PENDING: 'Изчакване (пробен)',
+      };
+
+      rows = payoutsExp.map(p => ({
+        id: p.id,
+        subscriberName: [p.wallet.user.firstName, p.wallet.user.lastName].filter(Boolean).join(' ') || '',
+        email: p.wallet.user.email,
+        phone: p.wallet.user.phone ?? '',
+        iban: p.wallet.payoutIban ?? '',
+        beneficiaryName: p.wallet.payoutBeneficiaryName ?? '',
+        amount: Math.abs(p.amount),
+        currency: p.currency,
+        status: PAYOUT_STATUS_BG[p.status] ?? p.status,
+        description: p.description ?? '',
+        requestedAt: p.createdAt.toISOString(),
+      }));
     }
 
     const filename = `boomcard_${type}_${new Date().toISOString().slice(0, 10)}`;
@@ -1287,6 +1335,7 @@ router.get(
       invoices: ['id', 'partner', 'city', 'month', 'turnoverAmount', 'contractedRate', 'totalCashbackOwed', 'marginAmount', 'obligation', 'status', 'paidAt', 'paidBy', 'notes', 'createdAt'],
       periods:  ['month', 'status', 'partners', 'cashback', 'margin', 'total', 'paid', 'pending', 'overdue', 'reviewedAt', 'reviewedBy', 'lockedAt', 'lockedBy', 'invoicedAt', 'invoicedBy', 'notes'],
       reports:  ['section', 'period', 'partnerName', 'partnerId', 'plan', 'scanCount', 'cashback', 'margin', 'turnover', 'invoiceStatus', 'walletType', 'walletTotal', 'walletCount'],
+      payouts:  ['id', 'subscriberName', 'email', 'phone', 'iban', 'beneficiaryName', 'amount', 'currency', 'status', 'description', 'requestedAt'],
     };
     // Bulgarian column header labels for all export types (accounting-friendly)
     const INVOICES_DISPLAY_HEADERS: Record<string, string> = {
@@ -1338,10 +1387,24 @@ router.get(
       walletTotal: 'Общо портфейл (лв.)',
       walletCount: 'Брой транзакции',
     };
+    const PAYOUTS_DISPLAY_HEADERS: Record<string, string> = {
+      id: 'ID',
+      subscriberName: 'Абонат',
+      email: 'Имейл',
+      phone: 'Телефон',
+      iban: 'IBAN',
+      beneficiaryName: 'Получател',
+      amount: 'Сума (лв.)',
+      currency: 'Валута',
+      status: 'Статус',
+      description: 'Бележка',
+      requestedAt: 'Дата на заявка',
+    };
     const DISPLAY_HEADERS_MAP: Record<string, Record<string, string>> = {
       invoices: INVOICES_DISPLAY_HEADERS,
       periods:  PERIODS_DISPLAY_HEADERS,
       reports:  REPORTS_DISPLAY_HEADERS,
+      payouts:  PAYOUTS_DISPLAY_HEADERS,
     };
 
     const fieldKeys = HEADERS[type] ?? [];

@@ -384,25 +384,31 @@ export default function AdminFinanceReportsPage() {
           setToMonth(v);
           if (v < fromMonth) setFromMonth(v);
         }} />
-        <PartnerSearchInput
-          type="text"
-          list="report-partners-list"
-          placeholder="Търси партньор…"
-          value={partnerInput}
-          onChange={(e) => {
-            const val = e.target.value;
-            setPartnerInput(val);
-            const found = (partnersData?.data ?? []).find(
-              (p) => p.businessName.toLowerCase() === val.toLowerCase()
-            );
-            setPartnerId(found?.id ?? '');
-          }}
-        />
-        <datalist id="report-partners-list">
-          {(partnersData?.data ?? []).map((p) => (
-            <option key={p.id} value={p.businessName} />
-          ))}
-        </datalist>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+          <PartnerSearchInput
+            type="text"
+            list="report-partners-list"
+            placeholder="Търси партньор…"
+            value={partnerInput}
+            onChange={(e) => {
+              const val = e.target.value;
+              setPartnerInput(val);
+              const found = (partnersData?.data ?? []).find(
+                (p) => p.businessName.toLowerCase() === val.toLowerCase()
+              );
+              setPartnerId(found?.id ?? '');
+            }}
+            style={partnerInput.trim() !== '' && partnerId === '' ? { borderColor: palette.danger } : undefined}
+          />
+          <datalist id="report-partners-list">
+            {(partnersData?.data ?? []).map((p) => (
+              <option key={p.id} value={p.businessName} />
+            ))}
+          </datalist>
+          {partnerInput.trim() !== '' && partnerId === '' && (
+            <span style={{ fontSize: '0.75rem', color: palette.danger }}>Партньорът не е намерен</span>
+          )}
+        </div>
         <FilterSelect value={plan} onChange={(e) => setPlan(e.target.value)}>
           <option value="">Всички планове</option>
           <option value="LIGHT">Light</option>
@@ -423,45 +429,34 @@ export default function AdminFinanceReportsPage() {
 
       {report && (
         <>
-          {/* Plan filter scope banner — wallet/invoice stats are not plan-filterable */}
-          {queryPlan && (
-            <PlanScopeBanner>
-              <span style={{ fontSize: '1rem', flexShrink: 0 }}>ℹ</span>
-              <span>
-                <strong>Планът филтрира само разбивката по план.</strong>{' '}
-                Статистиките на портфейла (кешбек, плащания, зареждания) и фактурните карти показват данни за всички планове — тези агрегати не са обвързани с конкретен абонатен план.
-              </span>
-            </PlanScopeBanner>
-          )}
-
           {/* Stats grid */}
           <StatsGrid>
             <StatCard $soft={palette.infoSoft}>
               <StatLabel>Общ обем (портфейл)</StatLabel>
               <StatValue $color={palette.info}>{fmt(totalVolume)}</StatValue>
               <StatSub>{totalCount.toLocaleString()} транзакции</StatSub>
-              {(queryPartnerId || queryPlan) && <StatSub style={{ color: palette.textSubtle, fontStyle: 'italic' }}>за цялата платформа</StatSub>}
+              {queryPartnerId && <StatSub style={{ color: palette.textSubtle, fontStyle: 'italic' }}>за цялата платформа</StatSub>}
             </StatCard>
 
             <StatCard $soft={palette.successSoft}>
               <StatLabel>Кешбек кредитиран</StatLabel>
               <StatValue $color={palette.success}>{fmt(cashback?.total ?? 0)}</StatValue>
               <StatSub>{(cashback?.count ?? 0).toLocaleString()} транзакции</StatSub>
-              {(queryPartnerId || queryPlan) && <StatSub style={{ color: palette.textSubtle, fontStyle: 'italic' }}>за цялата платформа</StatSub>}
+              {queryPartnerId && <StatSub style={{ color: palette.textSubtle, fontStyle: 'italic' }}>за цялата платформа</StatSub>}
             </StatCard>
 
             <StatCard $soft={palette.purpleSoft}>
               <StatLabel>Плащания към абонати</StatLabel>
               <StatValue $color={palette.purple}>{fmt(withdrawals?.total ?? 0)}</StatValue>
               <StatSub>{(withdrawals?.count ?? 0).toLocaleString()} транзакции</StatSub>
-              {(queryPartnerId || queryPlan) && <StatSub style={{ color: palette.textSubtle, fontStyle: 'italic' }}>за цялата платформа</StatSub>}
+              {queryPartnerId && <StatSub style={{ color: palette.textSubtle, fontStyle: 'italic' }}>за цялата платформа</StatSub>}
             </StatCard>
 
             <StatCard $soft={palette.tealSoft}>
               <StatLabel>Зареждания</StatLabel>
               <StatValue $color={palette.teal}>{fmt(topUps?.total ?? 0)}</StatValue>
               <StatSub>{(topUps?.count ?? 0).toLocaleString()} транзакции</StatSub>
-              {(queryPartnerId || queryPlan) && <StatSub style={{ color: palette.textSubtle, fontStyle: 'italic' }}>за цялата платформа</StatSub>}
+              {queryPartnerId && <StatSub style={{ color: palette.textSubtle, fontStyle: 'italic' }}>за цялата платформа</StatSub>}
             </StatCard>
 
             <StatCard>
@@ -667,9 +662,9 @@ export default function AdminFinanceReportsPage() {
           <Card>
             <SectionTitle>
               Разбивка на портфейлни транзакции
-              {(queryPartnerId || queryPlan) && (
+              {queryPartnerId && (
                 <span style={{ fontWeight: 400, fontSize: '0.8rem', color: palette.textSubtle, marginLeft: '0.5rem', fontStyle: 'italic' }}>
-                  (за цялата платформа —{queryPartnerId ? ' не са филтрирани по партньор' : ''}{queryPartnerId && queryPlan ? ',' : ''}{queryPlan ? ' не са филтрирани по план' : ''})
+                  (за цялата платформа — не са филтрирани по партньор)
                 </span>
               )}
             </SectionTitle>

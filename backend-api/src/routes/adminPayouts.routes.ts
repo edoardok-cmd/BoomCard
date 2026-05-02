@@ -308,8 +308,8 @@ router.patch(
         res.status(404).json({ message: 'Payout not found' });
         return;
       }
-      if (payout.status !== 'PENDING' && payout.status !== 'RISK_HOLD') {
-        res.status(400).json({ message: 'Only PENDING or RISK_HOLD payouts can be rejected' });
+      if (payout.status !== 'PENDING' && payout.status !== 'RISK_HOLD' && payout.status !== 'TRIAL_PENDING') {
+        res.status(400).json({ message: 'Only PENDING, RISK_HOLD, or TRIAL_PENDING payouts can be rejected' });
         return;
       }
 

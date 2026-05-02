@@ -127,4 +127,18 @@ export const adminPayoutsService = {
   fail(id: string, reason?: string): Promise<void> {
     return apiService.patch(`/admin/payouts/${id}/fail`, { reason });
   },
+
+  async exportPayouts(params: { dateFrom?: string; dateTo?: string; status?: string; format?: 'csv' | 'xlsx' }): Promise<void> {
+    const q: Record<string, unknown> = { type: 'payouts', format: params.format ?? 'xlsx' };
+    if (params.dateFrom) q.from = params.dateFrom;
+    if (params.dateTo)   q.to   = params.dateTo;
+    if (params.status)   q.status = params.status;
+    const { data, filename } = await (await import('./api.service')).apiService.getBlob('/admin/finance/export', q);
+    const url = URL.createObjectURL(data);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  },
 };

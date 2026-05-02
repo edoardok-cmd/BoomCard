@@ -12,6 +12,7 @@ import {
   PayoutsSummary,
   PayoutsFilteredSummary,
 } from '../../services/adminPayouts.service';
+import { adminFinanceService } from '../../services/adminFinance.service';
 
 /* ─── Palette ─────────────────────────────────────────────────────────────── */
 const palette = {
@@ -212,6 +213,33 @@ const ClearBtn = styled.button`
   color: ${palette.textMuted};
   cursor: pointer;
   &:hover { background: ${palette.dangerSoft}; color: ${palette.danger}; border-color: #f5b7aa; }
+`;
+
+const ExportBtn = styled.button`
+  padding: 0.5rem 0.875rem;
+  border: 1px solid ${palette.border};
+  border-radius: 0.5rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  background: ${palette.surface};
+  color: ${palette.textMuted};
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  &:hover { border-color: ${palette.accent}; color: ${palette.accent}; }
+  &:disabled { opacity: 0.5; cursor: default; }
+`;
+
+const ThresholdTag = styled.span`
+  display: inline-block;
+  font-size: 0.65rem;
+  font-weight: 600;
+  border-radius: 0.25rem;
+  padding: 0.075rem 0.375rem;
+  margin-top: 0.25rem;
+  background: ${palette.infoSoft};
+  color: ${palette.info};
 `;
 
 /* ─── Bulk action bar ──────────────────────────────────────────────────────── */
@@ -487,7 +515,7 @@ function displayName(row: AdminPayout): string {
 }
 
 /* ─── Component ───────────────────────────────────────────────────────────── */
-type ModalMode = 'reject' | 'hold' | 'fail' | 'bulkApprove';
+type ModalMode = 'reject' | 'hold' | 'fail' | 'bulkApprove' | 'trialReject';
 
 interface ModalState {
   mode: ModalMode;
@@ -538,6 +566,13 @@ export default function AdminPayoutsPage() {
   const [dateFrom, setDateFrom]       = useState('');
   const [dateTo, setDateTo]           = useState('');
   const [modal, setModal]             = useState<ModalState | null>(null);
+  const [exporting, setExporting]     = useState(false);
+
+  const { data: thresholdsData } = useQuery({
+    queryKey: ['payout-thresholds'],
+    queryFn: adminFinanceService.getPayoutThresholds,
+    staleTime: 5 * 60_000,
+  });
 
   useEffect(() => {
     const nextStatus = statusFromUrl();
@@ -649,13 +684,16 @@ export default function AdminPayoutsPage() {
   const handleModalConfirm = () => {
     if (!modal) return;
     const { mode, row, reason } = modal;
-    if (mode === 'reject' && row) rejectMutation.mutate({ id: row.id, reason });
-    if (mode === 'hold'   && row) holdMutation.mutate({ id: row.id, reason });
-    if (mode === 'fail'   && row) failMutation.mutate({ id: row.id, reason });
+    if (mode === 'reject'      && row) rejectMutation.mutate({ id: row.id, reason });
+    if (mode === 'trialReject' && row) rejectMutation.mutate({ id: row.id, reason });
+    if (mode === 'hold'        && row) holdMutation.mutate({ id: row.id, reason });
+    if (mode === 'fail'        && row) failMutation.mutate({ id: row.id, reason });
     if (mode === 'bulkApprove') executeBulkApprove();
   };
 
   const isMutating = rejectMutation.isPending || holdMutation.isPending || failMutation.isPending;
+  const isReasonModal = (mode: ModalMode): mode is 'reject' | 'hold' | 'fail' | 'trialReject' =>
+    mode === 'reject' || mode === 'hold' || mode === 'fail' || mode === 'trialReject';
 
   /* ── formatters ── */
   const fmt = (iso: string) =>
@@ -670,6 +708,24 @@ export default function AdminPayoutsPage() {
 
   const fmtBgn = (n: number) => `${n.toFixed(2)} BGN`;
 
+  const thresholds = thresholdsData?.data ?? {};
+
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      await adminPayoutsService.exportPayouts({
+        dateFrom: dateFrom || undefined,
+        dateTo: dateTo || undefined,
+        status: status || undefined,
+        format: 'xlsx',
+      });
+    } catch {
+      toast.error('Грешка при експорт');
+    } finally {
+      setExporting(false);
+    }
+  };
+
   /* ── columns ── */
   const columns: ColumnDef<AdminPayout>[] = [
     {
@@ -677,6 +733,7 @@ export default function AdminPayoutsPage() {
       header: 'Абонат',
       render: (row) => {
         const activeSub = row.wallet.user.subscriptions?.[0];
+        const threshold = activeSub ? thresholds[activeSub.plan] : undefined;
         return (
           <UserCell>
             {displayName(row)}
@@ -687,6 +744,11 @@ export default function AdminPayoutsPage() {
             )}
             <MetaLine>{row.wallet.user.email}</MetaLine>
             {row.wallet.user.phone && <MetaLine>{row.wallet.user.phone}</MetaLine>}
+            {threshold !== undefined && (
+              <ThresholdTag title="Минимален праг за изплащане">
+                Мин. праг: {threshold.toFixed(2)} BGN
+              </ThresholdTag>
+            )}
           </UserCell>
         );
       },
@@ -800,10 +862,16 @@ export default function AdminPayoutsPage() {
       hidden: (row) => row.status !== 'PENDING' && row.status !== 'RISK_HOLD',
       onClick: (row) => setModal({ mode: 'reject', row, reason: '' }),
     },
+    {
+      label: 'Отхвърли (пробен)',
+      danger: true,
+      hidden: (row) => row.status !== 'TRIAL_PENDING',
+      onClick: (row) => setModal({ mode: 'trialReject', row, reason: '' }),
+    },
   ];
 
   /* ── modal copy ── */
-  const modalCopy: Record<'reject' | 'hold' | 'fail', { title: string; subtitle: (row: AdminPayout) => string; confirm: string; confirmVariant: 'danger' | 'warning' }> = {
+  const modalCopy: Record<'reject' | 'hold' | 'fail' | 'trialReject', { title: string; subtitle: (row: AdminPayout) => string; confirm: string; confirmVariant: 'danger' | 'warning' }> = {
     reject: {
       title: 'Отхвърляне на плащане',
       subtitle: (row) => `${Math.abs(row.amount).toFixed(2)} ${row.currency} за ${displayName(row)} — балансът ще бъде възстановен.`,
@@ -822,6 +890,12 @@ export default function AdminPayoutsPage() {
       confirm: 'Маркирай неуспешно',
       confirmVariant: 'danger',
     },
+    trialReject: {
+      title: 'Отхвърляне на заявка (пробен период)',
+      subtitle: (row) => `Заявката за ${Math.abs(row.amount).toFixed(2)} ${row.currency} от ${displayName(row)} е в изчакване поради пробен период. Отхвърлянето ще възстанови баланса.`,
+      confirm: 'Отхвърли и възстанови',
+      confirmVariant: 'danger',
+    },
   };
 
   /* ── bulk approve availability — driven by global pending count ── */
@@ -836,6 +910,9 @@ export default function AdminPayoutsPage() {
           {/* Bug 2 fix: subtitle reflects the active filter */}
           <PageSubtitle>{subtitleForStatus(status)}</PageSubtitle>
         </TitleBlock>
+        <ExportBtn onClick={handleExport} disabled={exporting}>
+          {exporting ? 'Експортиране…' : '↓ Експорт XLSX'}
+        </ExportBtn>
       </PageHeader>
 
       {/* Summary banner — filter-aware when search/date filters active */}
@@ -956,12 +1033,12 @@ export default function AdminPayoutsPage() {
         />
       </Card>
 
-      {/* Reason modal — used for reject, hold, fail */}
-      {modal && modal.mode !== 'bulkApprove' && modal.row && (
+      {/* Reason modal — used for reject, hold, fail, trialReject */}
+      {modal && isReasonModal(modal.mode) && modal.row && (
         <Overlay onClick={closeModal}>
           <Modal onClick={(e) => e.stopPropagation()}>
-            <ModalTitle>{modalCopy[modal.mode as 'reject' | 'hold' | 'fail'].title}</ModalTitle>
-            <ModalSubtitle>{modalCopy[modal.mode as 'reject' | 'hold' | 'fail'].subtitle(modal.row)}</ModalSubtitle>
+            <ModalTitle>{modalCopy[modal.mode].title}</ModalTitle>
+            <ModalSubtitle>{modalCopy[modal.mode].subtitle(modal.row)}</ModalSubtitle>
             <ReasonTextarea
               placeholder="Причина (по желание)…"
               value={modal.reason}
@@ -970,11 +1047,11 @@ export default function AdminPayoutsPage() {
             <ModalActions>
               <Btn $variant="ghost" onClick={closeModal}>Отказ</Btn>
               <Btn
-                $variant={modalCopy[modal.mode as 'reject' | 'hold' | 'fail'].confirmVariant}
+                $variant={modalCopy[modal.mode].confirmVariant}
                 disabled={isMutating}
                 onClick={handleModalConfirm}
               >
-                {isMutating ? 'Зареждане…' : modalCopy[modal.mode as 'reject' | 'hold' | 'fail'].confirm}
+                {isMutating ? 'Зареждане…' : modalCopy[modal.mode].confirm}
               </Btn>
             </ModalActions>
           </Modal>

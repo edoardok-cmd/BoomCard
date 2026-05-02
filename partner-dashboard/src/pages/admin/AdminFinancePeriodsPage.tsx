@@ -109,6 +109,20 @@ const AccentAdvanceBtn = styled(AdvanceBtn)`
   &:disabled { opacity: 0.5; cursor: default; }
 `;
 
+const CurrentMonthBanner = styled.div`
+  display: flex; align-items: center; gap: 1rem;
+  padding: 1rem 1.25rem; margin-bottom: 1.5rem;
+  background: ${palette.warningSoft}; border: 1px solid #e8d8ad;
+  border-left: 3px solid ${palette.warning}; border-radius: 0.75rem;
+`;
+const BannerText = styled.div`flex: 1; font-size: 0.9rem; color: ${palette.text};`;
+const BannerOpenBtn = styled.button`
+  flex-shrink: 0; padding: 0.5rem 0.875rem; background: ${palette.text}; color: #fff;
+  border: none; border-radius: 0.5rem; font-size: 0.8125rem; font-weight: 600; cursor: pointer;
+  &:hover { opacity: 0.9; }
+  &:disabled { opacity: 0.5; cursor: default; }
+`;
+
 /* ── Confirmation modal ─────────────────────────────────────────────────────── */
 const Overlay = styled.div`
   position: fixed; inset: 0; background: rgba(0,0,0,0.35); z-index: 1000;
@@ -141,6 +155,8 @@ const ModalConfirm = styled.button<{ $danger?: boolean }>`
 
 /* ── Constants ──────────────────────────────────────────────────────────────── */
 const CURRENT_YEAR = new Date().getFullYear();
+const now = new Date();
+const CURRENT_MONTH_STR = `${CURRENT_YEAR}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 const YEAR_OPTIONS = Array.from({ length: 5 }, (_, i) => CURRENT_YEAR - i);
 
 const MONTH_NAMES: Record<string, string> = {
@@ -332,6 +348,22 @@ export default function AdminFinancePeriodsPage() {
           </YearPicker>
         </Controls>
       </PageHeader>
+
+      {/* Current-month no-record banner */}
+      {year === CURRENT_YEAR && !rpByMonth.get(CURRENT_MONTH_STR) && !isLoading && (
+        <CurrentMonthBanner>
+          <BannerText>
+            <strong>Текущият месец ({CURRENT_MONTH_STR}) няма отчетен период.</strong>{' '}
+            Отворете периода, за да започнете проследяването на жизнения цикъл.
+          </BannerText>
+          <BannerOpenBtn
+            disabled={ensureMutation.isPending}
+            onClick={() => ensureMutation.mutate(CURRENT_MONTH_STR)}
+          >
+            {ensureMutation.isPending ? 'Отваряне…' : 'Отвори период'}
+          </BannerOpenBtn>
+        </CurrentMonthBanner>
+      )}
 
       <Card>
         {isLoading ? (

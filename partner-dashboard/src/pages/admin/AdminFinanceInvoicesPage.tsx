@@ -108,6 +108,16 @@ const BtnSecondary = styled.button`padding: 0.5rem 1.125rem; background: ${palet
 const GenModalBody = styled.div`display: flex; flex-direction: column; gap: 0.75rem; margin-bottom: 1rem;`;
 const GenInput = styled.input`padding: 0.5rem 0.875rem; border: 1px solid ${palette.border}; border-radius: 0.5rem; font-size: 0.9rem; background: ${palette.bg}; color: ${palette.text}; outline: none; &:focus { border-color: ${palette.accent}; }`;
 
+// Cashback mark-paid modal state type
+interface CbMarkPaidModalState {
+  partnerId: string;
+  partnerName: string;
+  partnerEmail: string | null;
+  month: string;
+  totalOwed: number;
+  notes: string;
+}
+
 const ViewTab = styled.button<{ $active: boolean }>`
   background: ${(p) => p.$active ? palette.accent : 'transparent'};
   color: ${(p) => p.$active ? '#fff' : palette.textMuted};
@@ -248,6 +258,7 @@ export default function AdminFinanceInvoicesPage() {
   const [month, setMonth]             = useState(initialMonth);
   const [notesModal, setNotesModal]   = useState<{ id: string; partnerName: string; month: string; current: string } | null>(null);
   const [notesValue, setNotesValue]   = useState('');
+  const [cbMarkPaidModal, setCbMarkPaidModal] = useState<CbMarkPaidModalState | null>(null);
   const [exporting, setExporting]     = useState(false);
   const [exportFormat, setExportFormat] = useState<'xlsx' | 'csv'>('xlsx');
   const [generateModal, setGenerateModal] = useState(false);
@@ -502,19 +513,19 @@ export default function AdminFinanceInvoicesPage() {
               {
                 label: 'Маркирай като платено',
                 hidden: (row) => row.paymentStatus === 'PAID',
-                onClick: (row) => {
-                  if (!window.confirm(`Маркирай кешбек за ${row.partnerName} (${row.month}) като платен?\nСума: ${row.totalOwed.toFixed(2)} лв.`)) return;
-                  const notes = window.prompt('Бележки (референция за плащане и др.):') ?? undefined;
-                  cbMarkPaidMutation.mutate({ partnerId: row.partnerId, notes: notes || undefined });
-                },
+                onClick: (row) => setCbMarkPaidModal({
+                  partnerId: row.partnerId,
+                  partnerName: row.partnerName,
+                  partnerEmail: row.partnerEmail,
+                  month: row.month,
+                  totalOwed: row.totalOwed,
+                  notes: '',
+                }),
               },
               {
                 label: 'Изпрати напомняне',
                 hidden: (row) => row.paymentStatus === 'PAID',
-                onClick: (row) => {
-                  if (!window.confirm(`Изпрати имейл напомняне до ${row.partnerEmail ?? row.partnerName}?`)) return;
-                  cbReminderMutation.mutate(row.partnerId);
-                },
+                onClick: (row) => cbReminderMutation.mutate(row.partnerId),
               },
             ]}
           />
@@ -658,6 +669,44 @@ export default function AdminFinanceInvoicesPage() {
                 onClick={() => generateMutation.mutate(generateMonth)}
               >
                 {generateMutation.isPending ? 'Генериране…' : 'Генерирай'}
+              </BtnPrimary>
+            </ModalActions>
+          </Modal>
+        </Overlay>
+      )}
+
+      {/* Cashback mark-paid confirmation modal — replaces window.confirm + window.prompt */}
+      {cbMarkPaidModal && (
+        <Overlay onClick={() => setCbMarkPaidModal(null)}>
+          <Modal onClick={(e) => e.stopPropagation()}>
+            <ModalTitle>Маркирай кешбек като платен</ModalTitle>
+            <ModalSub>
+              {cbMarkPaidModal.partnerName} — {cbMarkPaidModal.month}
+              <br />
+              Сума: <strong>{cbMarkPaidModal.totalOwed.toFixed(2)} лв.</strong>
+            </ModalSub>
+            <FilterLabel style={{ display: 'block', marginBottom: '0.375rem' }}>
+              Бележки (референция за плащане и др.)
+            </FilterLabel>
+            <Textarea
+              placeholder="Напр. Превод BG123456789 от 01.05.2026…"
+              value={cbMarkPaidModal.notes}
+              onChange={(e) => setCbMarkPaidModal((m) => m ? { ...m, notes: e.target.value } : null)}
+              autoFocus
+            />
+            <ModalActions>
+              <BtnSecondary onClick={() => setCbMarkPaidModal(null)}>Отказ</BtnSecondary>
+              <BtnPrimary
+                disabled={cbMarkPaidMutation.isPending}
+                onClick={() => {
+                  cbMarkPaidMutation.mutate({
+                    partnerId: cbMarkPaidModal.partnerId,
+                    notes: cbMarkPaidModal.notes.trim() || undefined,
+                  });
+                  setCbMarkPaidModal(null);
+                }}
+              >
+                {cbMarkPaidMutation.isPending ? 'Запазване…' : 'Маркирай платено'}
               </BtnPrimary>
             </ModalActions>
           </Modal>

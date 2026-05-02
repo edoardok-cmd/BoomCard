@@ -205,6 +205,10 @@ export const adminFinanceService = {
     URL.revokeObjectURL(url);
   },
 
+  getPayoutThresholds(): Promise<{ data: Record<string, number> }> {
+    return apiService.get('/admin/finance/payout-thresholds', {});
+  },
+
   async exportInvoices(params: { status?: string; month?: string; search?: string; format?: 'csv' | 'xlsx' }): Promise<void> {
     const q: Record<string, unknown> = { type: 'invoices', format: params.format ?? 'xlsx' };
     if (params.status) q.status = params.status;
