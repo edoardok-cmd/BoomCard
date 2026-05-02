@@ -860,6 +860,15 @@ export default function AdminSubscribersAllPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Debounced search: fire 400 ms after the user stops typing (spec §4.1).
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setSearch(searchInput);
+      setPage(1);
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [searchInput]);
+
   /* ── Modal state ── */
   const [confirmCancel, setConfirmCancel] = useState<AdminSubscriber | null>(null);
   const [confirmPlan, setConfirmPlan] = useState<AdminSubscriber | null>(null);

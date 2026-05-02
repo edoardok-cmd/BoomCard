@@ -98,7 +98,6 @@ const FocusCount = styled.span`font-feature-settings: 'tnum'; color: ${palette.d
 const FocusBtn = styled(Link)`flex-shrink: 0; padding: 0.5rem 0.875rem; background: ${palette.text}; color: #fff; border: none; border-radius: 0.5rem; font-size: 0.8125rem; font-weight: 600; text-decoration: none; cursor: pointer; &:hover { opacity: 0.9; }`;
 
 const WarningBanner = styled.div`display: flex; align-items: flex-start; gap: 0.75rem; padding: 1rem 1.25rem; background: ${palette.warningSoft}; border: 1px solid #e8d8ad; border-left: 3px solid ${palette.warning}; border-radius: 0.75rem; margin-bottom: 1.5rem;`;
-const PlanScopeBanner = styled.div`display: flex; align-items: flex-start; gap: 0.75rem; padding: 0.875rem 1.125rem; background: ${palette.infoSoft}; border: 1px solid #bfdbfe; border-left: 3px solid ${palette.info}; border-radius: 0.75rem; margin-bottom: 1.5rem; font-size: 0.875rem; color: ${palette.text};`;
 const WarningText = styled.div`font-size: 0.875rem; color: ${palette.text};`;
 const WarningTitle = styled.p`font-weight: 700; margin: 0 0 0.25rem;`;
 const WarningDesc = styled.p`margin: 0; color: ${palette.textMuted};`;

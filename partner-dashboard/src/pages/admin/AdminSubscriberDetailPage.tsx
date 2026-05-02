@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import styled from 'styled-components';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -11,6 +11,7 @@ import {
   UserAccountStatus,
 } from '../../services/adminSubscribers.service';
 import { adminSubscriptionsService } from '../../services/adminSubscriptions.service';
+import { apiService } from '../../services/api.service';
 import { planLabel, subStatusLabel, userStatusLabel, riskLabel, riskBucket, type RiskBucket, type Lang } from '../../utils/planLabels';
 
 /* ─── i18n ─────────────────────────────────────────────────────────────────── */
@@ -626,17 +627,10 @@ export default function AdminSubscriberDetailPage() {
     enabled: !!userId,
   });
 
-  // Inline cashback summary: top 20 entries to build status breakdown counts.
-  const { data: cashbackData } = useQuery({
-    queryKey: ['subscriber-cashback-summary', userId],
-    queryFn: () => adminSubscribersService.list({ search: undefined }),  // placeholder — replaced below
-    enabled: false, // disabled; we use the subscriber-specific endpoint via apiService directly
-  });
   // Fetch cashback entries for this subscriber via the dedicated endpoint.
   const { data: cashbackEntries } = useQuery({
     queryKey: ['subscriber-cashback-entries', userId],
     queryFn: async () => {
-      const { apiService } = await import('../../services/api.service');
       const res = await apiService.get<{ success: boolean; data: Array<{ status: string; amount: number }>; total: number }>(
         `/admin/subscribers/${userId}/cashback`,
         { page: 1, limit: 100 },
