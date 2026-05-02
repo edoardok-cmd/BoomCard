@@ -497,7 +497,7 @@ export default function AdminFinancePeriodsPage() {
                         ) : nextStatus ? (
                           <>
                             {/* OPEN periods with no invoices: show disabled button with tooltip instead of hiding */}
-                            {(row.lifecycleOnly && nextStatus === 'FOR_REVIEW') ? (
+                            {(row.count === 0 && nextStatus === 'FOR_REVIEW') ? (
                               <AdvanceBtn
                                 disabled
                                 title="Генерирайте фактури за периода, преди да го изпратите за преглед"
@@ -518,8 +518,8 @@ export default function AdminFinancePeriodsPage() {
                                 </Btn>
                               );
                             })()}
-                            {/* Partial-coverage: show generate link alongside advance */}
-                            {row.hasUnbilledScans && row.count > 0 && (
+                            {/* Show generate link whenever there are unbilled scans (covers both 0-invoice and partial-coverage cases) */}
+                            {row.hasUnbilledScans && (
                               <GenerateLink to={`/admin/finance/invoices?month=${row.month}`}>
                                 Генерирай фактури →
                               </GenerateLink>

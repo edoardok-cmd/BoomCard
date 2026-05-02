@@ -223,6 +223,7 @@ export default function AdminFinanceReportsPage() {
   const [queryInvoiceStatus, setQueryInvoiceStatus] = useState('');
   const [queryPlan, setQueryPlan] = useState('');
   const [exporting, setExporting] = useState(false);
+  const [exportFormat, setExportFormat] = useState<'xlsx' | 'csv'>('xlsx');
   const runCount = useRef(0);
   const [searchParams] = useSearchParams();
   const { language } = useLanguage();
@@ -282,13 +283,13 @@ export default function AdminFinanceReportsPage() {
     setQueryPlan(plan);
   };
 
-  const handleExport = async (format: 'csv' | 'xlsx') => {
+  const handleExport = async () => {
     setExporting(true);
     try {
       await adminFinanceService.exportReports({
         from: queryFrom,
         to: queryTo,
-        format,
+        format: exportFormat,
         partnerId: queryPartnerId || undefined,
         invoiceStatus: queryInvoiceStatus || undefined,
         plan: queryPlan || undefined,
@@ -317,11 +318,18 @@ export default function AdminFinanceReportsPage() {
           <PageSubtitle>Обобщени финансови данни за избран период</PageSubtitle>
         </TitleBlock>
         <HeaderActions>
-          <ExportBtn onClick={() => handleExport('csv')} disabled={exporting || !report}>
-            ↓ CSV
-          </ExportBtn>
-          <ExportBtn onClick={() => handleExport('xlsx')} disabled={exporting || !report}>
-            ↓ Excel
+          <ExportBtn
+            style={{ borderRadius: '0.5rem 0 0 0.5rem', borderRight: 'none', background: exportFormat === 'xlsx' ? palette.accent : undefined, color: exportFormat === 'xlsx' ? '#fff' : undefined, borderColor: exportFormat === 'xlsx' ? palette.accent : undefined }}
+            onClick={() => setExportFormat('xlsx')}
+            disabled={exporting}
+          >XLSX</ExportBtn>
+          <ExportBtn
+            style={{ borderRadius: '0 0.5rem 0.5rem 0', background: exportFormat === 'csv' ? palette.accent : undefined, color: exportFormat === 'csv' ? '#fff' : undefined, borderColor: exportFormat === 'csv' ? palette.accent : undefined }}
+            onClick={() => setExportFormat('csv')}
+            disabled={exporting}
+          >CSV</ExportBtn>
+          <ExportBtn onClick={handleExport} disabled={exporting || !report}>
+            {exporting ? 'Експортиране…' : '↓ Експорт'}
           </ExportBtn>
         </HeaderActions>
       </PageHeader>

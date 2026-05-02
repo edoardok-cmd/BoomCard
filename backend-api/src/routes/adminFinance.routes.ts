@@ -1421,12 +1421,12 @@ router.get(
 
     if (format === 'csv') {
       const csvLines = [
-        displayHeaders.join(','),
+        displayHeaders.map(h => JSON.stringify(h)).join(','),
         ...rows.map(r => fieldKeys.map(h => JSON.stringify(r[h] ?? '')).join(',')),
       ];
       res.setHeader('Content-Type', 'text/csv; charset=utf-8');
       res.setHeader('Content-Disposition', `attachment; filename="${filename}.csv"`);
-      return res.send(csvLines.join('\n'));
+      return res.send('\uFEFF' + csvLines.join('\n'));
     }
 
     // xlsx — rename columns to Bulgarian display headers then write sheet
