@@ -1053,6 +1053,83 @@ async function handleSubscriptionCallback(req: Request, res: Response) {
       });
 
       if (!subscription) {
+        // Check if this is a card-update payment (BOOM-CU-* order prefix).
+        // The change-card endpoint stores the order ID under
+        // `pendingCardUpdateOrderId` in the subscription's metadata JSON.
+        // On success: extend the billing period by one cycle and update the
+        // payseraOrderId so future renewal lookups use the latest order.
+        if (result.orderId.startsWith('BOOM-CU-')) {
+          const cardUpdateSub = await prisma.subscription.findFirst({
+            where: {
+              metadata: { contains: `"pendingCardUpdateOrderId":"${result.orderId}"` },
+            },
+            include: {
+              user: { select: { email: true, firstName: true, preferredLanguage: true } },
+              planDetails: { select: { displayName: true, displayNameBg: true } },
+            },
+          });
+
+          if (!cardUpdateSub) {
+            logger.warn(`Card-update subscription not found for order: ${result.orderId}`);
+            return res.send(payseraService.generateCallbackResponse());
+          }
+
+          if (result.status === 'success') {
+            const existingMeta = cardUpdateSub.metadata ? JSON.parse(cardUpdateSub.metadata as string) : {};
+            const billingPeriod: string = existingMeta.pendingCardUpdateBillingPeriod || existingMeta.billingPeriod || 'monthly';
+            const periodMs = billingPeriod === 'weekly'
+              ? 7 * 24 * 60 * 60 * 1000
+              : billingPeriod === 'yearly'
+                ? 365 * 24 * 60 * 60 * 1000
+                : 30 * 24 * 60 * 60 * 1000;
+
+            // Extend from whichever is later: today or the existing period end
+            // (so overlapping early renewals correctly stack).
+            const extendFrom = Math.max(Date.now(), cardUpdateSub.currentPeriodEnd.getTime());
+            const newPeriodEnd = new Date(extendFrom + periodMs);
+
+            const { pendingCardUpdateOrderId: _removed, pendingCardUpdateAt: _removedAt, pendingCardUpdateBillingPeriod: _removedPeriod, ...cleanMeta } = existingMeta;
+            await prisma.subscription.update({
+              where: { id: cardUpdateSub.id },
+              data: {
+                payseraOrderId: result.orderId,
+                currentPeriodEnd: newPeriodEnd,
+                status: SubscriptionStatus.ACTIVE,
+                metadata: JSON.stringify({
+                  ...cleanMeta,
+                  lastCardUpdateOrderId: result.orderId,
+                  lastCardUpdateAt: new Date().toISOString(),
+                  payseraTransactionId: result.transactionId,
+                  paymentMethod: result.paymentMethod,
+                }),
+              },
+            });
+            logger.info(`Card update successful for subscription ${cardUpdateSub.id}, period extended to ${newPeriodEnd.toISOString()}`);
+
+            if (cardUpdateSub.user?.email) {
+              const cuLang: 'bg' | 'en' = cardUpdateSub.user.preferredLanguage === 'en' ? 'en' : 'bg';
+              emailService.sendPaymentConfirmation(cardUpdateSub.user.email, {
+                customerName: cardUpdateSub.user.firstName || cardUpdateSub.user.email.split('@')[0],
+                orderId: result.orderId,
+                amount: result.amount / 100,
+                currency: 'EUR',
+                date: new Date(),
+              }, cuLang).catch((err) => logger.error('Failed to send card-update confirmation email:', err));
+            }
+          } else if (result.status === 'failed' || result.status === 'cancelled') {
+            // Clear the pending card-update order so the user can retry.
+            const existingMeta = cardUpdateSub.metadata ? JSON.parse(cardUpdateSub.metadata as string) : {};
+            const { pendingCardUpdateOrderId: _rm, pendingCardUpdateAt: _rmAt, pendingCardUpdateBillingPeriod: _rmPeriod, ...cleanMeta } = existingMeta;
+            await prisma.subscription.update({
+              where: { id: cardUpdateSub.id },
+              data: { metadata: JSON.stringify(cleanMeta) },
+            });
+            logger.warn(`Card update payment ${result.status} for subscription ${cardUpdateSub.id}, order ${result.orderId}`);
+          }
+
+          return res.send(payseraService.generateCallbackResponse());
+        }
+
         // Check if this is an anonymous checkout (PendingSubscription)
         const pending = await prisma.pendingSubscription.findFirst({
           where: { payseraOrderId: result.orderId },

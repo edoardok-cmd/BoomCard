@@ -47,6 +47,8 @@ export interface BusinessInfo {
   businessSubcategory?: string;
   taxId?: string;
   website?: string;
+  city?: string;
+  address?: string;
 }
 
 export interface RegisterInput {
@@ -219,6 +221,8 @@ export class AuthService {
               email: normalizedEmail,
               phone: sanitizedPhone,
               website: info.website?.trim() || null,
+              city: info.city?.trim() || null,
+              address: info.address?.trim() || null,
             },
             select: { id: true },
           });
@@ -929,6 +933,13 @@ export class AuthService {
           { accountGroup: { has: userId } },
         ],
       },
+    });
+
+    // Deactivate push tokens — user row is soft-deleted so the onDelete: Cascade
+    // on PushToken won't fire; mark isActive=false so no further push notifications are sent.
+    await prisma.pushToken.updateMany({
+      where: { userId },
+      data: { isActive: false },
     });
 
     // Check wallet balance for user notification

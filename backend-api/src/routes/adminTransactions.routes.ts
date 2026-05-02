@@ -254,6 +254,7 @@ type BusinessTxWhere = NonNullable<Parameters<typeof prisma.transaction.findMany
 
 function buildBusinessWhere(query: Record<string, unknown>): BusinessTxWhere {
   const partnerId = qs(query.partnerId);
+  const userId = qs(query.userId);
   const type = qs(query.type);
   const status = qs(query.status);
   const dateFrom = qs(query.dateFrom);
@@ -266,6 +267,7 @@ function buildBusinessWhere(query: Record<string, unknown>): BusinessTxWhere {
   const ands: BusinessTxWhere[] = [];
 
   if (partnerId) where.partnerId = partnerId;
+  if (userId) where.userId = userId;
   if (type && Object.values(TransactionType).includes(type as TransactionType)) {
     where.type = type as TransactionType;
   }

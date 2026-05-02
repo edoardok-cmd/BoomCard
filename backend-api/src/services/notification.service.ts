@@ -498,7 +498,7 @@ class NotificationService {
         title: 'Payment Failed',
         titleBg: 'Плащането не успя',
         message: `Your payment of ${amount.toFixed(2)} ${currency} could not be processed. Please update your payment method to avoid service interruption.`,
-        messageBg: `Плащането ви от ${amount.toFixed(2)} ${currency} не можа да бъде обработено. Моля, актуализирайте метода си на плащане, за да избегнете прекъсване на услугата.`,
+        messageBg: `Плащането ви от ${amount.toFixed(2).replace('.', ',')} ${currency} не можа да бъде обработено. Моля, актуализирайте метода си на плащане, за да избегнете прекъсване на услугата.`,
         data: { paymentIntentId, amount, currency },
         priority: 'high',
       });

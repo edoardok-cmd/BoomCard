@@ -5,6 +5,8 @@ import { stripeService } from '../services/stripe.service';
 import { asyncHandler } from '../utils/asyncHandler';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma';
+import { payseraService } from '../services/paysera.service';
+import crypto from 'crypto';
 
 const router = Router();
 
@@ -357,6 +359,91 @@ router.post('/:id/update-plan', authenticate, asyncHandler(async (req: AuthReque
   const result = await subscriptionService.updateSubscriptionPlan(id, plan);
 
   res.json(result);
+}));
+
+const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
+const API_BASE_URL = process.env.API_BASE_URL || 'http://localhost:3000';
+
+/**
+ * POST /api/subscriptions/:id/change-card
+ *
+ * Paysera subscriptions: since Paysera does not support card tokenisation in
+ * this integration, "change card" is implemented as an early-renewal payment.
+ * The user is redirected to Paysera where they choose any supported payment
+ * method. On success the callback extends the current period by one full
+ * billing cycle and records the new Paysera order ID.
+ *
+ * Stripe subscriptions: returns a Stripe billing-portal session URL so the
+ * user can update their saved card through Stripe's hosted UI.
+ */
+router.post('/:id/change-card', authenticate, asyncHandler(async (req: AuthRequest, res: Response) => {
+  const { id } = req.params;
+
+  const subscription = await subscriptionService.getActiveSubscription(req.user!.id);
+  if (!subscription || subscription.id !== id) {
+    return res.status(404).json({ error: 'Subscription not found' });
+  }
+
+  // --- Stripe path ---
+  if (subscription.stripeSubscriptionId) {
+    const returnUrl = `${FRONTEND_URL}/subscription`;
+    const portalSession = await stripeService.stripe.billingPortal.sessions.create({
+      customer: subscription.stripeCustomerId!,
+      return_url: returnUrl,
+    });
+    return res.json({ type: 'stripe', url: portalSession.url });
+  }
+
+  // --- Paysera path ---
+  // Determine renewal price from subscription metadata (set at subscription creation time).
+  const meta = subscription.metadata ? JSON.parse(subscription.metadata as string) : {};
+  const priceInCents: number | undefined = meta.priceInCents;
+  const billingPeriod: string = meta.billingPeriod || 'monthly';
+
+  if (!priceInCents || priceInCents <= 0) {
+    return res.status(400).json({ error: 'Cannot determine subscription renewal price' });
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { id: req.user!.id },
+    select: { email: true, firstName: true, lastName: true },
+  });
+
+  const orderId = `BOOM-CU-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
+
+  // Store the pending card-update order ID so the subscription callback can
+  // recognise it and extend the period instead of creating a new subscription.
+  await prisma.subscription.update({
+    where: { id },
+    data: {
+      metadata: JSON.stringify({
+        ...meta,
+        pendingCardUpdateOrderId: orderId,
+        pendingCardUpdateBillingPeriod: billingPeriod,
+        pendingCardUpdateAt: new Date().toISOString(),
+      }),
+    },
+  });
+
+  const acceptUrl = `${FRONTEND_URL}/subscription?cardUpdated=true&orderId=${orderId}`;
+  const cancelUrl = `${FRONTEND_URL}/subscription`;
+  const callbackUrl = `${API_BASE_URL}/api/payments/subscription/callback`;
+
+  const payment = await payseraService.createPayment({
+    orderId,
+    amount: priceInCents,
+    currency: 'EUR',
+    description: 'BoomCard — обновяване на начин на плащане',
+    acceptUrl,
+    cancelUrl,
+    callbackUrl,
+    customerEmail: user?.email,
+    customerName: `${user?.firstName || ''} ${user?.lastName || ''}`.trim() || user?.email,
+    lang: 'BUL',
+    country: 'BG',
+  });
+
+  return res.json({ type: 'paysera', paymentUrl: payment.paymentUrl, orderId });
 }));
 
 export default router;
