@@ -627,6 +627,8 @@ export class AuthService {
         emailVerified: true,
         createdAt: true,
         lastLoginAt: true,
+        city: true,
+        country: true,
         preferredLanguage: true,
         marketingConsent: true,
         marketingConsentEmail: true,
@@ -660,6 +662,10 @@ export class AuthService {
     if (data.phone !== undefined) sanitizedData.phone = data.phone && data.phone.trim() !== '' ? data.phone.trim() : null;
     const preferredLanguage = (data as any).preferredLanguage;
     if (preferredLanguage === 'bg' || preferredLanguage === 'en') sanitizedData.preferredLanguage = preferredLanguage;
+    const city = (data as any).city;
+    if (city !== undefined) sanitizedData.city = city && city.trim() !== '' ? city.trim() : null;
+    const country = (data as any).country;
+    if (country !== undefined) sanitizedData.country = country && country.trim() !== '' ? country.trim() : null;
 
     const user = await prisma.user.update({
       where: { id: userId },
@@ -670,6 +676,8 @@ export class AuthService {
         firstName: true,
         lastName: true,
         phone: true,
+        city: true,
+        country: true,
         avatar: true,
         role: true,
         status: true,
@@ -679,6 +687,69 @@ export class AuthService {
     logger.info(`User profile updated: ${user.email}`);
 
     return user;
+  }
+
+  static async requestEmailChange(userId: string, newEmail: string) {
+    const normalized = newEmail.toLowerCase().trim();
+
+    // Check new email not already taken by a different active user
+    const existing = await prisma.user.findFirst({ where: { email: normalized, deletedAt: null } });
+    if (existing && existing.id !== userId) {
+      throw Object.assign(new Error('Email already in use'), { statusCode: 409 });
+    }
+
+    const token = require('crypto').randomBytes(32).toString('hex');
+    const expiry = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+
+    const user = await prisma.user.update({
+      where: { id: userId },
+      data: { pendingEmail: normalized, pendingEmailToken: token, pendingEmailExpiry: expiry },
+      select: { email: true, firstName: true, preferredLanguage: true },
+    });
+
+    const lang = user.preferredLanguage === 'en' ? 'en' : 'bg';
+    const subject = lang === 'bg' ? 'Потвърди новия си имейл — BOOM Card' : 'Confirm your new email — BOOM Card';
+    const bodyHtml = lang === 'bg'
+      ? `<p>Здравей ${user.firstName ?? ''},</p><p>Поискано е смяна на имейл адреса за профила ти в BOOM Card.</p><p>Кодът за потвърждение е: <strong>${token.slice(0, 6).toUpperCase()}</strong></p><p>Кодът е валиден 1 час. Ако не си поискал(а) тази промяна, игнорирай имейла.</p>`
+      : `<p>Hi ${user.firstName ?? ''},</p><p>An email address change was requested for your BOOM Card account.</p><p>Your confirmation code: <strong>${token.slice(0, 6).toUpperCase()}</strong></p><p>Valid for 1 hour. If you did not request this, ignore this email.</p>`;
+
+    const emailService = require('./email.service').emailService;
+    await emailService.sendEmail({ to: normalized, subject, html: bodyHtml, text: bodyHtml.replace(/<[^>]+>/g, '') });
+
+    return { sent: true };
+  }
+
+  static async confirmEmailChange(userId: string, code: string, password: string) {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, passwordHash: true, pendingEmail: true, pendingEmailToken: true, pendingEmailExpiry: true },
+    });
+
+    if (!user || !user.pendingEmailToken || !user.pendingEmail || !user.pendingEmailExpiry) {
+      throw Object.assign(new Error('No pending email change'), { statusCode: 400 });
+    }
+    if (user.pendingEmailExpiry < new Date()) {
+      throw Object.assign(new Error('Email change code expired'), { statusCode: 400 });
+    }
+    // Code matches first 6 chars of token (uppercased)
+    if (user.pendingEmailToken.slice(0, 6).toUpperCase() !== code.trim().toUpperCase()) {
+      throw Object.assign(new Error('Invalid confirmation code'), { statusCode: 400 });
+    }
+
+    const bcrypt = require('bcryptjs');
+    const passwordOk = await bcrypt.compare(password, user.passwordHash);
+    if (!passwordOk) {
+      throw Object.assign(new Error('Incorrect password'), { statusCode: 401 });
+    }
+
+    const updated = await prisma.user.update({
+      where: { id: userId },
+      data: { email: user.pendingEmail, pendingEmail: null, pendingEmailToken: null, pendingEmailExpiry: null },
+      select: { id: true, email: true, firstName: true, lastName: true, phone: true, city: true, country: true, avatar: true, role: true, status: true },
+    });
+
+    logger.info(`Email changed for user ${userId} → ${updated.email}`);
+    return updated;
   }
 
   /**

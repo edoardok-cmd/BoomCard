@@ -39,6 +39,22 @@ const ProfileCard = styled(motion.div)`
   transition: background-color 0.3s ease, border-color 0.3s ease;
 `;
 
+const DangerCard = styled(ProfileCard)`
+  border-color: var(--color-error, #ef4444);
+`;
+
+const DangerOutlineButton = styled(Button)`
+  border-color: var(--color-error, #ef4444) !important;
+  color: var(--color-error, #ef4444) !important;
+  flex-shrink: 0;
+`;
+
+const DeleteConfirmButton = styled(Button)`
+  background: var(--color-error, #ef4444) !important;
+  border-color: var(--color-error, #ef4444) !important;
+  color: #fff !important;
+`;
+
 const ProfileHeader = styled.div`
   display: flex;
   align-items: center;
@@ -177,6 +193,10 @@ const SectionTitle = styled.h3`
   margin-bottom: 1.5rem;
 `;
 
+const DangerTitle = styled(SectionTitle)`
+  color: var(--color-error, #ef4444);
+`;
+
 const FormGrid = styled.div`
   display: grid;
   grid-template-columns: repeat(2, 1fr);
@@ -248,17 +268,26 @@ const ActionButtons = styled.div`
   margin-top: 1.5rem;
 `;
 
-const InfoBox = styled.div<{ $variant?: 'info' | 'success' }>`
+const InfoBox = styled.div<{ $variant?: 'info' | 'success' | 'warning' }>`
   padding: 1rem;
-  background: ${props => props.$variant === 'success' ? '#d1fae5' : '#dbeafe'};
-  border: 1px solid ${props => props.$variant === 'success' ? '#a7f3d0' : '#bfdbfe'};
+  background: ${props =>
+    props.$variant === 'success' ? '#d1fae5' :
+    props.$variant === 'warning' ? '#fef3c7' :
+    '#dbeafe'};
+  border: 1px solid ${props =>
+    props.$variant === 'success' ? '#a7f3d0' :
+    props.$variant === 'warning' ? '#fde68a' :
+    '#bfdbfe'};
   border-radius: 0.5rem;
   margin-top: 1.5rem;
 `;
 
-const InfoText = styled.p<{ $variant?: 'info' | 'success' }>`
+const InfoText = styled.p<{ $variant?: 'info' | 'success' | 'warning' }>`
   font-size: 0.875rem;
-  color: ${props => props.$variant === 'success' ? '#065f46' : '#1e40af'};
+  color: ${props =>
+    props.$variant === 'success' ? '#065f46' :
+    props.$variant === 'warning' ? '#92400e' :
+    '#1e40af'};
   line-height: 1.5;
 `;
 
@@ -284,10 +313,77 @@ const PasswordButton = styled.button`
   }
 `;
 
+const EmailChangeSection = styled.div`
+  margin-top: 1.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--color-border);
+`;
+
+const DangerZoneRow = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+
+  @media (max-width: 640px) {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+`;
+
+const DangerZoneDesc = styled.p`
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+  line-height: 1.5;
+`;
+
+const ModalBackdrop = styled(motion.div)`
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+`;
+
+const ModalBox = styled(motion.div)`
+  background: var(--color-background);
+  border-radius: 1rem;
+  padding: 2rem;
+  width: 100%;
+  max-width: 28rem;
+  box-shadow: 0 25px 50px rgba(0, 0, 0, 0.25);
+`;
+
+const ModalTitle = styled.h3`
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--color-error, #ef4444);
+  margin-bottom: 1rem;
+`;
+
+const ModalText = styled.p`
+  font-size: 0.9375rem;
+  color: var(--color-text-secondary);
+  line-height: 1.6;
+  margin-bottom: 1.5rem;
+`;
+
+const ModalActions = styled.div`
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
+`;
+
 interface FormErrors {
   firstName?: string;
   lastName?: string;
   phone?: string;
+  city?: string;
+  country?: string;
 }
 
 interface PasswordFormData {
@@ -303,18 +399,38 @@ interface PasswordErrors {
 }
 
 const ProfilePage: React.FC = () => {
-  const { user, updateProfile, changePassword, uploadAvatar, removeAvatar, isLoading } = useAuth();
+  const { user, updateProfile, changePassword, requestEmailChange, confirmEmailChange, deleteAccount, uploadAvatar, removeAvatar, isLoading } = useAuth();
   const { language, t } = useLanguage();
+
   const [isEditing, setIsEditing] = useState(false);
   const [showPasswordForm, setShowPasswordForm] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const avatarInputRef = useRef<HTMLInputElement>(null);
 
+  // Email change flow state
+  const [emailChangeStep, setEmailChangeStep] = useState<'idle' | 'request' | 'verify'>('idle');
+  const [newEmail, setNewEmail] = useState('');
+  const [newEmailError, setNewEmailError] = useState('');
+  const [verifyCode, setVerifyCode] = useState('');
+  const [verifyCodeError, setVerifyCodeError] = useState('');
+  const [verifyPassword, setVerifyPassword] = useState('');
+  const [verifyPasswordError, setVerifyPasswordError] = useState('');
+  const [pendingNewEmail, setPendingNewEmail] = useState('');
+  const [isEmailChanging, setIsEmailChanging] = useState(false);
+
+  // Delete account state
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deletePassword, setDeletePassword] = useState('');
+  const [deletePasswordError, setDeletePasswordError] = useState('');
+  const [isDeleting, setIsDeleting] = useState(false);
+
   const [formData, setFormData] = useState({
     firstName: user?.firstName || '',
     lastName: user?.lastName || '',
     phone: user?.phone || '',
+    city: user?.city || '',
+    country: user?.country || '',
   });
 
   const [passwordData, setPasswordData] = useState<PasswordFormData>({
@@ -332,18 +448,15 @@ const ProfilePage: React.FC = () => {
         if (!value) return t('profile.firstNameRequired');
         if (value.length < 2) return t('profile.firstNameTooShort');
         return undefined;
-
       case 'lastName':
         if (!value) return t('profile.lastNameRequired');
         if (value.length < 2) return t('profile.lastNameTooShort');
         return undefined;
-
       case 'phone':
         if (value && !/^(\+359|0)[0-9\s-]{8,}$/.test(value)) {
           return t('profile.invalidPhone');
         }
         return undefined;
-
       default:
         return undefined;
     }
@@ -354,21 +467,14 @@ const ProfilePage: React.FC = () => {
       case 'currentPassword':
         if (!value) return t('profile.enterCurrentPassword');
         return undefined;
-
       case 'newPassword':
         if (!value) return t('profile.enterNewPassword');
-        if (value.length < 8) {
-          return t('profile.passwordMinLength');
-        }
+        if (value.length < 8) return t('profile.passwordMinLength');
         return undefined;
-
       case 'confirmPassword':
         if (!value) return t('profile.confirmNewPasswordRequired');
-        if (value !== passwordData.newPassword) {
-          return t('profile.passwordsDoNotMatch');
-        }
+        if (value !== passwordData.newPassword) return t('profile.passwordsDoNotMatch');
         return undefined;
-
       default:
         return undefined;
     }
@@ -377,7 +483,6 @@ const ProfilePage: React.FC = () => {
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
-
     const error = validateField(name, value);
     setErrors(prev => ({ ...prev, [name]: error }));
   };
@@ -385,29 +490,25 @@ const ProfilePage: React.FC = () => {
   const handlePasswordChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setPasswordData(prev => ({ ...prev, [name]: value }));
-
     const error = validatePasswordField(name, value);
     setPasswordErrors(prev => ({ ...prev, [name]: error }));
   };
 
   const handleSave = async () => {
-    // Validate all fields
     const newErrors: FormErrors = {};
-    Object.keys(formData).forEach(field => {
+    ['firstName', 'lastName', 'phone'].forEach(field => {
       const error = validateField(field, formData[field as keyof typeof formData]);
       if (error) newErrors[field as keyof FormErrors] = error;
     });
-
     setErrors(newErrors);
-
-    if (Object.keys(newErrors).length > 0) {
-      return;
-    }
+    if (Object.keys(newErrors).length > 0) return;
 
     try {
       await updateProfile({
         ...formData,
         phone: formData.phone ? normalizePhone(formData.phone) : '',
+        city: formData.city || undefined,
+        country: formData.country || undefined,
       });
       setIsEditing(false);
       setSuccessMessage(t('profile.profileUpdatedSuccess'));
@@ -418,27 +519,18 @@ const ProfilePage: React.FC = () => {
   };
 
   const handleChangePassword = async () => {
-    // Validate all password fields
     const newErrors: PasswordErrors = {};
     Object.keys(passwordData).forEach(field => {
       const error = validatePasswordField(field, passwordData[field as keyof PasswordFormData]);
       if (error) newErrors[field as keyof PasswordErrors] = error;
     });
-
     setPasswordErrors(newErrors);
-
-    if (Object.keys(newErrors).length > 0) {
-      return;
-    }
+    if (Object.keys(newErrors).length > 0) return;
 
     try {
       await changePassword(passwordData.currentPassword, passwordData.newPassword);
       setShowPasswordForm(false);
-      setPasswordData({
-        currentPassword: '',
-        newPassword: '',
-        confirmPassword: '',
-      });
+      setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
       setPasswordErrors({});
       setSuccessMessage(t('profile.passwordChangedSuccess'));
       setTimeout(() => setSuccessMessage(''), 5000);
@@ -453,29 +545,24 @@ const ProfilePage: React.FC = () => {
       firstName: user?.firstName || '',
       lastName: user?.lastName || '',
       phone: user?.phone || '',
+      city: user?.city || '',
+      country: user?.country || '',
     });
     setErrors({});
   };
 
   const handleCancelPassword = () => {
     setShowPasswordForm(false);
-    setPasswordData({
-      currentPassword: '',
-      newPassword: '',
-      confirmPassword: '',
-    });
+    setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
     setPasswordErrors({});
   };
 
-  const handleAvatarClick = () => {
-    avatarInputRef.current?.click();
-  };
+  const handleAvatarClick = () => avatarInputRef.current?.click();
 
   const handleAvatarFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     e.target.value = '';
-
     setIsUploadingAvatar(true);
     try {
       await uploadAvatar(file);
@@ -502,6 +589,92 @@ const ProfilePage: React.FC = () => {
     }
   };
 
+  // Email change handlers
+  const handleRequestEmailChange = async () => {
+    if (!newEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newEmail)) {
+      setNewEmailError('Въведете валиден имейл адрес');
+      return;
+    }
+    setNewEmailError('');
+    setIsEmailChanging(true);
+    try {
+      await requestEmailChange(newEmail);
+      setPendingNewEmail(newEmail);
+      setEmailChangeStep('verify');
+    } catch {
+      // toast shown by context
+    } finally {
+      setIsEmailChanging(false);
+    }
+  };
+
+  const handleConfirmEmailChange = async () => {
+    let hasError = false;
+    if (!verifyCode || verifyCode.length !== 6) {
+      setVerifyCodeError('Въведете 6-символния код');
+      hasError = true;
+    } else {
+      setVerifyCodeError('');
+    }
+    if (!verifyPassword) {
+      setVerifyPasswordError(t('profile.enterCurrentPassword'));
+      hasError = true;
+    } else {
+      setVerifyPasswordError('');
+    }
+    if (hasError) return;
+
+    setIsEmailChanging(true);
+    try {
+      await confirmEmailChange(verifyCode, verifyPassword);
+      setEmailChangeStep('idle');
+      setNewEmail('');
+      setVerifyCode('');
+      setVerifyPassword('');
+      setPendingNewEmail('');
+      setSuccessMessage(t('profile.emailChangedSuccess'));
+      setTimeout(() => setSuccessMessage(''), 5000);
+    } catch {
+      // toast shown by context
+    } finally {
+      setIsEmailChanging(false);
+    }
+  };
+
+  const handleCancelEmailChange = () => {
+    setEmailChangeStep('idle');
+    setNewEmail('');
+    setNewEmailError('');
+    setVerifyCode('');
+    setVerifyCodeError('');
+    setVerifyPassword('');
+    setVerifyPasswordError('');
+    setPendingNewEmail('');
+  };
+
+  // Delete account handlers
+  const handleOpenDeleteModal = () => {
+    setDeletePassword('');
+    setDeletePasswordError('');
+    setShowDeleteModal(true);
+  };
+
+  const handleDeleteAccount = async () => {
+    if (!deletePassword) {
+      setDeletePasswordError(t('profile.enterCurrentPassword'));
+      return;
+    }
+    setDeletePasswordError('');
+    setIsDeleting(true);
+    try {
+      await deleteAccount(deletePassword);
+      // context clears auth state; router will redirect via ProtectedRoute
+    } catch {
+      // toast shown by context
+      setIsDeleting(false);
+    }
+  };
+
   const getUserInitials = () => {
     if (!user) return '';
     return `${user.firstName[0]}${user.lastName[0]}`;
@@ -516,17 +689,13 @@ const ProfilePage: React.FC = () => {
     });
   };
 
-  if (!user) {
-    return null;
-  }
+  if (!user) return null;
 
   return (
     <PageContainer>
       <PageHeader>
         <Title>{t('profile.title')}</Title>
-        <Subtitle>
-          {t('profile.subtitle')}
-        </Subtitle>
+        <Subtitle>{t('profile.subtitle')}</Subtitle>
       </PageHeader>
 
       {/* Success Message */}
@@ -578,9 +747,7 @@ const ProfilePage: React.FC = () => {
             <UserEmail>{user.email}</UserEmail>
             <UserMeta>
               <Badge $variant={user.emailVerified ? 'success' : 'warning'}>
-                {user.emailVerified
-                  ? (t('profile.emailVerified'))
-                  : (t('profile.emailNotVerified'))}
+                {user.emailVerified ? t('profile.emailVerified') : t('profile.emailNotVerified')}
               </Badge>
               <span>
                 {t('profile.memberSince')} {formatDate(user.createdAt)}
@@ -590,9 +757,7 @@ const ProfilePage: React.FC = () => {
         </ProfileHeader>
 
         {/* Personal Information */}
-        <SectionTitle>
-          {t('profile.personalInfo')}
-        </SectionTitle>
+        <SectionTitle>{t('profile.personalInfo')}</SectionTitle>
 
         <FormGrid>
           <FormGroup>
@@ -608,10 +773,7 @@ const ProfilePage: React.FC = () => {
                   disabled={isLoading}
                 />
                 {errors.firstName && (
-                  <ErrorMessage
-                    initial={{ opacity: 0, y: -5 }}
-                    animate={{ opacity: 1, y: 0 }}
-                  >
+                  <ErrorMessage initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }}>
                     {errors.firstName}
                   </ErrorMessage>
                 )}
@@ -634,10 +796,7 @@ const ProfilePage: React.FC = () => {
                   disabled={isLoading}
                 />
                 {errors.lastName && (
-                  <ErrorMessage
-                    initial={{ opacity: 0, y: -5 }}
-                    animate={{ opacity: 1, y: 0 }}
-                  >
+                  <ErrorMessage initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }}>
                     {errors.lastName}
                   </ErrorMessage>
                 )}
@@ -666,16 +825,45 @@ const ProfilePage: React.FC = () => {
                   disabled={isLoading}
                 />
                 {errors.phone && (
-                  <ErrorMessage
-                    initial={{ opacity: 0, y: -5 }}
-                    animate={{ opacity: 1, y: 0 }}
-                  >
+                  <ErrorMessage initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }}>
                     {errors.phone}
                   </ErrorMessage>
                 )}
               </>
             ) : (
               <ReadOnlyValue>{user.phone || t('profile.notProvided')}</ReadOnlyValue>
+            )}
+          </FormGroup>
+
+          <FormGroup>
+            <Label>{t('profile.city')}</Label>
+            {isEditing ? (
+              <Input
+                type="text"
+                name="city"
+                value={formData.city}
+                onChange={handleChange}
+                $hasError={!!errors.city}
+                disabled={isLoading}
+              />
+            ) : (
+              <ReadOnlyValue>{user.city || t('profile.notProvided')}</ReadOnlyValue>
+            )}
+          </FormGroup>
+
+          <FormGroup>
+            <Label>{t('profile.country')}</Label>
+            {isEditing ? (
+              <Input
+                type="text"
+                name="country"
+                value={formData.country}
+                onChange={handleChange}
+                $hasError={!!errors.country}
+                disabled={isLoading}
+              />
+            ) : (
+              <ReadOnlyValue>{user.country || t('profile.notProvided')}</ReadOnlyValue>
             )}
           </FormGroup>
         </FormGrid>
@@ -708,18 +896,15 @@ const ProfilePage: React.FC = () => {
         <SectionTitle>{t('profile.security')}</SectionTitle>
 
         <InfoBox $variant="info">
-          <InfoText $variant="info">
-            {t('profile.securityInfo')}
-          </InfoText>
+          <InfoText $variant="info">{t('profile.securityInfo')}</InfoText>
         </InfoBox>
 
+        {/* Change Password */}
         <PasswordSection>
           {!showPasswordForm ? (
-            <div>
-              <PasswordButton onClick={() => setShowPasswordForm(true)}>
-                {t('profile.changePassword')}
-              </PasswordButton>
-            </div>
+            <PasswordButton onClick={() => setShowPasswordForm(true)}>
+              {t('profile.changePassword')}
+            </PasswordButton>
           ) : (
             <>
               <FormGrid>
@@ -734,10 +919,7 @@ const ProfilePage: React.FC = () => {
                     disabled={isLoading}
                   />
                   {passwordErrors.currentPassword && (
-                    <ErrorMessage
-                      initial={{ opacity: 0, y: -5 }}
-                      animate={{ opacity: 1, y: 0 }}
-                    >
+                    <ErrorMessage initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }}>
                       {passwordErrors.currentPassword}
                     </ErrorMessage>
                   )}
@@ -756,10 +938,7 @@ const ProfilePage: React.FC = () => {
                     disabled={isLoading}
                   />
                   {passwordErrors.newPassword && (
-                    <ErrorMessage
-                      initial={{ opacity: 0, y: -5 }}
-                      animate={{ opacity: 1, y: 0 }}
-                    >
+                    <ErrorMessage initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }}>
                       {passwordErrors.newPassword}
                     </ErrorMessage>
                   )}
@@ -776,10 +955,7 @@ const ProfilePage: React.FC = () => {
                     disabled={isLoading}
                   />
                   {passwordErrors.confirmPassword && (
-                    <ErrorMessage
-                      initial={{ opacity: 0, y: -5 }}
-                      animate={{ opacity: 1, y: 0 }}
-                    >
+                    <ErrorMessage initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }}>
                       {passwordErrors.confirmPassword}
                     </ErrorMessage>
                   )}
@@ -797,7 +973,183 @@ const ProfilePage: React.FC = () => {
             </>
           )}
         </PasswordSection>
+
+        {/* Change Email */}
+        <EmailChangeSection>
+          {emailChangeStep === 'idle' && (
+            <PasswordButton onClick={() => setEmailChangeStep('request')}>
+              {t('profile.changeEmail')}
+            </PasswordButton>
+          )}
+
+          {emailChangeStep === 'request' && (
+            <AnimatePresence>
+              <motion.div
+                initial={{ opacity: 0, y: -8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0 }}
+              >
+                <SectionTitle style={{ marginBottom: '0.75rem' }}>{t('profile.changeEmail')}</SectionTitle>
+                <InfoText $variant="info" style={{ marginBottom: '1rem' }}>
+                  {t('profile.changeEmailDesc')}
+                </InfoText>
+                <FormGroup style={{ maxWidth: '26rem' }}>
+                  <Label>{t('profile.newEmailLabel')}</Label>
+                  <Input
+                    type="email"
+                    value={newEmail}
+                    onChange={e => { setNewEmail(e.target.value); setNewEmailError(''); }}
+                    placeholder={t('profile.newEmailPlaceholder')}
+                    $hasError={!!newEmailError}
+                    disabled={isEmailChanging}
+                  />
+                  {newEmailError && (
+                    <ErrorMessage initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }}>
+                      {newEmailError}
+                    </ErrorMessage>
+                  )}
+                </FormGroup>
+                <ActionButtons style={{ borderTop: 'none', paddingTop: '1rem', marginTop: '0.5rem' }}>
+                  <Button variant="ghost" onClick={handleCancelEmailChange} disabled={isEmailChanging}>
+                    {t('profile.cancelEmailChange')}
+                  </Button>
+                  <Button variant="primary" onClick={handleRequestEmailChange} isLoading={isEmailChanging}>
+                    {t('profile.sendVerificationCode')}
+                  </Button>
+                </ActionButtons>
+              </motion.div>
+            </AnimatePresence>
+          )}
+
+          {emailChangeStep === 'verify' && (
+            <AnimatePresence>
+              <motion.div
+                initial={{ opacity: 0, y: -8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0 }}
+              >
+                <InfoBox $variant="warning" style={{ marginTop: 0, marginBottom: '1.25rem' }}>
+                  <InfoText $variant="warning">
+                    {t('profile.verificationCodeSent')}
+                  </InfoText>
+                </InfoBox>
+                <FormGrid>
+                  <FormGroup>
+                    <Label>{t('profile.enterVerificationCode')} {pendingNewEmail}</Label>
+                    <Input
+                      type="text"
+                      value={verifyCode}
+                      onChange={e => { setVerifyCode(e.target.value.toUpperCase()); setVerifyCodeError(''); }}
+                      placeholder={t('profile.verificationCodePlaceholder')}
+                      maxLength={6}
+                      $hasError={!!verifyCodeError}
+                      disabled={isEmailChanging}
+                    />
+                    {verifyCodeError && (
+                      <ErrorMessage initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }}>
+                        {verifyCodeError}
+                      </ErrorMessage>
+                    )}
+                  </FormGroup>
+
+                  <FormGroup>
+                    <Label>{t('profile.enterPasswordToConfirm')}</Label>
+                    <Input
+                      type="password"
+                      value={verifyPassword}
+                      onChange={e => { setVerifyPassword(e.target.value); setVerifyPasswordError(''); }}
+                      $hasError={!!verifyPasswordError}
+                      disabled={isEmailChanging}
+                    />
+                    {verifyPasswordError && (
+                      <ErrorMessage initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }}>
+                        {verifyPasswordError}
+                      </ErrorMessage>
+                    )}
+                  </FormGroup>
+                </FormGrid>
+                <ActionButtons>
+                  <Button variant="ghost" onClick={handleCancelEmailChange} disabled={isEmailChanging}>
+                    {t('profile.cancelEmailChange')}
+                  </Button>
+                  <Button variant="primary" onClick={handleConfirmEmailChange} isLoading={isEmailChanging}>
+                    {t('profile.confirmEmailChange')}
+                  </Button>
+                </ActionButtons>
+              </motion.div>
+            </AnimatePresence>
+          )}
+        </EmailChangeSection>
       </ProfileCard>
+
+      {/* Danger Zone Card */}
+      <DangerCard
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3, delay: 0.2 }}
+      >
+        <DangerTitle>{t('profile.dangerZone')}</DangerTitle>
+        <DangerZoneRow>
+          <DangerZoneDesc>{t('profile.deleteAccountDesc')}</DangerZoneDesc>
+          <DangerOutlineButton variant="ghost" onClick={handleOpenDeleteModal}>
+            {t('profile.deleteAccount')}
+          </DangerOutlineButton>
+        </DangerZoneRow>
+      </DangerCard>
+
+      {/* Delete Account Modal */}
+      <AnimatePresence>
+        {showDeleteModal && (
+          <ModalBackdrop
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={e => { if (e.target === e.currentTarget && !isDeleting) setShowDeleteModal(false); }}
+          >
+            <ModalBox
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              transition={{ type: 'spring', damping: 25, stiffness: 350 }}
+            >
+              <ModalTitle>{t('profile.deleteAccountConfirmTitle')}</ModalTitle>
+              <ModalText>{t('profile.deleteAccountConfirmText')}</ModalText>
+              <FormGroup>
+                <Label>{t('profile.deleteAccountPasswordLabel')}</Label>
+                <Input
+                  type="password"
+                  value={deletePassword}
+                  onChange={e => { setDeletePassword(e.target.value); setDeletePasswordError(''); }}
+                  $hasError={!!deletePasswordError}
+                  disabled={isDeleting}
+                  autoFocus
+                />
+                {deletePasswordError && (
+                  <ErrorMessage initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }}>
+                    {deletePasswordError}
+                  </ErrorMessage>
+                )}
+              </FormGroup>
+              <ModalActions>
+                <Button
+                  variant="ghost"
+                  onClick={() => setShowDeleteModal(false)}
+                  disabled={isDeleting}
+                >
+                  {t('profile.cancelDelete')}
+                </Button>
+                <DeleteConfirmButton
+                  variant="primary"
+                  onClick={handleDeleteAccount}
+                  isLoading={isDeleting}
+                >
+                  {isDeleting ? t('profile.deletingAccount') : t('profile.confirmDelete')}
+                </DeleteConfirmButton>
+              </ModalActions>
+            </ModalBox>
+          </ModalBackdrop>
+        )}
+      </AnimatePresence>
     </PageContainer>
   );
 };

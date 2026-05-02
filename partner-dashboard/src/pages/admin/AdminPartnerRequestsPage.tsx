@@ -257,14 +257,13 @@ const ContactCell = styled.div`
 /* ─── Component ───────────────────────────────────────────────────────────── */
 const PAGE_SIZE = 20;
 
-// Human-readable labels for PartnerRequestStatus values
+// Human-readable labels for PartnerRequestStatus values (§5.1 — 5 statuses per spec)
 const REQUEST_STATUS_LABELS: Record<string, { bg: string; en: string }> = {
-  NOVA:         { bg: 'Нова',         en: 'New' },
-  KOMUNIKACIYA: { bg: 'Комуникация',  en: 'Communication' },
-  DOGOVARYANE:  { bg: 'Договаряне',   en: 'Negotiation' },
-  ONBOARDING:   { bg: 'Онбординг',    en: 'Onboarding' },
-  ODOBRENA:     { bg: 'Одобрена',     en: 'Approved' },
-  OTKAZANA:     { bg: 'Отказана',     en: 'Rejected' },
+  NOVA:         { bg: 'Нова',        en: 'New' },
+  KOMUNIKACIYA: { bg: 'Комуникация', en: 'Communication' },
+  ONBOARDING:   { bg: 'Онбординг',  en: 'Onboarding' },
+  ODOBRENA:     { bg: 'Одобрена',   en: 'Approved' },
+  OTKAZANA:     { bg: 'Отказана',   en: 'Rejected' },
 };
 
 // Next pipeline step for each current status

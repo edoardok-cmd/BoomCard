@@ -502,11 +502,33 @@ router.get(
     if (partnerIdParam) invoiceWhere.partnerId = partnerIdParam;
     if (invoiceStatusParam) invoiceWhere.status = invoiceStatusParam as (typeof VALID_INVOICE_STATUSES)[number];
 
+    // When a plan filter is active, restrict wallet stats to users who have (or had)
+    // that subscription plan.  We use the user's current plan rather than scan-time
+    // attribution here because wallet transactions aren't tagged by plan at creation
+    // time.  This is accurate enough for operational reporting.
+    let planUserIds: string[] | undefined;
+    if (planParam) {
+      const planSubs = await prisma.subscription.findMany({
+        where: { plan: planParam as 'LIGHT' | 'BASIC' | 'PREMIUM' },
+        select: { userId: true },
+        distinct: ['userId'],
+      });
+      planUserIds = planSubs.map(s => s.userId);
+    }
+
+    const walletWhere: Parameters<typeof prisma.walletTransaction.groupBy>[0]['where'] = {
+      createdAt: { gte: from, lte: to },
+      status: 'COMPLETED',
+    };
+    if (planUserIds !== undefined) {
+      walletWhere.wallet = { userId: { in: planUserIds } };
+    }
+
     const [walletStats, invoiceTotals, partnerInvoices, periodRows, scansInRange, periodInvoiceStatusCounts] = await Promise.all([
-      // Wallet transaction aggregates — subscriber-side; not filtered by partner/status
+      // Wallet transaction aggregates — filtered by plan when planParam is set
       prisma.walletTransaction.groupBy({
         by: ['type'],
-        where: { createdAt: { gte: from, lte: to }, status: 'COMPLETED' },
+        where: walletWhere,
         _sum: { amount: true },
         _count: { id: true },
       }),
@@ -715,6 +737,26 @@ router.get(
   })
 );
 
+/**
+ * GET /api/admin/finance/payout-thresholds
+ * Returns the current minimum payout threshold per subscription plan (BGN).
+ * Used by the payouts page to show admins the threshold that applied to each payout.
+ */
+import { getPayoutThresholdBGN } from '../utils/payoutThreshold';
+
+router.get(
+  '/payout-thresholds',
+  requirePermission('finance.payouts.read'),
+  asyncHandler(async (_req: AuthRequest, res: Response) => {
+    const [light, basic, premium] = await Promise.all([
+      getPayoutThresholdBGN('LIGHT'),
+      getPayoutThresholdBGN('BASIC'),
+      getPayoutThresholdBGN('PREMIUM'),
+    ]);
+    res.json({ success: true, data: { LIGHT: light, BASIC: basic, PREMIUM: premium } });
+  })
+);
+
 /* ─── Reporting Period lifecycle (spec 6.3) ───────────────────────────────── */
 
 /** Resolve a set of nullable user IDs to a display name map (email fallback). */
@@ -906,6 +948,22 @@ router.delete(
       });
     }
 
+    // Guard: refuse deletion when APPROVED scans exist for the month that haven't
+    // been invoiced yet. Deleting the period would orphan those scans from the
+    // billing lifecycle and they would silently reappear as "Без запис".
+    const [monthYear, monthMon] = month.split('-').map(Number);
+    const monthStart = new Date(monthYear, monthMon - 1, 1);
+    const monthEnd   = new Date(monthYear, monthMon, 1);
+    const unbilledScanCount = await prisma.stickerScan.count({
+      where: { status: ScanStatus.APPROVED, createdAt: { gte: monthStart, lt: monthEnd } },
+    });
+    if (unbilledScanCount > 0) {
+      return res.status(409).json({
+        success: false,
+        error: `Cannot delete period ${month} — ${unbilledScanCount} approved scan(s) have not been invoiced yet. Generate invoices first, or they will be lost from billing lifecycle.`,
+      });
+    }
+
     await prisma.reportingPeriod.delete({ where: { month } });
     res.json({ success: true, message: `Period ${month} deleted.` });
   })
@@ -932,8 +990,8 @@ router.get(
       status: exportStatus,
     } = req.query as Record<string, string>;
 
-    if (!['invoices', 'periods', 'reports'].includes(type)) {
-      return res.status(400).json({ success: false, error: 'type must be invoices, periods, or reports' });
+    if (!['invoices', 'periods', 'reports', 'payouts'].includes(type)) {
+      return res.status(400).json({ success: false, error: 'type must be invoices, periods, reports, or payouts' });
     }
     if (!['csv', 'xlsx'].includes(format)) {
       return res.status(400).json({ success: false, error: 'format must be csv or xlsx' });

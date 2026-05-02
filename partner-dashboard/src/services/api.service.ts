@@ -84,7 +84,8 @@ class ApiService {
               return Promise.reject(error);
             }
 
-            // Attempt to refresh token
+            // Bare axios.post intentional: using this.api would go through this
+            // same interceptor and deadlock (isRefreshing=true → queued forever).
             const response = await axios.post<RefreshTokenResponse>(
               `${this.api.defaults.baseURL}/auth/refresh`,
               { refreshToken }

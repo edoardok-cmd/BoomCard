@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import styled from 'styled-components';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useSearchParams, useNavigate } from 'react-router-dom';
+import { useSearchParams, useNavigate, useLocation } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import { DataTable, ColumnDef } from '../../components/admin/DataTable/DataTable';
 import {
@@ -13,7 +13,7 @@ import { useLanguage } from '../../contexts/LanguageContext';
 
 // Spec §7.1/§7.2 — Контрол > Преглед на рискови транзакции / Риск и сигурност
 // Fraud signals queue: duplicate, QR/location, velocity, receipt quality, suspicious behaviour.
-// Audit log moved to its own dedicated page at /admin/control/security.
+// Audit log moved to its own dedicated page at /admin/control/audit.
 
 const palette = {
   bg: '#faf9f5', surface: '#ffffff', border: '#e8e5dc',
@@ -247,6 +247,14 @@ export default function AdminControlSecurityPage() {
   const t = (key: keyof typeof T) => T[key][lang];
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const location = useLocation();
+
+  // §7.1 and §7.2 share this page component. Adjust the H1 title based on which
+  // nav item the user came from so it matches the active tab label.
+  const isRiskReviewRoute = location.pathname === '/admin/control/risk';
+  const pageTitle = isRiskReviewRoute
+    ? (lang === 'bg' ? 'Преглед на рискови транзакции' : 'Risk Transaction Review')
+    : t('title');
 
   const [searchParams] = useSearchParams();
 
@@ -514,7 +522,7 @@ export default function AdminControlSecurityPage() {
         <TitleBlock>
           <Eyebrow>{t('eyebrow')}</Eyebrow>
           <PageTitle>
-            {t('title')}
+            {pageTitle}
             {data && data.meta.total > 0 && (
               <TotalBadge>{data.meta.total.toLocaleString()}</TotalBadge>
             )}

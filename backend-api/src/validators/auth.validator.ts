@@ -159,6 +159,18 @@ export const updateProfileValidation = [
     .withMessage('Invalid phone number format. Use +359XXXXXXXXX or 0XXXXXXXXX'),
 
   phoneSanitizer,
+
+  body('city')
+    .optional({ values: 'falsy' })
+    .trim()
+    .isLength({ max: 100 })
+    .withMessage('City must be under 100 characters'),
+
+  body('country')
+    .optional({ values: 'falsy' })
+    .trim()
+    .isLength({ max: 100 })
+    .withMessage('Country must be under 100 characters'),
 ];
 
 export const changePasswordValidation = [

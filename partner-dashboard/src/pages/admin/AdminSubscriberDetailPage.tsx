@@ -77,6 +77,9 @@ const I18N = {
   // Cashback link section
   cashbackTitle:  { en: 'Cashback entries',   bg: 'Кешбек записи' },
   cashbackView:   { en: 'View cashback entries →', bg: 'Виж кешбек записи →' },
+  // Payout queue link
+  payoutQueueTitle: { en: 'Payout queue',      bg: 'Опашка за изплащане' },
+  payoutQueueView:  { en: 'View in payout queue →', bg: 'Виж в опашка за изплащане →' },
 };
 
 type I18NKey = keyof typeof I18N;
@@ -583,7 +586,7 @@ export default function AdminSubscriberDetailPage() {
             <WalletItem>
               <WalletLabel>{T('walletTotal')}</WalletLabel>
               <WalletValue>
-                {(data.wallet.balance + data.wallet.pendingBalance).toFixed(2)}
+                {(data.wallet.availableBalance + data.wallet.pendingBalance).toFixed(2)}
                 <WalletUnit>BGN</WalletUnit>
               </WalletValue>
             </WalletItem>
@@ -629,6 +632,17 @@ export default function AdminSubscriberDetailPage() {
           style={{ color: '#c96442', fontWeight: 600, fontSize: '0.9rem' }}
         >
           {T('cashbackView')}
+        </Link>
+      </SectionCard>
+
+      {/* Payout queue link (spec §6.1) */}
+      <SectionCard>
+        <SectionTitle>{T('payoutQueueTitle')}</SectionTitle>
+        <Link
+          to={`/admin/finance/payouts?search=${encodeURIComponent(data.email)}`}
+          style={{ color: '#c96442', fontWeight: 600, fontSize: '0.9rem' }}
+        >
+          {T('payoutQueueView')}
         </Link>
       </SectionCard>
 

@@ -17,6 +17,7 @@ import { cardService } from '../services/card.service';
 import { walletService } from '../services/wallet.service';
 import { emailService } from '../services/email.service';
 import { writeAudit } from '../middleware/audit.middleware';
+import { getClientIp } from '../utils/requestIp';
 
 const TERMS_VERSION = process.env.TERMS_VERSION || '2026-02-24';
 
@@ -150,7 +151,7 @@ router.post(
     const clientType: 'mobile' | 'web' = req.body.clientType
       ?? (origin.includes('mobile.boomcard') ? 'mobile' : 'web');
 
-    const ip = ((req.headers['x-forwarded-for'] as string) ?? '').split(',')[0]?.trim() || req.ip;
+    const ip = getClientIp(req);
     const userAgent = req.headers['user-agent'];
     const result = await AuthService.login({ email, password, clientType, ip, userAgent, totpCode });
 
@@ -187,7 +188,7 @@ router.post(
       });
     }
 
-    const ip = ((req.headers['x-forwarded-for'] as string) ?? '').split(',')[0]?.trim() || req.ip;
+    const ip = getClientIp(req);
     const userAgent = req.headers['user-agent'];
     const tokens = await AuthService.refreshToken(refreshToken, { ip, userAgent });
 
@@ -207,7 +208,7 @@ router.post(
   '/logout',
   asyncHandler(async (req: Request, res: Response) => {
     const { refreshToken } = req.body;
-    const ip = ((req.headers['x-forwarded-for'] as string) ?? '').split(',')[0]?.trim() || req.ip;
+    const ip = getClientIp(req);
     const userAgent = req.headers['user-agent'];
 
     if (refreshToken) {
@@ -280,12 +281,14 @@ router.put(
   validate(updateProfileValidation),
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const userId = req.user!.id;
-    const { firstName, lastName, phone, preferredLanguage } = req.body;
+    const { firstName, lastName, phone, city, country, preferredLanguage } = req.body;
 
     const user = await AuthService.updateProfile(userId, {
       firstName,
       lastName,
       phone,
+      city,
+      country,
       preferredLanguage,
     } as any);
 
@@ -294,6 +297,42 @@ router.put(
       message: 'Profile updated successfully',
       data: user,
     });
+  })
+);
+
+/**
+ * POST /api/auth/change-email/request
+ * Initiate email change — sends a 6-char code to the new address (§5.8)
+ */
+router.post(
+  '/change-email/request',
+  authenticate,
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    const userId = req.user!.id;
+    const { newEmail } = req.body;
+    if (!newEmail || typeof newEmail !== 'string') {
+      return res.status(400).json({ error: 'Validation Error', message: 'newEmail is required' });
+    }
+    await AuthService.requestEmailChange(userId, newEmail);
+    res.json({ success: true, message: 'Verification code sent' });
+  })
+);
+
+/**
+ * POST /api/auth/change-email/verify
+ * Confirm email change with code + password (§5.8)
+ */
+router.post(
+  '/change-email/verify',
+  authenticate,
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    const userId = req.user!.id;
+    const { code, password } = req.body;
+    if (!code || !password) {
+      return res.status(400).json({ error: 'Validation Error', message: 'code and password are required' });
+    }
+    const user = await AuthService.confirmEmailChange(userId, code, password);
+    res.json({ success: true, data: user });
   })
 );
 

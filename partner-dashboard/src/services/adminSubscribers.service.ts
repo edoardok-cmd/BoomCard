@@ -107,6 +107,8 @@ export interface SubscriberFilters {
   dateFrom?: string;
   dateTo?: string;
   ibanChangedAfter?: string;
+  sortBy?: string;
+  sortOrder?: 'asc' | 'desc';
 }
 
 function cleanFilters(f: SubscriberFilters): Record<string, unknown> {
@@ -119,6 +121,8 @@ function cleanFilters(f: SubscriberFilters): Record<string, unknown> {
   if (f.dateFrom) out['dateFrom'] = f.dateFrom;
   if (f.dateTo) out['dateTo'] = f.dateTo;
   if (f.ibanChangedAfter) out['ibanChangedAfter'] = f.ibanChangedAfter;
+  if (f.sortBy) out['sortBy'] = f.sortBy;
+  if (f.sortOrder) out['sortOrder'] = f.sortOrder;
   return out;
 }
 

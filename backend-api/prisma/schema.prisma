@@ -100,6 +100,15 @@ model User {
   totpSecret    String?
   totpEnabledAt DateTime?
 
+  // Profile location (§5.8)
+  city    String?
+  country String?
+
+  // Email change flow (§5.8 — user-initiated, requires verification)
+  pendingEmail       String?
+  pendingEmailToken  String?   @unique
+  pendingEmailExpiry DateTime?
+
   // Finance fields (Phase 4 preview — safe to add now)
   iban              String?
   ibanLastChangedAt DateTime?

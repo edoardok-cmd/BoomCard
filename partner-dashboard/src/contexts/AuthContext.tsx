@@ -29,6 +29,9 @@ interface MePayload {
   email: string;
   firstName?: string;
   lastName?: string;
+  phone?: string;
+  city?: string;
+  country?: string;
   role?: string;
   permissions?: string[];
   createdAt?: string | number;
@@ -102,6 +105,8 @@ export interface User {
   firstName: string;
   lastName: string;
   phone?: string;
+  city?: string;
+  country?: string;
   avatar?: string;
   role: 'user' | 'partner' | 'admin';
   // Raw backend role (USER/PARTNER/ADMIN/SUPER_ADMIN). Used by RequirePermission
@@ -193,6 +198,9 @@ export interface AuthContextType extends AuthState {
   logout: () => void;
   updateProfile: (data: Partial<User>) => Promise<void>;
   changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
+  requestEmailChange: (newEmail: string) => Promise<void>;
+  confirmEmailChange: (code: string, password: string) => Promise<void>;
+  deleteAccount: (password: string) => Promise<void>;
   uploadAvatar: (file: File) => Promise<void>;
   removeAvatar: () => Promise<void>;
   switchAccount: (targetAccountId: string) => Promise<void>;
@@ -390,6 +398,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               email: meData.email,
               firstName: meData.firstName || '',
               lastName: meData.lastName || '',
+              phone: meData.phone,
+              city: meData.city,
+              country: meData.country,
               role: normalizeRole(meData.role),
               rawRole: typeof meData.role === 'string' ? meData.role.toUpperCase() : undefined,
               permissions: meData.permissions,
@@ -940,6 +951,62 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const requestEmailChange = async (newEmail: string): Promise<void> => {
+    if (!user) throw new Error('No user logged in');
+    try {
+      await apiService.post('/auth/change-email/request', { newEmail });
+    } catch (error) {
+      const message = extractErrorMessage(error, 'Failed to send verification code');
+      toast.error(message);
+      throw error;
+    }
+  };
+
+  const confirmEmailChange = async (code: string, password: string): Promise<void> => {
+    if (!user) throw new Error('No user logged in');
+    try {
+      const response = await apiService.post<Envelope<{ user?: MePayload } & MePayload>>('/auth/change-email/verify', { code, password });
+      const data = response?.data || response;
+      const updated = (data as any).user || data;
+      setUser(prev => prev ? {
+        ...prev,
+        email: updated.email || prev.email,
+        city: updated.city ?? prev.city,
+        country: updated.country ?? prev.country,
+      } : prev);
+      toast.success('Email updated successfully');
+    } catch (error) {
+      const message = extractErrorMessage(error, 'Failed to verify email change');
+      toast.error(message);
+      throw error;
+    }
+  };
+
+  const deleteAccount = async (password: string): Promise<void> => {
+    if (!user) throw new Error('No user logged in');
+    try {
+      await apiService.delete('/auth/account', { data: { password } });
+      setUser(null);
+      setToken(null);
+      setSwitchableAccounts([]);
+      setImpersonation(null);
+      authStorage.removeItem(STORAGE_KEY);
+      authStorage.removeItem(TOKEN_KEY);
+      authStorage.removeItem(REFRESH_TOKEN_KEY);
+      authStorage.removeItem(SWITCHABLE_ACCOUNTS_KEY);
+      authStorage.removeItem(IMPERSONATION_KEY);
+      if (typeof document !== 'undefined') {
+        document.cookie = 'boomcard_session=; path=/; max-age=0; SameSite=Strict';
+        document.cookie = 'boomcard_refresh=; path=/; max-age=0; SameSite=Strict';
+      }
+      apiService.clearAuthToken();
+    } catch (error) {
+      const message = extractErrorMessage(error, 'Failed to delete account');
+      toast.error(message);
+      throw error;
+    }
+  };
+
   const loginWithOAuth = async (oauthData: OAuthData): Promise<void> => {
     setIsLoading(true);
 
@@ -1073,6 +1140,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     logout,
     updateProfile,
     changePassword,
+    requestEmailChange,
+    confirmEmailChange,
+    deleteAccount,
     uploadAvatar,
     removeAvatar,
     switchAccount,

@@ -5,6 +5,7 @@ import { authenticate, authorize, requirePermission } from '../middleware/auth.m
 import { auditMiddleware, writeAudit } from '../middleware/audit.middleware';
 import { prisma } from '../lib/prisma';
 import type { AuthRequest } from '../middleware/auth.middleware';
+import { getClientIp } from '../utils/requestIp';
 
 const router = Router();
 router.use(auditMiddleware);
@@ -457,7 +458,7 @@ router.post('/pending-super/:id/approve', authenticate, authorize('SUPER_ADMIN')
       objectId: user.id,
       before: { pendingRequestId: id, email: request.email, requestedById: request.requestedById },
       after: { userId: user.id, email: user.email, role: user.role },
-      ip: (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ?? req.socket.remoteAddress ?? null,
+      ip: getClientIp(req) ?? null,
       userAgent: req.headers['user-agent'] ?? null,
     });
     res.status(201).json({ ok: true, user });
@@ -484,7 +485,7 @@ router.delete('/pending-super/:id', authenticate, authorize('SUPER_ADMIN'), requ
       objectId: id,
       before: { pendingRequestId: id, email: request.email, requestedById: request.requestedById },
       after: null,
-      ip: (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ?? req.socket.remoteAddress ?? null,
+      ip: getClientIp(req) ?? null,
       userAgent: req.headers['user-agent'] ?? null,
     });
     res.json({ ok: true });
@@ -577,7 +578,7 @@ router.patch('/:id/status', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), req
       objectId: id,
       before: { status: beforeStatus },
       after: { status },
-      ip: (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ?? req.socket.remoteAddress ?? null,
+      ip: getClientIp(req) ?? null,
       userAgent: req.headers['user-agent'] ?? null,
     });
 
@@ -627,7 +628,7 @@ router.post('/:id/approve', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), req
       objectId: user.id,
       before: { roles: beforeRoles },
       after: { addedRole: roleKey },
-      ip: (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ?? req.socket.remoteAddress ?? null,
+      ip: getClientIp(req) ?? null,
       userAgent: req.headers['user-agent'] ?? null,
     });
 
@@ -689,7 +690,7 @@ router.delete('/:id/roles/:roleKey', authenticate, authorize('ADMIN', 'SUPER_ADM
       objectId: id,
       before: { roles: beforeRoles },
       after: { removedRole: roleKey },
-      ip: (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ?? req.socket.remoteAddress ?? null,
+      ip: getClientIp(req) ?? null,
       userAgent: req.headers['user-agent'] ?? null,
     });
 

@@ -84,8 +84,8 @@ class NotificationService {
       // Send push notification
       await this.sendPushNotification({
         userId,
-        title: 'Receipt Approved!',
-        body: `You earned ${cashbackAmount.toFixed(2)} BGN cashback from ${merchantName}`,
+        title: 'Кешбек одобрен!',
+        body: `Спечелихте ${cashbackAmount.toFixed(2).replace('.', ',')} лв. кешбек от ${merchantName}`,
         data: { receiptId, type: 'receipt_approved' },
       });
 
@@ -126,8 +126,8 @@ class NotificationService {
 
       await this.sendPushNotification({
         userId,
-        title: 'Cashback Earned!',
-        body: `+${cashbackAmount.toFixed(2)} BGN from ${venueName}`,
+        title: 'Спечелихте кешбек!',
+        body: `+${cashbackAmount.toFixed(2).replace('.', ',')} лв. от ${venueName}`,
         data: { scanId, type: 'sticker_scan_approved' },
       });
     } catch (error) {
@@ -234,8 +234,8 @@ class NotificationService {
 
       await this.sendPushNotification({
         userId,
-        title: 'Cashback Credited',
-        body: `+${amount.toFixed(2)} BGN added to your account`,
+        title: 'Кешбек кредитиран!',
+        body: `+${amount.toFixed(2).replace('.', ',')} лв. добавени към акаунта ви`,
         data: { amount, type: 'cashback_credited' },
       });
 
@@ -760,8 +760,8 @@ class NotificationService {
       });
       await this.sendPushNotification({
         userId: params.userId,
-        title: 'You can cash out',
-        body: `${params.availableBalance.toFixed(2)} BGN ready to withdraw.`,
+        title: 'Можете да изтеглите',
+        body: `${params.availableBalance.toFixed(2).replace('.', ',')} лв. са готови за изтегляне.`,
         data: { type: 'payout_ready', url: '/wallet' },
       });
     } catch (error) {

@@ -846,6 +846,8 @@ export default function AdminSubscribersAllPage() {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [ibanChangedAfter, setIbanChangedAfter] = useState('');
+  const [sortKey, setSortKey] = useState<string>('createdAt');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
 
   // Hydrate filters from alert deep-link URL params (spec §3.2).
   // dateFrom        → new_registrations alert (filters by account createdAt)
@@ -888,8 +890,16 @@ export default function AdminSubscribersAllPage() {
     dateFrom: dateFrom || undefined,
     dateTo: dateTo || undefined,
     ibanChangedAfter: ibanChangedAfter || undefined,
+    sortBy: sortKey,
+    sortOrder: sortDir,
   };
-  const queryKey = ['admin-subscribers', page, search, plan, status, accountStatus, riskLevel, dateFrom, dateTo, ibanChangedAfter];
+  const queryKey = ['admin-subscribers', page, search, plan, status, accountStatus, riskLevel, dateFrom, dateTo, ibanChangedAfter, sortKey, sortDir];
+
+  const handleSort = (key: string, dir: 'asc' | 'desc') => {
+    setSortKey(key);
+    setSortDir(dir);
+    setPage(1);
+  };
 
   const { data, isLoading } = useQuery({
     queryKey,
@@ -1086,12 +1096,15 @@ export default function AdminSubscribersAllPage() {
         row.riskScore == null ? (
           <span style={{ color: palette.textSubtle }}>—</span>
         ) : (
-          <RiskPill $level={riskLevelOf(row.riskScore)}>{riskLabel(row.riskScore, lang)}</RiskPill>
+          <RiskPill $level={riskLevelOf(row.riskScore)}>
+            {riskLabel(row.riskScore, lang)} ({row.riskScore})
+          </RiskPill>
         ),
     },
     {
-      key: 'lastActivity',
+      key: 'lastActivityAt',
       header: T('colLastActivity'),
+      sortable: true,
       render: (row) => {
         // Spec §4.1 — fall back to lastLoginAt only when no richer activity
         // signal exists yet (legacy users). Once the auth middleware has
@@ -1147,7 +1160,6 @@ export default function AdminSubscribersAllPage() {
     {
       key: 'currentPeriodEnd',
       header: T('colPeriodEnds'),
-      sortable: true,
       render: (row) => (
         <span style={{ color: palette.textMuted, fontSize: '0.8125rem' }}>
           {row.subscription?.currentPeriodEnd ? fmt(row.subscription.currentPeriodEnd) : '—'}
@@ -1694,6 +1706,9 @@ export default function AdminSubscribersAllPage() {
           pageSize={PAGE_SIZE}
           totalItems={data?.total}
           onPageChange={setPage}
+          onSort={handleSort}
+          sortKey={sortKey}
+          sortDir={sortDir}
           rowStyle={(row) => row.deletedAt ? { opacity: 0.5 } : undefined}
         />
       </Card>

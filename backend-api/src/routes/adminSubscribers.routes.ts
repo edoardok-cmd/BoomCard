@@ -8,6 +8,7 @@ import { getSubscriberCashbackEntries } from '../services/adminCashback.service'
 import { computeRiskForUsers, persistRiskAssessments } from '../services/userRisk.service';
 import { planDisplayName } from '../utils/planDisplayName';
 import { logger } from '../utils/logger';
+import { getClientIp } from '../utils/requestIp';
 
 const router = Router();
 router.use(auditMiddleware);
@@ -127,23 +128,33 @@ function flattenSubscriber<T extends { subscriptions: Array<{ plan: Subscription
   };
 }
 
-// GET /api/admin/subscribers?page=1&limit=20&search=...&plan=BASIC&status=ACTIVE&accountStatus=ACTIVE&riskLevel=high&dateFrom=...&dateTo=...
+// GET /api/admin/subscribers?page=1&limit=20&search=...&plan=BASIC&status=ACTIVE&accountStatus=ACTIVE&riskLevel=high&dateFrom=...&dateTo=...&sortBy=lastActivityAt&sortOrder=desc
 // "Абонати" = user profile management: user-centric view with subscription summary
 router.get('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('subscribers.read'), async (req, res, next) => {
   try {
-    const { page = '1', limit = '20', ...filters } = req.query as Record<string, string>;
+    const { page = '1', limit = '20', sortBy, sortOrder, ...filters } = req.query as Record<string, string>;
     const pageNum = Math.max(1, parseInt(page) || 1);
     const limitNum = Math.min(Math.max(1, parseInt(limit) || 20), 100);
     const skip = (pageNum - 1) * limitNum;
 
     const { where, subFilter, hasSubFilter } = buildSubscriberQuery(filters);
 
+    // Null-last ordering for lastActivityAt: rows where the field is NULL sink to
+    // the bottom regardless of sort direction, so "most recently active" always
+    // surfaces real activity at the top and unverified/never-active accounts at
+    // the bottom.
+    const dir = sortOrder === 'asc' ? 'asc' : 'desc';
+    const orderBy: Parameters<typeof prisma.user.findMany>[0]['orderBy'] =
+      sortBy === 'lastActivityAt'
+        ? [{ lastActivityAt: { sort: dir, nulls: 'last' } }, { createdAt: 'desc' }]
+        : { createdAt: dir };
+
     const [users, total] = await Promise.all([
       prisma.user.findMany({
         where,
         skip,
         take: limitNum,
-        orderBy: { createdAt: 'desc' },
+        orderBy,
         select: {
           ...SUBSCRIBER_SELECT,
           subscriptions: subscriptionInclude(hasSubFilter, subFilter),
@@ -217,7 +228,7 @@ router.get('/:userId/cashback', authenticate, authorize('ADMIN', 'SUPER_ADMIN'),
       action: 'subscriber.cashback.view',
       objectType: 'cashback',
       objectId: userId,
-      ip: (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ?? req.socket.remoteAddress ?? null,
+      ip: getClientIp(req) ?? null,
       userAgent: req.headers['user-agent'] ?? null,
     }).catch(() => {});
 
@@ -298,7 +309,7 @@ router.get('/:userId', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requireP
       action: 'subscriber.view',
       objectType: 'subscriber',
       objectId: userId,
-      ip: (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ?? req.socket.remoteAddress ?? null,
+      ip: getClientIp(req) ?? null,
       userAgent: req.headers['user-agent'] ?? null,
     }).catch(() => {});
 

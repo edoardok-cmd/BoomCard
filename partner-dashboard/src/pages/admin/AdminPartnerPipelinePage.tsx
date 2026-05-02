@@ -172,7 +172,15 @@ const Btn = styled.button<{ $variant?: 'danger' | 'ghost' | 'primary' }>`
 `;
 
 /* ─── Stage config ─────────────────────────────────────────────────────────── */
-const STAGES = [
+interface PipelineStage {
+  key: string;
+  label: { bg: string; en: string };
+  hint: { bg: string; en: string };
+  color: string;
+  next: string | null;
+}
+
+const STAGES: PipelineStage[] = [
   {
     key: 'KOMUNIKACIYA',
     label: { bg: 'Комуникация', en: 'Communication' },
@@ -194,7 +202,14 @@ const STAGES = [
     color: palette.teal,
     next: 'ODOBRENA',
   },
-] as const;
+  {
+    key: 'ODOBRENA',
+    label: { bg: 'Одобрен', en: 'Approved' },
+    hint: { bg: 'Готов за активиране', en: 'Ready for activation' },
+    color: palette.success,
+    next: null,
+  },
+];
 
 /* ─── Component ───────────────────────────────────────────────────────────── */
 export default function AdminPartnerPipelinePage() {
@@ -236,18 +251,24 @@ export default function AdminPartnerPipelinePage() {
     queryKey: ['pipeline', 'ONBOARDING', search],
     queryFn: () => adminPartnerRequestsService.list({ requestStatus: 'ONBOARDING', search: search || undefined, limit: 100 }),
   });
+  const odobrenQuery = useQuery({
+    queryKey: ['pipeline', 'ODOBRENA', search],
+    queryFn: () => adminPartnerRequestsService.list({ requestStatus: 'ODOBRENA', search: search || undefined, limit: 100 }),
+  });
 
   const stageData: Record<string, PendingPartner[]> = {
     KOMUNIKACIYA: komunikaciyaQuery.data?.partners ?? [],
     DOGOVARYANE:  dogovaryaneQuery.data?.partners ?? [],
     ONBOARDING:   onboardingQuery.data?.partners ?? [],
+    ODOBRENA:     odobrenQuery.data?.partners ?? [],
   };
   const stageCounts: Record<string, number> = {
     KOMUNIKACIYA: komunikaciyaQuery.data?.total ?? 0,
     DOGOVARYANE:  dogovaryaneQuery.data?.total ?? 0,
     ONBOARDING:   onboardingQuery.data?.total ?? 0,
+    ODOBRENA:     odobrenQuery.data?.total ?? 0,
   };
-  const isLoading = komunikaciyaQuery.isLoading || dogovaryaneQuery.isLoading || onboardingQuery.isLoading;
+  const isLoading = komunikaciyaQuery.isLoading || dogovaryaneQuery.isLoading || onboardingQuery.isLoading || odobrenQuery.isLoading;
 
   const advanceMutation = useMutation({
     mutationFn: ({ id, requestStatus }: { id: string; requestStatus: string }) =>
@@ -363,17 +384,21 @@ export default function AdminPartnerPipelinePage() {
     },
   ];
 
-  const buildRowActions = (nextStage: string): RowAction<PendingPartner>[] => [
+  const buildRowActions = (nextStage: string | null): RowAction<PendingPartner>[] => [
     ...(canWrite ? [
       {
-        label: language === 'bg' ? `Напред → ${STAGES.find(s => s.key === nextStage)?.label.bg ?? nextStage}` : `Advance → ${STAGES.find(s => s.key === nextStage)?.label.en ?? nextStage}`,
-        onClick: (row: PendingPartner) => advanceMutation.mutate({ id: row.id, requestStatus: nextStage }),
-        hidden: (_row: PendingPartner) => nextStage === 'ODOBRENA',
-      },
-      {
-        label: language === 'bg' ? 'Одобри (финализирай)' : 'Approve (finalize)',
-        onClick: (row: PendingPartner) => approveMutation.mutate(row.id),
-        hidden: (_row: PendingPartner) => nextStage !== 'ODOBRENA',
+        label: nextStage
+          ? (language === 'bg'
+              ? `Напред → ${STAGES.find(s => s.key === nextStage)?.label.bg ?? nextStage}`
+              : `Advance → ${STAGES.find(s => s.key === nextStage)?.label.en ?? nextStage}`)
+          : (language === 'bg' ? 'Активирай партньора' : 'Activate partner'),
+        onClick: (row: PendingPartner) => {
+          if (nextStage) {
+            advanceMutation.mutate({ id: row.id, requestStatus: nextStage });
+          } else {
+            approveMutation.mutate(row.id);
+          }
+        },
       },
       {
         label: t('admin.requestReject'),
@@ -455,7 +480,8 @@ export default function AdminPartnerPipelinePage() {
         const isStageLoading =
           stage.key === 'KOMUNIKACIYA' ? komunikaciyaQuery.isLoading :
           stage.key === 'DOGOVARYANE'  ? dogovaryaneQuery.isLoading  :
-          onboardingQuery.isLoading;
+          stage.key === 'ONBOARDING'   ? onboardingQuery.isLoading   :
+          odobrenQuery.isLoading;
         return (
           <Card key={stage.key}>
             <SectionTitle $color={stage.color}>

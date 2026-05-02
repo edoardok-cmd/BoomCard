@@ -529,17 +529,21 @@ export default function AdminPayoutsPage() {
     return raw && ALLOWED_STATUSES.includes(raw) ? raw : '';
   };
 
+  const searchFromUrl = () => searchParams.get('search') ?? '';
+
   const [page, setPage]               = useState(1);
-  const [searchInput, setSearchInput] = useState('');
-  const [search, setSearch]           = useState('');
+  const [searchInput, setSearchInput] = useState(searchFromUrl);
+  const [search, setSearch]           = useState(searchFromUrl);
   const [status, setStatus]           = useState<PayoutStatus | ''>(statusFromUrl());
   const [dateFrom, setDateFrom]       = useState('');
   const [dateTo, setDateTo]           = useState('');
   const [modal, setModal]             = useState<ModalState | null>(null);
 
   useEffect(() => {
-    const next = statusFromUrl();
-    if (next !== status) { setStatus(next); setPage(1); }
+    const nextStatus = statusFromUrl();
+    if (nextStatus !== status) { setStatus(nextStatus); setPage(1); }
+    const nextSearch = searchFromUrl();
+    if (nextSearch !== search) { setSearchInput(nextSearch); setSearch(nextSearch); setPage(1); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 

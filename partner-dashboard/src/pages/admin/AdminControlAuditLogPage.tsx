@@ -3,6 +3,7 @@ import styled from 'styled-components';
 import { useQuery } from '@tanstack/react-query';
 import { DataTable, ColumnDef } from '../../components/admin/DataTable/DataTable';
 import { adminControlService, AdminAuditLog } from '../../services/adminControl.service';
+import { labelForAction } from '../../utils/auditActionLabel';
 
 // Spec §10 Администратори > История на действията — surfaced inside Control section.
 // Shows security-relevant admin actions: auth, permissions, suspensions, approvals.
@@ -167,7 +168,14 @@ export default function AdminControlAuditLogPage() {
     {
       key: 'action',
       header: 'Действие',
-      render: (row) => <ActionTag title={row.action}>{row.action}</ActionTag>,
+      render: (row) => (
+        <span>
+          <div style={{ fontWeight: 600, fontSize: '.875rem', color: palette.text, marginBottom: '.125rem' }}>
+            {labelForAction(row.action)}
+          </div>
+          <ActionTag title={row.action}>{row.action}</ActionTag>
+        </span>
+      ),
     },
     {
       key: 'object',
@@ -197,13 +205,13 @@ export default function AdminControlAuditLogPage() {
         <TitleBlock>
           <Eyebrow>Контрол</Eyebrow>
           <PageTitle>
-            Сигурност и одит
+            Одит лог
             {data && data.meta.total > 0 && (
               <TotalBadge>{data.meta.total.toLocaleString()}</TotalBadge>
             )}
           </PageTitle>
           <PageSubtitle>
-            Одит лог на действия свързани със сигурността — вход, права, спиране, одобрения
+            Сигурностно значими действия — вход, права, спиране, одобрения
           </PageSubtitle>
         </TitleBlock>
       </PageHeader>
@@ -211,7 +219,7 @@ export default function AdminControlAuditLogPage() {
       <Card>
         <FilterRow>
           <Input
-            placeholder="Действие (напр. risk-queue.POST)…"
+            placeholder="Действие (напр. auth.login, risk.approve)…"
             value={draftAction}
             onChange={e => setDraftAction(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && applyFilters()}

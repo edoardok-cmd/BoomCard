@@ -1444,7 +1444,7 @@ const AdminPartnersPage: React.FC = () => {
       phone: partner.phone || '',
       email: partner.email || '',
       website: partner.website || '',
-      partnerTypeId: partner.partnerTypeId || '',
+      partnerTypeId: partner.partnerTypeId || partner.partnerType?.id || '',
       discountRate: snapToStep(effectiveRate(partner)),
       status: (String(partner.status).toUpperCase() as PartnerStatus) || 'ACTIVE',
       isVisible: partner.isVisible ?? true,
@@ -2168,9 +2168,9 @@ const AdminPartnersPage: React.FC = () => {
                       ))}
                     </Select>
                     <FieldHint>
-                      {language === 'bg'
-                        ? `Макс. за избрания тип: ${createTypeMax}%`
-                        : `Max for selected type: ${createTypeMax}%`}
+                      {createForm.partnerTypeId
+                        ? (language === 'bg' ? `Макс. за избрания тип: ${createTypeMax}%` : `Max for selected type: ${createTypeMax}%`)
+                        : (language === 'bg' ? 'Изберете тип партньор първо' : 'Select a partner type first')}
                     </FieldHint>
                   </FormField>
 
