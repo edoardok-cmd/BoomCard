@@ -147,6 +147,11 @@ adminVenueMenuRouter.get(
           _count: {
             select: { stickers: true },
           },
+          stickers: {
+            select: { createdAt: true, status: true, stickerId: true },
+            orderBy: { createdAt: 'desc' },
+            take: 5,
+          },
         },
       }),
       prisma.venue.count({ where }),

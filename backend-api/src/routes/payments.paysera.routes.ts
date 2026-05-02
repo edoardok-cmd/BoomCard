@@ -302,7 +302,7 @@ async function handlePaymentCallback(req: Request, res: Response) {
           userId: transaction.userId,
           amount: transaction.amount,
           type: WalletTransactionType.TOP_UP,
-          description: `Top-up: ${result.orderId}`,
+          description: `Зареждане: ${result.orderId}`,
           transactionId: transaction.id,
           metadata: {
             orderId: result.orderId,
@@ -353,7 +353,7 @@ async function handlePaymentCallback(req: Request, res: Response) {
             newBalance: wallet.balance,
             changeAmount: transaction.amount,
             transactionType: 'credit',
-            description: `Your wallet has been topped up with ${transaction.amount.toFixed(2)} ${transaction.currency}`,
+            description: `Портфейлът ви е зареден с ${transaction.amount.toFixed(2)} ${transaction.currency}`,
             date: new Date(),
           }, txLang).catch((error) => {
             logger.error('Failed to send wallet update email:', error);
@@ -398,7 +398,7 @@ async function handlePaymentCallback(req: Request, res: Response) {
                 userId: transaction.userId,
                 amount: existingTopUp.amount,
                 type: WalletTransactionType.ADJUSTMENT,
-                description: `Wallet top-up reversal — payment ${result.status} for order ${result.orderId}`,
+                description: `Сторниране на зареждане — плащане ${result.status} за поръчка ${result.orderId}`,
                 transactionId: topUpReversalId,
                 metadata: { orderId: result.orderId, reason: result.status, reversedTopUpId: existingTopUp.id },
               });
@@ -1345,11 +1345,11 @@ router.post('/transfer-callback', asyncHandler(async (req: Request, res: Respons
     if (walletTx.wallet.user?.email) {
       const amountBGN = Math.abs(walletTx.amount);
       emailService.sendWalletUpdate(walletTx.wallet.user.email, {
-        customerName: walletTx.wallet.user.firstName || 'Customer',
+        customerName: walletTx.wallet.user.firstName || 'Клиент',
         newBalance: walletTx.balanceAfter,
         changeAmount: amountBGN,
         transactionType: 'debit',
-        description: `Your payout of ${amountBGN.toFixed(2)} BGN has been sent to your bank account (IBAN: ${metadata.beneficiaryIban || 'on file'}). Funds typically arrive within 1–2 business days.`,
+        description: `Вашето изплащане от ${amountBGN.toFixed(2)} BGN е изпратено по банкова сметка (IBAN: ${metadata.beneficiaryIban || 'в профила ви'}). Средствата обикновено пристигат до 1–2 работни дни.`,
         date: new Date(),
       }).catch((err) => logger.error('Failed to send payout completion email:', err));
     }
@@ -1375,7 +1375,7 @@ router.post('/transfer-callback', asyncHandler(async (req: Request, res: Respons
           where: { id: walletTx.id },
           data: {
             status: WalletTransactionStatus.FAILED,
-            description: `Payout failed (Paysera transfer ${status})`,
+            description: `Изплащането е неуспешно (Paysera превод ${status})`,
             metadata: JSON.stringify({ ...metadata, failedAt: new Date().toISOString(), failureStatus: status }),
           },
         });
@@ -1400,11 +1400,11 @@ router.post('/transfer-callback', asyncHandler(async (req: Request, res: Respons
       // Notify user that payout failed and balance was restored
       if (walletTx.wallet.user?.email) {
         emailService.sendWalletUpdate(walletTx.wallet.user.email, {
-          customerName: walletTx.wallet.user.firstName || 'Customer',
+          customerName: walletTx.wallet.user.firstName || 'Клиент',
           newBalance: walletTx.balanceAfter + payoutAmount,
           changeAmount: payoutAmount,
           transactionType: 'credit',
-          description: `Your payout of ${payoutAmount.toFixed(2)} BGN could not be processed and has been returned to your wallet. Please verify your IBAN and try again.`,
+          description: `Изплащането ви от ${payoutAmount.toFixed(2)} BGN не може да бъде обработено и е върнато в портфейла ви. Моля, проверете IBAN-а си и опитайте отново.`,
           date: new Date(),
         }).catch((err) => logger.error('Failed to send payout failure email:', err));
       }

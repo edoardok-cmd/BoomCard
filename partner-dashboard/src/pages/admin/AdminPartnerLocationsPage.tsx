@@ -196,6 +196,105 @@ const PartnerTypePill = styled.span<{ $color: string }>`
   margin-top: 0.125rem;
 `;
 
+/* ─── Detail Drawer ────────────────────────────────────────────────────────── */
+const DrawerBackdrop = styled.div`
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  z-index: 900;
+`;
+const DrawerPanel = styled.div`
+  position: fixed;
+  top: 0;
+  right: 0;
+  height: 100%;
+  width: 100%;
+  max-width: 26rem;
+  background: ${palette.surface};
+  border-left: 1px solid ${palette.border};
+  z-index: 901;
+  display: flex;
+  flex-direction: column;
+  box-shadow: -8px 0 32px rgba(0, 0, 0, 0.1);
+  overflow-y: auto;
+`;
+const DrawerHeader = styled.div`
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 1.25rem 1.5rem 0.75rem;
+  border-bottom: 1px solid ${palette.border};
+  gap: 0.75rem;
+`;
+const DrawerTitle = styled.h2`
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: ${palette.text};
+  margin: 0;
+  line-height: 1.3;
+`;
+const DrawerClose = styled.button`
+  background: none;
+  border: none;
+  font-size: 1.25rem;
+  cursor: pointer;
+  color: ${palette.textSubtle};
+  padding: 0.25rem;
+  line-height: 1;
+  flex-shrink: 0;
+  &:hover { color: ${palette.text}; }
+`;
+const DrawerBody = styled.div`
+  padding: 1.25rem 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  flex: 1;
+`;
+const DrawerSection = styled.div``;
+const DrawerSectionTitle = styled.div`
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: ${palette.textSubtle};
+  margin-bottom: 0.5rem;
+`;
+const DrawerRow = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  font-size: 0.8125rem;
+  gap: 0.5rem;
+  padding: 0.25rem 0;
+`;
+const DrawerLabel = styled.span`
+  color: ${palette.textMuted};
+  flex-shrink: 0;
+`;
+const DrawerValue = styled.span`
+  color: ${palette.text};
+  font-weight: 500;
+  text-align: right;
+`;
+const NoQrWarning = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.625rem 0.875rem;
+  background: ${palette.warningSoft};
+  border: 1px solid ${palette.warning}44;
+  border-radius: 0.5rem;
+  font-size: 0.8125rem;
+  color: ${palette.warning};
+  font-weight: 600;
+`;
+const DrawerDivider = styled.hr`
+  border: none;
+  border-top: 1px solid ${palette.border};
+  margin: 0;
+`;
+
 /* ─── Modal ────────────────────────────────────────────────────────────────── */
 const Overlay = styled.div`
   position: fixed;
@@ -285,6 +384,7 @@ export default function AdminPartnerLocationsPage() {
   const [statusTarget, setStatusTarget] = useState<AdminVenue | null>(null);
   const [statusNote, setStatusNote] = useState('');
   const [statusValue, setStatusValue] = useState<VenueStatus>('ACTIVE');
+  const [drawerVenue, setDrawerVenue] = useState<AdminVenue | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ['admin-venues', page, search, menuStatus, venueStatus],
@@ -418,13 +518,16 @@ export default function AdminPartnerLocationsPage() {
       render: (row) => {
         const count = row._count?.stickers ?? 0;
         const cfg = row.stickerConfig;
+        const isActiveNoQr = (row.venueStatus as VenueStatus) === 'ACTIVE' && count === 0;
         return (
           <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-            <span style={{ fontSize: '0.8125rem', color: palette.textMuted }}>
+            <span style={{ fontSize: '0.8125rem', color: isActiveNoQr ? palette.warning : palette.textMuted, fontWeight: isActiveNoQr ? 600 : 400 }}>
               {count > 0 ? (
                 <>{count} QR {language === 'bg' ? 'кода' : 'codes'}</>
               ) : (
-                <span style={{ color: palette.textSubtle }}>{language === 'bg' ? 'Без QR' : 'No QR'}</span>
+                <span title={isActiveNoQr ? (language === 'bg' ? 'Активна локация без QR код!' : 'Active location has no QR code!') : undefined}>
+                  {isActiveNoQr ? '⚠ ' : ''}{language === 'bg' ? 'Без QR' : 'No QR'}
+                </span>
               )}
             </span>
             {cfg && (
@@ -463,6 +566,30 @@ export default function AdminPartnerLocationsPage() {
             </a>
           )}
         </span>
+        );
+      },
+    },
+    {
+      key: 'qrHistory',
+      header: language === 'bg' ? 'QR История' : 'QR History',
+      render: (row) => {
+        const stickers = row.stickers ?? [];
+        if (stickers.length === 0) {
+          return <span style={{ color: palette.textSubtle, fontSize: '0.8125rem' }}>—</span>;
+        }
+        const latest = stickers[0];
+        const activeCount = stickers.filter(s => s.status === 'ACTIVE').length;
+        return (
+          <span style={{ display: 'flex', flexDirection: 'column', gap: '0.125rem' }}>
+            <span style={{ fontSize: '0.8125rem', color: palette.textMuted }}>
+              {language === 'bg' ? 'Последен:' : 'Latest:'} {fmt(latest.createdAt)}
+            </span>
+            {stickers.length > 1 && (
+              <MetaLine>
+                {activeCount}/{stickers.length} {language === 'bg' ? 'активни' : 'active'}
+              </MetaLine>
+            )}
+          </span>
         );
       },
     },
@@ -527,6 +654,7 @@ export default function AdminPartnerLocationsPage() {
           pageSize={PAGE_SIZE}
           totalItems={data?.meta.total}
           onPageChange={setPage}
+          onRowClick={(row) => setDrawerVenue(row)}
           rowActions={[
             ...(canWrite ? [{
               label: language === 'bg' ? 'Промени статус' : 'Change Status',
@@ -622,6 +750,133 @@ export default function AdminPartnerLocationsPage() {
             </ModalActions>
           </ModalBox>
         </Overlay>
+      )}
+
+      {drawerVenue && (
+        <>
+          <DrawerBackdrop onClick={() => setDrawerVenue(null)} />
+          <DrawerPanel>
+            <DrawerHeader>
+              <div>
+                <DrawerTitle>{drawerVenue.name}</DrawerTitle>
+                <MetaLine style={{ marginTop: '0.25rem' }}>{drawerVenue.address}, {drawerVenue.city}</MetaLine>
+              </div>
+              <DrawerClose onClick={() => setDrawerVenue(null)}>✕</DrawerClose>
+            </DrawerHeader>
+
+            <DrawerBody>
+              {/* No-QR warning */}
+              {(drawerVenue.venueStatus as VenueStatus) === 'ACTIVE' && (drawerVenue._count?.stickers ?? 0) === 0 && (
+                <NoQrWarning>
+                  ⚠ {language === 'bg' ? 'Активна локация без QR код — генерирайте QR от страницата на партньора.' : 'Active location has no QR code — generate one from the partner page.'}
+                </NoQrWarning>
+              )}
+
+              {/* Identity */}
+              <DrawerSection>
+                <DrawerSectionTitle>{language === 'bg' ? 'Детайли' : 'Details'}</DrawerSectionTitle>
+                <DrawerRow>
+                  <DrawerLabel>ID</DrawerLabel>
+                  <DrawerValue style={{ fontFamily: 'monospace', fontSize: '0.75rem' }}>{drawerVenue.id.slice(0, 16)}…</DrawerValue>
+                </DrawerRow>
+                {drawerVenue.phone && (
+                  <DrawerRow>
+                    <DrawerLabel>{language === 'bg' ? 'Телефон' : 'Phone'}</DrawerLabel>
+                    <DrawerValue>{drawerVenue.phone}</DrawerValue>
+                  </DrawerRow>
+                )}
+                {drawerVenue.region && (
+                  <DrawerRow>
+                    <DrawerLabel>{language === 'bg' ? 'Регион' : 'Region'}</DrawerLabel>
+                    <DrawerValue>{drawerVenue.region}</DrawerValue>
+                  </DrawerRow>
+                )}
+                <DrawerRow>
+                  <DrawerLabel>{language === 'bg' ? 'Партньор' : 'Partner'}</DrawerLabel>
+                  <DrawerValue>{drawerVenue.partner.businessName}</DrawerValue>
+                </DrawerRow>
+                <DrawerRow>
+                  <DrawerLabel>{language === 'bg' ? 'Създадена' : 'Created'}</DrawerLabel>
+                  <DrawerValue>{fmt(drawerVenue.createdAt)}</DrawerValue>
+                </DrawerRow>
+              </DrawerSection>
+
+              <DrawerDivider />
+
+              {/* Status + history */}
+              <DrawerSection>
+                <DrawerSectionTitle>{language === 'bg' ? 'Статус & История' : 'Status & History'}</DrawerSectionTitle>
+                <DrawerRow>
+                  <DrawerLabel>{language === 'bg' ? 'Текущ статус' : 'Current status'}</DrawerLabel>
+                  <DrawerValue>
+                    <VenueStatusBadge $status={(drawerVenue.venueStatus as VenueStatus) ?? 'ACTIVE'}>
+                      {venueStatusLabels[(drawerVenue.venueStatus as VenueStatus) ?? 'ACTIVE']?.[language === 'bg' ? 'bg' : 'en']}
+                    </VenueStatusBadge>
+                  </DrawerValue>
+                </DrawerRow>
+                {drawerVenue.venueStatusAt && (
+                  <DrawerRow>
+                    <DrawerLabel>{language === 'bg' ? 'Промяна на' : 'Changed on'}</DrawerLabel>
+                    <DrawerValue>{fmt(drawerVenue.venueStatusAt)}</DrawerValue>
+                  </DrawerRow>
+                )}
+                {drawerVenue.venueStatusNote ? (
+                  <div style={{ marginTop: '0.5rem', padding: '0.625rem 0.75rem', background: palette.bg, border: `1px solid ${palette.border}`, borderRadius: '0.5rem', fontSize: '0.8125rem', color: palette.textMuted }}>
+                    {drawerVenue.venueStatusNote}
+                  </div>
+                ) : (
+                  <div style={{ fontSize: '0.8125rem', color: palette.textSubtle, fontStyle: 'italic', marginTop: '0.25rem' }}>
+                    {language === 'bg' ? 'Няма бележка за статуса.' : 'No status note.'}
+                  </div>
+                )}
+              </DrawerSection>
+
+              <DrawerDivider />
+
+              {/* QR */}
+              <DrawerSection>
+                <DrawerSectionTitle>QR {language === 'bg' ? 'Кодове' : 'Codes'}</DrawerSectionTitle>
+                <DrawerRow>
+                  <DrawerLabel>{language === 'bg' ? 'Брой QR' : 'QR count'}</DrawerLabel>
+                  <DrawerValue>{drawerVenue._count?.stickers ?? 0}</DrawerValue>
+                </DrawerRow>
+                {drawerVenue.stickerConfig && (
+                  <>
+                    <DrawerRow>
+                      <DrawerLabel>{language === 'bg' ? 'Кешбек %' : 'Cashback %'}</DrawerLabel>
+                      <DrawerValue>{drawerVenue.stickerConfig.cashbackPercent}%</DrawerValue>
+                    </DrawerRow>
+                    <DrawerRow>
+                      <DrawerLabel>{language === 'bg' ? 'Активен' : 'Active'}</DrawerLabel>
+                      <DrawerValue>{drawerVenue.stickerConfig.isActive ? (language === 'bg' ? 'Да' : 'Yes') : (language === 'bg' ? 'Не' : 'No')}</DrawerValue>
+                    </DrawerRow>
+                    <DrawerRow>
+                      <DrawerLabel>{language === 'bg' ? 'Макс. скана/ден' : 'Max scans/day'}</DrawerLabel>
+                      <DrawerValue>{drawerVenue.stickerConfig.maxScansPerDay}</DrawerValue>
+                    </DrawerRow>
+                  </>
+                )}
+              </DrawerSection>
+
+              {canWrite && (
+                <>
+                  <DrawerDivider />
+                  <Btn
+                    $variant="primary"
+                    onClick={() => {
+                      setStatusTarget(drawerVenue);
+                      setStatusValue((drawerVenue.venueStatus as VenueStatus) ?? 'ACTIVE');
+                      setStatusNote(drawerVenue.venueStatusNote ?? '');
+                      setDrawerVenue(null);
+                    }}
+                  >
+                    {language === 'bg' ? 'Промени статус' : 'Change Status'}
+                  </Btn>
+                </>
+              )}
+            </DrawerBody>
+          </DrawerPanel>
+        </>
       )}
     </PageShell>
   );

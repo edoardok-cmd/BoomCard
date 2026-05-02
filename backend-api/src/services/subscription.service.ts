@@ -381,7 +381,7 @@ export class SubscriptionService {
       userId,
       amount: creditBGN,
       type: WalletTransactionType.ADJUSTMENT,
-      description: `Upgrade credit: ${oldPlan} → ${newPlan} (${Math.round(creditPct * 100)}% of ${priceEur.toFixed(2)} EUR remaining value)`,
+      description: `Кредит при надграждане: ${oldPlan} → ${newPlan} (${Math.round(creditPct * 100)}% от ${priceEur.toFixed(2)} EUR оставаща стойност)`,
       metadata: {
         upgradeFrom: oldPlan,
         upgradeTo: newPlan,

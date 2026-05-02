@@ -554,8 +554,8 @@ const T = {
   titleBusiness: { bg: 'Транзакции', en: 'Transactions' },
   titleWallet: { bg: 'Транзакции в портфейл', en: 'Wallet Transactions' },
   subtitleBusiness: {
-    bg: 'Транзакции от касови бележки: партньор, локация, кешбек, марджин, риск (спец. §4.3)',
-    en: 'Receipt-based: partner, location, cashback, margin, risk score (spec §4.3)',
+    bg: 'Транзакции от касови бележки: партньор, локация, кешбек, марджин, риск',
+    en: 'Receipt-based: partner, location, cashback, margin, risk score',
   },
   subtitleWallet: {
     bg: 'Пълен журнал на портфейлната активност на абонатите',

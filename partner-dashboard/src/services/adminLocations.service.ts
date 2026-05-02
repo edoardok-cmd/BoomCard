@@ -32,6 +32,7 @@ export interface AdminVenue {
     maxScansPerDay: number;
   } | null;
   _count: { stickers: number };
+  stickers?: Array<{ createdAt: string; status: string; stickerId: string }>;
 }
 
 export interface AdminVenuesResult {

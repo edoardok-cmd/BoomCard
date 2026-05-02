@@ -395,7 +395,7 @@ export default function AdminControlRulesPage() {
           <Eyebrow>Контрол</Eyebrow>
           <PageTitle>Лимити и правила</PageTitle>
           <PageSubtitle>
-            Глобални прагове за транзакции, авто-одобрение и ръчни изключения по §7.4
+            Глобални прагове за транзакции, авто-одобрение и ръчни изключения
           </PageSubtitle>
         </TitleBlock>
       </PageHeader>
@@ -556,8 +556,7 @@ export default function AdminControlRulesPage() {
       {otherRules.length > 0 && (
         <Card>
           <SectionTitle>Правила по партньор / потребител</SectionTitle>
-          <SectionSubtitle>Специфични правила за отделни партньори или потребители.</SectionSubtitle>
-          <SectionSubtitle>Тези правила са създадени директно чрез API. Управлението им не се поддържа от потребителския интерфейс.</SectionSubtitle>
+          <SectionSubtitle>Специфични правила за отделни партньори или потребители. Могат да бъдат активирани/деактивирани от тук, но се създават и редактират само чрез API.</SectionSubtitle>
           {otherRules.map(rule => (
             <OverrideRow key={rule.id}>
               <OverrideMeta>

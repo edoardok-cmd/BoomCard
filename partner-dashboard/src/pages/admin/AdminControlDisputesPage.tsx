@@ -834,7 +834,7 @@ const PAGE_SIZE = 25;
 export default function AdminControlDisputesPage() {
   const qc = useQueryClient();
   const [page, setPage]                   = useState(1);
-  const [status, setStatus]               = useState<DisputeStatus | ''>('OPEN');
+  const [status, setStatus]               = useState<DisputeStatus | ''>('');
   const [subjectType, setSubjectType]     = useState<DisputeSubjectType | ''>('');
   const [assignedTo, setAssignedTo]       = useState<string>('');
   const [selectedId, setSelectedId]       = useState<string | null>(null);
@@ -866,15 +866,19 @@ export default function AdminControlDisputesPage() {
 
   const columns: ColumnDef<DisputeCase>[] = [
     {
+      key: 'status',
+      header: 'Статус',
+      render: (row) => (
+        <StatusPill $status={row.status}>{STATUS_META[row.status].label}</StatusPill>
+      ),
+    },
+    {
       key: 'user',
       header: 'Потребител',
       render: (row) => (
         <span>
           <PrimaryLine>{fullName(row.user)}</PrimaryLine>
           <MetaLine>{row.user.email}</MetaLine>
-          <div style={{ marginTop: 4 }}>
-            <StatusPill $status={row.status}>{STATUS_META[row.status].label}</StatusPill>
-          </div>
         </span>
       ),
     },

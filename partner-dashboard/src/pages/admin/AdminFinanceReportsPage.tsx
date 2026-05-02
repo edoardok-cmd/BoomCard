@@ -677,7 +677,6 @@ export default function AdminFinanceReportsPage() {
               <thead>
                 <tr>
                   <Th>Тип</Th>
-                  <Th>Описание</Th>
                   <ThRight>Общо</ThRight>
                   <ThRight>Брой</ThRight>
                   <ThRight>Средно</ThRight>
@@ -686,8 +685,7 @@ export default function AdminFinanceReportsPage() {
               <tbody>
                 {Object.entries(walletTx).map(([type, stats]) => (
                   <tr key={type}>
-                    <Td><TypeBadge>{type.replace(/_/g, ' ')}</TypeBadge></Td>
-                    <Td style={{ color: palette.textMuted }}>{WALLET_TYPE_LABELS[type] ?? type}</Td>
+                    <Td><TypeBadge>{WALLET_TYPE_LABELS[type] ?? type.replace(/_/g, ' ')}</TypeBadge></Td>
                     <TdRight style={{ fontWeight: 600, color: palette.text }}>{fmt(stats.total)}</TdRight>
                     <TdRight>{stats.count.toLocaleString()}</TdRight>
                     <TdRight>{stats.count > 0 ? fmt(stats.total / stats.count) : '—'}</TdRight>

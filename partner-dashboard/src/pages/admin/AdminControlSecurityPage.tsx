@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import styled from 'styled-components';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import { DataTable, ColumnDef } from '../../components/admin/DataTable/DataTable';
 import {
@@ -79,6 +79,25 @@ const RiskPill = styled.span<{ $level: PillLevel }>`
   }};
 `;
 const ReasonStack = styled.div`display: flex; flex-wrap: wrap; gap: 0.25rem; max-width: 22rem;`;
+const SectionDivider = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 1.5rem 0 1rem;
+`;
+const SectionLabel = styled.div`
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: ${palette.textSubtle};
+  white-space: nowrap;
+`;
+const SectionLine = styled.div`
+  flex: 1;
+  height: 1px;
+  background: ${palette.border};
+`;
 const StatGrid = styled.div`
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
@@ -172,7 +191,7 @@ function bucketLabel(bucket: string | null | undefined, lang: 'en' | 'bg'): stri
 const T = {
   eyebrow:         { en: 'Control',                                             bg: 'Контрол' },
   title:           { en: 'Risk & Security',                                      bg: 'Риск и сигурност' },
-  subtitle:        { en: 'Duplicate detection, QR/location mismatch, velocity, receipt quality, suspicious behaviour (§7.1 / §7.2)', bg: 'Дублиране, несъответствие QR/локация, честота, качество на бележка, подозрително поведение (§7.1 / §7.2)' },
+  subtitle:        { en: 'Duplicate detection, QR/location mismatch, velocity, receipt quality, suspicious behaviour', bg: 'Дублиране, несъответствие QR/локация, честота, качество на бележка, подозрително поведение' },
   allTiers:        { en: 'All tiers (≥31)',                                     bg: 'Всички нива (≥31)' },
   reviewTier:      { en: 'Review (31–60)',                                      bg: 'Преглед (31–60)' },
   highTier:        { en: 'High risk (61+)',                                     bg: 'Висок риск (61+)' },
@@ -227,6 +246,7 @@ export default function AdminControlSecurityPage() {
   const lang: 'en' | 'bg' = language === 'bg' ? 'bg' : 'en';
   const t = (key: keyof typeof T) => T[key][lang];
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
 
   const [searchParams] = useSearchParams();
 
@@ -521,8 +541,11 @@ export default function AdminControlSecurityPage() {
         );
       })()}
 
-      {/* stat tiles — global counts for fraudScore ≥31. Click to filter table by category.
-          Categories can overlap: one scan may trigger multiple signal groups. */}
+      {/* §7.2 — Signal monitoring summary */}
+      <SectionDivider>
+        <SectionLabel>{lang === 'bg' ? 'Мониторинг на сигнали' : 'Signal monitoring'}</SectionLabel>
+        <SectionLine />
+      </SectionDivider>
       <StatGrid>
             <Stat $active={signalCategory === 'duplicate'} onClick={() => toggleCategory('duplicate')} title={lang === 'bg' ? 'Филтрирай по дублиране' : 'Filter by duplicates'}>
               <StatLabel>{t('statDuplicate')}</StatLabel>
@@ -544,16 +567,31 @@ export default function AdminControlSecurityPage() {
               <StatLabel>{t('statSuspicious')}</StatLabel>
               <StatValue>{s?.suspicious ?? '—'}</StatValue>
             </Stat>
-            <Stat title={lang === 'bg' ? 'Без филтър — системен показател' : 'No filter — system metric'}>
+            <Stat
+              onClick={() => {
+                const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+                navigate(`/admin/subscribers/all?ibanChangedAfter=${encodeURIComponent(sevenDaysAgo)}`);
+              }}
+              title={lang === 'bg' ? 'Виж абонатите с IBAN промяна (последните 7 дни)' : 'View subscribers with IBAN change (last 7 days)'}
+            >
               <StatLabel>{t('statIban')}</StatLabel>
               <StatValue>{s?.ibanAnomaly ?? '—'}</StatValue>
+              <div style={{ fontSize: '.68rem', color: palette.accent, marginTop: '.2rem', fontWeight: 600 }}>
+                {lang === 'bg' ? '→ Абонати' : '→ Subscribers'}
+              </div>
             </Stat>
             <Stat title={lang === 'bg' ? 'Без филтър — неразпознати сигнали' : 'No filter — unrecognised signals'}>
               <StatLabel>{t('statOther')}</StatLabel>
               <StatValue>{s?.other ?? '—'}</StatValue>
             </Stat>
           </StatGrid>
-          <MetaLine style={{ marginBottom: '1.25rem' }}>{t('globalNote')}</MetaLine>
+          <MetaLine style={{ marginBottom: '0' }}>{t('globalNote')}</MetaLine>
+
+          {/* §7.1 — Review queue */}
+          <SectionDivider>
+            <SectionLabel>{lang === 'bg' ? 'Преглед на рискови транзакции' : 'Risk transaction review'}</SectionLabel>
+            <SectionLine />
+          </SectionDivider>
 
           <Card>
             <FilterRow>

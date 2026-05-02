@@ -540,9 +540,12 @@ function App() {
                     >
                       <Route index element={<Navigate to="risk" replace />} />
                       <Route path="risk" element={<AdminControlSecurityPage />} />
-                      <Route path="security" element={<AdminControlAuditLogPage />} />
+                      <Route path="risk-signals" element={<AdminControlSecurityPage />} />
+                      <Route path="audit" element={<AdminControlAuditLogPage />} />
+                      <Route path="security" element={<Navigate to="/admin/control/audit" replace />} />
                       <Route path="disputes" element={<AdminControlDisputesPage />} />
                       <Route path="rules" element={<AdminControlRulesPage />} />
+                      <Route path="limits" element={<Navigate to="/admin/control/rules" replace />} />
                       <Route path="venue-config" element={<AdminVenueFraudConfigPage />} />
                     </Route>
 

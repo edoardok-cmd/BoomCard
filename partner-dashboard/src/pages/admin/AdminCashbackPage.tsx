@@ -17,16 +17,16 @@ const I18N = {
   // Page header
   eyebrow:          { en: 'Subscribers',      bg: 'Абонати' },
   pageTitle:        { en: 'Cashback',          bg: 'Кешбек' },
-  pageSubtitle:     { en: 'Entries by state (Pending / Cleared / Locked / Paid / Expired) — spec §4.4',
-                      bg: 'Записи по статус (Изчакващ / Одобрен / Заключен / Платен / Изтекъл) — спец. §4.4' },
+  pageSubtitle:     { en: 'Entries by state (Pending / Cleared / Locked / Paid / Expired)',
+                      bg: 'Записи по статус (Изчакващ / Одобрен / Заключен / Платен / Изтекъл)' },
   // Stat card labels
   statAccrued:      { en: 'Accrued',           bg: 'Начислен' },
   statCleared:      { en: 'Cleared',           bg: 'Одобрен' },
   statPending:      { en: 'Pending',           bg: 'Изчакващ' },
   statExpiring:     { en: 'Expiring (14 days)', bg: 'Изтичащ (14 дни)' },
   // Threshold hint
-  thresholdHint:    { en: 'Payout thresholds (cleared cashback only — spec §4.4):',
-                      bg: 'Прагове за изплащане (само одобрен кешбек се брои — спец. §4.4):' },
+  thresholdHint:    { en: 'Payout thresholds (cleared cashback only):',
+                      bg: 'Прагове за изплащане (само одобрен кешбек се брои):' },
   // Filter
   allStatuses:      { en: 'All statuses',      bg: 'Всички статуси' },
   searchPh:         { en: 'Search subscriber (name / email)…', bg: 'Търси абонат (ime / имейл)…' },
@@ -64,7 +64,7 @@ const I18N = {
   confirmLock:      { en: 'Lock cashback entry for {email}?\nAmount: {amount} BGN',
                       bg: 'Заключи кешбек записа за {email}?\nСума: {amount} лв.' },
   confirmPay:       { en: 'Mark cashback as paid for {email}?\nAmount: {amount} BGN\nThis action cannot be undone.',
-                      bg: 'Маркирай като платен кешбек за {email}?\nСума: {amount} BGN\nТова действие не може да се отмени.' },
+                      bg: 'Маркирай като платен кешбек за {email}?\nСума: {amount} лв.\nТова действие не може да се отмени.' },
   confirmExpire:    { en: 'Force-expire cashback for {email}?\nAmount: {amount} BGN{warning}\nThis action cannot be undone.',
                       bg: 'Принудително изтичане на кешбек за {email}?\nСума: {amount} лв.{warning}\nТова действие не може да се отмени.' },
   lockedWarning:    { en: '\n⚠ Entry is LOCKED — the amount will NOT be paid.',

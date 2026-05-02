@@ -194,7 +194,7 @@ export class PaymentService {
           accountId: transaction.user.loyaltyAccount.id,
           type: 'EARNED',
           points: transaction.loyaltyPoints,
-          description: `Earned ${transaction.loyaltyPoints} points from transaction`,
+          description: `Начислени ${transaction.loyaltyPoints} точки от транзакция`,
           metadata: JSON.stringify({ transactionId: transaction.id }),
         },
       });
@@ -396,7 +396,7 @@ export class PaymentService {
             accountId: transaction.user.loyaltyAccount.id,
             type: 'ADJUSTED',
             points: -pointsToDeduct,
-            description: `Refund adjustment for transaction ${transactionId}`,
+            description: `Корекция при връщане на транзакция ${transactionId}`,
             metadata: JSON.stringify({ transactionId, refundId: refund.id }),
           },
         });

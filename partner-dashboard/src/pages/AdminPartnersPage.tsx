@@ -43,10 +43,7 @@ const PageHeader = styled.div`
 const Title = styled.h1`
   font-size: 2.5rem;
   font-weight: 800;
-  background: linear-gradient(135deg, #dc2626 0%, #ea580c 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  color: var(--color-text-primary, #141413);
   margin-bottom: 0.5rem;
 `;
 
@@ -1800,7 +1797,6 @@ const AdminPartnersPage: React.FC = () => {
           <option value="PAUSED">{language === 'bg' ? 'Пауза' : 'Paused'}</option>
           <option value="SUSPENDED">{language === 'bg' ? 'Спрян' : 'Suspended'}</option>
           <option value="ARCHIVED">{language === 'bg' ? 'Архивиран' : 'Archived'}</option>
-          <option value="REJECTED">{language === 'bg' ? 'Отхвърлен' : 'Rejected'}</option>
         </FilterSelect>
       </FiltersBar>
 
@@ -2395,9 +2391,9 @@ const AdminPartnersPage: React.FC = () => {
                       ))}
                     </Select>
                     <FieldHint>
-                      {language === 'bg'
-                        ? `Макс. за избрания тип: ${editTypeMax}%`
-                        : `Max for selected type: ${editTypeMax}%`}
+                      {editForm.partnerTypeId
+                        ? (language === 'bg' ? `Макс. за избрания тип: ${editTypeMax}%` : `Max for selected type: ${editTypeMax}%`)
+                        : (language === 'bg' ? 'Изберете тип партньор първо' : 'Select a partner type first')}
                     </FieldHint>
                   </FormField>
 
@@ -2450,11 +2446,15 @@ const AdminPartnersPage: React.FC = () => {
                   </QrButton>
                 </div>
 
-                {auditEntries.length > 0 && (
-                  <div style={{ marginTop: '1.5rem' }}>
-                    <div style={{ fontWeight: 700, fontSize: '0.875rem', color: 'var(--color-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.75rem' }}>
-                      {language === 'bg' ? 'История на промени' : 'Change History'}
+                <div style={{ marginTop: '1.5rem' }}>
+                  <div style={{ fontWeight: 700, fontSize: '0.875rem', color: 'var(--color-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.75rem' }}>
+                    {language === 'bg' ? 'История на промени' : 'Change History'}
+                  </div>
+                  {auditEntries.length === 0 ? (
+                    <div style={{ fontSize: '0.8125rem', color: 'var(--color-text-secondary)', fontStyle: 'italic', padding: '0.5rem 0.75rem', background: 'var(--color-background-secondary)', borderRadius: '0.5rem' }}>
+                      {language === 'bg' ? 'Няма история.' : 'No history.'}
                     </div>
+                  ) : (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '14rem', overflowY: 'auto' }}>
                       {auditEntries.map((entry) => (
                         <div key={entry.id} style={{ display: 'flex', gap: '0.75rem', fontSize: '0.8125rem', padding: '0.5rem 0.75rem', background: 'var(--color-background-secondary)', borderRadius: '0.5rem' }}>
@@ -2472,8 +2472,8 @@ const AdminPartnersPage: React.FC = () => {
                         </div>
                       ))}
                     </div>
-                  </div>
-                )}
+                  )}
+                </div>
 
                 <ModalFooter>
                   <CancelButton type="button" onClick={() => setEditingPartner(null)}>
