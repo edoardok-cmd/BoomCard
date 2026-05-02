@@ -40,6 +40,8 @@ export interface MarketingCampaign {
   createdAt: string;
 }
 
+export type ListAudienceKind = 'SUBSCRIBERS' | 'PARTNERS' | 'MIXED' | 'EMPTY';
+
 export interface MarketingList {
   id: string;
   name: string;
@@ -47,6 +49,7 @@ export interface MarketingList {
   description: string;
   size: number;
   syncKey: string | null;
+  audienceKind?: ListAudienceKind;
   updatedAt: string;
   createdAt: string;
 }
@@ -202,7 +205,7 @@ export const adminMarketingService = {
     return apiService.delete(`/admin/marketing/lists/${id}`);
   },
 
-  ensureDefaultLists(): Promise<{ results: { syncKey: string; action: string }[] }> {
+  ensureDefaultLists(): Promise<{ results: { syncKey: string; action: 'created' | 'updated' | 'ok' }[]; note?: string }> {
     return apiService.post('/admin/marketing/lists/ensure-defaults', {});
   },
 
@@ -258,7 +261,7 @@ export const adminMarketingService = {
     return apiService.delete(`/admin/marketing/automations/${id}`);
   },
 
-  ensureDefaultAutomations(): Promise<{ results: { trigger: string; action: string }[]; milestoneTriggerFixed: number }> {
+  ensureDefaultAutomations(): Promise<{ results: { trigger: string; action: string }[]; milestoneTriggerFixed: number; smsUsageReset: number }> {
     return apiService.post('/admin/marketing/automations/ensure-defaults', {});
   },
 };

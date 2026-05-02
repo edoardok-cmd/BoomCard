@@ -245,7 +245,11 @@ export default function AdminMarketingTemplatesPage() {
       render: (row) => (
         <span>
           <TypePill $type={row.type}>{row.type}</TypePill>
-          {row.type === 'SMS' && <SmsBadge title="SMS доставката не е активирана — кампании с този шаблон няма да изпращат съобщения">без доставка</SmsBadge>}
+          {row.type === 'SMS' && (
+            <SmsBadge title="SMS провайдърът все още не е свързан. Шаблонът се записва, но кампаниите, които го използват, няма да изпратят съобщения и не нарастват броя „Употреби“.">
+              провайдър липсва
+            </SmsBadge>
+          )}
         </span>
       ),
     },
@@ -291,10 +295,10 @@ export default function AdminMarketingTemplatesPage() {
         <TitleBlock>
           <Eyebrow>Маркетинг</Eyebrow>
           <PageTitle>
-            Шаблони
+            Имейл шаблони
             {total > 0 && <TotalBadge>{total}</TotalBadge>}
           </PageTitle>
-          <PageSubtitle>Шаблони за кампании и автоматизации</PageSubtitle>
+          <PageSubtitle>Шаблони за кампании и автоматизации (имейл, push и SMS)</PageSubtitle>
         </TitleBlock>
         <PrimaryBtn onClick={openCreate}>+ Нов шаблон</PrimaryBtn>
       </PageHeader>
@@ -459,7 +463,7 @@ export default function AdminMarketingTemplatesPage() {
                 <ModalTitle>{selected.name}</ModalTitle>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.35rem' }}>
                   <TypePill $type={selected.type}>{selected.type}</TypePill>
-                  {selected.type === 'SMS' && <SmsBadge>без доставка</SmsBadge>}
+                  {selected.type === 'SMS' && <SmsBadge title="SMS провайдърът все още не е свързан">провайдър липсва</SmsBadge>}
                   {selected.category && (
                     <span style={{
                       fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase',

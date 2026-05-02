@@ -208,11 +208,23 @@ export default function AdminMarketingCampaignsPage() {
 
   // ── Inline status toggles ─────────────────────────────────────────────────
 
+  const [toggleError, setToggleError] = useState('');
+
   const handleStatusToggle = async (row: MarketingCampaign, next: CampaignStatus) => {
+    // BUG 2: client-side guard mirrors the new server-side rule —
+    // SCHEDULED status cannot be entered without a future scheduledAt.
+    // Without this the inline "Планирай" button now hits a 400 instead of silently failing.
+    if (next === 'SCHEDULED' && !row.scheduledAt) {
+      setToggleError(`Кампания "${row.name}" няма дата за планиране. Редактирайте я и задайте време за изпращане.`);
+      return;
+    }
+    setToggleError('');
     setTogglingId(row.id);
     try {
       await adminMarketingService.patchCampaignStatus(row.id, next);
       load();
+    } catch (err: unknown) {
+      setToggleError((err as any)?.response?.data?.error ?? (err as { message?: string })?.message ?? 'Грешка при смяна на статус');
     } finally {
       setTogglingId(null);
     }
@@ -293,10 +305,20 @@ export default function AdminMarketingCampaignsPage() {
     }
   };
 
-  const closeModal = () => { setModal(null); setSelected(null); setDetailData(null); };
+  const closeModal = () => { setModal(null); setSelected(null); setDetailData(null); setSaveError(''); };
+
+  const [saveError, setSaveError] = useState('');
 
   const handleSave = async () => {
     if (!form.name.trim()) return;
+    // Mirror the server-side guard: SCHEDULED status without a date is rejected
+    // by the backend now (BUG 2 fix), but block the round-trip on the client too
+    // for an instant validation message.
+    if (form.status === 'SCHEDULED' && !form.scheduledAt) {
+      setSaveError('Изберете дата и час за изпращане на планираната кампания.');
+      return;
+    }
+    setSaveError('');
     setSaving(true);
     try {
       const payload = {
@@ -316,6 +338,8 @@ export default function AdminMarketingCampaignsPage() {
       }
       closeModal();
       load();
+    } catch (err: unknown) {
+      setSaveError((err as any)?.response?.data?.error ?? (err as { message?: string })?.message ?? 'Неуспешно запазване. Опитайте отново.');
     } finally {
       setSaving(false);
     }
@@ -411,11 +435,19 @@ export default function AdminMarketingCampaignsPage() {
     {
       key: 'audience',
       header: 'Аудитория',
-      render: (row) => (
-        <span style={{ fontSize: '0.9375rem', fontWeight: 700, color: palette.text }}>
-          {row.audience > 0 ? row.audience.toLocaleString('bg-BG') : '—'}
-        </span>
-      ),
+      render: (row) => {
+        // BUG 3: distinguish three states explicitly so the operator can tell
+        // an empty list (0) from a campaign without a list at all (—).
+        if (!row.list) {
+          return <span style={{ fontSize: '0.8125rem', color: palette.textSubtle, fontStyle: 'italic' }}>без списък</span>;
+        }
+        return (
+          <span style={{ fontSize: '0.9375rem', fontWeight: 700, color: row.audience === 0 ? palette.warning : palette.text }}
+                title={`Списък: ${row.list.name}`}>
+            {row.audience.toLocaleString('bg-BG')}
+          </span>
+        );
+      },
     },
     {
       key: 'scheduledAt',
@@ -474,6 +506,19 @@ export default function AdminMarketingCampaignsPage() {
         </TitleBlock>
         <PrimaryBtn onClick={openCreate}>+ Нова кампания</PrimaryBtn>
       </PageHeader>
+
+      {toggleError && (
+        <ErrorBanner style={{ marginBottom: '1rem' }}>
+          {toggleError}
+          <button
+            type="button"
+            onClick={() => setToggleError('')}
+            style={{ marginLeft: '0.5rem', background: 'transparent', border: 'none', color: 'inherit', cursor: 'pointer', textDecoration: 'underline', fontSize: 'inherit' }}
+          >
+            Затвори
+          </button>
+        </ErrorBanner>
+      )}
 
       <Card>
         <FilterRow>
@@ -542,6 +587,7 @@ export default function AdminMarketingCampaignsPage() {
               <CloseBtn onClick={closeModal}>×</CloseBtn>
             </ModalHeader>
             <ModalBody>
+              {saveError && <ErrorBanner>{saveError}</ErrorBanner>}
               {noTemplateWarning && (
                 <WarnBanner>Без шаблон — планираната кампания се нуждае от шаблон за съдържание.</WarnBanner>
               )}
@@ -594,12 +640,29 @@ export default function AdminMarketingCampaignsPage() {
                   onChange={(e) => setForm((f) => ({ ...f, listId: e.target.value }))}
                 >
                   <option value="">— Без —</option>
-                  {lists.map((l) => (
-                    <option key={l.id} value={l.id}>{l.name} ({l.type})</option>
-                  ))}
+                  <optgroup label="Към абонати">
+                    {lists.filter((l) => l.audienceKind === 'SUBSCRIBERS').map((l) => (
+                      <option key={l.id} value={l.id}>{l.name} ({l.size})</option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="Към партньори">
+                    {lists.filter((l) => l.audienceKind === 'PARTNERS').map((l) => (
+                      <option key={l.id} value={l.id}>{l.name} ({l.size})</option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="Смесени / празни">
+                    {lists.filter((l) => l.audienceKind === 'MIXED' || l.audienceKind === 'EMPTY' || !l.audienceKind).map((l) => (
+                      <option key={l.id} value={l.id}>{l.name} ({l.type}, {l.size})</option>
+                    ))}
+                  </optgroup>
                 </ModalSelect>
-                {computedAudience !== null && (
-                  <HintText>Размер на аудиторията: {computedAudience.toLocaleString('bg-BG')} контакта (от избрания списък)</HintText>
+                {computedAudience !== null && selectedList && (
+                  <HintText>
+                    {selectedList.audienceKind === 'SUBSCRIBERS' && 'Аудитория: '}
+                    {selectedList.audienceKind === 'PARTNERS' && 'Аудитория към партньори: '}
+                    {selectedList.audienceKind === 'MIXED' && 'Смесена аудитория: '}
+                    {computedAudience.toLocaleString('bg-BG')} контакта (от избрания списък)
+                  </HintText>
                 )}
               </FormGroup>
               <FormGroup>
@@ -673,10 +736,26 @@ export default function AdminMarketingCampaignsPage() {
                 <div style={{ textAlign: 'center', padding: '2rem', color: palette.textSubtle }}>Зареждане…</div>
               ) : detailData ? (
                 <>
+                  {/* BUG 3: distinguish between "no list assigned" and "list with 0 members".
+                      Old UI showed "—" in both cases which made an empty list look like "no list set". */}
+                  {detailData.list && detailData.audience === 0 && (
+                    <WarnBanner>
+                      Списъкът <strong>{detailData.list.name}</strong> е празен. Кампанията няма да достигне до никого, докато сегментът не се обнови.
+                    </WarnBanner>
+                  )}
+                  {!detailData.list && detailData.status !== 'DRAFT' && (
+                    <WarnBanner>
+                      На кампанията не е зададен списък с аудитория. Изпращането ще бъде блокирано, докато не зададете списък.
+                    </WarnBanner>
+                  )}
                   <DetailGrid style={{ marginBottom: '1.5rem' }}>
                     <DetailItem>
                       <DetailLabel>Аудитория</DetailLabel>
-                      <DetailValue>{detailData.audience > 0 ? detailData.audience.toLocaleString('bg-BG') + ' контакта' : '—'}</DetailValue>
+                      <DetailValue>
+                        {detailData.list
+                          ? `${detailData.audience.toLocaleString('bg-BG')} контакта`
+                          : <span style={{ color: palette.textSubtle, fontWeight: 400 }}>не е зададен списък</span>}
+                      </DetailValue>
                     </DetailItem>
                     <DetailItem>
                       <DetailLabel>Списък</DetailLabel>
@@ -684,13 +763,21 @@ export default function AdminMarketingCampaignsPage() {
                     </DetailItem>
                     <DetailItem>
                       <DetailLabel>Шаблон</DetailLabel>
-                      <DetailValue>{detailData.template ? detailData.template.name : '—'}</DetailValue>
+                      <DetailValue>{detailData.template ? detailData.template.name : <span style={{ color: palette.textSubtle, fontWeight: 400 }}>—</span>}</DetailValue>
                     </DetailItem>
                     <DetailItem>
                       <DetailLabel>Създадена</DetailLabel>
                       <DetailValue>{fmtDate(detailData.createdAt)}</DetailValue>
                     </DetailItem>
-                    {detailData.scheduledAt && (
+                    {/* GAP 2: SCHEDULED campaigns must show their planned send time.
+                        For DRAFT this field is irrelevant; for SENT we already show sentAt. */}
+                    {detailData.status === 'SCHEDULED' && (
+                      <DetailItem>
+                        <DetailLabel>Планирана за</DetailLabel>
+                        <DetailValue>{detailData.scheduledAt ? fmtDatetime(detailData.scheduledAt) : <span style={{ color: palette.danger, fontWeight: 400 }}>не е зададена</span>}</DetailValue>
+                      </DetailItem>
+                    )}
+                    {detailData.status === 'PAUSED' && detailData.scheduledAt && (
                       <DetailItem>
                         <DetailLabel>Планирана за</DetailLabel>
                         <DetailValue>{fmtDatetime(detailData.scheduledAt)}</DetailValue>

@@ -110,6 +110,20 @@ interface FormState {
 const DEFAULT_FORM: FormState = { name: '', trigger: '', status: 'DRAFT', templateId: '' };
 const PAGE_SIZE = 25;
 
+// Module-level guard: ensure-defaults fires at most once per browser session.
+// Without this, every tab navigation back into Автоматизации re-fired the POST
+// alongside the list GET, racing the 100 req/min limiter (BUG 1).
+let ensureDefaultsPromise: Promise<unknown> | null = null;
+function ensureDefaultsOnce(): Promise<unknown> {
+  if (!ensureDefaultsPromise) {
+    ensureDefaultsPromise = adminMarketingService.ensureDefaultAutomations().catch(() => {
+      // On failure clear the cache so a future navigation can retry once
+      ensureDefaultsPromise = null;
+    });
+  }
+  return ensureDefaultsPromise;
+}
+
 export default function AdminMarketingAutomationsPage() {
   const [statusFilter, setStatusFilter] = useState<AutomationStatus | ''>('');
   const [triggerFilter, setTriggerFilter] = useState('');
@@ -140,17 +154,25 @@ export default function AdminMarketingAutomationsPage() {
       .finally(() => setLoading(false));
   }, [page, statusFilter, search, triggerFilter]);
 
+  // Single mount effect: ensure spec §8 defaults exist (once per session), then
+  // load templates and the list. Sequencing them serially keeps the burst under
+  // the 100 req/min limiter and avoids the duplicate listAutomations() call
+  // that previously ran on every tab navigation.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      await ensureDefaultsOnce();
+      if (cancelled) return;
+      try {
+        const r = await adminMarketingService.listTemplates({ limit: 100 });
+        if (!cancelled) setTemplates(r.items);
+      } catch { /* templates are optional for the list view */ }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  // Filter/search/page changes trigger reloads on their own (load is memoised on those deps)
   useEffect(() => { load(); }, [load]);
-
-  useEffect(() => {
-    adminMarketingService.listTemplates({ limit: 100 }).then((r) => setTemplates(r.items));
-  }, []);
-
-  // On mount: ensure spec §8 defaults exist and reload so they appear immediately
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => {
-    adminMarketingService.ensureDefaultAutomations().catch(() => {}).finally(() => load());
-  }, []);
 
   // Escape key closes any open modal
   useEffect(() => {

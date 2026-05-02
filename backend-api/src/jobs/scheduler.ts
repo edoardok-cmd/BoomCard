@@ -852,7 +852,10 @@ async function checkOcrBacklog(): Promise<void> {
 // Recomputes the `size` column for DYNAMIC and SEGMENT marketing lists that
 // have a known syncKey. Static lists are kept accurate by member add/remove.
 
-async function syncMarketingListSizes(): Promise<void> {
+// Exported so the admin "Инициализирай списъци" endpoint can run it on demand
+// instead of waiting up to 24 h for the 2:30 AM cron — otherwise newly-created
+// segments display 0 members until the next nightly run (BUG 4).
+export async function syncMarketingListSizes(): Promise<void> {
   const now = new Date();
   logger.info(`[marketing-list-sync] Starting run at ${now.toISOString()}`);
 

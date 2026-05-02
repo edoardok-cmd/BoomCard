@@ -68,9 +68,9 @@ export const ADMIN_NAV: AdminNavCategory[] = [
     icon: 'M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z',
     permissionKey: 'finance.payouts.read',
     subItems: [
-      { labelBg: 'Плащания абонати', labelEn: 'Subscriber Payouts', path: '/admin/finance/payouts', permissionKey: 'finance.payouts.read' },
-      { labelBg: 'Фактури партньори', labelEn: 'Partner Invoices', path: '/admin/finance/invoices', permissionKey: 'finance.invoices.read' },
-      { labelBg: 'Периоди', labelEn: 'Reporting Periods', path: '/admin/finance/periods', permissionKey: 'finance.periods.read' },
+      { labelBg: 'Плащания към абонати', labelEn: 'Payouts to Subscribers', path: '/admin/finance/payouts', permissionKey: 'finance.payouts.read' },
+      { labelBg: 'Фактуриране към партньори', labelEn: 'Partner Invoicing', path: '/admin/finance/invoices', permissionKey: 'finance.invoices.read' },
+      { labelBg: 'Отчетни периоди', labelEn: 'Reporting Periods', path: '/admin/finance/periods', permissionKey: 'finance.periods.read' },
       { labelBg: 'Справки', labelEn: 'Reports', path: '/admin/finance/reports', permissionKey: 'finance.reports.read' },
     ],
   },
@@ -98,7 +98,9 @@ export const ADMIN_NAV: AdminNavCategory[] = [
     permissionKey: 'marketing.read',
     subItems: [
       { labelBg: 'Кампании', labelEn: 'Campaigns', path: '/admin/marketing/campaigns', permissionKey: 'marketing.read' },
-      { labelBg: 'Шаблони', labelEn: 'Templates', path: '/admin/marketing/templates', permissionKey: 'marketing.read' },
+      // Spec §8 names this "Имейл шаблони". The page also accepts SMS/Push templates
+      // (multi-channel was a later product call), but the nav label follows the spec wording.
+      { labelBg: 'Имейл шаблони', labelEn: 'Email Templates', path: '/admin/marketing/templates', permissionKey: 'marketing.read' },
       { labelBg: 'Автоматизации', labelEn: 'Automations', path: '/admin/marketing/automations', permissionKey: 'marketing.read' },
       { labelBg: 'Списъци', labelEn: 'Lists', path: '/admin/marketing/lists', permissionKey: 'marketing.read' },
     ],

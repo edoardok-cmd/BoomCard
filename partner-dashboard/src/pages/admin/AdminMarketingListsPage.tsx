@@ -315,11 +315,23 @@ export default function AdminMarketingListsPage() {
     }
   };
 
+  const [initFeedback, setInitFeedback] = useState('');
+
   const handleInitializeDefaults = async () => {
     setInitializingDefaults(true);
+    setInitFeedback('');
     try {
-      await adminMarketingService.ensureDefaultLists();
+      const result = await adminMarketingService.ensureDefaultLists();
+      const created = result.results.filter((r) => r.action === 'created').length;
+      const ok = result.results.filter((r) => r.action !== 'created').length;
+      setInitFeedback(
+        created > 0
+          ? `Създадени ${created} нови сегмента, ${ok} вече съществуваха. Броят на членовете е преизчислен.`
+          : `Всички ${ok} задължителни сегмента вече съществуваха. Броят на членовете е преизчислен.`
+      );
       load();
+      // Auto-clear feedback after 6 s — long enough to read, short enough not to clutter the page
+      setTimeout(() => setInitFeedback(''), 6000);
     } finally {
       setInitializingDefaults(false);
     }
@@ -340,6 +352,31 @@ export default function AdminMarketingListsPage() {
     return '';
   };
 
+  // GAP 4: surface whom each list targets so the operator picks the right
+  // segment when composing a campaign. Maps backend's audienceKind enum to
+  // a coloured pill with a Bulgarian label.
+  const renderAudienceKind = (kind: MarketingList['audienceKind']) => {
+    if (!kind || kind === 'EMPTY') {
+      return <span style={{ fontSize: '0.7rem', color: palette.textSubtle, fontStyle: 'italic' }}>празен</span>;
+    }
+    const config: Record<Exclude<NonNullable<MarketingList['audienceKind']>, 'EMPTY'>, { label: string; bg: string; fg: string }> = {
+      SUBSCRIBERS: { label: 'абонати',    bg: palette.infoSoft,    fg: palette.info },
+      PARTNERS:    { label: 'партньори',  bg: '#f3e8de',           fg: '#c96442' },
+      MIXED:       { label: 'смесена',    bg: palette.warningSoft, fg: palette.warning },
+    };
+    const c = config[kind];
+    return (
+      <span style={{
+        display: 'inline-flex', fontSize: '0.65rem', fontWeight: 700,
+        textTransform: 'uppercase', letterSpacing: '0.04em',
+        borderRadius: '0.25rem', padding: '0.1rem 0.4rem',
+        background: c.bg, color: c.fg,
+      }}>
+        {c.label}
+      </span>
+    );
+  };
+
   const columns: ColumnDef<MarketingList>[] = [
     {
       key: 'name',
@@ -350,6 +387,11 @@ export default function AdminMarketingListsPage() {
           <MetaLine>{row.description}</MetaLine>
         </span>
       ),
+    },
+    {
+      key: 'audienceKind',
+      header: 'Аудитория',
+      render: (row) => renderAudienceKind(row.audienceKind),
     },
     {
       key: 'type',
@@ -395,12 +437,28 @@ export default function AdminMarketingListsPage() {
           <PageSubtitle>Сегменти и списъци с контакти, използвани в кампаниите</PageSubtitle>
         </TitleBlock>
         <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
-          <SecondaryBtn onClick={handleInitializeDefaults} disabled={initializingDefaults}>
-            {initializingDefaults ? 'Инициализира се…' : 'Инициализирай списъци'}
+          <SecondaryBtn
+            onClick={handleInitializeDefaults}
+            disabled={initializingDefaults}
+            title="Създава 7-те задължителни сегмента по спецификация (§8): Premium, Basic, всички активни абонати, неактивни 90+ дни, имейл съгласие, активни и потенциални партньори. Преизчислява броя на членовете веднага."
+          >
+            {initializingDefaults ? 'Инициализира се…' : 'Инициализирай задължителните сегменти'}
           </SecondaryBtn>
           <PrimaryBtn onClick={openCreate}>+ Нов списък</PrimaryBtn>
         </div>
       </PageHeader>
+
+      {initFeedback && (
+        <div style={{ marginBottom: '1rem', padding: '0.75rem 1rem', background: palette.successSoft, border: `1px solid #86efac`, borderRadius: '0.5rem', fontSize: '0.875rem', color: palette.success, fontWeight: 500 }}>
+          {initFeedback}
+        </div>
+      )}
+
+      <div style={{ marginBottom: '1rem', padding: '0.75rem 1rem', background: palette.infoSoft, border: `1px solid #93c5fd`, borderRadius: '0.5rem', fontSize: '0.8125rem', color: palette.info }}>
+        <strong>Тип на списъка:</strong>{' '}
+        <strong>СТАТИЧЕН</strong> — фиксирана снимка, ръчно управление на членовете.{' '}
+        <strong>ДИНАМИЧЕН</strong> и <strong>СЕГМЕНТ</strong> — броят се преизчислява автоматично всяка нощ в 02:30 (или веднага при натискане на „Инициализирай задължителните сегменти“).
+      </div>
 
       <Card>
         <FilterRow>

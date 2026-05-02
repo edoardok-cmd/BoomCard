@@ -6,6 +6,7 @@ import { prisma } from '../lib/prisma';
 import { emailService } from '../services/email.service';
 import { sendWebPushToUser } from '../lib/webPush';
 import { logger } from '../utils/logger';
+import { syncMarketingListSizes } from '../jobs/scheduler';
 
 const router = Router();
 router.use(authenticate, authorize('ADMIN', 'SUPER_ADMIN'));
@@ -341,10 +342,14 @@ async function dispatchCampaign(campaignId: string): Promise<number> {
     }
   }
 
-  if (template.id) {
+  // BUG 5: only mark the template "used" when at least one message was actually
+  // sent. SMS templates previously incremented usageCount on every campaign even
+  // though the dispatcher logs and drops the message — producing the contradictory
+  // "БЕЗ ДОСТАВКА" badge with thousands of uses.
+  if (template.id && dispatched > 0) {
     await prisma.marketingTemplate.update({
       where: { id: template.id },
-      data: { usageCount: { increment: 1 }, lastUsed: new Date() },
+      data: { usageCount: { increment: dispatched }, lastUsed: new Date() },
     });
   }
 
@@ -353,6 +358,15 @@ async function dispatchCampaign(campaignId: string): Promise<number> {
 
 router.get('/campaigns', ...READ, async (req, res, next) => {
   try {
+    // Self-heal legacy data: repair any campaign with SCHEDULED status but no
+    // scheduledAt (or a past scheduledAt that was never sent). Once the new POST/PUT
+    // guards land, this can never re-occur — but pre-fix rows are still in prod.
+    // Cheap (one updateMany per request) and bounded (only writes when broken rows exist).
+    await prisma.marketingCampaign.updateMany({
+      where: { status: 'SCHEDULED', scheduledAt: null },
+      data: { status: 'DRAFT' },
+    });
+
     const { status, type, search, dateFrom, dateTo, sortBy, sortDir, page = '1', limit = '25' } = req.query as Record<string, string>;
     const skip = (parseInt(page) - 1) * parseInt(limit);
     const take = parseInt(limit);
@@ -408,6 +422,13 @@ router.post('/campaigns', ...WRITE, async (req, res, next) => {
     if (!Object.values(MarketingChannel).includes(type)) return res.status(400).json({ error: 'invalid type' });
 
     const resolvedStatus = (status === 'SENT' || status === 'PAUSED') ? 'DRAFT' : (status ?? 'DRAFT');
+
+    // Spec §8: a SCHEDULED campaign must have a future send time. Otherwise
+    // status and scheduledAt drift apart (BUG 2: "ПЛАНИРАНА with no date").
+    if (resolvedStatus === 'SCHEDULED' && !scheduledAt) {
+      return res.status(400).json({ error: 'Планираните кампании изискват дата и час за изпращане.' });
+    }
+
     const audience = await resolveAudience(listId, 0);
 
     const item = await prisma.marketingCampaign.create({
@@ -442,6 +463,14 @@ router.put('/campaigns/:id', ...WRITE, async (req, res, next) => {
     const allowedStatuses: CampaignStatus[] = ['DRAFT', 'SCHEDULED', 'PAUSED'];
     const resolvedStatus = allowedStatuses.includes(status) ? status : existing.status;
 
+    // Same scheduledAt invariant as POST — applies whether the status is being
+    // changed to SCHEDULED or the row is already SCHEDULED and the field is being
+    // cleared. Without this, an edit could break the invariant the create endpoint
+    // enforces.
+    if (resolvedStatus === 'SCHEDULED' && !scheduledAt) {
+      return res.status(400).json({ error: 'Планираните кампании изискват дата и час за изпращане.' });
+    }
+
     const audience = await resolveAudience(listId, existing.audience);
 
     const item = await prisma.marketingCampaign.update({
@@ -470,6 +499,13 @@ router.patch('/campaigns/:id/status', ...WRITE, async (req, res, next) => {
 
     const { status } = req.body as { status: CampaignStatus };
     if (!Object.values(CampaignStatus).includes(status)) return res.status(400).json({ error: 'invalid status' });
+
+    // Spec §8: SCHEDULED status requires a scheduledAt in the future.
+    // The inline "Планирай" button used to flip status to SCHEDULED without
+    // setting a date, leaving campaigns in the same broken state as BUG 2.
+    if (status === 'SCHEDULED' && !existing.scheduledAt) {
+      return res.status(400).json({ error: 'Не може да се планира кампания без дата и час. Редактирайте я и задайте време за изпращане.' });
+    }
 
     // Guard: sending requires a template and a non-empty audience list
     if (status === 'SENT' && existing.status !== 'SENT') {
@@ -643,14 +679,54 @@ router.post('/lists/ensure-defaults', ...WRITE, async (req, res, next) => {
       }
     }
 
+    // BUG 4: previously this endpoint just created the list rows and left
+    // size=0 until the 2:30 AM cron — leaving segments visibly empty for hours
+    // and confusing the operator into thinking "Инициализирай списъци" did nothing.
+    // Run the size sync inline so counts reflect real data immediately.
+    try {
+      await syncMarketingListSizes();
+    } catch (err) {
+      logger.error('[marketing] inline list-size sync failed during ensure-defaults', err);
+      // Non-fatal: the lists exist; counts will catch up at 2:30 AM.
+    }
+
     res.json({
       results,
-      note: 'Sizes reflect the last nightly sync. Run again tomorrow morning or trigger syncMarketingListSizes manually to see live counts.',
+      note: 'Sizes recomputed live; nightly cron at 02:30 keeps them up to date.',
     });
   } catch (error) {
     next(error);
   }
 });
+
+// GAP 4: derive whom this list targets (subscribers vs partners vs mixed)
+// so the operator can tell at a glance which campaigns it's appropriate for.
+// Spec §8 talks about "campaigns to subscribers and partners" with segments
+// for both, but the UI was previously agnostic about which.
+const SUBSCRIBER_SYNC_KEYS = new Set([
+  'all_active_subscribers', 'premium_holders', 'basic_holders',
+  'inactive_users_90d', 'email_consent_active',
+]);
+const PARTNER_SYNC_KEYS = new Set(['active_partners', 'potential_partners']);
+
+type AudienceKind = 'SUBSCRIBERS' | 'PARTNERS' | 'MIXED' | 'EMPTY';
+
+async function deriveAudienceKind(list: { id: string; syncKey: string | null }): Promise<AudienceKind> {
+  if (list.syncKey) {
+    if (SUBSCRIBER_SYNC_KEYS.has(list.syncKey)) return 'SUBSCRIBERS';
+    if (PARTNER_SYNC_KEYS.has(list.syncKey)) return 'PARTNERS';
+  }
+  // For STATIC custom lists, inspect actual member rows. Cheap counts —
+  // typical list sizes are < 1k.
+  const [userCount, partnerCount] = await Promise.all([
+    prisma.marketingListMember.count({ where: { listId: list.id, memberType: 'USER' } }),
+    prisma.marketingListMember.count({ where: { listId: list.id, memberType: 'PARTNER' } }),
+  ]);
+  if (userCount > 0 && partnerCount > 0) return 'MIXED';
+  if (userCount > 0) return 'SUBSCRIBERS';
+  if (partnerCount > 0) return 'PARTNERS';
+  return 'EMPTY';
+}
 
 router.get('/lists', ...READ, async (req, res, next) => {
   try {
@@ -678,7 +754,11 @@ router.get('/lists', ...READ, async (req, res, next) => {
       prisma.marketingList.count({ where }),
     ]);
 
-    res.json({ items, total, page: parseInt(page), limit: take });
+    const itemsWithAudience = await Promise.all(
+      items.map(async (l) => ({ ...l, audienceKind: await deriveAudienceKind(l) }))
+    );
+
+    res.json({ items: itemsWithAudience, total, page: parseInt(page), limit: take });
   } catch (error) {
     next(error);
   }
@@ -893,6 +973,15 @@ router.post('/automations/ensure-defaults', ...WRITE, async (req, res, next) => 
       data: { trigger: 'cashback.threshold_reached' },
     });
 
+    // BUG 5: SMS templates inherited a usageCount from before the dispatcher
+    // counted only successful sends. Since the SMS provider has never been
+    // wired up, none of those "uses" produced a delivery — reset to 0 so the
+    // column matches reality and stops contradicting the "БЕЗ ДОСТАВКА" badge.
+    const smsUsageReset = await prisma.marketingTemplate.updateMany({
+      where: { type: 'SMS', usageCount: { gt: 0 } },
+      data: { usageCount: 0, lastUsed: null },
+    });
+
     // Sync required templates — always update content so code is the source of truth.
     // Using find+update instead of upsert because template name has no unique DB constraint.
     const syncTpl = async (
@@ -1034,7 +1123,7 @@ router.post('/automations/ensure-defaults', ...WRITE, async (req, res, next) => 
       }
     }
 
-    res.json({ results, milestoneTriggerFixed: milestoneFix.count });
+    res.json({ results, milestoneTriggerFixed: milestoneFix.count, smsUsageReset: smsUsageReset.count });
   } catch (error) {
     next(error);
   }
