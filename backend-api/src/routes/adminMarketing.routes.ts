@@ -363,6 +363,9 @@ const SCHEDULED_BACKFILL_FLAG = 'marketing.scheduled_backfill_v1';
 let scheduledBackfillPromise: Promise<void> | null = null;
 async function selfHealLegacyScheduled(): Promise<void> {
   if (scheduledBackfillPromise) return scheduledBackfillPromise;
+  // NB: `.catch` binds tighter than `=`, so the cached promise IS the catch
+  // chain — it never rejects to callers. The handler nulls the cache so the
+  // next request retries; in-flight callers all resolve cleanly to undefined.
   scheduledBackfillPromise = (async () => {
     const flag = await prisma.systemSetting.findUnique({ where: { key: SCHEDULED_BACKFILL_FLAG } });
     if (flag) return;
@@ -459,6 +462,10 @@ router.post('/campaigns', ...WRITE, async (req, res, next) => {
 
     const audience = await resolveAudience(listId, 0);
 
+    if (resolvedStatus === 'SCHEDULED' && listId && audience === 0) {
+      return res.status(400).json({ error: 'Избраният списък няма получатели — изберете непразен списък преди планиране.' });
+    }
+
     const item = await prisma.marketingCampaign.create({
       data: {
         name: name.trim(),
@@ -501,6 +508,10 @@ router.put('/campaigns/:id', ...WRITE, async (req, res, next) => {
 
     const audience = await resolveAudience(listId, existing.audience);
 
+    if (resolvedStatus === 'SCHEDULED' && listId && audience === 0) {
+      return res.status(400).json({ error: 'Избраният списък няма получатели — изберете непразен списък преди планиране.' });
+    }
+
     const item = await prisma.marketingCampaign.update({
       where: { id: req.params.id },
       data: {
@@ -533,6 +544,22 @@ router.patch('/campaigns/:id/status', ...WRITE, async (req, res, next) => {
     // setting a date, leaving campaigns in the same broken state as BUG 2.
     if (status === 'SCHEDULED' && !existing.scheduledAt) {
       return res.status(400).json({ error: 'Не може да се планира кампания без дата и час. Редактирайте я и задайте време за изпращане.' });
+    }
+
+    // Mirror the SENT-with-empty-list guard for the SCHEDULED transition: a
+    // scheduled campaign that fires against a 0-member list creates a phantom
+    // dispatch with audience=0 and obscures real intent. Block it up-front.
+    if (status === 'SCHEDULED' && existing.listId && existing.status !== 'SCHEDULED') {
+      const audienceList = await prisma.marketingList.findUnique({
+        where: { id: existing.listId },
+        select: { size: true, syncKey: true },
+      });
+      const effectiveCount = audienceList?.syncKey
+        ? (audienceList.size ?? 0)
+        : await prisma.marketingListMember.count({ where: { listId: existing.listId } });
+      if (effectiveCount === 0) {
+        return res.status(422).json({ error: 'Не може да се планира: избраният списък няма получатели.' });
+      }
     }
 
     // Guard: sending requires a template and a non-empty audience list

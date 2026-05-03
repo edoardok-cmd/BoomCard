@@ -644,24 +644,30 @@ export default function AdminMarketingCampaignsPage() {
                   <option value="">— Без —</option>
                   <optgroup label="Към абонати">
                     {lists.filter((l) => l.audienceKind === 'SUBSCRIBERS').map((l) => (
-                      <option key={l.id} value={l.id}>{l.name} ({l.size})</option>
+                      <option key={l.id} value={l.id} disabled={l.size === 0}>
+                        {l.name} ({l.size}){l.size === 0 ? ' — без получатели' : ''}
+                      </option>
                     ))}
                   </optgroup>
                   <optgroup label="Към партньори">
                     {lists.filter((l) => l.audienceKind === 'PARTNERS').map((l) => (
-                      <option key={l.id} value={l.id}>{l.name} ({l.size})</option>
+                      <option key={l.id} value={l.id} disabled={l.size === 0}>
+                        {l.name} ({l.size}){l.size === 0 ? ' — без получатели' : ''}
+                      </option>
                     ))}
                   </optgroup>
                   <optgroup label="Смесена аудитория">
                     {lists.filter((l) => l.audienceKind === 'MIXED' || (!l.audienceKind && l.size > 0)).map((l) => (
-                      <option key={l.id} value={l.id}>{l.name} ({l.type}, {l.size})</option>
+                      <option key={l.id} value={l.id} disabled={l.size === 0}>
+                        {l.name} ({l.type}, {l.size}){l.size === 0 ? ' — без получатели' : ''}
+                      </option>
                     ))}
                   </optgroup>
-                  {/* Truly empty lists (audienceKind === 'EMPTY' or size 0) are
-                      omitted — selecting one would target zero recipients. */}
                   <optgroup label="Празни (без получатели)">
-                    {lists.filter((l) => l.audienceKind === 'EMPTY' && l.size === 0).map((l) => (
-                      <option key={l.id} value={l.id} disabled>{l.name} ({l.type})</option>
+                    {lists.filter((l) => l.audienceKind === 'EMPTY').map((l) => (
+                      <option key={l.id} value={l.id} disabled>
+                        {l.name} ({l.type}, размер: {l.size})
+                      </option>
                     ))}
                   </optgroup>
                 </ModalSelect>
