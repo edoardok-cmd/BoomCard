@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import styled from 'styled-components';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-hot-toast';
@@ -6,6 +7,7 @@ import {
   adminSettingsService,
   FraudRule,
 } from '../../services/adminSettings.service';
+import { latestMeta, formatAuditStamp, describeApiError } from '../../utils/systemSettingsAudit';
 
 // Spec §7.4 — Контрол > Лимити и правила
 // Дневен лимит, мин/макс сума, авто-одобрение, ръчна намеса от супер-админ.
@@ -244,6 +246,213 @@ function OverrideFormSection({ systemRuleId }: { systemRuleId: string }) {
   );
 }
 
+// ── System-wide thresholds (formerly under Settings → System) ────────────────
+// Spec §7.4 places global limits/thresholds in Контрол; spec §9 keeps Системни
+// настройки to emails, locale, timezone, and maintenance mode only.
+
+const AuditStamp = styled.p`font-size:.72rem;color:${palette.textSubtle};margin:0;`;
+const ThresholdFooter = styled.div`
+  display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;
+  gap:.5rem;margin-top:1rem;padding-top:.875rem;border-top:1px solid ${palette.border};
+`;
+
+function GlobalThresholdsCard() {
+  const qc = useQueryClient();
+  const [maxFraud, setMaxFraud] = useState('60');
+  const [corrWarn, setCorrWarn] = useState('30');
+  const [dailyLimit, setDailyLimit] = useState('');
+  const [maxCashback, setMaxCashback] = useState('');
+  const [currency, setCurrency] = useState('BGN');
+
+  const { data, isLoading, isError, error, refetch, isRefetching } = useQuery({
+    queryKey: ['admin-system-settings'],
+    queryFn: () => adminSettingsService.getSystemSettings(),
+  });
+
+  // Seed local form state from the server on first successful load only.
+  // Subsequent refetches (e.g. post-save invalidate, or recovery from a 429
+  // via "Опитай отново") MUST NOT overwrite the user's in-flight edits — the
+  // refetch would otherwise silently revert any field the user touched after
+  // clicking Save and before the new GET landed.
+  const didInitRef = useRef(false);
+  useEffect(() => {
+    if (!data?.data || didInitRef.current) return;
+    didInitRef.current = true;
+    if (data.data.max_fraud_score !== undefined)              setMaxFraud(data.data.max_fraud_score);
+    if (data.data.correction_warning_threshold !== undefined) setCorrWarn(data.data.correction_warning_threshold);
+    setDailyLimit(data.data.daily_scan_limit_default ?? '');
+    setMaxCashback(data.data.max_cashback_per_month ?? '');
+    if (data.data.currency !== undefined)                     setCurrency(data.data.currency);
+  }, [data]);
+
+  const mutation = useMutation({
+    mutationFn: (settings: Record<string, string>) =>
+      adminSettingsService.saveSystemSettings(settings),
+    onSuccess: () => {
+      toast.success('Лимитите са запазени');
+      qc.invalidateQueries({ queryKey: ['admin-system-settings'] });
+    },
+    onError: (err: unknown) => {
+      toast.error(describeApiError(err).message);
+    },
+  });
+
+  const save = () => {
+    const fraud = parseInt(maxFraud, 10);
+    if (!Number.isFinite(fraud) || !Number.isInteger(fraud) || fraud < 0 || fraud > 100) {
+      toast.error('Прагът за оповестяване на измама трябва да е цяло число между 0 и 100');
+      return;
+    }
+    const warn = parseInt(corrWarn, 10);
+    if (!Number.isFinite(warn) || !Number.isInteger(warn) || warn < 0 || warn > 100) {
+      toast.error('Прагът за предупреждение трябва да е цяло число между 0 и 100');
+      return;
+    }
+    if (dailyLimit) {
+      const dl = parseInt(dailyLimit, 10);
+      if (!Number.isFinite(dl) || dl < 1) {
+        toast.error('Дневният лимит за сканиране трябва да е цяло число ≥ 1');
+        return;
+      }
+    }
+    if (maxCashback) {
+      const mc = parseFloat(maxCashback);
+      if (!Number.isFinite(mc) || mc < 1) {
+        toast.error('Макс. кешбек за 30 дни трябва да е число ≥ 1. За без таван оставете полето празно.');
+        return;
+      }
+    }
+    // Always persist the integer thresholds. For clearable keys
+    // (daily_scan_limit_default, max_cashback_per_month) only include them in
+    // the payload when the user has set a value OR the server already had one
+    // — otherwise an empty value would issue a no-op deleteMany on the backend.
+    // Send '' explicitly only when the user is clearing a previously-set value.
+    const payload: Record<string, string> = {
+      max_fraud_score: maxFraud,
+      correction_warning_threshold: corrWarn,
+    };
+    const serverDaily = data?.data?.daily_scan_limit_default;
+    const serverCashback = data?.data?.max_cashback_per_month;
+    if (dailyLimit !== '' || serverDaily !== undefined) {
+      payload.daily_scan_limit_default = dailyLimit;
+    }
+    if (maxCashback !== '' || serverCashback !== undefined) {
+      payload.max_cashback_per_month = maxCashback;
+    }
+    mutation.mutate(payload);
+  };
+
+  const meta = data?.meta ?? {};
+
+  return (
+    <Card>
+      <CardHeader>
+        <div>
+          <SectionTitle>Глобални прагове и лимити</SectionTitle>
+          <SectionSubtitle>
+            Системни стойности по подразбиране за оценка на измама, сканиране и кешбек.
+            За правила на ниво партньор/потребител използвайте секциите по-долу.
+          </SectionSubtitle>
+        </div>
+      </CardHeader>
+
+      {isLoading ? (
+        <EmptyState>Зареждане…</EmptyState>
+      ) : isError ? (
+        (() => {
+          const info = describeApiError(error);
+          return (
+            <div style={{
+              background: palette.dangerSoft,
+              color: palette.danger,
+              border: `1px solid ${palette.danger}`,
+              borderRadius: '.5rem',
+              padding: '.75rem 1rem',
+              fontSize: '.8125rem',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '.75rem',
+            }} role="alert">
+              <span>
+                Не можахме да заредим лимитите{info.status ? ` (${info.status})` : ''}: {info.message}
+              </span>
+              <Btn $variant="danger" onClick={() => refetch()} disabled={isRefetching}>
+                {isRefetching ? 'Опит…' : 'Опитай отново'}
+              </Btn>
+            </div>
+          );
+        })()
+      ) : (
+        <>
+          <FormGrid>
+            <FormField>
+              <FormLabel>Праг за оповестяване на измама (0–100)</FormLabel>
+              <FormInput
+                type="number" min="0" max="100" step="1"
+                value={maxFraud}
+                onChange={(e) => setMaxFraud(e.target.value)}
+              />
+              <Hint>
+                Бонове с оценка ≥ тази стойност задействат известие за измама до администраторите и собственика на партньора. По подразбиране: 60.
+              </Hint>
+            </FormField>
+            <FormField>
+              <FormLabel>Праг за предупреждение при корекция (0–100)</FormLabel>
+              <FormInput
+                type="number" min="0" max="100" step="1"
+                value={corrWarn}
+                onChange={(e) => setCorrWarn(e.target.value)}
+              />
+              <Hint>
+                Ако преизчислената оценка за измама надвиши тази стойност след ръчна корекция, се показва предупреждение. По подразбиране: 30.
+              </Hint>
+            </FormField>
+            <FormField>
+              <FormLabel>Дневен лимит за сканиране (на потребител)</FormLabel>
+              <FormInput
+                type="number" min="1"
+                placeholder="без лимит"
+                value={dailyLimit}
+                onChange={(e) => setDailyLimit(e.target.value)}
+              />
+              <Hint>
+                Макс. брой касови бележки на потребител на ден (глобално). Оставете празно за без лимит.
+              </Hint>
+            </FormField>
+            <FormField>
+              <FormLabel>Макс. кешбек за 30 дни ({currency === 'BGN' ? 'лв.' : '€'})</FormLabel>
+              <FormInput
+                type="number" min="1"
+                placeholder="без таван"
+                value={maxCashback}
+                onChange={(e) => setMaxCashback(e.target.value)}
+              />
+              <Hint>
+                Таван на кешбек, който абонат може да спечели за последните 30 дни (плъзгащ прозорец). Оставете празно за без таван.
+              </Hint>
+            </FormField>
+          </FormGrid>
+          <ThresholdFooter>
+            <AuditStamp>{formatAuditStamp(latestMeta(['max_fraud_score', 'correction_warning_threshold', 'daily_scan_limit_default', 'max_cashback_per_month'], meta))}</AuditStamp>
+            <Row>
+              <Link
+                to="/admin/settings/system"
+                style={{ fontSize: '.8125rem', color: palette.textMuted, textDecoration: 'underline' }}
+              >
+                Локализация и контакти →
+              </Link>
+              <Btn $variant="success" onClick={save} disabled={mutation.isPending || isLoading || isRefetching}>
+                {mutation.isPending ? 'Записва…' : isRefetching ? 'Обновяване…' : 'Запази'}
+              </Btn>
+            </Row>
+          </ThresholdFooter>
+        </>
+      )}
+    </Card>
+  );
+}
+
 export default function AdminControlRulesPage() {
   const qc = useQueryClient();
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -395,10 +604,13 @@ export default function AdminControlRulesPage() {
           <Eyebrow>Контрол</Eyebrow>
           <PageTitle>Лимити и правила</PageTitle>
           <PageSubtitle>
-            Глобални прагове за транзакции, авто-одобрение и ръчни изключения
+            Глобални прагове за измами и сканиране, авто-одобрение и ръчни изключения
           </PageSubtitle>
         </TitleBlock>
       </PageHeader>
+
+      {/* Global system thresholds (max fraud score, correction warning, daily scan limit, max cashback per 30d) */}
+      <GlobalThresholdsCard />
 
       {/* System (global) rule */}
       <Card>

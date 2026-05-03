@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
+import toast from 'react-hot-toast';
 import styled from 'styled-components';
 import { motion, AnimatePresence } from 'framer-motion';
 import { RefreshCw, AlertTriangle, CheckCircle, XCircle, CreditCard, Calendar, Clock, ExternalLink } from 'lucide-react';
@@ -547,19 +548,21 @@ export default function SubscriptionPage() {
     return (
       <PageContainer>
         <Container>
-          <EmptyText>{t('subscriptionPage.noSubscription')}</EmptyText>
-          <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
-            <Link to="/subscriptions">
-              <Button variant="primary">{t('subscriptionPage.goToPlans')}</Button>
-            </Link>
-          </div>
-          <DeleteAccountCard>
-            <DeleteAccountTitle>{t('subscriptionPage.deleteAccountTitle')}</DeleteAccountTitle>
-            <DeleteAccountDesc>{t('subscriptionPage.deleteAccountDesc')}</DeleteAccountDesc>
-            <Link to="/settings">
-              <Button variant="ghost" size="small">{t('subscriptionPage.deleteAccountLink')}</Button>
-            </Link>
-          </DeleteAccountCard>
+          <Stack>
+            <EmptyText>{t('subscriptionPage.noSubscription')}</EmptyText>
+            <div style={{ textAlign: 'center' }}>
+              <Link to="/subscriptions">
+                <Button variant="primary">{t('subscriptionPage.goToPlans')}</Button>
+              </Link>
+            </div>
+            <DeleteAccountCard>
+              <DeleteAccountTitle>{t('subscriptionPage.deleteAccountTitle')}</DeleteAccountTitle>
+              <DeleteAccountDesc>{t('subscriptionPage.deleteAccountDesc')}</DeleteAccountDesc>
+              <Link to="/settings">
+                <Button variant="ghost" size="small">{t('subscriptionPage.deleteAccountLink')}</Button>
+              </Link>
+            </DeleteAccountCard>
+          </Stack>
         </Container>
       </PageContainer>
     );
@@ -802,7 +805,16 @@ export default function SubscriptionPage() {
                 <Button
                   variant="ghost"
                   size="small"
-                  onClick={() => initiateCardUpdate.mutate(subscription.id)}
+                  onClick={() => initiateCardUpdate.mutate(subscription.id, {
+                    onError: (err) => {
+                      const status: number | undefined = (err as any)?.response?.status;
+                      if (status === 409) {
+                        toast.error(t('subscriptionPage.changeCardConflict'));
+                      } else {
+                        toast.error(t('subscriptionPage.changeCardError'));
+                      }
+                    },
+                  })}
                   disabled={initiateCardUpdate.isPending}
                 >
                   <CreditCard size={14} style={{ marginRight: 6 }} />

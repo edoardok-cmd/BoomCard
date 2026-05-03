@@ -10,6 +10,7 @@ import {
   AdminVenue,
   MenuStatus,
   VenueStatus,
+  VenueStatusHistoryEntry,
 } from '../../services/adminLocations.service';
 
 /* ─── Palette ─────────────────────────────────────────────────────────────── */
@@ -365,6 +366,88 @@ const Btn = styled.button<{ $variant?: 'danger' | 'primary' | 'ghost' }>`
 
 const PAGE_SIZE = 25;
 
+/* ─── Status history timeline (spec §5.4) ──────────────────────────────────── */
+const STATUS_LABELS_TIMELINE: Record<VenueStatus, { bg: string; en: string }> = {
+  ACTIVE:    { bg: 'Активна',  en: 'Active' },
+  SUSPENDED: { bg: 'Спряна',   en: 'Suspended' },
+  REPLACED:  { bg: 'Заменена', en: 'Replaced' },
+};
+
+function StatusHistoryTimeline({ venueId, language }: { venueId: string; language: string }) {
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['venue-status-history', venueId],
+    queryFn: () => adminLocationsService.getStatusHistory(venueId),
+    staleTime: 30 * 1000,
+  });
+
+  if (isLoading) {
+    return (
+      <div style={{ marginTop: '0.75rem', fontSize: '0.75rem', color: palette.textSubtle }}>
+        …
+      </div>
+    );
+  }
+  if (error || !data?.data) {
+    return null;
+  }
+  const history = data.data;
+  if (history.length === 0) {
+    return (
+      <div style={{ marginTop: '0.75rem', fontSize: '0.75rem', color: palette.textSubtle, fontStyle: 'italic' }}>
+        {language === 'bg' ? 'Няма промени в статуса.' : 'No status changes recorded.'}
+      </div>
+    );
+  }
+  return (
+    <div style={{ marginTop: '0.875rem' }}>
+      <div style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: palette.textSubtle, marginBottom: '0.5rem' }}>
+        {language === 'bg' ? 'История' : 'Timeline'} ({history.length})
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+        {history.map((entry: VenueStatusHistoryEntry) => {
+          const fromLabel = STATUS_LABELS_TIMELINE[entry.fromStatus]?.[language === 'bg' ? 'bg' : 'en'] ?? entry.fromStatus;
+          const toLabel = STATUS_LABELS_TIMELINE[entry.toStatus]?.[language === 'bg' ? 'bg' : 'en'] ?? entry.toStatus;
+          const actorName = entry.changedBy
+            ? [entry.changedBy.firstName, entry.changedBy.lastName].filter(Boolean).join(' ').trim() || entry.changedBy.email
+            : (language === 'bg' ? 'Системен' : 'System');
+          const isStatusChange = entry.fromStatus !== entry.toStatus;
+          return (
+            <div
+              key={entry.id}
+              style={{
+                padding: '0.5rem 0.75rem',
+                background: palette.bg,
+                border: `1px solid ${palette.border}`,
+                borderRadius: '0.5rem',
+                fontSize: '0.75rem',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '0.5rem' }}>
+                <span style={{ color: palette.text, fontWeight: 600 }}>
+                  {isStatusChange ? `${fromLabel} → ${toLabel}` : (language === 'bg' ? 'Бележка обновена' : 'Note updated')}
+                </span>
+                <span style={{ color: palette.textSubtle, fontSize: '0.7rem' }}>
+                  {new Date(entry.createdAt).toLocaleString(language === 'bg' ? 'bg-BG' : 'en-GB', {
+                    day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
+                  })}
+                </span>
+              </div>
+              {entry.note && (
+                <div style={{ marginTop: '0.25rem', color: palette.textMuted }}>
+                  {entry.note}
+                </div>
+              )}
+              <div style={{ marginTop: '0.25rem', color: palette.textSubtle, fontSize: '0.7rem' }}>
+                {language === 'bg' ? 'От' : 'By'}: {actorName}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 /* ─── Component ───────────────────────────────────────────────────────────── */
 export default function AdminPartnerLocationsPage() {
   const { t, language } = useLanguage();
@@ -423,11 +506,14 @@ export default function AdminPartnerLocationsPage() {
   const statusMutation = useMutation({
     mutationFn: ({ id, vs, note }: { id: string; vs: VenueStatus; note: string }) =>
       adminLocationsService.updateStatus(id, vs, note || undefined),
-    onSuccess: () => {
+    onSuccess: (_data, vars) => {
       toast.success(language === 'bg' ? 'Статусът на локацията е обновен' : 'Location status updated');
       setStatusTarget(null);
       setStatusNote('');
       queryClient.invalidateQueries({ queryKey: ['admin-venues'] });
+      // Also invalidate this venue's history so a freshly-changed status shows
+      // up immediately if the drawer is reopened.
+      queryClient.invalidateQueries({ queryKey: ['venue-status-history', vars.id] });
     },
     onError: () => toast.error(t('common.error')),
   });
@@ -495,6 +581,10 @@ export default function AdminPartnerLocationsPage() {
       render: (row) => {
         const vs: VenueStatus = (row.venueStatus as VenueStatus) ?? 'ACTIVE';
         const lbl = venueStatusLabels[vs];
+        // Don't surface venueStatusNote inline for ACTIVE rows: a note carried
+        // over from a prior REPLACED/SUSPENDED period is stale context, not a
+        // current explanation. The drawer timeline keeps the audit trail.
+        const showNote = !!row.venueStatusNote && vs !== 'ACTIVE';
         return (
           <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
             <VenueStatusBadge $status={vs}>{language === 'bg' ? lbl.bg : lbl.en}</VenueStatusBadge>
@@ -503,7 +593,7 @@ export default function AdminPartnerLocationsPage() {
                 {new Date(row.venueStatusAt).toLocaleDateString(language === 'bg' ? 'bg-BG' : 'en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
               </MetaLine>
             )}
-            {row.venueStatusNote && (
+            {showNote && row.venueStatusNote && (
               <MetaLine title={row.venueStatusNote}>
                 {row.venueStatusNote.length > 30 ? row.venueStatusNote.slice(0, 30) + '…' : row.venueStatusNote}
               </MetaLine>
@@ -574,19 +664,56 @@ export default function AdminPartnerLocationsPage() {
       header: language === 'bg' ? 'QR История' : 'QR History',
       render: (row) => {
         const stickers = row.stickers ?? [];
-        if (stickers.length === 0) {
+        const vs: VenueStatus = (row.venueStatus as VenueStatus) ?? 'ACTIVE';
+        // Spec §5.4 — surface "защо е сменян" inline only for non-ACTIVE
+        // statuses (REPLACED/SUSPENDED). ACTIVE rows with a stale note from a
+        // prior status change shouldn't leak that note here; the full timeline
+        // is available in the drawer.
+        const note = row.venueStatusNote;
+        const showNote = !!note && vs !== 'ACTIVE';
+        const noteLabel =
+          vs === 'REPLACED' ? (language === 'bg' ? 'Заменен' : 'Replaced')
+          : vs === 'SUSPENDED' ? (language === 'bg' ? 'Спрян' : 'Suspended')
+          : (language === 'bg' ? 'Бележка' : 'Note');
+        const historyCount = row._count?.statusHistory ?? 0;
+
+        if (stickers.length === 0 && !showNote && historyCount === 0) {
           return <span style={{ color: palette.textSubtle, fontSize: '0.8125rem' }}>—</span>;
         }
         const latest = stickers[0];
         const activeCount = stickers.filter(s => s.status === 'ACTIVE').length;
         return (
           <span style={{ display: 'flex', flexDirection: 'column', gap: '0.125rem' }}>
-            <span style={{ fontSize: '0.8125rem', color: palette.textMuted }}>
-              {language === 'bg' ? 'Последен:' : 'Latest:'} {fmt(latest.createdAt)}
-            </span>
+            {latest && (
+              <span style={{ fontSize: '0.8125rem', color: palette.textMuted }}>
+                {language === 'bg' ? 'Последен:' : 'Latest:'} {fmt(latest.createdAt)}
+              </span>
+            )}
             {stickers.length > 1 && (
               <MetaLine>
                 {activeCount}/{stickers.length} {language === 'bg' ? 'активни' : 'active'}
+              </MetaLine>
+            )}
+            {showNote && note && (
+              <span
+                title={note}
+                style={{
+                  fontSize: '0.7rem',
+                  color: palette.danger,
+                  fontWeight: 500,
+                  marginTop: '0.125rem',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.25rem',
+                }}
+              >
+                <span style={{ fontWeight: 700 }}>{noteLabel}:</span>{' '}
+                {note.length > 40 ? note.slice(0, 40) + '…' : note}
+              </span>
+            )}
+            {historyCount > 0 && (
+              <MetaLine style={{ color: palette.textSubtle }}>
+                {language === 'bg' ? 'Промени' : 'Changes'}: <strong>{historyCount}</strong>
               </MetaLine>
             )}
           </span>
@@ -660,8 +787,14 @@ export default function AdminPartnerLocationsPage() {
               label: language === 'bg' ? 'Промени статус' : 'Change Status',
               onClick: (row: AdminVenue) => {
                 setStatusTarget(row);
-                setStatusValue((row.venueStatus as VenueStatus) ?? 'ACTIVE');
-                setStatusNote(row.venueStatusNote ?? '');
+                const currentVs = (row.venueStatus as VenueStatus) ?? 'ACTIVE';
+                setStatusValue(currentVs);
+                // Only carry the note forward when it's still relevant (i.e. the
+                // venue is currently non-ACTIVE). For ACTIVE venues, any stored
+                // note is stale context from a prior REPLACED/SUSPENDED period
+                // and shouldn't pre-fill the textarea — otherwise saving without
+                // editing re-stamps the stale note into the next history row.
+                setStatusNote(currentVs !== 'ACTIVE' ? (row.venueStatusNote ?? '') : '');
               },
             }] : []),
             {
@@ -721,7 +854,14 @@ export default function AdminPartnerLocationsPage() {
             <ModalLabel>{language === 'bg' ? 'Нов статус' : 'New status'}</ModalLabel>
             <Select
               value={statusValue}
-              onChange={(e) => setStatusValue(e.target.value as VenueStatus)}
+              onChange={(e) => {
+                const next = e.target.value as VenueStatus;
+                setStatusValue(next);
+                // Flipping to ACTIVE clears any pre-filled note so the venue
+                // doesn't carry a stale REPLACED/SUSPENDED-era explanation
+                // forward. Admin can re-type if they want a reactivation note.
+                if (next === 'ACTIVE') setStatusNote('');
+              }}
               style={{ width: '100%', marginBottom: '0.75rem' }}
             >
               {venueStatusOptions.filter((o) => o.value !== '').map((o) => (
@@ -820,15 +960,24 @@ export default function AdminPartnerLocationsPage() {
                     <DrawerValue>{fmt(drawerVenue.venueStatusAt)}</DrawerValue>
                   </DrawerRow>
                 )}
-                {drawerVenue.venueStatusNote ? (
-                  <div style={{ marginTop: '0.5rem', padding: '0.625rem 0.75rem', background: palette.bg, border: `1px solid ${palette.border}`, borderRadius: '0.5rem', fontSize: '0.8125rem', color: palette.textMuted }}>
-                    {drawerVenue.venueStatusNote}
-                  </div>
-                ) : (
-                  <div style={{ fontSize: '0.8125rem', color: palette.textSubtle, fontStyle: 'italic', marginTop: '0.25rem' }}>
-                    {language === 'bg' ? 'Няма бележка за статуса.' : 'No status note.'}
-                  </div>
-                )}
+                {/* Current-status note only makes sense while the venue is in
+                    a non-ACTIVE state. For ACTIVE venues the timeline below is
+                    the canonical history; surfacing a stale note here would
+                    just duplicate the prior REPLACED/SUSPENDED entry. */}
+                {(() => {
+                  const drawerVs = (drawerVenue.venueStatus as VenueStatus) ?? 'ACTIVE';
+                  if (drawerVs === 'ACTIVE') return null;
+                  return drawerVenue.venueStatusNote ? (
+                    <div style={{ marginTop: '0.5rem', padding: '0.625rem 0.75rem', background: palette.bg, border: `1px solid ${palette.border}`, borderRadius: '0.5rem', fontSize: '0.8125rem', color: palette.textMuted }}>
+                      {drawerVenue.venueStatusNote}
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: '0.8125rem', color: palette.textSubtle, fontStyle: 'italic', marginTop: '0.25rem' }}>
+                      {language === 'bg' ? 'Няма бележка за статуса.' : 'No status note.'}
+                    </div>
+                  );
+                })()}
+                <StatusHistoryTimeline venueId={drawerVenue.id} language={language} />
               </DrawerSection>
 
               <DrawerDivider />
@@ -869,8 +1018,11 @@ export default function AdminPartnerLocationsPage() {
                     $variant="primary"
                     onClick={() => {
                       setStatusTarget(drawerVenue);
-                      setStatusValue((drawerVenue.venueStatus as VenueStatus) ?? 'ACTIVE');
-                      setStatusNote(drawerVenue.venueStatusNote ?? '');
+                      const currentVs = (drawerVenue.venueStatus as VenueStatus) ?? 'ACTIVE';
+                      setStatusValue(currentVs);
+                      // See Change-Status row action: don't carry a stale ACTIVE-era
+                      // note into the modal; saving unchanged would re-persist it.
+                      setStatusNote(currentVs !== 'ACTIVE' ? (drawerVenue.venueStatusNote ?? '') : '');
                       setDrawerVenue(null);
                     }}
                   >

@@ -208,6 +208,27 @@ const WALLET_TYPE_LABELS: Record<string, string> = {
   TOP_UP: 'Зареждане',
 };
 
+/* ─── Payout status labels (spec §6.4 "плащания" dimension) ─────────────────── */
+const PAYOUT_STATUS_LABELS: Record<string, string> = {
+  PENDING: 'Чака',
+  PROCESSING: 'Обработва се',
+  COMPLETED: 'Платено',
+  FAILED: 'Неуспешно',
+  RISK_HOLD: 'Задържано (риск)',
+  CANCELLED: 'Отменено',
+  ANNULLED: 'Анулирано',
+  TRIAL_PENDING: 'Изчакване (пробен)',
+};
+
+// Render order for the payout breakdown table.  Canonical workflow first, then legacy
+// statuses appended only when they actually have data (handled below).  Avoids relying
+// on Object.entries iteration order, which is implementation-defined for any non-canonical
+// status the backend might emit.
+const PAYOUT_STATUS_ORDER = [
+  'PENDING', 'PROCESSING', 'COMPLETED', 'FAILED', 'RISK_HOLD',
+  'CANCELLED', 'ANNULLED', 'TRIAL_PENDING',
+] as const;
+
 export default function AdminFinanceReportsPage() {
   // Month pickers: value is YYYY-MM (spec §6.4 "Период" filter)
   const [fromMonth, setFromMonth] = useState(defaultMonth);
@@ -219,9 +240,11 @@ export default function AdminFinanceReportsPage() {
   const [partnerInput, setPartnerInput] = useState('');
   const [invoiceStatus, setInvoiceStatus] = useState('');
   const [plan, setPlan] = useState('');
+  const [payoutStatus, setPayoutStatus] = useState('');
   const [queryPartnerId, setQueryPartnerId] = useState('');
   const [queryInvoiceStatus, setQueryInvoiceStatus] = useState('');
   const [queryPlan, setQueryPlan] = useState('');
+  const [queryPayoutStatus, setQueryPayoutStatus] = useState('');
   const [exporting, setExporting] = useState(false);
   const [exportFormat, setExportFormat] = useState<'xlsx' | 'csv'>('xlsx');
   const runCount = useRef(0);
@@ -252,13 +275,14 @@ export default function AdminFinanceReportsPage() {
   // runKey forces a refetch even when all params are unchanged (Run button clicked
   // while dates/filters haven't changed — the previous behaviour silently no-oped)
   const { data, isLoading, error } = useQuery({
-    queryKey: ['admin-finance-reports', queryFrom, queryTo, queryPartnerId, queryInvoiceStatus, queryPlan, runCount.current],
+    queryKey: ['admin-finance-reports', queryFrom, queryTo, queryPartnerId, queryInvoiceStatus, queryPlan, queryPayoutStatus, runCount.current],
     queryFn: () => adminFinanceService.getReports({
       from: queryFrom,
       to: queryTo,
       partnerId: queryPartnerId || undefined,
       invoiceStatus: queryInvoiceStatus || undefined,
       plan: queryPlan || undefined,
+      payoutStatus: queryPayoutStatus || undefined,
     }),
   });
 
@@ -281,6 +305,7 @@ export default function AdminFinanceReportsPage() {
     setQueryPartnerId(partnerId);
     setQueryInvoiceStatus(invoiceStatus);
     setQueryPlan(plan);
+    setQueryPayoutStatus(payoutStatus);
   };
 
   const handleExport = async () => {
@@ -293,6 +318,7 @@ export default function AdminFinanceReportsPage() {
         partnerId: queryPartnerId || undefined,
         invoiceStatus: queryInvoiceStatus || undefined,
         plan: queryPlan || undefined,
+        payoutStatus: queryPayoutStatus || undefined,
       });
     } catch {
       toast.error('Грешка при експорт на отчет');
@@ -428,6 +454,14 @@ export default function AdminFinanceReportsPage() {
           <option value="PENDING">Чакащи</option>
           <option value="PAID">Платени</option>
           <option value="OVERDUE">Просрочени</option>
+        </FilterSelect>
+        <FilterSelect value={payoutStatus} onChange={(e) => setPayoutStatus(e.target.value)}>
+          <option value="">Статус на плащане (всички)</option>
+          <option value="PENDING">Чака</option>
+          <option value="PROCESSING">Обработва се</option>
+          <option value="COMPLETED">Платено</option>
+          <option value="FAILED">Неуспешно</option>
+          <option value="RISK_HOLD">Задържано (риск)</option>
         </FilterSelect>
         <RunBtn disabled={isLoading} onClick={handleRun}>
           {isLoading ? 'Зареждане…' : 'Приложи филтри'}
@@ -696,6 +730,73 @@ export default function AdminFinanceReportsPage() {
               </tbody>
             </Table>
           </Card>
+
+          {/* Payout-by-status breakdown — spec §6.4 "плащания" dimension */}
+          {report.payoutBreakdown && (() => {
+            const isFiltered = report.payoutBreakdown.filtered && !!queryPayoutStatus;
+            const byStatus = report.payoutBreakdown.byStatus;
+            // Canonical-order rows first, then any non-canonical statuses (CANCELLED/ANNULLED/TRIAL_PENDING)
+            // that returned non-zero data.  When filtered to a single status, skip placeholder rows
+            // so the table doesn't display 5 misleading zero rows alongside the one filtered value.
+            const orderedStatuses: string[] = [
+              ...PAYOUT_STATUS_ORDER.filter((s) =>
+                isFiltered ? s === queryPayoutStatus : s in byStatus
+              ),
+              ...Object.keys(byStatus).filter(
+                (s) => !PAYOUT_STATUS_ORDER.includes(s as typeof PAYOUT_STATUS_ORDER[number])
+                       && (byStatus[s]?.count ?? 0) > 0
+              ),
+            ];
+            return (
+              <Card>
+                <SectionTitle>
+                  Плащания към абонати по статус
+                  {isFiltered && (
+                    <span style={{ fontWeight: 400, fontSize: '0.8rem', color: palette.textSubtle, marginLeft: '0.5rem', fontStyle: 'italic' }}>
+                      (филтрирано: {PAYOUT_STATUS_LABELS[queryPayoutStatus] ?? queryPayoutStatus})
+                    </span>
+                  )}
+                  {queryPlan && (
+                    <span style={{ fontWeight: 400, fontSize: '0.8rem', color: palette.textSubtle, marginLeft: '0.5rem', fontStyle: 'italic' }}>
+                      (филтрирано по план: {PLAN_LABELS[queryPlan] ?? queryPlan})
+                    </span>
+                  )}
+                </SectionTitle>
+                <Table>
+                  <thead>
+                    <tr>
+                      <Th>Статус</Th>
+                      <ThRight>Общо</ThRight>
+                      <ThRight>Брой</ThRight>
+                      <ThRight>Средно</ThRight>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {orderedStatuses.map((status) => {
+                      const stats = byStatus[status] ?? { total: 0, count: 0 };
+                      const abs = Math.abs(stats.total);
+                      return (
+                        <tr key={status}>
+                          <Td><TypeBadge>{PAYOUT_STATUS_LABELS[status] ?? status}</TypeBadge></Td>
+                          <TdRight style={{ fontWeight: 600, color: palette.text }}>{fmt(abs)}</TdRight>
+                          <TdRight>{stats.count.toLocaleString()}</TdRight>
+                          <TdRight>{stats.count > 0 ? fmt(abs / stats.count) : '—'}</TdRight>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                  <tfoot>
+                    <tr style={{ borderTop: `2px solid ${palette.border}` }}>
+                      <td style={{ padding: '0.625rem 0.75rem', fontWeight: 700, fontSize: '0.8125rem', color: palette.textSubtle, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Общо</td>
+                      <TdRight style={{ fontWeight: 700, color: palette.text }}>{fmt(Math.abs(report.payoutBreakdown.total))}</TdRight>
+                      <TdRight style={{ fontWeight: 700, color: palette.text }}>{report.payoutBreakdown.count.toLocaleString()}</TdRight>
+                      <td style={{ padding: '0.625rem 0.75rem' }} />
+                    </tr>
+                  </tfoot>
+                </Table>
+              </Card>
+            );
+          })()}
         </>
       )}
 

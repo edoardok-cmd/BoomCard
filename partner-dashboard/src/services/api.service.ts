@@ -81,6 +81,20 @@ class ApiService {
 
             if (!refreshToken) {
               this.isRefreshing = false;
+              // Drain any concurrent 401s that piled into failedQueue while we
+              // were checking for the refresh cookie — otherwise their callers
+              // hang forever (the queue is only flushed on the success/catch
+              // paths below, and we're returning early here).
+              this.processQueue(error, null);
+              // No refresh cookie. If the user has an access token (typical:
+              // session expired and refresh cookie also gone), the session is
+              // unrecoverable — logout so they see /login instead of a stuck
+              // error toast. If there's no access token either, the call was
+              // anonymous and a 401 just means the endpoint requires auth;
+              // don't trigger a redirect for that.
+              if (getAccessToken()) {
+                this.logout();
+              }
               return Promise.reject(error);
             }
 

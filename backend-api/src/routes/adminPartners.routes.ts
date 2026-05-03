@@ -107,6 +107,98 @@ router.get(
   })
 );
 
+// ─── Assignable admins (spec §5.1 — assign to any super admin / admin) ───────
+// Lightweight list of admin profiles for the request-assignment dropdown.
+// Gated by partners.requests.write because assignment is a write op; this
+// avoids requiring the broader admins.read permission.
+
+router.get(
+  '/_assignable-admins',
+  requirePermission('partners.requests.write'),
+  asyncHandler(async (_req, res) => {
+    const admins = await prisma.user.findMany({
+      where: { role: { in: ['ADMIN', 'SUPER_ADMIN'] }, status: 'ACTIVE' },
+      select: { id: true, firstName: true, lastName: true, email: true, role: true },
+      orderBy: [{ firstName: 'asc' }, { email: 'asc' }],
+    });
+    res.json({ admins });
+  })
+);
+
+// ─── Onboarding readiness (spec §5.2 — locations / receipts / QR settings) ──
+// For a partner in onboarding, returns counts of the three artifacts the
+// spec requires the team to collect before activation: venues (locations),
+// receipt templates (касови бележки), and sticker config (QR settings).
+
+router.get(
+  '/:id/onboarding-readiness',
+  requirePermission('partners.requests.read'),
+  asyncHandler(async (req, res) => {
+    const partner = await prisma.partner.findUnique({
+      where: { id: req.params.id },
+      select: { id: true },
+    });
+    if (!partner) return res.status(404).json({ error: 'Partner not found' });
+
+    const venues = await prisma.venue.findMany({
+      where: { partnerId: partner.id },
+      select: {
+        id: true,
+        name: true,
+        stickerConfig: { select: { id: true, isActive: true } },
+        _count: { select: { stickers: true } },
+      },
+    });
+
+    const venueIds = venues.map((v) => v.id);
+
+    // Spec §5.2 — onboarding requires receipt templates AND QR settings to be
+    // collected. Both checks must be per-venue, not global: a 5-venue partner
+    // shouldn't pass with one template (or one sticker config) covering one
+    // venue. Group active templates by venueId so we count distinct venues
+    // covered, not raw template rows.
+    const venueIdsWithReceipts = venueIds.length
+      ? await prisma.venueReceiptTemplate.groupBy({
+          by: ['venueId'],
+          where: { venueId: { in: venueIds }, isActive: true },
+        })
+      : [];
+    const venuesWithReceipts = venueIdsWithReceipts.length;
+
+    // Total active template rows — kept around as an informational count for
+    // the UI (a partner may have multiple templates per venue covering
+    // different receipt formats); readiness is gated on per-venue coverage.
+    const receiptTemplateCount = venueIds.length
+      ? await prisma.venueReceiptTemplate.count({
+          where: { venueId: { in: venueIds }, isActive: true },
+        })
+      : 0;
+
+    const venueCount = venues.length;
+    // Sticker config counts only ACTIVE configs — an inactive config means the
+    // QR isn't actually live, so it must not count as ready (spec §5.4 — QR
+    // настройки collected and operational).
+    const venuesWithActiveStickerConfig = venues.filter(
+      (v) => v.stickerConfig && v.stickerConfig.isActive
+    ).length;
+    const venuesWithStickers = venues.filter((v) => v._count.stickers > 0).length;
+
+    res.json({
+      venueCount,
+      // Distinct venue coverage — what the readiness gate evaluates
+      venuesWithReceipts,
+      // Raw template-row count — informational, may exceed venueCount
+      receiptTemplateCount,
+      stickerConfigCount: venuesWithActiveStickerConfig,
+      venuesWithStickers,
+      ready:
+        venueCount > 0 &&
+        venuesWithReceipts >= venueCount &&
+        venuesWithActiveStickerConfig >= venueCount,
+    });
+  })
+);
+
 // ─── Single request detail ────────────────────────────────────────────────────
 
 router.get(
@@ -126,7 +218,20 @@ router.get(
       },
     });
     if (!partner) return res.status(404).json({ error: 'Partner not found' });
-    res.json({ partner });
+
+    // Hydrate assignedAdmin the same way the list endpoint does so the request
+    // drawer can render the "Отговорник" without a second roundtrip. There's no
+    // Prisma relation on assignedAdminId — that's intentional (kept simple) so
+    // we resolve via a follow-up findUnique.
+    let assignedAdmin = null;
+    if (partner.assignedAdminId) {
+      assignedAdmin = await prisma.user.findUnique({
+        where: { id: partner.assignedAdminId },
+        select: { id: true, firstName: true, lastName: true, email: true },
+      });
+    }
+
+    res.json({ partner: { ...partner, assignedAdmin } });
   })
 );
 

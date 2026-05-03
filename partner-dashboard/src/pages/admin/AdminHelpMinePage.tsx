@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import styled from 'styled-components';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-hot-toast';
@@ -128,7 +128,25 @@ export default function AdminHelpMinePage() {
     debounceRef.current = setTimeout(() => { setSearch(searchInput); setPage(1); }, 400);
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, [searchInput]);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  // ?ticket=ID is the single source of truth for the open drawer — list clicks, email deep-links,
+  // and browser back/forward all flow through this URL param. No duplicated React state.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const selectedId = searchParams.get('ticket');
+
+  // Push a history entry only when opening the drawer from a closed state, so back leaves the page.
+  // Switching between rows or closing the drawer replaces — the drawer is transient UI, not navigation.
+  const openTicket = (id: string) => {
+    const next = new URLSearchParams(searchParams);
+    next.set('ticket', id);
+    setSearchParams(next, { replace: searchParams.has('ticket') });
+  };
+
+  const closeDrawer = () => {
+    if (!searchParams.has('ticket')) return;
+    const next = new URLSearchParams(searchParams);
+    next.delete('ticket');
+    setSearchParams(next, { replace: true });
+  };
 
   const { data, isLoading } = useQuery({
     queryKey: ['admin-help-mine', page, search, statusFilter],
@@ -239,7 +257,7 @@ export default function AdminHelpMinePage() {
           columns={columns}
           data={data?.tickets ?? []}
           rowKey={(row) => row.id}
-          onRowClick={(row) => setSelectedId(row.id)}
+          onRowClick={(row) => openTicket(row.id)}
           loading={isLoading}
           emptyMessage={
             !search && !statusFilter
@@ -251,7 +269,7 @@ export default function AdminHelpMinePage() {
           totalItems={data?.total ?? 0}
           onPageChange={setPage}
           rowActions={[
-            { label: 'Преглед', onClick: (row) => setSelectedId(row.id) },
+            { label: 'Преглед', onClick: (row) => openTicket(row.id) },
             {
               label: 'Маркирай като решена',
               hidden: (row) => row.status === 'RESOLVED' || row.status === 'CLOSED',
@@ -261,7 +279,7 @@ export default function AdminHelpMinePage() {
         />
       </Card>
     </PageShell>
-    <TicketDrawer ticketId={selectedId} onClose={() => setSelectedId(null)} />
+    <TicketDrawer ticketId={selectedId} onClose={closeDrawer} />
     </>
   );
 }

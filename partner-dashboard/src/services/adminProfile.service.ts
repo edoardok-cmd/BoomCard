@@ -54,13 +54,6 @@ export const adminProfileService = {
     );
   },
 
-  changeEmail(email: string, currentPassword: string) {
-    return apiService.patch<{ id: string; email: string }>(
-      '/admin/me',
-      { email, currentPassword }
-    );
-  },
-
   changePassword(currentPassword: string, newPassword: string) {
     return apiService.post<{ ok: true }>('/admin/me/password', { currentPassword, newPassword });
   },
@@ -89,7 +82,19 @@ export const adminProfileService = {
     return apiService.delete<{ ok: true; revokedCount: number }>('/admin/me/sessions');
   },
 
-  loginHistory(): Promise<{ history: AdminLoginEvent[] }> {
-    return apiService.get<{ history: AdminLoginEvent[] }>('/admin/me/login-history');
+  loginHistory(params?: { skip?: number; take?: number }): Promise<{ history: AdminLoginEvent[] }> {
+    const qs = new URLSearchParams();
+    if (params?.skip !== undefined) qs.set('skip', String(params.skip));
+    if (params?.take !== undefined) qs.set('take', String(params.take));
+    const query = qs.toString();
+    return apiService.get<{ history: AdminLoginEvent[] }>(`/admin/me/login-history${query ? `?${query}` : ''}`);
+  },
+
+  requestEmailChange(newEmail: string): Promise<{ sent: boolean }> {
+    return apiService.post<{ sent: boolean }>('/admin/me/email-change/request', { newEmail });
+  },
+
+  confirmEmailChange(code: string, currentPassword: string): Promise<{ id: string; email: string }> {
+    return apiService.post<{ id: string; email: string }>('/admin/me/email-change/confirm', { code, currentPassword });
   },
 };

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import styled from 'styled-components';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -8,6 +8,7 @@ import {
   MobileAppSettings,
   MobileErrorLogEntry,
 } from '../../services/adminSettings.service';
+import { describeApiError } from '../../utils/systemSettingsAudit';
 
 const palette = {
   bg: '#faf9f5', surface: '#ffffff', border: '#e8e5dc',
@@ -33,7 +34,6 @@ const Grid = styled.div`
   @media (max-width: 900px) { grid-template-columns: 1fr; }
 `;
 const Card = styled.div`background: ${palette.surface}; border: 1px solid ${palette.border}; border-radius: 0.75rem; padding: 1.5rem;`;
-const WideCard = styled(Card)`grid-column: 1 / -1;`;
 const CardTitle = styled.h2`font-size: 1rem; font-weight: 700; color: ${palette.text}; margin: 0 0 0.25rem;`;
 const CardSubtitle = styled.p`font-size: 0.8125rem; color: ${palette.textMuted}; margin: 0 0 1.25rem;`;
 const FieldGroup = styled.div`display: flex; flex-direction: column; gap: 1.25rem; margin-bottom: 1.5rem;`;
@@ -211,6 +211,49 @@ const PlatformChip = styled.span<{ $p: string }>`
 `;
 const EmptyState = styled.p`color: ${palette.textSubtle}; font-size: 0.875rem; text-align: center; padding: 2rem 0; margin: 0;`;
 
+const ErrorPanel = styled.div`
+  background: ${palette.dangerSoft};
+  border: 1px solid ${palette.danger};
+  color: ${palette.danger};
+  border-radius: 0.75rem;
+  padding: 1.25rem 1.5rem;
+  font-size: 0.875rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  max-width: 60rem;
+`;
+const ErrorPanelText = styled.div`flex: 1;`;
+const ErrorPanelTitle = styled.p`font-weight: 700; margin: 0 0 0.25rem;`;
+const ErrorPanelDetail = styled.p`margin: 0; font-size: 0.8125rem; opacity: 0.85;`;
+const RetryBtn = styled.button`
+  padding: 0.5rem 1rem;
+  background: ${palette.danger};
+  color: #fff;
+  border: none;
+  border-radius: 0.5rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+  flex-shrink: 0;
+  &:hover { opacity: 0.9; }
+  &:disabled { opacity: 0.5; cursor: default; }
+`;
+const InlineErrorRow = styled.div`
+  background: ${palette.dangerSoft};
+  border: 1px solid ${palette.danger};
+  color: ${palette.danger};
+  border-radius: 0.5rem;
+  padding: 0.625rem 0.875rem;
+  font-size: 0.8125rem;
+  margin-bottom: 0.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+`;
+
 // Modal for stack trace
 const ModalOverlay = styled.div`
   position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 1000;
@@ -351,19 +394,38 @@ export default function AdminSettingsMobilePage() {
   const queryClient = useQueryClient();
   const [state, setState] = useState<MobileState>(DEFAULT_STATE);
 
-  const { data, isLoading } = useQuery({
+  const {
+    data,
+    isLoading,
+    isError: settingsIsError,
+    error: settingsError,
+    refetch: refetchSettings,
+    isRefetching: settingsIsRefetching,
+  } = useQuery({
     queryKey: ['admin-mobile-app-settings'],
     queryFn: () => adminSettingsService.getMobileAppSettings(),
   });
 
-  const { data: errorsData, isLoading: errorsLoading } = useQuery({
+  const {
+    data: errorsData,
+    isLoading: errorsLoading,
+    isError: errorsIsError,
+    error: errorsError,
+    refetch: refetchErrors,
+    isRefetching: errorsIsRefetching,
+  } = useQuery({
     queryKey: ['admin-mobile-error-logs'],
     queryFn: () => adminSettingsService.getMobileErrorLogs(),
     refetchInterval: 60_000,
   });
 
+  // Seed local form state from the server on first successful load only.
+  // Subsequent refetches (post-save invalidate, retry-after-error) MUST NOT
+  // clobber the user's in-flight edits.
+  const didInitRef = useRef(false);
   useEffect(() => {
-    if (!data?.data) return;
+    if (!data?.data || didInitRef.current) return;
+    didInitRef.current = true;
     setState(settingsToState(data.data));
   }, [data]);
 
@@ -377,10 +439,7 @@ export default function AdminSettingsMobilePage() {
       queryClient.invalidateQueries({ queryKey: ['admin-mobile-app-settings'] });
     },
     onError: (err: unknown) => {
-      const msg =
-        (err as { response?: { data?: { error?: string } } })?.response?.data?.error
-        ?? 'Грешка при запазване';
-      toast.error(msg);
+      toast.error(describeApiError(err).message);
     },
   });
 
@@ -390,7 +449,7 @@ export default function AdminSettingsMobilePage() {
       toast.success(res.message);
       queryClient.invalidateQueries({ queryKey: ['admin-mobile-error-logs'] });
     },
-    onError: () => toast.error('Грешка при изчистване на лога'),
+    onError: (err: unknown) => toast.error(describeApiError(err).message),
   });
 
   const anyMaintenance =
@@ -412,8 +471,32 @@ export default function AdminSettingsMobilePage() {
         Една или повече платформи са в режим на поддръжка или са остарели — потребителите им виждат екран за поддръжка.
       </WarningBox>
 
+      {/* Settings section: configuration cards (top-level Save). Hidden when
+          settings query errored — replaced with a single ErrorPanel + retry.
+          The error-log section below renders independently of this state. */}
       {isLoading ? (
         <p style={{ color: palette.textSubtle, fontSize: '0.875rem' }}>Зареждане…</p>
+      ) : settingsIsError ? (
+        (() => {
+          const info = describeApiError(settingsError);
+          return (
+            <ErrorPanel role="alert">
+              <ErrorPanelText>
+                <ErrorPanelTitle>
+                  Не можахме да заредим настройките
+                  {info.status ? ` (${info.status})` : ''}
+                </ErrorPanelTitle>
+                <ErrorPanelDetail>{info.message}</ErrorPanelDetail>
+              </ErrorPanelText>
+              <RetryBtn
+                onClick={() => refetchSettings()}
+                disabled={settingsIsRefetching}
+              >
+                {settingsIsRefetching ? 'Опит…' : 'Опитай отново'}
+              </RetryBtn>
+            </ErrorPanel>
+          );
+        })()
       ) : (
         <Grid>
           {/* ── Версии и статус ── */}
@@ -573,71 +656,101 @@ export default function AdminSettingsMobilePage() {
               </div>
             </FieldGroup>
           </Card>
-
-          {/* ── Основни грешки — реален лог ── */}
-          <WideCard>
-            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
-              <div>
-                <CardTitle style={{ marginBottom: '0.25rem' }}>Последни грешки от приложението</CardTitle>
-                <CardSubtitle style={{ marginBottom: 0 }}>
-                  Последните 50 грешки, докладвани директно от мобилното приложение. Обновява се автоматично на всяка минута.
-                </CardSubtitle>
-              </div>
-              {errors.length > 0 && (
-                <DangerBtn
-                  onClick={() => {
-                    if (confirm('Изчисти всички регистрирани грешки? Действието е необратимо.')) {
-                      clearErrorsMutation.mutate();
-                    }
-                  }}
-                  disabled={clearErrorsMutation.isPending}
-                  style={{ flexShrink: 0, marginLeft: '1rem' }}
-                >
-                  {clearErrorsMutation.isPending ? 'Изчистване…' : 'Изчисти всички'}
-                </DangerBtn>
-              )}
-            </div>
-            {errorsLoading ? (
-              <p style={{ color: palette.textSubtle, fontSize: '0.875rem' }}>Зареждане…</p>
-            ) : errors.length === 0 ? (
-              <EmptyState>Няма регистрирани грешки.</EmptyState>
-            ) : (
-              <div style={{ overflowX: 'auto' }}>
-                <ErrorTable>
-                  <thead>
-                    <tr>
-                      <ETh>Платформа</ETh>
-                      <ETh>Версия</ETh>
-                      <ETh>Тип</ETh>
-                      <ETh>Съобщение</ETh>
-                      <ETh>Дата/час</ETh>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {errors.map((e) => <ErrorRow key={e.id} e={e} />)}
-                  </tbody>
-                </ErrorTable>
-              </div>
-            )}
-          </WideCard>
         </Grid>
       )}
 
-      <div style={{ marginTop: '1.5rem', maxWidth: '60rem' }}>
-        <SaveBtn
-          onClick={() => {
-            if (state.errorLogUrl) {
-              try { new URL(state.errorLogUrl); } catch {
-                toast.error('Невалиден URL за лог на грешки');
-                return;
+      {/* Save button sits directly under the settings Grid so users don't
+          have to scroll past the error log to find the action that persists
+          the inputs above. Hidden when the settings query errored — the
+          retry button in the ErrorPanel above handles recovery. */}
+      {!settingsIsError && (
+        <div style={{ marginTop: '1.5rem', maxWidth: '60rem' }}>
+          <SaveBtn
+            onClick={() => {
+              if (state.errorLogUrl) {
+                try { new URL(state.errorLogUrl); } catch {
+                  toast.error('Невалиден URL за лог на грешки');
+                  return;
+                }
               }
-            }
-            saveMutation.mutate();
-          }}
-          disabled={saveMutation.isPending || isLoading}
-        >
-          {saveMutation.isPending ? 'Запазване…' : 'Запази всички'}
-        </SaveBtn>
+              saveMutation.mutate();
+            }}
+            disabled={saveMutation.isPending || isLoading}
+          >
+            {saveMutation.isPending ? 'Запазване…' : 'Запази всички'}
+          </SaveBtn>
+        </div>
+      )}
+
+      {/* Real-time error log: independent query, always rendered so a 429 on
+          the settings query doesn't hide ops' view of incoming app errors.
+          Sits below the Save button to keep the configuration → action
+          relationship adjacent. */}
+      <div style={{ marginTop: '1.5rem', maxWidth: '60rem' }}>
+        <Card>
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
+            <div>
+              <CardTitle style={{ marginBottom: '0.25rem' }}>Последни грешки от приложението</CardTitle>
+              <CardSubtitle style={{ marginBottom: 0 }}>
+                Последните 50 грешки, докладвани директно от мобилното приложение. Обновява се автоматично на всяка минута.
+              </CardSubtitle>
+            </div>
+            {errors.length > 0 && (
+              <DangerBtn
+                onClick={() => {
+                  if (confirm('Изчисти всички регистрирани грешки? Действието е необратимо.')) {
+                    clearErrorsMutation.mutate();
+                  }
+                }}
+                disabled={clearErrorsMutation.isPending}
+                style={{ flexShrink: 0, marginLeft: '1rem' }}
+              >
+                {clearErrorsMutation.isPending ? 'Изчистване…' : 'Изчисти всички'}
+              </DangerBtn>
+            )}
+          </div>
+          {errorsLoading ? (
+            <p style={{ color: palette.textSubtle, fontSize: '0.875rem' }}>Зареждане…</p>
+          ) : errorsIsError ? (
+            (() => {
+              const info = describeApiError(errorsError);
+              return (
+                <InlineErrorRow role="alert">
+                  <span>
+                    Не можахме да заредим лога на грешки
+                    {info.status ? ` (${info.status})` : ''}: {info.message}
+                  </span>
+                  <RetryBtn
+                    onClick={() => refetchErrors()}
+                    disabled={errorsIsRefetching}
+                    style={{ padding: '0.375rem 0.75rem', fontSize: '0.75rem' }}
+                  >
+                    {errorsIsRefetching ? 'Опит…' : 'Опитай отново'}
+                  </RetryBtn>
+                </InlineErrorRow>
+              );
+            })()
+          ) : errors.length === 0 ? (
+            <EmptyState>Няма регистрирани грешки.</EmptyState>
+          ) : (
+            <div style={{ overflowX: 'auto' }}>
+              <ErrorTable>
+                <thead>
+                  <tr>
+                    <ETh>Платформа</ETh>
+                    <ETh>Версия</ETh>
+                    <ETh>Тип</ETh>
+                    <ETh>Съобщение</ETh>
+                    <ETh>Дата/час</ETh>
+                  </tr>
+                </thead>
+                <tbody>
+                  {errors.map((e) => <ErrorRow key={e.id} e={e} />)}
+                </tbody>
+              </ErrorTable>
+            </div>
+          )}
+        </Card>
       </div>
     </PageShell>
   );

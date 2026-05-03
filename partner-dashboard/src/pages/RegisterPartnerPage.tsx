@@ -318,6 +318,8 @@ interface FormErrors {
   confirmPassword?: string;
   businessName?: string;
   businessCategory?: string;
+  city?: string;
+  address?: string;
   acceptTerms?: string;
   confirmBusiness?: string;
 }
@@ -347,6 +349,8 @@ const RegisterPartnerPage: React.FC = () => {
     businessCategory: '',
     taxId: '',
     website: '',
+    city: '',
+    address: '',
     acceptTerms: false,
     confirmBusiness: false,
   });
@@ -404,6 +408,14 @@ const RegisterPartnerPage: React.FC = () => {
         if (!value) return t('partnerRegistration.businessCategoryRequired');
         return undefined;
 
+      case 'city':
+        if (!value) return t('partnerRegistration.cityRequired');
+        return undefined;
+
+      case 'address':
+        if (!value) return t('partnerRegistration.addressRequired');
+        return undefined;
+
       case 'acceptTerms':
         if (!value) return t('partnerRegistration.acceptTermsRequired');
         return undefined;
@@ -454,7 +466,8 @@ const RegisterPartnerPage: React.FC = () => {
     const requiredFields = [
       'firstName', 'lastName', 'email', 'phone',
       'password', 'confirmPassword', 'businessName',
-      'businessCategory', 'acceptTerms', 'confirmBusiness'
+      'businessCategory', 'city', 'address',
+      'acceptTerms', 'confirmBusiness'
     ];
 
     requiredFields.forEach(field => {
@@ -490,6 +503,8 @@ const RegisterPartnerPage: React.FC = () => {
           businessCategory: formData.businessCategory,
           taxId: formData.taxId || undefined,
           website: formData.website || undefined,
+          city: formData.city.trim() || undefined,
+          address: formData.address.trim() || undefined,
         },
       });
 
@@ -753,6 +768,58 @@ const RegisterPartnerPage: React.FC = () => {
                 disabled={isLoading}
               />
             </FormGroup>
+
+            <FormRow>
+              <FormGroup>
+                <Label htmlFor="city">
+                  {t('partnerRegistration.city')} *
+                </Label>
+                <Input
+                  id="city"
+                  type="text"
+                  name="city"
+                  value={formData.city}
+                  onChange={handleChange}
+                  onBlur={() => handleBlur('city')}
+                  placeholder={t('partnerRegistration.cityPlaceholder')}
+                  $hasError={touched.city && !!errors.city}
+                  disabled={isLoading}
+                />
+                {touched.city && errors.city && (
+                  <ErrorMessage
+                    initial={{ opacity: 0, y: -5 }}
+                    animate={{ opacity: 1, y: 0 }}
+                  >
+                    {errors.city}
+                  </ErrorMessage>
+                )}
+              </FormGroup>
+
+              <FormGroup>
+                <Label htmlFor="address">
+                  {t('partnerRegistration.address')} *
+                </Label>
+                <Input
+                  id="address"
+                  type="text"
+                  name="address"
+                  value={formData.address}
+                  onChange={handleChange}
+                  onBlur={() => handleBlur('address')}
+                  placeholder={t('partnerRegistration.addressPlaceholder')}
+                  $hasError={touched.address && !!errors.address}
+                  disabled={isLoading}
+                />
+                {touched.address && errors.address && (
+                  <ErrorMessage
+                    initial={{ opacity: 0, y: -5 }}
+                    animate={{ opacity: 1, y: 0 }}
+                  >
+                    {errors.address}
+                  </ErrorMessage>
+                )}
+              </FormGroup>
+            </FormRow>
           </Section>
 
           {/* Security */}

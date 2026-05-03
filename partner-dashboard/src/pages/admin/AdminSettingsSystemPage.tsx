@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import styled from 'styled-components';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-hot-toast';
-import { adminSettingsService, SystemSettingMeta } from '../../services/adminSettings.service';
+import { adminSettingsService } from '../../services/adminSettings.service';
+import { latestMeta, formatAuditStamp, describeApiError } from '../../utils/systemSettingsAudit';
 
 const palette = {
   bg: '#faf9f5', surface: '#ffffff', border: '#e8e5dc',
@@ -35,17 +36,6 @@ const TextInput = styled.input`
   background: ${palette.bg};
   color: ${palette.text};
   box-sizing: border-box;
-  outline: none;
-  &:focus { border-color: ${palette.accent}; box-shadow: 0 0 0 2px ${palette.accentSoft}; }
-`;
-const NumberInput = styled.input`
-  width: 9rem;
-  padding: 0.5rem 0.75rem;
-  border: 1px solid ${palette.border};
-  border-radius: 0.5rem;
-  font-size: 0.875rem;
-  background: ${palette.bg};
-  color: ${palette.text};
   outline: none;
   &:focus { border-color: ${palette.accent}; box-shadow: 0 0 0 2px ${palette.accentSoft}; }
 `;
@@ -143,15 +133,6 @@ const SelectInput = styled.select`
   &:focus { border-color: ${palette.accent}; box-shadow: 0 0 0 2px ${palette.accentSoft}; }
 `;
 
-const SubLabel = styled.p`
-  font-size: 0.75rem;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: ${palette.textSubtle};
-  margin: 0 0 0.75rem;
-`;
-
 const CardFooter = styled.div`
   display: flex;
   align-items: center;
@@ -167,6 +148,40 @@ const AuditStamp = styled.p`
   font-size: 0.75rem;
   color: ${palette.textSubtle};
   margin: 0;
+`;
+
+// ── Error panel for failed initial GET ──────────────────────────────────────
+// Replaces the entire form Grid when the system-settings query errors. Without
+// this, all three cards rendered with empty inputs and Save buttons enabled —
+// clicking Запази would PUT empty strings and clobber server state.
+
+const ErrorPanel = styled.div`
+  background: ${palette.dangerSoft};
+  border: 1px solid ${palette.danger};
+  color: ${palette.danger};
+  border-radius: 0.75rem;
+  padding: 1.25rem 1.5rem;
+  font-size: 0.875rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+`;
+const ErrorPanelText = styled.div`flex: 1;`;
+const ErrorPanelTitle = styled.p`font-weight: 700; margin: 0 0 0.25rem;`;
+const ErrorPanelDetail = styled.p`margin: 0; font-size: 0.8125rem; opacity: 0.85;`;
+const RetryBtn = styled.button`
+  padding: 0.5rem 1rem;
+  background: ${palette.danger};
+  color: #fff;
+  border: none;
+  border-radius: 0.5rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+  flex-shrink: 0;
+  &:hover { opacity: 0.9; }
+  &:disabled { opacity: 0.5; cursor: default; }
 `;
 
 // ── Confirmation modal for maintenance mode ──────────────────────────────────
@@ -259,30 +274,6 @@ const CURRENCIES = [
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-function latestMeta(
-  keys: string[],
-  meta: Record<string, SystemSettingMeta>,
-): SystemSettingMeta | null {
-  let latest: SystemSettingMeta | null = null;
-  for (const k of keys) {
-    const m = meta[k];
-    if (!m) continue;
-    if (!latest || m.updatedAt > latest.updatedAt) latest = m;
-  }
-  return latest;
-}
-
-function formatAuditStamp(m: SystemSettingMeta | null): string {
-  if (!m) return '';
-  const d = new Date(m.updatedAt);
-  const date = d.toLocaleDateString('bg-BG', { day: '2-digit', month: '2-digit', year: 'numeric' });
-  const time = d.toLocaleTimeString('bg-BG', { hour: '2-digit', minute: '2-digit' });
-  const by = m.updatedByName ? ` от ${m.updatedByName}` : '';
-  return `Последно обновено: ${date} ${time}${by}`;
-}
-
 // ── Shared mutation hook ──────────────────────────────────────────────────────
 
 function useSystemSettingsMutation(successMsg: string) {
@@ -295,10 +286,7 @@ function useSystemSettingsMutation(successMsg: string) {
       queryClient.invalidateQueries({ queryKey: ['admin-system-settings'] });
     },
     onError: (err: unknown) => {
-      const msg =
-        (err as { response?: { data?: { error?: string } } })?.response?.data?.error
-        ?? 'Грешка при запазване';
-      toast.error(msg);
+      toast.error(describeApiError(err).message);
     },
   });
 }
@@ -306,44 +294,40 @@ function useSystemSettingsMutation(successMsg: string) {
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function AdminSettingsSystemPage() {
-  // ── Card 1: Лимити и прагове ─────────────────────────────────────────────
-  const [maxFraud, setMaxFraud] = useState('60');
-  const [corrWarn, setCorrWarn] = useState('30');
-  const [dailyLimit, setDailyLimit] = useState('');
-  const [maxCashback, setMaxCashback] = useState('');
-
-  // ── Card 2: Контакт за поддръжка ─────────────────────────────────────────
+  // ── Card 1: Контакт за поддръжка ─────────────────────────────────────────
   const [supportEmail, setSupportEmail] = useState('');
   const [supportPhone, setSupportPhone] = useState('');
   const [replyToEmail, setReplyToEmail] = useState('');
   const [fromEmail, setFromEmail] = useState('');
   const [senderName, setSenderName] = useState('');
 
-  // ── Card 3: Локализация ──────────────────────────────────────────────────
+  // ── Card 2: Локализация ──────────────────────────────────────────────────
   const [language, setLanguage] = useState('bg');
   const [currency, setCurrency] = useState('BGN');
   const [timezone, setTimezone] = useState('Europe/Sofia');
 
-  // ── Card 4: Режим на поддръжка ───────────────────────────────────────────
+  // ── Card 3: Режим на поддръжка ───────────────────────────────────────────
   const [maintenanceMode, setMaintenanceMode] = useState(false);
   const [maintenanceMessage, setMaintenanceMessage] = useState('');
 
   // Pending toggle value while awaiting confirmation
   const [pendingMaintenance, setPendingMaintenance] = useState<boolean | null>(null);
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error, refetch, isRefetching } = useQuery({
     queryKey: ['admin-system-settings'],
     queryFn: () => adminSettingsService.getSystemSettings(),
   });
 
   const meta = data?.meta ?? {};
 
+  // Seed local form state from the server on first successful load only.
+  // Subsequent refetches (per-card save invalidate) MUST NOT clobber edits in
+  // sibling cards — each card has its own Save button and the user may have
+  // edits queued in another card while one is being saved.
+  const didInitRef = useRef(false);
   useEffect(() => {
-    if (!data?.data) return;
-    if (data.data.max_fraud_score !== undefined)            setMaxFraud(data.data.max_fraud_score);
-    if (data.data.correction_warning_threshold !== undefined) setCorrWarn(data.data.correction_warning_threshold);
-    setDailyLimit(data.data.daily_scan_limit_default ?? '');
-    setMaxCashback(data.data.max_cashback_per_month ?? '');
+    if (!data?.data || didInitRef.current) return;
+    didInitRef.current = true;
     setSupportEmail(data.data.support_email ?? '');
     setSupportPhone(data.data.support_phone ?? '');
     setReplyToEmail(data.data.reply_to_email ?? '');
@@ -358,45 +342,11 @@ export default function AdminSettingsSystemPage() {
 
   // ── Per-card mutations ────────────────────────────────────────────────────
 
-  const limitsMutation       = useSystemSettingsMutation('Лимитите са запазени');
   const contactMutation      = useSystemSettingsMutation('Контактите са запазени');
   const localizationMutation = useSystemSettingsMutation('Локализацията е запазена');
   const maintenanceMutation  = useSystemSettingsMutation('Режимът на поддръжка е обновен');
 
   // ── Per-card save handlers ────────────────────────────────────────────────
-
-  const saveLimits = () => {
-    const fraud = parseInt(maxFraud, 10);
-    if (!Number.isFinite(fraud) || !Number.isInteger(fraud) || fraud < 0 || fraud > 100) {
-      toast.error('Макс. оценка за измама трябва да е цяло число между 0 и 100');
-      return;
-    }
-    const warn = parseInt(corrWarn, 10);
-    if (!Number.isFinite(warn) || !Number.isInteger(warn) || warn < 0 || warn > 100) {
-      toast.error('Прагът за предупреждение трябва да е цяло число между 0 и 100');
-      return;
-    }
-    if (dailyLimit) {
-      const dl = parseInt(dailyLimit, 10);
-      if (!Number.isFinite(dl) || dl < 1) {
-        toast.error('Дневният лимит за сканиране трябва да е цяло число ≥ 1');
-        return;
-      }
-    }
-    if (maxCashback) {
-      const mc = parseFloat(maxCashback);
-      if (!Number.isFinite(mc) || mc < 1) {
-        toast.error('Макс. кешбек за 30 дни трябва да е число ≥ 1. За без таван оставете полето празно.');
-        return;
-      }
-    }
-    limitsMutation.mutate({
-      max_fraud_score: maxFraud,
-      correction_warning_threshold: corrWarn,
-      daily_scan_limit_default: dailyLimit,
-      max_cashback_per_month: maxCashback,
-    });
-  };
 
   const saveContact = () => {
     if (supportEmail && !EMAIL_RE.test(supportEmail)) {
@@ -498,7 +448,13 @@ export default function AdminSettingsSystemPage() {
         <Eyebrow>Настройки</Eyebrow>
         <PageTitle>Системни настройки</PageTitle>
         <PageSubtitle>
-          Глобални прагове за измами, лимити за сканиране, контакти за поддръжка, локализация и режим на поддръжка.
+          Системни имейли, локализация и режим на поддръжка.{' '}
+          <Link
+            to="/admin/control/rules"
+            style={{ color: palette.textMuted, fontSize: '.8125rem', textDecoration: 'underline' }}
+          >
+            Глобални прагове и лимити →
+          </Link>
         </PageSubtitle>
       </PageHeader>
 
@@ -506,75 +462,25 @@ export default function AdminSettingsSystemPage() {
         Системата е в режим на поддръжка — потребителите виждат съобщение за поддръжка и не могат да използват приложението.
       </MaintenanceBanner>
 
+      {isError ? (() => {
+        const info = describeApiError(error);
+        return (
+          <ErrorPanel role="alert">
+            <ErrorPanelText>
+              <ErrorPanelTitle>
+                Не можахме да заредим системните настройки
+                {info.status ? ` (${info.status})` : ''}
+              </ErrorPanelTitle>
+              <ErrorPanelDetail>{info.message}</ErrorPanelDetail>
+            </ErrorPanelText>
+            <RetryBtn onClick={() => refetch()} disabled={isRefetching}>
+              {isRefetching ? 'Опит…' : 'Опитай отново'}
+            </RetryBtn>
+          </ErrorPanel>
+        );
+      })() : (
       <Grid>
-        {/* ── Card 1: Лимити и прагове ──────────────────────────────────── */}
-        <Card>
-          <CardTitle>Лимити и прагове</CardTitle>
-          <p style={{ fontSize: '0.8rem', color: palette.textSubtle, margin: '0 0 1.25rem', lineHeight: 1.5 }}>
-            Глобални стойности по подразбиране. За правила на ниво партньор или потребител вижте{' '}
-            <strong>Контрол → Лимити и правила</strong>. За изплащания вижте{' '}
-            <Link to="/admin/settings/thresholds" style={{ color: palette.accent }}>Настройки → Прагове</Link>.{' '}
-            За валидност на кешбек и оферти вижте{' '}
-            <Link to="/admin/settings/validity" style={{ color: palette.accent }}>Настройки → Валидност</Link>.
-          </p>
-          {isLoading ? (
-            <p style={{ color: palette.textSubtle, fontSize: '0.875rem' }}>Зареждане…</p>
-          ) : (
-            <FieldGroup>
-              <SubLabel>Измами и сканиране</SubLabel>
-              <div>
-                <FieldLabel>Праг за оповестяване на измама (0–100)</FieldLabel>
-                <NumberInput
-                  type="number" min="0" max="100" step="1"
-                  value={maxFraud}
-                  onChange={(e) => setMaxFraud(e.target.value)}
-                />
-                <FieldHint>Бонове с оценка ≥ тази стойност задействат известие за измама до администраторите и собственика на партньора. Всички бонове отиват за ръчен преглед независимо от оценката. По подразбиране: 60.</FieldHint>
-              </div>
-              <div>
-                <FieldLabel>Праг за предупреждение при корекция (0–100)</FieldLabel>
-                <NumberInput
-                  type="number" min="0" max="100" step="1"
-                  value={corrWarn}
-                  onChange={(e) => setCorrWarn(e.target.value)}
-                />
-                <FieldHint>
-                  Ако преизчислената оценка за измама надвиши тази стойност след ръчна корекция на сума от администратор, се показва предупреждение. По подразбиране: 30.
-                </FieldHint>
-              </div>
-              <div>
-                <FieldLabel>Дневен лимит за сканиране (на потребител)</FieldLabel>
-                <NumberInput
-                  type="number" min="1"
-                  value={dailyLimit}
-                  onChange={(e) => setDailyLimit(e.target.value)}
-                  placeholder="без лимит"
-                />
-                <FieldHint>Макс. брой касови бележки на потребител на ден (глобално, не на обект). Оставете празно за без лимит.</FieldHint>
-              </div>
-              <div>
-                <FieldLabel>Макс. кешбек за 30 дни ({currency === 'BGN' ? 'лв.' : '€'})</FieldLabel>
-                <NumberInput
-                  type="number" min="1"
-                  value={maxCashback}
-                  onChange={(e) => setMaxCashback(e.target.value)}
-                  placeholder="без таван"
-                />
-                <FieldHint>
-                  Таван на кешбек, който абонат може да спечели за последните 30 дни (плъзгащ прозорец). Оставете празно за без таван. Минимална стойност: 1 — стойност 0 не е позволена и ще блокира целия кешбек.
-                </FieldHint>
-              </div>
-            </FieldGroup>
-          )}
-          <CardFooter>
-            <AuditStamp>{formatAuditStamp(latestMeta(['max_fraud_score', 'correction_warning_threshold', 'daily_scan_limit_default', 'max_cashback_per_month'], meta))}</AuditStamp>
-            <SaveBtn onClick={saveLimits} disabled={limitsMutation.isPending || isLoading}>
-              {limitsMutation.isPending ? 'Запазване…' : 'Запази'}
-            </SaveBtn>
-          </CardFooter>
-        </Card>
-
-        {/* ── Card 2: Контакт за поддръжка ──────────────────────────────── */}
+        {/* ── Card 1: Контакт за поддръжка ──────────────────────────────── */}
         <Card>
           <CardTitle>Контакт за поддръжка</CardTitle>
           {isLoading ? (
@@ -647,7 +553,7 @@ export default function AdminSettingsSystemPage() {
           </CardFooter>
         </Card>
 
-        {/* ── Card 3: Локализация ───────────────────────────────────────── */}
+        {/* ── Card 2: Локализация ───────────────────────────────────────── */}
         <Card>
           <CardTitle>Локализация</CardTitle>
           {isLoading ? (
@@ -695,7 +601,7 @@ export default function AdminSettingsSystemPage() {
           </CardFooter>
         </Card>
 
-        {/* ── Card 4: Режим на поддръжка ───────────────────────────────── */}
+        {/* ── Card 3: Режим на поддръжка ───────────────────────────────── */}
         <Card style={{ borderColor: maintenanceMode ? palette.warning : palette.border }}>
           <CardTitle style={{ color: maintenanceMode ? palette.warning : palette.text }}>
             Режим на поддръжка
@@ -743,6 +649,7 @@ export default function AdminSettingsSystemPage() {
           </CardFooter>
         </Card>
       </Grid>
+      )}
     </PageShell>
   );
 }

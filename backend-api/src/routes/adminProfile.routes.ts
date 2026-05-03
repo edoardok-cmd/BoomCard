@@ -1,22 +1,26 @@
 /**
  * Admin Profile Routes — spec section 12 "Профил"
  *
- * GET  /api/admin/me                    — get own profile (Моите данни)
- * PATCH /api/admin/me                   — update own name/email/phone
- * POST /api/admin/me/password           — change own password
+ * GET  /api/admin/me                          — get own profile (Моите данни)
+ * PATCH /api/admin/me                         — update own name/phone
+ * POST /api/admin/me/password                 — change own password
+ *
+ * Email change — 2-step with code sent to new address
+ * POST /api/admin/me/email-change/request     — send 6-char code to new address
+ * POST /api/admin/me/email-change/confirm     — verify code + password, apply change
  *
  * 2FA (spec section 12 "Сигурност") — TOTP RFC 6238
- * GET  /api/admin/me/2fa/setup          — generate secret + QR code URI
- * POST /api/admin/me/2fa/enable         — verify token then enable 2FA
- * DELETE /api/admin/me/2fa              — disable 2FA (requires current password)
+ * GET  /api/admin/me/2fa/setup                — generate secret + QR code URI
+ * POST /api/admin/me/2fa/enable               — verify token then enable 2FA
+ * DELETE /api/admin/me/2fa                    — disable 2FA (requires current password)
  *
  * Sessions (spec section 12 "Изход") — backed by RefreshToken
- * GET  /api/admin/me/sessions           — list active sessions
- * DELETE /api/admin/me/sessions/:tokenId — revoke specific session
- * DELETE /api/admin/me/sessions         — revoke all other sessions
+ * GET  /api/admin/me/sessions                 — list active sessions
+ * DELETE /api/admin/me/sessions/:tokenId      — revoke specific session
+ * DELETE /api/admin/me/sessions               — revoke all sessions (forces re-login)
  *
  * Login history (spec section 12 "Сигурност")
- * GET  /api/admin/me/login-history      — last 50 login events
+ * GET  /api/admin/me/login-history            — paginated login events (skip/take)
  */
 
 import { Router, Response } from 'express';
@@ -27,6 +31,9 @@ import { authenticate, authorize, AuthRequest } from '../middleware/auth.middlew
 import { auditMiddleware } from '../middleware/audit.middleware';
 import { asyncHandler } from '../middleware/error.middleware';
 import { prisma } from '../lib/prisma';
+import { AuthService } from '../services/auth.service';
+
+const LOOPBACK_IPS = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
 
 const router = Router();
 router.use(authenticate, authorize('ADMIN', 'SUPER_ADMIN'));
@@ -76,42 +83,21 @@ router.get(
 /**
  * PATCH /api/admin/me
  * Body: { firstName?, lastName?, phone? }
- * Email changes require separate verification flow; not allowed here.
+ * Email changes go through the 2-step POST /email-change/request → /email-change/confirm flow.
  */
 router.patch(
   '/',
   asyncHandler(async (req: AuthRequest, res: Response) => {
-    const { firstName, lastName, phone, email, currentPassword } = req.body as {
+    const { firstName, lastName, phone } = req.body as {
       firstName?: string;
       lastName?: string;
       phone?: string;
-      email?: string;
-      currentPassword?: string;
     };
 
-    const data: { firstName?: string; lastName?: string; phone?: string | null; email?: string } = {};
+    const data: { firstName?: string; lastName?: string; phone?: string | null } = {};
     if (firstName !== undefined) data.firstName = firstName.trim() || undefined;
     if (lastName !== undefined) data.lastName = lastName.trim() || undefined;
     if (phone !== undefined) data.phone = phone.trim() || null;
-
-    // Email change is only allowed for SUPER_ADMIN with password confirmation.
-    if (email !== undefined) {
-      if (req.user!.role !== 'SUPER_ADMIN') {
-        return res.status(403).json({ error: 'Only Super Admins can change their own email. Contact a Super Admin to update yours.' });
-      }
-      if (!currentPassword) {
-        return res.status(400).json({ error: 'currentPassword is required for email changes' });
-      }
-      const trimmedEmail = email.trim().toLowerCase();
-      if (!trimmedEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
-        return res.status(400).json({ error: 'Invalid email address' });
-      }
-      const user = await prisma.user.findUnique({ where: { id: req.user!.id } });
-      if (!user) return res.status(404).json({ error: 'Admin not found' });
-      const valid = await bcrypt.compare(currentPassword, user.passwordHash);
-      if (!valid) return res.status(400).json({ error: 'Current password is incorrect' });
-      data.email = trimmedEmail;
-    }
 
     if (Object.keys(data).length === 0) {
       return res.status(400).json({ error: 'No updatable fields provided' });
@@ -124,6 +110,45 @@ router.patch(
     });
 
     res.json(updated);
+  })
+);
+
+/* ─── Email change (2-step with verification code) ───────────────────────────*/
+
+/**
+ * POST /api/admin/me/email-change/request
+ * Body: { newEmail }
+ * Sends a 6-char code to the new email address. SUPER_ADMIN only.
+ */
+router.post(
+  '/email-change/request',
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    if (req.user!.role !== 'SUPER_ADMIN') {
+      return res.status(403).json({ error: 'Email changes require Super Admin role. Contact a Super Admin to update yours.' });
+    }
+    const { newEmail } = req.body as { newEmail?: string };
+    if (!newEmail?.trim()) {
+      return res.status(400).json({ error: 'newEmail is required' });
+    }
+    const result = await AuthService.requestEmailChange(req.user!.id, newEmail);
+    res.json(result);
+  })
+);
+
+/**
+ * POST /api/admin/me/email-change/confirm
+ * Body: { code, currentPassword }
+ * Verifies code + password and applies the email change.
+ */
+router.post(
+  '/email-change/confirm',
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    const { code, currentPassword } = req.body as { code?: string; currentPassword?: string };
+    if (!code || !currentPassword) {
+      return res.status(400).json({ error: 'code and currentPassword are required' });
+    }
+    const updated = await AuthService.confirmEmailChange(req.user!.id, code, currentPassword);
+    res.json({ id: updated.id, email: updated.email });
   })
 );
 
@@ -169,7 +194,8 @@ router.post(
 /**
  * GET /api/admin/me/2fa/setup
  * Generates a fresh TOTP secret and returns the otpauth URI + QR code data URL.
- * The secret is NOT saved until POST /enable is called with a valid token.
+ * The secret is stored in totpPendingSecret (NOT totpSecret) until /enable verifies it,
+ * so an abandoned setup never touches the live 2FA secret.
  */
 router.get(
   '/2fa/setup',
@@ -187,11 +213,10 @@ router.get(
     const otpauthUrl = otplib.generateURI({ label: user.email, issuer: 'BoomCard Admin', secret });
     const qrCodeDataUrl = await QRCode.toDataURL(otpauthUrl);
 
-    // Store the pending secret temporarily in DB so /enable can verify it.
-    // We reuse totpSecret for this; it becomes permanent on /enable.
+    // Store in the pending field only; does not affect the active totpSecret.
     await prisma.user.update({
       where: { id: req.user!.id },
-      data: { totpSecret: secret },
+      data: { totpPendingSecret: secret },
     });
 
     res.json({ secret, otpauthUrl, qrCodeDataUrl });
@@ -201,6 +226,7 @@ router.get(
 /**
  * POST /api/admin/me/2fa/enable
  * Body: { token } — TOTP code from the authenticator app
+ * Verifies against totpPendingSecret, then promotes it to totpSecret.
  */
 router.post(
   '/2fa/enable',
@@ -210,22 +236,23 @@ router.post(
 
     const user = await prisma.user.findUnique({
       where: { id: req.user!.id },
-      select: { totpSecret: true, totpEnabledAt: true },
+      select: { totpPendingSecret: true, totpEnabledAt: true },
     });
     if (!user) return res.status(404).json({ error: 'Admin not found' });
     if (user.totpEnabledAt) {
       return res.status(400).json({ error: '2FA is already enabled' });
     }
-    if (!user.totpSecret) {
+    if (!user.totpPendingSecret) {
       return res.status(400).json({ error: 'Call GET /2fa/setup first to generate a secret' });
     }
 
-    const result = otplib.verifySync({ token, secret: user.totpSecret });
+    const result = otplib.verifySync({ token, secret: user.totpPendingSecret });
     if (!result.valid) return res.status(400).json({ error: 'Invalid TOTP token' });
 
+    // Promote pending secret to active, clear pending field.
     await prisma.user.update({
       where: { id: req.user!.id },
-      data: { totpEnabledAt: new Date() },
+      data: { totpSecret: user.totpPendingSecret, totpPendingSecret: null, totpEnabledAt: new Date() },
     });
 
     res.json({ ok: true, message: '2FA enabled' });
@@ -244,17 +271,23 @@ router.delete(
 
     const user = await prisma.user.findUnique({ where: { id: req.user!.id } });
     if (!user) return res.status(404).json({ error: 'Admin not found' });
-    if (!user.totpEnabledAt) return res.status(400).json({ error: '2FA is not enabled' });
+
+    // Nothing to clear — neither active 2FA nor an in-progress setup.
+    if (!user.totpEnabledAt && !user.totpPendingSecret) {
+      return res.status(400).json({ error: '2FA is not enabled' });
+    }
 
     const valid = await bcrypt.compare(currentPassword, user.passwordHash);
     if (!valid) return res.status(400).json({ error: 'Current password is incorrect' });
 
     await prisma.user.update({
       where: { id: req.user!.id },
-      data: { totpSecret: null, totpEnabledAt: null },
+      data: { totpSecret: null, totpPendingSecret: null, totpEnabledAt: null },
     });
 
-    res.json({ ok: true, message: '2FA disabled' });
+    // Distinguish: if only a pending setup existed (never confirmed), call it "cancelled".
+    const message = user.totpEnabledAt ? '2FA disabled' : '2FA setup cancelled';
+    res.json({ ok: true, message });
   })
 );
 
@@ -326,15 +359,24 @@ router.delete(
 
 /**
  * GET /api/admin/me/login-history
- * Returns the last 50 login events for the current admin.
+ * Paginated login events for the current admin (skip/take, default take=20).
+ * Loopback IPs (127.0.0.1, ::1) are excluded — those are internal/dev connections
+ * that carry no security-audit value in production.
  */
 router.get(
   '/login-history',
   asyncHandler(async (req: AuthRequest, res: Response) => {
+    const skip = Math.max(0, parseInt(String(req.query.skip ?? '0'), 10) || 0);
+    const take = Math.min(100, Math.max(1, parseInt(String(req.query.take ?? '20'), 10) || 20));
+
     const history = await prisma.loginHistory.findMany({
-      where: { userId: req.user!.id },
+      where: {
+        userId: req.user!.id,
+        NOT: { ip: { in: [...LOOPBACK_IPS] } },
+      },
       orderBy: { createdAt: 'desc' },
-      take: 50,
+      skip,
+      take,
       select: {
         id: true,
         ip: true,

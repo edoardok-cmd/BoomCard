@@ -266,7 +266,20 @@ function buildBusinessWhere(query: Record<string, unknown>): BusinessTxWhere {
   const where: BusinessTxWhere = {};
   const ands: BusinessTxWhere[] = [];
 
-  if (partnerId) where.partnerId = partnerId;
+  // partnerId filter must match BOTH Transaction.partnerId AND venue.partnerId
+  // because the row mapping (and the /business response) falls back to
+  // venue.partner when Transaction.partnerId is null. Without this OR, rows
+  // with only a venue link silently disappear from the list while still being
+  // attributed to the partner in the response that DOES come back, and the
+  // stats bar undercounts vs. the visible rows.
+  if (partnerId) {
+    ands.push({
+      OR: [
+        { partnerId },
+        { partnerId: null, venue: { partnerId } },
+      ],
+    });
+  }
   if (userId) where.userId = userId;
   if (type && Object.values(TransactionType).includes(type as TransactionType)) {
     where.type = type as TransactionType;
@@ -378,8 +391,23 @@ router.get('/business', requirePermission('transactions.read'), async (req, res,
               partnerType: { select: { maxDiscountRate: true } },
             },
           },
+          // venue.partner is needed as a fallback when Transaction.partnerId
+          // is null but venueId is set (legacy rows / bookings created before
+          // the partnerId backfill). Spec §4.3 requires every transaction to
+          // surface its owning partner, so we recover it from the venue.
           venue: {
-            select: { id: true, name: true },
+            select: {
+              id: true,
+              name: true,
+              partner: {
+                select: {
+                  id: true,
+                  businessName: true,
+                  discountRate: true,
+                  partnerType: { select: { maxDiscountRate: true } },
+                },
+              },
+            },
           },
           receipt: {
             select: {
@@ -389,6 +417,7 @@ router.get('/business', requirePermission('transactions.read'), async (req, res,
               status: true,
               fraudScore: true,
               createdAt: true,
+              cashbackAmount: true,
             },
           },
           stickerScan: {
@@ -439,12 +468,30 @@ router.get('/business', requirePermission('transactions.read'), async (req, res,
 
     const now = new Date();
     const rows = transactions.map((tx) => {
+      // Recover partner from venue when Transaction.partnerId is null.
+      // Both the partner field on the wire response and the discountRate used
+      // for margin should reflect the venue's owning partner.
+      const effectivePartner = tx.partner ?? tx.venue?.partner ?? null;
+
       // Margin = (partnerDiscountRate × amount) − userCashback.
       // discountRate is the contractual partner charge; fall back to the
       // partner type's maxDiscountRate, then null (column rendered as "—").
       const partnerDiscountRate =
-        tx.partner?.discountRate ?? tx.partner?.partnerType?.maxDiscountRate ?? null;
-      const cashback = tx.cashbackAmount ?? 0;
+        effectivePartner?.discountRate ?? effectivePartner?.partnerType?.maxDiscountRate ?? null;
+      // Cashback fallback chain: Transaction.cashbackAmount → Receipt.cashbackAmount.
+      // Older rows created before the cashback engine wrote to Transaction stored
+      // the calculated amount only on the receipt; surface it instead of "—".
+      // Receipt.cashbackAmount has @default(0) (Prisma schema), so we only fall
+      // back when there is independent evidence cashback was actually computed —
+      // either a CASHBACK_CREDIT walletTransaction exists, or the receipt was
+      // approved. Without that guard, an OCR-rejected receipt with the default
+      // 0 would surface as "0.00 BGN cleared" — a lie about lifecycle.
+      const receiptCashbackTrustworthy =
+        tx.walletTransaction != null || tx.receipt?.status === 'APPROVED';
+      const cashbackAmountResolved =
+        tx.cashbackAmount ??
+        (receiptCashbackTrustworthy ? tx.receipt?.cashbackAmount ?? null : null);
+      const cashback = cashbackAmountResolved ?? 0;
       const margin =
         partnerDiscountRate != null
           ? (partnerDiscountRate / 100) * tx.amount - cashback
@@ -475,9 +522,26 @@ router.get('/business', requirePermission('transactions.read'), async (req, res,
       // walletId was only needed for the withdrawal-lookup Map above, and the rest
       // of the lifecycle fields are expressed as the derived cashbackStatus. UI
       // consumers read cashbackStatus rather than the raw WalletTransaction columns.
-      const { walletTransaction: _wt, ...rest } = tx;
+      const { walletTransaction: _wt, partner: _origPartner, venue: origVenue, ...rest } = tx;
+      // Strip venue.partner from the wire response — only the venue's id+name
+      // belong on the row. The partner has been hoisted to the top-level
+      // `partner` field via the fallback above.
+      const venueOut = origVenue
+        ? { id: origVenue.id, name: origVenue.name }
+        : null;
+      const partnerOut = effectivePartner
+        ? {
+            id: effectivePartner.id,
+            businessName: effectivePartner.businessName,
+            discountRate: effectivePartner.discountRate,
+            partnerType: effectivePartner.partnerType,
+          }
+        : null;
       return {
         ...rest,
+        partner: partnerOut,
+        venue: venueOut,
+        cashbackAmount: cashbackAmountResolved,
         margin,
         partnerDiscountRate,
         riskScore,
@@ -526,11 +590,19 @@ router.get('/business/stats', requirePermission('transactions.read'), async (req
 
     const [startOfToday, endOfToday] = getTodayBoundariesInSofia();
 
-    const todayWhere: BusinessTxWhere = where.AND
-      ? { ...where, AND: [...(where.AND as BusinessTxWhere[]), { createdAt: { gte: startOfToday, lte: endOfToday } }] }
-      : { ...where, AND: [{ createdAt: { gte: startOfToday, lte: endOfToday } }] };
+    // Strip top-level createdAt before composing today's window so the row is
+    // bound by today's range only — not AND-stacked with the user's dateFrom/
+    // dateTo which would force a row to satisfy BOTH (a row from yesterday
+    // would be silently excluded from today's count when dateFrom=yesterday).
+    // The user's dateFrom/dateTo still applies to the all-time aggregate via
+    // `where`, which is the intended split: today vs total within the same scope.
+    const { createdAt: _createdAtScoped, ...whereSansDate } = where as BusinessTxWhere & { createdAt?: unknown };
+    void _createdAtScoped;
+    const todayWhere: BusinessTxWhere = whereSansDate.AND
+      ? { ...whereSansDate, AND: [...(whereSansDate.AND as BusinessTxWhere[]), { createdAt: { gte: startOfToday, lte: endOfToday } }] }
+      : { ...whereSansDate, AND: [{ createdAt: { gte: startOfToday, lte: endOfToday } }] };
 
-    const [agg, todayCount] = await Promise.all([
+    const [agg, todayCount, fallbackAgg] = await Promise.all([
       prisma.transaction.aggregate({
         where,
         _sum: { amount: true, cashbackAmount: true },
@@ -538,6 +610,38 @@ router.get('/business/stats', requirePermission('transactions.read'), async (req
         _count: { _all: true },
       }),
       prisma.transaction.count({ where: todayWhere }),
+      // Receipt-side fallback for the same total. Mirrors the row mapping in
+      // /business: when Transaction.cashbackAmount is null but the receipt
+      // is *trustworthy* (either a CASHBACK_CREDIT walletTransaction was
+      // recorded, OR the receipt itself is APPROVED), surface
+      // receipt.cashbackAmount. Without this the stats card understates
+      // totalCashback vs. the visible row column.
+      // Trustworthiness must mirror `receiptCashbackTrustworthy` in the row
+      // mapper (line ~489); using only `receipt.status='APPROVED'` here
+      // omits the walletTransaction-evidence branch and undercounts a row
+      // whose receipt was reverted from APPROVED but already credited.
+      //
+      // Composition: build the inner filter as an explicit AND of (base where,
+      // cashbackAmount=null, trustworthy-OR). Spreading `where` at the same
+      // level as a new top-level `OR` would silently lose any future top-level
+      // OR clause buildBusinessWhere might emit. Wrapping each constraint as a
+      // separate AND[] entry composes regardless of the shape of `where`.
+      prisma.receipt.aggregate({
+        where: {
+          transaction: {
+            AND: [
+              where as BusinessTxWhere,
+              { cashbackAmount: null },
+              { OR: [
+                  { receipt: { status: 'APPROVED' } },
+                  { walletTransaction: { isNot: null } },
+                ],
+              },
+            ],
+          },
+        },
+        _sum: { cashbackAmount: true },
+      }),
     ]);
 
     res.json({
@@ -545,7 +649,8 @@ router.get('/business/stats', requirePermission('transactions.read'), async (req
       todayCount,
       totalVolume: agg._sum.amount ?? 0,
       averageValue: agg._avg.amount ?? 0,
-      totalCashback: agg._sum.cashbackAmount ?? 0,
+      totalCashback:
+        (agg._sum.cashbackAmount ?? 0) + (fallbackAgg._sum.cashbackAmount ?? 0),
     });
   } catch (error) {
     next(error);

@@ -44,7 +44,7 @@ const AdminProfileLogoutPage: React.FC = () => {
         <Body>Сигурни ли сте, че искате да излезете от администраторския панел?</Body>
         <Actions>
           <DangerButton onClick={handleLogout}>Изход</DangerButton>
-          <SecondaryButton onClick={() => navigate(-1)}>Отказ</SecondaryButton>
+          <SecondaryButton onClick={() => navigate('/admin')}>Отказ</SecondaryButton>
         </Actions>
       </Card>
     </Wrapper>

@@ -19,8 +19,9 @@ import {
   adminSubscribersService,
   AdminSubscriber,
 } from '../../services/adminSubscribers.service';
-import { riskBucket, type RiskBucket } from '../../utils/planLabels';
+import { riskBucket, riskLabel, type RiskBucket } from '../../utils/planLabels';
 import { csvEscape, fmtDateTime, downloadBlob } from '../../utils/csvExport';
+import { formatPhoneBG } from '../../utils/validators';
 
 /* ─── Palette ─────────────────────────────────────────────────────────────── */
 const palette = {
@@ -1166,7 +1167,7 @@ export default function AdminTransactionsPage() {
             ? `${row.user.firstName ?? ''} ${row.user.lastName ?? ''}`.trim()
             : '—'}
           <MetaLine>{row.user.email}</MetaLine>
-          {row.user.phone && <MetaLine>{row.user.phone}</MetaLine>}
+          {row.user.phone && <MetaLine>{formatPhoneBG(row.user.phone)}</MetaLine>}
         </UserCell>
       ),
     },
@@ -1241,7 +1242,14 @@ export default function AdminTransactionsPage() {
     {
       key: 'risk',
       header: t('colRisk', lang),
-      render: (row) => <RiskBadge $level={riskBucket(row.riskScore)}>{row.riskScore}</RiskBadge>,
+      render: (row) => (
+        <RiskBadge
+          $level={riskBucket(row.riskScore)}
+          title={`${riskLabel(row.riskScore, lang)} · score ${row.riskScore}`}
+        >
+          {riskLabel(row.riskScore, lang)}
+        </RiskBadge>
+      ),
     },
     {
       key: 'receipt',
@@ -1323,7 +1331,7 @@ export default function AdminTransactionsPage() {
                   {`${detailTx.user.firstName ?? ''} ${detailTx.user.lastName ?? ''}`.trim() || detailTx.user.email}
                 </a>
                 <MetaLine>{detailTx.user.email}</MetaLine>
-                {detailTx.user.phone && <MetaLine>{detailTx.user.phone}</MetaLine>}
+                {detailTx.user.phone && <MetaLine>{formatPhoneBG(detailTx.user.phone)}</MetaLine>}
               </DetailRow>
               <DetailRow label={t('colPartner', lang)}>
                 {detailTx.partner ? (

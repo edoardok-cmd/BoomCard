@@ -8,6 +8,7 @@ import { DataTable, ColumnDef, RowAction } from '../../components/admin/DataTabl
 import {
   adminPartnerRequestsService,
   PendingPartner,
+  AssignableAdmin,
 } from '../../services/adminPartnerRequests.service';
 import { getCategoryName } from '../../types/categories.types';
 import PartnerRequestDrawer from '../../components/admin/PartnerRequestDrawer';
@@ -289,6 +290,14 @@ export default function AdminPartnerRequestsPage() {
   const [rejectTarget, setRejectTarget] = useState<PendingPartner | null>(null);
   const [rejectReason, setRejectReason] = useState('');
   const [drawerPartnerId, setDrawerPartnerId] = useState<string | null>(null);
+  const [assignTarget, setAssignTarget] = useState<PendingPartner | null>(null);
+
+  const assignableAdminsQuery = useQuery({
+    queryKey: ['admin-assignable-admins'],
+    queryFn: () => adminPartnerRequestsService.getAssignableAdmins(),
+    enabled: !!canWrite,
+    staleTime: 5 * 60 * 1000,
+  });
 
   const { data, isLoading } = useQuery({
     queryKey: ['admin-partner-requests', page, search, requestStatusFilter],
@@ -465,7 +474,11 @@ export default function AdminPartnerRequestsPage() {
           if (!user?.id) return;
           assignMutation.mutate({ id: row.id, adminId: user.id });
         },
-        hidden: (row: PendingPartner) => !!row.assignedAdminId,
+        hidden: (row: PendingPartner) => row.assignedAdminId === user?.id,
+      },
+      {
+        label: language === 'bg' ? 'Възложи на друг…' : 'Assign to other…',
+        onClick: (row: PendingPartner) => setAssignTarget(row),
       },
       {
         label: language === 'bg' ? 'Освободи' : 'Unassign',
@@ -561,6 +574,72 @@ export default function AdminPartnerRequestsPage() {
         onApproved={() => queryClient.invalidateQueries({ queryKey: ['admin-partner-requests'] })}
         onRejected={() => queryClient.invalidateQueries({ queryKey: ['admin-partner-requests'] })}
       />
+
+      {assignTarget && (
+        <Overlay onClick={() => setAssignTarget(null)}>
+          <Modal onClick={(e) => e.stopPropagation()}>
+            <ModalTitle>
+              {language === 'bg' ? 'Възложи отговорник' : 'Assign owner'}
+            </ModalTitle>
+            <ModalSubtitle>
+              {language === 'bg'
+                ? `Изберете администратор за заявката „${assignTarget.businessName}".`
+                : `Pick an admin for the request "${assignTarget.businessName}".`}
+            </ModalSubtitle>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '20rem', overflowY: 'auto' }}>
+              {assignableAdminsQuery.isLoading ? (
+                <span style={{ color: palette.textSubtle, fontSize: '0.875rem' }}>…</span>
+              ) : (assignableAdminsQuery.data?.admins ?? []).map((admin: AssignableAdmin) => {
+                const fullName = [admin.firstName, admin.lastName].filter(Boolean).join(' ').trim() || admin.email;
+                const isCurrent = admin.id === assignTarget.assignedAdminId;
+                return (
+                  <button
+                    key={admin.id}
+                    onClick={() => {
+                      assignMutation.mutate({ id: assignTarget.id, adminId: admin.id });
+                      setAssignTarget(null);
+                    }}
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'flex-start',
+                      gap: '0.125rem',
+                      padding: '0.625rem 0.875rem',
+                      background: isCurrent ? palette.accentSoft : palette.bg,
+                      border: `1px solid ${isCurrent ? palette.accent : palette.border}`,
+                      borderRadius: '0.5rem',
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                    }}
+                  >
+                    <span style={{ fontWeight: 600, color: palette.text, fontSize: '0.875rem' }}>
+                      {fullName}
+                      {isCurrent && (
+                        <span style={{ marginLeft: '0.5rem', fontSize: '0.7rem', color: palette.accent, fontWeight: 700 }}>
+                          {language === 'bg' ? '· текущ' : '· current'}
+                        </span>
+                      )}
+                    </span>
+                    <span style={{ fontSize: '0.75rem', color: palette.textSubtle }}>
+                      {admin.email}{admin.role === 'SUPER_ADMIN' ? ' · SUPER_ADMIN' : ''}
+                    </span>
+                  </button>
+                );
+              })}
+              {!assignableAdminsQuery.isLoading && (assignableAdminsQuery.data?.admins ?? []).length === 0 && (
+                <span style={{ color: palette.textSubtle, fontStyle: 'italic', fontSize: '0.875rem' }}>
+                  {language === 'bg' ? 'Няма налични администратори.' : 'No admins available.'}
+                </span>
+              )}
+            </div>
+            <ModalActions>
+              <Btn $variant="ghost" onClick={() => setAssignTarget(null)}>
+                {t('common.cancel')}
+              </Btn>
+            </ModalActions>
+          </Modal>
+        </Overlay>
+      )}
     </PageShell>
   );
 }

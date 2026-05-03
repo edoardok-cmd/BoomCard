@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import styled from 'styled-components';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-hot-toast';
 import { adminProfileService } from '../../services/adminProfile.service';
+import { useAuth } from '../../contexts/AuthContext';
 
 const palette = {
   bg: '#faf9f5',
@@ -41,11 +43,31 @@ function parseUserAgent(ua: string | null): string {
   return os ? `${browser} / ${os}` : browser;
 }
 
+const PAGE_SIZE = 20;
+
 const AdminProfileSecurityPage: React.FC = () => {
   const queryClient = useQueryClient();
+  const { logout } = useAuth();
+  const navigate = useNavigate();
   const profile = useQuery({ queryKey: ['admin-profile-me'], queryFn: () => adminProfileService.getMe() });
   const sessions = useQuery({ queryKey: ['admin-profile-sessions'], queryFn: () => adminProfileService.listSessions() });
-  const history = useQuery({ queryKey: ['admin-profile-login-history'], queryFn: () => adminProfileService.loginHistory() });
+  const [historySkip, setHistorySkip] = useState(0);
+  const history = useQuery({
+    queryKey: ['admin-profile-login-history', historySkip],
+    queryFn: () => adminProfileService.loginHistory({ skip: historySkip, take: PAGE_SIZE }),
+  });
+  const [allHistory, setAllHistory] = useState<import('../../services/adminProfile.service').AdminLoginEvent[]>([]);
+
+  // Accumulate pages as user loads more
+  React.useEffect(() => {
+    if (history.data?.history) {
+      if (historySkip === 0) {
+        setAllHistory(history.data.history);
+      } else {
+        setAllHistory((prev) => [...prev, ...history.data!.history]);
+      }
+    }
+  }, [history.data, historySkip]);
 
   const [currentPwd, setCurrentPwd] = useState('');
   const [newPwd, setNewPwd] = useState('');
@@ -111,8 +133,12 @@ const AdminProfileSecurityPage: React.FC = () => {
   const revokeAllMutation = useMutation({
     mutationFn: () => adminProfileService.revokeAllSessions(),
     onSuccess: () => {
-      toast.success('Всички сесии са анулирани');
-      queryClient.invalidateQueries({ queryKey: ['admin-profile-sessions'] });
+      toast.success('Всички сесии са анулирани — моля влезте отново');
+      logout();
+      navigate('/login', { replace: true });
+    },
+    onError: (err: { response?: { data?: { error?: string } } }) => {
+      toast.error(err?.response?.data?.error ?? 'Грешка при анулиране на сесии');
     },
   });
 
@@ -261,31 +287,43 @@ const AdminProfileSecurityPage: React.FC = () => {
 
       {/* История на влизанията */}
       <Card>
-        <SectionTitle>История на влизанията (последните 50)</SectionTitle>
-        {history.isLoading ? (
+        <SectionTitle>История на влизанията</SectionTitle>
+        {historySkip === 0 && history.isLoading ? (
           <Hint>Зареждане…</Hint>
-        ) : history.data?.history.length === 0 ? (
+        ) : allHistory.length === 0 ? (
           <Hint>Няма история на влизания.</Hint>
         ) : (
-          <Table>
-            <thead>
-              <tr><Th>Кога</Th><Th>Резултат</Th><Th>IP</Th><Th>Устройство</Th></tr>
-            </thead>
-            <tbody>
-              {history.data?.history.map((e) => (
-                <tr key={e.id}>
-                  <Td>{new Date(e.createdAt).toLocaleString('bg-BG')}</Td>
-                  <Td>
-                    {e.success
-                      ? <StatusOk>Успех</StatusOk>
-                      : <StatusOff>{e.failReason ?? 'Неуспешен'}</StatusOff>}
-                  </Td>
-                  <Td>{e.ip ?? '—'}</Td>
-                  <Td title={e.userAgent ?? ''}>{parseUserAgent(e.userAgent)}</Td>
-                </tr>
-              ))}
-            </tbody>
-          </Table>
+          <>
+            <Table>
+              <thead>
+                <tr><Th>Кога</Th><Th>Резултат</Th><Th>IP</Th><Th>Устройство</Th></tr>
+              </thead>
+              <tbody>
+                {allHistory.map((e) => (
+                  <tr key={e.id}>
+                    <Td>{new Date(e.createdAt).toLocaleString('bg-BG')}</Td>
+                    <Td>
+                      {e.success
+                        ? <StatusOk>Успех</StatusOk>
+                        : <StatusOff>{e.failReason ?? 'Неуспешен'}</StatusOff>}
+                    </Td>
+                    <Td>{e.ip ?? '—'}</Td>
+                    <Td title={e.userAgent ?? ''}>{parseUserAgent(e.userAgent)}</Td>
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
+            {(history.data?.history.length ?? 0) === PAGE_SIZE && (
+              <LoadMoreRow>
+                <SecondaryButton
+                  onClick={() => setHistorySkip((s) => s + PAGE_SIZE)}
+                  disabled={history.isFetching}
+                >
+                  {history.isFetching ? 'Зареждане…' : 'Покажи повече'}
+                </SecondaryButton>
+              </LoadMoreRow>
+            )}
+          </>
         )}
       </Card>
     </Wrapper>
@@ -419,6 +457,11 @@ const QrImg = styled.img`
   border: 1px solid ${palette.border};
   border-radius: 0.5rem;
   background: ${palette.surface};
+`;
+const LoadMoreRow = styled.div`
+  display: flex;
+  justify-content: center;
+  padding-top: 1rem;
 `;
 
 export default AdminProfileSecurityPage;

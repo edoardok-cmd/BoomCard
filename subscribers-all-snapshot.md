@@ -1,0 +1,585 @@
+- generic [active] [ref=e1]:
+  - link "Skip to main content" [ref=e2] [cursor=pointer]:
+    - /url: "#main-content"
+  - generic [ref=e4]:
+    - banner [ref=e5]:
+      - generic [ref=e7]:
+        - link "BOOM Card" [ref=e8] [cursor=pointer]:
+          - /url: /
+          - img "BOOM Card" [ref=e9]
+        - generic [ref=e10]:
+          - button "Search" [ref=e12] [cursor=pointer]:
+            - img [ref=e13]
+          - button "EK" [ref=e16] [cursor=pointer]:
+            - generic [ref=e17]: EK
+            - img [ref=e18]
+          - button "38" [ref=e30] [cursor=pointer]:
+            - img [ref=e22]
+            - generic [ref=e31]: "38"
+    - main [ref=e25]:
+      - generic [ref=e32]:
+        - generic [ref=e33]:
+          - heading "Абонати" [level=1] [ref=e34]
+          - navigation [ref=e35]:
+            - link "Всички" [ref=e36] [cursor=pointer]:
+              - /url: /admin/subscribers/all
+            - link "Абонаменти" [ref=e37] [cursor=pointer]:
+              - /url: /admin/subscribers/subscriptions
+            - link "Транзакции" [ref=e38] [cursor=pointer]:
+              - /url: /admin/subscribers/transactions
+            - link "Кешбек" [ref=e39] [cursor=pointer]:
+              - /url: /admin/subscribers/cashback
+        - generic [ref=e41]:
+          - generic [ref=e43]:
+            - generic [ref=e44]:
+              - paragraph [ref=e45]: Абонати
+              - heading "Всички абонати 120" [level=1] [ref=e46]:
+                - text: Всички абонати
+                - generic [ref=e47]: "120"
+              - paragraph [ref=e48]: Всички профили на абонати, включително меко изтритите
+            - button "↓ Изтегли CSV" [ref=e50] [cursor=pointer]
+          - generic [ref=e51]:
+            - generic [ref=e52]:
+              - textbox "Търси по име, имейл, телефон или IBAN…" [ref=e53]
+              - combobox [ref=e54] [cursor=pointer]:
+                - option "Всички акаунти" [selected]
+                - option "Активен"
+                - option "Спрян"
+                - option "Изтрит"
+                - option "Изчаква верификация"
+                - option "Изчаква плащане"
+                - option "Неактивен"
+              - combobox [ref=e55] [cursor=pointer]:
+                - option "Всички планове" [selected]
+                - option "Premium седмичен"
+                - option "Basic"
+                - option "Premium месечен"
+              - combobox [ref=e56] [cursor=pointer]:
+                - option "Всички статуси" [selected]
+                - option "Активен"
+                - option "Пробен"
+                - option "Неуспешно плащане"
+                - option "Неплатен"
+                - option "На пауза"
+                - option "Отказан"
+                - option "Изтекъл"
+                - option "Незавършен"
+                - option "Незавършен (изтекъл)"
+              - combobox [ref=e57] [cursor=pointer]:
+                - option "Всички рискове" [selected]
+                - option "Авто (0-30)"
+                - option "Преглед (31-60)"
+                - option "Висок риск (61+)"
+              - generic [ref=e58]:
+                - text: "Регистриран:"
+                - textbox "Регистриран:" [ref=e59] [cursor=pointer]
+              - generic [ref=e60]:
+                - text: —
+                - textbox "—" [ref=e61] [cursor=pointer]
+            - generic [ref=e62]:
+              - table [ref=e64]:
+                - rowgroup [ref=e65]:
+                  - row "Абонат User ID Статус Риск Последна активност ↑ План Статус абонамент Кешбек Изтича на Подновяване Регистриран ↓" [ref=e66]:
+                    - columnheader "Абонат" [ref=e67]:
+                      - generic [ref=e68]: Абонат
+                    - columnheader "User ID" [ref=e69]:
+                      - generic [ref=e70]: User ID
+                    - columnheader "Статус" [ref=e71]:
+                      - generic [ref=e72]: Статус
+                    - columnheader "Риск" [ref=e73]:
+                      - generic [ref=e74]: Риск
+                    - columnheader "Последна активност ↑" [ref=e75] [cursor=pointer]:
+                      - generic [ref=e76]:
+                        - text: Последна активност
+                        - generic [ref=e77]: ↑
+                    - columnheader "План" [ref=e78]:
+                      - generic [ref=e79]: План
+                    - columnheader "Статус абонамент" [ref=e80]:
+                      - generic [ref=e81]: Статус абонамент
+                    - columnheader "Кешбек" [ref=e82]:
+                      - generic [ref=e83]: Кешбек
+                    - columnheader "Изтича на" [ref=e84]:
+                      - generic [ref=e85]: Изтича на
+                    - columnheader "Подновяване" [ref=e86]:
+                      - generic [ref=e87]: Подновяване
+                    - columnheader "Регистриран ↓" [ref=e88] [cursor=pointer]:
+                      - generic [ref=e89]:
+                        - text: Регистриран
+                        - generic [ref=e90]: ↓
+                    - columnheader [ref=e91]
+                - rowgroup [ref=e92]:
+                  - row "Test User test.ui.check@mailnull.com +359888000001 ad803149 Изчаква плащане Авто (0) Никога Premium седмичен Незавършен (изтекъл) 0.00 BGN 06.05.2026 г. Да 29.04.2026 г. ···" [ref=e93]:
+                    - cell "Test User test.ui.check@mailnull.com +359888000001" [ref=e94]:
+                      - generic [ref=e95]:
+                        - link "Test User" [ref=e96] [cursor=pointer]:
+                          - /url: /admin/subscribers/ad803149-ed0b-4474-906c-dc63fea2816c
+                        - generic [ref=e97]: test.ui.check@mailnull.com
+                        - generic [ref=e98]: "+359888000001"
+                    - cell "ad803149" [ref=e99]
+                    - cell "Изчаква плащане" [ref=e100]:
+                      - generic [ref=e101]: Изчаква плащане
+                    - cell "Авто (0)" [ref=e102]:
+                      - generic [ref=e103]: Авто (0)
+                    - cell "Никога" [ref=e104]
+                    - cell "Premium седмичен" [ref=e105]:
+                      - generic [ref=e106]: Premium седмичен
+                    - cell "Незавършен (изтекъл)" [ref=e107]:
+                      - generic [ref=e108]: Незавършен (изтекъл)
+                    - cell "0.00 BGN" [ref=e109]:
+                      - generic [ref=e110]: 0.00 BGN
+                    - cell "06.05.2026 г." [ref=e111]
+                    - cell "Да" [ref=e112]
+                    - cell "29.04.2026 г." [ref=e113]
+                    - cell "···" [ref=e114]:
+                      - button "···" [ref=e116] [cursor=pointer]
+                  - row "E2E Test e2e-test-1777411982@boomcard-test.dev dbc81a5d Активен Авто (0) Никога Basic Активен 0.00 BGN 29.05.2026 г. Да 29.04.2026 г. ···" [ref=e117]:
+                    - cell "E2E Test e2e-test-1777411982@boomcard-test.dev" [ref=e118]:
+                      - generic [ref=e119]:
+                        - link "E2E Test" [ref=e120] [cursor=pointer]:
+                          - /url: /admin/subscribers/dbc81a5d-6f41-40cc-b7d2-de16a4b028ac
+                        - generic [ref=e121]: e2e-test-1777411982@boomcard-test.dev
+                    - cell "dbc81a5d" [ref=e122]
+                    - cell "Активен" [ref=e123]:
+                      - generic [ref=e124]: Активен
+                    - cell "Авто (0)" [ref=e125]:
+                      - generic [ref=e126]: Авто (0)
+                    - cell "Никога" [ref=e127]
+                    - cell "Basic" [ref=e128]:
+                      - generic [ref=e129]: Basic
+                    - cell "Активен" [ref=e130]:
+                      - generic [ref=e131]: Активен
+                    - cell "0.00 BGN" [ref=e132]:
+                      - generic [ref=e133]: 0.00 BGN
+                    - cell "29.05.2026 г." [ref=e134]
+                    - cell "Да" [ref=e135]
+                    - cell "29.04.2026 г." [ref=e136]
+                    - cell "···" [ref=e137]:
+                      - button "···" [ref=e139] [cursor=pointer]
+                  - row "Visual Test visual-test@test.local +359881234567 a1506c79 Изчаква верификация Авто (0) 28.04.2026 г. — — 0.00 BGN — — 28.04.2026 г. ···" [ref=e140]:
+                    - cell "Visual Test visual-test@test.local +359881234567" [ref=e141]:
+                      - generic [ref=e142]:
+                        - link "Visual Test" [ref=e143] [cursor=pointer]:
+                          - /url: /admin/subscribers/a1506c79-da35-4205-8b0f-6dd9ebeb862e
+                        - generic [ref=e144]: visual-test@test.local
+                        - generic [ref=e145]: "+359881234567"
+                    - cell "a1506c79" [ref=e146]
+                    - cell "Изчаква верификация" [ref=e147]:
+                      - generic [ref=e148]: Изчаква верификация
+                    - cell "Авто (0)" [ref=e149]:
+                      - generic [ref=e150]: Авто (0)
+                    - cell "28.04.2026 г." [ref=e151]
+                    - cell "—" [ref=e152]
+                    - cell "—" [ref=e153]
+                    - cell "0.00 BGN" [ref=e154]:
+                      - generic [ref=e155]: 0.00 BGN
+                    - cell "—" [ref=e156]
+                    - cell "—" [ref=e157]
+                    - cell "28.04.2026 г." [ref=e158]
+                    - cell "···" [ref=e159]:
+                      - button "···" [ref=e161] [cursor=pointer]
+                  - row "Test User testuser_t7@boomcard.bg +359888000001 9b396c69 Изчаква верификация Авто (0) 28.04.2026 г. — — 0.00 BGN — — 28.04.2026 г. ···" [ref=e162]:
+                    - cell "Test User testuser_t7@boomcard.bg +359888000001" [ref=e163]:
+                      - generic [ref=e164]:
+                        - link "Test User" [ref=e165] [cursor=pointer]:
+                          - /url: /admin/subscribers/9b396c69-8dd3-475e-baed-b094511d838c
+                        - generic [ref=e166]: testuser_t7@boomcard.bg
+                        - generic [ref=e167]: "+359888000001"
+                    - cell "9b396c69" [ref=e168]
+                    - cell "Изчаква верификация" [ref=e169]:
+                      - generic [ref=e170]: Изчаква верификация
+                    - cell "Авто (0)" [ref=e171]:
+                      - generic [ref=e172]: Авто (0)
+                    - cell "28.04.2026 г." [ref=e173]
+                    - cell "—" [ref=e174]
+                    - cell "—" [ref=e175]
+                    - cell "0.00 BGN" [ref=e176]:
+                      - generic [ref=e177]: 0.00 BGN
+                    - cell "—" [ref=e178]
+                    - cell "—" [ref=e179]
+                    - cell "28.04.2026 г." [ref=e180]
+                    - cell "···" [ref=e181]:
+                      - button "···" [ref=e183] [cursor=pointer]
+                  - row "Nikoleta Nikolata nikoletaairbnb1@gmail.com +359876107153 b498b559 Изчаква плащане Авто (0) 30.04.2026 г. Premium месечен Незавършен (изтекъл) 0.00 BGN 21.05.2026 г. Да 21.04.2026 г. ···" [ref=e184]:
+                    - cell "Nikoleta Nikolata nikoletaairbnb1@gmail.com +359876107153" [ref=e185]:
+                      - generic [ref=e186]:
+                        - link "Nikoleta Nikolata" [ref=e187] [cursor=pointer]:
+                          - /url: /admin/subscribers/b498b559-789f-4290-8625-c826e8fe0b9a
+                        - generic [ref=e188]: nikoletaairbnb1@gmail.com
+                        - generic [ref=e189]: "+359876107153"
+                    - cell "b498b559" [ref=e190]
+                    - cell "Изчаква плащане" [ref=e191]:
+                      - generic [ref=e192]: Изчаква плащане
+                    - cell "Авто (0)" [ref=e193]:
+                      - generic [ref=e194]: Авто (0)
+                    - cell "30.04.2026 г." [ref=e195]
+                    - cell "Premium месечен" [ref=e196]:
+                      - generic [ref=e197]: Premium месечен
+                    - cell "Незавършен (изтекъл)" [ref=e198]:
+                      - generic [ref=e199]: Незавършен (изтекъл)
+                    - cell "0.00 BGN" [ref=e200]:
+                      - generic [ref=e201]: 0.00 BGN
+                    - cell "21.05.2026 г." [ref=e202]
+                    - cell "Да" [ref=e203]
+                    - cell "21.04.2026 г." [ref=e204]
+                    - cell "···" [ref=e205]:
+                      - button "···" [ref=e207] [cursor=pointer]
+                  - row "Radoslav Tashev radoslavairbnbsofia@gmail.com +359876107153 f3a90a4a Изчаква верификация Авто (0) 17.04.2026 г. — — 0.00 BGN — — 17.04.2026 г. ···" [ref=e208]:
+                    - cell "Radoslav Tashev radoslavairbnbsofia@gmail.com +359876107153" [ref=e209]:
+                      - generic [ref=e210]:
+                        - link "Radoslav Tashev" [ref=e211] [cursor=pointer]:
+                          - /url: /admin/subscribers/f3a90a4a-570e-4997-83d1-02a1dc5a7901
+                        - generic [ref=e212]: radoslavairbnbsofia@gmail.com
+                        - generic [ref=e213]: "+359876107153"
+                    - cell "f3a90a4a" [ref=e214]
+                    - cell "Изчаква верификация" [ref=e215]:
+                      - generic [ref=e216]: Изчаква верификация
+                    - cell "Авто (0)" [ref=e217]:
+                      - generic [ref=e218]: Авто (0)
+                    - cell "17.04.2026 г." [ref=e219]
+                    - cell "—" [ref=e220]
+                    - cell "—" [ref=e221]
+                    - cell "0.00 BGN" [ref=e222]:
+                      - generic [ref=e223]: 0.00 BGN
+                    - cell "—" [ref=e224]
+                    - cell "—" [ref=e225]
+                    - cell "17.04.2026 г." [ref=e226]
+                    - cell "···" [ref=e227]:
+                      - button "···" [ref=e229] [cursor=pointer]
+                  - row "Radoslav Radoslav ceckoairbnb1914@gmail.com +359879100079 4e7641ff Изчаква верификация Авто (0) 23.04.2026 г. — — 0.00 BGN — — 17.04.2026 г. ···" [ref=e230]:
+                    - cell "Radoslav Radoslav ceckoairbnb1914@gmail.com +359879100079" [ref=e231]:
+                      - generic [ref=e232]:
+                        - link "Radoslav Radoslav" [ref=e233] [cursor=pointer]:
+                          - /url: /admin/subscribers/4e7641ff-28d0-4f06-9da7-7e2ffe24d82b
+                        - generic [ref=e234]: ceckoairbnb1914@gmail.com
+                        - generic [ref=e235]: "+359879100079"
+                    - cell "4e7641ff" [ref=e236]
+                    - cell "Изчаква верификация" [ref=e237]:
+                      - generic [ref=e238]: Изчаква верификация
+                    - cell "Авто (0)" [ref=e239]:
+                      - generic [ref=e240]: Авто (0)
+                    - cell "23.04.2026 г." [ref=e241]
+                    - cell "—" [ref=e242]
+                    - cell "—" [ref=e243]
+                    - cell "0.00 BGN" [ref=e244]:
+                      - generic [ref=e245]: 0.00 BGN
+                    - cell "—" [ref=e246]
+                    - cell "—" [ref=e247]
+                    - cell "17.04.2026 г." [ref=e248]
+                    - cell "···" [ref=e249]:
+                      - button "···" [ref=e251] [cursor=pointer]
+                  - row "Banksy Kadiysky edo7@abv.bg +359888888888 b237bb32 Изчаква плащане Авто (0) Никога Basic Незавършен (изтекъл) 0.00 BGN 17.05.2026 г. Да 17.04.2026 г. ···" [ref=e252]:
+                    - cell "Banksy Kadiysky edo7@abv.bg +359888888888" [ref=e253]:
+                      - generic [ref=e254]:
+                        - link "Banksy Kadiysky" [ref=e255] [cursor=pointer]:
+                          - /url: /admin/subscribers/b237bb32-6a1d-4681-8553-e41ae18b7a7b
+                        - generic [ref=e256]: edo7@abv.bg
+                        - generic [ref=e257]: "+359888888888"
+                    - cell "b237bb32" [ref=e258]
+                    - cell "Изчаква плащане" [ref=e259]:
+                      - generic [ref=e260]: Изчаква плащане
+                    - cell "Авто (0)" [ref=e261]:
+                      - generic [ref=e262]: Авто (0)
+                    - cell "Никога" [ref=e263]
+                    - cell "Basic" [ref=e264]:
+                      - generic [ref=e265]: Basic
+                    - cell "Незавършен (изтекъл)" [ref=e266]:
+                      - generic [ref=e267]: Незавършен (изтекъл)
+                    - cell "0.00 BGN" [ref=e268]:
+                      - generic [ref=e269]: 0.00 BGN
+                    - cell "17.05.2026 г." [ref=e270]
+                    - cell "Да" [ref=e271]
+                    - cell "17.04.2026 г." [ref=e272]
+                    - cell "···" [ref=e273]:
+                      - button "···" [ref=e275] [cursor=pointer]
+                  - row "John Smith edoardok@yahoo.com +359887360320 99a3bc1a Изчаква верификация Авто (0) Никога — — 0.00 BGN — — 17.04.2026 г. ···" [ref=e276]:
+                    - cell "John Smith edoardok@yahoo.com +359887360320" [ref=e277]:
+                      - generic [ref=e278]:
+                        - link "John Smith" [ref=e279] [cursor=pointer]:
+                          - /url: /admin/subscribers/99a3bc1a-d1b4-462b-94aa-a0b19593b3e2
+                        - generic [ref=e280]: edoardok@yahoo.com
+                        - generic [ref=e281]: "+359887360320"
+                    - cell "99a3bc1a" [ref=e282]
+                    - cell "Изчаква верификация" [ref=e283]:
+                      - generic [ref=e284]: Изчаква верификация
+                    - cell "Авто (0)" [ref=e285]:
+                      - generic [ref=e286]: Авто (0)
+                    - cell "Никога" [ref=e287]
+                    - cell "—" [ref=e288]
+                    - cell "—" [ref=e289]
+                    - cell "0.00 BGN" [ref=e290]:
+                      - generic [ref=e291]: 0.00 BGN
+                    - cell "—" [ref=e292]
+                    - cell "—" [ref=e293]
+                    - cell "17.04.2026 г." [ref=e294]
+                    - cell "···" [ref=e295]:
+                      - button "···" [ref=e297] [cursor=pointer]
+                  - row "Todor Mihaylov gkadiysky@gmail.com 0887360320 19081e81 Изчаква плащане Авто (0) Никога Premium седмичен Незавършен (изтекъл) 0.00 BGN 23.04.2026 г. Да 16.04.2026 г. ···" [ref=e298]:
+                    - cell "Todor Mihaylov gkadiysky@gmail.com 0887360320" [ref=e299]:
+                      - generic [ref=e300]:
+                        - link "Todor Mihaylov" [ref=e301] [cursor=pointer]:
+                          - /url: /admin/subscribers/19081e81-a06c-42e6-bffa-93ecd4dc313a
+                        - generic [ref=e302]: gkadiysky@gmail.com
+                        - generic [ref=e303]: "0887360320"
+                    - cell "19081e81" [ref=e304]
+                    - cell "Изчаква плащане" [ref=e305]:
+                      - generic [ref=e306]: Изчаква плащане
+                    - cell "Авто (0)" [ref=e307]:
+                      - generic [ref=e308]: Авто (0)
+                    - cell "Никога" [ref=e309]
+                    - cell "Premium седмичен" [ref=e310]:
+                      - generic [ref=e311]: Premium седмичен
+                    - cell "Незавършен (изтекъл)" [ref=e312]:
+                      - generic [ref=e313]: Незавършен (изтекъл)
+                    - cell "0.00 BGN" [ref=e314]:
+                      - generic [ref=e315]: 0.00 BGN
+                    - cell "23.04.2026 г." [ref=e316]
+                    - cell "Да" [ref=e317]
+                    - cell "16.04.2026 г." [ref=e318]
+                    - cell "···" [ref=e319]:
+                      - button "···" [ref=e321] [cursor=pointer]
+                  - row "Todor Mihaylov sitetrikscms@gmail.com 819f4772 Изчаква верификация Авто (0) Никога — — 0.00 BGN — — 16.04.2026 г. ···" [ref=e322]:
+                    - cell "Todor Mihaylov sitetrikscms@gmail.com" [ref=e323]:
+                      - generic [ref=e324]:
+                        - link "Todor Mihaylov" [ref=e325] [cursor=pointer]:
+                          - /url: /admin/subscribers/819f4772-1f64-4ecc-ae29-398faf17b72c
+                        - generic [ref=e326]: sitetrikscms@gmail.com
+                    - cell "819f4772" [ref=e327]
+                    - cell "Изчаква верификация" [ref=e328]:
+                      - generic [ref=e329]: Изчаква верификация
+                    - cell "Авто (0)" [ref=e330]:
+                      - generic [ref=e331]: Авто (0)
+                    - cell "Никога" [ref=e332]
+                    - cell "—" [ref=e333]
+                    - cell "—" [ref=e334]
+                    - cell "0.00 BGN" [ref=e335]:
+                      - generic [ref=e336]: 0.00 BGN
+                    - cell "—" [ref=e337]
+                    - cell "—" [ref=e338]
+                    - cell "16.04.2026 г." [ref=e339]
+                    - cell "···" [ref=e340]:
+                      - button "···" [ref=e342] [cursor=pointer]
+                  - row "Ivan Petrov ivanpetrovtest@gmail.com ed297d19 Изчаква плащане Авто (0) Никога Basic Незавършен (изтекъл) 0.00 BGN 16.05.2026 г. Да 16.04.2026 г. ···" [ref=e343]:
+                    - cell "Ivan Petrov ivanpetrovtest@gmail.com" [ref=e344]:
+                      - generic [ref=e345]:
+                        - link "Ivan Petrov" [ref=e346] [cursor=pointer]:
+                          - /url: /admin/subscribers/ed297d19-f8e7-482a-8a17-cc5af91b3968
+                        - generic [ref=e347]: ivanpetrovtest@gmail.com
+                    - cell "ed297d19" [ref=e348]
+                    - cell "Изчаква плащане" [ref=e349]:
+                      - generic [ref=e350]: Изчаква плащане
+                    - cell "Авто (0)" [ref=e351]:
+                      - generic [ref=e352]: Авто (0)
+                    - cell "Никога" [ref=e353]
+                    - cell "Basic" [ref=e354]:
+                      - generic [ref=e355]: Basic
+                    - cell "Незавършен (изтекъл)" [ref=e356]:
+                      - generic [ref=e357]: Незавършен (изтекъл)
+                    - cell "0.00 BGN" [ref=e358]:
+                      - generic [ref=e359]: 0.00 BGN
+                    - cell "16.05.2026 г." [ref=e360]
+                    - cell "Да" [ref=e361]
+                    - cell "16.04.2026 г." [ref=e362]
+                    - cell "···" [ref=e363]:
+                      - button "···" [ref=e365] [cursor=pointer]
+                  - row "qafix1776171700558968000@test.com qafix1776171700558968000@test.com edaf8a4d Изчаква верификация Авто (0) Никога — — 0.00 BGN — — 14.04.2026 г. ···" [ref=e366]:
+                    - cell "qafix1776171700558968000@test.com qafix1776171700558968000@test.com" [ref=e367]:
+                      - generic [ref=e368]:
+                        - link "qafix1776171700558968000@test.com" [ref=e369] [cursor=pointer]:
+                          - /url: /admin/subscribers/edaf8a4d-aa3b-4907-972e-6f90e4221e74
+                        - generic [ref=e370]: qafix1776171700558968000@test.com
+                    - cell "edaf8a4d" [ref=e371]
+                    - cell "Изчаква верификация" [ref=e372]:
+                      - generic [ref=e373]: Изчаква верификация
+                    - cell "Авто (0)" [ref=e374]:
+                      - generic [ref=e375]: Авто (0)
+                    - cell "Никога" [ref=e376]
+                    - cell "—" [ref=e377]
+                    - cell "—" [ref=e378]
+                    - cell "0.00 BGN" [ref=e379]:
+                      - generic [ref=e380]: 0.00 BGN
+                    - cell "—" [ref=e381]
+                    - cell "—" [ref=e382]
+                    - cell "14.04.2026 г." [ref=e383]
+                    - cell "···" [ref=e384]:
+                      - button "···" [ref=e386] [cursor=pointer]
+                  - row "qafix1776171676261488000@test.com qafix1776171676261488000@test.com 3d501747 Изчаква верификация Авто (0) Никога — — 0.00 BGN — — 14.04.2026 г. ···" [ref=e387]:
+                    - cell "qafix1776171676261488000@test.com qafix1776171676261488000@test.com" [ref=e388]:
+                      - generic [ref=e389]:
+                        - link "qafix1776171676261488000@test.com" [ref=e390] [cursor=pointer]:
+                          - /url: /admin/subscribers/3d501747-c06c-4f13-81e6-0a7a37985b04
+                        - generic [ref=e391]: qafix1776171676261488000@test.com
+                    - cell "3d501747" [ref=e392]
+                    - cell "Изчаква верификация" [ref=e393]:
+                      - generic [ref=e394]: Изчаква верификация
+                    - cell "Авто (0)" [ref=e395]:
+                      - generic [ref=e396]: Авто (0)
+                    - cell "Никога" [ref=e397]
+                    - cell "—" [ref=e398]
+                    - cell "—" [ref=e399]
+                    - cell "0.00 BGN" [ref=e400]:
+                      - generic [ref=e401]: 0.00 BGN
+                    - cell "—" [ref=e402]
+                    - cell "—" [ref=e403]
+                    - cell "14.04.2026 г." [ref=e404]
+                    - cell "···" [ref=e405]:
+                      - button "···" [ref=e407] [cursor=pointer]
+                  - row "test1776171661835649000@test.com test1776171661835649000@test.com 6fcfda79 Изчаква верификация Авто (0) Никога — — 0.00 BGN — — 14.04.2026 г. ···" [ref=e408]:
+                    - cell "test1776171661835649000@test.com test1776171661835649000@test.com" [ref=e409]:
+                      - generic [ref=e410]:
+                        - link "test1776171661835649000@test.com" [ref=e411] [cursor=pointer]:
+                          - /url: /admin/subscribers/6fcfda79-60a3-4a2b-8dda-c3b1282df3ff
+                        - generic [ref=e412]: test1776171661835649000@test.com
+                    - cell "6fcfda79" [ref=e413]
+                    - cell "Изчаква верификация" [ref=e414]:
+                      - generic [ref=e415]: Изчаква верификация
+                    - cell "Авто (0)" [ref=e416]:
+                      - generic [ref=e417]: Авто (0)
+                    - cell "Никога" [ref=e418]
+                    - cell "—" [ref=e419]
+                    - cell "—" [ref=e420]
+                    - cell "0.00 BGN" [ref=e421]:
+                      - generic [ref=e422]: 0.00 BGN
+                    - cell "—" [ref=e423]
+                    - cell "—" [ref=e424]
+                    - cell "14.04.2026 г." [ref=e425]
+                    - cell "···" [ref=e426]:
+                      - button "···" [ref=e428] [cursor=pointer]
+                  - row "Edo Kadiysky usabul@gmail.com 9eb7839b Изчаква плащане Авто (0) 21.04.2026 г. Premium седмичен Незавършен (изтекъл) 0.00 BGN 12.04.2026 г. Да 05.04.2026 г. ···" [ref=e429]:
+                    - cell "Edo Kadiysky usabul@gmail.com" [ref=e430]:
+                      - generic [ref=e431]:
+                        - link "Edo Kadiysky" [ref=e432] [cursor=pointer]:
+                          - /url: /admin/subscribers/9eb7839b-4821-4121-b58b-0804d75fbc50
+                        - generic [ref=e433]: usabul@gmail.com
+                    - cell "9eb7839b" [ref=e434]
+                    - cell "Изчаква плащане" [ref=e435]:
+                      - generic [ref=e436]: Изчаква плащане
+                    - cell "Авто (0)" [ref=e437]:
+                      - generic [ref=e438]: Авто (0)
+                    - cell "21.04.2026 г." [ref=e439]
+                    - cell "Premium седмичен" [ref=e440]:
+                      - generic [ref=e441]: Premium седмичен
+                    - cell "Незавършен (изтекъл)" [ref=e442]:
+                      - generic [ref=e443]: Незавършен (изтекъл)
+                    - cell "0.00 BGN" [ref=e444]:
+                      - generic [ref=e445]: 0.00 BGN
+                    - cell "12.04.2026 г." [ref=e446]
+                    - cell "Да" [ref=e447]
+                    - cell "05.04.2026 г." [ref=e448]
+                    - cell "···" [ref=e449]:
+                      - button "···" [ref=e451] [cursor=pointer]
+                  - row "Test Premium test.premium@boomcard.bg +359888000001 01bcb1bc Активен Авто (0) Никога Premium месечен На пауза 0.00 BGN 21.04.2026 г. Да 21.03.2026 г. ···" [ref=e452]:
+                    - cell "Test Premium test.premium@boomcard.bg +359888000001" [ref=e453]:
+                      - generic [ref=e454]:
+                        - link "Test Premium" [ref=e455] [cursor=pointer]:
+                          - /url: /admin/subscribers/01bcb1bc-fa94-4848-afd5-18e97606c5e2
+                        - generic [ref=e456]: test.premium@boomcard.bg
+                        - generic [ref=e457]: "+359888000001"
+                    - cell "01bcb1bc" [ref=e458]
+                    - cell "Активен" [ref=e459]:
+                      - generic [ref=e460]: Активен
+                    - cell "Авто (0)" [ref=e461]:
+                      - generic [ref=e462]: Авто (0)
+                    - cell "Никога" [ref=e463]
+                    - cell "Premium месечен" [ref=e464]:
+                      - generic [ref=e465]: Premium месечен
+                    - cell "На пауза" [ref=e466]:
+                      - generic [ref=e467]: На пауза
+                    - cell "0.00 BGN" [ref=e468]:
+                      - generic [ref=e469]: 0.00 BGN
+                    - cell "21.04.2026 г." [ref=e470]
+                    - cell "Да" [ref=e471]
+                    - cell "21.03.2026 г." [ref=e472]
+                    - cell "···" [ref=e473]:
+                      - button "···" [ref=e475] [cursor=pointer]
+                  - row "Test User proximity-test-1774066695@example.com d3ca74b9 Активен Авто (0) 21.03.2026 г. — — 5.00 BGN — — 21.03.2026 г. ···" [ref=e476]:
+                    - cell "Test User proximity-test-1774066695@example.com" [ref=e477]:
+                      - generic [ref=e478]:
+                        - link "Test User" [ref=e479] [cursor=pointer]:
+                          - /url: /admin/subscribers/d3ca74b9-30c1-4784-b7f9-c3c57f5c6093
+                        - generic [ref=e480]: proximity-test-1774066695@example.com
+                    - cell "d3ca74b9" [ref=e481]
+                    - cell "Активен" [ref=e482]:
+                      - generic [ref=e483]: Активен
+                    - cell "Авто (0)" [ref=e484]:
+                      - generic [ref=e485]: Авто (0)
+                    - cell "21.03.2026 г." [ref=e486]
+                    - cell "—" [ref=e487]
+                    - cell "—" [ref=e488]
+                    - cell "5.00 BGN" [ref=e489]:
+                      - generic [ref=e490]: 5.00 BGN
+                    - cell "—" [ref=e491]
+                    - cell "—" [ref=e492]
+                    - cell "21.03.2026 г." [ref=e493]
+                    - cell "···" [ref=e494]:
+                      - button "···" [ref=e496] [cursor=pointer]
+                  - row "Test User proximity-test-1774066675@example.com 8a6cfe66 Изчаква верификация Авто (0) Никога — — 0.00 BGN — — 21.03.2026 г. ···" [ref=e497]:
+                    - cell "Test User proximity-test-1774066675@example.com" [ref=e498]:
+                      - generic [ref=e499]:
+                        - link "Test User" [ref=e500] [cursor=pointer]:
+                          - /url: /admin/subscribers/8a6cfe66-43ba-42b2-a658-5e8152c4e118
+                        - generic [ref=e501]: proximity-test-1774066675@example.com
+                    - cell "8a6cfe66" [ref=e502]
+                    - cell "Изчаква верификация" [ref=e503]:
+                      - generic [ref=e504]: Изчаква верификация
+                    - cell "Авто (0)" [ref=e505]:
+                      - generic [ref=e506]: Авто (0)
+                    - cell "Никога" [ref=e507]
+                    - cell "—" [ref=e508]
+                    - cell "—" [ref=e509]
+                    - cell "0.00 BGN" [ref=e510]:
+                      - generic [ref=e511]: 0.00 BGN
+                    - cell "—" [ref=e512]
+                    - cell "—" [ref=e513]
+                    - cell "21.03.2026 г." [ref=e514]
+                    - cell "···" [ref=e515]:
+                      - button "···" [ref=e517] [cursor=pointer]
+                  - row "Receipt Tester receipttest3_1774064183@test.com d63ce41e Изчаква верификация Авто (0) Никога — — 0.00 BGN — — 21.03.2026 г. ···" [ref=e518]:
+                    - cell "Receipt Tester receipttest3_1774064183@test.com" [ref=e519]:
+                      - generic [ref=e520]:
+                        - link "Receipt Tester" [ref=e521] [cursor=pointer]:
+                          - /url: /admin/subscribers/d63ce41e-3fd0-4a2f-a046-7cafc43831d1
+                        - generic [ref=e522]: receipttest3_1774064183@test.com
+                    - cell "d63ce41e" [ref=e523]
+                    - cell "Изчаква верификация" [ref=e524]:
+                      - generic [ref=e525]: Изчаква верификация
+                    - cell "Авто (0)" [ref=e526]:
+                      - generic [ref=e527]: Авто (0)
+                    - cell "Никога" [ref=e528]
+                    - cell "—" [ref=e529]
+                    - cell "—" [ref=e530]
+                    - cell "0.00 BGN" [ref=e531]:
+                      - generic [ref=e532]: 0.00 BGN
+                    - cell "—" [ref=e533]
+                    - cell "—" [ref=e534]
+                    - cell "21.03.2026 г." [ref=e535]
+                    - cell "···" [ref=e536]:
+                      - button "···" [ref=e538] [cursor=pointer]
+              - generic [ref=e539]:
+                - generic [ref=e540]:
+                  - text: Показване на
+                  - strong [ref=e541]: "1"
+                  - text: до
+                  - strong [ref=e542]: "20"
+                  - text: от
+                  - strong [ref=e543]: "120"
+                  - text: резултата
+                - generic [ref=e544]:
+                  - button "First page" [disabled] [ref=e545]:
+                    - img [ref=e546]
+                    - text: Първа
+                  - button "Previous page" [disabled] [ref=e548]:
+                    - img [ref=e549]
+                    - text: Предишна
+                  - button "Page 1" [ref=e551] [cursor=pointer]: "1"
+                  - button "Page 2" [ref=e552] [cursor=pointer]: "2"
+                  - button "Page 3" [ref=e553] [cursor=pointer]: "3"
+                  - button "Page 4" [ref=e554] [cursor=pointer]: "4"
+                  - button "Page 5" [ref=e555] [cursor=pointer]: "5"
+                  - button "Page 6" [ref=e556] [cursor=pointer]: "6"
+                  - button "Next page" [ref=e557] [cursor=pointer]:
+                    - text: Следваща
+                    - img [ref=e558]
+                  - button "Last page" [ref=e560] [cursor=pointer]:
+                    - text: Последна
+                    - img [ref=e561]
+  - img [ref=e29]

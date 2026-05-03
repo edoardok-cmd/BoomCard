@@ -43,8 +43,22 @@ function buildSubscriberQuery(q: Record<string, string | undefined>) {
   if (plan && Object.values(SubscriptionPlan).includes(plan as SubscriptionPlan)) {
     subFilter.plan = plan as SubscriptionPlan;
   }
-  if (status && Object.values(SubscriptionStatus).includes(status as SubscriptionStatus)) {
-    subFilter.status = status as SubscriptionStatus;
+  // Accept either a single status (legacy) or a comma-separated list to support
+  // dashboard StatCard presets that union multiple statuses (e.g. "Изтекли+спрени"
+  // = CANCELLED+EXPIRED+INCOMPLETE_EXPIRED). Reject unknown values silently —
+  // narrows the filter rather than producing a Prisma type error.
+  if (status) {
+    const statuses = status
+      .split(',')
+      .map((s) => s.trim())
+      .filter((s): s is SubscriptionStatus =>
+        Object.values(SubscriptionStatus).includes(s as SubscriptionStatus),
+      );
+    if (statuses.length === 1) {
+      subFilter.status = statuses[0];
+    } else if (statuses.length > 1) {
+      subFilter.status = { in: statuses };
+    }
   }
   const hasSubFilter = Object.keys(subFilter).length > 0;
   // NOTE: subscription filtering is intentionally NOT applied to `where` here.
@@ -109,14 +123,33 @@ function buildSubscriberQuery(q: Record<string, string | undefined>) {
 //      only users whose *current* plan/status matches are included.
 // This is correct for plan-change scenarios: a user who had BASIC then upgraded
 // to PREMIUM should not appear in the BASIC plan filter.
-async function resolveLatestSubUserIds(subFilter: Record<string, unknown>): Promise<string[]> {
+//
+// Cap at MAX_CANDIDATES so a high-cardinality status preset (e.g. EXPIRED across
+// all historical subscribers) doesn't push tens of thousands of UUIDs through
+// the IN-clause and degrade Postgres query planning. Since results are sorted
+// by user.createdAt and paginated client-side, an exhaustive scan is unnecessary;
+// we surface a truncation header so callers know the universe was capped.
+const MAX_CANDIDATES = 10_000;
+async function resolveLatestSubUserIds(
+  subFilter: Record<string, unknown>,
+): Promise<{ userIds: string[]; truncated: boolean }> {
+  // orderBy is REQUIRED for the truncated slice to be reproducible across
+  // requests. Without it Postgres returns rows in planner-arbitrary order, so
+  // page-1 and page-2 of the same /subscribers query could resolve to different
+  // candidate sets when total > MAX_CANDIDATES — users would visibly disappear /
+  // re-appear across pages. Sorting by userId (the distinct column, also the
+  // PK) is cheap and stable. Postgres requires distinct + orderBy to share the
+  // leading column, which is satisfied here.
   const candidates = await prisma.subscription.findMany({
     where: subFilter as SubWhere,
     select: { userId: true },
     distinct: ['userId'],
+    orderBy: { userId: 'asc' },
+    take: MAX_CANDIDATES + 1, // fetch one extra to detect truncation
   });
-  if (candidates.length === 0) return [];
-  const candidateIds = candidates.map((s) => s.userId);
+  if (candidates.length === 0) return { userIds: [], truncated: false };
+  const truncated = candidates.length > MAX_CANDIDATES;
+  const candidateIds = (truncated ? candidates.slice(0, MAX_CANDIDATES) : candidates).map((s) => s.userId);
 
   const latestSubs = await prisma.subscription.findMany({
     where: { userId: { in: candidateIds } },
@@ -125,13 +158,22 @@ async function resolveLatestSubUserIds(subFilter: Record<string, unknown>): Prom
     select: { userId: true, plan: true, status: true },
   });
 
-  return latestSubs
+  // subFilter.status may be a single value OR a Prisma `{ in: [...] }` clause
+  // when the route accepts a multi-status preset (dashboard StatCards).
+  const statusMatches = (s: SubscriptionStatus): boolean => {
+    if (!subFilter.status) return true;
+    if (typeof subFilter.status === 'string') return s === subFilter.status;
+    const inClause = subFilter.status as { in?: SubscriptionStatus[] };
+    return Array.isArray(inClause.in) ? inClause.in.includes(s) : true;
+  };
+  const userIds = latestSubs
     .filter((s) => {
       if (subFilter.plan && s.plan !== subFilter.plan) return false;
-      if (subFilter.status && s.status !== subFilter.status) return false;
+      if (!statusMatches(s.status as SubscriptionStatus)) return false;
       return true;
     })
     .map((s) => s.userId);
+  return { userIds, truncated };
 }
 
 // Mirror the outer filter so the embedded subscription matches what the admin
@@ -176,9 +218,11 @@ router.get('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermissi
     // Subscription plan/status filter: restrict to users whose LATEST subscription
     // matches — not any historical one. resolveLatestSubUserIds() handles this via
     // a two-query strategy; we then fold the result into where.id.
+    let truncatedCandidates = false;
     if (hasSubFilter) {
-      const matchedIds = await resolveLatestSubUserIds(subFilter);
-      where.id = { in: matchedIds };
+      const resolved = await resolveLatestSubUserIds(subFilter);
+      where.id = { in: resolved.userIds };
+      truncatedCandidates = resolved.truncated;
     }
 
     // Null-last ordering for lastActivityAt: rows where the field is NULL sink to
@@ -230,6 +274,9 @@ router.get('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermissi
       // Computation failure must not break the list — fall back to stored values.
     }
 
+    if (truncatedCandidates) {
+      res.setHeader('X-Truncated-Result', `candidates capped at ${MAX_CANDIDATES}`);
+    }
     res.json({ subscribers, total, page: pageNum, limit: limitNum });
   } catch (error) {
     next(error);
@@ -241,9 +288,11 @@ const EXPORT_MAX = 10000;
 router.get('/export', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('subscribers.read'), async (req, res, next) => {
   try {
     const { where, subFilter, hasSubFilter } = buildSubscriberQuery(req.query as Record<string, string>);
+    let truncatedCandidates = false;
     if (hasSubFilter) {
-      const matchedIds = await resolveLatestSubUserIds(subFilter);
-      where.id = { in: matchedIds };
+      const resolved = await resolveLatestSubUserIds(subFilter);
+      where.id = { in: resolved.userIds };
+      truncatedCandidates = resolved.truncated;
     }
     const users = await prisma.user.findMany({
       where,
@@ -254,6 +303,9 @@ router.get('/export', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePe
         subscriptions: subscriptionInclude(false, {}),
       },
     });
+    if (truncatedCandidates) {
+      res.setHeader('X-Truncated-Result', `candidates capped at ${MAX_CANDIDATES}`);
+    }
     res.json({ subscribers: users.map(flattenSubscriber), limit: EXPORT_MAX });
   } catch (error) {
     next(error);

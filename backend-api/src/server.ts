@@ -117,6 +117,11 @@ const corsOrigins: string[] | boolean = (_rawCorsOrigin && _rawCorsOrigin !== '*
       'https://boomcard.bg',
       'https://mobile.boomcard.bg',
       'https://boomcard.vercel.app',
+      'http://localhost:3021',
+      'http://localhost:3022',
+      'http://localhost:3023',
+      'http://localhost:3024',
+      'http://localhost:3025',
       'http://localhost:5173',
       'http://localhost:5174',
       'http://localhost:5175',
@@ -175,14 +180,14 @@ if (process.env.NODE_ENV === 'production' && process.env.SENTRY_DSN) {
   app.use(SentryConfig.tracingHandler());
 }
 
-// Rate limiting — 100 req/min in production, skipped in development
+// Rate limiting — 100 req/min applied in production/staging/unset; skipped only for explicit dev/test
 const limiter = rateLimit({
   windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '60000'), // 1 minute window
   max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '100'), // 100 req/min per IP
   message: 'Too many requests from this IP, please try again later.',
   standardHeaders: true,
   legacyHeaders: false,
-  skip: (req) => process.env.NODE_ENV === 'development',
+  skip: () => process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test',
 });
 app.use('/api/', limiter);
 

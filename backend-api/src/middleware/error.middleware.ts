@@ -47,13 +47,12 @@ export const errorHandler = (
     trackError(err, { path: req.path, method: req.method, statusCode });
   }
 
-  // Send response
+  // Send response — `error` is always a plain string so frontend toast handlers
+  // can use it directly without drilling into .message.
   res.status(statusCode).json({
-    error: {
-      message,
-      ...(err instanceof AppError && err.details && { details: err.details }),
-      ...(process.env.NODE_ENV === 'development' && { stack: err.stack }),
-    },
+    error: message,
+    ...(err instanceof AppError && err.details && { details: err.details }),
+    ...(process.env.NODE_ENV === 'development' && { stack: err.stack }),
   });
 };
 

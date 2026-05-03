@@ -145,7 +145,7 @@ adminVenueMenuRouter.get(
             },
           },
           _count: {
-            select: { stickers: true },
+            select: { stickers: true, statusHistory: true },
           },
           stickers: {
             select: { createdAt: true, status: true, stickerId: true },
@@ -439,19 +439,103 @@ adminVenueMenuRouter.patch(
       return res.status(400).json({ success: false, error: 'venueStatus must be ACTIVE, SUSPENDED, or REPLACED' });
     }
 
-    const venue = await prisma.venue.findUnique({ where: { id } });
-    if (!venue) return res.status(404).json({ success: false, error: 'Venue not found' });
+    const trimmedNote = note?.trim() || null;
 
-    const updated = await prisma.venue.update({
-      where: { id },
-      data: {
-        venueStatus: venueStatus as never,
-        venueStatusNote: note?.trim() || null,
-        venueStatusAt: new Date(),
-      },
-      select: { id: true, venueStatus: true, venueStatusNote: true, venueStatusAt: true },
+    // Spec §5.4 — append a history row on every status change so the locations
+    // page can render the full "Кога и защо е сменян" timeline. We append even
+    // when the status didn't change (e.g. note-only edit) so the audit trail
+    // captures every admin action; the UI differentiates via fromStatus===toStatus.
+    //
+    // Read fromStatus *inside* the interactive transaction so concurrent PATCHes
+    // can't both read the same prior status and produce diverging audit rows.
+    const result = await prisma.$transaction(async (tx) => {
+      const before = await tx.venue.findUnique({
+        where: { id },
+        select: { venueStatus: true, venueStatusNote: true },
+      });
+      if (!before) return null;
+      const updated = await tx.venue.update({
+        where: { id },
+        data: {
+          venueStatus: venueStatus as never,
+          venueStatusNote: trimmedNote,
+          venueStatusAt: new Date(),
+        },
+        select: { id: true, venueStatus: true, venueStatusNote: true, venueStatusAt: true },
+      });
+      // Only append a history row when something actually changed: a status
+      // transition OR a note edit. A pure no-op save (same status, same note)
+      // would otherwise clutter the timeline with empty "Бележка обновена"
+      // entries. fromStatus === toStatus on a written row still encodes
+      // "note-only edit" for the UI to render.
+      const statusChanged = before.venueStatus !== (venueStatus as never);
+      const noteChanged = (before.venueStatusNote ?? null) !== trimmedNote;
+      if (statusChanged || noteChanged) {
+        await tx.venueStatusHistory.create({
+          data: {
+            venueId: id,
+            fromStatus: before.venueStatus,
+            toStatus: venueStatus as never,
+            note: trimmedNote,
+            changedById: req.user?.id ?? null,
+          },
+        });
+      }
+      return updated;
     });
 
-    res.json({ success: true, data: updated });
+    if (!result) return res.status(404).json({ success: false, error: 'Venue not found' });
+    res.json({ success: true, data: result });
+  })
+);
+
+/**
+ * GET /api/admin/venues/:id/status-history
+ * Returns the full status-change timeline for a venue (spec §5.4 — История).
+ * Each row carries from→to, an optional note, and the actor who made the change.
+ */
+adminVenueMenuRouter.get(
+  '/:id/status-history',
+  requirePermission('partners.locations.read'),
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    const { id } = req.params;
+    const venue = await prisma.venue.findUnique({ where: { id }, select: { id: true } });
+    if (!venue) return res.status(404).json({ success: false, error: 'Venue not found' });
+
+    // take: 100 is a deliberate cap — a real venue accruing >100 status
+    // events would indicate a misuse problem we'd want to investigate, not
+    // paginate around. If the cap ever bites in practice, swap this for a
+    // cursor-based scheme (e.g. ?before=createdAt&limit=N).
+    const history = await prisma.venueStatusHistory.findMany({
+      where: { venueId: id },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+    });
+
+    // Hydrate actor profiles in a follow-up query — same pattern as
+    // assignedAdmin enrichment in adminPartners.routes.ts (no Prisma relation
+    // on User to keep that model's relation list untouched).
+    const actorIds = Array.from(
+      new Set(history.map((h) => h.changedById).filter((x): x is string => !!x))
+    );
+    const actors = actorIds.length
+      ? await prisma.user.findMany({
+          where: { id: { in: actorIds } },
+          select: { id: true, firstName: true, lastName: true, email: true },
+        })
+      : [];
+    const actorMap = new Map(actors.map((a) => [a.id, a]));
+
+    res.json({
+      success: true,
+      data: history.map((h) => ({
+        id: h.id,
+        fromStatus: h.fromStatus,
+        toStatus: h.toStatus,
+        note: h.note,
+        createdAt: h.createdAt,
+        changedBy: h.changedById ? actorMap.get(h.changedById) ?? null : null,
+      })),
+    });
   })
 );

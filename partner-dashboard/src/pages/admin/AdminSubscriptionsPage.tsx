@@ -18,6 +18,7 @@ import {
   planLabel as sharedPlanLabel,
   subStatusLabel as sharedSubStatusLabel,
 } from '../../utils/planLabels';
+import { formatPhoneBG } from '../../utils/validators';
 
 /* ─── Palette ─────────────────────────────────────────────────────────────── */
 const palette = {
@@ -842,7 +843,7 @@ export default function AdminSubscriptionsPage() {
               {row.user.isTest && <TestTag>{tr(T.testTag, lang)}</TestTag>}
             </NameRow>
             <MetaLine>{row.user.email}</MetaLine>
-            {row.user.phone && <MetaLine>{row.user.phone}</MetaLine>}
+            {row.user.phone && <MetaLine>{formatPhoneBG(row.user.phone)}</MetaLine>}
           </UserCell>
         );
       },

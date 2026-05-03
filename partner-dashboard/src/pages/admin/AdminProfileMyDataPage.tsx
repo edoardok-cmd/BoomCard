@@ -39,10 +39,20 @@ const AdminProfileMyDataPage: React.FC = () => {
   const [lastName, setLastName] = useState('');
   const [phone, setPhone] = useState('');
 
-  // Email change state
+  // Email change state — 2-step: request code → confirm with code + password
   const [showEmailModal, setShowEmailModal] = useState(false);
+  const [emailStep, setEmailStep] = useState<'request' | 'confirm'>('request');
   const [newEmail, setNewEmail] = useState('');
+  const [emailCode, setEmailCode] = useState('');
   const [emailPassword, setEmailPassword] = useState('');
+
+  const closeEmailModal = () => {
+    setShowEmailModal(false);
+    setEmailStep('request');
+    setNewEmail('');
+    setEmailCode('');
+    setEmailPassword('');
+  };
 
   useEffect(() => {
     if (data) {
@@ -63,17 +73,26 @@ const AdminProfileMyDataPage: React.FC = () => {
     },
   });
 
-  const emailMutation = useMutation({
-    mutationFn: () => adminProfileService.changeEmail(newEmail, emailPassword),
+  const requestEmailMutation = useMutation({
+    mutationFn: () => adminProfileService.requestEmailChange(newEmail),
     onSuccess: () => {
-      toast.success('Имейлът е обновен');
-      setShowEmailModal(false);
-      setNewEmail('');
-      setEmailPassword('');
+      toast.success('Код за потвърждение е изпратен на новия имейл');
+      setEmailStep('confirm');
+    },
+    onError: (err: { response?: { data?: { error?: string } } }) => {
+      toast.error(err?.response?.data?.error ?? 'Грешка при изпращане на код');
+    },
+  });
+
+  const confirmEmailMutation = useMutation({
+    mutationFn: () => adminProfileService.confirmEmailChange(emailCode, emailPassword),
+    onSuccess: () => {
+      toast.success('Имейлът е сменен успешно');
+      closeEmailModal();
       queryClient.invalidateQueries({ queryKey: ['admin-profile-me'] });
     },
     onError: (err: { response?: { data?: { error?: string } } }) => {
-      toast.error(err?.response?.data?.error ?? 'Грешка при промяна на имейл');
+      toast.error(err?.response?.data?.error ?? 'Грешка при потвърждение на имейл');
     },
   });
 
@@ -109,7 +128,7 @@ const AdminProfileMyDataPage: React.FC = () => {
             <EmailRow>
               <Input value={data.email} disabled style={{ flex: 1 }} />
               {isSuperAdmin && (
-                <EditEmailBtn type="button" onClick={() => { setNewEmail(data.email); setShowEmailModal(true); }}>
+                <EditEmailBtn type="button" onClick={() => { setNewEmail(''); setShowEmailModal(true); }}>
                   Промени
                 </EditEmailBtn>
               )}
@@ -146,39 +165,70 @@ const AdminProfileMyDataPage: React.FC = () => {
       </Card>
 
       {showEmailModal && (
-        <ModalOverlay onClick={() => setShowEmailModal(false)}>
+        <ModalOverlay onClick={closeEmailModal}>
           <ModalBox onClick={(e) => e.stopPropagation()}>
-            <ModalTitle>Промяна на имейл адрес</ModalTitle>
-            <ModalField>
-              <Label>Нов имейл адрес</Label>
-              <Input
-                type="email"
-                value={newEmail}
-                onChange={(e) => setNewEmail(e.target.value)}
-                placeholder="нов@имейл.com"
-                autoFocus
-              />
-            </ModalField>
-            <ModalField>
-              <Label>Текуща парола (за потвърждение)</Label>
-              <Input
-                type="password"
-                value={emailPassword}
-                onChange={(e) => setEmailPassword(e.target.value)}
-                placeholder="••••••••"
-              />
-            </ModalField>
-            <ModalActions>
-              <Button
-                onClick={() => emailMutation.mutate()}
-                disabled={!newEmail || !emailPassword || emailMutation.isPending}
-              >
-                {emailMutation.isPending ? 'Запазване…' : 'Запази'}
-              </Button>
-              <SecondaryButton type="button" onClick={() => setShowEmailModal(false)}>
-                Отказ
-              </SecondaryButton>
-            </ModalActions>
+            {emailStep === 'request' ? (
+              <>
+                <ModalTitle>Промяна на имейл адрес</ModalTitle>
+                <ModalStepHint>Стъпка 1 от 2 — Въведете новия имейл. Ще изпратим код за потвърждение.</ModalStepHint>
+                <ModalField>
+                  <Label>Нов имейл адрес</Label>
+                  <Input
+                    type="email"
+                    value={newEmail}
+                    onChange={(e) => setNewEmail(e.target.value)}
+                    placeholder="нов@имейл.com"
+                    autoFocus
+                  />
+                </ModalField>
+                <ModalActions>
+                  <Button
+                    onClick={() => requestEmailMutation.mutate()}
+                    disabled={!newEmail || requestEmailMutation.isPending}
+                  >
+                    {requestEmailMutation.isPending ? 'Изпращане…' : 'Изпрати код'}
+                  </Button>
+                  <SecondaryButton type="button" onClick={closeEmailModal}>
+                    Отказ
+                  </SecondaryButton>
+                </ModalActions>
+              </>
+            ) : (
+              <>
+                <ModalTitle>Потвърди нов имейл</ModalTitle>
+                <ModalStepHint>Стъпка 2 от 2 — Проверете {newEmail} за кода и въведете текущата си парола.</ModalStepHint>
+                <ModalField>
+                  <Label>Код за потвърждение (6 символа)</Label>
+                  <Input
+                    value={emailCode}
+                    onChange={(e) => setEmailCode(e.target.value.toUpperCase())}
+                    placeholder="ABC123"
+                    maxLength={6}
+                    autoFocus
+                  />
+                </ModalField>
+                <ModalField>
+                  <Label>Текуща парола</Label>
+                  <Input
+                    type="password"
+                    value={emailPassword}
+                    onChange={(e) => setEmailPassword(e.target.value)}
+                    placeholder="••••••••"
+                  />
+                </ModalField>
+                <ModalActions>
+                  <Button
+                    onClick={() => confirmEmailMutation.mutate()}
+                    disabled={emailCode.length < 6 || !emailPassword || confirmEmailMutation.isPending}
+                  >
+                    {confirmEmailMutation.isPending ? 'Потвърждаване…' : 'Потвърди'}
+                  </Button>
+                  <SecondaryButton type="button" onClick={() => setEmailStep('request')}>
+                    Назад
+                  </SecondaryButton>
+                </ModalActions>
+              </>
+            )}
           </ModalBox>
         </ModalOverlay>
       )}
@@ -286,6 +336,7 @@ const ModalBox = styled.div`
 const ModalTitle = styled.h3`
   font-size: 1rem; font-weight: 700; color: ${palette.text}; margin: 0;
 `;
+const ModalStepHint = styled.p`font-size: 0.8125rem; color: ${palette.textSubtle}; margin: -0.25rem 0 0.25rem;`;
 const ModalField = styled.div`display: flex; flex-direction: column;`;
 const ModalActions = styled.div`display: flex; gap: 0.5rem; margin-top: 0.25rem;`;
 

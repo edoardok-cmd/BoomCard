@@ -448,16 +448,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               console.warn('Could not refresh switchable accounts:', err);
             }
           } catch (error) {
-            // Token invalid or expired, clear storage
-            console.error('Token verification failed:', error);
-            authStorage.removeItem(STORAGE_KEY);
-            authStorage.removeItem(TOKEN_KEY);
-            authStorage.removeItem(REFRESH_TOKEN_KEY);
-            authStorage.removeItem(SWITCHABLE_ACCOUNTS_KEY);
-            authStorage.removeItem(IMPERSONATION_KEY);
-            setUser(null);
-            setSwitchableAccounts([]);
-            setImpersonation(null);
+            // Only clear the session for genuine auth failures. Transient
+            // failures (429 rate limit, 5xx, network drops) must not log the
+            // user out — the cached user/token in storage is still valid and
+            // a retry on the next render will succeed.
+            const status = (error as ApiError)?.response?.status;
+            const isAuthFailure = status === 401 || status === 403;
+            if (isAuthFailure) {
+              console.error('Token verification failed:', error);
+              authStorage.removeItem(STORAGE_KEY);
+              authStorage.removeItem(TOKEN_KEY);
+              authStorage.removeItem(REFRESH_TOKEN_KEY);
+              authStorage.removeItem(SWITCHABLE_ACCOUNTS_KEY);
+              authStorage.removeItem(IMPERSONATION_KEY);
+              setUser(null);
+              setSwitchableAccounts([]);
+              setImpersonation(null);
+            } else {
+              console.warn('Token verification deferred (transient error):', error);
+            }
           }
         }
       } catch (error) {

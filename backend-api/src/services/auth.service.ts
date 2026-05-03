@@ -701,11 +701,27 @@ export class AuthService {
     // Check new email not already taken by a different active user
     const existing = await prisma.user.findFirst({ where: { email: normalized, deletedAt: null } });
     if (existing && existing.id !== userId) {
-      throw Object.assign(new Error('Email already in use'), { statusCode: 409 });
+      throw new AppError('Email already in use', 409);
     }
 
-    const token = require('crypto').randomBytes(32).toString('hex');
-    const expiry = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+    // Per-user cooldown: allow at most one request per 5 minutes.
+    // pendingEmailExpiry is set to now+1h on each request, so if it is still
+    // more than 55 min away the previous request was made less than 5 min ago.
+    const current = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { pendingEmailExpiry: true },
+    });
+    const COOLDOWN_MS = 5 * 60 * 1000;
+    const TOKEN_TTL_MS = 60 * 60 * 1000;
+    if (
+      current?.pendingEmailExpiry &&
+      current.pendingEmailExpiry.getTime() > Date.now() + TOKEN_TTL_MS - COOLDOWN_MS
+    ) {
+      throw new AppError('Please wait 5 minutes before requesting another code', 429);
+    }
+
+    const token = crypto.randomBytes(32).toString('hex');
+    const expiry = new Date(Date.now() + TOKEN_TTL_MS);
 
     const user = await prisma.user.update({
       where: { id: userId },
@@ -719,7 +735,6 @@ export class AuthService {
       ? `<p>Здравей ${user.firstName ?? ''},</p><p>Поискано е смяна на имейл адреса за профила ти в BOOM Card.</p><p>Кодът за потвърждение е: <strong>${token.slice(0, 6).toUpperCase()}</strong></p><p>Кодът е валиден 1 час. Ако не си поискал(а) тази промяна, игнорирай имейла.</p>`
       : `<p>Hi ${user.firstName ?? ''},</p><p>An email address change was requested for your BOOM Card account.</p><p>Your confirmation code: <strong>${token.slice(0, 6).toUpperCase()}</strong></p><p>Valid for 1 hour. If you did not request this, ignore this email.</p>`;
 
-    const emailService = require('./email.service').emailService;
     await emailService.sendEmail({ to: normalized, subject, html: bodyHtml, text: bodyHtml.replace(/<[^>]+>/g, '') });
 
     return { sent: true };
@@ -732,20 +747,19 @@ export class AuthService {
     });
 
     if (!user || !user.pendingEmailToken || !user.pendingEmail || !user.pendingEmailExpiry) {
-      throw Object.assign(new Error('No pending email change'), { statusCode: 400 });
+      throw new AppError('No pending email change', 400);
     }
     if (user.pendingEmailExpiry < new Date()) {
-      throw Object.assign(new Error('Email change code expired'), { statusCode: 400 });
+      throw new AppError('Email change code expired', 400);
     }
     // Code matches first 6 chars of token (uppercased)
     if (user.pendingEmailToken.slice(0, 6).toUpperCase() !== code.trim().toUpperCase()) {
-      throw Object.assign(new Error('Invalid confirmation code'), { statusCode: 400 });
+      throw new AppError('Invalid confirmation code', 400);
     }
 
-    const bcrypt = require('bcryptjs');
     const passwordOk = await bcrypt.compare(password, user.passwordHash);
     if (!passwordOk) {
-      throw Object.assign(new Error('Incorrect password'), { statusCode: 401 });
+      throw new AppError('Incorrect password', 401);
     }
 
     const updated = await prisma.user.update({

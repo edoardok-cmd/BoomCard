@@ -27,6 +27,17 @@ const router = Router();
 router.use(authenticate, authorize('ADMIN', 'SUPER_ADMIN'));
 router.use(auditMiddleware);
 
+// Spec §6.4 — payout (WITHDRAWAL) status whitelist. Shared by /reports and /export
+// validators so a future spec change (e.g. adding "DISPUTED") cannot drift between
+// endpoints.
+const VALID_PAYOUT_STATUSES = ['PENDING', 'PROCESSING', 'COMPLETED', 'FAILED', 'CANCELLED', 'RISK_HOLD', 'TRIAL_PENDING', 'ANNULLED'] as const;
+
+// Spec §6.4 — subscription plan whitelist for plan filter. UNKNOWN is accepted for
+// scan-side classification (users without an active sub at scan time) even though it
+// isn't a real Prisma SubscriptionPlan enum value — wallet/payout queries treat it as
+// "no subscribers" rather than issuing an invalid enum query.
+const VALID_PLANS = ['LIGHT', 'BASIC', 'PREMIUM', 'UNKNOWN'] as const;
+
 /* ─── Invoices ────────────────────────────────────────────────────────────── */
 
 /**
@@ -438,6 +449,7 @@ router.get(
     const partnerIdParam = typeof req.query.partnerId === 'string' ? req.query.partnerId.trim() : '';
     const invoiceStatusParam = typeof req.query.invoiceStatus === 'string' ? req.query.invoiceStatus.trim() : '';
     const planParam = typeof req.query.plan === 'string' ? req.query.plan.trim() : '';
+    const payoutStatusParam = typeof req.query.payoutStatus === 'string' ? req.query.payoutStatus.trim() : '';
 
     // Date-only strings (YYYY-MM-DD) are parsed as UTC midnight by new Date(), which on a Sofia
     // server (UTC+2/+3) means the first 2–3h of that calendar day are missed.  Anchor to Sofia
@@ -466,9 +478,12 @@ router.get(
     if (invoiceStatusParam && !(VALID_INVOICE_STATUSES as readonly string[]).includes(invoiceStatusParam)) {
       return res.status(400).json({ success: false, error: `invoiceStatus must be one of: ${VALID_INVOICE_STATUSES.join(', ')}` });
     }
-    const VALID_PLANS = ['LIGHT', 'BASIC', 'PREMIUM', 'UNKNOWN'] as const;
     if (planParam && !(VALID_PLANS as readonly string[]).includes(planParam)) {
       return res.status(400).json({ success: false, error: `plan must be one of: ${VALID_PLANS.join(', ')}` });
+    }
+    // Spec §6.4: reports must be filterable "по плащания" — payout status filter for WITHDRAWAL transactions.
+    if (payoutStatusParam && !(VALID_PAYOUT_STATUSES as readonly string[]).includes(payoutStatusParam)) {
+      return res.status(400).json({ success: false, error: `payoutStatus must be one of: ${VALID_PAYOUT_STATUSES.join(', ')}` });
     }
 
     // Compute month strings that fall within the date range (used for both invoice and period filters).
@@ -506,32 +521,53 @@ router.get(
     // that subscription plan.  We use the user's current plan rather than scan-time
     // attribution here because wallet transactions aren't tagged by plan at creation
     // time.  This is accurate enough for operational reporting.
-    let planUserIds: string[] | undefined;
-    if (planParam) {
-      const planSubs = await prisma.subscription.findMany({
-        where: { plan: planParam as 'LIGHT' | 'BASIC' | 'PREMIUM' },
-        select: { userId: true },
-        distinct: ['userId'],
-      });
-      planUserIds = planSubs.map(s => s.userId);
-    }
+    // Kicked off as a promise so the partner-independent invoice/scan/period queries
+    // below run concurrently with it; the wallet/payout queries chain off it via .then().
+    // UNKNOWN is treated as "no subscribers" (empty userId set) since it isn't a real
+    // Prisma SubscriptionPlan enum value and would otherwise throw a validation error.
+    const planUserIdsPromise: Promise<string[] | undefined> =
+      planParam === 'UNKNOWN'
+        ? Promise.resolve([])
+        : planParam
+          ? prisma.subscription
+              .findMany({
+                where: { plan: planParam as 'LIGHT' | 'BASIC' | 'PREMIUM' },
+                select: { userId: true },
+                distinct: ['userId'],
+              })
+              .then(subs => subs.map(s => s.userId))
+          : Promise.resolve(undefined);
 
-    const walletWhere: Prisma.WalletTransactionWhereInput = {
+    const walletWhereBase: Prisma.WalletTransactionWhereInput = {
       createdAt: { gte: from, lte: to },
       status: 'COMPLETED',
     };
-    if (planUserIds !== undefined) {
-      walletWhere.wallet = { userId: { in: planUserIds } };
+
+    // Spec §6.4: payout breakdown — wallet WITHDRAWAL transactions grouped by status.
+    // Always returned regardless of payoutStatus filter so the UI can show the full distribution.
+    // When payoutStatusParam is set, the result is restricted to that single status.
+    const payoutBreakdownWhereBase: Prisma.WalletTransactionWhereInput = {
+      type: 'WITHDRAWAL',
+      createdAt: { gte: from, lte: to },
+    };
+    if (payoutStatusParam) {
+      payoutBreakdownWhereBase.status = payoutStatusParam as Prisma.WalletTransactionWhereInput['status'];
     }
 
-    const [walletStats, invoiceTotals, partnerInvoices, periodRows, scansInRange, periodInvoiceStatusCounts] = await Promise.all([
-      // Wallet transaction aggregates — filtered by plan when planParam is set
-      prisma.walletTransaction.groupBy({
-        by: ['type'],
-        where: walletWhere,
-        _sum: { amount: true },
-        _count: { id: true },
-      }),
+    const [walletStats, invoiceTotals, partnerInvoices, periodRows, scansInRange, periodInvoiceStatusCounts, payoutStatusStats] = await Promise.all([
+      // Wallet transaction aggregates — filtered by plan when planParam is set.
+      // Chains off planUserIdsPromise so the partner-independent queries below
+      // run concurrently with the subscription lookup.
+      planUserIdsPromise.then(ids =>
+        prisma.walletTransaction.groupBy({
+          by: ['type'],
+          where: ids !== undefined
+            ? { ...walletWhereBase, wallet: { userId: { in: ids } } }
+            : walletWhereBase,
+          _sum: { amount: true },
+          _count: { id: true },
+        }),
+      ),
       // Invoice totals: cashback + margin + turnover
       prisma.partnerCashbackPayment.aggregate({
         where: invoiceWhere,
@@ -573,6 +609,17 @@ router.get(
             _count: { id: true },
           })
         : Promise.resolve([]),
+      // Payout breakdown by status — spec §6.4 "плащания" dimension
+      planUserIdsPromise.then(ids =>
+        prisma.walletTransaction.groupBy({
+          by: ['status'],
+          where: ids !== undefined
+            ? { ...payoutBreakdownWhereBase, wallet: { userId: { in: ids } } }
+            : payoutBreakdownWhereBase,
+          _sum: { amount: true },
+          _count: { id: true },
+        }),
+      ),
     ]);
 
     // Wallet tx map: always include core types so the UI can show 0 placeholders
@@ -695,6 +742,17 @@ router.get(
       ({ _seenRates: _ignored, ...rest }) => rest,
     );
 
+    // Build payout-by-status breakdown.  Always include the canonical statuses with 0 placeholders
+    // so the UI shows a stable row layout even when no payouts exist for that status in the period.
+    const PAYOUT_STATUSES_DISPLAY = ['PENDING', 'PROCESSING', 'COMPLETED', 'FAILED', 'RISK_HOLD'] as const;
+    const payoutByStatus: Record<string, { total: number; count: number }> = {};
+    for (const s of PAYOUT_STATUSES_DISPLAY) payoutByStatus[s] = { total: 0, count: 0 };
+    for (const row of payoutStatusStats) {
+      payoutByStatus[row.status] = { total: row._sum.amount ?? 0, count: row._count.id };
+    }
+    const payoutTotal = Object.values(payoutByStatus).reduce((s, v) => s + v.total, 0);
+    const payoutCount = Object.values(payoutByStatus).reduce((s, v) => s + v.count, 0);
+
     res.json({
       success: true,
       data: {
@@ -709,6 +767,12 @@ router.get(
         partnerBreakdown,
         periodStatuses: allPeriodStatuses,
         planBreakdown,
+        payoutBreakdown: {
+          byStatus: payoutByStatus,
+          total: payoutTotal,
+          count: payoutCount,
+          filtered: !!payoutStatusParam,
+        },
       },
     });
   })
@@ -1146,7 +1210,14 @@ router.get(
       const expPartnerId = typeof req.query.partnerId === 'string' ? req.query.partnerId.trim() : '';
       const expInvoiceStatus = typeof req.query.invoiceStatus === 'string' ? req.query.invoiceStatus.trim() : '';
       const expPlanFilter = typeof req.query.plan === 'string' ? req.query.plan.trim() : '';
+      const expPayoutStatus = typeof req.query.payoutStatus === 'string' ? req.query.payoutStatus.trim() : '';
       const EXP_VALID_STATUSES = ['PENDING', 'PAID', 'OVERDUE'] as const;
+      if (expPayoutStatus && !(VALID_PAYOUT_STATUSES as readonly string[]).includes(expPayoutStatus)) {
+        return res.status(400).json({ success: false, error: `payoutStatus must be one of: ${VALID_PAYOUT_STATUSES.join(', ')}` });
+      }
+      if (expPlanFilter && !(VALID_PLANS as readonly string[]).includes(expPlanFilter)) {
+        return res.status(400).json({ success: false, error: `plan must be one of: ${VALID_PLANS.join(', ')}` });
+      }
       const expInvoiceWhere: Parameters<typeof prisma.partnerCashbackPayment.findMany>[0]['where'] = {
         month: { in: expMonths },
       };
@@ -1155,13 +1226,47 @@ router.get(
         expInvoiceWhere.status = expInvoiceStatus as (typeof EXP_VALID_STATUSES)[number];
       }
 
-      const [walletStats, invoiceRows, expScans] = await Promise.all([
-        prisma.walletTransaction.groupBy({
-          by: ['type'],
-          where: { createdAt: { gte: from, lte: to }, status: 'COMPLETED' },
-          _sum: { amount: true },
-          _count: { id: true },
-        }),
+      // Plan filter narrows wallet/payout queries to users currently on that plan
+      // (mirrors the /reports endpoint planUserIds path at lines ~515-545).
+      // Kicked off as a promise so the partner-independent invoice/scan queries below
+      // run concurrently with it; the wallet/payout queries chain off it via .then().
+      // UNKNOWN is treated as "no subscribers" since it isn't a real Prisma enum value.
+      const expPlanUserIdsPromise: Promise<string[] | undefined> =
+        expPlanFilter === 'UNKNOWN'
+          ? Promise.resolve([])
+          : expPlanFilter
+            ? prisma.subscription
+                .findMany({
+                  where: { plan: expPlanFilter as 'LIGHT' | 'BASIC' | 'PREMIUM' },
+                  select: { userId: true },
+                  distinct: ['userId'],
+                })
+                .then(subs => subs.map(s => s.userId))
+            : Promise.resolve(undefined);
+
+      const expPayoutBreakdownWhereBase: Prisma.WalletTransactionWhereInput = {
+        type: 'WITHDRAWAL',
+        createdAt: { gte: from, lte: to },
+      };
+      if (expPayoutStatus) {
+        expPayoutBreakdownWhereBase.status = expPayoutStatus as Prisma.WalletTransactionWhereInput['status'];
+      }
+      // Wallet stats — plan filter mirrors the /reports endpoint walletWhere at line ~525.
+      const expWalletWhereBase: Prisma.WalletTransactionWhereInput = {
+        createdAt: { gte: from, lte: to },
+        status: 'COMPLETED',
+      };
+      const [walletStats, invoiceRows, expScans, expPayoutByStatus] = await Promise.all([
+        expPlanUserIdsPromise.then(ids =>
+          prisma.walletTransaction.groupBy({
+            by: ['type'],
+            where: ids !== undefined
+              ? { ...expWalletWhereBase, wallet: { userId: { in: ids } } }
+              : expWalletWhereBase,
+            _sum: { amount: true },
+            _count: { id: true },
+          }),
+        ),
         // Invoice rows with partner name and all financial columns
         prisma.partnerCashbackPayment.findMany({
           where: expInvoiceWhere,
@@ -1177,6 +1282,17 @@ router.get(
           },
           select: { userId: true, cashbackAmount: true, verifiedAmount: true, billAmount: true, createdAt: true },
         }),
+        // Payout-by-status breakdown — spec §6.4 "плащания" dimension
+        expPlanUserIdsPromise.then(ids =>
+          prisma.walletTransaction.groupBy({
+            by: ['status'],
+            where: ids !== undefined
+              ? { ...expPayoutBreakdownWhereBase, wallet: { userId: { in: ids } } }
+              : expPayoutBreakdownWhereBase,
+            _sum: { amount: true },
+            _count: { id: true },
+          }),
+        ),
       ]);
 
       // Resolve scan userId → the subscription active AT scan time (not today's plan).
@@ -1255,15 +1371,28 @@ router.get(
           walletCount: '',
         }));
 
-      // Section 3 — wallet summary rows: one row per transaction type (payments dimension)
-      // Wallet transactions are subscriber-side and cannot be filtered by partner — these
-      // totals always reflect platform-wide activity for the date range.
+      // Section 3 — wallet summary rows: one row per transaction type (payments dimension).
+      // Wallet stats are subscriber-side; partner filter is intentionally not applied here.
+      // When plan is set, the stats reflect users currently on that plan (mirrors /reports
+      // walletWhere at line ~525).
       const WALLET_TYPE_BG: Record<string, string> = {
         CASHBACK_CREDIT: 'Кешбек кредит', WITHDRAWAL: 'Плащане към абонат', TOP_UP: 'Зареждане',
       };
-      const walletSectionLabel = expPartnerId
-        ? 'Портфейл (цяла платформа, без филтър партньор)'
-        : 'Портфейл';
+      const EXP_PLAN_LABELS: Record<string, string> = { LIGHT: 'Light', BASIC: 'Basic', PREMIUM: 'Premium', UNKNOWN: 'Без абонамент' };
+      // Wallet stats are subscriber-side, so the partnerId filter does not apply here.
+      // Lead the parenthetical with the plan scope (always shown when any filter is active
+      // so the partner-only branch isn't ambiguous), then append the partner caveat as
+      // an em-dash-separated explanation.
+      const walletPlanLabel = expPlanFilter
+        ? `план: ${EXP_PLAN_LABELS[expPlanFilter] ?? expPlanFilter}`
+        : 'всички планове';
+      const walletPartnerNote = expPartnerId ? 'партньорският филтър не се прилага' : '';
+      let walletSectionLabel = 'Портфейл';
+      if (expPlanFilter || expPartnerId) {
+        walletSectionLabel = walletPartnerNote
+          ? `Портфейл (${walletPlanLabel} — ${walletPartnerNote})`
+          : `Портфейл (${walletPlanLabel})`;
+      }
       const walletSection = walletStats.map(w => ({
         section: walletSectionLabel,
         period: '',
@@ -1280,7 +1409,36 @@ router.get(
         walletCount: w._count.id,
       }));
 
-      rows = [...invoiceSection, ...planSection, ...walletSection];
+      // Section 4 — payout-by-status rows: WITHDRAWAL transactions grouped by payout status
+      // (spec §6.4 "плащания" dimension)
+      const PAYOUT_STATUS_BG_REPORT: Record<string, string> = {
+        PENDING: 'Чака', PROCESSING: 'Обработва се', COMPLETED: 'Платено',
+        FAILED: 'Неуспешно', RISK_HOLD: 'Задържано (риск)', CANCELLED: 'Отменено',
+        ANNULLED: 'Анулирано', TRIAL_PENDING: 'Изчакване (пробен)',
+      };
+      const payoutFilterParts: string[] = [];
+      if (expPayoutStatus) payoutFilterParts.push(`статус: ${PAYOUT_STATUS_BG_REPORT[expPayoutStatus] ?? expPayoutStatus}`);
+      if (expPlanFilter) payoutFilterParts.push(`план: ${EXP_PLAN_LABELS[expPlanFilter] ?? expPlanFilter}`);
+      const payoutSectionLabel = payoutFilterParts.length > 0
+        ? `Плащания по статус (филтър: ${payoutFilterParts.join(', ')})`
+        : 'Плащания по статус';
+      const payoutSection = expPayoutByStatus.map(p => ({
+        section: payoutSectionLabel,
+        period: '',
+        partnerName: '',
+        partnerId: '',
+        plan: '',
+        scanCount: '',
+        cashback: '',
+        margin: '',
+        turnover: '',
+        invoiceStatus: '',
+        walletType: PAYOUT_STATUS_BG_REPORT[p.status] ?? p.status,
+        walletTotal: Math.abs(p._sum.amount ?? 0),
+        walletCount: p._count.id,
+      }));
+
+      rows = [...invoiceSection, ...planSection, ...walletSection, ...payoutSection];
 
     } else if (type === 'payouts') {
       // Payout export — spec §6.4 "плащания" dimension: all WITHDRAWAL transactions

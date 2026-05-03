@@ -31,8 +31,17 @@ export interface AdminVenue {
     gpsVerificationEnabled: boolean;
     maxScansPerDay: number;
   } | null;
-  _count: { stickers: number };
+  _count: { stickers: number; statusHistory: number };
   stickers?: Array<{ createdAt: string; status: string; stickerId: string }>;
+}
+
+export interface VenueStatusHistoryEntry {
+  id: string;
+  fromStatus: VenueStatus;
+  toStatus: VenueStatus;
+  note: string | null;
+  createdAt: string;
+  changedBy: { id: string; firstName: string | null; lastName: string | null; email: string } | null;
 }
 
 export interface AdminVenuesResult {
@@ -67,5 +76,11 @@ export const adminLocationsService = {
 
   rejectMenu(venueId: string, reason: string): Promise<void> {
     return apiService.post<void>(`/admin/venues/${venueId}/menu/reject`, { reason });
+  },
+
+  // Spec §5.4 — full status-change timeline for one venue. Loaded lazily by
+  // the locations drawer; the list response only carries an aggregate count.
+  getStatusHistory(venueId: string): Promise<{ success: boolean; data: VenueStatusHistoryEntry[] }> {
+    return apiService.get(`/admin/venues/${venueId}/status-history`);
   },
 };

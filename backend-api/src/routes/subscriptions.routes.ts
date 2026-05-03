@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma';
 import { payseraService } from '../services/paysera.service';
 import crypto from 'crypto';
+import { logger } from '../utils/logger';
 
 const router = Router();
 
@@ -407,8 +408,19 @@ router.post('/:id/change-card', authenticate, asyncHandler(async (req: AuthReque
   // Guard against double-initiation: if the user opens two tabs and clicks the
   // button twice, the second request would overwrite pendingCardUpdateOrderId and
   // the first payment's callback would be silently dropped (money lost, no renewal).
+  // TTL: treat the pending order as stale after 2 h so that an abandoned browser
+  // session (tab closed mid-payment, Paysera never called back) does not
+  // permanently block the user. Paysera payment sessions expire well before this.
   if (meta.pendingCardUpdateOrderId) {
-    return res.status(409).json({ error: 'A card update is already in progress. Please complete or cancel the current payment before starting a new one.' });
+    const pendingAgeMs = meta.pendingCardUpdateAt
+      ? Date.now() - new Date(meta.pendingCardUpdateAt).getTime()
+      : Infinity;
+    const CARD_UPDATE_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
+    if (pendingAgeMs < CARD_UPDATE_TTL_MS) {
+      return res.status(409).json({ error: 'A card update is already in progress. Please complete or cancel the current payment before starting a new one.' });
+    }
+    // Stale pending order — fall through and allow a fresh initiation.
+    logger.warn(`Clearing stale pendingCardUpdateOrderId ${meta.pendingCardUpdateOrderId} for subscription ${id} (age ${Math.round(pendingAgeMs / 60000)} min)`);
   }
 
   const user = await prisma.user.findUnique({

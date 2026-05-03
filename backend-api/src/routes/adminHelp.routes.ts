@@ -12,6 +12,15 @@ const router = Router();
 router.use(authenticate, authorize('ADMIN', 'SUPER_ADMIN'));
 router.use(auditMiddleware);
 
+const FRONTEND_URL = (() => {
+  if (process.env.FRONTEND_URL) return process.env.FRONTEND_URL.replace(/\/$/, '');
+  if (process.env.NODE_ENV === 'production') {
+    logger.error('[adminHelp] FRONTEND_URL is not set in production — falling back to https://boomcard.bg for email deep-links');
+    return 'https://boomcard.bg';
+  }
+  return 'http://localhost:3021';
+})();
+
 const TICKET_SELECT_ALL = {
   id: true,
   subject: true,
@@ -40,19 +49,19 @@ router.post('/', requirePermission('help.write'), async (req: AuthRequest, res, 
     };
 
     if (!subject?.trim() || subject.trim().length < 5) {
-      return res.status(400).json({ error: 'subject is required (min 5 chars)' });
+      return res.status(400).json({ error: 'Темата е задължителна (минимум 5 символа)' });
     }
     if (subject.trim().length > 200) {
-      return res.status(400).json({ error: 'subject is too long (max 200 chars)' });
+      return res.status(400).json({ error: 'Темата е твърде дълга (максимум 200 символа)' });
     }
     if (!body?.trim() || body.trim().length < 10) {
-      return res.status(400).json({ error: 'body is required (min 10 chars)' });
+      return res.status(400).json({ error: 'Съобщението е задължително (минимум 10 символа)' });
     }
     if (body.trim().length > 5000) {
-      return res.status(400).json({ error: 'body is too long (max 5000 chars)' });
+      return res.status(400).json({ error: 'Съобщението е твърде дълго (максимум 5000 символа)' });
     }
     if (!category || !Object.values(TicketCategory).includes(category as TicketCategory)) {
-      return res.status(400).json({ error: `category must be one of: ${Object.values(TicketCategory).join(', ')}` });
+      return res.status(400).json({ error: 'Невалидна категория' });
     }
 
     const resolvedPriority: TicketPriority =
@@ -218,9 +227,9 @@ router.get('/:id', requirePermission('help.read'), async (req: AuthRequest, res,
         assignee: { select: { id: true, firstName: true, lastName: true, email: true } },
       },
     });
-    if (!ticket) return res.status(404).json({ error: 'Ticket not found' });
+    if (!ticket) return res.status(404).json({ error: 'Заявката не е намерена' });
     if (!hasFullAccess(req) && ticket.user.id !== req.user!.id && ticket.assignee?.id !== req.user!.id) {
-      return res.status(403).json({ error: 'Access denied' });
+      return res.status(403).json({ error: 'Отказан достъп' });
     }
     res.json({ ticket });
   } catch (error) {
@@ -232,12 +241,12 @@ router.get('/:id', requirePermission('help.read'), async (req: AuthRequest, res,
 router.post('/:id/assign', requirePermission('help.write'), async (req: AuthRequest, res, next) => {
   try {
     const ticket = await prisma.helpTicket.findUnique({ where: { id: req.params.id } });
-    if (!ticket) return res.status(404).json({ error: 'Ticket not found' });
+    if (!ticket) return res.status(404).json({ error: 'Заявката не е намерена' });
     if (!hasFullAccess(req) && ticket.userId !== req.user!.id && ticket.assigneeId !== req.user!.id) {
-      return res.status(403).json({ error: 'Access denied' });
+      return res.status(403).json({ error: 'Отказан достъп' });
     }
     if (ticket.userId === req.user!.id) {
-      return res.status(400).json({ error: 'Cannot assign yourself as the handler for your own ticket' });
+      return res.status(400).json({ error: 'Не може да назначите себе си като отговорник на собствената си заявка' });
     }
     if (ticket.assigneeId === req.user!.id) {
       return res.json({ ok: true });
@@ -263,12 +272,12 @@ router.patch('/:id', requirePermission('help.write'), async (req: AuthRequest, r
     const { status, priority } = req.body as { status?: string; priority?: string };
 
     const ticket = await prisma.helpTicket.findUnique({ where: { id: req.params.id } });
-    if (!ticket) return res.status(404).json({ error: 'Ticket not found' });
+    if (!ticket) return res.status(404).json({ error: 'Заявката не е намерена' });
     if (!hasFullAccess(req) && ticket.userId !== req.user!.id && ticket.assigneeId !== req.user!.id) {
-      return res.status(403).json({ error: 'Access denied' });
+      return res.status(403).json({ error: 'Отказан достъп' });
     }
     if (ticket.status === 'CLOSED' && !hasFullAccess(req)) {
-      return res.status(400).json({ error: 'Cannot modify a closed ticket' });
+      return res.status(400).json({ error: 'Не може да се променя затворена заявка' });
     }
 
     // Creators who are not also the assignee may only mark their own ticket as RESOLVED;
@@ -278,10 +287,10 @@ router.patch('/:id', requirePermission('help.write'), async (req: AuthRequest, r
       && ticket.assigneeId !== req.user!.id;
     if (isCreatorOnly) {
       if (priority) {
-        return res.status(403).json({ error: 'Ticket creators may not change the priority' });
+        return res.status(403).json({ error: 'Заявителят не може да променя приоритета' });
       }
       if (status && Object.values(TicketStatus).includes(status as TicketStatus) && status !== 'RESOLVED') {
-        return res.status(403).json({ error: 'Ticket creators may only mark a ticket as resolved' });
+        return res.status(403).json({ error: 'Заявителят може само да маркира заявка като решена' });
       }
     }
 
@@ -294,7 +303,7 @@ router.patch('/:id', requirePermission('help.write'), async (req: AuthRequest, r
     }
 
     if (Object.keys(data).length === 0) {
-      return res.status(400).json({ error: 'No valid fields to update' });
+      return res.status(400).json({ error: 'Няма валидни полета за обновяване' });
     }
 
     await prisma.helpTicket.update({ where: { id: req.params.id }, data });
@@ -310,10 +319,10 @@ router.post('/:id/reply', requirePermission('help.write'), async (req: AuthReque
     const { body } = req.body as { body?: string };
 
     if (!body?.trim() || body.trim().length < 10) {
-      return res.status(400).json({ error: 'Reply body is required (min 10 chars)' });
+      return res.status(400).json({ error: 'Отговорът е задължителен (минимум 10 символа)' });
     }
     if (body.trim().length > 5000) {
-      return res.status(400).json({ error: 'Reply body is too long (max 5000 chars)' });
+      return res.status(400).json({ error: 'Отговорът е твърде дълъг (максимум 5000 символа)' });
     }
 
     const ticket = await prisma.helpTicket.findUnique({
@@ -323,12 +332,12 @@ router.post('/:id/reply', requirePermission('help.write'), async (req: AuthReque
         assignee: { select: { email: true, firstName: true } },
       },
     });
-    if (!ticket) return res.status(404).json({ error: 'Ticket not found' });
+    if (!ticket) return res.status(404).json({ error: 'Заявката не е намерена' });
     if (!hasFullAccess(req) && ticket.userId !== req.user!.id && ticket.assigneeId !== req.user!.id) {
-      return res.status(403).json({ error: 'Access denied' });
+      return res.status(403).json({ error: 'Отказан достъп' });
     }
     if (ticket.status === 'CLOSED') {
-      return res.status(400).json({ error: 'Cannot reply to a closed ticket' });
+      return res.status(400).json({ error: 'Не може да се отговаря на затворена заявка' });
     }
 
     // Author-aware status transition:
@@ -381,7 +390,7 @@ router.post('/:id/reply', requirePermission('help.write'), async (req: AuthReque
 </table>
 <hr/>
 <p>${escR(body.trim()).replace(/\n/g, '<br/>')}</p>
-<p style="color:#999;font-size:12px;">Ticket ID: ${ticket.id} &middot; <a href="https://boomcard.bg/admin/help/mine">Моите заявки</a></p>`,
+<p style="color:#999;font-size:12px;">Ticket ID: ${ticket.id} &middot; <a href="${FRONTEND_URL}/admin/help/mine?ticket=${ticket.id}">Отвори заявката</a></p>`,
           text: `Здравей, ${ticket.user.firstName || ticket.user.email},\n\nПолучихте отговор на вашата вътрешна заявка.\n\nТема: ${ticket.subject}\nКатегория: ${CATEGORY_BG[ticket.category] ?? ticket.category}\n\n${body.trim()}\n\nTicket ID: ${ticket.id}`,
         })
         .catch((err) => logger.error('[adminHelp] Failed to send reply notification email:', err));
@@ -403,7 +412,7 @@ router.post('/:id/reply', requirePermission('help.write'), async (req: AuthReque
 </table>
 <hr/>
 <p>${escR(body.trim()).replace(/\n/g, '<br/>')}</p>
-<p style="color:#999;font-size:12px;">Ticket ID: ${ticket.id} &middot; <a href="https://boomcard.bg/admin/help/${ticket.id}">Отвори заявката</a></p>`,
+<p style="color:#999;font-size:12px;">Ticket ID: ${ticket.id} &middot; <a href="${FRONTEND_URL}/admin/help/all?ticket=${ticket.id}">Отвори заявката</a></p>`,
           text: `Здравей, ${ticket.assignee.firstName || ticket.assignee.email},\n\nЗаявителят изпрати отговор на заявка, назначена на вас.\n\nТема: ${ticket.subject}\nКатегория: ${CATEGORY_BG[ticket.category] ?? ticket.category}\n\n${body.trim()}\n\nTicket ID: ${ticket.id}`,
         })
         .catch((err) => logger.error('[adminHelp] Failed to send creator-reply notification to assignee:', err));
@@ -419,9 +428,9 @@ router.post('/:id/reply', requirePermission('help.write'), async (req: AuthReque
 router.get('/:id/replies', requirePermission('help.read'), async (req: AuthRequest, res, next) => {
   try {
     const ticket = await prisma.helpTicket.findUnique({ where: { id: req.params.id } });
-    if (!ticket) return res.status(404).json({ error: 'Ticket not found' });
+    if (!ticket) return res.status(404).json({ error: 'Заявката не е намерена' });
     if (!hasFullAccess(req) && ticket.userId !== req.user!.id && ticket.assigneeId !== req.user!.id) {
-      return res.status(403).json({ error: 'Access denied' });
+      return res.status(403).json({ error: 'Отказан достъп' });
     }
 
     const replies = await prisma.ticketReply.findMany({

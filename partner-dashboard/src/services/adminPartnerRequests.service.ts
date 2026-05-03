@@ -35,6 +35,9 @@ export interface PartnerDetail extends PendingPartner {
   region: string | null;
   pendingChanges: Record<string, unknown> | null;
   pendingChangesAt: string | null;
+  // assignedAdmin is hydrated server-side (see GET /admin/partner-requests/:id)
+  // so the drawer can render the owner without a second roundtrip. Inherited
+  // shape from PendingPartner.
 }
 
 export interface PendingPartnersResult {
@@ -61,6 +64,26 @@ export interface AuditEntry {
   after: Record<string, unknown> | null;
   createdAt: string;
   actor: { id: string; firstName: string | null; lastName: string | null; email: string } | null;
+}
+
+export interface AssignableAdmin {
+  id: string;
+  firstName: string | null;
+  lastName: string | null;
+  email: string;
+  role: string;
+}
+
+export interface OnboardingReadiness {
+  venueCount: number;
+  // Distinct venues with at least one active receipt template — readiness gate
+  venuesWithReceipts: number;
+  // Total active receipt template rows — informational (may exceed venueCount)
+  receiptTemplateCount: number;
+  // Distinct venues with an ACTIVE sticker config — readiness gate
+  stickerConfigCount: number;
+  venuesWithStickers: number;
+  ready: boolean;
 }
 
 export const adminPartnerRequestsService = {
@@ -98,5 +121,13 @@ export const adminPartnerRequestsService = {
 
   getAuditLog(id: string): Promise<{ entries: AuditEntry[] }> {
     return apiService.get<{ entries: AuditEntry[] }>(`/admin/partner-requests/${id}/audit`);
+  },
+
+  getAssignableAdmins(): Promise<{ admins: AssignableAdmin[] }> {
+    return apiService.get<{ admins: AssignableAdmin[] }>('/admin/partner-requests/_assignable-admins');
+  },
+
+  getOnboardingReadiness(id: string): Promise<OnboardingReadiness> {
+    return apiService.get<OnboardingReadiness>(`/admin/partner-requests/${id}/onboarding-readiness`);
   },
 };

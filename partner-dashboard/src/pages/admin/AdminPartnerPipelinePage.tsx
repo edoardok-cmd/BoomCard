@@ -9,6 +9,7 @@ import { DataTable, ColumnDef, RowAction } from '../../components/admin/DataTabl
 import {
   adminPartnerRequestsService,
   PendingPartner,
+  AssignableAdmin,
 } from '../../services/adminPartnerRequests.service';
 import { getCategoryName } from '../../types/categories.types';
 import PartnerRequestDrawer from '../../components/admin/PartnerRequestDrawer';
@@ -172,6 +173,72 @@ const Btn = styled.button<{ $variant?: 'danger' | 'ghost' | 'primary' }>`
   &:disabled { opacity: 0.5; cursor: not-allowed; }
 `;
 
+/* ─── Readiness cell (§5.2) ────────────────────────────────────────────────── */
+const ReadinessRow = styled.div`
+  display: flex; align-items: center; gap: 0.375rem;
+  font-size: 0.75rem; line-height: 1.2;
+`;
+const ReadinessIcon = styled.span<{ $ok: boolean }>`
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 14px; height: 14px; border-radius: 50%;
+  background: ${p => p.$ok ? palette.successSoft : palette.warningSoft};
+  color: ${p => p.$ok ? palette.success : palette.warning};
+  font-size: 0.625rem; font-weight: 800;
+  flex-shrink: 0;
+`;
+
+function OnboardingReadinessCell({ partnerId, language }: { partnerId: string; language: string }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ['onboarding-readiness', partnerId],
+    queryFn: () => adminPartnerRequestsService.getOnboardingReadiness(partnerId),
+    staleTime: 30 * 1000,
+  });
+
+  if (isLoading) {
+    return <span style={{ fontSize: '0.75rem', color: palette.textSubtle }}>…</span>;
+  }
+  if (!data) {
+    return <span style={{ fontSize: '0.75rem', color: palette.textSubtle }}>—</span>;
+  }
+
+  // All three checks are per-venue (spec §5.2). The receipt and QR gates
+  // require coverage of every venue: a 5-venue partner needs 5 receipt-covered
+  // venues + 5 active sticker configs, not just one of each.
+  const locationsOk = data.venueCount > 0;
+  const receiptsOk = data.venueCount > 0 && data.venuesWithReceipts >= data.venueCount;
+  const qrOk = data.venueCount > 0 && data.stickerConfigCount >= data.venueCount;
+
+  return (
+    <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+      <ReadinessRow>
+        <ReadinessIcon $ok={locationsOk}>{locationsOk ? '✓' : '!'}</ReadinessIcon>
+        <span style={{ color: palette.textMuted }}>
+          {language === 'bg' ? 'Локации' : 'Locations'}: <strong>{data.venueCount}</strong>
+        </span>
+      </ReadinessRow>
+      <ReadinessRow>
+        <ReadinessIcon $ok={receiptsOk}>{receiptsOk ? '✓' : '!'}</ReadinessIcon>
+        <span style={{ color: palette.textMuted }}>
+          {language === 'bg' ? 'Касови бележки' : 'Receipts'}: <strong>{data.venuesWithReceipts}</strong>
+          {data.venueCount > 0 && <span style={{ color: palette.textSubtle }}>/{data.venueCount}</span>}
+          {data.receiptTemplateCount > data.venuesWithReceipts && (
+            <span style={{ color: palette.textSubtle, fontSize: '0.7rem', marginLeft: '0.25rem' }}>
+              ({data.receiptTemplateCount} {language === 'bg' ? 'шаблона' : 'templates'})
+            </span>
+          )}
+        </span>
+      </ReadinessRow>
+      <ReadinessRow>
+        <ReadinessIcon $ok={qrOk}>{qrOk ? '✓' : '!'}</ReadinessIcon>
+        <span style={{ color: palette.textMuted }}>
+          {language === 'bg' ? 'QR настройки' : 'QR settings'}: <strong>{data.stickerConfigCount}</strong>
+          {data.venueCount > 0 && <span style={{ color: palette.textSubtle }}>/{data.venueCount}</span>}
+        </span>
+      </ReadinessRow>
+    </span>
+  );
+}
+
 /* ─── Stage config ─────────────────────────────────────────────────────────── */
 interface PipelineStage {
   key: string;
@@ -226,6 +293,14 @@ export default function AdminPartnerPipelinePage() {
   const [rejectTarget, setRejectTarget] = useState<PendingPartner | null>(null);
   const [rejectReason, setRejectReason] = useState('');
   const [drawerPartnerId, setDrawerPartnerId] = useState<string | null>(null);
+  const [assignTarget, setAssignTarget] = useState<PendingPartner | null>(null);
+
+  const assignableAdminsQuery = useQuery({
+    queryKey: ['admin-assignable-admins'],
+    queryFn: () => adminPartnerRequestsService.getAssignableAdmins(),
+    enabled: !!canWrite,
+    staleTime: 5 * 60 * 1000,
+  });
 
   const navigate = useNavigate();
 
@@ -350,7 +425,10 @@ export default function AdminPartnerPipelinePage() {
       header: language === 'bg' ? 'Адрес' : 'Address',
       render: (row) => (
         <span style={{ color: palette.textMuted, fontSize: '0.8125rem' }}>
-          {row.address ?? row.city ?? '—'}
+          {row.address
+            ? <>{row.address}{row.city ? <><br /><span style={{ color: palette.textSubtle }}>{row.city}</span></> : null}</>
+            : (row.city ?? <span style={{ color: palette.textSubtle }}>—</span>)
+          }
         </span>
       ),
     },
@@ -410,7 +488,11 @@ export default function AdminPartnerPipelinePage() {
       {
         label: language === 'bg' ? 'Задай на мен' : 'Assign to me',
         onClick: (row: PendingPartner) => { if (!user?.id) return; assignMutation.mutate({ id: row.id, adminId: user.id }); },
-        hidden: (row: PendingPartner) => !!row.assignedAdminId,
+        hidden: (row: PendingPartner) => row.assignedAdminId === user?.id,
+      },
+      {
+        label: language === 'bg' ? 'Възложи на друг…' : 'Assign to other…',
+        onClick: (row: PendingPartner) => setAssignTarget(row),
       },
       {
         label: language === 'bg' ? 'Освободи' : 'Unassign',
@@ -484,6 +566,21 @@ export default function AdminPartnerPipelinePage() {
           stage.key === 'DOGOVARYANE'  ? dogovaryaneQuery.isLoading  :
           stage.key === 'ONBOARDING'   ? onboardingQuery.isLoading   :
           odobrenQuery.isLoading;
+        // Spec §5.2 — onboarding stage shows readiness for the 3 required artifacts
+        const stageColumns: ColumnDef<PendingPartner>[] =
+          stage.key === 'ONBOARDING' || stage.key === 'ODOBRENA'
+            ? [
+                ...baseColumns.slice(0, -1),
+                {
+                  key: 'readiness',
+                  header: language === 'bg' ? 'Готовност' : 'Readiness',
+                  render: (row: PendingPartner) => (
+                    <OnboardingReadinessCell partnerId={row.id} language={language} />
+                  ),
+                },
+                baseColumns[baseColumns.length - 1],
+              ]
+            : baseColumns;
         return (
           <Card key={stage.key}>
             <SectionTitle $color={stage.color}>
@@ -492,7 +589,7 @@ export default function AdminPartnerPipelinePage() {
               {' '}({stageCounts[stage.key]})
             </SectionTitle>
             <DataTable
-              columns={baseColumns}
+              columns={stageColumns}
               data={rows}
               rowKey={row => row.id}
               rowActions={buildRowActions(stage.next)}
@@ -512,6 +609,68 @@ export default function AdminPartnerPipelinePage() {
         onApproved={() => { setDrawerPartnerId(null); queryClient.invalidateQueries({ queryKey: ['pipeline'] }); }}
         onRejected={() => { setDrawerPartnerId(null); queryClient.invalidateQueries({ queryKey: ['pipeline'] }); }}
       />
+
+      {/* Assign-to-other-admin modal */}
+      {assignTarget && (
+        <Overlay onClick={() => setAssignTarget(null)}>
+          <Modal onClick={e => e.stopPropagation()}>
+            <ModalTitle>
+              {language === 'bg' ? 'Възложи отговорник' : 'Assign owner'}
+            </ModalTitle>
+            <ModalSubtitle>
+              {language === 'bg'
+                ? `Изберете администратор за заявката „${assignTarget.businessName}".`
+                : `Pick an admin for the request "${assignTarget.businessName}".`}
+            </ModalSubtitle>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '20rem', overflowY: 'auto' }}>
+              {assignableAdminsQuery.isLoading ? (
+                <span style={{ color: palette.textSubtle, fontSize: '0.875rem' }}>…</span>
+              ) : (assignableAdminsQuery.data?.admins ?? []).map((admin: AssignableAdmin) => {
+                const fullName = [admin.firstName, admin.lastName].filter(Boolean).join(' ').trim() || admin.email;
+                const isCurrent = admin.id === assignTarget.assignedAdminId;
+                return (
+                  <button
+                    key={admin.id}
+                    onClick={() => {
+                      assignMutation.mutate({ id: assignTarget.id, adminId: admin.id });
+                      setAssignTarget(null);
+                    }}
+                    style={{
+                      display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '0.125rem',
+                      padding: '0.625rem 0.875rem',
+                      background: isCurrent ? palette.accentSoft : palette.bg,
+                      border: `1px solid ${isCurrent ? palette.accent : palette.border}`,
+                      borderRadius: '0.5rem', cursor: 'pointer', textAlign: 'left',
+                    }}
+                  >
+                    <span style={{ fontWeight: 600, color: palette.text, fontSize: '0.875rem' }}>
+                      {fullName}
+                      {isCurrent && (
+                        <span style={{ marginLeft: '0.5rem', fontSize: '0.7rem', color: palette.accent, fontWeight: 700 }}>
+                          {language === 'bg' ? '· текущ' : '· current'}
+                        </span>
+                      )}
+                    </span>
+                    <span style={{ fontSize: '0.75rem', color: palette.textSubtle }}>
+                      {admin.email}{admin.role === 'SUPER_ADMIN' ? ' · SUPER_ADMIN' : ''}
+                    </span>
+                  </button>
+                );
+              })}
+              {!assignableAdminsQuery.isLoading && (assignableAdminsQuery.data?.admins ?? []).length === 0 && (
+                <span style={{ color: palette.textSubtle, fontStyle: 'italic', fontSize: '0.875rem' }}>
+                  {language === 'bg' ? 'Няма налични администратори.' : 'No admins available.'}
+                </span>
+              )}
+            </div>
+            <ModalActions>
+              <Btn $variant="ghost" onClick={() => setAssignTarget(null)}>
+                {t('common.cancel')}
+              </Btn>
+            </ModalActions>
+          </Modal>
+        </Overlay>
+      )}
 
       {/* Reject modal */}
       {rejectTarget && (

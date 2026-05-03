@@ -21,6 +21,17 @@ const CardTitle = styled.h2`font-size: 1rem; font-weight: 700; color: ${palette.
 const FieldGroup = styled.div`display: flex; flex-direction: column; gap: 1.25rem; margin-bottom: 1.5rem;`;
 const FieldLabel = styled.label`font-size: 0.875rem; font-weight: 600; color: ${palette.textMuted}; display: block; margin-bottom: 0.375rem;`;
 const FieldHint = styled.p`font-size: 0.8rem; color: ${palette.textSubtle}; margin: 0.25rem 0 0;`;
+const ResetLink = styled.button`
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: ${palette.accent};
+  cursor: pointer;
+  margin-left: 0.375rem;
+  &:hover { text-decoration: underline; }
+`;
 const NumberInput = styled.input`
   width: 8rem;
   padding: 0.5rem 0.75rem;
@@ -53,10 +64,13 @@ const InfoBox = styled.div`
   margin-bottom: 1.25rem;
 `;
 
+const DEFAULT_CASHBACK_EXPIRY_DAYS = 60;
+const DEFAULT_OFFER_VALIDITY_DAYS = 90;
+
 export default function AdminSettingsValidityPage() {
   const queryClient = useQueryClient();
-  const [cashbackDays, setCashbackDays] = useState('60');
-  const [offerDays, setOfferDays] = useState('90');
+  const [cashbackDays, setCashbackDays] = useState(String(DEFAULT_CASHBACK_EXPIRY_DAYS));
+  const [offerDays, setOfferDays] = useState(String(DEFAULT_OFFER_VALIDITY_DAYS));
 
   const { data, isLoading } = useQuery({
     queryKey: ['admin-system-settings'],
@@ -124,7 +138,17 @@ export default function AdminSettingsValidityPage() {
                 value={cashbackDays}
                 onChange={(e) => setCashbackDays(e.target.value)}
               />
-              <FieldHint>Колко дни след спечелване балансът изтича. По подразбиране: 60.</FieldHint>
+              <FieldHint>
+                Колко дни след спечелване балансът изтича. Системно подразбиране: {DEFAULT_CASHBACK_EXPIRY_DAYS}.
+                {Number(cashbackDays) !== DEFAULT_CASHBACK_EXPIRY_DAYS && (
+                  <ResetLink
+                    type="button"
+                    onClick={() => setCashbackDays(String(DEFAULT_CASHBACK_EXPIRY_DAYS))}
+                  >
+                    Възстанови по подразбиране
+                  </ResetLink>
+                )}
+              </FieldHint>
             </div>
             <div>
               <FieldLabel>Валидност на оферта (дни)</FieldLabel>
@@ -135,7 +159,17 @@ export default function AdminSettingsValidityPage() {
                 value={offerDays}
                 onChange={(e) => setOfferDays(e.target.value)}
               />
-              <FieldHint>Стандартен прозорец на валидност за нови партньорски оферти. По подразбиране: 90.</FieldHint>
+              <FieldHint>
+                Стандартен прозорец на валидност за нови партньорски оферти. Системно подразбиране: {DEFAULT_OFFER_VALIDITY_DAYS}.
+                {Number(offerDays) !== DEFAULT_OFFER_VALIDITY_DAYS && (
+                  <ResetLink
+                    type="button"
+                    onClick={() => setOfferDays(String(DEFAULT_OFFER_VALIDITY_DAYS))}
+                  >
+                    Възстанови по подразбиране
+                  </ResetLink>
+                )}
+              </FieldHint>
             </div>
           </FieldGroup>
         )}

@@ -44,6 +44,7 @@ model User {
   riskScore               Int                        @default(0)
   totpEnabledAt           DateTime?
   totpSecret              String?
+  totpPendingSecret       String?
   preferredLanguage       String                     @default("bg")
   lastActivityAt          DateTime?
   city                    String?
@@ -250,11 +251,31 @@ model Venue {
   transactions        Transaction[]
   partner             Partner             @relation(fields: [partnerId], references: [id], onDelete: Cascade)
   stickerConfig       VenueStickerConfig?
+  statusHistory       VenueStatusHistory[]
 
   @@index([partnerId])
   @@index([city])
   @@index([menuStatus])
   @@index([venueStatus])
+}
+
+// Spec §5.4 — "История: Кога и защо е сменян". Per status change of a venue
+// we append a row here so the locations page can render a full timeline of
+// who changed what, when, and why. We do NOT FK changedById to User: this
+// mirrors Partner.assignedAdminId and keeps the User model's relation list
+// untouched. The actor is hydrated by a follow-up findMany when read.
+model VenueStatusHistory {
+  id          String      @id @default(uuid())
+  venueId     String
+  fromStatus  VenueStatus
+  toStatus    VenueStatus
+  note        String?
+  changedById String?
+  createdAt   DateTime    @default(now())
+  venue       Venue       @relation(fields: [venueId], references: [id], onDelete: Cascade)
+
+  @@index([venueId])
+  @@index([venueId, createdAt])
 }
 
 model PartnerType {

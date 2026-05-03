@@ -333,9 +333,9 @@ export default function TicketDrawer({ ticketId, onClose }: Props) {
           ))}
         </Thread>
 
-        {/* Reply input */}
+        {/* Reply input — hidden only on load error; allow pre-typing during initial fetch */}
         <ReplyArea>
-          {isClosed ? (
+          {ticketError ? null : isClosed ? (
             <ClosedNote>{t.ticketClosed}</ClosedNote>
           ) : (
             <>

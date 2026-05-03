@@ -214,14 +214,14 @@ describe('AdminScanReviewPage — live region + chip (integration)', () => {
         <AdminScanReviewPage />
       </MemoryRouter>,
     );
-    expect(screen.getByTestId('tw-live').textContent).toBe('Time window filter applying…');
+    expect(screen.getByTestId('tw-live').textContent).toBe('Времеви прозорец се прилага…');
   });
 
   it('live region updates to the server-echoed value once the fetch resolves', async () => {
     renderPage('?dateFromHours=24', makeFetch(24));
     await waitFor(() =>
       expect(screen.getByTestId('tw-live').textContent).toBe(
-        'Time window filter applied: last 24 hours',
+        'Времеви прозорец приложен: последните 24 часа',
       ),
     );
   });
@@ -231,7 +231,7 @@ describe('AdminScanReviewPage — live region + chip (integration)', () => {
     renderPage('?dateFromHours=99999', makeFetch(720));
     await waitFor(() =>
       expect(screen.getByTestId('tw-live').textContent).toBe(
-        'Time window filter applied: last 720 hours',
+        'Времеви прозорец приложен: последните 720 часа',
       ),
     );
     // Raw user input must not appear anywhere in the document.
@@ -271,7 +271,7 @@ describe('AdminScanReviewPage — live region + chip (integration)', () => {
 
     // Chip is visible with "applying" label — effect hasn't resolved yet.
     expect(
-      screen.getByRole('button', { name: 'Remove time-window filter (applying)' }),
+      screen.getByRole('button', { name: 'Премахни времевия прозорец (прилагане…)' }),
     ).toBeInTheDocument();
 
     // resolveJson is assigned inside response.json() which is called by the
@@ -286,7 +286,7 @@ describe('AdminScanReviewPage — live region + chip (integration)', () => {
     });
 
     expect(
-      screen.getByRole('button', { name: 'Remove time-window filter: last 24 hours' }),
+      screen.getByRole('button', { name: 'Премахни времевия прозорец: последните 24 часа' }),
     ).toBeInTheDocument();
   });
 
@@ -294,11 +294,11 @@ describe('AdminScanReviewPage — live region + chip (integration)', () => {
     renderPage('?dateFromHours=24', makeFetch(24));
 
     const chip = await screen.findByRole('button', {
-      name: 'Remove time-window filter: last 24 hours',
+      name: 'Премахни времевия прозорец: последните 24 часа',
     });
     fireEvent.click(chip);
 
-    expect(screen.queryByRole('button', { name: /time-window/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /времеви(я)? прозорец/i })).not.toBeInTheDocument();
     // Live region must be empty — no stale window text exposed to screen readers.
     await waitFor(() =>
       expect(screen.getByTestId('tw-live').textContent).toBe(''),

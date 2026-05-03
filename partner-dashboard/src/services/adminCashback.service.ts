@@ -18,12 +18,15 @@ export interface CashbackSummaryEntry {
   notes: string | null;
 }
 
-// Spec §3.1 subscriber-side cashback stats
+// Spec §3.1 + §4.4 subscriber-side cashback stats
 export interface CashbackDashboardStats {
   totalAccrued: number;    // начислен — all-time sum of cleared credits
   totalCleared: number;   // одобрен — currently available for payout
   totalPending: number;   // изчакващ — not yet approved
   expiringTotal: number;  // изтичащ — cleared but expiring within 14 days
+  totalLocked: number;    // заключен — locked by admin (CANCELLED + ANNULLED/FAILED, not yet paid)
+  totalPaid: number;      // платен — explicitly marked paid by admin via Locked→Paid action
+  totalExpired: number;   // изтекъл — past 60-day rolling expiry, never paid out
 }
 
 export interface CashbackRateRow {

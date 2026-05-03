@@ -23,6 +23,8 @@ import {
   riskLabel,
 } from '../../utils/planLabels';
 import { csvEscape, downloadBlob } from '../../utils/csvExport';
+import { formatPhoneBG } from '../../utils/validators';
+import { adminDashboardService } from '../../services/adminDashboard.service';
 
 /* ─── i18n table (page-local; spec is in BG) ───────────────────────────── */
 type Lang = 'en' | 'bg';
@@ -164,6 +166,25 @@ const I18N = {
   drawerEmpty:    { en: 'No transactions found', bg: 'Няма транзакции' },
   drawerLoading:  { en: 'Loading…',        bg: 'Зареждане…' },
   drawerNoSubs:   { en: 'No subscriptions yet', bg: 'Няма абонаменти' },
+  // Spec §3.1 + §4.1 dashboard signal tiles
+  statActive:        { en: 'Active subscribers',         bg: 'Активни абонати' },
+  statNew:           { en: 'New (last 30 days)',         bg: 'Нови (30 дни)' },
+  statExpired:       { en: 'Expired / cancelled',        bg: 'Изтекли / спрени' },
+  statPaused:        { en: 'Paused',                     bg: 'На пауза' },
+  statFailedPayment: { en: 'Failed payment',             bg: 'Неуспешно плащане' },
+  // Spec §4.1 — three category presets for "the list must include all three
+  // visibility cases" requirement
+  catLabel:          { en: 'Category:',                  bg: 'Категория:' },
+  catAll:            { en: 'All',                         bg: 'Всички' },
+  catActiveActive:   { en: 'Active + active sub',         bg: 'Активни + активен абонамент' },
+  // Chip filter unions PAUSED|CANCELLED|EXPIRED|INCOMPLETE_EXPIRED — that's
+  // every non-active subscription state, not just §4.2 "Спрян" (PAUSED). The
+  // label says "inactive sub" / "неактивен абонамент" (broader) instead of
+  // "stopped sub" / "спрян абонамент" (which would imply only PAUSED). This
+  // keeps the §4.1 "include all three visibility cases" requirement met without
+  // misleading admins about the exact filter scope.
+  catActiveStopped:  { en: 'Active + inactive sub',       bg: 'Активни + неактивен абонамент' },
+  catDeletedStopped: { en: 'Deleted + inactive sub',      bg: 'Изтрити + неактивен абонамент' },
 } as const;
 
 type I18NKey = keyof typeof I18N;
@@ -259,11 +280,73 @@ const HeaderActions = styled.div`
   flex-wrap: wrap;
 `;
 
+/* Spec §3.1 + §4.1 — subscriber-block dashboard tiles. Mirrors the
+   stat-row pattern used on AdminCashbackPage. */
+const StatsRow = styled.div`
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+`;
+
+const StatCard = styled.button`
+  background: ${palette.surface};
+  border: 1px solid ${palette.border};
+  border-radius: 0.75rem;
+  padding: 1.25rem 1.5rem;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 100ms;
+  font: inherit;
+  &:hover { border-color: ${palette.accent}; }
+`;
+
+const StatLabel = styled.p`
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: ${palette.textSubtle};
+  margin: 0 0 0.375rem;
+`;
+
+const StatValue = styled.p<{ $color?: string }>`
+  font-size: 1.625rem;
+  font-weight: 800;
+  color: ${({ $color }) => $color ?? palette.text};
+  margin: 0;
+  line-height: 1;
+`;
+
 const Card = styled.div`
   background: ${palette.surface};
   border: 1px solid ${palette.border};
   border-radius: 0.75rem;
   padding: 1.5rem;
+`;
+
+/* Spec §4.1 category chips — see catActiveActive/etc. i18n keys */
+const CategoryRow = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 1rem;
+  font-size: 0.8125rem;
+  color: ${palette.textSubtle};
+`;
+
+const CategoryChip = styled.button<{ $active?: boolean }>`
+  padding: 0.375rem 0.75rem;
+  border-radius: 9999px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid ${({ $active }) => ($active ? palette.accent : palette.border)};
+  background: ${({ $active }) => ($active ? palette.accentSoft : palette.surface)};
+  color: ${({ $active }) => ($active ? palette.accent : palette.textMuted)};
+  transition: border-color 100ms;
+  &:hover { border-color: ${palette.accent}; color: ${palette.accent}; }
 `;
 
 const FilterRow = styled.div`
@@ -729,7 +812,11 @@ function downloadCSV(rows: AdminSubscriber[], locale: string) {
   // Spec §4.4 — cashback is entry-based with five buckets. Available is one
   // axis only; rename so the column header doesn't claim to be the full
   // cashback picture (Locked/Expired/etc. live in Кешбек screen).
-  const headers = ['ID', 'First name', 'Last name', 'Email', 'Phone', 'Account status', 'Plan', 'Sub status', 'Available cashback (BGN)', 'Pending cashback (BGN)', 'Period ends', 'Auto-renew', 'Last activity', 'Joined'];
+  // Risk score is APPENDED at the end (not inserted at position 9) to preserve
+  // the historical column order — any external consumer (BI dashboards,
+  // accounting spreadsheets, ops scripts) bound to absolute column index keeps
+  // working. New consumers pick up the trailing column on demand.
+  const headers = ['ID', 'First name', 'Last name', 'Email', 'Phone', 'Account status', 'Plan', 'Sub status', 'Available cashback (BGN)', 'Pending cashback (BGN)', 'Period ends', 'Auto-renew', 'Last activity', 'Joined', 'Risk score'];
   const fmt = (iso: string) => new Date(iso).toLocaleDateString(locale, { day: '2-digit', month: '2-digit', year: 'numeric' });
   const lines = [
     headers.join(','),
@@ -739,6 +826,12 @@ function downloadCSV(rows: AdminSubscriber[], locale: string) {
         r.firstName ?? '',
         r.lastName ?? '',
         r.email,
+        // Phone is emitted RAW (not formatPhoneBG) to preserve the historical
+        // CSV column-5 format. External consumers (BI dashboards, accounting
+        // pipelines, ops scripts) join on the raw E.164 / DB-stored format;
+        // changing the in-cell rendering would silently break those joins.
+        // The in-app list-row display does use formatPhoneBG for readability —
+        // CSV stays canonical.
         r.phone ?? '',
         r.deletedAt ? 'DELETED' : r.status,
         r.subscription?.plan ?? '',
@@ -751,6 +844,7 @@ function downloadCSV(rows: AdminSubscriber[], locale: string) {
         r.subscription ? (r.subscription.autoRenewal ? 'Yes' : 'No') : '',
         r.lastActivityAt ? fmt(r.lastActivityAt) : '',
         fmt(r.createdAt),
+        r.riskScore != null ? String(r.riskScore) : '',
       ]
         .map(csvEscape)
         .join(',')
@@ -763,24 +857,43 @@ function downloadCSV(rows: AdminSubscriber[], locale: string) {
 const PAGE_SIZE = 20;
 const NEGATIVE_TX_TYPES = ['WITHDRAWAL', 'PURCHASE'];
 
+// Spec §4.2 lists 4 canonical subscription statuses (Активен / Изтекъл /
+// Спрян / Неуспешно плащане). Operational reality adds Stripe/Paysera lifecycle
+// states (TRIALING, UNPAID, CANCELLED, INCOMPLETE, INCOMPLETE_EXPIRED) — these
+// are real billing-engine states admins must be able to filter by, so they stay
+// in the dropdown but appear after the spec-canonical block. Mapping:
+//   PAST_DUE / UNPAID  → spec "Неуспешно плащане"
+//   PAUSED             → "На пауза" (spec's "Спрян" is the §4.1 account pill;
+//                         relabeled here to avoid same-row duplicate "Спрян · Спрян")
+//   CANCELLED          → not in §4.2; admin-initiated cancel — distinct surface
+//   INCOMPLETE / INCOMPLETE_EXPIRED → never-completed first payment
+//   TRIALING           → pre-billing trial period
 const STATUS_OPTIONS: Array<{ value: SubscriptionStatus | ''; key: I18NKey }> = [
   { value: '', key: 'allStatuses' },
+  // Spec §4.2 canonical
   { value: 'ACTIVE', key: 'active' },
-  { value: 'TRIALING', key: 'trialing' },
-  { value: 'PAST_DUE', key: 'pastDue' },
-  { value: 'UNPAID', key: 'unpaid' },
-  { value: 'PAUSED', key: 'paused' },
-  { value: 'CANCELLED', key: 'cancelled' },
   { value: 'EXPIRED', key: 'expired' },
+  { value: 'PAUSED', key: 'paused' },
+  { value: 'PAST_DUE', key: 'pastDue' },
+  // Operational (Stripe/Paysera lifecycle, not in spec but real)
+  { value: 'TRIALING', key: 'trialing' },
+  { value: 'UNPAID', key: 'unpaid' },
+  { value: 'CANCELLED', key: 'cancelled' },
   { value: 'INCOMPLETE', key: 'incomplete' },
   { value: 'INCOMPLETE_EXPIRED', key: 'incompleteExpired' },
 ];
 
+// Spec §4.1 lists 3 canonical account statuses (Активен / Спрян / Изтрит).
+// PENDING_VERIFICATION / PENDING_PAYMENT / INACTIVE are real pre-activation
+// states from the registration flow — they exist in the data, so admins must
+// be able to filter by them. Listed after the spec-canonical block for clarity.
 const ACCOUNT_STATUS_OPTIONS: Array<{ value: AccountStatusFilter | ''; key: I18NKey }> = [
   { value: '', key: 'allAccounts' },
+  // Spec §4.1 canonical
   { value: 'ACTIVE', key: 'active' },
   { value: 'SUSPENDED', key: 'suspended' },
   { value: 'DELETED', key: 'deleted' },
+  // Pre-activation / operational
   { value: 'PENDING_VERIFICATION', key: 'pendingVerification' },
   { value: 'PENDING_PAYMENT', key: 'pendingPayment' },
   { value: 'INACTIVE', key: 'inactive' },
@@ -840,7 +953,11 @@ export default function AdminSubscribersAllPage() {
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
   const [plan, setPlan] = useState<SubscriptionPlan | ''>('');
-  const [status, setStatus] = useState<SubscriptionStatus | ''>('');
+  // Single status value OR comma-separated list when a multi-status StatCard
+  // preset is applied (e.g. "Изтекли+спрени" → "EXPIRED,CANCELLED,INCOMPLETE_EXPIRED").
+  // The dropdown only matches single values; multi-status presets show the
+  // dropdown as "All statuses" which is correct UX feedback.
+  const [status, setStatus] = useState<string>('');
   const [accountStatus, setAccountStatus] = useState<AccountStatusFilter | ''>('');
   const [riskLevel, setRiskLevel] = useState<RiskLevelFilter | ''>('');
   const [dateFrom, setDateFrom] = useState('');
@@ -848,6 +965,22 @@ export default function AdminSubscribersAllPage() {
   const [ibanChangedAfter, setIbanChangedAfter] = useState('');
   const [sortKey, setSortKey] = useState<string>('createdAt');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+
+  // Reset every list-shaping filter to defaults. StatCard click handlers call
+  // this before pinning their own filter so a previously-set IBAN banner,
+  // search term, plan filter, or date range doesn't silently scope the result.
+  const resetFilters = () => {
+    setSearchInput('');
+    setSearch('');
+    setPlan('');
+    setStatus('');
+    setAccountStatus('');
+    setRiskLevel('');
+    setDateFrom('');
+    setDateTo('');
+    setIbanChangedAfter('');
+    setPage(1);
+  };
 
   // Hydrate filters from alert deep-link URL params (spec §3.2).
   // dateFrom        → new_registrations alert (filters by account createdAt)
@@ -913,6 +1046,15 @@ export default function AdminSubscribersAllPage() {
   const { data, isLoading } = useQuery({
     queryKey,
     queryFn: () => adminSubscribersService.list({ page, limit: PAGE_SIZE, ...filters }),
+  });
+
+  // Spec §3.1 dashboard signals — active / new / expired / paused / failed payment.
+  // Stays unfiltered so the tiles always reflect the global subscriber base, not
+  // the current table view.
+  const { data: dashboardStats } = useQuery({
+    queryKey: ['admin-dashboard-stats'],
+    queryFn: () => adminDashboardService.getStats(),
+    staleTime: 60_000,
   });
 
   const { data: drawerTxData, isLoading: drawerTxLoading } = useQuery({
@@ -1081,7 +1223,7 @@ export default function AdminSubscribersAllPage() {
             {displayName(row)}
           </SubscriberName>
           <MetaLine>{row.email}</MetaLine>
-          {row.phone && <MetaLine>{row.phone}</MetaLine>}
+          {row.phone && <MetaLine>{formatPhoneBG(row.phone)}</MetaLine>}
         </div>
       ),
     },
@@ -1105,8 +1247,11 @@ export default function AdminSubscribersAllPage() {
         row.riskScore == null ? (
           <span style={{ color: palette.textSubtle }}>—</span>
         ) : (
-          <RiskPill $level={riskLevelOf(row.riskScore)}>
-            {riskLabel(row.riskScore, lang)} ({row.riskScore})
+          <RiskPill
+            $level={riskLevelOf(row.riskScore)}
+            title={`${riskLabel(row.riskScore, lang)} · score ${row.riskScore}`}
+          >
+            {riskLabel(row.riskScore, lang)}
           </RiskPill>
         ),
     },
@@ -1141,7 +1286,8 @@ export default function AdminSubscribersAllPage() {
     {
       key: 'subscriptionStatus',
       header: T('colSubStatus'),
-      minWidth: '200px',
+      // 240px fits the longest BG label "Незавършен (изтекъл)" without truncation
+      minWidth: '240px',
       render: (row) =>
         row.subscription ? (
           <StatusBadge $status={row.subscription.status}>
@@ -1657,6 +1803,70 @@ export default function AdminSubscribersAllPage() {
         </HeaderActions>
       </PageHeader>
 
+      {/* Spec §3.1 + §4.1 — Активни / Нови / Изтекли+Спрени / На пауза / Неуспешно плащане.
+          Each tile RESETS all other filters before pinning its own, so a stale
+          IBAN banner / date range / plan / search doesn't silently scope the
+          drill-in. The status filter sent on click matches the EXACT status set
+          counted by the dashboard endpoint (see adminDashboard.routes.ts:60-97):
+          - "Изтекли+спрени" → CANCELLED, EXPIRED, INCOMPLETE_EXPIRED
+          - "Неуспешно плащане" → PAST_DUE, UNPAID
+          so the visible row count matches the tile count. */}
+      <StatsRow>
+        <StatCard
+          type="button"
+          onClick={() => { resetFilters(); setStatus('ACTIVE'); }}
+        >
+          <StatLabel>{T('statActive')}</StatLabel>
+          <StatValue $color={palette.success}>
+            {dashboardStats ? dashboardStats.subscribers.active.toLocaleString() : '—'}
+          </StatValue>
+        </StatCard>
+        <StatCard
+          type="button"
+          onClick={() => {
+            resetFilters();
+            const d = new Date();
+            d.setDate(d.getDate() - 30);
+            setDateFrom(d.toISOString().split('T')[0]);
+          }}
+        >
+          <StatLabel>{T('statNew')}</StatLabel>
+          <StatValue $color={palette.info}>
+            {dashboardStats ? dashboardStats.subscribers.newLast30Days.toLocaleString() : '—'}
+          </StatValue>
+        </StatCard>
+        <StatCard
+          type="button"
+          onClick={() => {
+            resetFilters();
+            setStatus('CANCELLED,EXPIRED,INCOMPLETE_EXPIRED');
+          }}
+        >
+          <StatLabel>{T('statExpired')}</StatLabel>
+          <StatValue $color={dashboardStats && dashboardStats.subscribers.expired > 0 ? palette.danger : palette.text}>
+            {dashboardStats ? dashboardStats.subscribers.expired.toLocaleString() : '—'}
+          </StatValue>
+        </StatCard>
+        <StatCard
+          type="button"
+          onClick={() => { resetFilters(); setStatus('PAUSED'); }}
+        >
+          <StatLabel>{T('statPaused')}</StatLabel>
+          <StatValue $color={dashboardStats && dashboardStats.subscribers.paused > 0 ? palette.warning : palette.text}>
+            {dashboardStats ? dashboardStats.subscribers.paused.toLocaleString() : '—'}
+          </StatValue>
+        </StatCard>
+        <StatCard
+          type="button"
+          onClick={() => { resetFilters(); setStatus('PAST_DUE,UNPAID'); }}
+        >
+          <StatLabel>{T('statFailedPayment')}</StatLabel>
+          <StatValue $color={dashboardStats && dashboardStats.subscribers.failedPayment > 0 ? palette.danger : palette.text}>
+            {dashboardStats ? dashboardStats.subscribers.failedPayment.toLocaleString() : '—'}
+          </StatValue>
+        </StatCard>
+      </StatsRow>
+
       {ibanChangedAfter && (() => {
         const d = new Date(ibanChangedAfter);
         return (
@@ -1668,6 +1878,36 @@ export default function AdminSubscribersAllPage() {
       })()}
 
       <Card>
+        {/* Spec §4.1 — three-category preset strip. The list must include
+            (a) active+active sub, (b) active+inactive sub, (c) deleted+inactive sub.
+            Each chip pins the matching combination of accountStatus + subscription
+            status. "Inactive" maps to PAUSED|CANCELLED|EXPIRED|INCOMPLETE_EXPIRED —
+            i.e. every non-active subscription state. The label uses "неактивен"
+            (broad) rather than "спрян" (which the codebase reserves for PAUSED via
+            planLabels.ts) so the chip name accurately reflects the filter scope. */}
+        <CategoryRow>
+          <span>{T('catLabel')}</span>
+          <CategoryChip
+            type="button"
+            $active={!status && !accountStatus}
+            onClick={() => { resetFilters(); }}
+          >{T('catAll')}</CategoryChip>
+          <CategoryChip
+            type="button"
+            $active={accountStatus === 'ACTIVE' && status === 'ACTIVE'}
+            onClick={() => { resetFilters(); setAccountStatus('ACTIVE'); setStatus('ACTIVE'); }}
+          >{T('catActiveActive')}</CategoryChip>
+          <CategoryChip
+            type="button"
+            $active={accountStatus === 'ACTIVE' && status === 'PAUSED,CANCELLED,EXPIRED,INCOMPLETE_EXPIRED'}
+            onClick={() => { resetFilters(); setAccountStatus('ACTIVE'); setStatus('PAUSED,CANCELLED,EXPIRED,INCOMPLETE_EXPIRED'); }}
+          >{T('catActiveStopped')}</CategoryChip>
+          <CategoryChip
+            type="button"
+            $active={accountStatus === 'DELETED' && status === 'PAUSED,CANCELLED,EXPIRED,INCOMPLETE_EXPIRED'}
+            onClick={() => { resetFilters(); setAccountStatus('DELETED'); setStatus('PAUSED,CANCELLED,EXPIRED,INCOMPLETE_EXPIRED'); }}
+          >{T('catDeletedStopped')}</CategoryChip>
+        </CategoryRow>
         <FilterRow>
           <SearchInput
             type="text"
@@ -1687,7 +1927,7 @@ export default function AdminSubscribersAllPage() {
               <option key={p} value={p}>{planLabel(p, lang)}</option>
             ))}
           </Select>
-          <Select value={status} onChange={(e) => { setStatus(e.target.value as SubscriptionStatus | ''); setPage(1); }}>
+          <Select value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }}>
             {STATUS_OPTIONS.map((o) => (
               <option key={o.value} value={o.value}>{T(o.key)}</option>
             ))}

@@ -466,9 +466,10 @@ export function useInitiateCardUpdate() {
         window.location.href = url;
       }
     },
-    onError: (error: Error) => {
-      toast.error(error.message || 'Failed to initiate card update');
-    },
+    // No hook-level toast: the only consumer (SubscriptionPage) provides a
+    // per-call onError that covers all cases with localised messages.
+    // React Query v5 fires both callbacks, so a hook-level toast here would
+    // produce a duplicate on 5xx / network errors.
   });
 }
 

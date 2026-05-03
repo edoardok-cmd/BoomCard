@@ -102,7 +102,7 @@ const ModalSub = styled.p`font-size: 0.8125rem; color: ${palette.textMuted}; mar
 const Textarea = styled.textarea`width: 100%; box-sizing: border-box; padding: 0.625rem 0.875rem; border: 1px solid ${palette.border}; border-radius: 0.5rem; font-size: 0.875rem; background: ${palette.bg}; color: ${palette.text}; resize: vertical; min-height: 5rem; outline: none; &:focus { border-color: ${palette.accent}; box-shadow: 0 0 0 2px ${palette.accentSoft}; }`;
 const ModalActions = styled.div`display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 1rem;`;
 const BtnPrimary = styled.button`padding: 0.5rem 1.125rem; background: ${palette.accent}; color: #fff; border: none; border-radius: 0.5rem; font-size: 0.875rem; font-weight: 600; cursor: pointer; &:disabled { opacity: 0.5; }`;
-const BtnSecondary = styled.button`padding: 0.5rem 1.125rem; background: ${palette.bg}; color: ${palette.textMuted}; border: 1px solid ${palette.border}; border-radius: 0.5rem; font-size: 0.875rem; font-weight: 600; cursor: pointer;`;
+const BtnSecondary = styled.button`padding: 0.5rem 1.125rem; background: ${palette.bg}; color: ${palette.textMuted}; border: 1px solid ${palette.border}; border-radius: 0.5rem; font-size: 0.875rem; font-weight: 600; cursor: pointer; &:disabled { opacity: 0.45; cursor: default; }`;
 
 // Generate modal
 const GenModalBody = styled.div`display: flex; flex-direction: column; gap: 0.75rem; margin-bottom: 1rem;`;
@@ -116,6 +116,13 @@ interface CbMarkPaidModalState {
   month: string;
   totalOwed: number;
   notes: string;
+}
+
+// Invoice action confirmation modal
+type InvoiceActionType = 'pay' | 'overdue' | 'pending';
+interface InvoiceActionModal {
+  type: InvoiceActionType;
+  row: AdminInvoice;
 }
 
 const ViewTab = styled.button<{ $active: boolean }>`
@@ -191,8 +198,12 @@ export default function AdminFinanceInvoicesPage() {
       toast.success('Кешбекът е отбелязан като платен');
       queryClient.invalidateQueries({ queryKey: ['admin-cashback-summary'] });
       queryClient.invalidateQueries({ queryKey: ['admin-cashback-stats'] });
+      setCbMarkPaidModal(null);
     },
-    onError: () => toast.error('Грешка при маркиране като платен'),
+    onError: () => {
+      toast.error('Грешка при маркиране като платен');
+      setCbMarkPaidModal(null);
+    },
   });
 
   const cbReminderMutation = useMutation({
@@ -249,7 +260,10 @@ export default function AdminFinanceInvoicesPage() {
   const initialStatus: InvoiceStatus | '' =
     initialStatusParam === 'PENDING' || initialStatusParam === 'PAID' || initialStatusParam === 'OVERDUE'
       ? initialStatusParam : '';
-  const initialMonth = searchParams.get('month') ?? currentMonthStr();
+  // Default to no month filter so admins see all invoices on first load.
+  // Defaulting to the current month was confusing because it usually has 0 invoices,
+  // making the page look empty until the admin manually changes the filter.
+  const initialMonth = searchParams.get('month') ?? '';
 
   const [page, setPage]               = useState(1);
   const [searchInput, setSearchInput] = useState('');
@@ -259,6 +273,7 @@ export default function AdminFinanceInvoicesPage() {
   const [notesModal, setNotesModal]   = useState<{ id: string; partnerName: string; month: string; current: string } | null>(null);
   const [notesValue, setNotesValue]   = useState('');
   const [cbMarkPaidModal, setCbMarkPaidModal] = useState<CbMarkPaidModalState | null>(null);
+  const [invoiceActionModal, setInvoiceActionModal] = useState<InvoiceActionModal | null>(null);
   const [exporting, setExporting]     = useState(false);
   const [exportFormat, setExportFormat] = useState<'xlsx' | 'csv'>('xlsx');
   const [generateModal, setGenerateModal] = useState(false);
@@ -304,28 +319,31 @@ export default function AdminFinanceInvoicesPage() {
 
   const payMutation = useMutation({
     mutationFn: (id: string) => adminFinanceService.markInvoicePaid(id),
-    onSuccess: () => { toast.success('Фактурата е маркирана като платена'); invalidate(); },
+    onSuccess: () => { toast.success('Фактурата е маркирана като платена'); invalidate(); setInvoiceActionModal(null); },
     onError: (err: unknown) => {
       const msg = (err as any)?.response?.data?.error ?? 'Грешка при маркиране';
       toast.error(msg);
+      setInvoiceActionModal(null);
     },
   });
 
   const overdueMutation = useMutation({
     mutationFn: (id: string) => adminFinanceService.markInvoiceOverdue(id),
-    onSuccess: () => { toast.success('Фактурата е маркирана като просрочена'); invalidate(); },
+    onSuccess: () => { toast.success('Фактурата е маркирана като просрочена'); invalidate(); setInvoiceActionModal(null); },
     onError: (err: unknown) => {
       const msg = (err as any)?.response?.data?.error ?? 'Грешка при маркиране';
       toast.error(msg);
+      setInvoiceActionModal(null);
     },
   });
 
   const pendingMutation = useMutation({
     mutationFn: (id: string) => adminFinanceService.markInvoicePending(id),
-    onSuccess: () => { toast.success('Фактурата е върната към Чака'); invalidate(); },
+    onSuccess: () => { toast.success('Фактурата е върната към Чака'); invalidate(); setInvoiceActionModal(null); },
     onError: (err: unknown) => {
       const msg = (err as any)?.response?.data?.error ?? 'Грешка при маркиране';
       toast.error(msg);
+      setInvoiceActionModal(null);
     },
   });
 
@@ -429,9 +447,15 @@ export default function AdminFinanceInvoicesPage() {
       key: 'status',
       header: 'Статус',
       render: (row) => (
-        <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-          <StatusBadge $status={row.status}>{STATUS_LABELS[row.status]}</StatusBadge>
-          {row.paidAt && <MetaLine>Платено {fmt(row.paidAt)}</MetaLine>}
+        <StatusBadge $status={row.status}>{STATUS_LABELS[row.status]}</StatusBadge>
+      ),
+    },
+    {
+      key: 'paidAt',
+      header: 'Платено на',
+      render: (row) => (
+        <span style={{ fontSize: '0.8125rem', color: row.paidAt ? palette.success : palette.textSubtle }}>
+          {row.paidAt ? fmt(row.paidAt) : '—'}
         </span>
       ),
     },
@@ -457,7 +481,7 @@ export default function AdminFinanceInvoicesPage() {
         <TitleBlock>
           <Eyebrow>Финанси</Eyebrow>
           <PageTitle>
-            Фактури партньори
+            Фактуриране към партньори
             {view === 'invoices' && (data?.meta?.total ?? 0) > 0 && <TotalBadge>{data!.meta.total.toLocaleString()}</TotalBadge>}
           </PageTitle>
           <PageSubtitle>
@@ -584,10 +608,7 @@ export default function AdminFinanceInvoicesPage() {
             {
               label: 'Маркирай платено',
               hidden: (row) => row.status === 'PAID',
-              onClick: (row) => {
-                if (!window.confirm(`Маркирай фактурата за ${row.partner.businessName} (${row.month}) като платена?`)) return;
-                payMutation.mutate(row.id);
-              },
+              onClick: (row) => setInvoiceActionModal({ type: 'pay', row }),
             },
             {
               label: 'Маркирай просрочено',
@@ -595,10 +616,7 @@ export default function AdminFinanceInvoicesPage() {
                 row.status !== 'PENDING' ||
                 row.reportingPeriodStatus === 'LOCKED' ||
                 row.reportingPeriodStatus === 'INVOICED',
-              onClick: (row) => {
-                if (!window.confirm(`Маркирай фактурата за ${row.partner.businessName} (${row.month}) като просрочена?`)) return;
-                overdueMutation.mutate(row.id);
-              },
+              onClick: (row) => setInvoiceActionModal({ type: 'overdue', row }),
             },
             {
               label: 'Върни към Чака',
@@ -606,10 +624,7 @@ export default function AdminFinanceInvoicesPage() {
                 row.status !== 'OVERDUE' ||
                 row.reportingPeriodStatus === 'LOCKED' ||
                 row.reportingPeriodStatus === 'INVOICED',
-              onClick: (row) => {
-                if (!window.confirm(`Върни фактурата за ${row.partner.businessName} (${row.month}) към статус Чака?`)) return;
-                pendingMutation.mutate(row.id);
-              },
+              onClick: (row) => setInvoiceActionModal({ type: 'pending', row }),
             },
             {
               // Notes are allowed on any period status — see PATCH /invoices/:id/notes
@@ -622,7 +637,7 @@ export default function AdminFinanceInvoicesPage() {
       </Card>}
 
       {notesModal && (
-        <Overlay onClick={() => setNotesModal(null)}>
+        <Overlay onClick={() => { if (!notesMutation.isPending) setNotesModal(null); }}>
           <Modal onClick={(e) => e.stopPropagation()}>
             <ModalTitle>Редакция бележки</ModalTitle>
             <ModalSub>{notesModal.partnerName} — {notesModal.month}</ModalSub>
@@ -646,7 +661,7 @@ export default function AdminFinanceInvoicesPage() {
       )}
 
       {generateModal && (
-        <Overlay onClick={() => setGenerateModal(false)}>
+        <Overlay onClick={() => { if (!generateMutation.isPending) setGenerateModal(false); }}>
           <Modal onClick={(e) => e.stopPropagation()}>
             <ModalTitle>Генерирай фактури за месец</ModalTitle>
             <ModalSub>
@@ -677,7 +692,7 @@ export default function AdminFinanceInvoicesPage() {
 
       {/* Cashback mark-paid confirmation modal — replaces window.confirm + window.prompt */}
       {cbMarkPaidModal && (
-        <Overlay onClick={() => setCbMarkPaidModal(null)}>
+        <Overlay onClick={() => { if (!cbMarkPaidMutation.isPending) setCbMarkPaidModal(null); }}>
           <Modal onClick={(e) => e.stopPropagation()}>
             <ModalTitle>Маркирай кешбек като платен</ModalTitle>
             <ModalSub>
@@ -695,7 +710,7 @@ export default function AdminFinanceInvoicesPage() {
               autoFocus
             />
             <ModalActions>
-              <BtnSecondary onClick={() => setCbMarkPaidModal(null)}>Отказ</BtnSecondary>
+              <BtnSecondary disabled={cbMarkPaidMutation.isPending} onClick={() => setCbMarkPaidModal(null)}>Отказ</BtnSecondary>
               <BtnPrimary
                 disabled={cbMarkPaidMutation.isPending}
                 onClick={() => {
@@ -703,7 +718,6 @@ export default function AdminFinanceInvoicesPage() {
                     partnerId: cbMarkPaidModal.partnerId,
                     notes: cbMarkPaidModal.notes.trim() || undefined,
                   });
-                  setCbMarkPaidModal(null);
                 }}
               >
                 {cbMarkPaidMutation.isPending ? 'Запазване…' : 'Маркирай платено'}
@@ -712,6 +726,54 @@ export default function AdminFinanceInvoicesPage() {
           </Modal>
         </Overlay>
       )}
+      {/* Invoice action confirmation modal — replaces window.confirm for all 3 status transitions */}
+      {invoiceActionModal && (() => {
+        const { type, row } = invoiceActionModal;
+        const obligation = bgn(row.totalCashbackOwed + row.marginAmount);
+        const configs: Record<InvoiceActionType, { title: string; body: string; confirm: string; danger?: boolean }> = {
+          pay: {
+            title: 'Маркирай фактура като платена',
+            body: `${row.partner.businessName} — ${row.month} — ${obligation}. Действието е необратимо.`,
+            confirm: 'Маркирай платено',
+          },
+          overdue: {
+            title: 'Маркирай фактура като просрочена',
+            body: `${row.partner.businessName} — ${row.month} — ${obligation}. Статусът ще бъде сменен от Чака на Просрочено.`,
+            confirm: 'Маркирай просрочено',
+            danger: true,
+          },
+          pending: {
+            title: 'Върни фактура към Чака',
+            body: `${row.partner.businessName} — ${row.month} — ${obligation}. Статусът ще бъде сменен от Просрочено на Чака.`,
+            confirm: 'Върни към Чака',
+          },
+        };
+        const cfg = configs[type];
+        const isPending = payMutation.isPending || overdueMutation.isPending || pendingMutation.isPending;
+        const handleConfirm = () => {
+          if (type === 'pay')     payMutation.mutate(row.id);
+          if (type === 'overdue') overdueMutation.mutate(row.id);
+          if (type === 'pending') pendingMutation.mutate(row.id);
+        };
+        return (
+          <Overlay onClick={() => { if (!isPending) setInvoiceActionModal(null); }}>
+            <Modal onClick={(e) => e.stopPropagation()}>
+              <ModalTitle>{cfg.title}</ModalTitle>
+              <ModalSub>{cfg.body}</ModalSub>
+              <ModalActions>
+                <BtnSecondary disabled={isPending} onClick={() => setInvoiceActionModal(null)}>Отказ</BtnSecondary>
+                <BtnPrimary
+                  disabled={isPending}
+                  style={cfg.danger ? { background: '#b54327' } : undefined}
+                  onClick={handleConfirm}
+                >
+                  {isPending ? 'Запазване…' : cfg.confirm}
+                </BtnPrimary>
+              </ModalActions>
+            </Modal>
+          </Overlay>
+        );
+      })()}
     </PageShell>
   );
 }

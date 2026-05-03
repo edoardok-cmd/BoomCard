@@ -86,6 +86,10 @@ export interface PlanBreakdownRow {
   turnover: number;
 }
 
+export type PayoutStatus =
+  | 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED'
+  | 'RISK_HOLD' | 'CANCELLED' | 'ANNULLED' | 'TRIAL_PENDING';
+
 export interface ReportData {
   period: { from: string; to: string };
   walletTransactions: Record<string, { total: number; count: number }>;
@@ -99,6 +103,14 @@ export interface ReportData {
   /** status is null for months that have no ReportingPeriod record yet */
   periodStatuses: Array<{ month: string; status: string | null; pendingCount: number; overdueCount: number }>;
   planBreakdown: PlanBreakdownRow[];
+  /** Spec §6.4 "плащания" dimension: WITHDRAWAL transactions grouped by payout status. */
+  payoutBreakdown: {
+    byStatus: Record<string, { total: number; count: number }>;
+    total: number;
+    count: number;
+    /** True when the report was filtered to a single payout status. */
+    filtered: boolean;
+  };
 }
 
 export const adminFinanceService = {
@@ -166,6 +178,7 @@ export const adminFinanceService = {
     partnerId?: string;
     invoiceStatus?: string;
     plan?: string;
+    payoutStatus?: string;
   }): Promise<{ data: ReportData }> {
     const clean: Record<string, unknown> = {};
     if (params?.from) clean.from = params.from;
@@ -173,6 +186,7 @@ export const adminFinanceService = {
     if (params?.partnerId) clean.partnerId = params.partnerId;
     if (params?.invoiceStatus) clean.invoiceStatus = params.invoiceStatus;
     if (params?.plan) clean.plan = params.plan;
+    if (params?.payoutStatus) clean.payoutStatus = params.payoutStatus;
     return apiService.get('/admin/finance/reports', clean);
   },
 
@@ -180,13 +194,14 @@ export const adminFinanceService = {
     return apiService.get('/admin/finance/report-partners', {});
   },
 
-  async exportReports(params: { from?: string; to?: string; format?: 'csv' | 'xlsx'; partnerId?: string; invoiceStatus?: string; plan?: string }): Promise<void> {
+  async exportReports(params: { from?: string; to?: string; format?: 'csv' | 'xlsx'; partnerId?: string; invoiceStatus?: string; plan?: string; payoutStatus?: string }): Promise<void> {
     const q: Record<string, unknown> = { type: 'reports', format: params.format ?? 'xlsx' };
     if (params.from) q.from = params.from;
     if (params.to) q.to = params.to;
     if (params.partnerId) q.partnerId = params.partnerId;
     if (params.invoiceStatus) q.invoiceStatus = params.invoiceStatus;
     if (params.plan) q.plan = params.plan;
+    if (params.payoutStatus) q.payoutStatus = params.payoutStatus;
     const { data, filename } = await apiService.getBlob('/admin/finance/export', q);
     const url = URL.createObjectURL(data);
     const a = document.createElement('a');

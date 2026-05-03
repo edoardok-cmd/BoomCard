@@ -17,13 +17,16 @@ const I18N = {
   // Page header
   eyebrow:          { en: 'Subscribers',      bg: 'Абонати' },
   pageTitle:        { en: 'Cashback',          bg: 'Кешбек' },
-  pageSubtitle:     { en: 'Entries by state (Pending / Cleared / Locked / Paid / Expired)',
-                      bg: 'Записи по статус (Изчакващ / Одобрен / Заключен / Платен / Изтекъл)' },
+  pageSubtitle:     { en: 'Spec §4.4 entry-based cashback. Tiles: Accrued (sum) + 5 lifecycle states + Expiring (subset of Cleared due in ≤14 days).',
+                      bg: 'Спец. §4.4 — записи по статус. Карти: Начислен (общо) + 5 статуса + Изтичащ (подмножество на Одобрен ≤14 дни).' },
   // Stat card labels
   statAccrued:      { en: 'Accrued',           bg: 'Начислен' },
   statCleared:      { en: 'Cleared',           bg: 'Одобрен' },
   statPending:      { en: 'Pending',           bg: 'Изчакващ' },
   statExpiring:     { en: 'Expiring (14 days)', bg: 'Изтичащ (14 дни)' },
+  statLocked:       { en: 'Locked',            bg: 'Заключен' },
+  statPaid:         { en: 'Paid',              bg: 'Платен' },
+  statExpired:      { en: 'Expired',           bg: 'Изтекъл' },
   // Threshold hint
   thresholdHint:    { en: 'Payout thresholds (cleared cashback only):',
                       bg: 'Прагове за изплащане (само одобрен кешбек се брои):' },
@@ -541,7 +544,7 @@ export default function AdminCashbackPage() {
         </TitleBlock>
       </PageHeader>
 
-      {/* Spec §3.1 — начислен / одобрен / изчакващ / изтичащ */}
+      {/* Spec §3.1 + §4.4 — начислен / одобрен / изчакващ / изтичащ / заключен / платен */}
       <StatsRow>
         <StatCard>
           <StatLabel>{T('statAccrued')}</StatLabel>
@@ -565,6 +568,24 @@ export default function AdminCashbackPage() {
           <StatLabel>{T('statExpiring')}</StatLabel>
           <StatValue $color={stats && stats.expiringTotal > 0 ? palette.danger : palette.text}>
             {stats ? `${fmt(stats.expiringTotal)} ${bgn}` : '—'}
+          </StatValue>
+        </StatCard>
+        <StatCard>
+          <StatLabel>{T('statLocked')}</StatLabel>
+          <StatValue $color={stats && stats.totalLocked > 0 ? palette.amber : palette.text}>
+            {stats ? `${fmt(stats.totalLocked)} ${bgn}` : '—'}
+          </StatValue>
+        </StatCard>
+        <StatCard>
+          <StatLabel>{T('statPaid')}</StatLabel>
+          <StatValue $color={palette.info}>
+            {stats ? `${fmt(stats.totalPaid)} ${bgn}` : '—'}
+          </StatValue>
+        </StatCard>
+        <StatCard>
+          <StatLabel>{T('statExpired')}</StatLabel>
+          <StatValue $color={stats && stats.totalExpired > 0 ? palette.danger : palette.text}>
+            {stats ? `${fmt(stats.totalExpired)} ${bgn}` : '—'}
           </StatValue>
         </StatCard>
       </StatsRow>

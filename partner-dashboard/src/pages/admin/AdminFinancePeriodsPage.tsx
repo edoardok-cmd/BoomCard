@@ -71,6 +71,17 @@ const UnbilledBadge = styled.span`
 
 const AuditLine = styled.div`font-size: 0.7rem; color: ${palette.textSubtle}; margin-top: 0.25rem;`;
 
+/* Warning shown in the lifecycle cell when a LOCKED or INVOICED period is missing
+   one of the prior audit timestamps (openedAt / reviewedAt) — indicates the period
+   was advanced through the workflow before full lifecycle enforcement was in place,
+   so the audit trail is incomplete and that historical record can't be fully reconstructed. */
+const AuditWarning = styled.div`
+  display: inline-flex; align-items: center; gap: 0.25rem;
+  font-size: 0.65rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
+  background: ${palette.dangerSoft}; color: ${palette.danger};
+  border-radius: 0.25rem; padding: 0.1rem 0.4rem; margin-top: 0.375rem;
+`;
+
 const AdvanceBtn = styled.button`
   padding: 0.3rem 0.7rem; border-radius: 0.375rem; font-size: 0.75rem; font-weight: 600;
   border: 1px solid ${palette.border}; background: ${palette.bg}; color: ${palette.textMuted};
@@ -121,6 +132,14 @@ const BannerOpenBtn = styled.button`
   border: none; border-radius: 0.5rem; font-size: 0.8125rem; font-weight: 600; cursor: pointer;
   &:hover { opacity: 0.9; }
   &:disabled { opacity: 0.5; cursor: default; }
+`;
+/* Stronger banner for past-month attention (red border) — used when there are
+   completed months with unbilled scans waiting for invoice generation. */
+const PastMonthsBanner = styled.div`
+  display: flex; align-items: flex-start; gap: 1rem;
+  padding: 1rem 1.25rem; margin-bottom: 1.5rem;
+  background: ${palette.dangerSoft}; border: 1px solid #e8b6a8;
+  border-left: 3px solid ${palette.danger}; border-radius: 0.75rem;
 `;
 
 /* ── Confirmation modal ─────────────────────────────────────────────────────── */
@@ -321,6 +340,25 @@ export default function AdminFinancePeriodsPage() {
     ...injectedRows,
   ].sort((a, b) => b.month.localeCompare(a.month));
 
+  // Past months (strictly before current month) that still have unbilled scans —
+  // these silently slip through the per-row "Генерирай фактури →" CTA when scrolling,
+  // so we surface a top-of-page banner so finance can spot them at a glance.
+  // Spec §6.3: month must be closeable; unbilled past months block period closure.
+  const pastUnbilled = rows.filter(r =>
+    r.month < CURRENT_MONTH_STR && r.hasUnbilledScans && r.count === 0 && !rpByMonth.get(r.month)
+  );
+
+  // Periods with incomplete audit trail (LOCKED/INVOICED but missing earlier timestamps,
+  // or LOCKED with a null lockedAt — a schema invariant violation that should still surface).
+  // Surface count so finance can prioritise reviewing/backfilling these records.
+  // Mirrors the per-row warning logic: a LOCKED or INVOICED record must have all three
+  // prior timestamps (openedAt, reviewedAt, lockedAt).  A LOCKED record with null lockedAt
+  // is a schema-invariant violation but we still want it visible.
+  const incompleteAuditPeriods = rpRows.filter(rp => {
+    const reachedLocked = rp.status === 'LOCKED' || rp.status === 'INVOICED';
+    return reachedLocked && (!rp.openedAt || !rp.reviewedAt || !rp.lockedAt);
+  });
+
   return (
     <PageShell>
       <PageHeader>
@@ -363,6 +401,43 @@ export default function AdminFinancePeriodsPage() {
             {ensureMutation.isPending ? 'Отваряне…' : 'Отвори период'}
           </BannerOpenBtn>
         </CurrentMonthBanner>
+      )}
+
+      {/* Past months with unbilled scans — must generate invoices and close those periods */}
+      {pastUnbilled.length > 0 && !isLoading && (
+        <PastMonthsBanner>
+          <span style={{ fontSize: '1.1rem', color: palette.danger }}>⚠</span>
+          <BannerText>
+            <strong>{pastUnbilled.length} {pastUnbilled.length === 1 ? 'минал месец' : 'минали месеца'} с неофактурирани сканирания:</strong>{' '}
+            {pastUnbilled.map((p, i) => (
+              <span key={p.month}>
+                {i > 0 && ', '}
+                <Link to={`/admin/finance/invoices?month=${p.month}`} style={{ color: palette.danger, fontWeight: 600 }}>
+                  {monthLabel(p.month)}
+                </Link>
+              </span>
+            ))}
+            . Генерирайте фактури и затворете периодите, за да приключите отчетността.
+          </BannerText>
+        </PastMonthsBanner>
+      )}
+
+      {/* Incomplete audit trail — periods that bypassed OPEN/FOR_REVIEW before enforcement */}
+      {incompleteAuditPeriods.length > 0 && !isLoading && (
+        <PastMonthsBanner>
+          <span style={{ fontSize: '1.1rem', color: palette.danger }}>⚠</span>
+          <BannerText>
+            <strong>{incompleteAuditPeriods.length} {incompleteAuditPeriods.length === 1 ? 'период' : 'периода'} с непълен одит:</strong>{' '}
+            {incompleteAuditPeriods.map((rp, i) => (
+              <span key={rp.month}>
+                {i > 0 && ', '}
+                <strong>{monthLabel(rp.month)}</strong>
+              </span>
+            ))}
+            . Тези записи са преминали в {LIFECYCLE_LABELS.LOCKED}/{LIFECYCLE_LABELS.INVOICED} без преминаване през всички междинни статуси.
+            Бъдещите периоди следват пълния жизнен цикъл (Отворен → За проверка → Заключен → Фактуриран).
+          </BannerText>
+        </PastMonthsBanner>
       )}
 
       <Card>
@@ -445,37 +520,58 @@ export default function AdminFinancePeriodsPage() {
 
                     {/* Lifecycle badge + 4-state audit trail with resolved admin names */}
                     <Td>
-                      {rp ? (
-                        <>
-                          <LifecycleBadge $status={rp.status}>
-                            {LIFECYCLE_LABELS[rp.status]}
-                          </LifecycleBadge>
-                          {rp.openedAt && (
-                            <AuditLine>
-                              Отворен: {fmtDateTime(rp.openedAt)}
-                              {rp.openedByName && ` · ${rp.openedByName}`}
-                            </AuditLine>
-                          )}
-                          {rp.reviewedAt && (
-                            <AuditLine>
-                              За проверка: {fmtDateTime(rp.reviewedAt)}
-                              {rp.reviewedByName && ` · ${rp.reviewedByName}`}
-                            </AuditLine>
-                          )}
-                          {rp.lockedAt && (
-                            <AuditLine>
-                              Заключен: {fmtDateTime(rp.lockedAt)}
-                              {rp.lockedByName && ` · ${rp.lockedByName}`}
-                            </AuditLine>
-                          )}
-                          {rp.invoicedAt && (
-                            <AuditLine>
-                              Фактуриран: {fmtDateTime(rp.invoicedAt)}
-                              {rp.invoicedByName && ` · ${rp.invoicedByName}`}
-                            </AuditLine>
-                          )}
-                        </>
-                      ) : (
+                      {rp ? (() => {
+                        // Detect incomplete audit trail: a LOCKED or INVOICED period must have
+                        // passed through OPEN, FOR_REVIEW, and LOCKED per the spec's enforced
+                        // lifecycle.  Any missing prior timestamp means the record was advanced
+                        // before full enforcement was in place — flag it so admins know the audit
+                        // trail is partial.  A LOCKED record without lockedAt is a schema-invariant
+                        // violation but is still flagged via the same badge.
+                        const reachedLocked = rp.status === 'LOCKED' || rp.status === 'INVOICED';
+                        const missingOpened = reachedLocked && !rp.openedAt;
+                        const missingReviewed = reachedLocked && !rp.reviewedAt;
+                        const missingLocked = reachedLocked && !rp.lockedAt;
+                        const missingSteps: string[] = [];
+                        if (missingOpened) missingSteps.push('Отворен');
+                        if (missingReviewed) missingSteps.push('За проверка');
+                        if (missingLocked) missingSteps.push('Заключен');
+                        return (
+                          <>
+                            <LifecycleBadge $status={rp.status}>
+                              {LIFECYCLE_LABELS[rp.status]}
+                            </LifecycleBadge>
+                            {rp.openedAt && (
+                              <AuditLine>
+                                Отворен: {fmtDateTime(rp.openedAt)}
+                                {rp.openedByName && ` · ${rp.openedByName}`}
+                              </AuditLine>
+                            )}
+                            {rp.reviewedAt && (
+                              <AuditLine>
+                                За проверка: {fmtDateTime(rp.reviewedAt)}
+                                {rp.reviewedByName && ` · ${rp.reviewedByName}`}
+                              </AuditLine>
+                            )}
+                            {rp.lockedAt && (
+                              <AuditLine>
+                                Заключен: {fmtDateTime(rp.lockedAt)}
+                                {rp.lockedByName && ` · ${rp.lockedByName}`}
+                              </AuditLine>
+                            )}
+                            {rp.invoicedAt && (
+                              <AuditLine>
+                                Фактуриран: {fmtDateTime(rp.invoicedAt)}
+                                {rp.invoicedByName && ` · ${rp.invoicedByName}`}
+                              </AuditLine>
+                            )}
+                            {missingSteps.length > 0 && (
+                              <AuditWarning title={`Жизненият цикъл не е минал през: ${missingSteps.join(', ')}. Записът е създаден преди въвеждането на пълната проследимост.`}>
+                                ⚠ Непълен одит ({missingSteps.join(', ')})
+                              </AuditWarning>
+                            )}
+                          </>
+                        );
+                      })() : (
                         <NoBadge>Без запис</NoBadge>
                       )}
                     </Td>

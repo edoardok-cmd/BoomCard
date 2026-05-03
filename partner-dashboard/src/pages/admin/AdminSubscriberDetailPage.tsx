@@ -14,6 +14,7 @@ import { adminSubscriptionsService } from '../../services/adminSubscriptions.ser
 import { adminTransactionsService, type BusinessTransaction } from '../../services/adminTransactions.service';
 import { apiService } from '../../services/api.service';
 import { planLabel, subStatusLabel, userStatusLabel, riskLabel, riskBucket, type RiskBucket, type Lang } from '../../utils/planLabels';
+import { formatPhoneBG } from '../../utils/validators';
 
 /* ─── i18n ─────────────────────────────────────────────────────────────────── */
 const I18N = {
@@ -1035,7 +1036,7 @@ export default function AdminSubscriberDetailPage() {
           <ProfileInfo>
             <FullName>{fullName}</FullName>
             <ContactLine>{data.email}</ContactLine>
-            {data.phone && <ContactLine>{data.phone}</ContactLine>}
+            {data.phone && <ContactLine>{formatPhoneBG(data.phone)}</ContactLine>}
             <ContactLine>
               <span style={{ color: palette.textSubtle, fontSize: '0.8125rem', fontWeight: 600 }}>{T('ibanLabel')}</span>{' '}
               {data.iban ? (

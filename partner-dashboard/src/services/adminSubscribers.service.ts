@@ -102,7 +102,10 @@ export type RiskLevelFilter = 'low' | 'medium' | 'high';
 export interface SubscriberFilters {
   search?: string;
   plan?: SubscriptionPlan | '';
-  status?: SubscriptionStatus | '';
+  // Single SubscriptionStatus value, or a comma-separated list for multi-status
+  // StatCard presets (e.g. "EXPIRED,CANCELLED,INCOMPLETE_EXPIRED" for the
+  // dashboard "Изтекли+спрени" tile). Backend parses both forms.
+  status?: SubscriptionStatus | '' | string;
   accountStatus?: AccountStatusFilter | '';
   riskLevel?: RiskLevelFilter | '';
   dateFrom?: string;

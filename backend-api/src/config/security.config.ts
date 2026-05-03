@@ -120,6 +120,7 @@ function getCorsOrigins(): string[] {
     'https://boomcard.bg',
     'https://mobile.boomcard.bg',
     'https://boomcard.vercel.app',
+    'http://localhost:3021',
     'http://localhost:5173',
     'http://localhost:5174',
     'http://localhost:5175',

@@ -13,6 +13,7 @@ primary_region = 'fra'
   NODE_ENV = 'production'
   PORT = '3001'
   OCR_MAX_CONCURRENT = '2'
+  FRONTEND_URL = 'https://boomcard.bg'
 
 [processes]
   app = "sh -c 'node_modules/.bin/prisma migrate resolve --rolled-back 20260321_simplify_partner_tiers 2>&1 || true && node_modules/.bin/prisma migrate deploy && node dist/server.js'"
