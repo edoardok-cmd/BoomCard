@@ -139,6 +139,17 @@ const TabNavigator = () => {
         }}
       />
       <Tab.Screen
+        name="Offers"
+        component={OffersScreen}
+        options={{
+          title: t('offers.title'),
+          tabBarLabel: t('navigation.offers'),
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="pricetag" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tab.Screen
         name="Scan"
         component={StickerScannerScreen}
         options={{
