@@ -620,10 +620,9 @@ const SettingsScreen = ({ navigation }: any) => {
           </View>
         </View>
 
-        {/* Tab Visibility (mobile/native only) */}
-        {Platform.OS !== 'web' && (
-          <>
-            <Text style={styles.sectionTitle}>{t('settings.tabs', 'Навигация')}</Text>
+        {/* Tab Visibility */}
+        <>
+          <Text style={styles.sectionTitle}>{t('settings.tabs', 'Навигация')}</Text>
             <View style={styles.section}>
               <View style={styles.settingRow}>
                 <View style={styles.settingInfo}>
@@ -677,8 +676,7 @@ const SettingsScreen = ({ navigation }: any) => {
                 />
               </View>
             </View>
-          </>
-        )}
+        </>
 
         {/* Appearance */}
         <Text style={styles.sectionTitle}>{t('settings.general')}</Text>

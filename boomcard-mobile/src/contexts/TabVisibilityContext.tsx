@@ -16,12 +16,11 @@ const TabVisibilityContext = createContext<TabVisibilityContextType | undefined>
 const isWeb = Platform.OS === 'web';
 
 export const TabVisibilityProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [showOffers, setShowOffersState] = useState(isWeb);
-  const [showNearby, setShowNearbyState] = useState(isWeb);
-  const [showFavorites, setShowFavoritesState] = useState(isWeb);
+  const [showOffers, setShowOffersState] = useState(false);
+  const [showNearby, setShowNearbyState] = useState(false);
+  const [showFavorites, setShowFavoritesState] = useState(false);
 
   useEffect(() => {
-    if (isWeb) return;
     Promise.all([
       StorageService.getShowOffersTab(),
       StorageService.getShowNearbyTab(),
