@@ -235,7 +235,14 @@ export default function OffersScreen() {
     }
 
     if (featuredRes.success) {
-      setFeaturedOffers((featuredRes as { success: true; data: Offer[] }).data ?? []);
+      const data = featuredRes.data;
+      let offers: Offer[] = [];
+      if (Array.isArray(data)) {
+        offers = data;
+      } else if (data && typeof data === 'object' && 'data' in data && Array.isArray((data as any).data)) {
+        offers = (data as any).data;
+      }
+      setFeaturedOffers(offers);
     } else if (!showFeatured) {
       setFeaturedOffers([]);
     }
