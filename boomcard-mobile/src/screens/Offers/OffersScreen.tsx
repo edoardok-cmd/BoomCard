@@ -284,11 +284,13 @@ export default function OffersScreen() {
       ).sort()
     : [];
 
-  const filteredFeatured = (
-    selectedCity
-      ? featuredOffers.filter(o => (o.partner?.city ?? '') === selectedCity)
-      : featuredOffers
-  ).slice(0, 9);
+  const filteredFeatured = Array.isArray(featuredOffers)
+    ? (
+        selectedCity
+          ? featuredOffers.filter(o => (o.partner?.city ?? '') === selectedCity)
+          : featuredOffers
+      ).slice(0, 9)
+    : [];
 
   // When no category chip is selected, scope offers to the active tab's category set
   // so the word filter only returns relevant results (places vs experiences)
