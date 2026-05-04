@@ -276,11 +276,13 @@ export default function OffersScreen() {
     navigation.navigate('OfferDetail', { offer });
   };
 
-  const showFeaturedSection = featuredOffers.length > 0 && !selectedCategory && !searchQuery.trim() && activeTab === 'places';
+  const showFeaturedSection = Array.isArray(featuredOffers) && featuredOffers.length > 0 && !selectedCategory && !searchQuery.trim() && activeTab === 'places';
 
-  const featuredCities = Array.from(
-    new Set(featuredOffers.map(o => o.partner?.city ?? '').filter(Boolean))
-  ).sort();
+  const featuredCities = Array.isArray(featuredOffers)
+    ? Array.from(
+        new Set(featuredOffers.map(o => o.partner?.city ?? '').filter(Boolean))
+      ).sort()
+    : [];
 
   const filteredFeatured = (
     selectedCity
@@ -291,8 +293,8 @@ export default function OffersScreen() {
   // When no category chip is selected, scope offers to the active tab's category set
   // so the word filter only returns relevant results (places vs experiences)
   const displayedOffers = selectedCategory
-    ? offers
-    : offers.filter(o => {
+    ? (Array.isArray(offers) ? offers : [])
+    : (Array.isArray(offers) ? offers : []).filter(o => {
         const cat = o.partner?.category ?? '';
         if (!cat) return true; // uncategorized shows in both tabs
         return activeTab === 'places' ? PLACES_KEYS.has(cat) : EXPERIENCES_KEYS.has(cat);
