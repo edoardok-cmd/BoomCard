@@ -101,6 +101,18 @@ export const registerValidation = [
     .isLength({ max: 80 })
     .withMessage('businessInfo.businessSubcategory must be at most 80 characters'),
 
+  body('businessInfo.businessSubcategories')
+    .optional()
+    .isArray({ max: 20 })
+    .withMessage('businessInfo.businessSubcategories must be an array of up to 20 ids'),
+
+  body('businessInfo.businessSubcategories.*')
+    .optional()
+    .isString()
+    .trim()
+    .isLength({ min: 1, max: 80 })
+    .withMessage('each businessSubcategories entry must be 1-80 characters'),
+
   body('businessInfo.taxId')
     .optional({ values: 'falsy' })
     .isString()

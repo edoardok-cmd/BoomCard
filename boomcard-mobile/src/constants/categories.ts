@@ -1,0 +1,181 @@
+/**
+ * Mobile category registry — bilingual labels for Places & Experiences.
+ *
+ * Mirrors partner-dashboard/src/types/categories.types.ts. Keep in sync when
+ * slugs are added/changed there. The mobile workspace is separate from the
+ * monorepo (no shared package), so this is a deliberate copy.
+ */
+
+export interface BilingualText {
+  en: string;
+  bg: string;
+}
+
+export interface SubcategoryDefinition {
+  id: string;
+  name: BilingualText;
+  children?: SubcategoryDefinition[];
+}
+
+export interface CategoryDefinition {
+  id: string;
+  name: BilingualText;
+  subcategories: SubcategoryDefinition[];
+}
+
+export const placesCategories: CategoryDefinition[] = [
+  {
+    id: 'restaurants',
+    name: { en: 'Restaurants & Food', bg: 'Ресторанти и храна' },
+    subcategories: [
+      { id: 'restaurants/curated', name: { en: 'BOOM Restaurants', bg: 'BOOM Ресторанти' } },
+      { id: 'restaurants/fast-food', name: { en: 'Fast Food', bg: 'Бърза храна' } },
+      { id: 'restaurants/traditional', name: { en: 'Traditional Cuisine', bg: 'Традиционна кухня' } },
+      { id: 'restaurants/vegetarian-vegan', name: { en: 'Vegetarian & Vegan', bg: 'Вегетарианско и веган' } },
+      { id: 'restaurants/asian', name: { en: 'Asian', bg: 'Азиатски' } },
+    ],
+  },
+  {
+    id: 'accommodation',
+    name: { en: 'Accommodation', bg: 'Настаняване' },
+    subcategories: [
+      { id: 'accommodation/hotels', name: { en: 'Hotels', bg: 'Хотели' } },
+      { id: 'accommodation/guest-houses', name: { en: 'Guest Houses', bg: 'Къщи за гости' } },
+      { id: 'accommodation/apartments', name: { en: 'Apartments', bg: 'Апартаменти' } },
+    ],
+  },
+  {
+    id: 'spa',
+    name: { en: 'SPA & Wellness', bg: 'СПА и уелнес' },
+    subcategories: [
+      { id: 'spa/spa-centers', name: { en: 'SPA Centers', bg: 'СПА центрове' } },
+      { id: 'spa/pools', name: { en: 'Pools', bg: 'Басейни' } },
+      { id: 'spa/mineral-pools', name: { en: 'Mineral Pools', bg: 'Минерални басейни' } },
+      { id: 'spa/fitness-wellness', name: { en: 'Fitness & Wellness', bg: 'Фитнес и уелнес' } },
+      { id: 'spa/sports', name: { en: 'Sports', bg: 'Спорт' } },
+    ],
+  },
+  {
+    id: 'panoramic',
+    name: { en: 'Panoramic Places', bg: 'Панорамни места' },
+    subcategories: [
+      { id: 'panoramic/bars', name: { en: 'Rooftop Bars', bg: 'Rooftop Барове' } },
+      { id: 'panoramic/restaurants', name: { en: 'Sky Restaurants', bg: 'Sky Ресторанти' } },
+    ],
+  },
+  {
+    id: 'clubs',
+    name: { en: 'Clubs & Nightlife', bg: 'Клубове и нощен живот' },
+    subcategories: [
+      { id: 'clubs/clubs', name: { en: 'Clubs', bg: 'Клубове' } },
+      { id: 'clubs/bars', name: { en: 'Bars', bg: 'Барове' } },
+      { id: 'clubs/lounge', name: { en: 'Lounge', bg: 'Лаундж' } },
+      { id: 'clubs/parties-events', name: { en: 'Parties & Events', bg: 'Партита и събития' } },
+      { id: 'clubs/live-music', name: { en: 'Live Music', bg: 'Жива музика' } },
+    ],
+  },
+  {
+    id: 'cafes',
+    name: { en: 'Cafes, Pastry Shops & Bakeries', bg: 'Кафенета, сладкарници и пекарни' },
+    subcategories: [
+      { id: 'cafes/cafes', name: { en: 'Cafes', bg: 'Кафенета' } },
+      { id: 'cafes/pastry-shops', name: { en: 'Pastry Shops', bg: 'Сладкарници' } },
+      { id: 'cafes/brunch', name: { en: 'Brunch', bg: 'Брънч' } },
+      { id: 'cafes/bakeries', name: { en: 'Bakeries', bg: 'Пекарни' } },
+    ],
+  },
+];
+
+export const experiencesCategories: CategoryDefinition[] = [
+  {
+    id: 'gastronomic',
+    name: { en: 'Gastronomic', bg: 'Гастрономични' },
+    subcategories: [
+      { id: 'gastronomic/degustations', name: { en: 'Degustations', bg: 'Дегустации' } },
+      { id: 'gastronomic/food-traditions', name: { en: 'Food & Traditions', bg: 'Храна и традиции' } },
+    ],
+  },
+  {
+    id: 'historical-cultural',
+    name: { en: 'Historical & Cultural', bg: 'Исторически и културни' },
+    subcategories: [
+      { id: 'historical-cultural/walking-tours', name: { en: 'Walking Tours', bg: 'Пешеходни турове' } },
+      { id: 'historical-cultural/historical-tours', name: { en: 'Historical Tours', bg: 'Исторически турове' } },
+      { id: 'historical-cultural/museums-galleries', name: { en: 'Museums & Galleries', bg: 'Музеи и галерии' } },
+    ],
+  },
+  {
+    id: 'active-adventure',
+    name: { en: 'Active & Adventure', bg: 'Активни и приключенски' },
+    subcategories: [
+      { id: 'active-adventure/nature-tours', name: { en: 'Nature Tours', bg: 'Природни турове' } },
+      { id: 'active-adventure/bike-tours', name: { en: 'Bike Tours', bg: 'Вело турове' } },
+      { id: 'active-adventure/offroad-atv', name: { en: 'Offroad & ATV', bg: 'Офроуд и ATV' } },
+      { id: 'active-adventure/water-activities', name: { en: 'Water Activities', bg: 'Водни дейности' } },
+    ],
+  },
+  {
+    id: 'extreme',
+    name: { en: 'Extreme', bg: 'Екстремни' },
+    subcategories: [
+      { id: 'extreme/aerial', name: { en: 'Aerial', bg: 'Въздушни' } },
+      { id: 'extreme/jumping', name: { en: 'Jumping', bg: 'Скачане' } },
+      { id: 'extreme/motorcycles', name: { en: 'Motorcycles', bg: 'Мотоциклети' } },
+      { id: 'extreme/water', name: { en: 'Water', bg: 'Водни' } },
+    ],
+  },
+  {
+    id: 'educational-creative',
+    name: { en: 'Educational & Creative', bg: 'Образователни и творчески' },
+    subcategories: [
+      { id: 'educational-creative/cooking', name: { en: 'Cooking', bg: 'Готвене' } },
+      { id: 'educational-creative/workshops', name: { en: 'Workshops', bg: 'Уъркшопи' } },
+      { id: 'educational-creative/arts', name: { en: 'Arts', bg: 'Изкуство' } },
+    ],
+  },
+  {
+    id: 'relax-wellness',
+    name: { en: 'Relax & Wellness', bg: 'Релакс и уелнес' },
+    subcategories: [
+      { id: 'relax-wellness/spa-thermal', name: { en: 'SPA & Thermal', bg: 'СПА и термални' } },
+      { id: 'relax-wellness/massages-therapies', name: { en: 'Massages & Therapies', bg: 'Масажи и терапии' } },
+      { id: 'relax-wellness/relax-experiences', name: { en: 'Relax Experiences', bg: 'Релакс изживявания' } },
+      { id: 'relax-wellness/yoga-meditation', name: { en: 'Yoga & Meditation', bg: 'Йога и медитация' } },
+    ],
+  },
+];
+
+const allCategories = (): CategoryDefinition[] => [...placesCategories, ...experiencesCategories];
+
+/** Resolve language to 'en' | 'bg' (defaults to en for unknown). */
+function resolveLang(lang: string): 'en' | 'bg' {
+  return lang === 'bg' ? 'bg' : 'en';
+}
+
+export function findCategory(id: string): CategoryDefinition | undefined {
+  return allCategories().find(c => c.id === id);
+}
+
+export function findSubcategory(
+  id: string,
+): { parent: CategoryDefinition; sub: SubcategoryDefinition } | undefined {
+  for (const cat of allCategories()) {
+    for (const sub of cat.subcategories) {
+      if (sub.id === id) return { parent: cat, sub };
+      if (sub.children) {
+        const child = sub.children.find(c => c.id === id);
+        if (child) return { parent: cat, sub: child };
+      }
+    }
+  }
+  return undefined;
+}
+
+export function getCategoryName(id: string, lang: string): string {
+  const language = resolveLang(lang);
+  const cat = findCategory(id);
+  if (cat) return cat.name[language];
+  const sub = findSubcategory(id);
+  if (sub) return sub.sub.name[language];
+  return id;
+}

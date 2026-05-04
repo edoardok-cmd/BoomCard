@@ -12,9 +12,10 @@ tasks/
 *.mp4
 *.zip
 *.pdf
-*.svg
 *.patch
 screenshots/
 test-results/
+test-results/**/*.svg
 docs/
+docs/**/*.svg
 *.md

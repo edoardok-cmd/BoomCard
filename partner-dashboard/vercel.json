@@ -15,11 +15,20 @@
   ],
   "rewrites": [
     {
-      "source": "/((?!assets/).*)",
+      "source": "/((?!assets/)[^.]*(?:/[^.]*)*)",
       "destination": "/index.html"
     }
   ],
   "headers": [
+    {
+      "source": "/(.*\\.svg|.*\\.png|.*\\.webp|.*\\.jpg|.*\\.jpeg|.*\\.json|.*\\.js|.*\\.css)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=3600"
+        }
+      ]
+    },
     {
       "source": "/assets/(.*)",
       "headers": [

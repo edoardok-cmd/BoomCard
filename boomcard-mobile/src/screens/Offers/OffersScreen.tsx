@@ -24,31 +24,17 @@ import { useTheme } from '../../contexts/ThemeContext';
 import { OffersApi } from '../../api/offers.api';
 import type { Offer } from '../../types';
 import { OfferType } from '../../types';
+import {
+  placesCategories,
+  experiencesCategories,
+  findCategory,
+  getCategoryName,
+} from '../../constants/categories';
 
 type Tab = 'places' | 'experiences';
 
-const PLACES_CATEGORIES = [
-  { key: '', labelKey: 'offers.categoryAll' },
-  { key: 'restaurants', labelKey: 'offers.categoryRestaurants' },
-  { key: 'accommodation', labelKey: 'offers.categoryAccommodation' },
-  { key: 'spa', labelKey: 'offers.categorySpa' },
-  { key: 'panoramic', labelKey: 'offers.categoryPanoramic' },
-  { key: 'clubs', labelKey: 'offers.categoryClubs' },
-  { key: 'cafes', labelKey: 'offers.categoryCafes' },
-];
-
-const EXPERIENCES_CATEGORIES = [
-  { key: '', labelKey: 'offers.categoryAll' },
-  { key: 'gastronomic', labelKey: 'offers.categoryGastronomic' },
-  { key: 'historical-cultural', labelKey: 'offers.categoryHistoricalCultural' },
-  { key: 'active-adventure', labelKey: 'offers.categoryActiveAdventure' },
-  { key: 'extreme', labelKey: 'offers.categoryExtreme' },
-  { key: 'educational-creative', labelKey: 'offers.categoryEducationalCreative' },
-  { key: 'relax-wellness', labelKey: 'offers.categoryRelaxWellness' },
-];
-
-const PLACES_KEYS = new Set(PLACES_CATEGORIES.filter(c => c.key).map(c => c.key));
-const EXPERIENCES_KEYS = new Set(EXPERIENCES_CATEGORIES.filter(c => c.key).map(c => c.key));
+const PLACES_KEYS = new Set(placesCategories.map(c => c.id));
+const EXPERIENCES_KEYS = new Set(experiencesCategories.map(c => c.id));
 
 function getTypeBadgeColor(type: OfferType, theme: any): string {
   switch (type) {
@@ -207,19 +193,28 @@ export default function OffersScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('');
+  const [selectedSubcategory, setSelectedSubcategory] = useState('');
   const [selectedCity, setSelectedCity] = useState('');
   const [cityMenuVisible, setCityMenuVisible] = useState(false);
   const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const loadOffersRef = useRef<((isRefresh?: boolean) => Promise<void>) | null>(null);
 
-  const currentCategories = activeTab === 'places' ? PLACES_CATEGORIES : EXPERIENCES_CATEGORIES;
+  const currentCategories = activeTab === 'places' ? placesCategories : experiencesCategories;
+  const currentSubcategories = selectedCategory
+    ? findCategory(selectedCategory)?.subcategories ?? []
+    : [];
 
   const loadOffers = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
     else if (!offers.length) setLoading(true);
 
     const params: Parameters<typeof OffersApi.getOffers>[0] = { limit: 100, page: 1 };
-    if (selectedCategory) params.category = selectedCategory;
+    // A selected subcategory (slash-format) is more specific than the parent
+    // category and is forwarded as-is — the backend matches it against
+    // Partner.categories[]. When no subcategory is chosen, fall back to the
+    // main category which matches the singular Partner.category column.
+    const effectiveCategory = selectedSubcategory || selectedCategory;
+    if (effectiveCategory) params.category = effectiveCategory;
     if (searchQuery.trim()) params.search = searchQuery.trim();
 
     const showFeatured = !selectedCategory && !searchQuery.trim() && activeTab === 'places';
@@ -249,13 +244,13 @@ export default function OffersScreen() {
 
     setLoading(false);
     setRefreshing(false);
-  }, [selectedCategory, searchQuery, activeTab]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [selectedCategory, selectedSubcategory, searchQuery, activeTab]); // eslint-disable-line react-hooks/exhaustive-deps
 
   loadOffersRef.current = loadOffers;
 
   useEffect(() => {
     loadOffers();
-  }, [selectedCategory, activeTab]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [selectedCategory, selectedSubcategory, activeTab]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSearchChange = (query: string) => {
     setSearchQuery(query);
@@ -268,13 +263,19 @@ export default function OffersScreen() {
 
   const handleCategorySelect = (key: string) => {
     setSelectedCategory(key);
+    setSelectedSubcategory('');
     setSearchQuery('');
     setSelectedCity('');
+  };
+
+  const handleSubcategorySelect = (id: string) => {
+    setSelectedSubcategory(id);
   };
 
   const handleTabSwitch = (tab: Tab) => {
     setActiveTab(tab);
     setSelectedCategory('');
+    setSelectedSubcategory('');
     setSearchQuery('');
     setSelectedCity('');
   };
@@ -374,26 +375,91 @@ export default function OffersScreen() {
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.chipsRow}
       >
+        <Chip
+          key="__all"
+          selected={!selectedCategory}
+          onPress={() => handleCategorySelect('')}
+          style={[
+            styles.chip,
+            !selectedCategory
+              ? { backgroundColor: theme.colors.gold }
+              : { backgroundColor: theme.colors.surfaceVariant },
+          ]}
+          textStyle={{
+            color: !selectedCategory ? theme.colors.onGold : theme.colors.onSurface,
+            fontSize: 13,
+          }}
+        >
+          {t('offers.categoryAll')}
+        </Chip>
         {currentCategories.map(cat => (
           <Chip
-            key={cat.key}
-            selected={selectedCategory === cat.key}
-            onPress={() => handleCategorySelect(cat.key)}
+            key={cat.id}
+            selected={selectedCategory === cat.id}
+            onPress={() => handleCategorySelect(cat.id)}
             style={[
               styles.chip,
-              selectedCategory === cat.key
+              selectedCategory === cat.id
                 ? { backgroundColor: theme.colors.gold }
                 : { backgroundColor: theme.colors.surfaceVariant },
             ]}
             textStyle={{
-              color: selectedCategory === cat.key ? theme.colors.onGold : theme.colors.onSurface,
+              color: selectedCategory === cat.id ? theme.colors.onGold : theme.colors.onSurface,
               fontSize: 13,
             }}
           >
-            {t(cat.labelKey)}
+            {getCategoryName(cat.id, lang)}
           </Chip>
         ))}
       </ScrollView>
+
+      {/* Subcategory chips — appear when a main category is selected */}
+      {currentSubcategories.length > 0 && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.subChipsRow}
+        >
+          <Chip
+            key="__all-sub"
+            selected={!selectedSubcategory}
+            onPress={() => handleSubcategorySelect('')}
+            style={[
+              styles.subChip,
+              !selectedSubcategory
+                ? { backgroundColor: theme.colors.primary }
+                : { backgroundColor: theme.colors.surfaceVariant },
+            ]}
+            textStyle={{
+              color: !selectedSubcategory ? theme.colors.onPrimary : theme.colors.onSurface,
+              fontSize: 12,
+            }}
+            compact
+          >
+            {t('offers.categoryAll')}
+          </Chip>
+          {currentSubcategories.map(sub => (
+            <Chip
+              key={sub.id}
+              selected={selectedSubcategory === sub.id}
+              onPress={() => handleSubcategorySelect(sub.id)}
+              style={[
+                styles.subChip,
+                selectedSubcategory === sub.id
+                  ? { backgroundColor: theme.colors.primary }
+                  : { backgroundColor: theme.colors.surfaceVariant },
+              ]}
+              textStyle={{
+                color: selectedSubcategory === sub.id ? theme.colors.onPrimary : theme.colors.onSurface,
+                fontSize: 12,
+              }}
+              compact
+            >
+              {getCategoryName(sub.id, lang)}
+            </Chip>
+          ))}
+        </ScrollView>
+      )}
 
       {/* Featured section — places only */}
       {showFeaturedSection && (
@@ -463,8 +529,10 @@ export default function OffersScreen() {
 
       {/* Section title */}
       <Text style={[styles.sectionTitle, { color: theme.colors.onSurface }]}>
-        {selectedCategory
-          ? t(`offers.categoryLabel.${selectedCategory}`)
+        {selectedSubcategory
+          ? getCategoryName(selectedSubcategory, lang)
+          : selectedCategory
+          ? getCategoryName(selectedCategory, lang)
           : searchQuery.trim()
           ? t('offers.searchResults')
           : t('offers.allOffers')}
@@ -555,11 +623,19 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   chipsRow: {
-    paddingBottom: 16,
+    paddingBottom: 12,
     gap: 8,
   },
   chip: {
     marginRight: 4,
+  },
+  subChipsRow: {
+    paddingBottom: 16,
+    gap: 6,
+  },
+  subChip: {
+    marginRight: 2,
+    height: 30,
   },
   sectionTitle: {
     fontSize: 17,

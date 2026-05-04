@@ -237,6 +237,8 @@ export const en = {
     businessName: 'Business Name',
     businessNameBg: 'Business Name (Bulgarian)',
     businessCategory: 'Business Category',
+    businessSubcategoriesLabel: 'Subcategories',
+    businessSubcategoriesHelp: 'Optional — select all subcategories that describe your business.',
     taxId: 'Tax ID / VAT Number',
     website: 'Website (Optional)',
     password: 'Password',

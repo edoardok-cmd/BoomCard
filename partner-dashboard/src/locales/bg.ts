@@ -239,6 +239,8 @@ export const bg: TranslationKey = {
     businessName: 'Име на Бизнеса',
     businessNameBg: 'Име на Бизнеса (на български)',
     businessCategory: 'Категория Бизнес',
+    businessSubcategoriesLabel: 'Подкатегории',
+    businessSubcategoriesHelp: 'По избор — отбележете всички подкатегории, които описват бизнеса ви.',
     taxId: 'ЕИК / ДДС Номер',
     website: 'Уебсайт (по избор)',
     password: 'Парола',

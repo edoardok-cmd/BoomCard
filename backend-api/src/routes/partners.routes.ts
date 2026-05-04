@@ -21,6 +21,31 @@ import { CASHBACK_MATRIX_STEPS } from '../constants/receipt.constants';
 import { emailService } from '../services/email.service';
 import { logger } from '../utils/logger';
 import { fireAutomation } from '../lib/automationDispatcher';
+import { findInvalidCategoryEntry } from '../constants/categoryRegistry';
+
+/**
+ * Normalize a categories[] payload alongside its main category id.
+ * Returns the validated, deduplicated array (always including the main id),
+ * or throws an HTTP-400-style error message string if invalid.
+ *
+ * Pass-through if `categoriesInput` is undefined/null and we have a main id —
+ * we mirror the legacy `[mainCategory]` behavior.
+ */
+function normalizePartnerCategories(
+  mainCategory: string,
+  categoriesInput: unknown,
+): { value: string[]; error: null } | { value: null; error: string } {
+  const list: string[] = Array.isArray(categoriesInput)
+    ? categoriesInput.filter((s): s is string => typeof s === 'string').map(s => s.trim()).filter(Boolean)
+    : [];
+  // Always include the main category id; admins/partners may submit only the subs.
+  const merged = Array.from(new Set([mainCategory, ...list]));
+  const invalid = findInvalidCategoryEntry(mainCategory, merged);
+  if (invalid) {
+    return { value: null, error: `Invalid category value: ${invalid}` };
+  }
+  return { value: merged, error: null };
+}
 
 const PARTNER_TYPE_SELECT = {
   id: true,
@@ -535,15 +560,17 @@ router.post(
       return res.status(409).json({ success: false, error: 'This user already has a partner profile' });
     }
 
+    const normalized = normalizePartnerCategories(category, categories);
+    if (normalized.error) {
+      return res.status(400).json({ success: false, error: normalized.error });
+    }
     const partner = await prisma.partner.create({
       data: {
         userId,
         businessName,
         businessNameBg,
         category,
-        categories: categories && Array.isArray(categories) && categories.length > 0
-          ? categories
-          : [category],
+        categories: normalized.value,
         description,
         descriptionBg,
         partnerTypeId: resolvedTypeId,
@@ -643,11 +670,24 @@ router.put(
       discountRate,
     } = req.body;
 
+    // If category or categories changed, validate them against the registry.
+    // Use the existing partner.category as the implicit main when only
+    // `categories` is being updated.
+    let validatedCategories: string[] | undefined;
+    if (categories !== undefined || category !== undefined) {
+      const mainId = (category ?? partner.category) as string;
+      const normalized = normalizePartnerCategories(mainId, categories);
+      if (normalized.error) {
+        return res.status(400).json({ success: false, error: normalized.error });
+      }
+      validatedCategories = normalized.value;
+    }
+
     const updateData: any = {
       businessName,
       businessNameBg,
       category,
-      categories: categories && Array.isArray(categories) ? categories : undefined,
+      categories: validatedCategories,
       description,
       descriptionBg,
       city,
@@ -667,7 +707,7 @@ router.put(
       if (businessName !== undefined) partnerUpdates.businessName = businessName;
       if (businessNameBg !== undefined) partnerUpdates.businessNameBg = businessNameBg;
       if (category !== undefined) partnerUpdates.category = category;
-      if (categories !== undefined && Array.isArray(categories)) partnerUpdates.categories = categories;
+      if (validatedCategories !== undefined) partnerUpdates.categories = validatedCategories;
       if (description !== undefined) partnerUpdates.description = description;
       if (descriptionBg !== undefined) partnerUpdates.descriptionBg = descriptionBg;
       if (city !== undefined) partnerUpdates.city = city;
@@ -1016,6 +1056,11 @@ router.post(
       return res.status(400).json({ success: false, error: 'email, businessName, and category are required' });
     }
 
+    const normalizedCategories = normalizePartnerCategories(category, categories);
+    if (normalizedCategories.error) {
+      return res.status(400).json({ success: false, error: normalizedCategories.error });
+    }
+
     // Validate partnerTypeId if provided
     if (partnerTypeId) {
       const ptype = await prisma.partnerType.findUnique({ where: { id: partnerTypeId } });
@@ -1105,9 +1150,7 @@ router.post(
           businessName,
           businessNameBg: businessNameBg || null,
           category,
-          categories: categories && Array.isArray(categories) && categories.length > 0
-            ? categories
-            : [category],
+          categories: normalizedCategories.value,
           description: description || null,
           descriptionBg: descriptionBg || null,
           city: city || null,

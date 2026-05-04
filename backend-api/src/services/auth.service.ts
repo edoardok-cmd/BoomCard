@@ -13,6 +13,7 @@ import { emailService } from './email.service';
 import { notificationService } from './notification.service';
 import { SECURITY_CONFIG } from '../config/security.config';
 import { resolveUserPermissions } from './permission.service';
+import { findInvalidCategoryEntry } from '../constants/categoryRegistry';
 
 // Translate a Prisma P2002 (unique violation) on the (email, role) index
 // into a user-facing 409. Two concurrent register POSTs with the same
@@ -44,7 +45,10 @@ export interface BusinessInfo {
   businessName: string;
   businessNameBg?: string;
   businessCategory: string;
+  /** @deprecated single-string subcategory; prefer businessSubcategories[] */
   businessSubcategory?: string;
+  /** Slash-format subcategory ids, e.g. ["restaurants/curated", "restaurants/asian"]. */
+  businessSubcategories?: string[];
   taxId?: string;
   website?: string;
   city?: string;
@@ -206,10 +210,22 @@ export class AuthService {
           });
 
           const primaryCategory = info.businessCategory.trim();
-          const subcategory = info.businessSubcategory?.trim() || '';
-          const categoriesList = subcategory
-            ? [primaryCategory, subcategory]
-            : [primaryCategory];
+          const rawSubs: string[] = Array.isArray(info.businessSubcategories)
+            ? info.businessSubcategories
+            : info.businessSubcategory?.trim()
+              ? [info.businessSubcategory.trim()]
+              : [];
+          const subcategoriesList = Array.from(
+            new Set(rawSubs.map(s => s.trim()).filter(Boolean)),
+          );
+          const invalid = findInvalidCategoryEntry(primaryCategory, [
+            primaryCategory,
+            ...subcategoriesList,
+          ]);
+          if (invalid) {
+            throw new AppError(`Invalid category value: ${invalid}`, 400);
+          }
+          const categoriesList = [primaryCategory, ...subcategoriesList];
           const partner = await tx.partner.create({
             data: {
               userId: created.id,

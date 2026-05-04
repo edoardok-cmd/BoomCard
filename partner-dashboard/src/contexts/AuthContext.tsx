@@ -158,6 +158,7 @@ export interface RegisterData {
     businessNameBg?: string;
     businessCategory: string;
     businessSubcategory?: string;
+    businessSubcategories?: string[];
     taxId?: string;
     website?: string;
     city?: string;

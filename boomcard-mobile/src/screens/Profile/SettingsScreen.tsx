@@ -28,6 +28,7 @@ import BiometricService from '../../services/biometric.service';
 import NotificationService from '../../services/notification.service';
 import notificationsApi from '../../api/notifications.api';
 import { useTheme } from '../../contexts/ThemeContext';
+import { useTabVisibility } from '../../contexts/TabVisibilityContext';
 import { useAuth } from '../../store/AuthContext';
 import { changeLanguage, getCurrentLanguage } from '../../i18n';
 import AuthApi from '../../api/auth.api';
@@ -36,6 +37,14 @@ import queryClient from '../../queryClient';
 const SettingsScreen = ({ navigation }: any) => {
   const { t, i18n } = useTranslation();
   const { isDarkMode, toggleTheme, theme } = useTheme();
+  const {
+    showOffers,
+    showNearby,
+    showFavorites,
+    setShowOffers,
+    setShowNearby,
+    setShowFavorites,
+  } = useTabVisibility();
   const { logout } = useAuth();
   const [currentLanguage, setCurrentLanguage] = useState(getCurrentLanguage());
   const [marketingConsentEmail, setMarketingConsentEmail] = useState(false);
@@ -610,6 +619,66 @@ const SettingsScreen = ({ navigation }: any) => {
             />
           </View>
         </View>
+
+        {/* Tab Visibility (mobile/native only) */}
+        {Platform.OS !== 'web' && (
+          <>
+            <Text style={styles.sectionTitle}>{t('settings.tabs', 'Навигация')}</Text>
+            <View style={styles.section}>
+              <View style={styles.settingRow}>
+                <View style={styles.settingInfo}>
+                  <Ionicons name="pricetag" size={24} color={theme.colors.primary} />
+                  <View style={styles.settingText}>
+                    <Text style={styles.settingLabel}>{t('navigation.offers')}</Text>
+                    <Text style={styles.settingDescription}>
+                      {t('settings.showInBottomNav', 'Покажи в долната навигация')}
+                    </Text>
+                  </View>
+                </View>
+                <Switch
+                  value={showOffers}
+                  onValueChange={setShowOffers}
+                  trackColor={{ false: '#CBD5E1', true: '#E6D5A8' }}
+                  thumbColor={showOffers ? theme.colors.gold : '#F3F4F6'}
+                />
+              </View>
+              <View style={styles.settingRow}>
+                <View style={styles.settingInfo}>
+                  <Ionicons name="location" size={24} color={theme.colors.primary} />
+                  <View style={styles.settingText}>
+                    <Text style={styles.settingLabel}>{t('nearby.title', 'Наблизо')}</Text>
+                    <Text style={styles.settingDescription}>
+                      {t('settings.showInBottomNav', 'Покажи в долната навигация')}
+                    </Text>
+                  </View>
+                </View>
+                <Switch
+                  value={showNearby}
+                  onValueChange={setShowNearby}
+                  trackColor={{ false: '#CBD5E1', true: '#E6D5A8' }}
+                  thumbColor={showNearby ? theme.colors.gold : '#F3F4F6'}
+                />
+              </View>
+              <View style={styles.settingRow}>
+                <View style={styles.settingInfo}>
+                  <Ionicons name="heart" size={24} color={theme.colors.primary} />
+                  <View style={styles.settingText}>
+                    <Text style={styles.settingLabel}>{t('favorites.title', 'Любими')}</Text>
+                    <Text style={styles.settingDescription}>
+                      {t('settings.showInBottomNav', 'Покажи в долната навигация')}
+                    </Text>
+                  </View>
+                </View>
+                <Switch
+                  value={showFavorites}
+                  onValueChange={setShowFavorites}
+                  trackColor={{ false: '#CBD5E1', true: '#E6D5A8' }}
+                  thumbColor={showFavorites ? theme.colors.gold : '#F3F4F6'}
+                />
+              </View>
+            </View>
+          </>
+        )}
 
         {/* Appearance */}
         <Text style={styles.sectionTitle}>{t('settings.general')}</Text>

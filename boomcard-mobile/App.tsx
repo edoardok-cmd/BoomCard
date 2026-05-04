@@ -14,6 +14,7 @@ import * as Font from 'expo-font';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import * as SecureStore from './src/utils/secureStore';
 import { ThemeProvider } from './src/contexts/ThemeContext';
+import { TabVisibilityProvider } from './src/contexts/TabVisibilityContext';
 import { AuthProvider } from './src/store/AuthContext';
 import { MobileConfigProvider } from './src/store/MobileConfigContext';
 import { GlobalErrorBoundary } from './src/components/GlobalErrorBoundary';
@@ -88,9 +89,11 @@ export default function App() {
           <MobileConfigProvider>
             <ThemeProvider>
               <AuthProvider>
-                <StatusBar style="auto" />
-                <AppNavigator />
-                <Toast />
+                <TabVisibilityProvider>
+                  <StatusBar style="auto" />
+                  <AppNavigator />
+                  <Toast />
+                </TabVisibilityProvider>
               </AuthProvider>
             </ThemeProvider>
           </MobileConfigProvider>

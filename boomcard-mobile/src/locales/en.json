@@ -635,5 +635,9 @@
     "card": "Card",
     "profile": "Profile",
     "editProfile": "Edit Profile"
+  },
+  "favorites": {
+    "empty": "No favorite places",
+    "emptyDesc": "Add favorite BOOM places by tapping the heart icon"
   }
 }

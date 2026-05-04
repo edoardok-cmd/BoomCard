@@ -236,6 +236,35 @@ export class StorageService {
     return value === null ? true : value === 'true'; // Default to true
   }
 
+  // ==================== Tab Visibility Preferences (mobile only) ====================
+
+  async setShowOffersTab(enabled: boolean): Promise<void> {
+    await this.setItem(STORAGE_KEYS.SHOW_OFFERS_TAB, enabled.toString());
+  }
+
+  async getShowOffersTab(): Promise<boolean> {
+    const value = await this.getItem(STORAGE_KEYS.SHOW_OFFERS_TAB);
+    return value === 'true'; // Default false
+  }
+
+  async setShowNearbyTab(enabled: boolean): Promise<void> {
+    await this.setItem(STORAGE_KEYS.SHOW_NEARBY_TAB, enabled.toString());
+  }
+
+  async getShowNearbyTab(): Promise<boolean> {
+    const value = await this.getItem(STORAGE_KEYS.SHOW_NEARBY_TAB);
+    return value === 'true'; // Default false
+  }
+
+  async setShowFavoritesTab(enabled: boolean): Promise<void> {
+    await this.setItem(STORAGE_KEYS.SHOW_FAVORITES_TAB, enabled.toString());
+  }
+
+  async getShowFavoritesTab(): Promise<boolean> {
+    const value = await this.getItem(STORAGE_KEYS.SHOW_FAVORITES_TAB);
+    return value === 'true'; // Default false
+  }
+
   // ==================== Session Management ====================
 
   /**

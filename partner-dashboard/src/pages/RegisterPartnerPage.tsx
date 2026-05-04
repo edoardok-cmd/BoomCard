@@ -7,7 +7,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import { normalizePhone } from '../utils/validators';
 import Header from '../components/layout/Header/Header';
-import { placesCategories, experiencesCategories } from '../types/categories.types';
+import { placesCategories, experiencesCategories, findCategory } from '../types/categories.types';
 
 const PageWrapper = styled.div`
   min-height: 100vh;
@@ -207,6 +207,42 @@ const ErrorMessage = styled(motion.span)`
   transition: color var(--transition-normal);
 `;
 
+const SubcategoryGroup = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+`;
+
+const SubcategoryChip = styled.button<{ $selected?: boolean }>`
+  display: inline-flex;
+  align-items: center;
+  padding: 0.375rem 0.75rem;
+  border-radius: 9999px;
+  border: 1px solid ${props => props.$selected ? 'var(--color-primary)' : 'var(--color-border)'};
+  background: ${props => props.$selected ? 'var(--color-primary)' : 'transparent'};
+  color: ${props => props.$selected ? '#fff' : 'var(--color-text-primary)'};
+  font-size: 0.8125rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition-normal);
+
+  &:hover:not(:disabled) {
+    border-color: var(--color-primary);
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+`;
+
+const SubcategoryHelp = styled.p`
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
+  margin: 0.5rem 0 0;
+`;
+
 const CheckboxGroup = styled.div`
   display: flex;
   align-items: flex-start;
@@ -357,6 +393,17 @@ const RegisterPartnerPage: React.FC = () => {
 
   const [errors, setErrors] = useState<FormErrors>({});
   const [touched, setTouched] = useState<Record<string, boolean>>({});
+  const [selectedSubcategories, setSelectedSubcategories] = useState<string[]>([]);
+
+  const subcategoriesForCategory = formData.businessCategory
+    ? findCategory(formData.businessCategory)?.subcategories ?? []
+    : [];
+
+  const toggleSubcategory = (id: string) => {
+    setSelectedSubcategories(prev =>
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id],
+    );
+  };
 
   const validateField = (field: string, value: unknown): string | undefined => {
     const strVal = typeof value === 'string' ? value : '';
@@ -443,6 +490,12 @@ const RegisterPartnerPage: React.FC = () => {
 
     setFormData(prev => ({ ...prev, [name]: newValue }));
 
+    // Reset selected subcategories when the main category changes — subs are
+    // scoped to a single parent category.
+    if (name === 'businessCategory') {
+      setSelectedSubcategories([]);
+    }
+
     // Real-time validation for touched fields
     if (touched[name]) {
       const error = validateField(name, newValue);
@@ -501,6 +554,7 @@ const RegisterPartnerPage: React.FC = () => {
           businessName: formData.businessName,
           businessNameBg: formData.businessNameBg || undefined,
           businessCategory: formData.businessCategory,
+          businessSubcategories: selectedSubcategories.length > 0 ? selectedSubcategories : undefined,
           taxId: formData.taxId || undefined,
           website: formData.website || undefined,
           city: formData.city.trim() || undefined,
@@ -753,6 +807,30 @@ const RegisterPartnerPage: React.FC = () => {
                 />
               </FormGroup>
             </FormRow>
+
+            {subcategoriesForCategory.length > 0 && (
+              <FormGroup>
+                <Label as="span">
+                  {t('partnerRegistration.businessSubcategoriesLabel')}
+                </Label>
+                <SubcategoryGroup>
+                  {subcategoriesForCategory.map(sub => (
+                    <SubcategoryChip
+                      key={sub.id}
+                      type="button"
+                      $selected={selectedSubcategories.includes(sub.id)}
+                      onClick={() => toggleSubcategory(sub.id)}
+                      disabled={isLoading}
+                    >
+                      {sub.name[language as 'en' | 'bg'] ?? sub.name.bg}
+                    </SubcategoryChip>
+                  ))}
+                </SubcategoryGroup>
+                <SubcategoryHelp>
+                  {t('partnerRegistration.businessSubcategoriesHelp')}
+                </SubcategoryHelp>
+              </FormGroup>
+            )}
 
             <FormGroup>
               <Label htmlFor="website">

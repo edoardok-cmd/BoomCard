@@ -13,6 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../store/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
+import { useTabVisibility } from '../contexts/TabVisibilityContext';
 import { View, Text, StyleSheet, Platform } from 'react-native';
 import { ProgressRing } from '../components/loading';
 import BoomLogo from '../components/brand/BoomLogo';
@@ -84,6 +85,7 @@ const AuthNavigator = () => {
 const TabNavigator = () => {
   const { t } = useTranslation();
   const { theme } = useTheme();
+  const { showOffers, showNearby, showFavorites } = useTabVisibility();
   return (
     <Tab.Navigator
       screenOptions={{
@@ -127,28 +129,32 @@ const TabNavigator = () => {
           ),
         }}
       />
-      <Tab.Screen
-        name="Nearby"
-        component={NearbyScreen}
-        options={{
-          title: t('nearby.title', 'Наблизо'),
-          tabBarLabel: t('nearby.title', 'Наблизо'),
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="location" size={size} color={color} />
-          ),
-        }}
-      />
-      <Tab.Screen
-        name="Offers"
-        component={OffersScreen}
-        options={{
-          title: t('offers.title'),
-          tabBarLabel: t('navigation.offers'),
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="pricetag" size={size} color={color} />
-          ),
-        }}
-      />
+      {showNearby && (
+        <Tab.Screen
+          name="Nearby"
+          component={NearbyScreen}
+          options={{
+            title: t('nearby.title', 'Наблизо'),
+            tabBarLabel: t('nearby.title', 'Наблизо'),
+            tabBarIcon: ({ color, size }) => (
+              <Ionicons name="location" size={size} color={color} />
+            ),
+          }}
+        />
+      )}
+      {showOffers && (
+        <Tab.Screen
+          name="Offers"
+          component={OffersScreen}
+          options={{
+            title: t('offers.title'),
+            tabBarLabel: t('navigation.offers'),
+            tabBarIcon: ({ color, size }) => (
+              <Ionicons name="pricetag" size={size} color={color} />
+            ),
+          }}
+        />
+      )}
       <Tab.Screen
         name="Scan"
         component={StickerScannerScreen}
@@ -160,17 +166,19 @@ const TabNavigator = () => {
           ),
         }}
       />
-      <Tab.Screen
-        name="Favorites"
-        component={FavoritesScreen}
-        options={{
-          title: t('favorites.title', 'Любими'),
-          tabBarLabel: t('favorites.title', 'Любими'),
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="heart" size={size} color={color} />
-          ),
-        }}
-      />
+      {showFavorites && (
+        <Tab.Screen
+          name="Favorites"
+          component={FavoritesScreen}
+          options={{
+            title: t('favorites.title', 'Любими'),
+            tabBarLabel: t('favorites.title', 'Любими'),
+            tabBarIcon: ({ color, size }) => (
+              <Ionicons name="heart" size={size} color={color} />
+            ),
+          }}
+        />
+      )}
       <Tab.Screen
         name="Profile"
         component={ProfileScreen}

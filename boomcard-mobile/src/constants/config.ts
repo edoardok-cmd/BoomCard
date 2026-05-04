@@ -139,6 +139,9 @@ export const STORAGE_KEYS = {
   EMAIL_NOTIFICATIONS: 'email_notifications',
   LOCATION_SERVICES: 'location_services',
   PENDING_PAYMENT: 'pending_payment',
+  SHOW_OFFERS_TAB: 'show_offers_tab',
+  SHOW_NEARBY_TAB: 'show_nearby_tab',
+  SHOW_FAVORITES_TAB: 'show_favorites_tab',
 };
 
 // App Configuration

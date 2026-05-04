@@ -241,9 +241,19 @@ class OffersService {
       }
     }
 
-    // Partner sub-filter: category, city, and optional visibility gating
+    // Partner sub-filter: category, city, and optional visibility gating.
+    // `category` accepts either a main-category id (e.g. "restaurants") or a
+    // slash-format subcategory id (e.g. "restaurants/curated"). Subcategory ids
+    // are matched against the Partner.categories array; main ids stay on the
+    // singular Partner.category column for backward compatibility.
     const partnerFilter: Prisma.PartnerWhereInput = {};
-    if (category) partnerFilter.category = category;
+    if (category) {
+      if (category.includes('/')) {
+        partnerFilter.categories = { has: category };
+      } else {
+        partnerFilter.category = category;
+      }
+    }
     if (city) partnerFilter.city = city;
 
     // Apply canView filter unless admin or no plan constraint
