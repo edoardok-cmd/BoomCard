@@ -1339,7 +1339,7 @@ model MarketingCampaign {
   updatedAt   DateTime           @updatedAt
   listId      String?
   scheduledAt DateTime?
-  list        MarketingList?     @relation(fields: [listId], references: [id])
+  list        MarketingList?     @relation(fields: [listId], references: [id], onDelete: Restrict)
   template    MarketingTemplate? @relation(fields: [templateId], references: [id])
 
   @@index([status])

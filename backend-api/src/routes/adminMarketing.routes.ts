@@ -506,7 +506,10 @@ router.put('/campaigns/:id', ...WRITE, async (req, res, next) => {
       return res.status(400).json({ error: 'Планираните кампании изискват дата и час за изпращане.' });
     }
 
-    const audience = await resolveAudience(listId, existing.audience);
+    // Use fallback 0 when the caller explicitly passes a listId so the empty-list
+    // guard below cannot be defeated by a stale existing.audience value.
+    const audienceFallback = listId ? 0 : existing.audience;
+    const audience = await resolveAudience(listId, audienceFallback);
 
     if (resolvedStatus === 'SCHEDULED' && listId && audience === 0) {
       return res.status(400).json({ error: 'Избраният списък няма получатели — изберете непразен списък преди планиране.' });
