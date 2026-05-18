@@ -6,7 +6,7 @@
  *   - failed_payouts_pipeline counts only WITHDRAWAL FAILED rows
  *   - fraud_check_errors counts only active-status scans (not resolved ones)
  *   - risk-tier alerts count only active-status scans
- *   - SUSPICIOUS_PREFIX_CODES includes HIGH_BILL_AMOUNT
+ *   - HIGH_BILL_AMOUNT lives in SUSPICIOUS_EXACT_CODES (moved from prefix to exact)
  *   - alert links match the route filters they expect
  *   - the suspicious-activity raw query uses the parameterised IN/LIKE form
  */
@@ -74,8 +74,9 @@ function resetAllToZero() {
 }
 
 describe('adminAlerts.service constants', () => {
-  it('SUSPICIOUS_PREFIX_CODES includes HIGH_BILL_AMOUNT (G1 fix)', () => {
-    expect(SUSPICIOUS_PREFIX_CODES).toContain('HIGH_BILL_AMOUNT');
+  it('HIGH_BILL_AMOUNT is in SUSPICIOUS_EXACT_CODES (exact match, no suffix)', () => {
+    expect(SUSPICIOUS_EXACT_CODES).toContain('HIGH_BILL_AMOUNT');
+    expect(SUSPICIOUS_PREFIX_CODES).not.toContain('HIGH_BILL_AMOUNT');
   });
 
   it('ACTIVE_SCAN_STATUSES is exactly the three pre-resolution states', () => {
@@ -94,6 +95,22 @@ describe('adminAlerts.service.getAlerts query shape', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     resetAllToZero();
+  });
+
+  it('large_pending_payouts uses lte:-threshold because WITHDRAWAL amounts are stored negative (Bug 1 fix)', async () => {
+    // WITHDRAWAL amounts are stored as negatives (wallet.service.ts writes `amount: -payoutAmount`).
+    // The alert MUST use `lte: -LARGE_TX_THRESHOLD` — using `gte: +threshold` would never match
+    // any real withdrawal row and the alert would silently never fire.
+    await getAlerts();
+    const largeTxCall = m.walletTransaction.count.mock.calls.find(
+      ([arg]) => arg?.where?.type === 'WITHDRAWAL' && arg?.where?.status === 'PENDING',
+    );
+    expect(largeTxCall).toBeDefined();
+    const amountFilter = largeTxCall![0].where.amount;
+    // Must use lte (≤) with a negative value — not gte (≥) with a positive.
+    expect(amountFilter).toHaveProperty('lte');
+    expect(amountFilter.lte).toBeLessThan(0);
+    expect(amountFilter).not.toHaveProperty('gte');
   });
 
   it('failed_payouts_pipeline filters by type=WITHDRAWAL (B4 fix)', async () => {
@@ -152,7 +169,7 @@ describe('adminAlerts.service.getAlerts query shape', () => {
       (v: unknown) => Array.isArray(v) && (v as string[]).includes('DUPLICATE_IMAGE'),
     );
     const prefixPatterns = values.find(
-      (v: unknown) => Array.isArray(v) && (v as string[]).some((s) => s === 'HIGH_BILL_AMOUNT:%'),
+      (v: unknown) => Array.isArray(v) && (v as string[]).some((s) => s === 'MERCHANT_MISMATCH:%'),
     );
     const windowStart = values.find((v: unknown) => v instanceof Date) as Date | undefined;
     expect(exactCodes).toBeDefined();
@@ -186,12 +203,15 @@ describe('adminAlerts.service.getAlerts emitted links (B1, B2, B3, B5 fixes)', (
     m.$queryRaw.mockResolvedValue([{ count: 1n }]);
   });
 
-  it('high-risk and medium-risk alerts deep-link with status=active', async () => {
+  it('high-risk alert (61+) is CRITICAL and medium-risk alert (31-60) is OPERATIONAL with correct deep-links', async () => {
     const result = await getAlerts();
     const high = result.critical.find((a) => a.id === 'risk_transactions');
-    const med = result.critical.find((a) => a.id === 'medium_risk_transactions');
+    // medium_risk_transactions moved to OPERATIONAL — 31-60 needs review, not immediate action
+    const med = result.operational.find((a) => a.id === 'medium_risk_transactions');
     expect(high?.link).toBe('/admin/control/risk?bucket=HIGH_61_PLUS&status=active');
     expect(med?.link).toBe('/admin/control/risk?bucket=REVIEW_31_60&status=active');
+    expect(high?.tier).toBe('critical');
+    expect(med?.tier).toBe('operational');
   });
 
   it('fraud_check_errors deep-links with reasons + status=active', async () => {
@@ -243,6 +263,27 @@ describe('adminAlerts.service.getAlerts emitted links (B1, B2, B3, B5 fixes)', (
     expect(pt?.meta).toEqual({ threshold: 50 });
     // Title is now static — the threshold is rendered by the frontend from meta.
     expect(pt?.title).toBe('Абонати достигнали праг за изплащане');
+  });
+
+  it('all emitted alert tiers are lowercase strings matching the frontend AlertTier type (Bug 3 fix)', async () => {
+    // Backend AlertTier was uppercase ('CRITICAL' etc.) but the frontend normalizes on ingestion.
+    // After the fix, the wire values must be lowercase so normalizeTier() is purely defensive.
+    const result = await getAlerts();
+    const allAlerts = [...result.critical, ...result.operational, ...result.informational];
+    expect(allAlerts.length).toBeGreaterThan(0);
+    for (const alert of allAlerts) {
+      expect(alert.tier).toMatch(/^(critical|operational|informational)$/);
+      expect(alert.tier).not.toMatch(/^(CRITICAL|OPERATIONAL|INFORMATIONAL)$/);
+    }
+  });
+
+  it('medium_risk_transactions is in operational, not critical (Design fix — 31-60 is review, not immediate action)', async () => {
+    const result = await getAlerts();
+    const inCritical = result.critical.find((a) => a.id === 'medium_risk_transactions');
+    const inOperational = result.operational.find((a) => a.id === 'medium_risk_transactions');
+    expect(inCritical).toBeUndefined();
+    expect(inOperational).toBeDefined();
+    expect(inOperational?.tier).toBe('operational');
   });
 
   it('parseSetting falls back to defaults when systemSetting.value is non-numeric', async () => {

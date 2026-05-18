@@ -7,6 +7,7 @@ import { emailService } from '../services/email.service';
 import { sendWebPushToUser } from '../lib/webPush';
 import { logger } from '../utils/logger';
 import { syncMarketingListSizes } from '../jobs/scheduler';
+import { getOrCreateUnsubscribeToken, buildUnsubscribeUrl, addUnsubscribeFooter } from '../lib/unsubscribeToken';
 
 const router = Router();
 router.use(authenticate, authorize('ADMIN', 'SUPER_ADMIN'));
@@ -317,8 +318,26 @@ async function dispatchCampaign(campaignId: string): Promise<number> {
         if (email) {
           const useEn = recipient.kind === 'USER' && recipient.preferredLanguage === 'en';
           const subject = (useEn && template.subjectEn) ? template.subjectEn : (template.subject ?? template.name);
-          const html = (useEn && template.bodyEn) ? template.bodyEn : (template.body || `<p>${template.name}</p>`);
-          await emailService.sendEmail({ to: email, subject, html });
+          let html = (useEn && template.bodyEn) ? template.bodyEn : (template.body || `<p>${template.name}</p>`);
+
+          // §12 — append unsubscribe footer + RFC 8058 headers for every marketing email
+          const unsubUserId = recipient.kind === 'USER' ? recipient.userId : recipient.linkedUserId;
+          if (unsubUserId) {
+            const unsubToken = await getOrCreateUnsubscribeToken(unsubUserId);
+            const unsubUrl = buildUnsubscribeUrl(unsubToken);
+            html = addUnsubscribeFooter(html, unsubUrl);
+            await emailService.sendEmail({
+              to: email,
+              subject,
+              html,
+              headers: {
+                'List-Unsubscribe': `<${unsubUrl}>`,
+                'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+              },
+            });
+          } else {
+            await emailService.sendEmail({ to: email, subject, html });
+          }
           dispatched++;
         }
       } else if (campaign.type === 'PUSH') {
@@ -1108,46 +1127,54 @@ router.post('/automations/ensure-defaults', ...WRITE, async (req, res, next) => 
       return prisma.marketingTemplate.create({ data: { name, ...data } });
     };
 
-    // Indices 0-3 are referenced by the automation wiring below — order is load-bearing.
-    // Indices 4-5 (Registration, Support) are free-standing templates with no linked automation.
-    const [tplCashbackEarned, tplCashbackExpiring, tplPartnerWelcome, tplPartnerApproved] =
-      await Promise.all([
-        syncTpl('Cashback Earned Notification', {
-          type: 'EMAIL',
-          category: 'threshold',
-          subject: 'Достигнахте ниво — вашият кешбек е начислен!',
-          subjectEn: 'You reached a cashback milestone — your cashback has been credited!',
-          body: `<h2>Достигнахте ниво за кешбек!</h2>
+    // Indices 0-3 are ACTIVE automations. 4-8 are new spec-required templates with their automations.
+    // 9-10 (Registration, Support Contact) are free-standing templates used directly by emailService.
+    const [
+      tplCashbackEarned,
+      tplCashbackExpiring,
+      tplPartnerWelcome,
+      tplPartnerApproved,
+      tplPartnerMonthlySummary,
+      tplSupportReply,
+      tplInactiveUserNudge,
+      tplPartnerTransaction,
+    ] = await Promise.all([
+      syncTpl('Cashback Earned Notification', {
+        type: 'EMAIL',
+        category: 'threshold',
+        subject: 'Достигнахте ниво — вашият кешбек е начислен!',
+        subjectEn: 'You reached a cashback milestone — your cashback has been credited!',
+        body: `<h2>Достигнахте ниво за кешбек!</h2>
 <p>Поздравления — натрупахте достатъчно покупки и кешбек е начислен по вашия BoomCard акаунт.</p>
 <p>Продължете да пазарувате при партньорите ни и печелете още.</p>
 <p>Екипът на BoomCard</p>`,
-          bodyEn: `<h2>You reached a cashback milestone!</h2>
+        bodyEn: `<h2>You reached a cashback milestone!</h2>
 <p>Congratulations — you've made enough purchases and cashback has been credited to your BoomCard account.</p>
 <p>Keep shopping at our partners and earn even more.</p>
 <p>The BoomCard Team</p>`,
-        }),
-        syncTpl('Cashback Expiring Soon', {
-          type: 'EMAIL',
-          category: 'cashback',
-          subject: 'Вашият кешбек в BoomCard изтича скоро — използвайте го навреме',
-          subjectEn: 'Your BoomCard cashback is expiring soon — use it before it\'s gone',
-          body: `<h2>Кешбекът ви предстои да изтече!</h2>
+      }),
+      syncTpl('Cashback Expiring Soon', {
+        type: 'EMAIL',
+        category: 'cashback',
+        subject: 'Вашият кешбек в BoomCard изтича скоро — използвайте го навреме',
+        subjectEn: 'Your BoomCard cashback is expiring soon — use it before it\'s gone',
+        body: `<h2>Кешбекът ви предстои да изтече!</h2>
 <p>Имате натрупан кешбек в BoomCard акаунта ви, който предстои да изтече. Не забравяйте да го използвате при някой от партньорите ни.</p>
 <p><strong>Как да го използвате:</strong> Просто покажете вашата BoomCard карта при плащане в партньорски обект — кешбекът ще бъде приложен автоматично.</p>
 <p>Намерете най-близкия партньор в приложението BoomCard и започнете да спестявате днес.</p>
 <p>Екипът на BoomCard</p>`,
-          bodyEn: `<h2>Your cashback is about to expire!</h2>
+        bodyEn: `<h2>Your cashback is about to expire!</h2>
 <p>You have accumulated cashback in your BoomCard account that is about to expire. Don't forget to use it at one of our partners.</p>
 <p><strong>How to use it:</strong> Simply show your BoomCard card when paying at a partner location — your cashback will be applied automatically.</p>
 <p>Find the nearest partner in the BoomCard app and start saving today.</p>
 <p>The BoomCard Team</p>`,
-        }),
-        syncTpl('Partner Welcome Email', {
-          type: 'EMAIL',
-          category: 'partner_request',
-          subject: 'Добре дошли в мрежата на партньорите на BoomCard!',
-          subjectEn: 'Welcome to the BoomCard partner network!',
-          body: `<h2>Добре дошли на борда, партньор!</h2>
+      }),
+      syncTpl('Partner Welcome Email', {
+        type: 'EMAIL',
+        category: 'partner_request',
+        subject: 'Добре дошли в мрежата на партньорите на BoomCard!',
+        subjectEn: 'Welcome to the BoomCard partner network!',
+        body: `<h2>Добре дошли на борда, партньор!</h2>
 <p>Благодарим ви, че се присъединихте към мрежата на партньорите на BoomCard. Вашата заявка е получена и в момента се разглежда.</p>
 <p>Ето какво предстои:</p>
 <ul>
@@ -1157,7 +1184,7 @@ router.post('/automations/ensure-defaults', ...WRITE, async (req, res, next) => 
 </ul>
 <p>При въпроси се свържете с нас на <a href="mailto:office@boomcard.bg">office@boomcard.bg</a>.</p>
 <p>Екипът на BoomCard</p>`,
-          bodyEn: `<h2>Welcome aboard, partner!</h2>
+        bodyEn: `<h2>Welcome aboard, partner!</h2>
 <p>Thank you for joining the BoomCard partner network. Your application has been received and is currently under review.</p>
 <p>Here's what happens next:</p>
 <ul>
@@ -1167,13 +1194,13 @@ router.post('/automations/ensure-defaults', ...WRITE, async (req, res, next) => 
 </ul>
 <p>If you have any questions, contact us at <a href="mailto:office@boomcard.bg">office@boomcard.bg</a>.</p>
 <p>The BoomCard Team</p>`,
-        }),
-        syncTpl('Partner Approved', {
-          type: 'EMAIL',
-          category: 'onboarding',
-          subject: 'Поздравления — вашият партньорски акаунт в BoomCard е активен!',
-          subjectEn: 'Congratulations — your BoomCard partner account is now active!',
-          body: `<h2>Вие сте активни в BoomCard!</h2>
+      }),
+      syncTpl('Partner Approved', {
+        type: 'EMAIL',
+        category: 'onboarding',
+        subject: 'Поздравления — вашият партньорски акаунт в BoomCard е активен!',
+        subjectEn: 'Congratulations — your BoomCard partner account is now active!',
+        body: `<h2>Вие сте активни в BoomCard!</h2>
 <p>Страхотна новина — вашият партньорски акаунт е одобрен. Клиентите на BoomCard вече могат да натрупват кешбек при вас.</p>
 <p><strong>Какво означава това за вас:</strong></p>
 <ul>
@@ -1184,7 +1211,7 @@ router.post('/automations/ensure-defaults', ...WRITE, async (req, res, next) => 
 <p>Влезте в партньорския портал, за да попълните профила си и да привлечете повече клиенти.</p>
 <p>Добре дошли в мрежата!</p>
 <p>Екипът на BoomCard</p>`,
-          bodyEn: `<h2>You're live on BoomCard!</h2>
+        bodyEn: `<h2>You're live on BoomCard!</h2>
 <p>Great news — your partner account has been approved. BoomCard customers can now earn cashback at your location.</p>
 <p><strong>What this means for you:</strong></p>
 <ul>
@@ -1195,14 +1222,103 @@ router.post('/automations/ensure-defaults', ...WRITE, async (req, res, next) => 
 <p>Log in to the partner portal to complete your profile and attract more customers.</p>
 <p>Welcome to the network!</p>
 <p>The BoomCard Team</p>`,
-        }),
-        // Spec §8: Registration and Support templates — no linked automation, seeded for manual use
-        syncTpl('Registration Welcome Email', {
-          type: 'EMAIL',
-          category: 'registration',
-          subject: 'Добре дошли в BoomCard!',
-          subjectEn: 'Welcome to BoomCard!',
-          body: `<h2>Добре дошли в BoomCard!</h2>
+      }),
+      // Spec §8.2 / §8.3 — Partner monthly financial summary (billing.month_end trigger, ACTIVE).
+      // Sent by the scheduler at the start of each month for the previous period.
+      syncTpl('Partner Monthly Financial Summary', {
+        type: 'EMAIL',
+        category: 'billing',
+        subject: 'Месечен финансов отчет — BoomCard',
+        subjectEn: 'Monthly financial summary — BoomCard',
+        body: `<h2>Месечен финансов отчет</h2>
+<p>Здравейте,</p>
+<p>Месечният ви финансов отчет от BoomCard е готов. Можете да го разгледате в партньорския портал.</p>
+<p>В отчета ще намерите:</p>
+<ul>
+  <li>Брой транзакции за периода</li>
+  <li>Общ оборот</li>
+  <li>Дължим кешбек към BoomCard</li>
+</ul>
+<p>При въпроси по отчета се свържете с нас на <a href="mailto:office@boomcard.bg">office@boomcard.bg</a>.</p>
+<p>Екипът на BoomCard</p>`,
+        bodyEn: `<h2>Monthly Financial Summary</h2>
+<p>Hello,</p>
+<p>Your monthly BoomCard financial summary is ready. You can view it in the partner portal.</p>
+<p>The report includes:</p>
+<ul>
+  <li>Number of transactions for the period</li>
+  <li>Total revenue</li>
+  <li>Cashback owed to BoomCard</li>
+</ul>
+<p>For questions about the report contact us at <a href="mailto:office@boomcard.bg">office@boomcard.bg</a>.</p>
+<p>The BoomCard Team</p>`,
+      }),
+      // Spec §8.2 — "Support отговор": fires on support.reply trigger when a staff member replies
+      // to a support or change-request ticket (§11). DRAFT until the ticketing system (§11) is live;
+      // set to ACTIVE when the ticket reply endpoint calls fireAutomation('support.reply', ...).
+      syncTpl('Support Reply Notification', {
+        type: 'EMAIL',
+        category: 'support',
+        subject: 'Нов отговор по вашето запитване — BoomCard',
+        subjectEn: 'New reply to your inquiry — BoomCard',
+        body: `<h2>Получихте отговор по вашето запитване!</h2>
+<p>Здравейте,</p>
+<p>Нашият екип отговори на вашето запитване. Влезте в профила си, за да прочетете пълния отговор.</p>
+<p>При допълнителни въпроси отговорете директно на този имейл или пишете на <a href="mailto:office@boomcard.bg">office@boomcard.bg</a>.</p>
+<p>Екипът на BoomCard</p>`,
+        bodyEn: `<h2>You have a new reply to your inquiry!</h2>
+<p>Hello,</p>
+<p>Our team has replied to your inquiry. Log in to your account to read the full response.</p>
+<p>For further questions reply directly to this email or write to <a href="mailto:office@boomcard.bg">office@boomcard.bg</a>.</p>
+<p>The BoomCard Team</p>`,
+      }),
+      // Spec §8.3 / scheduler notifyInactiveUsers() — re-engagement nudge for users inactive 30 days.
+      // Fires via user.inactive_30d trigger (daily at 4:30 AM, narrow 24h window to prevent re-firing).
+      syncTpl('Inactive User Re-engagement', {
+        type: 'EMAIL',
+        category: 'reengagement',
+        subject: 'Скучаем ви — вашият кешбек ви чака в BoomCard',
+        subjectEn: 'We miss you — your cashback is waiting in BoomCard',
+        body: `<h2>Добре дошли обратно!</h2>
+<p>Здравейте,</p>
+<p>Забелязахме, че не сте посещавали партньорите на BoomCard от известно време. Вашият акаунт е активен и кешбекът ви ви чака.</p>
+<p>Открийте нови партньори и оферти в приложението BoomCard — може да изненадате себе си.</p>
+<p>При въпроси сме насреща на <a href="mailto:office@boomcard.bg">office@boomcard.bg</a>.</p>
+<p>Екипът на BoomCard</p>`,
+        bodyEn: `<h2>Welcome back!</h2>
+<p>Hello,</p>
+<p>We noticed you haven't visited any BoomCard partners for a while. Your account is active and your cashback is waiting for you.</p>
+<p>Discover new partners and offers in the BoomCard app — you might be surprised.</p>
+<p>If you have questions we're here at <a href="mailto:office@boomcard.bg">office@boomcard.bg</a>.</p>
+<p>The BoomCard Team</p>`,
+      }),
+      // Spec §8.2 — "Нова транзакция" for partners: optional, controlled by partner settings (§8.2).
+      // DRAFT by default — activated per-partner when the partner settings toggle is built.
+      // Trigger: partner.transaction (fired from transaction processing when partner opts in).
+      syncTpl('Partner New Transaction Alert', {
+        type: 'EMAIL',
+        category: 'partner_transaction',
+        subject: 'Нова транзакция в BoomCard — вашият бизнес',
+        subjectEn: 'New BoomCard transaction — your business',
+        body: `<h2>Нова транзакция!</h2>
+<p>Здравейте,</p>
+<p>Регистрирана е нова транзакция при вашия бизнес чрез BoomCard. Влезте в партньорския портал, за да видите детайлите.</p>
+<p>При въпроси се свържете с нас на <a href="mailto:office@boomcard.bg">office@boomcard.bg</a>.</p>
+<p>Екипът на BoomCard</p>`,
+        bodyEn: `<h2>New transaction!</h2>
+<p>Hello,</p>
+<p>A new transaction has been registered at your business through BoomCard. Log in to the partner portal to view the details.</p>
+<p>If you have questions contact us at <a href="mailto:office@boomcard.bg">office@boomcard.bg</a>.</p>
+<p>The BoomCard Team</p>`,
+      }),
+      // Spec §8.2 — Registration transactional welcome: sent directly by emailService.sendWelcomeEmail()
+      // at registration (auth.routes.ts). Seeded here for admin reference and future marketing sequences.
+      syncTpl('Registration Welcome Email', {
+        type: 'EMAIL',
+        category: 'registration',
+        subject: 'Добре дошли в BoomCard!',
+        subjectEn: 'Welcome to BoomCard!',
+        body: `<h2>Добре дошли в BoomCard!</h2>
 <p>Радваме се, че се присъединихте към нас. Вашият акаунт е създаден успешно.</p>
 <p>С BoomCard ще получавате кешбек при покупки при нашите партньори директно по сметката ви.</p>
 <p><strong>Как да започнете:</strong></p>
@@ -1213,7 +1329,7 @@ router.post('/automations/ensure-defaults', ...WRITE, async (req, res, next) => 
 </ul>
 <p>При въпроси сме на ваше разположение на <a href="mailto:office@boomcard.bg">office@boomcard.bg</a>.</p>
 <p>Екипът на BoomCard</p>`,
-          bodyEn: `<h2>Welcome to BoomCard!</h2>
+        bodyEn: `<h2>Welcome to BoomCard!</h2>
 <p>We're glad you joined us. Your account has been created successfully.</p>
 <p>With BoomCard you'll receive cashback on purchases at our partners directly to your account.</p>
 <p><strong>How to get started:</strong></p>
@@ -1224,26 +1340,29 @@ router.post('/automations/ensure-defaults', ...WRITE, async (req, res, next) => 
 </ul>
 <p>If you have any questions, we're here for you at <a href="mailto:office@boomcard.bg">office@boomcard.bg</a>.</p>
 <p>The BoomCard Team</p>`,
-        }),
-        syncTpl('Support Contact Email', {
-          type: 'EMAIL',
-          category: 'support',
-          subject: 'Получихме вашето запитване — BoomCard поддръжка',
-          subjectEn: 'We received your inquiry — BoomCard support',
-          body: `<h2>Получихме вашето запитване!</h2>
+      }),
+      // Spec §8.2 — Incoming support acknowledgement: sent directly by emailService when user
+      // submits a support request. Not the same as 'Support Reply Notification' (outbound reply).
+      syncTpl('Support Contact Email', {
+        type: 'EMAIL',
+        category: 'support',
+        subject: 'Получихме вашето запитване — BoomCard поддръжка',
+        subjectEn: 'We received your inquiry — BoomCard support',
+        body: `<h2>Получихме вашето запитване!</h2>
 <p>Благодарим ви, че се свързахте с нас. Нашият екип ще разгледа въпроса ви и ще отговори в рамките на 1–2 работни дни.</p>
 <p>Референтният номер на вашето запитване е запазен в системата ни.</p>
 <p>При спешни въпроси можете да пишете директно на <a href="mailto:office@boomcard.bg">office@boomcard.bg</a>.</p>
 <p>Екипът на BoomCard</p>`,
-          bodyEn: `<h2>We received your inquiry!</h2>
+        bodyEn: `<h2>We received your inquiry!</h2>
 <p>Thank you for reaching out. Our team will review your question and respond within 1–2 business days.</p>
 <p>Your inquiry reference number has been saved in our system.</p>
 <p>For urgent questions you can write directly to <a href="mailto:office@boomcard.bg">office@boomcard.bg</a>.</p>
 <p>The BoomCard Team</p>`,
-        }),
-      ]);
+      }),
+    ]);
 
-    // Ensure each of the 4 spec-required automations exists (find by unique trigger, create only if missing)
+    // Spec §8.3 — all automation defaults. Each entry is find-by-trigger + create-if-missing.
+    // ACTIVE = fires immediately when triggered. DRAFT = template ready, trigger not yet live.
     const specDefaults: Array<{
       trigger: string;
       name: string;
@@ -1268,11 +1387,40 @@ router.post('/automations/ensure-defaults', ...WRITE, async (req, res, next) => 
         templateId: tplPartnerWelcome.id,
         status: 'ACTIVE',
       },
+      // Spec §8.3 — fires at POST /api/auth/partner/activate (link click), not at admin-approve time.
       {
         trigger: 'partner.approved',
         name: 'Partner Approved Notification',
         templateId: tplPartnerApproved.id,
         status: 'ACTIVE',
+      },
+      // Spec §8.2/#8.3 — billing.month_end: scheduler fires this for every active partner at month start.
+      {
+        trigger: 'billing.month_end',
+        name: 'Partner Monthly Financial Summary',
+        templateId: tplPartnerMonthlySummary.id,
+        status: 'ACTIVE',
+      },
+      // Spec §8.2 — support.reply: DRAFT until §11 ticketing fires this trigger on staff reply.
+      {
+        trigger: 'support.reply',
+        name: 'Support Reply Notification',
+        templateId: tplSupportReply.id,
+        status: 'DRAFT',
+      },
+      // Spec §8.3 / scheduler notifyInactiveUsers() — 30-day inactivity re-engagement.
+      {
+        trigger: 'user.inactive_30d',
+        name: 'Inactive User Re-engagement',
+        templateId: tplInactiveUserNudge.id,
+        status: 'ACTIVE',
+      },
+      // Spec §8.2 — optional per-partner transaction alert. DRAFT until partner settings toggle is built.
+      {
+        trigger: 'partner.transaction',
+        name: 'Partner New Transaction Alert',
+        templateId: tplPartnerTransaction.id,
+        status: 'DRAFT',
       },
     ];
 

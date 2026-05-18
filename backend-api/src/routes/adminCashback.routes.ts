@@ -396,7 +396,10 @@ router.post('/entries/:id/pay', requirePermission('cashback.write'), async (req:
 // with full before/after diff. Middleware would log a second, less-informative row.
 router.post('/entries/:id/void', requirePermission('cashback.write'), async (req: AuthRequest, res: Response) => {
   try {
-    const reason = typeof req.body?.reason === 'string' ? req.body.reason : '';
+    const reason = typeof req.body?.reason === 'string' ? req.body.reason.trim() : '';
+    if (!reason) {
+      return res.status(400).json({ success: false, error: 'reason is required to void a cashback entry' });
+    }
     await voidEntry(req.params.id, req.user!.id, reason);
     req.skipAudit = true;
     res.json({ success: true, message: 'Entry voided' });

@@ -1016,6 +1016,11 @@ async function notifyCashbackExpiring(): Promise<void> {
     where: {
       type: WalletTransactionType.CASHBACK_CREDIT,
       status: WalletTransactionStatus.COMPLETED,
+      // Only CLEARED cashback is at risk of expiry. PAID entries keep
+      // status=COMPLETED but do not clear cashbackExpiresAt (see expireWallet
+      // comment), so without this filter paid-out cashback would trigger
+      // spurious "expiring soon" warnings.
+      cashbackStatus: CashbackEntryStatus.CLEARED,
       cashbackExpiresAt: { gte: warnFrom, lte: warnUntil },
     },
     select: { walletId: true },

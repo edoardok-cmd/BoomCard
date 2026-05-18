@@ -48,6 +48,7 @@ interface AuthSuccessPayload {
   switchableAccounts?: SwitchableAccount[];
   impersonation?: ImpersonationMeta;
   pendingVerification?: boolean;
+  partnerRestriction?: 'SUSPENDED';
 }
 
 type SwitchableAccountsResponse = Envelope<SwitchableAccount[]>;
@@ -201,6 +202,7 @@ export interface AuthContextType extends AuthState {
   switchableAccounts: SwitchableAccount[];
   isImpersonating: boolean;
   impersonation: ImpersonationMeta | null;
+  partnerRestriction: string | null;
   login: (credentials: LoginCredentials) => Promise<void>;
   loginWithOAuth: (oauthData: OAuthData) => Promise<void>;
   register: (data: RegisterData) => Promise<void>;
@@ -233,6 +235,7 @@ const TOKEN_KEY = 'token';
 const REFRESH_TOKEN_KEY = 'refreshToken';
 const SWITCHABLE_ACCOUNTS_KEY = 'boomcard_switchable_accounts';
 const IMPERSONATION_KEY = 'boomcard_impersonation';
+const PARTNER_RESTRICTION_KEY = 'boomcard_partner_restriction';
 
 // Mirror the refresh token into the `boomcard_refresh` cookie that the axios
 // 401-interceptor in api.service.ts reads from. If we only write to
@@ -284,6 +287,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return null;
     }
   });
+  const [partnerRestriction, setPartnerRestriction] = useState<string | null>(
+    () => authStorage.getItem(PARTNER_RESTRICTION_KEY),
+  );
   const [isLoading, setIsLoading] = useState(true);
 
   // Keep the switchable-accounts list in sync with storage so hard reloads
@@ -570,6 +576,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         // mid-impersonation and later logged in again).
         setImpersonation(null);
 
+        // Persist partner restriction flag (SUSPENDED/PAUSED partners get this
+        // from the backend at login time; absent for non-restricted partners).
+        const restriction = responseData?.partnerRestriction ?? (rawResponse as any)?.partnerRestriction ?? null;
+        if (restriction) {
+          authStorage.setItem(PARTNER_RESTRICTION_KEY, restriction, persistent);
+        } else {
+          authStorage.removeItem(PARTNER_RESTRICTION_KEY);
+        }
+        setPartnerRestriction(restriction);
+
         toast.success(`Welcome back, ${user.firstName}!`);
         return;
       } catch (apiError) {
@@ -701,6 +717,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setToken(null);
     setSwitchableAccounts([]);
     setImpersonation(null);
+    setPartnerRestriction(null);
 
     // Clear persistent AND ephemeral storage. authStorage.removeItem wipes
     // both local and session, so an ephemeral (remember-me=off) session is
@@ -710,6 +727,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     authStorage.removeItem(REFRESH_TOKEN_KEY);
     authStorage.removeItem(SWITCHABLE_ACCOUNTS_KEY);
     authStorage.removeItem(IMPERSONATION_KEY);
+    authStorage.removeItem(PARTNER_RESTRICTION_KEY);
 
     // Clear cookies — the axios interceptor reads `boomcard_refresh` first
     // when handling 401s, so leaving it behind would let a post-logout 401
@@ -1195,6 +1213,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     switchableAccounts,
     isImpersonating: impersonation !== null,
     impersonation,
+    partnerRestriction,
     login,
     loginWithOAuth,
     register,

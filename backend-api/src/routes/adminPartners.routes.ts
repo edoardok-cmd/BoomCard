@@ -499,21 +499,34 @@ router.post(
     // own transaction; nesting via `tx` would require passing the client
     // around. The Partner row's status change is the durable mark — if the
     // link create fails, the admin can resend from the drawer.
-    const updated = await prisma.partner.update({
-      where: { id: req.params.id },
-      data: {
-        status: PartnerStatus.ACTIVE,
-        requestStatus: PartnerRequestStatus.ODOBRENA,
-        // Spec §5.2 v1.1 — `verifiedAt` is the "fully activated" flag, stamped
-        // only on activation-token consumption. Leaving it null here ensures
-        // the partner can't log in or be publicly visible until they click the
-        // activation link.
-        // Spec §3.2 — stamp onboarding completion the first time the partner
-        // gets approved; later approvals (re-activation) don't bump it.
-        ...(partner.onboardingCompletedAt ? {} : { onboardingCompletedAt: new Date() }),
-      },
-      select: PARTNER_SELECT,
-    });
+    const [updated] = await prisma.$transaction([
+      prisma.partner.update({
+        where: { id: req.params.id },
+        data: {
+          status: PartnerStatus.ACTIVE,
+          requestStatus: PartnerRequestStatus.ODOBRENA,
+          // Spec §5.2 v1.1 — `verifiedAt` is the "fully activated" flag, stamped
+          // only on activation-token consumption. Leaving it null here ensures
+          // the partner can't log in or be publicly visible until they click the
+          // activation link.
+          // Spec §3.2 — stamp onboarding completion the first time the partner
+          // gets approved; later approvals (re-activation) don't bump it.
+          ...(partner.onboardingCompletedAt ? {} : { onboardingCompletedAt: new Date() }),
+        },
+        select: PARTNER_SELECT,
+      }),
+      // Spec §5.3 — Historia на промени: record the PENDING→ACTIVE approval so
+      // the status-history tab shows this transition (consistent with /:id/reject).
+      prisma.partnerStatusChange.create({
+        data: {
+          partnerId: req.params.id,
+          fromStatus: partner.status,
+          toStatus: PartnerStatus.ACTIVE,
+          reason: 'Onboarding approved',
+          changedById: (req as AuthRequest).user!.id,
+        },
+      }),
+    ]);
 
     // Spec §5.2 v1.1 — issue a 72h activation link and email it. We await the
     // link issuance so that on success the API response can confirm a link
@@ -554,11 +567,8 @@ router.post(
       stampEmailOutcome(issued.linkId, { sent: false, error: 'No recipient email on partner record' });
     }
 
-    fireAutomation('partner.approved', {
-      partnerId: updated.id,
-      recipientEmail: updated.email ?? undefined,
-      recipientName: updated.businessName,
-    }).catch((err) => logger.error('[automation] partner.approved fire failed:', err));
+    // partner.approved automation fires when the partner clicks the activation link
+    // (POST /api/auth/partner/activate), not at admin-approval time. See auth.routes.ts.
 
     // Spec §5.2 v1.1 — H4 fix: response now reflects the actual outcome of
     // link issuance so the UI can warn the admin to resend (the drawer also
@@ -582,7 +592,9 @@ router.post(
 const RESEND_RATE_LIMIT_MS = 60 * 1000; // 1 issue per partner per minute
 router.post(
   '/:id/resend-activation',
-  requirePermission('partners.requests.write'),
+  // Spec §5.2: resend is accessible from both the onboarding pipeline
+  // (partners.requests.write) AND the Active Partners section (partners.write).
+  requirePermission(['partners.requests.write', 'partners.write']),
   asyncHandler(async (req: AuthRequest, res) => {
     const partner = await prisma.partner.findUnique({
       where: { id: req.params.id },
@@ -697,6 +709,15 @@ router.post(
           authorId: req.user!.id,
           body: reason.trim(),
           isInternal: false,
+        },
+      }),
+      prisma.partnerStatusChange.create({
+        data: {
+          partnerId: req.params.id,
+          fromStatus: partner.status,
+          toStatus: PartnerStatus.REJECTED,
+          reason: reason.trim(),
+          changedById: req.user!.id,
         },
       }),
     ]);

@@ -4,6 +4,7 @@ import Header from './layout/Header/Header';
 import Footer from './layout/Footer/Footer';
 import MobileBottomNav from './layout/MobileBottomNav/MobileBottomNav';
 import ImpersonationBanner from './common/ImpersonationBanner/ImpersonationBanner';
+import PartnerStatusBanner from './common/PartnerStatusBanner/PartnerStatusBanner';
 
 const Layout: React.FC = () => {
   const { pathname } = useLocation();
@@ -12,15 +13,15 @@ const Layout: React.FC = () => {
   return (
     <div className="min-h-screen flex flex-col">
       <ImpersonationBanner />
+      <PartnerStatusBanner />
       <Header />
       <main
         className="flex-1"
         style={{
-          // Account for the fixed Header (65px) + the impersonation banner
-          // when it's mounted. ImpersonationBanner publishes its height via
-          // --imp-banner-h; the fallback of 0 keeps non-impersonation users
-          // at the original 65px.
-          paddingTop: 'calc(65px + var(--imp-banner-h, 0px))',
+          // Account for fixed Header (65px) + impersonation banner + partner
+          // restriction banner. Each banner publishes its height as a CSS var;
+          // fallback of 0 keeps layout correct when the banner is absent.
+          paddingTop: 'calc(65px + var(--imp-banner-h, 0px) + var(--partner-restriction-h, 0px))',
           paddingBottom: 'calc(1px + var(--cookie-banner-h, 0px))',
         }}
       >

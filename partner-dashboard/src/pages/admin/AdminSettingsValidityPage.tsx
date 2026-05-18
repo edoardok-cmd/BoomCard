@@ -188,7 +188,7 @@ export default function AdminSettingsValidityPage() {
                   onChange={(e) => setCashbackDays(e.target.value)}
                 />
                 <FieldHint>
-                  Колко дни след спечелване балансът изтича. Системно подразбиране: {DEFAULT_CASHBACK_EXPIRY_DAYS}.
+                  Колко дни след потвърждаване (CLEARED) кешбекът изтича. Системното подразбиране е {DEFAULT_CASHBACK_EXPIRY_DAYS} дни; часовникът тръгва от датата на изчистване, не от датата на покупката.
                   {Number(cashbackDays) !== DEFAULT_CASHBACK_EXPIRY_DAYS && (
                     <ResetLink type="button" onClick={() => setCashbackDays(String(DEFAULT_CASHBACK_EXPIRY_DAYS))}>
                       Възстанови по подразбиране

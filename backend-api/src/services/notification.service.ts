@@ -49,7 +49,7 @@ interface EmailParams {
   text?: string;
 }
 
-class NotificationService {
+export class NotificationService {
   // NOTE: Any marketing email sends MUST check user.marketingConsentEmail before proceeding.
   // See Spec §6.3. Use the marketingConsentEmail field on the User model.
 
@@ -764,8 +764,218 @@ class NotificationService {
         body: `${params.availableBalance.toFixed(2).replace('.', ',')} лв. са готови за изтегляне.`,
         data: { type: 'payout_ready', url: '/wallet' },
       });
+
+      // Spec §8.3 — payout threshold reached requires Email + in-app + push.
+      const user = await prisma.user.findUnique({
+        where: { id: params.userId },
+        select: { email: true, firstName: true },
+      });
+      if (user?.email) {
+        const balanceFmt = params.availableBalance.toFixed(2).replace('.', ',');
+        const thresholdFmt = params.threshold.toFixed(2).replace('.', ',');
+        const greeting = user.firstName ? `Здравейте, ${user.firstName}!` : 'Здравейте!';
+        emailService.sendEmail({
+          to: user.email,
+          subject: 'Готови за изтегляне — BoomCard',
+          html: `
+            <div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;padding:32px;background:#fff;">
+              <h2 style="color:#1a1a1a;margin-bottom:8px;">Можете да изтеглите средствата си</h2>
+              <p style="color:#555;margin-bottom:16px;">${greeting}</p>
+              <p style="color:#555;margin-bottom:16px;">
+                Наличният ви баланс е <strong>${balanceFmt} лв.</strong>, което надвишава прага за изплащане от <strong>${thresholdFmt} лв.</strong>
+              </p>
+              <p style="color:#555;margin-bottom:24px;">Можете да поискате изплащане по всяко време от секция <strong>Портфейл</strong>.</p>
+              <p style="text-align:center;margin-bottom:0;">
+                <a href="${process.env.APP_URL || 'https://mobile.boomcard.bg'}/wallet"
+                   style="display:inline-block;background:#10b981;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:600;">
+                  Изтегли
+                </a>
+              </p>
+            </div>`,
+        }).catch((err) => logger.error('[notifyPayoutReady] email send failed:', err));
+      }
     } catch (error) {
       logger.error('❌ Error sending payout-ready notification:', error);
+    }
+  }
+
+  // Spec §8.3 — subscription expiry reminder in-app channel (Email + in-app).
+  // Called by the renewal-reminders job alongside the email send.
+  async notifySubscriptionExpiringSoon(params: {
+    userId: string;
+    bucket: '3d' | '1d' | 'dayOf';
+    periodEnd: Date;
+  }): Promise<void> {
+    const dateStr = params.periodEnd.toLocaleDateString('bg-BG', { timeZone: 'Europe/Sofia' });
+    const { title, titleBg, message, messageBg } = {
+      '3d': {
+        title: 'Subscription expiring in 3 days',
+        titleBg: 'Абонаментът изтича след 3 дни',
+        message: `Your BoomCard subscription expires on ${dateStr}. Auto-renewal is off — renew manually to keep access.`,
+        messageBg: `Абонаментът ви BoomCard изтича на ${dateStr} (след 3 дни). Автоматичното подновяване е изключено.`,
+      },
+      '1d': {
+        title: 'Subscription expiring tomorrow',
+        titleBg: 'Абонаментът изтича утре',
+        message: `Your BoomCard subscription expires tomorrow (${dateStr}). Renew now to avoid interruption.`,
+        messageBg: `Абонаментът ви BoomCard изтича утре, ${dateStr}.`,
+      },
+      'dayOf': {
+        title: 'Subscription expires today',
+        titleBg: 'Абонаментът изтича днес',
+        message: `Your BoomCard subscription expires today (${dateStr}). Renew now to keep access.`,
+        messageBg: `Абонаментът ви BoomCard изтича днес, ${dateStr}.`,
+      },
+    }[params.bucket];
+
+    await this.createNotification({
+      userId: params.userId,
+      type: 'SUBSCRIPTION_EXPIRING',
+      title,
+      titleBg,
+      message,
+      messageBg,
+      priority: params.bucket === 'dayOf' ? 'high' : 'medium',
+      actionUrl: '/subscription',
+      actionText: 'Renew',
+      actionTextBg: 'Поднови',
+    });
+
+    // §13 — push mirrors the in-app notification on mobile/web.
+    // Non-fatal: a push failure must not prevent the bitmask update
+    // in the caller (renewal-reminders job).
+    await this.sendPushNotification({
+      userId: params.userId,
+      title: titleBg,
+      body: messageBg,
+      data: { type: 'subscription_expiring', bucket: params.bucket, url: '/subscription' },
+    }).catch((err) =>
+      logger.error('[notifySubscriptionExpiringSoon] push failed:', err),
+    );
+  }
+
+  /**
+   * §10 — Subscription went ACTIVE → PAUSED (auto-renew OFF, period elapsed,
+   * 7-day grace window now open). Fires alongside the expiry-notice email in
+   * paysera-renewal.ts. Sends in-app + push so the user sees it even without
+   * opening email.
+   */
+  async notifySubscriptionPaused(params: {
+    userId: string;
+    gracePeriodEndsAt: Date;
+  }): Promise<void> {
+    try {
+      const dateStr = params.gracePeriodEndsAt.toLocaleDateString('bg-BG', { timeZone: 'Europe/Sofia' });
+      await this.createNotification({
+        userId: params.userId,
+        type: 'SUBSCRIPTION_EXPIRING',
+        title: 'Subscription paused',
+        titleBg: 'Абонаментът е спрян',
+        message: `Your BoomCard subscription has been paused. Renew before ${dateStr} to avoid cancellation.`,
+        messageBg: `Абонаментът ви BoomCard е спрян. Подновете до ${dateStr}, за да избегнете отмяна.`,
+        priority: 'high',
+        actionUrl: '/subscription',
+        actionText: 'Renew',
+        actionTextBg: 'Поднови',
+        data: { type: 'subscription_paused', gracePeriodEndsAt: params.gracePeriodEndsAt.toISOString() },
+      });
+      await this.sendPushNotification({
+        userId: params.userId,
+        title: 'Абонаментът е спрян',
+        body: `Подновете до ${dateStr}, за да избегнете отмяна.`,
+        data: { type: 'subscription_paused', url: '/subscription' },
+      }).catch((err) =>
+        logger.error('[notifySubscriptionPaused] push failed:', err),
+      );
+    } catch (error) {
+      logger.error('[notifySubscriptionPaused] failed:', error);
+    }
+  }
+
+  /**
+   * §11 — Payout status changed (approved / completed / rejected / held /
+   * released / failed). Sends in-app notification + push alongside the email
+   * already dispatched by adminPayouts.routes.ts.
+   */
+  async notifyPayoutEvent(params: {
+    userId: string;
+    payoutId: string;
+    event: 'approved' | 'completed' | 'rejected' | 'held' | 'released' | 'failed';
+    amount: number;
+    currency: string;
+  }): Promise<void> {
+    try {
+      const amt = params.amount.toFixed(2);
+      type EventMap = Record<typeof params.event, { title: string; titleBg: string; message: string; messageBg: string }>;
+      const copy: EventMap = {
+        approved: {
+          title: `Payout of ${amt} ${params.currency} approved`,
+          titleBg: `Плащането от ${amt} ${params.currency} е одобрено`,
+          message: 'Your payout request has been approved and is being processed.',
+          messageBg: 'Заявката ви за плащане е одобрена и се обработва.',
+        },
+        completed: {
+          title: `Payout of ${amt} ${params.currency} sent`,
+          titleBg: `Плащането от ${amt} ${params.currency} е изпратено`,
+          message: 'Your payout has been sent. Funds will arrive within 1–3 business days.',
+          messageBg: 'Плащането ви е изпратено. Средствата ще постъпят в рамките на 1–3 работни дни.',
+        },
+        rejected: {
+          title: `Payout of ${amt} ${params.currency} rejected`,
+          titleBg: `Плащането от ${amt} ${params.currency} е отхвърлено`,
+          message: 'Your payout request was rejected and your balance has been restored.',
+          messageBg: 'Заявката ви за плащане е отхвърлена. Балансът ви е възстановен.',
+        },
+        held: {
+          title: `Payout of ${amt} ${params.currency} on hold`,
+          titleBg: `Плащането от ${amt} ${params.currency} е задържано`,
+          message: 'Your payout has been placed on hold for review.',
+          messageBg: 'Плащането ви е задържано за проверка.',
+        },
+        released: {
+          title: `Payout of ${amt} ${params.currency} released`,
+          titleBg: `Плащането от ${amt} ${params.currency} е освободено`,
+          message: 'Your held payout has been released and will be processed normally.',
+          messageBg: 'Задържаното плащане е освободено и ще се обработи нормално.',
+        },
+        failed: {
+          title: `Payout of ${amt} ${params.currency} failed`,
+          titleBg: `Плащането от ${amt} ${params.currency} не беше успешно`,
+          message: 'Your payout could not be processed. Your balance has been restored.',
+          messageBg: 'Плащането не беше успешно. Балансът ви е възстановен.',
+        },
+      };
+      const { title, titleBg, message, messageBg } = copy[params.event];
+      const priority = params.event === 'completed' || params.event === 'rejected' || params.event === 'failed'
+        ? 'high'
+        : 'medium';
+
+      await this.createNotification({
+        userId: params.userId,
+        type: 'PAYMENT_SUCCESS',
+        title,
+        titleBg,
+        message,
+        messageBg,
+        priority,
+        actionUrl: '/wallet',
+        actionText: 'View wallet',
+        actionTextBg: 'Виж портфейл',
+        relatedEntityType: 'payout',
+        relatedEntityId: params.payoutId,
+        data: { type: `payout_${params.event}`, payoutId: params.payoutId, amount: params.amount, currency: params.currency },
+      });
+
+      await this.sendPushNotification({
+        userId: params.userId,
+        title: titleBg,
+        body: messageBg,
+        data: { type: `payout_${params.event}`, payoutId: params.payoutId, url: '/wallet' },
+      }).catch((err) =>
+        logger.error(`[notifyPayoutEvent:${params.event}] push failed:`, err),
+      );
+    } catch (error) {
+      logger.error('[notifyPayoutEvent] failed:', error);
     }
   }
 

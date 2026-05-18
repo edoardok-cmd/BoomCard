@@ -952,18 +952,10 @@ export class WalletService {
   }) {
     const wallet = await this.getOrCreateWallet(userId);
 
-    // When filtering by CASHBACK_CREDIT, hide CANCELLED entries (expired cashback)
-    // so the cashback tab only shows live/active cashback credits.
-    const statusFilter =
-      params?.type === WalletTransactionType.CASHBACK_CREDIT
-        ? { status: { not: WalletTransactionStatus.CANCELLED } }
-        : {};
-
     const transactions = await prisma.walletTransaction.findMany({
       where: {
         walletId: wallet.id,
         ...(params?.type && { type: params.type }),
-        ...statusFilter,
       },
       orderBy: { createdAt: 'desc' },
       take: params?.limit || 50,
@@ -974,7 +966,6 @@ export class WalletService {
       where: {
         walletId: wallet.id,
         ...(params?.type && { type: params.type }),
-        ...statusFilter,
       },
     });
 

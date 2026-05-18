@@ -276,20 +276,24 @@ const KeyBadge = styled.span`
 const HistoryDate = styled.span`font-size: 0.7rem; color: ${palette.textSubtle}; white-space: nowrap;`;
 
 const SYSTEM_KEY_LABELS: Record<string, string> = {
-  support_email:       'Email поддръжка',
-  support_phone:       'Телефон',
-  reply_to_email:      'Reply-To',
-  from_email:          'From имейл',
-  sender_name:         'Изпращач',
-  language:            'Език',
-  currency:            'Валута',
-  timezone:            'Часова зона',
-  maintenance_mode:    'Поддръжка',
-  maintenance_message: 'Съобщение',
+  office_email:          'Email партньори (office@)',
+  support_email:         'Email поддръжка (support@)',
+  support_phone:         'Телефон',
+  partner_reply_to_email:'Reply-To за партньори',
+  reply_to_email:        'Reply-To за абонати',
+  from_email:            'From имейл',
+  sender_name:           'Изпращач',
+  language:              'Език',
+  currency:              'Валута',
+  timezone:              'Часова зона',
+  date_format:           'Формат на дата',
+  number_format:         'Формат на числа',
+  maintenance_mode:      'Поддръжка',
+  maintenance_message:   'Съобщение',
 };
 
-const CONTACT_KEYS      = ['support_email', 'support_phone', 'reply_to_email', 'from_email', 'sender_name'];
-const LOCALIZATION_KEYS = ['language', 'currency', 'timezone'];
+const CONTACT_KEYS      = ['office_email', 'support_email', 'support_phone', 'partner_reply_to_email', 'reply_to_email', 'from_email', 'sender_name'];
+const LOCALIZATION_KEYS = ['language', 'currency', 'timezone', 'date_format', 'number_format'];
 const MAINTENANCE_KEYS  = ['maintenance_mode', 'maintenance_message'];
 
 function fmtDate(iso: string) {
@@ -356,13 +360,14 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // ── Shared mutation hook ──────────────────────────────────────────────────────
 
-function useSystemSettingsMutation(successMsg: string) {
+function useSystemSettingsMutation(successMsg: string, onSaved?: () => void) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (settings: Record<string, string>) =>
-      adminSettingsService.saveSystemSettings(settings),
+    mutationFn: ({ settings, notes }: { settings: Record<string, string>; notes?: string }) =>
+      adminSettingsService.saveSystemSettings(settings, notes),
     onSuccess: () => {
       toast.success(successMsg);
+      onSaved?.();
       queryClient.invalidateQueries({ queryKey: ['admin-system-settings'] });
       queryClient.invalidateQueries({ queryKey: ['admin-system-settings-history'] });
     },
@@ -376,20 +381,29 @@ function useSystemSettingsMutation(successMsg: string) {
 
 export default function AdminSettingsSystemPage() {
   // ── Card 1: Контакт за поддръжка ─────────────────────────────────────────
-  const [supportEmail, setSupportEmail] = useState('');
-  const [supportPhone, setSupportPhone] = useState('');
-  const [replyToEmail, setReplyToEmail] = useState('');
-  const [fromEmail, setFromEmail] = useState('');
-  const [senderName, setSenderName] = useState('');
+  const [officeEmail, setOfficeEmail]                   = useState('');
+  const [supportEmail, setSupportEmail]                 = useState('');
+  const [supportPhone, setSupportPhone]                 = useState('');
+  const [partnerReplyToEmail, setPartnerReplyToEmail]   = useState('');
+  const [replyToEmail, setReplyToEmail]                 = useState('');
+  const [fromEmail, setFromEmail]                       = useState('');
+  const [senderName, setSenderName]                     = useState('');
 
   // ── Card 2: Локализация ──────────────────────────────────────────────────
-  const [language, setLanguage] = useState('bg');
-  const [currency, setCurrency] = useState('BGN');
-  const [timezone, setTimezone] = useState('Europe/Sofia');
+  const [language, setLanguage]     = useState('bg');
+  const [currency, setCurrency]     = useState('BGN');
+  const [timezone, setTimezone]     = useState('Europe/Sofia');
+  const [dateFormat, setDateFormat] = useState('DD.MM.YYYY');
+  const [numberFormat, setNumberFormat] = useState('1 234,56');
 
   // ── Card 3: Режим на поддръжка ───────────────────────────────────────────
   const [maintenanceMode, setMaintenanceMode] = useState(false);
   const [maintenanceMessage, setMaintenanceMessage] = useState('');
+
+  // ── Per-card notes (причина за промяната) ───────────────────────────────
+  const [contactNotes, setContactNotes]           = useState('');
+  const [localizationNotes, setLocalizationNotes] = useState('');
+  const [maintenanceNotes, setMaintenanceNotes]   = useState('');
 
   // Pending toggle value while awaiting confirmation
   const [pendingMaintenance, setPendingMaintenance] = useState<boolean | null>(null);
@@ -424,58 +438,74 @@ export default function AdminSettingsSystemPage() {
   useEffect(() => {
     if (!data?.data || didInitRef.current) return;
     didInitRef.current = true;
+    setOfficeEmail(data.data.office_email ?? '');
     setSupportEmail(data.data.support_email ?? '');
     setSupportPhone(data.data.support_phone ?? '');
+    setPartnerReplyToEmail(data.data.partner_reply_to_email ?? '');
     setReplyToEmail(data.data.reply_to_email ?? '');
     setFromEmail(data.data.from_email ?? '');
     setSenderName(data.data.sender_name ?? '');
-    if (data.data.language !== undefined)  setLanguage(data.data.language);
-    if (data.data.currency !== undefined)  setCurrency(data.data.currency);
-    if (data.data.timezone !== undefined)  setTimezone(data.data.timezone);
+    if (data.data.language !== undefined)     setLanguage(data.data.language);
+    if (data.data.currency !== undefined)     setCurrency(data.data.currency);
+    if (data.data.timezone !== undefined)     setTimezone(data.data.timezone);
+    if (data.data.date_format !== undefined)  setDateFormat(data.data.date_format);
+    if (data.data.number_format !== undefined) setNumberFormat(data.data.number_format);
     setMaintenanceMode(data.data.maintenance_mode === 'true');
     setMaintenanceMessage(data.data.maintenance_message ?? '');
   }, [data]);
 
   // ── Per-card mutations ────────────────────────────────────────────────────
 
-  const contactMutation      = useSystemSettingsMutation('Контактите са запазени');
-  const localizationMutation = useSystemSettingsMutation('Локализацията е запазена');
-  const maintenanceMutation  = useSystemSettingsMutation('Режимът на поддръжка е обновен');
+  const contactMutation      = useSystemSettingsMutation('Контактите са запазени',      () => setContactNotes(''));
+  const localizationMutation = useSystemSettingsMutation('Локализацията е запазена',     () => setLocalizationNotes(''));
+  const maintenanceMutation  = useSystemSettingsMutation('Режимът на поддръжка е обновен', () => setMaintenanceNotes(''));
 
   // ── Per-card save handlers ────────────────────────────────────────────────
 
   const saveContact = () => {
-    if (supportEmail && !EMAIL_RE.test(supportEmail)) {
-      toast.error('Имейлът за поддръжка трябва да е валиден адрес');
-      return;
-    }
-    if (replyToEmail && !EMAIL_RE.test(replyToEmail)) {
-      toast.error('Reply-To имейлът трябва да е валиден адрес');
-      return;
-    }
-    if (fromEmail && !EMAIL_RE.test(fromEmail)) {
-      toast.error('Изпращащият имейл трябва да е валиден адрес');
-      return;
+    const emailFields: [string, string][] = [
+      ['office_email', officeEmail],
+      ['support_email', supportEmail],
+      ['partner_reply_to_email', partnerReplyToEmail],
+      ['reply_to_email', replyToEmail],
+      ['from_email', fromEmail],
+    ];
+    for (const [label, val] of emailFields) {
+      if (val && !EMAIL_RE.test(val)) {
+        toast.error(`${SYSTEM_KEY_LABELS[label] ?? label} трябва да е валиден имейл адрес`);
+        return;
+      }
     }
     contactMutation.mutate({
-      support_email: supportEmail,
-      support_phone: supportPhone,
-      reply_to_email: replyToEmail,
-      from_email: fromEmail,
-      sender_name: senderName,
+      settings: {
+        office_email:           officeEmail,
+        support_email:          supportEmail,
+        support_phone:          supportPhone,
+        partner_reply_to_email: partnerReplyToEmail,
+        reply_to_email:         replyToEmail,
+        from_email:             fromEmail,
+        sender_name:            senderName,
+      },
+      notes: contactNotes || undefined,
     });
   };
 
   const saveLocalization = () => {
-    localizationMutation.mutate({ language, currency, timezone });
+    localizationMutation.mutate({
+      settings: { language, currency, timezone, date_format: dateFormat, number_format: numberFormat },
+      notes: localizationNotes || undefined,
+    });
   };
 
   // Maintenance save — explicit `enabled` avoids relying on stale maintenanceMode
   // closure value (React state updates are async; callers must pass the intended value).
   const commitMaintenance = (enabled: boolean) => {
     maintenanceMutation.mutate({
-      maintenance_mode: String(enabled),
-      maintenance_message: maintenanceMessage,
+      settings: {
+        maintenance_mode:    String(enabled),
+        maintenance_message: maintenanceMessage,
+      },
+      notes: maintenanceNotes || undefined,
     });
   };
 
@@ -588,14 +618,26 @@ export default function AdminSettingsSystemPage() {
           ) : (
             <FieldGroup>
               <div>
-                <FieldLabel>Email за поддръжка</FieldLabel>
+                <FieldLabel>Email за партньори (office@)</FieldLabel>
                 <TextInput
                   type="email"
                   placeholder="office@boomcard.bg"
+                  value={officeEmail}
+                  onChange={(e) => setOfficeEmail(e.target.value)}
+                />
+                <FieldHint>
+                  Входящ адрес за партньорски заявки и кореспонденция. Използва се и като Reply-To в партньорски имейли.
+                </FieldHint>
+              </div>
+              <div>
+                <FieldLabel>Email за абонатска поддръжка (support@)</FieldLabel>
+                <TextInput
+                  type="email"
+                  placeholder="support@boomcard.bg"
                   value={supportEmail}
                   onChange={(e) => setSupportEmail(e.target.value)}
                 />
-                <FieldHint>Показва се в мобилното приложение и футъри на имейли.</FieldHint>
+                <FieldHint>Показва се в мобилното приложение и футъри на имейли. Входящ адрес за абонатска поддръжка.</FieldHint>
               </div>
               <div>
                 <FieldLabel>Телефон за поддръжка</FieldLabel>
@@ -608,15 +650,27 @@ export default function AdminSettingsSystemPage() {
                 <FieldHint>Показва се на екрана за контакти в приложението.</FieldHint>
               </div>
               <div>
-                <FieldLabel>Email за отговор (Reply-To)</FieldLabel>
+                <FieldLabel>Reply-To за партньорски имейли</FieldLabel>
                 <TextInput
                   type="email"
-                  placeholder="reply@boomcard.bg"
+                  placeholder="office@boomcard.bg"
+                  value={partnerReplyToEmail}
+                  onChange={(e) => setPartnerReplyToEmail(e.target.value)}
+                />
+                <FieldHint>
+                  Reply-To заглавка за имейли изпратени до партньори. При липса се ползва стойността на office_email.
+                </FieldHint>
+              </div>
+              <div>
+                <FieldLabel>Reply-To за абонатски имейли</FieldLabel>
+                <TextInput
+                  type="email"
+                  placeholder="support@boomcard.bg"
                   value={replyToEmail}
                   onChange={(e) => setReplyToEmail(e.target.value)}
                 />
                 <FieldHint>
-                  Reply-To заглавка на системните имейли. При липса заглавката се пропуска — отговорите отиват към изпращащия адрес (From).
+                  Reply-To заглавка за имейли изпратени до абонати. При липса заглавката се пропуска.
                 </FieldHint>
               </div>
               <div>
@@ -640,7 +694,7 @@ export default function AdminSettingsSystemPage() {
                 </FieldHint>
               </div>
               <div>
-                <FieldLabel>Изпращащо име (From Name)</FieldLabel>
+                <FieldLabel>Изпращащо иМЕ (From Name)</FieldLabel>
                 <TextInput
                   type="text"
                   placeholder="BoomCard"
@@ -648,13 +702,22 @@ export default function AdminSettingsSystemPage() {
                   onChange={(e) => setSenderName(e.target.value)}
                 />
                 <FieldHint>
-                  Показваното име до имейл адреса, напр. „BoomCard &lt;noreply@boomcard.bg&gt;".
+                  Показваното иМЕ до имейл адреса, напр. „BoomCard &lt;noreply@boomcard.bg&gt;".
                 </FieldHint>
+              </div>
+              <div>
+                <FieldLabel>Причина за промяната (по желание)</FieldLabel>
+                <TextInput
+                  type="text"
+                  placeholder="напр. Актуализиране на контактния имейл"
+                  value={contactNotes}
+                  onChange={(e) => setContactNotes(e.target.value)}
+                />
               </div>
             </FieldGroup>
           )}
           <CardFooter>
-            <AuditStamp>{formatAuditStamp(latestMeta(['support_email', 'support_phone', 'reply_to_email', 'from_email', 'sender_name'], meta))}</AuditStamp>
+            <AuditStamp>{formatAuditStamp(latestMeta(['office_email', 'support_email', 'support_phone', 'partner_reply_to_email', 'reply_to_email', 'from_email', 'sender_name'], meta))}</AuditStamp>
             <SaveBtn onClick={saveContact} disabled={contactMutation.isPending || isLoading}>
               {contactMutation.isPending ? 'Запазване…' : 'Запази'}
             </SaveBtn>
@@ -697,13 +760,30 @@ export default function AdminSettingsSystemPage() {
                   ))}
                 </SelectInput>
                 <FieldHint>
-                  Използва се за показване на дати в администраторския интерфейс и за планиране на нощни задачи (напр. обновяване на динамичен списък).
+                  Използва се за крайните срокове на сканирания (06:00 следващата сутрин) и за показване на дати.
                 </FieldHint>
+              </div>
+              <div>
+                <FieldLabel>Формат на дата</FieldLabel>
+                <SelectInput value={dateFormat} onChange={(e) => setDateFormat(e.target.value)}>
+                  <option value="DD.MM.YYYY">DD.MM.YYYY (по подразбиране)</option>
+                  <option value="YYYY-MM-DD">YYYY-MM-DD (ISO 8601)</option>
+                  <option value="MM/DD/YYYY">MM/DD/YYYY</option>
+                </SelectInput>
+                <FieldHint>Формат за показване на дати в интерфейса и експортирани отчети.</FieldHint>
+              </div>
+              <div>
+                <FieldLabel>Формат на числа</FieldLabel>
+                <SelectInput value={numberFormat} onChange={(e) => setNumberFormat(e.target.value)}>
+                  <option value="1 234,56">1 234,56 — запетая като десетичен разделител (по подразбиране)</option>
+                  <option value="1,234.56">1,234.56 — точка като десетичен разделител</option>
+                </SelectInput>
+                <FieldHint>Десетичен разделител за суми и проценти в отчети и потребителски интерфейс.</FieldHint>
               </div>
             </FieldGroup>
           )}
           <CardFooter>
-            <AuditStamp>{formatAuditStamp(latestMeta(['language', 'currency', 'timezone'], meta))}</AuditStamp>
+            <AuditStamp>{formatAuditStamp(latestMeta(['language', 'currency', 'timezone', 'date_format', 'number_format'], meta))}</AuditStamp>
             <SaveBtn onClick={saveLocalization} disabled={localizationMutation.isPending || isLoading}>
               {localizationMutation.isPending ? 'Запазване…' : 'Запази'}
             </SaveBtn>

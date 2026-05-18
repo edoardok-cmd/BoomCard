@@ -123,16 +123,15 @@ const EmptyVenue = styled.div`
 
 function pillTone(displayStatus: string): 'ok' | 'warn' | 'off' {
   if (displayStatus === 'ACTIVE') return 'ok';
-  if (displayStatus === 'PENDING') return 'warn';
+  if (displayStatus === 'PROCESSING') return 'warn';
   return 'off';
 }
 function statusLabel(s: string, isBg: boolean): string {
   switch (s) {
-    case 'ACTIVE':   return isBg ? 'Активен' : 'Active';
-    case 'PENDING':  return isBg ? 'В обработка' : 'Pending';
-    case 'INACTIVE': return isBg ? 'Неактивен' : 'Inactive';
-    case 'DAMAGED':  return isBg ? 'Повреден' : 'Damaged';
-    case 'RETIRED':  return isBg ? 'Изтеглен' : 'Retired';
+    case 'ACTIVE':      return isBg ? 'Активен' : 'Active';
+    case 'INACTIVE':    return isBg ? 'Неактивен' : 'Inactive';
+    case 'PROCESSING':  return isBg ? 'В обработка' : 'In progress';
+    case 'REPLACED':    return isBg ? 'Заменен' : 'Replaced';
     default: return s;
   }
 }

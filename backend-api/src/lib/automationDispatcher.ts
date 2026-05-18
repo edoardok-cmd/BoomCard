@@ -2,6 +2,7 @@ import { prisma } from './prisma';
 import { emailService } from '../services/email.service';
 import { sendWebPushToUser } from './webPush';
 import { logger } from '../utils/logger';
+import { getOrCreateUnsubscribeToken, buildUnsubscribeUrl, addUnsubscribeFooter } from './unsubscribeToken';
 
 /**
  * Context describing who triggered the automation event.
@@ -135,8 +136,25 @@ export async function fireAutomation(trigger: string, context: AutomationContext
         if (email && emailConsentGranted) {
           const useEn = preferredLanguage === 'en';
           const subject = (useEn && template.subjectEn) ? template.subjectEn : (template.subject ?? template.name);
-          const html = (useEn && template.bodyEn) ? template.bodyEn : (template.body?.trim() || `<p>${template.name}</p>`);
-          await emailService.sendEmail({ to: email, subject, html });
+          let html = (useEn && template.bodyEn) ? template.bodyEn : (template.body?.trim() || `<p>${template.name}</p>`);
+
+          // §12 — append unsubscribe footer + RFC 8058 List-Unsubscribe headers
+          if (resolvedUserId) {
+            const unsubToken = await getOrCreateUnsubscribeToken(resolvedUserId);
+            const unsubUrl = buildUnsubscribeUrl(unsubToken);
+            html = addUnsubscribeFooter(html, unsubUrl);
+            await emailService.sendEmail({
+              to: email,
+              subject,
+              html,
+              headers: {
+                'List-Unsubscribe': `<${unsubUrl}>`,
+                'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+              },
+            });
+          } else {
+            await emailService.sendEmail({ to: email, subject, html });
+          }
           dispatched = true;
         } else if (!emailConsentGranted) {
           logger.info(`[automation] "${automation.name}" email skipped — no email marketing consent`);

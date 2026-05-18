@@ -683,7 +683,8 @@ export function deriveCashbackEntryStatus(
     // Nightly expiry job marks expired entries CANCELLED; trial voids also use CANCELLED.
     return entry.cashbackExpiresAt && entry.cashbackExpiresAt <= now ? 'Expired' : 'Locked';
   }
-  if (entry.status === 'ANNULLED' || entry.status === 'FAILED') return 'Locked';
+  if (entry.status === 'ANNULLED') return 'Voided';
+  if (entry.status === 'FAILED') return 'Locked';
   if (entry.cashbackExpiresAt && entry.cashbackExpiresAt <= now) return 'Expired';
   if (latestWithdrawalAt && entry.createdAt <= latestWithdrawalAt) return 'Paid';
   return 'Cleared';

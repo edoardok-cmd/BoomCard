@@ -516,7 +516,7 @@
       "EXPIRED": "Expired",
       "INCOMPLETE": "Incomplete",
       "INCOMPLETE_EXPIRED": "Incomplete expired",
-      "PAUSED": "Paused"
+      "PAUSED": "Suspended"
     }
   },
   "errors": {

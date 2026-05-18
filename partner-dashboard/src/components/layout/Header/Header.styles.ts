@@ -2,9 +2,9 @@ import styled from 'styled-components';
 
 export const StyledHeader = styled.header`
   position: fixed;
-  /* Slide down when the impersonation banner mounts. ImpersonationBanner
-     publishes --imp-banner-h on <html>; absent it, top collapses to 0. */
-  top: var(--imp-banner-h, 0);
+  /* Slide down when the impersonation or partner-restriction banner mounts.
+     Each banner publishes its height as a CSS variable; absent, it's 0. */
+  top: calc(var(--imp-banner-h, 0px) + var(--partner-restriction-h, 0px));
   left: 0;
   right: 0;
   z-index: 1020;

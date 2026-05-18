@@ -516,7 +516,7 @@
       "EXPIRED": "Изтекъл",
       "INCOMPLETE": "Незавършен",
       "INCOMPLETE_EXPIRED": "Незавършен (изтекъл)",
-      "PAUSED": "На пауза"
+      "PAUSED": "Спрян"
     }
   },
   "errors": {

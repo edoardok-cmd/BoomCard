@@ -29,6 +29,7 @@ import { SubscriptionStatus } from '@prisma/client';
 import prisma from '../lib/prisma';
 import { logger } from '../utils/logger';
 import { emailService } from '../services/email.service';
+import { notificationService } from '../services/notification.service';
 
 const HOUR_MS = 60 * 60 * 1000;
 
@@ -147,14 +148,24 @@ export async function runRenewalReminders(): Promise<{
         continue;
       }
 
-      // TODO: wire to notificationService.notifyRenewalReminder when added —
-      // we want an in-app/push notification in addition to email for the
-      // auto-renew-OFF expiry cadence. For now email-only.
+      // Spec §8.3 — Email + in-app for the auto-renew-OFF expiry cadence.
       await emailService.sendEmail({
         to: user.email,
         subject: bucketSubject(bucket),
         html: bucketBody(user.firstName, bucket, sub.currentPeriodEnd),
       });
+
+      // In-app notification is non-fatal: a failure here must not prevent the
+      // bitmask update below, which guards against duplicate sends.
+      await notificationService
+        .notifySubscriptionExpiringSoon({
+          userId: sub.userId,
+          bucket,
+          periodEnd: sub.currentPeriodEnd,
+        })
+        .catch((err) =>
+          logger.error(`[renewal-reminders] in-app notification failed for sub ${sub.id}:`, err),
+        );
 
       // Read-modify-write the bitmask. Prisma has no `bitwiseOr` operator on
       // Int fields, and concurrent runs of this job are not expected (single

@@ -119,6 +119,9 @@ router.get(
 /**
  * GET /api/admin/control/disputes
  * Query: page, limit, status (MANUAL_REVIEW|PROCESSING), venueId
+ *
+ * @deprecated Receipt-based manual-review flow. Use /risk-queue (StickerScan fraud
+ * queue, spec §7.1) and /dispute-cases (Dispute ticket model, spec §7.3) instead.
  */
 router.get(
   '/disputes',
@@ -218,17 +221,20 @@ router.post(
 
 // Signal codes grouped by spec §7.2 category — shared by list and summary endpoints.
 // Both exact-match codes (from fraudDetection.service.ts → Receipt.fraudReasons) and
-// sticker-service codes (DUPLICATE_IMAGE_HASH, DUPLICATE_IMAGE_HASH_RACE from
-// sticker.service.ts → StickerScan.fraudReasons) are included. Prefix-payload codes
-// (MERCHANT_MISMATCH:..., RAPID_SCANNING:...) cannot be matched with Prisma hasSome
+// sticker-service codes (DUPLICATE_IMAGE_HASH, DAILY_LIMIT_EXCEEDED, RAPID_SUBMISSIONS, etc.
+// from sticker.service.ts → StickerScan.fraudReasons) are included.
+// Prefix-payload codes (MERCHANT_MISMATCH:...) cannot be matched with Prisma hasSome
 // and are therefore captured in the 'other' bucket via the knownCount diff.
 const RISK_SIGNAL_GROUPS = {
   duplicate:    ['DUPLICATE_IMAGE', 'DUPLICATE_RECEIPT', 'DUPLICATE_IMAGE_HASH',
                  'DUPLICATE_IMAGE_HASH_RACE', 'PERCEPTUAL_DUPLICATE_CLOSE', 'PERCEPTUAL_DUPLICATE_MODERATE'],
   qrMismatch:   ['GPS_FAR_FROM_VENUE', 'GPS_OUTSIDE_RANGE'],
+  // RAPID_SUBMISSIONS / DAILY_LIMIT_EXCEEDED / MONTHLY_LIMIT_EXCEEDED are exact codes written by
+  // performFraudCheck() in sticker.service.ts. hasSome can match them without a payload suffix.
   velocity:     ['RAPID_SUBMISSIONS', 'DAILY_LIMIT_EXCEEDED', 'MONTHLY_LIMIT_EXCEEDED'],
   receiptMatch: ['LOW_OCR_CONFIDENCE', 'MODERATE_OCR_CONFIDENCE', 'TEMPLATE_MISMATCH',
-                 'AMOUNT_MISMATCH', 'LARGE_AMOUNT_MISMATCH', 'AMOUNT_TOO_LOW', 'AMOUNT_EXCEEDS_VENUE_MAX'],
+                 'AMOUNT_MISMATCH', 'LARGE_AMOUNT_MISMATCH', 'AMOUNT_TOO_LOW', 'AMOUNT_EXCEEDS_VENUE_MAX',
+                 'HIGH_BILL_AMOUNT'],
   // Spec §7.2 "подозрително поведение" — device anomalies, blacklisted merchants, etc.
   suspicious:   ['MERCHANT_BLACKLISTED', 'NEW_DEVICE_MULTI_DEVICE_USER',
                  'RARE_DEVICE_MULTI_DEVICE_USER', 'UNUSUAL_TIME', 'NEW_DEVICE', 'FRAUD_CHECK_ERROR'],
@@ -433,7 +439,12 @@ router.post(
   requirePermission('control.risk.write'),
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const verifiedAmount = typeof req.body?.verifiedAmount === 'number' ? req.body.verifiedAmount : undefined;
-    const scan = await stickerService.approveScan(req.params.id, verifiedAmount !== undefined ? { verifiedAmount } : undefined);
+    const notes = typeof req.body?.notes === 'string' && req.body.notes.trim() ? req.body.notes.trim() : undefined;
+    const scan = await stickerService.approveScan(req.params.id, {
+      verifiedAmount,
+      adminUserId: req.user!.id,
+      notes,
+    });
 
     let fraudWarning: string | undefined;
     if (verifiedAmount !== undefined) {
@@ -455,7 +466,10 @@ router.post(
   '/risk-queue/:id/reject',
   requirePermission('control.risk.write'),
   asyncHandler(async (req: AuthRequest, res: Response) => {
-    const reason = typeof req.body?.reason === 'string' ? req.body.reason.trim() : 'Rejected by admin';
+    const reason = typeof req.body?.reason === 'string' ? req.body.reason.trim() : '';
+    if (!reason) {
+      return res.status(400).json({ error: 'reason is required' });
+    }
     // Spec §7.1 v1.1 — actorUserId threads into cashbackLifecycleService so the
     // Voided ghost record carries `voidedByUserId` for the audit trail.
     const scan = await stickerService.rejectScan(req.params.id, reason, req.user?.id ?? null);
@@ -494,9 +508,10 @@ router.post(
     // double-spend audit rows.
     const uniqueIds: string[] = Array.from(new Set(scanIds));
     const reason =
-      typeof req.body?.reason === 'string' && req.body.reason.trim()
-        ? req.body.reason.trim()
-        : 'Bulk rejected by admin';
+      typeof req.body?.reason === 'string' ? req.body.reason.trim() : '';
+    if (!reason) {
+      return res.status(400).json({ error: 'reason is required' });
+    }
     const result = await stickerService.bulkReject(uniqueIds, reason, req.user?.id ?? null);
     res.json({ success: true, data: result, message: 'Bulk reject completed' });
   })
@@ -556,11 +571,14 @@ router.get(
 
 /**
  * POST /api/admin/control/dispute-cases
- * Body: { subjectType?, receiptId?, subjectId?, userId?, notes?, ticketId? }
+ * Body: { subjectType?, receiptId?, subjectId?, userId?, notes?, ticketId?, assignedTo? }
  *
  * subjectType defaults to RECEIPT. When RECEIPT, receiptId is required and userId
  * is resolved from the receipt. For CASHBACK / PAYOUT / INVOICE, both subjectId
  * and userId are required (no DB FK validation — those models may not exist yet).
+ *
+ * assignedTo (optional): ID of the ADMIN or SUPER_ADMIN to assign. Defaults to the
+ * requesting admin when omitted.
  *
  * ticketId (optional, §11.6): links this dispute to a DISPUTE-type HelpTicket.
  * The ticket must exist and have requestType=DISPUTE; rejected otherwise.
@@ -576,6 +594,7 @@ router.post(
       userId: bodyUserId,
       notes,
       ticketId,
+      assignedTo: bodyAssignedTo,
     } = req.body as {
       subjectType?: string;
       receiptId?: string;
@@ -583,6 +602,7 @@ router.post(
       userId?: string;
       notes?: string;
       ticketId?: string;
+      assignedTo?: string;
     };
 
     // §11.6 — validate the linked ticket if provided
@@ -659,6 +679,22 @@ router.post(
       resolvedUserId = bodyUserId.trim();
     }
 
+    // §7.3 — resolve assignee: explicit override must exist and be an admin-level user.
+    let resolvedAssignedTo: string = req.user!.id;
+    if (bodyAssignedTo?.trim()) {
+      const assignee = await prisma.user.findUnique({
+        where: { id: bodyAssignedTo.trim() },
+        select: { id: true, role: true },
+      });
+      if (!assignee) {
+        return res.status(404).json({ success: false, error: 'Assignee not found' });
+      }
+      if (assignee.role !== 'ADMIN' && assignee.role !== 'SUPER_ADMIN') {
+        return res.status(400).json({ success: false, error: 'assignedTo must be an ADMIN or SUPER_ADMIN user' });
+      }
+      resolvedAssignedTo = assignee.id;
+    }
+
     const disputeCase = await prisma.$transaction(async (tx) => {
       const created = await tx.dispute.create({
         data: {
@@ -666,7 +702,7 @@ router.post(
           receiptId: resolvedReceiptId ?? null,
           subjectId: subjectType !== 'RECEIPT' ? subjectId!.trim() : null,
           userId: resolvedUserId,
-          assignedTo: req.user!.id,
+          assignedTo: resolvedAssignedTo,
           status: 'OPEN',
           ticketId: ticketId?.trim() || null,
         },
@@ -777,7 +813,25 @@ router.patch(
       data.status = status as DisputeStatus;
     }
 
-    if (assignedTo !== undefined) data.assignedTo = assignedTo || null;
+    if (assignedTo !== undefined) {
+      if (assignedTo) {
+        // §7.3 — assignee must exist and be an admin-level user.
+        const assignee = await prisma.user.findUnique({
+          where: { id: assignedTo },
+          select: { id: true, role: true },
+        });
+        if (!assignee) {
+          return res.status(404).json({ success: false, error: 'Assignee not found' });
+        }
+        if (assignee.role !== 'ADMIN' && assignee.role !== 'SUPER_ADMIN') {
+          return res.status(400).json({ success: false, error: 'assignedTo must be an ADMIN or SUPER_ADMIN user' });
+        }
+      }
+      data.assignedTo = assignedTo || null;
+    }
+    // decision="" or decision=null clears a previously-stored draft decision. This is intentional:
+    // admins can retract a draft while still in IN_REVIEW. The RESOLVED guard above already
+    // blocks transitions that would leave the case without a decision.
     if (decision !== undefined) data.decision = decision || null;
 
     if (Object.keys(data).length === 0) {

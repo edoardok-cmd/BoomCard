@@ -196,6 +196,14 @@ router.post(
     }
     try {
       const result = await consumeActivationToken(token, password ? { password } : {});
+
+      // Spec §8.3 — "Активиран партньор: Незабавно след клик на activation link."
+      // Fire AFTER the token is consumed so the partner record is fully active.
+      fireAutomation('partner.approved', {
+        partnerId: result.partnerId,
+        recipientName: result.businessName,
+      }).catch((err2) => logger.error('[automation] partner.approved fire failed (activate):', err2));
+
       return res.json({
         success: true,
         message: 'Partner activated. You may now log in.',
@@ -1089,10 +1097,9 @@ router.post(
       dashboardUrl: process.env.APP_URL || 'https://mobile.boomcard.bg',
     }, lang).catch((err) => logger.error('Failed to send welcome email:', err));
 
-    fireAutomation('user.signup', { userId: user.id })
-      .catch((err) => logger.error('[automation] user.signup failed:', err));
-    fireAutomation('card.issued', { userId: user.id })
-      .catch((err) => logger.error('[automation] card.issued failed:', err));
+    // Transactional welcome email is sent above via emailService.sendWelcomeEmail().
+    // user.signup / card.issued automation triggers are not wired to active templates
+    // (marketing welcome sequences are opt-in and managed via adminMarketing defaults).
 
     logger.info(`Payment-first onboarding completed: user ${user.id} created for order ${pending.payseraOrderId}`);
 

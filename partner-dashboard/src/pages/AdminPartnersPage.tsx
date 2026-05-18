@@ -168,6 +168,7 @@ const StatusBadge = styled.span<{ $status: string }>`
   display: inline-block;
   background: ${({ $status }) =>
     $status === 'ACTIVE' ? '#dcfce7' :
+    $status === 'INACTIVE' ? '#fef9c3' :
     $status === 'PENDING' ? '#fef3c7' :
     $status === 'PAUSED' ? '#dbeafe' :
     $status === 'SUSPENDED' ? '#fee2e2' :
@@ -176,6 +177,7 @@ const StatusBadge = styled.span<{ $status: string }>`
     '#f3f4f6'};
   color: ${({ $status }) =>
     $status === 'ACTIVE' ? '#166534' :
+    $status === 'INACTIVE' ? '#854d0e' :
     $status === 'PENDING' ? '#92400e' :
     $status === 'PAUSED' ? '#1e40af' :
     $status === 'SUSPENDED' ? '#991b1b' :
@@ -774,6 +776,7 @@ const PARTNER_CATEGORIES = [
 // ─── Partner status labels ────────────────────────────────────────────────────
 const PARTNER_STATUS_LABELS: Record<string, { en: string; bg: string }> = {
   ACTIVE:    { en: 'Active',    bg: 'Активен' },
+  INACTIVE:  { en: 'Inactive',  bg: 'Неактивен' },
   PAUSED:    { en: 'Paused',    bg: 'Пауза' },
   SUSPENDED: { en: 'Suspended', bg: 'Спрян' },
   ARCHIVED:  { en: 'Archived',  bg: 'Архивиран' },
@@ -1805,6 +1808,7 @@ const AdminPartnersPage: React.FC = () => {
         <FilterSelect value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
           <option value="">{language === 'bg' ? 'Всички статуси' : 'All statuses'}</option>
           <option value="ACTIVE">{language === 'bg' ? 'Активен' : 'Active'}</option>
+          <option value="INACTIVE">{language === 'bg' ? 'Неактивен' : 'Inactive'}</option>
           <option value="PAUSED">{language === 'bg' ? 'Пауза' : 'Paused'}</option>
           <option value="SUSPENDED">{language === 'bg' ? 'Спрян' : 'Suspended'}</option>
           <option value="ARCHIVED">{language === 'bg' ? 'Архивиран' : 'Archived'}</option>
@@ -2445,6 +2449,7 @@ const AdminPartnersPage: React.FC = () => {
                       onChange={e => setEditForm(prev => ({ ...prev, status: e.target.value as PartnerStatus }))}
                     >
                       <option value="ACTIVE">{language === 'bg' ? 'Активен' : 'Active'}</option>
+                      <option value="INACTIVE">{language === 'bg' ? 'Неактивен' : 'Inactive'}</option>
                       <option value="PAUSED">{language === 'bg' ? 'Пауза' : 'Paused'}</option>
                       <option value="SUSPENDED">{language === 'bg' ? 'Спрян' : 'Suspended'}</option>
                       <option value="ARCHIVED">{language === 'bg' ? 'Архивиран' : 'Archived'}</option>

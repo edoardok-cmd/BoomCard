@@ -192,13 +192,21 @@ const ALLOWED_KEYS = new Set([
   'max_cashback_per_month',
   'support_email',
   'support_phone',
-  // spec §9: системни имейли, език, валута, timezone, reply-to настройки
+  // spec §9.5 — three-address email model:
+  //   office_email       = office@boomcard.bg  (inbound partner, reply-to for partner emails)
+  //   support_email      = support@boomcard.bg (inbound subscriber/admin support)
+  //   from_email         = noreply@boomcard.bg (outbound transactional, no replies)
+  'office_email',
   'reply_to_email',
+  'partner_reply_to_email',
   'from_email',
   'sender_name',
+  // spec §9.5 — локализация
   'language',
   'currency',
   'timezone',
+  'date_format',
+  'number_format',
 ]);
 
 /**
@@ -276,14 +284,50 @@ router.put(
 
     // Simple RFC 5321-compatible email check (not exhaustive, but catches common mistakes).
     const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const EMAIL_KEYS = new Set(['from_email', 'reply_to_email', 'partner_reply_to_email', 'office_email', 'support_email']);
     for (const [key, value] of entries) {
-      if ((key === 'from_email' || key === 'reply_to_email' || key === 'support_email') && value !== '') {
+      if (EMAIL_KEYS.has(key) && value !== '') {
         if (!EMAIL_RE.test(value)) {
           return res.status(400).json({
             success: false,
             error: `${key} must be a valid email address`,
           });
         }
+      }
+    }
+
+    // Timezone must be a valid IANA timezone name.
+    for (const [key, value] of entries) {
+      if (key === 'timezone' && value !== '') {
+        try {
+          Intl.DateTimeFormat(undefined, { timeZone: value });
+        } catch {
+          return res.status(400).json({
+            success: false,
+            error: `timezone "${value}" is not a valid IANA timezone name (e.g. "Europe/Sofia")`,
+          });
+        }
+      }
+    }
+
+    const ALLOWED_DATE_FORMATS = new Set(['DD.MM.YYYY', 'MM/DD/YYYY', 'YYYY-MM-DD']);
+    // Spec §9.5: store the display-example string so admins see exactly what the
+    // format looks like in the DB and audit log.
+    // '1 234,56' → bg-BG locale  (space thousands, comma decimal)
+    // '1,234.56' → en-US locale  (comma thousands, dot decimal)
+    const ALLOWED_NUMBER_FORMATS = new Set(['1 234,56', '1,234.56']);
+    for (const [key, value] of entries) {
+      if (key === 'date_format' && value !== '' && !ALLOWED_DATE_FORMATS.has(value)) {
+        return res.status(400).json({
+          success: false,
+          error: `date_format must be one of: ${[...ALLOWED_DATE_FORMATS].join(', ')}`,
+        });
+      }
+      if (key === 'number_format' && value !== '' && !ALLOWED_NUMBER_FORMATS.has(value)) {
+        return res.status(400).json({
+          success: false,
+          error: `number_format must be one of: ${[...ALLOWED_NUMBER_FORMATS].join(', ')}`,
+        });
       }
     }
 
@@ -313,6 +357,8 @@ router.put(
       'offer_validity_days',
       'daily_scan_limit_default',
       'max_cashback_per_month',
+      'date_format',
+      'number_format',
     ]);
     for (const [key, value] of entries) {
       if (key === 'maintenance_mode' && value !== 'true' && value !== 'false') {
@@ -755,9 +801,12 @@ router.delete(
 
 /**
  * GET /api/admin/settings/fraud-rules/:id/overrides
+ * Spec §7.4: SUPER_ADMIN only — override records expose which specific users/partners
+ * have fraud-rule exceptions, which is more sensitive than rule configuration itself.
  */
 router.get(
   '/fraud-rules/:id/overrides',
+  authorize('SUPER_ADMIN'),
   requirePermission('settings.read'),
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const rule = await prisma.fraudRule.findUnique({ where: { id: req.params.id } });

@@ -9,6 +9,7 @@ import {
   PartnerDetail,
   PartnerNote,
   AuditEntry,
+  OnboardingReadiness,
 } from '../../services/adminPartnerRequests.service';
 import { getCategoryName } from '../../types/categories.types';
 
@@ -227,6 +228,16 @@ export default function PartnerRequestDrawer({ partnerId, onClose, canWrite, onA
     queryKey: ['partner-activation-links', partnerId],
     queryFn: () => adminPartnerRequestsService.getActivationLinks(partnerId!),
     enabled: !!partnerId && !!detailData?.partner && detailData.partner.status === 'ACTIVE' && !detailData.partner.verifiedAt,
+    staleTime: 30_000,
+  });
+
+  // Spec §5.2 — onboarding readiness gates: only relevant during ONBOARDING and ODOBRENA stages
+  const showReadiness = !!detailData?.partner &&
+    (detailData.partner.requestStatus === 'ONBOARDING' || detailData.partner.requestStatus === 'ODOBRENA');
+  const { data: readinessData } = useQuery<OnboardingReadiness>({
+    queryKey: ['partner-onboarding-readiness', partnerId],
+    queryFn: () => adminPartnerRequestsService.getOnboardingReadiness(partnerId!),
+    enabled: !!partnerId && showReadiness,
     staleTime: 30_000,
   });
 
@@ -474,6 +485,62 @@ export default function PartnerRequestDrawer({ partnerId, onClose, canWrite, onA
                   </FieldValue>
                 </Field>
               )}
+              {/* Spec §5.2 — onboarding readiness gates (shown during ONBOARDING and ODOBRENA) */}
+              {showReadiness && (
+                <Field>
+                  <FieldLabel>{isEn ? 'Onboarding readiness' : 'Готовност за активиране'}</FieldLabel>
+                  <FieldValue>
+                    {!readinessData ? (
+                      <span style={{ color: palette.textSubtle, fontSize: '0.8125rem' }}>…</span>
+                    ) : (() => {
+                      const { venueCount, venuesWithReceipts, stickerConfigCount } = readinessData;
+                      const locOk  = venueCount > 0;
+                      const recOk  = venueCount > 0 && venuesWithReceipts >= venueCount;
+                      const qrOk   = venueCount > 0 && stickerConfigCount >= venueCount;
+                      const allOk  = locOk && recOk && qrOk;
+                      const dot = (ok: boolean) => (
+                        <span style={{
+                          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                          width: 14, height: 14, borderRadius: '50%',
+                          background: ok ? palette.successSoft : palette.warningSoft,
+                          color: ok ? palette.success : palette.warning,
+                          fontSize: '0.625rem', fontWeight: 800, flexShrink: 0,
+                        }}>{ok ? '✓' : '!'}</span>
+                      );
+                      return (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+                          <div style={{
+                            display: 'inline-flex', alignItems: 'center', gap: '0.375rem',
+                            padding: '0.2rem 0.625rem', borderRadius: '9999px', marginBottom: '0.25rem',
+                            fontSize: '0.75rem', fontWeight: 700,
+                            background: allOk ? palette.successSoft : palette.warningSoft,
+                            color: allOk ? palette.success : palette.warning,
+                          }}>
+                            {allOk
+                              ? (isEn ? '✓ Ready to approve' : '✓ Готов за одобрение')
+                              : (isEn ? '⚠ Not ready' : '⚠ Не е готов')}
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', fontSize: '0.75rem', color: palette.textMuted }}>
+                            {dot(locOk)}
+                            {isEn ? 'Venues' : 'Локации'}: <strong>{venueCount}</strong>
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', fontSize: '0.75rem', color: palette.textMuted }}>
+                            {dot(recOk)}
+                            {isEn ? 'Receipts' : 'Касови бележки'}: <strong>{venuesWithReceipts}</strong>
+                            {venueCount > 0 && <span style={{ color: palette.textSubtle }}>/{venueCount} {isEn ? 'venues' : 'обекта'}</span>}
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', fontSize: '0.75rem', color: palette.textMuted }}>
+                            {dot(qrOk)}
+                            {isEn ? 'QR configs' : 'QR настройки'}: <strong>{stickerConfigCount}</strong>
+                            {venueCount > 0 && <span style={{ color: palette.textSubtle }}>/{venueCount} {isEn ? 'venues' : 'обекта'}</span>}
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </FieldValue>
+                </Field>
+              )}
+
               {/* Spec §5.2 — contract tracking */}
               {(() => {
                 const f = partner.features as Record<string, unknown> | null | undefined;

@@ -383,6 +383,8 @@ const StatusBadge = styled.span<{ $status: SubscriptionStatus }>`
       case 'PAST_DUE':
       case 'UNPAID':
         return `background: ${palette.warningSoft}; color: ${palette.warning};`;
+      case 'FAILED_PAYMENT':
+        return `background: ${palette.dangerSoft}; color: ${palette.danger};`;
       case 'INCOMPLETE':
         return `background: ${palette.infoSoft}; color: ${palette.info};`;
       case 'INCOMPLETE_EXPIRED':
@@ -558,6 +560,7 @@ const STATUS_VALUES: Array<SubscriptionStatus | ''> = [
   'ACTIVE',
   'TRIALING',
   'PAST_DUE',
+  'FAILED_PAYMENT',
   'UNPAID',
   'CANCELLED',
   'EXPIRED',
@@ -600,7 +603,7 @@ export default function AdminSubscriptionsPage() {
   // Allow deep-links from the alerts page to preselect a subscription status.
   const [searchParams] = useSearchParams();
   const VALID_STATUSES: SubscriptionStatus[] = [
-    'ACTIVE', 'TRIALING', 'PAST_DUE', 'UNPAID',
+    'ACTIVE', 'TRIALING', 'PAST_DUE', 'FAILED_PAYMENT', 'UNPAID',
     'PAUSED', 'CANCELLED', 'EXPIRED', 'INCOMPLETE', 'INCOMPLETE_EXPIRED',
   ];
   const initialStatusParam = searchParams.get('status');

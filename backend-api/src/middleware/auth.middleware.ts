@@ -85,7 +85,9 @@ export const authorize = (...roles: string[]) => {
 
 // Fine-grained permission guard. Falls back to allowing SUPER_ADMIN unconditionally
 // so existing admin routes continue to work before permissions are fully seeded.
-export const requirePermission = (key: string) => {
+// Accepts a single key or an array of keys (OR logic — user needs any one of them).
+export const requirePermission = (key: string | string[]) => {
+  const keys = Array.isArray(key) ? key : [key];
   return (req: AuthRequest, res: Response, next: NextFunction) => {
     if (!req.user) {
       return next(new AppError('Not authenticated', 401));
@@ -95,7 +97,8 @@ export const requirePermission = (key: string) => {
       return next();
     }
 
-    if (!req.user.permissions || !req.user.permissions.includes(key)) {
+    const hasAny = keys.some((k) => req.user!.permissions?.includes(k));
+    if (!hasAny) {
       return next(new AppError('Insufficient permissions', 403));
     }
 

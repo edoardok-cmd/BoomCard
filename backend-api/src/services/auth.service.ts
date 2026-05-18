@@ -624,6 +624,10 @@ export class AuthService {
       throw new AppError('Account has been suspended', 403);
     }
 
+    // Set by the PARTNER block below when status is SUSPENDED/PAUSED; included
+    // in the login response so the frontend can show a warning banner.
+    let partnerRestriction: 'SUSPENDED' | null = null;
+
     if (user.role === 'PARTNER') {
       if (!user.emailVerified) {
         prisma.loginHistory.create({ data: { userId: user.id, ip, userAgent, success: false, failReason: 'email_unverified' } }).catch((err) => logger.error('loginHistory.create failed', { err }));
@@ -635,43 +639,33 @@ export class AuthService {
       }
 
       // Spec §5.3 v1.1 — Partner status matrix gates login.
+      //
       //   ACTIVE    + verifiedAt → full login
       //   INACTIVE  + verifiedAt → login permitted (read-only enforced downstream)
-      //   ACTIVE    + verifiedAt=null  → block: awaiting activation (link not clicked)
-      //   INACTIVE  + verifiedAt=null  → block: awaiting activation
-      //   SUSPENDED / PAUSED           → block: temporarily suspended
-      //   ARCHIVED                     → block: account archived
+      //   SUSPENDED/PAUSED + verifiedAt → login permitted with restriction flag
+      //                                   (read-only enforced downstream;
+      //                                    transaction-view + support retained per spec)
+      //   ACTIVE/INACTIVE/SUSPENDED + verifiedAt=null → block: awaiting activation
+      //   ARCHIVED                     → block: account archived (no operational access)
       //   PENDING                      → block: pipeline not finished
       //   REJECTED                     → block: rejected
       //
-      // The verifiedAt-null block runs FIRST. Deliberate trade-off, not an
-      // obvious-right answer:
-      //   PRO: a partner suspended-before-activation still sees "check your
-      //        email", which is the only path forward — the suspension is
-      //        meaningless until they ever had a working account.
-      //   CON: a partner archived-without-activating sees "check your email"
-      //        even though there is no path forward. We accept this because
-      //        the "archived without activating" cohort is empirically empty
-      //        (status only moves to ARCHIVED via /partner-status, which
-      //        requires status to have first been ACTIVE — and the activation
-      //        gate prevented login during that ACTIVE phase).
-      // Future status additions inherit the verifiedAt-null block by default.
+      // verifiedAt-null block runs FIRST so a suspended-before-activation partner
+      // sees "check your email" (the only path forward). Partners reach ARCHIVED
+      // only through /partner-status which requires prior ACTIVE status, so the
+      // "archived without ever activating" cohort is empirically empty.
       const partner = await prisma.partner.findUnique({
         where: { userId: user.id },
         select: { status: true, verifiedAt: true },
       });
-      const LOGIN_ALLOWED_WITHOUT_VERIFIED_AT = new Set<string>([]); // intentionally empty
-      if (
-        partner &&
-        !partner.verifiedAt &&
-        !LOGIN_ALLOWED_WITHOUT_VERIFIED_AT.has(partner.status)
-      ) {
+      // Block login for any partner who has never activated (regardless of status).
+      // ARCHIVED and REJECTED are excluded from the verifiedAt-null path because
+      // they have explicit blocks below, but in practice verifiedAt is always null
+      // for pre-activation records of those statuses too.
+      const BLOCKED_WITHOUT_VERIFIED_AT = new Set(['ACTIVE', 'INACTIVE', 'SUSPENDED', 'PAUSED', 'PENDING']);
+      if (partner && !partner.verifiedAt && BLOCKED_WITHOUT_VERIFIED_AT.has(partner.status)) {
         prisma.loginHistory.create({ data: { userId: user.id, ip, userAgent, success: false, failReason: 'awaiting_activation' } }).catch((err) => logger.error('loginHistory.create failed', { err }));
         throw new AppError('Вашият партньорски акаунт очаква активиране. Моля проверете имейла си за активационен линк.', 403);
-      }
-      if (partner?.status === 'SUSPENDED' || partner?.status === 'PAUSED') {
-        prisma.loginHistory.create({ data: { userId: user.id, ip, userAgent, success: false, failReason: 'partner_suspended' } }).catch((err) => logger.error('loginHistory.create failed', { err }));
-        throw new AppError('Вашият партньорски акаунт е временно спрян. Свържете се с office@boomcard.bg.', 403);
       }
       if (partner?.status === 'ARCHIVED') {
         prisma.loginHistory.create({ data: { userId: user.id, ip, userAgent, success: false, failReason: 'partner_archived' } }).catch((err) => logger.error('loginHistory.create failed', { err }));
@@ -680,6 +674,14 @@ export class AuthService {
       if (partner?.status === 'REJECTED') {
         prisma.loginHistory.create({ data: { userId: user.id, ip, userAgent, success: false, failReason: 'partner_rejected' } }).catch((err) => logger.error('loginHistory.create failed', { err }));
         throw new AppError('Вашата кандидатура за партньорство е отказана.', 403);
+      }
+      // SUSPENDED/PAUSED with verifiedAt set: login allowed with restriction.
+      // The read-only gate in partnerStatus.middleware blocks write ops;
+      // support-ticket routes intentionally do not mount that middleware so the
+      // partner retains transaction-view and support access per §5.3 matrix.
+      if (partner?.status === 'SUSPENDED' || partner?.status === 'PAUSED') {
+        partnerRestriction = 'SUSPENDED'; // signals limited access to the client
+        // fall through to token issuance — restriction flag attached at return
       }
       // INACTIVE / ACTIVE with verifiedAt set: login permitted (read-only
       // operational mode for INACTIVE per spec). The read-only enforcement
@@ -754,6 +756,9 @@ export class AuthService {
       },
       ...tokens,
       ...(switchableAccounts ? { switchableAccounts } : {}),
+      // Spec §5.3: SUSPENDED partners log in with limited (read-only) access.
+      // Frontend uses this to show a warning banner on the dashboard.
+      ...(partnerRestriction ? { partnerRestriction } : {}),
     };
   }
 
@@ -1448,6 +1453,45 @@ export class AuthService {
         logger.error(`Failed to send password reset email to ${user.email}`);
       } else {
         logger.info(`Password reset OTP sent to ${user.email} (account ${user.id})`);
+      }
+
+      // Spec §9.5 — log each admin reset request and fire an alert when repeated.
+      if (user.role === 'ADMIN' || user.role === 'SUPER_ADMIN') {
+        await prisma.linkResendLog.create({
+          data: { linkType: 'PASSWORD_RESET', subjectId: user.id, actorId: user.id },
+        }).catch((err: unknown) => logger.error('[forgotPassword] linkResendLog.create failed', err));
+
+        // Count resets in the last 24 h for this admin account.
+        const ALERT_WINDOW_HOURS = 24;
+        const ALERT_THRESHOLD    = 3;
+        const windowStart = new Date(Date.now() - ALERT_WINDOW_HOURS * 60 * 60 * 1000);
+        const recentCount = await prisma.linkResendLog.count({
+          where: {
+            linkType: 'PASSWORD_RESET',
+            subjectId: user.id,
+            createdAt: { gte: windowStart },
+          },
+        }).catch(() => 0);
+
+        // Fire exactly once when threshold is first crossed; subsequent resets
+        // in the same window don't re-alert (noise suppression).
+        if (recentCount === ALERT_THRESHOLD) {
+          // Notify all SUPER_ADMINs.
+          const superAdmins = await prisma.user.findMany({
+            where: { role: 'SUPER_ADMIN', status: 'ACTIVE' },
+            select: { email: true },
+          }).catch(() => [] as { email: string }[]);
+
+          if (superAdmins.length > 0) {
+            emailService.sendAdminPasswordResetAlert({
+              targetEmail: user.email,
+              targetName:  `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim() || user.email,
+              resetCount:  recentCount,
+              windowHours: ALERT_WINDOW_HOURS,
+              recipientEmails: superAdmins.map((a) => a.email),
+            }).catch((err: unknown) => logger.error('[forgotPassword] alert email failed', err));
+          }
+        }
       }
     }
 

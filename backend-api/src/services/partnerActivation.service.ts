@@ -132,7 +132,7 @@ ${opts.activationUrl}
 Линкът е валиден до ${expiryStr} (${ACTIVATION_TTL_HOURS} часа).
 
 — BoomCard`;
-  return emailService.sendEmail({ to: opts.email, subject, html, text });
+  return emailService.sendEmail({ to: opts.email, subject, html, text, audience: 'partner' });
 }
 
 /**

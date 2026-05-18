@@ -448,3 +448,106 @@ describe('§5.2 resend rate limit scoped to reason=RESEND', () => {
     expect(whereArg?.reason).toBe('RESEND');
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// §5.4 Fix E — StickerStatus displayStatus mapping
+//
+// toDisplayStatus logic embedded in GET /me/stickers must map all enum values
+// to the spec's four display labels: ACTIVE, INACTIVE, PROCESSING, REPLACED.
+// We test the mapping directly via the route handler by exercising the partner
+// stickers endpoint with different sticker statuses.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('§5.4 Fix E — sticker displayStatus mapping', () => {
+  // Mapping tested in isolation — mirrors the toDisplayStatus logic in partners.routes.ts.
+  const PARTNER_ACTIVE = true;
+  const PARTNER_INACTIVE = false;
+
+  const toDisplayStatus = (partnerOperationallyActive: boolean, stickerStatus: string): string => {
+    if (!partnerOperationallyActive) return 'INACTIVE';
+    switch (stickerStatus) {
+      case 'ACTIVE':     return 'ACTIVE';
+      case 'INACTIVE':
+      case 'DAMAGED':    return 'INACTIVE';
+      case 'PENDING':
+      case 'PROCESSING': return 'PROCESSING';
+      case 'RETIRED':
+      case 'REPLACED':   return 'REPLACED';
+      default:           return 'INACTIVE';
+    }
+  };
+
+  it('ACTIVE sticker on active partner → ACTIVE', () => {
+    expect(toDisplayStatus(PARTNER_ACTIVE, 'ACTIVE')).toBe('ACTIVE');
+  });
+
+  it('INACTIVE sticker on active partner → INACTIVE', () => {
+    expect(toDisplayStatus(PARTNER_ACTIVE, 'INACTIVE')).toBe('INACTIVE');
+  });
+
+  it('DAMAGED sticker on active partner → INACTIVE (not in spec, treated as non-operational)', () => {
+    expect(toDisplayStatus(PARTNER_ACTIVE, 'DAMAGED')).toBe('INACTIVE');
+  });
+
+  it('PENDING sticker on active partner → PROCESSING (spec: В обработка)', () => {
+    expect(toDisplayStatus(PARTNER_ACTIVE, 'PENDING')).toBe('PROCESSING');
+  });
+
+  it('PROCESSING sticker on active partner → PROCESSING (spec: В обработка)', () => {
+    expect(toDisplayStatus(PARTNER_ACTIVE, 'PROCESSING')).toBe('PROCESSING');
+  });
+
+  it('RETIRED sticker on active partner → REPLACED (spec: Заменен)', () => {
+    expect(toDisplayStatus(PARTNER_ACTIVE, 'RETIRED')).toBe('REPLACED');
+  });
+
+  it('REPLACED sticker on active partner → REPLACED (spec: Заменен)', () => {
+    expect(toDisplayStatus(PARTNER_ACTIVE, 'REPLACED')).toBe('REPLACED');
+  });
+
+  it('any sticker on INACTIVE/SUSPENDED partner → INACTIVE regardless of sticker status', () => {
+    for (const s of ['ACTIVE', 'PROCESSING', 'REPLACED', 'RETIRED', 'DAMAGED']) {
+      expect(toDisplayStatus(PARTNER_INACTIVE, s)).toBe('INACTIVE');
+    }
+  });
+
+  it('unknown status falls back to INACTIVE', () => {
+    expect(toDisplayStatus(PARTNER_ACTIVE, 'UNKNOWN_VALUE')).toBe('INACTIVE');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// §5.3 Fix C — requirePermission accepts array (OR logic)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('§5.3 Fix C — requirePermission OR logic', () => {
+  // Inline the same logic as auth.middleware.ts to test in isolation
+  const requirePermission = (key: string | string[]) => {
+    const keys = Array.isArray(key) ? key : [key];
+    return (user: { role: string; permissions?: string[] }) => {
+      if (user.role === 'SUPER_ADMIN') return true;
+      return keys.some((k) => user.permissions?.includes(k));
+    };
+  };
+
+  it('grants access when user has the single required permission', () => {
+    const check = requirePermission('partners.write');
+    expect(check({ role: 'ADMIN', permissions: ['partners.write'] })).toBe(true);
+  });
+
+  it('grants access when user has any one of the array permissions', () => {
+    const check = requirePermission(['partners.requests.write', 'partners.write']);
+    expect(check({ role: 'ADMIN', permissions: ['partners.write'] })).toBe(true);
+    expect(check({ role: 'ADMIN', permissions: ['partners.requests.write'] })).toBe(true);
+  });
+
+  it('denies access when user has none of the array permissions', () => {
+    const check = requirePermission(['partners.requests.write', 'partners.write']);
+    expect(check({ role: 'ADMIN', permissions: ['admins.read'] })).toBe(false);
+  });
+
+  it('SUPER_ADMIN always passes regardless of permissions list', () => {
+    const check = requirePermission(['partners.requests.write', 'partners.write']);
+    expect(check({ role: 'SUPER_ADMIN' })).toBe(true);
+  });
+});

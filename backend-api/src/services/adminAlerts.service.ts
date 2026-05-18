@@ -2,7 +2,9 @@ import { ScanStatus } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 
 // Spec 3.2: Критични / Оперативни / Информационни
-export type AlertTier = 'CRITICAL' | 'OPERATIONAL' | 'INFORMATIONAL';
+// Lowercase matches the frontend type and the wire values emitted below so that
+// the frontend's normalizeTier() guard is purely defensive rather than load-bearing.
+export type AlertTier = 'critical' | 'operational' | 'informational';
 
 export interface AlertItem {
   id: string;
@@ -33,9 +35,10 @@ export interface AdminAlertsResult {
 //   1. fraudDetection.service.ts — exact-match codes (DUPLICATE_IMAGE, etc.).
 //      Also written to Receipt rows for the legacy flow.
 //   2. sticker.service.ts validateScan / merchant-mismatch enrichment — codes
-//      with payload suffixes ("MERCHANT_MISMATCH: receipt=… vs venue=…",
-//      "RAPID_SCANNING: 5 scans in 30 minutes", "MAX_SCANS_PER_DAY: 12/10").
+//      with payload suffixes ("MERCHANT_MISMATCH: receipt=… vs venue=…").
 //      hasSome cannot match these — they need a prefix probe via raw SQL.
+//      Velocity/amount codes (RAPID_SUBMISSIONS, DAILY_LIMIT_EXCEEDED, etc.)
+//      are now exact strings and are handled by hasSome in SUSPICIOUS_EXACT_CODES.
 //
 // Spec §7.2 explicitly cites: duplicate detection, QR/receipt mismatch,
 // "много транзакции за кратко време" (rapid velocity), странни IBAN промени,
@@ -57,10 +60,12 @@ export const SUSPICIOUS_EXACT_CODES = [
   'AMOUNT_MISMATCH',
   'LARGE_AMOUNT_MISMATCH',
   'GPS_FAR_FROM_VENUE',
-  // velocity (fraudDetection)
+  // velocity (sticker.service.ts + fraudDetection.service.ts — exact codes, no suffix)
   'RAPID_SUBMISSIONS',
   'DAILY_LIMIT_EXCEEDED',
   'MONTHLY_LIMIT_EXCEEDED',
+  // suspicious behaviour (sticker.service.ts — exact code, no suffix)
+  'HIGH_BILL_AMOUNT',
   // merchant trust
   'MERCHANT_BLACKLISTED',
   // device anomalies (multi-device only — single NEW_DEVICE is too noisy)
@@ -68,16 +73,13 @@ export const SUSPICIOUS_EXACT_CODES = [
   'RARE_DEVICE_MULTI_DEVICE_USER',
 ] as const;
 
-// Sticker-flow codes that include payload suffixes — matched via prefix in raw SQL.
-// HIGH_BILL_AMOUNT (sticker.service.ts:1463, 15 fraud points) is the canonical
-// "подозрително поведение" lone signal from spec §7.2: 15 pts on its own places
-// the scan in AUTO_0_30, so it would otherwise never surface in any alert.
+// Sticker-flow codes that include a payload suffix — matched via prefix in raw SQL
+// because Prisma hasSome() cannot do prefix matching on TEXT[] elements.
+// Only MERCHANT_MISMATCH remains here: sticker.service.ts writes it as
+// "MERCHANT_MISMATCH: receipt=… vs venue=…". All velocity/amount codes are now
+// exact strings and live in SUSPICIOUS_EXACT_CODES above.
 export const SUSPICIOUS_PREFIX_CODES = [
   'MERCHANT_MISMATCH',
-  'RAPID_SCANNING',
-  'MAX_SCANS_PER_DAY',
-  'MAX_SCANS_PER_MONTH',
-  'HIGH_BILL_AMOUNT',
 ] as const;
 
 // Statuses that mean "still requires admin attention" — used by every risk-tier
@@ -224,8 +226,10 @@ export async function getAlerts(): Promise<AdminAlertsResult> {
     // payout requests (not CASHBACK_CREDIT or ADJUSTMENT rows that happen to be
     // large). Matches the link destination (/admin/finance/payouts) and the alert
     // title "Чакащи изплащания над лимита".
+    // WITHDRAWAL amounts are stored as negative values (wallet.service.ts stores
+    // `amount: -payoutAmount`), so "≥ threshold BGN" means `amount ≤ -threshold`.
     prisma.walletTransaction.count({
-      where: { type: 'WITHDRAWAL', status: 'PENDING', amount: { gte: LARGE_TX_THRESHOLD } },
+      where: { type: 'WITHDRAWAL', status: 'PENDING', amount: { lte: -LARGE_TX_THRESHOLD } },
     }),
     prisma.user.count({
       where: { createdAt: { gte: oneDayAgo }, status: { not: 'DELETED' }, role: 'USER' },
@@ -249,7 +253,7 @@ export async function getAlerts(): Promise<AdminAlertsResult> {
     critical.push({
       id: 'receipt_review',
       type: 'RECEIPT_REVIEW',
-      tier: 'CRITICAL',
+      tier: 'critical',
       title: 'Касови бележки за ръчен преглед',
       count: receiptReviews,
       link: '/admin/control/risk?status=MANUAL_REVIEW',
@@ -262,7 +266,7 @@ export async function getAlerts(): Promise<AdminAlertsResult> {
     critical.push({
       id: 'partner_invoices_overdue',
       type: 'PARTNER_INVOICES_OVERDUE',
-      tier: 'CRITICAL',
+      tier: 'critical',
       title: 'Просрочени фактури от партньори',
       count: partnerInvoicesOverdue,
       link: '/admin/finance/invoices?status=OVERDUE',
@@ -276,7 +280,7 @@ export async function getAlerts(): Promise<AdminAlertsResult> {
     critical.push({
       id: 'failed_payments',
       type: 'FAILED_PAYMENTS',
-      tier: 'CRITICAL',
+      tier: 'critical',
       title: 'Неуспешни плащания',
       count: pastDueSubscriptions,
       link: '/admin/finance/reports?focus=failed_payments',
@@ -286,7 +290,7 @@ export async function getAlerts(): Promise<AdminAlertsResult> {
     critical.push({
       id: 'unpaid_subscriptions',
       type: 'UNPAID_SUBSCRIPTIONS',
-      tier: 'CRITICAL',
+      tier: 'critical',
       title: 'Неплатени абонаменти',
       count: unpaidSubscriptions,
       link: '/admin/finance/reports?focus=unpaid_subscriptions',
@@ -301,31 +305,20 @@ export async function getAlerts(): Promise<AdminAlertsResult> {
     critical.push({
       id: 'risk_transactions',
       type: 'RISK_TRANSACTIONS',
-      tier: 'CRITICAL',
+      tier: 'critical',
       title: 'Рискови транзакции (висок риск 61+)',
       count: highRiskScans,
       link: '/admin/control/risk?bucket=HIGH_61_PLUS&status=active',
     });
   }
-  // Spec §3.2: both HIGH (61+) and REVIEW (31–60) score bands are listed as
-  // critical "рискови транзакции" — they route to the same admin/control/risk
-  // page, just different bucket filters. Keeping them as two separate alerts so
-  // the admin sees the split count in the badge.
-  if (mediumRiskScans > 0) {
-    critical.push({
-      id: 'medium_risk_transactions',
-      type: 'MEDIUM_RISK_TRANSACTIONS',
-      tier: 'CRITICAL',
-      title: 'Транзакции за преглед (31–60)',
-      count: mediumRiskScans,
-      link: '/admin/control/risk?bucket=REVIEW_31_60&status=active',
-    });
-  }
+  // 31–60 is the review band — requires admin attention but not immediate action.
+  // Classified OPERATIONAL (amber) to visually separate it from the 61+ CRITICAL
+  // (red) band. Pushed to operational[] below the critical section.
   if (failedTransactions > 0) {
     critical.push({
       id: 'failed_transactions',
       type: 'FAILED_TRANSACTIONS',
-      tier: 'CRITICAL',
+      tier: 'critical',
       title: 'Неуспешни транзакции (последните 24ч)',
       count: failedTransactions,
       link: '/admin/finance/reports?focus=failed_transactions',
@@ -340,7 +333,7 @@ export async function getAlerts(): Promise<AdminAlertsResult> {
     critical.push({
       id: 'open_disputes',
       type: 'OPEN_DISPUTES',
-      tier: 'CRITICAL',
+      tier: 'critical',
       title: 'Активни спорове',
       count: openDisputes,
       link: '/admin/control/disputes',
@@ -354,7 +347,7 @@ export async function getAlerts(): Promise<AdminAlertsResult> {
     critical.push({
       id: 'failed_payouts_pipeline',
       type: 'FAILED_PAYOUTS_PIPELINE',
-      tier: 'CRITICAL',
+      tier: 'critical',
       title: 'Неуспешни изплащания (последните 24ч)',
       count: failedWalletPayouts,
       link: '/admin/finance/payouts?status=FAILED',
@@ -364,7 +357,7 @@ export async function getAlerts(): Promise<AdminAlertsResult> {
     critical.push({
       id: 'fraud_check_errors',
       type: 'FRAUD_CHECK_ERRORS',
-      tier: 'CRITICAL',
+      tier: 'critical',
       title: 'Грешки в проверката за измами (последните 24ч)',
       count: fraudCheckErrorScans,
       // B1 fix: link directly to the FRAUD_CHECK_ERROR reason filter with status=active
@@ -376,7 +369,7 @@ export async function getAlerts(): Promise<AdminAlertsResult> {
     critical.push({
       id: 'suspicious_iban_changes',
       type: 'SUSPICIOUS_IBAN_CHANGES',
-      tier: 'CRITICAL',
+      tier: 'critical',
       title: 'Промени на IBAN (последните 24ч)',
       count: recentIbanChanges,
       // Deep-link to subscriber list pre-filtered to users who changed IBAN in
@@ -394,7 +387,7 @@ export async function getAlerts(): Promise<AdminAlertsResult> {
     critical.push({
       id: 'suspicious_activity',
       type: 'SUSPICIOUS_ACTIVITY',
-      tier: 'CRITICAL',
+      tier: 'critical',
       title: 'Подозрителна активност (последните 24ч)',
       count: suspiciousScans,
         // B-A1 fix: suspicious=true + status=active scopes the page to active scans
@@ -406,11 +399,22 @@ export async function getAlerts(): Promise<AdminAlertsResult> {
   }
 
   // ── Operational ─────────────────────────────────────────────────────────────
+  // 31–60 review band: needs attention but not immediate action → OPERATIONAL (amber).
+  if (mediumRiskScans > 0) {
+    operational.push({
+      id: 'medium_risk_transactions',
+      type: 'MEDIUM_RISK_TRANSACTIONS',
+      tier: 'operational',
+      title: 'Транзакции за преглед (31–60)',
+      count: mediumRiskScans,
+      link: '/admin/control/risk?bucket=REVIEW_31_60&status=active',
+    });
+  }
   if (partnerRequests > 0) {
     operational.push({
       id: 'partner_requests',
       type: 'PARTNER_REQUESTS',
-      tier: 'OPERATIONAL',
+      tier: 'operational',
       title: 'Нови партньорски заявки',
       count: partnerRequests,
       link: '/admin/partners/requests',
@@ -420,7 +424,7 @@ export async function getAlerts(): Promise<AdminAlertsResult> {
     operational.push({
       id: 'periods_for_review',
       type: 'PERIODS_FOR_REVIEW',
-      tier: 'OPERATIONAL',
+      tier: 'operational',
       title: 'Периоди за проверка',
       count: openPeriods,
       link: '/admin/finance/periods',
@@ -430,7 +434,7 @@ export async function getAlerts(): Promise<AdminAlertsResult> {
     operational.push({
       id: 'payout_threshold',
       type: 'PAYOUT_THRESHOLD',
-      tier: 'OPERATIONAL',
+      tier: 'operational',
       // Static title — threshold value is rendered by the frontend from meta.threshold
       // so EN and BG see the same number and the strings live next to their translations.
       title: 'Абонати достигнали праг за изплащане',
@@ -443,7 +447,7 @@ export async function getAlerts(): Promise<AdminAlertsResult> {
     operational.push({
       id: 'large_pending_payouts',
       type: 'LARGE_PENDING_PAYOUTS',
-      tier: 'OPERATIONAL',
+      tier: 'operational',
       title: 'Чакащи изплащания над лимита',
       count: largePendingTx,
       // minAmount mirrors the alert's amount filter so the landing page row count
@@ -458,7 +462,7 @@ export async function getAlerts(): Promise<AdminAlertsResult> {
     informational.push({
       id: 'new_registrations',
       type: 'NEW_REGISTRATIONS',
-      tier: 'INFORMATIONAL',
+      tier: 'informational',
       title: 'Нови регистрации (последните 24ч)',
       count: newRegistrations,
       // dateFrom param pre-filters the subscriber list to the 24h window so the
@@ -471,7 +475,7 @@ export async function getAlerts(): Promise<AdminAlertsResult> {
     informational.push({
       id: 'activated_partners',
       type: 'ACTIVATED_PARTNERS',
-      tier: 'INFORMATIONAL',
+      tier: 'informational',
       title: 'Активирани партньори (последните 24ч)',
       count: activatedPartners,
       // verifiedAfter pre-filters the active partners list to partners activated
@@ -483,7 +487,7 @@ export async function getAlerts(): Promise<AdminAlertsResult> {
     informational.push({
       id: 'completed_onboarding',
       type: 'COMPLETED_ONBOARDING',
-      tier: 'INFORMATIONAL',
+      tier: 'informational',
       title: 'Завършен онбординг (последните 24ч)',
       count: completedOnboarding,
       // Distinct destination from activated_partners. onboardingCompletedAfter

@@ -5,6 +5,7 @@ import { auditMiddleware } from '../middleware/audit.middleware';
 import { prisma } from '../lib/prisma';
 import { emailService } from '../services/email.service';
 import { walletService } from '../services/wallet.service';
+import { notificationService } from '../services/notification.service';
 import { logger } from '../utils/logger';
 import { runWithConcurrency } from '../utils/concurrency';
 
@@ -75,7 +76,7 @@ async function notifySubscriber(
       select: {
         amount: true,
         currency: true,
-        wallet: { select: { user: { select: { email: true, firstName: true, lastName: true } } } },
+        wallet: { select: { userId: true, user: { select: { email: true, firstName: true, lastName: true } } } },
       },
     });
     if (!tx) return;
@@ -115,6 +116,19 @@ async function notifySubscriber(
       `,
       text: `${subjectMap[event]}\n\n${bodyMap[event]}`,
     });
+
+    // §11 — in-app notification + push alongside the email.
+    // Non-fatal: run fire-and-forget so an in-app failure never rolls back the
+    // status transition or prevents the email from being sent first.
+    notificationService
+      .notifyPayoutEvent({
+        userId: tx.wallet.userId,
+        payoutId,
+        event,
+        amount: Math.abs(tx.amount),
+        currency: tx.currency,
+      })
+      .catch((err) => logger.error(`[adminPayouts] notifyPayoutEvent failed for ${payoutId}:`, err));
   } catch (err) {
     // Non-fatal — log and continue
     console.error('[adminPayouts] email notification failed', err);

@@ -21,6 +21,9 @@ export interface EmailOptions {
   cc?: string[];
   bcc?: string[];
   replyTo?: string;
+  // Spec §9.5 — per-audience reply-to: 'partner' → partner_reply_to_email (office@boomcard.bg),
+  // 'subscriber' → reply_to_email (support@boomcard.bg). Explicit replyTo always wins.
+  audience?: 'subscriber' | 'partner';
   // Spec §11.2 — ticket threading via custom + standard RFC 5322 headers.
   // Includes X-BoomCard-Ticket-ID, Message-ID, In-Reply-To, References.
   headers?: Record<string, string>;
@@ -314,13 +317,17 @@ export class EmailService {
 
   /**
    * Resolve the user's preferred language from their DB record. Falls back to 'bg'.
+   * Spec §9.5: partners and admins are always 'bg' (no toggle for MVP).
+   * Only subscribers with an explicit 'en' preference receive English emails.
    */
   async getUserLanguage(userId: string): Promise<'bg' | 'en'> {
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { preferredLanguage: true },
+      select: { preferredLanguage: true, role: true },
     });
-    return (user?.preferredLanguage === 'en') ? 'en' : 'bg';
+    if (!user) return 'bg';
+    if (user.role === 'PARTNER' || user.role === 'ADMIN' || user.role === 'SUPER_ADMIN') return 'bg';
+    return user.preferredLanguage === 'en' ? 'en' : 'bg';
   }
 
   /**
@@ -336,7 +343,12 @@ export class EmailService {
 
       const fromEmail = await getSystemSettingStr('from_email', this.fromEmail);
       const fromName = await getSystemSettingStr('sender_name', this.fromName);
-      const dbReplyTo = await getSystemSettingStr('reply_to_email', '');
+      // Spec §9.5 — per-audience reply-to:
+      //   partner emails → partner_reply_to_email (office@boomcard.bg)
+      //   subscriber/generic emails → reply_to_email (support@boomcard.bg)
+      // An explicit options.replyTo always takes precedence over the DB setting.
+      const replyToKey = options.audience === 'partner' ? 'partner_reply_to_email' : 'reply_to_email';
+      const dbReplyTo = await getSystemSettingStr(replyToKey, '');
       const { data, error } = await this.resend.emails.send({
         from: `${fromName} <${fromEmail}>`,
         to: Array.isArray(options.to) ? options.to : [options.to],
@@ -1957,6 +1969,7 @@ ${isBg ? 'Въпроси? Свържете се с нас на' : 'Questions? Co
       subject: 'We received your BoomCard partner application',
       html,
       text,
+      audience: 'partner',
     });
   }
 
@@ -2057,6 +2070,7 @@ ${isBg ? 'Въпроси? Свържете се с нас на' : 'Questions? Co
       subject: 'Verify your email – BOOM Card partner application',
       html,
       text,
+      audience: 'partner',
     });
   }
 
@@ -2109,6 +2123,7 @@ ${isBg ? 'Въпроси? Свържете се с нас на' : 'Questions? Co
       subject: `BoomCard – получихме Вашата заявка (${data.businessName})`,
       html,
       text,
+      audience: 'partner',
     });
   }
 
@@ -2271,7 +2286,7 @@ ${isBg ? 'Въпроси? Свържете се с нас на' : 'Questions? Co
       (qrReactivationNote ? `\n${qrReactivationNote}\n` : '') +
       `\nВъпроси? office@boomcard.bg`;
 
-    return this.sendEmail({ to: email, subject, html, text });
+    return this.sendEmail({ to: email, subject, html, text, audience: 'partner' });
   }
 
   async sendPartnerApprovalEmail(
@@ -2317,6 +2332,7 @@ ${isBg ? 'Въпроси? Свържете се с нас на' : 'Questions? Co
       subject: `Your BoomCard partner application is approved – ${data.businessName}`,
       html,
       text,
+      audience: 'partner',
     });
   }
 
@@ -2588,6 +2604,132 @@ ${isBg ? 'Въпроси? Свържете се с нас на' : 'Questions? Co
 </html>`;
     const text = `${bodyText}\n\n${planLabel}: ${planName}\n${renewalLabel}: ${data.renewalDate}\n${priceLabel}: ${data.price}\n\n${manageLabel}: ${data.manageUrl}`;
     return this.sendEmail({ to: email, subject, html, text });
+  }
+
+  // Spec §8.2 — "Промяна на договорни параметри": notify the partner when an
+  // admin approves or rejects their pending contract-parameter change request.
+  async sendPartnerContractChangeEmail(
+    email: string,
+    data: {
+      firstName: string;
+      businessName: string;
+      approved: boolean;
+      changes: Record<string, unknown>;
+    },
+  ): Promise<{ success: boolean }> {
+    const fieldLabels: Record<string, string> = {
+      discountRate: 'Процент отстъпка',
+      commissionRate: 'Комисионна',
+      businessName: 'Бизнес имe',
+      description: 'Описание',
+      address: 'Адрес',
+      city: 'Град',
+      phone: 'Телефон',
+      email: 'Имейл',
+      website: 'Уебсайт',
+      categories: 'Категории',
+      isVisible: 'Видимост',
+    };
+
+    const changeRows = Object.entries(data.changes)
+      .map(([key, value]) => {
+        const label = fieldLabels[key] ?? key;
+        const display = Array.isArray(value) ? value.join(', ') : String(value ?? '—');
+        return `<tr>
+          <td style="padding:6px 12px 6px 0;color:#555;white-space:nowrap;">${label}</td>
+          <td style="padding:6px 0;color:#111;font-weight:600;">${display}</td>
+        </tr>`;
+      })
+      .join('');
+
+    const approved = data.approved;
+    const accentColor = approved ? '#10b981' : '#ef4444';
+    const headingText = approved ? 'Заявката е одобрена' : 'Заявката е отхвърлена';
+    const bodyText = approved
+      ? `Промените по-долу бяха одобрени и вече са активни в партньорския ви профил за <strong>${data.businessName}</strong>.`
+      : `Промените по-долу бяха отхвърлени и не са приложени към партньорския ви профил. Свържете се с нас на office@boomcard.bg за повече информация.`;
+
+    const subject = approved
+      ? `Промяната е одобрена — ${data.businessName}`
+      : `Промяната е отхвърлена — ${data.businessName}`;
+
+    const html = `<!DOCTYPE html>
+<html><head><meta charset="utf-8"></head>
+<body style="margin:0;padding:0;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;background:#f5f5f5;">
+  <table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:40px 20px;">
+    <table width="600" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,0.08);">
+      <tr><td style="background:${accentColor};padding:32px;text-align:center;border-radius:8px 8px 0 0;">
+        <h1 style="margin:0;color:#fff;font-size:22px;">${headingText}</h1>
+      </td></tr>
+      <tr><td style="padding:32px;">
+        <p style="margin:0 0 16px;color:#111;font-size:16px;">Здравейте, ${data.firstName},</p>
+        <p style="margin:0 0 20px;color:#444;font-size:15px;line-height:1.6;">${bodyText}</p>
+        ${changeRows ? `<table cellpadding="0" cellspacing="0" style="width:100%;margin:0 0 24px;font-size:14px;">${changeRows}</table>` : ''}
+        <p style="margin:0;color:#999;font-size:12px;">Поздрави,<br/>Екипът на BoomCard &mdash; <a href="mailto:office@boomcard.bg" style="color:#6b7280;">office@boomcard.bg</a></p>
+      </td></tr>
+    </table>
+  </td></tr></table>
+</body></html>`;
+
+    const changesText = Object.entries(data.changes)
+      .map(([k, v]) => `${fieldLabels[k] ?? k}: ${Array.isArray(v) ? v.join(', ') : String(v ?? '—')}`)
+      .join('\n');
+    const text = `Здравейте, ${data.firstName},\n\n${approved ? 'Промяната е одобрена' : 'Промяната е отхвърлена'} за ${data.businessName}.\n\n${changesText}\n\nПоздрави,\nЕкипът на BoomCard`;
+
+    return this.sendEmail({ to: email, subject, html, text, audience: 'partner' });
+  }
+
+  /**
+   * Spec §9.5 — alert sent to all SUPER_ADMINs when an admin account triggers
+   * repeated password-reset requests within a short window.
+   */
+  async sendAdminPasswordResetAlert(data: {
+    targetEmail: string;
+    targetName: string;
+    resetCount: number;
+    windowHours: number;
+    recipientEmails: string[];
+  }): Promise<{ success: boolean }> {
+    const subject = `⚠ Повторни заявки за смяна на парола — ${data.targetName}`;
+    const html = `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="margin:0;padding:0;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;background:#f5f5f5;">
+  <table width="100%" cellpadding="0" cellspacing="0" border="0">
+    <tr><td align="center" style="padding:40px 20px;">
+      <table width="580" cellpadding="0" cellspacing="0" border="0" style="background:#fff;border-radius:8px;border:2px solid #f59e0b;">
+        <tr><td style="background:#f59e0b;padding:28px 32px;border-radius:6px 6px 0 0;">
+          <h1 style="margin:0;color:#fff;font-size:22px;font-weight:700;">⚠ Сигнал за сигурност</h1>
+          <p style="margin:6px 0 0;color:rgba(255,255,255,0.9);font-size:14px;">Повторни заявки за смяна на парола</p>
+        </td></tr>
+        <tr><td style="padding:32px;">
+          <p style="margin:0 0 20px;color:#111;font-size:15px;line-height:1.6;">
+            Администраторски акаунт <strong>${data.targetName}</strong>
+            (<code style="background:#f3f4f6;padding:2px 6px;border-radius:4px;">${data.targetEmail}</code>)
+            е инициирал <strong>${data.resetCount} заявки за нулиране на парола</strong>
+            в рамките на последните ${data.windowHours} часа.
+          </p>
+          <p style="margin:0 0 24px;color:#444;font-size:14px;line-height:1.6;">
+            Ако не разпознавате тези заявки, акаунтът може да е обект на атака.
+            Проверете историята на акаунта и при необходимост деактивирайте достъпа.
+          </p>
+          <p style="margin:0;color:#999;font-size:12px;">
+            Изпратено автоматично от BoomCard Security Monitor &bull; ${new Date().toISOString()}
+          </p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+    const text = `Сигнал за сигурност — BoomCard\n\nАдминистраторски акаунт ${data.targetName} (${data.targetEmail}) е инициирал ${data.resetCount} заявки за нулиране на парола в последните ${data.windowHours} часа.\n\nАко не разпознавате тези заявки, проверете историята на акаунта.\n\n${new Date().toISOString()}`;
+
+    return this.sendEmail({
+      to: data.recipientEmails,
+      subject,
+      html,
+      text,
+    });
   }
 }
 

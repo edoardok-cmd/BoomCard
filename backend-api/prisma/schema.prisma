@@ -53,6 +53,7 @@ model User {
   pendingEmail            String?
   pendingEmailExpiry      DateTime?
   pendingEmailToken       String?                    @unique
+  emailUnsubscribeToken   String?                    @unique
   auditLogs               AuditLog[]
   bookings                Booking[]
   cards                   Card[]
@@ -609,6 +610,11 @@ model Subscription {
   planId                    String?
   autoRenewal               Boolean            @default(true)
   gracePeriodEndsAt         DateTime?
+  // Stripe-only: incremented by the stripe.service webhook handler on each
+  // invoice.payment_failed event; reset to 0 on payment success or on
+  // FAILED_PAYMENT transition. Always 0 for Paysera subscriptions (Paysera
+  // has no automatic retry loop — the single-attempt model is enforced by
+  // paysera-renewal.ts which transitions directly to FAILED_PAYMENT).
   retryAttempt              Int                @default(0)
   trialRefundEligibleUntil  DateTime?
   trialRefundUsed           Boolean            @default(false)
@@ -1966,7 +1972,12 @@ enum StickerStatus {
   PENDING
   ACTIVE
   INACTIVE
+  // Spec §5.4 "В обработка" — sticker ordered/printed but not yet deployed.
+  PROCESSING
   DAMAGED
+  // Spec §5.4 "Заменен" — physically replaced by a new sticker; old code
+  // retired. RETIRED is kept as an alias; both map to the same display label.
+  REPLACED
   RETIRED
 }
 

@@ -577,6 +577,7 @@ const SubStatusBadge = styled.span<{ $status: SubscriptionStatus }>`
       case 'TRIALING':           return `background: ${palette.successSoft}; color: ${palette.success};`;
       case 'PAST_DUE':
       case 'UNPAID':             return `background: ${palette.warningSoft}; color: ${palette.warning};`;
+      case 'FAILED_PAYMENT':    return `background: ${palette.dangerSoft}; color: ${palette.danger};`;
       case 'INCOMPLETE':         return `background: ${palette.infoSoft}; color: ${palette.info};`;
       case 'INCOMPLETE_EXPIRED': return `background: ${palette.dangerSoft}; color: ${palette.danger};`;
       case 'EXPIRED':            return `background: ${palette.purpleSoft}; color: ${palette.purple};`;

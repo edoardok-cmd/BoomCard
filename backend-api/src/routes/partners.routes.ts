@@ -25,6 +25,7 @@ import { fireAutomation } from '../lib/automationDispatcher';
 import { findInvalidCategoryEntry } from '../constants/categoryRegistry';
 import { writeAudit } from '../middleware/audit.middleware';
 import { issueActivationLink, sendActivationEmail, stampEmailOutcome } from '../services/partnerActivation.service';
+import { partnerService } from '../services/partner.service';
 
 /**
  * Normalize a categories[] payload alongside its main category id.
@@ -444,12 +445,29 @@ router.get(
     }
 
     // Spec §5.4 — operational status mirror per venue. The partner-side panel
-    // shows a single status badge per sticker derived from the partner status
-    // + the sticker row's status:
-    //   - Partner.status != ACTIVE         → all stickers display as "Неактивен"
-    //   - Sticker.status != ACTIVE         → display as Sticker.status (PENDING / INACTIVE / RETIRED / DAMAGED)
-    //   - Otherwise                        → "Активен"
+    // shows a single display-status badge per sticker derived from the partner
+    // status + the sticker row's status. Spec-defined display labels:
+    //   Активен      → ACTIVE (partner operationally active + sticker ACTIVE)
+    //   Неактивен    → partner not ACTIVE, OR sticker INACTIVE/DAMAGED
+    //   В обработка  → sticker PENDING or PROCESSING (ordered, not yet deployed)
+    //   Заменен      → sticker RETIRED or REPLACED (physically swapped out)
     const partnerOperationallyActive = partner.status === 'ACTIVE' && !!partner.verifiedAt;
+
+    // Map raw StickerStatus enum values to the spec's four display labels.
+    const toDisplayStatus = (stickerStatus: string): string => {
+      if (!partnerOperationallyActive) return 'INACTIVE';
+      switch (stickerStatus) {
+        case 'ACTIVE':     return 'ACTIVE';
+        case 'INACTIVE':
+        case 'DAMAGED':    return 'INACTIVE';
+        case 'PENDING':
+        case 'PROCESSING': return 'PROCESSING';
+        case 'RETIRED':
+        case 'REPLACED':   return 'REPLACED';
+        default:           return 'INACTIVE';
+      }
+    };
+
     const venues = partner.venues.map((v) => ({
       id: v.id,
       name: v.name,
@@ -460,10 +478,7 @@ router.get(
       stickerConfigUpdatedAt: v.stickerConfig?.updatedAt ?? null,
       stickers: v.stickers.map((s) => ({
         ...s,
-        // Derived display status the UI badge uses directly
-        displayStatus: !partnerOperationallyActive
-          ? 'INACTIVE'
-          : s.status,
+        displayStatus: toDisplayStatus(s.status),
       })),
     }));
 
@@ -823,7 +838,10 @@ router.put(
 
     const partner = await prisma.partner.findUnique({
       where: { id: req.params.id },
-      include: { partnerType: { select: PARTNER_TYPE_SELECT } },
+      include: {
+        partnerType: { select: PARTNER_TYPE_SELECT },
+        user: { select: { id: true, email: true, firstName: true } },
+      },
     });
     if (!partner) {
       return res.status(404).json({ success: false, error: 'Partner not found' });
@@ -999,7 +1017,9 @@ router.put(
             });
           }
         }
-        updateData.status = status;
+        // Spec §5.3 audit fix: status is handled SEPARATELY via partnerService
+        // so a PartnerStatusChange row is always created and §8.2 email is sent.
+        // Do NOT put status in updateData here — it is applied below.
         // Spec §5.2 v1.1 — verifiedAt is the "activation link consumed" flag,
         // stamped ONLY by activationLinkService.consume. Auto-stamping it here
         // bypassed the activation flow entirely (admin flips PENDING→ACTIVE
@@ -1027,16 +1047,22 @@ router.put(
     const updated = await prisma.partner.update({
       where: { id: req.params.id },
       data: updateData,
-      include: { partnerType: { select: PARTNER_TYPE_SELECT } },
+      include: {
+        partnerType: { select: PARTNER_TYPE_SELECT },
+        user: { select: { email: true, firstName: true } },
+      },
     });
 
     // Spec §5.3 — История на промени: record admin edits so the edit modal's
     // "История на промени" section is populated. Non-admin edits go through
     // pendingChanges flow and are audited via the approval workflow instead.
     if (isAdmin) {
+      // 'status' deliberately excluded — status changes go through
+      // partnerService.setPartnerStatus() which writes a PartnerStatusChange row
+      // and a PARTNER_STATUS_CHANGED AuditLog entry separately.
       const auditableFields = ['businessName', 'businessNameBg', 'category', 'categories',
         'description', 'city', 'region', 'address', 'phone', 'email', 'website',
-        'discountRate', 'partnerTypeId', 'status', 'isVisible'];
+        'discountRate', 'partnerTypeId', 'isVisible'];
       const before: Record<string, unknown> = {};
       const after: Record<string, unknown> = {};
       for (const field of auditableFields) {
@@ -1069,19 +1095,58 @@ router.put(
       }
     }
 
-    // When a partner transitions TO ACTIVE, activate the owning user account and
-    // send the approval email. Guard against re-firing on already-active partners.
-    if (updateData.status === PartnerStatus.ACTIVE && partner.status !== PartnerStatus.ACTIVE) {
-      const partnerUser = await prisma.user.update({
-        where: { id: updated.userId },
-        data: { status: UserStatus.ACTIVE },
-        select: { email: true, firstName: true, status: true },
-      });
+    // Spec §5.3 audit fix — status changes are routed through partnerService so:
+    //   1. A PartnerStatusChange row is always created (powers status-history tab).
+    //   2. The §8.2 status-change email is always sent to the partner.
+    // This is separate from (and after) the main prisma.partner.update() above,
+    // which handles all non-status fields. partnerService opens its own transaction
+    // for the status flip + audit row, so there is no double-update conflict.
+    let statusChangedTo: PartnerStatus | undefined;
+    if (isAdmin && status !== undefined && status !== partner.status) {
+      try {
+        await partnerService.setPartnerStatus({
+          partnerId: req.params.id,
+          toStatus: status as PartnerStatus,
+          changedById: req.user!.id,
+        });
+        statusChangedTo = status as PartnerStatus;
+      } catch (err) {
+        logger.error('[PUT /partners/:id] partnerService.setPartnerStatus failed:', err);
+        // Non-fatal: the main update succeeded; surface a warning but don't 500.
+      }
 
-      emailService.sendPartnerApprovalEmail(partnerUser.email, {
-        firstName: partnerUser.firstName || partnerUser.email.split('@')[0],
-        businessName: updated.businessName,
-      }).catch((err) => logger.error('Failed to send partner approval email:', err));
+      if (statusChangedTo !== undefined) {
+        // §8.2 — notify partner of the status change. Fire-and-forget.
+        const notifyTo = partner.email || partner.user?.email || null;
+        if (notifyTo) {
+          emailService
+            .sendPartnerStatusChangeEmail(notifyTo, {
+              firstName: partner.user?.firstName || partner.businessName,
+              businessName: partner.businessName,
+              fromStatus: partner.status as PartnerStatus,
+              toStatus: statusChangedTo,
+              reason: null,
+            })
+            .catch((err) => logger.error('[PUT /partners/:id] status-change email failed:', err));
+        }
+
+        // When transitioning TO ACTIVE from a PENDING/onboarding state (first
+        // activation), also activate the user account. Re-activations from
+        // INACTIVE/SUSPENDED → ACTIVE don't need this (user was already ACTIVE).
+        if (statusChangedTo === PartnerStatus.ACTIVE && partner.status === PartnerStatus.PENDING) {
+          const userEmail = partner.user?.email ?? '';
+          const userFirstName = partner.user?.firstName ?? '';
+          const partnerUser = await prisma.user.update({
+            where: { id: partner.userId },
+            data: { status: UserStatus.ACTIVE },
+            select: { email: true, firstName: true },
+          });
+          emailService.sendPartnerApprovalEmail(partnerUser.email || userEmail, {
+            firstName: partnerUser.firstName || userFirstName || (partnerUser.email || userEmail).split('@')[0],
+            businessName: partner.businessName,
+          }).catch((err) => logger.error('Failed to send partner approval email:', err));
+        }
+      }
     }
 
     const typeMax = updated.partnerType?.maxDiscountRate ?? null;
@@ -1089,6 +1154,9 @@ router.put(
       success: true,
       data: {
         ...updated,
+        // Reflect the committed status change — updated came from prisma.partner.update()
+        // which ran before setPartnerStatus, so its status field is pre-change.
+        ...(statusChangedTo !== undefined ? { status: statusChangedTo } : {}),
         typeMaxDiscountPercent: typeMax,
         effectiveDiscountRate: updated.discountRate ?? typeMax,
       },
@@ -1112,7 +1180,10 @@ router.post(
   authenticate,
   authorize('ADMIN', 'SUPER_ADMIN'),
   asyncHandler(async (req: AuthRequest, res: Response) => {
-    const partner = await prisma.partner.findUnique({ where: { id: req.params.id } });
+    const partner = await prisma.partner.findUnique({
+      where: { id: req.params.id },
+      include: { user: { select: { email: true, firstName: true } } },
+    });
     if (!partner) {
       return res.status(404).json({ success: false, error: 'Partner not found' });
     }
@@ -1132,6 +1203,19 @@ router.post(
       include: { partnerType: { select: PARTNER_TYPE_SELECT } },
     });
 
+    // Spec §8.2 — "Промяна на договорни параметри": notify partner on approval.
+    const recipientEmail = (partner as any).email || partner.user?.email || null;
+    if (recipientEmail) {
+      emailService
+        .sendPartnerContractChangeEmail(recipientEmail, {
+          firstName: partner.user?.firstName || (partner as any).businessName || '',
+          businessName: (partner as any).businessName || '',
+          approved: true,
+          changes: applyData,
+        })
+        .catch((err) => logger.error('[partners] contract-change approval email failed:', err));
+    }
+
     res.json({ success: true, data: updated, message: 'Pending changes approved and applied.' });
   }),
 );
@@ -1145,7 +1229,10 @@ router.post(
   authenticate,
   authorize('ADMIN', 'SUPER_ADMIN'),
   asyncHandler(async (req: AuthRequest, res: Response) => {
-    const partner = await prisma.partner.findUnique({ where: { id: req.params.id } });
+    const partner = await prisma.partner.findUnique({
+      where: { id: req.params.id },
+      include: { user: { select: { email: true, firstName: true } } },
+    });
     if (!partner) {
       return res.status(404).json({ success: false, error: 'Partner not found' });
     }
@@ -1153,11 +1240,26 @@ router.post(
       return res.status(400).json({ success: false, error: 'No pending changes to reject' });
     }
 
+    const rejectedChanges = partner.pendingChanges as Record<string, unknown>;
+
     const updated = await prisma.partner.update({
       where: { id: req.params.id },
       data: { pendingChanges: null, pendingChangesAt: null },
       include: { partnerType: { select: PARTNER_TYPE_SELECT } },
     });
+
+    // Spec §8.2 — "Промяна на договорни параметри": notify partner on rejection.
+    const recipientEmail = (partner as any).email || partner.user?.email || null;
+    if (recipientEmail) {
+      emailService
+        .sendPartnerContractChangeEmail(recipientEmail, {
+          firstName: partner.user?.firstName || (partner as any).businessName || '',
+          businessName: (partner as any).businessName || '',
+          approved: false,
+          changes: rejectedChanges,
+        })
+        .catch((err) => logger.error('[partners] contract-change rejection email failed:', err));
+    }
 
     res.json({ success: true, data: updated, message: 'Pending changes rejected and discarded.' });
   }),

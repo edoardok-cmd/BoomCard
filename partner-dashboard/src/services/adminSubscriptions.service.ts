@@ -5,6 +5,7 @@ export type SubscriptionPlan = 'LIGHT' | 'BASIC' | 'PREMIUM';
 export type SubscriptionStatus =
   | 'ACTIVE'
   | 'PAST_DUE'
+  | 'FAILED_PAYMENT'
   | 'CANCELLED'
   | 'EXPIRED'
   | 'INCOMPLETE'

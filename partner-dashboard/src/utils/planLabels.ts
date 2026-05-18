@@ -8,14 +8,9 @@
 // the backend helper does not cover (backend ships canonical English only).
 //
 // Spec §4.2 frames LIGHT as "Premium Weekly" and PREMIUM as "Premium Monthly".
-// "спрян" appears in BOTH §4.1 (account status) and §4.2 (subscription status).
-// We reserve "Спрян" for the §4.1 account-suspension pill (USER_STATUS_LABELS.SUSPENDED)
-// and use "На пауза" for the §4.2 subscription PAUSED state. Same row in the
-// subscribers list shows both columns side by side, and the prior "Спрян · Спрян"
-// duplication was visually awkward and screenshots that drop column headers
-// became ambiguous. CANCELLED stays "Отказан" (admin-initiated cancel).
-// `customerLabels.ts` and `AdminPartnersPage.tsx` already use "На пауза" — this
-// brings the admin subscription status into convergence.
+// "спрян" appears in BOTH §4.1 (account status) and §4.2 (subscription status);
+// both columns use it deliberately — column headers distinguish which entity is
+// suspended. CANCELLED stays "Отказан" (admin-initiated cancel).
 
 import type {
   SubscriptionPlan as ServiceSubscriptionPlan,
@@ -71,7 +66,7 @@ export const SUB_STATUS_LABELS: Record<SubscriptionStatus, Record<Lang, string>>
   EXPIRED:            { en: 'Expired',            bg: 'Изтекъл' },
   INCOMPLETE:         { en: 'Incomplete',         bg: 'Незавършен' },
   INCOMPLETE_EXPIRED: { en: 'Incomplete expired', bg: 'Незавършен (изтекъл)' },
-  PAUSED:             { en: 'Paused',             bg: 'На пауза' },
+  PAUSED:             { en: 'Suspended',           bg: 'Спрян' },
   FAILED_PAYMENT:     { en: 'Failed payment',     bg: 'Неуспешно плащане' },
 };
 

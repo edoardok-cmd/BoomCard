@@ -50,6 +50,7 @@ import adminDashboardRouter from './routes/adminDashboard.routes';
 import helpRouter from './routes/help.routes';
 import adminProfileRouter from './routes/adminProfile.routes';
 import adminMarketingRouter from './routes/adminMarketing.routes';
+import unsubscribeRouter from './routes/unsubscribe.routes';
 import contactRouter from './routes/contact.routes';
 import dashboardRouter from './routes/dashboard.routes';
 import pendingCheckoutRouter from './routes/pending-checkout.routes';
@@ -244,6 +245,7 @@ app.use('/api/health', healthRouter); // Health checks (monitoring)
 app.use('/api/webhooks', webhooksRouter); // Webhooks (must be first for raw body)
 app.use('/api/email', emailWebhookRouter); // Spec §11.2 — inbound email webhook (HMAC or X-Webhook-Secret)
 app.use('/api/plans', plansRouter); // Public plans API (no auth required)
+app.use('/api/unsubscribe', unsubscribeRouter); // §12 One-click email unsubscribe (GDPR, no auth required)
 app.use('/api/contact', contactRouter); // Public contact form (no auth required)
 app.use('/api/config/mobile', mobileConfigRouter); // Public mobile app config (feature flags, versions, status)
 app.use('/api/mobile/errors', mobileErrorsRouter); // Mobile error ingest (public, rate-limited)

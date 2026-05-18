@@ -14,7 +14,6 @@ import { SubscriptionStatus } from '@prisma/client';
 import prisma from '../lib/prisma';
 import { emailService } from '../services/email.service';
 import { logger } from '../utils/logger';
-import { fireAutomation } from '../lib/automationDispatcher';
 import { writeAudit } from '../middleware/audit.middleware';
 import { notificationService } from '../services/notification.service';
 
@@ -148,6 +147,10 @@ export async function processPayseraRenewals(): Promise<void> {
         data: {
           status: SubscriptionStatus.FAILED_PAYMENT,
           failedPaymentAt: failedAt,
+          // Paysera has no retry loop — retryAttempt is a Stripe-managed counter
+          // and must be 0 for Paysera subs. Resetting here makes the invariant
+          // explicit even if the field was somehow incremented by direct DB access.
+          retryAttempt: 0,
         },
       });
 
@@ -221,11 +224,15 @@ export async function processPayseraRenewals(): Promise<void> {
 
   for (const sub of expiredActive) {
     try {
+      const gracePeriodEndsAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
       await prisma.subscription.update({
         where: { id: sub.id },
         data: {
           status: SubscriptionStatus.PAUSED,
-          gracePeriodEndsAt: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000),
+          gracePeriodEndsAt,
+          // Mirror the step-1 invariant: retryAttempt is Stripe-managed and must
+          // be 0 for all Paysera subs regardless of which path transitions them.
+          retryAttempt: 0,
         },
       });
 
@@ -258,86 +265,28 @@ export async function processPayseraRenewals(): Promise<void> {
           .catch((err) => logger.error(`[paysera-renewal] Email failed for sub ${sub.id}:`, err));
       }
 
+      // §10 — in-app + push alongside the expiry-notice email.
+      notificationService
+        .notifySubscriptionPaused({
+          userId: sub.userId,
+          gracePeriodEndsAt,
+        })
+        .catch((err) =>
+          logger.error(`[paysera-renewal] notifySubscriptionPaused failed for sub ${sub.id}:`, err),
+        );
+
       logger.info(`[paysera-renewal] Subscription ${sub.id} paused — renewal reminder sent`);
     } catch (err) {
       logger.error(`[paysera-renewal] Failed to process subscription ${sub.id}:`, err);
     }
   }
 
-  // 3. Send pre-expiry reminders to autoRenewal=false subscriptions expiring in the next 3 days.
-  // These users get no automatic charge attempt, so they need advance notice to renew manually.
-  const threeDaysFromNow = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000);
-  const preExpiryReminders = await prisma.subscription.findMany({
-    where: {
-      status: SubscriptionStatus.ACTIVE,
-      stripeSubscriptionId: null,
-      autoRenewal: false,
-      // Spec §3.2: don't remind users who explicitly cancelled — they already
-      // know their access is ending. canceledAt is the right discriminator
-      // here: cancelSubscription sets it, toggleAutoRenewal does not. Filtering
-      // on cancelAtPeriodEnd would also drop users who simply turned auto-
-      // renewal off (toggleAutoRenewal sets cancelAtPeriodEnd=true), which
-      // §3.1 says SHOULD receive pre-expiry reminders.
-      canceledAt: null,
-      currentPeriodEnd: { gt: now, lte: threeDaysFromNow },
-      // One reminder per period. The previous behaviour ("re-remind every 24h
-      // while in the 3-day window") could send up to three notices per
-      // subscription, which is louder than spec §3.1 implies. We now gate
-      // strictly on never-sent; the timestamp is reset to null elsewhere when
-      // a new period starts (see resetReminderOnRenewal below).
-      lastRenewalReminderSentAt: null,
-    },
-    include: {
-      user: { select: { id: true, email: true, firstName: true, preferredLanguage: true } },
-      planDetails: { select: { displayName: true, displayNameBg: true, priceWeeklyEur: true, priceMonthlyEur: true, priceYearlyEur: true } },
-    },
-  });
+  // Pre-expiry reminders for autoRenewal=false subscriptions are handled exclusively
+  // by the renewal-reminders job (src/jobs/renewal-reminders.ts), which runs at
+  // 07:00 UTC and fires the spec §8.3 three-cadence (3d / 1d / dayOf) via the
+  // renewalRemindersSent bitmask. Sending them here as well would duplicate emails.
 
-  for (const sub of preExpiryReminders) {
-    try {
-      if (!sub.user?.email) continue;
-      const lang = (sub.user.preferredLanguage === 'en' ? 'en' : 'bg') as 'bg' | 'en';
-      const planName = lang === 'bg'
-        ? (sub.planDetails?.displayNameBg || sub.plan)
-        : (sub.planDetails?.displayName || sub.plan);
-      let subMetadata: Record<string, any> = {};
-      try { if (sub.metadata) subMetadata = JSON.parse(sub.metadata); } catch { subMetadata = {}; }
-      const billingPeriod = (subMetadata.billingPeriod ?? '').toLowerCase();
-      const priceInCents = (() => {
-        const plan = sub.planDetails;
-        if (!plan) return 0;
-        if (billingPeriod.includes('week') && plan.priceWeeklyEur) return plan.priceWeeklyEur;
-        if (billingPeriod.includes('year')) return plan.priceYearlyEur;
-        return plan.priceMonthlyEur ?? 0;
-      })();
-
-      await emailService
-        .sendExpiryNotice(sub.user.email, {
-          customerName: sub.user.firstName || 'Customer',
-          planName,
-          planNameBg: sub.planDetails?.displayNameBg || sub.plan,
-          price: `€${(priceInCents / 100).toFixed(2)}`,
-          renewalDate: sub.currentPeriodEnd.toLocaleDateString(lang === 'bg' ? 'bg-BG' : 'en-GB'),
-          manageUrl: `${APP_URL}/subscription`,
-          language: lang,
-        })
-        .catch((err) => logger.error(`[paysera-renewal] Pre-expiry reminder failed for sub ${sub.id}:`, err));
-
-      fireAutomation('subscription.renew_due', { userId: sub.user.id })
-        .catch((err) => logger.error(`[paysera-renewal] subscription.renew_due automation failed for sub ${sub.id}:`, err));
-
-      await prisma.subscription.update({
-        where: { id: sub.id },
-        data: { lastRenewalReminderSentAt: now },
-      });
-
-      logger.info(`[paysera-renewal] Pre-expiry reminder sent for sub ${sub.id} (expires ${sub.currentPeriodEnd.toISOString()})`);
-    } catch (err) {
-      logger.error(`[paysera-renewal] Failed to send pre-expiry reminder for sub ${sub.id}:`, err);
-    }
-  }
-
-  logger.info(`[paysera-renewal] Done — ${failedRenewals.length} → FAILED_PAYMENT (no grace), paused ${expiredActive.length} subscription(s), cancelled ${expired.length} after grace period, sent ${preExpiryReminders.length} pre-expiry reminder(s)`);
+  logger.info(`[paysera-renewal] Done — ${failedRenewals.length} → FAILED_PAYMENT (no grace), paused ${expiredActive.length} subscription(s), cancelled ${expired.length} after grace period`);
 }
 
 // Run directly as a script (npx tsx src/jobs/paysera-renewal.ts)

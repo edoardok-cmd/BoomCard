@@ -78,6 +78,7 @@ router.get(
           FROM subscriptions s
           JOIN "User" u ON u.id = s."userId"
           WHERE u.role = 'USER'
+            AND u."deletedAt" IS NULL
           ORDER BY s."userId", s."createdAt" DESC
         ) latest
         GROUP BY status

@@ -761,6 +761,18 @@ class StripeService {
         plan = subscription.metadata.plan as any;
       }
 
+      // Don't downgrade FAILED_PAYMENT → PAST_DUE: spec §4.2 single attempt, no retry.
+      // invoice.payment_failed immediately sets FAILED_PAYMENT; Stripe then fires
+      // customer.subscription.updated with status=past_due. We preserve the stricter state.
+      const existingForStatusCheck = await prisma.subscription.findFirst({
+        where: { stripeSubscriptionId: subscription.id },
+        select: { status: true },
+      });
+      const effectiveStatus =
+        mappedStatus === 'PAST_DUE' && existingForStatusCheck?.status === 'FAILED_PAYMENT'
+          ? 'FAILED_PAYMENT'
+          : mappedStatus;
+
       // Update or create subscription
       await prisma.subscription.upsert({
         where: { stripeSubscriptionId: subscription.id },
@@ -782,7 +794,7 @@ class StripeService {
         update: {
           plan,
           stripePriceId: priceId,
-          status: mappedStatus,
+          status: effectiveStatus,
           currentPeriodStart: new Date(subscription.current_period_start * 1000),
           currentPeriodEnd: new Date(subscription.current_period_end * 1000),
           cancelAtPeriodEnd: subscription.cancel_at_period_end,
@@ -866,6 +878,7 @@ class StripeService {
         const reason = subscription.cancellation_details?.reason;
         const wasPaymentFailure =
           dbSub.status === 'PAST_DUE' ||
+          dbSub.status === 'FAILED_PAYMENT' ||
           dbSub.retryAttempt > 0 ||
           reason === 'payment_failed';
         const finalStatus = wasPaymentFailure ? 'EXPIRED' : 'CANCELLED';
@@ -984,13 +997,14 @@ class StripeService {
           .catch((err: unknown) => logger.error(`Failed to send renewal confirmation email for sub ${dbSub.id}:`, err));
       }
 
-      // If this payment clears a previously failed renewal, reset grace period state
-      if (dbSub.retryAttempt > 0 || dbSub.status === 'PAST_DUE') {
+      // If this payment clears a previously failed renewal, recover to ACTIVE
+      if (dbSub.retryAttempt > 0 || dbSub.status === 'PAST_DUE' || dbSub.status === 'FAILED_PAYMENT') {
         await prisma.subscription.update({
           where: { id: dbSub.id },
           data: {
             status: 'ACTIVE',
             retryAttempt: 0,
+            failedPaymentAt: null,
             gracePeriodEndsAt: null,
             currentPeriodStart: invoice.period_start ? new Date(invoice.period_start * 1000) : undefined,
             currentPeriodEnd: invoice.period_end ? new Date(invoice.period_end * 1000) : undefined,
@@ -998,7 +1012,7 @@ class StripeService {
             renewalRemindersSent: 0,
           },
         });
-        logger.info(`Subscription ${dbSub.id} recovered from PAST_DUE — grace period cleared`);
+        logger.info(`Subscription ${dbSub.id} recovered from ${dbSub.status} — payment cleared`);
       }
 
       logger.info(`Invoice payment recorded: ${amount} ${invoice.currency} for user ${dbSub.userId}`);
@@ -1029,16 +1043,16 @@ class StripeService {
         return;
       }
 
-      const newRetryAttempt = dbSub.retryAttempt + 1;
-      const GRACE_PERIOD_DAYS = 7;
-
+      // Spec §4.2 v1.1: single attempt, no retry window. Set FAILED_PAYMENT immediately
+      // so scanning and payout are blocked. If Stripe's own retry later succeeds,
+      // handleInvoicePaymentSucceeded will recover the subscription to ACTIVE.
+      const failedAt = new Date();
       await prisma.subscription.update({
         where: { id: dbSub.id },
         data: {
-          status: 'PAST_DUE',
-          retryAttempt: newRetryAttempt,
-          // Only set gracePeriodEndsAt on the first failure — preserve the original deadline on subsequent retries
-          gracePeriodEndsAt: dbSub.gracePeriodEndsAt ?? new Date(Date.now() + GRACE_PERIOD_DAYS * 24 * 60 * 60 * 1000),
+          status: 'FAILED_PAYMENT',
+          failedPaymentAt: failedAt,
+          retryAttempt: dbSub.retryAttempt + 1,
         },
       });
 
@@ -1049,7 +1063,7 @@ class StripeService {
         currency: (invoice.currency ?? 'bgn').toUpperCase(),
       }).catch((err: unknown) => logger.error('Failed to send invoice-failed notification:', err));
 
-      logger.info(`Subscription ${dbSub.id} set to PAST_DUE (attempt ${newRetryAttempt}) for user ${dbSub.userId}`);
+      logger.info(`Subscription ${dbSub.id} → FAILED_PAYMENT (spec §4.2, no retry window) for user ${dbSub.userId}`);
     } catch (error) {
       logger.error(`Error handling invoice failure: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }

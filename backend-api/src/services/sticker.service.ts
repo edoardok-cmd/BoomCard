@@ -11,6 +11,28 @@ import { imageUploadService } from './imageUpload.service';
 import { enqueueMerchantVerification } from '../queues/merchantVerification.queue';
 import { cashbackLifecycleService } from './cashbackLifecycle.service';
 import { writeAudit } from '../middleware/audit.middleware';
+import { getSystemSettingStr } from '../utils/systemSettings';
+
+/**
+ * Convert a wall-clock date/time in a named IANA timezone to a UTC Date.
+ * Uses the Intl.DateTimeFormat offset trick: format a candidate UTC date as
+ * local-time components, parse them, derive the offset, then correct.
+ * Works correctly across DST transitions without any external library.
+ */
+function wallClockToUTC(year: number, month: number, day: number, hour: number, tz: string): Date {
+  const naive = new Date(Date.UTC(year, month - 1, day, hour, 0, 0));
+  const fmt = new Intl.DateTimeFormat('en-US', {
+    timeZone: tz,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+    hour12: false,
+  });
+  const parts = fmt.formatToParts(naive);
+  const p = Object.fromEntries(parts.map((x) => [x.type, x.value]));
+  const localEquiv = new Date(Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour % 24, +p.minute, +p.second));
+  const offsetMs = naive.getTime() - localEquiv.getTime();
+  return new Date(naive.getTime() + offsetMs);
+}
 
 // ============================================
 // Interfaces
@@ -629,17 +651,16 @@ class StickerService {
         throw new Error('PARTNER_NOT_ACCEPTING: Този обект временно не приема BoomCard транзакции.');
       }
 
-      // Server-side deadline: receipts must be submitted by 6:00 AM Sofia time the morning
-      // after scan. The server runs UTC (Fly.io), so naive setHours(6) would give 06:00 UTC
-      // = 08:00/09:00 Sofia — up to 3 hours too generous.
-      //
-      // Sofia is UTC+2 (EET, winter) or UTC+3 (EEST, summer). We compute "next day 06:00
-      // Sofia" by converting the session date to Sofia's calendar day and subtracting 3 hours
-      // (max offset). This makes the deadline at most 1 hour strict in winter — acceptable.
+      // Server-side deadline: receipts must be submitted by 6:00 AM the next calendar morning
+      // in the configured system timezone (§9.5). We read the timezone from SystemSetting so
+      // an admin moving operations to a new market does not require a code change.
       const sessionStart = existing.sessionStartedAt ?? existing.createdAt;
-      const sofiaDayStr = sessionStart.toLocaleDateString('en-CA', { timeZone: 'Europe/Sofia' });
-      const [y, m, d] = sofiaDayStr.split('-').map(Number);
-      const deadline = new Date(Date.UTC(y, m - 1, d + 1, 3, 0, 0)); // 06:00 Sofia ≈ 03:00 UTC
+      const tz = await getSystemSettingStr('timezone', 'Europe/Sofia');
+      const sessionDayStr = sessionStart.toLocaleDateString('en-CA', { timeZone: tz });
+      const [y, m, d] = sessionDayStr.split('-').map(Number);
+      // wallClockToUTC gives the exact UTC instant for "next day 06:00" in the
+      // configured timezone, handling DST transitions correctly without any library.
+      const deadline = wallClockToUTC(y, m, d + 1, 6, tz);
       if (Date.now() > deadline.getTime()) {
         // Expire the session so it can't be retried
         await prisma.stickerScan.update({
@@ -1039,6 +1060,11 @@ class StickerService {
     }
 
     // Spec §7.1: 0-30 → auto-approve; 31-60 → manual review; 61+ → high risk.
+    // Design note: scanFraudScore is captured here (pre-OCR). The merchant-verification
+    // job enqueued above runs async and may later increment fraudScore via { increment: 40 },
+    // but that write cannot affect the routing decision made in this synchronous call.
+    // This is intentional: OCR enriches the scan record for subsequent admin review;
+    // it does not gate the current upload's auto-approve path.
     const autoApproveThreshold = (scan as any).venue?.stickerConfig?.autoApproveThreshold ?? 30;
     const scanFraudScore = scan.fraudScore ?? 0;
 
@@ -1238,7 +1264,7 @@ class StickerService {
    * to reflect the corrected values before crediting the wallet. Without it,
    * the pre-computed scan.cashbackAmount is used as-is.
    */
-  async approveScan(scanId: string, opts?: { verifiedAmount?: number; adminUserId?: string | null }): Promise<StickerScan> {
+  async approveScan(scanId: string, opts?: { verifiedAmount?: number; adminUserId?: string | null; notes?: string }): Promise<StickerScan> {
     const scan = await prisma.stickerScan.findUnique({
       where: { id: scanId },
       include: {
@@ -1449,7 +1475,7 @@ class StickerService {
         await cashbackLifecycleService.promotePendingToCleared({
           walletTransactionId: pendingEntry.id,
           actorUserId: opts?.adminUserId ?? null,
-          reason: 'Admin approved sticker scan after risk review',
+          reason: opts?.notes ?? 'Admin approved sticker scan after risk review',
           ...(pendingEntry.amount !== effectiveCashbackAmount
             ? { overrideAmount: effectiveCashbackAmount }
             : {}),
@@ -1579,10 +1605,20 @@ class StickerService {
     // approve vs reject (both filter on status, only one can transition out
     // of MANUAL_REVIEW). If reject wins the scan claim, the PENDING row was
     // not yet promoted because approveScan's promotion is in the same try
-    // block as the scan flip. We can safely void the PENDING row OR write
-    // a ghost. Defensive: if the row is no longer PENDING (e.g. legacy data,
-    // direct DB intervention), skip the wallet-mutating markVoided to avoid
-    // double-spending against a CLEARED entry.
+    // block as the scan flip.
+    //
+    // Void guard (spec §4.4 v1.1):
+    //   PENDING → void (normal path; balance was in pendingBalance, not yet
+    //             moved to availableBalance).
+    //   CLEARED → also void; markVoided decrements both balance and
+    //             availableBalance, which is the correct reversal. This handles
+    //             the edge case where an admin manually cleared the entry while
+    //             the scan was still under MANUAL_REVIEW.
+    //   LOCKED  → markVoided throws ("cancel the pending payout first") — let
+    //             the error surface so the admin resolves the payout conflict.
+    //   PAID    → markVoided throws ("issue a refund instead") — same.
+    //   VOIDED  → markVoided is a no-op (already voided); safe.
+    //   absent  → write a ghost Voided record for audit completeness.
     try {
       const pendingEntry = await prisma.walletTransaction.findFirst({
         where: {
@@ -1592,14 +1628,16 @@ class StickerService {
         select: { id: true, cashbackStatus: true },
         orderBy: { createdAt: 'desc' },
       });
-      if (pendingEntry && pendingEntry.cashbackStatus === 'PENDING') {
+      if (pendingEntry) {
+        // markVoided handles every reachable state:
+        //   PENDING / CLEARED → void + adjust wallet balances correctly
+        //   VOIDED             → no-op (idempotent)
+        //   LOCKED / PAID      → throws so the admin resolves the conflict
         await cashbackLifecycleService.markVoided({
           walletTransactionId: pendingEntry.id,
           actorUserId,
           reason,
         });
-      } else if (pendingEntry) {
-        logger.warn(`[stickerService.rejectScan] scan ${scanId} cashback entry already in ${pendingEntry.cashbackStatus}; skipping void to avoid wallet desync`);
       } else {
         await cashbackLifecycleService.recordRejectedAsVoided({
           userId: scan.userId,
@@ -1612,6 +1650,10 @@ class StickerService {
         });
       }
     } catch (err) {
+      const msg = (err as Error)?.message ?? '';
+      // LOCKED/PAID conflicts must surface: swallowing them leaves the wallet
+      // unbalanced and gives the admin no feedback that action is required.
+      if (msg.includes('LOCKED') || msg.includes('PAID')) throw err;
       logger.error(`[stickerService.rejectScan] failed to record voided ghost for ${scanId}:`, err);
     }
 
@@ -1766,7 +1808,7 @@ class StickerService {
 
     if (scansToday >= config.maxScansPerDay) {
       fraudScore += 40;
-      fraudReasons.push(`MAX_SCANS_PER_DAY: ${scansToday}/${config.maxScansPerDay}`);
+      fraudReasons.push('DAILY_LIMIT_EXCEEDED');
     }
 
     // 3. Check scans this month
@@ -1784,13 +1826,13 @@ class StickerService {
 
     if (scansThisMonth >= config.maxScansPerMonth) {
       fraudScore += 50;
-      fraudReasons.push(`MAX_SCANS_PER_MONTH: ${scansThisMonth}/${config.maxScansPerMonth}`);
+      fraudReasons.push('MONTHLY_LIMIT_EXCEEDED');
     }
 
     // 4. Unusual bill amount (very high)
     if (billAmount > 1000) {
       fraudScore += 15;
-      fraudReasons.push(`HIGH_BILL_AMOUNT: ${billAmount} BGN`);
+      fraudReasons.push('HIGH_BILL_AMOUNT');
     }
 
     // 5. Check for rapid successive scans (within 30 minutes)
@@ -1804,7 +1846,7 @@ class StickerService {
 
     if (recentScans > 3) {
       fraudScore += 25;
-      fraudReasons.push(`RAPID_SCANNING: ${recentScans} scans in 30 minutes`);
+      fraudReasons.push('RAPID_SUBMISSIONS');
     }
 
     // Spec §7.1: 0-30 = auto-approve, 31-60 = review, 61+ = high risk.

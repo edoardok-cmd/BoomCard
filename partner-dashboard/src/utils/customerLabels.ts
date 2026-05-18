@@ -51,7 +51,7 @@ const SUB_STATUS: Record<CustomerSubStatus, Record<Lang, string>> = {
   INCOMPLETE:         { en: 'Incomplete',          bg: 'Незавършен' },
   INCOMPLETE_EXPIRED: { en: 'Incomplete (expired)', bg: 'Незавършен (изтекъл)' },
   UNPAID:             { en: 'Unpaid',              bg: 'Неплатен' },
-  PAUSED:             { en: 'Paused',              bg: 'На пауза' },
+  PAUSED:             { en: 'Suspended',            bg: 'Спрян' },
   EXPIRED:            { en: 'Expired',             bg: 'Изтекъл' },
 };
 

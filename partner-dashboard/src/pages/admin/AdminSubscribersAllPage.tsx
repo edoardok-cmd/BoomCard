@@ -25,6 +25,7 @@ import {
 import { csvEscape, downloadBlob } from '../../utils/csvExport';
 import { formatPhoneBG } from '../../utils/validators';
 import { adminDashboardService } from '../../services/adminDashboard.service';
+import { useSystemFormat } from '../../hooks/useSystemFormat';
 
 /* ─── i18n table (page-local; spec is in BG) ───────────────────────────── */
 type Lang = 'en' | 'bg';
@@ -56,7 +57,7 @@ const I18N = {
   unpaid:         { en: 'Unpaid',          bg: 'Неплатен' },
   // Spec §4.2 v1.1 — distinct enum value written by the Paysera renewal job.
   failedPayment:  { en: 'Failed payment',  bg: 'Неуспешно плащане' },
-  paused:         { en: 'Paused',          bg: 'На пауза' },
+  paused:         { en: 'Suspended',       bg: 'Спрян' },
   // CANCELLED uses 'Отказан' (not spec's "спрян") to disambiguate from user
   // account status 'Спрян' (§4.1) which appears in the same table.
   cancelled:      { en: 'Cancelled',       bg: 'Отказан' },
@@ -173,10 +174,10 @@ const I18N = {
   statNew:           { en: 'New registrations (30 days)', bg: 'Нови регистрации (30 дни)' },
   // "Изтекли / отказани" — filters CANCELLED+EXPIRED+INCOMPLETE_EXPIRED.
   // Previously "Изтекли / спрени" but "спрени" (спрян) is spec §4.2 terminology
-  // for PAUSED, which is counted separately in the "На пауза" tile. "отказани"
+  // for PAUSED, which is counted separately in the "Спрян" tile. "отказани"
   // (cancelled) accurately names the CANCELLED state included here.
   statExpired:       { en: 'Expired / cancelled',        bg: 'Изтекли / отказани' },
-  statPaused:        { en: 'Paused',                     bg: 'На пауза' },
+  statPaused:        { en: 'Suspended',                  bg: 'Спрян' },
   statFailedPayment: { en: 'Failed payment',             bg: 'Неуспешно плащане' },
   // Active-tile filter banner
   activeStatFilter:  { en: 'Active filter:', bg: 'Активен филтър:' },
@@ -502,6 +503,8 @@ const StatusBadge = styled.span<{ $status: SubscriptionStatus }>`
       case 'PAST_DUE':
       case 'UNPAID':
         return `background: ${palette.warningSoft}; color: ${palette.warning};`;
+      case 'FAILED_PAYMENT':
+        return `background: ${palette.dangerSoft}; color: ${palette.danger};`;
       case 'INCOMPLETE':
         return `background: ${palette.infoSoft}; color: ${palette.info};`;
       case 'INCOMPLETE_EXPIRED':
@@ -872,8 +875,8 @@ const NEGATIVE_TX_TYPES = ['WITHDRAWAL', 'PURCHASE'];
 // are real billing-engine states admins must be able to filter by, so they stay
 // in the dropdown but appear after the spec-canonical block. Mapping:
 //   PAST_DUE / UNPAID  → spec "Неуспешно плащане"
-//   PAUSED             → "На пауза" (spec's "Спрян" is the §4.1 account pill;
-//                         relabeled here to avoid same-row duplicate "Спрян · Спрян")
+//   PAUSED             → "Спрян" (spec §4.2 canonical; column headers distinguish
+//                         subscription-suspended from account-suspended)
 //   CANCELLED          → not in §4.2; admin-initiated cancel — distinct surface
 //   INCOMPLETE / INCOMPLETE_EXPIRED → never-completed first payment
 //   TRIALING           → pre-billing trial period
@@ -949,6 +952,8 @@ export default function AdminSubscribersAllPage() {
   const queryClient = useQueryClient();
   const [searchParams] = useSearchParams();
   const locale = language === 'bg' ? 'bg-BG' : 'en-GB';
+  // Spec §9.5 — system-wide number/date format settings.
+  const { formatAmount, formatDate: fmtSetting } = useSystemFormat();
   const lang: Lang = language === 'bg' ? 'bg' : 'en';
   const T = (key: I18NKey, vars?: Record<string, string | number>) => tr(key, lang, vars);
   // Render a translated string with literal "{name}" replaced by <strong>{name}</strong>.
@@ -1276,10 +1281,8 @@ export default function AdminSubscribersAllPage() {
     if (e.key === 'Enter') { setSearch(searchInput); setActiveStat(null); setPage(1); }
   };
 
-  const fmt = (iso: string | null) =>
-    iso
-      ? new Date(iso).toLocaleDateString(locale, { day: '2-digit', month: 'short', year: 'numeric' })
-      : '—';
+  // Spec §9.5 — respect system date_format setting for table display.
+  const fmt = (iso: string | null) => fmtSetting(iso);
 
   const fmtTime = (iso: string) =>
     new Date(iso).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' });
@@ -1381,9 +1384,9 @@ export default function AdminSubscribersAllPage() {
       render: (row) =>
         row.wallet ? (
           <BalanceCell>
-            {row.wallet.availableBalance.toFixed(2)} BGN
+            {formatAmount(row.wallet.availableBalance)}
             {row.wallet.pendingBalance > 0 && (
-              <MetaLine>+{row.wallet.pendingBalance.toFixed(2)} {T('pendingShort')}</MetaLine>
+              <MetaLine>+{formatAmount(row.wallet.pendingBalance)} {T('pendingShort')}</MetaLine>
             )}
           </BalanceCell>
         ) : (
