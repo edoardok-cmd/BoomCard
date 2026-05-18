@@ -307,14 +307,15 @@ export async function getAlerts(): Promise<AdminAlertsResult> {
       link: '/admin/control/risk?bucket=HIGH_61_PLUS&status=active',
     });
   }
-  // Spec §7.1: fraud score 31–60 = "Изисква преглед" (review required) which maps
-  // to the OPERATIONAL tier (spec §3.2). Only 61+ = CRITICAL. Moving this to
-  // operational so the admin sees it as a "needs review" signal, not an emergency.
+  // Spec §3.2: both HIGH (61+) and REVIEW (31–60) score bands are listed as
+  // critical "рискови транзакции" — they route to the same admin/control/risk
+  // page, just different bucket filters. Keeping them as two separate alerts so
+  // the admin sees the split count in the badge.
   if (mediumRiskScans > 0) {
-    operational.push({
+    critical.push({
       id: 'medium_risk_transactions',
       type: 'MEDIUM_RISK_TRANSACTIONS',
-      tier: 'OPERATIONAL',
+      tier: 'CRITICAL',
       title: 'Транзакции за преглед (31–60)',
       count: mediumRiskScans,
       link: '/admin/control/risk?bucket=REVIEW_31_60&status=active',
@@ -366,10 +367,9 @@ export async function getAlerts(): Promise<AdminAlertsResult> {
       tier: 'CRITICAL',
       title: 'Грешки в проверката за измами (последните 24ч)',
       count: fraudCheckErrorScans,
-      // FRAUD_CHECK_ERROR is in the 'suspicious' signal group (adminControl.routes.ts
-      // RISK_SIGNAL_GROUPS). Using signalCategory=suspicious so the risk page can
-      // honour this param once URL-param hydration is in place.
-      link: '/admin/control/risk?signalCategory=suspicious',
+      // B1 fix: link directly to the FRAUD_CHECK_ERROR reason filter with status=active
+      // so the page count matches the badge (only active scans, only this reason code).
+      link: '/admin/control/risk?reasons=FRAUD_CHECK_ERROR&status=active',
     });
   }
   if (recentIbanChanges > 0) {
@@ -397,11 +397,10 @@ export async function getAlerts(): Promise<AdminAlertsResult> {
       tier: 'CRITICAL',
       title: 'Подозрителна активност (последните 24ч)',
       count: suspiciousScans,
-        // signalCategory intentionally omitted — the alert SQL counts scans across
-      // all fraud-signal categories, so linking to only the 'suspicious' subcategory
-      // would show far fewer items than the badge. Landing on the full risk queue
-      // filtered by the same 24h window is the closest match to the alert count.
-      link: `/admin/control/risk?dateFromHours=${SUSPICIOUS_ACTIVITY_WINDOW_HOURS}`,
+        // B-A1 fix: suspicious=true + status=active scopes the page to active scans
+      // in the suspicious signal group; dateFromHours pins the same window the alert
+      // counted so the badge number matches the page count.
+      link: `/admin/control/risk?suspicious=true&status=active&dateFromHours=${SUSPICIOUS_ACTIVITY_WINDOW_HOURS}`,
       meta: { windowHours: SUSPICIOUS_ACTIVITY_WINDOW_HOURS, dateFrom: suspiciousWindowStart.toISOString() },
     });
   }

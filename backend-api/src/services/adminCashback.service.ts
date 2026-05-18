@@ -389,6 +389,7 @@ class AdminCashbackService {
       receiptDate: Date | null;
       reviewedAt: Date | null;
       reviewedBy: string | null;
+      cashbackReversed: boolean;
     }>;
     receiptCount: number;
     totalCashbackOwed: number;
@@ -412,20 +413,49 @@ class AdminCashbackService {
         processedAt: true,
         createdAt: true,
         venue: { select: { name: true } },
+        // Audit-fix [X.2]: join wallet transactions so we can detect CLEARED+VOIDED
+        // round-trips. Without this, a scan whose cashback was reversed after approval
+        // still appears in the reconciliation total, overstating what is owed.
+        walletTransactions: {
+          where: { type: 'CASHBACK_CREDIT' },
+          select: { cashbackStatus: true, amount: true },
+        },
       },
       orderBy: { createdAt: 'asc' },
     });
 
-    const receipts = scans.map(s => ({
-      id: s.id,
-      userId: s.userId,
-      totalAmount: s.verifiedAmount ?? s.billAmount ?? null,
-      cashbackAmount: s.cashbackAmount,
-      merchantName: s.venue?.name ?? null,
-      receiptDate: s.createdAt,
-      reviewedAt: s.processedAt,
-      reviewedBy: null, // StickerScan doesn't track the approving admin — unlike Receipt.reviewedBy
-    }));
+    const receipts = scans.map(s => {
+      // A scan's cashback is considered reversed if every CASHBACK_CREDIT
+      // wallet transaction for it is VOIDED (meaning the balance reversal
+      // already happened). Scans with no wallet transactions are included
+      // (edge case: approval without credit — count as owed).
+      const credits = s.walletTransactions;
+      const cashbackReversed =
+        credits.length > 0 && credits.every((t) => t.cashbackStatus === 'VOIDED');
+
+      // Use the effective (non-voided) cashback amount from wallet transactions
+      // when available; fall back to StickerScan.cashbackAmount for legacy rows
+      // that predate the WalletTransaction join.
+      const effectiveCashback = cashbackReversed
+        ? 0
+        : credits.length > 0
+          ? credits
+              .filter((t) => t.cashbackStatus !== 'VOIDED')
+              .reduce((sum, t) => sum + (t.amount ?? 0), 0)
+          : s.cashbackAmount;
+
+      return {
+        id: s.id,
+        userId: s.userId,
+        totalAmount: s.verifiedAmount ?? s.billAmount ?? null,
+        cashbackAmount: effectiveCashback,
+        merchantName: s.venue?.name ?? null,
+        receiptDate: s.createdAt,
+        reviewedAt: s.processedAt,
+        reviewedBy: null, // StickerScan doesn't track the approving admin — unlike Receipt.reviewedBy
+        cashbackReversed,
+      };
+    });
 
     const totalCashbackOwed = receipts.reduce((sum, r) => sum + r.cashbackAmount, 0);
 
@@ -1068,7 +1098,7 @@ export async function getAllCashbackEntries(
 export async function approveEntry(entryId: string, adminUserId: string): Promise<void> {
   const entry = await prisma.walletTransaction.findUnique({
     where: { id: entryId },
-    select: { id: true, type: true, status: true, cashbackStatus: true },
+    select: { id: true, type: true, status: true, cashbackStatus: true, amount: true, walletId: true },
   });
   if (!entry) throw new AppError('Entry not found', 404);
   if (entry.type !== 'CASHBACK_CREDIT') throw new AppError('Not a cashback entry', 400);
@@ -1095,6 +1125,15 @@ export async function approveEntry(entryId: string, adminUserId: string): Promis
       await tx.walletTransaction.update({
         where: { id: entryId },
         data: { status: 'COMPLETED' },
+      });
+      // Ghost PENDING entry (recordPendingForRiskReview): wallet balance was NOT
+      // credited at creation time. Credit it now atomically with the status flip.
+      await tx.wallet.update({
+        where: { id: entry.walletId },
+        data: {
+          balance: { increment: entry.amount },
+          availableBalance: { increment: entry.amount },
+        },
       });
     }
     // Run the lifecycle transition inside the same tx via direct field update

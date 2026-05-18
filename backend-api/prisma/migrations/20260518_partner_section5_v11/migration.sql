@@ -130,12 +130,30 @@ END$$;
 --
 -- The safe grandfather rule: any partner that is currently ACTIVE was, by
 -- definition, considered activated under the old rules. We stamp verifiedAt
--- to joinedAt (the closest available proxy for "activation time").
+-- to the best available proxy for "activation time":
+--   joinedAt  — preferred; the earliest meaningful timestamp on the row
+--   createdAt — fallback if joinedAt is NULL (schema allows it for legacy rows)
+--   NOW()     — last resort; still correct: the partner IS active right now
 
 UPDATE "Partner"
-SET "verifiedAt" = COALESCE("verifiedAt", "joinedAt")
+SET "verifiedAt" = COALESCE("joinedAt", "createdAt", NOW())
 WHERE "status" = 'ACTIVE'
   AND "verifiedAt" IS NULL;
+
+-- Sanity check: any ACTIVE row still missing verifiedAt means neither
+-- joinedAt nor createdAt is set, which is a data-integrity problem unrelated
+-- to this migration. Log the count so it surfaces in migration output.
+DO $$
+DECLARE
+  missed int;
+BEGIN
+  SELECT COUNT(*) INTO missed
+  FROM "Partner"
+  WHERE "status" = 'ACTIVE' AND "verifiedAt" IS NULL;
+  IF missed > 0 THEN
+    RAISE WARNING 'verifiedAt backfill: % ACTIVE partner(s) still have verifiedAt=NULL after backfill — investigate manually', missed;
+  END IF;
+END$$;
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- Done.

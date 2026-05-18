@@ -39,6 +39,9 @@ const TERMS_VERSION = process.env.TERMS_VERSION || '2026-02-24';
 // a clean IP can still iterate addresses. This cap is in-process (single-node
 // safe; for clustered deploys replace with Redis SETEX). 60s mirrors the
 // usual user expectation of "I clicked resend; wait a minute before retrying".
+// TODO(cluster): before enabling PM2 cluster mode or multiple Fly.io machines,
+// replace verificationResendCache with a Redis SETEX/SETNX keyed by email.
+// Without it, an attacker rotating workers can send N emails per 60s.
 const VERIFICATION_RESEND_WINDOW_MS = 60_000;
 const verificationResendCache = new Map<string, number>();
 function verificationResendIsAllowed(email: string): boolean {

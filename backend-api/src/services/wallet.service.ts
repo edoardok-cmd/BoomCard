@@ -171,44 +171,75 @@ export class WalletService {
     // Re-read wallet inside interactive transaction so isLocked is checked atomically
     // with the balance update — prevents a race where wallet is locked between our
     // pre-read and the actual write.
-    const [updatedWallet, walletTransaction] = await prisma.$transaction(async (tx) => {
-      const currentWallet = await tx.wallet.findUniqueOrThrow({ where: { userId } });
+    let updatedWallet: Awaited<ReturnType<typeof prisma.wallet.update>>;
+    let walletTransaction: Awaited<ReturnType<typeof prisma.walletTransaction.create>>;
+    try {
+      [updatedWallet, walletTransaction] = await prisma.$transaction(async (tx) => {
+        const currentWallet = await tx.wallet.findUniqueOrThrow({ where: { userId } });
 
-      if (currentWallet.isLocked) {
-        throw new Error(`Wallet is locked: ${currentWallet.lockedReason}`);
+        if (currentWallet.isLocked) {
+          throw new Error(`Wallet is locked: ${currentWallet.lockedReason}`);
+        }
+
+        // TRIAL_PENDING: increment only balance (visible to user) — availableBalance
+        // is not incremented until the trial window closes so the funds cannot be
+        // withdrawn or applied to payouts during the refund-eligible period.
+        const updated = await tx.wallet.update({
+          where: { userId },
+          data: isTrialPending
+            ? { balance: { increment: amount } }
+            : { balance: { increment: amount }, availableBalance: { increment: amount } },
+        });
+
+        const txRecord = await tx.walletTransaction.create({
+          data: {
+            walletId: wallet.id,
+            type,
+            amount,
+            // Derive from the post-increment return value so concurrent credits don't
+            // leave a stale balanceBefore/After on the audit record.
+            balanceBefore: updated.balance - amount,
+            balanceAfter: updated.balance,
+            status: txStatus,
+            description,
+            metadata: metadata ? JSON.stringify(metadata) : undefined,
+            cashbackExpiresAt,
+            cashbackStatus,
+            clearedAt,
+            ...links,
+          },
+        });
+
+        return [updated, txRecord] as const;
+      });
+    } catch (err: any) {
+      // Audit-fix [3]: The application-level idempotency probe (above) runs
+      // outside the transaction, so two concurrent credit() calls for the
+      // same stickerScanId can both pass the probe before either inserts.
+      // The partial unique index on WalletTransaction rejects the second
+      // insert with P2002. Catch that and return the winner's row instead of
+      // surfacing a 500, preserving the caller's idempotency guarantee.
+      if (
+        err?.code === 'P2002' &&
+        type === WalletTransactionType.CASHBACK_CREDIT &&
+        links.stickerScanId
+      ) {
+        logger.warn(
+          `[wallet.credit] P2002 unique constraint — concurrent credit race resolved for stickerScanId=${links.stickerScanId}`,
+        );
+        const existingTx = await prisma.walletTransaction.findFirst({
+          where: {
+            stickerScanId: links.stickerScanId,
+            type: WalletTransactionType.CASHBACK_CREDIT,
+          },
+        });
+        if (existingTx) {
+          const currentWallet = await this.getOrCreateWallet(userId);
+          return { wallet: currentWallet, transaction: existingTx };
+        }
       }
-
-      // TRIAL_PENDING: increment only balance (visible to user) — availableBalance
-      // is not incremented until the trial window closes so the funds cannot be
-      // withdrawn or applied to payouts during the refund-eligible period.
-      const updated = await tx.wallet.update({
-        where: { userId },
-        data: isTrialPending
-          ? { balance: { increment: amount } }
-          : { balance: { increment: amount }, availableBalance: { increment: amount } },
-      });
-
-      const txRecord = await tx.walletTransaction.create({
-        data: {
-          walletId: wallet.id,
-          type,
-          amount,
-          // Derive from the post-increment return value so concurrent credits don't
-          // leave a stale balanceBefore/After on the audit record.
-          balanceBefore: updated.balance - amount,
-          balanceAfter: updated.balance,
-          status: txStatus,
-          description,
-          metadata: metadata ? JSON.stringify(metadata) : undefined,
-          cashbackExpiresAt,
-          cashbackStatus,
-          clearedAt,
-          ...links,
-        },
-      });
-
-      return [updated, txRecord] as const;
-    });
+      throw err;
+    }
 
     logger.info(`Credited ${amount} BGN to wallet ${wallet.id}. Type: ${type}${isTrialPending ? ' [TRIAL_PENDING]' : ''}${cashbackExpiresAt ? `. Expires: ${cashbackExpiresAt.toISOString()}` : ''}`);
 

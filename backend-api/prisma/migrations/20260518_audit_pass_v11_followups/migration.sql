@@ -46,6 +46,10 @@ CREATE UNIQUE INDEX IF NOT EXISTS "WalletTransaction_receiptId_pending_unique"
 -- exists yet (fresh install), the inbound classifier currently drops the
 -- email. We persist it here so it can be replayed by a follow-up job.
 
+-- Audit-fix [1b]: use TIMESTAMP(3) (millisecond precision) to match what
+-- Prisma generates for DateTime fields. Plain TIMESTAMP would cause Prisma's
+-- drift checker to flag the columns on every subsequent db push / migrate dev,
+-- and could silently truncate sub-second timestamps written by the ORM.
 CREATE TABLE IF NOT EXISTS "OrphanInboundEmail" (
   "id"          TEXT PRIMARY KEY,
   "fromEmail"   TEXT NOT NULL,
@@ -56,9 +60,9 @@ CREATE TABLE IF NOT EXISTS "OrphanInboundEmail" (
   "messageId"   TEXT,
   "rawPayload"  JSONB,
   "reason"      TEXT NOT NULL DEFAULT 'NO_ADMIN',
-  "replayedAt"  TIMESTAMP,
+  "replayedAt"  TIMESTAMP(3),
   "replayedTicketId" TEXT,
-  "createdAt"   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+  "createdAt"   TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX IF NOT EXISTS "OrphanInboundEmail_createdAt_idx"

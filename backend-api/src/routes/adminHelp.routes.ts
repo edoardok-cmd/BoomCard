@@ -351,6 +351,11 @@ router.post('/:id/reject', requirePermission('help.write'), async (req: AuthRequ
       include: { user: { select: { email: true, firstName: true } } },
     });
     if (!ticket) return res.status(404).json({ error: 'Заявката не е намерена' });
+    // Policy (confirmed audit-fix [7]): only the assignee or SUPER_ADMIN can reject.
+    // Regular help.write admins who are not assigned to this ticket cannot reject —
+    // rejection is a terminal action that should be owned by someone accountable.
+    // If the policy changes (e.g., any help.write admin may reject), remove the
+    // assigneeId check and keep only the hasFullAccess / role gate.
     if (!hasFullAccess(req) && ticket.assigneeId !== req.user!.id) {
       return res.status(403).json({ error: 'Отказан достъп — само отговорникът или SUPER_ADMIN може да отхвърли' });
     }

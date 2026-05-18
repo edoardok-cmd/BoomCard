@@ -32,7 +32,8 @@ export type ActivationErrorCode =
   | 'INVALID_TOKEN'
   | 'TOKEN_EXPIRED'
   | 'TOKEN_USED'
-  | 'PASSWORD_TOO_SHORT';
+  | 'PASSWORD_TOO_SHORT'
+  | 'PASSWORD_REQUIRED';
 
 export class ActivationLinkError extends Error {
   constructor(public code: ActivationErrorCode, message: string) {
@@ -203,7 +204,7 @@ export class ActivationLinkService {
       async (tx) => {
       const link = await tx.activationLink.findUnique({
         where: { token },
-        include: { partner: true },
+        include: { partner: { include: { user: { select: { mustChangePassword: true } } } } },
       });
 
       if (!link) throw new ActivationLinkError('INVALID_TOKEN', 'Invalid activation link');
@@ -211,12 +212,36 @@ export class ActivationLinkService {
       if (link.consumedAt) throw new ActivationLinkError('TOKEN_USED', 'Activation link already used');
       if (link.expiresAt.getTime() < Date.now()) throw new ActivationLinkError('TOKEN_EXPIRED', 'Activation link has expired');
 
-      // 1. Atomic claim: guard on consumedAt=null so a race-loser sees count=0.
-      //    Under SERIALIZABLE this is belt-and-braces — Postgres also raises
-      //    P2034 on the second commit attempt — but the guard makes the
-      //    READ COMMITTED degenerate behaviour also safe.
+      // Spec §5.2 v1.1 — admin-onboarded partners have mustChangePassword=true
+      // because the temp password generated at /partners/onboard was never
+      // shown to them. If no password is supplied here the token is consumed
+      // but the partner has no usable credential and is locked out. Enforce
+      // this at the API boundary so the UI's required gate can't be bypassed.
+      if (link.partner.user?.mustChangePassword && !opts.password) {
+        throw new ActivationLinkError(
+          'PASSWORD_REQUIRED',
+          'A password is required to activate this account. Please set one via the activation link page.',
+        );
+      }
+
+      // 1. Atomic claim: guard on consumedAt=null + invalidatedAt=null so a
+      //    race-loser sees count=0 and we never consume a token that was
+      //    concurrently superseded by issue().
+      //
+      //    Two races this protects against:
+      //    a) consume+consume: two callers racing on the same token.
+      //       Postgres UPDATE re-evaluates the WHERE predicate post-lock, so
+      //       the second caller sees consumedAt≠null and gets count=0.
+      //       This works at READ COMMITTED; SERIALIZABLE is belt-and-braces.
+      //    b) issue+consume: a concurrent issue() invalidates this token while
+      //       consume is in flight. The invalidatedAt=null guard here closes
+      //       the window. SERIALIZABLE (SSI) is REQUIRED for this race because
+      //       the findUnique above reads from a snapshot and cannot see the
+      //       concurrent invalidate; SSI detects the read-write conflict and
+      //       raises P2034 on the loser, whose retry then hits the
+      //       `if (link.invalidatedAt)` guard at line 210.
       const claim = await tx.activationLink.updateMany({
-        where: { id: link.id, consumedAt: null },
+        where: { id: link.id, consumedAt: null, invalidatedAt: null },
         data: { consumedAt: new Date() },
       });
       if (claim.count === 0) {
@@ -246,12 +271,12 @@ export class ActivationLinkService {
         });
       }
 
-      // 3. Set the partner user's password if supplied. Used by:
-      //   - admin-onboard partners who never set a password at registration
-      //   - self-registered partners who want a fresh password on activation
-      //     (currently optional in the UI; backend supports either path).
-      //   Also force-set status=ACTIVE and emailVerified — at this point the
-      //   token (an out-of-band secret) is sufficient proof.
+      // 3. Set the partner user's password if supplied. By the time we reach
+      //    here, admin-onboarded partners (mustChangePassword=true) are
+      //    guaranteed to have supplied one — the PASSWORD_REQUIRED guard above
+      //    rejects them otherwise. Self-registered partners may still omit it.
+      //    Also force-set status=ACTIVE and emailVerified — at this point the
+      //    token (an out-of-band secret) is sufficient proof.
       if (opts.password) {
         if (opts.password.length < 8) {
           throw new ActivationLinkError('PASSWORD_TOO_SHORT', 'Password must be at least 8 characters');

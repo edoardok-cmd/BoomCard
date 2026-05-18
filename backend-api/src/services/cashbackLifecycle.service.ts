@@ -537,11 +537,15 @@ export async function promotePendingToCleared(params: {
   const clearedAt = new Date();
   const expiresAt = new Date(clearedAt.getTime() + validityDays * 24 * 60 * 60 * 1000);
 
-  // Audit-pass [1.1] + [1.4]: read, reconcile, promote, and credit wallet
-  // ALL inside the same $transaction. The row is re-read inside the tx so a
-  // concurrent reject can't race and void the same entry between our outer
-  // read and the promotion. Returns the updated row OR the existing CLEARED
-  // row on idempotent re-entry.
+  // Audit-fix [2]: read + promote in a single $transaction with a status
+  // predicate on the UPDATE (via updateMany) to close the promote-vs-reject
+  // TOCTOU window. Previously the UPDATE used `where: { id }` only; a
+  // concurrent reject that committed between the findUnique and the update
+  // would overwrite the VOIDED row back to CLEARED and double-credit the
+  // wallet. Using updateMany with `cashbackStatus: PENDING` makes the update
+  // a no-op if the row was concurrently changed, and we detect that by
+  // checking count === 0, then re-reading to decide CLEARED (idempotent) or
+  // throw (race with reject/void).
   const { row, didPromote, previousStatus } = await prisma.$transaction(async (tx) => {
     const existing = await tx.walletTransaction.findUnique({
       where: { id: walletTransactionId },
@@ -565,8 +569,10 @@ export async function promotePendingToCleared(params: {
 
     const finalAmount = overrideAmount != null ? overrideAmount : existing.amount;
 
-    const updated = await tx.walletTransaction.update({
-      where: { id: walletTransactionId },
+    // updateMany with status predicate: if a concurrent reject already committed,
+    // count will be 0 and we detect + handle it below instead of overwriting.
+    const { count } = await tx.walletTransaction.updateMany({
+      where: { id: walletTransactionId, cashbackStatus: CashbackEntryStatus.PENDING },
       data: {
         status: WalletTransactionStatus.COMPLETED,
         cashbackStatus: CashbackEntryStatus.CLEARED,
@@ -574,6 +580,25 @@ export async function promotePendingToCleared(params: {
         cashbackExpiresAt: expiresAt,
         ...(overrideAmount != null ? { amount: finalAmount } : {}),
       },
+    });
+
+    if (count === 0) {
+      // Race: concurrent operation changed cashbackStatus after our read.
+      const current = await tx.walletTransaction.findUniqueOrThrow({
+        where: { id: walletTransactionId },
+        select: { cashbackStatus: true },
+      });
+      if (current.cashbackStatus === CashbackEntryStatus.CLEARED) {
+        // A concurrent promote already ran — idempotent return.
+        return { row: existing as WalletTransaction, didPromote: false, previousStatus: existing.cashbackStatus };
+      }
+      throw new Error(
+        `Cannot promote — entry ${walletTransactionId} was concurrently changed to ${current.cashbackStatus}`,
+      );
+    }
+
+    const updated = await tx.walletTransaction.findUniqueOrThrow({
+      where: { id: walletTransactionId },
     });
 
     await tx.wallet.update({

@@ -239,6 +239,13 @@ describe('§5.2 /partners/activation/:token/verify mustSetPassword', () => {
 import { activationLinkService, ActivationLinkError } from '../../src/services/activationLink.service';
 
 describe('§5.2 consume race — atomic claim guard', () => {
+  // Helper: partner shape including user.mustChangePassword (M1 fix).
+  const mkPartner = (overrides: any = {}) => ({
+    id: 'p1', userId: 'u1', businessName: 'X', status: 'ACTIVE', verifiedAt: null,
+    user: { mustChangePassword: false },
+    ...overrides,
+  });
+
   it('throws TOKEN_USED when the claim updateMany returns count=0 (loser of race)', async () => {
     // The loser-of-race scenario: findUnique sees consumedAt=null (stale read),
     // but the atomic claim updateMany finds the row already consumed.
@@ -251,7 +258,7 @@ describe('§5.2 consume race — atomic claim guard', () => {
             consumedAt: null, // stale snapshot
             invalidatedAt: null,
             expiresAt: new Date(Date.now() + 10_000),
-            partner: { id: 'p1', userId: 'u1', businessName: 'X', status: 'ACTIVE', verifiedAt: null },
+            partner: mkPartner(),
           }),
           updateMany: (jest.fn() as any).mockResolvedValue({ count: 0 }), // race lost
           findUniqueOrThrow: jest.fn(),
@@ -275,12 +282,12 @@ describe('§5.2 consume race — atomic claim guard', () => {
           findUnique: (jest.fn() as any).mockResolvedValue({
             id: 'l1', token: 't', consumedAt: null, invalidatedAt: null,
             expiresAt: new Date(Date.now() + 10_000),
-            partner: { id: 'p1', userId: 'u1', businessName: 'X', status: 'PENDING', verifiedAt: null },
+            partner: mkPartner({ status: 'PENDING' }),
           }),
           updateMany: (jest.fn() as any).mockResolvedValue({ count: 1 }),
           findUniqueOrThrow: (jest.fn() as any).mockResolvedValue({
             id: 'l1', token: 't', consumedAt: new Date(),
-            partner: { id: 'p1', userId: 'u1', businessName: 'X', status: 'PENDING', verifiedAt: null },
+            partner: mkPartner({ status: 'PENDING' }),
           }),
         },
         partner: { update: (partnerUpd as any).mockResolvedValue({}) },
@@ -306,11 +313,11 @@ describe('§5.2 consume race — atomic claim guard', () => {
           findUnique: (jest.fn() as any).mockResolvedValue({
             id: 'l1', token: 't', consumedAt: null, invalidatedAt: null,
             expiresAt: new Date(Date.now() + 10_000),
-            partner: { id: 'p1', userId: 'u1', businessName: 'X', status: 'ACTIVE', verifiedAt: new Date() },
+            partner: mkPartner({ verifiedAt: new Date() }),
           }),
           updateMany: (jest.fn() as any).mockResolvedValue({ count: 1 }),
           findUniqueOrThrow: (jest.fn() as any).mockResolvedValue({
-            partner: { id: 'p1', userId: 'u1', businessName: 'X', status: 'ACTIVE', verifiedAt: new Date() },
+            partner: mkPartner({ verifiedAt: new Date() }),
           }),
         },
         partner: { update: (jest.fn() as any).mockResolvedValue({}) },
@@ -319,5 +326,125 @@ describe('§5.2 consume race — atomic claim guard', () => {
     });
     await activationLinkService.consume('t');
     expect(capturedOpts?.isolationLevel).toBe('Serializable');
+  });
+
+  // M1 fix: PASSWORD_REQUIRED is thrown when mustChangePassword=true and no
+  // password is supplied — the token is NOT consumed (claim updateMany never
+  // runs because the check precedes it).
+  it('throws PASSWORD_REQUIRED when admin-onboarded partner omits password', async () => {
+    transactionMock.mockImplementation(async (fn: any) => {
+      const updateMany = jest.fn();
+      return fn({
+        activationLink: {
+          findUnique: (jest.fn() as any).mockResolvedValue({
+            id: 'l1', token: 't', consumedAt: null, invalidatedAt: null,
+            expiresAt: new Date(Date.now() + 10_000),
+            partner: mkPartner({ user: { mustChangePassword: true } }),
+          }),
+          updateMany,
+          findUniqueOrThrow: jest.fn(),
+        },
+        partner: { update: jest.fn() },
+        user: { update: jest.fn() },
+        _updateMany: updateMany, // expose for assertion
+      });
+    });
+    const err: any = await activationLinkService.consume('t').catch((e) => e);
+    expect(err).toBeInstanceOf(ActivationLinkError);
+    expect(err.code).toBe('PASSWORD_REQUIRED');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// §5.2 resend rate limit scoped to reason=RESEND
+// ─────────────────────────────────────────────────────────────────────────────
+// The rate-limit query filters by reason=RESEND so an initial post-approve
+// link (reason=INITIAL) never blocks a legitimate first resend. We verify:
+//   (a) a recent RESEND link triggers 429
+//   (b) the findFirst WHERE includes reason=RESEND, so an INITIAL-only
+//       history does NOT trigger the rate limit (findFirst → null)
+
+import adminPartnersRouter from '../../src/routes/adminPartners.routes';
+
+jest.mock('../../src/middleware/auth.middleware', () => ({
+  authenticate: (_req: any, _res: any, next: any) => {
+    _req.user = { id: 'admin-1', role: 'SUPER_ADMIN' };
+    next();
+  },
+  authorize: () => (_req: any, _res: any, next: any) => next(),
+  requirePermission: () => (_req: any, _res: any, next: any) => next(),
+  // partners.routes.ts uses optionalAuthenticate on its public list endpoint
+  optionalAuthenticate: (_req: any, _res: any, next: any) => next(),
+}));
+
+jest.mock('../../src/middleware/audit.middleware', () => ({
+  auditMiddleware: (_req: any, _res: any, next: any) => next(),
+  writeAudit: jest.fn(async () => undefined),
+}));
+
+jest.mock('../../src/services/partnerActivation.service', () => ({
+  issueActivationLink: jest.fn(async () => ({
+    url: 'https://example.com/activate?token=tok',
+    expiresAt: new Date(Date.now() + 72 * 3600 * 1000),
+    linkId: 'link-1',
+  })),
+  sendActivationEmail: jest.fn(async () => undefined),
+  stampEmailOutcome: jest.fn(async () => undefined),
+}));
+
+describe('§5.2 resend rate limit scoped to reason=RESEND', () => {
+  let app: express.Express;
+
+  beforeEach(() => {
+    app = express();
+    app.use(express.json());
+    app.use('/api/admin/partner-requests', adminPartnersRouter);
+    partnerFindUnique.mockReset();
+    activationLinkFindFirst.mockReset();
+  });
+
+  const activePartner = {
+    id: 'p1', businessName: 'TestCo', email: 'test@co.bg', status: 'ACTIVE', verifiedAt: null,
+    user: { email: 'u@co.bg', firstName: 'Test' },
+  };
+
+  it('returns 429 when a RESEND link was issued less than 60s ago', async () => {
+    partnerFindUnique.mockResolvedValue(activePartner);
+    activationLinkFindFirst.mockResolvedValue({
+      createdAt: new Date(Date.now() - 30_000), // 30s ago — within the 60s window
+    });
+
+    const res = await request(app)
+      .post('/api/admin/partner-requests/p1/resend-activation');
+
+    expect(res.status).toBe(429);
+    expect(res.body.error).toMatch(/less than a minute/i);
+  });
+
+  it('issues a new link when the most recent RESEND was over 60s ago', async () => {
+    partnerFindUnique.mockResolvedValue(activePartner);
+    activationLinkFindFirst.mockResolvedValue({
+      createdAt: new Date(Date.now() - 90_000), // 90s ago — outside the window
+    });
+
+    const res = await request(app)
+      .post('/api/admin/partner-requests/p1/resend-activation');
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+  });
+
+  it('does NOT rate-limit when history contains only INITIAL links (no RESEND)', async () => {
+    partnerFindUnique.mockResolvedValue(activePartner);
+    // findFirst returns null because WHERE reason=RESEND matches nothing
+    activationLinkFindFirst.mockResolvedValue(null);
+
+    const res = await request(app)
+      .post('/api/admin/partner-requests/p1/resend-activation');
+
+    expect(res.status).toBe(200);
+    // Confirm the query was scoped to RESEND (not INITIAL)
+    const whereArg = activationLinkFindFirst.mock.calls[0]?.[0]?.where;
+    expect(whereArg?.reason).toBe('RESEND');
   });
 });

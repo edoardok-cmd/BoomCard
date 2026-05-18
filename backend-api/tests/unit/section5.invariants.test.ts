@@ -160,6 +160,15 @@ describe('§5.2 activationLinkService.consume', () => {
     transactionMock.mockReset();
   });
 
+  // Helper: a well-formed partner object as returned from the findUnique that
+  // now includes partner.user.mustChangePassword (M1 fix). Tests that don't
+  // exercise the password-required gate set mustChangePassword: false.
+  const basePartner = (overrides: any = {}) => ({
+    id: 'p1', userId: 'u1', businessName: 'X', status: 'ACTIVE', verifiedAt: null,
+    user: { mustChangePassword: false },
+    ...overrides,
+  });
+
   it('rejects expired token without mutating state', async () => {
     transactionMock.mockImplementation(async (fn: any) => {
       const tx = {
@@ -169,7 +178,7 @@ describe('§5.2 activationLinkService.consume', () => {
             consumedAt: null,
             invalidatedAt: null,
             expiresAt: new Date(Date.now() - 1),
-            partner: { id: 'p1', userId: 'u1', businessName: 'X', status: 'ACTIVE', verifiedAt: null },
+            partner: basePartner(),
           }),
           update: jest.fn(),
         },
@@ -188,7 +197,7 @@ describe('§5.2 activationLinkService.consume', () => {
         findUnique: jest.fn().mockResolvedValue({
           id: 'l1', consumedAt: new Date(), invalidatedAt: null,
           expiresAt: new Date(Date.now() + 1000),
-          partner: { id: 'p1', userId: 'u1', businessName: 'X', status: 'ACTIVE', verifiedAt: null },
+          partner: basePartner(),
         }),
         update: jest.fn(),
       },
@@ -205,12 +214,12 @@ describe('§5.2 activationLinkService.consume', () => {
       findUnique: jest.fn<any, any>().mockResolvedValue({
         id: 'l1', consumedAt: null, invalidatedAt: null,
         expiresAt: new Date(Date.now() + 1000),
-        partner: { id: 'p1', userId: 'u1', businessName: 'X', status: 'ACTIVE', verifiedAt: null },
+        partner: basePartner(),
       }),
       updateMany: jest.fn<any, any>().mockResolvedValue({ count: 1 }),
       findUniqueOrThrow: jest.fn<any, any>().mockResolvedValue({
         id: 'l1', consumedAt: new Date(),
-        partner: { id: 'p1', userId: 'u1', businessName: 'X', status: 'ACTIVE', verifiedAt: null },
+        partner: basePartner(),
       }),
       ...overrides.activationLink,
     },
@@ -236,10 +245,10 @@ describe('§5.2 activationLinkService.consume', () => {
         findUnique: jest.fn<any, any>().mockResolvedValue({
           id: 'l1', consumedAt: null, invalidatedAt: null,
           expiresAt: new Date(Date.now() + 1000),
-          partner: { id: 'p1', userId: 'u1', businessName: 'X', status: 'PENDING', verifiedAt: null },
+          partner: basePartner({ status: 'PENDING' }),
         }),
         findUniqueOrThrow: jest.fn<any, any>().mockResolvedValue({
-          partner: { id: 'p1', userId: 'u1', businessName: 'X', status: 'PENDING', verifiedAt: null },
+          partner: basePartner({ status: 'PENDING' }),
         }),
       },
     });
@@ -260,5 +269,34 @@ describe('§5.2 activationLinkService.consume', () => {
     await expect(
       activationLinkService.consume('good-tok', { password: 'short' }),
     ).rejects.toThrow('Password must be at least 8 characters');
+  });
+
+  // M1 fix: admin-onboarded partners must supply a password — backend enforces
+  // this at the API level so the UI's `required` gate cannot be bypassed.
+  it('rejects consume without password when partner.user.mustChangePassword=true', async () => {
+    transactionMock.mockImplementation(async (fn: any) => fn(buildTx({
+      activationLink: {
+        findUnique: jest.fn<any, any>().mockResolvedValue({
+          id: 'l1', consumedAt: null, invalidatedAt: null,
+          expiresAt: new Date(Date.now() + 1000),
+          partner: basePartner({ user: { mustChangePassword: true } }),
+        }),
+        updateMany: jest.fn<any, any>().mockResolvedValue({ count: 1 }),
+        findUniqueOrThrow: jest.fn<any, any>().mockResolvedValue({
+          partner: basePartner({ user: { mustChangePassword: true } }),
+        }),
+      },
+    })));
+
+    const err: any = await activationLinkService.consume('admin-tok').catch((e) => e);
+    expect(err.code).toBe('PASSWORD_REQUIRED');
+    expect(err.message).toMatch(/password is required/i);
+  });
+
+  it('accepts consume without password when partner.user.mustChangePassword=false (self-registered)', async () => {
+    const tx = buildTx();
+    transactionMock.mockImplementation(async (fn: any) => fn(tx));
+    // Should not throw — self-registered partners already set a password at /register
+    await expect(activationLinkService.consume('self-tok')).resolves.toBeDefined();
   });
 });

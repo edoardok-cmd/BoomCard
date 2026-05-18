@@ -1213,8 +1213,15 @@ class StickerService {
       // Sanity ceiling: reject overrides that are more than 10× the scanned amount.
       // This catches admin typos (e.g. 1000 instead of 100) while still allowing
       // legitimate corrections in both directions.
-      const originalBill = scan.billAmount > 0 ? scan.billAmount : 1;
-      if (opts.verifiedAmount > originalBill * 10) {
+      // When billAmount=0 the OCR failed to read the total; 10×0=0 so any positive
+      // override would pass, which is nonsensical. Reject entirely in that case.
+      if (scan.billAmount <= 0) {
+        throw new Error(
+          `verifiedAmount cannot be set when the scanned bill amount is 0. ` +
+          `Correct the scan or use the rejection flow.`
+        );
+      }
+      if (opts.verifiedAmount > scan.billAmount * 10) {
         throw new Error(
           `verifiedAmount ${opts.verifiedAmount} exceeds 10× the scanned bill amount (${scan.billAmount}). ` +
           `Check the value and retry.`

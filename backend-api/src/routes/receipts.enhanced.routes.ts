@@ -7,6 +7,7 @@ import { imageUploadService } from '../services/imageUpload.service';
 import { receiptTemplateService } from '../services/receiptTemplate.service';
 import { emailService } from '../services/email.service';
 import { authenticate, authorize, AuthRequest } from '../middleware/auth.middleware';
+import { requireActivePartnerForWrites } from '../middleware/partnerStatus.middleware';
 import { prisma } from '../lib/prisma';
 import { asyncHandler } from '../middleware/error.middleware';
 import { uploadSingle, validateMagicBytes } from '../middleware/upload.middleware';
@@ -606,6 +607,7 @@ router.put(
   '/venues/:venueId/config',
   authenticate,
   authorize('PARTNER', 'ADMIN', 'SUPER_ADMIN'),
+  requireActivePartnerForWrites,
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const config = req.body;
 

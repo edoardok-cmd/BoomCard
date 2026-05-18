@@ -103,11 +103,22 @@ jest.mock('../../src/lib/prisma', () => {
       if (args.where.id === wtRow?.id) return wtRow;
       return null;
     }),
+    findUniqueOrThrow: jest.fn(async (args: any) => {
+      if (args.where.id === wtRow?.id && wtRow) return wtRow;
+      throw new Error('Record not found');
+    }),
     update: jest.fn(async (args: any) => {
       Object.assign(wtRow, args.data);
       return wtRow;
     }),
-    updateMany: jest.fn(async (_args: any) => ({ count: updateManyCount })),
+    // Apply data to wtRow when count=1 so idempotency guards that re-read wtRow
+    // after a successful updateMany see the mutated state on the next call.
+    updateMany: jest.fn(async (args: any) => {
+      if (updateManyCount > 0 && wtRow && args?.data) {
+        Object.assign(wtRow, args.data);
+      }
+      return { count: updateManyCount };
+    }),
   };
   const walletDelegateForTx = {
     update: jest.fn(async (args: any) => {
@@ -400,6 +411,7 @@ describe('approveEntry — concurrent second click skips clearedAt re-write', ()
       cashbackStatus: 'PENDING',
       status: 'PENDING',
       amount: 15,
+      walletId: 'wallet-1',
     };
     updateManyCount = 1;
     walletUpdateCalls.length = 0;
@@ -409,14 +421,22 @@ describe('approveEntry — concurrent second click skips clearedAt re-write', ()
     writeAuditMock.mockClear();
   });
 
-  it('completes without error on first call', async () => {
+  it('completes without error on first call and credits wallet for ghost PENDING entry', async () => {
+    walletBalance = { balance: 0, availableBalance: 0 };
     prismaMock.walletTransaction.findUnique.mockResolvedValue(wtRow);
+    const txWalletUpdate = jest.fn(async (args: any) => {
+      walletUpdateCalls.push({ ...args });
+      if (args.data?.balance?.increment) walletBalance.balance += args.data.balance.increment;
+      if (args.data?.availableBalance?.increment) walletBalance.availableBalance += args.data.availableBalance.increment;
+      return walletBalance;
+    });
     prismaMock.$transaction.mockImplementation(async (fn: any) => {
       return fn({
         walletTransaction: {
           update: jest.fn(async (args: any) => { Object.assign(wtRow, args.data); return wtRow; }),
           updateMany: jest.fn(async (_args: any) => ({ count: 1 })),
         },
+        wallet: { update: txWalletUpdate },
       });
     });
 
@@ -424,6 +444,9 @@ describe('approveEntry — concurrent second click skips clearedAt re-write', ()
     expect(writeAuditMock).toHaveBeenCalledWith(
       expect.objectContaining({ action: 'CASHBACK_CLEARED' }),
     );
+    // Wallet must be credited for the ghost PENDING entry (status was PENDING, not COMPLETED)
+    expect(walletBalance.balance).toBe(15);
+    expect(walletBalance.availableBalance).toBe(15);
   });
 
   it('does not throw and logs "already CLEARED" when updateMany.count = 0', async () => {
@@ -434,10 +457,12 @@ describe('approveEntry — concurrent second click skips clearedAt re-write', ()
 
     const txUpdateMany = jest.fn(async (_args: any) => ({ count: 0 }));
     const txUpdate = jest.fn(async (args: any) => { Object.assign(wtRow, args.data); return wtRow; });
+    const txWalletUpdate = jest.fn(async () => walletBalance);
 
     prismaMock.$transaction.mockImplementation(async (fn: any) => {
       return fn({
         walletTransaction: { update: txUpdate, updateMany: txUpdateMany },
+        wallet: { update: txWalletUpdate },
       });
     });
 
@@ -556,5 +581,59 @@ describe('approveScan — verifiedAmount upper-bound guard', () => {
     if (thrownMessage) {
       expect(thrownMessage).not.toMatch(/10×/);
     }
+  });
+
+  it('throws when billAmount=0 and verifiedAmount is set (no meaningful ceiling)', async () => {
+    prismaMock.stickerScan.findUnique = jest.fn(async () => ({
+      ...baseScan,
+      billAmount: 0,
+      cashbackAmount: 0,
+    }));
+    const { stickerService } = await import('../../src/services/sticker.service');
+
+    await expect(
+      stickerService.approveScan('scan-1', { verifiedAmount: 5, adminUserId: 'admin-1' })
+    ).rejects.toThrow(/cannot be set when the scanned bill amount is 0/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 7. approveEntry — isMidApproval path (status=COMPLETED) does NOT double-credit wallet
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('approveEntry — isMidApproval path does not double-credit wallet', () => {
+  beforeEach(() => {
+    // status=COMPLETED means wallet was already credited; only cashbackStatus is missing
+    wtRow = {
+      id: 'entry-mid',
+      type: 'CASHBACK_CREDIT',
+      cashbackStatus: null,
+      status: 'COMPLETED',
+      amount: 20,
+      walletId: 'wallet-1',
+    };
+    walletBalance = { balance: 50, availableBalance: 50 };
+    walletUpdateCalls.length = 0;
+    jest.clearAllMocks();
+    writeAuditMock.mockClear();
+  });
+
+  it('sets cashbackStatus=CLEARED without touching wallet balance', async () => {
+    prismaMock.walletTransaction.findUnique.mockResolvedValue(wtRow);
+    const txWalletUpdate = jest.fn(async () => walletBalance);
+    prismaMock.$transaction.mockImplementation(async (fn: any) => {
+      return fn({
+        walletTransaction: {
+          update: jest.fn(async (args: any) => { Object.assign(wtRow, args.data); return wtRow; }),
+          updateMany: jest.fn(async (_args: any) => ({ count: 1 })),
+        },
+        wallet: { update: txWalletUpdate },
+      });
+    });
+
+    await expect(approveEntry('entry-mid', 'admin-1')).resolves.toBeUndefined();
+    // Wallet update must NOT have been called — balance was already credited
+    expect(txWalletUpdate).not.toHaveBeenCalled();
+    expect(walletBalance.balance).toBe(50); // unchanged
   });
 });
