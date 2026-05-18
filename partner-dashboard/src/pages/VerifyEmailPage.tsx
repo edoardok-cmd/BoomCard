@@ -171,6 +171,29 @@ const SpinningLoader = styled(Loader)`
 
 type VerificationStatus = 'loading' | 'success' | 'error' | 'expired';
 
+const EmailInput = styled.input`
+  width: 100%;
+  padding: 0.65rem 0.875rem;
+  border: 1.5px solid #d1d5db;
+  border-radius: 0.5rem;
+  font-size: 1rem;
+  color: #111827;
+  background: #f9fafb;
+  outline: none;
+  box-sizing: border-box;
+  margin-bottom: 0.75rem;
+  transition: border-color 0.15s;
+
+  &:focus {
+    border-color: #667eea;
+    background: #fff;
+  }
+
+  &::placeholder {
+    color: #9ca3af;
+  }
+`;
+
 const VerifyEmailPage: React.FC = () => {
   const { language } = useLanguage();
   const [searchParams] = useSearchParams();
@@ -179,6 +202,9 @@ const VerifyEmailPage: React.FC = () => {
 
   const [status, setStatus] = useState<VerificationStatus>('loading');
   const [isResending, setIsResending] = useState(false);
+  // Audit-fix [10]: replaces window.prompt() — inline controlled input so the
+  // user can type their email without a blocking native dialog.
+  const [emailInput, setEmailInput] = useState(email ?? '');
 
   const content = {
     en: {
@@ -264,24 +290,17 @@ const VerifyEmailPage: React.FC = () => {
   }, [token, language]);
 
   const handleResendEmail = async () => {
-    // Audit-pass [10.2]: when the backend redirect on token failure lands
-    // here without ?email=, prompt the user to type one in rather than
-    // disabling the button. The backend rate-limits + always returns success,
-    // so we don't leak account existence by accepting an arbitrary input.
-    let targetEmail = email;
+    // Audit-fix [10]: was window.prompt() — replaced with inline emailInput state.
+    // When ?email= is absent from the URL (token failure redirect), the user
+    // types their address into the EmailInput rendered below the button.
+    const targetEmail = email || emailInput.trim();
     if (!targetEmail) {
-      const prompted = window.prompt(
-        language === 'bg'
-          ? 'Въведете имейл адрес, на който да изпратим нов линк за потвърждение:'
-          : 'Enter the email address to receive a new verification link:',
-      );
-      const trimmed = prompted?.trim() || '';
-      if (!trimmed) return;
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
-        toast.error(language === 'bg' ? 'Невалиден имейл адрес' : 'Invalid email address');
-        return;
-      }
-      targetEmail = trimmed;
+      toast.error(language === 'bg' ? 'Въведете имейл адрес' : 'Please enter your email address');
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(targetEmail)) {
+      toast.error(language === 'bg' ? 'Невалиден имейл адрес' : 'Invalid email address');
+      return;
     }
 
     setIsResending(true);
@@ -359,6 +378,19 @@ const VerifyEmailPage: React.FC = () => {
               {status === 'expired' ? t.expiredMessage : t.errorMessage}
             </Message>
             <ButtonGroup>
+              {/* Inline email input — shown when no ?email= in the URL so the
+                  user can enter their address without a blocking window.prompt() */}
+              {!email && (
+                <EmailInput
+                  type="email"
+                  autoComplete="email"
+                  placeholder={language === 'bg' ? 'Вашият имейл адрес' : 'Your email address'}
+                  value={emailInput}
+                  onChange={(e) => setEmailInput(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') handleResendEmail(); }}
+                  disabled={isResending}
+                />
+              )}
               <StyledButton
                 variant="primary"
                 size="large"

@@ -138,8 +138,19 @@ export default function PartnerRequestDrawer({ partnerId, onClose, canWrite, onA
 
   const approveMutation = useMutation({
     mutationFn: () => adminPartnerRequestsService.approve(partnerId!),
-    onSuccess: () => {
+    onSuccess: (data) => {
       toast.success(t('admin.requestApproved'));
+      // Spec §5.2 v1.1 — H4: surface link-issuance failure immediately so the
+      // admin knows to resend rather than waiting for the partner to report a
+      // missing email.
+      if (data?.activationLink && !data.activationLink.issued) {
+        toast.error(
+          isEn
+            ? `Activation link failed to issue — please resend manually. (${data.activationLink.error})`
+            : `Грешка при издаване на активационен линк — натиснете „Прати повторно". (${data.activationLink.error})`,
+          { duration: 8000 },
+        );
+      }
       invalidate();
       onApproved?.();
       onClose();

@@ -109,8 +109,11 @@ export const adminPartnerRequestsService = {
     return apiService.get<PendingPartnersResult>('/admin/partner-requests', params);
   },
 
-  approve(id: string): Promise<{ success: boolean }> {
-    return apiService.post<{ success: boolean }>(`/admin/partner-requests/${id}/approve`);
+  approve(id: string): Promise<{
+    success: boolean;
+    activationLink?: { issued: true; expiresAt: string } | { issued: false; error: string };
+  }> {
+    return apiService.post(`/admin/partner-requests/${id}/approve`);
   },
 
   reject(id: string, reason: string): Promise<{ success: boolean }> {

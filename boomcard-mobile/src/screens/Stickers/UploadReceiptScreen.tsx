@@ -268,7 +268,7 @@ export default function UploadReceiptScreen() {
     } catch (error: any) {
       const rawErr: string = error?.message || '';
       // Spec §4.2 v1.1 — surface renewal CTA on SUBSCRIPTION_* markers.
-      if (rawErr.includes('SUBSCRIPTION_FAILED_PAYMENT') || rawErr.includes('SUBSCRIPTION_PAST_DUE')) {
+      if (rawErr.includes('SUBSCRIPTION_FAILED_PAYMENT') || rawErr.includes('SUBSCRIPTION_PAST_DUE') || rawErr.includes('SUBSCRIPTION_INACTIVE')) {
         crossPlatformAlert(
           t('common.info', 'Информация'),
           t(

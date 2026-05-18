@@ -116,6 +116,19 @@ const Stat = styled.div<{ $active?: boolean }>`
 const StatLabel = styled.div`font-size: 0.75rem; color: ${palette.textSubtle}; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 0.25rem;`;
 const StatValue = styled.div`font-size: 1.375rem; font-weight: 700; color: ${palette.text};`;
 const ActionRow = styled.div`display: flex; gap: 0.375rem; margin-top: 0.375rem; flex-wrap: wrap;`;
+const BulkBar = styled.div`
+  display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;
+  padding: 0.625rem 1rem; margin-bottom: 0.75rem;
+  background: ${palette.infoSoft}; border: 1px solid ${palette.info}40;
+  border-radius: 0.625rem; font-size: 0.875rem; color: ${palette.info};
+`;
+const BulkCount = styled.span`font-weight: 700;`;
+const BulkRejectBtn = styled.button`
+  padding: 0.3rem 0.875rem; border-radius: 0.375rem; border: 1px solid ${palette.danger};
+  font-size: 0.8125rem; font-weight: 600; cursor: pointer;
+  background: ${palette.dangerSoft}; color: ${palette.danger};
+  &:disabled { opacity: 0.5; cursor: not-allowed; }
+`;
 const ActionBtn = styled.button<{ $variant: 'approve' | 'reject' | 'dispute' }>`
   font-size: 0.75rem; font-weight: 600; padding: 0.2rem 0.6rem;
   border-radius: 0.375rem; border: 1px solid;
@@ -269,6 +282,11 @@ const T = {
   errorDispute:    { en: 'Error opening dispute',                                bg: 'Грешка при отваряне на спор' },
   disputeOpened:   { en: 'Dispute case opened',                                 bg: 'Спорът е открит' },
   disputeExists:   { en: 'Dispute already exists for this receipt',             bg: 'Спор за тази бележка вече съществува' },
+  // Bulk-reject (spec §7.2)
+  bulkSelected:    { en: 'selected',                                            bg: 'избрани' },
+  bulkReject:      { en: 'Bulk reject',                                         bg: 'Масов отказ' },
+  bulkError:       { en: 'Some rejections failed — check the console',         bg: 'Грешка при масов отказ — вижте конзолата' },
+  clearSelection:  { en: 'Clear',                                               bg: 'Изчисти' },
 } as const;
 
 export default function AdminControlSecurityPage() {
@@ -316,6 +334,46 @@ export default function AdminControlSecurityPage() {
   const [actionDraft, setActionDraft] = useState<ActionDraft | null>(null);
   const [disputeDraft, setDisputeDraft] = useState<DisputeDraft | null>(null);
   const [disputeNote, setDisputeNote] = useState('');
+
+  // §7.2 bulk-reject: multi-select state + modal draft
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkRejectDraft, setBulkRejectDraft] = useState<{ rejectCode: RejectReasonCode | ''; text: string } | null>(null);
+
+  const toggleRowSelection = (id: string) =>
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  const toggleSelectAll = (rows: { id: string }[]) =>
+    setSelectedIds((prev) =>
+      rows.every((r) => prev.has(r.id))
+        ? new Set()
+        : new Set(rows.map((r) => r.id)),
+    );
+
+  // Clear selection on page/filter change so stale IDs from the previous page
+  // don't get included in a bulk action.
+  useEffect(() => { setSelectedIds(new Set()); }, [page, tier, venueId, signalCategory, dateFrom]);
+
+  const bulkRejectMutation = useMutation({
+    mutationFn: ({ scanIds, reason }: { scanIds: string[]; reason?: string }) =>
+      adminControlService.bulkRejectRiskSignals(scanIds, reason),
+    onSuccess: (result) => {
+      const { successCount, errorCount } = result.data;
+      if (errorCount > 0) {
+        toast.error(t('bulkError'));
+        console.error('[bulk-reject] partial failure:', result.data.errors);
+      } else {
+        toast.success(`${successCount} ${lang === 'bg' ? 'сигнала отхвърлени' : 'signal(s) rejected'}`);
+      }
+      setBulkRejectDraft(null);
+      setSelectedIds(new Set());
+      queryClient.invalidateQueries({ queryKey: ['admin-fraud-signals'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-risk-queue-summary'] });
+    },
+    onError: () => toast.error(t('bulkError')),
+  });
 
   const toggleCategory = (cat: string) => {
     setSignalCategory((prev) => (prev === cat ? '' : cat));
@@ -399,6 +457,7 @@ export default function AdminControlSecurityPage() {
       if (e.key !== 'Escape' || isAnyMutating) return;
       setActionDraft(null);
       setDisputeDraft(null);
+      setBulkRejectDraft(null);
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
@@ -409,7 +468,31 @@ export default function AdminControlSecurityPage() {
       day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
     });
 
+  const currentPageRows = data?.data ?? [];
+  const allPageSelected = currentPageRows.length > 0 && currentPageRows.every((r) => selectedIds.has(r.id));
+
   const fraudColumns: ColumnDef<FraudSignalReceipt>[] = [
+    {
+      key: 'select',
+      header: (
+        <input
+          type="checkbox"
+          checked={allPageSelected}
+          onChange={() => toggleSelectAll(currentPageRows)}
+          title={lang === 'bg' ? 'Избери всички на страницата' : 'Select all on this page'}
+          style={{ cursor: 'pointer', accentColor: palette.accent }}
+        />
+      ) as unknown as string,
+      render: (row) => (
+        <input
+          type="checkbox"
+          checked={selectedIds.has(row.id)}
+          onChange={() => toggleRowSelection(row.id)}
+          onClick={(e) => e.stopPropagation()}
+          style={{ cursor: 'pointer', accentColor: palette.accent }}
+        />
+      ),
+    },
     {
       key: 'score',
       header: t('colScore'),
@@ -699,6 +782,26 @@ export default function AdminControlSecurityPage() {
                   )}
                 </FilterRow>
 
+                {/* §7.2 bulk-reject bar — appears when ≥1 rows are selected */}
+                {selectedIds.size > 0 && (
+                  <BulkBar>
+                    <BulkCount>{selectedIds.size}</BulkCount>
+                    {t('bulkSelected')}
+                    <BulkRejectBtn
+                      disabled={bulkRejectMutation.isPending}
+                      onClick={() => setBulkRejectDraft({ rejectCode: '', text: '' })}
+                    >
+                      {t('bulkReject')}
+                    </BulkRejectBtn>
+                    <CancelBtn
+                      style={{ fontSize: '.8125rem' }}
+                      onClick={() => setSelectedIds(new Set())}
+                    >
+                      {t('clearSelection')}
+                    </CancelBtn>
+                  </BulkBar>
+                )}
+
                 <DataTable
                   columns={fraudColumns}
                   data={data?.data ?? []}
@@ -836,6 +939,90 @@ export default function AdminControlSecurityPage() {
                 }
               >
                 {openDisputeMutation.isPending ? '…' : t('confirm')}
+              </ConfirmBtn>
+            </DialogFooter>
+          </Dialog>
+        </Overlay>
+      )}
+
+      {/* §7.2 bulk-reject modal — backend caps at 25 IDs/request; caller chunks */}
+      {bulkRejectDraft && (
+        <Overlay onClick={() => !bulkRejectMutation.isPending && setBulkRejectDraft(null)}>
+          <Dialog onClick={(e) => e.stopPropagation()}>
+            <DialogTitle>
+              {t('bulkReject')} ({selectedIds.size})
+            </DialogTitle>
+            <div style={{ fontSize: '0.75rem', color: palette.textSubtle, marginBottom: '0.25rem' }}>
+              {t('reasonCodeLabel')}
+            </div>
+            <select
+              value={bulkRejectDraft.rejectCode}
+              onChange={(e) => setBulkRejectDraft({ ...bulkRejectDraft, rejectCode: (e.target.value || '') as RejectReasonCode | '' })}
+              style={{
+                width: '100%', boxSizing: 'border-box', marginBottom: '0.5rem',
+                padding: '0.4rem 0.6rem', border: `1px solid ${palette.border}`,
+                borderRadius: '0.5rem', fontSize: '0.875rem', background: palette.bg,
+                color: palette.text,
+              }}
+              autoFocus
+            >
+              <option value="">— {t('reasonCodeLabel')} —</option>
+              {REJECT_REASON_CODES.map((code) => (
+                <option key={code} value={code}>
+                  {REJECT_REASON_LABEL[code][lang]}
+                </option>
+              ))}
+            </select>
+            <DialogTextarea
+              placeholder={t('reasonLabel')}
+              value={bulkRejectDraft.text}
+              onChange={(e) => setBulkRejectDraft({ ...bulkRejectDraft, text: e.target.value })}
+            />
+            <DialogFooter>
+              <CancelBtn disabled={bulkRejectMutation.isPending} onClick={() => setBulkRejectDraft(null)}>
+                {t('cancel')}
+              </CancelBtn>
+              <ConfirmBtn
+                $variant="reject"
+                disabled={bulkRejectMutation.isPending || !bulkRejectDraft.rejectCode}
+                onClick={() => {
+                  if (!bulkRejectDraft.rejectCode) { toast.error(t('reasonCodeRequired')); return; }
+                  const codeLabel = REJECT_REASON_LABEL[bulkRejectDraft.rejectCode].bg;
+                  const txt = bulkRejectDraft.text.trim();
+                  const composed = txt
+                    ? `[${bulkRejectDraft.rejectCode}] ${codeLabel} — ${txt}`
+                    : `[${bulkRejectDraft.rejectCode}] ${codeLabel}`;
+                  // Backend caps at 25 IDs — chunk client-side for larger selections.
+                  const ids = [...selectedIds];
+                  const CHUNK = 25;
+                  const chunks: string[][] = [];
+                  for (let i = 0; i < ids.length; i += CHUNK) chunks.push(ids.slice(i, i + CHUNK));
+                  // Fire chunks sequentially to avoid overwhelming the backend.
+                  (async () => {
+                    let totalSuccess = 0;
+                    let totalError = 0;
+                    for (const chunk of chunks) {
+                      try {
+                        const r = await adminControlService.bulkRejectRiskSignals(chunk, composed);
+                        totalSuccess += r.data.successCount;
+                        totalError += r.data.errorCount;
+                      } catch {
+                        totalError += chunk.length;
+                      }
+                    }
+                    if (totalError > 0) {
+                      toast.error(t('bulkError'));
+                    } else {
+                      toast.success(`${totalSuccess} ${lang === 'bg' ? 'сигнала отхвърлени' : 'signal(s) rejected'}`);
+                    }
+                    setBulkRejectDraft(null);
+                    setSelectedIds(new Set());
+                    queryClient.invalidateQueries({ queryKey: ['admin-fraud-signals'] });
+                    queryClient.invalidateQueries({ queryKey: ['admin-risk-queue-summary'] });
+                  })();
+                }}
+              >
+                {bulkRejectMutation.isPending ? '…' : t('confirm')}
               </ConfirmBtn>
             </DialogFooter>
           </Dialog>

@@ -123,7 +123,22 @@ export default function WalletScreen() {
       );
       await loadWalletData();
     } catch (error: any) {
-      Alert.alert(t('wallet.payoutError'), error.message || t('errors.unknownError'));
+      const rawErr: string = error?.message || '';
+      if (rawErr.includes('SUBSCRIPTION_INACTIVE') || rawErr.includes('SUBSCRIPTION_FAILED_PAYMENT') || rawErr.includes('SUBSCRIPTION_PAST_DUE')) {
+        Alert.alert(
+          t('common.info', 'Информация'),
+          t(
+            'wallet.subscriptionInactiveForPayout',
+            'Абонаментът Ви трябва да е активен, за да получите изплащане. Възобновете го от менюто „Абонамент и плащания".'
+          ),
+          [
+            { text: t('common.cancel', 'Откажи'), style: 'cancel' },
+            { text: t('stickers.renewSubscription', 'Възобнови абонамент'), onPress: () => (navigation as any).navigate('SubscriptionManagement') },
+          ]
+        );
+      } else {
+        Alert.alert(t('wallet.payoutError'), rawErr || t('errors.unknownError'));
+      }
     } finally {
       setPayoutLoading(false);
     }

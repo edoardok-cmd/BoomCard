@@ -169,7 +169,7 @@ export default function StickerScannerScreen() {
               'Този обект временно не приема BoomCard транзакции. Опитайте отново по-късно или вижте близки активни обекти.'
             )
           );
-        } else if (rawErr.includes('SUBSCRIPTION_FAILED_PAYMENT') || rawErr.includes('SUBSCRIPTION_PAST_DUE')) {
+        } else if (rawErr.includes('SUBSCRIPTION_FAILED_PAYMENT') || rawErr.includes('SUBSCRIPTION_PAST_DUE') || rawErr.includes('SUBSCRIPTION_INACTIVE')) {
           crossPlatformAlert(
             t('common.info', 'Информация'),
             t(
