@@ -1038,7 +1038,55 @@ class StickerService {
       }
     }
 
-    // All scans require admin approval — no auto-approve
+    // Spec §7.1: 0-30 → auto-approve; 31-60 → manual review; 61+ → high risk.
+    const autoApproveThreshold = (scan as any).venue?.stickerConfig?.autoApproveThreshold ?? 30;
+    const scanFraudScore = scan.fraudScore ?? 0;
+
+    if (scanFraudScore <= autoApproveThreshold) {
+      // ── Auto-approve path ────────────────────────────────────────────────
+      // Transition to MANUAL_REVIEW first so approveScan() accepts the scan,
+      // then immediately promote. This reuses all cashback-credit, wallet,
+      // audit-trail, and notification logic in a single call.
+      await prisma.stickerScan.update({
+        where: { id: scanId },
+        data: { status: ScanStatus.MANUAL_REVIEW },
+      });
+
+      // Create the PENDING row so the promote path works correctly even
+      // for the instant-approval case (promotePendingToCleared expects it).
+      try {
+        if (scan.userId && (scan.cashbackAmount ?? 0) > 0) {
+          await cashbackLifecycleService.recordPendingForRiskReview({
+            userId: scan.userId,
+            amount: scan.cashbackAmount,
+            description: `Кешбек — ${scan.venue?.name ?? 'обект'}`,
+            stickerScanId: scan.id,
+            metadata: { source: 'STICKER_SCAN_AUTO_APPROVE', venueId: scan.venueId },
+          });
+        }
+      } catch (err) {
+        logger.error(`[uploadReceipt] failed to record PENDING cashback for auto-approve scan ${scanId}:`, err);
+      }
+
+      if ((scan.cashbackAmount ?? 0) > 0) {
+        try {
+          return await this.approveScan(scanId, { adminUserId: null });
+        } catch (autoApproveError) {
+          // Unexpected failure — leave in MANUAL_REVIEW for admin action.
+          logger.error(`[uploadReceipt] auto-approve failed for scan ${scanId}, leaving in MANUAL_REVIEW:`, autoApproveError);
+          return prisma.stickerScan.findUniqueOrThrow({ where: { id: scanId } });
+        }
+      }
+
+      // Zero cashback (no active subscription) — just mark APPROVED; no
+      // wallet or cashback record needed.
+      return prisma.stickerScan.update({
+        where: { id: scanId },
+        data: { status: ScanStatus.APPROVED, processedAt: new Date() },
+      });
+    }
+
+    // ── Manual review path (fraudScore 31-60 = review, 61+ = high risk) ───
     const finalScan = await prisma.stickerScan.update({
       where: { id: scanId },
       data: { status: ScanStatus.MANUAL_REVIEW },
@@ -1738,13 +1786,15 @@ class StickerService {
       fraudReasons.push(`RAPID_SCANNING: ${recentScans} scans in 30 minutes`);
     }
 
-    // Determine risk level
+    // Spec §7.1: 0-30 = auto-approve, 31-60 = review, 61+ = high risk.
+    const autoApproveThreshold = config.autoApproveThreshold ?? 30;
+
     let riskLevel: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
-    if (fraudScore < 10) {
+    if (fraudScore <= 30) {
       riskLevel = 'LOW';
-    } else if (fraudScore < 30) {
+    } else if (fraudScore <= 60) {
       riskLevel = 'MEDIUM';
-    } else if (fraudScore < 60) {
+    } else if (fraudScore <= 90) {
       riskLevel = 'HIGH';
     } else {
       riskLevel = 'CRITICAL';
@@ -1754,7 +1804,7 @@ class StickerService {
       fraudScore,
       fraudReasons,
       riskLevel,
-      requiresManualReview: true,
+      requiresManualReview: fraudScore > autoApproveThreshold,
     };
   }
 

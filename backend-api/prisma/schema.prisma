@@ -1230,7 +1230,7 @@ model VenueStickerConfig {
   gpsVerificationEnabled Boolean  @default(true)
   gpsRadiusMeters        Int      @default(100)
   ocrVerificationEnabled Boolean  @default(true)
-  autoApproveThreshold   Float    @default(10)
+  autoApproveThreshold   Float    @default(30)
   isActive               Boolean  @default(true)
   metadata               String?
   createdAt              DateTime @default(now())

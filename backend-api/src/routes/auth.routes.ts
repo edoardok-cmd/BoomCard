@@ -251,8 +251,7 @@ router.post(
   asyncHandler(async (req: Request, res: Response) => {
     const { email, password, totpCode } = req.body;
     const origin = req.get('origin') || req.get('referer') || '';
-    const clientType: 'mobile' | 'web' = req.body.clientType
-      ?? (origin.includes('mobile.boomcard') ? 'mobile' : 'web');
+    const clientType: 'mobile' | 'web' = req.body.clientType;
 
     const ip = getClientIp(req);
     const userAgent = req.headers['user-agent'];

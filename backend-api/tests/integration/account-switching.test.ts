@@ -44,6 +44,7 @@ async function createWebSiblings() {
       category: 'Restaurant',
       status: 'ACTIVE',
       email,
+      verifiedAt: new Date(),
     },
   });
 
@@ -221,6 +222,7 @@ describe('Account Switching (web)', () => {
           category: 'Retail',
           status: 'ACTIVE',
           email: suspendedEmail,
+          verifiedAt: new Date(),
         },
       });
 
@@ -334,7 +336,7 @@ describe('Account Switching (web)', () => {
         data: { email, passwordHash, role: 'PARTNER', status: 'ACTIVE', emailVerified: true, firstName: 'Pivot', lastName: 'Partner' },
       });
       await prisma.partner.create({
-        data: { userId: pPartner.id, businessName: `Pivot ${tag}`, category: 'Restaurant', status: 'ACTIVE', email },
+        data: { userId: pPartner.id, businessName: `Pivot ${tag}`, category: 'Restaurant', status: 'ACTIVE', email, verifiedAt: new Date() },
       });
       const pAdmin = await prisma.user.create({
         data: { email, passwordHash, role: 'ADMIN', status: 'ACTIVE', firstName: 'Pivot', lastName: 'Admin' },
@@ -421,7 +423,7 @@ describe('Account Switching (web)', () => {
         data: { email, passwordHash, role: 'PARTNER', status: 'ACTIVE', emailVerified: true },
       });
       await prisma.partner.create({
-        data: { userId: noOrigPartner.id, businessName: 'No-Origin Partner', category: 'Retail', status: 'ACTIVE', email },
+        data: { userId: noOrigPartner.id, businessName: 'No-Origin Partner', category: 'Retail', status: 'ACTIVE', email, verifiedAt: new Date() },
       });
       const noOrigAdmin = await prisma.user.create({
         data: { email, passwordHash, role: 'ADMIN', status: 'ACTIVE' },
@@ -469,7 +471,7 @@ describe('Account Switching (web)', () => {
         data: { email: burstEmail, passwordHash, role: 'PARTNER', status: 'ACTIVE', emailVerified: true },
       });
       await prisma.partner.create({
-        data: { userId: a.id, businessName: 'Burst A', category: 'Retail', status: 'ACTIVE', email: burstEmail },
+        data: { userId: a.id, businessName: 'Burst A', category: 'Retail', status: 'ACTIVE', email: burstEmail, verifiedAt: new Date() },
       });
       const b = await prisma.user.create({
         data: { email: burstEmail, passwordHash, role: 'ADMIN', status: 'ACTIVE' },
@@ -513,7 +515,7 @@ describe('Account Switching (web)', () => {
         data: { email: raceEmail, passwordHash, role: 'PARTNER', status: 'ACTIVE', emailVerified: true },
       });
       await prisma.partner.create({
-        data: { userId: pA.id, businessName: 'Race Partner', category: 'Retail', status: 'ACTIVE', email: raceEmail },
+        data: { userId: pA.id, businessName: 'Race Partner', category: 'Retail', status: 'ACTIVE', email: raceEmail, verifiedAt: new Date() },
       });
       const aA = await prisma.user.create({
         data: { email: raceEmail, passwordHash, role: 'ADMIN', status: 'ACTIVE' },

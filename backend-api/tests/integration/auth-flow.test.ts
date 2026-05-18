@@ -611,7 +611,7 @@ describe('Authentication Flow (F01)', () => {
       expect(dbUser!.firstName).toBeNull();
       expect(dbUser!.lastName).toBeNull();
       expect(dbUser!.phone).toBeNull();
-      expect(dbUser!.status).toBe('INACTIVE');
+      expect(dbUser!.status).toBe('DELETED');
 
       // Cleanup the anonymized user
       await prisma.user.delete({ where: { id: user.id } }).catch(() => {});
